@@ -1,0 +1,41 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Node
+node_modules/
+**/node_modules/
+
+# Builds
+/dist/
+/.vite/
+/.cache/
+
+# OS/Editor
+.DS_Store
+.idea/
+.vscode/
+
+# Tests/Reports
+coverage/
+.vitest/
+playwright-report/
+e2e/
+**/*.spec.*
+**/*.test.*
+
+# Env/Secrets
+.env
+*.env.local
+*.local
+server/telegram-watches.json
+server/settings.json
+server/*.log
+
+# Large data not needed in repo
+server/datasets/

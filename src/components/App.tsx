@@ -1,0 +1,210 @@
+import { useState, useEffect, useRef } from 'react';
+import { Settings } from 'lucide-react';
+import { useAppStore } from '../stores';
+import { DataUpload } from './DataUpload';
+import { DataEnhancer } from './DataEnhancer';
+import { StrategySettings } from './StrategySettings';
+import { Results } from './Results';
+import { TelegramWatches } from './TelegramWatches';
+import { AppSettings } from './AppSettings';
+import { createStrategyFromTemplate, STRATEGY_TEMPLATES } from '../lib/strategy';
+
+type Tab = 'data' | 'enhance' | 'results' | 'watches' | 'settings';
+
+export default function App() {
+  const [authorized, setAuthorized] = useState<boolean>(false);
+  const [checkingAuth, setCheckingAuth] = useState<boolean>(true);
+  const [loginError, setLoginError] = useState<string | null>(null);
+  const [usernameInput, setUsernameInput] = useState('');
+  const [passwordInput, setPasswordInput] = useState('');
+  const [rememberMe, setRememberMe] = useState(true);
+  const [activeTab, setActiveTab] = useState<Tab>('data');
+  const [showSettings, setShowSettings] = useState(false);
+  const hasAutoNavigatedRef = useRef(false);
+  const { marketData, currentStrategy, backtestResults, runBacktest, backtestStatus, setStrategy, loadSettingsFromServer, saveSettingsToServer } = useAppStore() as any;
+
+  // Автоматически создаем IBS стратегию когда есть данные
+  useEffect(() => {
+    // Подгружаем сохранённые настройки
+    loadSettingsFromServer();
+    if (marketData.length > 0 && !currentStrategy) {
+      const ibsTemplate = STRATEGY_TEMPLATES[0]; // Единственная стратегия
+      const strategy = createStrategyFromTemplate(ibsTemplate);
+      setStrategy(strategy);
+    }
+  }, [marketData, currentStrategy, setStrategy]);
+
+  // Автоматически запускаем бэктест когда есть данные и стратегия
+  useEffect(() => {
+    if (marketData.length > 0 && currentStrategy && backtestStatus === 'idle') {
+      console.log('Auto-running backtest...');
+      runBacktest();
+    }
+  }, [marketData, currentStrategy, backtestStatus, runBacktest]);
+
+  // Как только появились результаты бэктеста — один раз автоматически переключаемся на вкладку результатов
+  useEffect(() => {
+    if (
+      backtestResults &&
+      activeTab === 'data' &&
+      !hasAutoNavigatedRef.current
+    ) {
+      setActiveTab('results');
+      hasAutoNavigatedRef.current = true;
+    }
+  }, [backtestResults, activeTab]);
+
+  const tabs = [
+    { id: 'data' as Tab, label: 'Данные', enabled: true },
+    { id: 'enhance' as Tab, label: 'Доп. данные', enabled: true },
+    { id: 'results' as Tab, label: 'Результаты', enabled: true },
+    { id: 'watches' as Tab, label: 'Мониторинг', enabled: true },
+  ];
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const base = window.location.href.includes('/stonks') ? '/stonks/api' : '/api';
+        const r = await fetch(`${base}/auth/check`, { credentials: 'include' });
+        if (r.ok) setAuthorized(true);
+      } catch {}
+      setCheckingAuth(false);
+    })();
+  }, []);
+
+  if (checkingAuth) {
+    return <div className="min-h-screen flex items-center justify-center text-gray-600">Проверка доступа…</div>;
+  }
+
+  if (!authorized) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+        <div className="w-full max-w-sm bg-white rounded-xl border shadow p-6">
+          <h2 className="text-xl font-semibold text-gray-900 mb-1">Доступ к приложению</h2>
+          <p className="text-sm text-gray-600 mb-4">Введите пароль</p>
+          {loginError && <div className="mb-3 text-sm text-red-600">{loginError}</div>}
+          <input
+            type="email"
+            value={usernameInput}
+            onChange={(e) => setUsernameInput(e.target.value)}
+            className="w-full px-3 py-2 border rounded-md mb-3"
+            placeholder="Email"
+          />
+          <input
+            type="password"
+            value={passwordInput}
+            onChange={(e) => setPasswordInput(e.target.value)}
+            className="w-full px-3 py-2 border rounded-md mb-3"
+            placeholder="Пароль"
+          />
+          <label className="inline-flex items-center gap-2 text-sm text-gray-700 mb-4">
+            <input type="checkbox" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} />
+            Запомнить меня (30 дней)
+          </label>
+          <button
+            onClick={async () => {
+              setLoginError(null);
+              try {
+                const base = window.location.href.includes('/stonks') ? '/stonks/api' : '/api';
+                const r = await fetch(`${base}/login`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  credentials: 'include',
+                  body: JSON.stringify({ username: usernameInput, password: passwordInput, remember: rememberMe }),
+                });
+                if (!r.ok) {
+                  let msg = `${r.status} ${r.statusText}`;
+                  try { const e = await r.json(); msg = e.error || msg; } catch {}
+                  throw new Error(msg);
+                }
+                setAuthorized(true);
+              } catch (e: any) {
+                setLoginError(e?.message || 'Ошибка входа');
+              }
+            }}
+            className="w-full inline-flex items-center justify-center bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700"
+          >
+            Войти
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-6xl mx-auto px-4 py-8">
+        {/* Header */}
+        <div className="mb-8">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900 mb-2">
+                IBS Trading Backtester
+              </h1>
+              <p className="text-gray-600">
+                Internal Bar Strength Mean Reversion Strategy
+              </p>
+            </div>
+            {currentStrategy && (
+              <button
+                onClick={() => setShowSettings(true)}
+                className="p-2 rounded-full text-gray-500 hover:text-gray-700 hover:bg-gray-100 border border-gray-200"
+                aria-label="Strategy Settings"
+                title="Strategy Settings"
+              >
+                <Settings className="w-5 h-5" />
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Navigation Tabs */}
+        <div className="border-b border-gray-200 mb-8">
+          <nav className="flex space-x-8">
+            {tabs.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => tab.enabled && setActiveTab(tab.id)}
+                className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                  activeTab === tab.id
+                    ? 'border-blue-500 text-blue-600'
+                    : tab.enabled
+                    ? 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    : 'border-transparent text-gray-300 cursor-not-allowed'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </nav>
+        </div>
+
+        {/* Tab Content */}
+        <div className="bg-white rounded-lg shadow p-6">
+          {activeTab === 'data' && (
+            <DataUpload onNext={() => setActiveTab('results')} />
+          )}
+          {activeTab === 'enhance' && (
+            <DataEnhancer onNext={() => setActiveTab('results')} />
+          )}
+          {activeTab === 'results' && <Results />}
+          {activeTab === 'watches' && <TelegramWatches />}
+        </div>
+
+        {/* Strategy Settings Modal */}
+          {showSettings && currentStrategy && (
+          <StrategySettings
+            strategy={currentStrategy}
+            onSave={(updatedStrategy) => {
+              setStrategy(updatedStrategy);
+              // Перезапускаем бэктест, чтобы метрики обновились сразу
+              runBacktest();
+              setShowSettings(false);
+            }}
+            onClose={() => setShowSettings(false)}
+          />
+        )}
+      </div>
+    </div>
+  );
+}

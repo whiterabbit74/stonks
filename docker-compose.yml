@@ -1,0 +1,42 @@
+version: '3.9'
+
+services:
+  server:
+    build:
+      context: .
+      dockerfile: docker/server.Dockerfile
+    env_file:
+      - .env
+    environment:
+      - PORT=3001
+      - ADMIN_USERNAME=${ADMIN_USERNAME:-dimazru@gmail.com}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+      - FRONTEND_ORIGIN=http://146.235.212.239
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
+    volumes:
+      - ./server/datasets:/app/server/datasets
+      - ./server/settings.json:/app/server/settings.json
+      - ./server/telegram-watches.json:/app/server/telegram-watches.json
+      - ./.env:/app/.env:ro
+    ports:
+      - "3001:3001"
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/frontend.Dockerfile
+      args:
+        PUBLIC_BASE_PATH: "/stonks/"
+        VITE_API_BASE: "/stonks/api"
+    depends_on:
+      - server
+    ports:
+      - "80:80"
+    restart: unless-stopped
+    environment:
+      - PUBLIC_BASE_PATH=/stonks/
+      - VITE_API_BASE=/stonks/api
+
+

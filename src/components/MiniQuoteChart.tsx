@@ -1,0 +1,127 @@
+import { useEffect, useRef } from 'react';
+import { createChart } from 'lightweight-charts';
+import type { OHLCData, Trade } from '../types';
+
+interface MiniQuoteChartProps {
+  history: OHLCData[];
+  today: { open: number | null; high: number | null; low: number | null; current: number | null } | null;
+  trades: Trade[];
+  highIBS: number; // 0..1
+  isOpenPosition: boolean;
+  entryPrice?: number | null;
+}
+
+export function MiniQuoteChart({ history, today, trades, highIBS, isOpenPosition, entryPrice }: MiniQuoteChartProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const chartRef = useRef<any>(null);
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const hasToday = !!(today && today.low != null && today.high != null && today.open != null && today.current != null);
+    if (!history.length && !hasToday) return;
+
+    // cleanup previous
+    if (chartRef.current) {
+      try { chartRef.current.remove(); } catch {}
+      chartRef.current = null;
+    }
+
+    const chart = createChart(containerRef.current, {
+      width: containerRef.current.clientWidth,
+      height: containerRef.current.clientHeight || 140,
+      layout: { background: { color: '#ffffff' }, textColor: '#374151' },
+      grid: { vertLines: { color: '#f5f5f5' }, horzLines: { color: '#f5f5f5' } },
+      rightPriceScale: { borderColor: '#e5e7eb' },
+      timeScale: { borderColor: '#e5e7eb', timeVisible: true, secondsVisible: false, rightOffset: 0, fixLeftEdge: true, barSpacing: 10 },
+      crosshair: { mode: 0 },
+    });
+    chartRef.current = chart;
+
+    const series = chart.addCandlestickSeries({
+      upColor: '#10B981',
+      downColor: '#EF4444',
+      wickUpColor: '#10B981',
+      wickDownColor: '#EF4444',
+      borderVisible: false,
+    });
+    // дать вертикальные отступы, чтобы свечи не прилипали к краям
+    // Ещё уменьшаем отступы: свечи занимают ~70–80% высоты (в 2 раза меньше воздуха)
+    try { chart.priceScale('right').applyOptions({ scaleMargins: { top: 0.15, bottom: 0.15 } }); } catch {}
+
+    // Build last 5 candles: 4 последних из истории + сегодняшняя синтетическая
+    const sorted = [...history].sort((a, b) => a.date.getTime() - b.date.getTime());
+    const lastFour = sorted.slice(-4);
+    const candles: { time: number; open: number; high: number; low: number; close: number }[] = lastFour.map(b => ({
+      time: Math.floor(b.date.getTime() / 1000),
+      open: b.open, high: b.high, low: b.low, close: b.close,
+    }));
+    if (hasToday) {
+      candles.push({
+        time: Math.floor(Date.now() / 1000),
+        open: today!.open as number,
+        high: today!.high as number,
+        low: today!.low as number,
+        close: today!.current as number,
+      });
+    }
+
+    if (candles.length) {
+      series.setData(candles as any);
+      // Хотим, чтобы свечи занимали ~70% ширины контейнера
+      const width = containerRef.current!.clientWidth || 300;
+      const targetRatio = 0.7;
+      const spacing = Math.max(4, Math.min(24, Math.floor((width * targetRatio) / candles.length)));
+      const rightOffset = Math.max(1, Math.round(candles.length * 0.05)); // немного воздуха справа (~5% от кол-ва баров)
+      try { chart.timeScale().applyOptions({ rightOffset, barSpacing: spacing }); } catch {}
+    }
+
+    // Mark entries within visible window
+    const minTime = candles.length ? candles[0].time : 0;
+    const maxTime = candles.length ? candles[candles.length - 1].time : 0;
+    const markers: any[] = [];
+    trades.forEach(t => {
+      const tTime = Math.floor(t.entryDate.getTime() / 1000) as any;
+      if (tTime >= minTime && tTime <= maxTime) {
+        markers.push({ time: tTime, position: 'belowBar', color: 'rgba(5,150,105,0.6)', shape: 'arrowUp', text: '' });
+      }
+    });
+    // Do not add an explicit today marker circle per request
+    if (markers.length) series.setMarkers(markers);
+
+    // Add target close price line if position is open and we have today range
+    if (isOpenPosition && hasToday && (today!.high as number) > (today!.low as number)) {
+      const target = (today!.low as number) + highIBS * ((today!.high as number) - (today!.low as number));
+      series.createPriceLine({ price: target, color: '#8B5CF6', lineWidth: 2, lineStyle: 0, axisLabelVisible: true, title: 'IBS target' });
+    }
+
+    // Entry price reference line (subtle gray)
+    if (isOpenPosition && typeof entryPrice === 'number') {
+      series.createPriceLine({ price: entryPrice, color: '#9CA3AF', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: 'Entry' });
+    }
+
+    // Не подгоняем контент под ширину — оставляем воздух справа
+
+    const onResize = () => {
+      if (!containerRef.current || !chart) return;
+      const w = containerRef.current.clientWidth;
+      chart.applyOptions({ width: w, height: containerRef.current.clientHeight || 140 });
+      // Пересчитаем barSpacing для цели 70% ширины
+      try {
+        const points = candles.length || 1;
+        const spacing = Math.max(4, Math.min(24, Math.floor((w * 0.7) / points)));
+        chart.timeScale().applyOptions({ barSpacing: spacing });
+      } catch {}
+    };
+    window.addEventListener('resize', onResize);
+    return () => {
+      window.removeEventListener('resize', onResize);
+      try { chart.remove(); } catch {}
+    };
+  }, [history, today, trades, highIBS, isOpenPosition]);
+
+  return (
+    <div ref={containerRef} className="w-full h-full" />
+  );
+}
+
+
