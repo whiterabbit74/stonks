@@ -6,7 +6,7 @@ import { DataEnhancer } from './DataEnhancer';
 import { StrategySettings } from './StrategySettings';
 import { Results } from './Results';
 import { TelegramWatches } from './TelegramWatches';
-import { AppSettings } from './AppSettings';
+// import { AppSettings } from './AppSettings';
 import { createStrategyFromTemplate, STRATEGY_TEMPLATES } from '../lib/strategy';
 
 type Tab = 'data' | 'enhance' | 'results' | 'watches' | 'settings';
@@ -22,7 +22,7 @@ export default function App() {
   const [apiBuildId, setApiBuildId] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const hasAutoNavigatedRef = useRef(false);
-  const { marketData, currentStrategy, backtestResults, runBacktest, backtestStatus, setStrategy, loadSettingsFromServer, saveSettingsToServer } = useAppStore() as any;
+  const { marketData, currentStrategy, backtestResults, runBacktest, backtestStatus, setStrategy, loadSettingsFromServer } = useAppStore() as any;
 
   // Автоматически создаем IBS стратегию когда есть данные
   useEffect(() => {

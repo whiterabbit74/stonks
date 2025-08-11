@@ -121,6 +121,7 @@ export interface Trade {
     initialInvestment?: number;
     stopLoss?: number;
     takeProfit?: number;
+    currentCapitalAfterExit?: number;
   };
 }
 
