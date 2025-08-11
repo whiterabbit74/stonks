@@ -1441,7 +1441,8 @@ app.get('/api/status', (req, res) => {
   res.json({ 
     status: 'ok', 
     message: 'Trading Backtester API is running',
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    buildId: process.env.BUILD_ID || null
   });
 });
 

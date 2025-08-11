@@ -3,6 +3,8 @@ services:
     build:
       context: .
       dockerfile: docker/server.Dockerfile
+      args:
+        BUILD_ID: "${BUILD_ID:-dev}"
     env_file:
       - .env
     environment:
@@ -35,6 +37,7 @@ services:
       args:
         PUBLIC_BASE_PATH: "/stonks/"
         VITE_API_BASE: "/stonks/api"
+        VITE_BUILD_ID: "${BUILD_ID:-dev}"
     depends_on:
       - server
     ports:

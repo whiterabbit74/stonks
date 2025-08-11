@@ -225,7 +225,7 @@ export default function App() {
           />
         )}
       </div>
-      <div className="py-4 text-center text-xs text-gray-400">Build: {import.meta.env.VITE_BUILD_ID || 'dev'}</div>
+      <div className="py-4 text-center text-xs text-gray-400">Build: {import.meta.env.VITE_BUILD_ID || (window as any).__BUILD_ID__ || 'dev'}</div>
     </div>
   );
 }
