@@ -34,6 +34,26 @@ export default function App() {
     }
   }, [marketData, currentStrategy, setStrategy]);
 
+  // Поддержка hash-навигации (#data|#enhance|#results|#watches)
+  useEffect(() => {
+    const applyHash = () => {
+      const h = (window.location.hash || '').replace('#', '');
+      if (h === 'data' || h === 'enhance' || h === 'results' || h === 'watches') {
+        setActiveTab(h as Tab);
+      }
+    };
+    applyHash();
+    window.addEventListener('hashchange', applyHash);
+    return () => window.removeEventListener('hashchange', applyHash);
+  }, []);
+
+  useEffect(() => {
+    const current = `#${activeTab}`;
+    if (window.location.hash !== current) {
+      window.location.hash = current;
+    }
+  }, [activeTab]);
+
   // Автоматически запускаем бэктест когда есть данные и стратегия
   useEffect(() => {
     if (marketData.length > 0 && currentStrategy && backtestStatus === 'idle') {
@@ -164,7 +184,7 @@ export default function App() {
             {tabs.map((tab) => (
               <button
                 key={tab.id}
-                onClick={() => tab.enabled && setActiveTab(tab.id)}
+                onClick={() => { if (tab.enabled) setActiveTab(tab.id); }}
                 className={`py-2 px-1 border-b-2 font-medium text-sm ${
                   activeTab === tab.id
                     ? 'border-blue-500 text-blue-600'

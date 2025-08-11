@@ -1,16 +1,18 @@
 import { useState, useEffect } from 'react';
 import { Database, Download, Trash2, Calendar, BarChart3, Eye, EyeOff, Server, ServerOff } from 'lucide-react';
 import { useAppStore } from '../stores';
+import { createStrategyFromTemplate, STRATEGY_TEMPLATES } from '../lib/strategy';
 import { DatasetAPI } from '../lib/api';
 import type { SavedDataset } from '../types';
 import { ConfirmModal } from './ConfirmModal';
 
 export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {}) {
-  const { savedDatasets, currentDataset, loadDatasetFromServer, deleteDatasetFromServer, exportDatasetAsJSON, loadDatasetsFromServer } = useAppStore();
+  const { savedDatasets, currentDataset, currentStrategy, setStrategy, loadDatasetFromServer, deleteDatasetFromServer, exportDatasetAsJSON, loadDatasetsFromServer, runBacktest } = useAppStore() as any;
   const [isExpanded, setIsExpanded] = useState(true);
   const [serverStatus, setServerStatus] = useState<'checking' | 'online' | 'offline'>('checking');
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmTarget, setConfirmTarget] = useState<string | null>(null);
+  const [loadingId, setLoadingId] = useState<string | null>(null);
 
   // Проверяем статус сервера
   useEffect(() => {
@@ -43,8 +45,28 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
   };
 
   const handleLoadDataset = async (datasetId: string) => {
-    await loadDatasetFromServer(datasetId);
-    if (onAfterLoad) onAfterLoad();
+    try {
+      setLoadingId(datasetId);
+      await loadDatasetsFromServer();
+      await loadDatasetFromServer(datasetId);
+      // гарантируем наличие стратегии
+      try {
+        if (!currentStrategy) {
+          const tpl = STRATEGY_TEMPLATES[0];
+          const strat = createStrategyFromTemplate(tpl);
+          setStrategy(strat);
+        }
+      } catch {}
+      // снимаем лоадер сразу
+      setLoadingId(null);
+      // мгновенно переходим на «Результаты» и фиксируем hash
+      try { window.location.hash = '#results'; } catch {}
+      if (onAfterLoad) onAfterLoad();
+      // запускаем бэктест в фоне, не блокируя UI
+      try { runBacktest?.(); } catch {}
+    } catch (e) {
+      console.warn('Failed to load dataset', e);
+    }
   };
 
   const handleDeleteDataset = (datasetId: string, event: React.MouseEvent) => {
@@ -133,6 +155,7 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
               onLoad={() => handleLoadDataset(dataset.name)}
               onDelete={(e) => handleDeleteDataset(dataset.name, e)}
               onExport={(e) => handleExportDataset(dataset.name, e)}
+              loading={loadingId === dataset.name}
             />
           ))}
         </div>
@@ -163,9 +186,10 @@ interface DatasetCardProps {
   onLoad: () => void;
   onDelete: (event: React.MouseEvent) => void;
   onExport: (event: React.MouseEvent) => void;
+  loading?: boolean;
 }
 
-function DatasetCard({ dataset, isActive, onLoad, onDelete, onExport }: DatasetCardProps) {
+function DatasetCard({ dataset, isActive, onLoad, onDelete, onExport, loading }: DatasetCardProps) {
   const formatDate = (dateString: string) => {
     if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
       const [y, m, d] = dateString.split('-');
@@ -176,7 +200,7 @@ function DatasetCard({ dataset, isActive, onLoad, onDelete, onExport }: DatasetC
 
   return (
     <div
-      onClick={onLoad}
+      onClick={loading ? undefined : onLoad}
       className={`p-3 rounded-lg border cursor-pointer transition-colors ${
         isActive 
           ? 'border-blue-500 bg-blue-50' 
@@ -190,6 +214,9 @@ function DatasetCard({ dataset, isActive, onLoad, onDelete, onExport }: DatasetC
             <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded font-mono">
               {dataset.ticker}
             </span>
+            {loading && (
+              <span className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded">Loading…</span>
+            )}
             {isActive && (
               <span className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded">
                 Active

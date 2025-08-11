@@ -12,7 +12,15 @@ export const API_BASE_URL: string = (() => {
   return '/api';
 })();
 const fetchWithCreds: typeof fetch = (input: any, init?: any) => {
-  const nextInit = { credentials: 'include' as RequestCredentials, ...(init || {}) };
+  const nextInit: RequestInit = {
+    credentials: 'include' as RequestCredentials,
+    cache: 'no-store',
+    ...(init || {}),
+    headers: {
+      'Cache-Control': 'no-store',
+      ...(init && (init as any).headers ? (init as any).headers : {}),
+    },
+  };
   return fetch(input, nextInit);
 };
 
@@ -21,9 +29,17 @@ export class DatasetAPI {
    * Получить список всех датасетов (только метаданные)
    */
   static async getDatasets(): Promise<Omit<SavedDataset, 'data'>[]> {
-    const response = await fetchWithCreds(`${API_BASE_URL}/datasets`);
+    let response = await fetchWithCreds(`${API_BASE_URL}/datasets?ts=${Date.now()}`, {
+      headers: { 'Cache-Control': 'no-store, no-cache', Pragma: 'no-cache' },
+    });
+    if (response.status === 304) {
+      response = await fetchWithCreds(`${API_BASE_URL}/datasets?ts=${Date.now()}&_=${Math.random()}`, {
+        cache: 'reload',
+        headers: { 'Cache-Control': 'no-store, no-cache', Pragma: 'no-cache' },
+      });
+    }
     if (!response.ok) {
-      throw new Error(`Failed to fetch datasets: ${response.statusText}`);
+      throw new Error(`Failed to fetch datasets: ${response.status} ${response.statusText}`);
     }
     return response.json();
   }
@@ -47,12 +63,20 @@ export class DatasetAPI {
    * Получить конкретный датасет с данными
    */
   static async getDataset(id: string): Promise<SavedDataset> {
-    const response = await fetchWithCreds(`${API_BASE_URL}/datasets/${id}`);
+    let response = await fetchWithCreds(`${API_BASE_URL}/datasets/${id}?ts=${Date.now()}`, {
+      headers: { 'Cache-Control': 'no-store, no-cache', Pragma: 'no-cache' },
+    });
+    if (response.status === 304) {
+      response = await fetchWithCreds(`${API_BASE_URL}/datasets/${id}?ts=${Date.now()}&_=${Math.random()}`, {
+        cache: 'reload',
+        headers: { 'Cache-Control': 'no-store, no-cache', Pragma: 'no-cache' },
+      });
+    }
     if (!response.ok) {
       if (response.status === 404) {
         throw new Error(`Dataset "${id}" not found`);
       }
-      throw new Error(`Failed to fetch dataset: ${response.statusText}`);
+      throw new Error(`Failed to fetch dataset: ${response.status} ${response.statusText}`);
     }
     
     const dataset = await response.json();

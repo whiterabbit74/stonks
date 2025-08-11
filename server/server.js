@@ -39,6 +39,8 @@ app.use((req, res, next) => {
   next();
 });
 app.use(express.json({ limit: '50mb' }));
+// Disable ETag to avoid 304 for dynamic JSON payloads
+app.set('etag', false);
 
 // Telegram config
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
@@ -82,6 +84,7 @@ function setAuthCookie(res, token, remember) {
 function requireAuth(req, res, next) {
   if (!ADMIN_PASSWORD) return next(); // auth disabled
   if (req.method === 'OPTIONS') return next();
+  // Разрешаем только статус/логин/проверку
   if (req.path === '/api/status' || req.path === '/api/login' || req.path === '/api/auth/check') return next();
   const cookies = parseCookies(req);
   const token = cookies.auth_token || getAuthTokenFromHeader(req);
@@ -848,6 +851,7 @@ function detectSplitsFromOHLC(ohlc) {
 
 // Получить список всех датасетов
 app.get('/api/datasets', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
   try {
     const files = await fs.readdir(DATASETS_DIR);
     const datasets = [];
@@ -875,6 +879,7 @@ app.get('/api/datasets', async (req, res) => {
 
 // Получить конкретный датасет
 app.get('/api/datasets/:id', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
   try {
     const { id } = req.params;
     const filePath = path.join(DATASETS_DIR, `${id}.json`);

@@ -12,9 +12,14 @@ interface TradingChartProps {
 
 export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
+  const mainPaneRef = useRef<HTMLDivElement>(null);
+  const subPaneRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<any>(null);
+  const subChartRef = useRef<any>(null);
   const [showEMA20, setShowEMA20] = useState(false);
   const [showEMA200, setShowEMA200] = useState(false);
+  const [showIBS, setShowIBS] = useState(true);
+  const [showVolume, setShowVolume] = useState(true);
 
   // Функция для расчета EMA
   const calculateEMA = (data: OHLCData[], period: number): number[] => {
@@ -39,22 +44,26 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
   useEffect(() => {
     if (!chartContainerRef.current || !data.length) return;
 
-    // Clean up previous chart
+    // Clean up previous charts
     if (chartRef.current) {
-      try {
-        chartRef.current.remove();
-      } catch (e) {
-        console.warn('Error removing previous chart:', e);
-      }
+      try { chartRef.current.remove(); } catch (e) { console.warn('Error removing previous chart:', e); }
       chartRef.current = null;
+    }
+    if (subChartRef.current) {
+      try { subChartRef.current.remove(); } catch (e) { console.warn('Error removing previous sub-chart:', e); }
+      subChartRef.current = null;
     }
 
     try {
-      // Create new chart
-      const chart = createChart(chartContainerRef.current, {
-        width: chartContainerRef.current.clientWidth,
-        // Синхронизируем с контейнером, чтобы реально занимать h-[80vh]
-        height: chartContainerRef.current.clientHeight || 600,
+      // Create main chart (80% height)
+      const mainEl = mainPaneRef.current || chartContainerRef.current;
+      const subEl = subPaneRef.current || chartContainerRef.current;
+      const totalH = chartContainerRef.current.clientHeight || 600;
+      const mainH = Math.max(200, Math.round(totalH * 0.80));
+      const subH = Math.max(80, totalH - mainH);
+      const chart = createChart(mainEl, {
+        width: mainEl.clientWidth,
+        height: mainH,
         layout: {
           background: { color: '#ffffff' },
           textColor: '#1f2937',
@@ -77,6 +86,24 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
       });
 
       chartRef.current = chart;
+
+      // Create sub chart (20% height) for IBS/Volume
+      const subChart = createChart(subEl, {
+        width: subEl.clientWidth,
+        height: subH,
+        layout: {
+          background: { color: '#ffffff' },
+          textColor: '#1f2937',
+        },
+        grid: {
+          vertLines: { color: '#eef2ff' },
+          horzLines: { color: '#eef2ff' },
+        },
+        crosshair: { mode: 1 },
+        rightPriceScale: { borderColor: '#e5e7eb' },
+        timeScale: { borderColor: '#e5e7eb', timeVisible: true, secondsVisible: false },
+      });
+      subChartRef.current = subChart;
 
       // Verify chart methods exist
       if (!chart || typeof chart.addCandlestickSeries !== 'function') {
@@ -106,23 +133,47 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
 
       candlestickSeries.setData(chartData);
 
-      // Объем как полупрозрачная гистограмма внизу (не более 15% высоты)
+      // Sub chart content: Volume and IBS
+      let volumeSeries: any = null;
+      if (showVolume) {
+        volumeSeries = subChart.addHistogramSeries({
+          color: 'rgba(148, 163, 184, 0.35)',
+          priceFormat: { type: 'volume' as const },
+          base: 0,
+        });
+        const volumeData = data.map(bar => ({
+          time: Math.floor(bar.date.getTime() / 1000) as any,
+          value: bar.volume,
+          color: bar.close >= bar.open ? 'rgba(16, 185, 129, 0.35)' : 'rgba(239, 68, 68, 0.35)'
+        }));
+        volumeSeries.setData(volumeData);
+      }
+
+      let ibsSeries: any = null;
+      if (showIBS) {
+        const ibsLine = subChart.addLineSeries({
+          color: '#374151', // dark gray
+          lineWidth: 2,
+        });
+        const ibsData = data.map(bar => {
+          const range = Math.max(1e-9, bar.high - bar.low);
+          const ibs = (bar.close - bar.low) / range; // 0..1
+          return { time: Math.floor(bar.date.getTime() / 1000) as any, value: ibs };
+        });
+        ibsLine.setData(ibsData);
+        try {
+          ibsLine.createPriceLine({ price: 0.10, color: '#9ca3af', lineWidth: 1, lineStyle: 2, title: 'IBS 0.10' });
+          ibsLine.createPriceLine({ price: 0.75, color: '#9ca3af', lineWidth: 1, lineStyle: 2, title: 'IBS 0.75' });
+        } catch {}
+        ibsSeries = ibsLine;
+      }
+
+      // Sync time scales: main -> sub
       try {
-        chart.priceScale('right').applyOptions({ scaleMargins: { top: 0.05, bottom: 0.05 } });
-        chart.priceScale('left').applyOptions({ scaleMargins: { top: 0.85, bottom: 0 } });
+        chart.timeScale().subscribeVisibleTimeRangeChange((range: any) => {
+          if (range) subChart.timeScale().setVisibleRange(range);
+        });
       } catch {}
-      const volumeSeries = chart.addHistogramSeries({
-        color: 'rgba(148, 163, 184, 0.35)',
-        priceFormat: { type: 'volume' as const },
-        priceScaleId: 'left',
-        base: 0,
-      });
-      const volumeData = data.map(bar => ({
-        time: Math.floor(bar.date.getTime() / 1000) as any,
-        value: bar.volume,
-        color: bar.close >= bar.open ? 'rgba(16, 185, 129, 0.35)' : 'rgba(239, 68, 68, 0.35)'
-      }));
-      volumeSeries.setData(volumeData);
 
       // Add EMA20 if enabled
       if (showEMA20) {
@@ -232,33 +283,31 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
         }
         const bar = param?.seriesData?.get?.(candlestickSeries);
         const o = bar?.open, h = bar?.high, l = bar?.low, c = bar?.close;
-        const vol = (param.seriesData?.get?.(volumeSeries) as any)?.value;
+        const vol = volumeSeries ? (param.seriesData?.get?.(volumeSeries) as any)?.value : undefined;
+        const ibsVal = ibsSeries ? (param.seriesData?.get?.(ibsSeries) as any)?.value : undefined;
         const pct = o ? (((c - o) / o) * 100) : 0;
-        tooltipEl.innerHTML = `O ${o?.toFixed?.(2) ?? '-'} H ${h?.toFixed?.(2) ?? '-'} L ${l?.toFixed?.(2) ?? '-'} C ${c?.toFixed?.(2) ?? '-'} · ${pct ? pct.toFixed(2) + '%' : ''} ${vol ? ' · Vol ' + vol.toLocaleString() : ''}`;
+        const ibsStr = (typeof ibsVal === 'number') ? ` · IBS ${(ibsVal * 100).toFixed(0)}%` : '';
+        tooltipEl.innerHTML = `O ${o?.toFixed?.(2) ?? '-'} H ${h?.toFixed?.(2) ?? '-'} L ${l?.toFixed?.(2) ?? '-'} C ${c?.toFixed?.(2) ?? '-'} · ${pct ? pct.toFixed(2) + '%' : ''}${ibsStr}${vol ? ' · Vol ' + vol.toLocaleString() : ''}`;
         tooltipEl.style.display = 'block';
       });
 
       // Handle resize
       const handleResize = () => {
-        if (chartContainerRef.current && chart) {
-          chart.applyOptions({
-            width: chartContainerRef.current.clientWidth,
-            height: chartContainerRef.current.clientHeight || 600,
-          });
-        }
+        if (!chartContainerRef.current) return;
+        const w = chartContainerRef.current.clientWidth;
+        const total = chartContainerRef.current.clientHeight || 600;
+        const mainH2 = Math.max(200, Math.round(total * 0.80));
+        const subH2 = Math.max(80, total - mainH2);
+        chart.applyOptions({ width: w, height: mainH2 });
+        subChart.applyOptions({ width: w, height: subH2 });
       };
 
       window.addEventListener('resize', handleResize);
 
       return () => {
         window.removeEventListener('resize', handleResize);
-        if (chart) {
-          try {
-            chart.remove();
-          } catch (e) {
-            console.warn('Error removing chart on cleanup:', e);
-          }
-        }
+        if (chart) { try { chart.remove(); } catch (e) { console.warn('Error removing chart on cleanup:', e); } }
+        if (subChart) { try { subChart.remove(); } catch (e) { console.warn('Error removing sub-chart on cleanup:', e); } }
         try {
           if (tooltipEl && tooltipEl.parentElement) tooltipEl.parentElement.removeChild(tooltipEl);
         } catch {}
@@ -267,7 +316,7 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
       console.error('Error creating trading chart:', error);
       return;
     }
-  }, [data, trades, showEMA20, showEMA200]);
+  }, [data, trades, showEMA20, showEMA200, showIBS, showVolume]);
 
   if (!data.length) {
     return (
@@ -280,7 +329,7 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
   return (
     <div className="w-full h-full">
       {/* EMA Controls */}
-      <div className="flex gap-2 mb-4">
+      <div className="flex gap-2 mb-4 flex-wrap">
         <button
           onClick={() => setShowEMA20(!showEMA20)}
           className={`px-3 py-1 text-sm rounded ${
@@ -301,10 +350,33 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
         >
           EMA 200
         </button>
+        <button
+          onClick={() => setShowIBS(!showIBS)}
+          className={`px-3 py-1 text-sm rounded ${
+            showIBS
+              ? 'bg-gray-700 text-white'
+              : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+          }`}
+        >
+          Показать IBS
+        </button>
+        <button
+          onClick={() => setShowVolume(!showVolume)}
+          className={`px-3 py-1 text-sm rounded ${
+            showVolume
+              ? 'bg-gray-500 text-white'
+              : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+          }`}
+        >
+          Показать объём
+        </button>
       </div>
       
-      {/* Chart Container */}
-      <div ref={chartContainerRef} className="w-full h-[calc(100%-2rem)]" />
+      {/* Chart Container split: main (80%) + sub (20%) */}
+      <div ref={chartContainerRef} className="w-full h-[calc(100%-2rem)] flex flex-col">
+        <div ref={mainPaneRef} className="flex-1" />
+        <div ref={subPaneRef} className="h-[20%]" />
+      </div>
     </div>
   );
 }

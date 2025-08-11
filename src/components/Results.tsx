@@ -10,7 +10,7 @@ import { ConfirmModal } from './ConfirmModal';
 import { InfoModal } from './InfoModal';
 
 export function Results() {
-  const { backtestResults, marketData, currentStrategy, runBacktest, backtestStatus, currentSplits, currentDataset, watchThresholdPct, resultsQuoteProvider, resultsRefreshProvider, updateMarketData, updateDatasetOnServer, saveDatasetToServer } = useAppStore() as any;
+  const { backtestResults, marketData, currentStrategy, runBacktest, backtestStatus, error: storeError, currentSplits, currentDataset, watchThresholdPct, resultsQuoteProvider, resultsRefreshProvider, updateMarketData, updateDatasetOnServer, saveDatasetToServer } = useAppStore() as any;
   const [quote, setQuote] = useState<{ open: number|null; high: number|null; low: number|null; current: number|null; prevClose: number|null } | null>(null);
   const [quoteError, setQuoteError] = useState<string | null>(null);
   const [isTrading, setIsTrading] = useState<boolean>(false);
@@ -203,12 +203,39 @@ export function Results() {
     return () => { isMounted = false; if (timer) clearTimeout(timer); };
   }, [symbol]);
 
+  // Автозапуск бэктеста, если результатов ещё нет, но данные и стратегия готовы
+  useEffect(() => {
+    if (!backtestResults && marketData.length > 0 && currentStrategy && backtestStatus !== 'running') {
+      runBacktest();
+    }
+  }, [backtestResults, marketData, currentStrategy, backtestStatus, runBacktest]);
+  // Лёгкий повтор через короткую задержку, если всё готово, а статуса запуска нет
+  useEffect(() => {
+    if (!backtestResults && marketData.length > 0 && currentStrategy && backtestStatus === 'idle') {
+      const t = setTimeout(() => { try { runBacktest(); } catch {} }, 500);
+      return () => clearTimeout(t);
+    }
+  }, [backtestResults, marketData, currentStrategy, backtestStatus, runBacktest]);
+
   if (!backtestResults) {
     return (
       <div className="text-center py-8">
-        <p className="text-gray-600">
-          No results available. Please run a backtest first.
-        </p>
+        <div className="space-y-3">
+          <p className="text-gray-600">
+            {backtestStatus === 'running' ? 'Запуск бэктеста…' : 'Готовим бэктест…'}
+          </p>
+          {storeError && (
+            <div className="text-sm text-red-600">{String(storeError)}</div>
+          )}
+          {backtestStatus !== 'running' && (
+            <button
+              onClick={() => runBacktest()}
+              className="inline-flex items-center px-3 py-1.5 rounded-md bg-blue-600 text-white text-sm hover:bg-blue-700"
+            >
+              Запустить бэктест
+            </button>
+          )}
+        </div>
       </div>
     );
   }

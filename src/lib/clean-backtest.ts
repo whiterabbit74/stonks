@@ -19,12 +19,22 @@ export class CleanBacktestEngine {
     this.strategy = strategy;
     this.currentCapital = strategy.riskManagement.initialCapital;
     
-    // Рассчитываем IBS для всех баров
-    this.ibsValues = IndicatorEngine.calculateIBS(data);
+    // Рассчитываем IBS для всех баров (без исключений на пустых данных)
+    this.ibsValues = data && data.length > 0 ? IndicatorEngine.calculateIBS(data) : [];
   }
 
   public runBacktest(): BacktestResult {
     console.log('🔧 STRATEGY PARAMETERS:', this.strategy.parameters);
+    // Пустые данные -> пустой результат без ошибок
+    if (!this.data || this.data.length === 0) {
+      return {
+        trades: [],
+        metrics: new MetricsCalculator([], [], this.strategy.riskManagement.initialCapital).calculateAllMetrics(),
+        equity: [],
+        chartData: [],
+        insights: []
+      };
+    }
     
     let position: {
       entryDate: Date;

@@ -1,5 +1,3 @@
-version: '3.9'
-
 services:
   server:
     build:
@@ -19,9 +17,16 @@ services:
       - ./server/settings.json:/app/server/settings.json
       - ./server/telegram-watches.json:/app/server/telegram-watches.json
       - ./.env:/app/.env:ro
+    user: "1000:1000"
     ports:
       - "3001:3001"
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3001/api/status').then(r=>r.ok?process.exit(0):process.exit(1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
 
   frontend:
     build:
@@ -35,6 +40,12 @@ services:
     ports:
       - "80:80"
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost/stonks/api/status" ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
     environment:
       - PUBLIC_BASE_PATH=/stonks/
       - VITE_API_BASE=/stonks/api

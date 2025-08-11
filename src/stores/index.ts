@@ -3,7 +3,6 @@ import type { OHLCData, Strategy, BacktestResult, SavedDataset, SplitEvent } fro
 import { parseCSV } from '../lib/validation';
 import { runBacktest as executeBacktest } from '../lib/backtest';
 import { saveDatasetToJSON, loadDatasetFromJSON } from '../lib/data-persistence';
-import { adjustOHLCForSplits } from '../lib/utils';
 import { DatasetAPI } from '../lib/api';
 
 interface AppState {
@@ -42,7 +41,6 @@ interface AppState {
   loadJSONData: (file: File) => Promise<void>;
   loadDatasetsFromServer: () => Promise<void>;
   saveDatasetToServer: (ticker: string, name?: string) => Promise<void>;
-  updateDatasetOnServer: () => Promise<void>;
   loadDatasetFromServer: (datasetId: string) => Promise<void>;
   deleteDatasetFromServer: (datasetId: string) => Promise<void>;
   exportDatasetAsJSON: (datasetId: string) => void;
@@ -138,6 +136,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     try {
       const dataset = await loadDatasetFromJSON(file);
       const { savedDatasets } = get();
+
+      // Применяем back-adjust строго по сплитам из JSON (если есть)
+      const adjustedData = adjustOHLCForSplits(dataset.data, dataset.splits);
       
       // Проверяем, есть ли уже такой датасет в библиотеке
       const existingIndex = savedDatasets.findIndex(d => d.name === dataset.name);
@@ -155,8 +156,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
       
       set({ 
-        marketData: dataset.data,
+        marketData: adjustedData,
         currentDataset: dataset,
+        currentSplits: dataset.splits || [],
         savedDatasets: updatedDatasets,
         isLoading: false 
       });
@@ -234,51 +236,13 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
-  updateDatasetOnServer: async () => {
-    const { currentDataset, marketData, currentSplits } = get();
-    if (!currentDataset) {
-      set({ error: 'Нет открытого датасета для обновления' });
-      return;
-    }
-    if (!marketData.length) {
-      set({ error: 'Нет данных для сохранения' });
-      return;
-    }
-    set({ isLoading: true, error: null });
-    try {
-      const next: SavedDataset = {
-        ...currentDataset,
-        data: [...marketData],
-        splits: currentSplits && currentSplits.length ? [...currentSplits] : undefined,
-        dataPoints: marketData.length,
-        dateRange: {
-          from: marketData[0].date.toISOString().split('T')[0],
-          to: marketData[marketData.length - 1].date.toISOString().split('T')[0]
-        }
-      };
-      // Выполнить PUT; сервер сам переименует файл при необходимости
-      await DatasetAPI.updateDataset(currentDataset.name, next);
-      // Вычисляем новое имя (ID) на стороне клиента, чтобы загрузить актуальный файл
-      const ticker = next.ticker.toUpperCase();
-      const lastYmd = next.dateRange.to;
-      const newId = `${ticker}_${lastYmd}`;
-      await get().loadDatasetsFromServer();
-      await get().loadDatasetFromServer(newId);
-      set({ isLoading: false });
-      console.log(`Датасет обновлен на сервере: ${newId}`);
-    } catch (e) {
-      set({ isLoading: false, error: e instanceof Error ? e.message : 'Не удалось обновить датасет' });
-    }
-  },
-
   loadDatasetFromServer: async (datasetId: string) => {
     set({ isLoading: true, error: null });
     
     try {
       const dataset = await DatasetAPI.getDataset(datasetId);
-      // Применяем back-adjust по сплитам (если есть)
+      // Строго применяем корректировку цен по сплитам из JSON датасета
       const adjusted = adjustOHLCForSplits(dataset.data, dataset.splits);
-      
       set({
         marketData: adjusted,
         currentDataset: dataset,
@@ -286,6 +250,20 @@ export const useAppStore = create<AppState>((set, get) => ({
         isLoading: false,
         error: null
       });
+
+      // Если стратегии нет — создаём IBS по умолчанию и сразу запускаем бэктест
+      try {
+        const state = get();
+        if (!state.currentStrategy) {
+          const { createStrategyFromTemplate, STRATEGY_TEMPLATES } = await import('../lib/strategy');
+          const strat = createStrategyFromTemplate(STRATEGY_TEMPLATES[0]);
+          set({ currentStrategy: strat });
+        }
+        // Небольшая задержка, чтобы set() успел примениться
+        setTimeout(() => {
+          get().runBacktest().catch(() => {});
+        }, 0);
+      } catch {}
 
       console.log(`Датасет загружен с сервера: ${dataset.name}`);
     } catch (error) {
@@ -344,15 +322,28 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
   
   runBacktest: async () => {
-    const { marketData, currentStrategy } = get();
-    
+    let { marketData, currentStrategy, currentDataset } = get();
+    // Гарантируем стратегию IBS по умолчанию
+    if (!currentStrategy) {
+      try {
+        const { createStrategyFromTemplate, STRATEGY_TEMPLATES } = await import('../lib/strategy');
+        currentStrategy = createStrategyFromTemplate(STRATEGY_TEMPLATES[0]);
+        set({ currentStrategy });
+      } catch {}
+    }
+    // Если данных нет, но есть выбранный датасет — используем его
+    if ((!marketData || marketData.length === 0) && currentDataset && Array.isArray(currentDataset.data) && currentDataset.data.length) {
+      try {
+        const adjusted = adjustOHLCForSplits(currentDataset.data as unknown as OHLCData[], currentDataset.splits);
+        set({ marketData: adjusted });
+        marketData = adjusted;
+      } catch {}
+    }
     if (!marketData.length || !currentStrategy) {
       set({ error: 'Missing data or strategy' });
       return;
     }
-    
     set({ backtestStatus: 'running', error: null });
-    
     try {
       const results = await executeBacktest(marketData, currentStrategy);
       set({ 
