@@ -239,8 +239,8 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
           if (!ymdToTime.has(ymd)) ymdToTime.set(ymd, Math.floor(bar.date.getTime() / 1000));
         }
         const splitMarkers = splits.map(s => {
-          const ymd = typeof s.date === 'string' ? s.date.slice(0, 10) : formatOHLCYMD(parseOHLCDate(s.date as any));
-          const t = ymdToTime.get(ymd) ?? Math.floor(parseOHLCDate(s.date as any).getTime() / 1000);
+          const ymd = typeof s.date === 'string' ? s.date.slice(0, 10) : formatOHLCYMD(parseOHLCDate(String(s.date)));
+          const t = ymdToTime.get(ymd) ?? Math.floor(parseOHLCDate(String(s.date)).getTime() / 1000);
           return {
             time: t as UTCTimestamp,
             position: 'belowBar' as const,
@@ -271,7 +271,7 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
       tooltipEl.style.display = 'none';
       chartContainerRef.current.appendChild(tooltipEl);
 
-      chart.subscribeCrosshairMove((param: any) => {
+      chart.subscribeCrosshairMove((param: { time?: unknown; seriesPrices?: Map<any, any>; seriesData?: Map<any, any> }) => {
         if (!param || !param.time || !param.seriesPrices) {
           tooltipEl.style.display = 'none';
           return;
@@ -310,7 +310,7 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
         if (subChart) { try { subChart.remove(); } catch (e) { console.warn('Error removing sub-chart on cleanup:', e); } }
         try {
           if (tooltipEl && tooltipEl.parentElement) tooltipEl.parentElement.removeChild(tooltipEl);
-        } catch {}
+        } catch (e) { /* ignore */ }
       };
     } catch (error) {
       console.error('Error creating trading chart:', error);

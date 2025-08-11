@@ -22,7 +22,7 @@ export function MiniQuoteChart({ history, today, trades, highIBS, isOpenPosition
 
     // cleanup previous
     if (chartRef.current) {
-      try { chartRef.current.remove(); } catch (e) { /* ignore */ }
+      try { chartRef.current.remove(); } catch { /* ignore */ }
       chartRef.current = null;
     }
 
@@ -46,7 +46,7 @@ export function MiniQuoteChart({ history, today, trades, highIBS, isOpenPosition
     });
     // дать вертикальные отступы, чтобы свечи не прилипали к краям
     // Ещё уменьшаем отступы: свечи занимают ~70–80% высоты (в 2 раза меньше воздуха)
-    try { chart.priceScale('right').applyOptions({ scaleMargins: { top: 0.15, bottom: 0.15 } }); } catch (e) { /* ignore */ }
+    try { chart.priceScale('right').applyOptions({ scaleMargins: { top: 0.15, bottom: 0.15 } }); } catch { /* ignore */ }
 
     // Build last 5 candles: 4 последних из истории + сегодняшняя синтетическая
     const sorted = [...history].sort((a, b) => a.date.getTime() - b.date.getTime());
@@ -72,7 +72,7 @@ export function MiniQuoteChart({ history, today, trades, highIBS, isOpenPosition
       const targetRatio = 0.7;
       const spacing = Math.max(4, Math.min(24, Math.floor((width * targetRatio) / candles.length)));
       const rightOffset = Math.max(1, Math.round(candles.length * 0.05)); // немного воздуха справа (~5% от кол-ва баров)
-      try { chart.timeScale().applyOptions({ rightOffset, barSpacing: spacing }); } catch (e) { /* ignore */ }
+      try { chart.timeScale().applyOptions({ rightOffset, barSpacing: spacing }); } catch { /* ignore */ }
     }
 
     // Mark entries within visible window
@@ -110,12 +110,12 @@ export function MiniQuoteChart({ history, today, trades, highIBS, isOpenPosition
         const points = candles.length || 1;
         const spacing = Math.max(4, Math.min(24, Math.floor((w * 0.7) / points)));
         chart.timeScale().applyOptions({ barSpacing: spacing });
-      } catch (e) { /* ignore */ }
+      } catch { /* ignore */ }
     };
     window.addEventListener('resize', onResize);
     return () => {
       window.removeEventListener('resize', onResize);
-      try { chart.remove(); } catch (e) { /* ignore */ }
+      try { chart.remove(); } catch { /* ignore */ }
     };
   }, [history, today, trades, highIBS, isOpenPosition, entryPrice]);
 

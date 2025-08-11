@@ -140,7 +140,7 @@ export function EquityChart({ equity }: EquityChartProps) {
         }
         try {
           if (tooltipEl && tooltipEl.parentElement) tooltipEl.parentElement.removeChild(tooltipEl);
-        } catch (e) { /* ignore */ }
+        } catch { /* ignore */ }
       };
     } catch (error) {
       console.error('Error creating equity chart:', error);

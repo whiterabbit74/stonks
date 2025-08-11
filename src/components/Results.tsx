@@ -90,11 +90,11 @@ export function Results() {
     };
     const lastWeekdayOfMonth = (year: number, monthIndex0: number, weekday: number) => {
       const last = new Date(Date.UTC(year, monthIndex0 + 1, 0));
-      let cursor = last;
-      while (getETParts(cursor).weekday !== weekday) {
-        const c = new Date(cursor); c.setUTCDate(c.getUTCDate()-1); cursor = c;
+      let move = last;
+      while (getETParts(move).weekday !== weekday) {
+        const c = new Date(move); c.setUTCDate(c.getUTCDate()-1); move = c;
       }
-      return getETParts(cursor);
+      return getETParts(move);
     };
     const observedFixedET = (year: number, monthIndex0: number, day: number) => {
       const base = new Date(Date.UTC(year, monthIndex0, day, 12, 0, 0));
@@ -237,7 +237,7 @@ export function Results() {
   // Лёгкий повтор через короткую задержку, если всё готово, а статуса запуска нет
   useEffect(() => {
     if (!backtestResults && marketData.length > 0 && currentStrategy && backtestStatus === 'idle') {
-      const t = setTimeout(() => { try { runBacktest(); } catch {} }, 300);
+      const t = setTimeout(() => { runBacktest(); }, 300);
       return () => clearTimeout(t);
     }
   }, [backtestResults, marketData, currentStrategy, backtestStatus, runBacktest]);
@@ -407,14 +407,16 @@ export function Results() {
                            } else if (symbol) {
                              await saveDatasetToServer(symbol);
                            }
-                         } catch (e: any) {
-                           setRefreshError(e?.message || 'Не удалось сохранить изменения на сервере');
+                         } catch (e) {
+                           const msg = e instanceof Error ? e.message : 'Не удалось сохранить изменения на сервере';
+                           setRefreshError(msg);
                          }
                       }
                       setIsStale(false);
                       setStaleInfo(null);
-                    } catch (e: any) {
-                      setRefreshError(e?.message || 'Не удалось актуализировать данные');
+                    } catch (e) {
+                      const msg = e instanceof Error ? e.message : 'Не удалось актуализировать данные';
+                      setRefreshError(msg);
                     } finally {
                       setRefreshing(false);
                     }

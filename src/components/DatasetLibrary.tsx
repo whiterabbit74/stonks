@@ -63,7 +63,7 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
       // снимаем лоадер сразу
       setLoadingId(null);
       // мгновенно переходим на «Результаты» и фиксируем hash
-      try { window.location.hash = '#results'; } catch (e) { /* ignore */ }
+      try { window.location.hash = '#results'; } catch { /* ignore */ }
       if (onAfterLoad) onAfterLoad();
       // запускаем бэктест в фоне, не блокируя UI
       try { runBacktest?.(); } catch (e) { console.warn('Failed to start backtest', e); }

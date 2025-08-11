@@ -8,7 +8,7 @@ export const API_BASE_URL: string = (() => {
       // If app is served under /stonks, use that prefix for API proxy
       if (href.includes('/stonks')) return '/stonks/api';
     }
-  } catch (e) {
+  } catch {
     // ignore, default to '/api'
   }
   return '/api';

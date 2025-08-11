@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { RefreshCw, Calendar, TrendingUp, AlertCircle, CheckCircle, Download } from 'lucide-react';
 import { useAppStore } from '../stores';
 import type { OHLCData } from '../types';
@@ -54,7 +54,7 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
     }
   }, [marketData, currentDataset, analyzeDataGaps]);
 
-  const analyzeDataGaps = () => {
+  const analyzeDataGaps = useCallback(() => {
     if (marketData.length === 0) return;
 
     const sortedData = [...marketData].sort((a, b) => a.date.getTime() - b.date.getTime());
@@ -78,7 +78,7 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
       setSuccess(null);
       setError(null);
     }
-  };
+  }, [marketData]);
 
   const getStartDateForPeriod = (): Date => {
     const now = new Date();
@@ -384,8 +384,9 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
                     if (currentDataset) {
                       await saveDatasetToServer(currentDataset.ticker, currentDataset.name);
                     }
-                  } catch (e: any) {
-                    setError(e?.message || 'Не удалось получить сплиты');
+                  } catch (e) {
+                    const msg = e instanceof Error ? e.message : 'Не удалось получить сплиты';
+                    setError(msg);
                   } finally {
                     setIsLoading(false);
                   }
