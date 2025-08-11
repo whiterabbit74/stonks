@@ -12,6 +12,7 @@ services:
       - ADMIN_USERNAME=${ADMIN_USERNAME:-dimazru@gmail.com}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD}
       - FRONTEND_ORIGIN=http://146.235.212.239
+      - BUILD_ID=${BUILD_ID:-dev}
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
       - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
     volumes:
