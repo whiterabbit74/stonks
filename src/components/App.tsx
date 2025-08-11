@@ -19,6 +19,7 @@ export default function App() {
   const [passwordInput, setPasswordInput] = useState('');
   const [rememberMe, setRememberMe] = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>('data');
+  const [apiBuildId, setApiBuildId] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const hasAutoNavigatedRef = useRef(false);
   const { marketData, currentStrategy, backtestResults, runBacktest, backtestStatus, setStrategy, loadSettingsFromServer, saveSettingsToServer } = useAppStore() as any;
@@ -89,6 +90,20 @@ export default function App() {
         if (r.ok) setAuthorized(true);
       } catch {}
       setCheckingAuth(false);
+    })();
+  }, []);
+
+  // Fetch API build id for reliable display
+  useEffect(() => {
+    (async () => {
+      try {
+        const base = window.location.href.includes('/stonks') ? '/stonks/api' : '/api';
+        const r = await fetch(`${base}/status`, { credentials: 'include', cache: 'no-store' });
+        if (r.ok) {
+          const j = await r.json();
+          if (j && typeof j.buildId === 'string') setApiBuildId(j.buildId);
+        }
+      } catch {}
     })();
   }, []);
 
@@ -163,7 +178,7 @@ export default function App() {
               </h1>
               <div className="text-gray-600 flex flex-wrap items-center gap-3">
                 <span>Internal Bar Strength Mean Reversion Strategy</span>
-                <span className="text-xs text-gray-400 border rounded px-2 py-0.5">Build: {import.meta.env.VITE_BUILD_ID || (window as any).__BUILD_ID__ || 'dev'}</span>
+                <span className="text-xs text-gray-400 border rounded px-2 py-0.5">Build: {apiBuildId || import.meta.env.VITE_BUILD_ID || (window as any).__BUILD_ID__ || 'dev'}</span>
               </div>
             </div>
             {currentStrategy && (
