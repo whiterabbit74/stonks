@@ -52,7 +52,7 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
         setTicker(currentDataset.ticker);
       }
     }
-  }, [marketData, currentDataset]);
+  }, [marketData, currentDataset, analyzeDataGaps]);
 
   const analyzeDataGaps = () => {
     if (marketData.length === 0) return;
@@ -88,7 +88,7 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
   };
 
   type FetchResult = { data: YahooFinanceData[]; splits: { date: string; factor: number }[] };
-  const fetchWithCreds: typeof fetch = (input: any, init?: any) => fetch(input, { credentials: 'include', ...(init || {}) });
+  const fetchWithCreds = (input: RequestInfo | URL, init?: RequestInit) => fetch(input, { credentials: 'include', ...(init || {}) });
   const fetchRealMarketData = async (symbol: string, startDate: Date): Promise<FetchResult> => {
     const endDate = new Date();
     const start = Math.floor(startDate.getTime() / 1000);
@@ -100,12 +100,13 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
     const response = await fetchWithCreds(url);
     if (!response.ok) {
       let msg = `${response.status} ${response.statusText}`;
-      try { const e = await response.json(); msg = e.error || msg; } catch {}
+      const e = await response.json().catch(() => null);
+      if (e && typeof e.error === 'string') msg = e.error;
       throw new Error(msg);
     }
     const json = await response.json();
-    if (Array.isArray(json)) return { data: json, splits: [] } as any;
-    return { data: json.data || [], splits: json.splits || [] } as any;
+    if (Array.isArray(json)) return { data: json as YahooFinanceData[], splits: [] };
+    return { data: (json.data || []) as YahooFinanceData[], splits: (json.splits || []) as { date: string; factor: number }[] };
   };
 
   // removed unused loadSampleData
@@ -144,7 +145,7 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
 
       // Convert real market data to our format
       const newDataRaw: OHLCData[] = rawRows.map(item => ({
-        date: parseOHLCDate(item.date as any),
+        date: parseOHLCDate(item.date),
         open: item.open,
         high: item.high,
         low: item.low,
@@ -195,7 +196,7 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
           await saveDatasetToServer(ticker.toUpperCase(), autoName);
           await loadDatasetsFromServer();
           setSuccess((prev) => (prev ? prev + ' • ' : '') + `✅ Автосохранено как "${autoName}"`);
-        } catch (e) {
+        } catch {
           setError('Не удалось автоматически сохранить датасет. Проверьте сервер и повторите.');
         }
       } else if (mode === 'existing') {
@@ -210,7 +211,7 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
           }
           await updateDatasetOnServer();
           setSuccess((prev) => (prev ? prev + ' • ' : '') + `✅ Изменения сохранены`);
-        } catch (e) {
+        } catch {
           setError('Не удалось сохранить изменения. Проверьте сервер и повторите.');
         }
       }

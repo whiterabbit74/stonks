@@ -181,7 +181,7 @@ export function Results() {
   // Авто-пуллинг котировок (пропускаем вызовы API в выходные/вне торговых часов)
   useEffect(() => {
     let isMounted = true;
-    let timer: any;
+    let timer: ReturnType<typeof setTimeout> | undefined;
     if (!symbol) return;
     const isMarketOpenNow = () => {
       // Compute ET local time safely using Intl APIs
@@ -226,7 +226,7 @@ export function Results() {
     };
     fetchQuote();
     return () => { isMounted = false; if (timer) clearTimeout(timer); };
-  }, [symbol]);
+  }, [symbol, resultsQuoteProvider]);
 
   // Автозапуск бэктеста, если результатов ещё нет, но данные и стратегия готовы
   useEffect(() => {
