@@ -1,5 +1,5 @@
 # --- Frontend build stage ---
-FROM node:20-alpine AS builder
+FROM node:20-bookworm-slim AS builder
 WORKDIR /app
 
 # Install deps
@@ -17,7 +17,7 @@ ENV VITE_BUILD_ID=$VITE_BUILD_ID
 RUN PUBLIC_BASE_PATH=$PUBLIC_BASE_PATH VITE_API_BASE=$VITE_API_BASE npm run build
 
 # --- Runtime stage (nginx) ---
-FROM nginx:alpine
+FROM nginx:stable
 WORKDIR /usr/share/nginx/html
 
 # Copy built assets under base path
