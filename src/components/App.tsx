@@ -161,9 +161,10 @@ export default function App() {
               <h1 className="text-3xl font-bold text-gray-900 mb-2">
                 IBS Trading Backtester
               </h1>
-              <p className="text-gray-600">
-                Internal Bar Strength Mean Reversion Strategy
-              </p>
+              <div className="text-gray-600 flex flex-wrap items-center gap-3">
+                <span>Internal Bar Strength Mean Reversion Strategy</span>
+                <span className="text-xs text-gray-400 border rounded px-2 py-0.5">Build: {import.meta.env.VITE_BUILD_ID || (window as any).__BUILD_ID__ || 'dev'}</span>
+              </div>
             </div>
             {currentStrategy && (
               <button
