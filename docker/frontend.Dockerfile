@@ -2,20 +2,24 @@
 FROM node:20-bookworm-slim AS builder
 WORKDIR /app
 
-# Prefer IPv4 DNS resolution to reduce hangs
-ENV NODE_OPTIONS=--dns-result-order=ipv4first
+# Prefer IPv4 DNS resolution to reduce hangs and configure npm
+ENV NODE_OPTIONS=--dns-result-order=ipv4first \
+    NPM_CONFIG_FUND=false \
+    NPM_CONFIG_AUDIT=false \
+    NPM_CONFIG_FETCH_RETRIES=6 \
+    NPM_CONFIG_FETCH_RETRY_FACTOR=2 \
+    NPM_CONFIG_FETCH_TIMEOUT=120000 \
+    NPM_CONFIG_FETCH_RETRY_MINTIMEOUT=1000 \
+    NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT=180000 \
+    NPM_CONFIG_REGISTRY=https://registry.npmjs.org/
 
 # Install deps
 COPY package*.json ./
-# Stabilize npm and install deps
-RUN npm i -g npm@latest || true \
-  && npm config set fund false \
-  && npm config set audit false \
-  && npm config set fetch-retries 5 \
-  && npm config set fetch-timeout 120000 \
-  && npm config set fetch-retry-maxtimeout 180000 \
-  && npm config set registry https://registry.npmjs.org/ \
-  && npm ci --no-audit --no-fund --include=dev --registry=https://registry.npmjs.org/
+# Install deps with retries
+RUN set -e; for i in 1 2 3 4 5; do \
+      npm ci --no-audit --no-fund --include=dev --registry=https://registry.npmjs.org/ && break; \
+      echo "npm ci failed (attempt $i), retrying..."; sleep $((i*3)); \
+    done
 
 # Copy source and build
 COPY . .
