@@ -2,10 +2,13 @@
 FROM node:20-bookworm-slim AS builder
 WORKDIR /app
 
+# Prefer IPv4 DNS resolution to reduce hangs
+ENV NODE_OPTIONS=--dns-result-order=ipv4first
+
 # Install deps
 COPY package*.json ./
 # Stabilize npm and install deps
-RUN npm i -g npm@latest \
+RUN npm i -g npm@latest || true \
   && npm config set fund false \
   && npm config set audit false \
   && npm config set fetch-retries 5 \

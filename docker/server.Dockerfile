@@ -1,8 +1,11 @@
 FROM node:20-bookworm-slim
 WORKDIR /app
 
-# Stabilize npm in CI/builds and avoid known hangs
-RUN npm i -g npm@latest \
+# Prefer IPv4 DNS resolution inside node/npm to avoid IPv6-only DNS stalls
+ENV NODE_OPTIONS=--dns-result-order=ipv4first
+
+# Stabilize npm in CI/builds and avoid known hangs (ignore upgrade failure if network flaky)
+RUN npm i -g npm@latest || true \
   && npm config set fund false \
   && npm config set audit false \
   && npm config set fetch-retries 5 \
