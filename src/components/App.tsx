@@ -190,7 +190,7 @@ export default function App() {
               </h1>
               <div className="text-gray-600 flex flex-wrap items-center gap-3">
                 <span>Internal Bar Strength Mean Reversion Strategy</span>
-                <span className="text-xs text-gray-400 border rounded px-2 py-0.5">Build: {apiBuildId || import.meta.env.VITE_BUILD_ID || (typeof window !== 'undefined' && (window as any).__BUILD_ID__) || 'dev'}</span>
+                <span className="text-xs text-gray-400 border rounded px-2 py-0.5">Build: {apiBuildId || import.meta.env.VITE_BUILD_ID || 'dev'}</span>
               </div>
             </div>
             {currentStrategy && (
@@ -253,7 +253,7 @@ export default function App() {
           />
         )}
       </div>
-      <div className="py-4 text-center text-xs text-gray-400">Build: {import.meta.env.VITE_BUILD_ID || (typeof window !== 'undefined' && (window as any).__BUILD_ID__) || 'dev'}</div>
+      <div className="py-4 text-center text-xs text-gray-400">Build: {import.meta.env.VITE_BUILD_ID || 'dev'}</div>
     </div>
   );
 }

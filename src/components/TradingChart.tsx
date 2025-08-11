@@ -170,8 +170,8 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
 
       // Sync time scales: main -> sub
       try {
-        chart.timeScale().subscribeVisibleTimeRangeChange((range) => {
-          if (range) subChart.timeScale().setVisibleRange(range as any);
+        chart.timeScale().subscribeVisibleTimeRangeChange((range: any) => {
+          if (range) subChart.timeScale().setVisibleRange(range);
         });
       } catch (e) { console.warn('Failed to sync time scales', e); }
 
@@ -271,20 +271,20 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
       tooltipEl.style.display = 'none';
       chartContainerRef.current.appendChild(tooltipEl);
 
-      chart.subscribeCrosshairMove((param) => {
-        if (!param || !(param as any).time || !(param as any).seriesPrices) {
+      chart.subscribeCrosshairMove((param: any) => {
+        if (!param || !param.time || !param.seriesPrices) {
           tooltipEl.style.display = 'none';
           return;
         }
-        const price = (param as any).seriesPrices.get(candlestickSeries);
+        const price = param.seriesPrices.get(candlestickSeries);
         if (!price) {
           tooltipEl.style.display = 'none';
           return;
         }
-        const bar = (param as any)?.seriesData?.get?.(candlestickSeries);
+        const bar = param?.seriesData?.get?.(candlestickSeries);
         const o = bar?.open, h = bar?.high, l = bar?.low, c = bar?.close;
-        const vol = volumeSeries ? ((param as any).seriesData?.get?.(volumeSeries))?.value : undefined;
-        const ibsVal = ibsSeries ? ((param as any).seriesData?.get?.(ibsSeries))?.value : undefined;
+        const vol = volumeSeries ? (param.seriesData?.get?.(volumeSeries))?.value : undefined;
+        const ibsVal = ibsSeries ? (param.seriesData?.get?.(ibsSeries))?.value : undefined;
         const pct = o ? (((c - o) / o) * 100) : 0;
         const ibsStr = (typeof ibsVal === 'number') ? ` · IBS ${(ibsVal * 100).toFixed(0)}%` : '';
         tooltipEl.innerHTML = `O ${o?.toFixed?.(2) ?? '-'} H ${h?.toFixed?.(2) ?? '-'} L ${l?.toFixed?.(2) ?? '-'} C ${c?.toFixed?.(2) ?? '-'} · ${pct ? pct.toFixed(2) + '%' : ''}${ibsStr}${vol ? ' · Vol ' + vol.toLocaleString() : ''}`;
