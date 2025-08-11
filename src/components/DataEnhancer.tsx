@@ -19,7 +19,7 @@ interface YahooFinanceData {
 }
 
 export function DataEnhancer({ onNext }: DataEnhancerProps) {
-  const { marketData, currentDataset, updateMarketData, saveDatasetToServer, updateDatasetOnServer, loadDatasetFromServer, isLoading: storeLoading, setSplits, enhancerProvider } = useAppStore();
+  const { marketData, currentDataset, updateMarketData, saveDatasetToServer, updateDatasetOnServer, loadDatasetFromServer, setSplits, enhancerProvider, savedDatasets } = useAppStore();
   const [ticker, setTicker] = useState('AAPL');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -27,7 +27,7 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
   const [dataGaps, setDataGaps] = useState<{ missing: number; lastDate: string; firstDate: string } | null>(null);
   const [selectedAction, setSelectedAction] = useState<'enhance' | 'replace'>('enhance');
   const [mode, setMode] = useState<'existing' | 'new'>('new');
-  const { savedDatasets, loadDatasetsFromServer } = useAppStore();
+  const { loadDatasetsFromServer } = useAppStore();
   // Убрали промпт ручного сохранения
   // Всегда грузим всю доступную историю (~до 40 лет), выбор периода убран
   const [isUpToDate, setIsUpToDate] = useState(false);

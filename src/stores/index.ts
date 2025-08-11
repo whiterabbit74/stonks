@@ -5,6 +5,7 @@ import { runBacktest as executeBacktest } from '../lib/backtest';
 import { createStrategyFromTemplate, STRATEGY_TEMPLATES } from '../lib/strategy';
 import { saveDatasetToJSON, loadDatasetFromJSON } from '../lib/data-persistence';
 import { DatasetAPI } from '../lib/api';
+import { adjustOHLCForSplits } from '../lib/utils';
 
 interface AppState {
   // Data
@@ -51,6 +52,8 @@ interface AppState {
   // Settings persistence
   loadSettingsFromServer: () => Promise<void>;
   saveSettingsToServer: () => Promise<void>;
+  // Update current dataset on server
+  updateDatasetOnServer: () => Promise<void>;
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -217,7 +220,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         }
       };
 
-      const result = await DatasetAPI.saveDataset(dataset);
+      await DatasetAPI.saveDataset(dataset);
       
       // Обновляем список датасетов
       await get().loadDatasetsFromServer();
@@ -272,6 +275,40 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
+  updateDatasetOnServer: async () => {
+    const { currentDataset, marketData, currentSplits } = get();
+    if (!currentDataset) {
+      set({ error: 'Нет загруженного датасета для обновления' });
+      return;
+    }
+    if (!marketData.length) {
+      set({ error: 'Нет данных для обновления датасета' });
+      return;
+    }
+    set({ isLoading: true, error: null });
+    try {
+      const updated: SavedDataset = {
+        name: currentDataset.name,
+        ticker: currentDataset.ticker,
+        data: [...marketData],
+        splits: currentSplits && currentSplits.length ? [...currentSplits] : undefined,
+        uploadDate: new Date().toISOString(),
+        dataPoints: marketData.length,
+        dateRange: {
+          from: marketData[0].date.toISOString().split('T')[0],
+          to: marketData[marketData.length - 1].date.toISOString().split('T')[0],
+        },
+      };
+      await DatasetAPI.updateDataset(currentDataset.name, updated);
+      await get().loadDatasetsFromServer();
+      set({ currentDataset: updated, isLoading: false });
+      console.log(`Датасет обновлён на сервере: ${updated.name}`);
+    } catch (error) {
+      console.warn('Не удалось обновить датасет на сервере', error);
+      set({ error: error instanceof Error ? error.message : 'Failed to update dataset on server', isLoading: false });
+    }
+  },
+
   deleteDatasetFromServer: async (datasetId: string) => {
     set({ isLoading: true, error: null });
     
@@ -300,19 +337,23 @@ export const useAppStore = create<AppState>((set, get) => ({
   exportDatasetAsJSON: (datasetId: string) => {
     const { savedDatasets } = get();
     
-    const dataset = savedDatasets.find(d => d.name === datasetId);
-    if (!dataset) {
+    const datasetMeta = savedDatasets.find(d => d.name === datasetId);
+    if (!datasetMeta) {
       set({ error: 'Датасет не найден' });
       return;
     }
 
-    try {
-      saveDatasetToJSON(dataset.data, dataset.ticker, dataset.name);
-    } catch (error) {
-      set({ 
-        error: error instanceof Error ? error.message : 'Failed to export dataset'
-      });
-    }
+    (async () => {
+      try {
+        // Загружаем полный датасет с сервера перед экспортом
+        const full = await DatasetAPI.getDataset(datasetMeta.name);
+        saveDatasetToJSON(full.data, full.ticker, full.name);
+      } catch (error) {
+        set({ 
+          error: error instanceof Error ? error.message : 'Failed to export dataset'
+        });
+      }
+    })();
   },
   
   setStrategy: (strategy: Strategy | null) => {

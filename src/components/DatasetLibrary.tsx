@@ -35,14 +35,7 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
     return null;
   }
 
-  const formatDate = (dateString: string) => {
-    // Отображаем строго по ISO без TZ-сдвига
-    if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
-      const [y, m, d] = dateString.split('-');
-      return `${d}.${m}.${y}`;
-    }
-    return new Date(dateString).toISOString().slice(0, 10).split('-').reverse().join('.');
-  };
+  // локальное форматирование дат находится в компоненте DatasetCard
 
   const handleLoadDataset = async (datasetId: string) => {
     try {
@@ -147,7 +140,7 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
             </div>
           )}
           
-          {savedDatasets.map((dataset) => (
+          {savedDatasets.map((dataset: Omit<SavedDataset, 'data'>) => (
             <DatasetCard
               key={dataset.name}
               dataset={dataset}
@@ -181,7 +174,7 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
 }
 
 interface DatasetCardProps {
-  dataset: SavedDataset;
+  dataset: Omit<SavedDataset, 'data'>;
   isActive: boolean;
   onLoad: () => void;
   onDelete: (event: React.MouseEvent) => void;

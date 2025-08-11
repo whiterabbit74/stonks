@@ -1,4 +1,4 @@
-import { RotateCcw, Heart } from 'lucide-react';
+import { Heart } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { DatasetAPI } from '../lib/api';
 import { useAppStore } from '../stores';
@@ -6,7 +6,6 @@ import { TradingChart } from './TradingChart';
 import { EquityChart } from './EquityChart';
 import { TradeDrawdownChart } from './TradeDrawdownChart';
 import { MiniQuoteChart } from './MiniQuoteChart';
-import { ConfirmModal } from './ConfirmModal';
 import { InfoModal } from './InfoModal';
 
 export function Results() {
@@ -378,11 +377,11 @@ export function Results() {
                       }
                       // Преобразуем и смержим
                       const { parseOHLCDate, adjustOHLCForSplits } = await import('../lib/utils');
-                      const incoming = rows.map((r: any) => ({
+                      const incoming = rows.map((r: { date: string; open: number; high: number; low: number; close: number; adjClose?: number; volume: number; }) => ({
                         date: parseOHLCDate(r.date), open: r.open, high: r.high, low: r.low, close: r.close, adjClose: r.adjClose, volume: r.volume,
                       }));
-                      const existingDates = new Set(marketData.map(d => d.date.toDateString()));
-                      const filtered = incoming.filter(d => !existingDates.has(d.date.toDateString()));
+                      const existingDates = new Set(marketData.map((d: { date: Date }) => d.date.toDateString()));
+                      const filtered = incoming.filter((d: { date: Date }) => !existingDates.has(d.date.toDateString()));
                       if (filtered.length) {
                          // Сливаем и применяем бэк-аджаст по уже известным сплитам
                          const merged = [...marketData, ...filtered].sort((a, b) => a.date.getTime() - b.date.getTime());
@@ -709,7 +708,7 @@ export function Results() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {trades.map((trade, index) => {
+              {trades.map((trade: any, index: number) => {
                 const investment = trade.context?.initialInvestment || (trade.quantity * trade.entryPrice);
                 return (
                   <tr key={index} className="hover:bg-gray-50">
@@ -768,9 +767,9 @@ export function Results() {
                 <tr className="font-bold text-base">
                   <td className="p-4 text-gray-700" colSpan={8}>ИТОГО ({trades.length} сделок)</td>
                   <td className={`p-4 text-right font-mono font-bold text-lg ${
-                    trades.reduce((sum, t) => sum + t.pnl, 0) > 0 ? 'text-green-600' : 'text-red-600'
+                    trades.reduce((sum: number, t: any) => sum + t.pnl, 0) > 0 ? 'text-green-600' : 'text-red-600'
                   }`}>
-                    ${trades.reduce((sum, t) => sum + t.pnl, 0).toFixed(2)}
+                    ${trades.reduce((sum: number, t: any) => sum + t.pnl, 0).toFixed(2)}
                   </td>
                   <td className={`p-4 text-right font-mono font-bold text-lg ${
                     metrics.totalReturn > 0 ? 'text-green-600' : 'text-red-600'
