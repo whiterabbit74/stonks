@@ -543,7 +543,8 @@ export function getMetricDescription(metric: keyof PerformanceMetrics): string {
     recoveryFactor: "Total return divided by maximum drawdown",
     skewness: "Measure of asymmetry in return distribution",
     kurtosis: "Measure of tail risk in return distribution",
-    valueAtRisk: "Maximum expected loss at 95% confidence level"
+    valueAtRisk: "Maximum expected loss at 95% confidence level",
+    totalTrades: "Total number of executed trades"
   };
   
   return descriptions[metric];

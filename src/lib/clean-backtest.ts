@@ -43,10 +43,12 @@ export class CleanBacktestEngine {
       entryIndex: number;
     } | null = null;
 
-    const lowIBS = this.strategy.parameters.lowIBS || 0.1;
-    const highIBS = this.strategy.parameters.highIBS || 0.75;
-    const maxHoldDays = this.strategy.parameters.maxHoldDays || 30;
-    const capitalUsage = this.strategy.riskManagement.capitalUsage || 100;
+    const lowIBS = Number(this.strategy.parameters.lowIBS ?? 0.1);
+    const highIBS = Number(this.strategy.parameters.highIBS ?? 0.75);
+    const maxHoldDays = typeof this.strategy.parameters.maxHoldDays === 'number'
+      ? this.strategy.parameters.maxHoldDays
+      : (this.strategy.riskManagement.maxHoldDays ?? 30);
+    const capitalUsage = this.strategy.riskManagement.capitalUsage ?? 100;
 
     // Проходим по всем барам (кроме последнего, так как нужен следующий день для входа)
     for (let i = 0; i < this.data.length - 1; i++) {
@@ -125,8 +127,7 @@ export class CleanBacktestEngine {
               indicatorValues: { IBS: ibs },
               volatility: 0,
               trend: 'sideways',
-              initialInvestment: grossCost,
-              currentCapitalAfterExit: 0 // Обновим ниже
+              initialInvestment: grossCost
             }
           };
 
@@ -134,7 +135,9 @@ export class CleanBacktestEngine {
           this.currentCapital += grossProceeds;
           
           // Обновляем капитал в контексте сделки
-          trade.context!.currentCapitalAfterExit = this.currentCapital;
+          if (trade.context) {
+            (trade.context as any).currentCapitalAfterExit = this.currentCapital;
+          }
 
           console.log(`🔴 EXIT: IBS=${ibs.toFixed(3)}, ${exitReason}, P&L=$${pnl.toFixed(2)}, Duration=${duration} days`);
           
@@ -208,13 +211,15 @@ export class CleanBacktestEngine {
             indicatorValues: { IBS: lastIBS },
             volatility: 0,
             trend: 'sideways',
-            initialInvestment: grossCost,
-            currentCapitalAfterExit: this.currentCapital + grossProceeds
+            initialInvestment: grossCost
           }
         };
 
         this.trades.push(trade);
         this.currentCapital += grossProceeds;
+        if (trade.context) {
+          (trade.context as any).currentCapitalAfterExit = this.currentCapital;
+        }
         position = null;
       }
     }

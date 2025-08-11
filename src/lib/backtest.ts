@@ -7,6 +7,7 @@ import type {
   EquityPoint,
   Condition
 } from '../types';
+import type { IndicatorCondition } from '../types';
 import { IndicatorEngine } from './indicators';
 import { MetricsCalculator } from './metrics';
 // import { InsightsEngine } from './insights'; // Removed for simplification
@@ -118,7 +119,8 @@ export class BacktestEngine {
    * Check entry conditions for the current bar
    */
   private checkEntryConditions(index: number, bar: OHLCData): void {
-    const ibsValue = this.indicators.get('IBS')?.[index];
+    const ibsKey = this.getIndicatorKey('IBS', { type: 'indicator', indicator: 'IBS', operator: '<', value: 0.1 } as any);
+    const ibsValue = this.indicators.get(ibsKey)?.[index];
     const lowThreshold = this.strategy.parameters.lowIBS || 0.1;
     
     if (this.evaluateConditions(this.strategy.entryConditions, index)) {
@@ -223,14 +225,21 @@ export class BacktestEngine {
       takeProfit: (this.strategy.id === 'ibs-mean-reversion' || this.strategy.type === 'ibs-mean-reversion')
         ? (this.strategy.riskManagement.useTakeProfit ? this.calculateTakeProfit(slippageAdjustedPrice) : undefined)
         : this.calculateTakeProfit(slippageAdjustedPrice),
-      maxHoldDays: this.strategy.parameters.maxHoldDays || this.strategy.riskManagement.maxHoldDays || 30
+      maxHoldDays: ((): number => {
+        const paramMax = this.strategy.parameters.maxHoldDays;
+        const riskMax = this.strategy.riskManagement.maxHoldDays;
+        if (typeof paramMax === 'number') return paramMax;
+        if (typeof riskMax === 'number') return riskMax;
+        return 30;
+      })()
     };
 
     // Update capital - subtract the total cost
     this.currentCapital -= totalCost;
     
+    const pos = this.currentPosition!;
     console.log(`🟢 ENTERED POSITION: ${quantity} shares at $${slippageAdjustedPrice.toFixed(2)}, date: ${bar.date.toISOString().split('T')[0]}`);
-    console.log(`📊 Position details: maxHoldDays=${this.currentPosition.maxHoldDays}, stopLoss=$${this.currentPosition.stopLoss?.toFixed(2)}, takeProfit=$${this.currentPosition.takeProfit?.toFixed(2)}`);
+    console.log(`📊 Position details: maxHoldDays=${pos.maxHoldDays}, stopLoss=$${pos.stopLoss?.toFixed(2)}, takeProfit=$${pos.takeProfit?.toFixed(2)}`);
 
     // Record signal
     this.signals.push({
@@ -314,7 +323,9 @@ export class BacktestEngine {
     console.log(`💰 Capital updated: $${this.currentCapital.toFixed(2)} (was $${(this.currentCapital - grossProceeds + exitCommission).toFixed(2)})`);
     
     // Add current capital to trade context
-    trade.context!.currentCapitalAfterExit = this.currentCapital;
+    if (trade.context) {
+      (trade.context as any).currentCapitalAfterExit = this.currentCapital;
+    }
 
     // Record signal
     this.signals.push({
@@ -428,7 +439,7 @@ export class BacktestEngine {
     
     switch (condition.type) {
       case 'indicator':
-        return this.evaluateIndicatorCondition(condition, index);
+        return this.evaluateIndicatorCondition(condition as IndicatorCondition, index);
       
       case 'price':
         return this.evaluatePriceCondition(condition, index, bar);
@@ -445,7 +456,7 @@ export class BacktestEngine {
   /**
    * Evaluate indicator-based condition
    */
-  private evaluateIndicatorCondition(condition: Condition, index: number): boolean {
+  private evaluateIndicatorCondition(condition: IndicatorCondition, index: number): boolean {
     if (!condition.indicator) return false;
     
     const indicatorKey = this.getIndicatorKey(condition.indicator, condition);
@@ -467,10 +478,12 @@ export class BacktestEngine {
     if (condition.indicator === 'IBS') {
       if (condition.operator === '<') {
         // Условие входа - используем lowIBS из параметров
-        conditionValue = this.strategy.parameters.lowIBS || 0.1;
+        const low = Number(this.strategy.parameters.lowIBS ?? 0.1);
+        conditionValue = low;
       } else if (condition.operator === '>') {
         // Условие выхода - используем highIBS из параметров
-        conditionValue = this.strategy.parameters.highIBS || 0.75;
+        const high = Number(this.strategy.parameters.highIBS ?? 0.75);
+        conditionValue = high;
       }
     }
     
@@ -492,13 +505,21 @@ export class BacktestEngine {
       case '<':
         return typeof conditionValue === 'number' && currentValue < conditionValue;
       
-      case '=':
+      case '>=':
+        return typeof conditionValue === 'number' && currentValue >= conditionValue;
+      
+      case '<=':
+        return typeof conditionValue === 'number' && currentValue <= conditionValue;
+      
+      case '==':
         return typeof conditionValue === 'number' && Math.abs(currentValue - conditionValue) < 0.0001;
       
       case 'crossover':
+        if (typeof conditionValue !== 'number') return false;
         return this.evaluateCrossover(indicatorValues, conditionValue, index, true);
       
       case 'crossunder':
+        if (typeof conditionValue !== 'number') return false;
         return this.evaluateCrossover(indicatorValues, conditionValue, index, false);
       
       default:
@@ -527,7 +548,13 @@ export class BacktestEngine {
       case '<':
         return price < condition.value;
       
-      case '=':
+      case '>=':
+        return price >= condition.value;
+      
+      case '<=':
+        return price <= condition.value;
+      
+      case '==':
         return Math.abs(price - condition.value) < 0.01; // Allow small tolerance
       
       default:
@@ -603,7 +630,7 @@ export class BacktestEngine {
         const key = this.getIndicatorKey(condition.indicator, condition);
         
         if (!this.indicators.has(key)) {
-          const values = this.calculateIndicatorValues(condition.indicator, condition);
+          const values = this.calculateIndicatorValues(condition.indicator, condition as IndicatorCondition);
           this.indicators.set(key, values);
           console.log(`Calculated ${key}: ${values.length} values`);
         }
@@ -625,7 +652,7 @@ export class BacktestEngine {
   /**
    * Calculate indicator values based on type and parameters
    */
-  private calculateIndicatorValues(indicatorType: string, condition: Condition): number[] {
+  private calculateIndicatorValues(indicatorType: string, condition: IndicatorCondition): number[] {
     const closePrices = this.data.map(bar => bar.close);
     
     switch (indicatorType) {
@@ -661,7 +688,7 @@ export class BacktestEngine {
   /**
    * Get indicator period from strategy parameters or use default
    */
-  private getIndicatorPeriod(condition: Condition, defaultPeriod: number): number {
+  private getIndicatorPeriod(condition: Partial<IndicatorCondition>, defaultPeriod: number): number {
     // Try to get period from strategy parameters
     const parameterName = `${condition.indicator?.toLowerCase()}Period`;
     const period = this.strategy.parameters[parameterName];
@@ -676,8 +703,11 @@ export class BacktestEngine {
   /**
    * Generate unique key for indicator caching
    */
-  private getIndicatorKey(indicatorType: string, condition: Condition): string {
-    const period = this.getIndicatorPeriod(condition, 20);
+  private getIndicatorKey(indicatorType: string, condition: Partial<IndicatorCondition>): string {
+    if (indicatorType === 'IBS') {
+      return 'IBS';
+    }
+    const period = this.getIndicatorPeriod(condition as any, 20);
     return `${indicatorType}_${period}`;
   }
 
@@ -700,8 +730,13 @@ export class BacktestEngine {
     // Validate data integrity
     for (let i = 0; i < this.data.length; i++) {
       const bar = this.data[i];
-      if (!bar.date || !bar.open || !bar.high || !bar.low || !bar.close) {
+      if (!(bar.date instanceof Date) || bar.open == null || bar.high == null || bar.low == null || bar.close == null) {
         throw new Error(`Invalid data at index ${i}: missing required fields`);
+      }
+      
+      const numericFields = [bar.open, bar.high, bar.low, bar.close];
+      if (!numericFields.every(v => typeof v === 'number' && isFinite(v))) {
+        throw new Error(`Invalid data at index ${i}: non-numeric price values`);
       }
       
       if (bar.high < bar.low || bar.close < bar.low || bar.close > bar.high || bar.open < bar.low || bar.open > bar.high) {
@@ -732,14 +767,15 @@ export class BacktestEngine {
    * Log IBS statistics for debugging
    */
   private logIBSStatistics(): void {
-    const ibsValues = this.indicators.get('IBS');
+    const ibsKey = this.getIndicatorKey('IBS', { type: 'indicator', indicator: 'IBS', operator: '<', value: 0.1 } as any);
+    const ibsValues = this.indicators.get(ibsKey);
     if (!ibsValues) return;
 
     const validIBS = ibsValues.filter(v => !isNaN(v));
     if (validIBS.length === 0) return;
 
-    const lowThreshold = this.strategy.parameters.lowIBS || 0.1;
-    const highThreshold = this.strategy.parameters.highIBS || 0.75;
+    const lowThreshold = Number(this.strategy.parameters.lowIBS ?? 0.1);
+    const highThreshold = Number(this.strategy.parameters.highIBS ?? 0.75);
 
     const belowLow = validIBS.filter(v => v < lowThreshold).length;
     const aboveHigh = validIBS.filter(v => v > highThreshold).length;
