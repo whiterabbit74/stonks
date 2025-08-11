@@ -172,12 +172,25 @@ export function Results() {
     let timer: any;
     if (!symbol) return;
     const isMarketOpenNow = () => {
-      const now = new Date();
-      const day = now.getUTCDay();
-      const isWeekday = day >= 1 && day <= 5; // Mon..Fri
-      const minutes = now.getUTCHours() * 60 + now.getUTCMinutes();
-      const openMin = 13 * 60 + 30; // 09:30 ET
-      const closeMin = 20 * 60;     // 16:00 ET
+      // Compute ET local time safely using Intl APIs
+      const fmt = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/New_York',
+        hour12: false,
+        hour: '2-digit',
+        minute: '2-digit',
+        weekday: 'short',
+      });
+      const parts = fmt.formatToParts(new Date());
+      const map: Record<string,string> = {} as any;
+      parts.forEach(p => { if (p.type !== 'literal') map[p.type] = p.value; });
+      const weekdayMap: Record<string, number> = { Sun:0, Mon:1, Tue:2, Wed:3, Thu:4, Fri:5, Sat:6 };
+      const weekday = weekdayMap[map.weekday] ?? 0;
+      const hh = parseInt(map.hour || '0', 10);
+      const mm = parseInt(map.minute || '0', 10);
+      const isWeekday = weekday >= 1 && weekday <= 5; // Mon..Fri in ET
+      const minutes = hh * 60 + mm;
+      const openMin = 9 * 60 + 30;  // 09:30 ET
+      const closeMin = 16 * 60;     // 16:00 ET
       return isWeekday && minutes >= openMin && minutes <= closeMin;
     };
     setIsTrading(isMarketOpenNow());

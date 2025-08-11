@@ -7,6 +7,7 @@ const https = require('https');
 const crypto = require('crypto');
 
 const app = express();
+app.set('trust proxy', true);
 const PORT = process.env.PORT || 3001;
 const DATASETS_DIR = path.join(__dirname, 'datasets');
 const SETTINGS_FILE = path.join(__dirname, 'settings.json');
@@ -23,6 +24,7 @@ const API_CONFIG = {
 // Apply global middleware early (so it affects ALL routes)
 // CORS with credentials (to support cookie-based auth)
 const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || 'http://localhost:5173';
+const IS_PROD = process.env.NODE_ENV === 'production';
 app.use(cors({
   origin: FRONTEND_ORIGIN,
   credentials: true,
@@ -77,8 +79,8 @@ function setAuthCookie(res, token, remember) {
     'SameSite=Lax',
   ];
   if (maxAge) parts.push(`Max-Age=${Math.floor(maxAge/1000)}`);
-  // HttpOnly is preferable, but fetch from different origin still sends cookie; keep HttpOnly off to allow dev tools reading if needed
-  // parts.push('HttpOnly');
+  parts.push('HttpOnly');
+  if (IS_PROD) parts.push('Secure');
   res.setHeader('Set-Cookie', parts.join('; '));
 }
 function requireAuth(req, res, next) {
@@ -105,6 +107,10 @@ const LOGIN_MAX_ATTEMPTS = 3;
 const loginRate = new Map(); // ip -> { count, resetAt }
 const LOGIN_LOG_FILE = path.join(__dirname, 'login-attempts.log');
 function getClientIp(req) {
+  try {
+    if (req.ip) return req.ip;
+    if (Array.isArray(req.ips) && req.ips.length) return req.ips[0];
+  } catch {}
   const xf = (req.headers['x-forwarded-for'] || '').toString();
   if (xf) return xf.split(',')[0].trim();
   return (req.socket && req.socket.remoteAddress) || 'unknown';
@@ -1037,8 +1043,11 @@ app.get('/api/yahoo-finance/:symbol', async (req, res) => {
           throw e;
         }
       }
-      const base = Array.isArray(avResponse) ? { data: avResponse } : { data: avResponse.data };
-      payload = { ...base, splits: [] };
+      if (Array.isArray(avResponse)) {
+        payload = { data: avResponse, splits: [] };
+      } else {
+        payload = { data: avResponse.data, splits: avResponse.splits || [] };
+      }
     }
 
     if (!payload.data || payload.data.length === 0) {

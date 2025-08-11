@@ -179,3 +179,8 @@ trading_strategies/
 
 ## Лицензия
 Не указана.
+
+## Deployment notes
+
+- When running behind a reverse proxy (nginx, traefik), the server now sets `app.set('trust proxy', true)` to correctly pick the client IP for login rate limiting. If you terminate TLS at the proxy, ensure it forwards `X-Forwarded-For` and `X-Forwarded-Proto` headers.
+- Auth cookies are now issued with `HttpOnly` and `Secure` (in production) flags for improved security. Ensure you access the app over HTTPS in production so the cookie is sent.
