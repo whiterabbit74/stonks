@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { createChart } from 'lightweight-charts';
+import { createChart, type IChartApi, type UTCTimestamp } from 'lightweight-charts';
 import type { OHLCData, Trade } from '../types';
 
 interface MiniQuoteChartProps {
@@ -13,7 +13,7 @@ interface MiniQuoteChartProps {
 
 export function MiniQuoteChart({ history, today, trades, highIBS, isOpenPosition, entryPrice }: MiniQuoteChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const chartRef = useRef<any>(null);
+  const chartRef = useRef<IChartApi | null>(null);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -22,7 +22,7 @@ export function MiniQuoteChart({ history, today, trades, highIBS, isOpenPosition
 
     // cleanup previous
     if (chartRef.current) {
-      try { chartRef.current.remove(); } catch {}
+      try { chartRef.current.remove(); } catch (e) { /* ignore */ }
       chartRef.current = null;
     }
 
@@ -46,18 +46,18 @@ export function MiniQuoteChart({ history, today, trades, highIBS, isOpenPosition
     });
     // дать вертикальные отступы, чтобы свечи не прилипали к краям
     // Ещё уменьшаем отступы: свечи занимают ~70–80% высоты (в 2 раза меньше воздуха)
-    try { chart.priceScale('right').applyOptions({ scaleMargins: { top: 0.15, bottom: 0.15 } }); } catch {}
+    try { chart.priceScale('right').applyOptions({ scaleMargins: { top: 0.15, bottom: 0.15 } }); } catch (e) { /* ignore */ }
 
     // Build last 5 candles: 4 последних из истории + сегодняшняя синтетическая
     const sorted = [...history].sort((a, b) => a.date.getTime() - b.date.getTime());
     const lastFour = sorted.slice(-4);
-    const candles: { time: number; open: number; high: number; low: number; close: number }[] = lastFour.map(b => ({
-      time: Math.floor(b.date.getTime() / 1000),
+    const candles: { time: UTCTimestamp; open: number; high: number; low: number; close: number }[] = lastFour.map(b => ({
+      time: Math.floor(b.date.getTime() / 1000) as UTCTimestamp,
       open: b.open, high: b.high, low: b.low, close: b.close,
     }));
     if (hasToday) {
       candles.push({
-        time: Math.floor(Date.now() / 1000),
+        time: Math.floor(Date.now() / 1000) as UTCTimestamp,
         open: today!.open as number,
         high: today!.high as number,
         low: today!.low as number,
@@ -66,22 +66,22 @@ export function MiniQuoteChart({ history, today, trades, highIBS, isOpenPosition
     }
 
     if (candles.length) {
-      series.setData(candles as any);
+      series.setData(candles);
       // Хотим, чтобы свечи занимали ~70% ширины контейнера
       const width = containerRef.current!.clientWidth || 300;
       const targetRatio = 0.7;
       const spacing = Math.max(4, Math.min(24, Math.floor((width * targetRatio) / candles.length)));
       const rightOffset = Math.max(1, Math.round(candles.length * 0.05)); // немного воздуха справа (~5% от кол-ва баров)
-      try { chart.timeScale().applyOptions({ rightOffset, barSpacing: spacing }); } catch {}
+      try { chart.timeScale().applyOptions({ rightOffset, barSpacing: spacing }); } catch (e) { /* ignore */ }
     }
 
     // Mark entries within visible window
-    const minTime = candles.length ? candles[0].time : 0;
-    const maxTime = candles.length ? candles[candles.length - 1].time : 0;
-    const markers: any[] = [];
+    const minTime = candles.length ? (candles[0].time as number) : 0;
+    const maxTime = candles.length ? (candles[candles.length - 1].time as number) : 0;
+    const markers: Array<{ time: UTCTimestamp; position: 'belowBar'; color: string; shape: 'arrowUp'; text: string }> = [];
     trades.forEach(t => {
-      const tTime = Math.floor(t.entryDate.getTime() / 1000) as any;
-      if (tTime >= minTime && tTime <= maxTime) {
+      const tTime = Math.floor(t.entryDate.getTime() / 1000) as UTCTimestamp;
+      if ((tTime as number) >= minTime && (tTime as number) <= maxTime) {
         markers.push({ time: tTime, position: 'belowBar', color: 'rgba(5,150,105,0.6)', shape: 'arrowUp', text: '' });
       }
     });
@@ -110,14 +110,14 @@ export function MiniQuoteChart({ history, today, trades, highIBS, isOpenPosition
         const points = candles.length || 1;
         const spacing = Math.max(4, Math.min(24, Math.floor((w * 0.7) / points)));
         chart.timeScale().applyOptions({ barSpacing: spacing });
-      } catch {}
+      } catch (e) { /* ignore */ }
     };
     window.addEventListener('resize', onResize);
     return () => {
       window.removeEventListener('resize', onResize);
-      try { chart.remove(); } catch {}
+      try { chart.remove(); } catch (e) { /* ignore */ }
     };
-  }, [history, today, trades, highIBS, isOpenPosition]);
+  }, [history, today, trades, highIBS, isOpenPosition, entryPrice]);
 
   return (
     <div ref={containerRef} className="w-full h-full" />

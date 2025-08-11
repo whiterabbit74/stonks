@@ -7,7 +7,15 @@ import type { SavedDataset } from '../types';
 import { ConfirmModal } from './ConfirmModal';
 
 export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {}) {
-  const { savedDatasets, currentDataset, currentStrategy, setStrategy, loadDatasetFromServer, deleteDatasetFromServer, exportDatasetAsJSON, loadDatasetsFromServer, runBacktest } = useAppStore() as any;
+  const savedDatasets = useAppStore(s => s.savedDatasets);
+  const currentDataset = useAppStore(s => s.currentDataset);
+  const currentStrategy = useAppStore(s => s.currentStrategy);
+  const setStrategy = useAppStore(s => s.setStrategy);
+  const loadDatasetFromServer = useAppStore(s => s.loadDatasetFromServer);
+  const deleteDatasetFromServer = useAppStore(s => s.deleteDatasetFromServer);
+  const exportDatasetAsJSON = useAppStore(s => s.exportDatasetAsJSON);
+  const loadDatasetsFromServer = useAppStore(s => s.loadDatasetsFromServer);
+  const runBacktest = useAppStore(s => s.runBacktest);
   const [isExpanded, setIsExpanded] = useState(true);
   const [serverStatus, setServerStatus] = useState<'checking' | 'online' | 'offline'>('checking');
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -43,20 +51,22 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
       await loadDatasetsFromServer();
       await loadDatasetFromServer(datasetId);
       // гарантируем наличие стратегии
-      try {
-        if (!currentStrategy) {
+      if (!currentStrategy) {
+        try {
           const tpl = STRATEGY_TEMPLATES[0];
           const strat = createStrategyFromTemplate(tpl);
           setStrategy(strat);
+        } catch (e) {
+          console.warn('Failed to ensure default strategy', e);
         }
-      } catch {}
+      }
       // снимаем лоадер сразу
       setLoadingId(null);
       // мгновенно переходим на «Результаты» и фиксируем hash
-      try { window.location.hash = '#results'; } catch {}
+      try { window.location.hash = '#results'; } catch (e) { /* ignore */ }
       if (onAfterLoad) onAfterLoad();
       // запускаем бэктест в фоне, не блокируя UI
-      try { runBacktest?.(); } catch {}
+      try { runBacktest?.(); } catch (e) { console.warn('Failed to start backtest', e); }
     } catch (e) {
       console.warn('Failed to load dataset', e);
     }
