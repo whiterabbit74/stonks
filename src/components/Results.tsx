@@ -1,4 +1,4 @@
-import { RotateCcw, Heart } from 'lucide-react';
+import { Heart } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { DatasetAPI } from '../lib/api';
 import { useAppStore } from '../stores';
@@ -6,11 +6,23 @@ import { TradingChart } from './TradingChart';
 import { EquityChart } from './EquityChart';
 import { TradeDrawdownChart } from './TradeDrawdownChart';
 import { MiniQuoteChart } from './MiniQuoteChart';
-import { ConfirmModal } from './ConfirmModal';
 import { InfoModal } from './InfoModal';
 
 export function Results() {
-  const { backtestResults, marketData, currentStrategy, runBacktest, backtestStatus, error: storeError, currentSplits, currentDataset, watchThresholdPct, resultsQuoteProvider, resultsRefreshProvider, updateMarketData, updateDatasetOnServer, saveDatasetToServer } = useAppStore() as any;
+  const backtestResults = useAppStore(s => s.backtestResults);
+  const marketData = useAppStore(s => s.marketData);
+  const currentStrategy = useAppStore(s => s.currentStrategy);
+  const runBacktest = useAppStore(s => s.runBacktest);
+  const backtestStatus = useAppStore(s => s.backtestStatus);
+  const storeError = useAppStore(s => s.error);
+  const currentSplits = useAppStore(s => s.currentSplits);
+  const currentDataset = useAppStore(s => s.currentDataset);
+  const watchThresholdPct = useAppStore(s => s.watchThresholdPct);
+  const resultsQuoteProvider = useAppStore(s => s.resultsQuoteProvider);
+  const resultsRefreshProvider = useAppStore(s => s.resultsRefreshProvider);
+  const updateMarketData = useAppStore(s => s.updateMarketData);
+  const updateDatasetOnServer = useAppStore(s => s.updateDatasetOnServer);
+  const saveDatasetToServer = useAppStore(s => s.saveDatasetToServer);
   const [quote, setQuote] = useState<{ open: number|null; high: number|null; low: number|null; current: number|null; prevClose: number|null } | null>(null);
   const [quoteError, setQuoteError] = useState<string | null>(null);
   const [isTrading, setIsTrading] = useState<boolean>(false);
@@ -56,7 +68,7 @@ export function Results() {
         year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'short',
       });
       const parts = fmt.formatToParts(date);
-      const map: Record<string, string> = {};
+      const map: Record<string,string> = {};
       parts.forEach(p => { if (p.type !== 'literal') map[p.type] = p.value; });
       const y = Number(map.year), m = Number(map.month), d = Number(map.day);
       const weekdayStr = map.weekday; // e.g., Mon, Tue
@@ -78,11 +90,11 @@ export function Results() {
     };
     const lastWeekdayOfMonth = (year: number, monthIndex0: number, weekday: number) => {
       const last = new Date(Date.UTC(year, monthIndex0 + 1, 0));
-      let cursor = last;
-      while (getETParts(cursor).weekday !== weekday) {
-        const c = new Date(cursor); c.setUTCDate(c.getUTCDate()-1); cursor = c;
+      let move = last;
+      while (getETParts(move).weekday !== weekday) {
+        const c = new Date(move); c.setUTCDate(c.getUTCDate()-1); move = c;
       }
-      return getETParts(cursor);
+      return getETParts(move);
     };
     const observedFixedET = (year: number, monthIndex0: number, day: number) => {
       const base = new Date(Date.UTC(year, monthIndex0, day, 12, 0, 0));
@@ -169,7 +181,7 @@ export function Results() {
   // Авто-пуллинг котировок (пропускаем вызовы API в выходные/вне торговых часов)
   useEffect(() => {
     let isMounted = true;
-    let timer: any;
+    let timer: ReturnType<typeof setTimeout> | undefined;
     if (!symbol) return;
     const isMarketOpenNow = () => {
       // Compute ET local time safely using Intl APIs
@@ -181,7 +193,7 @@ export function Results() {
         weekday: 'short',
       });
       const parts = fmt.formatToParts(new Date());
-      const map: Record<string,string> = {} as any;
+      const map: Record<string,string> = {};
       parts.forEach(p => { if (p.type !== 'literal') map[p.type] = p.value; });
       const weekdayMap: Record<string, number> = { Sun:0, Mon:1, Tue:2, Wed:3, Thu:4, Fri:5, Sat:6 };
       const weekday = weekdayMap[map.weekday] ?? 0;
@@ -214,7 +226,7 @@ export function Results() {
     };
     fetchQuote();
     return () => { isMounted = false; if (timer) clearTimeout(timer); };
-  }, [symbol]);
+  }, [symbol, resultsQuoteProvider]);
 
   // Автозапуск бэктеста, если результатов ещё нет, но данные и стратегия готовы
   useEffect(() => {
@@ -225,7 +237,7 @@ export function Results() {
   // Лёгкий повтор через короткую задержку, если всё готово, а статуса запуска нет
   useEffect(() => {
     if (!backtestResults && marketData.length > 0 && currentStrategy && backtestStatus === 'idle') {
-      const t = setTimeout(() => { try { runBacktest(); } catch {} }, 300);
+      const t = setTimeout(() => { runBacktest(); }, 300);
       return () => clearTimeout(t);
     }
   }, [backtestResults, marketData, currentStrategy, backtestStatus, runBacktest]);
@@ -328,7 +340,7 @@ export function Results() {
 
             {/* Источник/время */}
             <div className="flex flex-wrap items-center gap-3 text-xs text-gray-500">
-              <span className="px-2 py-0.5 rounded bg-gray-100 border">Источник: { (useAppStore.getState() as any).resultsQuoteProvider === 'alpha_vantage' ? 'Alpha Vantage' : 'Finnhub' }</span>
+              <span className="px-2 py-0.5 rounded bg-gray-100 border">Источник: { (resultsQuoteProvider === 'alpha_vantage') ? 'Alpha Vantage' : 'Finnhub' }</span>
               {lastUpdatedAt && (
                 <span className="px-2 py-0.5 rounded bg-gray-100 border">Обновлено: {lastUpdatedAt.toLocaleTimeString('ru-RU')}</span>
               )}
@@ -378,15 +390,15 @@ export function Results() {
                       }
                       // Преобразуем и смержим
                       const { parseOHLCDate, adjustOHLCForSplits } = await import('../lib/utils');
-                      const incoming = rows.map((r: any) => ({
+                      const incoming = rows.map((r: { date: string; open: number; high: number; low: number; close: number; adjClose?: number; volume: number; }) => ({
                         date: parseOHLCDate(r.date), open: r.open, high: r.high, low: r.low, close: r.close, adjClose: r.adjClose, volume: r.volume,
                       }));
-                      const existingDates = new Set(marketData.map(d => d.date.toDateString()));
-                      const filtered = incoming.filter(d => !existingDates.has(d.date.toDateString()));
+                      const existingDates = new Set(marketData.map((d) => d.date.toDateString()));
+                      const filtered = incoming.filter((d: { date: Date }) => !existingDates.has(d.date.toDateString()));
                       if (filtered.length) {
                          // Сливаем и применяем бэк-аджаст по уже известным сплитам
                          const merged = [...marketData, ...filtered].sort((a, b) => a.date.getTime() - b.date.getTime());
-                         const finalData = adjustOHLCForSplits(merged, (useAppStore.getState() as any).currentSplits);
+                         const finalData = adjustOHLCForSplits(merged, currentSplits);
                          updateMarketData(finalData);
                          // Сохраняем изменения на сервере (переименуем файл при смене последней даты)
                          try {
@@ -395,14 +407,16 @@ export function Results() {
                            } else if (symbol) {
                              await saveDatasetToServer(symbol);
                            }
-                         } catch (e: any) {
-                           setRefreshError(e?.message || 'Не удалось сохранить изменения на сервере');
+                         } catch (e) {
+                           const msg = e instanceof Error ? e.message : 'Не удалось сохранить изменения на сервере';
+                           setRefreshError(msg);
                          }
                       }
                       setIsStale(false);
                       setStaleInfo(null);
-                    } catch (e: any) {
-                      setRefreshError(e?.message || 'Не удалось актуализировать данные');
+                    } catch (e) {
+                      const msg = e instanceof Error ? e.message : 'Не удалось актуализировать данные';
+                      setRefreshError(msg);
                     } finally {
                       setRefreshing(false);
                     }
@@ -709,7 +723,7 @@ export function Results() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {trades.map((trade, index) => {
+              {trades.map((trade: any, index: number) => {
                 const investment = trade.context?.initialInvestment || (trade.quantity * trade.entryPrice);
                 return (
                   <tr key={index} className="hover:bg-gray-50">
@@ -768,9 +782,9 @@ export function Results() {
                 <tr className="font-bold text-base">
                   <td className="p-4 text-gray-700" colSpan={8}>ИТОГО ({trades.length} сделок)</td>
                   <td className={`p-4 text-right font-mono font-bold text-lg ${
-                    trades.reduce((sum, t) => sum + t.pnl, 0) > 0 ? 'text-green-600' : 'text-red-600'
+                    trades.reduce((sum: number, t: any) => sum + t.pnl, 0) > 0 ? 'text-green-600' : 'text-red-600'
                   }`}>
-                    ${trades.reduce((sum, t) => sum + t.pnl, 0).toFixed(2)}
+                    ${trades.reduce((sum: number, t: any) => sum + t.pnl, 0).toFixed(2)}
                   </td>
                   <td className={`p-4 text-right font-mono font-bold text-lg ${
                     metrics.totalReturn > 0 ? 'text-green-600' : 'text-red-600'

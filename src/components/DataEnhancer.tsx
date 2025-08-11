@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { RefreshCw, Calendar, TrendingUp, AlertCircle, CheckCircle, Download } from 'lucide-react';
 import { useAppStore } from '../stores';
 import type { OHLCData } from '../types';
@@ -19,7 +19,7 @@ interface YahooFinanceData {
 }
 
 export function DataEnhancer({ onNext }: DataEnhancerProps) {
-  const { marketData, currentDataset, updateMarketData, saveDatasetToServer, updateDatasetOnServer, loadDatasetFromServer, isLoading: storeLoading, setSplits, enhancerProvider } = useAppStore();
+  const { marketData, currentDataset, updateMarketData, saveDatasetToServer, updateDatasetOnServer, loadDatasetFromServer, setSplits, enhancerProvider, savedDatasets } = useAppStore();
   const [ticker, setTicker] = useState('AAPL');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -27,7 +27,7 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
   const [dataGaps, setDataGaps] = useState<{ missing: number; lastDate: string; firstDate: string } | null>(null);
   const [selectedAction, setSelectedAction] = useState<'enhance' | 'replace'>('enhance');
   const [mode, setMode] = useState<'existing' | 'new'>('new');
-  const { savedDatasets, loadDatasetsFromServer } = useAppStore();
+  const { loadDatasetsFromServer } = useAppStore();
   // Убрали промпт ручного сохранения
   // Всегда грузим всю доступную историю (~до 40 лет), выбор периода убран
   const [isUpToDate, setIsUpToDate] = useState(false);
@@ -52,9 +52,9 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
         setTicker(currentDataset.ticker);
       }
     }
-  }, [marketData, currentDataset]);
+  }, [marketData, currentDataset, analyzeDataGaps]);
 
-  const analyzeDataGaps = () => {
+  const analyzeDataGaps = useCallback(() => {
     if (marketData.length === 0) return;
 
     const sortedData = [...marketData].sort((a, b) => a.date.getTime() - b.date.getTime());
@@ -78,7 +78,7 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
       setSuccess(null);
       setError(null);
     }
-  };
+  }, [marketData]);
 
   const getStartDateForPeriod = (): Date => {
     const now = new Date();
@@ -88,7 +88,7 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
   };
 
   type FetchResult = { data: YahooFinanceData[]; splits: { date: string; factor: number }[] };
-  const fetchWithCreds: typeof fetch = (input: any, init?: any) => fetch(input, { credentials: 'include', ...(init || {}) });
+  const fetchWithCreds = (input: RequestInfo | URL, init?: RequestInit) => fetch(input, { credentials: 'include', ...(init || {}) });
   const fetchRealMarketData = async (symbol: string, startDate: Date): Promise<FetchResult> => {
     const endDate = new Date();
     const start = Math.floor(startDate.getTime() / 1000);
@@ -100,12 +100,13 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
     const response = await fetchWithCreds(url);
     if (!response.ok) {
       let msg = `${response.status} ${response.statusText}`;
-      try { const e = await response.json(); msg = e.error || msg; } catch {}
+      const e = await response.json().catch(() => null);
+      if (e && typeof e.error === 'string') msg = e.error;
       throw new Error(msg);
     }
     const json = await response.json();
-    if (Array.isArray(json)) return { data: json, splits: [] } as any;
-    return { data: json.data || [], splits: json.splits || [] } as any;
+    if (Array.isArray(json)) return { data: json as YahooFinanceData[], splits: [] };
+    return { data: (json.data || []) as YahooFinanceData[], splits: (json.splits || []) as { date: string; factor: number }[] };
   };
 
   // removed unused loadSampleData
@@ -144,7 +145,7 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
 
       // Convert real market data to our format
       const newDataRaw: OHLCData[] = rawRows.map(item => ({
-        date: parseOHLCDate(item.date as any),
+        date: parseOHLCDate(item.date),
         open: item.open,
         high: item.high,
         low: item.low,
@@ -195,7 +196,7 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
           await saveDatasetToServer(ticker.toUpperCase(), autoName);
           await loadDatasetsFromServer();
           setSuccess((prev) => (prev ? prev + ' • ' : '') + `✅ Автосохранено как "${autoName}"`);
-        } catch (e) {
+        } catch {
           setError('Не удалось автоматически сохранить датасет. Проверьте сервер и повторите.');
         }
       } else if (mode === 'existing') {
@@ -210,7 +211,7 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
           }
           await updateDatasetOnServer();
           setSuccess((prev) => (prev ? prev + ' • ' : '') + `✅ Изменения сохранены`);
-        } catch (e) {
+        } catch {
           setError('Не удалось сохранить изменения. Проверьте сервер и повторите.');
         }
       }
@@ -383,8 +384,9 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
                     if (currentDataset) {
                       await saveDatasetToServer(currentDataset.ticker, currentDataset.name);
                     }
-                  } catch (e: any) {
-                    setError(e?.message || 'Не удалось получить сплиты');
+                  } catch (e) {
+                    const msg = e instanceof Error ? e.message : 'Не удалось получить сплиты';
+                    setError(msg);
                   } finally {
                     setIsLoading(false);
                   }

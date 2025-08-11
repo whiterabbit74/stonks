@@ -12,7 +12,7 @@ export function DataUpload({ onNext }: DataUploadProps) {
   const jsonInputRef = useRef<HTMLInputElement>(null);
   const [ticker, setTicker] = useState('');
   const [datasetName, setDatasetName] = useState('');
-  const { marketData, currentDataset, savedDatasets, uploadData, loadJSONData, saveDatasetToServer, loadDatasetsFromServer, isLoading } = useAppStore();
+  const { marketData, currentDataset, uploadData, loadJSONData, saveDatasetToServer, loadDatasetsFromServer, isLoading } = useAppStore();
 
   // Загружаем список датасетов при монтировании компонента
   useEffect(() => {

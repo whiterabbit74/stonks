@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { createChart } from 'lightweight-charts';
+import { createChart, type IChartApi, type ISeriesApi, type UTCTimestamp } from 'lightweight-charts';
 import type { EquityPoint } from '../types';
 
 interface EquityChartProps {
@@ -8,7 +8,7 @@ interface EquityChartProps {
 
 export function EquityChart({ equity }: EquityChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
-  const chartRef = useRef<any>(null);
+  const chartRef = useRef<IChartApi | null>(null);
 
   useEffect(() => {
     if (!chartContainerRef.current || !equity.length) return;
@@ -58,7 +58,7 @@ export function EquityChart({ equity }: EquityChartProps) {
       }
 
       // Area-серия с градиентом
-      const equitySeries = chart.addAreaSeries({
+      const equitySeries: ISeriesApi<'Area'> = chart.addAreaSeries({
         lineColor: '#6366F1',
         topColor: 'rgba(99, 102, 241, 0.25)',
         bottomColor: 'rgba(99, 102, 241, 0.03)',
@@ -67,7 +67,7 @@ export function EquityChart({ equity }: EquityChartProps) {
       });
 
       // Серая линия all-time high (ATH)
-      const athSeries = chart.addLineSeries({
+      const athSeries: ISeriesApi<'Line'> = chart.addLineSeries({
         color: '#9CA3AF',
         lineWidth: 1,
         lineStyle: 2,
@@ -76,20 +76,20 @@ export function EquityChart({ equity }: EquityChartProps) {
 
     // Convert equity data to chart format
     const equityData = equity.map(point => ({
-      time: Math.floor(point.date.getTime() / 1000) as any,
+      time: Math.floor(point.date.getTime() / 1000) as UTCTimestamp,
       value: point.value,
     }));
 
     equitySeries.setData(equityData);
 
     // Рассчитываем ATH во времени
-    const athData: { time: number; value: number }[] = [];
+    const athData: { time: UTCTimestamp; value: number }[] = [];
     let runningMax = -Infinity;
     for (const p of equity) {
       runningMax = Math.max(runningMax, p.value);
-      athData.push({ time: Math.floor(p.date.getTime() / 1000) as any, value: runningMax });
+      athData.push({ time: Math.floor(p.date.getTime() / 1000) as UTCTimestamp, value: runningMax });
     }
-    athSeries.setData(athData as any);
+    athSeries.setData(athData);
 
     // Убрали линию последнего значения по запросу
 
@@ -140,7 +140,7 @@ export function EquityChart({ equity }: EquityChartProps) {
         }
         try {
           if (tooltipEl && tooltipEl.parentElement) tooltipEl.parentElement.removeChild(tooltipEl);
-        } catch {}
+        } catch { /* ignore */ }
       };
     } catch (error) {
       console.error('Error creating equity chart:', error);

@@ -29,7 +29,7 @@ export function ConfirmModal({ open, title, message, confirmText = 'Подтве
             </button>
           )}
           <button
-            onClick={() => { onConfirm && onConfirm(); }}
+            onClick={() => { if (onConfirm) { onConfirm(); } }}
             className="px-3 py-1.5 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-sm"
           >
             {confirmText}

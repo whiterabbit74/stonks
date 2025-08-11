@@ -1,6 +1,5 @@
 import type {
   Strategy,
-  StrategyParameters,
   ValidationResult,
   IndicatorType,
   IndicatorCondition,
@@ -41,10 +40,10 @@ export function createDefaultRiskSettings(): RiskManagement {
 }
 
 // Default position sizing
-export function createDefaultPositionSizing() {
+export function createDefaultPositionSizing(): Strategy['positionSizing'] {
   return {
     type: 'percentage',
-    value: 10
+    value: 10,
   };
 }
 
@@ -122,15 +121,26 @@ export function createStrategy(templateId: string, customId?: string): Strategy 
     throw new Error(`Strategy template not found: ${templateId}`);
   }
 
-  return {
+  const base = createDefaultStrategy();
+  const normalizedParams: Record<string, number | string | boolean> = {};
+  Object.entries(template.parameters as Record<string, number | string | boolean | undefined>).forEach(([k, v]) => {
+    if (v !== undefined) normalizedParams[k] = v as number | string | boolean;
+  });
+  const strategyObj = {
     id: customId || `${templateId}-${Date.now()}`,
     name: template.name,
     description: template.description,
-    parameters: { ...template.parameters }
+    type: templateId,
+    parameters: normalizedParams,
+    entryConditions: base.entryConditions || [],
+    exitConditions: base.exitConditions || [],
+    riskManagement: base.riskManagement as RiskManagement,
+    positionSizing: base.positionSizing as Strategy['positionSizing'],
   };
+  return strategyObj as unknown as Strategy;
 }
 
-export function validateStrategy(strategy: Strategy): ValidationResult & { errors: Array<{ field: string; message: string }> } {
+export function validateStrategy(strategy: Strategy): ValidationResult {
   const errors: Array<{ field: string; message: string }> = [];
 
   if (!strategy.id) {
@@ -157,7 +167,7 @@ export function validateStrategy(strategy: Strategy): ValidationResult & { error
 
   return {
     isValid: errors.length === 0,
-    errors
+    errors: errors.map(e => `${e.field}: ${e.message}`),
   };
 }
 
@@ -184,18 +194,23 @@ export function getStrategyParameter(
 }
 
 export function cloneStrategy(strategy: Strategy, newId?: string): Strategy {
+  const defaults = createDefaultStrategy();
   return {
     ...strategy,
     id: newId !== undefined ? newId : strategy.id,
     parameters: { ...strategy.parameters },
     entryConditions: strategy.entryConditions ? [...strategy.entryConditions] : [],
     exitConditions: strategy.exitConditions ? [...strategy.exitConditions] : [],
-    riskManagement: strategy.riskManagement ? { 
-      ...strategy.riskManagement,
-      commission: strategy.riskManagement.commission ? { ...strategy.riskManagement.commission } : undefined
-    } : undefined,
-    positionSizing: strategy.positionSizing ? { ...strategy.positionSizing } : undefined
-  };
+    riskManagement: strategy.riskManagement
+      ? { 
+          ...strategy.riskManagement,
+          commission: strategy.riskManagement.commission ? { ...strategy.riskManagement.commission } : { type: 'percentage', percentage: 0 }
+        }
+      : (defaults.riskManagement as RiskManagement),
+    positionSizing: strategy.positionSizing
+      ? { ...strategy.positionSizing }
+      : (defaults.positionSizing as Strategy['positionSizing'])
+  } as Strategy;
 }
 
 // Strategy templates
@@ -216,7 +231,7 @@ export const STRATEGY_TEMPLATES = [
         highIBS: 0.75,
         maxHoldDays: 30
       }
-    }
+    } as Pick<Strategy, 'name' | 'description' | 'entryConditions' | 'exitConditions' | 'parameters'>
   }
 ];
 
@@ -226,8 +241,9 @@ export function getStrategyTemplateById(id: string) {
 }
 
 export function createStrategyFromTemplate(template: any, customId?: string): Strategy {
-  const defaultStrategy = template.defaultStrategy;
-  return {
+  const defaultStrategy = template.defaultStrategy as Pick<Strategy, 'name' | 'description' | 'entryConditions' | 'exitConditions' | 'parameters'>;
+  const base = createDefaultStrategy();
+  const strategyObj2 = {
     id: customId || `strategy-${Date.now()}`,
     name: defaultStrategy.name,
     description: defaultStrategy.description,
@@ -235,8 +251,10 @@ export function createStrategyFromTemplate(template: any, customId?: string): St
     parameters: { ...defaultStrategy.parameters },
     entryConditions: [...defaultStrategy.entryConditions],
     exitConditions: [...defaultStrategy.exitConditions],
-    riskManagement: createDefaultRiskSettings()
+    riskManagement: base.riskManagement as RiskManagement,
+    positionSizing: base.positionSizing as Strategy['positionSizing'],
   };
+  return strategyObj2 as unknown as Strategy;
 }
 
 // Price condition

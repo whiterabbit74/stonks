@@ -44,8 +44,18 @@ export function StrategySettings({ strategy, onSave, onClose }: StrategySettings
   };
 
   const handleReset = () => {
-    const defaultStrategy = createDefaultStrategy(strategy.id);
-    setEditedStrategy(defaultStrategy);
+    const defaults = createDefaultStrategy();
+    setEditedStrategy({
+      id: strategy.id,
+      name: defaults.name || strategy.name,
+      description: defaults.description || strategy.description,
+      parameters: defaults.parameters || strategy.parameters,
+      entryConditions: defaults.entryConditions || strategy.entryConditions,
+      exitConditions: defaults.exitConditions || strategy.exitConditions,
+      riskManagement: defaults.riskManagement || strategy.riskManagement,
+      positionSizing: defaults.positionSizing || strategy.positionSizing,
+      type: strategy.type,
+    });
   };
 
   const getParameterConfig = (strategyId: string) => {

@@ -22,7 +22,13 @@ export default function App() {
   const [apiBuildId, setApiBuildId] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const hasAutoNavigatedRef = useRef(false);
-  const { marketData, currentStrategy, backtestResults, runBacktest, backtestStatus, setStrategy, loadSettingsFromServer } = useAppStore() as any;
+  const marketData = useAppStore(s => s.marketData);
+  const currentStrategy = useAppStore(s => s.currentStrategy);
+  const backtestResults = useAppStore(s => s.backtestResults);
+  const runBacktest = useAppStore(s => s.runBacktest);
+  const backtestStatus = useAppStore(s => s.backtestStatus);
+  const setStrategy = useAppStore(s => s.setStrategy);
+  const loadSettingsFromServer = useAppStore(s => s.loadSettingsFromServer);
 
   // Автоматически создаем IBS стратегию когда есть данные
   useEffect(() => {
@@ -33,7 +39,7 @@ export default function App() {
       const strategy = createStrategyFromTemplate(ibsTemplate);
       setStrategy(strategy);
     }
-  }, [marketData, currentStrategy, setStrategy]);
+  }, [marketData, currentStrategy, setStrategy, loadSettingsFromServer]);
 
   // Поддержка hash-навигации (#data|#enhance|#results|#watches)
   useEffect(() => {
@@ -88,7 +94,9 @@ export default function App() {
         const base = window.location.href.includes('/stonks') ? '/stonks/api' : '/api';
         const r = await fetch(`${base}/auth/check`, { credentials: 'include' });
         if (r.ok) setAuthorized(true);
-      } catch {}
+      } catch (e) {
+        console.warn('Auth check failed', e);
+      }
       setCheckingAuth(false);
     })();
   }, []);
@@ -103,7 +111,9 @@ export default function App() {
           const j = await r.json();
           if (j && typeof j.buildId === 'string') setApiBuildId(j.buildId);
         }
-      } catch {}
+      } catch (e) {
+        console.warn('Status fetch failed', e);
+      }
     })();
   }, []);
 
@@ -149,12 +159,14 @@ export default function App() {
                 });
                 if (!r.ok) {
                   let msg = `${r.status} ${r.statusText}`;
-                  try { const e = await r.json(); msg = e.error || msg; } catch {}
+                  const err = await r.json().catch(() => null);
+                  if (err && typeof err.error === 'string') msg = err.error;
                   throw new Error(msg);
                 }
                 setAuthorized(true);
-              } catch (e: any) {
-                setLoginError(e?.message || 'Ошибка входа');
+              } catch (e) {
+                const msg = e instanceof Error ? e.message : 'Ошибка входа';
+                setLoginError(msg);
               }
             }}
             className="w-full inline-flex items-center justify-center bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700"
@@ -178,7 +190,7 @@ export default function App() {
               </h1>
               <div className="text-gray-600 flex flex-wrap items-center gap-3">
                 <span>Internal Bar Strength Mean Reversion Strategy</span>
-                <span className="text-xs text-gray-400 border rounded px-2 py-0.5">Build: {apiBuildId || import.meta.env.VITE_BUILD_ID || (window as any).__BUILD_ID__ || 'dev'}</span>
+                <span className="text-xs text-gray-400 border rounded px-2 py-0.5">Build: {apiBuildId || import.meta.env.VITE_BUILD_ID || 'dev'}</span>
               </div>
             </div>
             {currentStrategy && (
@@ -241,7 +253,7 @@ export default function App() {
           />
         )}
       </div>
-      <div className="py-4 text-center text-xs text-gray-400">Build: {import.meta.env.VITE_BUILD_ID || (window as any).__BUILD_ID__ || 'dev'}</div>
+      <div className="py-4 text-center text-xs text-gray-400">Build: {import.meta.env.VITE_BUILD_ID || 'dev'}</div>
     </div>
   );
 }

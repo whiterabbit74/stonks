@@ -8,20 +8,22 @@ export const API_BASE_URL: string = (() => {
       // If app is served under /stonks, use that prefix for API proxy
       if (href.includes('/stonks')) return '/stonks/api';
     }
-  } catch {}
+  } catch {
+    // ignore, default to '/api'
+  }
   return '/api';
 })();
-const fetchWithCreds: typeof fetch = (input: any, init?: any) => {
-  const nextInit: RequestInit = {
-    credentials: 'include' as RequestCredentials,
+const fetchWithCreds = (input: RequestInfo | URL, init?: RequestInit) => {
+  const merged: RequestInit = {
+    credentials: 'include',
     cache: 'no-store',
-    ...(init || {}),
+    ...init,
     headers: {
       'Cache-Control': 'no-store',
-      ...(init && (init as any).headers ? (init as any).headers : {}),
+      ...(init?.headers || {}),
     },
   };
-  return fetch(input, nextInit);
+  return fetch(input, merged);
 };
 
 export class DatasetAPI {
@@ -53,7 +55,8 @@ export class DatasetAPI {
     const response = await fetchWithCreds(`${API_BASE_URL}/quote/${encodeURIComponent(symbol)}?provider=${provider}`);
     if (!response.ok) {
       let msg = `${response.status} ${response.statusText}`;
-      try { const e = await response.json(); msg = e.error || msg; } catch {}
+      const e = await response.json().catch(() => null);
+      if (e && typeof e.error === 'string') msg = e.error;
       throw new Error(msg);
     }
     return response.json();
@@ -82,7 +85,7 @@ export class DatasetAPI {
     const dataset = await response.json();
     // Конвертируем строки дат обратно в Date объекты стабильно (полдень UTC)
     const { parseOHLCDate } = await import('./utils');
-    dataset.data = dataset.data.map((bar: any) => ({
+    dataset.data = dataset.data.map((bar: { date: string; open: number; high: number; low: number; close: number; adjClose?: number; volume: number; }) => ({
       ...bar,
       date: parseOHLCDate(bar.date)
     }));
@@ -104,8 +107,9 @@ export class DatasetAPI {
     });
     
     if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || `Failed to save dataset: ${response.statusText}`);
+      const error = await response.json().catch(() => null);
+      const msg = (error && typeof error.error === 'string') ? error.error : `Failed to save dataset: ${response.statusText}`;
+      throw new Error(msg);
     }
     
     return response.json();
@@ -123,8 +127,9 @@ export class DatasetAPI {
       if (response.status === 404) {
         throw new Error(`Dataset "${id}" not found`);
       }
-      const error = await response.json();
-      throw new Error(error.error || `Failed to delete dataset: ${response.statusText}`);
+      const error = await response.json().catch(() => null);
+      const msg = (error && typeof error.error === 'string') ? error.error : `Failed to delete dataset: ${response.statusText}`;
+      throw new Error(msg);
     }
     
     return response.json();
@@ -146,8 +151,9 @@ export class DatasetAPI {
       if (response.status === 404) {
         throw new Error(`Dataset "${id}" not found`);
       }
-      const error = await response.json();
-      throw new Error(error.error || `Failed to update dataset: ${response.statusText}`);
+      const error = await response.json().catch(() => null);
+      const msg = (error && typeof error.error === 'string') ? error.error : `Failed to update dataset: ${response.statusText}`;
+      throw new Error(msg);
     }
     
     return response.json();
@@ -181,10 +187,12 @@ export class DatasetAPI {
     });
     if (!response.ok) {
       let msg = `${response.status} ${response.statusText}`;
-      try { const e = await response.json(); msg = e.error || msg; } catch {}
+      const e = await response.json().catch(() => null);
+      if (e && typeof e.error === 'string') msg = e.error;
       throw new Error(msg);
     }
-    try { return await response.json(); } catch { return { success: true } as any; }
+    const json = await response.json().catch(() => null);
+    return json ?? { success: true };
   }
 
   static async updateTelegramWatch(symbol: string, params: { isOpenPosition?: boolean; entryPrice?: number | null }): Promise<{ success: boolean }> {
@@ -195,20 +203,24 @@ export class DatasetAPI {
     });
     if (!response.ok) {
       let msg = `${response.status} ${response.statusText}`;
-      try { const e = await response.json(); msg = e.error || msg; } catch {}
+      const e = await response.json().catch(() => null);
+      if (e && typeof e.error === 'string') msg = e.error;
       throw new Error(msg);
     }
-    try { return await response.json(); } catch { return { success: true } as any; }
+    const json = await response.json().catch(() => null);
+    return json ?? { success: true };
   }
 
   static async deleteTelegramWatch(symbol: string): Promise<{ success: boolean }> {
     const response = await fetchWithCreds(`${API_BASE_URL}/telegram/watch/${encodeURIComponent(symbol)}`, { method: 'DELETE' });
     if (!response.ok) {
       let msg = `${response.status} ${response.statusText}`;
-      try { const e = await response.json(); msg = e.error || msg; } catch {}
+      const e = await response.json().catch(() => null);
+      if (e && typeof e.error === 'string') msg = e.error;
       throw new Error(msg);
     }
-    try { return await response.json(); } catch { return { success: true } as any; }
+    const json = await response.json().catch(() => null);
+    return json ?? { success: true };
   }
 
   static async listTelegramWatches(): Promise<Array<{ symbol: string; highIBS: number; thresholdPct: number; entryPrice: number | null; isOpenPosition: boolean }>> {
@@ -227,10 +239,12 @@ export class DatasetAPI {
     });
     if (!response.ok) {
       let msg = `${response.status} ${response.statusText}`;
-      try { const e = await response.json(); msg = e.error || msg; } catch {}
+      const e = await response.json().catch(() => null);
+      if (e && typeof e.error === 'string') msg = e.error;
       throw new Error(msg);
     }
-    try { return await response.json(); } catch { return { success: true } as any; }
+    const json = await response.json().catch(() => null);
+    return json ?? { success: true };
   }
 
   // App settings
@@ -248,7 +262,8 @@ export class DatasetAPI {
     });
     if (!response.ok) {
       let msg = `${response.status} ${response.statusText}`;
-      try { const e = await response.json(); msg = e.error || msg; } catch {}
+      const e = await response.json().catch(() => null);
+      if (e && typeof e.error === 'string') msg = e.error;
       throw new Error(msg);
     }
   }
