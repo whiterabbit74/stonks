@@ -212,7 +212,7 @@ export function Results() {
   // Лёгкий повтор через короткую задержку, если всё готово, а статуса запуска нет
   useEffect(() => {
     if (!backtestResults && marketData.length > 0 && currentStrategy && backtestStatus === 'idle') {
-      const t = setTimeout(() => { try { runBacktest(); } catch {} }, 500);
+      const t = setTimeout(() => { try { runBacktest(); } catch {} }, 300);
       return () => clearTimeout(t);
     }
   }, [backtestResults, marketData, currentStrategy, backtestStatus, runBacktest]);

@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { OHLCData, Strategy, BacktestResult, SavedDataset, SplitEvent } from '../types';
 import { parseCSV } from '../lib/validation';
 import { runBacktest as executeBacktest } from '../lib/backtest';
+import { createStrategyFromTemplate, STRATEGY_TEMPLATES } from '../lib/strategy';
 import { saveDatasetToJSON, loadDatasetFromJSON } from '../lib/data-persistence';
 import { DatasetAPI } from '../lib/api';
 
@@ -252,18 +253,15 @@ export const useAppStore = create<AppState>((set, get) => ({
       });
 
       // Если стратегии нет — создаём IBS по умолчанию и сразу запускаем бэктест
-      try {
-        const state = get();
-        if (!state.currentStrategy) {
-          const { createStrategyFromTemplate, STRATEGY_TEMPLATES } = await import('../lib/strategy');
-          const strat = createStrategyFromTemplate(STRATEGY_TEMPLATES[0]);
-          set({ currentStrategy: strat });
-        }
-        // Небольшая задержка, чтобы set() успел примениться
-        setTimeout(() => {
-          get().runBacktest().catch(() => {});
-        }, 0);
-      } catch {}
+      const state = get();
+      if (!state.currentStrategy) {
+        const strat = createStrategyFromTemplate(STRATEGY_TEMPLATES[0]);
+        set({ currentStrategy: strat });
+      }
+      // Небольшая задержка, чтобы set() успел примениться
+      setTimeout(() => {
+        get().runBacktest().catch(() => {});
+      }, 0);
 
       console.log(`Датасет загружен с сервера: ${dataset.name}`);
     } catch (error) {
@@ -323,13 +321,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   
   runBacktest: async () => {
     let { marketData, currentStrategy, currentDataset } = get();
-    // Гарантируем стратегию IBS по умолчанию
+    // Гарантируем стратегию IBS по умолчанию (без динамического импорта)
     if (!currentStrategy) {
-      try {
-        const { createStrategyFromTemplate, STRATEGY_TEMPLATES } = await import('../lib/strategy');
-        currentStrategy = createStrategyFromTemplate(STRATEGY_TEMPLATES[0]);
-        set({ currentStrategy });
-      } catch {}
+      currentStrategy = createStrategyFromTemplate(STRATEGY_TEMPLATES[0]);
+      set({ currentStrategy });
     }
     // Если данных нет, но есть выбранный датасет — используем его
     if ((!marketData || marketData.length === 0) && currentDataset && Array.isArray(currentDataset.data) && currentDataset.data.length) {
