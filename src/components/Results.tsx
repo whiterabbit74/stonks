@@ -9,7 +9,20 @@ import { MiniQuoteChart } from './MiniQuoteChart';
 import { InfoModal } from './InfoModal';
 
 export function Results() {
-  const { backtestResults, marketData, currentStrategy, runBacktest, backtestStatus, error: storeError, currentSplits, currentDataset, watchThresholdPct, resultsQuoteProvider, resultsRefreshProvider, updateMarketData, updateDatasetOnServer, saveDatasetToServer } = useAppStore() as any;
+  const backtestResults = useAppStore(s => s.backtestResults);
+  const marketData = useAppStore(s => s.marketData);
+  const currentStrategy = useAppStore(s => s.currentStrategy);
+  const runBacktest = useAppStore(s => s.runBacktest);
+  const backtestStatus = useAppStore(s => s.backtestStatus);
+  const storeError = useAppStore(s => s.error);
+  const currentSplits = useAppStore(s => s.currentSplits);
+  const currentDataset = useAppStore(s => s.currentDataset);
+  const watchThresholdPct = useAppStore(s => s.watchThresholdPct);
+  const resultsQuoteProvider = useAppStore(s => s.resultsQuoteProvider);
+  const resultsRefreshProvider = useAppStore(s => s.resultsRefreshProvider);
+  const updateMarketData = useAppStore(s => s.updateMarketData);
+  const updateDatasetOnServer = useAppStore(s => s.updateDatasetOnServer);
+  const saveDatasetToServer = useAppStore(s => s.saveDatasetToServer);
   const [quote, setQuote] = useState<{ open: number|null; high: number|null; low: number|null; current: number|null; prevClose: number|null } | null>(null);
   const [quoteError, setQuoteError] = useState<string | null>(null);
   const [isTrading, setIsTrading] = useState<boolean>(false);
@@ -55,7 +68,7 @@ export function Results() {
         year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'short',
       });
       const parts = fmt.formatToParts(date);
-      const map: Record<string, string> = {};
+      const map: Record<string,string> = {};
       parts.forEach(p => { if (p.type !== 'literal') map[p.type] = p.value; });
       const y = Number(map.year), m = Number(map.month), d = Number(map.day);
       const weekdayStr = map.weekday; // e.g., Mon, Tue
@@ -180,7 +193,7 @@ export function Results() {
         weekday: 'short',
       });
       const parts = fmt.formatToParts(new Date());
-      const map: Record<string,string> = {} as any;
+      const map: Record<string,string> = {};
       parts.forEach(p => { if (p.type !== 'literal') map[p.type] = p.value; });
       const weekdayMap: Record<string, number> = { Sun:0, Mon:1, Tue:2, Wed:3, Thu:4, Fri:5, Sat:6 };
       const weekday = weekdayMap[map.weekday] ?? 0;
@@ -327,7 +340,7 @@ export function Results() {
 
             {/* Источник/время */}
             <div className="flex flex-wrap items-center gap-3 text-xs text-gray-500">
-              <span className="px-2 py-0.5 rounded bg-gray-100 border">Источник: { (useAppStore.getState() as any).resultsQuoteProvider === 'alpha_vantage' ? 'Alpha Vantage' : 'Finnhub' }</span>
+              <span className="px-2 py-0.5 rounded bg-gray-100 border">Источник: { (resultsQuoteProvider === 'alpha_vantage') ? 'Alpha Vantage' : 'Finnhub' }</span>
               {lastUpdatedAt && (
                 <span className="px-2 py-0.5 rounded bg-gray-100 border">Обновлено: {lastUpdatedAt.toLocaleTimeString('ru-RU')}</span>
               )}
@@ -380,12 +393,12 @@ export function Results() {
                       const incoming = rows.map((r: { date: string; open: number; high: number; low: number; close: number; adjClose?: number; volume: number; }) => ({
                         date: parseOHLCDate(r.date), open: r.open, high: r.high, low: r.low, close: r.close, adjClose: r.adjClose, volume: r.volume,
                       }));
-                      const existingDates = new Set(marketData.map((d: { date: Date }) => d.date.toDateString()));
+                      const existingDates = new Set(marketData.map((d) => d.date.toDateString()));
                       const filtered = incoming.filter((d: { date: Date }) => !existingDates.has(d.date.toDateString()));
                       if (filtered.length) {
                          // Сливаем и применяем бэк-аджаст по уже известным сплитам
                          const merged = [...marketData, ...filtered].sort((a, b) => a.date.getTime() - b.date.getTime());
-                         const finalData = adjustOHLCForSplits(merged, (useAppStore.getState() as any).currentSplits);
+                         const finalData = adjustOHLCForSplits(merged, currentSplits);
                          updateMarketData(finalData);
                          // Сохраняем изменения на сервере (переименуем файл при смене последней даты)
                          try {

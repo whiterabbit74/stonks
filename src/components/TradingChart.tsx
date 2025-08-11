@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
-import { createChart } from 'lightweight-charts';
+import { createChart, type IChartApi, type ISeriesApi, type UTCTimestamp } from 'lightweight-charts';
 import { formatOHLCYMD, parseOHLCDate } from '../lib/utils';
 import type { OHLCData, Trade, SplitEvent } from '../types';
 
 interface TradingChartProps {
   data: OHLCData[];
   trades: Trade[];
-  chartData?: any[];
+  chartData?: Array<{ time: UTCTimestamp; open: number; high: number; low: number; close: number }>;
   splits?: SplitEvent[];
 }
 
@@ -14,8 +14,8 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const mainPaneRef = useRef<HTMLDivElement>(null);
   const subPaneRef = useRef<HTMLDivElement>(null);
-  const chartRef = useRef<any>(null);
-  const subChartRef = useRef<any>(null);
+  const chartRef = useRef<IChartApi | null>(null);
+  const subChartRef = useRef<IChartApi | null>(null);
   const [showEMA20, setShowEMA20] = useState(false);
   const [showEMA200, setShowEMA200] = useState(false);
   const [showIBS, setShowIBS] = useState(true);
@@ -124,7 +124,7 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
 
       // Convert data to chart format
       const chartData = data.map(bar => ({
-        time: Math.floor(bar.date.getTime() / 1000) as any,
+        time: Math.floor(bar.date.getTime() / 1000) as UTCTimestamp,
         open: bar.open,
         high: bar.high,
         low: bar.low,
@@ -134,7 +134,7 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
       candlestickSeries.setData(chartData);
 
       // Sub chart content: Volume and IBS
-      let volumeSeries: any = null;
+      let volumeSeries: ISeriesApi<'Histogram'> | null = null;
       if (showVolume) {
         volumeSeries = subChart.addHistogramSeries({
           color: 'rgba(148, 163, 184, 0.35)',
@@ -142,14 +142,14 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
           base: 0,
         });
         const volumeData = data.map(bar => ({
-          time: Math.floor(bar.date.getTime() / 1000) as any,
+          time: Math.floor(bar.date.getTime() / 1000) as UTCTimestamp,
           value: bar.volume,
           color: bar.close >= bar.open ? 'rgba(16, 185, 129, 0.35)' : 'rgba(239, 68, 68, 0.35)'
         }));
         volumeSeries.setData(volumeData);
       }
 
-      let ibsSeries: any = null;
+      let ibsSeries: ISeriesApi<'Line'> | null = null;
       if (showIBS) {
         const ibsLine = subChart.addLineSeries({
           color: '#374151', // dark gray
@@ -158,22 +158,22 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
         const ibsData = data.map(bar => {
           const range = Math.max(1e-9, bar.high - bar.low);
           const ibs = (bar.close - bar.low) / range; // 0..1
-          return { time: Math.floor(bar.date.getTime() / 1000) as any, value: ibs };
+          return { time: Math.floor(bar.date.getTime() / 1000) as UTCTimestamp, value: ibs };
         });
         ibsLine.setData(ibsData);
         try {
           ibsLine.createPriceLine({ price: 0.10, color: '#9ca3af', lineWidth: 1, lineStyle: 2, title: 'IBS 0.10' });
           ibsLine.createPriceLine({ price: 0.75, color: '#9ca3af', lineWidth: 1, lineStyle: 2, title: 'IBS 0.75' });
-        } catch {}
+        } catch (e) { console.warn('Failed to create price lines', e); }
         ibsSeries = ibsLine;
       }
 
       // Sync time scales: main -> sub
       try {
-        chart.timeScale().subscribeVisibleTimeRangeChange((range: any) => {
-          if (range) subChart.timeScale().setVisibleRange(range);
+        chart.timeScale().subscribeVisibleTimeRangeChange((range) => {
+          if (range) subChart.timeScale().setVisibleRange(range as any);
         });
-      } catch {}
+      } catch (e) { console.warn('Failed to sync time scales', e); }
 
       // Add EMA20 if enabled
       if (showEMA20) {
@@ -185,7 +185,7 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
         });
         
         const ema20Data = data.map((bar, index) => ({
-          time: Math.floor(bar.date.getTime() / 1000) as any,
+          time: Math.floor(bar.date.getTime() / 1000) as UTCTimestamp,
           value: ema20Values[index] || bar.close,
         })).filter(point => point.value !== undefined);
         
@@ -202,7 +202,7 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
         });
         
         const ema200Data = data.map((bar, index) => ({
-          time: Math.floor(bar.date.getTime() / 1000) as any,
+          time: Math.floor(bar.date.getTime() / 1000) as UTCTimestamp,
           value: ema200Values[index] || bar.close,
         })).filter(point => point.value !== undefined);
         
@@ -210,19 +210,19 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
       }
 
       // Собираем маркеры: сделки и сплиты
-      const allMarkers: any[] = [];
+      const allMarkers: Array<{ time: UTCTimestamp; position: 'belowBar' | 'aboveBar'; color: string; shape: 'arrowUp'|'arrowDown'|'circle'; text: string } > = [];
       if (trades.length > 0) {
         allMarkers.push(
           ...trades.flatMap(trade => [
             {
-              time: Math.floor(trade.entryDate.getTime() / 1000) as any,
+              time: Math.floor(trade.entryDate.getTime() / 1000) as UTCTimestamp,
               position: 'belowBar' as const,
               color: '#10B981',
               shape: 'arrowUp' as const,
               text: '',
             },
             {
-              time: Math.floor(trade.exitDate.getTime() / 1000) as any,
+              time: Math.floor(trade.exitDate.getTime() / 1000) as UTCTimestamp,
               position: 'aboveBar' as const,
               color: '#EF4444',
               shape: 'arrowDown' as const,
@@ -242,7 +242,7 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
           const ymd = typeof s.date === 'string' ? s.date.slice(0, 10) : formatOHLCYMD(parseOHLCDate(s.date as any));
           const t = ymdToTime.get(ymd) ?? Math.floor(parseOHLCDate(s.date as any).getTime() / 1000);
           return {
-            time: t as any,
+            time: t as UTCTimestamp,
             position: 'belowBar' as const,
             color: '#9C27B0',
             shape: 'circle' as const,
@@ -271,20 +271,20 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
       tooltipEl.style.display = 'none';
       chartContainerRef.current.appendChild(tooltipEl);
 
-      chart.subscribeCrosshairMove((param: any) => {
-        if (!param || !param.time || !param.seriesPrices) {
+      chart.subscribeCrosshairMove((param) => {
+        if (!param || !(param as any).time || !(param as any).seriesPrices) {
           tooltipEl.style.display = 'none';
           return;
         }
-        const price = param.seriesPrices.get(candlestickSeries);
+        const price = (param as any).seriesPrices.get(candlestickSeries);
         if (!price) {
           tooltipEl.style.display = 'none';
           return;
         }
-        const bar = param?.seriesData?.get?.(candlestickSeries);
+        const bar = (param as any)?.seriesData?.get?.(candlestickSeries);
         const o = bar?.open, h = bar?.high, l = bar?.low, c = bar?.close;
-        const vol = volumeSeries ? (param.seriesData?.get?.(volumeSeries) as any)?.value : undefined;
-        const ibsVal = ibsSeries ? (param.seriesData?.get?.(ibsSeries) as any)?.value : undefined;
+        const vol = volumeSeries ? ((param as any).seriesData?.get?.(volumeSeries))?.value : undefined;
+        const ibsVal = ibsSeries ? ((param as any).seriesData?.get?.(ibsSeries))?.value : undefined;
         const pct = o ? (((c - o) / o) * 100) : 0;
         const ibsStr = (typeof ibsVal === 'number') ? ` · IBS ${(ibsVal * 100).toFixed(0)}%` : '';
         tooltipEl.innerHTML = `O ${o?.toFixed?.(2) ?? '-'} H ${h?.toFixed?.(2) ?? '-'} L ${l?.toFixed?.(2) ?? '-'} C ${c?.toFixed?.(2) ?? '-'} · ${pct ? pct.toFixed(2) + '%' : ''}${ibsStr}${vol ? ' · Vol ' + vol.toLocaleString() : ''}`;

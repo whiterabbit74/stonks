@@ -79,7 +79,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         watchThresholdPct: s.watchThresholdPct,
         resultsQuoteProvider: s.resultsQuoteProvider,
         enhancerProvider: s.enhancerProvider,
-        resultsRefreshProvider: (s as any).resultsRefreshProvider || s.resultsQuoteProvider,
+        resultsRefreshProvider: s.resultsRefreshProvider || s.resultsQuoteProvider,
       });
     } catch (e) {
       console.warn('Failed to load app settings:', e instanceof Error ? e.message : e);
@@ -89,7 +89,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   saveSettingsToServer: async () => {
     try {
       const { watchThresholdPct, resultsQuoteProvider, enhancerProvider, resultsRefreshProvider } = get();
-      await DatasetAPI.saveAppSettings({ watchThresholdPct, resultsQuoteProvider, enhancerProvider, resultsRefreshProvider } as any);
+      await DatasetAPI.saveAppSettings({ watchThresholdPct, resultsQuoteProvider, enhancerProvider, resultsRefreshProvider });
     } catch (e) {
       console.warn('Failed to save app settings:', e instanceof Error ? e.message : e);
     }
@@ -373,7 +373,9 @@ export const useAppStore = create<AppState>((set, get) => ({
         const adjusted = adjustOHLCForSplits(currentDataset.data as unknown as OHLCData[], currentDataset.splits);
         set({ marketData: adjusted });
         marketData = adjusted;
-      } catch {}
+      } catch (e) {
+        console.warn('Failed to adjust OHLC for splits', e);
+      }
     }
     if (!marketData.length || !currentStrategy) {
       set({ error: 'Missing data or strategy' });
