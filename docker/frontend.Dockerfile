@@ -11,13 +11,13 @@ ENV NODE_OPTIONS=--dns-result-order=ipv4first \
     NPM_CONFIG_FETCH_TIMEOUT=120000 \
     NPM_CONFIG_FETCH_RETRY_MINTIMEOUT=1000 \
     NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT=180000 \
-    NPM_CONFIG_REGISTRY=https://registry.npmjs.org/
+    NPM_CONFIG_REGISTRY=https://registry.npmmirror.com/
 
 # Install deps
 COPY package*.json ./
-# Install deps with retries
+# Install deps with retries (using robust mirror)
 RUN set -e; for i in 1 2 3 4 5; do \
-      npm ci --no-audit --no-fund --include=dev --registry=https://registry.npmjs.org/ && break; \
+      npm ci --no-audit --no-fund --include=dev --registry=https://registry.npmmirror.com/ && break; \
       echo "npm ci failed (attempt $i), retrying..."; sleep $((i*3)); \
     done
 
