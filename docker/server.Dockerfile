@@ -1,8 +1,17 @@
 FROM node:20-bookworm-slim
 WORKDIR /app
 
+# Stabilize npm in CI/builds and avoid known hangs
+RUN npm i -g npm@latest \
+  && npm config set fund false \
+  && npm config set audit false \
+  && npm config set fetch-retries 5 \
+  && npm config set fetch-timeout 120000 \
+  && npm config set fetch-retry-maxtimeout 180000 \
+  && npm config set registry https://registry.npmjs.org/
+
 COPY server/package*.json ./server/
-RUN cd server && npm ci --no-audit --no-fund
+RUN cd server && npm ci --no-audit --no-fund --omit=dev --registry=https://registry.npmjs.org/
 
 COPY server ./server
 # Inject build id into runtime image (available to server via process.env.BUILD_ID)

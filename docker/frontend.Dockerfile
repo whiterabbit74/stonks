@@ -4,7 +4,15 @@ WORKDIR /app
 
 # Install deps
 COPY package*.json ./
-RUN npm ci --no-audit --no-fund
+# Stabilize npm and install deps
+RUN npm i -g npm@latest \
+  && npm config set fund false \
+  && npm config set audit false \
+  && npm config set fetch-retries 5 \
+  && npm config set fetch-timeout 120000 \
+  && npm config set fetch-retry-maxtimeout 180000 \
+  && npm config set registry https://registry.npmjs.org/ \
+  && npm ci --no-audit --no-fund --include=dev --registry=https://registry.npmjs.org/
 
 # Copy source and build
 COPY . .
