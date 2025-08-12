@@ -1052,23 +1052,29 @@ app.get('/api/datasets', async (req, res) => {
   try {
     const files = await fs.readdir(DATASETS_DIR);
     const datasets = [];
-    
     for (const file of files) {
-      if (file.endsWith('.json')) {
-        const filePath = path.join(DATASETS_DIR, file);
+      // Игнорируем скрытые/мусорные файлы и нестандартные расширения
+      if (!file.endsWith('.json')) continue;
+      if (file.startsWith('._')) continue;
+      const filePath = path.join(DATASETS_DIR, file);
+      try {
         const data = await fs.readJson(filePath);
-        
+        if (!data || typeof data !== 'object') continue;
         // Возвращаем только метаданные без самих данных для списка
-        const { data: _, ...metadata } = data;
+        const { data: _drop, ...metadata } = data;
         const id = toSafeTicker(metadata.ticker || file.replace('.json','').split('_')[0]);
+        if (!id) continue;
         datasets.push({ id, ...metadata });
+      } catch (e) {
+        console.warn(`Skip dataset file ${file}: ${e && e.message ? e.message : 'read error'}`);
+        continue;
       }
     }
-    
-    res.json(datasets);
+    return res.json(datasets);
   } catch (error) {
     console.error('Error reading datasets:', error);
-    res.status(500).json({ error: 'Failed to read datasets' });
+    // Даже при ошибке чтения каталога возвращаем пустой массив, чтобы UI работал оффлайн
+    return res.json([]);
   }
 });
 
