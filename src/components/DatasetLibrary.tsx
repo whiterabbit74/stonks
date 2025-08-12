@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Database, Download, Trash2, Calendar, BarChart3, Eye, EyeOff, Server, ServerOff, RefreshCw } from 'lucide-react';
 import { useAppStore } from '../stores';
 import { createStrategyFromTemplate, STRATEGY_TEMPLATES } from '../lib/strategy';
-import { DatasetAPI, fetchWithCreds } from '../lib/api';
+import { DatasetAPI } from '../lib/api';
 import type { SavedDataset } from '../types';
 import { ConfirmModal } from './ConfirmModal';
 

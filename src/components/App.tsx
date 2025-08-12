@@ -10,7 +10,7 @@ import { SplitsTab } from './SplitsTab';
 import { AppSettings } from './AppSettings';
 import { createStrategyFromTemplate, STRATEGY_TEMPLATES } from '../lib/strategy';
 
-type Tab = 'data' | 'enhance' | 'results' | 'watches' | 'settings';
+type Tab = 'data' | 'enhance' | 'results' | 'watches' | 'splits' | 'settings';
 
 export default function App() {
   const [authorized, setAuthorized] = useState<boolean>(false);
@@ -42,11 +42,11 @@ export default function App() {
     }
   }, [marketData, currentStrategy, setStrategy, loadSettingsFromServer]);
 
-  // Поддержка hash-навигации (#data|#enhance|#results|#watches)
+  // Поддержка hash-навигации (#data|#enhance|#results|#watches|#splits|#settings)
   useEffect(() => {
     const applyHash = () => {
       const h = (window.location.hash || '').replace('#', '');
-      if (h === 'data' || h === 'enhance' || h === 'results' || h === 'watches') {
+      if (h === 'data' || h === 'enhance' || h === 'results' || h === 'watches' || h === 'splits' || h === 'settings') {
         setActiveTab(h as Tab);
       }
     };

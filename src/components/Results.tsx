@@ -34,7 +34,7 @@ export function Results() {
   const [modal, setModal] = useState<{ type: 'info' | 'error' | null; title?: string; message?: string }>({ type: null });
   const [watching, setWatching] = useState(false);
   const [watchBusy, setWatchBusy] = useState(false);
-  const [splitsError, setSplitsError] = useState<string | null>(null);
+  const [, setSplitsError] = useState<string | null>(null);
   
   // Проверка дублей дат в marketData (ключ YYYY-MM-DD)
   const { hasDuplicateDates, duplicateDateKeys } = useMemo(() => {
