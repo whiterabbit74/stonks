@@ -34,9 +34,9 @@ export function Results() {
   const [modal, setModal] = useState<{ type: 'info' | 'error' | null; title?: string; message?: string }>({ type: null });
   const [watching, setWatching] = useState(false);
   const [watchBusy, setWatchBusy] = useState(false);
-  const [splitsError, setSplitsError] = useState<string | null>(null);
-  // NOTE: splitsError is kept for future UI; disable unused var rule for now
+  // NOTE: оставлено для будущего UI (показ ошибок сплитов)
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [splitsError, setSplitsError] = useState<string | null>(null);
   
   // Проверка дублей дат в marketData (ключ YYYY-MM-DD)
   const { hasDuplicateDates, duplicateDateKeys } = useMemo(() => {

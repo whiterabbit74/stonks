@@ -182,12 +182,12 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
              // Prefer logical range for pixel-perfect alignment
              if (
                logical &&
-               typeof (timeScale as any).setVisibleLogicalRange === 'function' &&
-               typeof (chartTimeScale as any).getVisibleLogicalRange === 'function'
+               typeof (timeScale as unknown as { setVisibleLogicalRange?: (r: { from: number; to: number }) => void }).setVisibleLogicalRange === 'function' &&
+               typeof (chartTimeScale as unknown as { getVisibleLogicalRange?: () => { from: number; to: number } }).getVisibleLogicalRange === 'function'
              ) {
-               (timeScale as any).setVisibleLogicalRange(logical);
-             } else if (typeof (toChart.timeScale() as any).setVisibleRange === 'function') {
-               (toChart.timeScale() as any).setVisibleRange(from as { from?: number; to?: number });
+               (timeScale as unknown as { setVisibleLogicalRange: (r: { from: number; to: number }) => void }).setVisibleLogicalRange(logical as { from: number; to: number });
+             } else if (typeof (toChart.timeScale() as unknown as { setVisibleRange?: (r: { from?: number; to?: number }) => void }).setVisibleRange === 'function') {
+               (toChart.timeScale() as unknown as { setVisibleRange: (r: { from?: number; to?: number }) => void }).setVisibleRange(from as { from?: number; to?: number });
              }
            } finally {
              syncing = false;
@@ -195,14 +195,14 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
          };
         // Initial align
         try {
-          const lr = (chart.timeScale() as any).getVisibleLogicalRange?.();
-          if (lr) (subChart.timeScale() as any).setVisibleLogicalRange(lr);
+          const lr = (chart.timeScale() as unknown as { getVisibleLogicalRange?: () => { from: number; to: number } }).getVisibleLogicalRange?.();
+          if (lr) (subChart.timeScale() as unknown as { setVisibleLogicalRange?: (r: { from: number; to: number }) => void }).setVisibleLogicalRange?.(lr);
         } catch (err) { console.warn('Initial align failed', err as Error); }
         chart.timeScale().subscribeVisibleLogicalRangeChange?.((r: unknown) => syncTo(r, subChart));
         subChart.timeScale().subscribeVisibleLogicalRangeChange?.((r: unknown) => syncTo(r, chart));
         // Fallback for older versions
-                 chart.timeScale().subscribeVisibleTimeRangeChange?.((r: { from?: number; to?: number } | undefined) => !('from' in (r||{})) ? null : (subChart.timeScale() as any).setVisibleRange(r));
-         subChart.timeScale().subscribeVisibleTimeRangeChange?.((r: { from?: number; to?: number } | undefined) => !('from' in (r||{})) ? null : (chart.timeScale() as any).setVisibleRange(r));
+                 chart.timeScale().subscribeVisibleTimeRangeChange?.((r: { from?: number; to?: number } | undefined) => !('from' in (r||{})) ? null : (subChart.timeScale() as unknown as { setVisibleRange?: (r: { from?: number; to?: number }) => void }).setVisibleRange?.(r));
+         subChart.timeScale().subscribeVisibleTimeRangeChange?.((r: { from?: number; to?: number } | undefined) => !('from' in (r||{})) ? null : (chart.timeScale() as unknown as { setVisibleRange?: (r: { from?: number; to?: number }) => void }).setVisibleRange?.(r));
        } catch (e) { console.warn('Failed to sync time scales', e as Error); }
 
       // Add EMA20 if enabled
@@ -308,7 +308,7 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
                      try {
              const tgt = (ibsSeries || volumeSeries) as unknown as { clearCrosshairPosition?: () => void };
              tgt?.clearCrosshairPosition?.();
-           } catch {}
+           } catch (err) { console.warn('Clear crosshair for tgt failed', err as Error); }
            return;
         }
         const price = param.seriesPrices.get(candlestickSeries);
@@ -317,7 +317,7 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
            try {
              (ibsSeries as unknown as { clearCrosshairPosition?: () => void })?.clearCrosshairPosition?.();
              (volumeSeries as unknown as { clearCrosshairPosition?: () => void })?.clearCrosshairPosition?.();
-           } catch {}
+           } catch (err) { console.warn('Clear crosshair for series failed', err as Error); }
            return;
          }
         const bar = param?.seriesData?.get?.(candlestickSeries);
@@ -333,13 +333,12 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
                  try {
            const t = param.time as UTCTimestamp;
            const setPos = (s: unknown, value: number) => {
-             if (s && typeof (s as any).setCrosshairPosition === 'function') {
-               (s as any).setCrosshairPosition(value, t);
-             }
+             const api = s as { setCrosshairPosition?: (v: number, t: UTCTimestamp) => void };
+             api?.setCrosshairPosition?.(value, t);
            };
            if (typeof ibsVal === 'number') setPos(ibsSeries, ibsVal);
            else if (typeof vol === 'number') setPos(volumeSeries, vol);
-         } catch {}
+         } catch (err) { console.warn('Mirror crosshair failed', err as Error); }
        });
 
       // Also reflect crosshair from sub-pane to main chart

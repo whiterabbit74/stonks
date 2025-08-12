@@ -379,10 +379,11 @@ export class BacktestEngine {
       case 'percentage':
         return tradeValue * (commission.percentage || 0);
       
-      case 'combined':
+      case 'combined': {
         const fixedPart = commission.fixed || 0;
         const percentagePart = tradeValue * (commission.percentage || 0);
         return fixedPart + percentagePart;
+      }
       
       default:
         return 0;
@@ -656,26 +657,29 @@ export class BacktestEngine {
     const closePrices = this.data.map(bar => bar.close);
     
     switch (indicatorType) {
-      case 'SMA':
+      case 'SMA': {
         const smaPeriod = this.getIndicatorPeriod(condition, 20);
         if (smaPeriod > this.data.length) {
           return new Array(this.data.length).fill(NaN);
         }
         return IndicatorEngine.calculateSMA(closePrices, smaPeriod);
+      }
       
-      case 'EMA':
+      case 'EMA': {
         const emaPeriod = this.getIndicatorPeriod(condition, 20);
         if (emaPeriod > this.data.length) {
           return new Array(this.data.length).fill(NaN);
         }
         return IndicatorEngine.calculateEMA(closePrices, emaPeriod);
+      }
       
-      case 'RSI':
+      case 'RSI': {
         const rsiPeriod = this.getIndicatorPeriod(condition, 14);
         if (rsiPeriod + 1 > this.data.length) {
           return new Array(this.data.length).fill(NaN);
         }
         return IndicatorEngine.calculateRSI(closePrices, rsiPeriod);
+      }
       
       case 'IBS':
         return IndicatorEngine.calculateIBS(this.data);

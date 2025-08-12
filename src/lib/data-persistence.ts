@@ -140,7 +140,7 @@ export function getDatasetInfo(file: File): Promise<Omit<SavedDataset, 'data'>> 
         const dataset = JSON.parse(jsonString) as SavedDataset;
         
         // Возвращаем только метаданные без данных
-        const { data, ...info } = dataset;
+        const { data: _dropped, ...info } = dataset; void _dropped;
         resolve(info);
       } catch (error) {
         reject(new Error(`Ошибка при чтении метаданных: ${error instanceof Error ? error.message : 'Неизвестная ошибка'}`));
