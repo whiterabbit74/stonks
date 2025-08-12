@@ -6,3 +6,4 @@ export { BacktestRunner } from './BacktestRunner';
 export { Results } from './Results';
 export { TelegramWatches } from './TelegramWatches';
 export { AppSettings } from './AppSettings';
+export { Footer } from './Footer';
