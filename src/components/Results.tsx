@@ -758,7 +758,7 @@ export function Results() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {trades.map((trade: any, index: number) => {
+              {trades.map((trade, index: number) => {
                 const investment = trade.context?.initialInvestment || (trade.quantity * trade.entryPrice);
                 return (
                   <tr key={index} className="hover:bg-gray-50">
@@ -816,10 +816,10 @@ export function Results() {
               <tfoot className="bg-gray-100 border-t-2 border-gray-300">
                 <tr className="font-bold text-base">
                   <td className="p-4 text-gray-700" colSpan={8}>ИТОГО ({trades.length} сделок)</td>
-                  <td className={`p-4 text-right font-mono font-bold text-lg ${
-                    trades.reduce((sum: number, t: any) => sum + t.pnl, 0) > 0 ? 'text-green-600' : 'text-red-600'
+                                     <td className={`p-4 text-right font-mono font-bold text-lg ${
+                    trades.reduce((sum: number, t) => sum + t.pnl, 0) > 0 ? 'text-green-600' : 'text-red-600'
                   }`}>
-                    ${trades.reduce((sum: number, t: any) => sum + t.pnl, 0).toFixed(2)}
+                    ${trades.reduce((sum: number, t) => sum + t.pnl, 0).toFixed(2)}
                   </td>
                   <td className={`p-4 text-right font-mono font-bold text-lg ${
                     metrics.totalReturn > 0 ? 'text-green-600' : 'text-red-600'
