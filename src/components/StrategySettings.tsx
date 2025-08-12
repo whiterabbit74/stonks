@@ -1,9 +1,7 @@
 import { useState } from 'react';
-import { X, Save, RotateCcw, Bell } from 'lucide-react';
+import { X, Save, RotateCcw } from 'lucide-react';
 import type { Strategy } from '../types';
 import { createDefaultStrategy } from '../lib/strategy';
-import { useAppStore } from '../stores';
-import { DatasetAPI } from '../lib/api';
 
 interface StrategySettingsProps {
   strategy: Strategy;
@@ -13,9 +11,6 @@ interface StrategySettingsProps {
 
 export function StrategySettings({ strategy, onSave, onClose }: StrategySettingsProps) {
   const [editedStrategy, setEditedStrategy] = useState<Strategy>({ ...strategy });
-  const { watchThresholdPct, setWatchThresholdPct, resultsQuoteProvider, resultsRefreshProvider, enhancerProvider, setResultsQuoteProvider, setResultsRefreshProvider, setEnhancerProvider } = useAppStore() as any;
-  const [testMsg, setTestMsg] = useState('Проверка уведомлений из приложения ✅');
-  const [sendingTest, setSendingTest] = useState(false);
 
   const handleParameterChange = (key: string, value: number) => {
     setEditedStrategy(prev => ({
@@ -39,7 +34,6 @@ export function StrategySettings({ strategy, onSave, onClose }: StrategySettings
 
   const handleSave = async () => {
     onSave(editedStrategy);
-    try { await (useAppStore.getState() as any).saveSettingsToServer(); } catch {}
     onClose();
   };
 
@@ -273,60 +267,6 @@ export function StrategySettings({ strategy, onSave, onClose }: StrategySettings
                   />
                   <span className="text-sm text-gray-500">%</span>
                 </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Notifications & Providers */}
-          <div>
-            <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center gap-2"><Bell className="w-4 h-4" /> Уведомления и провайдеры</h3>
-            <div className="space-y-6">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Граница близости к IBS-цели для уведомления (%)</label>
-                <p className="text-xs text-gray-500 mb-2">Диапазон 0–20%. По умолчанию 5%.</p>
-                <div className="flex items-center gap-4">
-                  <input type="range" min={0} max={20} step={0.5} value={watchThresholdPct} onChange={(e)=>setWatchThresholdPct(Number(e.target.value))} className="flex-1" />
-                  <input type="number" min={0} max={20} step={0.5} value={watchThresholdPct} onChange={(e)=>setWatchThresholdPct(Number(e.target.value))} className="w-24 px-3 py-2 border border-gray-300 rounded-md text-sm" />
-                  <span className="text-sm text-gray-500">%</span>
-                </div>
-              </div>
-
-              <div className="p-4 rounded-lg border bg-gray-50">
-                <div className="text-sm font-medium text-gray-700 mb-2">Тест сообщения в Telegram</div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <input value={testMsg} onChange={(e)=>setTestMsg(e.target.value)} className="flex-1 min-w-[260px] px-3 py-2 rounded-md border" />
-                  <button onClick={async ()=>{ setSendingTest(true); try { await DatasetAPI.sendTelegramTest(testMsg); } finally { setSendingTest(false);} }} disabled={sendingTest} className="px-3 py-1.5 rounded-md bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:bg-gray-400">
-                    {sendingTest ? 'Отправка…' : 'Отправить тест'}
-                  </button>
-                </div>
-              </div>
-
-              <div className="p-4 rounded-lg border bg-white">
-                <div className="text-sm font-medium text-gray-900 mb-3">Провайдеры данных</div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Котировки на странице результатов</label>
-                    <div className="flex gap-2">
-                      <button onClick={()=>setResultsQuoteProvider('finnhub')} className={`px-3 py-1 rounded text-sm ${resultsQuoteProvider==='finnhub'?'bg-gray-900 text-white':'bg-gray-200 text-gray-800'}`}>Finnhub</button>
-                      <button onClick={()=>setResultsQuoteProvider('alpha_vantage')} className={`px-3 py-1 rounded text-sm ${resultsQuoteProvider==='alpha_vantage'?'bg-gray-900 text-white':'bg-gray-200 text-gray-800'}`}>Alpha Vantage</button>
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Кнопка «Актуализировать данные» (результаты)</label>
-                    <div className="flex gap-2">
-                      <button onClick={()=>setResultsRefreshProvider('finnhub')} className={`px-3 py-1 rounded text-sm ${resultsRefreshProvider==='finnhub'?'bg-gray-900 text-white':'bg-gray-200 text-gray-800'}`}>Finnhub</button>
-                      <button onClick={()=>setResultsRefreshProvider('alpha_vantage')} className={`px-3 py-1 rounded text-sm ${resultsRefreshProvider==='alpha_vantage'?'bg-gray-900 text-white':'bg-gray-200 text-gray-800'}`}>Alpha Vantage</button>
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Загрузка/дополнение данных (вкладка Доп. данные)</label>
-                    <div className="flex gap-2">
-                      <button onClick={()=>setEnhancerProvider('alpha_vantage')} className={`px-3 py-1 rounded text-sm ${enhancerProvider==='alpha_vantage'?'bg-gray-900 text-white':'bg-gray-200 text-gray-800'}`}>Alpha Vantage</button>
-                      <button onClick={()=>setEnhancerProvider('finnhub')} className={`px-3 py-1 rounded text-sm ${enhancerProvider==='finnhub'?'bg-gray-900 text-white':'bg-gray-200 text-gray-800'}`}>Finnhub</button>
-                    </div>
-                  </div>
-                </div>
-                <p className="text-xs text-gray-500 mt-2">Настройки провайдеров применяются глобально.</p>
               </div>
             </div>
           </div>

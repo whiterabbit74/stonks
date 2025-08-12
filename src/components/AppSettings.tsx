@@ -11,6 +11,8 @@ export function AppSettings() {
   const setResultsQuoteProvider = useAppStore(s => s.setResultsQuoteProvider);
   const setResultsRefreshProvider = useAppStore(s => s.setResultsRefreshProvider);
   const setEnhancerProvider = useAppStore(s => s.setEnhancerProvider);
+  const watchThresholdPct = useAppStore(s => s.watchThresholdPct);
+  const setWatchThresholdPct = useAppStore(s => s.setWatchThresholdPct);
 
   useEffect(() => { loadSettingsFromServer(); }, [loadSettingsFromServer]);
 
@@ -49,6 +51,18 @@ export function AppSettings() {
   return (
     <div className="space-y-4">
       <h2 className="text-xl font-semibold text-gray-900">Настройки</h2>
+
+      {/* Уведомления */}
+      <div className="p-4 rounded-lg border">
+        <div className="text-sm font-medium text-gray-700 mb-2">Уведомления</div>
+        <label className="block text-sm font-medium text-gray-700 mb-2">Граница близости к IBS-цели для уведомления (%)</label>
+        <p className="text-xs text-gray-500 mb-2">Диапазон 0–20%. По умолчанию 5%.</p>
+        <div className="flex items-center gap-4">
+          <input type="range" min={0} max={20} step={0.5} value={watchThresholdPct} onChange={(e)=>setWatchThresholdPct(Number(e.target.value))} className="flex-1" />
+          <input type="number" min={0} max={20} step={0.5} value={watchThresholdPct} onChange={(e)=>setWatchThresholdPct(Number(e.target.value))} className="w-24 px-3 py-2 border border-gray-300 rounded-md text-sm" />
+          <span className="text-sm text-gray-500">%</span>
+        </div>
+      </div>
 
       {/* Провайдеры данных */}
       <div className="p-4 rounded-lg border">
