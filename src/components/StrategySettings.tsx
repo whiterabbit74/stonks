@@ -9,7 +9,7 @@ interface StrategySettingsProps {
   onClose: () => void;
 }
 
-export function StrategySettings({ strategy, onSave, onClose }: StrategySettingsProps) {
+export function StrategySettings({ strategy, onSave, onClose, mode = 'modal' }: StrategySettingsProps & { mode?: 'modal' | 'inline' }) {
   const [editedStrategy, setEditedStrategy] = useState<Strategy>({ ...strategy });
 
   const handleParameterChange = (key: string, value: number) => {
@@ -34,7 +34,7 @@ export function StrategySettings({ strategy, onSave, onClose }: StrategySettings
 
   const handleSave = async () => {
     onSave(editedStrategy);
-    onClose();
+    if (mode === 'modal') onClose();
   };
 
   const handleReset = () => {
@@ -83,222 +83,234 @@ export function StrategySettings({ strategy, onSave, onClose }: StrategySettings
 
   const parameterConfig = getParameterConfig(strategy.id);
 
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
-        {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b">
-          <div>
-            <h2 className="text-xl font-semibold text-gray-900">Параметры стратегии</h2>
-            <p className="text-sm text-gray-600 mt-1">{strategy.name}</p>
-            {strategy.id === 'ibs-mean-reversion' && (
-              <p className="text-xs text-blue-600 mt-1">
-                IBS = (Close - Low) / (High - Low) • Measures where close is within daily range
-              </p>
-            )}
-          </div>
+  const content = (
+    <div className={`bg-white rounded-lg ${mode === 'modal' ? 'shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto' : 'border'}`}>
+      {/* Header */}
+      <div className="flex items-center justify-between p-6 border-b">
+        <div>
+          <h2 className="text-xl font-semibold text-gray-900">Параметры стратегии</h2>
+          <p className="text-sm text-gray-600 mt-1">{strategy.name}</p>
+          {strategy.id === 'ibs-mean-reversion' && (
+            <p className="text-xs text-blue-600 mt-1">
+              IBS = (Close - Low) / (High - Low) • Measures where close is within daily range
+            </p>
+          )}
+        </div>
+        {mode === 'modal' && (
           <button
             onClick={onClose}
             className="p-2 hover:bg-gray-100 rounded-lg"
           >
             <X className="w-5 h-5" />
           </button>
+        )}
+      </div>
+
+      {/* Content */}
+      <div className="p-6 space-y-6">
+        {/* Strategy Parameters */}
+        <div>
+          <h3 className="text-lg font-medium text-gray-900 mb-4">Параметры стратегии</h3>
+          <div className="space-y-4">
+            {Object.entries(parameterConfig).map(([key, config]) => (
+              <div key={key}>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  {config.label}
+                </label>
+                {config.description && (
+                  <p className="text-xs text-gray-500 mb-2">{config.description}</p>
+                )}
+                <div className="flex items-center gap-4">
+                  <input
+                    type="range"
+                    min={config.min}
+                    max={config.max}
+                    step={config.step || 1}
+                    value={editedStrategy.parameters[key] as number || config.min}
+                    onChange={(e) => handleParameterChange(key, Number(e.target.value))}
+                    className="flex-1"
+                  />
+                  <input
+                    type="number"
+                    min={config.min}
+                    max={config.max}
+                    step={config.step || 1}
+                    value={editedStrategy.parameters[key] as number || config.min}
+                    onChange={(e) => handleParameterChange(key, Number(e.target.value))}
+                    className="w-20 px-3 py-2 border border-gray-300 rounded-md text-sm"
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
 
-        {/* Content */}
-        <div className="p-6 space-y-6">
-          {/* Strategy Parameters */}
-          <div>
-            <h3 className="text-lg font-medium text-gray-900 mb-4">Параметры стратегии</h3>
-            <div className="space-y-4">
-              {Object.entries(parameterConfig).map(([key, config]) => (
-                <div key={key}>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    {config.label}
-                  </label>
-                  {config.description && (
-                    <p className="text-xs text-gray-500 mb-2">{config.description}</p>
-                  )}
-                  <div className="flex items-center gap-4">
-                    <input
-                      type="range"
-                      min={config.min}
-                      max={config.max}
-                      step={config.step || 1}
-                      value={editedStrategy.parameters[key] as number || config.min}
-                      onChange={(e) => handleParameterChange(key, Number(e.target.value))}
-                      className="flex-1"
-                    />
-                    <input
-                      type="number"
-                      min={config.min}
-                      max={config.max}
-                      step={config.step || 1}
-                      value={editedStrategy.parameters[key] as number || config.min}
-                      onChange={(e) => handleParameterChange(key, Number(e.target.value))}
-                      className="w-20 px-3 py-2 border border-gray-300 rounded-md text-sm"
-                    />
-                  </div>
-                </div>
-              ))}
+        {/* Risk Management */}
+        <div>
+          <h3 className="text-lg font-medium text-gray-900 mb-4">Риск‑менеджмент</h3>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                 Начальный капитал ($)
+              </label>
+              <input
+                type="number"
+                min={1000}
+                max={1000000}
+                step={1000}
+                value={editedStrategy.riskManagement.initialCapital}
+                onChange={(e) => handleRiskManagementChange('initialCapital', Number(e.target.value))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md"
+              />
             </div>
-          </div>
 
-          {/* Risk Management */}
-          <div>
-            <h3 className="text-lg font-medium text-gray-900 mb-4">Риск‑менеджмент</h3>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                   Начальный капитал ($)
-                </label>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                 Использование капитала (%)
+              </label>
+              <p className="text-xs text-gray-500 mb-2">
+                Процент депозита, используемый в каждой сделке. 100% = весь доступный капитал
+              </p>
+              <div className="flex items-center gap-4">
+                <input
+                  type="range"
+                  min={1}
+                  max={100}
+                  value={editedStrategy.riskManagement.capitalUsage}
+                  onChange={(e) => handleRiskManagementChange('capitalUsage', Number(e.target.value))}
+                  className="flex-1"
+                />
                 <input
                   type="number"
-                  min={1000}
-                  max={1000000}
-                  step={1000}
-                  value={editedStrategy.riskManagement.initialCapital}
-                  onChange={(e) => handleRiskManagementChange('initialCapital', Number(e.target.value))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                  min={1}
+                  max={100}
+                  value={editedStrategy.riskManagement.capitalUsage}
+                  onChange={(e) => handleRiskManagementChange('capitalUsage', Number(e.target.value))}
+                  className="w-20 px-3 py-2 border border-gray-300 rounded-md text-sm"
                 />
+                <span className="text-sm text-gray-500">%</span>
               </div>
+            </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                   Использование капитала (%)
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-sm font-medium text-gray-700">
+                   Стоп‑лосс (%)
                 </label>
-                <p className="text-xs text-gray-500 mb-2">
-                  Процент депозита, используемый в каждой сделке. 100% = весь доступный капитал
-                </p>
-                <div className="flex items-center gap-4">
+                <label className="flex items-center gap-2 text-sm text-gray-700">
                   <input
-                    type="range"
-                    min={1}
-                    max={100}
-                    value={editedStrategy.riskManagement.capitalUsage}
-                    onChange={(e) => handleRiskManagementChange('capitalUsage', Number(e.target.value))}
-                    className="flex-1"
+                    type="checkbox"
+                    checked={!!editedStrategy.riskManagement.useStopLoss}
+                    onChange={(e) => handleRiskManagementChange('useStopLoss', e.target.checked)}
                   />
-                  <input
-                    type="number"
-                    min={1}
-                    max={100}
-                    value={editedStrategy.riskManagement.capitalUsage}
-                    onChange={(e) => handleRiskManagementChange('capitalUsage', Number(e.target.value))}
-                    className="w-20 px-3 py-2 border border-gray-300 rounded-md text-sm"
-                  />
-                  <span className="text-sm text-gray-500">%</span>
-                </div>
+                  Использовать
+                </label>
               </div>
-
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <label className="block text-sm font-medium text-gray-700">
-                     Стоп‑лосс (%)
-                  </label>
-                  <label className="flex items-center gap-2 text-sm text-gray-700">
-                    <input
-                      type="checkbox"
-                      checked={!!editedStrategy.riskManagement.useStopLoss}
-                      onChange={(e) => handleRiskManagementChange('useStopLoss', e.target.checked)}
-                    />
-                    Использовать
-                  </label>
-                </div>
-                <div className="flex items-center gap-4">
-                  <input
-                    type="range"
-                    min={0}
-                    max={10}
-                    step={0.5}
-                    value={(editedStrategy.riskManagement.stopLoss ?? 0)}
-                    onChange={(e) => handleRiskManagementChange('stopLoss', Number(e.target.value))}
-                    className="flex-1"
-                    disabled={!editedStrategy.riskManagement.useStopLoss}
-                  />
-                  <input
-                    type="number"
-                    min={0}
-                    max={10}
-                    step={0.5}
-                    value={(editedStrategy.riskManagement.stopLoss ?? 0)}
-                    onChange={(e) => handleRiskManagementChange('stopLoss', Number(e.target.value))}
-                    className="w-20 px-3 py-2 border border-gray-300 rounded-md text-sm"
-                    disabled={!editedStrategy.riskManagement.useStopLoss}
-                  />
-                  <span className="text-sm text-gray-500">%</span>
-                </div>
+              <div className="flex items-center gap-4">
+                <input
+                  type="range"
+                  min={0}
+                  max={10}
+                  step={0.5}
+                  value={(editedStrategy.riskManagement.stopLoss ?? 0)}
+                  onChange={(e) => handleRiskManagementChange('stopLoss', Number(e.target.value))}
+                  className="flex-1"
+                  disabled={!editedStrategy.riskManagement.useStopLoss}
+                />
+                <input
+                  type="number"
+                  min={0}
+                  max={10}
+                  step={0.5}
+                  value={(editedStrategy.riskManagement.stopLoss ?? 0)}
+                  onChange={(e) => handleRiskManagementChange('stopLoss', Number(e.target.value))}
+                  className="w-20 px-3 py-2 border border-gray-300 rounded-md text-sm"
+                  disabled={!editedStrategy.riskManagement.useStopLoss}
+                />
+                <span className="text-sm text-gray-500">%</span>
               </div>
+            </div>
 
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <label className="block text-sm font-medium text-gray-700">
-                     Тейк‑профит (%)
-                  </label>
-                  <label className="flex items-center gap-2 text-sm text-gray-700">
-                    <input
-                      type="checkbox"
-                      checked={!!editedStrategy.riskManagement.useTakeProfit}
-                      onChange={(e) => handleRiskManagementChange('useTakeProfit', e.target.checked)}
-                    />
-                    Использовать
-                  </label>
-                </div>
-                <div className="flex items-center gap-4">
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-sm font-medium text-gray-700">
+                   Тейк‑профит (%)
+                </label>
+                <label className="flex items-center gap-2 text-sm text-gray-700">
                   <input
-                    type="range"
-                    min={0}
-                    max={10}
-                    step={0.5}
-                    value={(editedStrategy.riskManagement.takeProfit ?? 0)}
-                    onChange={(e) => handleRiskManagementChange('takeProfit', Number(e.target.value))}
-                    className="flex-1"
-                    disabled={!editedStrategy.riskManagement.useTakeProfit}
+                    type="checkbox"
+                    checked={!!editedStrategy.riskManagement.useTakeProfit}
+                    onChange={(e) => handleRiskManagementChange('useTakeProfit', e.target.checked)}
                   />
-                  <input
-                    type="number"
-                    min={0}
-                    max={10}
-                    step={0.5}
-                    value={(editedStrategy.riskManagement.takeProfit ?? 0)}
-                    onChange={(e) => handleRiskManagementChange('takeProfit', Number(e.target.value))}
-                    className="w-20 px-3 py-2 border border-gray-300 rounded-md text-sm"
-                    disabled={!editedStrategy.riskManagement.useTakeProfit}
-                  />
-                  <span className="text-sm text-gray-500">%</span>
-                </div>
+                  Использовать
+                </label>
+              </div>
+              <div className="flex items-center gap-4">
+                <input
+                  type="range"
+                  min={0}
+                  max={10}
+                  step={0.5}
+                  value={(editedStrategy.riskManagement.takeProfit ?? 0)}
+                  onChange={(e) => handleRiskManagementChange('takeProfit', Number(e.target.value))}
+                  className="flex-1"
+                  disabled={!editedStrategy.riskManagement.useTakeProfit}
+                />
+                <input
+                  type="number"
+                  min={0}
+                  max={10}
+                  step={0.5}
+                  value={(editedStrategy.riskManagement.takeProfit ?? 0)}
+                  onChange={(e) => handleRiskManagementChange('takeProfit', Number(e.target.value))}
+                  className="w-20 px-3 py-2 border border-gray-300 rounded-md text-sm"
+                  disabled={!editedStrategy.riskManagement.useTakeProfit}
+                />
+                <span className="text-sm text-gray-500">%</span>
               </div>
             </div>
           </div>
         </div>
+      </div>
 
-        {/* Footer */}
-        <div className="flex items-center justify-between p-6 border-t bg-gray-50">
-          <button
-            onClick={handleReset}
-            className="inline-flex items-center gap-2 px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
-          >
-            <RotateCcw className="w-4 h-4" />
-            Сбросить по умолчанию
-          </button>
-          
-          <div className="flex gap-3">
+      {/* Footer */}
+      <div className="flex items-center justify-between p-6 border-t bg-gray-50">
+        <button
+          onClick={handleReset}
+          className="inline-flex items-center gap-2 px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+        >
+          <RotateCcw className="w-4 h-4" />
+          Сбросить по умолчанию
+        </button>
+        
+        <div className="flex gap-3">
+          {mode === 'modal' && (
             <button
               onClick={onClose}
               className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
             >
               Отмена
             </button>
-            <button
-              onClick={handleSave}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-            >
-              <Save className="w-4 h-4" />
-              Сохранить
-            </button>
-          </div>
+          )}
+          <button
+            onClick={handleSave}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+          >
+            <Save className="w-4 h-4" />
+            Сохранить
+          </button>
         </div>
       </div>
+    </div>
+  );
+
+  if (mode === 'inline') {
+    return content;
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      {content}
     </div>
   );
 }
