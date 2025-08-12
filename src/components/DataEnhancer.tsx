@@ -3,7 +3,7 @@ import { TrendingUp, AlertCircle, CheckCircle } from 'lucide-react';
 import { useAppStore } from '../stores';
 import type { OHLCData } from '../types';
 import { parseOHLCDate, adjustOHLCForSplits } from '../lib/utils';
-import { fetchWithCreds, API_BASE_URL } from '../lib/api';
+import { fetchWithCreds, API_BASE_URL, DatasetAPI } from '../lib/api';
 
 interface DataEnhancerProps {
   onNext?: () => void;
@@ -67,9 +67,11 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
     try {
       const startDate = getStartDateForPeriod();
 
-      const realData = await fetchRealMarketData(ticker.trim().toUpperCase(), startDate);
+      const symbol = ticker.trim().toUpperCase();
+      const realData = await fetchRealMarketData(symbol, startDate);
       const rawRows = realData.data;
-      const splitEvents = realData.splits || [];
+      // Единый источник: центральный серверный splits.json
+      const splitEvents = await DatasetAPI.getSplits(symbol).catch(() => [] as { date: string; factor: number }[]);
       
       if (rawRows.length === 0) {
         setError('No data found or ticker does not exist');

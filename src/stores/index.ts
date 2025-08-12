@@ -150,8 +150,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       const dataset = await loadDatasetFromJSON(file);
       const { savedDatasets } = get();
 
-      // Применяем back-adjust строго по сплитам из JSON (если есть)
-      const adjustedData = adjustOHLCForSplits(dataset.data, dataset.splits);
+      // Применяем back-adjust строго по сплитам из центрального хранилища
+      let splits: SplitEvent[] = [];
+      try { splits = await DatasetAPI.getSplits(dataset.ticker); } catch { splits = []; }
+      const adjustedData = adjustOHLCForSplits(dataset.data, splits);
       
       // Проверяем, есть ли уже такой датасет в библиотеке
       const existingIndex = savedDatasets.findIndex(d => d.name === dataset.name);
@@ -171,7 +173,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ 
         marketData: adjustedData,
         currentDataset: dataset,
-        currentSplits: dataset.splits || [],
+        currentSplits: splits || [],
         savedDatasets: updatedDatasets,
         isLoading: false 
       });
@@ -210,7 +212,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   saveDatasetToServer: async (ticker: string, name?: string) => {
-    const { marketData, currentSplits } = get();
+    const { marketData } = get();
     
     if (!marketData.length) {
       set({ error: 'Нет данных для сохранения' });
@@ -220,19 +222,18 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ isLoading: true, error: null });
 
     try {
-      // Создаем новый датасет
+      // Создаем новый датасет (без поля splits)
       const dataset: SavedDataset = {
         name: name || `${ticker}_${new Date().toISOString().split('T')[0]}`,
         ticker: ticker.toUpperCase(),
         data: [...marketData],
-        splits: currentSplits && currentSplits.length ? [...currentSplits] : undefined,
         uploadDate: new Date().toISOString(),
         dataPoints: marketData.length,
         dateRange: {
           from: marketData[0].date.toISOString().split('T')[0],
           to: marketData[marketData.length - 1].date.toISOString().split('T')[0]
         }
-      };
+      } as SavedDataset;
 
       await DatasetAPI.saveDataset(dataset);
       
@@ -292,7 +293,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   updateDatasetOnServer: async () => {
-    const { currentDataset, marketData, currentSplits } = get();
+    const { currentDataset, marketData } = get();
     if (!currentDataset) {
       set({ error: 'Нет загруженного датасета для обновления' });
       return;
@@ -307,14 +308,13 @@ export const useAppStore = create<AppState>((set, get) => ({
         name: currentDataset.name,
         ticker: currentDataset.ticker,
         data: [...marketData],
-        splits: currentSplits && currentSplits.length ? [...currentSplits] : undefined,
         uploadDate: new Date().toISOString(),
         dataPoints: marketData.length,
         dateRange: {
           from: marketData[0].date.toISOString().split('T')[0],
           to: marketData[marketData.length - 1].date.toISOString().split('T')[0],
         },
-      };
+      } as SavedDataset;
       // Используем стабильный ID по тикеру, а не name
       await DatasetAPI.updateDataset(currentDataset.ticker, updated);
       await get().loadDatasetsFromServer();
