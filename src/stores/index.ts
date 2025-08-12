@@ -13,6 +13,7 @@ interface AppState {
   currentDataset: SavedDataset | null;
   savedDatasets: Omit<SavedDataset, 'data'>[]; // Список метаданных датасетов с сервера
   currentSplits: SplitEvent[];
+  lastAppliedSplitsKey: string | null;
   isLoading: boolean;
   error: string | null;
   // Provider settings
@@ -61,6 +62,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   currentDataset: null,
   savedDatasets: [],
   currentSplits: [],
+  lastAppliedSplitsKey: null,
   isLoading: false,
   error: null,
   dataProvider: 'alpha_vantage',
@@ -108,10 +110,12 @@ export const useAppStore = create<AppState>((set, get) => ({
         try { splits = await DatasetAPI.getSplits(guessTicker); } catch { splits = []; }
       }
       const adjustedData = adjustOHLCForSplits(data, splits);
+      const key = JSON.stringify((splits || []).slice().sort((a, b) => a.date.localeCompare(b.date)));
       set({ 
         marketData: adjustedData, 
         currentDataset: null, // Сбрасываем сохраненный датасет при загрузке CSV
         currentSplits: splits || [],
+        lastAppliedSplitsKey: (splits && splits.length ? key : null),
         isLoading: false 
       });
     } catch (error) {
@@ -127,7 +131,15 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   setSplits: (splits: SplitEvent[]) => {
-    set({ currentSplits: splits });
+    const key = JSON.stringify((splits || []).slice().sort((a, b) => a.date.localeCompare(b.date)));
+    const { marketData, lastAppliedSplitsKey } = get();
+    // Если данные уже есть и сплиты впервые появились — применим back-adjust на клиенте
+    if (Array.isArray(marketData) && marketData.length > 0 && Array.isArray(splits) && splits.length > 0 && !lastAppliedSplitsKey) {
+      const adjusted = adjustOHLCForSplits(marketData, splits);
+      set({ currentSplits: splits, marketData: adjusted, lastAppliedSplitsKey: key });
+    } else {
+      set({ currentSplits: splits });
+    }
   },
 
   setDataProvider: (provider: 'alpha_vantage' | 'finnhub') => {
@@ -154,6 +166,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       let splits: SplitEvent[] = [];
       try { splits = await DatasetAPI.getSplits(dataset.ticker); } catch { splits = []; }
       const adjustedData = adjustOHLCForSplits(dataset.data, splits);
+      const key = JSON.stringify((splits || []).slice().sort((a, b) => a.date.localeCompare(b.date)));
       
       // Проверяем, есть ли уже такой датасет в библиотеке
       const existingIndex = savedDatasets.findIndex(d => d.name === dataset.name);
@@ -174,6 +187,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         marketData: adjustedData,
         currentDataset: dataset,
         currentSplits: splits || [],
+        lastAppliedSplitsKey: (splits && splits.length ? key : null),
         savedDatasets: updatedDatasets,
         isLoading: false 
       });
@@ -264,10 +278,12 @@ export const useAppStore = create<AppState>((set, get) => ({
         let splits: SplitEvent[] = [];
         try { splits = await DatasetAPI.getSplits(dataset.ticker); } catch { splits = []; }
         const adjusted = adjustOHLCForSplits(dataset.data, splits);
+        const key = JSON.stringify((splits || []).slice().sort((a, b) => a.date.localeCompare(b.date)));
       set({
         marketData: adjusted,
         currentDataset: dataset,
         currentSplits: splits,
+        lastAppliedSplitsKey: (splits && splits.length ? key : null),
         isLoading: false,
         error: null
       });
@@ -390,7 +406,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         let splits: SplitEvent[] = [];
         try { splits = await DatasetAPI.getSplits(currentDataset.ticker); } catch { splits = []; }
         const adjusted = adjustOHLCForSplits(currentDataset.data as unknown as OHLCData[], splits);
-        set({ marketData: adjusted, currentSplits: splits });
+        const key = JSON.stringify((splits || []).slice().sort((a, b) => a.date.localeCompare(b.date)));
+        set({ marketData: adjusted, currentSplits: splits, lastAppliedSplitsKey: (splits && splits.length ? key : null) });
         marketData = adjusted;
       } catch (e) {
         console.warn('Failed to adjust OHLC for splits', e);
