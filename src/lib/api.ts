@@ -42,7 +42,8 @@ export class DatasetAPI {
   static async getSplits(symbol: string): Promise<Array<{ date: string; factor: number }>> {
     const response = await fetchWithCreds(`${API_BASE_URL}/splits/${encodeURIComponent(symbol)}`);
     if (!response.ok) {
-      throw new Error(`Failed to fetch splits: ${response.status} ${response.statusText}`);
+      // Жёсткая политика: нет внешних провайдеров — только локальные сплиты; ошибки проглатываем → []
+      return [];
     }
     return response.json();
   }

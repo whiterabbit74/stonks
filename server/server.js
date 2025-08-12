@@ -1018,65 +1018,7 @@ async function fetchFromTwelveData(symbol, startDate, endDate) {
   });
 }
 
-// Finnhub: получить сплиты отдельно
-async function fetchSplitsFromFinnhub(symbol, startDate, endDate) {
-  if (!API_CONFIG.FINNHUB_API_KEY) {
-    const err = new Error('Finnhub API key not configured');
-    err.status = 500;
-    throw err;
-  }
-  const fromStr = new Date(startDate * 1000).toISOString().split('T')[0];
-  const toStr = new Date(endDate * 1000).toISOString().split('T')[0];
-  const url = `https://finnhub.io/api/v1/stock/split?symbol=${encodeURIComponent(symbol)}&from=${fromStr}&to=${toStr}&token=${API_CONFIG.FINNHUB_API_KEY}`;
-  return new Promise((resolve, reject) => {
-    https.get(url, (response) => {
-      let data = '';
-      response.on('data', (chunk) => data += chunk);
-      response.on('end', () => {
-        try {
-          if (data && data.trim().startsWith('<')) {
-            const err = new Error('Провайдер вернул HTML вместо JSON (возможен лимит/блокировка).');
-            err.status = 502;
-            return reject(err);
-          }
-          const jsonData = JSON.parse(data);
-          if (jsonData.error) {
-            const err = new Error(`Finnhub: ${jsonData.error}`);
-            err.status = /access/i.test(jsonData.error) ? 403 : 400;
-            return reject(err);
-          }
-          if (!Array.isArray(jsonData)) {
-            const err = new Error('Finnhub: неожиданный формат ответа на сплиты');
-            err.status = 502;
-            return reject(err);
-          }
-          // Формат Finnhub: [{ symbol, date, fromFactor, toFactor, ... }]
-          const splits = jsonData
-            .filter(item => item && item.date && (item.fromFactor || item.toFactor || item.ratio))
-            .map(item => {
-              const fromF = Number(item.fromFactor || 1);
-              const toF = Number(item.toFactor || 1);
-              let factor = 1;
-              if (fromF && toF) {
-                factor = fromF / toF; // 4:1 → 4
-              } else if (item.ratio) {
-                factor = Number(item.ratio) || 1;
-              }
-              return { date: item.date, factor };
-            })
-            .filter(s => s.factor && s.factor !== 1);
-          // Отсортируем по дате возрастанию
-          splits.sort((a, b) => new Date(a.date) - new Date(b.date));
-          resolve(splits);
-        } catch (error) {
-          const err = new Error(`Не удалось обработать ответ Finnhub: ${error.message}`);
-          err.status = 502;
-          reject(err);
-        }
-      });
-    }).on('error', reject);
-  });
-}
+// Удалено: внешнее получение сплитов через API (используем только локальный splits.json)
 
 // Эвристика: определить сплиты по скачкам цены (2x/3x/4x/5x/10x)
 function detectSplitsFromOHLC(ohlc) {
