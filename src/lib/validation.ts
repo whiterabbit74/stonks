@@ -315,6 +315,11 @@ export async function parseCSV(file: File): Promise<OHLCData[]> {
             return;
           }
 
+          // Try to detect 'Adj Close' header to adjust prices per row if provided
+          const lowerHeaders = headers.map(h => h.toLowerCase());
+          const adjCloseIndex = lowerHeaders.findIndex(h => h.includes('adj') && h.includes('close'));
+          const adjCloseHeader: string | null = adjCloseIndex >= 0 ? headers[adjCloseIndex] : null;
+
           // Convert to OHLC format
           const ohlcData: OHLCData[] = data.map((row: any) => {
             const dateResult = parseDate(row.date || row.Date || row.DATE);
@@ -322,13 +327,35 @@ export async function parseCSV(file: File): Promise<OHLCData[]> {
               throw new Error(`Invalid date format in row: ${JSON.stringify(row)}`);
             }
 
+            const open = validateNumber(row.open || row.Open || row.OPEN) || 0;
+            const high = validateNumber(row.high || row.High || row.HIGH) || 0;
+            const low = validateNumber(row.low || row.Low || row.LOW) || 0;
+            const close = validateNumber(row.close || row.Close || row.CLOSE) || 0;
+            const volume = validateNumber(row.volume || row.Volume || row.VOLUME) || 0;
+            const adjClose = adjCloseHeader ? validateNumber(row[adjCloseHeader]) : null;
+
+            // If Adj Close provided and valid, rescale OHLC to adjusted values for split-aware history
+            if (typeof adjClose === 'number' && isFinite(adjClose) && adjClose > 0 && close > 0) {
+              const factor = adjClose / close;
+              return {
+                date: dateResult.date,
+                open: open * factor,
+                high: high * factor,
+                low: low * factor,
+                close: close * factor,
+                adjClose: adjClose,
+                // Leave volume as-is; many providers' adj close may include dividend adjustments
+                volume: volume || 0,
+              };
+            }
+
             return {
               date: dateResult.date,
-              open: validateNumber(row.open || row.Open || row.OPEN) || 0,
-              high: validateNumber(row.high || row.High || row.HIGH) || 0,
-              low: validateNumber(row.low || row.Low || row.LOW) || 0,
-              close: validateNumber(row.close || row.Close || row.CLOSE) || 0,
-              volume: validateNumber(row.volume || row.Volume || row.VOLUME) || 0
+              open,
+              high,
+              low,
+              close,
+              volume: volume || 0,
             };
           }).filter(item => item.date); // Remove invalid dates
 

@@ -100,9 +100,18 @@ export const useAppStore = create<AppState>((set, get) => ({
     
     try {
       const data = await parseCSV(file);
+      // Try to infer ticker from filename like TICKER.csv
+      const base = (file && typeof file.name === 'string') ? file.name.replace(/\.[^.]+$/, '') : '';
+      const guessTicker = (base || '').split(/[_\-\s]/)[0]?.toUpperCase?.() || '';
+      let splits: SplitEvent[] = [];
+      if (guessTicker && guessTicker.length >= 1) {
+        try { splits = await DatasetAPI.getSplits(guessTicker); } catch { splits = []; }
+      }
+      const adjustedData = adjustOHLCForSplits(data, splits);
       set({ 
-        marketData: data, 
+        marketData: adjustedData, 
         currentDataset: null, // Сбрасываем сохраненный датасет при загрузке CSV
+        currentSplits: splits || [],
         isLoading: false 
       });
     } catch (error) {
