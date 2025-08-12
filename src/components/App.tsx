@@ -89,7 +89,7 @@ export default function App() {
     { id: 'watches' as Tab, label: 'Мониторинг', enabled: true },
     { id: 'splits' as Tab, label: 'Сплиты', enabled: true },
     { id: 'settings' as Tab, label: 'Настройки', enabled: true },
-  ];
+  ] as const;
 
   useEffect(() => {
     (async () => {
@@ -99,12 +99,13 @@ export default function App() {
         try {
           const t = window.localStorage.getItem('auth_token');
           if (t) headers = { Authorization: `Bearer ${t}` };
-        } catch {}
+        } catch { void 0; }
         const r = await fetch(`${base}/auth/check`, { credentials: 'include', headers });
         if (r.ok) setAuthorized(true);
-      } catch (e) {
-        console.warn('Auth check failed', e);
-      }
+
+             } catch {
+         // ignore
+       }
       setCheckingAuth(false);
     })();
   }, []);
@@ -119,9 +120,9 @@ export default function App() {
           const j = await r.json();
           if (j && typeof j.buildId === 'string') setApiBuildId(j.buildId);
         }
-      } catch (e) {
-        console.warn('Status fetch failed', e);
-      }
+             } catch {
+         // ignore
+       }
     })();
   }, []);
 
@@ -172,17 +173,17 @@ export default function App() {
                   throw new Error(msg);
                 }
                 // Try to capture bearer token from response (optional) and persist
-                try {
+                                try {
                   const json = await r.json();
                   if (json && typeof json.token === 'string') {
                     window.localStorage.setItem('auth_token', json.token);
                   }
-                } catch {}
+                } catch { /* ignore body */ }
                 setAuthorized(true);
                 // Eagerly prefetch settings and datasets after login
-                try { await useAppStore.getState().loadSettingsFromServer(); } catch {}
-                try { await useAppStore.getState().loadDatasetsFromServer(); } catch {}
-              } catch (e) {
+                try { await useAppStore.getState().loadSettingsFromServer(); } catch { /* ignore */ }
+                try { await useAppStore.getState().loadDatasetsFromServer(); } catch { /* ignore */ }
+               } catch (e) {
                 const msg = e instanceof Error ? e.message : 'Ошибка входа';
                 setLoginError(msg);
               }

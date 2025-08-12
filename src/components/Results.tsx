@@ -35,25 +35,27 @@ export function Results() {
   const [watching, setWatching] = useState(false);
   const [watchBusy, setWatchBusy] = useState(false);
   const [splitsError, setSplitsError] = useState<string | null>(null);
+  // NOTE: splitsError is kept for future UI; disable unused var rule for now
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   
   // Проверка дублей дат в marketData (ключ YYYY-MM-DD)
   const { hasDuplicateDates, duplicateDateKeys } = useMemo(() => {
     try {
-      const dateKeyOf = (v: any): string => {
-        if (!v) return '';
-        if (typeof v === 'string') {
-          // строка ISO или 'YYYY-MM-DD' — берём первые 10 символов
-          return v.length >= 10 ? v.slice(0, 10) : new Date(v).toISOString().slice(0, 10);
-        }
-        const d = new Date(v);
-        return Number.isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10);
-      };
+             const dateKeyOf = (v: unknown): string => {
+         if (!v) return '';
+         if (typeof v === 'string') {
+           // строка ISO или 'YYYY-MM-DD' — берём первые 10 символов
+           return v.length >= 10 ? v.slice(0, 10) : new Date(v).toISOString().slice(0, 10);
+         }
+         const d = new Date(v as string | number | Date);
+         return Number.isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10);
+       };
       const countByKey = new Map<string, number>();
-      for (const bar of (marketData || [])) {
-        const k = dateKeyOf((bar as any).date);
-        if (!k) continue;
-        countByKey.set(k, (countByKey.get(k) || 0) + 1);
-      }
+              for (const bar of (marketData || [])) {
+          const k = dateKeyOf(bar.date as unknown as string);
+          if (!k) continue;
+          countByKey.set(k, (countByKey.get(k) || 0) + 1);
+        }
       const dup = Array.from(countByKey.entries()).filter(([, c]) => c > 1).map(([k, c]) => `${k}×${c}`);
       return { hasDuplicateDates: dup.length > 0, duplicateDateKeys: dup };
     } catch {
@@ -62,7 +64,7 @@ export function Results() {
   }, [marketData]);
 
   const symbol = useMemo(() => (
-    currentDataset?.ticker || (backtestResults as any)?.symbol || (backtestResults as any)?.ticker || (backtestResults as any)?.meta?.ticker
+    currentDataset?.ticker || backtestResults?.symbol || backtestResults?.ticker || backtestResults?.meta?.ticker
   ), [currentDataset, backtestResults]);
 
   // Обеспечиваем наличие сплитов от сервера (централизованно).
@@ -74,14 +76,15 @@ export function Results() {
         if (Array.isArray(currentSplits) && currentSplits.length > 0) return;
         const s = await DatasetAPI.getSplits(symbol);
         if (Array.isArray(s)) {
-          setSplits(s as any);
-          try { await loadDatasetFromServer(symbol); } catch {}
-        }
+                     setSplits(s);
+           try { await loadDatasetFromServer(symbol); } catch { /* ignore */ }
+         }
       } catch {
         // Не показываем 429/внешние ошибки, т.к. теперь API всегда локальный и отдаёт []
+        // no-op
       }
     })();
-  }, [symbol]);
+  }, [symbol, currentSplits, loadDatasetFromServer, setSplits]);
 
   useEffect(() => {
     let active = true;
@@ -94,9 +97,9 @@ export function Results() {
       } catch {
         if (active) setWatching(false);
       }
-    })();
-    return () => { active = false; };
-  }, [symbol]);
+         })();
+     return () => { active = false; };
+   }, [symbol, setWatching]);
 
   // Быстрая проверка актуальности данных (ожидаем бар за предыдущий торговый день по времени NYSE / America/New_York)
   useEffect(() => {
@@ -187,13 +190,13 @@ export function Results() {
     };
     const isHolidayET = (p: {y:number;m:number;d:number}) => nyseHolidaySetET(p.y).has(keyFromParts(p));
     const previousTradingDayET = (fromUTC: Date) => {
-      let cursor = new Date(fromUTC);
+      const cursorDate = new Date(fromUTC);
       // step back at least one day
-      cursor.setUTCDate(cursor.getUTCDate()-1);
+      cursorDate.setUTCDate(cursorDate.getUTCDate()-1);
       while (true) {
-        const parts = getETParts(cursor);
+        const parts = getETParts(cursorDate);
         if (!isWeekendET(parts) && !isHolidayET(parts)) return parts;
-        cursor.setUTCDate(cursor.getUTCDate()-1);
+        cursorDate.setUTCDate(cursorDate.getUTCDate()-1);
       }
     };
 
@@ -261,8 +264,9 @@ export function Results() {
         if (isMounted) { setIsTrading(true); setQuoteLoading(true); }
         const q = await DatasetAPI.getQuote(symbol, resultsQuoteProvider || 'finnhub');
         if (isMounted) { setQuote(q); setQuoteError(null); setLastUpdatedAt(new Date()); }
-      } catch (e: any) {
-        if (isMounted) setQuoteError(e?.message || 'Failed to fetch quote');
+      } catch (e) {
+        const message = e instanceof Error ? e.message : 'Failed to fetch quote';
+        if (isMounted) setQuoteError(message);
       } finally {
         if (isMounted) { setQuoteLoading(false); timer = setTimeout(fetchQuote, 15000); }
       }
@@ -344,8 +348,9 @@ export function Results() {
                         await DatasetAPI.deleteTelegramWatch(symbol);
                         setWatching(false);
                       }
-                    } catch (e: any) {
-                      setModal({ type: 'error', title: watching ? 'Ошибка удаления' : 'Ошибка добавления', message: e?.message || 'Операция не выполнена' });
+                    } catch (e) {
+                      const message = e instanceof Error ? e.message : 'Операция не выполнена';
+                      setModal({ type: 'error', title: watching ? 'Ошибка удаления' : 'Ошибка добавления', message });
                     } finally {
                       setWatchBusy(false);
                     }
@@ -411,7 +416,7 @@ export function Results() {
                       // Единый серверный refresh по тикеру
                       await DatasetAPI.refreshDataset(symbol, resultsRefreshProvider || 'finnhub');
                       // Перезагрузим активный датасет и снимем флаг «устарело»
-                      try { await useAppStore.getState().loadDatasetFromServer(symbol); } catch {}
+                      try { await useAppStore.getState().loadDatasetFromServer(symbol); } catch { /* ignore */ }
                       setIsStale(false);
                       setStaleInfo(null);
                     } catch (e) {

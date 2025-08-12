@@ -69,7 +69,7 @@ export function mapColumns(headers: string[]): ColumnMapping {
   const adjCloseIndex = lowerHeaders.findIndex(h => 
     h.includes('adj') && h.includes('close')
   );
-  if (adjCloseIndex >= 0) (mapping as any)['Adj Close'] = headers[adjCloseIndex];
+  if (adjCloseIndex >= 0) (mapping as Record<string, string>)['Adj Close'] = headers[adjCloseIndex];
   
   const volumeIndex = lowerHeaders.findIndex(h => 
     h.includes('volume') || h.includes('vol') || h === 'v'
@@ -80,7 +80,7 @@ export function mapColumns(headers: string[]): ColumnMapping {
 }
 
 // Enhanced CSV validation
-export function validateCSVData(data: any[], headers: string[]): ValidationResult & { rowCount: number } {
+export function validateCSVData(data: Array<Record<string, unknown>>, headers: string[]): ValidationResult & { rowCount: number } {
   const errors: Array<{ code: string; message: string; row?: number }> = [];
   
   // Check if data exists
@@ -228,7 +228,7 @@ export function parseDate(dateStr: string | null | undefined): DateParseResult {
     }
 
     return { isValid: false, date: null, error: 'Invalid date format' };
-  } catch (error) {
+  } catch {
     return { isValid: false, date: null, error: 'Date parsing failed' };
   }
 }
@@ -252,7 +252,7 @@ export function detectDateFormat(dates: string[]): string | null {
 
 // Enhanced numeric validation
 export function validateNumeric(
-  value: any, 
+  value: unknown, 
   options: NumericValidationOptions = {}
 ): NumericValidationResult {
   if (value === null || value === undefined || value === '') {
@@ -283,7 +283,7 @@ export function validateNumeric(
 }
 
 // Simple number validation (backward compatibility)
-export function validateNumber(value: any): number | null {
+export function validateNumber(value: unknown): number | null {
   if (value === null || value === undefined || value === '') {
     return null;
   }
@@ -305,7 +305,7 @@ export async function parseCSV(file: File): Promise<OHLCData[]> {
             return;
           }
 
-          const data = results.data as any[];
+          const data = results.data as Array<Record<string, unknown>>;
           const headers = Object.keys(data[0] || {});
           
           // Validate CSV structure
@@ -316,19 +316,19 @@ export async function parseCSV(file: File): Promise<OHLCData[]> {
           }
 
           // Convert to OHLC format
-          const ohlcData: OHLCData[] = data.map((row: any) => {
-            const dateResult = parseDate(row.date || row.Date || row.DATE);
+          const ohlcData: OHLCData[] = data.map((row: Record<string, unknown>) => {
+            const dateResult = parseDate((row as Record<string, unknown>).date as string || (row as Record<string, unknown>).Date as string || (row as Record<string, unknown>).DATE as string);
             if (!dateResult.isValid || !dateResult.date) {
               throw new Error(`Invalid date format in row: ${JSON.stringify(row)}`);
             }
 
             return {
               date: dateResult.date,
-              open: validateNumber(row.open || row.Open || row.OPEN) || 0,
-              high: validateNumber(row.high || row.High || row.HIGH) || 0,
-              low: validateNumber(row.low || row.Low || row.LOW) || 0,
-              close: validateNumber(row.close || row.Close || row.CLOSE) || 0,
-              volume: validateNumber(row.volume || row.Volume || row.VOLUME) || 0
+              open: validateNumber((row as Record<string, unknown>).open || (row as Record<string, unknown>).Open || (row as Record<string, unknown>).OPEN) || 0,
+              high: validateNumber((row as Record<string, unknown>).high || (row as Record<string, unknown>).High || (row as Record<string, unknown>).HIGH) || 0,
+              low: validateNumber((row as Record<string, unknown>).low || (row as Record<string, unknown>).Low || (row as Record<string, unknown>).LOW) || 0,
+              close: validateNumber((row as Record<string, unknown>).close || (row as Record<string, unknown>).Close || (row as Record<string, unknown>).CLOSE) || 0,
+              volume: validateNumber((row as Record<string, unknown>).volume || (row as Record<string, unknown>).Volume || (row as Record<string, unknown>).VOLUME) || 0
             };
           }).filter(item => item.date); // Remove invalid dates
 

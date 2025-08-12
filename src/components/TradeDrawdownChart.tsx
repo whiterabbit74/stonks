@@ -9,7 +9,7 @@ interface TradeDrawdownChartProps {
 
 export function TradeDrawdownChart({ trades, initialCapital }: TradeDrawdownChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
-  const chartRef = useRef<any>(null);
+  const chartRef = useRef<ReturnType<typeof createChart> | null>(null);
 
   useEffect(() => {
     if (!chartContainerRef.current || !trades.length) return;
@@ -98,7 +98,7 @@ export function TradeDrawdownChart({ trades, initialCapital }: TradeDrawdownChar
       });
 
       drawdownSeries.setData(tradeDrawdownData.map(d => ({
-        time: d.time as any,
+        time: d.time as unknown as UTCTimestamp,
         value: d.value
       })));
 
@@ -111,7 +111,7 @@ export function TradeDrawdownChart({ trades, initialCapital }: TradeDrawdownChar
       });
 
       const zeroLineData = tradeDrawdownData.map(d => ({
-        time: d.time as any,
+        time: d.time as unknown as UTCTimestamp,
         value: 0,
       }));
 

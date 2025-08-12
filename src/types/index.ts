@@ -77,15 +77,35 @@ export interface StrategyParameters {
   [key: string]: number | string | boolean;
 }
 
+// Normalized OHLC chart candle for serialization
+export interface ChartCandle {
+  time: number; // epoch seconds
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+}
+
+export interface InsightItem {
+  type: string;
+  message: string;
+  [key: string]: unknown;
+}
+
 export interface BacktestResult {
   trades: Trade[];
   metrics: PerformanceMetrics;
   equity: EquityPoint[];
-  chartData?: any[];
-  insights?: any[];
+  chartData?: ChartCandle[];
+  insights?: InsightItem[];
+  // Optional metadata that some views read from
+  symbol?: string;
+  ticker?: string;
+  meta?: { ticker?: string };
 }
 
 export interface SavedDataset {
+  id?: string; // optional server id
   name: string;
   ticker: string;
   data: OHLCData[];
@@ -110,8 +130,8 @@ export interface Trade {
   duration: number;
   exitReason: string;
   context?: {
-    marketConditions?: any;
-    indicatorValues?: any;
+    marketConditions?: string;
+    indicatorValues?: Record<string, number>;
     volatility?: number;
     trend?: string;
     // Additional calculation details for transparency

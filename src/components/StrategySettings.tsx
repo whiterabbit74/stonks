@@ -13,7 +13,7 @@ interface StrategySettingsProps {
 
 export function StrategySettings({ strategy, onSave, onClose }: StrategySettingsProps) {
   const [editedStrategy, setEditedStrategy] = useState<Strategy>({ ...strategy });
-  const { watchThresholdPct, setWatchThresholdPct, resultsQuoteProvider, resultsRefreshProvider, enhancerProvider, setResultsQuoteProvider, setResultsRefreshProvider, setEnhancerProvider } = useAppStore() as any;
+  const { watchThresholdPct, setWatchThresholdPct, resultsQuoteProvider, resultsRefreshProvider, enhancerProvider, setResultsQuoteProvider, setResultsRefreshProvider, setEnhancerProvider } = useAppStore();
   const [testMsg, setTestMsg] = useState('Проверка уведомлений из приложения ✅');
   const [sendingTest, setSendingTest] = useState(false);
 
@@ -39,7 +39,7 @@ export function StrategySettings({ strategy, onSave, onClose }: StrategySettings
 
   const handleSave = async () => {
     onSave(editedStrategy);
-    try { await (useAppStore.getState() as any).saveSettingsToServer(); } catch {}
+    try { await useAppStore.getState().saveSettingsToServer(); } catch { /* ignore */ }
     onClose();
   };
 
@@ -52,8 +52,8 @@ export function StrategySettings({ strategy, onSave, onClose }: StrategySettings
       parameters: defaults.parameters || strategy.parameters,
       entryConditions: defaults.entryConditions || strategy.entryConditions,
       exitConditions: defaults.exitConditions || strategy.exitConditions,
-      riskManagement: defaults.riskManagement || strategy.riskManagement,
-      positionSizing: defaults.positionSizing || strategy.positionSizing,
+      riskManagement: (defaults.riskManagement || strategy.riskManagement) as Strategy['riskManagement'],
+      positionSizing: (defaults.positionSizing || strategy.positionSizing) as Strategy['positionSizing'],
       type: strategy.type,
     });
   };
@@ -82,7 +82,7 @@ export function StrategySettings({ strategy, onSave, onClose }: StrategySettings
           description: 'Force exit after this many days if IBS exit condition not met. Default: 30' 
         }
       }
-    };
+    } as const;
     
     return configs[strategyId] || {};
   };

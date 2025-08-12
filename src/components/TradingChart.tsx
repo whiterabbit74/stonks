@@ -172,32 +172,38 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
       // Sync time scales in both directions (avoid feedback loops)
       try {
         let syncing = false;
-        const syncTo = (from: any, toChart: IChartApi) => {
-          if (syncing || !from) return;
-          syncing = true;
-          try {
-            // Prefer logical range for pixel-perfect alignment
-            const logical = (from as any);
-            if (typeof (toChart.timeScale() as any).setVisibleLogicalRange === 'function' && typeof (chart.timeScale() as any).getVisibleLogicalRange === 'function') {
-              (toChart.timeScale() as any).setVisibleLogicalRange(logical);
-            } else {
-              toChart.timeScale().setVisibleRange(from);
-            }
-          } finally {
-            syncing = false;
-          }
-        };
+                 const syncTo = (from: unknown, toChart: IChartApi) => {
+           if (syncing || !from) return;
+           syncing = true;
+           try {
+             const logical = from as { from: number; to: number } | undefined;
+             const timeScale: unknown = toChart.timeScale();
+             const chartTimeScale: unknown = chart.timeScale();
+             // Prefer logical range for pixel-perfect alignment
+             if (
+               logical &&
+               typeof (timeScale as any).setVisibleLogicalRange === 'function' &&
+               typeof (chartTimeScale as any).getVisibleLogicalRange === 'function'
+             ) {
+               (timeScale as any).setVisibleLogicalRange(logical);
+             } else if (typeof (toChart.timeScale() as any).setVisibleRange === 'function') {
+               (toChart.timeScale() as any).setVisibleRange(from as { from?: number; to?: number });
+             }
+           } finally {
+             syncing = false;
+           }
+         };
         // Initial align
         try {
           const lr = (chart.timeScale() as any).getVisibleLogicalRange?.();
           if (lr) (subChart.timeScale() as any).setVisibleLogicalRange(lr);
-        } catch {}
-        chart.timeScale().subscribeVisibleLogicalRangeChange?.((r: any) => syncTo(r, subChart));
-        subChart.timeScale().subscribeVisibleLogicalRangeChange?.((r: any) => syncTo(r, chart));
+        } catch (err) { console.warn('Initial align failed', err as Error); }
+        chart.timeScale().subscribeVisibleLogicalRangeChange?.((r: unknown) => syncTo(r, subChart));
+        subChart.timeScale().subscribeVisibleLogicalRangeChange?.((r: unknown) => syncTo(r, chart));
         // Fallback for older versions
-        chart.timeScale().subscribeVisibleTimeRangeChange?.((r: any) => !('from' in (r||{})) ? null : subChart.timeScale().setVisibleRange(r));
-        subChart.timeScale().subscribeVisibleTimeRangeChange?.((r: any) => !('from' in (r||{})) ? null : chart.timeScale().setVisibleRange(r));
-      } catch (e) { console.warn('Failed to sync time scales', e); }
+                 chart.timeScale().subscribeVisibleTimeRangeChange?.((r: { from?: number; to?: number } | undefined) => !('from' in (r||{})) ? null : (subChart.timeScale() as any).setVisibleRange(r));
+         subChart.timeScale().subscribeVisibleTimeRangeChange?.((r: { from?: number; to?: number } | undefined) => !('from' in (r||{})) ? null : (chart.timeScale() as any).setVisibleRange(r));
+       } catch (e) { console.warn('Failed to sync time scales', e as Error); }
 
       // Add EMA20 if enabled
       if (showEMA20) {
@@ -296,21 +302,24 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
       chartContainerRef.current.appendChild(tooltipEl);
 
       // Crosshair sync between panes for the same time
-      chart.subscribeCrosshairMove((param: { time?: unknown; seriesPrices?: Map<any, any>; seriesData?: Map<any, any> }) => {
+      chart.subscribeCrosshairMove((param: { time?: UTCTimestamp | number | string; seriesPrices?: Map<unknown, unknown>; seriesData?: Map<unknown, unknown> }) => {
         if (!param || !param.time || !param.seriesPrices) {
           tooltipEl.style.display = 'none';
-          try {
-            const tgt: any = (ibsSeries || volumeSeries);
-            tgt?.clearCrosshairPosition?.();
-          } catch {}
-          return;
+                     try {
+             const tgt = (ibsSeries || volumeSeries) as unknown as { clearCrosshairPosition?: () => void };
+             tgt?.clearCrosshairPosition?.();
+           } catch {}
+           return;
         }
         const price = param.seriesPrices.get(candlestickSeries);
-        if (!price) {
-          tooltipEl.style.display = 'none';
-          try { (ibsSeries as any)?.clearCrosshairPosition?.(); (volumeSeries as any)?.clearCrosshairPosition?.(); } catch {}
-          return;
-        }
+                 if (!price) {
+           tooltipEl.style.display = 'none';
+           try {
+             (ibsSeries as unknown as { clearCrosshairPosition?: () => void })?.clearCrosshairPosition?.();
+             (volumeSeries as unknown as { clearCrosshairPosition?: () => void })?.clearCrosshairPosition?.();
+           } catch {}
+           return;
+         }
         const bar = param?.seriesData?.get?.(candlestickSeries);
         const o = bar?.open, h = bar?.high, l = bar?.low, c = bar?.close;
         const vol = volumeSeries ? (param.seriesData?.get?.(volumeSeries))?.value : undefined;
@@ -321,29 +330,30 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
         tooltipEl.style.display = 'block';
 
         // Mirror crosshair to sub chart using series API (best-effort across versions)
-        try {
-          const t = param.time as UTCTimestamp;
-          if (ibsSeries && typeof (ibsSeries as any).setCrosshairPosition === 'function') {
-            (ibsSeries as any).setCrosshairPosition(ibsVal ?? 0.5, t);
-          } else if (volumeSeries && typeof (volumeSeries as any).setCrosshairPosition === 'function') {
-            (volumeSeries as any).setCrosshairPosition(vol ?? 0, t);
-          }
-        } catch {}
-      });
+                 try {
+           const t = param.time as UTCTimestamp;
+           const setPos = (s: unknown, value: number) => {
+             if (s && typeof (s as any).setCrosshairPosition === 'function') {
+               (s as any).setCrosshairPosition(value, t);
+             }
+           };
+           if (typeof ibsVal === 'number') setPos(ibsSeries, ibsVal);
+           else if (typeof vol === 'number') setPos(volumeSeries, vol);
+         } catch {}
+       });
 
       // Also reflect crosshair from sub-pane to main chart
-      subChart.subscribeCrosshairMove((param: any) => {
+             subChart.subscribeCrosshairMove((param: { time?: UTCTimestamp; seriesData?: Map<unknown, unknown> } | undefined) => {
         if (!param || !param.time) {
-          try { (candlestickSeries as any)?.clearCrosshairPosition?.(); } catch {}
+          try { (candlestickSeries as unknown as { clearCrosshairPosition?: () => void })?.clearCrosshairPosition?.(); } catch (err) { console.warn('Clear crosshair failed', err as Error); }
           return;
         }
         try {
           const t = param.time as UTCTimestamp;
           const close = (param.seriesData?.get?.(candlestickSeries))?.close ?? 0;
-          if (typeof (candlestickSeries as any).setCrosshairPosition === 'function') {
-            (candlestickSeries as any).setCrosshairPosition(close, t);
-          }
-        } catch {}
+          const cs = candlestickSeries as unknown as { setCrosshairPosition?: (price: number, t: UTCTimestamp) => void };
+          cs?.setCrosshairPosition?.(close, t);
+        } catch (err) { console.warn('Crosshair reflect failed', err as Error); }
       });
 
       // Handle resize
@@ -365,7 +375,7 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
         if (subChart) { try { subChart.remove(); } catch (e) { console.warn('Error removing sub-chart on cleanup:', e); } }
         try {
           if (tooltipEl && tooltipEl.parentElement) tooltipEl.parentElement.removeChild(tooltipEl);
-        } catch (e) { /* ignore */ }
+        } catch (err) { console.warn('Tooltip cleanup failed', err as Error); }
       };
     } catch (error) {
       console.error('Error creating trading chart:', error);
