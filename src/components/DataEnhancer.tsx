@@ -128,7 +128,7 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
           <span className="text-gray-600">Провайдер данных:</span>
           <span className="font-medium text-gray-900 uppercase">{enhancerProvider}</span>
         </div>
-        <p className="text-xs text-gray-500 mt-2">Меняется в «Настройках» (шестерёнка в шапке).</p>
+        <p className="text-xs text-gray-500 mt-2">Меняется на вкладке «Настройки».</p>
       </div>
 
       <div className="bg-white border border-gray-200 rounded-lg p-6">
