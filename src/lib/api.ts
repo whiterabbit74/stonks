@@ -13,7 +13,18 @@ export const API_BASE_URL: string = (() => {
   }
   return '/api';
 })();
-const fetchWithCreds = (input: RequestInfo | URL, init?: RequestInit) => {
+export const fetchWithCreds = (input: RequestInfo | URL, init?: RequestInit) => {
+  let token: string | null = null;
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      token = window.localStorage.getItem('auth_token');
+    }
+  } catch {}
+
+  const lowerHeaderKeys = (init?.headers && typeof init.headers === 'object')
+    ? Object.keys(init.headers as any).reduce<Record<string, true>>((acc, k) => { acc[k.toLowerCase()] = true; return acc; }, {})
+    : {};
+
   const merged: RequestInit = {
     credentials: 'include',
     cache: 'no-store',
@@ -21,12 +32,43 @@ const fetchWithCreds = (input: RequestInfo | URL, init?: RequestInit) => {
     headers: {
       'Cache-Control': 'no-store',
       ...(init?.headers || {}),
+      ...(token && !('authorization' in lowerHeaderKeys) ? { Authorization: `Bearer ${token}` } : {}),
     },
   };
   return fetch(input, merged);
 };
 
 export class DatasetAPI {
+  static async getSplits(symbol: string): Promise<Array<{ date: string; factor: number }>> {
+    const response = await fetchWithCreds(`${API_BASE_URL}/splits/${encodeURIComponent(symbol)}`);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch splits: ${response.status} ${response.statusText}`);
+    }
+    return response.json();
+  }
+
+  static async getSplitsMap(): Promise<Record<string, Array<{ date: string; factor: number }>>> {
+    // Primary: ask server for the whole map (fast path)
+    let response = await fetchWithCreds(`${API_BASE_URL}/splits`);
+    if (response.ok) {
+      return response.json();
+    }
+    // If endpoint is missing (older server) — gracefully fallback to per-ticker aggregation
+    if (response.status === 404) {
+      const map: Record<string, Array<{ date: string; factor: number }>> = {};
+      const list = await this.getDatasets().catch(() => []);
+      for (const d of list) {
+        const ticker = (d.ticker || (d as any).id || d.name || '').toUpperCase();
+        if (!ticker) continue;
+        try {
+          const s = await this.getSplits(ticker);
+          if (Array.isArray(s) && s.length) map[ticker] = s;
+        } catch {}
+      }
+      return map;
+    }
+    throw new Error(`Failed to fetch splits map: ${response.status} ${response.statusText}`);
+  }
   /**
    * Получить список всех датасетов (только метаданные)
    */
@@ -42,6 +84,25 @@ export class DatasetAPI {
     }
     if (!response.ok) {
       throw new Error(`Failed to fetch datasets: ${response.status} ${response.statusText}`);
+    }
+    return response.json();
+  }
+
+  /**
+   * Актуализировать датасет на сервере (добавить только недостающий хвост)
+   */
+  static async refreshDataset(id: string, provider?: 'alpha_vantage' | 'finnhub'):
+    Promise<{ success: boolean; id: string; added: number; to?: string; message?: string }>
+  {
+    const qs = provider ? `?provider=${provider}` : '';
+    const response = await fetchWithCreds(`${API_BASE_URL}/datasets/${encodeURIComponent(id.toUpperCase())}/refresh${qs}`, {
+      method: 'POST',
+    });
+    if (!response.ok) {
+      let msg = `${response.status} ${response.statusText}`;
+      const e = await response.json().catch(() => null);
+      if (e && typeof e.error === 'string') msg = e.error;
+      throw new Error(msg);
     }
     return response.json();
   }

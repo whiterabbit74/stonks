@@ -55,7 +55,7 @@ export function DataUpload({ onNext }: DataUploadProps) {
                 </div>
                 <div>
                   <div className="text-sm text-blue-700">Загружен датасет</div>
-                  <div className="text-xl font-semibold text-blue-900">{currentDataset.name}</div>
+                  <div className="text-xl font-semibold text-blue-900">{currentDataset.ticker}</div>
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-2 mt-2">

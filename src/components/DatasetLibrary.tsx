@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
-import { Database, Download, Trash2, Calendar, BarChart3, Eye, EyeOff, Server, ServerOff } from 'lucide-react';
+import { Database, Download, Trash2, Calendar, BarChart3, Eye, EyeOff, Server, ServerOff, RefreshCw } from 'lucide-react';
 import { useAppStore } from '../stores';
 import { createStrategyFromTemplate, STRATEGY_TEMPLATES } from '../lib/strategy';
-import { DatasetAPI } from '../lib/api';
+import { DatasetAPI, fetchWithCreds } from '../lib/api';
 import type { SavedDataset } from '../types';
 import { ConfirmModal } from './ConfirmModal';
 
@@ -11,12 +11,14 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
   const currentDataset = useAppStore(s => s.currentDataset);
   const currentStrategy = useAppStore(s => s.currentStrategy);
   const setStrategy = useAppStore(s => s.setStrategy);
+  const resultsRefreshProvider = useAppStore(s => s.resultsRefreshProvider);
   const loadDatasetFromServer = useAppStore(s => s.loadDatasetFromServer);
   const deleteDatasetFromServer = useAppStore(s => s.deleteDatasetFromServer);
   const exportDatasetAsJSON = useAppStore(s => s.exportDatasetAsJSON);
   const loadDatasetsFromServer = useAppStore(s => s.loadDatasetsFromServer);
   const runBacktest = useAppStore(s => s.runBacktest);
   const [isExpanded, setIsExpanded] = useState(true);
+  const [refreshingId, setRefreshingId] = useState<string | null>(null);
   const [serverStatus, setServerStatus] = useState<'checking' | 'online' | 'offline'>('checking');
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmTarget, setConfirmTarget] = useState<string | null>(null);
@@ -154,11 +156,26 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
             <DatasetCard
               key={dataset.name}
               dataset={dataset}
-              isActive={currentDataset?.name === dataset.name}
-              onLoad={() => handleLoadDataset(dataset.name)}
-              onDelete={(e) => handleDeleteDataset(dataset.name, e)}
-              onExport={(e) => handleExportDataset(dataset.name, e)}
+              isActive={currentDataset?.ticker === dataset.ticker}
+              onLoad={() => handleLoadDataset(((dataset as any).id || dataset.ticker || dataset.name).toString())}
+              onDelete={(e) => handleDeleteDataset(((dataset as any).id || dataset.ticker || dataset.name).toString(), e)}
+              onExport={(e) => handleExportDataset(((dataset as any).id || dataset.ticker || dataset.name).toString(), e)}
               loading={loadingId === dataset.name}
+              onRefresh={async (e) => {
+                e.stopPropagation();
+                // Единый ID = тикер в верхнем регистре
+                const id = (dataset.ticker || (dataset as any).id || (dataset as any).name).toString().toUpperCase();
+                try {
+                  setRefreshingId(id);
+                  await DatasetAPI.refreshDataset(id, resultsRefreshProvider);
+                  await loadDatasetsFromServer();
+                } catch (err) {
+                  console.warn('Refresh failed', err);
+                } finally {
+                  setRefreshingId(null);
+                }
+              }}
+              refreshing={refreshingId === ((dataset.ticker || (dataset as any).id || (dataset as any).name).toString().toUpperCase())}
             />
           ))}
         </div>
@@ -190,9 +207,11 @@ interface DatasetCardProps {
   onDelete: (event: React.MouseEvent) => void;
   onExport: (event: React.MouseEvent) => void;
   loading?: boolean;
+  onRefresh?: (event: React.MouseEvent) => void;
+  refreshing?: boolean;
 }
 
-function DatasetCard({ dataset, isActive, onLoad, onDelete, onExport, loading }: DatasetCardProps) {
+function DatasetCard({ dataset, isActive, onLoad, onDelete, onExport, onRefresh, loading, refreshing }: DatasetCardProps) {
   const formatDate = (dateString: string) => {
     if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
       const [y, m, d] = dateString.split('-');
@@ -200,6 +219,7 @@ function DatasetCard({ dataset, isActive, onLoad, onDelete, onExport, loading }:
     }
     return new Date(dateString).toISOString().slice(0, 10).split('-').reverse().join('.');
   };
+  const label = `${dataset.ticker}`;
 
   return (
     <div
@@ -213,7 +233,7 @@ function DatasetCard({ dataset, isActive, onLoad, onDelete, onExport, loading }:
       <div className="flex items-center justify-between">
         <div className="flex-1">
           <div className="flex items-center gap-2 mb-1">
-            <span className="font-medium text-gray-900">{dataset.name}</span>
+            <span className="font-medium text-gray-900">{label}</span>
             <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded font-mono">
               {dataset.ticker}
             </span>
@@ -245,18 +265,26 @@ function DatasetCard({ dataset, isActive, onLoad, onDelete, onExport, loading }:
 
         <div className="flex items-center gap-2 ml-4">
           <button
+            onClick={onRefresh as any}
+            className={`p-2 text-gray-400 hover:text-blue-600 hover:bg-transparent rounded transition-colors ${refreshing ? 'animate-spin' : ''}`}
+            title="Refresh dataset"
+            aria-label="Refresh dataset"
+          >
+            <RefreshCw className="w-4 h-4" />
+          </button>
+          <button
             onClick={onExport}
-            className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded"
+            className="p-2 text-gray-400 hover:text-blue-600 hover:bg-transparent rounded transition-colors"
             title="Export as JSON"
           >
-            <Download className="w-4 h-4" />
+            <Download className="w-4 h-4 transition-colors group-hover:text-blue-600" />
           </button>
           <button
             onClick={onDelete}
-            className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded"
+            className="p-2 text-gray-400 hover:text-red-600 hover:bg-transparent rounded transition-colors"
             title="Delete dataset"
           >
-            <Trash2 className="w-4 h-4" />
+            <Trash2 className="w-4 h-4 transition-colors group-hover:text-red-600" />
           </button>
         </div>
       </div>

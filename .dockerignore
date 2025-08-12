@@ -5,6 +5,8 @@ Dockerfile*
 .dockerignore
 .git
 .gitignore
+.env.remote
+.env
 coverage
 .vitest
 playwright-report

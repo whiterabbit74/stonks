@@ -179,11 +179,16 @@ export const useAppStore = create<AppState>((set, get) => ({
     
     try {
       const datasets = await DatasetAPI.getDatasets();
+      // Нормализуем тикер/имя и обеспечим стабильный id
+      const normalized = datasets.map(d => {
+        const ticker = (d.ticker || (d as any).id || d.name).toUpperCase();
+        return { ...d, ticker, name: ticker } as typeof d;
+      });
       set({ 
-        savedDatasets: datasets,
+        savedDatasets: normalized,
         isLoading: false 
       });
-      console.log(`Загружено ${datasets.length} датасетов с сервера`);
+      console.log(`Загружено ${normalized.length} датасетов с сервера`);
     } catch (error) {
       // Если сервер недоступен, просто логируем ошибку, но не показываем пользователю
       console.warn('Сервер недоступен, работаем без сохранения:', error instanceof Error ? error.message : 'Unknown error');
@@ -243,14 +248,16 @@ export const useAppStore = create<AppState>((set, get) => ({
   loadDatasetFromServer: async (datasetId: string) => {
     set({ isLoading: true, error: null });
     
-    try {
-      const dataset = await DatasetAPI.getDataset(datasetId);
-      // Строго применяем корректировку цен по сплитам из JSON датасета
-      const adjusted = adjustOHLCForSplits(dataset.data, dataset.splits);
+      try {
+        const dataset = await DatasetAPI.getDataset(datasetId);
+        // Загружаем только из центрального splits.json
+        let splits: SplitEvent[] = [];
+        try { splits = await DatasetAPI.getSplits(dataset.ticker); } catch { splits = []; }
+        const adjusted = adjustOHLCForSplits(dataset.data, splits);
       set({
         marketData: adjusted,
         currentDataset: dataset,
-        currentSplits: dataset.splits || [],
+        currentSplits: splits,
         isLoading: false,
         error: null
       });
@@ -299,7 +306,8 @@ export const useAppStore = create<AppState>((set, get) => ({
           to: marketData[marketData.length - 1].date.toISOString().split('T')[0],
         },
       };
-      await DatasetAPI.updateDataset(currentDataset.name, updated);
+      // Используем стабильный ID по тикеру, а не name
+      await DatasetAPI.updateDataset(currentDataset.ticker, updated);
       await get().loadDatasetsFromServer();
       set({ currentDataset: updated, isLoading: false });
       console.log(`Датасет обновлён на сервере: ${updated.name}`);
@@ -370,8 +378,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     // Если данных нет, но есть выбранный датасет — используем его
     if ((!marketData || marketData.length === 0) && currentDataset && Array.isArray(currentDataset.data) && currentDataset.data.length) {
       try {
-        const adjusted = adjustOHLCForSplits(currentDataset.data as unknown as OHLCData[], currentDataset.splits);
-        set({ marketData: adjusted });
+        let splits: SplitEvent[] = [];
+        try { splits = await DatasetAPI.getSplits(currentDataset.ticker); } catch { splits = []; }
+        const adjusted = adjustOHLCForSplits(currentDataset.data as unknown as OHLCData[], splits);
+        set({ marketData: adjusted, currentSplits: splits });
         marketData = adjusted;
       } catch (e) {
         console.warn('Failed to adjust OHLC for splits', e);

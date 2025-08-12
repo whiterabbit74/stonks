@@ -1,7 +1,22 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { DatasetAPI } from '../lib/api';
+import { useAppStore } from '../stores';
 
 export function AppSettings() {
+  const loadSettingsFromServer = useAppStore(s => s.loadSettingsFromServer);
+  const saveSettingsToServer = useAppStore(s => s.saveSettingsToServer);
+  const resultsQuoteProvider = useAppStore(s => s.resultsQuoteProvider);
+  const resultsRefreshProvider = useAppStore(s => s.resultsRefreshProvider);
+  const enhancerProvider = useAppStore(s => s.enhancerProvider);
+  const setResultsQuoteProvider = useAppStore(s => s.setResultsQuoteProvider);
+  const setResultsRefreshProvider = useAppStore(s => s.setResultsRefreshProvider);
+  const setEnhancerProvider = useAppStore(s => s.setEnhancerProvider);
+
+  useEffect(() => { loadSettingsFromServer(); }, [loadSettingsFromServer]);
+
+  const [saving, setSaving] = useState(false);
+  const [saveOk, setSaveOk] = useState<string | null>(null);
+  const [saveErr, setSaveErr] = useState<string | null>(null);
   const [testMsg, setTestMsg] = useState('Тестовое сообщение ✅');
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -19,9 +34,71 @@ export function AppSettings() {
     }
   };
 
+  const saveProviders = async () => {
+    setSaving(true); setSaveOk(null); setSaveErr(null);
+    try {
+      await saveSettingsToServer();
+      setSaveOk('Сохранено');
+    } catch (e: any) {
+      setSaveErr(e?.message || 'Не удалось сохранить');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
       <h2 className="text-xl font-semibold text-gray-900">Настройки</h2>
+
+      {/* Провайдеры данных */}
+      <div className="p-4 rounded-lg border">
+        <div className="text-sm font-medium text-gray-700 mb-3">Провайдеры данных</div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="bg-gray-50 rounded p-3 border">
+            <div className="text-xs text-gray-500 mb-2">Котировки (страница «Результаты»)</div>
+            <label className="flex items-center gap-2 text-sm mb-1">
+              <input type="radio" name="quoteProvider" checked={resultsQuoteProvider === 'finnhub'} onChange={() => setResultsQuoteProvider('finnhub')} />
+              Finnhub
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input type="radio" name="quoteProvider" checked={resultsQuoteProvider === 'alpha_vantage'} onChange={() => setResultsQuoteProvider('alpha_vantage')} />
+              Alpha Vantage
+            </label>
+          </div>
+
+          <div className="bg-gray-50 rounded p-3 border">
+            <div className="text-xs text-gray-500 mb-2">Актуализация датасета (серверный refresh)</div>
+            <label className="flex items-center gap-2 text-sm mb-1">
+              <input type="radio" name="refreshProvider" checked={resultsRefreshProvider === 'finnhub'} onChange={() => setResultsRefreshProvider('finnhub')} />
+              Finnhub
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input type="radio" name="refreshProvider" checked={resultsRefreshProvider === 'alpha_vantage'} onChange={() => setResultsRefreshProvider('alpha_vantage')} />
+              Alpha Vantage
+            </label>
+          </div>
+
+          <div className="bg-gray-50 rounded p-3 border">
+            <div className="text-xs text-gray-500 mb-2">Импорт «New data» (энхансер)</div>
+            <label className="flex items-center gap-2 text-sm mb-1">
+              <input type="radio" name="enhancerProvider" checked={enhancerProvider === 'alpha_vantage'} onChange={() => setEnhancerProvider('alpha_vantage')} />
+              Alpha Vantage
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input type="radio" name="enhancerProvider" checked={enhancerProvider === 'finnhub'} onChange={() => setEnhancerProvider('finnhub')} />
+              Finnhub
+            </label>
+          </div>
+        </div>
+        <div className="mt-3 flex items-center gap-2">
+          <button onClick={saveProviders} disabled={saving} className="px-3 py-1.5 rounded-md bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:bg-gray-400">
+            {saving ? 'Сохранение…' : 'Сохранить'}
+          </button>
+          {saveOk && <span className="text-sm text-green-600">{saveOk}</span>}
+          {saveErr && <span className="text-sm text-red-600">{saveErr}</span>}
+        </div>
+        <div className="text-xs text-gray-500 mt-2">Подсказки: Alpha Vantage может возвращать лимит на сплиты и adjusted данные. Для refresh лучше использовать тот провайдер, который стабильно доступен на вашем тарифе.</div>
+      </div>
       <div className="p-4 rounded-lg border bg-gray-50">
         <div className="text-sm font-medium text-gray-700 mb-2">Тест сообщения в Telegram</div>
         <div className="flex flex-wrap items-center gap-2">

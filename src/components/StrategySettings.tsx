@@ -95,7 +95,7 @@ export function StrategySettings({ strategy, onSave, onClose }: StrategySettings
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b">
           <div>
-            <h2 className="text-xl font-semibold text-gray-900">Strategy Settings</h2>
+            <h2 className="text-xl font-semibold text-gray-900">Параметры стратегии</h2>
             <p className="text-sm text-gray-600 mt-1">{strategy.name}</p>
             {strategy.id === 'ibs-mean-reversion' && (
               <p className="text-xs text-blue-600 mt-1">
@@ -115,7 +115,7 @@ export function StrategySettings({ strategy, onSave, onClose }: StrategySettings
         <div className="p-6 space-y-6">
           {/* Strategy Parameters */}
           <div>
-            <h3 className="text-lg font-medium text-gray-900 mb-4">Strategy Parameters</h3>
+            <h3 className="text-lg font-medium text-gray-900 mb-4">Параметры стратегии</h3>
             <div className="space-y-4">
               {Object.entries(parameterConfig).map(([key, config]) => (
                 <div key={key}>
@@ -152,11 +152,11 @@ export function StrategySettings({ strategy, onSave, onClose }: StrategySettings
 
           {/* Risk Management */}
           <div>
-            <h3 className="text-lg font-medium text-gray-900 mb-4">Risk Management</h3>
+            <h3 className="text-lg font-medium text-gray-900 mb-4">Риск‑менеджмент</h3>
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Initial Capital ($)
+                   Начальный капитал ($)
                 </label>
                 <input
                   type="number"
@@ -171,7 +171,7 @@ export function StrategySettings({ strategy, onSave, onClose }: StrategySettings
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Capital Usage (%)
+                   Использование капитала (%)
                 </label>
                 <p className="text-xs text-gray-500 mb-2">
                   Процент депозита, используемый в каждой сделке. 100% = весь доступный капитал
@@ -200,7 +200,7 @@ export function StrategySettings({ strategy, onSave, onClose }: StrategySettings
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <label className="block text-sm font-medium text-gray-700">
-                    Stop Loss (%)
+                     Стоп‑лосс (%)
                   </label>
                   <label className="flex items-center gap-2 text-sm text-gray-700">
                     <input
@@ -239,7 +239,7 @@ export function StrategySettings({ strategy, onSave, onClose }: StrategySettings
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <label className="block text-sm font-medium text-gray-700">
-                    Take Profit (%)
+                     Тейк‑профит (%)
                   </label>
                   <label className="flex items-center gap-2 text-sm text-gray-700">
                     <input
@@ -339,7 +339,7 @@ export function StrategySettings({ strategy, onSave, onClose }: StrategySettings
             className="inline-flex items-center gap-2 px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
           >
             <RotateCcw className="w-4 h-4" />
-            Reset to Defaults
+            Сбросить по умолчанию
           </button>
           
           <div className="flex gap-3">
@@ -347,14 +347,14 @@ export function StrategySettings({ strategy, onSave, onClose }: StrategySettings
               onClick={onClose}
               className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
             >
-              Cancel
+              Отмена
             </button>
             <button
               onClick={handleSave}
               className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
             >
               <Save className="w-4 h-4" />
-              Save Settings
+              Сохранить
             </button>
           </div>
         </div>

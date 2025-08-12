@@ -20,9 +20,8 @@ export function Results() {
   const watchThresholdPct = useAppStore(s => s.watchThresholdPct);
   const resultsQuoteProvider = useAppStore(s => s.resultsQuoteProvider);
   const resultsRefreshProvider = useAppStore(s => s.resultsRefreshProvider);
-  const updateMarketData = useAppStore(s => s.updateMarketData);
-  const updateDatasetOnServer = useAppStore(s => s.updateDatasetOnServer);
-  const saveDatasetToServer = useAppStore(s => s.saveDatasetToServer);
+  const setSplits = useAppStore(s => s.setSplits);
+  const loadDatasetFromServer = useAppStore(s => s.loadDatasetFromServer);
   const [quote, setQuote] = useState<{ open: number|null; high: number|null; low: number|null; current: number|null; prevClose: number|null } | null>(null);
   const [quoteError, setQuoteError] = useState<string | null>(null);
   const [isTrading, setIsTrading] = useState<boolean>(false);
@@ -35,10 +34,54 @@ export function Results() {
   const [modal, setModal] = useState<{ type: 'info' | 'error' | null; title?: string; message?: string }>({ type: null });
   const [watching, setWatching] = useState(false);
   const [watchBusy, setWatchBusy] = useState(false);
+  const [splitsError, setSplitsError] = useState<string | null>(null);
+  
+  // Проверка дублей дат в marketData (ключ YYYY-MM-DD)
+  const { hasDuplicateDates, duplicateDateKeys } = useMemo(() => {
+    try {
+      const dateKeyOf = (v: any): string => {
+        if (!v) return '';
+        if (typeof v === 'string') {
+          // строка ISO или 'YYYY-MM-DD' — берём первые 10 символов
+          return v.length >= 10 ? v.slice(0, 10) : new Date(v).toISOString().slice(0, 10);
+        }
+        const d = new Date(v);
+        return Number.isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10);
+      };
+      const countByKey = new Map<string, number>();
+      for (const bar of (marketData || [])) {
+        const k = dateKeyOf((bar as any).date);
+        if (!k) continue;
+        countByKey.set(k, (countByKey.get(k) || 0) + 1);
+      }
+      const dup = Array.from(countByKey.entries()).filter(([, c]) => c > 1).map(([k, c]) => `${k}×${c}`);
+      return { hasDuplicateDates: dup.length > 0, duplicateDateKeys: dup };
+    } catch {
+      return { hasDuplicateDates: false, duplicateDateKeys: [] };
+    }
+  }, [marketData]);
 
   const symbol = useMemo(() => (
-    currentDataset?.ticker || backtestResults?.symbol || backtestResults?.ticker || backtestResults?.meta?.ticker
+    currentDataset?.ticker || (backtestResults as any)?.symbol || (backtestResults as any)?.ticker || (backtestResults as any)?.meta?.ticker
   ), [currentDataset, backtestResults]);
+
+  // Обеспечиваем наличие сплитов от сервера (централизованно).
+  useEffect(() => {
+    (async () => {
+      setSplitsError(null);
+      try {
+        if (!symbol) return;
+        if (Array.isArray(currentSplits) && currentSplits.length > 0) return;
+        const s = await DatasetAPI.getSplits(symbol);
+        if (Array.isArray(s)) {
+          setSplits(s as any);
+          try { await loadDatasetFromServer(symbol); } catch {}
+        }
+      } catch {
+        // Не показываем 429/внешние ошибки, т.к. теперь API всегда локальный и отдаёт []
+      }
+    })();
+  }, [symbol]);
 
   useEffect(() => {
     let active = true;
@@ -339,8 +382,9 @@ export function Results() {
             </div>
 
             {/* Источник/время */}
-            <div className="flex flex-wrap items-center gap-3 text-xs text-gray-500">
-              <span className="px-2 py-0.5 rounded bg-gray-100 border">Источник: { (resultsQuoteProvider === 'alpha_vantage') ? 'Alpha Vantage' : 'Finnhub' }</span>
+              <div className="flex flex-wrap items-center gap-3 text-xs text-gray-500">
+              <span className="px-2 py-0.5 rounded bg-gray-100 border">Котировки: { (resultsQuoteProvider === 'alpha_vantage') ? 'Alpha Vantage' : 'Finnhub' }</span>
+              <span className="px-2 py-0.5 rounded bg-gray-100 border">Актуализация: { (resultsRefreshProvider === 'alpha_vantage') ? 'Alpha Vantage' : 'Finnhub' }</span>
               {lastUpdatedAt && (
                 <span className="px-2 py-0.5 rounded bg-gray-100 border">Обновлено: {lastUpdatedAt.toLocaleTimeString('ru-RU')}</span>
               )}
@@ -361,57 +405,13 @@ export function Results() {
                 <span className="text-sm">Данные не актуальны. {staleInfo}</span>
                 <button
                   onClick={async () => {
-                    if (!symbol || marketData.length === 0) return;
+                    if (!symbol) return;
                     setRefreshing(true); setRefreshError(null);
                     try {
-                      // запрашиваем хвост с небольшим запасом (5 торговых дней)
-                      const lastBarDate = new Date(marketData[marketData.length - 1].date);
-                      const start = new Date(lastBarDate);
-                      start.setUTCDate(start.getUTCDate() - 7);
-                      const startTs = Math.floor(start.getTime() / 1000);
-                      const endTs = Math.floor(Date.now() / 1000);
-                      const prov = resultsRefreshProvider || 'finnhub';
-                       const base = window.location.href.includes('/stonks') ? '/stonks/api' : '/api';
-                      const url = `${base}/yahoo-finance/${encodeURIComponent(symbol)}?start=${startTs}&end=${endTs}&provider=${prov}`;
-                      const resp = await fetch(url, { credentials: 'include' });
-                      if (!resp.ok) {
-                        let msg = `${resp.status} ${resp.statusText}`;
-                        try { const e = await resp.json(); msg = e.error || msg; } catch {}
-                        throw new Error(msg);
-                      }
-                      const json = await resp.json();
-                      const rows = Array.isArray(json) ? json : Array.isArray(json?.data) ? json.data : [];
-                      if (!Array.isArray(rows) || rows.length === 0) {
-                        // если ничего не пришло, просто снимем флаг как не критичный (возможно ещё нет публикации)
-                        setIsStale(false);
-                        setStaleInfo(null);
-                        setRefreshing(false);
-                        return;
-                      }
-                      // Преобразуем и смержим
-                      const { parseOHLCDate, adjustOHLCForSplits } = await import('../lib/utils');
-                      const incoming = rows.map((r: { date: string; open: number; high: number; low: number; close: number; adjClose?: number; volume: number; }) => ({
-                        date: parseOHLCDate(r.date), open: r.open, high: r.high, low: r.low, close: r.close, adjClose: r.adjClose, volume: r.volume,
-                      }));
-                      const existingDates = new Set(marketData.map((d) => d.date.toDateString()));
-                      const filtered = incoming.filter((d: { date: Date }) => !existingDates.has(d.date.toDateString()));
-                      if (filtered.length) {
-                         // Сливаем и применяем бэк-аджаст по уже известным сплитам
-                         const merged = [...marketData, ...filtered].sort((a, b) => a.date.getTime() - b.date.getTime());
-                         const finalData = adjustOHLCForSplits(merged, currentSplits);
-                         updateMarketData(finalData);
-                         // Сохраняем изменения на сервере (переименуем файл при смене последней даты)
-                         try {
-                           if (currentDataset && currentDataset.name) {
-                             await updateDatasetOnServer();
-                           } else if (symbol) {
-                             await saveDatasetToServer(symbol);
-                           }
-                         } catch (e) {
-                           const msg = e instanceof Error ? e.message : 'Не удалось сохранить изменения на сервере';
-                           setRefreshError(msg);
-                         }
-                      }
+                      // Единый серверный refresh по тикеру
+                      await DatasetAPI.refreshDataset(symbol, resultsRefreshProvider || 'finnhub');
+                      // Перезагрузим активный датасет и снимем флаг «устарело»
+                      try { await useAppStore.getState().loadDatasetFromServer(symbol); } catch {}
                       setIsStale(false);
                       setStaleInfo(null);
                     } catch (e) {
@@ -424,10 +424,23 @@ export function Results() {
                   className="inline-flex items-center px-3 py-1.5 rounded-md bg-amber-600 text-white text-sm hover:bg-amber-700 disabled:bg-gray-400"
                   disabled={refreshing}
                 >
-                  {refreshing ? 'Актуализация…' : 'Актуализировать'}
+                  {refreshing ? `Актуализация… (${resultsRefreshProvider})` : `Актуализировать (${resultsRefreshProvider})`}
                 </button>
                 {refreshError && <span className="text-sm text-red-600">{refreshError}</span>}
               </div>
+            )}
+            {/* Индикатор дублей дат в данных */}
+            {marketData.length > 0 && (
+              hasDuplicateDates ? (
+                <div className="mt-2 p-3 rounded-lg border border-red-300 bg-red-50 text-red-900">
+                  <div className="text-sm font-semibold">High-Risk ALERT: обнаружены дубли дат</div>
+                  <div className="text-xs mt-1 break-words">{duplicateDateKeys.join(', ')}</div>
+                </div>
+              ) : (
+                <div className="mt-2 p-2 rounded border border-emerald-200 bg-emerald-50 text-emerald-800 text-xs">
+                  Дублей дат не обнаружено
+                </div>
+              )
             )}
             {!isTrading ? (
               <div className="text-sm text-gray-500 mt-2">Показываем в торговые часы (NYSE): 09:30–16:00 ET</div>
@@ -489,6 +502,23 @@ export function Results() {
                 return isOpen ? lastTrade?.entryPrice ?? null : null;
               })()}
             />
+          </div>
+          {/* Блок сплитов */}
+          <div className="mt-3 text-sm text-gray-700">
+            <div className="font-semibold mb-1">Сплиты</div>
+            {/* Ошибки получения сплитов скрываем, так как источник всегда локальный */}
+            {currentSplits && currentSplits.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {currentSplits.map((s, i) => (
+                  <span key={i} className="px-2 py-0.5 rounded border bg-gray-50 text-xs">
+                    {String(s.date).slice(0,10)} × {s.factor}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <div className="text-xs text-gray-500">Нет сплитов</div>
+            )}
+            <div className="text-xs text-gray-500 mt-1">Цены на графиках и в бэктесте скорректированы back-adjust по сплитам.</div>
           </div>
           {/* Управление наблюдением перенесено в иконку сердца рядом с тикером */}
           <InfoModal

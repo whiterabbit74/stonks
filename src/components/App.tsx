@@ -6,7 +6,8 @@ import { DataEnhancer } from './DataEnhancer';
 import { StrategySettings } from './StrategySettings';
 import { Results } from './Results';
 import { TelegramWatches } from './TelegramWatches';
-// import { AppSettings } from './AppSettings';
+import { SplitsTab } from './SplitsTab';
+import { AppSettings } from './AppSettings';
 import { createStrategyFromTemplate, STRATEGY_TEMPLATES } from '../lib/strategy';
 
 type Tab = 'data' | 'enhance' | 'results' | 'watches' | 'settings';
@@ -83,16 +84,23 @@ export default function App() {
 
   const tabs = [
     { id: 'data' as Tab, label: 'Данные', enabled: true },
-    { id: 'enhance' as Tab, label: 'Доп. данные', enabled: true },
+    { id: 'enhance' as Tab, label: 'New data', enabled: true },
     { id: 'results' as Tab, label: 'Результаты', enabled: true },
     { id: 'watches' as Tab, label: 'Мониторинг', enabled: true },
+    { id: 'splits' as Tab, label: 'Сплиты', enabled: true },
+    { id: 'settings' as Tab, label: 'Настройки', enabled: true },
   ];
 
   useEffect(() => {
     (async () => {
       try {
         const base = window.location.href.includes('/stonks') ? '/stonks/api' : '/api';
-        const r = await fetch(`${base}/auth/check`, { credentials: 'include' });
+        let headers: Record<string, string> = {};
+        try {
+          const t = window.localStorage.getItem('auth_token');
+          if (t) headers = { Authorization: `Bearer ${t}` };
+        } catch {}
+        const r = await fetch(`${base}/auth/check`, { credentials: 'include', headers });
         if (r.ok) setAuthorized(true);
       } catch (e) {
         console.warn('Auth check failed', e);
@@ -163,7 +171,17 @@ export default function App() {
                   if (err && typeof err.error === 'string') msg = err.error;
                   throw new Error(msg);
                 }
+                // Try to capture bearer token from response (optional) and persist
+                try {
+                  const json = await r.json();
+                  if (json && typeof json.token === 'string') {
+                    window.localStorage.setItem('auth_token', json.token);
+                  }
+                } catch {}
                 setAuthorized(true);
+                // Eagerly prefetch settings and datasets after login
+                try { await useAppStore.getState().loadSettingsFromServer(); } catch {}
+                try { await useAppStore.getState().loadDatasetsFromServer(); } catch {}
               } catch (e) {
                 const msg = e instanceof Error ? e.message : 'Ошибка входа';
                 setLoginError(msg);
@@ -190,15 +208,16 @@ export default function App() {
               </h1>
               <div className="text-gray-600 flex flex-wrap items-center gap-3">
                 <span>Internal Bar Strength Mean Reversion Strategy</span>
-                <span className="text-xs text-gray-400 border rounded px-2 py-0.5">Build: {apiBuildId || import.meta.env.VITE_BUILD_ID || 'dev'}</span>
+                <span className="text-xs text-gray-400 border rounded px-2 py-0.5">FE: {import.meta.env.VITE_BUILD_ID || 'dev'}</span>
+                <span className="text-xs text-gray-400 border rounded px-2 py-0.5">API: {apiBuildId || '-'}</span>
               </div>
             </div>
             {currentStrategy && (
               <button
                 onClick={() => setShowSettings(true)}
                 className="p-2 rounded-full text-gray-500 hover:text-gray-700 hover:bg-gray-100 border border-gray-200"
-                aria-label="Strategy Settings"
-                title="Strategy Settings"
+                aria-label="Параметры стратегии"
+                title="Параметры стратегии"
               >
                 <Settings className="w-5 h-5" />
               </button>
@@ -237,6 +256,8 @@ export default function App() {
           )}
           {activeTab === 'results' && <Results />}
           {activeTab === 'watches' && <TelegramWatches />}
+          {activeTab === 'splits' && <SplitsTab />}
+          {activeTab === 'settings' && <AppSettings />}
         </div>
 
         {/* Strategy Settings Modal */}
@@ -253,7 +274,7 @@ export default function App() {
           />
         )}
       </div>
-      <div className="py-4 text-center text-xs text-gray-400">Build: {import.meta.env.VITE_BUILD_ID || 'dev'}</div>
+      <div className="py-4 text-center text-xs text-gray-400">FE: {import.meta.env.VITE_BUILD_ID || 'dev'} · API: {apiBuildId || '-'}</div>
     </div>
   );
 }

@@ -1,21 +1,22 @@
 FROM node:20-bookworm-slim
 WORKDIR /app
 
-# Prefer IPv4 DNS resolution inside node/npm to avoid IPv6-only DNS stalls
-ENV NODE_OPTIONS=--dns-result-order=ipv4first \
+# Prefer IPv6 for IPv6-only hosts and use a resilient npm mirror by default
+ARG NPM_REGISTRY=https://registry.npmmirror.com/
+ENV NODE_OPTIONS=--dns-result-order=ipv6first \
     NPM_CONFIG_FUND=false \
     NPM_CONFIG_AUDIT=false \
     NPM_CONFIG_FETCH_RETRIES=6 \
     NPM_CONFIG_FETCH_RETRY_FACTOR=2 \
-    NPM_CONFIG_FETCH_TIMEOUT=120000 \
+    NPM_CONFIG_FETCH_TIMEOUT=30000 \
     NPM_CONFIG_FETCH_RETRY_MINTIMEOUT=1000 \
-    NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT=180000 \
-    NPM_CONFIG_REGISTRY=https://registry.npmjs.org/
+    NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT=45000 \
+    NPM_CONFIG_REGISTRY=${NPM_REGISTRY}
 
 COPY server/package*.json ./server/
-# Robust npm ci with retries to avoid transient DNS/network hangs
-RUN set -e; cd server; for i in 1 2 3 4 5; do \
-      npm ci --no-audit --no-fund --omit=dev --registry=https://registry.npmjs.org/ && break; \
+# Robust npm ci with retries to avoid transient DNS/network hangs (IPv6-friendly)
+RUN set -e; cd server; npm config set registry "${NPM_CONFIG_REGISTRY}"; for i in 1 2 3 4 5; do \
+      npm ci --no-audit --no-fund --omit=dev && break; \
       echo "npm ci failed (attempt $i), retrying..."; sleep $((i*3)); \
     done
 

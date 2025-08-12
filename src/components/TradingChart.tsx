@@ -18,8 +18,9 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
   const subChartRef = useRef<IChartApi | null>(null);
   const [showEMA20, setShowEMA20] = useState(false);
   const [showEMA200, setShowEMA200] = useState(false);
+  // По умолчанию отображаем IBS и скрываем объём
   const [showIBS, setShowIBS] = useState(true);
-  const [showVolume, setShowVolume] = useState(true);
+  const [showVolume, setShowVolume] = useState(false);
 
   // Функция для расчета EMA
   const calculateEMA = (data: OHLCData[], period: number): number[] => {
@@ -168,11 +169,34 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
         ibsSeries = ibsLine;
       }
 
-      // Sync time scales: main -> sub
+      // Sync time scales in both directions (avoid feedback loops)
       try {
-        chart.timeScale().subscribeVisibleTimeRangeChange((range: any) => {
-          if (range) subChart.timeScale().setVisibleRange(range);
-        });
+        let syncing = false;
+        const syncTo = (from: any, toChart: IChartApi) => {
+          if (syncing || !from) return;
+          syncing = true;
+          try {
+            // Prefer logical range for pixel-perfect alignment
+            const logical = (from as any);
+            if (typeof (toChart.timeScale() as any).setVisibleLogicalRange === 'function' && typeof (chart.timeScale() as any).getVisibleLogicalRange === 'function') {
+              (toChart.timeScale() as any).setVisibleLogicalRange(logical);
+            } else {
+              toChart.timeScale().setVisibleRange(from);
+            }
+          } finally {
+            syncing = false;
+          }
+        };
+        // Initial align
+        try {
+          const lr = (chart.timeScale() as any).getVisibleLogicalRange?.();
+          if (lr) (subChart.timeScale() as any).setVisibleLogicalRange(lr);
+        } catch {}
+        chart.timeScale().subscribeVisibleLogicalRangeChange?.((r: any) => syncTo(r, subChart));
+        subChart.timeScale().subscribeVisibleLogicalRangeChange?.((r: any) => syncTo(r, chart));
+        // Fallback for older versions
+        chart.timeScale().subscribeVisibleTimeRangeChange?.((r: any) => !('from' in (r||{})) ? null : subChart.timeScale().setVisibleRange(r));
+        subChart.timeScale().subscribeVisibleTimeRangeChange?.((r: any) => !('from' in (r||{})) ? null : chart.timeScale().setVisibleRange(r));
       } catch (e) { console.warn('Failed to sync time scales', e); }
 
       // Add EMA20 if enabled
@@ -271,14 +295,20 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
       tooltipEl.style.display = 'none';
       chartContainerRef.current.appendChild(tooltipEl);
 
+      // Crosshair sync between panes for the same time
       chart.subscribeCrosshairMove((param: { time?: unknown; seriesPrices?: Map<any, any>; seriesData?: Map<any, any> }) => {
         if (!param || !param.time || !param.seriesPrices) {
           tooltipEl.style.display = 'none';
+          try {
+            const tgt: any = (ibsSeries || volumeSeries);
+            tgt?.clearCrosshairPosition?.();
+          } catch {}
           return;
         }
         const price = param.seriesPrices.get(candlestickSeries);
         if (!price) {
           tooltipEl.style.display = 'none';
+          try { (ibsSeries as any)?.clearCrosshairPosition?.(); (volumeSeries as any)?.clearCrosshairPosition?.(); } catch {}
           return;
         }
         const bar = param?.seriesData?.get?.(candlestickSeries);
@@ -289,6 +319,31 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
         const ibsStr = (typeof ibsVal === 'number') ? ` · IBS ${(ibsVal * 100).toFixed(0)}%` : '';
         tooltipEl.innerHTML = `O ${o?.toFixed?.(2) ?? '-'} H ${h?.toFixed?.(2) ?? '-'} L ${l?.toFixed?.(2) ?? '-'} C ${c?.toFixed?.(2) ?? '-'} · ${pct ? pct.toFixed(2) + '%' : ''}${ibsStr}${vol ? ' · Vol ' + vol.toLocaleString() : ''}`;
         tooltipEl.style.display = 'block';
+
+        // Mirror crosshair to sub chart using series API (best-effort across versions)
+        try {
+          const t = param.time as UTCTimestamp;
+          if (ibsSeries && typeof (ibsSeries as any).setCrosshairPosition === 'function') {
+            (ibsSeries as any).setCrosshairPosition(ibsVal ?? 0.5, t);
+          } else if (volumeSeries && typeof (volumeSeries as any).setCrosshairPosition === 'function') {
+            (volumeSeries as any).setCrosshairPosition(vol ?? 0, t);
+          }
+        } catch {}
+      });
+
+      // Also reflect crosshair from sub-pane to main chart
+      subChart.subscribeCrosshairMove((param: any) => {
+        if (!param || !param.time) {
+          try { (candlestickSeries as any)?.clearCrosshairPosition?.(); } catch {}
+          return;
+        }
+        try {
+          const t = param.time as UTCTimestamp;
+          const close = (param.seriesData?.get?.(candlestickSeries))?.close ?? 0;
+          if (typeof (candlestickSeries as any).setCrosshairPosition === 'function') {
+            (candlestickSeries as any).setCrosshairPosition(close, t);
+          }
+        } catch {}
       });
 
       // Handle resize

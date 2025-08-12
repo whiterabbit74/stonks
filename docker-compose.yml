@@ -19,6 +19,7 @@ services:
       - ./server/datasets:/app/server/datasets
       - ./server/settings.json:/app/server/settings.json
       - ./server/telegram-watches.json:/app/server/telegram-watches.json
+      - ./server/splits.json:/app/server/splits.json
       - ./.env:/app/.env:ro
     user: "1000:1000"
     ports:

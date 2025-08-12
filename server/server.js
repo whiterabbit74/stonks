@@ -11,6 +11,7 @@ app.set('trust proxy', true);
 const PORT = process.env.PORT || 3001;
 const DATASETS_DIR = path.join(__dirname, 'datasets');
 const SETTINGS_FILE = path.join(__dirname, 'settings.json');
+const SPLITS_FILE = path.join(__dirname, 'splits.json');
 const WATCHES_FILE = path.join(__dirname, 'telegram-watches.json');
 const avCache = new Map(); // кэш ответов Alpha Vantage
 
@@ -43,6 +44,57 @@ app.use((req, res, next) => {
 app.use(express.json({ limit: '50mb' }));
 // Disable ETag to avoid 304 for dynamic JSON payloads
 app.set('etag', false);
+
+// Ensure splits storage exists
+async function ensureSplitsFile() {
+  try {
+    const exists = await fs.pathExists(SPLITS_FILE);
+    if (!exists) await fs.writeJson(SPLITS_FILE, {}, { spaces: 2 });
+  } catch {}
+}
+ensureSplitsFile().catch(() => {});
+
+async function readSplitsMap() {
+  try {
+    await ensureSplitsFile();
+    const json = await fs.readJson(SPLITS_FILE);
+    return (json && typeof json === 'object') ? json : {};
+  } catch {
+    return {};
+  }
+}
+
+function normalizeSplitEvents(events) {
+  const list = Array.isArray(events) ? events : [];
+  const valid = list
+    .filter(e => e && typeof e.date === 'string' && e.date.length >= 10 && typeof e.factor === 'number' && isFinite(e.factor) && e.factor > 0)
+    .map(e => ({ date: e.date.slice(0, 10), factor: Number(e.factor) }))
+    .filter(e => e.factor !== 1);
+  const byDate = new Map();
+  for (const e of valid) byDate.set(e.date, e);
+  return Array.from(byDate.values()).sort((a, b) => new Date(a.date) - new Date(b.date));
+}
+
+async function getTickerSplits(ticker) {
+  const map = await readSplitsMap();
+  const key = toSafeTicker(ticker);
+  const arr = normalizeSplitEvents(map[key] || []);
+  return arr;
+}
+
+async function upsertTickerSplits(ticker, events) {
+  const key = toSafeTicker(ticker);
+  const map = await readSplitsMap();
+  const existing = normalizeSplitEvents(map[key] || []);
+  const incoming = normalizeSplitEvents(events || []);
+  const byDate = new Map();
+  for (const e of existing) byDate.set(e.date, e);
+  for (const e of incoming) byDate.set(e.date, e);
+  const merged = Array.from(byDate.values()).sort((a, b) => new Date(a.date) - new Date(b.date));
+  map[key] = merged;
+  await fs.writeJson(SPLITS_FILE, map, { spaces: 2 });
+  return merged;
+}
 
 // Telegram config
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
@@ -86,8 +138,16 @@ function setAuthCookie(res, token, remember) {
 function requireAuth(req, res, next) {
   if (!ADMIN_PASSWORD) return next(); // auth disabled
   if (req.method === 'OPTIONS') return next();
-  // Разрешаем только статус/логин/проверку
-  if (req.path === '/api/status' || req.path === '/api/login' || req.path === '/api/auth/check') return next();
+  // Разрешаем только статус/логин/проверку и публичный доступ к карте сплитов
+  if (
+    req.path === '/api/status' ||
+    req.path === '/api/login' ||
+    req.path === '/api/auth/check' ||
+    req.path === '/api/splits' ||
+    (typeof req.path === 'string' && req.path.startsWith('/api/splits/'))
+  ) {
+    return next();
+  }
   const cookies = parseCookies(req);
   const token = cookies.auth_token || getAuthTokenFromHeader(req);
   if (!token) return res.status(401).json({ error: 'Unauthorized' });
@@ -99,6 +159,15 @@ function requireAuth(req, res, next) {
   return next();
 }
 app.use(requireAuth);
+// Splits map endpoint: return full map from splits.json
+app.get('/api/splits', async (req, res) => {
+  try {
+    const map = await readSplitsMap();
+    res.json(map || {});
+  } catch (e) {
+    res.json({});
+  }
+});
 
 // Auth endpoints
 // Rate limiting: max 3 attempts per 24h per IP
@@ -493,6 +562,186 @@ app.post('/api/telegram/test', async (req, res) => {
 // Создаем папку для датасетов если её нет
 fs.ensureDirSync(DATASETS_DIR);
 
+// Жёсткая нормализация: оставляем только TICKER.json на диске
+function normalizeStableDatasetsSync() {
+  try {
+    const files = fs.readdirSync(DATASETS_DIR);
+    // 0) Удалим мусорные AppleDouble файлы
+    for (const f of files) {
+      if (f.startsWith('._')) {
+        try { fs.removeSync(path.join(DATASETS_DIR, f)); } catch {}
+      }
+    }
+    const left = fs.readdirSync(DATASETS_DIR).filter(f => f.endsWith('.json'));
+    // 1) Сгруппировать по тикеру
+    const byTicker = new Map();
+    for (const f of left) {
+      const base = path.basename(f, '.json');
+      const ticker = toSafeTicker(base.split('_')[0]);
+      if (!ticker) continue;
+      if (!byTicker.has(ticker)) byTicker.set(ticker, []);
+      byTicker.get(ticker).push(f);
+    }
+    // 2) Для каждого тикера обеспечить только один стабильный файл TICKER.json
+    for (const [ticker, arr] of byTicker.entries()) {
+      const stablePath = path.join(DATASETS_DIR, `${ticker}.json`);
+      const legacyCandidates = arr.filter(f => f.toUpperCase() !== `${ticker}.JSON`).sort();
+      const hasStable = arr.some(f => f.toUpperCase() === `${ticker}.JSON`);
+      if (!hasStable) {
+        // Создаём стабильный файл из самого свежего legacy
+        const chosen = legacyCandidates.length ? legacyCandidates[legacyCandidates.length - 1] : arr[0];
+        const source = path.join(DATASETS_DIR, chosen);
+        try {
+          const payload = fs.readJsonSync(source);
+          if (payload) {
+            payload.name = ticker;
+            payload.ticker = ticker;
+            fs.writeJsonSync(stablePath, payload, { spaces: 2 });
+          } else {
+            fs.copySync(source, stablePath, { overwrite: true });
+          }
+          console.log(`Normalized dataset for ${ticker} → ${path.basename(stablePath)}`);
+        } catch (e) {
+          console.warn(`Failed to normalize ${ticker}: ${e.message}`);
+        }
+      } else {
+        // Убедимся, что в стабильном корректные поля
+        try {
+          const payload = fs.readJsonSync(stablePath);
+          let mutated = false;
+          if (payload && payload.name !== ticker) { payload.name = ticker; mutated = true; }
+          if (payload && payload.ticker !== ticker) { payload.ticker = ticker; mutated = true; }
+          if (mutated) fs.writeJsonSync(stablePath, payload, { spaces: 2 });
+        } catch {}
+      }
+      // 3) Удаляем все legacy файлы (с датой в имени)
+      for (const f of arr) {
+        const full = path.join(DATASETS_DIR, f);
+        if (full === stablePath) continue;
+        try { fs.removeSync(full); } catch {}
+      }
+    }
+  } catch (e) {
+    console.warn('Normalization skipped:', e.message);
+  }
+}
+
+// One-time migration: consolidate legacy files like TICKER_YYYY-MM-DD.json → TICKER.json
+function migrateLegacyDatasetsSync() {
+  try {
+    const files = listDatasetFilesSync();
+    if (!files || files.length === 0) return;
+    const byTicker = new Map();
+    for (const f of files) {
+      const base = path.basename(f, '.json');
+      const ticker = toSafeTicker(base.split('_')[0]);
+      if (!ticker) continue;
+      if (!byTicker.has(ticker)) byTicker.set(ticker, []);
+      byTicker.get(ticker).push(f);
+    }
+    for (const [ticker, arr] of byTicker.entries()) {
+      const target = path.join(DATASETS_DIR, `${ticker}.json`);
+      if (fs.pathExistsSync(target)) {
+        // Clean up legacy suffixed files and normalize payload
+        for (const f of arr) {
+          if (f.toUpperCase() === `${ticker}.JSON`) continue;
+          try { fs.removeSync(path.join(DATASETS_DIR, f)); } catch {}
+        }
+        try {
+          const payload = fs.readJsonSync(target);
+          let mutated = false;
+          if (payload && payload.name !== ticker) { payload.name = ticker; mutated = true; }
+          if (payload && payload.ticker !== ticker) { payload.ticker = ticker; mutated = true; }
+          if (mutated) fs.writeJsonSync(target, payload, { spaces: 2 });
+        } catch {}
+        continue;
+      }
+      // Choose latest legacy by filename order (YYYY-MM-DD suffix sorts lexicographically)
+      const legacyCandidates = arr.filter(f => f.toUpperCase() !== `${ticker}.JSON`).sort();
+      const chosen = legacyCandidates.length ? legacyCandidates[legacyCandidates.length - 1] : arr[0];
+      const source = path.join(DATASETS_DIR, chosen);
+      try {
+        const payload = fs.readJsonSync(source);
+        if (payload) {
+          payload.name = ticker;
+          payload.ticker = ticker;
+          fs.writeJsonSync(target, payload, { spaces: 2 });
+        } else {
+          fs.copySync(source, target, { overwrite: true });
+        }
+      } catch {
+        try { fs.copySync(source, target, { overwrite: true }); } catch {}
+      }
+      // Remove all legacy files after migration
+      for (const f of arr) {
+        const p = path.join(DATASETS_DIR, f);
+        if (p === target) continue;
+        try { fs.removeSync(p); } catch {}
+      }
+      console.log(`Migrated dataset files for ${ticker} → ${path.basename(target)}`);
+    }
+  } catch (e) {
+    console.warn('Dataset migration skipped:', e.message);
+  }
+}
+
+// Run migration on startup to ensure stable IDs
+normalizeStableDatasetsSync();
+
+// Helpers for dataset file name resolution (migrate away from date-suffixed names)
+function toSafeTicker(raw) {
+  return String(raw || '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9._-]/g, '');
+}
+
+function listDatasetFilesSync() {
+  try {
+    return fs
+      .readdirSync(DATASETS_DIR)
+      // Skip macOS AppleDouble and hidden files
+      .filter(f => f.endsWith('.json') && !f.startsWith('._'));
+  } catch {
+    return [];
+  }
+}
+
+function resolveDatasetFilePathById(id) {
+  // Unified ID policy: ID == TICKER (uppercase), file == TICKER.json
+  const ticker = toSafeTicker((id || '').toString());
+  if (!ticker) return null;
+  const stable = path.join(DATASETS_DIR, `${ticker}.json`);
+  try {
+    if (fs.existsSync(stable)) return stable;
+  } catch {}
+  // Fallback: support legacy suffixed filenames like TICKER_YYYY-MM-DD.json
+  try {
+    const files = listDatasetFilesSync();
+    const legacy = files
+      .filter(f => f.toUpperCase().startsWith(`${ticker}_`) && !f.startsWith('._'))
+      .sort(); // lexicographic sort, date suffix sorts correctly
+    if (legacy.length > 0) {
+      return path.join(DATASETS_DIR, legacy[legacy.length - 1]);
+    }
+  } catch {}
+  return stable;
+}
+
+async function writeDatasetToTickerFile(dataset) {
+  const ticker = toSafeTicker(dataset.ticker);
+  const targetPath = path.join(DATASETS_DIR, `${ticker}.json`);
+  // Remove legacy files for this ticker to avoid confusion (best-effort)
+  try {
+    const files = await fs.readdir(DATASETS_DIR);
+    await Promise.all(files
+      .filter(f => f.toUpperCase().startsWith(`${ticker}_`))
+      .map(f => fs.remove(path.join(DATASETS_DIR, f)).catch(() => {}))
+    );
+  } catch {}
+  await fs.writeJson(targetPath, dataset, { spaces: 2 });
+  return { ticker, targetPath };
+}
+
 // Settings helpers
 function getDefaultSettings() {
   return {
@@ -869,10 +1118,8 @@ app.get('/api/datasets', async (req, res) => {
         
         // Возвращаем только метаданные без самих данных для списка
         const { data: _, ...metadata } = data;
-        datasets.push({
-          id: file.replace('.json', ''),
-          ...metadata
-        });
+        const id = toSafeTicker(metadata.ticker || file.replace('.json','').split('_')[0]);
+        datasets.push({ id, ...metadata });
       }
     }
     
@@ -888,9 +1135,9 @@ app.get('/api/datasets/:id', async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   try {
     const { id } = req.params;
-    const filePath = path.join(DATASETS_DIR, `${id}.json`);
+    const filePath = resolveDatasetFilePathById(id);
     
-    if (!await fs.pathExists(filePath)) {
+    if (!filePath || !await fs.pathExists(filePath)) {
       return res.status(404).json({ error: 'Dataset not found' });
     }
     
@@ -920,16 +1167,12 @@ app.post('/api/datasets', async (req, res) => {
     if (!lastTs) {
       return res.status(400).json({ error: 'Invalid data: cannot determine last date' });
     }
-    const lastYmd = new Date(lastTs).toISOString().split('T')[0];
-    const safeTicker = String(dataset.ticker || '').toUpperCase().replace(/[^A-Z0-9._-]/g, '');
-    const computedName = `${safeTicker}_${lastYmd}`;
-    const safeId = computedName.replace(/[^a-zA-Z0-9_-]/g, '_');
-    const filePath = path.join(DATASETS_DIR, `${safeId}.json`);
-    // Обновляем name внутри файла на вычисленное
+    const safeTicker = toSafeTicker(dataset.ticker);
+    const computedName = safeTicker; // без даты
     const payload = { ...dataset, name: computedName };
-    await fs.writeJson(filePath, payload, { spaces: 2 });
-    console.log(`Dataset saved: ${computedName} (${safeTicker})`);
-    res.json({ success: true, id: safeId, message: `Dataset "${computedName}" saved successfully` });
+    const { targetPath } = await writeDatasetToTickerFile(payload);
+    console.log(`Dataset saved: ${computedName} (${safeTicker}) -> ${path.basename(targetPath)}`);
+    res.json({ success: true, id: safeTicker, message: `Dataset "${computedName}" saved successfully` });
   } catch (error) {
     console.error('Error saving dataset:', error);
     res.status(500).json({ error: 'Failed to save dataset' });
@@ -961,10 +1204,11 @@ app.put('/api/datasets/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const dataset = req.body;
-    const filePath = path.join(DATASETS_DIR, `${id}.json`);
+    const legacyPath = resolveDatasetFilePathById(id);
     
-    if (!await fs.pathExists(filePath)) {
-      return res.status(404).json({ error: 'Dataset not found' });
+    if (!legacyPath || !await fs.pathExists(legacyPath)) {
+      // Если нет legacy/прямого файла — будем создавать новый по тикеру
+      if (!dataset || !dataset.ticker) return res.status(404).json({ error: 'Dataset not found' });
     }
     // Рассчитать целевое имя файла на основе последней даты
     if (!dataset || !dataset.ticker || !Array.isArray(dataset.data) || dataset.data.length === 0) {
@@ -978,28 +1222,178 @@ app.put('/api/datasets/:id', async (req, res) => {
     if (!lastTs) {
       return res.status(400).json({ error: 'Invalid data: cannot determine last date' });
     }
-    const lastYmd = new Date(lastTs).toISOString().split('T')[0];
-    const safeTicker = String(dataset.ticker || '').toUpperCase().replace(/[^A-Z0-9._-]/g, '');
-    const computedName = `${safeTicker}_${lastYmd}`;
-    const safeNewId = computedName.replace(/[^a-zA-Z0-9_-]/g, '_');
-    const newPath = path.join(DATASETS_DIR, `${safeNewId}.json`);
+    const safeTicker = toSafeTicker(dataset.ticker);
+    const computedName = safeTicker; // без даты в названии
     const payload = { ...dataset, name: computedName };
-    let renamed = false;
-    if (safeNewId !== id) {
-      // Переименовать файл
-      await fs.writeJson(newPath, payload, { spaces: 2 });
-      await fs.remove(filePath);
-      renamed = true;
-      console.log(`Dataset renamed & updated: ${id} → ${safeNewId}`);
-      return res.json({ success: true, id: safeNewId, renamed: true, message: `Dataset "${id}" renamed to "${safeNewId}" and updated` });
-    } else {
-      await fs.writeJson(filePath, payload, { spaces: 2 });
-      console.log(`Dataset updated: ${id}`);
-      return res.json({ success: true, id: safeNewId, renamed: false, message: `Dataset "${id}" updated successfully` });
-    }
+    const { targetPath } = await writeDatasetToTickerFile(payload);
+    // Удалим legacy файл, если он отличался
+    try { if (legacyPath && legacyPath !== targetPath) await fs.remove(legacyPath); } catch {}
+    console.log(`Dataset updated (stable id): ${safeTicker}`);
+    return res.json({ success: true, id: safeTicker, renamed: true, message: `Dataset "${safeTicker}" updated` });
   } catch (error) {
     console.error('Error updating dataset:', error);
     res.status(500).json({ error: 'Failed to update dataset' });
+  }
+});
+
+// Refresh dataset on the server (fetch only missing tail and persist)
+app.post('/api/datasets/:id/refresh', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const provider = (req.query.provider || '').toString().toLowerCase();
+    const settings = await readSettings().catch(() => ({}));
+    const chosenProvider = provider === 'alpha_vantage' || provider === 'finnhub'
+      ? provider
+      : (settings.resultsRefreshProvider || settings.resultsQuoteProvider || 'finnhub');
+
+    const filePath = resolveDatasetFilePathById(id);
+    if (!filePath || !await fs.pathExists(filePath)) {
+      return res.status(404).json({ error: 'Dataset not found' });
+    }
+    const dataset = await fs.readJson(filePath);
+    const ticker = toSafeTicker(dataset.ticker || id);
+    if (!ticker) return res.status(400).json({ error: 'Ticker not defined in dataset' });
+
+    // Normalize date to YYYY-MM-DD key consistently
+    const toDateKey = (d) => {
+      try {
+        if (typeof d === 'string') {
+          // 'YYYY-MM-DD' or ISO -> take first 10 chars
+          return d.slice(0, 10);
+        }
+        return new Date(d).toISOString().slice(0, 10);
+      } catch {
+        return '';
+      }
+    };
+
+    // Determine tail window: use last date from existing data, then fetch a safe overlap window
+    const lastExistingDate = (() => {
+      if (dataset && Array.isArray(dataset.data) && dataset.data.length) {
+        const lastBar = dataset.data[dataset.data.length - 1];
+        return toDateKey(lastBar && lastBar.date);
+      }
+      const drTo = dataset && dataset.dateRange && dataset.dateRange.to;
+      return toDateKey(drTo);
+    })();
+    if (!lastExistingDate) return res.status(400).json({ error: 'Dataset has no last date' });
+    const last = new Date(`${lastExistingDate}T00:00:00.000Z`);
+    // Safe overlap window: 7 days back, 00:00 UTC
+    const start = new Date(Date.UTC(last.getUTCFullYear(), last.getUTCMonth(), last.getUTCDate() - 7, 0, 0, 0));
+    const startTs = Math.floor(start.getTime() / 1000);
+    const endTs = Math.floor(Date.now() / 1000);
+
+    let rows = [];
+    let splits = [];
+    if (chosenProvider === 'finnhub') {
+      const fh = await fetchFromFinnhub(ticker, startTs, endTs);
+      rows = fh.map(r => ({
+        date: r.date,
+        open: r.open,
+        high: r.high,
+        low: r.low,
+        close: r.close,
+        adjClose: r.adjClose ?? r.close,
+        volume: r.volume || 0,
+      }));
+    } else {
+      const av = await fetchFromAlphaVantage(ticker, startTs, endTs, { adjustment: 'none' });
+      const base = Array.isArray(av) ? av : (av && av.data) || [];
+      rows = base.map(r => ({
+        date: r.date,
+        open: r.open,
+        high: r.high,
+        low: r.low,
+        close: r.close,
+        adjClose: r.adjClose ?? r.close,
+        volume: r.volume || 0,
+      }));
+      if (av && !Array.isArray(av) && Array.isArray(av.splits)) {
+        splits = av.splits;
+      }
+    }
+
+    // Merge with de-duplication by date key, normalizing all dates to YYYY-MM-DD
+    const mergedByDate = new Map();
+    // 1) Seed with existing data (normalized)
+    for (const b of (dataset.data || [])) {
+      const key = toDateKey(b && b.date);
+      if (!key) continue;
+      mergedByDate.set(key, {
+        date: key,
+        open: Number(b.open),
+        high: Number(b.high),
+        low: Number(b.low),
+        close: Number(b.close),
+        adjClose: (b.adjClose != null ? Number(b.adjClose) : Number(b.close)),
+        volume: Number(b.volume) || 0,
+      });
+    }
+    // 2) Overlay incoming rows (normalized) to avoid duplicates and ensure newest values win
+    for (const r of rows) {
+      const key = toDateKey(r && r.date);
+      if (!key) continue;
+      mergedByDate.set(key, {
+        date: key,
+        open: Number(r.open),
+        high: Number(r.high),
+        low: Number(r.low),
+        close: Number(r.close),
+        adjClose: (r.adjClose != null ? Number(r.adjClose) : Number(r.close)),
+        volume: Number(r.volume) || 0,
+      });
+    }
+
+    // Apply back-adjust for known splits from central storage
+    const centralSplits = await getTickerSplits(ticker);
+    const mergedArray = Array.from(mergedByDate.values()).sort((a, b) => a.date.localeCompare(b.date));
+    const adjustedMerged = (() => {
+      if (!centralSplits || centralSplits.length === 0) return mergedArray;
+      // inline adjust without importing TS utils
+      const events = centralSplits.slice().sort((a,b)=> new Date(a.date) - new Date(b.date));
+      return mergedArray.map((bar) => {
+        const t = new Date(`${bar.date}T00:00:00.000Z`).getTime();
+        let cumulative = 1;
+        for (const e of events) {
+          const et = new Date(`${e.date}T00:00:00.000Z`).getTime();
+          if (t < et) cumulative *= e.factor;
+        }
+        if (cumulative === 1) return bar;
+        return {
+          ...bar,
+          open: bar.open / cumulative,
+          high: bar.high / cumulative,
+          low: bar.low / cumulative,
+          close: bar.close / cumulative,
+          adjClose: (bar.adjClose ?? bar.close) / cumulative,
+          volume: Math.round((bar.volume || 0) * cumulative),
+        };
+      });
+    })();
+
+    const lastMerged = adjustedMerged[adjustedMerged.length - 1];
+    const firstMerged = adjustedMerged[0];
+    dataset.data = adjustedMerged;
+    dataset.dataPoints = adjustedMerged.length;
+    dataset.dateRange = {
+      from: toDateKey(firstMerged.date),
+      to: toDateKey(lastMerged.date),
+    };
+    dataset.uploadDate = new Date().toISOString();
+    dataset.name = ticker;
+    if (Array.isArray(splits) && splits.length) {
+      dataset.splits = splits;
+    }
+
+    const prevCount = (dataset.data || []).length;
+    const { targetPath } = await writeDatasetToTickerFile(dataset);
+    const added = adjustedMerged.length - prevCount;
+    console.log(`Dataset refreshed: ${ticker} (+${added}) -> ${targetPath}`);
+    return res.json({ success: true, id: ticker, added, to: dataset.dateRange.to });
+  } catch (error) {
+    console.error('Error refreshing dataset:', error);
+    const msg = error && error.message ? error.message : 'Failed to refresh dataset';
+    res.status(500).json({ error: msg });
   }
 });
 
@@ -1189,96 +1583,14 @@ app.get('/api/quote/:symbol', async (req, res) => {
 // Splits-only endpoint: fetch split events separately
 app.get('/api/splits/:symbol', async (req, res) => {
   try {
-    const { symbol } = req.params;
-    const { start, end, provider, allowHeuristic } = req.query;
-    if (!symbol) {
-      return res.status(400).json({ error: 'Symbol is required' });
-    }
-    const defaultStartDate = Math.floor(Date.now() / 1000) - (40 * 365 * 24 * 60 * 60);
-    const startDate = start ? parseInt(start) : defaultStartDate;
-    const endDate = end ? parseInt(end) : Math.floor(Date.now() / 1000);
-    const chosenProvider = (provider || API_CONFIG.PREFERRED_API_PROVIDER).toString().toLowerCase();
-    let result = [];
-
-    // 0) Авторитетный источник: если в локальном датасете уже есть сплиты — вернём их
-    try {
-      const files = await fs.readdir(DATASETS_DIR);
-      // Находим последний файл по шаблону SYMBOL_YYYY-MM-DD.json
-      const re = new RegExp(`^${symbol.replace(/[^A-Za-z0-9._-]/g,'').toUpperCase()}_\\d{4}-\\d{2}-\\d{2}\\.json$`);
-      const matched = files.filter(f => re.test(f)).sort().reverse();
-      if (matched.length > 0) {
-        const latestPath = path.join(DATASETS_DIR, matched[0]);
-        const ds = await fs.readJson(latestPath);
-        if (ds && Array.isArray(ds.splits) && ds.splits.length > 0) {
-          // Сортируем по дате возрастанию и возвращаем
-          const sorted = [...ds.splits].sort((a,b)=> new Date(a.date) - new Date(b.date));
-          return res.json(sorted);
-        }
-      }
-    } catch {}
-    if (chosenProvider === 'finnhub') {
-      if (!API_CONFIG.FINNHUB_API_KEY) {
-        return res.status(500).json({ error: 'Finnhub API key not configured' });
-      }
-      console.log(`Fetching splits for ${symbol} from Finnhub...`);
-      try {
-        result = await fetchSplitsFromFinnhub(symbol, startDate, endDate);
-      } catch (e) {
-        // Если нет доступа к сплитам, попытаемся определить сплиты эвристикой по OHLC Finnhub
-        if (e && e.status === 403 && String(allowHeuristic) === '1') {
-          console.warn('Finnhub splits not accessible on this plan. Falling back to heuristic detection from OHLC.');
-          const ohlc = await fetchFromFinnhub(symbol, startDate, endDate);
-          result = detectSplitsFromOHLC(ohlc);
-        } else {
-          throw e;
-        }
-      }
-    } else {
-      if (!API_CONFIG.ALPHA_VANTAGE_API_KEY) {
-        return res.status(500).json({ error: 'Alpha Vantage API key not configured' });
-      }
-      console.log(`Fetching splits for ${symbol} from Alpha Vantage...`);
-      let payload;
-      try {
-        // Для сплитов обязательно используем ADJUSTED, иначе коэффициентов нет
-        payload = await fetchFromAlphaVantage(symbol, startDate, endDate, { adjustment: 'split_only' });
-      } catch (e) {
-        if (e && e.status === 429) {
-          await sleep(1200);
-          payload = await fetchFromAlphaVantage(symbol, startDate, endDate, { adjustment: 'split_only' });
-        } else {
-          throw e;
-        }
-      }
-      result = Array.isArray(payload) ? [] : (payload.splits || []);
-      // Fallback: если AV вернул пустые сплиты (или DAILY без коэффициента), можем попробовать эвристику по OHLC
-      if (String(allowHeuristic) === '1' && (!result || result.length === 0) && payload && payload.data && Array.isArray(payload.data)) {
-        try {
-          result = detectSplitsFromOHLC(payload.data);
-        } catch {}
-      }
-    }
-    console.log(`Splits found: ${result.length}`);
-    return res.json(result);
-  } catch (error) {
-    console.error('Error fetching splits:', error);
-    const status = error.status || 500;
-    let code = 'UPSTREAM_ERROR';
-    let hint = 'Попробуйте повторить запрос позже.';
-    if (status === 429) {
-      code = 'RATE_LIMIT';
-      hint = 'Достигнут лимит Alpha Vantage. Подождите 60–90 секунд и повторите.';
-    } else if (status === 400) {
-      code = 'BAD_REQUEST';
-      hint = 'Проверьте тикер и корректность API ключа.';
-    } else if (status === 403) {
-      code = 'FORBIDDEN';
-      hint = 'Недостаточные права на сплиты у текущего тарифа Finnhub. Использован fallback-алгоритм (если возможен)';
-    } else if (status === 502) {
-      code = 'UPSTREAM_HTML';
-      hint = 'Провайдер вернул некорректный ответ. Повторите позже.';
-    }
-    res.status(status).json({ error: error.message || 'Ошибка провайдера', code, hint, provider: 'Alpha Vantage' });
+    const raw = (req.params.symbol || '').toString();
+    const symbol = toSafeTicker(raw);
+    if (!symbol) return res.json([]);
+    // Единственный источник — splits.json
+    const arr = await getTickerSplits(symbol);
+    return res.json(arr || []);
+  } catch {
+    return res.json([]);
   }
 });
 
