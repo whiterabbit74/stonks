@@ -9,6 +9,7 @@ import { TelegramWatches } from './TelegramWatches';
 import { SplitsTab } from './SplitsTab';
 import { AppSettings } from './AppSettings';
 import { createStrategyFromTemplate, STRATEGY_TEMPLATES } from '../lib/strategy';
+import { Footer } from './Footer';
 
 type Tab = 'data' | 'enhance' | 'results' | 'watches' | 'splits' | 'settings';
 
@@ -131,150 +132,153 @@ export default function App() {
 
   if (!authorized) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-        <div className="w-full max-w-sm bg-white rounded-xl border shadow p-6">
-          <h2 className="text-xl font-semibold text-gray-900 mb-1">Доступ к приложению</h2>
-          <p className="text-sm text-gray-600 mb-4">Введите пароль</p>
-          {loginError && <div className="mb-3 text-sm text-red-600">{loginError}</div>}
-          <input
-            type="email"
-            value={usernameInput}
-            onChange={(e) => setUsernameInput(e.target.value)}
-            className="w-full px-3 py-2 border rounded-md mb-3"
-            placeholder="Email"
-          />
-          <input
-            type="password"
-            value={passwordInput}
-            onChange={(e) => setPasswordInput(e.target.value)}
-            className="w-full px-3 py-2 border rounded-md mb-3"
-            placeholder="Пароль"
-          />
-          <label className="inline-flex items-center gap-2 text-sm text-gray-700 mb-4">
-            <input type="checkbox" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} />
-            Запомнить меня (30 дней)
-          </label>
-          <button
-            onClick={async () => {
-              setLoginError(null);
-              try {
-                const base = window.location.href.includes('/stonks') ? '/stonks/api' : '/api';
-                const r = await fetch(`${base}/login`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  credentials: 'include',
-                  body: JSON.stringify({ username: usernameInput, password: passwordInput, remember: rememberMe }),
-                });
-                if (!r.ok) {
-                  let msg = `${r.status} ${r.statusText}`;
-                  const err = await r.json().catch(() => null);
-                  if (err && typeof err.error === 'string') msg = err.error;
-                  throw new Error(msg);
-                }
-                // Try to capture bearer token from response (optional) and persist
+      <div className="min-h-screen bg-gray-50 flex flex-col">
+        <div className="flex-1 flex items-center justify-center p-4">
+          <div className="w-full max-w-sm bg-white rounded-xl border shadow p-6">
+            <h2 className="text-xl font-semibold text-gray-900 mb-1">Доступ к приложению</h2>
+            <p className="text-sm text-gray-600 mb-4">Введите пароль</p>
+            {loginError && <div className="mb-3 text-sm text-red-600">{loginError}</div>}
+            <input
+              type="email"
+              value={usernameInput}
+              onChange={(e) => setUsernameInput(e.target.value)}
+              className="w-full px-3 py-2 border rounded-md mb-3"
+              placeholder="Email"
+            />
+            <input
+              type="password"
+              value={passwordInput}
+              onChange={(e) => setPasswordInput(e.target.value)}
+              className="w-full px-3 py-2 border rounded-md mb-3"
+              placeholder="Пароль"
+            />
+            <label className="inline-flex items-center gap-2 text-sm text-gray-700 mb-4">
+              <input type="checkbox" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} />
+              Запомнить меня (30 дней)
+            </label>
+            <button
+              onClick={async () => {
+                setLoginError(null);
                 try {
-                  const json = await r.json();
-                  if (json && typeof json.token === 'string') {
-                    window.localStorage.setItem('auth_token', json.token);
+                  const base = window.location.href.includes('/stonks') ? '/stonks/api' : '/api';
+                  const r = await fetch(`${base}/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ username: usernameInput, password: passwordInput, remember: rememberMe }),
+                  });
+                  if (!r.ok) {
+                    let msg = `${r.status} ${r.statusText}`;
+                    const err = await r.json().catch(() => null);
+                    if (err && typeof err.error === 'string') msg = err.error;
+                    throw new Error(msg);
                   }
-                } catch {}
-                setAuthorized(true);
-                // Eagerly prefetch settings and datasets after login
-                try { await useAppStore.getState().loadSettingsFromServer(); } catch {}
-                try { await useAppStore.getState().loadDatasetsFromServer(); } catch {}
-              } catch (e) {
-                const msg = e instanceof Error ? e.message : 'Ошибка входа';
-                setLoginError(msg);
-              }
-            }}
-            className="w-full inline-flex items-center justify-center bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700"
-          >
-            Войти
-          </button>
+                  // Try to capture bearer token from response (optional) and persist
+                  try {
+                    const json = await r.json();
+                    if (json && typeof json.token === 'string') {
+                      window.localStorage.setItem('auth_token', json.token);
+                    }
+                  } catch {}
+                  setAuthorized(true);
+                  // Eagerly prefetch settings and datasets after login
+                  try { await useAppStore.getState().loadSettingsFromServer(); } catch {}
+                  try { await useAppStore.getState().loadDatasetsFromServer(); } catch {}
+                } catch (e) {
+                  const msg = e instanceof Error ? e.message : 'Ошибка входа';
+                  setLoginError(msg);
+                }
+              }}
+              className="w-full inline-flex items-center justify-center bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700"
+            >
+              Войти
+            </button>
+          </div>
         </div>
+        <Footer apiBuildId={apiBuildId} />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-6xl mx-auto px-4 py-8">
-        {/* Header */}
-        <div className="mb-8">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900 mb-2">
-                IBS Trading Backtester
-              </h1>
-              <div className="text-gray-600 flex flex-wrap items-center gap-3">
-                <span>Internal Bar Strength Mean Reversion Strategy</span>
-                <span className="text-xs text-gray-400 border rounded px-2 py-0.5">FE: {import.meta.env.VITE_BUILD_ID || 'dev'}</span>
-                <span className="text-xs text-gray-400 border rounded px-2 py-0.5">API: {apiBuildId || '-'}</span>
+    <div className="min-h-screen bg-gray-50 flex flex-col">
+      <div className="flex-1">
+        <div className="max-w-6xl mx-auto px-4 py-8">
+          {/* Header */}
+          <div className="mb-8">
+            <div className="flex items-center justify-between">
+              <div>
+                <h1 className="text-3xl font-bold text-gray-900 mb-2">
+                  IBS Trading Backtester
+                </h1>
+                <div className="text-gray-600 flex flex-wrap items-center gap-3">
+                  <span>Internal Bar Strength Mean Reversion Strategy</span>
+                </div>
               </div>
+              {currentStrategy && (
+                <button
+                  onClick={() => setShowSettings(true)}
+                  className="p-2 rounded-full text-gray-500 hover:text-gray-700 hover:bg-gray-100 border border-gray-200"
+                  aria-label="Параметры стратегии"
+                  title="Параметры стратегии"
+                >
+                  <Settings className="w-5 h-5" />
+                </button>
+              )}
             </div>
-            {currentStrategy && (
-              <button
-                onClick={() => setShowSettings(true)}
-                className="p-2 rounded-full text-gray-500 hover:text-gray-700 hover:bg-gray-100 border border-gray-200"
-                aria-label="Параметры стратегии"
-                title="Параметры стратегии"
-              >
-                <Settings className="w-5 h-5" />
-              </button>
-            )}
           </div>
-        </div>
 
-        {/* Navigation Tabs */}
-        <div className="border-b border-gray-200 mb-8">
-          <nav className="flex space-x-8">
-            {tabs.map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => { if (tab.enabled) setActiveTab(tab.id); }}
-                className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                  activeTab === tab.id
-                    ? 'border-blue-500 text-blue-600'
-                    : tab.enabled
-                    ? 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                    : 'border-transparent text-gray-300 cursor-not-allowed'
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </nav>
-        </div>
+          {/* Navigation Tabs */}
+          <div className="border-b border-gray-200 mb-8">
+            <nav className="flex space-x-8">
+              {tabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => { if (tab.enabled) setActiveTab(tab.id); }}
+                  className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                    activeTab === tab.id
+                      ? 'border-blue-500 text-blue-600'
+                      : tab.enabled
+                      ? 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                      : 'border-transparent text-gray-300 cursor-not-allowed'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </nav>
+          </div>
 
-        {/* Tab Content */}
-        <div className="bg-white rounded-lg shadow p-6">
-          {activeTab === 'data' && (
-            <DataUpload onNext={() => setActiveTab('results')} />
+          {/* Tab Content */}
+          <div className="bg-white rounded-lg shadow p-6">
+            {activeTab === 'data' && (
+              <DataUpload onNext={() => setActiveTab('results')} />
+            )}
+            {activeTab === 'enhance' && (
+              <DataEnhancer onNext={() => setActiveTab('results')} />
+            )}
+            {activeTab === 'results' && <Results />}
+            {activeTab === 'watches' && <TelegramWatches />}
+            {activeTab === 'splits' && <SplitsTab />}
+            {activeTab === 'settings' && <AppSettings />}
+          </div>
+
+          {/* Strategy Settings Modal */}
+            {showSettings && currentStrategy && (
+            <StrategySettings
+              strategy={currentStrategy}
+              onSave={(updatedStrategy) => {
+                setStrategy(updatedStrategy);
+                // Перезапускаем бэктест, чтобы метрики обновились сразу
+                runBacktest();
+                setShowSettings(false);
+              }}
+              onClose={() => setShowSettings(false)}
+            />
           )}
-          {activeTab === 'enhance' && (
-            <DataEnhancer onNext={() => setActiveTab('results')} />
-          )}
-          {activeTab === 'results' && <Results />}
-          {activeTab === 'watches' && <TelegramWatches />}
-          {activeTab === 'splits' && <SplitsTab />}
-          {activeTab === 'settings' && <AppSettings />}
         </div>
-
-        {/* Strategy Settings Modal */}
-          {showSettings && currentStrategy && (
-          <StrategySettings
-            strategy={currentStrategy}
-            onSave={(updatedStrategy) => {
-              setStrategy(updatedStrategy);
-              // Перезапускаем бэктест, чтобы метрики обновились сразу
-              runBacktest();
-              setShowSettings(false);
-            }}
-            onClose={() => setShowSettings(false)}
-          />
-        )}
       </div>
-      <div className="py-4 text-center text-xs text-gray-400">FE: {import.meta.env.VITE_BUILD_ID || 'dev'} · API: {apiBuildId || '-'}</div>
+      <Footer apiBuildId={apiBuildId} />
     </div>
   );
 }
