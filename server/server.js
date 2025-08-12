@@ -738,7 +738,9 @@ async function writeDatasetToTickerFile(dataset) {
       .map(f => fs.remove(path.join(DATASETS_DIR, f)).catch(() => {}))
     );
   } catch {}
-  await fs.writeJson(targetPath, dataset, { spaces: 2 });
+  // Strip embedded splits to enforce single source of truth (server/splits.json)
+  const { splits: _dropSplits, ...clean } = (dataset || {});
+  await fs.writeJson(targetPath, clean, { spaces: 2 });
   return { ticker, targetPath };
 }
 
@@ -1061,7 +1063,7 @@ app.get('/api/datasets', async (req, res) => {
         const data = await fs.readJson(filePath);
         if (!data || typeof data !== 'object') continue;
         // Возвращаем только метаданные без самих данных для списка
-        const { data: _drop, ...metadata } = data;
+        const { data: _dropData, splits: _dropSplits, ...metadata } = data;
         const id = toSafeTicker(metadata.ticker || file.replace('.json','').split('_')[0]);
         if (!id) continue;
         datasets.push({ id, ...metadata });
@@ -1090,7 +1092,9 @@ app.get('/api/datasets/:id', async (req, res) => {
     }
     
     const dataset = await fs.readJson(filePath);
-    res.json(dataset);
+    // Strip embedded splits before returning
+    const { splits: _dropSplits, ...clean } = (dataset || {});
+    res.json(clean);
   } catch (error) {
     console.error('Error reading dataset:', error);
     res.status(500).json({ error: 'Failed to read dataset' });
@@ -1329,9 +1333,6 @@ app.post('/api/datasets/:id/refresh', async (req, res) => {
     };
     dataset.uploadDate = new Date().toISOString();
     dataset.name = ticker;
-    if (Array.isArray(splits) && splits.length) {
-      dataset.splits = splits;
-    }
 
     const prevCount = (dataset.data || []).length;
     const { targetPath } = await writeDatasetToTickerFile(dataset);
