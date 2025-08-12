@@ -184,3 +184,79 @@ trading_strategies/
 
 - When running behind a reverse proxy (nginx, traefik), the server now sets `app.set('trust proxy', true)` to correctly pick the client IP for login rate limiting. If you terminate TLS at the proxy, ensure it forwards `X-Forwarded-For` and `X-Forwarded-Proto` headers.
 - Auth cookies are now issued with `HttpOnly` and `Secure` (in production) flags for improved security. Ensure you access the app over HTTPS in production so the cookie is sent.
+
+## Прод: хостинг и деплой
+
+- Хост: `ubuntu@146.235.212.239`
+- Прод‑папка: `~/stonks-static`
+  - `dist/` — статический фронт (Vite base: `/stonks/`)
+  - `server/` — данные и конфиги бэкенда (`datasets/`, `settings.json`, `splits.json`, `telegram-watches.json`, `.env`, `server.js`)
+  - `docker-compose.yml`, `nginx.conf`
+
+### Базовый путь фронтенда
+- Приложение раздаётся под `/stonks/`. При сборке задавайте:
+  - `PUBLIC_BASE_PATH=/stonks/`
+  - `VITE_API_BASE=/stonks/api`
+
+### Быстрый деплой фронта
+```bash
+npm run build
+tar -C . -czf dist.tgz dist
+scp dist.tgz ubuntu@146.235.212.239:~
+ssh ubuntu@146.235.212.239 'set -Eeuo pipefail; \
+  tar -xzf ~/dist.tgz -C ~/stonks-static && rm -f ~/dist.tgz && \
+  docker compose -f ~/stonks-static/docker-compose.yml restart web && \
+  sleep 2 && docker compose -f ~/stonks-static/docker-compose.yml ps | cat'
+```
+
+### Быстрые правки бэкенда (без ребилда образа)
+- На проде `server.js` примонтирован в контейнер как bind‑mount. Достаточно заменить файл и перезапустить сервис:
+```bash
+scp server/server.js ubuntu@146.235.212.239:~/stonks-static/server/server.js
+ssh ubuntu@146.235.212.239 'docker compose -f ~/stonks-static/docker-compose.yml up -d --no-build server && sleep 2 && docker compose -f ~/stonks-static/docker-compose.yml logs --no-log-prefix --since=1m server | tail -n 200 | cat'
+```
+
+### Полная пересборка контейнера `server` (когда нужно)
+```bash
+tar -C server -czf server.tgz .
+scp server.tgz ubuntu@146.235.212.239:~
+ssh ubuntu@146.235.212.239 'set -Eeuo pipefail; \
+  mkdir -p ~/stonks-static/server && tar -xzf ~/server.tgz -C ~/stonks-static/server && rm -f ~/server.tgz && \
+  docker compose -f ~/stonks-static/docker-compose.yml up -d --build server && \
+  sleep 2 && docker compose -f ~/stonks-static/docker-compose.yml logs --no-log-prefix --since=1m server | tail -n 200 | cat'
+```
+
+## Аутентификация и API
+
+- Токен‑сессия: cookie `auth_token` (HttpOnly, SameSite=Lax; в prod — Secure), поддержка `Authorization: Bearer <token>`.
+- Публичные эндпоинты (без логина):
+  - `GET /api/status`
+  - `POST /api/login`
+  - `GET /api/auth/check`
+  - `GET /api/splits`
+  - `GET /api/splits/:symbol`
+- Защищённые эндпоинты (требуют логин):
+  - `GET /api/datasets`, `GET /api/datasets/:id`
+  - `POST /api/datasets`, `PUT /api/datasets/:id`, `DELETE /api/datasets/:id`
+  - `POST /api/datasets/:id/refresh`
+  - Telegram: `POST/PATCH/DELETE /api/telegram/*`, `GET /api/telegram/watches`
+
+## Сплиты (централизованно)
+
+- Единственный источник сплитов — `server/splits.json` (на проде: `~/stonks-static/server/splits.json`).
+- Внешние провайдеры для сплитов отключены; сервер и фронт используют только локальный файл.
+- Эндпоинты (публичные):
+  - `GET /api/splits` — карта `{ [TICKER]: [{ date: 'YYYY-MM-DD', factor: number }] }`
+  - `GET /api/splits/:symbol` — массив событий для тикера
+
+## Nginx (прод)
+
+- Проксирование `/stonks/api/* → http://server:3001/api/*`, прокидываем `Authorization`.
+- SPA‑роутинг под `/stonks/`.
+- Редиректы ассетов/иконок с корня на `/stonks/*` (переживаем кэш старого HTML).
+
+## Troubleshooting
+
+- 401 после рестарта: перелогиниться (cookie‑токен), фронт автоматически шлёт Bearer из `localStorage`.
+- 404 ассетов/иконок: очистить кэш (Cmd/Ctrl+Shift+R). Nginx делает 301 на `/stonks/*` при обращении к корневым путям.
+- 500 на `/api/datasets`: ранее мешали мусорные файлы (`._*`, `*_YYYY-MM-DD.json`). Сейчас эндпоинт игнорирует мусор и при общей ошибке возвращает `[]`. При проблемах — почистить `server/datasets/` и перезапустить `server`.
