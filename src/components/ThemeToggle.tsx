@@ -16,9 +16,6 @@ function applyTheme(mode: ThemeMode) {
     }
     const metaTheme = document.querySelector('meta[name="theme-color"]');
     if (metaTheme) metaTheme.setAttribute('content', effectiveDark ? '#0b1220' : '#ffffff');
-    try {
-      window.dispatchEvent(new CustomEvent('themechange', { detail: { mode, effectiveDark } }));
-    } catch {}
   } catch {}
 }
 
@@ -55,7 +52,7 @@ export function ThemeToggle() {
   return (
     <button
       onClick={cycle}
-      className="inline-flex items-center gap-2 px-3 py-2 rounded-full border border-gray-200 text-gray-700 hover:text-gray-900 hover:bg-gray-100 bg-white/80 backdrop-blur-sm shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:border-slate-700 dark:text-gray-200 dark:hover:text-white dark:hover:bg-slate-700/80 dark:bg-slate-800/80 dark:backdrop-blur-sm dark:shadow-sm dark:focus-visible:ring-offset-slate-900 transition-colors"
+      className="inline-flex items-center gap-2 px-3 py-2 rounded-full border border-gray-200 text-gray-600 hover:text-gray-900 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-800"
       title={`Тема: ${label}`}
       aria-label={`Тема: ${label}`}
     >

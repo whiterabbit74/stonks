@@ -90,7 +90,7 @@ export function Results() {
         // no-op
       }
     })();
-   }, [symbol, currentSplits, loadDatasetFromServer, setSplits]);
+  }, [symbol, currentSplits, setSplits, loadDatasetFromServer]);
 
   useEffect(() => {
     let active = true;

@@ -127,46 +127,43 @@ export function DataUpload({ onNext }: DataUploadProps) {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="text-center">
-        <h2 className="text-xl font-semibold text-gray-900 mb-2">
-          Import Market Data (JSON)
-        </h2>
-        <p className="text-gray-600">
-          Load a saved JSON dataset or pick one from the library
-        </p>
-      </div>
-
-      {/* Dataset Library */}
-      <DatasetLibrary />
-
-      {/* File Upload Area (JSON only) */}
+    <div className="max-w-3xl mx-auto">
       <div
         className="relative rounded-2xl border-2 border-dashed border-gray-300 bg-white p-10 text-center shadow-sm hover:shadow-md transition dark:bg-gray-900 dark:border-gray-700"
         onDragOver={(e) => e.preventDefault()}
         onDrop={handleDrop}
       >
-        <Upload className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-        <p className="text-lg font-medium text-gray-900 mb-2">
-          Drop your JSON dataset here
-        </p>
-        <p className="text-gray-600 mb-4">
-          or click to browse files
-        </p>
-        <p className="text-sm text-gray-500">
-          JSON: Saved dataset format
-        </p>
+        <div className="mx-auto mb-6 inline-flex h-16 w-16 items-center justify-center rounded-full bg-blue-100 dark:bg-blue-900/30">
+          <Upload className="h-8 w-8 text-blue-600" />
+        </div>
+        <h3 className="text-xl font-semibold text-gray-900 mb-2 dark:text-gray-100">Загрузите данные для тестирования</h3>
+        <p className="text-gray-600 mb-6 dark:text-gray-300">Перетащите JSON-файл сюда или выберите его вручную.</p>
+        <div className="flex items-center justify-center gap-3">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="application/json"
+            onChange={handleFileInput}
+            className="hidden"
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 font-medium text-white shadow hover:bg-blue-700"
+          >
+            <Upload className="h-4 w-4" /> Выбрать JSON
+          </button>
+          <button
+            onClick={() => document.getElementById('dataset-library')?.scrollIntoView({ behavior: 'smooth' })}
+            className="inline-flex items-center gap-2 rounded-md border border-gray-200 px-4 py-2 font-medium text-gray-700 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+          >
+            <Download className="h-4 w-4" /> Выбрать из библиотеки
+          </button>
+        </div>
       </div>
 
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept=".json"
-        onChange={handleFileInput}
-        className="hidden"
-      />
-
-      {/* Sample Data Button — intentionally removed */}
+      <div id="dataset-library" className="mt-10">
+        <DatasetLibrary />
+      </div>
     </div>
   );
 }
