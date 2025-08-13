@@ -13,6 +13,25 @@
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     <meta name="apple-mobile-web-app-title" content="IBS Backtester" />
     <link rel="manifest" href="/site.webmanifest" />
+    <script>
+      (function() {
+        try {
+          var stored = localStorage.getItem('theme'); // 'auto' | 'light' | 'dark' | null
+          var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+          var theme = stored || 'auto';
+          var effectiveDark = theme === 'dark' || (theme === 'auto' && prefersDark);
+          var html = document.documentElement;
+          html.dataset.theme = theme;
+          if (effectiveDark) {
+            html.classList.add('dark');
+          } else {
+            html.classList.remove('dark');
+          }
+          var metaTheme = document.querySelector('meta[name="theme-color"]');
+          if (metaTheme) metaTheme.setAttribute('content', effectiveDark ? '#0b1220' : '#ffffff');
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

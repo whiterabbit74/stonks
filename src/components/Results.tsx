@@ -81,7 +81,7 @@ export function Results() {
         // Не показываем 429/внешние ошибки, т.к. теперь API всегда локальный и отдаёт []
       }
     })();
-  }, [symbol]);
+  }, [symbol, currentSplits, setSplits, loadDatasetFromServer]);
 
   useEffect(() => {
     let active = true;
