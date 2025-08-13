@@ -657,20 +657,20 @@ export function Results() {
         </h3>
         <div className="overflow-x-auto overflow-y-auto max-h-[70vh]">
           <table className="w-full text-base border-separate border-spacing-0">
-            <thead className="bg-gray-50 sticky top-0 z-20 dark:bg-gray-900/80">
+            <thead className="bg-gray-50 dark:bg-gray-900/80">
               <tr>
-                <th className="sticky top-0 text-left p-4 font-semibold text-gray-700 bg-gray-50 text-base shadow-[0_1px_0_0_rgba(0,0,0,0.05)] dark:text-gray-200 dark:bg-gray-900/80">#</th>
-                <th className="sticky top-0 text-left p-4 font-semibold text-gray-700 bg-gray-50 text-base shadow-[0_1px_0_0_rgba(0,0,0,0.05)] dark:text-gray-200 dark:bg-gray-900/80">Entry Date</th>
-                <th className="sticky top-0 text-left p-4 font-semibold text-gray-700 bg-gray-50 text-base shadow-[0_1px_0_0_rgba(0,0,0,0.05)] dark:text-gray-200 dark:bg-gray-900/80">Exit Date</th>
-                <th className="sticky top-0 text-left p-4 font-semibold text-gray-700 bg-gray-50 text-base shadow-[0_1px_0_0_rgba(0,0,0,0.05)] dark:text-gray-200 dark:bg-gray-900/80">Duration</th>
-                <th className="sticky top-0 text-right p-4 font-semibold text-gray-700 bg-gray-50 text-base shadow-[0_1px_0_0_rgba(0,0,0,0.05)] dark:text-gray-200 dark:bg-gray-900/80">Qty</th>
-                <th className="sticky top-0 text-right p-4 font-semibold text-gray-700 bg-gray-50 text-base shadow-[0_1px_0_0_rgba(0,0,0,0.05)] dark:text-gray-200 dark:bg-gray-900/80">Entry Price</th>
-                <th className="sticky top-0 text-right p-4 font-semibold text-gray-700 bg-gray-50 text-base shadow-[0_1px_0_0_rgba(0,0,0,0.05)] dark:text-gray-200 dark:bg-gray-900/80">Exit Price</th>
-                <th className="sticky top-0 text-right p-4 font-semibold text-gray-700 bg-gray-50 text-base shadow-[0_1px_0_0_rgba(0,0,0,0.05)] dark:text-gray-200 dark:bg-gray-900/80">Investment</th>
-                <th className="sticky top-0 text-right p-4 font-semibold text-gray-700 bg-gray-50 text-base shadow-[0_1px_0_0_rgba(0,0,0,0.05)] dark:text-gray-200 dark:bg-gray-900/80">P&L</th>
-                <th className="sticky top-0 text-right p-4 font-semibold text-gray-700 bg-gray-50 text-base shadow-[0_1px_0_0_rgba(0,0,0,0.05)] dark:text-gray-200 dark:bg-gray-900/80">Return %</th>
-                <th className="sticky top-0 text-right p-4 font-semibold text-gray-700 bg-gray-50 text-base shadow-[0_1px_0_0_rgba(0,0,0,0.05)] dark:text-gray-200 dark:bg-gray-900/80">Current Capital</th>
-                <th className="sticky top-0 text-left p-4 font-semibold text-gray-700 bg-gray-50 text-base shadow-[0_1px_0_0_rgba(0,0,0,0.05)] dark:text-gray-200 dark:bg-gray-900/80">Exit Reason</th>
+                <th className="sticky top-0 z-10 text-left p-4 font-semibold text-gray-700 bg-gray-50 text-base shadow-[0_1px_0_0_rgba(0,0,0,0.05)] dark:text-gray-200 dark:bg-gray-900/80">#</th>
+                <th className="sticky top-0 z-10 text-left p-4 font-semibold text-gray-700 bg-gray-50 text-base shadow-[0_1px_0_0_rgba(0,0,0,0.05)] dark:text-gray-200 dark:bg-gray-900/80">Entry Date</th>
+                <th className="sticky top-0 z-10 text-left p-4 font-semibold text-gray-700 bg-gray-50 text-base shadow-[0_1px_0_0_rgba(0,0,0,0.05)] dark:text-gray-200 dark:bg-gray-900/80">Exit Date</th>
+                <th className="sticky top-0 z-10 text-left p-4 font-semibold text-gray-700 bg-gray-50 text-base shadow-[0_1px_0_0_rgba(0,0,0,0.05)] dark:text-gray-200 dark:bg-gray-900/80">Duration</th>
+                <th className="sticky top-0 z-10 text-right p-4 font-semibold text-gray-700 bg-gray-50 text-base shadow-[0_1px_0_0_rgba(0,0,0,0.05)] dark:text-gray-200 dark:bg-gray-900/80">Qty</th>
+                <th className="sticky top-0 z-10 text-right p-4 font-semibold text-gray-700 bg-gray-50 text-base shadow-[0_1px_0_0_rgba(0,0,0,0.05)] dark:text-gray-200 dark:bg-gray-900/80">Entry Price</th>
+                <th className="sticky top-0 z-10 text-right p-4 font-semibold text-gray-700 bg-gray-50 text-base shadow-[0_1px_0_0_rgba(0,0,0,0.05)] dark:text-gray-200 dark:bg-gray-900/80">Exit Price</th>
+                <th className="sticky top-0 z-10 text-right p-4 font-semibold text-gray-700 bg-gray-50 text-base shadow-[0_1px_0_0_rgba(0,0,0,0.05)] dark:text-gray-200 dark:bg-gray-900/80">Investment</th>
+                <th className="sticky top-0 z-10 text-right p-4 font-semibold text-gray-700 bg-gray-50 text-base shadow-[0_1px_0_0_rgba(0,0,0,0.05)] dark:text-gray-200 dark:bg-gray-900/80">P&L</th>
+                <th className="sticky top-0 z-10 text-right p-4 font-semibold text-gray-700 bg-gray-50 text-base shadow-[0_1px_0_0_rgba(0,0,0,0.05)] dark:text-gray-200 dark:bg-gray-900/80">Return %</th>
+                <th className="sticky top-0 z-10 text-right p-4 font-semibold text-gray-700 bg-gray-50 text-base shadow-[0_1px_0_0_rgba(0,0,0,0.05)] dark:text-gray-200 dark:bg-gray-900/80">Current Capital</th>
+                <th className="sticky top-0 z-10 text-left p-4 font-semibold text-gray-700 bg-gray-50 text-base shadow-[0_1px_0_0_rgba(0,0,0,0.05)] dark:text-gray-200 dark:bg-gray-900/80">Exit Reason</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
