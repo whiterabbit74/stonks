@@ -604,9 +604,18 @@ html, body, #root {
 .dark body { 
   background-color: var(--color-bg-dark); 
   color: var(--color-text-dark);
-  background-image: radial-gradient(1200px 600px at 100% -10%, rgba(59,130,246,0.08), transparent),
-                    radial-gradient(800px 400px at -10% 100%, rgba(16,185,129,0.08), transparent);
+  background-image:
+    radial-gradient(1200px 600px at 100% -10%, rgba(59,130,246,0.08), transparent),
+    radial-gradient(800px 400px at -10% 100%, rgba(16,185,129,0.08), transparent);
   background-attachment: fixed;
+}
+
+/* Glass panel utility */
+.dark .glass-panel {
+  background-color: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(51, 65, 85, 0.6);
+  box-shadow: 0 10px 25px rgba(0,0,0,0.45), 0 2px 6px rgba(0,0,0,0.3);
+  backdrop-filter: blur(8px);
 }
 
 /* Common utility overrides for legacy light classes used in components */
@@ -623,6 +632,13 @@ html, body, #root {
 
 /* Cards and panels looking more elevated in dark */
 .dark .shadow { box-shadow: 0 10px 25px rgba(0,0,0,0.45), 0 2px 6px rgba(0,0,0,0.3) !important; }
+
+/* Header refinement */
+.dark header {
+  background-color: rgba(15, 23, 42, 0.6) !important;
+  border-bottom-color: #0b1220 !important;
+  backdrop-filter: blur(8px);
+}
 
 /* Inputs */
 .dark input[type="text"],

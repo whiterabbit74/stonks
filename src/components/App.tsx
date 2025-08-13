@@ -188,61 +188,19 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col dark:bg-gray-950">
-      <div className="flex-1">
-        <div className="max-w-6xl mx-auto px-4 py-8">
-          {/* Header */}
-          <div className="mb-8">
-            <div className="flex items-center justify-between">
-              <div>
-                <h1 className="text-3xl font-bold text-gray-900 mb-2 dark:text-gray-100">
-                  IBS Trading Backtester
-                </h1>
-                <div className="text-gray-600 flex flex-wrap items-center gap-3 dark:text-gray-400">
-                  <span>Internal Bar Strength Mean Reversion Strategy</span>
-                </div>
-              </div>
-              <div className="flex items-center gap-3">
-                <ThemeToggle />
-                {currentStrategy && (
-                  <button
-                    onClick={() => setActiveTab('settings')}
-                    className="p-2 rounded-full text-gray-500 hover:text-gray-700 hover:bg-gray-100 border border-gray-200 dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-800 dark:border-gray-700"
-                    aria-label="Настройки"
-                    title="Настройки"
-                  >
-                    <Settings className="w-5 h-5" />
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
+    <div className="min-h-screen bg-gray-50 text-gray-800 dark:text-gray-100">
+      {/* Floating theme toggle in top-right corner */}
+      <div className="fixed top-3 right-3 z-50">
+        <ThemeToggle />
+      </div>
 
-          {/* Navigation Tabs */}
-          <div className="border-b border-gray-200 mb-8 dark:border-gray-800">
-            <nav className="flex space-x-8">
-              {tabs.map((tab) => (
-                <button
-                  key={tab.id}
-                  onClick={() => { if (tab.enabled) setActiveTab(tab.id); }}
-                  className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                    activeTab === tab.id
-                      ? 'border-blue-500 text-blue-600'
-                      : tab.enabled
-                      ? 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-200'
-                      : 'border-transparent text-gray-300 cursor-not-allowed dark:text-gray-600'
-                  }`}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </nav>
-          </div>
-
-          {/* Tab Content */}
-          <div className="bg-white rounded-lg shadow p-6 dark:bg-gray-900 dark:text-gray-100">
-            {activeTab === 'data' && (
-              <DataUpload onNext={() => setActiveTab('results')} />
+      <header className="border-b bg-white/60 backdrop-blur sticky top-0 z-20 dark:bg-slate-900/60 dark:border-slate-800">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            {/* Removed ThemeToggle from here to place it in the top-right corner */}
+            <h1 className="text-lg font-semibold tracking-tight">Trading strategies</h1>
+            {apiBuildId && (
+              <span className="text-xs text-gray-500 dark:text-gray-400">API build: {apiBuildId}</span>
             )}
             {activeTab === 'enhance' && (
               <DataEnhancer onNext={() => setActiveTab('results')} />
@@ -252,23 +210,42 @@ export default function App() {
             {activeTab === 'splits' && <SplitsTab />}
             {activeTab === 'settings' && <AppSettings />}
           </div>
-
-          {/* Strategy Settings Modal */}
-            {showSettings && currentStrategy && (
-            <StrategySettings
-              strategy={currentStrategy}
-              onSave={(updatedStrategy) => {
-                setStrategy(updatedStrategy);
-                // Перезапускаем бэктест, чтобы метрики обновились сразу
-                runBacktest();
-                setShowSettings(false);
-              }}
-              onClose={() => setShowSettings(false)}
-            />
-          )}
+          <div className="flex items-center gap-2">
+            <a className="inline-flex items-center gap-2 text-sm hover:text-indigo-600 dark:hover:text-indigo-400" href="#settings">
+              <Settings size={16} />
+              Settings
+            </a>
+          </div>
         </div>
-      </div>
-      <Footer apiBuildId={apiBuildId} />
+      </header>
+
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        <div className="mb-4">
+          <nav className="flex gap-2 flex-wrap">
+            {tabs.map(t => (
+              <button
+                key={t.id}
+                disabled={!t.enabled}
+                onClick={() => setActiveTab(t.id)}
+                className={`${activeTab === t.id
+                  ? 'px-3 py-1 rounded text-sm border bg-indigo-600 text-white border-indigo-600 dark:bg-indigo-500 dark:border-indigo-500'
+                  : 'px-3 py-1 rounded text-sm border bg-white hover:bg-gray-50 text-gray-700 border-gray-200 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-gray-200 dark:border-slate-700'}`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </nav>
+        </div>
+
+        {activeTab === 'data' && <DataUpload />}
+        {activeTab === 'enhance' && <DataEnhancer />}
+        {activeTab === 'results' && <Results />}
+        {activeTab === 'watches' && <TelegramWatches />}
+        {activeTab === 'splits' && <SplitsTab />}
+        {activeTab === 'settings' && <AppSettings />}
+      </main>
+
+      <Footer authorized={authorized} checkingAuth={checkingAuth} loginError={loginError} setLoginError={setLoginError} usernameInput={usernameInput} setUsernameInput={setUsernameInput} passwordInput={passwordInput} setPasswordInput={setPasswordInput} rememberMe={rememberMe} setRememberMe={setRememberMe} />
     </div>
   );
 }
