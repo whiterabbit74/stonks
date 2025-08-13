@@ -135,6 +135,17 @@ function setAuthCookie(res, token, remember) {
   if (IS_PROD) parts.push('Secure');
   res.setHeader('Set-Cookie', parts.join('; '));
 }
+function clearAuthCookie(res) {
+  const parts = [
+    'auth_token=',
+    'Path=/',
+    'SameSite=Lax',
+    'Max-Age=0',
+    'HttpOnly',
+  ];
+  if (IS_PROD) parts.push('Secure');
+  res.setHeader('Set-Cookie', parts.join('; '));
+}
 function requireAuth(req, res, next) {
   if (!ADMIN_PASSWORD) return next(); // auth disabled
   if (req.method === 'OPTIONS') return next();
@@ -142,6 +153,7 @@ function requireAuth(req, res, next) {
   if (
     req.path === '/api/status' ||
     req.path === '/api/login' ||
+    req.path === '/api/logout' ||
     req.path === '/api/auth/check' ||
     req.path === '/api/splits' ||
     (typeof req.path === 'string' && req.path.startsWith('/api/splits/'))
@@ -237,6 +249,18 @@ app.get('/api/auth/check', (req, res) => {
   const sess = token && sessions.get(token);
   if (!sess || sess.expiresAt < Date.now()) return res.status(401).json({ error: 'Unauthorized' });
   res.json({ ok: true });
+});
+app.post('/api/logout', (req, res) => {
+  try {
+    const cookies = parseCookies(req);
+    const token = cookies.auth_token || getAuthTokenFromHeader(req);
+    if (token) sessions.delete(token);
+    clearAuthCookie(res);
+    res.json({ success: true });
+  } catch (e) {
+    clearAuthCookie(res);
+    res.json({ success: true });
+  }
 });
 
 // In-memory watch list for Telegram notifications (persisted to disk)
