@@ -25,6 +25,7 @@ export default function App() {
   const backtestStatus = useAppStore(s => s.backtestStatus);
   const setStrategy = useAppStore(s => s.setStrategy);
   const loadSettingsFromServer = useAppStore(s => s.loadSettingsFromServer);
+  const loadDatasetsFromServer = useAppStore(s => s.loadDatasetsFromServer);
 
   const [authorized, setAuthorized] = useState(false);
   const [checkingAuth, setCheckingAuth] = useState(true);
@@ -32,6 +33,7 @@ export default function App() {
   const [usernameInput, setUsernameInput] = useState('');
   const [passwordInput, setPasswordInput] = useState('');
   const [rememberMe, setRememberMe] = useState(false);
+  const [showLogin, setShowLogin] = useState(false);
 
   // Загружаем настройки один раз при монтировании
   useEffect(() => {
@@ -99,11 +101,40 @@ export default function App() {
   const handleLogout = async () => {
     try {
       const base = window.location.href.includes('/stonks') ? '/stonks/api' : '/api';
-      await fetch(`${base}/auth/logout`, { method: 'POST', credentials: 'include' });
+      await fetch(`${base}/logout`, { method: 'POST', credentials: 'include' });
     } catch (e) {
       console.warn('Logout failed', e);
     } finally {
       setAuthorized(false);
+    }
+  };
+
+  const handleLogin = async (e?: FormEvent) => {
+    if (e) e.preventDefault();
+    setLoginError(null);
+    try {
+      const base = window.location.href.includes('/stonks') ? '/stonks/api' : '/api';
+      const r = await fetch(`${base}/login`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: usernameInput, password: passwordInput, remember: rememberMe }),
+      });
+      if (!r.ok) {
+        let msg = 'Login failed';
+        try { const j = await r.json(); if (j && j.error) msg = j.error; } catch {}
+        setLoginError(msg);
+        return;
+      }
+      setAuthorized(true);
+      setShowLogin(false);
+      setUsernameInput('');
+      setPasswordInput('');
+      setRememberMe(false);
+      try { await loadSettingsFromServer(); } catch {}
+      try { await loadDatasetsFromServer(); } catch {}
+    } catch (err) {
+      setLoginError(err instanceof Error ? err.message : 'Login failed');
     }
   };
 
@@ -120,6 +151,12 @@ export default function App() {
       setCheckingAuth(false);
     })();
   }, []);
+
+  useEffect(() => {
+    if (!checkingAuth && !authorized) {
+      setShowLogin(true);
+    }
+  }, [checkingAuth, authorized]);
 
   // Fetch API build id for reliable display
   useEffect(() => {
@@ -161,6 +198,14 @@ export default function App() {
                 Выйти
               </button>
             )}
+            {!authorized && (
+              <button
+                onClick={() => setShowLogin(true)}
+                className="inline-flex items-center gap-2 text-sm text-indigo-600 hover:text-indigo-700"
+              >
+                Войти
+              </button>
+            )}
           </div>
         </div>
       </header>
@@ -188,6 +233,61 @@ export default function App() {
         {activeTab === 'splits' && <SplitsTab />}
         {activeTab === 'settings' && <AppSettings />}
       </main>
+
+      {showLogin && (
+        <div className="fixed inset-0 z-30 flex items-center justify-center bg-black/50">
+          <div className="w-full max-w-sm rounded-lg bg-white p-4 shadow-lg border dark:bg-slate-900 dark:border-slate-800">
+            <h2 className="text-lg font-semibold mb-3">Вход</h2>
+            {loginError && (
+              <div className="mb-2 text-sm text-red-600">
+                {loginError}
+              </div>
+            )}
+            <form onSubmit={handleLogin} className="space-y-3">
+              <div>
+                <label className="block text-sm mb-1">Email</label>
+                <input
+                  type="email"
+                  value={usernameInput}
+                  onChange={e => setUsernameInput(e.target.value)}
+                  className="w-full rounded border px-3 py-2 bg-white dark:bg-gray-800 dark:border-gray-700"
+                  placeholder="you@example.com"
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="block text-sm mb-1">Пароль</label>
+                <input
+                  type="password"
+                  value={passwordInput}
+                  onChange={e => setPasswordInput(e.target.value)}
+                  className="w-full rounded border px-3 py-2 bg-white dark:bg-gray-800 dark:border-gray-700"
+                  placeholder="••••••••"
+                />
+              </div>
+              <label className="inline-flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={rememberMe} onChange={e => setRememberMe(e.target.checked)} />
+                Запомнить меня
+              </label>
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowLogin(false)}
+                  className="px-3 py-1.5 rounded border text-sm bg-white hover:bg-gray-50 dark:bg-gray-800 dark:border-gray-700"
+                >
+                  Отмена
+                </button>
+                <button
+                  type="submit"
+                  className="px-3 py-1.5 rounded text-sm bg-indigo-600 text-white hover:bg-indigo-700"
+                >
+                  Войти
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       <Footer apiBuildId={apiBuildId} />
     </div>
