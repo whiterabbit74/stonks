@@ -12,7 +12,7 @@ export function DataUpload({ onNext }: DataUploadProps) {
   const jsonInputRef = useRef<HTMLInputElement>(null);
   const [ticker, setTicker] = useState('');
   const [datasetName, setDatasetName] = useState('');
-  const { marketData, currentDataset, uploadData, loadJSONData, saveDatasetToServer, loadDatasetsFromServer, isLoading } = useAppStore();
+  const { marketData, currentDataset, /* uploadData, */ loadJSONData, saveDatasetToServer, loadDatasetsFromServer, isLoading } = useAppStore();
 
   // Загружаем список датасетов при монтировании компонента
   useEffect(() => {
@@ -20,9 +20,7 @@ export function DataUpload({ onNext }: DataUploadProps) {
   }, [loadDatasetsFromServer]);
 
   const handleFileSelect = async (file: File) => {
-    if (file.type === 'text/csv') {
-      await uploadData(file);
-    } else if (file.type === 'application/json' || file.name.endsWith('.json')) {
+    if (file.type === 'application/json' || file.name.endsWith('.json')) {
       await loadJSONData(file);
     }
   };
@@ -30,7 +28,11 @@ export function DataUpload({ onNext }: DataUploadProps) {
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     const file = e.dataTransfer.files[0];
-    handleFileSelect(file);
+    if (!file) return;
+    // Only accept JSON
+    if (file.type === 'application/json' || file.name.endsWith('.json')) {
+      handleFileSelect(file);
+    }
   };
 
   const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -114,13 +116,6 @@ export function DataUpload({ onNext }: DataUploadProps) {
           )}
         </div>
         <input
-          ref={fileInputRef}
-          type="file"
-          accept=".csv"
-          onChange={handleFileInput}
-          className="hidden"
-        />
-        <input
           ref={jsonInputRef}
           type="file"
           accept=".json"
@@ -135,17 +130,17 @@ export function DataUpload({ onNext }: DataUploadProps) {
     <div className="space-y-6">
       <div className="text-center">
         <h2 className="text-xl font-semibold text-gray-900 mb-2">
-          Upload Market Data
+          Import Market Data (JSON)
         </h2>
         <p className="text-gray-600">
-          Upload a CSV file with OHLCV data, load a saved JSON dataset, or use our sample data
+          Load a saved JSON dataset or pick one from the library
         </p>
       </div>
 
       {/* Dataset Library */}
       <DatasetLibrary />
 
-      {/* File Upload Area */}
+      {/* File Upload Area (JSON only) */}
       <div
         onDrop={handleDrop}
         onDragOver={(e) => e.preventDefault()}
@@ -154,20 +149,20 @@ export function DataUpload({ onNext }: DataUploadProps) {
       >
         <Upload className="w-12 h-12 text-gray-400 mx-auto mb-4" />
         <p className="text-lg font-medium text-gray-900 mb-2">
-          Drop your CSV or JSON file here
+          Drop your JSON dataset here
         </p>
         <p className="text-gray-600 mb-4">
           or click to browse files
         </p>
         <p className="text-sm text-gray-500">
-          CSV: Date, Open, High, Low, Close, Volume | JSON: Saved dataset format
+          JSON: Saved dataset format
         </p>
       </div>
 
       <input
         ref={fileInputRef}
         type="file"
-        accept=".csv,.json"
+        accept=".json"
         onChange={handleFileInput}
         className="hidden"
       />

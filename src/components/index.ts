@@ -1,9 +1,12 @@
 // Export simplified components for the refactored app
 
-export { default as App } from './App';
-export { DataUpload } from './DataUpload';
-export { BacktestRunner } from './BacktestRunner';
 export { Results } from './Results';
+export { StrategySettings } from './StrategySettings';
+export { TradingChart } from './TradingChart';
+export { EquityChart } from './EquityChart';
+export { TradeDrawdownChart } from './TradeDrawdownChart';
+// export { DataUpload } from './DataUpload'; // CSV-related component kept but JSON-only now; avoid re-export
+export { BacktestRunner } from './BacktestRunner';
 export { TelegramWatches } from './TelegramWatches';
 export { AppSettings } from './AppSettings';
 export { Footer } from './Footer';
