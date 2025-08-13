@@ -14,6 +14,8 @@ function applyTheme(mode: ThemeMode) {
     } else {
       html.classList.remove('dark');
     }
+    const metaTheme = document.querySelector('meta[name="theme-color"]');
+    if (metaTheme) metaTheme.setAttribute('content', effectiveDark ? '#0b1220' : '#ffffff');
   } catch {}
 }
 

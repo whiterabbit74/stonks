@@ -581,3 +581,68 @@
     @apply opacity-100 visible;
   }
 }
+
+/* Dark theme enhancements and global overrides */
+:root {
+  --color-bg-dark: #0b1220; /* deep slate/navy */
+  --color-surface-dark: #0f172a; /* slate-900 */
+  --color-text-dark: #e5e7eb; /* gray-200 */
+  --color-text-muted-dark: #9ca3af; /* gray-400 */
+  --color-border-dark: #1f2937; /* gray-800 */
+  --color-border-dark-2: #374151; /* gray-700 */
+}
+
+html, body, #root {
+  transition: background-color 200ms ease, color 200ms ease, border-color 200ms ease;
+}
+
+.dark {
+  color-scheme: dark;
+}
+
+/* Base surfaces */
+.dark body { 
+  background-color: var(--color-bg-dark); 
+  color: var(--color-text-dark);
+  background-image: radial-gradient(1200px 600px at 100% -10%, rgba(59,130,246,0.08), transparent),
+                    radial-gradient(800px 400px at -10% 100%, rgba(16,185,129,0.08), transparent);
+  background-attachment: fixed;
+}
+
+/* Common utility overrides for legacy light classes used in components */
+.dark .bg-white { background-color: var(--color-surface-dark) !important; }
+.dark .bg-gray-50 { background-color: var(--color-bg-dark) !important; }
+.dark .text-gray-900 { color: var(--color-text-dark) !important; }
+.dark .text-gray-800 { color: var(--color-text-dark) !important; }
+.dark .text-gray-700 { color: #d1d5db !important; }
+.dark .text-gray-600 { color: var(--color-text-muted-dark) !important; }
+.dark .text-gray-500 { color: #9ca3af !important; }
+.dark .border-gray-200 { border-color: var(--color-border-dark) !important; }
+.dark .border-gray-300 { border-color: var(--color-border-dark-2) !important; }
+.dark .hover\:bg-gray-100:hover { background-color: #111827 !important; }
+
+/* Cards and panels looking more elevated in dark */
+.dark .shadow { box-shadow: 0 10px 25px rgba(0,0,0,0.45), 0 2px 6px rgba(0,0,0,0.3) !important; }
+
+/* Inputs */
+.dark input[type="text"],
+.dark input[type="email"],
+.dark input[type="password"],
+.dark select,
+.dark textarea {
+  background-color: #1f2937 !important; /* gray-800 */
+  border-color: #374151 !important; /* gray-700 */
+  color: var(--color-text-dark) !important;
+}
+
+/* Tables */
+.dark table { color: var(--color-text-dark); }
+.dark thead { background: #0f172a; }
+.dark tbody tr:nth-child(odd) { background: rgba(255,255,255,0.02); }
+.dark tbody tr:hover { background: rgba(255,255,255,0.05); }
+
+/* Focus styles */
+.dark :focus-visible {
+  outline: 2px solid #60a5fa; /* blue-400 */
+  outline-offset: 2px;
+}

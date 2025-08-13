@@ -50,32 +50,32 @@ export function DataUpload({ onNext }: DataUploadProps) {
         {/* Summary card */}
         {currentDataset ? (
           <div className="mx-auto max-w-2xl">
-            <div className="rounded-2xl border border-blue-200 bg-gradient-to-b from-blue-50 to-white p-5 shadow-sm">
+            <div className="rounded-2xl border border-blue-200 bg-gradient-to-b from-blue-50 to-white p-5 shadow-sm dark:from-gray-900 dark:to-gray-900 dark:border-gray-800">
               <div className="flex items-center gap-3 mb-2">
-                <div className="inline-flex items-center justify-center w-10 h-10 bg-blue-100 rounded-full">
+                <div className="inline-flex items-center justify-center w-10 h-10 bg-blue-100 rounded-full dark:bg-blue-950/40">
                   <CheckCircle className="w-6 h-6 text-blue-600" />
                 </div>
                 <div>
-                  <div className="text-sm text-blue-700">Загружен датасет</div>
-                  <div className="text-xl font-semibold text-blue-900">{currentDataset.ticker}</div>
+                  <div className="text-sm text-blue-700 dark:text-blue-300">Загружен датасет</div>
+                  <div className="text-xl font-semibold text-blue-900 dark:text-blue-200">{currentDataset.ticker}</div>
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-2 mt-2">
-                <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 border border-blue-200">{currentDataset.ticker}</span>
-                <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700 border">{currentDataset.dataPoints.toLocaleString()} points</span>
-                <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700 border">{currentDataset.dateRange.from} — {currentDataset.dateRange.to}</span>
+                <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 border border-blue-200 dark:bg-blue-950/30 dark:text-blue-200 dark:border-blue-900/50">{currentDataset.ticker}</span>
+                <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700 border dark:bg-gray-800 dark:text-gray-200 dark:border-gray-700">{currentDataset.dataPoints.toLocaleString()} points</span>
+                <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700 border dark:bg-gray-800 dark:text-gray-200 dark:border-gray-700">{currentDataset.dateRange.from} — {currentDataset.dateRange.to}</span>
               </div>
             </div>
           </div>
         ) : (
           <div className="text-center">
-            <div className="inline-flex items-center justify-center w-16 h-16 bg-green-100 rounded-full mb-4">
+            <div className="inline-flex items-center justify-center w-16 h-16 bg-green-100 rounded-full mb-4 dark:bg-green-900/30">
               <CheckCircle className="w-8 h-8 text-green-600" />
             </div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">Данные загружены</h3>
-            <p className="text-gray-600 mb-4">{marketData.length} строк готовы для бэктеста</p>
-            <div className="bg-gray-50 rounded-lg p-4 mb-4">
-              <h4 className="font-medium text-gray-900 mb-3">Быстрые действия</h4>
+            <h3 className="text-lg font-semibold text-gray-900 mb-2 dark:text-gray-100">Данные загружены</h3>
+            <p className="text-gray-600 mb-4 dark:text-gray-300">{marketData.length} строк готовы для бэктеста</p>
+            <div className="bg-gray-50 rounded-lg p-4 mb-4 dark:bg-gray-900/80 dark:border dark:border-gray-800">
+              <h4 className="font-medium text-gray-900 mb-3 dark:text-gray-100">Быстрые действия</h4>
               <div className="space-y-3">
                 <div className="flex gap-2">
                   <input type="text" placeholder="Ticker (e.g., AAPL)" value={ticker} onChange={(e) => setTicker(e.target.value.toUpperCase())} className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm" />
@@ -127,47 +127,43 @@ export function DataUpload({ onNext }: DataUploadProps) {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="text-center">
-        <h2 className="text-xl font-semibold text-gray-900 mb-2">
-          Import Market Data (JSON)
-        </h2>
-        <p className="text-gray-600">
-          Load a saved JSON dataset or pick one from the library
-        </p>
-      </div>
-
-      {/* Dataset Library */}
-      <DatasetLibrary />
-
-      {/* File Upload Area (JSON only) */}
+    <div className="max-w-3xl mx-auto">
       <div
-        onDrop={handleDrop}
+        className="relative rounded-2xl border-2 border-dashed border-gray-300 bg-white p-10 text-center shadow-sm hover:shadow-md transition dark:bg-gray-900 dark:border-gray-700"
         onDragOver={(e) => e.preventDefault()}
-        className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-gray-400 transition-colors cursor-pointer"
-        onClick={() => fileInputRef.current?.click()}
+        onDrop={handleDrop}
       >
-        <Upload className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-        <p className="text-lg font-medium text-gray-900 mb-2">
-          Drop your JSON dataset here
-        </p>
-        <p className="text-gray-600 mb-4">
-          or click to browse files
-        </p>
-        <p className="text-sm text-gray-500">
-          JSON: Saved dataset format
-        </p>
+        <div className="mx-auto mb-6 inline-flex h-16 w-16 items-center justify-center rounded-full bg-blue-100 dark:bg-blue-900/30">
+          <Upload className="h-8 w-8 text-blue-600" />
+        </div>
+        <h3 className="text-xl font-semibold text-gray-900 mb-2 dark:text-gray-100">Загрузите данные для тестирования</h3>
+        <p className="text-gray-600 mb-6 dark:text-gray-300">Перетащите JSON-файл сюда или выберите его вручную.</p>
+        <div className="flex items-center justify-center gap-3">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="application/json"
+            onChange={handleFileInput}
+            className="hidden"
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 font-medium text-white shadow hover:bg-blue-700"
+          >
+            <Upload className="h-4 w-4" /> Выбрать JSON
+          </button>
+          <button
+            onClick={() => document.getElementById('dataset-library')?.scrollIntoView({ behavior: 'smooth' })}
+            className="inline-flex items-center gap-2 rounded-md border border-gray-200 px-4 py-2 font-medium text-gray-700 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+          >
+            <Download className="h-4 w-4" /> Выбрать из библиотеки
+          </button>
+        </div>
       </div>
 
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept=".json"
-        onChange={handleFileInput}
-        className="hidden"
-      />
-
-      {/* Sample Data Button — intentionally removed */}
+      <div id="dataset-library" className="mt-10">
+        <DatasetLibrary />
+      </div>
     </div>
   );
 }
