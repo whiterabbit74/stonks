@@ -992,7 +992,7 @@ async function fetchFromAlphaVantage(symbol, startDate, endDate, options = { adj
               r.high = r.high / cumulativeFactor;
               r.low = r.low / cumulativeFactor;
               r.close = r.close / cumulativeFactor;
-              r.volume = Math.round(r.volume * cumulativeFactor);
+              r.volume = Math.round(r.volume / cumulativeFactor);
               // После обработки бара обновляем cumulativeFactor на сплит текущего дня,
               // чтобы он применился только к более ранним датам
               if (!isNaN(r.splitCoeff) && r.splitCoeff && r.splitCoeff !== 1) {
@@ -1428,7 +1428,7 @@ app.post('/api/datasets/:id/refresh', async (req, res) => {
         let cumulative = 1;
         for (const e of events) {
           const et = new Date(`${e.date}T00:00:00.000Z`).getTime();
-          if (t < et) cumulative *= e.factor;
+          if (et <= t) cumulative *= e.factor;
         }
         if (cumulative === 1) return bar;
         return {
@@ -1438,7 +1438,7 @@ app.post('/api/datasets/:id/refresh', async (req, res) => {
           low: bar.low / cumulative,
           close: bar.close / cumulative,
           adjClose: (bar.adjClose ?? bar.close) / cumulative,
-          volume: Math.round((bar.volume || 0) * cumulative),
+          volume: Math.round((bar.volume || 0) / cumulative),
         };
       });
     })();
