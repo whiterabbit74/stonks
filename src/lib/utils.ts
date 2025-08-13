@@ -88,14 +88,14 @@ export function adjustOHLCForSplits(ohlc: OHLCData[], splits: SplitEvent[] | und
     .filter(s => s && s.date && s.factor && s.factor !== 1)
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
   if (events.length === 0) return ohlc;
-  // For each bar, compute cumulative factor of all past (and current-day) splits (split.date <= bar.date)
+  // For each bar, compute cumulative factor of all future splits (bar.date < split.date)
   const result: OHLCData[] = data.map(bar => ({ ...bar }));
   for (let i = 0; i < result.length; i++) {
     const t = result[i].date.getTime();
     let cumulative = 1;
     for (let k = 0; k < events.length; k++) {
       const et = new Date(events[k].date).getTime();
-      if (et <= t) cumulative *= events[k].factor;
+      if (t < et) cumulative *= events[k].factor;
     }
     if (cumulative !== 1) {
       result[i] = {
@@ -105,7 +105,7 @@ export function adjustOHLCForSplits(ohlc: OHLCData[], splits: SplitEvent[] | und
         low: result[i].low / cumulative,
         close: result[i].close / cumulative,
         adjClose: (result[i].adjClose ?? result[i].close) / cumulative,
-        volume: Math.round(result[i].volume / cumulative),
+        volume: Math.round(result[i].volume * cumulative),
       };
     }
   }
