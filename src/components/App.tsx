@@ -6,8 +6,7 @@ import { DataEnhancer } from './DataEnhancer';
 // import { StrategySettings } from './StrategySettings';
 import { Results } from './Results';
 import { TelegramWatches } from './TelegramWatches';
-import { SplitsTab } from './SplitsTab';
-import { AppSettings } from './AppSettings';
+// import { AppSettings } from './AppSettings';
 import { createStrategyFromTemplate, STRATEGY_TEMPLATES } from '../lib/strategy';
 import { Footer } from './Footer';
 import { ThemeToggle } from './ThemeToggle';
@@ -23,27 +22,7 @@ export default function App() {
   const [loginError, setLoginError] = useState<string | null>(null);
   const [checkingAuth, setCheckingAuth] = useState<boolean>(true);
   const hasAutoNavigatedRef = useRef(false);
-  const marketData = useAppStore(s => s.marketData);
-  const currentStrategy = useAppStore(s => s.currentStrategy);
-  const backtestResults = useAppStore(s => s.backtestResults);
-  const runBacktest = useAppStore(s => s.runBacktest);
-  const backtestStatus = useAppStore(s => s.backtestStatus);
-  const setStrategy = useAppStore(s => s.setStrategy);
-  const loadSettingsFromServer = useAppStore(s => s.loadSettingsFromServer);
-  const loadDatasetsFromServer = useAppStore(s => s.loadDatasetsFromServer);
-
-  // Загружаем настройки один раз при монтировании
-  useEffect(() => {
-    loadSettingsFromServer();
-  }, [loadSettingsFromServer]);
-
-  // После успешного логина — обновляем настройки и список датасетов
-  useEffect(() => {
-    if (authorized) {
-      loadSettingsFromServer();
-      loadDatasetsFromServer();
-    }
-  }, [authorized, loadSettingsFromServer, loadDatasetsFromServer]);
+  const { marketData, currentStrategy, backtestResults, runBacktest, backtestStatus, setStrategy, loadSettingsFromServer } = useAppStore() as any;
 
   // Автоматически создаем IBS стратегию когда есть данные
   useEffect(() => {

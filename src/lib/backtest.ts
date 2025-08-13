@@ -119,7 +119,7 @@ export class BacktestEngine {
    * Check entry conditions for the current bar
    */
   private checkEntryConditions(index: number, bar: OHLCData): void {
-    const ibsKey = this.getIndicatorKey('IBS', { type: 'indicator', indicator: 'IBS', operator: '<', value: 0.1 });
+    const ibsKey = this.getIndicatorKey('IBS', { type: 'indicator', indicator: 'IBS', operator: '<', value: 0.1 } as any);
     const ibsValue = this.indicators.get(ibsKey)?.[index];
     const lowThreshold = this.strategy.parameters.lowIBS || 0.1;
     
@@ -324,7 +324,7 @@ export class BacktestEngine {
     
     // Add current capital to trade context
     if (trade.context) {
-      (trade.context as { currentCapitalAfterExit?: number }).currentCapitalAfterExit = this.currentCapital;
+      (trade.context as any).currentCapitalAfterExit = this.currentCapital;
     }
 
     // Record signal
@@ -711,7 +711,7 @@ export class BacktestEngine {
     if (indicatorType === 'IBS') {
       return 'IBS';
     }
-    const period = this.getIndicatorPeriod(condition as Partial<IndicatorCondition>, 20);
+    const period = this.getIndicatorPeriod(condition as any, 20);
     return `${indicatorType}_${period}`;
   }
 
@@ -771,7 +771,7 @@ export class BacktestEngine {
    * Log IBS statistics for debugging
    */
   private logIBSStatistics(): void {
-    const ibsKey = this.getIndicatorKey('IBS', { type: 'indicator', indicator: 'IBS', operator: '<', value: 0.1 });
+    const ibsKey = this.getIndicatorKey('IBS', { type: 'indicator', indicator: 'IBS', operator: '<', value: 0.1 } as any);
     const ibsValues = this.indicators.get(ibsKey);
     if (!ibsValues) return;
 
