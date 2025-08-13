@@ -119,8 +119,8 @@ export default function App() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-gray-50 text-gray-800">
-      <header className="border-b bg-white/60 backdrop-blur sticky top-0 z-20">
+    <div className="min-h-screen bg-gray-50 text-gray-800 dark:text-gray-100">
+      <header className="border-b bg-white/60 backdrop-blur sticky top-0 z-20 dark:bg-slate-900/60 dark:border-slate-800">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <ThemeToggle />
@@ -130,10 +130,20 @@ export default function App() {
             )}
           </div>
           <div className="flex items-center gap-2">
-            <a className="inline-flex items-center gap-2 text-sm hover:text-indigo-600" href="#settings">
-              <Settings size={16} />
-              Settings
-            </a>
+            <ThemeToggle />
+            {authorized ? (
+              <button
+                onClick={handleLogout}
+                className="inline-flex items-center gap-2 text-sm text-red-600 hover:text-red-700"
+              >
+                Выйти
+              </button>
+            ) : (
+              <a className="inline-flex items-center gap-2 text-sm hover:text-indigo-600 dark:hover:text-indigo-400" href="#settings">
+                <Settings size={16} />
+                Settings
+              </a>
+            )}
           </div>
         </div>
       </header>
