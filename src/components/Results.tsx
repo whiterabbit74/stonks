@@ -100,125 +100,35 @@ export function Results() {
 
   // Быстрая проверка актуальности данных (ожидаем бар за предыдущий торговый день по времени NYSE / America/New_York)
   useEffect(() => {
-    if (!marketData || marketData.length === 0) { setIsStale(false); setStaleInfo(null); return; }
-    const lastBar = marketData[marketData.length - 1];
-    const lastBarDate = new Date(lastBar.date);
-    const now = new Date();
-
-    const getETParts = (date: Date) => {
-      const fmt = new Intl.DateTimeFormat('en-US', {
-        timeZone: 'America/New_York',
-        year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'short',
-      });
-      const parts = fmt.formatToParts(date);
-      const map: Record<string,string> = {};
-      parts.forEach(p => { if (p.type !== 'literal') map[p.type] = p.value; });
-      const y = Number(map.year), m = Number(map.month), d = Number(map.day);
-      const weekdayStr = map.weekday; // e.g., Mon, Tue
-      const weekdayMap: Record<string, number> = { Sun:0, Mon:1, Tue:2, Wed:3, Thu:4, Fri:5, Sat:6 };
-      const weekday = weekdayMap[weekdayStr as keyof typeof weekdayMap] ?? 0;
-      return { y, m, d, weekday };
-    };
-    const keyFromParts = (p: {y:number;m:number;d:number}) => `${p.y}-${String(p.m).padStart(2,'0')}-${String(p.d).padStart(2,'0')}`;
-    const isWeekendET = (p: {weekday:number}) => p.weekday === 0 || p.weekday === 6;
-    const nthWeekdayOfMonth = (year: number, monthIndex0: number, weekday: number, n: number) => {
-      const first = new Date(Date.UTC(year, monthIndex0, 1));
-      // step days until ET weekday matches
-      let cursor = first;
-      while (getETParts(cursor).weekday !== weekday) {
-        const c = new Date(cursor); c.setUTCDate(c.getUTCDate()+1); cursor = c;
+    let cancelled = false;
+    (async () => {
+      try {
+        if (!marketData || marketData.length === 0) { setIsStale(false); setStaleInfo(null); return; }
+        const lastBar = marketData[marketData.length - 1];
+        const lastBarDate = new Date(lastBar.date);
+        // Получаем ожидаемую дату бара от сервера (централизованный календарь ET)
+        const expectedYmd = await DatasetAPI.getExpectedPrevTradingDayET();
+        if (cancelled) return;
+        const lastKeyUTC = new Date(Date.UTC(
+          lastBarDate.getUTCFullYear(),
+          lastBarDate.getUTCMonth(),
+          lastBarDate.getUTCDate(),
+          0, 0, 0
+        )).toISOString().slice(0,10);
+        const stale = lastKeyUTC !== expectedYmd;
+        setIsStale(stale);
+        if (stale) {
+          const [y, m, d] = expectedYmd.split('-').map(n => parseInt(n, 10));
+          const displayDate = new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
+          setStaleInfo(`Отсутствует бар за ${displayDate.toLocaleDateString('ru-RU', { timeZone: 'America/New_York' })}`);
+        } else {
+          setStaleInfo(null);
+        }
+      } catch {
+        if (!cancelled) { setIsStale(false); setStaleInfo(null); }
       }
-      for (let i=1; i<n; i++) { const c = new Date(cursor); c.setUTCDate(c.getUTCDate()+7); cursor = c; }
-      return getETParts(cursor);
-    };
-    const lastWeekdayOfMonth = (year: number, monthIndex0: number, weekday: number) => {
-      const last = new Date(Date.UTC(year, monthIndex0 + 1, 0));
-      let move = last;
-      while (getETParts(move).weekday !== weekday) {
-        const c = new Date(move); c.setUTCDate(c.getUTCDate()-1); move = c;
-      }
-      return getETParts(move);
-    };
-    const observedFixedET = (year: number, monthIndex0: number, day: number) => {
-      const base = new Date(Date.UTC(year, monthIndex0, day, 12, 0, 0));
-      const p = getETParts(base);
-      if (p.weekday === 0) { // Sunday -> Monday
-        const d = new Date(base); d.setUTCDate(d.getUTCDate()+1); return getETParts(d);
-      }
-      if (p.weekday === 6) { // Saturday -> Friday
-        const d = new Date(base); d.setUTCDate(d.getUTCDate()-1); return getETParts(d);
-      }
-      return p;
-    };
-    const easterUTC = (year: number) => {
-      const a = year % 19;
-      const b = Math.floor(year / 100);
-      const c = year % 100;
-      const d = Math.floor(b / 4);
-      const e = b % 4;
-      const f = Math.floor((b + 8) / 25);
-      const g = Math.floor((b - f + 1) / 3);
-      const h = (19 * a + b - d - g + 15) % 30;
-      const i = Math.floor(c / 4);
-      const k = c % 4;
-      const l = (32 + 2 * e + 2 * i - h - k) % 7;
-      const m = Math.floor((a + 11 * h + 22 * l) / 451);
-      const month = Math.floor((h + l - 7 * m + 114) / 31) - 1;
-      const day = ((h + l - 7 * m + 114) % 31) + 1;
-      return new Date(Date.UTC(year, month, day, 12, 0, 0));
-    };
-    const goodFridayET = (year: number) => {
-      const easter = easterUTC(year);
-      const gf = new Date(easter); gf.setUTCDate(gf.getUTCDate()-2); return getETParts(gf);
-    };
-    const nyseHolidaySetET = (year: number) => {
-      const keys = new Set<string>();
-      keys.add(keyFromParts(observedFixedET(year, 0, 1)));  // New Year’s Day
-      keys.add(keyFromParts(observedFixedET(year, 5, 19))); // Juneteenth
-      keys.add(keyFromParts(observedFixedET(year, 6, 4)));  // Independence Day
-      keys.add(keyFromParts(observedFixedET(year, 11, 25))); // Christmas
-      keys.add(keyFromParts(nthWeekdayOfMonth(year, 0, 1, 3))); // MLK Day (Mon)
-      keys.add(keyFromParts(nthWeekdayOfMonth(year, 1, 1, 3))); // Presidents’ Day (Mon)
-      keys.add(keyFromParts(goodFridayET(year))); // Good Friday
-      keys.add(keyFromParts(lastWeekdayOfMonth(year, 4, 1))); // Memorial Day (Mon)
-      keys.add(keyFromParts(nthWeekdayOfMonth(year, 8, 1, 1))); // Labor Day (Mon)
-      keys.add(keyFromParts(nthWeekdayOfMonth(year, 10, 4, 4))); // Thanksgiving (Thu)
-      return keys;
-    };
-    const isHolidayET = (p: {y:number;m:number;d:number}) => nyseHolidaySetET(p.y).has(keyFromParts(p));
-    const previousTradingDayET = (fromUTC: Date) => {
-      let cursor = new Date(fromUTC);
-      // step back at least one day
-      cursor.setUTCDate(cursor.getUTCDate()-1);
-      while (true) {
-        const parts = getETParts(cursor);
-        if (!isWeekendET(parts) && !isHolidayET(parts)) return parts;
-        cursor.setUTCDate(cursor.getUTCDate()-1);
-      }
-    };
-
-    const expectedParts = previousTradingDayET(now);
-    // Сравниваем в UTC-ключах, чтобы не было сдвига дат между UTC и ET
-    const lastKeyUTC = new Date(Date.UTC(
-      lastBarDate.getUTCFullYear(),
-      lastBarDate.getUTCMonth(),
-      lastBarDate.getUTCDate(),
-      0, 0, 0
-    )).toISOString().slice(0,10);
-    const expectedKeyUTC = new Date(Date.UTC(
-      expectedParts.y,
-      expectedParts.m - 1,
-      expectedParts.d,
-      0, 0, 0
-    )).toISOString().slice(0,10);
-    const stale = lastKeyUTC !== expectedKeyUTC;
-    setIsStale(stale);
-    if (stale) {
-      const displayDate = new Date(Date.UTC(expectedParts.y, expectedParts.m - 1, expectedParts.d, 12, 0, 0));
-      setStaleInfo(`Отсутствует бар за ${displayDate.toLocaleDateString('ru-RU', { timeZone: 'America/New_York' })}`);
-    } else {
-      setStaleInfo(null);
-    }
+    })();
+    return () => { cancelled = true; };
   }, [marketData]);
 
   // Авто-пуллинг котировок (пропускаем вызовы API в выходные/вне торговых часов)

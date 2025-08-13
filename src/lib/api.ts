@@ -157,6 +157,17 @@ export class DatasetAPI {
   }
 
   /**
+   * Получить предыдущий торговый день в ET (America/New_York) в формате YYYY-MM-DD
+   */
+  static async getExpectedPrevTradingDayET(): Promise<string> {
+    const response = await fetchWithCreds(`${API_BASE_URL}/trading/expected-prev-day`);
+    if (!response.ok) throw new Error('Failed to get expected previous trading day');
+    const data = await response.json();
+    if (!data || typeof data.date !== 'string') throw new Error('Invalid response from server');
+    return data.date;
+  }
+
+  /**
    * Сохранить датасет на сервере
    */
   static async saveDataset(dataset: SavedDataset): Promise<{ success: boolean; id: string; message: string }> {
