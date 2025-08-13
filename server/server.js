@@ -96,6 +96,43 @@ async function upsertTickerSplits(ticker, events) {
   return merged;
 }
 
+// New helpers to replace and delete splits for a ticker
+async function setTickerSplits(ticker, events) {
+  const key = toSafeTicker(ticker);
+  const map = await readSplitsMap();
+  const normalized = normalizeSplitEvents(events || []);
+  if (normalized.length > 0) {
+    map[key] = normalized;
+  } else {
+    delete map[key];
+  }
+  await fs.writeJson(SPLITS_FILE, map, { spaces: 2 });
+  return map[key] || [];
+}
+
+async function deleteTickerSplitByDate(ticker, date) {
+  const key = toSafeTicker(ticker);
+  const map = await readSplitsMap();
+  const existing = normalizeSplitEvents(map[key] || []);
+  const safeDate = (date || '').toString().slice(0, 10);
+  const filtered = existing.filter(e => e.date !== safeDate);
+  if (filtered.length > 0) {
+    map[key] = filtered;
+  } else {
+    delete map[key];
+  }
+  await fs.writeJson(SPLITS_FILE, map, { spaces: 2 });
+  return map[key] || [];
+}
+
+async function deleteTickerSplits(ticker) {
+  const key = toSafeTicker(ticker);
+  const map = await readSplitsMap();
+  if (map[key]) delete map[key];
+  await fs.writeJson(SPLITS_FILE, map, { spaces: 2 });
+  return true;
+}
+
 // Telegram config
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID || '';
@@ -154,9 +191,14 @@ function requireAuth(req, res, next) {
     req.path === '/api/status' ||
     req.path === '/api/login' ||
     req.path === '/api/logout' ||
-    req.path === '/api/auth/check' ||
-    req.path === '/api/splits' ||
-    (typeof req.path === 'string' && req.path.startsWith('/api/splits/'))
+    req.path === '/api/auth/check'
+  ) {
+    return next();
+  }
+  // Allow public READ-ONLY access to splits endpoints; modifications require auth
+  if (
+    (req.path === '/api/splits' || (typeof req.path === 'string' && req.path.startsWith('/api/splits/')))
+    && req.method === 'GET'
   ) {
     return next();
   }
@@ -1619,17 +1661,72 @@ app.get('/api/quote/:symbol', async (req, res) => {
   }
 });
 
-// Splits-only endpoint: fetch split events separately
+// Splits endpoints
+// Read-only endpoints are public (guarded in middleware). Mutations require auth.
 app.get('/api/splits/:symbol', async (req, res) => {
   try {
     const raw = (req.params.symbol || '').toString();
     const symbol = toSafeTicker(raw);
     if (!symbol) return res.json([]);
-    // Единственный источник — splits.json
     const arr = await getTickerSplits(symbol);
     return res.json(arr || []);
   } catch {
     return res.json([]);
+  }
+});
+
+// Replace entire splits array for ticker
+app.put('/api/splits/:symbol', async (req, res) => {
+  try {
+    const raw = (req.params.symbol || '').toString();
+    const symbol = toSafeTicker(raw);
+    if (!symbol) return res.status(400).json({ error: 'Invalid symbol' });
+    const events = Array.isArray(req.body) ? req.body : (req.body && req.body.events);
+    if (!Array.isArray(events)) return res.status(400).json({ error: 'Body must be array of {date,factor}' });
+    const updated = await setTickerSplits(symbol, events);
+    return res.json({ success: true, symbol, events: updated });
+  } catch (e) {
+    return res.status(500).json({ error: 'Failed to save splits' });
+  }
+});
+
+// Upsert one or many events
+app.patch('/api/splits/:symbol', async (req, res) => {
+  try {
+    const raw = (req.params.symbol || '').toString();
+    const symbol = toSafeTicker(raw);
+    if (!symbol) return res.status(400).json({ error: 'Invalid symbol' });
+    const events = Array.isArray(req.body) ? req.body : (req.body && req.body.events);
+    if (!Array.isArray(events)) return res.status(400).json({ error: 'Body must be array of {date,factor}' });
+    const updated = await upsertTickerSplits(symbol, events);
+    return res.json({ success: true, symbol, events: updated });
+  } catch (e) {
+    return res.status(500).json({ error: 'Failed to update splits' });
+  }
+});
+
+// Delete one event by date
+app.delete('/api/splits/:symbol/:date', async (req, res) => {
+  try {
+    const symbol = toSafeTicker((req.params.symbol || '').toString());
+    const date = (req.params.date || '').toString().slice(0, 10);
+    if (!symbol || !date) return res.status(400).json({ error: 'Invalid symbol or date' });
+    const updated = await deleteTickerSplitByDate(symbol, date);
+    return res.json({ success: true, symbol, events: updated });
+  } catch (e) {
+    return res.status(500).json({ error: 'Failed to delete split' });
+  }
+});
+
+// Delete all events for ticker
+app.delete('/api/splits/:symbol', async (req, res) => {
+  try {
+    const symbol = toSafeTicker((req.params.symbol || '').toString());
+    if (!symbol) return res.status(400).json({ error: 'Invalid symbol' });
+    await deleteTickerSplits(symbol);
+    return res.json({ success: true, symbol });
+  } catch (e) {
+    return res.status(500).json({ error: 'Failed to delete splits' });
   }
 });
 

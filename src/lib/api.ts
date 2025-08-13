@@ -80,6 +80,56 @@ export class DatasetAPI {
     }
     throw new Error(`Failed to fetch splits map: ${response.status} ${response.statusText}`);
   }
+
+  static async setSplits(symbol: string, events: Array<{ date: string; factor: number }>): Promise<{ success: boolean; symbol: string; events: Array<{ date: string; factor: number }> }> {
+    const response = await fetchWithCreds(`${API_BASE_URL}/splits/${encodeURIComponent(symbol)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(events),
+    });
+    if (!response.ok) {
+      const e = await response.json().catch(() => null);
+      const msg = (e && e.error) || response.statusText;
+      throw new Error(`Failed to save splits: ${msg}`);
+    }
+    return response.json();
+  }
+
+  static async upsertSplits(symbol: string, events: Array<{ date: string; factor: number }>): Promise<{ success: boolean; symbol: string; events: Array<{ date: string; factor: number }> }> {
+    const response = await fetchWithCreds(`${API_BASE_URL}/splits/${encodeURIComponent(symbol)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(events),
+    });
+    if (!response.ok) {
+      const e = await response.json().catch(() => null);
+      const msg = (e && e.error) || response.statusText;
+      throw new Error(`Failed to update splits: ${msg}`);
+    }
+    return response.json();
+  }
+
+  static async deleteSplit(symbol: string, date: string): Promise<{ success: boolean; symbol: string; events: Array<{ date: string; factor: number }> }> {
+    const response = await fetchWithCreds(`${API_BASE_URL}/splits/${encodeURIComponent(symbol)}/${encodeURIComponent(date.slice(0,10))}`, {
+      method: 'DELETE',
+    });
+    if (!response.ok) {
+      const e = await response.json().catch(() => null);
+      const msg = (e && e.error) || response.statusText;
+      throw new Error(`Failed to delete split: ${msg}`);
+    }
+    return response.json();
+  }
+
+  static async deleteAllSplits(symbol: string): Promise<{ success: boolean; symbol: string }> {
+    const response = await fetchWithCreds(`${API_BASE_URL}/splits/${encodeURIComponent(symbol)}`, { method: 'DELETE' });
+    if (!response.ok) {
+      const e = await response.json().catch(() => null);
+      const msg = (e && e.error) || response.statusText;
+      throw new Error(`Failed to delete splits: ${msg}`);
+    }
+    return response.json();
+  }
   /**
    * Получить список всех датасетов (только метаданные)
    */
