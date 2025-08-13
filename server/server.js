@@ -196,14 +196,12 @@ function clearAuthCookie(req, res) {
 function requireAuth(req, res, next) {
   if (!ADMIN_PASSWORD) return next(); // auth disabled
   if (req.method === 'OPTIONS') return next();
-  // Разрешаем только статус/логин/проверку и публичный доступ к карте сплитов
+  // Разрешаем только статус/логин/проверку; всё остальное — под авторизацией
   if (
     req.path === '/api/status' ||
     req.path === '/api/login' ||
     req.path === '/api/logout' ||
-    req.path === '/api/auth/check' ||
-    req.path === '/api/splits' ||
-    (typeof req.path === 'string' && req.path.startsWith('/api/splits/'))
+    req.path === '/api/auth/check'
   ) {
     return next();
   }
