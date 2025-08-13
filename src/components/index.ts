@@ -10,4 +10,3 @@ export { BacktestRunner } from './BacktestRunner';
 export { TelegramWatches } from './TelegramWatches';
 export { AppSettings } from './AppSettings';
 export { Footer } from './Footer';
-export { ThemeToggle } from './ThemeToggle';

@@ -9,7 +9,6 @@ import { TelegramWatches } from './TelegramWatches';
 // import { AppSettings } from './AppSettings';
 import { createStrategyFromTemplate, STRATEGY_TEMPLATES } from '../lib/strategy';
 import { Footer } from './Footer';
-import { ThemeToggle } from './ThemeToggle';
 
 type Tab = 'data' | 'enhance' | 'results' | 'watches' | 'splits' | 'settings';
 
@@ -119,81 +118,95 @@ export default function App() {
 
   if (!authorized) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-        <div className="w-full max-w-sm bg-white rounded-xl border shadow p-6">
-          <h2 className="text-xl font-semibold text-gray-900 mb-1">Доступ к приложению</h2>
-          <p className="text-sm text-gray-600 mb-4">Введите пароль</p>
-          {loginError && <div className="mb-3 text-sm text-red-600">{loginError}</div>}
-          <input
-            type="email"
-            value={usernameInput}
-            onChange={(e) => setUsernameInput(e.target.value)}
-            className="w-full px-3 py-2 border rounded-md mb-3"
-            placeholder="Email"
-          />
-          <input
-            type="password"
-            value={passwordInput}
-            onChange={(e) => setPasswordInput(e.target.value)}
-            className="w-full px-3 py-2 border rounded-md mb-3"
-            placeholder="Пароль"
-          />
-          <label className="inline-flex items-center gap-2 text-sm text-gray-700 mb-4">
-            <input type="checkbox" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} />
-            Запомнить меня (30 дней)
-          </label>
-          <button
-            onClick={async () => {
-              setLoginError(null);
-              try {
-                const base = window.location.href.includes('/stonks') ? '/stonks/api' : '/api';
-                const r = await fetch(`${base}/login`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  credentials: 'include',
-                  body: JSON.stringify({ username: usernameInput, password: passwordInput, remember: rememberMe }),
-                });
-                if (!r.ok) {
-                  let msg = `${r.status} ${r.statusText}`;
-                  const err = await r.json().catch(() => null);
-                  if (err && typeof err.error === 'string') msg = err.error;
-                  throw new Error(msg);
+      <div className="min-h-screen bg-gray-50 flex flex-col">
+        <div className="flex-1 flex items-center justify-center p-4">
+          <div className="w-full max-w-sm bg-white rounded-xl border shadow p-6">
+            <h2 className="text-xl font-semibold text-gray-900 mb-1">Доступ к приложению</h2>
+            <p className="text-sm text-gray-600 mb-4">Введите пароль</p>
+            {loginError && <div className="mb-3 text-sm text-red-600">{loginError}</div>}
+            <input
+              type="email"
+              value={usernameInput}
+              onChange={(e) => setUsernameInput(e.target.value)}
+              className="w-full px-3 py-2 border rounded-md mb-3"
+              placeholder="Email"
+            />
+            <input
+              type="password"
+              value={passwordInput}
+              onChange={(e) => setPasswordInput(e.target.value)}
+              className="w-full px-3 py-2 border rounded-md mb-3"
+              placeholder="Пароль"
+            />
+            <label className="inline-flex items-center gap-2 text-sm text-gray-700 mb-4">
+              <input type="checkbox" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} />
+              Запомнить меня (30 дней)
+            </label>
+            <button
+              onClick={async () => {
+                setLoginError(null);
+                try {
+                  const base = window.location.href.includes('/stonks') ? '/stonks/api' : '/api';
+                  const r = await fetch(`${base}/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ username: usernameInput, password: passwordInput, remember: rememberMe }),
+                  });
+                  if (!r.ok) {
+                    let msg = `${r.status} ${r.statusText}`;
+                    const err = await r.json().catch(() => null);
+                    if (err && typeof err.error === 'string') msg = err.error;
+                    throw new Error(msg);
+                  }
+                  // Try to capture bearer token from response (optional) and persist
+                  try {
+                    const json = await r.json();
+                    if (json && typeof json.token === 'string') {
+                      window.localStorage.setItem('auth_token', json.token);
+                    }
+                  } catch {}
+                  setAuthorized(true);
+                  // Eagerly prefetch settings and datasets after login
+                  try { await useAppStore.getState().loadSettingsFromServer(); } catch {}
+                  try { await useAppStore.getState().loadDatasetsFromServer(); } catch {}
+                } catch (e) {
+                  const msg = e instanceof Error ? e.message : 'Ошибка входа';
+                  setLoginError(msg);
                 }
-                setAuthorized(true);
-              } catch (e) {
-                const msg = e instanceof Error ? e.message : 'Ошибка входа';
-                setLoginError(msg);
-              }
-            }}
-            className="w-full inline-flex items-center justify-center bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700"
-          >
-            Войти
-          </button>
+              }}
+              className="w-full inline-flex items-center justify-center bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700"
+            >
+              Войти
+            </button>
+          </div>
         </div>
+        <Footer apiBuildId={apiBuildId} />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-6xl mx-auto px-4 py-8">
-        {/* Header */}
-        <div className="mb-8">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900 mb-2">
-                IBS Trading Backtester
-              </h1>
-              <div className="text-gray-600 flex flex-wrap items-center gap-3">
-                <span>Internal Bar Strength Mean Reversion Strategy</span>
-                <span className="text-xs text-gray-400 border rounded px-2 py-0.5">Build: {apiBuildId || import.meta.env.VITE_BUILD_ID || 'dev'}</span>
+    <div className="min-h-screen bg-gray-50 flex flex-col">
+      <div className="flex-1">
+        <div className="max-w-6xl mx-auto px-4 py-8">
+          {/* Header */}
+          <div className="mb-8">
+            <div className="flex items-center justify-between">
+              <div>
+                <h1 className="text-3xl font-bold text-gray-900 mb-2">
+                  IBS Trading Backtester
+                </h1>
+                <div className="text-gray-600 flex flex-wrap items-center gap-3">
+                  <span>Internal Bar Strength Mean Reversion Strategy</span>
+                </div>
               </div>
               {currentStrategy && (
                 <button
-                  onClick={() => setActiveTab('settings')}
+                  onClick={() => setShowSettings(true)}
                   className="p-2 rounded-full text-gray-500 hover:text-gray-700 hover:bg-gray-100 border border-gray-200"
-                  aria-label="Настройки"
-                  title="Настройки"
+                  aria-label="Параметры стратегии"
+                  title="Параметры стратегии"
                 >
                   <Settings className="w-5 h-5" />
                 </button>
@@ -237,109 +250,21 @@ export default function App() {
           </div>
 
           {/* Strategy Settings Modal */}
-          {/* removed: modal settings; consolidated into settings tab */}
+            {showSettings && currentStrategy && (
+            <StrategySettings
+              strategy={currentStrategy}
+              onSave={(updatedStrategy) => {
+                setStrategy(updatedStrategy);
+                // Перезапускаем бэктест, чтобы метрики обновились сразу
+                runBacktest();
+                setShowSettings(false);
+              }}
+              onClose={() => setShowSettings(false)}
+            />
+          )}
         </div>
       </div>
-
-      <header className="border-b bg-white/60 backdrop-blur sticky top-0 z-40 dark:bg-slate-900/60 dark:border-slate-800">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            {/* Removed ThemeToggle from here to place it in the top-right corner */}
-            <h1 className="text-lg font-semibold tracking-tight">Trading strategies</h1>
-            {apiBuildId && (
-              <span className="text-xs text-gray-500 dark:text-gray-400">API build: {apiBuildId}</span>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            <a className="inline-flex items-center gap-2 text-sm hover:text-indigo-600 dark:hover:text-indigo-400" href="#settings">
-              <Settings size={16} />
-              Settings
-            </a>
-            {authorized && (
-              <button
-                onClick={handleLogout}
-                className="inline-flex items-center gap-2 text-sm px-3 py-1 rounded border bg-white hover:bg-gray-50 text-gray-700 border-gray-200 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-gray-200 dark:border-slate-700"
-                title="Выйти из аккаунта"
-              >
-                Выйти
-              </button>
-            )}
-          </div>
-        </div>
-      </header>
-
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        {showLogin ? (
-          <div className="max-w-md mx-auto bg-white border border-gray-200 rounded-lg p-4 shadow-sm dark:bg-slate-900 dark:border-slate-800">
-            <h2 className="text-base font-semibold mb-3">Вход</h2>
-            <form className="space-y-3" onSubmit={handleLogin}>
-              <div>
-                <label className="block text-sm text-gray-600 mb-1 dark:text-gray-300">Email</label>
-                <input
-                  type="email"
-                  value={usernameInput}
-                  onChange={e => setUsernameInput(e.target.value)}
-                  className="w-full border rounded px-3 py-2 text-sm dark:bg-slate-800 dark:border-slate-700 dark:text-gray-100"
-                  placeholder="user@example.com"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-sm text-gray-600 mb-1 dark:text-gray-300">Пароль</label>
-                <input
-                  type="password"
-                  value={passwordInput}
-                  onChange={e => setPasswordInput(e.target.value)}
-                  className="w-full border rounded px-3 py-2 text-sm dark:bg-slate-800 dark:border-slate-700 dark:text-gray-100"
-                  required
-                />
-              </div>
-              <label className="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
-                <input type="checkbox" checked={rememberMe} onChange={e => setRememberMe(e.target.checked)} />
-                Запомнить меня
-              </label>
-              {loginError && <div className="text-sm text-red-600">{loginError}</div>}
-              <div className="flex gap-2">
-                <button type="submit" className="px-3 py-1.5 rounded bg-indigo-600 text-white text-sm">Войти</button>
-              </div>
-            </form>
-          </div>
-        ) : (
-          <>
-            {/* Navigation Tabs */}
-            <div className="border-b border-gray-200 mb-8 dark:border-gray-800">
-              <nav className="flex space-x-8">
-                {tabs.map((tab) => (
-                  <button
-                    key={tab.id}
-                    onClick={() => { if (tab.enabled) setActiveTab(tab.id); }}
-                    className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                      activeTab === tab.id
-                        ? 'border-blue-500 text-blue-600 dark:border-blue-400 dark:text-blue-400'
-                        : tab.enabled
-                        ? 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-200 dark:hover:border-gray-600'
-                        : 'border-transparent text-gray-300 cursor-not-allowed dark:text-gray-600'
-                    }`}
-                  >
-                    {tab.label}
-                  </button>
-                ))}
-              </nav>
-            </div>
-
-            {/* Tab Content */}
-            <div className="bg-white rounded-lg shadow p-6 dark:bg-gray-900 dark:text-gray-100">
-              {activeTab === 'data' && <DataUpload onNext={() => setActiveTab('results')} />}
-              {activeTab === 'enhance' && <DataEnhancer onNext={() => setActiveTab('results')} />}
-              {activeTab === 'results' && <Results />}
-              {activeTab === 'watches' && <TelegramWatches />}
-              {activeTab === 'splits' && <SplitsTab />}
-              {activeTab === 'settings' && <AppSettings />}
-            </div>
-          </>
-        )}
-      </div>
-      <div className="py-4 text-center text-xs text-gray-400">Build: {import.meta.env.VITE_BUILD_ID || 'dev'}</div>
+      <Footer apiBuildId={apiBuildId} />
     </div>
   );
 }
