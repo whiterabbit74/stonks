@@ -162,7 +162,6 @@ export const useAppStore = create<AppState>((set, get) => ({
       let splits: SplitEvent[] = [];
       try { splits = await DatasetAPI.getSplits(dataset.ticker); } catch { splits = []; }
       const adjustedData = adjustOHLCForSplits(dataset.data, splits);
-      const key = JSON.stringify((splits || []).slice().sort((a, b) => a.date.localeCompare(b.date)));
       
       // Проверяем, есть ли уже такой датасет в библиотеке
       const existingIndex = savedDatasets.findIndex(d => d.name === dataset.name);
@@ -183,7 +182,6 @@ export const useAppStore = create<AppState>((set, get) => ({
         marketData: adjustedData,
         currentDataset: dataset,
         currentSplits: splits || [],
-        lastAppliedSplitsKey: (splits && splits.length ? key : null),
         savedDatasets: updatedDatasets,
         isLoading: false 
       });
@@ -305,7 +303,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   updateDatasetOnServer: async () => {
-    const { currentDataset, marketData, currentSplits } = get();
+    const { currentDataset, marketData } = get();
     if (!currentDataset) {
       set({ error: 'Нет загруженного датасета для обновления' });
       return;
@@ -320,15 +318,15 @@ export const useAppStore = create<AppState>((set, get) => ({
         name: currentDataset.name,
         ticker: currentDataset.ticker,
         data: [...marketData],
-        splits: currentSplits && currentSplits.length ? [...currentSplits] : undefined,
         uploadDate: new Date().toISOString(),
         dataPoints: marketData.length,
         dateRange: {
           from: marketData[0].date.toISOString().split('T')[0],
           to: marketData[marketData.length - 1].date.toISOString().split('T')[0],
         },
-      };
-      await DatasetAPI.updateDataset(currentDataset.name, updated);
+      } as SavedDataset;
+      // Используем стабильный ID по тикеру, а не name
+      await DatasetAPI.updateDataset(currentDataset.ticker, updated);
       await get().loadDatasetsFromServer();
       set({ currentDataset: updated, isLoading: false });
       console.log(`Датасет обновлён на сервере: ${updated.name}`);
