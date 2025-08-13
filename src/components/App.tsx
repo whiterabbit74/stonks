@@ -3,7 +3,7 @@ import { Settings } from 'lucide-react';
 import { useAppStore } from '../stores';
 import { DataUpload } from './DataUpload';
 import { DataEnhancer } from './DataEnhancer';
-import { StrategySettings } from './StrategySettings';
+// import { StrategySettings } from './StrategySettings';
 import { Results } from './Results';
 import { TelegramWatches } from './TelegramWatches';
 import { SplitsTab } from './SplitsTab';
