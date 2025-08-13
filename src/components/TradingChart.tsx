@@ -398,9 +398,9 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
   }
 
   return (
-    <div className="w-full h-full">
+    <div className="w-full h-full grid grid-rows-[auto,1fr] gap-4">
       {/* EMA Controls */}
-      <div className="flex gap-2 mb-4 flex-wrap">
+      <div className="flex gap-2 flex-wrap">
         <button
           onClick={() => setShowEMA20(!showEMA20)}
           className={`px-3 py-1 text-sm rounded ${
@@ -444,8 +444,8 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
       </div>
       
       {/* Chart Container split: main (80%) + sub (20%) */}
-      <div ref={chartContainerRef} className="w-full h-[calc(100%-2rem)] flex flex-col">
-        <div ref={mainPaneRef} className="flex-1" />
+      <div ref={chartContainerRef} className="min-h-0 overflow-hidden w-full h-full flex flex-col">
+        <div ref={mainPaneRef} className="flex-1 min-h-0" />
         <div ref={subPaneRef} className="h-[20%]" />
       </div>
     </div>

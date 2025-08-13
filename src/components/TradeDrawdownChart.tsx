@@ -209,7 +209,7 @@ export function TradeDrawdownChart({ trades, initialCapital }: TradeDrawdownChar
       </div>
       
       {/* Chart Container */}
-      <div ref={chartContainerRef} className="w-full h-full" />
+      <div ref={chartContainerRef} className="w-full h-full min-h-0 overflow-hidden" />
     </div>
   );
 }

@@ -169,5 +169,5 @@ export function EquityChart({ equity }: EquityChartProps) {
     );
   }
 
-  return <div ref={chartContainerRef} className="w-full h-full" />;
+  return <div ref={chartContainerRef} className="w-full h-full min-h-0 overflow-hidden" />;
 }
