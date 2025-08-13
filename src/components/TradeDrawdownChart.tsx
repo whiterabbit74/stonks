@@ -14,16 +14,6 @@ export function TradeDrawdownChart({ trades, initialCapital }: TradeDrawdownChar
   useEffect(() => {
     if (!chartContainerRef.current || !trades.length) return;
 
-    // Clean up previous chart
-    if (chartRef.current) {
-      try {
-        chartRef.current.remove();
-      } catch (e) {
-        console.warn('Error removing previous chart:', e);
-      }
-      chartRef.current = null;
-    }
-
     try {
       // Create new chart
       const chart = createChart(chartContainerRef.current, {

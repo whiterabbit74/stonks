@@ -45,16 +45,6 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
   useEffect(() => {
     if (!chartContainerRef.current || !data.length) return;
 
-    // Clean up previous charts
-    if (chartRef.current) {
-      try { chartRef.current.remove(); } catch (e) { console.warn('Error removing previous chart:', e); }
-      chartRef.current = null;
-    }
-    if (subChartRef.current) {
-      try { subChartRef.current.remove(); } catch (e) { console.warn('Error removing previous sub-chart:', e); }
-      subChartRef.current = null;
-    }
-
     try {
       // Create main chart (80% height)
       const mainEl = mainPaneRef.current || chartContainerRef.current;
