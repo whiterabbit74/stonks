@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, type FormEvent } from 'react';
 import { Settings } from 'lucide-react';
 import { useAppStore } from '../stores';
 import { DataUpload } from './DataUpload';
@@ -18,6 +18,11 @@ export default function App() {
   const [authorized, setAuthorized] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<Tab>('data');
   const [apiBuildId, setApiBuildId] = useState<string | null>(null);
+  const [usernameInput, setUsernameInput] = useState<string>('');
+  const [passwordInput, setPasswordInput] = useState<string>('');
+  const [rememberMe, setRememberMe] = useState<boolean>(false);
+  const [loginError, setLoginError] = useState<string | null>(null);
+  const [checkingAuth, setCheckingAuth] = useState<boolean>(true);
   const hasAutoNavigatedRef = useRef(false);
   const marketData = useAppStore(s => s.marketData);
   const currentStrategy = useAppStore(s => s.currentStrategy);
@@ -26,11 +31,20 @@ export default function App() {
   const backtestStatus = useAppStore(s => s.backtestStatus);
   const setStrategy = useAppStore(s => s.setStrategy);
   const loadSettingsFromServer = useAppStore(s => s.loadSettingsFromServer);
+  const loadDatasetsFromServer = useAppStore(s => s.loadDatasetsFromServer);
 
   // Загружаем настройки один раз при монтировании
   useEffect(() => {
     loadSettingsFromServer();
   }, [loadSettingsFromServer]);
+
+  // После успешного логина — обновляем настройки и список датасетов
+  useEffect(() => {
+    if (authorized) {
+      loadSettingsFromServer();
+      loadDatasetsFromServer();
+    }
+  }, [authorized, loadSettingsFromServer, loadDatasetsFromServer]);
 
   // Автоматически создаем IBS стратегию когда есть данные
   useEffect(() => {
@@ -103,8 +117,19 @@ export default function App() {
         if (r.ok) setAuthorized(true);
       } catch (e) {
         console.warn('Auth check failed', e);
+      } finally {
+        setCheckingAuth(false);
       }
     })();
+  }, []);
+
+  useEffect(() => {
+    const onUnauthorized = () => {
+      setAuthorized(false);
+      setLoginError('Сессия истекла. Пожалуйста, войдите снова.');
+    };
+    window.addEventListener('app:unauthorized', onUnauthorized);
+    return () => window.removeEventListener('app:unauthorized', onUnauthorized);
   }, []);
 
   // Fetch API build id for reliable display
@@ -123,14 +148,43 @@ export default function App() {
     })();
   }, []);
 
-  const handleLogout = async () => {
+  async function handleLogin(e?: FormEvent) {
+    e?.preventDefault();
+    setLoginError(null);
+    try {
+      const base = window.location.href.includes('/stonks') ? '/stonks/api' : '/api';
+      const response = await fetch(`${base}/login`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: usernameInput, password: passwordInput, remember: rememberMe }),
+      });
+      if (!response.ok) {
+        const err = await response.json().catch(() => null);
+        throw new Error((err && err.error) || `Login failed: ${response.status}`);
+      }
+      const json = await response.json().catch(() => ({}));
+      if (json && json.token) {
+        try { window.localStorage.setItem('auth_token', json.token); } catch {}
+      }
+      setAuthorized(true);
+      setLoginError(null);
+    } catch (e) {
+      setAuthorized(false);
+      setLoginError(e instanceof Error ? e.message : 'Login failed');
+    }
+  }
+
+  async function handleLogout() {
     try {
       const base = window.location.href.includes('/stonks') ? '/stonks/api' : '/api';
       await fetch(`${base}/logout`, { method: 'POST', credentials: 'include' });
     } catch {}
     try { window.localStorage.removeItem('auth_token'); } catch {}
     setAuthorized(false);
-  };
+  }
+
+  const showLogin = !authorized && !checkingAuth;
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-800 dark:text-gray-100">
@@ -149,47 +203,86 @@ export default function App() {
             )}
           </div>
           <div className="flex items-center gap-2">
-            <a className="inline-flex items-center gap-2 text-sm hover:text-indigo-600 dark:hover:text-indigo-400" href="#settings">
-              <Settings size={16} />
-              Settings
-            </a>
-            {authorized && (
+            {authorized ? (
               <button
                 onClick={handleLogout}
-                className="inline-flex items-center gap-2 text-sm px-3 py-1 rounded border bg-white hover:bg-gray-50 text-gray-700 border-gray-200 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-gray-200 dark:border-slate-700"
-                title="Выйти из аккаунта"
+                className="inline-flex items-center gap-2 text-sm text-red-600 hover:text-red-700"
               >
                 Выйти
               </button>
+            ) : (
+              <a className="inline-flex items-center gap-2 text-sm hover:text-indigo-600 dark:hover:text-indigo-400" href="#settings">
+                <Settings size={16} />
+                Settings
+              </a>
             )}
           </div>
         </div>
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        <div className="mb-4">
-          <nav className="flex gap-2 flex-wrap">
-            {tabs.map(t => (
-              <button
-                key={t.id}
-                disabled={!t.enabled}
-                onClick={() => setActiveTab(t.id)}
-                className={`${activeTab === t.id
-                  ? 'px-3 py-1 rounded text-sm border bg-indigo-600 text-white border-indigo-600 dark:bg-indigo-500 dark:border-indigo-500'
-                  : 'px-3 py-1 rounded text-sm border bg-white hover:bg-gray-50 text-gray-700 border-gray-200 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-gray-200 dark:border-slate-700'}`}
-              >
-                {t.label}
-              </button>
-            ))}
-          </nav>
-        </div>
+        {showLogin ? (
+          <div className="max-w-md mx-auto bg-white border border-gray-200 rounded-lg p-4 shadow-sm dark:bg-slate-900 dark:border-slate-800">
+            <h2 className="text-base font-semibold mb-3">Вход</h2>
+            <form className="space-y-3" onSubmit={handleLogin}>
+              <div>
+                <label className="block text-sm text-gray-600 mb-1 dark:text-gray-300">Email</label>
+                <input
+                  type="email"
+                  value={usernameInput}
+                  onChange={e => setUsernameInput(e.target.value)}
+                  className="w-full border rounded px-3 py-2 text-sm dark:bg-slate-800 dark:border-slate-700 dark:text-gray-100"
+                  placeholder="user@example.com"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-gray-600 mb-1 dark:text-gray-300">Пароль</label>
+                <input
+                  type="password"
+                  value={passwordInput}
+                  onChange={e => setPasswordInput(e.target.value)}
+                  className="w-full border rounded px-3 py-2 text-sm dark:bg-slate-800 dark:border-slate-700 dark:text-gray-100"
+                  required
+                />
+              </div>
+              <label className="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
+                <input type="checkbox" checked={rememberMe} onChange={e => setRememberMe(e.target.checked)} />
+                Запомнить меня
+              </label>
+              {loginError && <div className="text-sm text-red-600">{loginError}</div>}
+              <div className="flex gap-2">
+                <button type="submit" className="px-3 py-1.5 rounded bg-indigo-600 text-white text-sm">Войти</button>
+              </div>
+            </form>
+          </div>
+        ) : (
+          <>
+            <div className="mb-4">
+              <nav className="flex gap-2 flex-wrap">
+                {tabs.map(t => (
+                  <button
+                    key={t.id}
+                    disabled={!t.enabled}
+                    onClick={() => setActiveTab(t.id)}
+                    className={`${activeTab === t.id
+                      ? 'px-3 py-1 rounded text-sm border bg-indigo-600 text-white border-indigo-600 dark:bg-indigo-500 dark:border-indigo-500'
+                      : 'px-3 py-1 rounded text-sm border bg-white hover:bg-gray-50 text-gray-700 border-gray-200 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-gray-200 dark:border-slate-700'}`}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </nav>
+            </div>
 
-        {activeTab === 'data' && <DataUpload />}
-        {activeTab === 'enhance' && <DataEnhancer />}
-        {activeTab === 'results' && <Results />}
-        {activeTab === 'watches' && <TelegramWatches />}
-        {activeTab === 'splits' && <SplitsTab />}
-        {activeTab === 'settings' && <AppSettings />}
+            {activeTab === 'data' && <DataUpload />}
+            {activeTab === 'enhance' && <DataEnhancer />}
+            {activeTab === 'results' && <Results />}
+            {activeTab === 'watches' && <TelegramWatches />}
+            {activeTab === 'splits' && <SplitsTab />}
+            {activeTab === 'settings' && <AppSettings />}
+          </>
+        )}
       </main>
 
       <Footer apiBuildId={apiBuildId} />

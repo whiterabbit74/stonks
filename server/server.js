@@ -263,6 +263,21 @@ app.post('/api/logout', (req, res) => {
   }
 });
 
+app.post('/api/logout', (req, res) => {
+  try {
+    const cookies = parseCookies(req);
+    const token = cookies.auth_token || getAuthTokenFromHeader(req);
+    if (token) {
+      sessions.delete(token);
+    }
+    // Expire cookie immediately
+    res.setHeader('Set-Cookie', 'auth_token=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax' + (IS_PROD ? '; Secure' : ''));
+    return res.json({ success: true });
+  } catch {
+    return res.json({ success: true });
+  }
+});
+
 // In-memory watch list for Telegram notifications (persisted to disk)
 // { symbol, highIBS, lowIBS, thresholdPct, chatId, entryPrice, isOpenPosition, sent: { dateKey, warn10, confirm1, entryWarn10, entryConfirm1 } }
 const telegramWatches = new Map();
