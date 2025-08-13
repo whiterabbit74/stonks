@@ -188,7 +188,7 @@ export function updateStrategyParameter(
 export function getStrategyParameter(
   strategy: Strategy,
   key: string,
-  defaultValue?: any
+  defaultValue?: number | string | boolean
 ): number | string | boolean | undefined {
   return strategy.parameters[key] !== undefined ? strategy.parameters[key] : defaultValue;
 }
@@ -240,7 +240,7 @@ export function getStrategyTemplateById(id: string) {
   return STRATEGY_TEMPLATES.find(t => t.id === id);
 }
 
-export function createStrategyFromTemplate(template: any, customId?: string): Strategy {
+export function createStrategyFromTemplate(template: { id: string; defaultStrategy: Pick<Strategy, 'name' | 'description' | 'entryConditions' | 'exitConditions' | 'parameters'> }, customId?: string): Strategy {
   const defaultStrategy = template.defaultStrategy as Pick<Strategy, 'name' | 'description' | 'entryConditions' | 'exitConditions' | 'parameters'>;
   const base = createDefaultStrategy();
   const strategyObj2 = {
@@ -270,7 +270,7 @@ export function createPriceCondition(
 }
 
 // Validation functions
-export function validateCondition(condition: any): Array<{ field: string; message: string }> {
+export function validateCondition(condition: Partial<IndicatorCondition> & { indicator?: IndicatorType; value?: number | string; operator?: IndicatorCondition['operator'] }): Array<{ field: string; message: string }> {
   const errors: Array<{ field: string; message: string }> = [];
   
   if (!condition.indicator) {
@@ -301,7 +301,7 @@ export function validateCondition(condition: any): Array<{ field: string; messag
   return errors;
 }
 
-export function validateRiskSettings(riskSettings: any): Array<{ field: string; message: string }> {
+export function validateRiskSettings(riskSettings: Partial<RiskManagement>): Array<{ field: string; message: string }> {
   const errors: Array<{ field: string; message: string }> = [];
   
   if (riskSettings.initialCapital !== undefined && riskSettings.initialCapital <= 0) {
@@ -324,7 +324,7 @@ export function validateRiskSettings(riskSettings: any): Array<{ field: string; 
   return errors;
 }
 
-export function validatePositionSizing(positionSizing: any): Array<{ field: string; message: string }> {
+export function validatePositionSizing(positionSizing: Strategy['positionSizing']): Array<{ field: string; message: string }> {
   const errors: Array<{ field: string; message: string }> = [];
   
   if (!positionSizing.value || positionSizing.value <= 0) {

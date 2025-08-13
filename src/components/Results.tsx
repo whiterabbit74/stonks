@@ -40,21 +40,21 @@ export function Results() {
   // Проверка дублей дат в marketData (ключ YYYY-MM-DD)
   const { hasDuplicateDates, duplicateDateKeys } = useMemo(() => {
     try {
-      const dateKeyOf = (v: any): string => {
-        if (!v) return '';
-        if (typeof v === 'string') {
-          // строка ISO или 'YYYY-MM-DD' — берём первые 10 символов
-          return v.length >= 10 ? v.slice(0, 10) : new Date(v).toISOString().slice(0, 10);
-        }
-        const d = new Date(v);
-        return Number.isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10);
-      };
+             const dateKeyOf = (v: unknown): string => {
+         if (!v) return '';
+         if (typeof v === 'string') {
+           // строка ISO или 'YYYY-MM-DD' — берём первые 10 символов
+           return v.length >= 10 ? v.slice(0, 10) : new Date(v).toISOString().slice(0, 10);
+         }
+         const d = new Date(v as string | number | Date);
+         return Number.isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10);
+       };
       const countByKey = new Map<string, number>();
-      for (const bar of (marketData || [])) {
-        const k = dateKeyOf((bar as any).date);
-        if (!k) continue;
-        countByKey.set(k, (countByKey.get(k) || 0) + 1);
-      }
+              for (const bar of (marketData || [])) {
+          const k = dateKeyOf(bar.date as unknown as string);
+          if (!k) continue;
+          countByKey.set(k, (countByKey.get(k) || 0) + 1);
+        }
       const dup = Array.from(countByKey.entries()).filter(([, c]) => c > 1).map(([k, c]) => `${k}×${c}`);
       return { hasDuplicateDates: dup.length > 0, duplicateDateKeys: dup };
     } catch {
@@ -63,7 +63,7 @@ export function Results() {
   }, [marketData]);
 
   const symbol = useMemo(() => (
-    currentDataset?.ticker || (backtestResults as any)?.symbol || (backtestResults as any)?.ticker || (backtestResults as any)?.meta?.ticker
+    currentDataset?.ticker || backtestResults?.symbol || backtestResults?.ticker || backtestResults?.meta?.ticker
   ), [currentDataset, backtestResults]);
 
   // Обеспечиваем наличие сплитов от сервера (централизованно).
@@ -83,12 +83,14 @@ export function Results() {
         fetchedSplitsForSymbolRef.current = symbol;
         if (Array.isArray(s)) {
           setSplits(s as any);
+          try { await loadDatasetFromServer(symbol); } catch {}
         }
       } catch {
         // Не показываем 429/внешние ошибки, т.к. теперь API всегда локальный и отдаёт []
+        // no-op
       }
     })();
-  }, [symbol, currentSplits, setSplits]);
+   }, [symbol, currentSplits, loadDatasetFromServer, setSplits]);
 
   useEffect(() => {
     let active = true;
@@ -101,9 +103,9 @@ export function Results() {
       } catch {
         if (active) setWatching(false);
       }
-    })();
-    return () => { active = false; };
-  }, [symbol]);
+         })();
+     return () => { active = false; };
+   }, [symbol, setWatching]);
 
   // Быстрая проверка актуальности данных (ожидаем бар за предыдущий торговый день по времени NYSE / America/New_York)
   useEffect(() => {
@@ -178,8 +180,9 @@ export function Results() {
         if (isMounted) { setIsTrading(true); setQuoteLoading(true); }
         const q = await DatasetAPI.getQuote(symbol, resultsQuoteProvider || 'finnhub');
         if (isMounted) { setQuote(q); setQuoteError(null); setLastUpdatedAt(new Date()); }
-      } catch (e: any) {
-        if (isMounted) setQuoteError(e?.message || 'Failed to fetch quote');
+      } catch (e) {
+        const message = e instanceof Error ? e.message : 'Failed to fetch quote';
+        if (isMounted) setQuoteError(message);
       } finally {
         if (isMounted) { setQuoteLoading(false); timer = setTimeout(fetchQuote, 15000); }
       }
@@ -261,8 +264,9 @@ export function Results() {
                         await DatasetAPI.deleteTelegramWatch(symbol);
                         setWatching(false);
                       }
-                    } catch (e: any) {
-                      setModal({ type: 'error', title: watching ? 'Ошибка удаления' : 'Ошибка добавления', message: e?.message || 'Операция не выполнена' });
+                    } catch (e) {
+                      const message = e instanceof Error ? e.message : 'Операция не выполнена';
+                      setModal({ type: 'error', title: watching ? 'Ошибка удаления' : 'Ошибка добавления', message });
                     } finally {
                       setWatchBusy(false);
                     }
@@ -328,7 +332,7 @@ export function Results() {
                       // Единый серверный refresh по тикеру
                       await DatasetAPI.refreshDataset(symbol, resultsRefreshProvider || 'finnhub');
                       // Перезагрузим активный датасет и снимем флаг «устарело»
-                      try { await useAppStore.getState().loadDatasetFromServer(symbol); } catch {}
+                      try { await useAppStore.getState().loadDatasetFromServer(symbol); } catch { /* ignore */ }
                       setIsStale(false);
                       setStaleInfo(null);
                     } catch (e) {
@@ -669,8 +673,8 @@ export function Results() {
                 <th className="sticky top-0 text-left p-4 font-semibold text-gray-700 bg-gray-50 text-base shadow-[0_1px_0_0_rgba(0,0,0,0.05)] dark:text-gray-200 dark:bg-gray-900/80">Exit Reason</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
-              {trades.map((trade: any, index: number) => {
+            <tbody className="divide-y divide-gray-200">
+              {trades.map((trade, index: number) => {
                 const investment = trade.context?.initialInvestment || (trade.quantity * trade.entryPrice);
                 return (
                   <tr key={index} className="hover:bg-gray-50 dark:hover:bg-gray-800/60">
@@ -727,11 +731,11 @@ export function Results() {
             {trades.length > 0 && (
               <tfoot className="bg-gray-100 border-t-2 border-gray-300 dark:bg-gray-900 dark:border-gray-800">
                 <tr className="font-bold text-base">
-                  <td className="p-4 text-gray-700 dark:text-gray-200" colSpan={8}>ИТОГО ({trades.length} сделок)</td>
+                  <td className="p-4 text-gray-700" colSpan={8}>ИТОГО ({trades.length} сделок)</td>
                   <td className={`p-4 text-right font-mono font-bold text-lg ${
-                    trades.reduce((sum: number, t: any) => sum + t.pnl, 0) > 0 ? 'text-green-600 dark:text-emerald-300' : 'text-red-600 dark:text-red-300'
+                    trades.reduce((sum: number, t) => sum + t.pnl, 0) > 0 ? 'text-green-600' : 'text-red-600'
                   }`}>
-                    ${trades.reduce((sum: number, t: any) => sum + t.pnl, 0).toFixed(2)}
+                    ${trades.reduce((sum: number, t) => sum + t.pnl, 0).toFixed(2)}
                   </td>
                   <td className={`p-4 text-right font-mono font-bold text-lg ${
                     metrics.totalReturn > 0 ? 'text-green-600 dark:text-emerald-300' : 'text-red-600 dark:text-red-300'

@@ -15,8 +15,8 @@ export function SplitsTab() {
       try {
         const json = await DatasetAPI.getSplitsMap();
         if (active) setData(json || {});
-      } catch (e: any) {
-        if (active) setError(e?.message || 'Не удалось загрузить сплиты');
+      } catch (e) {
+        if (active) setError(e instanceof Error ? e.message : 'Не удалось загрузить сплиты');
       } finally {
         if (active) setLoading(false);
       }

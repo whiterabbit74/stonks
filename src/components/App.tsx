@@ -102,7 +102,7 @@ export default function App() {
     { id: 'watches' as Tab, label: 'Мониторинг', enabled: true },
     { id: 'splits' as Tab, label: 'Сплиты', enabled: true },
     { id: 'settings' as Tab, label: 'Настройки', enabled: true },
-  ];
+  ] as const;
 
   useEffect(() => {
     (async () => {
@@ -112,7 +112,7 @@ export default function App() {
         try {
           const t = window.localStorage.getItem('auth_token');
           if (t) headers = { Authorization: `Bearer ${t}` };
-        } catch {}
+        } catch { void 0; }
         const r = await fetch(`${base}/auth/check`, { credentials: 'include', headers });
         if (r.ok) setAuthorized(true);
       } catch (e) {
@@ -142,9 +142,15 @@ export default function App() {
           const j = await r.json();
           setApiBuildId(j?.timestamp || null);
         }
+<<<<<<< HEAD
       } catch {
         setApiBuildId(null);
       }
+=======
+             } catch {
+         // ignore
+       }
+>>>>>>> origin/cursor/find-and-fix-100-website-errors-e572
     })();
   }, []);
 
@@ -175,13 +181,7 @@ export default function App() {
     }
   }
 
-  async function handleLogout() {
-    try {
-      const base = window.location.href.includes('/stonks') ? '/stonks/api' : '/api';
-      await fetch(`${base}/logout`, { method: 'POST', credentials: 'include' });
-    } catch {}
-    try { window.localStorage.removeItem('auth_token'); } catch {}
-    setAuthorized(false);
+
   }
 
   const showLogin = !authorized && !checkingAuth;

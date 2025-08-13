@@ -119,7 +119,7 @@ export class BacktestEngine {
    * Check entry conditions for the current bar
    */
   private checkEntryConditions(index: number, bar: OHLCData): void {
-    const ibsKey = this.getIndicatorKey('IBS', { type: 'indicator', indicator: 'IBS', operator: '<', value: 0.1 } as any);
+    const ibsKey = this.getIndicatorKey('IBS', { type: 'indicator', indicator: 'IBS', operator: '<', value: 0.1 });
     const ibsValue = this.indicators.get(ibsKey)?.[index];
     const lowThreshold = this.strategy.parameters.lowIBS || 0.1;
     
@@ -324,7 +324,7 @@ export class BacktestEngine {
     
     // Add current capital to trade context
     if (trade.context) {
-      (trade.context as any).currentCapitalAfterExit = this.currentCapital;
+      (trade.context as { currentCapitalAfterExit?: number }).currentCapitalAfterExit = this.currentCapital;
     }
 
     // Record signal
@@ -379,10 +379,11 @@ export class BacktestEngine {
       case 'percentage':
         return tradeValue * (commission.percentage || 0);
       
-      case 'combined':
+      case 'combined': {
         const fixedPart = commission.fixed || 0;
         const percentagePart = tradeValue * (commission.percentage || 0);
         return fixedPart + percentagePart;
+      }
       
       default:
         return 0;
@@ -497,7 +498,7 @@ export class BacktestEngine {
     return result;
   }
   
-  private evaluateOperator(operator: string, currentValue: number, conditionValue: any, indicatorValues: number[], index: number): boolean {
+  private evaluateOperator(operator: string, currentValue: number, conditionValue: number | 'dynamic', indicatorValues: number[], index: number): boolean {
     switch (operator) {
       case '>':
         return typeof conditionValue === 'number' && currentValue > conditionValue;
@@ -656,26 +657,29 @@ export class BacktestEngine {
     const closePrices = this.data.map(bar => bar.close);
     
     switch (indicatorType) {
-      case 'SMA':
+      case 'SMA': {
         const smaPeriod = this.getIndicatorPeriod(condition, 20);
         if (smaPeriod > this.data.length) {
           return new Array(this.data.length).fill(NaN);
         }
         return IndicatorEngine.calculateSMA(closePrices, smaPeriod);
+      }
       
-      case 'EMA':
+      case 'EMA': {
         const emaPeriod = this.getIndicatorPeriod(condition, 20);
         if (emaPeriod > this.data.length) {
           return new Array(this.data.length).fill(NaN);
         }
         return IndicatorEngine.calculateEMA(closePrices, emaPeriod);
+      }
       
-      case 'RSI':
+      case 'RSI': {
         const rsiPeriod = this.getIndicatorPeriod(condition, 14);
         if (rsiPeriod + 1 > this.data.length) {
           return new Array(this.data.length).fill(NaN);
         }
         return IndicatorEngine.calculateRSI(closePrices, rsiPeriod);
+      }
       
       case 'IBS':
         return IndicatorEngine.calculateIBS(this.data);
@@ -707,7 +711,7 @@ export class BacktestEngine {
     if (indicatorType === 'IBS') {
       return 'IBS';
     }
-    const period = this.getIndicatorPeriod(condition as any, 20);
+    const period = this.getIndicatorPeriod(condition as Partial<IndicatorCondition>, 20);
     return `${indicatorType}_${period}`;
   }
 
@@ -767,7 +771,7 @@ export class BacktestEngine {
    * Log IBS statistics for debugging
    */
   private logIBSStatistics(): void {
-    const ibsKey = this.getIndicatorKey('IBS', { type: 'indicator', indicator: 'IBS', operator: '<', value: 0.1 } as any);
+    const ibsKey = this.getIndicatorKey('IBS', { type: 'indicator', indicator: 'IBS', operator: '<', value: 0.1 });
     const ibsValues = this.indicators.get(ibsKey);
     if (!ibsValues) return;
 
@@ -805,7 +809,7 @@ export class BacktestEngine {
   /**
    * Generate chart data for visualization
    */
-  private generateChartData(): any[] {
+  private generateChartData(): { time: Date; date: Date; open: number; high: number; low: number; close: number; volume: number; equity: number }[] {
     return this.data.map((bar, index) => ({
       time: bar.date,
       date: bar.date,
@@ -843,12 +847,12 @@ export class BacktestEngine {
   /**
    * Get indicator values at given index
    */
-  private getIndicatorValues(index: number): any {
-    const values: any = {};
+  private getIndicatorValues(index: number): Record<string, number> {
+    const values: Record<string, number> = {};
     
     for (const [name, data] of this.indicators) {
       if (data[index] !== undefined) {
-        values[name] = data[index];
+        values[name] = data[index] as number;
       }
     }
     

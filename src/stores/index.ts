@@ -175,7 +175,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       const datasets = await DatasetAPI.getDatasets();
       // Нормализуем тикер/имя и обеспечим стабильный id
       const normalized = datasets.map(d => {
-        const ticker = (d.ticker || (d as any).id || d.name).toUpperCase();
+        const ticker = (d.ticker || (d as unknown as { id?: string }).id || d.name).toUpperCase();
         return { ...d, ticker, name: ticker } as typeof d;
       });
       set({ 
@@ -363,7 +363,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
   
   runBacktest: async () => {
-    let { marketData, currentStrategy, currentDataset } = get();
+    let { marketData, currentStrategy, currentDataset } = get(); // eslint-disable-line prefer-const
     // Гарантируем стратегию IBS по умолчанию (без динамического импорта)
     if (!currentStrategy) {
       currentStrategy = createStrategyFromTemplate(STRATEGY_TEMPLATES[0]);

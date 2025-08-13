@@ -6,6 +6,8 @@ interface EquityChartProps {
   equity: EquityPoint[];
 }
 
+type CrosshairParam = { time?: UTCTimestamp | number | string; seriesPrices?: Map<unknown, unknown> } | undefined;
+
 export function EquityChart({ equity }: EquityChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -112,7 +114,7 @@ export function EquityChart({ equity }: EquityChartProps) {
     tooltipEl.style.display = 'none';
     chartContainerRef.current.appendChild(tooltipEl);
 
-    chart.subscribeCrosshairMove((param: any) => {
+                   chart.subscribeCrosshairMove((param: CrosshairParam) => {
       if (!param || !param.time) { tooltipEl.style.display = 'none'; return; }
       const v = (param.seriesPrices?.get?.(equitySeries) as number) ?? undefined;
       if (v == null) { tooltipEl.style.display = 'none'; return; }

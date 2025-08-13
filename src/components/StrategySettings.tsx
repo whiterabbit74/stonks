@@ -12,6 +12,7 @@ interface StrategySettingsProps {
 export function StrategySettings({ strategy, onSave, onClose, mode = 'modal' }: StrategySettingsProps & { mode?: 'modal' | 'inline' }) {
   const [editedStrategy, setEditedStrategy] = useState<Strategy>({ ...strategy });
 
+
   const handleParameterChange = (key: string, value: number) => {
     setEditedStrategy(prev => ({
       ...prev,
@@ -46,8 +47,8 @@ export function StrategySettings({ strategy, onSave, onClose, mode = 'modal' }: 
       parameters: defaults.parameters || strategy.parameters,
       entryConditions: defaults.entryConditions || strategy.entryConditions,
       exitConditions: defaults.exitConditions || strategy.exitConditions,
-      riskManagement: defaults.riskManagement || strategy.riskManagement,
-      positionSizing: defaults.positionSizing || strategy.positionSizing,
+      riskManagement: (defaults.riskManagement || strategy.riskManagement) as Strategy['riskManagement'],
+      positionSizing: (defaults.positionSizing || strategy.positionSizing) as Strategy['positionSizing'],
       type: strategy.type,
     });
   };
@@ -76,7 +77,7 @@ export function StrategySettings({ strategy, onSave, onClose, mode = 'modal' }: 
           description: 'Force exit after this many days if IBS exit condition not met. Default: 30' 
         }
       }
-    };
+    } as const;
     
     return configs[strategyId] || {};
   };
