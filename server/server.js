@@ -391,8 +391,18 @@ function buildFreshnessLine(ohlc, nowEtParts) {
   }
 }
 
-function formatMoney(n){ return (typeof n === 'number' && isFinite(n)) ? `$${n.toFixed(2)}` : '-'; }
+// Centralized endpoint: expected previous trading day in ET
+app.get('/api/trading/expected-prev-day', (req, res) => {
+  try {
+    const nowEt = getETParts(new Date());
+    const prev = previousTradingDayET(nowEt);
+    return res.json({ date: etKeyYMD(prev) });
+  } catch (e) {
+    return res.status(500).json({ error: e && e.message ? e.message : 'Failed to compute previous trading day' });
+  }
+});
 
+function formatMoney(n){ return (typeof n === 'number' && isFinite(n)) ? `$${n.toFixed(2)}` : '-'; }
 
 // Register/unregister Telegram watch
 app.post('/api/telegram/watch', (req, res) => {
