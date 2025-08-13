@@ -1,5 +1,5 @@
 import { Heart } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import { DatasetAPI } from '../lib/api';
 import { useAppStore } from '../stores';
 import { TradingChart } from './TradingChart';
@@ -36,6 +36,7 @@ export function Results() {
   const [watching, setWatching] = useState(false);
   const [watchBusy, setWatchBusy] = useState(false);
   const [, setSplitsError] = useState<string | null>(null);
+  const fetchedSplitsForSymbolRef = useRef<string | null>(null);
   
   // Проверка дублей дат в marketData (ключ YYYY-MM-DD)
   const { hasDuplicateDates, duplicateDateKeys } = useMemo(() => {
@@ -83,14 +84,13 @@ export function Results() {
         fetchedSplitsForSymbolRef.current = symbol;
         if (Array.isArray(s)) {
           setSplits(s as any);
-          try { await loadDatasetFromServer(symbol); } catch {}
         }
       } catch {
         // Не показываем 429/внешние ошибки, т.к. теперь API всегда локальный и отдаёт []
         // no-op
       }
     })();
-  }, [symbol, currentSplits, setSplits, loadDatasetFromServer]);
+  }, [symbol, currentSplits, setSplits]);
 
   useEffect(() => {
     let active = true;
