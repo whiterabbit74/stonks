@@ -142,15 +142,9 @@ export default function App() {
           const j = await r.json();
           setApiBuildId(j?.timestamp || null);
         }
-<<<<<<< HEAD
       } catch {
         setApiBuildId(null);
       }
-=======
-             } catch {
-         // ignore
-       }
->>>>>>> origin/cursor/find-and-fix-100-website-errors-e572
     })();
   }, []);
 
@@ -181,7 +175,13 @@ export default function App() {
     }
   }
 
-
+  async function handleLogout() {
+    try {
+      const base = window.location.href.includes('/stonks') ? '/stonks/api' : '/api';
+      await fetch(`${base}/logout`, { method: 'POST', credentials: 'include' });
+    } catch {}
+    try { window.localStorage.removeItem('auth_token'); } catch {}
+    setAuthorized(false);
   }
 
   const showLogin = !authorized && !checkingAuth;
