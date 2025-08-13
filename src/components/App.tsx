@@ -31,11 +31,20 @@ export default function App() {
   const backtestStatus = useAppStore(s => s.backtestStatus);
   const setStrategy = useAppStore(s => s.setStrategy);
   const loadSettingsFromServer = useAppStore(s => s.loadSettingsFromServer);
+  const loadDatasetsFromServer = useAppStore(s => s.loadDatasetsFromServer);
 
   // Загружаем настройки один раз при монтировании
   useEffect(() => {
     loadSettingsFromServer();
   }, [loadSettingsFromServer]);
+
+  // После успешного логина — обновляем настройки и список датасетов
+  useEffect(() => {
+    if (authorized) {
+      loadSettingsFromServer();
+      loadDatasetsFromServer();
+    }
+  }, [authorized, loadSettingsFromServer, loadDatasetsFromServer]);
 
   // Автоматически создаем IBS стратегию когда есть данные
   useEffect(() => {
@@ -129,6 +138,35 @@ export default function App() {
     })();
   }, []);
 
+  async function handleLogin(e?: React.FormEvent) {
+    e?.preventDefault();
+    setLoginError(null);
+    try {
+      const base = window.location.href.includes('/stonks') ? '/stonks/api' : '/api';
+      const response = await fetch(`${base}/login`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: usernameInput, password: passwordInput, remember: rememberMe }),
+      });
+      if (!response.ok) {
+        const err = await response.json().catch(() => null);
+        throw new Error((err && err.error) || `Login failed: ${response.status}`);
+      }
+      const json = await response.json().catch(() => ({}));
+      if (json && json.token) {
+        try { window.localStorage.setItem('auth_token', json.token); } catch {}
+      }
+      setAuthorized(true);
+      setLoginError(null);
+    } catch (e) {
+      setAuthorized(false);
+      setLoginError(e instanceof Error ? e.message : 'Login failed');
+    }
+  }
+
+  const showLogin = !authorized && !checkingAuth;
+
   return (
     <div className="min-h-screen bg-gray-50 text-gray-800">
       <header className="border-b bg-white/60 backdrop-blur sticky top-0 z-20">
@@ -150,30 +188,69 @@ export default function App() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        <div className="mb-4">
-          <nav className="flex gap-2 flex-wrap">
-            {tabs.map(t => (
-              <button
-                key={t.id}
-                disabled={!t.enabled}
-                onClick={() => setActiveTab(t.id)}
-                className={`px-3 py-1 rounded text-sm border ${activeTab === t.id ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white hover:bg-gray-50 text-gray-700 border-gray-200'}`}
-              >
-                {t.label}
-              </button>
-            ))}
-          </nav>
-        </div>
+        {showLogin ? (
+          <div className="max-w-md mx-auto bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
+            <h2 className="text-base font-semibold mb-3">Вход</h2>
+            <form className="space-y-3" onSubmit={handleLogin}>
+              <div>
+                <label className="block text-sm text-gray-600 mb-1">Email</label>
+                <input
+                  type="email"
+                  value={usernameInput}
+                  onChange={e => setUsernameInput(e.target.value)}
+                  className="w-full border rounded px-3 py-2 text-sm"
+                  placeholder="user@example.com"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-gray-600 mb-1">Пароль</label>
+                <input
+                  type="password"
+                  value={passwordInput}
+                  onChange={e => setPasswordInput(e.target.value)}
+                  className="w-full border rounded px-3 py-2 text-sm"
+                  required
+                />
+              </div>
+              <label className="inline-flex items-center gap-2 text-sm text-gray-700">
+                <input type="checkbox" checked={rememberMe} onChange={e => setRememberMe(e.target.checked)} />
+                Запомнить меня
+              </label>
+              {loginError && <div className="text-sm text-red-600">{loginError}</div>}
+              <div className="flex gap-2">
+                <button type="submit" className="px-3 py-1.5 rounded bg-indigo-600 text-white text-sm">Войти</button>
+              </div>
+            </form>
+          </div>
+        ) : (
+          <>
+            <div className="mb-4">
+              <nav className="flex gap-2 flex-wrap">
+                {tabs.map(t => (
+                  <button
+                    key={t.id}
+                    disabled={!t.enabled}
+                    onClick={() => setActiveTab(t.id)}
+                    className={`px-3 py-1 rounded text-sm border ${activeTab === t.id ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white hover:bg-gray-50 text-gray-700 border-gray-200'}`}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </nav>
+            </div>
 
-        {activeTab === 'data' && <DataUpload />}
-        {activeTab === 'enhance' && <DataEnhancer />}
-        {activeTab === 'results' && <Results />}
-        {activeTab === 'watches' && <TelegramWatches />}
-        {activeTab === 'splits' && <SplitsTab />}
-        {activeTab === 'settings' && <AppSettings />}
+            {activeTab === 'data' && <DataUpload />}
+            {activeTab === 'enhance' && <DataEnhancer />}
+            {activeTab === 'results' && <Results />}
+            {activeTab === 'watches' && <TelegramWatches />}
+            {activeTab === 'splits' && <SplitsTab />}
+            {activeTab === 'settings' && <AppSettings />}
+          </>
+        )}
       </main>
 
-      <Footer authorized={authorized} checkingAuth={checkingAuth} loginError={loginError} setLoginError={setLoginError} usernameInput={usernameInput} setUsernameInput={setUsernameInput} passwordInput={passwordInput} setPasswordInput={setPasswordInput} rememberMe={rememberMe} setRememberMe={setRememberMe} />
+      <Footer apiBuildId={apiBuildId} />
     </div>
   );
 }
