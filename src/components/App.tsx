@@ -148,43 +148,14 @@ export default function App() {
     })();
   }, []);
 
-  async function handleLogin(e?: FormEvent) {
-    e?.preventDefault();
-    setLoginError(null);
-    try {
-      const base = window.location.href.includes('/stonks') ? '/stonks/api' : '/api';
-      const response = await fetch(`${base}/login`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: usernameInput, password: passwordInput, remember: rememberMe }),
-      });
-      if (!response.ok) {
-        const err = await response.json().catch(() => null);
-        throw new Error((err && err.error) || `Login failed: ${response.status}`);
-      }
-      const json = await response.json().catch(() => ({}));
-      if (json && json.token) {
-        try { window.localStorage.setItem('auth_token', json.token); } catch {}
-      }
-      setAuthorized(true);
-      setLoginError(null);
-    } catch (e) {
-      setAuthorized(false);
-      setLoginError(e instanceof Error ? e.message : 'Login failed');
-    }
-  }
-
-  async function handleLogout() {
+  const handleLogout = async () => {
     try {
       const base = window.location.href.includes('/stonks') ? '/stonks/api' : '/api';
       await fetch(`${base}/logout`, { method: 'POST', credentials: 'include' });
     } catch {}
     try { window.localStorage.removeItem('auth_token'); } catch {}
     setAuthorized(false);
-  }
-
-  const showLogin = !authorized && !checkingAuth;
+  };
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-800 dark:text-gray-100">
@@ -203,18 +174,18 @@ export default function App() {
             )}
           </div>
           <div className="flex items-center gap-2">
-            {authorized ? (
+            <a className="inline-flex items-center gap-2 text-sm hover:text-indigo-600 dark:hover:text-indigo-400" href="#settings">
+              <Settings size={16} />
+              Settings
+            </a>
+            {authorized && (
               <button
                 onClick={handleLogout}
-                className="inline-flex items-center gap-2 text-sm text-red-600 hover:text-red-700"
+                className="inline-flex items-center gap-2 text-sm px-3 py-1 rounded border bg-white hover:bg-gray-50 text-gray-700 border-gray-200 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-gray-200 dark:border-slate-700"
+                title="Выйти из аккаунта"
               >
                 Выйти
               </button>
-            ) : (
-              <a className="inline-flex items-center gap-2 text-sm hover:text-indigo-600 dark:hover:text-indigo-400" href="#settings">
-                <Settings size={16} />
-                Settings
-              </a>
             )}
           </div>
         </div>

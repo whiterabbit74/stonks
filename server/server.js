@@ -191,14 +191,9 @@ function requireAuth(req, res, next) {
     req.path === '/api/status' ||
     req.path === '/api/login' ||
     req.path === '/api/logout' ||
-    req.path === '/api/auth/check'
-  ) {
-    return next();
-  }
-  // Allow public READ-ONLY access to splits endpoints; modifications require auth
-  if (
-    (req.path === '/api/splits' || (typeof req.path === 'string' && req.path.startsWith('/api/splits/')))
-    && req.method === 'GET'
+    req.path === '/api/auth/check' ||
+    req.path === '/api/splits' ||
+    (typeof req.path === 'string' && req.path.startsWith('/api/splits/'))
   ) {
     return next();
   }
@@ -302,21 +297,6 @@ app.post('/api/logout', (req, res) => {
   } catch (e) {
     clearAuthCookie(res);
     res.json({ success: true });
-  }
-});
-
-app.post('/api/logout', (req, res) => {
-  try {
-    const cookies = parseCookies(req);
-    const token = cookies.auth_token || getAuthTokenFromHeader(req);
-    if (token) {
-      sessions.delete(token);
-    }
-    // Expire cookie immediately
-    res.setHeader('Set-Cookie', 'auth_token=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax' + (IS_PROD ? '; Secure' : ''));
-    return res.json({ success: true });
-  } catch {
-    return res.json({ success: true });
   }
 });
 
