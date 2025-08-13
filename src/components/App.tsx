@@ -16,11 +16,6 @@ type Tab = 'data' | 'enhance' | 'results' | 'watches' | 'splits' | 'settings';
 
 export default function App() {
   const [authorized, setAuthorized] = useState<boolean>(false);
-  const [checkingAuth, setCheckingAuth] = useState<boolean>(true);
-  const [loginError, setLoginError] = useState<string | null>(null);
-  const [usernameInput, setUsernameInput] = useState('');
-  const [passwordInput, setPasswordInput] = useState('');
-  const [rememberMe, setRememberMe] = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>('data');
   const [apiBuildId, setApiBuildId] = useState<string | null>(null);
   const hasAutoNavigatedRef = useRef(false);
@@ -109,7 +104,6 @@ export default function App() {
       } catch (e) {
         console.warn('Auth check failed', e);
       }
-      setCheckingAuth(false);
     })();
   }, []);
 
@@ -128,6 +122,15 @@ export default function App() {
       }
     })();
   }, []);
+
+  const handleLogout = async () => {
+    try {
+      const base = window.location.href.includes('/stonks') ? '/stonks/api' : '/api';
+      await fetch(`${base}/logout`, { method: 'POST', credentials: 'include' });
+    } catch {}
+    try { window.localStorage.removeItem('auth_token'); } catch {}
+    setAuthorized(false);
+  };
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-800 dark:text-gray-100">
@@ -150,6 +153,15 @@ export default function App() {
               <Settings size={16} />
               Settings
             </a>
+            {authorized && (
+              <button
+                onClick={handleLogout}
+                className="inline-flex items-center gap-2 text-sm px-3 py-1 rounded border bg-white hover:bg-gray-50 text-gray-700 border-gray-200 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-gray-200 dark:border-slate-700"
+                title="Выйти из аккаунта"
+              >
+                Выйти
+              </button>
+            )}
           </div>
         </div>
       </header>
@@ -180,7 +192,7 @@ export default function App() {
         {activeTab === 'settings' && <AppSettings />}
       </main>
 
-      <Footer authorized={authorized} checkingAuth={checkingAuth} loginError={loginError} setLoginError={setLoginError} usernameInput={usernameInput} setUsernameInput={setUsernameInput} passwordInput={passwordInput} setPasswordInput={setPasswordInput} rememberMe={rememberMe} setRememberMe={setRememberMe} />
+      <Footer apiBuildId={apiBuildId} />
     </div>
   );
 }
