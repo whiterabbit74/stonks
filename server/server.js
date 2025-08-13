@@ -263,6 +263,21 @@ app.post('/api/logout', (req, res) => {
   }
 });
 
+app.post('/api/logout', (req, res) => {
+  try {
+    const cookies = parseCookies(req);
+    const token = cookies.auth_token || getAuthTokenFromHeader(req);
+    if (token) {
+      sessions.delete(token);
+    }
+    // Expire cookie immediately
+    res.setHeader('Set-Cookie', 'auth_token=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax' + (IS_PROD ? '; Secure' : ''));
+    return res.json({ success: true });
+  } catch {
+    return res.json({ success: true });
+  }
+});
+
 // In-memory watch list for Telegram notifications (persisted to disk)
 // { symbol, highIBS, lowIBS, thresholdPct, chatId, entryPrice, isOpenPosition, sent: { dateKey, warn10, confirm1, entryWarn10, entryConfirm1 } }
 const telegramWatches = new Map();
@@ -1195,20 +1210,34 @@ app.post('/api/datasets', async (req, res) => {
 // Удалить датасет
 app.delete('/api/datasets/:id', async (req, res) => {
   try {
-    const { id } = req.params;
-    const filePath = path.join(DATASETS_DIR, `${id}.json`);
-    
-    if (!await fs.pathExists(filePath)) {
+    const rawId = req.params.id;
+    const ticker = toSafeTicker(rawId);
+
+    // Resolve actual file path (supports stable and legacy filenames)
+    const filePath = resolveDatasetFilePathById(ticker);
+
+    if (!filePath || !await fs.pathExists(filePath)) {
       return res.status(404).json({ error: 'Dataset not found' });
     }
-    
+
+    // Remove the resolved file
     await fs.remove(filePath);
-    
-    console.log(`Dataset deleted: ${id}`);
-    res.json({ success: true, message: `Dataset "${id}" deleted successfully` });
+
+    // Best-effort: remove any legacy suffixed files like TICKER_YYYY-MM-DD.json
+    try {
+      const files = await fs.readdir(DATASETS_DIR);
+      await Promise.all(
+        files
+          .filter(f => f.toUpperCase().startsWith(`${ticker}_`) && f.endsWith('.json'))
+          .map(f => fs.remove(path.join(DATASETS_DIR, f)).catch(() => {}))
+      );
+    } catch {}
+
+    console.log(`Dataset deleted: ${ticker}`);
+    res.json({ success: true, message: `Dataset "${ticker}" deleted successfully` });
   } catch (error) {
     console.error('Error deleting dataset:', error);
-    res.status(500).json({ error: 'Failed to delete dataset' });
+    res.status(500).json({ error: error && error.message ? error.message : 'Failed to delete dataset' });
   }
 });
 

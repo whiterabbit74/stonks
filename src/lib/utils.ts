@@ -123,7 +123,7 @@ export function daysBetween(startDate: Date, endDate: Date): number {
 /**
  * Debounce function for performance optimization
  */
-export function debounce<T extends (...args: any[]) => any>(
+export function debounce<T extends (...args: unknown[]) => unknown>(
   func: T,
   wait: number
 ): (...args: Parameters<T>) => void {
@@ -137,7 +137,7 @@ export function debounce<T extends (...args: any[]) => any>(
 /**
  * Throttle function for performance optimization
  */
-export function throttle<T extends (...args: any[]) => any>(
+export function throttle<T extends (...args: unknown[]) => unknown>(
   func: T,
   limit: number
 ): (...args: Parameters<T>) => void {
@@ -241,7 +241,7 @@ export function prefersReducedMotion(): boolean {
 /**
  * Safe number parsing with fallback
  */
-export function safeParseFloat(value: any, fallback = 0): number {
+export function safeParseFloat(value: unknown, fallback = 0): number {
   if (value === null || value === undefined || value === '') {
     return fallback;
   }
@@ -253,7 +253,7 @@ export function safeParseFloat(value: any, fallback = 0): number {
 /**
  * Safe integer parsing with fallback
  */
-export function safeParseInt(value: any, fallback = 0): number {
+export function safeParseInt(value: unknown, fallback = 0): number {
   if (value === null || value === undefined || value === '') {
     return fallback;
   }
@@ -265,7 +265,7 @@ export function safeParseInt(value: any, fallback = 0): number {
 /**
  * Check if a value is a valid number
  */
-export function isValidNumber(value: any): boolean {
+export function isValidNumber(value: unknown): boolean {
   return typeof value === 'number' && !isNaN(value) && isFinite(value);
 }
 
@@ -304,8 +304,9 @@ export function deepClone<T>(obj: T): T {
   
   const cloned = {} as T;
   for (const key in obj) {
-    if (obj.hasOwnProperty(key)) {
-      cloned[key] = deepClone(obj[key]);
+    if (Object.prototype.hasOwnProperty.call(obj, key)) {
+      // @ts-expect-error index signature cloning
+      cloned[key] = deepClone((obj as Record<string, unknown>)[key] as unknown);
     }
   }
   

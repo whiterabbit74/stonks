@@ -25,8 +25,9 @@ export function TelegramWatches() {
     try {
       const list = await DatasetAPI.listTelegramWatches();
       setWatches(list);
-    } catch (e: any) {
-      setError(e?.message || 'Не удалось загрузить список');
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'Не удалось загрузить список';
+      setError(message);
     } finally {
       setLoading(false);
     }
@@ -104,12 +105,12 @@ export function TelegramWatches() {
         onConfirm={async () => {
           if (!confirm.symbol) return;
           try { await DatasetAPI.deleteTelegramWatch(confirm.symbol); await load(); setInfo({ open: true, title: 'Удалено', message: `Тикер ${confirm.symbol} удалён из мониторинга`, kind: 'success' }); }
-          catch (e:any) { setInfo({ open: true, title: 'Ошибка', message: e?.message || 'Не удалось удалить', kind: 'error' }); }
+          catch (e) { setInfo({ open: true, title: 'Ошибка', message: e instanceof Error ? e.message : 'Не удалось удалить', kind: 'error' }); }
           finally { setConfirm({ open: false, symbol: null }); }
         }}
         onClose={() => setConfirm({ open: false, symbol: null })}
       />
-      <InfoModal open={info.open} title={info.title} message={info.message} kind={info.kind as any} onClose={() => setInfo({ open: false, title: '', message: '' })} />
+      <InfoModal open={info.open} title={info.title} message={info.message} kind={info.kind} onClose={() => setInfo({ open: false, title: '', message: '' })} />
     </div>
   );
 }

@@ -9,20 +9,20 @@ export const API_BASE_URL: string = (() => {
       if (href.includes('/stonks')) return '/stonks/api';
     }
   } catch {
-    // ignore, default to '/api'
+    /* ignore, default to '/api' */
   }
   return '/api';
 })();
-export const fetchWithCreds = (input: RequestInfo | URL, init?: RequestInit) => {
+export const fetchWithCreds = async (input: RequestInfo | URL, init?: RequestInit) => {
   let token: string | null = null;
   try {
     if (typeof window !== 'undefined' && window.localStorage) {
       token = window.localStorage.getItem('auth_token');
     }
-  } catch {}
+      } catch { /* ignore */ }
 
   const lowerHeaderKeys = (init?.headers && typeof init.headers === 'object')
-    ? Object.keys(init.headers as any).reduce<Record<string, true>>((acc, k) => { acc[k.toLowerCase()] = true; return acc; }, {})
+    ? Object.keys(init.headers as Record<string, unknown>).reduce<Record<string, true>>((acc, k) => { acc[k.toLowerCase()] = true; return acc; }, {})
     : {};
 
   const merged: RequestInit = {
@@ -35,7 +35,15 @@ export const fetchWithCreds = (input: RequestInfo | URL, init?: RequestInit) => 
       ...(token && !('authorization' in lowerHeaderKeys) ? { Authorization: `Bearer ${token}` } : {}),
     },
   };
-  return fetch(input, merged);
+  const response = await fetch(input, merged);
+  if (response.status === 401) {
+    try {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('app:unauthorized'));
+      }
+    } catch {}
+  }
+  return response;
 };
 
 export class DatasetAPI {
@@ -50,7 +58,7 @@ export class DatasetAPI {
 
   static async getSplitsMap(): Promise<Record<string, Array<{ date: string; factor: number }>>> {
     // Primary: ask server for the whole map (fast path)
-    let response = await fetchWithCreds(`${API_BASE_URL}/splits`);
+    const response = await fetchWithCreds(`${API_BASE_URL}/splits`);
     if (response.ok) {
       return response.json();
     }
@@ -59,12 +67,14 @@ export class DatasetAPI {
       const map: Record<string, Array<{ date: string; factor: number }>> = {};
       const list = await this.getDatasets().catch(() => []);
       for (const d of list) {
-        const ticker = (d.ticker || (d as any).id || d.name || '').toUpperCase();
+        const ticker = (d.ticker || (d as unknown as { id?: string }).id || d.name || '').toUpperCase();
         if (!ticker) continue;
         try {
           const s = await this.getSplits(ticker);
           if (Array.isArray(s) && s.length) map[ticker] = s;
-        } catch {}
+        } catch {
+          // ignore per-ticker fetch errors in fallback aggregation
+        }
       }
       return map;
     }
@@ -192,7 +202,8 @@ export class DatasetAPI {
    * Удалить датасет с сервера
    */
   static async deleteDataset(id: string): Promise<{ success: boolean; message: string }> {
-    const response = await fetchWithCreds(`${API_BASE_URL}/datasets/${id}`, {
+    const safeId = encodeURIComponent(id.toUpperCase());
+    const response = await fetchWithCreds(`${API_BASE_URL}/datasets/${safeId}`, {
       method: 'DELETE',
     });
     

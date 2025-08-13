@@ -33,8 +33,9 @@ export function AppSettings() {
     try {
       await DatasetAPI.sendTelegramTest(testMsg);
       setOk('Отправлено');
-    } catch (e: any) {
-      setError(e?.message || 'Не удалось отправить');
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'Не удалось отправить';
+      setError(message);
     } finally {
       setSending(false);
     }
@@ -45,8 +46,9 @@ export function AppSettings() {
     try {
       await saveSettingsToServer();
       setSaveOk('Сохранено');
-    } catch (e: any) {
-      setSaveErr(e?.message || 'Не удалось сохранить');
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'Не удалось сохранить';
+      setSaveErr(message);
     } finally {
       setSaving(false);
     }

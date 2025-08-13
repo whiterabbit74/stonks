@@ -27,6 +27,7 @@ interface NumericValidationOptions {
   precision?: number;
 }
 
+
 // Enhanced OHLC data validation
 export function validateOHLCData(data: Partial<OHLCData>[]): ValidationResult & { warnings?: Array<{ field: string; message: string }> } {
   const errors: Array<{ code: string; message: string; row?: number }> = [];
@@ -139,7 +140,7 @@ export function parseDate(dateStr: string | null | undefined): DateParseResult {
     }
 
     return { isValid: false, date: null, error: 'Invalid date format' };
-  } catch (error) {
+  } catch {
     return { isValid: false, date: null, error: 'Date parsing failed' };
   }
 }
@@ -163,7 +164,7 @@ export function detectDateFormat(dates: string[]): string | null {
 
 // Enhanced numeric validation
 export function validateNumeric(
-  value: any, 
+  value: unknown, 
   options: NumericValidationOptions = {}
 ): NumericValidationResult {
   if (value === null || value === undefined || value === '') {
@@ -194,7 +195,7 @@ export function validateNumeric(
 }
 
 // Simple number validation (backward compatibility)
-export function validateNumber(value: any): number | null {
+export function validateNumber(value: unknown): number | null {
   if (value === null || value === undefined || value === '') {
     return null;
   }

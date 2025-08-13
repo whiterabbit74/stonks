@@ -23,14 +23,14 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmTarget, setConfirmTarget] = useState<string | null>(null);
   const [loadingId, setLoadingId] = useState<string | null>(null);
-
+  
   // Проверяем статус сервера
   useEffect(() => {
     const checkServerStatus = async () => {
       try {
         await DatasetAPI.getStatus();
         setServerStatus('online');
-      } catch (error) {
+      } catch {
         setServerStatus('offline');
       }
     };
@@ -157,14 +157,14 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
               key={dataset.name}
               dataset={dataset}
               isActive={currentDataset?.ticker === dataset.ticker}
-              onLoad={() => handleLoadDataset(((dataset as any).id || dataset.ticker || dataset.name).toString())}
-              onDelete={(e) => handleDeleteDataset(((dataset as any).id || dataset.ticker || dataset.name).toString(), e)}
-              onExport={(e) => handleExportDataset(((dataset as any).id || dataset.ticker || dataset.name).toString(), e)}
+                             onLoad={() => handleLoadDataset(((dataset as unknown as { id?: string }).id || dataset.ticker || dataset.name).toString())}
+               onDelete={(e) => handleDeleteDataset(((dataset as unknown as { id?: string }).id || dataset.ticker || dataset.name).toString(), e)}
+               onExport={(e) => handleExportDataset(((dataset as unknown as { id?: string }).id || dataset.ticker || dataset.name).toString(), e)}
               loading={loadingId === dataset.name}
               onRefresh={async (e) => {
                 e.stopPropagation();
                 // Единый ID = тикер в верхнем регистре
-                const id = (dataset.ticker || (dataset as any).id || (dataset as any).name).toString().toUpperCase();
+                const id = (dataset.ticker || (dataset as unknown as { id?: string }).id || dataset.name).toString().toUpperCase();
                 try {
                   setRefreshingId(id);
                   await DatasetAPI.refreshDataset(id, resultsRefreshProvider);
@@ -175,7 +175,7 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
                   setRefreshingId(null);
                 }
               }}
-              refreshing={refreshingId === ((dataset.ticker || (dataset as any).id || (dataset as any).name).toString().toUpperCase())}
+              refreshing={refreshingId === ((dataset.ticker || (dataset as unknown as { id?: string }).id || dataset.name).toString().toUpperCase())}
             />
           ))}
         </div>
@@ -264,12 +264,12 @@ function DatasetCard({ dataset, isActive, onLoad, onDelete, onExport, onRefresh,
         </div>
 
         <div className="flex items-center gap-2 ml-4">
-          <button
-            onClick={onRefresh as any}
-            className={`p-2 text-gray-400 hover:text-blue-600 hover:bg-transparent rounded transition-colors ${refreshing ? 'animate-spin' : ''}`}
-            title="Refresh dataset"
-            aria-label="Refresh dataset"
-          >
+                     <button
+             onClick={onRefresh}
+             className={`p-2 text-gray-400 hover:text-blue-600 hover:bg-transparent rounded transition-colors ${refreshing ? 'animate-spin' : ''}`}
+             title="Refresh dataset"
+             aria-label="Refresh dataset"
+           >
             <RefreshCw className="w-4 h-4" />
           </button>
           <button

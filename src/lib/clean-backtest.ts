@@ -136,7 +136,7 @@ export class CleanBacktestEngine {
           
           // Обновляем капитал в контексте сделки
           if (trade.context) {
-            (trade.context as any).currentCapitalAfterExit = this.currentCapital;
+            (trade.context as { currentCapitalAfterExit?: number }).currentCapitalAfterExit = this.currentCapital;
           }
 
           console.log(`🔴 EXIT: IBS=${ibs.toFixed(3)}, ${exitReason}, P&L=$${pnl.toFixed(2)}, Duration=${duration} days`);
@@ -218,7 +218,7 @@ export class CleanBacktestEngine {
         this.trades.push(trade);
         this.currentCapital += grossProceeds;
         if (trade.context) {
-          (trade.context as any).currentCapitalAfterExit = this.currentCapital;
+          (trade.context as { currentCapitalAfterExit?: number }).currentCapitalAfterExit = this.currentCapital;
         }
         position = null;
       }

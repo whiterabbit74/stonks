@@ -21,6 +21,7 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
   // По умолчанию отображаем IBS и скрываем объём
   const [showIBS, setShowIBS] = useState(true);
   const [showVolume, setShowVolume] = useState(false);
+  const [isDark, setIsDark] = useState<boolean>(() => typeof document !== 'undefined' ? document.documentElement.classList.contains('dark') : false);
 
   // Функция для расчета EMA
   const calculateEMA = (data: OHLCData[], period: number): number[] => {
@@ -43,9 +44,24 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
   };
 
   useEffect(() => {
+    const onTheme = (e: any) => {
+      const dark = !!(e?.detail?.effectiveDark ?? document.documentElement.classList.contains('dark'));
+      setIsDark(dark);
+    };
+    window.addEventListener('themechange', onTheme);
+    return () => window.removeEventListener('themechange', onTheme);
+  }, []);
+
+  useEffect(() => {
     if (!chartContainerRef.current || !data.length) return;
 
     try {
+      // Theme colors
+      const bg = isDark ? '#0b1220' : '#ffffff';
+      const text = isDark ? '#e5e7eb' : '#1f2937';
+      const grid = isDark ? '#1f2937' : '#eef2ff';
+      const border = isDark ? '#374151' : '#e5e7eb';
+
       // Create main chart (80% height)
       const mainEl = mainPaneRef.current || chartContainerRef.current;
       const subEl = subPaneRef.current || chartContainerRef.current;
@@ -56,21 +72,21 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
         width: mainEl.clientWidth,
         height: mainH,
         layout: {
-          background: { color: '#ffffff' },
-          textColor: '#1f2937',
+          background: { color: bg },
+          textColor: text,
         },
         grid: {
-          vertLines: { color: '#eef2ff' },
-          horzLines: { color: '#eef2ff' },
+          vertLines: { color: grid },
+          horzLines: { color: grid },
         },
         crosshair: {
           mode: 1,
         },
         rightPriceScale: {
-          borderColor: '#e5e7eb',
+          borderColor: border,
         },
         timeScale: {
-          borderColor: '#e5e7eb',
+          borderColor: border,
           timeVisible: true,
           secondsVisible: false,
         },
@@ -83,16 +99,16 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
         width: subEl.clientWidth,
         height: subH,
         layout: {
-          background: { color: '#ffffff' },
-          textColor: '#1f2937',
+          background: { color: bg },
+          textColor: text,
         },
         grid: {
-          vertLines: { color: '#eef2ff' },
-          horzLines: { color: '#eef2ff' },
+          vertLines: { color: grid },
+          horzLines: { color: grid },
         },
         crosshair: { mode: 1 },
-        rightPriceScale: { borderColor: '#e5e7eb' },
-        timeScale: { borderColor: '#e5e7eb', timeVisible: true, secondsVisible: false },
+        rightPriceScale: { borderColor: border },
+        timeScale: { borderColor: border, timeVisible: true, secondsVisible: false },
       });
       subChartRef.current = subChart;
 
@@ -128,14 +144,14 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
       let volumeSeries: ISeriesApi<'Histogram'> | null = null;
       if (showVolume) {
         volumeSeries = subChart.addHistogramSeries({
-          color: 'rgba(148, 163, 184, 0.35)',
+          color: isDark ? 'rgba(148, 163, 184, 0.25)' : 'rgba(148, 163, 184, 0.35)',
           priceFormat: { type: 'volume' as const },
           base: 0,
         });
         const volumeData = data.map(bar => ({
           time: Math.floor(bar.date.getTime() / 1000) as UTCTimestamp,
           value: bar.volume,
-          color: bar.close >= bar.open ? 'rgba(16, 185, 129, 0.35)' : 'rgba(239, 68, 68, 0.35)'
+          color: bar.close >= bar.open ? (isDark ? 'rgba(16, 185, 129, 0.35)' : 'rgba(16, 185, 129, 0.45)') : (isDark ? 'rgba(239, 68, 68, 0.35)' : 'rgba(239, 68, 68, 0.45)')
         }));
         volumeSeries.setData(volumeData);
       }
@@ -143,7 +159,7 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
       let ibsSeries: ISeriesApi<'Line'> | null = null;
       if (showIBS) {
         const ibsLine = subChart.addLineSeries({
-          color: '#374151', // dark gray
+          color: isDark ? '#93c5fd' : '#374151',
           lineWidth: 2,
         });
         const ibsData = data.map(bar => {
@@ -153,8 +169,8 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
         });
         ibsLine.setData(ibsData);
         try {
-          ibsLine.createPriceLine({ price: 0.10, color: '#9ca3af', lineWidth: 1, lineStyle: 2, title: 'IBS 0.10' });
-          ibsLine.createPriceLine({ price: 0.75, color: '#9ca3af', lineWidth: 1, lineStyle: 2, title: 'IBS 0.75' });
+          ibsLine.createPriceLine({ price: 0.10, color: isDark ? '#64748b' : '#9ca3af', lineWidth: 1, lineStyle: 2, title: 'IBS 0.10' });
+          ibsLine.createPriceLine({ price: 0.75, color: isDark ? '#64748b' : '#9ca3af', lineWidth: 1, lineStyle: 2, title: 'IBS 0.75' });
         } catch (e) { console.warn('Failed to create price lines', e); }
         ibsSeries = ibsLine;
       }
@@ -162,38 +178,44 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
       // Sync time scales in both directions (avoid feedback loops)
       try {
         let syncing = false;
-        const syncTo = (from: any, toChart: IChartApi) => {
-          if (syncing || !from) return;
-          syncing = true;
-          try {
-            // Prefer logical range for pixel-perfect alignment
-            const logical = (from as any);
-            if (typeof (toChart.timeScale() as any).setVisibleLogicalRange === 'function' && typeof (chart.timeScale() as any).getVisibleLogicalRange === 'function') {
-              (toChart.timeScale() as any).setVisibleLogicalRange(logical);
-            } else {
-              toChart.timeScale().setVisibleRange(from);
-            }
-          } finally {
-            syncing = false;
-          }
-        };
+                 const syncTo = (from: unknown, toChart: IChartApi) => {
+           if (syncing || !from) return;
+           syncing = true;
+           try {
+             const logical = from as { from: number; to: number } | undefined;
+             const timeScale: unknown = toChart.timeScale();
+             const chartTimeScale: unknown = chart.timeScale();
+             // Prefer logical range for pixel-perfect alignment
+             if (
+               logical &&
+               typeof (timeScale as unknown as { setVisibleLogicalRange?: (r: { from: number; to: number }) => void }).setVisibleLogicalRange === 'function' &&
+               typeof (chartTimeScale as unknown as { getVisibleLogicalRange?: () => { from: number; to: number } }).getVisibleLogicalRange === 'function'
+             ) {
+               (timeScale as unknown as { setVisibleLogicalRange: (r: { from: number; to: number }) => void }).setVisibleLogicalRange(logical as { from: number; to: number });
+             } else if (typeof (toChart.timeScale() as unknown as { setVisibleRange?: (r: { from?: number; to?: number }) => void }).setVisibleRange === 'function') {
+               (toChart.timeScale() as unknown as { setVisibleRange: (r: { from?: number; to?: number }) => void }).setVisibleRange(from as { from?: number; to?: number });
+             }
+           } finally {
+             syncing = false;
+           }
+         };
         // Initial align
         try {
-          const lr = (chart.timeScale() as any).getVisibleLogicalRange?.();
-          if (lr) (subChart.timeScale() as any).setVisibleLogicalRange(lr);
-        } catch {}
-        chart.timeScale().subscribeVisibleLogicalRangeChange?.((r: any) => syncTo(r, subChart));
-        subChart.timeScale().subscribeVisibleLogicalRangeChange?.((r: any) => syncTo(r, chart));
+          const lr = (chart.timeScale() as unknown as { getVisibleLogicalRange?: () => { from: number; to: number } }).getVisibleLogicalRange?.();
+          if (lr) (subChart.timeScale() as unknown as { setVisibleLogicalRange?: (r: { from: number; to: number }) => void }).setVisibleLogicalRange?.(lr);
+        } catch (err) { console.warn('Initial align failed', err as Error); }
+        chart.timeScale().subscribeVisibleLogicalRangeChange?.((r: unknown) => syncTo(r, subChart));
+        subChart.timeScale().subscribeVisibleLogicalRangeChange?.((r: unknown) => syncTo(r, chart));
         // Fallback for older versions
-        chart.timeScale().subscribeVisibleTimeRangeChange?.((r: any) => !('from' in (r||{})) ? null : subChart.timeScale().setVisibleRange(r));
-        subChart.timeScale().subscribeVisibleTimeRangeChange?.((r: any) => !('from' in (r||{})) ? null : chart.timeScale().setVisibleRange(r));
-      } catch (e) { console.warn('Failed to sync time scales', e); }
+                 chart.timeScale().subscribeVisibleTimeRangeChange?.((r: { from?: number; to?: number } | undefined) => !('from' in (r||{})) ? null : (subChart.timeScale() as unknown as { setVisibleRange?: (r: { from?: number; to?: number }) => void }).setVisibleRange?.(r));
+         subChart.timeScale().subscribeVisibleTimeRangeChange?.((r: { from?: number; to?: number } | undefined) => !('from' in (r||{})) ? null : (chart.timeScale() as unknown as { setVisibleRange?: (r: { from?: number; to?: number }) => void }).setVisibleRange?.(r));
+       } catch (e) { console.warn('Failed to sync time scales', e as Error); }
 
       // Add EMA20 if enabled
       if (showEMA20) {
         const ema20Values = calculateEMA(data, 20);
         const ema20Series = chart.addLineSeries({
-          color: '#2196F3',
+          color: isDark ? '#60a5fa' : '#2196F3',
           lineWidth: 2,
           title: 'EMA 20',
         });
@@ -210,7 +232,7 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
       if (showEMA200) {
         const ema200Values = calculateEMA(data, 200);
         const ema200Series = chart.addLineSeries({
-          color: '#FF9800',
+          color: isDark ? '#fbbf24' : '#FF9800',
           lineWidth: 2,
           title: 'EMA 200',
         });
@@ -276,7 +298,7 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
       tooltipEl.style.top = '8px';
       tooltipEl.style.zIndex = '10';
       tooltipEl.style.pointerEvents = 'none';
-      tooltipEl.style.background = 'rgba(17,24,39,0.7)';
+      tooltipEl.style.background = isDark ? 'rgba(31,41,55,0.75)' : 'rgba(17,24,39,0.7)';
       tooltipEl.style.color = 'white';
       tooltipEl.style.padding = '6px 8px';
       tooltipEl.style.borderRadius = '6px';
@@ -286,21 +308,24 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
       chartContainerRef.current.appendChild(tooltipEl);
 
       // Crosshair sync between panes for the same time
-      chart.subscribeCrosshairMove((param: { time?: unknown; seriesPrices?: Map<any, any>; seriesData?: Map<any, any> }) => {
+      chart.subscribeCrosshairMove((param: { time?: UTCTimestamp | number | string; seriesPrices?: Map<unknown, unknown>; seriesData?: Map<unknown, unknown> }) => {
         if (!param || !param.time || !param.seriesPrices) {
           tooltipEl.style.display = 'none';
-          try {
-            const tgt: any = (ibsSeries || volumeSeries);
-            tgt?.clearCrosshairPosition?.();
-          } catch {}
-          return;
+                     try {
+             const tgt = (ibsSeries || volumeSeries) as unknown as { clearCrosshairPosition?: () => void };
+             tgt?.clearCrosshairPosition?.();
+           } catch (err) { console.warn('Clear crosshair for tgt failed', err as Error); }
+           return;
         }
         const price = param.seriesPrices.get(candlestickSeries);
-        if (!price) {
-          tooltipEl.style.display = 'none';
-          try { (ibsSeries as any)?.clearCrosshairPosition?.(); (volumeSeries as any)?.clearCrosshairPosition?.(); } catch {}
-          return;
-        }
+                 if (!price) {
+           tooltipEl.style.display = 'none';
+           try {
+             (ibsSeries as unknown as { clearCrosshairPosition?: () => void })?.clearCrosshairPosition?.();
+             (volumeSeries as unknown as { clearCrosshairPosition?: () => void })?.clearCrosshairPosition?.();
+           } catch (err) { console.warn('Clear crosshair for series failed', err as Error); }
+           return;
+         }
         const bar = param?.seriesData?.get?.(candlestickSeries);
         const o = bar?.open, h = bar?.high, l = bar?.low, c = bar?.close;
         const vol = volumeSeries ? (param.seriesData?.get?.(volumeSeries))?.value : undefined;
@@ -311,29 +336,29 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
         tooltipEl.style.display = 'block';
 
         // Mirror crosshair to sub chart using series API (best-effort across versions)
-        try {
-          const t = param.time as UTCTimestamp;
-          if (ibsSeries && typeof (ibsSeries as any).setCrosshairPosition === 'function') {
-            (ibsSeries as any).setCrosshairPosition(ibsVal ?? 0.5, t);
-          } else if (volumeSeries && typeof (volumeSeries as any).setCrosshairPosition === 'function') {
-            (volumeSeries as any).setCrosshairPosition(vol ?? 0, t);
-          }
-        } catch {}
-      });
+                 try {
+           const t = param.time as UTCTimestamp;
+           const setPos = (s: unknown, value: number) => {
+             const api = s as { setCrosshairPosition?: (v: number, t: UTCTimestamp) => void };
+             api?.setCrosshairPosition?.(value, t);
+           };
+           if (typeof ibsVal === 'number') setPos(ibsSeries, ibsVal);
+           else if (typeof vol === 'number') setPos(volumeSeries, vol);
+         } catch (err) { console.warn('Mirror crosshair failed', err as Error); }
+       });
 
       // Also reflect crosshair from sub-pane to main chart
-      subChart.subscribeCrosshairMove((param: any) => {
+             subChart.subscribeCrosshairMove((param: { time?: UTCTimestamp; seriesData?: Map<unknown, unknown> } | undefined) => {
         if (!param || !param.time) {
-          try { (candlestickSeries as any)?.clearCrosshairPosition?.(); } catch {}
+          try { (candlestickSeries as unknown as { clearCrosshairPosition?: () => void })?.clearCrosshairPosition?.(); } catch (err) { console.warn('Clear crosshair failed', err as Error); }
           return;
         }
         try {
           const t = param.time as UTCTimestamp;
           const close = (param.seriesData?.get?.(candlestickSeries))?.close ?? 0;
-          if (typeof (candlestickSeries as any).setCrosshairPosition === 'function') {
-            (candlestickSeries as any).setCrosshairPosition(close, t);
-          }
-        } catch {}
+          const cs = candlestickSeries as unknown as { setCrosshairPosition?: (price: number, t: UTCTimestamp) => void };
+          cs?.setCrosshairPosition?.(close, t);
+        } catch (err) { console.warn('Crosshair reflect failed', err as Error); }
       });
 
       // Handle resize
@@ -355,13 +380,13 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
         if (subChart) { try { subChart.remove(); } catch (e) { console.warn('Error removing sub-chart on cleanup:', e); } }
         try {
           if (tooltipEl && tooltipEl.parentElement) tooltipEl.parentElement.removeChild(tooltipEl);
-        } catch (e) { /* ignore */ }
+        } catch (err) { console.warn('Tooltip cleanup failed', err as Error); }
       };
     } catch (error) {
       console.error('Error creating trading chart:', error);
       return;
     }
-  }, [data, trades, showEMA20, showEMA200, showIBS, showVolume]);
+  }, [data, trades, showEMA20, showEMA200, showIBS, showVolume, isDark]);
 
   if (!data.length) {
     return (
@@ -372,15 +397,15 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
   }
 
   return (
-    <div className="w-full h-full">
+    <div className="w-full h-full grid grid-rows-[auto,1fr] gap-4">
       {/* EMA Controls */}
-      <div className="flex gap-2 mb-4 flex-wrap">
+      <div className="flex gap-2 flex-wrap">
         <button
           onClick={() => setShowEMA20(!showEMA20)}
           className={`px-3 py-1 text-sm rounded ${
             showEMA20 
               ? 'bg-blue-500 text-white' 
-              : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+              : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'
           }`}
         >
           EMA 20
@@ -390,7 +415,7 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
           className={`px-3 py-1 text-sm rounded ${
             showEMA200 
               ? 'bg-orange-500 text-white' 
-              : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+              : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'
           }`}
         >
           EMA 200
@@ -400,7 +425,7 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
           className={`px-3 py-1 text-sm rounded ${
             showIBS
               ? 'bg-gray-700 text-white'
-              : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+              : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'
           }`}
         >
           Показать IBS
@@ -410,7 +435,7 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
           className={`px-3 py-1 text-sm rounded ${
             showVolume
               ? 'bg-gray-500 text-white'
-              : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+              : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'
           }`}
         >
           Показать объём
@@ -418,8 +443,8 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
       </div>
       
       {/* Chart Container split: main (80%) + sub (20%) */}
-      <div ref={chartContainerRef} className="w-full h-[calc(100%-2rem)] flex flex-col">
-        <div ref={mainPaneRef} className="flex-1" />
+      <div ref={chartContainerRef} className="min-h-0 overflow-hidden w-full h-full flex flex-col">
+        <div ref={mainPaneRef} className="flex-1 min-h-0" />
         <div ref={subPaneRef} className="h-[20%]" />
       </div>
     </div>

@@ -88,12 +88,13 @@ export function loadDatasetFromJSON(file: File): Promise<SavedDataset> {
 /**
  * Валидация данных OHLC
  */
-export function validateOHLCData(data: any[]): OHLCData[] {
+export function validateOHLCData(data: Array<Record<string, unknown>>): OHLCData[] {
   if (!Array.isArray(data)) {
     throw new Error('Данные должны быть массивом');
   }
   
-  return data.map((bar, index) => {
+  return data.map((barRaw, index) => {
+    const bar = barRaw as Record<string, unknown> as OHLCData;
     // Проверяем обязательные поля
     if (!bar.date || !bar.open || !bar.high || !bar.low || !bar.close) {
       throw new Error(`Отсутствуют обязательные поля в записи ${index + 1}`);
@@ -139,7 +140,7 @@ export function getDatasetInfo(file: File): Promise<Omit<SavedDataset, 'data'>> 
         const dataset = JSON.parse(jsonString) as SavedDataset;
         
         // Возвращаем только метаданные без данных
-        const { data, ...info } = dataset;
+        const { data: _dropped, ...info } = dataset; void _dropped;
         resolve(info);
       } catch (error) {
         reject(new Error(`Ошибка при чтении метаданных: ${error instanceof Error ? error.message : 'Неизвестная ошибка'}`));
