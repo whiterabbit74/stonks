@@ -27,7 +27,6 @@ interface NumericValidationOptions {
   precision?: number;
 }
 
-
 // Enhanced OHLC data validation
 export function validateOHLCData(data: Partial<OHLCData>[]): ValidationResult & { warnings?: Array<{ field: string; message: string }> } {
   const errors: Array<{ code: string; message: string; row?: number }> = [];
