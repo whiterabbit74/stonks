@@ -86,7 +86,7 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
   };
 
   return (
-    <div className="bg-white rounded-lg border p-4 mb-6">
+    <div className="bg-white rounded-lg border p-4 mb-6 dark:bg-gray-900 dark:border-gray-800 dark:text-gray-100">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <Database className="w-5 h-5 text-blue-600" />
@@ -226,28 +226,28 @@ function DatasetCard({ dataset, isActive, onLoad, onDelete, onExport, onRefresh,
       onClick={loading ? undefined : onLoad}
       className={`p-3 rounded-lg border cursor-pointer transition-colors ${
         isActive 
-          ? 'border-blue-500 bg-blue-50' 
-          : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+          ? 'border-blue-500 bg-blue-50 dark:border-blue-400 dark:bg-blue-950/30' 
+          : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50 dark:border-gray-700 dark:hover:border-gray-600 dark:bg-gray-900 dark:hover:bg-gray-800'
       }`}
     >
       <div className="flex items-center justify-between">
         <div className="flex-1">
           <div className="flex items-center gap-2 mb-1">
-            <span className="font-medium text-gray-900">{label}</span>
-            <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded font-mono">
+            <span className="font-medium text-gray-900 dark:text-gray-100">{label}</span>
+            <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded font-mono dark:bg-blue-950/30 dark:text-blue-200 dark:border dark:border-blue-900/40">
               {dataset.ticker}
             </span>
             {loading && (
-              <span className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded">Loading…</span>
+              <span className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded dark:bg-gray-800 dark:text-gray-200 dark:border dark:border-gray-700">Loading…</span>
             )}
             {isActive && (
-              <span className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded">
+              <span className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded dark:bg-emerald-950/30 dark:text-emerald-200 dark:border dark:border-emerald-900/40">
                 Active
               </span>
             )}
           </div>
           
-          <div className="flex items-center gap-4 text-sm text-gray-600">
+          <div className="flex items-center gap-4 text-sm text-gray-600 dark:text-gray-300">
             <div className="flex items-center gap-1">
               <BarChart3 className="w-4 h-4" />
               {dataset.dataPoints.toLocaleString()} points
@@ -258,30 +258,30 @@ function DatasetCard({ dataset, isActive, onLoad, onDelete, onExport, onRefresh,
             </div>
           </div>
           
-          <div className="text-xs text-gray-500 mt-1">
+          <div className="text-xs text-gray-500 mt-1 dark:text-gray-400">
             Saved: {formatDate(dataset.uploadDate)}
           </div>
         </div>
 
         <div className="flex items-center gap-2 ml-4">
-                     <button
-             onClick={onRefresh}
-             className={`p-2 text-gray-400 hover:text-blue-600 hover:bg-transparent rounded transition-colors ${refreshing ? 'animate-spin' : ''}`}
-             title="Refresh dataset"
-             aria-label="Refresh dataset"
-           >
+                                <button
+              onClick={onRefresh}
+              className={`p-2 text-gray-400 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-transparent rounded transition-colors ${refreshing ? 'animate-spin' : ''}`}
+              title="Refresh dataset"
+              aria-label="Refresh dataset"
+            >
             <RefreshCw className="w-4 h-4" />
           </button>
           <button
             onClick={onExport}
-            className="p-2 text-gray-400 hover:text-blue-600 hover:bg-transparent rounded transition-colors"
+            className="p-2 text-gray-400 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-transparent rounded transition-colors"
             title="Export as JSON"
           >
             <Download className="w-4 h-4 transition-colors group-hover:text-blue-600" />
           </button>
           <button
             onClick={onDelete}
-            className="p-2 text-gray-400 hover:text-red-600 hover:bg-transparent rounded transition-colors"
+            className="p-2 text-gray-400 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-transparent rounded transition-colors"
             title="Delete dataset"
           >
             <Trash2 className="w-4 h-4 transition-colors group-hover:text-red-600" />

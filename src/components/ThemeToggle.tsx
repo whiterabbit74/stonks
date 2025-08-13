@@ -8,6 +8,7 @@ function applyTheme(mode: ThemeMode) {
     const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
     const effectiveDark = mode === 'dark' || (mode === 'auto' && prefersDark);
     const html = document.documentElement;
+    html.classList.add('theme-changing');
     html.dataset.theme = mode;
     if (effectiveDark) {
       html.classList.add('dark');
@@ -16,6 +17,7 @@ function applyTheme(mode: ThemeMode) {
     }
     const metaTheme = document.querySelector('meta[name="theme-color"]');
     if (metaTheme) metaTheme.setAttribute('content', effectiveDark ? '#0b1220' : '#ffffff');
+    setTimeout(() => { try { html.classList.remove('theme-changing'); } catch {} }, 80);
     try {
       window.dispatchEvent(new CustomEvent('themechange', { detail: { mode, effectiveDark } }));
     } catch {}

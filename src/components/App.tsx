@@ -188,11 +188,6 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-800 dark:text-gray-100">
-      {/* Floating theme toggle in top-right corner */}
-      <div className="fixed top-3 right-3 z-50">
-        <ThemeToggle />
-      </div>
-
       <header className="border-b bg-white/60 backdrop-blur sticky top-0 z-20 dark:bg-slate-900/60 dark:border-slate-800">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -203,6 +198,7 @@ export default function App() {
             )}
           </div>
           <div className="flex items-center gap-2">
+            <ThemeToggle />
             {authorized ? (
               <button
                 onClick={handleLogout}

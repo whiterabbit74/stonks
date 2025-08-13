@@ -593,7 +593,7 @@
 }
 
 html, body, #root {
-  transition: background-color 200ms ease, color 200ms ease, border-color 200ms ease;
+  transition: background-color 150ms ease, border-color 150ms ease;
 }
 
 .dark {
@@ -662,3 +662,14 @@ html, body, #root {
   outline: 2px solid #60a5fa; /* blue-400 */
   outline-offset: 2px;
 }
+
+/* Prevent heavy reflow during theme toggle */
+html.theme-changing *,
+html.theme-changing *::before,
+html.theme-changing *::after {
+  transition: none !important;
+  animation: none !important;
+}
+
+/* Dark hover adjustments for gray-50 in dark theme */
+.dark .hover\:bg-gray-50:hover { background-color: #0f172a !important; }
