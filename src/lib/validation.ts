@@ -202,3 +202,92 @@ export function validateNumber(value: unknown): number | null {
   const num = Number(value);
   return isNaN(num) ? null : num;
 }
+
+// CSV parsing function
+export async function parseCSV(file: File): Promise<OHLCData[]> {
+  return new Promise((resolve, reject) => {
+    Papa.parse(file, {
+      header: true,
+      skipEmptyLines: true,
+      complete: (results) => {
+        try {
+          if (results.errors.length > 0) {
+            reject(new Error(`CSV parsing error: ${results.errors[0].message}`));
+            return;
+          }
+
+          const data = results.data as any[];
+          const headers = Object.keys(data[0] || {});
+          
+          // Validate CSV structure
+          const validation = validateCSVData(data, headers);
+          if (!validation.isValid) {
+            reject(new Error(validation.errors.join(', ')));
+            return;
+          }
+
+          // Try to detect 'Adj Close' header to adjust prices per row if provided
+          const lowerHeaders = headers.map(h => h.toLowerCase());
+          const adjCloseIndex = lowerHeaders.findIndex(h => h.includes('adj') && h.includes('close'));
+          const adjCloseHeader: string | null = adjCloseIndex >= 0 ? headers[adjCloseIndex] : null;
+
+          // Convert to OHLC format
+          const ohlcData: OHLCData[] = data.map((row: any) => {
+            const dateResult = parseDate(row.date || row.Date || row.DATE);
+            if (!dateResult.isValid || !dateResult.date) {
+              throw new Error(`Invalid date format in row: ${JSON.stringify(row)}`);
+            }
+
+            const open = validateNumber(row.open || row.Open || row.OPEN) || 0;
+            const high = validateNumber(row.high || row.High || row.HIGH) || 0;
+            const low = validateNumber(row.low || row.Low || row.LOW) || 0;
+            const close = validateNumber(row.close || row.Close || row.CLOSE) || 0;
+            const volume = validateNumber(row.volume || row.Volume || row.VOLUME) || 0;
+            const adjClose = adjCloseHeader ? validateNumber(row[adjCloseHeader]) : null;
+
+            // If Adj Close provided and valid, rescale OHLC to adjusted values for split-aware history
+            if (typeof adjClose === 'number' && isFinite(adjClose) && adjClose > 0 && close > 0) {
+              const factor = adjClose / close;
+              return {
+                date: dateResult.date,
+                open: open * factor,
+                high: high * factor,
+                low: low * factor,
+                close: close * factor,
+                adjClose: adjClose,
+                // Leave volume as-is; many providers' adj close may include dividend adjustments
+                volume: volume || 0,
+              };
+            }
+
+            return {
+              date: dateResult.date,
+              open,
+              high,
+              low,
+              close,
+              volume: volume || 0,
+            };
+          }).filter(item => item.date); // Remove invalid dates
+
+          // Validate the converted data
+          const ohlcValidation = validateOHLCData(ohlcData);
+          if (!ohlcValidation.isValid) {
+            reject(new Error(ohlcValidation.errors.join(', ')));
+            return;
+          }
+
+          // Sort by date
+          ohlcData.sort((a, b) => a.date.getTime() - b.date.getTime());
+
+          resolve(ohlcData);
+        } catch (error) {
+          reject(error);
+        }
+      },
+      error: (error) => {
+        reject(new Error(`Failed to parse CSV: ${error.message}`));
+      }
+    });
+  });
+}
