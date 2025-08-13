@@ -361,8 +361,12 @@ async function fetchTodayRangeAndQuote(symbol) {
   const todayEt = getETParts(new Date());
   const todayKey = etKeyYMD(todayEt);
   const lastCandle = [...ohlc].reverse().find(r => r && r.date);
-  const range = lastCandle ? { open: lastCandle.open, high: lastCandle.high, low: lastCandle.low } : { open: null, high: null, low: null };
-  return { range, quote: { open: quote.o ?? null, high: quote.h ?? null, low: quote.l ?? null, current: quote.c ?? null, prevClose: quote.pc ?? null }, dateKey: todayKey, ohlc };
+  const todayRange = {
+    open: (quote && quote.o != null ? quote.o : (lastCandle ? lastCandle.open : null)),
+    high: (quote && quote.h != null ? quote.h : (lastCandle ? lastCandle.high : null)),
+    low:  (quote && quote.l != null ? quote.l : (lastCandle ? lastCandle.low  : null)),
+  };
+  return { range: todayRange, quote: { open: quote.o ?? null, high: quote.h ?? null, low: quote.l ?? null, current: quote.c ?? null, prevClose: quote.pc ?? null }, dateKey: todayKey, ohlc };
 }
 // Previous trading day helper (based on ET calendar)
 function previousTradingDayET(fromParts) {
@@ -454,6 +458,7 @@ setInterval(async () => {
           const core = [
             `IBS Value: ${(ibs).toFixed(3)}`,
             `Current Price: ${formatMoney(quote.current)}`,
+            `Today Range: ${formatMoney(range.low)} - ${formatMoney(range.high)}`,
             `Date: ${todayKey}`,
             fresh
           ].join('\n');
@@ -471,6 +476,7 @@ setInterval(async () => {
           const core = [
             `IBS Value: ${(ibs).toFixed(3)}`,
             `Current Price: ${formatMoney(quote.current)}`,
+            `Today Range: ${formatMoney(range.low)} - ${formatMoney(range.high)}`,
             `Date: ${todayKey}`,
             fresh
           ].join('\n');
@@ -489,8 +495,7 @@ setInterval(async () => {
       // Ensure per-day flags
       const todayKey = etKeyYMD(nowEt);
       if (w.sent.dateKey !== todayKey) w.sent = { dateKey: todayKey, warn10: false, confirm1: false, entryWarn10: false, entryConfirm1: false };
-      if (minutesUntilClose === 1 && !w.sent.warn10) continue; // send confirm only if warned before
-
+            
       // Refresh data before notify
       let rangeQuote;
       try {
@@ -502,28 +507,50 @@ setInterval(async () => {
       const { range, quote, ohlc } = rangeQuote;
       if (range.low == null || range.high == null || quote.current == null) continue;
       if (range.high <= range.low) continue;
-      const target = range.low + w.highIBS * (range.high - range.low);
-      const diffPct = ((quote.current - target) / target) * 100;
-      const closeEnough = Math.abs(diffPct) <= w.thresholdPct;
-      if (!closeEnough && minutesUntilClose === 10) continue; // only warn if close
-      if (minutesUntilClose === 1 && !closeEnough) {
-        // still confirm but mark not-close
-      }
+
+      // Compute today's IBS and proximity tolerance
+      const ibsExit = (quote.current - range.low) / (range.high - range.low);
+      const tolerance = (w.thresholdPct || 0.3) / 100;
+
       const fresh = buildFreshnessLine(ohlc, nowEt);
-      const header = minutesUntilClose === 10 ? `⚪ Exit Signal for ${w.symbol}` : `⚪ Exit Confirm for ${w.symbol}`;
-      const lines = [
-        `IBS Target: ${formatMoney(target)} (IBS=${w.highIBS})`,
-        `Current Price: ${formatMoney(quote.current)} (Δ ${(diffPct>=0?'+':'')}${diffPct.toFixed(2)}%)`,
-        `Date: ${etKeyYMD(nowEt)}`,
-        fresh,
-        `Trigger range today: price ≥ ${formatMoney(target)}`
-      ];
-      if (typeof w.entryPrice === 'number') lines.push(`Цена входа: ${w.entryPrice.toFixed(2)}`);
-      if (!closeEnough) lines.push('Note: not within threshold, check manually.');
-      const text = `<b>${header}</b>\n\n${lines.join('\n')}`;
-      const resp = await sendTelegramMessage(w.chatId, text);
-      if (resp.ok) {
-        if (minutesUntilClose === 10) w.sent.warn10 = true; else w.sent.confirm1 = true;
+      
+      if (minutesUntilClose === 10) {
+        // Warn if close to exit threshold (IBS ≥ highIBS * (1 - tolerance))
+        const closeEnoughToExit = ibsExit >= (w.highIBS * (1 - tolerance));
+        if (!closeEnoughToExit || w.sent.warn10) { /* no-op */ }
+        else {
+          const header = `⚪ Exit Signal for ${w.symbol}`;
+          const lines = [
+            `IBS Value: ${ibsExit.toFixed(3)} (≥ ${ (w.highIBS * (1 - tolerance)).toFixed(3) } near target)` ,
+            `Current Price: ${formatMoney(quote.current)}`,
+            `Today Range: ${formatMoney(range.low)} - ${formatMoney(range.high)}`,
+            `Date: ${todayKey}`,
+            fresh,
+            `Rule: IBS ≥ ${w.highIBS}`
+          ];
+          if (typeof w.entryPrice === 'number') lines.push(`Цена входа: ${w.entryPrice.toFixed(2)}`);
+          const text = `<b>${header}</b>\n\n${lines.join('\n')}`;
+          const resp = await sendTelegramMessage(w.chatId, text);
+          if (resp.ok) w.sent.warn10 = true;
+        }
+      } else if (minutesUntilClose === 1) {
+        // Confirm only if exit condition is actually met now (strict)
+        if (ibsExit >= w.highIBS && !w.sent.confirm1) {
+          const header = `⚪ Exit Confirm for ${w.symbol}`;
+          const lines = [
+            `IBS Value: ${ibsExit.toFixed(3)} (≥ ${w.highIBS})`,
+            `Close Price (≈ current): ${formatMoney(quote.current)}`,
+            `Today Range: ${formatMoney(range.low)} - ${formatMoney(range.high)}`,
+            `Date: ${todayKey}`,
+            fresh,
+            `Action: SELL at close`,
+            `Rule: IBS ≥ ${w.highIBS}`
+          ];
+          if (typeof w.entryPrice === 'number') lines.push(`Цена входа: ${w.entryPrice.toFixed(2)}`);
+          const text = `<b>${header}</b>\n\n${lines.join('\n')}`;
+          const resp = await sendTelegramMessage(w.chatId, text);
+          if (resp.ok) w.sent.confirm1 = true;
+        }
       }
     }
   } catch (e) {
