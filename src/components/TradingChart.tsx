@@ -21,6 +21,7 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
   // По умолчанию отображаем IBS и скрываем объём
   const [showIBS, setShowIBS] = useState(true);
   const [showVolume, setShowVolume] = useState(false);
+  const [isDark, setIsDark] = useState<boolean>(() => typeof document !== 'undefined' ? document.documentElement.classList.contains('dark') : false);
 
   // Функция для расчета EMA
   const calculateEMA = (data: OHLCData[], period: number): number[] => {
@@ -43,9 +44,24 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
   };
 
   useEffect(() => {
+    const onTheme = (e: any) => {
+      const dark = !!(e?.detail?.effectiveDark ?? document.documentElement.classList.contains('dark'));
+      setIsDark(dark);
+    };
+    window.addEventListener('themechange', onTheme);
+    return () => window.removeEventListener('themechange', onTheme);
+  }, []);
+
+  useEffect(() => {
     if (!chartContainerRef.current || !data.length) return;
 
     try {
+      // Theme colors
+      const bg = isDark ? '#0b1220' : '#ffffff';
+      const text = isDark ? '#e5e7eb' : '#1f2937';
+      const grid = isDark ? '#1f2937' : '#eef2ff';
+      const border = isDark ? '#374151' : '#e5e7eb';
+
       // Create main chart (80% height)
       const mainEl = mainPaneRef.current || chartContainerRef.current;
       const subEl = subPaneRef.current || chartContainerRef.current;
@@ -56,21 +72,21 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
         width: mainEl.clientWidth,
         height: mainH,
         layout: {
-          background: { color: '#ffffff' },
-          textColor: '#1f2937',
+          background: { color: bg },
+          textColor: text,
         },
         grid: {
-          vertLines: { color: '#eef2ff' },
-          horzLines: { color: '#eef2ff' },
+          vertLines: { color: grid },
+          horzLines: { color: grid },
         },
         crosshair: {
           mode: 1,
         },
         rightPriceScale: {
-          borderColor: '#e5e7eb',
+          borderColor: border,
         },
         timeScale: {
-          borderColor: '#e5e7eb',
+          borderColor: border,
           timeVisible: true,
           secondsVisible: false,
         },
@@ -83,16 +99,16 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
         width: subEl.clientWidth,
         height: subH,
         layout: {
-          background: { color: '#ffffff' },
-          textColor: '#1f2937',
+          background: { color: bg },
+          textColor: text,
         },
         grid: {
-          vertLines: { color: '#eef2ff' },
-          horzLines: { color: '#eef2ff' },
+          vertLines: { color: grid },
+          horzLines: { color: grid },
         },
         crosshair: { mode: 1 },
-        rightPriceScale: { borderColor: '#e5e7eb' },
-        timeScale: { borderColor: '#e5e7eb', timeVisible: true, secondsVisible: false },
+        rightPriceScale: { borderColor: border },
+        timeScale: { borderColor: border, timeVisible: true, secondsVisible: false },
       });
       subChartRef.current = subChart;
 
@@ -128,14 +144,14 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
       let volumeSeries: ISeriesApi<'Histogram'> | null = null;
       if (showVolume) {
         volumeSeries = subChart.addHistogramSeries({
-          color: 'rgba(148, 163, 184, 0.35)',
+          color: isDark ? 'rgba(148, 163, 184, 0.25)' : 'rgba(148, 163, 184, 0.35)',
           priceFormat: { type: 'volume' as const },
           base: 0,
         });
         const volumeData = data.map(bar => ({
           time: Math.floor(bar.date.getTime() / 1000) as UTCTimestamp,
           value: bar.volume,
-          color: bar.close >= bar.open ? 'rgba(16, 185, 129, 0.35)' : 'rgba(239, 68, 68, 0.35)'
+          color: bar.close >= bar.open ? (isDark ? 'rgba(16, 185, 129, 0.35)' : 'rgba(16, 185, 129, 0.45)') : (isDark ? 'rgba(239, 68, 68, 0.35)' : 'rgba(239, 68, 68, 0.45)')
         }));
         volumeSeries.setData(volumeData);
       }
@@ -143,7 +159,7 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
       let ibsSeries: ISeriesApi<'Line'> | null = null;
       if (showIBS) {
         const ibsLine = subChart.addLineSeries({
-          color: '#374151', // dark gray
+          color: isDark ? '#93c5fd' : '#374151',
           lineWidth: 2,
         });
         const ibsData = data.map(bar => {
@@ -153,8 +169,8 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
         });
         ibsLine.setData(ibsData);
         try {
-          ibsLine.createPriceLine({ price: 0.10, color: '#9ca3af', lineWidth: 1, lineStyle: 2, title: 'IBS 0.10' });
-          ibsLine.createPriceLine({ price: 0.75, color: '#9ca3af', lineWidth: 1, lineStyle: 2, title: 'IBS 0.75' });
+          ibsLine.createPriceLine({ price: 0.10, color: isDark ? '#64748b' : '#9ca3af', lineWidth: 1, lineStyle: 2, title: 'IBS 0.10' });
+          ibsLine.createPriceLine({ price: 0.75, color: isDark ? '#64748b' : '#9ca3af', lineWidth: 1, lineStyle: 2, title: 'IBS 0.75' });
         } catch (e) { console.warn('Failed to create price lines', e); }
         ibsSeries = ibsLine;
       }
@@ -193,7 +209,7 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
       if (showEMA20) {
         const ema20Values = calculateEMA(data, 20);
         const ema20Series = chart.addLineSeries({
-          color: '#2196F3',
+          color: isDark ? '#60a5fa' : '#2196F3',
           lineWidth: 2,
           title: 'EMA 20',
         });
@@ -210,7 +226,7 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
       if (showEMA200) {
         const ema200Values = calculateEMA(data, 200);
         const ema200Series = chart.addLineSeries({
-          color: '#FF9800',
+          color: isDark ? '#fbbf24' : '#FF9800',
           lineWidth: 2,
           title: 'EMA 200',
         });
@@ -276,7 +292,7 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
       tooltipEl.style.top = '8px';
       tooltipEl.style.zIndex = '10';
       tooltipEl.style.pointerEvents = 'none';
-      tooltipEl.style.background = 'rgba(17,24,39,0.7)';
+      tooltipEl.style.background = isDark ? 'rgba(31,41,55,0.75)' : 'rgba(17,24,39,0.7)';
       tooltipEl.style.color = 'white';
       tooltipEl.style.padding = '6px 8px';
       tooltipEl.style.borderRadius = '6px';
@@ -361,7 +377,7 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
       console.error('Error creating trading chart:', error);
       return;
     }
-  }, [data, trades, showEMA20, showEMA200, showIBS, showVolume]);
+  }, [data, trades, showEMA20, showEMA200, showIBS, showVolume, isDark]);
 
   if (!data.length) {
     return (
@@ -372,15 +388,15 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
   }
 
   return (
-    <div className="w-full h-full">
+    <div className="w-full h-full grid grid-rows-[auto,1fr] gap-4">
       {/* EMA Controls */}
-      <div className="flex gap-2 mb-4 flex-wrap">
+      <div className="flex gap-2 flex-wrap">
         <button
           onClick={() => setShowEMA20(!showEMA20)}
           className={`px-3 py-1 text-sm rounded ${
             showEMA20 
               ? 'bg-blue-500 text-white' 
-              : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+              : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'
           }`}
         >
           EMA 20
@@ -390,7 +406,7 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
           className={`px-3 py-1 text-sm rounded ${
             showEMA200 
               ? 'bg-orange-500 text-white' 
-              : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+              : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'
           }`}
         >
           EMA 200
@@ -400,7 +416,7 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
           className={`px-3 py-1 text-sm rounded ${
             showIBS
               ? 'bg-gray-700 text-white'
-              : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+              : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'
           }`}
         >
           Показать IBS
@@ -410,7 +426,7 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
           className={`px-3 py-1 text-sm rounded ${
             showVolume
               ? 'bg-gray-500 text-white'
-              : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+              : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'
           }`}
         >
           Показать объём
@@ -418,8 +434,8 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
       </div>
       
       {/* Chart Container split: main (80%) + sub (20%) */}
-      <div ref={chartContainerRef} className="w-full h-[calc(100%-2rem)] flex flex-col">
-        <div ref={mainPaneRef} className="flex-1" />
+      <div ref={chartContainerRef} className="min-h-0 overflow-hidden w-full h-full flex flex-col">
+        <div ref={mainPaneRef} className="flex-1 min-h-0" />
         <div ref={subPaneRef} className="h-[20%]" />
       </div>
     </div>

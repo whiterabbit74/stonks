@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createChart, type IChartApi, type ISeriesApi, type UTCTimestamp } from 'lightweight-charts';
 import type { EquityPoint } from '../types';
 
@@ -9,31 +9,46 @@ interface EquityChartProps {
 export function EquityChart({ equity }: EquityChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
+  const [isDark, setIsDark] = useState<boolean>(() => typeof document !== 'undefined' ? document.documentElement.classList.contains('dark') : false);
+
+  useEffect(() => {
+    const onTheme = (e: any) => {
+      const dark = !!(e?.detail?.effectiveDark ?? document.documentElement.classList.contains('dark'));
+      setIsDark(dark);
+    };
+    window.addEventListener('themechange', onTheme);
+    return () => window.removeEventListener('themechange', onTheme);
+  }, []);
 
   useEffect(() => {
     if (!chartContainerRef.current || !equity.length) return;
 
     try {
+      const bg = isDark ? '#0b1220' : '#ffffff';
+      const text = isDark ? '#e5e7eb' : '#1f2937';
+      const grid = isDark ? '#1f2937' : '#eef2ff';
+      const border = isDark ? '#374151' : '#e5e7eb';
+
       // Create new chart
       const chart = createChart(chartContainerRef.current, {
         width: chartContainerRef.current.clientWidth,
         height: Math.max(chartContainerRef.current.clientHeight, 300),
         layout: {
-          background: { color: '#ffffff' },
-          textColor: '#1f2937',
+          background: { color: bg },
+          textColor: text,
         },
         grid: {
-          vertLines: { color: '#eef2ff' },
-          horzLines: { color: '#eef2ff' },
+          vertLines: { color: grid },
+          horzLines: { color: grid },
         },
         crosshair: {
           mode: 1,
         },
         rightPriceScale: {
-          borderColor: '#e5e7eb',
+          borderColor: border,
         },
         timeScale: {
-          borderColor: '#e5e7eb',
+          borderColor: border,
           timeVisible: true,
           secondsVisible: false,
         },
@@ -49,16 +64,16 @@ export function EquityChart({ equity }: EquityChartProps) {
 
       // Area-серия с градиентом
       const equitySeries: ISeriesApi<'Area'> = chart.addAreaSeries({
-        lineColor: '#6366F1',
-        topColor: 'rgba(99, 102, 241, 0.25)',
-        bottomColor: 'rgba(99, 102, 241, 0.03)',
+        lineColor: isDark ? '#a5b4fc' : '#6366F1',
+        topColor: isDark ? 'rgba(165, 180, 252, 0.20)' : 'rgba(99, 102, 241, 0.25)',
+        bottomColor: isDark ? 'rgba(165, 180, 252, 0.06)' : 'rgba(99, 102, 241, 0.03)',
         lineWidth: 2,
         title: 'Portfolio Value',
       });
 
       // Серая линия all-time high (ATH)
       const athSeries: ISeriesApi<'Line'> = chart.addLineSeries({
-        color: '#9CA3AF',
+        color: isDark ? '#9CA3AF' : '#9CA3AF',
         lineWidth: 1,
         lineStyle: 2,
         title: 'All-Time High',
@@ -81,8 +96,6 @@ export function EquityChart({ equity }: EquityChartProps) {
     }
     athSeries.setData(athData);
 
-    // Убрали линию последнего значения по запросу
-
     // Простой тултип
     const tooltipEl = document.createElement('div');
     tooltipEl.style.position = 'absolute';
@@ -90,7 +103,7 @@ export function EquityChart({ equity }: EquityChartProps) {
     tooltipEl.style.top = '8px';
     tooltipEl.style.zIndex = '10';
     tooltipEl.style.pointerEvents = 'none';
-    tooltipEl.style.background = 'rgba(17,24,39,0.7)';
+    tooltipEl.style.background = isDark ? 'rgba(31,41,55,0.75)' : 'rgba(17,24,39,0.7)';
     tooltipEl.style.color = 'white';
     tooltipEl.style.padding = '6px 8px';
     tooltipEl.style.borderRadius = '6px';
@@ -136,7 +149,7 @@ export function EquityChart({ equity }: EquityChartProps) {
       console.error('Error creating equity chart:', error);
       return;
     }
-  }, [equity]);
+  }, [equity, isDark]);
 
   if (!equity.length) {
     return (
@@ -146,5 +159,5 @@ export function EquityChart({ equity }: EquityChartProps) {
     );
   }
 
-  return <div ref={chartContainerRef} className="w-full h-full" />;
+  return <div ref={chartContainerRef} className="w-full h-full min-h-0 overflow-hidden" />;
 }
