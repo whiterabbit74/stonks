@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { DatasetAPI } from '../lib/api';
 
 type SplitEvent = { date: string; factor: number };
@@ -17,6 +17,7 @@ export function SplitsTab() {
   const [newFactor, setNewFactor] = useState<string>('');
   const [actionBusy, setActionBusy] = useState<boolean>(false);
   const [actionMsg, setActionMsg] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   async function refresh() {
     setLoading(true); setError(null);
@@ -125,15 +126,126 @@ export function SplitsTab() {
     }
   }
 
+  function downloadJSON(filename: string, value: unknown) {
+    const blob = new Blob([JSON.stringify(value, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  async function exportAllSplits() {
+    setActionBusy(true); setActionMsg(null);
+    try {
+      const map = await DatasetAPI.getSplitsMap();
+      const ts = new Date().toISOString().replace(/[:]/g, '-');
+      downloadJSON(`splits-${ts}.json`, map || {});
+      setActionMsg('Экспортировано');
+    } catch (e) {
+      setActionMsg(e instanceof Error ? e.message : 'Ошибка экспорта');
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
+  function normalizeEvents(arr: Array<any>): Array<SplitEvent> {
+    return (Array.isArray(arr) ? arr : [])
+      .map(it => ({
+        date: typeof it?.date === 'string' ? String(it.date).slice(0, 10) : '',
+        factor: Number((it?.factor ?? it?.ratio ?? it?.value))
+      }))
+      .filter(e => !!e.date && isFinite(e.factor) && e.factor > 0 && e.factor !== 1);
+  }
+
+  async function importSplitsFromFile(file: File) {
+    setActionBusy(true); setActionMsg(null);
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      const updates: Record<string, Array<SplitEvent>> = {};
+
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        const maybeSymbol = (parsed.symbol || parsed.ticker) && parsed.events;
+        if (maybeSymbol && Array.isArray(parsed.events)) {
+          const sym = String(parsed.symbol || parsed.ticker).toUpperCase();
+          updates[sym] = normalizeEvents(parsed.events);
+        } else {
+          for (const [k, v] of Object.entries(parsed as Record<string, any>)) {
+            const sym = String(k).toUpperCase();
+            updates[sym] = normalizeEvents(v as any[]);
+          }
+        }
+      } else if (Array.isArray(parsed)) {
+        throw new Error('Неизвестный формат: для массива событий используйте объект { "SYMBOL": [ ... ] }');
+      } else {
+        throw new Error('Неподдерживаемый формат файла');
+      }
+
+      const entries = Object.entries(updates).filter(([, ev]) => ev.length > 0);
+      if (entries.length === 0) {
+        throw new Error('Нет валидных событий для импорта');
+      }
+
+      let ok = 0; let fail = 0;
+      for (const [sym, events] of entries) {
+        try {
+          await DatasetAPI.setSplits(sym, events);
+          ok++;
+        } catch (e) {
+          console.warn('Failed to import splits for', sym, e);
+          fail++;
+        }
+      }
+
+      await refresh();
+      setActionMsg(`Импорт завершён: обновлено ${ok}, ошибок ${fail}`);
+    } catch (e) {
+      setActionMsg(e instanceof Error ? e.message : 'Ошибка импорта');
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
+  function onImportFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0] || null;
+    // allow re-selecting the same file
+    e.currentTarget.value = '';
+    if (!f) return;
+    void importSplitsFromFile(f);
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-semibold text-gray-900">Сплиты (server/splits.json)</h2>
-        <button
-          className="px-3 py-1.5 text-sm rounded border bg-white hover:bg-gray-50"
-          onClick={refresh}
-          disabled={loading}
-        >Обновить</button>
+        <div className="flex items-center gap-2">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="application/json"
+            className="hidden"
+            onChange={onImportFileChange}
+          />
+          <button
+            className="px-3 py-1.5 text-sm rounded border bg-white hover:bg-gray-50"
+            onClick={refresh}
+            disabled={loading || actionBusy}
+          >Обновить</button>
+          <button
+            className="px-3 py-1.5 text-sm rounded border bg-white hover:bg-gray-50"
+            onClick={exportAllSplits}
+            disabled={loading || actionBusy}
+          >Экспорт</button>
+          <button
+            className="px-3 py-1.5 text-sm rounded bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-60"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={loading || actionBusy}
+          >Импорт</button>
+        </div>
       </div>
 
       <div className="p-3 bg-white border rounded space-y-2">
