@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createChart, type IChartApi, type ISeriesApi, type UTCTimestamp } from 'lightweight-charts';
 import type { EquityPoint } from '../types';
 
@@ -6,11 +6,19 @@ interface EquityChartProps {
   equity: EquityPoint[];
 }
 
-type CrosshairParam = { time?: UTCTimestamp | number | string; seriesPrices?: Map<unknown, unknown> } | undefined;
-
 export function EquityChart({ equity }: EquityChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
-  const chartRef = useRef<IChartApi | null>(null);
+    const chartRef = useRef<IChartApi | null>(null);
+  const [isDark, setIsDark] = useState<boolean>(() => typeof document !== 'undefined' ? document.documentElement.classList.contains('dark') : false);
+
+  useEffect(() => {
+    const onTheme = (e: any) => {
+      const dark = !!(e?.detail?.effectiveDark ?? document.documentElement.classList.contains('dark'));
+      setIsDark(dark);
+    };
+    window.addEventListener('themechange', onTheme);
+    return () => window.removeEventListener('themechange', onTheme);
+  }, []);
 
   useEffect(() => {
     if (!chartContainerRef.current || !equity.length) return;
@@ -106,10 +114,10 @@ export function EquityChart({ equity }: EquityChartProps) {
     tooltipEl.style.display = 'none';
     chartContainerRef.current.appendChild(tooltipEl);
 
-                   chart.subscribeCrosshairMove((param: CrosshairParam) => {
+                   chart.subscribeCrosshairMove((param) => {
       if (!param || !param.time) { tooltipEl.style.display = 'none'; return; }
-      const v = (param.seriesPrices?.get?.(equitySeries) as number) ?? undefined;
-      if (v == null) { tooltipEl.style.display = 'none'; return; }
+      const v = (param.seriesData?.get?.(equitySeries) as { value?: number } | undefined)?.value;
+      if (typeof v !== 'number') { tooltipEl.style.display = 'none'; return; }
       tooltipEl.innerHTML = `Equity ${v.toFixed(2)}`;
       tooltipEl.style.display = 'block';
     });

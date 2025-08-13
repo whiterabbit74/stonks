@@ -1,4 +1,6 @@
 // Removed Papa import and CSV parsing utilities
+import Papa from 'papaparse';
+import type { ParseResult as PapaParseResult, ParseError as PapaParseError } from 'papaparse';
 import type {
   OHLCData,
   ValidationResult
@@ -209,20 +211,28 @@ export async function parseCSV(file: File): Promise<OHLCData[]> {
     Papa.parse(file, {
       header: true,
       skipEmptyLines: true,
-      complete: (results) => {
+      complete: (results: PapaParseResult<Record<string, unknown>>) => {
         try {
           if (results.errors.length > 0) {
             reject(new Error(`CSV parsing error: ${results.errors[0].message}`));
             return;
           }
 
-          const data = results.data as any[];
+          const data = results.data as Record<string, unknown>[];
           const headers = Object.keys(data[0] || {});
           
-          // Validate CSV structure
-          const validation = validateCSVData(data, headers);
-          if (!validation.isValid) {
-            reject(new Error(validation.errors.join(', ')));
+          // Basic CSV structure validation using existing validator on a sample
+          const preview: Partial<OHLCData>[] = data.slice(0, 50).map((row) => ({
+            date: new Date(String(row.date || row.Date || row.DATE || '')),
+            open: Number(row.open ?? row.Open ?? row.OPEN ?? NaN),
+            high: Number(row.high ?? row.High ?? row.HIGH ?? NaN),
+            low: Number(row.low ?? row.Low ?? row.LOW ?? NaN),
+            close: Number(row.close ?? row.Close ?? row.CLOSE ?? NaN),
+            volume: Number(row.volume ?? row.Volume ?? row.VOLUME ?? 0),
+          }));
+          const basic = validateOHLCData(preview);
+          if (!basic.isValid) {
+            reject(new Error(Array.isArray(basic.errors) ? (basic.errors as any[])[0]?.message || 'Invalid CSV' : 'Invalid CSV'));
             return;
           }
 
@@ -232,8 +242,9 @@ export async function parseCSV(file: File): Promise<OHLCData[]> {
           const adjCloseHeader: string | null = adjCloseIndex >= 0 ? headers[adjCloseIndex] : null;
 
           // Convert to OHLC format
-          const ohlcData: OHLCData[] = data.map((row: any) => {
-            const dateResult = parseDate(row.date || row.Date || row.DATE);
+          const ohlcData: OHLCData[] = data.map((row: Record<string, unknown>) => {
+            const dateStr = String((row as any).date ?? (row as any).Date ?? (row as any).DATE ?? '');
+            const dateResult = parseDate(dateStr);
             if (!dateResult.isValid || !dateResult.date) {
               throw new Error(`Invalid date format in row: ${JSON.stringify(row)}`);
             }
@@ -243,7 +254,7 @@ export async function parseCSV(file: File): Promise<OHLCData[]> {
             const low = validateNumber(row.low || row.Low || row.LOW) || 0;
             const close = validateNumber(row.close || row.Close || row.CLOSE) || 0;
             const volume = validateNumber(row.volume || row.Volume || row.VOLUME) || 0;
-            const adjClose = adjCloseHeader ? validateNumber(row[adjCloseHeader]) : null;
+            const adjClose = adjCloseHeader ? validateNumber((row as any)[adjCloseHeader]) : null;
 
             // If Adj Close provided and valid, rescale OHLC to adjusted values for split-aware history
             if (typeof adjClose === 'number' && isFinite(adjClose) && adjClose > 0 && close > 0) {
@@ -257,7 +268,7 @@ export async function parseCSV(file: File): Promise<OHLCData[]> {
                 adjClose: adjClose,
                 // Leave volume as-is; many providers' adj close may include dividend adjustments
                 volume: volume || 0,
-              };
+              } as OHLCData;
             }
 
             return {
@@ -267,27 +278,17 @@ export async function parseCSV(file: File): Promise<OHLCData[]> {
               low,
               close,
               volume: volume || 0,
-            };
-          }).filter(item => item.date); // Remove invalid dates
-
-          // Validate the converted data
-          const ohlcValidation = validateOHLCData(ohlcData);
-          if (!ohlcValidation.isValid) {
-            reject(new Error(ohlcValidation.errors.join(', ')));
-            return;
-          }
-
-          // Sort by date
-          ohlcData.sort((a, b) => a.date.getTime() - b.date.getTime());
+            } as OHLCData;
+          });
 
           resolve(ohlcData);
         } catch (error) {
-          reject(error);
+          reject(error instanceof Error ? error : new Error('Failed to parse CSV'));
         }
       },
-      error: (error) => {
-        reject(new Error(`Failed to parse CSV: ${error.message}`));
-      }
+      error: (error: PapaParseError) => {
+        reject(new Error(error.message));
+      },
     });
   });
 }

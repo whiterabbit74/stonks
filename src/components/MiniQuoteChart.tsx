@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createChart, type IChartApi, type UTCTimestamp } from 'lightweight-charts';
 import type { OHLCData, Trade } from '../types';
 
@@ -13,7 +13,17 @@ interface MiniQuoteChartProps {
 
 export function MiniQuoteChart({ history, today, trades, highIBS, isOpenPosition, entryPrice }: MiniQuoteChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const chartRef = useRef<IChartApi | null>(null);
+    const chartRef = useRef<IChartApi | null>(null);
+  const [isDark, setIsDark] = useState<boolean>(() => typeof document !== 'undefined' ? document.documentElement.classList.contains('dark') : false);
+
+  useEffect(() => {
+    const onTheme = (e: any) => {
+      const dark = !!(e?.detail?.effectiveDark ?? document.documentElement.classList.contains('dark'));
+      setIsDark(dark);
+    };
+    window.addEventListener('themechange', onTheme);
+    return () => window.removeEventListener('themechange', onTheme);
+  }, []);
 
   useEffect(() => {
     if (!containerRef.current) return;

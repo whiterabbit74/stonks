@@ -6,7 +6,6 @@ import type { OHLCData, Trade, SplitEvent } from '../types';
 interface TradingChartProps {
   data: OHLCData[];
   trades: Trade[];
-  chartData?: Array<{ time: UTCTimestamp; open: number; high: number; low: number; close: number }>;
   splits?: SplitEvent[];
 }
 
@@ -278,54 +277,66 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
       tooltipEl.style.display = 'none';
       chartContainerRef.current.appendChild(tooltipEl);
 
-      chart.subscribeCrosshairMove((param: { time?: unknown; seriesPrices?: Map<any, any>; seriesData?: Map<any, any> }) => {
-        if (!param || !param.time || !param.seriesPrices) {
+      chart.subscribeCrosshairMove((param) => {
+        if (!param || !param.time) {
           tooltipEl.style.display = 'none';
-                     try {
-             const tgt = (ibsSeries || volumeSeries) as unknown as { clearCrosshairPosition?: () => void };
-             tgt?.clearCrosshairPosition?.();
-           } catch (err) { console.warn('Clear crosshair for tgt failed', err as Error); }
-           return;
+          try {
+            const tgt = (ibsSeries || volumeSeries) as unknown as { clearCrosshairPosition?: () => void };
+            tgt?.clearCrosshairPosition?.();
+          } catch (err) { console.warn('Clear crosshair for tgt failed', err as Error); }
+          return;
         }
-        const price = param.seriesPrices.get(candlestickSeries);
-                 if (!price) {
-           tooltipEl.style.display = 'none';
-           try {
-             (ibsSeries as unknown as { clearCrosshairPosition?: () => void })?.clearCrosshairPosition?.();
-             (volumeSeries as unknown as { clearCrosshairPosition?: () => void })?.clearCrosshairPosition?.();
-           } catch (err) { console.warn('Clear crosshair for series failed', err as Error); }
-           return;
-         }
-        const bar = param?.seriesData?.get?.(candlestickSeries);
+        const priceMap = (param as any).seriesPrices as Map<unknown, unknown> | undefined;
+        const seriesData = (param as any).seriesData as Map<unknown, unknown> | undefined;
+        if (!priceMap || !seriesData) {
+          tooltipEl.style.display = 'none';
+          try {
+            (ibsSeries as unknown as { clearCrosshairPosition?: () => void })?.clearCrosshairPosition?.();
+            (volumeSeries as unknown as { clearCrosshairPosition?: () => void })?.clearCrosshairPosition?.();
+          } catch (err) { console.warn('Clear crosshair for series failed', err as Error); }
+          return;
+        }
+        const price = priceMap.get(candlestickSeries as unknown as object);
+        if (!price) {
+          tooltipEl.style.display = 'none';
+          try {
+            (ibsSeries as unknown as { clearCrosshairPosition?: () => void })?.clearCrosshairPosition?.();
+            (volumeSeries as unknown as { clearCrosshairPosition?: () => void })?.clearCrosshairPosition?.();
+          } catch (err) { console.warn('Clear crosshair for series failed', err as Error); }
+          return;
+        }
+        const bar = seriesData.get(candlestickSeries as unknown as object) as { open?: number; high?: number; low?: number; close?: number } | undefined;
+        const vol = volumeSeries ? (seriesData.get(volumeSeries as unknown as object) as { value?: number } | undefined)?.value : undefined;
+        const ibsVal = ibsSeries ? (seriesData.get(ibsSeries as unknown as object) as { value?: number } | undefined)?.value : undefined;
         const o = bar?.open, h = bar?.high, l = bar?.low, c = bar?.close;
-        const vol = volumeSeries ? (param.seriesData?.get?.(volumeSeries))?.value : undefined;
-        const ibsVal = ibsSeries ? (param.seriesData?.get?.(ibsSeries))?.value : undefined;
-        const pct = o ? (((c - o) / o) * 100) : 0;
+        const pct = o ? (((c! - o) / o) * 100) : 0;
         const ibsStr = (typeof ibsVal === 'number') ? ` · IBS ${(ibsVal * 100).toFixed(0)}%` : '';
         tooltipEl.innerHTML = `O ${o?.toFixed?.(2) ?? '-'} H ${h?.toFixed?.(2) ?? '-'} L ${l?.toFixed?.(2) ?? '-'} C ${c?.toFixed?.(2) ?? '-'} · ${pct ? pct.toFixed(2) + '%' : ''}${ibsStr}${vol ? ' · Vol ' + vol.toLocaleString() : ''}`;
         tooltipEl.style.display = 'block';
 
         // Mirror crosshair to sub chart using series API (best-effort across versions)
-                 try {
-           const t = param.time as UTCTimestamp;
-           const setPos = (s: unknown, value: number) => {
-             const api = s as { setCrosshairPosition?: (v: number, t: UTCTimestamp) => void };
-             api?.setCrosshairPosition?.(value, t);
-           };
-           if (typeof ibsVal === 'number') setPos(ibsSeries, ibsVal);
-           else if (typeof vol === 'number') setPos(volumeSeries, vol);
-         } catch (err) { console.warn('Mirror crosshair failed', err as Error); }
-       });
+        try {
+          const t = param.time as UTCTimestamp;
+          const setPos = (s: unknown, value: number) => {
+            const api = s as { setCrosshairPosition?: (v: number, t: UTCTimestamp) => void };
+            api?.setCrosshairPosition?.(value, t);
+          };
+          if (typeof ibsVal === 'number') setPos(ibsSeries, ibsVal);
+          else if (typeof vol === 'number') setPos(volumeSeries, vol);
+        } catch (err) { console.warn('Mirror crosshair failed', err as Error); }
+      });
 
       // Also reflect crosshair from sub-pane to main chart
-             subChart.subscribeCrosshairMove((param: { time?: UTCTimestamp; seriesData?: Map<unknown, unknown> } | undefined) => {
+      subChart.subscribeCrosshairMove((param) => {
         if (!param || !param.time) {
           try { (candlestickSeries as unknown as { clearCrosshairPosition?: () => void })?.clearCrosshairPosition?.(); } catch (err) { console.warn('Clear crosshair failed', err as Error); }
           return;
         }
         try {
           const t = param.time as UTCTimestamp;
-          const close = (param.seriesData?.get?.(candlestickSeries))?.close ?? 0;
+          const sd = (param as any).seriesData as Map<unknown, unknown> | undefined;
+          const bar = sd?.get(candlestickSeries as unknown as object) as { close?: number } | undefined;
+          const close = bar?.close ?? 0;
           const cs = candlestickSeries as unknown as { setCrosshairPosition?: (price: number, t: UTCTimestamp) => void };
           cs?.setCrosshairPosition?.(close, t);
         } catch (err) { console.warn('Crosshair reflect failed', err as Error); }

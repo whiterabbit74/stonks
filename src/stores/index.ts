@@ -5,6 +5,7 @@ import { createStrategyFromTemplate, STRATEGY_TEMPLATES } from '../lib/strategy'
 import { saveDatasetToJSON, loadDatasetFromJSON } from '../lib/data-persistence';
 import { DatasetAPI } from '../lib/api';
 import { adjustOHLCForSplits } from '../lib/utils';
+import { parseCSV } from '../lib/validation';
 
 interface AppState {
   // Data

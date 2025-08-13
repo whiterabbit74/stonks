@@ -94,7 +94,7 @@ export function validateOHLCData(data: Array<Record<string, unknown>>): OHLCData
   }
   
   return data.map((barRaw, index) => {
-    const bar = barRaw as Record<string, unknown> as OHLCData;
+    const bar = barRaw as unknown as { date: string | Date; open: unknown; high: unknown; low: unknown; close: unknown; volume?: unknown };
     // Проверяем обязательные поля
     if (!bar.date || !bar.open || !bar.high || !bar.low || !bar.close) {
       throw new Error(`Отсутствуют обязательные поля в записи ${index + 1}`);

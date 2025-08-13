@@ -498,31 +498,27 @@ export class BacktestEngine {
     return result;
   }
   
-  private evaluateOperator(operator: string, currentValue: number, conditionValue: number | 'dynamic', indicatorValues: number[], index: number): boolean {
+  private evaluateOperator(operator: string, currentValue: number, conditionValue: number | 'dynamic' | string, indicatorValues: number[], index: number): boolean {
+    const numericValue = typeof conditionValue === 'number' ? conditionValue : (conditionValue === 'dynamic' ? NaN : Number(conditionValue));
     switch (operator) {
       case '>':
-        return typeof conditionValue === 'number' && currentValue > conditionValue;
-      
+        return typeof numericValue === 'number' && !isNaN(numericValue) && currentValue > numericValue;
       case '<':
-        return typeof conditionValue === 'number' && currentValue < conditionValue;
-      
+        return typeof numericValue === 'number' && !isNaN(numericValue) && currentValue < numericValue;
       case '>=':
-        return typeof conditionValue === 'number' && currentValue >= conditionValue;
-      
+        return typeof numericValue === 'number' && !isNaN(numericValue) && currentValue >= numericValue;
       case '<=':
-        return typeof conditionValue === 'number' && currentValue <= conditionValue;
-      
+        return typeof numericValue === 'number' && !isNaN(numericValue) && currentValue <= numericValue;
       case '==':
-        return typeof conditionValue === 'number' && Math.abs(currentValue - conditionValue) < 0.0001;
-      
+        return typeof numericValue === 'number' && !isNaN(numericValue) && currentValue === numericValue;
       case 'crossover':
-        if (typeof conditionValue !== 'number') return false;
-        return this.evaluateCrossover(indicatorValues, conditionValue, index, true);
-      
+        if (index === 0) return false;
+        if (conditionValue === 'dynamic') return false;
+        return indicatorValues[index - 1] <= (numericValue as number) && currentValue > (numericValue as number);
       case 'crossunder':
-        if (typeof conditionValue !== 'number') return false;
-        return this.evaluateCrossover(indicatorValues, conditionValue, index, false);
-      
+        if (index === 0) return false;
+        if (conditionValue === 'dynamic') return false;
+        return indicatorValues[index - 1] >= (numericValue as number) && currentValue < (numericValue as number);
       default:
         return false;
     }
@@ -560,26 +556,6 @@ export class BacktestEngine {
       
       default:
         return false;
-    }
-  }
-
-  /**
-   * Evaluate crossover/crossunder conditions
-   */
-  private evaluateCrossover(series: number[], threshold: number | 'dynamic', index: number, isAbove: boolean): boolean {
-    if (index === 0 || typeof threshold !== 'number') return false;
-    
-    const currentValue = series[index];
-    const previousValue = series[index - 1];
-    
-    if (isNaN(currentValue) || isNaN(previousValue)) return false;
-    
-    if (isAbove) {
-      // Crossover: previous <= threshold and current > threshold
-      return previousValue <= threshold && currentValue > threshold;
-    } else {
-      // Crossunder: previous >= threshold and current < threshold
-      return previousValue >= threshold && currentValue < threshold;
     }
   }
 
@@ -809,16 +785,13 @@ export class BacktestEngine {
   /**
    * Generate chart data for visualization
    */
-  private generateChartData(): { time: Date; date: Date; open: number; high: number; low: number; close: number; volume: number; equity: number }[] {
-    return this.data.map((bar, index) => ({
-      time: bar.date,
-      date: bar.date,
+  private generateChartData(): { time: number; open: number; high: number; low: number; close: number }[] {
+    return this.data.map((bar) => ({
+      time: Math.floor(bar.date.getTime() / 1000),
       open: bar.open,
       high: bar.high,
       low: bar.low,
       close: bar.close,
-      volume: bar.volume,
-      equity: this.equity[index]?.value || this.strategy.riskManagement.initialCapital
     }));
   }
 

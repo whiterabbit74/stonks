@@ -23,6 +23,7 @@ export function Results() {
   const updateMarketData = useAppStore(s => s.updateMarketData);
   const updateDatasetOnServer = useAppStore(s => s.updateDatasetOnServer);
   const saveDatasetToServer = useAppStore(s => s.saveDatasetToServer);
+  const setSplits = useAppStore(s => s.setSplits);
   const [quote, setQuote] = useState<{ open: number|null; high: number|null; low: number|null; current: number|null; prevClose: number|null } | null>(null);
   const [quoteError, setQuoteError] = useState<string | null>(null);
   const [isTrading, setIsTrading] = useState<boolean>(false);
@@ -318,7 +319,7 @@ export function Results() {
     );
   }
 
-  const { metrics, trades, equity, chartData } = backtestResults;
+  const { metrics, trades, equity } = backtestResults;
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -750,12 +751,11 @@ export function Results() {
             Price Chart with Trading Signals
           </h3>
           <div className="h-[80vh]">
-            <TradingChart 
-              data={marketData} 
-              trades={trades}
-              chartData={chartData}
-              splits={currentSplits}
-            />
+                          <TradingChart 
+                data={marketData} 
+                trades={trades}
+                splits={currentSplits}
+              />
           </div>
         </div>
 

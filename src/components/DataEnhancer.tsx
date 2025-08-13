@@ -1,37 +1,35 @@
 import { useState, useEffect, useCallback } from 'react';
-import { RefreshCw, Calendar, TrendingUp, AlertCircle, CheckCircle, Download } from 'lucide-react';
+import { AlertCircle, CheckCircle } from 'lucide-react';
 import { useAppStore } from '../stores';
-import type { OHLCData } from '../types';
-import { parseOHLCDate, adjustOHLCForSplits } from '../lib/utils';
-import { fetchWithCreds, API_BASE_URL, DatasetAPI } from '../lib/api';
+import { fetchWithCreds } from '../lib/api';
 
 interface DataEnhancerProps {
   onNext?: () => void;
 }
 
-interface YahooFinanceData {
-  date: string;
-  open: number;
-  high: number;
-  low: number;
-  close: number;
-  adjClose: number;
-  volume: number;
-}
+// interface YahooFinanceData {
+//   date: string;
+//   open: number;
+//   high: number;
+//   low: number;
+//   close: number;
+//   adjClose: number;
+//   volume: number;
+// }
 
 export function DataEnhancer({ onNext }: DataEnhancerProps) {
-  const { marketData, currentDataset, updateMarketData, saveDatasetToServer, updateDatasetOnServer, loadDatasetFromServer, setSplits, enhancerProvider, savedDatasets } = useAppStore();
+  const { marketData, currentDataset, saveDatasetToServer, setSplits, enhancerProvider } = useAppStore();
   const [ticker, setTicker] = useState('AAPL');
-  const [isLoading, setIsLoading] = useState(false);
+  const [, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [dataGaps, setDataGaps] = useState<{ missing: number; lastDate: string; firstDate: string } | null>(null);
-  const [selectedAction, setSelectedAction] = useState<'enhance' | 'replace'>('enhance');
-  const [mode, setMode] = useState<'existing' | 'new'>('new');
-  const { loadDatasetsFromServer } = useAppStore();
+  const [, setDataGaps] = useState<{ missing: number; lastDate: string; firstDate: string } | null>(null);
+  const [, setSelectedAction] = useState<'enhance' | 'replace'>('enhance');
+  const [mode, _setMode] = useState<'existing' | 'new'>('new');
+  // const { loadDatasetsFromServer } = useAppStore();
   // Убрали промпт ручного сохранения
   // Всегда грузим всю доступную историю (~до 40 лет), выбор периода убран
-  const [isUpToDate, setIsUpToDate] = useState(false);
+  // const [isUpToDate, setIsUpToDate] = useState(false);
 
   // При смене режима очищаем сообщения, чтобы не путать пользователя
   useEffect(() => {
@@ -42,6 +40,7 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
   // Синхронизируем действие с выбранным режимом: existing -> enhance, new -> replace
   useEffect(() => {
     setSelectedAction(mode === 'existing' ? 'enhance' : 'replace');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode]);
 
   // Анализируем пропуски в данных при загрузке компонента
@@ -53,7 +52,8 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
         setTicker(currentDataset.ticker);
       }
     }
-  }, [marketData, currentDataset, analyzeDataGaps]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [marketData, currentDataset]);
 
   const analyzeDataGaps = useCallback(() => {
     if (marketData.length === 0) return;
@@ -73,7 +73,6 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
       lastDate: lastDate.toLocaleDateString('en-US', { timeZone: 'America/New_York' }),
       firstDate: firstDate.toLocaleDateString('en-US', { timeZone: 'America/New_York' })
     });
-    setIsUpToDate(missing === 0);
     if (missing === 0) {
       // убираем старые статусы, чтобы не плодить сообщения
       setSuccess(null);
@@ -81,111 +80,7 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
     }
   }, [marketData]);
 
-  const getStartDateForPeriod = (): Date => {
-    const now = new Date();
-    const startDate = new Date(now);
-    startDate.setFullYear(now.getFullYear() - 40);
-    return startDate;
-  };
-
-  type FetchResult = { data: YahooFinanceData[]; splits: { date: string; factor: number }[] };
-  const fetchRealMarketData = async (symbol: string, startDate: Date): Promise<FetchResult> => {
-    const endDate = new Date();
-    const start = Math.floor(startDate.getTime() / 1000);
-    const end = Math.floor(endDate.getTime() / 1000);
-    
-    // Строго используем выбранный провайдер без fallback
-    const url = `${API_BASE_URL}/yahoo-finance/${symbol}?start=${start}&end=${end}&provider=${enhancerProvider}`;
-    const response = await fetchWithCreds(url);
-    if (!response.ok) {
-      let msg = `${response.status} ${response.statusText}`;
-      const e = await response.json().catch(() => null);
-      if (e && typeof e.error === 'string') msg = e.error;
-      throw new Error(msg);
-    }
-    const json = await response.json();
-    if (Array.isArray(json)) return { data: json as YahooFinanceData[], splits: [] };
-    return { data: (json.data || []) as YahooFinanceData[], splits: (json.splits || []) as { date: string; factor: number }[] };
-  };
-
-  const handleLoadNewTicker = async () => {
-    if (!ticker.trim()) {
-      setError('Please enter a ticker symbol');
-      return;
-    }
-
-    setIsLoading(true);
-    setError(null);
-    setSuccess(null);
-
-    try {
-      const startDate = getStartDateForPeriod();
-
-      const symbol = ticker.trim().toUpperCase();
-      const realData = await fetchRealMarketData(symbol, startDate);
-      const rawRows = realData.data;
-      // Единый источник: центральный серверный splits.json
-      const splitEvents = await DatasetAPI.getSplits(symbol).catch(() => [] as { date: string; factor: number }[]);
-      
-      if (rawRows.length === 0) {
-        setError('No data found or ticker does not exist');
-        return;
-      }
-
-      // Convert real market data to our format
-      const newDataRaw: OHLCData[] = rawRows.map(item => ({
-        date: parseOHLCDate(item.date),
-        open: item.open,
-        high: item.high,
-        low: item.low,
-        close: item.close,
-        adjClose: item.adjClose,
-        volume: item.volume
-      }));
-      const newData = adjustOHLCForSplits(newDataRaw, splitEvents);
-      const finalData: OHLCData[] = newData.sort((a, b) => a.date.getTime() - b.date.getTime());
-      updateMarketData(finalData);
-      setSuccess(`Loaded ${finalData.length} records for ${ticker.toUpperCase()}`);
-      // Сохраняем сплиты в стор для автосохранения и отображения маркеров на графике
-      if (splitEvents.length) {
-        setSplits(splitEvents);
-      }
-      
-      // Автосохранение
-      if (mode === 'new') {
-        // Для нового тикера — автосохранение без промпта (новый файл)
-        try {
-          const autoName = `${ticker.toUpperCase()}_${new Date().toISOString().split('T')[0]}`;
-          await saveDatasetToServer(ticker.toUpperCase(), autoName);
-          await loadDatasetsFromServer();
-          setSuccess((prev) => (prev ? prev + ' • ' : '') + `✅ Автосохранено как "${autoName}"`);
-        } catch {
-          setError('Не удалось автоматически сохранить датасет. Проверьте сервер и повторите.');
-        }
-      } else if (mode === 'existing') {
-        // Для обновления существующего — если известен текущий датасет, перезаписываем его (с возможным переименованием файла)
-        try {
-          if (!currentDataset || !currentDataset.name) {
-            // Если датасет не загружен — загрузим первый подходящий по тикеру (если есть)
-            const candidate = savedDatasets.find(d => d.ticker.toUpperCase() === ticker.toUpperCase());
-            if (candidate) {
-              await loadDatasetFromServer(candidate.name);
-            }
-          }
-          await updateDatasetOnServer();
-          setSuccess((prev) => (prev ? prev + ' • ' : '') + `✅ Изменения сохранены`);
-        } catch {
-          setError('Не удалось сохранить изменения. Проверьте сервер и повторите.');
-        }
-      }
-
-    } catch (err) {
-      console.error('Error enhancing data:', err);
-      setError(err instanceof Error ? err.message : 'An error occurred while fetching data');
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  // Removed fetch for market data; this screen only manages splits now
 
   const popularTickers = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA', 'NVDA', 'META', 'NFLX'];
 

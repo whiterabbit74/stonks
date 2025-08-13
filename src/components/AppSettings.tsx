@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { DatasetAPI } from '../lib/api';
 import { useAppStore } from '../stores';
-import { StrategySettings } from './StrategySettings';
+// import { StrategySettings } from './StrategySettings';
 
 export function AppSettings() {
   const loadSettingsFromServer = useAppStore(s => s.loadSettingsFromServer);
