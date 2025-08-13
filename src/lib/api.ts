@@ -13,7 +13,7 @@ export const API_BASE_URL: string = (() => {
   }
   return '/api';
 })();
-export const fetchWithCreds = (input: RequestInfo | URL, init?: RequestInit) => {
+export const fetchWithCreds = async (input: RequestInfo | URL, init?: RequestInit) => {
   let token: string | null = null;
   try {
     if (typeof window !== 'undefined' && window.localStorage) {
@@ -35,7 +35,15 @@ export const fetchWithCreds = (input: RequestInfo | URL, init?: RequestInit) => 
       ...(token && !('authorization' in lowerHeaderKeys) ? { Authorization: `Bearer ${token}` } : {}),
     },
   };
-  return fetch(input, merged);
+  const response = await fetch(input, merged);
+  if (response.status === 401) {
+    try {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('app:unauthorized'));
+      }
+    } catch {}
+  }
+  return response;
 };
 
 export class DatasetAPI {

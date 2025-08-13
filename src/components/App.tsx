@@ -122,6 +122,15 @@ export default function App() {
     })();
   }, []);
 
+  useEffect(() => {
+    const onUnauthorized = () => {
+      setAuthorized(false);
+      setLoginError('Сессия истекла. Пожалуйста, войдите снова.');
+    };
+    window.addEventListener('app:unauthorized', onUnauthorized);
+    return () => window.removeEventListener('app:unauthorized', onUnauthorized);
+  }, []);
+
   // Fetch API build id for reliable display
   useEffect(() => {
     (async () => {
@@ -165,6 +174,15 @@ export default function App() {
     }
   }
 
+  async function handleLogout() {
+    try {
+      const base = window.location.href.includes('/stonks') ? '/stonks/api' : '/api';
+      await fetch(`${base}/logout`, { method: 'POST', credentials: 'include' });
+    } catch {}
+    try { window.localStorage.removeItem('auth_token'); } catch {}
+    setAuthorized(false);
+  }
+
   const showLogin = !authorized && !checkingAuth;
 
   return (
@@ -179,10 +197,19 @@ export default function App() {
             )}
           </div>
           <div className="flex items-center gap-2">
-            <a className="inline-flex items-center gap-2 text-sm hover:text-indigo-600" href="#settings">
-              <Settings size={16} />
-              Settings
-            </a>
+            {authorized ? (
+              <button
+                onClick={handleLogout}
+                className="inline-flex items-center gap-2 text-sm text-red-600 hover:text-red-700"
+              >
+                Выйти
+              </button>
+            ) : (
+              <a className="inline-flex items-center gap-2 text-sm hover:text-indigo-600" href="#settings">
+                <Settings size={16} />
+                Settings
+              </a>
+            )}
           </div>
         </div>
       </header>

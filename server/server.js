@@ -142,6 +142,7 @@ function requireAuth(req, res, next) {
   if (
     req.path === '/api/status' ||
     req.path === '/api/login' ||
+    req.path === '/api/logout' ||
     req.path === '/api/auth/check' ||
     req.path === '/api/splits' ||
     (typeof req.path === 'string' && req.path.startsWith('/api/splits/'))
@@ -237,6 +238,21 @@ app.get('/api/auth/check', (req, res) => {
   const sess = token && sessions.get(token);
   if (!sess || sess.expiresAt < Date.now()) return res.status(401).json({ error: 'Unauthorized' });
   res.json({ ok: true });
+});
+
+app.post('/api/logout', (req, res) => {
+  try {
+    const cookies = parseCookies(req);
+    const token = cookies.auth_token || getAuthTokenFromHeader(req);
+    if (token) {
+      sessions.delete(token);
+    }
+    // Expire cookie immediately
+    res.setHeader('Set-Cookie', 'auth_token=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax' + (IS_PROD ? '; Secure' : ''));
+    return res.json({ success: true });
+  } catch {
+    return res.json({ success: true });
+  }
 });
 
 // In-memory watch list for Telegram notifications (persisted to disk)
