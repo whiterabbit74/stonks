@@ -230,13 +230,13 @@ export function SplitsTab() {
             className="hidden"
             onChange={onImportFileChange}
           />
-          <button
-            className="px-3 py-1.5 text-sm rounded border bg-white hover:bg-gray-50"
+                    <button
+             className="px-3 py-1.5 text-sm rounded border bg-white hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
             onClick={refresh}
             disabled={loading || actionBusy}
           >Обновить</button>
-          <button
-            className="px-3 py-1.5 text-sm rounded border bg-white hover:bg-gray-50"
+                    <button
+             className="px-3 py-1.5 text-sm rounded border bg-white hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
             onClick={exportAllSplits}
             disabled={loading || actionBusy}
           >Экспорт</button>
@@ -248,11 +248,11 @@ export function SplitsTab() {
         </div>
       </div>
 
-      <div className="p-3 bg-white border rounded space-y-2">
+      <div className="p-3 bg-white border rounded space-y-2 dark:bg-gray-900 dark:border-gray-800">
         <div className="font-medium text-sm">Добавить тикер и первое событие</div>
         <div className="flex flex-wrap gap-2 items-center">
           <input
-            className="border rounded px-2 py-1 text-sm w-28 uppercase"
+                         className="border rounded px-2 py-1 text-sm w-28 uppercase dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100"
             placeholder="Тикер"
             value={newTicker}
             onChange={e => setNewTicker(e.target.value)}
@@ -308,7 +308,7 @@ export function SplitsTab() {
                           <div key={i} className="flex flex-wrap gap-2 items-center">
                             <input
                               type="date"
-                              className="border rounded px-2 py-1 text-sm"
+                              className="border rounded px-2 py-1 text-sm dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100"
                               value={(s.date || '').slice(0,10)}
                               onChange={e => updateEvent(i, { date: e.target.value })}
                             />
@@ -316,25 +316,25 @@ export function SplitsTab() {
                               type="number"
                               step="0.01"
                               min="0"
-                              className="border rounded px-2 py-1 text-sm w-28"
+                              className="border rounded px-2 py-1 text-sm w-28 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100"
                               value={String(s.factor ?? '')}
                               onChange={e => updateEvent(i, { factor: Number(e.target.value) })}
                             />
                             <button
-                              className="px-2 py-1 text-xs rounded border hover:bg-gray-50"
+                              className="px-2 py-1 text-xs rounded border hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
                               onClick={() => removeEventRow(i)}
                             >Удалить</button>
                           </div>
                         ))}
-                        <button
-                          className="px-2 py-1 text-xs rounded border hover:bg-gray-50"
-                          onClick={addEventRow}
-                        >Добавить событие</button>
+                                                 <button
+                           className="px-2 py-1 text-xs rounded border hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+                           onClick={addEventRow}
+                         >Добавить событие</button>
                       </div>
                     ) : (
                       <div className="flex flex-wrap gap-2">
                         {(data[tk] || []).map((s, i) => (
-                          <span key={i} className="px-2 py-0.5 rounded border bg-gray-50">
+                                                     <span key={i} className="px-2 py-0.5 rounded border bg-gray-50 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-200">
                             {s.date.slice(0,10)} × {s.factor}
                           </span>
                         ))}
@@ -361,7 +361,7 @@ export function SplitsTab() {
                           onClick={() => beginEdit(tk)}
                         >Редактировать</button>
                         <button
-                          className="px-3 py-1.5 text-sm rounded border bg-white hover:bg-red-50 text-red-600"
+                                                     className="px-3 py-1.5 text-sm rounded border bg-white hover:bg-red-50 text-red-600 dark:border-gray-700 dark:bg-gray-800 dark:text-red-400 dark:hover:bg-red-900/30"
                           onClick={() => deleteTicker(tk)}
                           disabled={actionBusy}
                         >Удалить тикер</button>

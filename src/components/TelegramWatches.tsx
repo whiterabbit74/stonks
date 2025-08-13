@@ -115,7 +115,7 @@ export function TelegramWatches() {
         <h2 className="text-xl font-semibold text-gray-900">Мониторинг</h2>
         <button
           onClick={load}
-          className="inline-flex items-center justify-center w-9 h-9 rounded-full border border-gray-300 bg-white text-gray-600 hover:bg-gray-50 hover:text-gray-800"
+          className="inline-flex items-center justify-center w-9 h-9 rounded-full border border-gray-300 bg-white text-gray-600 hover:bg-gray-50 hover:text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
           title="Обновить список"
           aria-label="Обновить список"
         >
@@ -140,7 +140,7 @@ export function TelegramWatches() {
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm border-separate border-spacing-0">
-            <thead className="bg-gray-50">
+            <thead className="bg-gray-50 dark:bg-gray-900">
               <tr>
                 <th className="text-left p-3">Тикер</th>
                 <th className="text-left p-3">High IBS</th>
@@ -151,17 +151,17 @@ export function TelegramWatches() {
             </thead>
             <tbody className="divide-y">
               {watches.map(w => (
-                <tr key={w.symbol} className="hover:bg-gray-50">
+                <tr key={w.symbol} className="hover:bg-gray-50 dark:hover:bg-gray-800">
                   <td className="p-3 font-medium">{w.symbol}</td>
                   <td className="p-3">{w.highIBS}</td>
                   <td className="p-3">{w.thresholdPct}</td>
                   <td className="p-3">{w.entryPrice != null ? w.entryPrice.toFixed(2) : '—'}</td>
                   <td className="p-3">
                     <div className="flex items-center gap-3">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${w.isOpenPosition ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-gray-100 text-gray-600 border border-gray-200'}`}>{w.isOpenPosition ? 'Открыта' : 'Нет'}</span>
+                      <span                         className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${w.isOpenPosition ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-gray-100 text-gray-600 border border-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700'}`}>{w.isOpenPosition ? 'Открыта' : 'Нет'}</span>
                       <button
                         onClick={() => setConfirm({ open: true, symbol: w.symbol })}
-                        className="inline-flex items-center justify-center w-8 h-8 rounded-full border border-gray-300 bg-white text-gray-600 hover:bg-red-50 hover:text-red-600"
+                        className="inline-flex items-center justify-center w-8 h-8 rounded-full border border-gray-300 bg-white text-gray-600 hover:bg-red-50 hover:text-red-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-red-900/30"
                         title="Удалить из мониторинга"
                         aria-label="Удалить из мониторинга"
                       >
