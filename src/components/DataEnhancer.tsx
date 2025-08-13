@@ -246,10 +246,10 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
                     setError(null);
                     const symbol = ticker.trim().toUpperCase();
                     const end = Math.floor(Date.now() / 1000);
-                     const start = end - 40 * 365 * 24 * 60 * 60;
-                     const prov = enhancerProvider;
-                      const base = typeof window !== 'undefined' && window.location.href.includes('/stonks') ? '/stonks/api' : '/api';
-                      const resp = await fetchWithCreds(`${base}/splits/${symbol}?start=${start}&end=${end}&provider=${prov}`);
+                    const start = end - 40 * 365 * 24 * 60 * 60;
+                    const prov = enhancerProvider;
+                    const base = typeof window !== 'undefined' && window.location.href.includes('/stonks') ? '/stonks/api' : '/api';
+                    const resp = await fetchWithCreds(`${base}/splits/${symbol}?start=${start}&end=${end}&provider=${prov}`);
                     if (!resp.ok) {
                       const e = await resp.json();
                       throw new Error(e.error || 'Failed to fetch splits');
@@ -257,7 +257,6 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
                     const splits = await resp.json();
                     setSplits(splits);
                     setSuccess(`✅ Сплиты обновлены: ${splits.length}`);
-                    // Автосохранение текущего датасета со сплитами
                     if (currentDataset) {
                       await saveDatasetToServer(currentDataset.ticker, currentDataset.name);
                     }
@@ -268,12 +267,12 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
                     setIsLoading(false);
                   }
                 }}
-                                 className="w-full mt-3 inline-flex items-center justify-center gap-2 bg-purple-600 text-white px-4 py-3 rounded-lg hover:bg-purple-700 disabled:bg-gray-400 disabled:cursor-not-allowed font-medium"
-               >
-                 Запросить сплиты отдельно
-               </button>
-             </div>
-           </div>
+                className="w-full mt-3 inline-flex items-center justify-center gap-2 bg-purple-600 text-white px-4 py-3 rounded-lg hover:bg-purple-700 disabled:bg-gray-400 disabled:cursor-not-allowed font-medium"
+              >
+                Запросить сплиты отдельно
+              </button>
+            </div>
+          </div>
 
            <p className="text-xs text-gray-500 text-center mt-2">📈 Источник данных: Alpha Vantage / Finnhub через локальный сервер</p>
 
