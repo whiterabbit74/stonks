@@ -200,7 +200,8 @@ export class DatasetAPI {
    * Удалить датасет с сервера
    */
   static async deleteDataset(id: string): Promise<{ success: boolean; message: string }> {
-    const response = await fetchWithCreds(`${API_BASE_URL}/datasets/${id}`, {
+    const safeId = encodeURIComponent(id.toUpperCase());
+    const response = await fetchWithCreds(`${API_BASE_URL}/datasets/${safeId}`, {
       method: 'DELETE',
     });
     
