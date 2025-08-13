@@ -245,7 +245,7 @@ export function Results() {
         weekday: 'short',
       });
       const parts = fmt.formatToParts(new Date());
-      const map: Record<string,string> = {};
+      const map: Record<string,string> = {} as any;
       parts.forEach(p => { if (p.type !== 'literal') map[p.type] = p.value; });
       const weekdayMap: Record<string, number> = { Sun:0, Mon:1, Tue:2, Wed:3, Thu:4, Fri:5, Sat:6 };
       const weekday = weekdayMap[map.weekday] ?? 0;

@@ -172,17 +172,6 @@ function setAuthCookie(res, token, remember) {
   if (IS_PROD) parts.push('Secure');
   res.setHeader('Set-Cookie', parts.join('; '));
 }
-function clearAuthCookie(res) {
-  const parts = [
-    'auth_token=',
-    'Path=/',
-    'SameSite=Lax',
-    'Max-Age=0',
-    'HttpOnly',
-  ];
-  if (IS_PROD) parts.push('Secure');
-  res.setHeader('Set-Cookie', parts.join('; '));
-}
 function requireAuth(req, res, next) {
   if (!ADMIN_PASSWORD) return next(); // auth disabled
   if (req.method === 'OPTIONS') return next();
