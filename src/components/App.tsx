@@ -15,12 +15,6 @@ import { ThemeToggle } from './ThemeToggle';
 type Tab = 'data' | 'enhance' | 'results' | 'watches' | 'splits' | 'settings';
 
 export default function App() {
-  const [authorized, setAuthorized] = useState<boolean>(false);
-  const [checkingAuth, setCheckingAuth] = useState<boolean>(true);
-  const [loginError, setLoginError] = useState<string | null>(null);
-  const [usernameInput, setUsernameInput] = useState('');
-  const [passwordInput, setPasswordInput] = useState('');
-  const [rememberMe, setRememberMe] = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>('data');
   const [apiBuildId, setApiBuildId] = useState<string | null>(null);
   const hasAutoNavigatedRef = useRef(false);
@@ -95,23 +89,6 @@ export default function App() {
     { id: 'settings' as Tab, label: 'Настройки', enabled: true },
   ];
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const base = window.location.href.includes('/stonks') ? '/stonks/api' : '/api';
-        let headers: Record<string, string> = {};
-        try {
-          const t = window.localStorage.getItem('auth_token');
-          if (t) headers = { Authorization: `Bearer ${t}` };
-        } catch {}
-        const r = await fetch(`${base}/auth/check`, { credentials: 'include', headers });
-        if (r.ok) setAuthorized(true);
-      } catch (e) {
-        console.warn('Auth check failed', e);
-      }
-      setCheckingAuth(false);
-    })();
-  }, []);
 
   // Fetch API build id for reliable display
   useEffect(() => {
@@ -180,7 +157,7 @@ export default function App() {
         {activeTab === 'settings' && <AppSettings />}
       </main>
 
-      <Footer authorized={authorized} checkingAuth={checkingAuth} loginError={loginError} setLoginError={setLoginError} usernameInput={usernameInput} setUsernameInput={setUsernameInput} passwordInput={passwordInput} setPasswordInput={setPasswordInput} rememberMe={rememberMe} setRememberMe={setRememberMe} />
+      <Footer apiBuildId={apiBuildId} />
     </div>
   );
 }

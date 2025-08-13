@@ -21,7 +21,6 @@ export function Results() {
   const resultsQuoteProvider = useAppStore(s => s.resultsQuoteProvider);
   const resultsRefreshProvider = useAppStore(s => s.resultsRefreshProvider);
   const setSplits = useAppStore(s => s.setSplits);
-  const loadDatasetFromServer = useAppStore(s => s.loadDatasetFromServer);
   const [quote, setQuote] = useState<{ open: number|null; high: number|null; low: number|null; current: number|null; prevClose: number|null } | null>(null);
   const [quoteError, setQuoteError] = useState<string | null>(null);
   const [isTrading, setIsTrading] = useState<boolean>(false);
