@@ -17,7 +17,13 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>('data');
   const [apiBuildId, setApiBuildId] = useState<string | null>(null);
   const hasAutoNavigatedRef = useRef(false);
-  const { marketData, currentStrategy, backtestResults, runBacktest, backtestStatus, setStrategy, loadSettingsFromServer } = useAppStore() as any;
+  const marketData = useAppStore(s => s.marketData);
+  const currentStrategy = useAppStore(s => s.currentStrategy);
+  const backtestResults = useAppStore(s => s.backtestResults);
+  const runBacktest = useAppStore(s => s.runBacktest);
+  const backtestStatus = useAppStore(s => s.backtestStatus);
+  const setStrategy = useAppStore(s => s.setStrategy);
+  const loadSettingsFromServer = useAppStore(s => s.loadSettingsFromServer);
 
   // Автоматически создаем IBS стратегию когда есть данные
   useEffect(() => {
@@ -26,7 +32,7 @@ export default function App() {
       const strategy = createStrategyFromTemplate(ibsTemplate);
       setStrategy(strategy);
     }
-  }, [marketData, currentStrategy, setStrategy]);
+  }, [marketData, currentStrategy, setStrategy, loadSettingsFromServer]);
 
   // Поддержка hash-навигации (#data|#enhance|#results|#watches|#splits|#settings)
   useEffect(() => {
@@ -79,12 +85,16 @@ export default function App() {
 
 
   useEffect(() => {
-    const onUnauthorized = () => {
-      setAuthorized(false);
-      setLoginError('Сессия истекла. Пожалуйста, войдите снова.');
-    };
-    window.addEventListener('app:unauthorized', onUnauthorized);
-    return () => window.removeEventListener('app:unauthorized', onUnauthorized);
+    (async () => {
+      try {
+        const base = window.location.href.includes('/stonks') ? '/stonks/api' : '/api';
+        const r = await fetch(`${base}/auth/check`, { credentials: 'include' });
+        if (r.ok) setAuthorized(true);
+      } catch (e) {
+        console.warn('Auth check failed', e);
+      }
+      setCheckingAuth(false);
+    })();
   }, []);
 
   // Fetch API build id for reliable display
@@ -97,35 +107,86 @@ export default function App() {
           const j = await r.json();
           setApiBuildId(j?.timestamp || null);
         }
-      } catch {
-        setApiBuildId(null);
+      } catch (e) {
+        console.warn('Status fetch failed', e);
       }
     })();
   }, []);
 
-  const handleLogout = async () => {
-    try {
-      const base = window.location.href.includes('/stonks') ? '/stonks/api' : '/api';
-      await fetch(`${base}/logout`, { method: 'POST', credentials: 'include' });
-    } catch {}
-    try { window.localStorage.removeItem('auth_token'); } catch {}
-    setAuthorized(false);
-  };
+  if (checkingAuth) {
+    return <div className="min-h-screen flex items-center justify-center text-gray-600">Проверка доступа…</div>;
+  }
+
+  if (!authorized) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+        <div className="w-full max-w-sm bg-white rounded-xl border shadow p-6">
+          <h2 className="text-xl font-semibold text-gray-900 mb-1">Доступ к приложению</h2>
+          <p className="text-sm text-gray-600 mb-4">Введите пароль</p>
+          {loginError && <div className="mb-3 text-sm text-red-600">{loginError}</div>}
+          <input
+            type="email"
+            value={usernameInput}
+            onChange={(e) => setUsernameInput(e.target.value)}
+            className="w-full px-3 py-2 border rounded-md mb-3"
+            placeholder="Email"
+          />
+          <input
+            type="password"
+            value={passwordInput}
+            onChange={(e) => setPasswordInput(e.target.value)}
+            className="w-full px-3 py-2 border rounded-md mb-3"
+            placeholder="Пароль"
+          />
+          <label className="inline-flex items-center gap-2 text-sm text-gray-700 mb-4">
+            <input type="checkbox" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} />
+            Запомнить меня (30 дней)
+          </label>
+          <button
+            onClick={async () => {
+              setLoginError(null);
+              try {
+                const base = window.location.href.includes('/stonks') ? '/stonks/api' : '/api';
+                const r = await fetch(`${base}/login`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  credentials: 'include',
+                  body: JSON.stringify({ username: usernameInput, password: passwordInput, remember: rememberMe }),
+                });
+                if (!r.ok) {
+                  let msg = `${r.status} ${r.statusText}`;
+                  const err = await r.json().catch(() => null);
+                  if (err && typeof err.error === 'string') msg = err.error;
+                  throw new Error(msg);
+                }
+                setAuthorized(true);
+              } catch (e) {
+                const msg = e instanceof Error ? e.message : 'Ошибка входа';
+                setLoginError(msg);
+              }
+            }}
+            className="w-full inline-flex items-center justify-center bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700"
+          >
+            Войти
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
-      <div className="flex-1">
-        <div className="max-w-6xl mx-auto px-4 py-8">
-          {/* Header */}
-          <div className="mb-8">
-            <div className="flex items-center justify-between">
-              <div>
-                <h1 className="text-3xl font-bold text-gray-900 mb-2">
-                  IBS Trading Backtester
-                </h1>
-                <div className="text-gray-600 flex flex-wrap items-center gap-3">
-                  <span>Internal Bar Strength Mean Reversion Strategy</span>
-                </div>
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-6xl mx-auto px-4 py-8">
+        {/* Header */}
+        <div className="mb-8">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900 mb-2">
+                IBS Trading Backtester
+              </h1>
+              <div className="text-gray-600 flex flex-wrap items-center gap-3">
+                <span>Internal Bar Strength Mean Reversion Strategy</span>
+                <span className="text-xs text-gray-400 border rounded px-2 py-0.5">Build: {apiBuildId || import.meta.env.VITE_BUILD_ID || 'dev'}</span>
               </div>
               {currentStrategy && (
                 <button
@@ -277,9 +338,8 @@ export default function App() {
             </div>
           </>
         )}
-      </main>
-
-      <Footer apiBuildId={apiBuildId} />
+      </div>
+      <div className="py-4 text-center text-xs text-gray-400">Build: {import.meta.env.VITE_BUILD_ID || 'dev'}</div>
     </div>
   );
 }

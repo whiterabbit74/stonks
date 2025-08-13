@@ -169,47 +169,18 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
         });
         ibsLine.setData(ibsData);
         try {
-          ibsLine.createPriceLine({ price: 0.10, color: isDark ? '#64748b' : '#9ca3af', lineWidth: 1, lineStyle: 2, title: 'IBS 0.10' });
-          ibsLine.createPriceLine({ price: 0.75, color: isDark ? '#64748b' : '#9ca3af', lineWidth: 1, lineStyle: 2, title: 'IBS 0.75' });
+          ibsLine.createPriceLine({ price: 0.10, color: '#9ca3af', lineWidth: 1, lineStyle: 2, title: 'IBS 0.10' });
+          ibsLine.createPriceLine({ price: 0.75, color: '#9ca3af', lineWidth: 1, lineStyle: 2, title: 'IBS 0.75' });
         } catch (e) { console.warn('Failed to create price lines', e); }
         ibsSeries = ibsLine;
       }
 
       // Sync time scales in both directions (avoid feedback loops)
       try {
-        let syncing = false;
-                 const syncTo = (from: unknown, toChart: IChartApi) => {
-           if (syncing || !from) return;
-           syncing = true;
-           try {
-             const logical = from as { from: number; to: number } | undefined;
-             const timeScale: unknown = toChart.timeScale();
-             const chartTimeScale: unknown = chart.timeScale();
-             // Prefer logical range for pixel-perfect alignment
-             if (
-               logical &&
-               typeof (timeScale as unknown as { setVisibleLogicalRange?: (r: { from: number; to: number }) => void }).setVisibleLogicalRange === 'function' &&
-               typeof (chartTimeScale as unknown as { getVisibleLogicalRange?: () => { from: number; to: number } }).getVisibleLogicalRange === 'function'
-             ) {
-               (timeScale as unknown as { setVisibleLogicalRange: (r: { from: number; to: number }) => void }).setVisibleLogicalRange(logical as { from: number; to: number });
-             } else if (typeof (toChart.timeScale() as unknown as { setVisibleRange?: (r: { from?: number; to?: number }) => void }).setVisibleRange === 'function') {
-               (toChart.timeScale() as unknown as { setVisibleRange: (r: { from?: number; to?: number }) => void }).setVisibleRange(from as { from?: number; to?: number });
-             }
-           } finally {
-             syncing = false;
-           }
-         };
-        // Initial align
-        try {
-          const lr = (chart.timeScale() as unknown as { getVisibleLogicalRange?: () => { from: number; to: number } }).getVisibleLogicalRange?.();
-          if (lr) (subChart.timeScale() as unknown as { setVisibleLogicalRange?: (r: { from: number; to: number }) => void }).setVisibleLogicalRange?.(lr);
-        } catch (err) { console.warn('Initial align failed', err as Error); }
-        chart.timeScale().subscribeVisibleLogicalRangeChange?.((r: unknown) => syncTo(r, subChart));
-        subChart.timeScale().subscribeVisibleLogicalRangeChange?.((r: unknown) => syncTo(r, chart));
-        // Fallback for older versions
-                 chart.timeScale().subscribeVisibleTimeRangeChange?.((r: { from?: number; to?: number } | undefined) => !('from' in (r||{})) ? null : (subChart.timeScale() as unknown as { setVisibleRange?: (r: { from?: number; to?: number }) => void }).setVisibleRange?.(r));
-         subChart.timeScale().subscribeVisibleTimeRangeChange?.((r: { from?: number; to?: number } | undefined) => !('from' in (r||{})) ? null : (chart.timeScale() as unknown as { setVisibleRange?: (r: { from?: number; to?: number }) => void }).setVisibleRange?.(r));
-       } catch (e) { console.warn('Failed to sync time scales', e as Error); }
+        chart.timeScale().subscribeVisibleTimeRangeChange((range: any) => {
+          if (range) subChart.timeScale().setVisibleRange(range);
+        });
+      } catch (e) { console.warn('Failed to sync time scales', e); }
 
       // Add EMA20 if enabled
       if (showEMA20) {
@@ -307,8 +278,7 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
       tooltipEl.style.display = 'none';
       chartContainerRef.current.appendChild(tooltipEl);
 
-      // Crosshair sync between panes for the same time
-      chart.subscribeCrosshairMove((param: { time?: UTCTimestamp | number | string; seriesPrices?: Map<unknown, unknown>; seriesData?: Map<unknown, unknown> }) => {
+      chart.subscribeCrosshairMove((param: { time?: unknown; seriesPrices?: Map<any, any>; seriesData?: Map<any, any> }) => {
         if (!param || !param.time || !param.seriesPrices) {
           tooltipEl.style.display = 'none';
                      try {
@@ -380,7 +350,7 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
         if (subChart) { try { subChart.remove(); } catch (e) { console.warn('Error removing sub-chart on cleanup:', e); } }
         try {
           if (tooltipEl && tooltipEl.parentElement) tooltipEl.parentElement.removeChild(tooltipEl);
-        } catch (err) { console.warn('Tooltip cleanup failed', err as Error); }
+        } catch (e) { /* ignore */ }
       };
     } catch (error) {
       console.error('Error creating trading chart:', error);

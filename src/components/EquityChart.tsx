@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { createChart, type IChartApi, type ISeriesApi, type UTCTimestamp } from 'lightweight-charts';
 import type { EquityPoint } from '../types';
 
@@ -11,16 +11,6 @@ type CrosshairParam = { time?: UTCTimestamp | number | string; seriesPrices?: Ma
 export function EquityChart({ equity }: EquityChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
-  const [isDark, setIsDark] = useState<boolean>(() => typeof document !== 'undefined' ? document.documentElement.classList.contains('dark') : false);
-
-  useEffect(() => {
-    const onTheme = (e: any) => {
-      const dark = !!(e?.detail?.effectiveDark ?? document.documentElement.classList.contains('dark'));
-      setIsDark(dark);
-    };
-    window.addEventListener('themechange', onTheme);
-    return () => window.removeEventListener('themechange', onTheme);
-  }, []);
 
   useEffect(() => {
     if (!chartContainerRef.current || !equity.length) return;
@@ -66,16 +56,16 @@ export function EquityChart({ equity }: EquityChartProps) {
 
       // Area-серия с градиентом
       const equitySeries: ISeriesApi<'Area'> = chart.addAreaSeries({
-        lineColor: isDark ? '#a5b4fc' : '#6366F1',
-        topColor: isDark ? 'rgba(165, 180, 252, 0.20)' : 'rgba(99, 102, 241, 0.25)',
-        bottomColor: isDark ? 'rgba(165, 180, 252, 0.06)' : 'rgba(99, 102, 241, 0.03)',
+        lineColor: '#6366F1',
+        topColor: 'rgba(99, 102, 241, 0.25)',
+        bottomColor: 'rgba(99, 102, 241, 0.03)',
         lineWidth: 2,
         title: 'Portfolio Value',
       });
 
       // Серая линия all-time high (ATH)
       const athSeries: ISeriesApi<'Line'> = chart.addLineSeries({
-        color: isDark ? '#9CA3AF' : '#9CA3AF',
+        color: '#9CA3AF',
         lineWidth: 1,
         lineStyle: 2,
         title: 'All-Time High',
@@ -97,6 +87,8 @@ export function EquityChart({ equity }: EquityChartProps) {
       athData.push({ time: Math.floor(p.date.getTime() / 1000) as UTCTimestamp, value: runningMax });
     }
     athSeries.setData(athData);
+
+    // Убрали линию последнего значения по запросу
 
     // Простой тултип
     const tooltipEl = document.createElement('div');

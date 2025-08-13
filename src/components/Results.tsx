@@ -1,5 +1,5 @@
 import { Heart } from 'lucide-react';
-import { useEffect, useMemo, useState, useRef } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { DatasetAPI } from '../lib/api';
 import { useAppStore } from '../stores';
 import { TradingChart } from './TradingChart';
@@ -20,7 +20,9 @@ export function Results() {
   const watchThresholdPct = useAppStore(s => s.watchThresholdPct);
   const resultsQuoteProvider = useAppStore(s => s.resultsQuoteProvider);
   const resultsRefreshProvider = useAppStore(s => s.resultsRefreshProvider);
-  const setSplits = useAppStore(s => s.setSplits);
+  const updateMarketData = useAppStore(s => s.updateMarketData);
+  const updateDatasetOnServer = useAppStore(s => s.updateDatasetOnServer);
+  const saveDatasetToServer = useAppStore(s => s.saveDatasetToServer);
   const [quote, setQuote] = useState<{ open: number|null; high: number|null; low: number|null; current: number|null; prevClose: number|null } | null>(null);
   const [quoteError, setQuoteError] = useState<string | null>(null);
   const [isTrading, setIsTrading] = useState<boolean>(false);
@@ -107,35 +109,125 @@ export function Results() {
 
   // Быстрая проверка актуальности данных (ожидаем бар за предыдущий торговый день по времени NYSE / America/New_York)
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        if (!marketData || marketData.length === 0) { setIsStale(false); setStaleInfo(null); return; }
-        const lastBar = marketData[marketData.length - 1];
-        const lastBarDate = new Date(lastBar.date);
-        // Получаем ожидаемую дату бара от сервера (централизованный календарь ET)
-        const expectedYmd = await DatasetAPI.getExpectedPrevTradingDayET();
-        if (cancelled) return;
-        const lastKeyUTC = new Date(Date.UTC(
-          lastBarDate.getUTCFullYear(),
-          lastBarDate.getUTCMonth(),
-          lastBarDate.getUTCDate(),
-          0, 0, 0
-        )).toISOString().slice(0,10);
-        const stale = lastKeyUTC !== expectedYmd;
-        setIsStale(stale);
-        if (stale) {
-          const [y, m, d] = expectedYmd.split('-').map(n => parseInt(n, 10));
-          const displayDate = new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
-          setStaleInfo(`Отсутствует бар за ${displayDate.toLocaleDateString('ru-RU', { timeZone: 'America/New_York' })}`);
-        } else {
-          setStaleInfo(null);
-        }
-      } catch {
-        if (!cancelled) { setIsStale(false); setStaleInfo(null); }
+    if (!marketData || marketData.length === 0) { setIsStale(false); setStaleInfo(null); return; }
+    const lastBar = marketData[marketData.length - 1];
+    const lastBarDate = new Date(lastBar.date);
+    const now = new Date();
+
+    const getETParts = (date: Date) => {
+      const fmt = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/New_York',
+        year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'short',
+      });
+      const parts = fmt.formatToParts(date);
+      const map: Record<string,string> = {};
+      parts.forEach(p => { if (p.type !== 'literal') map[p.type] = p.value; });
+      const y = Number(map.year), m = Number(map.month), d = Number(map.day);
+      const weekdayStr = map.weekday; // e.g., Mon, Tue
+      const weekdayMap: Record<string, number> = { Sun:0, Mon:1, Tue:2, Wed:3, Thu:4, Fri:5, Sat:6 };
+      const weekday = weekdayMap[weekdayStr as keyof typeof weekdayMap] ?? 0;
+      return { y, m, d, weekday };
+    };
+    const keyFromParts = (p: {y:number;m:number;d:number}) => `${p.y}-${String(p.m).padStart(2,'0')}-${String(p.d).padStart(2,'0')}`;
+    const isWeekendET = (p: {weekday:number}) => p.weekday === 0 || p.weekday === 6;
+    const nthWeekdayOfMonth = (year: number, monthIndex0: number, weekday: number, n: number) => {
+      const first = new Date(Date.UTC(year, monthIndex0, 1));
+      // step days until ET weekday matches
+      let cursor = first;
+      while (getETParts(cursor).weekday !== weekday) {
+        const c = new Date(cursor); c.setUTCDate(c.getUTCDate()+1); cursor = c;
       }
-    })();
-    return () => { cancelled = true; };
+      for (let i=1; i<n; i++) { const c = new Date(cursor); c.setUTCDate(c.getUTCDate()+7); cursor = c; }
+      return getETParts(cursor);
+    };
+    const lastWeekdayOfMonth = (year: number, monthIndex0: number, weekday: number) => {
+      const last = new Date(Date.UTC(year, monthIndex0 + 1, 0));
+      let move = last;
+      while (getETParts(move).weekday !== weekday) {
+        const c = new Date(move); c.setUTCDate(c.getUTCDate()-1); move = c;
+      }
+      return getETParts(move);
+    };
+    const observedFixedET = (year: number, monthIndex0: number, day: number) => {
+      const base = new Date(Date.UTC(year, monthIndex0, day, 12, 0, 0));
+      const p = getETParts(base);
+      if (p.weekday === 0) { // Sunday -> Monday
+        const d = new Date(base); d.setUTCDate(d.getUTCDate()+1); return getETParts(d);
+      }
+      if (p.weekday === 6) { // Saturday -> Friday
+        const d = new Date(base); d.setUTCDate(d.getUTCDate()-1); return getETParts(d);
+      }
+      return p;
+    };
+    const easterUTC = (year: number) => {
+      const a = year % 19;
+      const b = Math.floor(year / 100);
+      const c = year % 100;
+      const d = Math.floor(b / 4);
+      const e = b % 4;
+      const f = Math.floor((b + 8) / 25);
+      const g = Math.floor((b - f + 1) / 3);
+      const h = (19 * a + b - d - g + 15) % 30;
+      const i = Math.floor(c / 4);
+      const k = c % 4;
+      const l = (32 + 2 * e + 2 * i - h - k) % 7;
+      const m = Math.floor((a + 11 * h + 22 * l) / 451);
+      const month = Math.floor((h + l - 7 * m + 114) / 31) - 1;
+      const day = ((h + l - 7 * m + 114) % 31) + 1;
+      return new Date(Date.UTC(year, month, day, 12, 0, 0));
+    };
+    const goodFridayET = (year: number) => {
+      const easter = easterUTC(year);
+      const gf = new Date(easter); gf.setUTCDate(gf.getUTCDate()-2); return getETParts(gf);
+    };
+    const nyseHolidaySetET = (year: number) => {
+      const keys = new Set<string>();
+      keys.add(keyFromParts(observedFixedET(year, 0, 1)));  // New Year’s Day
+      keys.add(keyFromParts(observedFixedET(year, 5, 19))); // Juneteenth
+      keys.add(keyFromParts(observedFixedET(year, 6, 4)));  // Independence Day
+      keys.add(keyFromParts(observedFixedET(year, 11, 25))); // Christmas
+      keys.add(keyFromParts(nthWeekdayOfMonth(year, 0, 1, 3))); // MLK Day (Mon)
+      keys.add(keyFromParts(nthWeekdayOfMonth(year, 1, 1, 3))); // Presidents’ Day (Mon)
+      keys.add(keyFromParts(goodFridayET(year))); // Good Friday
+      keys.add(keyFromParts(lastWeekdayOfMonth(year, 4, 1))); // Memorial Day (Mon)
+      keys.add(keyFromParts(nthWeekdayOfMonth(year, 8, 1, 1))); // Labor Day (Mon)
+      keys.add(keyFromParts(nthWeekdayOfMonth(year, 10, 4, 4))); // Thanksgiving (Thu)
+      return keys;
+    };
+    const isHolidayET = (p: {y:number;m:number;d:number}) => nyseHolidaySetET(p.y).has(keyFromParts(p));
+    const previousTradingDayET = (fromUTC: Date) => {
+      let cursor = new Date(fromUTC);
+      // step back at least one day
+      cursor.setUTCDate(cursor.getUTCDate()-1);
+      while (true) {
+        const parts = getETParts(cursor);
+        if (!isWeekendET(parts) && !isHolidayET(parts)) return parts;
+        cursor.setUTCDate(cursor.getUTCDate()-1);
+      }
+    };
+
+    const expectedParts = previousTradingDayET(now);
+    // Сравниваем в UTC-ключах, чтобы не было сдвига дат между UTC и ET
+    const lastKeyUTC = new Date(Date.UTC(
+      lastBarDate.getUTCFullYear(),
+      lastBarDate.getUTCMonth(),
+      lastBarDate.getUTCDate(),
+      0, 0, 0
+    )).toISOString().slice(0,10);
+    const expectedKeyUTC = new Date(Date.UTC(
+      expectedParts.y,
+      expectedParts.m - 1,
+      expectedParts.d,
+      0, 0, 0
+    )).toISOString().slice(0,10);
+    const stale = lastKeyUTC !== expectedKeyUTC;
+    setIsStale(stale);
+    if (stale) {
+      const displayDate = new Date(Date.UTC(expectedParts.y, expectedParts.m - 1, expectedParts.d, 12, 0, 0));
+      setStaleInfo(`Отсутствует бар за ${displayDate.toLocaleDateString('ru-RU', { timeZone: 'America/New_York' })}`);
+    } else {
+      setStaleInfo(null);
+    }
   }, [marketData]);
 
   // Авто-пуллинг котировок (пропускаем вызовы API в выходные/вне торговых часов)
@@ -301,9 +393,8 @@ export function Results() {
             </div>
 
             {/* Источник/время */}
-              <div className="flex flex-wrap items-center gap-3 text-xs text-gray-500">
-              <span className="px-2 py-0.5 rounded bg-gray-100 border dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700">Котировки: { (resultsQuoteProvider === 'alpha_vantage') ? 'Alpha Vantage' : 'Finnhub' }</span>
-              <span className="px-2 py-0.5 rounded bg-gray-100 border dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700">Актуализация: { (resultsRefreshProvider === 'alpha_vantage') ? 'Alpha Vantage' : 'Finnhub' }</span>
+            <div className="flex flex-wrap items-center gap-3 text-xs text-gray-500">
+              <span className="px-2 py-0.5 rounded bg-gray-100 border">Источник: { (resultsQuoteProvider === 'alpha_vantage') ? 'Alpha Vantage' : 'Finnhub' }</span>
               {lastUpdatedAt && (
                 <span className="px-2 py-0.5 rounded bg-gray-100 border dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700">Обновлено: {lastUpdatedAt.toLocaleTimeString('ru-RU')}</span>
               )}
@@ -327,10 +418,54 @@ export function Results() {
                     if (!symbol) return;
                     setRefreshing(true); setRefreshError(null);
                     try {
-                      // Единый серверный refresh по тикеру
-                      await DatasetAPI.refreshDataset(symbol, resultsRefreshProvider || 'finnhub');
-                      // Перезагрузим активный датасет и снимем флаг «устарело»
-                      try { await useAppStore.getState().loadDatasetFromServer(symbol); } catch { /* ignore */ }
+                      // запрашиваем хвост с небольшим запасом (5 торговых дней)
+                      const lastBarDate = new Date(marketData[marketData.length - 1].date);
+                      const start = new Date(lastBarDate);
+                      start.setUTCDate(start.getUTCDate() - 7);
+                      const startTs = Math.floor(start.getTime() / 1000);
+                      const endTs = Math.floor(Date.now() / 1000);
+                      const prov = resultsRefreshProvider || 'finnhub';
+                       const base = window.location.href.includes('/stonks') ? '/stonks/api' : '/api';
+                      const url = `${base}/yahoo-finance/${encodeURIComponent(symbol)}?start=${startTs}&end=${endTs}&provider=${prov}`;
+                      const resp = await fetch(url, { credentials: 'include' });
+                      if (!resp.ok) {
+                        let msg = `${resp.status} ${resp.statusText}`;
+                        try { const e = await resp.json(); msg = e.error || msg; } catch {}
+                        throw new Error(msg);
+                      }
+                      const json = await resp.json();
+                      const rows = Array.isArray(json) ? json : Array.isArray(json?.data) ? json.data : [];
+                      if (!Array.isArray(rows) || rows.length === 0) {
+                        // если ничего не пришло, просто снимем флаг как не критичный (возможно ещё нет публикации)
+                        setIsStale(false);
+                        setStaleInfo(null);
+                        setRefreshing(false);
+                        return;
+                      }
+                      // Преобразуем и смержим
+                      const { parseOHLCDate, adjustOHLCForSplits } = await import('../lib/utils');
+                      const incoming = rows.map((r: { date: string; open: number; high: number; low: number; close: number; adjClose?: number; volume: number; }) => ({
+                        date: parseOHLCDate(r.date), open: r.open, high: r.high, low: r.low, close: r.close, adjClose: r.adjClose, volume: r.volume,
+                      }));
+                      const existingDates = new Set(marketData.map((d) => d.date.toDateString()));
+                      const filtered = incoming.filter((d: { date: Date }) => !existingDates.has(d.date.toDateString()));
+                      if (filtered.length) {
+                         // Сливаем и применяем бэк-аджаст по уже известным сплитам
+                         const merged = [...marketData, ...filtered].sort((a, b) => a.date.getTime() - b.date.getTime());
+                         const finalData = adjustOHLCForSplits(merged, currentSplits);
+                         updateMarketData(finalData);
+                         // Сохраняем изменения на сервере (переименуем файл при смене последней даты)
+                         try {
+                           if (currentDataset && currentDataset.name) {
+                             await updateDatasetOnServer();
+                           } else if (symbol) {
+                             await saveDatasetToServer(symbol);
+                           }
+                         } catch (e) {
+                           const msg = e instanceof Error ? e.message : 'Не удалось сохранить изменения на сервере';
+                           setRefreshError(msg);
+                         }
+                      }
                       setIsStale(false);
                       setStaleInfo(null);
                     } catch (e) {
@@ -672,7 +807,7 @@ export function Results() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {trades.map((trade, index: number) => {
+              {trades.map((trade: any, index: number) => {
                 const investment = trade.context?.initialInvestment || (trade.quantity * trade.entryPrice);
                 return (
                   <tr key={index} className="hover:bg-gray-50 dark:hover:bg-gray-800/60">
@@ -731,9 +866,9 @@ export function Results() {
                 <tr className="font-bold text-base">
                   <td className="p-4 text-gray-700" colSpan={8}>ИТОГО ({trades.length} сделок)</td>
                   <td className={`p-4 text-right font-mono font-bold text-lg ${
-                    trades.reduce((sum: number, t) => sum + t.pnl, 0) > 0 ? 'text-green-600' : 'text-red-600'
+                    trades.reduce((sum: number, t: any) => sum + t.pnl, 0) > 0 ? 'text-green-600' : 'text-red-600'
                   }`}>
-                    ${trades.reduce((sum: number, t) => sum + t.pnl, 0).toFixed(2)}
+                    ${trades.reduce((sum: number, t: any) => sum + t.pnl, 0).toFixed(2)}
                   </td>
                   <td className={`p-4 text-right font-mono font-bold text-lg ${
                     metrics.totalReturn > 0 ? 'text-green-600 dark:text-emerald-300' : 'text-red-600 dark:text-red-300'

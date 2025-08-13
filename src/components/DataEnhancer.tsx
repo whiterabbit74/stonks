@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { TrendingUp, AlertCircle, CheckCircle } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { RefreshCw, Calendar, TrendingUp, AlertCircle, CheckCircle, Download } from 'lucide-react';
 import { useAppStore } from '../stores';
 import type { OHLCData } from '../types';
 import { parseOHLCDate, adjustOHLCForSplits } from '../lib/utils';
@@ -20,12 +20,66 @@ interface YahooFinanceData {
 }
 
 export function DataEnhancer({ onNext }: DataEnhancerProps) {
-  // Упрощённая страница: только загрузка новых тикеров
-  const { updateMarketData, saveDatasetToServer, setSplits, enhancerProvider, loadDatasetsFromServer } = useAppStore();
+  const { marketData, currentDataset, updateMarketData, saveDatasetToServer, updateDatasetOnServer, loadDatasetFromServer, setSplits, enhancerProvider, savedDatasets } = useAppStore();
   const [ticker, setTicker] = useState('AAPL');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [dataGaps, setDataGaps] = useState<{ missing: number; lastDate: string; firstDate: string } | null>(null);
+  const [selectedAction, setSelectedAction] = useState<'enhance' | 'replace'>('enhance');
+  const [mode, setMode] = useState<'existing' | 'new'>('new');
+  const { loadDatasetsFromServer } = useAppStore();
+  // Убрали промпт ручного сохранения
+  // Всегда грузим всю доступную историю (~до 40 лет), выбор периода убран
+  const [isUpToDate, setIsUpToDate] = useState(false);
+
+  // При смене режима очищаем сообщения, чтобы не путать пользователя
+  useEffect(() => {
+    setError(null);
+    setSuccess(null);
+  }, [mode]);
+
+  // Синхронизируем действие с выбранным режимом: existing -> enhance, new -> replace
+  useEffect(() => {
+    setSelectedAction(mode === 'existing' ? 'enhance' : 'replace');
+  }, [mode]);
+
+  // Анализируем пропуски в данных при загрузке компонента
+  useEffect(() => {
+    if (marketData.length > 0) {
+      analyzeDataGaps();
+      // Устанавливаем тикер из текущего датасета если есть
+      if (currentDataset?.ticker) {
+        setTicker(currentDataset.ticker);
+      }
+    }
+  }, [marketData, currentDataset, analyzeDataGaps]);
+
+  const analyzeDataGaps = useCallback(() => {
+    if (marketData.length === 0) return;
+
+    const sortedData = [...marketData].sort((a, b) => a.date.getTime() - b.date.getTime());
+    const firstDate = sortedData[0].date;
+    const lastDate = sortedData[sortedData.length - 1].date;
+    const today = new Date();
+    
+    // Подсчитываем примерное количество торговых дней (исключая выходные)
+    const daysDiff = Math.floor((today.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24));
+    const tradingDays = Math.floor(daysDiff * 5/7); // Примерно 5 торговых дней в неделю
+    
+    const missing = Math.max(0, tradingDays);
+    setDataGaps({
+      missing,
+      lastDate: lastDate.toLocaleDateString('en-US', { timeZone: 'America/New_York' }),
+      firstDate: firstDate.toLocaleDateString('en-US', { timeZone: 'America/New_York' })
+    });
+    setIsUpToDate(missing === 0);
+    if (missing === 0) {
+      // убираем старые статусы, чтобы не плодить сообщения
+      setSuccess(null);
+      setError(null);
+    }
+  }, [marketData]);
 
   const getStartDateForPeriod = (): Date => {
     const now = new Date();
@@ -35,6 +89,7 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
   };
 
   type FetchResult = { data: YahooFinanceData[]; splits: { date: string; factor: number }[] };
+  const fetchWithCreds = (input: RequestInfo | URL, init?: RequestInit) => fetch(input, { credentials: 'include', ...(init || {}) });
   const fetchRealMarketData = async (symbol: string, startDate: Date): Promise<FetchResult> => {
     const endDate = new Date();
     const start = Math.floor(startDate.getTime() / 1000);
@@ -97,13 +152,32 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
         setSplits(splitEvents);
       }
       
-      // Автосохранение нового тикера как датасета на сервере
-      try {
-        await saveDatasetToServer(ticker.toUpperCase());
-        await loadDatasetsFromServer();
-        setSuccess((prev) => (prev ? prev + ' • ' : '') + '✅ Saved to server');
-      } catch {
-        setError('Не удалось автоматически сохранить датасет. Проверьте сервер и повторите.');
+      // Автосохранение
+      if (mode === 'new') {
+        // Для нового тикера — автосохранение без промпта (новый файл)
+        try {
+          const autoName = `${ticker.toUpperCase()}_${new Date().toISOString().split('T')[0]}`;
+          await saveDatasetToServer(ticker.toUpperCase(), autoName);
+          await loadDatasetsFromServer();
+          setSuccess((prev) => (prev ? prev + ' • ' : '') + `✅ Автосохранено как "${autoName}"`);
+        } catch {
+          setError('Не удалось автоматически сохранить датасет. Проверьте сервер и повторите.');
+        }
+      } else if (mode === 'existing') {
+        // Для обновления существующего — если известен текущий датасет, перезаписываем его (с возможным переименованием файла)
+        try {
+          if (!currentDataset || !currentDataset.name) {
+            // Если датасет не загружен — загрузим первый подходящий по тикеру (если есть)
+            const candidate = savedDatasets.find(d => d.ticker.toUpperCase() === ticker.toUpperCase());
+            if (candidate) {
+              await loadDatasetFromServer(candidate.name);
+            }
+          }
+          await updateDatasetOnServer();
+          setSuccess((prev) => (prev ? prev + ' • ' : '') + `✅ Изменения сохранены`);
+        } catch {
+          setError('Не удалось сохранить изменения. Проверьте сервер и повторите.');
+        }
       }
 
     } catch (err) {
@@ -165,23 +239,44 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
             </div>
           </div>
 
-          <button
-            onClick={handleLoadNewTicker}
-            disabled={isLoading || !ticker.trim()}
-            className="w-full inline-flex items-center justify-center gap-2 bg-blue-600 text-white px-4 py-3 rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed font-medium"
-          >
-            {isLoading ? (
-              <>
-                <TrendingUp className="w-4 h-4 animate-pulse" />
-                Загрузка данных...
-              </>
-            ) : (
-              <>
-                <TrendingUp className="w-4 h-4" />
-                Загрузить данные
-              </>
-            )}
-          </button>
+              {/* Кнопка: запросить сплиты отдельно и сохранить */}
+              <button
+                onClick={async () => {
+                  try {
+                    setIsLoading(true);
+                    setError(null);
+                    const symbol = ticker.trim().toUpperCase();
+                    const end = Math.floor(Date.now() / 1000);
+                     const start = end - 40 * 365 * 24 * 60 * 60;
+                     const prov = enhancerProvider;
+                      const base = typeof window !== 'undefined' && window.location.href.includes('/stonks') ? '/stonks/api' : '/api';
+                      const resp = await fetchWithCreds(`${base}/splits/${symbol}?start=${start}&end=${end}&provider=${prov}`);
+                    if (!resp.ok) {
+                      const e = await resp.json();
+                      throw new Error(e.error || 'Failed to fetch splits');
+                    }
+                    const splits = await resp.json();
+                    setSplits(splits);
+                    setSuccess(`✅ Сплиты обновлены: ${splits.length}`);
+                    // Автосохранение текущего датасета со сплитами
+                    if (currentDataset) {
+                      await saveDatasetToServer(currentDataset.ticker, currentDataset.name);
+                    }
+                  } catch (e) {
+                    const msg = e instanceof Error ? e.message : 'Не удалось получить сплиты';
+                    setError(msg);
+                  } finally {
+                    setIsLoading(false);
+                  }
+                }}
+                className="w-full mt-3 inline-flex items-center justify-center gap-2 bg-purple-600 text-white px-4 py-3 rounded-lg hover:bg-purple-700 disabled:bg-gray-400 disabled:cursor-not-allowed font-medium"
+              >
+                Запросить сплиты отдельно
+              </button>
+            </>
+          ) : (
+            <>
+              {/* Выбор периода убран: всегда максимальная история */}
 
           <p className="text-xs text-gray-500 text-center mt-2">📈 Источник данных: Alpha Vantage / Finnhub через локальный сервер</p>
         </div>

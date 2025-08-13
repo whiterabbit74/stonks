@@ -46,8 +46,8 @@ export function StrategySettings({ strategy, onSave, onClose, mode = 'modal' }: 
       parameters: defaults.parameters || strategy.parameters,
       entryConditions: defaults.entryConditions || strategy.entryConditions,
       exitConditions: defaults.exitConditions || strategy.exitConditions,
-      riskManagement: (defaults.riskManagement || strategy.riskManagement) as Strategy['riskManagement'],
-      positionSizing: (defaults.positionSizing || strategy.positionSizing) as Strategy['positionSizing'],
+      riskManagement: defaults.riskManagement || strategy.riskManagement,
+      positionSizing: defaults.positionSizing || strategy.positionSizing,
       type: strategy.type,
     });
   };

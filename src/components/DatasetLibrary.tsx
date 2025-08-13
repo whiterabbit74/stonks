@@ -11,7 +11,6 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
   const currentDataset = useAppStore(s => s.currentDataset);
   const currentStrategy = useAppStore(s => s.currentStrategy);
   const setStrategy = useAppStore(s => s.setStrategy);
-  const resultsRefreshProvider = useAppStore(s => s.resultsRefreshProvider);
   const loadDatasetFromServer = useAppStore(s => s.loadDatasetFromServer);
   const deleteDatasetFromServer = useAppStore(s => s.deleteDatasetFromServer);
   const exportDatasetAsJSON = useAppStore(s => s.exportDatasetAsJSON);

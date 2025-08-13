@@ -307,7 +307,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   updateDatasetOnServer: async () => {
-    const { currentDataset, marketData } = get();
+    const { currentDataset, marketData, currentSplits } = get();
     if (!currentDataset) {
       set({ error: 'Нет загруженного датасета для обновления' });
       return;
@@ -322,15 +322,15 @@ export const useAppStore = create<AppState>((set, get) => ({
         name: currentDataset.name,
         ticker: currentDataset.ticker,
         data: [...marketData],
+        splits: currentSplits && currentSplits.length ? [...currentSplits] : undefined,
         uploadDate: new Date().toISOString(),
         dataPoints: marketData.length,
         dateRange: {
           from: marketData[0].date.toISOString().split('T')[0],
           to: marketData[marketData.length - 1].date.toISOString().split('T')[0],
         },
-      } as SavedDataset;
-      // Используем стабильный ID по тикеру, а не name
-      await DatasetAPI.updateDataset(currentDataset.ticker, updated);
+      };
+      await DatasetAPI.updateDataset(currentDataset.name, updated);
       await get().loadDatasetsFromServer();
       set({ currentDataset: updated, isLoading: false });
       console.log(`Датасет обновлён на сервере: ${updated.name}`);

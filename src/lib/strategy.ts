@@ -240,7 +240,7 @@ export function getStrategyTemplateById(id: string) {
   return STRATEGY_TEMPLATES.find(t => t.id === id);
 }
 
-export function createStrategyFromTemplate(template: { id: string; defaultStrategy: Pick<Strategy, 'name' | 'description' | 'entryConditions' | 'exitConditions' | 'parameters'> }, customId?: string): Strategy {
+export function createStrategyFromTemplate(template: any, customId?: string): Strategy {
   const defaultStrategy = template.defaultStrategy as Pick<Strategy, 'name' | 'description' | 'entryConditions' | 'exitConditions' | 'parameters'>;
   const base = createDefaultStrategy();
   const strategyObj2 = {

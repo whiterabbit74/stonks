@@ -9,22 +9,11 @@ export const API_BASE_URL: string = (() => {
       if (href.includes('/stonks')) return '/stonks/api';
     }
   } catch {
-    /* ignore, default to '/api' */
+    // ignore, default to '/api'
   }
   return '/api';
 })();
-export const fetchWithCreds = async (input: RequestInfo | URL, init?: RequestInit) => {
-  let token: string | null = null;
-  try {
-    if (typeof window !== 'undefined' && window.localStorage) {
-      token = window.localStorage.getItem('auth_token');
-    }
-      } catch { /* ignore */ }
-
-  const lowerHeaderKeys = (init?.headers && typeof init.headers === 'object')
-    ? Object.keys(init.headers as Record<string, unknown>).reduce<Record<string, true>>((acc, k) => { acc[k.toLowerCase()] = true; return acc; }, {})
-    : {};
-
+const fetchWithCreds = (input: RequestInfo | URL, init?: RequestInit) => {
   const merged: RequestInit = {
     credentials: 'include',
     cache: 'no-store',
@@ -32,18 +21,9 @@ export const fetchWithCreds = async (input: RequestInfo | URL, init?: RequestIni
     headers: {
       'Cache-Control': 'no-store',
       ...(init?.headers || {}),
-      ...(token && !('authorization' in lowerHeaderKeys) ? { Authorization: `Bearer ${token}` } : {}),
     },
   };
-  const response = await fetch(input, merged);
-  if (response.status === 401) {
-    try {
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('app:unauthorized'));
-      }
-    } catch {}
-  }
-  return response;
+  return fetch(input, merged);
 };
 
 export class DatasetAPI {
