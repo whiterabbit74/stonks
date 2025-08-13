@@ -13,7 +13,7 @@ export const API_BASE_URL: string = (() => {
   }
   return '/api';
 })();
-const fetchWithCreds = (input: RequestInfo | URL, init?: RequestInit) => {
+export const fetchWithCreds = (input: RequestInfo | URL, init?: RequestInit) => {
   const merged: RequestInit = {
     credentials: 'include',
     cache: 'no-store',
