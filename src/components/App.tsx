@@ -15,7 +15,6 @@ import { ThemeToggle } from './ThemeToggle';
 type Tab = 'data' | 'enhance' | 'results' | 'watches' | 'splits' | 'settings';
 
 export default function App() {
-  const [authorized, setAuthorized] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<Tab>('data');
   const [apiBuildId, setApiBuildId] = useState<string | null>(null);
   const [usernameInput, setUsernameInput] = useState<string>('');
@@ -104,24 +103,6 @@ export default function App() {
     { id: 'settings' as Tab, label: 'Настройки', enabled: true },
   ] as const;
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const base = window.location.href.includes('/stonks') ? '/stonks/api' : '/api';
-        let headers: Record<string, string> = {};
-        try {
-          const t = window.localStorage.getItem('auth_token');
-          if (t) headers = { Authorization: `Bearer ${t}` };
-        } catch { void 0; }
-        const r = await fetch(`${base}/auth/check`, { credentials: 'include', headers });
-        if (r.ok) setAuthorized(true);
-      } catch (e) {
-        console.warn('Auth check failed', e);
-      } finally {
-        setCheckingAuth(false);
-      }
-    })();
-  }, []);
 
   useEffect(() => {
     const onUnauthorized = () => {
