@@ -35,10 +35,6 @@ export default function App() {
   const [rememberMe, setRememberMe] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
 
-  // Загружаем настройки один раз при монтировании
-  useEffect(() => {
-    loadSettingsFromServer();
-  }, [loadSettingsFromServer]);
 
   // Автоматически создаем IBS стратегию когда есть данные
   useEffect(() => {
@@ -144,7 +140,11 @@ export default function App() {
       try {
         const base = window.location.href.includes('/stonks') ? '/stonks/api' : '/api';
         const r = await fetch(`${base}/auth/check`, { credentials: 'include' });
-        if (r.ok) setAuthorized(true);
+        if (r.ok) {
+          setAuthorized(true);
+          try { await loadSettingsFromServer(); } catch {}
+          try { await loadDatasetsFromServer(); } catch {}
+        }
       } catch (e) {
         console.warn('Auth check failed', e);
       }
