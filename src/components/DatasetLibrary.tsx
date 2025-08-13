@@ -15,6 +15,7 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
   const deleteDatasetFromServer = useAppStore(s => s.deleteDatasetFromServer);
   const exportDatasetAsJSON = useAppStore(s => s.exportDatasetAsJSON);
   const loadDatasetsFromServer = useAppStore(s => s.loadDatasetsFromServer);
+  const resultsRefreshProvider = useAppStore(s => s.resultsRefreshProvider);
   const runBacktest = useAppStore(s => s.runBacktest);
   const [isExpanded, setIsExpanded] = useState(true);
   const [refreshingId, setRefreshingId] = useState<string | null>(null);

@@ -201,7 +201,7 @@ export default function App() {
             {!authorized && (
               <button
                 onClick={() => setShowLogin(true)}
-                className="inline-flex items-center gap-2 text-sm text-indigo-600 hover:text-indigo-700"
+                className="inline-flex items-center gap-2 text-sm text-indigo-600 hover:text-indigo-700 underline underline-offset-2"
               >
                 Войти
               </button>
