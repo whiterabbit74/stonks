@@ -159,7 +159,7 @@ function ProtectedLayout() {
         <div className="mb-4">
           <nav className="flex gap-2 flex-wrap">
             {tabs.map(t => (
-              <NavLink key={t.to} to={t.to} className={({ isActive }) => `px-3 py-1 rounded text-sm border ${isActive ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white hover:bg-gray-50 text-gray-700 border-gray-200'}`}>
+                             <NavLink key={t.to} to={t.to} className={({ isActive }) => `px-3 py-1 rounded text-sm border ${isActive ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white hover:bg-gray-50 text-gray-700 border-gray-200 dark:bg-gray-900 dark:text-gray-200 dark:border-gray-800 dark:hover:bg-gray-800'}`}>
                 {t.label}
               </NavLink>
             ))}
@@ -218,8 +218,8 @@ function LoginPage() {
         </div>
       </header>
 
-      <main className="flex-1 flex items-center justify-center px-4">
-        <div className="w-full max-w-sm rounded-lg bg-white p-4 shadow-lg border dark:bg-slate-900 dark:border-slate-800">
+             <main className="flex-1 flex items-center justify-center px-4">
+        <div className="w-full max-w-sm rounded-lg bg-white p-4 shadow-lg border dark:bg-gray-900 dark:border-gray-800">
           <h2 className="text-lg font-semibold mb-3">Вход</h2>
           {loginError && (
             <div className="mb-2 text-sm text-red-600">{loginError}</div>
@@ -227,11 +227,11 @@ function LoginPage() {
           <form onSubmit={handleLogin} className="space-y-3">
             <div>
               <label className="block text-sm mb-1">Email</label>
-              <input type="email" value={username} onChange={e => setUsername(e.target.value)} className="w-full rounded border px-3 py-2 bg-white dark:bg-gray-800 dark:border-gray-700" placeholder="you@example.com" autoFocus />
+                             <input type="email" value={username} onChange={e => setUsername(e.target.value)} className="w-full rounded border px-3 py-2 bg-white dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100" placeholder="you@example.com" autoFocus />
             </div>
             <div>
               <label className="block text-sm mb-1">Пароль</label>
-              <input type="password" value={password} onChange={e => setPassword(e.target.value)} className="w-full rounded border px-3 py-2 bg-white dark:bg-gray-800 dark:border-gray-700" placeholder="••••••••" />
+                             <input type="password" value={password} onChange={e => setPassword(e.target.value)} className="w-full rounded border px-3 py-2 bg-white dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100" placeholder="••••••••" />
             </div>
             <label className="inline-flex items-center gap-2 text-sm">
               <input type="checkbox" checked={remember} onChange={e => setRemember(e.target.checked)} />

@@ -97,10 +97,10 @@ export function StrategySettings({ strategy, onSave, onClose, mode = 'modal' }: 
           )}
         </div>
         {mode === 'modal' && (
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-gray-100 rounded-lg"
-          >
+                      <button
+              onClick={onClose}
+              className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg"
+            >
             <X className="w-5 h-5" />
           </button>
         )}
