@@ -14,9 +14,6 @@ export function AppSettings() {
   const setEnhancerProvider = useAppStore(s => s.setEnhancerProvider);
   const watchThresholdPct = useAppStore(s => s.watchThresholdPct);
   const setWatchThresholdPct = useAppStore(s => s.setWatchThresholdPct);
-  const currentStrategy = useAppStore(s => s.currentStrategy);
-  const setStrategy = useAppStore(s => s.setStrategy);
-  const runBacktest = useAppStore(s => s.runBacktest);
 
   useEffect(() => { loadSettingsFromServer(); }, [loadSettingsFromServer]);
 
@@ -57,19 +54,6 @@ export function AppSettings() {
   return (
     <div className="space-y-4">
       <h2 className="text-xl font-semibold text-gray-900">Настройки</h2>
-
-      {/* Параметры стратегии */}
-      {currentStrategy && (
-        <div className="p-4 rounded-lg border">
-          <div className="text-sm font-medium text-gray-700 mb-3">Параметры стратегии</div>
-          <StrategySettings
-            strategy={currentStrategy}
-            onSave={(updated) => { setStrategy(updated); runBacktest(); }}
-            onClose={() => {}}
-            mode="inline"
-          />
-        </div>
-      )}
 
       {/* Уведомления */}
       <div className="p-4 rounded-lg border">

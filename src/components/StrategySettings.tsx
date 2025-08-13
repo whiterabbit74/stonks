@@ -12,7 +12,6 @@ interface StrategySettingsProps {
 export function StrategySettings({ strategy, onSave, onClose, mode = 'modal' }: StrategySettingsProps & { mode?: 'modal' | 'inline' }) {
   const [editedStrategy, setEditedStrategy] = useState<Strategy>({ ...strategy });
 
-
   const handleParameterChange = (key: string, value: number) => {
     setEditedStrategy(prev => ({
       ...prev,
@@ -35,7 +34,7 @@ export function StrategySettings({ strategy, onSave, onClose, mode = 'modal' }: 
 
   const handleSave = async () => {
     onSave(editedStrategy);
-    if (mode === 'modal') onClose();
+    onClose();
   };
 
   const handleReset = () => {
@@ -188,84 +187,6 @@ export function StrategySettings({ strategy, onSave, onClose, mode = 'modal' }: 
                   value={editedStrategy.riskManagement.capitalUsage}
                   onChange={(e) => handleRiskManagementChange('capitalUsage', Number(e.target.value))}
                   className="w-20 px-3 py-2 border border-gray-300 rounded-md text-sm"
-                />
-                <span className="text-sm text-gray-500">%</span>
-              </div>
-            </div>
-
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <label className="block text-sm font-medium text-gray-700">
-                   Стоп‑лосс (%)
-                </label>
-                <label className="flex items-center gap-2 text-sm text-gray-700">
-                  <input
-                    type="checkbox"
-                    checked={!!editedStrategy.riskManagement.useStopLoss}
-                    onChange={(e) => handleRiskManagementChange('useStopLoss', e.target.checked)}
-                  />
-                  Использовать
-                </label>
-              </div>
-              <div className="flex items-center gap-4">
-                <input
-                  type="range"
-                  min={0}
-                  max={10}
-                  step={0.5}
-                  value={(editedStrategy.riskManagement.stopLoss ?? 0)}
-                  onChange={(e) => handleRiskManagementChange('stopLoss', Number(e.target.value))}
-                  className="flex-1"
-                  disabled={!editedStrategy.riskManagement.useStopLoss}
-                />
-                <input
-                  type="number"
-                  min={0}
-                  max={10}
-                  step={0.5}
-                  value={(editedStrategy.riskManagement.stopLoss ?? 0)}
-                  onChange={(e) => handleRiskManagementChange('stopLoss', Number(e.target.value))}
-                  className="w-20 px-3 py-2 border border-gray-300 rounded-md text-sm"
-                  disabled={!editedStrategy.riskManagement.useStopLoss}
-                />
-                <span className="text-sm text-gray-500">%</span>
-              </div>
-            </div>
-
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <label className="block text-sm font-medium text-gray-700">
-                   Тейк‑профит (%)
-                </label>
-                <label className="flex items-center gap-2 text-sm text-gray-700">
-                  <input
-                    type="checkbox"
-                    checked={!!editedStrategy.riskManagement.useTakeProfit}
-                    onChange={(e) => handleRiskManagementChange('useTakeProfit', e.target.checked)}
-                  />
-                  Использовать
-                </label>
-              </div>
-              <div className="flex items-center gap-4">
-                <input
-                  type="range"
-                  min={0}
-                  max={10}
-                  step={0.5}
-                  value={(editedStrategy.riskManagement.takeProfit ?? 0)}
-                  onChange={(e) => handleRiskManagementChange('takeProfit', Number(e.target.value))}
-                  className="flex-1"
-                  disabled={!editedStrategy.riskManagement.useTakeProfit}
-                />
-                <input
-                  type="number"
-                  min={0}
-                  max={10}
-                  step={0.5}
-                  value={(editedStrategy.riskManagement.takeProfit ?? 0)}
-                  onChange={(e) => handleRiskManagementChange('takeProfit', Number(e.target.value))}
-                  className="w-20 px-3 py-2 border border-gray-300 rounded-md text-sm"
-                  disabled={!editedStrategy.riskManagement.useTakeProfit}
                 />
                 <span className="text-sm text-gray-500">%</span>
               </div>

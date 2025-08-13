@@ -34,7 +34,6 @@ export function Results() {
   const [watching, setWatching] = useState(false);
   const [watchBusy, setWatchBusy] = useState(false);
   const [, setSplitsError] = useState<string | null>(null);
-  const fetchedSplitsForSymbolRef = useRef<string | null>(null);
   
   // Проверка дублей дат в marketData (ключ YYYY-MM-DD)
   const { hasDuplicateDates, duplicateDateKeys } = useMemo(() => {
