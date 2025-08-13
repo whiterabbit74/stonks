@@ -274,7 +274,7 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
                </button>
              </div>
            </div>
- 
+
            <p className="text-xs text-gray-500 text-center mt-2">📈 Источник данных: Alpha Vantage / Finnhub через локальный сервер</p>
 
       {/* Error and success messages */}
