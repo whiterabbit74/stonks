@@ -160,7 +160,17 @@ function getAuthTokenFromHeader(req) {
 function createToken() {
   return crypto.randomUUID().replace(/-/g, '').slice(0, 32);
 }
-function setAuthCookie(res, token, remember) {
+function shouldUseSecureCookie(req) {
+  try {
+    if (!IS_PROD) return false;
+    if (req && req.secure) return true;
+    const xfProto = (req && (req.headers['x-forwarded-proto'] || '')).toString().toLowerCase();
+    return xfProto === 'https';
+  } catch {
+    return IS_PROD;
+  }
+}
+function setAuthCookie(req, res, token, remember) {
   const maxAge = remember ? SESSION_TTL_MS : undefined;
   const parts = [
     `auth_token=${encodeURIComponent(token)}`,
@@ -169,7 +179,18 @@ function setAuthCookie(res, token, remember) {
   ];
   if (maxAge) parts.push(`Max-Age=${Math.floor(maxAge/1000)}`);
   parts.push('HttpOnly');
-  if (IS_PROD) parts.push('Secure');
+  if (shouldUseSecureCookie(req)) parts.push('Secure');
+  res.setHeader('Set-Cookie', parts.join('; '));
+}
+function clearAuthCookie(req, res) {
+  const parts = [
+    'auth_token=',
+    'Path=/',
+    'SameSite=Lax',
+    'HttpOnly',
+    'Expires=Thu, 01 Jan 1970 00:00:00 GMT'
+  ];
+  if (shouldUseSecureCookie(req)) parts.push('Secure');
   res.setHeader('Set-Cookie', parts.join('; '));
 }
 function requireAuth(req, res, next) {
@@ -259,7 +280,7 @@ app.post('/api/login', (req, res) => {
     const token = createToken();
     const ts = Date.now();
     sessions.set(token, { createdAt: ts, expiresAt: ts + SESSION_TTL_MS });
-    setAuthCookie(res, token, !!remember);
+    setAuthCookie(req, res, token, !!remember);
     // reset rate counter on success
     loginRate.delete(ip);
     logLoginAttempt({ ip, success: true, username });
@@ -281,10 +302,10 @@ app.post('/api/logout', (req, res) => {
     const cookies = parseCookies(req);
     const token = cookies.auth_token || getAuthTokenFromHeader(req);
     if (token) sessions.delete(token);
-    clearAuthCookie(res);
+    clearAuthCookie(req, res);
     res.json({ success: true });
   } catch (e) {
-    clearAuthCookie(res);
+    clearAuthCookie(req, res);
     res.json({ success: true });
   }
 });

@@ -14,9 +14,12 @@ export function DataUpload({ onNext }: DataUploadProps) {
   const [datasetName, setDatasetName] = useState('');
   const { marketData, currentDataset, /* uploadData, */ loadJSONData, saveDatasetToServer, loadDatasetsFromServer, isLoading } = useAppStore();
 
-  // Загружаем список датасетов при монтировании компонента
+  // Загружаем список датасетов при монтировании компонента ТОЛЬКО после успешной авторизации
   useEffect(() => {
-    loadDatasetsFromServer();
+    const base = typeof window !== 'undefined' && window.location.href.includes('/stonks') ? '/stonks/api' : '/api';
+    fetch(`${base}/auth/check`, { credentials: 'include' }).then(r => {
+      if (r.ok) loadDatasetsFromServer();
+    }).catch(() => {});
   }, [loadDatasetsFromServer]);
 
   const handleFileSelect = async (file: File) => {

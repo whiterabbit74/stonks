@@ -23,7 +23,7 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
   const [confirmTarget, setConfirmTarget] = useState<string | null>(null);
   const [loadingId, setLoadingId] = useState<string | null>(null);
   
-  // Проверяем статус сервера
+  // Проверяем статус сервера ТОЛЬКО после авторизации, чтобы не плодить 401
   useEffect(() => {
     const checkServerStatus = async () => {
       try {
@@ -33,8 +33,12 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
         setServerStatus('offline');
       }
     };
-    
-    checkServerStatus();
+
+    const base = typeof window !== 'undefined' && window.location.href.includes('/stonks') ? '/stonks/api' : '/api';
+    fetch(`${base}/auth/check`, { credentials: 'include' }).then(r => {
+      if (r.ok) checkServerStatus();
+      else setServerStatus('offline');
+    }).catch(() => setServerStatus('offline'));
   }, []);
 
   // Показываем компонент даже если нет датасетов, чтобы показать статус сервера
