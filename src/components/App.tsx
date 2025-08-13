@@ -16,11 +16,6 @@ type Tab = 'data' | 'enhance' | 'results' | 'watches' | 'splits' | 'settings';
 export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>('data');
   const [apiBuildId, setApiBuildId] = useState<string | null>(null);
-  const [usernameInput, setUsernameInput] = useState<string>('');
-  const [passwordInput, setPasswordInput] = useState<string>('');
-  const [rememberMe, setRememberMe] = useState<boolean>(false);
-  const [loginError, setLoginError] = useState<string | null>(null);
-  const [checkingAuth, setCheckingAuth] = useState<boolean>(true);
   const hasAutoNavigatedRef = useRef(false);
   const { marketData, currentStrategy, backtestResults, runBacktest, backtestStatus, setStrategy, loadSettingsFromServer } = useAppStore() as any;
 
@@ -118,10 +113,71 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 text-gray-800 dark:text-gray-100">
-      {/* Floating theme toggle in top-right corner */}
-      <div className="fixed top-3 right-3 z-50">
-        <ThemeToggle />
+    <div className="min-h-screen bg-gray-50 flex flex-col">
+      <div className="flex-1">
+        <div className="max-w-6xl mx-auto px-4 py-8">
+          {/* Header */}
+          <div className="mb-8">
+            <div className="flex items-center justify-between">
+              <div>
+                <h1 className="text-3xl font-bold text-gray-900 mb-2">
+                  IBS Trading Backtester
+                </h1>
+                <div className="text-gray-600 flex flex-wrap items-center gap-3">
+                  <span>Internal Bar Strength Mean Reversion Strategy</span>
+                </div>
+              </div>
+              {currentStrategy && (
+                <button
+                  onClick={() => setActiveTab('settings')}
+                  className="p-2 rounded-full text-gray-500 hover:text-gray-700 hover:bg-gray-100 border border-gray-200"
+                  aria-label="Настройки"
+                  title="Настройки"
+                >
+                  <Settings className="w-5 h-5" />
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Navigation Tabs */}
+          <div className="border-b border-gray-200 mb-8">
+            <nav className="flex space-x-8">
+              {tabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => { if (tab.enabled) setActiveTab(tab.id); }}
+                  className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                    activeTab === tab.id
+                      ? 'border-blue-500 text-blue-600'
+                      : tab.enabled
+                      ? 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                      : 'border-transparent text-gray-300 cursor-not-allowed'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </nav>
+          </div>
+
+          {/* Tab Content */}
+          <div className="bg-white rounded-lg shadow p-6">
+            {activeTab === 'data' && (
+              <DataUpload onNext={() => setActiveTab('results')} />
+            )}
+            {activeTab === 'enhance' && (
+              <DataEnhancer onNext={() => setActiveTab('results')} />
+            )}
+            {activeTab === 'results' && <Results />}
+            {activeTab === 'watches' && <TelegramWatches />}
+            {activeTab === 'splits' && <SplitsTab />}
+            {activeTab === 'settings' && <AppSettings />}
+          </div>
+
+          {/* Strategy Settings Modal */}
+          {/* removed: modal settings; consolidated into settings tab */}
+        </div>
       </div>
 
       <header className="border-b bg-white/60 backdrop-blur sticky top-0 z-40 dark:bg-slate-900/60 dark:border-slate-800">
