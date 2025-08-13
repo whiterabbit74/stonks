@@ -130,18 +130,23 @@ export default function App() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-gray-50 text-gray-800">
-      <header className="border-b bg-white/60 backdrop-blur sticky top-0 z-20">
+    <div className="min-h-screen bg-gray-50 text-gray-800 dark:text-gray-100">
+      {/* Floating theme toggle in top-right corner */}
+      <div className="fixed top-3 right-3 z-50">
+        <ThemeToggle />
+      </div>
+
+      <header className="border-b bg-white/60 backdrop-blur sticky top-0 z-20 dark:bg-slate-900/60 dark:border-slate-800">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <ThemeToggle />
+            {/* Removed ThemeToggle from here to place it in the top-right corner */}
             <h1 className="text-lg font-semibold tracking-tight">Trading strategies</h1>
             {apiBuildId && (
-              <span className="text-xs text-gray-500">API build: {apiBuildId}</span>
+              <span className="text-xs text-gray-500 dark:text-gray-400">API build: {apiBuildId}</span>
             )}
           </div>
           <div className="flex items-center gap-2">
-            <a className="inline-flex items-center gap-2 text-sm hover:text-indigo-600" href="#settings">
+            <a className="inline-flex items-center gap-2 text-sm hover:text-indigo-600 dark:hover:text-indigo-400" href="#settings">
               <Settings size={16} />
               Settings
             </a>
@@ -157,7 +162,9 @@ export default function App() {
                 key={t.id}
                 disabled={!t.enabled}
                 onClick={() => setActiveTab(t.id)}
-                className={`px-3 py-1 rounded text-sm border ${activeTab === t.id ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white hover:bg-gray-50 text-gray-700 border-gray-200'}`}
+                className={`${activeTab === t.id
+                  ? 'px-3 py-1 rounded text-sm border bg-indigo-600 text-white border-indigo-600 dark:bg-indigo-500 dark:border-indigo-500'
+                  : 'px-3 py-1 rounded text-sm border bg-white hover:bg-gray-50 text-gray-700 border-gray-200 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-gray-200 dark:border-slate-700'}`}
               >
                 {t.label}
               </button>
