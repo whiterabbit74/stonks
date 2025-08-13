@@ -1,5 +1,5 @@
 import { Heart } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import { DatasetAPI } from '../lib/api';
 import { useAppStore } from '../stores';
 import { TradingChart } from './TradingChart';
@@ -35,6 +35,7 @@ export function Results() {
   const [watching, setWatching] = useState(false);
   const [watchBusy, setWatchBusy] = useState(false);
   const [, setSplitsError] = useState<string | null>(null);
+  const fetchedSplitsForSymbolRef = useRef<string | null>(null);
   
   // Проверка дублей дат в marketData (ключ YYYY-MM-DD)
   const { hasDuplicateDates, duplicateDateKeys } = useMemo(() => {
@@ -71,17 +72,23 @@ export function Results() {
       setSplitsError(null);
       try {
         if (!symbol) return;
-        if (Array.isArray(currentSplits) && currentSplits.length > 0) return;
+        // Уже загружали для этого символа — не повторяем запрос
+        if (fetchedSplitsForSymbolRef.current === symbol) return;
+        // Если уже есть сплиты (в т.ч. пустой массив) — не дёргаем API
+        if (Array.isArray(currentSplits)) {
+          fetchedSplitsForSymbolRef.current = symbol;
+          return;
+        }
         const s = await DatasetAPI.getSplits(symbol);
+        fetchedSplitsForSymbolRef.current = symbol;
         if (Array.isArray(s)) {
           setSplits(s as any);
-          try { await loadDatasetFromServer(symbol); } catch {}
         }
       } catch {
         // Не показываем 429/внешние ошибки, т.к. теперь API всегда локальный и отдаёт []
       }
     })();
-  }, [symbol, currentSplits, setSplits, loadDatasetFromServer]);
+  }, [symbol, currentSplits, setSplits]);
 
   useEffect(() => {
     let active = true;
