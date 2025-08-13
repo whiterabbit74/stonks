@@ -1,6 +1,5 @@
 import { create } from 'zustand';
 import type { OHLCData, Strategy, BacktestResult, SavedDataset, SplitEvent } from '../types';
-import { parseCSV } from '../lib/validation';
 import { runBacktest as executeBacktest } from '../lib/backtest';
 import { createStrategyFromTemplate, STRATEGY_TEMPLATES } from '../lib/strategy';
 import { saveDatasetToJSON, loadDatasetFromJSON } from '../lib/data-persistence';
@@ -30,7 +29,6 @@ interface AppState {
   backtestStatus: 'idle' | 'running' | 'completed' | 'error';
   
   // Actions
-  uploadData: (file: File) => Promise<void>;
   updateMarketData: (data: OHLCData[]) => void;
   setSplits: (splits: SplitEvent[]) => void;
   setDataProvider: (provider: 'alpha_vantage' | 'finnhub') => void;
@@ -97,35 +95,6 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
   
-  uploadData: async (file: File) => {
-    set({ isLoading: true, error: null });
-    
-    try {
-      const data = await parseCSV(file);
-      // Try to infer ticker from filename like TICKER.csv
-      const base = (file && typeof file.name === 'string') ? file.name.replace(/\.[^.]+$/, '') : '';
-      const guessTicker = (base || '').split(/[_\-\s]/)[0]?.toUpperCase?.() || '';
-      let splits: SplitEvent[] = [];
-      if (guessTicker && guessTicker.length >= 1) {
-        try { splits = await DatasetAPI.getSplits(guessTicker); } catch { splits = []; }
-      }
-      const adjustedData = adjustOHLCForSplits(data, splits);
-      const key = JSON.stringify((splits || []).slice().sort((a, b) => a.date.localeCompare(b.date)));
-      set({ 
-        marketData: adjustedData, 
-        currentDataset: null, // Сбрасываем сохраненный датасет при загрузке CSV
-        currentSplits: splits || [],
-        lastAppliedSplitsKey: (splits && splits.length ? key : null),
-        isLoading: false 
-      });
-    } catch (error) {
-      set({ 
-        error: error instanceof Error ? error.message : 'Failed to parse CSV file',
-        isLoading: false 
-      });
-    }
-  },
-
   updateMarketData: (data: OHLCData[]) => {
     set({ marketData: data });
   },
