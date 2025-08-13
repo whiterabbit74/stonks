@@ -312,6 +312,19 @@ app.post('/api/logout', (req, res) => {
 // { symbol, highIBS, lowIBS, thresholdPct, chatId, entryPrice, isOpenPosition, sent: { dateKey, warn10, confirm1, entryWarn10, entryConfirm1 } }
 const telegramWatches = new Map();
 
+/**
+ * Aggregated send state per chat to avoid duplicate messages inside the same minute/day
+ */
+const aggregateSendState = new Map(); // chatId -> { dateKey: string|null, t10Sent: boolean, t1Sent: boolean }
+function getAggregateState(chatId, dateKey) {
+  let st = aggregateSendState.get(chatId);
+  if (!st || st.dateKey !== dateKey) {
+    st = { dateKey, t10Sent: false, t1Sent: false };
+    aggregateSendState.set(chatId, st);
+  }
+  return st;
+}
+
 async function loadWatches() {
   try {
     const exists = await fs.pathExists(WATCHES_FILE);
@@ -509,126 +522,111 @@ app.patch('/api/telegram/watch/:symbol', (req, res) => {
   res.json({ success: true });
 });
 
-// Scheduler: check every 30s and notify at T-10 and T-1 minutes (both entry and exit signals)
+// Scheduler: send aggregated messages at T-10 (overview) and T-1 (confirmations)
 setInterval(async () => {
   try {
     if (telegramWatches.size === 0) return;
     const nowEt = getETParts(new Date());
     if (!isTradingDayET(nowEt)) return;
-    // minutes until 16:00 ET
     const minutesUntilClose = (16 * 60) - (nowEt.hh * 60 + nowEt.mm);
-    const triggers = [10, 1];
-    if (!triggers.includes(minutesUntilClose)) return;
+    if (minutesUntilClose !== 10 && minutesUntilClose !== 1) return;
+
+    const todayKey = etKeyYMD(nowEt);
+
+    // Collect fresh data for all watches and group by chatId (always include all tickers)
+    const byChat = new Map(); // chatId -> Array<{ w, ibs, quote, range, ohlc, closeEnoughToExit, closeEnoughToEntry, confirmExit, confirmEntry, dataOk }>
     for (const w of telegramWatches.values()) {
-      // ENTRY notifications (position opening) — when not in position
-      if (!w.isOpenPosition) {
-        let rangeQuote;
-        try { rangeQuote = await fetchTodayRangeAndQuote(w.symbol); } catch { continue; }
+      const chatId = w.chatId || TELEGRAM_CHAT_ID;
+      if (!chatId) continue;
+      if (!byChat.has(chatId)) byChat.set(chatId, []);
+      const rec = { w, ibs: null, quote: null, range: null, ohlc: null, closeEnoughToExit: null, closeEnoughToEntry: null, confirmExit: null, confirmEntry: null, dataOk: false };
+      byChat.get(chatId).push(rec);
+      // ensure per-day flags
+      if (w.sent.dateKey !== todayKey) w.sent = { dateKey: todayKey, warn10: false, confirm1: false, entryWarn10: false, entryConfirm1: false };
+      // Try to fetch real-time data
+      try {
+        const rangeQuote = await fetchTodayRangeAndQuote(w.symbol);
         const { range, quote, ohlc } = rangeQuote;
         if (range.low == null || range.high == null || quote.current == null) continue;
         if (range.high <= range.low) continue;
         const ibs = (quote.current - range.low) / (range.high - range.low);
-        const closeEnoughToEntry = ibs <= (w.lowIBS ?? 0.1) * (1 + (w.thresholdPct || 0.3) / 100);
-        const todayKey = etKeyYMD(nowEt);
-        if (w.sent.dateKey !== todayKey) w.sent = { dateKey: todayKey, warn10: false, confirm1: false, entryWarn10: false, entryConfirm1: false };
-        if (minutesUntilClose === 10 && closeEnoughToEntry && !w.sent.entryWarn10) {
-          const fresh = buildFreshnessLine(ohlc, nowEt);
-          const header = `⚪ Entry Signal for ${w.symbol}`;
-          const core = [
-            `IBS Value: ${(ibs).toFixed(3)}`,
-            `Current Price: ${formatMoney(quote.current)}`,
-            `Today Range: ${formatMoney(range.low)} - ${formatMoney(range.high)}`,
-            `Date: ${todayKey}`,
-            fresh
-          ].join('\n');
-          const details = [
-            `Rule: IBS ≤ ${w.lowIBS} (buy at tomorrow's open if condition holds)`,
-            `Trigger range today: price ≤ ${formatMoney(range.low + (w.lowIBS * (range.high - range.low)))}`
-          ].join('\n');
-          const text = `<b>${header}</b>\n\n${core}\n\n${details}`;
-          const resp = await sendTelegramMessage(w.chatId, text);
-          if (resp.ok) w.sent.entryWarn10 = true;
-        }
-        if (minutesUntilClose === 1 && ibs <= (w.lowIBS ?? 0.1) && !w.sent.entryConfirm1) {
-          const fresh = buildFreshnessLine(ohlc, nowEt);
-          const header = `⚪ Entry Confirm for ${w.symbol}`;
-          const core = [
-            `IBS Value: ${(ibs).toFixed(3)}`,
-            `Close Price (≈ current): ${formatMoney(quote.current)}`,
-            `Today Range: ${formatMoney(range.low)} - ${formatMoney(range.high)}`,
-            `Date: ${todayKey}`,
-            fresh
-          ].join('\n');
-          const details = [
-            `Action: BUY at next open if condition persists`,
-            `Rule: IBS ≤ ${w.lowIBS}`,
-            `Trigger range today: price ≤ ${formatMoney(range.low + (w.lowIBS * (range.high - range.low)))}`
-          ].join('\n');
-          const text = `<b>${header}</b>\n\n${core}\n\n${details}`;
-          const resp = await sendTelegramMessage(w.chatId, text);
-          if (resp.ok) w.sent.entryConfirm1 = true;
-        }
-        continue; // skip exit logic when not in position
+        const tolerance = (w.thresholdPct || 0.3) / 100;
+        const closeEnoughToExit = ibs >= (w.highIBS * (1 - tolerance));
+        const closeEnoughToEntry = ibs <= (w.lowIBS ?? 0.1) * (1 + tolerance);
+        const confirmExit = ibs >= w.highIBS;
+        const confirmEntry = ibs <= (w.lowIBS ?? 0.1);
+        rec.ibs = ibs; rec.quote = quote; rec.range = range; rec.ohlc = ohlc;
+        rec.closeEnoughToExit = closeEnoughToExit; rec.closeEnoughToEntry = closeEnoughToEntry;
+        rec.confirmExit = confirmExit; rec.confirmEntry = confirmEntry;
+        rec.dataOk = true;
+      } catch {
+        // leave placeholders
       }
-      // EXIT notifications (position closing) — when in position
-      // Ensure per-day flags
-      const todayKey = etKeyYMD(nowEt);
-      if (w.sent.dateKey !== todayKey) w.sent = { dateKey: todayKey, warn10: false, confirm1: false, entryWarn10: false, entryConfirm1: false };
-            
-      // Refresh data before notify
-      let rangeQuote;
-      try {
-        rangeQuote = await fetchTodayRangeAndQuote(w.symbol);
-      } catch (e) {
-        console.warn('Failed to refresh before notify:', e.message);
-        continue;
-      }
-      const { range, quote, ohlc } = rangeQuote;
-      if (range.low == null || range.high == null || quote.current == null) continue;
-      if (range.high <= range.low) continue;
+    }
 
-      // Compute today's IBS and proximity tolerance
-      const ibsExit = (quote.current - range.low) / (range.high - range.low);
-      const tolerance = (w.thresholdPct || 0.3) / 100;
+    // Send messages per chat
+    for (const [chatId, list] of byChat.entries()) {
+      const state = getAggregateState(chatId, todayKey);
 
-      const fresh = buildFreshnessLine(ohlc, nowEt);
-      
-      if (minutesUntilClose === 10) {
-        // Warn if close to exit threshold (IBS ≥ highIBS * (1 - tolerance))
-        const closeEnoughToExit = ibsExit >= (w.highIBS * (1 - tolerance));
-        if (!closeEnoughToExit || w.sent.warn10) { /* no-op */ }
-        else {
-          const header = `⚪ Exit Signal for ${w.symbol}`;
-          const lines = [
-            `IBS Value: ${ibsExit.toFixed(3)} (≥ ${ (w.highIBS * (1 - tolerance)).toFixed(3) } near target)` ,
-            `Current Price: ${formatMoney(quote.current)}`,
-            `Today Range: ${formatMoney(range.low)} - ${formatMoney(range.high)}`,
-            `Date: ${todayKey}`,
-            fresh,
-            `Rule: IBS ≥ ${w.highIBS}`
-          ];
-          if (typeof w.entryPrice === 'number') lines.push(`Цена входа: ${w.entryPrice.toFixed(2)}`);
-          const text = `<b>${header}</b>\n\n${lines.join('\n')}`;
-          const resp = await sendTelegramMessage(w.chatId, text);
-          if (resp.ok) w.sent.warn10 = true;
+      // T-10 overview — always send once
+      if (minutesUntilClose === 10 && !state.t10Sent) {
+        const header = '🕙 10 минут до закрытия (ET)';
+        const sub = `Дата: ${todayKey}, Время: ${String(nowEt.hh).padStart(2,'0')}:${String(nowEt.mm).padStart(2,'0')}`;
+        const sorted = list.slice().sort((a, b) => a.w.symbol.localeCompare(b.w.symbol));
+        const lines = [];
+        for (const rec of sorted) {
+          const { w } = rec;
+          const type = w.isOpenPosition ? 'выход' : 'вход';
+          const near = w.isOpenPosition ? rec.closeEnoughToExit : rec.closeEnoughToEntry;
+          const nearStr = rec.dataOk ? (near ? 'Да' : 'Нет') : '—';
+          const priceStr = rec.dataOk && rec.quote ? formatMoney(rec.quote.current) : '-';
+          const ibsStr = rec.dataOk && Number.isFinite(rec.ibs) ? rec.ibs.toFixed(3) : '-';
+          const thresholdStr = w.isOpenPosition ? `≥ ${w.highIBS}` : `≤ ${w.lowIBS ?? 0.1}`;
+          lines.push(`${w.symbol}: позиция: ${w.isOpenPosition ? 'Открыта' : 'Нет'}; цена: ${priceStr}; IBS: ${ibsStr}; вероятен сигнал (${type}): ${nearStr} (порог ${thresholdStr})`);
         }
-      } else if (minutesUntilClose === 1) {
-        // Confirm only if exit condition is actually met now (strict)
-        if (ibsExit >= w.highIBS && !w.sent.confirm1) {
-          const header = `⚪ Exit Confirm for ${w.symbol}`;
-          const lines = [
-            `IBS Value: ${ibsExit.toFixed(3)} (≥ ${w.highIBS})`,
-            `Close Price (≈ current): ${formatMoney(quote.current)}`,
-            `Today Range: ${formatMoney(range.low)} - ${formatMoney(range.high)}`,
-            `Date: ${todayKey}`,
-            fresh,
-            `Action: SELL at close`,
-            `Rule: IBS ≥ ${w.highIBS}`
-          ];
-          if (typeof w.entryPrice === 'number') lines.push(`Цена входа: ${w.entryPrice.toFixed(2)}`);
-          const text = `<b>${header}</b>\n\n${lines.join('\n')}`;
-          const resp = await sendTelegramMessage(w.chatId, text);
-          if (resp.ok) w.sent.confirm1 = true;
+        const text = `<b>${header}</b>\n${sub}\n\n${lines.join('\n')}`;
+        const resp = await sendTelegramMessage(chatId, text);
+        if (resp.ok) {
+          state.t10Sent = true;
+          aggregateSendState.set(chatId, state);
+        }
+      }
+
+      // T-1 confirmations — send once if any signals exist
+      if (minutesUntilClose === 1 && !state.t1Sent) {
+        const exits = [];
+        const entries = [];
+        const sorted = list.slice().sort((a, b) => a.w.symbol.localeCompare(b.w.symbol));
+        for (const rec of sorted) {
+          const { w } = rec;
+          if (rec.dataOk && w.isOpenPosition && rec.confirmExit && !w.sent.confirm1) {
+            exits.push(`${w.symbol}: IBS ${rec.ibs.toFixed(3)} (≥ ${w.highIBS}); цена: ${formatMoney(rec.quote.current)}; диапазон: ${formatMoney(rec.range.low)} - ${formatMoney(rec.range.high)}`);
+            w.sent.confirm1 = true;
+          }
+          if (rec.dataOk && !w.isOpenPosition && rec.confirmEntry && !w.sent.entryConfirm1) {
+            entries.push(`${w.symbol}: IBS ${rec.ibs.toFixed(3)} (≤ ${w.lowIBS ?? 0.1}); цена: ${formatMoney(rec.quote.current)}; диапазон: ${formatMoney(rec.range.low)} - ${formatMoney(rec.range.high)}`);
+            w.sent.entryConfirm1 = true;
+          }
+        }
+        if (exits.length || entries.length) {
+          const parts = [];
+          parts.push('<b>⏱️ 1 минута до закрытия — подтвержденные сигналы</b>');
+          parts.push(`Дата: ${todayKey}, Время: ${String(nowEt.hh).padStart(2,'0')}:${String(nowEt.mm).padStart(2,'0')}`);
+          if (exits.length) {
+            parts.push('\n<b>Выход:</b>');
+            parts.push(exits.join('\n'));
+          }
+          if (entries.length) {
+            parts.push('\n<b>Вход:</b>');
+            parts.push(entries.join('\n'));
+          }
+          const text = parts.join('\n');
+          const resp = await sendTelegramMessage(chatId, text);
+          if (resp.ok) {
+            state.t1Sent = true;
+            aggregateSendState.set(chatId, state);
+            scheduleSaveWatches();
+          }
         }
       }
     }
