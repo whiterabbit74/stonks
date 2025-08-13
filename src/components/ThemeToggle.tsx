@@ -16,6 +16,9 @@ function applyTheme(mode: ThemeMode) {
     }
     const metaTheme = document.querySelector('meta[name="theme-color"]');
     if (metaTheme) metaTheme.setAttribute('content', effectiveDark ? '#0b1220' : '#ffffff');
+    try {
+      window.dispatchEvent(new CustomEvent('themechange', { detail: { mode, effectiveDark } }));
+    } catch {}
   } catch {}
 }
 

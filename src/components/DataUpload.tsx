@@ -78,15 +78,15 @@ export function DataUpload({ onNext }: DataUploadProps) {
               <h4 className="font-medium text-gray-900 mb-3 dark:text-gray-100">Быстрые действия</h4>
               <div className="space-y-3">
                 <div className="flex gap-2">
-                  <input type="text" placeholder="Ticker (e.g., AAPL)" value={ticker} onChange={(e) => setTicker(e.target.value.toUpperCase())} className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm" />
-                  <input type="text" placeholder="Dataset name (optional)" value={datasetName} onChange={(e) => setDatasetName(e.target.value)} className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm" />
+                  <input type="text" placeholder="Ticker (e.g., AAPL)" value={ticker} onChange={(e) => setTicker(e.target.value.toUpperCase())} className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100" />
+                  <input type="text" placeholder="Dataset name (optional)" value={datasetName} onChange={(e) => setDatasetName(e.target.value)} className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100" />
                 </div>
                 <div className="flex gap-2">
-                  <button onClick={async () => { if (ticker.trim()) { await saveDatasetToServer(ticker.trim(), datasetName.trim() || undefined); setTicker(''); setDatasetName(''); } }} disabled={!ticker.trim() || isLoading} className="inline-flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 disabled:bg-gray-400 text-sm font-medium">
+                  <button onClick={async () => { if (ticker.trim()) { await saveDatasetToServer(ticker.trim(), datasetName.trim() || undefined); setTicker(''); setDatasetName(''); } }} disabled={!ticker.trim() || isLoading} className="inline-flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 disabled:bg-gray-400 text-sm font-medium hover-lift">
                     <Save className="w-4 h-4" />
                     {isLoading ? 'Saving...' : 'Save to Server'}
                   </button>
-                  <button onClick={() => jsonInputRef.current?.click()} className="inline-flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 text-sm font-medium">
+                  <button onClick={() => jsonInputRef.current?.click()} className="inline-flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 text-sm font-medium hover-lift">
                     <Download className="w-4 h-4" />
                     Import JSON
                   </button>
@@ -107,7 +107,7 @@ export function DataUpload({ onNext }: DataUploadProps) {
             <div>
               <button
                 onClick={onNext}
-                className="inline-flex items-center gap-2 bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 font-medium"
+                className="inline-flex items-center gap-2 bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 font-medium hover-lift"
               >
                 Дальше
                 <ArrowRight className="w-4 h-4" />
@@ -148,7 +148,7 @@ export function DataUpload({ onNext }: DataUploadProps) {
           />
           <button
             onClick={() => fileInputRef.current?.click()}
-            className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 font-medium text-white shadow hover:bg-blue-700"
+            className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 font-medium text-white shadow hover:bg-blue-700 hover-lift"
           >
             <Upload className="h-4 w-4" /> Выбрать JSON
           </button>

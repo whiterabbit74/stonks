@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createChart } from 'lightweight-charts';
 import type { Trade } from '../types';
 
@@ -10,6 +10,16 @@ interface TradeDrawdownChartProps {
 export function TradeDrawdownChart({ trades, initialCapital }: TradeDrawdownChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<any>(null);
+  const [isDark, setIsDark] = useState<boolean>(() => typeof document !== 'undefined' ? document.documentElement.classList.contains('dark') : false);
+
+  useEffect(() => {
+    const onTheme = (e: any) => {
+      const dark = !!(e?.detail?.effectiveDark ?? document.documentElement.classList.contains('dark'));
+      setIsDark(dark);
+    };
+    window.addEventListener('themechange', onTheme);
+    return () => window.removeEventListener('themechange', onTheme);
+  }, []);
 
   useEffect(() => {
     if (!chartContainerRef.current || !trades.length) return;
@@ -25,30 +35,35 @@ export function TradeDrawdownChart({ trades, initialCapital }: TradeDrawdownChar
     }
 
     try {
+      const bg = isDark ? '#0b1220' : '#ffffff';
+      const text = isDark ? '#e5e7eb' : '#333';
+      const grid = isDark ? '#1f2937' : '#f0f0f0';
+      const border = isDark ? '#374151' : '#cccccc';
+
       // Create new chart
       const chart = createChart(chartContainerRef.current, {
         width: chartContainerRef.current.clientWidth,
         height: Math.max(chartContainerRef.current.clientHeight, 300),
         layout: {
-          background: { color: '#ffffff' },
-          textColor: '#333',
+          background: { color: bg },
+          textColor: text,
         },
         grid: {
-          vertLines: { color: '#f0f0f0' },
-          horzLines: { color: '#f0f0f0' },
+          vertLines: { color: grid },
+          horzLines: { color: grid },
         },
         crosshair: {
           mode: 1,
         },
         rightPriceScale: {
-          borderColor: '#cccccc',
+          borderColor: border,
           scaleMargins: {
             top: 0.1,
             bottom: 0.1,
           },
         },
         timeScale: {
-          borderColor: '#cccccc',
+          borderColor: border,
           timeVisible: true,
           secondsVisible: false,
         },
@@ -90,9 +105,9 @@ export function TradeDrawdownChart({ trades, initialCapital }: TradeDrawdownChar
 
       // Add drawdown area series
       const drawdownSeries = chart.addAreaSeries({
-        topColor: 'rgba(244, 67, 54, 0.4)',
-        bottomColor: 'rgba(244, 67, 54, 0.1)',
-        lineColor: '#F44336',
+        topColor: isDark ? 'rgba(248, 113, 113, 0.35)' : 'rgba(244, 67, 54, 0.4)',
+        bottomColor: isDark ? 'rgba(248, 113, 113, 0.08)' : 'rgba(244, 67, 54, 0.1)',
+        lineColor: isDark ? '#f87171' : '#F44336',
         lineWidth: 2,
         title: 'Trade Drawdown %',
       });
@@ -104,7 +119,7 @@ export function TradeDrawdownChart({ trades, initialCapital }: TradeDrawdownChar
 
       // Add zero line for reference
       const zeroLineSeries = chart.addLineSeries({
-        color: '#666666',
+        color: isDark ? '#9ca3af' : '#666666',
         lineWidth: 1,
         lineStyle: 2, // Dashed line
         title: 'Zero Line',
@@ -116,8 +131,6 @@ export function TradeDrawdownChart({ trades, initialCapital }: TradeDrawdownChar
       }));
 
       zeroLineSeries.setData(zeroLineData);
-
-      // Убираем маркеры с надписями для чистого вида графика
 
       // Handle resize
       const handleResize = () => {
@@ -145,7 +158,7 @@ export function TradeDrawdownChart({ trades, initialCapital }: TradeDrawdownChar
       console.error('Error creating trade drawdown chart:', error);
       return;
     }
-  }, [trades, initialCapital]);
+  }, [trades, initialCapital, isDark]);
 
   if (!trades.length) {
     return (
@@ -181,17 +194,17 @@ export function TradeDrawdownChart({ trades, initialCapital }: TradeDrawdownChar
     <div className="w-full h-full">
       {/* Trade Drawdown Statistics */}
       <div className="flex gap-4 mb-4 text-sm">
-        <div className="bg-red-50 px-3 py-2 rounded">
-          <span className="text-red-600 font-medium">Max Trade DD: {maxDrawdown.toFixed(2)}%</span>
+        <div className="bg-red-50 px-3 py-2 rounded dark:bg-red-950/30 dark:text-red-300">
+          <span className="text-red-600 font-medium dark:text-red-300">Max Trade DD: {maxDrawdown.toFixed(2)}%</span>
         </div>
-        <div className="bg-gray-50 px-3 py-2 rounded">
-          <span className="text-gray-600">DD Trades: {drawdownTrades}/{trades.length}</span>
+        <div className="bg-gray-50 px-3 py-2 rounded dark:bg-gray-800 dark:text-gray-200">
+          <span className="text-gray-600 dark:text-gray-200">DD Trades: {drawdownTrades}/{trades.length}</span>
         </div>
-        <div className="bg-gray-50 px-3 py-2 rounded">
-          <span className="text-gray-600">DD Frequency: {drawdownFrequency.toFixed(1)}%</span>
+        <div className="bg-gray-50 px-3 py-2 rounded dark:bg-gray-800 dark:text-gray-200">
+          <span className="text-gray-600 dark:text-gray-200">DD Frequency: {drawdownFrequency.toFixed(1)}%</span>
         </div>
-        <div className="bg-blue-50 px-3 py-2 rounded">
-          <span className="text-blue-600">Final Capital: ${runningCapital.toFixed(2)}</span>
+        <div className="bg-blue-50 px-3 py-2 rounded dark:bg-blue-950/30 dark:text-blue-200">
+          <span className="text-blue-600 dark:text-blue-200">Final Capital: ${runningCapital.toFixed(2)}</span>
         </div>
       </div>
       

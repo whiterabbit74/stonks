@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createChart, type IChartApi, type UTCTimestamp } from 'lightweight-charts';
 import type { OHLCData, Trade } from '../types';
 
@@ -14,6 +14,16 @@ interface MiniQuoteChartProps {
 export function MiniQuoteChart({ history, today, trades, highIBS, isOpenPosition, entryPrice }: MiniQuoteChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
+  const [isDark, setIsDark] = useState<boolean>(() => typeof document !== 'undefined' ? document.documentElement.classList.contains('dark') : false);
+
+  useEffect(() => {
+    const onTheme = (e: any) => {
+      const dark = !!(e?.detail?.effectiveDark ?? document.documentElement.classList.contains('dark'));
+      setIsDark(dark);
+    };
+    window.addEventListener('themechange', onTheme);
+    return () => window.removeEventListener('themechange', onTheme);
+  }, []);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -26,13 +36,18 @@ export function MiniQuoteChart({ history, today, trades, highIBS, isOpenPosition
       chartRef.current = null;
     }
 
+    const bg = isDark ? '#0b1220' : '#ffffff';
+    const text = isDark ? '#e5e7eb' : '#374151';
+    const grid = isDark ? '#1f2937' : '#f5f5f5';
+    const border = isDark ? '#374151' : '#e5e7eb';
+
     const chart = createChart(containerRef.current, {
       width: containerRef.current.clientWidth,
       height: containerRef.current.clientHeight || 140,
-      layout: { background: { color: '#ffffff' }, textColor: '#374151' },
-      grid: { vertLines: { color: '#f5f5f5' }, horzLines: { color: '#f5f5f5' } },
-      rightPriceScale: { borderColor: '#e5e7eb' },
-      timeScale: { borderColor: '#e5e7eb', timeVisible: true, secondsVisible: false, rightOffset: 0, fixLeftEdge: true, barSpacing: 10 },
+      layout: { background: { color: bg }, textColor: text },
+      grid: { vertLines: { color: grid }, horzLines: { color: grid } },
+      rightPriceScale: { borderColor: border },
+      timeScale: { borderColor: border, timeVisible: true, secondsVisible: false, rightOffset: 0, fixLeftEdge: true, barSpacing: 10 },
       crosshair: { mode: 0 },
     });
     chartRef.current = chart;
@@ -117,7 +132,7 @@ export function MiniQuoteChart({ history, today, trades, highIBS, isOpenPosition
       window.removeEventListener('resize', onResize);
       try { chart.remove(); } catch { /* ignore */ }
     };
-  }, [history, today, trades, highIBS, isOpenPosition, entryPrice]);
+  }, [history, today, trades, highIBS, isOpenPosition, entryPrice, isDark]);
 
   return (
     <div ref={containerRef} className="w-full h-full" />
