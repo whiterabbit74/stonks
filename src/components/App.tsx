@@ -6,7 +6,8 @@ import { DataEnhancer } from './DataEnhancer';
 // import { StrategySettings } from './StrategySettings';
 import { Results } from './Results';
 import { TelegramWatches } from './TelegramWatches';
-// import { AppSettings } from './AppSettings';
+import { AppSettings } from './AppSettings';
+import { SplitsTab } from './SplitsTab';
 import { createStrategyFromTemplate, STRATEGY_TEMPLATES } from '../lib/strategy';
 import { Footer } from './Footer';
 import { ThemeToggle } from './ThemeToggle';
@@ -24,6 +25,13 @@ export default function App() {
   const backtestStatus = useAppStore(s => s.backtestStatus);
   const setStrategy = useAppStore(s => s.setStrategy);
   const loadSettingsFromServer = useAppStore(s => s.loadSettingsFromServer);
+
+  const [authorized, setAuthorized] = useState(false);
+  const [checkingAuth, setCheckingAuth] = useState(true);
+  const [loginError, setLoginError] = useState<string | null>(null);
+  const [usernameInput, setUsernameInput] = useState('');
+  const [passwordInput, setPasswordInput] = useState('');
+  const [rememberMe, setRememberMe] = useState(false);
 
   // Загружаем настройки один раз при монтировании
   useEffect(() => {
@@ -88,7 +96,18 @@ export default function App() {
     { id: 'settings' as Tab, label: 'Настройки', enabled: true },
   ] as const;
 
+  const handleLogout = async () => {
+    try {
+      const base = window.location.href.includes('/stonks') ? '/stonks/api' : '/api';
+      await fetch(`${base}/auth/logout`, { method: 'POST', credentials: 'include' });
+    } catch (e) {
+      console.warn('Logout failed', e);
+    } finally {
+      setAuthorized(false);
+    }
+  };
 
+  // Check auth on mount
   useEffect(() => {
     (async () => {
       try {
@@ -172,7 +191,7 @@ export default function App() {
         {activeTab === 'settings' && <AppSettings />}
       </main>
 
-      <Footer authorized={authorized} checkingAuth={checkingAuth} loginError={loginError} setLoginError={setLoginError} usernameInput={usernameInput} setUsernameInput={setUsernameInput} passwordInput={passwordInput} setPasswordInput={setPasswordInput} rememberMe={rememberMe} setRememberMe={setRememberMe} />
+      <Footer apiBuildId={apiBuildId} />
     </div>
   );
 }
