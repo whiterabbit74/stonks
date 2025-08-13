@@ -470,12 +470,12 @@ setInterval(async () => {
           const resp = await sendTelegramMessage(w.chatId, text);
           if (resp.ok) w.sent.entryWarn10 = true;
         }
-        if (minutesUntilClose === 1 && closeEnoughToEntry && !w.sent.entryConfirm1) {
+        if (minutesUntilClose === 1 && ibs <= (w.lowIBS ?? 0.1) && !w.sent.entryConfirm1) {
           const fresh = buildFreshnessLine(ohlc, nowEt);
           const header = `⚪ Entry Confirm for ${w.symbol}`;
           const core = [
             `IBS Value: ${(ibs).toFixed(3)}`,
-            `Current Price: ${formatMoney(quote.current)}`,
+            `Close Price (≈ current): ${formatMoney(quote.current)}`,
             `Today Range: ${formatMoney(range.low)} - ${formatMoney(range.high)}`,
             `Date: ${todayKey}`,
             fresh
