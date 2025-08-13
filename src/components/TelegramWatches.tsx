@@ -19,6 +19,73 @@ export function TelegramWatches() {
   // Тест уведомлений удалён
   const [confirm, setConfirm] = useState<{ open: boolean; symbol: string | null }>(() => ({ open: false, symbol: null }));
   const [info, setInfo] = useState<{ open: boolean; title: string; message: string; kind?: 'success'|'error'|'info' }>({ open: false, title: '', message: '' });
+  const [secondsToNext, setSecondsToNext] = useState<number | null>(null);
+
+  function getETParts(date: Date = new Date()): { y: number; m: number; d: number; hh: number; mm: number; ss: number; weekday: number } {
+    const fmt = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/New_York',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+      weekday: 'short',
+    });
+    const parts = fmt.formatToParts(date);
+    const map: Record<string, string> = {};
+    for (const p of parts) map[p.type] = p.value;
+    const wdMap: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+    return {
+      y: Number(map.year),
+      m: Number(map.month),
+      d: Number(map.day),
+      hh: Number(map.hour),
+      mm: Number(map.minute),
+      ss: Number(map.second),
+      weekday: wdMap[map.weekday] ?? 0,
+    };
+  }
+
+  function secondsUntilNextSignal(now: Date = new Date()): number {
+    const p = getETParts(now);
+    const secOfDay = p.hh * 3600 + p.mm * 60 + p.ss;
+    const target1 = 15 * 3600 + 50 * 60; // 15:50 ET
+    const target2 = 15 * 3600 + 59 * 60; // 15:59 ET
+    const isWeekday = p.weekday >= 1 && p.weekday <= 5;
+
+    if (isWeekday) {
+      if (secOfDay < target1) return target1 - secOfDay;
+      if (secOfDay < target2) return target2 - secOfDay;
+    }
+
+    // Roll to next weekday 15:50 ET
+    let daysToAdd = 1;
+    let wd = p.weekday;
+    while (true) {
+      wd = (wd + 1) % 7;
+      if (wd >= 1 && wd <= 5) break;
+      daysToAdd++;
+    }
+    const remainingToday = 24 * 3600 - secOfDay;
+    const extraFullDays = daysToAdd - 1;
+    return remainingToday + extraFullDays * 24 * 3600 + target1;
+  }
+
+  function formatDuration(seconds: number): string {
+    const s = Math.max(0, Math.floor(seconds));
+    const days = Math.floor(s / 86400);
+    const hours = Math.floor((s % 86400) / 3600);
+    const minutes = Math.floor((s % 3600) / 60);
+    const secs = s % 60;
+    const parts: string[] = [];
+    if (days > 0) parts.push(`${days} д`);
+    if (hours > 0 || days > 0) parts.push(`${hours} ч`);
+    parts.push(`${minutes} мин`);
+    parts.push(`${secs} с`);
+    return parts.join(' ');
+  }
 
   const load = async () => {
     setLoading(true); setError(null);
@@ -35,6 +102,13 @@ export function TelegramWatches() {
 
   useEffect(() => { load(); }, []);
 
+  useEffect(() => {
+    const tick = () => setSecondsToNext(secondsUntilNextSignal());
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, []);
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -48,6 +122,12 @@ export function TelegramWatches() {
           <RefreshCw className="w-4 h-4" />
         </button>
       </div>
+
+      {typeof secondsToNext === 'number' && (
+        <div className="text-sm text-gray-600">
+          До следующего подсчёта сигналов осталось {formatDuration(secondsToNext)}
+        </div>
+      )}
 
       {/* Убран блок тестовых уведомлений по запросу */}
 
