@@ -10,6 +10,7 @@ import { SplitsTab } from './SplitsTab';
 import { AppSettings } from './AppSettings';
 import { createStrategyFromTemplate, STRATEGY_TEMPLATES } from '../lib/strategy';
 import { Footer } from './Footer';
+import { ThemeToggle } from './ThemeToggle';
 
 type Tab = 'data' | 'enhance' | 'results' | 'watches' | 'splits' | 'settings';
 
@@ -126,32 +127,32 @@ export default function App() {
   }, []);
 
   if (checkingAuth) {
-    return <div className="min-h-screen flex items-center justify-center text-gray-600">Проверка доступа…</div>;
+    return <div className="min-h-screen flex items-center justify-center text-gray-600 dark:bg-gray-950 dark:text-gray-300">Проверка доступа…</div>;
   }
 
   if (!authorized) {
     return (
-      <div className="min-h-screen bg-gray-50 flex flex-col">
+      <div className="min-h-screen bg-gray-50 flex flex-col dark:bg-gray-950">
         <div className="flex-1 flex items-center justify-center p-4">
-          <div className="w-full max-w-sm bg-white rounded-xl border shadow p-6">
-            <h2 className="text-xl font-semibold text-gray-900 mb-1">Доступ к приложению</h2>
-            <p className="text-sm text-gray-600 mb-4">Введите пароль</p>
-            {loginError && <div className="mb-3 text-sm text-red-600">{loginError}</div>}
+          <div className="w-full max-w-sm bg-white rounded-xl border shadow p-6 dark:bg-gray-900 dark:border-gray-800">
+            <h2 className="text-xl font-semibold text-gray-900 mb-1 dark:text-gray-100">Доступ к приложению</h2>
+            <p className="text-sm text-gray-600 mb-4 dark:text-gray-400">Введите пароль</p>
+            {loginError && <div className="mb-3 text-sm text-red-600 dark:text-red-400">{loginError}</div>}
             <input
               type="email"
               value={usernameInput}
               onChange={(e) => setUsernameInput(e.target.value)}
-              className="w-full px-3 py-2 border rounded-md mb-3"
+              className="w-full px-3 py-2 border rounded-md mb-3 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100"
               placeholder="Email"
             />
             <input
               type="password"
               value={passwordInput}
               onChange={(e) => setPasswordInput(e.target.value)}
-              className="w-full px-3 py-2 border rounded-md mb-3"
+              className="w-full px-3 py-2 border rounded-md mb-3 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100"
               placeholder="Пароль"
             />
-            <label className="inline-flex items-center gap-2 text-sm text-gray-700 mb-4">
+            <label className="inline-flex items-center gap-2 text-sm text-gray-700 mb-4 dark:text-gray-300">
               <input type="checkbox" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} />
               Запомнить меня (30 дней)
             </label>
@@ -200,35 +201,38 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
+    <div className="min-h-screen bg-gray-50 flex flex-col dark:bg-gray-950">
       <div className="flex-1">
         <div className="max-w-6xl mx-auto px-4 py-8">
           {/* Header */}
           <div className="mb-8">
             <div className="flex items-center justify-between">
               <div>
-                <h1 className="text-3xl font-bold text-gray-900 mb-2">
+                <h1 className="text-3xl font-bold text-gray-900 mb-2 dark:text-gray-100">
                   IBS Trading Backtester
                 </h1>
-                <div className="text-gray-600 flex flex-wrap items-center gap-3">
+                <div className="text-gray-600 flex flex-wrap items-center gap-3 dark:text-gray-400">
                   <span>Internal Bar Strength Mean Reversion Strategy</span>
                 </div>
               </div>
-              {currentStrategy && (
-                <button
-                  onClick={() => setActiveTab('settings')}
-                  className="p-2 rounded-full text-gray-500 hover:text-gray-700 hover:bg-gray-100 border border-gray-200"
-                  aria-label="Настройки"
-                  title="Настройки"
-                >
-                  <Settings className="w-5 h-5" />
-                </button>
-              )}
+              <div className="flex items-center gap-3">
+                <ThemeToggle />
+                {currentStrategy && (
+                  <button
+                    onClick={() => setActiveTab('settings')}
+                    className="p-2 rounded-full text-gray-500 hover:text-gray-700 hover:bg-gray-100 border border-gray-200 dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-800 dark:border-gray-700"
+                    aria-label="Настройки"
+                    title="Настройки"
+                  >
+                    <Settings className="w-5 h-5" />
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 
           {/* Navigation Tabs */}
-          <div className="border-b border-gray-200 mb-8">
+          <div className="border-b border-gray-200 mb-8 dark:border-gray-800">
             <nav className="flex space-x-8">
               {tabs.map((tab) => (
                 <button
@@ -238,8 +242,8 @@ export default function App() {
                     activeTab === tab.id
                       ? 'border-blue-500 text-blue-600'
                       : tab.enabled
-                      ? 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                      : 'border-transparent text-gray-300 cursor-not-allowed'
+                      ? 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-200'
+                      : 'border-transparent text-gray-300 cursor-not-allowed dark:text-gray-600'
                   }`}
                 >
                   {tab.label}
@@ -249,7 +253,7 @@ export default function App() {
           </div>
 
           {/* Tab Content */}
-          <div className="bg-white rounded-lg shadow p-6">
+          <div className="bg-white rounded-lg shadow p-6 dark:bg-gray-900 dark:text-gray-100">
             {activeTab === 'data' && (
               <DataUpload onNext={() => setActiveTab('results')} />
             )}
