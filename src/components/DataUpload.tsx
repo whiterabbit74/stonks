@@ -1,5 +1,5 @@
-import { useRef, useState, useEffect } from 'react';
-import { Upload, CheckCircle, ArrowRight, Download, Save } from 'lucide-react';
+import { useRef, useEffect } from 'react';
+import { Upload, CheckCircle, ArrowRight, Download } from 'lucide-react';
 import { useAppStore } from '../stores';
 import { DatasetLibrary } from './DatasetLibrary';
 
@@ -10,9 +10,7 @@ interface DataUploadProps {
 export function DataUpload({ onNext }: DataUploadProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const jsonInputRef = useRef<HTMLInputElement>(null);
-  const [ticker, setTicker] = useState('');
-  const [datasetName, setDatasetName] = useState('');
-  const { marketData, currentDataset, /* uploadData, */ loadJSONData, saveDatasetToServer, loadDatasetsFromServer, isLoading } = useAppStore();
+  const { marketData, currentDataset, /* uploadData, */ loadJSONData, loadDatasetsFromServer } = useAppStore();
 
   // Загружаем список датасетов при монтировании компонента ТОЛЬКО после успешной авторизации
   useEffect(() => {
@@ -77,25 +75,7 @@ export function DataUpload({ onNext }: DataUploadProps) {
             </div>
             <h3 className="text-lg font-semibold text-gray-900 mb-2 dark:text-gray-100">Данные загружены</h3>
             <p className="text-gray-600 mb-4 dark:text-gray-300">{marketData.length} строк готовы для бэктеста</p>
-            <div className="bg-gray-50 rounded-lg p-4 mb-4 dark:bg-gray-900/80 dark:border dark:border-gray-800">
-              <h4 className="font-medium text-gray-900 mb-3 dark:text-gray-100">Быстрые действия</h4>
-              <div className="space-y-3">
-                <div className="flex gap-2">
-                  <input type="text" placeholder="Ticker (e.g., AAPL)" value={ticker} onChange={(e) => setTicker(e.target.value.toUpperCase())} className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100" />
-                  <input type="text" placeholder="Dataset name (optional)" value={datasetName} onChange={(e) => setDatasetName(e.target.value)} className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100" />
-                </div>
-                <div className="flex gap-2">
-                  <button onClick={async () => { if (ticker.trim()) { await saveDatasetToServer(ticker.trim(), datasetName.trim() || undefined); setTicker(''); setDatasetName(''); } }} disabled={!ticker.trim() || isLoading} className="inline-flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 disabled:bg-gray-400 text-sm font-medium hover-lift">
-                    <Save className="w-4 h-4" />
-                    {isLoading ? 'Saving...' : 'Save to Server'}
-                  </button>
-                  <button onClick={() => jsonInputRef.current?.click()} className="inline-flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 text-sm font-medium hover-lift">
-                    <Download className="w-4 h-4" />
-                    Import JSON
-                  </button>
-                </div>
-              </div>
-            </div>
+
           </div>
         )}
 
