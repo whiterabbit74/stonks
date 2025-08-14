@@ -15,6 +15,7 @@ const DATASETS_DIR = path.join(__dirname, 'datasets');
 const SETTINGS_FILE = path.join(__dirname, 'settings.json');
 const SPLITS_FILE = path.join(__dirname, 'splits.json');
 const WATCHES_FILE = path.join(__dirname, 'telegram-watches.json');
+const MONITOR_LOG_FILE = path.join(__dirname, 'monitoring.log');
 const avCache = new Map(); // кэш ответов Alpha Vantage
 
 // API Configuration
@@ -518,6 +519,7 @@ app.post('/api/telegram/watch', (req, res) => {
     }
     const useChatId = chatId || TELEGRAM_CHAT_ID;
     if (!useChatId) return res.status(400).json({ error: 'No Telegram chat id configured' });
+    // thresholdPct сохраняем для обратной совместимости, но в расчётах используем глобальную настройку
     telegramWatches.set(safeSymbol, { symbol: safeSymbol, highIBS, lowIBS, thresholdPct, chatId: useChatId, entryPrice, isOpenPosition, sent: { dateKey: null, warn10: false, confirm1: false, entryWarn10: false, entryConfirm1: false } });
     scheduleSaveWatches();
     res.json({ success: true });
@@ -558,13 +560,20 @@ setInterval(async () => {
 
     const todayKey = etKeyYMD(nowEt);
 
+    // Загружаем глобальные настройки порога и конвертируем в абсолютные пункты IBS
+    const settings = await readSettings();
+    const pct = typeof settings.watchThresholdPct === 'number' ? settings.watchThresholdPct : 5;
+    const delta = Math.max(0, Math.min(20, pct)) / 100; // 0..0.20 IBS
+
+    await appendMonitorLog([`T-${minutesUntilClose}min: scan ${telegramWatches.size} watches; thresholdPct=${pct}% (deltaIBS=${delta})`]);
+
     // Collect fresh data for all watches and group by chatId (always include all tickers)
-    const byChat = new Map(); // chatId -> Array<{ w, ibs, quote, range, ohlc, closeEnoughToExit, closeEnoughToEntry, confirmExit, confirmEntry, dataOk }>
+    const byChat = new Map(); // chatId -> Array<{ w, ibs, quote, range, ohlc, closeEnoughToExit, closeEnoughToEntry, confirmExit, confirmEntry, dataOk, fetchError }>
     for (const w of telegramWatches.values()) {
       const chatId = w.chatId || TELEGRAM_CHAT_ID;
       if (!chatId) continue;
       if (!byChat.has(chatId)) byChat.set(chatId, []);
-      const rec = { w, ibs: null, quote: null, range: null, ohlc: null, closeEnoughToExit: null, closeEnoughToEntry: null, confirmExit: null, confirmEntry: null, dataOk: false };
+      const rec = { w, ibs: null, quote: null, range: null, ohlc: null, closeEnoughToExit: null, closeEnoughToEntry: null, confirmExit: null, confirmEntry: null, dataOk: false, fetchError: null };
       byChat.get(chatId).push(rec);
       // ensure per-day flags
       if (w.sent.dateKey !== todayKey) w.sent = { dateKey: todayKey, warn10: false, confirm1: false, entryWarn10: false, entryConfirm1: false };
@@ -572,20 +581,20 @@ setInterval(async () => {
       try {
         const rangeQuote = await fetchTodayRangeAndQuote(w.symbol);
         const { range, quote, ohlc } = rangeQuote;
-        if (range.low == null || range.high == null || quote.current == null) continue;
-        if (range.high <= range.low) continue;
+        if (range.low == null || range.high == null || quote.current == null) throw new Error('no range/quote');
+        if (range.high <= range.low) throw new Error('invalid range');
         const ibs = (quote.current - range.low) / (range.high - range.low);
-        const tolerance = (w.thresholdPct || 0.3) / 100;
-        const closeEnoughToExit = ibs >= (w.highIBS * (1 - tolerance));
-        const closeEnoughToEntry = ibs <= (w.lowIBS ?? 0.1) * (1 + tolerance);
+        // Абсолютный порог: вход ≤ lowIBS + delta; выход ≥ highIBS − delta
+        const closeEnoughToExit = ibs >= (w.highIBS - delta);
+        const closeEnoughToEntry = ibs <= ((w.lowIBS ?? 0.1) + delta);
         const confirmExit = ibs >= w.highIBS;
         const confirmEntry = ibs <= (w.lowIBS ?? 0.1);
         rec.ibs = ibs; rec.quote = quote; rec.range = range; rec.ohlc = ohlc;
         rec.closeEnoughToExit = closeEnoughToExit; rec.closeEnoughToEntry = closeEnoughToEntry;
         rec.confirmExit = confirmExit; rec.confirmEntry = confirmEntry;
         rec.dataOk = true;
-      } catch {
-        // leave placeholders
+      } catch (err) {
+        rec.fetchError = err && err.message ? err.message : 'fetch_failed';
       }
     }
 
@@ -599,6 +608,7 @@ setInterval(async () => {
         const sub = `Дата: ${todayKey}, Время: ${String(nowEt.hh).padStart(2,'0')}:${String(nowEt.mm).padStart(2,'0')}`;
         const sorted = list.slice().sort((a, b) => a.w.symbol.localeCompare(b.w.symbol));
         const lines = [];
+        const logLines = [`T-10 overview → chat ${chatId}`];
         for (const rec of sorted) {
           const { w } = rec;
           const type = w.isOpenPosition ? 'выход' : 'вход';
@@ -606,14 +616,21 @@ setInterval(async () => {
           const nearStr = rec.dataOk ? (near ? 'Да' : 'Нет') : '—';
           const priceStr = rec.dataOk && rec.quote ? formatMoney(rec.quote.current) : '-';
           const ibsStr = rec.dataOk && Number.isFinite(rec.ibs) ? rec.ibs.toFixed(3) : '-';
-          const thresholdStr = w.isOpenPosition ? `≥ ${w.highIBS}` : `≤ ${w.lowIBS ?? 0.1}`;
+          const thresholdStr = w.isOpenPosition ? `≥ ${(w.highIBS - delta).toFixed(2)} (цель ${w.highIBS})` : `≤ ${((w.lowIBS ?? 0.1) + delta).toFixed(2)} (цель ${w.lowIBS ?? 0.1})`;
           lines.push(`${w.symbol}: позиция: ${w.isOpenPosition ? 'Открыта' : 'Нет'}; цена: ${priceStr}; IBS: ${ibsStr}; вероятен сигнал (${type}): ${nearStr} (порог ${thresholdStr})`);
+          const logOne = rec.dataOk
+            ? `${w.symbol} pos=${w.isOpenPosition ? 'open' : 'none'} IBS=${ibsStr} near=${nearStr} thr=${thresholdStr}`
+            : `${w.symbol} pos=${w.isOpenPosition ? 'open' : 'none'} data=NA err=${rec.fetchError}`;
+          logLines.push(logOne);
         }
         const text = `<b>${header}</b>\n${sub}\n\n${lines.join('\n')}`;
         const resp = await sendTelegramMessage(chatId, text);
         if (resp.ok) {
           state.t10Sent = true;
           aggregateSendState.set(chatId, state);
+          await appendMonitorLog([...logLines, '→ sent ok']);
+        } else {
+          await appendMonitorLog([...logLines, '→ send failed']);
         }
       }
 
@@ -651,12 +668,18 @@ setInterval(async () => {
             state.t1Sent = true;
             aggregateSendState.set(chatId, state);
             scheduleSaveWatches();
+            await appendMonitorLog([`T-1 confirms → chat ${chatId}`, ...exits.map(s => `EXIT ${s}`), ...entries.map(s => `ENTRY ${s}`), '→ sent ok']);
+          } else {
+            await appendMonitorLog([`T-1 confirms → chat ${chatId}`, 'nothing sent (send failed)']);
           }
+        } else {
+          await appendMonitorLog([`T-1 confirms → chat ${chatId}`, 'nothing to send']);
         }
       }
     }
   } catch (e) {
     console.warn('Scheduler error:', e.message);
+    try { await appendMonitorLog([`Scheduler error: ${e && e.message ? e.message : e}`]); } catch {}
   }
 }, 30000);
 
@@ -1910,3 +1933,17 @@ app.listen(PORT, () => {
   // Load persisted telegram watches
   loadWatches();
 });
+
+async function appendMonitorLog(lines) {
+  try {
+    const now = new Date();
+    const et = getETParts(now);
+    const ts = now.toISOString();
+    const etStr = `${et.y}-${String(et.m).padStart(2,'0')}-${String(et.d).padStart(2,'0')} ${String(et.hh).padStart(2,'0')}:${String(et.mm).padStart(2,'0')}`;
+    const payload = Array.isArray(lines) ? lines : [String(lines)];
+    const text = payload.map(l => `[${ts} ET:${etStr}] ${l}`).join('\n') + '\n';
+    await fs.appendFile(MONITOR_LOG_FILE, text);
+  } catch (e) {
+    console.warn('Failed to write monitor log:', e && e.message ? e.message : e);
+  }
+}
