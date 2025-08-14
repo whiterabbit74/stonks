@@ -7,6 +7,9 @@ import { EquityChart } from './EquityChart';
 import { TradeDrawdownChart } from './TradeDrawdownChart';
 import { MiniQuoteChart } from './MiniQuoteChart';
 import { InfoModal } from './InfoModal';
+import { TradesTable } from './TradesTable';
+import { ProfitFactorChart } from './ProfitFactorChart';
+import { TradeDurationChart } from './TradeDurationChart';
 
 export function Results() {
   const backtestResults = useAppStore(s => s.backtestResults);
@@ -36,7 +39,7 @@ export function Results() {
   const [watching, setWatching] = useState(false);
   const [watchBusy, setWatchBusy] = useState(false);
   
-  type ChartTab = 'price' | 'equity' | 'drawdown';
+  type ChartTab = 'price' | 'equity' | 'drawdown' | 'trades' | 'profit' | 'duration';
   const [activeChart, setActiveChart] = useState<ChartTab>('price');
   
   // Проверка дублей дат в marketData (ключ YYYY-MM-DD)
@@ -298,14 +301,88 @@ export function Results() {
   
   return (
     <div className="space-y-6 animate-fade-in">
-      {/* Верхний блок: символ, цена, избранное и статусы */}
+      {/* Верхний блок: символ слева, правая панель с мини-графиком/ценами и кнопкой мониторинга */}
       <section className="rounded-xl border bg-white p-4 dark:bg-gray-900 dark:border-gray-800">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div className="space-y-2">
-            <div className="flex items-center justify-between gap-3">
-              <div className="text-4xl sm:text-5xl font-black tracking-tight text-gray-900 dark:text-gray-100">
-                {symbol || '—'}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {/* Левая часть: символ и статус */}
+          <div className="space-y-2 md:col-span-1">
+            <div className="text-4xl sm:text-5xl font-black tracking-tight text-gray-900 dark:text-gray-100">
+              {symbol || '—'}
+            </div>
+            <div className="text-3xl sm:text-4xl font-extrabold text-gray-900 dark:text-gray-100">
+              {quote?.current != null ? `$${Number(quote.current).toFixed(2)}` : '—'}
+            </div>
+            <div>
+              {(() => {
+                const prev = quote?.prevClose ?? null;
+                const cur = quote?.current ?? null;
+                if (prev == null || cur == null) {
+                  return <div className="text-sm text-gray-500">{isTrading ? 'Сегодня' : 'Вне сессии'}</div>;
+                }
+                const delta = cur - prev;
+                const pct = prev !== 0 ? (delta / prev) * 100 : 0;
+                const positive = delta >= 0;
+                const color = positive ? 'text-green-600 dark:text-emerald-300' : 'text-orange-600 dark:text-orange-300';
+                const sign = positive ? '+' : '';
+                return (
+                  <div className={`text-lg font-semibold ${color}`}>
+                    {`${sign}$${delta.toFixed(2)} (${sign}${pct.toFixed(2)}%)`}{' '}
+                    <span className="text-gray-800 font-normal dark:text-gray-300">{isTrading ? 'Сегодня' : 'С предыдущего закрытия'}</span>
+                  </div>
+                );
+              })()}
+            </div>
+            <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
+              <span className="px-2 py-0.5 rounded bg-gray-100 border dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700">Источник: {(resultsQuoteProvider === 'alpha_vantage') ? 'Alpha Vantage' : 'Finnhub'}</span>
+              {lastUpdatedAt && (
+                <span className="px-2 py-0.5 rounded bg-gray-100 border dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700">Обновлено: {lastUpdatedAt.toLocaleTimeString('ru-RU')}</span>
+              )}
+              <span className={`px-2 py-0.5 rounded border ${isTrading ? 'bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-950/30 dark:border-emerald-900/40 dark:text-emerald-200' : 'bg-amber-100 border-amber-200 text-amber-800 dark:bg-amber-950/30 dark:border-amber-900/40 dark:text-amber-200'}`}>
+                {isTrading ? 'Рынок открыт' : 'Рынок закрыт'}
+              </span>
+            </div>
+          </div>
+
+          {/* Правая часть: мини-график + цены + кнопка мониторинга */}
+          <div className="md:col-span-2 flex flex-col gap-3">
+            <div className="bg-white rounded-lg border p-3 dark:bg-gray-900 dark:border-gray-800">
+              <MiniQuoteChart 
+                history={marketData.slice(-10)}
+                today={quote}
+                trades={trades}
+                highIBS={Number(currentStrategy?.parameters?.highIBS ?? 0.75)}
+                isOpenPosition={(() => {
+                  const lastTrade = trades[trades.length - 1];
+                  const lastDataDate = marketData.length ? marketData[marketData.length - 1].date : null;
+                  return !!(lastTrade && lastDataDate && new Date(lastTrade.exitDate).getTime() === new Date(lastDataDate).getTime());
+                })()}
+                entryPrice={(() => {
+                  const lastTrade = trades[trades.length - 1];
+                  const lastDataDate = marketData.length ? marketData[marketData.length - 1].date : null;
+                  const isOpen = !!(lastTrade && lastDataDate && new Date(lastTrade.exitDate).getTime() === new Date(lastDataDate).getTime());
+                  return isOpen ? lastTrade?.entryPrice ?? null : null;
+                })()}
+              />
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="p-3 rounded-lg border bg-gray-50 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100">
+                <div className="text-xs text-gray-500 dark:text-gray-300">Открытие</div>
+                <div className="font-mono text-lg">{quote?.open ?? '—'}</div>
               </div>
+              <div className="p-3 rounded-lg border bg-gray-50 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100">
+                <div className="text-xs text-gray-500 dark:text-gray-300">Макс.</div>
+                <div className="font-mono text-lg">{quote?.high ?? '—'}</div>
+              </div>
+              <div className="p-3 rounded-lg border bg-gray-50 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100">
+                <div className="text-xs text-gray-500 dark:text-gray-300">Мин.</div>
+                <div className="font-mono text-lg">{quote?.low ?? '—'}</div>
+              </div>
+              <div className="p-3 rounded-lg border bg-gray-50 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100">
+                <div className="text-xs text-gray-500 dark:text-gray-300">Текущая</div>
+                <div className="font-mono text-lg">{quote?.current ?? '—'}</div>
+              </div>
+            </div>
+            <div className="flex items-center justify-end">
               <button
                 disabled={!symbol || watchBusy}
                 onClick={async () => {
@@ -344,46 +421,16 @@ export function Results() {
                 <Heart className={`w-5 h-5 ${watching ? 'fill-current animate-heartbeat' : ''}`} />
               </button>
             </div>
-
-            <div className="text-3xl sm:text-4xl font-extrabold text-gray-900 dark:text-gray-100">
-              {quote?.current != null ? `$${Number(quote.current).toFixed(2)}` : '—'}
-            </div>
-
-            <div>
-              {(() => {
-                const prev = quote?.prevClose ?? null;
-                const cur = quote?.current ?? null;
-                if (prev == null || cur == null) {
-                  return <div className="text-sm text-gray-500">{isTrading ? 'Сегодня' : 'Вне сессии'}</div>;
-                }
-                const delta = cur - prev;
-                const pct = prev !== 0 ? (delta / prev) * 100 : 0;
-                const positive = delta >= 0;
-                const color = positive ? 'text-green-600 dark:text-emerald-300' : 'text-orange-600 dark:text-orange-300';
-                const sign = positive ? '+' : '';
-                return (
-                  <div className={`text-lg font-semibold ${color}`}>
-                    {`${sign}$${delta.toFixed(2)} (${sign}${pct.toFixed(2)}%)`}{' '}
-                    <span className="text-gray-800 font-normal dark:text-gray-300">{isTrading ? 'Сегодня' : 'С предыдущего закрытия'}</span>
-                  </div>
-                );
-              })()}
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
-              <span className="px-2 py-0.5 rounded bg-gray-100 border dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700">Источник: {(resultsQuoteProvider === 'alpha_vantage') ? 'Alpha Vantage' : 'Finnhub'}</span>
-              {lastUpdatedAt && (
-                <span className="px-2 py-0.5 rounded bg-gray-100 border dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700">Обновлено: {lastUpdatedAt.toLocaleTimeString('ru-RU')}</span>
-              )}
-              <span className={`px-2 py-0.5 rounded border ${isTrading ? 'bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-950/30 dark:border-emerald-900/40 dark:text-emerald-200' : 'bg-amber-100 border-amber-200 text-amber-800 dark:bg-amber-950/30 dark:border-amber-900/40 dark:text-amber-200'}`}>
-                {isTrading ? 'Рынок открыт' : 'Рынок закрыт'}
-              </span>
-            </div>
+            {quoteLoading && <div className="text-xs text-gray-400">загрузка…</div>}
+            {!isTrading && (
+              <div className="text-sm text-gray-500">Показываем в торговые часы (NYSE): 09:30–16:00 ET</div>
+            )}
+            {quoteError && <div className="text-sm text-red-600">{quoteError}</div>}
           </div>
         </div>
       </section>
 
-      {/* Основная сетка: левая часть — KPI и графики; правая — лайв и здоровье данных */}
+      {/* Основная сетка: левая часть — KPI и графики; правая — здоровье данных */}
       <div className="grid grid-cols-1 xl:grid-cols-4 gap-6 items-start">
         {/* Левая колонка */}
         <div className="xl:col-span-3 space-y-6">
@@ -421,31 +468,55 @@ export function Results() {
           <section className="space-y-3">
             <div className="flex items-center justify-between">
               <div className="inline-flex rounded-md border bg-gray-100 p-0.5 dark:bg-slate-800 dark:border-slate-700">
-                {(['price','equity','drawdown'] as ChartTab[]).map(tab => (
+                {(['price','equity','drawdown','trades','profit','duration'] as ChartTab[]).map(tab => (
                   <button
                     key={tab}
                     onClick={() => setActiveChart(tab)}
                     className={`px-3 py-1.5 text-sm rounded-md transition ${activeChart === tab ? 'bg-white text-gray-900 shadow-sm dark:bg-slate-900 dark:text-gray-100' : 'text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-gray-100'}`}
                   >
-                    {tab === 'price' ? 'Цена' : tab === 'equity' ? 'Капитал' : 'Просадки'}
+                    {tab === 'price' ? 'Цена' : tab === 'equity' ? 'Капитал' : tab === 'drawdown' ? 'Просадки' : tab === 'trades' ? 'Сделки' : tab === 'profit' ? 'Profit Factor' : 'Длительность'}
                   </button>
                 ))}
               </div>
             </div>
 
             {activeChart === 'price' && (
-              <div className="rounded-xl border bg-white p-3 dark:bg-gray-900 dark:border-gray-800">
-                <TradingChart data={marketData} trades={trades} splits={currentSplits} />
+              <div className="rounded-xl border bg-white p-0 dark:bg-gray-900 dark:border-gray-800">
+                <div className="w-full">
+                  <TradingChart data={marketData} trades={trades} splits={currentSplits} />
+                </div>
               </div>
             )}
             {activeChart === 'equity' && (
-              <div className="rounded-xl border bg-white p-3 dark:bg-gray-900 dark:border-gray-800">
-                <EquityChart equity={equity} />
+              <div className="rounded-xl border bg-white p-0 dark:bg-gray-900 dark:border-gray-800">
+                <div className="w-full">
+                  <EquityChart equity={equity} />
+                </div>
+                <div className="px-3 py-2 text-sm text-gray-700 dark:text-gray-200">
+                  Итоговый капитал: ${Number(equity[equity.length - 1]?.value ?? 0).toFixed(2)}
+                </div>
               </div>
             )}
             {activeChart === 'drawdown' && (
+              <div className="rounded-xl border bg-white p-0 dark:bg-gray-900 dark:border-gray-800">
+                <div className="w-full">
+                  <TradeDrawdownChart trades={trades} initialCapital={Number(currentStrategy?.riskManagement?.initialCapital ?? 10000)} />
+                </div>
+              </div>
+            )}
+            {activeChart === 'trades' && (
               <div className="rounded-xl border bg-white p-3 dark:bg-gray-900 dark:border-gray-800">
-                <TradeDrawdownChart trades={trades} initialCapital={Number(currentStrategy?.riskManagement?.initialCapital ?? 10000)} />
+                <TradesTable trades={trades} />
+              </div>
+            )}
+            {activeChart === 'profit' && (
+              <div className="rounded-xl border bg-white p-3 dark:bg-gray-900 dark:border-gray-800">
+                <ProfitFactorChart trades={trades} />
+              </div>
+            )}
+            {activeChart === 'duration' && (
+              <div className="rounded-xl border bg-white p-3 dark:bg-gray-900 dark:border-gray-800">
+                <TradeDurationChart trades={trades} />
               </div>
             )}
           </section>
@@ -453,52 +524,6 @@ export function Results() {
 
         {/* Правая колонка */}
         <div className="space-y-6">
-          {/* Лайв-котировки */}
-          <section className="rounded-xl border bg-white p-4 dark:bg-gray-900 dark:border-gray-800">
-            <div className="bg-white rounded-lg border p-3 dark:bg-gray-900 dark:border-gray-800">
-              <MiniQuoteChart 
-                history={marketData.slice(-10)}
-                today={quote}
-                trades={trades}
-                highIBS={Number(currentStrategy?.parameters?.highIBS ?? 0.75)}
-                isOpenPosition={(() => {
-                  const lastTrade = trades[trades.length - 1];
-                  const lastDataDate = marketData.length ? marketData[marketData.length - 1].date : null;
-                  return !!(lastTrade && lastDataDate && new Date(lastTrade.exitDate).getTime() === new Date(lastDataDate).getTime());
-                })()}
-                entryPrice={(() => {
-                  const lastTrade = trades[trades.length - 1];
-                  const lastDataDate = marketData.length ? marketData[marketData.length - 1].date : null;
-                  const isOpen = !!(lastTrade && lastDataDate && new Date(lastTrade.exitDate).getTime() === new Date(lastDataDate).getTime());
-                  return isOpen ? lastTrade?.entryPrice ?? null : null;
-                })()}
-              />
-            </div>
-            <div className="mt-3 grid grid-cols-2 gap-3">
-              <div className="p-3 rounded-lg border bg-gray-50 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100">
-                <div className="text-xs text-gray-500 dark:text-gray-300">Открытие</div>
-                <div className="font-mono text-lg">{quote?.open ?? '—'}</div>
-              </div>
-              <div className="p-3 rounded-lg border bg-gray-50 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100">
-                <div className="text-xs text-gray-500 dark:text-gray-300">Макс.</div>
-                <div className="font-mono text-lg">{quote?.high ?? '—'}</div>
-              </div>
-              <div className="p-3 rounded-lg border bg-gray-50 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100">
-                <div className="text-xs text-gray-500 dark:text-gray-300">Мин.</div>
-                <div className="font-mono text-lg">{quote?.low ?? '—'}</div>
-              </div>
-              <div className="p-3 rounded-lg border bg-gray-50 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100">
-                <div className="text-xs text-gray-500 dark:text-gray-300">Текущая</div>
-                <div className="font-mono text-lg">{quote?.current ?? '—'}</div>
-              </div>
-            </div>
-            {quoteLoading && <div className="text-xs text-gray-400 mt-1">загрузка…</div>}
-            {!isTrading && (
-              <div className="text-sm text-gray-500 mt-2">Показываем в торговые часы (NYSE): 09:30–16:00 ET</div>
-            )}
-            {quoteError && <div className="text-sm text-red-600 mt-2">{quoteError}</div>}
-          </section>
-
           {/* Здоровье данных и актуализация */}
           <section className="rounded-xl border bg-white p-4 dark:bg-gray-900 dark:border-gray-800 space-y-3">
             <div className="text-sm font-semibold">Состояние данных</div>
