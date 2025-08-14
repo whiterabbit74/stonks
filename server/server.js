@@ -1367,7 +1367,7 @@ app.post('/api/datasets/:id/refresh', async (req, res) => {
         volume: r.volume || 0,
       }));
     } else {
-      const av = await fetchFromAlphaVantage(ticker, startTs, endTs, { adjustment: 'none' });
+      const av = await fetchFromAlphaVantage(ticker, startTs, endTs, { adjustment: 'split_only' });
       const base = Array.isArray(av) ? av : (av && av.data) || [];
       rows = base.map(r => ({
         date: r.date,
