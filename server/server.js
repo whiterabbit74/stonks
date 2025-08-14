@@ -1310,11 +1310,7 @@ app.put('/api/datasets/:id', async (req, res) => {
 app.post('/api/datasets/:id/refresh', async (req, res) => {
   try {
     const { id } = req.params;
-    const provider = (req.query.provider || '').toString().toLowerCase();
     const settings = await readSettings().catch(() => ({}));
-    const chosenProvider = provider === 'alpha_vantage' || provider === 'finnhub'
-      ? provider
-      : (settings.resultsRefreshProvider || settings.resultsQuoteProvider || 'finnhub');
 
     const filePath = resolveDatasetFilePathById(id);
     if (!filePath || !await fs.pathExists(filePath)) {
@@ -1355,32 +1351,19 @@ app.post('/api/datasets/:id/refresh', async (req, res) => {
 
     let rows = [];
     let splits = [];
-    if (chosenProvider === 'finnhub') {
-      const fh = await fetchFromFinnhub(ticker, startTs, endTs);
-      rows = fh.map(r => ({
-        date: r.date,
-        open: r.open,
-        high: r.high,
-        low: r.low,
-        close: r.close,
-        adjClose: r.adjClose ?? r.close,
-        volume: r.volume || 0,
-      }));
-    } else {
-      const av = await fetchFromAlphaVantage(ticker, startTs, endTs, { adjustment: 'split_only' });
-      const base = Array.isArray(av) ? av : (av && av.data) || [];
-      rows = base.map(r => ({
-        date: r.date,
-        open: r.open,
-        high: r.high,
-        low: r.low,
-        close: r.close,
-        adjClose: r.adjClose ?? r.close,
-        volume: r.volume || 0,
-      }));
-      if (av && !Array.isArray(av) && Array.isArray(av.splits)) {
-        splits = av.splits;
-      }
+    const av = await fetchFromAlphaVantage(ticker, startTs, endTs, { adjustment: 'split_only' });
+    const base = Array.isArray(av) ? av : (av && av.data) || [];
+    rows = base.map(r => ({
+      date: r.date,
+      open: r.open,
+      high: r.high,
+      low: r.low,
+      close: r.close,
+      adjClose: r.adjClose ?? r.close,
+      volume: r.volume || 0,
+    }));
+    if (av && !Array.isArray(av) && Array.isArray(av.splits)) {
+      splits = av.splits;
     }
 
     // Merge with de-duplication by date key, normalizing all dates to YYYY-MM-DD
@@ -1470,7 +1453,7 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 app.get('/api/yahoo-finance/:symbol', async (req, res) => {
   try {
     const { symbol } = req.params;
-    const { start, end, provider, adjustment } = req.query;
+    const { start, end } = req.query;
     if (!symbol) {
       return res.status(400).json({ error: 'Symbol is required' });
     }
@@ -1478,37 +1461,27 @@ app.get('/api/yahoo-finance/:symbol', async (req, res) => {
     const startDate = start ? parseInt(start) : defaultStartDate;
     const endDate = end ? parseInt(end) : Math.floor(Date.now() / 1000);
 
-    const chosenProvider = (provider || API_CONFIG.PREFERRED_API_PROVIDER).toString().toLowerCase();
     let payload;
-    if (chosenProvider === 'finnhub') {
-      if (!API_CONFIG.FINNHUB_API_KEY) {
-        return res.status(500).json({ error: 'Finnhub API key not configured' });
-      }
-      console.log(`Fetching data for ${symbol} from Finnhub...`);
-      const fhData = await fetchFromFinnhub(symbol, startDate, endDate);
-      payload = { data: fhData, splits: [] };
-    } else {
-      if (!API_CONFIG.ALPHA_VANTAGE_API_KEY) {
-        return res.status(500).json({ error: 'Alpha Vantage API key not configured' });
-      }
-      const mode = (adjustment || 'none').toString();
-      console.log(`Fetching ${mode} data for ${symbol} from Alpha Vantage...`);
-      let avResponse;
-      try {
-        avResponse = await fetchFromAlphaVantage(symbol, startDate, endDate, { adjustment: mode }); // returns { data, splits }
-      } catch (e) {
-        if (e && e.status === 429) {
-          await sleep(1200);
-          avResponse = await fetchFromAlphaVantage(symbol, startDate, endDate, { adjustment: mode });
-        } else {
-          throw e;
-        }
-      }
-      if (Array.isArray(avResponse)) {
-        payload = { data: avResponse, splits: [] };
+    if (!API_CONFIG.ALPHA_VANTAGE_API_KEY) {
+      return res.status(500).json({ error: 'Alpha Vantage API key not configured' });
+    }
+    const mode = 'split_only';
+    console.log(`Fetching ${mode} data for ${symbol} from Alpha Vantage...`);
+    let avResponse;
+    try {
+      avResponse = await fetchFromAlphaVantage(symbol, startDate, endDate, { adjustment: mode }); // returns { data, splits }
+    } catch (e) {
+      if (e && e.status === 429) {
+        await sleep(1200);
+        avResponse = await fetchFromAlphaVantage(symbol, startDate, endDate, { adjustment: mode });
       } else {
-        payload = { data: avResponse.data, splits: avResponse.splits || [] };
+        throw e;
       }
+    }
+    if (Array.isArray(avResponse)) {
+      payload = { data: avResponse, splits: [] };
+    } else {
+      payload = { data: avResponse.data, splits: avResponse.splits || [] };
     }
 
     if (!payload.data || payload.data.length === 0) {
