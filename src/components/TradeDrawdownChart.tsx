@@ -100,7 +100,7 @@ export function TradeDrawdownChart({ trades, initialCapital }: TradeDrawdownChar
         bottomColor: isDark ? 'rgba(248, 113, 113, 0.08)' : 'rgba(244, 67, 54, 0.1)',
         lineColor: isDark ? '#f87171' : '#F44336',
         lineWidth: 2,
-        title: 'Trade Drawdown %',
+        title: 'Просадка по сделкам, %',
       });
 
       drawdownSeries.setData(tradeDrawdownData.map(d => ({
@@ -113,7 +113,7 @@ export function TradeDrawdownChart({ trades, initialCapital }: TradeDrawdownChar
         color: isDark ? '#9ca3af' : '#666666',
         lineWidth: 1,
         lineStyle: 2, // Dashed line
-        title: 'Zero Line',
+        title: 'Нулевая линия',
       });
 
       const zeroLineData = tradeDrawdownData.map(d => ({
@@ -154,7 +154,7 @@ export function TradeDrawdownChart({ trades, initialCapital }: TradeDrawdownChar
   if (!trades.length) {
     return (
       <div className="flex items-center justify-center h-full text-gray-500">
-        No trade data available for drawdown analysis
+        Нет данных по сделкам для анализа просадки
       </div>
     );
   }
@@ -186,16 +186,16 @@ export function TradeDrawdownChart({ trades, initialCapital }: TradeDrawdownChar
       {/* Trade Drawdown Statistics */}
       <div className="flex gap-4 mb-4 text-sm">
         <div className="bg-red-50 px-3 py-2 rounded dark:bg-red-950/30 dark:text-red-300">
-          <span className="text-red-600 font-medium dark:text-red-300">Max Trade DD: {maxDrawdown.toFixed(2)}%</span>
+          <span className="text-red-600 font-medium dark:text-red-300">Макс. просадка по сделке: {maxDrawdown.toFixed(2)}%</span>
         </div>
         <div className="bg-gray-50 px-3 py-2 rounded dark:bg-gray-800 dark:text-gray-200">
-          <span className="text-gray-600 dark:text-gray-200">DD Trades: {drawdownTrades}/{trades.length}</span>
+          <span className="text-gray-600 dark:text-gray-200">Сделок с просадкой: {drawdownTrades}/{trades.length}</span>
         </div>
         <div className="bg-gray-50 px-3 py-2 rounded dark:bg-gray-800 dark:text-gray-200">
-          <span className="text-gray-600 dark:text-gray-200">DD Frequency: {drawdownFrequency.toFixed(1)}%</span>
+          <span className="text-gray-600 dark:text-gray-200">Частота просадок: {drawdownFrequency.toFixed(1)}%</span>
         </div>
         <div className="bg-blue-50 px-3 py-2 rounded dark:bg-blue-950/30 dark:text-blue-200">
-          <span className="text-blue-600 dark:text-blue-200">Final Capital: ${runningCapital.toFixed(2)}</span>
+          <span className="text-blue-600 dark:text-blue-200">Итоговый капитал: ${runningCapital.toFixed(2)}</span>
         </div>
       </div>
       

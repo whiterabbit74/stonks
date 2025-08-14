@@ -546,27 +546,27 @@ export function Results() {
           <div className="bg-white rounded-lg border p-4 dark:bg-gray-900 dark:border-gray-800">
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm">
               <div>
-                <span className="text-gray-600 dark:text-gray-300">CAGR:</span>
+                <span className="text-gray-600 dark:text-gray-300">Среднегодовой рост (CAGR):</span>
                 <span className="ml-2 font-medium dark:text-gray-100">{metrics.cagr.toFixed(2)}%</span>
               </div>
               <div>
-                <span className="text-gray-600 dark:text-gray-300">Sharpe Ratio:</span>
+                <span className="text-gray-600 dark:text-gray-300">Коэффициент Шарпа:</span>
                 <span className="ml-2 font-medium dark:text-gray-100">{metrics.sharpeRatio.toFixed(2)}</span>
               </div>
               <div>
-                <span className="text-gray-600 dark:text-gray-300">Profit Factor:</span>
+                <span className="text-gray-600 dark:text-gray-300">Профит-фактор:</span>
                 <span className="ml-2 font-medium dark:text-gray-100">{metrics.profitFactor.toFixed(2)}</span>
               </div>
               <div>
-                <span className="text-gray-600 dark:text-gray-300">Avg Win:</span>
+                <span className="text-gray-600 dark:text-gray-300">Средняя прибыль:</span>
                 <span className="ml-2 font-medium dark:text-gray-100">${metrics.averageWin.toFixed(2)}</span>
               </div>
               <div>
-                <span className="text-gray-600 dark:text-gray-300">Avg Loss:</span>
+                <span className="text-gray-600 dark:text-gray-300">Средний убыток:</span>
                 <span className="ml-2 font-medium dark:text-gray-100">${metrics.averageLoss.toFixed(2)}</span>
               </div>
               <div>
-                <span className="text-gray-600 dark:text-gray-300">Sortino Ratio:</span>
+                <span className="text-gray-600 dark:text-gray-300">Коэффициент Сортино:</span>
                 <span className="ml-2 font-medium dark:text-gray-100">{metrics.sortinoRatio.toFixed(2)}</span>
               </div>
             </div>

@@ -107,12 +107,12 @@ export function MiniQuoteChart({ history, today, trades, highIBS, isOpenPosition
     // Add target close price line if position is open and we have today range
     if (isOpenPosition && hasToday && (today!.high as number) > (today!.low as number)) {
       const target = (today!.low as number) + highIBS * ((today!.high as number) - (today!.low as number));
-      series.createPriceLine({ price: target, color: '#8B5CF6', lineWidth: 2, lineStyle: 0, axisLabelVisible: true, title: 'IBS target' });
+      series.createPriceLine({ price: target, color: '#8B5CF6', lineWidth: 2, lineStyle: 0, axisLabelVisible: true, title: 'Цель IBS' });
     }
 
     // Entry price reference line (subtle gray)
     if (isOpenPosition && typeof entryPrice === 'number') {
-      series.createPriceLine({ price: entryPrice, color: '#9CA3AF', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: 'Entry' });
+      series.createPriceLine({ price: entryPrice, color: '#9CA3AF', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: 'Вход' });
     }
 
     // Не подгоняем контент под ширину — оставляем воздух справа
