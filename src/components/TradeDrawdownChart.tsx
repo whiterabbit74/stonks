@@ -34,7 +34,7 @@ export function TradeDrawdownChart({ trades, initialCapital }: TradeDrawdownChar
       // Create new chart
       const chart = createChart(chartContainerRef.current, {
         width: chartContainerRef.current.clientWidth,
-        height: Math.max(chartContainerRef.current.clientHeight, 300),
+        height: Math.max(chartContainerRef.current.clientHeight || 0, 360),
         layout: {
           background: { color: bg },
           textColor: text,
@@ -128,7 +128,7 @@ export function TradeDrawdownChart({ trades, initialCapital }: TradeDrawdownChar
         if (chartContainerRef.current && chart) {
           chart.applyOptions({
             width: chartContainerRef.current.clientWidth,
-            height: Math.max(chartContainerRef.current.clientHeight, 300),
+            height: Math.max(chartContainerRef.current.clientHeight || 0, 360),
           });
         }
       };
@@ -184,7 +184,7 @@ export function TradeDrawdownChart({ trades, initialCapital }: TradeDrawdownChar
   return (
     <div className="w-full h-full">
       {/* Trade Drawdown Statistics */}
-      <div className="flex gap-4 mb-4 text-sm">
+      <div className="flex flex-wrap gap-4 mb-4 text-sm">
         <div className="bg-red-50 px-3 py-2 rounded dark:bg-red-950/30 dark:text-red-300">
           <span className="text-red-600 font-medium dark:text-red-300">Макс. просадка по сделке: {maxDrawdown.toFixed(2)}%</span>
         </div>
@@ -200,7 +200,7 @@ export function TradeDrawdownChart({ trades, initialCapital }: TradeDrawdownChar
       </div>
       
       {/* Chart Container */}
-      <div ref={chartContainerRef} className="w-full h-full min-h-0 overflow-hidden" />
+      <div ref={chartContainerRef} className="w-full h-[360px] min-h-0 overflow-hidden" />
     </div>
   );
 }
