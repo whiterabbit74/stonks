@@ -136,7 +136,7 @@ export function MiniQuoteChart({ history, today, trades, highIBS, isOpenPosition
   }, [history, today, trades, highIBS, isOpenPosition, entryPrice]);
 
   return (
-    <div ref={containerRef} className="w-full h-full min-h-0 overflow-hidden" />
+    <div ref={containerRef} className="w-full h-full min-h-[120px] overflow-hidden" />
   );
 }
 

@@ -176,8 +176,16 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
 
       // Sync time scales in both directions (avoid feedback loops)
       try {
+        let syncing = false;
         chart.timeScale().subscribeVisibleTimeRangeChange((range: any) => {
-          if (range) subChart.timeScale().setVisibleRange(range);
+          if (!range || syncing) return;
+          syncing = true;
+          try { subChart.timeScale().setVisibleRange(range); } finally { syncing = false; }
+        });
+        subChart.timeScale().subscribeVisibleTimeRangeChange((range: any) => {
+          if (!range || syncing) return;
+          syncing = true;
+          try { chart.timeScale().setVisibleRange(range); } finally { syncing = false; }
         });
       } catch (e) { console.warn('Failed to sync time scales', e); }
 
@@ -378,7 +386,7 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
   }
 
   return (
-    <div className="w-full h-full grid grid-rows-[auto,1fr] gap-4">
+    <div className="w-full grid grid-rows-[auto,1fr] gap-4">
       {/* EMA Controls */}
       <div className="flex gap-2 flex-wrap">
         <button
@@ -424,7 +432,7 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
       </div>
       
       {/* Chart Container split: main (80%) + sub (20%) */}
-      <div ref={chartContainerRef} className="min-h-0 overflow-hidden w-full h-[600px] flex flex-col">
+      <div ref={chartContainerRef} className="min-h-0 overflow-hidden w-full h-[560px] flex flex-col">
         <div ref={mainPaneRef} className="flex-1 min-h-[360px]" />
         <div ref={subPaneRef} className="h-[120px]" />
       </div>

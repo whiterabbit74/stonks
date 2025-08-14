@@ -71,13 +71,7 @@ export function EquityChart({ equity }: EquityChartProps) {
         title: 'Стоимость портфеля',
       });
 
-      // Серая линия all-time high (ATH)
-      const athSeries: ISeriesApi<'Line'> = chart.addLineSeries({
-        color: '#9CA3AF',
-        lineWidth: 1,
-        lineStyle: 2,
-        title: 'Максимум за всё время',
-      });
+
 
       // Convert equity data to chart format
       const equityData = equity.map(point => ({
@@ -87,14 +81,6 @@ export function EquityChart({ equity }: EquityChartProps) {
 
       equitySeries.setData(equityData);
 
-      // Рассчитываем ATH во времени
-      const athData: { time: UTCTimestamp; value: number }[] = [];
-      let runningMax = -Infinity;
-      for (const p of equity) {
-        runningMax = Math.max(runningMax, p.value);
-        athData.push({ time: Math.floor(p.date.getTime() / 1000) as UTCTimestamp, value: runningMax });
-      }
-      athSeries.setData(athData);
 
       // Убрали линию последнего значения по запросу
 
@@ -161,5 +147,5 @@ export function EquityChart({ equity }: EquityChartProps) {
     );
   }
 
-  return <div ref={chartContainerRef} className="w-full h-[360px] min-h-0 overflow-hidden" />;
+  return <div ref={chartContainerRef} className="w-full h-[300px] min-h-0 overflow-hidden" />;
 }
