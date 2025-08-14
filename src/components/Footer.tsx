@@ -6,7 +6,7 @@ export function Footer({ apiBuildId }: FooterProps) {
   const feBuildId = import.meta.env.VITE_BUILD_ID || 'dev';
   return (
     <footer className="bg-white dark:bg-slate-900 text-gray-700 dark:text-gray-300 mt-auto">
-      <div className="max-w-6xl mx-auto px-4 py-6">
+      <div className="max-w-7xl mx-auto px-4 py-6">
         <div className="flex flex-col sm:flex-row items-center sm:items-start justify-between gap-4">
           <div className="text-center sm:text-left">
             <div className="text-lg font-semibold text-gray-900 dark:text-white">IBS: тестировщик стратегий</div>

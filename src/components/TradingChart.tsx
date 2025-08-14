@@ -64,7 +64,7 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
       // Create main chart (80% height)
       const mainEl = mainPaneRef.current || chartContainerRef.current;
       const subEl = subPaneRef.current || chartContainerRef.current;
-      const totalH = chartContainerRef.current.clientHeight || 600;
+      const totalH = chartContainerRef.current.clientHeight || 520;
       const mainH = Math.max(200, Math.round(totalH * 0.80));
       const subH = Math.max(80, totalH - mainH);
       const chart = createChart(mainEl, {
@@ -346,7 +346,7 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
       const handleResize = () => {
         if (!chartContainerRef.current) return;
         const w = chartContainerRef.current.clientWidth;
-        const total = chartContainerRef.current.clientHeight || 600;
+        const total = chartContainerRef.current.clientHeight || 520;
         const mainH2 = Math.max(200, Math.round(total * 0.80));
         const subH2 = Math.max(80, total - mainH2);
         chart.applyOptions({ width: w, height: mainH2 });
@@ -378,7 +378,7 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
   }
 
   return (
-    <div className="w-full h-full grid grid-rows-[auto,1fr] gap-4">
+    <div className="w-full grid grid-rows-[auto,1fr] gap-4 h-[520px] sm:h-[600px]">
       {/* EMA Controls */}
       <div className="flex gap-2 flex-wrap">
         <button
