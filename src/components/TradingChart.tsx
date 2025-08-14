@@ -311,7 +311,7 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
         const o = bar?.open, h = bar?.high, l = bar?.low, c = bar?.close;
         const pct = o ? (((c! - o) / o) * 100) : 0;
         const ibsStr = (typeof ibsVal === 'number') ? ` · IBS ${(ibsVal * 100).toFixed(0)}%` : '';
-        tooltipEl.innerHTML = `O ${o?.toFixed?.(2) ?? '-'} H ${h?.toFixed?.(2) ?? '-'} L ${l?.toFixed?.(2) ?? '-'} C ${c?.toFixed?.(2) ?? '-'} · ${pct ? pct.toFixed(2) + '%' : ''}${ibsStr}${vol ? ' · Vol ' + vol.toLocaleString() : ''}`;
+        tooltipEl.innerHTML = `О ${o?.toFixed?.(2) ?? '-'} В ${h?.toFixed?.(2) ?? '-'} Н ${l?.toFixed?.(2) ?? '-'} З ${c?.toFixed?.(2) ?? '-'} · ${pct ? pct.toFixed(2) + '%' : ''}${ibsStr}${vol ? ' · Объём ' + vol.toLocaleString() : ''}`;
         tooltipEl.style.display = 'block';
 
         // Mirror crosshair to sub chart using series API (best-effort across versions)

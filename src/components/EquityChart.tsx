@@ -118,7 +118,7 @@ export function EquityChart({ equity }: EquityChartProps) {
         if (!param || !param.time) { tooltipEl.style.display = 'none'; return; }
         const v = (param.seriesData?.get?.(equitySeries) as { value?: number } | undefined)?.value;
         if (typeof v !== 'number') { tooltipEl.style.display = 'none'; return; }
-        tooltipEl.innerHTML = `Equity ${v.toFixed(2)}`;
+        tooltipEl.innerHTML = `Капитал ${v.toFixed(2)}`;
         tooltipEl.style.display = 'block';
       });
 

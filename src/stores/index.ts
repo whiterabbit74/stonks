@@ -400,7 +400,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
     }
     if (!marketData.length || !currentStrategy) {
-      set({ error: 'Missing data or strategy' });
+      set({ error: 'Отсутствуют данные или стратегия' });
       return;
     }
     set({ backtestStatus: 'running', error: null });
@@ -412,7 +412,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       });
     } catch (error) {
       set({ 
-        error: error instanceof Error ? error.message : 'Backtest failed',
+        error: error instanceof Error ? error.message : 'Ошибка бэктеста',
         backtestStatus: 'error'
       });
     }

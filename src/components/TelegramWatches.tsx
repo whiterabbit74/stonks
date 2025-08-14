@@ -143,7 +143,7 @@ export function TelegramWatches() {
             <thead className="bg-gray-50 dark:bg-gray-900">
               <tr>
                 <th className="text-left p-3">Тикер</th>
-                <th className="text-left p-3">IBS (high)</th>
+                <th className="text-left p-3">IBS (верх)</th>
                 <th className="text-left p-3">Порог, %</th>
                 <th className="text-left p-3">Цена входа</th>
                 <th className="text-left p-3">Позиция</th>

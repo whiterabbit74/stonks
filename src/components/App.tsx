@@ -247,7 +247,7 @@ export default function App() {
                   value={usernameInput}
                   onChange={e => setUsernameInput(e.target.value)}
                   className="w-full rounded border px-3 py-2 bg-white dark:bg-gray-800 dark:border-gray-700"
-                  placeholder="you@example.com"
+                  placeholder="ivan@example.com"
                   autoFocus
                 />
               </div>

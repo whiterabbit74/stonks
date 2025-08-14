@@ -12,7 +12,7 @@ export function BacktestRunner({ onNext }: BacktestRunnerProps) {
     try {
       await runBacktest();
     } catch (error) {
-      console.error('Backtest failed:', error);
+      console.error('Бэктест завершился ошибкой:', error);
     }
   };
 
@@ -23,26 +23,26 @@ export function BacktestRunner({ onNext }: BacktestRunnerProps) {
           <CheckCircle className="w-8 h-8 text-green-600" />
         </div>
         <h3 className="text-lg font-semibold text-gray-900 mb-2">
-          Backtest Complete!
+          Бэктест завершён
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
           <div className="bg-gray-50 rounded-lg p-4">
             <div className="text-2xl font-bold text-gray-900">
               {backtestResults.metrics.totalReturn.toFixed(1)}%
             </div>
-            <div className="text-sm text-gray-600">Total Return</div>
+            <div className="text-sm text-gray-600">Суммарная доходность</div>
           </div>
           <div className="bg-gray-50 rounded-lg p-4">
             <div className="text-2xl font-bold text-gray-900">
               {backtestResults.trades.length}
             </div>
-            <div className="text-sm text-gray-600">Total Trades</div>
+            <div className="text-sm text-gray-600">Количество сделок</div>
           </div>
           <div className="bg-gray-50 rounded-lg p-4">
             <div className="text-2xl font-bold text-gray-900">
               {backtestResults.metrics.winRate.toFixed(1)}%
             </div>
-            <div className="text-sm text-gray-600">Win Rate</div>
+            <div className="text-sm text-gray-600">Доля прибыльных</div>
           </div>
         </div>
         <div className="space-y-4">
@@ -51,7 +51,7 @@ export function BacktestRunner({ onNext }: BacktestRunnerProps) {
             disabled={backtestStatus === 'running'}
             className="text-blue-600 hover:text-blue-700 font-medium"
           >
-            Run again
+            Запустить ещё раз
           </button>
           
           {onNext && (
@@ -74,19 +74,19 @@ export function BacktestRunner({ onNext }: BacktestRunnerProps) {
     <div className="text-center space-y-6">
       <div>
         <h2 className="text-xl font-semibold text-gray-900 mb-2">
-          Run Backtest
+          Запустить бэктест
         </h2>
         <p className="text-gray-600">
-          Execute your strategy against historical data
+          Прогон стратегии на исторических данных
         </p>
       </div>
 
       <div className="bg-gray-50 rounded-lg p-6">
         <h3 className="font-semibold text-gray-900 mb-4">
-          Ready to backtest
+          Готово к бэктесту
         </h3>
         <p className="text-gray-600 mb-6">
-          Your data and strategy are configured. Click the button below to run the backtest.
+          Данные и стратегия настроены. Нажмите кнопку ниже, чтобы запустить бэктест.
         </p>
         
         <button
@@ -101,19 +101,19 @@ export function BacktestRunner({ onNext }: BacktestRunnerProps) {
           {backtestStatus === 'running' ? (
             <>
               <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-              Running...
+              Выполняется…
             </>
           ) : (
             <>
               <Play className="w-4 h-4" />
-              Run Backtest
+              Запустить бэктест
             </>
           )}
         </button>
 
         {backtestStatus === 'running' && (
           <p className="text-sm text-gray-500 mt-2">
-            This usually takes a few seconds...
+            Обычно занимает несколько секунд…
           </p>
         )}
       </div>

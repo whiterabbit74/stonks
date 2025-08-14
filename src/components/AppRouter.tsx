@@ -224,7 +224,7 @@ function LoginPage() {
           <form onSubmit={handleLogin} className="space-y-3">
             <div>
               <label className="block text-sm mb-1">Эл. почта</label>
-              <input type="email" value={username} onChange={e => setUsername(e.target.value)} className="w-full rounded border px-3 py-2 bg-white dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100" placeholder="you@example.com" autoFocus />
+              <input type="email" value={username} onChange={e => setUsername(e.target.value)} className="w-full rounded border px-3 py-2 bg-white dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100" placeholder="ivan@example.com" autoFocus />
             </div>
             <div>
               <label className="block text-sm mb-1">Пароль</label>
