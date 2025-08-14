@@ -6,7 +6,6 @@ import { DataUpload } from './DataUpload';
 import { DataEnhancer } from './DataEnhancer';
 import { Results } from './Results';
 import { TelegramWatches } from './TelegramWatches';
-import { SplitsTab } from './SplitsTab';
 import { AppSettings } from './AppSettings';
 import { Footer } from './Footer';
 import { ThemeToggle } from './ThemeToggle';
@@ -109,7 +108,6 @@ function ProtectedLayout() {
     { to: '/enhance', label: 'New data' },
     { to: '/results', label: 'Результаты' },
     { to: '/watches', label: 'Мониторинг' },
-    { to: '/splits', label: 'Сплиты' },
     { to: '/settings', label: 'Настройки' },
   ];
 
@@ -261,7 +259,6 @@ export default function AppRouter() {
           <Route path="/enhance" element={<DataEnhancer />} />
           <Route path="/results" element={<Results />} />
           <Route path="/watches" element={<TelegramWatches />} />
-          <Route path="/splits" element={<SplitsTab />} />
           <Route path="/settings" element={<AppSettings />} />
         </Route>
         <Route path="*" element={<Navigate to="/data" replace />} />

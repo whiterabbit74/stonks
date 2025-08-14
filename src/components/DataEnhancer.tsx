@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { AlertCircle, CheckCircle } from 'lucide-react';
 import { useAppStore } from '../stores';
 import { fetchWithCreds } from '../lib/api';
+import { parseOHLCDate } from '../lib/utils';
 
 interface DataEnhancerProps {
   onNext?: () => void;
@@ -18,7 +19,7 @@ interface DataEnhancerProps {
 // }
 
 export function DataEnhancer({ onNext }: DataEnhancerProps) {
-  const { marketData, currentDataset, saveDatasetToServer, setSplits, enhancerProvider } = useAppStore();
+  const { marketData, currentDataset, enhancerProvider, updateMarketData } = useAppStore();
   const [ticker, setTicker] = useState('AAPL');
   const [, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -133,39 +134,49 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
             </div>
           </div>
 
-              {/* Кнопка: запросить сплиты отдельно и сохранить */}
-              <button
-                onClick={async () => {
-                  try {
-                    setIsLoading(true);
-                    setError(null);
-                    const symbol = ticker.trim().toUpperCase();
-                    const end = Math.floor(Date.now() / 1000);
-                    const start = end - 40 * 365 * 24 * 60 * 60;
-                    const prov = enhancerProvider;
-                    const base = typeof window !== 'undefined' && window.location.href.includes('/stonks') ? '/stonks/api' : '/api';
-                    const resp = await fetchWithCreds(`${base}/splits/${symbol}?start=${start}&end=${end}&provider=${prov}`);
-                    if (!resp.ok) {
-                      const e = await resp.json();
-                      throw new Error(e.error || 'Failed to fetch splits');
-                    }
-                    const splits = await resp.json();
-                    setSplits(splits);
-                    setSuccess(`✅ Сплиты обновлены: ${splits.length}`);
-                    if (currentDataset) {
-                      await saveDatasetToServer(currentDataset.ticker, currentDataset.name);
-                    }
-                  } catch (e) {
-                    const msg = e instanceof Error ? e.message : 'Не удалось получить сплиты';
-                    setError(msg);
-                  } finally {
-                    setIsLoading(false);
-                  }
-                }}
-                className="w-full mt-3 inline-flex items-center justify-center gap-2 bg-purple-600 text-white px-4 py-3 rounded-lg hover:bg-purple-700 disabled:bg-gray-400 disabled:cursor-not-allowed font-medium"
-              >
-                Запросить сплиты отдельно
-              </button>
+          <button
+            onClick={async () => {
+              try {
+                setIsLoading(true);
+                setError(null);
+                setSuccess(null);
+                const symbol = ticker.trim().toUpperCase();
+                if (!symbol) throw new Error('Укажите тикер');
+                const end = Math.floor(Date.now() / 1000);
+                const start = end - 40 * 365 * 24 * 60 * 60;
+                const prov = enhancerProvider;
+                const base = typeof window !== 'undefined' && window.location.href.includes('/stonks') ? '/stonks/api' : '/api';
+                const resp = await fetchWithCreds(`${base}/yahoo-finance/${symbol}?start=${start}&end=${end}&provider=${prov}&adjustment=none`);
+                if (!resp.ok) {
+                  let msg = 'Failed to fetch data';
+                  try { const j = await resp.json(); if (j && j.error) msg = j.error; } catch {}
+                  throw new Error(msg);
+                }
+                const payload = await resp.json();
+                const rows = Array.isArray(payload?.data) ? payload.data : [];
+                if (!rows.length) throw new Error('Нет данных для этого тикера');
+                const ohlc = rows.map((bar: any) => ({
+                  date: parseOHLCDate(bar.date),
+                  open: Number(bar.open),
+                  high: Number(bar.high),
+                  low: Number(bar.low),
+                  close: Number(bar.close),
+                  adjClose: bar.adjClose != null ? Number(bar.adjClose) : undefined,
+                  volume: Number(bar.volume) || 0,
+                }));
+                updateMarketData(ohlc);
+                setSuccess(`✅ Загружено ${ohlc.length} точек для ${symbol}`);
+              } catch (e) {
+                const msg = e instanceof Error ? e.message : 'Не удалось загрузить данные';
+                setError(msg);
+              } finally {
+                setIsLoading(false);
+              }
+            }}
+            className="w-full mt-3 inline-flex items-center justify-center gap-2 bg-blue-600 text-white px-4 py-3 rounded-lg hover:bg-blue-700"
+          >
+            Загрузить данные
+          </button>
             </div>
           </div>
 

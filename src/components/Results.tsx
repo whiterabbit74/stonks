@@ -1,5 +1,5 @@
 import { Heart } from 'lucide-react';
-import { useEffect, useMemo, useState, useRef } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { DatasetAPI } from '../lib/api';
 import { useAppStore } from '../stores';
 import { TradingChart } from './TradingChart';
@@ -23,7 +23,6 @@ export function Results() {
   const updateMarketData = useAppStore(s => s.updateMarketData);
   const updateDatasetOnServer = useAppStore(s => s.updateDatasetOnServer);
   const saveDatasetToServer = useAppStore(s => s.saveDatasetToServer);
-  const setSplits = useAppStore(s => s.setSplits);
   const [quote, setQuote] = useState<{ open: number|null; high: number|null; low: number|null; current: number|null; prevClose: number|null } | null>(null);
   const [quoteError, setQuoteError] = useState<string | null>(null);
   const [isTrading, setIsTrading] = useState<boolean>(false);
@@ -36,8 +35,6 @@ export function Results() {
   const [modal, setModal] = useState<{ type: 'info' | 'error' | null; title?: string; message?: string }>({ type: null });
   const [watching, setWatching] = useState(false);
   const [watchBusy, setWatchBusy] = useState(false);
-  const [, setSplitsError] = useState<string | null>(null);
-  const fetchedSplitsForSymbolRef = useRef<string | null>(null);
   
   // Проверка дублей дат в marketData (ключ YYYY-MM-DD)
   const { hasDuplicateDates, duplicateDateKeys } = useMemo(() => {
@@ -67,31 +64,6 @@ export function Results() {
   const symbol = useMemo(() => (
     currentDataset?.ticker || backtestResults?.symbol || backtestResults?.ticker || backtestResults?.meta?.ticker
   ), [currentDataset, backtestResults]);
-
-  // Обеспечиваем наличие сплитов от сервера (централизованно).
-  useEffect(() => {
-    (async () => {
-      setSplitsError(null);
-      try {
-        if (!symbol) return;
-        // Уже загружали для этого символа — не повторяем запрос
-        if (fetchedSplitsForSymbolRef.current === symbol) return;
-        // Если уже есть сплиты (в т.ч. пустой массив) — не дёргаем API
-        if (Array.isArray(currentSplits)) {
-          fetchedSplitsForSymbolRef.current = symbol;
-          return;
-        }
-        const s = await DatasetAPI.getSplits(symbol);
-        fetchedSplitsForSymbolRef.current = symbol;
-        if (Array.isArray(s)) {
-          setSplits(s as any);
-        }
-      } catch {
-        // Не показываем 429/внешние ошибки, т.к. теперь API всегда локальный и отдаёт []
-        // no-op
-      }
-    })();
-  }, [symbol, currentSplits, setSplits]);
 
   useEffect(() => {
     let active = true;
