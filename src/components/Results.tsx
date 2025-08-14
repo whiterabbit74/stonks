@@ -36,6 +36,9 @@ export function Results() {
   const [watching, setWatching] = useState(false);
   const [watchBusy, setWatchBusy] = useState(false);
   
+  type ChartTab = 'price' | 'equity' | 'drawdown';
+  const [activeChart, setActiveChart] = useState<ChartTab>('price');
+  
   // Проверка дублей дат в marketData (ключ YYYY-MM-DD)
   const { hasDuplicateDates, duplicateDateKeys } = useMemo(() => {
     try {
@@ -292,65 +295,67 @@ export function Results() {
   }
 
   const { metrics, trades, equity } = backtestResults;
-
+  
   return (
     <div className="space-y-6 animate-fade-in">
-      {/* Текущее состояние позиции/котировки */}
-      <div className="bg-white rounded-lg border p-4 dark:bg-gray-900 dark:border-gray-800">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
-          <div className="space-y-3">
-            {/* Заголовок в стиле примера */}
-            <div className="space-y-1">
-              <div className="flex items-center justify-between">
-                <div className="text-4xl sm:text-5xl font-black tracking-tight text-gray-900 dark:text-gray-100">{symbol || '—'}</div>
-                <button
-                  disabled={!symbol || watchBusy}
-                  onClick={async () => {
-                    if (!symbol) return;
-                    setWatchBusy(true);
-                    try {
-                      if (!watching) {
-                        const trades = backtestResults?.trades || [];
-                        const lastTrade = trades[trades.length - 1];
-                        const lastDataDate = marketData.length ? marketData[marketData.length - 1].date : null;
-                        const isOpen = !!(lastTrade && lastDataDate && new Date(lastTrade.exitDate).getTime() === new Date(lastDataDate).getTime());
-                        await DatasetAPI.registerTelegramWatch({
-                          symbol,
-                          highIBS: Number(currentStrategy?.parameters?.highIBS ?? 0.75),
-                          lowIBS: Number(currentStrategy?.parameters?.lowIBS ?? 0.1),
-                          thresholdPct: watchThresholdPct,
-                          entryPrice: isOpen ? lastTrade?.entryPrice ?? null : null,
-                          isOpenPosition: isOpen,
-                        });
-                        setWatching(true);
-                      } else {
-                        await DatasetAPI.deleteTelegramWatch(symbol);
-                        setWatching(false);
-                      }
-                    } catch (e) {
-                      const message = e instanceof Error ? e.message : 'Операция не выполнена';
-                      setModal({ type: 'error', title: watching ? 'Ошибка удаления' : 'Ошибка добавления', message });
-                    } finally {
-                      setWatchBusy(false);
+      {/* Верхний блок: символ, цена, избранное и статусы */}
+      <section className="rounded-xl border bg-white p-4 dark:bg-gray-900 dark:border-gray-800">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-4xl sm:text-5xl font-black tracking-tight text-gray-900 dark:text-gray-100">
+                {symbol || '—'}
+              </div>
+              <button
+                disabled={!symbol || watchBusy}
+                onClick={async () => {
+                  if (!symbol) return;
+                  setWatchBusy(true);
+                  try {
+                    if (!watching) {
+                      const trades = backtestResults?.trades || [];
+                      const lastTrade = trades[trades.length - 1];
+                      const lastDataDate = marketData.length ? marketData[marketData.length - 1].date : null;
+                      const isOpen = !!(lastTrade && lastDataDate && new Date(lastTrade.exitDate).getTime() === new Date(lastDataDate).getTime());
+                      await DatasetAPI.registerTelegramWatch({
+                        symbol,
+                        highIBS: Number(currentStrategy?.parameters?.highIBS ?? 0.75),
+                        lowIBS: Number(currentStrategy?.parameters?.lowIBS ?? 0.1),
+                        thresholdPct: watchThresholdPct,
+                        entryPrice: isOpen ? lastTrade?.entryPrice ?? null : null,
+                        isOpenPosition: isOpen,
+                      });
+                      setWatching(true);
+                    } else {
+                      await DatasetAPI.deleteTelegramWatch(symbol);
+                      setWatching(false);
                     }
-                  }}
-                  className={`inline-flex items-center justify-center w-10 h-10 rounded-full border transition ${watching ? 'bg-rose-600 border-rose-600 text-white hover:brightness-110' : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-700'}`}
-                  title={watching ? 'Убрать из избранного' : 'В избранное'}
-                  aria-label={watching ? 'Убрать из избранного' : 'В избранное'}
-                >
-                  <Heart className={`w-5 h-5 ${watching ? 'fill-current animate-heartbeat' : ''}`} />
-                </button>
-              </div>
-              <div className="text-3xl sm:text-4xl font-extrabold text-gray-900 dark:text-gray-100">
-                {quote?.current != null ? `$${Number(quote.current).toFixed(2)}` : '—'}
-              </div>
-              {/* Строка изменения: динамическая подпись в зависимости от статуса рынка */}
+                  } catch (e) {
+                    const message = e instanceof Error ? e.message : 'Операция не выполнена';
+                    setModal({ type: 'error', title: watching ? 'Ошибка удаления' : 'Ошибка добавления', message });
+                  } finally {
+                    setWatchBusy(false);
+                  }
+                }}
+                className={`inline-flex items-center justify-center w-10 h-10 rounded-full border transition ${watching ? 'bg-rose-600 border-rose-600 text-white hover:brightness-110' : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-700'}`}
+                title={watching ? 'Убрать из избранного' : 'В избранное'}
+                aria-label={watching ? 'Убрать из избранного' : 'В избранное'}
+              >
+                <Heart className={`w-5 h-5 ${watching ? 'fill-current animate-heartbeat' : ''}`} />
+              </button>
+            </div>
+
+            <div className="text-3xl sm:text-4xl font-extrabold text-gray-900 dark:text-gray-100">
+              {quote?.current != null ? `$${Number(quote.current).toFixed(2)}` : '—'}
+            </div>
+
+            <div>
               {(() => {
                 const prev = quote?.prevClose ?? null;
                 const cur = quote?.current ?? null;
-                if (prev == null || cur == null) return (
-                  <div className="text-sm text-gray-500">{isTrading ? 'Сегодня' : 'Вне сессии'}</div>
-                );
+                if (prev == null || cur == null) {
+                  return <div className="text-sm text-gray-500">{isTrading ? 'Сегодня' : 'Вне сессии'}</div>;
+                }
                 const delta = cur - prev;
                 const pct = prev !== 0 ? (delta / prev) * 100 : 0;
                 const positive = delta >= 0;
@@ -358,159 +363,98 @@ export function Results() {
                 const sign = positive ? '+' : '';
                 return (
                   <div className={`text-lg font-semibold ${color}`}>
-                    {`${sign}$${delta.toFixed(2)} (${sign}${pct.toFixed(2)}%)`} {' '}
+                    {`${sign}$${delta.toFixed(2)} (${sign}${pct.toFixed(2)}%)`}{' '}
                     <span className="text-gray-800 font-normal dark:text-gray-300">{isTrading ? 'Сегодня' : 'С предыдущего закрытия'}</span>
                   </div>
                 );
               })()}
             </div>
 
-            {/* Источник/время */}
-            <div className="flex flex-wrap items-center gap-3 text-xs text-gray-500">
-              <span className="px-2 py-0.5 rounded bg-gray-100 border dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700">Источник: { (resultsQuoteProvider === 'alpha_vantage') ? 'Alpha Vantage' : 'Finnhub' }</span>
+            <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
+              <span className="px-2 py-0.5 rounded bg-gray-100 border dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700">Источник: {(resultsQuoteProvider === 'alpha_vantage') ? 'Alpha Vantage' : 'Finnhub'}</span>
               {lastUpdatedAt && (
                 <span className="px-2 py-0.5 rounded bg-gray-100 border dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700">Обновлено: {lastUpdatedAt.toLocaleTimeString('ru-RU')}</span>
               )}
-              {!isTrading && (() => {
-                // Покажем причину закрытия: выходной/вне торговых часов. Праздники уже подсвечиваются в стейле выше
-                const now = new Date();
-                const weekday = now.getUTCDay();
-                const isWeekend = weekday === 0 || weekday === 6;
-                return (
-                  <span className="px-2 py-0.5 rounded bg-amber-100 border border-amber-200 text-amber-800 dark:bg-amber-950/30 dark:border-amber-900/40 dark:text-amber-200">
-                    Рынок закрыт{isWeekend ? ': выходной' : ''}
-                  </span>
-                );
-              })()}
+              <span className={`px-2 py-0.5 rounded border ${isTrading ? 'bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-950/30 dark:border-emerald-900/40 dark:text-emerald-200' : 'bg-amber-100 border-amber-200 text-amber-800 dark:bg-amber-950/30 dark:border-amber-900/40 dark:text-amber-200'}`}>
+                {isTrading ? 'Рынок открыт' : 'Рынок закрыт'}
+              </span>
             </div>
-            {isStale && (
-              <div className="mt-2 flex flex-wrap items-center gap-3 p-3 rounded-lg border border-amber-300 bg-amber-50 text-amber-900 dark:bg-amber-950/30 dark:border-amber-900/40 dark:text-amber-200">
-                <span className="text-sm">Данные не актуальны. {staleInfo}</span>
-                <button
-                  onClick={async () => {
-                    if (!symbol) return;
-                    setRefreshing(true); setRefreshError(null);
-                    try {
-                      // запрашиваем хвост с небольшим запасом (5 торговых дней)
-                      const lastBarDate = new Date(marketData[marketData.length - 1].date);
-                      const start = new Date(lastBarDate);
-                      start.setUTCDate(start.getUTCDate() - 7);
-                      const startTs = Math.floor(start.getTime() / 1000);
-                      const endTs = Math.floor(Date.now() / 1000);
-                      const prov = resultsRefreshProvider || 'finnhub';
-                      const base = window.location.href.includes('/stonks') ? '/stonks/api' : '/api';
-                      const url = `${base}/yahoo-finance/${encodeURIComponent(symbol)}?start=${startTs}&end=${endTs}&provider=${prov}&adjustment=split_only`;
-                      const resp = await fetch(url, { credentials: 'include' });
-                      if (!resp.ok) {
-                        let msg = `${resp.status} ${resp.statusText}`;
-                        try { const e = await resp.json(); msg = e.error || msg; } catch {}
-                        throw new Error(msg);
-                      }
-                      const json = await resp.json();
-                      const rows = Array.isArray(json) ? json : Array.isArray(json?.data) ? json.data : [];
-                      if (!Array.isArray(rows) || rows.length === 0) {
-                        // если ничего не пришло, просто снимем флаг как не критичный (возможно ещё нет публикации)
-                        setIsStale(false);
-                        setStaleInfo(null);
-                        setRefreshing(false);
-                        return;
-                      }
-                      // Преобразуем и смержим
-                      const { parseOHLCDate, adjustOHLCForSplits } = await import('../lib/utils');
-                      const incoming = rows.map((r: { date: string; open: number; high: number; low: number; close: number; adjClose?: number; volume: number; }) => ({
-                        date: parseOHLCDate(r.date), open: r.open, high: r.high, low: r.low, close: r.close, adjClose: r.adjClose, volume: r.volume,
-                      }));
-                      const existingDates = new Set(marketData.map((d) => d.date.toDateString()));
-                      const filtered = incoming.filter((d: { date: Date }) => !existingDates.has(d.date.toDateString()));
-                      if (filtered.length) {
-                        // Сливаем и применяем бэк-аджаст по уже известным сплитам
-                        const merged = [...marketData, ...filtered].sort((a, b) => a.date.getTime() - b.date.getTime());
-                        const finalData = adjustOHLCForSplits(merged, currentSplits);
-                        updateMarketData(finalData);
-                        // Сохраняем изменения на сервере (переименуем файл при смене последней даты)
-                        try {
-                          if (currentDataset && currentDataset.name) {
-                            await updateDatasetOnServer();
-                          } else if (symbol) {
-                            await saveDatasetToServer(symbol);
-                          }
-                        } catch (e) {
-                          const msg = e instanceof Error ? e.message : 'Не удалось сохранить изменения на сервере';
-                          setRefreshError(msg);
-                        }
-                      }
-                      setIsStale(false);
-                      setStaleInfo(null);
-                    } catch (e) {
-                      const msg = e instanceof Error ? e.message : 'Не удалось актуализировать данные';
-                      setRefreshError(msg);
-                    } finally {
-                      setRefreshing(false);
-                    }
-                  }}
-                  className="inline-flex items-center px-3 py-1.5 rounded-md bg-amber-600 text-white text-sm hover:bg-amber-700 disabled:bg-gray-400"
-                  disabled={refreshing}
-                >
-                  {refreshing ? `Актуализация… (${resultsRefreshProvider})` : `Актуализировать (${resultsRefreshProvider})`}
-                </button>
-                {refreshError && <span className="text-sm text-red-600">{refreshError}</span>}
+          </div>
+        </div>
+      </section>
+
+      {/* Основная сетка: левая часть — KPI и графики; правая — лайв и здоровье данных */}
+      <div className="grid grid-cols-1 xl:grid-cols-4 gap-6 items-start">
+        {/* Левая колонка */}
+        <div className="xl:col-span-3 space-y-6">
+          {/* KPI */}
+          <section className="rounded-xl border bg-white p-4 dark:bg-gray-900 dark:border-gray-800">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm">
+              <div className="rounded-lg border p-3 bg-gray-50 dark:bg-gray-800 dark:border-gray-700">
+                <div className="text-xs text-gray-500 dark:text-gray-300">CAGR</div>
+                <div className="text-lg font-semibold dark:text-gray-100">{metrics.cagr.toFixed(2)}%</div>
+              </div>
+              <div className="rounded-lg border p-3 bg-gray-50 dark:bg-gray-800 dark:border-gray-700">
+                <div className="text-xs text-gray-500 dark:text-gray-300">Sharpe</div>
+                <div className="text-lg font-semibold dark:text-gray-100">{metrics.sharpeRatio.toFixed(2)}</div>
+              </div>
+              <div className="rounded-lg border p-3 bg-gray-50 dark:bg-gray-800 dark:border-gray-700">
+                <div className="text-xs text-gray-500 dark:text-gray-300">Макс. просадка</div>
+                <div className="text-lg font-semibold dark:text-gray-100">{metrics.maxDrawdown.toFixed(2)}%</div>
+              </div>
+              <div className="rounded-lg border p-3 bg-gray-50 dark:bg-gray-800 dark:border-gray-700">
+                <div className="text-xs text-gray-500 dark:text-gray-300">Win rate</div>
+                <div className="text-lg font-semibold dark:text-gray-100">{metrics.winRate.toFixed(2)}%</div>
+              </div>
+              <div className="rounded-lg border p-3 bg-gray-50 dark:bg-gray-800 dark:border-gray-700">
+                <div className="text-xs text-gray-500 dark:text-gray-300">Profit factor</div>
+                <div className="text-lg font-semibold dark:text-gray-100">{metrics.profitFactor.toFixed(2)}</div>
+              </div>
+              <div className="rounded-lg border p-3 bg-gray-50 dark:bg-gray-800 dark:border-gray-700">
+                <div className="text-xs text-gray-500 dark:text-gray-300">Сделок</div>
+                <div className="text-lg font-semibold dark:text-gray-100">{(metrics.totalTrades ?? trades.length).toString()}</div>
+              </div>
+            </div>
+          </section>
+
+          {/* Таб-переключатель графиков */}
+          <section className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="inline-flex rounded-md border bg-gray-100 p-0.5 dark:bg-slate-800 dark:border-slate-700">
+                {(['price','equity','drawdown'] as ChartTab[]).map(tab => (
+                  <button
+                    key={tab}
+                    onClick={() => setActiveChart(tab)}
+                    className={`px-3 py-1.5 text-sm rounded-md transition ${activeChart === tab ? 'bg-white text-gray-900 shadow-sm dark:bg-slate-900 dark:text-gray-100' : 'text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-gray-100'}`}
+                  >
+                    {tab === 'price' ? 'Цена' : tab === 'equity' ? 'Капитал' : 'Просадки'}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {activeChart === 'price' && (
+              <div className="rounded-xl border bg-white p-3 dark:bg-gray-900 dark:border-gray-800">
+                <TradingChart data={marketData} trades={trades} splits={currentSplits} />
               </div>
             )}
-            {/* Индикатор дублей дат в данных */}
-            {marketData.length > 0 && (
-              hasDuplicateDates ? (
-                <div className="mt-2 p-3 rounded-lg border border-red-300 bg-red-50 text-red-900 dark:bg-red-950/30 dark:border-red-900/40 dark:text-red-200">
-                  <div className="text-sm font-semibold">Внимание: обнаружены дубли дат</div>
-                  <div className="text-xs mt-1 break-words">{duplicateDateKeys.join(', ')}</div>
-                </div>
-              ) : (
-                <div className="mt-2 p-2 rounded border border-emerald-200 bg-emerald-50 text-emerald-800 text-xs dark:bg-emerald-950/30 dark:border-emerald-900/40 dark:text-emerald-200">
-                  Дублей дат не обнаружено
-                </div>
-              )
+            {activeChart === 'equity' && (
+              <div className="rounded-xl border bg-white p-3 dark:bg-gray-900 dark:border-gray-800">
+                <EquityChart equity={equity} />
+              </div>
             )}
-            {!isTrading ? (
-              <div className="text-sm text-gray-500 mt-2">Показываем в торговые часы (NYSE): 09:30–16:00 ET</div>
-            ) : (
-              <>
-                {quoteError && <div className="text-sm text-red-600 mt-2">{quoteError}</div>}
-                <div className="mt-2 grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  <div className="p-3 rounded-lg border bg-gray-50 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100">
-                    <div className="text-xs text-gray-500 dark:text-gray-300">Открытие</div>
-                    <div className="font-mono text-lg">{quote?.open ?? '—'}</div>
-                  </div>
-                  <div className="p-3 rounded-lg border bg-gray-50 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100">
-                    <div className="text-xs text-gray-500 dark:text-gray-300">Макс.</div>
-                    <div className="font-mono text-lg">{quote?.high ?? '—'}</div>
-                  </div>
-                  <div className="p-3 rounded-lg border bg-gray-50 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100">
-                    <div className="text-xs text-gray-500 dark:text-gray-300">Мин.</div>
-                    <div className="font-mono text-lg">{quote?.low ?? '—'}</div>
-                  </div>
-                  <div className="p-3 rounded-lg border bg-gray-50 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100">
-                    <div className="text-xs text-gray-500 dark:text-gray-300">Текущая</div>
-                    <div className="font-mono text-lg">{quote?.current ?? '—'}</div>
-                  </div>
-                </div>
-                {quoteLoading && <div className="text-xs text-gray-400 mt-1">загрузка…</div>}
-              </>
+            {activeChart === 'drawdown' && (
+              <div className="rounded-xl border bg-white p-3 dark:bg-gray-900 dark:border-gray-800">
+                <TradeDrawdownChart trades={trades} initialCapital={Number(currentStrategy?.riskManagement?.initialCapital ?? 10000)} />
+              </div>
             )}
-            {marketData.length > 0 && (() => {
-              const fmt = (d: Date) => {
-                // Отображаем дату как YYYY-MM-DD из ISO (без сдвига часового пояса)
-                const yyyy = String(d.getUTCFullYear());
-                const mm = String(d.getUTCMonth()+1).padStart(2, '0');
-                const dd = String(d.getUTCDate()).padStart(2, '0');
-                return `${yyyy}-${mm}-${dd}`;
-              };
-              const last = marketData[marketData.length - 1]?.date;
-              return last ? (
-                <div className="text-xs text-gray-500">Последняя дата в данных: {fmt(new Date(last))}</div>
-              ) : null;
-            })()}
-          </div>
+          </section>
+        </div>
 
-          <div className="space-y-4">
+        {/* Правая колонка */}
+        <div className="space-y-6">
+          {/* Лайв-котировки */}
+          <section className="rounded-xl border bg-white p-4 dark:bg-gray-900 dark:border-gray-800">
             <div className="bg-white rounded-lg border p-3 dark:bg-gray-900 dark:border-gray-800">
               <MiniQuoteChart 
                 history={marketData.slice(-10)}
@@ -530,47 +474,136 @@ export function Results() {
                 })()}
               />
             </div>
-            <TradingChart data={marketData} trades={trades} splits={currentSplits} />
-          </div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 space-y-6">
-          <EquityChart equity={equity} />
-          <TradeDrawdownChart trades={trades} initialCapital={Number(currentStrategy?.riskManagement?.initialCapital ?? 10000)} />
-        </div>
-
-        <div className="space-y-4">
-          {/* Метрики */}
-          <div className="bg-white rounded-lg border p-4 dark:bg-gray-900 dark:border-gray-800">
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm">
-              <div>
-                <span className="text-gray-600 dark:text-gray-300">Среднегодовой рост (CAGR):</span>
-                <span className="ml-2 font-medium dark:text-gray-100">{metrics.cagr.toFixed(2)}%</span>
+            <div className="mt-3 grid grid-cols-2 gap-3">
+              <div className="p-3 rounded-lg border bg-gray-50 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100">
+                <div className="text-xs text-gray-500 dark:text-gray-300">Открытие</div>
+                <div className="font-mono text-lg">{quote?.open ?? '—'}</div>
               </div>
-              <div>
-                <span className="text-gray-600 dark:text-gray-300">Коэффициент Шарпа:</span>
-                <span className="ml-2 font-medium dark:text-gray-100">{metrics.sharpeRatio.toFixed(2)}</span>
+              <div className="p-3 rounded-lg border bg-gray-50 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100">
+                <div className="text-xs text-gray-500 dark:text-gray-300">Макс.</div>
+                <div className="font-mono text-lg">{quote?.high ?? '—'}</div>
               </div>
-              <div>
-                <span className="text-gray-600 dark:text-gray-300">Профит-фактор:</span>
-                <span className="ml-2 font-medium dark:text-gray-100">{metrics.profitFactor.toFixed(2)}</span>
+              <div className="p-3 rounded-lg border bg-gray-50 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100">
+                <div className="text-xs text-gray-500 dark:text-gray-300">Мин.</div>
+                <div className="font-mono text-lg">{quote?.low ?? '—'}</div>
               </div>
-              <div>
-                <span className="text-gray-600 dark:text-gray-300">Средняя прибыль:</span>
-                <span className="ml-2 font-medium dark:text-gray-100">${metrics.averageWin.toFixed(2)}</span>
-              </div>
-              <div>
-                <span className="text-gray-600 dark:text-gray-300">Средний убыток:</span>
-                <span className="ml-2 font-medium dark:text-gray-100">${metrics.averageLoss.toFixed(2)}</span>
-              </div>
-              <div>
-                <span className="text-gray-600 dark:text-gray-300">Коэффициент Сортино:</span>
-                <span className="ml-2 font-medium dark:text-gray-100">{metrics.sortinoRatio.toFixed(2)}</span>
+              <div className="p-3 rounded-lg border bg-gray-50 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100">
+                <div className="text-xs text-gray-500 dark:text-gray-300">Текущая</div>
+                <div className="font-mono text-lg">{quote?.current ?? '—'}</div>
               </div>
             </div>
-          </div>
+            {quoteLoading && <div className="text-xs text-gray-400 mt-1">загрузка…</div>}
+            {!isTrading && (
+              <div className="text-sm text-gray-500 mt-2">Показываем в торговые часы (NYSE): 09:30–16:00 ET</div>
+            )}
+            {quoteError && <div className="text-sm text-red-600 mt-2">{quoteError}</div>}
+          </section>
+
+          {/* Здоровье данных и актуализация */}
+          <section className="rounded-xl border bg-white p-4 dark:bg-gray-900 dark:border-gray-800 space-y-3">
+            <div className="text-sm font-semibold">Состояние данных</div>
+            {isStale && (
+              <div className="flex flex-col gap-2 p-3 rounded-lg border border-amber-300 bg-amber-50 text-amber-900 dark:bg-amber-950/30 dark:border-amber-900/40 dark:text-amber-200">
+                <span className="text-sm">Данные не актуальны. {staleInfo}</span>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={async () => {
+                      if (!symbol) return;
+                      setRefreshing(true); setRefreshError(null);
+                      try {
+                        // запрашиваем хвост с небольшим запасом (5 торговых дней)
+                        const lastBarDate = new Date(marketData[marketData.length - 1].date);
+                        const start = new Date(lastBarDate);
+                        start.setUTCDate(start.getUTCDate() - 7);
+                        const startTs = Math.floor(start.getTime() / 1000);
+                        const endTs = Math.floor(Date.now() / 1000);
+                        const prov = resultsRefreshProvider || 'finnhub';
+                        const base = window.location.href.includes('/stonks') ? '/stonks/api' : '/api';
+                        const url = `${base}/yahoo-finance/${encodeURIComponent(symbol)}?start=${startTs}&end=${endTs}&provider=${prov}&adjustment=split_only`;
+                        const resp = await fetch(url, { credentials: 'include' });
+                        if (!resp.ok) {
+                          let msg = `${resp.status} ${resp.statusText}`;
+                          try { const e = await resp.json(); msg = e.error || msg; } catch {}
+                          throw new Error(msg);
+                        }
+                        const json = await resp.json();
+                        const rows = Array.isArray(json) ? json : Array.isArray(json?.data) ? json.data : [];
+                        if (!Array.isArray(rows) || rows.length === 0) {
+                          // если ничего не пришло, просто снимем флаг как не критичный (возможно ещё нет публикации)
+                          setIsStale(false);
+                          setStaleInfo(null);
+                          setRefreshing(false);
+                          return;
+                        }
+                        // Преобразуем и смержим
+                        const { parseOHLCDate, adjustOHLCForSplits } = await import('../lib/utils');
+                        const incoming = rows.map((r: { date: string; open: number; high: number; low: number; close: number; adjClose?: number; volume: number; }) => ({
+                          date: parseOHLCDate(r.date), open: r.open, high: r.high, low: r.low, close: r.close, adjClose: r.adjClose, volume: r.volume,
+                        }));
+                        const existingDates = new Set(marketData.map((d) => d.date.toDateString()));
+                        const filtered = incoming.filter((d: { date: Date }) => !existingDates.has(d.date.toDateString()));
+                        if (filtered.length) {
+                          // Сливаем и применяем бэк-аджаст по уже известным сплитам
+                          const merged = [...marketData, ...filtered].sort((a, b) => a.date.getTime() - b.date.getTime());
+                          const finalData = adjustOHLCForSplits(merged, currentSplits);
+                          updateMarketData(finalData);
+                          // Сохраняем изменения на сервере (переименуем файл при смене последней даты)
+                          try {
+                            if (currentDataset && currentDataset.name) {
+                              await updateDatasetOnServer();
+                            } else if (symbol) {
+                              await saveDatasetToServer(symbol);
+                            }
+                          } catch (e) {
+                            const msg = e instanceof Error ? e.message : 'Не удалось сохранить изменения на сервере';
+                            setRefreshError(msg);
+                          }
+                        }
+                        setIsStale(false);
+                        setStaleInfo(null);
+                      } catch (e) {
+                        const msg = e instanceof Error ? e.message : 'Не удалось актуализировать данные';
+                        setRefreshError(msg);
+                      } finally {
+                        setRefreshing(false);
+                      }
+                    }}
+                    className="inline-flex items-center px-3 py-1.5 rounded-md bg-amber-600 text-white text-sm hover:bg-amber-700 disabled:bg-gray-400"
+                    disabled={refreshing}
+                  >
+                    {refreshing ? `Актуализация… (${resultsRefreshProvider})` : `Актуализировать (${resultsRefreshProvider})`}
+                  </button>
+                  {refreshError && <span className="text-sm text-red-600">{refreshError}</span>}
+                </div>
+              </div>
+            )}
+
+            {/* Дубликаты дат и последняя дата */}
+            {marketData.length > 0 && (
+              hasDuplicateDates ? (
+                <div className="p-3 rounded-lg border border-red-300 bg-red-50 text-red-900 dark:bg-red-950/30 dark:border-red-900/40 dark:text-red-200">
+                  <div className="text-sm font-semibold">Внимание: обнаружены дубли дат</div>
+                  <div className="text-xs mt-1 break-words">{duplicateDateKeys.join(', ')}</div>
+                </div>
+              ) : (
+                <div className="p-2 rounded border border-emerald-200 bg-emerald-50 text-emerald-800 text-xs dark:bg-emerald-950/30 dark:border-emerald-900/40 dark:text-emerald-200">
+                  Дублей дат не обнаружено
+                </div>
+              )
+            )}
+            {marketData.length > 0 && (() => {
+              const fmt = (d: Date) => {
+                const yyyy = String(d.getUTCFullYear());
+                const mm = String(d.getUTCMonth()+1).padStart(2, '0');
+                const dd = String(d.getUTCDate()).padStart(2, '0');
+                return `${yyyy}-${mm}-${dd}`;
+              };
+              const last = marketData[marketData.length - 1]?.date;
+              return last ? (
+                <div className="text-xs text-gray-500">Последняя дата в данных: {fmt(new Date(last))}</div>
+              ) : null;
+            })()}
+          </section>
 
           {/* Модалки */}
           <InfoModal
