@@ -530,15 +530,15 @@ export function Results() {
                 })()}
               />
             </div>
-            <TradingChart />
+            <TradingChart data={marketData} trades={trades} splits={currentSplits} />
           </div>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
-          <EquityChart />
-          <TradeDrawdownChart />
+          <EquityChart equity={equity} />
+          <TradeDrawdownChart trades={trades} initialCapital={Number(currentStrategy?.riskManagement?.initialCapital ?? 10000)} />
         </div>
 
         <div className="space-y-4">
