@@ -399,7 +399,7 @@ export function Results() {
                       const endTs = Math.floor(Date.now() / 1000);
                       const prov = resultsRefreshProvider || 'finnhub';
                       const base = window.location.href.includes('/stonks') ? '/stonks/api' : '/api';
-                      const url = `${base}/yahoo-finance/${encodeURIComponent(symbol)}?start=${startTs}&end=${endTs}&provider=${prov}`;
+                      const url = `${base}/yahoo-finance/${encodeURIComponent(symbol)}?start=${startTs}&end=${endTs}&provider=${prov}&adjustment=split_only`;
                       const resp = await fetch(url, { credentials: 'include' });
                       if (!resp.ok) {
                         let msg = `${resp.status} ${resp.statusText}`;
