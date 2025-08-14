@@ -194,9 +194,6 @@ export function TradeDrawdownChart({ trades, initialCapital }: TradeDrawdownChar
         <div className="bg-gray-50 px-3 py-2 rounded dark:bg-gray-800 dark:text-gray-200">
           <span className="text-gray-600 dark:text-gray-200">Частота просадок: {drawdownFrequency.toFixed(1)}%</span>
         </div>
-        <div className="bg-blue-50 px-3 py-2 rounded dark:bg-blue-950/30 dark:text-blue-200">
-          <span className="text-blue-600 dark:text-blue-200">Итоговый капитал: ${runningCapital.toFixed(2)}</span>
-        </div>
       </div>
       
       {/* Chart Container */}
