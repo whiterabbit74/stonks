@@ -5,9 +5,11 @@ const fs = require('fs-extra');
 const path = require('path');
 const https = require('https');
 const crypto = require('crypto');
+const helmet = require('helmet');
 
 const app = express();
 app.set('trust proxy', true);
+app.disable('x-powered-by');
 const PORT = process.env.PORT || 3001;
 const DATASETS_DIR = path.join(__dirname, 'datasets');
 const SETTINGS_FILE = path.join(__dirname, 'settings.json');
@@ -19,6 +21,8 @@ const avCache = new Map(); // кэш ответов Alpha Vantage
 const API_CONFIG = {
   ALPHA_VANTAGE_API_KEY: process.env.ALPHA_VANTAGE_API_KEY,
   FINNHUB_API_KEY: process.env.FINNHUB_API_KEY,
+  TWELVE_DATA_API_KEY: process.env.TWELVE_DATA_API_KEY,
+  POLYGON_API_KEY: process.env.POLYGON_API_KEY,
   PREFERRED_API_PROVIDER: 'alpha_vantage'
 };
 
@@ -26,6 +30,7 @@ const API_CONFIG = {
 // CORS with credentials (to support cookie-based auth)
 const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || 'http://localhost:5173';
 const IS_PROD = process.env.NODE_ENV === 'production';
+app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 app.use(cors({
   origin: FRONTEND_ORIGIN,
   credentials: true,
@@ -147,18 +152,29 @@ function parseCookies(req) {
   const out = {};
   header.split(';').map(v => v.trim()).filter(Boolean).forEach(p => {
     const i = p.indexOf('=');
-    if (i > 0) out[p.slice(0, i)] = decodeURIComponent(p.slice(i + 1));
+    if (i > 0) {
+      const k = p.slice(0, i);
+      const v = p.slice(i + 1);
+      try {
+        out[k] = decodeURIComponent(v);
+      } catch {
+        out[k] = v;
+      }
+    }
   });
   return out;
 }
 function getAuthTokenFromHeader(req) {
   const h = req.headers['authorization'] || req.headers['Authorization'];
   if (!h || typeof h !== 'string') return null;
-  const m = /^Bearer\s+(.+)$/i.exec(h);
+  const m = /^Bearer\s+([a-f0-9]{32})$/i.exec(h);
   return m ? m[1] : null;
 }
 function createToken() {
   return crypto.randomUUID().replace(/-/g, '').slice(0, 32);
+}
+function isValidToken(token) {
+  return typeof token === 'string' && /^[a-f0-9]{32}$/i.test(token);
 }
 function shouldUseSecureCookie(req) {
   try {
@@ -194,7 +210,12 @@ function clearAuthCookie(req, res) {
   res.setHeader('Set-Cookie', parts.join('; '));
 }
 function requireAuth(req, res, next) {
-  if (!ADMIN_PASSWORD) return next(); // auth disabled
+  if (!ADMIN_PASSWORD) {
+    if (IS_PROD) {
+      return res.status(503).json({ error: 'Auth not configured' });
+    }
+    return next();
+  }
   if (req.method === 'OPTIONS') return next();
   // Разрешаем только статус/логин/проверку; всё остальное — под авторизацией
   if (
@@ -206,7 +227,8 @@ function requireAuth(req, res, next) {
     return next();
   }
   const cookies = parseCookies(req);
-  const token = cookies.auth_token || getAuthTokenFromHeader(req);
+  let token = cookies.auth_token || getAuthTokenFromHeader(req);
+  if (!isValidToken(token)) token = null;
   if (!token) return res.status(401).json({ error: 'Unauthorized' });
   const sess = sessions.get(token);
   if (!sess || sess.expiresAt < Date.now()) {
@@ -490,12 +512,13 @@ function formatMoney(n){ return (typeof n === 'number' && isFinite(n)) ? `$${n.t
 app.post('/api/telegram/watch', (req, res) => {
   try {
     const { symbol, highIBS, lowIBS = 0.1, thresholdPct = 0.3, chatId, entryPrice = null, isOpenPosition = true } = req.body || {};
-    if (!symbol || typeof highIBS !== 'number') {
+    const safeSymbol = toSafeTicker(symbol);
+    if (!safeSymbol || typeof highIBS !== 'number') {
       return res.status(400).json({ error: 'symbol and highIBS are required' });
     }
     const useChatId = chatId || TELEGRAM_CHAT_ID;
     if (!useChatId) return res.status(400).json({ error: 'No Telegram chat id configured' });
-    telegramWatches.set(symbol.toUpperCase(), { symbol: symbol.toUpperCase(), highIBS, lowIBS, thresholdPct, chatId: useChatId, entryPrice, isOpenPosition, sent: { dateKey: null, warn10: false, confirm1: false, entryWarn10: false, entryConfirm1: false } });
+    telegramWatches.set(safeSymbol, { symbol: safeSymbol, highIBS, lowIBS, thresholdPct, chatId: useChatId, entryPrice, isOpenPosition, sent: { dateKey: null, warn10: false, confirm1: false, entryWarn10: false, entryConfirm1: false } });
     scheduleSaveWatches();
     res.json({ success: true });
   } catch (e) {
@@ -504,7 +527,8 @@ app.post('/api/telegram/watch', (req, res) => {
 });
 
 app.delete('/api/telegram/watch/:symbol', (req, res) => {
-  const sym = (req.params.symbol || '').toUpperCase();
+  const sym = toSafeTicker(req.params.symbol || '');
+  if (!sym) return res.status(400).json({ success: false, error: 'Invalid symbol' });
   telegramWatches.delete(sym);
   scheduleSaveWatches();
   res.json({ success: true });
@@ -512,7 +536,8 @@ app.delete('/api/telegram/watch/:symbol', (req, res) => {
 
 // Optional endpoint to update open position flag / entry price
 app.patch('/api/telegram/watch/:symbol', (req, res) => {
-  const sym = (req.params.symbol || '').toUpperCase();
+  const sym = toSafeTicker(req.params.symbol || '');
+  if (!sym) return res.status(400).json({ error: 'Invalid symbol' });
   const w = telegramWatches.get(sym);
   if (!w) return res.status(404).json({ error: 'Watch not found' });
   const { isOpenPosition, entryPrice } = req.body || {};
@@ -914,9 +939,13 @@ async function fetchFromAlphaVantage(symbol, startDate, endDate, options = { adj
   //  - иначе (adjustment === 'none') используем TIME_SERIES_DAILY
   const useAdjusted = options && options.adjustment === 'split_only';
   const func = useAdjusted ? 'TIME_SERIES_DAILY_ADJUSTED' : 'TIME_SERIES_DAILY';
-  const url = `https://www.alphavantage.co/query?function=${func}&symbol=${symbol}&apikey=${API_CONFIG.ALPHA_VANTAGE_API_KEY}&outputsize=full`;
+  const safeSymbol = toSafeTicker(symbol);
+  if (!safeSymbol) {
+    throw new Error('Invalid symbol');
+  }
+  const url = `https://www.alphavantage.co/query?function=${func}&symbol=${encodeURIComponent(safeSymbol)}&apikey=${API_CONFIG.ALPHA_VANTAGE_API_KEY}&outputsize=full`;
   
-  const cacheKey = `av:${symbol}:${startDate}:${endDate}:${options.adjustment}`;
+  const cacheKey = `av:${safeSymbol}:${startDate}:${endDate}:${options.adjustment}`;
   const cached = avCache.get(cacheKey);
   if (cached && Date.now() - cached.ts < cached.ttlMs) {
     return Promise.resolve(cached.payload);
@@ -1036,7 +1065,11 @@ async function fetchFromFinnhub(symbol, startDate, endDate) {
     throw new Error('Finnhub API key not configured');
   }
   
-  const url = `https://finnhub.io/api/v1/stock/candle?symbol=${symbol}&resolution=D&from=${startDate}&to=${endDate}&token=${API_CONFIG.FINNHUB_API_KEY}`;
+  const safeSymbol = toSafeTicker(symbol);
+  if (!safeSymbol) {
+    throw new Error('Invalid symbol');
+  }
+  const url = `https://finnhub.io/api/v1/stock/candle?symbol=${encodeURIComponent(safeSymbol)}&resolution=D&from=${startDate}&to=${endDate}&token=${API_CONFIG.FINNHUB_API_KEY}`;
   
   return new Promise((resolve, reject) => {
     https.get(url, (response) => {
@@ -1082,7 +1115,11 @@ async function fetchFromTwelveData(symbol, startDate, endDate) {
   
   const startDateStr = new Date(startDate * 1000).toISOString().split('T')[0];
   const endDateStr = new Date(endDate * 1000).toISOString().split('T')[0];
-  const url = `https://api.twelvedata.com/time_series?symbol=${symbol}&interval=1day&start_date=${startDateStr}&end_date=${endDateStr}&apikey=${API_CONFIG.TWELVE_DATA_API_KEY}`;
+  const safeSymbol = toSafeTicker(symbol);
+  if (!safeSymbol) {
+    throw new Error('Invalid symbol');
+  }
+  const url = `https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(safeSymbol)}&interval=1day&start_date=${startDateStr}&end_date=${endDateStr}&apikey=${API_CONFIG.TWELVE_DATA_API_KEY}`;
   
   return new Promise((resolve, reject) => {
     https.get(url, (response) => {
@@ -1452,8 +1489,9 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 app.get('/api/yahoo-finance/:symbol', async (req, res) => {
   try {
-    const { symbol } = req.params;
+    const rawSymbol = req.params.symbol;
     const { start, end } = req.query;
+    const symbol = toSafeTicker(rawSymbol);
     if (!symbol) {
       return res.status(400).json({ error: 'Symbol is required' });
     }
@@ -1512,8 +1550,9 @@ app.get('/api/yahoo-finance/:symbol', async (req, res) => {
 // Realtime quote endpoint
 app.get('/api/quote/:symbol', async (req, res) => {
   try {
-    const { symbol } = req.params;
+    const rawSymbol = req.params.symbol;
     const { provider } = req.query;
+    const symbol = toSafeTicker(req.params.symbol);
     if (!symbol) {
       return res.status(400).json({ error: 'Symbol is required' });
     }
@@ -1695,7 +1734,8 @@ app.get('/api/polygon-finance/:symbol', async (req, res) => {
     const { symbol } = req.params;
     const { start, end } = req.query;
     
-    if (!symbol) {
+    const safeSymbol = toSafeTicker(symbol);
+    if (!safeSymbol) {
       return res.status(400).json({ error: 'Symbol is required' });
     }
     
@@ -1706,13 +1746,13 @@ app.get('/api/polygon-finance/:symbol', async (req, res) => {
     const fromDate = startDate.toISOString().split('T')[0];
     const toDate = endDate.toISOString().split('T')[0];
     
-    // Using Polygon.io API for real data
-    // Free API key - you can get your own at https://polygon.io/
-    const API_KEY = 'demo'; // Replace with real API key for production
-    const url = `https://api.polygon.io/v2/aggs/ticker/${symbol}/range/1/day/${fromDate}/${toDate}?adjusted=true&sort=asc&apikey=${API_KEY}`;
+    const apiKey = API_CONFIG.POLYGON_API_KEY || (IS_PROD ? '' : 'demo');
+    if (!apiKey) {
+      return res.status(500).json({ error: 'Polygon API key not configured' });
+    }
+    const url = `https://api.polygon.io/v2/aggs/ticker/${encodeURIComponent(safeSymbol)}/range/1/day/${fromDate}/${toDate}?adjusted=true&sort=asc&apikey=${encodeURIComponent(apiKey)}`;
     
-    console.log(`Fetching real data for ${symbol} from Polygon.io...`);
-    console.log(`URL: ${url}`);
+    console.log(`Fetching real data for ${safeSymbol} from Polygon.io...`);
     
     const data = await new Promise((resolve, reject) => {
       const request = https.get(url, (response) => {
@@ -1772,7 +1812,7 @@ app.get('/api/polygon-finance/:symbol', async (req, res) => {
       };
     });
     
-    console.log(`Retrieved ${result.length} real data points for ${symbol} from Polygon`);
+    console.log(`Retrieved ${result.length} real data points for ${safeSymbol} from Polygon`);
     
     res.json(result);
     
@@ -1788,9 +1828,11 @@ app.get('/api/polygon-finance/:symbol', async (req, res) => {
 app.get('/api/test-yahoo/:symbol', async (req, res) => {
   try {
     const { symbol } = req.params;
-    const url = `https://query1.finance.yahoo.com/v7/finance/download/${symbol}?period1=1640995200&period2=1672531200&interval=1d&events=history&includeAdjustedClose=true`;
+    const safeSymbol = toSafeTicker(symbol);
+    if (!safeSymbol) return res.status(400).json({ error: 'Invalid symbol' });
+    const url = `https://query1.finance.yahoo.com/v7/finance/download/${encodeURIComponent(safeSymbol)}?period1=1640995200&period2=1672531200&interval=1d&events=history&includeAdjustedClose=true`;
     
-    console.log(`Testing Yahoo Finance API with URL: ${url}`);
+    console.log(`Testing Yahoo Finance API for ${safeSymbol}`);
     
     const data = await new Promise((resolve, reject) => {
       https.get(url, (response) => {

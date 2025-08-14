@@ -68,7 +68,7 @@ npm run dev
 PORT=3001
 # Разрешённый фронтенд-оригин для CORS (dev):
 FRONTEND_ORIGIN=http://localhost:5173
-# Авторизация (если ADMIN_PASSWORD пуст, auth отключена):
+# Авторизация (если ADMIN_PASSWORD пуст, auth отключена в dev; в prod — запросы будут отклонены):
 ADMIN_USERNAME=dimazru@gmail.com
 ADMIN_PASSWORD=
 # Telegram (опционально):
@@ -77,6 +77,8 @@ TELEGRAM_CHAT_ID=
 # Провайдеры рын. данных (опционально):
 ALPHA_VANTAGE_API_KEY=
 FINNHUB_API_KEY=
+TWELVE_DATA_API_KEY=
+POLYGON_API_KEY=
 ```
 
 ## Запуск через Docker Compose
@@ -96,6 +98,8 @@ BUILD_ID=prod-001
 # Ключи провайдеров котировок (опционально):
 ALPHA_VANTAGE_API_KEY=
 FINNHUB_API_KEY=
+TWELVE_DATA_API_KEY=
+POLYGON_API_KEY=
 ```
 
 ### 2) Старт
@@ -114,16 +118,18 @@ docker compose down
 
 Примечания
 - Nginx в контейнере фронтенда обслуживает SPA под базовым путём `/stonks` и проксирует `/stonks/api` на сервис `server`.
-- Путь логина: `/stonks/login/`. При отсутствии `ADMIN_PASSWORD` защита отключена.
+- Путь логина: `/stonks/login/`. При отсутствии `ADMIN_PASSWORD` защита отключена в dev, в prod — API вернёт 503 до конфигурации.
 - Для прод‑режима рекомендуем внешний прокси с HTTPS (например, Caddy/Traefik) поверх сервиса `frontend`.
 
 ## Реальные рыночные данные (опционально)
 
-Сервер умеет подтягивать котировки от провайдеров (Alpha Vantage, Finnhub):
+Сервер умеет подтягивать котировки от провайдеров (Alpha Vantage, Finnhub, Twelve Data, Polygon):
 1. Установите ключи в окружение (локально в `server/.env`, либо в корневом `.env` для Docker):
 ```env
 ALPHA_VANTAGE_API_KEY=...
 FINNHUB_API_KEY=...
+TWELVE_DATA_API_KEY=...
+POLYGON_API_KEY=...
 ```
 2. Используйте соответствующие операции клиента API (см. `src/lib/api.ts`) или UI.
 
