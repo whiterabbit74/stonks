@@ -101,18 +101,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     
     try {
       const data = await parseCSV(file);
-      // Try to infer ticker from filename like TICKER.csv
-      const base = (file && typeof file.name === 'string') ? file.name.replace(/\.[^.]+$/, '') : '';
-      const guessTicker = (base || '').split(/[_\-\s]/)[0]?.toUpperCase?.() || '';
-      let splits: SplitEvent[] = [];
-      if (guessTicker && guessTicker.length >= 1) {
-        try { splits = await DatasetAPI.getSplits(guessTicker); } catch { splits = []; }
-      }
-      const adjustedData = adjustOHLCForSplits(data, splits);
       set({ 
-        marketData: adjustedData, 
+        marketData: data, 
         currentDataset: null, // Сбрасываем сохраненный датасет при загрузке CSV
-        currentSplits: splits || [],
+        currentSplits: [],
         isLoading: false 
       });
     } catch (error) {
@@ -159,9 +151,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       const dataset = await loadDatasetFromJSON(file);
       const { savedDatasets } = get();
 
-      // Применяем back-adjust строго по сплитам из центрального хранилища
-      let splits: SplitEvent[] = [];
-      try { splits = await DatasetAPI.getSplits(dataset.ticker); } catch { splits = []; }
+      // Применяем back-adjust по сплитам из самого датасета (если есть)
+      const splits: SplitEvent[] = Array.isArray(dataset.splits) ? dataset.splits : [];
       const adjustedData = adjustOHLCForSplits(dataset.data, splits);
       
       // Проверяем, есть ли уже такой датасет в библиотеке
@@ -176,13 +167,13 @@ export const useAppStore = create<AppState>((set, get) => ({
       } else {
         // Добавляем новый в библиотеку
         updatedDatasets = [...savedDatasets, dataset];
-        console.log(`Датасет добавлен в библиотеку: ${dataset.name}`);
+        console.log(`Датасет добавлен в библиотеке: ${dataset.name}`);
       }
       
       set({ 
         marketData: adjustedData,
         currentDataset: dataset,
-        currentSplits: splits || [],
+        currentSplits: splits,
         savedDatasets: updatedDatasets,
         isLoading: false 
       });

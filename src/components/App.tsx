@@ -7,12 +7,11 @@ import { DataEnhancer } from './DataEnhancer';
 import { Results } from './Results';
 import { TelegramWatches } from './TelegramWatches';
 import { AppSettings } from './AppSettings';
-import { SplitsTab } from './SplitsTab';
 import { createStrategyFromTemplate, STRATEGY_TEMPLATES } from '../lib/strategy';
 import { Footer } from './Footer';
 import { ThemeToggle } from './ThemeToggle';
 
-type Tab = 'data' | 'enhance' | 'results' | 'watches' | 'splits' | 'settings';
+type Tab = 'data' | 'enhance' | 'results' | 'watches' | 'settings';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>('data');
@@ -45,11 +44,11 @@ export default function App() {
     }
   }, [marketData, currentStrategy, setStrategy]);
 
-  // Поддержка hash-навигации (#data|#enhance|#results|#watches|#splits|#settings)
+  // Поддержка hash-навигации (#data|#enhance|#results|#watches|#settings)
   useEffect(() => {
     const applyHash = () => {
       const h = (window.location.hash || '').replace('#', '');
-      if (h === 'data' || h === 'enhance' || h === 'results' || h === 'watches' || h === 'splits' || h === 'settings') {
+      if (h === 'data' || h === 'enhance' || h === 'results' || h === 'watches' || h === 'settings') {
         setActiveTab(h as Tab);
       }
     };
@@ -90,7 +89,6 @@ export default function App() {
     { id: 'enhance' as Tab, label: 'New data', enabled: true },
     { id: 'results' as Tab, label: 'Результаты', enabled: true },
     { id: 'watches' as Tab, label: 'Мониторинг', enabled: true },
-    { id: 'splits' as Tab, label: 'Сплиты', enabled: true },
     { id: 'settings' as Tab, label: 'Настройки', enabled: true },
   ] as const;
 
@@ -230,7 +228,6 @@ export default function App() {
         {activeTab === 'enhance' && <DataEnhancer />}
         {activeTab === 'results' && <Results />}
         {activeTab === 'watches' && <TelegramWatches />}
-        {activeTab === 'splits' && <SplitsTab />}
         {activeTab === 'settings' && <AppSettings />}
       </main>
 
