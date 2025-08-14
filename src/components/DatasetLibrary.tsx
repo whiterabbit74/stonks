@@ -270,11 +270,11 @@ function DatasetCard({ dataset, isActive, onLoad, onDelete, onExport, onRefresh,
         <div className="flex items-center gap-2 ml-4">
           <button
             onClick={onRefresh}
-            className={`p-2 text-gray-400 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-transparent rounded transition-colors ${refreshing ? 'animate-spin' : ''}`}
+            className="p-2 text-gray-400 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-transparent rounded transition-colors"
             title="Обновить датасет"
             aria-label="Обновить датасет"
           >
-            <RefreshCw className="w-4 h-4" />
+            <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin origin-center' : ''}`} />
           </button>
           <button
             onClick={onExport}
