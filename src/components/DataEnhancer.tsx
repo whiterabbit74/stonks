@@ -88,8 +88,8 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
   return (
     <div className="space-y-6">
       <div className="text-center">
-        <h2 className="text-xl font-semibold text-gray-900 mb-2">New data</h2>
-        <p className="text-gray-600">Загрузка исторических дневных данных по новому тикеру (до ~40 лет).</p>
+        <h2 className="text-xl font-semibold text-gray-900 mb-2">Новые данные</h2>
+        <p className="text-gray-600">Загрузка дневной истории по новому тикеру (до ~40 лет).</p>
       </div>
 
       <div className="bg-white border border-gray-200 rounded-lg p-4">
@@ -103,7 +103,7 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
       <div className="bg-white border border-gray-200 rounded-lg p-6">
         <div className="space-y-4">
           <div>
-            <label htmlFor="ticker" className="block text-sm font-medium text-gray-700 mb-2">Тикер акции</label>
+            <label htmlFor="ticker" className="block text-sm font-medium text-gray-700 mb-2">Тикер</label>
             <input
               id="ticker"
               type="text"
@@ -148,7 +148,7 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
                 const base = typeof window !== 'undefined' && window.location.href.includes('/stonks') ? '/stonks/api' : '/api';
                 const resp = await fetchWithCreds(`${base}/yahoo-finance/${symbol}?start=${start}&end=${end}&provider=${prov}&adjustment=none`);
                 if (!resp.ok) {
-                  let msg = 'Failed to fetch data';
+                  let msg = 'Не удалось получить данные';
                   try { const j = await resp.json(); if (j && j.error) msg = j.error; } catch {}
                   throw new Error(msg);
                 }
@@ -178,10 +178,10 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
           >
             Загрузить данные
           </button>
-            </div>
-          </div>
+        </div>
+      </div>
 
-           <p className="text-xs text-gray-500 text-center mt-2">📈 Источник данных: Alpha Vantage / Finnhub через локальный сервер</p>
+      <p className="text-xs text-gray-500 text-center mt-2">📈 Источник данных: Alpha Vantage / Finnhub через локальный сервер</p>
 
       {/* Error and success messages */}
       {error && (
@@ -189,7 +189,7 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
           <div className="flex items-start gap-3">
             <AlertCircle className="w-5 h-5 text-red-600 mt-0.5" />
             <div>
-              <h4 className="font-medium text-red-900">Error</h4>
+              <h4 className="font-medium text-red-900">Ошибка</h4>
               <p className="text-sm text-red-800 mt-1">{error}</p>
             </div>
           </div>
@@ -201,7 +201,7 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
           <div className="flex items-start gap-3">
             <CheckCircle className="w-5 h-5 text-green-600 mt-0.5" />
             <div>
-              <h4 className="font-medium text-green-900">Success</h4>
+              <h4 className="font-medium text-green-900">Готово</h4>
               <p className="text-sm text-green-800 mt-1">{success}</p>
             </div>
           </div>
