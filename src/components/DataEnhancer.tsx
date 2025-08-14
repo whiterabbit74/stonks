@@ -19,7 +19,7 @@ interface DataEnhancerProps {
 // }
 
 export function DataEnhancer({ onNext }: DataEnhancerProps) {
-  const { marketData, currentDataset, enhancerProvider, updateMarketData } = useAppStore();
+  const { marketData, currentDataset, enhancerProvider, updateMarketData, saveDatasetToServer } = useAppStore();
   const [ticker, setTicker] = useState('AAPL');
   const [, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -165,7 +165,8 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
                   volume: Number(bar.volume) || 0,
                 }));
                 updateMarketData(ohlc);
-                setSuccess(`✅ Загружено ${ohlc.length} точек для ${symbol}`);
+                await saveDatasetToServer(symbol);
+                setSuccess(`✅ Загружено ${ohlc.length} точек для ${symbol} и сохранено на сервере`);
               } catch (e) {
                 const msg = e instanceof Error ? e.message : 'Не удалось загрузить данные';
                 setError(msg);
