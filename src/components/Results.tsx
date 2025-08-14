@@ -346,40 +346,44 @@ export function Results() {
           {/* Правая часть: мини-график + цены + кнопка мониторинга */}
           <div className="md:col-span-2 flex flex-col gap-3">
             <div className="bg-white rounded-lg border p-3 dark:bg-gray-900 dark:border-gray-800">
-              <MiniQuoteChart 
-                history={marketData.slice(-10)}
-                today={quote}
-                trades={trades}
-                highIBS={Number(currentStrategy?.parameters?.highIBS ?? 0.75)}
-                isOpenPosition={(() => {
-                  const lastTrade = trades[trades.length - 1];
-                  const lastDataDate = marketData.length ? marketData[marketData.length - 1].date : null;
-                  return !!(lastTrade && lastDataDate && new Date(lastTrade.exitDate).getTime() === new Date(lastDataDate).getTime());
-                })()}
-                entryPrice={(() => {
-                  const lastTrade = trades[trades.length - 1];
-                  const lastDataDate = marketData.length ? marketData[marketData.length - 1].date : null;
-                  const isOpen = !!(lastTrade && lastDataDate && new Date(lastTrade.exitDate).getTime() === new Date(lastDataDate).getTime());
-                  return isOpen ? lastTrade?.entryPrice ?? null : null;
-                })()}
-              />
-            </div>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <div className="p-3 rounded-lg border bg-gray-50 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100">
-                <div className="text-xs text-gray-500 dark:text-gray-300">Открытие</div>
-                <div className="font-mono text-lg">{quote?.open ?? '—'}</div>
-              </div>
-              <div className="p-3 rounded-lg border bg-gray-50 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100">
-                <div className="text-xs text-gray-500 dark:text-gray-300">Макс.</div>
-                <div className="font-mono text-lg">{quote?.high ?? '—'}</div>
-              </div>
-              <div className="p-3 rounded-lg border bg-gray-50 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100">
-                <div className="text-xs text-gray-500 dark:text-gray-300">Мин.</div>
-                <div className="font-mono text-lg">{quote?.low ?? '—'}</div>
-              </div>
-              <div className="p-3 rounded-lg border bg-gray-50 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100">
-                <div className="text-xs text-gray-500 dark:text-gray-300">Текущая</div>
-                <div className="font-mono text-lg">{quote?.current ?? '—'}</div>
+              <div className="w-full max-w-[320px] mx-auto">
+                <div className="h-[120px]">
+                  <MiniQuoteChart 
+                    history={marketData.slice(-10)}
+                    today={quote}
+                    trades={trades}
+                    highIBS={Number(currentStrategy?.parameters?.highIBS ?? 0.75)}
+                    isOpenPosition={(() => {
+                      const lastTrade = trades[trades.length - 1];
+                      const lastDataDate = marketData.length ? marketData[marketData.length - 1].date : null;
+                      return !!(lastTrade && lastDataDate && new Date(lastTrade.exitDate).getTime() === new Date(lastDataDate).getTime());
+                    })()}
+                    entryPrice={(() => {
+                      const lastTrade = trades[trades.length - 1];
+                      const lastDataDate = marketData.length ? marketData[marketData.length - 1].date : null;
+                      const isOpen = !!(lastTrade && lastDataDate && new Date(lastTrade.exitDate).getTime() === new Date(lastDataDate).getTime());
+                      return isOpen ? lastTrade?.entryPrice ?? null : null;
+                    })()}
+                  />
+                </div>
+                <div className="mt-2 grid grid-cols-4 gap-2 text-center">
+                  <div className="p-2 rounded border bg-gray-50 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100">
+                    <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-300">Откр</div>
+                    <div className="font-mono text-sm">{quote?.open ?? '—'}</div>
+                  </div>
+                  <div className="p-2 rounded border bg-gray-50 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100">
+                    <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-300">Макс</div>
+                    <div className="font-mono text-sm">{quote?.high ?? '—'}</div>
+                  </div>
+                  <div className="p-2 rounded border bg-gray-50 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100">
+                    <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-300">Мин</div>
+                    <div className="font-mono text-sm">{quote?.low ?? '—'}</div>
+                  </div>
+                  <div className="p-2 rounded border bg-gray-50 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100">
+                    <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-300">Текущ</div>
+                    <div className="font-mono text-sm">{quote?.current ?? '—'}</div>
+                  </div>
+                </div>
               </div>
             </div>
             <div className="flex items-center justify-end">
@@ -430,13 +434,12 @@ export function Results() {
         </div>
       </section>
 
-      {/* Основная сетка: левая часть — KPI и графики; правая — здоровье данных */}
-      <div className="grid grid-cols-1 xl:grid-cols-4 gap-6 items-start">
-        {/* Левая колонка */}
-        <div className="xl:col-span-3 space-y-6">
+      {/* Основной контент: KPI и графики (во всю ширину) */}
+      <div className="space-y-6">
+        <div className="space-y-6">
           {/* KPI */}
-          <section className="rounded-xl border bg-white p-4 dark:bg-gray-900 dark:border-gray-800">
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm">
+          <section className="rounded-xl border bg-white p-3 dark:bg-gray-900 dark:border-gray-800">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 text-sm">
               <div className="rounded-lg border p-3 bg-gray-50 dark:bg-gray-800 dark:border-gray-700">
                 <div className="text-xs text-gray-500 dark:text-gray-300">CAGR</div>
                 <div className="text-lg font-semibold dark:text-gray-100">{metrics.cagr.toFixed(2)}%</div>
@@ -462,6 +465,103 @@ export function Results() {
                 <div className="text-lg font-semibold dark:text-gray-100">{(metrics.totalTrades ?? trades.length).toString()}</div>
               </div>
             </div>
+            {/* Состояние данных (перенесено сюда) */}
+            <div className="mt-3 space-y-2">
+              {isStale && (
+                <div className="flex flex-col gap-2 p-3 rounded-lg border border-amber-300 bg-amber-50 text-amber-900 dark:bg-amber-950/30 dark:border-amber-900/40 dark:text-amber-200">
+                  <span className="text-sm">Данные не актуальны. {staleInfo}</span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={async () => {
+                        if (!symbol) return;
+                        setRefreshing(true); setRefreshError(null);
+                        try {
+                          const lastBarDate = new Date(marketData[marketData.length - 1].date);
+                          const start = new Date(lastBarDate);
+                          start.setUTCDate(start.getUTCDate() - 7);
+                          const startTs = Math.floor(start.getTime() / 1000);
+                          const endTs = Math.floor(Date.now() / 1000);
+                          const prov = resultsRefreshProvider || 'finnhub';
+                          const base = window.location.href.includes('/stonks') ? '/stonks/api' : '/api';
+                          const url = `${base}/yahoo-finance/${encodeURIComponent(symbol)}?start=${startTs}&end=${endTs}&provider=${prov}&adjustment=split_only`;
+                          const resp = await fetch(url, { credentials: 'include' });
+                          if (!resp.ok) {
+                            let msg = `${resp.status} ${resp.statusText}`;
+                            try { const e = await resp.json(); msg = e.error || msg; } catch {}
+                            throw new Error(msg);
+                          }
+                          const json = await resp.json();
+                          const rows = Array.isArray(json) ? json : Array.isArray(json?.data) ? json.data : [];
+                          if (!Array.isArray(rows) || rows.length === 0) {
+                            setIsStale(false);
+                            setStaleInfo(null);
+                            setRefreshing(false);
+                            return;
+                          }
+                          const { parseOHLCDate, adjustOHLCForSplits } = await import('../lib/utils');
+                          const incoming = rows.map((r: { date: string; open: number; high: number; low: number; close: number; adjClose?: number; volume: number; }) => ({
+                            date: parseOHLCDate(r.date), open: r.open, high: r.high, low: r.low, close: r.close, adjClose: r.adjClose, volume: r.volume,
+                          }));
+                          const existingDates = new Set(marketData.map((d) => d.date.toDateString()));
+                          const filtered = incoming.filter((d: { date: Date }) => !existingDates.has(d.date.toDateString()));
+                          if (filtered.length) {
+                            const merged = [...marketData, ...filtered].sort((a, b) => a.date.getTime() - b.date.getTime());
+                            const finalData = adjustOHLCForSplits(merged, currentSplits);
+                            updateMarketData(finalData);
+                            try {
+                              if (currentDataset && currentDataset.name) {
+                                await updateDatasetOnServer();
+                              } else if (symbol) {
+                                await saveDatasetToServer(symbol);
+                              }
+                            } catch (e) {
+                              const msg = e instanceof Error ? e.message : 'Не удалось сохранить изменения на сервере';
+                              setRefreshError(msg);
+                            }
+                          }
+                          setIsStale(false);
+                          setStaleInfo(null);
+                        } catch (e) {
+                          const msg = e instanceof Error ? e.message : 'Не удалось актуализировать данные';
+                          setRefreshError(msg);
+                        } finally {
+                          setRefreshing(false);
+                        }
+                      }}
+                      className="inline-flex items-center px-3 py-1.5 rounded-md bg-amber-600 text-white text-sm hover:bg-amber-700 disabled:bg-gray-400"
+                      disabled={refreshing}
+                    >
+                      {refreshing ? `Актуализация… (${resultsRefreshProvider})` : `Актуализировать (${resultsRefreshProvider})`}
+                    </button>
+                    {refreshError && <span className="text-sm text-red-600">{refreshError}</span>}
+                  </div>
+                </div>
+              )}
+              {marketData.length > 0 && (
+                hasDuplicateDates ? (
+                  <div className="p-3 rounded-lg border border-red-300 bg-red-50 text-red-900 dark:bg-red-950/30 dark:border-red-900/40 dark:text-red-200">
+                    <div className="text-sm font-semibold">Внимание: обнаружены дубли дат</div>
+                    <div className="text-xs mt-1 break-words">{duplicateDateKeys.join(', ')}</div>
+                  </div>
+                ) : (
+                  <div className="p-2 rounded border border-emerald-200 bg-emerald-50 text-emerald-800 text-xs dark:bg-emerald-950/30 dark:border-emerald-900/40 dark:text-emerald-200">
+                    Дублей дат не обнаружено
+                  </div>
+                )
+              )}
+              {marketData.length > 0 && (() => {
+                const fmt = (d: Date) => {
+                  const yyyy = String(d.getUTCFullYear());
+                  const mm = String(d.getUTCMonth()+1).padStart(2, '0');
+                  const dd = String(d.getUTCDate()).padStart(2, '0');
+                  return `${yyyy}-${mm}-${dd}`;
+                };
+                const last = marketData[marketData.length - 1]?.date;
+                return last ? (
+                  <div className="text-xs text-gray-500">Последняя дата в данных: {fmt(new Date(last))}</div>
+                ) : null;
+              })()}
+            </div>
           </section>
 
           {/* Таб-переключатель графиков */}
@@ -482,14 +582,24 @@ export function Results() {
 
             {activeChart === 'price' && (
               <div className="rounded-xl border bg-white p-0 dark:bg-gray-900 dark:border-gray-800">
-                <div className="w-full">
+                <div className="w-full -mx-3 sm:mx-0">
                   <TradingChart data={marketData} trades={trades} splits={currentSplits} />
                 </div>
               </div>
             )}
             {activeChart === 'equity' && (
               <div className="rounded-xl border bg-white p-0 dark:bg-gray-900 dark:border-gray-800">
-                <div className="w-full">
+                <div className="px-3 pt-3 text-xs text-gray-500 dark:text-gray-300">
+                  {(() => {
+                    try {
+                      const max = Math.max(...equity.map(e => Number(e?.value ?? 0)));
+                      return `Максимум за всё время: $${max.toFixed(2)}`;
+                    } catch {
+                      return '';
+                    }
+                  })()}
+                </div>
+                <div className="w-full -mx-3 sm:mx-0">
                   <EquityChart equity={equity} />
                 </div>
                 <div className="px-3 py-2 text-sm text-gray-700 dark:text-gray-200">
@@ -521,125 +631,16 @@ export function Results() {
             )}
           </section>
         </div>
-
-        {/* Правая колонка */}
-        <div className="space-y-6">
-          {/* Здоровье данных и актуализация */}
-          <section className="rounded-xl border bg-white p-4 dark:bg-gray-900 dark:border-gray-800 space-y-3">
-            <div className="text-sm font-semibold">Состояние данных</div>
-            {isStale && (
-              <div className="flex flex-col gap-2 p-3 rounded-lg border border-amber-300 bg-amber-50 text-amber-900 dark:bg-amber-950/30 dark:border-amber-900/40 dark:text-amber-200">
-                <span className="text-sm">Данные не актуальны. {staleInfo}</span>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={async () => {
-                      if (!symbol) return;
-                      setRefreshing(true); setRefreshError(null);
-                      try {
-                        // запрашиваем хвост с небольшим запасом (5 торговых дней)
-                        const lastBarDate = new Date(marketData[marketData.length - 1].date);
-                        const start = new Date(lastBarDate);
-                        start.setUTCDate(start.getUTCDate() - 7);
-                        const startTs = Math.floor(start.getTime() / 1000);
-                        const endTs = Math.floor(Date.now() / 1000);
-                        const prov = resultsRefreshProvider || 'finnhub';
-                        const base = window.location.href.includes('/stonks') ? '/stonks/api' : '/api';
-                        const url = `${base}/yahoo-finance/${encodeURIComponent(symbol)}?start=${startTs}&end=${endTs}&provider=${prov}&adjustment=split_only`;
-                        const resp = await fetch(url, { credentials: 'include' });
-                        if (!resp.ok) {
-                          let msg = `${resp.status} ${resp.statusText}`;
-                          try { const e = await resp.json(); msg = e.error || msg; } catch {}
-                          throw new Error(msg);
-                        }
-                        const json = await resp.json();
-                        const rows = Array.isArray(json) ? json : Array.isArray(json?.data) ? json.data : [];
-                        if (!Array.isArray(rows) || rows.length === 0) {
-                          // если ничего не пришло, просто снимем флаг как не критичный (возможно ещё нет публикации)
-                          setIsStale(false);
-                          setStaleInfo(null);
-                          setRefreshing(false);
-                          return;
-                        }
-                        // Преобразуем и смержим
-                        const { parseOHLCDate, adjustOHLCForSplits } = await import('../lib/utils');
-                        const incoming = rows.map((r: { date: string; open: number; high: number; low: number; close: number; adjClose?: number; volume: number; }) => ({
-                          date: parseOHLCDate(r.date), open: r.open, high: r.high, low: r.low, close: r.close, adjClose: r.adjClose, volume: r.volume,
-                        }));
-                        const existingDates = new Set(marketData.map((d) => d.date.toDateString()));
-                        const filtered = incoming.filter((d: { date: Date }) => !existingDates.has(d.date.toDateString()));
-                        if (filtered.length) {
-                          // Сливаем и применяем бэк-аджаст по уже известным сплитам
-                          const merged = [...marketData, ...filtered].sort((a, b) => a.date.getTime() - b.date.getTime());
-                          const finalData = adjustOHLCForSplits(merged, currentSplits);
-                          updateMarketData(finalData);
-                          // Сохраняем изменения на сервере (переименуем файл при смене последней даты)
-                          try {
-                            if (currentDataset && currentDataset.name) {
-                              await updateDatasetOnServer();
-                            } else if (symbol) {
-                              await saveDatasetToServer(symbol);
-                            }
-                          } catch (e) {
-                            const msg = e instanceof Error ? e.message : 'Не удалось сохранить изменения на сервере';
-                            setRefreshError(msg);
-                          }
-                        }
-                        setIsStale(false);
-                        setStaleInfo(null);
-                      } catch (e) {
-                        const msg = e instanceof Error ? e.message : 'Не удалось актуализировать данные';
-                        setRefreshError(msg);
-                      } finally {
-                        setRefreshing(false);
-                      }
-                    }}
-                    className="inline-flex items-center px-3 py-1.5 rounded-md bg-amber-600 text-white text-sm hover:bg-amber-700 disabled:bg-gray-400"
-                    disabled={refreshing}
-                  >
-                    {refreshing ? `Актуализация… (${resultsRefreshProvider})` : `Актуализировать (${resultsRefreshProvider})`}
-                  </button>
-                  {refreshError && <span className="text-sm text-red-600">{refreshError}</span>}
-                </div>
-              </div>
-            )}
-
-            {/* Дубликаты дат и последняя дата */}
-            {marketData.length > 0 && (
-              hasDuplicateDates ? (
-                <div className="p-3 rounded-lg border border-red-300 bg-red-50 text-red-900 dark:bg-red-950/30 dark:border-red-900/40 dark:text-red-200">
-                  <div className="text-sm font-semibold">Внимание: обнаружены дубли дат</div>
-                  <div className="text-xs mt-1 break-words">{duplicateDateKeys.join(', ')}</div>
-                </div>
-              ) : (
-                <div className="p-2 rounded border border-emerald-200 bg-emerald-50 text-emerald-800 text-xs dark:bg-emerald-950/30 dark:border-emerald-900/40 dark:text-emerald-200">
-                  Дублей дат не обнаружено
-                </div>
-              )
-            )}
-            {marketData.length > 0 && (() => {
-              const fmt = (d: Date) => {
-                const yyyy = String(d.getUTCFullYear());
-                const mm = String(d.getUTCMonth()+1).padStart(2, '0');
-                const dd = String(d.getUTCDate()).padStart(2, '0');
-                return `${yyyy}-${mm}-${dd}`;
-              };
-              const last = marketData[marketData.length - 1]?.date;
-              return last ? (
-                <div className="text-xs text-gray-500">Последняя дата в данных: {fmt(new Date(last))}</div>
-              ) : null;
-            })()}
-          </section>
-
-          {/* Модалки */}
-          <InfoModal
-            open={modal.type !== null}
-            title={modal.title || ''}
-            message={modal.message || ''}
-            kind={modal.type === 'error' ? 'error' : 'info'}
-            onClose={() => setModal({ type: null })}
-          />
-        </div>
       </div>
+
+      {/* Модалки */}
+      <InfoModal
+        open={modal.type !== null}
+        title={modal.title || ''}
+        message={modal.message || ''}
+        kind={modal.type === 'error' ? 'error' : 'info'}
+        onClose={() => setModal({ type: null })}
+      />
     </div>
   );
 }
