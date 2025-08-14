@@ -69,7 +69,7 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
       const subH = Math.max(80, totalH - mainH);
       const chart = createChart(mainEl, {
         width: mainEl.clientWidth,
-        height: mainH,
+        height: Math.max(mainH || 0, 360),
         layout: {
           background: { color: bg },
           textColor: text,
@@ -96,7 +96,7 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
       // Create sub chart (20% height) for IBS/Volume
       const subChart = createChart(subEl, {
         width: subEl.clientWidth,
-        height: subH,
+        height: Math.max(subH || 0, 120),
         layout: {
           background: { color: bg },
           textColor: text,
@@ -343,15 +343,15 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
       });
 
       // Handle resize
-      const handleResize = () => {
-        if (!chartContainerRef.current) return;
-        const w = chartContainerRef.current.clientWidth;
-        const total = chartContainerRef.current.clientHeight || 600;
-        const mainH2 = Math.max(200, Math.round(total * 0.80));
-        const subH2 = Math.max(80, total - mainH2);
-        chart.applyOptions({ width: w, height: mainH2 });
-        subChart.applyOptions({ width: w, height: subH2 });
-      };
+             const handleResize = () => {
+         if (!chartContainerRef.current) return;
+         const w = chartContainerRef.current.clientWidth;
+         const total = chartContainerRef.current.clientHeight || 600;
+         const mainH2 = Math.max(360, Math.round(total * 0.80));
+         const subH2 = Math.max(120, total - mainH2);
+         chart.applyOptions({ width: w, height: mainH2 });
+         subChart.applyOptions({ width: w, height: subH2 });
+       };
 
       window.addEventListener('resize', handleResize);
 
@@ -424,9 +424,9 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
       </div>
       
       {/* Chart Container split: main (80%) + sub (20%) */}
-      <div ref={chartContainerRef} className="min-h-0 overflow-hidden w-full h-full flex flex-col">
-        <div ref={mainPaneRef} className="flex-1 min-h-0" />
-        <div ref={subPaneRef} className="h-[20%]" />
+      <div ref={chartContainerRef} className="min-h-0 overflow-hidden w-full h-[600px] flex flex-col">
+        <div ref={mainPaneRef} className="flex-1 min-h-[360px]" />
+        <div ref={subPaneRef} className="h-[120px]" />
       </div>
     </div>
   );

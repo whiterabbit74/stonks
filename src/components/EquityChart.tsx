@@ -32,7 +32,7 @@ export function EquityChart({ equity }: EquityChartProps) {
       // Create new chart
       const chart = createChart(chartContainerRef.current, {
         width: chartContainerRef.current.clientWidth,
-        height: Math.max(chartContainerRef.current.clientHeight, 300),
+        height: Math.max(chartContainerRef.current.clientHeight || 0, 360),
         layout: {
           background: { color: bg },
           textColor: text,
@@ -127,7 +127,7 @@ export function EquityChart({ equity }: EquityChartProps) {
         if (chartContainerRef.current && chart) {
           chart.applyOptions({
             width: chartContainerRef.current.clientWidth,
-            height: Math.max(chartContainerRef.current.clientHeight, 300),
+            height: Math.max(chartContainerRef.current.clientHeight || 0, 360),
           });
         }
       };
@@ -161,5 +161,5 @@ export function EquityChart({ equity }: EquityChartProps) {
     );
   }
 
-  return <div ref={chartContainerRef} className="w-full h-full min-h-0 overflow-hidden" />;
+  return <div ref={chartContainerRef} className="w-full h-[360px] min-h-0 overflow-hidden" />;
 }
