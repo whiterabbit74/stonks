@@ -57,13 +57,13 @@ export function DataUpload({ onNext }: DataUploadProps) {
                   <CheckCircle className="w-6 h-6 text-blue-600" />
                 </div>
                 <div>
-                  <div className="text-sm text-blue-700 dark:text-blue-300">Загружен датасет</div>
+                  <div className="text-sm text-blue-700 dark:text-blue-300">Датасет загружен</div>
                   <div className="text-xl font-semibold text-blue-900 dark:text-blue-200">{currentDataset.ticker}</div>
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-2 mt-2">
                 <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 border border-blue-200 dark:bg-blue-950/30 dark:text-blue-200 dark:border-blue-900/50">{currentDataset.ticker}</span>
-                <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700 border dark:bg-gray-800 dark:text-gray-200 dark:border-gray-700">{currentDataset.dataPoints.toLocaleString()} points</span>
+                <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700 border dark:bg-gray-800 dark:text-gray-200 dark:border-gray-700">{currentDataset.dataPoints.toLocaleString()} точек</span>
                 <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700 border dark:bg-gray-800 dark:text-gray-200 dark:border-gray-700">{currentDataset.dateRange.from} — {currentDataset.dateRange.to}</span>
               </div>
             </div>

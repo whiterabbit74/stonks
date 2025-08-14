@@ -58,7 +58,7 @@ export function AppSettings() {
       {/* Уведомления */}
       <div className="p-4 rounded-lg border">
         <div className="text-sm font-medium text-gray-700 mb-2">Уведомления</div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">Граница близости к IBS-цели для уведомления (%)</label>
+        <label className="block text-sm font-medium text-gray-700 mb-2">Порог близости к IBS, %</label>
         <p className="text-xs text-gray-500 mb-2">Диапазон 0–20%. По умолчанию 5%.</p>
         <div className="flex items-center gap-4">
           <input type="range" min={0} max={20} step={0.5} value={watchThresholdPct} onChange={(e)=>setWatchThresholdPct(Number(e.target.value))} className="flex-1" />
@@ -96,7 +96,7 @@ export function AppSettings() {
           </div>
 
           <div className="bg-gray-50 rounded p-3 border">
-            <div className="text-xs text-gray-500 mb-2">Импорт «New data» (энхансер)</div>
+            <div className="text-xs text-gray-500 mb-2">Импорт «Новые данные» (энхансер)</div>
             <label className="flex items-center gap-2 text-sm mb-1">
               <input type="radio" name="enhancerProvider" checked={enhancerProvider === 'alpha_vantage'} onChange={() => setEnhancerProvider('alpha_vantage')} />
               Alpha Vantage
@@ -114,10 +114,10 @@ export function AppSettings() {
           {saveOk && <span className="text-sm text-green-600">{saveOk}</span>}
           {saveErr && <span className="text-sm text-red-600">{saveErr}</span>}
         </div>
-        <div className="text-xs text-gray-500 mt-2">Подсказки: Alpha Vantage может возвращать лимит на сплиты и adjusted данные. Для refresh лучше использовать тот провайдер, который стабильно доступен на вашем тарифе.</div>
+        <div className="text-xs text-gray-500 mt-2">Подсказка: для refresh используйте провайдера, который стабильно доступен на вашем тарифе.</div>
       </div>
       <div className="p-4 rounded-lg border bg-gray-50">
-        <div className="text-sm font-medium text-gray-700 mb-2">Тест сообщения в Telegram</div>
+        <div className="text-sm font-medium text-gray-700 mb-2">Тестовое сообщение в Telegram</div>
         <div className="flex flex-wrap items-center gap-2">
           <input value={testMsg} onChange={(e)=>setTestMsg(e.target.value)} className="flex-1 min-w-[260px] px-3 py-2 rounded-md border" />
           <button onClick={sendTest} disabled={sending} className="px-3 py-1.5 rounded-md bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:bg-gray-400">
@@ -127,7 +127,7 @@ export function AppSettings() {
         {error && <div className="text-sm text-red-600 mt-2">{error}</div>}
         {ok && <div className="text-sm text-green-600 mt-2">{ok}</div>}
       </div>
-      <p className="text-xs text-gray-500">Примечание: Telegram бот и чат должны быть настроены на сервере (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`).</p>
+      <p className="text-xs text-gray-500">Примечание: Telegram-бот и чат должны быть настроены на сервере (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`).</p>
     </div>
   );
 }

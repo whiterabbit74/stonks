@@ -86,10 +86,9 @@ export default function App() {
 
   const tabs = [
     { id: 'data' as Tab, label: 'Данные', enabled: true },
-    { id: 'enhance' as Tab, label: 'New data', enabled: true },
+    { id: 'enhance' as Tab, label: 'Новые данные', enabled: true },
     { id: 'results' as Tab, label: 'Результаты', enabled: true },
     { id: 'watches' as Tab, label: 'Мониторинг', enabled: true },
-    { id: 'settings' as Tab, label: 'Настройки', enabled: true },
   ] as const;
 
   const handleLogout = async () => {
@@ -115,7 +114,7 @@ export default function App() {
         body: JSON.stringify({ username: usernameInput, password: passwordInput, remember: rememberMe }),
       });
       if (!r.ok) {
-        let msg = 'Login failed';
+        let msg = 'Ошибка входа';
         try { const j = await r.json(); if (j && j.error) msg = j.error; } catch {}
         setLoginError(msg);
         return;
@@ -128,7 +127,7 @@ export default function App() {
       try { await loadSettingsFromServer(); } catch {}
       try { await loadDatasetsFromServer(); } catch {}
     } catch (err) {
-      setLoginError(err instanceof Error ? err.message : 'Login failed');
+      setLoginError(err instanceof Error ? err.message : 'Ошибка входа');
     }
   };
 
@@ -177,16 +176,16 @@ export default function App() {
       <header className="border-b bg-white/60 backdrop-blur sticky top-0 z-20 dark:bg-slate-900/60 dark:border-slate-800">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <h1 className="text-lg font-semibold tracking-tight">Trading strategies</h1>
+            <h1 className="text-lg font-semibold tracking-tight">Тестировщик стратегий</h1>
             {apiBuildId && (
-              <span className="text-xs text-gray-500">API build: {apiBuildId}</span>
+              <span className="text-xs text-gray-500">Версия API: {apiBuildId}</span>
             )}
           </div>
           <div className="flex items-center gap-2">
             <ThemeToggle />
             <a className="inline-flex items-center gap-2 text-sm hover:text-indigo-600 dark:hover:text-indigo-400" href="#settings">
               <Settings size={16} />
-              Settings
+              Настройки
             </a>
             {authorized && (
               <button
@@ -242,7 +241,7 @@ export default function App() {
             )}
             <form onSubmit={handleLogin} className="space-y-3">
               <div>
-                <label className="block text-sm mb-1">Email</label>
+                <label className="block text-sm mb-1">Эл. почта</label>
                 <input
                   type="email"
                   value={usernameInput}

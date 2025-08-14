@@ -56,24 +56,24 @@ export function StrategySettings({ strategy, onSave, onClose, mode = 'modal' }: 
     const configs: Record<string, Record<string, { label: string; min: number; max: number; step?: number; description?: string }>> = {
       'ibs-mean-reversion': {
         lowIBS: { 
-          label: 'Low IBS Entry Threshold', 
+          label: 'Порог входа (Low IBS)', 
           min: 0.01, 
           max: 0.5, 
           step: 0.01, 
-          description: 'Enter long position when IBS < this value (close near daily low). Default: 0.1' 
+          description: 'Вход в лонг, когда IBS ниже этого значения (close близко к дневному минимуму). По умолчанию: 0.1' 
         },
         highIBS: { 
-          label: 'High IBS Exit Threshold', 
+          label: 'Порог выхода (High IBS)', 
           min: 0.5, 
           max: 0.99, 
           step: 0.01, 
-          description: 'Exit position when IBS > this value (close near daily high). Default: 0.75' 
+          description: 'Выход из позиции, когда IBS выше этого значения (close близко к дневному максимуму). По умолчанию: 0.75' 
         },
         maxHoldDays: { 
-          label: 'Maximum Hold Days', 
+          label: 'Максимум дней в позиции', 
           min: 1, 
           max: 365, 
-          description: 'Force exit after this many days if IBS exit condition not met. Default: 30' 
+          description: 'Принудительный выход через указанное число дней, если условие IBS не выполнено. По умолчанию: 30' 
         }
       }
     } as const;
@@ -92,15 +92,15 @@ export function StrategySettings({ strategy, onSave, onClose, mode = 'modal' }: 
           <p className="text-sm text-gray-600 mt-1">{strategy.name}</p>
           {strategy.id === 'ibs-mean-reversion' && (
             <p className="text-xs text-blue-600 mt-1">
-              IBS = (Close - Low) / (High - Low) • Measures where close is within daily range
+              IBS = (Close − Low) / (High − Low) • Показывает, где закрытие дня внутри дневного диапазона
             </p>
           )}
         </div>
         {mode === 'modal' && (
-                      <button
-              onClick={onClose}
-              className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg"
-            >
+          <button
+            onClick={onClose}
+            className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg"
+          >
             <X className="w-5 h-5" />
           </button>
         )}

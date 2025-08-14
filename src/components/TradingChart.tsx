@@ -372,7 +372,7 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
   if (!data.length) {
     return (
       <div className="flex items-center justify-center h-full text-gray-500">
-        No data available for chart
+        Нет данных для графика
       </div>
     );
   }

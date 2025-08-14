@@ -105,10 +105,9 @@ function ProtectedLayout() {
 
   const tabs = [
     { to: '/data', label: 'Данные' },
-    { to: '/enhance', label: 'New data' },
+    { to: '/enhance', label: 'Новые данные' },
     { to: '/results', label: 'Результаты' },
     { to: '/watches', label: 'Мониторинг' },
-    { to: '/settings', label: 'Настройки' },
   ];
 
   const handleLogout = async () => {
@@ -135,16 +134,16 @@ function ProtectedLayout() {
       <header className="border-b bg-white/60 backdrop-blur sticky top-0 z-20 dark:bg-slate-900/60 dark:border-slate-800">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <h1 className="text-lg font-semibold tracking-tight">Trading strategies</h1>
+            <h1 className="text-lg font-semibold tracking-tight">Тестировщик стратегий</h1>
             {apiBuildId && (
-              <span className="text-xs text-gray-500">API build: {apiBuildId}</span>
+              <span className="text-xs text-gray-500">Версия API: {apiBuildId}</span>
             )}
           </div>
           <div className="flex items-center gap-2">
             <ThemeToggle />
             <NavLink to="/settings" className={({ isActive }) => `inline-flex items-center gap-2 text-sm ${isActive ? 'text-indigo-600 dark:text-indigo-400' : 'hover:text-indigo-600 dark:hover:text-indigo-400'}`}>
               <Settings size={16} />
-              Settings
+              Настройки
             </NavLink>
             <button onClick={handleLogout} className="inline-flex items-center gap-2 text-sm text-red-600 hover:text-red-700">
               Выйти
@@ -157,7 +156,7 @@ function ProtectedLayout() {
         <div className="mb-4">
           <nav className="flex gap-2 flex-wrap">
             {tabs.map(t => (
-                             <NavLink key={t.to} to={t.to} className={({ isActive }) => `px-3 py-1 rounded text-sm border ${isActive ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white hover:bg-gray-50 text-gray-700 border-gray-200 dark:bg-gray-900 dark:text-gray-200 dark:border-gray-800 dark:hover:bg-gray-800'}`}>
+              <NavLink key={t.to} to={t.to} className={({ isActive }) => `px-3 py-1 rounded text-sm border ${isActive ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white hover:bg-gray-50 text-gray-700 border-gray-200 dark:bg-gray-900 dark:text-gray-200 dark:border-gray-800 dark:hover:bg-gray-800'}`}>
                 {t.label}
               </NavLink>
             ))}
@@ -190,7 +189,7 @@ function LoginPage() {
         body: JSON.stringify({ username, password, remember }),
       });
       if (!r.ok) {
-        let msg = 'Login failed';
+        let msg = 'Ошибка входа';
         try { const j = await r.json(); if (j && j.error) msg = j.error; } catch {}
         setLoginError(msg);
         return;
@@ -199,7 +198,7 @@ function LoginPage() {
       setUsername(''); setPassword(''); setRemember(false);
       navigate(to, { replace: true });
     } catch (err) {
-      setLoginError(err instanceof Error ? err.message : 'Login failed');
+      setLoginError(err instanceof Error ? err.message : 'Ошибка входа');
     }
   };
 
@@ -208,7 +207,7 @@ function LoginPage() {
       <header className="border-b bg-white/60 backdrop-blur sticky top-0 z-20 dark:bg-slate-900/60 dark:border-slate-800">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <h1 className="text-lg font-semibold tracking-tight">Trading strategies</h1>
+            <h1 className="text-lg font-semibold tracking-tight">Тестировщик стратегий</h1>
           </div>
           <div className="flex items-center gap-2">
             <ThemeToggle />
@@ -216,7 +215,7 @@ function LoginPage() {
         </div>
       </header>
 
-             <main className="flex-1 flex items-center justify-center px-4">
+      <main className="flex-1 flex items-center justify-center px-4">
         <div className="w-full max-w-sm rounded-lg bg-white p-4 shadow-lg border dark:bg-gray-900 dark:border-gray-800">
           <h2 className="text-lg font-semibold mb-3">Вход</h2>
           {loginError && (
@@ -224,12 +223,12 @@ function LoginPage() {
           )}
           <form onSubmit={handleLogin} className="space-y-3">
             <div>
-              <label className="block text-sm mb-1">Email</label>
-                             <input type="email" value={username} onChange={e => setUsername(e.target.value)} className="w-full rounded border px-3 py-2 bg-white dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100" placeholder="you@example.com" autoFocus />
+              <label className="block text-sm mb-1">Эл. почта</label>
+              <input type="email" value={username} onChange={e => setUsername(e.target.value)} className="w-full rounded border px-3 py-2 bg-white dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100" placeholder="you@example.com" autoFocus />
             </div>
             <div>
               <label className="block text-sm mb-1">Пароль</label>
-                             <input type="password" value={password} onChange={e => setPassword(e.target.value)} className="w-full rounded border px-3 py-2 bg-white dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100" placeholder="••••••••" />
+              <input type="password" value={password} onChange={e => setPassword(e.target.value)} className="w-full rounded border px-3 py-2 bg-white dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100" placeholder="••••••••" />
             </div>
             <label className="inline-flex items-center gap-2 text-sm">
               <input type="checkbox" checked={remember} onChange={e => setRemember(e.target.checked)} />

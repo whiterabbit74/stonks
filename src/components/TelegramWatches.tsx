@@ -125,7 +125,7 @@ export function TelegramWatches() {
 
       {typeof secondsToNext === 'number' && (
         <div className="text-sm text-gray-600">
-          До следующего подсчёта сигналов осталось {formatDuration(secondsToNext)}
+          До следующего подсчёта сигналов: {formatDuration(secondsToNext)}
         </div>
       )}
 
@@ -136,15 +136,15 @@ export function TelegramWatches() {
       ) : error ? (
         <div className="text-sm text-red-600">{error}</div>
       ) : watches.length === 0 ? (
-        <div className="text-sm text-gray-500">Нет активных наблюдений. Включите мониторинг из вкладки «Результаты».</div>
+        <div className="text-sm text-gray-500">Нет активных наблюдений. Включите мониторинг на вкладке «Результаты».</div>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm border-separate border-spacing-0">
             <thead className="bg-gray-50 dark:bg-gray-900">
               <tr>
                 <th className="text-left p-3">Тикер</th>
-                <th className="text-left p-3">High IBS</th>
-                <th className="text-left p-3">Порог близости, %</th>
+                <th className="text-left p-3">IBS (high)</th>
+                <th className="text-left p-3">Порог, %</th>
                 <th className="text-left p-3">Цена входа</th>
                 <th className="text-left p-3">Позиция</th>
               </tr>
@@ -158,7 +158,7 @@ export function TelegramWatches() {
                   <td className="p-3">{w.entryPrice != null ? w.entryPrice.toFixed(2) : '—'}</td>
                   <td className="p-3">
                     <div className="flex items-center gap-3">
-                      <span                         className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${w.isOpenPosition ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-gray-100 text-gray-600 border border-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700'}`}>{w.isOpenPosition ? 'Открыта' : 'Нет'}</span>
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${w.isOpenPosition ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-gray-100 text-gray-600 border border-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700'}`}>{w.isOpenPosition ? 'Открыта' : 'Нет'}</span>
                       <button
                         onClick={() => setConfirm({ open: true, symbol: w.symbol })}
                         className="inline-flex items-center justify-center w-8 h-8 rounded-full border border-gray-300 bg-white text-gray-600 hover:bg-red-50 hover:text-red-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-red-900/30"
