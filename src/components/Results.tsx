@@ -1,4 +1,4 @@
-import { Heart } from 'lucide-react';
+import { Heart, RefreshCcw, AlertTriangle } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { DatasetAPI } from '../lib/api';
 import { useAppStore } from '../stores';
@@ -396,11 +396,49 @@ export function Results() {
                 <div className="font-mono text-sm">{quote?.current ?? '—'}</div>
               </div>
             </div>
+            {/* Под стикером: инфо об открытой сделке и компактный алерт об устаревании + иконка обновления */}
+            <div className="mt-2 space-y-2">
+              <div className="text-sm text-gray-600 dark:text-gray-300">
+                {(() => {
+                  const lastTrade = trades[trades.length - 1];
+                  const lastDataDate = marketData.length ? marketData[marketData.length - 1].date : null;
+                  const isOpen = !!(lastTrade && lastDataDate && new Date(lastTrade.exitDate).getTime() === new Date(lastDataDate).getTime());
+                  return (
+                    <span>
+                      Открытая сделка: <span className={isOpen ? 'text-emerald-600 dark:text-emerald-300' : 'text-gray-500'}>{isOpen ? 'да' : 'нет'}</span>
+                      {isOpen && lastTrade?.entryPrice != null && (
+                        <span className="ml-2 text-xs text-gray-500">вход: ${Number(lastTrade.entryPrice).toFixed(2)}</span>
+                      )}
+                    </span>
+                  );
+                })()}
+              </div>
+              {isStale && (
+                <div className="flex items-center gap-2 text-xs text-amber-700 dark:text-amber-300">
+                  <AlertTriangle className="w-4 h-4" />
+                  <span>Данные не актуальны{staleInfo ? ` — ${staleInfo}` : ''}</span>
+                </div>
+              )}
+              {isStale && (
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleRefresh}
+                    className="inline-flex items-center justify-center w-9 h-9 rounded-full border bg-white hover:bg-gray-50 text-gray-600 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-700 disabled:opacity-50"
+                    title="Обновить данные"
+                    aria-label="Обновить данные"
+                    disabled={refreshing}
+                  >
+                    <RefreshCcw className={`w-5 h-5 ${refreshing ? 'animate-spin' : ''}`} />
+                  </button>
+                  {refreshError && <span className="text-xs text-red-600">{refreshError}</span>}
+                </div>
+              )}
+            </div>
           </div>
 
-          {/* Правая часть: мини-график + цены + кнопка мониторинга */}
-          <div className="md:col-span-2 flex flex-col gap-3">
-            <div className="bg-white rounded-lg border p-3 dark:bg-gray-900 dark:border-gray-800">
+          {/* Правая часть: мини-график + вертикальные KPI */}
+          <div className="md:col-span-2 flex gap-3">
+            <div className="flex-1 bg-white rounded-lg border p-3 dark:bg-gray-900 dark:border-gray-800">
               <div className="w-full">
                 <div className="h-[260px] sm:h-[300px]">
                   <MiniQuoteChart 
@@ -421,136 +459,62 @@ export function Results() {
                     })()}
                   />
                 </div>
-                {/* Ценовые блоки перенесены в левую часть */}
               </div>
             </div>
-            {/* Кнопка мониторинга перемещена к названию тикера */}
-            {quoteLoading && <div className="text-xs text-gray-400">загрузка…</div>}
-            {!isTrading && (
-              <div className="text-sm text-gray-500">Показываем в торговые часы (NYSE): 09:30–16:00 ET</div>
-            )}
-            {quoteError && <div className="text-sm text-red-600">{quoteError}</div>}
+            <div className="w-48 sm:w-56 flex flex-col gap-2">
+              <div className="rounded-lg border p-2 bg-gray-50 dark:bg-gray-800 dark:border-gray-700">
+                <div className="text-xs text-gray-500 dark:text-gray-300">CAGR</div>
+                <div className="text-base font-semibold dark:text-gray-100">{metrics.cagr.toFixed(2)}%</div>
+              </div>
+              <div className="rounded-lg border p-2 bg-gray-50 dark:bg-gray-800 dark:border-gray-700">
+                <div className="text-xs text-gray-500 dark:text-gray-300">Sharpe</div>
+                <div className="text-base font-semibold dark:text-gray-100">{metrics.sharpeRatio.toFixed(2)}</div>
+              </div>
+              <div className="rounded-lg border p-2 bg-gray-50 dark:bg-gray-800 dark:border-gray-700">
+                <div className="text-xs text-gray-500 dark:text-gray-300">Макс. просадка</div>
+                <div className="text-base font-semibold dark:text-gray-100">{metrics.maxDrawdown.toFixed(2)}%</div>
+              </div>
+              <div className="rounded-lg border p-2 bg-gray-50 dark:bg-gray-800 dark:border-gray-700">
+                <div className="text-xs text-gray-500 dark:text-gray-300">Win rate</div>
+                <div className="text-base font-semibold dark:text-gray-100">{metrics.winRate.toFixed(2)}%</div>
+              </div>
+              <div className="rounded-lg border p-2 bg-gray-50 dark:bg-gray-800 dark:border-gray-700">
+                <div className="text-xs text-gray-500 dark:text-gray-300">Profit factor</div>
+                <div className="text-base font-semibold dark:text-gray-100">{metrics.profitFactor.toFixed(2)}</div>
+              </div>
+              <div className="rounded-lg border p-2 bg-gray-50 dark:bg-gray-800 dark:border-gray-700">
+                <div className="text-xs text-gray-500 dark:text-gray-300">Сделок</div>
+                <div className="text-base font-semibold dark:text-gray-100">{(metrics.totalTrades ?? trades.length).toString()}</div>
+              </div>
+            </div>
           </div>
+          {/* Подсказки под правым блоком */}
+          {quoteLoading && <div className="text-xs text-gray-400">загрузка…</div>}
+          {!isTrading && (
+            <div className="text-sm text-gray-500">Показываем в торговые часы (NYSE): 09:30–16:00 ET</div>
+          )}
+          {quoteError && <div className="text-sm text-red-600">{quoteError}</div>}
         </div>
       </section>
 
-      {/* Основной контент: KPI и графики (во всю ширину) */}
+      {/* Основной контент: графики (во всю ширину) */}
       <div className="space-y-6">
         <div className="space-y-6">
-          {/* KPI */}
-          <section className="rounded-xl border bg-white p-3 dark:bg-gray-900 dark:border-gray-800">
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 text-sm">
-              <div className="rounded-lg border p-3 bg-gray-50 dark:bg-gray-800 dark:border-gray-700">
-                <div className="text-xs text-gray-500 dark:text-gray-300">CAGR</div>
-                <div className="text-lg font-semibold dark:text-gray-100">{metrics.cagr.toFixed(2)}%</div>
-              </div>
-              <div className="rounded-lg border p-3 bg-gray-50 dark:bg-gray-800 dark:border-gray-700">
-                <div className="text-xs text-gray-500 dark:text-gray-300">Sharpe</div>
-                <div className="text-lg font-semibold dark:text-gray-100">{metrics.sharpeRatio.toFixed(2)}</div>
-              </div>
-              <div className="rounded-lg border p-3 bg-gray-50 dark:bg-gray-800 dark:border-gray-700">
-                <div className="text-xs text-gray-500 dark:text-gray-300">Макс. просадка</div>
-                <div className="text-lg font-semibold dark:text-gray-100">{metrics.maxDrawdown.toFixed(2)}%</div>
-              </div>
-              <div className="rounded-lg border p-3 bg-gray-50 dark:bg-gray-800 dark:border-gray-700">
-                <div className="text-xs text-gray-500 dark:text-gray-300">Win rate</div>
-                <div className="text-lg font-semibold dark:text-gray-100">{metrics.winRate.toFixed(2)}%</div>
-              </div>
-              <div className="rounded-lg border p-3 bg-gray-50 dark:bg-gray-800 dark:border-gray-700">
-                <div className="text-xs text-gray-500 dark:text-gray-300">Profit factor</div>
-                <div className="text-lg font-semibold dark:text-gray-100">{metrics.profitFactor.toFixed(2)}</div>
-              </div>
-              <div className="rounded-lg border p-3 bg-gray-50 dark:bg-gray-800 dark:border-gray-700">
-                <div className="text-xs text-gray-500 dark:text-gray-300">Сделок</div>
-                <div className="text-lg font-semibold dark:text-gray-100">{(metrics.totalTrades ?? trades.length).toString()}</div>
-              </div>
+          {/* Компактный алерт о дублях дат */}
+          {hasDuplicateDates && (
+            <div className="rounded-lg border p-3 bg-amber-50 border-amber-200 text-amber-900 dark:bg-amber-950/30 dark:border-amber-900/40 dark:text-amber-200">
+              Дубли дат в данных: {duplicateDateKeys.join(', ')}
             </div>
-            {/* Состояние данных (перенесено сюда) */}
-            <div className="mt-3 space-y-2">
-              {isStale && (
-                <div className="flex flex-col gap-2 p-3 rounded-lg border border-amber-300 bg-amber-50 text-amber-900 dark:bg-amber-950/30 dark:border-amber-900/40 dark:text-amber-200">
-                  <span className="text-sm">Данные не актуальны. {staleInfo}</span>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={async () => {
-                        if (!symbol) return;
-                        setRefreshing(true); setRefreshError(null);
-                        try {
-                          const lastBarDate = new Date(marketData[marketData.length - 1].date);
-                          const start = new Date(lastBarDate);
-                          start.setUTCDate(start.getUTCDate() - 7);
-                          const startTs = Math.floor(start.getTime() / 1000);
-                          const endTs = Math.floor(Date.now() / 1000);
-                          const prov = resultsRefreshProvider || 'finnhub';
-                          const base = window.location.href.includes('/stonks') ? '/stonks/api' : '/api';
-                          const url = `${base}/yahoo-finance/${encodeURIComponent(symbol)}?start=${startTs}&end=${endTs}&provider=${prov}&adjustment=split_only`;
-                          const resp = await fetch(url, { credentials: 'include' });
-                          if (!resp.ok) {
-                            let msg = `${resp.status} ${resp.statusText}`;
-                            try { const e = await resp.json(); msg = e.error || msg; } catch {}
-                            throw new Error(msg);
-                          }
-                          const json = await resp.json();
-                          const rows = Array.isArray(json) ? json : Array.isArray(json?.data) ? json.data : [];
-                          if (!Array.isArray(rows) || rows.length === 0) {
-                            setIsStale(false);
-                            setStaleInfo(null);
-                            return;
-                          }
-                          const { parseOHLCDate, adjustOHLCForSplits } = await import('../lib/utils');
-                          const incoming = rows.map((r: { date: string; open: number; high: number; low: number; close: number; adjClose?: number; volume: number; }) => ({
-                            date: parseOHLCDate(r.date), open: r.open, high: r.high, low: r.low, close: r.close, adjClose: r.adjClose, volume: r.volume,
-                          }));
-                          const existingDates = new Set(marketData.map((d) => d.date.toDateString()));
-                          const filtered = incoming.filter((d: { date: Date }) => !existingDates.has(d.date.toDateString()));
-                          if (filtered.length) {
-                            const merged = [...marketData, ...filtered].sort((a, b) => a.date.getTime() - b.date.getTime());
-                            const finalData = adjustOHLCForSplits(merged, currentSplits);
-                            updateMarketData(finalData);
-                            try {
-                              if (currentDataset && currentDataset.name) {
-                                await updateDatasetOnServer();
-                              } else if (symbol) {
-                                await saveDatasetToServer(symbol);
-                              }
-                            } catch (e) {
-                              const msg = e instanceof Error ? e.message : 'Не удалось сохранить изменения на сервере';
-                              setRefreshError(msg);
-                            }
-                          }
-                          setIsStale(false);
-                          setStaleInfo(null);
-                        } catch (e) {
-                          const msg = e instanceof Error ? e.message : 'Не удалось актуализировать данные';
-                          setRefreshError(msg);
-                        }
-                      }}
-                      className="inline-flex items-center px-3 py-1.5 rounded-md bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:opacity-50"
-                      disabled={refreshing}
-                    >
-                      {refreshing ? 'Обновляем…' : 'Обновить данные'}
-                    </button>
-                    {refreshError && <span className="text-sm text-red-600">{refreshError}</span>}
-                  </div>
-                </div>
-              )}
-              {hasDuplicateDates && (
-                <div className="p-3 rounded-lg border border-amber-300 bg-amber-50 text-amber-900 dark:bg-amber-950/30 dark:border-amber-900/40 dark:text-amber-200">
-                  Дубли дат в данных: {duplicateDateKeys.join(', ')}
-                </div>
-              )}
-            </div>
-          </section>
-
+          )}
           {/* Табы для графиков */}
           <section className="rounded-xl border bg-white p-4 dark:bg-gray-900 dark:border-gray-800">
             <div className="flex flex-wrap items-center gap-2 mb-4 text-xs sm:text-sm">
-              <button className={`px-3 py-1.5 rounded border ${activeChart === 'price' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/30 dark:border-blue-900/40 dark:text-blue-200' : 'bg-white border-gray-200 text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'}`} onClick={() => setActiveChart('price')}>Цена</button>
-              <button className={`px-3 py-1.5 rounded border ${activeChart === 'equity' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/30 dark:border-blue-900/40 dark:text-blue-200' : 'bg-white border-gray-200 text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'}`} onClick={() => setActiveChart('equity')}>Equity</button>
-              <button className={`px-3 py-1.5 rounded border ${activeChart === 'drawdown' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/30 dark:border-blue-900/40 dark:text-blue-200' : 'bg-white border-gray-200 text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'}`} onClick={() => setActiveChart('drawdown')}>Просадки</button>
-              <button className={`px-3 py-1.5 rounded border ${activeChart === 'trades' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/30 dark:border-blue-900/40 dark:text-blue-200' : 'bg-white border-gray-200 text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'}`} onClick={() => setActiveChart('trades')}>Сделки</button>
-              <button className={`px-3 py-1.5 rounded border ${activeChart === 'profit' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/30 dark:border-blue-900/40 dark:text-blue-200' : 'bg-white border-gray-200 text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'}`} onClick={() => setActiveChart('profit')}>Profit factor</button>
-              <button className={`px-3 py-1.5 rounded border ${activeChart === 'duration' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/30 dark:border-blue-900/40 dark:text-blue-200' : 'bg-white border-gray-200 text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'}`} onClick={() => setActiveChart('duration')}>Длительность</button>
+              <button className={`${activeChart === 'price' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/30 dark:border-blue-900/40 dark:text-blue-200' : 'bg-white border-gray-200 text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'} px-3 py-1.5 rounded border`} onClick={() => setActiveChart('price')}>Цена</button>
+              <button className={`${activeChart === 'equity' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/30 dark:border-blue-900/40 dark:text-blue-200' : 'bg-white border-gray-200 text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'} px-3 py-1.5 rounded border`} onClick={() => setActiveChart('equity')}>Equity</button>
+              <button className={`${activeChart === 'drawdown' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/30 dark:border-blue-900/40 dark:text-blue-200' : 'bg-white border-gray-200 text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'} px-3 py-1.5 rounded border`} onClick={() => setActiveChart('drawdown')}>Просадки</button>
+              <button className={`${activeChart === 'trades' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/30 dark:border-blue-900/40 dark:text-blue-200' : 'bg-white border-gray-200 text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'} px-3 py-1.5 rounded border`} onClick={() => setActiveChart('trades')}>Сделки</button>
+              <button className={`${activeChart === 'profit' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/30 dark:border-blue-900/40 dark:text-blue-200' : 'bg-white border-gray-200 text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'} px-3 py-1.5 rounded border`} onClick={() => setActiveChart('profit')}>Profit factor</button>
+              <button className={`${activeChart === 'duration' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/30 dark:border-blue-900/40 dark:text-blue-200' : 'bg-white border-gray-200 text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'} px-3 py-1.5 rounded border`} onClick={() => setActiveChart('duration')}>Длительность</button>
             </div>
 
             {activeChart === 'price' && (

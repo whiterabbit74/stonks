@@ -138,18 +138,18 @@ function ProtectedLayout() {
                       </div>
           <div className="flex items-center gap-2">
             <ThemeToggle />
-            <NavLink to="/settings" className={({ isActive }) => `inline-flex items-center gap-2 text-sm ${isActive ? 'text-indigo-600 dark:text-indigo-400' : 'hover:text-indigo-600 dark:hover:text-indigo-400'}`}>
+            <NavLink to="/settings" className={({ isActive }) => `inline-flex items-center gap-2 text-sm px-3 py-1.5 rounded border ${isActive ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50 dark:bg-gray-900 dark:text-gray-200 dark:border-gray-800 dark:hover:bg-gray-800'}`}>
               <Settings size={16} />
               Настройки
             </NavLink>
-            <button onClick={handleLogout} className="inline-flex items-center gap-2 text-sm text-red-600 hover:text-red-700">
+            <button onClick={handleLogout} className="inline-flex items-center gap-2 text-sm px-3 py-1.5 rounded border bg-white text-gray-700 border-gray-200 hover:bg-gray-50 dark:bg-gray-900 dark:text-gray-200 dark:border-gray-800 dark:hover:bg-gray-800">
               Выйти
             </button>
           </div>
         </div>
       </header>
 
-      <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-24 safe-area-pb">
+      <main className="flex-1 w-full px-4 sm:px-6 lg:px-8 pt-6 pb-24 safe-area-pb">
         <div className="mb-4">
           <nav className="flex gap-2 flex-wrap">
             {tabs.map(t => (
