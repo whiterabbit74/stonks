@@ -1,4 +1,5 @@
 import type { OHLCData, SavedDataset } from '../types';
+import { parseOHLCDate } from './utils';
 
 /**
  * Сохранить данные в JSON файл
@@ -60,10 +61,10 @@ export function loadDatasetFromJSON(file: File): Promise<SavedDataset> {
           throw new Error('Неверная структура JSON файла');
         }
         
-        // Конвертируем строки дат обратно в Date объекты
+        // Конвертируем строки дат обратно в Date объекты стабильно (полдень UTC)
         dataset.data = dataset.data.map(bar => ({
           ...bar,
-          date: new Date(bar.date)
+          date: parseOHLCDate(bar.date as unknown as string)
         }));
         
         console.log(`Данные загружены: ${dataset.name}`);

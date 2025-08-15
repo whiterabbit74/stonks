@@ -1,6 +1,7 @@
 import { Heart, RefreshCcw, AlertTriangle } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { DatasetAPI } from '../lib/api';
+import { formatOHLCYMD } from '../lib/utils';
 import { useAppStore } from '../stores';
 import { TradingChart } from './TradingChart';
 import { EquityChart } from './EquityChart';
@@ -100,11 +101,9 @@ export function Results() {
     return () => { active = false; };
   }, [symbol, setWatching]);
 
-  // Быстрая проверка актуальности данных (ожидаем бар за предыдущий торговый день по времени NYSE / America/New_York)
+  // Быстрая проверка актуальности данных (ожидаем бар за текущий торговый день после закрытия, иначе — за предыдущий)
   useEffect(() => {
     if (!marketData || marketData.length === 0) { setIsStale(false); setStaleInfo(null); return; }
-    const lastBar = marketData[marketData.length - 1];
-    const lastBarDate = new Date(lastBar.date);
     const now = new Date();
 
     const getETParts = (date: Date) => {
@@ -199,21 +198,48 @@ export function Results() {
       }
     };
 
-    const expectedParts = previousTradingDayET(now);
+    // Determine if by now we should expect today's daily bar (after close + buffer) or yesterday's
+    const timeFmt = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/New_York',
+      hour12: false,
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+    const tparts = timeFmt.formatToParts(now);
+    const tmap: Record<string,string> = {} as any;
+    tparts.forEach(p => { if (p.type !== 'literal') tmap[p.type] = p.value; });
+    const hh = parseInt(tmap.hour || '0', 10);
+    const mm = parseInt(tmap.minute || '0', 10);
+    const minutes = hh * 60 + mm;
+    const closeMin = 16 * 60; // 16:00 ET
+    const bufferMin = 30; // safety buffer after close for data providers
+
+    const todayET = getETParts(now);
+    const todayIsTradingDay = !isWeekendET(todayET) && !isHolidayET(todayET);
+
+    const expectedParts = (todayIsTradingDay && minutes >= (closeMin + bufferMin))
+      ? todayET
+      : previousTradingDayET(now);
+
     // Сравниваем в UTC-ключах, чтобы не было сдвига дат между UTC и ET
-    const lastKeyUTC = new Date(Date.UTC(
-      lastBarDate.getUTCFullYear(),
-      lastBarDate.getUTCMonth(),
-      lastBarDate.getUTCDate(),
-      0, 0, 0
-    )).toISOString().slice(0,10);
     const expectedKeyUTC = new Date(Date.UTC(
       expectedParts.y,
       expectedParts.m - 1,
       expectedParts.d,
       0, 0, 0
     )).toISOString().slice(0,10);
-    const stale = lastKeyUTC !== expectedKeyUTC;
+    // Проверяем наличие ожидаемой даты в данных, а не только последнюю дату
+    const dataKeys = new Set(
+      marketData.map(b => {
+        try {
+          const d = b.date instanceof Date ? b.date : new Date(b.date as unknown as string | number | Date);
+          return formatOHLCYMD(new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 12, 0, 0)));
+        } catch {
+          return '';
+        }
+      })
+    );
+    const stale = !dataKeys.has(expectedKeyUTC);
     setIsStale(stale);
     if (stale) {
       const displayDate = new Date(Date.UTC(expectedParts.y, expectedParts.m - 1, expectedParts.d, 12, 0, 0));
