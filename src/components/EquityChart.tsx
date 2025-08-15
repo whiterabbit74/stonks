@@ -104,7 +104,10 @@ export function EquityChart({ equity }: EquityChartProps) {
         if (!param || !param.time) { tooltipEl.style.display = 'none'; return; }
         const v = (param.seriesData?.get?.(equitySeries) as { value?: number } | undefined)?.value;
         if (typeof v !== 'number') { tooltipEl.style.display = 'none'; return; }
-        tooltipEl.innerHTML = `Капитал ${v.toFixed(2)}`;
+        const epochSec = typeof param.time === 'number' ? param.time : (param as any).time?.timestamp;
+        const d = epochSec ? new Date(epochSec * 1000) : null;
+        const dateStr = d ? d.toLocaleDateString('ru-RU') : '';
+        tooltipEl.innerHTML = `${dateStr ? dateStr + ' — ' : ''}Капитал ${v.toFixed(2)}`;
         tooltipEl.style.display = 'block';
       });
 
@@ -147,5 +150,23 @@ export function EquityChart({ equity }: EquityChartProps) {
     );
   }
 
-  return <div ref={chartContainerRef} className="w-full h-[300px] min-h-0 overflow-hidden" />;
+  const finalValue = equity[equity.length - 1]?.value ?? 0;
+  const startDate = equity[0]?.date ? new Date(equity[0].date).toLocaleDateString('ru-RU') : '';
+  const endDate = equity[equity.length - 1]?.date ? new Date(equity[equity.length - 1].date).toLocaleDateString('ru-RU') : '';
+
+  return (
+    <div className="w-full h-full">
+      <div className="flex flex-wrap gap-4 mb-4 text-sm">
+        <div className="bg-gray-50 px-3 py-2 rounded border dark:bg-gray-800 dark:border-gray-700">
+          <span className="text-gray-700 dark:text-gray-200">Итоговый портфель: {finalValue.toFixed(2)}</span>
+        </div>
+        {(startDate && endDate) && (
+          <div className="bg-gray-50 px-3 py-2 rounded border dark:bg-gray-800 dark:border-gray-700">
+            <span className="text-gray-700 dark:text-gray-200">Период: {startDate} — {endDate}</span>
+          </div>
+        )}
+      </div>
+      <div ref={chartContainerRef} className="w-full h-[300px] min-h-0 overflow-hidden" />
+    </div>
+  );
 }
