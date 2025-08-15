@@ -22,9 +22,7 @@ export function Results() {
   const currentDataset = useAppStore(s => s.currentDataset);
   const resultsQuoteProvider = useAppStore(s => s.resultsQuoteProvider);
   const resultsRefreshProvider = useAppStore(s => s.resultsRefreshProvider);
-  const updateMarketData = useAppStore(s => s.updateMarketData);
-  const updateDatasetOnServer = useAppStore(s => s.updateDatasetOnServer);
-  const saveDatasetToServer = useAppStore(s => s.saveDatasetToServer);
+  const loadDatasetFromServer = useAppStore(s => s.loadDatasetFromServer);
   const [quote, setQuote] = useState<{ open: number|null; high: number|null; low: number|null; current: number|null; prevClose: number|null } | null>(null);
   const [quoteError, setQuoteError] = useState<string | null>(null);
   const [isTrading, setIsTrading] = useState<boolean>(false);
@@ -69,6 +67,22 @@ export function Results() {
   const symbol = useMemo(() => (
     currentDataset?.ticker || backtestResults?.symbol || backtestResults?.ticker || backtestResults?.meta?.ticker
   ), [currentDataset, backtestResults]);
+
+  const handleRefresh = async () => {
+    if (!symbol) return;
+    setRefreshing(true);
+    setRefreshError(null);
+    try {
+      await DatasetAPI.refreshDataset(symbol, resultsRefreshProvider);
+      // Reload the dataset to reflect server-updated data
+      await loadDatasetFromServer(symbol);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'Не удалось обновить датасет';
+      setRefreshError(message);
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   useEffect(() => {
     let active = true;

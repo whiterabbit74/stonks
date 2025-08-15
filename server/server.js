@@ -1411,7 +1411,7 @@ app.post('/api/datasets/:id/refresh', async (req, res) => {
 
     let rows = [];
     let splits = [];
-    const av = await fetchFromAlphaVantage(ticker, startTs, endTs, { adjustment: 'split_only' });
+    const av = await fetchFromAlphaVantage(ticker, startTs, endTs, { adjustment: 'none' });
     const base = Array.isArray(av) ? av : (av && av.data) || [];
     rows = base.map(r => ({
       date: r.date,
@@ -1457,32 +1457,9 @@ app.post('/api/datasets/:id/refresh', async (req, res) => {
       });
     }
 
-    // Apply back-adjust for known splits from central storage
-    const centralSplits = await getTickerSplits(ticker);
+    // Keep raw data without applying back-adjustment by splits
     const mergedArray = Array.from(mergedByDate.values()).sort((a, b) => a.date.localeCompare(b.date));
-    const adjustedMerged = (() => {
-      if (!centralSplits || centralSplits.length === 0) return mergedArray;
-      // inline adjust without importing TS utils
-      const events = centralSplits.slice().sort((a,b)=> new Date(a.date) - new Date(b.date));
-      return mergedArray.map((bar) => {
-        const t = new Date(`${bar.date}T00:00:00.000Z`).getTime();
-        let cumulative = 1;
-        for (const e of events) {
-          const et = new Date(`${e.date}T00:00:00.000Z`).getTime();
-          if (t < et) cumulative *= e.factor;
-        }
-        if (cumulative === 1) return bar;
-        return {
-          ...bar,
-          open: bar.open / cumulative,
-          high: bar.high / cumulative,
-          low: bar.low / cumulative,
-          close: bar.close / cumulative,
-          adjClose: (bar.adjClose ?? bar.close) / cumulative,
-          volume: Math.round((bar.volume || 0) * cumulative),
-        };
-      });
-    })();
+    const adjustedMerged = mergedArray;
 
     const lastMerged = adjustedMerged[adjustedMerged.length - 1];
     const firstMerged = adjustedMerged[0];
@@ -1526,7 +1503,8 @@ app.get('/api/yahoo-finance/:symbol', async (req, res) => {
     if (!API_CONFIG.ALPHA_VANTAGE_API_KEY) {
       return res.status(500).json({ error: 'Alpha Vantage API key not configured' });
     }
-    const mode = 'split_only';
+    const adjParam = (req.query.adjustment || 'none').toString();
+    const mode = (adjParam === 'split_only') ? 'split_only' : 'none';
     console.log(`Fetching ${mode} data for ${symbol} from Alpha Vantage...`);
     let avResponse;
     try {
