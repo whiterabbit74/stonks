@@ -300,7 +300,7 @@ export function Results() {
   
   return (
     <div className="space-y-6 animate-fade-in">
-      {/* Верхний блок: символ слева, правая панель с мини-графиком/ценами и кнопкой мониторинга */}
+      {/* Верхний блок: символ слева, правая панель с мини-графиком/ценами и кнопку мониторинга */}
       <section className="rounded-xl border bg-white p-4 dark:bg-gray-900 dark:border-gray-800">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {/* Левая часть: символ и статус */}
@@ -554,7 +554,7 @@ export function Results() {
             </div>
 
             {activeChart === 'price' && (
-              <div className="h-[420px]">
+              <div className="h-[600px] mt-4 mb-6">
                 <TradingChart data={marketData} trades={trades} splits={currentSplits} />
               </div>
             )}
