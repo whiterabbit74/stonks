@@ -91,14 +91,18 @@ export function MiniQuoteChart({ history, today, trades, highIBS, isOpenPosition
       try { chart.timeScale().applyOptions({ rightOffset, barSpacing: spacing }); } catch { /* ignore */ }
     }
 
-    // Mark entries within visible window
+    // Mark entries and exits within visible window
     const minTime = candles.length ? (candles[0].time as number) : 0;
     const maxTime = candles.length ? (candles[candles.length - 1].time as number) : 0;
-    const markers: Array<{ time: UTCTimestamp; position: 'belowBar'; color: string; shape: 'arrowUp'; text: string }> = [];
+    const markers: Array<{ time: UTCTimestamp; position: 'belowBar' | 'aboveBar'; color: string; shape: 'arrowUp' | 'arrowDown'; text: string }> = [];
     trades.forEach(t => {
-      const tTime = Math.floor(t.entryDate.getTime() / 1000) as UTCTimestamp;
-      if ((tTime as number) >= minTime && (tTime as number) <= maxTime) {
-        markers.push({ time: tTime, position: 'belowBar', color: 'rgba(5,150,105,0.6)', shape: 'arrowUp', text: '' });
+      const entryTime = Math.floor(t.entryDate.getTime() / 1000) as UTCTimestamp;
+      const exitTime = Math.floor(t.exitDate.getTime() / 1000) as UTCTimestamp;
+      if ((entryTime as number) >= minTime && (entryTime as number) <= maxTime) {
+        markers.push({ time: entryTime, position: 'belowBar', color: 'rgba(5,150,105,0.65)', shape: 'arrowUp', text: '' });
+      }
+      if ((exitTime as number) >= minTime && (exitTime as number) <= maxTime) {
+        markers.push({ time: exitTime, position: 'aboveBar', color: 'rgba(239,68,68,0.75)', shape: 'arrowDown', text: '' });
       }
     });
     // Do not add an explicit today marker circle per request
