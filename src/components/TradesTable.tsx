@@ -39,6 +39,7 @@ export function TradesTable({ trades }: TradesTableProps) {
 						<th className="text-right px-3 py-2 font-semibold">Кол-во</th>
 						<th className="text-right px-3 py-2 font-semibold">PnL, $</th>
 						<th className="text-right px-3 py-2 font-semibold">PnL, %</th>
+						<th className="text-right px-3 py-2 font-semibold">Депозит, $</th>
 						<th className="text-right px-3 py-2 font-semibold">Дней</th>
 						<th className="text-left px-3 py-2 font-semibold">Причина выхода</th>
 					</tr>
@@ -62,6 +63,7 @@ export function TradesTable({ trades }: TradesTableProps) {
 								<td className="px-3 py-2 text-right">{t.quantity.toLocaleString()}</td>
 								<td className={`px-3 py-2 text-right font-mono ${positive ? 'text-emerald-600 dark:text-emerald-300' : 'text-orange-600 dark:text-orange-300'}`}>{(t.pnl ?? 0).toFixed(2)}</td>
 								<td className={`px-3 py-2 text-right font-mono ${positive ? 'text-emerald-600 dark:text-emerald-300' : 'text-orange-600 dark:text-orange-300'}`}>{(t.pnlPercent ?? 0).toFixed(2)}%</td>
+								<td className="px-3 py-2 text-right font-mono">{typeof t.context?.currentCapitalAfterExit === 'number' ? t.context.currentCapitalAfterExit.toFixed(2) : '—'}</td>
 								<td className="px-3 py-2 text-right">{t.duration ?? 0}</td>
 								<td className="px-3 py-2 whitespace-nowrap">{t.exitReason || '-'}</td>
 							</tr>
