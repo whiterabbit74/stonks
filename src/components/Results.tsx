@@ -99,7 +99,7 @@ export function Results() {
     return () => { active = false; };
   }, [symbol, setWatching]);
 
-  // Быстрая проверка актуальности данных (ожидаем бар за предыдущий торговый день по времени NYSE / America/New_York)
+  // Быстрая проверка актуальности данных (ожидаем бар за текущий торговый день после закрытия, иначе — за предыдущий)
   useEffect(() => {
     if (!marketData || marketData.length === 0) { setIsStale(false); setStaleInfo(null); return; }
     const lastBar = marketData[marketData.length - 1];
@@ -198,7 +198,29 @@ export function Results() {
       }
     };
 
-    const expectedParts = previousTradingDayET(now);
+    // Determine if by now we should expect today's daily bar (after close + buffer) or yesterday's
+    const timeFmt = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/New_York',
+      hour12: false,
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+    const tparts = timeFmt.formatToParts(now);
+    const tmap: Record<string,string> = {} as any;
+    tparts.forEach(p => { if (p.type !== 'literal') tmap[p.type] = p.value; });
+    const hh = parseInt(tmap.hour || '0', 10);
+    const mm = parseInt(tmap.minute || '0', 10);
+    const minutes = hh * 60 + mm;
+    const closeMin = 16 * 60; // 16:00 ET
+    const bufferMin = 30; // safety buffer after close for data providers
+
+    const todayET = getETParts(now);
+    const todayIsTradingDay = !isWeekendET(todayET) && !isHolidayET(todayET);
+
+    const expectedParts = (todayIsTradingDay && minutes >= (closeMin + bufferMin))
+      ? todayET
+      : previousTradingDayET(now);
+
     // Сравниваем в UTC-ключах, чтобы не было сдвига дат между UTC и ET
     const lastKeyUTC = new Date(Date.UTC(
       lastBarDate.getUTCFullYear(),
