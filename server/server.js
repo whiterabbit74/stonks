@@ -15,7 +15,7 @@ const DATASETS_DIR = path.join(__dirname, 'datasets');
 const SETTINGS_FILE = path.join(__dirname, 'settings.json');
 const SPLITS_FILE = path.join(__dirname, 'splits.json');
 const WATCHES_FILE = path.join(__dirname, 'telegram-watches.json');
-const MONITOR_LOG_FILE = path.join(__dirname, 'monitoring.log');
+const MONITOR_LOG_FILE = process.env.MONITOR_LOG_PATH || path.join(DATASETS_DIR, 'monitoring.log');
 const avCache = new Map(); // кэш ответов Alpha Vantage
 
 // API Configuration
@@ -59,6 +59,22 @@ async function ensureSplitsFile() {
   } catch {}
 }
 ensureSplitsFile().catch(() => {});
+
+async function appendSafe(filePath, line) {
+  try {
+    await fs.ensureFile(filePath);
+    await fs.appendFile(filePath, line);
+  } catch (e) {
+    if (e && e.code === 'EACCES') {
+      if (!appendSafe._eaccesWarned) {
+        console.warn(`No write permission for ${filePath}`);
+        appendSafe._eaccesWarned = true;
+      }
+      return;
+    }
+    console.warn(`Append failed for ${filePath}: ${e.message}`);
+  }
+}
 
 async function readSplitsMap() {
   try {
@@ -254,7 +270,7 @@ app.get('/api/splits', async (req, res) => {
 const LOGIN_WINDOW_MS = 24 * 60 * 60 * 1000; // 24 hours
 const LOGIN_MAX_ATTEMPTS = 3;
 const loginRate = new Map(); // ip -> { count, resetAt }
-const LOGIN_LOG_FILE = path.join(__dirname, 'login-attempts.log');
+const LOGIN_LOG_FILE = process.env.LOGIN_LOG_PATH || path.join(DATASETS_DIR, 'login-attempts.log');
 function getClientIp(req) {
   try {
     if (req.ip) return req.ip;
@@ -266,7 +282,7 @@ function getClientIp(req) {
 }
 async function logLoginAttempt({ ip, success, reason, username }) {
   const line = `${new Date().toISOString()}\t${ip}\t${username || '-'}\t${success ? 'SUCCESS' : 'FAIL'}\t${reason || ''}\n`;
-  try { await fs.appendFile(LOGIN_LOG_FILE, line); } catch {}
+  await appendSafe(LOGIN_LOG_FILE, line);
   try {
     const note = success ? '✅ Успешный вход' : '⚠️ Неуспешная попытка входа';
     await sendTelegramMessage(TELEGRAM_CHAT_ID, `${note}\nIP: ${ip}\nUser: ${username || '-'}\nПричина: ${reason || '—'}`);
@@ -2042,7 +2058,7 @@ async function appendMonitorLog(lines) {
     const etStr = `${et.y}-${String(et.m).padStart(2,'0')}-${String(et.d).padStart(2,'0')} ${String(et.hh).padStart(2,'0')}:${String(et.mm).padStart(2,'0')}`;
     const payload = Array.isArray(lines) ? lines : [String(lines)];
     const text = payload.map(l => `[${ts} ET:${etStr}] ${l}`).join('\n') + '\n';
-    await fs.appendFile(MONITOR_LOG_FILE, text);
+    await appendSafe(MONITOR_LOG_FILE, text);
   } catch (e) {
     console.warn('Failed to write monitor log:', e && e.message ? e.message : e);
   }
