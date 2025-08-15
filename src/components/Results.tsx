@@ -10,6 +10,7 @@ import { InfoModal } from './InfoModal';
 import { TradesTable } from './TradesTable';
 import { ProfitFactorChart } from './ProfitFactorChart';
 import { TradeDurationChart } from './TradeDurationChart';
+import { OpenDayDrawdownChart } from './OpenDayDrawdownChart';
 
 export function Results() {
   const backtestResults = useAppStore(s => s.backtestResults);
@@ -36,7 +37,7 @@ export function Results() {
   const [watching, setWatching] = useState(false);
   const [watchBusy, setWatchBusy] = useState(false);
   
-  type ChartTab = 'price' | 'equity' | 'drawdown' | 'trades' | 'profit' | 'duration';
+  type ChartTab = 'price' | 'equity' | 'drawdown' | 'trades' | 'profit' | 'duration' | 'openDayDrawdown';
   const [activeChart, setActiveChart] = useState<ChartTab>('price');
   
   // Проверка дублей дат в marketData (ключ YYYY-MM-DD)
@@ -319,7 +320,7 @@ export function Results() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {/* Левая часть: символ и статус */}
           <div className="space-y-2 md:col-span-1">
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 w-full">
               <div className="text-4xl sm:text-5xl font-black tracking-tight text-gray-900 dark:text-gray-100">
                 {symbol || '—'}
               </div>
@@ -353,7 +354,7 @@ export function Results() {
                     setWatchBusy(false);
                   }
                 }}
-                className={`inline-flex items-center justify-center w-10 h-10 rounded-full border transition ${watching ? 'bg-rose-600 border-rose-600 text-white hover:brightness-110' : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-700'}`}
+                className={`ml-auto inline-flex items-center justify-center w-10 h-10 rounded-full border transition ${watching ? 'bg-rose-600 border-rose-600 text-white hover:brightness-110' : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-700'}`}
                 title={watching ? 'Удалить из мониторинга' : 'Добавить в мониторинг'}
                 aria-label={watching ? 'Удалить из мониторинга' : 'Добавить в мониторинг'}
               >
@@ -522,6 +523,9 @@ export function Results() {
           )}
           {/* Табы для графиков */}
           <section className="rounded-xl border bg-white p-4 dark:bg-gray-900 dark:border-gray-800">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg sm:text-xl font-semibold text-gray-900 dark:text-gray-100">Аналитика сделок</h2>
+            </div>
             <div className="flex flex-wrap items-center gap-2 mb-4 text-xs sm:text-sm">
               <button className={`${activeChart === 'price' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/30 dark:border-blue-900/40 dark:text-blue-200' : 'bg-white border-gray-200 text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'} px-3 py-1.5 rounded border`} onClick={() => setActiveChart('price')}>Цена</button>
               <button className={`${activeChart === 'equity' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/30 dark:border-blue-900/40 dark:text-blue-200' : 'bg-white border-gray-200 text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'} px-3 py-1.5 rounded border`} onClick={() => setActiveChart('equity')}>Equity</button>
@@ -529,6 +533,7 @@ export function Results() {
               <button className={`${activeChart === 'trades' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/30 dark:border-blue-900/40 dark:text-blue-200' : 'bg-white border-gray-200 text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'} px-3 py-1.5 rounded border`} onClick={() => setActiveChart('trades')}>Сделки</button>
               <button className={`${activeChart === 'profit' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/30 dark:border-blue-900/40 dark:text-blue-200' : 'bg-white border-gray-200 text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'} px-3 py-1.5 rounded border`} onClick={() => setActiveChart('profit')}>Profit factor</button>
               <button className={`${activeChart === 'duration' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/30 dark:border-blue-900/40 dark:text-blue-200' : 'bg-white border-gray-200 text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'} px-3 py-1.5 rounded border`} onClick={() => setActiveChart('duration')}>Длительность</button>
+              <button className={`${activeChart === 'openDayDrawdown' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/30 dark:border-blue-900/40 dark:text-blue-200' : 'bg-white border-gray-200 text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'} px-3 py-1.5 rounded border`} onClick={() => setActiveChart('openDayDrawdown')}>Просадка в день открытия</button>
             </div>
 
             {activeChart === 'price' && (
@@ -550,6 +555,9 @@ export function Results() {
             )}
             {activeChart === 'duration' && (
               <TradeDurationChart trades={trades} />
+            )}
+            {activeChart === 'openDayDrawdown' && (
+              <OpenDayDrawdownChart trades={trades} data={marketData} />
             )}
           </section>
         </div>

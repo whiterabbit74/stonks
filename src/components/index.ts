@@ -14,3 +14,4 @@ export { ThemeToggle } from './ThemeToggle';
 export { TradesTable } from './TradesTable';
 export { ProfitFactorChart } from './ProfitFactorChart';
 export { TradeDurationChart } from './TradeDurationChart';
+export { OpenDayDrawdownChart } from './OpenDayDrawdownChart';
