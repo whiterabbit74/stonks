@@ -544,7 +544,7 @@ export function Results() {
 
           {/* Табы для графиков */}
           <section className="rounded-xl border bg-white p-4 dark:bg-gray-900 dark:border-gray-800">
-            <div className="flex items-center gap-2 mb-4 text-sm">
+            <div className="flex flex-wrap items-center gap-2 mb-4 text-xs sm:text-sm">
               <button className={`px-3 py-1.5 rounded border ${activeChart === 'price' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/30 dark:border-blue-900/40 dark:text-blue-200' : 'bg-white border-gray-200 text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'}`} onClick={() => setActiveChart('price')}>Цена</button>
               <button className={`px-3 py-1.5 rounded border ${activeChart === 'equity' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/30 dark:border-blue-900/40 dark:text-blue-200' : 'bg-white border-gray-200 text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'}`} onClick={() => setActiveChart('equity')}>Equity</button>
               <button className={`px-3 py-1.5 rounded border ${activeChart === 'drawdown' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/30 dark:border-blue-900/40 dark:text-blue-200' : 'bg-white border-gray-200 text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'}`} onClick={() => setActiveChart('drawdown')}>Просадки</button>

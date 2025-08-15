@@ -130,7 +130,7 @@ function ProtectedLayout() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 text-gray-800 dark:text-gray-100">
+    <div className="min-h-screen flex flex-col bg-gray-50 text-gray-800 dark:text-gray-100">
       <header className="border-b bg-white/60 backdrop-blur sticky top-0 z-20 dark:bg-slate-900/60 dark:border-slate-800">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -149,7 +149,7 @@ function ProtectedLayout() {
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-24 safe-area-pb">
         <div className="mb-4">
           <nav className="flex gap-2 flex-wrap">
             {tabs.map(t => (
@@ -212,7 +212,7 @@ function LoginPage() {
         </div>
       </header>
 
-      <main className="flex-1 flex items-center justify-center px-4">
+      <main className="flex-1 flex items-center justify-center px-4 pb-24 safe-area-pb">
         <div className="w-full max-w-sm rounded-lg bg-white p-4 shadow-lg border dark:bg-gray-900 dark:border-gray-800">
           <h2 className="text-lg font-semibold mb-3">Вход</h2>
           {loginError && (
