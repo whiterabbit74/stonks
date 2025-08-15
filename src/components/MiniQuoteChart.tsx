@@ -101,7 +101,7 @@ export function MiniQuoteChart({ history, today, trades, highIBS, isOpenPosition
       if ((entryTime as number) >= minTime && (entryTime as number) <= maxTime) {
         markers.push({ time: entryTime, position: 'belowBar', color: 'rgba(5,150,105,0.65)', shape: 'arrowUp', text: '' });
       }
-      if ((exitTime as number) >= minTime && (exitTime as number) <= maxTime) {
+      if (t.exitReason !== 'end_of_data' && (exitTime as number) >= minTime && (exitTime as number) <= maxTime) {
         markers.push({ time: exitTime, position: 'aboveBar', color: 'rgba(239,68,68,0.75)', shape: 'arrowDown', text: '' });
       }
     });
