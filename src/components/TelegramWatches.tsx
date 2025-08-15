@@ -52,8 +52,8 @@ export function TelegramWatches() {
   function secondsUntilNextSignal(now: Date = new Date()): number {
     const p = getETParts(now);
     const secOfDay = p.hh * 3600 + p.mm * 60 + p.ss;
-    const target1 = 15 * 3600 + 50 * 60; // 15:50 ET
-    const target2 = 15 * 3600 + 59 * 60; // 15:59 ET
+    const target1 = 15 * 3600 + 49 * 60; // 15:49 ET (11 минут до закрытия)
+    const target2 = 15 * 3600 + 58 * 60; // 15:58 ET (2 минуты до закрытия)
     const isWeekday = p.weekday >= 1 && p.weekday <= 5;
 
     if (isWeekday) {
@@ -61,7 +61,7 @@ export function TelegramWatches() {
       if (secOfDay < target2) return target2 - secOfDay;
     }
 
-    // Roll to next weekday 15:50 ET
+    // Roll to next weekday 15:49 ET
     let daysToAdd = 1;
     let wd = p.weekday;
     while (true) {
@@ -128,7 +128,7 @@ export function TelegramWatches() {
 
       {typeof watchThresholdPct === 'number' && (
         <div className="text-sm text-gray-600">
-          Текущий порог уведомлений: {watchThresholdPct}% — вход при IBS ≤ {(0.10 + watchThresholdPct/100).toFixed(2)}, выход при IBS ≥ {(0.75 - watchThresholdPct/100).toFixed(2)}
+          Текущий порог уведомлений: {watchThresholdPct}% — вход при IBS ≤ {(0.10 + watchThresholdPct/100).toFixed(2)}, выход при IBS ≥ {(0.75 - watchThresholdPct/100).toFixed(2)} <span className="ml-2 text-xs text-gray-500">(T-11/T-2)</span>
         </div>
       )}
 
@@ -180,6 +180,35 @@ export function TelegramWatches() {
               ))}
             </tbody>
           </table>
+          {/* Bottom-right test buttons */}
+          <div className="flex items-center justify-end gap-2 mt-4">
+            <button
+              onClick={async () => {
+                try {
+                  const r = await DatasetAPI.simulateTelegram('overview');
+                  setInfo({ open: true, title: 'Тест отправки (11 мин)', message: r.success ? 'Сообщение отправлено (T-11, TEST)' : 'Отправка не произошла', kind: r.success ? 'success' : 'error' });
+                } catch (e) {
+                  setInfo({ open: true, title: 'Ошибка', message: e instanceof Error ? e.message : 'Не удалось выполнить тест', kind: 'error' });
+                }
+              }}
+              className="inline-flex items-center px-3 py-2 rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+            >
+              Тест: 11 мин
+            </button>
+            <button
+              onClick={async () => {
+                try {
+                  const r = await DatasetAPI.simulateTelegram('confirmations');
+                  setInfo({ open: true, title: 'Тест отправки (2 мин)', message: r.success ? 'Сообщение отправлено (T-2, TEST)' : 'Отправка не произошла', kind: r.success ? 'success' : 'error' });
+                } catch (e) {
+                  setInfo({ open: true, title: 'Ошибка', message: e instanceof Error ? e.message : 'Не удалось выполнить тест', kind: 'error' });
+                }
+              }}
+              className="inline-flex items-center px-3 py-2 rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+            >
+              Тест: 2 мин
+            </button>
+          </div>
         </div>
       )}
 

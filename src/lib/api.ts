@@ -342,23 +342,29 @@ export class DatasetAPI {
     if (!response.ok) {
       throw new Error(`${response.status} ${response.statusText}`);
     }
-    return response.json();
+    return await response.json();
   }
 
   static async sendTelegramTest(message?: string): Promise<{ success: boolean }> {
     const response = await fetchWithCreds(`${API_BASE_URL}/telegram/test`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message }),
+      body: JSON.stringify({ message })
     });
     if (!response.ok) {
-      let msg = `${response.status} ${response.statusText}`;
-      const e = await response.json().catch(() => null);
-      if (e && typeof e.error === 'string') msg = e.error;
-      throw new Error(msg);
+      throw new Error(`${response.status} ${response.statusText}`);
     }
-    const json = await response.json().catch(() => null);
-    return json ?? { success: true };
+    return await response.json();
+  }
+
+  static async simulateTelegram(stage: 'overview'|'confirmations' = 'overview'): Promise<{ success: boolean; stage: string }>{
+    const response = await fetchWithCreds(`${API_BASE_URL}/telegram/simulate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ stage })
+    });
+    if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+    return await response.json();
   }
 
   // App settings

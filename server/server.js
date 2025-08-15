@@ -338,11 +338,11 @@ const telegramWatches = new Map();
 /**
  * Aggregated send state per chat to avoid duplicate messages inside the same minute/day
  */
-const aggregateSendState = new Map(); // chatId -> { dateKey: string|null, t10Sent: boolean, t1Sent: boolean }
+const aggregateSendState = new Map(); // chatId -> { dateKey: string|null, t11Sent: boolean, t2Sent: boolean }
 function getAggregateState(chatId, dateKey) {
   let st = aggregateSendState.get(chatId);
   if (!st || st.dateKey !== dateKey) {
-    st = { dateKey, t10Sent: false, t1Sent: false };
+    st = { dateKey, t11Sent: false, t2Sent: false };
     aggregateSendState.set(chatId, st);
   }
   return st;
@@ -451,27 +451,22 @@ function nyseHolidaysET(year){
 }
 function isTradingDayET(p){ return !isWeekendET(p) && !nyseHolidaysET(p.y).has(etKeyYMD(p)); }
 
+// Replace: fetch only today's quote from Finnhub (no multi-day candles)
 async function fetchTodayRangeAndQuote(symbol) {
-  // pull last 10 days from Finnhub and current quote
-  const endTs = Math.floor(Date.now()/1000);
-  const startTs = endTs - 15*24*60*60;
-  const ohlc = await fetchFromFinnhub(symbol, startTs, endTs); // array
   const quote = await new Promise((resolve, reject) => {
     const url = `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(symbol)}&token=${API_CONFIG.FINNHUB_API_KEY}`;
     https.get(url, (response) => {
       let data=''; response.on('data', c=>data+=c); response.on('end', ()=>{ try{ resolve(JSON.parse(data)); } catch(e){ reject(e); } });
     }).on('error', reject);
   });
-  // find latest daily candle (today if available)
   const todayEt = getETParts(new Date());
   const todayKey = etKeyYMD(todayEt);
-  const lastCandle = [...ohlc].reverse().find(r => r && r.date);
   const todayRange = {
-    open: (quote && quote.o != null ? quote.o : (lastCandle ? lastCandle.open : null)),
-    high: (quote && quote.h != null ? quote.h : (lastCandle ? lastCandle.high : null)),
-    low:  (quote && quote.l != null ? quote.l : (lastCandle ? lastCandle.low  : null)),
+    open: (quote && quote.o != null ? quote.o : null),
+    high: (quote && quote.h != null ? quote.h : null),
+    low:  (quote && quote.l != null ? quote.l : null),
   };
-  return { range: todayRange, quote: { open: quote.o ?? null, high: quote.h ?? null, low: quote.l ?? null, current: quote.c ?? null, prevClose: quote.pc ?? null }, dateKey: todayKey, ohlc };
+  return { range: todayRange, quote: { open: quote.o ?? null, high: quote.h ?? null, low: quote.l ?? null, current: quote.c ?? null, prevClose: quote.pc ?? null }, dateKey: todayKey, ohlc: null };
 }
 // Previous trading day helper (based on ET calendar)
 function previousTradingDayET(fromParts) {
@@ -549,38 +544,136 @@ app.patch('/api/telegram/watch/:symbol', (req, res) => {
   res.json({ success: true });
 });
 
-// Scheduler: send aggregated messages at T-10 (overview) and T-1 (confirmations)
-setInterval(async () => {
+// Ensure AV refresh for each watched symbol and check dataset freshness (prev trading day exists)
+async function refreshTickerViaAlphaVantageAndCheckFreshness(symbol, nowEtParts) {
+  const ticker = toSafeTicker(symbol);
+  if (!ticker) return { avFresh: false };
+  const toDateKey = (d) => {
+    try {
+      if (typeof d === 'string') return d.slice(0, 10);
+      return new Date(d).toISOString().slice(0, 10);
+    } catch { return ''; }
+  };
+  const prev = previousTradingDayET(nowEtParts);
+  const prevKey = etKeyYMD(prev);
+  let dataset;
+  let filePath = resolveDatasetFilePathById(ticker);
+  if (filePath && await fs.pathExists(filePath)) {
+    dataset = await fs.readJson(filePath).catch(() => null);
+  }
+  if (!dataset) {
+    dataset = { name: ticker, ticker, data: [], dataPoints: 0, dateRange: { from: null, to: null }, uploadDate: new Date().toISOString() };
+  }
+  const lastExistingDate = (() => {
+    if (dataset && Array.isArray(dataset.data) && dataset.data.length) {
+      const lastBar = dataset.data[dataset.data.length - 1];
+      return toDateKey(lastBar && lastBar.date);
+    }
+    const drTo = dataset && dataset.dateRange && dataset.dateRange.to;
+    return toDateKey(drTo);
+  })();
+  const endTs = Math.floor(Date.now() / 1000);
+  let startTs;
+  if (lastExistingDate) {
+    const last = new Date(`${lastExistingDate}T00:00:00.000Z`);
+    const start = new Date(Date.UTC(last.getUTCFullYear(), last.getUTCMonth(), last.getUTCDate() - 7, 0, 0, 0));
+    startTs = Math.floor(start.getTime() / 1000);
+  } else {
+    startTs = endTs - 120 * 24 * 60 * 60; // 120 days back for initial seed
+  }
   try {
-    if (telegramWatches.size === 0) return;
+    const av = await fetchFromAlphaVantage(ticker, startTs, endTs, { adjustment: 'none' });
+    const base = Array.isArray(av) ? av : (av && av.data) || [];
+    const rows = base.map(r => ({
+      date: r.date,
+      open: Number(r.open),
+      high: Number(r.high),
+      low: Number(r.low),
+      close: Number(r.close),
+      adjClose: (r.adjClose != null ? Number(r.adjClose) : Number(r.close)),
+      volume: Number(r.volume) || 0,
+    }));
+    // Merge
+    const mergedByDate = new Map();
+    for (const b of (dataset.data || [])) {
+      const key = toDateKey(b && b.date);
+      if (!key) continue;
+      mergedByDate.set(key, {
+        date: key,
+        open: Number(b.open),
+        high: Number(b.high),
+        low: Number(b.low),
+        close: Number(b.close),
+        adjClose: (b.adjClose != null ? Number(b.adjClose) : Number(b.close)),
+        volume: Number(b.volume) || 0,
+      });
+    }
+    for (const r of rows) {
+      const key = toDateKey(r && r.date);
+      if (!key) continue;
+      mergedByDate.set(key, {
+        date: key,
+        open: Number(r.open),
+        high: Number(r.high),
+        low: Number(r.low),
+        close: Number(r.close),
+        adjClose: (r.adjClose != null ? Number(r.adjClose) : Number(r.close)),
+        volume: Number(r.volume) || 0,
+      });
+    }
+    const mergedArray = Array.from(mergedByDate.values()).sort((a, b) => a.date.localeCompare(b.date));
+    dataset.data = mergedArray;
+    dataset.dataPoints = mergedArray.length;
+    if (mergedArray.length) {
+      dataset.dateRange = { from: mergedArray[0].date, to: mergedArray[mergedArray.length - 1].date };
+    }
+    dataset.uploadDate = new Date().toISOString();
+    dataset.name = ticker;
+    await writeDatasetToTickerFile(dataset);
+    const avFresh = mergedByDate.has(prevKey);
+    return { avFresh };
+  } catch (e) {
+    return { avFresh: false };
+  }
+}
+
+// Scheduler: send aggregated messages at T-11 (overview) and T-2 (confirmations)
+async function runTelegramAggregation(minutesOverride = null, options = {}) {
+  try {
+    if (telegramWatches.size === 0) return { sent: false };
     const nowEt = getETParts(new Date());
-    if (!isTradingDayET(nowEt)) return;
-    const minutesUntilClose = (16 * 60) - (nowEt.hh * 60 + nowEt.mm);
-    if (minutesUntilClose !== 10 && minutesUntilClose !== 1) return;
+    if (!isTradingDayET(nowEt)) return { sent: false };
+    const minutesUntilClose = minutesOverride != null ? minutesOverride : ((16 * 60) - (nowEt.hh * 60 + nowEt.mm));
+    if (minutesUntilClose !== 11 && minutesUntilClose !== 2) return { sent: false };
 
     const todayKey = etKeyYMD(nowEt);
 
-    // Загружаем глобальные настройки порога и конвертируем в абсолютные пункты IBS
+    // Load global threshold and convert to IBS points
     const settings = await readSettings();
     const pct = typeof settings.watchThresholdPct === 'number' ? settings.watchThresholdPct : 5;
     const delta = Math.max(0, Math.min(20, pct)) / 100; // 0..0.20 IBS
 
-    await appendMonitorLog([`T-${minutesUntilClose}min: scan ${telegramWatches.size} watches; thresholdPct=${pct}% (deltaIBS=${delta})`]);
+    await appendMonitorLog([`T-${minutesUntilClose}min: scan ${telegramWatches.size} watches; thresholdPct=${pct}% (deltaIBS=${delta})${options && options.test ? ' [TEST]' : ''}`]);
 
     // Collect fresh data for all watches and group by chatId (always include all tickers)
-    const byChat = new Map(); // chatId -> Array<{ w, ibs, quote, range, ohlc, closeEnoughToExit, closeEnoughToEntry, confirmExit, confirmEntry, dataOk, fetchError }>
+    const byChat = new Map(); // chatId -> Array<{ w, ibs, quote, range, ohlc, closeEnoughToExit, closeEnoughToEntry, confirmExit, confirmEntry, dataOk, fetchError, avFresh, rtFresh }>
     for (const w of telegramWatches.values()) {
       const chatId = w.chatId || TELEGRAM_CHAT_ID;
       if (!chatId) continue;
       if (!byChat.has(chatId)) byChat.set(chatId, []);
-      const rec = { w, ibs: null, quote: null, range: null, ohlc: null, closeEnoughToExit: null, closeEnoughToEntry: null, confirmExit: null, confirmEntry: null, dataOk: false, fetchError: null };
+      const rec = { w, ibs: null, quote: null, range: null, ohlc: null, closeEnoughToExit: null, closeEnoughToEntry: null, confirmExit: null, confirmEntry: null, dataOk: false, fetchError: null, avFresh: false, rtFresh: false };
       byChat.get(chatId).push(rec);
       // ensure per-day flags
       if (w.sent.dateKey !== todayKey) w.sent = { dateKey: todayKey, warn10: false, confirm1: false, entryWarn10: false, entryConfirm1: false };
-      // Try to fetch real-time data
+      // 1) Refresh via Alpha Vantage and check dataset freshness
+      try {
+        const avStatus = await refreshTickerViaAlphaVantageAndCheckFreshness(w.symbol, nowEt);
+        rec.avFresh = !!(avStatus && avStatus.avFresh);
+      } catch {}
+      // 2) Fetch today's range/quote via Finnhub (today only)
       try {
         const rangeQuote = await fetchTodayRangeAndQuote(w.symbol);
-        const { range, quote, ohlc } = rangeQuote;
+        const { range, quote } = rangeQuote;
         if (range.low == null || range.high == null || quote.current == null) throw new Error('no range/quote');
         if (range.high <= range.low) throw new Error('invalid range');
         const ibs = (quote.current - range.low) / (range.high - range.low);
@@ -589,12 +682,14 @@ setInterval(async () => {
         const closeEnoughToEntry = ibs <= ((w.lowIBS ?? 0.1) + delta);
         const confirmExit = ibs >= w.highIBS;
         const confirmEntry = ibs <= (w.lowIBS ?? 0.1);
-        rec.ibs = ibs; rec.quote = quote; rec.range = range; rec.ohlc = ohlc;
+        rec.ibs = ibs; rec.quote = quote; rec.range = range;
         rec.closeEnoughToExit = closeEnoughToExit; rec.closeEnoughToEntry = closeEnoughToEntry;
         rec.confirmExit = confirmExit; rec.confirmEntry = confirmEntry;
         rec.dataOk = true;
+        rec.rtFresh = true;
       } catch (err) {
         rec.fetchError = err && err.message ? err.message : 'fetch_failed';
+        rec.rtFresh = false;
       }
     }
 
@@ -602,13 +697,13 @@ setInterval(async () => {
     for (const [chatId, list] of byChat.entries()) {
       const state = getAggregateState(chatId, todayKey);
 
-      // T-10 overview — always send once
-      if (minutesUntilClose === 10 && !state.t10Sent) {
-        const header = '🕙 10 минут до закрытия (ET)';
+      // T-11 overview — always send once
+      if (minutesUntilClose === 11 && (!state.t11Sent || (options && options.forceSend))) {
+        const header = '🕚 11 минут до закрытия (ET)';
         const sub = `Дата: ${todayKey}, Время: ${String(nowEt.hh).padStart(2,'0')}:${String(nowEt.mm).padStart(2,'0')}`;
         const sorted = list.slice().sort((a, b) => a.w.symbol.localeCompare(b.w.symbol));
         const lines = [];
-        const logLines = [`T-10 overview → chat ${chatId}`];
+        const logLines = [`T-11 overview → chat ${chatId}`];
         for (const rec of sorted) {
           const { w } = rec;
           const type = w.isOpenPosition ? 'выход' : 'вход';
@@ -617,7 +712,12 @@ setInterval(async () => {
           const priceStr = rec.dataOk && rec.quote ? formatMoney(rec.quote.current) : '-';
           const ibsStr = rec.dataOk && Number.isFinite(rec.ibs) ? rec.ibs.toFixed(3) : '-';
           const thresholdStr = w.isOpenPosition ? `≥ ${(w.highIBS - delta).toFixed(2)} (цель ${w.highIBS})` : `≤ ${((w.lowIBS ?? 0.1) + delta).toFixed(2)} (цель ${w.lowIBS ?? 0.1})`;
-          lines.push(`${w.symbol}: позиция: ${w.isOpenPosition ? 'Открыта' : 'Нет'}; цена: ${priceStr}; IBS: ${ibsStr}; вероятен сигнал (${type}): ${nearStr} (порог ${thresholdStr})`);
+          const posEmoji = w.isOpenPosition ? '📦' : '🚫';
+          const dirEmoji = w.isOpenPosition ? '🔴' : '🟢';
+          const dirText = w.isOpenPosition ? 'продажа' : 'покупка';
+          const avEmoji = rec.avFresh ? '🟢AV' : '🟠AV';
+          const rtEmoji = rec.rtFresh ? '🟢RT' : '🟠RT';
+          lines.push(`${w.symbol}: ${posEmoji} ${w.isOpenPosition ? 'Открыта' : 'Нет'} | ${dirEmoji} ${dirText}; цена: ${priceStr}; IBS: ${ibsStr}; ${avEmoji} ${rtEmoji}; вероятен сигнал (${type}): ${nearStr} (порог ${thresholdStr})`);
           const logOne = rec.dataOk
             ? `${w.symbol} pos=${w.isOpenPosition ? 'open' : 'none'} IBS=${ibsStr} near=${nearStr} thr=${thresholdStr}`
             : `${w.symbol} pos=${w.isOpenPosition ? 'open' : 'none'} data=NA err=${rec.fetchError}`;
@@ -626,16 +726,18 @@ setInterval(async () => {
         const text = `<b>${header}</b>\n${sub}\n\n${lines.join('\n')}`;
         const resp = await sendTelegramMessage(chatId, text);
         if (resp.ok) {
-          state.t10Sent = true;
-          aggregateSendState.set(chatId, state);
-          await appendMonitorLog([...logLines, '→ sent ok']);
+          if (!options || options.updateState !== false) {
+            state.t11Sent = true;
+            aggregateSendState.set(chatId, state);
+          }
+          await appendMonitorLog([...logLines, options && options.test ? '→ sent ok [TEST]' : '→ sent ok']);
         } else {
           await appendMonitorLog([...logLines, '→ send failed']);
         }
       }
 
-      // T-1 confirmations — send once if any signals exist
-      if (minutesUntilClose === 1 && !state.t1Sent) {
+      // T-2 confirmations — send once if any signals exist
+      if (minutesUntilClose === 2 && (!state.t2Sent || (options && options.forceSend))) {
         const exits = [];
         const entries = [];
         const sorted = list.slice().sort((a, b) => a.w.symbol.localeCompare(b.w.symbol));
@@ -643,16 +745,16 @@ setInterval(async () => {
           const { w } = rec;
           if (rec.dataOk && w.isOpenPosition && rec.confirmExit && !w.sent.confirm1) {
             exits.push(`${w.symbol}: IBS ${rec.ibs.toFixed(3)} (≥ ${w.highIBS}); цена: ${formatMoney(rec.quote.current)}; диапазон: ${formatMoney(rec.range.low)} - ${formatMoney(rec.range.high)}`);
-            w.sent.confirm1 = true;
+            if (!options || options.updateState !== false) w.sent.confirm1 = true;
           }
           if (rec.dataOk && !w.isOpenPosition && rec.confirmEntry && !w.sent.entryConfirm1) {
             entries.push(`${w.symbol}: IBS ${rec.ibs.toFixed(3)} (≤ ${w.lowIBS ?? 0.1}); цена: ${formatMoney(rec.quote.current)}; диапазон: ${formatMoney(rec.range.low)} - ${formatMoney(rec.range.high)}`);
-            w.sent.entryConfirm1 = true;
+            if (!options || options.updateState !== false) w.sent.entryConfirm1 = true;
           }
         }
         if (exits.length || entries.length) {
           const parts = [];
-          parts.push('<b>⏱️ 1 минута до закрытия — подтвержденные сигналы</b>');
+          parts.push('<b>⏱️ 2 минуты до закрытия — подтвержденные сигналы</b>');
           parts.push(`Дата: ${todayKey}, Время: ${String(nowEt.hh).padStart(2,'0')}:${String(nowEt.mm).padStart(2,'0')}`);
           if (exits.length) {
             parts.push('\n<b>Выход:</b>');
@@ -665,23 +767,43 @@ setInterval(async () => {
           const text = parts.join('\n');
           const resp = await sendTelegramMessage(chatId, text);
           if (resp.ok) {
-            state.t1Sent = true;
-            aggregateSendState.set(chatId, state);
-            scheduleSaveWatches();
-            await appendMonitorLog([`T-1 confirms → chat ${chatId}`, ...exits.map(s => `EXIT ${s}`), ...entries.map(s => `ENTRY ${s}`), '→ sent ok']);
+            if (!options || options.updateState !== false) {
+              state.t2Sent = true;
+              aggregateSendState.set(chatId, state);
+              scheduleSaveWatches();
+            }
+            await appendMonitorLog([`T-2 confirms → chat ${chatId}`, ...exits.map(s => `EXIT ${s}`), ...entries.map(s => `ENTRY ${s}`), options && options.test ? '→ sent ok [TEST]' : '→ sent ok']);
           } else {
-            await appendMonitorLog([`T-1 confirms → chat ${chatId}`, 'nothing sent (send failed)']);
+            await appendMonitorLog([`T-2 confirms → chat ${chatId}`, 'nothing sent (send failed)']);
           }
         } else {
-          await appendMonitorLog([`T-1 confirms → chat ${chatId}`, 'nothing to send']);
+          await appendMonitorLog([`T-2 confirms → chat ${chatId}`, 'nothing to send']);
         }
       }
     }
+    return { sent: true };
   } catch (e) {
     console.warn('Scheduler error:', e.message);
     try { await appendMonitorLog([`Scheduler error: ${e && e.message ? e.message : e}`]); } catch {}
+    return { sent: false };
   }
+}
+
+setInterval(async () => {
+  await runTelegramAggregation(null, {});
 }, 30000);
+
+// Test simulation endpoint to reproduce the logic as if at T-11 or T-2
+app.post('/api/telegram/simulate', async (req, res) => {
+  try {
+    const stage = (req.body && req.body.stage) || 'overview';
+    const minutes = stage === 'confirmations' ? 2 : 11;
+    const result = await runTelegramAggregation(minutes, { test: true, forceSend: true, updateState: false });
+    res.json({ success: !!(result && result.sent), stage });
+  } catch (e) {
+    res.status(500).json({ error: e && e.message ? e.message : 'Failed to simulate telegram aggregation' });
+  }
+});
 
 // List current telegram watches
 app.get('/api/telegram/watches', (req, res) => {
