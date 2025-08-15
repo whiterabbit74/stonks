@@ -247,22 +247,27 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
       const allMarkers: Array<{ time: UTCTimestamp; position: 'belowBar' | 'aboveBar'; color: string; shape: 'arrowUp'|'arrowDown'|'circle'; text: string } > = [];
       if (trades.length > 0) {
         allMarkers.push(
-          ...trades.flatMap(trade => [
-            {
-              time: Math.floor(trade.entryDate.getTime() / 1000) as UTCTimestamp,
-              position: 'belowBar' as const,
-              color: '#10B981',
-              shape: 'arrowUp' as const,
-              text: '',
-            },
-            {
-              time: Math.floor(trade.exitDate.getTime() / 1000) as UTCTimestamp,
-              position: 'aboveBar' as const,
-              color: '#EF4444',
-              shape: 'arrowDown' as const,
-              text: '',
-            },
-          ])
+          ...trades.flatMap(trade => {
+            const markers: Array<{ time: UTCTimestamp; position: 'belowBar' | 'aboveBar'; color: string; shape: 'arrowUp'|'arrowDown'|'circle'; text: string }> = [
+              {
+                time: Math.floor(trade.entryDate.getTime() / 1000) as UTCTimestamp,
+                position: 'belowBar' as const,
+                color: '#10B981',
+                shape: 'arrowUp' as const,
+                text: '',
+              },
+            ];
+            if (trade.exitReason !== 'end_of_data') {
+              markers.push({
+                time: Math.floor(trade.exitDate.getTime() / 1000) as UTCTimestamp,
+                position: 'aboveBar' as const,
+                color: '#EF4444',
+                shape: 'arrowDown' as const,
+                text: '',
+              });
+            }
+            return markers;
+          })
         );
       }
       if (splits.length > 0) {
