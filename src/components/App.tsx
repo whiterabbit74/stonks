@@ -177,10 +177,7 @@ export default function App() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <h1 className="text-lg font-semibold tracking-tight">Тестировщик стратегий</h1>
-            {apiBuildId && (
-              <span className="text-xs text-gray-500">Версия API: {apiBuildId}</span>
-            )}
-          </div>
+                      </div>
           <div className="flex items-center gap-2">
             <ThemeToggle />
             <a className="inline-flex items-center gap-2 text-sm hover:text-indigo-600 dark:hover:text-indigo-400" href="#settings">

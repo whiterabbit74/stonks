@@ -133,7 +133,7 @@ export function MiniQuoteChart({ history, today, trades, highIBS, isOpenPosition
       window.removeEventListener('resize', onResize);
       try { chart.remove(); } catch { /* ignore */ }
     };
-  }, [history, today, trades, highIBS, isOpenPosition, entryPrice]);
+  }, [history, today, trades, highIBS, isOpenPosition, entryPrice, isDark]);
 
   return (
     <div ref={containerRef} className="w-full h-full min-h-[120px] overflow-hidden" />

@@ -3,11 +3,11 @@ import { RefreshCw, Trash2 } from 'lucide-react';
 import { DatasetAPI } from '../lib/api';
 import { ConfirmModal } from './ConfirmModal';
 import { InfoModal } from './InfoModal';
+import { useAppStore } from '../stores';
 
 interface WatchItem {
   symbol: string;
   highIBS: number;
-  thresholdPct: number;
   entryPrice: number | null;
   isOpenPosition: boolean;
 }
@@ -20,6 +20,7 @@ export function TelegramWatches() {
   const [confirm, setConfirm] = useState<{ open: boolean; symbol: string | null }>(() => ({ open: false, symbol: null }));
   const [info, setInfo] = useState<{ open: boolean; title: string; message: string; kind?: 'success'|'error'|'info' }>({ open: false, title: '', message: '' });
   const [secondsToNext, setSecondsToNext] = useState<number | null>(null);
+  const watchThresholdPct = useAppStore(s => s.watchThresholdPct);
 
   function getETParts(date: Date = new Date()): { y: number; m: number; d: number; hh: number; mm: number; ss: number; weekday: number } {
     const fmt = new Intl.DateTimeFormat('en-US', {
@@ -91,7 +92,9 @@ export function TelegramWatches() {
     setLoading(true); setError(null);
     try {
       const list = await DatasetAPI.listTelegramWatches();
-      setWatches(list);
+      // С сервера может прийти thresholdPct — игнорируем его, используем глобальную настройку
+      const mapped = list.map((w: any) => ({ symbol: w.symbol, highIBS: w.highIBS, entryPrice: w.entryPrice ?? null, isOpenPosition: !!w.isOpenPosition }));
+      setWatches(mapped);
     } catch (e) {
       const message = e instanceof Error ? e.message : 'Не удалось загрузить список';
       setError(message);
@@ -123,6 +126,12 @@ export function TelegramWatches() {
         </button>
       </div>
 
+      {typeof watchThresholdPct === 'number' && (
+        <div className="text-sm text-gray-600">
+          Текущий порог уведомлений: {watchThresholdPct}% — вход при IBS ≤ {(0.10 + watchThresholdPct/100).toFixed(2)}, выход при IBS ≥ {(0.75 - watchThresholdPct/100).toFixed(2)}
+        </div>
+      )}
+
       {typeof secondsToNext === 'number' && (
         <div className="text-sm text-gray-600">
           До следующего подсчёта сигналов: {formatDuration(secondsToNext)}
@@ -144,7 +153,6 @@ export function TelegramWatches() {
               <tr>
                 <th className="text-left p-3">Тикер</th>
                 <th className="text-left p-3">IBS (верх)</th>
-                <th className="text-left p-3">Порог, %</th>
                 <th className="text-left p-3">Цена входа</th>
                 <th className="text-left p-3">Позиция</th>
               </tr>
@@ -154,7 +162,6 @@ export function TelegramWatches() {
                 <tr key={w.symbol} className="hover:bg-gray-50 dark:hover:bg-gray-800">
                   <td className="p-3 font-medium">{w.symbol}</td>
                   <td className="p-3">{w.highIBS}</td>
-                  <td className="p-3">{w.thresholdPct}</td>
                   <td className="p-3">{w.entryPrice != null ? w.entryPrice.toFixed(2) : '—'}</td>
                   <td className="p-3">
                     <div className="flex items-center gap-3">

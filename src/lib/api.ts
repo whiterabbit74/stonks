@@ -337,7 +337,7 @@ export class DatasetAPI {
     return json ?? { success: true };
   }
 
-  static async listTelegramWatches(): Promise<Array<{ symbol: string; highIBS: number; thresholdPct: number; entryPrice: number | null; isOpenPosition: boolean }>> {
+  static async listTelegramWatches(): Promise<Array<{ symbol: string; highIBS: number; thresholdPct?: number; entryPrice: number | null; isOpenPosition: boolean }>> {
     const response = await fetchWithCreds(`${API_BASE_URL}/telegram/watches`);
     if (!response.ok) {
       throw new Error(`${response.status} ${response.statusText}`);

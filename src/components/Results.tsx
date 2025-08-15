@@ -20,7 +20,6 @@ export function Results() {
   const storeError = useAppStore(s => s.error);
   const currentSplits = useAppStore(s => s.currentSplits);
   const currentDataset = useAppStore(s => s.currentDataset);
-  const watchThresholdPct = useAppStore(s => s.watchThresholdPct);
   const resultsQuoteProvider = useAppStore(s => s.resultsQuoteProvider);
   const resultsRefreshProvider = useAppStore(s => s.resultsRefreshProvider);
   const updateMarketData = useAppStore(s => s.updateMarketData);
@@ -325,7 +324,6 @@ export function Results() {
                         symbol,
                         highIBS: Number(currentStrategy?.parameters?.highIBS ?? 0.75),
                         lowIBS: Number(currentStrategy?.parameters?.lowIBS ?? 0.1),
-                        thresholdPct: watchThresholdPct,
                         entryPrice: isOpen ? lastTrade?.entryPrice ?? null : null,
                         isOpenPosition: isOpen,
                       });

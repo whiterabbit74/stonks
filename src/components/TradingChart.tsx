@@ -88,6 +88,7 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
           borderColor: border,
           timeVisible: true,
           secondsVisible: false,
+          rightOffset: 8,
         },
       });
 
@@ -107,7 +108,7 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
         },
         crosshair: { mode: 1 },
         rightPriceScale: { borderColor: border },
-        timeScale: { borderColor: border, timeVisible: true, secondsVisible: false },
+        timeScale: { borderColor: border, timeVisible: true, secondsVisible: false, rightOffset: 8 },
       });
       subChartRef.current = subChart;
 
@@ -138,6 +139,7 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
       }));
 
       candlestickSeries.setData(chartData);
+      try { chart.timeScale().applyOptions({ rightOffset: 8 }); } catch {}
 
       // Sub chart content: Volume and IBS
       let volumeSeries: ISeriesApi<'Histogram'> | null = null;
