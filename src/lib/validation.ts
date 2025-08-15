@@ -118,6 +118,18 @@ export function parseDate(dateStr: string | null | undefined): DateParseResult {
   }
 
   try {
+    // Стабильный парсинг YYYY-MM-DD в полдень UTC
+    const tryStable = (s: string) => {
+      if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+        const [y, m, d] = s.split('-').map(n => parseInt(n, 10));
+        return new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
+      }
+      return null;
+    };
+    const stable = tryStable(dateStr);
+    if (stable && !isNaN(stable.getTime())) {
+      return { isValid: true, date: stable, format: 'YYYY-MM-DD' };
+    }
     // Try ISO format first (YYYY-MM-DD)
     if (/^\d{4}-\d{2}-\d{2}/.test(dateStr)) {
       const date = new Date(dateStr);
