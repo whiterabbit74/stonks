@@ -6,12 +6,12 @@ services:
       args:
         BUILD_ID: "${BUILD_ID:-dev}"
     env_file:
-      - .env
+      - ./server/.env
     environment:
       - PORT=3001
       - ADMIN_USERNAME=${ADMIN_USERNAME:-dimazru@gmail.com}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD}
-      - FRONTEND_ORIGIN=${FRONTEND_ORIGIN}
+      - FRONTEND_ORIGIN=${FRONTEND_ORIGIN:-http://localhost}
       - BUILD_ID=${BUILD_ID:-dev}
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
       - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
@@ -19,13 +19,15 @@ services:
       - FINNHUB_API_KEY=${FINNHUB_API_KEY}
       - TWELVE_DATA_API_KEY=${TWELVE_DATA_API_KEY}
       - POLYGON_API_KEY=${POLYGON_API_KEY}
+      # Можно переопределить пути логов (по умолчанию они в datasets/)
+      # - MONITOR_LOG_PATH=/app/server/datasets/monitoring.log
+      # - LOGIN_LOG_PATH=/app/server/datasets/login-attempts.log
     volumes:
       - ./server/datasets:/app/server/datasets
       - ./server/settings.json:/app/server/settings.json
       - ./server/telegram-watches.json:/app/server/telegram-watches.json
       - ./server/splits.json:/app/server/splits.json
-      - ./.env:/app/.env:ro
-    user: "1000:1000"
+      - ./server/.env:/app/.env:ro
     ports:
       - "3001:3001"
     restart: unless-stopped
