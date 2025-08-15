@@ -146,7 +146,7 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
                 const start = end - 40 * 365 * 24 * 60 * 60;
                 const prov = enhancerProvider;
                 const base = typeof window !== 'undefined' && window.location.href.includes('/stonks') ? '/stonks/api' : '/api';
-                const resp = await fetchWithCreds(`${base}/yahoo-finance/${symbol}?start=${start}&end=${end}&provider=${prov}&adjustment=split_only`);
+                const resp = await fetchWithCreds(`${base}/yahoo-finance/${symbol}?start=${start}&end=${end}&provider=${prov}&adjustment=none`);
                 if (!resp.ok) {
                   let msg = 'Не удалось получить данные';
                   try { const j = await resp.json(); if (j && j.error) msg = j.error; } catch {}
