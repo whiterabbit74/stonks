@@ -741,7 +741,7 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
             : `${w.symbol} pos=${w.isOpenPosition ? 'open' : 'none'} data=NA err=${rec.fetchError}`;
           logLines.push(logOne);
         }
-        const text = `${header}\n\n${blocks.join('\n\n')}`;
+        const text = `<pre>${header}\n\n${blocks.join('\n\n')}</pre>`;
         const resp = await sendTelegramMessage(chatId, text);
         if (resp.ok) {
           if (!options || options.updateState !== false) {
