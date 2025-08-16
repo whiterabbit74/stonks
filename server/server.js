@@ -715,31 +715,33 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
 
       // T-11 overview — always send once
       if (minutesUntilClose === 11 && (!state.t11Sent || (options && options.forceSend))) {
-        const header = '🕚 11 минут до закрытия (ET)';
-        const sub = `Дата: ${todayKey}, Время: ${String(nowEt.hh).padStart(2,'0')}:${String(nowEt.mm).padStart(2,'0')}`;
+        const header = `⏱ До закрытия: ${String(Math.floor(minutesUntilClose / 60)).padStart(2, '0')}:${String(minutesUntilClose % 60).padStart(2, '0')} • 16:00 ET (13:00 PT) • ${todayKey}`;
         const sorted = list.slice().sort((a, b) => a.w.symbol.localeCompare(b.w.symbol));
-        const lines = [];
+        const blocks = [];
         const logLines = [`T-11 overview → chat ${chatId}`];
         for (const rec of sorted) {
           const { w } = rec;
           const type = w.isOpenPosition ? 'выход' : 'вход';
           const near = w.isOpenPosition ? rec.closeEnoughToExit : rec.closeEnoughToEntry;
-          const nearStr = rec.dataOk ? (near ? 'Да' : 'Нет') : '—';
+          const nearStr = rec.dataOk ? (near ? 'да' : 'нет') : '—';
           const priceStr = rec.dataOk && rec.quote ? formatMoney(rec.quote.current) : '-';
           const ibsStr = rec.dataOk && Number.isFinite(rec.ibs) ? rec.ibs.toFixed(3) : '-';
           const thresholdStr = w.isOpenPosition ? `≥ ${(w.highIBS - delta).toFixed(2)} (цель ${w.highIBS})` : `≤ ${((w.lowIBS ?? 0.1) + delta).toFixed(2)} (цель ${w.lowIBS ?? 0.1})`;
-          const posEmoji = w.isOpenPosition ? '📦' : '🚫';
-          const dirEmoji = w.isOpenPosition ? '🔴' : '🟢';
-          const dirText = w.isOpenPosition ? 'продажа' : 'покупка';
-          const avEmoji = rec.avFresh ? '🟢AV' : '🟠AV';
-          const rtEmoji = rec.rtFresh ? '🟢RT' : '🟠RT';
-          lines.push(`${w.symbol}: ${posEmoji} ${w.isOpenPosition ? 'Открыта' : 'Нет'} | ${dirEmoji} ${dirText}; цена: ${priceStr}; IBS: ${ibsStr}; ${avEmoji} ${rtEmoji}; вероятен сигнал (${type}): ${nearStr} (порог ${thresholdStr})`);
+          const statusLabel = w.isOpenPosition ? 'Открыта' : 'Нет позиции';
+          // Progress bar for IBS: 10 slots — map using ceil(ibs*11) to better match examples and clamp to 10
+          const fillCount = rec.dataOk && Number.isFinite(rec.ibs) ? Math.max(0, Math.min(10, Math.ceil(rec.ibs * 11))) : 0;
+          const bar = '█'.repeat(fillCount) + '░'.repeat(10 - fillCount);
+          const line1 = `${w.symbol} • ${statusLabel} • ${priceStr}`;
+          const line2 = `IBS ${ibsStr}  [${bar}]`;
+          const line3 = `AV${rec.avFresh ? '✅' : '❌'}  RT${rec.rtFresh ? '✅' : '❌'}`;
+          const line4 = `Сигнал (${type}): ${nearStr}`;
+          blocks.push([line1, line2, line3, line4].join('\n'));
           const logOne = rec.dataOk
             ? `${w.symbol} pos=${w.isOpenPosition ? 'open' : 'none'} IBS=${ibsStr} near=${nearStr} thr=${thresholdStr}`
             : `${w.symbol} pos=${w.isOpenPosition ? 'open' : 'none'} data=NA err=${rec.fetchError}`;
           logLines.push(logOne);
         }
-        const text = `<b>${header}</b>\n${sub}\n\n${lines.join('\n')}`;
+        const text = `<pre>${header}\n\n${blocks.join('\n\n')}</pre>`;
         const resp = await sendTelegramMessage(chatId, text);
         if (resp.ok) {
           if (!options || options.updateState !== false) {
