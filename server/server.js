@@ -11,10 +11,11 @@ const app = express();
 app.set('trust proxy', true);
 app.disable('x-powered-by');
 const PORT = process.env.PORT || 3001;
-const DATASETS_DIR = path.join(__dirname, 'datasets');
-const SETTINGS_FILE = path.join(__dirname, 'settings.json');
-const SPLITS_FILE = path.join(__dirname, 'splits.json');
-const WATCHES_FILE = path.join(__dirname, 'telegram-watches.json');
+const DATASETS_DIR = process.env.DATASETS_DIR || path.join(__dirname, 'datasets');
+const KEEP_DATASETS_DIR = path.join(__dirname, '_keep', 'datasets');
+let SETTINGS_FILE = process.env.SETTINGS_FILE || path.join(__dirname, 'settings.json');
+let SPLITS_FILE = process.env.SPLITS_FILE || path.join(__dirname, 'splits.json');
+let WATCHES_FILE = process.env.WATCHES_FILE || path.join(__dirname, 'telegram-watches.json');
 const MONITOR_LOG_FILE = process.env.MONITOR_LOG_PATH || path.join(DATASETS_DIR, 'monitoring.log');
 const avCache = new Map(); // кэш ответов Alpha Vantage
 
@@ -51,14 +52,33 @@ app.use(express.json({ limit: '50mb' }));
 // Disable ETag to avoid 304 for dynamic JSON payloads
 app.set('etag', false);
 
+// Ensure config storage exists and not directories
+function ensureRegularFileSync(filePath, defaultContent) {
+  try {
+    const st = fs.pathExistsSync(filePath) ? fs.statSync(filePath) : null;
+    if (st && st.isDirectory()) {
+      // If path is directory (bad mount), rename it away and create a file instead
+      const backup = `${filePath}.bak-${Date.now()}`;
+      try { fs.renameSync(filePath, backup); } catch {}
+    }
+    if (!fs.pathExistsSync(filePath) || (st && st.isDirectory())) {
+      fs.ensureFileSync(filePath);
+      fs.writeJsonSync(filePath, defaultContent, { spaces: 2 });
+    }
+  } catch {}
+}
+
 // Ensure splits storage exists
 async function ensureSplitsFile() {
   try {
-    const exists = await fs.pathExists(SPLITS_FILE);
-    if (!exists) await fs.writeJson(SPLITS_FILE, {}, { spaces: 2 });
+    ensureRegularFileSync(SPLITS_FILE, {});
   } catch {}
 }
 ensureSplitsFile().catch(() => {});
+
+// Ensure settings and watches storages exist as well (best-effort)
+try { ensureRegularFileSync(SETTINGS_FILE, {}); } catch {}
+try { ensureRegularFileSync(WATCHES_FILE, []); } catch {}
 
 async function appendSafe(filePath, line) {
   try {
@@ -851,8 +871,9 @@ app.post('/api/telegram/test', async (req, res) => {
 
 // Middleware already applied at the top
 
-// Создаем папку для датасетов если её нет
+// Создаем папки для датасетов если их нет (основная и бэкап)
 fs.ensureDirSync(DATASETS_DIR);
+try { fs.ensureDirSync(KEEP_DATASETS_DIR); } catch {}
 
 // Жёсткая нормализация: оставляем только TICKER.json на диске
 function normalizeStableDatasetsSync() {
@@ -880,9 +901,11 @@ function normalizeStableDatasetsSync() {
       const legacyCandidates = arr.filter(f => f.toUpperCase() !== `${ticker}.JSON`).sort();
       const hasStable = arr.some(f => f.toUpperCase() === `${ticker}.JSON`);
       if (!hasStable) {
-        // Создаём стабильный файл из самого свежего legacy
+        // Создаём стабильный файл из самого свежего legacy; если в main нет — попробуем _keep
         const chosen = legacyCandidates.length ? legacyCandidates[legacyCandidates.length - 1] : arr[0];
-        const source = path.join(DATASETS_DIR, chosen);
+        const sourceMain = path.join(DATASETS_DIR, chosen);
+        const sourceKeep = path.join(KEEP_DATASETS_DIR, chosen);
+        const source = (fs.existsSync(sourceMain) ? sourceMain : (fs.existsSync(sourceKeep) ? sourceKeep : sourceMain));
         try {
           const payload = fs.readJsonSync(source);
           if (payload) {
@@ -906,7 +929,7 @@ function normalizeStableDatasetsSync() {
           if (mutated) fs.writeJsonSync(stablePath, payload, { spaces: 2 });
         } catch {}
       }
-      // 3) Удаляем все legacy файлы (с датой в имени)
+      // 3) Удаляем все legacy файлы (с датой в имени) в основной папке; в _keep не трогаем
       for (const f of arr) {
         const full = path.join(DATASETS_DIR, f);
         if (full === stablePath) continue;
@@ -951,7 +974,10 @@ function migrateLegacyDatasetsSync() {
       // Choose latest legacy by filename order (YYYY-MM-DD suffix sorts lexicographically)
       const legacyCandidates = arr.filter(f => f.toUpperCase() !== `${ticker}.JSON`).sort();
       const chosen = legacyCandidates.length ? legacyCandidates[legacyCandidates.length - 1] : arr[0];
-      const source = path.join(DATASETS_DIR, chosen);
+      // Prefer from main datasets dir, fallback to keep dir
+      const sourceMain = path.join(DATASETS_DIR, chosen);
+      const sourceKeep = path.join(KEEP_DATASETS_DIR, chosen);
+      const source = (fs.existsSync(sourceMain) ? sourceMain : (fs.existsSync(sourceKeep) ? sourceKeep : sourceMain));
       try {
         const payload = fs.readJsonSync(source);
         if (payload) {
@@ -964,7 +990,7 @@ function migrateLegacyDatasetsSync() {
       } catch {
         try { fs.copySync(source, target, { overwrite: true }); } catch {}
       }
-      // Remove all legacy files after migration
+      // Remove all legacy files after migration in main dir only (do not touch keep dir)
       for (const f of arr) {
         const p = path.join(DATASETS_DIR, f);
         if (p === target) continue;
@@ -989,10 +1015,18 @@ function toSafeTicker(raw) {
 
 function listDatasetFilesSync() {
   try {
-    return fs
+    const main = fs
       .readdirSync(DATASETS_DIR)
-      // Skip macOS AppleDouble and hidden files
       .filter(f => f.endsWith('.json') && !f.startsWith('._'));
+    let keep = [];
+    try {
+      keep = fs.readdirSync(KEEP_DATASETS_DIR).filter(f => f.endsWith('.json') && !f.startsWith('._'));
+    } catch {}
+    // Deduplicate by filename, prefer main dir
+    const byUpper = new Map();
+    for (const f of keep) byUpper.set(f.toUpperCase(), path.join(KEEP_DATASETS_DIR, f));
+    for (const f of main) byUpper.set(f.toUpperCase(), path.join(DATASETS_DIR, f));
+    return Array.from(byUpper.values()).map(p => path.basename(p));
   } catch {
     return [];
   }
@@ -1002,27 +1036,32 @@ function resolveDatasetFilePathById(id) {
   // Unified ID policy: ID == TICKER (uppercase), file == TICKER.json
   const ticker = toSafeTicker((id || '').toString());
   if (!ticker) return null;
-  const stable = path.join(DATASETS_DIR, `${ticker}.json`);
-  try {
-    if (fs.existsSync(stable)) return stable;
-  } catch {}
-  // Fallback: support legacy suffixed filenames like TICKER_YYYY-MM-DD.json
+  const stableMain = path.join(DATASETS_DIR, `${ticker}.json`);
+  const stableKeep = path.join(KEEP_DATASETS_DIR, `${ticker}.json`);
+  try { if (fs.existsSync(stableMain)) return stableMain; } catch {}
+  try { if (fs.existsSync(stableKeep)) return stableKeep; } catch {}
+  // Fallback: support legacy suffixed filenames like TICKER_YYYY-MM-DD.json in either dir
   try {
     const files = listDatasetFilesSync();
     const legacy = files
       .filter(f => f.toUpperCase().startsWith(`${ticker}_`) && !f.startsWith('._'))
-      .sort(); // lexicographic sort, date suffix sorts correctly
+      .sort();
     if (legacy.length > 0) {
-      return path.join(DATASETS_DIR, legacy[legacy.length - 1]);
+      const chosen = legacy[legacy.length - 1];
+      // Choose from main if exists, else keep
+      const mainPath = path.join(DATASETS_DIR, chosen);
+      const keepPath = path.join(KEEP_DATASETS_DIR, chosen);
+      try { if (fs.existsSync(mainPath)) return mainPath; } catch {}
+      try { if (fs.existsSync(keepPath)) return keepPath; } catch {}
     }
   } catch {}
-  return stable;
+  return stableMain; // default target for writes
 }
 
 async function writeDatasetToTickerFile(dataset) {
   const ticker = toSafeTicker(dataset.ticker);
   const targetPath = path.join(DATASETS_DIR, `${ticker}.json`);
-  // Remove legacy files for this ticker to avoid confusion (best-effort)
+  // Remove legacy files for this ticker to avoid confusion (best-effort) from main dir only
   try {
     const files = await fs.readdir(DATASETS_DIR);
     await Promise.all(files
@@ -1356,13 +1395,22 @@ function detectSplitsFromOHLC(ohlc) {
 app.get('/api/datasets', async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   try {
-    const files = await fs.readdir(DATASETS_DIR);
     const datasets = [];
-    for (const file of files) {
-      // Игнорируем скрытые/мусорные файлы и нестандартные расширения
-      if (!file.endsWith('.json')) continue;
-      if (file.startsWith('._')) continue;
-      const filePath = path.join(DATASETS_DIR, file);
+    // Собираем файлы из основной папки и бэкапа (_keep) и дедуплицируем по имени файла, предпочитая основную папку
+    const mainFiles = await fs.readdir(DATASETS_DIR).catch(() => []);
+    const mainPaths = mainFiles
+      .filter(f => f.endsWith('.json') && !f.startsWith('._'))
+      .map(f => path.join(DATASETS_DIR, f));
+    const keepFiles = await fs.readdir(KEEP_DATASETS_DIR).catch(() => []);
+    const keepPaths = keepFiles
+      .filter(f => f.endsWith('.json') && !f.startsWith('._'))
+      .map(f => path.join(KEEP_DATASETS_DIR, f));
+    const byBase = new Map();
+    for (const p of keepPaths) byBase.set(path.basename(p).toUpperCase(), p);
+    for (const p of mainPaths) byBase.set(path.basename(p).toUpperCase(), p);
+
+    for (const filePath of byBase.values()) {
+      const file = path.basename(filePath);
       try {
         const data = await fs.readJson(filePath);
         if (!data || typeof data !== 'object') continue;
