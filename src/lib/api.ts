@@ -284,6 +284,18 @@ export class DatasetAPI {
     return response.json();
   }
 
+  static async applySplitsToDataset(id: string): Promise<{ success: boolean; id: string; message?: string }> {
+    const response = await fetchWithCreds(`${API_BASE_URL}/datasets/${encodeURIComponent(id.toUpperCase())}/apply-splits`, {
+      method: 'POST',
+    });
+    if (!response.ok) {
+      const e = await response.json().catch(() => null);
+      const msg = (e && e.error) || response.statusText;
+      throw new Error(msg);
+    }
+    return response.json();
+  }
+
   // Telegram integration
   static async registerTelegramWatch(params: {
     symbol: string;
