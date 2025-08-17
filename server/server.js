@@ -1624,6 +1624,98 @@ app.post('/api/datasets/:id/refresh', async (req, res) => {
   }
 });
 
+// Apply splits to dataset and persist adjusted data
+app.post('/api/datasets/:id/apply-splits', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const filePath = resolveDatasetFilePathById(id);
+    if (!filePath || !await fs.pathExists(filePath)) {
+      return res.status(404).json({ error: 'Dataset not found' });
+    }
+    const dataset = await fs.readJson(filePath);
+    const ticker = toSafeTicker(dataset.ticker || id);
+    if (!ticker) return res.status(400).json({ error: 'Ticker not defined in dataset' });
+
+    const toDateKey = (d) => {
+      try {
+        if (typeof d === 'string') return d.slice(0, 10);
+        return new Date(d).toISOString().slice(0, 10);
+      } catch { return ''; }
+    };
+
+    // Load splits events for ticker (single source of truth)
+    const events = await getTickerSplits(ticker);
+
+    // If no events, still rewrite file clearing any previous adjusted flag
+    const data = Array.isArray(dataset.data) ? dataset.data : [];
+    const normalized = data.map(b => ({
+      date: toDateKey(b.date),
+      open: Number(b.open),
+      high: Number(b.high),
+      low: Number(b.low),
+      close: Number(b.close),
+      adjClose: (b.adjClose != null ? Number(b.adjClose) : Number(b.close)),
+      volume: Number(b.volume) || 0,
+    })).filter(b => !!b.date);
+
+    // Back-adjust for splits: divide prices by cumulative future factors; multiply volume
+    if (Array.isArray(events) && events.length > 0) {
+      const splits = events
+        .filter(e => e && typeof e.date === 'string' && typeof e.factor === 'number' && isFinite(e.factor) && e.factor > 0 && e.factor !== 1)
+        .sort((a, b) => a.date.localeCompare(b.date));
+      if (splits.length > 0) {
+        const adjusted = normalized.map(bar => ({ ...bar }));
+        for (let i = 0; i < adjusted.length; i++) {
+          const t = new Date(`${adjusted[i].date}T00:00:00.000Z`).getTime();
+          let cumulative = 1;
+          for (let k = 0; k < splits.length; k++) {
+            const et = new Date(`${splits[k].date}T00:00:00.000Z`).getTime();
+            if (t < et) cumulative *= Number(splits[k].factor);
+          }
+          if (cumulative !== 1) {
+            adjusted[i].open = adjusted[i].open / cumulative;
+            adjusted[i].high = adjusted[i].high / cumulative;
+            adjusted[i].low = adjusted[i].low / cumulative;
+            adjusted[i].close = adjusted[i].close / cumulative;
+            adjusted[i].adjClose = (adjusted[i].adjClose != null ? adjusted[i].adjClose : adjusted[i].close) / cumulative;
+            adjusted[i].volume = Math.round(adjusted[i].volume * cumulative);
+          }
+        }
+        dataset.data = adjusted;
+        dataset.dataPoints = adjusted.length;
+        dataset.dateRange = {
+          from: adjusted[0].date,
+          to: adjusted[adjusted.length - 1].date,
+        };
+        dataset.uploadDate = new Date().toISOString();
+        dataset.name = ticker;
+        dataset.adjustedForSplits = true;
+      } else {
+        dataset.data = normalized;
+        dataset.dataPoints = normalized.length;
+        dataset.dateRange = normalized.length ? { from: normalized[0].date, to: normalized[normalized.length - 1].date } : { from: null, to: null };
+        dataset.uploadDate = new Date().toISOString();
+        dataset.name = ticker;
+        delete dataset.adjustedForSplits;
+      }
+    } else {
+      dataset.data = normalized;
+      dataset.dataPoints = normalized.length;
+      dataset.dateRange = normalized.length ? { from: normalized[0].date, to: normalized[normalized.length - 1].date } : { from: null, to: null };
+      dataset.uploadDate = new Date().toISOString();
+      dataset.name = ticker;
+      delete dataset.adjustedForSplits;
+    }
+
+    // Persist without embedded splits (single source of truth is splits.json)
+    const { targetPath } = await writeDatasetToTickerFile(dataset);
+    console.log(`Dataset adjusted for splits: ${ticker} -> ${targetPath}`);
+    return res.json({ success: true, id: ticker, message: 'Датасет пересчитан с учётом сплитов' });
+  } catch (e) {
+    return res.status(500).json({ error: e && e.message ? e.message : 'Failed to apply splits' });
+  }
+});
+
 // Financial Data API proxy (supports multiple providers)
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 

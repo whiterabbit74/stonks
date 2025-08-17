@@ -260,19 +260,31 @@ export const useAppStore = create<AppState>((set, get) => ({
     
       try {
         const dataset = await DatasetAPI.getDataset(datasetId);
-        // Загружаем только из центрального splits.json
-        let splits: SplitEvent[] = [];
-        try { splits = await DatasetAPI.getSplits(dataset.ticker); } catch { splits = []; }
-        const adjusted = adjustOHLCForSplits(dataset.data, splits);
-        const key = JSON.stringify((splits || []).slice().sort((a, b) => a.date.localeCompare(b.date)));
-      set({
-        marketData: adjusted,
-        currentDataset: dataset,
-        currentSplits: splits,
-        lastAppliedSplitsKey: (splits && splits.length ? key : null),
-        isLoading: false,
-        error: null
-      });
+        // Если датасет уже пересчитан на сервере — не применяем сплиты повторно
+        if ((dataset as any).adjustedForSplits) {
+          set({
+            marketData: dataset.data as unknown as OHLCData[],
+            currentDataset: dataset,
+            currentSplits: [],
+            lastAppliedSplitsKey: null,
+            isLoading: false,
+            error: null
+          });
+        } else {
+          // Загружаем только из центрального splits.json и применяем локально
+          let splits: SplitEvent[] = [];
+          try { splits = await DatasetAPI.getSplits(dataset.ticker); } catch { splits = []; }
+          const adjusted = adjustOHLCForSplits(dataset.data, splits);
+          const key = JSON.stringify((splits || []).slice().sort((a, b) => a.date.localeCompare(b.date)));
+          set({
+            marketData: adjusted,
+            currentDataset: dataset,
+            currentSplits: splits,
+            lastAppliedSplitsKey: (splits && splits.length ? key : null),
+            isLoading: false,
+            error: null
+          });
+        }
 
       // Если стратегии нет — создаём IBS по умолчанию и сразу запускаем бэктест
       const state = get();
@@ -389,12 +401,18 @@ export const useAppStore = create<AppState>((set, get) => ({
     // Если данных нет, но есть выбранный датасет — используем его
     if ((!marketData || marketData.length === 0) && currentDataset && Array.isArray(currentDataset.data) && currentDataset.data.length) {
       try {
-        let splits: SplitEvent[] = [];
-        try { splits = await DatasetAPI.getSplits(currentDataset.ticker); } catch { splits = []; }
-        const adjusted = adjustOHLCForSplits(currentDataset.data as unknown as OHLCData[], splits);
-        const key = JSON.stringify((splits || []).slice().sort((a, b) => a.date.localeCompare(b.date)));
-        set({ marketData: adjusted, currentSplits: splits, lastAppliedSplitsKey: (splits && splits.length ? key : null) });
-        marketData = adjusted;
+        // Если датасет уже пересчитан на сервере — используем как есть
+        if ((currentDataset as any).adjustedForSplits) {
+          set({ marketData: currentDataset.data as unknown as OHLCData[], currentSplits: [], lastAppliedSplitsKey: null });
+          marketData = currentDataset.data as unknown as OHLCData[];
+        } else {
+          let splits: SplitEvent[] = [];
+          try { splits = await DatasetAPI.getSplits(currentDataset.ticker); } catch { splits = []; }
+          const adjusted = adjustOHLCForSplits(currentDataset.data as unknown as OHLCData[], splits);
+          const key = JSON.stringify((splits || []).slice().sort((a, b) => a.date.localeCompare(b.date)));
+          set({ marketData: adjusted, currentSplits: splits, lastAppliedSplitsKey: (splits && splits.length ? key : null) });
+          marketData = adjusted;
+        }
       } catch (e) {
         console.warn('Failed to adjust OHLC for splits', e);
       }
