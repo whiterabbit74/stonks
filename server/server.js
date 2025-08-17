@@ -678,7 +678,7 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
   try {
     if (telegramWatches.size === 0) return { sent: false };
     const nowEt = getETParts(new Date());
-    if (!isTradingDayET(nowEt)) return { sent: false };
+    if (!isTradingDayET(nowEt) && !(options && options.test)) return { sent: false };
     const minutesUntilClose = minutesOverride != null ? minutesOverride : ((16 * 60) - (nowEt.hh * 60 + nowEt.mm));
     if (minutesUntilClose !== 11 && minutesUntilClose !== 2) return { sent: false };
 
