@@ -181,7 +181,7 @@ const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID || '';
 
 // Simple username+password auth (opt-in via env)
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '';
-const ADMIN_USERNAME = (process.env.ADMIN_USERNAME || 'dimazru@gmail.com').toLowerCase();
+const ADMIN_USERNAME = (process.env.ADMIN_USERNAME || 'admin@example.com').toLowerCase();
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 const sessions = new Map(); // token -> { createdAt, expiresAt }
 function parseCookies(req) {
