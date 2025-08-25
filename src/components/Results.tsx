@@ -477,8 +477,8 @@ export function Results() {
             </div>
           </div>
 
-          {/* Правая часть: мини-график + вертикальные KPI */}
-          <div className="md:col-span-2 flex gap-3">
+          {/* Правая часть: мини-график + KPI (переносятся ниже при < ~1130px) */}
+          <div className="md:col-span-2 flex gap-3 flex-col xl:flex-row">
             <div className="flex-1 bg-white rounded-lg border p-3 dark:bg-gray-900 dark:border-gray-800">
               <div className="w-full">
                 <div className="h-[260px] sm:h-[300px]">
@@ -502,7 +502,7 @@ export function Results() {
                 </div>
               </div>
             </div>
-            <div className="w-48 sm:w-56 flex flex-col gap-2">
+            <div className="w-full xl:w-56 flex flex-row xl:flex-col gap-2">
               <div className="rounded-lg border p-2 bg-gray-50 dark:bg-gray-800 dark:border-gray-700">
                 <div className="text-xs text-gray-500 dark:text-gray-300">CAGR</div>
                 <div className="text-base font-semibold dark:text-gray-100">{metrics.cagr.toFixed(2)}%</div>

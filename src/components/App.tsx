@@ -170,16 +170,15 @@ export default function App() {
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50 text-gray-800 dark:text-gray-100">
-      <header className="border-b bg-white/60 backdrop-blur sticky top-0 z-20 dark:bg-slate-900/60 dark:border-slate-800">
+      <header className="border-b bg-white/60 backdrop-blur dark:bg-slate-900/60 dark:border-slate-800">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <h1 className="text-lg font-semibold tracking-tight">Тестировщик стратегий</h1>
                       </div>
           <div className="flex items-center gap-2">
             <ThemeToggle />
-            <a className="inline-flex items-center gap-2 text-sm px-3 py-1.5 rounded border bg-white text-gray-700 border-gray-200 hover:bg-gray-50 dark:bg-gray-900 dark:text-gray-200 dark:border-gray-800 dark:hover:bg-gray-800" href="#settings">
-              <Settings size={16} />
-              Настройки
+            <a className="inline-flex items-center gap-2 px-3 py-2 rounded-full border border-gray-200 text-gray-700 hover:text-gray-900 hover:bg-gray-100 bg-white/80 backdrop-blur-sm shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:border-slate-700 dark:text-gray-200 dark:hover:text-white dark:hover:bg-slate-700/80 dark:bg-slate-800/80 dark:backdrop-blur-sm dark:shadow-sm" href="#settings" title="Настройки" aria-label="Настройки">
+              <Settings className="w-5 h-5" />
             </a>
             {authorized && (
               <button

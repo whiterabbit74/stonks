@@ -90,7 +90,7 @@ export function ProfitFactorChart({ trades }: ProfitFactorChartProps) {
 					<span className="text-gray-700 dark:text-gray-200">Средний PnL, %: {(trades.reduce((s, t) => s + (t.pnlPercent ?? 0), 0) / trades.length).toFixed(2)}%</span>
 				</div>
 			</div>
-			<div ref={containerRef} className="w-full h-[360px] min-h-0 overflow-hidden" />
+			<div ref={containerRef} className="w-full h-[600px] min-h-0 overflow-hidden" />
 		</div>
 	);
 }

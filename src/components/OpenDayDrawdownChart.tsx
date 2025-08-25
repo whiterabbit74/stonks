@@ -108,7 +108,7 @@ export function OpenDayDrawdownChart({ trades, data }: OpenDayDrawdownChartProps
           Максимальная просадка: {maxDrop.toFixed(2)}%
         </div>
       </div>
-      <div ref={containerRef} className="w-full h-[360px] min-h-0 overflow-hidden" />
+      <div ref={containerRef} className="w-full h-[600px] min-h-0 overflow-hidden" />
     </div>
   );
 }
