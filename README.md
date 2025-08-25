@@ -209,9 +209,9 @@ trading_strategies/
 - `/api/*` → `server:3001`
 - `/` → `frontend:80`
 
-`caddy/Caddyfile` (пример для домена `tradingibs.site`):
+`caddy/Caddyfile` (пример для домена `example.com`):
 ```
-tradingibs.site {
+example.com {
   encode gzip
   log {
     output file /var/log/caddy/access.log
@@ -231,8 +231,8 @@ docker compose down
 docker compose up -d --build
 ```
 Проверка:
-- `https://tradingibs.site/` → SPA
-- `https://tradingibs.site/api/status` → 200 ok
+- `https://example.com/` → SPA
+- `https://example.com/api/status` → 200 ok
 
 TLS‑сертификаты выпускаются автоматически (Let’s Encrypt) — дополнительные ключи не нужны.
 
