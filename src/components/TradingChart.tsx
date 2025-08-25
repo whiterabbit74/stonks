@@ -11,19 +11,16 @@ interface TradingChartProps {
 
 export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
-  const mainPaneRef = useRef<HTMLDivElement>(null);
-  const subPaneRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
-  const subChartRef = useRef<IChartApi | null>(null);
   const candlestickSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
-  const ibsSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
+  const ibsSeriesRef = useRef<ISeriesApi<'Histogram'> | null>(null);
   const volumeSeriesRef = useRef<ISeriesApi<'Histogram'> | null>(null);
   const ema20SeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
   const ema200SeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
   const [showEMA20, setShowEMA20] = useState(false);
   const [showEMA200, setShowEMA200] = useState(false);
-  // По умолчанию отображаем IBS и скрываем объём
-  const [showIBS, setShowIBS] = useState(true);
+  // По умолчанию оба скрыты
+  const [showIBS, setShowIBS] = useState(false);
   const [showVolume, setShowVolume] = useState(false);
   const [isDark, setIsDark] = useState<boolean>(() => typeof document !== 'undefined' ? document.documentElement.classList.contains('dark') : false);
 
@@ -66,56 +63,23 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
       const grid = isDark ? '#1f2937' : '#eef2ff';
       const border = isDark ? '#374151' : '#e5e7eb';
 
-      // Create main chart (80% height)
-      const mainEl = mainPaneRef.current || chartContainerRef.current;
-      const subEl = subPaneRef.current || chartContainerRef.current;
+      // Create single chart, bottom ~20% for indicator scale
+      const el = chartContainerRef.current;
       const totalH = chartContainerRef.current.clientHeight || 600;
-      const mainH = Math.max(200, Math.round(totalH * 0.80));
-      const subH = Math.max(80, totalH - mainH);
-      const chart = createChart(mainEl, {
-        width: mainEl.clientWidth,
-        height: Math.max(mainH || 0, 360),
-        layout: {
-          background: { color: bg },
-          textColor: text,
-        },
-        grid: {
-          vertLines: { color: grid },
-          horzLines: { color: grid },
-        },
-        crosshair: {
-          mode: 1,
-        },
-        rightPriceScale: {
-          borderColor: border,
-        },
-        timeScale: {
-          borderColor: border,
-          timeVisible: true,
-          secondsVisible: false,
-          rightOffset: 8,
-        },
-      });
-
-      chartRef.current = chart;
-
-      // Create sub chart (20% height) for IBS/Volume
-      const subChart = createChart(subEl, {
-        width: subEl.clientWidth,
-        height: Math.max(subH || 0, 120),
-        layout: {
-          background: { color: bg },
-          textColor: text,
-        },
-        grid: {
-          vertLines: { color: grid },
-          horzLines: { color: grid },
-        },
+      const chart = createChart(el, {
+        width: el.clientWidth,
+        height: Math.max(totalH || 0, 360),
+        layout: { background: { color: bg }, textColor: text },
+        grid: { vertLines: { color: grid }, horzLines: { color: grid } },
         crosshair: { mode: 1 },
-        rightPriceScale: { borderColor: border },
+        rightPriceScale: { borderColor: border, scaleMargins: { top: 0.05, bottom: 0.25 } },
         timeScale: { borderColor: border, timeVisible: true, secondsVisible: false, rightOffset: 8 },
       });
-      subChartRef.current = subChart;
+
+      // Indicator price scale occupies bottom 20%
+      try { chart.priceScale('indicator').applyOptions({ scaleMargins: { top: 0.80, bottom: 0 }, borderColor: border }); } catch {}
+
+      chartRef.current = chart;
 
       // Verify chart methods exist
       if (!chart || typeof chart.addCandlestickSeries !== 'function') {
@@ -147,72 +111,46 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
       candlestickSeries.setData(chartData);
       try { chart.timeScale().applyOptions({ rightOffset: 8 }); } catch {}
 
-      // Sub chart content: Volume and IBS (создаем один раз и управляем видимостью)
+      // Indicator content on main chart: Volume and IBS histograms
       const volumeData = data.map(bar => ({
         time: Math.floor(bar.date.getTime() / 1000) as UTCTimestamp,
         value: bar.volume,
-        color: bar.close >= bar.open ? (isDark ? 'rgba(16, 185, 129, 0.35)' : 'rgba(16, 185, 129, 0.45)') : (isDark ? 'rgba(239, 68, 68, 0.35)' : 'rgba(239, 68, 68, 0.45)')
+        color: bar.close >= bar.open ? (isDark ? 'rgba(16, 185, 129, 0.45)' : 'rgba(16, 185, 129, 0.6)') : (isDark ? 'rgba(239, 68, 68, 0.45)' : 'rgba(239, 68, 68, 0.6)')
       }));
-      const volumeSeries = subChart.addHistogramSeries({
-        color: isDark ? 'rgba(148, 163, 184, 0.25)' : 'rgba(148, 163, 184, 0.35)',
+      const volumeSeries = chart.addHistogramSeries({
+        color: isDark ? 'rgba(148, 163, 184, 0.35)' : 'rgba(148, 163, 184, 0.45)',
         priceFormat: { type: 'volume' as const },
+        priceScaleId: 'indicator',
         base: 0,
         visible: false,
+        title: 'Объём',
       });
       volumeSeries.setData(volumeData);
       volumeSeriesRef.current = volumeSeries;
 
-      const ibsLine = subChart.addLineSeries({
-        color: isDark ? '#93c5fd' : '#374151',
-        lineWidth: 2,
+      const ibsHist = chart.addHistogramSeries({
+        priceScaleId: 'indicator',
+        base: 0,
+        priceFormat: { type: 'price', precision: 2, minMove: 0.01 },
         visible: false,
+        title: 'IBS',
       });
       const ibsData = data.map(bar => {
         const range = Math.max(1e-9, bar.high - bar.low);
         const ibs = (bar.close - bar.low) / range; // 0..1
-        return { time: Math.floor(bar.date.getTime() / 1000) as UTCTimestamp, value: ibs };
+        const color = ibs <= 0.10
+          ? (isDark ? 'rgba(16,185,129,0.9)' : 'rgba(16,185,129,0.9)')
+          : (ibs >= 0.75 ? (isDark ? 'rgba(239,68,68,0.9)' : 'rgba(239,68,68,0.9)') : (isDark ? 'rgba(156,163,175,0.9)' : 'rgba(107,114,128,0.9)'));
+        return { time: Math.floor(bar.date.getTime() / 1000) as UTCTimestamp, value: ibs, color };
       });
-      ibsLine.setData(ibsData);
+      ibsHist.setData(ibsData);
       try {
-        ibsLine.createPriceLine({ price: 0.10, color: '#9ca3af', lineWidth: 1, lineStyle: 2, title: 'IBS 0.10' });
-        ibsLine.createPriceLine({ price: 0.75, color: '#9ca3af', lineWidth: 1, lineStyle: 2, title: 'IBS 0.75' });
+        ibsHist.createPriceLine({ price: 0.10, color: '#9ca3af', lineWidth: 1, lineStyle: 2, title: '0.10' });
+        ibsHist.createPriceLine({ price: 0.75, color: '#9ca3af', lineWidth: 1, lineStyle: 2, title: '0.75' });
       } catch (e) { console.warn('Failed to create price lines', e); }
-      ibsSeriesRef.current = ibsLine;
+      ibsSeriesRef.current = ibsHist;
 
-      // Sync time scales using logical range with guards
-      try {
-        let syncing = false;
-        const syncFromMain = (range: any) => {
-          if (syncing || !range || range.from == null || range.to == null) return;
-          const trg = subChart.timeScale().getVisibleLogicalRange?.();
-          if (trg && typeof (trg as any).from === 'number' && typeof (trg as any).to === 'number') {
-            const same = Math.abs((trg as any).from - range.from) < 1e-3 && Math.abs((trg as any).to - range.to) < 1e-3;
-            if (same) return;
-          }
-          syncing = true;
-          try { subChart.timeScale().setVisibleLogicalRange(range); } catch {} finally { syncing = false; }
-        };
-        const syncFromSub = (range: any) => {
-          if (syncing || !range || range.from == null || range.to == null) return;
-          const trg = chart.timeScale().getVisibleLogicalRange?.();
-          if (trg && typeof (trg as any).from === 'number' && typeof (trg as any).to === 'number') {
-            const same = Math.abs((trg as any).from - range.from) < 1e-3 && Math.abs((trg as any).to - range.to) < 1e-3;
-            if (same) return;
-          }
-          syncing = true;
-          try { chart.timeScale().setVisibleLogicalRange(range); } catch {} finally { syncing = false; }
-        };
-        chart.timeScale().subscribeVisibleLogicalRangeChange(syncFromMain);
-        subChart.timeScale().subscribeVisibleLogicalRangeChange(syncFromSub);
-        // Align initial range
-        try {
-          const lr = chart.timeScale().getVisibleLogicalRange();
-          if (lr) subChart.timeScale().setVisibleLogicalRange(lr);
-        } catch {}
-        // Save unsubscribers in cleanup closure
-        (chart as any).__syncFromMain = syncFromMain;
-        (subChart as any).__syncFromSub = syncFromSub;
-      } catch (e) { console.warn('Failed to sync time scales', e); }
+      // No sub-chart; indicators share time scale
 
       // EMA series (создаем скрытыми; их видимость управляется отдельно)
       const ema20Values = calculateEMA(data, 20);
@@ -313,66 +251,27 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
       chart.subscribeCrosshairMove((param) => {
         if (!param || !param.time) {
           tooltipEl.style.display = 'none';
-          try {
-            const tgt = (ibsSeriesRef.current || volumeSeriesRef.current) as unknown as { clearCrosshairPosition?: () => void };
-            tgt?.clearCrosshairPosition?.();
-          } catch (err) { console.warn('Clear crosshair for tgt failed', err as Error); }
           return;
         }
         const priceMap = (param as any).seriesPrices as Map<unknown, unknown> | undefined;
         const seriesData = (param as any).seriesData as Map<unknown, unknown> | undefined;
         if (!priceMap || !seriesData) {
           tooltipEl.style.display = 'none';
-          try {
-            (ibsSeriesRef.current as unknown as { clearCrosshairPosition?: () => void })?.clearCrosshairPosition?.();
-            (volumeSeriesRef.current as unknown as { clearCrosshairPosition?: () => void })?.clearCrosshairPosition?.();
-          } catch (err) { console.warn('Clear crosshair for series failed', err as Error); }
           return;
         }
         const price = priceMap.get(candlestickSeries as unknown as object);
         if (!price) {
           tooltipEl.style.display = 'none';
-          try {
-            (ibsSeriesRef.current as unknown as { clearCrosshairPosition?: () => void })?.clearCrosshairPosition?.();
-            (volumeSeriesRef.current as unknown as { clearCrosshairPosition?: () => void })?.clearCrosshairPosition?.();
-          } catch (err) { console.warn('Clear crosshair for series failed', err as Error); }
           return;
         }
         const bar = seriesData.get(candlestickSeries as unknown as object) as { open?: number; high?: number; low?: number; close?: number } | undefined;
-        const vol = volumeSeriesRef.current ? (seriesData.get(volumeSeriesRef.current as unknown as object) as { value?: number } | undefined)?.value : undefined;
-        const ibsVal = ibsSeriesRef.current ? (seriesData.get(ibsSeriesRef.current as unknown as object) as { value?: number } | undefined)?.value : undefined;
+        const vol = (showVolume && volumeSeriesRef.current) ? (seriesData.get(volumeSeriesRef.current as unknown as object) as { value?: number } | undefined)?.value : undefined;
+        const ibsVal = (showIBS && ibsSeriesRef.current) ? (seriesData.get(ibsSeriesRef.current as unknown as object) as { value?: number } | undefined)?.value : undefined;
         const o = bar?.open, h = bar?.high, l = bar?.low, c = bar?.close;
         const pct = o ? (((c! - o) / o) * 100) : 0;
         const ibsStr = (typeof ibsVal === 'number') ? ` · IBS ${(ibsVal * 100).toFixed(0)}%` : '';
         tooltipEl.innerHTML = `О ${o?.toFixed?.(2) ?? '-'} В ${h?.toFixed?.(2) ?? '-'} Н ${l?.toFixed?.(2) ?? '-'} З ${c?.toFixed?.(2) ?? '-'} · ${pct ? pct.toFixed(2) + '%' : ''}${ibsStr}${vol ? ' · Объём ' + vol.toLocaleString() : ''}`;
         tooltipEl.style.display = 'block';
-
-        // Mirror crosshair to sub chart using series API (best-effort across versions)
-        try {
-          const t = param.time as UTCTimestamp;
-          const setPos = (s: unknown, value: number) => {
-            const api = s as { setCrosshairPosition?: (v: number, t: UTCTimestamp) => void };
-            api?.setCrosshairPosition?.(value, t);
-          };
-          if (typeof ibsVal === 'number') setPos(ibsSeriesRef.current, ibsVal);
-          else if (typeof vol === 'number') setPos(volumeSeriesRef.current, vol);
-        } catch (err) { console.warn('Mirror crosshair failed', err as Error); }
-      });
-
-      // Also reflect crosshair from sub-pane to main chart
-      subChart.subscribeCrosshairMove((param) => {
-        if (!param || !param.time) {
-          try { (candlestickSeries as unknown as { clearCrosshairPosition?: () => void })?.clearCrosshairPosition?.(); } catch (err) { console.warn('Clear crosshair failed', err as Error); }
-          return;
-        }
-        try {
-          const t = param.time as UTCTimestamp;
-          const sd = (param as any).seriesData as Map<unknown, unknown> | undefined;
-          const bar = sd?.get(candlestickSeries as unknown as object) as { close?: number } | undefined;
-          const close = bar?.close ?? 0;
-          const cs = candlestickSeries as unknown as { setCrosshairPosition?: (price: number, t: UTCTimestamp) => void };
-          cs?.setCrosshairPosition?.(close, t);
-        } catch (err) { console.warn('Crosshair reflect failed', err as Error); }
       });
 
       // Handle resize
@@ -380,24 +279,14 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
         if (!chartContainerRef.current) return;
         const w = chartContainerRef.current.clientWidth;
         const total = chartContainerRef.current.clientHeight || 600;
-        const mainH2 = Math.max(360, Math.round(total * 0.80));
-        const subH2 = Math.max(120, total - mainH2);
-        chart.applyOptions({ width: w, height: mainH2 });
-        subChart.applyOptions({ width: w, height: subH2 });
+        chart.applyOptions({ width: w, height: Math.max(total, 360) });
       };
 
       window.addEventListener('resize', handleResize);
 
       return () => {
         window.removeEventListener('resize', handleResize);
-        try {
-          if ((chart as any).__syncFromMain) chart.timeScale().unsubscribeVisibleLogicalRangeChange((chart as any).__syncFromMain);
-        } catch {}
-        try {
-          if ((subChart as any).__syncFromSub) subChart.timeScale().unsubscribeVisibleLogicalRangeChange((subChart as any).__syncFromSub);
-        } catch {}
         if (chart) { try { chart.remove(); } catch (e) { console.warn('Error removing chart on cleanup:', e); } }
-        if (subChart) { try { subChart.remove(); } catch (e) { console.warn('Error removing sub-chart on cleanup:', e); } }
         try {
           if (tooltipEl && tooltipEl.parentElement) tooltipEl.parentElement.removeChild(tooltipEl);
         } catch (e) { /* ignore */ }
@@ -407,6 +296,11 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
       return;
     }
   }, [data, trades, splits, isDark]);
+
+  useEffect(() => {
+    // Взаимоисключаемые индикаторы
+    if (showIBS && showVolume) setShowVolume(false);
+  }, [showIBS, showVolume]);
 
   useEffect(() => {
     // Управляем видимостью серий без пересоздания чартов
@@ -426,7 +320,7 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
 
   return (
     <div className="w-full grid grid-rows-[auto,1fr] gap-4">
-      {/* EMA Controls */}
+      {/* Controls */}
       <div className="flex gap-2 flex-wrap">
         <button
           onClick={() => setShowEMA20(!showEMA20)}
@@ -449,32 +343,33 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
           EMA 200
         </button>
         <button
-          onClick={() => setShowIBS(!showIBS)}
+          onClick={() => { const next = !showIBS; setShowIBS(next); if (next) setShowVolume(false); }}
           className={`px-3 py-1 text-sm rounded ${
             showIBS
               ? 'bg-gray-700 text-white'
               : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'
           }`}
+          title="Показать IBS"
+          aria-label="Показать IBS"
         >
-          Показать IBS
+          IBS
         </button>
         <button
-          onClick={() => setShowVolume(!showVolume)}
+          onClick={() => { const next = !showVolume; setShowVolume(next); if (next) setShowIBS(false); }}
           className={`px-3 py-1 text-sm rounded ${
             showVolume
               ? 'bg-gray-500 text-white'
               : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'
           }`}
+          title="Показать объём"
+          aria-label="Показать объём"
         >
-          Показать объём
+          Объём
         </button>
       </div>
-      
-      {/* Chart Container split: main (80%) + sub (20%) */}
-      <div ref={chartContainerRef} className="min-h-0 overflow-hidden w-full h-full flex flex-col">
-        <div ref={mainPaneRef} className="flex-1 min-h-[360px]" />
-        <div ref={subPaneRef} className="h-[120px]" />
-      </div>
+
+      {/* Single Chart Container (indicator occupies bottom 20%) */}
+      <div ref={chartContainerRef} className="min-h-0 overflow-hidden w-full h-full" />
     </div>
   );
 }

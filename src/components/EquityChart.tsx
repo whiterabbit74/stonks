@@ -166,7 +166,7 @@ export function EquityChart({ equity }: EquityChartProps) {
           </div>
         )}
       </div>
-      <div ref={chartContainerRef} className="w-full h-[300px] min-h-0 overflow-hidden" />
+      <div ref={chartContainerRef} className="w-full h-[600px] min-h-0 overflow-hidden" />
     </div>
   );
 }
