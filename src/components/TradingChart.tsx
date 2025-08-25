@@ -72,12 +72,12 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
         layout: { background: { color: bg }, textColor: text },
         grid: { vertLines: { color: grid }, horzLines: { color: grid } },
         crosshair: { mode: 1 },
-        rightPriceScale: { borderColor: border, scaleMargins: { top: 0.05, bottom: 0.25 } },
+        // Main price scale should not reserve 25% at the bottom — keep it tight
+        rightPriceScale: { borderColor: border, scaleMargins: { top: 0.05, bottom: 0.05 } },
         timeScale: { borderColor: border, timeVisible: true, secondsVisible: false, rightOffset: 8 },
       });
 
-      // Indicator price scale occupies bottom 20%
-      try { chart.priceScale('indicator').applyOptions({ scaleMargins: { top: 0.80, bottom: 0 }, borderColor: border }); } catch {}
+      // Indicator price scale will be configured after its series are attached
 
       chartRef.current = chart;
 
@@ -149,6 +149,9 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
         ibsHist.createPriceLine({ price: 0.75, color: '#9ca3af', lineWidth: 1, lineStyle: 2, title: '0.75' });
       } catch (e) { console.warn('Failed to create price lines', e); }
       ibsSeriesRef.current = ibsHist;
+
+      // Now that the 'indicator' scale exists, constrain it to the bottom 20%
+      try { chart.priceScale('indicator').applyOptions({ scaleMargins: { top: 0.80, bottom: 0 }, borderColor: border }); } catch {}
 
       // No sub-chart; indicators share time scale
 
