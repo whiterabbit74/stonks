@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { DatasetAPI } from '../lib/api';
 
 type SplitEvent = { date: string; factor: number };
@@ -57,8 +57,6 @@ export function SplitPage() {
 			}
 		})();
 	}, [selected]);
-
-	const selectedMeta = useMemo(() => datasets.find(d => d.ticker === selected) || null, [datasets, selected]);
 
 	const updateEvent = (index: number, patch: Partial<SplitEvent>) => {
 		setEvents(prev => prev.map((e, i) => i === index ? { ...e, ...patch } : e));
