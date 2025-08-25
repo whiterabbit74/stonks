@@ -9,7 +9,7 @@ services:
       - ./server/.env
     environment:
       - PORT=3001
-      - ADMIN_USERNAME=${ADMIN_USERNAME:-dimazru@gmail.com}
+      - ADMIN_USERNAME=${ADMIN_USERNAME:-admin@example.com}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD}
       - FRONTEND_ORIGIN=${FRONTEND_ORIGIN:-http://localhost}
       - BUILD_ID=${BUILD_ID:-dev}

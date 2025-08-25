@@ -69,7 +69,7 @@ PORT=3001
 # Разрешённый фронтенд-оригин для CORS (dev):
 FRONTEND_ORIGIN=http://localhost:5173
 # Авторизация (если ADMIN_PASSWORD пуст, auth отключена в dev; в prod — запросы будут отклонены):
-ADMIN_USERNAME=dimazru@gmail.com
+ADMIN_USERNAME=admin@example.com
 ADMIN_PASSWORD=
 # Telegram (опционально):
 TELEGRAM_BOT_TOKEN=
@@ -87,7 +87,7 @@ POLYGON_API_KEY=
 - Установите Docker и Docker Compose
 - Создайте файл `.env` в корне репозитория (используется в `docker-compose.yml`):
 ```
-ADMIN_USERNAME=dimazru@gmail.com
+ADMIN_USERNAME=admin@example.com
 ADMIN_PASSWORD=your-strong-password
 TELEGRAM_BOT_TOKEN=
 TELEGRAM_CHAT_ID=
