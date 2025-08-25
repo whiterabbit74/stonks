@@ -43,22 +43,31 @@ services:
       context: .
       dockerfile: docker/frontend.Dockerfile
       args:
-        PUBLIC_BASE_PATH: "/stonks/"
-        VITE_API_BASE: "/stonks/api"
+        PUBLIC_BASE_PATH: "/"
+        VITE_API_BASE: "/api"
         VITE_BUILD_ID: "${BUILD_ID:-dev}"
     depends_on:
       - server
-    ports:
-      - "80:80"
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost/stonks/api/status" ]
+      test: ["CMD", "wget", "-qO-", "http://localhost/api/status" ]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 20s
     environment:
-      - PUBLIC_BASE_PATH=/stonks/
-      - VITE_API_BASE=/stonks/api
+      - PUBLIC_BASE_PATH=/
+      - VITE_API_BASE=/api
+
+  caddy:
+    image: caddy:2
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - frontend
+      - server
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
 
 

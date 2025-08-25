@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { AlertCircle, CheckCircle } from 'lucide-react';
 import { useAppStore } from '../stores';
-import { fetchWithCreds } from '../lib/api';
+import { fetchWithCreds, API_BASE_URL } from '../lib/api';
 import { parseOHLCDate } from '../lib/utils';
 
 interface DataEnhancerProps {
@@ -145,8 +145,7 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
                 const end = Math.floor(Date.now() / 1000);
                 const start = end - 40 * 365 * 24 * 60 * 60;
                 const prov = enhancerProvider;
-                const base = typeof window !== 'undefined' && window.location.href.includes('/stonks') ? '/stonks/api' : '/api';
-                const resp = await fetchWithCreds(`${base}/yahoo-finance/${symbol}?start=${start}&end=${end}&provider=${prov}&adjustment=none`);
+                const resp = await fetchWithCreds(`${API_BASE_URL}/yahoo-finance/${symbol}?start=${start}&end=${end}&provider=${prov}&adjustment=none`);
                 if (!resp.ok) {
                   let msg = 'Не удалось получить данные';
                   try { const j = await resp.json(); if (j && j.error) msg = j.error; } catch {}

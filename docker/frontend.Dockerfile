@@ -3,7 +3,7 @@ FROM node:20-bookworm-slim AS builder
 WORKDIR /app
 
 # Prefer IPv4 DNS resolution to reduce hangs and configure npm
-ENV NODE_OPTIONS=--dns-result-order=ipv4first \
+ENV NODE_OPTIONS="--dns-result-order=ipv4first --max-old-space-size=256" \
     NPM_CONFIG_FUND=false \
     NPM_CONFIG_AUDIT=false \
     NPM_CONFIG_FETCH_RETRIES=6 \
@@ -35,10 +35,8 @@ RUN PUBLIC_BASE_PATH=$PUBLIC_BASE_PATH VITE_API_BASE=$VITE_API_BASE VITE_BUILD_I
 FROM nginx:stable
 WORKDIR /usr/share/nginx/html
 
-# Copy built assets under base path
-ARG PUBLIC_BASE_PATH=/
-RUN mkdir -p "/usr/share/nginx/html${PUBLIC_BASE_PATH}"
-COPY --from=builder /app/dist "/usr/share/nginx/html${PUBLIC_BASE_PATH}"
+# Copy built assets to web root
+COPY --from=builder /app/dist /usr/share/nginx/html
 
 # Nginx config (proxy /api → server:3001)
 COPY ./docker/nginx.conf /etc/nginx/conf.d/default.conf

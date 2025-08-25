@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Database, Download, Trash2, Calendar, BarChart3, Eye, EyeOff, Server, ServerOff, RefreshCw } from 'lucide-react';
 import { useAppStore } from '../stores';
 import { createStrategyFromTemplate, STRATEGY_TEMPLATES } from '../lib/strategy';
-import { DatasetAPI } from '../lib/api';
+import { DatasetAPI, API_BASE_URL } from '../lib/api';
 import type { SavedDataset } from '../types';
 import { ConfirmModal } from './ConfirmModal';
 
@@ -35,8 +35,7 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
       }
     };
 
-    const base = typeof window !== 'undefined' && window.location.href.includes('/stonks') ? '/stonks/api' : '/api';
-    fetch(`${base}/auth/check`, { credentials: 'include' }).then(r => {
+    fetch(`${API_BASE_URL}/auth/check`, { credentials: 'include' }).then(r => {
       if (r.ok) checkServerStatus();
       else setServerStatus('offline');
     }).catch(() => setServerStatus('offline'));
@@ -69,7 +68,7 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
       // снимаем лоадер сразу
       setLoadingId(null);
       // мгновенно переходим на «Результаты» и фиксируем hash
-      try { window.history.pushState({}, '', (window.location.pathname.startsWith('/stonks') ? '/stonks' : '') + '/results'); } catch { /* ignore */ }
+      try { window.history.pushState({}, '', '/results'); } catch { /* ignore */ }
       if (onAfterLoad) onAfterLoad();
       // запускаем бэктест в фоне, не блокируя UI
       try { runBacktest?.(); } catch (e) { console.warn('Failed to start backtest', e); }

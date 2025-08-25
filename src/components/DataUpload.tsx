@@ -2,6 +2,7 @@ import { useRef, useEffect } from 'react';
 import { Upload, CheckCircle, ArrowRight, Download } from 'lucide-react';
 import { useAppStore } from '../stores';
 import { DatasetLibrary } from './DatasetLibrary';
+import { API_BASE_URL } from '../lib/api';
 
 interface DataUploadProps {
   onNext?: () => void;
@@ -14,8 +15,7 @@ export function DataUpload({ onNext }: DataUploadProps) {
 
   // Загружаем список датасетов при монтировании компонента ТОЛЬКО после успешной авторизации
   useEffect(() => {
-    const base = typeof window !== 'undefined' && window.location.href.includes('/stonks') ? '/stonks/api' : '/api';
-    fetch(`${base}/auth/check`, { credentials: 'include' }).then(r => {
+    fetch(`${API_BASE_URL}/auth/check`, { credentials: 'include' }).then(r => {
       if (r.ok) loadDatasetsFromServer();
     }).catch(() => {});
   }, [loadDatasetsFromServer]);

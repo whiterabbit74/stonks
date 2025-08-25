@@ -9,6 +9,7 @@ import { TelegramWatches } from './TelegramWatches';
 import { AppSettings } from './AppSettings';
 import { createStrategyFromTemplate, STRATEGY_TEMPLATES } from '../lib/strategy';
 import { Footer } from './Footer';
+import { API_BASE_URL } from '../lib/api';
 import { ThemeToggle } from './ThemeToggle';
 
 type Tab = 'data' | 'enhance' | 'results' | 'watches' | 'settings';
@@ -93,8 +94,7 @@ export default function App() {
 
   const handleLogout = async () => {
     try {
-      const base = window.location.href.includes('/stonks') ? '/stonks/api' : '/api';
-      await fetch(`${base}/logout`, { method: 'POST', credentials: 'include' });
+      await fetch(`${API_BASE_URL}/logout`, { method: 'POST', credentials: 'include' });
     } catch (e) {
       console.warn('Logout failed', e);
     } finally {
@@ -106,8 +106,7 @@ export default function App() {
     if (e) e.preventDefault();
     setLoginError(null);
     try {
-      const base = window.location.href.includes('/stonks') ? '/stonks/api' : '/api';
-      const r = await fetch(`${base}/login`, {
+      const r = await fetch(`${API_BASE_URL}/login`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -135,8 +134,7 @@ export default function App() {
   useEffect(() => {
     (async () => {
       try {
-        const base = window.location.href.includes('/stonks') ? '/stonks/api' : '/api';
-        const r = await fetch(`${base}/auth/check`, { credentials: 'include' });
+        const r = await fetch(`${API_BASE_URL}/auth/check`, { credentials: 'include' });
         if (r.ok) {
           setAuthorized(true);
           try { await loadSettingsFromServer(); } catch {}
@@ -159,8 +157,7 @@ export default function App() {
   useEffect(() => {
     (async () => {
       try {
-        const base = window.location.href.includes('/stonks') ? '/stonks/api' : '/api';
-        const r = await fetch(`${base}/status`, { credentials: 'include', cache: 'no-store' });
+        const r = await fetch(`${API_BASE_URL}/status`, { credentials: 'include', cache: 'no-store' });
         if (r.ok) {
           const j = await r.json();
           setApiBuildId(j?.timestamp || null);

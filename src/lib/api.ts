@@ -1,18 +1,7 @@
 import type { SavedDataset } from '../types';
 
 // Runtime-safe API base to avoid hardcoded dev hosts in production bundles
-export const API_BASE_URL: string = (() => {
-  try {
-    if (typeof window !== 'undefined') {
-      const href = window.location.href || '';
-      // If app is served under /stonks, use that prefix for API proxy
-      if (href.includes('/stonks')) return '/stonks/api';
-    }
-  } catch {
-    // ignore, default to '/api'
-  }
-  return '/api';
-})();
+export const API_BASE_URL: string = '/api';
 export const fetchWithCreds = (input: RequestInfo | URL, init?: RequestInit) => {
   const merged: RequestInit = {
     credentials: 'include',

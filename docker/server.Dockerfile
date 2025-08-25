@@ -3,7 +3,7 @@ WORKDIR /app
 
 # Prefer IPv6 for IPv6-only hosts and use a resilient npm mirror by default
 ARG NPM_REGISTRY=https://registry.npmmirror.com/
-ENV NODE_OPTIONS=--dns-result-order=ipv6first \
+ENV NODE_OPTIONS="--dns-result-order=ipv6first --max-old-space-size=256" \
     NPM_CONFIG_FUND=false \
     NPM_CONFIG_AUDIT=false \
     NPM_CONFIG_FETCH_RETRIES=6 \
