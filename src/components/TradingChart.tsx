@@ -72,11 +72,12 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
         layout: { background: { color: bg }, textColor: text },
         grid: { vertLines: { color: grid }, horzLines: { color: grid } },
         crosshair: { mode: 1 },
-        rightPriceScale: { borderColor: border, scaleMargins: { top: 0.05, bottom: 0.25 } },
+        // Keep main price scale margins small; indicator will occupy its own 20% area
+        rightPriceScale: { borderColor: border, scaleMargins: { top: 0.05, bottom: 0.05 } },
         timeScale: { borderColor: border, timeVisible: true, secondsVisible: false, rightOffset: 8 },
       });
 
-      // Indicator price scale occupies bottom 20%
+      // Indicator price scale occupies bottom 20% of the pane
       try { chart.priceScale('indicator').applyOptions({ scaleMargins: { top: 0.80, bottom: 0 }, borderColor: border }); } catch {}
 
       chartRef.current = chart;
@@ -139,8 +140,10 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
         const range = Math.max(1e-9, bar.high - bar.low);
         const ibs = (bar.close - bar.low) / range; // 0..1
         const color = ibs <= 0.10
-          ? (isDark ? 'rgba(16,185,129,0.9)' : 'rgba(16,185,129,0.9)')
-          : (ibs >= 0.75 ? (isDark ? 'rgba(239,68,68,0.9)' : 'rgba(239,68,68,0.9)') : (isDark ? 'rgba(156,163,175,0.9)' : 'rgba(107,114,128,0.9)'));
+          // Darker, more saturated green for visibility
+          ? (isDark ? 'rgba(5,150,105,1)' : 'rgba(5,150,105,1)')
+          // Neutral gray bars at 50% opacity
+          : (ibs >= 0.75 ? (isDark ? 'rgba(239,68,68,0.9)' : 'rgba(239,68,68,0.9)') : (isDark ? 'rgba(156,163,175,0.5)' : 'rgba(107,114,128,0.5)'));
         return { time: Math.floor(bar.date.getTime() / 1000) as UTCTimestamp, value: ibs, color };
       });
       ibsHist.setData(ibsData);
