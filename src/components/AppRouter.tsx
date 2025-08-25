@@ -12,16 +12,7 @@ import { Footer } from './Footer';
 import { ThemeToggle } from './ThemeToggle';
 import { API_BASE_URL } from '../lib/api';
 
-function useBaseName(): string | undefined {
-  const base = useMemo(() => {
-    try {
-      const p = window.location.pathname || '';
-      if (p.startsWith('/stonks')) return '/stonks';
-    } catch {}
-    return undefined;
-  }, []);
-  return base;
-}
+// App is now always served from root '/'
 
 function ProtectedLayout() {
   const navigate = useNavigate();
@@ -246,9 +237,8 @@ function LoginPage() {
 }
 
 export default function AppRouter() {
-  const basename = useBaseName();
   return (
-    <BrowserRouter basename={basename}>
+    <BrowserRouter>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route element={<ProtectedLayout />}>

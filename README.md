@@ -106,8 +106,8 @@ POLYGON_API_KEY=
 ```
 docker compose up --build -d
 ```
-- Фронтенд: `http://localhost/stonks/`
-- API: доступно через фронтенд‑прокси `/stonks/api/*` → контейнер `server:3001`
+- Фронтенд: `http://localhost/`
+- API: доступно через фронтенд‑прокси `/api/*` → контейнер `server:3001`
 
 Датасеты и настройки монтируются как тома из `server/`, чтобы сохранялись между перезапусками.
 
@@ -117,8 +117,8 @@ docker compose down
 ```
 
 Примечания
-- Nginx в контейнере фронтенда обслуживает SPA под базовым путём `/stonks` и проксирует `/stonks/api` на сервис `server`.
-- Путь логина: `/stonks/login/`. При отсутствии `ADMIN_PASSWORD` защита отключена в dev, в prod — API вернёт 503 до конфигурации.
+- Nginx в контейнере фронтенда обслуживает SPA на корне `/` и проксирует `/api` на сервис `server`.
+- Путь логина: `/login/`. При отсутствии `ADMIN_PASSWORD` защита отключена в dev, в prod — API может вернуть 503 до конфигурации.
 - Для прод‑режима рекомендуем внешний прокси с HTTPS (например, Caddy/Traefik) поверх сервиса `frontend`.
 
 ## Реальные рыночные данные (опционально)
@@ -192,8 +192,8 @@ trading_strategies/
 
 ## Настройки фронтенда
 - `VITE_BUILD_ID` — отображается в футере как идентификатор сборки
-- При сборке через Docker используется базовый путь `/stonks` и прокси `/stonks/api`
-- Клиент `src/lib/api.ts` автоматически выбирает `/stonks/api`, если приложение открыто под `/stonks`
+- При сборке через Docker используется базовый путь `/` и прокси `/api`
+- Клиент `src/lib/api.ts` использует относительный `/api` без привязки к субпути
 
 ## Используемые технологии
 - React 19, TypeScript 5, Vite 7, Tailwind CSS
@@ -202,6 +202,55 @@ trading_strategies/
 
 ## Лицензия
 Не указана.
+
+## Продовый деплой с HTTPS через Caddy
+
+В корне добавлен `docker-compose.yml` с тремя сервисами: `server`, `frontend`, `caddy`. Caddy принимает 80/443 и проксирует:
+- `/api/*` → `server:3001`
+- `/` → `frontend:80`
+
+`caddy/Caddyfile` (пример для домена `tradingibs.site`):
+```
+tradingibs.site {
+  encode gzip
+  log {
+    output file /var/log/caddy/access.log
+  }
+  handle_path /api/* {
+    reverse_proxy server:3001
+  }
+  handle {
+    reverse_proxy frontend:80
+  }
+}
+```
+
+Команды для прод‑развертывания:
+```
+docker compose down
+docker compose up -d --build
+```
+Проверка:
+- `https://tradingibs.site/` → SPA
+- `https://tradingibs.site/api/status` → 200 ok
+
+TLS‑сертификаты выпускаются автоматически (Let’s Encrypt) — дополнительные ключи не нужны.
+
+## Требования к ресурсам и сборке
+- Для сборки фронтенда рекомендуется минимум 2 ГБ RAM (оптимально 4 ГБ).
+- На слабых серверах включите swap (2–4 ГБ) либо собирайте фронтенд локально/в CI.
+- В Dockerfile фронта билд проходит в стадии `builder` с `NODE_OPTIONS=--max-old-space-size=256`.
+- В runtime используются только прод‑зависимости (`npm ci --omit=dev` используется для сервера; для фронтенда dev‑deps ставятся в builder‑стадии).
+
+Вариант быстрого деплоя без пересборки фронта:
+- Соберите фронт локально/в CI, положите артефакт `dist` в релиз;
+- В `docker/frontend.Dockerfile` можно заменить стадию сборки на простой `COPY dist /usr/share/nginx/html`.
+
+## Права и тома сервера
+- Смонтированная `server/datasets` должна быть доступна пользователю контейнера (uid/gid 1000). На хосте:
+```
+sudo chgrp -R 1000 server/datasets && sudo chmod -R 2775 server/datasets
+```
 
 ## Примечания по деплою
 - При работе за реверс‑прокси сервер настроен `app.set('trust proxy', true)` — корректно определяется IP клиента для лимитов логина. Убедитесь, что прокси пробрасывает заголовки `X-Forwarded-For` и `X-Forwarded-Proto`.

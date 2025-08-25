@@ -1,0 +1,15 @@
+tradingibs.site {
+  encode gzip
+  log {
+    output file /var/log/caddy/access.log
+  }
+
+  handle_path /api/* {
+    reverse_proxy server:3001
+  }
+
+  handle {
+    reverse_proxy frontend:80
+  }
+}
+
