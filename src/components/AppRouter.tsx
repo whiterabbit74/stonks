@@ -7,7 +7,7 @@ import { DataEnhancer } from './DataEnhancer';
 import { Results } from './Results';
 import { TelegramWatches } from './TelegramWatches';
 import { AppSettings } from './AppSettings';
-import SplitPage from './SplitPage';
+import SplitsTab from './SplitsTab';
 import { Footer } from './Footer';
 import { ThemeToggle } from './ThemeToggle';
 import { API_BASE_URL } from '../lib/api';
@@ -245,7 +245,7 @@ export default function AppRouter() {
           <Route path="/data" element={<DataUpload />} />
           <Route path="/enhance" element={<DataEnhancer />} />
           <Route path="/results" element={<Results />} />
-          <Route path="/split" element={<SplitPage />} />
+          <Route path="/split" element={<SplitsTab />} />
           <Route path="/watches" element={<TelegramWatches />} />
           <Route path="/settings" element={<AppSettings />} />
         </Route>

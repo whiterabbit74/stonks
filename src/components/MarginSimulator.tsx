@@ -14,6 +14,13 @@ interface SimulationResult {
   marginCallDate?: Date;
 }
 
+function formatCurrency(value: number): string {
+  return '$' + value.toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  });
+}
+
 function simulateLeverage(equity: EquityPoint[], leverage: number): SimulationResult {
   if (!equity || equity.length === 0 || leverage <= 0) {
     return { equity: [], maxDrawdown: 0, finalValue: 0, marginCall: false };
@@ -107,7 +114,7 @@ export function MarginSimulator({ equity }: MarginSimulatorProps) {
 
       <div className="flex flex-wrap gap-3 text-sm">
         <div className="bg-gray-50 px-3 py-2 rounded border dark:bg-gray-800 dark:border-gray-700">
-          Итоговый депозит: {simFinal.toFixed(2)}
+          Итоговый депозит: {formatCurrency(simFinal)}
         </div>
         <div className="bg-gray-50 px-3 py-2 rounded border dark:bg-gray-800 dark:border-gray-700">
           Макс. просадка: {simMaxDD.toFixed(2)}%
