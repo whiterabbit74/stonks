@@ -305,7 +305,8 @@ async function logLoginAttempt({ ip, success, reason, username }) {
   await appendSafe(LOGIN_LOG_FILE, line);
   try {
     const note = success ? '✅ Успешный вход' : '⚠️ Неуспешная попытка входа';
-    await sendTelegramMessage(TELEGRAM_CHAT_ID, `${note}\nIP: ${ip}\nUser: ${username || '-'}\nПричина: ${reason || '—'}`);
+    const text = `${note}\nIP: ${ip}\nUser: ${username || '-'}` + (success ? '' : `\nПричина: ${reason || '—'}`);
+    await sendTelegramMessage(TELEGRAM_CHAT_ID, text);
   } catch {}
 }
 
