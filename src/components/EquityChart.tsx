@@ -4,9 +4,10 @@ import type { EquityPoint } from '../types';
 
 interface EquityChartProps {
   equity: EquityPoint[];
+  hideHeader?: boolean;
 }
 
-export function EquityChart({ equity }: EquityChartProps) {
+export function EquityChart({ equity, hideHeader }: EquityChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const [isDark, setIsDark] = useState<boolean>(() => typeof document !== 'undefined' ? document.documentElement.classList.contains('dark') : false);
@@ -156,16 +157,18 @@ export function EquityChart({ equity }: EquityChartProps) {
 
   return (
     <div className="w-full h-full">
-      <div className="flex flex-wrap gap-4 mb-4 text-sm">
-        <div className="bg-gray-50 px-3 py-2 rounded border dark:bg-gray-800 dark:border-gray-700">
-          <span className="text-gray-700 dark:text-gray-200">Итоговый портфель: {finalValue.toFixed(2)}</span>
-        </div>
-        {(startDate && endDate) && (
+      {!hideHeader && (
+        <div className="flex flex-wrap gap-4 mb-4 text-sm">
           <div className="bg-gray-50 px-3 py-2 rounded border dark:bg-gray-800 dark:border-gray-700">
-            <span className="text-gray-700 dark:text-gray-200">Период: {startDate} — {endDate}</span>
+            <span className="text-gray-700 dark:text-gray-200">Итоговый портфель: {finalValue.toFixed(2)}</span>
           </div>
-        )}
-      </div>
+          {(startDate && endDate) && (
+            <div className="bg-gray-50 px-3 py-2 rounded border dark:bg-gray-800 dark:border-gray-700">
+              <span className="text-gray-700 dark:text-gray-200">Период: {startDate} — {endDate}</span>
+            </div>
+          )}
+        </div>
+      )}
       <div ref={chartContainerRef} className="w-full h-[600px] min-h-0 overflow-hidden" />
     </div>
   );
