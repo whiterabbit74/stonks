@@ -22,6 +22,10 @@ interface AppState {
   watchThresholdPct: number; // близость к IBS-цели для уведомления, %
   setWatchThresholdPct: (value: number) => void;
   
+  // Chart settings
+  indicatorPanePercent: number; // высота панели индикаторов (IBS/объём), %
+  setIndicatorPanePercent: (value: number) => void;
+  
   // Strategy
   currentStrategy: Strategy | null;
   
@@ -69,6 +73,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   resultsRefreshProvider: 'finnhub',
   enhancerProvider: 'alpha_vantage',
   watchThresholdPct: 5,
+  indicatorPanePercent: 7,
   currentStrategy: null,
   backtestResults: null,
   backtestStatus: 'idle',
@@ -81,6 +86,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         resultsQuoteProvider: s.resultsQuoteProvider,
         enhancerProvider: s.enhancerProvider,
         resultsRefreshProvider: s.resultsRefreshProvider || s.resultsQuoteProvider,
+        indicatorPanePercent: typeof s.indicatorPanePercent === 'number' ? s.indicatorPanePercent : 7,
       });
     } catch (e) {
       console.warn('Failed to load app settings:', e instanceof Error ? e.message : e);
@@ -89,12 +95,14 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   saveSettingsToServer: async () => {
     try {
-      const { watchThresholdPct, resultsQuoteProvider, enhancerProvider, resultsRefreshProvider } = get();
-      await DatasetAPI.saveAppSettings({ watchThresholdPct, resultsQuoteProvider, enhancerProvider, resultsRefreshProvider });
+      const { watchThresholdPct, resultsQuoteProvider, enhancerProvider, resultsRefreshProvider, indicatorPanePercent } = get();
+      await DatasetAPI.saveAppSettings({ watchThresholdPct, resultsQuoteProvider, enhancerProvider, resultsRefreshProvider, indicatorPanePercent });
     } catch (e) {
       console.warn('Failed to save app settings:', e instanceof Error ? e.message : e);
     }
   },
+  
+  setIndicatorPanePercent: (value: number) => set({ indicatorPanePercent: value }),
   
   uploadData: async (file: File) => {
     set({ isLoading: true, error: null });

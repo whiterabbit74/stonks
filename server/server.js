@@ -1081,7 +1081,9 @@ function getDefaultSettings() {
     watchThresholdPct: 5,
     resultsQuoteProvider: 'finnhub',
     enhancerProvider: 'alpha_vantage',
-    resultsRefreshProvider: 'finnhub'
+    resultsRefreshProvider: 'finnhub',
+    // Процент высоты панели индикаторов (IBS/объём) от общей высоты графика
+    indicatorPanePercent: 7
   };
 }
 
@@ -1115,13 +1117,18 @@ app.get('/api/settings', async (req, res) => {
 
 app.put('/api/settings', async (req, res) => {
   try {
-    const { watchThresholdPct, resultsQuoteProvider, enhancerProvider, resultsRefreshProvider } = req.body || {};
+    const { watchThresholdPct, resultsQuoteProvider, enhancerProvider, resultsRefreshProvider, indicatorPanePercent } = req.body || {};
     const validProvider = (p) => p === 'alpha_vantage' || p === 'finnhub';
     const next = getDefaultSettings();
     if (typeof watchThresholdPct === 'number') next.watchThresholdPct = watchThresholdPct;
     if (validProvider(resultsQuoteProvider)) next.resultsQuoteProvider = resultsQuoteProvider;
     if (validProvider(enhancerProvider)) next.enhancerProvider = enhancerProvider;
     if (validProvider(resultsRefreshProvider)) next.resultsRefreshProvider = resultsRefreshProvider;
+    if (typeof indicatorPanePercent === 'number') {
+      // Ограничим разумными пределами 0–40%
+      const clamped = Math.max(0, Math.min(40, indicatorPanePercent));
+      next.indicatorPanePercent = clamped;
+    }
     const saved = await writeSettings(next);
     res.json({ success: true, settings: saved });
   } catch (e) {
