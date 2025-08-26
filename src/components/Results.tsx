@@ -12,6 +12,7 @@ import { TradesTable } from './TradesTable';
 import { ProfitFactorChart } from './ProfitFactorChart';
 import { TradeDurationChart } from './TradeDurationChart';
 import { OpenDayDrawdownChart } from './OpenDayDrawdownChart';
+import { MarginSimulator } from './MarginSimulator';
 
 export function Results() {
   const backtestResults = useAppStore(s => s.backtestResults);
@@ -38,7 +39,7 @@ export function Results() {
   const [watching, setWatching] = useState(false);
   const [watchBusy, setWatchBusy] = useState(false);
   
-  type ChartTab = 'price' | 'equity' | 'drawdown' | 'trades' | 'profit' | 'duration' | 'openDayDrawdown';
+  type ChartTab = 'price' | 'equity' | 'drawdown' | 'trades' | 'profit' | 'duration' | 'openDayDrawdown' | 'margin';
   const [activeChart, setActiveChart] = useState<ChartTab>('price');
   
   // Проверка дублей дат в marketData (ключ YYYY-MM-DD)
@@ -560,6 +561,7 @@ export function Results() {
               <button className={`${activeChart === 'profit' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/30 dark:border-blue-900/40 dark:text-blue-200' : 'bg-white border-gray-200 text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'} px-3 py-1.5 rounded border`} onClick={() => setActiveChart('profit')}>Profit factor</button>
               <button className={`${activeChart === 'duration' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/30 dark:border-blue-900/40 dark:text-blue-200' : 'bg-white border-gray-200 text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'} px-3 py-1.5 rounded border`} onClick={() => setActiveChart('duration')}>Длительность</button>
               <button className={`${activeChart === 'openDayDrawdown' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/30 dark:border-blue-900/40 dark:text-blue-200' : 'bg-white border-gray-200 text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'} px-3 py-1.5 rounded border`} onClick={() => setActiveChart('openDayDrawdown')}>Просадка в день открытия</button>
+              <button className={`${activeChart === 'margin' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/30 dark:border-blue-900/40 dark:text-blue-200' : 'bg-white border-gray-200 text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'} px-3 py-1.5 rounded border`} onClick={() => setActiveChart('margin')}>Маржа</button>
             </div>
 
             {activeChart === 'price' && (
@@ -584,6 +586,9 @@ export function Results() {
             )}
             {activeChart === 'openDayDrawdown' && (
               <OpenDayDrawdownChart trades={trades} data={marketData} />
+            )}
+            {activeChart === 'margin' && (
+              <MarginSimulator equity={equity} />
             )}
           </section>
         </div>
