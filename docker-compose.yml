@@ -1,4 +1,5 @@
 services:
+  # Production (default) — data in named volumes, secrets via env_file or Docker secrets
   server:
     build:
       context: .
@@ -9,25 +10,15 @@ services:
       - ./server/.env
     environment:
       - PORT=3001
-      - ADMIN_USERNAME=${ADMIN_USERNAME:-admin@example.com}
-      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
       - FRONTEND_ORIGIN=${FRONTEND_ORIGIN:-http://localhost}
       - BUILD_ID=${BUILD_ID:-dev}
-      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
-      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
-      - ALPHA_VANTAGE_API_KEY=${ALPHA_VANTAGE_API_KEY}
-      - FINNHUB_API_KEY=${FINNHUB_API_KEY}
-      - TWELVE_DATA_API_KEY=${TWELVE_DATA_API_KEY}
-      - POLYGON_API_KEY=${POLYGON_API_KEY}
-      # Можно переопределить пути логов (по умолчанию они в datasets/)
-      # - MONITOR_LOG_PATH=/app/server/datasets/monitoring.log
-      # - LOGIN_LOG_PATH=/app/server/datasets/login-attempts.log
+      - DATASETS_DIR=/data/datasets
+      - SETTINGS_FILE=/data/state/settings.json
+      - WATCHES_FILE=/data/state/telegram-watches.json
+      - SPLITS_FILE=/data/state/splits.json
     volumes:
-      - ./server/datasets:/app/server/datasets
-      - ./server/settings.json:/app/server/settings.json
-      - ./server/telegram-watches.json:/app/server/telegram-watches.json
-      - ./server/splits.json:/app/server/splits.json
-      - ./server/.env:/app/.env:ro
+      - stonks_datasets:/data/datasets
+      - stonks_state:/data/state
     ports:
       - "3001:3001"
     restart: unless-stopped
@@ -69,5 +60,64 @@ services:
       - server
     volumes:
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+
+  # Development profile — convenient bind mounts to repo files
+  server-dev:
+    profiles: ["dev"]
+    build:
+      context: .
+      dockerfile: docker/server.Dockerfile
+      args:
+        BUILD_ID: "${BUILD_ID:-dev}"
+    env_file:
+      - ./server/.env
+    environment:
+      - PORT=3001
+      - FRONTEND_ORIGIN=${FRONTEND_ORIGIN:-http://localhost:5173}
+      - BUILD_ID=${BUILD_ID:-dev}
+      - DATASETS_DIR=/data/datasets
+      - SETTINGS_FILE=/data/state/settings.json
+      - WATCHES_FILE=/data/state/telegram-watches.json
+      - SPLITS_FILE=/data/state/splits.json
+    volumes:
+      - ./server/datasets:/data/datasets
+      - ./server/settings.json:/data/state/settings.json
+      - ./server/telegram-watches.json:/data/state/telegram-watches.json
+      - ./server/splits.json:/data/state/splits.json
+    ports:
+      - "3001:3001"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3001/api/status').then(r=>r.ok?process.exit(0):process.exit(1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  frontend-dev:
+    profiles: ["dev"]
+    build:
+      context: .
+      dockerfile: docker/frontend.Dockerfile
+      args:
+        PUBLIC_BASE_PATH: "/"
+        VITE_API_BASE: "/api"
+        VITE_BUILD_ID: "${BUILD_ID:-dev}"
+    depends_on:
+      - server-dev
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost/api/status" ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    environment:
+      - PUBLIC_BASE_PATH=/
+      - VITE_API_BASE=/api
+
+volumes:
+  stonks_datasets:
+  stonks_state:
 
 
