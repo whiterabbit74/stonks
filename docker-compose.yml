@@ -62,6 +62,9 @@ services:
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
+    environment:
+      - DOMAIN=${DOMAIN:-example.com}
+      - TLS_CA=${TLS_CA:-https://acme-staging-v02.api.letsencrypt.org/directory}
     restart: unless-stopped
 
   # Development profile — convenient bind mounts to repo files
