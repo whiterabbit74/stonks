@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createChart, type IChartApi, type ISeriesApi, type UTCTimestamp } from 'lightweight-charts';
 import { formatOHLCYMD, parseOHLCDate } from '../lib/utils';
 import type { OHLCData, Trade, SplitEvent } from '../types';
+import { useAppStore } from '../stores';
 
 interface TradingChartProps {
   data: OHLCData[];
@@ -23,6 +24,7 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
   const [showIBS, setShowIBS] = useState(false);
   const [showVolume, setShowVolume] = useState(false);
   const [isDark, setIsDark] = useState<boolean>(() => typeof document !== 'undefined' ? document.documentElement.classList.contains('dark') : false);
+  const indicatorPanePercent = useAppStore(s => s.indicatorPanePercent);
 
   // Функция для расчета EMA
   const calculateEMA = (data: OHLCData[], period: number): number[] => {
@@ -72,13 +74,15 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
         layout: { background: { color: bg }, textColor: text },
         grid: { vertLines: { color: grid }, horzLines: { color: grid } },
         crosshair: { mode: 1 },
-        // Keep main price scale margins small; indicator will occupy its own 20% area
+        // Keep main price scale margins small; indicator will occupy its own configurable area
         rightPriceScale: { borderColor: border, scaleMargins: { top: 0.05, bottom: 0.05 } },
         timeScale: { borderColor: border, timeVisible: true, secondsVisible: false, rightOffset: 8 },
       });
 
-      // Indicator price scale occupies bottom 20% of the pane
-      try { chart.priceScale('indicator').applyOptions({ scaleMargins: { top: 0.80, bottom: 0 }, borderColor: border }); } catch {}
+      // Indicator price scale occupies bottom X% of the pane
+      const indicatorFraction = Math.max(0, Math.min(0.4, (indicatorPanePercent || 7) / 100));
+      const topMargin = 1 - indicatorFraction; // e.g. 0.93 when 7%
+      try { chart.priceScale('indicator').applyOptions({ scaleMargins: { top: topMargin, bottom: 0 }, borderColor: border }); } catch {}
 
       chartRef.current = chart;
 

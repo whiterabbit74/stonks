@@ -369,13 +369,13 @@ export class DatasetAPI {
   }
 
   // App settings
-  static async getAppSettings(): Promise<{ watchThresholdPct: number; resultsQuoteProvider: 'alpha_vantage'|'finnhub'; enhancerProvider: 'alpha_vantage'|'finnhub'; resultsRefreshProvider?: 'alpha_vantage'|'finnhub' }> {
+  static async getAppSettings(): Promise<{ watchThresholdPct: number; resultsQuoteProvider: 'alpha_vantage'|'finnhub'; enhancerProvider: 'alpha_vantage'|'finnhub'; resultsRefreshProvider?: 'alpha_vantage'|'finnhub'; indicatorPanePercent?: number }>{
     const response = await fetchWithCreds(`${API_BASE_URL}/settings`);
     if (!response.ok) throw new Error(`Failed to load settings: ${response.status} ${response.statusText}`);
     return response.json();
   }
 
-  static async saveAppSettings(settings: { watchThresholdPct: number; resultsQuoteProvider: 'alpha_vantage'|'finnhub'; enhancerProvider: 'alpha_vantage'|'finnhub'; resultsRefreshProvider?: 'alpha_vantage'|'finnhub' }): Promise<void> {
+  static async saveAppSettings(settings: { watchThresholdPct: number; resultsQuoteProvider: 'alpha_vantage'|'finnhub'; enhancerProvider: 'alpha_vantage'|'finnhub'; resultsRefreshProvider?: 'alpha_vantage'|'finnhub'; indicatorPanePercent?: number }): Promise<void> {
     const response = await fetchWithCreds(`${API_BASE_URL}/settings`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
