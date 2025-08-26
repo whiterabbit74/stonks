@@ -60,6 +60,9 @@ services:
       - server
     volumes:
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    restart: unless-stopped
 
   # Development profile — convenient bind mounts to repo files
   server-dev:
@@ -119,5 +122,9 @@ services:
 volumes:
   stonks_datasets:
   stonks_state:
+  caddy_data:
+    driver: local
+  caddy_config:
+    driver: local
 
 
