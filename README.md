@@ -85,33 +85,26 @@ POLYGON_API_KEY=
 
 ### 1) Подготовка
 - Установите Docker и Docker Compose
-- Создайте файл `.env` в корне репозитория (используется в `docker-compose.yml`):
-```
-ADMIN_USERNAME=admin@example.com
-ADMIN_PASSWORD=your-strong-password
-TELEGRAM_BOT_TOKEN=
-TELEGRAM_CHAT_ID=
-# Для CORS сервера (если обращение не через nginx фронтенда):
-FRONTEND_ORIGIN=http://localhost:5173
-# Для маркировки сборок:
-BUILD_ID=prod-001
-# Ключи провайдеров котировок (опционально):
-ALPHA_VANTAGE_API_KEY=
-FINNHUB_API_KEY=
-TWELVE_DATA_API_KEY=
-POLYGON_API_KEY=
-```
+- Создайте файл `server/.env` (или используйте Docker secrets). Пример: `server/.env.example`.
+- Никаких данных и конфигов больше не хранится в git: они живут в Docker‑томах.
 
-### 2) Старт
+### 2) Старт (prod)
 ```
-docker compose up --build -d
+docker compose pull
+docker compose up -d
 ```
 - Фронтенд: `http://localhost/`
-- API: доступно через фронтенд‑прокси `/api/*` → контейнер `server:3001`
+- API: `/api/*` → контейнер `server:3001`
 
-Датасеты и настройки монтируются как тома из `server/`, чтобы сохранялись между перезапусками.
+Данные и конфиги живут в именованных томах Docker: `stonks_datasets` и `stonks_state`. Git‑операции не влияют на содержимое томов.
 
-### 3) Остановка
+### 3) Старт (dev)
+Профиль `dev` оставляет удобные bind‑mount’ы в рабочую директорию репозитория:
+```
+docker compose --profile dev up --build -d
+```
+
+### 4) Остановка
 ```
 docker compose down
 ```
@@ -120,6 +113,32 @@ docker compose down
 - Nginx в контейнере фронтенда обслуживает SPA на корне `/` и проксирует `/api` на сервис `server`.
 - Путь логина: `/login/`. При отсутствии `ADMIN_PASSWORD` защита отключена в dev, в prod — API может вернуть 503 до конфигурации.
 - Для прод‑режима рекомендуем внешний прокси с HTTPS (например, Caddy/Traefik) поверх сервиса `frontend`.
+
+### Пути данных и миграция
+- Стандартные пути в контейнере задаются переменными окружения:
+  - `DATASETS_DIR=/data/datasets`
+  - `SETTINGS_FILE=/data/state/settings.json`
+  - `WATCHES_FILE=/data/state/telegram-watches.json`
+  - `SPLITS_FILE=/data/state/splits.json`
+- При первом старте, если том пустой, entrypoint выполняет однократную миграцию:
+  - Копирует `server/datasets` → `/data/datasets`
+  - Копирует `server/settings.json`, `telegram-watches.json`, `splits.json` → `/data/state/*`
+
+### Secrets
+- Для простого случая используйте `env_file: server/.env` (см. пример `server/.env.example`).
+- Для повышенной безопасности используйте Docker secrets и монтируйте их в `/run/secrets/*` (entrypoint автоматически загрузит значения, если соответствующая переменная не установлена).
+- Не дублируйте переменные в секции `environment`, чтобы не перебить `env_file`.
+
+### Бэкапы томов
+```
+# Резервная копия
+docker run --rm -v stonks_datasets:/v -v $(pwd):/b busybox sh -c 'cd /v && tar czf /b/stonks_datasets.tgz .'
+docker run --rm -v stonks_state:/v -v $(pwd):/b busybox sh -c 'cd /v && tar czf /b/stonks_state.tgz .'
+
+# Восстановление
+docker run --rm -v stonks_datasets:/v -v $(pwd):/b busybox sh -c 'cd /v && tar xzf /b/stonks_datasets.tgz'
+docker run --rm -v stonks_state:/v -v $(pwd):/b busybox sh -c 'cd /v && tar xzf /b/stonks_state.tgz'
+```
 
 ## Реальные рыночные данные (опционально)
 

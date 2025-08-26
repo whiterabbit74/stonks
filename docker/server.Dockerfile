@@ -21,14 +21,21 @@ RUN set -e; cd server; npm config set registry "${NPM_CONFIG_REGISTRY}"; for i i
     done
 
 COPY server ./server
+COPY docker/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 # Inject build id into runtime image (available to server via process.env.BUILD_ID)
 ARG BUILD_ID=dev
 ENV BUILD_ID=$BUILD_ID
 # Ensure dotenv loads if mounted .env present at /app/.env
 ENV NODE_ENV=production
 
-ENV PORT=3001
+ENV PORT=3001 \
+    DATASETS_DIR=/data/datasets \
+    SETTINGS_FILE=/data/state/settings.json \
+    WATCHES_FILE=/data/state/telegram-watches.json \
+    SPLITS_FILE=/data/state/splits.json
 EXPOSE 3001
+ENTRYPOINT ["/entrypoint.sh"]
 CMD ["node", "server/server.js"]
 
 
