@@ -19,6 +19,11 @@ export function SplitsTab() {
   const [actionMsg, setActionMsg] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // JSON input state for direct paste
+  const [jsonText, setJsonText] = useState<string>('');
+  const [jsonUpdates, setJsonUpdates] = useState<Record<string, Array<SplitEvent>>>({});
+  const [jsonError, setJsonError] = useState<string | null>(null);
+
   async function refresh() {
     setLoading(true); setError(null);
     try {
@@ -161,6 +166,75 @@ export function SplitsTab() {
       .filter(e => !!e.date && isFinite(e.factor) && e.factor > 0 && e.factor !== 1);
   }
 
+  function parseJsonInput(text: string) {
+    setJsonText(text);
+    if (!text.trim()) {
+      setJsonUpdates({});
+      setJsonError(null);
+      return;
+    }
+    try {
+      const parsed = JSON.parse(text);
+      const updates: Record<string, Array<SplitEvent>> = {};
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        const maybeSymbol = (parsed.symbol || parsed.ticker) && parsed.events;
+        if (maybeSymbol && Array.isArray(parsed.events)) {
+          const sym = String(parsed.symbol || parsed.ticker).toUpperCase();
+          updates[sym] = normalizeEvents(parsed.events);
+        } else {
+          for (const [k, v] of Object.entries(parsed as Record<string, any>)) {
+            const sym = String(k).toUpperCase();
+            updates[sym] = normalizeEvents(v as any[]);
+          }
+        }
+      } else if (Array.isArray(parsed)) {
+        throw new Error('Неизвестный формат: для массива событий используйте объект { "SYMBOL": [ ... ] }');
+      } else {
+        throw new Error('Неподдерживаемый формат JSON');
+      }
+      const pruned = Object.fromEntries(
+        Object.entries(updates).filter(([, ev]) => Array.isArray(ev) && ev.length > 0)
+      );
+      if (Object.keys(pruned).length === 0) {
+        setJsonUpdates({});
+        setJsonError('Нет валидных событий в JSON');
+      } else {
+        setJsonUpdates(pruned);
+        setJsonError(null);
+      }
+    } catch (e) {
+      setJsonUpdates({});
+      setJsonError(e instanceof Error ? e.message : 'Ошибка разбора JSON');
+    }
+  }
+
+  async function applyJsonUpdates() {
+    const entries = Object.entries(jsonUpdates);
+    if (entries.length === 0) return;
+    setActionBusy(true); setActionMsg(null);
+    try {
+      let ok = 0; let fail = 0;
+      for (const [sym, events] of entries) {
+        try {
+          await DatasetAPI.setSplits(sym, events);
+          ok++;
+        } catch (e) {
+          console.warn('Failed to apply JSON splits for', sym, e);
+          fail++;
+        }
+      }
+      await refresh();
+      setActionMsg(`Применено из JSON: обновлено ${ok}, ошибок ${fail}`);
+      setJsonText('');
+      setJsonUpdates({});
+      setJsonError(null);
+    } catch (e) {
+      setActionMsg(e instanceof Error ? e.message : 'Ошибка применения JSON');
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
   async function importSplitsFromFile(file: File) {
     setActionBusy(true); setActionMsg(null);
     try {
@@ -278,6 +352,62 @@ export function SplitsTab() {
             disabled={actionBusy}
           >Создать</button>
           {actionMsg && <div className="text-xs text-gray-500">{actionMsg}</div>}
+        </div>
+      </div>
+
+      <div className="p-3 bg-white border rounded space-y-2 dark:bg-gray-900 dark:border-gray-800">
+        <div className="font-medium text-sm">Вставить сплиты в виде JSON</div>
+        <div className="text-xs text-gray-500">Вставьте JSON с событиями сплитов. Поддерживаются два формата:</div>
+        <div className="grid md:grid-cols-2 gap-3">
+          <div>
+            <div className="text-xs font-medium mb-1">Пример 1: карта тикеров</div>
+            <pre className="text-xs p-2 rounded border bg-gray-50 overflow-auto dark:bg-gray-800 dark:border-gray-700 dark:text-gray-200">{`{
+  "AAPL": [
+    { "date": "2020-08-31", "factor": 4 },
+    { "date": "2014-06-09", "factor": 7 }
+  ],
+  "TSLA": [
+    { "date": "2020-08-31", "factor": 5 },
+    { "date": "2022-08-25", "factor": 3 }
+  ]
+}`}</pre>
+          </div>
+          <div>
+            <div className="text-xs font-medium mb-1">Пример 2: один тикер</div>
+            <pre className="text-xs p-2 rounded border bg-gray-50 overflow-auto dark:bg-gray-800 dark:border-gray-700 dark:text-gray-200">{`{
+  "symbol": "AAPL",
+  "events": [
+    { "date": "2020-08-31", "factor": 4 },
+    { "date": "2014-06-09", "factor": 7 }
+  ]
+}`}</pre>
+          </div>
+        </div>
+        <textarea
+          className="w-full h-40 border rounded px-2 py-1 text-sm font-mono dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100"
+          placeholder='Вставьте JSON здесь'
+          value={jsonText}
+          onChange={e => parseJsonInput(e.target.value)}
+        />
+        <div className="flex flex-wrap items-center gap-2">
+          {jsonError ? (
+            <div className="text-xs text-red-600">{jsonError}</div>
+          ) : (
+            <div className="text-xs text-gray-600 dark:text-gray-400">
+              {Object.keys(jsonUpdates).length > 0 ? (
+                <span>
+                  Будет обновлено {Object.keys(jsonUpdates).length} тикеров, всего {Object.values(jsonUpdates).reduce((s, arr) => s + arr.length, 0)} событий
+                </span>
+              ) : (
+                <span>Ожидается валидный JSON</span>
+              )}
+            </div>
+          )}
+          <button
+            className="ml-auto px-3 py-1.5 text-sm rounded bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-60"
+            onClick={applyJsonUpdates}
+            disabled={actionBusy || Object.keys(jsonUpdates).length === 0}
+          >Применить JSON</button>
         </div>
       </div>
 
