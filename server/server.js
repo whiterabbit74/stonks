@@ -305,7 +305,7 @@ async function logLoginAttempt({ ip, success, reason, username }) {
   await appendSafe(LOGIN_LOG_FILE, line);
   try {
     const note = success ? '✅ Успешный вход' : '⚠️ Неуспешная попытка входа';
-    const text = `${note}\nIP: ${ip}\nUser: ${username || '-'}` + (success ? '' : `\nПричина: ${reason || '—'}`);
+    const text = `${note}\nIP: ${ip}\nUser: ${username || '-'}` + (success ? '' : (reason ? `\nПричина: ${reason}` : ''));
     await sendTelegramMessage(TELEGRAM_CHAT_ID, text);
   } catch {}
 }
@@ -1119,7 +1119,6 @@ app.get('/api/settings', async (req, res) => {
 app.put('/api/settings', async (req, res) => {
   try {
     const { watchThresholdPct, resultsQuoteProvider, enhancerProvider, resultsRefreshProvider, indicatorPanePercent } = req.body || {};
-    console.log('Received settings:', { watchThresholdPct, resultsQuoteProvider, enhancerProvider, resultsRefreshProvider, indicatorPanePercent });
     const validProvider = (p) => p === 'alpha_vantage' || p === 'finnhub';
     const next = getDefaultSettings();
     if (typeof watchThresholdPct === 'number') next.watchThresholdPct = watchThresholdPct;
@@ -1130,14 +1129,10 @@ app.put('/api/settings', async (req, res) => {
       // Ограничим разумными пределами 0–40%
       const clamped = Math.max(0, Math.min(40, indicatorPanePercent));
       next.indicatorPanePercent = clamped;
-      console.log('Set indicatorPanePercent to:', clamped);
     }
-    console.log('Final settings object:', next);
     const saved = await writeSettings(next);
-    console.log('Saved settings:', saved);
     res.json({ success: true, settings: saved });
   } catch (e) {
-    console.error('Settings save error:', e);
     res.status(500).json({ error: e.message || 'Failed to save settings' });
   }
 });
