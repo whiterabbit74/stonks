@@ -10,21 +10,10 @@ services:
       - ./server/.env
     environment:
       - PORT=3001
-      - FRONTEND_ORIGIN=${FRONTEND_ORIGIN}
-      - BUILD_ID=${BUILD_ID}
       - DATASETS_DIR=/data/datasets
       - SETTINGS_FILE=/data/state/settings.json
       - WATCHES_FILE=/data/state/telegram-watches.json
       - SPLITS_FILE=/data/state/splits.json
-      - ADMIN_USERNAME=${ADMIN_USERNAME}
-      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
-      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
-      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
-      - ALPHA_VANTAGE_API_KEY=${ALPHA_VANTAGE_API_KEY}
-      - FINNHUB_API_KEY=${FINNHUB_API_KEY}
-      - TWELVE_DATA_API_KEY=${TWELVE_DATA_API_KEY}
-      - POLYGON_API_KEY=${POLYGON_API_KEY}
-      - PREFERRED_API_PROVIDER=${PREFERRED_API_PROVIDER}
     volumes:
       - stonks_datasets:/data/datasets
       - stonks_state:/data/state
@@ -88,8 +77,6 @@ services:
       - ./server/.env
     environment:
       - PORT=3001
-      - FRONTEND_ORIGIN=${FRONTEND_ORIGIN:-http://localhost:5173}
-      - BUILD_ID=${BUILD_ID:-dev}
       - DATASETS_DIR=/data/datasets
       - SETTINGS_FILE=/data/state/settings.json
       - WATCHES_FILE=/data/state/telegram-watches.json
