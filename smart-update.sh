@@ -11,6 +11,31 @@ if [ ! -f "docker-compose.yml" ]; then
     exit 1
 fi
 
+# Проверяем SSL конфигурацию перед обновлением
+echo "🔒 Проверяю SSL конфигурацию..."
+
+# Check if Caddyfile exists and check for staging
+if [ -f "caddy/Caddyfile" ]; then
+    if grep -q "staging" caddy/Caddyfile; then
+        echo "⚠️  ВНИМАНИЕ: Найдены STAGING настройки в Caddyfile!"
+        echo "   Это может привести к использованию тестовых SSL сертификатов."
+        echo ""
+        echo "   Рекомендуется обновить до production настроек:"
+        echo "   TLS_CA=https://acme-v02.api.letsencrypt.org/directory"
+        echo ""
+        read -p "Продолжить с текущими настройками? (y/N): " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            echo "❌ Обновление отменено пользователем"
+            exit 1
+        fi
+    else
+        echo "✅ SSL конфигурация выглядит корректной"
+    fi
+else
+    echo "⚠️  Caddyfile не найден, будет создан новый"
+fi
+
 # Создаем бэкап важных файлов
 timestamp=$(date +"%Y%m%d_%H%M%S")
 backup_name="smart_backup_${timestamp}"
@@ -84,9 +109,20 @@ docker compose up -d
 # Ожидаем запуска
 sleep 20
 
-# Проверяем работу
+# Проверяем работу и SSL
 echo "✅ Проверяю работу..."
-curl -k -I https://tradingibs.site/ | head -3
+if curl -k -I https://tradingibs.site/ | head -3 | grep -q "200"; then
+    echo "✅ HTTP соединение работает"
+
+    # Проверяем SSL сертификат
+    if curl -I https://tradingibs.site/ 2>/dev/null | grep -q "HTTP/2"; then
+        echo "✅ SSL сертификат валиден (HTTP/2)"
+    else
+        echo "⚠️  SSL сертификат может быть проблемным"
+    fi
+else
+    echo "❌ HTTP соединение не работает"
+fi
 
 # Очищаем временные файлы
 rm -rf /tmp/stonks-update

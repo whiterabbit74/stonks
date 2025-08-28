@@ -15,12 +15,19 @@ NC='\033[0m' # No Color
 
 # Configuration
 DOMAIN=${DOMAIN:-"tradingibs.site"}
-TLS_CA=${TLS_CA:-"https://acme-staging-v02.api.letsencrypt.org/directory"}
+TLS_CA=${TLS_CA:-"https://acme-v02.api.letsencrypt.org/directory"}
 
 echo -e "${YELLOW}Конфигурация:${NC}"
 echo "  DOMAIN: $DOMAIN"
 echo "  TLS_CA: $TLS_CA"
-echo ""
+
+# Warning for staging certificates
+if [[ "$TLS_CA" == *"staging"* ]]; then
+    echo -e "${RED}⚠️  ВНИМАНИЕ: Используется STAGING SSL сертификат!${NC}"
+    echo -e "${RED}   Это тестовый сертификат, который не будет доверен браузерами.${NC}"
+    echo -e "${RED}   Для продакшена используйте: TLS_CA=https://acme-v02.api.letsencrypt.org/directory${NC}"
+    echo ""
+fi
 
 # Function to print status
 status() {
