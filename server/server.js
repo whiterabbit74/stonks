@@ -285,6 +285,26 @@ app.get('/api/splits', async (req, res) => {
   }
 });
 
+// Trading calendar endpoint: return calendar data from trading-calendar.json
+app.get('/api/trading-calendar', async (req, res) => {
+  try {
+    const calendarPath = path.join(__dirname, 'trading-calendar.json');
+    const calendarData = await fs.readJson(calendarPath);
+    res.json(calendarData || {
+      metadata: { version: "1.0", years: [] },
+      holidays: {},
+      shortDays: {},
+      weekends: { description: "Выходные дни автоматически определяются" },
+      tradingHours: {
+        normal: { start: "10:00", end: "18:40" },
+        short: { start: "10:00", end: "14:00" }
+      }
+    });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to load trading calendar' });
+  }
+});
+
 // Auth endpoints
 // Rate limiting: max 3 attempts per 24h per IP
 const LOGIN_WINDOW_MS = 24 * 60 * 60 * 1000; // 24 hours
