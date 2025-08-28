@@ -97,12 +97,12 @@ function ProtectedLayout() {
   }, [backtestResults, navigate]);
 
   const tabs = [
-    { to: '/data', label: 'Данные' },
-    { to: '/enhance', label: 'Новые данные' },
-    { to: '/results', label: 'Результаты' },
-    { to: '/calendar', label: 'Календарь' },
-    { to: '/split', label: 'Сплит' },
-    { to: '/watches', label: 'Мониторинг' },
+    { to: '/data', label: 'Data' },
+    { to: '/enhance', label: 'New Data' },
+    { to: '/results', label: 'Results' },
+    { to: '/calendar', label: 'Calendar' },
+    { to: '/split', label: 'Split' },
+    { to: '/watches', label: 'Monitor' },
   ];
 
   const handleLogout = async () => {

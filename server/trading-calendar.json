@@ -1,81 +1,59 @@
 {
   "metadata": {
     "version": "1.0",
-    "description": "Календарь нерабочих дней и сокращенных торговых дней",
+    "description": "US Stock Market Holiday Calendar - NYSE Trading Days",
     "lastUpdated": "2025-01-01",
     "years": ["2025", "2026"]
   },
   "holidays": {
     "2025": {
-      "01-01": { "name": "Новый год", "type": "holiday", "description": "Нерабочий день" },
-      "01-02": { "name": "Новый год", "type": "holiday", "description": "Нерабочий день" },
-      "01-03": { "name": "Новый год", "type": "holiday", "description": "Нерабочий день" },
-      "01-04": { "name": "Новый год", "type": "holiday", "description": "Нерабочий день" },
-      "01-05": { "name": "Новый год", "type": "holiday", "description": "Нерабочий день" },
-      "01-06": { "name": "Новый год", "type": "holiday", "description": "Нерабочий день" },
-      "01-07": { "name": "Рождество Христово", "type": "holiday", "description": "Нерабочий день" },
-      "01-08": { "name": "Новый год", "type": "holiday", "description": "Нерабочий день" },
-      "02-23": { "name": "День защитника Отечества", "type": "holiday", "description": "Нерабочий день" },
-      "03-08": { "name": "Международный женский день", "type": "holiday", "description": "Нерабочий день" },
-      "03-10": { "name": "День защитника Отечества", "type": "holiday", "description": "Перенос с 23.02" },
-      "05-01": { "name": "Праздник Весны и Труда", "type": "holiday", "description": "Нерабочий день" },
-      "05-04": { "name": "Международный женский день", "type": "holiday", "description": "Перенос с 08.03" },
-      "05-09": { "name": "День Победы", "type": "holiday", "description": "Нерабочий день" },
-      "06-12": { "name": "День России", "type": "holiday", "description": "Нерабочий день" },
-      "11-04": { "name": "День народного единства", "type": "holiday", "description": "Нерабочий день" },
-      "12-31": { "name": "Новый год", "type": "holiday", "description": "Нерабочий день" }
+      "01-01": { "name": "New Year's Day", "type": "holiday", "description": "Market Closed" },
+      "01-20": { "name": "Martin Luther King Jr. Day", "type": "holiday", "description": "Market Closed" },
+      "02-17": { "name": "Presidents' Day", "type": "holiday", "description": "Market Closed" },
+      "04-18": { "name": "Good Friday", "type": "holiday", "description": "Market Closed" },
+      "05-26": { "name": "Memorial Day", "type": "holiday", "description": "Market Closed" },
+      "06-19": { "name": "Juneteenth", "type": "holiday", "description": "Market Closed" },
+      "07-04": { "name": "Independence Day", "type": "holiday", "description": "Market Closed" },
+      "09-01": { "name": "Labor Day", "type": "holiday", "description": "Market Closed" },
+      "11-27": { "name": "Thanksgiving Day", "type": "holiday", "description": "Market Closed" },
+      "12-25": { "name": "Christmas Day", "type": "holiday", "description": "Market Closed" }
     },
     "2026": {
-      "01-01": { "name": "Новый год", "type": "holiday", "description": "Нерабочий день" },
-      "01-02": { "name": "Новый год", "type": "holiday", "description": "Нерабочий день" },
-      "01-03": { "name": "Новый год", "type": "holiday", "description": "Нерабочий день" },
-      "01-04": { "name": "Новый год", "type": "holiday", "description": "Нерабочий день" },
-      "01-05": { "name": "Новый год", "type": "holiday", "description": "Нерабочий день" },
-      "01-06": { "name": "Новый год", "type": "holiday", "description": "Нерабочий день" },
-      "01-07": { "name": "Рождество Христово", "type": "holiday", "description": "Нерабочий день" },
-      "01-08": { "name": "Новый год", "type": "holiday", "description": "Нерабочий день" },
-      "02-23": { "name": "День защитника Отечества", "type": "holiday", "description": "Нерабочий день" },
-      "03-08": { "name": "Международный женский день", "type": "holiday", "description": "Нерабочий день" },
-      "05-01": { "name": "Праздник Весны и Труда", "type": "holiday", "description": "Нерабочий день" },
-      "05-09": { "name": "День Победы", "type": "holiday", "description": "Нерабочий день" },
-      "06-12": { "name": "День России", "type": "holiday", "description": "Нерабочий день" },
-      "11-04": { "name": "День народного единства", "type": "holiday", "description": "Нерабочий день" },
-      "12-31": { "name": "Новый год", "type": "holiday", "description": "Нерабочий день" }
+      "01-01": { "name": "New Year's Day", "type": "holiday", "description": "Market Closed" },
+      "01-19": { "name": "Martin Luther King Jr. Day", "type": "holiday", "description": "Market Closed" },
+      "02-16": { "name": "Presidents' Day", "type": "holiday", "description": "Market Closed" },
+      "04-03": { "name": "Good Friday", "type": "holiday", "description": "Market Closed" },
+      "05-25": { "name": "Memorial Day", "type": "holiday", "description": "Market Closed" },
+      "06-19": { "name": "Juneteenth", "type": "holiday", "description": "Market Closed" },
+      "07-04": { "name": "Independence Day", "type": "holiday", "description": "Market Closed" },
+      "09-07": { "name": "Labor Day", "type": "holiday", "description": "Market Closed" },
+      "11-26": { "name": "Thanksgiving Day", "type": "holiday", "description": "Market Closed" },
+      "12-25": { "name": "Christmas Day", "type": "holiday", "description": "Market Closed" }
     }
   },
   "shortDays": {
     "2025": {
-      "01-31": { "name": "Канун Нового года", "type": "short", "description": "Сокращенный день (7 часов)", "hours": 7 },
-      "02-21": { "name": "Канун Дня защитника Отечества", "type": "short", "description": "Сокращенный день (7 часов)", "hours": 7 },
-      "03-07": { "name": "Канун Международного женского дня", "type": "short", "description": "Сокращенный день (7 часов)", "hours": 7 },
-      "04-30": { "name": "Канун Праздника Весны и Труда", "type": "short", "description": "Сокращенный день (7 часов)", "hours": 7 },
-      "06-11": { "name": "Канун Дня России", "type": "short", "description": "Сокращенный день (7 часов)", "hours": 7 },
-      "11-03": { "name": "Канун Дня народного единства", "type": "short", "description": "Сокращенный день (7 часов)", "hours": 7 },
-      "12-30": { "name": "Канун Нового года", "type": "short", "description": "Сокращенный день (7 часов)", "hours": 7 }
+      "12-24": { "name": "Christmas Eve", "type": "short", "description": "Early close at 1:00 PM", "hours": 3.5 }
     },
     "2026": {
-      "01-31": { "name": "Канун Нового года", "type": "short", "description": "Сокращенный день (7 часов)", "hours": 7 },
-      "02-21": { "name": "Канун Дня защитника Отечества", "type": "short", "description": "Сокращенный день (7 часов)", "hours": 7 },
-      "03-07": { "name": "Канун Международного женского дня", "type": "short", "description": "Сокращенный день (7 часов)", "hours": 7 },
-      "04-30": { "name": "Канун Праздника Весны и Труда", "type": "short", "description": "Сокращенный день (7 часов)", "hours": 7 },
-      "06-11": { "name": "Канун Дня России", "type": "short", "description": "Сокращенный день (7 часов)", "hours": 7 },
-      "11-03": { "name": "Канун Дня народного единства", "type": "short", "description": "Сокращенный день (7 часов)", "hours": 7 },
-      "12-30": { "name": "Канун Нового года", "type": "short", "description": "Сокращенный день (7 часов)", "hours": 7 }
+      "12-24": { "name": "Christmas Eve", "type": "short", "description": "Early close at 1:00 PM", "hours": 3.5 }
     }
   },
   "weekends": {
-    "description": "Выходные дни (суббота, воскресенье) автоматически определяются как нерабочие"
+    "description": "Weekends (Saturday, Sunday) are automatically determined as non-trading days"
   },
   "tradingHours": {
     "normal": {
-      "start": "10:00",
-      "end": "18:40",
-      "description": "Обычное время торгов"
+      "start": "09:30",
+      "end": "16:00",
+      "description": "Regular trading hours (NYSE)",
+      "timezone": "EST/EDT"
     },
     "short": {
-      "start": "10:00",
-      "end": "14:00",
-      "description": "Сокращенные торги (4 часа)"
+      "start": "09:30",
+      "end": "13:00",
+      "description": "Early close trading hours",
+      "timezone": "EST/EDT"
     }
   }
 }

@@ -199,26 +199,26 @@ export function TradingCalendar() {
       {/* Заголовок */}
       <div className="flex items-center gap-3">
         <Calendar className="w-6 h-6 text-indigo-600" />
-        <h1 className="text-xl font-semibold text-gray-900">Торговый календарь</h1>
+        <h1 className="text-xl font-semibold text-gray-900">US Stock Market Calendar</h1>
       </div>
 
       {/* Легенда */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="flex items-center gap-2 p-3 bg-white border border-gray-200 rounded-lg">
           <div className="w-4 h-4 bg-white border border-gray-300 rounded"></div>
-          <span className="text-sm text-gray-700">Рабочий день</span>
+          <span className="text-sm text-gray-700">Trading Day</span>
         </div>
         <div className="flex items-center gap-2 p-3 bg-gray-50 border border-gray-300 rounded-lg">
           <div className="w-4 h-4 bg-gray-200 rounded"></div>
-          <span className="text-sm text-gray-700">Выходной</span>
+          <span className="text-sm text-gray-700">Weekend</span>
         </div>
         <div className="flex items-center gap-2 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
           <Clock className="w-4 h-4 text-yellow-600" />
-          <span className="text-sm text-gray-700">Сокращенный</span>
+          <span className="text-sm text-gray-700">Early Close</span>
         </div>
         <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg">
           <CheckCircle className="w-4 h-4 text-red-600" />
-          <span className="text-sm text-gray-700">Праздник</span>
+          <span className="text-sm text-gray-700">Holiday</span>
         </div>
       </div>
 
@@ -227,15 +227,16 @@ export function TradingCalendar() {
         <div className="flex items-start gap-3">
           <Clock className="w-5 h-5 text-blue-600 mt-0.5" />
           <div>
-            <h3 className="font-medium text-blue-900 mb-2">Часы работы биржи</h3>
+            <h3 className="font-medium text-blue-900 mb-2">NYSE Trading Hours</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-blue-800">
               <div>
-                <span className="font-medium">Обычные торги:</span> {calendarData.tradingHours.normal.start} - {calendarData.tradingHours.normal.end}
+                <span className="font-medium">Regular Hours:</span> {calendarData.tradingHours.normal.start} - {calendarData.tradingHours.normal.end} EST/EDT
               </div>
               <div>
-                <span className="font-medium">Сокращенные торги:</span> {calendarData.tradingHours.short.start} - {calendarData.tradingHours.short.end}
+                <span className="font-medium">Early Close:</span> {calendarData.tradingHours.short.start} - {calendarData.tradingHours.short.end} EST/EDT
               </div>
             </div>
+            <p className="text-xs text-blue-600 mt-2">* Times shown in Eastern Time (EST/EDT)</p>
           </div>
         </div>
       </div>
@@ -298,7 +299,7 @@ export function TradingCalendar() {
         <div className="bg-white border border-gray-200 rounded-lg p-4">
           <h3 className="text-lg font-semibold text-gray-900 mb-3 flex items-center gap-2">
             <CheckCircle className="w-5 h-5 text-red-600" />
-            Праздники ({selectedYear})
+            US Federal Holidays ({selectedYear})
           </h3>
           <div className="space-y-2">
             {Object.entries(calendarData.holidays[selectedYear] || {}).map(([date, data]) => (
@@ -317,7 +318,7 @@ export function TradingCalendar() {
         <div className="bg-white border border-gray-200 rounded-lg p-4">
           <h3 className="text-lg font-semibold text-gray-900 mb-3 flex items-center gap-2">
             <Clock className="w-5 h-5 text-yellow-600" />
-            Сокращенные дни ({selectedYear})
+            Early Close Days ({selectedYear})
           </h3>
           <div className="space-y-2">
             {Object.entries(calendarData.shortDays[selectedYear] || {}).map(([date, data]) => (
