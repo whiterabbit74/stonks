@@ -41,6 +41,7 @@ services:
     restart: unless-stopped
     volumes:
       - ./dist:/usr/share/nginx/html:ro
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost/"]
       interval: 30s
@@ -65,8 +66,8 @@ services:
       - caddy_data:/data
       - caddy_config:/config
     environment:
-      - DOMAIN=${DOMAIN:-example.com}
-      - TLS_CA=${TLS_CA:-https://acme-staging-v02.api.letsencrypt.org/directory}
+      - DOMAIN=${DOMAIN:-tradingibs.site}
+      - TLS_CA=${TLS_CA:-https://acme-v02.api.letsencrypt.org/directory}
     restart: unless-stopped
     container_name: stonks-caddy
 
