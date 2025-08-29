@@ -41,3 +41,10 @@ server/*.log
 server/datasets/
 
 .env.remote
+
+# Temporary deployment files (should not be in repo)
+*.tgz
+cookies.txt
+config-update.tgz
+frontend-*.tgz
+server-*.tgz
