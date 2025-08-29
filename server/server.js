@@ -2105,7 +2105,7 @@ app.get('/api/quote/:symbol', async (req, res) => {
 app.get('/api/splits', async (req, res) => {
   try {
     const splits = await loadSplits();
-    const map: Record<string, Array<{ date: string; factor: number }>> = {};
+    const map = {};
 
     // Group splits by ticker
     for (const [ticker, events] of Object.entries(splits)) {
