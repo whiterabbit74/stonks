@@ -26,7 +26,7 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
   const [success, setSuccess] = useState<string | null>(null);
   const [, setDataGaps] = useState<{ missing: number; lastDate: string; firstDate: string } | null>(null);
   const [, setSelectedAction] = useState<'enhance' | 'replace'>('enhance');
-  // Mode state removed - not actively used
+  const [mode, setMode] = useState<'existing' | 'new'>('existing');
   // const { loadDatasetsFromServer } = useAppStore();
   // Убрали промпт ручного сохранения
   // Всегда грузим всю доступную историю (~до 40 лет), выбор периода убран
@@ -41,7 +41,7 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
   // Синхронизируем действие с выбранным режимом: existing -> enhance, new -> replace
   useEffect(() => {
     setSelectedAction(mode === 'existing' ? 'enhance' : 'replace');
-  }, []);
+  }, [mode, setSelectedAction]);
 
   // Анализируем пропуски в данных при загрузке компонента
   useEffect(() => {

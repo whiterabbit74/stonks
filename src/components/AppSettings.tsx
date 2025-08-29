@@ -36,6 +36,8 @@ export function AppSettings() {
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [settingsSaveOk, setSettingsSaveOk] = useState<string | null>(null);
   const [settingsSaveErr, setSettingsSaveErr] = useState<string | null>(null);
+  const [settingsLoading, setSettingsLoading] = useState(false);
+  const [settings, setSettings] = useState<any>({});
 
   // API key inputs (unmasked for editing)
   const [alphaVantageKey, setAlphaVantageKey] = useState('');

@@ -2100,6 +2100,30 @@ app.get('/api/quote/:symbol', async (req, res) => {
 
 // Splits endpoints
 // Read-only endpoints are public (guarded in middleware). Mutations require auth.
+
+// Get all splits map (for compatibility with getSplitsMap)
+app.get('/api/splits', async (req, res) => {
+  try {
+    const splits = await loadSplits();
+    const map: Record<string, Array<{ date: string; factor: number }>> = {};
+
+    // Group splits by ticker
+    for (const [ticker, events] of Object.entries(splits)) {
+      if (Array.isArray(events)) {
+        map[ticker] = events.map(e => ({
+          date: e.date,
+          factor: e.factor
+        }));
+      }
+    }
+
+    return res.json(map);
+  } catch (e) {
+    console.error('Failed to load splits map:', e);
+    return res.status(500).json({ error: 'Failed to load splits map' });
+  }
+});
+
 app.get('/api/splits/:symbol', async (req, res) => {
   try {
     const raw = (req.params.symbol || '').toString();
