@@ -24,6 +24,28 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
   const [confirmTarget, setConfirmTarget] = useState<string | null>(null);
   const [loadingId, setLoadingId] = useState<string | null>(null);
 
+  // Состояние для фильтра по тегам
+  const [selectedTag, setSelectedTag] = useState<string>('top');
+
+  // Получаем все уникальные теги из датасетов
+  const allTags = React.useMemo(() => {
+    const tags = new Set<string>();
+    savedDatasets.forEach(dataset => {
+      if (dataset.tag) {
+        tags.add(dataset.tag);
+      }
+    });
+    return Array.from(tags).sort();
+  }, [savedDatasets]);
+
+  // Фильтруем датасеты по выбранному тегу
+  const filteredDatasets = React.useMemo(() => {
+    if (selectedTag === 'all') {
+      return savedDatasets;
+    }
+    return savedDatasets.filter(dataset => dataset.tag === selectedTag);
+  }, [savedDatasets, selectedTag]);
+
   // Состояние для модального окна редактирования
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editingDataset, setEditingDataset] = useState<Omit<SavedDataset, 'data'> | null>(null);
@@ -136,7 +158,7 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
         <div className="flex items-center gap-2">
           <Database className="w-5 h-5 text-blue-600" />
           <h3 className="font-semibold text-gray-900">
-            Библиотека датасетов ({savedDatasets.length})
+            Библиотека датасетов ({filteredDatasets.length}{selectedTag !== 'all' ? ` из ${savedDatasets.length}` : ''})
           </h3>
           
           {/* Server Status */}
@@ -162,6 +184,35 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
             </span>
           )}
         </div>
+
+        {/* Фильтр по тегам */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-sm text-gray-600 dark:text-gray-400">Фильтр:</span>
+          <button
+            onClick={() => setSelectedTag('all')}
+            className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+              selectedTag === 'all'
+                ? 'bg-blue-100 text-blue-800 border border-blue-200 dark:bg-blue-950/30 dark:text-blue-200 dark:border-blue-900/40'
+                : 'bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:border-gray-700 dark:hover:bg-gray-700'
+            }`}
+          >
+            Все ({savedDatasets.length})
+          </button>
+          {allTags.map(tag => (
+            <button
+              key={tag}
+              onClick={() => setSelectedTag(tag)}
+              className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                selectedTag === tag
+                  ? 'bg-blue-100 text-blue-800 border border-blue-200 dark:bg-blue-950/30 dark:text-blue-200 dark:border-blue-900/40'
+                  : 'bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:border-gray-700 dark:hover:bg-gray-700'
+              }`}
+            >
+              {tag} ({savedDatasets.filter(d => d.tag === tag).length})
+            </button>
+          ))}
+        </div>
+
         <button
           onClick={() => setIsExpanded(!isExpanded)}
           className="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700"
@@ -196,8 +247,20 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
               </code>
             </div>
           )}
+
+          {serverStatus !== 'offline' && savedDatasets.length > 0 && filteredDatasets.length === 0 && selectedTag !== 'all' && (
+            <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+              <div className="flex items-center gap-2 mb-2">
+                <Database className="w-5 h-5 text-blue-600" />
+                <span className="font-medium text-blue-800">Нет датасетов с тегом "{selectedTag}"</span>
+              </div>
+              <p className="text-sm text-blue-700">
+                Выберите другой фильтр или нажмите "Все" чтобы увидеть все датасеты.
+              </p>
+            </div>
+          )}
           
-          {savedDatasets.map((dataset: Omit<SavedDataset, 'data'>) => (
+          {filteredDatasets.map((dataset: Omit<SavedDataset, 'data'>) => (
             <DatasetCard
               key={dataset.name}
               dataset={dataset}
@@ -385,11 +448,7 @@ function DatasetCard({ dataset, isActive, onLoad, onDelete, onExport, onEdit, on
             </div>
           </div>
           
-          {dataset.companyName && (
-            <div className="text-sm text-gray-700 dark:text-gray-300 mt-1">
-              {dataset.companyName}
-            </div>
-          )}
+
           <div className="text-xs text-gray-500 mt-1 dark:text-gray-400">
             Сохранён: {formatDate(dataset.uploadDate)}
           </div>
