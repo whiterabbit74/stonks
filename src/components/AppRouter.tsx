@@ -40,13 +40,18 @@ function ProtectedLayout() {
         const r = await fetch(`${API_BASE_URL}/auth/check`, { credentials: 'include' });
         if (r.ok) {
           setAuthorized(true);
-          try { await loadSettingsFromServer(); } catch {}
-          try { await loadDatasetsFromServer(); } catch {}
+          try { await loadSettingsFromServer(); } catch {
+            // Ignore settings loading errors
+          }
+          try { await loadDatasetsFromServer(); } catch {
+            // Ignore datasets loading errors
+          }
         } else {
           setAuthorized(false);
           navigate('/login', { replace: true, state: { from: location.pathname } });
         }
       } catch {
+        // Ignore auth check errors
         setAuthorized(false);
         navigate('/login', { replace: true, state: { from: location.pathname } });
       } finally {
@@ -79,7 +84,9 @@ function ProtectedLayout() {
       try {
         // setStrategy might be a no-op if strategy is already created elsewhere
         setStrategy(useAppStore.getState().currentStrategy);
-      } catch {}
+      } catch {
+        // Ignore strategy setting errors
+      }
     }
   }, [marketData, currentStrategy, setStrategy]);
 
@@ -110,7 +117,9 @@ function ProtectedLayout() {
   const handleLogout = async () => {
     try {
       await fetch(`${API_BASE_URL}/logout`, { method: 'POST', credentials: 'include' });
-    } catch {}
+    } catch {
+      // Ignore logout errors
+    }
     setAuthorized(false);
     navigate('/login', { replace: true });
   };
@@ -183,7 +192,9 @@ function LoginPage() {
       });
       if (!r.ok) {
         let msg = 'Ошибка входа';
-        try { const j = await r.json(); if (j && j.error) msg = j.error; } catch {}
+        try { const j = await r.json(); if (j && j.error) msg = j.error; } catch {
+          // Ignore JSON parsing errors
+        }
         setLoginError(msg);
         return;
       }

@@ -114,7 +114,9 @@ export default function App() {
       });
       if (!r.ok) {
         let msg = 'Ошибка входа';
-        try { const j = await r.json(); if (j && j.error) msg = j.error; } catch {}
+        try { const j = await r.json(); if (j && j.error) msg = j.error; } catch {
+          // Ignore JSON parsing errors
+        }
         setLoginError(msg);
         return;
       }
@@ -123,8 +125,12 @@ export default function App() {
       setUsernameInput('');
       setPasswordInput('');
       setRememberMe(false);
-      try { await loadSettingsFromServer(); } catch {}
-      try { await loadDatasetsFromServer(); } catch {}
+      try { await loadSettingsFromServer(); } catch {
+        // Ignore settings loading errors
+      }
+      try { await loadDatasetsFromServer(); } catch {
+        // Ignore datasets loading errors
+      }
     } catch (err) {
       setLoginError(err instanceof Error ? err.message : 'Ошибка входа');
     }
@@ -137,15 +143,19 @@ export default function App() {
         const r = await fetch(`${API_BASE_URL}/auth/check`, { credentials: 'include' });
         if (r.ok) {
           setAuthorized(true);
-          try { await loadSettingsFromServer(); } catch {}
-          try { await loadDatasetsFromServer(); } catch {}
+          try { await loadSettingsFromServer(); } catch {
+            // Ignore settings loading errors on mount
+          }
+          try { await loadDatasetsFromServer(); } catch {
+            // Ignore datasets loading errors on mount
+          }
         }
       } catch (e) {
         console.warn('Auth check failed', e);
       }
       setCheckingAuth(false);
     })();
-  }, []);
+  }, [loadSettingsFromServer, loadDatasetsFromServer]);
 
   useEffect(() => {
     if (!checkingAuth && !authorized) {

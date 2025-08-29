@@ -27,7 +27,7 @@ function simulateLeverage(equity: EquityPoint[], leverage: number): SimulationRe
   }
 
   const result: EquityPoint[] = [];
-  let prevValue = equity[0].value;
+  const prevValue = equity[0].value;
   let currentValue = prevValue;
   let peakValue = currentValue;
   let maxDD = 0;

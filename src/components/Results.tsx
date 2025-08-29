@@ -189,7 +189,7 @@ export function Results() {
     };
     const isHolidayET = (p: {y:number;m:number;d:number}) => nyseHolidaySetET(p.y).has(keyFromParts(p));
     const previousTradingDayET = (fromUTC: Date) => {
-      let cursor = new Date(fromUTC);
+      const cursor = new Date(fromUTC);
       // step back at least one day
       cursor.setUTCDate(cursor.getUTCDate()-1);
       while (true) {
@@ -207,7 +207,7 @@ export function Results() {
       minute: '2-digit',
     });
     const tparts = timeFmt.formatToParts(now);
-    const tmap: Record<string,string> = {} as any;
+    const tmap: Record<string, string> = {};
     tparts.forEach(p => { if (p.type !== 'literal') tmap[p.type] = p.value; });
     const hh = parseInt(tmap.hour || '0', 10);
     const mm = parseInt(tmap.minute || '0', 10);
@@ -265,7 +265,7 @@ export function Results() {
         weekday: 'short',
       });
       const parts = fmt.formatToParts(new Date());
-      const map: Record<string,string> = {} as any;
+      const map: Record<string, string> = {};
       parts.forEach(p => { if (p.type !== 'literal') map[p.type] = p.value; });
       const weekdayMap: Record<string, number> = { Sun:0, Mon:1, Tue:2, Wed:3, Thu:4, Fri:5, Sat:6 };
       const weekday = weekdayMap[map.weekday] ?? 0;

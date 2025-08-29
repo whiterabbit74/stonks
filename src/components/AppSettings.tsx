@@ -3,26 +3,7 @@ import { DatasetAPI } from '../lib/api';
 import { useAppStore } from '../stores';
 // import { StrategySettings } from './StrategySettings';
 
-interface SettingsData {
-  api?: {
-    alphaVantageKey?: string;
-    finnhubKey?: string;
-    twelveDataKey?: string;
-    polygonKey?: string;
-    preferredProvider?: string;
-  };
-  telegram?: {
-    botToken?: string;
-    chatId?: string;
-  };
-  ssl?: {
-    domain?: string;
-    tlsCa?: string;
-  };
-  build?: {
-    buildId?: string;
-  };
-}
+// SettingsData interface removed - not actively used
 
 export function AppSettings() {
   const loadSettingsFromServer = useAppStore(s => s.loadSettingsFromServer);
@@ -52,8 +33,6 @@ export function AppSettings() {
   const [ok, setOk] = useState<string | null>(null);
 
   // API Settings state
-  const [settings, setSettings] = useState<SettingsData>({});
-  const [settingsLoading, setSettingsLoading] = useState(false);
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [settingsSaveOk, setSettingsSaveOk] = useState<string | null>(null);
   const [settingsSaveErr, setSettingsSaveErr] = useState<string | null>(null);

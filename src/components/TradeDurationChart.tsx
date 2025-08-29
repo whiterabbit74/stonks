@@ -12,7 +12,7 @@ export function TradeDurationChart({ trades }: TradeDurationChartProps) {
 	const [isDark, setIsDark] = useState<boolean>(() => typeof document !== 'undefined' ? document.documentElement.classList.contains('dark') : false);
 
 	useEffect(() => {
-		const onTheme = (e: any) => {
+		const onTheme = (e: CustomEvent<{ mode: string; effectiveDark: boolean }>) => {
 			const dark = !!(e?.detail?.effectiveDark ?? document.documentElement.classList.contains('dark'));
 			setIsDark(dark);
 		};
@@ -24,7 +24,9 @@ export function TradeDurationChart({ trades }: TradeDurationChartProps) {
 		if (!containerRef.current || !trades.length) return;
 
 		if (chartRef.current) {
-			try { chartRef.current.remove(); } catch {}
+			try { chartRef.current.remove(); } catch {
+				// Ignore chart removal errors
+			}
 			chartRef.current = null;
 		}
 
@@ -60,7 +62,9 @@ export function TradeDurationChart({ trades }: TradeDurationChartProps) {
 		series.setData(data);
 
 		const avg = data.reduce((s, d) => s + (d.value || 0), 0) / Math.max(1, data.length);
-		try { series.createPriceLine({ price: avg, color: '#9CA3AF', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: 'Среднее' }); } catch {}
+		try { series.createPriceLine({ price: avg, color: '#9CA3AF', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: 'Среднее' }); } catch {
+			// Ignore price line creation errors
+		}
 
 		const handleResize = () => {
 			if (!containerRef.current || !chart) return;
@@ -69,7 +73,9 @@ export function TradeDurationChart({ trades }: TradeDurationChartProps) {
 		window.addEventListener('resize', handleResize);
 		return () => {
 			window.removeEventListener('resize', handleResize);
-			try { chart.remove(); } catch {}
+			try { chart.remove(); } catch {
+				// Ignore chart cleanup errors
+			}
 		};
 	}, [trades, isDark]);
 

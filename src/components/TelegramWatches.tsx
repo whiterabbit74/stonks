@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { RefreshCw, Trash2 } from 'lucide-react';
 import { DatasetAPI } from '../lib/api';
 import { ConfirmModal } from './ConfirmModal';
@@ -49,7 +49,7 @@ export function TelegramWatches() {
     };
   }
 
-  function secondsUntilNextSignal(now: Date = new Date()): number {
+  const secondsUntilNextSignal = useCallback((now: Date = new Date()): number => {
     const p = getETParts(now);
     const secOfDay = p.hh * 3600 + p.mm * 60 + p.ss;
     const target1 = 15 * 3600 + 49 * 60; // 15:49 ET (11 минут до закрытия)
@@ -72,7 +72,7 @@ export function TelegramWatches() {
     const remainingToday = 24 * 3600 - secOfDay;
     const extraFullDays = daysToAdd - 1;
     return remainingToday + extraFullDays * 24 * 3600 + target1;
-  }
+  }, []);
 
   function formatDuration(seconds: number): string {
     const s = Math.max(0, Math.floor(seconds));
@@ -93,7 +93,15 @@ export function TelegramWatches() {
     try {
       const list = await DatasetAPI.listTelegramWatches();
       // С сервера может прийти thresholdPct — игнорируем его, используем глобальную настройку
-      const mapped = list.map((w: any) => ({ symbol: w.symbol, highIBS: w.highIBS, entryPrice: w.entryPrice ?? null, isOpenPosition: !!w.isOpenPosition }));
+      const mapped = list.map((w: unknown) => {
+        const watch = w as Record<string, unknown>;
+        return {
+          symbol: watch.symbol as string,
+          highIBS: watch.highIBS as number,
+          entryPrice: watch.entryPrice as number | null ?? null,
+          isOpenPosition: !!watch.isOpenPosition
+        };
+      });
       setWatches(mapped);
     } catch (e) {
       const message = e instanceof Error ? e.message : 'Не удалось загрузить список';
@@ -110,7 +118,7 @@ export function TelegramWatches() {
     tick();
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
-  }, []);
+  }, [secondsUntilNextSignal]);
 
   return (
     <div className="space-y-4">

@@ -12,7 +12,7 @@ export function ProfitFactorChart({ trades }: ProfitFactorChartProps) {
 	const [isDark, setIsDark] = useState<boolean>(() => typeof document !== 'undefined' ? document.documentElement.classList.contains('dark') : false);
 
 	useEffect(() => {
-		const onTheme = (e: any) => {
+		const onTheme = (e: CustomEvent<{ mode: string; effectiveDark: boolean }>) => {
 			const dark = !!(e?.detail?.effectiveDark ?? document.documentElement.classList.contains('dark'));
 			setIsDark(dark);
 		};
@@ -24,7 +24,9 @@ export function ProfitFactorChart({ trades }: ProfitFactorChartProps) {
 		if (!containerRef.current || !trades.length) return;
 
 		if (chartRef.current) {
-			try { chartRef.current.remove(); } catch {}
+			try { chartRef.current.remove(); } catch {
+				// Ignore chart removal errors
+			}
 			chartRef.current = null;
 		}
 
@@ -67,7 +69,9 @@ export function ProfitFactorChart({ trades }: ProfitFactorChartProps) {
 		window.addEventListener('resize', handleResize);
 		return () => {
 			window.removeEventListener('resize', handleResize);
-			try { chart.remove(); } catch {}
+			try { chart.remove(); } catch {
+				// Ignore chart cleanup errors
+			}
 		};
 	}, [trades, isDark]);
 

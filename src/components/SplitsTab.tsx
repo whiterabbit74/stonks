@@ -161,7 +161,7 @@ export function SplitsTab() {
     }
   }
 
-  function normalizeEvents(arr: Array<any>): Array<SplitEvent> {
+  function normalizeEvents(arr: Array<unknown>): Array<SplitEvent> {
     return (Array.isArray(arr) ? arr : [])
       .map(it => ({
         date: typeof it?.date === 'string' ? String(it.date).slice(0, 10) : '',
@@ -186,9 +186,9 @@ export function SplitsTab() {
           const sym = String(parsed.symbol || parsed.ticker).toUpperCase();
           updates[sym] = normalizeEvents(parsed.events);
         } else {
-          for (const [k, v] of Object.entries(parsed as Record<string, any>)) {
+          for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
             const sym = String(k).toUpperCase();
-            updates[sym] = normalizeEvents(v as any[]);
+            updates[sym] = normalizeEvents(v as Array<unknown>);
           }
         }
       } else if (Array.isArray(parsed)) {
@@ -252,9 +252,9 @@ export function SplitsTab() {
           const sym = String(parsed.symbol || parsed.ticker).toUpperCase();
           updates[sym] = normalizeEvents(parsed.events);
         } else {
-          for (const [k, v] of Object.entries(parsed as Record<string, any>)) {
+          for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
             const sym = String(k).toUpperCase();
-            updates[sym] = normalizeEvents(v as any[]);
+            updates[sym] = normalizeEvents(v as Array<unknown>);
           }
         }
       } else if (Array.isArray(parsed)) {

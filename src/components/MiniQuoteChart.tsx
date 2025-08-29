@@ -17,7 +17,7 @@ export function MiniQuoteChart({ history, today, trades, highIBS, isOpenPosition
   const [isDark, setIsDark] = useState<boolean>(() => typeof document !== 'undefined' ? document.documentElement.classList.contains('dark') : false);
 
   useEffect(() => {
-    const onTheme = (e: any) => {
+    const onTheme = (e: CustomEvent<{ mode: string; effectiveDark: boolean }>) => {
       const dark = !!(e?.detail?.effectiveDark ?? document.documentElement.classList.contains('dark'));
       setIsDark(dark);
     };

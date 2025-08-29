@@ -13,7 +13,7 @@ export function OpenDayDrawdownChart({ trades, data }: OpenDayDrawdownChartProps
   const [isDark, setIsDark] = useState<boolean>(() => typeof document !== 'undefined' ? document.documentElement.classList.contains('dark') : false);
 
   useEffect(() => {
-    const onTheme = (e: any) => {
+    const onTheme = (e: CustomEvent<{ mode: string; effectiveDark: boolean }>) => {
       const dark = !!(e?.detail?.effectiveDark ?? document.documentElement.classList.contains('dark'));
       setIsDark(dark);
     };
@@ -49,7 +49,9 @@ export function OpenDayDrawdownChart({ trades, data }: OpenDayDrawdownChartProps
     if (!containerRef.current || rows.length === 0) return;
 
     if (chartRef.current) {
-      try { chartRef.current.remove(); } catch {}
+      try { chartRef.current.remove(); } catch {
+        // Ignore chart removal errors
+      }
       chartRef.current = null;
     }
 
@@ -81,7 +83,9 @@ export function OpenDayDrawdownChart({ trades, data }: OpenDayDrawdownChartProps
     try {
       series.createPriceLine({ price: 0, color: '#9CA3AF', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: '0%' });
       series.createPriceLine({ price: -avgDrop, color: '#9CA3AF', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: 'Средняя' });
-    } catch {}
+    } catch {
+      // Ignore price line creation errors
+    }
 
     const handleResize = () => {
       if (!containerRef.current || !chart) return;
@@ -90,9 +94,11 @@ export function OpenDayDrawdownChart({ trades, data }: OpenDayDrawdownChartProps
     window.addEventListener('resize', handleResize);
     return () => {
       window.removeEventListener('resize', handleResize);
-      try { chart.remove(); } catch {}
+      try { chart.remove(); } catch {
+        // Ignore chart cleanup errors
+      }
     };
-  }, [isDark, rows]);
+  }, [isDark, rows, avgDrop]);
 
   if (!rows.length) {
     return <div className="text-gray-500">Нет данных для графика просадки в день открытия</div>;

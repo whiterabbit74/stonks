@@ -30,14 +30,17 @@ export function SplitPage() {
 		(async () => {
 			try {
 				const list = await DatasetAPI.getDatasets();
-				const normalized = list.map(d => ({
-					name: (d as any).name || (d as any).ticker,
-					ticker: (d as any).ticker,
-					uploadDate: (d as any).uploadDate,
-					dataPoints: (d as any).dataPoints,
-					dateRange: (d as any).dateRange,
-					adjustedForSplits: (d as any).adjustedForSplits === true,
-				})) as DatasetMeta[];
+				const normalized = list.map((d: unknown) => {
+					const dataset = d as Record<string, unknown>;
+					return {
+						name: (dataset.name as string) || (dataset.ticker as string),
+						ticker: dataset.ticker as string,
+						uploadDate: dataset.uploadDate as string,
+						dataPoints: dataset.dataPoints as number,
+						dateRange: dataset.dateRange as { from: string; to: string },
+						adjustedForSplits: dataset.adjustedForSplits === true,
+					};
+				}) as DatasetMeta[];
 				setDatasets(normalized);
 				if (normalized.length && !selected) setSelected(normalized[0].ticker);
 			} catch (e) {
@@ -92,22 +95,26 @@ export function SplitPage() {
 			// refresh metas
 			try {
 				const list = await DatasetAPI.getDatasets();
-				const normalized = list.map(d => ({
-					name: (d as any).name || (d as any).ticker,
-					ticker: (d as any).ticker,
-					uploadDate: (d as any).uploadDate,
-					dataPoints: (d as any).dataPoints,
-					dateRange: (d as any).dateRange,
-					adjustedForSplits: (d as any).adjustedForSplits === true,
+				const normalized = list.map((d: unknown) => {
+					const dataset = d as Record<string, unknown>;
+					return {
+						name: (dataset.name as string) || (dataset.ticker as string),
+						ticker: dataset.ticker as string,
+						uploadDate: dataset.uploadDate as string,
+						dataPoints: dataset.dataPoints as number,
+						dateRange: dataset.dateRange as { from: string; to: string },
+						adjustedForSplits: dataset.adjustedForSplits === true,
 				})) as DatasetMeta[];
 				setDatasets(normalized);
-			} catch {}
+			} catch {
+				// Ignore dataset refresh errors
+			}
 		} catch (e) {
 			setMsg(e instanceof Error ? e.message : 'Не удалось пересчитать датасет');
 		} finally { setBusy(false); }
 	};
 
-	function normalizeEvents(arr: Array<any>): Array<SplitEvent> {
+	function normalizeEvents(arr: Array<unknown>): Array<SplitEvent> {
 		return (Array.isArray(arr) ? arr : [])
 			.map(it => ({
 				date: typeof it?.date === 'string' ? String(it.date).slice(0, 10) : '',
@@ -127,14 +134,15 @@ export function SplitPage() {
 			const parsed = JSON.parse(text);
 			const updates: Record<string, Array<SplitEvent>> = {};
 			if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-				const maybeSymbol = (parsed.symbol || parsed.ticker) && (parsed as any).events;
-				if (maybeSymbol && Array.isArray((parsed as any).events)) {
-					const sym = String((parsed as any).symbol || (parsed as any).ticker).toUpperCase();
-					updates[sym] = normalizeEvents((parsed as any).events);
+				const parsedObj = parsed as Record<string, unknown>;
+				const maybeSymbol = (parsedObj.symbol || parsedObj.ticker) && parsedObj.events;
+				if (maybeSymbol && Array.isArray(parsedObj.events)) {
+					const sym = String(parsedObj.symbol || parsedObj.ticker).toUpperCase();
+					updates[sym] = normalizeEvents(parsedObj.events as Array<unknown>);
 				} else {
-					for (const [k, v] of Object.entries(parsed as Record<string, any>)) {
+					for (const [k, v] of Object.entries(parsedObj)) {
 						const sym = String(k).toUpperCase();
-						updates[sym] = normalizeEvents(v as any[]);
+						updates[sym] = normalizeEvents(v as Array<unknown>);
 					}
 				}
 			} else if (Array.isArray(parsed)) {

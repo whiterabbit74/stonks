@@ -13,7 +13,7 @@ export function EquityChart({ equity, hideHeader }: EquityChartProps) {
   const [isDark, setIsDark] = useState<boolean>(() => typeof document !== 'undefined' ? document.documentElement.classList.contains('dark') : false);
 
   useEffect(() => {
-    const onTheme = (e: any) => {
+    const onTheme = (e: CustomEvent<{ mode: string; effectiveDark: boolean }>) => {
       const dark = !!(e?.detail?.effectiveDark ?? document.documentElement.classList.contains('dark'));
       setIsDark(dark);
     };
@@ -105,7 +105,7 @@ export function EquityChart({ equity, hideHeader }: EquityChartProps) {
         if (!param || !param.time) { tooltipEl.style.display = 'none'; return; }
         const v = (param.seriesData?.get?.(equitySeries) as { value?: number } | undefined)?.value;
         if (typeof v !== 'number') { tooltipEl.style.display = 'none'; return; }
-        const epochSec = typeof param.time === 'number' ? param.time : (param as any).time?.timestamp;
+        const epochSec = typeof param.time === 'number' ? param.time : (param as { time?: { timestamp?: number } }).time?.timestamp;
         const d = epochSec ? new Date(epochSec * 1000) : null;
         const dateStr = d ? d.toLocaleDateString('ru-RU') : '';
         tooltipEl.innerHTML = `${dateStr ? dateStr + ' — ' : ''}Капитал ${v.toFixed(2)}`;

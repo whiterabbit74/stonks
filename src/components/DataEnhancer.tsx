@@ -26,7 +26,7 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
   const [success, setSuccess] = useState<string | null>(null);
   const [, setDataGaps] = useState<{ missing: number; lastDate: string; firstDate: string } | null>(null);
   const [, setSelectedAction] = useState<'enhance' | 'replace'>('enhance');
-  const [mode, _setMode] = useState<'existing' | 'new'>('new');
+  // Mode state removed - not actively used
   // const { loadDatasetsFromServer } = useAppStore();
   // Убрали промпт ручного сохранения
   // Всегда грузим всю доступную историю (~до 40 лет), выбор периода убран
@@ -36,13 +36,12 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
   useEffect(() => {
     setError(null);
     setSuccess(null);
-  }, [mode]);
+  }, []);
 
   // Синхронизируем действие с выбранным режимом: existing -> enhance, new -> replace
   useEffect(() => {
     setSelectedAction(mode === 'existing' ? 'enhance' : 'replace');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode]);
+  }, []);
 
   // Анализируем пропуски в данных при загрузке компонента
   useEffect(() => {
@@ -148,13 +147,15 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
                 const resp = await fetchWithCreds(`${API_BASE_URL}/yahoo-finance/${symbol}?start=${start}&end=${end}&provider=${prov}&adjustment=none`);
                 if (!resp.ok) {
                   let msg = 'Не удалось получить данные';
-                  try { const j = await resp.json(); if (j && j.error) msg = j.error; } catch {}
+                  try { const j = await resp.json(); if (j && j.error) msg = j.error; } catch {
+                    // Ignore JSON parsing errors
+                  }
                   throw new Error(msg);
                 }
                 const payload = await resp.json();
                 const rows = Array.isArray(payload?.data) ? payload.data : [];
                 if (!rows.length) throw new Error('Нет данных для этого тикера');
-                const ohlc = rows.map((bar: any) => ({
+                const ohlc = rows.map((bar: unknown) => ({
                   date: parseOHLCDate(bar.date),
                   open: Number(bar.open),
                   high: Number(bar.high),

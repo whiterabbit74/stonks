@@ -47,7 +47,7 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
   };
 
   useEffect(() => {
-    const onTheme = (e: any) => {
+    const onTheme = (e: CustomEvent<{ mode: string; effectiveDark: boolean }>) => {
       const dark = !!(e?.detail?.effectiveDark ?? document.documentElement.classList.contains('dark'));
       setIsDark(dark);
     };
@@ -82,7 +82,9 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
       // Indicator price scale occupies bottom X% of the pane
       const indicatorFraction = Math.max(0, Math.min(0.4, (indicatorPanePercent || 7) / 100));
       const topMargin = 1 - indicatorFraction; // e.g. 0.93 when 7%
-      try { chart.priceScale('indicator').applyOptions({ scaleMargins: { top: topMargin, bottom: 0 }, borderColor: border }); } catch {}
+      try { chart.priceScale('indicator').applyOptions({ scaleMargins: { top: topMargin, bottom: 0 }, borderColor: border }); } catch {
+        // Ignore indicator scale options errors
+      }
 
       chartRef.current = chart;
 
@@ -114,7 +116,9 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
       }));
 
       candlestickSeries.setData(chartData);
-      try { chart.timeScale().applyOptions({ rightOffset: 8 }); } catch {}
+      try { chart.timeScale().applyOptions({ rightOffset: 8 }); } catch {
+        // Ignore timescale options errors
+      }
 
       // Indicator content on main chart: Volume and IBS histograms
       const volumeData = data.map(bar => ({
@@ -170,8 +174,8 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
       const ema20Data = data.map((bar, index) => ({
         time: Math.floor(bar.date.getTime() / 1000) as UTCTimestamp,
         value: ema20Values[index] || bar.close,
-      })).filter(point => (point as any).value !== undefined);
-      ema20Series.setData(ema20Data as any);
+      })).filter((point: { time: UTCTimestamp; value: number }) => point.value !== undefined);
+      ema20Series.setData(ema20Data);
       ema20SeriesRef.current = ema20Series;
 
       const ema200Values = calculateEMA(data, 200);
@@ -184,8 +188,8 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
       const ema200Data = data.map((bar, index) => ({
         time: Math.floor(bar.date.getTime() / 1000) as UTCTimestamp,
         value: ema200Values[index] || bar.close,
-      })).filter(point => (point as any).value !== undefined);
-      ema200Series.setData(ema200Data as any);
+      })).filter((point: { time: UTCTimestamp; value: number }) => point.value !== undefined);
+      ema200Series.setData(ema200Data);
       ema200SeriesRef.current = ema200Series;
 
       // Собираем маркеры: сделки и сплиты
@@ -260,8 +264,9 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
           tooltipEl.style.display = 'none';
           return;
         }
-        const priceMap = (param as any).seriesPrices as Map<unknown, unknown> | undefined;
-        const seriesData = (param as any).seriesData as Map<unknown, unknown> | undefined;
+        const paramWithData = param as { seriesPrices?: Map<unknown, unknown>; seriesData?: Map<unknown, unknown> };
+        const priceMap = paramWithData.seriesPrices;
+        const seriesData = paramWithData.seriesData;
         if (!priceMap || !seriesData) {
           tooltipEl.style.display = 'none';
           return;
@@ -311,10 +316,18 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
 
   useEffect(() => {
     // Управляем видимостью серий без пересоздания чартов
-    try { ibsSeriesRef.current?.applyOptions?.({ visible: showIBS } as any); } catch {}
-    try { volumeSeriesRef.current?.applyOptions?.({ visible: showVolume } as any); } catch {}
-    try { ema20SeriesRef.current?.applyOptions?.({ visible: showEMA20 } as any); } catch {}
-    try { ema200SeriesRef.current?.applyOptions?.({ visible: showEMA200 } as any); } catch {}
+    try { ibsSeriesRef.current?.applyOptions?.({ visible: showIBS }); } catch {
+      // Ignore IBS series visibility errors
+    }
+    try { volumeSeriesRef.current?.applyOptions?.({ visible: showVolume }); } catch {
+      // Ignore volume series visibility errors
+    }
+    try { ema20SeriesRef.current?.applyOptions?.({ visible: showEMA20 }); } catch {
+      // Ignore EMA20 series visibility errors
+    }
+    try { ema200SeriesRef.current?.applyOptions?.({ visible: showEMA200 }); } catch {
+      // Ignore EMA200 series visibility errors
+    }
   }, [showIBS, showVolume, showEMA20, showEMA200]);
 
   if (!data.length) {

@@ -1,4 +1,4 @@
-export function Footer(_: { apiBuildId: string | null }) {
+export function Footer() {
   return (
     <footer className="bg-white dark:bg-slate-900 text-gray-700 dark:text-gray-300 mt-auto border-t border-gray-200 dark:border-slate-800" style={{ marginTop: '100px' }}>
       <div className="max-w-7xl mx-auto px-4 py-6 safe-area-pb">
