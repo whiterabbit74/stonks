@@ -6,7 +6,7 @@ export function Footer({ apiBuildId }: FooterProps) {
   const currentYear = new Date().getFullYear();
 
   return (
-    <footer className="bg-white border-t border-gray-200 dark:bg-gray-900 dark:border-gray-800 mt-auto">
+    <footer className="bg-white border-t border-gray-200 dark:bg-gray-900 dark:border-gray-800 mt-[50px]">
       <div className="max-w-7xl mx-auto px-6 py-8">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           {/* Основная информация */}
