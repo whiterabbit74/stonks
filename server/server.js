@@ -31,6 +31,18 @@ function loadSettings() {
   return {};
 }
 
+// Load splits from JSON file
+function loadSplits() {
+  try {
+    if (fs.existsSync(SPLITS_FILE)) {
+      return fs.readJsonSync(SPLITS_FILE);
+    }
+  } catch (e) {
+    console.warn('Failed to load splits:', e.message);
+  }
+  return {};
+}
+
 let SETTINGS = loadSettings();
 
 // API Configuration - now loaded from settings
