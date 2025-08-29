@@ -413,8 +413,9 @@ function DatasetCard({ dataset, isActive, onLoad, onDelete, onExport, onEdit, on
           : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50 dark:border-gray-700 dark:hover:border-gray-600 dark:bg-gray-900 dark:hover:bg-gray-800'
       }`}
     >
-      <div className="flex items-center justify-between">
-        <div className="flex-1">
+      <div className="space-y-3">
+        {/* Основной контент */}
+        <div>
           <div className="flex items-center gap-2 mb-1">
             <span className="font-medium text-gray-900 dark:text-gray-100">{label}</span>
             {dataset.companyName && (
@@ -436,57 +437,59 @@ function DatasetCard({ dataset, isActive, onLoad, onDelete, onExport, onEdit, on
               </span>
             )}
           </div>
-          
+
           <div className="flex items-center gap-4 text-sm text-gray-600 dark:text-gray-300">
-            <div className="flex items-center gap-1">
-              <BarChart3 className="w-4 h-4" />
-              {dataset.dataPoints.toLocaleString()} точек
-            </div>
             <div className="flex items-center gap-1">
               <Calendar className="w-4 h-4" />
               {formatDate(dataset.dateRange.from)} - {formatDate(dataset.dateRange.to)}
             </div>
           </div>
-          
 
           <div className="text-xs text-gray-500 mt-1 dark:text-gray-400">
             Сохранён: {formatDate(dataset.uploadDate)}
           </div>
         </div>
 
-        <div className="flex items-center gap-2 ml-4">
-          {onEdit && (
+        {/* Блок кнопок - на всю ширину на мобильных, компактный на десктопе */}
+        <div className="flex items-center justify-between">
+          {/* Пустое пространство для выравнивания на десктопе */}
+          <div className="hidden md:block"></div>
+
+          {/* Кнопки - занимают всю ширину на мобильных */}
+          <div className="flex items-center gap-1 w-full md:w-auto md:gap-2">
+            {onEdit && (
+              <button
+                onClick={onEdit}
+                className="p-2 text-gray-400 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-transparent rounded transition-colors flex-1 md:flex-none"
+                title="Редактировать датасет"
+                aria-label="Редактировать датасет"
+              >
+                <Edit className="w-4 h-4 mx-auto" />
+              </button>
+            )}
             <button
-              onClick={onEdit}
-              className="p-2 text-gray-400 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-transparent rounded transition-colors"
-              title="Редактировать датасет"
-              aria-label="Редактировать датасет"
+              onClick={onRefresh}
+              className="p-2 text-gray-400 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-transparent rounded transition-colors flex-1 md:flex-none"
+              title="Обновить датасет"
+              aria-label="Обновить датасет"
             >
-              <Edit className="w-4 h-4" />
+              <RefreshCw className={`w-4 h-4 mx-auto ${refreshing ? 'animate-spin origin-center' : ''}`} />
             </button>
-          )}
-          <button
-            onClick={onRefresh}
-            className="p-2 text-gray-400 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-transparent rounded transition-colors"
-            title="Обновить датасет"
-            aria-label="Обновить датасет"
-          >
-            <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin origin-center' : ''}`} />
-          </button>
-          <button
-            onClick={onExport}
-            className="p-2 text-gray-400 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-transparent rounded transition-colors"
-            title="Экспорт JSON"
-          >
-            <Download className="w-4 h-4 transition-colors group-hover:text-blue-600" />
-          </button>
-          <button
-            onClick={onDelete}
-            className="p-2 text-gray-400 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-transparent rounded transition-colors"
-            title="Удалить датасет"
-          >
-            <Trash2 className="w-4 h-4 transition-colors group-hover:text-red-600" />
-          </button>
+            <button
+              onClick={onExport}
+              className="p-2 text-gray-400 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-transparent rounded transition-colors flex-1 md:flex-none"
+              title="Экспорт JSON"
+            >
+              <Download className="w-4 h-4 mx-auto transition-colors group-hover:text-blue-600" />
+            </button>
+            <button
+              onClick={onDelete}
+              className="p-2 text-gray-400 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-transparent rounded transition-colors flex-1 md:flex-none"
+              title="Удалить датасет"
+            >
+              <Trash2 className="w-4 h-4 mx-auto transition-colors group-hover:text-red-600" />
+            </button>
+          </div>
         </div>
       </div>
     </div>
