@@ -154,81 +154,109 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
 
   return (
     <div className="bg-white rounded-lg border p-4 mb-6 dark:bg-gray-900 dark:border-gray-800 dark:text-gray-100">
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <Database className="w-5 h-5 text-blue-600" />
-          <h3 className="font-semibold text-gray-900">
-            Библиотека датасетов ({filteredDatasets.length}{selectedTag !== 'all' ? ` из ${savedDatasets.length}` : ''})
-          </h3>
-          
-          {/* Server Status */}
-          <div className="flex items-center gap-1">
-            {serverStatus === 'online' ? (
-              <>
-                <Server className="w-4 h-4 text-green-600" />
-                <span className="text-xs text-green-600">Сервер online</span>
-              </>
-            ) : serverStatus === 'offline' ? (
-              <>
-                <ServerOff className="w-4 h-4 text-red-600" />
-                <span className="text-xs text-red-600">Сервер offline</span>
-              </>
-            ) : (
-              <span className="text-xs text-gray-500">Проверяем…</span>
+      {/* Header Section - Mobile-First Design */}
+      <div className="space-y-3 mb-4">
+        {/* Row 1: Title with Icon */}
+        <div className="flex items-center gap-3">
+          <div className="flex items-center justify-center w-8 h-8 bg-blue-50 rounded-lg dark:bg-blue-950/20">
+            <Database className="w-4 h-4 text-blue-600" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <h3 className="font-semibold text-gray-900 dark:text-gray-100 text-base">
+              Библиотека датасетов
+            </h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+              {filteredDatasets.length}{selectedTag !== 'all' ? ` из ${savedDatasets.length}` : ''} датасетов
+            </p>
+          </div>
+        </div>
+
+        {/* Row 2: Status and Current Dataset */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            {/* Server Status */}
+            <div className="flex items-center gap-1.5">
+              {serverStatus === 'online' ? (
+                <>
+                  <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                  <span className="text-xs text-green-600 dark:text-green-400 font-medium">Online</span>
+                </>
+              ) : serverStatus === 'offline' ? (
+                <>
+                  <div className="w-2 h-2 bg-red-500 rounded-full"></div>
+                  <span className="text-xs text-red-600 dark:text-red-400 font-medium">Offline</span>
+                </>
+              ) : (
+                <>
+                  <div className="w-2 h-2 bg-gray-400 rounded-full animate-pulse"></div>
+                  <span className="text-xs text-gray-500 dark:text-gray-400">Проверяем…</span>
+                </>
+              )}
+            </div>
+
+            {/* Current Dataset */}
+            {currentDataset && (
+              <div className="flex items-center gap-1">
+                <div className="w-1 h-1 bg-gray-400 rounded-full"></div>
+                <span className="text-xs text-gray-600 dark:text-gray-300">
+                  Активный: <span className="font-medium text-gray-900 dark:text-gray-100">{currentDataset.name}</span>
+                </span>
+              </div>
             )}
           </div>
-          
-          {currentDataset && (
-            <span className="text-sm text-gray-500">
-              • Текущий: {currentDataset.name}
-            </span>
-          )}
+
+          {/* Toggle Button - Mobile Optimized */}
+          <button
+            onClick={() => setIsExpanded(!isExpanded)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors dark:text-blue-400 dark:hover:text-blue-300 dark:hover:bg-blue-950/20"
+          >
+            {isExpanded ? (
+              <>
+                <EyeOff className="w-4 h-4" />
+                <span className="hidden sm:inline">Скрыть</span>
+              </>
+            ) : (
+              <>
+                <Eye className="w-4 h-4" />
+                <span className="hidden sm:inline">Показать</span>
+              </>
+            )}
+          </button>
         </div>
 
-        {/* Фильтр по тегам */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-sm text-gray-600 dark:text-gray-400">Фильтр:</span>
-          <button
-            onClick={() => setSelectedTag('all')}
-            className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-              selectedTag === 'all'
-                ? 'bg-blue-100 text-blue-800 border border-blue-200 dark:bg-blue-950/30 dark:text-blue-200 dark:border-blue-900/40'
-                : 'bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:border-gray-700 dark:hover:bg-gray-700'
-            }`}
-          >
-            Все ({savedDatasets.length})
-          </button>
-          {allTags.map(tag => (
+        {/* Row 3: Filter Buttons - Mobile Responsive */}
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-medium text-gray-600 dark:text-gray-400 uppercase tracking-wide">
+              Фильтр
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-2">
             <button
-              key={tag}
-              onClick={() => setSelectedTag(tag)}
-              className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-                selectedTag === tag
-                  ? 'bg-blue-100 text-blue-800 border border-blue-200 dark:bg-blue-950/30 dark:text-blue-200 dark:border-blue-900/40'
-                  : 'bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:border-gray-700 dark:hover:bg-gray-700'
+              onClick={() => setSelectedTag('all')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 ${
+                selectedTag === 'all'
+                  ? 'bg-blue-100 text-blue-800 border-2 border-blue-200 shadow-sm dark:bg-blue-950/30 dark:text-blue-200 dark:border-blue-900/40'
+                  : 'bg-gray-50 text-gray-700 border border-gray-200 hover:bg-gray-100 hover:border-gray-300 dark:bg-gray-800 dark:text-gray-200 dark:border-gray-700 dark:hover:bg-gray-700'
               }`}
             >
-              {tag} ({savedDatasets.filter(d => d.tag === tag).length})
+              Все ({savedDatasets.length})
             </button>
-          ))}
+            {allTags.map(tag => (
+              <button
+                key={tag}
+                onClick={() => setSelectedTag(tag)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 ${
+                  selectedTag === tag
+                    ? 'bg-blue-100 text-blue-800 border-2 border-blue-200 shadow-sm dark:bg-blue-950/30 dark:text-blue-200 dark:border-blue-900/40'
+                    : 'bg-gray-50 text-gray-700 border border-gray-200 hover:bg-gray-100 hover:border-gray-300 dark:bg-gray-800 dark:text-gray-200 dark:border-gray-700 dark:hover:bg-gray-700'
+                }`}
+              >
+                {tag} ({savedDatasets.filter(d => d.tag === tag).length})
+              </button>
+            ))}
+          </div>
         </div>
-
-        <button
-          onClick={() => setIsExpanded(!isExpanded)}
-          className="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700"
-        >
-          {isExpanded ? (
-            <>
-              <EyeOff className="w-4 h-4" />
-              Скрыть
-            </>
-          ) : (
-            <>
-              <Eye className="w-4 h-4" />
-              Показать
-            </>
-          )}
-        </button>
       </div>
 
       {isExpanded && (
