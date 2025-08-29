@@ -1,8 +1,8 @@
 # Dynamic domain from environment variable
 {$DOMAIN:tradingibs.site} {
-  # Use production certificates by default
+  # TEMPORARY: Use staging certificates to bypass rate limits
   tls {
-    ca {$TLS_CA:https://acme-v02.api.letsencrypt.org/directory}
+    ca {$TLS_CA:https://acme-staging-v02.api.letsencrypt.org/directory}
   }
 
   encode gzip

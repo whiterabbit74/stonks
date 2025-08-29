@@ -138,6 +138,26 @@ export class DatasetAPI {
   }
 
   /**
+   * Обновить метаданные датасета
+   */
+  static async updateDatasetMetadata(id: string, metadata: { tag?: string; companyName?: string }):
+    Promise<{ success: boolean; message?: string }>
+  {
+    const response = await fetchWithCreds(`${API_BASE_URL}/datasets/${encodeURIComponent(id.toUpperCase())}/metadata`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(metadata),
+    });
+    if (!response.ok) {
+      let msg = `${response.status} ${response.statusText}`;
+      const e = await response.json().catch(() => null);
+      if (e && typeof e.error === 'string') msg = e.error;
+      throw new Error(msg);
+    }
+    return response.json();
+  }
+
+  /**
    * Получить котировку в реальном времени (open/high/low/current/prevClose)
    */
   static async getQuote(symbol: string, provider: 'alpha_vantage' | 'finnhub' = 'finnhub'):
@@ -387,5 +407,29 @@ export class DatasetAPI {
       if (e && typeof e.error === 'string') msg = e.error;
       throw new Error(msg);
     }
+  }
+
+  // Settings API methods
+  static async getSettings(): Promise<any> {
+    const response = await fetchWithCreds(`${API_BASE_URL}/settings`);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch settings: ${response.status} ${response.statusText}`);
+    }
+    return response.json();
+  }
+
+  static async updateSettings(updates: any): Promise<{ success: boolean; message: string }> {
+    const response = await fetchWithCreds(`${API_BASE_URL}/settings`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates),
+    });
+    if (!response.ok) {
+      let msg = `${response.status} ${response.statusText}`;
+      const e = await response.json().catch(() => null);
+      if (e && typeof e.error === 'string') msg = e.error;
+      throw new Error(msg);
+    }
+    return response.json();
   }
 }

@@ -26,6 +26,7 @@ services:
       timeout: 5s
       retries: 3
       start_period: 20s
+    container_name: stonks-server
 
   frontend:
     build:
@@ -38,8 +39,10 @@ services:
     depends_on:
       - server
     restart: unless-stopped
+    volumes:
+      - ./dist:/usr/share/nginx/html:ro
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost/api/status" ]
+      test: ["CMD", "curl", "-f", "http://localhost/"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -47,6 +50,7 @@ services:
     environment:
       - PUBLIC_BASE_PATH=/
       - VITE_API_BASE=/api
+    container_name: stonks-frontend
 
   caddy:
     image: caddy:2
@@ -64,6 +68,7 @@ services:
       - DOMAIN=${DOMAIN:-example.com}
       - TLS_CA=${TLS_CA:-https://acme-staging-v02.api.letsencrypt.org/directory}
     restart: unless-stopped
+    container_name: stonks-caddy
 
   # Development profile — convenient bind mounts to repo files
   server-dev:

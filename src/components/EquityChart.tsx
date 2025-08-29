@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { createChart, type IChartApi, type ISeriesApi, type UTCTimestamp } from 'lightweight-charts';
 import type { EquityPoint } from '../types';
 
@@ -155,12 +155,22 @@ export function EquityChart({ equity, hideHeader }: EquityChartProps) {
   const startDate = equity[0]?.date ? new Date(equity[0].date).toLocaleDateString('ru-RU') : '';
   const endDate = equity[equity.length - 1]?.date ? new Date(equity[equity.length - 1].date).toLocaleDateString('ru-RU') : '';
 
+  // Функция для форматирования валюты в долларах с разделителями тысяч
+  const formatCurrency = (value: number): string => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(value);
+  };
+
   return (
     <div className="w-full h-full">
       {!hideHeader && (
         <div className="flex flex-wrap gap-4 mb-4 text-sm">
           <div className="bg-gray-50 px-3 py-2 rounded border dark:bg-gray-800 dark:border-gray-700">
-            <span className="text-gray-700 dark:text-gray-200">Итоговый портфель: {finalValue.toFixed(2)}</span>
+            <span className="text-gray-700 dark:text-gray-200">Итоговый портфель: {formatCurrency(finalValue)}</span>
           </div>
           {(startDate && endDate) && (
             <div className="bg-gray-50 px-3 py-2 rounded border dark:bg-gray-800 dark:border-gray-700">

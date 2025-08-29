@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { createChart } from 'lightweight-charts';
 import type { UTCTimestamp } from 'lightweight-charts';
 import type { Trade } from '../types';

@@ -1,7 +1,28 @@
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { DatasetAPI } from '../lib/api';
 import { useAppStore } from '../stores';
 // import { StrategySettings } from './StrategySettings';
+
+interface SettingsData {
+  api?: {
+    alphaVantageKey?: string;
+    finnhubKey?: string;
+    twelveDataKey?: string;
+    polygonKey?: string;
+    preferredProvider?: string;
+  };
+  telegram?: {
+    botToken?: string;
+    chatId?: string;
+  };
+  ssl?: {
+    domain?: string;
+    tlsCa?: string;
+  };
+  build?: {
+    buildId?: string;
+  };
+}
 
 export function AppSettings() {
   const loadSettingsFromServer = useAppStore(s => s.loadSettingsFromServer);
@@ -17,6 +38,9 @@ export function AppSettings() {
   const indicatorPanePercent = useAppStore(s => s.indicatorPanePercent);
   const setIndicatorPanePercent = useAppStore(s => s.setIndicatorPanePercent);
 
+  // Active tab state
+  const [activeTab, setActiveTab] = useState<'general' | 'api' | 'telegram'>('general');
+
   useEffect(() => { loadSettingsFromServer(); }, [loadSettingsFromServer]);
 
   const [saving, setSaving] = useState(false);
@@ -26,6 +50,23 @@ export function AppSettings() {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
+
+  // API Settings state
+  const [settings, setSettings] = useState<SettingsData>({});
+  const [settingsLoading, setSettingsLoading] = useState(false);
+  const [settingsSaving, setSettingsSaving] = useState(false);
+  const [settingsSaveOk, setSettingsSaveOk] = useState<string | null>(null);
+  const [settingsSaveErr, setSettingsSaveErr] = useState<string | null>(null);
+
+  // API key inputs (unmasked for editing)
+  const [alphaVantageKey, setAlphaVantageKey] = useState('');
+  const [finnhubKey, setFinnhubKey] = useState('');
+  const [twelveDataKey, setTwelveDataKey] = useState('');
+  const [polygonKey, setPolygonKey] = useState('');
+
+  // Telegram settings state
+  const [telegramBotToken, setTelegramBotToken] = useState('');
+  const [telegramChatId, setTelegramChatId] = useState('');
 
   const sendTest = async () => {
     setSending(true); setError(null); setOk(null);
@@ -53,10 +94,93 @@ export function AppSettings() {
     }
   };
 
-  return (
-    <div className="space-y-4">
-      <h2 className="text-xl font-semibold text-gray-900">Настройки</h2>
+  // Load API settings from server
+  const loadApiSettings = async () => {
+    setSettingsLoading(true);
+    try {
+      const data = await DatasetAPI.getSettings();
+      setSettings(data);
 
+      // Set form values (unmask the keys for editing)
+      if (data.api) {
+        setAlphaVantageKey(data.api.alphaVantageKey || '');
+        setFinnhubKey(data.api.finnhubKey || '');
+        setTwelveDataKey(data.api.twelveDataKey || '');
+        setPolygonKey(data.api.polygonKey || '');
+      }
+
+      // Set Telegram settings (don't load masked values)
+      if (data.telegram) {
+        // If the botToken contains asterisks, it means it's masked - leave empty
+        const botToken = data.telegram.botToken || '';
+        setTelegramBotToken(botToken.includes('*') ? '' : botToken);
+        setTelegramChatId(data.telegram.chatId || '');
+      }
+    } catch (e) {
+      console.error('Failed to load API settings:', e);
+    } finally {
+      setSettingsLoading(false);
+    }
+  };
+
+  // Save API settings to server
+  const saveApiSettings = async () => {
+    setSettingsSaving(true);
+    setSettingsSaveOk(null);
+    setSettingsSaveErr(null);
+    try {
+      const updates = {
+        api: {
+          alphaVantageKey: alphaVantageKey.trim() || undefined,
+          finnhubKey: finnhubKey.trim() || undefined,
+          twelveDataKey: twelveDataKey.trim() || undefined,
+          polygonKey: polygonKey.trim() || undefined,
+        }
+      };
+      await DatasetAPI.updateSettings(updates);
+      setSettingsSaveOk('API настройки сохранены');
+      // Reload settings to show updated masked values
+      await loadApiSettings();
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'Не удалось сохранить API настройки';
+      setSettingsSaveErr(message);
+    } finally {
+      setSettingsSaving(false);
+    }
+  };
+
+  // Save Telegram settings to server
+  const saveTelegramSettings = async () => {
+    setSettingsSaving(true);
+    setSettingsSaveOk(null);
+    setSettingsSaveErr(null);
+    try {
+      const updates = {
+        telegram: {
+          botToken: telegramBotToken.trim() || undefined,
+          chatId: telegramChatId.trim() || undefined,
+        }
+      };
+      await DatasetAPI.updateSettings(updates);
+      setSettingsSaveOk('Telegram настройки сохранены');
+      // Reload settings
+      await loadApiSettings();
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'Не удалось сохранить Telegram настройки';
+      setSettingsSaveErr(message);
+    } finally {
+      setSettingsSaving(false);
+    }
+  };
+
+  // Load API settings on component mount
+  useEffect(() => {
+    loadApiSettings();
+  }, []);
+
+  // General Settings Tab
+  const GeneralTab = () => (
+    <div className="space-y-4">
       {/* Уведомления */}
       <div className="p-4 rounded-lg border">
         <div className="text-sm font-medium text-gray-700 mb-2">Уведомления</div>
@@ -131,6 +255,130 @@ export function AppSettings() {
         </div>
         <div className="text-xs text-gray-500 mt-2">Подсказка: для refresh используйте провайдера, который стабильно доступен на вашем тарифе.</div>
       </div>
+    </div>
+  );
+
+  // API Settings Tab
+  const ApiTab = () => (
+    <div className="space-y-4">
+      {/* API Keys Settings */}
+      <div className="p-4 rounded-lg border">
+        <div className="text-sm font-medium text-gray-700 mb-3">API ключи</div>
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Alpha Vantage API Key</label>
+              <input
+                type="password"
+                value={alphaVantageKey}
+                onChange={(e) => setAlphaVantageKey(e.target.value)}
+                placeholder="Ваш API ключ Alpha Vantage"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Finnhub API Key</label>
+              <input
+                type="password"
+                value={finnhubKey}
+                onChange={(e) => setFinnhubKey(e.target.value)}
+                placeholder="Ваш API ключ Finnhub"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Twelve Data API Key</label>
+              <input
+                type="password"
+                value={twelveDataKey}
+                onChange={(e) => setTwelveDataKey(e.target.value)}
+                placeholder="Ваш API ключ Twelve Data"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Polygon API Key</label>
+              <input
+                type="password"
+                value={polygonKey}
+                onChange={(e) => setPolygonKey(e.target.value)}
+                placeholder="Ваш API ключ Polygon"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={saveApiSettings}
+              disabled={settingsSaving}
+              className="px-4 py-2 rounded-md bg-green-600 text-white text-sm hover:bg-green-700 disabled:bg-gray-400"
+            >
+              {settingsSaving ? 'Сохранение…' : 'Сохранить API ключи'}
+            </button>
+            {settingsSaveOk && <span className="text-sm text-green-600">{settingsSaveOk}</span>}
+            {settingsSaveErr && <span className="text-sm text-red-600">{settingsSaveErr}</span>}
+          </div>
+        </div>
+        <div className="text-xs text-gray-500 mt-2">
+          💡 API ключи хранятся в зашифрованном виде на сервере. Для получения ключей зарегистрируйтесь на соответствующих сервисах.
+        </div>
+      </div>
+    </div>
+  );
+
+  // Telegram Settings Tab
+  const TelegramTab = () => (
+    <div className="space-y-4">
+      {/* Telegram Settings */}
+      <div className="p-4 rounded-lg border">
+        <div className="text-sm font-medium text-gray-700 mb-3">Telegram настройки</div>
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Bot Token</label>
+            <input
+              type="password"
+              value={telegramBotToken}
+              onChange={(e) => setTelegramBotToken(e.target.value)}
+              placeholder="Ваш Telegram Bot Token"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Создайте бота через @BotFather и получите токен. Поле пустое для безопасности.
+            </p>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Chat ID</label>
+            <input
+              type="text"
+              value={telegramChatId}
+              onChange={(e) => setTelegramChatId(e.target.value)}
+              placeholder="Ваш Chat ID"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Добавьте бота в чат и получите Chat ID через @userinfobot
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={saveTelegramSettings}
+              disabled={settingsSaving}
+              className="px-4 py-2 rounded-md bg-purple-600 text-white text-sm hover:bg-purple-700 disabled:bg-gray-400"
+            >
+              {settingsSaving ? 'Сохранение…' : 'Сохранить Telegram настройки'}
+            </button>
+            {settingsSaveOk && <span className="text-sm text-green-600">{settingsSaveOk}</span>}
+            {settingsSaveErr && <span className="text-sm text-red-600">{settingsSaveErr}</span>}
+          </div>
+        </div>
+        <div className="text-xs text-gray-500 mt-2">
+          🔒 Telegram токены хранятся в зашифрованном виде на сервере.
+        </div>
+      </div>
+
       <div className="p-4 rounded-lg border bg-gray-50">
         <div className="text-sm font-medium text-gray-700 mb-2">Тестовое сообщение в Telegram</div>
         <div className="flex flex-wrap items-center gap-2">
@@ -142,7 +390,56 @@ export function AppSettings() {
         {error && <div className="text-sm text-red-600 mt-2">{error}</div>}
         {ok && <div className="text-sm text-green-600 mt-2">{ok}</div>}
       </div>
-      <p className="text-xs text-gray-500">Примечание: Telegram-бот и чат должны быть настроены на сервере (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`).</p>
+      <p className="text-xs text-gray-500">Примечание: Telegram-бот и чат должны быть настроены на сервере.</p>
+    </div>
+  );
+
+  return (
+    <div className="space-y-4">
+      <h2 className="text-xl font-semibold text-gray-900">Настройки</h2>
+
+      {/* Tabs */}
+      <div className="border-b border-gray-200">
+        <nav className="-mb-px flex space-x-8">
+          <button
+            onClick={() => setActiveTab('general')}
+            className={`whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm ${
+              activeTab === 'general'
+                ? 'border-indigo-500 text-indigo-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            Общие
+          </button>
+          <button
+            onClick={() => setActiveTab('api')}
+            className={`whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm ${
+              activeTab === 'api'
+                ? 'border-indigo-500 text-indigo-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            API
+          </button>
+          <button
+            onClick={() => setActiveTab('telegram')}
+            className={`whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm ${
+              activeTab === 'telegram'
+                ? 'border-indigo-500 text-indigo-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            Telegram
+          </button>
+        </nav>
+      </div>
+
+      {/* Tab Content */}
+      <div className="mt-4">
+        {activeTab === 'general' && <GeneralTab />}
+        {activeTab === 'api' && <ApiTab />}
+        {activeTab === 'telegram' && <TelegramTab />}
+      </div>
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { RefreshCw, Trash2 } from 'lucide-react';
 import { DatasetAPI } from '../lib/api';
 import { ConfirmModal } from './ConfirmModal';

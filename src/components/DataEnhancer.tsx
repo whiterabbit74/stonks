@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { AlertCircle, CheckCircle } from 'lucide-react';
 import { useAppStore } from '../stores';
 import { fetchWithCreds, API_BASE_URL } from '../lib/api';

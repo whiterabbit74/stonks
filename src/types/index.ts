@@ -116,6 +116,8 @@ export interface SavedDataset {
     from: string;
     to: string;
   };
+  tag?: string;
+  companyName?: string;
 }
 
 export interface Trade {

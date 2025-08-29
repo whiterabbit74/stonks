@@ -19,14 +19,35 @@ let WATCHES_FILE = process.env.WATCHES_FILE || path.join(__dirname, 'telegram-wa
 const MONITOR_LOG_FILE = process.env.MONITOR_LOG_PATH || path.join(DATASETS_DIR, 'monitoring.log');
 const avCache = new Map(); // кэш ответов Alpha Vantage
 
-// API Configuration
-const API_CONFIG = {
-  ALPHA_VANTAGE_API_KEY: process.env.ALPHA_VANTAGE_API_KEY,
-  FINNHUB_API_KEY: process.env.FINNHUB_API_KEY,
-  TWELVE_DATA_API_KEY: process.env.TWELVE_DATA_API_KEY,
-  POLYGON_API_KEY: process.env.POLYGON_API_KEY,
-  PREFERRED_API_PROVIDER: 'alpha_vantage'
-};
+// Load settings from JSON file
+function loadSettings() {
+  try {
+    if (fs.existsSync(SETTINGS_FILE)) {
+      return fs.readJsonSync(SETTINGS_FILE);
+    }
+  } catch (e) {
+    console.warn('Failed to load settings:', e.message);
+  }
+  return {};
+}
+
+let SETTINGS = loadSettings();
+
+// API Configuration - now loaded from settings
+function getApiConfig() {
+  const settings = loadSettings();
+  return {
+    ALPHA_VANTAGE_API_KEY: settings.api?.alphaVantageKey || process.env.ALPHA_VANTAGE_API_KEY || '',
+    FINNHUB_API_KEY: settings.api?.finnhubKey || process.env.FINNHUB_API_KEY || '',
+    TWELVE_DATA_API_KEY: settings.api?.twelveDataKey || process.env.TWELVE_DATA_API_KEY || '',
+    POLYGON_API_KEY: settings.api?.polygonKey || process.env.POLYGON_API_KEY || '',
+    PREFERRED_API_PROVIDER: process.env.PREFERRED_API_PROVIDER || 'alpha_vantage',
+    TELEGRAM_BOT_TOKEN: settings.telegram?.botToken || process.env.TELEGRAM_BOT_TOKEN || '',
+    TELEGRAM_CHAT_ID: settings.telegram?.chatId || process.env.TELEGRAM_CHAT_ID || ''
+  };
+}
+
+let API_CONFIG = getApiConfig();
 
 // Apply global middleware early (so it affects ALL routes)
 // CORS with credentials (to support cookie-based auth)
@@ -176,8 +197,7 @@ async function deleteTickerSplits(ticker) {
 }
 
 // Telegram config
-const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
-const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID || '';
+// Telegram settings now loaded from getApiConfig()
 
 // Simple username+password auth (opt-in via env)
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '';
@@ -254,12 +274,14 @@ function requireAuth(req, res, next) {
     return next();
   }
   if (req.method === 'OPTIONS') return next();
-  // Разрешаем только статус/логин/проверку; всё остальное — под авторизацией
+  // Разрешаем только статус/логин/проверку/календарь/метаданные датасетов; всё остальное — под авторизацией
   if (
     req.path === '/api/status' ||
     req.path === '/api/login' ||
     req.path === '/api/logout' ||
-    req.path === '/api/auth/check'
+    req.path === '/api/auth/check' ||
+    req.path === '/api/trading-calendar' ||
+    req.path.match(/^\/api\/datasets\/[^\/]+\/metadata$/)
   ) {
     return next();
   }
@@ -274,36 +296,62 @@ function requireAuth(req, res, next) {
   }
   return next();
 }
-app.use(requireAuth);
-// Splits map endpoint: return full map from splits.json
-app.get('/api/splits', async (req, res) => {
-  try {
-    const map = await readSplitsMap();
-    res.json(map || {});
-  } catch (e) {
-    res.json({});
-  }
-});
 
 // Trading calendar endpoint: return calendar data from trading-calendar.json
 app.get('/api/trading-calendar', async (req, res) => {
   try {
     const calendarPath = path.join(__dirname, 'trading-calendar.json');
-    const calendarData = await fs.readJson(calendarPath);
-    res.json(calendarData || {
-      metadata: { version: "1.0", years: [] },
-      holidays: {},
-      shortDays: {},
-      weekends: { description: "Выходные дни автоматически определяются" },
-      tradingHours: {
-        normal: { start: "10:00", end: "18:40" },
-        short: { start: "10:00", end: "14:00" }
-      }
-    });
+    let calendarData;
+
+    if (await fs.pathExists(calendarPath)) {
+      calendarData = await fs.readJson(calendarPath);
+    } else {
+      calendarData = {
+        metadata: { version: "1.0", years: [2024, 2025] },
+        holidays: {
+          "2024-01-01": "Новый год",
+          "2024-02-23": "День защитника Отечества",
+          "2024-03-08": "Международный женский день",
+          "2024-05-01": "Праздник Весны и Труда",
+          "2024-05-09": "День Победы",
+          "2024-06-12": "День России",
+          "2024-11-04": "День народного единства",
+          "2025-01-01": "Новый год",
+          "2025-02-23": "День защитника Отечества",
+          "2025-03-08": "Международный женский день",
+          "2025-05-01": "Праздник Весны и Труда",
+          "2025-05-09": "День Победы",
+          "2025-06-12": "День России",
+          "2025-11-04": "День народного единства"
+        },
+        shortDays: {
+          "2024-02-22": "Короткий день перед праздником",
+          "2024-03-07": "Короткий день перед праздником",
+          "2024-04-30": "Короткий день перед праздником",
+          "2024-06-11": "Короткий день перед праздником",
+          "2024-11-03": "Короткий день перед праздником",
+          "2025-02-22": "Короткий день перед праздником",
+          "2025-03-07": "Короткий день перед праздником",
+          "2025-04-30": "Короткий день перед праздником",
+          "2025-06-11": "Короткий день перед праздником",
+          "2025-11-03": "Короткий день перед праздником"
+        },
+        weekends: { description: "Выходные дни автоматически определяются" },
+        tradingHours: {
+          normal: { start: "10:00", end: "18:40" },
+          short: { start: "10:00", end: "14:00" }
+        }
+      };
+    }
+
+    res.json(calendarData);
   } catch (e) {
+    console.error('Failed to load trading calendar:', e);
     res.status(500).json({ error: 'Failed to load trading calendar' });
   }
 });
+
+app.use(requireAuth);
 
 // Auth endpoints
 // Rate limiting: max 3 attempts per 24h per IP
@@ -326,7 +374,7 @@ async function logLoginAttempt({ ip, success, reason, username }) {
   try {
     const note = success ? '✅ Успешный вход' : '⚠️ Неуспешная попытка входа';
     const text = `${note}\nIP: ${ip}\nUser: ${username || '-'}` + (success ? '' : (reason ? `\nПричина: ${reason}` : ''));
-    await sendTelegramMessage(TELEGRAM_CHAT_ID, text);
+    await sendTelegramMessage(getApiConfig().TELEGRAM_CHAT_ID, text);
   } catch {}
 }
 
@@ -388,6 +436,55 @@ app.post('/api/logout', (req, res) => {
   }
 });
 
+// Settings API endpoints
+app.get('/api/settings', requireAuth, (req, res) => {
+  try {
+    const settings = loadSettings();
+    // Remove sensitive data from response
+    const safeSettings = { ...settings };
+    if (safeSettings.api) {
+      // Mask API keys in response
+      Object.keys(safeSettings.api).forEach(key => {
+        if (key.includes('Key') && safeSettings.api[key]) {
+          const value = safeSettings.api[key];
+          safeSettings.api[key] = value.substring(0, 4) + '*'.repeat(Math.max(0, value.length - 8)) + value.substring(value.length - 4);
+        }
+      });
+    }
+    // Mask Telegram bot token
+    if (safeSettings.telegram && safeSettings.telegram.botToken) {
+      const token = safeSettings.telegram.botToken;
+      safeSettings.telegram.botToken = token.substring(0, 4) + '*'.repeat(Math.max(0, token.length - 8)) + token.substring(token.length - 4);
+    }
+    res.json(safeSettings);
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to load settings' });
+  }
+});
+
+app.patch('/api/settings', requireAuth, (req, res) => {
+  try {
+    const updates = req.body;
+    const currentSettings = loadSettings();
+
+    // Validate updates - no additional validation needed for API keys
+
+    // Merge updates
+    const newSettings = { ...currentSettings, ...updates };
+
+    // Save to file
+    fs.writeJsonSync(SETTINGS_FILE, newSettings, { spaces: 2 });
+
+    // Reload API config
+    API_CONFIG = getApiConfig();
+
+    res.json({ success: true, message: 'Settings updated successfully' });
+  } catch (e) {
+    console.error('Failed to update settings:', e);
+    res.status(500).json({ error: 'Failed to update settings' });
+  }
+});
+
 // In-memory watch list for Telegram notifications (persisted to disk)
 // { symbol, highIBS, lowIBS, thresholdPct, chatId, entryPrice, isOpenPosition, sent: { dateKey, warn10, confirm1, entryWarn10, entryConfirm1 } }
 const telegramWatches = new Map();
@@ -437,14 +534,15 @@ function scheduleSaveWatches() {
 }
 
 async function sendTelegramMessage(chatId, text, parseMode = 'HTML') {
-  if (!TELEGRAM_BOT_TOKEN || !chatId) {
+  const telegramBotToken = getApiConfig().TELEGRAM_BOT_TOKEN;
+  if (!telegramBotToken || !chatId) {
     console.warn('Telegram is not configured (missing TELEGRAM_BOT_TOKEN or chatId).');
     return { ok: false, reason: 'not_configured' };
   }
   const payload = JSON.stringify({ chat_id: chatId, text, parse_mode: parseMode, disable_web_page_preview: true });
   const options = {
     hostname: 'api.telegram.org',
-    path: `/bot${TELEGRAM_BOT_TOKEN}/sendMessage`,
+    path: `/bot${telegramBotToken}/sendMessage`,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) }
   };
@@ -511,7 +609,7 @@ function isTradingDayET(p){ return !isWeekendET(p) && !nyseHolidaysET(p.y).has(e
 // Replace: fetch only today's quote from Finnhub (no multi-day candles)
 async function fetchTodayRangeAndQuote(symbol) {
   const quote = await new Promise((resolve, reject) => {
-    const url = `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(symbol)}&token=${API_CONFIG.FINNHUB_API_KEY}`;
+    const url = `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(symbol)}&token=${getApiConfig().FINNHUB_API_KEY}`;
     https.get(url, (response) => {
       let data=''; response.on('data', c=>data+=c); response.on('end', ()=>{ try{ resolve(JSON.parse(data)); } catch(e){ reject(e); } });
     }).on('error', reject);
@@ -569,7 +667,7 @@ app.post('/api/telegram/watch', (req, res) => {
     if (!safeSymbol || typeof highIBS !== 'number') {
       return res.status(400).json({ error: 'symbol and highIBS are required' });
     }
-    const useChatId = chatId || TELEGRAM_CHAT_ID;
+    const useChatId = chatId || getApiConfig().TELEGRAM_CHAT_ID;
     if (!useChatId) return res.status(400).json({ error: 'No Telegram chat id configured' });
     // thresholdPct сохраняем для обратной совместимости, но в расчётах используем глобальную настройку
     telegramWatches.set(safeSymbol, { symbol: safeSymbol, highIBS, lowIBS, thresholdPct, chatId: useChatId, entryPrice, isOpenPosition, sent: { dateKey: null, warn10: false, confirm1: false, entryWarn10: false, entryConfirm1: false } });
@@ -715,7 +813,7 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
     // Collect fresh data for all watches and group by chatId (always include all tickers)
     const byChat = new Map(); // chatId -> Array<{ w, ibs, quote, range, ohlc, closeEnoughToExit, closeEnoughToEntry, confirmExit, confirmEntry, dataOk, fetchError, avFresh, rtFresh }>
     for (const w of telegramWatches.values()) {
-      const chatId = w.chatId || TELEGRAM_CHAT_ID;
+      const chatId = w.chatId || getApiConfig().TELEGRAM_CHAT_ID;
       if (!chatId) continue;
       if (!byChat.has(chatId)) byChat.set(chatId, []);
       const rec = { w, ibs: null, quote: null, range: null, ohlc: null, closeEnoughToExit: null, closeEnoughToEntry: null, confirmExit: null, confirmEntry: null, dataOk: false, fetchError: null, avFresh: false, rtFresh: false };
@@ -880,7 +978,7 @@ app.get('/api/telegram/watches', (req, res) => {
 // Send test telegram message
 app.post('/api/telegram/test', async (req, res) => {
   try {
-    const chatId = (req.body && req.body.chatId) || TELEGRAM_CHAT_ID;
+    const chatId = (req.body && req.body.chatId) || getApiConfig().TELEGRAM_CHAT_ID;
     const msg = (req.body && req.body.message) || 'Test message from Trading Backtester ✅';
     const resp = await sendTelegramMessage(chatId, msg);
     if (!resp.ok) return res.status(500).json({ error: 'Failed to send test message' });
@@ -1160,7 +1258,7 @@ app.put('/api/settings', async (req, res) => {
 // Financial Data API Functions
 // options.adjustment: 'split_only' | 'none'
 async function fetchFromAlphaVantage(symbol, startDate, endDate, options = { adjustment: 'none' }) {
-  if (!API_CONFIG.ALPHA_VANTAGE_API_KEY) {
+  if (!getApiConfig().ALPHA_VANTAGE_API_KEY) {
     throw new Error('Alpha Vantage API key not configured');
   }
   // На бесплатном тарифе AV DAILY_ADJUSTED может считаться премиальным.
@@ -1173,7 +1271,7 @@ async function fetchFromAlphaVantage(symbol, startDate, endDate, options = { adj
   if (!safeSymbol) {
     throw new Error('Invalid symbol');
   }
-  const url = `https://www.alphavantage.co/query?function=${func}&symbol=${encodeURIComponent(safeSymbol)}&apikey=${API_CONFIG.ALPHA_VANTAGE_API_KEY}&outputsize=full`;
+  const url = `https://www.alphavantage.co/query?function=${func}&symbol=${encodeURIComponent(safeSymbol)}&apikey=${getApiConfig().ALPHA_VANTAGE_API_KEY}&outputsize=full`;
   
   const cacheKey = `av:${safeSymbol}:${startDate}:${endDate}:${options.adjustment}`;
   const cached = avCache.get(cacheKey);
@@ -1291,7 +1389,7 @@ async function fetchFromAlphaVantage(symbol, startDate, endDate, options = { adj
 }
 
 async function fetchFromFinnhub(symbol, startDate, endDate) {
-  if (!API_CONFIG.FINNHUB_API_KEY) {
+  if (!getApiConfig().FINNHUB_API_KEY) {
     throw new Error('Finnhub API key not configured');
   }
   
@@ -1299,7 +1397,7 @@ async function fetchFromFinnhub(symbol, startDate, endDate) {
   if (!safeSymbol) {
     throw new Error('Invalid symbol');
   }
-  const url = `https://finnhub.io/api/v1/stock/candle?symbol=${encodeURIComponent(safeSymbol)}&resolution=D&from=${startDate}&to=${endDate}&token=${API_CONFIG.FINNHUB_API_KEY}`;
+  const url = `https://finnhub.io/api/v1/stock/candle?symbol=${encodeURIComponent(safeSymbol)}&resolution=D&from=${startDate}&to=${endDate}&token=${getApiConfig().FINNHUB_API_KEY}`;
   
   return new Promise((resolve, reject) => {
     https.get(url, (response) => {
@@ -1339,7 +1437,7 @@ async function fetchFromFinnhub(symbol, startDate, endDate) {
 }
 
 async function fetchFromTwelveData(symbol, startDate, endDate) {
-  if (!API_CONFIG.TWELVE_DATA_API_KEY) {
+  if (!getApiConfig().TWELVE_DATA_API_KEY) {
     throw new Error('Twelve Data API key not configured');
   }
   
@@ -1349,7 +1447,7 @@ async function fetchFromTwelveData(symbol, startDate, endDate) {
   if (!safeSymbol) {
     throw new Error('Invalid symbol');
   }
-  const url = `https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(safeSymbol)}&interval=1day&start_date=${startDateStr}&end_date=${endDateStr}&apikey=${API_CONFIG.TWELVE_DATA_API_KEY}`;
+  const url = `https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(safeSymbol)}&interval=1day&start_date=${startDateStr}&end_date=${endDateStr}&apikey=${getApiConfig().TWELVE_DATA_API_KEY}`;
   
   return new Promise((resolve, reject) => {
     https.get(url, (response) => {
@@ -1792,6 +1890,38 @@ app.post('/api/datasets/:id/apply-splits', async (req, res) => {
   }
 });
 
+// Update dataset metadata (tag, companyName)
+app.patch('/api/datasets/:id/metadata', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const filePath = resolveDatasetFilePathById(id);
+    if (!filePath || !await fs.pathExists(filePath)) {
+      return res.status(404).json({ error: 'Dataset not found' });
+    }
+
+    // Read current dataset
+    const dataset = await fs.readJson(filePath);
+
+    // Update metadata fields
+    const { tag, companyName } = req.body || {};
+    if (tag !== undefined) {
+      dataset.tag = typeof tag === 'string' ? tag.trim() : undefined;
+    }
+    if (companyName !== undefined) {
+      dataset.companyName = typeof companyName === 'string' ? companyName.trim() : undefined;
+    }
+
+    // Write updated dataset back to file
+    await fs.writeJson(filePath, dataset, { spaces: 2 });
+
+    console.log(`Dataset metadata updated: ${id}`);
+    return res.json({ success: true, message: 'Метаданные датасета обновлены' });
+  } catch (e) {
+    console.error('Failed to update dataset metadata:', e);
+    return res.status(500).json({ error: e && e.message ? e.message : 'Failed to update dataset metadata' });
+  }
+});
+
 // Financial Data API proxy (supports multiple providers)
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
@@ -1808,7 +1938,7 @@ app.get('/api/yahoo-finance/:symbol', async (req, res) => {
     const endDate = end ? parseInt(end) : Math.floor(Date.now() / 1000);
 
     let payload;
-    if (!API_CONFIG.ALPHA_VANTAGE_API_KEY) {
+    if (!getApiConfig().ALPHA_VANTAGE_API_KEY) {
       return res.status(500).json({ error: 'Alpha Vantage API key not configured' });
     }
     const adjParam = (req.query.adjustment || 'none').toString();
@@ -1865,7 +1995,7 @@ app.get('/api/quote/:symbol', async (req, res) => {
     if (!symbol) {
       return res.status(400).json({ error: 'Symbol is required' });
     }
-    const chosenProvider = (provider || API_CONFIG.PREFERRED_API_PROVIDER).toString().toLowerCase();
+    const chosenProvider = (provider || getApiConfig().PREFERRED_API_PROVIDER).toString().toLowerCase();
 
     // Very short cache (5s) to reduce load
     const cacheKey = `quote:${chosenProvider}:${symbol}`;
@@ -1875,10 +2005,10 @@ app.get('/api/quote/:symbol', async (req, res) => {
     }
 
     if (chosenProvider === 'finnhub') {
-      if (!API_CONFIG.FINNHUB_API_KEY) {
+      if (!getApiConfig().FINNHUB_API_KEY) {
         return res.status(500).json({ error: 'Finnhub API key not configured' });
       }
-      const url = `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(symbol)}&token=${API_CONFIG.FINNHUB_API_KEY}`;
+      const url = `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(symbol)}&token=${getApiConfig().FINNHUB_API_KEY}`;
       const payload = await new Promise((resolve, reject) => {
         https.get(url, (response) => {
           let data = '';
@@ -1917,10 +2047,10 @@ app.get('/api/quote/:symbol', async (req, res) => {
     }
 
     // Alpha Vantage GLOBAL_QUOTE
-    if (!API_CONFIG.ALPHA_VANTAGE_API_KEY) {
+    if (!getApiConfig().ALPHA_VANTAGE_API_KEY) {
       return res.status(500).json({ error: 'Alpha Vantage API key not configured' });
     }
-    const url = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${encodeURIComponent(symbol)}&apikey=${API_CONFIG.ALPHA_VANTAGE_API_KEY}`;
+    const url = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${encodeURIComponent(symbol)}&apikey=${getApiConfig().ALPHA_VANTAGE_API_KEY}`;
     const payload = await new Promise((resolve, reject) => {
       https.get(url, (response) => {
         let data = '';
@@ -2055,7 +2185,7 @@ app.get('/api/polygon-finance/:symbol', async (req, res) => {
     const fromDate = startDate.toISOString().split('T')[0];
     const toDate = endDate.toISOString().split('T')[0];
     
-    const apiKey = API_CONFIG.POLYGON_API_KEY || (IS_PROD ? '' : 'demo');
+    const apiKey = getApiConfig().POLYGON_API_KEY || (IS_PROD ? '' : 'demo');
     if (!apiKey) {
       return res.status(500).json({ error: 'Polygon API key not configured' });
     }

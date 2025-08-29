@@ -1,10 +1,14 @@
-import { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
+import { Edit, Trash2 } from 'lucide-react';
 import { DatasetAPI } from '../lib/api';
+import { useAppStore } from '../stores';
 
 type SplitEvent = { date: string; factor: number };
 type SplitsMap = Record<string, Array<SplitEvent>>;
 
 export function SplitsTab() {
+  const currentDataset = useAppStore(s => s.currentDataset);
+
   const [data, setData] = useState<SplitsMap>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -399,7 +403,25 @@ export function SplitsTab() {
                   Будет обновлено {Object.keys(jsonUpdates).length} тикеров, всего {Object.values(jsonUpdates).reduce((s, arr) => s + arr.length, 0)} событий
                 </span>
               ) : (
-                <span>Ожидается валидный JSON</span>
+                <div className="flex flex-wrap gap-2">
+                  <span>Ожидается валидный JSON</span>
+                  <a
+                    href={`https://seekingalpha.com/symbol/${currentDataset?.ticker || 'AAPL'}/splits`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 underline"
+                  >
+                    посмотреть сплиты ({currentDataset?.ticker || 'AAPL'})
+                  </a>
+                  <a
+                    href="https://divvydiary.com/en/microsectors-fang-index-3x-leveraged-etn-etf-US0636795348?utm_source=chatgpt.com"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 underline"
+                  >
+                    и вот здесь
+                  </a>
+                </div>
               )}
             </div>
           )}
@@ -487,14 +509,22 @@ export function SplitsTab() {
                     ) : (
                       <>
                         <button
-                          className="px-3 py-1.5 text-sm rounded border bg-white hover:bg-gray-50"
+                          className="inline-flex items-center justify-center px-2 py-1.5 text-sm rounded border bg-white hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700 transition-colors"
                           onClick={() => beginEdit(tk)}
-                        >Редактировать</button>
+                          title="Редактировать"
+                          aria-label="Редактировать"
+                        >
+                          <Edit className="w-4 h-4" />
+                        </button>
                         <button
-                                                     className="px-3 py-1.5 text-sm rounded border bg-white hover:bg-red-50 text-red-600 dark:border-gray-700 dark:bg-gray-800 dark:text-red-400 dark:hover:bg-red-900/30"
+                          className="inline-flex items-center justify-center px-2 py-1.5 text-sm rounded border bg-white hover:bg-red-50 text-red-600 dark:border-gray-700 dark:bg-gray-800 dark:text-red-400 dark:hover:bg-red-900/30 transition-colors"
                           onClick={() => deleteTicker(tk)}
                           disabled={actionBusy}
-                        >Удалить тикер</button>
+                          title="Удалить тикер"
+                          aria-label="Удалить тикер"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
                       </>
                     )}
                   </td>

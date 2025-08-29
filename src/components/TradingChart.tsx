@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { createChart, type IChartApi, type ISeriesApi, type UTCTimestamp } from 'lightweight-charts';
 import { formatOHLCYMD, parseOHLCDate } from '../lib/utils';
 import type { OHLCData, Trade, SplitEvent } from '../types';

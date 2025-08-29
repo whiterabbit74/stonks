@@ -1,12 +1,14 @@
-import { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { Settings } from 'lucide-react';
+
 import { useAppStore } from '../stores';
 import { DataUpload } from './DataUpload';
 import { DataEnhancer } from './DataEnhancer';
 import { Results } from './Results';
 import { TelegramWatches } from './TelegramWatches';
 import { AppSettings } from './AppSettings';
+
 import { SplitsTab } from './SplitsTab';
 import { CalendarPage } from './CalendarPage';
 import { Footer } from './Footer';

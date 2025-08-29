@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { X, Save, RotateCcw } from 'lucide-react';
 import type { Strategy } from '../types';
 import { createDefaultStrategy } from '../lib/strategy';

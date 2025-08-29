@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { DatasetAPI } from '../lib/api';
 
 type SplitEvent = { date: string; factor: number };

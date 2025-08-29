@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Database, Download, Trash2, Calendar, BarChart3, Eye, EyeOff, Server, ServerOff, RefreshCw } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Database, Download, Trash2, Calendar, BarChart3, Eye, EyeOff, Server, ServerOff, RefreshCw, Edit } from 'lucide-react';
 import { useAppStore } from '../stores';
 import { createStrategyFromTemplate, STRATEGY_TEMPLATES } from '../lib/strategy';
 import { DatasetAPI, API_BASE_URL } from '../lib/api';
@@ -23,6 +23,13 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmTarget, setConfirmTarget] = useState<string | null>(null);
   const [loadingId, setLoadingId] = useState<string | null>(null);
+
+  // Состояние для модального окна редактирования
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [editingDataset, setEditingDataset] = useState<Omit<SavedDataset, 'data'> | null>(null);
+  const [editTag, setEditTag] = useState('');
+  const [editCompanyName, setEditCompanyName] = useState('');
+  const [savingEdit, setSavingEdit] = useState(false);
   
   // Проверяем статус сервера ТОЛЬКО после авторизации, чтобы не плодить 401
   useEffect(() => {
@@ -86,6 +93,41 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
   const handleExportDataset = (datasetId: string, event: React.MouseEvent) => {
     event.stopPropagation();
     exportDatasetAsJSON(datasetId);
+  };
+
+  const handleEditDataset = (dataset: Omit<SavedDataset, 'data'>, event: React.MouseEvent) => {
+    event.stopPropagation();
+    setEditingDataset(dataset);
+    setEditTag(dataset.tag || '');
+    setEditCompanyName(dataset.companyName || '');
+    setEditModalOpen(true);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingDataset) return;
+
+    try {
+      setSavingEdit(true);
+      const datasetId = ((editingDataset as unknown as { id?: string }).id || editingDataset.ticker || editingDataset.name).toString();
+
+      // Обновляем метаданные датасета
+      await DatasetAPI.updateDatasetMetadata(datasetId, {
+        tag: editTag.trim(),
+        companyName: editCompanyName.trim()
+      });
+
+      // Перезагружаем список датасетов
+      await loadDatasetsFromServer();
+
+      setEditModalOpen(false);
+      setEditingDataset(null);
+      setEditTag('');
+      setEditCompanyName('');
+    } catch (error) {
+      console.error('Failed to update dataset metadata:', error);
+    } finally {
+      setSavingEdit(false);
+    }
   };
 
   return (
@@ -164,6 +206,7 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
               onDelete={(e) => handleDeleteDataset(((dataset as unknown as { id?: string }).id || dataset.ticker || dataset.name).toString(), e)}
               onExport={(e) => handleExportDataset(((dataset as unknown as { id?: string }).id || dataset.ticker || dataset.name).toString(), e)}
               loading={loadingId === dataset.name}
+              onEdit={(e) => handleEditDataset(dataset, e)}
               onRefresh={async (e) => {
                 e.stopPropagation();
                 // Единый ID = тикер в верхнем регистре
@@ -199,6 +242,79 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
         }}
         onClose={() => { setConfirmOpen(false); setConfirmTarget(null); }}
       />
+
+      {/* Модальное окно редактирования датасета */}
+      {editModalOpen && editingDataset && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 p-6 w-full max-w-md mx-4">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                Редактировать датасет
+              </h3>
+              <button
+                onClick={() => setEditModalOpen(false)}
+                className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Тикер
+                </label>
+                <div className="px-3 py-2 bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-md text-gray-900 dark:text-gray-100">
+                  {editingDataset.ticker}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Тег
+                </label>
+                <input
+                  type="text"
+                  value={editTag}
+                  onChange={(e) => setEditTag(e.target.value)}
+                  placeholder="Например: tech, growth, dividend"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-800 dark:text-gray-100"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Название компании
+                </label>
+                <input
+                  type="text"
+                  value={editCompanyName}
+                  onChange={(e) => setEditCompanyName(e.target.value)}
+                  placeholder="Например: Apple Inc."
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-800 dark:text-gray-100"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 mt-6">
+              <button
+                onClick={() => setEditModalOpen(false)}
+                className="px-4 py-2 text-sm border border-gray-300 dark:border-gray-700 rounded-md text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
+                disabled={savingEdit}
+              >
+                Отмена
+              </button>
+              <button
+                onClick={handleSaveEdit}
+                disabled={savingEdit}
+                className="px-4 py-2 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {savingEdit ? 'Сохранение...' : 'Сохранить'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -209,12 +325,13 @@ interface DatasetCardProps {
   onLoad: () => void;
   onDelete: (event: React.MouseEvent) => void;
   onExport: (event: React.MouseEvent) => void;
+  onEdit?: (event: React.MouseEvent) => void;
   loading?: boolean;
   onRefresh?: (event: React.MouseEvent) => void;
   refreshing?: boolean;
 }
 
-function DatasetCard({ dataset, isActive, onLoad, onDelete, onExport, onRefresh, loading, refreshing }: DatasetCardProps) {
+function DatasetCard({ dataset, isActive, onLoad, onDelete, onExport, onEdit, onRefresh, loading, refreshing }: DatasetCardProps) {
   const formatDate = (dateString: string) => {
     if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
       const [y, m, d] = dateString.split('-');
@@ -240,6 +357,11 @@ function DatasetCard({ dataset, isActive, onLoad, onDelete, onExport, onRefresh,
             <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded font-mono dark:bg-blue-950/30 dark:text-blue-200 dark:border dark:border-blue-900/40">
               {dataset.ticker}
             </span>
+            {dataset.tag && (
+              <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded dark:bg-blue-950/30 dark:text-blue-200 dark:border dark:border-blue-900/40">
+                {dataset.tag}
+              </span>
+            )}
             {loading && (
               <span className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded dark:bg-gray-800 dark:text-gray-200 dark:border dark:border-gray-700">Загрузка…</span>
             )}
@@ -261,12 +383,27 @@ function DatasetCard({ dataset, isActive, onLoad, onDelete, onExport, onRefresh,
             </div>
           </div>
           
+          {dataset.companyName && (
+            <div className="text-sm text-gray-700 dark:text-gray-300 mt-1">
+              {dataset.companyName}
+            </div>
+          )}
           <div className="text-xs text-gray-500 mt-1 dark:text-gray-400">
             Сохранён: {formatDate(dataset.uploadDate)}
           </div>
         </div>
 
         <div className="flex items-center gap-2 ml-4">
+          {onEdit && (
+            <button
+              onClick={onEdit}
+              className="p-2 text-gray-400 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-transparent rounded transition-colors"
+              title="Редактировать датасет"
+              aria-label="Редактировать датасет"
+            >
+              <Edit className="w-4 h-4" />
+            </button>
+          )}
           <button
             onClick={onRefresh}
             className="p-2 text-gray-400 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-transparent rounded transition-colors"

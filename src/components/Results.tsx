@@ -1,5 +1,5 @@
+import React, { useEffect, useMemo, useState } from 'react';
 import { Heart, RefreshCcw, AlertTriangle } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
 import { DatasetAPI } from '../lib/api';
 import { formatOHLCYMD } from '../lib/utils';
 import { useAppStore } from '../stores';
@@ -39,7 +39,7 @@ export function Results() {
   const [watching, setWatching] = useState(false);
   const [watchBusy, setWatchBusy] = useState(false);
   
-  type ChartTab = 'price' | 'equity' | 'drawdown' | 'trades' | 'profit' | 'duration' | 'openDayDrawdown' | 'margin';
+  type ChartTab = 'price' | 'equity' | 'drawdown' | 'trades' | 'profit' | 'duration' | 'openDayDrawdown' | 'margin' | 'splits';
   const [activeChart, setActiveChart] = useState<ChartTab>('price');
   
   // Проверка дублей дат в marketData (ключ YYYY-MM-DD)
@@ -553,15 +553,18 @@ export function Results() {
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg sm:text-xl font-semibold text-gray-900 dark:text-gray-100">Аналитика сделок</h2>
             </div>
-            <div className="flex flex-wrap items-center gap-2 mb-4 text-xs sm:text-sm">
+            <div className="horizontal-scroll pb-2">
+              <div className="flex items-center gap-2 flex-nowrap min-w-max px-1">
               <button className={`${activeChart === 'price' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/30 dark:border-blue-900/40 dark:text-blue-200' : 'bg-white border-gray-200 text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'} px-3 py-1.5 rounded border`} onClick={() => setActiveChart('price')}>Цена</button>
               <button className={`${activeChart === 'equity' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/30 dark:border-blue-900/40 dark:text-blue-200' : 'bg-white border-gray-200 text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'} px-3 py-1.5 rounded border`} onClick={() => setActiveChart('equity')}>Equity</button>
               <button className={`${activeChart === 'drawdown' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/30 dark:border-blue-900/40 dark:text-blue-200' : 'bg-white border-gray-200 text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'} px-3 py-1.5 rounded border`} onClick={() => setActiveChart('drawdown')}>Просадки</button>
               <button className={`${activeChart === 'trades' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/30 dark:border-blue-900/40 dark:text-blue-200' : 'bg-white border-gray-200 text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'} px-3 py-1.5 rounded border`} onClick={() => setActiveChart('trades')}>Сделки</button>
               <button className={`${activeChart === 'profit' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/30 dark:border-blue-900/40 dark:text-blue-200' : 'bg-white border-gray-200 text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'} px-3 py-1.5 rounded border`} onClick={() => setActiveChart('profit')}>Profit factor</button>
               <button className={`${activeChart === 'duration' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/30 dark:border-blue-900/40 dark:text-blue-200' : 'bg-white border-gray-200 text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'} px-3 py-1.5 rounded border`} onClick={() => setActiveChart('duration')}>Длительность</button>
-              <button className={`${activeChart === 'openDayDrawdown' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/30 dark:border-blue-900/40 dark:text-blue-200' : 'bg-white border-gray-200 text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'} px-3 py-1.5 rounded border`} onClick={() => setActiveChart('openDayDrawdown')}>Просадка в день открытия</button>
+              <button className={`${activeChart === 'openDayDrawdown' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/30 dark:border-blue-900/40 dark:text-blue-200' : 'bg-white border-gray-200 text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'} px-3 py-1.5 rounded border`} onClick={() => setActiveChart('openDayDrawdown')}>Стартовая просадка</button>
               <button className={`${activeChart === 'margin' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/30 dark:border-blue-900/40 dark:text-blue-200' : 'bg-white border-gray-200 text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'} px-3 py-1.5 rounded border`} onClick={() => setActiveChart('margin')}>Маржа</button>
+              <button className={`${activeChart === 'splits' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/30 dark:border-blue-900/40 dark:text-blue-200' : 'bg-white border-gray-200 text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'} px-3 py-1.5 rounded border`} onClick={() => setActiveChart('splits')}>Сплиты</button>
+              </div>
             </div>
 
             {activeChart === 'price' && (
@@ -589,6 +592,53 @@ export function Results() {
             )}
             {activeChart === 'margin' && (
               <MarginSimulator equity={equity} />
+            )}
+            {activeChart === 'splits' && (
+              <div className="space-y-4">
+                <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 p-4">
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">История сплитов</h3>
+                  {currentSplits && Array.isArray(currentSplits) && currentSplits.length > 0 ? (
+                    <div className="space-y-2">
+                      {currentSplits.map((split, index) => (
+                        <div key={index} className="flex justify-between items-center py-3 px-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                          <span className="text-sm text-gray-600 dark:text-gray-400">
+                            {new Date(split.date).toLocaleDateString('ru-RU')}
+                          </span>
+                          <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                            Коэффициент: {split.factor}:1
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+                      <p>Для этой акции сплиты не найдены</p>
+                    </div>
+                  )}
+
+                  {/* Ссылки на внешние ресурсы */}
+                  <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+                    <div className="flex flex-wrap gap-3 text-sm">
+                      <a
+                        href={`https://seekingalpha.com/symbol/${symbol}/splits`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 underline"
+                      >
+                        посмотреть сплиты
+                      </a>
+                      <a
+                        href="https://divvydiary.com/en/microsectors-fang-index-3x-leveraged-etn-etf-US0636795348?utm_source=chatgpt.com"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 underline"
+                      >
+                        и вот здесь
+                      </a>
+                    </div>
+                  </div>
+                </div>
+              </div>
             )}
           </section>
         </div>
