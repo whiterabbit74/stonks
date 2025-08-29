@@ -153,7 +153,7 @@ export function TradingCalendar() {
 
     // Пустые ячейки для дней до начала месяца
     for (let i = 0; i < firstDayOfMonth; i++) {
-      days.push(<div key={`empty-${i}`} className="h-10"></div>);
+      days.push(<div key={`empty-${i}`} className="min-h-[80px] border-r border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"></div>);
     }
 
     // Дни месяца
@@ -162,9 +162,9 @@ export function TradingCalendar() {
       const dayData = getDayData(selectedYear, selectedMonth, day);
 
       // Определяем стили для разных типов дней
-      let bgColor = 'bg-white hover:bg-gray-50';
-      let textColor = 'text-gray-900';
-      let borderColor = 'border-gray-200';
+      let bgColor = 'bg-white hover:bg-gray-50 dark:bg-gray-900 dark:hover:bg-gray-800';
+      let textColor = 'text-gray-900 dark:text-gray-100';
+      let borderColor = 'border-gray-200 dark:border-gray-700';
       let shadow = '';
       let emoji = '';
       let isToday = false;
@@ -174,30 +174,30 @@ export function TradingCalendar() {
           selectedMonth === currentMonth &&
           day === currentDay) {
         isToday = true;
-        bgColor = 'bg-blue-600 text-white hover:bg-blue-700';
+        bgColor = 'bg-blue-600 text-white hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-600';
         textColor = 'text-white';
-        borderColor = 'border-blue-600';
-        shadow = 'shadow-lg ring-2 ring-blue-300';
+        borderColor = 'border-blue-600 dark:border-blue-700';
+        shadow = 'shadow-lg ring-2 ring-blue-300 dark:ring-blue-500';
       } else {
         switch (dayType) {
           case 'holiday':
-            bgColor = 'bg-gradient-to-br from-red-50 to-rose-50 hover:from-red-100 hover:to-rose-100';
-            textColor = 'text-red-900';
-            borderColor = 'border-red-300';
+            bgColor = 'bg-red-50 hover:bg-red-100 dark:bg-red-950/20 dark:hover:bg-red-950/30';
+            textColor = 'text-red-900 dark:text-red-200';
+            borderColor = 'border-red-300 dark:border-red-800';
             emoji = '🏖️';
             shadow = 'hover:shadow-md';
             break;
           case 'short':
-            bgColor = 'bg-gradient-to-br from-yellow-50 to-amber-50 hover:from-yellow-100 hover:to-amber-100';
-            textColor = 'text-yellow-900';
-            borderColor = 'border-yellow-300';
+            bgColor = 'bg-yellow-50 hover:bg-yellow-100 dark:bg-yellow-950/20 dark:hover:bg-yellow-950/30';
+            textColor = 'text-yellow-900 dark:text-yellow-200';
+            borderColor = 'border-yellow-300 dark:border-yellow-800';
             emoji = '⏰';
             shadow = 'hover:shadow-md';
             break;
           case 'weekend':
-            bgColor = 'bg-gradient-to-br from-gray-50 to-gray-100 hover:from-gray-100 hover:to-gray-200';
-            textColor = 'text-gray-600';
-            borderColor = 'border-gray-300';
+            bgColor = 'bg-gray-50 hover:bg-gray-100 dark:bg-gray-800 dark:hover:bg-gray-700';
+            textColor = 'text-gray-600 dark:text-gray-400';
+            borderColor = 'border-gray-300 dark:border-gray-600';
             shadow = 'hover:shadow-sm';
             break;
           default:
@@ -276,96 +276,95 @@ export function TradingCalendar() {
 
   return (
     <div className="max-w-7xl mx-auto space-y-8">
-      {/* Заголовок с градиентом */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-blue-600 via-purple-600 to-indigo-600 p-8 text-white shadow-xl">
-        <div className="absolute inset-0 bg-black/10"></div>
-        <div className="relative flex items-center justify-between">
+      {/* Заголовок */}
+      <div className="bg-white rounded-xl border border-gray-200 p-6 dark:bg-gray-900 dark:border-gray-800">
+        <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <div className="p-3 bg-white/20 rounded-xl backdrop-blur-sm">
-              <Calendar className="w-8 h-8 text-white" />
+            <div className="p-2 bg-blue-100 rounded-lg dark:bg-blue-950/30">
+              <Calendar className="w-6 h-6 text-blue-600" />
             </div>
             <div>
-              <h1 className="text-3xl font-bold">Календарь торгов</h1>
-              <p className="text-blue-100 mt-1">NYSE • Американский рынок акций</p>
+              <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Календарь торгов</h1>
+              <p className="text-gray-600 dark:text-gray-400">NYSE • Американский рынок акций</p>
             </div>
           </div>
-          <div className="hidden md:flex items-center gap-2 text-sm">
+          <div className="hidden md:flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
             <TrendingUp className="w-4 h-4" />
             <span>Реальное время</span>
           </div>
         </div>
       </div>
 
-      {/* Улучшенная легенда */}
-      <div className="bg-white rounded-xl shadow-lg border border-gray-100 overflow-hidden">
-        <div className="bg-gradient-to-r from-gray-50 to-gray-100 px-6 py-4 border-b border-gray-200">
-          <h3 className="font-semibold text-gray-900 flex items-center gap-2">
-            <Info className="w-5 h-5 text-gray-600" />
+      {/* Легенда календаря */}
+      <div className="bg-white rounded-xl border border-gray-200 dark:bg-gray-900 dark:border-gray-800">
+        <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-800">
+          <h3 className="font-semibold text-gray-900 flex items-center gap-2 dark:text-gray-100">
+            <Info className="w-5 h-5 text-gray-600 dark:text-gray-400" />
             Легенда календаря
           </h3>
         </div>
         <div className="p-6">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="flex items-center gap-3 p-4 bg-gradient-to-br from-green-50 to-emerald-50 border border-green-200 rounded-xl hover:shadow-md transition-shadow">
-              <div className="w-5 h-5 bg-green-500 rounded-full shadow-sm"></div>
+            <div className="flex items-center gap-3 p-4 bg-gray-50 border border-gray-200 rounded-lg dark:bg-gray-800 dark:border-gray-700">
+              <div className="w-4 h-4 bg-green-500 rounded-full"></div>
               <div>
-                <div className="font-medium text-green-900">Торговый день</div>
-                <div className="text-xs text-green-700">9:30-16:00 EST</div>
+                <div className="font-medium text-gray-900 dark:text-gray-100">Торговый день</div>
+                <div className="text-sm text-gray-600 dark:text-gray-400">9:30-16:00 EST</div>
               </div>
             </div>
-            <div className="flex items-center gap-3 p-4 bg-gradient-to-br from-gray-50 to-gray-100 border border-gray-300 rounded-xl hover:shadow-md transition-shadow">
-              <div className="w-5 h-5 bg-gray-400 rounded-full shadow-sm"></div>
+            <div className="flex items-center gap-3 p-4 bg-gray-50 border border-gray-200 rounded-lg dark:bg-gray-800 dark:border-gray-700">
+              <div className="w-4 h-4 bg-gray-400 rounded-full"></div>
               <div>
-                <div className="font-medium text-gray-900">Выходной</div>
-                <div className="text-xs text-gray-600">Сб, Вс</div>
+                <div className="font-medium text-gray-900 dark:text-gray-100">Выходной</div>
+                <div className="text-sm text-gray-600 dark:text-gray-400">Сб, Вс</div>
               </div>
             </div>
-            <div className="flex items-center gap-3 p-4 bg-gradient-to-br from-yellow-50 to-amber-50 border border-yellow-300 rounded-xl hover:shadow-md transition-shadow">
-              <Clock className="w-5 h-5 text-yellow-600" />
+            <div className="flex items-center gap-3 p-4 bg-gray-50 border border-gray-200 rounded-lg dark:bg-gray-800 dark:border-gray-700">
+              <Clock className="w-5 h-5 text-yellow-600 dark:text-yellow-500" />
               <div>
-                <div className="font-medium text-yellow-900">Раннее закрытие</div>
-                <div className="text-xs text-yellow-700">до 13:00 EST</div>
+                <div className="font-medium text-gray-900 dark:text-gray-100">Раннее закрытие</div>
+                <div className="text-sm text-gray-600 dark:text-gray-400">до 13:00 EST</div>
               </div>
             </div>
-            <div className="flex items-center gap-3 p-4 bg-gradient-to-br from-red-50 to-rose-50 border border-red-300 rounded-xl hover:shadow-md transition-shadow">
-              <CheckCircle className="w-5 h-5 text-red-600" />
+            <div className="flex items-center gap-3 p-4 bg-gray-50 border border-gray-200 rounded-lg dark:bg-gray-800 dark:border-gray-700">
+              <CheckCircle className="w-5 h-5 text-red-600 dark:text-red-500" />
               <div>
-                <div className="font-medium text-red-900">Праздник</div>
-                <div className="text-xs text-red-700">Биржа закрыта</div>
+                <div className="font-medium text-gray-900 dark:text-gray-100">Праздник</div>
+                <div className="text-sm text-gray-600 dark:text-gray-400">Биржа закрыта</div>
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Часы работы с улучшенным дизайном */}
-      <div className="bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 border border-blue-200 rounded-xl p-6 shadow-sm">
+      {/* Часы работы */}
+      <div className="bg-white rounded-xl border border-gray-200 dark:bg-gray-900 dark:border-gray-800 p-6">
         <div className="flex items-start gap-4">
-          <div className="p-2 bg-blue-100 rounded-lg">
+          <div className="p-2 bg-blue-100 rounded-lg dark:bg-blue-950/30">
             <Clock className="w-6 h-6 text-blue-600" />
           </div>
           <div className="flex-1">
-            <h3 className="text-lg font-semibold text-blue-900 mb-3">Часы работы NYSE</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="bg-white rounded-lg p-4 border border-blue-200 shadow-sm">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4 dark:text-gray-100">Часы работы NYSE</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg dark:bg-gray-800 dark:border-gray-700">
                 <div className="flex items-center gap-2 mb-2">
                   <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-                  <span className="font-medium text-gray-900">Обычные часы</span>
+                  <span className="font-medium text-gray-900 dark:text-gray-100">Обычные часы</span>
                 </div>
-                <div className="text-2xl font-bold text-gray-900">
+                <div className="text-xl font-bold text-gray-900 dark:text-gray-100">
                   {calendarData.tradingHours.normal.start} - {calendarData.tradingHours.normal.end}
                 </div>
-                <div className="text-sm text-gray-600 mt-1">EST/EDT (Восточное время)</div>
+                <div className="text-sm text-gray-600 dark:text-gray-400 mt-1">EST/EDT (Восточное время)</div>
               </div>
-              <div className="bg-white rounded-lg p-4 border border-yellow-200 shadow-sm">
+              <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg dark:bg-gray-800 dark:border-gray-700">
                 <div className="flex items-center gap-2 mb-2">
                   <div className="w-3 h-3 bg-yellow-500 rounded-full"></div>
-                  <span className="font-medium text-gray-900">Раннее закрытие</span>
+                  <span className="font-medium text-gray-900 dark:text-gray-100">Раннее закрытие</span>
                 </div>
-                <div className="text-2xl font-bold text-gray-900">
+                <div className="text-xl font-bold text-gray-900 dark:text-gray-100">
                   до {calendarData.tradingHours.short.end}
                 </div>
-                <div className="text-sm text-gray-600 mt-1">В праздничные дни</div>
+                <div className="text-sm text-gray-600 dark:text-gray-400 mt-1">В праздничные дни</div>
               </div>
             </div>
           </div>
@@ -373,23 +372,23 @@ export function TradingCalendar() {
       </div>
 
       {/* Навигация календаря */}
-      <div className="bg-white rounded-xl shadow-lg border border-gray-100 p-6">
+      <div className="bg-white rounded-xl border border-gray-200 dark:bg-gray-900 dark:border-gray-800 p-6">
         <div className="flex flex-col lg:flex-row gap-6 items-start lg:items-center justify-between">
           {/* Управление месяцем/годом */}
           <div className="flex items-center gap-4">
             <button
               onClick={goToPreviousMonth}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              className="p-2 hover:bg-gray-100 rounded-lg transition-colors dark:hover:bg-gray-800"
               title="Предыдущий месяц"
             >
-              <ChevronLeft className="w-5 h-5 text-gray-600" />
+              <ChevronLeft className="w-5 h-5 text-gray-600 dark:text-gray-400" />
             </button>
 
             <div className="flex gap-3">
               <select
                 value={selectedYear}
                 onChange={(e) => setSelectedYear(e.target.value)}
-                className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-900 font-medium focus:ring-2 focus:ring-blue-500 focus:border-blue-500 hover:border-gray-400 transition-colors"
+                className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-900 font-medium focus:ring-2 focus:ring-blue-500 focus:border-blue-500 hover:border-gray-400 transition-colors dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100"
               >
                 {calendarData.metadata.years.map(year => (
                   <option key={year} value={year}>{year}</option>
@@ -399,7 +398,7 @@ export function TradingCalendar() {
               <select
                 value={selectedMonth}
                 onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
-                className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-900 font-medium focus:ring-2 focus:ring-blue-500 focus:border-blue-500 hover:border-gray-400 transition-colors"
+                className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-900 font-medium focus:ring-2 focus:ring-blue-500 focus:border-blue-500 hover:border-gray-400 transition-colors dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100"
               >
                 {MONTHS.map((month, index) => (
                   <option key={index} value={index}>{month}</option>
@@ -409,10 +408,10 @@ export function TradingCalendar() {
 
             <button
               onClick={goToNextMonth}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              className="p-2 hover:bg-gray-100 rounded-lg transition-colors dark:hover:bg-gray-800"
               title="Следующий месяц"
             >
-              <ChevronRight className="w-5 h-5 text-gray-600" />
+              <ChevronRight className="w-5 h-5 text-gray-600 dark:text-gray-400" />
             </button>
           </div>
 
@@ -420,57 +419,57 @@ export function TradingCalendar() {
           <div className="flex items-center gap-4">
             <button
               onClick={goToToday}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium shadow-sm"
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
             >
               Сегодня
             </button>
 
-            <div className="text-sm text-gray-500 bg-gray-50 px-3 py-2 rounded-lg">
-              Данные на: <span className="font-medium text-gray-900">{calendarData.metadata.lastUpdated}</span>
+            <div className="text-sm text-gray-500 dark:text-gray-400">
+              Данные на: <span className="font-medium text-gray-900 dark:text-gray-100">{calendarData.metadata.lastUpdated}</span>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Календарь с современным дизайном */}
-      <div className="bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden">
-        {/* Заголовок месяца с градиентом */}
-        <div className="bg-gradient-to-r from-gray-900 via-gray-800 to-gray-900 px-8 py-6 text-white">
-          <h2 className="text-2xl font-bold text-center">
+      {/* Календарь */}
+      <div className="bg-white rounded-xl border border-gray-200 dark:bg-gray-900 dark:border-gray-800 overflow-hidden">
+        {/* Заголовок месяца */}
+        <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800">
+          <h2 className="text-xl font-bold text-center text-gray-900 dark:text-gray-100">
             {MONTHS[selectedMonth]} {selectedYear}
           </h2>
-          <p className="text-gray-300 text-center mt-1 text-sm">
+          <p className="text-gray-600 text-center mt-1 text-sm dark:text-gray-400">
             NYSE Trading Calendar
           </p>
         </div>
 
         {/* Дни недели */}
-        <div className="grid grid-cols-7 bg-gray-50">
+        <div className="grid grid-cols-7 bg-gray-50 dark:bg-gray-800">
           {WEEKDAYS.map(day => (
-            <div key={day} className="px-4 py-4 text-center text-sm font-semibold text-gray-700 border-r border-gray-200 last:border-r-0">
+            <div key={day} className="px-4 py-3 text-center text-sm font-medium text-gray-700 dark:text-gray-300 border-r border-gray-200 dark:border-gray-700 last:border-r-0">
               {day}
             </div>
           ))}
         </div>
 
         {/* Дни месяца */}
-        <div className="grid grid-cols-7 bg-white">
+        <div className="grid grid-cols-7 bg-white dark:bg-gray-900">
           {renderCalendar()}
         </div>
       </div>
 
-      {/* Современные карточки праздников */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      {/* Карточки праздников */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Федеральные праздники */}
-        <div className="bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden">
-          <div className="bg-gradient-to-r from-red-500 to-rose-600 px-6 py-4 text-white">
+        <div className="bg-white rounded-xl border border-gray-200 dark:bg-gray-900 dark:border-gray-800 overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-800 bg-red-50 dark:bg-red-950/20">
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-white/20 rounded-lg">
-                <CheckCircle className="w-6 h-6" />
+              <div className="p-2 bg-red-100 rounded-lg dark:bg-red-950/30">
+                <CheckCircle className="w-5 h-5 text-red-600 dark:text-red-400" />
               </div>
               <div>
-                <h3 className="text-xl font-bold">Федеральные праздники</h3>
-                <p className="text-red-100 text-sm">Биржа закрыта</p>
+                <h3 className="text-lg font-semibold text-red-900 dark:text-red-200">Федеральные праздники</h3>
+                <p className="text-red-600 dark:text-red-400 text-sm">Биржа закрыта</p>
               </div>
             </div>
           </div>
@@ -478,15 +477,15 @@ export function TradingCalendar() {
           <div className="p-6">
             <div className="grid gap-3">
               {Object.entries(calendarData.holidays[selectedYear] || {}).map(([date, data]) => (
-                <div key={date} className="group bg-gradient-to-r from-red-50 to-rose-50 border border-red-200 rounded-xl p-4 hover:shadow-lg transition-all duration-200 hover:scale-[1.02]">
+                <div key={date} className="bg-gray-50 border border-gray-200 rounded-lg p-4 hover:shadow-md transition-colors dark:bg-gray-800 dark:border-gray-700">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center group-hover:bg-red-200 transition-colors">
-                        <span className="text-red-600 font-bold">🏖️</span>
+                      <div className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center dark:bg-red-950/30">
+                        <span className="text-red-600 text-sm dark:text-red-400">🏖️</span>
                       </div>
                       <div>
-                        <h4 className="font-semibold text-red-900 group-hover:text-red-800">{data.name}</h4>
-                        <p className="text-sm text-red-600">{data.description}</p>
+                        <h4 className="font-medium text-gray-900 dark:text-gray-100">{data.name}</h4>
+                        <p className="text-sm text-gray-600 dark:text-gray-400">{data.description}</p>
                       </div>
                     </div>
                     <div className="text-right">
@@ -502,15 +501,15 @@ export function TradingCalendar() {
         </div>
 
         {/* Дни с ранним закрытием */}
-        <div className="bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden">
-          <div className="bg-gradient-to-r from-yellow-500 to-amber-600 px-6 py-4 text-white">
+        <div className="bg-white rounded-xl border border-gray-200 dark:bg-gray-900 dark:border-gray-800 overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-800 bg-yellow-50 dark:bg-yellow-950/20">
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-white/20 rounded-lg">
-                <Clock className="w-6 h-6" />
+              <div className="p-2 bg-yellow-100 rounded-lg dark:bg-yellow-950/30">
+                <Clock className="w-5 h-5 text-yellow-600 dark:text-yellow-400" />
               </div>
               <div>
-                <h3 className="text-xl font-bold">Раннее закрытие</h3>
-                <p className="text-yellow-100 text-sm">Сокращенный день</p>
+                <h3 className="text-lg font-semibold text-yellow-900 dark:text-yellow-200">Раннее закрытие</h3>
+                <p className="text-yellow-600 dark:text-yellow-400 text-sm">Сокращенный день</p>
               </div>
             </div>
           </div>
@@ -518,15 +517,15 @@ export function TradingCalendar() {
           <div className="p-6">
             <div className="grid gap-3">
               {Object.entries(calendarData.shortDays[selectedYear] || {}).map(([date, data]) => (
-                <div key={date} className="group bg-gradient-to-r from-yellow-50 to-amber-50 border border-yellow-200 rounded-xl p-4 hover:shadow-lg transition-all duration-200 hover:scale-[1.02]">
+                <div key={date} className="bg-gray-50 border border-gray-200 rounded-lg p-4 hover:shadow-md transition-colors dark:bg-gray-800 dark:border-gray-700">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-yellow-100 rounded-full flex items-center justify-center group-hover:bg-yellow-200 transition-colors">
-                        <span className="text-yellow-600 font-bold">⏰</span>
+                      <div className="w-8 h-8 bg-yellow-100 rounded-full flex items-center justify-center dark:bg-yellow-950/30">
+                        <span className="text-yellow-600 text-sm dark:text-yellow-400">⏰</span>
                       </div>
                       <div>
-                        <h4 className="font-semibold text-yellow-900 group-hover:text-yellow-800">{data.name}</h4>
-                        <p className="text-sm text-yellow-600">Работает {data.hours} часов</p>
+                        <h4 className="font-medium text-gray-900 dark:text-gray-100">{data.name}</h4>
+                        <p className="text-sm text-gray-600 dark:text-gray-400">Работает {data.hours} часов</p>
                       </div>
                     </div>
                     <div className="text-right">
