@@ -1,125 +1,221 @@
 #!/bin/bash
 
-# 🚀 Trading Backtester - Production Deployment Script
-# This script automates the deployment process
+# 🚀 УМНЫЙ ДЕПЛОЙ СИСТЕМЫ НА СЕРВЕР
+# Автоматизированный процесс обновления с проверками
 
-set -e
+set -e  # Остановить скрипт при первой ошибке
 
-echo "🚀 Начинаем развертывание Trading Backtester..."
-
-# Colors for output
+# Цвета для вывода
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# Configuration
-DOMAIN=${DOMAIN:-"tradingibs.site"}
-TLS_CA=${TLS_CA:-"https://acme-v02.api.letsencrypt.org/directory"}
-
-echo -e "${YELLOW}Конфигурация:${NC}"
-echo "  DOMAIN: $DOMAIN"
-echo "  TLS_CA: $TLS_CA"
-
-# Warning for staging certificates
-if [[ "$TLS_CA" == *"staging"* ]]; then
-    echo -e "${RED}⚠️  ВНИМАНИЕ: Используется STAGING SSL сертификат!${NC}"
-    echo -e "${RED}   Это тестовый сертификат, который не будет доверен браузерами.${NC}"
-    echo -e "${RED}   Для продакшена используйте: TLS_CA=https://acme-v02.api.letsencrypt.org/directory${NC}"
-    echo ""
-fi
-
-# Function to print status
-status() {
-    echo -e "${GREEN}✓ $1${NC}"
+# Функции
+log_info() {
+    echo -e "${BLUE}[INFO]${NC} $1"
 }
 
-error() {
-    echo -e "${RED}✗ $1${NC}"
-    exit 1
+log_success() {
+    echo -e "${GREEN}[SUCCESS]${NC} $1"
 }
 
-warning() {
-    echo -e "${YELLOW}⚠ $1${NC}"
+log_warning() {
+    echo -e "${YELLOW}[WARNING]${NC} $1"
 }
 
-# Check if we're in the right directory
-if [ ! -f "docker-compose.yml" ]; then
-    error "Запустите скрипт из корневой папки проекта (где находится docker-compose.yml)"
-fi
-
-# Check if .env file exists
-if [ ! -f "server/.env" ]; then
-    warning "Файл server/.env не найден. Создаю из шаблона..."
-    cp server/.env.example server/.env
-    warning "Отредактируйте server/.env с вашими настройками!"
-    echo "Нажмите Enter чтобы продолжить или Ctrl+C для выхода"
-    read
-fi
-
-# Update Caddyfile with current domain
-status "Обновляю Caddyfile..."
-cat > caddy/Caddyfile <<EOF
-# Dynamic domain from environment variable
-{$DOMAIN:$DOMAIN} {
-  tls {
-    ca {$TLS_CA:$TLS_CA}
-  }
-
-  encode gzip
-  log {
-    output file /var/log/caddy/access.log
-  }
-
-  handle /api/** {
-    reverse_proxy server:3001
-  }
-
-  handle {
-    reverse_proxy frontend:80
-  }
+log_error() {
+    echo -e "${RED}[ERROR]${NC} $1"
 }
-EOF
 
-# Set environment variables for docker-compose
-export DOMAIN=$DOMAIN
-export TLS_CA=$TLS_CA
+# Проверка наличия необходимых файлов
+check_requirements() {
+    log_info "Проверяю необходимые файлы..."
 
-# Stop existing services
-status "Останавливаю существующие сервисы..."
-docker compose down || true
+    required_files=("docker-compose.yml" "nginx.conf" ".env")
+    for file in "${required_files[@]}"; do
+        if [[ ! -f "$file" ]]; then
+            log_error "Отсутствует файл: $file"
+            exit 1
+        fi
+    done
 
-# Start services
-status "Запускаю сервисы..."
-docker compose up -d
+    # Проверка на синтаксис TypeScript в JS файлах
+    if grep -r ":\s*\(string\|number\|boolean\|Array\|Record\)" server/ --include="*.js" | grep -v "//"; then
+        log_error "Найден TypeScript синтаксис в JavaScript файлах!"
+        log_error "Исправьте перед деплоем:"
+        grep -r ":\s*\(string\|number\|boolean\|Array\|Record\)" server/ --include="*.js" | grep -v "//"
+        exit 1
+    fi
 
-# Wait for services to start
-status "Жду запуска сервисов..."
-sleep 15
+    log_success "Все проверки пройдены"
+}
 
-# Check service status
-status "Проверяю статус сервисов..."
-docker compose ps
+# Очистка старых образов
+cleanup_old_images() {
+    log_info "Очищаю старые Docker образы..."
 
-# Test the application
-status "Тестирую приложение..."
-if curl -k -s -o /dev/null -w "%{http_code}" https://$DOMAIN/api/status | grep -q "200"; then
-    status "✅ Приложение успешно запущено!"
-    status "🌐 Доступно по адресу: https://$DOMAIN"
-else
-    warning "⚠️ API недоступен. Проверьте логи:"
-    docker compose logs server
-fi
+    # Удалить dangling образы (неиспользуемые)
+    docker image prune -f
 
-echo ""
-echo -e "${GREEN}🎉 Развертывание завершено!${NC}"
-echo ""
-echo "Полезные команды:"
-echo "  docker compose logs          - посмотреть логи"
-echo "  docker compose restart       - перезапустить сервисы"
-echo "  docker compose down          - остановить сервисы"
-echo ""
-echo "Мониторинг:"
-echo "  docker compose ps           - статус сервисов"
-echo "  docker compose logs -f      - следить за логами"</contents>
-</xai:function_call">Создал автоматический скрипт развертывания
+    # Удалить старые версии образов (оставить последние 3)
+    docker images --format "table {{.Repository}}\t{{.ID}}" | grep -E "(stonks-server|stonks-frontend)" | tail -n +4 | while read repo id; do
+        if [[ -n "$id" ]]; then
+            log_info "Удаляю старый образ: $repo ($id)"
+            docker rmi "$id" 2>/dev/null || true
+        fi
+    done
+
+    log_success "Очистка завершена"
+}
+
+# Создание бэкапа
+create_backup() {
+    log_info "Создаю бэкап текущего состояния..."
+
+    backup_dir="backup_$(date +%Y%m%d_%H%M%S)"
+    mkdir -p "$backup_dir"
+
+    # Сохранить текущие логи
+    docker logs stonks-server > "$backup_dir/server.log" 2>&1 || true
+    docker logs stonks-frontend > "$backup_dir/frontend.log" 2>&1 || true
+
+    # Сохранить конфигурацию
+    cp docker-compose.yml "$backup_dir/" 2>/dev/null || true
+    cp nginx.conf "$backup_dir/" 2>/dev/null || true
+    cp .env "$backup_dir/" 2>/dev/null || true
+
+    log_info "Бэкап создан: $backup_dir"
+}
+
+# Пересборка и запуск
+rebuild_and_deploy() {
+    log_info "Пересобираю и запускаю сервисы..."
+
+    # Остановить сервисы
+    docker compose down
+
+    # Пересобрать с кэшем (быстрее)
+    docker compose build
+
+    # Запустить сервисы
+    docker compose up -d
+
+    # Подождать запуска
+    log_info "Жду запуска сервисов..."
+    sleep 30
+
+    # Проверить статус
+    if docker compose ps | grep -q "Up"; then
+        log_success "Сервисы запущены успешно"
+    else
+        log_error "Сервисы не запустились!"
+        docker compose logs
+        exit 1
+    fi
+}
+
+# Проверка здоровья
+health_check() {
+    log_info "Проверяю здоровье сервисов..."
+
+    max_attempts=10
+    attempt=1
+
+    while [ $attempt -le $max_attempts ]; do
+        log_info "Попытка $attempt/$max_attempts..."
+
+        # Проверить frontend
+        if curl -f -s http://localhost/ > /dev/null 2>&1; then
+            log_success "Frontend доступен"
+            frontend_ok=true
+        else
+            log_warning "Frontend недоступен"
+            frontend_ok=false
+        fi
+
+        # Проверить API
+        if curl -f -s http://localhost:3001/api/status > /dev/null 2>&1; then
+            log_success "API доступен"
+            api_ok=true
+        else
+            log_warning "API недоступен"
+            api_ok=false
+        fi
+
+        if [[ "$frontend_ok" == "true" && "$api_ok" == "true" ]]; then
+            log_success "Все сервисы здоровы!"
+            return 0
+        fi
+
+        sleep 10
+        ((attempt++))
+    done
+
+    log_error "Сервисы не прошли health check!"
+    docker compose logs
+    return 1
+}
+
+# Роллбэк при неудаче
+rollback() {
+    log_error "Выполняю откат к предыдущей версии..."
+
+    # Остановить текущие сервисы
+    docker compose down
+
+    # Найти предыдущий образ
+    prev_server=$(docker images stonks-server --format "{{.ID}}" | sed -n '2p')
+    prev_frontend=$(docker images stonks-frontend --format "{{.ID}}" | sed -n '2p')
+
+    if [[ -n "$prev_server" && -n "$prev_frontend" ]]; then
+        log_info "Использую предыдущие образы: server=$prev_server, frontend=$prev_frontend"
+
+        # Запустить с предыдущими образами
+        PREV_SERVER_IMAGE=$prev_server PREV_FRONTEND_IMAGE=$prev_frontend docker compose up -d
+
+        log_warning "Откат выполнен. Проверьте работу системы."
+    else
+        log_error "Предыдущие образы не найдены! Ручная интервенция требуется."
+        exit 1
+    fi
+}
+
+# Основная функция
+main() {
+    log_info "🚀 НАЧИНАЮ ДЕПЛОЙ СИСТЕМЫ"
+    echo "========================================"
+
+    # Шаг 1: Проверки
+    check_requirements
+
+    # Шаг 2: Очистка
+    cleanup_old_images
+
+    # Шаг 3: Бэкап
+    create_backup
+
+    # Шаг 4: Деплой
+    if rebuild_and_deploy; then
+        # Шаг 5: Health check
+        if health_check; then
+            log_success "🎉 ДЕПЛОЙ ЗАВЕРШЕН УСПЕШНО!"
+            log_info "Сервисы доступны:"
+            log_info "  - Frontend: http://localhost/"
+            log_info "  - API: http://localhost:3001/api/"
+            log_info "  - Production: https://tradingibs.site/"
+        else
+            log_error "Health check провален!"
+            rollback
+            exit 1
+        fi
+    else
+        log_error "Деплой провален!"
+        rollback
+        exit 1
+    fi
+}
+
+# Запуск
+main "$@"
