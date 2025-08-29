@@ -108,12 +108,12 @@ function ProtectedLayout() {
   }, [backtestResults, navigate]);
 
   const tabs = [
-    { to: '/data', label: 'данные' },
-    { to: '/enhance', label: 'новые данные' },
-    { to: '/results', label: 'результаты' },
-    { to: '/calendar', label: 'календарь' },
-    { to: '/split', label: 'плиты' },
-    { to: '/watches', label: 'мониторинг' },
+    { to: '/data', label: 'Данные' },
+    { to: '/enhance', label: 'Новые данные' },
+    { to: '/results', label: 'Результаты' },
+    { to: '/calendar', label: 'Календарь' },
+    { to: '/split', label: 'Плиты' },
+    { to: '/watches', label: 'Мониторинг' },
   ];
 
   const closeMobileMenu = () => setIsMobileMenuOpen(false);
@@ -144,7 +144,10 @@ function ProtectedLayout() {
       <header className="border-b bg-white/60 backdrop-blur dark:bg-slate-900/60 dark:border-slate-800">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Logo size="sm" />
+            <Logo size="sm" showText={false} />
+            <span className="text-lg font-semibold tracking-tight text-gray-900 dark:text-gray-100">
+              Trading Ibs
+            </span>
           </div>
           <div className="flex items-center gap-2">
             <ThemeToggle />
@@ -249,7 +252,10 @@ function LoginPage() {
       <header className="border-b bg-white/60 backdrop-blur dark:bg-slate-900/60 dark:border-slate-800">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <h1 className="text-lg font-semibold tracking-tight">Тестировщик стратегий</h1>
+            <Logo size="sm" showText={false} />
+            <span className="text-lg font-semibold tracking-tight text-gray-900 dark:text-gray-100">
+              Trading Ibs
+            </span>
           </div>
           <div className="flex items-center gap-2">
             <ThemeToggle />
