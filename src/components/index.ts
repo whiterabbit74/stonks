@@ -10,6 +10,7 @@ export { BacktestRunner } from './BacktestRunner';
 export { TelegramWatches } from './TelegramWatches';
 export { AppSettings } from './AppSettings';
 export { Footer } from './Footer';
+export { Logo } from './Logo';
 export { ThemeToggle } from './ThemeToggle';
 export { TradesTable } from './TradesTable';
 export { ProfitFactorChart } from './ProfitFactorChart';
