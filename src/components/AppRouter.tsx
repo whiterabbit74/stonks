@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { Settings } from 'lucide-react';
+import { Settings, Menu, X } from 'lucide-react';
 
 import { useAppStore } from '../stores';
 import { DataUpload } from './DataUpload';
@@ -13,6 +13,7 @@ import { SplitsTab } from './SplitsTab';
 import { CalendarPage } from './CalendarPage';
 import { Footer } from './Footer';
 import { ThemeToggle } from './ThemeToggle';
+import { Logo } from './Logo';
 import { API_BASE_URL } from '../lib/api';
 
 // App is now always served from root '/'
@@ -22,6 +23,7 @@ function ProtectedLayout() {
   const location = useLocation();
   const [authorized, setAuthorized] = useState(false);
   const [checkingAuth, setCheckingAuth] = useState(true);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [apiBuildId, setApiBuildId] = useState<string | null>(null);
   const hasAutoNavigatedRef = useRef(false);
 
@@ -106,13 +108,15 @@ function ProtectedLayout() {
   }, [backtestResults, navigate]);
 
   const tabs = [
-    { to: '/data', label: 'Data' },
-    { to: '/enhance', label: 'New Data' },
-    { to: '/results', label: 'Results' },
-    { to: '/calendar', label: 'Calendar' },
-    { to: '/split', label: 'Split' },
-    { to: '/watches', label: 'Monitor' },
+    { to: '/data', label: 'данные' },
+    { to: '/enhance', label: 'новые данные' },
+    { to: '/results', label: 'результаты' },
+    { to: '/calendar', label: 'календарь' },
+    { to: '/split', label: 'плиты' },
+    { to: '/watches', label: 'мониторинг' },
   ];
+
+  const closeMobileMenu = () => setIsMobileMenuOpen(false);
 
   const handleLogout = async () => {
     try {
@@ -140,23 +144,57 @@ function ProtectedLayout() {
       <header className="border-b bg-white/60 backdrop-blur dark:bg-slate-900/60 dark:border-slate-800">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <h1 className="text-lg font-semibold tracking-tight">Тестировщик стратегий</h1>
-                      </div>
+            <Logo size="sm" />
+          </div>
           <div className="flex items-center gap-2">
             <ThemeToggle />
             <NavLink to="/settings" title="Настройки" aria-label="Настройки" className={({ isActive }) => `inline-flex items-center gap-2 px-3 py-2 rounded-full border ${isActive ? 'bg-indigo-600 text-white border-indigo-600' : 'border-gray-200 text-gray-700 hover:text-gray-900 hover:bg-gray-100 bg-white/80 backdrop-blur-sm shadow-sm dark:border-slate-700 dark:text-gray-200 dark:hover:text-white dark:hover:bg-slate-700/80 dark:bg-slate-800/80 dark:backdrop-blur-sm dark:shadow-sm'}`}>
               <Settings className="w-5 h-5" />
             </NavLink>
-            <button onClick={handleLogout} className="inline-flex items-center gap-2 text-sm px-3 py-1.5 rounded border bg-white text-gray-700 border-gray-200 hover:bg-gray-50 dark:bg-gray-900 dark:text-gray-200 dark:border-gray-800 dark:hover:bg-gray-800">
+            {/* Mobile menu button */}
+            <button
+              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+              className="md:hidden inline-flex items-center gap-2 px-3 py-2 rounded-full border border-gray-200 text-gray-700 hover:text-gray-900 hover:bg-gray-100 bg-white/80 backdrop-blur-sm shadow-sm dark:border-slate-700 dark:text-gray-200 dark:hover:text-white dark:hover:bg-slate-700/80 dark:bg-slate-800/80 dark:backdrop-blur-sm dark:shadow-sm"
+              title="Меню"
+              aria-label="Открыть меню"
+            >
+              {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+            </button>
+            <button onClick={handleLogout} className="hidden md:inline-flex items-center gap-2 text-sm px-3 py-1.5 rounded border bg-white text-gray-700 border-gray-200 hover:bg-gray-50 dark:bg-gray-900 dark:text-gray-200 dark:border-gray-800 dark:hover:bg-gray-800">
               Выйти
             </button>
           </div>
         </div>
+
+        {/* Mobile menu */}
+        {isMobileMenuOpen && (
+          <div className="md:hidden border-t border-gray-200 dark:border-gray-700 bg-white/95 backdrop-blur-sm dark:bg-slate-900/95">
+            <div className="px-4 py-3 space-y-2">
+              {tabs.map(t => (
+                <NavLink
+                  key={t.to}
+                  to={t.to}
+                  onClick={closeMobileMenu}
+                  className={({ isActive }) => `block px-3 py-2 rounded-md text-base font-medium transition-colors ${isActive ? 'bg-indigo-600 text-white' : 'text-gray-700 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-200 dark:hover:bg-slate-700 dark:hover:text-white'}`}
+                >
+                  {t.label}
+                </NavLink>
+              ))}
+              <button
+                onClick={handleLogout}
+                className="block w-full text-left px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-200 dark:hover:bg-slate-700 dark:hover:text-white"
+              >
+                Выйти
+              </button>
+            </div>
+          </div>
+        )}
       </header>
 
       <main className="flex-1 w-full px-4 sm:px-6 lg:px-8 pt-6 pb-24 safe-area-pb">
         <div className="mb-4">
-          <nav className="flex gap-2 flex-wrap">
+          {/* Desktop navigation */}
+          <nav className="hidden md:flex gap-2 flex-wrap">
             {tabs.map(t => (
               <NavLink key={t.to} to={t.to} className={({ isActive }) => `px-3 py-1 rounded text-sm border ${isActive ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white hover:bg-gray-50 text-gray-700 border-gray-200 dark:bg-gray-900 dark:text-gray-200 dark:border-gray-800 dark:hover:bg-gray-800'}`}>
                 {t.label}
