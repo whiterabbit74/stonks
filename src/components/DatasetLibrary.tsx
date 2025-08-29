@@ -339,7 +339,7 @@ function DatasetCard({ dataset, isActive, onLoad, onDelete, onExport, onEdit, on
     }
     return new Date(dateString).toISOString().slice(0, 10).split('-').reverse().join('.');
   };
-  const label = `${dataset.ticker}`;
+  const label = dataset.companyName || dataset.ticker;
 
   return (
     <div
@@ -354,9 +354,11 @@ function DatasetCard({ dataset, isActive, onLoad, onDelete, onExport, onEdit, on
         <div className="flex-1">
           <div className="flex items-center gap-2 mb-1">
             <span className="font-medium text-gray-900 dark:text-gray-100">{label}</span>
-            <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded font-mono dark:bg-blue-950/30 dark:text-blue-200 dark:border dark:border-blue-900/40">
-              {dataset.ticker}
-            </span>
+            {dataset.companyName && (
+              <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded font-mono dark:bg-blue-950/30 dark:text-blue-200 dark:border dark:border-blue-900/40">
+                {dataset.ticker}
+              </span>
+            )}
             {dataset.tag && (
               <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded dark:bg-blue-950/30 dark:text-blue-200 dark:border dark:border-blue-900/40">
                 {dataset.tag}
