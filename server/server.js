@@ -618,6 +618,68 @@ function nyseHolidaysET(year){
 }
 function isTradingDayET(p){ return !isWeekendET(p) && !nyseHolidaysET(p.y).has(etKeyYMD(p)); }
 
+// Calendar-aware helpers (JSON: server/trading-calendar.json)
+let _tradingCalendarCache = { data: null, loadedAt: 0 };
+const TRADING_CALENDAR_TTL_MS = 5 * 60 * 1000;
+async function loadTradingCalendarJSON() {
+  try {
+    const nowTs = Date.now();
+    if (_tradingCalendarCache.data && (nowTs - _tradingCalendarCache.loadedAt) < TRADING_CALENDAR_TTL_MS) {
+      return _tradingCalendarCache.data;
+    }
+    const calendarPath = path.join(__dirname, 'trading-calendar.json');
+    if (await fs.pathExists(calendarPath)) {
+      const json = await fs.readJson(calendarPath);
+      _tradingCalendarCache = { data: json, loadedAt: nowTs };
+      return json;
+    }
+  } catch {}
+  return null;
+}
+function getCachedTradingCalendar() {
+  return _tradingCalendarCache.data || null;
+}
+function parseHmToMinutes(hm) {
+  try {
+    if (!hm || typeof hm !== 'string' || hm.indexOf(':') < 0) return null;
+    const [h, m] = hm.split(':');
+    const hh = parseInt(h, 10);
+    const mm = parseInt(m, 10);
+    if (!Number.isFinite(hh) || !Number.isFinite(mm)) return null;
+    return hh * 60 + mm;
+  } catch { return null; }
+}
+function isHolidayByCalendarET(p, cal) {
+  try {
+    if (!cal || !cal.holidays) return false;
+    const y = String(p.y);
+    const key = `${String(p.m).padStart(2,'0')}-${String(p.d).padStart(2,'0')}`;
+    return !!(cal.holidays[y] && cal.holidays[y][key]);
+  } catch { return false; }
+}
+function isShortDayByCalendarET(p, cal) {
+  try {
+    if (!cal || !cal.shortDays) return false;
+    const y = String(p.y);
+    const key = `${String(p.m).padStart(2,'0')}-${String(p.d).padStart(2,'0')}`;
+    return !!(cal.shortDays[y] && cal.shortDays[y][key]);
+  } catch { return false; }
+}
+function isTradingDayByCalendarET(p, cal) {
+  if (isWeekendET(p)) return false;
+  if (cal) return !isHolidayByCalendarET(p, cal);
+  // Fallback to built-in rules if no calendar
+  return isTradingDayET(p);
+}
+function getTradingSessionForDateET(p, cal) {
+  const normalEnd = parseHmToMinutes(cal && cal.tradingHours && cal.tradingHours.normal && cal.tradingHours.normal.end || '16:00') ?? (16*60);
+  const shortEnd = parseHmToMinutes(cal && cal.tradingHours && cal.tradingHours.short && cal.tradingHours.short.end || '13:00') ?? (13*60);
+  const startMin = parseHmToMinutes(cal && cal.tradingHours && cal.tradingHours.normal && cal.tradingHours.normal.start || '09:30') ?? (9*60+30);
+  const short = !!(cal && isShortDayByCalendarET(p, cal));
+  const closeMin = short ? shortEnd : normalEnd;
+  return { openMin: startMin, closeMin, short };
+}
+
 // Replace: fetch only today's quote from Finnhub (no multi-day candles)
 async function fetchTodayRangeAndQuote(symbol) {
   const quote = await new Promise((resolve, reject) => {
@@ -641,7 +703,8 @@ function previousTradingDayET(fromParts) {
   cursor.setUTCDate(cursor.getUTCDate() - 1);
   while (true) {
     const p = getETParts(cursor);
-    if (isTradingDayET(p)) return p;
+    const cal = getCachedTradingCalendar();
+    if (isTradingDayByCalendarET(p, cal)) return p;
     cursor.setUTCDate(cursor.getUTCDate() - 1);
   }
 }
@@ -659,8 +722,9 @@ function buildFreshnessLine(ohlc, nowEtParts) {
 }
 
 // Centralized endpoint: expected previous trading day in ET
-app.get('/api/trading/expected-prev-day', (req, res) => {
+app.get('/api/trading/expected-prev-day', async (req, res) => {
   try {
+    await loadTradingCalendarJSON().catch(() => null);
     const nowEt = getETParts(new Date());
     const prev = previousTradingDayET(nowEt);
     return res.json({ date: etKeyYMD(prev) });
@@ -808,9 +872,13 @@ async function refreshTickerViaAlphaVantageAndCheckFreshness(symbol, nowEtParts)
 async function runTelegramAggregation(minutesOverride = null, options = {}) {
   try {
     if (telegramWatches.size === 0) return { sent: false };
+    // Load calendar (cached) and compute trading session for today
+    const cal = await loadTradingCalendarJSON().catch(() => null);
     const nowEt = getETParts(new Date());
-    if (!isTradingDayET(nowEt) && !(options && options.test)) return { sent: false };
-    const minutesUntilClose = minutesOverride != null ? minutesOverride : ((16 * 60) - (nowEt.hh * 60 + nowEt.mm));
+    if (!isTradingDayByCalendarET(nowEt, cal) && !(options && options.test)) return { sent: false };
+    const session = getTradingSessionForDateET(nowEt, cal);
+    const nowMinutes = (nowEt.hh * 60 + nowEt.mm);
+    const minutesUntilClose = minutesOverride != null ? minutesOverride : (session.closeMin - nowMinutes);
     if (minutesUntilClose !== 11 && minutesUntilClose !== 2) return { sent: false };
 
     const todayKey = etKeyYMD(nowEt);
@@ -866,7 +934,9 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
 
       // T-11 overview — always send once
       if (minutesUntilClose === 11 && (!state.t11Sent || (options && options.forceSend))) {
-        const header = `⏱ До закрытия: ${String(Math.floor(minutesUntilClose / 60)).padStart(2, '0')}:${String(minutesUntilClose % 60).padStart(2, '0')} • 16:00 ET (13:00 PT) • ${todayKey}`;
+        const closeH = String(Math.floor(session.closeMin / 60)).padStart(2, '0');
+        const closeM = String(session.closeMin % 60).padStart(2, '0');
+        const header = `⏱ До закрытия: ${String(Math.floor(minutesUntilClose / 60)).padStart(2, '0')}:${String(minutesUntilClose % 60).padStart(2, '0')} • ${closeH}:${closeM} ET${session.short ? ' (сокр.)' : ''} • ${todayKey}`;
         const sorted = list.slice().sort((a, b) => a.w.symbol.localeCompare(b.w.symbol));
         const blocks = [];
         const logLines = [`T-11 overview → chat ${chatId}`];
