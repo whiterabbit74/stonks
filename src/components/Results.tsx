@@ -15,6 +15,32 @@ import { OpenDayDrawdownChart } from './OpenDayDrawdownChart';
 import { MarginSimulator } from './MarginSimulator';
 import { BuyAtCloseSimulator } from './BuyAtCloseSimulator';
 import { NoStopLossSimulator } from './NoStopLossSimulator';
+import type { EquityPoint } from '../types';
+
+function simulateLeverageForEquity(equity: EquityPoint[], leverage: number): EquityPoint[] {
+  try {
+    if (!Array.isArray(equity) || equity.length === 0 || !Number.isFinite(leverage) || leverage <= 0) return [];
+    const result: EquityPoint[] = [];
+    let currentValue = equity[0].value;
+    let peakValue = currentValue;
+    result.push({ date: equity[0].date, value: currentValue, drawdown: 0 });
+    for (let i = 1; i < equity.length; i++) {
+      const basePrev = equity[i - 1].value;
+      const baseCurr = equity[i].value;
+      if (!(basePrev > 0)) continue;
+      const baseReturn = (baseCurr - basePrev) / basePrev;
+      const leveragedReturn = baseReturn * leverage;
+      currentValue = currentValue * (1 + leveragedReturn);
+      if (currentValue < 0) currentValue = 0;
+      if (currentValue > peakValue) peakValue = currentValue;
+      const dd = peakValue > 0 ? ((peakValue - currentValue) / peakValue) * 100 : 0;
+      result.push({ date: equity[i].date, value: currentValue, drawdown: dd });
+    }
+    return result;
+  } catch {
+    return [];
+  }
+}
 
 export function Results() {
   const backtestResults = useAppStore(s => s.backtestResults);
@@ -365,6 +391,17 @@ export function Results() {
     }
   }, [marketData, initialCapital]);
 
+  const [buyHoldMarginPctInput, setBuyHoldMarginPctInput] = useState<string>('100');
+  const [buyHoldAppliedLeverage, setBuyHoldAppliedLeverage] = useState<number>(1);
+  const buyHoldSimEquity = useMemo(() => (
+    simulateLeverageForEquity(buyHoldEquity as unknown as EquityPoint[], buyHoldAppliedLeverage)
+  ), [buyHoldEquity, buyHoldAppliedLeverage]);
+  const onApplyBuyHold = () => {
+    const pct = Number(buyHoldMarginPctInput);
+    if (!isFinite(pct) || pct <= 0) return;
+    setBuyHoldAppliedLeverage(pct / 100);
+  };
+
   if (!backtestResults) {
     return (
       <div className="text-center py-8">
@@ -649,7 +686,33 @@ export function Results() {
               <EquityChart equity={equity} />
             )}
             {activeChart === 'buyhold' && (
-              <EquityChart equity={buyHoldEquity} />
+              <div className="space-y-4">
+                <div className="flex flex-wrap items-end gap-3">
+                  <div className="flex flex-col">
+                    <label className="text-xs text-gray-600 dark:text-gray-300">Маржинальность, %</label>
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      min={1}
+                      step={1}
+                      value={buyHoldMarginPctInput}
+                      onChange={(e) => setBuyHoldMarginPctInput(e.target.value)}
+                      className="px-3 py-2 border rounded-md w-40 dark:bg-gray-900 dark:border-gray-700 dark:text-gray-100"
+                      placeholder="например, 100"
+                    />
+                  </div>
+                  <button
+                    onClick={onApplyBuyHold}
+                    className="px-4 py-2 rounded-md bg-blue-600 text-white text-sm font-medium hover:bg-blue-700"
+                  >
+                    Посчитать
+                  </button>
+                  <div className="text-xs text-gray-500 dark:text-gray-300">
+                    Текущее плечо: ×{buyHoldAppliedLeverage.toFixed(2)}
+                  </div>
+                </div>
+                <EquityChart equity={buyHoldSimEquity.length ? buyHoldSimEquity : (buyHoldEquity as unknown as EquityPoint[])} />
+              </div>
             )}
             {activeChart === 'drawdown' && (
               <TradeDrawdownChart trades={trades} initialCapital={Number(currentStrategy?.riskManagement?.initialCapital ?? 10000)} />
