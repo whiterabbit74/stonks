@@ -395,6 +395,12 @@ export class DatasetAPI {
     return response.json();
   }
 
+  static async getTradingCalendar(): Promise<any> {
+    const response = await fetchWithCreds(`${API_BASE_URL}/trading-calendar`);
+    if (!response.ok) throw new Error(`Failed to load trading calendar: ${response.status} ${response.statusText}`);
+    return response.json();
+  }
+
   static async saveAppSettings(settings: { watchThresholdPct: number; resultsQuoteProvider: 'alpha_vantage'|'finnhub'; enhancerProvider: 'alpha_vantage'|'finnhub'; resultsRefreshProvider?: 'alpha_vantage'|'finnhub'; indicatorPanePercent?: number }): Promise<void> {
     const response = await fetchWithCreds(`${API_BASE_URL}/settings`, {
       method: 'PUT',

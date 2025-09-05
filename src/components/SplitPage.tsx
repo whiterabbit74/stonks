@@ -104,7 +104,8 @@ export function SplitPage() {
 						dataPoints: dataset.dataPoints as number,
 						dateRange: dataset.dateRange as { from: string; to: string },
 						adjustedForSplits: dataset.adjustedForSplits === true,
-				})) as DatasetMeta[];
+					};
+				}) as DatasetMeta[];
 				setDatasets(normalized);
 			} catch {
 				// Ignore dataset refresh errors
