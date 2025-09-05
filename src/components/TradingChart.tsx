@@ -161,6 +161,8 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
       } catch (e) { console.warn('Failed to create price lines', e); }
       ibsSeriesRef.current = ibsHist;
 
+      // Indicator already constrained via indicatorFraction above
+
       // No sub-chart; indicators share time scale
 
       // EMA series (создаем скрытыми; их видимость управляется отдельно)

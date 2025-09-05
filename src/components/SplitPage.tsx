@@ -307,5 +307,3 @@ export function SplitPage() {
 		</div>
 	);
 }
-
-export default SplitPage;
