@@ -14,6 +14,7 @@ import { TradeDurationChart } from './TradeDurationChart';
 import { OpenDayDrawdownChart } from './OpenDayDrawdownChart';
 import { MarginSimulator } from './MarginSimulator';
 import { BuyAtCloseSimulator } from './BuyAtCloseSimulator';
+import { NoStopLossSimulator } from './NoStopLossSimulator';
 
 export function Results() {
   const backtestResults = useAppStore(s => s.backtestResults);
@@ -39,9 +40,16 @@ export function Results() {
   const [modal, setModal] = useState<{ type: 'info' | 'error' | null; title?: string; message?: string }>({ type: null });
   const [watching, setWatching] = useState(false);
   const [watchBusy, setWatchBusy] = useState(false);
-  const [tradingCalendar, setTradingCalendar] = useState<any | null>(null);
+  // Trading calendar (holidays, short days, trading hours)
+  type TradingCalendarData = {
+    metadata: { years: string[] };
+    holidays: Record<string, Record<string, { name: string; type: string; description: string }>>;
+    shortDays: Record<string, Record<string, { name: string; type: string; description: string; hours?: number }>>;
+    tradingHours: { normal: { start: string; end: string }; short: { start: string; end: string } };
+  };
+  const [tradingCalendar, setTradingCalendar] = useState<TradingCalendarData | null>(null);
   
-  type ChartTab = 'price' | 'equity' | 'buyhold' | 'drawdown' | 'trades' | 'profit' | 'duration' | 'openDayDrawdown' | 'margin' | 'buyAtClose' | 'splits';
+  type ChartTab = 'price' | 'equity' | 'buyhold' | 'drawdown' | 'trades' | 'profit' | 'duration' | 'openDayDrawdown' | 'margin' | 'buyAtClose' | 'noStopLoss' | 'splits';
   const [activeChart, setActiveChart] = useState<ChartTab>('price');
   
   // Проверка дублей дат в marketData (ключ YYYY-MM-DD)
@@ -72,6 +80,8 @@ export function Results() {
   const symbol = useMemo(() => (
     currentDataset?.ticker || backtestResults?.symbol || backtestResults?.ticker || backtestResults?.meta?.ticker
   ), [currentDataset, backtestResults]);
+
+  
 
   const handleRefresh = async () => {
     if (!symbol) return;
@@ -137,73 +147,40 @@ export function Results() {
       const weekday = weekdayMap[weekdayStr as keyof typeof weekdayMap] ?? 0;
       return { y, m, d, weekday };
     };
-    const keyFromParts = (p: {y:number;m:number;d:number}) => `${p.y}-${String(p.m).padStart(2,'0')}-${String(p.d).padStart(2,'0')}`;
     const isWeekendET = (p: {weekday:number}) => p.weekday === 0 || p.weekday === 6;
-    const nthWeekdayOfMonth = (year: number, monthIndex0: number, weekday: number, n: number) => {
-      const first = new Date(Date.UTC(year, monthIndex0, 1));
-      // step days until ET weekday matches
-      let cursor = first;
-      while (getETParts(cursor).weekday !== weekday) {
-        const c = new Date(cursor); c.setUTCDate(c.getUTCDate()+1); cursor = c;
-      }
-      for (let i=1; i<n; i++) { const c = new Date(cursor); c.setUTCDate(c.getUTCDate()+7); cursor = c; }
-      return getETParts(cursor);
+    const parseHmToMinutes = (hm: string | undefined | null): number | null => {
+      try {
+        if (!hm || typeof hm !== 'string' || hm.indexOf(':') < 0) return null;
+        const [h, m] = hm.split(':');
+        const hh = parseInt(h, 10);
+        const mm = parseInt(m, 10);
+        if (!Number.isFinite(hh) || !Number.isFinite(mm)) return null;
+        return hh * 60 + mm;
+      } catch { return null; }
     };
-    const lastWeekdayOfMonth = (year: number, monthIndex0: number, weekday: number) => {
-      const last = new Date(Date.UTC(year, monthIndex0 + 1, 0));
-      let move = last;
-      while (getETParts(move).weekday !== weekday) {
-        const c = new Date(move); c.setUTCDate(c.getUTCDate()-1); move = c;
-      }
-      return getETParts(move);
+    const isHolidayET = (p: {y:number;m:number;d:number}) => {
+      try {
+        if (!tradingCalendar) return false;
+        const y = String(p.y);
+        const key = `${String(p.m).padStart(2,'0')}-${String(p.d).padStart(2,'0')}`;
+        return !!(tradingCalendar.holidays[y] && tradingCalendar.holidays[y][key]);
+      } catch { return false; }
     };
-    const observedFixedET = (year: number, monthIndex0: number, day: number) => {
-      const base = new Date(Date.UTC(year, monthIndex0, day, 12, 0, 0));
-      const p = getETParts(base);
-      if (p.weekday === 0) { // Sunday -> Monday
-        const d = new Date(base); d.setUTCDate(d.getUTCDate()+1); return getETParts(d);
-      }
-      if (p.weekday === 6) { // Saturday -> Friday
-        const d = new Date(base); d.setUTCDate(d.getUTCDate()-1); return getETParts(d);
-      }
-      return p;
+    const isShortDayET = (p: {y:number;m:number;d:number}) => {
+      try {
+        if (!tradingCalendar) return false;
+        const y = String(p.y);
+        const key = `${String(p.m).padStart(2,'0')}-${String(p.d).padStart(2,'0')}`;
+        return !!(tradingCalendar.shortDays[y] && tradingCalendar.shortDays[y][key]);
+      } catch { return false; }
     };
-    const easterUTC = (year: number) => {
-      const a = year % 19;
-      const b = Math.floor(year / 100);
-      const c = year % 100;
-      const d = Math.floor(b / 4);
-      const e = b % 4;
-      const f = Math.floor((b + 8) / 25);
-      const g = Math.floor((b - f + 1) / 3);
-      const h = (19 * a + b - d - g + 15) % 30;
-      const i = Math.floor(c / 4);
-      const k = c % 4;
-      const l = (32 + 2 * e + 2 * i - h - k) % 7;
-      const m = Math.floor((a + 11 * h + 22 * l) / 451);
-      const month = Math.floor((h + l - 7 * m + 114) / 31) - 1;
-      const day = ((h + l - 7 * m + 114) % 31) + 1;
-      return new Date(Date.UTC(year, month, day, 12, 0, 0));
+    const getSessionForDateET = (p: {y:number;m:number;d:number}) => {
+      const open = parseHmToMinutes(tradingCalendar?.tradingHours?.normal?.start) ?? (9*60+30);
+      const normalClose = parseHmToMinutes(tradingCalendar?.tradingHours?.normal?.end) ?? (16*60);
+      const shortClose = parseHmToMinutes(tradingCalendar?.tradingHours?.short?.end) ?? (13*60);
+      const short = isShortDayET(p);
+      return { openMin: open, closeMin: short ? shortClose : normalClose, short };
     };
-    const goodFridayET = (year: number) => {
-      const easter = easterUTC(year);
-      const gf = new Date(easter); gf.setUTCDate(gf.getUTCDate()-2); return getETParts(gf);
-    };
-    const nyseHolidaySetET = (year: number) => {
-      const keys = new Set<string>();
-      keys.add(keyFromParts(observedFixedET(year, 0, 1)));  // New Year’s Day
-      keys.add(keyFromParts(observedFixedET(year, 5, 19))); // Juneteenth
-      keys.add(keyFromParts(observedFixedET(year, 6, 4)));  // Independence Day
-      keys.add(keyFromParts(observedFixedET(year, 11, 25))); // Christmas
-      keys.add(keyFromParts(nthWeekdayOfMonth(year, 0, 1, 3))); // MLK Day (Mon)
-      keys.add(keyFromParts(nthWeekdayOfMonth(year, 1, 1, 3))); // Presidents’ Day (Mon)
-      keys.add(keyFromParts(goodFridayET(year))); // Good Friday
-      keys.add(keyFromParts(lastWeekdayOfMonth(year, 4, 1))); // Memorial Day (Mon)
-      keys.add(keyFromParts(nthWeekdayOfMonth(year, 8, 1, 1))); // Labor Day (Mon)
-      keys.add(keyFromParts(nthWeekdayOfMonth(year, 10, 4, 4))); // Thanksgiving (Thu)
-      return keys;
-    };
-    const isHolidayET = (p: {y:number;m:number;d:number}) => nyseHolidaySetET(p.y).has(keyFromParts(p));
     const previousTradingDayET = (fromUTC: Date) => {
       const cursor = new Date(fromUTC);
       // step back at least one day
@@ -229,15 +206,10 @@ export function Results() {
     const hh = parseInt(tmap.hour || '0', 10);
     const mm = parseInt(tmap.minute || '0', 10);
     const minutes = hh * 60 + mm;
-    // Detect early close (13:00) from server calendar
+    const session = getSessionForDateET(getETParts(now));
+    const closeMin = session.closeMin; // dynamic close (short day aware)
+    const bufferMin = 30; // safety buffer after close for data providers
     const todayET = getETParts(now);
-    const yearStr = String(todayET.y);
-    const mStr = String(todayET.m).padStart(2, '0');
-    const dStr = String(todayET.d).padStart(2, '0');
-    const todayKey = `${mStr}-${dStr}`;
-    const isShortDay = !!(tradingCalendar && tradingCalendar.shortDays && tradingCalendar.shortDays[yearStr] && tradingCalendar.shortDays[yearStr][todayKey]);
-    const closeMin = isShortDay ? (13 * 60) : (16 * 60);
-    const bufferMin = 0; // show refresh immediately after close
 
     const todayIsTradingDay = !isWeekendET(todayET) && !isHolidayET(todayET);
 
@@ -288,23 +260,49 @@ export function Results() {
         minute: '2-digit',
         weekday: 'short',
       });
-      const parts = fmt.formatToParts(new Date());
+      const fmtParts = fmt.formatToParts(new Date());
       const map: Record<string, string> = {};
-      parts.forEach(p => { if (p.type !== 'literal') map[p.type] = p.value; });
+      fmtParts.forEach(p => { if (p.type !== 'literal') map[p.type] = p.value; });
       const weekdayMap: Record<string, number> = { Sun:0, Mon:1, Tue:2, Wed:3, Thu:4, Fri:5, Sat:6 };
       const weekday = weekdayMap[map.weekday] ?? 0;
       const hh = parseInt(map.hour || '0', 10);
       const mm = parseInt(map.minute || '0', 10);
       const isWeekday = weekday >= 1 && weekday <= 5; // Mon..Fri in ET
       const minutes = hh * 60 + mm;
-      const openMin = 9 * 60 + 30;  // 09:30 ET
-      const yStr = map.year;
-      const mStr = map.month;
-      const dStr = map.day;
-      const k = `${mStr}-${dStr}`;
-      const short = !!(tradingCalendar && tradingCalendar.shortDays && tradingCalendar.shortDays[yStr] && tradingCalendar.shortDays[yStr][k]);
-      const closeMin = short ? (13 * 60) : (16 * 60); // Early close support
-      return isWeekday && minutes >= openMin && minutes <= closeMin;
+      if (!isWeekday) return false;
+      // Holiday/short-day aware session bounds
+      const ymd = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' })
+        .formatToParts(new Date())
+        .reduce((acc: any, p) => { if (p.type !== 'literal') acc[p.type] = p.value; return acc; }, {});
+      const ymdObj = { y: Number(ymd.year), m: Number(ymd.month), d: Number(ymd.day) };
+      const isHoliday = (() => {
+        try {
+          if (!tradingCalendar) return false;
+          const y = String(ymdObj.y);
+          const key = `${String(ymdObj.m).padStart(2,'0')}-${String(ymdObj.d).padStart(2,'0')}`;
+          return !!(tradingCalendar.holidays[y] && tradingCalendar.holidays[y][key]);
+        } catch { return false; }
+      })();
+      if (isHoliday) return false;
+      const short = (() => {
+        try {
+          if (!tradingCalendar) return false;
+          const y = String(ymdObj.y);
+          const key = `${String(ymdObj.m).padStart(2,'0')}-${String(ymdObj.d).padStart(2,'0')}`;
+          return !!(tradingCalendar.shortDays[y] && tradingCalendar.shortDays[y][key]);
+        } catch { return false; }
+      })();
+      const parseHm = (hm?: string) => {
+        if (!hm || hm.indexOf(':') < 0) return null;
+        const [h, m] = hm.split(':');
+        const H = parseInt(h, 10), M = parseInt(m, 10);
+        return Number.isFinite(H) && Number.isFinite(M) ? (H*60 + M) : null;
+      };
+      const openMin = parseHm(tradingCalendar?.tradingHours?.normal?.start) ?? (9*60+30);
+      const closeMin = short
+        ? (parseHm(tradingCalendar?.tradingHours?.short?.end) ?? (13*60))
+        : (parseHm(tradingCalendar?.tradingHours?.normal?.end) ?? (16*60));
+      return minutes >= openMin && minutes <= closeMin;
     };
     setIsTrading(isMarketOpenNow());
     const fetchQuote = async () => {
@@ -583,7 +581,27 @@ export function Results() {
           {/* Подсказки под правым блоком */}
           {quoteLoading && <div className="text-xs text-gray-400">загрузка…</div>}
           {!isTrading && (
-            <div className="text-sm text-gray-500">Показываем в торговые часы (NYSE): 09:30–16:00 ET</div>
+            <div className="text-sm text-gray-500">
+              {(() => {
+                const parseHm = (hm?: string) => {
+                  if (!hm || hm.indexOf(':') < 0) return null;
+                  const [h, m] = hm.split(':');
+                  const H = parseInt(h, 10), M = parseInt(m, 10);
+                  return Number.isFinite(H) && Number.isFinite(M) ? { H, M } : null;
+                };
+                const now = new Date();
+                const ymd = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' })
+                  .formatToParts(now)
+                  .reduce((acc: any, p) => { if (p.type !== 'literal') acc[p.type] = p.value; return acc; }, {});
+                const y = String(ymd.year);
+                const md = `${ymd.month}-${ymd.day}`;
+                const short = !!(tradingCalendar && tradingCalendar.shortDays && tradingCalendar.shortDays[y] && tradingCalendar.shortDays[y][md]);
+                const start = parseHm(tradingCalendar?.tradingHours?.normal?.start) || { H: 9, M: 30 };
+                const endHm = short ? (parseHm(tradingCalendar?.tradingHours?.short?.end) || { H: 13, M: 0 }) : (parseHm(tradingCalendar?.tradingHours?.normal?.end) || { H: 16, M: 0 });
+                const fmt = (x: { H: number; M: number }) => `${String(x.H).padStart(2,'0')}:${String(x.M).padStart(2,'0')}`;
+                return `Показываем в торговые часы (NYSE): ${fmt(start)}–${fmt(endHm)} ET${short ? ' (сокр.)' : ''}`;
+              })()}
+            </div>
           )}
           {quoteError && <div className="text-sm text-red-600">{quoteError}</div>}
         </div>
@@ -615,6 +633,7 @@ export function Results() {
               <button className={`${activeChart === 'openDayDrawdown' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/30 dark:border-blue-900/40 dark:text-blue-200' : 'bg-white border-gray-200 text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'} px-3 py-1.5 rounded border`} onClick={() => setActiveChart('openDayDrawdown')}>Стартовая просадка</button>
               <button className={`${activeChart === 'margin' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/30 dark:border-blue-900/40 dark:text-blue-200' : 'bg-white border-gray-200 text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'} px-3 py-1.5 rounded border`} onClick={() => setActiveChart('margin')}>Маржа</button>
               <button className={`${activeChart === 'buyAtClose' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/30 dark:border-blue-900/40 dark:text-blue-200' : 'bg-white border-gray-200 text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'} px-3 py-1.5 rounded border`} onClick={() => setActiveChart('buyAtClose')}>Покупка на закрытии</button>
+              <button className={`${activeChart === 'noStopLoss' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/30 dark:border-blue-900/40 dark:text-blue-200' : 'bg-white border-gray-200 text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'} px-3 py-1.5 rounded border`} onClick={() => setActiveChart('noStopLoss')}>Без stop loss</button>
               <button className={`${activeChart === 'splits' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/30 dark:border-blue-900/40 dark:text-blue-200' : 'bg-white border-gray-200 text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'} px-3 py-1.5 rounded border`} onClick={() => setActiveChart('splits')}>Сплиты</button>
               </div>
             </div>
@@ -650,6 +669,9 @@ export function Results() {
             )}
             {activeChart === 'buyAtClose' && (
               <BuyAtCloseSimulator data={marketData} strategy={currentStrategy} />
+            )}
+            {activeChart === 'noStopLoss' && (
+              <NoStopLossSimulator data={marketData} strategy={currentStrategy} />
             )}
             {activeChart === 'splits' && (
               <div className="space-y-4">
