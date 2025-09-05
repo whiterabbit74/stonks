@@ -147,7 +147,6 @@ export function Results() {
       const weekday = weekdayMap[weekdayStr as keyof typeof weekdayMap] ?? 0;
       return { y, m, d, weekday };
     };
-    const keyFromParts = (p: {y:number;m:number;d:number}) => `${p.y}-${String(p.m).padStart(2,'0')}-${String(p.d).padStart(2,'0')}`;
     const isWeekendET = (p: {weekday:number}) => p.weekday === 0 || p.weekday === 6;
     const parseHmToMinutes = (hm: string | undefined | null): number | null => {
       try {
@@ -261,9 +260,9 @@ export function Results() {
         minute: '2-digit',
         weekday: 'short',
       });
-      const parts = fmt.formatToParts(new Date());
+      const fmtParts = fmt.formatToParts(new Date());
       const map: Record<string, string> = {};
-      parts.forEach(p => { if (p.type !== 'literal') map[p.type] = p.value; });
+      fmtParts.forEach(p => { if (p.type !== 'literal') map[p.type] = p.value; });
       const weekdayMap: Record<string, number> = { Sun:0, Mon:1, Tue:2, Wed:3, Thu:4, Fri:5, Sat:6 };
       const weekday = weekdayMap[map.weekday] ?? 0;
       const hh = parseInt(map.hour || '0', 10);
@@ -275,12 +274,12 @@ export function Results() {
       const ymd = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' })
         .formatToParts(new Date())
         .reduce((acc: any, p) => { if (p.type !== 'literal') acc[p.type] = p.value; return acc; }, {});
-      const parts = { y: Number(ymd.year), m: Number(ymd.month), d: Number(ymd.day) };
+      const ymdObj = { y: Number(ymd.year), m: Number(ymd.month), d: Number(ymd.day) };
       const isHoliday = (() => {
         try {
           if (!tradingCalendar) return false;
-          const y = String(parts.y);
-          const key = `${String(parts.m).padStart(2,'0')}-${String(parts.d).padStart(2,'0')}`;
+          const y = String(ymdObj.y);
+          const key = `${String(ymdObj.m).padStart(2,'0')}-${String(ymdObj.d).padStart(2,'0')}`;
           return !!(tradingCalendar.holidays[y] && tradingCalendar.holidays[y][key]);
         } catch { return false; }
       })();
@@ -288,8 +287,8 @@ export function Results() {
       const short = (() => {
         try {
           if (!tradingCalendar) return false;
-          const y = String(parts.y);
-          const key = `${String(parts.m).padStart(2,'0')}-${String(parts.d).padStart(2,'0')}`;
+          const y = String(ymdObj.y);
+          const key = `${String(ymdObj.m).padStart(2,'0')}-${String(ymdObj.d).padStart(2,'0')}`;
           return !!(tradingCalendar.shortDays[y] && tradingCalendar.shortDays[y][key]);
         } catch { return false; }
       })();
