@@ -912,13 +912,22 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
         const sorted = list.slice().sort((a, b) => a.w.symbol.localeCompare(b.w.symbol));
         for (const rec of sorted) {
           const { w } = rec;
-          if (rec.dataOk && w.isOpenPosition && rec.confirmExit && !w.sent.confirm1) {
+          // Exit confirmations
+          if (rec.dataOk && !!w.isOpenPosition && rec.confirmExit && !w.sent.confirm1) {
             exits.push(`${w.symbol}: IBS ${rec.ibs.toFixed(3)} (≥ ${w.highIBS}); цена: ${formatMoney(rec.quote.current)}; диапазон: ${formatMoney(rec.range.low)} - ${formatMoney(rec.range.high)}`);
-            if (!options || options.updateState !== false) w.sent.confirm1 = true;
+            if (!options || options.updateState !== false) {
+              // Mark confirmation sent for today and toggle position to closed to avoid repeats on next days
+              w.sent.confirm1 = true;
+              w.isOpenPosition = false;
+              w.entryPrice = null;
+            }
           }
+          // Entry confirmations (do not auto-open position beyond marking confirmation to avoid unintended flips)
           if (rec.dataOk && !w.isOpenPosition && rec.confirmEntry && !w.sent.entryConfirm1) {
             entries.push(`${w.symbol}: IBS ${rec.ibs.toFixed(3)} (≤ ${w.lowIBS ?? 0.1}); цена: ${formatMoney(rec.quote.current)}; диапазон: ${formatMoney(rec.range.low)} - ${formatMoney(rec.range.high)}`);
-            if (!options || options.updateState !== false) w.sent.entryConfirm1 = true;
+            if (!options || options.updateState !== false) {
+              w.sent.entryConfirm1 = true;
+            }
           }
         }
         if (exits.length || entries.length) {
@@ -939,6 +948,7 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
             if (!options || options.updateState !== false) {
               state.t2Sent = true;
               aggregateSendState.set(chatId, state);
+              // Persist watches immediately to ensure toggled isOpenPosition is saved
               scheduleSaveWatches();
             }
             await appendMonitorLog([`T-2 confirms → chat ${chatId}`, ...exits.map(s => `EXIT ${s}`), ...entries.map(s => `ENTRY ${s}`), options && options.test ? '→ sent ok [TEST]' : '→ sent ok']);
