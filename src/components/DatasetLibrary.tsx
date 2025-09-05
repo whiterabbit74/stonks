@@ -5,8 +5,10 @@ import { createStrategyFromTemplate, STRATEGY_TEMPLATES } from '../lib/strategy'
 import { DatasetAPI, API_BASE_URL } from '../lib/api';
 import type { SavedDataset } from '../types';
 import { ConfirmModal } from './ConfirmModal';
+import { useNavigate } from 'react-router-dom';
 
 export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {}) {
+  const navigate = useNavigate();
   const savedDatasets = useAppStore(s => s.savedDatasets);
   const currentDataset = useAppStore(s => s.currentDataset);
   const currentStrategy = useAppStore(s => s.currentStrategy);
@@ -96,8 +98,8 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
       }
       // снимаем лоадер сразу
       setLoadingId(null);
-      // мгновенно переходим на «Результаты» и фиксируем hash
-      try { window.history.pushState({}, '', '/results'); } catch { /* ignore */ }
+      // мгновенно переходим на «Результаты» через роутер
+      try { navigate('/results'); } catch { /* ignore */ }
       if (onAfterLoad) onAfterLoad();
       // запускаем бэктест в фоне, не блокируя UI
       try { runBacktest?.(); } catch (e) { console.warn('Failed to start backtest', e); }
