@@ -173,10 +173,16 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
         title: 'EMA 20',
         visible: false,
       });
-      const ema20Data = data.map((bar, index) => ({
-        time: Math.floor(bar.date.getTime() / 1000) as UTCTimestamp,
-        value: ema20Values[index] || bar.close,
-      })).filter((point: { time: UTCTimestamp; value: number }) => point.value !== undefined);
+      const ema20Data = data
+        .map((bar, index) => {
+          const v = ema20Values[index];
+          if (typeof v !== 'number' || !Number.isFinite(v)) return null;
+          return {
+            time: Math.floor(bar.date.getTime() / 1000) as UTCTimestamp,
+            value: v,
+          };
+        })
+        .filter((point: { time: UTCTimestamp; value: number } | null): point is { time: UTCTimestamp; value: number } => point !== null);
       ema20Series.setData(ema20Data);
       ema20SeriesRef.current = ema20Series;
 
@@ -187,10 +193,16 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
         title: 'EMA 200',
         visible: false,
       });
-      const ema200Data = data.map((bar, index) => ({
-        time: Math.floor(bar.date.getTime() / 1000) as UTCTimestamp,
-        value: ema200Values[index] || bar.close,
-      })).filter((point: { time: UTCTimestamp; value: number }) => point.value !== undefined);
+      const ema200Data = data
+        .map((bar, index) => {
+          const v = ema200Values[index];
+          if (typeof v !== 'number' || !Number.isFinite(v)) return null;
+          return {
+            time: Math.floor(bar.date.getTime() / 1000) as UTCTimestamp,
+            value: v,
+          };
+        })
+        .filter((point: { time: UTCTimestamp; value: number } | null): point is { time: UTCTimestamp; value: number } => point !== null);
       ema200Series.setData(ema200Data);
       ema200SeriesRef.current = ema200Series;
 
