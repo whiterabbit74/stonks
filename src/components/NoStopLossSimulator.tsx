@@ -17,6 +17,8 @@ interface SimulationResult {
 function simulateNoStopLoss(
   data: OHLCData[],
   lowIBS: number,
+  highIBS: number,
+  maxHoldDays: number,
   initialCapital: number,
   capitalUsage: number
 ): SimulationResult {
@@ -37,7 +39,7 @@ function simulateNoStopLoss(
     const bar = data[i];
     const ibs = ibsValues[i];
 
-    // Entries: when IBS < lowIBS, execute at next day's open
+    // Entry rule: IBS < lowIBS -> buy at next day's open
     if (!position && typeof ibs === 'number' && !isNaN(ibs) && ibs < lowIBS && i < data.length - 1) {
       const nextBar = data[i + 1];
       const investAmount = (currentCapital * (capitalUsage || 100)) / 100;
@@ -54,11 +56,19 @@ function simulateNoStopLoss(
       }
     }
 
-    // Exits: only at break-even (bar.high >= entryPrice), and only after the entry day
+    // Exit rules (no stop loss):
+    // - IBS > highIBS (sell at close)
+    // - or holding >= maxHoldDays (sell at close)
     if (position && i > position.entryIndex) {
-      if (bar.high >= position.entryPrice) {
-        // Exit exactly at entryPrice (break-even)
-        const proceeds = position.quantity * position.entryPrice;
+      let shouldExit = false;
+      if (typeof ibs === 'number' && !isNaN(ibs) && ibs > highIBS) {
+        shouldExit = true;
+      } else {
+        const daysHeld = Math.floor((bar.date.getTime() - position.entryDate.getTime()) / (1000 * 60 * 60 * 24));
+        if (daysHeld >= maxHoldDays) shouldExit = true;
+      }
+      if (shouldExit) {
+        const proceeds = position.quantity * bar.close;
         currentCapital += proceeds;
         position = null;
       }
@@ -66,7 +76,7 @@ function simulateNoStopLoss(
 
     // Update equity curve (include position value at close)
     let totalValue = currentCapital;
-    if (position && i >= position.entryIndex) {
+    if (position) {
       totalValue += position.quantity * bar.close;
     }
     if (totalValue > peakValue) peakValue = totalValue;
@@ -76,6 +86,7 @@ function simulateNoStopLoss(
     equity.push({ date: bar.date, value: totalValue, drawdown: dd });
   }
 
+  // If position remains open at the end, equity already accounts for it via last close
   const finalValue = equity[equity.length - 1]?.value ?? currentCapital;
   return { equity, maxDrawdown, finalValue };
 }
@@ -111,10 +122,17 @@ function simulateLeverage(equity: EquityPoint[], leverage: number): { equity: Eq
 
 export function NoStopLossSimulator({ data, strategy }: NoStopLossSimulatorProps) {
   const lowIBS = Number(strategy?.parameters?.lowIBS ?? 0.1);
+  const highIBS = Number(strategy?.parameters?.highIBS ?? 0.75);
+  const maxHoldDays = typeof strategy?.parameters?.maxHoldDays === 'number'
+    ? Number(strategy?.parameters?.maxHoldDays)
+    : Number(strategy?.riskManagement?.maxHoldDays ?? 30);
   const initialCapital = Number(strategy?.riskManagement?.initialCapital ?? 10000);
   const capitalUsage = Number(strategy?.riskManagement?.capitalUsage ?? 100);
 
-  const base = useMemo(() => simulateNoStopLoss(data, lowIBS, initialCapital, capitalUsage), [data, lowIBS, initialCapital, capitalUsage]);
+  const base = useMemo(
+    () => simulateNoStopLoss(data, lowIBS, highIBS, maxHoldDays, initialCapital, capitalUsage),
+    [data, lowIBS, highIBS, maxHoldDays, initialCapital, capitalUsage]
+  );
 
   const [marginPctInput, setMarginPctInput] = useState<string>('100');
   const [appliedLeverage, setAppliedLeverage] = useState<number>(1);
