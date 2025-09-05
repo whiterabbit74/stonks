@@ -39,7 +39,7 @@ export function Results() {
   const [watching, setWatching] = useState(false);
   const [watchBusy, setWatchBusy] = useState(false);
   
-  type ChartTab = 'price' | 'equity' | 'drawdown' | 'trades' | 'profit' | 'duration' | 'openDayDrawdown' | 'margin' | 'splits';
+  type ChartTab = 'price' | 'equity' | 'buyhold' | 'drawdown' | 'trades' | 'profit' | 'duration' | 'openDayDrawdown' | 'margin' | 'splits';
   const [activeChart, setActiveChart] = useState<ChartTab>('price');
   
   // Проверка дублей дат в marketData (ключ YYYY-MM-DD)
@@ -339,6 +339,27 @@ export function Results() {
   }
 
   const { metrics, trades, equity } = backtestResults;
+  const initialCapital = Number(currentStrategy?.riskManagement?.initialCapital ?? 10000);
+  const buyHoldEquity = useMemo(() => {
+    try {
+      if (!Array.isArray(marketData) || marketData.length === 0) return [] as { date: Date; value: number; drawdown: number }[];
+      const first = marketData[0];
+      const firstPrice = typeof first?.adjClose === 'number' && first.adjClose > 0 ? first.adjClose : first.close;
+      if (!firstPrice || firstPrice <= 0) return [] as { date: Date; value: number; drawdown: number }[];
+      let peak = initialCapital;
+      const series = marketData.map(b => {
+        const price = typeof b?.adjClose === 'number' && b.adjClose > 0 ? b.adjClose : b.close;
+        const value = initialCapital * (price / firstPrice);
+        if (value > peak) peak = value;
+        const drawdown = peak > 0 ? ((peak - value) / peak) * 100 : 0;
+        const d = b.date instanceof Date ? b.date : new Date(b.date as unknown as string | number | Date);
+        return { date: d, value, drawdown };
+      });
+      return series;
+    } catch {
+      return [] as { date: Date; value: number; drawdown: number }[];
+    }
+  }, [marketData, initialCapital]);
   
   return (
     <div className="space-y-6 animate-fade-in">
@@ -557,6 +578,7 @@ export function Results() {
               <div className="flex items-center gap-2 flex-nowrap min-w-max px-1">
               <button className={`${activeChart === 'price' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/30 dark:border-blue-900/40 dark:text-blue-200' : 'bg-white border-gray-200 text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'} px-3 py-1.5 rounded border`} onClick={() => setActiveChart('price')}>Цена</button>
               <button className={`${activeChart === 'equity' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/30 dark:border-blue-900/40 dark:text-blue-200' : 'bg-white border-gray-200 text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'} px-3 py-1.5 rounded border`} onClick={() => setActiveChart('equity')}>Equity</button>
+              <button className={`${activeChart === 'buyhold' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/30 dark:border-blue-900/40 dark:text-blue-200' : 'bg-white border-gray-200 text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'} px-3 py-1.5 rounded border`} onClick={() => setActiveChart('buyhold')}>Buy and hold</button>
               <button className={`${activeChart === 'drawdown' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/30 dark:border-blue-900/40 dark:text-blue-200' : 'bg-white border-gray-200 text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'} px-3 py-1.5 rounded border`} onClick={() => setActiveChart('drawdown')}>Просадки</button>
               <button className={`${activeChart === 'trades' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/30 dark:border-blue-900/40 dark:text-blue-200' : 'bg-white border-gray-200 text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'} px-3 py-1.5 rounded border`} onClick={() => setActiveChart('trades')}>Сделки</button>
               <button className={`${activeChart === 'profit' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/30 dark:border-blue-900/40 dark:text-blue-200' : 'bg-white border-gray-200 text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'} px-3 py-1.5 rounded border`} onClick={() => setActiveChart('profit')}>Profit factor</button>
@@ -574,6 +596,9 @@ export function Results() {
             )}
             {activeChart === 'equity' && (
               <EquityChart equity={equity} />
+            )}
+            {activeChart === 'buyhold' && (
+              <EquityChart equity={buyHoldEquity} />
             )}
             {activeChart === 'drawdown' && (
               <TradeDrawdownChart trades={trades} initialCapital={Number(currentStrategy?.riskManagement?.initialCapital ?? 10000)} />
