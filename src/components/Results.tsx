@@ -14,6 +14,7 @@ import { TradeDurationChart } from './TradeDurationChart';
 import { OpenDayDrawdownChart } from './OpenDayDrawdownChart';
 import { MarginSimulator } from './MarginSimulator';
 import { BuyAtCloseSimulator } from './BuyAtCloseSimulator';
+import { NoStopLossSimulator } from './NoStopLossSimulator';
 
 export function Results() {
   const backtestResults = useAppStore(s => s.backtestResults);
@@ -48,7 +49,7 @@ export function Results() {
   };
   const [tradingCalendar, setTradingCalendar] = useState<TradingCalendarData | null>(null);
   
-  type ChartTab = 'price' | 'equity' | 'buyhold' | 'drawdown' | 'trades' | 'profit' | 'duration' | 'openDayDrawdown' | 'margin' | 'buyAtClose' | 'splits';
+  type ChartTab = 'price' | 'equity' | 'buyhold' | 'drawdown' | 'trades' | 'profit' | 'duration' | 'openDayDrawdown' | 'margin' | 'buyAtClose' | 'noStopLoss' | 'splits';
   const [activeChart, setActiveChart] = useState<ChartTab>('price');
   
   // Проверка дублей дат в marketData (ключ YYYY-MM-DD)
@@ -633,6 +634,7 @@ export function Results() {
               <button className={`${activeChart === 'openDayDrawdown' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/30 dark:border-blue-900/40 dark:text-blue-200' : 'bg-white border-gray-200 text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'} px-3 py-1.5 rounded border`} onClick={() => setActiveChart('openDayDrawdown')}>Стартовая просадка</button>
               <button className={`${activeChart === 'margin' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/30 dark:border-blue-900/40 dark:text-blue-200' : 'bg-white border-gray-200 text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'} px-3 py-1.5 rounded border`} onClick={() => setActiveChart('margin')}>Маржа</button>
               <button className={`${activeChart === 'buyAtClose' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/30 dark:border-blue-900/40 dark:text-blue-200' : 'bg-white border-gray-200 text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'} px-3 py-1.5 rounded border`} onClick={() => setActiveChart('buyAtClose')}>Покупка на закрытии</button>
+              <button className={`${activeChart === 'noStopLoss' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/30 dark:border-blue-900/40 dark:text-blue-200' : 'bg-white border-gray-200 text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'} px-3 py-1.5 rounded border`} onClick={() => setActiveChart('noStopLoss')}>Без stop loss</button>
               <button className={`${activeChart === 'splits' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/30 dark:border-blue-900/40 dark:text-blue-200' : 'bg-white border-gray-200 text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'} px-3 py-1.5 rounded border`} onClick={() => setActiveChart('splits')}>Сплиты</button>
               </div>
             </div>
@@ -668,6 +670,9 @@ export function Results() {
             )}
             {activeChart === 'buyAtClose' && (
               <BuyAtCloseSimulator data={marketData} strategy={currentStrategy} />
+            )}
+            {activeChart === 'noStopLoss' && (
+              <NoStopLossSimulator data={marketData} strategy={currentStrategy} />
             )}
             {activeChart === 'splits' && (
               <div className="space-y-4">
