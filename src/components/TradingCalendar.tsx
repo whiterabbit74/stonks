@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useMemo } from 'react';
-import { Calendar, Clock, AlertCircle, CheckCircle, ChevronLeft, ChevronRight, Info, TrendingUp } from 'lucide-react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
+import { Calendar, Clock, AlertCircle, CheckCircle, ChevronLeft, ChevronRight, Info, TrendingUp, X } from 'lucide-react';
 import { API_BASE_URL } from '../lib/api';
 
 interface HolidayData {
@@ -41,6 +41,11 @@ export function TradingCalendar() {
   const [error, setError] = useState<string | null>(null);
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString());
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
+  const [focusedDay, setFocusedDay] = useState<number | null>(null);
+  const dayRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [detailsDate, setDetailsDate] = useState<{ year: string; month: number; day: number } | null>(null);
+  const touchStartRef = useRef<{ x: number; y: number } | null>(null);
 
   // Получаем текущую дату для выделения
   const today = new Date();
@@ -70,6 +75,7 @@ export function TradingCalendar() {
   const goToToday = () => {
     setSelectedYear(currentYear.toString());
     setSelectedMonth(currentMonth);
+    setFocusedDay(currentDay);
   };
 
   useEffect(() => {
@@ -90,6 +96,32 @@ export function TradingCalendar() {
 
     loadCalendar();
   }, []);
+
+  // Focused day management across month changes
+  useEffect(() => {
+    const daysInMonth = getDaysInMonth(parseInt(selectedYear), selectedMonth);
+    // Prefer to keep current focusedDay if set, otherwise default to today or 1st
+    setFocusedDay(prev => {
+      if (prev && prev >= 1) {
+        return Math.min(prev, daysInMonth);
+      }
+      if (
+        parseInt(selectedYear) === currentYear &&
+        selectedMonth === currentMonth
+      ) {
+        return Math.min(currentDay, daysInMonth);
+      }
+      return 1;
+    });
+  }, [selectedYear, selectedMonth]);
+
+  useEffect(() => {
+    if (detailsOpen) {
+      const prev = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      return () => { document.body.style.overflow = prev; };
+    }
+  }, [detailsOpen]);
 
   const getDayType = (year: string, month: number, day: number) => {
     if (!calendarData) return 'normal';
@@ -144,6 +176,109 @@ export function TradingCalendar() {
     return adjustedDay;
   };
 
+  const monthHeaderId = useMemo(() => `month-label-${selectedYear}-${selectedMonth}`, [selectedYear, selectedMonth]);
+
+  const openDetails = (year: string, month: number, day: number) => {
+    setDetailsDate({ year, month, day });
+    setDetailsOpen(true);
+  };
+
+  const closeDetails = () => {
+    setDetailsOpen(false);
+    setDetailsDate(null);
+  };
+
+  const handleGridTouchStart = (e: React.TouchEvent) => {
+    const t = e.touches[0];
+    touchStartRef.current = { x: t.clientX, y: t.clientY };
+  };
+
+  const handleGridTouchEnd = (e: React.TouchEvent) => {
+    if (!touchStartRef.current) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - touchStartRef.current.x;
+    const dy = t.clientY - touchStartRef.current.y;
+    touchStartRef.current = null;
+    if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy)) {
+      if (dx > 0) {
+        goToPreviousMonth();
+      } else {
+        goToNextMonth();
+      }
+    }
+  };
+
+  const focusDay = (day: number) => {
+    setFocusedDay(day);
+    // Focus after render
+    requestAnimationFrame(() => {
+      dayRefs.current[day - 1]?.focus();
+    });
+  };
+
+  const handleDayKeyDown = (day: number, e: React.KeyboardEvent<HTMLButtonElement>) => {
+    const year = parseInt(selectedYear);
+    const daysInMonth = getDaysInMonth(year, selectedMonth);
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      openDetails(selectedYear, selectedMonth, day);
+      return;
+    }
+    if (e.key === 'ArrowRight') {
+      e.preventDefault();
+      if (day < daysInMonth) {
+        focusDay(day + 1);
+      } else {
+        goToNextMonth();
+        setTimeout(() => focusDay(1), 0);
+      }
+    } else if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      if (day > 1) {
+        focusDay(day - 1);
+      } else {
+        goToPreviousMonth();
+        setTimeout(() => {
+          const prevDays = getDaysInMonth(year, selectedMonth === 0 ? 11 : selectedMonth - 1);
+          focusDay(prevDays);
+        }, 0);
+      }
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (day + 7 <= daysInMonth) {
+        focusDay(day + 7);
+      } else {
+        goToNextMonth();
+        setTimeout(() => focusDay(((day + 7) - daysInMonth)), 0);
+      }
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (day - 7 >= 1) {
+        focusDay(day - 7);
+      } else {
+        goToPreviousMonth();
+        setTimeout(() => {
+          const prevDays = getDaysInMonth(year, selectedMonth === 0 ? 11 : selectedMonth - 1);
+          focusDay(prevDays - (7 - day));
+        }, 0);
+      }
+    } else if (e.key === 'Home') {
+      e.preventDefault();
+      focusDay(1);
+    } else if (e.key === 'End') {
+      e.preventDefault();
+      focusDay(daysInMonth);
+    } else if (e.key === 'PageUp') {
+      e.preventDefault();
+      goToPreviousMonth();
+      setTimeout(() => focusDay(Math.min(day, getDaysInMonth(year, selectedMonth === 0 ? 11 : selectedMonth - 1))), 0);
+    } else if (e.key === 'PageDown') {
+      e.preventDefault();
+      goToNextMonth();
+      setTimeout(() => focusDay(Math.min(day, getDaysInMonth(year, selectedMonth === 11 ? 0 : selectedMonth + 1))), 0);
+    }
+  };
+
   const renderCalendar = () => {
     const year = parseInt(selectedYear);
     const daysInMonth = getDaysInMonth(year, selectedMonth);
@@ -153,7 +288,14 @@ export function TradingCalendar() {
 
     // Пустые ячейки для дней до начала месяца
     for (let i = 0; i < firstDayOfMonth; i++) {
-      days.push(<div key={`empty-${i}`} className="min-h-[80px] border-r border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"></div>);
+      days.push(
+        <div
+          key={`empty-${i}`}
+          role="gridcell"
+          aria-hidden="true"
+          className="min-h-[60px] md:min-h-[96px] border-r border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"
+        ></div>
+      );
     }
 
     // Дни месяца
@@ -174,10 +316,10 @@ export function TradingCalendar() {
           selectedMonth === currentMonth &&
           day === currentDay) {
         isToday = true;
-        bgColor = 'bg-blue-600 text-white hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-600';
+        bgColor = 'bg-indigo-600 text-white hover:bg-indigo-700 dark:bg-indigo-700 dark:hover:bg-indigo-600';
         textColor = 'text-white';
-        borderColor = 'border-blue-600 dark:border-blue-700';
-        shadow = 'shadow-lg ring-2 ring-blue-300 dark:ring-blue-500';
+        borderColor = 'border-indigo-600 dark:border-indigo-700';
+        shadow = 'shadow-lg ring-2 ring-indigo-300 dark:ring-indigo-500';
       } else {
         switch (dayType) {
           case 'holiday':
@@ -205,41 +347,49 @@ export function TradingCalendar() {
         }
       }
 
+      const ariaLabel = (() => {
+        const monthName = MONTHS[selectedMonth];
+        const base = `${day} ${monthName} ${selectedYear}`;
+        if (dayType === 'holiday' && dayData) return `${base} — Праздник: ${dayData.name}`;
+        if (dayType === 'short' && dayData) return `${base} — Раннее закрытие`;
+        if (dayType === 'weekend') return `${base} — Выходной`;
+        return `${base} — Торговый день`;
+      })();
+
       days.push(
-        <div
+        <button
           key={day}
-          className={`min-h-[80px] border-r border-b ${borderColor} ${bgColor} ${textColor} ${shadow} p-3 text-sm flex flex-col items-center justify-center cursor-pointer transition-all duration-200 transform hover:scale-105 relative overflow-hidden`}
+          ref={el => (dayRefs.current[day - 1] = el)}
+          onClick={() => openDetails(selectedYear, selectedMonth, day)}
+          onKeyDown={(e) => handleDayKeyDown(day, e)}
+          onFocus={() => setFocusedDay(day)}
+          role="gridcell"
+          aria-selected={focusedDay === day}
+          aria-label={ariaLabel}
+          tabIndex={focusedDay === day ? 0 : -1}
+          className={`min-h-[60px] md:min-h-[96px] border-r border-b ${borderColor} ${bgColor} ${textColor} ${shadow} p-3 text-sm flex flex-col items-center justify-center transition-all duration-200 transform hover:scale-105 relative overflow-hidden focus:outline-none focus:ring-2 focus:ring-indigo-500`}
           title={dayData ? `${dayData.name}: ${dayData.description}` : undefined}
         >
-          {/* Фон для сегодняшнего дня */}
           {isToday && (
-            <div className="absolute inset-0 bg-blue-600 opacity-10 rounded"></div>
+            <div className="absolute inset-0 bg-indigo-600 opacity-10 rounded"></div>
           )}
-
-          {/* Номер дня */}
           <span className={`font-bold text-lg mb-1 relative z-10 ${isToday ? 'text-white' : ''}`}>
             {day}
           </span>
-
-          {/* Эмодзи или индикатор типа дня */}
           {dayData && (
             <div className={`text-lg mb-1 relative z-10 ${dayType === 'holiday' ? 'animate-pulse' : ''}`}>
               {emoji}
             </div>
           )}
-
-          {/* Название праздника (если есть) */}
           {dayData && (
-            <div className={`text-xs font-medium text-center leading-tight max-w-full truncate relative z-10 ${isToday ? 'text-blue-100' : ''}`}>
+            <div className={`text-xs font-medium text-center leading-tight max-w-full truncate relative z-10 ${isToday ? 'text-indigo-100' : ''}`}>
               {dayData.name.length > 10 ? dayData.name.substring(0, 8) + '...' : dayData.name}
             </div>
           )}
-
-          {/* Сегодняшний день индикатор */}
           {isToday && (
             <div className="absolute bottom-1 right-1 w-2 h-2 bg-white rounded-full shadow-sm"></div>
           )}
-        </div>
+        </button>
       );
     }
 
@@ -280,8 +430,8 @@ export function TradingCalendar() {
       <div className="bg-white rounded-xl border border-gray-200 p-6 dark:bg-gray-900 dark:border-gray-800">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <div className="p-2 bg-blue-100 rounded-lg dark:bg-blue-950/30">
-              <Calendar className="w-6 h-6 text-blue-600" />
+            <div className="p-2 bg-indigo-100 rounded-lg dark:bg-indigo-950/30">
+              <Calendar className="w-6 h-6 text-indigo-600" />
             </div>
             <div>
               <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Календарь торгов</h1>
@@ -389,6 +539,7 @@ export function TradingCalendar() {
                 value={selectedYear}
                 onChange={(e) => setSelectedYear(e.target.value)}
                 className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-900 font-medium focus:ring-2 focus:ring-blue-500 focus:border-blue-500 hover:border-gray-400 transition-colors dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100"
+                aria-label="Год"
               >
                 {calendarData.metadata.years.map(year => (
                   <option key={year} value={year}>{year}</option>
@@ -399,6 +550,7 @@ export function TradingCalendar() {
                 value={selectedMonth}
                 onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
                 className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-900 font-medium focus:ring-2 focus:ring-blue-500 focus:border-blue-500 hover:border-gray-400 transition-colors dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100"
+                aria-label="Месяц"
               >
                 {MONTHS.map((month, index) => (
                   <option key={index} value={index}>{month}</option>
@@ -419,7 +571,7 @@ export function TradingCalendar() {
           <div className="flex items-center gap-4">
             <button
               onClick={goToToday}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+              className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium"
             >
               Сегодня
             </button>
@@ -435,12 +587,13 @@ export function TradingCalendar() {
       <div className="bg-white rounded-xl border border-gray-200 dark:bg-gray-900 dark:border-gray-800 overflow-hidden">
         {/* Заголовок месяца */}
         <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800">
-          <h2 className="text-xl font-bold text-center text-gray-900 dark:text-gray-100">
+          <h2 id={monthHeaderId} className="text-xl font-bold text-center text-gray-900 dark:text-gray-100">
             {MONTHS[selectedMonth]} {selectedYear}
           </h2>
           <p className="text-gray-600 text-center mt-1 text-sm dark:text-gray-400">
             NYSE Trading Calendar
           </p>
+          <div className="sr-only" aria-live="polite" aria-atomic="true">{MONTHS[selectedMonth]} {selectedYear}</div>
         </div>
 
         {/* Дни недели */}
@@ -453,7 +606,13 @@ export function TradingCalendar() {
         </div>
 
         {/* Дни месяца */}
-        <div className="grid grid-cols-7 bg-white dark:bg-gray-900">
+        <div
+          className="grid grid-cols-7 bg-white dark:bg-gray-900 touch-manipulation"
+          role="grid"
+          aria-labelledby={monthHeaderId}
+          onTouchStart={handleGridTouchStart}
+          onTouchEnd={handleGridTouchEnd}
+        >
           {renderCalendar()}
         </div>
       </div>
@@ -540,6 +699,63 @@ export function TradingCalendar() {
           </div>
         </div>
       </div>
+
+      {/* Details modal/sheet */}
+      {detailsOpen && detailsDate && (
+        <div
+          className="fixed inset-0 z-50 flex items-end md:items-center justify-center"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="calendar-day-details-title"
+          onKeyDown={(e) => { if (e.key === 'Escape') closeDetails(); }}
+        >
+          <div className="absolute inset-0 bg-black/40" onClick={closeDetails}></div>
+          <div className="relative w-full md:max-w-lg md:rounded-xl bg-white border border-gray-200 p-4 md:p-6 shadow-lg dark:bg-gray-900 dark:border-gray-800 md:mx-4 rounded-t-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 id="calendar-day-details-title" className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                  {(() => {
+                    const d = detailsDate;
+                    return `${d.day} ${MONTHS[d.month]} ${d.year}`;
+                  })()}
+                </h3>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                  {(() => {
+                    const data = getDayData(detailsDate.year, detailsDate.month, detailsDate.day);
+                    const type = getDayType(detailsDate.year, detailsDate.month, detailsDate.day);
+                    if (type === 'holiday' && data) return `Праздник — ${data.name}. ${data.description}`;
+                    if (type === 'short' && data) return `Сокращённый день. Открыто до ${calendarData.tradingHours.short.end}`;
+                    if (type === 'weekend') return 'Выходной день. Биржа закрыта';
+                    return `Обычные часы: ${calendarData.tradingHours.normal.start}–${calendarData.tradingHours.normal.end} (EST)`;
+                  })()}
+                </p>
+              </div>
+              <button
+                onClick={closeDetails}
+                className="inline-flex items-center justify-center p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800"
+                aria-label="Закрыть"
+              >
+                <X className="w-5 h-5 text-gray-600 dark:text-gray-400" />
+              </button>
+            </div>
+            <div className="mt-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="p-3 bg-gray-50 rounded-lg border border-gray-200 dark:bg-gray-800 dark:border-gray-700">
+                  <div className="text-xs text-gray-500 dark:text-gray-400">Обычные часы</div>
+                  <div className="font-medium text-gray-900 dark:text-gray-100">{calendarData.tradingHours.normal.start} – {calendarData.tradingHours.normal.end}</div>
+                </div>
+                <div className="p-3 bg-gray-50 rounded-lg border border-gray-200 dark:bg-gray-800 dark:border-gray-700">
+                  <div className="text-xs text-gray-500 dark:text-gray-400">Сокращённый день</div>
+                  <div className="font-medium text-gray-900 dark:text-gray-100">до {calendarData.tradingHours.short.end}</div>
+                </div>
+              </div>
+            </div>
+            <div className="mt-6 flex justify-end">
+              <button onClick={closeDetails} className="px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700">Ок</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
