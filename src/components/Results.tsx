@@ -342,6 +342,29 @@ export function Results() {
     }
   }, [backtestResults, marketData, currentStrategy, backtestStatus, runBacktest]);
 
+  // Compute once regardless of results presence to keep hook order stable
+  const initialCapital = Number(currentStrategy?.riskManagement?.initialCapital ?? 10000);
+  const buyHoldEquity = useMemo(() => {
+    try {
+      if (!Array.isArray(marketData) || marketData.length === 0) return [] as { date: Date; value: number; drawdown: number }[];
+      const first = marketData[0];
+      const firstPrice = typeof first?.adjClose === 'number' && first.adjClose > 0 ? first.adjClose : first.close;
+      if (!firstPrice || firstPrice <= 0) return [] as { date: Date; value: number; drawdown: number }[];
+      let peak = initialCapital;
+      const series = marketData.map(b => {
+        const price = typeof b?.adjClose === 'number' && b.adjClose > 0 ? b.adjClose : b.close;
+        const value = initialCapital * (price / firstPrice);
+        if (value > peak) peak = value;
+        const drawdown = peak > 0 ? ((peak - value) / peak) * 100 : 0;
+        const d = b.date instanceof Date ? b.date : new Date(b.date as unknown as string | number | Date);
+        return { date: d, value, drawdown };
+      });
+      return series;
+    } catch {
+      return [] as { date: Date; value: number; drawdown: number }[];
+    }
+  }, [marketData, initialCapital]);
+
   if (!backtestResults) {
     return (
       <div className="text-center py-8">
@@ -366,27 +389,6 @@ export function Results() {
   }
 
   const { metrics, trades, equity } = backtestResults;
-  const initialCapital = Number(currentStrategy?.riskManagement?.initialCapital ?? 10000);
-  const buyHoldEquity = useMemo(() => {
-    try {
-      if (!Array.isArray(marketData) || marketData.length === 0) return [] as { date: Date; value: number; drawdown: number }[];
-      const first = marketData[0];
-      const firstPrice = typeof first?.adjClose === 'number' && first.adjClose > 0 ? first.adjClose : first.close;
-      if (!firstPrice || firstPrice <= 0) return [] as { date: Date; value: number; drawdown: number }[];
-      let peak = initialCapital;
-      const series = marketData.map(b => {
-        const price = typeof b?.adjClose === 'number' && b.adjClose > 0 ? b.adjClose : b.close;
-        const value = initialCapital * (price / firstPrice);
-        if (value > peak) peak = value;
-        const drawdown = peak > 0 ? ((peak - value) / peak) * 100 : 0;
-        const d = b.date instanceof Date ? b.date : new Date(b.date as unknown as string | number | Date);
-        return { date: d, value, drawdown };
-      });
-      return series;
-    } catch {
-      return [] as { date: Date; value: number; drawdown: number }[];
-    }
-  }, [marketData, initialCapital]);
   
   return (
     <div className="space-y-6 animate-fade-in">
