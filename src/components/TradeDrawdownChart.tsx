@@ -182,7 +182,7 @@ export function TradeDrawdownChart({ trades, initialCapital }: TradeDrawdownChar
   const drawdownFrequency = (drawdownTrades / trades.length) * 100;
 
   return (
-    <div className="w-full h-full">
+    <div className="w-full h-[300px] sm:h-[360px]">
       {/* Trade Drawdown Statistics */}
       <div className="flex flex-wrap gap-4 mb-4 text-sm">
         <div className="bg-red-50 px-3 py-2 rounded dark:bg-red-950/30 dark:text-red-300">
