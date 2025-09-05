@@ -1697,6 +1697,7 @@ app.post('/api/datasets/:id/refresh', async (req, res) => {
   try {
     const { id } = req.params;
     const settings = await readSettings().catch(() => ({}));
+    const reqProvider = (req.query && typeof req.query.provider === 'string') ? req.query.provider : null;
 
     const filePath = resolveDatasetFilePathById(id);
     if (!filePath || !await fs.pathExists(filePath)) {
@@ -1737,19 +1738,39 @@ app.post('/api/datasets/:id/refresh', async (req, res) => {
 
     let rows = [];
     let splits = [];
-    const av = await fetchFromAlphaVantage(ticker, startTs, endTs, { adjustment: 'none' });
-    const base = Array.isArray(av) ? av : (av && av.data) || [];
-    rows = base.map(r => ({
-      date: r.date,
-      open: r.open,
-      high: r.high,
-      low: r.low,
-      close: r.close,
-      adjClose: r.adjClose ?? r.close,
-      volume: r.volume || 0,
-    }));
-    if (av && !Array.isArray(av) && Array.isArray(av.splits)) {
-      splits = av.splits;
+    const provider = (reqProvider === 'alpha_vantage' || reqProvider === 'finnhub')
+      ? reqProvider
+      : (settings && (settings.resultsRefreshProvider === 'alpha_vantage' || settings.resultsRefreshProvider === 'finnhub')
+        ? settings.resultsRefreshProvider
+        : 'finnhub');
+
+    if (provider === 'finnhub') {
+      const fh = await fetchFromFinnhub(ticker, startTs, endTs);
+      const base = Array.isArray(fh) ? fh : [];
+      rows = base.map(r => ({
+        date: r.date,
+        open: Number(r.open),
+        high: Number(r.high),
+        low: Number(r.low),
+        close: Number(r.close),
+        adjClose: (r.adjClose != null ? Number(r.adjClose) : Number(r.close)),
+        volume: Number(r.volume) || 0,
+      }));
+    } else {
+      const av = await fetchFromAlphaVantage(ticker, startTs, endTs, { adjustment: 'none' });
+      const base = Array.isArray(av) ? av : (av && av.data) || [];
+      rows = base.map(r => ({
+        date: r.date,
+        open: r.open,
+        high: r.high,
+        low: r.low,
+        close: r.close,
+        adjClose: r.adjClose ?? r.close,
+        volume: r.volume || 0,
+      }));
+      if (av && !Array.isArray(av) && Array.isArray(av.splits)) {
+        splits = av.splits;
+      }
     }
 
     // Merge with de-duplication by date key, normalizing all dates to YYYY-MM-DD

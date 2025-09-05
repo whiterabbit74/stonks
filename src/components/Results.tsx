@@ -38,6 +38,7 @@ export function Results() {
   const [modal, setModal] = useState<{ type: 'info' | 'error' | null; title?: string; message?: string }>({ type: null });
   const [watching, setWatching] = useState(false);
   const [watchBusy, setWatchBusy] = useState(false);
+  const [tradingCalendar, setTradingCalendar] = useState<any | null>(null);
   
   type ChartTab = 'price' | 'equity' | 'drawdown' | 'trades' | 'profit' | 'duration' | 'openDayDrawdown' | 'margin' | 'splits';
   const [activeChart, setActiveChart] = useState<ChartTab>('price');
@@ -86,6 +87,20 @@ export function Results() {
       setRefreshing(false);
     }
   };
+
+  // Load trading calendar once to detect early-close days
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const cal = await DatasetAPI.getTradingCalendar();
+        if (active) setTradingCalendar(cal);
+      } catch {
+        if (active) setTradingCalendar(null);
+      }
+    })();
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -203,6 +218,7 @@ export function Results() {
     const timeFmt = new Intl.DateTimeFormat('en-US', {
       timeZone: 'America/New_York',
       hour12: false,
+      year: 'numeric', month: '2-digit', day: '2-digit',
       hour: '2-digit',
       minute: '2-digit',
     });
@@ -212,10 +228,16 @@ export function Results() {
     const hh = parseInt(tmap.hour || '0', 10);
     const mm = parseInt(tmap.minute || '0', 10);
     const minutes = hh * 60 + mm;
-    const closeMin = 16 * 60; // 16:00 ET
-    const bufferMin = 30; // safety buffer after close for data providers
-
+    // Detect early close (13:00) from server calendar
     const todayET = getETParts(now);
+    const yearStr = String(todayET.y);
+    const mStr = String(todayET.m).padStart(2, '0');
+    const dStr = String(todayET.d).padStart(2, '0');
+    const todayKey = `${mStr}-${dStr}`;
+    const isShortDay = !!(tradingCalendar && tradingCalendar.shortDays && tradingCalendar.shortDays[yearStr] && tradingCalendar.shortDays[yearStr][todayKey]);
+    const closeMin = isShortDay ? (13 * 60) : (16 * 60);
+    const bufferMin = 0; // show refresh immediately after close
+
     const todayIsTradingDay = !isWeekendET(todayET) && !isHolidayET(todayET);
 
     const expectedParts = (todayIsTradingDay && minutes >= (closeMin + bufferMin))
@@ -248,7 +270,7 @@ export function Results() {
     } else {
       setStaleInfo(null);
     }
-  }, [marketData]);
+  }, [marketData, tradingCalendar]);
 
   // Авто-пуллинг котировок (пропускаем вызовы API в выходные/вне торговых часов)
   useEffect(() => {
@@ -260,6 +282,7 @@ export function Results() {
       const fmt = new Intl.DateTimeFormat('en-US', {
         timeZone: 'America/New_York',
         hour12: false,
+        year: 'numeric', month: '2-digit', day: '2-digit',
         hour: '2-digit',
         minute: '2-digit',
         weekday: 'short',
@@ -274,7 +297,12 @@ export function Results() {
       const isWeekday = weekday >= 1 && weekday <= 5; // Mon..Fri in ET
       const minutes = hh * 60 + mm;
       const openMin = 9 * 60 + 30;  // 09:30 ET
-      const closeMin = 16 * 60;     // 16:00 ET
+      const yStr = map.year;
+      const mStr = map.month;
+      const dStr = map.day;
+      const k = `${mStr}-${dStr}`;
+      const short = !!(tradingCalendar && tradingCalendar.shortDays && tradingCalendar.shortDays[yStr] && tradingCalendar.shortDays[yStr][k]);
+      const closeMin = short ? (13 * 60) : (16 * 60); // Early close support
       return isWeekday && minutes >= openMin && minutes <= closeMin;
     };
     setIsTrading(isMarketOpenNow());
@@ -299,7 +327,7 @@ export function Results() {
     };
     fetchQuote();
     return () => { isMounted = false; if (timer) clearTimeout(timer); };
-  }, [symbol, resultsQuoteProvider]);
+  }, [symbol, resultsQuoteProvider, tradingCalendar]);
 
   // Автозапуск бэктеста, если результатов ещё нет, но данные и стратегия готовы
   useEffect(() => {
