@@ -3,6 +3,7 @@ import { createChart, type IChartApi, type ISeriesApi, type UTCTimestamp } from 
 import { formatOHLCYMD, parseOHLCDate } from '../lib/utils';
 import type { OHLCData, Trade, SplitEvent } from '../types';
 import { useAppStore } from '../stores';
+import { logError } from '../lib/error-logger';
 
 interface TradingChartProps {
   data: OHLCData[];
@@ -47,12 +48,12 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
   };
 
   useEffect(() => {
-    const onTheme = (e: CustomEvent<{ mode: string; effectiveDark: boolean }>) => {
+    const onTheme = (e: any) => {
       const dark = !!(e?.detail?.effectiveDark ?? document.documentElement.classList.contains('dark'));
       setIsDark(dark);
     };
-    window.addEventListener('themechange', onTheme);
-    return () => window.removeEventListener('themechange', onTheme);
+    window.addEventListener('themechange' as any, onTheme as any);
+    return () => window.removeEventListener('themechange' as any, onTheme as any);
   }, []);
 
   useEffect(() => {
@@ -106,26 +107,46 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
       });
       candlestickSeriesRef.current = candlestickSeries;
 
-      // Convert data to chart format
-      const chartData = data.map(bar => ({
-        time: Math.floor(bar.date.getTime() / 1000) as UTCTimestamp,
-        open: bar.open,
-        high: bar.high,
-        low: bar.low,
-        close: bar.close,
-      }));
+      // Convert data to chart format with validation
+      const chartData = data.map((bar, idx) => {
+        try {
+          const t = Math.floor(bar.date.getTime() / 1000) as UTCTimestamp;
+          const open = Number(bar.open);
+          const high = Number(bar.high);
+          const low = Number(bar.low);
+          const close = Number(bar.close);
+          if (!Number.isFinite(open) || !Number.isFinite(high) || !Number.isFinite(low) || !Number.isFinite(close)) {
+            logError('chart', 'Invalid candle values', { idx, bar }, 'TradingChart.setData');
+          }
+          return { time: t, open, high, low, close };
+        } catch (e) {
+          logError('chart', 'Failed to map candle', { idx, bar }, 'TradingChart.setData', (e as any)?.stack);
+          return { time: 0 as UTCTimestamp, open: 0, high: 0, low: 0, close: 0 };
+        }
+      });
 
-      candlestickSeries.setData(chartData);
+      try {
+        candlestickSeries.setData(chartData);
+      } catch (e) {
+        logError('chart', 'candlestickSeries.setData failed', { length: chartData.length, sample: chartData.slice(0, 3) }, 'TradingChart', (e as any)?.stack);
+      }
       try { chart.timeScale().applyOptions({ rightOffset: 8 }); } catch {
         // Ignore timescale options errors
       }
 
       // Indicator content on main chart: Volume and IBS histograms
-      const volumeData = data.map(bar => ({
-        time: Math.floor(bar.date.getTime() / 1000) as UTCTimestamp,
-        value: bar.volume,
-        color: bar.close >= bar.open ? (isDark ? 'rgba(16, 185, 129, 0.45)' : 'rgba(16, 185, 129, 0.6)') : (isDark ? 'rgba(239, 68, 68, 0.45)' : 'rgba(239, 68, 68, 0.6)')
-      }));
+      const volumeData = data.map((bar, idx) => {
+        const value = Number(bar.volume);
+        const t = Math.floor(bar.date.getTime() / 1000) as UTCTimestamp;
+        if (!Number.isFinite(value)) {
+          logError('chart', 'Invalid volume value', { idx, value, bar }, 'TradingChart.volume');
+        }
+        return {
+          time: t,
+          value,
+          color: bar.close >= bar.open ? (isDark ? 'rgba(16, 185, 129, 0.45)' : 'rgba(16, 185, 129, 0.6)') : (isDark ? 'rgba(239, 68, 68, 0.45)' : 'rgba(239, 68, 68, 0.6)')
+        };
+      });
       const volumeSeries = chart.addHistogramSeries({
         color: isDark ? 'rgba(148, 163, 184, 0.35)' : 'rgba(148, 163, 184, 0.45)',
         priceFormat: { type: 'volume' as const },
@@ -134,7 +155,9 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
         visible: false,
         title: 'Объём',
       });
-      volumeSeries.setData(volumeData);
+      try { volumeSeries.setData(volumeData); } catch (e) {
+        logError('chart', 'volumeSeries.setData failed', { length: volumeData.length, sample: volumeData.slice(0, 3) }, 'TradingChart', (e as any)?.stack);
+      }
       volumeSeriesRef.current = volumeSeries;
 
       const ibsHist = chart.addHistogramSeries({
@@ -144,17 +167,26 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
         visible: false,
         title: 'IBS',
       });
-      const ibsData = data.map(bar => {
-        const range = Math.max(1e-9, bar.high - bar.low);
-        const ibs = (bar.close - bar.low) / range; // 0..1
-        const color = ibs <= 0.10
-          // Darker, more saturated green for visibility
-          ? (isDark ? 'rgba(5,150,105,1)' : 'rgba(5,150,105,1)')
-          // Neutral gray bars at 50% opacity
-          : (ibs >= 0.75 ? (isDark ? 'rgba(239,68,68,0.9)' : 'rgba(239,68,68,0.9)') : (isDark ? 'rgba(156,163,175,0.5)' : 'rgba(107,114,128,0.5)'));
-        return { time: Math.floor(bar.date.getTime() / 1000) as UTCTimestamp, value: ibs, color };
+      const ibsData = data.map((bar, idx) => {
+        try {
+          const range = Math.max(1e-9, bar.high - bar.low);
+          const ibs = (bar.close - bar.low) / range; // 0..1
+          const t = Math.floor(bar.date.getTime() / 1000) as UTCTimestamp;
+          const color = ibs <= 0.10
+            ? (isDark ? 'rgba(5,150,105,1)' : 'rgba(5,150,105,1)')
+            : (ibs >= 0.75 ? (isDark ? 'rgba(239,68,68,0.9)' : 'rgba(239,68,68,0.9)') : (isDark ? 'rgba(156,163,175,0.5)' : 'rgba(107,114,128,0.5)'));
+          if (!Number.isFinite(ibs)) {
+            logError('chart', 'Invalid IBS value', { idx, bar, ibs }, 'TradingChart.ibs');
+          }
+          return { time: t, value: ibs, color };
+        } catch (e) {
+          logError('chart', 'Failed to compute IBS', { idx, bar }, 'TradingChart.ibs', (e as any)?.stack);
+          return { time: 0 as UTCTimestamp, value: 0, color: 'rgba(0,0,0,0)' };
+        }
       });
-      ibsHist.setData(ibsData);
+      try { ibsHist.setData(ibsData); } catch (e) {
+        logError('chart', 'ibsHist.setData failed', { length: ibsData.length, sample: ibsData.slice(0, 3) }, 'TradingChart', (e as any)?.stack);
+      }
       try {
         ibsHist.createPriceLine({ price: 0.10, color: '#9ca3af', lineWidth: 1, lineStyle: 2, title: '0.10' });
         ibsHist.createPriceLine({ price: 0.75, color: '#9ca3af', lineWidth: 1, lineStyle: 2, title: '0.75' });
@@ -183,7 +215,9 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
           };
         })
         .filter((point: { time: UTCTimestamp; value: number } | null): point is { time: UTCTimestamp; value: number } => point !== null);
-      ema20Series.setData(ema20Data);
+      try { ema20Series.setData(ema20Data); } catch (e) {
+        logError('chart', 'ema20Series.setData failed', { length: ema20Data.length, sample: ema20Data.slice(0, 3) }, 'TradingChart', (e as any)?.stack);
+      }
       ema20SeriesRef.current = ema20Series;
 
       const ema200Values = calculateEMA(data, 200);
@@ -203,7 +237,9 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
           };
         })
         .filter((point: { time: UTCTimestamp; value: number } | null): point is { time: UTCTimestamp; value: number } => point !== null);
-      ema200Series.setData(ema200Data);
+      try { ema200Series.setData(ema200Data); } catch (e) {
+        logError('chart', 'ema200Series.setData failed', { length: ema200Data.length, sample: ema200Data.slice(0, 3) }, 'TradingChart', (e as any)?.stack);
+      }
       ema200SeriesRef.current = ema200Series;
 
       // Собираем маркеры: сделки и сплиты
@@ -273,7 +309,7 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
       tooltipEl.style.display = 'none';
       chartContainerRef.current.appendChild(tooltipEl);
 
-      chart.subscribeCrosshairMove((param) => {
+      chart.subscribeCrosshairMove((param: any) => {
         if (!param || !param.time) {
           tooltipEl.style.display = 'none';
           return;

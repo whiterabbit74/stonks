@@ -21,7 +21,7 @@ export function ErrorConsole({ open, onClose }: ErrorConsoleProps) {
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return events.filter(e => {
+    return events.filter((e: LoggedEvent) => {
       if (filter !== 'all' && e.category !== filter) return false;
       if (!q) return true;
       return (
@@ -91,6 +91,18 @@ export function ErrorConsole({ open, onClose }: ErrorConsoleProps) {
                   {e.source && <span className="text-gray-500">{e.source}</span>}
                 </div>
                 <div className="font-mono text-gray-800 dark:text-gray-100 whitespace-pre-wrap break-words">{e.message}</div>
+                {/* Top frame quick link */}
+                {e.context && (e.context as any).topFrame && (
+                  <div className="mt-1 text-[11px] text-gray-600 dark:text-gray-300">
+                    <span className="inline-flex items-center gap-1">
+                      <span className="px-1 py-0.5 rounded bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700">место</span>
+                      <span className="font-mono">
+                        {((e.context as any).topFrame as any).functionName ? `${((e.context as any).topFrame as any).functionName} @ ` : ''}
+                        {((e.context as any).topFrame as any).file}:{((e.context as any).topFrame as any).line}:{((e.context as any).topFrame as any).column}
+                      </span>
+                    </span>
+                  </div>
+                )}
                 {e.stack && (
                   <details className="mt-1">
                     <summary className="cursor-pointer text-gray-500">stack</summary>
