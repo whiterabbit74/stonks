@@ -1,0 +1,156 @@
+/*
+  Lightweight client-side error logging with categories and subscriptions.
+  - Captures global window errors and unhandled promise rejections
+  - Provides imperative logging helpers for data/calculation/chart/backtest/UI
+  - Maintains a ring buffer of recent events for an on-page console
+*/
+
+export type ErrorLevel = 'error' | 'warn' | 'info';
+export type ErrorCategory = 'data' | 'calc' | 'chart' | 'network' | 'ui' | 'backtest' | 'console' | 'unknown';
+
+export interface LoggedEvent {
+  id: string;
+  timestamp: number; // epoch ms
+  level: ErrorLevel;
+  category: ErrorCategory;
+  message: string;
+  source?: string; // component/module/function
+  stack?: string;
+  context?: Record<string, unknown>;
+}
+
+type Subscriber = (event: LoggedEvent, all: LoggedEvent[]) => void;
+
+const MAX_EVENTS = 500;
+
+const state = {
+  events: [] as LoggedEvent[],
+  subscribers: new Set<Subscriber>(),
+  initialized: false,
+  originalConsoleError: console.error.bind(console) as (...args: unknown[]) => void,
+};
+
+function nextId(): string {
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function coerceCategoryFromError(err: unknown): ErrorCategory {
+  try {
+    const msg = String((err as any)?.message ?? err ?? '').toLowerCase();
+    const stack = String((err as any)?.stack ?? '').toLowerCase();
+    if (msg.includes('network') || msg.includes('fetch') || msg.includes('failed to fetch')) return 'network';
+    if (stack.includes('lightweight-charts') || msg.includes('series') || msg.includes('price scale')) return 'chart';
+    if (msg.includes('backtest') || stack.includes('clean-backtest') || stack.includes('backtest')) return 'backtest';
+    if (msg.includes('typeerror') || msg.includes('value is null') || msg.includes('cannot read')) return 'calc';
+    return 'unknown';
+  } catch {
+    return 'unknown';
+  }
+}
+
+function pushEvent(event: LoggedEvent): void {
+  state.events.push(event);
+  if (state.events.length > MAX_EVENTS) {
+    state.events.splice(0, state.events.length - MAX_EVENTS);
+  }
+  for (const sub of state.subscribers) {
+    try { sub(event, state.events); } catch { /* ignore subscriber errors */ }
+  }
+}
+
+export function log(level: ErrorLevel, category: ErrorCategory, message: string, context?: Record<string, unknown>, source?: string, stack?: string): LoggedEvent {
+  const evt: LoggedEvent = {
+    id: nextId(),
+    timestamp: Date.now(),
+    level,
+    category,
+    message,
+    source,
+    stack,
+    context,
+  };
+  pushEvent(evt);
+  return evt;
+}
+
+export function logError(category: ErrorCategory, message: string, context?: Record<string, unknown>, source?: string, stack?: string): LoggedEvent {
+  return log('error', category, message, context, source, stack);
+}
+
+export function logWarn(category: ErrorCategory, message: string, context?: Record<string, unknown>, source?: string, stack?: string): LoggedEvent {
+  return log('warn', category, message, context, source, stack);
+}
+
+export function logInfo(category: ErrorCategory, message: string, context?: Record<string, unknown>, source?: string, stack?: string): LoggedEvent {
+  return log('info', category, message, context, source, stack);
+}
+
+export function captureException(err: unknown, context?: Record<string, unknown>, source?: string): LoggedEvent {
+  const stack = (err as any)?.stack ? String((err as any).stack) : undefined;
+  const message = (err instanceof Error) ? err.message : String(err);
+  const category = coerceCategoryFromError(err);
+  return logError(category, message, context, source, stack);
+}
+
+export function subscribe(cb: Subscriber): () => void {
+  state.subscribers.add(cb);
+  // Emit synthetic event for initial sync with current history
+  try { cb({ id: '__init__', timestamp: Date.now(), level: 'info', category: 'ui', message: 'init' }, state.events); } catch { /* no-op */ }
+  return () => { state.subscribers.delete(cb); };
+}
+
+export function getEvents(): LoggedEvent[] {
+  return state.events.slice();
+}
+
+export function clearEvents(): void {
+  state.events = [];
+  // Inform subscribers with a synthetic event
+  pushEvent({ id: nextId(), timestamp: Date.now(), level: 'info', category: 'ui', message: 'clear' });
+}
+
+export interface InitOptions {
+  captureConsoleErrors?: boolean;
+}
+
+export function initErrorLogger(opts: InitOptions = {}): void {
+  if (state.initialized) return;
+  state.initialized = true;
+
+  // Global window error
+  if (typeof window !== 'undefined') {
+    window.addEventListener('error', (ev: ErrorEvent) => {
+      const err = ev.error || ev.message || 'Unknown window error';
+      captureException(err, { filename: ev.filename, lineno: ev.lineno, colno: ev.colno }, 'window.onerror');
+    });
+
+    window.addEventListener('unhandledrejection', (ev: PromiseRejectionEvent) => {
+      const reason = (ev as any).reason ?? 'Unhandled rejection';
+      captureException(reason, {}, 'window.unhandledrejection');
+    });
+  }
+
+  // Optionally mirror console.error into logger
+  if (opts.captureConsoleErrors) {
+    console.error = (...args: unknown[]) => {
+      try {
+        const message = args.map(a => (a instanceof Error ? a.message : typeof a === 'string' ? a : JSON.stringify(a))).join(' ');
+        const maybeErr = args.find(a => a instanceof Error) as Error | undefined;
+        const stack = maybeErr?.stack;
+        logError('console', message, { args: safeSerialize(args) }, 'console.error', stack);
+      } catch {
+        // ignore
+      }
+      state.originalConsoleError(...args);
+    };
+  }
+}
+
+function safeSerialize(value: unknown): unknown {
+  try {
+    return JSON.parse(JSON.stringify(value));
+  } catch {
+    return String(value);
+  }
+}
+

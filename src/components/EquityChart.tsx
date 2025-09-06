@@ -1,6 +1,7 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { createChart, type IChartApi, type ISeriesApi, type UTCTimestamp } from 'lightweight-charts';
+import { useEffect, useRef, useState } from 'react';
+import { createChart, type IChartApi, type ISeriesApi, type UTCTimestamp, type MouseEventParams } from 'lightweight-charts';
 import type { EquityPoint } from '../types';
+import { logError } from '../lib/error-logger';
 
 interface EquityChartProps {
   equity: EquityPoint[];
@@ -13,12 +14,13 @@ export function EquityChart({ equity, hideHeader }: EquityChartProps) {
   const [isDark, setIsDark] = useState<boolean>(() => typeof document !== 'undefined' ? document.documentElement.classList.contains('dark') : false);
 
   useEffect(() => {
-    const onTheme = (e: CustomEvent<{ mode: string; effectiveDark: boolean }>) => {
+    const onTheme = (e: any) => {
       const dark = !!(e?.detail?.effectiveDark ?? document.documentElement.classList.contains('dark'));
       setIsDark(dark);
     };
-    window.addEventListener('themechange', onTheme);
-    return () => window.removeEventListener('themechange', onTheme);
+    // Cast to any because 'themechange' is a custom event not present in WindowEventMap
+    window.addEventListener('themechange' as any, onTheme as any);
+    return () => window.removeEventListener('themechange' as any, onTheme as any);
   }, []);
 
   useEffect(() => {
@@ -74,11 +76,21 @@ export function EquityChart({ equity, hideHeader }: EquityChartProps) {
 
 
 
-      // Convert equity data to chart format
-      const equityData = equity.map(point => ({
-        time: Math.floor(point.date.getTime() / 1000) as UTCTimestamp,
-        value: point.value,
-      }));
+      // Validate and convert equity data to chart format
+      const equityData = equity.map((point, idx) => {
+        try {
+          const d = point?.date instanceof Date ? point.date : new Date(point?.date as any);
+          const t = Math.floor(d.getTime() / 1000) as UTCTimestamp;
+          const v = Number(point?.value);
+          if (!Number.isFinite(t) || !Number.isFinite(v)) {
+            logError('chart', 'Invalid equity data point', { idx, point }, 'EquityChart.setData');
+          }
+          return { time: t, value: v };
+        } catch (e) {
+          logError('chart', 'Failed to map equity point', { idx, point }, 'EquityChart.setData', (e as any)?.stack);
+          return { time: 0 as UTCTimestamp, value: 0 };
+        }
+      }).filter(p => Number.isFinite(p.time as unknown as number) && Number.isFinite(p.value));
 
       equitySeries.setData(equityData);
 
@@ -101,7 +113,7 @@ export function EquityChart({ equity, hideHeader }: EquityChartProps) {
       tooltipEl.style.display = 'none';
       chartContainerRef.current.appendChild(tooltipEl);
 
-      chart.subscribeCrosshairMove((param) => {
+      chart.subscribeCrosshairMove((param: MouseEventParams) => {
         if (!param || !param.time) { tooltipEl.style.display = 'none'; return; }
         const v = (param.seriesData?.get?.(equitySeries) as { value?: number } | undefined)?.value;
         if (typeof v !== 'number') { tooltipEl.style.display = 'none'; return; }
@@ -138,7 +150,7 @@ export function EquityChart({ equity, hideHeader }: EquityChartProps) {
         } catch { /* ignore */ }
       };
     } catch (error) {
-      console.error('Error creating equity chart:', error);
+      logError('chart', 'Error creating equity chart', {}, 'EquityChart', (error as any)?.stack);
       return;
     }
   }, [equity, isDark]);
