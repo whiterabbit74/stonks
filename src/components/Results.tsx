@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Heart, RefreshCcw, AlertTriangle } from 'lucide-react';
+import { Heart, RefreshCcw, AlertTriangle, Bug } from 'lucide-react';
 import { DatasetAPI } from '../lib/api';
 import { formatOHLCYMD } from '../lib/utils';
 import { useAppStore } from '../stores';
@@ -16,6 +16,8 @@ import { MarginSimulator } from './MarginSimulator';
 import { BuyAtCloseSimulator } from './BuyAtCloseSimulator';
 import { NoStopLossSimulator } from './NoStopLossSimulator';
 import type { EquityPoint } from '../types';
+import { ErrorConsole } from './ErrorConsole';
+import { logInfo } from '../lib/error-logger';
 
 function simulateLeverageForEquity(equity: EquityPoint[], leverage: number): EquityPoint[] {
   try {
@@ -66,6 +68,7 @@ export function Results() {
   const [modal, setModal] = useState<{ type: 'info' | 'error' | null; title?: string; message?: string }>({ type: null });
   const [watching, setWatching] = useState(false);
   const [watchBusy, setWatchBusy] = useState(false);
+  const [showConsole, setShowConsole] = useState(false);
   // Trading calendar (holidays, short days, trading hours)
   type TradingCalendarData = {
     metadata: { years: string[] };
@@ -438,6 +441,17 @@ export function Results() {
               <div className="text-4xl sm:text-5xl font-black tracking-tight text-gray-900 dark:text-gray-100">
                 {symbol || '—'}
               </div>
+              <button
+                onClick={() => {
+                  setShowConsole(v => !v);
+                  logInfo('ui', 'toggle error console', { open: !showConsole }, 'Results');
+                }}
+                className={`inline-flex items-center justify-center w-10 h-10 rounded-full border transition ${showConsole ? 'bg-amber-600 border-amber-600 text-white hover:brightness-110' : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-700'}`}
+                title={showConsole ? 'Скрыть журнал ошибок' : 'Показать журнал ошибок'}
+                aria-label={showConsole ? 'Скрыть журнал ошибок' : 'Показать журнал ошибок'}
+              >
+                <Bug className={`w-5 h-5 ${showConsole ? 'animate-pulse' : ''}`} />
+              </button>
               <button
                 disabled={!symbol || watchBusy}
                 onClick={async () => {
@@ -815,6 +829,7 @@ export function Results() {
       </div>
 
       <InfoModal open={modal.type != null} title={modal.title || ''} message={modal.message || ''} onClose={() => setModal({ type: null })} kind={modal.type === 'error' ? 'error' : 'info'} />
+      <ErrorConsole open={showConsole} onClose={() => setShowConsole(false)} />
     </div>
   );
 }
