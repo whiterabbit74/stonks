@@ -20,7 +20,9 @@ function simulateNoStopLoss(
   highIBS: number,
   maxHoldDays: number,
   initialCapital: number,
-  capitalUsage: number
+  capitalUsage: number,
+  ignoreMaxHoldDaysExit: boolean,
+  requireAboveEntryForIBSExit: boolean
 ): SimulationResult {
   if (!Array.isArray(data) || data.length === 0) {
     return { equity: [], maxDrawdown: 0, finalValue: 0 };
@@ -58,12 +60,18 @@ function simulateNoStopLoss(
 
     // Exit rules (no stop loss):
     // - IBS > highIBS (sell at close)
-    // - or holding >= maxHoldDays (sell at close)
+    //   - optionally require price > entry on IBS exit
+    // - or holding >= maxHoldDays (sell at close) unless ignored
     if (position && i > position.entryIndex) {
       let shouldExit = false;
-      if (typeof ibs === 'number' && !isNaN(ibs) && ibs > highIBS) {
-        shouldExit = true;
-      } else {
+      const ibsExit = typeof ibs === 'number' && !isNaN(ibs) && ibs > highIBS;
+      if (ibsExit) {
+        if (requireAboveEntryForIBSExit) {
+          if (bar.close > position.entryPrice) shouldExit = true;
+        } else {
+          shouldExit = true;
+        }
+      } else if (!ignoreMaxHoldDaysExit) {
         const daysHeld = Math.floor((bar.date.getTime() - position.entryDate.getTime()) / (1000 * 60 * 60 * 24));
         if (daysHeld >= maxHoldDays) shouldExit = true;
       }
@@ -129,9 +137,21 @@ export function NoStopLossSimulator({ data, strategy }: NoStopLossSimulatorProps
   const initialCapital = Number(strategy?.riskManagement?.initialCapital ?? 10000);
   const capitalUsage = Number(strategy?.riskManagement?.capitalUsage ?? 100);
 
+  const [exitOnlyOnHighIBS, setExitOnlyOnHighIBS] = useState<boolean>(false);
+  const [requireAboveEntryOnIBS, setRequireAboveEntryOnIBS] = useState<boolean>(false);
+
   const base = useMemo(
-    () => simulateNoStopLoss(data, lowIBS, highIBS, maxHoldDays, initialCapital, capitalUsage),
-    [data, lowIBS, highIBS, maxHoldDays, initialCapital, capitalUsage]
+    () => simulateNoStopLoss(
+      data,
+      lowIBS,
+      highIBS,
+      maxHoldDays,
+      initialCapital,
+      capitalUsage,
+      exitOnlyOnHighIBS,
+      requireAboveEntryOnIBS
+    ),
+    [data, lowIBS, highIBS, maxHoldDays, initialCapital, capitalUsage, exitOnlyOnHighIBS, requireAboveEntryOnIBS]
   );
 
   const [marginPctInput, setMarginPctInput] = useState<string>('100');
@@ -176,6 +196,30 @@ export function NoStopLossSimulator({ data, strategy }: NoStopLossSimulatorProps
         </button>
         <div className="text-xs text-gray-500 dark:text-gray-300">
           Текущее плечо: ×{appliedLeverage.toFixed(2)}
+        </div>
+        <div className="flex items-center gap-2 ml-4">
+          <input
+            id="exitOnlyOnHighIBS"
+            type="checkbox"
+            checked={exitOnlyOnHighIBS}
+            onChange={(e) => setExitOnlyOnHighIBS(e.target.checked)}
+            className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 dark:bg-gray-900 dark:border-gray-700"
+          />
+          <label htmlFor="exitOnlyOnHighIBS" className="text-sm text-gray-700 dark:text-gray-200">
+            Только выход по highIBS (игнорировать maxHoldDays)
+          </label>
+        </div>
+        <div className="flex items-center gap-2">
+          <input
+            id="requireAboveEntryOnIBS"
+            type="checkbox"
+            checked={requireAboveEntryOnIBS}
+            onChange={(e) => setRequireAboveEntryOnIBS(e.target.checked)}
+            className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 dark:bg-gray-900 dark:border-gray-700"
+          />
+          <label htmlFor="requireAboveEntryOnIBS" className="text-sm text-gray-700 dark:text-gray-200">
+            Выход по highIBS только если цена выше цены входа
+          </label>
         </div>
       </div>
 
