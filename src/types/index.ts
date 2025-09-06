@@ -65,11 +65,6 @@ export interface RiskManagement {
   positionSize?: number;
   maxPositions?: number;
   maxHoldDays?: number;
-  commission: {
-    type: 'fixed' | 'percentage' | 'combined';
-    fixed?: number;
-    percentage?: number;
-  };
   slippage: number;
 }
 
@@ -139,7 +134,6 @@ export interface Trade {
     // Additional calculation details for transparency
     grossProceeds?: number;
     grossCost?: number;
-    totalCommissions?: number;
     initialInvestment?: number;
     stopLoss?: number;
     takeProfit?: number;
