@@ -89,7 +89,15 @@ export function captureException(err: unknown, context?: Record<string, unknown>
   const stack = (err as any)?.stack ? String((err as any).stack) : undefined;
   const message = (err instanceof Error) ? err.message : String(err);
   const category = coerceCategoryFromError(err);
-  return logError(category, message, context, source, stack);
+
+  // Extract top frame for quick location insight
+  const topFrame = stack ? parseTopStackFrame(stack) : undefined;
+  const enrichedContext = {
+    ...(context || {}),
+    ...(topFrame ? { topFrame } : {}),
+  } as Record<string, unknown> | undefined;
+
+  return logError(category, message, enrichedContext, source, stack);
 }
 
 export function subscribe(cb: Subscriber): () => void {
@@ -120,8 +128,9 @@ export function initErrorLogger(opts: InitOptions = {}): void {
   // Global window error
   if (typeof window !== 'undefined') {
     window.addEventListener('error', (ev: ErrorEvent) => {
-      const err = ev.error || ev.message || 'Unknown window error';
-      captureException(err, { filename: ev.filename, lineno: ev.lineno, colno: ev.colno }, 'window.onerror');
+      const err = ev.error || new Error(String(ev.message || 'Unknown window error'));
+      const ctx = { filename: ev.filename, lineno: ev.lineno, colno: ev.colno } as Record<string, unknown>;
+      captureException(err, ctx, 'window.onerror');
     });
 
     window.addEventListener('unhandledrejection', (ev: PromiseRejectionEvent) => {
@@ -152,5 +161,32 @@ function safeSerialize(value: unknown): unknown {
   } catch {
     return String(value);
   }
+}
+
+// Parse the top application frame: { file, line, column, functionName, raw }
+function parseTopStackFrame(stack: string): { file?: string; line?: number; column?: number; functionName?: string; raw: string } | undefined {
+  try {
+    const lines = String(stack).split('\n').map(s => s.trim()).filter(Boolean);
+    for (const line of lines) {
+      // Skip internal eval frames
+      if (line.includes('node_modules') || line.includes('(native)')) continue;
+      // Patterns:
+      // at func (https://host/path/file.js:LINE:COL)
+      // at https://host/path/file.js:LINE:COL
+      const match = line.match(/at\s+(?:(?<fn>[^\s(]+)\s+\()?(?<file>https?:\/\/[^):]+?):(?<line>\d+):(?<col>\d+)\)?/);
+      if (match && match.groups) {
+        return {
+          file: match.groups.file,
+          line: Number(match.groups.line),
+          column: Number(match.groups.col),
+          functionName: match.groups.fn,
+          raw: line,
+        };
+      }
+    }
+  } catch {
+    // ignore parse failures
+  }
+  return undefined;
 }
 
