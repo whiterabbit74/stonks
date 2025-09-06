@@ -1,7 +1,8 @@
-import React, { useMemo, useState } from 'react';
-import type { EquityPoint, OHLCData, Strategy } from '../types';
-import { IndicatorEngine } from '../lib/indicators';
+import { useMemo, useState } from 'react';
+import type { EquityPoint, OHLCData, Strategy, Trade } from '../types';
 import { EquityChart } from './EquityChart';
+import { CleanBacktestEngine, type CleanBacktestOptions } from '../lib/clean-backtest';
+import { TradesTable } from './TradesTable';
 
 interface NoStopLossSimulatorProps {
   data: OHLCData[];
@@ -12,91 +13,29 @@ interface SimulationResult {
   equity: EquityPoint[];
   maxDrawdown: number;
   finalValue: number;
+  tradesList: Trade[];
 }
 
-function simulateNoStopLoss(
+function runEngineNoStopLoss(
   data: OHLCData[],
-  lowIBS: number,
-  highIBS: number,
-  maxHoldDays: number,
-  initialCapital: number,
-  capitalUsage: number,
+  strategy: Strategy,
   ignoreMaxHoldDaysExit: boolean,
-  requireAboveEntryForIBSExit: boolean
+  ibsExitRequireAboveEntry: boolean
 ): SimulationResult {
   if (!Array.isArray(data) || data.length === 0) {
-    return { equity: [], maxDrawdown: 0, finalValue: 0 };
+    return { equity: [], maxDrawdown: 0, finalValue: 0, tradesList: [] };
   }
-
-  const ibsValues = IndicatorEngine.calculateIBS(data);
-
-  let currentCapital = initialCapital;
-  let peakValue = currentCapital;
-  let maxDrawdown = 0;
-  const equity: EquityPoint[] = [];
-
-  let position: { entryIndex: number; entryDate: Date; entryPrice: number; quantity: number } | null = null;
-
-  for (let i = 0; i < data.length; i++) {
-    const bar = data[i];
-    const ibs = ibsValues[i];
-
-    // Entry rule: IBS < lowIBS -> buy at next day's open
-    if (!position && typeof ibs === 'number' && !isNaN(ibs) && ibs < lowIBS && i < data.length - 1) {
-      const nextBar = data[i + 1];
-      const investAmount = (currentCapital * (capitalUsage || 100)) / 100;
-      const quantity = Math.floor(investAmount / nextBar.open);
-      if (quantity > 0) {
-        const cost = quantity * nextBar.open;
-        currentCapital -= cost;
-        position = {
-          entryIndex: i + 1,
-          entryDate: nextBar.date,
-          entryPrice: nextBar.open,
-          quantity,
-        };
-      }
-    }
-
-    // Exit rules (no stop loss):
-    // - IBS > highIBS (sell at close)
-    //   - optionally require price > entry on IBS exit
-    // - or holding >= maxHoldDays (sell at close) unless ignored
-    if (position && i > position.entryIndex) {
-      let shouldExit = false;
-      const ibsExit = typeof ibs === 'number' && !isNaN(ibs) && ibs > highIBS;
-      if (ibsExit) {
-        if (requireAboveEntryForIBSExit) {
-          if (bar.close > position.entryPrice) shouldExit = true;
-        } else {
-          shouldExit = true;
-        }
-      } else if (!ignoreMaxHoldDaysExit) {
-        const daysHeld = Math.floor((bar.date.getTime() - position.entryDate.getTime()) / (1000 * 60 * 60 * 24));
-        if (daysHeld >= maxHoldDays) shouldExit = true;
-      }
-      if (shouldExit) {
-        const proceeds = position.quantity * bar.close;
-        currentCapital += proceeds;
-        position = null;
-      }
-    }
-
-    // Update equity curve (include position value at close)
-    let totalValue = currentCapital;
-    if (position) {
-      totalValue += position.quantity * bar.close;
-    }
-    if (totalValue > peakValue) peakValue = totalValue;
-    const dd = peakValue > 0 ? ((peakValue - totalValue) / peakValue) * 100 : 0;
-    if (dd > maxDrawdown) maxDrawdown = dd;
-
-    equity.push({ date: bar.date, value: totalValue, drawdown: dd });
-  }
-
-  // If position remains open at the end, equity already accounts for it via last close
-  const finalValue = equity[equity.length - 1]?.value ?? currentCapital;
-  return { equity, maxDrawdown, finalValue };
+  const options: CleanBacktestOptions = {
+    entryExecution: 'nextOpen',
+    ignoreMaxHoldDaysExit,
+    ibsExitRequireAboveEntry
+  };
+  const engine = new CleanBacktestEngine(data, strategy, options);
+  const res = engine.runBacktest();
+  const equity = res.equity;
+  const finalValue = equity.length ? equity[equity.length - 1].value : Number(strategy?.riskManagement?.initialCapital ?? 0);
+  const maxDrawdown = equity.length ? Math.max(...equity.map(p => p.drawdown)) : 0;
+  return { equity, maxDrawdown, finalValue, tradesList: res.trades };
 }
 
 function simulateLeverage(equity: EquityPoint[], leverage: number): { equity: EquityPoint[]; maxDrawdown: number; finalValue: number } {
@@ -134,24 +73,28 @@ export function NoStopLossSimulator({ data, strategy }: NoStopLossSimulatorProps
   const maxHoldDays = typeof strategy?.parameters?.maxHoldDays === 'number'
     ? Number(strategy?.parameters?.maxHoldDays)
     : Number(strategy?.riskManagement?.maxHoldDays ?? 30);
-  const initialCapital = Number(strategy?.riskManagement?.initialCapital ?? 10000);
-  const capitalUsage = Number(strategy?.riskManagement?.capitalUsage ?? 100);
 
   const [exitOnlyOnHighIBS, setExitOnlyOnHighIBS] = useState<boolean>(false);
   const [requireAboveEntryOnIBS, setRequireAboveEntryOnIBS] = useState<boolean>(false);
+  const [showTrades, setShowTrades] = useState<boolean>(false);
 
   const base = useMemo(
-    () => simulateNoStopLoss(
+    () => runEngineNoStopLoss(
       data,
-      lowIBS,
-      highIBS,
-      maxHoldDays,
-      initialCapital,
-      capitalUsage,
+      // Ensure strategy parameters reflect thresholds
+      {
+        ...(strategy as Strategy),
+        parameters: {
+          ...(strategy?.parameters || {}),
+          lowIBS,
+          highIBS,
+          maxHoldDays
+        }
+      } as Strategy,
       exitOnlyOnHighIBS,
       requireAboveEntryOnIBS
     ),
-    [data, lowIBS, highIBS, maxHoldDays, initialCapital, capitalUsage, exitOnlyOnHighIBS, requireAboveEntryOnIBS]
+    [data, strategy, lowIBS, highIBS, maxHoldDays, exitOnlyOnHighIBS, requireAboveEntryOnIBS]
   );
 
   const [marginPctInput, setMarginPctInput] = useState<string>('100');
@@ -194,6 +137,12 @@ export function NoStopLossSimulator({ data, strategy }: NoStopLossSimulatorProps
         >
           Посчитать
         </button>
+        <button
+          onClick={() => setShowTrades(v => !v)}
+          className="px-4 py-2 rounded-md border text-sm font-medium dark:border-gray-700"
+        >
+          {showTrades ? 'Скрыть сделки' : 'Показать все сделки'}
+        </button>
         <div className="text-xs text-gray-500 dark:text-gray-300">
           Текущее плечо: ×{appliedLeverage.toFixed(2)}
         </div>
@@ -223,6 +172,12 @@ export function NoStopLossSimulator({ data, strategy }: NoStopLossSimulatorProps
         </div>
       </div>
 
+      <div className="text-xs text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-800 border dark:border-gray-700 rounded px-3 py-2">
+        <span className="font-semibold">Стратегия:</span>{' '}
+        Вход — IBS &lt; {lowIBS} на открытии следующего дня;{' '}
+        Выход — IBS &gt; {highIBS}{requireAboveEntryOnIBS ? ' и Close > Entry' : ''}{exitOnlyOnHighIBS ? '' : ` или по истечении ${maxHoldDays} дней`}.
+      </div>
+
       <div className="flex flex-wrap gap-3 text-sm">
         <div className="bg-gray-50 px-3 py-2 rounded border dark:bg-gray-800 dark:border-gray-700">
           Итоговый депозит: {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(simFinal)}
@@ -235,6 +190,12 @@ export function NoStopLossSimulator({ data, strategy }: NoStopLossSimulatorProps
       <div className="h-[600px]">
         <EquityChart equity={simEquity} hideHeader />
       </div>
+      {showTrades && (
+        <div className="space-y-2">
+          <div className="text-sm font-medium dark:text-gray-100">Сделки</div>
+          <TradesTable trades={base.tradesList} />
+        </div>
+      )}
     </div>
   );
 }

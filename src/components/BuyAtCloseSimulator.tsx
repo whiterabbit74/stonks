@@ -1,7 +1,8 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import type { EquityPoint, OHLCData, Strategy } from '../types';
+import { useEffect, useMemo, useState } from 'react';
+import type { EquityPoint, OHLCData, Strategy, Trade } from '../types';
 import { EquityChart } from './EquityChart';
-import { IndicatorEngine } from '../lib/indicators';
+import { CleanBacktestEngine, type CleanBacktestOptions } from '../lib/clean-backtest';
+import { TradesTable } from './TradesTable';
 
 interface BuyAtCloseSimulatorProps {
   data: OHLCData[];
@@ -13,6 +14,7 @@ interface SimulationResult {
   finalValue: number;
   maxDrawdown: number;
   trades: number;
+  tradesList: Trade[];
 }
 
 function simulateLeverage(equity: EquityPoint[], leverage: number): { equity: EquityPoint[]; finalValue: number; maxDrawdown: number } {
@@ -44,88 +46,22 @@ function formatCurrencyUSD(value: number): string {
   return '$' + value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-function simulateBuyAtClose(data: OHLCData[], strategy: Strategy): SimulationResult {
+function runCleanBuyAtClose(data: OHLCData[], strategy: Strategy): SimulationResult {
   if (!data || data.length === 0) {
-    return { equity: [], finalValue: 0, maxDrawdown: 0, trades: 0 };
+    return { equity: [], finalValue: 0, maxDrawdown: 0, trades: 0, tradesList: [] };
   }
-  const lowIBS = Number(strategy.parameters.lowIBS ?? 0.1);
-  const highIBS = Number(strategy.parameters.highIBS ?? 0.75);
-  const maxHoldDays = typeof strategy.parameters.maxHoldDays === 'number'
-    ? strategy.parameters.maxHoldDays
-    : (strategy.riskManagement.maxHoldDays ?? 30);
-  const capitalUsage = strategy.riskManagement.capitalUsage ?? 100;
-  const initialCapital = Number(strategy.riskManagement.initialCapital ?? 10000);
-
-  const ibsValues = IndicatorEngine.calculateIBS(data);
-
-  let currentCapital = initialCapital;
-  const equity: EquityPoint[] = [];
-  let peakValue = initialCapital;
-
-  let position: { entryDate: Date; entryPrice: number; quantity: number; entryIndex: number } | null = null;
-  let tradeCount = 0;
-
-  for (let i = 0; i < data.length; i++) {
-    const bar = data[i];
-    const ibs = ibsValues[i];
-    if (!isFinite(ibs)) {
-      // even if no valid IBS, just record equity point and continue
-      const totalValue = position ? currentCapital + position.quantity * bar.close : currentCapital;
-      if (totalValue > peakValue) peakValue = totalValue;
-      const drawdown = peakValue > 0 ? ((peakValue - totalValue) / peakValue) * 100 : 0;
-      equity.push({ date: bar.date, value: totalValue, drawdown });
-      continue;
-    }
-
-    // Entry: if no position and IBS < low threshold, buy today at close
-    if (!position && ibs < lowIBS) {
-      const investmentAmount = (currentCapital * capitalUsage) / 100;
-      const quantity = Math.floor(investmentAmount / bar.close);
-      if (quantity > 0) {
-        const totalCost = quantity * bar.close;
-        currentCapital -= totalCost;
-        position = {
-          entryDate: bar.date,
-          entryPrice: bar.close,
-          quantity,
-          entryIndex: i,
-        };
-      }
-    }
-
-    // Exit: if position exists and holding at least 1 day, check rules
-    if (position && i > position.entryIndex) {
-      let shouldExit = false;
-      let exitPrice = bar.close;
-      // Exit rule by IBS high
-      if (ibs > highIBS) {
-        shouldExit = true;
-      } else {
-        const daysHeld = Math.floor((bar.date.getTime() - position.entryDate.getTime()) / (1000 * 60 * 60 * 24));
-        if (daysHeld >= maxHoldDays) {
-          shouldExit = true;
-        }
-      }
-      if (shouldExit) {
-        const grossProceeds = position.quantity * exitPrice;
-        currentCapital += grossProceeds;
-        tradeCount += 1;
-        position = null;
-      }
-    }
-
-    // Record equity at day end
-    const totalValue = position ? currentCapital + position.quantity * bar.close : currentCapital;
-    if (totalValue > peakValue) peakValue = totalValue;
-    const drawdown = peakValue > 0 ? ((peakValue - totalValue) / peakValue) * 100 : 0;
-    equity.push({ date: bar.date, value: totalValue, drawdown });
-  }
-
-  // If still in position at the end — mark equity with last close already included above
-  const finalValue = equity.length ? equity[equity.length - 1].value : currentCapital;
+  const options: CleanBacktestOptions = {
+    entryExecution: 'close',
+    ignoreMaxHoldDaysExit: false,
+    ibsExitRequireAboveEntry: false
+  };
+  const engine = new CleanBacktestEngine(data, strategy, options);
+  const res = engine.runBacktest();
+  const equity = res.equity;
+  const finalValue = equity.length ? equity[equity.length - 1].value : Number(strategy?.riskManagement?.initialCapital ?? 0);
   const maxDrawdown = equity.length ? Math.max(...equity.map(p => p.drawdown)) : 0;
-
-  return { equity, finalValue, maxDrawdown, trades: tradeCount };
+  const trades = res.trades.length;
+  return { equity, finalValue, maxDrawdown, trades, tradesList: res.trades };
 }
 
 export function BuyAtCloseSimulator({ data, strategy }: BuyAtCloseSimulatorProps) {
@@ -134,6 +70,7 @@ export function BuyAtCloseSimulator({ data, strategy }: BuyAtCloseSimulatorProps
   const [maxHold, setMaxHold] = useState<string>('30');
   const [marginPctInput, setMarginPctInput] = useState<string>('100');
   const [appliedLeverage, setAppliedLeverage] = useState<number>(1);
+  const [showTrades, setShowTrades] = useState<boolean>(false);
 
   const effectiveStrategy: Strategy | null = useMemo(() => {
     if (!strategy) return null;
@@ -147,9 +84,10 @@ export function BuyAtCloseSimulator({ data, strategy }: BuyAtCloseSimulatorProps
     return { ...strategy, parameters: p };
   }, [strategy, lowIbs, highIbs, maxHold]);
 
-  const { equity, finalValue, maxDrawdown, trades } = useMemo(() => {
-    if (!data || !effectiveStrategy) return { equity: [], finalValue: 0, maxDrawdown: 0, trades: 0 };
-    return simulateBuyAtClose(data, effectiveStrategy);
+  const { equity, trades, tradesList } = useMemo(() => {
+    if (!data || !effectiveStrategy) return { equity: [], finalValue: 0, maxDrawdown: 0, trades: 0, tradesList: [] };
+    const res = runCleanBuyAtClose(data, effectiveStrategy);
+    return { equity: res.equity, trades: res.trades, tradesList: res.tradesList };
   }, [data, effectiveStrategy]);
 
   useEffect(() => {
@@ -220,6 +158,9 @@ export function BuyAtCloseSimulator({ data, strategy }: BuyAtCloseSimulatorProps
           />
         </div>
         <button onClick={onApplyMargin} className="px-4 py-2 rounded-md bg-blue-600 text-white text-sm font-medium hover:bg-blue-700">Посчитать</button>
+        <button onClick={() => setShowTrades(v => !v)} className="px-4 py-2 rounded-md border text-sm font-medium dark:border-gray-700">
+          {showTrades ? 'Скрыть сделки' : 'Показать все сделки'}
+        </button>
         <div className="text-xs text-gray-500 dark:text-gray-300 ml-auto flex gap-3">
           <span>Итог: {formatCurrencyUSD(leveraged.finalValue)}</span>
           <span>Макс. просадка: {leveraged.maxDrawdown.toFixed(2)}%</span>
@@ -229,9 +170,22 @@ export function BuyAtCloseSimulator({ data, strategy }: BuyAtCloseSimulatorProps
         </div>
       </div>
 
+      <div className="text-xs text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-800 border dark:border-gray-700 rounded px-3 py-2">
+        <span className="font-semibold">Стратегия:</span>{' '}
+        Вход — IBS &lt; {Number(effectiveStrategy.parameters.lowIBS ?? 0.1)} на закрытии дня;{' '}
+        Выход — IBS &gt; {Number(effectiveStrategy.parameters.highIBS ?? 0.75)} или по истечении {Number(effectiveStrategy.parameters.maxHoldDays ?? effectiveStrategy.riskManagement.maxHoldDays ?? 30)} дней.
+      </div>
+
       <div className="h-[600px]">
         <EquityChart equity={leveraged.equity} hideHeader />
       </div>
+
+      {showTrades && (
+        <div className="space-y-2">
+          <div className="text-sm font-medium dark:text-gray-100">Сделки</div>
+          <TradesTable trades={tradesList} />
+        </div>
+      )}
     </div>
   );
 }

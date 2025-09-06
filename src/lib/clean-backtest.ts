@@ -2,6 +2,15 @@ import type { OHLCData, Strategy, BacktestResult, Trade, EquityPoint } from '../
 import { IndicatorEngine } from './indicators';
 import { MetricsCalculator } from './metrics';
 
+export interface CleanBacktestOptions {
+  // Entry price timing: at current bar close, or at next day's open
+  entryExecution?: 'close' | 'nextOpen';
+  // If true, do not exit by maxHoldDays (exit only by IBS or end_of_data)
+  ignoreMaxHoldDaysExit?: boolean;
+  // If true, IBS exit is allowed only when current close > entry price
+  ibsExitRequireAboveEntry?: boolean;
+}
+
 /**
  * Чистый бэктест только для IBS стратегии
  * Никаких комиссий, проскальзываний, стоп-лоссов
@@ -13,11 +22,17 @@ export class CleanBacktestEngine {
   private equity: EquityPoint[] = [];
   private currentCapital: number;
   private ibsValues: number[] = [];
+  private options: Required<CleanBacktestOptions>;
 
-  constructor(data: OHLCData[], strategy: Strategy) {
+  constructor(data: OHLCData[], strategy: Strategy, options?: CleanBacktestOptions) {
     this.data = data;
     this.strategy = strategy;
     this.currentCapital = strategy.riskManagement.initialCapital;
+    this.options = {
+      entryExecution: options?.entryExecution ?? 'nextOpen',
+      ignoreMaxHoldDaysExit: options?.ignoreMaxHoldDaysExit ?? false,
+      ibsExitRequireAboveEntry: options?.ibsExitRequireAboveEntry ?? false
+    };
     
     // Рассчитываем IBS для всех баров (без исключений на пустых данных)
     this.ibsValues = data && data.length > 0 ? IndicatorEngine.calculateIBS(data) : [];
@@ -50,8 +65,8 @@ export class CleanBacktestEngine {
       : (this.strategy.riskManagement.maxHoldDays ?? 30);
     const capitalUsage = this.strategy.riskManagement.capitalUsage ?? 100;
 
-    // Проходим по всем барам (кроме последнего, так как нужен следующий день для входа)
-    for (let i = 0; i < this.data.length - 1; i++) {
+    // Проходим по всем барам; обработка входа зависит от типа исполнения
+    for (let i = 0; i < this.data.length; i++) {
       const bar = this.data[i];
       const nextBar = this.data[i + 1];
       const ibs = this.ibsValues[i];
@@ -62,38 +77,61 @@ export class CleanBacktestEngine {
       if (!position) {
         if (ibs < lowIBS) {
           // СИГНАЛ ВХОДА: IBS текущего дня < lowIBS
-          // ПОКУПКА: по цене открытия следующего дня
           const investmentAmount = (this.currentCapital * capitalUsage) / 100;
-          const quantity = Math.floor(investmentAmount / nextBar.open);
-          
-          if (quantity > 0) {
-            const totalCost = quantity * nextBar.open;
-            
-            position = {
-              entryDate: nextBar.date, // Дата покупки = следующий день
-              entryPrice: nextBar.open, // Цена покупки = открытие следующего дня
-              quantity: quantity,
-              entryIndex: i + 1 // Индекс следующего дня
-            };
-            
-            this.currentCapital -= totalCost;
-            console.log(`🟢 ENTRY SIGNAL: IBS=${ibs.toFixed(3)} < ${lowIBS} on ${bar.date.toISOString().split('T')[0]}`);
-            console.log(`🟢 ENTRY EXECUTION: bought ${quantity} shares at $${nextBar.open.toFixed(2)} on ${nextBar.date.toISOString().split('T')[0]}`);
+
+          if (this.options.entryExecution === 'nextOpen') {
+            // ПОКУПКА: по цене открытия следующего дня
+            if (!nextBar) continue; // некорректно входить, если нет следующего бара
+            const quantity = Math.floor(investmentAmount / nextBar.open);
+            if (quantity > 0) {
+              const totalCost = quantity * nextBar.open;
+              position = {
+                entryDate: nextBar.date, // Дата покупки = следующий день
+                entryPrice: nextBar.open, // Цена покупки = открытие следующего дня
+                quantity: quantity,
+                entryIndex: i + 1 // Индекс следующего дня
+              };
+              this.currentCapital -= totalCost;
+              console.log(`🟢 ENTRY SIGNAL: IBS=${ibs.toFixed(3)} < ${lowIBS} on ${bar.date.toISOString().split('T')[0]}`);
+              console.log(`🟢 ENTRY EXECUTION(nextOpen): bought ${quantity} shares at $${nextBar.open.toFixed(2)} on ${nextBar.date.toISOString().split('T')[0]}`);
+            }
+          } else {
+            // entryExecution === 'close' -> покупка по цене закрытия текущего дня
+            const quantity = Math.floor(investmentAmount / bar.close);
+            if (quantity > 0) {
+              const totalCost = quantity * bar.close;
+              position = {
+                entryDate: bar.date,
+                entryPrice: bar.close,
+                quantity,
+                entryIndex: i
+              };
+              this.currentCapital -= totalCost;
+              console.log(`🟢 ENTRY SIGNAL: IBS=${ibs.toFixed(3)} < ${lowIBS} on ${bar.date.toISOString().split('T')[0]}`);
+              console.log(`🟢 ENTRY EXECUTION(close): bought ${quantity} shares at $${bar.close.toFixed(2)} on ${bar.date.toISOString().split('T')[0]}`);
+            }
           }
         }
       } 
       // Если есть позиция - проверяем выход (только если это не день входа)
-      else if (i + 1 > position.entryIndex) {
+      else if (i > position.entryIndex) {
         let shouldExit = false;
         let exitReason = '';
 
         // Проверяем IBS условие выхода
         if (ibs > highIBS) {
+          if (this.options.ibsExitRequireAboveEntry) {
+            if (bar.close > position.entryPrice) {
+              shouldExit = true;
+              exitReason = 'ibs_signal';
+            }
+          } else {
           shouldExit = true;
           exitReason = 'ibs_signal';
+          }
         }
         // Проверяем максимальное время удержания
-        else {
+        else if (!this.options.ignoreMaxHoldDaysExit) {
           const daysDiff = Math.floor((bar.date.getTime() - position.entryDate.getTime()) / (1000 * 60 * 60 * 24));
           if (daysDiff >= maxHoldDays) {
             shouldExit = true;
@@ -174,11 +212,18 @@ export class CleanBacktestEngine {
       let exitReason = '';
 
       if (!isNaN(lastIBS) && lastIBS > highIBS) {
-        shouldExit = true;
-        exitReason = 'ibs_signal';
+        if (this.options.ibsExitRequireAboveEntry) {
+          if (lastBar.close > position.entryPrice) {
+            shouldExit = true;
+            exitReason = 'ibs_signal';
+          }
+        } else {
+          shouldExit = true;
+          exitReason = 'ibs_signal';
+        }
       } else {
         const daysDiff = Math.floor((lastBar.date.getTime() - position.entryDate.getTime()) / (1000 * 60 * 60 * 24));
-        if (daysDiff >= maxHoldDays) {
+        if (!this.options.ignoreMaxHoldDaysExit && daysDiff >= maxHoldDays) {
           shouldExit = true;
           exitReason = 'max_hold_days';
         } else {

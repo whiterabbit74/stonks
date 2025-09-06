@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Heart, RefreshCcw, AlertTriangle } from 'lucide-react';
 import { DatasetAPI } from '../lib/api';
 import { formatOHLCYMD } from '../lib/utils';
@@ -675,6 +675,31 @@ export function Results() {
               <button className={`${activeChart === 'noStopLoss' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/30 dark:border-blue-900/40 dark:text-blue-200' : 'bg-white border-gray-200 text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'} px-3 py-1.5 rounded border`} onClick={() => setActiveChart('noStopLoss')}>Без stop loss</button>
               <button className={`${activeChart === 'splits' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/30 dark:border-blue-900/40 dark:text-blue-200' : 'bg-white border-gray-200 text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'} px-3 py-1.5 rounded border`} onClick={() => setActiveChart('splits')}>Сплиты</button>
               </div>
+            </div>
+
+            {/* Strategy summary near charts for clarity */}
+            <div className="mt-3 mb-4 text-xs text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded px-3 py-2">
+              {(() => {
+                const low = Number(currentStrategy?.parameters?.lowIBS ?? 0.1);
+                const high = Number(currentStrategy?.parameters?.highIBS ?? 0.75);
+                const hold = Number(
+                  typeof currentStrategy?.parameters?.maxHoldDays === 'number'
+                    ? currentStrategy?.parameters?.maxHoldDays
+                    : currentStrategy?.riskManagement?.maxHoldDays ?? 30
+                );
+                const useSL = !!currentStrategy?.riskManagement?.useStopLoss;
+                const useTP = !!currentStrategy?.riskManagement?.useTakeProfit;
+                const sl = Number(currentStrategy?.riskManagement?.stopLoss ?? 0);
+                const tp = Number(currentStrategy?.riskManagement?.takeProfit ?? 0);
+                return (
+                  <div>
+                    <span className="font-semibold">Стратегия IBS:</span>{' '}
+                    <span>Вход — IBS &lt; {low}; </span>
+                    <span>Выход — IBS &gt; {high} или по истечении {hold} дней.</span>{' '}
+                    <span className="ml-2">SL: {useSL ? `${sl}%` : 'выкл'}, TP: {useTP ? `${tp}%` : 'выкл'}</span>
+                  </div>
+                );
+              })()}
             </div>
 
             {activeChart === 'price' && (
