@@ -113,6 +113,48 @@ export function adjustOHLCForSplits(ohlc: OHLCData[], splits: SplitEvent[] | und
 }
 
 /**
+ * Deduplicate OHLC array by trading day (YYYY-MM-DD), combining duplicates into a single daily bar.
+ * - open: first bar's open
+ * - high: max of highs
+ * - low: min of lows
+ * - close: last bar's close
+ * - volume: sum
+ * - adjClose: last non-null adjClose if any, else derived from close
+ */
+export function dedupeDailyOHLC(ohlc: OHLCData[]): OHLCData[] {
+  if (!Array.isArray(ohlc) || ohlc.length === 0) return ohlc;
+  // Ensure stable chronological order first
+  const sorted = [...ohlc].sort((a, b) => a.date.getTime() - b.date.getTime());
+  const byDay = new Map<string, OHLCData>();
+  for (const bar of sorted) {
+    const dayKey = formatOHLCYMD(bar.date);
+    const existing = byDay.get(dayKey);
+    if (!existing) {
+      // Normalize date to stable midday UTC for the day key
+      const dayDate = parseOHLCDate(dayKey);
+      byDay.set(dayKey, { ...bar, date: dayDate });
+    } else {
+      const high = Math.max(existing.high, bar.high);
+      const low = Math.min(existing.low, bar.low);
+      const close = bar.close; // last close wins in chronological order
+      const volume = (existing.volume || 0) + (bar.volume || 0);
+      const adjClose = (typeof bar.adjClose === 'number' && isFinite(bar.adjClose))
+        ? bar.adjClose
+        : existing.adjClose;
+      byDay.set(dayKey, {
+        ...existing,
+        high,
+        low,
+        close,
+        volume,
+        adjClose,
+      });
+    }
+  }
+  return Array.from(byDay.values()).sort((a, b) => a.date.getTime() - b.date.getTime());
+}
+
+/**
  * Calculate days between two dates
  */
 export function daysBetween(startDate: Date, endDate: Date): number {

@@ -269,22 +269,21 @@ export class CleanBacktestEngine {
       }
     }
 
-    // Добавляем последний equity point
+    // Обновляем последний equity point без дублирования временной метки
     let finalValue = this.currentCapital;
     if (position) {
       finalValue += position.quantity * lastBar.close;
     }
-
     const finalPeakValue = this.equity.length > 0 
       ? Math.max(...this.equity.map(e => e.value), finalValue)
       : finalValue;
     const finalDrawdown = finalPeakValue > 0 ? ((finalPeakValue - finalValue) / finalPeakValue) * 100 : 0;
-
-    this.equity.push({
-      date: lastBar.date,
-      value: finalValue,
-      drawdown: finalDrawdown
-    });
+    const lastIdx = this.equity.length - 1;
+    if (lastIdx >= 0 && this.equity[lastIdx].date.getTime() === lastBar.date.getTime()) {
+      this.equity[lastIdx] = { date: lastBar.date, value: finalValue, drawdown: finalDrawdown };
+    } else {
+      this.equity.push({ date: lastBar.date, value: finalValue, drawdown: finalDrawdown });
+    }
 
 
 

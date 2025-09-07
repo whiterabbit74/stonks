@@ -4,7 +4,7 @@ import { runBacktest as executeBacktest } from '../lib/backtest';
 import { createStrategyFromTemplate, STRATEGY_TEMPLATES } from '../lib/strategy';
 import { saveDatasetToJSON, loadDatasetFromJSON } from '../lib/data-persistence';
 import { DatasetAPI } from '../lib/api';
-import { adjustOHLCForSplits } from '../lib/utils';
+import { adjustOHLCForSplits, dedupeDailyOHLC } from '../lib/utils';
 import { parseCSV } from '../lib/validation';
 import { logError, logInfo } from '../lib/error-logger';
 
@@ -109,7 +109,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ isLoading: true, error: null });
     
     try {
-      const data = await parseCSV(file);
+      const data = dedupeDailyOHLC(await parseCSV(file));
       set({ 
         marketData: data, 
         currentDataset: null, // Сбрасываем сохраненный датасет при загрузке CSV
@@ -125,7 +125,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   updateMarketData: (data: OHLCData[]) => {
-    set({ marketData: data });
+    set({ marketData: dedupeDailyOHLC(data) });
   },
 
   setSplits: (splits: SplitEvent[]) => {
@@ -162,7 +162,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
       // Применяем back-adjust по сплитам из самого датасета (если есть)
       const splits: SplitEvent[] = Array.isArray(dataset.splits) ? dataset.splits : [];
-      const adjustedData = adjustOHLCForSplits(dataset.data, splits);
+      const adjustedData = dedupeDailyOHLC(adjustOHLCForSplits(dataset.data, splits));
       
       // Проверяем, есть ли уже такой датасет в библиотеке
       const existingIndex = savedDatasets.findIndex(d => d.name === dataset.name);
@@ -278,7 +278,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         // Если датасет уже пересчитан на сервере — не применяем сплиты повторно
         if ((dataset as any).adjustedForSplits) {
           set({
-            marketData: dataset.data as unknown as OHLCData[],
+            marketData: dedupeDailyOHLC(dataset.data as unknown as OHLCData[]),
             currentDataset: dataset,
             currentSplits: [],
             lastAppliedSplitsKey: null,
@@ -289,7 +289,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           // Загружаем только из центрального splits.json и применяем локально
           let splits: SplitEvent[] = [];
           try { splits = await DatasetAPI.getSplits(dataset.ticker); } catch { splits = []; }
-          const adjusted = adjustOHLCForSplits(dataset.data, splits);
+          const adjusted = dedupeDailyOHLC(adjustOHLCForSplits(dataset.data, splits));
           const key = JSON.stringify((splits || []).slice().sort((a, b) => a.date.localeCompare(b.date)));
           set({
             marketData: adjusted,
@@ -425,12 +425,13 @@ export const useAppStore = create<AppState>((set, get) => ({
       try {
         // Если датасет уже пересчитан на сервере — используем как есть
         if ((currentDataset as any).adjustedForSplits) {
-          set({ marketData: currentDataset.data as unknown as OHLCData[], currentSplits: [], lastAppliedSplitsKey: null });
-          marketData = currentDataset.data as unknown as OHLCData[];
+          const cleaned = dedupeDailyOHLC(currentDataset.data as unknown as OHLCData[]);
+          set({ marketData: cleaned, currentSplits: [], lastAppliedSplitsKey: null });
+          marketData = cleaned;
         } else {
           let splits: SplitEvent[] = [];
           try { splits = await DatasetAPI.getSplits(currentDataset.ticker); } catch { splits = []; }
-          const adjusted = adjustOHLCForSplits(currentDataset.data as unknown as OHLCData[], splits);
+          const adjusted = dedupeDailyOHLC(adjustOHLCForSplits(currentDataset.data as unknown as OHLCData[], splits));
           const key = JSON.stringify((splits || []).slice().sort((a, b) => a.date.localeCompare(b.date)));
           set({ marketData: adjusted, currentSplits: splits, lastAppliedSplitsKey: (splits && splits.length ? key : null) });
           marketData = adjusted;
