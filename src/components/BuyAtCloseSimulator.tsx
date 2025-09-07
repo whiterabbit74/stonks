@@ -72,6 +72,25 @@ export function BuyAtCloseSimulator({ data, strategy }: BuyAtCloseSimulatorProps
   const [appliedLeverage, setAppliedLeverage] = useState<number>(1);
   const [showTrades, setShowTrades] = useState<boolean>(false);
 
+  // Sync local IBS thresholds with the current strategy by default
+  useEffect(() => {
+    if (!strategy) return;
+    try {
+      const li = Number((strategy.parameters as any)?.lowIBS ?? 0.1);
+      const hi = Number((strategy.parameters as any)?.highIBS ?? 0.75);
+      const mh = Number(
+        typeof (strategy.parameters as any)?.maxHoldDays === 'number'
+          ? (strategy.parameters as any)?.maxHoldDays
+          : strategy.riskManagement?.maxHoldDays ?? 30
+      );
+      if (Number.isFinite(li)) setLowIbs(li.toFixed(2));
+      if (Number.isFinite(hi)) setHighIbs(hi.toFixed(2));
+      if (Number.isFinite(mh)) setMaxHold(String(mh));
+    } catch {
+      // ignore
+    }
+  }, [strategy]);
+
   const effectiveStrategy: Strategy | null = useMemo(() => {
     if (!strategy) return null;
     const p = { ...strategy.parameters } as any;
