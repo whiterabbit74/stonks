@@ -112,74 +112,80 @@ export class CleanBacktestEngine {
             }
           }
         }
-      } 
-      // Если есть позиция - проверяем выход (только если это не день входа)
-      else if (i > position.entryIndex) {
-        let shouldExit = false;
-        let exitReason = '';
+      }
+      // Если есть позиция — проверяем выход. Разрешаем выход в день входа,
+      // если вход был по nextOpen (т.е. покупка утром, выход возможен на закрытии того же дня).
+      else {
+        const isEntryDay = i === position.entryIndex;
+        const canCheckToday = !isEntryDay || this.options.entryExecution === 'nextOpen';
 
-        // Проверяем IBS условие выхода
-        if (ibs > highIBS) {
-          if (this.options.ibsExitRequireAboveEntry) {
-            if (bar.close > position.entryPrice) {
+        if (canCheckToday) {
+          let shouldExit = false;
+          let exitReason = '';
+
+          // Проверяем IBS условие выхода
+          if (ibs > highIBS) {
+            if (this.options.ibsExitRequireAboveEntry) {
+              if (bar.close > position.entryPrice) {
+                shouldExit = true;
+                exitReason = 'ibs_signal';
+              }
+            } else {
               shouldExit = true;
               exitReason = 'ibs_signal';
             }
-          } else {
-          shouldExit = true;
-          exitReason = 'ibs_signal';
           }
-        }
-        // Проверяем максимальное время удержания
-        else if (!this.options.ignoreMaxHoldDaysExit) {
-          const daysDiff = Math.floor((bar.date.getTime() - position.entryDate.getTime()) / (1000 * 60 * 60 * 24));
-          if (daysDiff >= maxHoldDays) {
-            shouldExit = true;
-            exitReason = 'max_hold_days';
-          }
-        }
-
-        if (shouldExit) {
-          // ВЫХОД: продаем все акции по цене закрытия
-          const exitPrice = bar.close;
-          const grossProceeds = position.quantity * exitPrice;
-          const grossCost = position.quantity * position.entryPrice;
-          const pnl = grossProceeds - grossCost;
-          const pnlPercent = (pnl / grossCost) * 100;
-          const duration = Math.floor((bar.date.getTime() - position.entryDate.getTime()) / (1000 * 60 * 60 * 24));
-
-          // Создаем сделку
-          const trade: Trade = {
-            id: `trade-${this.trades.length}`,
-            entryDate: position.entryDate,
-            exitDate: bar.date,
-            entryPrice: position.entryPrice,
-            exitPrice: exitPrice,
-            quantity: position.quantity,
-            pnl: pnl,
-            pnlPercent: pnlPercent,
-            duration: duration,
-            exitReason: exitReason,
-            context: {
-              marketConditions: 'normal',
-              indicatorValues: { IBS: ibs },
-              volatility: 0,
-              trend: 'sideways',
-              initialInvestment: grossCost
+          // Проверяем максимальное время удержания
+          else if (!this.options.ignoreMaxHoldDaysExit) {
+            const daysDiff = Math.floor((bar.date.getTime() - position.entryDate.getTime()) / (1000 * 60 * 60 * 24));
+            if (daysDiff >= maxHoldDays) {
+              shouldExit = true;
+              exitReason = 'max_hold_days';
             }
-          };
-
-          this.trades.push(trade);
-          this.currentCapital += grossProceeds;
-          
-          // Обновляем капитал в контексте сделки
-          if (trade.context) {
-            (trade.context as any).currentCapitalAfterExit = this.currentCapital;
           }
 
-          console.log(`🔴 EXIT: IBS=${ibs.toFixed(3)}, ${exitReason}, P&L=$${pnl.toFixed(2)}, Duration=${duration} days`);
-          
-          position = null;
+          if (shouldExit) {
+            // ВЫХОД: продаем все акции по цене закрытия
+            const exitPrice = bar.close;
+            const grossProceeds = position.quantity * exitPrice;
+            const grossCost = position.quantity * position.entryPrice;
+            const pnl = grossProceeds - grossCost;
+            const pnlPercent = (pnl / grossCost) * 100;
+            const duration = Math.floor((bar.date.getTime() - position.entryDate.getTime()) / (1000 * 60 * 60 * 24));
+
+            // Создаем сделку
+            const trade: Trade = {
+              id: `trade-${this.trades.length}`,
+              entryDate: position.entryDate,
+              exitDate: bar.date,
+              entryPrice: position.entryPrice,
+              exitPrice: exitPrice,
+              quantity: position.quantity,
+              pnl: pnl,
+              pnlPercent: pnlPercent,
+              duration: duration,
+              exitReason: exitReason,
+              context: {
+                marketConditions: 'normal',
+                indicatorValues: { IBS: ibs },
+                volatility: 0,
+                trend: 'sideways',
+                initialInvestment: grossCost
+              }
+            };
+
+            this.trades.push(trade);
+            this.currentCapital += grossProceeds;
+            
+            // Обновляем капитал в контексте сделки
+            if (trade.context) {
+              (trade.context as any).currentCapitalAfterExit = this.currentCapital;
+            }
+
+            console.log(`🔴 EXIT: IBS=${ibs.toFixed(3)}, ${exitReason}, P&L=$${pnl.toFixed(2)}, Duration=${duration} days`);
+            
+            position = null;
+          }
         }
       }
 
