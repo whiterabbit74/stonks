@@ -252,17 +252,16 @@ export function BuyAtClose4Simulator({ strategy, defaultTickers }: BuyAtClose4Si
           const grossProceeds = pos.quantity * exitPrice;
           // Возвращаем заемные средства и получаем чистую прибыль
           const netProceeds = grossProceeds - pos.borrowedPrincipal;
-          cash += grossProceeds; // Получаем полную выручку от продажи
+          cash += netProceeds; // Получаем только чистую выручку (после возврата займа)
           const pnl = netProceeds - pos.baseCashUsed; // PnL = чистая выручка - наши вложения
           const pnlPercent = pos.baseCashUsed > 0 ? (pnl / pos.baseCashUsed) * 100 : 0;
           
-          // ВАЖНО: В реальности брокер автоматически возвращает заемные средства
-          // Поэтому наш итоговый cash = начальный cash + PnL
-          // Но в симуляции мы получаем полную выручку, что правильно для расчета equity
+          // ВАЖНО: В маржинальной торговле брокер автоматически возвращает заемные средства
+          // Поэтому в cash попадает только netProceeds (чистая выручка после возврата займа)
 
           // Equity after this exit (valuing other positions with current marks)
           const equityAfterExit = (() => {
-            let otherValue = cash; // already includes grossProceeds from this exit
+            let otherValue = cash; // already includes netProceeds from this exit
             for (const ot of Object.keys(positions)) {
               if (ot === t) continue;
               const op = positions[ot];
@@ -422,12 +421,6 @@ export function BuyAtClose4Simulator({ strategy, defaultTickers }: BuyAtClose4Si
       {loading && <div className="text-sm text-gray-500">Загрузка данных…</div>}
       {error && <div className="text-sm text-red-600">{error}</div>}
 
-      <div className="text-xs text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-800 border dark:border-gray-700 rounded px-3 py-2">
-        <span className="font-semibold">Стратегия:</span>{' '}
-        Вход — IBS &lt; {Number(lowIbs)} на закрытии дня;{' '}
-        Выход — IBS &gt; {Number(highIbs)} или по истечении {Number(maxHold)} дней.{' '}
-        Каждая позиция открывается на 1/4 текущего депозита с учётом маржинальности.
-      </div>
 
       <div className="h-[600px]">
         <EquityChart equity={simulation.equity} hideHeader />
