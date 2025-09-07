@@ -169,61 +169,53 @@ export function BuyAtClose4Simulator({ strategy, defaultTickers }: BuyAtClose4Si
       }
     };
 
-    // Запускаем CleanBacktestEngine для каждого тикера отдельно
-    const allTrades: Trade[] = [];
-    const allEquity: EquityPoint[] = [];
-    let finalValue = initialCapital;
-    let maxDrawdown = 0;
-
+    // Объединяем данные всех тикеров в один массив с информацией о тикере
+    const allData: (OHLCData & { ticker: string })[] = [];
+    
     for (const ticker of selectedUnique) {
       const data = (loaded[ticker] || []).slice().sort((a: OHLCData, b: OHLCData) => a.date.getTime() - b.date.getTime());
       if (data.length === 0) continue;
-
-      // Запускаем бэктест для этого тикера
-      const result = runCleanBuyAtClose4(data, effectiveStrategy);
       
-      // Добавляем информацию о тикере к сделкам
-      const tradesWithTicker = result.trades.map(trade => ({
+      // Добавляем информацию о тикере к каждому бару
+      const dataWithTicker = data.map(bar => ({
+        ...bar,
+        ticker: ticker
+      }));
+      
+      allData.push(...dataWithTicker);
+    }
+
+    // Сортируем все данные по дате
+    allData.sort((a, b) => a.date.getTime() - b.date.getTime());
+
+    // Запускаем один бэктест для всех тикеров с общим балансом
+    const result = runCleanBuyAtClose4(allData, effectiveStrategy);
+    
+    // Добавляем информацию о тикере к сделкам (извлекаем из данных)
+    const allTrades: Trade[] = result.trades.map(trade => {
+      // Находим тикер для этой сделки по дате входа
+      const entryBar = allData.find(bar => 
+        bar.date.getTime() === trade.entryDate.getTime() && 
+        Math.abs(bar.close - trade.entryPrice) < 0.01
+      );
+      
+      return {
         ...trade,
         context: {
           ...trade.context,
-          ticker: ticker
+          ticker: entryBar?.ticker || 'UNKNOWN'
         }
-      }));
-      
-      allTrades.push(...tradesWithTicker);
-      
-      // Обновляем финальное значение
-      if (result.trades.length > 0) {
-        const lastTrade = result.trades[result.trades.length - 1];
-        finalValue = lastTrade.context?.currentCapitalAfterExit || finalValue;
-      }
-      
-      // Обновляем максимальную просадку
-      maxDrawdown = Math.max(maxDrawdown, result.maxDrawdown);
-    }
+      };
+    });
+    
+    const finalValue = result.equity[result.equity.length - 1]?.value || initialCapital;
+    const maxDrawdown = result.maxDrawdown;
 
     // Сортируем сделки по дате
     allTrades.sort((a, b) => a.entryDate.getTime() - b.entryDate.getTime());
 
-    // Создаем equity curve на основе сделок
-    let currentEquity = initialCapital;
-    const equityMap = new Map<string, number>();
-    
-    // Добавляем начальную точку
-    if (allTrades.length > 0) {
-      const firstTrade = allTrades[0];
-      const firstDate = new Date(firstTrade.entryDate);
-      firstDate.setDate(firstDate.getDate() - 1); // День до первой сделки
-      allEquity.push({ date: firstDate, value: currentEquity, drawdown: 0 });
-    }
-
-    // Добавляем точки после каждой сделки
-    for (const trade of allTrades) {
-      currentEquity = trade.context?.currentCapitalAfterExit || currentEquity;
-      const drawdown = currentEquity > initialCapital ? 0 : ((initialCapital - currentEquity) / initialCapital) * 100;
-      allEquity.push({ date: trade.exitDate, value: currentEquity, drawdown });
-    }
+    // Используем equity curve из CleanBacktestEngine
+    const allEquity = result.equity;
 
     // Применяем маржинальность к equity
     const marginFactor = Math.max(0, Number(margins[0] || '100') / 100) || 1;
