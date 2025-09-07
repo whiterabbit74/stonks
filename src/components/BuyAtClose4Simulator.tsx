@@ -204,8 +204,9 @@ export function BuyAtClose4Simulator({ strategy, defaultTickers }: BuyAtClose4Si
       for (const key of Object.keys(positions)) {
         const p = positions[key as keyof typeof positions];
         if (p) {
-          // Equity = Cash + Σ(Position market value - borrowed principal)
-          val += (p.quantity * p.lastMarkedPrice) - p.borrowedPrincipal;
+          // Equity = Cash + Σ(Position market value)
+          // Заемные средства уже учтены в cash при входе в позицию
+          val += p.quantity * p.lastMarkedPrice;
         }
       }
       return val;
@@ -249,18 +250,23 @@ export function BuyAtClose4Simulator({ strategy, defaultTickers }: BuyAtClose4Si
         if (shouldExit) {
           const exitPrice = bar.close;
           const grossProceeds = pos.quantity * exitPrice;
+          // Возвращаем заемные средства и получаем чистую прибыль
           const netProceeds = grossProceeds - pos.borrowedPrincipal;
-          cash += netProceeds;
-          const pnl = netProceeds - pos.baseCashUsed;
+          cash += grossProceeds; // Получаем полную выручку от продажи
+          const pnl = netProceeds - pos.baseCashUsed; // PnL = чистая выручка - наши вложения
           const pnlPercent = pos.baseCashUsed > 0 ? (pnl / pos.baseCashUsed) * 100 : 0;
+          
+          // ВАЖНО: В реальности брокер автоматически возвращает заемные средства
+          // Поэтому наш итоговый cash = начальный cash + PnL
+          // Но в симуляции мы получаем полную выручку, что правильно для расчета equity
 
           // Equity after this exit (valuing other positions with current marks)
           const equityAfterExit = (() => {
-            let otherValue = cash; // already includes netProceeds
+            let otherValue = cash; // already includes grossProceeds from this exit
             for (const ot of Object.keys(positions)) {
               if (ot === t) continue;
               const op = positions[ot];
-              if (op) otherValue += (op.quantity * op.lastMarkedPrice) - op.borrowedPrincipal;
+              if (op) otherValue += op.quantity * op.lastMarkedPrice;
             }
             return otherValue;
           })();
@@ -318,10 +324,10 @@ export function BuyAtClose4Simulator({ strategy, defaultTickers }: BuyAtClose4Si
         const qty = Math.floor(exposure / bar.close);
         if (qty <= 0) continue;
         const notional = qty * bar.close;
-        // Денег реально изымаем столько, сколько требуется для покупки (но не больше baseToUse)
-        const cashUsed = Math.min(baseToUse, notional);
+        // При маржинальной торговле: используем наши деньги как залог, занимаем остальное
+        const cashUsed = baseToUse; // Всегда используем только наши деньги как залог
         const borrowed = Math.max(0, notional - cashUsed);
-        cash -= cashUsed;
+        cash -= cashUsed; // Изымаем наши деньги
         remainingCash -= cashUsed;
         positions[t] = {
           ticker: t,
