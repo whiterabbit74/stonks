@@ -19,3 +19,4 @@ export { OpenDayDrawdownChart } from './OpenDayDrawdownChart';
 export { MarginSimulator } from './MarginSimulator';
 export { TradingCalendar } from './TradingCalendar';
 export { BuyAtCloseSimulator } from './BuyAtCloseSimulator';
+export { BuyAtClose4Simulator } from './BuyAtClose4Simulator';

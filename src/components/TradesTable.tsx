@@ -11,6 +11,8 @@ export function TradesTable({ trades }: TradesTableProps) {
 		);
 	}
 
+	const showTicker = trades.some(t => typeof (t.context as any)?.ticker === 'string' && (t.context as any)?.ticker);
+
 	const fmtDate = (d: Date) => {
 		try {
 			return new Date(d).toLocaleDateString('ru-RU');
@@ -32,6 +34,7 @@ export function TradesTable({ trades }: TradesTableProps) {
 				<thead className="sticky top-0 bg-gray-100 border-b dark:bg-gray-800 dark:border-gray-700">
 					<tr>
 						<th className="text-left px-3 py-2 font-semibold">#</th>
+						{showTicker && <th className="text-left px-3 py-2 font-semibold">Тикер</th>}
 						<th className="text-left px-3 py-2 font-semibold">Вход</th>
 						<th className="text-left px-3 py-2 font-semibold">Выход</th>
 						<th className="text-right px-3 py-2 font-semibold">Цена входа</th>
@@ -50,6 +53,7 @@ export function TradesTable({ trades }: TradesTableProps) {
 						return (
 							<tr key={t.id || i} className="border-b last:border-b-0 dark:border-gray-800">
 								<td className="px-3 py-2 text-gray-500">{i + 1}</td>
+								{showTicker && <td className="px-3 py-2 whitespace-nowrap text-gray-700 dark:text-gray-200">{(t.context as any)?.ticker || ''}</td>}
 								<td className="px-3 py-2 whitespace-nowrap">
 									<div>{fmtDate(t.entryDate)}</div>
 									<div className="text-xs text-gray-500">{fmtTime(t.entryDate)}</div>
