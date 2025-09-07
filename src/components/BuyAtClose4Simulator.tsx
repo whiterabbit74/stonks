@@ -3,6 +3,7 @@ import type { EquityPoint, OHLCData, Strategy, Trade } from '../types';
 import { DatasetAPI } from '../lib/api';
 import { adjustOHLCForSplits, dedupeDailyOHLC, formatOHLCYMD, parseOHLCDate } from '../lib/utils';
 import { IndicatorEngine } from '../lib/indicators';
+import { CleanBacktestEngine, type CleanBacktestOptions } from '../lib/clean-backtest';
 import { EquityChart } from './EquityChart';
 import { TradesTable } from './TradesTable';
 import { useAppStore } from '../stores';
@@ -28,6 +29,23 @@ async function loadAdjustedDataset(ticker: string): Promise<OHLCData[]> {
   let splits: Array<{ date: string; factor: number }> = [];
   try { splits = await DatasetAPI.getSplits(ds.ticker); } catch { splits = []; }
   return dedupeDailyOHLC(adjustOHLCForSplits(ds.data as unknown as OHLCData[], splits));
+}
+
+function runCleanBuyAtClose4(data: OHLCData[], strategy: Strategy): { equity: EquityPoint[], finalValue: number, maxDrawdown: number, trades: Trade[] } {
+  if (!data || data.length === 0) {
+    return { equity: [], finalValue: 0, maxDrawdown: 0, trades: [] };
+  }
+  const options: CleanBacktestOptions = {
+    entryExecution: 'close',
+    ignoreMaxHoldDaysExit: false,
+    ibsExitRequireAboveEntry: false
+  };
+  const engine = new CleanBacktestEngine(data, strategy, options);
+  const res = engine.runBacktest();
+  const equity = res.equity;
+  const finalValue = equity.length ? equity[equity.length - 1].value : Number(strategy?.riskManagement?.initialCapital ?? 0);
+  const maxDrawdown = equity.length ? Math.max(...equity.map(p => p.drawdown)) : 0;
+  return { equity, finalValue, maxDrawdown, trades: res.trades };
 }
 
 export function BuyAtClose4Simulator({ strategy, defaultTickers }: BuyAtClose4SimulatorProps) {
@@ -140,218 +158,53 @@ export function BuyAtClose4Simulator({ strategy, defaultTickers }: BuyAtClose4Si
       return { equity: [] as EquityPoint[], finalValue: 0, maxDrawdown: 0, trades: [] as Trade[] };
     }
 
-    // Prepare data and IBS maps per ticker
-    const dataByTicker: Record<string, OHLCData[]> = {};
-    const ibsByTicker: Record<string, number[]> = {};
-    const indexByDayByTicker: Record<string, Map<string, number>> = {};
+    // Объединяем данные всех тикеров в один массив
+    const allData: OHLCData[] = [];
     for (const t of selectedUnique) {
-      const arr = (loaded[t] || []).slice().sort((a: OHLCData, b: OHLCData) => a.date.getTime() - b.date.getTime());
-      dataByTicker[t] = arr;
-      if (arr.length) {
-        try { ibsByTicker[t] = IndicatorEngine.calculateIBS(arr); } catch { ibsByTicker[t] = new Array(arr.length).fill(NaN); }
-      } else {
-        ibsByTicker[t] = [];
-      }
-      const map = new Map<string, number>();
-      for (let i = 0; i < arr.length; i++) {
-        map.set(formatOHLCYMD(arr[i].date), i);
-      }
-      indexByDayByTicker[t] = map;
+      const data = (loaded[t] || []).slice().sort((a: OHLCData, b: OHLCData) => a.date.getTime() - b.date.getTime());
+      allData.push(...data);
     }
 
-    // Build union of all days
-    const daySet = new Set<string>();
-    for (const t of selectedUnique) {
-      for (const d of (dataByTicker[t] || [])) daySet.add(formatOHLCYMD(d.date));
-    }
-    const dayKeys = Array.from(daySet.values()).sort();
-    if (dayKeys.length === 0) {
+    // Сортируем по дате
+    allData.sort((a: OHLCData, b: OHLCData) => a.date.getTime() - b.date.getTime());
+
+    if (allData.length === 0) {
       return { equity: [], finalValue: 0, maxDrawdown: 0, trades: [] };
     }
 
-    // Positions and portfolio state
-    type Position = {
-      ticker: string;
-      entryDate: Date;
-      entryPrice: number;
-      quantity: number;
-      borrowedPrincipal: number;
-      baseCashUsed: number;
-      entryDayIndex: number;
-      lastMarkedPrice: number;
-    };
-    const positions: Record<string, Position | null> = {};
-    const trades: Trade[] = [];
-    let cash = initialCapital;
-    let peak = initialCapital;
-    const equitySeries: EquityPoint[] = [];
-
-    const low = Number(lowIbs);
-    const high = Number(highIbs);
-    const maxHoldDays = Number(maxHold);
-
-    // Карта маржинальности на тикер: берём значение с первого слота этого тикера
-    const marginByTicker: Record<string, number> = {};
-    for (const t of selectedUnique) {
-      const firstIdx = selectedRaw.indexOf(t);
-      const pct = Number(margins[firstIdx] || '100');
-      marginByTicker[t] = (Number.isFinite(pct) && pct > 0) ? pct : 100;
-    }
-
-    // Helper to compute current equity (after marking positions for given dayKey)
-    const computeEquity = (): number => {
-      let val = cash;
-      for (const key of Object.keys(positions)) {
-        const p = positions[key as keyof typeof positions];
-        if (p) {
-          // Equity = Cash + Σ(Position market value - borrowed principal)
-          // В маржинальной торговле нужно вычесть заемные средства
-          const positionValue = p.quantity * p.lastMarkedPrice;
-          const netPositionValue = positionValue - p.borrowedPrincipal;
-          val += netPositionValue;
-        }
+    // Создаем стратегию с правильными параметрами
+    const effectiveStrategy: Strategy = {
+      ...strategy,
+      parameters: {
+        ...strategy.parameters,
+        lowIBS: Number(lowIbs),
+        highIBS: Number(highIbs),
+        maxHoldDays: Number(maxHold)
       }
-      return val;
     };
 
-    // Process each day
-    for (let di = 0; di < dayKeys.length; di++) {
-      const dayKey = dayKeys[di];
-      const dateObj = parseOHLCDate(dayKey);
+    // Запускаем CleanBacktestEngine
+    const result = runCleanBuyAtClose4(allData, effectiveStrategy);
 
-      // 1) Mark-to-market: update lastMarkedPrice for positions with current close (if bar exists)
-      for (const t of selectedUnique) {
-        const idx = indexByDayByTicker[t].get(dayKey);
-        if (idx != null) {
-          const bar = dataByTicker[t][idx];
-          if (positions[t]) positions[t] = { ...(positions[t] as Position), lastMarkedPrice: bar.close };
-        }
-      }
-
-      // 2) Compute exits first, then size new entries against updated equity baseline
-
-      // 3) Exits first
-      const exitedToday = new Set<string>();
-      for (const t of selectedUnique) {
-        const pos = positions[t];
-        if (!pos) continue;
-        const idx = indexByDayByTicker[t].get(dayKey);
-        if (idx == null) continue; // cannot exit without today's bar
-        if (di <= pos.entryDayIndex) continue; // do not exit on same day as entry (close execution)
-        const bar = dataByTicker[t][idx];
-        const ibs = ibsByTicker[t][idx];
-        const heldDays = Math.floor((bar.date.getTime() - pos.entryDate.getTime()) / (1000 * 60 * 60 * 24));
-
-        let shouldExit = false;
-        let exitReason = '';
-        if (!isNaN(ibs) && ibs > high) {
-          shouldExit = true; exitReason = 'ibs_signal';
-        } else if (heldDays >= maxHoldDays) {
-          shouldExit = true; exitReason = 'max_hold_days';
-        }
-        if (shouldExit) {
-          const exitPrice = bar.close;
-          const grossProceeds = pos.quantity * exitPrice;
-          // Возвращаем заемные средства и получаем чистую прибыль
-          const netProceeds = grossProceeds - pos.borrowedPrincipal;
-          cash += netProceeds; // Получаем только чистую выручку (после возврата займа)
-          const pnl = netProceeds - pos.baseCashUsed; // PnL = чистая выручка - наши вложения
-          const pnlPercent = pos.baseCashUsed > 0 ? (pnl / pos.baseCashUsed) * 100 : 0;
-          
-          // ВАЖНО: В маржинальной торговле брокер автоматически возвращает заемные средства
-          // Поэтому в cash попадает только netProceeds (чистая выручка после возврата займа)
-
-          // Equity after this exit (valuing other positions with current marks)
-          const equityAfterExit = (() => {
-            let otherValue = cash; // already includes netProceeds from this exit
-            for (const ot of Object.keys(positions)) {
-              if (ot === t) continue;
-              const op = positions[ot];
-              if (op) otherValue += op.quantity * op.lastMarkedPrice;
-            }
-            return otherValue;
-          })();
-
-          const trade: Trade = {
-            id: `${t}-trade-${trades.length}`,
-            entryDate: pos.entryDate,
-            exitDate: bar.date,
-            entryPrice: pos.entryPrice,
-            exitPrice: exitPrice,
-            quantity: pos.quantity,
-            pnl,
-            pnlPercent,
-            duration: heldDays,
-            exitReason,
-            context: {
-              ticker: t,
-              initialInvestment: pos.baseCashUsed,
-              grossProceeds: grossProceeds,
-              currentCapitalAfterExit: equityAfterExit,
-            }
-          };
-          trades.push(trade);
-          positions[t] = null;
-          exitedToday.add(t);
-        }
-      }
-
-      // 4) After exits: compute baseline equity for sizing new entries at this close
-      const equityBaseline = computeEquity();
-
-      // 5) Entries: determine candidates, then size against the updated baseline equity
-      const entryCandidates: Array<{ t: string; bar: OHLCData }> = [];
-      for (const t of selectedUnique) {
-        if (positions[t]) continue;
-        if (exitedToday.has(t)) continue; // do not re-enter same day after exit
-        const idx = indexByDayByTicker[t].get(dayKey);
-        if (idx == null) continue;
-        const ibs = ibsByTicker[t][idx];
-        if (!isNaN(ibs) && ibs < low) {
-          entryCandidates.push({ t, bar: dataByTicker[t][idx] });
-        }
-      }
-
-      let remainingCash = cash;
-      for (const { t, bar } of entryCandidates) {
-        if (remainingCash <= 0) break;
-        const desiredBase = equityBaseline * 0.25;
-        let baseToUse = Math.max(0, Math.min(desiredBase, remainingCash));
-        if (!(baseToUse > 0)) continue;
-        // На случай если к этому моменту позиция уже открылась из-за дублей
-        if (positions[t]) continue;
-        const marginFactor = Math.max(0, (marginByTicker[t] ?? 100) / 100) || 1;
-        const exposure = baseToUse * marginFactor;
-        const qty = Math.floor(exposure / bar.close);
-        if (qty <= 0) continue;
-        const notional = qty * bar.close;
-        // При маржинальной торговле: используем наши деньги как залог, занимаем остальное
-        const cashUsed = baseToUse; // Всегда используем только наши деньги как залог
-        const borrowed = Math.max(0, notional - cashUsed);
-        cash -= cashUsed; // Изымаем наши деньги
-        remainingCash -= cashUsed;
-        positions[t] = {
-          ticker: t,
-          entryDate: bar.date,
-          entryPrice: bar.close,
-          quantity: qty,
-          borrowedPrincipal: borrowed,
-          baseCashUsed: cashUsed,
-          entryDayIndex: di,
-          lastMarkedPrice: bar.close,
-        };
-      }
-
-      // 6) Record equity point for the day
-      const equityNow = computeEquity();
-      if (equityNow > peak) peak = equityNow;
-      const drawdown = peak > 0 ? ((peak - equityNow) / peak) * 100 : 0;
-      equitySeries.push({ date: dateObj, value: equityNow, drawdown });
+    // Применяем маржинальность к equity
+    const marginFactor = Math.max(0, Number(margins[0] || '100') / 100) || 1;
+    if (marginFactor > 1) {
+      const leveragedEquity = result.equity.map(point => ({
+        ...point,
+        value: point.value * marginFactor
+      }));
+      const leveragedFinalValue = result.finalValue * marginFactor;
+      const leveragedMaxDrawdown = result.maxDrawdown * marginFactor;
+      
+      return {
+        equity: leveragedEquity,
+        finalValue: leveragedFinalValue,
+        maxDrawdown: leveragedMaxDrawdown,
+        trades: result.trades
+      };
     }
 
-    const finalValue = equitySeries.length ? equitySeries[equitySeries.length - 1].value : initialCapital;
-    const maxDrawdown = equitySeries.length ? Math.max(...equitySeries.map(p => p.drawdown)) : 0;
-    return { equity: equitySeries, finalValue, maxDrawdown, trades };
+    return result;
   }, [tickers, loaded, lowIbs, highIbs, maxHold, initialCapital, margins, strategy]);
 
   const start = simulation.equity[0]?.date ? new Date(simulation.equity[0].date).toLocaleDateString('ru-RU') : '';
