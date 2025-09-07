@@ -133,8 +133,10 @@ export function BuyAtClose4Simulator({ strategy, defaultTickers }: BuyAtClose4Si
   const initialCapital = Number(strategy?.riskManagement?.initialCapital ?? 10000);
 
   const simulation = useMemo(() => {
-    const selected: string[] = (tickers || []).map((t: string) => (t || '').toUpperCase()).filter(Boolean).slice(0, 4) as string[];
-    if (!strategy || selected.length === 0) {
+    const selectedRaw: string[] = (tickers || []).map((t: string) => (t || '').toUpperCase()).filter(Boolean).slice(0, 4) as string[];
+    // Дедуплируем тикеры, чтобы один и тот же тикер не открывался/считался несколько раз
+    const selectedUnique: string[] = Array.from(new Set(selectedRaw));
+    if (!strategy || selectedUnique.length === 0) {
       return { equity: [] as EquityPoint[], finalValue: 0, maxDrawdown: 0, trades: [] as Trade[] };
     }
 
@@ -142,7 +144,7 @@ export function BuyAtClose4Simulator({ strategy, defaultTickers }: BuyAtClose4Si
     const dataByTicker: Record<string, OHLCData[]> = {};
     const ibsByTicker: Record<string, number[]> = {};
     const indexByDayByTicker: Record<string, Map<string, number>> = {};
-    for (const t of selected) {
+    for (const t of selectedUnique) {
       const arr = (loaded[t] || []).slice().sort((a: OHLCData, b: OHLCData) => a.date.getTime() - b.date.getTime());
       dataByTicker[t] = arr;
       if (arr.length) {
@@ -159,7 +161,7 @@ export function BuyAtClose4Simulator({ strategy, defaultTickers }: BuyAtClose4Si
 
     // Build union of all days
     const daySet = new Set<string>();
-    for (const t of selected) {
+    for (const t of selectedUnique) {
       for (const d of (dataByTicker[t] || [])) daySet.add(formatOHLCYMD(d.date));
     }
     const dayKeys = Array.from(daySet.values()).sort();
@@ -188,13 +190,22 @@ export function BuyAtClose4Simulator({ strategy, defaultTickers }: BuyAtClose4Si
     const high = Number(highIbs);
     const maxHoldDays = Number(maxHold);
 
+    // Карта маржинальности на тикер: берём значение с первого слота этого тикера
+    const marginByTicker: Record<string, number> = {};
+    for (const t of selectedUnique) {
+      const firstIdx = selectedRaw.indexOf(t);
+      const pct = Number(margins[firstIdx] || '100');
+      marginByTicker[t] = (Number.isFinite(pct) && pct > 0) ? pct : 100;
+    }
+
     // Helper to compute current equity (after marking positions for given dayKey)
     const computeEquity = (): number => {
       let val = cash;
-      for (const t of selected) {
-        const p = positions[t];
+      for (const key of Object.keys(positions)) {
+        const p = positions[key as keyof typeof positions];
         if (p) {
-          val += p.quantity * p.lastMarkedPrice;
+          // Equity = Cash + Σ(Position market value - borrowed principal)
+          val += (p.quantity * p.lastMarkedPrice) - p.borrowedPrincipal;
         }
       }
       return val;
@@ -206,7 +217,7 @@ export function BuyAtClose4Simulator({ strategy, defaultTickers }: BuyAtClose4Si
       const dateObj = parseOHLCDate(dayKey);
 
       // 1) Mark-to-market: update lastMarkedPrice for positions with current close (if bar exists)
-      for (const t of selected) {
+      for (const t of selectedUnique) {
         const idx = indexByDayByTicker[t].get(dayKey);
         if (idx != null) {
           const bar = dataByTicker[t][idx];
@@ -214,12 +225,11 @@ export function BuyAtClose4Simulator({ strategy, defaultTickers }: BuyAtClose4Si
         }
       }
 
-      // 2) Compute baseline equity prior to any new entries for this day
-      const equityBaseline = computeEquity();
+      // 2) Compute exits first, then size new entries against updated equity baseline
 
       // 3) Exits first
       const exitedToday = new Set<string>();
-      for (const t of selected) {
+      for (const t of selectedUnique) {
         const pos = positions[t];
         if (!pos) continue;
         const idx = indexByDayByTicker[t].get(dayKey);
@@ -247,10 +257,10 @@ export function BuyAtClose4Simulator({ strategy, defaultTickers }: BuyAtClose4Si
           // Equity after this exit (valuing other positions with current marks)
           const equityAfterExit = (() => {
             let otherValue = cash; // already includes netProceeds
-            for (const ot of selected) {
+            for (const ot of Object.keys(positions)) {
               if (ot === t) continue;
               const op = positions[ot];
-              if (op) otherValue += op.quantity * op.lastMarkedPrice;
+              if (op) otherValue += (op.quantity * op.lastMarkedPrice) - op.borrowedPrincipal;
             }
             return otherValue;
           })();
@@ -279,9 +289,12 @@ export function BuyAtClose4Simulator({ strategy, defaultTickers }: BuyAtClose4Si
         }
       }
 
-      // 4) Entries: determine candidates, then size against the same baseline equity
+      // 4) After exits: compute baseline equity for sizing new entries at this close
+      const equityBaseline = computeEquity();
+
+      // 5) Entries: determine candidates, then size against the updated baseline equity
       const entryCandidates: Array<{ t: string; bar: OHLCData }> = [];
-      for (const t of selected) {
+      for (const t of selectedUnique) {
         if (positions[t]) continue;
         if (exitedToday.has(t)) continue; // do not re-enter same day after exit
         const idx = indexByDayByTicker[t].get(dayKey);
@@ -296,29 +309,33 @@ export function BuyAtClose4Simulator({ strategy, defaultTickers }: BuyAtClose4Si
       for (const { t, bar } of entryCandidates) {
         if (remainingCash <= 0) break;
         const desiredBase = equityBaseline * 0.25;
-        const baseToUse = Math.max(0, Math.min(desiredBase, remainingCash));
+        let baseToUse = Math.max(0, Math.min(desiredBase, remainingCash));
         if (!(baseToUse > 0)) continue;
-        const marginFactor = Math.max(0, Number(margins[selected.indexOf(t)] || '100') / 100) || 1;
+        // На случай если к этому моменту позиция уже открылась из-за дублей
+        if (positions[t]) continue;
+        const marginFactor = Math.max(0, (marginByTicker[t] ?? 100) / 100) || 1;
         const exposure = baseToUse * marginFactor;
         const qty = Math.floor(exposure / bar.close);
         if (qty <= 0) continue;
         const notional = qty * bar.close;
-        const borrowed = Math.max(0, notional - baseToUse);
-        cash -= baseToUse;
-        remainingCash -= baseToUse;
+        // Денег реально изымаем столько, сколько требуется для покупки (но не больше baseToUse)
+        const cashUsed = Math.min(baseToUse, notional);
+        const borrowed = Math.max(0, notional - cashUsed);
+        cash -= cashUsed;
+        remainingCash -= cashUsed;
         positions[t] = {
           ticker: t,
           entryDate: bar.date,
           entryPrice: bar.close,
           quantity: qty,
           borrowedPrincipal: borrowed,
-          baseCashUsed: baseToUse,
+          baseCashUsed: cashUsed,
           entryDayIndex: di,
           lastMarkedPrice: bar.close,
         };
       }
 
-      // 5) Record equity point for the day
+      // 6) Record equity point for the day
       const equityNow = computeEquity();
       if (equityNow > peak) peak = equityNow;
       const drawdown = peak > 0 ? ((peak - equityNow) / peak) * 100 : 0;
