@@ -201,11 +201,8 @@ export class BacktestEngine {
       ? entryPrice 
       : entryPrice * (1 + this.strategy.riskManagement.slippage);
     
-    // Calculate commission on entry
-    const entryCommission = this.calculateCommission(quantity * slippageAdjustedPrice);
-    
     // Check if we have enough capital
-    const totalCost = (quantity * slippageAdjustedPrice) + entryCommission;
+    const totalCost = (quantity * slippageAdjustedPrice);
     if (totalCost > this.currentCapital) {
       console.log(`Not enough capital: need $${totalCost.toFixed(2)}, have $${this.currentCapital.toFixed(2)}`);
       return; // Not enough capital
@@ -262,22 +259,15 @@ export class BacktestEngine {
       ? exitPrice 
       : exitPrice * (1 - this.strategy.riskManagement.slippage);
     
-    // Calculate commission on exit
-    const exitCommission = this.calculateCommission(this.currentPosition.quantity * slippageAdjustedPrice);
-    
-    // Calculate entry commission (should have been calculated at entry)
-    const entryCommission = this.calculateCommission(this.currentPosition.quantity * this.currentPosition.entryPrice);
-    
     // Calculate P&L correctly
     const grossProceeds = this.currentPosition.quantity * slippageAdjustedPrice;
     const grossCost = this.currentPosition.quantity * this.currentPosition.entryPrice;
-    const totalCommissions = entryCommission + exitCommission;
     
-    // Net P&L = (Exit Value - Entry Value) - Total Commissions
-    const pnl = (grossProceeds - grossCost) - totalCommissions;
+    // Net P&L = (Exit Value - Entry Value)
+    const pnl = (grossProceeds - grossCost);
     
     // Percentage return based on initial investment
-    const initialInvestment = grossCost + entryCommission;
+    const initialInvestment = grossCost;
     const pnlPercent = (pnl / initialInvestment) * 100;
 
     // Calculate trade duration
@@ -306,7 +296,6 @@ export class BacktestEngine {
         // Add detailed calculation info for debugging
         grossProceeds,
         grossCost,
-        totalCommissions,
         initialInvestment,
         stopLoss: this.currentPosition.stopLoss,
         takeProfit: this.currentPosition.takeProfit
@@ -318,9 +307,9 @@ export class BacktestEngine {
 
 
     // Update capital correctly
-    this.currentCapital += grossProceeds - exitCommission;
+    this.currentCapital += grossProceeds;
     
-    console.log(`💰 Capital updated: $${this.currentCapital.toFixed(2)} (was $${(this.currentCapital - grossProceeds + exitCommission).toFixed(2)})`);
+    console.log(`💰 Capital updated: $${this.currentCapital.toFixed(2)} (was $${(this.currentCapital - grossProceeds).toFixed(2)})`);
     
     // Add current capital to trade context
     if (trade.context) {
@@ -366,29 +355,7 @@ export class BacktestEngine {
     return quantity;
   }
 
-  /**
-   * Calculate commission based on strategy settings
-   */
-  private calculateCommission(tradeValue: number): number {
-    const { commission } = this.strategy.riskManagement;
-    
-    switch (commission.type) {
-      case 'fixed':
-        return commission.fixed || 0;
-      
-      case 'percentage':
-        return tradeValue * (commission.percentage || 0);
-      
-      case 'combined': {
-        const fixedPart = commission.fixed || 0;
-        const percentagePart = tradeValue * (commission.percentage || 0);
-        return fixedPart + percentagePart;
-      }
-      
-      default:
-        return 0;
-    }
-  }
+  
 
   /**
    * Calculate stop loss price

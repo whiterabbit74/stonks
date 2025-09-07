@@ -31,10 +31,6 @@ export function createDefaultRiskSettings(): RiskManagement {
     useTakeProfit: false,
     maxPositions: 1,
     maxHoldDays: 30, // Добавляем maxHoldDays по умолчанию
-    commission: {
-      type: 'percentage',
-      percentage: 0 // УБИРАЕМ КОМИССИЮ ДЛЯ ПРАВИЛЬНЫХ РАСЧЕТОВ
-    },
     slippage: 0 // УБИРАЕМ ПРОСКАЛЬЗЫВАНИЕ ДЛЯ ПРАВИЛЬНЫХ РАСЧЕТОВ
   };
 }
@@ -203,8 +199,7 @@ export function cloneStrategy(strategy: Strategy, newId?: string): Strategy {
     exitConditions: strategy.exitConditions ? [...strategy.exitConditions] : [],
     riskManagement: strategy.riskManagement
       ? { 
-          ...strategy.riskManagement,
-          commission: strategy.riskManagement.commission ? { ...strategy.riskManagement.commission } : { type: 'percentage', percentage: 0 }
+          ...strategy.riskManagement
         }
       : (defaults.riskManagement as RiskManagement),
     positionSizing: strategy.positionSizing
