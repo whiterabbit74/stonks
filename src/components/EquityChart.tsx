@@ -76,13 +76,13 @@ export function EquityChart({ equity, hideHeader }: EquityChartProps) {
 
 
 
-      // Validate and convert equity data to chart format
-      const equityData = equity.map((point, idx) => {
+      // Validate, sort, and dedupe equity data to chart format by time
+      const mapped = equity.map((point, idx) => {
         try {
           const d = point?.date instanceof Date ? point.date : new Date(point?.date as any);
           const t = Math.floor(d.getTime() / 1000) as UTCTimestamp;
           const v = Number(point?.value);
-          if (!Number.isFinite(t) || !Number.isFinite(v)) {
+          if (!Number.isFinite(t as unknown as number) || !Number.isFinite(v)) {
             logError('chart', 'Invalid equity data point', { idx, point }, 'EquityChart.setData');
           }
           return { time: t, value: v };
@@ -91,6 +91,19 @@ export function EquityChart({ equity, hideHeader }: EquityChartProps) {
           return { time: 0 as UTCTimestamp, value: 0 };
         }
       }).filter(p => Number.isFinite(p.time as unknown as number) && Number.isFinite(p.value));
+      const sorted = mapped.slice().sort((a, b) => (a.time as number) - (b.time as number));
+      const equityData: Array<{ time: UTCTimestamp; value: number }> = [];
+      let lastTime: number | null = null;
+      for (const p of sorted) {
+        const t = p.time as unknown as number;
+        if (lastTime === t) {
+          // collapse duplicate timestamps: keep the last value for that time
+          equityData[equityData.length - 1] = { time: p.time, value: p.value };
+        } else {
+          equityData.push(p);
+          lastTime = t;
+        }
+      }
 
       equitySeries.setData(equityData);
 
