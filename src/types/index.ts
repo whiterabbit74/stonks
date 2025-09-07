@@ -132,6 +132,7 @@ export interface Trade {
   duration: number;
   exitReason: string;
   context?: {
+    ticker?: string;
     marketConditions?: string;
     indicatorValues?: Record<string, number>;
     volatility?: number;
