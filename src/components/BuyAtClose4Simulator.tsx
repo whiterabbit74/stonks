@@ -204,9 +204,11 @@ export function BuyAtClose4Simulator({ strategy, defaultTickers }: BuyAtClose4Si
       for (const key of Object.keys(positions)) {
         const p = positions[key as keyof typeof positions];
         if (p) {
-          // Equity = Cash + Σ(Position market value)
-          // Заемные средства уже учтены в cash при входе в позицию
-          val += p.quantity * p.lastMarkedPrice;
+          // Equity = Cash + Σ(Position market value - borrowed principal)
+          // В маржинальной торговле нужно вычесть заемные средства
+          const positionValue = p.quantity * p.lastMarkedPrice;
+          const netPositionValue = positionValue - p.borrowedPrincipal;
+          val += netPositionValue;
         }
       }
       return val;
