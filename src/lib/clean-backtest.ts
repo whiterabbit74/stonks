@@ -305,11 +305,20 @@ export class CleanBacktestEngine {
 
     console.log(`✅ Backtest completed: ${this.trades.length} trades, Final capital: $${this.currentCapital.toFixed(2)}`);
 
+    // Generate chart data from OHLC data
+    const chartData = this.data.map(bar => ({
+      time: bar.date.getTime() / 1000, // Convert to seconds for TradingView
+      open: bar.open,
+      high: bar.high,
+      low: bar.low,
+      close: bar.close
+    }));
+
     return {
       trades: this.trades,
       metrics: metrics,
       equity: this.equity,
-      chartData: [],
+      chartData: chartData,
       insights: []
     };
   }
