@@ -158,20 +158,6 @@ export function BuyAtClose4Simulator({ strategy, defaultTickers }: BuyAtClose4Si
       return { equity: [] as EquityPoint[], finalValue: 0, maxDrawdown: 0, trades: [] as Trade[] };
     }
 
-    // Объединяем данные всех тикеров в один массив
-    const allData: OHLCData[] = [];
-    for (const t of selectedUnique) {
-      const data = (loaded[t] || []).slice().sort((a: OHLCData, b: OHLCData) => a.date.getTime() - b.date.getTime());
-      allData.push(...data);
-    }
-
-    // Сортируем по дате
-    allData.sort((a: OHLCData, b: OHLCData) => a.date.getTime() - b.date.getTime());
-
-    if (allData.length === 0) {
-      return { equity: [], finalValue: 0, maxDrawdown: 0, trades: [] };
-    }
-
     // Создаем стратегию с правильными параметрами
     const effectiveStrategy: Strategy = {
       ...strategy,
@@ -183,28 +169,86 @@ export function BuyAtClose4Simulator({ strategy, defaultTickers }: BuyAtClose4Si
       }
     };
 
-    // Запускаем CleanBacktestEngine
-    const result = runCleanBuyAtClose4(allData, effectiveStrategy);
+    // Запускаем CleanBacktestEngine для каждого тикера отдельно
+    const allTrades: Trade[] = [];
+    const allEquity: EquityPoint[] = [];
+    let finalValue = initialCapital;
+    let maxDrawdown = 0;
+
+    for (const ticker of selectedUnique) {
+      const data = (loaded[ticker] || []).slice().sort((a: OHLCData, b: OHLCData) => a.date.getTime() - b.date.getTime());
+      if (data.length === 0) continue;
+
+      // Запускаем бэктест для этого тикера
+      const result = runCleanBuyAtClose4(data, effectiveStrategy);
+      
+      // Добавляем информацию о тикере к сделкам
+      const tradesWithTicker = result.trades.map(trade => ({
+        ...trade,
+        context: {
+          ...trade.context,
+          ticker: ticker
+        }
+      }));
+      
+      allTrades.push(...tradesWithTicker);
+      
+      // Обновляем финальное значение
+      if (result.trades.length > 0) {
+        const lastTrade = result.trades[result.trades.length - 1];
+        finalValue = lastTrade.context?.currentCapitalAfterExit || finalValue;
+      }
+      
+      // Обновляем максимальную просадку
+      maxDrawdown = Math.max(maxDrawdown, result.maxDrawdown);
+    }
+
+    // Сортируем сделки по дате
+    allTrades.sort((a, b) => a.entryDate.getTime() - b.entryDate.getTime());
+
+    // Создаем equity curve на основе сделок
+    let currentEquity = initialCapital;
+    const equityMap = new Map<string, number>();
+    
+    // Добавляем начальную точку
+    if (allTrades.length > 0) {
+      const firstTrade = allTrades[0];
+      const firstDate = new Date(firstTrade.entryDate);
+      firstDate.setDate(firstDate.getDate() - 1); // День до первой сделки
+      allEquity.push({ date: firstDate, value: currentEquity, drawdown: 0 });
+    }
+
+    // Добавляем точки после каждой сделки
+    for (const trade of allTrades) {
+      currentEquity = trade.context?.currentCapitalAfterExit || currentEquity;
+      const drawdown = currentEquity > initialCapital ? 0 : ((initialCapital - currentEquity) / initialCapital) * 100;
+      allEquity.push({ date: trade.exitDate, value: currentEquity, drawdown });
+    }
 
     // Применяем маржинальность к equity
     const marginFactor = Math.max(0, Number(margins[0] || '100') / 100) || 1;
     if (marginFactor > 1) {
-      const leveragedEquity = result.equity.map(point => ({
+      const leveragedEquity = allEquity.map(point => ({
         ...point,
         value: point.value * marginFactor
       }));
-      const leveragedFinalValue = result.finalValue * marginFactor;
-      const leveragedMaxDrawdown = result.maxDrawdown * marginFactor;
+      const leveragedFinalValue = finalValue * marginFactor;
+      const leveragedMaxDrawdown = maxDrawdown * marginFactor;
       
       return {
         equity: leveragedEquity,
         finalValue: leveragedFinalValue,
         maxDrawdown: leveragedMaxDrawdown,
-        trades: result.trades
+        trades: allTrades
       };
     }
 
-    return result;
+    return {
+      equity: allEquity,
+      finalValue: finalValue,
+      maxDrawdown: maxDrawdown,
+      trades: allTrades
+    };
   }, [tickers, loaded, lowIbs, highIbs, maxHold, initialCapital, margins, strategy]);
 
   const start = simulation.equity[0]?.date ? new Date(simulation.equity[0].date).toLocaleDateString('ru-RU') : '';
