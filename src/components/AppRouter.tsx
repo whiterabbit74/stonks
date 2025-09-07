@@ -112,7 +112,7 @@ function ProtectedLayout() {
     { to: '/enhance', label: 'Новые данные' },
     { to: '/results', label: 'Результаты' },
     { to: '/calendar', label: 'Календарь' },
-    { to: '/split', label: 'Плиты' },
+    { to: '/split', label: 'Сплиты' },
     { to: '/watches', label: 'Мониторинг' },
   ];
 
