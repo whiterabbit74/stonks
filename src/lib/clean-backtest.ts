@@ -233,6 +233,7 @@ export class CleanBacktestEngine {
           shouldExit = true;
           exitReason = 'max_hold_days';
         } else {
+          // Всегда выходим на последнем баре, даже если ignoreMaxHoldDaysExit = true
           shouldExit = true;
           exitReason = 'end_of_data';
         }
