@@ -1,6 +1,7 @@
-import type { OHLCData, Strategy, BacktestResult, Trade, EquityPoint } from '../types';
+import type { OHLCData, Strategy, BacktestResult, Trade, EquityPoint, SplitEvent } from '../types';
 import { IndicatorEngine } from './indicators';
 import { MetricsCalculator } from './metrics';
+import { adjustOHLCForSplits } from './utils';
 
 export interface CleanBacktestOptions {
   // Entry price timing: at current bar close, or at next day's open
@@ -9,6 +10,8 @@ export interface CleanBacktestOptions {
   ignoreMaxHoldDaysExit?: boolean;
   // If true, IBS exit is allowed only when current close > entry price
   ibsExitRequireAboveEntry?: boolean;
+  // Stock splits to apply to the data
+  splits?: SplitEvent[];
 }
 
 /**
@@ -25,17 +28,19 @@ export class CleanBacktestEngine {
   private options: Required<CleanBacktestOptions>;
 
   constructor(data: OHLCData[], strategy: Strategy, options?: CleanBacktestOptions) {
-    this.data = data;
+    // Применяем сплиты к данным если они предоставлены
+    this.data = options?.splits ? adjustOHLCForSplits(data, options.splits) : data;
     this.strategy = strategy;
     this.currentCapital = strategy.riskManagement.initialCapital;
     this.options = {
       entryExecution: options?.entryExecution ?? 'nextOpen',
       ignoreMaxHoldDaysExit: options?.ignoreMaxHoldDaysExit ?? false,
-      ibsExitRequireAboveEntry: options?.ibsExitRequireAboveEntry ?? false
+      ibsExitRequireAboveEntry: options?.ibsExitRequireAboveEntry ?? false,
+      splits: options?.splits ?? []
     };
     
     // Рассчитываем IBS для всех баров (без исключений на пустых данных)
-    this.ibsValues = data && data.length > 0 ? IndicatorEngine.calculateIBS(data) : [];
+    this.ibsValues = this.data && this.data.length > 0 ? IndicatorEngine.calculateIBS(this.data) : [];
   }
 
   public runBacktest(): BacktestResult {
