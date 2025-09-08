@@ -124,31 +124,45 @@ echo ""
 # 9. ОТПРАВКА УВЕДОМЛЕНИЯ В TELEGRAM
 echo "📨 Отправка уведомления в Telegram..."
 
-# Получаем настройки с сервера
-TELEGRAM_SETTINGS=$(curl -s "https://tradingibs.site/api/settings" | grep -o '"telegram":{[^}]*}' | sed 's/"telegram"://') || true
+# Получаем настройки с сервера с отладочной информацией
+echo "🔍 Получаем настройки с сервера..."
+SETTINGS_RESPONSE=$(curl -s "https://tradingibs.site/api/settings" || echo "")
+echo "📝 Ответ сервера: $SETTINGS_RESPONSE"
 
-if [ -n "$TELEGRAM_SETTINGS" ]; then
-    BOT_TOKEN=$(echo "$TELEGRAM_SETTINGS" | grep -o '"botToken":"[^"]*"' | cut -d'"' -f4)
-    CHAT_ID=$(echo "$TELEGRAM_SETTINGS" | grep -o '"chatId":"[^"]*"' | cut -d'"' -f4)
+# Парсим Telegram настройки
+if [ -n "$SETTINGS_RESPONSE" ]; then
+    BOT_TOKEN=$(echo "$SETTINGS_RESPONSE" | grep -o '"botToken":"[^"]*"' | cut -d'"' -f4 || echo "")
+    CHAT_ID=$(echo "$SETTINGS_RESPONSE" | grep -o '"chatId":"[^"]*"' | cut -d'"' -f4 || echo "")
     
-    if [ -n "$BOT_TOKEN" ] && [ -n "$CHAT_ID" ] && [ "$BOT_TOKEN" != "" ] && [ "$CHAT_ID" != "" ]; then
-        MESSAGE="🚀 Сервер обновлен!"
-        MESSAGE="$MESSAGE%0A%0A📱 Версия: ${GIT_COMMIT}"
-        MESSAGE="$MESSAGE%0A🕰 Дата: ${GIT_DATE}"
-        MESSAGE="$MESSAGE%0A🌐 Сайт: https://tradingibs.site"
-        MESSAGE="$MESSAGE%0A%0A✅ Развертывание завершено!"
+    echo "🤖 Bot Token: ${BOT_TOKEN:0:10}... (длина: ${#BOT_TOKEN})"
+    echo "💬 Chat ID: $CHAT_ID"
+    
+    if [ -n "$BOT_TOKEN" ] && [ -n "$CHAT_ID" ] && [ "${#BOT_TOKEN}" -gt 10 ] && [ "$CHAT_ID" != "" ]; then
+        echo "📤 Отправляем сообщение..."
         
-        curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+        MESSAGE="🚀 Сервер обновлен!"
+        MESSAGE="$MESSAGE\n\n💻 Версия: ${GIT_COMMIT}"
+        MESSAGE="$MESSAGE\n🕰 Дата: ${GIT_DATE}"
+        MESSAGE="$MESSAGE\n🌐 Сайт: https://tradingibs.site"
+        MESSAGE="$MESSAGE\n\n✅ Развертывание завершено!"
+        
+        TELEGRAM_RESPONSE=$(curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+             -H "Content-Type: application/x-www-form-urlencoded" \
              -d "chat_id=${CHAT_ID}" \
              -d "text=${MESSAGE}" \
-             -d "parse_mode=HTML" > /dev/null 2>&1 || echo "⚠️  Не удалось отправить сообщение в Telegram"
+             -d "parse_mode=Markdown" 2>&1)
         
-        echo "✅ Уведомление отправлено в Telegram!"
+        if echo "$TELEGRAM_RESPONSE" | grep -q '"ok":true'; then
+            echo "✅ Уведомление успешно отправлено в Telegram!"
+        else
+            echo "⚠️  Ошибка отправки в Telegram: $TELEGRAM_RESPONSE"
+        fi
     else
-        echo "⚠️  Telegram настройки не настроены"
+        echo "⚠️  Telegram настройки некорректны или пусты"
+        echo "   Bot Token length: ${#BOT_TOKEN}, Chat ID: '$CHAT_ID'"
     fi
 else
-    echo "⚠️  Не удалось получить Telegram настройки"
+    echo "⚠️  Не удалось получить ответ от сервера"
 fi
 
 echo ""
