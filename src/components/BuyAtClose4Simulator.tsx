@@ -157,7 +157,7 @@ function runMultiTickerBacktest(
       if (!position) {
         // Сигнал входа: IBS < lowIBS
         if (ibs < lowIBS) {
-          const marginUsed = (initialCapital * capitalUsagePerTicker) / 100; // Маржа (собственные средства)
+          const marginUsed = (currentCapital * capitalUsagePerTicker) / 100; // Маржа (собственные средства)
           const investmentAmount = marginUsed * leverage; // Общая сумма для покупки (с плечом)
           const entryPrice = bar.close;
           const quantity = Math.floor(investmentAmount / entryPrice);
