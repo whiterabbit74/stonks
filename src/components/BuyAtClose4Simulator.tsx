@@ -98,10 +98,12 @@ function runMultiTickerBacktest(tickersData: Array<{ticker: string, data: OHLCDa
           // Закрываем позицию
           const exitPrice = bar.close;
           const grossProceeds = position.quantity * exitPrice;
-          const pnl = (exitPrice - position.entryPrice) * position.quantity;
-          const pnlPercent = (pnl / (position.quantity * position.entryPrice)) * 100;
+          const initialCost = position.quantity * position.entryPrice;
+          const pnl = grossProceeds - initialCost;
+          const pnlPercent = (pnl / initialCost) * 100;
           
-          // Обновляем общий капитал
+          // Обновляем общий капитал - возвращаем выручку от продажи
+          // (при входе мы уже вычли стоимость покупки)
           currentCapital += grossProceeds;
           
           // Создаем запись о сделке
@@ -121,10 +123,6 @@ function runMultiTickerBacktest(tickersData: Array<{ticker: string, data: OHLCDa
           positions[tickerIdx] = null; // Закрываем позицию
           
           console.log(`🔴 EXIT ${ticker}: ${position.quantity} shares at $${exitPrice.toFixed(2)}, P&L: $${pnl.toFixed(2)} (${pnlPercent.toFixed(2)}%), Reason: ${exitReason}`);
-        } else {
-          // Позиция остается открытой, добавляем ее стоимость к портфелю
-          const positionValue = position.quantity * bar.close;
-          totalPortfolioValue += positionValue - (position.quantity * position.entryPrice);
         }
       } else {
         // Нет позиции - проверяем условия входа
@@ -155,6 +153,7 @@ function runMultiTickerBacktest(tickersData: Array<{ticker: string, data: OHLCDa
     }
     
     // Рассчитываем общую стоимость портфеля на эту дату
+    // = свободный капитал + рыночная стоимость всех открытых позиций
     totalPortfolioValue = currentCapital;
     positions.forEach((pos, idx) => {
       if (pos) {
@@ -162,7 +161,8 @@ function runMultiTickerBacktest(tickersData: Array<{ticker: string, data: OHLCDa
         const barIdx = tickerData.findIndex(bar => bar.date.getTime() === dateTime);
         if (barIdx !== -1) {
           const currentPrice = tickerData[barIdx].close;
-          totalPortfolioValue += pos.quantity * currentPrice;
+          const marketValue = pos.quantity * currentPrice;
+          totalPortfolioValue += marketValue;
         }
       }
     });
@@ -183,8 +183,9 @@ function runMultiTickerBacktest(tickersData: Array<{ticker: string, data: OHLCDa
       const lastBar = data[data.length - 1];
       const exitPrice = lastBar.close;
       const grossProceeds = position.quantity * exitPrice;
-      const pnl = (exitPrice - position.entryPrice) * position.quantity;
-      const pnlPercent = (pnl / (position.quantity * position.entryPrice)) * 100;
+      const initialCost = position.quantity * position.entryPrice;
+      const pnl = grossProceeds - initialCost;
+      const pnlPercent = (pnl / initialCost) * 100;
       
       currentCapital += grossProceeds;
       

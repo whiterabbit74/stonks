@@ -27,6 +27,14 @@ interface AppState {
   indicatorPanePercent: number; // высота панели индикаторов (IBS/объём), %
   setIndicatorPanePercent: (value: number) => void;
   
+  // Commission settings
+  commissionType: 'fixed' | 'percentage' | 'combined';
+  commissionFixed: number; // в валюте (например, в долларах)
+  commissionPercentage: number; // в процентах (например, 0.1 для 0.1%)
+  setCommissionType: (type: 'fixed' | 'percentage' | 'combined') => void;
+  setCommissionFixed: (value: number) => void;
+  setCommissionPercentage: (value: number) => void;
+  
   // Strategy
   currentStrategy: Strategy | null;
   
@@ -75,6 +83,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   enhancerProvider: 'alpha_vantage',
   watchThresholdPct: 5,
   indicatorPanePercent: 10,
+  commissionType: 'percentage',
+  commissionFixed: 1.0,
+  commissionPercentage: 0.1,
   currentStrategy: null,
   backtestResults: null,
   backtestStatus: 'idle',
@@ -88,6 +99,9 @@ export const useAppStore = create<AppState>((set, get) => ({
         enhancerProvider: s.enhancerProvider,
         resultsRefreshProvider: s.resultsRefreshProvider || s.resultsQuoteProvider,
         indicatorPanePercent: typeof s.indicatorPanePercent === 'number' ? s.indicatorPanePercent : 10,
+        commissionType: s.commissionType || 'percentage',
+        commissionFixed: typeof s.commissionFixed === 'number' ? s.commissionFixed : 1.0,
+        commissionPercentage: typeof s.commissionPercentage === 'number' ? s.commissionPercentage : 0.1,
       });
     } catch (e) {
       console.warn('Failed to load app settings:', e instanceof Error ? e.message : e);
@@ -96,8 +110,8 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   saveSettingsToServer: async () => {
     try {
-      const { watchThresholdPct, resultsQuoteProvider, enhancerProvider, resultsRefreshProvider, indicatorPanePercent } = get();
-      await DatasetAPI.saveAppSettings({ watchThresholdPct, resultsQuoteProvider, enhancerProvider, resultsRefreshProvider, indicatorPanePercent });
+      const { watchThresholdPct, resultsQuoteProvider, enhancerProvider, resultsRefreshProvider, indicatorPanePercent, commissionType, commissionFixed, commissionPercentage } = get();
+      await DatasetAPI.saveAppSettings({ watchThresholdPct, resultsQuoteProvider, enhancerProvider, resultsRefreshProvider, indicatorPanePercent, commissionType, commissionFixed, commissionPercentage });
     } catch (e) {
       console.warn('Failed to save app settings:', e instanceof Error ? e.message : e);
     }
@@ -150,6 +164,18 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   setWatchThresholdPct: (value: number) => {
     set({ watchThresholdPct: value });
+  },
+
+  setCommissionType: (type: 'fixed' | 'percentage' | 'combined') => {
+    set({ commissionType: type });
+  },
+
+  setCommissionFixed: (value: number) => {
+    set({ commissionFixed: value });
+  },
+
+  setCommissionPercentage: (value: number) => {
+    set({ commissionPercentage: value });
   },
 
 

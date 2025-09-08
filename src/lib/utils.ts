@@ -80,6 +80,7 @@ import type { OHLCData, SplitEvent } from '../types';
 /**
  * Back-adjust OHLC series for stock splits. Price fields are divided by cumulative factors,
  * volume is multiplied. Events format: { date: 'YYYY-MM-DD', factor: number }.
+ * Исправлено накопление неточностей при множественных сплитах.
  */
 export function adjustOHLCForSplits(ohlc: OHLCData[], splits: SplitEvent[] | undefined): OHLCData[] {
   if (!Array.isArray(ohlc) || ohlc.length === 0 || !Array.isArray(splits) || splits.length === 0) return ohlc;
@@ -88,27 +89,45 @@ export function adjustOHLCForSplits(ohlc: OHLCData[], splits: SplitEvent[] | und
     .filter(s => s && s.date && s.factor && s.factor !== 1)
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
   if (events.length === 0) return ohlc;
-  // For each bar, compute cumulative factor of all future splits (bar.date < split.date)
-  const result: OHLCData[] = data.map(bar => ({ ...bar }));
-  for (let i = 0; i < result.length; i++) {
-    const t = result[i].date.getTime();
+  
+  // Превычисляем кумулятивные множители для минимизации неточностей
+  const splitFactors = new Map<number, number>(); // timestamp -> cumulative factor
+  
+  // Вычисляем кумулятивные множители один раз
+  for (let i = 0; i < data.length; i++) {
+    const barTime = data[i].date.getTime();
     let cumulative = 1;
-    for (let k = 0; k < events.length; k++) {
-      const et = new Date(events[k].date).getTime();
-      if (t < et) cumulative *= events[k].factor;
+    
+    for (const event of events) {
+      const eventTime = new Date(event.date).getTime();
+      if (barTime < eventTime) {
+        cumulative *= event.factor;
+      }
     }
+    
+    splitFactors.set(i, cumulative);
+  }
+  
+  // Применяем корректировки с отображением на фиксированное количество знаков после запятой
+  const result: OHLCData[] = data.map((bar, index) => {
+    const cumulative = splitFactors.get(index) || 1;
+    
     if (cumulative !== 1) {
-      result[i] = {
-        ...result[i],
-        open: result[i].open / cumulative,
-        high: result[i].high / cumulative,
-        low: result[i].low / cumulative,
-        close: result[i].close / cumulative,
-        adjClose: (result[i].adjClose ?? result[i].close) / cumulative,
-        volume: Math.round(result[i].volume * cumulative),
+      // Округляем до 6 знаков после запятой для минимизации неточностей
+      return {
+        ...bar,
+        open: Math.round((bar.open / cumulative) * 1000000) / 1000000,
+        high: Math.round((bar.high / cumulative) * 1000000) / 1000000,
+        low: Math.round((bar.low / cumulative) * 1000000) / 1000000,
+        close: Math.round((bar.close / cumulative) * 1000000) / 1000000,
+        adjClose: Math.round(((bar.adjClose ?? bar.close) / cumulative) * 1000000) / 1000000,
+        volume: Math.round(bar.volume * cumulative),
       };
     }
-  }
+    
+    return { ...bar };
+  });
+  
   return result;
 }
 

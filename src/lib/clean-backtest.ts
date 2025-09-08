@@ -27,6 +27,24 @@ export class CleanBacktestEngine {
   private ibsValues: number[] = [];
   private options: Required<CleanBacktestOptions>;
 
+  /**
+   * Рассчитать комиссию для сделки
+   */
+  private calculateCommission(tradeValue: number): number {
+    const { commission } = this.strategy.riskManagement;
+    
+    switch (commission.type) {
+      case 'fixed':
+        return commission.fixed || 0;
+      case 'percentage':
+        return tradeValue * ((commission.percentage || 0) / 100);
+      case 'combined':
+        return (commission.fixed || 0) + tradeValue * ((commission.percentage || 0) / 100);
+      default:
+        return 0;
+    }
+  }
+
   constructor(data: OHLCData[], strategy: Strategy, options?: CleanBacktestOptions) {
     // Применяем сплиты к данным если они предоставлены
     this.data = options?.splits ? adjustOHLCForSplits(data, options.splits) : data;
@@ -214,7 +232,10 @@ export class CleanBacktestEngine {
       // Обновляем equity curve
       let totalValue = this.currentCapital;
       if (position) {
-        totalValue += position.quantity * bar.close;
+        // Учитываем комиссию на выход при расчете equity для открытых позиций
+        const grossValue = position.quantity * bar.close;
+        const commission = this.calculateCommission(grossValue);
+        totalValue += grossValue - commission;
       }
 
       // Рассчитываем drawdown
@@ -301,7 +322,10 @@ export class CleanBacktestEngine {
     // Обновляем последний equity point без дублирования временной метки
     let finalValue = this.currentCapital;
     if (position) {
-      finalValue += position.quantity * lastBar.close;
+      // Учитываем комиссию на выход для открытых позиций
+      const grossValue = position.quantity * lastBar.close;
+      const commission = this.calculateCommission(grossValue);
+      finalValue += grossValue - commission;
     }
     const finalPeakValue = this.equity.length > 0 
       ? Math.max(...this.equity.map(e => e.value), finalValue)

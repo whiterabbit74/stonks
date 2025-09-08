@@ -121,6 +121,37 @@ fi
 rm "${ARCHIVE_NAME}" build-info.json
 
 echo ""
+# 9. ОТПРАВКА УВЕДОМЛЕНИЯ В TELEGRAM
+echo "📨 Отправка уведомления в Telegram..."
+
+# Получаем настройки с сервера
+TELEGRAM_SETTINGS=$(curl -s "https://tradingibs.site/api/settings" | grep -o '"telegram":{[^}]*}' | sed 's/"telegram"://') || true
+
+if [ -n "$TELEGRAM_SETTINGS" ]; then
+    BOT_TOKEN=$(echo "$TELEGRAM_SETTINGS" | grep -o '"botToken":"[^"]*"' | cut -d'"' -f4)
+    CHAT_ID=$(echo "$TELEGRAM_SETTINGS" | grep -o '"chatId":"[^"]*"' | cut -d'"' -f4)
+    
+    if [ -n "$BOT_TOKEN" ] && [ -n "$CHAT_ID" ] && [ "$BOT_TOKEN" != "" ] && [ "$CHAT_ID" != "" ]; then
+        MESSAGE="🚀 Сервер обновлен!"
+        MESSAGE="$MESSAGE%0A%0A📱 Версия: ${GIT_COMMIT}"
+        MESSAGE="$MESSAGE%0A🕰 Дата: ${GIT_DATE}"
+        MESSAGE="$MESSAGE%0A🌐 Сайт: https://tradingibs.site"
+        MESSAGE="$MESSAGE%0A%0A✅ Развертывание завершено!"
+        
+        curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+             -d "chat_id=${CHAT_ID}" \
+             -d "text=${MESSAGE}" \
+             -d "parse_mode=HTML" > /dev/null 2>&1 || echo "⚠️  Не удалось отправить сообщение в Telegram"
+        
+        echo "✅ Уведомление отправлено в Telegram!"
+    else
+        echo "⚠️  Telegram настройки не настроены"
+    fi
+else
+    echo "⚠️  Не удалось получить Telegram настройки"
+fi
+
+echo ""
 echo "🎉 РАЗВЕРТЫВАНИЕ ЗАВЕРШЕНО!"
 echo "📋 Версия: ${GIT_COMMIT} от ${GIT_DATE}"
 echo "🌐 Сайт: https://tradingibs.site"
@@ -131,3 +162,4 @@ echo "   ✅ Полная очистка старых файлов"
 echo "   ✅ Пересборка контейнеров без кэша"
 echo "   ✅ Проверка целостности сборки"
 echo "   ✅ Метаданные о версии сохранены"
+echo "   ✅ Уведомление отправлено в Telegram"

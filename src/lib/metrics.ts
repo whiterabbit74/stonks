@@ -121,9 +121,15 @@ export class MetricsCalculator {
 
   /**
    * Calculate Compound Annual Growth Rate (CAGR)
+   * Исправлена проблема завышенных значений для периодов < 1 года
    */
   private calculateCAGR(finalValue: number, years: number): number {
     if (this.initialCapital <= 0 || years <= 0) return 0;
+    
+    // Для периодов менее года не аннуализируем CAGR
+    if (years < 1) {
+      return ((finalValue - this.initialCapital) / this.initialCapital) * 100;
+    }
     
     const cagr = (Math.pow(finalValue / this.initialCapital, 1 / years) - 1) * 100;
     
@@ -356,15 +362,16 @@ export class MetricsCalculator {
 
   /**
    * Calculate trading period in years
+   * Исправлена проблема с некорректными расчетами для коротких периодов
    */
   private getTradingPeriodYears(): number {
-    if (this.equity.length < 2) return 1;
+    if (this.equity.length < 2) return 1/365.25; // 1 день
     
     const startDate = this.equity[0].date;
     const endDate = this.equity[this.equity.length - 1].date;
-    const daysDiff = (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24);
+    const daysDiff = Math.max(1, (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
     
-    return Math.max(daysDiff / 365.25, 1/365.25); // Minimum 1 day
+    return daysDiff / 365.25;
   }
 
   /**

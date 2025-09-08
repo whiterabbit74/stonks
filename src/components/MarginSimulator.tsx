@@ -27,14 +27,14 @@ function simulateLeverage(equity: EquityPoint[], leverage: number): SimulationRe
   }
 
   const result: EquityPoint[] = [];
-  const prevValue = equity[0].value;
-  let currentValue = prevValue;
+  let currentValue = equity[0].value;
   let peakValue = currentValue;
   let maxDD = 0;
   result.push({ date: equity[0].date, value: currentValue, drawdown: 0 });
 
   let marginCall = false;
   let marginCallDate: Date | undefined = undefined;
+  const marginCallThreshold = equity[0].value * 0.3; // 30% от начального капитала
 
   for (let i = 1; i < equity.length; i++) {
     const basePrev = equity[i - 1].value;
@@ -44,10 +44,23 @@ function simulateLeverage(equity: EquityPoint[], leverage: number): SimulationRe
     const leveragedReturn = baseReturn * leverage;
     currentValue = currentValue * (1 + leveragedReturn);
 
-    if (currentValue <= 0) {
-      currentValue = 0;
+    // Проверка margin call - частичная ликвидация вместо полного обнуления
+    if (currentValue <= marginCallThreshold && !marginCall) {
+      // Частичная ликвидация: снижаем плечо до 1x и восстанавливаем до безопасного уровня
+      currentValue = Math.max(marginCallThreshold, currentValue * 0.5);
       marginCall = true;
       marginCallDate = equity[i].date;
+    }
+    
+    // После margin call используем плечо 1x
+    if (marginCall) {
+      // Пересчитываем с плечом 1x после margin call
+      currentValue = currentValue * (1 + baseReturn);
+    }
+
+    // Полное обнуление только при экстремальных потерях
+    if (currentValue <= 0) {
+      currentValue = 0;
       maxDD = 100;
       result.push({ date: equity[i].date, value: currentValue, drawdown: 100 });
       break;
@@ -140,7 +153,7 @@ export function MarginSimulator({ equity }: MarginSimulatorProps) {
         </div>
         {marginCall && (
           <div className="px-3 py-2 rounded border border-red-300 bg-red-50 text-red-800 dark:bg-red-900/30 dark:border-red-800 dark:text-red-200">
-            Margin call: баланс ушёл в ноль{marginDate ? ` (${new Date(marginDate).toLocaleDateString('ru-RU')})` : ''}
+            Margin call: частичная ликвидация{marginDate ? ` (${new Date(marginDate).toLocaleDateString('ru-RU')})` : ''}
           </div>
         )}
       </div>
