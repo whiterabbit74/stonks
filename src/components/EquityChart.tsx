@@ -179,6 +179,23 @@ export function EquityChart({ equity, hideHeader }: EquityChartProps) {
   const finalValue = equity[equity.length - 1]?.value ?? 0;
   const startDate = equity[0]?.date ? new Date(equity[0].date).toLocaleDateString('ru-RU') : '';
   const endDate = equity[equity.length - 1]?.date ? new Date(equity[equity.length - 1].date).toLocaleDateString('ru-RU') : '';
+  
+  // Рассчитываем годовые проценты (CAGR) с учетом сложного процента
+  const annualReturn = (() => {
+    if (equity.length < 2) return 0;
+    const initialValue = equity[0]?.value ?? 0;
+    if (initialValue <= 0) return 0;
+    
+    const startDateObj = equity[0]?.date ? new Date(equity[0].date) : null;
+    const endDateObj = equity[equity.length - 1]?.date ? new Date(equity[equity.length - 1].date) : null;
+    
+    if (!startDateObj || !endDateObj) return 0;
+    
+    const daysDiff = (endDateObj.getTime() - startDateObj.getTime()) / (1000 * 60 * 60 * 24);
+    const years = Math.max(daysDiff / 365.25, 1/365.25); // Минимум 1 день
+    
+    return (Math.pow(finalValue / initialValue, 1 / years) - 1) * 100;
+  })();
 
   // Функция для форматирования валюты в долларах с разделителями тысяч
   const formatCurrency = (value: number): string => {
@@ -202,6 +219,9 @@ export function EquityChart({ equity, hideHeader }: EquityChartProps) {
               <span className="text-gray-700 dark:text-gray-200">Период: {startDate} — {endDate}</span>
             </div>
           )}
+          <div className="bg-blue-50 px-3 py-2 rounded border border-blue-200 dark:bg-blue-950/30 dark:border-blue-900/40">
+            <span className="text-blue-700 dark:text-blue-300">Годовые проценты: {annualReturn.toFixed(2)}%</span>
+          </div>
         </div>
       )}
       <div ref={chartContainerRef} className="w-full h-[600px] min-h-0 overflow-hidden" />

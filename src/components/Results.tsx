@@ -45,6 +45,17 @@ function simulateLeverageForEquity(equity: EquityPoint[], leverage: number): Equ
   }
 }
 
+// Функция для красивого форматирования денежных сумм
+function formatMoney(value: number): string {
+  if (value >= 1_000_000) {
+    return `$${(value / 1_000_000).toFixed(2)}M`;
+  } else if (value >= 1_000) {
+    return `$${(value / 1_000).toFixed(1)}K`;
+  } else {
+    return `$${value.toFixed(2)}`;
+  }
+}
+
 export function Results() {
   const backtestResults = useAppStore((s) => s.backtestResults);
   const marketData = useAppStore((s) => s.marketData);
@@ -431,6 +442,11 @@ export function Results() {
 
   const { metrics, trades, equity } = backtestResults;
   
+  // Расчет дополнительных метрик
+  const initialCapital = Number(currentStrategy?.riskManagement?.initialCapital ?? 10000);
+  const finalValue = equity.length > 0 ? equity[equity.length - 1].value : initialCapital;
+  const totalReturn = ((finalValue - initialCapital) / initialCapital) * 100;
+  
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Верхний блок: символ слева, правая панель с мини-графиком/ценами и кнопку мониторинга */}
@@ -630,6 +646,20 @@ export function Results() {
                 <div className="text-xs text-gray-500 dark:text-gray-300">Сделок</div>
                 <div className="text-base font-semibold dark:text-gray-100">{(metrics.totalTrades ?? trades.length).toString()}</div>
               </div>
+              
+              {/* Новые метрики */}
+              <div className="rounded-lg border p-2 bg-blue-50 dark:bg-blue-900/30 dark:border-blue-800">
+                <div className="text-xs text-blue-600 dark:text-blue-300">Годовые %</div>
+                <div className="text-base font-semibold text-blue-700 dark:text-blue-200">{metrics.cagr.toFixed(2)}%</div>
+              </div>
+              <div className="rounded-lg border p-2 bg-green-50 dark:bg-green-900/30 dark:border-green-800">
+                <div className="text-xs text-green-600 dark:text-green-300">Общая доходность</div>
+                <div className="text-base font-semibold text-green-700 dark:text-green-200">{totalReturn.toFixed(2)}%</div>
+              </div>
+              <div className="rounded-lg border p-2 bg-emerald-50 dark:bg-emerald-900/30 dark:border-emerald-800">
+                <div className="text-xs text-emerald-600 dark:text-emerald-300">Итого капитал</div>
+                <div className="text-base font-semibold text-emerald-700 dark:text-emerald-200">{formatMoney(finalValue)}</div>
+              </div>
             </div>
           </div>
           {/* Подсказки под правым блоком */}
@@ -676,30 +706,6 @@ export function Results() {
               <h2 className="text-lg sm:text-xl font-semibold text-gray-900 dark:text-gray-100">Аналитика сделок</h2>
             </div>
             
-            {/* Strategy summary - показывается только один раз */}
-            <div className="mb-4 text-xs text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded px-3 py-2">
-              {(() => {
-                const low = Number(currentStrategy?.parameters?.lowIBS ?? 0.1);
-                const high = Number(currentStrategy?.parameters?.highIBS ?? 0.75);
-                const hold = Number(
-                  typeof currentStrategy?.parameters?.maxHoldDays === 'number'
-                    ? currentStrategy?.parameters?.maxHoldDays
-                    : currentStrategy?.riskManagement?.maxHoldDays ?? 30
-                );
-                const useSL = !!currentStrategy?.riskManagement?.useStopLoss;
-                const useTP = !!currentStrategy?.riskManagement?.useTakeProfit;
-                const sl = Number(currentStrategy?.riskManagement?.stopLoss ?? 0);
-                const tp = Number(currentStrategy?.riskManagement?.takeProfit ?? 0);
-                return (
-                  <div>
-                    <span className="font-semibold">Стратегия IBS:</span>{' '}
-                    <span>Вход — IBS &lt; {low}; </span>
-                    <span>Выход — IBS &gt; {high} или по истечении {hold} дней.</span>{' '}
-                    <span className="ml-2">SL: {useSL ? `${sl}%` : 'выкл'}, TP: {useTP ? `${tp}%` : 'выкл'}</span>
-                  </div>
-                );
-              })()}
-            </div>
             <div className="horizontal-scroll pb-2">
               <div className="flex items-center gap-2 flex-nowrap min-w-max px-1">
               <button className={`${activeChart === 'price' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/30 dark:border-blue-900/40 dark:text-blue-200' : 'bg-white border-gray-200 text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'} px-3 py-1.5 rounded border`} onClick={() => setActiveChart('price')}>Цена</button>
@@ -725,7 +731,33 @@ export function Results() {
               </div>
             )}
             {activeChart === 'equity' && (
-              <EquityChart equity={equity} />
+              <div className="space-y-4">
+                {/* Strategy summary - показывается только во вкладке Equity */}
+                <div className="text-xs text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded px-3 py-2">
+                  {(() => {
+                    const low = Number(currentStrategy?.parameters?.lowIBS ?? 0.1);
+                    const high = Number(currentStrategy?.parameters?.highIBS ?? 0.75);
+                    const hold = Number(
+                      typeof currentStrategy?.parameters?.maxHoldDays === 'number'
+                        ? currentStrategy?.parameters?.maxHoldDays
+                        : currentStrategy?.riskManagement?.maxHoldDays ?? 30
+                    );
+                    const useSL = !!currentStrategy?.riskManagement?.useStopLoss;
+                    const useTP = !!currentStrategy?.riskManagement?.useTakeProfit;
+                    const sl = Number(currentStrategy?.riskManagement?.stopLoss ?? 0);
+                    const tp = Number(currentStrategy?.riskManagement?.takeProfit ?? 0);
+                    return (
+                      <div>
+                        <span className="font-semibold">Стратегия IBS:</span>{' '}
+                        <span>Вход — IBS &lt; {low}; </span>
+                        <span>Выход — IBS &gt; {high} или по истечении {hold} дней.</span>{' '}
+                        <span className="ml-2">SL: {useSL ? `${sl}%` : 'выкл'}, TP: {useTP ? `${tp}%` : 'выкл'}</span>
+                      </div>
+                    );
+                  })()}
+                </div>
+                <EquityChart equity={equity} />
+              </div>
             )}
             {activeChart === 'buyhold' && (
               <div className="space-y-4">

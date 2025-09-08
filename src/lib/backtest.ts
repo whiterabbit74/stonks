@@ -377,11 +377,11 @@ export class BacktestEngine {
         return commission.fixed || 0;
       
       case 'percentage':
-        return tradeValue * (commission.percentage || 0);
+        return tradeValue * ((commission.percentage || 0) / 100);
       
       case 'combined': {
         const fixedPart = commission.fixed || 0;
-        const percentagePart = tradeValue * (commission.percentage || 0);
+        const percentagePart = tradeValue * ((commission.percentage || 0) / 100);
         return fixedPart + percentagePart;
       }
       

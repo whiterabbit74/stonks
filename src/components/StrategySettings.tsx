@@ -32,6 +32,19 @@ export function StrategySettings({ strategy, onSave, onClose, mode = 'modal' }: 
     }));
   };
 
+  const handleCommissionChange = (key: string, value: number | string) => {
+    setEditedStrategy(prev => ({
+      ...prev,
+      riskManagement: {
+        ...prev.riskManagement,
+        commission: {
+          ...prev.riskManagement.commission,
+          [key]: value
+        }
+      }
+    }));
+  };
+
   const handleSave = async () => {
     onSave(editedStrategy);
     onClose();
@@ -191,6 +204,62 @@ export function StrategySettings({ strategy, onSave, onClose, mode = 'modal' }: 
                 <span className="text-sm text-gray-500">%</span>
               </div>
             </div>
+
+            {/* Комиссии */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Тип комиссии
+              </label>
+              <select
+                value={editedStrategy.riskManagement.commission.type}
+                onChange={(e) => handleCommissionChange('type', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md"
+              >
+                <option value="percentage">Процент от стоимости сделки</option>
+                <option value="fixed">Фиксированная сумма в долларах</option>
+                <option value="combined">Комбинированная (фикс. + процент)</option>
+              </select>
+            </div>
+
+            {(editedStrategy.riskManagement.commission.type === 'percentage' || editedStrategy.riskManagement.commission.type === 'combined') && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Комиссия в процентах (%)
+                </label>
+                <p className="text-xs text-gray-500 mb-2">
+                  Процент от стоимости сделки (например: 0.1% = 0.1)
+                </p>
+                <input
+                  type="number"
+                  min={0}
+                  max={10}
+                  step={0.01}
+                  value={editedStrategy.riskManagement.commission.percentage || 0}
+                  onChange={(e) => handleCommissionChange('percentage', Number(e.target.value))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                />
+              </div>
+            )}
+
+            {(editedStrategy.riskManagement.commission.type === 'fixed' || editedStrategy.riskManagement.commission.type === 'combined') && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Фиксированная комиссия ($)
+                </label>
+                <p className="text-xs text-gray-500 mb-2">
+                  Фиксированная сумма за каждую сделку в долларах
+                </p>
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  step={0.01}
+                  value={editedStrategy.riskManagement.commission.fixed || 0}
+                  onChange={(e) => handleCommissionChange('fixed', Number(e.target.value))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                />
+              </div>
+            )}
           </div>
         </div>
       </div>

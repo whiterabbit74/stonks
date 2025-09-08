@@ -81,9 +81,14 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
       });
 
       // Indicator price scale occupies bottom X% of the pane
-      const indicatorFraction = Math.max(0, Math.min(0.4, (indicatorPanePercent || 7) / 100));
-      const topMargin = 1 - indicatorFraction; // e.g. 0.93 when 7%
-      try { chart.priceScale('indicator').applyOptions({ scaleMargins: { top: topMargin, bottom: 0 }, borderColor: border }); } catch {
+      const indicatorFraction = Math.max(0.05, Math.min(0.2, (indicatorPanePercent || 10) / 100));
+      const topMargin = 1 - indicatorFraction; // e.g. 0.90 when 10%
+      try { 
+        chart.priceScale('indicator').applyOptions({ 
+          scaleMargins: { top: topMargin, bottom: 0.02 }, 
+          borderColor: border 
+        }); 
+      } catch {
         // Ignore indicator scale options errors
       }
 

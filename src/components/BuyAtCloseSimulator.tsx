@@ -208,7 +208,7 @@ export function BuyAtCloseSimulator({ data, strategy }: BuyAtCloseSimulatorProps
 
       <div className="text-xs text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-800 border dark:border-gray-700 rounded px-3 py-2">
         <span className="font-semibold">Стратегия:</span>{' '}
-        Вход — IBS &lt; {Number(effectiveStrategy.parameters.lowIBS ?? 0.1)} на закрытии дня;{' '}
+        Вход — IBS &lt; {Number(effectiveStrategy.parameters.lowIBS ?? 0.1)} на открытии следующего дня;{' '}
         Выход — IBS &gt; {Number(effectiveStrategy.parameters.highIBS ?? 0.75)} или по истечении {Number(effectiveStrategy.parameters.maxHoldDays ?? effectiveStrategy.riskManagement.maxHoldDays ?? 30)} дней.
       </div>
 

@@ -33,7 +33,7 @@ export class CleanBacktestEngine {
     this.strategy = strategy;
     this.currentCapital = strategy.riskManagement.initialCapital;
     this.options = {
-      entryExecution: options?.entryExecution ?? 'nextOpen',
+      entryExecution: options?.entryExecution ?? 'close',
       ignoreMaxHoldDaysExit: options?.ignoreMaxHoldDaysExit ?? false,
       ibsExitRequireAboveEntry: options?.ibsExitRequireAboveEntry ?? false,
       splits: options?.splits ?? []

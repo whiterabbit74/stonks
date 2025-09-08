@@ -74,7 +74,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   resultsRefreshProvider: 'finnhub',
   enhancerProvider: 'alpha_vantage',
   watchThresholdPct: 5,
-  indicatorPanePercent: 7,
+  indicatorPanePercent: 10,
   currentStrategy: null,
   backtestResults: null,
   backtestStatus: 'idle',
@@ -87,7 +87,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         resultsQuoteProvider: s.resultsQuoteProvider,
         enhancerProvider: s.enhancerProvider,
         resultsRefreshProvider: s.resultsRefreshProvider || s.resultsQuoteProvider,
-        indicatorPanePercent: typeof s.indicatorPanePercent === 'number' ? s.indicatorPanePercent : 7,
+        indicatorPanePercent: typeof s.indicatorPanePercent === 'number' ? s.indicatorPanePercent : 10,
       });
     } catch (e) {
       console.warn('Failed to load app settings:', e instanceof Error ? e.message : e);
