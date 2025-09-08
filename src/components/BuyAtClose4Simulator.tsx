@@ -31,73 +31,193 @@ async function loadAdjustedDataset(ticker: string): Promise<OHLCData[]> {
   return dedupeDailyOHLC(adjustOHLCForSplits(ds.data as unknown as OHLCData[], splits));
 }
 
-function runSingleTickerBacktest(data: OHLCData[], strategy: Strategy, ticker: string): { equity: EquityPoint[], finalValue: number, maxDrawdown: number, trades: Trade[] } {
-  if (!data || data.length === 0) {
+function runMultiTickerBacktest(tickersData: Array<{ticker: string, data: OHLCData[]}>, strategy: Strategy, margins: string[]): { equity: EquityPoint[], finalValue: number, maxDrawdown: number, trades: Trade[] } {
+  if (!tickersData || tickersData.length === 0) {
     return { equity: [], finalValue: 0, maxDrawdown: 0, trades: [] };
   }
-  const options: CleanBacktestOptions = {
-    entryExecution: 'close',
-    ignoreMaxHoldDaysExit: false,
-    ibsExitRequireAboveEntry: false
-  };
-  const engine = new CleanBacktestEngine(data, strategy, options);
-  const res = engine.runBacktest();
   
-  // Добавляем информацию о тикере к сделкам
-  const tradesWithTicker = res.trades.map(trade => ({
-    ...trade,
-    context: { ...trade.context, ticker }
-  }));
+  const initialCapital = Number(strategy?.riskManagement?.initialCapital ?? 10000);
+  let currentCapital = initialCapital;
+  const trades: Trade[] = [];
+  const equity: EquityPoint[] = [];
+  const positions: Array<{ticker: string, entryDate: Date, entryPrice: number, quantity: number, entryIndex: number} | null> = new Array(tickersData.length).fill(null);
   
-  const equity = res.equity;
-  const finalValue = equity.length ? equity[equity.length - 1].value : Number(strategy?.riskManagement?.initialCapital ?? 0);
-  const maxDrawdown = equity.length ? Math.max(...equity.map(p => p.drawdown)) : 0;
-  return { equity, finalValue, maxDrawdown, trades: tradesWithTicker };
-}
-
-function combineEquityCurves(equityCurves: EquityPoint[][]): EquityPoint[] {
-  if (equityCurves.length === 0) return [];
-  
-  // Собираем все уникальные даты
+  // Создаем единую временную шкалу из всех тикеров
   const allDates = new Set<number>();
-  equityCurves.forEach(curve => {
-    curve.forEach(point => allDates.add(point.date.getTime()));
+  tickersData.forEach(({data}) => {
+    data.forEach(bar => allDates.add(bar.date.getTime()));
   });
-  
   const sortedDates = Array.from(allDates).sort((a, b) => a - b);
   
-  const combined: EquityPoint[] = [];
-  let lastValues = new Array(equityCurves.length).fill(0);
+  // Рассчитываем IBS для всех тикеров
+  const ibsData = tickersData.map(({data}) => {
+    const ibsValues = data.map(bar => {
+      const range = bar.high - bar.low;
+      if (range === 0) return NaN; // Избегаем деления на ноль
+      return (bar.close - bar.low) / range;
+    });
+    return ibsValues;
+  });
   
+  const lowIBS = Number(strategy.parameters.lowIBS ?? 0.1);
+  const highIBS = Number(strategy.parameters.highIBS ?? 0.75);
+  const maxHoldDays = Number(strategy.parameters.maxHoldDays ?? 30);
+  
+  // Проходим по каждой дате
   for (const dateTime of sortedDates) {
     const date = new Date(dateTime);
-    let totalValue = 0;
+    let totalPortfolioValue = currentCapital;
     
-    // Для каждой кривой находим значение на эту дату или берем последнее известное
-    equityCurves.forEach((curve, idx) => {
-      const pointForDate = curve.find(p => p.date.getTime() === dateTime);
-      if (pointForDate) {
-        lastValues[idx] = pointForDate.value;
+    // Для каждого тикера проверяем, есть ли данные на эту дату
+    for (let tickerIdx = 0; tickerIdx < tickersData.length; tickerIdx++) {
+      const {ticker, data} = tickersData[tickerIdx];
+      const barIdx = data.findIndex(bar => bar.date.getTime() === dateTime);
+      if (barIdx === -1) continue; // Нет данных на эту дату для этого тикера
+      
+      const bar = data[barIdx];
+      const ibs = ibsData[tickerIdx][barIdx];
+      const position = positions[tickerIdx];
+      const marginFactor = Math.max(0, Number(margins[tickerIdx] || '100') / 100) || 1;
+      
+      // Если есть открытая позиция - проверяем условия выхода
+      if (position) {
+        const daysSinceEntry = Math.floor((date.getTime() - position.entryDate.getTime()) / (1000 * 60 * 60 * 24));
+        let shouldExit = false;
+        let exitReason = '';
+        
+        // Проверяем условия выхода
+        if (!isNaN(ibs) && ibs > highIBS) {
+          shouldExit = true;
+          exitReason = 'ibs_signal';
+        } else if (daysSinceEntry >= maxHoldDays) {
+          shouldExit = true;
+          exitReason = 'max_hold_days';
+        }
+        
+        if (shouldExit) {
+          // Закрываем позицию
+          const exitPrice = bar.close;
+          const grossProceeds = position.quantity * exitPrice;
+          const pnl = (exitPrice - position.entryPrice) * position.quantity;
+          const pnlPercent = (pnl / (position.quantity * position.entryPrice)) * 100;
+          
+          // Обновляем общий капитал
+          currentCapital += grossProceeds;
+          
+          // Создаем запись о сделке
+          const trade: Trade = {
+            entryDate: position.entryDate,
+            exitDate: date,
+            entryPrice: position.entryPrice,
+            exitPrice: exitPrice,
+            quantity: position.quantity,
+            pnl: pnl,
+            pnlPercent: pnlPercent,
+            exitReason: exitReason,
+            context: { ticker }
+          };
+          
+          trades.push(trade);
+          positions[tickerIdx] = null; // Закрываем позицию
+          
+          console.log(`🔴 EXIT ${ticker}: ${position.quantity} shares at $${exitPrice.toFixed(2)}, P&L: $${pnl.toFixed(2)} (${pnlPercent.toFixed(2)}%), Reason: ${exitReason}`);
+        } else {
+          // Позиция остается открытой, добавляем ее стоимость к портфелю
+          const positionValue = position.quantity * bar.close;
+          totalPortfolioValue += positionValue - (position.quantity * position.entryPrice);
+        }
+      } else {
+        // Нет позиции - проверяем условия входа
+        if (!isNaN(ibs) && ibs < lowIBS && currentCapital > 0) {
+          // Сигнал входа - используем 1/4 от текущего капитала
+          const investmentAmount = currentCapital * 0.25;
+          const quantity = Math.floor(investmentAmount / bar.close);
+          
+          if (quantity > 0) {
+            const totalCost = quantity * bar.close;
+            
+            // Открываем позицию
+            positions[tickerIdx] = {
+              ticker,
+              entryDate: date,
+              entryPrice: bar.close,
+              quantity: quantity,
+              entryIndex: barIdx
+            };
+            
+            // Вычитаем стоимость из общего капитала
+            currentCapital -= totalCost;
+            
+            console.log(`🟢 ENTRY ${ticker}: ${quantity} shares at $${bar.close.toFixed(2)}, IBS=${ibs.toFixed(3)}, Investment: $${totalCost.toFixed(2)}, Remaining capital: $${currentCapital.toFixed(2)}`);
+          }
+        }
       }
-      totalValue += lastValues[idx];
+    }
+    
+    // Рассчитываем общую стоимость портфеля на эту дату
+    totalPortfolioValue = currentCapital;
+    positions.forEach((pos, idx) => {
+      if (pos) {
+        const tickerData = tickersData[idx].data;
+        const barIdx = tickerData.findIndex(bar => bar.date.getTime() === dateTime);
+        if (barIdx !== -1) {
+          const currentPrice = tickerData[barIdx].close;
+          totalPortfolioValue += pos.quantity * currentPrice;
+        }
+      }
     });
     
-    combined.push({
+    // Добавляем точку equity
+    equity.push({
       date,
-      value: totalValue,
-      drawdown: 0 // Будет пересчитан позже
+      value: totalPortfolioValue,
+      drawdown: 0 // Будет рассчитано позже
     });
   }
   
-  // Пересчитываем drawdown для объединенной кривой
-  let peak = combined[0]?.value || 0;
-  combined.forEach(point => {
+  // Закрываем все оставшиеся позиции в конце
+  for (let tickerIdx = 0; tickerIdx < positions.length; tickerIdx++) {
+    const position = positions[tickerIdx];
+    if (position) {
+      const {ticker, data} = tickersData[tickerIdx];
+      const lastBar = data[data.length - 1];
+      const exitPrice = lastBar.close;
+      const grossProceeds = position.quantity * exitPrice;
+      const pnl = (exitPrice - position.entryPrice) * position.quantity;
+      const pnlPercent = (pnl / (position.quantity * position.entryPrice)) * 100;
+      
+      currentCapital += grossProceeds;
+      
+      const trade: Trade = {
+        entryDate: position.entryDate,
+        exitDate: lastBar.date,
+        entryPrice: position.entryPrice,
+        exitPrice: exitPrice,
+        quantity: position.quantity,
+        pnl: pnl,
+        pnlPercent: pnlPercent,
+        exitReason: 'end_of_data',
+        context: { ticker }
+      };
+      
+      trades.push(trade);
+    }
+  }
+  
+  // Рассчитываем drawdown
+  let peak = equity[0]?.value || initialCapital;
+  equity.forEach(point => {
     if (point.value > peak) peak = point.value;
     point.drawdown = peak > 0 ? ((peak - point.value) / peak) * 100 : 0;
   });
   
-  return combined;
+  const finalValue = equity.length > 0 ? equity[equity.length - 1].value : initialCapital;
+  const maxDrawdown = equity.length > 0 ? Math.max(...equity.map(p => p.drawdown)) : 0;
+  
+  return { equity, finalValue, maxDrawdown, trades };
 }
+
+// Функция больше не нужна, так как мы используем единый портфель
 
 export function BuyAtClose4Simulator({ strategy, defaultTickers }: BuyAtClose4SimulatorProps) {
   const savedDatasets = useAppStore((s) => s.savedDatasets);
@@ -219,61 +339,27 @@ export function BuyAtClose4Simulator({ strategy, defaultTickers }: BuyAtClose4Si
       }
     };
 
-    const allTrades: Trade[] = [];
-    const allEquityCurves: EquityPoint[][] = [];
-    let totalFinalValue = 0;
-    let maxDrawdownOverall = 0;
+    // Подготавливаем данные для мульти-тикерного бэктеста
+    const validTickersData = selectedTickers
+      .map((ticker, index) => {
+        if (!ticker || !loaded[ticker] || loaded[ticker].length === 0) return null;
+        const data = loaded[ticker].slice().sort((a: OHLCData, b: OHLCData) => a.date.getTime() - b.date.getTime());
+        return { ticker, data, index };
+      })
+      .filter((item): item is {ticker: string, data: OHLCData[], index: number} => item !== null);
     
-    // Для каждого выбранного тикера запускаем отдельный backtest
-    selectedTickers.forEach((ticker, index) => {
-      if (!ticker || !loaded[ticker] || loaded[ticker].length === 0) return;
-      
-      const data = loaded[ticker].slice().sort((a: OHLCData, b: OHLCData) => a.date.getTime() - b.date.getTime());
-      
-      // Создаем стратегию с капиталом в 1/4 от общего (или 1/N от общего, где N - количество выбранных тикеров)
-      const quarterCapital = initialCapital / selectedTickers.filter(t => t && loaded[t] && loaded[t].length > 0).length;
-      const tickerStrategy: Strategy = {
-        ...effectiveStrategy,
-        riskManagement: {
-          ...effectiveStrategy.riskManagement,
-          initialCapital: quarterCapital
-        }
-      };
-      
-      // Запускаем backtest для этого тикера
-      const result = runSingleTickerBacktest(data, tickerStrategy, ticker);
-      
-      // Применяем маржинальность к этому тикеру
-      const marginFactor = Math.max(0, Number(margins[index] || '100') / 100) || 1;
-      const leveragedEquity = result.equity.map(point => ({
-        ...point,
-        value: point.value * marginFactor
-      }));
-      const leveragedFinalValue = result.finalValue * marginFactor;
-      const leveragedMaxDrawdown = result.maxDrawdown * marginFactor;
-      
-      // Добавляем результаты
-      allEquityCurves.push(leveragedEquity);
-      allTrades.push(...result.trades);
-      totalFinalValue += leveragedFinalValue;
-      maxDrawdownOverall = Math.max(maxDrawdownOverall, leveragedMaxDrawdown);
-    });
+    if (validTickersData.length === 0) {
+      return { equity: [] as EquityPoint[], finalValue: 0, maxDrawdown: 0, trades: [] as Trade[] };
+    }
     
-    // Сортируем сделки по дате
-    allTrades.sort((a, b) => a.entryDate.getTime() - b.entryDate.getTime());
+    // Запускаем единый мульти-тикерный бэктест
+    const result = runMultiTickerBacktest(
+      validTickersData.map(({ticker, data}) => ({ticker, data})), 
+      effectiveStrategy, 
+      margins
+    );
     
-    // Объединяем equity curves всех тикеров
-    const combinedEquity = combineEquityCurves(allEquityCurves);
-    
-    // Пересчитываем общую максимальную просадку из объединенной кривой
-    const actualMaxDrawdown = combinedEquity.length > 0 ? Math.max(...combinedEquity.map(p => p.drawdown)) : 0;
-
-    return {
-      equity: combinedEquity,
-      finalValue: totalFinalValue,
-      maxDrawdown: actualMaxDrawdown,
-      trades: allTrades
-    };
+    return result;
   }, [tickers, loaded, lowIbs, highIbs, maxHold, initialCapital, margins, strategy]);
 
   const start = simulation.equity[0]?.date ? new Date(simulation.equity[0].date).toLocaleDateString('ru-RU') : '';
@@ -364,10 +450,10 @@ export function BuyAtClose4Simulator({ strategy, defaultTickers }: BuyAtClose4Si
       
       {/* Описание стратегии */}
       <div className="text-xs text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-800 border dark:border-gray-700 rounded px-3 py-2">
-        <span className="font-semibold">Стратегия "Покупка на закрытии 4":</span>{' '}
-        Капитал делится поровну между выбранными тикерами (по 1/{(() => { const validTickers = (tickers || []).filter((t, i) => t && loaded[t] && loaded[t].length > 0); return validTickers.length || 1; })()} от общего капитала на каждый тикер).{' '}
-        Для каждого тикера независимо: вход — IBS &lt; {Number(lowIbs)}; выход — IBS &gt; {Number(highIbs)} или по истечении {Number(maxHold)} дней.{' '}
-        Маржинальность применяется к каждому тикеру отдельно.
+        <span className="font-semibold">Стратегия "Покупка на закрытии 4" (единый портфель):</span>{' '}
+        Используется единый общий баланс. При получении сигнала на любой акции тратится 25% от текущего доступного капитала.{' '}
+        Вход — IBS &lt; {Number(lowIbs)}; выход — IBS &gt; {Number(highIbs)} или по истечении {Number(maxHold)} дней.{' '}
+        Все позиции влияют на общий капитал портфеля.
       </div>
 
 
