@@ -139,6 +139,22 @@ export function BuyAtCloseSimulator({ data, strategy }: BuyAtCloseSimulatorProps
 
   const leveraged = useMemo(() => simulateLeverage(equity, appliedLeverage), [equity, appliedLeverage]);
 
+  // Рассчитываем годовые проценты
+  const annualReturn = useMemo(() => {
+    if (leveraged.equity.length > 1) {
+      const initialCapital = Number(strategy?.riskManagement?.initialCapital ?? 10000);
+      const finalValue = leveraged.finalValue;
+      const startDate = leveraged.equity[0].date;
+      const endDate = leveraged.equity[leveraged.equity.length - 1].date;
+      const years = (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24 * 365.25);
+      
+      if (years > 0 && initialCapital > 0) {
+        return (Math.pow(finalValue / initialCapital, 1 / years) - 1) * 100;
+      }
+    }
+    return 0;
+  }, [leveraged.equity, leveraged.finalValue, strategy]);
+
   if (!effectiveStrategy) {
     return (
       <div className="text-sm text-gray-500">Нет стратегии для симуляции</div>
@@ -182,6 +198,7 @@ export function BuyAtCloseSimulator({ data, strategy }: BuyAtCloseSimulatorProps
         </button>
         <div className="text-xs text-gray-500 dark:text-gray-300 ml-auto flex gap-3">
           <span>Итог: {formatCurrencyUSD(leveraged.finalValue)}</span>
+          <span>Годовые проценты: {annualReturn.toFixed(2)}%</span>
           <span>Макс. просадка: {leveraged.maxDrawdown.toFixed(2)}%</span>
           <span>Сделок: {trades}</span>
           {(start && end) && <span>Период: {start} — {end}</span>}

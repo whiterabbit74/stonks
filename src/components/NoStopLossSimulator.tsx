@@ -3,6 +3,7 @@ import type { EquityPoint, OHLCData, Strategy, Trade } from '../types';
 import { EquityChart } from './EquityChart';
 import { CleanBacktestEngine, type CleanBacktestOptions } from '../lib/clean-backtest';
 import { TradesTable } from './TradesTable';
+import { MetricsCalculator } from '../lib/metrics';
 
 interface NoStopLossSimulatorProps {
   data: OHLCData[];
@@ -100,14 +101,30 @@ export function NoStopLossSimulator({ data, strategy }: NoStopLossSimulatorProps
   const [marginPctInput, setMarginPctInput] = useState<string>('100');
   const [appliedLeverage, setAppliedLeverage] = useState<number>(1);
 
-  const { simEquity, simMaxDD, simFinal } = useMemo(() => {
+  const { simEquity, simMaxDD, simFinal, annualReturn } = useMemo(() => {
     const sim = simulateLeverage(base.equity, appliedLeverage);
+    
+    // Рассчитываем годовые проценты
+    let annualReturn = 0;
+    if (sim.equity.length > 1) {
+      const initialCapital = Number(strategy?.riskManagement?.initialCapital ?? 10000);
+      const finalValue = sim.finalValue;
+      const startDate = sim.equity[0].date;
+      const endDate = sim.equity[sim.equity.length - 1].date;
+      const years = (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24 * 365.25);
+      
+      if (years > 0 && initialCapital > 0) {
+        annualReturn = (Math.pow(finalValue / initialCapital, 1 / years) - 1) * 100;
+      }
+    }
+    
     return {
       simEquity: sim.equity,
       simMaxDD: sim.maxDrawdown,
       simFinal: sim.finalValue,
+      annualReturn,
     };
-  }, [base.equity, appliedLeverage]);
+  }, [base.equity, appliedLeverage, strategy]);
 
   const onApply = () => {
     const pct = Number(marginPctInput);
@@ -181,6 +198,9 @@ export function NoStopLossSimulator({ data, strategy }: NoStopLossSimulatorProps
       <div className="flex flex-wrap gap-3 text-sm">
         <div className="bg-gray-50 px-3 py-2 rounded border dark:bg-gray-800 dark:border-gray-700">
           Итоговый депозит: {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(simFinal)}
+        </div>
+        <div className="bg-gray-50 px-3 py-2 rounded border dark:bg-gray-800 dark:border-gray-700">
+          Годовые проценты: {annualReturn.toFixed(2)}%
         </div>
         <div className="bg-gray-50 px-3 py-2 rounded border dark:bg-gray-800 dark:border-gray-700">
           Макс. просадка: {simMaxDD.toFixed(2)}%

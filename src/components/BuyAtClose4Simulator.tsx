@@ -245,6 +245,22 @@ export function BuyAtClose4Simulator({ strategy, defaultTickers }: BuyAtClose4Si
 
   const start = simulation.equity[0]?.date ? new Date(simulation.equity[0].date).toLocaleDateString('ru-RU') : '';
   const end = simulation.equity[simulation.equity.length - 1]?.date ? new Date(simulation.equity[simulation.equity.length - 1].date).toLocaleDateString('ru-RU') : '';
+  
+  // Рассчитываем годовые проценты
+  const annualReturn = useMemo(() => {
+    if (simulation.equity.length > 1) {
+      const initialCapital = Number(strategy?.riskManagement?.initialCapital ?? 10000);
+      const finalValue = simulation.finalValue;
+      const startDate = simulation.equity[0].date;
+      const endDate = simulation.equity[simulation.equity.length - 1].date;
+      const years = (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24 * 365.25);
+      
+      if (years > 0 && initialCapital > 0) {
+        return (Math.pow(finalValue / initialCapital, 1 / years) - 1) * 100;
+      }
+    }
+    return 0;
+  }, [simulation.equity, simulation.finalValue, strategy]);
 
   return (
     <div className="space-y-4">
@@ -303,6 +319,7 @@ export function BuyAtClose4Simulator({ strategy, defaultTickers }: BuyAtClose4Si
 
         <div className="text-xs text-gray-500 dark:text-gray-300 ml-auto flex gap-3">
           <span>Итог: {formatCurrencyUSD(simulation.finalValue)}</span>
+          <span>Годовые проценты: {annualReturn.toFixed(2)}%</span>
           <span>Макс. просадка: {simulation.maxDrawdown.toFixed(2)}%</span>
           <span>Сделок: {simulation.trades.length}</span>
           {(start && end) && <span>Период: {start} — {end}</span>}

@@ -67,15 +67,31 @@ export function MarginSimulator({ equity }: MarginSimulatorProps) {
   const [marginPctInput, setMarginPctInput] = useState<string>('200');
   const [appliedLeverage, setAppliedLeverage] = useState<number>(2);
 
-  const { simEquity, simMaxDD, simFinal, marginCall, marginDate } = useMemo(() => {
+  const { simEquity, simMaxDD, simFinal, marginCall, marginDate, annualReturn } = useMemo(() => {
     const leverage = appliedLeverage;
     const sim = simulateLeverage(equity, leverage);
+    
+    // Рассчитываем годовые проценты
+    let annualReturn = 0;
+    if (sim.equity.length > 1) {
+      const initialCapital = equity[0]?.value || 10000;
+      const finalValue = sim.finalValue;
+      const startDate = sim.equity[0].date;
+      const endDate = sim.equity[sim.equity.length - 1].date;
+      const years = (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24 * 365.25);
+      
+      if (years > 0 && initialCapital > 0) {
+        annualReturn = (Math.pow(finalValue / initialCapital, 1 / years) - 1) * 100;
+      }
+    }
+    
     return {
       simEquity: sim.equity,
       simMaxDD: sim.maxDrawdown,
       simFinal: sim.finalValue,
       marginCall: sim.marginCall,
       marginDate: sim.marginCallDate,
+      annualReturn
     };
   }, [equity, appliedLeverage]);
 
@@ -115,6 +131,9 @@ export function MarginSimulator({ equity }: MarginSimulatorProps) {
       <div className="flex flex-wrap gap-3 text-sm">
         <div className="bg-gray-50 px-3 py-2 rounded border dark:bg-gray-800 dark:border-gray-700">
           Итоговый депозит: {formatCurrency(simFinal)}
+        </div>
+        <div className="bg-gray-50 px-3 py-2 rounded border dark:bg-gray-800 dark:border-gray-700">
+          Годовые проценты: {annualReturn.toFixed(2)}%
         </div>
         <div className="bg-gray-50 px-3 py-2 rounded border dark:bg-gray-800 dark:border-gray-700">
           Макс. просадка: {simMaxDD.toFixed(2)}%
