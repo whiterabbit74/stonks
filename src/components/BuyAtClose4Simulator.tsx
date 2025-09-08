@@ -31,7 +31,7 @@ async function loadAdjustedDataset(ticker: string): Promise<OHLCData[]> {
   return dedupeDailyOHLC(adjustOHLCForSplits(ds.data as unknown as OHLCData[], splits));
 }
 
-function runCleanBuyAtClose4(data: OHLCData[], strategy: Strategy): { equity: EquityPoint[], finalValue: number, maxDrawdown: number, trades: Trade[] } {
+function runSingleTickerBacktest(data: OHLCData[], strategy: Strategy, ticker: string): { equity: EquityPoint[], finalValue: number, maxDrawdown: number, trades: Trade[] } {
   if (!data || data.length === 0) {
     return { equity: [], finalValue: 0, maxDrawdown: 0, trades: [] };
   }
@@ -42,10 +42,61 @@ function runCleanBuyAtClose4(data: OHLCData[], strategy: Strategy): { equity: Eq
   };
   const engine = new CleanBacktestEngine(data, strategy, options);
   const res = engine.runBacktest();
+  
+  // Добавляем информацию о тикере к сделкам
+  const tradesWithTicker = res.trades.map(trade => ({
+    ...trade,
+    context: { ...trade.context, ticker }
+  }));
+  
   const equity = res.equity;
   const finalValue = equity.length ? equity[equity.length - 1].value : Number(strategy?.riskManagement?.initialCapital ?? 0);
   const maxDrawdown = equity.length ? Math.max(...equity.map(p => p.drawdown)) : 0;
-  return { equity, finalValue, maxDrawdown, trades: res.trades };
+  return { equity, finalValue, maxDrawdown, trades: tradesWithTicker };
+}
+
+function combineEquityCurves(equityCurves: EquityPoint[][]): EquityPoint[] {
+  if (equityCurves.length === 0) return [];
+  
+  // Собираем все уникальные даты
+  const allDates = new Set<number>();
+  equityCurves.forEach(curve => {
+    curve.forEach(point => allDates.add(point.date.getTime()));
+  });
+  
+  const sortedDates = Array.from(allDates).sort((a, b) => a - b);
+  
+  const combined: EquityPoint[] = [];
+  let lastValues = new Array(equityCurves.length).fill(0);
+  
+  for (const dateTime of sortedDates) {
+    const date = new Date(dateTime);
+    let totalValue = 0;
+    
+    // Для каждой кривой находим значение на эту дату или берем последнее известное
+    equityCurves.forEach((curve, idx) => {
+      const pointForDate = curve.find(p => p.date.getTime() === dateTime);
+      if (pointForDate) {
+        lastValues[idx] = pointForDate.value;
+      }
+      totalValue += lastValues[idx];
+    });
+    
+    combined.push({
+      date,
+      value: totalValue,
+      drawdown: 0 // Будет пересчитан позже
+    });
+  }
+  
+  // Пересчитываем drawdown для объединенной кривой
+  let peak = combined[0]?.value || 0;
+  combined.forEach(point => {
+    if (point.value > peak) peak = point.value;
+    point.drawdown = peak > 0 ? ((peak - point.value) / peak) * 100 : 0;
+  });
+  
+  return combined;
 }
 
 export function BuyAtClose4Simulator({ strategy, defaultTickers }: BuyAtClose4SimulatorProps) {
@@ -151,10 +202,9 @@ export function BuyAtClose4Simulator({ strategy, defaultTickers }: BuyAtClose4Si
   const initialCapital = Number(strategy?.riskManagement?.initialCapital ?? 10000);
 
   const simulation = useMemo(() => {
-    const selectedRaw: string[] = (tickers || []).map((t: string) => (t || '').toUpperCase()).filter(Boolean).slice(0, 4) as string[];
-    // Дедуплируем тикеры, чтобы один и тот же тикер не открывался/считался несколько раз
-    const selectedUnique: string[] = Array.from(new Set(selectedRaw));
-    if (!strategy || selectedUnique.length === 0) {
+    const selectedTickers: string[] = (tickers || []).map((t: string) => (t || '').toUpperCase()).filter(Boolean).slice(0, 4) as string[];
+    
+    if (!strategy || selectedTickers.length === 0) {
       return { equity: [] as EquityPoint[], finalValue: 0, maxDrawdown: 0, trades: [] as Trade[] };
     }
 
@@ -169,76 +219,59 @@ export function BuyAtClose4Simulator({ strategy, defaultTickers }: BuyAtClose4Si
       }
     };
 
-    // Объединяем данные всех тикеров в один массив с информацией о тикере
-    const allData: (OHLCData & { ticker: string })[] = [];
+    const allTrades: Trade[] = [];
+    const allEquityCurves: EquityPoint[][] = [];
+    let totalFinalValue = 0;
+    let maxDrawdownOverall = 0;
     
-    for (const ticker of selectedUnique) {
-      const data = (loaded[ticker] || []).slice().sort((a: OHLCData, b: OHLCData) => a.date.getTime() - b.date.getTime());
-      if (data.length === 0) continue;
+    // Для каждого выбранного тикера запускаем отдельный backtest
+    selectedTickers.forEach((ticker, index) => {
+      if (!ticker || !loaded[ticker] || loaded[ticker].length === 0) return;
       
-      // Добавляем информацию о тикере к каждому бару
-      const dataWithTicker = data.map(bar => ({
-        ...bar,
-        ticker: ticker
-      }));
+      const data = loaded[ticker].slice().sort((a: OHLCData, b: OHLCData) => a.date.getTime() - b.date.getTime());
       
-      allData.push(...dataWithTicker);
-    }
-
-    // Сортируем все данные по дате
-    allData.sort((a, b) => a.date.getTime() - b.date.getTime());
-
-    // Запускаем один бэктест для всех тикеров с общим балансом
-    const result = runCleanBuyAtClose4(allData, effectiveStrategy);
-    
-    // Добавляем информацию о тикере к сделкам (извлекаем из данных)
-    const allTrades: Trade[] = result.trades.map(trade => {
-      // Находим тикер для этой сделки по дате входа
-      const entryBar = allData.find(bar => 
-        bar.date.getTime() === trade.entryDate.getTime() && 
-        Math.abs(bar.close - trade.entryPrice) < 0.01
-      );
-      
-      return {
-        ...trade,
-        context: {
-          ...trade.context,
-          ticker: entryBar?.ticker || 'UNKNOWN'
+      // Создаем стратегию с капиталом в 1/4 от общего (или 1/N от общего, где N - количество выбранных тикеров)
+      const quarterCapital = initialCapital / selectedTickers.filter(t => t && loaded[t] && loaded[t].length > 0).length;
+      const tickerStrategy: Strategy = {
+        ...effectiveStrategy,
+        riskManagement: {
+          ...effectiveStrategy.riskManagement,
+          initialCapital: quarterCapital
         }
       };
-    });
-    
-    const finalValue = result.equity[result.equity.length - 1]?.value || initialCapital;
-    const maxDrawdown = result.maxDrawdown;
-
-    // Сортируем сделки по дате
-    allTrades.sort((a, b) => a.entryDate.getTime() - b.entryDate.getTime());
-
-    // Используем equity curve из CleanBacktestEngine
-    const allEquity = result.equity;
-
-    // Применяем маржинальность к equity
-    const marginFactor = Math.max(0, Number(margins[0] || '100') / 100) || 1;
-    if (marginFactor > 1) {
-      const leveragedEquity = allEquity.map(point => ({
+      
+      // Запускаем backtest для этого тикера
+      const result = runSingleTickerBacktest(data, tickerStrategy, ticker);
+      
+      // Применяем маржинальность к этому тикеру
+      const marginFactor = Math.max(0, Number(margins[index] || '100') / 100) || 1;
+      const leveragedEquity = result.equity.map(point => ({
         ...point,
         value: point.value * marginFactor
       }));
-      const leveragedFinalValue = finalValue * marginFactor;
-      const leveragedMaxDrawdown = maxDrawdown * marginFactor;
+      const leveragedFinalValue = result.finalValue * marginFactor;
+      const leveragedMaxDrawdown = result.maxDrawdown * marginFactor;
       
-      return {
-        equity: leveragedEquity,
-        finalValue: leveragedFinalValue,
-        maxDrawdown: leveragedMaxDrawdown,
-        trades: allTrades
-      };
-    }
+      // Добавляем результаты
+      allEquityCurves.push(leveragedEquity);
+      allTrades.push(...result.trades);
+      totalFinalValue += leveragedFinalValue;
+      maxDrawdownOverall = Math.max(maxDrawdownOverall, leveragedMaxDrawdown);
+    });
+    
+    // Сортируем сделки по дате
+    allTrades.sort((a, b) => a.entryDate.getTime() - b.entryDate.getTime());
+    
+    // Объединяем equity curves всех тикеров
+    const combinedEquity = combineEquityCurves(allEquityCurves);
+    
+    // Пересчитываем общую максимальную просадку из объединенной кривой
+    const actualMaxDrawdown = combinedEquity.length > 0 ? Math.max(...combinedEquity.map(p => p.drawdown)) : 0;
 
     return {
-      equity: allEquity,
-      finalValue: finalValue,
-      maxDrawdown: maxDrawdown,
+      equity: combinedEquity,
+      finalValue: totalFinalValue,
+      maxDrawdown: actualMaxDrawdown,
       trades: allTrades
     };
   }, [tickers, loaded, lowIbs, highIbs, maxHold, initialCapital, margins, strategy]);
@@ -328,6 +361,14 @@ export function BuyAtClose4Simulator({ strategy, defaultTickers }: BuyAtClose4Si
 
       {loading && <div className="text-sm text-gray-500">Загрузка данных…</div>}
       {error && <div className="text-sm text-red-600">{error}</div>}
+      
+      {/* Описание стратегии */}
+      <div className="text-xs text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-800 border dark:border-gray-700 rounded px-3 py-2">
+        <span className="font-semibold">Стратегия "Покупка на закрытии 4":</span>{' '}
+        Капитал делится поровну между выбранными тикерами (по 1/{(() => { const validTickers = (tickers || []).filter((t, i) => t && loaded[t] && loaded[t].length > 0); return validTickers.length || 1; })()} от общего капитала на каждый тикер).{' '}
+        Для каждого тикера независимо: вход — IBS &lt; {Number(lowIbs)}; выход — IBS &gt; {Number(highIbs)} или по истечении {Number(maxHold)} дней.{' '}
+        Маржинальность применяется к каждому тикеру отдельно.
+      </div>
 
 
       <div className="h-[600px]">
