@@ -19,6 +19,7 @@ interface Position {
   quantity: number;
   entryIndex: number;
   initialCost: number;
+  marginUsed: number;
 }
 
 interface TickerData {
@@ -169,12 +170,13 @@ function runMultiTickerBacktest(
                 entryPrice: entryPrice,
                 quantity: quantity,
                 entryIndex: barIndex,
-                initialCost: totalCost
+                initialCost: totalCost,
+                marginUsed: investmentAmount // Маржа = сумма инвестиций до комиссий
               };
               
               currentCapital -= totalCost;
               
-              console.log(`🟢 ENTRY [${tickerData.ticker}]: IBS=${ibs.toFixed(3)} < ${lowIBS}, bought ${quantity} shares at $${entryPrice.toFixed(2)}, cost: ${formatCurrencyUSD(totalCost)}`);
+              console.log(`🟢 ENTRY [${tickerData.ticker}]: IBS=${ibs.toFixed(3)} < ${lowIBS}, bought ${quantity} shares at $${entryPrice.toFixed(2)}, cost: ${formatCurrencyUSD(totalCost)}, margin: ${formatCurrencyUSD(investmentAmount)}`);
             }
           }
         }
@@ -202,9 +204,13 @@ function runMultiTickerBacktest(
           const exitCommission = calculateCommission(grossProceeds, strategy);
           const netProceeds = grossProceeds - exitCommission;
           const pnl = netProceeds - position.initialCost;
-          const pnlPercent = (pnl / position.initialCost) * 100;
+          // PnL процент от маржи (не от полной стоимости с комиссией)
+          const pnlPercent = (pnl / position.marginUsed) * 100;
 
-          // Создаем торговую сделку
+          // Обновляем капитал сначала
+          currentCapital += netProceeds;
+          
+          // Создаем торговую сделку с правильным депозитом
           const trade: Trade = {
             id: `trade-${trades.length}`,
             entryDate: position.entryDate,
@@ -224,15 +230,17 @@ function runMultiTickerBacktest(
               trend: 'sideways',
               initialInvestment: position.initialCost,
               commissionPaid: calculateCommission(position.initialCost, strategy) + exitCommission,
-              netProceeds: netProceeds
+              netProceeds: netProceeds,
+              currentCapitalAfterExit: currentCapital,
+              marginUsed: position.marginUsed,
+              capitalBeforeExit: currentCapital - netProceeds
             }
           };
 
           trades.push(trade);
-          currentCapital += netProceeds;
           positions[tickerIndex] = null;
 
-          console.log(`🔴 EXIT [${position.ticker}]: IBS=${ibs.toFixed(3)}, ${exitReason}, P&L=${formatCurrencyUSD(pnl)}, Duration=${daysSinceEntry} days`);
+          console.log(`🔴 EXIT [${position.ticker}]: IBS=${ibs.toFixed(3)}, ${exitReason}, P&L=${formatCurrencyUSD(pnl)} (${pnlPercent.toFixed(2)}%), Duration=${daysSinceEntry} days, Deposit: ${formatCurrencyUSD(currentCapital)}`);
         }
       }
     }
@@ -283,9 +291,13 @@ function runMultiTickerBacktest(
       const exitCommission = calculateCommission(grossProceeds, strategy);
       const netProceeds = grossProceeds - exitCommission;
       const pnl = netProceeds - position.initialCost;
-      const pnlPercent = (pnl / position.initialCost) * 100;
+      // PnL процент от маржи (не от полной стоимости с комиссией)
+      const pnlPercent = (pnl / position.marginUsed) * 100;
       const duration = Math.floor((lastBar.date.getTime() - position.entryDate.getTime()) / (1000 * 60 * 60 * 24));
 
+      // Обновляем капитал сначала
+      currentCapital += netProceeds;
+      
       const trade: Trade = {
         id: `trade-${trades.length}`,
         entryDate: position.entryDate,
@@ -305,14 +317,16 @@ function runMultiTickerBacktest(
           trend: 'sideways',
           initialInvestment: position.initialCost,
           commissionPaid: calculateCommission(position.initialCost, strategy) + exitCommission,
-          netProceeds: netProceeds
+          netProceeds: netProceeds,
+          currentCapitalAfterExit: currentCapital,
+          marginUsed: position.marginUsed,
+          capitalBeforeExit: currentCapital - netProceeds
         }
       };
 
       trades.push(trade);
-      currentCapital += netProceeds;
 
-      console.log(`🔴 FINAL EXIT [${position.ticker}]: P&L=${formatCurrencyUSD(pnl)}, Duration=${duration} days`);
+      console.log(`🔴 FINAL EXIT [${position.ticker}]: P&L=${formatCurrencyUSD(pnl)} (${pnlPercent.toFixed(2)}%), Duration=${duration} days, Final Deposit: ${formatCurrencyUSD(currentCapital)}`);
     }
   }
 
@@ -515,7 +529,7 @@ export function BuyAtClose4Simulator({ strategy, defaultTickers = ['AAPL', 'MSFT
             <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-4">
               График доходности портфеля
             </h3>
-            <div className="h-[400px]">
+            <div className="w-full h-[600px] min-h-[600px]">
               <EquityChart equity={backtest.equity} hideHeader />
             </div>
           </div>

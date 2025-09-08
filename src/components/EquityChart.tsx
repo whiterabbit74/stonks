@@ -35,7 +35,7 @@ export function EquityChart({ equity, hideHeader }: EquityChartProps) {
       // Create new chart
       const chart = createChart(chartContainerRef.current, {
         width: chartContainerRef.current.clientWidth,
-        height: Math.max(chartContainerRef.current.clientHeight || 0, 360),
+        height: Math.max(chartContainerRef.current.clientHeight || 0, 580),
         layout: {
           background: { color: bg },
           textColor: text,
@@ -142,7 +142,7 @@ export function EquityChart({ equity, hideHeader }: EquityChartProps) {
         if (chartContainerRef.current && chart) {
           chart.applyOptions({
             width: chartContainerRef.current.clientWidth,
-            height: Math.max(chartContainerRef.current.clientHeight || 0, 360),
+            height: Math.max(chartContainerRef.current.clientHeight || 0, 580),
           });
         }
       };
@@ -224,7 +224,7 @@ export function EquityChart({ equity, hideHeader }: EquityChartProps) {
           </div>
         </div>
       )}
-      <div ref={chartContainerRef} className="w-full h-[600px] min-h-0 overflow-hidden" />
+      <div ref={chartContainerRef} className="w-full h-full min-h-0 overflow-hidden" />
     </div>
   );
 }
