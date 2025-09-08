@@ -51,7 +51,7 @@ function runCleanBuyAtClose(data: OHLCData[], strategy: Strategy): SimulationRes
     return { equity: [], finalValue: 0, maxDrawdown: 0, trades: 0, tradesList: [] };
   }
   const options: CleanBacktestOptions = {
-    entryExecution: 'close',
+    entryExecution: 'nextOpen',
     ignoreMaxHoldDaysExit: false,
     ibsExitRequireAboveEntry: false
   };
