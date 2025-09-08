@@ -80,25 +80,42 @@ export class CleanBacktestEngine {
 
       // Если нет позиции - проверяем вход
       if (!position) {
-        if (ibs < lowIBS) {
+        // Проверяем, что IBS корректное значение (не NaN)
+        if (!isNaN(ibs) && ibs < lowIBS) {
           // СИГНАЛ ВХОДА: IBS текущего дня < lowIBS
           const investmentAmount = (this.currentCapital * capitalUsage) / 100;
 
           if (this.options.entryExecution === 'nextOpen') {
             // ПОКУПКА: по цене открытия следующего дня
-            if (!nextBar) continue; // некорректно входить, если нет следующего бара
-            const quantity = Math.floor(investmentAmount / nextBar.open);
-            if (quantity > 0) {
-              const totalCost = quantity * nextBar.open;
-              position = {
-                entryDate: nextBar.date, // Дата покупки = следующий день
-                entryPrice: nextBar.open, // Цена покупки = открытие следующего дня
-                quantity: quantity,
-                entryIndex: i + 1 // Индекс следующего дня
-              };
-              this.currentCapital -= totalCost;
-              console.log(`🟢 ENTRY SIGNAL: IBS=${ibs.toFixed(3)} < ${lowIBS} on ${bar.date.toISOString().split('T')[0]}`);
-              console.log(`🟢 ENTRY EXECUTION(nextOpen): bought ${quantity} shares at $${nextBar.open.toFixed(2)} on ${nextBar.date.toISOString().split('T')[0]}`);
+            if (!nextBar) {
+              // Если нет следующего дня, покупаем по текущей цене закрытия как fallback
+              const quantity = Math.floor(investmentAmount / bar.close);
+              if (quantity > 0) {
+                const totalCost = quantity * bar.close;
+                position = {
+                  entryDate: bar.date,
+                  entryPrice: bar.close, 
+                  quantity: quantity,
+                  entryIndex: i
+                };
+                this.currentCapital -= totalCost;
+                console.log(`🟢 ENTRY SIGNAL: IBS=${ibs.toFixed(3)} < ${lowIBS} on ${bar.date.toISOString().split('T')[0]}`);
+                console.log(`🟢 ENTRY EXECUTION(fallback-close): bought ${quantity} shares at $${bar.close.toFixed(2)} on ${bar.date.toISOString().split('T')[0]} (no next day available)`);
+              }
+            } else {
+              const quantity = Math.floor(investmentAmount / nextBar.open);
+              if (quantity > 0) {
+                const totalCost = quantity * nextBar.open;
+                position = {
+                  entryDate: nextBar.date, // Дата покупки = следующий день
+                  entryPrice: nextBar.open, // Цена покупки = открытие следующего дня
+                  quantity: quantity,
+                  entryIndex: i + 1 // Индекс следующего дня
+                };
+                this.currentCapital -= totalCost;
+                console.log(`🟢 ENTRY SIGNAL: IBS=${ibs.toFixed(3)} < ${lowIBS} on ${bar.date.toISOString().split('T')[0]}`);
+                console.log(`🟢 ENTRY EXECUTION(nextOpen): bought ${quantity} shares at $${nextBar.open.toFixed(2)} on ${nextBar.date.toISOString().split('T')[0]}`);
+              }
             }
           } else {
             // entryExecution === 'close' -> покупка по цене закрытия текущего дня
@@ -128,8 +145,8 @@ export class CleanBacktestEngine {
           let shouldExit = false;
           let exitReason = '';
 
-          // Проверяем IBS условие выхода
-          if (ibs > highIBS) {
+          // Проверяем IBS условие выхода (только если IBS валидное)
+          if (!isNaN(ibs) && ibs > highIBS) {
             if (this.options.ibsExitRequireAboveEntry) {
               if (bar.close > position.entryPrice) {
                 shouldExit = true;

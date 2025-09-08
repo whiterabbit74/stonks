@@ -317,7 +317,9 @@ export class BacktestEngine {
     
 
 
-    // Update capital correctly
+    // Update capital correctly  
+    // At entry: capital -= (quantity * entryPrice + entryCommission)
+    // At exit: capital += (quantity * exitPrice - exitCommission)
     this.currentCapital += grossProceeds - exitCommission;
     
     console.log(`💰 Capital updated: $${this.currentCapital.toFixed(2)} (was $${(this.currentCapital - grossProceeds + exitCommission).toFixed(2)})`);

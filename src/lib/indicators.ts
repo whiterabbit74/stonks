@@ -147,7 +147,9 @@ export class IndicatorEngine {
       
       // Handle case where high equals low (no range)
       if (high === low) {
-        return 0.5; // Neutral position when no range
+        // Return NaN to indicate invalid IBS - strategy should skip this day
+        // Alternative: return previous valid IBS value if available
+        return NaN;
       }
       
       return (close - low) / (high - low);
