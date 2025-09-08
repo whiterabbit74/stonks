@@ -5,7 +5,7 @@ import { adjustOHLCForSplits, dedupeDailyOHLC } from '../lib/utils';
 import { IndicatorEngine } from '../lib/indicators';
 import { EquityChart } from './EquityChart';
 import { TradesTable } from './TradesTable';
-import { useAppStore } from '../stores';
+// import { useAppStore } from '../stores';
 
 interface BuyAtClose4SimulatorProps {
   strategy: Strategy | null;
@@ -20,6 +20,8 @@ interface Position {
   entryIndex: number;
   initialCost: number;
   marginUsed: number;
+  leverage: number; // Плечо для этой позиции
+  grossValue: number; // Общая стоимость акций (с плечом)
 }
 
 interface TickerData {
@@ -109,6 +111,7 @@ function runMultiTickerBacktest(
   // Параметры стратегии
   const initialCapital = Number(strategy?.riskManagement?.initialCapital ?? 10000);
   const capitalUsagePerTicker = Number(strategy?.riskManagement?.capitalUsage ?? 25); // 25% на тикер
+  const leverage = Number(strategy?.riskManagement?.leverage ?? 1); // Торговое плечо
   const lowIBS = Number(strategy.parameters.lowIBS ?? 0.1);
   const highIBS = Number(strategy.parameters.highIBS ?? 0.75);
   const maxHoldDays = Number(strategy.parameters.maxHoldDays ?? 30);
@@ -130,6 +133,7 @@ function runMultiTickerBacktest(
   console.log(`📊 Initial Capital: ${formatCurrencyUSD(initialCapital)}`);
   console.log(`📈 Tickers: ${tickersData.map(t => t.ticker).join(', ')}`);
   console.log(`⚙️ Capital per ticker: ${capitalUsagePerTicker}%`);
+  console.log(`💹 Leverage: ${leverage}:1 (${leverage > 1 ? 'с плечом' : 'без плеча'})`);
 
   // Основной цикл по датам
   for (const dateTime of sortedDates) {
@@ -153,30 +157,33 @@ function runMultiTickerBacktest(
       if (!position) {
         // Сигнал входа: IBS < lowIBS
         if (ibs < lowIBS) {
-          const investmentAmount = (initialCapital * capitalUsagePerTicker) / 100;
+          const marginUsed = (initialCapital * capitalUsagePerTicker) / 100; // Маржа (собственные средства)
+          const investmentAmount = marginUsed * leverage; // Общая сумма для покупки (с плечом)
           const entryPrice = bar.close;
           const quantity = Math.floor(investmentAmount / entryPrice);
           
           if (quantity > 0) {
-            const initialCost = quantity * entryPrice;
-            const entryCommission = calculateCommission(initialCost, strategy);
-            const totalCost = initialCost + entryCommission;
+            const grossValue = quantity * entryPrice; // Полная стоимость акций
+            const entryCommission = calculateCommission(grossValue, strategy);
+            const totalMarginNeeded = marginUsed + entryCommission; // Маржа + комиссия
             
-            // Проверяем, хватает ли средств
-            if (currentCapital >= totalCost) {
+            // Проверяем, хватает ли маржи (не всей суммы!)
+            if (currentCapital >= totalMarginNeeded) {
               positions[tickerIndex] = {
                 ticker: tickerData.ticker,
                 entryDate: bar.date,
                 entryPrice: entryPrice,
                 quantity: quantity,
                 entryIndex: barIndex,
-                initialCost: totalCost,
-                marginUsed: investmentAmount // Маржа = сумма инвестиций до комиссий
+                initialCost: totalMarginNeeded, // Маржа + комиссия
+                marginUsed: marginUsed, // Чистая маржа
+                leverage: leverage,
+                grossValue: grossValue // Общая стоимость акций
               };
               
-              currentCapital -= totalCost;
+              currentCapital -= totalMarginNeeded; // Списываем только маржу!
               
-              console.log(`🟢 ENTRY [${tickerData.ticker}]: IBS=${ibs.toFixed(3)} < ${lowIBS}, bought ${quantity} shares at $${entryPrice.toFixed(2)}, cost: ${formatCurrencyUSD(totalCost)}, margin: ${formatCurrencyUSD(investmentAmount)}`);
+              console.log(`🟢 ENTRY [${tickerData.ticker}]: IBS=${ibs.toFixed(3)} < ${lowIBS}, bought ${quantity} shares at $${entryPrice.toFixed(2)}, cost: ${formatCurrencyUSD(totalMarginNeeded)}, margin: ${formatCurrencyUSD(marginUsed)}, leverage: ${leverage}:1`);
             }
           }
         }
@@ -202,9 +209,11 @@ function runMultiTickerBacktest(
           const exitPrice = bar.close;
           const grossProceeds = position.quantity * exitPrice;
           const exitCommission = calculateCommission(grossProceeds, strategy);
-          const netProceeds = grossProceeds - exitCommission;
-          const pnl = netProceeds - position.initialCost;
-          // PnL процент от маржи (не от полной стоимости с комиссией)
+          // При использовании плеча вычитаем долг из выручки
+          const leverageDebt = position.grossValue - position.marginUsed;
+          const netProceeds = grossProceeds - leverageDebt - exitCommission;
+          const pnl = netProceeds - position.marginUsed; // P&L относительно вложенной маржи
+          // PnL процент от маржи
           const pnlPercent = (pnl / position.marginUsed) * 100;
 
           // Обновляем капитал сначала
@@ -228,8 +237,11 @@ function runMultiTickerBacktest(
               indicatorValues: { IBS: ibs },
               volatility: 0,
               trend: 'sideways',
-              initialInvestment: position.initialCost,
-              commissionPaid: calculateCommission(position.initialCost, strategy) + exitCommission,
+              initialInvestment: position.marginUsed, // Показываем маржу как инвестицию
+              grossInvestment: position.grossValue, // Полная сумма с плечом
+              leverage: position.leverage,
+              leverageDebt: leverageDebt,
+              commissionPaid: calculateCommission(position.grossValue, strategy) + exitCommission,
               netProceeds: netProceeds,
               currentCapitalAfterExit: currentCapital,
               marginUsed: position.marginUsed,
@@ -258,8 +270,10 @@ function runMultiTickerBacktest(
           const currentBar = tickerData.data[barIndex];
           const currentMarketValue = position.quantity * currentBar.close;
           const exitCommission = calculateCommission(currentMarketValue, strategy);
-          // Учитываем комиссию на потенциальный выход
-          totalPortfolioValue += currentMarketValue - exitCommission;
+          // При использовании плеча мы получаем полную стоимость акций, но вычитаем долг (grossValue - marginUsed)
+          const leverageDebt = position.grossValue - position.marginUsed;
+          const netValue = currentMarketValue - leverageDebt - exitCommission;
+          totalPortfolioValue += netValue;
         }
       }
     }
@@ -278,7 +292,7 @@ function runMultiTickerBacktest(
   }
 
   // Закрываем все открытые позиции в конце периода
-  const lastDate = sortedDates[sortedDates.length - 1];
+  // const lastDate = sortedDates[sortedDates.length - 1];
   for (let i = 0; i < positions.length; i++) {
     const position = positions[i];
     if (position) {
@@ -289,9 +303,11 @@ function runMultiTickerBacktest(
       const exitPrice = lastBar.close;
       const grossProceeds = position.quantity * exitPrice;
       const exitCommission = calculateCommission(grossProceeds, strategy);
-      const netProceeds = grossProceeds - exitCommission;
-      const pnl = netProceeds - position.initialCost;
-      // PnL процент от маржи (не от полной стоимости с комиссией)
+      // При использовании плеча вычитаем долг из выручки
+      const leverageDebt = position.grossValue - position.marginUsed;
+      const netProceeds = grossProceeds - leverageDebt - exitCommission;
+      const pnl = netProceeds - position.marginUsed; // P&L относительно вложенной маржи
+      // PnL процент от маржи
       const pnlPercent = (pnl / position.marginUsed) * 100;
       const duration = Math.floor((lastBar.date.getTime() - position.entryDate.getTime()) / (1000 * 60 * 60 * 24));
 
@@ -315,8 +331,11 @@ function runMultiTickerBacktest(
           indicatorValues: { IBS: tickerData.ibsValues[lastBarIndex] },
           volatility: 0,
           trend: 'sideways',
-          initialInvestment: position.initialCost,
-          commissionPaid: calculateCommission(position.initialCost, strategy) + exitCommission,
+          initialInvestment: position.marginUsed, // Показываем маржу как инвестицию
+          grossInvestment: position.grossValue, // Полная сумма с плечом
+          leverage: position.leverage,
+          leverageDebt: leverageDebt,
+          commissionPaid: calculateCommission(position.grossValue, strategy) + exitCommission,
           netProceeds: netProceeds,
           currentCapitalAfterExit: currentCapital,
           marginUsed: position.marginUsed,
@@ -478,6 +497,7 @@ export function BuyAtClose4Simulator({ strategy, defaultTickers = ['AAPL', 'MSFT
         <div className="mt-3 text-sm text-gray-600 dark:text-gray-400">
           <p>Текущие тикеры: <span className="font-mono">{tickers.join(', ')}</span></p>
           <p>Капитал на тикер: {strategy.riskManagement.capitalUsage || 25}%</p>
+          <p>Торговое плечо: <span className="font-mono">{strategy.riskManagement.leverage || 1}:1</span> {(strategy.riskManagement.leverage || 1) > 1 ? '(с плечом)' : '(без плеча)'}</p>
         </div>
       </div>
 

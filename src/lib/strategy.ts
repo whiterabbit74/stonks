@@ -24,6 +24,7 @@ export function createDefaultRiskSettings(): RiskManagement {
   return {
     initialCapital: 10000,
     capitalUsage: 100, // 100% по умолчанию - процент депозита на сделку
+    leverage: 1, // По умолчанию без плеча (1:1)
     maxPositionSize: 1,
     stopLoss: 2, // 2%
     takeProfit: 4, // 4%

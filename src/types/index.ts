@@ -55,6 +55,7 @@ export type Condition = IndicatorCondition | PriceCondition | TimeCondition;
 export interface RiskManagement {
   initialCapital: number;
   capitalUsage: number; // Процент использования депозита (0-100)
+  leverage?: number; // Торговое плечо (1 = без плеча, 2 = 2:1, ит.д.)
   maxPositionSize?: number;
   // Проценты (0-10). Интерпретируются как X% от цены входа
   stopLoss?: number;
