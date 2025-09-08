@@ -443,7 +443,6 @@ export function Results() {
   const { metrics, trades, equity } = backtestResults;
   
   // Расчет дополнительных метрик
-  const initialCapital = Number(currentStrategy?.riskManagement?.initialCapital ?? 10000);
   const finalValue = equity.length > 0 ? equity[equity.length - 1].value : initialCapital;
   const totalReturn = ((finalValue - initialCapital) / initialCapital) * 100;
   
