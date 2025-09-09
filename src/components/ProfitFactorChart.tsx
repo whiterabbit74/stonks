@@ -37,7 +37,7 @@ export function ProfitFactorChart({ trades }: ProfitFactorChartProps) {
 
 		const chart = createChart(containerRef.current, {
 			width: containerRef.current.clientWidth,
-			height: Math.max(containerRef.current.clientHeight || 0, 360),
+			height: containerRef.current.clientHeight || 400,
 			layout: { background: { color: bg }, textColor: text },
 			grid: { vertLines: { color: grid }, horzLines: { color: grid } },
 			rightPriceScale: { borderColor: border },

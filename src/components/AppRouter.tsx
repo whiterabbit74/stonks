@@ -146,7 +146,7 @@ function ProtectedLayout() {
           <div className="flex items-center gap-3">
             <Logo size="sm" showText={false} />
             <span className="text-lg font-semibold tracking-tight text-gray-900 dark:text-gray-100">
-              IBS Trading Strategies
+              IBS Trading Strategy
             </span>
           </div>
           <div className="flex items-center gap-2">
@@ -254,7 +254,7 @@ function LoginPage() {
           <div className="flex items-center gap-3">
             <Logo size="sm" showText={false} />
             <span className="text-lg font-semibold tracking-tight text-gray-900 dark:text-gray-100">
-              IBS Trading Strategies
+              IBS Trading Strategy
             </span>
           </div>
           <div className="flex items-center gap-2">

@@ -3,7 +3,7 @@ import type { EquityPoint, OHLCData, Strategy, Trade } from '../types';
 import { EquityChart } from './EquityChart';
 import { CleanBacktestEngine, type CleanBacktestOptions } from '../lib/clean-backtest';
 import { TradesTable } from './TradesTable';
-import { MetricsCalculator } from '../lib/metrics';
+import { Settings } from 'lucide-react';
 
 interface NoStopLossSimulatorProps {
   data: OHLCData[];
@@ -12,208 +12,291 @@ interface NoStopLossSimulatorProps {
 
 interface SimulationResult {
   equity: EquityPoint[];
-  maxDrawdown: number;
   finalValue: number;
-  tradesList: Trade[];
+  trades: Trade[];
+  cagr: number;
+  maxDrawdown: number;
 }
 
-function runEngineNoStopLoss(
+type ExitMode = 'never' | 'ibs-only' | 'time-limit' | 'profit-target';
+
+interface SimulationConfig {
+  exitMode: ExitMode;
+  maxHoldDays: number;
+  profitTarget: number;
+  requireProfitableExit: boolean;
+  leverage: number;
+}
+
+function runNoStopLossBacktest(
   data: OHLCData[],
   strategy: Strategy,
-  ignoreMaxHoldDaysExit: boolean,
-  ibsExitRequireAboveEntry: boolean
+  config: SimulationConfig
 ): SimulationResult {
-  if (!Array.isArray(data) || data.length === 0) {
-    return { equity: [], maxDrawdown: 0, finalValue: 0, tradesList: [] };
+  if (!Array.isArray(data) || data.length === 0 || !strategy) {
+    return { equity: [], finalValue: 0, trades: [], cagr: 0, maxDrawdown: 0 };
   }
+
+  // Create modified strategy based on config
+  const modifiedStrategy: Strategy = {
+    ...strategy,
+    riskManagement: {
+      ...strategy.riskManagement,
+      useStopLoss: false,
+      useTakeProfit: config.exitMode === 'profit-target',
+      takeProfit: config.profitTarget,
+      leverage: config.leverage,
+    },
+    parameters: {
+      ...strategy.parameters,
+      maxHoldDays: config.exitMode === 'time-limit' ? config.maxHoldDays : 9999,
+    }
+  };
+
+  // Set up engine options
   const options: CleanBacktestOptions = {
     entryExecution: 'nextOpen',
-    ignoreMaxHoldDaysExit,
-    ibsExitRequireAboveEntry
+    ignoreMaxHoldDaysExit: config.exitMode === 'never' || config.exitMode === 'ibs-only',
+    ibsExitRequireAboveEntry: config.requireProfitableExit
   };
-  const engine = new CleanBacktestEngine(data, strategy, options);
-  const res = engine.runBacktest();
-  const equity = res.equity;
-  const finalValue = equity.length ? equity[equity.length - 1].value : Number(strategy?.riskManagement?.initialCapital ?? 0);
-  const maxDrawdown = equity.length ? Math.max(...equity.map(p => p.drawdown)) : 0;
-  return { equity, maxDrawdown, finalValue, tradesList: res.trades };
-}
 
-function simulateLeverage(equity: EquityPoint[], leverage: number): { equity: EquityPoint[]; maxDrawdown: number; finalValue: number } {
-  if (!equity || equity.length === 0 || leverage <= 0) {
-    return { equity: [], maxDrawdown: 0, finalValue: 0 };
+  const engine = new CleanBacktestEngine(data, modifiedStrategy, options);
+  const result = engine.runBacktest();
+
+  // Calculate CAGR
+  let cagr = 0;
+  if (result.equity.length > 1) {
+    const initialValue = result.equity[0].value;
+    const finalValue = result.equity[result.equity.length - 1].value;
+    const startDate = result.equity[0].date;
+    const endDate = result.equity[result.equity.length - 1].date;
+    const years = (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24 * 365.25);
+    
+    if (years > 0 && initialValue > 0) {
+      cagr = (Math.pow(finalValue / initialValue, 1 / years) - 1) * 100;
+    }
   }
 
-  const result: EquityPoint[] = [];
-  let currentValue = equity[0].value;
-  let peakValue = currentValue;
-  let maxDD = 0;
-  result.push({ date: equity[0].date, value: currentValue, drawdown: 0 });
-
-  for (let i = 1; i < equity.length; i++) {
-    const basePrev = equity[i - 1].value;
-    const baseCurr = equity[i].value;
-    if (basePrev <= 0) continue;
-    const baseReturn = (baseCurr - basePrev) / basePrev;
-    const leveragedReturn = baseReturn * leverage;
-    currentValue = currentValue * (1 + leveragedReturn);
-    if (currentValue < 0) currentValue = 0;
-
-    if (currentValue > peakValue) peakValue = currentValue;
-    const dd = peakValue > 0 ? ((peakValue - currentValue) / peakValue) * 100 : 0;
-    if (dd > maxDD) maxDD = dd;
-    result.push({ date: equity[i].date, value: currentValue, drawdown: dd });
+  // Calculate max drawdown
+  let maxDrawdown = 0;
+  let peak = 0;
+  for (const point of result.equity) {
+    if (point.value > peak) peak = point.value;
+    const drawdown = peak > 0 ? ((peak - point.value) / peak) * 100 : 0;
+    if (drawdown > maxDrawdown) maxDrawdown = drawdown;
   }
 
-  return { equity: result, maxDrawdown: maxDD, finalValue: result[result.length - 1]?.value ?? currentValue };
+  return {
+    equity: result.equity,
+    finalValue: result.equity.length > 0 ? result.equity[result.equity.length - 1].value : 0,
+    trades: result.trades,
+    cagr,
+    maxDrawdown
+  };
 }
 
 export function NoStopLossSimulator({ data, strategy }: NoStopLossSimulatorProps) {
-  const lowIBS = Number(strategy?.parameters?.lowIBS ?? 0.1);
-  const highIBS = Number(strategy?.parameters?.highIBS ?? 0.75);
-  const maxHoldDays = typeof strategy?.parameters?.maxHoldDays === 'number'
-    ? Number(strategy?.parameters?.maxHoldDays)
-    : Number(strategy?.riskManagement?.maxHoldDays ?? 30);
+  const [showSettings, setShowSettings] = useState(false);
+  const [showTrades, setShowTrades] = useState(false);
+  
+  const [config, setConfig] = useState<SimulationConfig>({
+    exitMode: 'ibs-only',
+    maxHoldDays: 60,
+    profitTarget: 10,
+    requireProfitableExit: false,
+    leverage: 1
+  });
 
-  const [exitOnlyOnHighIBS, setExitOnlyOnHighIBS] = useState<boolean>(false);
-  const [requireAboveEntryOnIBS, setRequireAboveEntryOnIBS] = useState<boolean>(false);
-  const [showTrades, setShowTrades] = useState<boolean>(false);
-
-  const base = useMemo(
-    () => runEngineNoStopLoss(
-      data,
-      // Ensure strategy parameters reflect thresholds
-      {
-        ...(strategy as Strategy),
-        parameters: {
-          ...(strategy?.parameters || {}),
-          lowIBS,
-          highIBS,
-          maxHoldDays
-        }
-      } as Strategy,
-      exitOnlyOnHighIBS,
-      requireAboveEntryOnIBS
-    ),
-    [data, strategy, lowIBS, highIBS, maxHoldDays, exitOnlyOnHighIBS, requireAboveEntryOnIBS]
+  const result = useMemo(
+    () => runNoStopLossBacktest(data, strategy as Strategy, config),
+    [data, strategy, config]
   );
 
-  const [marginPctInput, setMarginPctInput] = useState<string>('100');
-  const [appliedLeverage, setAppliedLeverage] = useState<number>(1);
-
-  const { simEquity, simMaxDD, simFinal, annualReturn } = useMemo(() => {
-    const sim = simulateLeverage(base.equity, appliedLeverage);
-    
-    // Рассчитываем годовые проценты
-    let annualReturn = 0;
-    if (sim.equity.length > 1) {
-      const initialCapital = Number(strategy?.riskManagement?.initialCapital ?? 10000);
-      const finalValue = sim.finalValue;
-      const startDate = sim.equity[0].date;
-      const endDate = sim.equity[sim.equity.length - 1].date;
-      const years = (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24 * 365.25);
-      
-      if (years > 0 && initialCapital > 0) {
-        annualReturn = (Math.pow(finalValue / initialCapital, 1 / years) - 1) * 100;
-      }
-    }
-    
-    return {
-      simEquity: sim.equity,
-      simMaxDD: sim.maxDrawdown,
-      simFinal: sim.finalValue,
-      annualReturn,
-    };
-  }, [base.equity, appliedLeverage, strategy]);
-
-  const onApply = () => {
-    const pct = Number(marginPctInput);
-    if (!isFinite(pct) || pct <= 0) return;
-    setAppliedLeverage(pct / 100);
+  const exitModeLabels: Record<ExitMode, string> = {
+    'never': 'Никогда (держать до конца)',
+    'ibs-only': 'Только по IBS',
+    'time-limit': 'По времени или IBS',
+    'profit-target': 'По профиту или IBS'
   };
 
+  if (!strategy) {
+    return <div className="text-center text-gray-500 py-8">Стратегия не выбрана</div>;
+  }
+
+  const lowIBS = Number(strategy.parameters?.lowIBS ?? 0.1);
+  const highIBS = Number(strategy.parameters?.highIBS ?? 0.75);
+
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-end gap-3">
-        <div className="flex flex-col">
-          <label className="text-xs text-gray-600 dark:text-gray-300">Маржинальность, %</label>
-          <input
-            type="number"
-            inputMode="decimal"
-            min={1}
-            step={1}
-            value={marginPctInput}
-            onChange={(e) => setMarginPctInput(e.target.value)}
-            className="px-3 py-2 border rounded-md w-40 dark:bg-gray-900 dark:border-gray-700 dark:text-gray-100"
-            placeholder="например, 100"
-          />
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100">Без stop loss</h3>
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            Альтернативные стратегии выхода без использования stop loss
+          </p>
         </div>
         <button
-          onClick={onApply}
-          className="px-4 py-2 rounded-md bg-blue-600 text-white text-sm font-medium hover:bg-blue-700"
+          onClick={() => setShowSettings(!showSettings)}
+          className="inline-flex items-center gap-2 px-3 py-2 text-sm rounded-md border border-gray-300 bg-white hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
         >
-          Посчитать
+          <Settings className="w-4 h-4" />
+          Настройки
         </button>
+      </div>
+
+      {/* Settings Panel */}
+      {showSettings && (
+        <div className="p-4 bg-gray-50 dark:bg-gray-800 border dark:border-gray-700 rounded-lg space-y-4">
+          <h4 className="font-medium text-gray-900 dark:text-gray-100">Параметры симуляции</h4>
+          
+          {/* Exit Mode */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Режим выхода
+            </label>
+            <select
+              value={config.exitMode}
+              onChange={(e) => setConfig(prev => ({ ...prev, exitMode: e.target.value as ExitMode }))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md dark:bg-gray-900 dark:border-gray-700 dark:text-gray-100"
+            >
+              {Object.entries(exitModeLabels).map(([value, label]) => (
+                <option key={value} value={value}>{label}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Max Hold Days */}
+            {config.exitMode === 'time-limit' && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Максимум дней
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  max="365"
+                  value={config.maxHoldDays}
+                  onChange={(e) => setConfig(prev => ({ ...prev, maxHoldDays: Number(e.target.value) }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md dark:bg-gray-900 dark:border-gray-700 dark:text-gray-100"
+                />
+              </div>
+            )}
+
+            {/* Profit Target */}
+            {config.exitMode === 'profit-target' && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Цель профита (%)
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  max="100"
+                  step="0.5"
+                  value={config.profitTarget}
+                  onChange={(e) => setConfig(prev => ({ ...prev, profitTarget: Number(e.target.value) }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md dark:bg-gray-900 dark:border-gray-700 dark:text-gray-100"
+                />
+              </div>
+            )}
+
+            {/* Leverage */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Плечо (x)
+              </label>
+              <input
+                type="number"
+                min="0.1"
+                max="5"
+                step="0.1"
+                value={config.leverage}
+                onChange={(e) => setConfig(prev => ({ ...prev, leverage: Number(e.target.value) }))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md dark:bg-gray-900 dark:border-gray-700 dark:text-gray-100"
+              />
+            </div>
+          </div>
+
+          {/* Require Profitable Exit */}
+          <div className="flex items-center gap-2">
+            <input
+              id="requireProfitableExit"
+              type="checkbox"
+              checked={config.requireProfitableExit}
+              onChange={(e) => setConfig(prev => ({ ...prev, requireProfitableExit: e.target.checked }))}
+              className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 dark:bg-gray-900 dark:border-gray-700"
+            />
+            <label htmlFor="requireProfitableExit" className="text-sm text-gray-700 dark:text-gray-200">
+              Выход по IBS только при профите (цена выше входа)
+            </label>
+          </div>
+        </div>
+      )}
+
+      {/* Strategy Description */}
+      <div className="text-sm text-gray-600 dark:text-gray-300 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-900/40 rounded px-3 py-2">
+        <div className="font-medium text-blue-800 dark:text-blue-200 mb-1">Текущая конфигурация:</div>
+        <div>
+          <span className="font-semibold">Вход:</span> IBS &lt; {lowIBS} на открытии следующего дня
+        </div>
+        <div>
+          <span className="font-semibold">Выход:</span>{' '}
+          {config.exitMode === 'never' && 'Держать до конца периода'}
+          {config.exitMode === 'ibs-only' && `IBS > ${highIBS}${config.requireProfitableExit ? ' (только при профите)' : ''}`}
+          {config.exitMode === 'time-limit' && `IBS > ${highIBS} или через ${config.maxHoldDays} дней`}
+          {config.exitMode === 'profit-target' && `IBS > ${highIBS} или профит ${config.profitTarget}%`}
+        </div>
+        {config.leverage !== 1 && (
+          <div>
+            <span className="font-semibold">Плечо:</span> ×{config.leverage}
+          </div>
+        )}
+      </div>
+
+      {/* Results */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+        <div className="rounded-lg border p-3 bg-gray-50 dark:bg-gray-800 dark:border-gray-700">
+          <div className="text-xs text-gray-500 dark:text-gray-300">Финальная стоимость</div>
+          <div className="text-base font-semibold dark:text-gray-100">
+            ${result.finalValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </div>
+        </div>
+        <div className="rounded-lg border p-3 bg-gray-50 dark:bg-gray-800 dark:border-gray-700">
+          <div className="text-xs text-gray-500 dark:text-gray-300">CAGR</div>
+          <div className="text-base font-semibold dark:text-gray-100">{result.cagr.toFixed(2)}%</div>
+        </div>
+        <div className="rounded-lg border p-3 bg-gray-50 dark:bg-gray-800 dark:border-gray-700">
+          <div className="text-xs text-gray-500 dark:text-gray-300">Макс. просадка</div>
+          <div className="text-base font-semibold dark:text-gray-100">{result.maxDrawdown.toFixed(2)}%</div>
+        </div>
+        <div className="rounded-lg border p-3 bg-gray-50 dark:bg-gray-800 dark:border-gray-700">
+          <div className="text-xs text-gray-500 dark:text-gray-300">Сделок</div>
+          <div className="text-base font-semibold dark:text-gray-100">{result.trades.length}</div>
+        </div>
+      </div>
+
+      {/* Chart */}
+      <div className="h-[60vh] min-h-[400px] max-h-[600px]">
+        <EquityChart equity={result.equity} hideHeader />
+      </div>
+
+      {/* Trades Toggle */}
+      <div className="flex justify-center">
         <button
-          onClick={() => setShowTrades(v => !v)}
-          className="px-4 py-2 rounded-md border text-sm font-medium dark:border-gray-700"
+          onClick={() => setShowTrades(!showTrades)}
+          className="px-4 py-2 text-sm rounded-md border border-gray-300 bg-white hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
         >
-          {showTrades ? 'Скрыть сделки' : 'Показать все сделки'}
+          {showTrades ? 'Скрыть сделки' : `Показать сделки (${result.trades.length})`}
         </button>
-        <div className="text-xs text-gray-500 dark:text-gray-300">
-          Текущее плечо: ×{appliedLeverage.toFixed(2)}
-        </div>
-        <div className="flex items-center gap-2 ml-4">
-          <input
-            id="exitOnlyOnHighIBS"
-            type="checkbox"
-            checked={exitOnlyOnHighIBS}
-            onChange={(e) => setExitOnlyOnHighIBS(e.target.checked)}
-            className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 dark:bg-gray-900 dark:border-gray-700"
-          />
-          <label htmlFor="exitOnlyOnHighIBS" className="text-sm text-gray-700 dark:text-gray-200">
-            Только выход по highIBS (игнорировать maxHoldDays)
-          </label>
-        </div>
-        <div className="flex items-center gap-2">
-          <input
-            id="requireAboveEntryOnIBS"
-            type="checkbox"
-            checked={requireAboveEntryOnIBS}
-            onChange={(e) => setRequireAboveEntryOnIBS(e.target.checked)}
-            className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 dark:bg-gray-900 dark:border-gray-700"
-          />
-          <label htmlFor="requireAboveEntryOnIBS" className="text-sm text-gray-700 dark:text-gray-200">
-            Выход по highIBS только если цена выше цены входа
-          </label>
-        </div>
       </div>
 
-      <div className="text-xs text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-800 border dark:border-gray-700 rounded px-3 py-2">
-        <span className="font-semibold">Стратегия:</span>{' '}
-        Вход — IBS &lt; {lowIBS} на открытии следующего дня;{' '}
-        Выход — IBS &gt; {highIBS}{requireAboveEntryOnIBS ? ' и Close > Entry' : ''}{exitOnlyOnHighIBS ? '' : ` или по истечении ${maxHoldDays} дней`}.
-      </div>
-
-      <div className="flex flex-wrap gap-3 text-sm">
-        <div className="bg-gray-50 px-3 py-2 rounded border dark:bg-gray-800 dark:border-gray-700">
-          Итоговый депозит: {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(simFinal)}
-        </div>
-        <div className="bg-gray-50 px-3 py-2 rounded border dark:bg-gray-800 dark:border-gray-700">
-          Годовые проценты: {annualReturn.toFixed(2)}%
-        </div>
-        <div className="bg-gray-50 px-3 py-2 rounded border dark:bg-gray-800 dark:border-gray-700">
-          Макс. просадка: {simMaxDD.toFixed(2)}%
-        </div>
-      </div>
-
-      <div className="h-[600px]">
-        <EquityChart equity={simEquity} hideHeader />
-      </div>
-      {showTrades && (
+      {/* Trades Table */}
+      {showTrades && result.trades.length > 0 && (
         <div className="space-y-2">
-          <div className="text-sm font-medium dark:text-gray-100">Сделки</div>
-          <TradesTable trades={base.tradesList} />
+          <h4 className="text-sm font-medium text-gray-900 dark:text-gray-100">История сделок</h4>
+          <TradesTable trades={result.trades} />
         </div>
       )}
     </div>

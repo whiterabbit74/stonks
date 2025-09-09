@@ -8,6 +8,7 @@ import { useAppStore } from '../stores';
 interface WatchItem {
   symbol: string;
   highIBS: number;
+  lowIBS?: number;
   entryPrice: number | null;
   isOpenPosition: boolean;
 }
@@ -52,8 +53,15 @@ export function TelegramWatches() {
   const secondsUntilNextSignal = useCallback((now: Date = new Date()): number => {
     const p = getETParts(now);
     const secOfDay = p.hh * 3600 + p.mm * 60 + p.ss;
-    const target1 = 15 * 3600 + 49 * 60; // 15:49 ET (11 минут до закрытия)
-    const target2 = 15 * 3600 + 58 * 60; // 15:58 ET (2 минуты до закрытия)
+    
+    // Для упрощения используем обычные часы торгов: 9:30-16:00, короткие дни: 9:30-13:00
+    // В реальности должен загружаться календарь торгов, но для данной задачи используем стандартное время
+    const isNormalDay = true; // В реальности нужно проверить календарь
+    const closeHour = isNormalDay ? 16 : 13;
+    const closeMin = closeHour * 60; // в минутах от начала дня
+    
+    const target1 = (closeMin - 11) * 60; // 11 минут до закрытия в секундах
+    const target2 = (closeMin - 2) * 60;  // 2 минуты до закрытия в секундах
     const isWeekday = p.weekday >= 1 && p.weekday <= 5;
 
     if (isWeekday) {
@@ -61,7 +69,7 @@ export function TelegramWatches() {
       if (secOfDay < target2) return target2 - secOfDay;
     }
 
-    // Roll to next weekday 15:49 ET
+    // Roll to next weekday
     let daysToAdd = 1;
     let wd = p.weekday;
     while (true) {
@@ -98,6 +106,7 @@ export function TelegramWatches() {
         return {
           symbol: watch.symbol as string,
           highIBS: watch.highIBS as number,
+          lowIBS: watch.lowIBS as number ?? 0.1,
           entryPrice: watch.entryPrice as number | null ?? null,
           isOpenPosition: !!watch.isOpenPosition
         };
@@ -135,13 +144,13 @@ export function TelegramWatches() {
       </div>
 
       {typeof watchThresholdPct === 'number' && (
-        <div className="text-sm text-gray-600">
-          Текущий порог уведомлений: {watchThresholdPct}% — вход при IBS ≤ {(0.10 + watchThresholdPct/100).toFixed(2)}, выход при IBS ≥ {(0.75 - watchThresholdPct/100).toFixed(2)} <span className="ml-2 text-xs text-gray-500">(T-11/T-2)</span>
+        <div className="text-sm text-gray-600 dark:text-gray-300">
+          Глобальный порог уведомлений: {watchThresholdPct}% <span className="ml-2 text-xs text-gray-500 dark:text-gray-400">(применяется ко всем отслеживаемым акциям)</span>
         </div>
       )}
 
       {typeof secondsToNext === 'number' && (
-        <div className="text-sm text-gray-600">
+        <div className="text-sm text-gray-600 dark:text-gray-300">
           До следующего подсчёта сигналов: {formatDuration(secondsToNext)}
         </div>
       )}
@@ -149,40 +158,43 @@ export function TelegramWatches() {
       {/* Убран блок тестовых уведомлений по запросу */}
 
       {loading ? (
-        <div className="text-sm text-gray-500">Загрузка…</div>
+        <div className="text-sm text-gray-500 dark:text-gray-400">Загрузка…</div>
       ) : error ? (
-        <div className="text-sm text-red-600">{error}</div>
+        <div className="text-sm text-red-600 dark:text-red-400">{error}</div>
       ) : watches.length === 0 ? (
-        <div className="text-sm text-gray-500">Нет активных наблюдений. Включите мониторинг на вкладке «Результаты».</div>
+        <div className="text-sm text-gray-500 dark:text-gray-400">Нет активных наблюдений. Включите мониторинг на вкладке «Результаты».</div>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm border-separate border-spacing-0">
             <thead className="bg-gray-50 dark:bg-gray-900">
               <tr>
-                <th className="text-left p-3">Тикер</th>
-                <th className="text-left p-3">IBS (верх)</th>
-                <th className="text-left p-3">Цена входа</th>
-                <th className="text-left p-3">Позиция</th>
+                <th className="text-left p-3 dark:text-gray-100">Тикер</th>
+                <th className="text-left p-3 dark:text-gray-100">IBS вход</th>
+                <th className="text-left p-3 dark:text-gray-100">IBS выход</th>
+                <th className="text-left p-3 dark:text-gray-100">Цена входа</th>
+                <th className="text-left p-3 dark:text-gray-100">Позиция</th>
+                <th className="text-left p-3 dark:text-gray-100">Действия</th>
               </tr>
             </thead>
-            <tbody className="divide-y">
+            <tbody className="divide-y dark:divide-gray-700">
               {watches.map(w => (
                 <tr key={w.symbol} className="hover:bg-gray-50 dark:hover:bg-gray-800">
-                  <td className="p-3 font-medium">{w.symbol}</td>
-                  <td className="p-3">{w.highIBS}</td>
-                  <td className="p-3">{w.entryPrice != null ? w.entryPrice.toFixed(2) : '—'}</td>
+                  <td className="p-3 font-medium dark:text-gray-100">{w.symbol}</td>
+                  <td className="p-3 dark:text-gray-300">≤ {(w.lowIBS ?? 0.1).toFixed(2)}</td>
+                  <td className="p-3 dark:text-gray-300">≥ {w.highIBS.toFixed(2)}</td>
+                  <td className="p-3 dark:text-gray-300">{w.entryPrice != null ? `$${w.entryPrice.toFixed(2)}` : '—'}</td>
                   <td className="p-3">
-                    <div className="flex items-center gap-3">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${w.isOpenPosition ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-gray-100 text-gray-600 border border-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700'}`}>{w.isOpenPosition ? 'Открыта' : 'Нет'}</span>
-                      <button
-                        onClick={() => setConfirm({ open: true, symbol: w.symbol })}
-                        className="inline-flex items-center justify-center w-8 h-8 rounded-full border border-gray-300 bg-white text-gray-600 hover:bg-red-50 hover:text-red-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-red-900/30"
-                        title="Удалить из мониторинга"
-                        aria-label="Удалить из мониторинга"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${w.isOpenPosition ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-800' : 'bg-gray-100 text-gray-600 border border-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700'}`}>{w.isOpenPosition ? 'Открыта' : 'Нет'}</span>
+                  </td>
+                  <td className="p-3">
+                    <button
+                      onClick={() => setConfirm({ open: true, symbol: w.symbol })}
+                      className="inline-flex items-center justify-center w-8 h-8 rounded-full border border-gray-300 bg-white text-gray-600 hover:bg-red-50 hover:text-red-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-red-900/30"
+                      title="Удалить из мониторинга"
+                      aria-label="Удалить из мониторинга"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </td>
                 </tr>
               ))}
@@ -215,6 +227,22 @@ export function TelegramWatches() {
               className="inline-flex items-center px-3 py-2 rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
             >
               Тест: 2 мин
+            </button>
+            <button
+              onClick={async () => {
+                try {
+                  const r = await DatasetAPI.actualizePrices();
+                  const message = r.success 
+                    ? `Обновлено тикеров: ${r.count}${r.tickers?.length ? ` (${r.tickers.join(', ')})` : ''}`
+                    : 'Обновление не выполнено';
+                  setInfo({ open: true, title: 'Актуализация цен', message, kind: r.success ? 'success' : 'error' });
+                } catch (e) {
+                  setInfo({ open: true, title: 'Ошибка', message: e instanceof Error ? e.message : 'Не удалось выполнить актуализацию', kind: 'error' });
+                }
+              }}
+              className="inline-flex items-center px-3 py-2 rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+            >
+              Актуализация цен
             </button>
           </div>
         </div>

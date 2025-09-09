@@ -38,7 +38,7 @@ export function Logo({ size = 'md', showText = true, className = '' }: LogoProps
       {showText && (
         <div>
           <h3 className={`font-bold text-gray-900 dark:text-gray-100 ${textSizeClasses[size]}`}>
-            IBS Trading Strategies
+            IBS Trading Strategy
           </h3>
           <p className={`text-gray-600 dark:text-gray-400 ${size === 'sm' ? 'text-xs' : 'text-sm'}`}>
             Профессиональный тестировщик стратегий

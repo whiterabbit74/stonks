@@ -34,7 +34,7 @@ export function TradeDrawdownChart({ trades, initialCapital }: TradeDrawdownChar
       // Create new chart
       const chart = createChart(chartContainerRef.current, {
         width: chartContainerRef.current.clientWidth,
-        height: Math.max(chartContainerRef.current.clientHeight || 0, 360),
+        height: chartContainerRef.current.clientHeight || 400,
         layout: {
           background: { color: bg },
           textColor: text,

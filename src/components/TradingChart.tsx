@@ -68,10 +68,10 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
 
       // Create single chart, bottom ~20% for indicator scale
       const el = chartContainerRef.current;
-      const totalH = chartContainerRef.current.clientHeight || 600;
+      const totalH = chartContainerRef.current.clientHeight || 400;
       const chart = createChart(el, {
         width: el.clientWidth,
-        height: Math.max(totalH || 0, 360),
+        height: totalH,
         layout: { background: { color: bg }, textColor: text },
         grid: { vertLines: { color: grid }, horzLines: { color: grid } },
         crosshair: { mode: 1 },

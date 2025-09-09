@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Database, Download, Trash2, Calendar, BarChart3, Eye, EyeOff, Server, ServerOff, RefreshCw, Edit } from 'lucide-react';
+import { Database, Download, Trash2, Calendar, BarChart3, Server, ServerOff, RefreshCw, Edit } from 'lucide-react';
 import { useAppStore } from '../stores';
 import { createStrategyFromTemplate, STRATEGY_TEMPLATES } from '../lib/strategy';
 import { DatasetAPI, API_BASE_URL } from '../lib/api';
@@ -19,7 +19,6 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
   const loadDatasetsFromServer = useAppStore(s => s.loadDatasetsFromServer);
   const resultsRefreshProvider = useAppStore(s => s.resultsRefreshProvider);
   const runBacktest = useAppStore(s => s.runBacktest);
-  const [isExpanded, setIsExpanded] = useState(true);
   const [refreshingId, setRefreshingId] = useState<string | null>(null);
   const [serverStatus, setServerStatus] = useState<'checking' | 'online' | 'offline'>('checking');
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -207,23 +206,6 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
             )}
           </div>
 
-          {/* Toggle Button - Mobile Optimized */}
-          <button
-            onClick={() => setIsExpanded(!isExpanded)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors dark:text-blue-400 dark:hover:text-blue-300 dark:hover:bg-blue-950/20"
-          >
-            {isExpanded ? (
-              <>
-                <EyeOff className="w-4 h-4" />
-                <span className="hidden sm:inline">Скрыть</span>
-              </>
-            ) : (
-              <>
-                <Eye className="w-4 h-4" />
-                <span className="hidden sm:inline">Показать</span>
-              </>
-            )}
-          </button>
         </div>
 
         {/* Row 3: Filter Buttons - Mobile Responsive */}
@@ -261,8 +243,7 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
         </div>
       </div>
 
-      {isExpanded && (
-        <div className="space-y-2">
+      <div className="space-y-2">
           {serverStatus === 'offline' && savedDatasets.length === 0 && (
             <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
               <div className="flex items-center gap-2 mb-2">
@@ -317,8 +298,7 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
               refreshing={refreshingId === ((dataset.ticker || (dataset as unknown as { id?: string }).id || dataset.name).toString().toUpperCase())}
             />
           ))}
-        </div>
-      )}
+      </div>
 
       <ConfirmModal
         open={confirmOpen}

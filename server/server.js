@@ -1038,8 +1038,71 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
   }
 }
 
+// Price actualization script - runs 2 minutes AFTER market close to update final prices
+async function runPriceActualization() {
+  try {
+    // Check if we're 2 minutes after market close
+    const nowEt = getETParts(new Date());
+    const cal = await loadTradingCalendarJSON().catch(() => null);
+    
+    // Only run on trading days
+    if (!isTradingDayByCalendarET(nowEt, cal)) return { updated: false };
+    
+    const session = getTradingSessionForDateET(nowEt, cal);
+    const nowMinutes = (nowEt.hh * 60 + nowEt.mm);
+    const minutesAfterClose = nowMinutes - session.closeMin;
+    
+    // Run exactly 2 minutes after close
+    if (minutesAfterClose !== 2) return { updated: false };
+    
+    const todayKey = etKeyYMD(nowEt);
+    await appendMonitorLog([`T+2min: начинаем актуализацию цен закрытия для ${todayKey}`]);
+    
+    let updatedTickers = [];
+    
+    // Update all watched tickers
+    for (const w of telegramWatches.values()) {
+      try {
+        await appendMonitorLog([`Обновляем ${w.symbol}...`]);
+        const result = await refreshTickerViaAlphaVantageAndCheckFreshness(w.symbol, nowEt);
+        if (result.avFresh) {
+          updatedTickers.push(w.symbol);
+          await appendMonitorLog([`${w.symbol} - обновлён успешно`]);
+        } else {
+          await appendMonitorLog([`${w.symbol} - не удалось обновить данные`]);
+        }
+        // Small delay to avoid hitting API rate limits
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      } catch (error) {
+        await appendMonitorLog([`${w.symbol} - ошибка: ${error.message}`]);
+      }
+    }
+    
+    const logMsg = updatedTickers.length > 0 
+      ? `Актуализация завершена. Обновлено тикеров: ${updatedTickers.length} (${updatedTickers.join(', ')})`
+      : 'Актуализация завершена. Ни одного тикера не обновлено.';
+    await appendMonitorLog([logMsg]);
+    
+    // Send notification to Telegram if any tickers were updated
+    if (updatedTickers.length > 0) {
+      const chatId = getApiConfig().TELEGRAM_CHAT_ID;
+      if (chatId) {
+        const message = `📈 Актуализация цен завершена\n\nДата: ${todayKey}\nОбновлено тикеров: ${updatedTickers.length}\n${updatedTickers.join(', ')}`;
+        await sendTelegramMessage(chatId, message);
+      }
+    }
+    
+    return { updated: true, count: updatedTickers.length, tickers: updatedTickers };
+  } catch (error) {
+    console.warn('Price actualization error:', error.message);
+    try { await appendMonitorLog([`Ошибка актуализации цен: ${error.message}`]); } catch {}
+    return { updated: false };
+  }
+}
+
 setInterval(async () => {
   await runTelegramAggregation(null, {});
+  await runPriceActualization();
 }, 30000);
 
 // Test simulation endpoint to reproduce the logic as if at T-11 or T-2
@@ -1051,6 +1114,20 @@ app.post('/api/telegram/simulate', async (req, res) => {
     res.json({ success: !!(result && result.sent), stage });
   } catch (e) {
     res.status(500).json({ error: e && e.message ? e.message : 'Failed to simulate telegram aggregation' });
+  }
+});
+
+// Test price actualization endpoint 
+app.post('/api/telegram/actualize-prices', async (req, res) => {
+  try {
+    const result = await runPriceActualization();
+    res.json({ 
+      success: result.updated, 
+      count: result.count || 0, 
+      tickers: result.tickers || [] 
+    });
+  } catch (e) {
+    res.status(500).json({ error: e && e.message ? e.message : 'Failed to run price actualization' });
   }
 });
 

@@ -388,6 +388,15 @@ export class DatasetAPI {
     return await response.json();
   }
 
+  static async actualizePrices(): Promise<{ success: boolean; count: number; tickers: string[] }>{
+    const response = await fetchWithCreds(`${API_BASE_URL}/telegram/actualize-prices`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+    return await response.json();
+  }
+
   // App settings
   static async getAppSettings(): Promise<{ watchThresholdPct: number; resultsQuoteProvider: 'alpha_vantage'|'finnhub'; enhancerProvider: 'alpha_vantage'|'finnhub'; resultsRefreshProvider?: 'alpha_vantage'|'finnhub'; indicatorPanePercent?: number }>{
     const response = await fetchWithCreds(`${API_BASE_URL}/settings`);
