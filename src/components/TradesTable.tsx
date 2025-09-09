@@ -40,7 +40,7 @@ export function TradesTable({ trades }: TradesTableProps) {
 						<th className="text-right px-3 py-2 font-semibold">Цена входа</th>
 						<th className="text-right px-3 py-2 font-semibold">Цена выхода</th>
 						<th className="text-right px-3 py-2 font-semibold">Кол-во</th>
-						<th className="text-right px-3 py-2 font-semibold">Маржа, $</th>
+						<th className="text-right px-3 py-2 font-semibold">Вложено, $</th>
 						<th className="text-right px-3 py-2 font-semibold">PnL, $</th>
 						<th className="text-right px-3 py-2 font-semibold">PnL, %</th>
 						<th className="text-right px-3 py-2 font-semibold">Депозит, $</th>

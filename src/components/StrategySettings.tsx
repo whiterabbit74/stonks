@@ -207,31 +207,31 @@ export function StrategySettings({ strategy, onSave, onClose, mode = 'modal' }: 
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Торговое плечо
+                Торговое плечо (%)
               </label>
               <p className="text-xs text-gray-500 mb-2">
-                Коэффициент использования заемных средств. 1 = без плеча, 2 = плечо 2:1, и т.д.
+                Процент заемных средств. 0% = без плеча, 50% = плечо 2:1, 75% = плечо 4:1
               </p>
               <div className="flex items-center gap-4">
                 <input
                   type="range"
-                  min={1}
-                  max={5}
-                  step={0.1}
-                  value={editedStrategy.riskManagement.leverage || 1}
-                  onChange={(e) => handleRiskManagementChange('leverage', Number(e.target.value))}
+                  min={0}
+                  max={80}
+                  step={5}
+                  value={((editedStrategy.riskManagement.leverage || 1) - 1) * 100}
+                  onChange={(e) => handleRiskManagementChange('leverage', 1 + Number(e.target.value) / 100)}
                   className="flex-1"
                 />
                 <input
                   type="number"
-                  min={1}
-                  max={5}
-                  step={0.1}
-                  value={editedStrategy.riskManagement.leverage || 1}
-                  onChange={(e) => handleRiskManagementChange('leverage', Number(e.target.value))}
+                  min={0}
+                  max={80}
+                  step={5}
+                  value={((editedStrategy.riskManagement.leverage || 1) - 1) * 100}
+                  onChange={(e) => handleRiskManagementChange('leverage', 1 + Number(e.target.value) / 100)}
                   className="w-20 px-3 py-2 border border-gray-300 rounded-md text-sm"
                 />
-                <span className="text-sm text-gray-500">:1</span>
+                <span className="text-sm text-gray-500">%</span>
               </div>
             </div>
 

@@ -110,7 +110,7 @@ function runMultiTickerBacktest(
 
   // Параметры стратегии
   const initialCapital = Number(strategy?.riskManagement?.initialCapital ?? 10000);
-  const capitalUsagePerTicker = Number(strategy?.riskManagement?.capitalUsage ?? 25); // 25% на тикер
+  const capitalUsagePerTicker = tickersData.length > 0 ? Math.floor(100 / tickersData.length) : 25; // Пропорционально на каждый тикер
   const leverage = Number(strategy?.riskManagement?.leverage ?? 1); // Торговое плечо
   const lowIBS = Number(strategy.parameters.lowIBS ?? 0.1);
   const highIBS = Number(strategy.parameters.highIBS ?? 0.75);
@@ -460,10 +460,10 @@ export function BuyAtClose4Simulator({ strategy, defaultTickers = ['AAPL', 'MSFT
       {/* Заголовок */}
       <div className="border-b pb-4">
         <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
-          Покупка на закрытии 4 (Multi-Ticker IBS)
+          Мультитикерная IBS стратегия
         </h2>
         <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-          Торговля по 4 тикерам одновременно с единым балансом и IBS сигналами
+          Торговля по множественным тикерам с пропорциональным распределением капитала и IBS сигналами
         </p>
       </div>
 
@@ -496,8 +496,8 @@ export function BuyAtClose4Simulator({ strategy, defaultTickers = ['AAPL', 'MSFT
         
         <div className="mt-3 text-sm text-gray-600 dark:text-gray-400">
           <p>Текущие тикеры: <span className="font-mono">{tickers.join(', ')}</span></p>
-          <p>Капитал на тикер: {strategy.riskManagement.capitalUsage || 25}%</p>
-          <p>Торговое плечо: <span className="font-mono">{strategy.riskManagement.leverage || 1}:1</span> {(strategy.riskManagement.leverage || 1) > 1 ? '(с плечом)' : '(без плеча)'}</p>
+          <p>Капитал на тикер: {capitalUsagePerTicker}% ({tickers.length} тикеров)</p>
+          <p>Торговое плечо: <span className="font-mono">{(((strategy.riskManagement.leverage || 1) - 1) * 100).toFixed(0)}%</span> {(strategy.riskManagement.leverage || 1) > 1 ? '(с плечом)' : '(без плеча)'}</p>
         </div>
       </div>
 
@@ -514,7 +514,7 @@ export function BuyAtClose4Simulator({ strategy, defaultTickers = ['AAPL', 'MSFT
       {!isLoading && loadedData.length > 0 && (
         <>
           {/* Метрики */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
             <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 text-center">
               <div className="text-2xl font-bold text-green-600">
                 {formatCurrencyUSD(backtest.finalValue)}
@@ -527,6 +527,13 @@ export function BuyAtClose4Simulator({ strategy, defaultTickers = ['AAPL', 'MSFT
                 {backtest.metrics.totalReturn?.toFixed(2)}%
               </div>
               <div className="text-sm text-gray-600 dark:text-gray-400">Общая доходность</div>
+            </div>
+            
+            <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 text-center">
+              <div className="text-2xl font-bold text-orange-600">
+                {backtest.metrics.cagr?.toFixed(2)}%
+              </div>
+              <div className="text-sm text-gray-600 dark:text-gray-400">Годовые проценты</div>
             </div>
             
             <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 text-center">
