@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { DatasetAPI } from '../lib/api';
 import { useAppStore } from '../stores';
+import { sanitizeNumericInput, sanitizeTextInput, VALIDATION_CONSTRAINTS } from '../lib/input-validation';
 // import { StrategySettings } from './StrategySettings';
 
 // SettingsData interface removed - not actively used
@@ -90,18 +91,19 @@ export function AppSettings() {
 
       // Set form values (unmask the keys for editing)
       if (data.api) {
-        setAlphaVantageKey(data.api.alphaVantageKey || '');
-        setFinnhubKey(data.api.finnhubKey || '');
-        setTwelveDataKey(data.api.twelveDataKey || '');
-        setPolygonKey(data.api.polygonKey || '');
+        setAlphaVantageKey(sanitizeTextInput(data.api.alphaVantageKey || '', { maxLength: 100, removeHtml: true }));
+        setFinnhubKey(sanitizeTextInput(data.api.finnhubKey || '', { maxLength: 100, removeHtml: true }));
+        setTwelveDataKey(sanitizeTextInput(data.api.twelveDataKey || '', { maxLength: 100, removeHtml: true }));
+        setPolygonKey(sanitizeTextInput(data.api.polygonKey || '', { maxLength: 100, removeHtml: true }));
       }
 
       // Set Telegram settings (don't load masked values)
       if (data.telegram) {
         // If the botToken contains asterisks, it means it's masked - leave empty
         const botToken = data.telegram.botToken || '';
-        setTelegramBotToken(botToken.includes('*') ? '' : botToken);
-        setTelegramChatId(data.telegram.chatId || '');
+        const chatId = data.telegram.chatId || '';
+        setTelegramBotToken(botToken.includes('*') ? '' : sanitizeTextInput(botToken, { maxLength: 200, removeHtml: true }));
+        setTelegramChatId(sanitizeTextInput(chatId, { maxLength: 50, removeHtml: true }));
       }
     } catch (e) {
       console.error('Failed to load API settings:', e);
@@ -174,8 +176,22 @@ export function AppSettings() {
         <label className="block text-sm font-medium text-gray-700 mb-2">Порог близости к IBS, %</label>
         <p className="text-xs text-gray-500 mb-2">Диапазон 0–20%. По умолчанию 5%.</p>
         <div className="flex items-center gap-4">
-          <input type="range" min={0} max={20} step={0.5} value={watchThresholdPct} onChange={(e)=>setWatchThresholdPct(Number(e.target.value))} className="flex-1" />
-          <input type="number" min={0} max={20} step={0.5} value={watchThresholdPct} onChange={(e)=>setWatchThresholdPct(Number(e.target.value))} className="w-24 px-3 py-2 border border-gray-300 rounded-md text-sm" />
+          <input type="range" min={0} max={20} step={0.5} value={watchThresholdPct} onChange={(e)=> {
+            const sanitized = sanitizeNumericInput(e.target.value, {
+              ...VALIDATION_CONSTRAINTS.thresholdPct,
+              max: 20,
+              fallback: watchThresholdPct
+            });
+            setWatchThresholdPct(sanitized);
+          }} className="flex-1" />
+          <input type="number" min={0} max={20} step={0.5} value={watchThresholdPct} onChange={(e)=> {
+            const sanitized = sanitizeNumericInput(e.target.value, {
+              ...VALIDATION_CONSTRAINTS.thresholdPct,
+              max: 20,
+              fallback: watchThresholdPct
+            });
+            setWatchThresholdPct(sanitized);
+          }} className="w-24 px-3 py-2 border border-gray-300 rounded-md text-sm" />
           <span className="text-sm text-gray-500">%</span>
         </div>
       </div>
@@ -186,8 +202,22 @@ export function AppSettings() {
         <label className="block text-sm font-medium text-gray-700 mb-2">Высота панели индикаторов (IBS/Объём), %</label>
         <p className="text-xs text-gray-500 mb-2">Диапазон 0–40%. По умолчанию 7%. Больше — выше панель, меньше — ниже.</p>
         <div className="flex items-center gap-4">
-          <input type="range" min={0} max={40} step={1} value={indicatorPanePercent} onChange={(e)=>setIndicatorPanePercent(Number(e.target.value))} className="flex-1" />
-          <input type="number" min={0} max={40} step={1} value={indicatorPanePercent} onChange={(e)=>setIndicatorPanePercent(Number(e.target.value))} className="w-24 px-3 py-2 border border-gray-300 rounded-md text-sm" />
+          <input type="range" min={0} max={40} step={1} value={indicatorPanePercent} onChange={(e)=> {
+            const sanitized = sanitizeNumericInput(e.target.value, {
+              ...VALIDATION_CONSTRAINTS.indicatorPane,
+              max: 40,
+              fallback: indicatorPanePercent
+            });
+            setIndicatorPanePercent(sanitized);
+          }} className="flex-1" />
+          <input type="number" min={0} max={40} step={1} value={indicatorPanePercent} onChange={(e)=> {
+            const sanitized = sanitizeNumericInput(e.target.value, {
+              ...VALIDATION_CONSTRAINTS.indicatorPane,
+              max: 40,
+              fallback: indicatorPanePercent
+            });
+            setIndicatorPanePercent(sanitized);
+          }} className="w-24 px-3 py-2 border border-gray-300 rounded-md text-sm" />
           <span className="text-sm text-gray-500">%</span>
         </div>
         <div className="text-xs text-gray-500 mt-1">Подсказка: чтобы сделать столбики заметно ниже (примерно в 3 раза), установите ~7%.</div>
@@ -240,7 +270,13 @@ export function AppSettings() {
                 min="0"
                 step="0.01"
                 value={commissionFixed}
-                onChange={(e) => setCommissionFixed(Number(e.target.value))}
+                onChange={(e) => {
+                  const sanitized = sanitizeNumericInput(e.target.value, {
+                    ...VALIDATION_CONSTRAINTS.commission.fixed,
+                    fallback: commissionFixed
+                  });
+                  setCommissionFixed(sanitized);
+                }}
                 disabled={commissionType === 'percentage'}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100"
               />
@@ -257,7 +293,13 @@ export function AppSettings() {
                 max="10"
                 step="0.01"
                 value={commissionPercentage}
-                onChange={(e) => setCommissionPercentage(Number(e.target.value))}
+                onChange={(e) => {
+                  const sanitized = sanitizeNumericInput(e.target.value, {
+                    ...VALIDATION_CONSTRAINTS.commission.percentage,
+                    fallback: commissionPercentage
+                  });
+                  setCommissionPercentage(sanitized);
+                }}
                 disabled={commissionType === 'fixed'}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100"
               />
@@ -339,7 +381,14 @@ export function AppSettings() {
               <input
                 type="password"
                 value={alphaVantageKey}
-                onChange={(e) => setAlphaVantageKey(e.target.value)}
+                onChange={(e) => {
+                  const sanitized = sanitizeTextInput(e.target.value, {
+                    maxLength: 100,
+                    removeHtml: true,
+                    allowedChars: /[a-zA-Z0-9_-]/
+                  });
+                  setAlphaVantageKey(sanitized);
+                }}
                 placeholder="Ваш API ключ Alpha Vantage"
                 className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
@@ -349,7 +398,14 @@ export function AppSettings() {
               <input
                 type="password"
                 value={finnhubKey}
-                onChange={(e) => setFinnhubKey(e.target.value)}
+                onChange={(e) => {
+                  const sanitized = sanitizeTextInput(e.target.value, {
+                    maxLength: 100,
+                    removeHtml: true,
+                    allowedChars: /[a-zA-Z0-9_-]/
+                  });
+                  setFinnhubKey(sanitized);
+                }}
                 placeholder="Ваш API ключ Finnhub"
                 className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
@@ -409,7 +465,14 @@ export function AppSettings() {
             <input
               type="password"
               value={telegramBotToken}
-              onChange={(e) => setTelegramBotToken(e.target.value)}
+              onChange={(e) => {
+                const sanitized = sanitizeTextInput(e.target.value, {
+                  maxLength: 200,
+                  removeHtml: true,
+                  allowedChars: /[a-zA-Z0-9:_-]/
+                });
+                setTelegramBotToken(sanitized);
+              }}
               placeholder="Ваш Telegram Bot Token"
               className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
@@ -422,7 +485,14 @@ export function AppSettings() {
             <input
               type="text"
               value={telegramChatId}
-              onChange={(e) => setTelegramChatId(e.target.value)}
+              onChange={(e) => {
+                const sanitized = sanitizeTextInput(e.target.value, {
+                  maxLength: 50,
+                  removeHtml: true,
+                  allowedChars: /[0-9-]/
+                });
+                setTelegramChatId(sanitized);
+              }}
               placeholder="Ваш Chat ID"
               className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
@@ -450,7 +520,13 @@ export function AppSettings() {
       <div className="p-4 rounded-lg border bg-gray-50">
         <div className="text-sm font-medium text-gray-700 mb-2">Тестовое сообщение в Telegram</div>
         <div className="flex flex-wrap items-center gap-2">
-          <input value={testMsg} onChange={(e)=>setTestMsg(e.target.value)} className="flex-1 min-w-[260px] px-3 py-2 rounded-md border" />
+          <input value={testMsg} onChange={(e)=> {
+            const sanitized = sanitizeTextInput(e.target.value, {
+              maxLength: 500,
+              removeHtml: true
+            });
+            setTestMsg(sanitized);
+          }} className="flex-1 min-w-[260px] px-3 py-2 rounded-md border" />
           <button onClick={sendTest} disabled={sending} className="px-3 py-1.5 rounded-md bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:bg-gray-400">
             {sending ? 'Отправка…' : 'Отправить тест'}
           </button>

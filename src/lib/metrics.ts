@@ -14,6 +14,9 @@ export class MetricsCalculator {
   private equity: EquityPoint[];
   private initialCapital: number;
   private benchmarkData?: OHLCData[];
+  // Performance caching
+  private _cachedAverageWin?: number;
+  private _cachedAverageLoss?: number;
 
   constructor(
     trades: Trade[], 
@@ -141,7 +144,14 @@ export class MetricsCalculator {
    */
   private calculateMaxDrawdown(): number {
     if (this.equity.length === 0) return 0;
-    return Math.max(...this.equity.map(point => point.drawdown));
+    // Оптимизированный поиск максимума без создания промежуточного массива
+    let maxDrawdown = 0;
+    for (let i = 0; i < this.equity.length; i++) {
+      if (this.equity[i].drawdown > maxDrawdown) {
+        maxDrawdown = this.equity[i].drawdown;
+      }
+    }
+    return maxDrawdown;
   }
 
   /**
@@ -149,8 +159,14 @@ export class MetricsCalculator {
    */
   private calculateWinRate(): number {
     if (this.trades.length === 0) return 0;
-    const winningTrades = this.trades.filter(trade => trade.pnl > 0);
-    return (winningTrades.length / this.trades.length) * 100;
+    // Оптимизированный расчет без создания промежуточного массива
+    let winningCount = 0;
+    for (let i = 0; i < this.trades.length; i++) {
+      if (this.trades[i].pnl > 0) {
+        winningCount++;
+      }
+    }
+    return (winningCount / this.trades.length) * 100;
   }
 
   /**
@@ -212,11 +228,18 @@ export class MetricsCalculator {
    * Calculate profit factor (gross profit / gross loss)
    */
   private calculateProfitFactor(): number {
-    const winningTrades = this.trades.filter(trade => trade.pnl > 0);
-    const losingTrades = this.trades.filter(trade => trade.pnl < 0);
+    // Оптимизированный расчет в одном проходе
+    let grossProfit = 0;
+    let grossLoss = 0;
     
-    const grossProfit = winningTrades.reduce((sum, trade) => sum + trade.pnl, 0);
-    const grossLoss = Math.abs(losingTrades.reduce((sum, trade) => sum + trade.pnl, 0));
+    for (let i = 0; i < this.trades.length; i++) {
+      const pnl = this.trades[i].pnl;
+      if (pnl > 0) {
+        grossProfit += pnl;
+      } else if (pnl < 0) {
+        grossLoss += Math.abs(pnl);
+      }
+    }
     
     if (grossLoss === 0) return grossProfit > 0 ? Infinity : 0;
     return grossProfit / grossLoss;
@@ -226,20 +249,42 @@ export class MetricsCalculator {
    * Calculate average winning trade amount
    */
   private calculateAverageWin(): number {
-    const winningTrades = this.trades.filter(trade => trade.pnl > 0);
-    if (winningTrades.length === 0) return 0;
+    // Кешируем результат если он уже был вычислен
+    if (this._cachedAverageWin !== undefined) return this._cachedAverageWin;
     
-    return winningTrades.reduce((sum, trade) => sum + trade.pnl, 0) / winningTrades.length;
+    let totalWin = 0;
+    let winCount = 0;
+    
+    for (let i = 0; i < this.trades.length; i++) {
+      if (this.trades[i].pnl > 0) {
+        totalWin += this.trades[i].pnl;
+        winCount++;
+      }
+    }
+    
+    this._cachedAverageWin = winCount === 0 ? 0 : totalWin / winCount;
+    return this._cachedAverageWin;
   }
 
   /**
    * Calculate average losing trade amount (absolute value)
    */
   private calculateAverageLoss(): number {
-    const losingTrades = this.trades.filter(trade => trade.pnl < 0);
-    if (losingTrades.length === 0) return 0;
+    // Кешируем результат если он уже был вычислен
+    if (this._cachedAverageLoss !== undefined) return this._cachedAverageLoss;
     
-    return Math.abs(losingTrades.reduce((sum, trade) => sum + trade.pnl, 0) / losingTrades.length);
+    let totalLoss = 0;
+    let lossCount = 0;
+    
+    for (let i = 0; i < this.trades.length; i++) {
+      if (this.trades[i].pnl < 0) {
+        totalLoss += Math.abs(this.trades[i].pnl);
+        lossCount++;
+      }
+    }
+    
+    this._cachedAverageLoss = lossCount === 0 ? 0 : totalLoss / lossCount;
+    return this._cachedAverageLoss;
   }
 
   // Level 3 Metrics - Advanced

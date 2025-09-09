@@ -233,7 +233,10 @@ export function SplitPage() {
 							{events.map((s, i) => (
 								<div key={i} className="flex flex-wrap gap-2 items-center">
 									<input type="date" className="border rounded px-2 py-1 text-sm dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100" value={(s.date || '').slice(0,10)} onChange={e => updateEvent(i, { date: e.target.value })} />
-									<input type="number" step="0.01" min="0" className="border rounded px-2 py-1 text-sm w-28 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100" value={String(s.factor ?? '')} onChange={e => updateEvent(i, { factor: Number(e.target.value) })} />
+									<input type="number" step="0.01" min="0" className="border rounded px-2 py-1 text-sm w-28 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100" value={String(s.factor ?? '')} onChange={e => {
+  const value = parseFloat(e.target.value);
+  updateEvent(i, { factor: isNaN(value) ? 0 : value });
+}} />
 									<button className="px-2 py-1 text-xs rounded border hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800" onClick={() => removeEvent(i)}>Удалить</button>
 								</div>
 							))}

@@ -72,10 +72,20 @@ export function TelegramWatches() {
     // Roll to next weekday
     let daysToAdd = 1;
     let wd = p.weekday;
-    while (true) {
+    let attempts = 0;
+    const maxAttempts = 7; // Safety limit for weekday search
+    
+    while (attempts < maxAttempts) {
       wd = (wd + 1) % 7;
       if (wd >= 1 && wd <= 5) break;
       daysToAdd++;
+      attempts++;
+    }
+    
+    // If no weekday found within 7 attempts, fallback to Monday (1)
+    if (attempts >= maxAttempts) {
+      console.warn('Could not find next weekday, using Monday as fallback');
+      daysToAdd = 1;
     }
     const remainingToday = 24 * 3600 - secOfDay;
     const extraFullDays = daysToAdd - 1;

@@ -107,7 +107,9 @@ async function ensureSplitsFile() {
     ensureRegularFileSync(SPLITS_FILE, {});
   } catch {}
 }
-ensureSplitsFile().catch(() => {});
+ensureSplitsFile().catch((err) => {
+  console.warn('Failed to ensure splits file exists:', err.message);
+});
 
 // Ensure settings and watches storages exist as well (best-effort)
 try { ensureRegularFileSync(SETTINGS_FILE, {}); } catch {}
@@ -701,12 +703,23 @@ async function fetchTodayRangeAndQuote(symbol) {
 function previousTradingDayET(fromParts) {
   let cursor = new Date(Date.UTC(fromParts.y, fromParts.m - 1, fromParts.d, 12, 0, 0));
   cursor.setUTCDate(cursor.getUTCDate() - 1);
-  while (true) {
+  
+  // Add safety limit to prevent infinite loop (max 30 days back)
+  let attempts = 0;
+  const maxAttempts = 30;
+  
+  while (attempts < maxAttempts) {
     const p = getETParts(cursor);
     const cal = getCachedTradingCalendar();
     if (isTradingDayByCalendarET(p, cal)) return p;
     cursor.setUTCDate(cursor.getUTCDate() - 1);
+    attempts++;
   }
+  
+  // Fallback: return parts from 1 day back if no trading day found
+  console.warn('Could not find previous trading day within 30 days, using fallback');
+  const fallbackDate = new Date(Date.UTC(fromParts.y, fromParts.m - 1, fromParts.d - 1, 12, 0, 0));
+  return getETParts(fallbackDate);
 }
 
 function buildFreshnessLine(ohlc, nowEtParts) {
@@ -1354,7 +1367,9 @@ async function writeDatasetToTickerFile(dataset) {
     const files = await fs.readdir(DATASETS_DIR);
     await Promise.all(files
       .filter(f => f.toUpperCase().startsWith(`${ticker}_`))
-      .map(f => fs.remove(path.join(DATASETS_DIR, f)).catch(() => {}))
+      .map(f => fs.remove(path.join(DATASETS_DIR, f)).catch((err) => {
+        console.warn(`Failed to delete file ${f}:`, err.message);
+      }))
     );
   } catch {}
   // Strip embedded splits to enforce single source of truth (server/splits.json)
@@ -1800,7 +1815,9 @@ app.delete('/api/datasets/:id', async (req, res) => {
       await Promise.all(
         files
           .filter(f => f.toUpperCase().startsWith(`${ticker}_`) && f.endsWith('.json'))
-          .map(f => fs.remove(path.join(DATASETS_DIR, f)).catch(() => {}))
+          .map(f => fs.remove(path.join(DATASETS_DIR, f)).catch((err) => {
+        console.warn(`Failed to delete file ${f}:`, err.message);
+      }))
       );
     } catch {}
 
@@ -1853,7 +1870,10 @@ app.put('/api/datasets/:id', async (req, res) => {
 app.post('/api/datasets/:id/refresh', async (req, res) => {
   try {
     const { id } = req.params;
-    const settings = await readSettings().catch(() => ({}));
+    const settings = await readSettings().catch((err) => {
+      console.warn('Failed to read settings, using defaults:', err.message);
+      return {};
+    });
     const reqProvider = (req.query && typeof req.query.provider === 'string') ? req.query.provider : null;
 
     const filePath = resolveDatasetFilePathById(id);

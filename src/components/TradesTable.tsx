@@ -1,17 +1,20 @@
+import React, { useMemo } from 'react';
 import type { Trade } from '../types';
 
 interface TradesTableProps {
 	trades: Trade[];
 }
 
-export function TradesTable({ trades }: TradesTableProps) {
+export const TradesTable = React.memo(function TradesTable({ trades }: TradesTableProps) {
+	const showTicker = useMemo(() => {
+		return trades && trades.some(t => typeof (t.context as any)?.ticker === 'string' && (t.context as any)?.ticker);
+	}, [trades]);
+
 	if (!trades || trades.length === 0) {
 		return (
 			<div className="text-sm text-gray-500">Нет сделок для отображения</div>
 		);
 	}
-
-	const showTicker = trades.some(t => typeof (t.context as any)?.ticker === 'string' && (t.context as any)?.ticker);
 
 	const fmtDate = (d: Date) => {
 		try {
@@ -84,4 +87,4 @@ export function TradesTable({ trades }: TradesTableProps) {
 			</table>
 		</div>
 	);
-}
+});

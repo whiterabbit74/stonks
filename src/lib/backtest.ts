@@ -10,7 +10,6 @@ import type {
 import type { IndicatorCondition } from '../types';
 import { IndicatorEngine } from './indicators';
 import { MetricsCalculator } from './metrics';
-// import { InsightsEngine } from './insights'; // Removed for simplification
 
 /**
  * Position represents an open trade
@@ -262,21 +261,19 @@ export class BacktestEngine {
       ? exitPrice 
       : exitPrice * (1 - this.strategy.riskManagement.slippage);
     
-    // Calculate commission on exit
+    // Calculate commission on exit only (entry commission was already deducted from capital)
     const exitCommission = this.calculateCommission(this.currentPosition.quantity * slippageAdjustedPrice);
     
-    // Calculate entry commission (should have been calculated at entry)
-    const entryCommission = this.calculateCommission(this.currentPosition.quantity * this.currentPosition.entryPrice);
-    
-    // Calculate P&L correctly
+    // Calculate P&L correctly - entry commission already accounted for in capital
     const grossProceeds = this.currentPosition.quantity * slippageAdjustedPrice;
     const grossCost = this.currentPosition.quantity * this.currentPosition.entryPrice;
-    const totalCommissions = entryCommission + exitCommission;
+    const totalCommissions = exitCommission; // Only exit commission for P&L calculation
     
     // Net P&L = (Exit Value - Entry Value) - Total Commissions
     const pnl = (grossProceeds - grossCost) - totalCommissions;
     
-    // Percentage return based on initial investment
+    // Percentage return based on initial investment (entry commission already included in capital deduction)
+    const entryCommission = this.calculateCommission(grossCost);
     const initialInvestment = grossCost + entryCommission;
     const pnlPercent = (pnl / initialInvestment) * 100;
 
@@ -358,14 +355,57 @@ export class BacktestEngine {
   private calculatePositionSize(price: number): number {
     const { riskManagement } = this.strategy;
     
-    // Используем capitalUsage как процент депозита для сделки
+    // Calculate position size accounting for commissions and available capital
     const capitalUsagePercent = riskManagement.capitalUsage || 100;
-    const investmentAmount = (this.currentCapital * capitalUsagePercent) / 100;
-    const quantity = Math.floor(investmentAmount / price);
+    const availableAmount = (this.currentCapital * capitalUsagePercent) / 100;
     
-    console.log(`📊 Position size: ${quantity} shares at $${price.toFixed(2)}, using $${(quantity * price).toFixed(2)} (${capitalUsagePercent}% of $${this.currentCapital.toFixed(2)})`);
+    // Estimate commission rate to calculate affordable quantity
+    const estimatedCommissionRate = this.calculateCommissionRate();
+    const effectivePrice = price * (1 + estimatedCommissionRate); // Price including commission
+    const quantity = Math.floor(availableAmount / effectivePrice);
+    
+    // Verify we have enough capital for actual total cost
+    const actualCost = quantity * price;
+    const actualCommission = this.calculateCommission(actualCost);
+    const totalCost = actualCost + actualCommission;
+    
+    if (totalCost > this.currentCapital) {
+      // Reduce quantity to fit available capital
+      const adjustedQuantity = Math.floor((this.currentCapital - actualCommission) / price);
+      console.log(`⚠️ Reducing quantity from ${quantity} to ${adjustedQuantity} due to capital constraints`);
+      return Math.max(0, adjustedQuantity);
+    }
+    
+    console.log(`📊 Position size: ${quantity} shares at $${price.toFixed(2)}, total cost: $${totalCost.toFixed(2)} (${capitalUsagePercent}% of $${this.currentCapital.toFixed(2)})`);
     
     return quantity;
+  }
+
+  /**
+   * Calculate commission rate for position sizing estimation
+   */
+  private calculateCommissionRate(): number {
+    const { commission } = this.strategy.riskManagement;
+    
+    switch (commission.type) {
+      case 'fixed':
+        // For fixed commission, estimate based on average trade size
+        const averageTradeSize = this.currentCapital * 0.1; // Assume 10% average position
+        return (commission.fixed || 0) / averageTradeSize;
+      
+      case 'percentage':
+        return (commission.percentage || 0) / 100;
+      
+      case 'combined':
+        // Estimate combined rate
+        const averageTradeSize2 = this.currentCapital * 0.1;
+        const fixedPart = (commission.fixed || 0) / averageTradeSize2;
+        const percentagePart = (commission.percentage || 0) / 100;
+        return fixedPart + percentagePart;
+      
+      default:
+        return 0.001; // Default 0.1% commission rate
+    }
   }
 
   /**
@@ -806,6 +846,9 @@ export class BacktestEngine {
     
     const returns = [];
     for (let i = startIndex + 1; i <= index; i++) {
+      // Add bounds checking to prevent array access errors
+      if (i - 1 < 0 || i >= this.data.length) continue;
+      
       const prevClose = this.data[i - 1].close;
       const currentClose = this.data[i].close;
       returns.push(Math.log(currentClose / prevClose));
@@ -838,7 +881,8 @@ export class BacktestEngine {
    * Calculate trend at given index
    */
   private calculateTrend(index: number): string {
-    if (index < 10) return 'sideways';
+    // Add comprehensive bounds checking
+    if (index < 10 || index >= this.data.length || index - 10 < 0) return 'sideways';
     
     const currentPrice = this.data[index].close;
     const pastPrice = this.data[index - 10].close;

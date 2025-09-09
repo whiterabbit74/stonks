@@ -61,8 +61,8 @@ export function parseOHLCDate(value: string | Date): Date {
     const dt = new Date(value);
     if (!isNaN(dt.getTime())) return parseOHLCDate(dt);
   }
-  // Fallback to now (should not happen for valid inputs)
-  return new Date(Date.UTC(2000, 0, 1, 12, 0, 0));
+  // Invalid date input - throw descriptive error instead of returning hardcoded date
+  throw new Error(`Unable to parse date from value: ${value}`);
 }
 
 /**
@@ -189,10 +189,17 @@ export function debounce<T extends (...args: unknown[]) => unknown>(
   wait: number
 ): (...args: Parameters<T>) => void {
   let timeout: NodeJS.Timeout;
-  return (...args: Parameters<T>) => {
+  const debounced = (...args: Parameters<T>) => {
     clearTimeout(timeout);
     timeout = setTimeout(() => func(...args), wait);
   };
+  // Add cleanup method for external cleanup
+  (debounced as any).cancel = () => {
+    if (timeout) {
+      clearTimeout(timeout);
+    }
+  };
+  return debounced;
 }
 
 /**
@@ -203,13 +210,22 @@ export function throttle<T extends (...args: unknown[]) => unknown>(
   limit: number
 ): (...args: Parameters<T>) => void {
   let inThrottle: boolean;
-  return (...args: Parameters<T>) => {
+  let timeoutId: NodeJS.Timeout;
+  const throttled = (...args: Parameters<T>) => {
     if (!inThrottle) {
       func(...args);
       inThrottle = true;
-      setTimeout(() => (inThrottle = false), limit);
+      timeoutId = setTimeout(() => (inThrottle = false), limit);
     }
   };
+  // Add cleanup method for external cleanup
+  (throttled as any).cancel = () => {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+      inThrottle = false;
+    }
+  };
+  return throttled;
 }
 
 /**
@@ -404,4 +420,48 @@ export function groupBy<T, K extends string | number>(
     groups[key].push(item);
     return groups;
   }, {} as Record<K, T[]>);
+}
+
+/**
+ * Safe string operations with fallbacks
+ */
+export function safeSlice(str: unknown, start: number, end?: number): string {
+  try {
+    if (typeof str === 'string') {
+      return str.slice(start, end);
+    }
+    return String(str || '').slice(start, end);
+  } catch {
+    return '';
+  }
+}
+
+export function safeSplit(str: unknown, separator: string): string[] {
+  try {
+    if (typeof str === 'string') {
+      return str.split(separator);
+    }
+    return String(str || '').split(separator);
+  } catch {
+    return [''];
+  }
+}
+
+export function safeJsonParse<T = unknown>(json: string, fallback: T): T {
+  try {
+    return JSON.parse(json);
+  } catch {
+    return fallback;
+  }
+}
+
+export function safeToISOString(date: unknown): string {
+  try {
+    if (date instanceof Date && !isNaN(date.getTime())) {
+      return date.toISOString();
+    }
+    return new Date(String(date || '')).toISOString();
+  } catch {
+    return new Date().toISOString();
+  }
 }

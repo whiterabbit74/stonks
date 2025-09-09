@@ -141,6 +141,13 @@ function ProtectedLayout() {
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50 text-gray-800 dark:text-gray-100">
+      {/* Skip to main content link */}
+      <a 
+        href="#main-content" 
+        className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:bg-blue-600 focus:text-white focus:px-4 focus:py-2 focus:rounded"
+      >
+        Перейти к основному содержимому
+      </a>
       <header className="border-b bg-white/60 backdrop-blur dark:bg-slate-900/60 dark:border-slate-800">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -194,7 +201,7 @@ function ProtectedLayout() {
         )}
       </header>
 
-      <main className="flex-1 w-full px-4 sm:px-6 lg:px-8 pt-6 pb-24 safe-area-pb">
+      <main id="main-content" className="flex-1 w-full px-4 sm:px-6 lg:px-8 pt-6 pb-24 safe-area-pb">
         <div className="mb-4">
           {/* Desktop navigation */}
           <nav className="hidden md:flex gap-2 flex-wrap">

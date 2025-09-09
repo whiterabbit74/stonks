@@ -62,9 +62,11 @@ export function ErrorConsole({ open, onClose }: ErrorConsoleProps) {
               <option value="console">console</option>
             </select>
             <input
+              id="error-search"
               value={search}
               onChange={(e: ChangeEvent<HTMLInputElement>) => setSearch(e.target.value)}
               placeholder="поиск"
+              aria-label="Поиск по ошибкам"
               className="text-xs border rounded px-2 py-1 w-40 dark:bg-gray-900 dark:border-gray-700"
             />
             <button

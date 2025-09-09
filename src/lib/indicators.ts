@@ -15,12 +15,20 @@ export class IndicatorEngine {
     this.validatePeriod(period, data.length);
     
     const result: number[] = [];
+    let sum = 0;
     
+    // Sliding window algorithm for O(n) complexity
     for (let i = 0; i < data.length; i++) {
       if (i < period - 1) {
+        sum += data[i];
         result.push(NaN);
+      } else if (i === period - 1) {
+        // First complete window
+        sum += data[i];
+        result.push(sum / period);
       } else {
-        const sum = data.slice(i - period + 1, i + 1).reduce((acc, val) => acc + val, 0);
+        // Slide the window: remove old value, add new value
+        sum = sum - data[i - period] + data[i];
         result.push(sum / period);
       }
     }
@@ -39,18 +47,20 @@ export class IndicatorEngine {
     
     const result: number[] = [];
     const multiplier = 2 / (period + 1);
+    let runningSum = 0;
     
     for (let i = 0; i < data.length; i++) {
       if (i === 0) {
+        runningSum = data[0];
         result.push(data[0]);
       } else if (i < period - 1) {
-        // Use SMA for the first period-1 values
-        const sum = data.slice(0, i + 1).reduce((acc, val) => acc + val, 0);
-        result.push(sum / (i + 1));
+        // Use cumulative SMA for the first period-1 values (more efficient)
+        runningSum += data[i];
+        result.push(runningSum / (i + 1));
       } else if (i === period - 1) {
         // First true EMA value uses SMA as the starting point
-        const sum = data.slice(0, period).reduce((acc, val) => acc + val, 0);
-        result.push(sum / period);
+        runningSum += data[i];
+        result.push(runningSum / period);
       } else {
         // Standard EMA calculation
         const ema = (data[i] * multiplier) + (result[i - 1] * (1 - multiplier));
@@ -93,9 +103,15 @@ export class IndicatorEngine {
         if (i < period) {
           result.push(NaN);
         } else if (i === period) {
-          // First RSI calculation using simple average
-          const avgGain = gains.slice(1, period + 1).reduce((sum, gain) => sum + gain, 0) / period;
-          const avgLoss = losses.slice(1, period + 1).reduce((sum, loss) => sum + loss, 0) / period;
+          // First RSI calculation using simple average (optimized)
+          let sumGains = 0;
+          let sumLosses = 0;
+          for (let j = 1; j <= period; j++) {
+            sumGains += gains[j];
+            sumLosses += losses[j];
+          }
+          const avgGain = sumGains / period;
+          const avgLoss = sumLosses / period;
           
           if (avgLoss === 0) {
             result.push(100);
@@ -145,10 +161,10 @@ export class IndicatorEngine {
         return NaN;
       }
       
-      // Handle case where high equals low (no range)
+      // Handle case where high equals low (no range) - prevents division by zero
       if (high === low) {
-        // Return NaN to indicate invalid IBS - strategy should skip this day
-        // Alternative: return previous valid IBS value if available
+        // Return NaN to indicate invalid IBS - strategy engines properly handle this
+        // by checking isNaN(ibs) and skipping these bars in trading logic
         return NaN;
       }
       
@@ -161,11 +177,21 @@ export class IndicatorEngine {
    */
   private static getRSIAverage(data: number[], period: number, index: number): number {
     if (index === 0) {
-      return data.slice(0, period).reduce((sum, val) => sum + val, 0) / period;
+      // Optimize: avoid array slicing
+      let sum = 0;
+      for (let i = 0; i < period; i++) {
+        sum += data[i];
+      }
+      return sum / period;
     }
     
     // Use iterative approach instead of recursion to avoid stack overflow
-    let avg = data.slice(0, period).reduce((sum, val) => sum + val, 0) / period;
+    // Optimize: avoid array slicing
+    let sum = 0;
+    for (let i = 0; i < period; i++) {
+      sum += data[i];
+    }
+    let avg = sum / period;
     
     for (let i = 1; i <= index; i++) {
       avg = (avg * (period - 1) + data[i + period - 1]) / period;

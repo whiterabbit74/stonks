@@ -178,7 +178,10 @@ export function NoStopLossSimulator({ data, strategy }: NoStopLossSimulatorProps
                   min="1"
                   max="365"
                   value={config.maxHoldDays}
-                  onChange={(e) => setConfig(prev => ({ ...prev, maxHoldDays: Number(e.target.value) }))}
+                  onChange={(e) => {
+  const value = parseInt(e.target.value, 10);
+  setConfig(prev => ({ ...prev, maxHoldDays: isNaN(value) ? 30 : Math.max(1, value) }));
+}}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md dark:bg-gray-900 dark:border-gray-700 dark:text-gray-100"
                 />
               </div>
@@ -196,7 +199,10 @@ export function NoStopLossSimulator({ data, strategy }: NoStopLossSimulatorProps
                   max="100"
                   step="0.5"
                   value={config.profitTarget}
-                  onChange={(e) => setConfig(prev => ({ ...prev, profitTarget: Number(e.target.value) }))}
+                  onChange={(e) => {
+  const value = parseFloat(e.target.value);
+  setConfig(prev => ({ ...prev, profitTarget: isNaN(value) ? 0 : Math.max(0, value) }));
+}}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md dark:bg-gray-900 dark:border-gray-700 dark:text-gray-100"
                 />
               </div>
@@ -213,7 +219,10 @@ export function NoStopLossSimulator({ data, strategy }: NoStopLossSimulatorProps
                 max="5"
                 step="0.1"
                 value={config.leverage}
-                onChange={(e) => setConfig(prev => ({ ...prev, leverage: Number(e.target.value) }))}
+                onChange={(e) => {
+  const value = parseFloat(e.target.value);
+  setConfig(prev => ({ ...prev, leverage: isNaN(value) ? 1 : Math.max(0.1, Math.min(10, value)) }));
+}}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md dark:bg-gray-900 dark:border-gray-700 dark:text-gray-100"
               />
             </div>

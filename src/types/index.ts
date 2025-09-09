@@ -78,6 +78,18 @@ export interface StrategyParameters {
   [key: string]: number | string | boolean;
 }
 
+/**
+ * Specific parameters for IBS (Internal Bar Strength) trading strategy
+ */
+export interface IBSStrategyParameters extends StrategyParameters {
+  /** IBS threshold below which to enter positions (0-1) */
+  lowIBS: number;
+  /** IBS threshold above which to exit positions (0-1) */ 
+  highIBS: number;
+  /** Maximum days to hold a position */
+  maxHoldDays: number;
+}
+
 // Normalized OHLC chart candle for serialization
 export interface ChartCandle {
   time: number; // epoch seconds

@@ -13,13 +13,16 @@ interface DataUploadProps {
 export function DataUpload({ onNext }: DataUploadProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const jsonInputRef = useRef<HTMLInputElement>(null);
-  const { marketData, currentDataset, isLoading, error, /* uploadData, */ loadJSONData, loadDatasetsFromServer } = useAppStore();
+  const { marketData, currentDataset, isLoading, error, loadJSONData, loadDatasetsFromServer } = useAppStore();
 
   // Загружаем список датасетов при монтировании компонента ТОЛЬКО после успешной авторизации
   useEffect(() => {
     fetch(`${API_BASE_URL}/auth/check`, { credentials: 'include' }).then(r => {
       if (r.ok) loadDatasetsFromServer();
-    }).catch(() => {});
+    }).catch((error) => {
+      console.warn('Auth check failed:', error);
+      // Silently fail auth check - user can still work offline
+    });
   }, [loadDatasetsFromServer]);
 
   const handleFileSelect = async (file: File) => {

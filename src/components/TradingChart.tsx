@@ -19,6 +19,9 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
   const volumeSeriesRef = useRef<ISeriesApi<'Histogram'> | null>(null);
   const ema20SeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
   const ema200SeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
+  const tooltipRef = useRef<HTMLDivElement | null>(null);
+  const unsubscribeRef = useRef<(() => void) | null>(null);
+  const resizeHandlerRef = useRef<(() => void) | null>(null);
   const [showEMA20, setShowEMA20] = useState(false);
   const [showEMA200, setShowEMA200] = useState(false);
   // По умолчанию оба скрыты
@@ -47,13 +50,67 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
     return ema;
   };
 
+  // Cleanup function for chart resources
+  const cleanupChart = () => {
+    // Unsubscribe from crosshair events
+    if (unsubscribeRef.current) {
+      try {
+        unsubscribeRef.current();
+      } catch (error) {
+        logError('chart', 'Failed to unsubscribe from crosshair events', {
+          error: (error as Error).message
+        }, 'TradingChart.cleanup');
+      }
+      unsubscribeRef.current = null;
+    }
+    
+    // Remove resize handler
+    if (resizeHandlerRef.current) {
+      window.removeEventListener('resize', resizeHandlerRef.current);
+      resizeHandlerRef.current = null;
+    }
+    
+    // Remove tooltip DOM element
+    if (tooltipRef.current && tooltipRef.current.parentElement) {
+      try {
+        tooltipRef.current.parentElement.removeChild(tooltipRef.current);
+      } catch (error) {
+        logError('chart', 'Failed to remove tooltip element', {
+          error: (error as Error).message
+        }, 'TradingChart.cleanup');
+      }
+      tooltipRef.current = null;
+    }
+    
+    // Clear series references
+    candlestickSeriesRef.current = null;
+    ibsSeriesRef.current = null;
+    volumeSeriesRef.current = null;
+    ema20SeriesRef.current = null;
+    ema200SeriesRef.current = null;
+    
+    // Remove chart instance
+    if (chartRef.current) {
+      try {
+        chartRef.current.remove();
+      } catch (error) {
+        logError('chart', 'Failed to remove chart instance', {
+          error: (error as Error).message
+        }, 'TradingChart.cleanup');
+      }
+      chartRef.current = null;
+    }
+  };
+
   useEffect(() => {
     const onTheme = (e: any) => {
       const dark = !!(e?.detail?.effectiveDark ?? document.documentElement.classList.contains('dark'));
       setIsDark(dark);
     };
     window.addEventListener('themechange' as any, onTheme as any);
-    return () => window.removeEventListener('themechange' as any, onTheme as any);
+    return () => {
+      window.removeEventListener('themechange' as any, onTheme as any);
+    };
   }, []);
 
   useEffect(() => {
@@ -313,22 +370,23 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
       tooltipEl.style.backdropFilter = 'blur(4px)';
       tooltipEl.style.display = 'none';
       chartContainerRef.current.appendChild(tooltipEl);
+      tooltipRef.current = tooltipEl;
 
-      chart.subscribeCrosshairMove((param: any) => {
-        if (!param || !param.time) {
-          tooltipEl.style.display = 'none';
+      const crosshairHandler = (param: any) => {
+        if (!tooltipRef.current || !param || !param.time) {
+          if (tooltipRef.current) tooltipRef.current.style.display = 'none';
           return;
         }
         const paramWithData = param as { seriesPrices?: Map<unknown, unknown>; seriesData?: Map<unknown, unknown> };
         const priceMap = paramWithData.seriesPrices;
         const seriesData = paramWithData.seriesData;
         if (!priceMap || !seriesData) {
-          tooltipEl.style.display = 'none';
+          tooltipRef.current.style.display = 'none';
           return;
         }
         const price = priceMap.get(candlestickSeries as unknown as object);
         if (!price) {
-          tooltipEl.style.display = 'none';
+          tooltipRef.current.style.display = 'none';
           return;
         }
         const bar = seriesData.get(candlestickSeries as unknown as object) as { open?: number; high?: number; low?: number; close?: number } | undefined;
@@ -337,32 +395,40 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
         const o = bar?.open, h = bar?.high, l = bar?.low, c = bar?.close;
         const pct = o ? (((c! - o) / o) * 100) : 0;
         const ibsStr = (typeof ibsVal === 'number') ? ` · IBS ${(ibsVal * 100).toFixed(0)}%` : '';
-        tooltipEl.innerHTML = `О ${o?.toFixed?.(2) ?? '-'} В ${h?.toFixed?.(2) ?? '-'} Н ${l?.toFixed?.(2) ?? '-'} З ${c?.toFixed?.(2) ?? '-'} · ${pct ? pct.toFixed(2) + '%' : ''}${ibsStr}${vol ? ' · Объём ' + vol.toLocaleString() : ''}`;
-        tooltipEl.style.display = 'block';
-      });
+        tooltipRef.current.textContent = `О ${o?.toFixed?.(2) ?? '-'} В ${h?.toFixed?.(2) ?? '-'} Н ${l?.toFixed?.(2) ?? '-'} З ${c?.toFixed?.(2) ?? '-'} · ${pct ? pct.toFixed(2) + '%' : ''}${ibsStr}${vol ? ' · Объём ' + vol.toLocaleString() : ''}`;
+        tooltipRef.current.style.display = 'block';
+      };
+      
+      unsubscribeRef.current = chart.subscribeCrosshairMove(crosshairHandler);
 
       // Handle resize
       const handleResize = () => {
-        if (!chartContainerRef.current) return;
-        const w = chartContainerRef.current.clientWidth;
-        const total = chartContainerRef.current.clientHeight || 600;
-        chart.applyOptions({ width: w, height: Math.max(total, 360) });
+        if (!chartContainerRef.current || !chartRef.current) return;
+        try {
+          const w = chartContainerRef.current.clientWidth;
+          const total = chartContainerRef.current.clientHeight || 600;
+          chartRef.current.applyOptions({ width: w, height: Math.max(total, 360) });
+        } catch (error) {
+          logError('chart', 'Failed to resize trading chart', {
+            error: (error as Error).message
+          }, 'TradingChart.resize');
+        }
       };
 
+      resizeHandlerRef.current = handleResize;
       window.addEventListener('resize', handleResize);
 
-      return () => {
-        window.removeEventListener('resize', handleResize);
-        if (chart) { try { chart.remove(); } catch (e) { console.warn('Error removing chart on cleanup:', e); } }
-        try {
-          if (tooltipEl && tooltipEl.parentElement) tooltipEl.parentElement.removeChild(tooltipEl);
-        } catch (e) { /* ignore */ }
-      };
+      return cleanupChart;
     } catch (error) {
       console.error('Error creating trading chart:', error);
       return;
     }
   }, [data, trades, splits, isDark]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return cleanupChart;
+  }, []);
 
   useEffect(() => {
     // Взаимоисключаемые индикаторы

@@ -3,6 +3,7 @@ import type { EquityPoint, OHLCData, Strategy, Trade } from '../types';
 import { EquityChart } from './EquityChart';
 import { CleanBacktestEngine, type CleanBacktestOptions } from '../lib/clean-backtest';
 import { TradesTable } from './TradesTable';
+import { sanitizeNumericInput, VALIDATION_CONSTRAINTS } from '../lib/input-validation';
 
 interface BuyAtCloseSimulatorProps {
   data: OHLCData[];
@@ -17,6 +18,12 @@ interface SimulationResult {
   tradesList: Trade[];
 }
 
+/**
+ * Simulates leverage on equity curve by amplifying returns
+ * @param equity - Array of equity points from backtest
+ * @param leverage - Leverage multiplier (e.g., 2 for 2x leverage)
+ * @returns Leveraged equity curve with max drawdown and final value
+ */
 function simulateLeverage(equity: EquityPoint[], leverage: number): { equity: EquityPoint[]; finalValue: number; maxDrawdown: number } {
   if (!equity || equity.length === 0 || leverage <= 0) {
     return { equity: [], finalValue: 0, maxDrawdown: 0 };
@@ -46,6 +53,12 @@ function formatCurrencyUSD(value: number): string {
   return '$' + value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+/**
+ * Runs a clean backtest simulation for IBS strategy
+ * @param data - OHLC market data
+ * @param strategy - Trading strategy configuration
+ * @returns Simulation results with equity curve and trade statistics
+ */
 function runCleanBuyAtClose(data: OHLCData[], strategy: Strategy): SimulationResult {
   if (!data || data.length === 0) {
     return { equity: [], finalValue: 0, maxDrawdown: 0, trades: 0, tradesList: [] };
@@ -59,7 +72,13 @@ function runCleanBuyAtClose(data: OHLCData[], strategy: Strategy): SimulationRes
   const res = engine.runBacktest();
   const equity = res.equity;
   const finalValue = equity.length ? equity[equity.length - 1].value : Number(strategy?.riskManagement?.initialCapital ?? 0);
-  const maxDrawdown = equity.length ? Math.max(...equity.map(p => p.drawdown)) : 0;
+  // Оптимизированный расчет максимального drawdown
+  let maxDrawdown = 0;
+  for (let i = 0; i < equity.length; i++) {
+    if (equity[i].drawdown > maxDrawdown) {
+      maxDrawdown = equity[i].drawdown;
+    }
+  }
   const trades = res.trades.length;
   return { equity, finalValue, maxDrawdown, trades, tradesList: res.trades };
 }
@@ -168,16 +187,66 @@ export function BuyAtCloseSimulator({ data, strategy }: BuyAtCloseSimulatorProps
     <div className="space-y-4">
       <div className="flex flex-wrap items-end gap-3">
         <div className="flex flex-col">
-          <label className="text-xs text-gray-600 dark:text-gray-300">Порог входа IBS (&lt;)</label>
-          <input type="number" step="0.01" min={0} max={1} value={lowIbs} onChange={e => setLowIbs(e.target.value)} className="px-3 py-2 border rounded-md w-32 dark:bg-gray-900 dark:border-gray-700 dark:text-gray-100" />
+          <label htmlFor="low-ibs-input" className="text-xs text-gray-600 dark:text-gray-300">Порог входа IBS (&lt;)</label>
+          <input 
+            id="low-ibs-input" 
+            type="number" 
+            step="0.01" 
+            min={0} 
+            max={1} 
+            value={lowIbs} 
+            onChange={e => {
+              const sanitized = sanitizeNumericInput(e.target.value, {
+                ...VALIDATION_CONSTRAINTS.ibs,
+                fallback: Number(lowIbs) || 0.1
+              });
+              setLowIbs(sanitized.toFixed(2));
+            }} 
+            className="px-3 py-2 border rounded-md w-32 dark:bg-gray-900 dark:border-gray-700 dark:text-gray-100"
+            aria-describedby="low-ibs-desc"
+          />
+          <div id="low-ibs-desc" className="sr-only">Введите значение IBS ниже которого происходит вход в позицию</div>
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-gray-600 dark:text-gray-300">Порог выхода IBS (&gt;)</label>
-          <input type="number" step="0.01" min={0} max={1} value={highIbs} onChange={e => setHighIbs(e.target.value)} className="px-3 py-2 border rounded-md w-32 dark:bg-gray-900 dark:border-gray-700 dark:text-gray-100" />
+          <label htmlFor="high-ibs-input" className="text-xs text-gray-600 dark:text-gray-300">Порог выхода IBS (&gt;)</label>
+          <input 
+            id="high-ibs-input" 
+            type="number" 
+            step="0.01" 
+            min={0} 
+            max={1} 
+            value={highIbs} 
+            onChange={e => {
+              const sanitized = sanitizeNumericInput(e.target.value, {
+                ...VALIDATION_CONSTRAINTS.ibs,
+                fallback: Number(highIbs) || 0.75
+              });
+              setHighIbs(sanitized.toFixed(2));
+            }} 
+            className="px-3 py-2 border rounded-md w-32 dark:bg-gray-900 dark:border-gray-700 dark:text-gray-100"
+            aria-describedby="high-ibs-desc"
+          />
+          <div id="high-ibs-desc" className="sr-only">Введите значение IBS выше которого происходит выход из позиции</div>
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-gray-600 dark:text-gray-300">Макс. дней удержания</label>
-          <input type="number" step="1" min={1} value={maxHold} onChange={e => setMaxHold(e.target.value)} className="px-3 py-2 border rounded-md w-36 dark:bg-gray-900 dark:border-gray-700 dark:text-gray-100" />
+          <label htmlFor="max-hold-input" className="text-xs text-gray-600 dark:text-gray-300">Макс. дней удержания</label>
+          <input 
+            id="max-hold-input" 
+            type="number" 
+            step="1" 
+            min={1} 
+            value={maxHold} 
+            onChange={e => {
+              const sanitized = sanitizeNumericInput(e.target.value, {
+                ...VALIDATION_CONSTRAINTS.holdDays,
+                fallback: Number(maxHold) || 30
+              });
+              setMaxHold(String(Math.round(sanitized)));
+            }} 
+            className="px-3 py-2 border rounded-md w-36 dark:bg-gray-900 dark:border-gray-700 dark:text-gray-100"
+            aria-describedby="max-hold-desc"
+          />
+          <div id="max-hold-desc" className="sr-only">Максимальное количество дней для удержания позиции</div>
         </div>
         <div className="flex flex-col">
           <label className="text-xs text-gray-600 dark:text-gray-300">Маржинальность, %</label>
@@ -187,7 +256,15 @@ export function BuyAtCloseSimulator({ data, strategy }: BuyAtCloseSimulatorProps
             min={1}
             step={1}
             value={marginPctInput}
-            onChange={(e) => setMarginPctInput(e.target.value)}
+            onChange={(e) => {
+              const sanitized = sanitizeNumericInput(e.target.value, {
+                min: 1,
+                max: 1000,
+                precision: 0,
+                fallback: Number(marginPctInput) || 100
+              });
+              setMarginPctInput(String(sanitized));
+            }}
             className="px-3 py-2 border rounded-md w-36 dark:bg-gray-900 dark:border-gray-700 dark:text-gray-100"
             placeholder="например, 100"
           />

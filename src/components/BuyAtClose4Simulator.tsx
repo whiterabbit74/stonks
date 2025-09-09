@@ -5,7 +5,6 @@ import { adjustOHLCForSplits, dedupeDailyOHLC } from '../lib/utils';
 import { IndicatorEngine } from '../lib/indicators';
 import { EquityChart } from './EquityChart';
 import { TradesTable } from './TradesTable';
-// import { useAppStore } from '../stores';
 
 interface BuyAtClose4SimulatorProps {
   strategy: Strategy | null;
@@ -112,9 +111,9 @@ function runMultiTickerBacktest(
   const initialCapital = Number(strategy?.riskManagement?.initialCapital ?? 10000);
   const capitalUsagePerTicker = tickersData.length > 0 ? Math.floor(100 / tickersData.length) : 25; // Пропорционально на каждый тикер
   const leverage = Number(strategy?.riskManagement?.leverage ?? 1); // Торговое плечо
-  const lowIBS = Number(strategy.parameters.lowIBS ?? 0.1);
-  const highIBS = Number(strategy.parameters.highIBS ?? 0.75);
-  const maxHoldDays = Number(strategy.parameters.maxHoldDays ?? 30);
+  const lowIBS = Number(strategy.parameters?.lowIBS ?? 0.1);
+  const highIBS = Number(strategy.parameters?.highIBS ?? 0.75);
+  const maxHoldDays = Number(strategy.parameters?.maxHoldDays ?? 30);
 
   // Состояние портфеля
   let currentCapital = initialCapital;
@@ -270,9 +269,10 @@ function runMultiTickerBacktest(
           const currentBar = tickerData.data[barIndex];
           const currentMarketValue = position.quantity * currentBar.close;
           const exitCommission = calculateCommission(currentMarketValue, strategy);
-          // При использовании плеча мы получаем полную стоимость акций, но вычитаем долг (grossValue - marginUsed)
-          const leverageDebt = position.grossValue - position.marginUsed;
-          const netValue = currentMarketValue - leverageDebt - exitCommission;
+          // Calculate net position value: current value - what we owe (borrowed amount) - exit costs
+          // position.initialCost already includes marginUsed + entryCommission
+          const borrowedAmount = position.grossValue - position.initialCost; // Amount borrowed from broker
+          const netValue = currentMarketValue - borrowedAmount - exitCommission;
           totalPortfolioValue += netValue;
         }
       }
@@ -397,6 +397,9 @@ export function BuyAtClose4Simulator({ strategy, defaultTickers = ['AAPL', 'MSFT
   const [error, setError] = useState<string | null>(null);
   const [loadedData, setLoadedData] = useState<TickerData[]>([]);
   const [inputValue, setInputValue] = useState(defaultTickers.join(', '));
+
+  // Расчет капитала на тикер - всегда определен для безопасного доступа
+  const capitalUsagePerTicker = tickers.length > 0 ? Math.floor(100 / tickers.length) : 25;
 
   // Запуск бэктеста при изменении данных или стратегии
   const backtest = useMemo(() => {

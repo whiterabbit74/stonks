@@ -17,6 +17,8 @@ interface AppState {
   lastAppliedSplitsKey: string | null;
   isLoading: boolean;
   error: string | null;
+  // Race condition prevention
+  currentLoadOperation: AbortController | null;
   // Provider settings
   dataProvider: 'alpha_vantage' | 'finnhub';
   // Notification settings
@@ -77,6 +79,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   lastAppliedSplitsKey: null,
   isLoading: false,
   error: null,
+  currentLoadOperation: null,
   dataProvider: 'alpha_vantage',
   resultsQuoteProvider: 'finnhub',
   resultsRefreshProvider: 'finnhub',
@@ -119,24 +122,6 @@ export const useAppStore = create<AppState>((set, get) => ({
   
   setIndicatorPanePercent: (value: number) => set({ indicatorPanePercent: value }),
   
-  uploadData: async (file: File) => {
-    set({ isLoading: true, error: null });
-    
-    try {
-      const data = dedupeDailyOHLC(await parseCSV(file));
-      set({ 
-        marketData: data, 
-        currentDataset: null, // Сбрасываем сохраненный датасет при загрузке CSV
-        currentSplits: [],
-        isLoading: false 
-      });
-    } catch (error) {
-      set({ 
-        error: error instanceof Error ? error.message : 'Failed to parse CSV file',
-        isLoading: false 
-      });
-    }
-  },
 
   updateMarketData: (data: OHLCData[]) => {
     set({ marketData: dedupeDailyOHLC(data) });
@@ -145,8 +130,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   setSplits: (splits: SplitEvent[]) => {
     const key = JSON.stringify((splits || []).slice().sort((a, b) => a.date.localeCompare(b.date)));
     const { marketData, lastAppliedSplitsKey } = get();
-    // Если данные уже есть и сплиты впервые появились — применим back-adjust на клиенте
-    if (Array.isArray(marketData) && marketData.length > 0 && Array.isArray(splits) && splits.length > 0 && !lastAppliedSplitsKey) {
+    // Apply splits only if they are different from previously applied ones
+    const shouldApplySplits = Array.isArray(marketData) && marketData.length > 0 && 
+                             Array.isArray(splits) && splits.length > 0 && 
+                             key !== lastAppliedSplitsKey; // Compare actual split keys, not just existence
+    
+    if (shouldApplySplits) {
       const adjusted = adjustOHLCForSplits(marketData, splits);
       set({ currentSplits: splits, marketData: adjusted, lastAppliedSplitsKey: key });
     } else {
@@ -225,13 +214,21 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   loadDatasetsFromServer: async () => {
-    set({ isLoading: true, error: null });
+    // Cancel any current dataset loading operation since we're refreshing the list
+    const currentState = get();
+    if (currentState.currentLoadOperation) {
+      currentState.currentLoadOperation.abort();
+    }
+
+    set({ isLoading: true, error: null, currentLoadOperation: null });
     
     try {
       const datasets = await DatasetAPI.getDatasets();
       // Нормализуем тикер/имя и обеспечим стабильный id
       const normalized = datasets.map(d => {
-        const ticker = (d.ticker || (d as unknown as { id?: string }).id || d.name).toUpperCase();
+        // Safe type checking instead of unsafe type assertion
+        const hasId = 'id' in d && typeof (d as any).id === 'string';
+        const ticker = (d.ticker || (hasId ? (d as any).id : null) || d.name).toUpperCase();
         return { ...d, ticker, name: ticker } as typeof d;
       });
       set({ 
@@ -254,7 +251,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   saveDatasetToServer: async (ticker: string, name?: string) => {
     const { marketData } = get();
     
-    if (!marketData.length) {
+    if (!marketData || !marketData.length) {
       set({ error: 'Нет данных для сохранения' });
       return;
     }
@@ -297,55 +294,92 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   loadDatasetFromServer: async (datasetId: string) => {
-    set({ isLoading: true, error: null });
+    // Cancel any previous operation
+    const currentState = get();
+    if (currentState.currentLoadOperation) {
+      currentState.currentLoadOperation.abort();
+    }
+
+    // Create new abort controller for this operation
+    const abortController = new AbortController();
+    set({ isLoading: true, error: null, currentLoadOperation: abortController });
     
-      try {
-        const dataset = await DatasetAPI.getDataset(datasetId);
-        // Если датасет уже пересчитан на сервере — не применяем сплиты повторно
-        if ((dataset as any).adjustedForSplits) {
+    try {
+      // Check if operation was cancelled before starting
+      if (abortController.signal.aborted) return;
+
+      const dataset = await DatasetAPI.getDataset(datasetId);
+
+      // Check if operation was cancelled after dataset fetch
+      if (abortController.signal.aborted) return;
+
+      // Если датасет уже пересчитан на сервере — не применяем сплиты повторно
+      const isAdjusted = 'adjustedForSplits' in dataset && Boolean(dataset.adjustedForSplits);
+      if (isAdjusted) {
+        // Check if still current operation before updating state
+        if (get().currentLoadOperation === abortController) {
           set({
-            marketData: dedupeDailyOHLC(dataset.data as unknown as OHLCData[]),
+            marketData: dedupeDailyOHLC(dataset.data as OHLCData[]),
             currentDataset: dataset,
             currentSplits: [],
             lastAppliedSplitsKey: null,
             isLoading: false,
-            error: null
+            error: null,
+            currentLoadOperation: null
           });
-        } else {
-          // Загружаем только из центрального splits.json и применяем локально
-          let splits: SplitEvent[] = [];
-          try { splits = await DatasetAPI.getSplits(dataset.ticker); } catch { splits = []; }
-          const adjusted = dedupeDailyOHLC(adjustOHLCForSplits(dataset.data, splits));
-          const key = JSON.stringify((splits || []).slice().sort((a, b) => a.date.localeCompare(b.date)));
+        }
+      } else {
+        // Загружаем только из центрального splits.json и применяем локально
+        let splits: SplitEvent[] = [];
+        try { splits = await DatasetAPI.getSplits(dataset.ticker); } catch { splits = []; }
+        
+        // Check if operation was cancelled after splits fetch
+        if (abortController.signal.aborted) return;
+
+        const adjusted = dedupeDailyOHLC(adjustOHLCForSplits(dataset.data, splits));
+        const key = JSON.stringify((splits || []).slice().sort((a, b) => a.date.localeCompare(b.date)));
+        
+        // Check if still current operation before updating state
+        if (get().currentLoadOperation === abortController) {
           set({
             marketData: adjusted,
             currentDataset: dataset,
             currentSplits: splits,
             lastAppliedSplitsKey: (splits && splits.length ? key : null),
             isLoading: false,
-            error: null
+            error: null,
+            currentLoadOperation: null
           });
         }
-
-      // Если стратегии нет — создаём IBS по умолчанию и сразу запускаем бэктест
-      const state = get();
-      if (!state.currentStrategy) {
-        const strat = createStrategyFromTemplate(STRATEGY_TEMPLATES[0]);
-        set({ currentStrategy: strat });
       }
-      // Небольшая задержка, чтобы set() успел примениться
-      setTimeout(() => {
-        get().runBacktest().catch(() => {});
-      }, 0);
 
-      console.log(`Датасет загружен с сервера: ${dataset.name}`);
-      try { logInfo('network', 'Dataset loaded', { id: datasetId, points: (dataset?.data as any[])?.length }, 'store.loadDatasetFromServer'); } catch { /* ignore */ }
+      // Only run backtest if this is still the current operation
+      if (!abortController.signal.aborted && get().currentLoadOperation === abortController) {
+        // Если стратегии нет — создаём IBS по умолчанию
+        const state = get();
+        if (!state.currentStrategy) {
+          const strat = createStrategyFromTemplate(STRATEGY_TEMPLATES[0]);
+          set({ currentStrategy: strat });
+        }
+        // Run backtest asynchronously but don't await to prevent blocking
+        get().runBacktest().catch((error) => {
+          console.error('Backtest failed after dataset load:', error);
+          try { logError('backtest', 'Backtest failed after dataset load', {}, 'store.loadDatasetFromServer', (error as any)?.stack); } catch { /* ignore */ }
+        });
+
+        console.log(`Датасет загружен с сервера: ${dataset.name}`);
+        try { logInfo('network', 'Dataset loaded', { id: datasetId, points: (dataset?.data as any[])?.length }, 'store.loadDatasetFromServer'); } catch { /* ignore */ }
+      }
     } catch (error) {
-      set({ 
-        error: error instanceof Error ? error.message : 'Failed to load dataset from server',
-        isLoading: false 
-      });
-      try { logError('network', 'Dataset load failed', { id: datasetId }, 'store.loadDatasetFromServer', (error as any)?.stack); } catch { /* ignore */ }
+      // Only update error state if this operation wasn't cancelled
+      if (!abortController.signal.aborted && get().currentLoadOperation === abortController) {
+        set({ 
+          error: error instanceof Error ? error.message : 'Failed to load dataset from server',
+          isLoading: false,
+          currentLoadOperation: null
+        });
+        try { logError('network', 'Dataset load failed', { id: datasetId }, 'store.loadDatasetFromServer', (error as any)?.stack); } catch { /* ignore */ }
+      }
     }
   },
 
@@ -355,7 +389,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ error: 'Нет загруженного датасета для обновления' });
       return;
     }
-    if (!marketData.length) {
+    if (!marketData || !marketData.length) {
       set({ error: 'Нет данных для обновления датасета' });
       return;
     }
@@ -450,14 +484,15 @@ export const useAppStore = create<AppState>((set, get) => ({
     if ((!marketData || marketData.length === 0) && currentDataset && Array.isArray(currentDataset.data) && currentDataset.data.length) {
       try {
         // Если датасет уже пересчитан на сервере — используем как есть
-        if ((currentDataset as any).adjustedForSplits) {
-          const cleaned = dedupeDailyOHLC(currentDataset.data as unknown as OHLCData[]);
+        const isAdjusted = 'adjustedForSplits' in currentDataset && Boolean(currentDataset.adjustedForSplits);
+        if (isAdjusted) {
+          const cleaned = dedupeDailyOHLC(currentDataset.data as OHLCData[]);
           set({ marketData: cleaned, currentSplits: [], lastAppliedSplitsKey: null });
           marketData = cleaned;
         } else {
           let splits: SplitEvent[] = [];
           try { splits = await DatasetAPI.getSplits(currentDataset.ticker); } catch { splits = []; }
-          const adjusted = dedupeDailyOHLC(adjustOHLCForSplits(currentDataset.data as unknown as OHLCData[], splits));
+          const adjusted = dedupeDailyOHLC(adjustOHLCForSplits(currentDataset.data as OHLCData[], splits));
           const key = JSON.stringify((splits || []).slice().sort((a, b) => a.date.localeCompare(b.date)));
           set({ marketData: adjusted, currentSplits: splits, lastAppliedSplitsKey: (splits && splits.length ? key : null) });
           marketData = adjusted;

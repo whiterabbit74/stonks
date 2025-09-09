@@ -548,7 +548,10 @@ export function TradingCalendar() {
 
               <select
                 value={selectedMonth}
-                onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
+                onChange={(e) => {
+  const value = parseInt(e.target.value, 10);
+  setSelectedMonth(isNaN(value) ? 0 : Math.max(0, Math.min(11, value)));
+}}
                 className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-900 font-medium focus:ring-2 focus:ring-blue-500 focus:border-blue-500 hover:border-gray-400 transition-colors dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100"
                 aria-label="Месяц"
               >

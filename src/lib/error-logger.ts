@@ -28,8 +28,13 @@ const state = {
   subscribers: new Set<Subscriber>(),
   initialized: false,
   originalConsoleError: console.error.bind(console) as (...args: unknown[]) => void,
+  cleanup: null as (() => void) | null,
 };
 
+/**
+ * Generates a unique ID for log entries
+ * @returns Unique string ID based on timestamp and random string
+ */
 function nextId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -125,17 +130,27 @@ export function initErrorLogger(opts: InitOptions = {}): void {
   if (state.initialized) return;
   state.initialized = true;
 
+  const cleanupFunctions: (() => void)[] = [];
+
   // Global window error
   if (typeof window !== 'undefined') {
-    window.addEventListener('error', (ev: ErrorEvent) => {
+    const errorHandler = (ev: ErrorEvent) => {
       const err = ev.error || new Error(String(ev.message || 'Unknown window error'));
       const ctx = { filename: ev.filename, lineno: ev.lineno, colno: ev.colno } as Record<string, unknown>;
       captureException(err, ctx, 'window.onerror');
-    });
+    };
 
-    window.addEventListener('unhandledrejection', (ev: PromiseRejectionEvent) => {
+    const rejectionHandler = (ev: PromiseRejectionEvent) => {
       const reason = (ev as any).reason ?? 'Unhandled rejection';
       captureException(reason, {}, 'window.unhandledrejection');
+    };
+
+    window.addEventListener('error', errorHandler);
+    window.addEventListener('unhandledrejection', rejectionHandler);
+
+    cleanupFunctions.push(() => {
+      window.removeEventListener('error', errorHandler);
+      window.removeEventListener('unhandledrejection', rejectionHandler);
     });
   }
 
@@ -152,6 +167,23 @@ export function initErrorLogger(opts: InitOptions = {}): void {
       }
       state.originalConsoleError(...args);
     };
+
+    cleanupFunctions.push(() => {
+      console.error = state.originalConsoleError;
+    });
+  }
+
+  // Store cleanup function
+  state.cleanup = () => {
+    cleanupFunctions.forEach(fn => fn());
+    state.initialized = false;
+    state.cleanup = null;
+  };
+}
+
+export function destroyErrorLogger(): void {
+  if (state.cleanup) {
+    state.cleanup();
   }
 }
 

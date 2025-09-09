@@ -226,11 +226,21 @@ export function Results() {
       const cursor = new Date(fromUTC);
       // step back at least one day
       cursor.setUTCDate(cursor.getUTCDate()-1);
-      while (true) {
+      
+      // Add safety limit to prevent infinite loop (max 30 days back)
+      let attempts = 0;
+      const maxAttempts = 30;
+      
+      while (attempts < maxAttempts) {
         const parts = getETParts(cursor);
         if (!isWeekendET(parts) && !isHolidayET(parts)) return parts;
         cursor.setUTCDate(cursor.getUTCDate()-1);
+        attempts++;
       }
+      
+      // Fallback: return parts from 1 day back if no trading day found
+      console.warn('Could not find previous trading day within 30 days, using fallback');
+      return getETParts(new Date(fromUTC.getTime() - 24*60*60*1000));
     };
 
     // Determine if by now we should expect today's daily bar (after close + buffer) or yesterday's
@@ -258,13 +268,16 @@ export function Results() {
       ? todayET
       : previousTradingDayET(now);
 
-    // Сравниваем в UTC-ключах, чтобы не было сдвига дат между UTC и ET
-    const expectedKeyUTC = new Date(Date.UTC(
-      expectedParts.y,
-      expectedParts.m - 1,
-      expectedParts.d,
-      0, 0, 0
-    )).toISOString().slice(0,10);
+    // Convert ET date to proper UTC date accounting for timezone offset
+    // Use a consistent method that respects ET timezone rules
+    const etDate = new Date();
+    etDate.setFullYear(expectedParts.y, expectedParts.m - 1, expectedParts.d);
+    etDate.setHours(12, 0, 0, 0); // Use noon ET to avoid midnight boundary issues
+    
+    // Convert to UTC date string consistently
+    const expectedKeyUTC = etDate.toLocaleDateString('en-CA', {
+      timeZone: 'America/New_York'
+    }); // Returns YYYY-MM-DD format in ET timezone
     // Проверяем наличие ожидаемой даты в данных, а не только последнюю дату
     const dataKeys = new Set(
       marketData.map(b => {
@@ -352,6 +365,7 @@ export function Results() {
         if (!open) {
           if (isMounted) setIsTrading(false);
           // Вне часов/выходные — не дергаем API, редкий опрос для смены статуса
+          if (timer) clearTimeout(timer);
           timer = setTimeout(fetchQuote, 5 * 60 * 1000);
           return;
         }
@@ -362,7 +376,11 @@ export function Results() {
         const message = e instanceof Error ? e.message : 'Не удалось получить котировку';
         if (isMounted) setQuoteError(message);
       } finally {
-        if (isMounted) { setQuoteLoading(false); timer = setTimeout(fetchQuote, 15000); }
+        if (isMounted) { 
+          setQuoteLoading(false); 
+          if (timer) clearTimeout(timer);
+          timer = setTimeout(fetchQuote, 15000); 
+        }
       }
     };
     fetchQuote();

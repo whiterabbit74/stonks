@@ -11,7 +11,55 @@ interface EquityChartProps {
 export function EquityChart({ equity, hideHeader }: EquityChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
+  const tooltipRef = useRef<HTMLDivElement | null>(null);
+  const unsubscribeRef = useRef<(() => void) | null>(null);
+  const resizeHandlerRef = useRef<(() => void) | null>(null);
   const [isDark, setIsDark] = useState<boolean>(() => typeof document !== 'undefined' ? document.documentElement.classList.contains('dark') : false);
+
+  // Cleanup function for chart resources
+  const cleanupChart = () => {
+    // Unsubscribe from crosshair events
+    if (unsubscribeRef.current) {
+      try {
+        unsubscribeRef.current();
+      } catch (error) {
+        logError('chart', 'Failed to unsubscribe from crosshair events', {
+          error: (error as Error).message
+        }, 'EquityChart.cleanup');
+      }
+      unsubscribeRef.current = null;
+    }
+    
+    // Remove resize handler
+    if (resizeHandlerRef.current) {
+      window.removeEventListener('resize', resizeHandlerRef.current);
+      resizeHandlerRef.current = null;
+    }
+    
+    // Remove tooltip DOM element
+    if (tooltipRef.current && tooltipRef.current.parentElement) {
+      try {
+        tooltipRef.current.parentElement.removeChild(tooltipRef.current);
+      } catch (error) {
+        logError('chart', 'Failed to remove tooltip element', {
+          error: (error as Error).message
+        }, 'EquityChart.cleanup');
+      }
+      tooltipRef.current = null;
+    }
+    
+    // Remove chart instance
+    if (chartRef.current) {
+      try {
+        chartRef.current.remove();
+      } catch (error) {
+        logError('chart', 'Failed to remove chart instance', {
+          error: (error as Error).message
+        }, 'EquityChart.cleanup');
+      }
+      chartRef.current = null;
+    }
+  };
 
   useEffect(() => {
     const onTheme = (e: any) => {
@@ -20,7 +68,9 @@ export function EquityChart({ equity, hideHeader }: EquityChartProps) {
     };
     // Cast to any because 'themechange' is a custom event not present in WindowEventMap
     window.addEventListener('themechange' as any, onTheme as any);
-    return () => window.removeEventListener('themechange' as any, onTheme as any);
+    return () => {
+      window.removeEventListener('themechange' as any, onTheme as any);
+    };
   }, []);
 
   useEffect(() => {
@@ -125,48 +175,52 @@ export function EquityChart({ equity, hideHeader }: EquityChartProps) {
       tooltipEl.style.backdropFilter = 'blur(4px)';
       tooltipEl.style.display = 'none';
       chartContainerRef.current.appendChild(tooltipEl);
+      tooltipRef.current = tooltipEl;
 
-      chart.subscribeCrosshairMove((param: MouseEventParams) => {
-        if (!param || !param.time) { tooltipEl.style.display = 'none'; return; }
+      const crosshairHandler = (param: MouseEventParams) => {
+        if (!tooltipRef.current) return;
+        if (!param || !param.time) { tooltipRef.current.style.display = 'none'; return; }
         const v = (param.seriesData?.get?.(equitySeries) as { value?: number } | undefined)?.value;
-        if (typeof v !== 'number') { tooltipEl.style.display = 'none'; return; }
+        if (typeof v !== 'number') { tooltipRef.current.style.display = 'none'; return; }
         const epochSec = typeof param.time === 'number' ? param.time : (param as { time?: { timestamp?: number } }).time?.timestamp;
         const d = epochSec ? new Date(epochSec * 1000) : null;
         const dateStr = d ? d.toLocaleDateString('ru-RU') : '';
-        tooltipEl.innerHTML = `${dateStr ? dateStr + ' — ' : ''}Капитал ${v.toFixed(2)}`;
-        tooltipEl.style.display = 'block';
-      });
+        tooltipRef.current.textContent = `${dateStr ? dateStr + ' — ' : ''}Капитал ${v.toFixed(2)}`;
+        tooltipRef.current.style.display = 'block';
+      };
+      
+      unsubscribeRef.current = chart.subscribeCrosshairMove(crosshairHandler);
 
       // Handle resize
       const handleResize = () => {
-        if (chartContainerRef.current && chart) {
-          chart.applyOptions({
-            width: chartContainerRef.current.clientWidth,
-            height: Math.max(chartContainerRef.current.clientHeight || 0, 580),
-          });
-        }
-      };
-
-      window.addEventListener('resize', handleResize);
-
-      return () => {
-        window.removeEventListener('resize', handleResize);
-        if (chart) {
+        if (chartContainerRef.current && chartRef.current) {
           try {
-            chart.remove();
-          } catch (e) {
-            console.warn('Error removing chart on cleanup:', e);
+            chartRef.current.applyOptions({
+              width: chartContainerRef.current.clientWidth,
+              height: Math.max(chartContainerRef.current.clientHeight || 0, 580),
+            });
+          } catch (error) {
+            logError('chart', 'Failed to resize chart', {
+              error: (error as Error).message
+            }, 'EquityChart.resize');
           }
         }
-        try {
-          if (tooltipEl && tooltipEl.parentElement) tooltipEl.parentElement.removeChild(tooltipEl);
-        } catch { /* ignore */ }
       };
+      
+      resizeHandlerRef.current = handleResize;
+      window.addEventListener('resize', handleResize);
+
+      return cleanupChart;
     } catch (error) {
       logError('chart', 'Error creating equity chart', {}, 'EquityChart', (error as any)?.stack);
       return;
     }
   }, [equity, isDark]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return cleanupChart;
+  }, []);
 
   if (!equity.length) {
     return (

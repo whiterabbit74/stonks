@@ -26,6 +26,7 @@ export class CleanBacktestEngine {
   private currentCapital: number;
   private ibsValues: number[] = [];
   private options: Required<CleanBacktestOptions>;
+  private peakValue: number = 0;
 
   /**
    * Рассчитать комиссию для сделки
@@ -49,7 +50,7 @@ export class CleanBacktestEngine {
     // Применяем сплиты к данным если они предоставлены
     this.data = options?.splits ? adjustOHLCForSplits(data, options.splits) : data;
     this.strategy = strategy;
-    this.currentCapital = strategy.riskManagement.initialCapital;
+    this.currentCapital = strategy.riskManagement?.initialCapital ?? 10000;
     this.options = {
       entryExecution: options?.entryExecution ?? 'close',
       ignoreMaxHoldDaysExit: options?.ignoreMaxHoldDaysExit ?? false,
@@ -67,7 +68,7 @@ export class CleanBacktestEngine {
     if (!this.data || this.data.length === 0) {
       return {
         trades: [],
-        metrics: new MetricsCalculator([], [], this.strategy.riskManagement.initialCapital).calculateAllMetrics(),
+        metrics: new MetricsCalculator([], [], this.strategy.riskManagement?.initialCapital ?? 10000).calculateAllMetrics(),
         equity: [],
         chartData: [],
         insights: []
@@ -81,12 +82,12 @@ export class CleanBacktestEngine {
       entryIndex: number;
     } | null = null;
 
-    const lowIBS = Number(this.strategy.parameters.lowIBS ?? 0.1);
-    const highIBS = Number(this.strategy.parameters.highIBS ?? 0.75);
-    const maxHoldDays = typeof this.strategy.parameters.maxHoldDays === 'number'
+    const lowIBS = Number(this.strategy.parameters?.lowIBS ?? 0.1);
+    const highIBS = Number(this.strategy.parameters?.highIBS ?? 0.75);
+    const maxHoldDays = typeof this.strategy.parameters?.maxHoldDays === 'number'
       ? this.strategy.parameters.maxHoldDays
-      : (this.strategy.riskManagement.maxHoldDays ?? 30);
-    const capitalUsage = this.strategy.riskManagement.capitalUsage ?? 100;
+      : (this.strategy.riskManagement?.maxHoldDays ?? 30);
+    const capitalUsage = this.strategy.riskManagement?.capitalUsage ?? 100;
 
     // Проходим по всем барам; обработка входа зависит от типа исполнения
     for (let i = 0; i < this.data.length; i++) {
@@ -238,11 +239,9 @@ export class CleanBacktestEngine {
         totalValue += grossValue - commission;
       }
 
-      // Рассчитываем drawdown
-      const peakValue = this.equity.length > 0 
-        ? Math.max(...this.equity.map(e => e.value), totalValue)
-        : totalValue;
-      const drawdown = peakValue > 0 ? ((peakValue - totalValue) / peakValue) * 100 : 0;
+      // Рассчитываем drawdown (оптимизировано для производительности)
+      this.peakValue = Math.max(this.peakValue || 0, totalValue);
+      const drawdown = this.peakValue > 0 ? ((this.peakValue - totalValue) / this.peakValue) * 100 : 0;
 
       this.equity.push({
         date: bar.date,
@@ -327,10 +326,8 @@ export class CleanBacktestEngine {
       const commission = this.calculateCommission(grossValue);
       finalValue += grossValue - commission;
     }
-    const finalPeakValue = this.equity.length > 0 
-      ? Math.max(...this.equity.map(e => e.value), finalValue)
-      : finalValue;
-    const finalDrawdown = finalPeakValue > 0 ? ((finalPeakValue - finalValue) / finalPeakValue) * 100 : 0;
+    this.peakValue = Math.max(this.peakValue, finalValue);
+    const finalDrawdown = this.peakValue > 0 ? ((this.peakValue - finalValue) / this.peakValue) * 100 : 0;
     const lastIdx = this.equity.length - 1;
     if (lastIdx >= 0 && this.equity[lastIdx].date.getTime() === lastBar.date.getTime()) {
       this.equity[lastIdx] = { date: lastBar.date, value: finalValue, drawdown: finalDrawdown };
@@ -344,7 +341,7 @@ export class CleanBacktestEngine {
     const metricsCalculator = new MetricsCalculator(
       this.trades,
       this.equity,
-      this.strategy.riskManagement.initialCapital
+      this.strategy.riskManagement?.initialCapital ?? 10000
     );
 
     const metrics = metricsCalculator.calculateAllMetrics();
