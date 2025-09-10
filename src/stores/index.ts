@@ -100,21 +100,36 @@ export const useAppStore = create<AppState>((set, get) => ({
   commissionType: 'percentage',
   commissionFixed: 1.0,
   commissionPercentage: 0.1,
-  analysisTabsConfig: [
-    { id: 'price', label: 'Цена', visible: true },
-    { id: 'equity', label: 'Equity', visible: true },
-    { id: 'buyhold', label: 'Buy and hold', visible: true },
-    { id: 'drawdown', label: 'Просадки', visible: true },
-    { id: 'trades', label: 'Сделки', visible: true },
-    { id: 'profit', label: 'Profit factor', visible: true },
-    { id: 'duration', label: 'Длительность', visible: true },
-    { id: 'openDayDrawdown', label: 'Стартовая просадка', visible: true },
-    { id: 'margin', label: 'Маржа', visible: true },
-    { id: 'buyAtClose', label: 'Покупка на открытии', visible: true },
-    { id: 'buyAtClose4', label: 'Мультитикер', visible: true },
-    { id: 'noStopLoss', label: 'Без stop loss', visible: true },
-    { id: 'splits', label: 'Сплиты', visible: true }
-  ],
+  // ИНИЦИАЛИЗАЦИЯ: Загружаем из localStorage или дефолтные настройки
+  analysisTabsConfig: (() => {
+    try {
+      const saved = localStorage.getItem('analysisTabsConfig');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          return parsed;
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to load analysis tabs config from localStorage:', e);
+    }
+    // Дефолтные настройки
+    return [
+      { id: 'price', label: 'Цена', visible: true },
+      { id: 'equity', label: 'Equity', visible: true },
+      { id: 'buyhold', label: 'Buy and hold', visible: true },
+      { id: 'drawdown', label: 'Просадки', visible: true },
+      { id: 'trades', label: 'Сделки', visible: true },
+      { id: 'profit', label: 'Profit factor', visible: true },
+      { id: 'duration', label: 'Длительность', visible: true },
+      { id: 'openDayDrawdown', label: 'Стартовая просадка', visible: true },
+      { id: 'margin', label: 'Маржа', visible: true },
+      { id: 'buyAtClose', label: 'Покупка на открытии', visible: true },
+      { id: 'buyAtClose4', label: 'Мультитикер', visible: true },
+      { id: 'noStopLoss', label: 'Без stop loss', visible: true },
+      { id: 'splits', label: 'Сплиты', visible: true }
+    ];
+  })(),
   currentStrategy: null,
   backtestResults: null,
   backtestStatus: 'idle',
@@ -131,22 +146,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         commissionType: s.commissionType || 'percentage',
         commissionFixed: typeof s.commissionFixed === 'number' ? s.commissionFixed : 1.0,
         commissionPercentage: typeof s.commissionPercentage === 'number' ? s.commissionPercentage : 0.1,
-        // ИСПРАВЛЕНИЕ: Загружаем конфигурацию табов аналитики из сохраненных настроек
-        analysisTabsConfig: Array.isArray(s.analysisTabsConfig) ? s.analysisTabsConfig : [
-          { id: 'price', label: 'Цена', visible: true },
-          { id: 'equity', label: 'Equity', visible: true },
-          { id: 'buyhold', label: 'Buy and hold', visible: true },
-          { id: 'drawdown', label: 'Просадки', visible: true },
-          { id: 'trades', label: 'Сделки', visible: true },
-          { id: 'profit', label: 'Profit factor', visible: true },
-          { id: 'duration', label: 'Длительность', visible: true },
-          { id: 'openDayDrawdown', label: 'Стартовая просадка', visible: true },
-          { id: 'margin', label: 'Маржа', visible: true },
-          { id: 'buyAtClose', label: 'Покупка на открытии', visible: true },
-          { id: 'buyAtClose4', label: 'Мультитикер', visible: true },
-          { id: 'noStopLoss', label: 'Без stop loss', visible: true },
-          { id: 'splits', label: 'Сплиты', visible: true }
-        ],
+        // analysisTabsConfig теперь сохраняется в localStorage, не на сервере
       });
     } catch (e) {
       console.warn('Failed to load app settings:', e instanceof Error ? e.message : e);
@@ -155,8 +155,9 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   saveSettingsToServer: async () => {
     try {
-      const { watchThresholdPct, resultsQuoteProvider, enhancerProvider, resultsRefreshProvider, indicatorPanePercent, commissionType, commissionFixed, commissionPercentage, analysisTabsConfig } = get();
-      await DatasetAPI.saveAppSettings({ watchThresholdPct, resultsQuoteProvider, enhancerProvider, resultsRefreshProvider, indicatorPanePercent, commissionType, commissionFixed, commissionPercentage, analysisTabsConfig });
+      const { watchThresholdPct, resultsQuoteProvider, enhancerProvider, resultsRefreshProvider, indicatorPanePercent, commissionType, commissionFixed, commissionPercentage } = get();
+      await DatasetAPI.saveAppSettings({ watchThresholdPct, resultsQuoteProvider, enhancerProvider, resultsRefreshProvider, indicatorPanePercent, commissionType, commissionFixed, commissionPercentage });
+      // analysisTabsConfig теперь сохраняется автоматически в localStorage
     } catch (e) {
       console.warn('Failed to save app settings:', e instanceof Error ? e.message : e);
       throw e; // ИСПРАВЛЕНИЕ: перебрасываем ошибку, чтобы AppSettings мог ее обработать
@@ -212,6 +213,12 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   setAnalysisTabsConfig: (config: AnalysisTabConfig[]) => {
     set({ analysisTabsConfig: config });
+    // Автосохранение в localStorage
+    try {
+      localStorage.setItem('analysisTabsConfig', JSON.stringify(config));
+    } catch (e) {
+      console.warn('Failed to save analysis tabs config to localStorage:', e);
+    }
   },
 
   loadJSONData: async (file: File) => {

@@ -85,16 +85,10 @@ export function AppSettings() {
   };
 
   const saveInterfaceSettings = async () => {
-    setSaving(true); setSaveOk(null); setSaveErr(null); // ИСПРАВЛЕНИЕ: сбрасываем состояние и устанавливаем loading
-    try {
-      await saveSettingsToServer();
-      setSaveOk('Настройки интерфейса сохранены');
-    } catch (e) {
-      const message = e instanceof Error ? e.message : 'Не удалось сохранить настройки интерфейса';
-      setSaveErr(message);
-    } finally {
-      setSaving(false); // ИСПРАВЛЕНИЕ: сбрасываем loading состояние
-    }
+    // Настройки табов теперь сохраняются автоматически в localStorage
+    setSaveOk('Настройки интерфейса сохранены в браузере');
+    // Автоматически сбрасываем сообщение через 3 секунды
+    setTimeout(() => setSaveOk(null), 3000);
   };
 
   const sendTest = async () => {
