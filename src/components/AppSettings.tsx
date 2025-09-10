@@ -85,14 +85,15 @@ export function AppSettings() {
   };
 
   const saveInterfaceSettings = async () => {
-    // TODO: Сохранить настройки интерфейса на сервер через API
-    // Пока что сохраняем через общий механизм настроек
+    setSaving(true); setSaveOk(null); setSaveErr(null); // ИСПРАВЛЕНИЕ: сбрасываем состояние и устанавливаем loading
     try {
       await saveSettingsToServer();
       setSaveOk('Настройки интерфейса сохранены');
     } catch (e) {
       const message = e instanceof Error ? e.message : 'Не удалось сохранить настройки интерфейса';
       setSaveErr(message);
+    } finally {
+      setSaving(false); // ИСПРАВЛЕНИЕ: сбрасываем loading состояние
     }
   };
 

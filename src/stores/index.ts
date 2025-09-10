@@ -138,7 +138,14 @@ export const useAppStore = create<AppState>((set, get) => ({
           { id: 'buyhold', label: 'Buy and hold', visible: true },
           { id: 'drawdown', label: 'Просадки', visible: true },
           { id: 'trades', label: 'Сделки', visible: true },
-          { id: 'multiticker', label: 'Мультитикер', visible: true }
+          { id: 'profit', label: 'Profit factor', visible: true },
+          { id: 'duration', label: 'Длительность', visible: true },
+          { id: 'openDayDrawdown', label: 'Стартовая просадка', visible: true },
+          { id: 'margin', label: 'Маржа', visible: true },
+          { id: 'buyAtClose', label: 'Покупка на открытии', visible: true },
+          { id: 'buyAtClose4', label: 'Мультитикер', visible: true },
+          { id: 'noStopLoss', label: 'Без stop loss', visible: true },
+          { id: 'splits', label: 'Сплиты', visible: true }
         ],
       });
     } catch (e) {
@@ -152,6 +159,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       await DatasetAPI.saveAppSettings({ watchThresholdPct, resultsQuoteProvider, enhancerProvider, resultsRefreshProvider, indicatorPanePercent, commissionType, commissionFixed, commissionPercentage, analysisTabsConfig });
     } catch (e) {
       console.warn('Failed to save app settings:', e instanceof Error ? e.message : e);
+      throw e; // ИСПРАВЛЕНИЕ: перебрасываем ошибку, чтобы AppSettings мог ее обработать
     }
   },
   
