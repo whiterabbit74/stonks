@@ -103,10 +103,16 @@ function getPositionMarketValue(
 ): { marketValue: number; netValue: number; unrealizedPnL: number } {
   const marketValue = position.quantity * currentPrice;
   const exitCommission = calculateCommission(marketValue, strategy);
-  const netValue = marketValue - exitCommission; // Чистая стоимость после комиссии
-  const unrealizedPnL = netValue - position.totalCost; // Нереализованная прибыль/убыток
+  // ИСПРАВЛЕНИЕ: Для leverage позиций считаем P&L от вложенного маржина
+  const stockPnL = (currentPrice - position.entryPrice) * position.quantity;
+  const unrealizedPnL = stockPnL - exitCommission; // Нереализованная прибыль/убыток от изменения цены
+  const netPositionValue = position.totalCost + unrealizedPnL; // Маржин + нереализованная P&L
   
-  return { marketValue, netValue, unrealizedPnL };
+  return { 
+    marketValue, 
+    netValue: netPositionValue, // ИСПРАВЛЕНИЕ: Возвращаем стоимость позиции с учетом маржина
+    unrealizedPnL 
+  };
 }
 
 /**
@@ -119,7 +125,7 @@ function updatePortfolioState(
   currentDateTime: number,
   strategy: Strategy
 ): PortfolioState {
-  let totalMarketValue = 0;
+  let totalPositionsValue = 0;
   
   for (let i = 0; i < positions.length; i++) {
     const position = positions[i];
@@ -130,15 +136,16 @@ function updatePortfolioState(
       if (barIndex !== -1) {
         const currentPrice = tickerData.data[barIndex].close;
         const { netValue } = getPositionMarketValue(position, currentPrice, strategy);
-        totalMarketValue += netValue;
+        totalPositionsValue += netValue; // Сумма всех позиций с учетом leverage
       }
     }
   }
   
+  // ИСПРАВЛЕНИЕ: Правильный расчет общей стоимости портфеля с leverage
   return {
     freeCapital: portfolio.freeCapital,
     totalInvestedCost: portfolio.totalInvestedCost,
-    totalPortfolioValue: portfolio.freeCapital + totalMarketValue
+    totalPortfolioValue: portfolio.freeCapital + totalPositionsValue // Свободный капитал + стоимость позиций
   };
 }
 
