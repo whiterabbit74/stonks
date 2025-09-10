@@ -10,8 +10,13 @@ interface SimulationResult {
   equity: EquityPoint[];
   maxDrawdown: number;
   finalValue: number;
-  marginCall: boolean;
-  marginCallDate?: Date;
+  marginCalls: MarginCallEvent[];
+}
+
+interface MarginCallEvent {
+  date: Date;
+  value: number;
+  type: 'partial' | 'full';
 }
 
 function formatCurrency(value: number): string {
@@ -23,7 +28,7 @@ function formatCurrency(value: number): string {
 
 function simulateLeverage(equity: EquityPoint[], leverage: number): SimulationResult {
   if (!equity || equity.length === 0 || leverage <= 0) {
-    return { equity: [], maxDrawdown: 0, finalValue: 0, marginCall: false };
+    return { equity: [], maxDrawdown: 0, finalValue: 0, marginCalls: [] };
   }
 
   const result: EquityPoint[] = [];
@@ -32,38 +37,54 @@ function simulateLeverage(equity: EquityPoint[], leverage: number): SimulationRe
   let maxDD = 0;
   result.push({ date: equity[0].date, value: currentValue, drawdown: 0 });
 
-  let marginCall = false;
-  let marginCallDate: Date | undefined = undefined;
-  const marginCallThreshold = equity[0].value * 0.3; // 30% от начального капитала
+  const marginCalls: MarginCallEvent[] = [];
+  const initialCapital = equity[0].value;
+  const marginCallThreshold = initialCapital * 0.3; // 30% от начального капитала
+  const fullLiquidationThreshold = initialCapital * 0.1; // 10% от начального - полная ликвидация
+  const recoveryThreshold = initialCapital * 0.6; // 60% от начального - восстановление плеча
+  
+  let currentLeverage = leverage; // Текущее плечо (может изменяться)
+  let lastMarginCallValue = 0;
 
   for (let i = 1; i < equity.length; i++) {
     const basePrev = equity[i - 1].value;
     const baseCurr = equity[i].value;
     if (basePrev <= 0) continue;
+    
     const baseReturn = (baseCurr - basePrev) / basePrev;
-    const leveragedReturn = baseReturn * leverage;
+    const leveragedReturn = baseReturn * currentLeverage;
     currentValue = currentValue * (1 + leveragedReturn);
 
-    // Проверка margin call - частичная ликвидация вместо полного обнуления
-    if (currentValue <= marginCallThreshold && !marginCall) {
-      // Частичная ликвидация: снижаем плечо до 1x и восстанавливаем до безопасного уровня
-      currentValue = Math.max(marginCallThreshold, currentValue * 0.5);
-      marginCall = true;
-      marginCallDate = equity[i].date;
-    }
-    
-    // После margin call используем плечо 1x
-    if (marginCall) {
-      // Пересчитываем с плечом 1x после margin call
-      currentValue = currentValue * (1 + baseReturn);
-    }
-
-    // Полное обнуление только при экстремальных потерях
-    if (currentValue <= 0) {
+    // Проверка полной ликвидации
+    if (currentValue <= fullLiquidationThreshold) {
+      marginCalls.push({
+        date: equity[i].date,
+        value: currentValue,
+        type: 'full'
+      });
       currentValue = 0;
       maxDD = 100;
       result.push({ date: equity[i].date, value: currentValue, drawdown: 100 });
       break;
+    }
+
+    // Проверка частичной ликвидации (margin call)
+    if (currentValue <= marginCallThreshold && currentValue > lastMarginCallValue * 1.1) {
+      marginCalls.push({
+        date: equity[i].date,
+        value: currentValue,
+        type: 'partial'
+      });
+      
+      // Частичная ликвидация: возвращаем к безопасному уровню и убираем плечо
+      currentValue = Math.max(marginCallThreshold * 1.2, currentValue * 0.7);
+      currentLeverage = 1; // Убираем плечо после margin call
+      lastMarginCallValue = currentValue;
+    }
+    
+    // Восстановление плеча при восстановлении капитала
+    if (currentLeverage < leverage && currentValue >= recoveryThreshold) {
+      currentLeverage = leverage; // Восстанавливаем плечо
     }
 
     if (currentValue > peakValue) peakValue = currentValue;
@@ -73,14 +94,14 @@ function simulateLeverage(equity: EquityPoint[], leverage: number): SimulationRe
   }
 
   const finalValue = result[result.length - 1]?.value ?? currentValue;
-  return { equity: result, maxDrawdown: maxDD, finalValue, marginCall, marginCallDate };
+  return { equity: result, maxDrawdown: maxDD, finalValue, marginCalls };
 }
 
 export function MarginSimulator({ equity }: MarginSimulatorProps) {
   const [marginPctInput, setMarginPctInput] = useState<string>('200');
   const [appliedLeverage, setAppliedLeverage] = useState<number>(2);
 
-  const { simEquity, simMaxDD, simFinal, marginCall, marginDate, annualReturn } = useMemo(() => {
+  const { simEquity, simMaxDD, simFinal, marginCalls, annualReturn } = useMemo(() => {
     const leverage = appliedLeverage;
     const sim = simulateLeverage(equity, leverage);
     
@@ -102,8 +123,7 @@ export function MarginSimulator({ equity }: MarginSimulatorProps) {
       simEquity: sim.equity,
       simMaxDD: sim.maxDrawdown,
       simFinal: sim.finalValue,
-      marginCall: sim.marginCall,
-      marginDate: sim.marginCallDate,
+      marginCalls: sim.marginCalls,
       annualReturn
     };
   }, [equity, appliedLeverage]);
@@ -151,12 +171,40 @@ export function MarginSimulator({ equity }: MarginSimulatorProps) {
         <div className="bg-gray-50 px-3 py-2 rounded border dark:bg-gray-800 dark:border-gray-700">
           Макс. просадка: {simMaxDD.toFixed(2)}%
         </div>
-        {marginCall && (
+        {marginCalls.length > 0 && (
           <div className="px-3 py-2 rounded border border-red-300 bg-red-50 text-red-800 dark:bg-red-900/30 dark:border-red-800 dark:text-red-200">
-            Margin call: частичная ликвидация{marginDate ? ` (${new Date(marginDate).toLocaleDateString('ru-RU')})` : ''}
+            Margin calls: {marginCalls.length} событий
+            {marginCalls.some(mc => mc.type === 'full') ? ' (включая полную ликвидацию)' : ' (частичные ликвидации)'}
           </div>
         )}
       </div>
+
+      {/* Детальная информация о margin calls */}
+      {marginCalls.length > 0 && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 dark:bg-red-950/30 dark:border-red-900/40">
+          <h4 className="font-medium text-red-900 dark:text-red-200 mb-3">
+            События маржинальных требований
+          </h4>
+          <div className="space-y-2 text-sm">
+            {marginCalls.map((call, index) => (
+              <div key={index} className="flex justify-between items-center py-1">
+                <span className="text-red-800 dark:text-red-300">
+                  {call.type === 'partial' ? 'Частичная ликвидация' : 'Полная ликвидация'}
+                </span>
+                <span className="text-red-700 dark:text-red-200">
+                  {call.date.toLocaleDateString('ru-RU')} - {formatCurrency(call.value)}
+                </span>
+              </div>
+            ))}
+          </div>
+          <div className="mt-3 p-3 bg-red-100 rounded text-xs text-red-800 dark:bg-red-900/50 dark:text-red-200">
+            <strong>Логика системы:</strong><br/>
+            • При падении капитала до 30% от начального - частичная ликвидация и отключение плеча<br/>
+            • При восстановлении до 60% от начального - плечо восстанавливается<br/>
+            • При падении до 10% от начального - полная ликвидация
+          </div>
+        </div>
+      )}
 
       <div className="h-[600px]">
         <EquityChart equity={simEquity} hideHeader />

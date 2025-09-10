@@ -229,15 +229,42 @@ export function SplitPage() {
 						{events.length === 0 && (
 							<div className="text-xs text-gray-500">Нет событий. Добавьте новое.</div>
 						)}
-						<div className="space-y-2">
+						<div className="space-y-3">
 							{events.map((s, i) => (
-								<div key={i} className="flex flex-wrap gap-2 items-center">
-									<input type="date" className="border rounded px-2 py-1 text-sm dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100" value={(s.date || '').slice(0,10)} onChange={e => updateEvent(i, { date: e.target.value })} />
-									<input type="number" step="0.01" min="0" className="border rounded px-2 py-1 text-sm w-28 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100" value={String(s.factor ?? '')} onChange={e => {
-  const value = parseFloat(e.target.value);
-  updateEvent(i, { factor: isNaN(value) ? 0 : value });
-}} />
-									<button className="px-2 py-1 text-xs rounded border hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800" onClick={() => removeEvent(i)}>Удалить</button>
+								<div key={i} className="p-3 border rounded-lg bg-gray-50 dark:bg-gray-800 dark:border-gray-700">
+									<div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+										<div>
+											<label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Дата</label>
+											<input 
+												type="date" 
+												className="w-full border rounded px-2 py-1 text-sm dark:bg-gray-900 dark:border-gray-600 dark:text-gray-100" 
+												value={(s.date || '').slice(0,10)} 
+												onChange={e => updateEvent(i, { date: e.target.value })} 
+											/>
+										</div>
+										<div>
+											<label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Коэффициент</label>
+											<input 
+												type="number" 
+												step="0.01" 
+												min="0" 
+												className="w-full border rounded px-2 py-1 text-sm dark:bg-gray-900 dark:border-gray-600 dark:text-gray-100" 
+												value={String(s.factor ?? '')} 
+												onChange={e => {
+													const value = parseFloat(e.target.value);
+													updateEvent(i, { factor: isNaN(value) ? 0 : value });
+												}} 
+											/>
+										</div>
+										<div className="flex items-end">
+											<button 
+												className="w-full sm:w-auto px-3 py-1 text-xs rounded border border-red-300 text-red-700 hover:bg-red-50 dark:border-red-600 dark:text-red-400 dark:hover:bg-red-900/20" 
+												onClick={() => removeEvent(i)}
+											>
+												Удалить
+											</button>
+										</div>
+									</div>
 								</div>
 							))}
 							<button className="px-2 py-1 text-xs rounded border hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800" onClick={addEvent}>Добавить событие</button>

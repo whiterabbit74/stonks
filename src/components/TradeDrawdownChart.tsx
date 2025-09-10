@@ -182,9 +182,9 @@ export function TradeDrawdownChart({ trades, initialCapital }: TradeDrawdownChar
   const drawdownFrequency = (drawdownTrades / trades.length) * 100;
 
   return (
-    <div className="w-full h-[300px] sm:h-[360px]">
+    <div className="w-full space-y-4">
       {/* Trade Drawdown Statistics */}
-      <div className="flex flex-wrap gap-4 mb-4 text-sm">
+      <div className="flex flex-wrap gap-4 text-sm">
         <div className="bg-red-50 px-3 py-2 rounded dark:bg-red-950/30 dark:text-red-300">
           <span className="text-red-600 font-medium dark:text-red-300">Макс. просадка по сделке: {maxDrawdown.toFixed(2)}%</span>
         </div>
@@ -197,7 +197,7 @@ export function TradeDrawdownChart({ trades, initialCapital }: TradeDrawdownChar
       </div>
       
       {/* Chart Container */}
-      <div ref={chartContainerRef} className="w-full h-[600px] min-h-0 overflow-hidden" />
+      <div ref={chartContainerRef} className="w-full h-[400px] sm:h-[500px] min-h-0 overflow-hidden border rounded-lg" />
     </div>
   );
 }

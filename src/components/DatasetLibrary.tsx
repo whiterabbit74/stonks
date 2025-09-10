@@ -33,7 +33,13 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
     const tags = new Set<string>();
     savedDatasets.forEach(dataset => {
       if (dataset.tag) {
-        tags.add(dataset.tag);
+        // Разбиваем теги по запятой и добавляем каждый тег отдельно
+        dataset.tag.split(',').forEach(tag => {
+          const trimmedTag = tag.trim();
+          if (trimmedTag) {
+            tags.add(trimmedTag);
+          }
+        });
       }
     });
     return Array.from(tags).sort();
@@ -44,7 +50,11 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
     if (selectedTag === 'all') {
       return savedDatasets;
     }
-    return savedDatasets.filter(dataset => dataset.tag === selectedTag);
+    return savedDatasets.filter(dataset => {
+      if (!dataset.tag) return false;
+      // Проверяем, содержит ли список тегов выбранный тег
+      return dataset.tag.split(',').some(tag => tag.trim() === selectedTag);
+    });
   }, [savedDatasets, selectedTag]);
 
   // Состояние для модального окна редактирования
@@ -236,7 +246,7 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
                     : 'bg-gray-50 text-gray-700 border border-gray-200 hover:bg-gray-100 hover:border-gray-300 dark:bg-gray-800 dark:text-gray-200 dark:border-gray-700 dark:hover:bg-gray-700'
                 }`}
               >
-                {tag} ({savedDatasets.filter(d => d.tag === tag).length})
+                {tag} ({savedDatasets.filter(d => d.tag && d.tag.split(',').some(t => t.trim() === tag)).length})
               </button>
             ))}
           </div>
@@ -344,13 +354,13 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Тег
+                  Теги
                 </label>
                 <input
                   type="text"
                   value={editTag}
                   onChange={(e) => setEditTag(e.target.value)}
-                  placeholder="Например: tech, growth, dividend"
+                  placeholder="Например: tech, growth, dividend (через запятую)"
                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-800 dark:text-gray-100"
                 />
               </div>
@@ -434,9 +444,17 @@ function DatasetCard({ dataset, isActive, onLoad, onDelete, onExport, onEdit, on
               </span>
             )}
             {dataset.tag && (
-              <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded dark:bg-blue-950/30 dark:text-blue-200 dark:border dark:border-blue-900/40">
-                {dataset.tag}
-              </span>
+              <div className="flex flex-wrap gap-1">
+                {dataset.tag.split(',').map((tag, index) => {
+                  const trimmedTag = tag.trim();
+                  if (!trimmedTag) return null;
+                  return (
+                    <span key={index} className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded dark:bg-blue-950/30 dark:text-blue-200 dark:border dark:border-blue-900/40">
+                      {trimmedTag}
+                    </span>
+                  );
+                })}
+              </div>
             )}
             {loading && (
               <span className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded dark:bg-gray-800 dark:text-gray-200 dark:border dark:border-gray-700">Загрузка…</span>

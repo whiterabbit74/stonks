@@ -146,26 +146,44 @@ export class IndicatorEngine {
    * Calculate Internal Bar Strength (IBS)
    * IBS = (Close - Low) / (High - Low)
    * @param ohlcData Array of OHLC data points
-   * @returns Array of IBS values (0-1 scale, NaN for invalid bars)
+   * @returns Array of IBS values (0-1 scale, 0.5 for invalid bars)
    */
   static calculateIBS(ohlcData: OHLCData[]): number[] {
     if (!ohlcData || ohlcData.length === 0) {
       throw new Error('OHLC data is required for IBS calculation');
     }
     
-    return ohlcData.map(bar => {
+    return ohlcData.map((bar, index) => {
       const { high, low, close } = bar;
       
       // Validate bar data
       if (high < low || close < low || close > high) {
-        return NaN;
+        // Log data quality issue and return neutral IBS
+        if (typeof window !== 'undefined') {
+          const { logWarn } = require('../lib/error-logger');
+          logWarn('calc', `Invalid OHLC data: H=${high}, L=${low}, C=${close}`, {
+            bar: index,
+            date: bar.date,
+            high,
+            low,
+            close
+          }, 'calculateIBS');
+        }
+        return 0.5; // Return neutral IBS
       }
       
       // Handle case where high equals low (no range) - prevents division by zero
       if (high === low) {
-        // Return NaN to indicate invalid IBS - strategy engines properly handle this
-        // by checking isNaN(ibs) and skipping these bars in trading logic
-        return NaN;
+        // Log zero-range bar and return neutral IBS
+        if (typeof window !== 'undefined') {
+          const { logInfo } = require('../lib/error-logger');
+          logInfo('calc', `Zero-range bar: H=L=${high}, C=${close}`, {
+            bar: index,
+            date: bar.date,
+            value: high
+          }, 'calculateIBS');
+        }
+        return 0.5; // Return neutral IBS
       }
       
       return (close - low) / (high - low);

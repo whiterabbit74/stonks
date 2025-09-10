@@ -2,6 +2,7 @@ import type { OHLCData, Strategy, BacktestResult, Trade, EquityPoint, SplitEvent
 import { IndicatorEngine } from './indicators';
 import { MetricsCalculator } from './metrics';
 import { adjustOHLCForSplits } from './utils';
+import { logWarn, logError } from './error-logger';
 
 export interface CleanBacktestOptions {
   // Entry price timing: at current bar close, or at next day's open
@@ -84,6 +85,14 @@ export class CleanBacktestEngine {
 
     const lowIBS = Number(this.strategy.parameters?.lowIBS ?? 0.1);
     const highIBS = Number(this.strategy.parameters?.highIBS ?? 0.75);
+    
+    // Предупреждение о подозрительных настройках
+    if (lowIBS > 0.3) {
+      logWarn('backtest', `Подозрительная настройка lowIBS=${lowIBS}. Значения > 0.3 могут вызывать ложные сигналы при средних IBS (~0.5). Рекомендуется использовать 0.1-0.3.`, {
+        lowIBS,
+        strategy: this.strategy.name
+      }, 'CleanBacktest.runBacktest');
+    }
     const maxHoldDays = typeof this.strategy.parameters?.maxHoldDays === 'number'
       ? this.strategy.parameters.maxHoldDays
       : (this.strategy.riskManagement?.maxHoldDays ?? 30);
@@ -95,12 +104,12 @@ export class CleanBacktestEngine {
       const nextBar = this.data[i + 1];
       const ibs = this.ibsValues[i];
 
-      if (isNaN(ibs)) continue; // Пропускаем невалидные IBS
+      // IBS теперь всегда валидный (0.5 для проблемных данных)
 
       // Если нет позиции - проверяем вход
       if (!position) {
-        // Проверяем, что IBS корректное значение (не NaN)
-        if (!isNaN(ibs) && ibs < lowIBS) {
+        // Проверяем условие входа
+        if (ibs < lowIBS) {
           // СИГНАЛ ВХОДА: IBS текущего дня < lowIBS
           const investmentAmount = (this.currentCapital * capitalUsage) / 100;
 
@@ -108,6 +117,12 @@ export class CleanBacktestEngine {
             // ПОКУПКА: по цене открытия следующего дня
             if (!nextBar) {
               // Если нет следующего дня, покупаем по текущей цене закрытия как fallback
+              logWarn('backtest', 'Fallback to close price - no next day available for entry', {
+                date: bar.date,
+                ibs: ibs,
+                price: bar.close
+              }, 'CleanBacktest.runBacktest');
+              
               const quantity = Math.floor(investmentAmount / bar.close);
               if (quantity > 0) {
                 const totalCost = quantity * bar.close;
@@ -120,6 +135,13 @@ export class CleanBacktestEngine {
                 this.currentCapital -= totalCost;
                 console.log(`🟢 ENTRY SIGNAL: IBS=${ibs.toFixed(3)} < ${lowIBS} on ${bar.date.toISOString().split('T')[0]}`);
                 console.log(`🟢 ENTRY EXECUTION(fallback-close): bought ${quantity} shares at $${bar.close.toFixed(2)} on ${bar.date.toISOString().split('T')[0]} (no next day available)`);
+              } else {
+                logWarn('backtest', 'Entry signal but insufficient funds for minimum quantity', {
+                  date: bar.date,
+                  investmentAmount,
+                  price: bar.close,
+                  quantity
+                }, 'CleanBacktest.runBacktest');
               }
             } else {
               const quantity = Math.floor(investmentAmount / nextBar.open);

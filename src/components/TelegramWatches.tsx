@@ -1,9 +1,10 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { RefreshCw, Trash2 } from 'lucide-react';
+import { RefreshCw, Trash2, ExternalLink } from 'lucide-react';
 import { DatasetAPI } from '../lib/api';
 import { ConfirmModal } from './ConfirmModal';
 import { InfoModal } from './InfoModal';
 import { useAppStore } from '../stores';
+import { useNavigate } from 'react-router-dom';
 
 interface WatchItem {
   symbol: string;
@@ -14,6 +15,7 @@ interface WatchItem {
 }
 
 export function TelegramWatches() {
+  const navigate = useNavigate();
   const [watches, setWatches] = useState<WatchItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -22,6 +24,10 @@ export function TelegramWatches() {
   const [info, setInfo] = useState<{ open: boolean; title: string; message: string; kind?: 'success'|'error'|'info' }>({ open: false, title: '', message: '' });
   const [secondsToNext, setSecondsToNext] = useState<number | null>(null);
   const watchThresholdPct = useAppStore(s => s.watchThresholdPct);
+
+  const handleTickerClick = (symbol: string) => {
+    navigate(`/results?ticker=${encodeURIComponent(symbol)}`);
+  };
 
   function getETParts(date: Date = new Date()): { y: number; m: number; d: number; hh: number; mm: number; ss: number; weekday: number } {
     const fmt = new Intl.DateTimeFormat('en-US', {
@@ -189,7 +195,16 @@ export function TelegramWatches() {
             <tbody className="divide-y dark:divide-gray-700">
               {watches.map(w => (
                 <tr key={w.symbol} className="hover:bg-gray-50 dark:hover:bg-gray-800">
-                  <td className="p-3 font-medium dark:text-gray-100">{w.symbol}</td>
+                  <td className="p-3">
+                    <button
+                      onClick={() => handleTickerClick(w.symbol)}
+                      className="inline-flex items-center gap-1 font-medium text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 transition-colors"
+                      title={`Перейти к результатам для ${w.symbol}`}
+                    >
+                      {w.symbol}
+                      <ExternalLink className="w-3 h-3" />
+                    </button>
+                  </td>
                   <td className="p-3 dark:text-gray-300">≤ {(w.lowIBS ?? 0.1).toFixed(2)}</td>
                   <td className="p-3 dark:text-gray-300">≥ {w.highIBS.toFixed(2)}</td>
                   <td className="p-3 dark:text-gray-300">{w.entryPrice != null ? `$${w.entryPrice.toFixed(2)}` : '—'}</td>

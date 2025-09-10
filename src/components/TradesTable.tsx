@@ -38,8 +38,8 @@ export const TradesTable = React.memo(function TradesTable({ trades }: TradesTab
 					<tr>
 						<th className="text-left px-3 py-2 font-semibold">#</th>
 						{showTicker && <th className="text-left px-3 py-2 font-semibold">Тикер</th>}
-						<th className="text-left px-3 py-2 font-semibold">Вход</th>
-						<th className="text-left px-3 py-2 font-semibold">Выход</th>
+						<th className="text-left px-3 py-2 font-semibold">Дата сделки</th>
+						<th className="text-right px-3 py-2 font-semibold">IBS входа</th>
 						<th className="text-right px-3 py-2 font-semibold">Цена входа</th>
 						<th className="text-right px-3 py-2 font-semibold">Цена выхода</th>
 						<th className="text-right px-3 py-2 font-semibold">Кол-во</th>
@@ -54,17 +54,26 @@ export const TradesTable = React.memo(function TradesTable({ trades }: TradesTab
 				<tbody>
 					{trades.map((t, i) => {
 						const positive = (t.pnl ?? 0) >= 0;
+						// Получаем IBS значения из контекста
+						const entryIBS = t.context?.indicatorValues?.IBS;
+						const exitIBS = t.context?.indicatorValues?.exitIBS;
+						
+						// Форматируем причину выхода
+						let formattedExitReason = t.exitReason || '-';
+						if (t.exitReason === 'ibs_signal' && typeof exitIBS === 'number') {
+							formattedExitReason = `IBS ${(exitIBS * 100).toFixed(1)}%`;
+						}
+						
 						return (
 							<tr key={t.id || i} className="border-b last:border-b-0 dark:border-gray-800">
 								<td className="px-3 py-2 text-gray-500">{i + 1}</td>
 								{showTicker && <td className="px-3 py-2 whitespace-nowrap text-gray-700 dark:text-gray-200">{(t.context as any)?.ticker || ''}</td>}
 								<td className="px-3 py-2 whitespace-nowrap">
-									<div>{fmtDate(t.entryDate)}</div>
-									<div className="text-xs text-gray-500">{fmtTime(t.entryDate)}</div>
+									<div>{fmtDate(t.entryDate)} - {fmtDate(t.exitDate)}</div>
+									<div className="text-xs text-gray-500">{fmtTime(t.entryDate)} - {fmtTime(t.exitDate)}</div>
 								</td>
-								<td className="px-3 py-2 whitespace-nowrap">
-									<div>{fmtDate(t.exitDate)}</div>
-									<div className="text-xs text-gray-500">{fmtTime(t.exitDate)}</div>
+								<td className="px-3 py-2 text-right font-mono">
+									{typeof entryIBS === 'number' ? `${(entryIBS * 100).toFixed(1)}%` : '—'}
 								</td>
 								<td className="px-3 py-2 text-right font-mono">{t.entryPrice.toFixed(2)}</td>
 								<td className="px-3 py-2 text-right font-mono">{t.exitPrice.toFixed(2)}</td>
@@ -79,7 +88,7 @@ export const TradesTable = React.memo(function TradesTable({ trades }: TradesTab
 								<td className={`px-3 py-2 text-right font-mono ${positive ? 'text-emerald-600 dark:text-emerald-300' : 'text-orange-600 dark:text-orange-300'}`}>{(t.pnlPercent ?? 0).toFixed(2)}%</td>
 								<td className="px-3 py-2 text-right font-mono">{typeof t.context?.currentCapitalAfterExit === 'number' ? t.context.currentCapitalAfterExit.toFixed(2) : '—'}</td>
 								<td className="px-3 py-2 text-right">{t.duration ?? 0}</td>
-								<td className="px-3 py-2 whitespace-nowrap">{t.exitReason || '-'}</td>
+								<td className="px-3 py-2 whitespace-nowrap">{formattedExitReason}</td>
 							</tr>
 						);
 					})}

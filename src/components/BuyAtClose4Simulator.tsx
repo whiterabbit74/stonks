@@ -5,6 +5,7 @@ import { adjustOHLCForSplits, dedupeDailyOHLC } from '../lib/utils';
 import { IndicatorEngine } from '../lib/indicators';
 import { EquityChart } from './EquityChart';
 import { TradesTable } from './TradesTable';
+import { logWarn, logError } from '../lib/error-logger';
 
 interface BuyAtClose4SimulatorProps {
   strategy: Strategy | null;
@@ -150,7 +151,7 @@ function runMultiTickerBacktest(
       const bar = tickerData.data[barIndex];
       const ibs = tickerData.ibsValues[barIndex];
       
-      if (isNaN(ibs)) continue; // Пропускаем невалидные IBS
+      // IBS теперь всегда валидный (0.5 для проблемных данных)
 
       // ЛОГИКА ВХОДА
       if (!position) {
@@ -183,7 +184,25 @@ function runMultiTickerBacktest(
               currentCapital -= totalMarginNeeded; // Списываем только маржу!
               
               console.log(`🟢 ENTRY [${tickerData.ticker}]: IBS=${ibs.toFixed(3)} < ${lowIBS}, bought ${quantity} shares at $${entryPrice.toFixed(2)}, cost: ${formatCurrencyUSD(totalMarginNeeded)}, margin: ${formatCurrencyUSD(marginUsed)}, leverage: ${leverage}:1`);
+            } else {
+              logWarn('backtest', 'Entry signal but insufficient capital for margin requirement', {
+                ticker: tickerData.ticker,
+                date: bar.date,
+                ibs: ibs,
+                currentCapital,
+                totalMarginNeeded,
+                quantity
+              }, 'BuyAtClose4Simulator');
             }
+          } else {
+            logWarn('backtest', 'Entry signal but calculated quantity is zero', {
+              ticker: tickerData.ticker,
+              date: bar.date,
+              ibs: ibs,
+              investmentAmount,
+              entryPrice,
+              quantity
+            }, 'BuyAtClose4Simulator');
           }
         }
       }

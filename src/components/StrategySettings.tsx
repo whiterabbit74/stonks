@@ -73,7 +73,7 @@ export function StrategySettings({ strategy, onSave, onClose, mode = 'modal' }: 
           min: 0.01, 
           max: 0.5, 
           step: 0.01, 
-          description: 'Вход в лонг, когда IBS ниже этого значения (close близко к дневному минимуму). По умолчанию: 0.1' 
+          description: 'Вход в лонг, когда IBS ниже этого значения (close близко к дневному минимуму). По умолчанию: 0.1. ВНИМАНИЕ: значения > 0.3 могут приводить к ложным сигналам при средних IBS!' 
         },
         highIBS: { 
           label: 'Порог выхода (High IBS)', 

@@ -1,5 +1,6 @@
 import React from 'react';
 import { Logo } from './Logo';
+import { ErrorLogButton } from './ErrorLogButton';
 
 interface FooterProps {
   apiBuildId?: string | null;
@@ -11,7 +12,7 @@ export function Footer({ apiBuildId }: FooterProps) {
   return (
     <footer className="bg-white border-t border-gray-200 dark:bg-gray-900 dark:border-gray-800 mt-[50px]">
       <div className="max-w-7xl mx-auto px-6 py-8">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
           {/* Основная информация */}
           <div className="space-y-4">
             <Logo size="md" />
@@ -19,27 +20,6 @@ export function Footer({ apiBuildId }: FooterProps) {
               Анализ и тестирование торговых стратегий на исторических данных.
               Специализация на стратегиях mean reversion и техническом анализе.
             </p>
-          </div>
-
-          {/* Навигация */}
-          <div className="space-y-4">
-            <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100 uppercase tracking-wider">
-              Навигация
-            </h4>
-            <nav className="grid grid-cols-2 gap-2">
-              <a href="/data" className="text-sm text-gray-600 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-400 transition-colors">
-                Данные
-              </a>
-              <a href="/results" className="text-sm text-gray-600 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-400 transition-colors">
-                Результаты
-              </a>
-              <a href="/calendar" className="text-sm text-gray-600 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-400 transition-colors">
-                Календарь
-              </a>
-              <a href="/settings" className="text-sm text-gray-600 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-400 transition-colors">
-                Настройки
-              </a>
-            </nav>
           </div>
 
           {/* Техническая информация */}
@@ -68,8 +48,11 @@ export function Footer({ apiBuildId }: FooterProps) {
         {/* Нижняя часть футера */}
         <div className="border-t border-gray-200 dark:border-gray-800 mt-8 pt-6">
           <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-            <div className="text-sm text-gray-600 dark:text-gray-400">
-              © {currentYear} IBS Trading Strategy. Все права защищены.
+            <div className="flex items-center gap-4">
+              <div className="text-sm text-gray-600 dark:text-gray-400">
+                © {currentYear} IBS Trading Strategy. Все права защищены.
+              </div>
+              <ErrorLogButton />
             </div>
             <div className="flex items-center gap-4 text-xs text-gray-500 dark:text-gray-500">
               <span>Powered by React & TypeScript</span>
