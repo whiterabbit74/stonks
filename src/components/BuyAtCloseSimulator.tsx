@@ -3,6 +3,7 @@ import type { EquityPoint, OHLCData, Strategy, Trade } from '../types';
 import { EquityChart } from './EquityChart';
 import { CleanBacktestEngine, type CleanBacktestOptions } from '../lib/clean-backtest';
 import { TradesTable } from './TradesTable';
+import { StrategyParameters } from './StrategyParameters';
 import { sanitizeNumericInput, VALIDATION_CONSTRAINTS } from '../lib/input-validation';
 
 interface BuyAtCloseSimulatorProps {
@@ -294,8 +295,17 @@ export function BuyAtCloseSimulator({ data, strategy }: BuyAtCloseSimulatorProps
       </div>
 
       {showTrades && (
-        <div className="space-y-2">
+        <div className="space-y-4">
           <div className="text-sm font-medium dark:text-gray-100">Сделки</div>
+          
+          <StrategyParameters 
+            strategy={strategy} 
+            additionalParams={{
+              'Плечо эмуляции': `${appliedLeverage}:1`,
+              'Начальный капитал': '$10,000'
+            }}
+          />
+          
           <TradesTable trades={tradesList} />
         </div>
       )}

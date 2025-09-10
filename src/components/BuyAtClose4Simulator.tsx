@@ -5,6 +5,7 @@ import { adjustOHLCForSplits, dedupeDailyOHLC } from '../lib/utils';
 import { IndicatorEngine } from '../lib/indicators';
 import { EquityChart } from './EquityChart';
 import { TradesTable } from './TradesTable';
+import { StrategyParameters } from './StrategyParameters';
 import { logWarn, logError } from '../lib/error-logger';
 
 interface BuyAtClose4SimulatorProps {
@@ -22,6 +23,7 @@ interface Position {
   marginUsed: number;
   leverage: number; // Плечо для этой позиции
   grossValue: number; // Общая стоимость акций (с плечом)
+  entryIBS: number; // IBS при входе
 }
 
 interface TickerData {
@@ -178,7 +180,8 @@ function runMultiTickerBacktest(
                 initialCost: totalMarginNeeded, // Маржа + комиссия
                 marginUsed: marginUsed, // Чистая маржа
                 leverage: leverage,
-                grossValue: grossValue // Общая стоимость акций
+                grossValue: grossValue, // Общая стоимость акций
+                entryIBS: ibs // Сохраняем IBS входа
               };
               
               currentCapital -= totalMarginNeeded; // Списываем только маржу!
@@ -230,9 +233,9 @@ function runMultiTickerBacktest(
           // При использовании плеча вычитаем долг из выручки
           const leverageDebt = position.grossValue - position.marginUsed;
           const netProceeds = grossProceeds - leverageDebt - exitCommission;
-          const pnl = netProceeds - position.marginUsed; // P&L относительно вложенной маржи
-          // PnL процент от маржи
-          const pnlPercent = (pnl / position.marginUsed) * 100;
+          const pnl = netProceeds - position.initialCost; // P&L относительно полной стоимости (маржа + комиссия входа)
+          // PnL процент от первоначальных затрат
+          const pnlPercent = (pnl / position.initialCost) * 100;
 
           // Обновляем капитал сначала
           currentCapital += netProceeds;
@@ -252,10 +255,10 @@ function runMultiTickerBacktest(
             context: {
               ticker: position.ticker,
               marketConditions: 'normal',
-              indicatorValues: { IBS: ibs },
+              indicatorValues: { IBS: position.entryIBS, exitIBS: ibs },
               volatility: 0,
               trend: 'sideways',
-              initialInvestment: position.marginUsed, // Показываем маржу как инвестицию
+              initialInvestment: position.initialCost, // Полная сумма инвестиции включая комиссии
               grossInvestment: position.grossValue, // Полная сумма с плечом
               leverage: position.leverage,
               leverageDebt: leverageDebt,
@@ -325,9 +328,9 @@ function runMultiTickerBacktest(
       // При использовании плеча вычитаем долг из выручки
       const leverageDebt = position.grossValue - position.marginUsed;
       const netProceeds = grossProceeds - leverageDebt - exitCommission;
-      const pnl = netProceeds - position.marginUsed; // P&L относительно вложенной маржи
-      // PnL процент от маржи
-      const pnlPercent = (pnl / position.marginUsed) * 100;
+      const pnl = netProceeds - position.initialCost; // P&L относительно полной стоимости (маржа + комиссия входа)
+      // PnL процент от первоначальных затрат
+      const pnlPercent = (pnl / position.initialCost) * 100;
       const duration = Math.floor((lastBar.date.getTime() - position.entryDate.getTime()) / (1000 * 60 * 60 * 24));
 
       // Обновляем капитал сначала
@@ -347,10 +350,10 @@ function runMultiTickerBacktest(
         context: {
           ticker: position.ticker,
           marketConditions: 'normal',
-          indicatorValues: { IBS: tickerData.ibsValues[lastBarIndex] },
+          indicatorValues: { IBS: position.entryIBS, exitIBS: tickerData.ibsValues[lastBarIndex] },
           volatility: 0,
           trend: 'sideways',
-          initialInvestment: position.marginUsed, // Показываем маржу как инвестицию
+          initialInvestment: position.initialCost, // Полная сумма инвестиции включая комиссии
           grossInvestment: position.grossValue, // Полная сумма с плечом
           leverage: position.leverage,
           leverageDebt: leverageDebt,
@@ -589,6 +592,16 @@ export function BuyAtClose4Simulator({ strategy, defaultTickers = ['AAPL', 'MSFT
               <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-4">
                 История сделок ({backtest.trades.length})
               </h3>
+              
+              <StrategyParameters 
+                strategy={strategy} 
+                additionalParams={{
+                  'Капитал на тикер': `${capitalUsagePerTicker}%`,
+                  'Количество тикеров': tickers.length,
+                  'Начальный капитал': '$10,000'
+                }}
+              />
+              
               <div className="max-h-[600px] overflow-auto">
                 <TradesTable trades={backtest.trades} />
               </div>

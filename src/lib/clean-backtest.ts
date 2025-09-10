@@ -81,6 +81,7 @@ export class CleanBacktestEngine {
       entryPrice: number;
       quantity: number;
       entryIndex: number;
+      entryIBS: number;
     } | null = null;
 
     const lowIBS = Number(this.strategy.parameters?.lowIBS ?? 0.1);
@@ -130,7 +131,8 @@ export class CleanBacktestEngine {
                   entryDate: bar.date,
                   entryPrice: bar.close, 
                   quantity: quantity,
-                  entryIndex: i
+                  entryIndex: i,
+                  entryIBS: ibs
                 };
                 this.currentCapital -= totalCost;
                 console.log(`🟢 ENTRY SIGNAL: IBS=${ibs.toFixed(3)} < ${lowIBS} on ${bar.date.toISOString().split('T')[0]}`);
@@ -151,7 +153,8 @@ export class CleanBacktestEngine {
                   entryDate: nextBar.date, // Дата покупки = следующий день
                   entryPrice: nextBar.open, // Цена покупки = открытие следующего дня
                   quantity: quantity,
-                  entryIndex: i + 1 // Индекс следующего дня
+                  entryIndex: i + 1, // Индекс следующего дня
+                  entryIBS: ibs
                 };
                 this.currentCapital -= totalCost;
                 console.log(`🟢 ENTRY SIGNAL: IBS=${ibs.toFixed(3)} < ${lowIBS} on ${bar.date.toISOString().split('T')[0]}`);
@@ -167,7 +170,8 @@ export class CleanBacktestEngine {
                 entryDate: bar.date,
                 entryPrice: bar.close,
                 quantity,
-                entryIndex: i
+                entryIndex: i,
+                entryIBS: ibs
               };
               this.currentCapital -= totalCost;
               console.log(`🟢 ENTRY SIGNAL: IBS=${ibs.toFixed(3)} < ${lowIBS} on ${bar.date.toISOString().split('T')[0]}`);
@@ -230,7 +234,7 @@ export class CleanBacktestEngine {
               exitReason: exitReason,
               context: {
                 marketConditions: 'normal',
-                indicatorValues: { IBS: ibs },
+                indicatorValues: { IBS: position.entryIBS, exitIBS: ibs },
                 volatility: 0,
                 trend: 'sideways',
                 initialInvestment: grossCost
@@ -324,7 +328,7 @@ export class CleanBacktestEngine {
           exitReason: exitReason,
           context: {
             marketConditions: 'normal',
-            indicatorValues: { IBS: lastIBS },
+            indicatorValues: { IBS: position.entryIBS, exitIBS: lastIBS },
             volatility: 0,
             trend: 'sideways',
             initialInvestment: grossCost

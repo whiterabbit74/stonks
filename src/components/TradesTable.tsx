@@ -39,7 +39,6 @@ export const TradesTable = React.memo(function TradesTable({ trades }: TradesTab
 						<th className="text-left px-3 py-2 font-semibold">#</th>
 						{showTicker && <th className="text-left px-3 py-2 font-semibold">Тикер</th>}
 						<th className="text-left px-3 py-2 font-semibold">Дата сделки</th>
-						<th className="text-right px-3 py-2 font-semibold">IBS входа</th>
 						<th className="text-right px-3 py-2 font-semibold">Цена входа</th>
 						<th className="text-right px-3 py-2 font-semibold">Цена выхода</th>
 						<th className="text-right px-3 py-2 font-semibold">Кол-во</th>
@@ -58,6 +57,11 @@ export const TradesTable = React.memo(function TradesTable({ trades }: TradesTab
 						const entryIBS = t.context?.indicatorValues?.IBS;
 						const exitIBS = t.context?.indicatorValues?.exitIBS;
 						
+						// Проверяем проблемы с IBS для цветовой индикации
+						const hasEntryProblem = typeof entryIBS === 'number' && entryIBS > 0.1;
+						const hasExitProblem = typeof exitIBS === 'number' && exitIBS < 0.75;
+						const hasIBSProblem = hasEntryProblem || hasExitProblem;
+						
 						// Форматируем причину выхода
 						let formattedExitReason = t.exitReason || '-';
 						if (t.exitReason === 'ibs_signal' && typeof exitIBS === 'number') {
@@ -68,12 +72,11 @@ export const TradesTable = React.memo(function TradesTable({ trades }: TradesTab
 							<tr key={t.id || i} className="border-b last:border-b-0 dark:border-gray-800">
 								<td className="px-3 py-2 text-gray-500">{i + 1}</td>
 								{showTicker && <td className="px-3 py-2 whitespace-nowrap text-gray-700 dark:text-gray-200">{(t.context as any)?.ticker || ''}</td>}
-								<td className="px-3 py-2 whitespace-nowrap">
+								<td className={`px-3 py-2 whitespace-nowrap ${hasIBSProblem ? 'bg-orange-50 dark:bg-orange-950/20' : ''}`}>
 									<div>{fmtDate(t.entryDate)} - {fmtDate(t.exitDate)}</div>
-									<div className="text-xs text-gray-500">{fmtTime(t.entryDate)} - {fmtTime(t.exitDate)}</div>
-								</td>
-								<td className="px-3 py-2 text-right font-mono">
-									{typeof entryIBS === 'number' ? `${(entryIBS * 100).toFixed(1)}%` : '—'}
+									<div className="text-xs text-gray-500">
+										{typeof entryIBS === 'number' ? `${(entryIBS * 100).toFixed(1)}%` : '—'} - {typeof exitIBS === 'number' ? `${(exitIBS * 100).toFixed(1)}%` : '—'}
+									</div>
 								</td>
 								<td className="px-3 py-2 text-right font-mono">{t.entryPrice.toFixed(2)}</td>
 								<td className="px-3 py-2 text-right font-mono">{t.exitPrice.toFixed(2)}</td>

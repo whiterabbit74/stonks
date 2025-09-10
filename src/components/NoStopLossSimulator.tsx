@@ -3,6 +3,7 @@ import type { EquityPoint, OHLCData, Strategy, Trade } from '../types';
 import { EquityChart } from './EquityChart';
 import { CleanBacktestEngine, type CleanBacktestOptions } from '../lib/clean-backtest';
 import { TradesTable } from './TradesTable';
+import { StrategyParameters } from './StrategyParameters';
 import { Settings } from 'lucide-react';
 
 interface NoStopLossSimulatorProps {
@@ -303,8 +304,17 @@ export function NoStopLossSimulator({ data, strategy }: NoStopLossSimulatorProps
 
       {/* Trades Table */}
       {showTrades && result.trades.length > 0 && (
-        <div className="space-y-2">
+        <div className="space-y-4">
           <h4 className="text-sm font-medium text-gray-900 dark:text-gray-100">История сделок</h4>
+          
+          <StrategyParameters 
+            strategy={modifiedStrategy} 
+            additionalParams={{
+              'Эмуляция плеча': `${config.leverage}:1`,
+              'Начальный капитал': '$10,000'
+            }}
+          />
+          
           <TradesTable trades={result.trades} />
         </div>
       )}
