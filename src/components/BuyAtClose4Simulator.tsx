@@ -236,12 +236,12 @@ function runMultiTickerBacktest(
           if (quantity > 0) {
             const stockCost = quantity * entryPrice;
             const entryCommission = calculateCommission(stockCost, strategy);
-            // С плечом мы платим только часть от полной стоимости + комиссия
-            const marginRequired = (stockCost / leverage) + entryCommission; // Маржинальный депозит
-            const totalCost = stockCost + entryCommission; // Полная стоимость позиции для учета
+            // ИСПРАВЛЕНИЕ: Маржинальный депозит = только часть от стоимости акций, комиссия отдельно
+            const marginRequired = stockCost / leverage; // Чистый маржинальный депозит
+            const totalCashRequired = marginRequired + entryCommission; // Общие денежные затраты
             
-            // Проверяем наличие свободного капитала для маржинального депозита
-            if (portfolio.freeCapital >= marginRequired) {
+            // Проверяем наличие свободного капитала для общих затрат
+            if (portfolio.freeCapital >= totalCashRequired) {
               // ✨ СОЗДАЁМ ЧИСТУЮ ПОЗИЦИЮ
               positions[tickerIndex] = {
                 ticker: tickerData.ticker,
@@ -249,26 +249,26 @@ function runMultiTickerBacktest(
                 entryPrice: entryPrice,
                 quantity: quantity,
                 entryIndex: barIndex,
-                totalCost: marginRequired,          // Фактические затраты (маржинальный депозит)
+                totalCost: marginRequired,          // ИСПРАВЛЕНИЕ: Только маржинальный депозит (для расчета %)
                 entryCommission: entryCommission,
                 entryIBS: ibs
               };
               
               // ✨ ОБНОВЛЯЕМ СОСТОЯНИЕ ПОРТФЕЛЯ МАТЕМАТИЧЕСКИ КОРРЕКТНО
-              portfolio.freeCapital -= marginRequired;           // Уменьшаем свободный капитал на маржин
-              portfolio.totalInvestedCost += marginRequired;     // Увеличиваем инвестированный капитал на маржин
+              portfolio.freeCapital -= totalCashRequired;        // ИСПРАВЛЕНИЕ: Вычитаем маржин + комиссию
+              portfolio.totalInvestedCost += totalCashRequired;  // ИСПРАВЛЕНИЕ: Учитываем маржин + комиссию
               // totalPortfolioValue останется тем же (деньги перешли из free в invested)
               
               console.log(`🟢 ENTRY [${tickerData.ticker}]: IBS=${ibs.toFixed(3)} < ${lowIBS}`);
-              console.log(`   💰 Target: ${formatCurrencyUSD(targetInvestment)} | Actual: ${formatCurrencyUSD(totalCost)}`);
-              console.log(`   📊 Portfolio: Free=${formatCurrencyUSD(portfolio.freeCapital)} | Invested=${formatCurrencyUSD(portfolio.totalInvestedCost)}`);
+              console.log(`   💰 Stock Value: ${formatCurrencyUSD(stockCost)} | Margin: ${formatCurrencyUSD(marginRequired)} | Commission: ${formatCurrencyUSD(entryCommission)}`);
+              console.log(`   📊 Portfolio: Free=${formatCurrencyUSD(portfolio.freeCapital)} | Invested=${formatCurrencyUSD(portfolio.totalInvestedCost)}`);              console.log(`   🎯 Leverage: ${leverage.toFixed(1)}:1 | Total Cash Required: ${formatCurrencyUSD(totalCashRequired)}`);
             } else {
               logWarn('backtest', 'Entry signal but insufficient free capital', {
                 ticker: tickerData.ticker,
                 date: bar.date,
                 ibs: ibs,
                 freeCapital: portfolio.freeCapital,
-                requiredCapital: totalCost,
+                requiredCapital: totalCashRequired,
                 targetInvestment,
                 quantity
               }, 'BuyAtClose4Simulator_V2');
@@ -298,17 +298,19 @@ function runMultiTickerBacktest(
           const netProceeds = stockProceeds - exitCommission;
           
           // ✨ ЧИСТЫЙ РАСЧЁТ P&L с учетом leverage
-          // При leverage > 1 мы вложили меньше собственного капитала, но получаем полную прибыль/убыток
+          // ИСПРАВЛЕНИЕ: Корректный расчет P&L с leverage
           const stockValueAtEntry = position.quantity * position.entryPrice;
-          const actualPnL = (exitPrice - position.entryPrice) * position.quantity - (position.entryCommission + exitCommission);
-          const totalPnL = actualPnL; // Полная прибыль от изменения цены за вычетом комиссий
-          const pnlPercent = position.totalCost > 0 ? (totalPnL / position.totalCost) * 100 : 0;
+          const totalCommissions = position.entryCommission + exitCommission;
+          const stockPnL = (exitPrice - position.entryPrice) * position.quantity; // Прибыль/убыток от изменения цены
+          const totalPnL = stockPnL - totalCommissions; // Итоговая P&L за вычетом всех комиссий
+          const totalCashInvested = position.totalCost + position.entryCommission; // Общие вложенные деньги
+          const pnlPercent = totalCashInvested > 0 ? (totalPnL / totalCashInvested) * 100 : 0;
           
           // ✨ ОБНОВЛЯЕМ ПОРТФЕЛЬ МАТЕМАТИЧЕСКИ КОРРЕКТНО
           const capitalBeforeExit = portfolio.freeCapital;
-          // При leverage возвращаем маржинальный депозит + прибыль/убыток
-          portfolio.freeCapital += position.totalCost + totalPnL;   // Возвращаем маржин + P&L
-          portfolio.totalInvestedCost -= position.totalCost;        // Убираем инвестированный капитал
+          // ИСПРАВЛЕНИЕ: Возвращаем весь вложенный капитал + P&L
+          portfolio.freeCapital += totalCashInvested + totalPnL;    // Возвращаем маржин + комиссию + P&L
+          portfolio.totalInvestedCost -= totalCashInvested;         // ИСПРАВЛЕНИЕ: Убираем весь вложенный капитал
           
           // ✨ ЗАКРЫВАЕМ ПОЗИЦИЮ ПЕРЕД ПЕРЕСЧЁТОМ ПОРТФЕЛЯ
           positions[tickerIndex] = null;
@@ -335,16 +337,16 @@ function runMultiTickerBacktest(
               indicatorValues: { IBS: position.entryIBS, exitIBS: ibs },
               volatility: 0,
               trend: 'sideways',
-              // ✨ КРИСТАЛЬНО ЧИСТЫЕ ДАННЫЕ
-              initialInvestment: position.totalCost,           // Что потратили (маржинальный депозит + комиссии)
+              // ✨ ИСПРАВЛЕННЫЕ КРИСТАЛЬНО ЧИСТЫЕ ДАННЫЕ
+              initialInvestment: totalCashInvested,            // ИСПРАВЛЕНИЕ: Маржинальный депозит + комиссии входа
               grossInvestment: position.quantity * position.entryPrice, // Стоимость акций без комиссий
               leverage: leverage,                              // Используемое плечо
-              leverageDebt: stockValueAtEntry - position.totalCost + position.entryCommission, // Заёмные средства
-              commissionPaid: position.entryCommission + exitCommission,
+              leverageDebt: stockValueAtEntry - position.totalCost, // ИСПРАВЛЕНИЕ: Заёмные средства (без комиссий)
+              commissionPaid: totalCommissions,                // ИСПРАВЛЕНИЕ: Все комиссии
               netProceeds: netProceeds,
               capitalBeforeExit: capitalBeforeExit,
               currentCapitalAfterExit: portfolio.totalPortfolioValue, // ✅ Показываем ОБЩУЮ стоимость портфеля
-              marginUsed: position.totalCost
+              marginUsed: position.totalCost                   // Чистый маржинальный депозит
             }
           };
 
@@ -401,17 +403,19 @@ function runMultiTickerBacktest(
       const exitCommission = calculateCommission(stockProceeds, strategy);
       const netProceeds = stockProceeds - exitCommission;
       
-      // ✨ ЧИСТЫЙ РАСЧЁТ P&L с учетом leverage (аналогично основной логике)
+      // ИСПРАВЛЕНИЕ: Корректный расчет P&L для конца данных
       const stockValueAtEntry = position.quantity * position.entryPrice;
-      const actualPnL = (exitPrice - position.entryPrice) * position.quantity - (position.entryCommission + exitCommission);
-      const totalPnL = actualPnL;
-      const pnlPercent = position.totalCost > 0 ? (totalPnL / position.totalCost) * 100 : 0;
+      const totalCommissions = position.entryCommission + exitCommission;
+      const stockPnL = (exitPrice - position.entryPrice) * position.quantity; 
+      const totalPnL = stockPnL - totalCommissions;
+      const totalCashInvested = position.totalCost + position.entryCommission;
+      const pnlPercent = totalCashInvested > 0 ? (totalPnL / totalCashInvested) * 100 : 0;
       const duration = Math.floor((lastBar.date.getTime() - position.entryDate.getTime()) / (1000 * 60 * 60 * 24));
 
       const capitalBeforeExit = portfolio.freeCapital;
-      // При leverage возвращаем маржинальный депозит + прибыль/убыток
-      portfolio.freeCapital += position.totalCost + totalPnL;
-      portfolio.totalInvestedCost -= position.totalCost;
+      // ИСПРАВЛЕНИЕ: Возвращаем весь вложенный капитал + P&L
+      portfolio.freeCapital += totalCashInvested + totalPnL;
+      portfolio.totalInvestedCost -= totalCashInvested;
       
       // ✨ ОБНОВЛЯЕМ ОБЩУЮ СТОИМОСТЬ ПОРТФЕЛЯ
       portfolio.totalPortfolioValue = portfolio.freeCapital + portfolio.totalInvestedCost;
@@ -433,7 +437,7 @@ function runMultiTickerBacktest(
           indicatorValues: { IBS: position.entryIBS, exitIBS: tickerData.ibsValues[lastBarIndex] },
           volatility: 0,
           trend: 'sideways',
-          initialInvestment: position.totalCost,
+          initialInvestment: totalCashInvested,                    // ИСПРАВЛЕНИЕ: Маржин + комиссия входа
           grossInvestment: position.quantity * position.entryPrice,
           leverage: leverage,
           leverageDebt: stockValueAtEntry - position.totalCost + position.entryCommission,
