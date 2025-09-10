@@ -160,14 +160,14 @@ function runMultiTickerBacktest(
         // Сигнал входа: IBS < lowIBS
         if (ibs < lowIBS) {
           const marginUsed = (currentCapital * capitalUsagePerTicker) / 100; // Маржа (собственные средства)
-          const investmentAmount = marginUsed * leverage; // Общая сумма для покупки (с плечом)
+          const investmentAmount = marginUsed; // Используем только маржу для покупки, без плеча
           const entryPrice = bar.close;
           const quantity = Math.floor(investmentAmount / entryPrice);
           
           if (quantity > 0) {
             const grossValue = quantity * entryPrice; // Полная стоимость акций
             const entryCommission = calculateCommission(grossValue, strategy);
-            const totalMarginNeeded = marginUsed + entryCommission; // Маржа + комиссия
+            const totalMarginNeeded = grossValue + entryCommission; // Фактическая стоимость покупки + комиссия
             
             // Проверяем, хватает ли маржи (не всей суммы!)
             if (currentCapital >= totalMarginNeeded) {
@@ -177,8 +177,8 @@ function runMultiTickerBacktest(
                 entryPrice: entryPrice,
                 quantity: quantity,
                 entryIndex: barIndex,
-                initialCost: totalMarginNeeded, // Маржа + комиссия
-                marginUsed: marginUsed, // Чистая маржа
+                initialCost: totalMarginNeeded, // Фактические затраты: стоимость акций + комиссия
+                marginUsed: grossValue, // Стоимость акций без комиссии
                 leverage: leverage,
                 grossValue: grossValue, // Общая стоимость акций
                 entryIBS: ibs // Сохраняем IBS входа
@@ -186,7 +186,7 @@ function runMultiTickerBacktest(
               
               currentCapital -= totalMarginNeeded; // Списываем только маржу!
               
-              console.log(`🟢 ENTRY [${tickerData.ticker}]: IBS=${ibs.toFixed(3)} < ${lowIBS}, bought ${quantity} shares at $${entryPrice.toFixed(2)}, cost: ${formatCurrencyUSD(totalMarginNeeded)}, margin: ${formatCurrencyUSD(marginUsed)}, leverage: ${leverage}:1`);
+              console.log(`🟢 ENTRY [${tickerData.ticker}]: IBS=${ibs.toFixed(3)} < ${lowIBS}, bought ${quantity} shares at $${entryPrice.toFixed(2)}, cost: ${formatCurrencyUSD(totalMarginNeeded)}`);
             } else {
               logWarn('backtest', 'Entry signal but insufficient capital for margin requirement', {
                 ticker: tickerData.ticker,
@@ -230,10 +230,8 @@ function runMultiTickerBacktest(
           const exitPrice = bar.close;
           const grossProceeds = position.quantity * exitPrice;
           const exitCommission = calculateCommission(grossProceeds, strategy);
-          // При использовании плеча вычитаем долг из выручки
-          const leverageDebt = position.grossValue - position.marginUsed;
-          const netProceeds = grossProceeds - leverageDebt - exitCommission;
-          const pnl = netProceeds - position.initialCost; // P&L относительно полной стоимости (маржа + комиссия входа)
+          const netProceeds = grossProceeds - exitCommission;
+          const pnl = netProceeds - position.initialCost; // P&L относительно полной стоимости (стоимость акций + комиссии)
           // PnL процент от первоначальных затрат
           const pnlPercent = (pnl / position.initialCost) * 100;
 
@@ -259,9 +257,9 @@ function runMultiTickerBacktest(
               volatility: 0,
               trend: 'sideways',
               initialInvestment: position.initialCost, // Полная сумма инвестиции включая комиссии
-              grossInvestment: position.grossValue, // Полная сумма с плечом
+              grossInvestment: position.grossValue, // Стоимость акций
               leverage: position.leverage,
-              leverageDebt: leverageDebt,
+              leverageDebt: 0, // Без плеча нет долга
               commissionPaid: calculateCommission(position.grossValue, strategy) + exitCommission,
               netProceeds: netProceeds,
               currentCapitalAfterExit: currentCapital,
@@ -291,10 +289,8 @@ function runMultiTickerBacktest(
           const currentBar = tickerData.data[barIndex];
           const currentMarketValue = position.quantity * currentBar.close;
           const exitCommission = calculateCommission(currentMarketValue, strategy);
-          // Calculate net position value: current value - what we owe (borrowed amount) - exit costs
-          // position.initialCost already includes marginUsed + entryCommission
-          const borrowedAmount = position.grossValue - position.initialCost; // Amount borrowed from broker
-          const netValue = currentMarketValue - borrowedAmount - exitCommission;
+          // Calculate net position value: current value - exit costs
+          const netValue = currentMarketValue - exitCommission;
           totalPortfolioValue += netValue;
         }
       }
@@ -325,10 +321,8 @@ function runMultiTickerBacktest(
       const exitPrice = lastBar.close;
       const grossProceeds = position.quantity * exitPrice;
       const exitCommission = calculateCommission(grossProceeds, strategy);
-      // При использовании плеча вычитаем долг из выручки
-      const leverageDebt = position.grossValue - position.marginUsed;
-      const netProceeds = grossProceeds - leverageDebt - exitCommission;
-      const pnl = netProceeds - position.initialCost; // P&L относительно полной стоимости (маржа + комиссия входа)
+      const netProceeds = grossProceeds - exitCommission;
+      const pnl = netProceeds - position.initialCost; // P&L относительно полной стоимости (стоимость акций + комиссии)
       // PnL процент от первоначальных затрат
       const pnlPercent = (pnl / position.initialCost) * 100;
       const duration = Math.floor((lastBar.date.getTime() - position.entryDate.getTime()) / (1000 * 60 * 60 * 24));
@@ -354,9 +348,9 @@ function runMultiTickerBacktest(
           volatility: 0,
           trend: 'sideways',
           initialInvestment: position.initialCost, // Полная сумма инвестиции включая комиссии
-          grossInvestment: position.grossValue, // Полная сумма с плечом
+          grossInvestment: position.grossValue, // Стоимость акций
           leverage: position.leverage,
-          leverageDebt: leverageDebt,
+          leverageDebt: 0, // Без плеча нет долга
           commissionPaid: calculateCommission(position.grossValue, strategy) + exitCommission,
           netProceeds: netProceeds,
           currentCapitalAfterExit: currentCapital,

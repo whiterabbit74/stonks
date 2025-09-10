@@ -82,7 +82,7 @@ export const TradesTable = React.memo(function TradesTable({ trades }: TradesTab
 								<td className="px-3 py-2 text-right font-mono">{t.exitPrice.toFixed(2)}</td>
 								<td className="px-3 py-2 text-right">{t.quantity.toLocaleString()}</td>
 								<td className="px-3 py-2 text-right font-mono text-blue-600 dark:text-blue-400">
-					{typeof t.context?.marginUsed === 'number' ? t.context.marginUsed.toFixed(2) : (t.quantity * t.entryPrice).toFixed(2)}
+					{typeof t.context?.initialInvestment === 'number' ? t.context.initialInvestment.toFixed(2) : (t.quantity * t.entryPrice).toFixed(2)}
 					{typeof (t.context as any)?.leverage === 'number' && (t.context as any)?.leverage > 1 && (
 						<div className="text-xs text-gray-500">{(t.context as any).leverage}:1</div>
 					)}
