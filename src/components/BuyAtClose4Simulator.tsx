@@ -352,6 +352,20 @@ function runMultiTickerBacktest(
     const finalPortfolio = updatePortfolioState(portfolio, positions, tickersData, dateTime, strategy);
     Object.assign(portfolio, finalPortfolio);
 
+    // ✨ КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ: Обновляем депозиты всех сделок за этот день
+    const todaysTrades = trades.filter(trade => 
+      trade.exitDate.getTime() === currentDate.getTime()
+    );
+    
+    if (todaysTrades.length > 0) {
+      console.log(`📊 FIXING ${todaysTrades.length} trades for ${currentDate.toLocaleDateString()}: Final Portfolio = ${formatCurrencyUSD(portfolio.totalPortfolioValue)}`);
+      
+      // Все сделки за один день показывают одинаковый итоговый депозит
+      todaysTrades.forEach(trade => {
+        trade.context.currentCapitalAfterExit = portfolio.totalPortfolioValue;
+      });
+    }
+
     // Рассчитываем drawdown
     const peakValue = equity.length > 0 
       ? Math.max(...equity.map(e => e.value), portfolio.totalPortfolioValue)
@@ -421,6 +435,29 @@ function runMultiTickerBacktest(
       console.log(`🔴 FINAL EXIT [${position.ticker}]: P&L=${formatCurrencyUSD(totalPnL)} (${pnlPercent.toFixed(2)}%)`);
     }
   }
+
+  // ✨ ИСПРАВЛЯЕМ ДЕПОЗИТЫ ДЛЯ ФИНАЛЬНЫХ СДЕЛОК
+  // Группируем финальные сделки по датам и обновляем депозиты
+  const finalTradesMap = new Map<string, Trade[]>();
+  
+  trades.forEach(trade => {
+    if (trade.exitReason === 'end_of_data') {
+      const dateKey = trade.exitDate.toDateString();
+      if (!finalTradesMap.has(dateKey)) {
+        finalTradesMap.set(dateKey, []);
+      }
+      finalTradesMap.get(dateKey)!.push(trade);
+    }
+  });
+  
+  // Для каждой даты финальных сделок обновляем депозит до общего финального значения
+  finalTradesMap.forEach((dailyTrades, dateKey) => {
+    console.log(`📊 FIXING ${dailyTrades.length} final trades for ${dateKey}: Final Portfolio = ${formatCurrencyUSD(portfolio.totalPortfolioValue)}`);
+    
+    dailyTrades.forEach(trade => {
+      trade.context.currentCapitalAfterExit = portfolio.totalPortfolioValue;
+    });
+  });
 
   const finalValue = portfolio.totalPortfolioValue; // Общая стоимость портфеля
   const maxDrawdown = equity.length > 0 ? Math.max(...equity.map(e => e.drawdown)) : 0;
