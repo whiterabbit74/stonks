@@ -235,8 +235,8 @@ function runMultiTickerBacktest(
           // PnL процент от первоначальных затрат
           const pnlPercent = (pnl / position.initialCost) * 100;
 
-          // Обновляем капитал сначала
-          currentCapital += netProceeds;
+          // Обновляем капитал: возвращаем изначальные затраты + прибыль
+          currentCapital += position.initialCost + pnl;
           
           // Создаем торговую сделку с правильным депозитом
           const trade: Trade = {
@@ -327,8 +327,8 @@ function runMultiTickerBacktest(
       const pnlPercent = (pnl / position.initialCost) * 100;
       const duration = Math.floor((lastBar.date.getTime() - position.entryDate.getTime()) / (1000 * 60 * 60 * 24));
 
-      // Обновляем капитал сначала
-      currentCapital += netProceeds;
+      // Обновляем капитал: возвращаем изначальные затраты + прибыль
+      currentCapital += position.initialCost + pnl;
       
       const trade: Trade = {
         id: `trade-${trades.length}`,
