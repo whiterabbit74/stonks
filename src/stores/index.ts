@@ -1,5 +1,12 @@
 import { create } from 'zustand';
 import type { OHLCData, Strategy, BacktestResult, SavedDataset, SplitEvent } from '../types';
+
+// Interface for analysis tabs configuration
+export interface AnalysisTabConfig {
+  id: string;
+  label: string;
+  visible: boolean;
+}
 import { runBacktest as executeBacktest } from '../lib/backtest';
 import { createStrategyFromTemplate, STRATEGY_TEMPLATES } from '../lib/strategy';
 import { saveDatasetToJSON, loadDatasetFromJSON } from '../lib/data-persistence';
@@ -36,6 +43,10 @@ interface AppState {
   setCommissionType: (type: 'fixed' | 'percentage' | 'combined') => void;
   setCommissionFixed: (value: number) => void;
   setCommissionPercentage: (value: number) => void;
+  
+  // Analysis tabs configuration
+  analysisTabsConfig: AnalysisTabConfig[];
+  setAnalysisTabsConfig: (config: AnalysisTabConfig[]) => void;
   
   // Strategy
   currentStrategy: Strategy | null;
@@ -89,6 +100,21 @@ export const useAppStore = create<AppState>((set, get) => ({
   commissionType: 'percentage',
   commissionFixed: 1.0,
   commissionPercentage: 0.1,
+  analysisTabsConfig: [
+    { id: 'price', label: 'Цена', visible: true },
+    { id: 'equity', label: 'Equity', visible: true },
+    { id: 'buyhold', label: 'Buy and hold', visible: true },
+    { id: 'drawdown', label: 'Просадки', visible: true },
+    { id: 'trades', label: 'Сделки', visible: true },
+    { id: 'profit', label: 'Profit factor', visible: true },
+    { id: 'duration', label: 'Длительность', visible: true },
+    { id: 'openDayDrawdown', label: 'Стартовая просадка', visible: true },
+    { id: 'margin', label: 'Маржа', visible: true },
+    { id: 'buyAtClose', label: 'Покупка на открытии', visible: true },
+    { id: 'buyAtClose4', label: 'Мультитикер', visible: true },
+    { id: 'noStopLoss', label: 'Без stop loss', visible: true },
+    { id: 'splits', label: 'Сплиты', visible: true }
+  ],
   currentStrategy: null,
   backtestResults: null,
   backtestStatus: 'idle',
@@ -167,6 +193,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ commissionPercentage: value });
   },
 
+  setAnalysisTabsConfig: (config: AnalysisTabConfig[]) => {
+    set({ analysisTabsConfig: config });
+  },
 
   loadJSONData: async (file: File) => {
     set({ isLoading: true, error: null });

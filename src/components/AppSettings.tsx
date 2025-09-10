@@ -25,9 +25,11 @@ export function AppSettings() {
   const setCommissionType = useAppStore(s => s.setCommissionType);
   const setCommissionFixed = useAppStore(s => s.setCommissionFixed);
   const setCommissionPercentage = useAppStore(s => s.setCommissionPercentage);
+  const analysisTabsConfig = useAppStore(s => s.analysisTabsConfig);
+  const setAnalysisTabsConfig = useAppStore(s => s.setAnalysisTabsConfig);
 
   // Active tab state
-  const [activeTab, setActiveTab] = useState<'general' | 'api' | 'telegram'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'api' | 'telegram' | 'interface'>('general');
 
   useEffect(() => { loadSettingsFromServer(); }, [loadSettingsFromServer]);
 
@@ -55,6 +57,44 @@ export function AppSettings() {
   // Telegram settings state
   const [telegramBotToken, setTelegramBotToken] = useState('');
   const [telegramChatId, setTelegramChatId] = useState('');
+
+  // Функции для управления табами аналитики
+  const toggleTabVisibility = (tabId: string) => {
+    const newConfig = analysisTabsConfig.map(tab => 
+      tab.id === tabId ? { ...tab, visible: !tab.visible } : tab
+    );
+    setAnalysisTabsConfig(newConfig);
+  };
+
+  const moveTabUp = (tabId: string) => {
+    const index = analysisTabsConfig.findIndex(tab => tab.id === tabId);
+    if (index <= 0) return;
+    
+    const newConfig = [...analysisTabsConfig];
+    [newConfig[index - 1], newConfig[index]] = [newConfig[index], newConfig[index - 1]];
+    setAnalysisTabsConfig(newConfig);
+  };
+
+  const moveTabDown = (tabId: string) => {
+    const index = analysisTabsConfig.findIndex(tab => tab.id === tabId);
+    if (index >= analysisTabsConfig.length - 1) return;
+    
+    const newConfig = [...analysisTabsConfig];
+    [newConfig[index], newConfig[index + 1]] = [newConfig[index + 1], newConfig[index]];
+    setAnalysisTabsConfig(newConfig);
+  };
+
+  const saveInterfaceSettings = async () => {
+    // TODO: Сохранить настройки интерфейса на сервер через API
+    // Пока что сохраняем через общий механизм настроек
+    try {
+      await saveSettingsToServer();
+      setSaveOk('Настройки интерфейса сохранены');
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'Не удалось сохранить настройки интерфейса';
+      setSaveErr(message);
+    }
+  };
 
   const sendTest = async () => {
     setSending(true); setError(null); setOk(null);
@@ -453,6 +493,106 @@ export function AppSettings() {
     </div>
   );
 
+  // Interface Settings Tab
+  const InterfaceTab = () => (
+    <div className="space-y-4">
+      {/* Управление табами аналитики */}
+      <div className="p-4 rounded-lg border">
+        <div className="text-sm font-medium text-gray-700 mb-3">Управление табами "Аналитика сделок"</div>
+        <div className="text-xs text-gray-500 mb-4">
+          Настройте порядок и видимость вкладок в разделе "Аналитика сделок" на странице результатов.
+        </div>
+        
+        <div className="space-y-2 max-h-96 overflow-y-auto">
+          {analysisTabsConfig.map((tab, index) => (
+            <div 
+              key={tab.id} 
+              className="flex items-center gap-3 p-3 rounded-lg border bg-white dark:bg-gray-800 dark:border-gray-700"
+            >
+              {/* Номер порядка */}
+              <div className="w-8 h-8 rounded-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center text-sm font-medium">
+                {index + 1}
+              </div>
+              
+              {/* Чекбокс видимости */}
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={tab.visible}
+                  onChange={() => toggleTabVisibility(tab.id)}
+                  className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                />
+                <span className={`text-sm ${tab.visible ? 'text-gray-900 dark:text-gray-100' : 'text-gray-400 line-through'}`}>
+                  {tab.label}
+                </span>
+              </label>
+              
+              {/* Кнопки перемещения */}
+              <div className="ml-auto flex gap-1">
+                <button
+                  onClick={() => moveTabUp(tab.id)}
+                  disabled={index === 0}
+                  className="w-8 h-8 rounded border bg-gray-50 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center text-gray-600 text-xs"
+                  title="Переместить вверх"
+                >
+                  ↑
+                </button>
+                <button
+                  onClick={() => moveTabDown(tab.id)}
+                  disabled={index === analysisTabsConfig.length - 1}
+                  className="w-8 h-8 rounded border bg-gray-50 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center text-gray-600 text-xs"
+                  title="Переместить вниз"
+                >
+                  ↓
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-4 flex items-center gap-2">
+          <button
+            onClick={saveInterfaceSettings}
+            disabled={saving}
+            className="px-4 py-2 rounded-md bg-indigo-600 text-white text-sm hover:bg-indigo-700 disabled:bg-gray-400"
+          >
+            {saving ? 'Сохранение…' : 'Сохранить настройки интерфейса'}
+          </button>
+          {saveOk && <span className="text-sm text-green-600">{saveOk}</span>}
+          {saveErr && <span className="text-sm text-red-600">{saveErr}</span>}
+        </div>
+        
+        <div className="text-xs text-gray-500 mt-2">
+          💡 Снимите галочку, чтобы скрыть вкладку. Используйте стрелки для изменения порядка.
+        </div>
+      </div>
+      
+      {/* Предварительный просмотр */}
+      <div className="p-4 rounded-lg border bg-gray-50 dark:bg-gray-800">
+        <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Предварительный просмотр</div>
+        <div className="text-xs text-gray-500 mb-2">Так будут выглядеть вкладки в разделе "Аналитика сделок":</div>
+        
+        <div className="flex flex-wrap gap-2">
+          {analysisTabsConfig
+            .filter(tab => tab.visible)
+            .map(tab => (
+              <button
+                key={tab.id}
+                className="px-3 py-1.5 rounded border bg-white border-gray-200 text-gray-700 text-sm"
+                disabled
+              >
+                {tab.label}
+              </button>
+            ))}
+        </div>
+        
+        <div className="text-xs text-gray-500 mt-2">
+          Видимые вкладки: {analysisTabsConfig.filter(tab => tab.visible).length} из {analysisTabsConfig.length}
+        </div>
+      </div>
+    </div>
+  );
+
   // Telegram Settings Tab
   const TelegramTab = () => (
     <div className="space-y-4">
@@ -575,6 +715,16 @@ export function AppSettings() {
           >
             Telegram
           </button>
+          <button
+            onClick={() => setActiveTab('interface')}
+            className={`whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm ${
+              activeTab === 'interface'
+                ? 'border-indigo-500 text-indigo-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            Интерфейс
+          </button>
         </nav>
       </div>
 
@@ -583,6 +733,7 @@ export function AppSettings() {
         {activeTab === 'general' && <GeneralTab />}
         {activeTab === 'api' && <ApiTab />}
         {activeTab === 'telegram' && <TelegramTab />}
+        {activeTab === 'interface' && <InterfaceTab />}
       </div>
     </div>
   );

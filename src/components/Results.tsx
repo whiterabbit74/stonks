@@ -68,6 +68,7 @@ export function Results() {
   const resultsQuoteProvider = useAppStore((s) => s.resultsQuoteProvider);
   const resultsRefreshProvider = useAppStore((s) => s.resultsRefreshProvider);
   const loadDatasetFromServer = useAppStore((s) => s.loadDatasetFromServer);
+  const analysisTabsConfig = useAppStore((s) => s.analysisTabsConfig);
   const [quote, setQuote] = useState<{ open: number|null; high: number|null; low: number|null; current: number|null; prevClose: number|null } | null>(null);
   const [quoteError, setQuoteError] = useState<string | null>(null);
   const [isTrading, setIsTrading] = useState<boolean>(false);
@@ -90,7 +91,22 @@ export function Results() {
   const [tradingCalendar, setTradingCalendar] = useState<TradingCalendarData | null>(null);
   
   type ChartTab = 'price' | 'equity' | 'buyhold' | 'drawdown' | 'trades' | 'profit' | 'duration' | 'openDayDrawdown' | 'margin' | 'buyAtClose' | 'buyAtClose4' | 'noStopLoss' | 'splits';
-  const [activeChart, setActiveChart] = useState<ChartTab>('price');
+  
+  // Определяем первый видимый таб как активный по умолчанию
+  const firstVisibleTab = useMemo(() => {
+    const visibleTab = analysisTabsConfig.find(tab => tab.visible);
+    return visibleTab?.id as ChartTab || 'price';
+  }, [analysisTabsConfig]);
+  
+  const [activeChart, setActiveChart] = useState<ChartTab>(firstVisibleTab);
+  
+  // Обновляем активный таб, если текущий стал невидимым
+  useEffect(() => {
+    const currentTabConfig = analysisTabsConfig.find(tab => tab.id === activeChart);
+    if (!currentTabConfig || !currentTabConfig.visible) {
+      setActiveChart(firstVisibleTab);
+    }
+  }, [analysisTabsConfig, activeChart, firstVisibleTab]);
   
   // Проверка дублей дат в marketData (ключ YYYY-MM-DD)
   const { hasDuplicateDates, duplicateDateKeys } = useMemo(() => {
@@ -724,19 +740,21 @@ export function Results() {
             
             <div className="horizontal-scroll pb-2">
               <div className="flex items-center gap-2 flex-nowrap min-w-max px-1">
-              <button className={`${activeChart === 'price' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/30 dark:border-blue-900/40 dark:text-blue-200' : 'bg-white border-gray-200 text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'} px-3 py-1.5 rounded border`} onClick={() => setActiveChart('price')}>Цена</button>
-              <button className={`${activeChart === 'equity' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/30 dark:border-blue-900/40 dark:text-blue-200' : 'bg-white border-gray-200 text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'} px-3 py-1.5 rounded border`} onClick={() => setActiveChart('equity')}>Equity</button>
-              <button className={`${activeChart === 'buyhold' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/30 dark:border-blue-900/40 dark:text-blue-200' : 'bg-white border-gray-200 text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'} px-3 py-1.5 rounded border`} onClick={() => setActiveChart('buyhold')}>Buy and hold</button>
-              <button className={`${activeChart === 'drawdown' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/30 dark:border-blue-900/40 dark:text-blue-200' : 'bg-white border-gray-200 text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'} px-3 py-1.5 rounded border`} onClick={() => setActiveChart('drawdown')}>Просадки</button>
-              <button className={`${activeChart === 'trades' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/30 dark:border-blue-900/40 dark:text-blue-200' : 'bg-white border-gray-200 text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'} px-3 py-1.5 rounded border`} onClick={() => setActiveChart('trades')}>Сделки</button>
-              <button className={`${activeChart === 'profit' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/30 dark:border-blue-900/40 dark:text-blue-200' : 'bg-white border-gray-200 text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'} px-3 py-1.5 rounded border`} onClick={() => setActiveChart('profit')}>Profit factor</button>
-              <button className={`${activeChart === 'duration' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/30 dark:border-blue-900/40 dark:text-blue-200' : 'bg-white border-gray-200 text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'} px-3 py-1.5 rounded border`} onClick={() => setActiveChart('duration')}>Длительность</button>
-              <button className={`${activeChart === 'openDayDrawdown' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/30 dark:border-blue-900/40 dark:text-blue-200' : 'bg-white border-gray-200 text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'} px-3 py-1.5 rounded border`} onClick={() => setActiveChart('openDayDrawdown')}>Стартовая просадка</button>
-              <button className={`${activeChart === 'margin' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/30 dark:border-blue-900/40 dark:text-blue-200' : 'bg-white border-gray-200 text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'} px-3 py-1.5 rounded border`} onClick={() => setActiveChart('margin')}>Маржа</button>
-              <button className={`${activeChart === 'buyAtClose' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/30 dark:border-blue-900/40 dark:text-blue-200' : 'bg-white border-gray-200 text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'} px-3 py-1.5 rounded border`} onClick={() => setActiveChart('buyAtClose')}>Покупка на открытии</button>
-              <button className={`${activeChart === 'buyAtClose4' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/30 dark:border-blue-900/40 dark:text-blue-200' : 'bg-white border-gray-200 text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'} px-3 py-1.5 rounded border`} onClick={() => setActiveChart('buyAtClose4')}>Покупка на закрытии 4</button>
-              <button className={`${activeChart === 'noStopLoss' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/30 dark:border-blue-900/40 dark:text-blue-200' : 'bg-white border-gray-200 text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'} px-3 py-1.5 rounded border`} onClick={() => setActiveChart('noStopLoss')}>Без stop loss</button>
-              <button className={`${activeChart === 'splits' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/30 dark:border-blue-900/40 dark:text-blue-200' : 'bg-white border-gray-200 text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'} px-3 py-1.5 rounded border`} onClick={() => setActiveChart('splits')}>Сплиты</button>
+                {analysisTabsConfig
+                  .filter(tab => tab.visible)
+                  .map(tab => (
+                    <button
+                      key={tab.id}
+                      className={`${
+                        activeChart === tab.id
+                          ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/30 dark:border-blue-900/40 dark:text-blue-200'
+                          : 'bg-white border-gray-200 text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'
+                      } px-3 py-1.5 rounded border`}
+                      onClick={() => setActiveChart(tab.id as ChartTab)}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
               </div>
             </div>
 
