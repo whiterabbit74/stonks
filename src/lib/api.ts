@@ -717,7 +717,7 @@ export class DatasetAPI {
     return response.json();
   }
 
-  static async saveAppSettings(settings: { watchThresholdPct: number; resultsQuoteProvider: 'alpha_vantage'|'finnhub'; enhancerProvider: 'alpha_vantage'|'finnhub'; resultsRefreshProvider?: 'alpha_vantage'|'finnhub'; indicatorPanePercent?: number }): Promise<void> {
+  static async saveAppSettings(settings: { watchThresholdPct: number; resultsQuoteProvider: 'alpha_vantage'|'finnhub'; enhancerProvider: 'alpha_vantage'|'finnhub'; resultsRefreshProvider?: 'alpha_vantage'|'finnhub'; indicatorPanePercent?: number; commissionType?: string; commissionFixed?: number; commissionPercentage?: number; analysisTabsConfig?: Array<{id: string; label: string; visible: boolean}> }): Promise<void> {
     const response = await fetchWithCreds(`${API_BASE_URL}/settings`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },

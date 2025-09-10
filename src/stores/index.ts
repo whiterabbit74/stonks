@@ -131,6 +131,15 @@ export const useAppStore = create<AppState>((set, get) => ({
         commissionType: s.commissionType || 'percentage',
         commissionFixed: typeof s.commissionFixed === 'number' ? s.commissionFixed : 1.0,
         commissionPercentage: typeof s.commissionPercentage === 'number' ? s.commissionPercentage : 0.1,
+        // ИСПРАВЛЕНИЕ: Загружаем конфигурацию табов аналитики из сохраненных настроек
+        analysisTabsConfig: Array.isArray(s.analysisTabsConfig) ? s.analysisTabsConfig : [
+          { id: 'price', label: 'Цена', visible: true },
+          { id: 'equity', label: 'Equity', visible: true },
+          { id: 'buyhold', label: 'Buy and hold', visible: true },
+          { id: 'drawdown', label: 'Просадки', visible: true },
+          { id: 'trades', label: 'Сделки', visible: true },
+          { id: 'multiticker', label: 'Мультитикер', visible: true }
+        ],
       });
     } catch (e) {
       console.warn('Failed to load app settings:', e instanceof Error ? e.message : e);
@@ -139,8 +148,8 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   saveSettingsToServer: async () => {
     try {
-      const { watchThresholdPct, resultsQuoteProvider, enhancerProvider, resultsRefreshProvider, indicatorPanePercent, commissionType, commissionFixed, commissionPercentage } = get();
-      await DatasetAPI.saveAppSettings({ watchThresholdPct, resultsQuoteProvider, enhancerProvider, resultsRefreshProvider, indicatorPanePercent, commissionType, commissionFixed, commissionPercentage });
+      const { watchThresholdPct, resultsQuoteProvider, enhancerProvider, resultsRefreshProvider, indicatorPanePercent, commissionType, commissionFixed, commissionPercentage, analysisTabsConfig } = get();
+      await DatasetAPI.saveAppSettings({ watchThresholdPct, resultsQuoteProvider, enhancerProvider, resultsRefreshProvider, indicatorPanePercent, commissionType, commissionFixed, commissionPercentage, analysisTabsConfig });
     } catch (e) {
       console.warn('Failed to save app settings:', e instanceof Error ? e.message : e);
     }
