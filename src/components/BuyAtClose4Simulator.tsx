@@ -300,7 +300,13 @@ function runMultiTickerBacktest(
           const capitalBeforeExit = portfolio.freeCapital;
           portfolio.freeCapital += netProceeds;                    // Получаем выручку
           portfolio.totalInvestedCost -= position.totalCost;       // Убираем инвестированный капитал
-          // portfolio.totalPortfolioValue будет пересчитан в начале следующего цикла
+          
+          // ✨ ЗАКРЫВАЕМ ПОЗИЦИЮ ПЕРЕД ПЕРЕСЧЁТОМ ПОРТФЕЛЯ
+          positions[tickerIndex] = null;
+          
+          // ✨ ПЕРЕСЧИТЫВАЕМ ОБЩУЮ СТОИМОСТЬ ПОРТФЕЛЯ ПОСЛЕ СДЕЛКИ
+          const updatedPortfolioAfterExit = updatePortfolioState(portfolio, positions, tickersData, dateTime, strategy);
+          Object.assign(portfolio, updatedPortfolioAfterExit);
           
           // ✨ СОЗДАЁМ ИДЕАЛЬНУЮ СДЕЛКУ
           const trade: Trade = {
@@ -328,13 +334,12 @@ function runMultiTickerBacktest(
               commissionPaid: position.entryCommission + exitCommission,
               netProceeds: netProceeds,
               capitalBeforeExit: capitalBeforeExit,
-              currentCapitalAfterExit: portfolio.freeCapital,
+              currentCapitalAfterExit: portfolio.totalPortfolioValue, // ✅ Показываем ОБЩУЮ стоимость портфеля
               marginUsed: position.totalCost
             }
           };
 
           trades.push(trade);
-          positions[tickerIndex] = null;
 
           console.log(`🔴 EXIT [${position.ticker}]: IBS=${ibs.toFixed(3)}, ${exitReason}`);
           console.log(`   💰 P&L=${formatCurrencyUSD(totalPnL)} (${pnlPercent.toFixed(2)}%), Duration=${daysSinceEntry} days`);
@@ -380,6 +385,9 @@ function runMultiTickerBacktest(
       portfolio.freeCapital += netProceeds;
       portfolio.totalInvestedCost -= position.totalCost;
       
+      // ✨ ОБНОВЛЯЕМ ОБЩУЮ СТОИМОСТЬ ПОРТФЕЛЯ
+      portfolio.totalPortfolioValue = portfolio.freeCapital + portfolio.totalInvestedCost;
+      
       const trade: Trade = {
         id: `trade-${trades.length}`,
         entryDate: position.entryDate,
@@ -404,7 +412,7 @@ function runMultiTickerBacktest(
           commissionPaid: position.entryCommission + exitCommission,
           netProceeds: netProceeds,
           capitalBeforeExit: capitalBeforeExit,
-          currentCapitalAfterExit: portfolio.freeCapital,
+          currentCapitalAfterExit: portfolio.totalPortfolioValue, // ✅ Общая стоимость портфеля
           marginUsed: position.totalCost
         }
       };
@@ -414,7 +422,7 @@ function runMultiTickerBacktest(
     }
   }
 
-  const finalValue = portfolio.freeCapital; // Весь капитал в конце свободен
+  const finalValue = portfolio.totalPortfolioValue; // Общая стоимость портфеля
   const maxDrawdown = equity.length > 0 ? Math.max(...equity.map(e => e.drawdown)) : 0;
   
   // Базовые метрики
