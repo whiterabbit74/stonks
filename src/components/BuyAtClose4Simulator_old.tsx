@@ -19,23 +19,17 @@ interface Position {
   entryPrice: number;
   quantity: number;
   entryIndex: number;
-  // Новая чистая структура данных позиции
-  totalCost: number;          // Полная стоимость покупки (quantity * price + commission)
-  entryCommission: number;    // Комиссия при входе
-  entryIBS: number;          // IBS при входе
+  initialCost: number;
+  marginUsed: number;
+  leverage: number; // Плечо для этой позиции
+  grossValue: number; // Общая стоимость акций (с плечом)
+  entryIBS: number; // IBS при входе
 }
 
 interface TickerData {
   ticker: string;
   data: OHLCData[];
   ibsValues: number[];
-}
-
-interface PortfolioState {
-  // Чистый раздельный учёт капитала
-  freeCapital: number;           // Свободные деньги (не инвестированные)
-  totalInvestedCost: number;     // Общая сумма затрат на все позиции
-  totalPortfolioValue: number;   // Общая стоимость портфеля (free + market value of positions)
 }
 
 function formatCurrencyUSD(value: number): string {
@@ -94,62 +88,7 @@ function calculateCommission(tradeValue: number, strategy: Strategy): number {
 }
 
 /**
- * Вычисляет рыночную стоимость позиции на текущую дату
- */
-function getPositionMarketValue(
-  position: Position, 
-  currentPrice: number, 
-  strategy: Strategy
-): { marketValue: number; netValue: number; unrealizedPnL: number } {
-  const marketValue = position.quantity * currentPrice;
-  const exitCommission = calculateCommission(marketValue, strategy);
-  const netValue = marketValue - exitCommission; // Чистая стоимость после комиссии
-  const unrealizedPnL = netValue - position.totalCost; // Нереализованная прибыль/убыток
-  
-  return { marketValue, netValue, unrealizedPnL };
-}
-
-/**
- * Обновляет состояние портфеля с учётом текущих рыночных цен
- */
-function updatePortfolioState(
-  portfolio: PortfolioState,
-  positions: (Position | null)[],
-  tickersData: TickerData[],
-  currentDateTime: number,
-  strategy: Strategy
-): PortfolioState {
-  let totalMarketValue = 0;
-  
-  for (let i = 0; i < positions.length; i++) {
-    const position = positions[i];
-    if (position) {
-      const tickerData = tickersData[i];
-      const barIndex = tickerData.data.findIndex(bar => bar.date.getTime() === currentDateTime);
-      
-      if (barIndex !== -1) {
-        const currentPrice = tickerData.data[barIndex].close;
-        const { netValue } = getPositionMarketValue(position, currentPrice, strategy);
-        totalMarketValue += netValue;
-      }
-    }
-  }
-  
-  return {
-    freeCapital: portfolio.freeCapital,
-    totalInvestedCost: portfolio.totalInvestedCost,
-    totalPortfolioValue: portfolio.freeCapital + totalMarketValue
-  };
-}
-
-/**
- * НОВАЯ БЕЗУПРЕЧНАЯ ТОРГОВАЯ ЛОГИКА - ВАРИАНТ 2
- * 
- * Принципы:
- * 1. Чистый раздельный учёт: freeCapital + investedCost = полный контроль
- * 2. Динамическое распределение: % от общей стоимости портфеля
- * 3. Математическая корректность: каждый доллар учитывается точно один раз
- * 4. Прозрачность всех операций
+ * Основная функция бэктеста для 4-тикерной стратегии
  */
 function runMultiTickerBacktest(
   tickersData: TickerData[], 
@@ -173,18 +112,14 @@ function runMultiTickerBacktest(
 
   // Параметры стратегии
   const initialCapital = Number(strategy?.riskManagement?.initialCapital ?? 10000);
-  const capitalUsagePerTicker = 100 / tickersData.length; // Равномерно по тикерам
+  const capitalUsagePerTicker = tickersData.length > 0 ? Math.floor(100 / tickersData.length) : 25; // Пропорционально на каждый тикер
+  const leverage = Number(strategy?.riskManagement?.leverage ?? 1); // Торговое плечо
   const lowIBS = Number(strategy.parameters?.lowIBS ?? 0.1);
   const highIBS = Number(strategy.parameters?.highIBS ?? 0.75);
   const maxHoldDays = Number(strategy.parameters?.maxHoldDays ?? 30);
 
-  // ✨ НОВОЕ: Чистое состояние портфеля с раздельным учётом
-  const portfolio: PortfolioState = {
-    freeCapital: initialCapital,      // Изначально все деньги свободны
-    totalInvestedCost: 0,             // Ничего не инвестировано
-    totalPortfolioValue: initialCapital
-  };
-
+  // Состояние портфеля
+  let currentCapital = initialCapital;
   const trades: Trade[] = [];
   const equity: EquityPoint[] = [];
   const positions: (Position | null)[] = new Array(tickersData.length).fill(null);
@@ -196,113 +131,114 @@ function runMultiTickerBacktest(
   });
   const sortedDates = Array.from(allDates).sort((a, b) => a - b);
 
-  console.log(`🚀 MULTI-TICKER BACKTEST START (V2 - PERFECT LOGIC)`);
+  console.log(`🚀 MULTI-TICKER BACKTEST START`);
   console.log(`📊 Initial Capital: ${formatCurrencyUSD(initialCapital)}`);
   console.log(`📈 Tickers: ${tickersData.map(t => t.ticker).join(', ')}`);
-  console.log(`⚙️ Capital per ticker: ${capitalUsagePerTicker.toFixed(1)}%`);
-  console.log(`💡 Logic: Dynamic allocation from total portfolio value`);
+  console.log(`⚙️ Capital per ticker: ${capitalUsagePerTicker}%`);
+  console.log(`💹 Leverage: ${leverage}:1 (${leverage > 1 ? 'с плечом' : 'без плеча'})`);
 
-  // ✨ ГЛАВНЫЙ ЦИКЛ - с новой логикой
+  // Основной цикл по датам
   for (const dateTime of sortedDates) {
     const currentDate = new Date(dateTime);
     
-    // ✨ 1. ОБНОВЛЯЕМ СОСТОЯНИЕ ПОРТФЕЛЯ НА ТЕКУЩУЮ ДАТУ
-    const updatedPortfolio = updatePortfolioState(portfolio, positions, tickersData, dateTime, strategy);
-    Object.assign(portfolio, updatedPortfolio);
-    
-    // ✨ 2. ОБРАБАТЫВАЕМ КАЖДЫЙ ТИКЕР
+    // Обрабатываем каждый тикер на текущую дату
     for (let tickerIndex = 0; tickerIndex < tickersData.length; tickerIndex++) {
       const tickerData = tickersData[tickerIndex];
       const position = positions[tickerIndex];
       
       // Находим бар для текущей даты
       const barIndex = tickerData.data.findIndex(bar => bar.date.getTime() === dateTime);
-      if (barIndex === -1) continue;
+      if (barIndex === -1) continue; // Нет данных для этой даты
       
       const bar = tickerData.data[barIndex];
       const ibs = tickerData.ibsValues[barIndex];
       
-      // ✨ ЛОГИКА ВХОДА - НОВАЯ
+      // IBS теперь всегда валидный (0.5 для проблемных данных)
+
+      // ЛОГИКА ВХОДА
       if (!position) {
+        // Сигнал входа: IBS < lowIBS
         if (ibs < lowIBS) {
-          // 🎯 КЛЮЧЕВОЕ УЛУЧШЕНИЕ: используем % от общей стоимости портфеля
-          const targetInvestment = portfolio.totalPortfolioValue * (capitalUsagePerTicker / 100);
+          const marginUsed = (currentCapital * capitalUsagePerTicker) / 100; // Маржа (собственные средства)
+          const investmentAmount = marginUsed; // Используем только маржу для покупки, без плеча
           const entryPrice = bar.close;
-          const quantity = Math.floor(targetInvestment / entryPrice);
+          const quantity = Math.floor(investmentAmount / entryPrice);
           
           if (quantity > 0) {
-            const stockCost = quantity * entryPrice;
-            const entryCommission = calculateCommission(stockCost, strategy);
-            const totalCost = stockCost + entryCommission;
+            const grossValue = quantity * entryPrice; // Полная стоимость акций
+            const entryCommission = calculateCommission(grossValue, strategy);
+            const totalMarginNeeded = grossValue + entryCommission; // Фактическая стоимость покупки + комиссия
             
-            // Проверяем наличие свободного капитала
-            if (portfolio.freeCapital >= totalCost) {
-              // ✨ СОЗДАЁМ ЧИСТУЮ ПОЗИЦИЮ
+            // Проверяем, хватает ли маржи (не всей суммы!)
+            if (currentCapital >= totalMarginNeeded) {
               positions[tickerIndex] = {
                 ticker: tickerData.ticker,
                 entryDate: bar.date,
                 entryPrice: entryPrice,
                 quantity: quantity,
                 entryIndex: barIndex,
-                totalCost: totalCost,          // Полные затраты
-                entryCommission: entryCommission,
-                entryIBS: ibs
+                initialCost: totalMarginNeeded, // Фактические затраты: стоимость акций + комиссия
+                marginUsed: grossValue, // Стоимость акций без комиссии
+                leverage: leverage,
+                grossValue: grossValue, // Общая стоимость акций
+                entryIBS: ibs // Сохраняем IBS входа
               };
               
-              // ✨ ОБНОВЛЯЕМ СОСТОЯНИЕ ПОРТФЕЛЯ МАТЕМАТИЧЕСКИ КОРРЕКТНО
-              portfolio.freeCapital -= totalCost;           // Уменьшаем свободный капитал
-              portfolio.totalInvestedCost += totalCost;     // Увеличиваем инвестированный
-              // totalPortfolioValue останется тем же (деньги перешли из free в invested)
+              currentCapital -= totalMarginNeeded; // Списываем только маржу!
               
-              console.log(`🟢 ENTRY [${tickerData.ticker}]: IBS=${ibs.toFixed(3)} < ${lowIBS}`);
-              console.log(`   💰 Target: ${formatCurrencyUSD(targetInvestment)} | Actual: ${formatCurrencyUSD(totalCost)}`);
-              console.log(`   📊 Portfolio: Free=${formatCurrencyUSD(portfolio.freeCapital)} | Invested=${formatCurrencyUSD(portfolio.totalInvestedCost)}`);
+              console.log(`🟢 ENTRY [${tickerData.ticker}]: IBS=${ibs.toFixed(3)} < ${lowIBS}, bought ${quantity} shares at $${entryPrice.toFixed(2)}, cost: ${formatCurrencyUSD(totalMarginNeeded)}`);
             } else {
-              logWarn('backtest', 'Entry signal but insufficient free capital', {
+              logWarn('backtest', 'Entry signal but insufficient capital for margin requirement', {
                 ticker: tickerData.ticker,
                 date: bar.date,
                 ibs: ibs,
-                freeCapital: portfolio.freeCapital,
-                requiredCapital: totalCost,
-                targetInvestment,
+                currentCapital,
+                totalMarginNeeded,
                 quantity
-              }, 'BuyAtClose4Simulator_V2');
+              }, 'BuyAtClose4Simulator');
             }
+          } else {
+            logWarn('backtest', 'Entry signal but calculated quantity is zero', {
+              ticker: tickerData.ticker,
+              date: bar.date,
+              ibs: ibs,
+              investmentAmount,
+              entryPrice,
+              quantity
+            }, 'BuyAtClose4Simulator');
           }
         }
       }
-      
-      // ✨ ЛОГИКА ВЫХОДА - НОВАЯ
+      // ЛОГИКА ВЫХОДА
       else {
         const daysSinceEntry = Math.floor((bar.date.getTime() - position.entryDate.getTime()) / (1000 * 60 * 60 * 24));
         let shouldExit = false;
         let exitReason = '';
 
+        // Проверяем IBS условие выхода
         if (ibs > highIBS) {
           shouldExit = true;
           exitReason = 'ibs_signal';
-        } else if (daysSinceEntry >= maxHoldDays) {
+        }
+        // Проверяем максимальное время удержания
+        else if (daysSinceEntry >= maxHoldDays) {
           shouldExit = true;
           exitReason = 'max_hold_days';
         }
 
         if (shouldExit) {
           const exitPrice = bar.close;
-          const stockProceeds = position.quantity * exitPrice;
-          const exitCommission = calculateCommission(stockProceeds, strategy);
-          const netProceeds = stockProceeds - exitCommission;
+          const grossProceeds = position.quantity * exitPrice;
+          const exitCommission = calculateCommission(grossProceeds, strategy);
+          const netProceeds = grossProceeds - exitCommission;
+          const pnl = netProceeds - position.initialCost; // P&L относительно полной стоимости (стоимость акций + комиссии)
+          // PnL процент от первоначальных затрат
+          const pnlPercent = (pnl / position.initialCost) * 100;
+
+          // Обновляем капитал: возвращаем изначальные затраты + прибыль
+          currentCapital += position.initialCost + pnl;
           
-          // ✨ ЧИСТЫЙ РАСЧЁТ P&L
-          const totalPnL = netProceeds - position.totalCost;
-          const pnlPercent = (totalPnL / position.totalCost) * 100;
-          
-          // ✨ ОБНОВЛЯЕМ ПОРТФЕЛЬ МАТЕМАТИЧЕСКИ КОРРЕКТНО
-          const capitalBeforeExit = portfolio.freeCapital;
-          portfolio.freeCapital += netProceeds;                    // Получаем выручку
-          portfolio.totalInvestedCost -= position.totalCost;       // Убираем инвестированный капитал
-          // portfolio.totalPortfolioValue будет пересчитан в начале следующего цикла
-          
-          // ✨ СОЗДАЁМ ИДЕАЛЬНУЮ СДЕЛКУ
+          // Создаем торговую сделку с правильным депозитом
           const trade: Trade = {
             id: `trade-${trades.length}`,
             entryDate: position.entryDate,
@@ -310,7 +246,7 @@ function runMultiTickerBacktest(
             entryPrice: position.entryPrice,
             exitPrice: exitPrice,
             quantity: position.quantity,
-            pnl: totalPnL,
+            pnl: pnl,
             pnlPercent: pnlPercent,
             duration: daysSinceEntry,
             exitReason: exitReason,
@@ -320,47 +256,61 @@ function runMultiTickerBacktest(
               indicatorValues: { IBS: position.entryIBS, exitIBS: ibs },
               volatility: 0,
               trend: 'sideways',
-              // ✨ КРИСТАЛЬНО ЧИСТЫЕ ДАННЫЕ
-              initialInvestment: position.totalCost,           // Что потратили (с комиссиями)
-              grossInvestment: position.quantity * position.entryPrice, // Стоимость акций без комиссий
-              leverage: 1,                                     // Без плеча
-              leverageDebt: 0,
-              commissionPaid: position.entryCommission + exitCommission,
+              initialInvestment: position.initialCost, // Полная сумма инвестиции включая комиссии
+              grossInvestment: position.grossValue, // Стоимость акций
+              leverage: position.leverage,
+              leverageDebt: 0, // Без плеча нет долга
+              commissionPaid: calculateCommission(position.grossValue, strategy) + exitCommission,
               netProceeds: netProceeds,
-              capitalBeforeExit: capitalBeforeExit,
-              currentCapitalAfterExit: portfolio.freeCapital,
-              marginUsed: position.totalCost
+              currentCapitalAfterExit: currentCapital,
+              marginUsed: position.marginUsed,
+              capitalBeforeExit: currentCapital - netProceeds
             }
           };
 
           trades.push(trade);
           positions[tickerIndex] = null;
 
-          console.log(`🔴 EXIT [${position.ticker}]: IBS=${ibs.toFixed(3)}, ${exitReason}`);
-          console.log(`   💰 P&L=${formatCurrencyUSD(totalPnL)} (${pnlPercent.toFixed(2)}%), Duration=${daysSinceEntry} days`);
-          console.log(`   📊 Portfolio: Free=${formatCurrencyUSD(portfolio.freeCapital)} | Invested=${formatCurrencyUSD(portfolio.totalInvestedCost)}`);
+          console.log(`🔴 EXIT [${position.ticker}]: IBS=${ibs.toFixed(3)}, ${exitReason}, P&L=${formatCurrencyUSD(pnl)} (${pnlPercent.toFixed(2)}%), Duration=${daysSinceEntry} days, Deposit: ${formatCurrencyUSD(currentCapital)}`);
         }
       }
     }
 
-    // ✨ ОБНОВЛЯЕМ ФИНАЛЬНОЕ СОСТОЯНИЕ ПОРТФЕЛЯ И EQUITY
-    const finalPortfolio = updatePortfolioState(portfolio, positions, tickersData, dateTime, strategy);
-    Object.assign(portfolio, finalPortfolio);
+    // Рассчитываем общую стоимость портфеля на конец дня
+    let totalPortfolioValue = currentCapital;
+    
+    for (let i = 0; i < positions.length; i++) {
+      const position = positions[i];
+      if (position) {
+        const tickerData = tickersData[i];
+        const barIndex = tickerData.data.findIndex(bar => bar.date.getTime() === dateTime);
+        
+        if (barIndex !== -1) {
+          const currentBar = tickerData.data[barIndex];
+          const currentMarketValue = position.quantity * currentBar.close;
+          const exitCommission = calculateCommission(currentMarketValue, strategy);
+          // Calculate net position value: current value - exit costs
+          const netValue = currentMarketValue - exitCommission;
+          totalPortfolioValue += netValue;
+        }
+      }
+    }
 
     // Рассчитываем drawdown
     const peakValue = equity.length > 0 
-      ? Math.max(...equity.map(e => e.value), portfolio.totalPortfolioValue)
-      : portfolio.totalPortfolioValue;
-    const drawdown = peakValue > 0 ? ((peakValue - portfolio.totalPortfolioValue) / peakValue) * 100 : 0;
+      ? Math.max(...equity.map(e => e.value), totalPortfolioValue)
+      : totalPortfolioValue;
+    const drawdown = peakValue > 0 ? ((peakValue - totalPortfolioValue) / peakValue) * 100 : 0;
 
     equity.push({
       date: currentDate,
-      value: portfolio.totalPortfolioValue,
+      value: totalPortfolioValue,
       drawdown: drawdown
     });
   }
 
-  // ✨ ЗАКРЫВАЕМ ВСЕ ОСТАВШИЕСЯ ПОЗИЦИИ (аналогичная логика)
+  // Закрываем все открытые позиции в конце периода
+  // const lastDate = sortedDates[sortedDates.length - 1];
   for (let i = 0; i < positions.length; i++) {
     const position = positions[i];
     if (position) {
@@ -369,16 +319,16 @@ function runMultiTickerBacktest(
       const lastBar = tickerData.data[lastBarIndex];
       
       const exitPrice = lastBar.close;
-      const stockProceeds = position.quantity * exitPrice;
-      const exitCommission = calculateCommission(stockProceeds, strategy);
-      const netProceeds = stockProceeds - exitCommission;
-      const totalPnL = netProceeds - position.totalCost;
-      const pnlPercent = (totalPnL / position.totalCost) * 100;
+      const grossProceeds = position.quantity * exitPrice;
+      const exitCommission = calculateCommission(grossProceeds, strategy);
+      const netProceeds = grossProceeds - exitCommission;
+      const pnl = netProceeds - position.initialCost; // P&L относительно полной стоимости (стоимость акций + комиссии)
+      // PnL процент от первоначальных затрат
+      const pnlPercent = (pnl / position.initialCost) * 100;
       const duration = Math.floor((lastBar.date.getTime() - position.entryDate.getTime()) / (1000 * 60 * 60 * 24));
 
-      const capitalBeforeExit = portfolio.freeCapital;
-      portfolio.freeCapital += netProceeds;
-      portfolio.totalInvestedCost -= position.totalCost;
+      // Обновляем капитал: возвращаем изначальные затраты + прибыль
+      currentCapital += position.initialCost + pnl;
       
       const trade: Trade = {
         id: `trade-${trades.length}`,
@@ -387,7 +337,7 @@ function runMultiTickerBacktest(
         entryPrice: position.entryPrice,
         exitPrice: exitPrice,
         quantity: position.quantity,
-        pnl: totalPnL,
+        pnl: pnl,
         pnlPercent: pnlPercent,
         duration: duration,
         exitReason: 'end_of_data',
@@ -397,24 +347,25 @@ function runMultiTickerBacktest(
           indicatorValues: { IBS: position.entryIBS, exitIBS: tickerData.ibsValues[lastBarIndex] },
           volatility: 0,
           trend: 'sideways',
-          initialInvestment: position.totalCost,
-          grossInvestment: position.quantity * position.entryPrice,
-          leverage: 1,
-          leverageDebt: 0,
-          commissionPaid: position.entryCommission + exitCommission,
+          initialInvestment: position.initialCost, // Полная сумма инвестиции включая комиссии
+          grossInvestment: position.grossValue, // Стоимость акций
+          leverage: position.leverage,
+          leverageDebt: 0, // Без плеча нет долга
+          commissionPaid: calculateCommission(position.grossValue, strategy) + exitCommission,
           netProceeds: netProceeds,
-          capitalBeforeExit: capitalBeforeExit,
-          currentCapitalAfterExit: portfolio.freeCapital,
-          marginUsed: position.totalCost
+          currentCapitalAfterExit: currentCapital,
+          marginUsed: position.marginUsed,
+          capitalBeforeExit: currentCapital - netProceeds
         }
       };
 
       trades.push(trade);
-      console.log(`🔴 FINAL EXIT [${position.ticker}]: P&L=${formatCurrencyUSD(totalPnL)} (${pnlPercent.toFixed(2)}%)`);
+
+      console.log(`🔴 FINAL EXIT [${position.ticker}]: P&L=${formatCurrencyUSD(pnl)} (${pnlPercent.toFixed(2)}%), Duration=${duration} days, Final Deposit: ${formatCurrencyUSD(currentCapital)}`);
     }
   }
 
-  const finalValue = portfolio.freeCapital; // Весь капитал в конце свободен
+  const finalValue = currentCapital;
   const maxDrawdown = equity.length > 0 ? Math.max(...equity.map(e => e.drawdown)) : 0;
   
   // Базовые метрики
@@ -448,7 +399,7 @@ function runMultiTickerBacktest(
     finalValue
   };
 
-  console.log(`✅ PERFECT BACKTEST COMPLETED:`);
+  console.log(`✅ BACKTEST COMPLETED:`);
   console.log(`💰 Final Value: ${formatCurrencyUSD(finalValue)} (${totalReturn.toFixed(2)}%)`);
   console.log(`📊 Total Trades: ${trades.length} (Win Rate: ${winRate.toFixed(1)}%)`);
   console.log(`📉 Max Drawdown: ${maxDrawdown.toFixed(2)}%`);
@@ -528,10 +479,10 @@ export function BuyAtClose4Simulator({ strategy, defaultTickers = ['AAPL', 'MSFT
       {/* Заголовок */}
       <div className="border-b pb-4">
         <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
-          Мультитикерная IBS стратегия (V2 - Perfect Logic)
+          Мультитикерная IBS стратегия
         </h2>
         <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-          Торговля по множественным тикерам с математически корректным распределением капитала
+          Торговля по множественным тикерам с пропорциональным распределением капитала и IBS сигналами
         </p>
       </div>
 
@@ -565,9 +516,7 @@ export function BuyAtClose4Simulator({ strategy, defaultTickers = ['AAPL', 'MSFT
         <div className="mt-3 text-sm text-gray-600 dark:text-gray-400">
           <p>Текущие тикеры: <span className="font-mono">{tickers.join(', ')}</span></p>
           <p>Капитал на тикер: {capitalUsagePerTicker}% ({tickers.length} тикеров)</p>
-          <p className="text-green-600 dark:text-green-400">
-            ✨ V2 Logic: Dynamic allocation from total portfolio value
-          </p>
+          <p>Торговое плечо: <span className="font-mono">{(((strategy.riskManagement.leverage || 1) - 1) * 100).toFixed(0)}%</span> {(strategy.riskManagement.leverage || 1) > 1 ? '(с плечом)' : '(без плеча)'}</p>
         </div>
       </div>
 
@@ -624,7 +573,7 @@ export function BuyAtClose4Simulator({ strategy, defaultTickers = ['AAPL', 'MSFT
           {/* График equity */}
           <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
             <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-4">
-              График доходности портфеля (V2 - Perfect Logic)
+              График доходности портфеля
             </h3>
             <div className="w-full h-[600px] min-h-[600px]">
               <EquityChart equity={backtest.equity} hideHeader />
@@ -635,7 +584,7 @@ export function BuyAtClose4Simulator({ strategy, defaultTickers = ['AAPL', 'MSFT
           {backtest.trades.length > 0 && (
             <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
               <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-4">
-                История сделок ({backtest.trades.length}) - V2 Perfect Logic
+                История сделок ({backtest.trades.length})
               </h3>
               
               <StrategyParameters 
@@ -643,8 +592,7 @@ export function BuyAtClose4Simulator({ strategy, defaultTickers = ['AAPL', 'MSFT
                 additionalParams={{
                   'Капитал на тикер': `${capitalUsagePerTicker}%`,
                   'Количество тикеров': tickers.length,
-                  'Начальный капитал': '$10,000',
-                  'Логика': 'V2 - Dynamic from total portfolio'
+                  'Начальный капитал': '$10,000'
                 }}
               />
               
