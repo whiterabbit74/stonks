@@ -153,7 +153,8 @@ function updatePortfolioState(
  */
 function runMultiTickerBacktest(
   tickersData: TickerData[], 
-  strategy: Strategy
+  strategy: Strategy,
+  leverage: number = 1
 ): { 
   equity: EquityPoint[]; 
   finalValue: number; 
@@ -196,11 +197,12 @@ function runMultiTickerBacktest(
   });
   const sortedDates = Array.from(allDates).sort((a, b) => a - b);
 
-  console.log(`🚀 MULTI-TICKER BACKTEST START (V2 - PERFECT LOGIC)`);
+  console.log(`🚀 MULTI-TICKER BACKTEST START (V2 - PERFECT LOGIC WITH LEVERAGE)`);
   console.log(`📊 Initial Capital: ${formatCurrencyUSD(initialCapital)}`);
   console.log(`📈 Tickers: ${tickersData.map(t => t.ticker).join(', ')}`);
   console.log(`⚙️ Capital per ticker: ${capitalUsagePerTicker.toFixed(1)}%`);
-  console.log(`💡 Logic: Dynamic allocation from total portfolio value`);
+  console.log(`💹 Leverage: ${leverage.toFixed(1)}:1 (${(leverage * 100).toFixed(0)}%)`);
+  console.log(`💡 Logic: Dynamic allocation from total portfolio value with leverage`);
 
   // ✨ ГЛАВНЫЙ ЦИКЛ - с новой логикой
   for (const dateTime of sortedDates) {
@@ -225,18 +227,21 @@ function runMultiTickerBacktest(
       // ✨ ЛОГИКА ВХОДА - НОВАЯ
       if (!position) {
         if (ibs < lowIBS) {
-          // 🎯 КЛЮЧЕВОЕ УЛУЧШЕНИЕ: используем % от общей стоимости портфеля
-          const targetInvestment = portfolio.totalPortfolioValue * (capitalUsagePerTicker / 100);
+          // 🎯 КЛЮЧЕВОЕ УЛУЧШЕНИЕ: используем % от общей стоимости портфеля с leverage
+          const baseTargetInvestment = portfolio.totalPortfolioValue * (capitalUsagePerTicker / 100);
+          const targetInvestment = baseTargetInvestment * leverage; // Применяем плечо
           const entryPrice = bar.close;
           const quantity = Math.floor(targetInvestment / entryPrice);
           
           if (quantity > 0) {
             const stockCost = quantity * entryPrice;
             const entryCommission = calculateCommission(stockCost, strategy);
-            const totalCost = stockCost + entryCommission;
+            // С плечом мы платим только часть от полной стоимости + комиссия
+            const marginRequired = (stockCost / leverage) + entryCommission; // Маржинальный депозит
+            const totalCost = stockCost + entryCommission; // Полная стоимость позиции для учета
             
-            // Проверяем наличие свободного капитала
-            if (portfolio.freeCapital >= totalCost) {
+            // Проверяем наличие свободного капитала для маржинального депозита
+            if (portfolio.freeCapital >= marginRequired) {
               // ✨ СОЗДАЁМ ЧИСТУЮ ПОЗИЦИЮ
               positions[tickerIndex] = {
                 ticker: tickerData.ticker,
@@ -244,14 +249,14 @@ function runMultiTickerBacktest(
                 entryPrice: entryPrice,
                 quantity: quantity,
                 entryIndex: barIndex,
-                totalCost: totalCost,          // Полные затраты
+                totalCost: marginRequired,          // Фактические затраты (маржинальный депозит)
                 entryCommission: entryCommission,
                 entryIBS: ibs
               };
               
               // ✨ ОБНОВЛЯЕМ СОСТОЯНИЕ ПОРТФЕЛЯ МАТЕМАТИЧЕСКИ КОРРЕКТНО
-              portfolio.freeCapital -= totalCost;           // Уменьшаем свободный капитал
-              portfolio.totalInvestedCost += totalCost;     // Увеличиваем инвестированный
+              portfolio.freeCapital -= marginRequired;           // Уменьшаем свободный капитал на маржин
+              portfolio.totalInvestedCost += marginRequired;     // Увеличиваем инвестированный капитал на маржин
               // totalPortfolioValue останется тем же (деньги перешли из free в invested)
               
               console.log(`🟢 ENTRY [${tickerData.ticker}]: IBS=${ibs.toFixed(3)} < ${lowIBS}`);
@@ -292,14 +297,18 @@ function runMultiTickerBacktest(
           const exitCommission = calculateCommission(stockProceeds, strategy);
           const netProceeds = stockProceeds - exitCommission;
           
-          // ✨ ЧИСТЫЙ РАСЧЁТ P&L
-          const totalPnL = netProceeds - position.totalCost;
-          const pnlPercent = (totalPnL / position.totalCost) * 100;
+          // ✨ ЧИСТЫЙ РАСЧЁТ P&L с учетом leverage
+          // При leverage > 1 мы вложили меньше собственного капитала, но получаем полную прибыль/убыток
+          const stockValueAtEntry = position.quantity * position.entryPrice;
+          const actualPnL = (exitPrice - position.entryPrice) * position.quantity - (position.entryCommission + exitCommission);
+          const totalPnL = actualPnL; // Полная прибыль от изменения цены за вычетом комиссий
+          const pnlPercent = position.totalCost > 0 ? (totalPnL / position.totalCost) * 100 : 0;
           
           // ✨ ОБНОВЛЯЕМ ПОРТФЕЛЬ МАТЕМАТИЧЕСКИ КОРРЕКТНО
           const capitalBeforeExit = portfolio.freeCapital;
-          portfolio.freeCapital += netProceeds;                    // Получаем выручку
-          portfolio.totalInvestedCost -= position.totalCost;       // Убираем инвестированный капитал
+          // При leverage возвращаем маржинальный депозит + прибыль/убыток
+          portfolio.freeCapital += position.totalCost + totalPnL;   // Возвращаем маржин + P&L
+          portfolio.totalInvestedCost -= position.totalCost;        // Убираем инвестированный капитал
           
           // ✨ ЗАКРЫВАЕМ ПОЗИЦИЮ ПЕРЕД ПЕРЕСЧЁТОМ ПОРТФЕЛЯ
           positions[tickerIndex] = null;
@@ -327,10 +336,10 @@ function runMultiTickerBacktest(
               volatility: 0,
               trend: 'sideways',
               // ✨ КРИСТАЛЬНО ЧИСТЫЕ ДАННЫЕ
-              initialInvestment: position.totalCost,           // Что потратили (с комиссиями)
+              initialInvestment: position.totalCost,           // Что потратили (маржинальный депозит + комиссии)
               grossInvestment: position.quantity * position.entryPrice, // Стоимость акций без комиссий
-              leverage: 1,                                     // Без плеча
-              leverageDebt: 0,
+              leverage: leverage,                              // Используемое плечо
+              leverageDebt: stockValueAtEntry - position.totalCost + position.entryCommission, // Заёмные средства
               commissionPaid: position.entryCommission + exitCommission,
               netProceeds: netProceeds,
               capitalBeforeExit: capitalBeforeExit,
@@ -391,12 +400,17 @@ function runMultiTickerBacktest(
       const stockProceeds = position.quantity * exitPrice;
       const exitCommission = calculateCommission(stockProceeds, strategy);
       const netProceeds = stockProceeds - exitCommission;
-      const totalPnL = netProceeds - position.totalCost;
-      const pnlPercent = (totalPnL / position.totalCost) * 100;
+      
+      // ✨ ЧИСТЫЙ РАСЧЁТ P&L с учетом leverage (аналогично основной логике)
+      const stockValueAtEntry = position.quantity * position.entryPrice;
+      const actualPnL = (exitPrice - position.entryPrice) * position.quantity - (position.entryCommission + exitCommission);
+      const totalPnL = actualPnL;
+      const pnlPercent = position.totalCost > 0 ? (totalPnL / position.totalCost) * 100 : 0;
       const duration = Math.floor((lastBar.date.getTime() - position.entryDate.getTime()) / (1000 * 60 * 60 * 24));
 
       const capitalBeforeExit = portfolio.freeCapital;
-      portfolio.freeCapital += netProceeds;
+      // При leverage возвращаем маржинальный депозит + прибыль/убыток
+      portfolio.freeCapital += position.totalCost + totalPnL;
       portfolio.totalInvestedCost -= position.totalCost;
       
       // ✨ ОБНОВЛЯЕМ ОБЩУЮ СТОИМОСТЬ ПОРТФЕЛЯ
@@ -421,8 +435,8 @@ function runMultiTickerBacktest(
           trend: 'sideways',
           initialInvestment: position.totalCost,
           grossInvestment: position.quantity * position.entryPrice,
-          leverage: 1,
-          leverageDebt: 0,
+          leverage: leverage,
+          leverageDebt: stockValueAtEntry - position.totalCost + position.entryCommission,
           commissionPaid: position.entryCommission + exitCommission,
           netProceeds: netProceeds,
           capitalBeforeExit: capitalBeforeExit,
@@ -507,17 +521,18 @@ export function BuyAtClose4Simulator({ strategy, defaultTickers = ['AAPL', 'MSFT
   const [error, setError] = useState<string | null>(null);
   const [loadedData, setLoadedData] = useState<TickerData[]>([]);
   const [inputValue, setInputValue] = useState(defaultTickers.join(', '));
+  const [leveragePercent, setLeveragePercent] = useState<number>(100); // 100% = 1:1, 200% = 2:1
 
   // Расчет капитала на тикер - всегда определен для безопасного доступа
   const capitalUsagePerTicker = tickers.length > 0 ? Math.floor(100 / tickers.length) : 25;
 
-  // Запуск бэктеста при изменении данных или стратегии
+  // Запуск бэктеста при изменении данных, стратегии или leverage
   const backtest = useMemo(() => {
     if (!strategy || loadedData.length === 0) {
       return { equity: [], finalValue: 0, maxDrawdown: 0, trades: [], metrics: {} };
     }
-    return runMultiTickerBacktest(loadedData, strategy);
-  }, [loadedData, strategy]);
+    return runMultiTickerBacktest(loadedData, strategy, leveragePercent / 100);
+  }, [loadedData, strategy, leveragePercent]);
 
   // Загрузка данных для всех тикеров
   const loadAllData = async () => {
@@ -607,11 +622,43 @@ export function BuyAtClose4Simulator({ strategy, defaultTickers = ['AAPL', 'MSFT
           </button>
         </div>
         
+        {/* Настройка leverage */}
+        <div className="mt-4 p-3 border rounded-lg bg-gray-50 dark:bg-gray-800 dark:border-gray-700">
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            Leverage (плечо): {leveragePercent}% {leveragePercent > 100 ? `(${(leveragePercent/100).toFixed(1)}:1)` : ''}
+          </label>
+          <div className="flex items-center gap-4">
+            <input
+              type="range"
+              min="100"
+              max="300"
+              step="25"
+              value={leveragePercent}
+              onChange={(e) => setLeveragePercent(Number(e.target.value))}
+              className="flex-1"
+            />
+            <input
+              type="number"
+              min="100"
+              max="300"
+              step="25"
+              value={leveragePercent}
+              onChange={(e) => setLeveragePercent(Number(e.target.value))}
+              className="w-20 px-2 py-1 border rounded text-center dark:bg-gray-900 dark:border-gray-600 dark:text-gray-100"
+            />
+            <span className="text-sm text-gray-500">%</span>
+          </div>
+          <div className="text-xs text-gray-500 mt-1">
+            100% = без плеча, 200% = 2:1, 300% = 3:1. Увеличивает потенциальную прибыль и риск.
+          </div>
+        </div>
+        
         <div className="mt-3 text-sm text-gray-600 dark:text-gray-400">
           <p>Текущие тикеры: <span className="font-mono">{tickers.join(', ')}</span></p>
           <p>Капитал на тикер: {capitalUsagePerTicker}% ({tickers.length} тикеров)</p>
+          <p>Leverage: <span className="font-mono text-orange-600 dark:text-orange-400">{(leveragePercent/100).toFixed(1)}:1</span></p>
           <p className="text-green-600 dark:text-green-400">
-            ✨ V2 Logic: Dynamic allocation from total portfolio value
+            ✨ V2 Logic: Dynamic allocation from total portfolio value with leverage
           </p>
         </div>
       </div>
@@ -689,7 +736,8 @@ export function BuyAtClose4Simulator({ strategy, defaultTickers = ['AAPL', 'MSFT
                   'Капитал на тикер': `${capitalUsagePerTicker}%`,
                   'Количество тикеров': tickers.length,
                   'Начальный капитал': '$10,000',
-                  'Логика': 'V2 - Dynamic from total portfolio'
+                  'Leverage': `${(leveragePercent/100).toFixed(1)}:1 (${leveragePercent}%)`,
+                  'Логика': 'V2 - Dynamic from total portfolio with leverage'
                 }}
               />
               
