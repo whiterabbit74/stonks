@@ -350,6 +350,42 @@ export function TelegramWatches() {
             >
               Актуализация цен
             </button>
+            <button
+              onClick={async () => {
+                setLoading(true);
+                try {
+                  const response = await fetch('/api/telegram/update-positions', {
+                    method: 'POST',
+                    credentials: 'include'
+                  });
+                  const r = await response.json();
+                  
+                  if (r.success) {
+                    const changesCount = r.changes?.length || 0;
+                    const changesList = r.changes?.map((c: any) => 
+                      `${c.symbol}: ${c.changeType === 'opened' ? 'открыта' : 'закрыта'} ${c.entryPrice ? `($${c.entryPrice.toFixed(2)})` : ''}`
+                    ).join(', ') || '';
+                    
+                    const message = changesCount > 0 
+                      ? `Обновлено позиций: ${r.updated}, изменений: ${changesCount}. ${changesList}`
+                      : `Обновлено позиций: ${r.updated}, изменений нет`;
+                      
+                    setInfo({ open: true, title: 'Обновление позиций', message, kind: 'success' });
+                    await load(); // Перезагружаем список
+                  } else {
+                    setInfo({ open: true, title: 'Ошибка', message: 'Не удалось обновить позиции', kind: 'error' });
+                  }
+                } catch (e) {
+                  setInfo({ open: true, title: 'Ошибка', message: e instanceof Error ? e.message : 'Не удалось обновить позиции', kind: 'error' });
+                } finally {
+                  setLoading(false);
+                }
+              }}
+              className="inline-flex items-center px-3 py-2 rounded-md border border-green-300 bg-green-50 text-green-700 hover:bg-green-100 dark:border-green-700 dark:bg-green-900/30 dark:text-green-300 dark:hover:bg-green-900/50"
+              disabled={loading}
+            >
+              {loading ? 'Обновление...' : 'Пересчет позиций'}
+            </button>
           </div>
         </div>
       )}

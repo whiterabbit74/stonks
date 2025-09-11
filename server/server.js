@@ -504,6 +504,77 @@ app.patch('/api/settings', requireAuth, (req, res) => {
 const telegramWatches = new Map();
 
 /**
+ * Рассчитывает текущий статус позиции по стратегии за последние 35 дней
+ * @param {string} symbol - Тикер акции
+ * @param {number} lowIBS - Порог для входа (0.1)  
+ * @param {number} highIBS - Порог для выхода (0.75)
+ * @returns {Promise<{isOpen: boolean, entryPrice: number|null, entryDate: string|null, signal: string}>}
+ */
+async function calculatePositionStatus(symbol, lowIBS = 0.1, highIBS = 0.75) {
+  try {
+    // Получаем данные через существующую функцию
+    const filePath = path.join(DATASETS_DIR, `${symbol}.json`);
+    const exists = await fs.pathExists(filePath);
+    if (!exists) {
+      return { isOpen: false, entryPrice: null, entryDate: null, signal: 'no_data' };
+    }
+    
+    const dataset = await fs.readJson(filePath);
+    if (!dataset || !dataset.data || dataset.data.length === 0) {
+      return { isOpen: false, entryPrice: null, entryDate: null, signal: 'no_data' };
+    }
+
+    // Преобразуем данные в нужный формат и берем последние 35 дней
+    const rawData = dataset.data;
+    const data = rawData.slice(-35).map(d => ({
+      date: new Date(d.date),
+      open: parseFloat(d.open),
+      high: parseFloat(d.high), 
+      low: parseFloat(d.low),
+      close: parseFloat(d.close)
+    }));
+
+    let positionOpen = false;
+    let entryPrice = null;
+    let entryDate = null;
+
+    // Прогоняем стратегию: смотрим IBS предыдущего дня для принятия решений
+    for (let i = 1; i < data.length; i++) {
+      const currentBar = data[i];
+      const prevBar = data[i-1];
+      
+      // Рассчитываем IBS предыдущего дня = (close - low) / (high - low)
+      const range = prevBar.high - prevBar.low;
+      const ibs = range > 0 ? (prevBar.close - prevBar.low) / range : 0;
+      
+      // Сигнал на ВХОД: IBS предыдущего дня <= lowIBS
+      if (!positionOpen && ibs <= lowIBS) {
+        positionOpen = true;
+        entryPrice = currentBar.close; // Покупаем на закрытии текущего дня
+        entryDate = currentBar.date.toISOString().split('T')[0];
+        console.log(`[${symbol}] ENTRY: IBS=${ibs.toFixed(3)} <= ${lowIBS}, entry_price=${entryPrice}, date=${entryDate}`);
+      }
+      
+      // Сигнал на ВЫХОД: IBS предыдущего дня >= highIBS
+      if (positionOpen && ibs >= highIBS) {
+        positionOpen = false;
+        const exitPrice = currentBar.close;
+        console.log(`[${symbol}] EXIT: IBS=${ibs.toFixed(3)} >= ${highIBS}, exit_price=${exitPrice}, date=${currentBar.date.toISOString().split('T')[0]}`);
+        entryPrice = null;
+        entryDate = null;
+      }
+    }
+    
+    const signal = positionOpen ? 'position_open' : 'position_closed';
+    return { isOpen: positionOpen, entryPrice, entryDate, signal };
+    
+  } catch (error) {
+    console.error(`Error calculating position for ${symbol}:`, error);
+    return { isOpen: false, entryPrice: null, entryDate: null, signal: 'error' };
+  }
+}
+
+/**
  * Определяет открыта ли позиция автоматически по данным
  */
 function isPositionOpen(watch) {
@@ -909,6 +980,9 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
     const delta = Math.max(0, Math.min(20, pct)) / 100; // 0..0.20 IBS
 
     await appendMonitorLog([`T-${minutesUntilClose}min: scan ${telegramWatches.size} watches; thresholdPct=${pct}% (deltaIBS=${delta})${options && options.test ? ' [TEST]' : ''}`]);
+    
+    let apiCallsSkipped = 0;
+    let apiCallsMade = 0;
 
     // Collect fresh data for all watches and group by chatId (always include all tickers)
     const byChat = new Map(); // chatId -> Array<{ w, ibs, quote, range, ohlc, closeEnoughToExit, closeEnoughToEntry, confirmExit, confirmEntry, dataOk, fetchError, avFresh, rtFresh }>
@@ -920,10 +994,37 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
       byChat.get(chatId).push(rec);
       // ensure per-day flags
       if (w.sent.dateKey !== todayKey) w.sent = { dateKey: todayKey, warn10: false, confirm1: false, entryWarn10: false, entryConfirm1: false };
-      // 1) Refresh via Alpha Vantage and check dataset freshness
+      // 1) Check dataset freshness first, then refresh via Alpha Vantage only if needed
       try {
-        const avStatus = await refreshTickerViaAlphaVantageAndCheckFreshness(w.symbol, nowEt);
-        rec.avFresh = !!(avStatus && avStatus.avFresh);
+        // Предварительная проверка: есть ли уже данные за предыдущий торговый день?
+        const prev = previousTradingDayET(nowEt);
+        const prevKey = etKeyYMD(prev);
+        let needsUpdate = false;
+        
+        const filePath = resolveDatasetFilePathById(w.symbol);
+        if (filePath && await fs.pathExists(filePath)) {
+          const dataset = await fs.readJson(filePath).catch(() => null);
+          if (dataset && dataset.data && Array.isArray(dataset.data)) {
+            const hasYesterday = dataset.data.some(d => d && d.date === prevKey);
+            if (hasYesterday) {
+              rec.avFresh = true; // Данные актуальны, API не нужен
+              apiCallsSkipped++;
+            } else {
+              needsUpdate = true; // Нет данных за вчера, нужно обновить
+            }
+          } else {
+            needsUpdate = true; // Нет датасета, нужно создать
+          }
+        } else {
+          needsUpdate = true; // Нет файла, нужно создать
+        }
+        
+        // Обновляем через API только если данные устарели
+        if (needsUpdate) {
+          apiCallsMade++;
+          const avStatus = await refreshTickerViaAlphaVantageAndCheckFreshness(w.symbol, nowEt);
+          rec.avFresh = !!(avStatus && avStatus.avFresh);
+        }
       } catch {}
       // 2) Fetch today's range/quote via Finnhub (today only)
       try {
@@ -1052,6 +1153,10 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
         }
       }
     }
+    
+    // Логируем статистику API вызовов
+    await appendMonitorLog([`T-${minutesUntilClose}min завершён. API вызовов: ${apiCallsMade}, пропущено: ${apiCallsSkipped}, экономия: ${Math.round(apiCallsSkipped/(apiCallsSkipped+apiCallsMade)*100)||0}%`]);
+    
     return { sent: true };
   } catch (e) {
     console.warn('Scheduler error:', e.message);
@@ -1105,13 +1210,89 @@ async function runPriceActualization() {
       : 'Актуализация завершена. Ни одного тикера не обновлено.';
     await appendMonitorLog([logMsg]);
     
-    // Send notification to Telegram if any tickers were updated
-    if (updatedTickers.length > 0) {
-      const chatId = getApiConfig().TELEGRAM_CHAT_ID;
-      if (chatId) {
-        const message = `📈 Актуализация цен завершена\n\nДата: ${todayKey}\nОбновлено тикеров: ${updatedTickers.length}\n${updatedTickers.join(', ')}`;
-        await sendTelegramMessage(chatId, message);
+    // НОВАЯ ЛОГИКА: Расчет позиций после обновления данных
+    await appendMonitorLog([`T+2min: начинаем пересчёт позиций для всех тикеров...`]);
+    
+    let positionUpdates = [];
+    
+    for (const w of telegramWatches.values()) {
+      try {
+        await appendMonitorLog([`Рассчитываем позицию для ${w.symbol}...`]);
+        
+        // Получаем текущий статус позиции через алгоритм стратегии
+        const calculatedStatus = await calculatePositionStatus(w.symbol, w.lowIBS || 0.1, w.highIBS || 0.75);
+        const currentIsOpen = w.isOpenPosition;
+        const currentEntryPrice = w.entryPrice;
+        
+        // Обновляем данные в мониторинге только если есть изменения
+        if (calculatedStatus.isOpen !== currentIsOpen || calculatedStatus.entryPrice !== currentEntryPrice) {
+          // Обновляем статус позиции
+          w.isOpenPosition = calculatedStatus.isOpen;
+          w.entryPrice = calculatedStatus.entryPrice;
+          
+          // Логируем изменение
+          const statusChange = currentIsOpen !== calculatedStatus.isOpen;
+          if (statusChange) {
+            if (calculatedStatus.isOpen) {
+              await appendMonitorLog([`${w.symbol} - ОТКРЫТА позиция по цене ${calculatedStatus.entryPrice} (${calculatedStatus.entryDate})`]);
+              positionUpdates.push({
+                symbol: w.symbol,
+                action: 'ОТКРЫТА',
+                price: calculatedStatus.entryPrice,
+                date: calculatedStatus.entryDate
+              });
+            } else {
+              await appendMonitorLog([`${w.symbol} - ЗАКРЫТА позиция (была открыта по цене ${currentEntryPrice})`]);
+              positionUpdates.push({
+                symbol: w.symbol,
+                action: 'ЗАКРЫТА',
+                price: null,
+                previousPrice: currentEntryPrice
+              });
+            }
+          } else {
+            await appendMonitorLog([`${w.symbol} - обновлена цена входа: ${calculatedStatus.entryPrice}`]);
+          }
+        } else {
+          await appendMonitorLog([`${w.symbol} - позиция без изменений (${calculatedStatus.isOpen ? 'открыта' : 'закрыта'})`]);
+        }
+        
+        // Небольшая задержка между расчетами
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+      } catch (error) {
+        await appendMonitorLog([`${w.symbol} - ошибка расчёта позиции: ${error.message}`]);
       }
+    }
+    
+    // Сохраняем изменения в файл
+    scheduleSaveWatches();
+    
+    await appendMonitorLog([`Пересчёт позиций завершён. Изменений: ${positionUpdates.length}`]);
+    
+    // Send notification to Telegram with position updates
+    const chatId = getApiConfig().TELEGRAM_CHAT_ID;
+    if (chatId && (updatedTickers.length > 0 || positionUpdates.length > 0)) {
+      let message = `📊 Ежедневный отчёт (${todayKey})\n\n`;
+      
+      if (updatedTickers.length > 0) {
+        message += `📈 Обновлено цен: ${updatedTickers.length}\n${updatedTickers.join(', ')}\n\n`;
+      }
+      
+      if (positionUpdates.length > 0) {
+        message += `🔄 Изменения позиций:\n`;
+        for (const update of positionUpdates) {
+          if (update.action === 'ОТКРЫТА') {
+            message += `• ${update.symbol}: ОТКРЫТА по $${update.price} (${update.date})\n`;
+          } else {
+            message += `• ${update.symbol}: ЗАКРЫТА (была $${update.previousPrice})\n`;
+          }
+        }
+      } else {
+        message += `✅ Позиции без изменений`;
+      }
+      
+      await sendTelegramMessage(chatId, message);
     }
     
     return { updated: true, count: updatedTickers.length, tickers: updatedTickers };
@@ -1165,6 +1346,74 @@ app.get('/api/telegram/watches', (req, res) => {
     chatId: w.chatId ? 'configured' : null,
   }));
   res.json(list);
+});
+
+/**
+ * Обновляет статус позиций для всех акций в мониторинге 
+ */
+async function updateAllPositions() {
+  console.log('🔄 Updating all positions status...');
+  const results = [];
+  
+  for (const [symbol, watch] of telegramWatches.entries()) {
+    console.log(`Calculating position for ${symbol}...`);
+    
+    // Рассчитываем текущий статус позиции
+    const status = await calculatePositionStatus(symbol, watch.lowIBS || 0.1, watch.highIBS || 0.75);
+    
+    // Сравниваем с предыдущим статусом
+    const wasOpen = isPositionOpen(watch);
+    const isNowOpen = status.isOpen;
+    
+    // Обновляем данные в мониторинге
+    if (status.isOpen && status.entryPrice) {
+      watch.entryPrice = status.entryPrice;
+    } else {
+      watch.entryPrice = null;
+    }
+    
+    // Определяем что произошло
+    let changeType = 'no_change';
+    if (!wasOpen && isNowOpen) {
+      changeType = 'opened';
+    } else if (wasOpen && !isNowOpen) {
+      changeType = 'closed';  
+    }
+    
+    results.push({
+      symbol,
+      wasOpen,
+      isNowOpen, 
+      changeType,
+      entryPrice: status.entryPrice,
+      entryDate: status.entryDate,
+      signal: status.signal
+    });
+    
+    console.log(`[${symbol}] ${wasOpen ? 'OPEN' : 'CLOSED'} → ${isNowOpen ? 'OPEN' : 'CLOSED'} (${changeType})`);
+  }
+  
+  // Сохраняем изменения
+  scheduleSaveWatches();
+  
+  console.log('✅ Position update completed');
+  return results;
+}
+
+// API для ручного обновления позиций
+app.post('/api/telegram/update-positions', async (req, res) => {
+  try {
+    const results = await updateAllPositions();
+    res.json({ 
+      success: true, 
+      updated: results.length,
+      changes: results.filter(r => r.changeType !== 'no_change'),
+      results 
+    });
+  } catch (error) {
+    console.error('Error updating positions:', error);
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // Send test telegram message
