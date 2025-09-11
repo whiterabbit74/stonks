@@ -481,6 +481,13 @@ export function SinglePositionSimulator({ strategy }: SinglePositionSimulatorPro
   }
 
   const runBacktest = async () => {
+    console.log('🚀 runBacktest called with:', {
+      loadedDataLength: loadedData.length,
+      tickers,
+      leveragePercent,
+      hasStrategy: !!strategy
+    });
+    
     setIsLoading(true);
     setError(null);
     
@@ -534,8 +541,19 @@ export function SinglePositionSimulator({ strategy }: SinglePositionSimulatorPro
   };
 
   useEffect(() => {
+    console.log('🔍 SinglePosition useEffect:', {
+      loadedDataLength: loadedData.length,
+      tickers,
+      leveragePercent,
+      hasStrategy: !!strategy
+    });
+    
     if (loadedData.length > 0) {
+      console.log('✅ Starting runBacktest...');
       runBacktest();
+    } else {
+      console.log('❌ No data loaded, skipping backtest');
+      setError('Нет загруженных данных. Загрузите данные на странице "Данные".');
     }
   }, [loadedData, tickers, leveragePercent, strategy]);
 
