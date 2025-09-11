@@ -148,14 +148,24 @@ rm -rf ~/stonks/server/server.js.backup 2>/dev/null || true
 cp ~/stonks/server/server.js ~/stonks/server/server.js.backup 2>/dev/null || true
 
 echo '🔄 Копирование свежих файлов...' &&
-if [ ! -d ~/dist ] || [ -z "$(ls -A ~/dist 2>/dev/null)" ]; then
-    echo '❌ ОШИБКА: Директория ~/dist пуста или не существует!'
-    echo 'Содержимое ~/ :' && ls -la ~/ | grep -E '(dist|server|build-info)'
+if [ ! -d ~/dist ]; then
+    echo '❌ ОШИБКА: Директория ~/dist не существует!'
+    ls -la ~/ | grep -E '(dist|server|build-info)'
     exit 1
 fi &&
-if [ ! -d ~/server ] || [ -z "$(ls -A ~/server 2>/dev/null)" ]; then
-    echo '❌ ОШИБКА: Директория ~/server пуста или не существует!'
-    echo 'Содержимое ~/ :' && ls -la ~/ | grep -E '(dist|server|build-info)'
+if [ ! -f ~/dist/index.html ]; then
+    echo '❌ ОШИБКА: Файл ~/dist/index.html не найден!'
+    ls -la ~/dist/
+    exit 1
+fi &&
+if [ ! -d ~/server ]; then
+    echo '❌ ОШИБКА: Директория ~/server не существует!'
+    ls -la ~/ | grep -E '(dist|server|build-info)'
+    exit 1
+fi &&
+if [ ! -f ~/server/server.js ]; then
+    echo '❌ ОШИБКА: Файл ~/server/server.js не найден!'
+    ls -la ~/server/
     exit 1
 fi &&
 echo 'Копируем frontend файлы...' &&
