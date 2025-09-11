@@ -154,9 +154,9 @@ cp ~/server/server.js ~/stonks/server/server.js &&
 echo '📋 Сохранение информации о сборке...' &&
 cp ~/build-info.json ~/stonks/build-info.json &&
 
-echo '🔨 Пересборка контейнеров без кэша...' &&
+echo '🔨 Пересборка контейнеров...' &&
 cd ~/stonks &&
-docker compose build --no-cache &&
+docker compose build &&
 docker compose up -d &&
 
 echo '⏳ Ожидание запуска (30 сек)...' &&
