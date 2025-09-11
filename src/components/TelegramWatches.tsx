@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { RefreshCw, Trash2, ExternalLink } from 'lucide-react';
+import { RefreshCw, Trash2, ExternalLink, Edit2, Check, X } from 'lucide-react';
 import { DatasetAPI } from '../lib/api';
 import { ConfirmModal } from './ConfirmModal';
 import { InfoModal } from './InfoModal';
@@ -23,6 +23,7 @@ export function TelegramWatches() {
   const [confirm, setConfirm] = useState<{ open: boolean; symbol: string | null }>(() => ({ open: false, symbol: null }));
   const [info, setInfo] = useState<{ open: boolean; title: string; message: string; kind?: 'success'|'error'|'info' }>({ open: false, title: '', message: '' });
   const [secondsToNext, setSecondsToNext] = useState<number | null>(null);
+  const [editingPrice, setEditingPrice] = useState<{ symbol: string; value: string } | null>(null);
   const watchThresholdPct = useAppStore(s => s.watchThresholdPct);
 
   const handleTickerClick = (symbol: string) => {
@@ -194,7 +195,7 @@ export function TelegramWatches() {
             </thead>
             <tbody className="divide-y dark:divide-gray-700">
               {watches.map(w => (
-                <tr key={w.symbol} className="hover:bg-gray-50 dark:hover:bg-gray-800">
+                <tr key={w.symbol} className="group hover:bg-gray-50 dark:hover:bg-gray-800">
                   <td className="p-3">
                     <button
                       onClick={() => handleTickerClick(w.symbol)}
@@ -207,25 +208,89 @@ export function TelegramWatches() {
                   </td>
                   <td className="p-3 dark:text-gray-300">≤ {(w.lowIBS ?? 0.1).toFixed(2)}</td>
                   <td className="p-3 dark:text-gray-300">≥ {w.highIBS.toFixed(2)}</td>
-                  <td className="p-3 dark:text-gray-300">{w.entryPrice != null ? `$${w.entryPrice.toFixed(2)}` : '—'}</td>
                   <td className="p-3">
-                    <button
-                      onClick={async () => {
-                        try {
-                          await DatasetAPI.updateTelegramWatch(w.symbol, { 
-                            isOpenPosition: !w.isOpenPosition,
-                            entryPrice: !w.isOpenPosition ? null : w.entryPrice 
-                          });
-                          await load();
-                        } catch (e) {
-                          setError(e instanceof Error ? e.message : 'Не удалось изменить статус позиции');
-                        }
-                      }}
-                      className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border transition-colors ${w.isOpenPosition ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-800 dark:hover:bg-emerald-900/50' : 'bg-gray-100 text-gray-600 border-gray-200 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700 dark:hover:bg-gray-700'}`}
-                      title={`Переключить на "${w.isOpenPosition ? 'Нет позиции' : 'Открыта'}"`}
-                    >
+                    {editingPrice?.symbol === w.symbol ? (
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={editingPrice.value}
+                          onChange={(e) => setEditingPrice({ symbol: w.symbol, value: e.target.value })}
+                          className="w-20 px-2 py-1 text-xs border border-gray-300 rounded dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+                          onKeyDown={async (e) => {
+                            if (e.key === 'Enter') {
+                              const price = parseFloat(editingPrice.value);
+                              if (!isNaN(price) && price >= 0) {
+                                try {
+                                  await DatasetAPI.updateTelegramWatch(w.symbol, { 
+                                    entryPrice: price > 0 ? price : null 
+                                  });
+                                  await load();
+                                  setEditingPrice(null);
+                                } catch (e) {
+                                  setError(e instanceof Error ? e.message : 'Не удалось обновить цену');
+                                }
+                              }
+                            }
+                            if (e.key === 'Escape') {
+                              setEditingPrice(null);
+                            }
+                          }}
+                          autoFocus
+                        />
+                        <button
+                          onClick={async () => {
+                            const price = parseFloat(editingPrice.value);
+                            if (!isNaN(price) && price >= 0) {
+                              try {
+                                await DatasetAPI.updateTelegramWatch(w.symbol, { 
+                                  entryPrice: price > 0 ? price : null 
+                                });
+                                await load();
+                                setEditingPrice(null);
+                              } catch (e) {
+                                setError(e instanceof Error ? e.message : 'Не удалось обновить цену');
+                              }
+                            }
+                          }}
+                          className="p-1 text-green-600 hover:text-green-800"
+                        >
+                          <Check className="w-3 h-3" />
+                        </button>
+                        <button
+                          onClick={() => setEditingPrice(null)}
+                          className="p-1 text-gray-600 hover:text-gray-800"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <span className="dark:text-gray-300">
+                          {w.entryPrice != null ? `$${w.entryPrice.toFixed(2)}` : '—'}
+                        </span>
+                        <button
+                          onClick={() => setEditingPrice({ 
+                            symbol: w.symbol, 
+                            value: w.entryPrice?.toString() || '' 
+                          })}
+                          className="p-1 text-blue-600 hover:text-blue-800 opacity-0 group-hover:opacity-100 transition-opacity"
+                          title="Редактировать цену входа"
+                        >
+                          <Edit2 className="w-3 h-3" />
+                        </button>
+                      </div>
+                    )}
+                  </td>
+                  <td className="p-3">
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${w.isOpenPosition ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-800' : 'bg-gray-100 text-gray-600 border border-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700'}`}>
                       {w.isOpenPosition ? 'Открыта' : 'Нет'}
-                    </button>
+                    </span>
+                    {w.isOpenPosition && (
+                      <div className="text-xs text-gray-500 mt-1" title="Позиция автоматически определяется по цене входа">
+                        ${w.entryPrice?.toFixed(2)}
+                      </div>
+                    )}
                   </td>
                   <td className="p-3">
                     <button

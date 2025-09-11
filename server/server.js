@@ -504,6 +504,13 @@ app.patch('/api/settings', requireAuth, (req, res) => {
 const telegramWatches = new Map();
 
 /**
+ * Определяет открыта ли позиция автоматически по данным
+ */
+function isPositionOpen(watch) {
+  return !!(watch.entryPrice !== null && watch.entryPrice !== undefined);
+}
+
+/**
  * Aggregated send state per chat to avoid duplicate messages inside the same minute/day
  */
 const aggregateSendState = new Map(); // chatId -> { dateKey: string|null, t11Sent: boolean, t2Sent: boolean }
@@ -955,13 +962,14 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
         const logLines = [`T-11 overview → chat ${chatId}`];
         for (const rec of sorted) {
           const { w } = rec;
-          const type = w.isOpenPosition ? 'выход' : 'вход';
-          const near = w.isOpenPosition ? rec.closeEnoughToExit : rec.closeEnoughToEntry;
+          const positionOpen = isPositionOpen(w);
+          const type = positionOpen ? 'выход' : 'вход';
+          const near = positionOpen ? rec.closeEnoughToExit : rec.closeEnoughToEntry;
           const nearStr = rec.dataOk ? (near ? 'да' : 'нет') : '—';
           const priceStr = rec.dataOk && rec.quote ? formatMoney(rec.quote.current) : '-';
           const ibsStr = rec.dataOk && Number.isFinite(rec.ibs) ? rec.ibs.toFixed(3) : '-';
-          const thresholdStr = w.isOpenPosition ? `≥ ${(w.highIBS - delta).toFixed(2)} (цель ${w.highIBS})` : `≤ ${((w.lowIBS ?? 0.1) + delta).toFixed(2)} (цель ${w.lowIBS ?? 0.1})`;
-          const statusLabel = w.isOpenPosition ? 'Открыта' : 'Нет позиции';
+          const thresholdStr = positionOpen ? `≥ ${(w.highIBS - delta).toFixed(2)} (цель ${w.highIBS})` : `≤ ${((w.lowIBS ?? 0.1) + delta).toFixed(2)} (цель ${w.lowIBS ?? 0.1})`;
+          const statusLabel = positionOpen ? 'Открыта' : 'Нет позиции';
           // Progress bar for IBS: 10 slots — map using ceil(ibs*11) to better match examples and clamp to 10
           const fillCount = rec.dataOk && Number.isFinite(rec.ibs) ? Math.max(0, Math.min(10, Math.ceil(rec.ibs * 11))) : 0;
           const bar = '█'.repeat(fillCount) + '░'.repeat(10 - fillCount);
@@ -971,8 +979,8 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
           const line4 = `Сигнал (${type}): ${nearStr}`;
           blocks.push([line1, line2, line3, line4].join('\n'));
           const logOne = rec.dataOk
-            ? `${w.symbol} pos=${w.isOpenPosition ? 'open' : 'none'} IBS=${ibsStr} near=${nearStr} thr=${thresholdStr}`
-            : `${w.symbol} pos=${w.isOpenPosition ? 'open' : 'none'} data=NA err=${rec.fetchError}`;
+            ? `${w.symbol} pos=${positionOpen ? 'open' : 'none'} IBS=${ibsStr} near=${nearStr} thr=${thresholdStr}`
+            : `${w.symbol} pos=${positionOpen ? 'open' : 'none'} data=NA err=${rec.fetchError}`;
           logLines.push(logOne);
         }
         const text = `<pre>${header}\n\n${blocks.join('\n\n')}</pre>`;
@@ -996,7 +1004,7 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
         for (const rec of sorted) {
           const { w } = rec;
           // Exit confirmations
-          if (rec.dataOk && !!w.isOpenPosition && rec.confirmExit && !w.sent.confirm1) {
+          if (rec.dataOk && isPositionOpen(w) && rec.confirmExit && !w.sent.confirm1) {
             exits.push(`${w.symbol}: IBS ${rec.ibs.toFixed(3)} (≥ ${w.highIBS}); цена: ${formatMoney(rec.quote.current)}; диапазон: ${formatMoney(rec.range.low)} - ${formatMoney(rec.range.high)}`);
             if (!options || options.updateState !== false) {
               // Mark confirmation sent for today (but don't auto-close position - user should manually update)
@@ -1007,7 +1015,7 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
             }
           }
           // Entry confirmations (do not auto-open position beyond marking confirmation to avoid unintended flips)
-          if (rec.dataOk && !w.isOpenPosition && rec.confirmEntry && !w.sent.entryConfirm1) {
+          if (rec.dataOk && !isPositionOpen(w) && rec.confirmEntry && !w.sent.entryConfirm1) {
             entries.push(`${w.symbol}: IBS ${rec.ibs.toFixed(3)} (≤ ${w.lowIBS ?? 0.1}); цена: ${formatMoney(rec.quote.current)}; диапазон: ${formatMoney(rec.range.low)} - ${formatMoney(rec.range.high)}`);
             if (!options || options.updateState !== false) {
               w.sent.entryConfirm1 = true;
@@ -1152,7 +1160,8 @@ app.get('/api/telegram/watches', (req, res) => {
     highIBS: w.highIBS,
     thresholdPct: w.thresholdPct,
     entryPrice: w.entryPrice ?? null,
-    isOpenPosition: !!w.isOpenPosition,
+    // Автоматически определяем позицию: если есть entryPrice, значит позиция открыта
+    isOpenPosition: !!(w.entryPrice !== null && w.entryPrice !== undefined),
     chatId: w.chatId ? 'configured' : null,
   }));
   res.json(list);
