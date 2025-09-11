@@ -127,6 +127,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       { id: 'buyAtClose', label: 'Покупка на открытии', visible: true },
       { id: 'buyAtClose4', label: 'Мультитикер', visible: true },
       { id: 'noStopLoss', label: 'Без stop loss', visible: true },
+      { id: 'singlePosition', label: 'Одна позиция', visible: true },
       { id: 'splits', label: 'Сплиты', visible: true }
     ];
   })(),
