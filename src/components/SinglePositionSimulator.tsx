@@ -8,6 +8,7 @@ import { TradesTable } from './TradesTable';
 import { EquityChart } from './EquityChart';
 import { StrategyParameters } from './StrategyParameters';
 import { logWarn } from '../lib/error-logger';
+import { Download } from 'lucide-react';
 
 // Вспомогательная функция для форматирования валюты
 function formatCurrencyUSD(value: number): string {
@@ -502,6 +503,55 @@ export function SinglePositionSimulator({ strategy }: SinglePositionSimulatorPro
   const [tickers, setTickers] = useState<string[]>(['AAPL', 'MSFT', 'GOOGL', 'TSLA']);
   const [leveragePercent, setLeveragePercent] = useState(200); // 200% = 2:1 leverage
 
+  // Функция экспорта данных в JSON
+  const exportToJSON = () => {
+    if (!strategy || !backtest) return;
+
+    const exportData = {
+      strategyName: strategy.name,
+      description: strategy.description,
+      exportDate: new Date().toISOString(),
+      settings: {
+        tickers: tickers,
+        leverage: `${(leveragePercent/100).toFixed(1)}:1`,
+        leveragePercent: leveragePercent,
+        positionSize: "100% депозита",
+        strategy: "Single Position Multi-Ticker"
+      },
+      strategyParameters: {
+        lowIBS: strategy.parameters?.lowIBS ?? 0.1,
+        highIBS: strategy.parameters?.highIBS ?? 0.75,
+        maxHoldDays: strategy.parameters?.maxHoldDays ?? 30,
+        initialCapital: strategy.riskManagement?.initialCapital ?? 10000,
+        commission: strategy.riskManagement?.commission
+      },
+      results: {
+        finalValue: backtest.finalValue,
+        totalReturn: backtest.metrics.totalReturn,
+        cagr: backtest.metrics.cagr,
+        winRate: backtest.metrics.winRate,
+        maxDrawdown: backtest.maxDrawdown,
+        totalTrades: backtest.trades.length,
+        winningTrades: backtest.metrics.winningTrades,
+        losingTrades: backtest.metrics.losingTrades
+      },
+      trades: backtest.trades,
+      equity: backtest.equity
+    };
+
+    const jsonString = JSON.stringify(exportData, null, 2);
+    const blob = new Blob([jsonString], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `single-position-strategy-${Date.now()}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   if (!strategy) {
     return (
       <div className="p-4 bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-800 rounded-lg">
@@ -668,9 +718,19 @@ export function SinglePositionSimulator({ strategy }: SinglePositionSimulatorPro
 
           {/* График equity */}
           <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
-            <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-4">
-              График доходности портфеля (Single Position Strategy)
-            </h3>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-gray-900 dark:text-gray-100">
+                График доходности портфеля (Single Position Strategy)
+              </h3>
+              <button
+                onClick={exportToJSON}
+                className="inline-flex items-center gap-2 px-3 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors"
+                title="Экспорт данных стратегии в JSON"
+              >
+                <Download className="w-4 h-4" />
+                Экспорт в JSON
+              </button>
+            </div>
             <div className="w-full h-[600px] min-h-[600px]">
               <EquityChart equity={backtest.equity} hideHeader />
             </div>
