@@ -148,7 +148,14 @@ rm -rf ~/stonks/server/server.js.backup 2>/dev/null || true
 cp ~/stonks/server/server.js ~/stonks/server/server.js.backup 2>/dev/null || true
 
 echo '🔄 Копирование свежих файлов...' &&
+if [ ! -d ~/dist ] || [ -z "$(ls -A ~/dist 2>/dev/null)" ]; then
+    echo '❌ ОШИБКА: Директория ~/dist пуста или не существует!'
+    echo 'Содержимое ~/ :' && ls -la ~/ | grep -E '(dist|server|build-info)'
+    exit 1
+fi &&
+echo 'Копируем frontend файлы...' &&
 cp -r ~/dist/* ~/stonks/dist/ &&
+echo 'Копируем server файлы...' &&
 cp ~/server/server.js ~/stonks/server/server.js &&
 
 echo '📋 Сохранение информации о сборке...' &&
@@ -157,7 +164,17 @@ cp ~/build-info.json ~/stonks/build-info.json &&
 echo '🔨 Пересборка контейнеров...' &&
 cd ~/stonks &&
 docker compose build &&
+if [ $? -ne 0 ]; then
+    echo '❌ ОШИБКА: Сборка контейнеров не удалась!'
+    exit 1
+fi &&
+echo '🚀 Запуск контейнеров...' &&
 docker compose up -d &&
+if [ $? -ne 0 ]; then
+    echo '❌ ОШИБКА: Запуск контейнеров не удался!'
+    echo 'Статус контейнеров:' && docker compose ps -a
+    exit 1
+fi &&
 
 echo '⏳ Ожидание запуска (30 сек)...' &&
 sleep 30 &&
