@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useAppStore } from '../stores/index';
 import type { Strategy, OHLCData, Trade, EquityPoint } from '../types';
+import { DatasetAPI } from '../lib/api';
+import { adjustOHLCForSplits, dedupeDailyOHLC } from '../lib/utils';
+import { IndicatorEngine } from '../lib/indicators';
 import { TradesTable } from './TradesTable';
 import { EquityChart } from './EquityChart';
 import { StrategyParameters } from './StrategyParameters';
@@ -37,6 +40,36 @@ interface Position {
   totalCost: number;
   entryCommission: number;
   entryIBS: number;
+}
+
+/**
+ * Загружает и подготавливает данные для тикера с учетом сплитов
+ */
+async function loadTickerData(ticker: string): Promise<TickerData> {
+  const ds = await DatasetAPI.getDataset(ticker);
+  
+  let processedData: OHLCData[];
+  
+  if ((ds as any).adjustedForSplits) {
+    processedData = dedupeDailyOHLC(ds.data as unknown as OHLCData[]);
+  } else {
+    let splits: Array<{ date: string; factor: number }> = [];
+    try { 
+      splits = await DatasetAPI.getSplits(ds.ticker); 
+    } catch { 
+      splits = []; 
+    }
+    processedData = dedupeDailyOHLC(adjustOHLCForSplits(ds.data as unknown as OHLCData[], splits));
+  }
+
+  // Рассчитываем IBS для данного тикера
+  const ibsValues = processedData.length > 0 ? IndicatorEngine.calculateIBS(processedData) : [];
+
+  return {
+    ticker,
+    data: processedData,
+    ibsValues
+  };
 }
 
 /**
@@ -455,7 +488,6 @@ interface SinglePositionSimulatorProps {
 }
 
 export function SinglePositionSimulator({ strategy }: SinglePositionSimulatorProps) {
-  const loadedData = useAppStore(s => s.marketData);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [backtest, setBacktest] = useState<{
@@ -482,7 +514,6 @@ export function SinglePositionSimulator({ strategy }: SinglePositionSimulatorPro
 
   const runBacktest = async () => {
     console.log('🚀 runBacktest called with:', {
-      loadedDataLength: loadedData.length,
       tickers,
       leveragePercent,
       hasStrategy: !!strategy
@@ -492,39 +523,12 @@ export function SinglePositionSimulator({ strategy }: SinglePositionSimulatorPro
     setError(null);
     
     try {
-      // Группируем данные по тикерам
-      const tickerDataMap = new Map<string, OHLCData[]>();
-      loadedData.forEach(bar => {
-        if (!tickerDataMap.has(bar.symbol)) {
-          tickerDataMap.set(bar.symbol, []);
-        }
-        tickerDataMap.get(bar.symbol)!.push(bar);
-      });
-
-      // Создаем данные только для выбранных тикеров
-      const tickersData: TickerData[] = [];
-      for (const ticker of tickers) {
-        const data = tickerDataMap.get(ticker);
-        if (data && data.length > 0) {
-          // Сортируем по дате
-          const sortedData = [...data].sort((a, b) => a.date.getTime() - b.date.getTime());
-          
-          // Вычисляем IBS
-          const ibsValues = sortedData.map((bar, index) => {
-            if (index === 0) return 0.5; // Первый бар
-            const prevBar = sortedData[index - 1];
-            const range = bar.high - bar.low;
-            if (range === 0) return 0.5;
-            return (bar.close - bar.low) / range;
-          });
-          
-          tickersData.push({
-            ticker,
-            data: sortedData,
-            ibsValues
-          });
-        }
-      }
+      // Загружаем данные для всех тикеров параллельно
+      console.log('📥 Loading data for tickers:', tickers);
+      const tickersDataPromises = tickers.map(ticker => loadTickerData(ticker));
+      const tickersData = await Promise.all(tickersDataPromises);
+      
+      console.log('✅ Loaded data:', tickersData.map(t => ({ ticker: t.ticker, bars: t.data.length })));
 
       if (tickersData.length === 0) {
         throw new Error('Нет данных для выбранных тикеров');
@@ -542,20 +546,23 @@ export function SinglePositionSimulator({ strategy }: SinglePositionSimulatorPro
 
   useEffect(() => {
     console.log('🔍 SinglePosition useEffect:', {
-      loadedDataLength: loadedData.length,
       tickers,
       leveragePercent,
       hasStrategy: !!strategy
     });
     
-    if (loadedData.length > 0) {
+    if (strategy && tickers.length > 0) {
       console.log('✅ Starting runBacktest...');
       runBacktest();
     } else {
-      console.log('❌ No data loaded, skipping backtest');
-      setError('Нет загруженных данных. Загрузите данные на странице "Данные".');
+      console.log('❌ No strategy or tickers, skipping backtest');
+      if (!strategy) {
+        setError('Выберите стратегию для запуска симуляции');
+      } else if (tickers.length === 0) {
+        setError('Выберите хотя бы один тикер');
+      }
     }
-  }, [loadedData, tickers, leveragePercent, strategy]);
+  }, [tickers, leveragePercent, strategy]);
 
   return (
     <div className="space-y-6">
