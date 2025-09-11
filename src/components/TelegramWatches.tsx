@@ -209,7 +209,23 @@ export function TelegramWatches() {
                   <td className="p-3 dark:text-gray-300">≥ {w.highIBS.toFixed(2)}</td>
                   <td className="p-3 dark:text-gray-300">{w.entryPrice != null ? `$${w.entryPrice.toFixed(2)}` : '—'}</td>
                   <td className="p-3">
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${w.isOpenPosition ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-800' : 'bg-gray-100 text-gray-600 border border-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700'}`}>{w.isOpenPosition ? 'Открыта' : 'Нет'}</span>
+                    <button
+                      onClick={async () => {
+                        try {
+                          await DatasetAPI.updateTelegramWatch(w.symbol, { 
+                            isOpenPosition: !w.isOpenPosition,
+                            entryPrice: !w.isOpenPosition ? null : w.entryPrice 
+                          });
+                          await load();
+                        } catch (e) {
+                          setError(e instanceof Error ? e.message : 'Не удалось изменить статус позиции');
+                        }
+                      }}
+                      className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border transition-colors ${w.isOpenPosition ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-800 dark:hover:bg-emerald-900/50' : 'bg-gray-100 text-gray-600 border-gray-200 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700 dark:hover:bg-gray-700'}`}
+                      title={`Переключить на "${w.isOpenPosition ? 'Нет позиции' : 'Открыта'}"`}
+                    >
+                      {w.isOpenPosition ? 'Открыта' : 'Нет'}
+                    </button>
                   </td>
                   <td className="p-3">
                     <button

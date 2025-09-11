@@ -999,10 +999,11 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
           if (rec.dataOk && !!w.isOpenPosition && rec.confirmExit && !w.sent.confirm1) {
             exits.push(`${w.symbol}: IBS ${rec.ibs.toFixed(3)} (≥ ${w.highIBS}); цена: ${formatMoney(rec.quote.current)}; диапазон: ${formatMoney(rec.range.low)} - ${formatMoney(rec.range.high)}`);
             if (!options || options.updateState !== false) {
-              // Mark confirmation sent for today and toggle position to closed to avoid repeats on next days
+              // Mark confirmation sent for today (but don't auto-close position - user should manually update)
               w.sent.confirm1 = true;
-              w.isOpenPosition = false;
-              w.entryPrice = null;
+              // Removed automatic position closing - user should manually close position via UI
+              // w.isOpenPosition = false;
+              // w.entryPrice = null;
             }
           }
           // Entry confirmations (do not auto-open position beyond marking confirmation to avoid unintended flips)
