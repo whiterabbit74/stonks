@@ -1,5 +1,4 @@
 import '@testing-library/jest-dom';
-import { vi } from 'vitest';
 
 // Mock matchMedia
 Object.defineProperty(window, 'matchMedia', {
@@ -68,39 +67,3 @@ HTMLCanvasElement.prototype.getContext = vi.fn().mockImplementation(() => ({
 if (typeof OffscreenCanvas !== 'undefined') {
   OffscreenCanvas.prototype.getContext = HTMLCanvasElement.prototype.getContext;
 }
-
-// Mock window.location
-Object.defineProperty(window, 'location', {
-  writable: true,
-  value: {
-    href: 'http://localhost:3000',
-    origin: 'http://localhost:3000',
-    protocol: 'http:',
-    hostname: 'localhost',
-    port: '3000',
-    pathname: '/',
-    search: '',
-    hash: '',
-    toString: () => 'http://localhost:3000'
-  }
-});
-
-// Mock URL constructor for chart components
-global.URL = vi.fn().mockImplementation((url, base) => {
-  if (!url || url === 'undefined') {
-    url = 'http://localhost:3000';
-  }
-  return {
-    href: url,
-    origin: 'http://localhost:3000',
-    protocol: 'http:',
-    hostname: 'localhost',
-    port: '3000',
-    pathname: '/',
-    search: '',
-    hash: '',
-    toString: () => url
-  };
-});
-
-global.URL.createObjectURL = vi.fn(() => 'blob:http://localhost:3000/mock-url');

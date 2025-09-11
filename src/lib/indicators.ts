@@ -1,4 +1,5 @@
 import type { OHLCData } from '../types';
+import { logWarn, logInfo } from './error-logger';
 
 /**
  * Technical Indicators Calculation Engine
@@ -160,7 +161,6 @@ export class IndicatorEngine {
       if (high < low || close < low || close > high) {
         // Log data quality issue and return neutral IBS
         if (typeof window !== 'undefined') {
-          const { logWarn } = require('../lib/error-logger');
           logWarn('calc', `Invalid OHLC data: H=${high}, L=${low}, C=${close}`, {
             bar: index,
             date: bar.date,
@@ -176,7 +176,6 @@ export class IndicatorEngine {
       if (high === low) {
         // Log zero-range bar and return neutral IBS
         if (typeof window !== 'undefined') {
-          const { logInfo } = require('../lib/error-logger');
           logInfo('calc', `Zero-range bar: H=L=${high}, C=${close}`, {
             bar: index,
             date: bar.date,
