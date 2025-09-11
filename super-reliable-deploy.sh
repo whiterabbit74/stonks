@@ -110,7 +110,7 @@ echo "{
   \"build_time\": \"$(date)\"
 }" > build-info.json
 
-tar -czf "${ARCHIVE_NAME}" dist/ server/server.js build-info.json
+tar -czf "${ARCHIVE_NAME}" dist/ server/ build-info.json
 
 # 6. ОТПРАВКА НА СЕРВЕР
 echo "📤 Отправка на сервер..."
@@ -153,10 +153,15 @@ if [ ! -d ~/dist ] || [ -z "$(ls -A ~/dist 2>/dev/null)" ]; then
     echo 'Содержимое ~/ :' && ls -la ~/ | grep -E '(dist|server|build-info)'
     exit 1
 fi &&
+if [ ! -d ~/server ] || [ -z "$(ls -A ~/server 2>/dev/null)" ]; then
+    echo '❌ ОШИБКА: Директория ~/server пуста или не существует!'
+    echo 'Содержимое ~/ :' && ls -la ~/ | grep -E '(dist|server|build-info)'
+    exit 1
+fi &&
 echo 'Копируем frontend файлы...' &&
 cp -r ~/dist/* ~/stonks/dist/ &&
 echo 'Копируем server файлы...' &&
-cp ~/server/server.js ~/stonks/server/server.js &&
+cp -r ~/server/* ~/stonks/server/ &&
 
 echo '📋 Сохранение информации о сборке...' &&
 cp ~/build-info.json ~/stonks/build-info.json &&
