@@ -3,7 +3,7 @@ FROM node:20-bookworm-slim AS builder
 WORKDIR /app
 
 # Prefer IPv4 DNS resolution to reduce hangs and configure npm
-ENV NODE_OPTIONS="--dns-result-order=ipv4first --max-old-space-size=256" \
+ENV NODE_OPTIONS="--dns-result-order=ipv4first --max-old-space-size=768" \
     NPM_CONFIG_FUND=false \
     NPM_CONFIG_AUDIT=false \
     NPM_CONFIG_FETCH_RETRIES=6 \
