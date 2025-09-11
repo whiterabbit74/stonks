@@ -80,7 +80,7 @@ export function ErrorConsole({ open, onClose }: ErrorConsoleProps) {
           </div>
         </div>
         <div className="rounded-t-lg border border-b-0 bg-white dark:bg-gray-900 dark:border-gray-800 shadow-sm">
-          <div className="max-h-72 overflow-auto divide-y dark:divide-gray-800">
+          <div className="max-h-96 overflow-auto divide-y dark:divide-gray-800">
             {filtered.length === 0 && (
               <div className="p-3 text-sm text-gray-500">Нет записей</div>
             )}

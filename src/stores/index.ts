@@ -102,19 +102,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   commissionPercentage: 0.1,
   // ИНИЦИАЛИЗАЦИЯ: Загружаем из localStorage или дефолтные настройки
   analysisTabsConfig: (() => {
-    try {
-      const saved = localStorage.getItem('analysisTabsConfig');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) {
-          return parsed;
-        }
-      }
-    } catch (e) {
-      console.warn('Failed to load analysis tabs config from localStorage:', e);
-    }
-    // Дефолтные настройки
-    return [
+    const defaultTabs = [
       { id: 'price', label: 'Цена', visible: true },
       { id: 'equity', label: 'Equity', visible: true },
       { id: 'buyhold', label: 'Buy and hold', visible: true },
@@ -130,6 +118,33 @@ export const useAppStore = create<AppState>((set, get) => ({
       { id: 'singlePosition', label: 'Одна позиция', visible: true },
       { id: 'splits', label: 'Сплиты', visible: true }
     ];
+
+    try {
+      const saved = localStorage.getItem('analysisTabsConfig');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          // Проверяем, есть ли новые табы в дефолтной конфигурации, которых нет в сохраненной
+          const savedIds = new Set(parsed.map((tab: any) => tab.id));
+          const missingTabs = defaultTabs.filter(tab => !savedIds.has(tab.id));
+          
+          if (missingTabs.length > 0) {
+            // Добавляем отсутствующие табы в конец списка
+            const updatedTabs = [...parsed, ...missingTabs];
+            localStorage.setItem('analysisTabsConfig', JSON.stringify(updatedTabs));
+            return updatedTabs;
+          }
+          
+          return parsed;
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to load analysis tabs config from localStorage:', e);
+    }
+    
+    // Сохраняем дефолтные настройки в localStorage
+    localStorage.setItem('analysisTabsConfig', JSON.stringify(defaultTabs));
+    return defaultTabs;
   })(),
   currentStrategy: null,
   backtestResults: null,
