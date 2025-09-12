@@ -197,7 +197,7 @@ export function EquityChart({ equity, hideHeader }: EquityChartProps) {
           try {
             chartRef.current.applyOptions({
               width: chartContainerRef.current.clientWidth,
-              height: Math.max(chartContainerRef.current.clientHeight || 0, 580),
+              height: Math.max(chartContainerRef.current.clientHeight || 0, 870),
             });
           } catch (error) {
             logError('chart', 'Failed to resize chart', {

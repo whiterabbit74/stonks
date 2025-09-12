@@ -308,13 +308,13 @@ export function SplitsTab() {
 
   const renderListTab = () => (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100">Управление сплитами</h3>
           <p className="text-sm text-gray-500 dark:text-gray-400">server/splits.json</p>
         </div>
         <button
-          className="px-3 py-2 text-sm rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+          className="px-4 py-2 text-sm rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700 self-start sm:self-auto"
           onClick={refresh}
           disabled={loading || actionBusy}
         >
@@ -327,109 +327,224 @@ export function SplitsTab() {
       ) : error ? (
         <div className="text-sm text-red-600">{error}</div>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm border-separate border-spacing-0">
-            <thead className="bg-gray-50 dark:bg-gray-900">
-              <tr>
-                <th className="text-left p-3 w-32 border-b dark:text-gray-100">Тикер</th>
-                <th className="text-left p-3 border-b dark:text-gray-100">События</th>
-                <th className="text-left p-3 w-56 border-b dark:text-gray-100">Действия</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y dark:divide-gray-700">
-              {tickers.length === 0 ? (
-                <tr><td colSpan={3} className="p-4 text-center text-gray-500 dark:text-gray-400">Нет данных</td></tr>
-              ) : tickers.map(tk => (
-                <tr key={tk} className="align-top hover:bg-gray-50 dark:hover:bg-gray-800">
-                  <td className="p-3 font-medium dark:text-gray-100">{tk}</td>
-                  <td className="p-3">
-                    {editingTicker === tk ? (
-                      <div className="space-y-2">
-                        {editingEvents.map((s, i) => (
-                          <div key={i} className="flex flex-wrap gap-2 items-center">
-                            <input
-                              type="date"
-                              className="border rounded px-2 py-1 text-sm dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100"
-                              value={(s.date || '').slice(0,10)}
-                              onChange={e => updateEvent(i, { date: e.target.value })}
-                            />
-                            <input
-                              type="number"
-                              step="0.01"
-                              min="0"
-                              className="border rounded px-2 py-1 text-sm w-28 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100"
-                              value={String(s.factor ?? '')}
-                              onChange={e => updateEvent(i, { factor: Number(e.target.value) })}
-                            />
+        <>
+          {/* Desktop Table View */}
+          <div className="hidden lg:block">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm border-separate border-spacing-0">
+                <thead className="bg-gray-50 dark:bg-gray-900">
+                  <tr>
+                    <th className="text-left p-3 w-32 border-b dark:text-gray-100">Тикер</th>
+                    <th className="text-left p-3 border-b dark:text-gray-100">События</th>
+                    <th className="text-left p-3 w-56 border-b dark:text-gray-100">Действия</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y dark:divide-gray-700">
+                  {tickers.length === 0 ? (
+                    <tr><td colSpan={3} className="p-4 text-center text-gray-500 dark:text-gray-400">Нет данных</td></tr>
+                  ) : tickers.map(tk => (
+                    <tr key={tk} className="align-top hover:bg-gray-50 dark:hover:bg-gray-800">
+                      <td className="p-3 font-medium dark:text-gray-100">{tk}</td>
+                      <td className="p-3">
+                        {editingTicker === tk ? (
+                          <div className="space-y-2">
+                            {editingEvents.map((s, i) => (
+                              <div key={i} className="flex flex-wrap gap-2 items-center">
+                                <input
+                                  type="date"
+                                  className="border rounded px-2 py-1 text-sm dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100"
+                                  value={(s.date || '').slice(0,10)}
+                                  onChange={e => updateEvent(i, { date: e.target.value })}
+                                />
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  className="border rounded px-2 py-1 text-sm w-28 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100"
+                                  value={String(s.factor ?? '')}
+                                  onChange={e => updateEvent(i, { factor: Number(e.target.value) })}
+                                />
+                                <button
+                                  className="px-2 py-1 text-xs rounded border hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+                                  onClick={() => removeEventRow(i)}
+                                >
+                                  Удалить
+                                </button>
+                              </div>
+                            ))}
                             <button
                               className="px-2 py-1 text-xs rounded border hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
-                              onClick={() => removeEventRow(i)}
+                              onClick={addEventRow}
                             >
-                              Удалить
+                              Добавить событие
                             </button>
                           </div>
-                        ))}
+                        ) : (
+                          <div className="flex flex-wrap gap-2">
+                            {(data[tk] || []).map((s, i) => (
+                              <span key={i} className="px-2 py-0.5 rounded border bg-gray-50 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-200">
+                                {s.date.slice(0,10)} × {s.factor}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </td>
+                      <td className="p-3 space-x-2">
+                        {editingTicker === tk ? (
+                          <>
+                            <button
+                              className="px-3 py-1.5 text-sm rounded bg-green-600 text-white hover:bg-green-700 disabled:opacity-60"
+                              onClick={saveEdits}
+                              disabled={actionBusy}
+                            >
+                              Сохранить
+                            </button>
+                            <button
+                              className="px-3 py-1.5 text-sm rounded border bg-white hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+                              onClick={cancelEdit}
+                            >
+                              Отмена
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              className="inline-flex items-center justify-center px-2 py-1.5 text-sm rounded border bg-white hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700 transition-colors"
+                              onClick={() => beginEdit(tk)}
+                              title="Редактировать"
+                            >
+                              <Edit className="w-4 h-4" />
+                            </button>
+                            <button
+                              className="inline-flex items-center justify-center px-2 py-1.5 text-sm rounded border bg-white hover:bg-red-50 text-red-600 dark:border-gray-700 dark:bg-gray-800 dark:text-red-400 dark:hover:bg-red-900/30 transition-colors"
+                              onClick={() => deleteTicker(tk)}
+                              disabled={actionBusy}
+                              title="Удалить тикер"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Mobile Card View */}
+          <div className="lg:hidden space-y-4">
+            {tickers.length === 0 ? (
+              <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+                Нет данных
+              </div>
+            ) : tickers.map(tk => (
+              <div key={tk} className="bg-white dark:bg-gray-800 rounded-lg border dark:border-gray-700 p-4 space-y-3">
+                {/* Header with ticker and actions */}
+                <div className="flex items-center justify-between">
+                  <h4 className="text-lg font-semibold text-gray-900 dark:text-gray-100">{tk}</h4>
+                  {editingTicker !== tk && (
+                    <div className="flex gap-2">
+                      <button
+                        className="inline-flex items-center justify-center w-10 h-10 rounded-lg border bg-white hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600 transition-colors"
+                        onClick={() => beginEdit(tk)}
+                        title="Редактировать"
+                      >
+                        <Edit className="w-5 h-5" />
+                      </button>
+                      <button
+                        className="inline-flex items-center justify-center w-10 h-10 rounded-lg border bg-white hover:bg-red-50 text-red-600 dark:border-gray-600 dark:bg-gray-700 dark:text-red-400 dark:hover:bg-red-900/30 transition-colors"
+                        onClick={() => deleteTicker(tk)}
+                        disabled={actionBusy}
+                        title="Удалить тикер"
+                      >
+                        <Trash2 className="w-5 h-5" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Events */}
+                <div>
+                  <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">События сплитов:</div>
+                  {editingTicker === tk ? (
+                    <div className="space-y-3">
+                      {editingEvents.map((s, i) => (
+                        <div key={i} className="p-3 border rounded-lg dark:border-gray-600 space-y-3">
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Дата</label>
+                              <input
+                                type="date"
+                                className="w-full border rounded-lg px-3 py-2 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+                                value={(s.date || '').slice(0,10)}
+                                onChange={e => updateEvent(i, { date: e.target.value })}
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Коэффициент</label>
+                              <input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                className="w-full border rounded-lg px-3 py-2 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+                                value={String(s.factor ?? '')}
+                                onChange={e => updateEvent(i, { factor: Number(e.target.value) })}
+                              />
+                            </div>
+                          </div>
+                          <button
+                            className="w-full px-3 py-2 text-sm rounded-lg border border-red-300 text-red-600 hover:bg-red-50 dark:border-red-600 dark:text-red-400 dark:hover:bg-red-900/20 transition-colors"
+                            onClick={() => removeEventRow(i)}
+                          >
+                            Удалить событие
+                          </button>
+                        </div>
+                      ))}
+                      
+                      <button
+                        className="w-full px-4 py-2 text-sm rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700 transition-colors"
+                        onClick={addEventRow}
+                      >
+                        Добавить событие
+                      </button>
+                      
+                      {/* Save/Cancel buttons for mobile */}
+                      <div className="grid grid-cols-2 gap-3 pt-2">
                         <button
-                          className="px-2 py-1 text-xs rounded border hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
-                          onClick={addEventRow}
-                        >
-                          Добавить событие
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="flex flex-wrap gap-2">
-                        {(data[tk] || []).map((s, i) => (
-                          <span key={i} className="px-2 py-0.5 rounded border bg-gray-50 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-200">
-                            {s.date.slice(0,10)} × {s.factor}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </td>
-                  <td className="p-3 space-x-2">
-                    {editingTicker === tk ? (
-                      <>
-                        <button
-                          className="px-3 py-1.5 text-sm rounded bg-green-600 text-white hover:bg-green-700 disabled:opacity-60"
+                          className="px-4 py-3 text-sm font-medium rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-60 transition-colors"
                           onClick={saveEdits}
                           disabled={actionBusy}
                         >
                           Сохранить
                         </button>
                         <button
-                          className="px-3 py-1.5 text-sm rounded border bg-white hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+                          className="px-4 py-3 text-sm font-medium rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700 transition-colors"
                           onClick={cancelEdit}
                         >
                           Отмена
                         </button>
-                      </>
-                    ) : (
-                      <>
-                        <button
-                          className="inline-flex items-center justify-center px-2 py-1.5 text-sm rounded border bg-white hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700 transition-colors"
-                          onClick={() => beginEdit(tk)}
-                          title="Редактировать"
-                          aria-label="Редактировать"
-                        >
-                          <Edit className="w-4 h-4" />
-                        </button>
-                        <button
-                          className="inline-flex items-center justify-center px-2 py-1.5 text-sm rounded border bg-white hover:bg-red-50 text-red-600 dark:border-gray-700 dark:bg-gray-800 dark:text-red-400 dark:hover:bg-red-900/30 transition-colors"
-                          onClick={() => deleteTicker(tk)}
-                          disabled={actionBusy}
-                          title="Удалить тикер"
-                          aria-label="Удалить тикер"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {(data[tk] || []).length === 0 ? (
+                        <span className="text-sm text-gray-500 dark:text-gray-400 italic">Нет событий</span>
+                      ) : (
+                        (data[tk] || []).map((s, i) => (
+                          <span key={i} className="px-3 py-1.5 rounded-lg border bg-gray-50 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200 text-sm">
+                            {s.date.slice(0,10)} × {s.factor}
+                          </span>
+                        ))
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
       )}
     </div>
   );

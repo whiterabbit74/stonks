@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Heart, RefreshCcw, AlertTriangle, Loader2 } from 'lucide-react';
+import { Heart, RefreshCcw, AlertTriangle, Loader2, Download } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { DatasetAPI } from '../lib/api';
 import { formatOHLCYMD } from '../lib/utils';
@@ -761,7 +761,7 @@ export function Results() {
 
 
             {activeChart === 'price' && (
-              <div className="h-[600px] mt-4 mb-6">
+              <div className="h-[900px] mt-4 mb-6">
                 <TradingChart data={marketData} trades={trades} splits={currentSplits} />
               </div>
             )}
@@ -791,7 +791,9 @@ export function Results() {
                     );
                   })()}
                 </div>
-                <EquityChart equity={equity} />
+                <div className="h-[870px]">
+                  <EquityChart equity={equity} />
+                </div>
               </div>
             )}
             {activeChart === 'buyhold' && (
@@ -820,14 +822,41 @@ export function Results() {
                     Текущее плечо: ×{buyHoldAppliedLeverage.toFixed(2)}
                   </div>
                 </div>
-                <EquityChart equity={buyHoldSimEquity.length ? buyHoldSimEquity : (buyHoldEquity as unknown as EquityPoint[])} />
+                <div className="h-[870px]">
+                  <EquityChart equity={buyHoldSimEquity.length ? buyHoldSimEquity : (buyHoldEquity as unknown as EquityPoint[])} />
+                </div>
               </div>
             )}
             {activeChart === 'drawdown' && (
               <TradeDrawdownChart trades={trades} initialCapital={Number(currentStrategy?.riskManagement?.initialCapital ?? 10000)} />
             )}
             {activeChart === 'trades' && (
-              <TradesTable trades={trades} />
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="text-sm text-gray-600 dark:text-gray-400">
+                    Всего сделок: {trades.length}
+                  </div>
+                  <button
+                    onClick={() => {
+                      const dataStr = JSON.stringify(trades, null, 2);
+                      const blob = new Blob([dataStr], { type: 'application/json' });
+                      const url = URL.createObjectURL(blob);
+                      const link = document.createElement('a');
+                      link.href = url;
+                      link.download = `trades-${symbol || 'backtest'}-${new Date().toISOString().slice(0, 10)}.json`;
+                      document.body.appendChild(link);
+                      link.click();
+                      document.body.removeChild(link);
+                      URL.revokeObjectURL(url);
+                    }}
+                    className="inline-flex items-center gap-2 px-3 py-1.5 text-sm border border-gray-300 rounded-md bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700 transition-colors"
+                  >
+                    <Download className="w-4 h-4" />
+                    Скачать JSON
+                  </button>
+                </div>
+                <TradesTable trades={trades} />
+              </div>
             )}
             {activeChart === 'profit' && (
               <ProfitFactorChart trades={trades} />

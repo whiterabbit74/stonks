@@ -20,6 +20,28 @@ function formatCurrencyUSD(value: number): string {
   }).format(value);
 }
 
+// Функция для красивого форматирования чисел с сокращениями
+function formatNumber(value: number): string {
+  if (Math.abs(value) >= 1_000_000) {
+    return `${(value / 1_000_000).toFixed(2)}M`;
+  } else if (Math.abs(value) >= 1_000) {
+    return `${(value / 1_000).toFixed(1)}K`;
+  } else {
+    return value.toFixed(2);
+  }
+}
+
+// Функция для форматирования валюты с сокращениями
+function formatCurrencyCompact(value: number): string {
+  if (Math.abs(value) >= 1_000_000) {
+    return `$${(value / 1_000_000).toFixed(2)}M`;
+  } else if (Math.abs(value) >= 1_000) {
+    return `$${(value / 1_000).toFixed(1)}K`;
+  } else {
+    return `$${value.toFixed(2)}`;
+  }
+}
+
 interface TickerData {
   ticker: string;
   data: OHLCData[];
@@ -209,7 +231,7 @@ function runSinglePositionBacktest(
   const sortedDates = Array.from(allDates).sort((a, b) => a - b);
 
   console.log(`🚀 SINGLE POSITION MULTI-TICKER BACKTEST START`);
-  console.log(`📊 Initial Capital: ${formatCurrencyUSD(initialCapital)}`);
+  console.log(`📊 Initial Capital: ${formatCurrencyCompact(initialCapital)} (${formatCurrencyUSD(initialCapital)})`);
   console.log(`📈 Tickers: ${tickersData.map(t => t.ticker).join(', ')}`);
   console.log(`💰 Position Size: 100% депозита на сделку`);
   console.log(`💹 Leverage: ${leverage.toFixed(1)}:1 (${(leverage * 100).toFixed(0)}%)`);
@@ -300,8 +322,8 @@ function runSinglePositionBacktest(
             currentPosition = null; // Закрываем позицию
 
             console.log(`🔴 EXIT [${trade.context.ticker}]: IBS=${ibs.toFixed(3)}, ${exitReason}`);
-            console.log(`   💰 P&L=${formatCurrencyUSD(totalPnL)} (${pnlPercent.toFixed(2)}%), Duration=${daysSinceEntry} days`);
-            console.log(`   📊 Portfolio: ${formatCurrencyUSD(portfolio.totalPortfolioValue)}`);
+            console.log(`   💰 P&L=${formatCurrencyCompact(totalPnL)} (${pnlPercent.toFixed(2)}%), Duration=${daysSinceEntry} days`);
+            console.log(`   📊 Portfolio: ${formatCurrencyCompact(portfolio.totalPortfolioValue)}`);
           }
         }
       }
@@ -365,9 +387,9 @@ function runSinglePositionBacktest(
             portfolio.totalInvestedCost += totalCashRequired;
             
             console.log(`🟢 ENTRY [${tickerData.ticker}]: IBS=${ibs.toFixed(3)} < ${lowIBS}`);
-            console.log(`   💰 Stock Value: ${formatCurrencyUSD(stockCost)} | Margin: ${formatCurrencyUSD(marginRequired)} | Commission: ${formatCurrencyUSD(entryCommission)}`);
-            console.log(`   📊 Portfolio: Free=${formatCurrencyUSD(portfolio.freeCapital)} | Invested=${formatCurrencyUSD(portfolio.totalInvestedCost)}`);
-            console.log(`   🎯 Leverage: ${leverage.toFixed(1)}:1 | Total Cash Required: ${formatCurrencyUSD(totalCashRequired)}`);
+            console.log(`   💰 Stock Value: ${formatCurrencyCompact(stockCost)} | Margin: ${formatCurrencyCompact(marginRequired)} | Commission: ${formatCurrencyCompact(entryCommission)}`);
+            console.log(`   📊 Portfolio: Free=${formatCurrencyCompact(portfolio.freeCapital)} | Invested=${formatCurrencyCompact(portfolio.totalInvestedCost)}`);
+            console.log(`   🎯 Leverage: ${leverage.toFixed(1)}:1 | Total Cash Required: ${formatCurrencyCompact(totalCashRequired)}`);
           }
         }
       }
@@ -471,7 +493,7 @@ function runSinglePositionBacktest(
   };
 
   console.log(`✅ SINGLE POSITION BACKTEST COMPLETE`);
-  console.log(`📊 Final Value: ${formatCurrencyUSD(finalValue)}`);
+  console.log(`📊 Final Value: ${formatCurrencyCompact(finalValue)} (${formatCurrencyUSD(finalValue)})`);
   console.log(`📈 Total Return: ${totalReturn.toFixed(2)}%`);
   console.log(`🎯 Total Trades: ${trades.length}`);
 
@@ -594,25 +616,7 @@ export function SinglePositionSimulator({ strategy }: SinglePositionSimulatorPro
     }
   };
 
-  useEffect(() => {
-    console.log('🔍 SinglePosition useEffect:', {
-      tickers,
-      leveragePercent,
-      hasStrategy: !!strategy
-    });
-    
-    if (strategy && tickers.length > 0) {
-      console.log('✅ Starting runBacktest...');
-      runBacktest();
-    } else {
-      console.log('❌ No strategy or tickers, skipping backtest');
-      if (!strategy) {
-        setError('Выберите стратегию для запуска симуляции');
-      } else if (tickers.length === 0) {
-        setError('Выберите хотя бы один тикер');
-      }
-    }
-  }, [tickers, leveragePercent, strategy]);
+  // Removed auto-calculation useEffect - now using manual button
 
   return (
     <div className="space-y-6">
@@ -646,14 +650,29 @@ export function SinglePositionSimulator({ strategy }: SinglePositionSimulatorPro
               className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
             >
               <option value={100}>100% (без плеча)</option>
+              <option value={125}>125% (1.25:1)</option>
+              <option value={150}>150% (1.5:1)</option>
+              <option value={175}>175% (1.75:1)</option>
               <option value={200}>200% (2:1)</option>
+              <option value={225}>225% (2.25:1)</option>
+              <option value={250}>250% (2.5:1)</option>
+              <option value={275}>275% (2.75:1)</option>
               <option value={300}>300% (3:1)</option>
             </select>
           </div>
         </div>
         
-        <div className="text-xs text-gray-500 mt-2">
-          Одна позиция на 100% депозита. Выбирается лучший сигнал среди всех тикеров.
+        <div className="flex items-center justify-between mt-4">
+          <div className="text-xs text-gray-500">
+            Одна позиция на 100% депозита. Выбирается лучший сигнал среди всех тикеров.
+          </div>
+          <button
+            onClick={runBacktest}
+            disabled={isLoading || !strategy || tickers.length === 0}
+            className="inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white text-sm font-medium rounded-md transition-colors"
+          >
+            {isLoading ? 'Расчёт...' : 'Запустить бэктест'}
+          </button>
         </div>
         
         <div className="mt-3 text-sm text-gray-600 dark:text-gray-400">
@@ -676,12 +695,27 @@ export function SinglePositionSimulator({ strategy }: SinglePositionSimulatorPro
       )}
 
       {/* Результаты */}
+      {!isLoading && !backtest && !error && (
+        <div className="bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg p-8 text-center">
+          <div className="text-gray-600 dark:text-gray-400">
+            <div className="text-lg font-medium mb-2">🎯 Single Position Strategy</div>
+            <p className="text-sm">Нажмите "Запустить бэктест" для расчёта результатов стратегии</p>
+            <div className="mt-3 text-xs text-gray-500">
+              Будет проанализирована торговля с одной позицией на весь депозит среди выбранных тикеров
+            </div>
+          </div>
+        </div>
+      )}
+      
       {!isLoading && backtest && (
         <>
           {/* Метрики */}
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
             <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 text-center">
               <div className="text-2xl font-bold text-green-600">
+                {formatCurrencyCompact(backtest.finalValue)}
+              </div>
+              <div className="text-xs text-gray-500 dark:text-gray-500 mt-1">
                 {formatCurrencyUSD(backtest.finalValue)}
               </div>
               <div className="text-sm text-gray-600 dark:text-gray-400">Итоговый баланс</div>
@@ -748,8 +782,7 @@ export function SinglePositionSimulator({ strategy }: SinglePositionSimulatorPro
                 additionalParams={{
                   'Размер позиции': '100% депозита',
                   'Количество тикеров': tickers.length,
-                  'Начальный капитал': '$10,000',
-                  'Leverage': `${(leveragePercent/100).toFixed(1)}:1 (${leveragePercent}%)`,
+                  'Начальный капитал': formatCurrencyCompact(Number(strategy?.riskManagement?.initialCapital ?? 10000)),
                   'Логика': 'Single Position - одна позиция на весь депозит'
                 }}
               />

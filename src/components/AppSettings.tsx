@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { DatasetAPI } from '../lib/api';
 import { useAppStore } from '../stores';
 import { sanitizeNumericInput, sanitizeTextInput, VALIDATION_CONSTRAINTS } from '../lib/input-validation';
+import { BarChart3, TrendingUp, ShoppingCart, TrendingDown, Target, Calculator, Clock, AlertTriangle, PiggyBank, DollarSign, BarChart2, Layers } from 'lucide-react';
 // import { StrategySettings } from './StrategySettings';
 
 // SettingsData interface removed - not actively used
@@ -58,6 +59,27 @@ export function AppSettings() {
   const [telegramBotToken, setTelegramBotToken] = useState('');
   const [telegramChatId, setTelegramChatId] = useState('');
 
+  // Иконки для табов
+  const getTabIcon = (tabId: string) => {
+    const iconMap: Record<string, React.ReactNode> = {
+      price: <BarChart3 className="w-4 h-4" />,
+      equity: <TrendingUp className="w-4 h-4" />,
+      buyhold: <ShoppingCart className="w-4 h-4" />,
+      drawdown: <TrendingDown className="w-4 h-4" />,
+      trades: <Target className="w-4 h-4" />,
+      profit: <Calculator className="w-4 h-4" />,
+      duration: <Clock className="w-4 h-4" />,
+      openDayDrawdown: <AlertTriangle className="w-4 h-4" />,
+      margin: <PiggyBank className="w-4 h-4" />,
+      singlePosition: <DollarSign className="w-4 h-4" />,
+      splits: <Layers className="w-4 h-4" />
+    };
+    return iconMap[tabId] || <BarChart2 className="w-4 h-4" />;
+  };
+
+  // Drag & Drop состояние
+  const [draggedTab, setDraggedTab] = useState<string | null>(null);
+
   // Функции для управления табами аналитики
   const toggleTabVisibility = (tabId: string) => {
     const newConfig = analysisTabsConfig.map(tab => 
@@ -66,22 +88,38 @@ export function AppSettings() {
     setAnalysisTabsConfig(newConfig);
   };
 
-  const moveTabUp = (tabId: string) => {
-    const index = analysisTabsConfig.findIndex(tab => tab.id === tabId);
-    if (index <= 0) return;
-    
-    const newConfig = [...analysisTabsConfig];
-    [newConfig[index - 1], newConfig[index]] = [newConfig[index], newConfig[index - 1]];
-    setAnalysisTabsConfig(newConfig);
+  // Drag & Drop функции
+  const handleDragStart = (e: React.DragEvent, tabId: string) => {
+    setDraggedTab(tabId);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/html', tabId);
   };
 
-  const moveTabDown = (tabId: string) => {
-    const index = analysisTabsConfig.findIndex(tab => tab.id === tabId);
-    if (index >= analysisTabsConfig.length - 1) return;
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  };
+
+  const handleDrop = (e: React.DragEvent, targetTabId: string) => {
+    e.preventDefault();
+    
+    if (!draggedTab || draggedTab === targetTabId) return;
+    
+    const draggedIndex = analysisTabsConfig.findIndex(tab => tab.id === draggedTab);
+    const targetIndex = analysisTabsConfig.findIndex(tab => tab.id === targetTabId);
+    
+    if (draggedIndex === -1 || targetIndex === -1) return;
     
     const newConfig = [...analysisTabsConfig];
-    [newConfig[index], newConfig[index + 1]] = [newConfig[index + 1], newConfig[index]];
+    const [draggedItem] = newConfig.splice(draggedIndex, 1);
+    newConfig.splice(targetIndex, 0, draggedItem);
+    
     setAnalysisTabsConfig(newConfig);
+    setDraggedTab(null);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedTab(null);
   };
 
   const saveInterfaceSettings = async () => {
@@ -490,100 +528,117 @@ export function AppSettings() {
 
   // Interface Settings Tab
   const InterfaceTab = () => (
-    <div className="space-y-4">
+    <div className="space-y-6">
       {/* Управление табами аналитики */}
-      <div className="p-4 rounded-lg border">
-        <div className="text-sm font-medium text-gray-700 mb-3">Управление табами "Аналитика сделок"</div>
-        <div className="text-xs text-gray-500 mb-4">
-          Настройте порядок и видимость вкладок в разделе "Аналитика сделок" на странице результатов.
+      <div className="p-6 rounded-lg border">
+        <div className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">Управление табами "Аналитика сделок"</div>
+        <div className="text-sm text-gray-600 dark:text-gray-400 mb-6">
+          Перетаскивайте блоки для изменения порядка. Нажмите на блок, чтобы скрыть/показать вкладку.
         </div>
         
-        <div className="space-y-2 max-h-96 overflow-y-auto">
-          {analysisTabsConfig.map((tab, index) => (
-            <div 
-              key={tab.id} 
-              className="flex items-center gap-3 p-3 rounded-lg border bg-white dark:bg-gray-800 dark:border-gray-700"
+        {/* Draggable blocks */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+          {analysisTabsConfig.map((tab) => (
+            <div
+              key={tab.id}
+              draggable
+              onDragStart={(e) => handleDragStart(e, tab.id)}
+              onDragOver={handleDragOver}
+              onDrop={(e) => handleDrop(e, tab.id)}
+              onDragEnd={handleDragEnd}
+              onClick={() => toggleTabVisibility(tab.id)}
+              className={`
+                relative p-4 rounded-lg border-2 cursor-pointer transition-all duration-200
+                ${tab.visible 
+                  ? 'bg-white border-blue-200 shadow-sm hover:shadow-md hover:border-blue-300' 
+                  : 'bg-gray-100 border-gray-300 opacity-60 hover:opacity-80'
+                }
+                ${draggedTab === tab.id ? 'rotate-3 scale-105 shadow-lg z-10' : ''}
+                hover:scale-105 active:scale-95
+              `}
+              title={`${tab.visible ? 'Нажмите, чтобы скрыть' : 'Нажмите, чтобы показать'} • Перетаскивайте для изменения порядка`}
             >
-              {/* Номер порядка */}
-              <div className="w-8 h-8 rounded-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center text-sm font-medium">
-                {index + 1}
+              {/* Drag handle */}
+              <div className="absolute top-2 right-2 text-gray-400 text-xs">
+                ⋮⋮
               </div>
               
-              {/* Чекбокс видимости */}
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={tab.visible}
-                  onChange={() => toggleTabVisibility(tab.id)}
-                  className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
-                />
-                <span className={`text-sm ${tab.visible ? 'text-gray-900 dark:text-gray-100' : 'text-gray-400 line-through'}`}>
+              {/* Icon and label */}
+              <div className="flex flex-col items-center text-center space-y-2">
+                <div className={`
+                  p-3 rounded-full transition-colors
+                  ${tab.visible 
+                    ? 'bg-blue-100 text-blue-600' 
+                    : 'bg-gray-200 text-gray-500'
+                  }
+                `}>
+                  {getTabIcon(tab.id)}
+                </div>
+                
+                <div className={`
+                  text-sm font-medium leading-tight
+                  ${tab.visible 
+                    ? 'text-gray-900' 
+                    : 'text-gray-500 line-through'
+                  }
+                `}>
                   {tab.label}
-                </span>
-              </label>
-              
-              {/* Кнопки перемещения */}
-              <div className="ml-auto flex gap-1">
-                <button
-                  onClick={() => moveTabUp(tab.id)}
-                  disabled={index === 0}
-                  className="w-8 h-8 rounded border bg-gray-50 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center text-gray-600 text-xs"
-                  title="Переместить вверх"
-                >
-                  ↑
-                </button>
-                <button
-                  onClick={() => moveTabDown(tab.id)}
-                  disabled={index === analysisTabsConfig.length - 1}
-                  className="w-8 h-8 rounded border bg-gray-50 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center text-gray-600 text-xs"
-                  title="Переместить вниз"
-                >
-                  ↓
-                </button>
+                </div>
               </div>
+              
+              {/* Status indicator */}
+              <div className={`
+                absolute bottom-2 left-2 w-2 h-2 rounded-full
+                ${tab.visible ? 'bg-green-400' : 'bg-red-400'}
+              `} />
             </div>
           ))}
         </div>
 
-        <div className="mt-4 flex items-center gap-2">
-          <button
-            onClick={saveInterfaceSettings}
-            disabled={saving}
-            className="px-4 py-2 rounded-md bg-indigo-600 text-white text-sm hover:bg-indigo-700 disabled:bg-gray-400"
-          >
-            {saving ? 'Сохранение…' : 'Сохранить настройки интерфейса'}
-          </button>
-          {saveOk && <span className="text-sm text-green-600">{saveOk}</span>}
-          {saveErr && <span className="text-sm text-red-600">{saveErr}</span>}
-        </div>
-        
-        <div className="text-xs text-gray-500 mt-2">
-          💡 Снимите галочку, чтобы скрыть вкладку. Используйте стрелки для изменения порядка.
+        {/* Statistics */}
+        <div className="mt-6 flex items-center justify-between text-sm text-gray-600 dark:text-gray-400">
+          <div>
+            Видимые вкладки: <span className="font-medium text-green-600">
+              {analysisTabsConfig.filter(tab => tab.visible).length}
+            </span> из {analysisTabsConfig.length}
+          </div>
+          <div className="flex items-center gap-4 text-xs">
+            <div className="flex items-center gap-1">
+              <div className="w-2 h-2 rounded-full bg-green-400"></div>
+              Показана
+            </div>
+            <div className="flex items-center gap-1">
+              <div className="w-2 h-2 rounded-full bg-red-400"></div>
+              Скрыта
+            </div>
+          </div>
         </div>
       </div>
       
       {/* Предварительный просмотр */}
       <div className="p-4 rounded-lg border bg-gray-50 dark:bg-gray-800">
         <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Предварительный просмотр</div>
-        <div className="text-xs text-gray-500 mb-2">Так будут выглядеть вкладки в разделе "Аналитика сделок":</div>
+        <div className="text-xs text-gray-500 mb-3">Так будут выглядеть вкладки в разделе "Аналитика сделок":</div>
         
         <div className="flex flex-wrap gap-2">
           {analysisTabsConfig
             .filter(tab => tab.visible)
-            .map(tab => (
-              <button
-                key={tab.id}
-                className="px-3 py-1.5 rounded border bg-white border-gray-200 text-gray-700 text-sm"
-                disabled
-              >
-                {tab.label}
-              </button>
+            .map((tab, index) => (
+              <div key={tab.id} className="flex items-center gap-2">
+                <button className="flex items-center gap-2 px-3 py-1.5 rounded border bg-white border-gray-200 text-gray-700 text-sm">
+                  {getTabIcon(tab.id)}
+                  {tab.label}
+                </button>
+                {index < analysisTabsConfig.filter(tab => tab.visible).length - 1 && (
+                  <span className="text-gray-300">•</span>
+                )}
+              </div>
             ))}
         </div>
         
-        <div className="text-xs text-gray-500 mt-2">
-          Видимые вкладки: {analysisTabsConfig.filter(tab => tab.visible).length} из {analysisTabsConfig.length}
-        </div>
+        {analysisTabsConfig.filter(tab => tab.visible).length === 0 && (
+          <div className="text-gray-500 text-sm italic">Нет видимых вкладок</div>
+        )}
       </div>
     </div>
   );
