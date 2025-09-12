@@ -354,10 +354,17 @@ export function TelegramWatches() {
                       if (r.prices.failedTickers?.length) {
                         pricesMessage += `. Ошибки: ${r.prices.failedTickers.length}`;
                       }
+                    } else if (r.prices.updated) {
+                      pricesMessage = `✅ Цены: обновлено ${r.prices.count} тикеров${r.prices.tickers?.length ? ` (${r.prices.tickers.join(', ')})` : ''}`;
                     } else {
-                      pricesMessage = r.prices.updated 
-                        ? `✅ Цены: обновлено ${r.prices.count} тикеров${r.prices.tickers?.length ? ` (${r.prices.tickers.join(', ')})` : ''}`
-                        : 'Цены: обновления не требуются';
+                      // Check if server provided timing information
+                      if (r.prices.reason === 'wrong_timing') {
+                        pricesMessage = `⏰ Цены: скрипт не запускался (${r.prices.currentTime || 'неизвестно'}, нужно: ${r.prices.targetRunTime || '16:16 ET'})`;
+                      } else if (r.prices.reason === 'not_trading_day') {
+                        pricesMessage = `📅 Цены: не торговый день, скрипт не запускался`;
+                      } else {
+                        pricesMessage = `ℹ️ Цены: обновления не требуются`;
+                      }
                     }
                     
                     const changesCount = r.positions.changes?.length || 0;

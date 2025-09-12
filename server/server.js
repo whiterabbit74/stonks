@@ -1205,7 +1205,7 @@ async function runPriceActualization() {
   const cal = await loadTradingCalendarJSON().catch(() => null);
   
   try {
-    console.log(`🕐 runPriceActualization called at ${nowEt.hh}:${String(nowEt.mm).padStart(2,'0')}:${String(nowEt.ss).padStart(2,'0')} ET`);
+    console.log(`🕐 runPriceActualization called at ${String(nowEt.hh).padStart(2,'0')}:${String(nowEt.mm).padStart(2,'0')}:${String(nowEt.ss).padStart(2,'0')} ET`);
     
     // Only run on trading days
     if (!isTradingDayByCalendarET(nowEt, cal)) {
@@ -1221,8 +1221,20 @@ async function runPriceActualization() {
     
     // Run exactly 16 minutes after close
     if (minutesAfterClose !== 16) {
+      const nextRunTime = new Date();
+      const targetMinutes = session.closeMin + 16;
+      nextRunTime.setHours(Math.floor(targetMinutes / 60), targetMinutes % 60, 0, 0);
+      
       console.log(`⏳ Not time yet (need exactly 16 min after close, currently ${minutesAfterClose} min after)`);
-      return { updated: false, reason: 'wrong_timing', minutesAfterClose };
+      console.log(`⏰ Target run time: ${String(Math.floor(targetMinutes / 60)).padStart(2, '0')}:${String(targetMinutes % 60).padStart(2, '0')} ET`);
+      
+      return { 
+        updated: false, 
+        reason: 'wrong_timing', 
+        minutesAfterClose,
+        targetRunTime: `${String(Math.floor(targetMinutes / 60)).padStart(2, '0')}:${String(targetMinutes % 60).padStart(2, '0')} ET`,
+        currentTime: `${String(nowEt.hh).padStart(2,'0')}:${String(nowEt.mm).padStart(2,'0')} ET`
+      };
     }
     
     const todayKey = etKeyYMD(nowEt);
@@ -1589,7 +1601,11 @@ app.post('/api/telegram/update-all', async (req, res) => {
         hasProblems: priceResult.hasProblems || false,
         failedTickers: priceResult.failedTickers || [],
         tickersWithoutTodayData: priceResult.tickersWithoutTodayData || [],
-        todayKey: priceResult.todayKey
+        todayKey: priceResult.todayKey,
+        reason: priceResult.reason,
+        targetRunTime: priceResult.targetRunTime,
+        currentTime: priceResult.currentTime,
+        minutesAfterClose: priceResult.minutesAfterClose
       },
       positions: {
         updated: positionResults.length,
