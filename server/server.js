@@ -866,6 +866,40 @@ app.patch('/api/telegram/watch/:symbol', (req, res) => {
   res.json({ success: true });
 });
 
+// Helper functions for dataset date checking
+async function getDatasetBeforeUpdate(symbol) {
+  const ticker = toSafeTicker(symbol);
+  if (!ticker) return null;
+  const filePath = resolveDatasetFilePathById(ticker);
+  if (filePath && await fs.pathExists(filePath)) {
+    return await fs.readJson(filePath).catch(() => null);
+  }
+  return null;
+}
+
+async function getDatasetAfterUpdate(symbol) {
+  return await getDatasetBeforeUpdate(symbol); // Same logic, just called after update
+}
+
+function getLastDateFromDataset(dataset) {
+  if (!dataset || !Array.isArray(dataset.data) || !dataset.data.length) {
+    // Try dateRange as fallback
+    return dataset?.dateRange?.to ? dataset.dateRange.to.slice(0, 10) : null;
+  }
+  const lastBar = dataset.data[dataset.data.length - 1];
+  if (!lastBar || !lastBar.date) return null;
+  
+  // Handle different date formats
+  if (typeof lastBar.date === 'string') {
+    return lastBar.date.slice(0, 10); // YYYY-MM-DD
+  }
+  try {
+    return new Date(lastBar.date).toISOString().slice(0, 10);
+  } catch {
+    return null;
+  }
+}
+
 // Ensure AV refresh for each watched symbol and check dataset freshness (prev trading day exists)
 async function refreshTickerViaAlphaVantageAndCheckFreshness(symbol, nowEtParts) {
   const ticker = toSafeTicker(symbol);
@@ -1165,53 +1199,149 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
   }
 }
 
-// Price actualization script - runs 2 minutes AFTER market close to update final prices
+// Price actualization script - runs 16 minutes AFTER market close to update final prices
 async function runPriceActualization() {
+  const nowEt = getETParts(new Date());
+  const cal = await loadTradingCalendarJSON().catch(() => null);
+  
   try {
-    // Check if we're 2 minutes after market close
-    const nowEt = getETParts(new Date());
-    const cal = await loadTradingCalendarJSON().catch(() => null);
+    console.log(`🕐 runPriceActualization called at ${nowEt.hh}:${String(nowEt.mm).padStart(2,'0')}:${String(nowEt.ss).padStart(2,'0')} ET`);
     
     // Only run on trading days
-    if (!isTradingDayByCalendarET(nowEt, cal)) return { updated: false };
+    if (!isTradingDayByCalendarET(nowEt, cal)) {
+      console.log('📅 Not a trading day, skipping price actualization');
+      return { updated: false, reason: 'not_trading_day' };
+    }
     
     const session = getTradingSessionForDateET(nowEt, cal);
     const nowMinutes = (nowEt.hh * 60 + nowEt.mm);
     const minutesAfterClose = nowMinutes - session.closeMin;
     
-    // Run exactly 2 minutes after close
-    if (minutesAfterClose !== 2) return { updated: false };
+    console.log(`⏰ Market closed at ${Math.floor(session.closeMin/60)}:${String(session.closeMin%60).padStart(2,'0')} ET, now ${minutesAfterClose} minutes after close`);
+    
+    // Run exactly 16 minutes after close
+    if (minutesAfterClose !== 16) {
+      console.log(`⏳ Not time yet (need exactly 16 min after close, currently ${minutesAfterClose} min after)`);
+      return { updated: false, reason: 'wrong_timing', minutesAfterClose };
+    }
     
     const todayKey = etKeyYMD(nowEt);
-    await appendMonitorLog([`T+2min: начинаем актуализацию цен закрытия для ${todayKey}`]);
+    console.log(`📊 T+16min: Starting price actualization for ${todayKey}`);
+    await appendMonitorLog([`T+16min: начинаем актуализацию цен закрытия для ${todayKey}`]);
     
     let updatedTickers = [];
+    let failedTickers = [];
+    let tickersWithoutTodayData = [];
     
     // Update all watched tickers
     for (const w of telegramWatches.values()) {
       try {
-        await appendMonitorLog([`Обновляем ${w.symbol}...`]);
+        console.log(`🔄 Processing ticker: ${w.symbol}`);
+        await appendMonitorLog([`Обновляем ${w.symbol} через AlphaVantage...`]);
+        
+        // Get dataset before update to check last date
+        const beforeDataset = await getDatasetBeforeUpdate(w.symbol);
+        const beforeLastDate = beforeDataset ? getLastDateFromDataset(beforeDataset) : null;
+        console.log(`📅 ${w.symbol}: last date before update = ${beforeLastDate || 'none'}`);
+        
         const result = await refreshTickerViaAlphaVantageAndCheckFreshness(w.symbol, nowEt);
+        
         if (result.avFresh) {
-          updatedTickers.push(w.symbol);
-          await appendMonitorLog([`${w.symbol} - обновлён успешно`]);
+          // Check if we actually got today's data
+          const afterDataset = await getDatasetAfterUpdate(w.symbol);
+          const afterLastDate = afterDataset ? getLastDateFromDataset(afterDataset) : null;
+          console.log(`📅 ${w.symbol}: last date after update = ${afterLastDate || 'none'}`);
+          
+          if (afterLastDate === todayKey) {
+            updatedTickers.push(w.symbol);
+            console.log(`✅ ${w.symbol}: successfully updated with today's data (${todayKey})`);
+            await appendMonitorLog([`${w.symbol} - обновлён успешно с данными за ${todayKey}`]);
+          } else {
+            tickersWithoutTodayData.push({
+              symbol: w.symbol, 
+              lastDate: afterLastDate,
+              expectedDate: todayKey
+            });
+            console.log(`⚠️ ${w.symbol}: API call successful but no data for ${todayKey}, last date: ${afterLastDate}`);
+            await appendMonitorLog([`${w.symbol} - API успешно, но нет данных за ${todayKey} (последняя дата: ${afterLastDate})`]);
+          }
         } else {
-          await appendMonitorLog([`${w.symbol} - не удалось обновить данные`]);
+          failedTickers.push({
+            symbol: w.symbol,
+            reason: result.reason || 'API call failed'
+          });
+          console.log(`❌ ${w.symbol}: API call failed - ${result.reason || 'unknown reason'}`);
+          await appendMonitorLog([`${w.symbol} - не удалось обновить: ${result.reason || 'неизвестная ошибка'}`]);
         }
+        
         // Small delay to avoid hitting API rate limits
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise(resolve => setTimeout(resolve, 1200));
       } catch (error) {
+        failedTickers.push({
+          symbol: w.symbol,
+          reason: error.message
+        });
+        console.log(`❌ ${w.symbol}: Exception - ${error.message}`);
         await appendMonitorLog([`${w.symbol} - ошибка: ${error.message}`]);
       }
     }
     
-    const logMsg = updatedTickers.length > 0 
-      ? `Актуализация завершена. Обновлено тикеров: ${updatedTickers.length} (${updatedTickers.join(', ')})`
-      : 'Актуализация завершена. Ни одного тикера не обновлено.';
+    // Create comprehensive summary
+    const totalTickers = telegramWatches.size;
+    const actuallyUpdated = updatedTickers.length;
+    const hasProblems = failedTickers.length > 0 || tickersWithoutTodayData.length > 0;
+    
+    let logMsg = `📊 Актуализация цен завершена (${todayKey}):\n`;
+    logMsg += `• Всего тикеров: ${totalTickers}\n`;
+    logMsg += `• Успешно обновлено с данными за сегодня: ${actuallyUpdated}`;
+    if (actuallyUpdated > 0) logMsg += ` (${updatedTickers.join(', ')})`;
+    logMsg += `\n`;
+    
+    if (tickersWithoutTodayData.length > 0) {
+      logMsg += `• Обновлено, но без данных за сегодня: ${tickersWithoutTodayData.length} `;
+      logMsg += `(${tickersWithoutTodayData.map(t => `${t.symbol}:${t.lastDate}`).join(', ')})\n`;
+    }
+    
+    if (failedTickers.length > 0) {
+      logMsg += `• Не удалось обновить: ${failedTickers.length} `;
+      logMsg += `(${failedTickers.map(t => `${t.symbol}:${t.reason}`).join(', ')})\n`;
+    }
+    
+    console.log(logMsg);
     await appendMonitorLog([logMsg]);
     
+    // Send Telegram notification about actualization results
+    if (hasProblems) {
+      let telegramMsg = `⚠️ Актуализация цен (${todayKey}) - ЕСТЬ ПРОБЛЕМЫ\n\n`;
+      telegramMsg += `✅ Обновлено с данными за сегодня: ${actuallyUpdated}/${totalTickers}\n`;
+      if (actuallyUpdated > 0) telegramMsg += `${updatedTickers.join(', ')}\n\n`;
+      
+      if (tickersWithoutTodayData.length > 0) {
+        telegramMsg += `⚠️ Без данных за сегодня (${tickersWithoutTodayData.length}):\n`;
+        tickersWithoutTodayData.forEach(t => {
+          telegramMsg += `• ${t.symbol}: последняя дата ${t.lastDate || 'неизвестно'}\n`;
+        });
+        telegramMsg += `\n`;
+      }
+      
+      if (failedTickers.length > 0) {
+        telegramMsg += `❌ Ошибки обновления (${failedTickers.length}):\n`;
+        failedTickers.forEach(t => {
+          telegramMsg += `• ${t.symbol}: ${t.reason}\n`;
+        });
+      }
+      
+      // Send error notification
+      try {
+        await sendTelegramMessage(getApiConfig().TELEGRAM_CHAT_ID, telegramMsg);
+        console.log('📱 Problem notification sent to Telegram');
+      } catch (teleError) {
+        console.log(`📱 Failed to send Telegram notification: ${teleError.message}`);
+      }
+    }
+    
     // НОВАЯ ЛОГИКА: Расчет позиций после обновления данных
-    await appendMonitorLog([`T+2min: начинаем пересчёт позиций для всех тикеров...`]);
+    await appendMonitorLog([`T+16min: начинаем пересчёт позиций для всех тикеров...`]);
     
     let positionUpdates = [];
     
@@ -1295,11 +1425,35 @@ async function runPriceActualization() {
       await sendTelegramMessage(chatId, message);
     }
     
-    return { updated: true, count: updatedTickers.length, tickers: updatedTickers };
+    return { 
+      updated: true, 
+      count: actuallyUpdated, 
+      tickers: updatedTickers,
+      totalTickers: totalTickers,
+      failedTickers: failedTickers,
+      tickersWithoutTodayData: tickersWithoutTodayData,
+      hasProblems: hasProblems,
+      todayKey: todayKey
+    };
   } catch (error) {
-    console.warn('Price actualization error:', error.message);
-    try { await appendMonitorLog([`Ошибка актуализации цен: ${error.message}`]); } catch {}
-    return { updated: false };
+    console.error('💥 Price actualization error:', error.message);
+    console.error(error.stack);
+    
+    // Send error notification to Telegram
+    try {
+      let errorMsg = `❌ КРИТИЧЕСКАЯ ОШИБКА актуализации цен\n\n`;
+      errorMsg += `Время: ${new Date().toISOString()}\n`;
+      errorMsg += `Ошибка: ${error.message}\n`;
+      errorMsg += `\nПроверьте логи сервера!`;
+      
+      await sendTelegramMessage(getApiConfig().TELEGRAM_CHAT_ID, errorMsg);
+      console.log('📱 Critical error notification sent to Telegram');
+    } catch (teleError) {
+      console.log(`📱 Failed to send critical error notification: ${teleError.message}`);
+    }
+    
+    try { await appendMonitorLog([`❌ КРИТИЧЕСКАЯ ОШИБКА актуализации цен: ${error.message}`]); } catch {}
+    return { updated: false, error: error.message };
   }
 }
 
@@ -1412,6 +1566,39 @@ app.post('/api/telegram/update-positions', async (req, res) => {
     });
   } catch (error) {
     console.error('Error updating positions:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Combined endpoint: actualize prices and update positions
+app.post('/api/telegram/update-all', async (req, res) => {
+  try {
+    // First, actualize prices
+    const priceResult = await runPriceActualization();
+    
+    // Then, update positions based on new prices
+    const positionResults = await updateAllPositions();
+    
+    res.json({ 
+      success: true,
+      prices: {
+        updated: priceResult.updated,
+        count: priceResult.count || 0,
+        tickers: priceResult.tickers || [],
+        totalTickers: priceResult.totalTickers || 0,
+        hasProblems: priceResult.hasProblems || false,
+        failedTickers: priceResult.failedTickers || [],
+        tickersWithoutTodayData: priceResult.tickersWithoutTodayData || [],
+        todayKey: priceResult.todayKey
+      },
+      positions: {
+        updated: positionResults.length,
+        changes: positionResults.filter(r => r.changeType !== 'no_change'),
+        results: positionResults
+      }
+    });
+  } catch (error) {
+    console.error('Error updating prices and positions:', error);
     res.status(500).json({ error: error.message });
   }
 });

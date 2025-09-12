@@ -336,47 +336,48 @@ export function TelegramWatches() {
             </button>
             <button
               onClick={async () => {
-                try {
-                  const r = await DatasetAPI.actualizePrices();
-                  const message = r.success 
-                    ? `Обновлено тикеров: ${r.count}${r.tickers?.length ? ` (${r.tickers.join(', ')})` : ''}`
-                    : 'Обновление не выполнено';
-                  setInfo({ open: true, title: 'Актуализация цен', message, kind: r.success ? 'success' : 'error' });
-                } catch (e) {
-                  setInfo({ open: true, title: 'Ошибка', message: e instanceof Error ? e.message : 'Не удалось выполнить актуализацию', kind: 'error' });
-                }
-              }}
-              className="inline-flex items-center px-3 py-2 rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
-            >
-              Актуализация цен
-            </button>
-            <button
-              onClick={async () => {
                 setLoading(true);
                 try {
-                  const response = await fetch('/api/telegram/update-positions', {
+                  const response = await fetch('/api/telegram/update-all', {
                     method: 'POST',
                     credentials: 'include'
                   });
                   const r = await response.json();
                   
                   if (r.success) {
-                    const changesCount = r.changes?.length || 0;
-                    const changesList = r.changes?.map((c: any) => 
+                    let pricesMessage = '';
+                    if (r.prices.hasProblems) {
+                      pricesMessage = `⚠️ Цены: ${r.prices.count}/${r.prices.totalTickers} обновлены с данными за сегодня`;
+                      if (r.prices.tickersWithoutTodayData?.length) {
+                        pricesMessage += `. Без данных за сегодня: ${r.prices.tickersWithoutTodayData.length}`;
+                      }
+                      if (r.prices.failedTickers?.length) {
+                        pricesMessage += `. Ошибки: ${r.prices.failedTickers.length}`;
+                      }
+                    } else {
+                      pricesMessage = r.prices.updated 
+                        ? `✅ Цены: обновлено ${r.prices.count} тикеров${r.prices.tickers?.length ? ` (${r.prices.tickers.join(', ')})` : ''}`
+                        : 'Цены: обновления не требуются';
+                    }
+                    
+                    const changesCount = r.positions.changes?.length || 0;
+                    const changesList = r.positions.changes?.map((c: any) => 
                       `${c.symbol}: ${c.changeType === 'opened' ? 'открыта' : 'закрыта'} ${c.entryPrice ? `($${c.entryPrice.toFixed(2)})` : ''}`
                     ).join(', ') || '';
                     
-                    const message = changesCount > 0 
-                      ? `Обновлено позиций: ${r.updated}, изменений: ${changesCount}. ${changesList}`
-                      : `Обновлено позиций: ${r.updated}, изменений нет`;
+                    const positionsMessage = changesCount > 0 
+                      ? `Позиции: обновлено ${r.positions.updated}, изменений: ${changesCount}. ${changesList}`
+                      : `Позиции: обновлено ${r.positions.updated}, изменений нет`;
                       
-                    setInfo({ open: true, title: 'Обновление позиций', message, kind: 'success' });
+                    const message = `${pricesMessage}. ${positionsMessage}`;
+                    const kind = r.prices.hasProblems ? 'error' : 'success';
+                    setInfo({ open: true, title: 'Обновление цен и позиций', message, kind });
                     await load(); // Перезагружаем список
                   } else {
-                    setInfo({ open: true, title: 'Ошибка', message: 'Не удалось обновить позиции', kind: 'error' });
+                    setInfo({ open: true, title: 'Ошибка', message: 'Не удалось обновить данные', kind: 'error' });
                   }
                 } catch (e) {
-                  setInfo({ open: true, title: 'Ошибка', message: e instanceof Error ? e.message : 'Не удалось обновить позиции', kind: 'error' });
+                  setInfo({ open: true, title: 'Ошибка', message: e instanceof Error ? e.message : 'Не удалось обновить данные', kind: 'error' });
                 } finally {
                   setLoading(false);
                 }
@@ -384,7 +385,7 @@ export function TelegramWatches() {
               className="inline-flex items-center px-3 py-2 rounded-md border border-green-300 bg-green-50 text-green-700 hover:bg-green-100 dark:border-green-700 dark:bg-green-900/30 dark:text-green-300 dark:hover:bg-green-900/50"
               disabled={loading}
             >
-              {loading ? 'Обновление...' : 'Пересчет позиций'}
+              {loading ? 'Обновление...' : 'Обновить цены и позиции'}
             </button>
           </div>
         </div>

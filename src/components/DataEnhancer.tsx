@@ -21,7 +21,7 @@ interface DataEnhancerProps {
 //   volume: number;
 // }
 
-type TabType = 'enhance' | 'upload' | 'tickers';
+type TabType = 'enhance' | 'upload';
 
 export function DataEnhancer({ onNext }: DataEnhancerProps) {
   const navigate = useNavigate();
@@ -47,7 +47,6 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [loadingTicker, setLoadingTicker] = useState<string | null>(null);
 
   // При смене вкладки очищаем сообщения
   useEffect(() => {
@@ -135,37 +134,9 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
     if (file) handleFileSelect(file);
   };
 
-  // Handle ticker click for quick loading
-  const handleTickerClick = async (tickerSymbol: string) => {
-    try {
-      setLoadingTicker(tickerSymbol);
-      setTicker(tickerSymbol); // Also set the ticker in the input field
-      await loadDatasetsFromServer();
-      await loadDatasetFromServer(tickerSymbol);
-      
-      // Ensure strategy exists
-      if (!currentStrategy) {
-        try {
-          const tpl = STRATEGY_TEMPLATES[0];
-          const strat = createStrategyFromTemplate(tpl);
-          setStrategy(strat);
-        } catch (e) {
-          console.warn('Failed to ensure default strategy', e);
-        }
-      }
-      
-      setLoadingTicker(null);
-      
-      // Navigate to results
-      try { navigate('/results'); } catch { /* ignore */ }
-      if (onNext) onNext();
-      
-      // Start backtest in background
-      try { runBacktest?.(); } catch (e) { console.warn('Failed to start backtest', e); }
-    } catch (e) {
-      console.warn('Failed to load ticker', e);
-      setLoadingTicker(null);
-    }
+  // Handle ticker click to populate input field
+  const handleTickerClick = (tickerSymbol: string) => {
+    setTicker(tickerSymbol);
   };
 
   // Handle data enhancement
@@ -212,8 +183,7 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
 
   const tabs = [
     { id: 'enhance' as TabType, label: 'Новые данные' },
-    { id: 'upload' as TabType, label: 'Загрузка файла' },
-    { id: 'tickers' as TabType, label: 'Популярные тикеры' }
+    { id: 'upload' as TabType, label: 'Загрузка файла' }
   ];
 
   return (
@@ -284,6 +254,49 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
             </div>
           </div>
 
+          {/* Popular Tickers */}
+          <div className="space-y-6">
+            {Object.entries(tickerCategories).map(([category, tickers]) => (
+              <div key={category} className="bg-white rounded-lg border p-4 dark:bg-gray-900 dark:border-gray-800">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="flex items-center justify-center w-8 h-8 bg-green-50 rounded-lg dark:bg-green-950/20">
+                    <TrendingUp className="w-4 h-4 text-green-600" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-gray-900 dark:text-gray-100 text-base">
+                      {category}
+                    </h3>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      Нажмите на тикер, чтобы подставить его в поле выше
+                    </p>
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <div className="flex gap-2 pb-2" style={{ width: 'fit-content' }}>
+                    {tickers.map((tickerSymbol) => {
+                      const isActive = ticker === tickerSymbol;
+                      
+                      return (
+                        <button
+                          key={tickerSymbol}
+                          onClick={() => handleTickerClick(tickerSymbol)}
+                          className={`flex-shrink-0 flex items-center justify-center px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 min-w-[60px] h-9 ${
+                            isActive
+                              ? 'bg-blue-100 text-blue-800 border-2 border-blue-300 shadow-sm dark:bg-blue-950/30 dark:text-blue-200 dark:border-blue-900/50'
+                              : 'bg-gray-50 text-gray-700 border border-gray-200 hover:bg-gray-100 hover:border-gray-300 hover:shadow-sm dark:bg-gray-800 dark:text-gray-200 dark:border-gray-700 dark:hover:bg-gray-700 dark:hover:border-gray-600'
+                          }`}
+                        >
+                          {tickerSymbol}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
           <p className="text-xs text-gray-500 text-center mt-2 dark:text-gray-400">📈 Источник данных: Alpha Vantage / Finnhub через локальный сервер</p>
         </div>
       )}
@@ -350,74 +363,8 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
                 )}
                 {globalLoading ? 'Загрузка...' : 'Выбрать JSON'}
               </button>
-              <button
-                onClick={() => document.getElementById('dataset-library')?.scrollIntoView({ behavior: 'smooth' })}
-                disabled={globalLoading}
-                className="inline-flex items-center gap-2 rounded-md border border-gray-200 px-4 py-2 font-medium text-gray-700 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800 disabled:text-gray-400 disabled:cursor-not-allowed disabled:hover:bg-transparent"
-              >
-                <Download className="h-4 w-4" /> Выбрать из библиотеки
-              </button>
             </div>
           </div>
-
-          <div id="dataset-library" className="mt-10">
-            <DatasetLibrary onAfterLoad={onNext} />
-          </div>
-        </div>
-      )}
-
-      {activeTab === 'tickers' && (
-        <div className="space-y-6">
-          {Object.entries(tickerCategories).map(([category, tickers]) => (
-            <div key={category} className="bg-white rounded-lg border p-4 mb-6 dark:bg-gray-900 dark:border-gray-800">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="flex items-center justify-center w-8 h-8 bg-green-50 rounded-lg dark:bg-green-950/20">
-                  <TrendingUp className="w-4 h-4 text-green-600" />
-                </div>
-                <div>
-                  <h3 className="font-semibold text-gray-900 dark:text-gray-100 text-base">
-                    {category}
-                  </h3>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">
-                    Нажмите на тикер для быстрой загрузки данных
-                  </p>
-                </div>
-              </div>
-
-              <div className="overflow-x-auto">
-                <div className="flex gap-2 pb-2" style={{ width: 'fit-content' }}>
-                  {tickers.map((tickerSymbol) => {
-                    const isActive = currentDataset?.ticker === tickerSymbol;
-                    const isLoadingThis = loadingTicker === tickerSymbol;
-                    const isDisabled = isLoadingThis || globalLoading;
-                    
-                    return (
-                      <button
-                        key={tickerSymbol}
-                        onClick={() => handleTickerClick(tickerSymbol)}
-                        disabled={isDisabled}
-                        className={`flex-shrink-0 flex items-center justify-center px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 min-w-[60px] h-9 ${
-                          isActive
-                            ? 'bg-blue-100 text-blue-800 border-2 border-blue-300 shadow-sm dark:bg-blue-950/30 dark:text-blue-200 dark:border-blue-900/50'
-                            : isDisabled
-                            ? 'bg-gray-100 text-gray-500 border border-gray-200 cursor-not-allowed dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700'
-                            : 'bg-gray-50 text-gray-700 border border-gray-200 hover:bg-gray-100 hover:border-gray-300 hover:shadow-sm dark:bg-gray-800 dark:text-gray-200 dark:border-gray-700 dark:hover:bg-gray-700 dark:hover:border-gray-600'
-                        }`}
-                      >
-                        {isLoadingThis ? (
-                          <Loader2 className="w-3 h-3 animate-spin" />
-                        ) : globalLoading ? (
-                          <span className="opacity-50">{tickerSymbol}</span>
-                        ) : (
-                          tickerSymbol
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          ))}
         </div>
       )}
 

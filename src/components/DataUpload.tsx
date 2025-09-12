@@ -26,36 +26,6 @@ export function DataUpload({ onNext }: DataUploadProps) {
       <div className="space-y-6">
         {/* Список тикеров показан ниже карточки */}
 
-        {/* Summary card */}
-        {currentDataset ? (
-          <div className="mx-auto max-w-2xl">
-            <div className="rounded-2xl border border-blue-200 bg-gradient-to-b from-blue-50 to-white p-5 shadow-sm dark:from-gray-900 dark:to-gray-900 dark:border-gray-800">
-              <div className="flex items-center gap-3 mb-2">
-                <div className="inline-flex items-center justify-center w-10 h-10 bg-blue-100 rounded-full dark:bg-blue-950/40">
-                  <CheckCircle className="w-6 h-6 text-blue-600" />
-                </div>
-                <div>
-                  <div className="text-sm text-blue-700 dark:text-blue-300">Датасет загружен</div>
-                  <div className="text-xl font-semibold text-blue-900 dark:text-blue-200">{currentDataset.companyName || currentDataset.ticker}</div>
-                </div>
-              </div>
-              <div className="flex flex-wrap items-center gap-2 mt-2">
-                <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 border border-blue-200 dark:bg-blue-950/30 dark:text-blue-200 dark:border-blue-900/50">{currentDataset.ticker}</span>
-                <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700 border dark:bg-gray-800 dark:text-gray-200 dark:border-gray-700">{currentDataset.dataPoints.toLocaleString()} точек</span>
-                <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700 border dark:bg-gray-800 dark:text-gray-200 dark:border-gray-700">{currentDataset.dateRange.from} — {currentDataset.dateRange.to}</span>
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div className="text-center">
-            <div className="inline-flex items-center justify-center w-16 h-16 bg-green-100 rounded-full mb-4 dark:bg-green-900/30">
-              <CheckCircle className="w-8 h-8 text-green-600" />
-            </div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-2 dark:text-gray-100">Данные загружены</h3>
-            <p className="text-gray-600 mb-4 dark:text-gray-300">{marketData.length} строк готовы для бэктеста</p>
-
-          </div>
-        )}
 
         {/* Библиотека датасетов (всегда доступна) */}
         <div className="mt-6 relative">
