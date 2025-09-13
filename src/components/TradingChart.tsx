@@ -124,7 +124,7 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
 
       // Create single chart
       const el = chartContainerRef.current;
-      const totalH = chartContainerRef.current.clientHeight || 400;
+      const totalH = chartContainerRef.current.clientHeight || 600;
       const chart = createChart(el, {
         width: el.clientWidth,
         height: totalH,
@@ -257,10 +257,7 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
       try { ibsHist.setData(ibsData); } catch (e) {
         logError('chart', 'ibsHist.setData failed', { length: ibsData.length, sample: ibsData.slice(0, 3) }, 'TradingChart', (e as any)?.stack);
       }
-      try {
-        ibsHist.createPriceLine({ price: 0.10, color: '#9ca3af', lineWidth: 1, lineStyle: 2, title: '0.10' });
-        ibsHist.createPriceLine({ price: 0.75, color: '#9ca3af', lineWidth: 1, lineStyle: 2, title: '0.75' });
-      } catch (e) { console.warn('Failed to create price lines', e); }
+      // Убраны лишние линии IBS по запросу пользователя
       ibsSeriesRef.current = ibsHist;
 
       // EMA series (создаем скрытыми; их видимость управляется отдельно)
@@ -411,7 +408,7 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
         try {
           const w = chartContainerRef.current.clientWidth;
           const total = chartContainerRef.current.clientHeight || 600;
-          chartRef.current.applyOptions({ width: w, height: Math.max(total, 360) });
+          chartRef.current.applyOptions({ width: w, height: Math.max(total, 600) });
         } catch (error) {
           logError('chart', 'Failed to resize trading chart', {
             error: (error as Error).message
