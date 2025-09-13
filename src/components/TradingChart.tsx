@@ -28,6 +28,7 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
   const [showIBS, setShowIBS] = useState(false);
   const [showVolume, setShowVolume] = useState(false);
   const [isDark, setIsDark] = useState<boolean>(() => typeof document !== 'undefined' ? document.documentElement.classList.contains('dark') : false);
+  const indicatorPanePercent = useAppStore(s => s.indicatorPanePercent);
 
   // Функция для расчета EMA
   const calculateEMA = (data: OHLCData[], period: number): number[] => {
@@ -153,11 +154,13 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
         wickDownColor: '#EF4444',
         borderVisible: true,
       });
-      // Настройка позиции основных свечей согласно документации
+      // Настройка позиции основных свечей с динамической высотой панели индикаторов
+      const indicatorFraction = Math.max(0.05, Math.min(0.4, indicatorPanePercent / 100));
+      const priceBottomMargin = indicatorFraction + 0.1; // панель индикаторов + буфер 10%
       candlestickSeries.priceScale().applyOptions({
         scaleMargins: {
-          top: 0.1,    // 10% отступ сверху
-          bottom: 0.3, // 30% отступ снизу (20% для индикаторов + 10% буфер)
+          top: 0.1, // 10% отступ сверху
+          bottom: priceBottomMargin, // динамический отступ снизу
         },
       });
       candlestickSeriesRef.current = candlestickSeries;
@@ -210,10 +213,11 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
         visible: false,
         title: 'Объём',
       });
-      // Позиционирование overlay в нижние 20% согласно документации
+      // Позиционирование overlay динамически согласно настройке
+      const volumeTopMargin = 1 - indicatorFraction; // динамический отступ сверху
       volumeSeries.priceScale().applyOptions({
         scaleMargins: {
-          top: 0.8, // 80% отступ сверху - займет нижние 20%
+          top: volumeTopMargin, // динамический отступ сверху
           bottom: 0,
         },
       });
@@ -230,10 +234,10 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
         visible: false,
         title: 'IBS',
       });
-      // Позиционирование IBS overlay в нижние 20%
+      // Позиционирование IBS overlay динамически согласно настройке
       ibsHist.priceScale().applyOptions({
         scaleMargins: {
-          top: 0.8, // 80% отступ сверху - займет нижние 20%
+          top: volumeTopMargin, // тот же динамический отступ сверху
           bottom: 0,
         },
       });
@@ -424,7 +428,7 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
       console.error('Error creating trading chart:', error);
       return;
     }
-  }, [data, trades, splits, isDark]);
+  }, [data, trades, splits, isDark, indicatorPanePercent]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -510,7 +514,7 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
         </button>
       </div>
 
-      {/* Single Chart Container: Price 80% top, Volume/IBS 20% bottom overlay */}
+      {/* Single Chart Container: Price adjusts dynamically, Volume/IBS height configurable via settings */}
       <div ref={chartContainerRef} className="min-h-0 overflow-hidden w-full h-full" />
     </div>
   );
