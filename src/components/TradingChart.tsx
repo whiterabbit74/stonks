@@ -28,7 +28,6 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
   const [showIBS, setShowIBS] = useState(false);
   const [showVolume, setShowVolume] = useState(false);
   const [isDark, setIsDark] = useState<boolean>(() => typeof document !== 'undefined' ? document.documentElement.classList.contains('dark') : false);
-  const indicatorPanePercent = useAppStore(s => s.indicatorPanePercent);
 
   // Функция для расчета EMA
   const calculateEMA = (data: OHLCData[], period: number): number[] => {
@@ -123,7 +122,7 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
       const grid = isDark ? '#1f2937' : '#eef2ff';
       const border = isDark ? '#374151' : '#e5e7eb';
 
-      // Create single chart, bottom ~20% for indicator scale
+      // Create single chart
       const el = chartContainerRef.current;
       const totalH = chartContainerRef.current.clientHeight || 400;
       const chart = createChart(el, {
@@ -132,22 +131,9 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
         layout: { background: { color: bg }, textColor: text },
         grid: { vertLines: { color: grid }, horzLines: { color: grid } },
         crosshair: { mode: 1 },
-        // Keep main price scale margins small; indicator will occupy its own configurable area
-        rightPriceScale: { borderColor: border, scaleMargins: { top: 0.05, bottom: 0.05 } },
+        rightPriceScale: { borderColor: border },
         timeScale: { borderColor: border, timeVisible: true, secondsVisible: false, rightOffset: 8 },
       });
-
-      // Indicator price scale occupies bottom X% of the pane
-      const indicatorFraction = Math.max(0.05, Math.min(0.2, (indicatorPanePercent || 10) / 100));
-      const topMargin = 1 - indicatorFraction; // e.g. 0.90 when 10%
-      try { 
-        chart.priceScale('indicator').applyOptions({ 
-          scaleMargins: { top: topMargin, bottom: 0.02 }, 
-          borderColor: border 
-        }); 
-      } catch {
-        // Ignore indicator scale options errors
-      }
 
       chartRef.current = chart;
 
@@ -157,7 +143,7 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
         return;
       }
 
-      // Свечной ряд
+      // Свечной ряд - займет верхние 80% графика
       const candlestickSeries = chart.addCandlestickSeries({
         upColor: '#10B981',
         downColor: '#EF4444',
@@ -166,6 +152,13 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
         wickUpColor: '#10B981',
         wickDownColor: '#EF4444',
         borderVisible: true,
+      });
+      // Настройка позиции основных свечей согласно документации
+      candlestickSeries.priceScale().applyOptions({
+        scaleMargins: {
+          top: 0.1,    // 10% отступ сверху
+          bottom: 0.3, // 30% отступ снизу (20% для индикаторов + 10% буфер)
+        },
       });
       candlestickSeriesRef.current = candlestickSeries;
 
@@ -196,7 +189,7 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
         // Ignore timescale options errors
       }
 
-      // Indicator content on main chart: Volume and IBS histograms
+      // Объём как overlay - займет нижние 20% согласно документации
       const volumeData = data.map((bar, idx) => {
         const value = Number(bar.volume);
         const t = Math.floor(bar.date.getTime() / 1000) as UTCTimestamp;
@@ -212,22 +205,37 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
       const volumeSeries = chart.addHistogramSeries({
         color: isDark ? 'rgba(148, 163, 184, 0.35)' : 'rgba(148, 163, 184, 0.45)',
         priceFormat: { type: 'volume' as const },
-        priceScaleId: 'indicator',
+        priceScaleId: '', // Overlay согласно документации
         base: 0,
         visible: false,
         title: 'Объём',
+      });
+      // Позиционирование overlay в нижние 20% согласно документации
+      volumeSeries.priceScale().applyOptions({
+        scaleMargins: {
+          top: 0.8, // 80% отступ сверху - займет нижние 20%
+          bottom: 0,
+        },
       });
       try { volumeSeries.setData(volumeData); } catch (e) {
         logError('chart', 'volumeSeries.setData failed', { length: volumeData.length, sample: volumeData.slice(0, 3) }, 'TradingChart', (e as any)?.stack);
       }
       volumeSeriesRef.current = volumeSeries;
 
+      // IBS как overlay - также займет нижние 20%
       const ibsHist = chart.addHistogramSeries({
-        priceScaleId: 'indicator',
+        priceScaleId: '', // Overlay согласно документации
         base: 0,
         priceFormat: { type: 'price', precision: 2, minMove: 0.01 },
         visible: false,
         title: 'IBS',
+      });
+      // Позиционирование IBS overlay в нижние 20%
+      ibsHist.priceScale().applyOptions({
+        scaleMargins: {
+          top: 0.8, // 80% отступ сверху - займет нижние 20%
+          bottom: 0,
+        },
       });
       const ibsData = data.map((bar, idx) => {
         try {
@@ -254,10 +262,6 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
         ibsHist.createPriceLine({ price: 0.75, color: '#9ca3af', lineWidth: 1, lineStyle: 2, title: '0.75' });
       } catch (e) { console.warn('Failed to create price lines', e); }
       ibsSeriesRef.current = ibsHist;
-
-      // Indicator already constrained via indicatorFraction above
-
-      // No sub-chart; indicators share time scale
 
       // EMA series (создаем скрытыми; их видимость управляется отдельно)
       const ema20Values = calculateEMA(data, 20);
@@ -509,7 +513,7 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
         </button>
       </div>
 
-      {/* Single Chart Container (indicator occupies bottom 20%) */}
+      {/* Single Chart Container: Price 80% top, Volume/IBS 20% bottom overlay */}
       <div ref={chartContainerRef} className="min-h-0 overflow-hidden w-full h-full" />
     </div>
   );
