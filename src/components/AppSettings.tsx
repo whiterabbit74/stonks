@@ -46,8 +46,6 @@ export function AppSettings() {
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [settingsSaveOk, setSettingsSaveOk] = useState<string | null>(null);
   const [settingsSaveErr, setSettingsSaveErr] = useState<string | null>(null);
-  const [settingsLoading, setSettingsLoading] = useState(false);
-  const [settings, setSettings] = useState<any>({});
 
   // API key inputs (unmasked for editing)
   const [alphaVantageKey, setAlphaVantageKey] = useState('');
@@ -122,12 +120,6 @@ export function AppSettings() {
     setDraggedTab(null);
   };
 
-  const saveInterfaceSettings = async () => {
-    // Настройки табов теперь сохраняются автоматически в localStorage
-    setSaveOk('Настройки интерфейса сохранены в браузере');
-    // Автоматически сбрасываем сообщение через 3 секунды
-    setTimeout(() => setSaveOk(null), 3000);
-  };
 
   const sendTest = async () => {
     setSending(true); setError(null); setOk(null);

@@ -12,7 +12,6 @@ import { createStrategyFromTemplate, STRATEGY_TEMPLATES } from '../lib/strategy'
 import { saveDatasetToJSON, loadDatasetFromJSON } from '../lib/data-persistence';
 import { DatasetAPI } from '../lib/api';
 import { adjustOHLCForSplits, dedupeDailyOHLC } from '../lib/utils';
-import { parseCSV } from '../lib/validation';
 import { logError, logInfo } from '../lib/error-logger';
 
 interface AppState {
@@ -159,7 +158,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         enhancerProvider: s.enhancerProvider,
         resultsRefreshProvider: s.resultsRefreshProvider || s.resultsQuoteProvider,
         indicatorPanePercent: typeof s.indicatorPanePercent === 'number' ? s.indicatorPanePercent : 10,
-        commissionType: s.commissionType || 'percentage',
+        commissionType: (s.commissionType as 'fixed' | 'percentage' | 'combined') || 'percentage',
         commissionFixed: typeof s.commissionFixed === 'number' ? s.commissionFixed : 1.0,
         commissionPercentage: typeof s.commissionPercentage === 'number' ? s.commissionPercentage : 0.1,
         // analysisTabsConfig теперь сохраняется в localStorage, не на сервере
@@ -278,7 +277,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         error: error instanceof Error ? error.message : 'Failed to load JSON file',
         isLoading: false 
       });
-      try { logError('data', 'Failed to load JSON file', { fileName: file?.name }, 'store.loadJSONData', (error as any)?.stack); } catch { /* ignore */ }
+      try { logError('data', 'Failed to load JSON file', { fileName: file?.name }, 'store.loadJSONData', error instanceof Error ? error.stack : undefined); } catch { /* ignore */ }
     }
   },
 
@@ -296,8 +295,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       // Нормализуем тикер/имя и обеспечим стабильный id
       const normalized = datasets.map(d => {
         // Safe type checking instead of unsafe type assertion
-        const hasId = 'id' in d && typeof (d as any).id === 'string';
-        const ticker = (d.ticker || (hasId ? (d as any).id : null) || d.name).toUpperCase();
+        const hasId = 'id' in d && typeof d.id === 'string';
+        const ticker = (d.ticker || (hasId ? d.id : null) || d.name).toUpperCase();
         return { ...d, ticker, name: ticker } as typeof d;
       });
       set({ 
@@ -335,9 +334,12 @@ export const useAppStore = create<AppState>((set, get) => ({
         data: [...marketData],
         uploadDate: new Date().toISOString(),
         dataPoints: marketData.length,
-        dateRange: {
+        dateRange: marketData.length > 0 ? {
           from: marketData[0].date.toISOString().split('T')[0],
           to: marketData[marketData.length - 1].date.toISOString().split('T')[0]
+        } : {
+          from: new Date().toISOString().split('T')[0],
+          to: new Date().toISOString().split('T')[0]
         }
       } as SavedDataset;
 
@@ -354,7 +356,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       console.log(`Датасет сохранен на сервере: ${dataset.name}`);
     } catch (error) {
       console.warn('Не удалось сохранить на сервер:', error instanceof Error ? error.message : 'Unknown error');
-      try { logError('network', 'Save dataset failed', { ticker, points: marketData?.length }, 'store.saveDatasetToServer', (error as any)?.stack); } catch { /* ignore */ }
+      try { logError('network', 'Save dataset failed', { ticker, points: marketData?.length }, 'store.saveDatasetToServer', error instanceof Error ? error.stack : undefined); } catch { /* ignore */ }
       set({ 
         error: 'Сервер недоступен. Запустите сервер для сохранения данных.',
         isLoading: false 
@@ -433,11 +435,11 @@ export const useAppStore = create<AppState>((set, get) => ({
         // Run backtest asynchronously but don't await to prevent blocking
         get().runBacktest().catch((error) => {
           console.error('Backtest failed after dataset load:', error);
-          try { logError('backtest', 'Backtest failed after dataset load', {}, 'store.loadDatasetFromServer', (error as any)?.stack); } catch { /* ignore */ }
+          try { logError('backtest', 'Backtest failed after dataset load', {}, 'store.loadDatasetFromServer', error instanceof Error ? error.stack : undefined); } catch { /* ignore */ }
         });
 
         console.log(`Датасет загружен с сервера: ${dataset.name}`);
-        try { logInfo('network', 'Dataset loaded', { id: datasetId, points: (dataset?.data as any[])?.length }, 'store.loadDatasetFromServer'); } catch { /* ignore */ }
+        try { logInfo('network', 'Dataset loaded', { id: datasetId, points: Array.isArray(dataset?.data) ? dataset.data.length : 0 }, 'store.loadDatasetFromServer'); } catch { /* ignore */ }
       }
     } catch (error) {
       // Only update error state if this operation wasn't cancelled
@@ -447,7 +449,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           isLoading: false,
           currentLoadOperation: null
         });
-        try { logError('network', 'Dataset load failed', { id: datasetId }, 'store.loadDatasetFromServer', (error as any)?.stack); } catch { /* ignore */ }
+        try { logError('network', 'Dataset load failed', { id: datasetId }, 'store.loadDatasetFromServer', error instanceof Error ? error.stack : undefined); } catch { /* ignore */ }
       }
     }
   },
@@ -470,9 +472,12 @@ export const useAppStore = create<AppState>((set, get) => ({
         data: [...marketData],
         uploadDate: new Date().toISOString(),
         dataPoints: marketData.length,
-        dateRange: {
+        dateRange: marketData.length > 0 ? {
           from: marketData[0].date.toISOString().split('T')[0],
           to: marketData[marketData.length - 1].date.toISOString().split('T')[0],
+        } : {
+          from: new Date().toISOString().split('T')[0],
+          to: new Date().toISOString().split('T')[0],
         },
       } as SavedDataset;
       // Используем стабильный ID по тикеру, а не name
@@ -482,7 +487,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       console.log(`Датасет обновлён на сервере: ${updated.name}`);
     } catch (error) {
       console.warn('Не удалось обновить датасет на сервере', error);
-      try { logError('network', 'Dataset update failed', { id: currentDataset?.ticker }, 'store.updateDatasetOnServer', (error as any)?.stack); } catch { /* ignore */ }
+      try { logError('network', 'Dataset update failed', { id: currentDataset?.ticker }, 'store.updateDatasetOnServer', error instanceof Error ? error.stack : undefined); } catch { /* ignore */ }
       set({ error: error instanceof Error ? error.message : 'Failed to update dataset on server', isLoading: false });
     }
   },
@@ -510,7 +515,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         error: error instanceof Error ? error.message : 'Failed to delete dataset from server',
         isLoading: false 
       });
-      try { logError('network', 'Dataset delete failed', { id: datasetId }, 'store.deleteDatasetFromServer', (error as any)?.stack); } catch { /* ignore */ }
+      try { logError('network', 'Dataset delete failed', { id: datasetId }, 'store.deleteDatasetFromServer', error instanceof Error ? error.stack : undefined); } catch { /* ignore */ }
     }
   },
 
@@ -528,12 +533,12 @@ export const useAppStore = create<AppState>((set, get) => ({
         // Загружаем полный датасет с сервера перед экспортом
         const full = await DatasetAPI.getDataset(datasetMeta.name);
         saveDatasetToJSON(full.data, full.ticker, full.name);
-        try { logInfo('network', 'Dataset exported', { id: datasetMeta.name, points: (full?.data as any[])?.length }, 'store.exportDatasetAsJSON'); } catch { /* ignore */ }
+        try { logInfo('network', 'Dataset exported', { id: datasetMeta.name, points: Array.isArray(full?.data) ? full.data.length : 0 }, 'store.exportDatasetAsJSON'); } catch { /* ignore */ }
       } catch (error) {
         set({ 
           error: error instanceof Error ? error.message : 'Failed to export dataset'
         });
-        try { logError('network', 'Dataset export failed', { id: datasetMeta.name }, 'store.exportDatasetAsJSON', (error as any)?.stack); } catch { /* ignore */ }
+        try { logError('network', 'Dataset export failed', { id: datasetMeta.name }, 'store.exportDatasetAsJSON', error instanceof Error ? error.stack : undefined); } catch { /* ignore */ }
       }
     })();
   },
@@ -587,7 +592,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         error: error instanceof Error ? error.message : 'Ошибка бэктеста',
         backtestStatus: 'error'
       });
-      try { logError('backtest', 'Backtest failed', {}, 'store.runBacktest', (error as any)?.stack); } catch { /* ignore */ }
+      try { logError('backtest', 'Backtest failed', {}, 'store.runBacktest', error instanceof Error ? error.stack : undefined); } catch { /* ignore */ }
     }
   },
   

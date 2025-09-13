@@ -2,7 +2,7 @@ import type { OHLCData, Strategy, BacktestResult, Trade, EquityPoint, SplitEvent
 import { IndicatorEngine } from './indicators';
 import { MetricsCalculator } from './metrics';
 import { adjustOHLCForSplits } from './utils';
-import { logWarn, logError } from './error-logger';
+import { logWarn } from './error-logger';
 
 export interface CleanBacktestOptions {
   // Entry price timing: at current bar close, or at next day's open
@@ -246,7 +246,7 @@ export class CleanBacktestEngine {
             
             // Обновляем капитал в контексте сделки
             if (trade.context) {
-              (trade.context as any).currentCapitalAfterExit = this.currentCapital;
+              trade.context.currentCapitalAfterExit = this.currentCapital;
             }
 
             console.log(`🔴 EXIT: IBS=${ibs.toFixed(3)}, ${exitReason}, P&L=$${pnl.toFixed(2)}, Duration=${duration} days`);

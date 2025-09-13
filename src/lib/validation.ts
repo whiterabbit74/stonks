@@ -255,7 +255,12 @@ export async function parseCSV(file: File): Promise<OHLCData[]> {
 
           // Convert to OHLC format
           const ohlcData: OHLCData[] = data.map((row: Record<string, unknown>) => {
-            const dateStr = String((row as any).date ?? (row as any).Date ?? (row as any).DATE ?? '');
+            const dateStr = String(
+              ('date' in row ? row.date : undefined) ?? 
+              ('Date' in row ? row.Date : undefined) ?? 
+              ('DATE' in row ? row.DATE : undefined) ?? 
+              ''
+            );
             const dateResult = parseDate(dateStr);
             if (!dateResult.isValid || !dateResult.date) {
               throw new Error(`Invalid date format in row: ${JSON.stringify(row)}`);

@@ -10,6 +10,26 @@ import { StrategyParameters } from './StrategyParameters';
 import { logWarn } from '../lib/error-logger';
 import { Download } from 'lucide-react';
 
+// Performance optimization: create Map-based lookups for O(1) date-to-index access
+interface TickerDataWithIndex extends TickerData {
+  dateIndexMap: Map<number, number>;
+}
+
+function createDateIndexMap(data: OHLCData[]): Map<number, number> {
+  const map = new Map<number, number>();
+  data.forEach((bar, index) => {
+    map.set(bar.date.getTime(), index);
+  });
+  return map;
+}
+
+function optimizeTickerData(tickersData: TickerData[]): TickerDataWithIndex[] {
+  return tickersData.map(ticker => ({
+    ...ticker,
+    dateIndexMap: createDateIndexMap(ticker.data)
+  }));
+}
+
 // Вспомогательная функция для форматирования валюты
 function formatCurrencyUSD(value: number): string {
   return new Intl.NumberFormat('en-US', {
@@ -141,7 +161,7 @@ function getPositionMarketValue(
 function updatePortfolioState(
   portfolio: PortfolioState,
   position: Position | null,
-  tickersData: TickerData[],
+  tickersData: TickerDataWithIndex[],
   currentDateTime: number,
   strategy: Strategy
 ): PortfolioState {
@@ -151,7 +171,7 @@ function updatePortfolioState(
     // Найти данные для тикера текущей позиции
     const tickerData = tickersData.find(t => t.ticker === position.ticker);
     if (tickerData) {
-      const barIndex = tickerData.data.findIndex(bar => bar.date.getTime() === currentDateTime);
+      const barIndex = tickerData.dateIndexMap.get(currentDateTime) ?? -1;
       if (barIndex !== -1) {
         const currentPrice = tickerData.data[barIndex].close;
         const { netValue } = getPositionMarketValue(position, currentPrice, strategy);
@@ -186,7 +206,7 @@ function updatePortfolioState(
  * 5. Выбор лучшего сигнала среди всех тикеров
  */
 function runSinglePositionBacktest(
-  tickersData: TickerData[], 
+  tickersData: TickerDataWithIndex[], 
   strategy: Strategy,
   leverage: number = 1
 ): { 
@@ -248,7 +268,7 @@ function runSinglePositionBacktest(
     if (currentPosition) {
       const tickerData = tickersData.find(t => t.ticker === currentPosition.ticker);
       if (tickerData) {
-        const barIndex = tickerData.data.findIndex(bar => bar.date.getTime() === dateTime);
+        const barIndex = tickerData.dateIndexMap.get(dateTime) ?? -1;
         if (barIndex !== -1) {
           const bar = tickerData.data[barIndex];
           const ibs = tickerData.ibsValues[barIndex];
@@ -336,7 +356,7 @@ function runSinglePositionBacktest(
       // Ищем лучший сигнал среди всех тикеров
       for (let tickerIndex = 0; tickerIndex < tickersData.length; tickerIndex++) {
         const tickerData = tickersData[tickerIndex];
-        const barIndex = tickerData.data.findIndex(bar => bar.date.getTime() === dateTime);
+        const barIndex = tickerData.dateIndexMap.get(dateTime) ?? -1;
         if (barIndex === -1) continue;
         
         const bar = tickerData.data[barIndex];
@@ -606,7 +626,8 @@ export function SinglePositionSimulator({ strategy }: SinglePositionSimulatorPro
         throw new Error('Нет данных для выбранных тикеров');
       }
 
-      const result = runSinglePositionBacktest(tickersData, strategy, leveragePercent / 100);
+      const optimizedTickersData = optimizeTickerData(tickersData);
+      const result = runSinglePositionBacktest(optimizedTickersData, strategy, leveragePercent / 100);
       setBacktest(result);
       
     } catch (err) {

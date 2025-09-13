@@ -86,7 +86,7 @@ Object.defineProperty(window, 'location', {
 });
 
 // Mock URL constructor for chart components
-global.URL = vi.fn().mockImplementation((url, base) => {
+global.URL = vi.fn().mockImplementation((url) => {
   if (!url || url === 'undefined') {
     url = 'http://localhost:3000';
   }

@@ -5,7 +5,13 @@ declare module 'papaparse' {
 		code?: string;
 		row?: number;
 	}
-	export interface ParseMeta {}
+	export interface ParseMeta {
+		delimiter?: string;
+		linebreak?: string;
+		aborted?: boolean;
+		fields?: string[];
+		truncated?: boolean;
+	}
 	export interface ParseResult<T> {
 		data: T[];
 		errors: ParseError[];

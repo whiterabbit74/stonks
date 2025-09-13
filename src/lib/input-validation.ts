@@ -98,7 +98,7 @@ export function sanitizeTextInput(
   } = {}
 ): string {
   const {
-    maxLength = 10000,
+    maxLength = 1000,
     allowedChars,
     removeHtml = true,
     trim = true
@@ -116,6 +116,13 @@ export function sanitizeTextInput(
     if (removeHtml) {
       cleaned = cleaned.replace(/<[^>]*>/g, '');
     }
+    
+    // Remove dangerous characters for security
+    cleaned = cleaned
+      .replace(/;/g, '')     // Remove semicolons for SQL injection
+      .replace(/&/g, '')     // Remove ampersands
+      .replace(/:/g, '')     // Remove colons
+      .replace(/=/g, '');    // Remove equals signs
     
     // Apply character filtering if specified
     if (allowedChars) {
@@ -157,22 +164,35 @@ export function sanitizeFileName(filename: string): string {
   try {
     // Remove path traversal attempts and dangerous characters
     let cleaned = filename
-      .replace(/[\/\\:*?"<>|]/g, '_')  // Replace dangerous chars with underscore
+      .replace(/\.\.\//g, '')          // Remove path traversal attempts
+      .replace(/\.\.\\/g, '')          // Remove path traversal attempts (Windows)
+      .replace(/[/\\:*?"<>|]/g, '_')   // Replace dangerous chars with underscore
+      .replace(/^[_]+/, '')            // Remove leading underscores
       .replace(/\.+/g, '.')            // Replace multiple dots with single dot
       .replace(/^\.+/, '')             // Remove leading dots
       .replace(/\.+$/, '')             // Remove trailing dots
+      .replace(/_+/g, '_')             // Replace multiple underscores with single underscore
       .trim();
     
-    // Ensure it's not empty
-    if (!cleaned) {
-      cleaned = 'untitled';
+    // Handle Windows reserved names
+    const reservedNames = ['CON', 'PRN', 'AUX', 'NUL', 'COM1', 'COM2', 'COM3', 'COM4', 'COM5', 'COM6', 'COM7', 'COM8', 'COM9', 'LPT1', 'LPT2', 'LPT3', 'LPT4', 'LPT5', 'LPT6', 'LPT7', 'LPT8', 'LPT9'];
+    const nameWithoutExt = cleaned.includes('.') ? cleaned.substring(0, cleaned.lastIndexOf('.')) : cleaned;
+    const ext = cleaned.includes('.') ? cleaned.substring(cleaned.lastIndexOf('.')) : '';
+    
+    if (reservedNames.includes(nameWithoutExt.toUpperCase())) {
+      cleaned = nameWithoutExt + '_RESERVED' + ext;
+    }
+    
+    // Ensure it's not empty or just underscores/special chars
+    if (!cleaned || cleaned === '_' || cleaned.match(/^[_\s.]*$/)) {
+      cleaned = 'unnamed_file';
     }
     
     // Limit length
     if (cleaned.length > 255) {
-      const ext = cleaned.substring(cleaned.lastIndexOf('.'));
+      const extension = cleaned.substring(cleaned.lastIndexOf('.'));
       const name = cleaned.substring(0, cleaned.lastIndexOf('.'));
-      cleaned = name.substring(0, 255 - ext.length) + ext;
+      cleaned = name.substring(0, 255 - extension.length) + extension;
     }
     
     return cleaned;
@@ -181,7 +201,7 @@ export function sanitizeFileName(filename: string): string {
       filename,
       error: (error as Error).message
     });
-    return 'untitled';
+    return 'unnamed_file';
   }
 }
 
@@ -219,6 +239,26 @@ export function createDebouncedValidator<T>(
  * Input validation constraints for different field types
  */
 export const VALIDATION_CONSTRAINTS = {
+  NUMERIC: {
+    MIN_VALUE: -1000000000,
+    MAX_VALUE: 1000000000,
+    MAX_DECIMAL_PLACES: 10
+  },
+  TEXT: {
+    MIN_LENGTH: 0,
+    MAX_LENGTH: 1000
+  },
+  FILENAME: {
+    MAX_LENGTH: 255
+  },
+  IBS: {
+    MIN: 0,
+    MAX: 1
+  },
+  PERCENTAGE: {
+    MIN: 0,
+    MAX: 1000
+  },
   commission: {
     fixed: { min: 0, max: 1000, precision: 2 },
     percentage: { min: 0, max: 10, precision: 3 }

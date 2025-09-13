@@ -6,6 +6,8 @@ const path = require('path');
 const https = require('https');
 const crypto = require('crypto');
 const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
+const bcrypt = require('bcrypt');
 
 const app = express();
 app.set('trust proxy', true);
@@ -65,7 +67,30 @@ let API_CONFIG = getApiConfig();
 // CORS with credentials (to support cookie-based auth)
 const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || 'http://localhost:5173';
 const IS_PROD = process.env.NODE_ENV === 'production';
-app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'", "fonts.googleapis.com"],
+      fontSrc: ["'self'", "fonts.gstatic.com"],
+      scriptSrc: ["'self'"],
+      imgSrc: ["'self'", "data:", "blob:"],
+      connectSrc: ["'self'", "wss:", "ws:"],
+      objectSrc: ["'none'"],
+      mediaSrc: ["'self'"],
+      frameSrc: ["'none'"],
+    },
+  },
+  hsts: {
+    maxAge: 31536000,
+    includeSubDomains: true,
+    preload: true
+  },
+  noSniff: true,
+  xssFilter: true,
+  referrerPolicy: { policy: "strict-origin-when-cross-origin" }
+}));
 app.use(cors({
   origin: FRONTEND_ORIGIN,
   credentials: true,
@@ -81,7 +106,26 @@ app.use((req, res, next) => {
   }
   next();
 });
-app.use(express.json({ limit: '50mb' }));
+app.use(express.json({ limit: '5mb' }));
+
+// Rate limiting middleware
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // limit each IP to 100 requests per windowMs
+  message: 'Too many API requests from this IP, please try again later.',
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const uploadLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes  
+  max: 10, // limit each IP to 10 uploads per windowMs
+  message: 'Too many uploads from this IP, please try again later.',
+});
+
+app.use('/api/', apiLimiter);
+app.use('/upload', uploadLimiter);
+
 // Disable ETag to avoid 304 for dynamic JSON payloads
 app.set('etag', false);
 
@@ -392,10 +436,19 @@ async function logLoginAttempt({ ip, success, reason, username }) {
   } catch {}
 }
 
-app.post('/api/login', (req, res) => {
+app.post('/api/login', async (req, res) => {
   try {
     if (!ADMIN_PASSWORD) return res.json({ success: true, disabled: true });
     const { username, password, remember } = req.body || {};
+    
+    // Input validation to prevent injection attacks
+    if (!username || typeof username !== 'string' || username.length > 254) {
+      return res.status(400).json({ error: 'Invalid username format' });
+    }
+    if (!password || typeof password !== 'string' || password.length > 1024) {
+      return res.status(400).json({ error: 'Invalid password format' });
+    }
+    
     const ip = getClientIp(req);
     // Rate limit
     const nowTs = Date.now();
@@ -413,7 +466,24 @@ app.post('/api/login', (req, res) => {
       logLoginAttempt({ ip, success: false, reason: 'INVALID_USERNAME', username });
       return res.status(401).json({ error: 'Invalid login' });
     }
-    if (!password || password !== ADMIN_PASSWORD) {
+    // Support both hashed and plain text passwords for backward compatibility
+    let passwordValid = false;
+    try {
+      if (ADMIN_PASSWORD.startsWith('$2b$') || ADMIN_PASSWORD.startsWith('$2a$') || ADMIN_PASSWORD.startsWith('$2y$')) {
+        // Password is hashed, use bcrypt to compare
+        passwordValid = await bcrypt.compare(password, ADMIN_PASSWORD);
+      } else {
+        // Legacy plain text password comparison (less secure)
+        passwordValid = password === ADMIN_PASSWORD;
+        // Log a warning about using plain text passwords
+        console.warn('WARNING: Using plain text password. Consider using a hashed password for security.');
+      }
+    } catch (error) {
+      console.error('Password verification error:', error);
+      passwordValid = false;
+    }
+    
+    if (!password || !passwordValid) {
       logLoginAttempt({ ip, success: false, reason: 'INVALID_PASSWORD', username });
       return res.status(401).json({ error: 'Invalid password' });
     }
@@ -447,6 +517,33 @@ app.post('/api/logout', (req, res) => {
   } catch (e) {
     clearAuthCookie(req, res);
     res.json({ success: true });
+  }
+});
+
+// Utility endpoint to generate hashed passwords for administrators
+app.post('/api/auth/hash-password', async (req, res) => {
+  try {
+    // Only allow this in development or if no admin password is set yet
+    if (IS_PROD && ADMIN_PASSWORD) {
+      return res.status(403).json({ error: 'Password hashing not available in production' });
+    }
+    
+    const { password } = req.body || {};
+    if (!password || typeof password !== 'string' || password.length < 8) {
+      return res.status(400).json({ error: 'Password must be at least 8 characters long' });
+    }
+    
+    const saltRounds = 12;
+    const hashedPassword = await bcrypt.hash(password, saltRounds);
+    
+    res.json({ 
+      success: true, 
+      hashedPassword,
+      message: 'Set this as your ADMIN_PASSWORD environment variable'
+    });
+  } catch (error) {
+    console.error('Password hashing error:', error);
+    res.status(500).json({ error: 'Failed to hash password' });
   }
 });
 

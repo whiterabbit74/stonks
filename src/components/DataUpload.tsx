@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { CheckCircle, ArrowRight, AlertTriangle } from 'lucide-react';
+import { ArrowRight, AlertTriangle } from 'lucide-react';
 import { useAppStore } from '../stores';
 import { DatasetLibrary } from './DatasetLibrary';
 import { API_BASE_URL } from '../lib/api';
@@ -9,7 +9,7 @@ interface DataUploadProps {
 }
 
 export function DataUpload({ onNext }: DataUploadProps) {
-  const { marketData, currentDataset, isLoading, error, loadDatasetsFromServer } = useAppStore();
+  const { marketData, isLoading, error, loadDatasetsFromServer } = useAppStore();
 
   // Загружаем список датасетов при монтировании компонента ТОЛЬКО после успешной авторизации
   useEffect(() => {

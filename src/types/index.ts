@@ -154,10 +154,10 @@ export interface Trade {
     grossProceeds?: number;
     grossCost?: number;
     totalCommissions?: number;
+    currentCapitalAfterExit?: number;
     initialInvestment?: number;
     stopLoss?: number;
     takeProfit?: number;
-    currentCapitalAfterExit?: number;
   };
 }
 

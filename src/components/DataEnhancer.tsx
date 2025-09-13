@@ -1,11 +1,9 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { AlertCircle, CheckCircle, Upload, Download, TrendingUp, Loader2 } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { AlertCircle, Upload, Download, TrendingUp, Loader2 } from 'lucide-react';
 import { useAppStore } from '../stores';
-import { fetchWithCreds, API_BASE_URL, DatasetAPI } from '../lib/api';
+import { fetchWithCreds, API_BASE_URL } from '../lib/api';
 import { parseOHLCDate } from '../lib/utils';
 import { DatasetLibrary } from './DatasetLibrary';
-import { createStrategyFromTemplate, STRATEGY_TEMPLATES } from '../lib/strategy';
-import { useNavigate } from 'react-router-dom';
 
 interface DataEnhancerProps {
   onNext?: () => void;
@@ -24,11 +22,8 @@ interface DataEnhancerProps {
 type TabType = 'enhance' | 'upload';
 
 export function DataEnhancer({ onNext }: DataEnhancerProps) {
-  const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { 
-    marketData, 
-    currentDataset, 
     enhancerProvider, 
     updateMarketData, 
     saveDatasetToServer, 
@@ -36,10 +31,7 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
     error: storeError,
     loadJSONData,
     loadDatasetsFromServer,
-    loadDatasetFromServer,
-    currentStrategy,
-    setStrategy,
-    runBacktest
+    loadDatasetFromServer
   } = useAppStore();
   
   const [activeTab, setActiveTab] = useState<TabType>('enhance');

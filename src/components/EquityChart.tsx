@@ -62,14 +62,14 @@ export function EquityChart({ equity, hideHeader }: EquityChartProps) {
   };
 
   useEffect(() => {
-    const onTheme = (e: any) => {
-      const dark = !!(e?.detail?.effectiveDark ?? document.documentElement.classList.contains('dark'));
+    const onTheme = (e: CustomEvent) => {
+      const dark = !!((e.detail as { effectiveDark?: boolean })?.effectiveDark ?? document.documentElement.classList.contains('dark'));
       setIsDark(dark);
     };
-    // Cast to any because 'themechange' is a custom event not present in WindowEventMap
-    window.addEventListener('themechange' as any, onTheme as any);
+    // Cast because 'themechange' is a custom event not present in WindowEventMap
+    window.addEventListener('themechange' as keyof WindowEventMap, onTheme as EventListener);
     return () => {
-      window.removeEventListener('themechange' as any, onTheme as any);
+      window.removeEventListener('themechange' as keyof WindowEventMap, onTheme as EventListener);
     };
   }, []);
 

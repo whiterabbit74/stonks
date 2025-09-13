@@ -402,7 +402,8 @@ export class MetricsCalculator {
    */
   private getFinalValue(): number {
     if (this.equity.length === 0) return this.initialCapital;
-    return this.equity[this.equity.length - 1].value;
+    const lastEquity = this.equity[this.equity.length - 1];
+    return lastEquity?.value ?? this.initialCapital;
   }
 
   /**
@@ -412,8 +413,10 @@ export class MetricsCalculator {
   private getTradingPeriodYears(): number {
     if (this.equity.length < 2) return 1/365.25; // 1 день
     
-    const startDate = this.equity[0].date;
-    const endDate = this.equity[this.equity.length - 1].date;
+    const startDate = this.equity[0]?.date;
+    const endDate = this.equity[this.equity.length - 1]?.date;
+    
+    if (!startDate || !endDate) return 1/365.25;
     const daysDiff = Math.max(1, (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
     
     return daysDiff / 365.25;

@@ -194,7 +194,7 @@ export function debounce<T extends (...args: unknown[]) => unknown>(
     timeout = setTimeout(() => func(...args), wait);
   };
   // Add cleanup method for external cleanup
-  (debounced as any).cancel = () => {
+  (debounced as typeof debounced & { cancel: () => void }).cancel = () => {
     if (timeout) {
       clearTimeout(timeout);
     }

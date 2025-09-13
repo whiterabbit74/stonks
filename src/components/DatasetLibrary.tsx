@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Database, Download, Trash2, Calendar, BarChart3, Server, ServerOff, RefreshCw, Edit } from 'lucide-react';
+import { Database, Download, Trash2, Calendar, ServerOff, RefreshCw, Edit } from 'lucide-react';
 import { useAppStore } from '../stores';
 import { createStrategyFromTemplate, STRATEGY_TEMPLATES } from '../lib/strategy';
 import { DatasetAPI, API_BASE_URL } from '../lib/api';

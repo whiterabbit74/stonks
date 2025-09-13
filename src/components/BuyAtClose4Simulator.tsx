@@ -6,7 +6,7 @@ import { IndicatorEngine } from '../lib/indicators';
 import { EquityChart } from './EquityChart';
 import { TradesTable } from './TradesTable';
 import { StrategyParameters } from './StrategyParameters';
-import { logWarn, logError } from '../lib/error-logger';
+import { logWarn } from '../lib/error-logger';
 
 interface BuyAtClose4SimulatorProps {
   strategy: Strategy | null;
@@ -53,7 +53,7 @@ async function loadTickerData(ticker: string): Promise<TickerData> {
   
   let processedData: OHLCData[];
   
-  if ((ds as any).adjustedForSplits) {
+  if ('adjustedForSplits' in ds && ds.adjustedForSplits) {
     processedData = dedupeDailyOHLC(ds.data as unknown as OHLCData[]);
   } else {
     let splits: Array<{ date: string; factor: number }> = [];
@@ -167,7 +167,7 @@ function runMultiTickerBacktest(
   finalValue: number; 
   maxDrawdown: number; 
   trades: Trade[]; 
-  metrics: any; 
+  metrics: Record<string, number>; 
 } {
   if (!tickersData || tickersData.length === 0) {
     return { 
