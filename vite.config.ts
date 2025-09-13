@@ -12,7 +12,7 @@ export default defineConfig({
         manualChunks: {
           vendor: ['react', 'react-dom'],
           charts: ['lightweight-charts'],
-          utils: ['date-fns', 'papaparse']
+          utils: ['papaparse']
         }
       }
     },
