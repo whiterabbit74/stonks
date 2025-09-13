@@ -542,7 +542,8 @@ export function SinglePositionSimulator({ strategy }: SinglePositionSimulatorPro
   } | null>(null);
   
   // Настройки стратегии
-  const [tickers, setTickers] = useState<string[]>(['AAPL', 'MSFT', 'GOOGL', 'TSLA']);
+  const [tickers, setTickers] = useState<string[]>(['AAPL', 'MSFT', 'GOOGL', 'AMZN']);
+  const [tickersInput, setTickersInput] = useState<string>('AAPL, MSFT, GOOGL, AMZN');
   const [leveragePercent, setLeveragePercent] = useState(200); // 200% = 2:1 leverage
 
   // Функция экспорта данных в JSON
@@ -654,10 +655,14 @@ export function SinglePositionSimulator({ strategy }: SinglePositionSimulatorPro
             </label>
             <input
               type="text"
-              value={tickers.join(', ')}
-              onChange={(e) => setTickers(e.target.value.split(',').map(t => t.trim().toUpperCase()).filter(Boolean))}
+              value={tickersInput}
+              onChange={(e) => {
+                setTickersInput(e.target.value);
+                const parsedTickers = e.target.value.split(',').map(t => t.trim().toUpperCase()).filter(Boolean);
+                setTickers(parsedTickers);
+              }}
               className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
-              placeholder="AAPL, MSFT, GOOGL, TSLA"
+              placeholder="AAPL, MSFT, GOOGL, AMZN"
             />
           </div>
           

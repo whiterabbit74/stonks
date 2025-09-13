@@ -318,18 +318,18 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
               {
                 time: Math.floor(trade.entryDate.getTime() / 1000) as UTCTimestamp,
                 position: 'belowBar' as const,
-                color: '#10B981',
+                color: '#2196F3',
                 shape: 'arrowUp' as const,
-                text: '',
+                text: `Buy @ ${Math.floor(trade.entryPrice)}`,
               },
             ];
             if (trade.exitReason !== 'end_of_data') {
               markers.push({
                 time: Math.floor(trade.exitDate.getTime() / 1000) as UTCTimestamp,
                 position: 'aboveBar' as const,
-                color: '#EF4444',
+                color: '#2196F3',
                 shape: 'arrowDown' as const,
-                text: '',
+                text: `Sell @ ${Math.floor(trade.exitPrice)}`,
               });
             }
             return markers;
