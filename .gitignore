@@ -29,6 +29,10 @@ e2e/
 **/*.spec.*
 **/*.test.*
 
+# Re-include unit tests within the src directory
+!src/**/*.test.ts
+!src/**/*.test.tsx
+
 # Env/Secrets
 .env
 *.env.local
