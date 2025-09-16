@@ -3,7 +3,6 @@ import { AlertCircle, Upload, Download, TrendingUp, Loader2 } from 'lucide-react
 import { useAppStore } from '../stores';
 import { fetchWithCreds, API_BASE_URL } from '../lib/api';
 import { parseOHLCDate } from '../lib/utils';
-import { DatasetLibrary } from './DatasetLibrary';
 
 interface DataEnhancerProps {
   onNext?: () => void;
@@ -31,7 +30,7 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
     error: storeError,
     loadJSONData,
     loadDatasetsFromServer,
-    loadDatasetFromServer
+    currentDataset
   } = useAppStore();
   
   const [activeTab, setActiveTab] = useState<TabType>('enhance');

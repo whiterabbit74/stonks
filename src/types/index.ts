@@ -123,6 +123,7 @@ export interface SavedDataset {
   ticker: string;
   data: OHLCData[];
   splits?: SplitEvent[];
+  adjustedForSplits?: boolean;
   uploadDate: string;
   dataPoints: number;
   dateRange: {

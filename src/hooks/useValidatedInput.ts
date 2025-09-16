@@ -83,49 +83,51 @@ export function useValidatedTextInput(options: TextInputOptions = {}) {
 /**
  * Hook for managing form validation state
  */
-export function useFormValidation<T extends Record<string, any>>(
+type ValidatorMap<T extends Record<string, unknown>> = Partial<{ [K in keyof T]: (value: T[K]) => boolean | string }>;
+
+export function useFormValidation<T extends Record<string, unknown>>(
   initialState: T,
-  validators: Partial<Record<keyof T, (value: any) => boolean | string>>
+  validators: ValidatorMap<T>
 ) {
   const [values, setValues] = useState<T>(initialState);
   const [errors, setErrors] = useState<Partial<Record<keyof T, string>>>({});
-  const [touched, setTouched] = useState<Partial<Record<keyof T, boolean>>>({});
-  
-  const setValue = useCallback((field: keyof T, value: any) => {
+  const [touched, setTouchedState] = useState<Partial<Record<keyof T, boolean>>>({});
+
+  const setValue = useCallback(<K extends keyof T>(field: K, value: T[K]) => {
     setValues(prev => ({ ...prev, [field]: value }));
-    
-    // Validate field
-    if (validators[field]) {
-      const result = validators[field]!(value);
+
+    const validator = validators[field];
+    if (validator) {
+      const result = validator(value);
       setErrors(prev => ({
         ...prev,
         [field]: typeof result === 'string' ? result : ''
       }));
     }
   }, [validators]);
-  
-  const setTouched = useCallback((field: keyof T, isTouched: boolean = true) => {
-    setTouched(prev => ({ ...prev, [field]: isTouched }));
+
+  const markTouched = useCallback(<K extends keyof T>(field: K, isTouched: boolean = true) => {
+    setTouchedState(prev => ({ ...prev, [field]: isTouched }));
   }, []);
-  
+
   const validateAll = useCallback(() => {
     const newErrors: Partial<Record<keyof T, string>> = {};
     let isValid = true;
-    
-    Object.keys(validators).forEach(field => {
-      const validator = validators[field as keyof T];
+
+    (Object.keys(validators) as Array<keyof T>).forEach(field => {
+      const validator = validators[field];
       if (validator) {
-        const result = validator(values[field as keyof T]);
+        const result = validator(values[field]);
         if (typeof result === 'string' && result.length > 0) {
-          newErrors[field as keyof T] = result;
+          newErrors[field] = result;
           isValid = false;
         } else if (result === false) {
-          newErrors[field as keyof T] = 'Invalid value';
+          newErrors[field] = 'Invalid value';
           isValid = false;
         }
       }
     });
-    
+
     setErrors(newErrors);
     return isValid;
   }, [values, validators]);
@@ -133,15 +135,15 @@ export function useFormValidation<T extends Record<string, any>>(
   const reset = useCallback(() => {
     setValues(initialState);
     setErrors({});
-    setTouched({});
+    setTouchedState({});
   }, [initialState]);
-  
+
   return {
     values,
     errors,
     touched,
     setValue,
-    setTouched,
+    setTouched: markTouched,
     validateAll,
     reset,
     isValid: Object.keys(errors).length === 0

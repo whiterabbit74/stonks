@@ -388,21 +388,23 @@ export class BacktestEngine {
     const { commission } = this.strategy.riskManagement;
     
     switch (commission.type) {
-      case 'fixed':
+      case 'fixed': {
         // For fixed commission, estimate based on average trade size
         const averageTradeSize = this.currentCapital * 0.1; // Assume 10% average position
         return (commission.fixed || 0) / averageTradeSize;
-      
+      }
+
       case 'percentage':
         return (commission.percentage || 0) / 100;
-      
-      case 'combined':
+
+      case 'combined': {
         // Estimate combined rate
         const averageTradeSize2 = this.currentCapital * 0.1;
         const fixedPart = (commission.fixed || 0) / averageTradeSize2;
         const percentagePart = (commission.percentage || 0) / 100;
         return fixedPart + percentagePart;
-      
+      }
+
       default:
         return 0.001; // Default 0.1% commission rate
     }

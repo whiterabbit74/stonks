@@ -41,8 +41,10 @@ export function SplitPage() {
 						adjustedForSplits: dataset.adjustedForSplits === true,
 					};
 				}) as DatasetMeta[];
-				setDatasets(normalized);
-				if (normalized.length && !selected) setSelected(normalized[0].ticker);
+                                setDatasets(normalized);
+                                if (normalized.length) {
+                                        setSelected(prev => prev || normalized[0].ticker);
+                                }
 			} catch (e) {
 				setError(e instanceof Error ? e.message : 'Не удалось загрузить список тикеров');
 			} finally {
@@ -181,12 +183,14 @@ export function SplitPage() {
 					fail++;
 				}
 			}
-			if (selected && jsonUpdates[selected]) {
-				try {
-					const arr = await DatasetAPI.getSplits(selected);
-					setEvents(Array.isArray(arr) ? arr : []);
-				} catch {}
-			}
+                        if (selected && jsonUpdates[selected]) {
+                                try {
+                                        const arr = await DatasetAPI.getSplits(selected);
+                                        setEvents(Array.isArray(arr) ? arr : []);
+                                } catch (refreshError) {
+                                        console.warn('Не удалось обновить сплиты после применения JSON', refreshError);
+                                }
+                        }
 			setMsg(`Применено из JSON: обновлено ${ok}, ошибок ${fail}`);
 			setJsonText('');
 			setJsonUpdates({});
