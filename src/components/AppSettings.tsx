@@ -149,10 +149,9 @@ export function AppSettings() {
 
   // Load API settings from server
   const loadApiSettings = async () => {
-    setSettingsLoading(true);
+    setSettingsSaving(true);
     try {
       const data = await DatasetAPI.getSettings();
-      setSettings(data);
 
       // Set form values (unmask the keys for editing)
       if (data.api) {
@@ -173,7 +172,7 @@ export function AppSettings() {
     } catch (e) {
       console.error('Failed to load API settings:', e);
     } finally {
-      setSettingsLoading(false);
+      setSettingsSaving(false);
     }
   };
 
