@@ -428,7 +428,7 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
       console.error('Error creating trading chart:', error);
       return;
     }
-  }, [data, trades, splits, isDark, indicatorPanePercent]);
+  }, [data, trades, splits, isDark, indicatorPanePercent, showIBS, showVolume]);
 
   // Cleanup on unmount
   useEffect(() => {

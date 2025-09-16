@@ -113,7 +113,7 @@ export function TradingCalendar() {
       }
       return 1;
     });
-  }, [selectedYear, selectedMonth]);
+  }, [selectedYear, selectedMonth, currentDay, currentMonth, currentYear]);
 
   useEffect(() => {
     if (detailsOpen) {

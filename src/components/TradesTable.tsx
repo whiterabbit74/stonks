@@ -23,14 +23,6 @@ export const TradesTable = React.memo(function TradesTable({ trades }: TradesTab
 			return String(d);
 		}
 	};
-	const fmtTime = (d: Date) => {
-		try {
-			return new Date(d).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
-		} catch {
-			return '';
-		}
-	};
-
 	return (
 		<div className="w-full overflow-auto">
 			<table className="min-w-full text-sm">

@@ -1,5 +1,4 @@
-import React, { useState, useEffect } from 'react';
-import { useAppStore } from '../stores/index';
+import React, { useState } from 'react';
 import type { Strategy, OHLCData, Trade, EquityPoint } from '../types';
 import { DatasetAPI } from '../lib/api';
 import { adjustOHLCForSplits, dedupeDailyOHLC } from '../lib/utils';
@@ -7,7 +6,6 @@ import { IndicatorEngine } from '../lib/indicators';
 import { TradesTable } from './TradesTable';
 import { EquityChart } from './EquityChart';
 import { StrategyParameters } from './StrategyParameters';
-import { logWarn } from '../lib/error-logger';
 import { Download } from 'lucide-react';
 
 // Performance optimization: create Map-based lookups for O(1) date-to-index access
@@ -38,17 +36,6 @@ function formatCurrencyUSD(value: number): string {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
   }).format(value);
-}
-
-// Функция для красивого форматирования чисел с сокращениями
-function formatNumber(value: number): string {
-  if (Math.abs(value) >= 1_000_000) {
-    return `${(value / 1_000_000).toFixed(2)}M`;
-  } else if (Math.abs(value) >= 1_000) {
-    return `${(value / 1_000).toFixed(1)}K`;
-  } else {
-    return value.toFixed(2);
-  }
 }
 
 // Функция для форматирования валюты с сокращениями

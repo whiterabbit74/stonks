@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { EquityPoint, OHLCData, Strategy, Trade } from '../types';
 import { DatasetAPI } from '../lib/api';
 import { adjustOHLCForSplits, dedupeDailyOHLC } from '../lib/utils';
@@ -6,7 +6,7 @@ import { IndicatorEngine } from '../lib/indicators';
 import { EquityChart } from './EquityChart';
 import { TradesTable } from './TradesTable';
 import { StrategyParameters } from './StrategyParameters';
-import { logWarn, logError } from '../lib/error-logger';
+import { logWarn } from '../lib/error-logger';
 
 interface BuyAtClose4SimulatorProps {
   strategy: Strategy | null;
@@ -47,7 +47,7 @@ async function loadTickerData(ticker: string): Promise<TickerData> {
   
   let processedData: OHLCData[];
   
-  if ((ds as any).adjustedForSplits) {
+  if ('adjustedForSplits' in ds && ds.adjustedForSplits) {
     processedData = dedupeDailyOHLC(ds.data as unknown as OHLCData[]);
   } else {
     let splits: Array<{ date: string; factor: number }> = [];
@@ -426,12 +426,12 @@ export function BuyAtClose4Simulator({ strategy, defaultTickers = ['AAPL', 'MSFT
   }, [loadedData, strategy]);
 
   // Загрузка данных для всех тикеров
-  const loadAllData = async () => {
+  const loadAllData = useCallback(async () => {
     if (tickers.length === 0) return;
-    
+
     setIsLoading(true);
     setError(null);
-    
+
     try {
       const promises = tickers.map(ticker => loadTickerData(ticker.trim().toUpperCase()));
       const results = await Promise.all(promises);
@@ -444,7 +444,7 @@ export function BuyAtClose4Simulator({ strategy, defaultTickers = ['AAPL', 'MSFT
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [tickers]);
 
   // Применить новый список тикеров
   const applyTickers = () => {
@@ -464,7 +464,7 @@ export function BuyAtClose4Simulator({ strategy, defaultTickers = ['AAPL', 'MSFT
   // Загружаем данные при монтировании компонента
   useEffect(() => {
     loadAllData();
-  }, [tickers]);
+  }, [loadAllData]);
 
   if (!strategy) {
     return (
