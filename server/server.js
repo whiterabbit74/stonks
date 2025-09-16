@@ -115,12 +115,22 @@ const apiLimiter = rateLimit({
   message: 'Too many API requests from this IP, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
+  // Configure for use behind reverse proxy
+  trustProxy: true,
+  keyGenerator: (req) => {
+    return req.ip || req.connection.remoteAddress || 'unknown';
+  }
 });
 
 const uploadLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes  
+  windowMs: 15 * 60 * 1000, // 15 minutes
   max: 10, // limit each IP to 10 uploads per windowMs
   message: 'Too many uploads from this IP, please try again later.',
+  // Configure for use behind reverse proxy
+  trustProxy: true,
+  keyGenerator: (req) => {
+    return req.ip || req.connection.remoteAddress || 'unknown';
+  }
 });
 
 app.use('/api/', apiLimiter);
