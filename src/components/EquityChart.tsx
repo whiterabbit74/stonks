@@ -6,9 +6,12 @@ import { logError } from '../lib/error-logger';
 interface EquityChartProps {
   equity: EquityPoint[];
   hideHeader?: boolean;
+  comparisonEquity?: EquityPoint[];
+  comparisonLabel?: string;
+  primaryLabel?: string;
 }
 
-export function EquityChart({ equity, hideHeader }: EquityChartProps) {
+export function EquityChart({ equity, hideHeader, comparisonEquity, comparisonLabel, primaryLabel }: EquityChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const tooltipRef = useRef<HTMLDivElement | null>(null);
@@ -115,6 +118,8 @@ export function EquityChart({ equity, hideHeader }: EquityChartProps) {
         return;
       }
 
+      const hasComparison = Array.isArray(comparisonEquity) && comparisonEquity.length > 0;
+
       // Area-серия с градиентом
       const equitySeries: ISeriesApi<'Area'> = chart.addAreaSeries({
         lineColor: '#6366F1',
@@ -124,41 +129,55 @@ export function EquityChart({ equity, hideHeader }: EquityChartProps) {
         title: 'Стоимость портфеля',
       });
 
+      const prepareSeriesData = (points: EquityPoint[], source: string) => {
+        const mapped = points
+          .map((point, idx) => {
+            try {
+              const d = point?.date instanceof Date ? point.date : new Date(point?.date as any);
+              const t = Math.floor(d.getTime() / 1000) as UTCTimestamp;
+              const v = Number(point?.value);
+              if (!Number.isFinite(t as unknown as number) || !Number.isFinite(v)) {
+                logError('chart', 'Invalid equity data point', { idx, point, source }, 'EquityChart.setData');
+              }
+              return { time: t, value: v };
+            } catch (e) {
+              logError('chart', 'Failed to map equity point', { idx, point, source }, 'EquityChart.setData', (e as any)?.stack);
+              return { time: 0 as UTCTimestamp, value: 0 };
+            }
+          })
+          .filter(p => Number.isFinite(p.time as unknown as number) && Number.isFinite(p.value));
 
+        const sorted = mapped.slice().sort((a, b) => (a.time as number) - (b.time as number));
+        const seriesData: Array<{ time: UTCTimestamp; value: number }> = [];
+        let lastTime: number | null = null;
 
-      // Validate, sort, and dedupe equity data to chart format by time
-      const mapped = equity.map((point, idx) => {
-        try {
-          const d = point?.date instanceof Date ? point.date : new Date(point?.date as any);
-          const t = Math.floor(d.getTime() / 1000) as UTCTimestamp;
-          const v = Number(point?.value);
-          if (!Number.isFinite(t as unknown as number) || !Number.isFinite(v)) {
-            logError('chart', 'Invalid equity data point', { idx, point }, 'EquityChart.setData');
+        for (const p of sorted) {
+          const t = p.time as unknown as number;
+          if (lastTime === t) {
+            seriesData[seriesData.length - 1] = { time: p.time, value: p.value };
+          } else {
+            seriesData.push(p);
+            lastTime = t;
           }
-          return { time: t, value: v };
-        } catch (e) {
-          logError('chart', 'Failed to map equity point', { idx, point }, 'EquityChart.setData', (e as any)?.stack);
-          return { time: 0 as UTCTimestamp, value: 0 };
         }
-      }).filter(p => Number.isFinite(p.time as unknown as number) && Number.isFinite(p.value));
-      const sorted = mapped.slice().sort((a, b) => (a.time as number) - (b.time as number));
-      const equityData: Array<{ time: UTCTimestamp; value: number }> = [];
-      let lastTime: number | null = null;
-      for (const p of sorted) {
-        const t = p.time as unknown as number;
-        if (lastTime === t) {
-          // collapse duplicate timestamps: keep the last value for that time
-          equityData[equityData.length - 1] = { time: p.time, value: p.value };
-        } else {
-          equityData.push(p);
-          lastTime = t;
-        }
+
+        return seriesData;
+      };
+
+      equitySeries.setData(prepareSeriesData(equity, 'primary'));
+
+      let comparisonSeries: ISeriesApi<'Line'> | null = null;
+      if (hasComparison) {
+        comparisonSeries = chart.addLineSeries({
+          color: '#F97316',
+          lineWidth: 2,
+          title: comparisonLabel || 'Сравнительный режим',
+          priceLineVisible: false,
+        });
+        comparisonSeries.setData(prepareSeriesData(comparisonEquity ?? [], 'comparison'));
       }
 
-      equitySeries.setData(equityData);
-
-
-      // Убрали линию последнего значения по запросу
+      chart.timeScale().fitContent();
 
       // Простой тултип
       const tooltipEl = document.createElement('div');
@@ -180,12 +199,30 @@ export function EquityChart({ equity, hideHeader }: EquityChartProps) {
       const crosshairHandler = (param: MouseEventParams) => {
         if (!tooltipRef.current) return;
         if (!param || !param.time) { tooltipRef.current.style.display = 'none'; return; }
-        const v = (param.seriesData?.get?.(equitySeries) as { value?: number } | undefined)?.value;
-        if (typeof v !== 'number') { tooltipRef.current.style.display = 'none'; return; }
+
+        const mainValue = (param.seriesData?.get?.(equitySeries) as { value?: number } | undefined)?.value;
+        const comparisonValue = comparisonSeries
+          ? (param.seriesData?.get?.(comparisonSeries) as { value?: number } | undefined)?.value
+          : undefined;
+
+        if (typeof mainValue !== 'number' && typeof comparisonValue !== 'number') {
+          tooltipRef.current.style.display = 'none';
+          return;
+        }
+
         const epochSec = typeof param.time === 'number' ? param.time : (param as { time?: { timestamp?: number } }).time?.timestamp;
         const d = epochSec ? new Date(epochSec * 1000) : null;
         const dateStr = d ? d.toLocaleDateString('ru-RU') : '';
-        tooltipRef.current.textContent = `${dateStr ? dateStr + ' — ' : ''}Капитал ${v.toFixed(2)}`;
+
+        const lines: string[] = [];
+        if (typeof mainValue === 'number') {
+          lines.push(`${(primaryLabel || 'Основной режим')}: ${mainValue.toFixed(2)}`);
+        }
+        if (comparisonSeries && typeof comparisonValue === 'number') {
+          lines.push(`${(comparisonLabel || 'Сравнительный режим')}: ${comparisonValue.toFixed(2)}`);
+        }
+
+        tooltipEl.innerHTML = `${dateStr ? `<div>${dateStr}</div>` : ''}${lines.map(line => `<div>${line}</div>`).join('')}`;
         tooltipRef.current.style.display = 'block';
       };
       
@@ -215,7 +252,7 @@ export function EquityChart({ equity, hideHeader }: EquityChartProps) {
       logError('chart', 'Error creating equity chart', {}, 'EquityChart', (error as any)?.stack);
       return;
     }
-  }, [equity, isDark]);
+  }, [equity, comparisonEquity, comparisonLabel, primaryLabel, isDark]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -233,6 +270,9 @@ export function EquityChart({ equity, hideHeader }: EquityChartProps) {
   const finalValue = equity[equity.length - 1]?.value ?? 0;
   const startDate = equity[0]?.date ? new Date(equity[0].date).toLocaleDateString('ru-RU') : '';
   const endDate = equity[equity.length - 1]?.date ? new Date(equity[equity.length - 1].date).toLocaleDateString('ru-RU') : '';
+  const hasComparisonLegend = Array.isArray(comparisonEquity) && comparisonEquity.length > 0;
+  const primaryLegendLabel = primaryLabel || 'Основной режим';
+  const comparisonLegendLabel = comparisonLabel || 'Сравнительный режим';
   
   // Рассчитываем годовые проценты (CAGR) с учетом сложного процента
   const annualReturn = (() => {
@@ -278,7 +318,21 @@ export function EquityChart({ equity, hideHeader }: EquityChartProps) {
           </div>
         </div>
       )}
-      <div ref={chartContainerRef} className="w-full h-full min-h-0 overflow-hidden" />
+      <div className="w-full h-full">
+        <div ref={chartContainerRef} className="w-full h-full min-h-0 overflow-hidden" />
+        {hasComparisonLegend && (
+          <div className="mt-3 flex flex-wrap items-center gap-4 text-xs text-gray-500 dark:text-gray-400">
+            <div className="flex items-center gap-2">
+              <span className="h-2 w-2 rounded-full bg-indigo-500" />
+              <span>{primaryLegendLabel}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="h-2 w-2 rounded-full bg-orange-500" />
+              <span>{comparisonLegendLabel}</span>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
