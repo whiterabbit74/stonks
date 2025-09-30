@@ -202,11 +202,11 @@ export function MultiTickerPage() {
     setMonthlyContributionResults(null);
 
     try {
-      console.log('🚀 Loading data for tickers:', tickers);
+      console.log('Loading data for tickers:', tickers);
       const tickersDataPromises = tickers.map(ticker => loadTickerData(ticker));
       const loadedData = await Promise.all(tickersDataPromises);
 
-      console.log('✅ Loaded data:', loadedData.map(t => ({ ticker: t.ticker, bars: t.data.length })));
+        console.log('Loaded data:', loadedData.map(t => ({ ticker: t.ticker, bars: t.data.length })));
 
       if (loadedData.length === 0) {
         throw new Error('Нет данных для выбранных тикеров');
@@ -510,12 +510,12 @@ export function MultiTickerPage() {
           {/* Заголовки табов */}
           <div className="flex border-b border-gray-200 dark:border-gray-700">
             {[
-              { id: 'price' as TabId, label: '📈 Цены' },
-              { id: 'equity' as TabId, label: '💰 Equity' },
-              { id: 'trades' as TabId, label: '📊 Сделки (бэктест)' },
-              monthlyContributionResults ? { id: 'monthlyContribution' as TabId, label: '💵 Пополнения' } : null,
-              { id: 'monitorTrades' as TabId, label: '📝 Сделки (мониторинг)' },
-              { id: 'splits' as TabId, label: '🪙 Сплиты' },
+              { id: 'price' as TabId, label: 'Цены' },
+              { id: 'equity' as TabId, label: 'Equity' },
+              { id: 'trades' as TabId, label: 'Сделки (бэктест)' },
+              monthlyContributionResults ? { id: 'monthlyContribution' as TabId, label: 'Пополнения' } : null,
+              { id: 'monitorTrades' as TabId, label: 'Сделки (мониторинг)' },
+              { id: 'splits' as TabId, label: 'Сплиты' },
             ].filter(Boolean).map(tab => (
               <button
                 key={tab!.id}
@@ -640,7 +640,7 @@ export function MultiTickerPage() {
                 ) : (
                   <div className="h-96 bg-gray-50 dark:bg-gray-900/50 rounded border border-dashed border-gray-300 dark:border-gray-600 flex items-center justify-center">
                     <div className="text-gray-500 dark:text-gray-400 text-center">
-                      <div className="text-lg font-medium mb-2">📈 Equity Chart</div>
+                      <div className="text-lg font-medium mb-2">Equity Chart</div>
                       <p className="text-sm">Нет данных по equity</p>
                     </div>
                   </div>
@@ -712,7 +712,7 @@ export function MultiTickerPage() {
                 ) : (
                   <div className="h-72 bg-gray-50 dark:bg-gray-900/50 rounded border border-dashed border-gray-300 dark:border-gray-600 flex items-center justify-center">
                     <div className="text-gray-500 dark:text-gray-400 text-center">
-                      <div className="text-lg font-medium mb-2">📊 Trades Table</div>
+                      <div className="text-lg font-medium mb-2">Trades Table</div>
                       <p className="text-sm">Для выбранного тикера сделки отсутствуют</p>
                     </div>
                   </div>
@@ -724,7 +724,7 @@ export function MultiTickerPage() {
               <div className="space-y-6">
                 <div className="flex flex-col gap-2">
                   <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                    💵 Сценарий с ежемесячными пополнениями
+                    Сценарий с ежемесячными пополнениями
                   </h3>
                   <p className="text-sm text-gray-600 dark:text-gray-400">
                     Каждый месяц депозит пополняется на {formatCurrency(monthlyContributionAmount)} в {monthlyContributionDay}-й торговый день месяца. Пополнения сразу доступны для новой сделки с плечом {(leveragePercent / 100).toFixed(1)}:1.
@@ -812,13 +812,13 @@ export function MultiTickerPage() {
                   </div>
                 )}
 
-                <div className="grid gap-6 lg:grid-cols-2">
+                <div className="space-y-6">
                   <div className="space-y-4">
                     <h4 className="text-base font-semibold text-gray-900 dark:text-gray-100">
                       График капитала (сравнение со стандартным режимом)
                     </h4>
                     {monthlyContributionResults.equity.length > 0 ? (
-                      <div className="h-[420px] w-full">
+                      <div className="w-full h-[440px] lg:h-[520px]">
                         <EquityChart
                           equity={monthlyContributionResults.equity}
                           comparisonEquity={backtestResults?.equity || []}
@@ -828,7 +828,7 @@ export function MultiTickerPage() {
                         />
                       </div>
                     ) : (
-                      <div className="h-72 rounded border border-dashed border-gray-300 bg-gray-50 dark:border-gray-700 dark:bg-gray-900/40 flex items-center justify-center text-gray-500 dark:text-gray-400">
+                      <div className="flex h-72 items-center justify-center rounded border border-dashed border-gray-300 bg-gray-50 text-gray-500 dark:border-gray-700 dark:bg-gray-900/40 dark:text-gray-400">
                         Нет данных по equity
                       </div>
                     )}
@@ -849,7 +849,7 @@ export function MultiTickerPage() {
                         </div>
                       </div>
                     ) : (
-                      <div className="h-72 rounded border border-dashed border-gray-300 bg-gray-50 dark:border-gray-700 dark:bg-gray-900/40 flex items-center justify-center text-gray-500 dark:text-gray-400">
+                      <div className="flex h-72 items-center justify-center rounded border border-dashed border-gray-300 bg-gray-50 text-gray-500 dark:border-gray-700 dark:bg-gray-900/40 dark:text-gray-400">
                         Сделки отсутствуют
                       </div>
                     )}
@@ -961,7 +961,7 @@ export function MultiTickerPage() {
       {isLoading && (
         <div className="text-center py-8">
           <div className="text-gray-600 dark:text-gray-400">
-            🔄 Загрузка данных и выполнение бэктеста...
+            Загрузка данных и выполнение бэктеста...
           </div>
         </div>
       )}
