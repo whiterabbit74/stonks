@@ -18,6 +18,7 @@ const KEEP_DATASETS_DIR = path.join(__dirname, '_keep', 'datasets');
 let SETTINGS_FILE = process.env.SETTINGS_FILE || path.join(__dirname, 'settings.json');
 let SPLITS_FILE = process.env.SPLITS_FILE || path.join(__dirname, 'splits.json');
 let WATCHES_FILE = process.env.WATCHES_FILE || path.join(__dirname, 'telegram-watches.json');
+let TRADE_HISTORY_FILE = process.env.TRADE_HISTORY_FILE || path.join(__dirname, 'trade-history.json');
 const MONITOR_LOG_FILE = process.env.MONITOR_LOG_PATH || path.join(DATASETS_DIR, 'monitoring.log');
 const avCache = new Map(); // кэш ответов Alpha Vantage
 
@@ -168,6 +169,7 @@ ensureSplitsFile().catch((err) => {
 // Ensure settings and watches storages exist as well (best-effort)
 try { ensureRegularFileSync(SETTINGS_FILE, {}); } catch {}
 try { ensureRegularFileSync(WATCHES_FILE, []); } catch {}
+try { ensureRegularFileSync(TRADE_HISTORY_FILE, []); } catch {}
 
 async function appendSafe(filePath, line) {
   try {
@@ -610,6 +612,268 @@ app.patch('/api/settings', requireAuth, (req, res) => {
 // { symbol, highIBS, lowIBS, thresholdPct, chatId, entryPrice, isOpenPosition, sent: { dateKey, warn10, confirm1, entryWarn10, entryConfirm1 } }
 const telegramWatches = new Map();
 
+const tradeHistory = [];
+let tradeHistoryLoaded = false;
+let saveTradeHistoryTimer = null;
+
+async function loadTradeHistory() {
+  try {
+    const exists = await fs.pathExists(TRADE_HISTORY_FILE);
+    if (!exists) {
+      tradeHistory.length = 0;
+      tradeHistoryLoaded = true;
+      return;
+    }
+    const data = await fs.readJson(TRADE_HISTORY_FILE);
+    if (Array.isArray(data)) {
+      tradeHistory.length = 0;
+      for (const rec of data) {
+        tradeHistory.push(normalizeTradeRecord(rec));
+      }
+    }
+    tradeHistoryLoaded = true;
+  } catch (e) {
+    console.warn('Failed to load trade history:', e && e.message ? e.message : e);
+    tradeHistory.length = 0;
+    tradeHistoryLoaded = true;
+  }
+}
+
+function ensureTradeHistoryLoaded() {
+  if (!tradeHistoryLoaded) {
+    loadTradeHistory().catch(err => {
+      console.warn('Trade history load error:', err && err.message ? err.message : err);
+    });
+  }
+}
+
+function scheduleSaveTradeHistory() {
+  if (saveTradeHistoryTimer) clearTimeout(saveTradeHistoryTimer);
+  saveTradeHistoryTimer = setTimeout(async () => {
+    try {
+      await fs.writeJson(TRADE_HISTORY_FILE, tradeHistory, { spaces: 2 });
+      console.log(`Saved ${tradeHistory.length} trade records`);
+    } catch (e) {
+      console.warn('Failed to save trade history:', e && e.message ? e.message : e);
+    }
+  }, 200);
+}
+
+function normalizeTradeRecord(rec) {
+  const safe = rec && typeof rec === 'object' ? { ...rec } : {};
+  const symbol = typeof safe.symbol === 'string' ? safe.symbol.toUpperCase() : null;
+  const status = safe.status === 'open' ? 'open' : 'closed';
+  const entryPrice = typeof safe.entryPrice === 'number' ? safe.entryPrice : (safe.entryPrice != null ? Number(safe.entryPrice) : null);
+  const exitPrice = typeof safe.exitPrice === 'number' ? safe.exitPrice : (safe.exitPrice != null ? Number(safe.exitPrice) : null);
+
+  let pnlAbsolute = typeof safe.pnlAbsolute === 'number' ? safe.pnlAbsolute : null;
+  let pnlPercent = typeof safe.pnlPercent === 'number' ? safe.pnlPercent : null;
+
+  if (entryPrice != null && exitPrice != null) {
+    const diff = exitPrice - entryPrice;
+    pnlAbsolute = diff;
+    pnlPercent = (diff / entryPrice) * 100;
+  }
+
+  let holdingDays = typeof safe.holdingDays === 'number' ? safe.holdingDays : null;
+  if (!holdingDays && safe.entryDate && safe.exitDate) {
+    const entryDate = new Date(safe.entryDate);
+    const exitDate = new Date(safe.exitDate);
+    if (!Number.isNaN(entryDate.valueOf()) && !Number.isNaN(exitDate.valueOf())) {
+      const diff = Math.round((exitDate.getTime() - entryDate.getTime()) / (24 * 3600 * 1000));
+      holdingDays = diff >= 0 ? Math.max(1, diff) : null;
+    }
+  }
+
+  return {
+    id: typeof safe.id === 'string' ? safe.id : crypto.randomUUID(),
+    symbol: symbol || 'UNKNOWN',
+    status,
+    entryDate: typeof safe.entryDate === 'string' ? safe.entryDate : null,
+    exitDate: typeof safe.exitDate === 'string' ? safe.exitDate : null,
+    entryPrice,
+    exitPrice,
+    entryIBS: typeof safe.entryIBS === 'number' ? safe.entryIBS : (safe.entryIBS != null ? Number(safe.entryIBS) : null),
+    exitIBS: typeof safe.exitIBS === 'number' ? safe.exitIBS : (safe.exitIBS != null ? Number(safe.exitIBS) : null),
+    entryDecisionTime: typeof safe.entryDecisionTime === 'string' ? safe.entryDecisionTime : null,
+    exitDecisionTime: typeof safe.exitDecisionTime === 'string' ? safe.exitDecisionTime : null,
+    pnlPercent,
+    pnlAbsolute,
+    holdingDays,
+    notes: typeof safe.notes === 'string' ? safe.notes : undefined,
+  };
+}
+
+function getCurrentOpenTrade() {
+  return tradeHistory.find(t => t && t.status === 'open') || null;
+}
+
+function recordTradeEntry({ symbol, price, ibs, decisionTime, dateKey }) {
+  if (!symbol) return null;
+  const normalizedSymbol = symbol.toUpperCase();
+  const openTrade = getCurrentOpenTrade();
+  if (openTrade) {
+    console.warn(`Cannot open new trade for ${normalizedSymbol}: trade ${openTrade.id} is still open for ${openTrade.symbol}`);
+    return null;
+  }
+
+  const trade = normalizeTradeRecord({
+    id: crypto.randomUUID(),
+    symbol: normalizedSymbol,
+    status: 'open',
+    entryDate: dateKey || null,
+    entryPrice: typeof price === 'number' ? price : null,
+    entryIBS: typeof ibs === 'number' ? ibs : null,
+    entryDecisionTime: decisionTime || new Date().toISOString(),
+  });
+
+  tradeHistory.push(trade);
+  scheduleSaveTradeHistory();
+  return trade;
+}
+
+function recordTradeExit({ symbol, price, ibs, decisionTime, dateKey }) {
+  if (!symbol) return null;
+  const normalizedSymbol = symbol.toUpperCase();
+  const openTrade = getCurrentOpenTrade();
+  if (!openTrade || openTrade.symbol !== normalizedSymbol) {
+    console.warn(`No matching open trade for ${normalizedSymbol} to close`);
+    return null;
+  }
+
+  openTrade.status = 'closed';
+  openTrade.exitDate = dateKey || null;
+  openTrade.exitPrice = typeof price === 'number' ? price : null;
+  openTrade.exitIBS = typeof ibs === 'number' ? ibs : null;
+  openTrade.exitDecisionTime = decisionTime || new Date().toISOString();
+
+  if (typeof openTrade.entryPrice === 'number' && typeof openTrade.exitPrice === 'number') {
+    const diff = openTrade.exitPrice - openTrade.entryPrice;
+    openTrade.pnlAbsolute = Number(diff.toFixed(6));
+    openTrade.pnlPercent = Number(((diff / openTrade.entryPrice) * 100).toFixed(6));
+  } else {
+    openTrade.pnlAbsolute = null;
+    openTrade.pnlPercent = null;
+  }
+
+  if (openTrade.entryDate && openTrade.exitDate) {
+    const entryDate = new Date(openTrade.entryDate);
+    const exitDate = new Date(openTrade.exitDate);
+    if (!Number.isNaN(entryDate.valueOf()) && !Number.isNaN(exitDate.valueOf())) {
+      const diff = Math.round((exitDate.getTime() - entryDate.getTime()) / (24 * 3600 * 1000));
+      openTrade.holdingDays = diff >= 0 ? Math.max(1, diff) : null;
+    }
+  }
+
+  scheduleSaveTradeHistory();
+  return openTrade;
+}
+
+function synchronizeWatchesWithTradeHistory() {
+  const openTrade = getCurrentOpenTrade();
+  const openSymbol = openTrade ? openTrade.symbol : null;
+  const changes = [];
+
+  for (const watch of telegramWatches.values()) {
+    const hadEntryPrice = isPositionOpen(watch);
+    const shouldBeOpen = !!openSymbol && watch.symbol.toUpperCase() === openSymbol;
+
+    if (shouldBeOpen) {
+      const nextPrice = openTrade.entryPrice ?? null;
+      const priceChanged = watch.entryPrice !== nextPrice;
+      const idChanged = watch.currentTradeId !== openTrade.id;
+      if (priceChanged || idChanged || !hadEntryPrice) {
+        changes.push({ symbol: watch.symbol, action: 'sync_open', previousPrice: watch.entryPrice, nextPrice });
+      }
+      watch.entryPrice = nextPrice;
+      watch.entryDate = openTrade.entryDate ?? null;
+      watch.entryIBS = openTrade.entryIBS ?? null;
+      watch.entryDecisionTime = openTrade.entryDecisionTime ?? null;
+      watch.currentTradeId = openTrade.id;
+      watch.isOpenPosition = true;
+    } else {
+      if (hadEntryPrice || watch.entryPrice != null || watch.currentTradeId) {
+        changes.push({ symbol: watch.symbol, action: 'sync_close', previousPrice: watch.entryPrice });
+      }
+      watch.entryPrice = null;
+      watch.entryDate = null;
+      watch.entryIBS = null;
+      watch.entryDecisionTime = null;
+      watch.currentTradeId = null;
+      watch.isOpenPosition = false;
+    }
+  }
+
+  return { openTrade, changes };
+}
+
+function formatTradeSummary(trade) {
+  if (!trade) return 'Нет сделок';
+  const entryDate = trade.entryDate || '—';
+  const exitDate = trade.exitDate || '—';
+  const entryPrice = typeof trade.entryPrice === 'number' ? `$${trade.entryPrice.toFixed(2)}` : '—';
+  const exitPrice = typeof trade.exitPrice === 'number' ? `$${trade.exitPrice.toFixed(2)}` : '—';
+  const entryIbs = typeof trade.entryIBS === 'number' ? `${(trade.entryIBS * 100).toFixed(1)}%` : '—';
+  const exitIbs = typeof trade.exitIBS === 'number' ? `${(trade.exitIBS * 100).toFixed(1)}%` : '—';
+  const pnlPercent = typeof trade.pnlPercent === 'number' ? `${trade.pnlPercent >= 0 ? '+' : ''}${trade.pnlPercent.toFixed(2)}%` : '—';
+  return `${trade.symbol} • ${entryDate} → ${exitDate} • ${entryPrice} → ${exitPrice} • IBS ${entryIbs} → ${exitIbs} • PnL ${pnlPercent}`;
+}
+
+function buildTradeHistoryMessage(limit = 5) {
+  if (!tradeHistory.length) {
+    return '<b>Последние сделки</b>\nСделок пока нет.';
+  }
+
+  const openTrade = getCurrentOpenTrade();
+  const sorted = [...tradeHistory].sort((a, b) => {
+    const aKey = a.exitDate || a.entryDate || '';
+    const bKey = b.exitDate || b.entryDate || '';
+    return bKey.localeCompare(aKey);
+  });
+  const recent = sorted.slice(0, limit);
+  const lines = ['<b>Последние сделки</b>'];
+
+  if (openTrade) {
+    lines.push(`🔔 Текущая позиция: ${formatTradeSummary(openTrade)}`);
+    lines.push('');
+  }
+
+  let index = 1;
+  for (const trade of recent) {
+    lines.push(`${index}. ${formatTradeSummary(trade)}`);
+    index += 1;
+  }
+
+  return lines.join('\n');
+}
+
+function serializeTradeForResponse(trade) {
+  return {
+    id: trade.id,
+    symbol: trade.symbol,
+    status: trade.status,
+    entryDate: trade.entryDate,
+    exitDate: trade.exitDate,
+    entryPrice: trade.entryPrice,
+    exitPrice: trade.exitPrice,
+    entryIBS: trade.entryIBS,
+    exitIBS: trade.exitIBS,
+    entryDecisionTime: trade.entryDecisionTime,
+    exitDecisionTime: trade.exitDecisionTime,
+    pnlPercent: trade.pnlPercent,
+    pnlAbsolute: trade.pnlAbsolute,
+    holdingDays: trade.holdingDays,
+  };
+}
+
+function getSortedTradeHistory() {
+  return [...tradeHistory].sort((a, b) => {
+    const aKey = a.exitDecisionTime || a.exitDate || a.entryDecisionTime || a.entryDate || '';
+    const bKey = b.exitDecisionTime || b.exitDate || b.entryDecisionTime || b.entryDate || '';
+    return bKey.localeCompare(aKey);
+  });
+}
+
 /**
  * Рассчитывает текущий статус позиции по стратегии за последние 35 дней
  * @param {string} symbol - Тикер акции
@@ -709,7 +973,20 @@ async function loadWatches() {
     if (Array.isArray(arr)) {
       telegramWatches.clear();
       arr.forEach(w => {
-        if (w && w.symbol) telegramWatches.set(w.symbol.toUpperCase(), { ...w, symbol: w.symbol.toUpperCase(), sent: w.sent || { dateKey: null, warn10: false, confirm1: false } });
+        if (!w || !w.symbol) return;
+        const symbol = w.symbol.toUpperCase();
+        const entryPrice = typeof w.entryPrice === 'number' ? w.entryPrice : null;
+        telegramWatches.set(symbol, {
+          ...w,
+          symbol,
+          entryPrice,
+          entryDate: typeof w.entryDate === 'string' ? w.entryDate : null,
+          entryIBS: typeof w.entryIBS === 'number' ? w.entryIBS : null,
+          entryDecisionTime: typeof w.entryDecisionTime === 'string' ? w.entryDecisionTime : null,
+          currentTradeId: typeof w.currentTradeId === 'string' ? w.currentTradeId : null,
+          isOpenPosition: entryPrice != null,
+          sent: w.sent || { dateKey: null, warn10: false, confirm1: false, entryWarn10: false, entryConfirm1: false }
+        });
       });
       console.log(`Loaded ${telegramWatches.size} telegram watches from disk`);
     }
@@ -944,7 +1221,20 @@ app.post('/api/telegram/watch', (req, res) => {
     const useChatId = chatId || getApiConfig().TELEGRAM_CHAT_ID;
     if (!useChatId) return res.status(400).json({ error: 'No Telegram chat id configured' });
     // thresholdPct сохраняем для обратной совместимости, но в расчётах используем глобальную настройку
-    telegramWatches.set(safeSymbol, { symbol: safeSymbol, highIBS, lowIBS, thresholdPct, chatId: useChatId, entryPrice, isOpenPosition, sent: { dateKey: null, warn10: false, confirm1: false, entryWarn10: false, entryConfirm1: false } });
+    telegramWatches.set(safeSymbol, {
+      symbol: safeSymbol,
+      highIBS,
+      lowIBS,
+      thresholdPct,
+      chatId: useChatId,
+      entryPrice,
+      entryDate: null,
+      entryIBS: null,
+      entryDecisionTime: null,
+      currentTradeId: null,
+      isOpenPosition,
+      sent: { dateKey: null, warn10: false, confirm1: false, entryWarn10: false, entryConfirm1: false }
+    });
     scheduleSaveWatches();
     res.json({ success: true });
   } catch (e) {
@@ -1122,6 +1412,17 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
 
     await appendMonitorLog([`T-${minutesUntilClose}min: scan ${telegramWatches.size} watches; thresholdPct=${pct}% (deltaIBS=${delta})${options && options.test ? ' [TEST]' : ''}`]);
     
+    if (!tradeHistoryLoaded) {
+      await loadTradeHistory().catch(err => {
+        console.warn('Failed to load trade history before aggregation:', err && err.message ? err.message : err);
+      });
+    }
+
+    const preSync = synchronizeWatchesWithTradeHistory();
+    if (preSync.changes.length && (!options || options.updateState !== false)) {
+      scheduleSaveWatches();
+    }
+
     let apiCallsSkipped = 0;
     let apiCallsMade = 0;
 
@@ -1240,57 +1541,199 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
 
       // T-2 confirmations — send once if any signals exist
       if (minutesUntilClose === 2 && (!state.t2Sent || (options && options.forceSend))) {
-        const exits = [];
-        const entries = [];
-        const sorted = list.slice().sort((a, b) => a.w.symbol.localeCompare(b.w.symbol));
-        for (const rec of sorted) {
+        const nowIso = new Date().toISOString();
+        const entryCandidates = [];
+        const potentialExitDetails = [];
+        const potentialEntryDetails = [];
+        const sortedByIBS = list.slice().sort((a, b) => {
+          if (a.ibs == null && b.ibs == null) return a.w.symbol.localeCompare(b.w.symbol);
+          if (a.ibs == null) return 1;
+          if (b.ibs == null) return -1;
+          if (a.ibs === b.ibs) return a.w.symbol.localeCompare(b.w.symbol);
+          return a.ibs - b.ibs;
+        });
+
+        const openTradeBefore = getCurrentOpenTrade();
+        const openSymbolBefore = openTradeBefore ? openTradeBefore.symbol : null;
+        let exitCandidate = null;
+
+        for (const rec of sortedByIBS) {
+          if (!rec.dataOk) continue;
           const { w } = rec;
-          // Exit confirmations
-          if (rec.dataOk && isPositionOpen(w) && rec.confirmExit && !w.sent.confirm1) {
-            exits.push(`${w.symbol}: IBS ${rec.ibs.toFixed(3)} (≥ ${w.highIBS}); цена: ${formatMoney(rec.quote.current)}; диапазон: ${formatMoney(rec.range.low)} - ${formatMoney(rec.range.high)}`);
-            if (!options || options.updateState !== false) {
-              // Mark confirmation sent for today (but don't auto-close position - user should manually update)
-              w.sent.confirm1 = true;
-              // Removed automatic position closing - user should manually close position via UI
-              // w.isOpenPosition = false;
-              // w.entryPrice = null;
+          const ibsPercent = typeof rec.ibs === 'number' ? (rec.ibs * 100).toFixed(1) : '—';
+          const lowThreshold = (w.lowIBS ?? 0.1) * 100;
+          const highThreshold = (w.highIBS ?? 0.75) * 100;
+
+          if (openSymbolBefore && w.symbol === openSymbolBefore) {
+            potentialExitDetails.push({
+              symbol: w.symbol,
+              ibsPercent,
+              highThreshold: highThreshold.toFixed(1),
+              confirm: rec.confirmExit,
+            });
+            if (rec.confirmExit) {
+              exitCandidate = rec;
             }
           }
-          // Entry confirmations (do not auto-open position beyond marking confirmation to avoid unintended flips)
-          if (rec.dataOk && !isPositionOpen(w) && rec.confirmEntry && !w.sent.entryConfirm1) {
-            entries.push(`${w.symbol}: IBS ${rec.ibs.toFixed(3)} (≤ ${w.lowIBS ?? 0.1}); цена: ${formatMoney(rec.quote.current)}; диапазон: ${formatMoney(rec.range.low)} - ${formatMoney(rec.range.high)}`);
+
+          if (rec.confirmEntry) {
+            potentialEntryDetails.push({
+              symbol: w.symbol,
+              ibsPercent,
+              lowThreshold: lowThreshold.toFixed(1),
+            });
+            entryCandidates.push(rec);
+          }
+        }
+
+        let exitAction = null;
+        if (exitCandidate && !openSymbolBefore) {
+          exitCandidate = null; // safety: no open trade
+        }
+
+        if (exitCandidate && openSymbolBefore) {
+          const exitTrade = recordTradeExit({
+            symbol: exitCandidate.w.symbol,
+            price: exitCandidate.quote?.current ?? null,
+            ibs: exitCandidate.ibs,
+            decisionTime: nowIso,
+            dateKey: todayKey,
+          });
+          if (exitTrade) {
+            exitAction = {
+              symbol: exitCandidate.w.symbol,
+              price: exitCandidate.quote?.current ?? null,
+              ibs: exitCandidate.ibs,
+            };
             if (!options || options.updateState !== false) {
-              w.sent.entryConfirm1 = true;
+              exitCandidate.w.sent.confirm1 = true;
+            }
+            await appendMonitorLog([`T-2 exit executed for ${exitCandidate.w.symbol} @ ${exitCandidate.quote?.current ?? '—'} IBS=${exitCandidate.ibs != null ? exitCandidate.ibs.toFixed(3) : '—'}`]);
+          }
+        }
+
+        const syncAfterExit = synchronizeWatchesWithTradeHistory();
+        if (syncAfterExit.changes.length && (!options || options.updateState !== false)) {
+          scheduleSaveWatches();
+        }
+
+        let entryAction = null;
+        const openTradeAfterExit = getCurrentOpenTrade();
+        if (!openTradeAfterExit && entryCandidates.length > 0) {
+          const availableEntries = entryCandidates.filter(rec => rec.confirmEntry && rec.dataOk);
+          if (availableEntries.length > 0) {
+            const bestEntry = availableEntries.reduce((best, rec) => {
+              if (!best) return rec;
+              if (rec.ibs == null) return best;
+              if (best.ibs == null) return rec;
+              if (rec.ibs === best.ibs) return rec.w.symbol.localeCompare(best.w.symbol) < 0 ? rec : best;
+              return rec.ibs < best.ibs ? rec : best;
+            }, null);
+
+            if (bestEntry) {
+              const trade = recordTradeEntry({
+                symbol: bestEntry.w.symbol,
+                price: bestEntry.quote?.current ?? null,
+                ibs: bestEntry.ibs,
+                decisionTime: nowIso,
+                dateKey: todayKey,
+              });
+              if (trade) {
+                entryAction = {
+                  symbol: bestEntry.w.symbol,
+                  price: bestEntry.quote?.current ?? null,
+                  ibs: bestEntry.ibs,
+                };
+                if (!options || options.updateState !== false) {
+                  bestEntry.w.sent.entryConfirm1 = true;
+                }
+                await appendMonitorLog([`T-2 entry executed for ${bestEntry.w.symbol} @ ${bestEntry.quote?.current ?? '—'} IBS=${bestEntry.ibs != null ? bestEntry.ibs.toFixed(3) : '—'}`]);
+              }
             }
           }
         }
-        if (exits.length || entries.length) {
-          const parts = [];
-          parts.push('<b>⏱️ 2 минуты до закрытия — подтвержденные сигналы</b>');
-          parts.push(`Дата: ${todayKey}, Время: ${String(nowEt.hh).padStart(2,'0')}:${String(nowEt.mm).padStart(2,'0')}`);
-          if (exits.length) {
-            parts.push('\n<b>Выход:</b>');
-            parts.push(exits.join('\n'));
-          }
-          if (entries.length) {
-            parts.push('\n<b>Вход:</b>');
-            parts.push(entries.join('\n'));
-          }
-          const text = parts.join('\n');
-          const resp = await sendTelegramMessage(chatId, text);
-          if (resp.ok) {
-            if (!options || options.updateState !== false) {
-              state.t2Sent = true;
-              aggregateSendState.set(chatId, state);
-              // Persist watches immediately to ensure toggled isOpenPosition is saved
-              scheduleSaveWatches();
-            }
-            await appendMonitorLog([`T-2 confirms → chat ${chatId}`, ...exits.map(s => `EXIT ${s}`), ...entries.map(s => `ENTRY ${s}`), options && options.test ? '→ sent ok [TEST]' : '→ sent ok']);
-          } else {
-            await appendMonitorLog([`T-2 confirms → chat ${chatId}`, 'nothing sent (send failed)']);
-          }
+
+        const syncResult = synchronizeWatchesWithTradeHistory();
+        if (syncResult.changes.length && (!options || options.updateState !== false)) {
+          scheduleSaveWatches();
+        }
+
+        const openTradeNow = getCurrentOpenTrade();
+        const potentialExitLines = [];
+        if (potentialExitDetails.length === 0) {
+          potentialExitLines.push('• Сигналов на выход нет');
         } else {
-          await appendMonitorLog([`T-2 confirms → chat ${chatId}`, 'nothing to send']);
+          for (const detail of potentialExitDetails) {
+            if (detail.confirm) {
+              potentialExitLines.push(`• ${detail.symbol}: IBS ${detail.ibsPercent}% ≥ ${detail.highThreshold}% (сигнал выхода)`);
+            } else {
+              potentialExitLines.push(`• ${detail.symbol}: IBS ${detail.ibsPercent}% (порог ${detail.highThreshold}%)`);
+            }
+          }
+        }
+
+        const potentialEntryLines = [];
+        if (potentialEntryDetails.length === 0) {
+          potentialEntryLines.push('• Сигналов на вход нет');
+        } else {
+          const finalOpenSymbol = openTradeNow ? openTradeNow.symbol : null;
+          for (const detail of potentialEntryDetails) {
+            let note = '';
+            if (entryAction && entryAction.symbol === detail.symbol) {
+              note = ' (выбран)';
+            } else if (finalOpenSymbol && finalOpenSymbol !== detail.symbol) {
+              note = ' (позиция занята)';
+            }
+            potentialEntryLines.push(`• ${detail.symbol}: IBS ${detail.ibsPercent}% ≤ ${detail.lowThreshold}%${note}`);
+          }
+        }
+
+        const decisionLines = [];
+        if (exitAction) {
+          const price = typeof exitAction.price === 'number' ? `$${exitAction.price.toFixed(2)}` : '—';
+          const ibs = exitAction.ibs != null ? `${(exitAction.ibs * 100).toFixed(1)}%` : '—';
+          decisionLines.push(`• Закрываем ${exitAction.symbol} по ${price} (IBS ${ibs})`);
+        }
+        if (entryAction) {
+          const price = typeof entryAction.price === 'number' ? `$${entryAction.price.toFixed(2)}` : '—';
+          const ibs = entryAction.ibs != null ? `${(entryAction.ibs * 100).toFixed(1)}%` : '—';
+          decisionLines.push(`• Открываем ${entryAction.symbol} по ${price} (IBS ${ibs})`);
+        }
+        if (!decisionLines.length) {
+          decisionLines.push('• Действий нет');
+        }
+
+        const header = '<b>⏱️ 2 минуты до закрытия — мониторинг IBS</b>';
+        const timestampLine = `Дата: ${todayKey}, Время: ${String(nowEt.hh).padStart(2, '0')}:${String(nowEt.mm).padStart(2, '0')}`;
+        const positionLine = openTradeNow
+          ? `Текущая позиция: ${openTradeNow.symbol} (вход ${openTradeNow.entryDate || '—'} по ${typeof openTradeNow.entryPrice === 'number' ? `$${openTradeNow.entryPrice.toFixed(2)}` : '—'})`
+          : 'Текущая позиция: нет';
+
+        const messageParts = [
+          header,
+          timestampLine,
+          positionLine,
+          '',
+          '<b>Потенциальные сигналы на выход:</b>',
+          ...potentialExitLines,
+          '',
+          '<b>Потенциальные сигналы на вход:</b>',
+          ...potentialEntryLines,
+          '',
+          '<b>Решение:</b>',
+          ...decisionLines,
+        ];
+
+        const text = messageParts.join('\n');
+        const resp = await sendTelegramMessage(chatId, text);
+        if (resp.ok) {
+          if (!options || options.updateState !== false) {
+            state.t2Sent = true;
+            aggregateSendState.set(chatId, state);
+          }
+          await appendMonitorLog([`T-2 report → chat ${chatId}`, ...decisionLines]);
+        } else {
+          await appendMonitorLog([`T-2 report → chat ${chatId}`, 'send failed']);
         }
       }
     }
@@ -1498,88 +1941,64 @@ async function runPriceActualization(options = {}) {
       }
     }
     
-    // НОВАЯ ЛОГИКА: Расчет позиций после обновления данных
-    await appendMonitorLog([`T+16min: начинаем пересчёт позиций для всех тикеров...`]);
-    
-    let positionUpdates = [];
-    
-    for (const w of telegramWatches.values()) {
-      try {
-        await appendMonitorLog([`Рассчитываем позицию для ${w.symbol}...`]);
-        
-        // Получаем текущий статус позиции через алгоритм стратегии
-        const calculatedStatus = await calculatePositionStatus(w.symbol, w.lowIBS || 0.1, w.highIBS || 0.75);
-        const currentIsOpen = w.isOpenPosition;
-        const currentEntryPrice = w.entryPrice;
-        
-        // Обновляем данные в мониторинге только если есть изменения
-        if (calculatedStatus.isOpen !== currentIsOpen || calculatedStatus.entryPrice !== currentEntryPrice) {
-          // Обновляем статус позиции
-          w.isOpenPosition = calculatedStatus.isOpen;
-          w.entryPrice = calculatedStatus.entryPrice;
-          
-          // Логируем изменение
-          const statusChange = currentIsOpen !== calculatedStatus.isOpen;
-          if (statusChange) {
-            if (calculatedStatus.isOpen) {
-              await appendMonitorLog([`${w.symbol} - ОТКРЫТА позиция по цене ${calculatedStatus.entryPrice} (${calculatedStatus.entryDate})`]);
-              positionUpdates.push({
-                symbol: w.symbol,
-                action: 'ОТКРЫТА',
-                price: calculatedStatus.entryPrice,
-                date: calculatedStatus.entryDate
-              });
-            } else {
-              await appendMonitorLog([`${w.symbol} - ЗАКРЫТА позиция (была открыта по цене ${currentEntryPrice})`]);
-              positionUpdates.push({
-                symbol: w.symbol,
-                action: 'ЗАКРЫТА',
-                price: null,
-                previousPrice: currentEntryPrice
-              });
-            }
-          } else {
-            await appendMonitorLog([`${w.symbol} - обновлена цена входа: ${calculatedStatus.entryPrice}`]);
-          }
-        } else {
-          await appendMonitorLog([`${w.symbol} - позиция без изменений (${calculatedStatus.isOpen ? 'открыта' : 'закрыта'})`]);
-        }
-        
-        // Небольшая задержка между расчетами
-        await new Promise(resolve => setTimeout(resolve, 500));
-        
-      } catch (error) {
-        await appendMonitorLog([`${w.symbol} - ошибка расчёта позиции: ${error.message}`]);
-      }
+    await appendMonitorLog([`T+16min: синхронизация позиций с журналом сделок...`]);
+
+    if (!tradeHistoryLoaded) {
+      await loadTradeHistory().catch(err => {
+        console.warn('Failed to load trade history before sync:', err && err.message ? err.message : err);
+      });
     }
-    
-    // Сохраняем изменения в файл
-    scheduleSaveWatches();
-    
-    await appendMonitorLog([`Пересчёт позиций завершён. Изменений: ${positionUpdates.length}`]);
-    
+
+    const syncResult = synchronizeWatchesWithTradeHistory();
+    if (syncResult.changes.length) {
+      await appendMonitorLog([`Синхронизировано позиций: ${syncResult.changes.length}`]);
+      for (const change of syncResult.changes) {
+        if (change.action === 'sync_open') {
+          await appendMonitorLog([`${change.symbol} → открыта позиция по ${change.nextPrice != null ? change.nextPrice : '—'}`]);
+        } else if (change.action === 'sync_close') {
+          await appendMonitorLog([`${change.symbol} → позиция закрыта`]);
+        }
+      }
+      scheduleSaveWatches();
+    } else {
+      await appendMonitorLog(['Позиции без изменений']);
+    }
+
+    const openTradeAfterSync = getCurrentOpenTrade();
+
     // Send notification to Telegram with position updates
     const chatId = getApiConfig().TELEGRAM_CHAT_ID;
-    if (chatId && (updatedTickers.length > 0 || positionUpdates.length > 0)) {
+    if (chatId && (updatedTickers.length > 0 || syncResult.changes.length > 0)) {
       let message = `📊 Ежедневный отчёт (${todayKey})\n\n`;
-      
+
       if (updatedTickers.length > 0) {
         message += `📈 Обновлено цен: ${updatedTickers.length}\n${updatedTickers.join(', ')}\n\n`;
       }
-      
-      if (positionUpdates.length > 0) {
+
+      if (syncResult.changes.length > 0) {
         message += `🔄 Изменения позиций:\n`;
-        for (const update of positionUpdates) {
-          if (update.action === 'ОТКРЫТА') {
-            message += `• ${update.symbol}: ОТКРЫТА по $${update.price} (${update.date})\n`;
-          } else {
-            message += `• ${update.symbol}: ЗАКРЫТА (была $${update.previousPrice})\n`;
+        for (const change of syncResult.changes) {
+          if (change.action === 'sync_open') {
+            const price = change.nextPrice != null ? `$${Number(change.nextPrice).toFixed(2)}` : '—';
+            message += `• ${change.symbol}: открыта по ${price}\n`;
+          } else if (change.action === 'sync_close') {
+            const price = change.previousPrice != null ? `$${Number(change.previousPrice).toFixed(2)}` : '—';
+            message += `• ${change.symbol}: закрыта (было ${price})\n`;
           }
         }
       } else {
-        message += `✅ Позиции без изменений`;
+        message += `✅ Позиции без изменений\n`;
       }
-      
+
+      message += '\n';
+      if (openTradeAfterSync) {
+        const entryPrice = typeof openTradeAfterSync.entryPrice === 'number' ? `$${openTradeAfterSync.entryPrice.toFixed(2)}` : '—';
+        const entryIbs = typeof openTradeAfterSync.entryIBS === 'number' ? `${(openTradeAfterSync.entryIBS * 100).toFixed(1)}%` : '—';
+        message += `🔔 Текущая позиция: ${openTradeAfterSync.symbol} • вход ${openTradeAfterSync.entryDate || '—'} • ${entryPrice} • IBS ${entryIbs}`;
+      } else {
+        message += `🔔 Текущая позиция: нет`;
+      }
+
       await sendTelegramMessage(chatId, message);
     }
     
@@ -1661,8 +2080,13 @@ app.get('/api/telegram/watches', (req, res) => {
   const list = Array.from(telegramWatches.values()).map(w => ({
     symbol: w.symbol,
     highIBS: w.highIBS,
+    lowIBS: w.lowIBS,
     thresholdPct: w.thresholdPct,
     entryPrice: w.entryPrice ?? null,
+    entryDate: w.entryDate ?? null,
+    entryIBS: typeof w.entryIBS === 'number' ? w.entryIBS : null,
+    entryDecisionTime: w.entryDecisionTime ?? null,
+    currentTradeId: w.currentTradeId ?? null,
     // Автоматически определяем позицию: если есть entryPrice, значит позиция открыта
     isOpenPosition: !!(w.entryPrice !== null && w.entryPrice !== undefined),
     chatId: w.chatId ? 'configured' : null,
@@ -1670,67 +2094,57 @@ app.get('/api/telegram/watches', (req, res) => {
   res.json(list);
 });
 
+app.get('/api/trades', async (req, res) => {
+  try {
+    if (!tradeHistoryLoaded) {
+      await loadTradeHistory();
+    }
+    const sorted = getSortedTradeHistory();
+    const openTrade = getCurrentOpenTrade();
+    res.json({
+      trades: sorted.map(serializeTradeForResponse),
+      openTrade: openTrade ? serializeTradeForResponse(openTrade) : null,
+      total: tradeHistory.length,
+      lastUpdated: new Date().toISOString(),
+    });
+  } catch (e) {
+    res.status(500).json({ error: e && e.message ? e.message : 'Failed to load trade history' });
+  }
+});
+
 /**
  * Обновляет статус позиций для всех акций в мониторинге 
  */
 async function updateAllPositions() {
-  console.log('🔄 Updating all positions status...');
-  const results = [];
-  
-  for (const [symbol, watch] of telegramWatches.entries()) {
-    console.log(`Calculating position for ${symbol}...`);
-    
-    // Рассчитываем текущий статус позиции
-    const status = await calculatePositionStatus(symbol, watch.lowIBS || 0.1, watch.highIBS || 0.75);
-    
-    // Сравниваем с предыдущим статусом
-    const wasOpen = isPositionOpen(watch);
-    const isNowOpen = status.isOpen;
-    
-    // Обновляем данные в мониторинге
-    if (status.isOpen && status.entryPrice) {
-      watch.entryPrice = status.entryPrice;
-    } else {
-      watch.entryPrice = null;
-    }
-    
-    // Определяем что произошло
-    let changeType = 'no_change';
-    if (!wasOpen && isNowOpen) {
-      changeType = 'opened';
-    } else if (wasOpen && !isNowOpen) {
-      changeType = 'closed';  
-    }
-    
-    results.push({
-      symbol,
-      wasOpen,
-      isNowOpen, 
-      changeType,
-      entryPrice: status.entryPrice,
-      entryDate: status.entryDate,
-      signal: status.signal
+  console.log('🔄 Synchronizing monitored positions with trade history...');
+  if (!tradeHistoryLoaded) {
+    await loadTradeHistory().catch(err => {
+      console.warn('Failed to load trade history during manual sync:', err && err.message ? err.message : err);
     });
-    
-    console.log(`[${symbol}] ${wasOpen ? 'OPEN' : 'CLOSED'} → ${isNowOpen ? 'OPEN' : 'CLOSED'} (${changeType})`);
   }
-  
-  // Сохраняем изменения
-  scheduleSaveWatches();
-  
-  console.log('✅ Position update completed');
-  return results;
+
+  const syncResult = synchronizeWatchesWithTradeHistory();
+  if (syncResult.changes.length) {
+    scheduleSaveWatches();
+  }
+
+  const openTrade = getCurrentOpenTrade();
+  console.log(`✅ Position sync completed. Changes: ${syncResult.changes.length}`);
+  return {
+    changes: syncResult.changes,
+    openTrade,
+  };
 }
 
 // API для ручного обновления позиций
 app.post('/api/telegram/update-positions', async (req, res) => {
   try {
-    const results = await updateAllPositions();
-    res.json({ 
-      success: true, 
-      updated: results.length,
-      changes: results.filter(r => r.changeType !== 'no_change'),
-      results 
+    const summary = await updateAllPositions();
+    res.json({
+      success: true,
+      updated: summary.changes.length,
+      changes: summary.changes,
+      openTrade: summary.openTrade ? serializeTradeForResponse(summary.openTrade) : null
     });
   } catch (error) {
     console.error('Error updating positions:', error);
@@ -1747,8 +2161,8 @@ app.post('/api/telegram/update-all', async (req, res) => {
 
     // Then, update positions based on new prices
     const positionResults = await updateAllPositions();
-    
-    res.json({ 
+
+    res.json({
       success: true,
       prices: {
         updated: priceResult.updated,
@@ -1765,9 +2179,9 @@ app.post('/api/telegram/update-all', async (req, res) => {
         minutesAfterClose: priceResult.minutesAfterClose
       },
       positions: {
-        updated: positionResults.length,
-        changes: positionResults.filter(r => r.changeType !== 'no_change'),
-        results: positionResults
+        updated: positionResults.changes.length,
+        changes: positionResults.changes,
+        openTrade: positionResults.openTrade ? serializeTradeForResponse(positionResults.openTrade) : null
       }
     });
   } catch (error) {
@@ -1786,6 +2200,39 @@ app.post('/api/telegram/test', async (req, res) => {
     res.json({ success: true });
   } catch (e) {
     res.status(500).json({ error: e.message || 'Failed to send test message' });
+  }
+});
+
+app.post('/api/telegram/command', async (req, res) => {
+  try {
+    const { command, chatId: overrideChatId, limit } = req.body || {};
+    if (!command || typeof command !== 'string') {
+      return res.status(400).json({ error: 'command_required' });
+    }
+
+    const normalized = command.trim().toLowerCase();
+    const targetChatId = overrideChatId || getApiConfig().TELEGRAM_CHAT_ID;
+
+    if (normalized === '/trades' || normalized === 'trades') {
+      if (!targetChatId) {
+        return res.status(400).json({ error: 'telegram_not_configured' });
+      }
+      if (!tradeHistoryLoaded) {
+        await loadTradeHistory();
+      }
+      const maxItems = typeof limit === 'number' && limit > 0 ? Math.min(50, Math.floor(limit)) : 5;
+      const text = buildTradeHistoryMessage(maxItems);
+      const resp = await sendTelegramMessage(targetChatId, text);
+      if (resp.ok) {
+        return res.json({ success: true, command: normalized, sent: true, items: Math.min(maxItems, tradeHistory.length) });
+      }
+      return res.status(502).json({ error: 'send_failed', command: normalized });
+    }
+
+    return res.status(400).json({ error: 'unknown_command', command: normalized });
+  } catch (e) {
+    console.error('Telegram command error:', e);
+    res.status(500).json({ error: e && e.message ? e.message : 'Failed to process command' });
   }
 });
 
@@ -3201,6 +3648,7 @@ app.listen(PORT, () => {
   console.log(`📁 Datasets stored in: ${DATASETS_DIR}`);
   // Load persisted telegram watches
   loadWatches();
+  ensureTradeHistoryLoaded();
 });
 
 async function appendMonitorLog(lines) {

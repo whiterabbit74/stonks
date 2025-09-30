@@ -1,0 +1,18 @@
+[
+  {
+    "id": "seed-amzn-20250922",
+    "symbol": "AMZN",
+    "status": "closed",
+    "entryDate": "2025-09-22",
+    "exitDate": "2025-09-29",
+    "entryPrice": 227.63,
+    "exitPrice": 222.17,
+    "entryIBS": 0.039,
+    "exitIBS": 0.889,
+    "entryDecisionTime": "2025-09-22T19:58:00.000Z",
+    "exitDecisionTime": "2025-09-29T19:58:00.000Z",
+    "pnlPercent": -2.3996856828575106,
+    "pnlAbsolute": -5.4599999999999795,
+    "holdingDays": 7
+  }
+]

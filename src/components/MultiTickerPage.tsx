@@ -1,7 +1,7 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Settings } from 'lucide-react';
 import { useAppStore } from '../stores';
-import type { Strategy, OHLCData, Trade, EquityPoint, SplitEvent } from '../types';
+import type { Strategy, OHLCData, Trade, EquityPoint, SplitEvent, MonitorTradeHistoryResponse } from '../types';
 import { DatasetAPI } from '../lib/api';
 import { adjustOHLCForSplits, dedupeDailyOHLC } from '../lib/utils';
 import { IndicatorEngine } from '../lib/indicators';
@@ -11,6 +11,7 @@ import { TradesTable } from './TradesTable';
 import { runSinglePositionBacktest, optimizeTickerData, formatCurrencyCompact } from '../lib/singlePositionBacktest';
 import { MiniQuoteChart } from './MiniQuoteChart';
 import { createStrategyFromTemplate, STRATEGY_TEMPLATES } from '../lib/strategy';
+import { MonitorTradeHistoryPanel } from './MonitorTradeHistoryPanel';
 
 interface TickerData {
   ticker: string;
@@ -72,8 +73,11 @@ export function MultiTickerPage() {
   const [error, setError] = useState<string | null>(null);
   const [backtestResults, setBacktestResults] = useState<BacktestResults | null>(null);
   const [tickersData, setTickersData] = useState<TickerData[]>([]);
-  const [activeTab, setActiveTab] = useState<'price' | 'equity' | 'trades' | 'splits'>('price');
+  const [activeTab, setActiveTab] = useState<'price' | 'equity' | 'trades' | 'monitorTrades' | 'splits'>('price');
   const [selectedTradeTicker, setSelectedTradeTicker] = useState<'all' | string>('all');
+  const [monitorTradeHistory, setMonitorTradeHistory] = useState<MonitorTradeHistoryResponse | null>(null);
+  const [monitorTradesLoading, setMonitorTradesLoading] = useState(false);
+  const [monitorTradesError, setMonitorTradesError] = useState<string | null>(null);
 
   const currentStrategy = useAppStore(s => s.currentStrategy);
   const fallbackStrategyRef = useRef<Strategy | null>(null);
@@ -117,6 +121,23 @@ export function MultiTickerPage() {
     () => tickersData.reduce((sum, ticker) => sum + (ticker.splits?.length || 0), 0),
     [tickersData]
   );
+
+  const loadMonitorTrades = useCallback(async () => {
+    setMonitorTradesLoading(true);
+    setMonitorTradesError(null);
+    try {
+      const history = await DatasetAPI.getMonitorTradeHistory();
+      setMonitorTradeHistory(history);
+    } catch (e) {
+      setMonitorTradesError(e instanceof Error ? e.message : 'Не удалось загрузить сделки мониторинга');
+    } finally {
+      setMonitorTradesLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadMonitorTrades();
+  }, [loadMonitorTrades]);
 
   // Функция загрузки данных тикера
   const loadTickerData = async (ticker: string): Promise<TickerData> => {
@@ -401,7 +422,8 @@ export function MultiTickerPage() {
             {[
               { id: 'price' as const, label: '📈 Цены' },
               { id: 'equity' as const, label: '💰 Equity' },
-              { id: 'trades' as const, label: '📊 Сделки' },
+              { id: 'trades' as const, label: '📊 Сделки (бэктест)' },
+              { id: 'monitorTrades' as const, label: '📝 Сделки (мониторинг)' },
               { id: 'splits' as const, label: '🪙 Сплиты' },
             ].map(tab => (
               <button
@@ -602,6 +624,17 @@ export function MultiTickerPage() {
                     </div>
                   </div>
                 )}
+              </div>
+            )}
+
+            {activeTab === 'monitorTrades' && (
+              <div className="space-y-4">
+                <MonitorTradeHistoryPanel
+                  data={monitorTradeHistory}
+                  loading={monitorTradesLoading}
+                  error={monitorTradesError}
+                  onRefresh={loadMonitorTrades}
+                />
               </div>
             )}
 
