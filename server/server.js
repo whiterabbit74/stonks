@@ -632,6 +632,12 @@ async function loadTradeHistory() {
       }
     }
     tradeHistoryLoaded = true;
+    if (telegramWatches.size > 0) {
+      const syncResult = synchronizeWatchesWithTradeHistory();
+      if (syncResult.changes.length) {
+        scheduleSaveWatches();
+      }
+    }
   } catch (e) {
     console.warn('Failed to load trade history:', e && e.message ? e.message : e);
     tradeHistory.length = 0;
@@ -662,9 +668,13 @@ function scheduleSaveTradeHistory() {
 function normalizeTradeRecord(rec) {
   const safe = rec && typeof rec === 'object' ? { ...rec } : {};
   const symbol = typeof safe.symbol === 'string' ? safe.symbol.toUpperCase() : null;
-  const status = safe.status === 'open' ? 'open' : 'closed';
+  let status = safe.status === 'open' ? 'open' : 'closed';
   const entryPrice = typeof safe.entryPrice === 'number' ? safe.entryPrice : (safe.entryPrice != null ? Number(safe.entryPrice) : null);
   const exitPrice = typeof safe.exitPrice === 'number' ? safe.exitPrice : (safe.exitPrice != null ? Number(safe.exitPrice) : null);
+
+  if (safe.exitDate || safe.exitDecisionTime || (typeof exitPrice === 'number' && Number.isFinite(exitPrice))) {
+    status = 'closed';
+  }
 
   let pnlAbsolute = typeof safe.pnlAbsolute === 'number' ? safe.pnlAbsolute : null;
   let pnlPercent = typeof safe.pnlPercent === 'number' ? safe.pnlPercent : null;
@@ -705,7 +715,20 @@ function normalizeTradeRecord(rec) {
 }
 
 function getCurrentOpenTrade() {
-  return tradeHistory.find(t => t && t.status === 'open') || null;
+  let latest = null;
+  for (const trade of tradeHistory) {
+    if (!trade || trade.status !== 'open') continue;
+    if (!latest) {
+      latest = trade;
+      continue;
+    }
+    const latestKey = latest.entryDecisionTime || latest.entryDate || '';
+    const tradeKey = trade.entryDecisionTime || trade.entryDate || '';
+    if (tradeKey.localeCompare(latestKey) > 0) {
+      latest = trade;
+    }
+  }
+  return latest;
 }
 
 function recordTradeEntry({ symbol, price, ibs, decisionTime, dateKey }) {
@@ -989,6 +1012,16 @@ async function loadWatches() {
         });
       });
       console.log(`Loaded ${telegramWatches.size} telegram watches from disk`);
+    }
+    if (!tradeHistoryLoaded) {
+      await loadTradeHistory().catch(err => {
+        console.warn('Failed to load trade history during watch load:', err && err.message ? err.message : err);
+      });
+    }
+    const syncResult = synchronizeWatchesWithTradeHistory();
+    if (syncResult.changes.length) {
+      console.log(`Synchronized ${syncResult.changes.length} monitoring entries with trade history on load`);
+      scheduleSaveWatches();
     }
   } catch (e) {
     console.warn('Failed to load telegram watches:', e.message);
@@ -2076,22 +2109,59 @@ app.post('/api/telegram/actualize-prices', async (req, res) => {
 });
 
 // List current telegram watches
-app.get('/api/telegram/watches', (req, res) => {
-  const list = Array.from(telegramWatches.values()).map(w => ({
-    symbol: w.symbol,
-    highIBS: w.highIBS,
-    lowIBS: w.lowIBS,
-    thresholdPct: w.thresholdPct,
-    entryPrice: w.entryPrice ?? null,
-    entryDate: w.entryDate ?? null,
-    entryIBS: typeof w.entryIBS === 'number' ? w.entryIBS : null,
-    entryDecisionTime: w.entryDecisionTime ?? null,
-    currentTradeId: w.currentTradeId ?? null,
-    // Автоматически определяем позицию: если есть entryPrice, значит позиция открыта
-    isOpenPosition: !!(w.entryPrice !== null && w.entryPrice !== undefined),
-    chatId: w.chatId ? 'configured' : null,
-  }));
-  res.json(list);
+app.get('/api/telegram/watches', async (req, res) => {
+  try {
+    if (!tradeHistoryLoaded) {
+      await loadTradeHistory();
+    }
+
+    const syncResult = synchronizeWatchesWithTradeHistory();
+    if (syncResult.changes.length) {
+      scheduleSaveWatches();
+    }
+
+    const openTrade = syncResult.openTrade || getCurrentOpenTrade();
+    const openSymbol = openTrade ? openTrade.symbol : null;
+    const openId = openTrade ? openTrade.id : null;
+
+    const list = Array.from(telegramWatches.values()).map(w => {
+      const matchesOpenTrade = !!openSymbol && w.symbol.toUpperCase() === openSymbol;
+      const fallbackEntryPrice = typeof w.entryPrice === 'number' ? w.entryPrice : null;
+      const fallbackEntryDate = typeof w.entryDate === 'string' ? w.entryDate : null;
+      const fallbackEntryIBS = typeof w.entryIBS === 'number' ? w.entryIBS : null;
+      const fallbackDecisionTime = typeof w.entryDecisionTime === 'string' ? w.entryDecisionTime : null;
+
+      const entryPrice = matchesOpenTrade
+        ? (typeof openTrade.entryPrice === 'number' ? openTrade.entryPrice : fallbackEntryPrice)
+        : null;
+      const entryDate = matchesOpenTrade ? (openTrade.entryDate ?? fallbackEntryDate) : null;
+      const entryIBS = matchesOpenTrade
+        ? (typeof openTrade.entryIBS === 'number' ? openTrade.entryIBS : fallbackEntryIBS)
+        : null;
+      const entryDecisionTime = matchesOpenTrade
+        ? (openTrade.entryDecisionTime ?? fallbackDecisionTime)
+        : null;
+
+      return {
+        symbol: w.symbol,
+        highIBS: w.highIBS,
+        lowIBS: w.lowIBS,
+        thresholdPct: w.thresholdPct,
+        entryPrice,
+        entryDate,
+        entryIBS,
+        entryDecisionTime,
+        currentTradeId: matchesOpenTrade ? openId : null,
+        isOpenPosition: matchesOpenTrade,
+        chatId: w.chatId ? 'configured' : null,
+      };
+    });
+
+    res.json(list);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Не удалось загрузить список';
+    res.status(500).json({ error: message });
+  }
 });
 
 app.get('/api/trades', async (req, res) => {
@@ -3647,7 +3717,9 @@ app.listen(PORT, () => {
   console.log(`🚀 Trading Backtester API running on http://localhost:${PORT}`);
   console.log(`📁 Datasets stored in: ${DATASETS_DIR}`);
   // Load persisted telegram watches
-  loadWatches();
+  loadWatches().catch(err => {
+    console.warn('Failed to initialize telegram watches:', err && err.message ? err.message : err);
+  });
   ensureTradeHistoryLoaded();
 });
 
