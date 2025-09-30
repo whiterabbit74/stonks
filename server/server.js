@@ -20,7 +20,6 @@ let SPLITS_FILE = process.env.SPLITS_FILE || path.join(__dirname, 'splits.json')
 let WATCHES_FILE = process.env.WATCHES_FILE || path.join(__dirname, 'telegram-watches.json');
 let TRADE_HISTORY_FILE = process.env.TRADE_HISTORY_FILE || path.join(__dirname, 'trade-history.json');
 const MONITOR_LOG_FILE = process.env.MONITOR_LOG_PATH || path.join(DATASETS_DIR, 'monitoring.log');
-const avCache = new Map(); // кэш ответов Alpha Vantage
 
 // Load settings from JSON file
 function loadSettings() {
@@ -1944,36 +1943,6 @@ async function runPriceActualization(options = {}) {
     console.log(logMsg);
     await appendMonitorLog([logMsg]);
     
-    // Send Telegram notification about actualization results
-    if (hasProblems) {
-      let telegramMsg = `⚠️ Актуализация цен (${todayKey}) - ЕСТЬ ПРОБЛЕМЫ\n\n`;
-      telegramMsg += `✅ Обновлено с данными за сегодня: ${actuallyUpdated}/${totalTickers}\n`;
-      if (actuallyUpdated > 0) telegramMsg += `${updatedTickers.join(', ')}\n\n`;
-      
-      if (tickersWithoutTodayData.length > 0) {
-        telegramMsg += `⚠️ Без данных за сегодня (${tickersWithoutTodayData.length}):\n`;
-        tickersWithoutTodayData.forEach(t => {
-          telegramMsg += `• ${t.symbol}: последняя дата ${t.lastDate || 'неизвестно'}\n`;
-        });
-        telegramMsg += `\n`;
-      }
-      
-      if (failedTickers.length > 0) {
-        telegramMsg += `❌ Ошибки обновления (${failedTickers.length}):\n`;
-        failedTickers.forEach(t => {
-          telegramMsg += `• ${t.symbol}: ${t.reason}\n`;
-        });
-      }
-      
-      // Send error notification
-      try {
-        await sendTelegramMessage(getApiConfig().TELEGRAM_CHAT_ID, telegramMsg);
-        console.log('📱 Problem notification sent to Telegram');
-      } catch (teleError) {
-        console.log(`📱 Failed to send Telegram notification: ${teleError.message}`);
-      }
-    }
-    
     await appendMonitorLog([`T+16min: синхронизация позиций с журналом сделок...`]);
 
     if (!tradeHistoryLoaded) {
@@ -1999,9 +1968,12 @@ async function runPriceActualization(options = {}) {
 
     const openTradeAfterSync = getCurrentOpenTrade();
 
-    // Send notification to Telegram with position updates
     const chatId = getApiConfig().TELEGRAM_CHAT_ID;
+    let shouldSendDailyReport = false;
+    let dailyReportMessage = '';
+
     if (chatId && (updatedTickers.length > 0 || syncResult.changes.length > 0)) {
+      shouldSendDailyReport = true;
       let message = `📊 Ежедневный отчёт (${todayKey})\n\n`;
 
       if (updatedTickers.length > 0) {
@@ -2032,7 +2004,45 @@ async function runPriceActualization(options = {}) {
         message += `🔔 Текущая позиция: нет`;
       }
 
-      await sendTelegramMessage(chatId, message);
+      dailyReportMessage = message;
+    }
+
+    // Send Telegram notification about actualization results (with optional daily report appended)
+    if (hasProblems && chatId) {
+      let telegramMsg = `⚠️ Актуализация цен (${todayKey}) - ЕСТЬ ПРОБЛЕМЫ\n\n`;
+      telegramMsg += `✅ Обновлено с данными за сегодня: ${actuallyUpdated}/${totalTickers}\n`;
+      if (actuallyUpdated > 0) telegramMsg += `${updatedTickers.join(', ')}\n\n`;
+
+      if (tickersWithoutTodayData.length > 0) {
+        telegramMsg += `⚠️ Без данных за сегодня (${tickersWithoutTodayData.length}):\n`;
+        tickersWithoutTodayData.forEach(t => {
+          telegramMsg += `• ${t.symbol}: последняя дата ${t.lastDate || 'неизвестно'}\n`;
+        });
+        telegramMsg += `\n`;
+      }
+
+      if (failedTickers.length > 0) {
+        telegramMsg += `❌ Ошибки обновления (${failedTickers.length}):\n`;
+        failedTickers.forEach(t => {
+          telegramMsg += `• ${t.symbol}: ${t.reason}\n`;
+        });
+      }
+
+      if (shouldSendDailyReport && dailyReportMessage) {
+        telegramMsg += `\n\n${dailyReportMessage}`;
+        shouldSendDailyReport = false;
+      }
+
+      try {
+        await sendTelegramMessage(chatId, telegramMsg);
+        console.log('📱 Problem notification sent to Telegram');
+      } catch (teleError) {
+        console.log(`📱 Failed to send Telegram notification: ${teleError.message}`);
+      }
+    }
+
+    if (shouldSendDailyReport && dailyReportMessage && chatId) {
+      await sendTelegramMessage(chatId, dailyReportMessage);
     }
     
     priceActualizationState.status = 'completed';
@@ -2593,12 +2603,6 @@ async function fetchFromAlphaVantage(symbol, startDate, endDate, options = { adj
   }
   const url = `https://www.alphavantage.co/query?function=${func}&symbol=${encodeURIComponent(safeSymbol)}&apikey=${getApiConfig().ALPHA_VANTAGE_API_KEY}&outputsize=full`;
   
-  const cacheKey = `av:${safeSymbol}:${startDate}:${endDate}:${options.adjustment}`;
-  const cached = avCache.get(cacheKey);
-  if (cached && Date.now() - cached.ts < cached.ttlMs) {
-    return Promise.resolve(cached.payload);
-  }
-
   return new Promise((resolve, reject) => {
     https.get(url, (response) => {
       let data = '';
@@ -2695,7 +2699,6 @@ async function fetchFromAlphaVantage(symbol, startDate, endDate, options = { adj
             volume: r.volume
           }));
           const payload = { data: result, splits: splitEvents.reverse() };
-          avCache.set(cacheKey, { ts: Date.now(), ttlMs: 6 * 60 * 60 * 1000, payload });
           resolve(payload);
           
         } catch (error) {
@@ -3343,13 +3346,6 @@ app.get('/api/quote/:symbol', async (req, res) => {
     }
     const chosenProvider = (provider || getApiConfig().PREFERRED_API_PROVIDER).toString().toLowerCase();
 
-    // Very short cache (5s) to reduce load
-    const cacheKey = `quote:${chosenProvider}:${symbol}`;
-    const cached = avCache.get(cacheKey);
-    if (cached && Date.now() - cached.ts < 5000) {
-      return res.json(cached.payload);
-    }
-
     if (chosenProvider === 'finnhub') {
       if (!getApiConfig().FINNHUB_API_KEY) {
         return res.status(500).json({ error: 'Finnhub API key not configured' });
@@ -3388,7 +3384,6 @@ app.get('/api/quote/:symbol', async (req, res) => {
           });
         }).on('error', reject);
       });
-      avCache.set(cacheKey, { ts: Date.now(), ttlMs: 5000, payload });
       return res.json(payload);
     }
 
@@ -3432,7 +3427,6 @@ app.get('/api/quote/:symbol', async (req, res) => {
         });
       }).on('error', reject);
     });
-    avCache.set(cacheKey, { ts: Date.now(), ttlMs: 5000, payload });
     return res.json(payload);
   } catch (error) {
     console.error('Error fetching quote:', error);
