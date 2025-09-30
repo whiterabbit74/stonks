@@ -1306,8 +1306,19 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
   }
 }
 
+const priceActualizationState = {
+  lastRunDateKey: null,
+  status: 'idle',
+  startedAt: null,
+  completedAt: null,
+  source: null,
+  error: null,
+};
+
 // Price actualization script - runs 16 minutes AFTER market close to update final prices
-async function runPriceActualization() {
+async function runPriceActualization(options = {}) {
+  const { force = false, source = 'unknown' } = options;
+
   const nowEt = getETParts(new Date());
   const cal = await loadTradingCalendarJSON().catch(() => null);
   
@@ -1345,6 +1356,34 @@ async function runPriceActualization() {
     }
     
     const todayKey = etKeyYMD(nowEt);
+
+    if (priceActualizationState.lastRunDateKey !== todayKey) {
+      priceActualizationState.lastRunDateKey = null;
+      priceActualizationState.status = 'idle';
+      priceActualizationState.startedAt = null;
+      priceActualizationState.completedAt = null;
+      priceActualizationState.source = null;
+      priceActualizationState.error = null;
+    }
+
+    if (!force && priceActualizationState.lastRunDateKey === todayKey) {
+      if (priceActualizationState.status === 'running') {
+        console.log(`🔁 Price actualization already running for ${todayKey}, skipping duplicate trigger from ${source}`);
+        return { updated: false, reason: 'already_running', todayKey };
+      }
+      if (priceActualizationState.status === 'completed') {
+        console.log(`✅ Price actualization already completed for ${todayKey}, skipping duplicate trigger from ${source}`);
+        return { updated: false, reason: 'already_completed', todayKey };
+      }
+    }
+
+    priceActualizationState.lastRunDateKey = todayKey;
+    priceActualizationState.status = 'running';
+    priceActualizationState.startedAt = Date.now();
+    priceActualizationState.completedAt = null;
+    priceActualizationState.source = source;
+    priceActualizationState.error = null;
+
     console.log(`📊 T+16min: Starting price actualization for ${todayKey}`);
     await appendMonitorLog([`T+16min: начинаем актуализацию цен закрытия для ${todayKey}`]);
     
@@ -1544,9 +1583,12 @@ async function runPriceActualization() {
       await sendTelegramMessage(chatId, message);
     }
     
-    return { 
-      updated: true, 
-      count: actuallyUpdated, 
+    priceActualizationState.status = 'completed';
+    priceActualizationState.completedAt = Date.now();
+
+    return {
+      updated: true,
+      count: actuallyUpdated,
       tickers: updatedTickers,
       totalTickers: totalTickers,
       failedTickers: failedTickers,
@@ -1557,6 +1599,10 @@ async function runPriceActualization() {
   } catch (error) {
     console.error('💥 Price actualization error:', error.message);
     console.error(error.stack);
+
+    priceActualizationState.status = 'failed';
+    priceActualizationState.completedAt = Date.now();
+    priceActualizationState.error = error.message;
     
     // Send error notification to Telegram
     try {
@@ -1578,8 +1624,8 @@ async function runPriceActualization() {
 
 setInterval(async () => {
   await runTelegramAggregation(null, {});
-  await runPriceActualization();
-}, 30000);
+  await runPriceActualization({ source: 'scheduler' });
+}, 60000);
 
 // Test simulation endpoint to reproduce the logic as if at T-11 or T-2
 app.post('/api/telegram/simulate', async (req, res) => {
@@ -1596,11 +1642,14 @@ app.post('/api/telegram/simulate', async (req, res) => {
 // Test price actualization endpoint 
 app.post('/api/telegram/actualize-prices', async (req, res) => {
   try {
-    const result = await runPriceActualization();
-    res.json({ 
-      success: result.updated, 
-      count: result.count || 0, 
-      tickers: result.tickers || [] 
+    const forceRun = !!(req.body && req.body.force);
+    const result = await runPriceActualization({ force: forceRun, source: 'manual_endpoint' });
+    res.json({
+      success: result.updated,
+      count: result.count || 0,
+      tickers: result.tickers || [],
+      reason: result.reason || null,
+      todayKey: result.todayKey || null
     });
   } catch (e) {
     res.status(500).json({ error: e && e.message ? e.message : 'Failed to run price actualization' });
@@ -1693,8 +1742,9 @@ app.post('/api/telegram/update-positions', async (req, res) => {
 app.post('/api/telegram/update-all', async (req, res) => {
   try {
     // First, actualize prices
-    const priceResult = await runPriceActualization();
-    
+    const forceActualization = !!(req.body && (req.body.forceActualization || req.body.forcePrices || req.body.force));
+    const priceResult = await runPriceActualization({ force: forceActualization, source: 'update-all-endpoint' });
+
     // Then, update positions based on new prices
     const positionResults = await updateAllPositions();
     
