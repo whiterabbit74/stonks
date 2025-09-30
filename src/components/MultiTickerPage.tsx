@@ -78,10 +78,9 @@ export function MultiTickerPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [backtestResults, setBacktestResults] = useState<BacktestResults | null>(null);
-  const [fastBacktestResults, setFastBacktestResults] = useState<BacktestResults | null>(null);
   const [monthlyContributionResults, setMonthlyContributionResults] = useState<BacktestResults | null>(null);
   const [tickersData, setTickersData] = useState<TickerData[]>([]);
-  type TabId = 'price' | 'equity' | 'trades' | 'fastScenario' | 'monthlyContribution' | 'monitorTrades' | 'splits';
+  type TabId = 'price' | 'equity' | 'trades' | 'monthlyContribution' | 'monitorTrades' | 'splits';
   const [activeTab, setActiveTab] = useState<TabId>('price');
   const [selectedTradeTicker, setSelectedTradeTicker] = useState<'all' | string>('all');
   const [monitorTradeHistory, setMonitorTradeHistory] = useState<MonitorTradeHistoryResponse | null>(null);
@@ -126,24 +125,6 @@ export function MultiTickerPage() {
   }, [backtestResults, selectedTradeTicker]);
 
   const filteredTradeStats = useMemo(() => calculateTradeStats(filteredTrades), [filteredTrades]);
-
-  const fastScenarioDiff = useMemo(() => {
-    if (!backtestResults || !fastBacktestResults) return null;
-
-    const tradesDelta = fastBacktestResults.metrics.totalTrades - backtestResults.metrics.totalTrades;
-    const returnDelta = fastBacktestResults.metrics.totalReturn - backtestResults.metrics.totalReturn;
-    const cagrDelta = fastBacktestResults.metrics.cagr - backtestResults.metrics.cagr;
-    const finalValueDelta = fastBacktestResults.finalValue - backtestResults.finalValue;
-
-    return {
-      tradesDelta,
-      returnDelta,
-      cagrDelta,
-      finalValueDelta,
-      winRateDelta: fastBacktestResults.metrics.winRate - backtestResults.metrics.winRate,
-      profitFactorDelta: fastBacktestResults.metrics.profitFactor - backtestResults.metrics.profitFactor
-    };
-  }, [backtestResults, fastBacktestResults]);
 
   const monthlyScenarioDiff = useMemo(() => {
     if (!backtestResults || !monthlyContributionResults) return null;
@@ -218,7 +199,6 @@ export function MultiTickerPage() {
 
     setIsLoading(true);
     setError(null);
-    setFastBacktestResults(null);
     setMonthlyContributionResults(null);
 
     try {
@@ -236,8 +216,7 @@ export function MultiTickerPage() {
 
       // Run backtest with real logic
       const optimizedData = optimizeTickerData(loadedData);
-      const backtestResult = runSinglePositionBacktest(optimizedData, activeStrategy, leveragePercent / 100);
-      const fastResult = runSinglePositionBacktest(
+      const backtestResult = runSinglePositionBacktest(
         optimizedData,
         activeStrategy,
         leveragePercent / 100,
@@ -249,6 +228,7 @@ export function MultiTickerPage() {
         activeStrategy,
         leveragePercent / 100,
         {
+          allowSameDayReentry: true,
           monthlyContribution:
             monthlyContributionAmount > 0
               ? {
@@ -281,7 +261,6 @@ export function MultiTickerPage() {
       });
 
       setBacktestResults(mapResult(backtestResult));
-      setFastBacktestResults(mapResult(fastResult));
       setMonthlyContributionResults(mapResult(monthlyResult));
       setSelectedTradeTicker('all');
     } catch (err) {
@@ -534,7 +513,6 @@ export function MultiTickerPage() {
               { id: 'price' as TabId, label: '📈 Цены' },
               { id: 'equity' as TabId, label: '💰 Equity' },
               { id: 'trades' as TabId, label: '📊 Сделки (бэктест)' },
-              fastBacktestResults ? { id: 'fastScenario' as TabId, label: '⚡ Быстрый сценарий' } : null,
               monthlyContributionResults ? { id: 'monthlyContribution' as TabId, label: '💵 Пополнения' } : null,
               { id: 'monitorTrades' as TabId, label: '📝 Сделки (мониторинг)' },
               { id: 'splits' as TabId, label: '🪙 Сплиты' },
@@ -726,8 +704,10 @@ export function MultiTickerPage() {
                 </div>
 
                 {filteredTrades.length > 0 ? (
-                  <div className="max-h-[600px] overflow-auto">
-                    <TradesTable trades={filteredTrades} />
+                  <div className="-mx-6 overflow-x-auto">
+                    <div className="min-w-full px-6">
+                      <TradesTable trades={filteredTrades} />
+                    </div>
                   </div>
                 ) : (
                   <div className="h-72 bg-gray-50 dark:bg-gray-900/50 rounded border border-dashed border-gray-300 dark:border-gray-600 flex items-center justify-center">
@@ -737,132 +717,6 @@ export function MultiTickerPage() {
                     </div>
                   </div>
                 )}
-              </div>
-            )}
-
-            {activeTab === 'fastScenario' && fastBacktestResults && (
-              <div className="space-y-6">
-                <div className="flex flex-col gap-2">
-                  <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                    ⚡ Быстрый сценарий — моментальное переоткрытие позиций
-                  </h3>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">
-                    После выхода из позиции стратегия немедленно ищет новый сигнал в этот же день. Это увеличивает количество
-                    сделок и помогает оценить, насколько агрессивный режим оправдан относительно стандартного исполнения.
-                  </p>
-                </div>
-
-                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                  <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-900/40">
-                    <div className="text-sm uppercase tracking-wide text-gray-500 dark:text-gray-400">Стандартный сценарий</div>
-                    <div className="mt-2 space-y-2 text-sm text-gray-700 dark:text-gray-200">
-                      <div className="flex items-center justify-between">
-                        <span>Итоговый баланс</span>
-                        <span className="font-semibold">{formatCurrency(backtestResults.finalValue)}</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span>Общая доходность</span>
-                        <span className="font-semibold">{backtestResults.metrics.totalReturn.toFixed(1)}%</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span>Сделок</span>
-                        <span className="font-semibold">{backtestResults.metrics.totalTrades}</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span>Profit Factor</span>
-                        <span className="font-semibold">{backtestResults.metrics.profitFactor.toFixed(2)}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 shadow-sm dark:border-blue-900/50 dark:bg-blue-950/20">
-                    <div className="text-sm uppercase tracking-wide text-blue-700 dark:text-blue-200">Быстрый сценарий</div>
-                    <div className="mt-2 space-y-2 text-sm text-blue-900 dark:text-blue-100">
-                      <div className="flex items-center justify-between">
-                        <span>Итоговый баланс</span>
-                        <span className="font-semibold">{formatCurrency(fastBacktestResults.finalValue)}</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span>Общая доходность</span>
-                        <span className="font-semibold">{fastBacktestResults.metrics.totalReturn.toFixed(1)}%</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span>Сделок</span>
-                        <span className="font-semibold">{fastBacktestResults.metrics.totalTrades}</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span>Profit Factor</span>
-                        <span className="font-semibold">{fastBacktestResults.metrics.profitFactor.toFixed(2)}</span>
-                      </div>
-                    </div>
-                    <div className="mt-3 rounded-md bg-white/70 px-3 py-2 text-xs text-blue-800 shadow-sm dark:bg-blue-900/60 dark:text-blue-100">
-                      Торговое плечо: {(leveragePercent / 100).toFixed(1)}:1
-                    </div>
-                  </div>
-
-                  {fastScenarioDiff && (
-                    <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900 shadow-sm dark:border-emerald-900/60 dark:bg-emerald-900/20 dark:text-emerald-100">
-                      <div className="text-sm uppercase tracking-wide text-emerald-600 dark:text-emerald-200">Δ Изменения</div>
-                      <ul className="mt-2 space-y-1">
-                        <li className="flex items-center justify-between">
-                          <span>Дополнительные сделки</span>
-                          <span className="font-semibold">{fastScenarioDiff.tradesDelta >= 0 ? '+' : ''}{fastScenarioDiff.tradesDelta}</span>
-                        </li>
-                        <li className="flex items-center justify-between">
-                          <span>Δ доходности</span>
-                          <span className="font-semibold">{fastScenarioDiff.returnDelta >= 0 ? '+' : ''}{fastScenarioDiff.returnDelta.toFixed(1)}%</span>
-                        </li>
-                        <li className="flex items-center justify-between">
-                          <span>Δ CAGR</span>
-                          <span className="font-semibold">{fastScenarioDiff.cagrDelta >= 0 ? '+' : ''}{fastScenarioDiff.cagrDelta.toFixed(1)}%</span>
-                        </li>
-                        <li className="flex items-center justify-between">
-                          <span>Δ конечного капитала</span>
-                          <span className="font-semibold">{fastScenarioDiff.finalValueDelta >= 0 ? '+' : ''}{formatCurrency(fastScenarioDiff.finalValueDelta)}</span>
-                        </li>
-                        <li className="flex items-center justify-between">
-                          <span>Δ Win Rate</span>
-                          <span className="font-semibold">{fastScenarioDiff.winRateDelta >= 0 ? '+' : ''}{fastScenarioDiff.winRateDelta.toFixed(1)}%</span>
-                        </li>
-                        <li className="flex items-center justify-between">
-                          <span>Δ Profit Factor</span>
-                          <span className="font-semibold">{fastScenarioDiff.profitFactorDelta >= 0 ? '+' : ''}{fastScenarioDiff.profitFactorDelta.toFixed(2)}</span>
-                        </li>
-                      </ul>
-                    </div>
-                  )}
-                </div>
-
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
-                    <div className="border-b border-gray-200 px-4 py-3 text-sm font-semibold text-gray-800 dark:border-gray-700 dark:text-gray-200">
-                      Equity — стандартный режим
-                    </div>
-                    <div className="h-[320px] w-full px-4 pb-4">
-                      <EquityChart equity={backtestResults.equity} hideHeader />
-                    </div>
-                  </div>
-                  <div className="rounded-lg border border-blue-200 bg-white dark:border-blue-900/70 dark:bg-gray-900">
-                    <div className="border-b border-blue-200 px-4 py-3 text-sm font-semibold text-blue-700 dark:border-blue-900/60 dark:text-blue-200">
-                      Equity — быстрый режим
-                    </div>
-                    <div className="h-[320px] w-full px-4 pb-4">
-                      <EquityChart equity={fastBacktestResults.equity} hideHeader />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="rounded-lg border border-blue-200 bg-white p-4 shadow-sm dark:border-blue-900/60 dark:bg-gray-900">
-                  <div className="flex items-center justify-between">
-                    <h4 className="text-base font-semibold text-gray-900 dark:text-gray-100">
-                      Сделки быстрого сценария ({fastBacktestResults.trades.length})
-                    </h4>
-                    <span className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">с плечом {(leveragePercent / 100).toFixed(1)}:1</span>
-                  </div>
-                  <div className="mt-4">
-                    <TradesTable trades={fastBacktestResults.trades} />
-                  </div>
-                </div>
               </div>
             )}
 
@@ -960,10 +814,18 @@ export function MultiTickerPage() {
 
                 <div className="grid gap-6 lg:grid-cols-2">
                   <div className="space-y-4">
-                    <h4 className="text-base font-semibold text-gray-900 dark:text-gray-100">График капитала</h4>
+                    <h4 className="text-base font-semibold text-gray-900 dark:text-gray-100">
+                      График капитала (сравнение со стандартным режимом)
+                    </h4>
                     {monthlyContributionResults.equity.length > 0 ? (
                       <div className="h-[420px] w-full">
-                        <EquityChart equity={monthlyContributionResults.equity} hideHeader />
+                        <EquityChart
+                          equity={monthlyContributionResults.equity}
+                          comparisonEquity={backtestResults?.equity || []}
+                          comparisonLabel="Без пополнений"
+                          primaryLabel="С пополнениями"
+                          hideHeader
+                        />
                       </div>
                     ) : (
                       <div className="h-72 rounded border border-dashed border-gray-300 bg-gray-50 dark:border-gray-700 dark:bg-gray-900/40 flex items-center justify-center text-gray-500 dark:text-gray-400">
@@ -981,8 +843,10 @@ export function MultiTickerPage() {
                       История сделок ({monthlyContributionResults.trades.length})
                     </h4>
                     {monthlyContributionResults.trades.length > 0 ? (
-                      <div className="max-h-[500px] overflow-auto">
-                        <TradesTable trades={monthlyContributionResults.trades} />
+                      <div className="-mx-6 overflow-x-auto">
+                        <div className="min-w-full px-6">
+                          <TradesTable trades={monthlyContributionResults.trades} />
+                        </div>
                       </div>
                     ) : (
                       <div className="h-72 rounded border border-dashed border-gray-300 bg-gray-50 dark:border-gray-700 dark:bg-gray-900/40 flex items-center justify-center text-gray-500 dark:text-gray-400">
