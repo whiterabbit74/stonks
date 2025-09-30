@@ -1,4 +1,4 @@
-import type { SavedDataset } from '../types';
+import type { SavedDataset, MonitorTradeHistoryResponse } from '../types';
 import { logError, logWarn } from './error-logger';
 
 // Runtime-safe API base to avoid hardcoded dev hosts in production bundles
@@ -639,6 +639,14 @@ export class DatasetAPI {
 
   static async listTelegramWatches(): Promise<Array<{ symbol: string; highIBS: number; thresholdPct?: number; entryPrice: number | null; isOpenPosition: boolean }>> {
     const response = await fetchWithCreds(`${API_BASE_URL}/telegram/watches`);
+    if (!response.ok) {
+      throw new Error(`${response.status} ${response.statusText}`);
+    }
+    return await response.json();
+  }
+
+  static async getMonitorTradeHistory(): Promise<MonitorTradeHistoryResponse> {
+    const response = await fetchWithCreds(`${API_BASE_URL}/trades`);
     if (!response.ok) {
       throw new Error(`${response.status} ${response.statusText}`);
     }

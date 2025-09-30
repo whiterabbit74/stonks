@@ -199,6 +199,30 @@ export const IndicatorType = {
   IBS: 'IBS'
 } as const;
 
+export interface MonitorTradeRecord {
+  id: string;
+  symbol: string;
+  status: 'open' | 'closed';
+  entryDate: string | null;
+  exitDate: string | null;
+  entryPrice: number | null;
+  exitPrice: number | null;
+  entryIBS: number | null;
+  exitIBS: number | null;
+  entryDecisionTime: string | null;
+  exitDecisionTime: string | null;
+  pnlPercent: number | null;
+  pnlAbsolute: number | null;
+  holdingDays: number | null;
+}
+
+export interface MonitorTradeHistoryResponse {
+  trades: MonitorTradeRecord[];
+  openTrade: MonitorTradeRecord | null;
+  total: number;
+  lastUpdated: string | null;
+}
+
 export type IndicatorType = typeof IndicatorType[keyof typeof IndicatorType];
 
 // Simple utility types

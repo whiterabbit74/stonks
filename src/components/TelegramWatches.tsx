@@ -5,12 +5,18 @@ import { ConfirmModal } from './ConfirmModal';
 import { InfoModal } from './InfoModal';
 import { useAppStore } from '../stores';
 import { useNavigate } from 'react-router-dom';
+import type { MonitorTradeHistoryResponse } from '../types';
+import { MonitorTradeHistoryPanel } from './MonitorTradeHistoryPanel';
 
 interface WatchItem {
   symbol: string;
   highIBS: number;
   lowIBS?: number;
   entryPrice: number | null;
+  entryDate: string | null;
+  entryIBS: number | null;
+  entryDecisionTime: string | null;
+  currentTradeId: string | null;
   isOpenPosition: boolean;
 }
 
@@ -24,6 +30,9 @@ export function TelegramWatches() {
   const [info, setInfo] = useState<{ open: boolean; title: string; message: string; kind?: 'success'|'error'|'info' }>({ open: false, title: '', message: '' });
   const [secondsToNext, setSecondsToNext] = useState<number | null>(null);
   const [editingPrice, setEditingPrice] = useState<{ symbol: string; value: string } | null>(null);
+  const [tradeHistory, setTradeHistory] = useState<MonitorTradeHistoryResponse | null>(null);
+  const [tradesError, setTradesError] = useState<string | null>(null);
+  const [tradesLoading, setTradesLoading] = useState(false);
   const watchThresholdPct = useAppStore(s => s.watchThresholdPct);
 
   const handleTickerClick = (symbol: string) => {
@@ -113,20 +122,38 @@ export function TelegramWatches() {
     return parts.join(' ');
   }
 
-  const load = async () => {
-    setLoading(true); setError(null);
+  const loadTrades = useCallback(async () => {
+    setTradesLoading(true);
+    setTradesError(null);
+    try {
+      const history = await DatasetAPI.getMonitorTradeHistory();
+      setTradeHistory(history);
+    } catch (e) {
+      setTradesError(e instanceof Error ? e.message : 'Не удалось загрузить историю сделок');
+    } finally {
+      setTradesLoading(false);
+    }
+  }, []);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
     try {
       const list = await DatasetAPI.listTelegramWatches();
-      // С сервера может прийти thresholdPct — игнорируем его, используем глобальную настройку
       const mapped = list.map((w: unknown) => {
         const watch = w as Record<string, unknown>;
-        return {
+        const item: WatchItem = {
           symbol: watch.symbol as string,
           highIBS: watch.highIBS as number,
-          lowIBS: watch.lowIBS as number ?? 0.1,
-          entryPrice: watch.entryPrice as number | null ?? null,
+          lowIBS: (watch.lowIBS as number | undefined) ?? 0.1,
+          entryPrice: (watch.entryPrice as number | null | undefined) ?? null,
+          entryDate: (watch.entryDate as string | undefined) ?? null,
+          entryIBS: typeof watch.entryIBS === 'number' ? watch.entryIBS : null,
+          entryDecisionTime: (watch.entryDecisionTime as string | undefined) ?? null,
+          currentTradeId: (watch.currentTradeId as string | undefined) ?? null,
           isOpenPosition: !!watch.isOpenPosition
         };
+        return item;
       });
       setWatches(mapped);
     } catch (e) {
@@ -135,9 +162,10 @@ export function TelegramWatches() {
     } finally {
       setLoading(false);
     }
-  };
+    await loadTrades();
+  }, [loadTrades]);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
     const tick = () => setSecondsToNext(secondsUntilNextSignal());
@@ -265,14 +293,22 @@ export function TelegramWatches() {
                         </button>
                       </div>
                     ) : (
-                      <div className="flex items-center gap-2">
-                        <span className="dark:text-gray-300">
-                          {w.entryPrice != null ? `$${w.entryPrice.toFixed(2)}` : '—'}
-                        </span>
+                      <div className="flex items-start gap-2">
+                        <div className="flex flex-col">
+                          <span className="dark:text-gray-300">
+                            {w.entryPrice != null ? `$${w.entryPrice.toFixed(2)}` : '—'}
+                          </span>
+                          {w.entryDate && (
+                            <span className="text-xs text-gray-500 dark:text-gray-400">
+                              {w.entryDate}
+                              {typeof w.entryIBS === 'number' ? ` • IBS ${(w.entryIBS * 100).toFixed(1)}%` : ''}
+                            </span>
+                          )}
+                        </div>
                         <button
-                          onClick={() => setEditingPrice({ 
-                            symbol: w.symbol, 
-                            value: w.entryPrice?.toString() || '' 
+                          onClick={() => setEditingPrice({
+                            symbol: w.symbol,
+                            value: w.entryPrice?.toString() || ''
                           })}
                           className="p-1 text-blue-600 hover:text-blue-800 opacity-0 group-hover:opacity-100 transition-opacity"
                           title="Редактировать цену входа"
@@ -288,7 +324,8 @@ export function TelegramWatches() {
                     </span>
                     {w.isOpenPosition && (
                       <div className="text-xs text-gray-500 mt-1" title="Позиция автоматически определяется по цене входа">
-                        ${w.entryPrice?.toFixed(2)}
+                        {w.entryDate || '—'}
+                        {typeof w.entryIBS === 'number' ? ` • IBS ${(w.entryIBS * 100).toFixed(1)}%` : ''}
                       </div>
                     )}
                   </td>
@@ -397,6 +434,13 @@ export function TelegramWatches() {
           </div>
         </div>
       )}
+
+      <MonitorTradeHistoryPanel
+        data={tradeHistory}
+        loading={tradesLoading}
+        error={tradesError}
+        onRefresh={loadTrades}
+      />
 
       <ConfirmModal
         open={confirm.open}
