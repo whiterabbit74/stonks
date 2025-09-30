@@ -126,10 +126,15 @@ export function updatePortfolioState(
   };
 }
 
+interface BacktestOptions {
+  allowSameDayReentry?: boolean;
+}
+
 export function runSinglePositionBacktest(
   tickersData: TickerDataWithIndex[],
   strategy: Strategy,
-  leverage: number = 1
+  leverage: number = 1,
+  options: BacktestOptions = {}
 ): {
   equity: EquityPoint[];
   finalValue: number;
@@ -137,6 +142,8 @@ export function runSinglePositionBacktest(
   trades: Trade[];
   metrics: any;
 } {
+  const { allowSameDayReentry = false } = options;
+
   if (!tickersData || tickersData.length === 0) {
     return {
       equity: [],
@@ -180,6 +187,7 @@ export function runSinglePositionBacktest(
   // Main loop
   for (const dateTime of sortedDates) {
     const currentDate = new Date(dateTime);
+    let exitedThisBar = false;
 
     // 1. Update portfolio state for current date
     const updatedPortfolio = updatePortfolioState(portfolio, currentPosition, tickersData, dateTime, strategy);
@@ -260,6 +268,7 @@ export function runSinglePositionBacktest(
 
             trades.push(trade);
             currentPosition = null;
+            exitedThisBar = true;
 
             console.log(`🔴 EXIT [${trade.context.ticker}]: IBS=${ibs.toFixed(3)}, ${exitReason}`);
             console.log(`   💰 P&L=${formatCurrencyCompact(totalPnL)} (${pnlPercent.toFixed(2)}%), Duration=${daysSinceEntry} days`);
@@ -270,7 +279,9 @@ export function runSinglePositionBacktest(
     }
 
     // 3. Look for new entry (only if no open position)
-    if (!currentPosition) {
+    const canEnterThisBar = !currentPosition && (allowSameDayReentry || !exitedThisBar);
+
+    if (canEnterThisBar) {
       let bestSignal: { tickerIndex: number; ibs: number; bar: OHLCData } | null = null;
 
       // Find best signal among all tickers
