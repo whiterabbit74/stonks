@@ -126,8 +126,15 @@ export function updatePortfolioState(
   };
 }
 
+interface MonthlyContributionOptions {
+  amount: number;
+  dayOfMonth?: number;
+  startDate?: Date;
+}
+
 interface BacktestOptions {
   allowSameDayReentry?: boolean;
+  monthlyContribution?: MonthlyContributionOptions | null;
 }
 
 export function runSinglePositionBacktest(
@@ -142,7 +149,16 @@ export function runSinglePositionBacktest(
   trades: Trade[];
   metrics: any;
 } {
-  const { allowSameDayReentry = false } = options;
+  const { allowSameDayReentry = false, monthlyContribution } = options;
+
+  const monthlyContributionPlan =
+    monthlyContribution && monthlyContribution.amount > 0
+      ? {
+          amount: monthlyContribution.amount,
+          dayOfMonth: Math.min(Math.max(monthlyContribution.dayOfMonth ?? 1, 1), 28),
+          startDate: monthlyContribution.startDate ?? null
+        }
+      : null;
 
   if (!tickersData || tickersData.length === 0) {
     return {
@@ -170,6 +186,8 @@ export function runSinglePositionBacktest(
   const trades: Trade[] = [];
   const equity: EquityPoint[] = [];
   let currentPosition: Position | null = null;
+  let totalMonthlyContributions = 0;
+  let contributionCount = 0;
 
   // Create unified timeline from all tickers
   const allDates = new Set<number>();
@@ -178,6 +196,11 @@ export function runSinglePositionBacktest(
   });
   const sortedDates = Array.from(allDates).sort((a, b) => a - b);
 
+  const contributionStartTime = monthlyContributionPlan
+    ? (monthlyContributionPlan.startDate?.getTime() ?? sortedDates[0])
+    : null;
+  let lastContributionMonthKey: string | null = null;
+
   console.log(`🚀 SINGLE POSITION MULTI-TICKER BACKTEST START`);
   console.log(`📊 Initial Capital: ${formatCurrencyCompact(initialCapital)} (${formatCurrencyUSD(initialCapital)})`);
   console.log(`📈 Tickers: ${tickersData.map(t => t.ticker).join(', ')}`);
@@ -185,9 +208,33 @@ export function runSinglePositionBacktest(
   console.log(`💹 Leverage: ${leverage.toFixed(1)}:1 (${(leverage * 100).toFixed(0)}%)`);
 
   // Main loop
-  for (const dateTime of sortedDates) {
+  for (let index = 0; index < sortedDates.length; index++) {
+    const dateTime = sortedDates[index];
     const currentDate = new Date(dateTime);
+    const nextDateTime = index < sortedDates.length - 1 ? sortedDates[index + 1] : null;
+    const nextDate = nextDateTime ? new Date(nextDateTime) : null;
     let exitedThisBar = false;
+
+    if (monthlyContributionPlan && contributionStartTime !== null && dateTime >= contributionStartTime) {
+      const monthKey = `${currentDate.getUTCFullYear()}-${currentDate.getUTCMonth()}`;
+      const isNewMonth = monthKey !== lastContributionMonthKey;
+      if (isNewMonth) {
+        const targetDay = monthlyContributionPlan.dayOfMonth;
+        const isLastTradingDayOfMonth =
+          !nextDate ||
+          nextDate.getUTCMonth() !== currentDate.getUTCMonth() ||
+          nextDate.getUTCFullYear() !== currentDate.getUTCFullYear();
+        if (currentDate.getUTCDate() >= targetDay || isLastTradingDayOfMonth) {
+          portfolio.freeCapital += monthlyContributionPlan.amount;
+          totalMonthlyContributions += monthlyContributionPlan.amount;
+          contributionCount += 1;
+          lastContributionMonthKey = monthKey;
+          console.log(
+            `➕ CONTRIBUTION: +${formatCurrencyCompact(monthlyContributionPlan.amount)} on ${currentDate.toISOString().slice(0, 10)}`
+          );
+        }
+      }
+    }
 
     // 1. Update portfolio state for current date
     const updatedPortfolio = updatePortfolioState(portfolio, currentPosition, tickersData, dateTime, strategy);
@@ -438,6 +485,10 @@ export function runSinglePositionBacktest(
   const years = daysDiff / 365.25;
   const cagr = years > 0 ? (Math.pow(finalValue / initialCapital, 1 / years) - 1) * 100 : 0;
 
+  const investedCapital = initialCapital + totalMonthlyContributions;
+  const netProfit = finalValue - investedCapital;
+  const netReturn = investedCapital > 0 ? (netProfit / investedCapital) * 100 : 0;
+
   const metrics = {
     totalReturn,
     cagr,
@@ -445,7 +496,11 @@ export function runSinglePositionBacktest(
     totalTrades: trades.length,
     winningTrades,
     losingTrades,
-    profitFactor
+    profitFactor,
+    netProfit,
+    netReturn,
+    totalContribution: totalMonthlyContributions,
+    contributionCount
   };
 
   console.log(`✅ SINGLE POSITION BACKTEST COMPLETE`);

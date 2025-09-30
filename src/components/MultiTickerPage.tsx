@@ -33,6 +33,10 @@ interface BacktestResults {
     winningTrades: number;
     losingTrades: number;
     profitFactor: number;
+    netProfit: number;
+    netReturn: number;
+    totalContribution: number;
+    contributionCount: number;
   };
 }
 
@@ -69,12 +73,15 @@ export function MultiTickerPage() {
   const [tickers, setTickers] = useState<string[]>(['AAPL', 'MSFT', 'GOOGL', 'AMZN']);
   const [tickersInput, setTickersInput] = useState<string>('AAPL, MSFT, GOOGL, AMZN');
   const [leveragePercent, setLeveragePercent] = useState(200);
+  const [monthlyContributionAmount, setMonthlyContributionAmount] = useState<number>(500);
+  const [monthlyContributionDay, setMonthlyContributionDay] = useState<number>(1);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [backtestResults, setBacktestResults] = useState<BacktestResults | null>(null);
   const [fastBacktestResults, setFastBacktestResults] = useState<BacktestResults | null>(null);
+  const [monthlyContributionResults, setMonthlyContributionResults] = useState<BacktestResults | null>(null);
   const [tickersData, setTickersData] = useState<TickerData[]>([]);
-  type TabId = 'price' | 'equity' | 'trades' | 'fastScenario' | 'monitorTrades' | 'splits';
+  type TabId = 'price' | 'equity' | 'trades' | 'fastScenario' | 'monthlyContribution' | 'monitorTrades' | 'splits';
   const [activeTab, setActiveTab] = useState<TabId>('price');
   const [selectedTradeTicker, setSelectedTradeTicker] = useState<'all' | string>('all');
   const [monitorTradeHistory, setMonitorTradeHistory] = useState<MonitorTradeHistoryResponse | null>(null);
@@ -96,6 +103,7 @@ export function MultiTickerPage() {
       ? activeStrategy.parameters.maxHoldDays
       : activeStrategy?.riskManagement?.maxHoldDays ?? 30
   );
+  const initialCapital = Number(activeStrategy?.riskManagement?.initialCapital ?? 10000);
 
   const tradesByTicker = useMemo(() => {
     if (!backtestResults?.trades) return {} as Record<string, Trade[]>;
@@ -136,6 +144,17 @@ export function MultiTickerPage() {
       profitFactorDelta: fastBacktestResults.metrics.profitFactor - backtestResults.metrics.profitFactor
     };
   }, [backtestResults, fastBacktestResults]);
+
+  const monthlyScenarioDiff = useMemo(() => {
+    if (!backtestResults || !monthlyContributionResults) return null;
+
+    return {
+      finalValueDelta: monthlyContributionResults.finalValue - backtestResults.finalValue,
+      totalReturnDelta: monthlyContributionResults.metrics.totalReturn - backtestResults.metrics.totalReturn,
+      cagrDelta: monthlyContributionResults.metrics.cagr - backtestResults.metrics.cagr,
+      netProfitDelta: monthlyContributionResults.metrics.netProfit - backtestResults.metrics.netProfit
+    };
+  }, [backtestResults, monthlyContributionResults]);
 
   const totalSplitsCount = useMemo(
     () => tickersData.reduce((sum, ticker) => sum + (ticker.splits?.length || 0), 0),
@@ -200,6 +219,7 @@ export function MultiTickerPage() {
     setIsLoading(true);
     setError(null);
     setFastBacktestResults(null);
+    setMonthlyContributionResults(null);
 
     try {
       console.log('🚀 Loading data for tickers:', tickers);
@@ -224,6 +244,22 @@ export function MultiTickerPage() {
         { allowSameDayReentry: true }
       );
 
+      const monthlyResult = runSinglePositionBacktest(
+        optimizedData,
+        activeStrategy,
+        leveragePercent / 100,
+        {
+          monthlyContribution:
+            monthlyContributionAmount > 0
+              ? {
+                  amount: monthlyContributionAmount,
+                  dayOfMonth: monthlyContributionDay,
+                  startDate: optimizedData[0]?.data?.[0]?.date
+                }
+              : null
+        }
+      );
+
       const mapResult = (source: ReturnType<typeof runSinglePositionBacktest>): BacktestResults => ({
         equity: source.equity,
         finalValue: source.finalValue,
@@ -236,12 +272,17 @@ export function MultiTickerPage() {
           totalTrades: source.metrics.totalTrades || 0,
           winningTrades: source.metrics.winningTrades || 0,
           losingTrades: source.metrics.losingTrades || 0,
-          profitFactor: source.metrics.profitFactor || 0
+          profitFactor: source.metrics.profitFactor || 0,
+          netProfit: source.metrics.netProfit ?? 0,
+          netReturn: source.metrics.netReturn ?? 0,
+          totalContribution: source.metrics.totalContribution ?? 0,
+          contributionCount: source.metrics.contributionCount ?? 0
         }
       });
 
       setBacktestResults(mapResult(backtestResult));
       setFastBacktestResults(mapResult(fastResult));
+      setMonthlyContributionResults(mapResult(monthlyResult));
       setSelectedTradeTicker('all');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Ошибка при выполнении бэктеста');
@@ -345,6 +386,45 @@ export function MultiTickerPage() {
               <option value={300}>300% (3:1)</option>
             </select>
           </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Ежемесячное пополнение, $
+            </label>
+            <input
+              type="number"
+              min={0}
+              step={100}
+              value={monthlyContributionAmount}
+              onChange={(e) => {
+                const value = Number(e.target.value);
+                setMonthlyContributionAmount(Number.isFinite(value) ? Math.max(0, value) : 0);
+              }}
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+            />
+            <div className="mt-3 grid grid-cols-1 sm:grid-cols-[auto,1fr] gap-2 text-xs text-gray-600 dark:text-gray-400">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                  День месяца
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  max={28}
+                  value={monthlyContributionDay}
+                  onChange={(e) => {
+                    const value = Number(e.target.value);
+                    const normalized = Number.isFinite(value) ? Math.min(Math.max(Math.round(value), 1), 28) : 1;
+                    setMonthlyContributionDay(normalized);
+                  }}
+                  className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white px-2 py-1 text-gray-900 dark:bg-gray-700 dark:text-gray-100"
+                />
+              </div>
+              <div className="flex items-center rounded-md border border-blue-100 bg-blue-50 px-3 py-2 text-[11px] leading-4 text-blue-700 dark:border-blue-900/60 dark:bg-blue-950/30 dark:text-blue-200">
+                Пополнение становится доступно в торговый день, когда наступает {monthlyContributionDay}-е число месяца. Если торги не идут в этот день, взнос появится в ближайший торговый день.
+              </div>
+            </div>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
@@ -358,6 +438,9 @@ export function MultiTickerPage() {
                 <div className="text-right">
                   <p>Торговое плечо: {(leveragePercent / 100).toFixed(1)}:1</p>
                   <p>Максимум 1 позиция одновременно</p>
+                  <p>Ежемесячное пополнение: {monthlyContributionAmount > 0 ? formatCurrency(monthlyContributionAmount) : '—'}
+                    {monthlyContributionAmount > 0 && ` • ${monthlyContributionDay}-й день месяца`}
+                  </p>
                 </div>
               </div>
             </div>
@@ -452,6 +535,7 @@ export function MultiTickerPage() {
               { id: 'equity' as TabId, label: '💰 Equity' },
               { id: 'trades' as TabId, label: '📊 Сделки (бэктест)' },
               fastBacktestResults ? { id: 'fastScenario' as TabId, label: '⚡ Быстрый сценарий' } : null,
+              monthlyContributionResults ? { id: 'monthlyContribution' as TabId, label: '💵 Пополнения' } : null,
               { id: 'monitorTrades' as TabId, label: '📝 Сделки (мониторинг)' },
               { id: 'splits' as TabId, label: '🪙 Сплиты' },
             ].filter(Boolean).map(tab => (
@@ -777,6 +861,134 @@ export function MultiTickerPage() {
                   </div>
                   <div className="mt-4">
                     <TradesTable trades={fastBacktestResults.trades} />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'monthlyContribution' && monthlyContributionResults && (
+              <div className="space-y-6">
+                <div className="flex flex-col gap-2">
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                    💵 Сценарий с ежемесячными пополнениями
+                  </h3>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                    Каждый месяц депозит пополняется на {formatCurrency(monthlyContributionAmount)} в {monthlyContributionDay}-й торговый день месяца. Пополнения сразу доступны для новой сделки с плечом {(leveragePercent / 100).toFixed(1)}:1.
+                  </p>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                  <div className="rounded-lg border border-gray-200 bg-white p-4 text-center shadow-sm dark:border-gray-700 dark:bg-gray-900">
+                    <div className="text-sm uppercase tracking-wide text-gray-500 dark:text-gray-400">Итоговый баланс</div>
+                    <div className="mt-2 text-2xl font-bold text-green-600 dark:text-green-400">
+                      {formatCurrency(monthlyContributionResults.finalValue)}
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-gray-200 bg-white p-4 text-center shadow-sm dark:border-gray-700 dark:bg-gray-900">
+                    <div className="text-sm uppercase tracking-wide text-gray-500 dark:text-gray-400">Сумма пополнений</div>
+                    <div className="mt-2 text-2xl font-bold text-blue-600 dark:text-blue-300">
+                      {formatCurrency(monthlyContributionResults.metrics.totalContribution)}
+                    </div>
+                    <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                      {monthlyContributionResults.metrics.contributionCount} взнос(ов)
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-gray-200 bg-white p-4 text-center shadow-sm dark:border-gray-700 dark:bg-gray-900">
+                    <div className="text-sm uppercase tracking-wide text-gray-500 dark:text-gray-400">Чистая прибыль</div>
+                    <div className={`mt-2 text-2xl font-bold ${monthlyContributionResults.metrics.netProfit >= 0 ? 'text-emerald-600 dark:text-emerald-300' : 'text-orange-500 dark:text-orange-300'}`}>
+                      {formatCurrency(monthlyContributionResults.metrics.netProfit)}
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-gray-200 bg-white p-4 text-center shadow-sm dark:border-gray-700 dark:bg-gray-900">
+                    <div className="text-sm uppercase tracking-wide text-gray-500 dark:text-gray-400">Чистая доходность</div>
+                    <div className="mt-2 text-2xl font-bold text-purple-600 dark:text-purple-300">
+                      {monthlyContributionResults.metrics.netReturn.toFixed(1)}%
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                  <div className="rounded-lg border border-gray-200 bg-white p-4 text-center shadow-sm dark:border-gray-700 dark:bg-gray-900">
+                    <div className="text-sm uppercase tracking-wide text-gray-500 dark:text-gray-400">Общая доходность</div>
+                    <div className="mt-2 text-2xl font-bold text-blue-600 dark:text-blue-300">
+                      {monthlyContributionResults.metrics.totalReturn.toFixed(1)}%
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-gray-200 bg-white p-4 text-center shadow-sm dark:border-gray-700 dark:bg-gray-900">
+                    <div className="text-sm uppercase tracking-wide text-gray-500 dark:text-gray-400">CAGR</div>
+                    <div className="mt-2 text-2xl font-bold text-orange-600 dark:text-orange-300">
+                      {monthlyContributionResults.metrics.cagr.toFixed(1)}%
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-gray-200 bg-white p-4 text-center shadow-sm dark:border-gray-700 dark:bg-gray-900">
+                    <div className="text-sm uppercase tracking-wide text-gray-500 dark:text-gray-400">Profit Factor</div>
+                    <div className="mt-2 text-2xl font-bold text-indigo-600 dark:text-indigo-300">
+                      {monthlyContributionResults.metrics.profitFactor.toFixed(2)}
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-gray-200 bg-white p-4 text-center shadow-sm dark:border-gray-700 dark:bg-gray-900">
+                    <div className="text-sm uppercase tracking-wide text-gray-500 dark:text-gray-400">Сделок</div>
+                    <div className="mt-2 text-2xl font-bold text-teal-600 dark:text-teal-300">
+                      {monthlyContributionResults.metrics.totalTrades}
+                    </div>
+                  </div>
+                </div>
+
+                {monthlyScenarioDiff && (
+                  <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900 shadow-sm dark:border-emerald-900/60 dark:bg-emerald-900/20 dark:text-emerald-100">
+                    <div className="text-sm uppercase tracking-wide text-emerald-600 dark:text-emerald-200">Сравнение со стандартным режимом</div>
+                    <ul className="mt-2 space-y-1">
+                      <li className="flex items-center justify-between">
+                        <span>Δ конечного капитала</span>
+                        <span className="font-semibold">{monthlyScenarioDiff.finalValueDelta >= 0 ? '+' : ''}{formatCurrency(monthlyScenarioDiff.finalValueDelta)}</span>
+                      </li>
+                      <li className="flex items-center justify-between">
+                        <span>Δ общей доходности</span>
+                        <span className="font-semibold">{monthlyScenarioDiff.totalReturnDelta >= 0 ? '+' : ''}{monthlyScenarioDiff.totalReturnDelta.toFixed(1)}%</span>
+                      </li>
+                      <li className="flex items-center justify-between">
+                        <span>Δ CAGR</span>
+                        <span className="font-semibold">{monthlyScenarioDiff.cagrDelta >= 0 ? '+' : ''}{monthlyScenarioDiff.cagrDelta.toFixed(1)}%</span>
+                      </li>
+                      <li className="flex items-center justify-between">
+                        <span>Δ чистой прибыли</span>
+                        <span className="font-semibold">{monthlyScenarioDiff.netProfitDelta >= 0 ? '+' : ''}{formatCurrency(monthlyScenarioDiff.netProfitDelta)}</span>
+                      </li>
+                    </ul>
+                  </div>
+                )}
+
+                <div className="grid gap-6 lg:grid-cols-2">
+                  <div className="space-y-4">
+                    <h4 className="text-base font-semibold text-gray-900 dark:text-gray-100">График капитала</h4>
+                    {monthlyContributionResults.equity.length > 0 ? (
+                      <div className="h-[420px] w-full">
+                        <EquityChart equity={monthlyContributionResults.equity} hideHeader />
+                      </div>
+                    ) : (
+                      <div className="h-72 rounded border border-dashed border-gray-300 bg-gray-50 dark:border-gray-700 dark:bg-gray-900/40 flex items-center justify-center text-gray-500 dark:text-gray-400">
+                        Нет данных по equity
+                      </div>
+                    )}
+                    <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-xs text-blue-900 shadow-sm dark:border-blue-900/60 dark:bg-blue-900/40 dark:text-blue-100">
+                      <p>Совокупные вложения: {formatCurrency(monthlyContributionResults.metrics.totalContribution + initialCapital)}</p>
+                      <p>Пополнений произведено: {monthlyContributionResults.metrics.contributionCount}</p>
+                      <p>Плечо стратегии: {(leveragePercent / 100).toFixed(1)}:1</p>
+                    </div>
+                  </div>
+                  <div className="space-y-4">
+                    <h4 className="text-base font-semibold text-gray-900 dark:text-gray-100">
+                      История сделок ({monthlyContributionResults.trades.length})
+                    </h4>
+                    {monthlyContributionResults.trades.length > 0 ? (
+                      <div className="max-h-[500px] overflow-auto">
+                        <TradesTable trades={monthlyContributionResults.trades} />
+                      </div>
+                    ) : (
+                      <div className="h-72 rounded border border-dashed border-gray-300 bg-gray-50 dark:border-gray-700 dark:bg-gray-900/40 flex items-center justify-center text-gray-500 dark:text-gray-400">
+                        Сделки отсутствуют
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
