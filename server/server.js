@@ -977,11 +977,11 @@ function isPositionOpen(watch) {
 /**
  * Aggregated send state per chat to avoid duplicate messages inside the same minute/day
  */
-const aggregateSendState = new Map(); // chatId -> { dateKey: string|null, t11Sent: boolean, t2Sent: boolean }
+const aggregateSendState = new Map(); // chatId -> { dateKey: string|null, t11Sent: boolean, t1Sent: boolean }
 function getAggregateState(chatId, dateKey) {
   let st = aggregateSendState.get(chatId);
   if (!st || st.dateKey !== dateKey) {
-    st = { dateKey, t11Sent: false, t2Sent: false };
+    st = { dateKey, t11Sent: false, t1Sent: false };
     aggregateSendState.set(chatId, st);
   }
   return st;
@@ -1192,6 +1192,37 @@ async function fetchTodayRangeAndQuote(symbol) {
     low:  (quote && quote.l != null ? quote.l : null),
   };
   return { range: todayRange, quote: { open: quote.o ?? null, high: quote.h ?? null, low: quote.l ?? null, current: quote.c ?? null, prevClose: quote.pc ?? null }, dateKey: todayKey, ohlc: null };
+}
+
+function toFiniteNumber(value) {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function normalizeIntradayRange(range, quote) {
+  const low = toFiniteNumber(range && range.low);
+  const high = toFiniteNumber(range && range.high);
+  if (low != null && high != null && high > low) {
+    return { low, high };
+  }
+  const candidates = [];
+  const inputs = [
+    range && range.low,
+    range && range.high,
+    quote && quote.current,
+    quote && quote.high,
+    quote && quote.low,
+    quote && quote.open,
+    quote && quote.prevClose,
+  ];
+  for (const value of inputs) {
+    const num = toFiniteNumber(value);
+    if (num != null) candidates.push(num);
+  }
+  if (candidates.length < 2) return null;
+  const min = Math.min(...candidates);
+  const max = Math.max(...candidates);
+  if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) return null;
+  return { low: min, high: max };
 }
 // Previous trading day helper (based on ET calendar)
 function previousTradingDayET(fromParts) {
@@ -1422,7 +1453,7 @@ async function refreshTickerViaAlphaVantageAndCheckFreshness(symbol, nowEtParts)
   }
 }
 
-// Scheduler: send aggregated messages at T-11 (overview) and T-2 (confirmations)
+// Scheduler: send aggregated messages at T-11 (overview) and T-1 (confirmations)
 async function runTelegramAggregation(minutesOverride = null, options = {}) {
   try {
     if (telegramWatches.size === 0) return { sent: false };
@@ -1433,7 +1464,7 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
     const session = getTradingSessionForDateET(nowEt, cal);
     const nowMinutes = (nowEt.hh * 60 + nowEt.mm);
     const minutesUntilClose = minutesOverride != null ? minutesOverride : (session.closeMin - nowMinutes);
-    if (minutesUntilClose !== 11 && minutesUntilClose !== 2) return { sent: false };
+    if (minutesUntilClose !== 11 && minutesUntilClose !== 1) return { sent: false };
 
     const todayKey = etKeyYMD(nowEt);
 
@@ -1504,17 +1535,27 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
       try {
         const rangeQuote = await fetchTodayRangeAndQuote(w.symbol);
         const { range, quote } = rangeQuote;
-        if (range.low == null || range.high == null || quote.current == null) throw new Error('no range/quote');
-        if (range.high <= range.low) throw new Error('invalid range');
-        const ibs = (quote.current - range.low) / (range.high - range.low);
+        rec.quote = quote || null;
+        const normalizedRange = normalizeIntradayRange(range, quote);
+        if (!normalizedRange) throw new Error('invalid range');
+        const currentPrice = toFiniteNumber(quote && quote.current);
+        if (currentPrice == null) throw new Error('no range/quote');
+        const span = normalizedRange.high - normalizedRange.low;
+        if (!(span > 0)) throw new Error('invalid range');
+        const rawIbs = (currentPrice - normalizedRange.low) / span;
+        const ibs = Math.max(0, Math.min(1, rawIbs));
         // Абсолютный порог: вход ≤ lowIBS + delta; выход ≥ highIBS − delta
         const closeEnoughToExit = ibs >= (w.highIBS - delta);
         const closeEnoughToEntry = ibs <= ((w.lowIBS ?? 0.1) + delta);
         const confirmExit = ibs >= w.highIBS;
         const confirmEntry = ibs <= (w.lowIBS ?? 0.1);
-        rec.ibs = ibs; rec.quote = quote; rec.range = range;
-        rec.closeEnoughToExit = closeEnoughToExit; rec.closeEnoughToEntry = closeEnoughToEntry;
-        rec.confirmExit = confirmExit; rec.confirmEntry = confirmEntry;
+        rec.ibs = ibs;
+        rec.quote = { ...quote, current: currentPrice };
+        rec.range = { ...range, low: normalizedRange.low, high: normalizedRange.high };
+        rec.closeEnoughToExit = closeEnoughToExit;
+        rec.closeEnoughToEntry = closeEnoughToEntry;
+        rec.confirmExit = confirmExit;
+        rec.confirmEntry = confirmEntry;
         rec.dataOk = true;
         rec.rtFresh = true;
       } catch (err) {
@@ -1571,8 +1612,8 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
         }
       }
 
-      // T-2 confirmations — send once if any signals exist
-      if (minutesUntilClose === 2 && (!state.t2Sent || (options && options.forceSend))) {
+      // T-1 confirmations — send once if any signals exist
+      if (minutesUntilClose === 1 && (!state.t1Sent || (options && options.forceSend))) {
         const nowIso = new Date().toISOString();
         const entryCandidates = [];
         const potentialExitDetails = [];
@@ -1640,7 +1681,7 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
             if (!options || options.updateState !== false) {
               exitCandidate.w.sent.confirm1 = true;
             }
-            await appendMonitorLog([`T-2 exit executed for ${exitCandidate.w.symbol} @ ${exitCandidate.quote?.current ?? '—'} IBS=${exitCandidate.ibs != null ? exitCandidate.ibs.toFixed(3) : '—'}`]);
+            await appendMonitorLog([`T-1 exit executed for ${exitCandidate.w.symbol} @ ${exitCandidate.quote?.current ?? '—'} IBS=${exitCandidate.ibs != null ? exitCandidate.ibs.toFixed(3) : '—'}`]);
           }
         }
 
@@ -1679,7 +1720,7 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
                 if (!options || options.updateState !== false) {
                   bestEntry.w.sent.entryConfirm1 = true;
                 }
-                await appendMonitorLog([`T-2 entry executed for ${bestEntry.w.symbol} @ ${bestEntry.quote?.current ?? '—'} IBS=${bestEntry.ibs != null ? bestEntry.ibs.toFixed(3) : '—'}`]);
+                await appendMonitorLog([`T-1 entry executed for ${bestEntry.w.symbol} @ ${bestEntry.quote?.current ?? '—'} IBS=${bestEntry.ibs != null ? bestEntry.ibs.toFixed(3) : '—'}`]);
               }
             }
           }
@@ -1735,8 +1776,20 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
           decisionLines.push('• Действий нет');
         }
 
-        const header = '<b>⏱️ 2 минуты до закрытия — мониторинг IBS</b>';
+        const header = '<b>⏱️ 1 минута до закрытия — мониторинг IBS</b>';
         const timestampLine = `Дата: ${todayKey}, Время: ${String(nowEt.hh).padStart(2, '0')}:${String(nowEt.mm).padStart(2, '0')}`;
+        const totalTickers = list.length;
+        const freshRealtime = list.filter(item => item.rtFresh).length;
+        let freshnessLine;
+        if (totalTickers === 0) {
+          freshnessLine = 'Актуальные котировки: тикеры не отслеживаются';
+        } else if (freshRealtime === totalTickers) {
+          freshnessLine = 'Актуальные котировки: получены по всем тикерам ✅';
+        } else if (freshRealtime === 0) {
+          freshnessLine = 'Актуальные котировки: нет обновлённых цен ❌';
+        } else {
+          freshnessLine = `Актуальные котировки: ${freshRealtime}/${totalTickers} тикера с обновлёнными данными ⚠️`;
+        }
         const positionLine = openTradeNow
           ? `Текущая позиция: ${openTradeNow.symbol} (вход ${openTradeNow.entryDate || '—'} по ${typeof openTradeNow.entryPrice === 'number' ? `$${openTradeNow.entryPrice.toFixed(2)}` : '—'})`
           : 'Текущая позиция: нет';
@@ -1744,6 +1797,7 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
         const messageParts = [
           header,
           timestampLine,
+          freshnessLine,
           positionLine,
           '',
           '<b>Потенциальные сигналы на выход:</b>',
@@ -1760,12 +1814,12 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
         const resp = await sendTelegramMessage(chatId, text);
         if (resp.ok) {
           if (!options || options.updateState !== false) {
-            state.t2Sent = true;
+            state.t1Sent = true;
             aggregateSendState.set(chatId, state);
           }
-          await appendMonitorLog([`T-2 report → chat ${chatId}`, ...decisionLines]);
+          await appendMonitorLog([`T-1 report → chat ${chatId}`, ...decisionLines, freshnessLine]);
         } else {
-          await appendMonitorLog([`T-2 report → chat ${chatId}`, 'send failed']);
+          await appendMonitorLog([`T-1 report → chat ${chatId}`, 'send failed']);
         }
       }
     }
@@ -2089,11 +2143,11 @@ setInterval(async () => {
   await runPriceActualization({ source: 'scheduler' });
 }, 30000);
 
-// Test simulation endpoint to reproduce the logic as if at T-11 or T-2
+// Test simulation endpoint to reproduce the logic as if at T-11 or T-1
 app.post('/api/telegram/simulate', async (req, res) => {
   try {
     const stage = (req.body && req.body.stage) || 'overview';
-    const minutes = stage === 'confirmations' ? 2 : 11;
+    const minutes = stage === 'confirmations' ? 1 : 11;
     const result = await runTelegramAggregation(minutes, { test: true, forceSend: true, updateState: false });
     res.json({ success: !!(result && result.sent), stage });
   } catch (e) {

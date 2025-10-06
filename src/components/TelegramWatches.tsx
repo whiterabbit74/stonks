@@ -77,7 +77,7 @@ export function TelegramWatches() {
     const closeMin = closeHour * 60; // в минутах от начала дня
     
     const target1 = (closeMin - 11) * 60; // 11 минут до закрытия в секундах
-    const target2 = (closeMin - 2) * 60;  // 2 минуты до закрытия в секундах
+    const target2 = (closeMin - 1) * 60;  // 1 минута до закрытия в секундах
     const isWeekday = p.weekday >= 1 && p.weekday <= 5;
 
     if (isWeekday) {
