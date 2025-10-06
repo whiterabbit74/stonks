@@ -6,9 +6,13 @@ interface TradesTableProps {
 }
 
 export const TradesTable = React.memo(function TradesTable({ trades }: TradesTableProps) {
-	const showTicker = useMemo(() => {
-		return trades && trades.some(t => typeof (t.context as any)?.ticker === 'string' && (t.context as any)?.ticker);
-	}, [trades]);
+        const showTicker = useMemo(() => {
+                return trades && trades.some(t => typeof (t.context as any)?.ticker === 'string' && (t.context as any)?.ticker);
+        }, [trades]);
+
+        const reversedTrades = useMemo(() => {
+                return [...trades].reverse();
+        }, [trades]);
 
 	if (!trades || trades.length === 0) {
 		return (
@@ -48,7 +52,7 @@ export const TradesTable = React.memo(function TradesTable({ trades }: TradesTab
 					</tr>
 				</thead>
 				<tbody>
-					{trades.map((t, i) => {
+                                        {reversedTrades.map((t, i) => {
 						const positive = (t.pnl ?? 0) >= 0;
 						// Получаем IBS значения из контекста
 						const entryIBS = t.context?.indicatorValues?.IBS;

@@ -78,7 +78,7 @@ function TradeRow({ trade, isHighlighted }: { trade: MonitorTradeRecord; isHighl
 export function MonitorTradeHistoryPanel({ data, loading = false, error = null, onRefresh, maxRows = 10 }: MonitorTradeHistoryPanelProps) {
   const trades = data?.trades ?? [];
   const openTrade = data?.openTrade ?? null;
-  const rows = trades.slice(0, maxRows);
+  const rows = [...trades].reverse().slice(0, maxRows);
   const hasTrades = rows.length > 0;
 
   return (
