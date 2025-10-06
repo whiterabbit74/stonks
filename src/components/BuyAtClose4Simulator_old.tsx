@@ -597,7 +597,10 @@ export function BuyAtClose4Simulator({ strategy, defaultTickers = ['AAPL', 'MSFT
               />
               
               <div className="max-h-[600px] overflow-auto">
-                <TradesTable trades={backtest.trades} />
+                <TradesTable
+                  trades={backtest.trades}
+                  exportFileNamePrefix="trades-buy-at-close-v1"
+                />
               </div>
             </div>
           )}

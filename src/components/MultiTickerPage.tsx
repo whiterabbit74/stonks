@@ -706,7 +706,10 @@ export function MultiTickerPage() {
                 {filteredTrades.length > 0 ? (
                   <div className="-mx-6 overflow-x-auto">
                     <div className="min-w-full px-6">
-                      <TradesTable trades={filteredTrades} />
+                      <TradesTable
+                        trades={filteredTrades}
+                        exportFileNamePrefix={`trades-${selectedTradeTicker === 'all' ? 'all-tickers' : selectedTradeTicker}`}
+                      />
                     </div>
                   </div>
                 ) : (
@@ -845,7 +848,10 @@ export function MultiTickerPage() {
                     {monthlyContributionResults.trades.length > 0 ? (
                       <div className="-mx-6 overflow-x-auto">
                         <div className="min-w-full px-6">
-                          <TradesTable trades={monthlyContributionResults.trades} />
+                          <TradesTable
+                            trades={monthlyContributionResults.trades}
+                            exportFileNamePrefix={`trades-monthly-contribution-${monthlyContributionAmount}`}
+                          />
                         </div>
                       </div>
                     ) : (

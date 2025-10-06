@@ -1,13 +1,22 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Download } from 'lucide-react';
 import type { Trade } from '../types';
 
 interface TradesTableProps {
-	trades: Trade[];
+trades: Trade[];
+exportFileNamePrefix?: string;
+showSummary?: boolean;
+showExport?: boolean;
 }
 
-export const TradesTable = React.memo(function TradesTable({ trades }: TradesTableProps) {
-        const PAGE_SIZE = 50;
-        const [page, setPage] = useState(1);
+export const TradesTable = React.memo(function TradesTable({
+trades,
+exportFileNamePrefix,
+showSummary = true,
+showExport = true
+}: TradesTableProps) {
+const PAGE_SIZE = 50;
+const [page, setPage] = useState(1);
 
         const showTicker = useMemo(() => {
                 return trades && trades.some(t => typeof (t.context as any)?.ticker === 'string' && (t.context as any)?.ticker);
@@ -35,17 +44,52 @@ export const TradesTable = React.memo(function TradesTable({ trades }: TradesTab
                 }
         }, [page, totalPages]);
 
-        const paginatedTrades = useMemo(() => {
-                const start = (page - 1) * PAGE_SIZE;
-                const end = start + PAGE_SIZE;
-                return reversedTrades.slice(start, end);
-        }, [page, reversedTrades]);
+const paginatedTrades = useMemo(() => {
+const start = (page - 1) * PAGE_SIZE;
+const end = start + PAGE_SIZE;
+return reversedTrades.slice(start, end);
+}, [page, reversedTrades]);
 
-        if (!trades || trades.length === 0) {
-                return (
-                        <div className="text-sm text-gray-500">Нет сделок для отображения</div>
-                );
-	}
+const resolvedExportFileName = useMemo(() => {
+const dateSuffix = new Date().toISOString().slice(0, 10);
+const base = (exportFileNamePrefix ?? 'trades-export').trim().replace(/\s+/g, '-').replace(/\.json$/i, '');
+return `${base}-${dateSuffix}.json`;
+}, [exportFileNamePrefix]);
+
+const handleExport = useCallback(() => {
+if (!trades || trades.length === 0) {
+return;
+}
+
+try {
+const dataStr = JSON.stringify(trades, null, 2);
+const blob = new Blob([dataStr], { type: 'application/json' });
+const url = URL.createObjectURL(blob);
+const link = document.createElement('a');
+link.href = url;
+link.download = resolvedExportFileName;
+document.body.appendChild(link);
+link.click();
+document.body.removeChild(link);
+URL.revokeObjectURL(url);
+} catch (err) {
+console.error('Не удалось экспортировать сделки в JSON', err);
+}
+}, [resolvedExportFileName, trades]);
+
+const pageStart = useMemo(() => {
+return reversedTrades.length === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
+}, [page, reversedTrades.length]);
+
+const pageEnd = useMemo(() => {
+return Math.min(page * PAGE_SIZE, reversedTrades.length);
+}, [page, reversedTrades.length]);
+
+if (!trades || trades.length === 0) {
+return (
+<div className="text-sm text-gray-500">Нет сделок для отображения</div>
+);
+}
 
         const fmtDate = (d: Date | string | null | undefined) => {
                 if (!d) {
@@ -59,10 +103,26 @@ export const TradesTable = React.memo(function TradesTable({ trades }: TradesTab
                         return String(d);
                 }
         };
-	return (
-		<div className="w-full overflow-auto">
-			<table className="min-w-full text-sm">
-				<thead className="sticky top-0 bg-gray-100 border-b dark:bg-gray-800 dark:border-gray-700">
+return (
+<div className="w-full overflow-auto">
+{showSummary && (
+<div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mb-4 text-sm text-gray-600 dark:text-gray-300">
+<div>Всего сделок: {reversedTrades.length}</div>
+{showExport && (
+<button
+type="button"
+onClick={handleExport}
+className="inline-flex items-center gap-2 px-3 py-1.5 border border-gray-300 rounded-md bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-60 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+disabled={!trades.length}
+>
+<Download className="w-4 h-4" />
+Скачать JSON
+</button>
+)}
+</div>
+)}
+<table className="min-w-full text-sm">
+<thead className="sticky top-0 bg-gray-100 border-b dark:bg-gray-800 dark:border-gray-700">
 					<tr>
 						<th className="text-left px-3 py-2 font-semibold">#</th>
 						{showTicker && <th className="text-left px-3 py-2 font-semibold">Тикер</th>}
@@ -125,33 +185,48 @@ export const TradesTable = React.memo(function TradesTable({ trades }: TradesTab
                                         })}
                                 </tbody>
                         </table>
-                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mt-4 text-sm text-gray-600 dark:text-gray-300">
-                                <div>
-                                        Показаны {(page - 1) * PAGE_SIZE + 1}–
-                                        {Math.min(page * PAGE_SIZE, reversedTrades.length)} из {reversedTrades.length} сделок
-                                </div>
-                                <div className="flex items-center gap-3">
-                                        <button
-                                                type="button"
-                                                className="px-3 py-1 rounded border border-gray-300 dark:border-gray-600 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-gray-800"
-                                                onClick={() => setPage(prev => Math.max(1, prev - 1))}
-                                                disabled={page <= 1}
-                                        >
-                                                Назад
-                                        </button>
-                                        <span>
-                                                Страница {page} из {totalPages}
-                                        </span>
-                                        <button
-                                                type="button"
-                                                className="px-3 py-1 rounded border border-gray-300 dark:border-gray-600 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-gray-800"
-                                                onClick={() => setPage(prev => Math.min(totalPages, prev + 1))}
-                                                disabled={page >= totalPages}
-                                        >
-                                                Вперёд
-                                        </button>
-                                </div>
-                        </div>
-                </div>
-        );
+<div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mt-4 text-sm text-gray-600 dark:text-gray-300">
+<div>
+Показаны {pageStart}–{pageEnd} из {reversedTrades.length} сделок
+</div>
+<div className="flex flex-wrap items-center gap-2">
+<button
+type="button"
+className="px-3 py-1 rounded border border-gray-300 dark:border-gray-600 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-gray-800"
+onClick={() => setPage(1)}
+disabled={page <= 1}
+>
+В начало
+</button>
+<button
+type="button"
+className="px-3 py-1 rounded border border-gray-300 dark:border-gray-600 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-gray-800"
+onClick={() => setPage(prev => Math.max(1, prev - 1))}
+disabled={page <= 1}
+>
+Назад
+</button>
+<span className="px-2 py-1">
+Страница {page} из {totalPages}
+</span>
+<button
+type="button"
+className="px-3 py-1 rounded border border-gray-300 dark:border-gray-600 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-gray-800"
+onClick={() => setPage(prev => Math.min(totalPages, prev + 1))}
+disabled={page >= totalPages}
+>
+Вперёд
+</button>
+<button
+type="button"
+className="px-3 py-1 rounded border border-gray-300 dark:border-gray-600 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-gray-800"
+onClick={() => setPage(totalPages)}
+disabled={page >= totalPages}
+>
+В конец
+</button>
+</div>
+</div>
+</div>
+);
 });

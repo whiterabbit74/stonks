@@ -315,7 +315,10 @@ export function NoStopLossSimulator({ data, strategy }: NoStopLossSimulatorProps
             }}
           />
           
-          <TradesTable trades={result.trades} />
+          <TradesTable
+            trades={result.trades}
+            exportFileNamePrefix="trades-no-stop-loss"
+          />
         </div>
       )}
     </div>
