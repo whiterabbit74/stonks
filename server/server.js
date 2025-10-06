@@ -21,6 +21,23 @@ let WATCHES_FILE = process.env.WATCHES_FILE || path.join(__dirname, 'telegram-wa
 let TRADE_HISTORY_FILE = process.env.TRADE_HISTORY_FILE || path.join(__dirname, 'trade-history.json');
 const MONITOR_LOG_FILE = process.env.MONITOR_LOG_PATH || path.join(DATASETS_DIR, 'monitoring.log');
 
+function parseNonNegativeNumber(value, fallback) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return fallback;
+  }
+  return parsed;
+}
+
+const PRICE_ACTUALIZATION_REQUEST_DELAY_MS = parseNonNegativeNumber(
+  process.env.PRICE_ACTUALIZATION_REQUEST_DELAY_MS,
+  15000
+);
+const PRICE_ACTUALIZATION_DELAY_JITTER_MS = parseNonNegativeNumber(
+  process.env.PRICE_ACTUALIZATION_DELAY_JITTER_MS,
+  2000
+);
+
 // Load settings from JSON file
 function loadSettings() {
   try {
@@ -1844,6 +1861,28 @@ const priceActualizationState = {
   error: null,
 };
 
+function computePriceActualizationDelayMs() {
+  const base = PRICE_ACTUALIZATION_REQUEST_DELAY_MS;
+  const jitterMax = PRICE_ACTUALIZATION_DELAY_JITTER_MS;
+  if (base <= 0 && jitterMax <= 0) {
+    return 0;
+  }
+  const jitter = jitterMax > 0 ? Math.floor(Math.random() * (jitterMax + 1)) : 0;
+  return base + jitter;
+}
+
+async function waitForPriceActualizationThrottle({ symbol, index, total }) {
+  const delayMs = computePriceActualizationDelayMs();
+  if (delayMs <= 0) {
+    return;
+  }
+  const seconds = (delayMs / 1000).toFixed(1);
+  console.log(
+    `⏳ Throttling AlphaVantage requests: waiting ${seconds}s before next ticker (processed ${index + 1}/${total}, last ${symbol})`
+  );
+  await new Promise((resolve) => setTimeout(resolve, delayMs));
+}
+
 // Price actualization script - runs 16 minutes AFTER market close to update final prices
 async function runPriceActualization(options = {}) {
   const { force = false, source = 'unknown' } = options;
@@ -1920,12 +1959,26 @@ async function runPriceActualization(options = {}) {
     let failedTickers = [];
     let tickersWithoutTodayData = [];
     
+    const watchList = Array.from(telegramWatches.values());
+    if (watchList.length > 0) {
+      const jitterInfo = PRICE_ACTUALIZATION_DELAY_JITTER_MS > 0
+        ? ` + джиттер до ${PRICE_ACTUALIZATION_DELAY_JITTER_MS}мс`
+        : '';
+      console.log(
+        `⏳ Using AlphaVantage inter-request delay: база ${PRICE_ACTUALIZATION_REQUEST_DELAY_MS}мс${jitterInfo}`
+      );
+      await appendMonitorLog([
+        `Задержка между запросами AlphaVantage: база ${PRICE_ACTUALIZATION_REQUEST_DELAY_MS}мс${jitterInfo}`
+      ]);
+    }
+
     // Update all watched tickers
-    for (const w of telegramWatches.values()) {
+    for (let idx = 0; idx < watchList.length; idx++) {
+      const w = watchList[idx];
       try {
         console.log(`🔄 Processing ticker: ${w.symbol}`);
         await appendMonitorLog([`Обновляем ${w.symbol} через AlphaVantage...`]);
-        
+
         // Get dataset before update to check last date
         const beforeDataset = await getDatasetBeforeUpdate(w.symbol);
         const beforeLastDate = beforeDataset ? getLastDateFromDataset(beforeDataset) : null;
@@ -1961,8 +2014,9 @@ async function runPriceActualization(options = {}) {
           await appendMonitorLog([`${w.symbol} - не удалось обновить: ${result.reason || 'неизвестная ошибка'}`]);
         }
         
-        // Small delay to avoid hitting API rate limits
-        await new Promise(resolve => setTimeout(resolve, 1200));
+        if (idx < watchList.length - 1) {
+          await waitForPriceActualizationThrottle({ symbol: w.symbol, index: idx, total: watchList.length });
+        }
       } catch (error) {
         failedTickers.push({
           symbol: w.symbol,
@@ -2656,9 +2710,18 @@ async function fetchFromAlphaVantage(symbol, startDate, endDate, options = { adj
     throw new Error('Invalid symbol');
   }
   const url = `https://www.alphavantage.co/query?function=${func}&symbol=${encodeURIComponent(safeSymbol)}&apikey=${getApiConfig().ALPHA_VANTAGE_API_KEY}&outputsize=full`;
-  
+  const requestUrl = new URL(url);
+  requestUrl.searchParams.append('random', Date.now().toString());
+  const requestOptions = {
+    headers: {
+      'User-Agent': 'stonks-bot/1.0',
+      'Cache-Control': 'no-cache',
+      Pragma: 'no-cache'
+    }
+  };
+
   return new Promise((resolve, reject) => {
-    https.get(url, (response) => {
+    https.get(requestUrl, requestOptions, (response) => {
       let data = '';
       response.on('data', (chunk) => data += chunk);
       response.on('end', () => {
