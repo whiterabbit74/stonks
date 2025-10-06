@@ -70,8 +70,8 @@ function calculateTradeStats(trades: Trade[] = []) {
 }
 
 export function MultiTickerPage() {
-  const [tickers, setTickers] = useState<string[]>(['AAPL', 'MSFT', 'GOOGL', 'AMZN']);
-  const [tickersInput, setTickersInput] = useState<string>('AAPL, MSFT, GOOGL, AMZN');
+  const [tickers, setTickers] = useState<string[]>(['AAPL', 'MSFT', 'AMZN', 'MAGS']);
+  const [tickersInput, setTickersInput] = useState<string>('AAPL, MSFT, AMZN, MAGS');
   const [leveragePercent, setLeveragePercent] = useState(200);
   const [monthlyContributionAmount, setMonthlyContributionAmount] = useState<number>(500);
   const [monthlyContributionDay, setMonthlyContributionDay] = useState<number>(1);
@@ -344,7 +344,7 @@ export function MultiTickerPage() {
                 setTickers(parsedTickers);
               }}
               className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
-              placeholder="AAPL, MSFT, GOOGL, AMZN"
+              placeholder="AAPL, MSFT, AMZN, MAGS"
             />
           </div>
 
