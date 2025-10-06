@@ -2141,7 +2141,7 @@ async function runPriceActualization(options = {}) {
 setInterval(async () => {
   await runTelegramAggregation(null, {});
   await runPriceActualization({ source: 'scheduler' });
-}, 30000);
+}, 15000);
 
 // Test simulation endpoint to reproduce the logic as if at T-11 or T-1
 app.post('/api/telegram/simulate', async (req, res) => {
