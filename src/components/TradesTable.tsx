@@ -16,13 +16,18 @@ export const TradesTable = React.memo(function TradesTable({ trades }: TradesTab
 		);
 	}
 
-	const fmtDate = (d: Date) => {
-		try {
-			return new Date(d).toLocaleDateString('ru-RU');
-		} catch {
-			return String(d);
-		}
-	};
+        const fmtDate = (d: Date | string | null | undefined) => {
+                if (!d) {
+                        return '—';
+                }
+
+                try {
+                        const date = typeof d === 'string' ? new Date(d) : d;
+                        return new Intl.DateTimeFormat('ru-RU', { timeZone: 'UTC' }).format(date);
+                } catch {
+                        return String(d);
+                }
+        };
 	return (
 		<div className="w-full overflow-auto">
 			<table className="min-w-full text-sm">
