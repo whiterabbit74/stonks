@@ -306,7 +306,10 @@ export function BuyAtCloseSimulator({ data, strategy }: BuyAtCloseSimulatorProps
             }}
           />
           
-          <TradesTable trades={tradesList} />
+          <TradesTable
+            trades={tradesList}
+            exportFileNamePrefix="trades-buy-at-close"
+          />
         </div>
       )}
     </div>

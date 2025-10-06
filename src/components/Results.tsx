@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Heart, RefreshCcw, AlertTriangle, Loader2, Download } from 'lucide-react';
+import { Heart, RefreshCcw, AlertTriangle, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { DatasetAPI } from '../lib/api';
 import { formatOHLCYMD } from '../lib/utils';
@@ -832,30 +832,10 @@ export function Results() {
             )}
             {activeChart === 'trades' && (
               <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="text-sm text-gray-600 dark:text-gray-400">
-                    Всего сделок: {trades.length}
-                  </div>
-                  <button
-                    onClick={() => {
-                      const dataStr = JSON.stringify(trades, null, 2);
-                      const blob = new Blob([dataStr], { type: 'application/json' });
-                      const url = URL.createObjectURL(blob);
-                      const link = document.createElement('a');
-                      link.href = url;
-                      link.download = `trades-${symbol || 'backtest'}-${new Date().toISOString().slice(0, 10)}.json`;
-                      document.body.appendChild(link);
-                      link.click();
-                      document.body.removeChild(link);
-                      URL.revokeObjectURL(url);
-                    }}
-                    className="inline-flex items-center gap-2 px-3 py-1.5 text-sm border border-gray-300 rounded-md bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700 transition-colors"
-                  >
-                    <Download className="w-4 h-4" />
-                    Скачать JSON
-                  </button>
-                </div>
-                <TradesTable trades={trades} />
+                <TradesTable
+                  trades={trades}
+                  exportFileNamePrefix={`trades-${symbol || 'backtest'}`}
+                />
               </div>
             )}
             {activeChart === 'profit' && (

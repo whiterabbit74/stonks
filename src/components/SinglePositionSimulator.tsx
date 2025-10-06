@@ -801,7 +801,10 @@ export function SinglePositionSimulator({ strategy }: SinglePositionSimulatorPro
               />
               
               <div className="max-h-[600px] overflow-auto">
-                <TradesTable trades={backtest.trades} />
+                <TradesTable
+                  trades={backtest.trades}
+                  exportFileNamePrefix="trades-single-position"
+                />
               </div>
             </div>
           )}
