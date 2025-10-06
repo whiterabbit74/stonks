@@ -6,6 +6,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is a React + TypeScript trading strategy backtester with an Express.js backend. The application allows users to test trading strategies on historical data with real-time data integration from multiple financial APIs.
 
+### Trading Workflow Ground Rules
+
+- Execute trades **only at the official session close**.
+- **Two minutes before the close** capture the latest IBS readings for all monitored tickers and base entry decisions on these values.
+- At the close select the instrument with the **lowest IBS strictly below 10** from the monitoring list; if no ticker meets the threshold, skip the trade.
+- **Hold the position until it is fully closed**, then you may re-enter later the same day provided the above conditions are met again.
+
 ## Architecture
 
 **Frontend (React SPA)**
