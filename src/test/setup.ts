@@ -66,7 +66,7 @@ HTMLCanvasElement.prototype.getContext = vi.fn().mockImplementation(() => ({
 
 // Mock OffscreenCanvas if available
 if (typeof OffscreenCanvas !== 'undefined') {
-  OffscreenCanvas.prototype.getContext = HTMLCanvasElement.prototype.getContext;
+  (OffscreenCanvas.prototype as any).getContext = HTMLCanvasElement.prototype.getContext;
 }
 
 // Mock window.location
@@ -86,7 +86,7 @@ Object.defineProperty(window, 'location', {
 });
 
 // Mock URL constructor for chart components
-global.URL = vi.fn().mockImplementation((url) => {
+(global as any).URL = vi.fn().mockImplementation((url) => {
   if (!url || url === 'undefined') {
     url = 'http://localhost:3000';
   }
@@ -103,4 +103,4 @@ global.URL = vi.fn().mockImplementation((url) => {
   };
 });
 
-global.URL.createObjectURL = vi.fn(() => 'blob:http://localhost:3000/mock-url');
+(global as any).URL.createObjectURL = vi.fn(() => 'blob:http://localhost:3000/mock-url');

@@ -1,4 +1,3 @@
-import React from 'react';
 import { Play, CheckCircle, ArrowRight } from 'lucide-react';
 import { useAppStore } from '../stores';
 

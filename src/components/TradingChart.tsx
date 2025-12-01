@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createChart, type IChartApi, type ISeriesApi, type UTCTimestamp } from 'lightweight-charts';
 import { formatOHLCYMD, parseOHLCDate } from '../lib/utils';
 import type { OHLCData, Trade, SplitEvent } from '../types';
@@ -356,8 +356,8 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
         });
         allMarkers.push(...splitMarkers);
       }
-      if (allMarkers.length > 0) {
-        candlestickSeries.setMarkers(allMarkers);
+      if (allMarkers.length > 0 && candlestickSeries) {
+        (candlestickSeries as any).setMarkers(allMarkers);
       }
 
       // Тултип по кроссхэру

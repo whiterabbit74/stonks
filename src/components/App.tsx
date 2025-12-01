@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, type FormEvent } from 'react';
+import { useState, useEffect, useRef, type FormEvent } from 'react';
 import { Settings } from 'lucide-react';
 import { useAppStore } from '../stores';
 import { DataUpload } from './DataUpload';

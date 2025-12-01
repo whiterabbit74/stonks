@@ -241,8 +241,8 @@ export function runSinglePositionBacktest(
     Object.assign(portfolio, updatedPortfolio);
 
     // 2. Process current position (exit)
-    if (currentPosition) {
-      const tickerData = tickersData.find(t => t.ticker === currentPosition.ticker);
+    if (currentPosition !== null) {
+      const tickerData = tickersData.find(t => t.ticker === currentPosition!.ticker);
       if (tickerData) {
         const barIndex = tickerData.dateIndexMap.get(dateTime) ?? -1;
         if (barIndex !== -1) {
@@ -317,7 +317,7 @@ export function runSinglePositionBacktest(
             currentPosition = null;
             exitedThisBar = true;
 
-            console.log(`🔴 EXIT [${trade.context.ticker}]: IBS=${ibs.toFixed(3)}, ${exitReason}`);
+            console.log(`🔴 EXIT [${trade.context?.ticker}]: IBS=${ibs.toFixed(3)}, ${exitReason}`);
             console.log(`   💰 P&L=${formatCurrencyCompact(totalPnL)} (${pnlPercent.toFixed(2)}%), Duration=${daysSinceEntry} days`);
             console.log(`   📊 Portfolio: ${formatCurrencyCompact(portfolio.totalPortfolioValue)}`);
           }

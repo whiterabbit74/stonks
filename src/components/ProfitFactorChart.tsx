@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createChart, type IChartApi, type ISeriesApi, type UTCTimestamp } from 'lightweight-charts';
 import type { Trade } from '../types';
 
@@ -12,8 +12,9 @@ export function ProfitFactorChart({ trades }: ProfitFactorChartProps) {
 	const [isDark, setIsDark] = useState<boolean>(() => typeof document !== 'undefined' ? document.documentElement.classList.contains('dark') : false);
 
 	useEffect(() => {
-		const onTheme = (e: CustomEvent<{ mode: string; effectiveDark: boolean }>) => {
-			const dark = !!(e?.detail?.effectiveDark ?? document.documentElement.classList.contains('dark'));
+		const onTheme = (e: Event) => {
+			const customEvent = e as CustomEvent<{ mode: string; effectiveDark: boolean }>;
+			const dark = !!(customEvent?.detail?.effectiveDark ?? document.documentElement.classList.contains('dark'));
 			setIsDark(dark);
 		};
 		window.addEventListener('themechange', onTheme);

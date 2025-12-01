@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { DatasetAPI } from '../lib/api';
 
 type SplitEvent = { date: string; factor: number };
@@ -119,11 +119,11 @@ export function SplitPage() {
 
 	function normalizeEvents(arr: Array<unknown>): Array<SplitEvent> {
 		return (Array.isArray(arr) ? arr : [])
-			.map(it => ({
+			.map((it: any) => ({
 				date: typeof it?.date === 'string' ? String(it.date).slice(0, 10) : '',
 				factor: Number((it?.factor ?? it?.ratio ?? it?.value))
 			}))
-			.filter(e => !!e.date && isFinite(e.factor) && e.factor > 0 && e.factor !== 1);
+			.filter((e: any) => !!e.date && isFinite(e.factor) && e.factor > 0 && e.factor !== 1);
 	}
 
 	function parseJsonInput(text: string) {

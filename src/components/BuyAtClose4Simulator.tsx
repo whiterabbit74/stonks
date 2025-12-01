@@ -380,7 +380,9 @@ function runMultiTickerBacktest(
       
       // Все сделки за один день показывают одинаковый итоговый депозит
       todaysTrades.forEach(trade => {
-        trade.context.currentCapitalAfterExit = portfolio.totalPortfolioValue;
+        if (trade.context) {
+          trade.context.currentCapitalAfterExit = portfolio.totalPortfolioValue;
+        }
       });
     }
 
@@ -478,9 +480,11 @@ function runMultiTickerBacktest(
   // Для каждой даты финальных сделок обновляем депозит до общего финального значения
   finalTradesMap.forEach((dailyTrades, dateKey) => {
     console.log(`📊 FIXING ${dailyTrades.length} final trades for ${dateKey}: Final Portfolio = ${formatCurrencyUSD(portfolio.totalPortfolioValue)}`);
-    
+
     dailyTrades.forEach(trade => {
-      trade.context.currentCapitalAfterExit = portfolio.totalPortfolioValue;
+      if (trade.context) {
+        trade.context.currentCapitalAfterExit = portfolio.totalPortfolioValue;
+      }
     });
   });
 

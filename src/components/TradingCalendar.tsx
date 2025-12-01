@@ -141,7 +141,7 @@ export function TradingCalendar() {
     }
 
     // Проверяем выходные (независимо от локали)
-    const date = new Date(year, month, day);
+    const date = new Date(parseInt(year), month, day);
     const dayName = date.toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
     if (dayName === 'saturday' || dayName === 'sunday') {
       return 'weekend';
@@ -359,7 +359,7 @@ export function TradingCalendar() {
       days.push(
         <button
           key={day}
-          ref={el => (dayRefs.current[day - 1] = el)}
+          ref={(el: HTMLButtonElement | null) => { if (el) dayRefs.current[day - 1] = el; }}
           onClick={() => openDetails(selectedYear, selectedMonth, day)}
           onKeyDown={(e) => handleDayKeyDown(day, e)}
           onFocus={() => setFocusedDay(day)}

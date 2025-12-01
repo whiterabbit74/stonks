@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createChart, type IChartApi, type UTCTimestamp } from 'lightweight-charts';
 import type { OHLCData, Trade } from '../types';
 
@@ -17,8 +17,8 @@ export function MiniQuoteChart({ history, today, trades, highIBS, isOpenPosition
   const [isDark, setIsDark] = useState<boolean>(() => typeof document !== 'undefined' ? document.documentElement.classList.contains('dark') : false);
 
   useEffect(() => {
-    const onTheme = (e: CustomEvent<{ mode: string; effectiveDark: boolean }>) => {
-      const dark = !!(e?.detail?.effectiveDark ?? document.documentElement.classList.contains('dark'));
+    const onTheme = (e: Event) => {
+      const dark = !!((e as any)?.detail?.effectiveDark ?? document.documentElement.classList.contains('dark'));
       setIsDark(dark);
     };
     window.addEventListener('themechange', onTheme);
@@ -106,7 +106,9 @@ export function MiniQuoteChart({ history, today, trades, highIBS, isOpenPosition
       }
     });
     // Do not add an explicit today marker circle per request
-    if (markers.length) series.setMarkers(markers);
+    if (markers.length && series) {
+      (series as any).setMarkers(markers);
+    }
 
     // Add target close price line if position is open and we have today range
     if (isOpenPosition && hasToday && (today!.high as number) > (today!.low as number)) {
