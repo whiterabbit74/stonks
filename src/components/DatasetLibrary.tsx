@@ -297,7 +297,7 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
                 const id = (dataset.ticker || (dataset as unknown as { id?: string }).id || dataset.name).toString().toUpperCase();
                 try {
                   setRefreshingId(id);
-                  await DatasetAPI.refreshDataset(id, resultsRefreshProvider);
+                  await DatasetAPI.refreshDataset(id, resultsRefreshProvider as any);
                   await loadDatasetsFromServer();
                 } catch (err) {
                   console.warn('Refresh failed', err);

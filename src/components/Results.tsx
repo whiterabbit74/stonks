@@ -145,7 +145,7 @@ export function Results() {
     setRefreshing(true);
     setRefreshError(null);
     try {
-      await DatasetAPI.refreshDataset(symbol, resultsRefreshProvider);
+      await DatasetAPI.refreshDataset(symbol, resultsRefreshProvider as any);
       // Reload the dataset to reflect server-updated data
       await loadDatasetFromServer(symbol);
     } catch (e) {
@@ -386,7 +386,7 @@ export function Results() {
           return;
         }
         if (isMounted) { setIsTrading(true); setQuoteLoading(true); }
-        const q = await DatasetAPI.getQuote(symbol, resultsQuoteProvider || 'finnhub');
+        const q = await DatasetAPI.getQuote(symbol, (resultsQuoteProvider || 'finnhub') as any);
         if (isMounted) { setQuote(q); setQuoteError(null); setLastUpdatedAt(new Date()); }
       } catch (e) {
         const message = e instanceof Error ? e.message : 'Не удалось получить котировку';

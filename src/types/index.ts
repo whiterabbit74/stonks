@@ -155,8 +155,15 @@ export interface Trade {
     grossProceeds?: number;
     grossCost?: number;
     totalCommissions?: number;
+    commissionPaid?: number;
     currentCapitalAfterExit?: number;
+    capitalBeforeExit?: number;
     initialInvestment?: number;
+    grossInvestment?: number;
+    leverage?: number;
+    leverageDebt?: number;
+    netProceeds?: number;
+    marginUsed?: number;
     stopLoss?: number;
     takeProfit?: number;
   };

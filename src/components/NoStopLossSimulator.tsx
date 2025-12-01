@@ -303,18 +303,31 @@ export function NoStopLossSimulator({ data, strategy }: NoStopLossSimulatorProps
       </div>
 
       {/* Trades Table */}
-      {showTrades && result.trades.length > 0 && (
+      {showTrades && result.trades.length > 0 && strategy && (
         <div className="space-y-4">
           <h4 className="text-sm font-medium text-gray-900 dark:text-gray-100">История сделок</h4>
-          
-          <StrategyParameters 
-            strategy={modifiedStrategy} 
+
+          <StrategyParameters
+            strategy={{
+              ...strategy,
+              riskManagement: {
+                ...strategy.riskManagement,
+                useStopLoss: false,
+                useTakeProfit: config.exitMode === 'profit-target',
+                takeProfit: config.profitTarget,
+                leverage: config.leverage,
+              },
+              parameters: {
+                ...strategy.parameters,
+                maxHoldDays: config.exitMode === 'time-limit' ? config.maxHoldDays : 9999,
+              }
+            }}
             additionalParams={{
               'Эмуляция плеча': `${config.leverage}:1`,
               'Начальный капитал': '$10,000'
             }}
           />
-          
+
           <TradesTable
             trades={result.trades}
             exportFileNamePrefix="trades-no-stop-loss"

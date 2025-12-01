@@ -294,18 +294,18 @@ export function BuyAtCloseSimulator({ data, strategy }: BuyAtCloseSimulatorProps
         <EquityChart equity={leveraged.equity} hideHeader />
       </div>
 
-      {showTrades && (
+      {showTrades && strategy && (
         <div className="space-y-4">
           <div className="text-sm font-medium dark:text-gray-100">Сделки</div>
-          
-          <StrategyParameters 
-            strategy={strategy} 
+
+          <StrategyParameters
+            strategy={strategy}
             additionalParams={{
               'Плечо эмуляции': `${appliedLeverage}:1`,
               'Начальный капитал': '$10,000'
             }}
           />
-          
+
           <TradesTable
             trades={tradesList}
             exportFileNamePrefix="trades-buy-at-close"

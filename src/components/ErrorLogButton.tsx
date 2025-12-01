@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Bug } from 'lucide-react';
 import { ErrorConsole } from './ErrorConsole';
 import { useErrorEvents } from '../hooks/useErrorEvents';

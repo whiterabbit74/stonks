@@ -712,7 +712,7 @@ export class DatasetAPI {
   }
 
   // App settings
-  static async getAppSettings(): Promise<{ watchThresholdPct: number; resultsQuoteProvider: 'alpha_vantage'|'finnhub'|'twelve_data'; enhancerProvider: 'alpha_vantage'|'finnhub'|'twelve_data'; resultsRefreshProvider?: 'alpha_vantage'|'finnhub'|'twelve_data'; indicatorPanePercent?: number; commissionType?: string; commissionFixed?: number; commissionPercentage?: number }>{
+  static async getAppSettings(): Promise<{ watchThresholdPct: number; resultsQuoteProvider: 'alpha_vantage'|'finnhub'|'twelve_data'; enhancerProvider: 'alpha_vantage'|'finnhub'|'twelve_data'; resultsRefreshProvider?: 'alpha_vantage'|'finnhub'|'twelve_data'; indicatorPanePercent?: number; defaultMultiTickerSymbols?: string; commissionType?: string; commissionFixed?: number; commissionPercentage?: number }>{
     try {
       const response = await fetchWithCreds(`${API_BASE_URL}/settings`, {
         timeout: 10000,
@@ -738,7 +738,7 @@ export class DatasetAPI {
     return response.json();
   }
 
-  static async saveAppSettings(settings: { watchThresholdPct: number; resultsQuoteProvider: 'alpha_vantage'|'finnhub'|'twelve_data'; enhancerProvider: 'alpha_vantage'|'finnhub'|'twelve_data'; resultsRefreshProvider?: 'alpha_vantage'|'finnhub'|'twelve_data'; indicatorPanePercent?: number; commissionType?: string; commissionFixed?: number; commissionPercentage?: number }): Promise<void> {
+  static async saveAppSettings(settings: { watchThresholdPct: number; resultsQuoteProvider: 'alpha_vantage'|'finnhub'|'twelve_data'; enhancerProvider: 'alpha_vantage'|'finnhub'|'twelve_data'; resultsRefreshProvider?: 'alpha_vantage'|'finnhub'|'twelve_data'; indicatorPanePercent?: number; defaultMultiTickerSymbols?: string; commissionType?: string; commissionFixed?: number; commissionPercentage?: number }): Promise<void> {
     const response = await fetchWithCreds(`${API_BASE_URL}/settings`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },

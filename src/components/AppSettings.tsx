@@ -322,8 +322,7 @@ export function AppSettings() {
           onChange={(e) => {
             const sanitized = sanitizeTextInput(e.target.value, {
               maxLength: 200,
-              pattern: /^[A-Za-z0-9,\s]*$/,
-              fallback: defaultMultiTickerSymbols
+              allowedChars: /^[A-Za-z0-9,\s]*$/
             });
             setDefaultMultiTickerSymbols(sanitized);
           }}

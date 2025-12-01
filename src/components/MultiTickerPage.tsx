@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Settings } from 'lucide-react';
 import { useAppStore } from '../stores';
 import type { Strategy, OHLCData, Trade, EquityPoint, SplitEvent, MonitorTradeHistoryResponse } from '../types';

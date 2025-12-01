@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { AlertCircle, Upload, Download, TrendingUp, Loader2 } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { AlertCircle, Upload, Download, TrendingUp, Loader2, AlertTriangle, CheckCircle } from 'lucide-react';
 import { useAppStore } from '../stores';
 import { fetchWithCreds, API_BASE_URL } from '../lib/api';
 import { parseOHLCDate } from '../lib/utils';
@@ -152,7 +152,7 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
       const payload = await resp.json();
       const rows = Array.isArray(payload?.data) ? payload.data : [];
       if (!rows.length) throw new Error('Нет данных для этого тикера');
-      const ohlc = rows.map((bar: unknown) => ({
+      const ohlc = rows.map((bar: any) => ({
         date: parseOHLCDate(bar.date),
         open: Number(bar.open),
         high: Number(bar.high),

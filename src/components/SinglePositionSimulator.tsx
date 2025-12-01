@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import type { Strategy, OHLCData, Trade, EquityPoint } from '../types';
 import { DatasetAPI } from '../lib/api';
 import { adjustOHLCForSplits, dedupeDailyOHLC } from '../lib/utils';
@@ -252,8 +252,8 @@ function runSinglePositionBacktest(
     Object.assign(portfolio, updatedPortfolio);
     
     // 2. ОБРАБОТКА ТЕКУЩЕЙ ПОЗИЦИИ (ВЫХОД)
-    if (currentPosition) {
-      const tickerData = tickersData.find(t => t.ticker === currentPosition.ticker);
+    if (currentPosition && currentPosition.ticker) {
+      const tickerData = tickersData.find(t => t.ticker === currentPosition!.ticker);
       if (tickerData) {
         const barIndex = tickerData.dateIndexMap.get(dateTime) ?? -1;
         if (barIndex !== -1) {
@@ -328,7 +328,7 @@ function runSinglePositionBacktest(
             trades.push(trade);
             currentPosition = null; // Закрываем позицию
 
-            console.log(`🔴 EXIT [${trade.context.ticker}]: IBS=${ibs.toFixed(3)}, ${exitReason}`);
+            console.log(`🔴 EXIT [${trade.context?.ticker || 'UNKNOWN'}]: IBS=${ibs.toFixed(3)}, ${exitReason}`);
             console.log(`   💰 P&L=${formatCurrencyCompact(totalPnL)} (${pnlPercent.toFixed(2)}%), Duration=${daysSinceEntry} days`);
             console.log(`   📊 Portfolio: ${formatCurrencyCompact(portfolio.totalPortfolioValue)}`);
           }

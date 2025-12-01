@@ -1,5 +1,3 @@
-import React from 'react';
-
 interface InfoModalProps {
   open: boolean;
   title: string;

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createChart } from 'lightweight-charts';
 import type { UTCTimestamp } from 'lightweight-charts';
 import type { Trade } from '../types';
@@ -14,8 +14,8 @@ export function TradeDrawdownChart({ trades, initialCapital }: TradeDrawdownChar
   const [isDark, setIsDark] = useState<boolean>(() => typeof document !== 'undefined' ? document.documentElement.classList.contains('dark') : false);
 
   useEffect(() => {
-    const onTheme = (e: CustomEvent<{ mode: string; effectiveDark: boolean }>) => {
-      const dark = !!(e?.detail?.effectiveDark ?? document.documentElement.classList.contains('dark'));
+    const onTheme = (e: Event) => {
+      const dark = !!((e as any)?.detail?.effectiveDark ?? document.documentElement.classList.contains('dark'));
       setIsDark(dark);
     };
     window.addEventListener('themechange', onTheme);

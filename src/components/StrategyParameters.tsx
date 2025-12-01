@@ -1,4 +1,4 @@
-import React from 'react';
+
 import type { Strategy } from '../types';
 
 interface StrategyParametersProps {
@@ -32,20 +32,20 @@ export function StrategyParameters({ strategy, additionalParams = {} }: Strategy
       
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
         {/* IBS параметры */}
-        {strategy.entryConditions?.ibs && (
+        {strategy.entryConditions && Array.isArray(strategy.entryConditions) && strategy.entryConditions.find((c: any) => c.indicator === 'ibs') && (
           <div>
             <span className="font-medium text-gray-700 dark:text-gray-300">IBS входа:</span>
             <span className="ml-2 font-mono text-blue-600 dark:text-blue-400">
-              {'<'} {(strategy.entryConditions.ibs.threshold * 100).toFixed(1)}%
+              {'<'} {((strategy.entryConditions.find((c: any) => c.indicator === 'ibs') as any)?.threshold * 100).toFixed(1)}%
             </span>
           </div>
         )}
-        
-        {strategy.exitConditions?.ibs && (
+
+        {strategy.exitConditions && Array.isArray(strategy.exitConditions) && strategy.exitConditions.find((c: any) => c.indicator === 'ibs') && (
           <div>
             <span className="font-medium text-gray-700 dark:text-gray-300">IBS выхода:</span>
             <span className="ml-2 font-mono text-green-600 dark:text-green-400">
-              {'>'} {(strategy.exitConditions.ibs.threshold * 100).toFixed(1)}%
+              {'>'} {((strategy.exitConditions.find((c: any) => c.indicator === 'ibs') as any)?.threshold * 100).toFixed(1)}%
             </span>
           </div>
         )}
