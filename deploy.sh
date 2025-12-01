@@ -142,10 +142,22 @@ docker system prune -f || true
 # Очистка директорий
 echo 'Очистка директорий...' &&
 rm -rf ~/stonks/dist/* &&
-rm -rf ~/stonks/server/server.js.backup 2>/dev/null || true
 
-# Резервное копирование текущего server.js
-cp ~/stonks/server/server.js ~/stonks/server/server.js.backup 2>/dev/null || true
+# Резервное копирование текущего server.js с временной меткой
+echo 'Создание резервной копии...' &&
+BACKUP_TIMESTAMP=\$(date +%Y%m%d_%H%M%S) &&
+if [ -f ~/stonks/server/server.js ]; then
+    cp ~/stonks/server/server.js ~/stonks/server/server.js.backup.\${BACKUP_TIMESTAMP} 2>/dev/null || true
+    echo \"Создан бэкап: server.js.backup.\${BACKUP_TIMESTAMP}\"
+fi &&
+
+# Удаление старых бэкапов (сохраняем только последние 5)
+echo 'Очистка старых бэкапов (сохраняем последние 5)...' &&
+cd ~/stonks/server &&
+ls -t server.js.backup.* 2>/dev/null | tail -n +6 | xargs -r rm -f 2>/dev/null || true &&
+BACKUP_COUNT=\$(ls server.js.backup.* 2>/dev/null | wc -l) &&
+echo \"Всего бэкапов: \${BACKUP_COUNT}\" &&
+cd ~ || true
 
 echo '🔄 Копирование свежих файлов...' &&
 if [ ! -d ~/dist ]; then
