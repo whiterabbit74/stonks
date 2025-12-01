@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { DatasetAPI } from '../lib/api';
 import { useAppStore } from '../stores';
 import { sanitizeNumericInput, sanitizeTextInput, VALIDATION_CONSTRAINTS } from '../lib/input-validation';
-import { BarChart3, TrendingUp, ShoppingCart, TrendingDown, Target, Calculator, Clock, AlertTriangle, PiggyBank, DollarSign, BarChart2, Layers } from 'lucide-react';
+import { BarChart3, TrendingUp, ShoppingCart, TrendingDown, Target, Calculator, Clock, AlertTriangle, PiggyBank, DollarSign, BarChart2, Layers, Info, X } from 'lucide-react';
 // import { StrategySettings } from './StrategySettings';
 
 // SettingsData interface removed - not actively used
@@ -52,6 +52,13 @@ export function AppSettings() {
   const [finnhubKey, setFinnhubKey] = useState('');
   const [twelveDataKey, setTwelveDataKey] = useState('');
   const [polygonKey, setPolygonKey] = useState('');
+
+  // API testing state
+  const [testingProvider, setTestingProvider] = useState<string | null>(null);
+  const [testResults, setTestResults] = useState<Record<string, { success?: boolean; error?: string; price?: string; symbol?: string }>>({});
+
+  // API info modal state
+  const [showApiInfo, setShowApiInfo] = useState(false);
 
   // Telegram settings state
   const [telegramBotToken, setTelegramBotToken] = useState('');
@@ -231,6 +238,21 @@ export function AppSettings() {
     loadApiSettings();
   }, []);
 
+  // Test API provider
+  const testProvider = async (provider: string) => {
+    setTestingProvider(provider);
+    setTestResults({ ...testResults, [provider]: {} });
+    try {
+      const response = await DatasetAPI.testProvider(provider);
+      setTestResults({ ...testResults, [provider]: response });
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'Не удалось протестировать API';
+      setTestResults({ ...testResults, [provider]: { error: message } });
+    } finally {
+      setTestingProvider(null);
+    }
+  };
+
   // General Settings Tab
   const GeneralTab = () => (
     <div className="space-y-4">
@@ -382,7 +404,16 @@ export function AppSettings() {
 
       {/* Провайдеры данных */}
       <div className="p-4 rounded-lg border">
-        <div className="text-sm font-medium text-gray-700 mb-3">Провайдеры данных</div>
+        <div className="flex items-center justify-between mb-3">
+          <div className="text-sm font-medium text-gray-700">Провайдеры данных</div>
+          <button
+            onClick={() => setShowApiInfo(true)}
+            className="flex items-center gap-1 px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded transition-colors"
+          >
+            <Info className="w-4 h-4" />
+            Подробнее
+          </button>
+        </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="bg-gray-50 rounded p-3 border">
             <div className="text-xs text-gray-500 mb-2">Котировки (страница «Результаты»)</div>
@@ -390,9 +421,13 @@ export function AppSettings() {
               <input type="radio" name="quoteProvider" checked={resultsQuoteProvider === 'finnhub'} onChange={() => setResultsQuoteProvider('finnhub')} />
               Finnhub
             </label>
-            <label className="flex items-center gap-2 text-sm">
+            <label className="flex items-center gap-2 text-sm mb-1">
               <input type="radio" name="quoteProvider" checked={resultsQuoteProvider === 'alpha_vantage'} onChange={() => setResultsQuoteProvider('alpha_vantage')} />
               Alpha Vantage
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input type="radio" name="quoteProvider" checked={resultsQuoteProvider === 'twelve_data'} onChange={() => setResultsQuoteProvider('twelve_data')} />
+              Twelve Data
             </label>
           </div>
 
@@ -402,9 +437,13 @@ export function AppSettings() {
               <input type="radio" name="refreshProvider" checked={resultsRefreshProvider === 'finnhub'} onChange={() => setResultsRefreshProvider('finnhub')} />
               Finnhub
             </label>
-            <label className="flex items-center gap-2 text-sm">
+            <label className="flex items-center gap-2 text-sm mb-1">
               <input type="radio" name="refreshProvider" checked={resultsRefreshProvider === 'alpha_vantage'} onChange={() => setResultsRefreshProvider('alpha_vantage')} />
               Alpha Vantage
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input type="radio" name="refreshProvider" checked={resultsRefreshProvider === 'twelve_data'} onChange={() => setResultsRefreshProvider('twelve_data')} />
+              Twelve Data
             </label>
           </div>
 
@@ -414,9 +453,13 @@ export function AppSettings() {
               <input type="radio" name="enhancerProvider" checked={enhancerProvider === 'alpha_vantage'} onChange={() => setEnhancerProvider('alpha_vantage')} />
               Alpha Vantage
             </label>
-            <label className="flex items-center gap-2 text-sm">
+            <label className="flex items-center gap-2 text-sm mb-1">
               <input type="radio" name="enhancerProvider" checked={enhancerProvider === 'finnhub'} onChange={() => setEnhancerProvider('finnhub')} />
               Finnhub
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input type="radio" name="enhancerProvider" checked={enhancerProvider === 'twelve_data'} onChange={() => setEnhancerProvider('twelve_data')} />
+              Twelve Data
             </label>
           </div>
         </div>
@@ -429,6 +472,159 @@ export function AppSettings() {
         </div>
         <div className="text-xs text-gray-500 mt-2">Подсказка: для refresh используйте провайдера, который стабильно доступен на вашем тарифе.</div>
       </div>
+
+      {/* API Info Modal */}
+      {showApiInfo && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-white border-b p-4 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-gray-900">Подробная информация о провайдерах API</h3>
+              <button
+                onClick={() => setShowApiInfo(false)}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6 space-y-6">
+              {/* Quote Provider */}
+              <div className="border-l-4 border-blue-500 pl-4">
+                <h4 className="font-semibold text-gray-900 mb-2">1. Котировки (страница «Результаты»)</h4>
+                <p className="text-sm text-gray-700 mb-2">
+                  <strong>Назначение:</strong> Получение реалтайм цены текущего дня (open, high, low, close, volume) для отображения на странице "Результаты".
+                </p>
+                <p className="text-sm text-gray-700 mb-2">
+                  <strong>Когда вызывается:</strong> При открытии страницы Results и при обновлении текущей котировки.
+                </p>
+                <p className="text-sm text-gray-700 mb-2">
+                  <strong>Endpoint:</strong> <code className="bg-gray-100 px-1 rounded">/api/quote/:symbol</code>
+                </p>
+                <p className="text-sm text-gray-700 mb-2">
+                  <strong>Объем запросов:</strong> 1 запрос на тикер при загрузке страницы. При работе с 1 тикером: 1-5 запросов в день.
+                </p>
+                <div className="mt-2 space-y-1 text-sm">
+                  <div className="flex items-start gap-2">
+                    <span className="text-green-600 font-medium">Alpha Vantage:</span>
+                    <span className="text-gray-600">5 запросов/минуту, 500/день. Хорош для редких обновлений.</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <span className="text-blue-600 font-medium">Finnhub:</span>
+                    <span className="text-gray-600">60 запросов/минуту. Отлично для частых обновлений.</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <span className="text-purple-600 font-medium">Twelve Data:</span>
+                    <span className="text-gray-600">8 запросов/минуту, 800/день. Баланс между скоростью и лимитами.</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Refresh Provider */}
+              <div className="border-l-4 border-green-500 pl-4">
+                <h4 className="font-semibold text-gray-900 mb-2">2. Актуализация датасета (серверный refresh)</h4>
+                <p className="text-sm text-gray-700 mb-2">
+                  <strong>Назначение:</strong> Обновление существующего датасета новыми историческими данными (последние 7 дней).
+                </p>
+                <p className="text-sm text-gray-700 mb-2">
+                  <strong>Когда вызывается:</strong> При нажатии кнопки "Обновить" на странице Results.
+                </p>
+                <p className="text-sm text-gray-700 mb-2">
+                  <strong>Endpoint:</strong> <code className="bg-gray-100 px-1 rounded">/api/datasets/:id/refresh</code>
+                </p>
+                <p className="text-sm text-gray-700 mb-2">
+                  <strong>Объем запросов:</strong> 1 запрос на обновление датасета. При регулярном использовании: 1-10 запросов в неделю.
+                </p>
+                <div className="mt-2 space-y-1 text-sm">
+                  <div className="flex items-start gap-2">
+                    <span className="text-green-600 font-medium">Alpha Vantage:</span>
+                    <span className="text-gray-600">Полный исторический набор данных, но медленный (лимит 5/мин).</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <span className="text-blue-600 font-medium">Finnhub:</span>
+                    <span className="text-gray-600">Быстрый, но без split-adjusted данных.</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <span className="text-purple-600 font-medium">Twelve Data:</span>
+                    <span className="text-gray-600">До 5000 точек данных, баланс между скоростью и качеством.</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Enhancer Provider */}
+              <div className="border-l-4 border-purple-500 pl-4">
+                <h4 className="font-semibold text-gray-900 mb-2">3. Импорт «Новые данные» (энхансер)</h4>
+                <p className="text-sm text-gray-700 mb-2">
+                  <strong>Назначение:</strong> Получение полного исторического набора данных при создании нового датасета (до 40 лет истории).
+                </p>
+                <p className="text-sm text-gray-700 mb-2">
+                  <strong>Когда вызывается:</strong> На странице "Данные" при вводе тикера и нажатии "Загрузить из API".
+                </p>
+                <p className="text-sm text-gray-700 mb-2">
+                  <strong>Endpoint:</strong> <code className="bg-gray-100 px-1 rounded">/api/yahoo-finance/:symbol</code>
+                </p>
+                <p className="text-sm text-gray-700 mb-2">
+                  <strong>Объем запросов:</strong> 1 запрос на создание датасета. При создании 5 датасетов: 5 запросов.
+                </p>
+                <div className="mt-2 space-y-1 text-sm">
+                  <div className="flex items-start gap-2">
+                    <span className="text-green-600 font-medium">Alpha Vantage:</span>
+                    <span className="text-gray-600">✅ Лучший выбор! Полная история, split-adjusted данные, ~1 запрос на датасет.</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <span className="text-blue-600 font-medium">Finnhub:</span>
+                    <span className="text-gray-600">Быстрый, но ограниченная история (несколько лет).</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <span className="text-purple-600 font-medium">Twelve Data:</span>
+                    <span className="text-gray-600">До 5000 дней истории (~13 лет), хороший баланс.</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Telegram Monitoring */}
+              <div className="border-l-4 border-yellow-500 pl-4">
+                <h4 className="font-semibold text-gray-900 mb-2">4. Мониторинг Telegram (фоновый процесс)</h4>
+                <p className="text-sm text-gray-700 mb-2">
+                  <strong>Назначение:</strong> Автоматическое обновление цен для мониторинга тикеров с отправкой уведомлений в Telegram.
+                </p>
+                <p className="text-sm text-gray-700 mb-2">
+                  <strong>Когда вызывается:</strong> При ручном обновлении на странице "Мониторинг" или по расписанию (за 11 и 1 минуту до закрытия рынка).
+                </p>
+                <p className="text-sm text-gray-700 mb-2">
+                  <strong>Endpoint:</strong> <code className="bg-gray-100 px-1 rounded">/api/quote/:symbol</code> (используется Quote Provider)
+                </p>
+                <p className="text-sm text-gray-700 mb-2">
+                  <strong>Объем запросов:</strong> С 4-5 тикерами и задержкой 15с+2с джиттер: ~240 запросов/день.
+                </p>
+                <div className="mt-2 space-y-1 text-sm">
+                  <div className="flex items-start gap-2">
+                    <span className="text-green-600 font-medium">Alpha Vantage:</span>
+                    <span className="text-gray-600">⚠️ Может быть медленно при 5 тикерах (лимит 5/мин). Хватит на 500 запросов/день.</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <span className="text-blue-600 font-medium">Finnhub:</span>
+                    <span className="text-gray-600">✅ Отлично! 60 запросов/минуту - легко справится с любым количеством тикеров.</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <span className="text-purple-600 font-medium">Twelve Data:</span>
+                    <span className="text-gray-600">✅ Хорошо! 8 запросов/мин, 800/день - с запасом для 4-5 тикеров (~240/день).</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Recommendations */}
+              <div className="bg-blue-50 p-4 rounded-lg">
+                <h4 className="font-semibold text-blue-900 mb-2">💡 Рекомендации</h4>
+                <div className="space-y-2 text-sm text-blue-800">
+                  <p><strong>Для начинающих:</strong> Finnhub для котировок и мониторинга, Alpha Vantage для создания датасетов.</p>
+                  <p><strong>Для активной торговли:</strong> Twelve Data или Finnhub для всего - стабильные лимиты и хорошая скорость.</p>
+                  <p><strong>Для экономии запросов:</strong> Alpha Vantage для редких операций, Twelve Data для ежедневного мониторинга.</p>
+                  <p className="pt-2 border-t border-blue-200"><strong>Важно:</strong> С 15-секундной задержкой между запросами вы находитесь в безопасной зоне для всех провайдеров на бесплатных тарифах!</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 
@@ -512,6 +708,62 @@ export function AppSettings() {
         </div>
         <div className="text-xs text-gray-500 mt-2">
           💡 API ключи хранятся в зашифрованном виде на сервере. Для получения ключей зарегистрируйтесь на соответствующих сервисах.
+        </div>
+      </div>
+
+      {/* API Testing */}
+      <div className="p-4 rounded-lg border">
+        <div className="text-sm font-medium text-gray-700 mb-3">Тестирование API</div>
+        <div className="text-xs text-gray-500 mb-3">Проверьте подключение к API провайдерам (используется тестовый символ AAPL)</div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
+            <button
+              onClick={() => testProvider('alpha_vantage')}
+              disabled={testingProvider === 'alpha_vantage'}
+              className="w-full px-3 py-2 rounded-md bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:bg-gray-400"
+            >
+              {testingProvider === 'alpha_vantage' ? 'Тестирование...' : 'Тест Alpha Vantage'}
+            </button>
+            {testResults.alpha_vantage && (
+              <div className={`mt-2 text-xs ${testResults.alpha_vantage.error ? 'text-red-600' : 'text-green-600'}`}>
+                {testResults.alpha_vantage.error
+                  ? `❌ ${testResults.alpha_vantage.error}`
+                  : `✅ ${testResults.alpha_vantage.symbol}: $${testResults.alpha_vantage.price}`}
+              </div>
+            )}
+          </div>
+          <div>
+            <button
+              onClick={() => testProvider('finnhub')}
+              disabled={testingProvider === 'finnhub'}
+              className="w-full px-3 py-2 rounded-md bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:bg-gray-400"
+            >
+              {testingProvider === 'finnhub' ? 'Тестирование...' : 'Тест Finnhub'}
+            </button>
+            {testResults.finnhub && (
+              <div className={`mt-2 text-xs ${testResults.finnhub.error ? 'text-red-600' : 'text-green-600'}`}>
+                {testResults.finnhub.error
+                  ? `❌ ${testResults.finnhub.error}`
+                  : `✅ ${testResults.finnhub.symbol}: $${testResults.finnhub.price}`}
+              </div>
+            )}
+          </div>
+          <div>
+            <button
+              onClick={() => testProvider('twelve_data')}
+              disabled={testingProvider === 'twelve_data'}
+              className="w-full px-3 py-2 rounded-md bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:bg-gray-400"
+            >
+              {testingProvider === 'twelve_data' ? 'Тестирование...' : 'Тест Twelve Data'}
+            </button>
+            {testResults.twelve_data && (
+              <div className={`mt-2 text-xs ${testResults.twelve_data.error ? 'text-red-600' : 'text-green-600'}`}>
+                {testResults.twelve_data.error
+                  ? `❌ ${testResults.twelve_data.error}`
+                  : `✅ ${testResults.twelve_data.symbol}: $${testResults.twelve_data.price}`}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

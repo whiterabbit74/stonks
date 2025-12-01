@@ -665,6 +665,19 @@ export class DatasetAPI {
     return await response.json();
   }
 
+  static async testProvider(provider: string): Promise<{ success?: boolean; error?: string; price?: string; symbol?: string }> {
+    const response = await fetchWithCreds(`${API_BASE_URL}/test-provider`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ provider })
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || `${response.status} ${response.statusText}`);
+    }
+    return await response.json();
+  }
+
   static async simulateTelegram(stage: 'overview'|'confirmations' = 'overview'): Promise<{ success: boolean; stage: string }>{
     try {
       const response = await fetchWithCreds(`${API_BASE_URL}/telegram/simulate`, {
@@ -699,7 +712,7 @@ export class DatasetAPI {
   }
 
   // App settings
-  static async getAppSettings(): Promise<{ watchThresholdPct: number; resultsQuoteProvider: 'alpha_vantage'|'finnhub'; enhancerProvider: 'alpha_vantage'|'finnhub'; resultsRefreshProvider?: 'alpha_vantage'|'finnhub'; indicatorPanePercent?: number; commissionType?: string; commissionFixed?: number; commissionPercentage?: number }>{
+  static async getAppSettings(): Promise<{ watchThresholdPct: number; resultsQuoteProvider: 'alpha_vantage'|'finnhub'|'twelve_data'; enhancerProvider: 'alpha_vantage'|'finnhub'|'twelve_data'; resultsRefreshProvider?: 'alpha_vantage'|'finnhub'|'twelve_data'; indicatorPanePercent?: number; commissionType?: string; commissionFixed?: number; commissionPercentage?: number }>{
     try {
       const response = await fetchWithCreds(`${API_BASE_URL}/settings`, {
         timeout: 10000,
@@ -725,7 +738,7 @@ export class DatasetAPI {
     return response.json();
   }
 
-  static async saveAppSettings(settings: { watchThresholdPct: number; resultsQuoteProvider: 'alpha_vantage'|'finnhub'; enhancerProvider: 'alpha_vantage'|'finnhub'; resultsRefreshProvider?: 'alpha_vantage'|'finnhub'; indicatorPanePercent?: number; commissionType?: string; commissionFixed?: number; commissionPercentage?: number }): Promise<void> {
+  static async saveAppSettings(settings: { watchThresholdPct: number; resultsQuoteProvider: 'alpha_vantage'|'finnhub'|'twelve_data'; enhancerProvider: 'alpha_vantage'|'finnhub'|'twelve_data'; resultsRefreshProvider?: 'alpha_vantage'|'finnhub'|'twelve_data'; indicatorPanePercent?: number; commissionType?: string; commissionFixed?: number; commissionPercentage?: number }): Promise<void> {
     const response = await fetchWithCreds(`${API_BASE_URL}/settings`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },

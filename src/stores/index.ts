@@ -57,14 +57,14 @@ interface AppState {
   // Actions
   updateMarketData: (data: OHLCData[]) => void;
   setSplits: (splits: SplitEvent[]) => void;
-  setDataProvider: (provider: 'alpha_vantage' | 'finnhub') => void;
+  setDataProvider: (provider: 'alpha_vantage' | 'finnhub' | 'twelve_data') => void;
   // Источники API управления из настроек
-  resultsQuoteProvider: 'alpha_vantage' | 'finnhub';
-  resultsRefreshProvider: 'alpha_vantage' | 'finnhub';
-  enhancerProvider: 'alpha_vantage' | 'finnhub';
-  setResultsQuoteProvider: (p: 'alpha_vantage' | 'finnhub') => void;
-  setResultsRefreshProvider: (p: 'alpha_vantage' | 'finnhub') => void;
-  setEnhancerProvider: (p: 'alpha_vantage' | 'finnhub') => void;
+  resultsQuoteProvider: 'alpha_vantage' | 'finnhub' | 'twelve_data';
+  resultsRefreshProvider: 'alpha_vantage' | 'finnhub' | 'twelve_data';
+  enhancerProvider: 'alpha_vantage' | 'finnhub' | 'twelve_data';
+  setResultsQuoteProvider: (p: 'alpha_vantage' | 'finnhub' | 'twelve_data') => void;
+  setResultsRefreshProvider: (p: 'alpha_vantage' | 'finnhub' | 'twelve_data') => void;
+  setEnhancerProvider: (p: 'alpha_vantage' | 'finnhub' | 'twelve_data') => void;
   loadJSONData: (file: File) => Promise<void>;
   loadDatasetsFromServer: () => Promise<void>;
   saveDatasetToServer: (ticker: string, name?: string) => Promise<void>;
@@ -202,13 +202,13 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
-  setDataProvider: (provider: 'alpha_vantage' | 'finnhub') => {
+  setDataProvider: (provider: 'alpha_vantage' | 'finnhub' | 'twelve_data') => {
     set({ dataProvider: provider });
   },
 
-  setResultsQuoteProvider: (p: 'alpha_vantage' | 'finnhub') => set({ resultsQuoteProvider: p }),
-  setResultsRefreshProvider: (p: 'alpha_vantage' | 'finnhub') => set({ resultsRefreshProvider: p }),
-  setEnhancerProvider: (p: 'alpha_vantage' | 'finnhub') => set({ enhancerProvider: p }),
+  setResultsQuoteProvider: (p: 'alpha_vantage' | 'finnhub' | 'twelve_data') => set({ resultsQuoteProvider: p }),
+  setResultsRefreshProvider: (p: 'alpha_vantage' | 'finnhub' | 'twelve_data') => set({ resultsRefreshProvider: p }),
+  setEnhancerProvider: (p: 'alpha_vantage' | 'finnhub' | 'twelve_data') => set({ enhancerProvider: p }),
 
   setWatchThresholdPct: (value: number) => {
     set({ watchThresholdPct: value });
