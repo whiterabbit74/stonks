@@ -1591,8 +1591,13 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
         const closeM = String(session.closeMin % 60).padStart(2, '0');
         const header = `⏱ До закрытия: ${String(Math.floor(minutesUntilClose / 60)).padStart(2, '0')}:${String(minutesUntilClose % 60).padStart(2, '0')} • ${closeH}:${closeM} ET${session.short ? ' (сокр.)' : ''} • ${todayKey}`;
         const sorted = list.slice().sort((a, b) => a.w.symbol.localeCompare(b.w.symbol));
+
+        // Collect signals summary
+        const entrySignals = [];
+        const exitSignals = [];
         const blocks = [];
         const logLines = [`T-11 overview → chat ${chatId}`];
+
         for (const rec of sorted) {
           const { w } = rec;
           const positionOpen = isPositionOpen(w);
@@ -1603,6 +1608,16 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
           const ibsStr = rec.dataOk && Number.isFinite(rec.ibs) ? rec.ibs.toFixed(3) : '-';
           const thresholdStr = positionOpen ? `≥ ${(w.highIBS - delta).toFixed(2)} (цель ${w.highIBS})` : `≤ ${((w.lowIBS ?? 0.1) + delta).toFixed(2)} (цель ${w.lowIBS ?? 0.1})`;
           const statusLabel = positionOpen ? 'Открыта' : 'Нет позиции';
+
+          // Collect signals for summary
+          if (rec.dataOk && near) {
+            if (positionOpen) {
+              exitSignals.push(`${w.symbol} (IBS ${(rec.ibs * 100).toFixed(1)}%)`);
+            } else {
+              entrySignals.push(`${w.symbol} (IBS ${(rec.ibs * 100).toFixed(1)}%)`);
+            }
+          }
+
           // Progress bar for IBS: 10 slots — map using ceil(ibs*11) to better match examples and clamp to 10
           const fillCount = rec.dataOk && Number.isFinite(rec.ibs) ? Math.max(0, Math.min(10, Math.ceil(rec.ibs * 11))) : 0;
           const bar = '█'.repeat(fillCount) + '░'.repeat(10 - fillCount);
@@ -1616,7 +1631,21 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
             : `${w.symbol} pos=${positionOpen ? 'open' : 'none'} data=NA err=${rec.fetchError}`;
           logLines.push(logOne);
         }
-        const text = `<pre>${header}\n\n${blocks.join('\n\n')}</pre>`;
+
+        // Build signals summary
+        let signalsSummary = '🔔 СИГНАЛЫ:\n';
+        if (entrySignals.length > 0) {
+          signalsSummary += `• На вход: ${entrySignals.join(', ')}\n`;
+        } else {
+          signalsSummary += '• На вход: нет\n';
+        }
+        if (exitSignals.length > 0) {
+          signalsSummary += `• На выход: ${exitSignals.join(', ')}`;
+        } else {
+          signalsSummary += '• На выход: нет';
+        }
+
+        const text = `<pre>${header}\n\n${signalsSummary}\n\n📊 ПОДРОБНО:\n\n${blocks.join('\n\n')}</pre>`;
         const resp = await sendTelegramMessage(chatId, text);
         if (resp.ok) {
           if (!options || options.updateState !== false) {
@@ -1813,6 +1842,11 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
 
         const messageParts = [
           header,
+          '',
+          '<b>🎯 РЕШЕНИЕ:</b>',
+          ...decisionLines,
+          '',
+          '<b>📊 ПОДРОБНО:</b>',
           timestampLine,
           freshnessLine,
           positionLine,
@@ -1822,9 +1856,6 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
           '',
           '<b>Потенциальные сигналы на вход:</b>',
           ...potentialEntryLines,
-          '',
-          '<b>Решение:</b>',
-          ...decisionLines,
         ];
 
         const text = messageParts.join('\n');
@@ -2117,7 +2148,23 @@ async function runPriceActualization(options = {}) {
 
     // Send Telegram notification about actualization results (with optional daily report appended)
     if (hasProblems && chatId) {
-      let telegramMsg = `⚠️ Актуализация цен (${todayKey}) - ЕСТЬ ПРОБЛЕМЫ\n\n`;
+      let telegramMsg = `⚠️ Актуализация цен (${todayKey})\n\n`;
+
+      // PROBLEMS SUMMARY FIRST
+      telegramMsg += `🚨 ПРОБЛЕМЫ:\n`;
+      const problemLines = [];
+      if (tickersWithoutTodayData.length > 0) {
+        const symbols = tickersWithoutTodayData.map(t => t.symbol).join(', ');
+        problemLines.push(`• Без данных за сегодня: ${tickersWithoutTodayData.length} ${tickersWithoutTodayData.length === 1 ? 'тикер' : 'тикера'} (${symbols})`);
+      }
+      if (failedTickers.length > 0) {
+        const symbols = failedTickers.map(t => t.symbol).join(', ');
+        problemLines.push(`• Ошибки обновления: ${failedTickers.length} ${failedTickers.length === 1 ? 'тикер' : 'тикера'} (${symbols})`);
+      }
+      telegramMsg += problemLines.join('\n');
+
+      // DETAILS SECOND
+      telegramMsg += `\n\n📊 ПОДРОБНО:\n`;
       telegramMsg += `✅ Обновлено с данными за сегодня: ${actuallyUpdated}/${totalTickers}\n`;
       if (actuallyUpdated > 0) telegramMsg += `${updatedTickers.join(', ')}\n\n`;
 
@@ -2745,7 +2792,9 @@ function getDefaultSettings() {
     enhancerProvider: 'alpha_vantage',
     resultsRefreshProvider: 'finnhub',
     // Процент высоты панели индикаторов (IBS/объём) от общей высоты графика
-    indicatorPanePercent: 7
+    indicatorPanePercent: 7,
+    // Тикеры по умолчанию для страницы "Несколько тикеров"
+    defaultMultiTickerSymbols: 'AAPL,MSFT,AMZN,MAGS'
   };
 }
 
@@ -2779,7 +2828,7 @@ app.get('/api/settings', async (req, res) => {
 
 app.put('/api/settings', async (req, res) => {
   try {
-    const { watchThresholdPct, resultsQuoteProvider, enhancerProvider, resultsRefreshProvider, indicatorPanePercent } = req.body || {};
+    const { watchThresholdPct, resultsQuoteProvider, enhancerProvider, resultsRefreshProvider, indicatorPanePercent, defaultMultiTickerSymbols } = req.body || {};
     const validProvider = (p) => p === 'alpha_vantage' || p === 'finnhub' || p === 'twelve_data';
     const next = getDefaultSettings();
     if (typeof watchThresholdPct === 'number') next.watchThresholdPct = watchThresholdPct;
@@ -2790,6 +2839,9 @@ app.put('/api/settings', async (req, res) => {
       // Ограничим разумными пределами 0–40%
       const clamped = Math.max(0, Math.min(40, indicatorPanePercent));
       next.indicatorPanePercent = clamped;
+    }
+    if (typeof defaultMultiTickerSymbols === 'string') {
+      next.defaultMultiTickerSymbols = defaultMultiTickerSymbols.trim();
     }
     const saved = await writeSettings(next);
     res.json({ success: true, settings: saved });

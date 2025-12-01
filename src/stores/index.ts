@@ -30,10 +30,14 @@ interface AppState {
   // Notification settings
   watchThresholdPct: number; // близость к IBS-цели для уведомления, %
   setWatchThresholdPct: (value: number) => void;
-  
+
   // Chart settings
   indicatorPanePercent: number; // высота панели индикаторов (IBS/объём), %
   setIndicatorPanePercent: (value: number) => void;
+
+  // Multi-ticker page settings
+  defaultMultiTickerSymbols: string; // тикеры по умолчанию для страницы "Несколько тикеров"
+  setDefaultMultiTickerSymbols: (value: string) => void;
   
   // Commission settings
   commissionType: 'fixed' | 'percentage' | 'combined';
@@ -96,6 +100,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   enhancerProvider: 'alpha_vantage',
   watchThresholdPct: 5,
   indicatorPanePercent: 10,
+  defaultMultiTickerSymbols: 'AAPL,MSFT,AMZN,MAGS',
   commissionType: 'percentage',
   commissionFixed: 1.0,
   commissionPercentage: 0.1,
@@ -158,6 +163,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         enhancerProvider: s.enhancerProvider,
         resultsRefreshProvider: s.resultsRefreshProvider || s.resultsQuoteProvider,
         indicatorPanePercent: typeof s.indicatorPanePercent === 'number' ? s.indicatorPanePercent : 10,
+        defaultMultiTickerSymbols: typeof s.defaultMultiTickerSymbols === 'string' ? s.defaultMultiTickerSymbols : 'AAPL,MSFT,AMZN,MAGS',
         commissionType: (s.commissionType as 'fixed' | 'percentage' | 'combined') || 'percentage',
         commissionFixed: typeof s.commissionFixed === 'number' ? s.commissionFixed : 1.0,
         commissionPercentage: typeof s.commissionPercentage === 'number' ? s.commissionPercentage : 0.1,
@@ -170,8 +176,8 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   saveSettingsToServer: async () => {
     try {
-      const { watchThresholdPct, resultsQuoteProvider, enhancerProvider, resultsRefreshProvider, indicatorPanePercent, commissionType, commissionFixed, commissionPercentage } = get();
-      await DatasetAPI.saveAppSettings({ watchThresholdPct, resultsQuoteProvider, enhancerProvider, resultsRefreshProvider, indicatorPanePercent, commissionType, commissionFixed, commissionPercentage });
+      const { watchThresholdPct, resultsQuoteProvider, enhancerProvider, resultsRefreshProvider, indicatorPanePercent, defaultMultiTickerSymbols, commissionType, commissionFixed, commissionPercentage } = get();
+      await DatasetAPI.saveAppSettings({ watchThresholdPct, resultsQuoteProvider, enhancerProvider, resultsRefreshProvider, indicatorPanePercent, defaultMultiTickerSymbols, commissionType, commissionFixed, commissionPercentage });
       // analysisTabsConfig теперь сохраняется автоматически в localStorage
     } catch (e) {
       console.warn('Failed to save app settings:', e instanceof Error ? e.message : e);
@@ -180,7 +186,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
   
   setIndicatorPanePercent: (value: number) => set({ indicatorPanePercent: value }),
-  
+
+  setDefaultMultiTickerSymbols: (value: string) => set({ defaultMultiTickerSymbols: value }),
+
 
   updateMarketData: (data: OHLCData[]) => {
     set({ marketData: dedupeDailyOHLC(data) });
