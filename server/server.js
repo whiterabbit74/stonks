@@ -2391,6 +2391,111 @@ app.post('/api/telegram/test', async (req, res) => {
   }
 });
 
+// Test API provider endpoint
+app.post('/api/test-provider', async (req, res) => {
+  try {
+    const provider = (req.body && req.body.provider) || 'alpha_vantage';
+    const testSymbol = 'AAPL'; // Use AAPL for testing
+
+    console.log(`Testing ${provider} API with symbol ${testSymbol}...`);
+
+    let result;
+    if (provider === 'alpha_vantage') {
+      if (!getApiConfig().ALPHA_VANTAGE_API_KEY) {
+        return res.status(400).json({ error: 'Alpha Vantage API key not configured' });
+      }
+      const url = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${testSymbol}&apikey=${getApiConfig().ALPHA_VANTAGE_API_KEY}`;
+      const response = await new Promise((resolve, reject) => {
+        https.get(url, (resp) => {
+          let data = '';
+          resp.on('data', (chunk) => data += chunk);
+          resp.on('end', () => {
+            try {
+              const json = JSON.parse(data);
+              if (json['Note'] || json['Information']) {
+                return reject(new Error(json['Note'] || json['Information']));
+              }
+              if (json['Error Message']) {
+                return reject(new Error(json['Error Message']));
+              }
+              const quote = json['Global Quote'];
+              if (quote && quote['05. price']) {
+                resolve({ success: true, price: quote['05. price'], symbol: testSymbol });
+              } else {
+                reject(new Error('No data returned'));
+              }
+            } catch (e) {
+              reject(e);
+            }
+          });
+        }).on('error', reject);
+      });
+      result = response;
+    } else if (provider === 'finnhub') {
+      if (!getApiConfig().FINNHUB_API_KEY) {
+        return res.status(400).json({ error: 'Finnhub API key not configured' });
+      }
+      const url = `https://finnhub.io/api/v1/quote?symbol=${testSymbol}&token=${getApiConfig().FINNHUB_API_KEY}`;
+      const response = await new Promise((resolve, reject) => {
+        https.get(url, (resp) => {
+          let data = '';
+          resp.on('data', (chunk) => data += chunk);
+          resp.on('end', () => {
+            try {
+              const json = JSON.parse(data);
+              if (json.error) {
+                return reject(new Error(json.error));
+              }
+              if (json.c) {
+                resolve({ success: true, price: json.c, symbol: testSymbol });
+              } else {
+                reject(new Error('No data returned'));
+              }
+            } catch (e) {
+              reject(e);
+            }
+          });
+        }).on('error', reject);
+      });
+      result = response;
+    } else if (provider === 'twelve_data') {
+      if (!getApiConfig().TWELVE_DATA_API_KEY) {
+        return res.status(400).json({ error: 'Twelve Data API key not configured' });
+      }
+      const url = `https://api.twelvedata.com/quote?symbol=${testSymbol}&apikey=${getApiConfig().TWELVE_DATA_API_KEY}`;
+      const response = await new Promise((resolve, reject) => {
+        https.get(url, (resp) => {
+          let data = '';
+          resp.on('data', (chunk) => data += chunk);
+          resp.on('end', () => {
+            try {
+              const json = JSON.parse(data);
+              if (json.status === 'error' || json.code) {
+                return reject(new Error(json.message || 'Twelve Data API error'));
+              }
+              if (json.close) {
+                resolve({ success: true, price: json.close, symbol: testSymbol });
+              } else {
+                reject(new Error('No data returned'));
+              }
+            } catch (e) {
+              reject(e);
+            }
+          });
+        }).on('error', reject);
+      });
+      result = response;
+    } else {
+      return res.status(400).json({ error: 'Unknown provider' });
+    }
+
+    res.json(result);
+  } catch (e) {
+    console.error('Provider test error:', e);
+    res.status(500).json({ error: e.message || 'Failed to test provider' });
+  }
+});
+
 app.post('/api/telegram/command', async (req, res) => {
   try {
     const { command, chatId: overrideChatId, limit } = req.body || {};
@@ -2675,7 +2780,7 @@ app.get('/api/settings', async (req, res) => {
 app.put('/api/settings', async (req, res) => {
   try {
     const { watchThresholdPct, resultsQuoteProvider, enhancerProvider, resultsRefreshProvider, indicatorPanePercent } = req.body || {};
-    const validProvider = (p) => p === 'alpha_vantage' || p === 'finnhub';
+    const validProvider = (p) => p === 'alpha_vantage' || p === 'finnhub' || p === 'twelve_data';
     const next = getDefaultSettings();
     if (typeof watchThresholdPct === 'number') next.watchThresholdPct = watchThresholdPct;
     if (validProvider(resultsQuoteProvider)) next.resultsQuoteProvider = resultsQuoteProvider;
@@ -2880,49 +2985,67 @@ async function fetchFromTwelveData(symbol, startDate, endDate) {
   if (!getApiConfig().TWELVE_DATA_API_KEY) {
     throw new Error('Twelve Data API key not configured');
   }
-  
+
   const startDateStr = new Date(startDate * 1000).toISOString().split('T')[0];
   const endDateStr = new Date(endDate * 1000).toISOString().split('T')[0];
   const safeSymbol = toSafeTicker(symbol);
   if (!safeSymbol) {
     throw new Error('Invalid symbol');
   }
-  const url = `https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(safeSymbol)}&interval=1day&start_date=${startDateStr}&end_date=${endDateStr}&apikey=${getApiConfig().TWELVE_DATA_API_KEY}`;
-  
+  const url = `https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(safeSymbol)}&interval=1day&start_date=${startDateStr}&end_date=${endDateStr}&outputsize=5000&apikey=${getApiConfig().TWELVE_DATA_API_KEY}`;
+
   return new Promise((resolve, reject) => {
     https.get(url, (response) => {
       let data = '';
       response.on('data', (chunk) => data += chunk);
       response.on('end', () => {
         try {
+          // Check for HTML response (rate limit or error page)
+          if (data && data.trim().startsWith('<')) {
+            const err = new Error('Провайдер вернул HTML вместо JSON (возможен лимит/блокировка).');
+            err.status = 502;
+            return reject(err);
+          }
+
           const jsonData = JSON.parse(data);
-          
+
+          // Check for error status
           if (jsonData.status === 'error') {
-            reject(new Error(`Twelve Data: ${jsonData.message}`));
-            return;
+            const err = new Error(`Twelve Data: ${jsonData.message || 'Unknown error'}`);
+            // Check for rate limit
+            if (jsonData.code === 429 || (jsonData.message && jsonData.message.includes('limit'))) {
+              err.status = 429;
+            } else {
+              err.status = 400;
+            }
+            return reject(err);
           }
-          
-          if (!jsonData.values) {
-            reject(new Error('No data found'));
-            return;
+
+          // Check for values array
+          if (!jsonData.values || !Array.isArray(jsonData.values)) {
+            const err = new Error('Twelve Data: No data found for this symbol/period');
+            err.status = 404;
+            return reject(err);
           }
-          
+
           const result = jsonData.values.map(item => ({
             date: item.datetime,
             open: parseFloat(item.open),
             high: parseFloat(item.high),
             low: parseFloat(item.low),
             close: parseFloat(item.close),
-            adjClose: parseFloat(item.close), // Twelve Data doesn't provide adjusted close in basic plan
-            volume: parseInt(item.volume)
+            adjClose: parseFloat(item.close), // Twelve Data doesn't provide adjusted close in free plan
+            volume: parseInt(item.volume || '0')
           }));
-          
+
           // Sort by date ascending
           result.sort((a, b) => new Date(a.date) - new Date(b.date));
           resolve(result);
-          
+
         } catch (error) {
-          reject(new Error(`Failed to parse Twelve Data response: ${error.message}`));
+          const err = new Error(`Не удалось обработать ответ Twelve Data: ${error.message}`);
+          err.status = 502;
+          reject(err);
         }
       });
     }).on('error', reject);
@@ -3171,15 +3294,27 @@ app.post('/api/datasets/:id/refresh', async (req, res) => {
 
     let rows = [];
     let splits = [];
-    const provider = (reqProvider === 'alpha_vantage' || reqProvider === 'finnhub')
+    const provider = (reqProvider === 'alpha_vantage' || reqProvider === 'finnhub' || reqProvider === 'twelve_data')
       ? reqProvider
-      : (settings && (settings.resultsRefreshProvider === 'alpha_vantage' || settings.resultsRefreshProvider === 'finnhub')
+      : (settings && (settings.resultsRefreshProvider === 'alpha_vantage' || settings.resultsRefreshProvider === 'finnhub' || settings.resultsRefreshProvider === 'twelve_data')
         ? settings.resultsRefreshProvider
         : 'finnhub');
 
     if (provider === 'finnhub') {
       const fh = await fetchFromFinnhub(ticker, startTs, endTs);
       const base = Array.isArray(fh) ? fh : [];
+      rows = base.map(r => ({
+        date: r.date,
+        open: Number(r.open),
+        high: Number(r.high),
+        low: Number(r.low),
+        close: Number(r.close),
+        adjClose: (r.adjClose != null ? Number(r.adjClose) : Number(r.close)),
+        volume: Number(r.volume) || 0,
+      }));
+    } else if (provider === 'twelve_data') {
+      const td = await fetchFromTwelveData(ticker, startTs, endTs);
+      const base = Array.isArray(td) ? td : [];
       rows = base.map(r => ({
         date: r.date,
         open: Number(r.open),
@@ -3495,6 +3630,55 @@ app.get('/api/quote/:symbol', async (req, res) => {
               resolve(result);
             } catch (e) {
               const err = new Error(`Не удалось обработать ответ Finnhub: ${e.message}`);
+              err.status = 502;
+              reject(err);
+            }
+          });
+        }).on('error', reject);
+      });
+      return res.json(payload);
+    }
+
+    // Twelve Data Quote
+    if (chosenProvider === 'twelve_data') {
+      if (!getApiConfig().TWELVE_DATA_API_KEY) {
+        return res.status(500).json({ error: 'Twelve Data API key not configured' });
+      }
+      const url = `https://api.twelvedata.com/quote?symbol=${encodeURIComponent(symbol)}&apikey=${getApiConfig().TWELVE_DATA_API_KEY}`;
+      const payload = await new Promise((resolve, reject) => {
+        https.get(url, (response) => {
+          let data = '';
+          response.on('data', (chunk) => data += chunk);
+          response.on('end', () => {
+            try {
+              if (data && data.trim().startsWith('<')) {
+                const err = new Error('Провайдер вернул HTML вместо JSON (возможен лимит/блокировка).');
+                err.status = 502;
+                return reject(err);
+              }
+              const json = JSON.parse(data);
+              // Check for error response
+              if (json.status === 'error' || json.code) {
+                const msg = json.message || 'Twelve Data API error';
+                const err = new Error(`Twelve Data: ${msg}`);
+                // Rate limit code is 429
+                if (json.code === 429) {
+                  err.status = 429;
+                } else {
+                  err.status = 400;
+                }
+                return reject(err);
+              }
+              const result = {
+                open: json.open ? parseFloat(json.open) : null,
+                high: json.high ? parseFloat(json.high) : null,
+                low: json.low ? parseFloat(json.low) : null,
+                current: json.close ? parseFloat(json.close) : null,
+                prevClose: json.previous_close ? parseFloat(json.previous_close) : null
+              };
+              resolve(result);
+            } catch (e) {
+              const err = new Error(`Не удалось обработать ответ Twelve Data: ${e.message}`);
               err.status = 502;
               reject(err);
             }
