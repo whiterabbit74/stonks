@@ -70,8 +70,16 @@ function calculateTradeStats(trades: Trade[] = []) {
 }
 
 export function MultiTickerPage() {
-  const [tickers, setTickers] = useState<string[]>(['AAPL', 'MSFT', 'AMZN', 'MAGS']);
-  const [tickersInput, setTickersInput] = useState<string>('AAPL, MSFT, AMZN, MAGS');
+  const defaultMultiTickerSymbols = useAppStore(s => s.defaultMultiTickerSymbols);
+
+  // Parse default symbols from settings
+  const getDefaultTickers = () => {
+    const symbolsStr = defaultMultiTickerSymbols || 'AAPL,MSFT,AMZN,MAGS';
+    return symbolsStr.split(',').map(s => s.trim().toUpperCase()).filter(Boolean);
+  };
+
+  const [tickers, setTickers] = useState<string[]>(getDefaultTickers());
+  const [tickersInput, setTickersInput] = useState<string>(defaultMultiTickerSymbols || 'AAPL, MSFT, AMZN, MAGS');
   const [leveragePercent, setLeveragePercent] = useState(200);
   const [monthlyContributionAmount, setMonthlyContributionAmount] = useState<number>(500);
   const [monthlyContributionDay, setMonthlyContributionDay] = useState<number>(1);
