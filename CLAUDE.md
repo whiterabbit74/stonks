@@ -511,6 +511,7 @@ DATASETS_DIR=/data/datasets
 SETTINGS_FILE=/data/state/settings.json
 WATCHES_FILE=/data/state/telegram-watches.json
 SPLITS_FILE=/data/state/splits.json
+TRADE_HISTORY_FILE=/data/state/trade-history.json
 
 # Authentication
 ADMIN_USERNAME=admin@example.com
