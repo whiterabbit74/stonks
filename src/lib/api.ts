@@ -660,7 +660,16 @@ export class DatasetAPI {
       body: JSON.stringify({ message })
     });
     if (!response.ok) {
-      throw new Error(`${response.status} ${response.statusText}`);
+      // Try to get detailed error message from response body
+      try {
+        const errorData = await response.json();
+        const errorMsg = errorData.error || errorData.message || response.statusText;
+        const details = errorData.errorCode ? ` (код ошибки: ${errorData.errorCode})` : '';
+        throw new Error(`${errorMsg}${details}`);
+      } catch (parseError) {
+        // If we can't parse the error, use the HTTP status
+        throw new Error(`${response.status} ${response.statusText}`);
+      }
     }
     return await response.json();
   }

@@ -1064,28 +1064,75 @@ async function sendTelegramMessage(chatId, text, parseMode = 'HTML') {
     console.warn('Telegram is not configured (missing TELEGRAM_BOT_TOKEN or chatId).');
     return { ok: false, reason: 'not_configured' };
   }
-  const payload = JSON.stringify({ chat_id: chatId, text, parse_mode: parseMode, disable_web_page_preview: true });
-  // Escape colons in bot token for URL path (: becomes %3A)
-  const escapedToken = telegramBotToken.replace(/:/g, '%3A');
-  const path = `/bot${escapedToken}/sendMessage`;
-  console.log(`Telegram URL path: ${path}`);
+
+  // Convert chat_id to number if it's a numeric string (Telegram API prefers numbers for numeric IDs)
+  let parsedChatId = chatId;
+  if (typeof chatId === 'string' && /^-?\d+$/.test(chatId)) {
+    parsedChatId = parseInt(chatId, 10);
+    console.log(`Converted chat_id from string "${chatId}" to number ${parsedChatId}`);
+  }
+
+  const payload = JSON.stringify({
+    chat_id: parsedChatId,
+    text,
+    parse_mode: parseMode,
+    disable_web_page_preview: true
+  });
+
+  // Token is used as-is in URL path - colon does not need escaping in path component
+  const path = `/bot${telegramBotToken}/sendMessage`;
+  console.log(`Telegram API request - chat_id: ${parsedChatId}, text length: ${text.length}, parse_mode: ${parseMode}`);
+
   const options = {
     hostname: 'api.telegram.org',
     path: path,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) }
   };
+
   return new Promise((resolve) => {
     const req = https.request(options, (res) => {
       let data = '';
       res.on('data', (chunk) => { data += chunk; });
       res.on('end', () => {
-        console.log(`Telegram API response: statusCode=${res.statusCode}, data=${data.substring(0, 200)}`);
-        const isSuccess = res.statusCode >= 200 && res.statusCode < 300;
-        resolve({ ok: isSuccess, statusCode: res.statusCode });
+        console.log(`Telegram API response: statusCode=${res.statusCode}`);
+        console.log(`Telegram API response body: ${data}`);
+
+        try {
+          const parsed = JSON.parse(data);
+          const isSuccess = res.statusCode >= 200 && res.statusCode < 300;
+
+          if (!isSuccess) {
+            const errorMsg = parsed.description || 'Unknown error';
+            console.error(`❌ Telegram API error [${res.statusCode}]: ${errorMsg}`, parsed);
+            resolve({
+              ok: false,
+              statusCode: res.statusCode,
+              error: errorMsg,
+              errorCode: parsed.error_code,
+              fullResponse: parsed
+            });
+          } else {
+            console.log(`✅ Telegram message sent successfully`);
+            resolve({ ok: true, statusCode: res.statusCode, result: parsed.result });
+          }
+        } catch (parseError) {
+          console.error('Failed to parse Telegram response as JSON:', data);
+          resolve({
+            ok: false,
+            statusCode: res.statusCode,
+            error: 'Invalid JSON response from Telegram API',
+            rawResponse: data
+          });
+        }
       });
     });
-    req.on('error', (e) => { console.warn('Telegram send error:', e.message); resolve({ ok: false, reason: e.message }); });
+
+    req.on('error', (e) => {
+      console.error('Telegram request error:', e.message);
+      resolve({ ok: false, reason: e.message });
+    });
+
     req.write(payload);
     req.end();
   });
@@ -2439,10 +2486,26 @@ app.post('/api/telegram/test', async (req, res) => {
   try {
     const chatId = (req.body && req.body.chatId) || getApiConfig().TELEGRAM_CHAT_ID;
     const msg = (req.body && req.body.message) || 'Test message from Trading Backtester ✅';
+
+    console.log(`Testing Telegram with chat_id: ${chatId}, message: "${msg.substring(0, 50)}..."`);
+
     const resp = await sendTelegramMessage(chatId, msg);
-    if (!resp.ok) return res.status(500).json({ error: 'Failed to send test message' });
-    res.json({ success: true });
+
+    if (!resp.ok) {
+      const errorDetails = resp.error || resp.reason || 'Failed to send test message';
+      console.error(`Test message failed:`, resp);
+      return res.status(500).json({
+        error: errorDetails,
+        statusCode: resp.statusCode,
+        errorCode: resp.errorCode,
+        details: resp.fullResponse || resp.rawResponse
+      });
+    }
+
+    console.log(`Test message sent successfully`);
+    res.json({ success: true, result: resp.result });
   } catch (e) {
+    console.error('Exception in /api/telegram/test:', e);
     res.status(500).json({ error: e.message || 'Failed to send test message' });
   }
 });
