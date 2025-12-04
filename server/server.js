@@ -1065,10 +1065,9 @@ async function sendTelegramMessage(chatId, text, parseMode = 'HTML') {
     return { ok: false, reason: 'not_configured' };
   }
   const payload = JSON.stringify({ chat_id: chatId, text, parse_mode: parseMode, disable_web_page_preview: true });
-  // Escape colons in bot token for URL path (: becomes %3A)
-  const escapedToken = telegramBotToken.replace(/:/g, '%3A');
-  const path = `/bot${escapedToken}/sendMessage`;
-  console.log(`Telegram URL path: ${path}`);
+  // Token is used as-is in URL path - colon does not need escaping in path component
+  const path = `/bot${telegramBotToken}/sendMessage`;
+  console.log(`Telegram API request to: ${path.substring(0, 20)}...`);
   const options = {
     hostname: 'api.telegram.org',
     path: path,
