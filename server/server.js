@@ -642,8 +642,37 @@ app.patch('/api/settings', requireAuth, (req, res) => {
 
     // Validate updates - no additional validation needed for API keys
 
-    // Merge updates
-    const newSettings = { ...currentSettings, ...updates };
+    // Deep merge for nested objects to preserve existing values
+    const newSettings = { ...currentSettings };
+
+    // Deep merge 'api' settings - preserve existing keys when only some are updated
+    if (updates.api) {
+      newSettings.api = { ...(currentSettings.api || {}), ...updates.api };
+      // Remove undefined values (when client sends empty string as undefined)
+      Object.keys(newSettings.api).forEach(key => {
+        if (newSettings.api[key] === undefined) {
+          delete newSettings.api[key];
+        }
+      });
+    }
+
+    // Deep merge 'telegram' settings - preserve existing token/chatId when only one is updated
+    if (updates.telegram) {
+      newSettings.telegram = { ...(currentSettings.telegram || {}), ...updates.telegram };
+      // Remove undefined values (when client sends empty string as undefined)
+      Object.keys(newSettings.telegram).forEach(key => {
+        if (newSettings.telegram[key] === undefined) {
+          delete newSettings.telegram[key];
+        }
+      });
+    }
+
+    // Merge other top-level keys
+    Object.keys(updates).forEach(key => {
+      if (key !== 'api' && key !== 'telegram') {
+        newSettings[key] = updates[key];
+      }
+    });
 
     // Save to file
     fs.writeJsonSync(SETTINGS_FILE, newSettings, { spaces: 2 });
@@ -1093,13 +1122,23 @@ function scheduleSaveWatches() {
 }
 
 async function sendTelegramMessage(chatId, text, parseMode = 'HTML') {
-  const telegramBotToken = getApiConfig().TELEGRAM_BOT_TOKEN;
+  const settings = loadSettings();
+  const envToken = process.env.TELEGRAM_BOT_TOKEN || '';
+  const settingsToken = settings.telegram?.botToken || '';
+  const telegramBotToken = settingsToken || envToken;
 
-  // Debug token (masked)
-  if (telegramBotToken) {
-    const masked = telegramBotToken.substring(0, 5) + '...' + telegramBotToken.substring(telegramBotToken.length - 5);
-    console.log(`Using Telegram Token: ${masked}`);
-  } else {
+  // Debug token sources - FULL TOKEN for debugging
+  console.log(`Telegram token sources - from settings.json: ${settingsToken ? 'YES' : 'NO'}, from env: ${envToken ? 'YES' : 'NO'}`);
+  console.log(`FULL TOKEN FROM SETTINGS: "${settingsToken}"`);
+  console.log(`FULL TOKEN FROM ENV: "${envToken}"`);
+  console.log(`USING TOKEN: "${telegramBotToken}" (length: ${telegramBotToken.length})`);
+
+  // Check for asterisks which would indicate a masked/corrupted token
+  if (telegramBotToken && telegramBotToken.includes('*')) {
+    console.error('ERROR: Token contains asterisks - it appears to be a masked value, not the real token!');
+  }
+
+  if (!telegramBotToken) {
     console.warn('Telegram Token is MISSING or EMPTY');
   }
 
