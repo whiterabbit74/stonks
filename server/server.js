@@ -1065,16 +1065,25 @@ async function sendTelegramMessage(chatId, text, parseMode = 'HTML') {
     return { ok: false, reason: 'not_configured' };
   }
   const payload = JSON.stringify({ chat_id: chatId, text, parse_mode: parseMode, disable_web_page_preview: true });
+  // Escape colons in bot token for URL path (: becomes %3A)
+  const escapedToken = telegramBotToken.replace(/:/g, '%3A');
+  const path = `/bot${escapedToken}/sendMessage`;
+  console.log(`Telegram URL path: ${path}`);
   const options = {
     hostname: 'api.telegram.org',
-    path: `/bot${telegramBotToken}/sendMessage`,
+    path: path,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) }
   };
   return new Promise((resolve) => {
     const req = https.request(options, (res) => {
-      res.on('data', () => {});
-      res.on('end', () => resolve({ ok: res.statusCode === 200 }));
+      let data = '';
+      res.on('data', (chunk) => { data += chunk; });
+      res.on('end', () => {
+        console.log(`Telegram API response: statusCode=${res.statusCode}, data=${data.substring(0, 200)}`);
+        const isSuccess = res.statusCode >= 200 && res.statusCode < 300;
+        resolve({ ok: isSuccess, statusCode: res.statusCode });
+      });
     });
     req.on('error', (e) => { console.warn('Telegram send error:', e.message); resolve({ ok: false, reason: e.message }); });
     req.write(payload);
