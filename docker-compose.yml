@@ -14,6 +14,7 @@ services:
       - SETTINGS_FILE=/data/state/settings.json
       - WATCHES_FILE=/data/state/telegram-watches.json
       - SPLITS_FILE=/data/state/splits.json
+      - TRADE_HISTORY_FILE=/data/state/trade-history.json
     volumes:
       - stonks_datasets:/data/datasets
       - stonks_state:/data/state
@@ -86,11 +87,13 @@ services:
       - SETTINGS_FILE=/data/state/settings.json
       - WATCHES_FILE=/data/state/telegram-watches.json
       - SPLITS_FILE=/data/state/splits.json
+      - TRADE_HISTORY_FILE=/data/state/trade-history.json
     volumes:
       - ./server/datasets:/data/datasets
       - ./server/settings.json:/data/state/settings.json
       - ./server/telegram-watches.json:/data/state/telegram-watches.json
       - ./server/splits.json:/data/state/splits.json
+      - ./server/trade-history.json:/data/state/trade-history.json
     ports:
       - "3001:3001"
     restart: unless-stopped
