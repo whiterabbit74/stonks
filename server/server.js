@@ -1,3 +1,30 @@
+// Load environment variables from multiple sources
+const path = require('path');
+const fs = require('fs-extra');
+const os = require('os');
+
+// 1. Try user's config dir (highest priority)
+const userConfigPath = path.join(os.homedir(), 'stonks-config', '.env');
+if (fs.existsSync(userConfigPath)) {
+  console.log(`Loading config from ${userConfigPath}`);
+  require('dotenv').config({ path: userConfigPath });
+}
+
+// 2. Try server/.env (if running from root)
+const serverEnvPath = path.join(__dirname, '.env');
+if (fs.existsSync(serverEnvPath)) {
+  console.log(`Loading config from ${serverEnvPath}`);
+  require('dotenv').config({ path: serverEnvPath });
+}
+
+// 3. Try project root .env
+const rootEnvPath = path.join(__dirname, '..', '.env');
+if (fs.existsSync(rootEnvPath)) {
+  console.log(`Loading config from ${rootEnvPath}`);
+  require('dotenv').config({ path: rootEnvPath });
+}
+
+// 4. Default .env (lowest priority)
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -163,29 +190,29 @@ function ensureRegularFileSync(filePath, defaultContent) {
     if (st && st.isDirectory()) {
       // If path is directory (bad mount), rename it away and create a file instead
       const backup = `${filePath}.bak-${Date.now()}`;
-      try { fs.renameSync(filePath, backup); } catch {}
+      try { fs.renameSync(filePath, backup); } catch { }
     }
     if (!fs.pathExistsSync(filePath) || (st && st.isDirectory())) {
       fs.ensureFileSync(filePath);
       fs.writeJsonSync(filePath, defaultContent, { spaces: 2 });
     }
-  } catch {}
+  } catch { }
 }
 
 // Ensure splits storage exists
 async function ensureSplitsFile() {
   try {
     ensureRegularFileSync(SPLITS_FILE, {});
-  } catch {}
+  } catch { }
 }
 ensureSplitsFile().catch((err) => {
   console.warn('Failed to ensure splits file exists:', err.message);
 });
 
 // Ensure settings and watches storages exist as well (best-effort)
-try { ensureRegularFileSync(SETTINGS_FILE, {}); } catch {}
-try { ensureRegularFileSync(WATCHES_FILE, []); } catch {}
-try { ensureRegularFileSync(TRADE_HISTORY_FILE, []); } catch {}
+try { ensureRegularFileSync(SETTINGS_FILE, {}); } catch { }
+try { ensureRegularFileSync(WATCHES_FILE, []); } catch { }
+try { ensureRegularFileSync(TRADE_HISTORY_FILE, []); } catch { }
 
 async function appendSafe(filePath, line) {
   try {
@@ -336,7 +363,7 @@ function setAuthCookie(req, res, token, remember) {
     'Path=/',
     'SameSite=Lax',
   ];
-  if (maxAge) parts.push(`Max-Age=${Math.floor(maxAge/1000)}`);
+  if (maxAge) parts.push(`Max-Age=${Math.floor(maxAge / 1000)}`);
   parts.push('HttpOnly');
   if (shouldUseSecureCookie(req)) parts.push('Secure');
   res.setHeader('Set-Cookie', parts.join('; '));
@@ -449,7 +476,7 @@ function getClientIp(req) {
   try {
     if (req.ip) return req.ip;
     if (Array.isArray(req.ips) && req.ips.length) return req.ips[0];
-  } catch {}
+  } catch { }
   const xf = (req.headers['x-forwarded-for'] || '').toString();
   if (xf) return xf.split(',')[0].trim();
   return (req.socket && req.socket.remoteAddress) || 'unknown';
@@ -461,14 +488,14 @@ async function logLoginAttempt({ ip, success, reason, username }) {
     const note = success ? '✅ Успешный вход' : '⚠️ Неуспешная попытка входа';
     const text = `${note}\nIP: ${ip}\nUser: ${username || '-'}` + (success ? '' : (reason ? `\nПричина: ${reason}` : ''));
     await sendTelegramMessage(getApiConfig().TELEGRAM_CHAT_ID, text);
-  } catch {}
+  } catch { }
 }
 
 app.post('/api/login', async (req, res) => {
   try {
     if (!ADMIN_PASSWORD) return res.json({ success: true, disabled: true });
     const { username, password, remember } = req.body || {};
-    
+
     // Input validation to prevent injection attacks
     if (!username || typeof username !== 'string' || username.length > 254) {
       return res.status(400).json({ error: 'Invalid username format' });
@@ -476,7 +503,7 @@ app.post('/api/login', async (req, res) => {
     if (!password || typeof password !== 'string' || password.length > 1024) {
       return res.status(400).json({ error: 'Invalid password format' });
     }
-    
+
     const ip = getClientIp(req);
     // Rate limit
     const nowTs = Date.now();
@@ -510,7 +537,7 @@ app.post('/api/login', async (req, res) => {
       console.error('Password verification error:', error);
       passwordValid = false;
     }
-    
+
     if (!password || !passwordValid) {
       logLoginAttempt({ ip, success: false, reason: 'INVALID_PASSWORD', username });
       return res.status(401).json({ error: 'Invalid password' });
@@ -555,17 +582,17 @@ app.post('/api/auth/hash-password', async (req, res) => {
     if (IS_PROD && ADMIN_PASSWORD) {
       return res.status(403).json({ error: 'Password hashing not available in production' });
     }
-    
+
     const { password } = req.body || {};
     if (!password || typeof password !== 'string' || password.length < 8) {
       return res.status(400).json({ error: 'Password must be at least 8 characters long' });
     }
-    
+
     const saltRounds = 12;
     const hashedPassword = await bcrypt.hash(password, saltRounds);
-    
-    res.json({ 
-      success: true, 
+
+    res.json({
+      success: true,
       hashedPassword,
       message: 'Set this as your ADMIN_PASSWORD environment variable'
     });
@@ -928,7 +955,7 @@ async function calculatePositionStatus(symbol, lowIBS = 0.1, highIBS = 0.75) {
     if (!exists) {
       return { isOpen: false, entryPrice: null, entryDate: null, signal: 'no_data' };
     }
-    
+
     const dataset = await fs.readJson(filePath);
     if (!dataset || !dataset.data || dataset.data.length === 0) {
       return { isOpen: false, entryPrice: null, entryDate: null, signal: 'no_data' };
@@ -939,7 +966,7 @@ async function calculatePositionStatus(symbol, lowIBS = 0.1, highIBS = 0.75) {
     const data = rawData.slice(-35).map(d => ({
       date: new Date(d.date),
       open: parseFloat(d.open),
-      high: parseFloat(d.high), 
+      high: parseFloat(d.high),
       low: parseFloat(d.low),
       close: parseFloat(d.close)
     }));
@@ -951,12 +978,12 @@ async function calculatePositionStatus(symbol, lowIBS = 0.1, highIBS = 0.75) {
     // Прогоняем стратегию: смотрим IBS предыдущего дня для принятия решений
     for (let i = 1; i < data.length; i++) {
       const currentBar = data[i];
-      const prevBar = data[i-1];
-      
+      const prevBar = data[i - 1];
+
       // Рассчитываем IBS предыдущего дня = (close - low) / (high - low)
       const range = prevBar.high - prevBar.low;
       const ibs = range > 0 ? (prevBar.close - prevBar.low) / range : 0;
-      
+
       // Сигнал на ВХОД: IBS предыдущего дня <= lowIBS
       if (!positionOpen && ibs <= lowIBS) {
         positionOpen = true;
@@ -964,7 +991,7 @@ async function calculatePositionStatus(symbol, lowIBS = 0.1, highIBS = 0.75) {
         entryDate = currentBar.date.toISOString().split('T')[0];
         console.log(`[${symbol}] ENTRY: IBS=${ibs.toFixed(3)} <= ${lowIBS}, entry_price=${entryPrice}, date=${entryDate}`);
       }
-      
+
       // Сигнал на ВЫХОД: IBS предыдущего дня >= highIBS
       if (positionOpen && ibs >= highIBS) {
         positionOpen = false;
@@ -974,10 +1001,10 @@ async function calculatePositionStatus(symbol, lowIBS = 0.1, highIBS = 0.75) {
         entryDate = null;
       }
     }
-    
+
     const signal = positionOpen ? 'position_open' : 'position_closed';
     return { isOpen: positionOpen, entryPrice, entryDate, signal };
-    
+
   } catch (error) {
     console.error(`Error calculating position for ${symbol}:`, error);
     return { isOpen: false, entryPrice: null, entryDate: null, signal: 'error' };
@@ -1060,9 +1087,18 @@ function scheduleSaveWatches() {
 
 async function sendTelegramMessage(chatId, text, parseMode = 'HTML') {
   const telegramBotToken = getApiConfig().TELEGRAM_BOT_TOKEN;
+
+  // Debug token (masked)
+  if (telegramBotToken) {
+    const masked = telegramBotToken.substring(0, 5) + '...' + telegramBotToken.substring(telegramBotToken.length - 5);
+    console.log(`Using Telegram Token: ${masked}`);
+  } else {
+    console.warn('Telegram Token is MISSING or EMPTY');
+  }
+
   if (!telegramBotToken || !chatId) {
     console.warn('Telegram is not configured (missing TELEGRAM_BOT_TOKEN or chatId).');
-    return { ok: false, reason: 'not_configured' };
+    return { ok: false, reason: 'not_configured', error: 'Telegram not configured (missing token or chat_id)' };
   }
 
   // Convert chat_id to number if it's a numeric string (Telegram API prefers numbers for numeric IDs)
@@ -1140,52 +1176,52 @@ async function sendTelegramMessage(chatId, text, parseMode = 'HTML') {
 
 // Helpers for ET (America/New_York)
 function getETParts(date = new Date()) {
-  const fmt = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit', hour:'2-digit', minute:'2-digit', hour12: false, weekday: 'short' });
+  const fmt = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false, weekday: 'short' });
   const parts = fmt.formatToParts(date);
   const map = {};
   parts.forEach(p => { if (p.type !== 'literal') map[p.type] = p.value; });
   const y = Number(map.year), m = Number(map.month), d = Number(map.day), hh = Number(map.hour), mm = Number(map.minute);
-  const weekdayMap = { Sun:0, Mon:1, Tue:2, Wed:3, Thu:4, Fri:5, Sat:6 };
+  const weekdayMap = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
   const weekday = weekdayMap[map.weekday] ?? 0;
   return { y, m, d, hh, mm, weekday };
 }
-function etKeyYMD(p) { return `${p.y}-${String(p.m).padStart(2,'0')}-${String(p.d).padStart(2,'0')}`; }
+function etKeyYMD(p) { return `${p.y}-${String(p.m).padStart(2, '0')}-${String(p.d).padStart(2, '0')}`; }
 function isWeekendET(p) { return p.weekday === 0 || p.weekday === 6; }
 function nthWeekdayOfMonthET(year, monthIndex0, weekday, n) {
   let cursor = new Date(Date.UTC(year, monthIndex0, 1, 12, 0, 0));
-  while (getETParts(cursor).weekday !== weekday) { cursor.setUTCDate(cursor.getUTCDate()+1); }
-  for (let i=1;i<n;i++) { cursor.setUTCDate(cursor.getUTCDate()+7); }
+  while (getETParts(cursor).weekday !== weekday) { cursor.setUTCDate(cursor.getUTCDate() + 1); }
+  for (let i = 1; i < n; i++) { cursor.setUTCDate(cursor.getUTCDate() + 7); }
   return getETParts(cursor);
 }
 function lastWeekdayOfMonthET(year, monthIndex0, weekday) {
-  let cursor = new Date(Date.UTC(year, monthIndex0+1, 0, 12, 0, 0));
-  while (getETParts(cursor).weekday !== weekday) { cursor.setUTCDate(cursor.getUTCDate()-1); }
+  let cursor = new Date(Date.UTC(year, monthIndex0 + 1, 0, 12, 0, 0));
+  while (getETParts(cursor).weekday !== weekday) { cursor.setUTCDate(cursor.getUTCDate() - 1); }
   return getETParts(cursor);
 }
 function observedFixedET(year, monthIndex0, day) {
   const base = new Date(Date.UTC(year, monthIndex0, day, 12, 0, 0));
   const p = getETParts(base);
-  if (p.weekday === 0) { base.setUTCDate(base.getUTCDate()+1); return getETParts(base); }
-  if (p.weekday === 6) { base.setUTCDate(base.getUTCDate()-1); return getETParts(base); }
+  if (p.weekday === 0) { base.setUTCDate(base.getUTCDate() + 1); return getETParts(base); }
+  if (p.weekday === 6) { base.setUTCDate(base.getUTCDate() - 1); return getETParts(base); }
   return p;
 }
-function easterUTC(year){ const a=year%19,b=Math.floor(year/100),c=year%100,d=Math.floor(b/4),e=b%4,f=Math.floor((b+8)/25),g=Math.floor((b-f+1)/3),h=(19*a+b-d-g+15)%30,i=Math.floor(c/4),k=c%4,l=(32+2*e+2*i-h-k)%7,m=Math.floor((a+11*h+22*l)/451),month=Math.floor((h+l-7*m+114)/31)-1,day=((h+l-7*m+114)%31)+1;return new Date(Date.UTC(year,month,day,12,0,0)); }
-function goodFridayET(year){ const e=easterUTC(year); e.setUTCDate(e.getUTCDate()-2); return getETParts(e); }
-function nyseHolidaysET(year){
+function easterUTC(year) { const a = year % 19, b = Math.floor(year / 100), c = year % 100, d = Math.floor(b / 4), e = b % 4, f = Math.floor((b + 8) / 25), g = Math.floor((b - f + 1) / 3), h = (19 * a + b - d - g + 15) % 30, i = Math.floor(c / 4), k = c % 4, l = (32 + 2 * e + 2 * i - h - k) % 7, m = Math.floor((a + 11 * h + 22 * l) / 451), month = Math.floor((h + l - 7 * m + 114) / 31) - 1, day = ((h + l - 7 * m + 114) % 31) + 1; return new Date(Date.UTC(year, month, day, 12, 0, 0)); }
+function goodFridayET(year) { const e = easterUTC(year); e.setUTCDate(e.getUTCDate() - 2); return getETParts(e); }
+function nyseHolidaysET(year) {
   const set = new Set();
-  set.add(etKeyYMD(observedFixedET(year,0,1))); // New Year
-  set.add(etKeyYMD(observedFixedET(year,5,19))); // Juneteenth
-  set.add(etKeyYMD(observedFixedET(year,6,4)));  // Independence Day
-  set.add(etKeyYMD(observedFixedET(year,11,25))); // Christmas
-  set.add(etKeyYMD(nthWeekdayOfMonthET(year,0,1,3))); // MLK Mon
-  set.add(etKeyYMD(nthWeekdayOfMonthET(year,1,1,3))); // Presidents Mon
+  set.add(etKeyYMD(observedFixedET(year, 0, 1))); // New Year
+  set.add(etKeyYMD(observedFixedET(year, 5, 19))); // Juneteenth
+  set.add(etKeyYMD(observedFixedET(year, 6, 4)));  // Independence Day
+  set.add(etKeyYMD(observedFixedET(year, 11, 25))); // Christmas
+  set.add(etKeyYMD(nthWeekdayOfMonthET(year, 0, 1, 3))); // MLK Mon
+  set.add(etKeyYMD(nthWeekdayOfMonthET(year, 1, 1, 3))); // Presidents Mon
   set.add(etKeyYMD(goodFridayET(year))); // Good Friday
-  set.add(etKeyYMD(lastWeekdayOfMonthET(year,4,1))); // Memorial Mon
-  set.add(etKeyYMD(nthWeekdayOfMonthET(year,8,1,1))); // Labor Mon
-  set.add(etKeyYMD(nthWeekdayOfMonthET(year,10,4,4))); // Thanksgiving Thu
+  set.add(etKeyYMD(lastWeekdayOfMonthET(year, 4, 1))); // Memorial Mon
+  set.add(etKeyYMD(nthWeekdayOfMonthET(year, 8, 1, 1))); // Labor Mon
+  set.add(etKeyYMD(nthWeekdayOfMonthET(year, 10, 4, 4))); // Thanksgiving Thu
   return set;
 }
-function isTradingDayET(p){ return !isWeekendET(p) && !nyseHolidaysET(p.y).has(etKeyYMD(p)); }
+function isTradingDayET(p) { return !isWeekendET(p) && !nyseHolidaysET(p.y).has(etKeyYMD(p)); }
 
 // Calendar-aware helpers (JSON: server/trading-calendar.json)
 let _tradingCalendarCache = { data: null, loadedAt: 0 };
@@ -1202,7 +1238,7 @@ async function loadTradingCalendarJSON() {
       _tradingCalendarCache = { data: json, loadedAt: nowTs };
       return json;
     }
-  } catch {}
+  } catch { }
   return null;
 }
 function getCachedTradingCalendar() {
@@ -1222,7 +1258,7 @@ function isHolidayByCalendarET(p, cal) {
   try {
     if (!cal || !cal.holidays) return false;
     const y = String(p.y);
-    const key = `${String(p.m).padStart(2,'0')}-${String(p.d).padStart(2,'0')}`;
+    const key = `${String(p.m).padStart(2, '0')}-${String(p.d).padStart(2, '0')}`;
     return !!(cal.holidays[y] && cal.holidays[y][key]);
   } catch { return false; }
 }
@@ -1230,7 +1266,7 @@ function isShortDayByCalendarET(p, cal) {
   try {
     if (!cal || !cal.shortDays) return false;
     const y = String(p.y);
-    const key = `${String(p.m).padStart(2,'0')}-${String(p.d).padStart(2,'0')}`;
+    const key = `${String(p.m).padStart(2, '0')}-${String(p.d).padStart(2, '0')}`;
     return !!(cal.shortDays[y] && cal.shortDays[y][key]);
   } catch { return false; }
 }
@@ -1241,9 +1277,9 @@ function isTradingDayByCalendarET(p, cal) {
   return isTradingDayET(p);
 }
 function getTradingSessionForDateET(p, cal) {
-  const normalEnd = parseHmToMinutes(cal && cal.tradingHours && cal.tradingHours.normal && cal.tradingHours.normal.end || '16:00') ?? (16*60);
-  const shortEnd = parseHmToMinutes(cal && cal.tradingHours && cal.tradingHours.short && cal.tradingHours.short.end || '13:00') ?? (13*60);
-  const startMin = parseHmToMinutes(cal && cal.tradingHours && cal.tradingHours.normal && cal.tradingHours.normal.start || '09:30') ?? (9*60+30);
+  const normalEnd = parseHmToMinutes(cal && cal.tradingHours && cal.tradingHours.normal && cal.tradingHours.normal.end || '16:00') ?? (16 * 60);
+  const shortEnd = parseHmToMinutes(cal && cal.tradingHours && cal.tradingHours.short && cal.tradingHours.short.end || '13:00') ?? (13 * 60);
+  const startMin = parseHmToMinutes(cal && cal.tradingHours && cal.tradingHours.normal && cal.tradingHours.normal.start || '09:30') ?? (9 * 60 + 30);
   const short = !!(cal && isShortDayByCalendarET(p, cal));
   const closeMin = short ? shortEnd : normalEnd;
   return { openMin: startMin, closeMin, short };
@@ -1254,7 +1290,7 @@ async function fetchTodayRangeAndQuote(symbol) {
   const quote = await new Promise((resolve, reject) => {
     const url = `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(symbol)}&token=${getApiConfig().FINNHUB_API_KEY}`;
     https.get(url, (response) => {
-      let data=''; response.on('data', c=>data+=c); response.on('end', ()=>{ try{ resolve(JSON.parse(data)); } catch(e){ reject(e); } });
+      let data = ''; response.on('data', c => data += c); response.on('end', () => { try { resolve(JSON.parse(data)); } catch (e) { reject(e); } });
     }).on('error', reject);
   });
   const todayEt = getETParts(new Date());
@@ -1262,7 +1298,7 @@ async function fetchTodayRangeAndQuote(symbol) {
   const todayRange = {
     open: (quote && quote.o != null ? quote.o : null),
     high: (quote && quote.h != null ? quote.h : null),
-    low:  (quote && quote.l != null ? quote.l : null),
+    low: (quote && quote.l != null ? quote.l : null),
   };
   return { range: todayRange, quote: { open: quote.o ?? null, high: quote.h ?? null, low: quote.l ?? null, current: quote.c ?? null, prevClose: quote.pc ?? null }, dateKey: todayKey, ohlc: null };
 }
@@ -1301,11 +1337,11 @@ function normalizeIntradayRange(range, quote) {
 function previousTradingDayET(fromParts) {
   let cursor = new Date(Date.UTC(fromParts.y, fromParts.m - 1, fromParts.d, 12, 0, 0));
   cursor.setUTCDate(cursor.getUTCDate() - 1);
-  
+
   // Add safety limit to prevent infinite loop (max 30 days back)
   let attempts = 0;
   const maxAttempts = 30;
-  
+
   while (attempts < maxAttempts) {
     const p = getETParts(cursor);
     const cal = getCachedTradingCalendar();
@@ -1313,7 +1349,7 @@ function previousTradingDayET(fromParts) {
     cursor.setUTCDate(cursor.getUTCDate() - 1);
     attempts++;
   }
-  
+
   // Fallback: return parts from 1 day back if no trading day found
   console.warn('Could not find previous trading day within 30 days, using fallback');
   const fallbackDate = new Date(Date.UTC(fromParts.y, fromParts.m - 1, fromParts.d - 1, 12, 0, 0));
@@ -1324,7 +1360,7 @@ function buildFreshnessLine(ohlc, nowEtParts) {
   try {
     if (!Array.isArray(ohlc) || ohlc.length === 0) return 'Data: unknown';
     const prev = previousTradingDayET(nowEtParts);
-    const expected = `${prev.y}-${String(prev.m).padStart(2,'0')}-${String(prev.d).padStart(2,'0')}`;
+    const expected = `${prev.y}-${String(prev.m).padStart(2, '0')}-${String(prev.d).padStart(2, '0')}`;
     const hasPrev = ohlc.some(r => r && r.date === expected);
     return hasPrev ? 'Data: fresh' : `Data: STALE (missing ${expected})`;
   } catch {
@@ -1344,7 +1380,7 @@ app.get('/api/trading/expected-prev-day', async (req, res) => {
   }
 });
 
-function formatMoney(n){ return (typeof n === 'number' && isFinite(n)) ? `$${n.toFixed(2)}` : '-'; }
+function formatMoney(n) { return (typeof n === 'number' && isFinite(n)) ? `$${n.toFixed(2)}` : '-'; }
 
 // Register/unregister Telegram watch
 app.post('/api/telegram/watch', (req, res) => {
@@ -1421,7 +1457,7 @@ function getLastDateFromDataset(dataset) {
   }
   const lastBar = dataset.data[dataset.data.length - 1];
   if (!lastBar || !lastBar.date) return null;
-  
+
   // Handle different date formats
   if (typeof lastBar.date === 'string') {
     return lastBar.date.slice(0, 10); // YYYY-MM-DD
@@ -1547,7 +1583,7 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
     const delta = Math.max(0, Math.min(20, pct)) / 100; // 0..0.20 IBS
 
     await appendMonitorLog([`T-${minutesUntilClose}min: scan ${telegramWatches.size} watches; thresholdPct=${pct}% (deltaIBS=${delta})${options && options.test ? ' [TEST]' : ''}`]);
-    
+
     if (!tradeHistoryLoaded) {
       await loadTradeHistory().catch(err => {
         console.warn('Failed to load trade history before aggregation:', err && err.message ? err.message : err);
@@ -1578,7 +1614,7 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
         const prev = previousTradingDayET(nowEt);
         const prevKey = etKeyYMD(prev);
         let needsUpdate = false;
-        
+
         const filePath = resolveDatasetFilePathById(w.symbol);
         if (filePath && await fs.pathExists(filePath)) {
           const dataset = await fs.readJson(filePath).catch(() => null);
@@ -1596,14 +1632,14 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
         } else {
           needsUpdate = true; // Нет файла, нужно создать
         }
-        
+
         // Обновляем через API только если данные устарели
         if (needsUpdate) {
           apiCallsMade++;
           const avStatus = await refreshTickerViaAlphaVantageAndCheckFreshness(w.symbol, nowEt);
           rec.avFresh = !!(avStatus && avStatus.avFresh);
         }
-      } catch {}
+      } catch { }
       // 2) Fetch today's range/quote via Finnhub (today only)
       try {
         const rangeQuote = await fetchTodayRangeAndQuote(w.symbol);
@@ -1927,14 +1963,14 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
         }
       }
     }
-    
+
     // Логируем статистику API вызовов
-    await appendMonitorLog([`T-${minutesUntilClose}min завершён. API вызовов: ${apiCallsMade}, пропущено: ${apiCallsSkipped}, экономия: ${Math.round(apiCallsSkipped/(apiCallsSkipped+apiCallsMade)*100)||0}%`]);
-    
+    await appendMonitorLog([`T-${minutesUntilClose}min завершён. API вызовов: ${apiCallsMade}, пропущено: ${apiCallsSkipped}, экономия: ${Math.round(apiCallsSkipped / (apiCallsSkipped + apiCallsMade) * 100) || 0}%`]);
+
     return { sent: true };
   } catch (e) {
     console.warn('Scheduler error:', e.message);
-    try { await appendMonitorLog([`Scheduler error: ${e && e.message ? e.message : e}`]); } catch {}
+    try { await appendMonitorLog([`Scheduler error: ${e && e.message ? e.message : e}`]); } catch { }
     return { sent: false };
   }
 }
@@ -1976,40 +2012,40 @@ async function runPriceActualization(options = {}) {
 
   const nowEt = getETParts(new Date());
   const cal = await loadTradingCalendarJSON().catch(() => null);
-  
+
   try {
-    console.log(`🕐 runPriceActualization called at ${String(nowEt.hh).padStart(2,'0')}:${String(nowEt.mm).padStart(2,'0')}:${String(nowEt.ss).padStart(2,'0')} ET`);
-    
+    console.log(`🕐 runPriceActualization called at ${String(nowEt.hh).padStart(2, '0')}:${String(nowEt.mm).padStart(2, '0')}:${String(nowEt.ss).padStart(2, '0')} ET`);
+
     // Only run on trading days
     if (!isTradingDayByCalendarET(nowEt, cal)) {
       console.log('📅 Not a trading day, skipping price actualization');
       return { updated: false, reason: 'not_trading_day' };
     }
-    
+
     const session = getTradingSessionForDateET(nowEt, cal);
     const nowMinutes = (nowEt.hh * 60 + nowEt.mm);
     const minutesAfterClose = nowMinutes - session.closeMin;
-    
-    console.log(`⏰ Market closed at ${Math.floor(session.closeMin/60)}:${String(session.closeMin%60).padStart(2,'0')} ET, now ${minutesAfterClose} minutes after close`);
-    
+
+    console.log(`⏰ Market closed at ${Math.floor(session.closeMin / 60)}:${String(session.closeMin % 60).padStart(2, '0')} ET, now ${minutesAfterClose} minutes after close`);
+
     // Run exactly 16 minutes after close
     if (minutesAfterClose !== 16) {
       const nextRunTime = new Date();
       const targetMinutes = session.closeMin + 16;
       nextRunTime.setHours(Math.floor(targetMinutes / 60), targetMinutes % 60, 0, 0);
-      
+
       console.log(`⏳ Not time yet (need exactly 16 min after close, currently ${minutesAfterClose} min after)`);
       console.log(`⏰ Target run time: ${String(Math.floor(targetMinutes / 60)).padStart(2, '0')}:${String(targetMinutes % 60).padStart(2, '0')} ET`);
-      
-      return { 
-        updated: false, 
-        reason: 'wrong_timing', 
+
+      return {
+        updated: false,
+        reason: 'wrong_timing',
         minutesAfterClose,
         targetRunTime: `${String(Math.floor(targetMinutes / 60)).padStart(2, '0')}:${String(targetMinutes % 60).padStart(2, '0')} ET`,
-        currentTime: `${String(nowEt.hh).padStart(2,'0')}:${String(nowEt.mm).padStart(2,'0')} ET`
+        currentTime: `${String(nowEt.hh).padStart(2, '0')}:${String(nowEt.mm).padStart(2, '0')} ET`
       };
     }
-    
+
     const todayKey = etKeyYMD(nowEt);
 
     if (priceActualizationState.lastRunDateKey !== todayKey) {
@@ -2041,11 +2077,11 @@ async function runPriceActualization(options = {}) {
 
     console.log(`📊 T+16min: Starting price actualization for ${todayKey}`);
     await appendMonitorLog([`T+16min: начинаем актуализацию цен закрытия для ${todayKey}`]);
-    
+
     let updatedTickers = [];
     let failedTickers = [];
     let tickersWithoutTodayData = [];
-    
+
     const watchList = Array.from(telegramWatches.values());
     if (watchList.length > 0) {
       const jitterInfo = PRICE_ACTUALIZATION_DELAY_JITTER_MS > 0
@@ -2070,22 +2106,22 @@ async function runPriceActualization(options = {}) {
         const beforeDataset = await getDatasetBeforeUpdate(w.symbol);
         const beforeLastDate = beforeDataset ? getLastDateFromDataset(beforeDataset) : null;
         console.log(`📅 ${w.symbol}: last date before update = ${beforeLastDate || 'none'}`);
-        
+
         const result = await refreshTickerViaAlphaVantageAndCheckFreshness(w.symbol, nowEt);
-        
+
         if (result.avFresh) {
           // Check if we actually got today's data
           const afterDataset = await getDatasetAfterUpdate(w.symbol);
           const afterLastDate = afterDataset ? getLastDateFromDataset(afterDataset) : null;
           console.log(`📅 ${w.symbol}: last date after update = ${afterLastDate || 'none'}`);
-          
+
           if (afterLastDate === todayKey) {
             updatedTickers.push(w.symbol);
             console.log(`✅ ${w.symbol}: successfully updated with today's data (${todayKey})`);
             await appendMonitorLog([`${w.symbol} - обновлён успешно с данными за ${todayKey}`]);
           } else {
             tickersWithoutTodayData.push({
-              symbol: w.symbol, 
+              symbol: w.symbol,
               lastDate: afterLastDate,
               expectedDate: todayKey
             });
@@ -2100,7 +2136,7 @@ async function runPriceActualization(options = {}) {
           console.log(`❌ ${w.symbol}: API call failed - ${result.reason || 'unknown reason'}`);
           await appendMonitorLog([`${w.symbol} - не удалось обновить: ${result.reason || 'неизвестная ошибка'}`]);
         }
-        
+
         if (idx < watchList.length - 1) {
           await waitForPriceActualizationThrottle({ symbol: w.symbol, index: idx, total: watchList.length });
         }
@@ -2113,31 +2149,31 @@ async function runPriceActualization(options = {}) {
         await appendMonitorLog([`${w.symbol} - ошибка: ${error.message}`]);
       }
     }
-    
+
     // Create comprehensive summary
     const totalTickers = telegramWatches.size;
     const actuallyUpdated = updatedTickers.length;
     const hasProblems = failedTickers.length > 0 || tickersWithoutTodayData.length > 0;
-    
+
     let logMsg = `📊 Актуализация цен завершена (${todayKey}):\n`;
     logMsg += `• Всего тикеров: ${totalTickers}\n`;
     logMsg += `• Успешно обновлено с данными за сегодня: ${actuallyUpdated}`;
     if (actuallyUpdated > 0) logMsg += ` (${updatedTickers.join(', ')})`;
     logMsg += `\n`;
-    
+
     if (tickersWithoutTodayData.length > 0) {
       logMsg += `• Обновлено, но без данных за сегодня: ${tickersWithoutTodayData.length} `;
       logMsg += `(${tickersWithoutTodayData.map(t => `${t.symbol}:${t.lastDate}`).join(', ')})\n`;
     }
-    
+
     if (failedTickers.length > 0) {
       logMsg += `• Не удалось обновить: ${failedTickers.length} `;
       logMsg += `(${failedTickers.map(t => `${t.symbol}:${t.reason}`).join(', ')})\n`;
     }
-    
+
     console.log(logMsg);
     await appendMonitorLog([logMsg]);
-    
+
     await appendMonitorLog([`T+16min: синхронизация позиций с журналом сделок...`]);
 
     if (!tradeHistoryLoaded) {
@@ -2255,7 +2291,7 @@ async function runPriceActualization(options = {}) {
     if (shouldSendDailyReport && dailyReportMessage && chatId) {
       await sendTelegramMessage(chatId, dailyReportMessage);
     }
-    
+
     priceActualizationState.status = 'completed';
     priceActualizationState.completedAt = Date.now();
 
@@ -2276,21 +2312,21 @@ async function runPriceActualization(options = {}) {
     priceActualizationState.status = 'failed';
     priceActualizationState.completedAt = Date.now();
     priceActualizationState.error = error.message;
-    
+
     // Send error notification to Telegram
     try {
       let errorMsg = `❌ КРИТИЧЕСКАЯ ОШИБКА актуализации цен\n\n`;
       errorMsg += `Время: ${new Date().toISOString()}\n`;
       errorMsg += `Ошибка: ${error.message}\n`;
       errorMsg += `\nПроверьте логи сервера!`;
-      
+
       await sendTelegramMessage(getApiConfig().TELEGRAM_CHAT_ID, errorMsg);
       console.log('📱 Critical error notification sent to Telegram');
     } catch (teleError) {
       console.log(`📱 Failed to send critical error notification: ${teleError.message}`);
     }
-    
-    try { await appendMonitorLog([`❌ КРИТИЧЕСКАЯ ОШИБКА актуализации цен: ${error.message}`]); } catch {}
+
+    try { await appendMonitorLog([`❌ КРИТИЧЕСКАЯ ОШИБКА актуализации цен: ${error.message}`]); } catch { }
     return { updated: false, error: error.message };
   }
 }
@@ -2494,7 +2530,11 @@ app.post('/api/telegram/test', async (req, res) => {
     if (!resp.ok) {
       const errorDetails = resp.error || resp.reason || 'Failed to send test message';
       console.error(`Test message failed:`, resp);
-      return res.status(500).json({
+
+      // If reason is not_configured, return 400, otherwise 500
+      const status = resp.reason === 'not_configured' ? 400 : 500;
+
+      return res.status(status).json({
         error: errorDetails,
         statusCode: resp.statusCode,
         errorCode: resp.errorCode,
@@ -2652,7 +2692,7 @@ app.post('/api/telegram/command', async (req, res) => {
 
 // Создаем папки для датасетов если их нет (основная и бэкап)
 fs.ensureDirSync(DATASETS_DIR);
-try { fs.ensureDirSync(KEEP_DATASETS_DIR); } catch {}
+try { fs.ensureDirSync(KEEP_DATASETS_DIR); } catch { }
 
 // Жёсткая нормализация: оставляем только TICKER.json на диске
 function normalizeStableDatasetsSync() {
@@ -2661,7 +2701,7 @@ function normalizeStableDatasetsSync() {
     // 0) Удалим мусорные AppleDouble файлы
     for (const f of files) {
       if (f.startsWith('._')) {
-        try { fs.removeSync(path.join(DATASETS_DIR, f)); } catch {}
+        try { fs.removeSync(path.join(DATASETS_DIR, f)); } catch { }
       }
     }
     const left = fs.readdirSync(DATASETS_DIR).filter(f => f.endsWith('.json'));
@@ -2706,13 +2746,13 @@ function normalizeStableDatasetsSync() {
           if (payload && payload.name !== ticker) { payload.name = ticker; mutated = true; }
           if (payload && payload.ticker !== ticker) { payload.ticker = ticker; mutated = true; }
           if (mutated) fs.writeJsonSync(stablePath, payload, { spaces: 2 });
-        } catch {}
+        } catch { }
       }
       // 3) Удаляем все legacy файлы (с датой в имени) в основной папке; в _keep не трогаем
       for (const f of arr) {
         const full = path.join(DATASETS_DIR, f);
         if (full === stablePath) continue;
-        try { fs.removeSync(full); } catch {}
+        try { fs.removeSync(full); } catch { }
       }
     }
   } catch (e) {
@@ -2739,7 +2779,7 @@ function migrateLegacyDatasetsSync() {
         // Clean up legacy suffixed files and normalize payload
         for (const f of arr) {
           if (f.toUpperCase() === `${ticker}.JSON`) continue;
-          try { fs.removeSync(path.join(DATASETS_DIR, f)); } catch {}
+          try { fs.removeSync(path.join(DATASETS_DIR, f)); } catch { }
         }
         try {
           const payload = fs.readJsonSync(target);
@@ -2747,7 +2787,7 @@ function migrateLegacyDatasetsSync() {
           if (payload && payload.name !== ticker) { payload.name = ticker; mutated = true; }
           if (payload && payload.ticker !== ticker) { payload.ticker = ticker; mutated = true; }
           if (mutated) fs.writeJsonSync(target, payload, { spaces: 2 });
-        } catch {}
+        } catch { }
         continue;
       }
       // Choose latest legacy by filename order (YYYY-MM-DD suffix sorts lexicographically)
@@ -2767,13 +2807,13 @@ function migrateLegacyDatasetsSync() {
           fs.copySync(source, target, { overwrite: true });
         }
       } catch {
-        try { fs.copySync(source, target, { overwrite: true }); } catch {}
+        try { fs.copySync(source, target, { overwrite: true }); } catch { }
       }
       // Remove all legacy files after migration in main dir only (do not touch keep dir)
       for (const f of arr) {
         const p = path.join(DATASETS_DIR, f);
         if (p === target) continue;
-        try { fs.removeSync(p); } catch {}
+        try { fs.removeSync(p); } catch { }
       }
       console.log(`Migrated dataset files for ${ticker} → ${path.basename(target)}`);
     }
@@ -2800,7 +2840,7 @@ function listDatasetFilesSync() {
     let keep = [];
     try {
       keep = fs.readdirSync(KEEP_DATASETS_DIR).filter(f => f.endsWith('.json') && !f.startsWith('._'));
-    } catch {}
+    } catch { }
     // Deduplicate by filename, prefer main dir
     const byUpper = new Map();
     for (const f of keep) byUpper.set(f.toUpperCase(), path.join(KEEP_DATASETS_DIR, f));
@@ -2817,8 +2857,8 @@ function resolveDatasetFilePathById(id) {
   if (!ticker) return null;
   const stableMain = path.join(DATASETS_DIR, `${ticker}.json`);
   const stableKeep = path.join(KEEP_DATASETS_DIR, `${ticker}.json`);
-  try { if (fs.existsSync(stableMain)) return stableMain; } catch {}
-  try { if (fs.existsSync(stableKeep)) return stableKeep; } catch {}
+  try { if (fs.existsSync(stableMain)) return stableMain; } catch { }
+  try { if (fs.existsSync(stableKeep)) return stableKeep; } catch { }
   // Fallback: support legacy suffixed filenames like TICKER_YYYY-MM-DD.json in either dir
   try {
     const files = listDatasetFilesSync();
@@ -2830,10 +2870,10 @@ function resolveDatasetFilePathById(id) {
       // Choose from main if exists, else keep
       const mainPath = path.join(DATASETS_DIR, chosen);
       const keepPath = path.join(KEEP_DATASETS_DIR, chosen);
-      try { if (fs.existsSync(mainPath)) return mainPath; } catch {}
-      try { if (fs.existsSync(keepPath)) return keepPath; } catch {}
+      try { if (fs.existsSync(mainPath)) return mainPath; } catch { }
+      try { if (fs.existsSync(keepPath)) return keepPath; } catch { }
     }
-  } catch {}
+  } catch { }
   return stableMain; // default target for writes
 }
 
@@ -2849,7 +2889,7 @@ async function writeDatasetToTickerFile(dataset) {
         console.warn(`Failed to delete file ${f}:`, err.message);
       }))
     );
-  } catch {}
+  } catch { }
   // Strip embedded splits to enforce single source of truth (server/splits.json)
   const { splits: _dropSplits, ...clean } = (dataset || {});
   await fs.writeJson(targetPath, clean, { spaces: 2 });
@@ -2986,7 +3026,7 @@ async function fetchFromAlphaVantage(symbol, startDate, endDate, options = { adj
           const rows = [];
           const start = new Date(startDate * 1000);
           const end = new Date(endDate * 1000);
-          
+
           for (const [date, values] of Object.entries(timeSeries)) {
             const currentDate = new Date(date);
             if (currentDate >= start && currentDate <= end) {
@@ -3046,7 +3086,7 @@ async function fetchFromAlphaVantage(symbol, startDate, endDate, options = { adj
           }));
           const payload = { data: result, splits: splitEvents.reverse() };
           resolve(payload);
-          
+
         } catch (error) {
           const err = new Error(`Не удалось обработать ответ Alpha Vantage: ${error.message}`);
           err.status = 502;
@@ -3061,13 +3101,13 @@ async function fetchFromFinnhub(symbol, startDate, endDate) {
   if (!getApiConfig().FINNHUB_API_KEY) {
     throw new Error('Finnhub API key not configured');
   }
-  
+
   const safeSymbol = toSafeTicker(symbol);
   if (!safeSymbol) {
     throw new Error('Invalid symbol');
   }
   const url = `https://finnhub.io/api/v1/stock/candle?symbol=${encodeURIComponent(safeSymbol)}&resolution=D&from=${startDate}&to=${endDate}&token=${getApiConfig().FINNHUB_API_KEY}`;
-  
+
   return new Promise((resolve, reject) => {
     https.get(url, (response) => {
       let data = '';
@@ -3075,12 +3115,12 @@ async function fetchFromFinnhub(symbol, startDate, endDate) {
       response.on('end', () => {
         try {
           const jsonData = JSON.parse(data);
-          
+
           if (jsonData.s !== 'ok') {
             reject(new Error(`Finnhub: ${jsonData.s}`));
             return;
           }
-          
+
           const result = [];
           for (let i = 0; i < jsonData.t.length; i++) {
             const date = new Date(jsonData.t[i] * 1000).toISOString().split('T')[0];
@@ -3094,9 +3134,9 @@ async function fetchFromFinnhub(symbol, startDate, endDate) {
               volume: jsonData.v[i]
             });
           }
-          
+
           resolve(result);
-          
+
         } catch (error) {
           reject(new Error(`Failed to parse Finnhub response: ${error.message}`));
         }
@@ -3229,7 +3269,7 @@ app.get('/api/datasets', async (req, res) => {
         if (!data || typeof data !== 'object') continue;
         // Возвращаем только метаданные без самих данных для списка
         const { data: _dropData, splits: _dropSplits, ...metadata } = data;
-        const id = toSafeTicker(metadata.ticker || file.replace('.json','').split('_')[0]);
+        const id = toSafeTicker(metadata.ticker || file.replace('.json', '').split('_')[0]);
         if (!id) continue;
         datasets.push({ id, ...metadata });
       } catch (e) {
@@ -3251,11 +3291,11 @@ app.get('/api/datasets/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const filePath = resolveDatasetFilePathById(id);
-    
+
     if (!filePath || !await fs.pathExists(filePath)) {
       return res.status(404).json({ error: 'Dataset not found' });
     }
-    
+
     const dataset = await fs.readJson(filePath);
     // Strip embedded splits before returning
     const { splits: _dropSplits, ...clean } = (dataset || {});
@@ -3319,10 +3359,10 @@ app.delete('/api/datasets/:id', async (req, res) => {
         files
           .filter(f => f.toUpperCase().startsWith(`${ticker}_`) && f.endsWith('.json'))
           .map(f => fs.remove(path.join(DATASETS_DIR, f)).catch((err) => {
-        console.warn(`Failed to delete file ${f}:`, err.message);
-      }))
+            console.warn(`Failed to delete file ${f}:`, err.message);
+          }))
       );
-    } catch {}
+    } catch { }
 
     console.log(`Dataset deleted: ${ticker}`);
     res.json({ success: true, message: `Dataset "${ticker}" deleted successfully` });
@@ -3338,7 +3378,7 @@ app.put('/api/datasets/:id', async (req, res) => {
     const { id } = req.params;
     const dataset = req.body;
     const legacyPath = resolveDatasetFilePathById(id);
-    
+
     if (!legacyPath || !await fs.pathExists(legacyPath)) {
       // Если нет legacy/прямого файла — будем создавать новый по тикеру
       if (!dataset || !dataset.ticker) return res.status(404).json({ error: 'Dataset not found' });
@@ -3360,7 +3400,7 @@ app.put('/api/datasets/:id', async (req, res) => {
     const payload = { ...dataset, name: computedName };
     const { targetPath } = await writeDatasetToTickerFile(payload);
     // Удалим legacy файл, если он отличался
-    try { if (legacyPath && legacyPath !== targetPath) await fs.remove(legacyPath); } catch {}
+    try { if (legacyPath && legacyPath !== targetPath) await fs.remove(legacyPath); } catch { }
     console.log(`Dataset updated (stable id): ${safeTicker}`);
     return res.json({ success: true, id: safeTicker, renamed: true, message: `Dataset "${safeTicker}" updated` });
   } catch (error) {
@@ -3961,41 +4001,41 @@ app.get('/api/polygon-finance/:symbol', async (req, res) => {
   try {
     const { symbol } = req.params;
     const { start, end } = req.query;
-    
+
     const safeSymbol = toSafeTicker(symbol);
     if (!safeSymbol) {
       return res.status(400).json({ error: 'Symbol is required' });
     }
-    
+
     // Calculate date range (default to last 30 days)
     const endDate = end ? new Date(parseInt(end) * 1000) : new Date();
     const startDate = start ? new Date(parseInt(start) * 1000) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-    
+
     const fromDate = startDate.toISOString().split('T')[0];
     const toDate = endDate.toISOString().split('T')[0];
-    
+
     const apiKey = getApiConfig().POLYGON_API_KEY || (IS_PROD ? '' : 'demo');
     if (!apiKey) {
       return res.status(500).json({ error: 'Polygon API key not configured' });
     }
     const url = `https://api.polygon.io/v2/aggs/ticker/${encodeURIComponent(safeSymbol)}/range/1/day/${fromDate}/${toDate}?adjusted=true&sort=asc&apikey=${encodeURIComponent(apiKey)}`;
-    
+
     console.log(`Fetching real data for ${safeSymbol} from Polygon.io...`);
-    
+
     const data = await new Promise((resolve, reject) => {
       const request = https.get(url, (response) => {
         let data = '';
-        
+
         response.on('data', (chunk) => {
           data += chunk;
         });
-        
+
         response.on('end', () => {
           if (response.statusCode !== 200) {
             reject(new Error(`Polygon API returned status ${response.statusCode}`));
             return;
           }
-          
+
           try {
             const jsonData = JSON.parse(data);
             resolve(jsonData);
@@ -4004,31 +4044,31 @@ app.get('/api/polygon-finance/:symbol', async (req, res) => {
           }
         });
       });
-      
+
       request.on('error', (error) => {
         console.error('HTTPS request error:', error);
         reject(error);
       });
-      
+
       request.setTimeout(15000, () => {
         request.destroy();
         reject(new Error('Request timeout'));
       });
     });
-    
+
     // Check for API errors
     if (data.status === 'ERROR') {
       return res.status(400).json({ error: data.error || 'API error occurred' });
     }
-    
+
     if (!data.results || data.results.length === 0) {
       return res.status(404).json({ error: 'No data available for this symbol and date range' });
     }
-    
+
     // Convert Polygon format to our format
     const result = data.results.map(item => {
       const date = new Date(item.t).toISOString().split('T')[0];
-      
+
       return {
         date: date,
         open: item.o,
@@ -4039,15 +4079,15 @@ app.get('/api/polygon-finance/:symbol', async (req, res) => {
         volume: item.v
       };
     });
-    
+
     console.log(`Retrieved ${result.length} real data points for ${safeSymbol} from Polygon`);
-    
+
     res.json(result);
-    
+
   } catch (error) {
     console.error('Error fetching real market data from Polygon:', error);
-    res.status(500).json({ 
-      error: `Failed to fetch real market data: ${error.message}` 
+    res.status(500).json({
+      error: `Failed to fetch real market data: ${error.message}`
     });
   }
 });
@@ -4059,9 +4099,9 @@ app.get('/api/test-yahoo/:symbol', async (req, res) => {
     const safeSymbol = toSafeTicker(symbol);
     if (!safeSymbol) return res.status(400).json({ error: 'Invalid symbol' });
     const url = `https://query1.finance.yahoo.com/v7/finance/download/${encodeURIComponent(safeSymbol)}?period1=1640995200&period2=1672531200&interval=1d&events=history&includeAdjustedClose=true`;
-    
+
     console.log(`Testing Yahoo Finance API for ${safeSymbol}`);
-    
+
     const data = await new Promise((resolve, reject) => {
       https.get(url, (response) => {
         let data = '';
@@ -4073,7 +4113,7 @@ app.get('/api/test-yahoo/:symbol', async (req, res) => {
         });
       }).on('error', reject);
     });
-    
+
     res.json(data);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -4084,14 +4124,14 @@ app.get('/api/test-yahoo/:symbol', async (req, res) => {
 app.get('/api/sample-data/:symbol', (req, res) => {
   const { symbol } = req.params;
   const { start, end } = req.query;
-  
+
   const startDate = start ? new Date(parseInt(start) * 1000) : new Date(Date.now() - 365 * 24 * 60 * 60 * 1000);
   const endDate = end ? new Date(parseInt(end) * 1000) : new Date();
-  
+
   const data = [];
   let currentDate = new Date(startDate);
   let price = 150; // Starting price
-  
+
   while (currentDate <= endDate) {
     // Skip weekends
     if (currentDate.getDay() !== 0 && currentDate.getDay() !== 6) {
@@ -4101,7 +4141,7 @@ app.get('/api/sample-data/:symbol', (req, res) => {
       const high = Math.max(open, close) + Math.random() * 5;
       const low = Math.min(open, close) - Math.random() * 5;
       const volume = Math.floor(Math.random() * 1000000) + 100000;
-      
+
       data.push({
         date: currentDate.toISOString().split('T')[0],
         open: parseFloat(open.toFixed(2)),
@@ -4111,21 +4151,21 @@ app.get('/api/sample-data/:symbol', (req, res) => {
         adjClose: parseFloat(close.toFixed(2)),
         volume: volume
       });
-      
+
       price = close;
     }
-    
+
     currentDate.setDate(currentDate.getDate() + 1);
   }
-  
+
   console.log(`Generated ${data.length} sample data points for ${symbol}`);
   res.json(data);
 });
 
 // Статус сервера
 app.get('/api/status', (req, res) => {
-  res.json({ 
-    status: 'ok', 
+  res.json({
+    status: 'ok',
     message: 'Trading Backtester API is running',
     timestamp: new Date().toISOString(),
     buildId: process.env.BUILD_ID || null
@@ -4147,7 +4187,7 @@ async function appendMonitorLog(lines) {
     const now = new Date();
     const et = getETParts(now);
     const ts = now.toISOString();
-    const etStr = `${et.y}-${String(et.m).padStart(2,'0')}-${String(et.d).padStart(2,'0')} ${String(et.hh).padStart(2,'0')}:${String(et.mm).padStart(2,'0')}`;
+    const etStr = `${et.y}-${String(et.m).padStart(2, '0')}-${String(et.d).padStart(2, '0')} ${String(et.hh).padStart(2, '0')}:${String(et.mm).padStart(2, '0')}`;
     const payload = Array.isArray(lines) ? lines : [String(lines)];
     const text = payload.map(l => `[${ts} ET:${etStr}] ${l}`).join('\n') + '\n';
     await appendSafe(MONITOR_LOG_FILE, text);
