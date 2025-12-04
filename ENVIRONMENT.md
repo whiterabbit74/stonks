@@ -101,7 +101,18 @@ POLYGON_API_KEY=your_polygon_key
 - Save: `Ctrl + O`, then `Enter`
 - Exit: `Ctrl + X`
 
-### Step 5: Generate Password Hash
+### Step 5: Secure the File
+
+```bash
+# Set strict permissions (owner read/write only)
+chmod 600 ~/stonks-config/.env
+
+# Verify permissions
+ls -la ~/stonks-config/.env
+# Should show: -rw------- (600)
+```
+
+### Step 6: Generate Password Hash
 
 **Option A: Use the API endpoint**
 
@@ -125,23 +136,18 @@ curl -X POST https://tradingibs.site/api/auth/hash-password \
 node -e "const bcrypt = require('bcrypt'); bcrypt.hash('your_password', 10).then(console.log)"
 ```
 
-### Step 6: Secure the File
-
-```bash
-# Set strict permissions (owner read/write only)
-chmod 600 ~/stonks-config/.env
-
-# Verify permissions
-ls -la ~/stonks-config/.env
-# Should show: -rw------- (600)
-```
-
 ### Step 7: Restart Application
 
 ```bash
 cd ~/stonks
-docker compose restart server
+
+# IMPORTANT: Use 'up -d' to recreate containers and load new .env
+# Do NOT use 'restart' - it won't reload env_file!
+docker compose up -d
 ```
+
+**Why not `restart`?**
+Docker Compose reads `env_file` only when **creating** a container, not when restarting it. Always use `up -d` after .env changes.
 
 ### Step 8: Verify Configuration
 
@@ -207,9 +213,9 @@ nano ~/stonks-config/.env
 # Make your changes (e.g., update API key)
 # Save: Ctrl+O, Enter, Ctrl+X
 
-# Restart to apply changes
+# CRITICAL: Recreate container to load new .env (NOT restart!)
 cd ~/stonks
-docker compose restart server
+docker compose up -d
 
 # Verify
 docker compose logs server --tail=20
@@ -224,8 +230,8 @@ nano /tmp/new.env  # Fill in all variables
 # Copy to server (overwrites existing)
 scp /tmp/new.env ubuntu@146.235.212.239:~/stonks-config/.env
 
-# SSH and restart
-ssh ubuntu@146.235.212.239 "cd ~/stonks && docker compose restart server"
+# SSH and recreate container (NOT restart!)
+ssh ubuntu@146.235.212.239 "cd ~/stonks && docker compose up -d"
 
 # Clean up local copy
 rm /tmp/new.env
@@ -238,7 +244,7 @@ rm /tmp/new.env
 ssh ubuntu@146.235.212.239 "
   sed -i 's/^ALPHA_VANTAGE_API_KEY=.*/ALPHA_VANTAGE_API_KEY=NEW_KEY_VALUE/' ~/stonks-config/.env &&
   cd ~/stonks &&
-  docker compose restart server
+  docker compose up -d
 "
 ```
 
@@ -359,8 +365,8 @@ curl -X POST https://tradingibs.site/api/auth/hash-password \
 # Update .env with new hash
 nano ~/stonks-config/.env
 
-# Restart
-cd ~/stonks && docker compose restart server
+# Recreate container to load new .env
+cd ~/stonks && docker compose up -d
 ```
 
 ---
@@ -389,8 +395,8 @@ docker compose logs server --tail=100 | grep -i error
 nano ~/stonks-config/.env
 # Make sure key is not empty and has no extra spaces
 
-# Restart
-cd ~/stonks && docker compose restart server
+# Recreate container to load changes
+cd ~/stonks && docker compose up -d
 ```
 
 ---
@@ -422,8 +428,8 @@ curl "https://api.telegram.org/bot${TOKEN}/getUpdates"
 # Update .env
 nano ~/stonks-config/.env
 
-# Restart
-cd ~/stonks && docker compose restart server
+# Recreate container to load changes
+cd ~/stonks && docker compose up -d
 
 # Test via app
 curl -X POST https://tradingibs.site/api/telegram/test
@@ -433,19 +439,31 @@ curl -X POST https://tradingibs.site/api/telegram/test
 
 ### Problem: Changes to .env not taking effect
 
+**This is THE most common issue!**
+
+**Root cause:** Docker Compose only reads `env_file` when **creating** a container, NOT when restarting.
+
 **Solution:**
 ```bash
-# .env is only read on container start, must restart
+# CORRECT: Recreate container to load new .env
 cd ~/stonks
-docker compose restart server
+docker compose up -d
 
-# For full reload (if restart doesn't work):
+# WRONG: This will NOT reload .env!
+# docker compose restart server
+
+# Alternative: Full recreate with cleanup
 docker compose down
 docker compose up -d
 
 # Verify variables inside container
 docker compose exec server env | grep -E "ADMIN|TELEGRAM|API_KEY"
 ```
+
+**Why does this happen?**
+- `docker compose restart` only restarts the process inside existing container
+- The container's environment is set at creation time
+- To load new .env values, you must recreate the container with `up -d`
 
 ---
 
@@ -496,8 +514,8 @@ ls -la ~/stonks-config/.env.backup-*
 # Restore from backup
 cp ~/stonks-config/.env.backup-20231204-153000 ~/stonks-config/.env
 
-# Restart
-cd ~/stonks && docker compose restart server
+# Recreate container
+cd ~/stonks && docker compose up -d
 ```
 
 ---
@@ -545,8 +563,8 @@ ssh ubuntu@146.235.212.239 "cat ~/stonks-config/.env"
 # Edit .env
 ssh ubuntu@146.235.212.239 "nano ~/stonks-config/.env"
 
-# Restart after changes
-ssh ubuntu@146.235.212.239 "cd ~/stonks && docker compose restart server"
+# Recreate container to load changes (NOT restart!)
+ssh ubuntu@146.235.212.239 "cd ~/stonks && docker compose up -d"
 
 # Check if variables are loaded
 ssh ubuntu@146.235.212.239 "docker compose exec server env | grep -E 'ADMIN|TELEGRAM|API'"
