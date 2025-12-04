@@ -44,27 +44,12 @@ export function AppSettings() {
   const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
 
-  // API Settings state
-  const [settingsSaving, setSettingsSaving] = useState(false);
-  const [settingsSaveOk, setSettingsSaveOk] = useState<string | null>(null);
-  const [settingsSaveErr, setSettingsSaveErr] = useState<string | null>(null);
-
-  // API key inputs (unmasked for editing)
-  const [alphaVantageKey, setAlphaVantageKey] = useState('');
-  const [finnhubKey, setFinnhubKey] = useState('');
-  const [twelveDataKey, setTwelveDataKey] = useState('');
-  const [polygonKey, setPolygonKey] = useState('');
-
   // API testing state
   const [testingProvider, setTestingProvider] = useState<string | null>(null);
   const [testResults, setTestResults] = useState<Record<string, { success?: boolean; error?: string; price?: string; symbol?: string }>>({});
 
   // API info modal state
   const [showApiInfo, setShowApiInfo] = useState(false);
-
-  // Telegram settings state
-  const [telegramBotToken, setTelegramBotToken] = useState('');
-  const [telegramChatId, setTelegramChatId] = useState('');
 
   // Иконки для табов
   const getTabIcon = (tabId: string) => {
@@ -89,7 +74,7 @@ export function AppSettings() {
 
   // Функции для управления табами аналитики
   const toggleTabVisibility = (tabId: string) => {
-    const newConfig = analysisTabsConfig.map(tab => 
+    const newConfig = analysisTabsConfig.map(tab =>
       tab.id === tabId ? { ...tab, visible: !tab.visible } : tab
     );
     setAnalysisTabsConfig(newConfig);
@@ -109,18 +94,18 @@ export function AppSettings() {
 
   const handleDrop = (e: React.DragEvent, targetTabId: string) => {
     e.preventDefault();
-    
+
     if (!draggedTab || draggedTab === targetTabId) return;
-    
+
     const draggedIndex = analysisTabsConfig.findIndex(tab => tab.id === draggedTab);
     const targetIndex = analysisTabsConfig.findIndex(tab => tab.id === targetTabId);
-    
+
     if (draggedIndex === -1 || targetIndex === -1) return;
-    
+
     const newConfig = [...analysisTabsConfig];
     const [draggedItem] = newConfig.splice(draggedIndex, 1);
     newConfig.splice(targetIndex, 0, draggedItem);
-    
+
     setAnalysisTabsConfig(newConfig);
     setDraggedTab(null);
   };
@@ -156,89 +141,6 @@ export function AppSettings() {
     }
   };
 
-  // Load API settings from server
-  const loadApiSettings = async () => {
-    setSettingsSaving(true);
-    try {
-      const data = await DatasetAPI.getSettings();
-
-      // Set form values (unmask the keys for editing)
-      if (data.api) {
-        setAlphaVantageKey(sanitizeTextInput(data.api.alphaVantageKey || '', { maxLength: 100, removeHtml: true }));
-        setFinnhubKey(sanitizeTextInput(data.api.finnhubKey || '', { maxLength: 100, removeHtml: true }));
-        setTwelveDataKey(sanitizeTextInput(data.api.twelveDataKey || '', { maxLength: 100, removeHtml: true }));
-        setPolygonKey(sanitizeTextInput(data.api.polygonKey || '', { maxLength: 100, removeHtml: true }));
-      }
-
-      // Set Telegram settings (don't load masked values)
-      if (data.telegram) {
-        // If the botToken contains asterisks, it means it's masked - leave empty
-        const botToken = data.telegram.botToken || '';
-        const chatId = data.telegram.chatId || '';
-        setTelegramBotToken(botToken.includes('*') ? '' : sanitizeTextInput(botToken, { maxLength: 200, removeHtml: true }));
-        setTelegramChatId(sanitizeTextInput(chatId, { maxLength: 50, removeHtml: true }));
-      }
-    } catch (e) {
-      console.error('Failed to load API settings:', e);
-    } finally {
-      setSettingsSaving(false);
-    }
-  };
-
-  // Save API settings to server
-  const saveApiSettings = async () => {
-    setSettingsSaving(true);
-    setSettingsSaveOk(null);
-    setSettingsSaveErr(null);
-    try {
-      const updates = {
-        api: {
-          alphaVantageKey: alphaVantageKey.trim() || undefined,
-          finnhubKey: finnhubKey.trim() || undefined,
-          twelveDataKey: twelveDataKey.trim() || undefined,
-          polygonKey: polygonKey.trim() || undefined,
-        }
-      };
-      await DatasetAPI.updateSettings(updates);
-      setSettingsSaveOk('API настройки сохранены');
-      // Reload settings to show updated masked values
-      await loadApiSettings();
-    } catch (e) {
-      const message = e instanceof Error ? e.message : 'Не удалось сохранить API настройки';
-      setSettingsSaveErr(message);
-    } finally {
-      setSettingsSaving(false);
-    }
-  };
-
-  // Save Telegram settings to server
-  const saveTelegramSettings = async () => {
-    setSettingsSaving(true);
-    setSettingsSaveOk(null);
-    setSettingsSaveErr(null);
-    try {
-      const updates = {
-        telegram: {
-          botToken: telegramBotToken.trim() || undefined,
-          chatId: telegramChatId.trim() || undefined,
-        }
-      };
-      await DatasetAPI.updateSettings(updates);
-      setSettingsSaveOk('Telegram настройки сохранены');
-      // Reload settings
-      await loadApiSettings();
-    } catch (e) {
-      const message = e instanceof Error ? e.message : 'Не удалось сохранить Telegram настройки';
-      setSettingsSaveErr(message);
-    } finally {
-      setSettingsSaving(false);
-    }
-  };
-
-  // Load API settings on component mount
-  useEffect(() => {
-    loadApiSettings();
-  }, []);
 
   // Test API provider
   const testProvider = async (provider: string) => {
@@ -264,7 +166,7 @@ export function AppSettings() {
         <label className="block text-sm font-medium text-gray-700 mb-2">Порог близости к IBS, %</label>
         <p className="text-xs text-gray-500 mb-2">Диапазон 0–20%. По умолчанию 5%.</p>
         <div className="flex items-center gap-4">
-          <input type="range" min={0} max={20} step={0.5} value={watchThresholdPct} onChange={(e)=> {
+          <input type="range" min={0} max={20} step={0.5} value={watchThresholdPct} onChange={(e) => {
             const sanitized = sanitizeNumericInput(e.target.value, {
               ...VALIDATION_CONSTRAINTS.thresholdPct,
               max: 20,
@@ -272,7 +174,7 @@ export function AppSettings() {
             });
             setWatchThresholdPct(sanitized);
           }} className="flex-1" />
-          <input type="number" min={0} max={20} step={0.5} value={watchThresholdPct} onChange={(e)=> {
+          <input type="number" min={0} max={20} step={0.5} value={watchThresholdPct} onChange={(e) => {
             const sanitized = sanitizeNumericInput(e.target.value, {
               ...VALIDATION_CONSTRAINTS.thresholdPct,
               max: 20,
@@ -290,7 +192,7 @@ export function AppSettings() {
         <label className="block text-sm font-medium text-gray-700 mb-2">Высота панели индикаторов (IBS/Объём), %</label>
         <p className="text-xs text-gray-500 mb-2">Диапазон 0–40%. По умолчанию 7%. Больше — выше панель, меньше — ниже.</p>
         <div className="flex items-center gap-4">
-          <input type="range" min={0} max={40} step={1} value={indicatorPanePercent} onChange={(e)=> {
+          <input type="range" min={0} max={40} step={1} value={indicatorPanePercent} onChange={(e) => {
             const sanitized = sanitizeNumericInput(e.target.value, {
               ...VALIDATION_CONSTRAINTS.indicatorPane,
               max: 40,
@@ -298,7 +200,7 @@ export function AppSettings() {
             });
             setIndicatorPanePercent(sanitized);
           }} className="flex-1" />
-          <input type="number" min={0} max={40} step={1} value={indicatorPanePercent} onChange={(e)=> {
+          <input type="number" min={0} max={40} step={1} value={indicatorPanePercent} onChange={(e) => {
             const sanitized = sanitizeNumericInput(e.target.value, {
               ...VALIDATION_CONSTRAINTS.indicatorPane,
               max: 40,
@@ -340,29 +242,29 @@ export function AppSettings() {
             <label className="block text-sm font-medium text-gray-700 mb-2">Тип комиссии</label>
             <div className="flex flex-wrap gap-4">
               <label className="flex items-center gap-2 text-sm">
-                <input 
-                  type="radio" 
-                  name="commissionType" 
-                  checked={commissionType === 'fixed'} 
-                  onChange={() => setCommissionType('fixed')} 
+                <input
+                  type="radio"
+                  name="commissionType"
+                  checked={commissionType === 'fixed'}
+                  onChange={() => setCommissionType('fixed')}
                 />
                 Фиксированная
               </label>
               <label className="flex items-center gap-2 text-sm">
-                <input 
-                  type="radio" 
-                  name="commissionType" 
-                  checked={commissionType === 'percentage'} 
-                  onChange={() => setCommissionType('percentage')} 
+                <input
+                  type="radio"
+                  name="commissionType"
+                  checked={commissionType === 'percentage'}
+                  onChange={() => setCommissionType('percentage')}
                 />
                 Процентная
               </label>
               <label className="flex items-center gap-2 text-sm">
-                <input 
-                  type="radio" 
-                  name="commissionType" 
-                  checked={commissionType === 'combined'} 
-                  onChange={() => setCommissionType('combined')} 
+                <input
+                  type="radio"
+                  name="commissionType"
+                  checked={commissionType === 'combined'}
+                  onChange={() => setCommissionType('combined')}
                 />
                 Комбинированная
               </label>
@@ -391,7 +293,7 @@ export function AppSettings() {
               />
               <p className="text-xs text-gray-500 mt-1">За каждую сделку (вход + выход)</p>
             </div>
-            
+
             <div className={commissionType === 'fixed' ? 'opacity-50' : ''}>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Процентная комиссия, %
@@ -415,11 +317,11 @@ export function AppSettings() {
               <p className="text-xs text-gray-500 mt-1">От суммы сделки (например, 0.1%)</p>
             </div>
           </div>
-          
+
           <div className="text-xs text-gray-500 p-3 bg-blue-50 rounded-md">
-            💡 <strong>Типы комиссий:</strong><br/>
-            • <strong>Фиксированная:</strong> одинаковая сумма за каждую сделку<br/>
-            • <strong>Процентная:</strong> процент от суммы сделки<br/>
+            💡 <strong>Типы комиссий:</strong><br />
+            • <strong>Фиксированная:</strong> одинаковая сумма за каждую сделку<br />
+            • <strong>Процентная:</strong> процент от суммы сделки<br />
             • <strong>Комбинированная:</strong> фиксированная часть + процент
           </div>
         </div>
@@ -654,84 +556,13 @@ export function AppSettings() {
   // API Settings Tab
   const ApiTab = () => (
     <div className="space-y-4">
-      {/* API Keys Settings */}
-      <div className="p-4 rounded-lg border">
-        <div className="text-sm font-medium text-gray-700 mb-3">API ключи</div>
-        <div className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Alpha Vantage API Key</label>
-              <input
-                type="password"
-                value={alphaVantageKey}
-                onChange={(e) => {
-                  const sanitized = sanitizeTextInput(e.target.value, {
-                    maxLength: 100,
-                    removeHtml: true,
-                    allowedChars: /[a-zA-Z0-9_-]/
-                  });
-                  setAlphaVantageKey(sanitized);
-                }}
-                placeholder="Ваш API ключ Alpha Vantage"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Finnhub API Key</label>
-              <input
-                type="password"
-                value={finnhubKey}
-                onChange={(e) => {
-                  const sanitized = sanitizeTextInput(e.target.value, {
-                    maxLength: 100,
-                    removeHtml: true,
-                    allowedChars: /[a-zA-Z0-9_-]/
-                  });
-                  setFinnhubKey(sanitized);
-                }}
-                placeholder="Ваш API ключ Finnhub"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-            </div>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Twelve Data API Key</label>
-              <input
-                type="password"
-                value={twelveDataKey}
-                onChange={(e) => setTwelveDataKey(e.target.value)}
-                placeholder="Ваш API ключ Twelve Data"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Polygon API Key</label>
-              <input
-                type="password"
-                value={polygonKey}
-                onChange={(e) => setPolygonKey(e.target.value)}
-                placeholder="Ваш API ключ Polygon"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              onClick={saveApiSettings}
-              disabled={settingsSaving}
-              className="px-4 py-2 rounded-md bg-green-600 text-white text-sm hover:bg-green-700 disabled:bg-gray-400"
-            >
-              {settingsSaving ? 'Сохранение…' : 'Сохранить API ключи'}
-            </button>
-            {settingsSaveOk && <span className="text-sm text-green-600">{settingsSaveOk}</span>}
-            {settingsSaveErr && <span className="text-sm text-red-600">{settingsSaveErr}</span>}
-          </div>
-        </div>
-        <div className="text-xs text-gray-500 mt-2">
-          💡 API ключи хранятся в зашифрованном виде на сервере. Для получения ключей зарегистрируйтесь на соответствующих сервисах.
-        </div>
+      {/* API Keys Info */}
+      <div className="p-4 rounded-lg border bg-blue-50">
+        <div className="text-sm font-medium text-gray-700 mb-2">🔑 API ключи</div>
+        <p className="text-sm text-gray-600">
+          API ключи настраиваются в файле <code className="bg-gray-100 px-1 rounded">.env</code> на сервере.
+          Для изменения ключей обратитесь к администратору или отредактируйте файл <code className="bg-gray-100 px-1 rounded">~/stonks-config/.env</code> на сервере.
+        </p>
       </div>
 
       {/* API Testing */}
@@ -801,7 +632,7 @@ export function AppSettings() {
         <div className="text-sm text-gray-600 dark:text-gray-400 mb-6">
           Перетаскивайте блоки для изменения порядка. Нажмите на блок, чтобы скрыть/показать вкладку.
         </div>
-        
+
         {/* Draggable blocks */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
           {analysisTabsConfig.map((tab) => (
@@ -815,8 +646,8 @@ export function AppSettings() {
               onClick={() => toggleTabVisibility(tab.id)}
               className={`
                 relative p-4 rounded-lg border-2 cursor-pointer transition-all duration-200
-                ${tab.visible 
-                  ? 'bg-white border-blue-200 shadow-sm hover:shadow-md hover:border-blue-300' 
+                ${tab.visible
+                  ? 'bg-white border-blue-200 shadow-sm hover:shadow-md hover:border-blue-300'
                   : 'bg-gray-100 border-gray-300 opacity-60 hover:opacity-80'
                 }
                 ${draggedTab === tab.id ? 'rotate-3 scale-105 shadow-lg z-10' : ''}
@@ -828,30 +659,30 @@ export function AppSettings() {
               <div className="absolute top-2 right-2 text-gray-400 text-xs">
                 ⋮⋮
               </div>
-              
+
               {/* Icon and label */}
               <div className="flex flex-col items-center text-center space-y-2">
                 <div className={`
                   p-3 rounded-full transition-colors
-                  ${tab.visible 
-                    ? 'bg-blue-100 text-blue-600' 
+                  ${tab.visible
+                    ? 'bg-blue-100 text-blue-600'
                     : 'bg-gray-200 text-gray-500'
                   }
                 `}>
                   {getTabIcon(tab.id)}
                 </div>
-                
+
                 <div className={`
                   text-sm font-medium leading-tight
-                  ${tab.visible 
-                    ? 'text-gray-900' 
+                  ${tab.visible
+                    ? 'text-gray-900'
                     : 'text-gray-500 line-through'
                   }
                 `}>
                   {tab.label}
                 </div>
               </div>
-              
+
               {/* Status indicator */}
               <div className={`
                 absolute bottom-2 left-2 w-2 h-2 rounded-full
@@ -880,12 +711,12 @@ export function AppSettings() {
           </div>
         </div>
       </div>
-      
+
       {/* Предварительный просмотр */}
       <div className="p-4 rounded-lg border bg-gray-50 dark:bg-gray-800">
         <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Предварительный просмотр</div>
         <div className="text-xs text-gray-500 mb-3">Так будут выглядеть вкладки в разделе "Аналитика сделок":</div>
-        
+
         <div className="flex flex-wrap gap-2">
           {analysisTabsConfig
             .filter(tab => tab.visible)
@@ -901,7 +732,7 @@ export function AppSettings() {
               </div>
             ))}
         </div>
-        
+
         {analysisTabsConfig.filter(tab => tab.visible).length === 0 && (
           <div className="text-gray-500 text-sm italic">Нет видимых вкладок</div>
         )}
@@ -912,71 +743,19 @@ export function AppSettings() {
   // Telegram Settings Tab
   const TelegramTab = () => (
     <div className="space-y-4">
-      {/* Telegram Settings */}
-      <div className="p-4 rounded-lg border">
-        <div className="text-sm font-medium text-gray-700 mb-3">Telegram настройки</div>
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Bot Token</label>
-            <input
-              type="password"
-              value={telegramBotToken}
-              onChange={(e) => {
-                const sanitized = sanitizeTextInput(e.target.value, {
-                  maxLength: 200,
-                  removeHtml: true,
-                  allowedChars: /[a-zA-Z0-9:_-]/
-                });
-                setTelegramBotToken(sanitized);
-              }}
-              placeholder="Ваш Telegram Bot Token"
-              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
-            <p className="text-xs text-gray-500 mt-1">
-              Создайте бота через @BotFather и получите токен. Поле пустое для безопасности.
-            </p>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Chat ID</label>
-            <input
-              type="text"
-              value={telegramChatId}
-              onChange={(e) => {
-                const sanitized = sanitizeTextInput(e.target.value, {
-                  maxLength: 50,
-                  removeHtml: true,
-                  allowedChars: /[0-9-]/
-                });
-                setTelegramChatId(sanitized);
-              }}
-              placeholder="Ваш Chat ID"
-              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
-            <p className="text-xs text-gray-500 mt-1">
-              Добавьте бота в чат и получите Chat ID через @userinfobot
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={saveTelegramSettings}
-              disabled={settingsSaving}
-              className="px-4 py-2 rounded-md bg-purple-600 text-white text-sm hover:bg-purple-700 disabled:bg-gray-400"
-            >
-              {settingsSaving ? 'Сохранение…' : 'Сохранить Telegram настройки'}
-            </button>
-            {settingsSaveOk && <span className="text-sm text-green-600">{settingsSaveOk}</span>}
-            {settingsSaveErr && <span className="text-sm text-red-600">{settingsSaveErr}</span>}
-          </div>
-        </div>
-        <div className="text-xs text-gray-500 mt-2">
-          🔒 Telegram токены хранятся в зашифрованном виде на сервере.
-        </div>
+      {/* Telegram Info */}
+      <div className="p-4 rounded-lg border bg-purple-50">
+        <div className="text-sm font-medium text-gray-700 mb-2">📱 Telegram настройки</div>
+        <p className="text-sm text-gray-600">
+          Telegram Bot Token и Chat ID настраиваются в файле <code className="bg-gray-100 px-1 rounded">.env</code> на сервере.
+          Для изменения отредактируйте файл <code className="bg-gray-100 px-1 rounded">~/stonks-config/.env</code> на сервере.
+        </p>
       </div>
 
       <div className="p-4 rounded-lg border bg-gray-50">
         <div className="text-sm font-medium text-gray-700 mb-2">Тестовое сообщение в Telegram</div>
         <div className="flex flex-wrap items-center gap-2">
-          <input value={testMsg} onChange={(e)=> {
+          <input value={testMsg} onChange={(e) => {
             const sanitized = sanitizeTextInput(e.target.value, {
               maxLength: 500,
               removeHtml: true
@@ -1003,41 +782,37 @@ export function AppSettings() {
         <nav className="-mb-px flex space-x-8">
           <button
             onClick={() => setActiveTab('general')}
-            className={`whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm ${
-              activeTab === 'general'
-                ? 'border-indigo-500 text-indigo-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
+            className={`whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm ${activeTab === 'general'
+              ? 'border-indigo-500 text-indigo-600'
+              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
           >
             Общие
           </button>
           <button
             onClick={() => setActiveTab('api')}
-            className={`whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm ${
-              activeTab === 'api'
-                ? 'border-indigo-500 text-indigo-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
+            className={`whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm ${activeTab === 'api'
+              ? 'border-indigo-500 text-indigo-600'
+              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
           >
             API
           </button>
           <button
             onClick={() => setActiveTab('telegram')}
-            className={`whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm ${
-              activeTab === 'telegram'
-                ? 'border-indigo-500 text-indigo-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
+            className={`whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm ${activeTab === 'telegram'
+              ? 'border-indigo-500 text-indigo-600'
+              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
           >
             Telegram
           </button>
           <button
             onClick={() => setActiveTab('interface')}
-            className={`whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm ${
-              activeTab === 'interface'
-                ? 'border-indigo-500 text-indigo-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
+            className={`whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm ${activeTab === 'interface'
+              ? 'border-indigo-500 text-indigo-600'
+              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
           >
             Интерфейс
           </button>

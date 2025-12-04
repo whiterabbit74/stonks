@@ -98,17 +98,16 @@ function loadSplits() {
 
 let SETTINGS = loadSettings();
 
-// API Configuration - now loaded from settings
+// API Configuration - loaded from environment variables only
 function getApiConfig() {
-  const settings = loadSettings();
   return {
-    ALPHA_VANTAGE_API_KEY: settings.api?.alphaVantageKey || process.env.ALPHA_VANTAGE_API_KEY || '',
-    FINNHUB_API_KEY: settings.api?.finnhubKey || process.env.FINNHUB_API_KEY || '',
-    TWELVE_DATA_API_KEY: settings.api?.twelveDataKey || process.env.TWELVE_DATA_API_KEY || '',
-    POLYGON_API_KEY: settings.api?.polygonKey || process.env.POLYGON_API_KEY || '',
+    ALPHA_VANTAGE_API_KEY: process.env.ALPHA_VANTAGE_API_KEY || '',
+    FINNHUB_API_KEY: process.env.FINNHUB_API_KEY || '',
+    TWELVE_DATA_API_KEY: process.env.TWELVE_DATA_API_KEY || '',
+    POLYGON_API_KEY: process.env.POLYGON_API_KEY || '',
     PREFERRED_API_PROVIDER: process.env.PREFERRED_API_PROVIDER || 'alpha_vantage',
-    TELEGRAM_BOT_TOKEN: settings.telegram?.botToken || process.env.TELEGRAM_BOT_TOKEN || '',
-    TELEGRAM_CHAT_ID: settings.telegram?.chatId || process.env.TELEGRAM_CHAT_ID || ''
+    TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN || '',
+    TELEGRAM_CHAT_ID: process.env.TELEGRAM_CHAT_ID || ''
   };
 }
 
@@ -613,22 +612,10 @@ app.post('/api/auth/hash-password', async (req, res) => {
 app.get('/api/settings', requireAuth, (req, res) => {
   try {
     const settings = loadSettings();
-    // Remove sensitive data from response
+    // Remove sensitive data from response - API keys and Telegram are from .env only
     const safeSettings = { ...settings };
-    if (safeSettings.api) {
-      // Mask API keys in response
-      Object.keys(safeSettings.api).forEach(key => {
-        if (key.includes('Key') && safeSettings.api[key]) {
-          const value = safeSettings.api[key];
-          safeSettings.api[key] = value.substring(0, 4) + '*'.repeat(Math.max(0, value.length - 8)) + value.substring(value.length - 4);
-        }
-      });
-    }
-    // Mask Telegram bot token
-    if (safeSettings.telegram && safeSettings.telegram.botToken) {
-      const token = safeSettings.telegram.botToken;
-      safeSettings.telegram.botToken = token.substring(0, 4) + '*'.repeat(Math.max(0, token.length - 8)) + token.substring(token.length - 4);
-    }
+    delete safeSettings.api;
+    delete safeSettings.telegram;
     res.json(safeSettings);
   } catch (e) {
     res.status(500).json({ error: 'Failed to load settings' });
@@ -640,45 +627,16 @@ app.patch('/api/settings', requireAuth, (req, res) => {
     const updates = req.body;
     const currentSettings = loadSettings();
 
-    // Validate updates - no additional validation needed for API keys
+    // API keys and Telegram settings are read-only (from .env only)
+    // Remove them from updates if client accidentally sends them
+    delete updates.api;
+    delete updates.telegram;
 
-    // Deep merge for nested objects to preserve existing values
-    const newSettings = { ...currentSettings };
-
-    // Deep merge 'api' settings - preserve existing keys when only some are updated
-    if (updates.api) {
-      newSettings.api = { ...(currentSettings.api || {}), ...updates.api };
-      // Remove undefined values (when client sends empty string as undefined)
-      Object.keys(newSettings.api).forEach(key => {
-        if (newSettings.api[key] === undefined) {
-          delete newSettings.api[key];
-        }
-      });
-    }
-
-    // Deep merge 'telegram' settings - preserve existing token/chatId when only one is updated
-    if (updates.telegram) {
-      newSettings.telegram = { ...(currentSettings.telegram || {}), ...updates.telegram };
-      // Remove undefined values (when client sends empty string as undefined)
-      Object.keys(newSettings.telegram).forEach(key => {
-        if (newSettings.telegram[key] === undefined) {
-          delete newSettings.telegram[key];
-        }
-      });
-    }
-
-    // Merge other top-level keys
-    Object.keys(updates).forEach(key => {
-      if (key !== 'api' && key !== 'telegram') {
-        newSettings[key] = updates[key];
-      }
-    });
+    // Merge other settings
+    const newSettings = { ...currentSettings, ...updates };
 
     // Save to file
     fs.writeJsonSync(SETTINGS_FILE, newSettings, { spaces: 2 });
-
-    // Reload API config
-    API_CONFIG = getApiConfig();
 
     res.json({ success: true, message: 'Settings updated successfully' });
   } catch (e) {
@@ -1122,21 +1080,10 @@ function scheduleSaveWatches() {
 }
 
 async function sendTelegramMessage(chatId, text, parseMode = 'HTML') {
-  const settings = loadSettings();
-  const envToken = process.env.TELEGRAM_BOT_TOKEN || '';
-  const settingsToken = settings.telegram?.botToken || '';
-  const telegramBotToken = settingsToken || envToken;
+  const telegramBotToken = getApiConfig().TELEGRAM_BOT_TOKEN;
 
-  // Debug token sources - FULL TOKEN for debugging
-  console.log(`Telegram token sources - from settings.json: ${settingsToken ? 'YES' : 'NO'}, from env: ${envToken ? 'YES' : 'NO'}`);
-  console.log(`FULL TOKEN FROM SETTINGS: "${settingsToken}"`);
-  console.log(`FULL TOKEN FROM ENV: "${envToken}"`);
-  console.log(`USING TOKEN: "${telegramBotToken}" (length: ${telegramBotToken.length})`);
-
-  // Check for asterisks which would indicate a masked/corrupted token
-  if (telegramBotToken && telegramBotToken.includes('*')) {
-    console.error('ERROR: Token contains asterisks - it appears to be a masked value, not the real token!');
-  }
+  // Debug token (showing full token for troubleshooting)
+  console.log(`TELEGRAM_BOT_TOKEN from env: "${telegramBotToken}" (length: ${telegramBotToken.length})`);
 
   if (!telegramBotToken) {
     console.warn('Telegram Token is MISSING or EMPTY');
