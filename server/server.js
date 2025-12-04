@@ -7,15 +7,10 @@ const os = require('os');
 const userConfigPath = path.join(os.homedir(), 'stonks-config', '.env');
 
 // STRICT MODE for Production: Only allow user config
+// STRICT MODE for Production: Only allow environment variables (injected by Docker)
 if (process.env.NODE_ENV === 'production') {
-  if (fs.existsSync(userConfigPath)) {
-    console.log(`Loading config from ${userConfigPath}`);
-    require('dotenv').config({ path: userConfigPath });
-  } else {
-    console.error(`❌ CRITICAL ERROR: Production config not found at ${userConfigPath}`);
-    console.error('In production, configuration MUST be loaded from this specific file.');
-    process.exit(1);
-  }
+  console.log('Production mode: Relying on environment variables (e.g. from Docker env_file). Skipping local .env files.');
+  // We do NOT load any .env files here. Docker injects the correct variables from ~/stonks-config/.env
 } else {
   // DEVELOPMENT MODE: Flexible loading
   if (fs.existsSync(userConfigPath)) {
