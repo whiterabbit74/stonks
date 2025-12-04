@@ -110,7 +110,7 @@ echo "{
   \"build_time\": \"$(date)\"
 }" > build-info.json
 
-tar -czf "${ARCHIVE_NAME}" dist/ server/ build-info.json
+COPYFILE_DISABLE=1 tar -czf "${ARCHIVE_NAME}" dist/ server/ build-info.json
 
 # 6. ОТПРАВКА НА СЕРВЕР
 echo "📤 Отправка на сервер..."
