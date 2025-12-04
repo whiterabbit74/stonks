@@ -36,6 +36,7 @@ e2e/
 # Env/Secrets
 .env
 *.env.local
+*.env.production
 *.local
 server/telegram-watches.json
 server/settings.json
