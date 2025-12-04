@@ -28,8 +28,6 @@ if (fs.existsSync(rootEnvPath)) {
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-const fs = require('fs-extra');
-const path = require('path');
 const https = require('https');
 const crypto = require('crypto');
 const helmet = require('helmet');
