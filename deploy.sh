@@ -197,6 +197,8 @@ docker compose up -d &&
 if [ $? -ne 0 ]; then
     echo '❌ ОШИБКА: Запуск контейнеров не удался!'
     echo 'Статус контейнеров:' && docker compose ps -a
+    echo '🔍 ПОСЛЕДНИЕ ЛОГИ СЕРВЕРА:'
+    docker compose logs --tail=50 server
     exit 1
 fi &&
 

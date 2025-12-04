@@ -5,27 +5,41 @@ const os = require('os');
 
 // 1. Try user's config dir (highest priority)
 const userConfigPath = path.join(os.homedir(), 'stonks-config', '.env');
-if (fs.existsSync(userConfigPath)) {
-  console.log(`Loading config from ${userConfigPath}`);
-  require('dotenv').config({ path: userConfigPath });
-}
 
-// 2. Try server/.env (if running from root)
-const serverEnvPath = path.join(__dirname, '.env');
-if (fs.existsSync(serverEnvPath)) {
-  console.log(`Loading config from ${serverEnvPath}`);
-  require('dotenv').config({ path: serverEnvPath });
-}
+// STRICT MODE for Production: Only allow user config
+if (process.env.NODE_ENV === 'production') {
+  if (fs.existsSync(userConfigPath)) {
+    console.log(`Loading config from ${userConfigPath}`);
+    require('dotenv').config({ path: userConfigPath });
+  } else {
+    console.error(`❌ CRITICAL ERROR: Production config not found at ${userConfigPath}`);
+    console.error('In production, configuration MUST be loaded from this specific file.');
+    process.exit(1);
+  }
+} else {
+  // DEVELOPMENT MODE: Flexible loading
+  if (fs.existsSync(userConfigPath)) {
+    console.log(`Loading config from ${userConfigPath}`);
+    require('dotenv').config({ path: userConfigPath });
+  }
 
-// 3. Try project root .env
-const rootEnvPath = path.join(__dirname, '..', '.env');
-if (fs.existsSync(rootEnvPath)) {
-  console.log(`Loading config from ${rootEnvPath}`);
-  require('dotenv').config({ path: rootEnvPath });
-}
+  // 2. Try server/.env (if running from root)
+  const serverEnvPath = path.join(__dirname, '.env');
+  if (fs.existsSync(serverEnvPath)) {
+    console.log(`Loading config from ${serverEnvPath}`);
+    require('dotenv').config({ path: serverEnvPath });
+  }
 
-// 4. Default .env (lowest priority)
-require('dotenv').config();
+  // 3. Try project root .env
+  const rootEnvPath = path.join(__dirname, '..', '.env');
+  if (fs.existsSync(rootEnvPath)) {
+    console.log(`Loading config from ${rootEnvPath}`);
+    require('dotenv').config({ path: rootEnvPath });
+  }
+
+  // 4. Default .env (lowest priority)
+  require('dotenv').config();
+}
 const express = require('express');
 const cors = require('cors');
 const https = require('https');
