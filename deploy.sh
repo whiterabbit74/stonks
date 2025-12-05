@@ -131,21 +131,40 @@ git reset --hard origin/main &&
 echo 'Актуальный коммит на сервере:' &&
 git log --oneline -1 &&
 
+echo '💾 БЕКАП JSON ДАННЫХ...' &&
+BACKUP_DIR=~/stonks-backups &&
+BACKUP_NAME=backup_\$(date +%Y%m%d_%H%M%S) &&
+mkdir -p \$BACKUP_DIR/\$BACKUP_NAME &&
+
+# Копируем JSON данные если они существуют
+if [ -d ~/stonks/server/datasets ]; then
+    cp -r ~/stonks/server/datasets \$BACKUP_DIR/\$BACKUP_NAME/ 2>/dev/null || true
+fi &&
+[ -f ~/stonks/server/settings.json ] && cp ~/stonks/server/settings.json \$BACKUP_DIR/\$BACKUP_NAME/ 2>/dev/null || true
+[ -f ~/stonks/server/splits.json ] && cp ~/stonks/server/splits.json \$BACKUP_DIR/\$BACKUP_NAME/ 2>/dev/null || true
+[ -f ~/stonks/server/telegram-watches.json ] && cp ~/stonks/server/telegram-watches.json \$BACKUP_DIR/\$BACKUP_NAME/ 2>/dev/null || true
+[ -f ~/stonks/server/trade-history.json ] && cp ~/stonks/server/trade-history.json \$BACKUP_DIR/\$BACKUP_NAME/ 2>/dev/null || true
+[ -f ~/stonks/server/trading-calendar.json ] && cp ~/stonks/server/trading-calendar.json \$BACKUP_DIR/\$BACKUP_NAME/ 2>/dev/null || true
+
+echo "✅ Бекап создан: \$BACKUP_NAME" &&
+
+# Удаляем старые бекапы, оставляем только 5 последних
+echo 'Очистка старых бекапов (оставляем 5 последних)...' &&
+cd \$BACKUP_DIR && ls -dt backup_* 2>/dev/null | tail -n +6 | xargs rm -rf 2>/dev/null || true
+echo "📦 Текущие бекапы:" && ls -dt backup_* 2>/dev/null | head -5 || echo 'Нет бекапов'
+cd ~ &&
+
 echo '🧹 ПОЛНАЯ ОЧИСТКА СЕРВЕРА...' &&
 # Остановка всех сервисов
 docker compose down || true
 
-# Очистка всех старых файлов
+# Очистка всех старых образов
 echo 'Удаление старых образов...' &&
 docker system prune -f || true
 
 # Очистка директорий
 echo 'Очистка директорий...' &&
 rm -rf ~/stonks/dist/* &&
-rm -rf ~/stonks/server/server.js.backup 2>/dev/null || true
-
-# Резервное копирование текущего server.js
-cp ~/stonks/server/server.js ~/stonks/server/server.js.backup 2>/dev/null || true
 
 echo '🔄 Копирование свежих файлов...' &&
 if [ ! -d ~/dist ]; then

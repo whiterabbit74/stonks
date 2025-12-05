@@ -595,7 +595,7 @@ If you encounter issues not covered in this guide:
 1. **Check server logs:** `docker compose logs server --tail=100`
 2. **Check container status:** `docker compose ps`
 3. **Verify .env is loaded:** `docker compose exec server env`
-4. **Review server.js:** Lines 1-80 show how variables are loaded
+4. **Review config module:** `server/src/config/index.js` shows how variables are loaded
 5. **Test API endpoints:** Use `curl` to test individual endpoints
 
 For questions or issues, contact the development team or file an issue in the repository.

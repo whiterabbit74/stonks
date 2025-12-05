@@ -243,17 +243,46 @@ E2E автоматически собирают проект и запускаю
 
 ```
 trading_strategies/
-├── src/                    # фронтенд (React + TS)
-│   ├── components/         # графики, формы, дашборды, сплиты, Telegram
-│   ├── lib/                # бэктест‑логика, индикаторы, метрики, API‑клиент
-│   ├── stores/             # состояние (zustand)
-│   └── types/              # типы
-├── server/                 # Express‑сервер (datasets, splits, quotes, Telegram, auth)
-├── public/                 # статические файлы (sample CSV)
-├── docker/                 # Dockerfile фронта, nginx.conf, entrypoint
-├── caddy/                  # Caddyfile (прод HTTPS)
-├── README.md               # этот файл
-└── ...                     # конфиги, отчёты тестов, скрипты
+├── src/                        # фронтенд (React + TS)
+│   ├── components/             # графики, формы, дашборды, сплиты, Telegram
+│   ├── lib/                    # бэктест‑логика, индикаторы, метрики, API‑клиент
+│   ├── stores/                 # состояние (zustand)
+│   └── types/                  # типы
+├── server/                     # Express‑сервер (модульная архитектура)
+│   ├── server.js               # точка входа (~140 строк)
+│   ├── src/                    # модули сервера
+│   │   ├── config/             # конфигурация и переменные окружения
+│   │   ├── middleware/         # auth.js, rateLimiter.js
+│   │   ├── providers/          # API-провайдеры данных
+│   │   │   ├── alphaVantage.js
+│   │   │   ├── finnhub.js
+│   │   │   ├── twelveData.js
+│   │   │   └── polygon.js
+│   │   ├── routes/             # обработчики маршрутов
+│   │   │   ├── auth.js
+│   │   │   ├── calendar.js
+│   │   │   ├── datasets.js
+│   │   │   ├── quotes.js
+│   │   │   ├── settings.js
+│   │   │   ├── splits.js
+│   │   │   ├── status.js
+│   │   │   ├── telegram.js
+│   │   │   └── trades.js
+│   │   ├── services/           # бизнес‑логика
+│   │   │   ├── datasets.js
+│   │   │   ├── dates.js
+│   │   │   ├── settings.js
+│   │   │   ├── splits.js
+│   │   │   ├── telegram.js
+│   │   │   └── trades.js
+│   │   └── utils/              # вспомогательные функции
+│   ├── datasets/               # хранилище датасетов (JSON)
+│   └── *.json                  # файлы состояния (splits, settings, watches, etc.)
+├── public/                     # статические файлы (sample CSV)
+├── docker/                     # Dockerfile фронта, nginx.conf, entrypoint
+├── caddy/                      # Caddyfile (прод HTTPS)
+├── README.md                   # этот файл
+└── ...                         # конфиги, отчёты тестов, скрипты
 ```
 
 Настройки фронтенда:

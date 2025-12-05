@@ -61,8 +61,15 @@ The application uses a single global store in `src/stores/index.ts` (602 lines):
 - Data persistence: JSON files (no database)
 - File operations: fs-extra, multer
 
-**Server Structure:**
-- Main file: `server/server.js` (3,848 lines - monolithic)
+**Server Structure (Modular):**
+- Entry point: `server/server.js` (~140 lines)
+- Modules: `server/src/` — modular architecture
+  - `config/` — environment configuration
+  - `middleware/` — auth, rate limiting
+  - `providers/` — API data providers (AlphaVantage, Finnhub, TwelveData, Polygon)
+  - `routes/` — HTTP route handlers (9 modules)
+  - `services/` — business logic (6 modules)
+  - `utils/` — helper functions
 - Data storage: `server/datasets/` (individual JSON files)
 - State files: `splits.json`, `settings.json`, `telegram-watches.json`, `trade-history.json`, `trading-calendar.json`
 
@@ -102,8 +109,39 @@ The application uses a single global store in `src/stores/index.ts` (602 lines):
 │   ├── test/                    # Test setup
 │   │   └── setup.ts             # Vitest mocks (matchMedia, ResizeObserver, etc.)
 │   └── main.tsx                 # Entry point
-├── server/                      # Express backend
-│   ├── server.js                # Main server (3,848 lines)
+├── server/                      # Express backend (modular architecture)
+│   ├── server.js                # Entry point (~140 lines)
+│   ├── src/                     # Backend modules
+│   │   ├── config/              # Environment configuration
+│   │   │   └── index.js         # Config loader with dotenv
+│   │   ├── middleware/          # Express middleware
+│   │   │   ├── auth.js          # Authentication & session handling
+│   │   │   └── rateLimiter.js   # API rate limiting
+│   │   ├── providers/           # External API integrations
+│   │   │   ├── alphaVantage.js  # Alpha Vantage API client
+│   │   │   ├── finnhub.js       # Finnhub API client
+│   │   │   ├── twelveData.js    # Twelve Data API client
+│   │   │   └── polygon.js       # Polygon.io API client
+│   │   ├── routes/              # HTTP route handlers
+│   │   │   ├── auth.js          # Login/logout/session
+│   │   │   ├── calendar.js      # Trading calendar
+│   │   │   ├── datasets.js      # Dataset CRUD
+│   │   │   ├── quotes.js        # Real-time quotes
+│   │   │   ├── settings.js      # App configuration
+│   │   │   ├── splits.js        # Stock splits
+│   │   │   ├── status.js        # Server health
+│   │   │   ├── telegram.js      # Telegram monitoring
+│   │   │   └── trades.js        # Trade history
+│   │   ├── services/            # Business logic
+│   │   │   ├── datasets.js      # Dataset management
+│   │   │   ├── dates.js         # Date calculations
+│   │   │   ├── settings.js      # Settings service
+│   │   │   ├── splits.js        # Splits processing
+│   │   │   ├── telegram.js      # Telegram notifications
+│   │   │   └── trades.js        # Trade tracking
+│   │   └── utils/               # Helper functions
+│   │       ├── files.js         # File operations
+│   │       └── helpers.js       # General utilities
 │   ├── datasets/                # Dataset storage directory
 │   ├── splits.json              # Centralized stock splits
 │   ├── settings.json            # App settings
@@ -594,8 +632,14 @@ VITE_BUILD_ID=<timestamp>  # Build identifier in UI footer
 ## Important Notes
 
 ### Backend Architecture
-- **Large monolithic file**: `server/server.js` is 3,848 lines
-- Consider modularizing into separate route handlers if adding major features
+- **Modular structure**: `server/server.js` is now ~140 lines (entry point only)
+- All logic split into `server/src/` modules:
+  - `config/` — centralized environment configuration
+  - `middleware/` — auth (9KB), rate limiting
+  - `providers/` — 4 external API clients
+  - `routes/` — 9 route modules for all endpoints
+  - `services/` — 6 business logic modules
+  - `utils/` — file operations, helpers
 - No database - all data in JSON files
 
 ### Performance
@@ -605,6 +649,7 @@ VITE_BUILD_ID=<timestamp>  # Build identifier in UI footer
 
 ### Recent Focus Areas
 Based on recent commits:
+- **Server modularization** — broke monolithic server.js into clean modules
 - Telegram monitoring refinements (timing, rate limiting)
 - Trade history pagination and display
 - API throttling for rate limits
@@ -612,7 +657,6 @@ Based on recent commits:
 
 ### Code Quality
 - E2E tests need implementation
-- Server.js could benefit from modularization
 - Some legacy components retained (`BuyAtClose4Simulator_old.tsx`)
 
 ### UI Language
