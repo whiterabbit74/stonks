@@ -125,6 +125,11 @@ app.use('/api', tradesRoutes);
 app.use('/api', quotesRoutes);
 app.use('/api', statusRoutes);
 
+// Import scheduler functions
+const { runTelegramAggregation } = require('./src/services/telegramAggregation');
+const { runPriceActualization } = require('./src/services/priceActualization');
+const { getETParts, getCachedTradingCalendar, isTradingDayByCalendarET, getTradingSessionForDateET } = require('./src/services/dates');
+
 // Start server
 app.listen(PORT, () => {
   console.log(`🚀 Trading Backtester API running on http://localhost:${PORT}`);
@@ -135,6 +140,36 @@ app.listen(PORT, () => {
     console.warn('Failed to initialize telegram watches:', err && err.message ? err.message : err);
   });
   ensureTradeHistoryLoaded();
+
+  // Smart scheduler: check time BEFORE calling functions to save API limits
+  setInterval(async () => {
+    try {
+      const nowEt = getETParts(new Date());
+      const cal = getCachedTradingCalendar();
+
+      // Skip non-trading days entirely
+      if (!isTradingDayByCalendarET(nowEt, cal)) return;
+
+      const session = getTradingSessionForDateET(nowEt, cal);
+      const nowMinutes = nowEt.hh * 60 + nowEt.mm;
+      const minutesUntilClose = session.closeMin - nowMinutes;
+
+      // Telegram aggregation: only at T-11 and T-1 (±1 minute window for 20s interval)
+      if ((minutesUntilClose >= 10 && minutesUntilClose <= 12) ||
+        (minutesUntilClose >= 0 && minutesUntilClose <= 2)) {
+        await runTelegramAggregation(null, {});
+      }
+
+      // Price actualization: 16-30 minutes after market close
+      const minutesAfterClose = nowMinutes - session.closeMin;
+      if (minutesAfterClose >= 15 && minutesAfterClose <= 31) {
+        await runPriceActualization({ source: 'scheduler' });
+      }
+    } catch (e) {
+      console.warn('Scheduler error:', e && e.message ? e.message : e);
+    }
+  }, 20000);
+  console.log('📅 Smart scheduler started: T-11/T-1 messages and price actualization (every 20s)');
 });
 
 module.exports = app;
