@@ -2,7 +2,6 @@ import { useEffect } from 'react';
 import { ArrowRight, AlertTriangle } from 'lucide-react';
 import { useAppStore } from '../stores';
 import { DatasetLibrary } from './DatasetLibrary';
-import { API_BASE_URL } from '../lib/api';
 
 interface DataUploadProps {
   onNext?: () => void;
@@ -11,13 +10,10 @@ interface DataUploadProps {
 export function DataUpload({ onNext }: DataUploadProps) {
   const { marketData, isLoading, error, loadDatasetsFromServer } = useAppStore();
 
-  // Загружаем список датасетов при монтировании компонента ТОЛЬКО после успешной авторизации
+  // Load datasets on mount - auth is already verified by ProtectedLayout
   useEffect(() => {
-    fetch(`${API_BASE_URL}/auth/check`, { credentials: 'include' }).then(r => {
-      if (r.ok) loadDatasetsFromServer();
-    }).catch((error) => {
-      console.warn('Auth check failed:', error);
-      // Silently fail auth check - user can still work offline
+    loadDatasetsFromServer().catch((error) => {
+      console.warn('Failed to load datasets:', error);
     });
   }, [loadDatasetsFromServer]);
 

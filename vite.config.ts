@@ -11,8 +11,7 @@ export default defineConfig({
       output: {
         manualChunks: {
           vendor: ['react', 'react-dom'],
-          charts: ['lightweight-charts'],
-          utils: ['papaparse']
+          charts: ['lightweight-charts']
         }
       }
     },

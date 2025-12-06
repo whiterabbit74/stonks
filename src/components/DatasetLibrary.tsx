@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Database, Download, Trash2, Calendar, ServerOff, RefreshCw, Edit } from 'lucide-react';
 import { useAppStore } from '../stores';
 import { createStrategyFromTemplate, STRATEGY_TEMPLATES } from '../lib/strategy';
-import { DatasetAPI, API_BASE_URL } from '../lib/api';
+import { DatasetAPI } from '../lib/api';
 import type { SavedDataset } from '../types';
 import { ConfirmModal } from './ConfirmModal';
 import { useNavigate } from 'react-router-dom';
@@ -63,8 +63,8 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
   const [editTag, setEditTag] = useState('');
   const [editCompanyName, setEditCompanyName] = useState('');
   const [savingEdit, setSavingEdit] = useState(false);
-  
-  // Проверяем статус сервера ТОЛЬКО после авторизации, чтобы не плодить 401
+
+  // Check server status on mount - auth is already verified by ProtectedLayout
   useEffect(() => {
     const checkServerStatus = async () => {
       try {
@@ -74,11 +74,7 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
         setServerStatus('offline');
       }
     };
-
-    fetch(`${API_BASE_URL}/auth/check`, { credentials: 'include' }).then(r => {
-      if (r.ok) checkServerStatus();
-      else setServerStatus('offline');
-    }).catch(() => setServerStatus('offline'));
+    checkServerStatus();
   }, []);
 
   // Показываем компонент даже если нет датасетов, чтобы показать статус сервера
@@ -228,11 +224,10 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
           <div className="flex flex-wrap gap-2">
             <button
               onClick={() => setSelectedTag('all')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 ${
-                selectedTag === 'all'
-                  ? 'bg-blue-100 text-blue-800 border-2 border-blue-200 shadow-sm dark:bg-blue-950/30 dark:text-blue-200 dark:border-blue-900/40'
-                  : 'bg-gray-50 text-gray-700 border border-gray-200 hover:bg-gray-100 hover:border-gray-300 dark:bg-gray-800 dark:text-gray-200 dark:border-gray-700 dark:hover:bg-gray-700'
-              }`}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 ${selectedTag === 'all'
+                ? 'bg-blue-100 text-blue-800 border-2 border-blue-200 shadow-sm dark:bg-blue-950/30 dark:text-blue-200 dark:border-blue-900/40'
+                : 'bg-gray-50 text-gray-700 border border-gray-200 hover:bg-gray-100 hover:border-gray-300 dark:bg-gray-800 dark:text-gray-200 dark:border-gray-700 dark:hover:bg-gray-700'
+                }`}
             >
               Все ({savedDatasets.length})
             </button>
@@ -240,11 +235,10 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
               <button
                 key={tag}
                 onClick={() => setSelectedTag(tag)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 ${
-                  selectedTag === tag
-                    ? 'bg-blue-100 text-blue-800 border-2 border-blue-200 shadow-sm dark:bg-blue-950/30 dark:text-blue-200 dark:border-blue-900/40'
-                    : 'bg-gray-50 text-gray-700 border border-gray-200 hover:bg-gray-100 hover:border-gray-300 dark:bg-gray-800 dark:text-gray-200 dark:border-gray-700 dark:hover:bg-gray-700'
-                }`}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 ${selectedTag === tag
+                  ? 'bg-blue-100 text-blue-800 border-2 border-blue-200 shadow-sm dark:bg-blue-950/30 dark:text-blue-200 dark:border-blue-900/40'
+                  : 'bg-gray-50 text-gray-700 border border-gray-200 hover:bg-gray-100 hover:border-gray-300 dark:bg-gray-800 dark:text-gray-200 dark:border-gray-700 dark:hover:bg-gray-700'
+                  }`}
               >
                 {tag} ({savedDatasets.filter(d => d.tag && d.tag.split(',').some(t => t.trim() === tag)).length})
               </button>
@@ -254,60 +248,60 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
       </div>
 
       <div className="space-y-2">
-          {serverStatus === 'offline' && savedDatasets.length === 0 && (
-            <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-              <div className="flex items-center gap-2 mb-2">
-                <ServerOff className="w-5 h-5 text-yellow-600" />
-                <span className="font-medium text-yellow-800">Сервер не запущен</span>
-              </div>
-              <p className="text-sm text-yellow-700 mb-2">
-                Чтобы сохранять и загружать датасеты, запустите сервер:
-              </p>
-              <code className="text-xs bg-yellow-100 px-2 py-1 rounded">
-                cd server && npm install && npm run dev
-              </code>
+        {serverStatus === 'offline' && savedDatasets.length === 0 && (
+          <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+            <div className="flex items-center gap-2 mb-2">
+              <ServerOff className="w-5 h-5 text-yellow-600" />
+              <span className="font-medium text-yellow-800">Сервер не запущен</span>
             </div>
-          )}
+            <p className="text-sm text-yellow-700 mb-2">
+              Чтобы сохранять и загружать датасеты, запустите сервер:
+            </p>
+            <code className="text-xs bg-yellow-100 px-2 py-1 rounded">
+              cd server && npm install && npm run dev
+            </code>
+          </div>
+        )}
 
-          {serverStatus !== 'offline' && savedDatasets.length > 0 && filteredDatasets.length === 0 && selectedTag !== 'all' && (
-            <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-              <div className="flex items-center gap-2 mb-2">
-                <Database className="w-5 h-5 text-blue-600" />
-                <span className="font-medium text-blue-800">Нет датасетов с тегом "{selectedTag}"</span>
-              </div>
-              <p className="text-sm text-blue-700">
-                Выберите другой фильтр или нажмите "Все" чтобы увидеть все датасеты.
-              </p>
+        {serverStatus !== 'offline' && savedDatasets.length > 0 && filteredDatasets.length === 0 && selectedTag !== 'all' && (
+          <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+            <div className="flex items-center gap-2 mb-2">
+              <Database className="w-5 h-5 text-blue-600" />
+              <span className="font-medium text-blue-800">Нет датасетов с тегом "{selectedTag}"</span>
             </div>
-          )}
-          
-          {filteredDatasets.map((dataset: Omit<SavedDataset, 'data'>) => (
-            <DatasetCard
-              key={dataset.name}
-              dataset={dataset}
-              isActive={currentDataset?.ticker === dataset.ticker}
-              onLoad={() => handleLoadDataset(((dataset as unknown as { id?: string }).id || dataset.ticker || dataset.name).toString())}
-              onDelete={(e) => handleDeleteDataset(((dataset as unknown as { id?: string }).id || dataset.ticker || dataset.name).toString(), e)}
-              onExport={(e) => handleExportDataset(((dataset as unknown as { id?: string }).id || dataset.ticker || dataset.name).toString(), e)}
-              loading={loadingId === dataset.name}
-              onEdit={(e) => handleEditDataset(dataset, e)}
-              onRefresh={async (e) => {
-                e.stopPropagation();
-                // Единый ID = тикер в верхнем регистре
-                const id = (dataset.ticker || (dataset as unknown as { id?: string }).id || dataset.name).toString().toUpperCase();
-                try {
-                  setRefreshingId(id);
-                  await DatasetAPI.refreshDataset(id, resultsRefreshProvider as any);
-                  await loadDatasetsFromServer();
-                } catch (err) {
-                  console.warn('Refresh failed', err);
-                } finally {
-                  setRefreshingId(null);
-                }
-              }}
-              refreshing={refreshingId === ((dataset.ticker || (dataset as unknown as { id?: string }).id || dataset.name).toString().toUpperCase())}
-            />
-          ))}
+            <p className="text-sm text-blue-700">
+              Выберите другой фильтр или нажмите "Все" чтобы увидеть все датасеты.
+            </p>
+          </div>
+        )}
+
+        {filteredDatasets.map((dataset: Omit<SavedDataset, 'data'>) => (
+          <DatasetCard
+            key={dataset.name}
+            dataset={dataset}
+            isActive={currentDataset?.ticker === dataset.ticker}
+            onLoad={() => handleLoadDataset(((dataset as unknown as { id?: string }).id || dataset.ticker || dataset.name).toString())}
+            onDelete={(e) => handleDeleteDataset(((dataset as unknown as { id?: string }).id || dataset.ticker || dataset.name).toString(), e)}
+            onExport={(e) => handleExportDataset(((dataset as unknown as { id?: string }).id || dataset.ticker || dataset.name).toString(), e)}
+            loading={loadingId === dataset.name}
+            onEdit={(e) => handleEditDataset(dataset, e)}
+            onRefresh={async (e) => {
+              e.stopPropagation();
+              // Единый ID = тикер в верхнем регистре
+              const id = (dataset.ticker || (dataset as unknown as { id?: string }).id || dataset.name).toString().toUpperCase();
+              try {
+                setRefreshingId(id);
+                await DatasetAPI.refreshDataset(id, resultsRefreshProvider as any);
+                await loadDatasetsFromServer();
+              } catch (err) {
+                console.warn('Refresh failed', err);
+              } finally {
+                setRefreshingId(null);
+              }
+            }}
+            refreshing={refreshingId === ((dataset.ticker || (dataset as unknown as { id?: string }).id || dataset.name).toString().toUpperCase())}
+          />
+        ))}
       </div>
 
       <ConfirmModal
@@ -427,11 +421,10 @@ function DatasetCard({ dataset, isActive, onLoad, onDelete, onExport, onEdit, on
   return (
     <div
       onClick={loading ? undefined : onLoad}
-      className={`p-3 rounded-lg border cursor-pointer transition-colors ${
-        isActive 
-          ? 'border-blue-500 bg-blue-50 dark:border-blue-400 dark:bg-blue-950/30' 
-          : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50 dark:border-gray-700 dark:hover:border-gray-600 dark:bg-gray-900 dark:hover:bg-gray-800'
-      }`}
+      className={`p-3 rounded-lg border cursor-pointer transition-colors ${isActive
+        ? 'border-blue-500 bg-blue-50 dark:border-blue-400 dark:bg-blue-950/30'
+        : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50 dark:border-gray-700 dark:hover:border-gray-600 dark:bg-gray-900 dark:hover:bg-gray-800'
+        }`}
     >
       <div className="space-y-3">
         {/* Основной контент */}

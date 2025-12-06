@@ -1,5 +1,6 @@
 import type { SavedDataset, MonitorTradeHistoryResponse } from '../types';
 import { logError, logWarn } from './error-logger';
+import { parseOHLCDate } from './utils';
 
 // Runtime-safe API base to avoid hardcoded dev hosts in production bundles
 export const API_BASE_URL: string = '/api';
@@ -35,17 +36,17 @@ function createTimeoutPromise(timeoutMs: number): Promise<never> {
  */
 function isRetryableError(error: NetworkError): boolean {
   if (error.retryable !== undefined) return error.retryable;
-  
+
   // Network errors are generally retryable
   if (error.code === 'TIMEOUT' || error.message.includes('Failed to fetch')) {
     return true;
   }
-  
+
   // HTTP status codes that are retryable
   if (error.status) {
     return error.status >= 500 || error.status === 429 || error.status === 408;
   }
-  
+
   return false;
 }
 
@@ -60,7 +61,7 @@ function delay(ms: number): Promise<void> {
  * Enhanced fetch with timeout, retries, and proper error handling
  */
 export async function fetchWithCreds(
-  input: RequestInfo | URL, 
+  input: RequestInfo | URL,
   init?: FetchOptions
 ): Promise<Response> {
   const {
@@ -69,7 +70,7 @@ export async function fetchWithCreds(
     retryDelay = 1000,
     ...fetchInit
   } = init || {};
-  
+
   const merged: RequestInit = {
     credentials: 'include',
     cache: 'no-store',
@@ -81,19 +82,19 @@ export async function fetchWithCreds(
   };
 
   let lastError: NetworkError | null = null;
-  
+
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       // Create AbortController for timeout
       const controller = new AbortController();
       merged.signal = controller.signal;
-      
+
       // Race between fetch and timeout
       const response = await Promise.race([
         fetch(input, merged),
         createTimeoutPromise(timeout)
       ]);
-      
+
       // Log successful request after retries
       if (attempt > 0) {
         logWarn('network', `Request succeeded after ${attempt} retries`, {
@@ -101,23 +102,23 @@ export async function fetchWithCreds(
           attempt
         });
       }
-      
+
       return response;
     } catch (error: any) {
       const networkError = error as NetworkError;
-      
+
       // Enhance error with status if it's a Response
       if (error.status) {
         networkError.status = error.status;
       }
-      
+
       lastError = networkError;
-      
+
       // Don't retry on last attempt
       if (attempt === retries) {
         break;
       }
-      
+
       // Only retry if error is retryable
       if (!isRetryableError(networkError)) {
         logError('network', `Non-retryable error, aborting retries`, {
@@ -127,26 +128,26 @@ export async function fetchWithCreds(
         });
         break;
       }
-      
+
       // Log retry attempt
       logWarn('network', `Request failed, retrying (${attempt + 1}/${retries})`, {
         url: String(input),
         error: networkError.message,
         nextRetryIn: retryDelay
       });
-      
+
       // Wait before retry with exponential backoff
       await delay(retryDelay * Math.pow(2, attempt));
     }
   }
-  
+
   // Log final failure
   logError('network', `Request failed after ${retries + 1} attempts`, {
     url: String(input),
     error: lastError?.message,
     finalError: lastError
   });
-  
+
   throw lastError || new Error('Unknown network error');
 }
 
@@ -166,12 +167,12 @@ export function waitForOnline(): Promise<void> {
       resolve();
       return;
     }
-    
+
     const handleOnline = () => {
       window.removeEventListener('online', handleOnline);
       resolve();
     };
-    
+
     window.addEventListener('online', handleOnline);
   });
 }
@@ -184,23 +185,23 @@ export async function apiCall<T>(
   options?: FetchOptions & { waitForOnline?: boolean }
 ): Promise<T> {
   const { waitForOnline: shouldWaitForOnline = true, ...fetchOptions } = options || {};
-  
+
   // Wait for connectivity if offline and requested
   if (shouldWaitForOnline && !isOnline()) {
     logWarn('network', 'Waiting for network connectivity', { url });
     await waitForOnline();
     logWarn('network', 'Network connectivity restored', { url });
   }
-  
+
   const response = await fetchWithCreds(url, fetchOptions);
-  
+
   if (!response.ok) {
     const error = new Error(`HTTP ${response.status}: ${response.statusText}`) as NetworkError;
     error.status = response.status;
     error.retryable = response.status >= 500 || response.status === 429;
     throw error;
   }
-  
+
   return response.json();
 }
 
@@ -297,7 +298,7 @@ export class DatasetAPI {
   }
 
   static async deleteSplit(symbol: string, date: string): Promise<{ success: boolean; symbol: string; events: Array<{ date: string; factor: number }> }> {
-    const response = await fetchWithCreds(`${API_BASE_URL}/splits/${encodeURIComponent(symbol)}/${encodeURIComponent(date.slice(0,10))}`, {
+    const response = await fetchWithCreds(`${API_BASE_URL}/splits/${encodeURIComponent(symbol)}/${encodeURIComponent(date.slice(0, 10))}`, {
       method: 'DELETE',
     });
     if (!response.ok) {
@@ -355,8 +356,7 @@ export class DatasetAPI {
    * Актуализировать датасет на сервере (добавить только недостающий хвост)
    */
   static async refreshDataset(id: string, provider?: 'alpha_vantage' | 'finnhub'):
-    Promise<{ success: boolean; id: string; added: number; to?: string; message?: string }>
-  {
+    Promise<{ success: boolean; id: string; added: number; to?: string; message?: string }> {
     const qs = provider ? `?provider=${provider}` : '';
     const response = await fetchWithCreds(`${API_BASE_URL}/datasets/${encodeURIComponent(id.toUpperCase())}/refresh${qs}`, {
       method: 'POST',
@@ -374,8 +374,7 @@ export class DatasetAPI {
    * Обновить метаданные датасета
    */
   static async updateDatasetMetadata(id: string, metadata: { tag?: string; companyName?: string }):
-    Promise<{ success: boolean; message?: string }>
-  {
+    Promise<{ success: boolean; message?: string }> {
     const response = await fetchWithCreds(`${API_BASE_URL}/datasets/${encodeURIComponent(id.toUpperCase())}/metadata`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -394,8 +393,7 @@ export class DatasetAPI {
    * Получить котировку в реальном времени (open/high/low/current/prevClose)
    */
   static async getQuote(symbol: string, provider: 'alpha_vantage' | 'finnhub' = 'finnhub'):
-    Promise<{ open: number|null; high: number|null; low: number|null; current: number|null; prevClose: number|null }>
-  {
+    Promise<{ open: number | null; high: number | null; low: number | null; current: number | null; prevClose: number | null }> {
     const response = await fetchWithCreds(`${API_BASE_URL}/quote/${encodeURIComponent(symbol)}?provider=${provider}`);
     if (!response.ok) {
       let msg = `${response.status} ${response.statusText}`;
@@ -436,16 +434,15 @@ export class DatasetAPI {
         error.status = response.status;
         throw error;
       }
-      
+
       const dataset = await response.json();
       // Конвертируем строки дат обратно в Date объекты стабильно (полдень UTC)
-      const { parseOHLCDate } = await import('./utils');
       dataset.data = dataset.data.map((bar: { date: string; open: number; high: number; low: number; close: number; adjClose?: number; volume: number; }) => ({
         ...bar,
         date: parseOHLCDate(bar.date)
       }));
       // splits оставляем как есть (массив {date, factor})
-      
+
       return dataset;
     } catch (error) {
       logError('network', `Failed to fetch dataset ${id}`, {
@@ -482,7 +479,7 @@ export class DatasetAPI {
         timeout: 120000, // 2 minutes for large dataset uploads
         retries: 1 // Only one retry for POST operations
       });
-      
+
       if (!response.ok) {
         const error = await response.json().catch(() => null);
         const msg = (error && typeof error.error === 'string') ? error.error : `Failed to save dataset: ${response.statusText}`;
@@ -491,7 +488,7 @@ export class DatasetAPI {
         networkError.retryable = response.status >= 500;
         throw networkError;
       }
-      
+
       return response.json();
     } catch (error) {
       logError('network', `Failed to save dataset ${dataset.ticker}`, {
@@ -511,7 +508,7 @@ export class DatasetAPI {
     const response = await fetchWithCreds(`${API_BASE_URL}/datasets/${safeId}`, {
       method: 'DELETE',
     });
-    
+
     if (!response.ok) {
       if (response.status === 404) {
         throw new Error(`Dataset "${id}" not found`);
@@ -520,7 +517,7 @@ export class DatasetAPI {
       const msg = (error && typeof error.error === 'string') ? error.error : `Failed to delete dataset: ${response.statusText}`;
       throw new Error(msg);
     }
-    
+
     return response.json();
   }
 
@@ -535,7 +532,7 @@ export class DatasetAPI {
       },
       body: JSON.stringify(dataset),
     });
-    
+
     if (!response.ok) {
       if (response.status === 404) {
         throw new Error(`Dataset "${id}" not found`);
@@ -544,7 +541,7 @@ export class DatasetAPI {
       const msg = (error && typeof error.error === 'string') ? error.error : `Failed to update dataset: ${response.statusText}`;
       throw new Error(msg);
     }
-    
+
     return response.json();
   }
 
@@ -687,7 +684,7 @@ export class DatasetAPI {
     return await response.json();
   }
 
-  static async simulateTelegram(stage: 'overview'|'confirmations' = 'overview'): Promise<{ success: boolean; stage: string }>{
+  static async simulateTelegram(stage: 'overview' | 'confirmations' = 'overview'): Promise<{ success: boolean; stage: string }> {
     try {
       const response = await fetchWithCreds(`${API_BASE_URL}/telegram/simulate`, {
         method: 'POST',
@@ -711,7 +708,7 @@ export class DatasetAPI {
     }
   }
 
-  static async actualizePrices(): Promise<{ success: boolean; count: number; tickers: string[] }>{
+  static async actualizePrices(): Promise<{ success: boolean; count: number; tickers: string[] }> {
     const response = await fetchWithCreds(`${API_BASE_URL}/telegram/actualize-prices`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' }
@@ -721,7 +718,7 @@ export class DatasetAPI {
   }
 
   // App settings
-  static async getAppSettings(): Promise<{ watchThresholdPct: number; resultsQuoteProvider: 'alpha_vantage'|'finnhub'|'twelve_data'; enhancerProvider: 'alpha_vantage'|'finnhub'|'twelve_data'; resultsRefreshProvider?: 'alpha_vantage'|'finnhub'|'twelve_data'; indicatorPanePercent?: number; defaultMultiTickerSymbols?: string; commissionType?: string; commissionFixed?: number; commissionPercentage?: number }>{
+  static async getAppSettings(): Promise<{ watchThresholdPct: number; resultsQuoteProvider: 'alpha_vantage' | 'finnhub' | 'twelve_data'; enhancerProvider: 'alpha_vantage' | 'finnhub' | 'twelve_data'; resultsRefreshProvider?: 'alpha_vantage' | 'finnhub' | 'twelve_data'; indicatorPanePercent?: number; defaultMultiTickerSymbols?: string; commissionType?: string; commissionFixed?: number; commissionPercentage?: number }> {
     try {
       const response = await fetchWithCreds(`${API_BASE_URL}/settings`, {
         timeout: 10000,
@@ -747,7 +744,7 @@ export class DatasetAPI {
     return response.json();
   }
 
-  static async saveAppSettings(settings: { watchThresholdPct: number; resultsQuoteProvider: 'alpha_vantage'|'finnhub'|'twelve_data'; enhancerProvider: 'alpha_vantage'|'finnhub'|'twelve_data'; resultsRefreshProvider?: 'alpha_vantage'|'finnhub'|'twelve_data'; indicatorPanePercent?: number; defaultMultiTickerSymbols?: string; commissionType?: string; commissionFixed?: number; commissionPercentage?: number }): Promise<void> {
+  static async saveAppSettings(settings: { watchThresholdPct: number; resultsQuoteProvider: 'alpha_vantage' | 'finnhub' | 'twelve_data'; enhancerProvider: 'alpha_vantage' | 'finnhub' | 'twelve_data'; resultsRefreshProvider?: 'alpha_vantage' | 'finnhub' | 'twelve_data'; indicatorPanePercent?: number; defaultMultiTickerSymbols?: string; commissionType?: string; commissionFixed?: number; commissionPercentage?: number }): Promise<void> {
     const response = await fetchWithCreds(`${API_BASE_URL}/settings`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -793,7 +790,7 @@ export class NetworkMonitor {
   private static healthCheckInterval: number | null = null;
   private static isHealthy = true;
   private static callbacks = new Set<(healthy: boolean) => void>();
-  
+
   /**
    * Starts monitoring network health
    */
@@ -801,7 +798,7 @@ export class NetworkMonitor {
     if (this.healthCheckInterval !== null) {
       this.stopMonitoring();
     }
-    
+
     this.healthCheckInterval = window.setInterval(async () => {
       try {
         await DatasetAPI.getStatus();
@@ -813,11 +810,11 @@ export class NetworkMonitor {
         this.setHealthy(false);
       }
     }, intervalMs);
-    
+
     // Initial health check
     this.checkHealth();
   }
-  
+
   /**
    * Stops network health monitoring
    */
@@ -827,7 +824,7 @@ export class NetworkMonitor {
       this.healthCheckInterval = null;
     }
   }
-  
+
   /**
    * Performs an immediate health check
    */
@@ -841,14 +838,14 @@ export class NetworkMonitor {
       return false;
     }
   }
-  
+
   /**
    * Returns current network health status
    */
   static getHealthStatus(): boolean {
     return this.isHealthy;
   }
-  
+
   /**
    * Subscribes to network health changes
    */
@@ -856,17 +853,17 @@ export class NetworkMonitor {
     this.callbacks.add(callback);
     // Immediately call with current status
     callback(this.isHealthy);
-    
+
     return () => {
       this.callbacks.delete(callback);
     };
   }
-  
+
   private static setHealthy(healthy: boolean): void {
     if (this.isHealthy !== healthy) {
       this.isHealthy = healthy;
       logWarn('network', `Network health changed: ${healthy ? 'healthy' : 'unhealthy'}`);
-      
+
       // Notify all callbacks
       this.callbacks.forEach(callback => {
         try {
@@ -887,7 +884,7 @@ export class NetworkMonitor {
 export class APICache {
   private static readonly CACHE_PREFIX = 'trading_api_cache_';
   private static readonly DEFAULT_TTL = 5 * 60 * 1000; // 5 minutes
-  
+
   /**
    * Stores data in localStorage with expiration
    */
@@ -905,7 +902,7 @@ export class APICache {
       });
     }
   }
-  
+
   /**
    * Retrieves data from localStorage if not expired
    */
@@ -913,13 +910,13 @@ export class APICache {
     try {
       const stored = localStorage.getItem(this.CACHE_PREFIX + key);
       if (!stored) return null;
-      
+
       const item = JSON.parse(stored);
       if (Date.now() > item.expires) {
         this.delete(key);
         return null;
       }
-      
+
       return item.data as T;
     } catch (error) {
       logWarn('network', 'Failed to retrieve cached API data', {
@@ -929,7 +926,7 @@ export class APICache {
       return null;
     }
   }
-  
+
   /**
    * Deletes cached data
    */
@@ -943,13 +940,13 @@ export class APICache {
       });
     }
   }
-  
+
   /**
    * Clears all cached API data
    */
   static clear(): void {
     try {
-      const keys = Object.keys(localStorage).filter(key => 
+      const keys = Object.keys(localStorage).filter(key =>
         key.startsWith(this.CACHE_PREFIX)
       );
       keys.forEach(key => localStorage.removeItem(key));

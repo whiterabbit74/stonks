@@ -50,14 +50,24 @@ function ProtectedLayout() {
           try { await loadDatasetsFromServer(); } catch {
             // Ignore datasets loading errors
           }
-        } else {
+        } else if (r.status === 401) {
+          // Only redirect on actual auth failure, not on rate limiting
           setAuthorized(false);
           navigate('/login', { replace: true, state: { from: location.pathname } });
+        } else if (r.status === 429) {
+          // Rate limited but likely still authenticated - assume auth is valid
+          // The user will see rate limit errors on other requests but won't be logged out
+          console.warn('Rate limited on auth check, assuming still authenticated');
+          setAuthorized(true);
+        } else {
+          // Other errors - try to continue, don't force logout
+          console.warn(`Auth check returned ${r.status}, assuming still authenticated`);
+          setAuthorized(true);
         }
       } catch {
-        // Ignore auth check errors
-        setAuthorized(false);
-        navigate('/login', { replace: true, state: { from: location.pathname } });
+        // Network errors - assume still authenticated to avoid logout on temporary issues
+        console.warn('Auth check failed due to network error, assuming still authenticated');
+        setAuthorized(true);
       } finally {
         setCheckingAuth(false);
       }

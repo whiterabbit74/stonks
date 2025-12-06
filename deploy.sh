@@ -110,7 +110,7 @@ echo "{
   \"build_time\": \"$(date)\"
 }" > build-info.json
 
-COPYFILE_DISABLE=1 tar -czf "${ARCHIVE_NAME}" dist/ server/ build-info.json
+COPYFILE_DISABLE=1 tar --no-xattrs --no-mac-metadata -czf "${ARCHIVE_NAME}" dist/ server/ build-info.json
 
 # 6. ОТПРАВКА НА СЕРВЕР
 echo "📤 Отправка на сервер..."
@@ -122,7 +122,7 @@ ssh ubuntu@146.235.212.239 "
 cd ~ &&
 
 echo '📦 Распаковка...' &&
-tar -xzf ${ARCHIVE_NAME} &&
+tar -xzf ${ARCHIVE_NAME} 2>/dev/null &&
 
 echo '📥 Синхронизация git репозитория на сервере...' &&
 cd ~/stonks &&

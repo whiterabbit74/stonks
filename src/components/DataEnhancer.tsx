@@ -22,17 +22,17 @@ type TabType = 'enhance' | 'upload';
 
 export function DataEnhancer({ onNext }: DataEnhancerProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const { 
-    enhancerProvider, 
-    updateMarketData, 
-    saveDatasetToServer, 
+  const {
+    enhancerProvider,
+    updateMarketData,
+    saveDatasetToServer,
     isLoading: globalLoading,
     error: storeError,
     loadJSONData,
     loadDatasetsFromServer,
     currentDataset
   } = useAppStore();
-  
+
   const [activeTab, setActiveTab] = useState<TabType>('enhance');
   const [ticker, setTicker] = useState('AAPL');
   const [isLoading, setIsLoading] = useState(false);
@@ -52,12 +52,10 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
     }
   }, [currentDataset]);
 
-  // Загружаем список датасетов при монтировании компонента
+  // Load datasets on mount - auth is already verified by ProtectedLayout
   useEffect(() => {
-    fetch(`${API_BASE_URL}/auth/check`, { credentials: 'include' }).then(r => {
-      if (r.ok) loadDatasetsFromServer();
-    }).catch((error) => {
-      console.warn('Auth check failed:', error);
+    loadDatasetsFromServer().catch((error) => {
+      console.warn('Failed to load datasets:', error);
     });
   }, [loadDatasetsFromServer]);
 
@@ -191,11 +189,10 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                activeTab === tab.id
+              className={`py-2 px-1 border-b-2 font-medium text-sm ${activeTab === tab.id
                   ? 'border-blue-500 text-blue-600 dark:text-blue-400'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
-              }`}
+                }`}
               aria-current={activeTab === tab.id ? 'page' : undefined}
             >
               {tab.label}
@@ -267,16 +264,15 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
                   <div className="flex gap-2 pb-2" style={{ width: 'fit-content' }}>
                     {tickers.map((tickerSymbol) => {
                       const isActive = ticker === tickerSymbol;
-                      
+
                       return (
                         <button
                           key={tickerSymbol}
                           onClick={() => handleTickerClick(tickerSymbol)}
-                          className={`flex-shrink-0 flex items-center justify-center px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 min-w-[60px] h-9 ${
-                            isActive
+                          className={`flex-shrink-0 flex items-center justify-center px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 min-w-[60px] h-9 ${isActive
                               ? 'bg-blue-100 text-blue-800 border-2 border-blue-300 shadow-sm dark:bg-blue-950/30 dark:text-blue-200 dark:border-blue-900/50'
                               : 'bg-gray-50 text-gray-700 border border-gray-200 hover:bg-gray-100 hover:border-gray-300 hover:shadow-sm dark:bg-gray-800 dark:text-gray-200 dark:border-gray-700 dark:hover:bg-gray-700 dark:hover:border-gray-600'
-                          }`}
+                            }`}
                         >
                           {tickerSymbol}
                         </button>
@@ -302,7 +298,7 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
               </div>
             </div>
           )}
-          
+
           {storeError && (
             <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3 dark:bg-red-950/30 dark:border-red-900/40">
               <AlertTriangle className="w-5 h-5 text-red-600 mt-0.5 flex-shrink-0" />
@@ -312,7 +308,7 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
               </div>
             </div>
           )}
-          
+
           <div
             className="relative rounded-2xl border-2 border-dashed border-gray-300 bg-white p-10 text-center shadow-sm hover:shadow-md transition dark:bg-gray-900 dark:border-gray-700"
             onDragOver={(e) => e.preventDefault()}
@@ -329,7 +325,7 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
               {globalLoading ? 'Обработка данных...' : 'Загрузите данные для тестирования'}
             </h3>
             <p className="text-gray-600 mb-6 dark:text-gray-300">
-              {globalLoading 
+              {globalLoading
                 ? 'Пожалуйста, подождите, пока мы обрабатываем ваши данные...'
                 : 'Перетащите JSON-файл сюда или выберите его вручную.'
               }

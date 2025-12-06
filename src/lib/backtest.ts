@@ -10,6 +10,7 @@ import type {
 import type { IndicatorCondition } from '../types';
 import { IndicatorEngine } from './indicators';
 import { MetricsCalculator } from './metrics';
+import { CleanBacktestEngine } from './clean-backtest';
 
 /**
  * Position represents an open trade
@@ -53,7 +54,7 @@ export class BacktestEngine {
     this.data = data;
     this.strategy = strategy;
     this.currentCapital = strategy.riskManagement.initialCapital;
-    
+
     this.validateInputs();
     this.calculateIndicators();
   }
@@ -66,9 +67,9 @@ export class BacktestEngine {
     this.processDataChronologically();
     this.closeOpenPosition();
     this.logIBSStatistics();
-    
+
     const metrics = this.calculatePerformanceMetrics();
-    
+
     // Create simplified result
     const result: BacktestResult = {
       trades: this.trades,
@@ -77,7 +78,7 @@ export class BacktestEngine {
       chartData: this.generateChartData(),
       insights: []
     };
-    
+
     return result;
   }
 
@@ -98,17 +99,17 @@ export class BacktestEngine {
   private processDataChronologically(): void {
     for (let i = 0; i < this.data.length; i++) {
       const bar = this.data[i];
-      
+
       // Check for exit signals first (if we have a position)
       if (this.currentPosition) {
         this.checkExitConditions(i, bar);
       }
-      
+
       // Check for entry signals (if we don't have a position)
       if (!this.currentPosition) {
         this.checkEntryConditions(i, bar);
       }
-      
+
       // Update equity curve
       this.updateEquityCurve(i, bar);
     }
@@ -121,7 +122,7 @@ export class BacktestEngine {
     const ibsKey = this.getIndicatorKey('IBS', { type: 'indicator', indicator: 'IBS', operator: '<', value: 0.1 } as any);
     const ibsValue = this.indicators.get(ibsKey)?.[index];
     const lowThreshold = this.strategy.parameters.lowIBS || 0.1;
-    
+
     if (this.evaluateConditions(this.strategy.entryConditions, index)) {
       console.log(`🟢 ENTRY SIGNAL: IBS=${ibsValue?.toFixed(3)} < ${lowThreshold} at ${bar.date.toISOString().split('T')[0]}`);
       this.enterPosition(index, bar);
@@ -192,17 +193,17 @@ export class BacktestEngine {
   private enterPosition(index: number, bar: OHLCData): void {
     const entryPrice = this.calculateEntryPrice(bar);
     const quantity = this.calculatePositionSize(entryPrice);
-    
+
     if (quantity <= 0) return;
 
     // Apply slippage (отключено для IBS стратегии)
-    const slippageAdjustedPrice = (this.strategy.id === 'ibs-mean-reversion' || this.strategy.type === 'ibs-mean-reversion') 
-      ? entryPrice 
+    const slippageAdjustedPrice = (this.strategy.id === 'ibs-mean-reversion' || this.strategy.type === 'ibs-mean-reversion')
+      ? entryPrice
       : entryPrice * (1 + this.strategy.riskManagement.slippage);
-    
+
     // Calculate commission on entry
     const entryCommission = this.calculateCommission(quantity * slippageAdjustedPrice);
-    
+
     // Check if we have enough capital
     const totalCost = (quantity * slippageAdjustedPrice) + entryCommission;
     if (totalCost > this.currentCapital) {
@@ -235,7 +236,7 @@ export class BacktestEngine {
 
     // Update capital - subtract the total cost
     this.currentCapital -= totalCost;
-    
+
     const pos = this.currentPosition!;
     console.log(`🟢 ENTERED POSITION: ${quantity} shares at $${slippageAdjustedPrice.toFixed(2)}, date: ${bar.date.toISOString().split('T')[0]}`);
     console.log(`📊 Position details: maxHoldDays=${pos.maxHoldDays}, stopLoss=$${pos.stopLoss?.toFixed(2)}, takeProfit=$${pos.takeProfit?.toFixed(2)}`);
@@ -257,21 +258,21 @@ export class BacktestEngine {
     if (!this.currentPosition) return;
 
     // Apply slippage (отключено для IBS стратегии)
-    const slippageAdjustedPrice = (this.strategy.id === 'ibs-mean-reversion' || this.strategy.type === 'ibs-mean-reversion') 
-      ? exitPrice 
+    const slippageAdjustedPrice = (this.strategy.id === 'ibs-mean-reversion' || this.strategy.type === 'ibs-mean-reversion')
+      ? exitPrice
       : exitPrice * (1 - this.strategy.riskManagement.slippage);
-    
+
     // Calculate commission on exit only (entry commission was already deducted from capital)
     const exitCommission = this.calculateCommission(this.currentPosition.quantity * slippageAdjustedPrice);
-    
+
     // Calculate P&L correctly - entry commission already accounted for in capital
     const grossProceeds = this.currentPosition.quantity * slippageAdjustedPrice;
     const grossCost = this.currentPosition.quantity * this.currentPosition.entryPrice;
     const totalCommissions = exitCommission; // Only exit commission for P&L calculation
-    
+
     // Net P&L = (Exit Value - Entry Value) - Total Commissions
     const pnl = (grossProceeds - grossCost) - totalCommissions;
-    
+
     // Percentage return based on initial investment (entry commission already included in capital deduction)
     const entryCommission = this.calculateCommission(grossCost);
     const initialInvestment = grossCost + entryCommission;
@@ -279,7 +280,7 @@ export class BacktestEngine {
 
     // Calculate trade duration
     const duration = Math.floor((bar.date.getTime() - this.currentPosition.entryDate.getTime()) / (1000 * 60 * 60 * 24));
-    
+
     // Debug: проверяем причину выхода и инвестиции
     console.log(`🔚 TRADE: ${duration} days, Reason: ${exitReason}, Investment: $${initialInvestment.toFixed(2)}, P&L: $${pnl.toFixed(2)}, Capital before: $${this.currentCapital.toFixed(2)}`);
 
@@ -311,16 +312,16 @@ export class BacktestEngine {
     };
 
     this.trades.push(trade);
-    
+
 
 
     // Update capital correctly  
     // At entry: capital -= (quantity * entryPrice + entryCommission)
     // At exit: capital += (quantity * exitPrice - exitCommission)
     this.currentCapital += grossProceeds - exitCommission;
-    
+
     console.log(`💰 Capital updated: $${this.currentCapital.toFixed(2)} (was $${(this.currentCapital - grossProceeds + exitCommission).toFixed(2)})`);
-    
+
     // Add current capital to trade context
     if (trade.context) {
       (trade.context as any).currentCapitalAfterExit = this.currentCapital;
@@ -354,30 +355,30 @@ export class BacktestEngine {
    */
   private calculatePositionSize(price: number): number {
     const { riskManagement } = this.strategy;
-    
+
     // Calculate position size accounting for commissions and available capital
     const capitalUsagePercent = riskManagement.capitalUsage || 100;
     const availableAmount = (this.currentCapital * capitalUsagePercent) / 100;
-    
+
     // Estimate commission rate to calculate affordable quantity
     const estimatedCommissionRate = this.calculateCommissionRate();
     const effectivePrice = price * (1 + estimatedCommissionRate); // Price including commission
     const quantity = Math.floor(availableAmount / effectivePrice);
-    
+
     // Verify we have enough capital for actual total cost
     const actualCost = quantity * price;
     const actualCommission = this.calculateCommission(actualCost);
     const totalCost = actualCost + actualCommission;
-    
+
     if (totalCost > this.currentCapital) {
       // Reduce quantity to fit available capital
       const adjustedQuantity = Math.floor((this.currentCapital - actualCommission) / price);
       console.log(`⚠️ Reducing quantity from ${quantity} to ${adjustedQuantity} due to capital constraints`);
       return Math.max(0, adjustedQuantity);
     }
-    
+
     console.log(`📊 Position size: ${quantity} shares at $${price.toFixed(2)}, total cost: $${totalCost.toFixed(2)} (${capitalUsagePercent}% of $${this.currentCapital.toFixed(2)})`);
-    
+
     return quantity;
   }
 
@@ -386,7 +387,7 @@ export class BacktestEngine {
    */
   private calculateCommissionRate(): number {
     const { commission } = this.strategy.riskManagement;
-    
+
     switch (commission.type) {
       case 'fixed': {
         // For fixed commission, estimate based on average trade size
@@ -415,20 +416,20 @@ export class BacktestEngine {
    */
   private calculateCommission(tradeValue: number): number {
     const { commission } = this.strategy.riskManagement;
-    
+
     switch (commission.type) {
       case 'fixed':
         return commission.fixed || 0;
-      
+
       case 'percentage':
         return tradeValue * ((commission.percentage || 0) / 100);
-      
+
       case 'combined': {
         const fixedPart = commission.fixed || 0;
         const percentagePart = tradeValue * ((commission.percentage || 0) / 100);
         return fixedPart + percentagePart;
       }
-      
+
       default:
         return 0;
     }
@@ -440,7 +441,7 @@ export class BacktestEngine {
   private calculateStopLoss(entryPrice: number): number | undefined {
     const { stopLoss } = this.strategy.riskManagement;
     if (!stopLoss) return undefined;
-    
+
     // Stop loss should ALWAYS be below entry price for long positions
     return entryPrice * (1 - Math.abs(stopLoss) / 100);
   }
@@ -451,7 +452,7 @@ export class BacktestEngine {
   private calculateTakeProfit(entryPrice: number): number | undefined {
     const { takeProfit } = this.strategy.riskManagement;
     if (!takeProfit) return undefined;
-    
+
     // Take profit should ALWAYS be above entry price for long positions
     return entryPrice * (1 + Math.abs(takeProfit) / 100);
   }
@@ -470,7 +471,7 @@ export class BacktestEngine {
    */
   private evaluateConditions(conditions: Condition[], index: number): boolean {
     if (conditions.length === 0) return false;
-    
+
     // For now, use AND logic (all conditions must be true)
     // In a more sophisticated system, this could be configurable
     return conditions.every(condition => this.evaluateCondition(condition, index));
@@ -481,18 +482,18 @@ export class BacktestEngine {
    */
   private evaluateCondition(condition: Condition, index: number): boolean {
     const bar = this.data[index];
-    
+
     switch (condition.type) {
       case 'indicator':
         return this.evaluateIndicatorCondition(condition as IndicatorCondition, index);
-      
+
       case 'price':
         return this.evaluatePriceCondition(condition, index, bar);
-      
+
       case 'time':
         // Time-based conditions not implemented in this task
         return false;
-      
+
       default:
         return false;
     }
@@ -503,21 +504,21 @@ export class BacktestEngine {
    */
   private evaluateIndicatorCondition(condition: IndicatorCondition, index: number): boolean {
     if (!condition.indicator) return false;
-    
+
     const indicatorKey = this.getIndicatorKey(condition.indicator, condition);
     const indicatorValues = this.indicators.get(indicatorKey);
-    
+
     if (!indicatorValues || index >= indicatorValues.length) {
       console.log(`No indicator values for ${indicatorKey} at index ${index}`);
       return false;
     }
-    
+
     const currentValue = indicatorValues[index];
     if (isNaN(currentValue)) {
       console.log(`NaN value for ${indicatorKey} at index ${index}`);
       return false;
     }
-    
+
     // Используем параметры из стратегии для IBS условий
     let conditionValue = condition.value;
     if (condition.indicator === 'IBS') {
@@ -531,17 +532,17 @@ export class BacktestEngine {
         conditionValue = high;
       }
     }
-    
+
     const result = this.evaluateOperator(condition.operator, currentValue, conditionValue, indicatorValues, index);
-    
+
     // Debug logging for IBS conditions (only for exits)
     if (condition.indicator === 'IBS' && condition.operator === '>' && result) {
       console.log(`IBS EXIT condition met: ${currentValue.toFixed(3)} > ${conditionValue} at index ${index}`);
     }
-    
+
     return result;
   }
-  
+
   private evaluateOperator(operator: string, currentValue: number, conditionValue: number | 'dynamic' | string, indicatorValues: number[], index: number): boolean {
     const numericValue = typeof conditionValue === 'number' ? conditionValue : (conditionValue === 'dynamic' ? NaN : Number(conditionValue));
     switch (operator) {
@@ -573,31 +574,31 @@ export class BacktestEngine {
    */
   private evaluatePriceCondition(condition: Condition, _index: number, bar: OHLCData): boolean {
     const price = bar.close; // Use close price for simplicity
-    
+
     if (condition.value === 'dynamic') {
       // Dynamic comparison (e.g., price vs moving average)
       // This would need more context about what to compare against
       return false;
     }
-    
+
     if (typeof condition.value !== 'number') return false;
-    
+
     switch (condition.operator) {
       case '>':
         return price > condition.value;
-      
+
       case '<':
         return price < condition.value;
-      
+
       case '>=':
         return price >= condition.value;
-      
+
       case '<=':
         return price <= condition.value;
-      
+
       case '==':
         return Math.abs(price - condition.value) < 0.01; // Allow small tolerance
-      
+
       default:
         return false;
     }
@@ -608,24 +609,24 @@ export class BacktestEngine {
    */
   private updateEquityCurve(_index: number, bar: OHLCData): void {
     let totalValue = this.currentCapital;
-    
+
     // Add value of current position if any
     if (this.currentPosition) {
       const currentPrice = bar.close;
       const positionValue = this.currentPosition.quantity * currentPrice;
       totalValue += positionValue;
-      
+
       // Debug: показываем расчет equity
       console.log(`📈 Equity: Cash=$${this.currentCapital.toFixed(2)} + Position=$${positionValue.toFixed(2)} = Total=$${totalValue.toFixed(2)}`);
     }
-    
+
     // Calculate drawdown
-    const peakValue = this.equity.length > 0 
+    const peakValue = this.equity.length > 0
       ? Math.max(...this.equity.map(e => e.value), totalValue)
       : totalValue;
-    
+
     const drawdown = peakValue > 0 ? ((peakValue - totalValue) / peakValue) * 100 : 0;
-    
+
     this.equity.push({
       date: bar.date,
       value: totalValue,
@@ -640,16 +641,16 @@ export class BacktestEngine {
    */
   private calculateIndicators(): void {
     const closePrices = this.data.map(bar => bar.close);
-    
+
     // Calculate indicators based on strategy conditions
     const allConditions = [...this.strategy.entryConditions, ...this.strategy.exitConditions];
-    
+
     console.log('🔧 STRATEGY PARAMETERS:', this.strategy.parameters);
-    
+
     allConditions.forEach(condition => {
       if (condition.type === 'indicator' && condition.indicator) {
         const key = this.getIndicatorKey(condition.indicator, condition);
-        
+
         if (!this.indicators.has(key)) {
           const values = this.calculateIndicatorValues(condition.indicator, condition as IndicatorCondition);
           this.indicators.set(key, values);
@@ -657,7 +658,7 @@ export class BacktestEngine {
         }
       }
     });
-    
+
     // Always calculate basic indicators for context (only if we have enough data)
     if (this.data.length >= 20 && !this.indicators.has('SMA_20')) {
       this.indicators.set('SMA_20', IndicatorEngine.calculateSMA(closePrices, 20));
@@ -675,7 +676,7 @@ export class BacktestEngine {
    */
   private calculateIndicatorValues(indicatorType: string, condition: IndicatorCondition): number[] {
     const closePrices = this.data.map(bar => bar.close);
-    
+
     switch (indicatorType) {
       case 'SMA': {
         const smaPeriod = this.getIndicatorPeriod(condition, 20);
@@ -684,7 +685,7 @@ export class BacktestEngine {
         }
         return IndicatorEngine.calculateSMA(closePrices, smaPeriod);
       }
-      
+
       case 'EMA': {
         const emaPeriod = this.getIndicatorPeriod(condition, 20);
         if (emaPeriod > this.data.length) {
@@ -692,7 +693,7 @@ export class BacktestEngine {
         }
         return IndicatorEngine.calculateEMA(closePrices, emaPeriod);
       }
-      
+
       case 'RSI': {
         const rsiPeriod = this.getIndicatorPeriod(condition, 14);
         if (rsiPeriod + 1 > this.data.length) {
@@ -700,10 +701,10 @@ export class BacktestEngine {
         }
         return IndicatorEngine.calculateRSI(closePrices, rsiPeriod);
       }
-      
+
       case 'IBS':
         return IndicatorEngine.calculateIBS(this.data);
-      
+
       default:
         return new Array(this.data.length).fill(NaN);
     }
@@ -716,11 +717,11 @@ export class BacktestEngine {
     // Try to get period from strategy parameters
     const parameterName = `${condition.indicator?.toLowerCase()}Period`;
     const period = this.strategy.parameters[parameterName];
-    
+
     if (typeof period === 'number' && period > 0) {
       return period;
     }
-    
+
     return defaultPeriod;
   }
 
@@ -742,45 +743,45 @@ export class BacktestEngine {
     if (!this.data || this.data.length === 0) {
       throw new Error('Market data is required for backtesting');
     }
-    
+
     if (!this.strategy) {
       throw new Error('Strategy is required for backtesting');
     }
-    
+
     if (this.strategy.riskManagement.initialCapital <= 0) {
       throw new Error('Initial capital must be greater than 0');
     }
-    
+
     // Validate data integrity
     for (let i = 0; i < this.data.length; i++) {
       const bar = this.data[i];
       if (!(bar.date instanceof Date) || bar.open == null || bar.high == null || bar.low == null || bar.close == null) {
         throw new Error(`Invalid data at index ${i}: missing required fields`);
       }
-      
+
       const numericFields = [bar.open, bar.high, bar.low, bar.close];
       if (!numericFields.every(v => typeof v === 'number' && isFinite(v))) {
         throw new Error(`Invalid data at index ${i}: non-numeric price values`);
       }
-      
+
       if (bar.high < bar.low || bar.close < bar.low || bar.close > bar.high || bar.open < bar.low || bar.open > bar.high) {
         throw new Error(`Invalid data at index ${i}: price relationships are incorrect`);
       }
     }
-    
+
     // Debug: проверяем интервалы данных
     if (this.data.length >= 5) {
       const intervals = [];
       for (let i = 1; i < Math.min(10, this.data.length); i++) {
-        const daysDiff = Math.floor((this.data[i].date.getTime() - this.data[i-1].date.getTime()) / (1000 * 60 * 60 * 24));
+        const daysDiff = Math.floor((this.data[i].date.getTime() - this.data[i - 1].date.getTime()) / (1000 * 60 * 60 * 24));
         intervals.push(daysDiff);
       }
       console.log(`🗓️ DATA INTERVALS (days between bars):`, intervals);
       console.log(`📅 First 5 dates:`, this.data.slice(0, 5).map(d => d.date.toISOString().split('T')[0]));
-      
+
       const avgInterval = intervals.reduce((sum, val) => sum + val, 0) / intervals.length;
       console.log(`📊 Average interval: ${avgInterval.toFixed(1)} days`);
-      
+
       if (avgInterval > 5) {
         console.warn(`⚠️ WARNING: Data appears to be weekly (avg ${avgInterval.toFixed(1)} days between bars)!`);
       }
@@ -809,9 +810,9 @@ export class BacktestEngine {
 
     console.log(`📊 IBS STATISTICS:`);
     console.log(`   Range: ${min.toFixed(3)} - ${max.toFixed(3)}, Average: ${avg.toFixed(3)}`);
-    console.log(`   Entry opportunities (IBS < ${lowThreshold}): ${belowLow}/${validIBS.length} (${(belowLow/validIBS.length*100).toFixed(1)}%)`);
-    console.log(`   Exit opportunities (IBS > ${highThreshold}): ${aboveHigh}/${validIBS.length} (${(aboveHigh/validIBS.length*100).toFixed(1)}%)`);
-    
+    console.log(`   Entry opportunities (IBS < ${lowThreshold}): ${belowLow}/${validIBS.length} (${(belowLow / validIBS.length * 100).toFixed(1)}%)`);
+    console.log(`   Exit opportunities (IBS > ${highThreshold}): ${aboveHigh}/${validIBS.length} (${(aboveHigh / validIBS.length * 100).toFixed(1)}%)`);
+
     // Проверим последовательности
     let consecutiveHigh = 0;
     let maxConsecutiveHigh = 0;
@@ -845,22 +846,22 @@ export class BacktestEngine {
   private calculateVolatility(index: number): number {
     const period = Math.min(20, index + 1);
     const startIndex = Math.max(0, index - period + 1);
-    
+
     const returns = [];
     for (let i = startIndex + 1; i <= index; i++) {
       // Add bounds checking to prevent array access errors
       if (i - 1 < 0 || i >= this.data.length) continue;
-      
+
       const prevClose = this.data[i - 1].close;
       const currentClose = this.data[i].close;
       returns.push(Math.log(currentClose / prevClose));
     }
-    
+
     if (returns.length === 0) return 0;
-    
+
     const mean = returns.reduce((sum, r) => sum + r, 0) / returns.length;
     const variance = returns.reduce((sum, r) => sum + Math.pow(r - mean, 2), 0) / returns.length;
-    
+
     return Math.sqrt(variance * 252); // Annualized volatility
   }
 
@@ -869,13 +870,13 @@ export class BacktestEngine {
    */
   private getIndicatorValues(index: number): Record<string, number> {
     const values: Record<string, number> = {};
-    
+
     for (const [name, data] of this.indicators) {
       if (data[index] !== undefined) {
         values[name] = data[index] as number;
       }
     }
-    
+
     return values;
   }
 
@@ -885,10 +886,10 @@ export class BacktestEngine {
   private calculateTrend(index: number): string {
     // Add comprehensive bounds checking
     if (index < 10 || index >= this.data.length || index - 10 < 0) return 'sideways';
-    
+
     const currentPrice = this.data[index].close;
     const pastPrice = this.data[index - 10].close;
-    
+
     if (currentPrice > pastPrice * 1.02) return 'up';
     if (currentPrice < pastPrice * 0.98) return 'down';
     return 'sideways';
@@ -904,7 +905,7 @@ export class BacktestEngine {
       this.strategy.riskManagement.initialCapital,
       this.data // Use market data as benchmark for now
     );
-    
+
     return metricsCalculator.calculateAllMetrics();
   }
 
@@ -916,11 +917,10 @@ export class BacktestEngine {
 /**
  * Simple backtest runner for the simplified app
  */
-export async function runBacktest(data: OHLCData[], strategy: Strategy): Promise<BacktestResult> {
+export function runBacktest(data: OHLCData[], strategy: Strategy): BacktestResult {
   console.log('Running backtest with strategy:', strategy.id, 'and', data.length, 'data points');
-  
+
   // Используем чистый бэктест только для IBS стратегии
-  const { CleanBacktestEngine } = await import('./clean-backtest');
   const engine = new CleanBacktestEngine(data, strategy);
   return engine.runBacktest();
 }
