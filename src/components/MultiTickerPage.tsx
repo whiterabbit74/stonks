@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Settings } from 'lucide-react';
+// Settings icon removed - no longer needed
 import { useAppStore } from '../stores';
 import type { Strategy, OHLCData, Trade, EquityPoint, SplitEvent, MonitorTradeHistoryResponse } from '../types';
 import { DatasetAPI } from '../lib/api';
@@ -214,7 +214,7 @@ export function MultiTickerPage() {
       const tickersDataPromises = tickers.map(ticker => loadTickerData(ticker));
       const loadedData = await Promise.all(tickersDataPromises);
 
-        console.log('Loaded data:', loadedData.map(t => ({ ticker: t.ticker, bars: t.data.length })));
+      console.log('Loaded data:', loadedData.map(t => ({ ticker: t.ticker, bars: t.data.length })));
 
       if (loadedData.length === 0) {
         throw new Error('Нет данных для выбранных тикеров');
@@ -240,10 +240,10 @@ export function MultiTickerPage() {
           monthlyContribution:
             monthlyContributionAmount > 0
               ? {
-                  amount: monthlyContributionAmount,
-                  dayOfMonth: monthlyContributionDay,
-                  startDate: optimizedData[0]?.data?.[0]?.date
-                }
+                amount: monthlyContributionAmount,
+                dayOfMonth: monthlyContributionDay,
+                startDate: optimizedData[0]?.data?.[0]?.date
+              }
               : null
         }
       );
@@ -279,25 +279,24 @@ export function MultiTickerPage() {
     }
   };
 
+  // Format currency with comma separators (e.g. $1,234,567.89)
   const formatCurrency = (value: number): string => {
-    if (Math.abs(value) >= 1_000_000) {
-      return `$${(value / 1_000_000).toFixed(2)}M`;
-    } else if (Math.abs(value) >= 1_000) {
-      return `$${(value / 1_000).toFixed(1)}K`;
-    } else {
-      return `$${value.toFixed(2)}`;
-    }
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    }).format(value);
   };
 
   return (
     <div className="space-y-6">
       {/* Заголовок и контролы */}
       <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
-        <div className="flex items-center justify-between mb-6">
+        <div className="mb-6">
           <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
             Несколько тикеров
           </h1>
-          <Settings className="w-6 h-6 text-gray-500" />
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
@@ -359,7 +358,7 @@ export function MultiTickerPage() {
           {/* Leverage */}
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Leverage: {(leveragePercent/100).toFixed(1)}:1
+              Leverage: {(leveragePercent / 100).toFixed(1)}:1
             </label>
             <select
               value={leveragePercent}
@@ -374,71 +373,10 @@ export function MultiTickerPage() {
             </select>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Ежемесячное пополнение, $
-            </label>
-            <input
-              type="number"
-              min={0}
-              step={100}
-              value={monthlyContributionAmount}
-              onChange={(e) => {
-                const value = Number(e.target.value);
-                setMonthlyContributionAmount(Number.isFinite(value) ? Math.max(0, value) : 0);
-              }}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
-            />
-            <div className="mt-3 grid grid-cols-1 sm:grid-cols-[auto,1fr] gap-2 text-xs text-gray-600 dark:text-gray-400">
-              <div>
-                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                  День месяца
-                </label>
-                <input
-                  type="number"
-                  min={1}
-                  max={28}
-                  value={monthlyContributionDay}
-                  onChange={(e) => {
-                    const value = Number(e.target.value);
-                    const normalized = Number.isFinite(value) ? Math.min(Math.max(Math.round(value), 1), 28) : 1;
-                    setMonthlyContributionDay(normalized);
-                  }}
-                  className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white px-2 py-1 text-gray-900 dark:bg-gray-700 dark:text-gray-100"
-                />
-              </div>
-              <div className="flex items-center rounded-md border border-blue-100 bg-blue-50 px-3 py-2 text-[11px] leading-4 text-blue-700 dark:border-blue-900/60 dark:bg-blue-950/30 dark:text-blue-200">
-                Пополнение становится доступно в торговый день, когда наступает {monthlyContributionDay}-е число месяца. Если торги не идут в этот день, взнос появится в ближайший торговый день.
-              </div>
-            </div>
-          </div>
+
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-          <div className="md:col-span-3">
-            <div className="rounded-md border border-gray-200 bg-gray-50 p-4 text-sm dark:border-gray-700 dark:bg-gray-800/60">
-              <div className="flex flex-wrap items-center justify-between gap-2 text-gray-700 dark:text-gray-300">
-                <div>
-                  <p className="font-medium text-gray-900 dark:text-gray-100">Текущие тикеры</p>
-                  <p className="font-mono text-sm">{tickers.join(', ') || '—'}</p>
-                </div>
-                <div className="text-right">
-                  <p>Торговое плечо: {(leveragePercent / 100).toFixed(1)}:1</p>
-                  <p>Максимум 1 позиция одновременно</p>
-                  <p>Ежемесячное пополнение: {monthlyContributionAmount > 0 ? formatCurrency(monthlyContributionAmount) : '—'}
-                    {monthlyContributionAmount > 0 && ` • ${monthlyContributionDay}-й день месяца`}
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex items-center justify-between">
-          <div className="text-sm text-gray-600 dark:text-gray-400">
-            <p>Тикеры: <span className="font-mono">{tickers.join(', ')}</span></p>
-            <p>Стратегия Single Position: одна позиция на весь депозит</p>
-          </div>
+        <div className="flex items-center justify-between mt-4">
 
           <button
             onClick={runBacktest}
@@ -455,7 +393,7 @@ export function MultiTickerPage() {
         <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
           Сводный график тикеров
         </h2>
-        <MultiTickerChart tickersData={tickersData} height={500} />
+        <MultiTickerChart tickersData={tickersData} trades={backtestResults?.trades || []} height={650} />
       </div>
 
       {/* Метрики доходности */}
@@ -528,11 +466,10 @@ export function MultiTickerPage() {
               <button
                 key={tab!.id}
                 onClick={() => setActiveTab(tab!.id)}
-                className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
-                  activeTab === tab!.id
-                    ? 'border-blue-500 text-blue-600 dark:text-blue-400'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
-                }`}
+                className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === tab!.id
+                  ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
+                  }`}
               >
                 {tab!.label}
               </button>
@@ -664,11 +601,10 @@ export function MultiTickerPage() {
                 <div className="flex flex-wrap items-center gap-2">
                   <button
                     onClick={() => setSelectedTradeTicker('all')}
-                    className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
-                      selectedTradeTicker === 'all'
-                        ? 'bg-blue-600 text-white shadow-sm'
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'
-                    }`}
+                    className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${selectedTradeTicker === 'all'
+                      ? 'bg-blue-600 text-white shadow-sm'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'
+                      }`}
                   >
                     Все ({backtestResults.trades.length})
                   </button>
@@ -678,11 +614,10 @@ export function MultiTickerPage() {
                       <button
                         key={tickerData.ticker}
                         onClick={() => setSelectedTradeTicker(tickerData.ticker)}
-                        className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
-                          selectedTradeTicker === tickerData.ticker
-                            ? 'bg-blue-600 text-white shadow-sm'
-                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'
-                        }`}
+                        className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${selectedTradeTicker === tickerData.ticker
+                          ? 'bg-blue-600 text-white shadow-sm'
+                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'
+                          }`}
                       >
                         {tickerData.ticker} ({tradesForTicker.length})
                       </button>
@@ -733,6 +668,50 @@ export function MultiTickerPage() {
 
             {activeTab === 'monthlyContribution' && monthlyContributionResults && (
               <div className="space-y-6">
+                {/* Настройки пополнения */}
+                <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 dark:border-blue-900/60 dark:bg-blue-950/30">
+                  <h4 className="text-sm font-semibold text-blue-800 dark:text-blue-200 mb-3">Настройки ежемесячного пополнения</h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-medium text-blue-700 dark:text-blue-300 mb-1">
+                        Сумма пополнения, $
+                      </label>
+                      <input
+                        type="number"
+                        min={0}
+                        step={100}
+                        value={monthlyContributionAmount}
+                        onChange={(e) => {
+                          const value = Number(e.target.value);
+                          setMonthlyContributionAmount(Number.isFinite(value) ? Math.max(0, value) : 0);
+                        }}
+                        className="w-full px-3 py-2 border border-blue-300 dark:border-blue-700 rounded-md text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-blue-700 dark:text-blue-300 mb-1">
+                        День месяца (1-28)
+                      </label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={28}
+                        value={monthlyContributionDay}
+                        onChange={(e) => {
+                          const value = Number(e.target.value);
+                          const normalized = Number.isFinite(value) ? Math.min(Math.max(Math.round(value), 1), 28) : 1;
+                          setMonthlyContributionDay(normalized);
+                        }}
+                        className="w-full px-3 py-2 border border-blue-300 dark:border-blue-700 rounded-md text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                      />
+                    </div>
+                  </div>
+                  <p className="mt-2 text-xs text-blue-600 dark:text-blue-300">
+                    Пополнение становится доступно в торговый день, когда наступает {monthlyContributionDay}-е число месяца.
+                    Для применения изменений запустите бэктест заново.
+                  </p>
+                </div>
+
                 <div className="flex flex-col gap-2">
                   <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
                     Сценарий с ежемесячными пополнениями

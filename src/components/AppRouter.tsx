@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { Settings, Menu, X } from 'lucide-react';
+import { Settings, Menu, X, Loader2 } from 'lucide-react';
 
 import { useAppStore } from '../stores';
 import { DataUpload } from './DataUpload';
@@ -16,6 +16,7 @@ import { Footer } from './Footer';
 import { ThemeToggle } from './ThemeToggle';
 import { Logo } from './Logo';
 import { API_BASE_URL } from '../lib/api';
+import { ToastProvider, BottomNav } from './ui';
 
 // App is now always served from root '/'
 
@@ -132,8 +133,12 @@ function ProtectedLayout() {
 
   if (checkingAuth) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-sm text-gray-500">Проверка авторизации…</div>
+      <div className="min-h-screen flex items-center justify-center flex-col gap-4 bg-gray-50 dark:bg-gray-900">
+        <Logo size="lg" showText={false} />
+        <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
+          <Loader2 className="w-5 h-5 animate-spin text-indigo-600" />
+          <span className="text-sm">Проверка авторизации…</span>
+        </div>
       </div>
     );
   }
@@ -144,8 +149,8 @@ function ProtectedLayout() {
   return (
     <div className="min-h-screen flex flex-col bg-gray-50 text-gray-800 dark:text-gray-100">
       {/* Skip to main content link */}
-      <a 
-        href="#main-content" 
+      <a
+        href="#main-content"
         className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:bg-blue-600 focus:text-white focus:px-4 focus:py-2 focus:rounded"
       >
         Перейти к основному содержимому
@@ -203,7 +208,7 @@ function ProtectedLayout() {
         )}
       </header>
 
-      <main id="main-content" className="flex-1 w-full px-4 sm:px-6 lg:px-8 pt-6 pb-24 safe-area-pb">
+      <main id="main-content" className="flex-1 w-full px-4 sm:px-6 lg:px-8 pt-6 pb-32 md:pb-24 safe-area-pb">
         <div className="mb-4">
           {/* Desktop navigation */}
           <nav className="hidden md:flex gap-2 flex-wrap">
@@ -216,6 +221,9 @@ function ProtectedLayout() {
         </div>
         <Outlet />
       </main>
+
+      {/* Bottom navigation for mobile */}
+      <BottomNav />
 
       <Footer apiBuildId={apiBuildId} />
     </div>
@@ -305,22 +313,24 @@ function LoginPage() {
 
 export default function AppRouter() {
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/login" element={<LoginPage />} />
-        <Route element={<ProtectedLayout />}>
-          <Route index element={<Navigate to="/data" replace />} />
-          <Route path="/data" element={<DataUpload />} />
-          <Route path="/enhance" element={<DataEnhancer />} />
-          <Route path="/results" element={<Results />} />
-          <Route path="/multi-ticker" element={<MultiTickerPage />} />
-          <Route path="/calendar" element={<CalendarPage />} />
-          <Route path="/split" element={<SplitsTab />} />
-          <Route path="/watches" element={<TelegramWatches />} />
-          <Route path="/settings" element={<AppSettings />} />
-        </Route>
-        <Route path="*" element={<Navigate to="/data" replace />} />
-      </Routes>
-    </BrowserRouter>
+    <ToastProvider>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+          <Route element={<ProtectedLayout />}>
+            <Route index element={<Navigate to="/data" replace />} />
+            <Route path="/data" element={<DataUpload />} />
+            <Route path="/enhance" element={<DataEnhancer />} />
+            <Route path="/results" element={<Results />} />
+            <Route path="/multi-ticker" element={<MultiTickerPage />} />
+            <Route path="/calendar" element={<CalendarPage />} />
+            <Route path="/split" element={<SplitsTab />} />
+            <Route path="/watches" element={<TelegramWatches />} />
+            <Route path="/settings" element={<AppSettings />} />
+          </Route>
+          <Route path="*" element={<Navigate to="/data" replace />} />
+        </Routes>
+      </BrowserRouter>
+    </ToastProvider>
   );
 }

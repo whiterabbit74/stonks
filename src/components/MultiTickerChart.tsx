@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { createChart, type IChartApi, type ISeriesApi, type UTCTimestamp } from 'lightweight-charts';
-import type { OHLCData } from '../types';
+import type { OHLCData, Trade } from '../types';
 import { logError } from '../lib/error-logger';
 
 interface TickerData {
@@ -11,10 +11,11 @@ interface TickerData {
 
 interface MultiTickerChartProps {
   tickersData: TickerData[];
+  trades?: Trade[];
   height?: number;
 }
 
-export function MultiTickerChart({ tickersData, height = 600 }: MultiTickerChartProps) {
+export function MultiTickerChart({ tickersData, trades = [], height = 600 }: MultiTickerChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRefsRef = useRef<Map<string, ISeriesApi<'Candlestick'>>>(new Map());
@@ -162,7 +163,7 @@ export function MultiTickerChart({ tickersData, height = 600 }: MultiTickerChart
             const close = Number(bar.close);
 
             if (!Number.isFinite(open) || !Number.isFinite(high) ||
-                !Number.isFinite(low) || !Number.isFinite(close)) {
+              !Number.isFinite(low) || !Number.isFinite(close)) {
               logError('chart', 'Invalid candle values', {
                 ticker: tickerData.ticker, idx, bar
               }, 'MultiTickerChart.setData');
@@ -179,6 +180,50 @@ export function MultiTickerChart({ tickersData, height = 600 }: MultiTickerChart
         try {
           series.setData(chartData);
           seriesRefsRef.current.set(tickerData.ticker, series);
+
+          // Add trade markers for this ticker
+          const tickerTrades = trades.filter(t =>
+            (t.context?.ticker || '').toUpperCase() === tickerData.ticker.toUpperCase()
+          );
+
+          if (tickerTrades.length > 0) {
+            const markers = tickerTrades.flatMap(trade => {
+              const result = [];
+
+              // Entry marker
+              if (trade.entryDate) {
+                const entryTime = Math.floor(new Date(trade.entryDate).getTime() / 1000) as UTCTimestamp;
+                result.push({
+                  time: entryTime,
+                  position: 'belowBar' as const,
+                  color: '#10B981',
+                  shape: 'arrowUp' as const,
+                  text: `Buy $${trade.entryPrice.toFixed(2)}`
+                });
+              }
+
+              // Exit marker
+              if (trade.exitDate) {
+                const exitTime = Math.floor(new Date(trade.exitDate).getTime() / 1000) as UTCTimestamp;
+                const pnl = trade.pnl ?? 0;
+                result.push({
+                  time: exitTime,
+                  position: 'aboveBar' as const,
+                  color: pnl >= 0 ? '#10B981' : '#EF4444',
+                  shape: 'arrowDown' as const,
+                  text: `Sell ${pnl >= 0 ? '+' : ''}$${pnl.toFixed(0)}`
+                });
+              }
+
+              return result;
+            });
+
+            if (markers.length > 0) {
+              // Sort markers by time
+              markers.sort((a, b) => (a.time as number) - (b.time as number));
+              series.setMarkers(markers);
+            }
+          }
         } catch (e) {
           logError('chart', 'series.setData failed', {
             ticker: tickerData.ticker,
