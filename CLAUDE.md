@@ -98,6 +98,7 @@ The application uses a single global store in `src/stores/index.ts` (602 lines):
 │   │   ├── api.ts               # API client with retry/timeout
 │   │   ├── strategy.ts          # Strategy templates
 │   │   ├── utils.ts             # Utility functions
+│   │   ├── date-utils.ts        # TradingDate utilities (YYYY-MM-DD format)
 │   │   ├── error-logger.ts      # Client-side error logging
 │   │   └── [additional utilities]
 │   ├── stores/                  # State management
@@ -448,11 +449,33 @@ set(state => ({
 
 ## Data Models
 
+### TradingDate System (`src/lib/date-utils.ts`)
+
+All trading dates use **`TradingDate`** — a branded `string` in `YYYY-MM-DD` format. This eliminates timezone-related bugs that occur with JavaScript `Date` objects.
+
+```typescript
+// TradingDate is a string branded type
+type TradingDate = string & { readonly __brand: 'TradingDate' };
+
+// Key functions in date-utils.ts:
+toTradingDate(input: string | Date): TradingDate  // Convert to TradingDate
+isTradingDate(value: string): boolean              // Validate format
+formatTradingDateDisplay(d: TradingDate): string   // '15 дек 2024'
+toChartTimestamp(d: TradingDate): UTCTimestamp     // For lightweight-charts
+daysBetweenTradingDates(a: TradingDate, b: TradingDate): number
+compareTradingDates(a: TradingDate, b: TradingDate): -1 | 0 | 1
+getNYSECurrentDate(): TradingDate                  // Current NYSE trading date
+```
+
+**Important:** Never use `Date.getTime()`, `.toISOString()`, or `new Date()` for trading date comparisons. Always use `date-utils.ts` functions.
+
 ### Core Types (`src/types/index.ts`)
 
 ```typescript
+import type { TradingDate } from '../lib/date-utils';
+
 interface OHLCData {
-  date: Date;
+  date: TradingDate;  // YYYY-MM-DD string
   open: number;
   high: number;
   low: number;
@@ -480,8 +503,8 @@ interface BacktestResult {
 
 interface Trade {
   id: string;
-  entryDate: Date;
-  exitDate: Date;
+  entryDate: TradingDate;  // YYYY-MM-DD string
+  exitDate: TradingDate;   // YYYY-MM-DD string
   entryPrice: number;
   exitPrice: number;
   quantity: number;
@@ -490,6 +513,11 @@ interface Trade {
   duration: number;
   exitReason: string;
   context?: TradeContext;
+}
+
+interface EquityPoint {
+  date: TradingDate;  // YYYY-MM-DD string
+  value: number;
 }
 ```
 
