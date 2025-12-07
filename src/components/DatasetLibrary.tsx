@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Database, Download, Trash2, Calendar, ServerOff, RefreshCw, Edit } from 'lucide-react';
+import { Database, Download, Trash2, Calendar, ServerOff, RefreshCw, Edit, List, LayoutGrid } from 'lucide-react';
 import { useAppStore } from '../stores';
 import { createStrategyFromTemplate, STRATEGY_TEMPLATES } from '../lib/strategy';
 import { DatasetAPI } from '../lib/api';
 import type { SavedDataset } from '../types';
 import { ConfirmModal } from './ConfirmModal';
 import { useNavigate } from 'react-router-dom';
+import { getTickerInfo } from '../lib/ticker-data';
 
 export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {}) {
   const navigate = useNavigate();
@@ -24,6 +25,9 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmTarget, setConfirmTarget] = useState<string | null>(null);
   const [loadingId, setLoadingId] = useState<string | null>(null);
+
+  // Состояние для вида отображения (list = полный, compact = сетка)
+  const [viewMode, setViewMode] = useState<'list' | 'compact'>('list');
 
   // Состояние для фильтра по тегам
   const [selectedTag, setSelectedTag] = useState<string>('top');
@@ -212,6 +216,29 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
             )}
           </div>
 
+          {/* View Toggle */}
+          <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800 rounded-lg p-1">
+            <button
+              onClick={() => setViewMode('list')}
+              className={`p-1.5 rounded transition-colors ${viewMode === 'list'
+                ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 shadow-sm'
+                : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+                }`}
+              title="Список"
+            >
+              <List className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => setViewMode('compact')}
+              className={`p-1.5 rounded transition-colors ${viewMode === 'compact'
+                ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 shadow-sm'
+                : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+                }`}
+              title="Компактный вид"
+            >
+              <LayoutGrid className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         {/* Row 3: Filter Buttons - Mobile Responsive */}
@@ -275,7 +302,8 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
           </div>
         )}
 
-        {filteredDatasets.map((dataset: Omit<SavedDataset, 'data'>) => (
+        {/* List View */}
+        {viewMode === 'list' && filteredDatasets.map((dataset: Omit<SavedDataset, 'data'>) => (
           <DatasetCard
             key={dataset.name}
             dataset={dataset}
@@ -287,7 +315,6 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
             onEdit={(e) => handleEditDataset(dataset, e)}
             onRefresh={async (e) => {
               e.stopPropagation();
-              // Единый ID = тикер в верхнем регистре
               const id = (dataset.ticker || (dataset as unknown as { id?: string }).id || dataset.name).toString().toUpperCase();
               try {
                 setRefreshingId(id);
@@ -302,6 +329,21 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
             refreshing={refreshingId === ((dataset.ticker || (dataset as unknown as { id?: string }).id || dataset.name).toString().toUpperCase())}
           />
         ))}
+
+        {/* Compact Grid View */}
+        {viewMode === 'compact' && (
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2">
+            {filteredDatasets.map((dataset: Omit<SavedDataset, 'data'>) => (
+              <CompactDatasetCard
+                key={dataset.name}
+                dataset={dataset}
+                isActive={currentDataset?.ticker === dataset.ticker}
+                onLoad={() => handleLoadDataset(((dataset as unknown as { id?: string }).id || dataset.ticker || dataset.name).toString())}
+                loading={loadingId === dataset.name}
+              />
+            ))}
+          </div>
+        )}
       </div>
 
       <ConfirmModal
@@ -416,7 +458,11 @@ function DatasetCard({ dataset, isActive, onLoad, onDelete, onExport, onEdit, on
     }
     return new Date(dateString).toISOString().slice(0, 10).split('-').reverse().join('.');
   };
-  const label = dataset.companyName || dataset.ticker;
+
+  // Get company name from dataset or look up from ticker-data
+  const tickerInfo = dataset.ticker ? getTickerInfo(dataset.ticker) : undefined;
+  const companyName = dataset.companyName || tickerInfo?.name;
+  const label = companyName || dataset.ticker;
 
   return (
     <div
@@ -431,7 +477,7 @@ function DatasetCard({ dataset, isActive, onLoad, onDelete, onExport, onEdit, on
         <div>
           <div className="flex items-center gap-2 mb-1">
             <span className="font-medium text-gray-900 dark:text-gray-100">{label}</span>
-            {dataset.companyName && (
+            {companyName && (
               <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded font-mono dark:bg-blue-950/30 dark:text-blue-200 dark:border dark:border-blue-900/40">
                 {dataset.ticker}
               </span>
@@ -514,5 +560,71 @@ function DatasetCard({ dataset, isActive, onLoad, onDelete, onExport, onEdit, on
         </div>
       </div>
     </div>
+  );
+}
+
+// Compact card for grid view
+interface CompactDatasetCardProps {
+  dataset: Omit<SavedDataset, 'data'>;
+  isActive: boolean;
+  onLoad: () => void;
+  loading?: boolean;
+}
+
+function CompactDatasetCard({ dataset, isActive, onLoad, loading }: CompactDatasetCardProps) {
+  // Get company name from dataset or look up from ticker-data
+  const tickerInfo = dataset.ticker ? getTickerInfo(dataset.ticker) : undefined;
+  const companyName = dataset.companyName || tickerInfo?.name;
+
+  return (
+    <button
+      onClick={loading ? undefined : onLoad}
+      disabled={loading}
+      className={`relative p-3 rounded-lg border text-left transition-all duration-200 ${isActive
+        ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200 dark:border-blue-400 dark:bg-blue-950/30 dark:ring-blue-900/50'
+        : 'border-gray-200 hover:border-blue-300 hover:bg-blue-50/50 dark:border-gray-700 dark:hover:border-blue-800 dark:bg-gray-900 dark:hover:bg-blue-950/20'
+        } ${loading ? 'opacity-50 cursor-wait' : 'cursor-pointer'}`}
+    >
+      {/* Active indicator */}
+      {isActive && (
+        <div className="absolute top-1.5 right-1.5 w-2 h-2 bg-green-500 rounded-full" />
+      )}
+
+      {/* Loading indicator */}
+      {loading && (
+        <div className="absolute inset-0 flex items-center justify-center bg-white/50 dark:bg-gray-900/50 rounded-lg">
+          <RefreshCw className="w-4 h-4 animate-spin text-blue-600" />
+        </div>
+      )}
+
+      {/* Ticker */}
+      <div className="font-mono font-semibold text-sm text-gray-900 dark:text-gray-100">
+        {dataset.ticker}
+      </div>
+
+      {/* Company name (truncated) */}
+      {companyName && (
+        <div className="text-xs text-gray-500 dark:text-gray-400 truncate mt-0.5" title={companyName}>
+          {companyName}
+        </div>
+      )}
+
+      {/* Tags indicator */}
+      {dataset.tag && (
+        <div className="flex items-center gap-1 mt-1.5">
+          {dataset.tag.split(',').slice(0, 2).map((tag, index) => (
+            <span
+              key={index}
+              className="px-1.5 py-0.5 bg-gray-100 text-gray-600 text-[10px] rounded dark:bg-gray-800 dark:text-gray-400"
+            >
+              {tag.trim()}
+            </span>
+          ))}
+          {dataset.tag.split(',').length > 2 && (
+            <span className="text-[10px] text-gray-400">+{dataset.tag.split(',').length - 2}</span>
+          )}
+        </div>
+      )}
+    </button>
   );
 }
