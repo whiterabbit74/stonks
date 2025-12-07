@@ -8,6 +8,8 @@ import type {
   Condition
 } from '../types';
 import type { IndicatorCondition } from '../types';
+import type { TradingDate } from './date-utils';
+import { isValidTradingDate, daysBetweenTradingDates, toChartTimestamp, formatTradingDateDisplay } from './date-utils';
 import { IndicatorEngine } from './indicators';
 import { MetricsCalculator } from './metrics';
 import { CleanBacktestEngine } from './clean-backtest';
@@ -17,7 +19,7 @@ import { CleanBacktestEngine } from './clean-backtest';
  */
 interface Position {
   id: string;
-  entryDate: Date;
+  entryDate: TradingDate; // Use TradingDate string
   entryPrice: number;
   quantity: number;
   entryIndex: number;
@@ -31,7 +33,7 @@ interface Position {
  */
 interface Signal {
   type: 'entry' | 'exit';
-  date: Date;
+  date: TradingDate; // Use TradingDate string
   price: number;
   index: number;
   reason?: string;
@@ -124,7 +126,7 @@ export class BacktestEngine {
     const lowThreshold = this.strategy.parameters.lowIBS || 0.1;
 
     if (this.evaluateConditions(this.strategy.entryConditions, index)) {
-      console.log(`🟢 ENTRY SIGNAL: IBS=${ibsValue?.toFixed(3)} < ${lowThreshold} at ${bar.date.toISOString().split('T')[0]}`);
+      console.log(`🟢 ENTRY SIGNAL: IBS=${ibsValue?.toFixed(3)} < ${lowThreshold} on ${bar.date}`);
       this.enterPosition(index, bar);
     }
   }
@@ -156,7 +158,7 @@ export class BacktestEngine {
       }
       // 2. Проверяем максимальное время удержания
       else if (!exitReason && this.currentPosition.maxHoldDays) {
-        const daysDiff = Math.floor((bar.date.getTime() - this.currentPosition.entryDate.getTime()) / (1000 * 60 * 60 * 24));
+        const daysDiff = daysBetweenTradingDates(this.currentPosition.entryDate, bar.date);
         if (daysDiff >= this.currentPosition.maxHoldDays) {
           exitReason = 'max_hold_days';
         }
@@ -175,7 +177,7 @@ export class BacktestEngine {
         exitPrice = this.currentPosition.takeProfit;
       }
       else if (this.currentPosition.maxHoldDays) {
-        const daysDiff = Math.floor((bar.date.getTime() - this.currentPosition.entryDate.getTime()) / (1000 * 60 * 60 * 24));
+        const daysDiff = daysBetweenTradingDates(this.currentPosition.entryDate, bar.date);
         if (daysDiff >= this.currentPosition.maxHoldDays) {
           exitReason = 'max_hold_days';
         }
@@ -238,7 +240,7 @@ export class BacktestEngine {
     this.currentCapital -= totalCost;
 
     const pos = this.currentPosition!;
-    console.log(`🟢 ENTERED POSITION: ${quantity} shares at $${slippageAdjustedPrice.toFixed(2)}, date: ${bar.date.toISOString().split('T')[0]}`);
+    console.log(`🟢 ENTERED POSITION: ${quantity} shares at $${slippageAdjustedPrice.toFixed(2)}, date: ${bar.date}`);
     console.log(`📊 Position details: maxHoldDays=${pos.maxHoldDays}, stopLoss=$${pos.stopLoss?.toFixed(2)}, takeProfit=$${pos.takeProfit?.toFixed(2)}`);
 
     // Record signal
@@ -279,7 +281,7 @@ export class BacktestEngine {
     const pnlPercent = (pnl / initialInvestment) * 100;
 
     // Calculate trade duration
-    const duration = Math.floor((bar.date.getTime() - this.currentPosition.entryDate.getTime()) / (1000 * 60 * 60 * 24));
+    const duration = daysBetweenTradingDates(this.currentPosition.entryDate, bar.date);
 
     // Debug: проверяем причину выхода и инвестиции
     console.log(`🔚 TRADE: ${duration} days, Reason: ${exitReason}, Investment: $${initialInvestment.toFixed(2)}, P&L: $${pnl.toFixed(2)}, Capital before: $${this.currentCapital.toFixed(2)}`);
@@ -752,10 +754,11 @@ export class BacktestEngine {
       throw new Error('Initial capital must be greater than 0');
     }
 
-    // Validate data integrity
+    // Validate data integrity - now accepts TradingDate strings
     for (let i = 0; i < this.data.length; i++) {
       const bar = this.data[i];
-      if (!(bar.date instanceof Date) || bar.open == null || bar.high == null || bar.low == null || bar.close == null) {
+      const hasValidDate = typeof bar.date === 'string' ? isValidTradingDate(bar.date) : (bar.date instanceof Date && !isNaN((bar.date as Date).getTime()));
+      if (!hasValidDate || bar.open == null || bar.high == null || bar.low == null || bar.close == null) {
         throw new Error(`Invalid data at index ${i}: missing required fields`);
       }
 
@@ -773,11 +776,11 @@ export class BacktestEngine {
     if (this.data.length >= 5) {
       const intervals = [];
       for (let i = 1; i < Math.min(10, this.data.length); i++) {
-        const daysDiff = Math.floor((this.data[i].date.getTime() - this.data[i - 1].date.getTime()) / (1000 * 60 * 60 * 24));
+        const daysDiff = daysBetweenTradingDates(this.data[i - 1].date, this.data[i].date);
         intervals.push(daysDiff);
       }
       console.log(`🗓️ DATA INTERVALS (days between bars):`, intervals);
-      console.log(`📅 First 5 dates:`, this.data.slice(0, 5).map(d => d.date.toISOString().split('T')[0]));
+      console.log(`📅 First 5 dates:`, this.data.slice(0, 5).map(d => d.date));
 
       const avgInterval = intervals.reduce((sum, val) => sum + val, 0) / intervals.length;
       console.log(`📊 Average interval: ${avgInterval.toFixed(1)} days`);
@@ -832,7 +835,7 @@ export class BacktestEngine {
    */
   private generateChartData(): { time: number; open: number; high: number; low: number; close: number }[] {
     return this.data.map((bar) => ({
-      time: Math.floor(bar.date.getTime() / 1000),
+      time: toChartTimestamp(bar.date),
       open: bar.open,
       high: bar.high,
       low: bar.low,

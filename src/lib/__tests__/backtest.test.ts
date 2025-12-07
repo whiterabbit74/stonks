@@ -9,15 +9,15 @@ describe('BacktestEngine', () => {
   let strategy: Strategy;
 
   beforeEach(() => {
-    // Use real test data based on Google stock data
+    // Use real test data based on Google stock data - dates are already YYYY-MM-DD strings
     sampleData = testData.data.map(bar => ({
-      date: new Date(bar.date),
-      open: bar.open,
-      high: bar.high,
-      low: bar.low,
-      close: bar.close,
-      volume: 1000 // Add volume for compatibility
-    }));
+      date: String(bar.date).split('T')[0], // Ensure YYYY-MM-DD string
+      open: Number(bar.open),
+      high: Number(bar.high),
+      low: Number(bar.low),
+      close: Number(bar.close),
+      volume: Number(bar.volume || 1000)
+    })) as OHLCData[];
 
     // Create IBS Mean Reversion strategy
     const template = {
@@ -67,10 +67,11 @@ describe('BacktestEngine', () => {
     });
 
     it('should validate data integrity', () => {
-      const invalidData = [
-        { date: new Date('2023-12-01'), open: 100, high: 90, low: 110, close: 105, volume: 1000 } // high < low
+      const invalidData: OHLCData[] = [
+        { date: '2023-01-01', open: 100, high: 105, low: 95, close: 100, volume: 1000 },
+        { date: '2023-01-02', open: 100, high: 105, low: 95, close: 110, volume: 1000 } // close > high
       ];
-      
+
       expect(() => {
         new BacktestEngine(invalidData, strategy);
       }).toThrow('price relationships are incorrect');
@@ -95,15 +96,15 @@ describe('BacktestEngine', () => {
       const result = engine.runBacktest();
 
       expect(result.equity).toHaveLength(sampleData.length);
-      
+
       // First equity point should equal initial capital
       expect(result.equity[0].value).toBe(strategy.riskManagement.initialCapital);
-      
+
       // All equity points should have valid values
       result.equity.forEach(point => {
         expect(point.value).toBeGreaterThan(0);
         expect(point.drawdown).toBeGreaterThanOrEqual(0);
-        expect(point.date).toBeInstanceOf(Date);
+        expect(typeof point.date).toBe('string'); // TradingDate is a string
       });
     });
 
@@ -112,7 +113,7 @@ describe('BacktestEngine', () => {
       const result = engine.runBacktest();
 
       expect(result.chartData).toHaveLength(sampleData.length);
-      
+
       result.chartData.forEach(candle => {
         expect(candle.time).toBeTypeOf('number');
         expect(candle.open).toBeTypeOf('number');
@@ -155,11 +156,11 @@ describe('BacktestEngine', () => {
 
       // Should have at least one trade
       expect(result.trades.length).toBeGreaterThan(0);
-      
+
       // First trade should be an entry
       const firstTrade = result.trades[0];
-      expect(firstTrade.entryDate).toBeInstanceOf(Date);
-      expect(firstTrade.exitDate).toBeInstanceOf(Date);
+      expect(typeof firstTrade.entryDate).toBe('string'); // TradingDate is a string
+      expect(typeof firstTrade.exitDate).toBe('string');
       expect(firstTrade.entryPrice).toBeGreaterThan(0);
       expect(firstTrade.exitPrice).toBeGreaterThan(0);
       expect(firstTrade.quantity).toBeGreaterThan(0);
@@ -174,7 +175,7 @@ describe('BacktestEngine', () => {
 
       // Should have at least one trade
       expect(result.trades.length).toBeGreaterThan(0);
-      
+
       const trade = result.trades[0];
       expect(trade.exitReason).toBe('ibs_signal');
     });
@@ -188,7 +189,7 @@ describe('BacktestEngine', () => {
 
       // Should have at least one trade
       expect(result.trades.length).toBeGreaterThan(0);
-      
+
       const trade = result.trades[0];
       expect(trade.exitReason).toBe('ibs_signal'); // Will exit by IBS signal, not maxHoldDays
       expect(trade.duration).toBeGreaterThan(0);
@@ -212,7 +213,7 @@ describe('BacktestEngine', () => {
         const trade = result.trades[0];
         const expectedInvestment = (strategy.riskManagement.initialCapital * 0.5);
         const actualInvestment = trade.quantity * trade.entryPrice;
-        
+
         // Should be close to 50% of capital (within 10% tolerance)
         expect(actualInvestment).toBeLessThanOrEqual(expectedInvestment * 1.1);
       }

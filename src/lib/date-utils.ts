@@ -64,14 +64,18 @@ export function formatTradingDateDisplay(date: TradingDate, locale: 'ru' | 'en' 
 }
 
 /**
- * Convert TradingDate to UTCTimestamp for lightweight-charts
+ * Convert TradingDate (or any date-like value) to UTCTimestamp for lightweight-charts
  * Uses midday UTC (12:00) for stability across timezones
  */
-export function toChartTimestamp(date: TradingDate): UTCTimestamp {
-    if (!isValidTradingDate(date)) {
+export function toChartTimestamp(date: TradingDate | string | Date): UTCTimestamp {
+    // First normalize to TradingDate format
+    let tradingDate: TradingDate;
+    try {
+        tradingDate = toTradingDate(date);
+    } catch {
         throw new Error(`Invalid TradingDate for chart: ${date}`);
     }
-    const [y, m, d] = date.split('-').map(Number);
+    const [y, m, d] = tradingDate.split('-').map(Number);
     // Midday UTC ensures consistent display regardless of user's timezone
     return Math.floor(Date.UTC(y, m - 1, d, 12, 0, 0) / 1000) as UTCTimestamp;
 }

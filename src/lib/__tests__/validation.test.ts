@@ -20,7 +20,7 @@ describe('Validation Module', () => {
     it('should validate correct OHLC data', () => {
       const validData: Partial<OHLCData>[] = [
         {
-          date: new Date('2024-01-01'),
+          date: '2024-01-01',
           open: 100,
           high: 110,
           low: 90,
@@ -28,7 +28,7 @@ describe('Validation Module', () => {
           volume: 1000
         },
         {
-          date: new Date('2024-01-02'),
+          date: '2024-01-02',
           open: 105,
           high: 115,
           low: 95,
@@ -46,7 +46,7 @@ describe('Validation Module', () => {
     it('should warn about invalid prices', () => {
       const invalidData: Partial<OHLCData>[] = [
         {
-          date: new Date('2024-01-01'),
+          date: '2024-01-01',
           open: 100,
           high: 90, // High less than open
           low: 95,
@@ -64,7 +64,7 @@ describe('Validation Module', () => {
     it('should accept data with negative prices (no specific negative price validation)', () => {
       const invalidData: Partial<OHLCData>[] = [
         {
-          date: new Date('2024-01-01'),
+          date: '2024-01-01',
           open: -100, // Negative price - but valid number
           high: 110,
           low: 90,
@@ -112,7 +112,7 @@ describe('Validation Module', () => {
     it('should handle missing required fields', () => {
       const invalidData: Partial<OHLCData>[] = [
         {
-          date: new Date('2024-01-01'),
+          date: '2024-01-01',
           // Missing open, high, low, close
           volume: 1000
         }

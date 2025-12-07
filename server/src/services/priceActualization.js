@@ -6,7 +6,7 @@
  */
 const fs = require('fs-extra');
 const { getApiConfig, PRICE_ACTUALIZATION_REQUEST_DELAY_MS, PRICE_ACTUALIZATION_DELAY_JITTER_MS, DATASETS_DIR } = require('../config');
-const { getSettings } = require('./settings');
+const { readSettings } = require('./settings');
 const { resolveDatasetFilePathById, writeDatasetToTickerFile } = require('./datasets');
 const { toSafeTicker } = require('../utils/helpers');
 const { fetchFromAlphaVantage } = require('../providers/alphaVantage');
@@ -211,7 +211,7 @@ async function runPriceActualization(options = {}) {
     const todayKey = etKeyYMD(nowEt);
 
     // Get configured provider
-    const settings = getSettings();
+    const settings = await readSettings();
     const provider = settings.resultsRefreshProvider || 'finnhub';
 
     // Check if we should run

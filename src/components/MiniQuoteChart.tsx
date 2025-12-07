@@ -13,7 +13,7 @@ interface MiniQuoteChartProps {
 
 export function MiniQuoteChart({ history, today, trades, highIBS, isOpenPosition, entryPrice }: MiniQuoteChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-    const chartRef = useRef<IChartApi | null>(null);
+  const chartRef = useRef<IChartApi | null>(null);
   const [isDark, setIsDark] = useState<boolean>(() => typeof document !== 'undefined' ? document.documentElement.classList.contains('dark') : false);
 
   useEffect(() => {
@@ -64,11 +64,11 @@ export function MiniQuoteChart({ history, today, trades, highIBS, isOpenPosition
     try { chart.priceScale('right').applyOptions({ scaleMargins: { top: 0.15, bottom: 0.15 } }); } catch { /* ignore */ }
 
     // Build last 8 candles: 7 последних из истории + сегодняшняя синтетическая (если есть)
-    const sorted = [...history].sort((a, b) => a.date.getTime() - b.date.getTime());
+    const sorted = [...history].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
     const historyCount = hasToday ? 7 : 8;
     const lastHistory = sorted.slice(-historyCount);
     const candles: { time: UTCTimestamp; open: number; high: number; low: number; close: number }[] = lastHistory.map(b => ({
-      time: Math.floor(b.date.getTime() / 1000) as UTCTimestamp,
+      time: Math.floor(new Date(b.date).getTime() / 1000) as UTCTimestamp,
       open: b.open, high: b.high, low: b.low, close: b.close,
     }));
     if (hasToday) {
@@ -96,8 +96,8 @@ export function MiniQuoteChart({ history, today, trades, highIBS, isOpenPosition
     const maxTime = candles.length ? (candles[candles.length - 1].time as number) : 0;
     const markers: Array<{ time: UTCTimestamp; position: 'belowBar' | 'aboveBar'; color: string; shape: 'arrowUp' | 'arrowDown'; text: string }> = [];
     trades.forEach(t => {
-      const entryTime = Math.floor(t.entryDate.getTime() / 1000) as UTCTimestamp;
-      const exitTime = Math.floor(t.exitDate.getTime() / 1000) as UTCTimestamp;
+      const entryTime = Math.floor(new Date(t.entryDate).getTime() / 1000) as UTCTimestamp;
+      const exitTime = Math.floor(new Date(t.exitDate).getTime() / 1000) as UTCTimestamp;
       if ((entryTime as number) >= minTime && (entryTime as number) <= maxTime) {
         markers.push({ time: entryTime, position: 'belowBar', color: 'rgba(5,150,105,0.65)', shape: 'arrowUp', text: '' });
       }

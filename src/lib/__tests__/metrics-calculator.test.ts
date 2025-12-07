@@ -11,12 +11,12 @@ describe('MetricsCalculator - Critical Calculations', () => {
   beforeEach(() => {
     initialCapital = 10000;
 
-    // Create realistic trades
+    // Create realistic trades with TradingDate strings
     sampleTrades = [
       {
         id: 'trade-1',
-        entryDate: new Date('2023-12-01'),
-        exitDate: new Date('2023-12-03'),
+        entryDate: '2023-12-01',
+        exitDate: '2023-12-03',
         entryPrice: 100,
         exitPrice: 105,
         quantity: 100,
@@ -31,8 +31,8 @@ describe('MetricsCalculator - Critical Calculations', () => {
       },
       {
         id: 'trade-2',
-        entryDate: new Date('2023-12-04'),
-        exitDate: new Date('2023-12-06'),
+        entryDate: '2023-12-04',
+        exitDate: '2023-12-06',
         entryPrice: 105,
         exitPrice: 98,
         quantity: 100,
@@ -47,8 +47,8 @@ describe('MetricsCalculator - Critical Calculations', () => {
       },
       {
         id: 'trade-3',
-        entryDate: new Date('2023-12-07'),
-        exitDate: new Date('2023-12-09'),
+        entryDate: '2023-12-07',
+        exitDate: '2023-12-09',
         entryPrice: 98,
         exitPrice: 102,
         quantity: 100,
@@ -61,33 +61,33 @@ describe('MetricsCalculator - Critical Calculations', () => {
           currentCapitalAfterExit: 10200
         }
       }
-    ];
+    ] as Trade[];
 
-    // Create realistic equity curve
+    // Create realistic equity curve with TradingDate strings
     sampleEquity = [
-      { date: new Date('2023-12-01'), value: 10000, drawdown: 0 },
-      { date: new Date('2023-12-02'), value: 10000, drawdown: 0 },
-      { date: new Date('2023-12-03'), value: 10500, drawdown: 0 },
-      { date: new Date('2023-12-04'), value: 10500, drawdown: 0 },
-      { date: new Date('2023-12-05'), value: 10500, drawdown: 0 },
-      { date: new Date('2023-12-06'), value: 9800, drawdown: 6.67 },
-      { date: new Date('2023-12-07'), value: 9800, drawdown: 6.67 },
-      { date: new Date('2023-12-08'), value: 9800, drawdown: 6.67 },
-      { date: new Date('2023-12-09'), value: 10200, drawdown: 0 }
-    ];
+      { date: '2023-12-01', value: 10000, drawdown: 0 },
+      { date: '2023-12-02', value: 10000, drawdown: 0 },
+      { date: '2023-12-03', value: 10500, drawdown: 0 },
+      { date: '2023-12-04', value: 10500, drawdown: 0 },
+      { date: '2023-12-05', value: 10500, drawdown: 0 },
+      { date: '2023-12-06', value: 9800, drawdown: 6.67 },
+      { date: '2023-12-07', value: 9800, drawdown: 6.67 },
+      { date: '2023-12-08', value: 9800, drawdown: 6.67 },
+      { date: '2023-12-09', value: 10200, drawdown: 0 }
+    ] as EquityPoint[];
 
-    // Create market data
+    // Create market data with TradingDate strings
     sampleMarketData = [
-      { date: new Date('2023-12-01'), open: 100, high: 102, low: 99, close: 101, volume: 1000 },
-      { date: new Date('2023-12-02'), open: 101, high: 103, low: 100, close: 102, volume: 1100 },
-      { date: new Date('2023-12-03'), open: 102, high: 106, low: 101, close: 105, volume: 1200 },
-      { date: new Date('2023-12-04'), open: 105, high: 106, low: 104, close: 105, volume: 1000 },
-      { date: new Date('2023-12-05'), open: 105, high: 106, low: 103, close: 104, volume: 900 },
-      { date: new Date('2023-12-06'), open: 104, high: 105, low: 97, close: 98, volume: 1500 },
-      { date: new Date('2023-12-07'), open: 98, high: 99, low: 97, close: 98, volume: 800 },
-      { date: new Date('2023-12-08'), open: 98, high: 100, low: 97, close: 99, volume: 900 },
-      { date: new Date('2023-12-09'), open: 99, high: 103, low: 98, close: 102, volume: 1100 }
-    ];
+      { date: '2023-12-01', open: 100, high: 102, low: 99, close: 101, volume: 1000 },
+      { date: '2023-12-02', open: 101, high: 103, low: 100, close: 102, volume: 1100 },
+      { date: '2023-12-03', open: 102, high: 106, low: 101, close: 105, volume: 1200 },
+      { date: '2023-12-04', open: 105, high: 106, low: 104, close: 105, volume: 1000 },
+      { date: '2023-12-05', open: 105, high: 106, low: 103, close: 104, volume: 900 },
+      { date: '2023-12-06', open: 104, high: 105, low: 97, close: 98, volume: 1500 },
+      { date: '2023-12-07', open: 98, high: 99, low: 97, close: 98, volume: 800 },
+      { date: '2023-12-08', open: 98, high: 100, low: 97, close: 99, volume: 900 },
+      { date: '2023-12-09', open: 99, high: 103, low: 98, close: 102, volume: 1100 }
+    ] as OHLCData[];
   });
 
   describe('total return calculation', () => {
@@ -161,9 +161,9 @@ describe('MetricsCalculator - Critical Calculations', () => {
     });
 
     it('should handle 100% drawdown', () => {
-      const totalLossEquity = [
-        { date: new Date('2023-12-01'), value: 10000, drawdown: 0 },
-        { date: new Date('2023-12-02'), value: 0, drawdown: 100 }
+      const totalLossEquity: EquityPoint[] = [
+        { date: '2023-12-01', value: 10000, drawdown: 0 },
+        { date: '2023-12-02', value: 0, drawdown: 100 }
       ];
 
       const calculator = new MetricsCalculator(sampleTrades, totalLossEquity, initialCapital);
@@ -334,9 +334,10 @@ describe('MetricsCalculator - Critical Calculations', () => {
     });
 
     it('should handle zero max drawdown', () => {
-      const noDrawdownEquity = sampleEquity.map(point => ({
+      const noDrawdownEquity = sampleEquity.map((point, index) => ({
         ...point,
-        value: Math.max(point.value, 10000) // No drawdown
+        value: 10000 * (1 + index * 0.01), // Monotonically increasing
+        drawdown: 0
       }));
 
       const calculator = new MetricsCalculator(sampleTrades, noDrawdownEquity, initialCapital);
@@ -376,15 +377,15 @@ describe('MetricsCalculator - Critical Calculations', () => {
     });
 
     it('should handle trades on same day', () => {
-      const sameDayTrades = [
+      const sameDayTrades: Trade[] = [
         {
           ...sampleTrades[0],
-          exitDate: new Date('2023-12-03')
+          exitDate: '2023-12-03'
         },
         {
           ...sampleTrades[1],
-          entryDate: new Date('2023-12-03'),
-          exitDate: new Date('2023-12-03'),
+          entryDate: '2023-12-03',
+          exitDate: '2023-12-03',
           pnl: 200
         }
       ];

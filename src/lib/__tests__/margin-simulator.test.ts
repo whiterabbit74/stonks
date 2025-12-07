@@ -11,16 +11,16 @@ describe('MarginSimulator Calculations', () => {
   beforeEach(() => {
     // Create realistic equity curve
     sampleEquity = [
-      { date: new Date('2023-12-01'), value: 10000, drawdown: 0 },
-      { date: new Date('2023-12-02'), value: 10100, drawdown: 0 },
-      { date: new Date('2023-12-03'), value: 10200, drawdown: 0 },
-      { date: new Date('2023-12-04'), value: 9900, drawdown: 2.97 },
-      { date: new Date('2023-12-05'), value: 9800, drawdown: 3.96 },
-      { date: new Date('2023-12-06'), value: 10300, drawdown: 0 },
-      { date: new Date('2023-12-07'), value: 10500, drawdown: 0 },
-      { date: new Date('2023-12-08'), value: 10200, drawdown: 2.86 },
-      { date: new Date('2023-12-09'), value: 10800, drawdown: 0 },
-      { date: new Date('2023-12-10'), value: 11000, drawdown: 0 }
+      { date: '2023-12-01', value: 10000, drawdown: 0 },
+      { date: '2023-12-02', value: 10100, drawdown: 0 },
+      { date: '2023-12-03', value: 10200, drawdown: 0 },
+      { date: '2023-12-04', value: 9900, drawdown: 2.97 },
+      { date: '2023-12-05', value: 9800, drawdown: 3.96 },
+      { date: '2023-12-06', value: 10300, drawdown: 0 },
+      { date: '2023-12-07', value: 10500, drawdown: 0 },
+      { date: '2023-12-08', value: 10200, drawdown: 2.86 },
+      { date: '2023-12-09', value: 10800, drawdown: 0 },
+      { date: '2023-12-10', value: 11000, drawdown: 0 }
     ];
 
     mockSimulateLeverage.mockClear();
@@ -31,16 +31,16 @@ describe('MarginSimulator Calculations', () => {
       const leverage = 2.0;
       const mockResult = {
         equity: [
-          { date: new Date('2023-12-01'), value: 10000, drawdown: 0 },
-          { date: new Date('2023-12-02'), value: 10200, drawdown: 0 },
-          { date: new Date('2023-12-03'), value: 10400, drawdown: 0 },
-          { date: new Date('2023-12-04'), value: 9800, drawdown: 5.88 },
-          { date: new Date('2023-12-05'), value: 9600, drawdown: 7.84 },
-          { date: new Date('2023-12-06'), value: 10600, drawdown: 0 },
-          { date: new Date('2023-12-07'), value: 11000, drawdown: 0 },
-          { date: new Date('2023-12-08'), value: 10400, drawdown: 5.45 },
-          { date: new Date('2023-12-09'), value: 11600, drawdown: 0 },
-          { date: new Date('2023-12-10'), value: 12000, drawdown: 0 }
+          { date: '2023-12-01', value: 10000, drawdown: 0 },
+          { date: '2023-12-02', value: 10200, drawdown: 0 },
+          { date: '2023-12-03', value: 10400, drawdown: 0 },
+          { date: '2023-12-04', value: 9800, drawdown: 5.88 },
+          { date: '2023-12-05', value: 9600, drawdown: 7.84 },
+          { date: '2023-12-06', value: 10600, drawdown: 0 },
+          { date: '2023-12-07', value: 11000, drawdown: 0 },
+          { date: '2023-12-08', value: 10400, drawdown: 5.45 },
+          { date: '2023-12-09', value: 11600, drawdown: 0 },
+          { date: '2023-12-10', value: 12000, drawdown: 0 }
         ],
         maxDrawdown: 7.84,
         finalValue: 12000,
@@ -63,17 +63,17 @@ describe('MarginSimulator Calculations', () => {
       const leverage = 3.0;
       const mockResult = {
         equity: [
-          { date: new Date('2023-12-01'), value: 10000, drawdown: 0 },
-          { date: new Date('2023-12-02'), value: 10300, drawdown: 0 },
-          { date: new Date('2023-12-03'), value: 10600, drawdown: 0 },
-          { date: new Date('2023-12-04'), value: 9700, drawdown: 8.49 },
-          { date: new Date('2023-12-05'), value: 9400, drawdown: 11.32 },
-          { date: new Date('2023-12-06'), value: 0, drawdown: 100 }
+          { date: '2023-12-01', value: 10000, drawdown: 0 },
+          { date: '2023-12-02', value: 10300, drawdown: 0 },
+          { date: '2023-12-03', value: 10600, drawdown: 0 },
+          { date: '2023-12-04', value: 9700, drawdown: 8.49 },
+          { date: '2023-12-05', value: 9400, drawdown: 11.32 },
+          { date: '2023-12-06', value: 0, drawdown: 100 }
         ],
         maxDrawdown: 100,
         finalValue: 0,
         marginCall: true,
-        marginCallDate: new Date('2023-12-06')
+        marginCallDate: '2023-12-06'
       };
 
       mockSimulateLeverage.mockReturnValue(mockResult);
@@ -83,7 +83,8 @@ describe('MarginSimulator Calculations', () => {
       expect(result.marginCall).toBe(true);
       expect(result.maxDrawdown).toBe(100);
       expect(result.finalValue).toBe(0);
-      expect(result.marginCallDate).toBeInstanceOf(Date);
+      expect(typeof result.marginCallDate).toBe('string');
+      expect(result.marginCallDate).toBe('2023-12-06');
     });
 
     it('should handle 1x leverage (no leverage)', () => {
@@ -144,11 +145,11 @@ describe('MarginSimulator Calculations', () => {
     it('should calculate drawdown correctly with leverage', () => {
       const leverage = 2.0;
       const equity = [
-        { date: new Date('2023-12-01'), value: 10000, drawdown: 0 },
-        { date: new Date('2023-12-02'), value: 10200, drawdown: 0 },
-        { date: new Date('2023-12-03'), value: 10400, drawdown: 0 },
-        { date: new Date('2023-12-04'), value: 9800, drawdown: 5.77 },
-        { date: new Date('2023-12-05'), value: 9600, drawdown: 7.69 }
+        { date: '2023-12-01', value: 10000, drawdown: 0 },
+        { date: '2023-12-02', value: 10200, drawdown: 0 },
+        { date: '2023-12-03', value: 10400, drawdown: 0 },
+        { date: '2023-12-04', value: 9800, drawdown: 5.77 },
+        { date: '2023-12-05', value: 9600, drawdown: 7.69 }
       ];
 
       const mockResult = {
@@ -169,12 +170,12 @@ describe('MarginSimulator Calculations', () => {
     it('should handle peak value updates correctly', () => {
       const leverage = 2.0;
       const equity = [
-        { date: new Date('2023-12-01'), value: 10000, drawdown: 0 },
-        { date: new Date('2023-12-02'), value: 10200, drawdown: 0 },
-        { date: new Date('2023-12-03'), value: 10400, drawdown: 0 },
-        { date: new Date('2023-12-04'), value: 9800, drawdown: 5.77 },
-        { date: new Date('2023-12-05'), value: 10600, drawdown: 0 }, // New peak
-        { date: new Date('2023-12-06'), value: 10400, drawdown: 1.89 }
+        { date: '2023-12-01', value: 10000, drawdown: 0 },
+        { date: '2023-12-02', value: 10200, drawdown: 0 },
+        { date: '2023-12-03', value: 10400, drawdown: 0 },
+        { date: '2023-12-04', value: 9800, drawdown: 5.77 },
+        { date: '2023-12-05', value: 10600, drawdown: 0 }, // New peak
+        { date: '2023-12-06', value: 10400, drawdown: 1.89 }
       ];
 
       const mockResult = {
@@ -252,13 +253,13 @@ describe('MarginSimulator Calculations', () => {
       const leverage = 10.0;
       const mockResult = {
         equity: [
-          { date: new Date('2023-12-01'), value: 10000, drawdown: 0 },
-          { date: new Date('2023-12-02'), value: 0, drawdown: 100 }
+          { date: '2023-12-01', value: 10000, drawdown: 0 },
+          { date: '2023-12-02', value: 0, drawdown: 100 }
         ],
         maxDrawdown: 100,
         finalValue: 0,
         marginCall: true,
-        marginCallDate: new Date('2023-12-02')
+        marginCallDate: '2023-12-02'
       };
 
       mockSimulateLeverage.mockReturnValue(mockResult);
@@ -295,14 +296,14 @@ describe('MarginSimulator Calculations', () => {
     it('should track maximum drawdown correctly', () => {
       const leverage = 2.0;
       const equity = [
-        { date: new Date('2023-12-01'), value: 10000, drawdown: 0 },
-        { date: new Date('2023-12-02'), value: 10200, drawdown: 0 },
-        { date: new Date('2023-12-03'), value: 10400, drawdown: 0 },
-        { date: new Date('2023-12-04'), value: 9800, drawdown: 5.77 },
-        { date: new Date('2023-12-05'), value: 9600, drawdown: 7.69 },
-        { date: new Date('2023-12-06'), value: 9400, drawdown: 9.62 },
-        { date: new Date('2023-12-07'), value: 10600, drawdown: 0 },
-        { date: new Date('2023-12-08'), value: 10800, drawdown: 0 }
+        { date: '2023-12-01', value: 10000, drawdown: 0 },
+        { date: '2023-12-02', value: 10200, drawdown: 0 },
+        { date: '2023-12-03', value: 10400, drawdown: 0 },
+        { date: '2023-12-04', value: 9800, drawdown: 5.77 },
+        { date: '2023-12-05', value: 9600, drawdown: 7.69 },
+        { date: '2023-12-06', value: 9400, drawdown: 9.62 },
+        { date: '2023-12-07', value: 10600, drawdown: 0 },
+        { date: '2023-12-08', value: 10800, drawdown: 0 }
       ];
 
       const mockResult = {

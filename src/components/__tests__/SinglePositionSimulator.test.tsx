@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { SinglePositionSimulator } from '../SinglePositionSimulator';
+import { DatasetAPI } from '../../lib/api';
 import type { Strategy, SavedDataset } from '../../types';
 
 // Mock the API
@@ -11,7 +12,20 @@ vi.mock('../../lib/api', () => ({
       { ticker: 'GOOGL', name: 'Alphabet Inc.' },
       { ticker: 'MSFT', name: 'Microsoft Corp.' },
       { ticker: 'TSLA', name: 'Tesla Inc.' }
-    ] as SavedDataset[]))
+    ] as SavedDataset[])),
+    getDataset: vi.fn((ticker) => Promise.resolve({
+      ticker,
+      data: Array(100).fill(0).map((_, i) => ({
+        date: `2024-01-${String(i + 1).padStart(2, '0')}`,
+        open: 100 + i,
+        high: 105 + i,
+        low: 95 + i,
+        close: 102 + i,
+        volume: 1000000
+      })),
+      adjustedForSplits: true
+    })),
+    getSplits: vi.fn(() => Promise.resolve([]))
   }
 }));
 
@@ -54,306 +68,100 @@ describe('SinglePositionSimulator', () => {
     vi.clearAllMocks();
   });
 
-  it('should render ticker dropdown with default selection', async () => {
+  it('should render ticker input with default values', async () => {
     await act(async () => {
       render(<SinglePositionSimulator strategy={mockStrategy} />);
     });
-    
-    // Should show dropdown button
-    expect(screen.getByText('Выберите тикер')).toBeInTheDocument();
-    
-    // Should show dropdown arrow
-    expect(screen.getByRole('button')).toBeInTheDocument();
+
+    const input = screen.getByPlaceholderText('AAPL, MSFT, AMZN, MAGS');
+    expect(input).toBeInTheDocument();
+    expect(input).toHaveValue('AAPL, MSFT, AMZN, MAGS');
   });
 
-  it('should open dropdown when clicked', async () => {
+  it('should update tickers when input changes', async () => {
     await act(async () => {
       render(<SinglePositionSimulator strategy={mockStrategy} />);
     });
-    
-    const dropdownButton = screen.getByText('Выберите тикер').closest('button')!;
-    
+
+    const input = screen.getByPlaceholderText('AAPL, MSFT, AMZN, MAGS');
+
     await act(async () => {
-      fireEvent.click(dropdownButton);
+      fireEvent.change(input, { target: { value: 'TSLA, NVDA' } });
     });
 
-    // Wait for dropdown to load options
     await waitFor(() => {
-      expect(screen.getByText('AAPL')).toBeInTheDocument();
-      expect(screen.getByText('GOOGL')).toBeInTheDocument();
-      expect(screen.getByText('MSFT')).toBeInTheDocument();
-      expect(screen.getByText('TSLA')).toBeInTheDocument();
+      expect(input).toHaveValue('TSLA, NVDA');
     });
   });
 
-  it('should filter options when searching', async () => {
+  it('should handle backtest execution', async () => {
     await act(async () => {
       render(<SinglePositionSimulator strategy={mockStrategy} />);
     });
-    
-    const dropdownButton = screen.getByText('Выберите тикер').closest('button')!;
-    
+
+    const runButton = screen.getByText('Запустить бэктест');
+    expect(runButton).toBeInTheDocument();
+    expect(runButton).not.toBeDisabled();
+
     await act(async () => {
-      fireEvent.click(dropdownButton);
+      fireEvent.click(runButton);
     });
 
-    // Wait for options to load
+    // Wait for results
     await waitFor(() => {
-      expect(screen.getByText('AAPL')).toBeInTheDocument();
+      expect(screen.getByText(/Single Position Strategy/)).toBeInTheDocument();
+      expect(screen.getByText('Итоговый баланс')).toBeInTheDocument();
     });
-
-    const searchInput = screen.getByPlaceholderText('Поиск тикеров...');
-    
-    await act(async () => {
-      fireEvent.change(searchInput, { target: { value: 'AAP' } });
-    });
-
-    // Should show filtered results
-    expect(screen.getByText('AAPL')).toBeInTheDocument();
-    expect(screen.queryByText('GOOGL')).not.toBeInTheDocument();
-    expect(screen.queryByText('MSFT')).not.toBeInTheDocument();
-    expect(screen.queryByText('TSLA')).not.toBeInTheDocument();
-  });
-
-  it('should select a ticker when clicked', async () => {
-    await act(async () => {
-      render(<SinglePositionSimulator strategy={mockStrategy} />);
-    });
-    
-    const dropdownButton = screen.getByText('Выберите тикер').closest('button')!;
-    
-    await act(async () => {
-      fireEvent.click(dropdownButton);
-    });
-
-    // Wait for options to load
-    await waitFor(() => {
-      expect(screen.getByText('AAPL')).toBeInTheDocument();
-    });
-
-    const aaplOption = screen.getByText('AAPL');
-    
-    await act(async () => {
-      fireEvent.click(aaplOption);
-    });
-
-    // Should show selected ticker
-    expect(screen.queryByText('Выберите тикер')).not.toBeInTheDocument();
-    expect(screen.getByText('AAPL')).toBeInTheDocument();
-  });
-
-  it('should allow multi-select of tickers', async () => {
-    await act(async () => {
-      render(<SinglePositionSimulator strategy={mockStrategy} />);
-    });
-    
-    const dropdownButton = screen.getByText('Выберите тикер').closest('button')!;
-    
-    await act(async () => {
-      fireEvent.click(dropdownButton);
-    });
-
-    // Wait for options to load
-    await waitFor(() => {
-      expect(screen.getByText('AAPL')).toBeInTheDocument();
-    });
-
-    // Select AAPL
-    await act(async () => {
-      fireEvent.click(screen.getByText('AAPL'));
-    });
-
-    // Reopen dropdown
-    await act(async () => {
-      fireEvent.click(dropdownButton);
-    });
-
-    // Wait for options to reload
-    await waitFor(() => {
-      expect(screen.getByText('GOOGL')).toBeInTheDocument();
-    });
-
-    // Select GOOGL
-    await act(async () => {
-      fireEvent.click(screen.getByText('GOOGL'));
-    });
-
-    // Should show both selected tickers as chips
-    expect(screen.getByText('AAPL')).toBeInTheDocument();
-    expect(screen.getByText('GOOGL')).toBeInTheDocument();
-  });
-
-  it('should remove ticker when chip X is clicked', async () => {
-    await act(async () => {
-      render(<SinglePositionSimulator strategy={mockStrategy} />);
-    });
-    
-    const dropdownButton = screen.getByText('Выберите тикер').closest('button')!;
-    
-    await act(async () => {
-      fireEvent.click(dropdownButton);
-    });
-
-    // Wait for options to load and select AAPL
-    await waitFor(() => {
-      expect(screen.getByText('AAPL')).toBeInTheDocument();
-    });
-
-    await act(async () => {
-      fireEvent.click(screen.getByText('AAPL'));
-    });
-
-    // Find and click the X button on the AAPL chip
-    const removeButtons = screen.getAllByText('×');
-    
-    await act(async () => {
-      fireEvent.click(removeButtons[0]);
-    });
-
-    // Should remove AAPL and show placeholder again
-    expect(screen.getByText('Выберите тикер')).toBeInTheDocument();
-    expect(screen.queryByText('AAPL')).not.toBeInTheDocument();
-  });
-
-  it('should show "no results" message when search yields no results', async () => {
-    await act(async () => {
-      render(<SinglePositionSimulator strategy={mockStrategy} />);
-    });
-    
-    const dropdownButton = screen.getByText('Выберите тикер').closest('button')!;
-    
-    await act(async () => {
-      fireEvent.click(dropdownButton);
-    });
-
-    // Wait for options to load
-    await waitFor(() => {
-      expect(screen.getByText('AAPL')).toBeInTheDocument();
-    });
-
-    const searchInput = screen.getByPlaceholderText('Поиск тикеров...');
-    
-    await act(async () => {
-      fireEvent.change(searchInput, { target: { value: 'NONEXISTENT' } });
-    });
-
-    // Should show no results message
-    expect(screen.getByText('Тикеры не найдены')).toBeInTheDocument();
   });
 
   it('should handle loading state', async () => {
-    // Mock API to return a pending promise
-    const mockGetDatasets = vi.fn(() => new Promise(resolve => setTimeout(() => resolve([]), 100)));
-    vi.mocked(require('../../lib/api').DatasetAPI.getDatasets).mockImplementation(mockGetDatasets);
+    // Mock API to return a pending promise that doesn't resolve immediately
+    let resolvePromise: (value: any) => void;
+    const promise = new Promise(resolve => {
+      resolvePromise = resolve;
+    });
+
+    vi.mocked(DatasetAPI.getDataset).mockReturnValue(promise as any);
 
     await act(async () => {
       render(<SinglePositionSimulator strategy={mockStrategy} />);
     });
-    
-    const dropdownButton = screen.getByText('Выберите тикер').closest('button')!;
-    
-    await act(async () => {
-      fireEvent.click(dropdownButton);
-    });
 
-    // Should show loading message
-    expect(screen.getByText('Загрузка...')).toBeInTheDocument();
+    const runButton = screen.getByText('Запустить бэктест');
+
+    fireEvent.click(runButton);
+
+    // Should show loading message immediately after click
+    expect(screen.getByText('Расчёт...')).toBeInTheDocument();
+
+    // Resolve promise to clean up
+    await act(async () => {
+      if (resolvePromise) resolvePromise({
+        ticker: 'AAPL',
+        data: [],
+        ibsValues: []
+      });
+    });
   });
 
   it('should handle API error gracefully', async () => {
     // Mock API to throw error
-    const mockGetDatasets = vi.fn(() => Promise.reject(new Error('API Error')));
-    vi.mocked(require('../../lib/api').DatasetAPI.getDatasets).mockImplementation(mockGetDatasets);
+    vi.mocked(DatasetAPI.getDataset).mockRejectedValue(new Error('API Error'));
 
     await act(async () => {
       render(<SinglePositionSimulator strategy={mockStrategy} />);
     });
-    
-    const dropdownButton = screen.getByText('Выберите тикер').closest('button')!;
-    
+
+    const runButton = screen.getByText('Запустить бэктест');
+
     await act(async () => {
-      fireEvent.click(dropdownButton);
-    });
-
-    // Should show error message
-    await waitFor(() => {
-      expect(screen.getByText('Ошибка загрузки тикеров')).toBeInTheDocument();
-    });
-  });
-
-  it('should close dropdown when clicking outside', async () => {
-    await act(async () => {
-      render(<SinglePositionSimulator strategy={mockStrategy} />);
-    });
-    
-    const dropdownButton = screen.getByText('Выберите тикер').closest('button')!;
-    
-    await act(async () => {
-      fireEvent.click(dropdownButton);
-    });
-
-    // Wait for options to load
-    await waitFor(() => {
-      expect(screen.getByText('AAPL')).toBeInTheDocument();
-    });
-
-    // Simulate clicking outside
-    await act(async () => {
-      fireEvent.mouseDown(document.body);
-    });
-
-    // Dropdown should close
-    expect(screen.queryByText('Поиск тикеров...')).not.toBeInTheDocument();
-  });
-
-  it('should clear search when dropdown closes', async () => {
-    await act(async () => {
-      render(<SinglePositionSimulator strategy={mockStrategy} />);
-    });
-    
-    const dropdownButton = screen.getByText('Выберите тикер').closest('button')!;
-    
-    await act(async () => {
-      fireEvent.click(dropdownButton);
-    });
-
-    // Wait for options to load
-    await waitFor(() => {
-      expect(screen.getByText('AAPL')).toBeInTheDocument();
-    });
-
-    const searchInput = screen.getByPlaceholderText('Поиск тикеров...');
-    
-    await act(async () => {
-      fireEvent.change(searchInput, { target: { value: 'TEST' } });
-    });
-
-    // Close dropdown
-    await act(async () => {
-      fireEvent.click(dropdownButton);
-    });
-
-    // Reopen and check search is cleared
-    await act(async () => {
-      fireEvent.click(dropdownButton);
+      fireEvent.click(runButton);
     });
 
     await waitFor(() => {
-      const newSearchInput = screen.getByPlaceholderText('Поиск тикеров...');
-      expect(newSearchInput).toHaveValue('');
+      expect(screen.getByText('❌ API Error')).toBeInTheDocument();
     });
   });
 
-  it('should render other form inputs correctly', async () => {
-    await act(async () => {
-      render(<SinglePositionSimulator strategy={mockStrategy} />);
-    });
-    
-    // Should render IBS threshold inputs
-    expect(screen.getByDisplayValue('0.10')).toBeInTheDocument();
-    expect(screen.getByDisplayValue('0.75')).toBeInTheDocument();
-    
-    // Should render max hold days input  
-    expect(screen.getByDisplayValue('30')).toBeInTheDocument();
-  });
+
 });

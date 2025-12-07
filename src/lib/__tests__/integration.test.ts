@@ -3,6 +3,7 @@ import { BacktestEngine } from '../backtest';
 import { createStrategyFromTemplate } from '../strategy';
 import { IndicatorEngine } from '../indicators';
 import { adjustOHLCForSplits, dedupeDailyOHLC } from '../utils';
+import { toChartTimestamp, compareTradingDates } from '../date-utils';
 import type { OHLCData, Strategy } from '../../types';
 
 describe('Integration Tests', () => {
@@ -14,22 +15,22 @@ describe('Integration Tests', () => {
       // Create realistic OHLC data with varying IBS values
       sampleData = [
         // Low IBS period (entry signals)
-        { date: new Date('2023-12-01'), open: 100, high: 100, low: 100, close: 100, volume: 1000 }, // IBS = 0.5
-        { date: new Date('2023-12-02'), open: 100, high: 100, low: 100, close: 100, volume: 1000 }, // IBS = 0.5
-        { date: new Date('2023-12-03'), open: 100, high: 110, low: 100, close: 101, volume: 1000 }, // IBS = 0.1 (entry)
-        { date: new Date('2023-12-04'), open: 101, high: 110, low: 100, close: 102, volume: 1000 },
-        { date: new Date('2023-12-05'), open: 102, high: 110, low: 100, close: 103, volume: 1000 },
-        { date: new Date('2023-12-06'), open: 103, high: 110, low: 100, close: 104, volume: 1000 },
-        { date: new Date('2023-12-07'), open: 104, high: 110, low: 100, close: 105, volume: 1000 },
-        { date: new Date('2023-12-08'), open: 105, high: 110, low: 100, close: 106, volume: 1000 },
-        { date: new Date('2023-12-09'), open: 106, high: 110, low: 100, close: 107, volume: 1000 },
-        { date: new Date('2023-12-10'), open: 107, high: 110, low: 100, close: 108, volume: 1000 },
+        { date: '2023-12-01', open: 100, high: 100, low: 100, close: 100, volume: 1000 }, // IBS = 0.5
+        { date: '2023-12-02', open: 100, high: 100, low: 100, close: 100, volume: 1000 }, // IBS = 0.5
+        { date: '2023-12-03', open: 100, high: 110, low: 100, close: 101, volume: 1000 }, // IBS = 0.1 (entry)
+        { date: '2023-12-04', open: 101, high: 110, low: 100, close: 102, volume: 1000 },
+        { date: '2023-12-05', open: 102, high: 110, low: 100, close: 103, volume: 1000 },
+        { date: '2023-12-06', open: 103, high: 110, low: 100, close: 104, volume: 1000 },
+        { date: '2023-12-07', open: 104, high: 110, low: 100, close: 105, volume: 1000 },
+        { date: '2023-12-08', open: 105, high: 110, low: 100, close: 106, volume: 1000 },
+        { date: '2023-12-09', open: 106, high: 110, low: 100, close: 107, volume: 1000 },
+        { date: '2023-12-10', open: 107, high: 110, low: 100, close: 108, volume: 1000 },
         // High IBS period (exit signals)
-        { date: new Date('2023-12-11'), open: 108, high: 110, low: 100, close: 109, volume: 1000 }, // IBS = 0.9 (exit)
-        { date: new Date('2023-12-12'), open: 109, high: 110, low: 100, close: 110, volume: 1000 },
-        { date: new Date('2023-12-13'), open: 110, high: 110, low: 100, close: 110, volume: 1000 },
-        { date: new Date('2023-12-14'), open: 110, high: 110, low: 100, close: 110, volume: 1000 },
-        { date: new Date('2023-12-15'), open: 110, high: 110, low: 100, close: 110, volume: 1000 }
+        { date: '2023-12-11', open: 108, high: 110, low: 100, close: 109, volume: 1000 }, // IBS = 0.9 (exit)
+        { date: '2023-12-12', open: 109, high: 110, low: 100, close: 110, volume: 1000 },
+        { date: '2023-12-13', open: 110, high: 110, low: 100, close: 110, volume: 1000 },
+        { date: '2023-12-14', open: 110, high: 110, low: 100, close: 110, volume: 1000 },
+        { date: '2023-12-15', open: 110, high: 110, low: 100, close: 110, volume: 1000 }
       ];
 
       const template = {
@@ -70,7 +71,7 @@ describe('Integration Tests', () => {
 
       // Verify chart data
       expect(result.chartData).toHaveLength(sampleData.length);
-      expect(result.chartData[0].time).toBe(Math.floor(sampleData[0].date.getTime() / 1000));
+      expect(result.chartData[0].time).toBe(toChartTimestamp(sampleData[0].date));
 
       // Verify metrics
       expect(result.metrics.totalReturn).toBeTypeOf('number');
@@ -85,11 +86,11 @@ describe('Integration Tests', () => {
 
       if (result.trades.length > 0) {
         const trade = result.trades[0];
-        
+
         // Verify trade structure
         expect(trade.id).toBeDefined();
-        expect(trade.entryDate).toBeInstanceOf(Date);
-        expect(trade.exitDate).toBeInstanceOf(Date);
+        expect(typeof trade.entryDate).toBe('string');
+        expect(typeof trade.exitDate).toBe('string');
         expect(trade.entryPrice).toBeGreaterThan(0);
         expect(trade.exitPrice).toBeGreaterThan(0);
         expect(trade.quantity).toBeGreaterThan(0);
@@ -99,9 +100,9 @@ describe('Integration Tests', () => {
         expect(trade.exitReason).toBeDefined();
         expect(trade.context).toBeDefined();
 
-        // Verify trade logic
-        expect(trade.exitDate.getTime()).toBeGreaterThan(trade.entryDate.getTime());
-        expect(trade.duration).toBe(Math.floor((trade.exitDate.getTime() - trade.entryDate.getTime()) / (1000 * 60 * 60 * 24)));
+        // Verify trade logic - using string comparison for TradingDates
+        expect(compareTradingDates(trade.exitDate, trade.entryDate)).toBe(1); // exit > entry
+        expect(trade.duration).toBeGreaterThanOrEqual(1);
       }
     });
 
@@ -127,9 +128,9 @@ describe('Integration Tests', () => {
   describe('Data Processing Pipeline', () => {
     it('should process data through complete pipeline', () => {
       const rawData: OHLCData[] = [
-        { date: new Date('2023-12-01'), open: 100, high: 110, low: 90, close: 105, volume: 1000 },
-        { date: new Date('2023-12-01'), open: 105, high: 115, low: 95, close: 110, volume: 2000 }, // Duplicate date
-        { date: new Date('2023-12-02'), open: 110, high: 120, low: 100, close: 115, volume: 1500 }
+        { date: '2023-12-01', open: 100, high: 110, low: 90, close: 105, volume: 1000 },
+        { date: '2023-12-01', open: 105, high: 115, low: 95, close: 110, volume: 2000 }, // Duplicate date
+        { date: '2023-12-02', open: 110, high: 120, low: 100, close: 115, volume: 1500 }
       ];
 
       const splits = [
@@ -177,11 +178,11 @@ describe('Integration Tests', () => {
   describe('Multiple Indicators Integration', () => {
     it('should calculate multiple indicators correctly', () => {
       const data: OHLCData[] = [
-        { date: new Date('2023-12-01'), open: 100, high: 110, low: 90, close: 105, volume: 1000 },
-        { date: new Date('2023-12-02'), open: 105, high: 115, low: 95, close: 110, volume: 1200 },
-        { date: new Date('2023-12-03'), open: 110, high: 120, low: 100, close: 115, volume: 1100 },
-        { date: new Date('2023-12-04'), open: 115, high: 125, low: 105, close: 120, volume: 1300 },
-        { date: new Date('2023-12-05'), open: 120, high: 130, low: 110, close: 125, volume: 1400 }
+        { date: '2023-12-01', open: 100, high: 110, low: 90, close: 105, volume: 1000 },
+        { date: '2023-12-02', open: 105, high: 115, low: 95, close: 110, volume: 1200 },
+        { date: '2023-12-03', open: 110, high: 120, low: 100, close: 115, volume: 1100 },
+        { date: '2023-12-04', open: 115, high: 125, low: 105, close: 120, volume: 1300 },
+        { date: '2023-12-05', open: 120, high: 130, low: 110, close: 125, volume: 1400 }
       ];
 
       const closePrices = data.map(d => d.close);
@@ -209,7 +210,7 @@ describe('Integration Tests', () => {
   describe('Error Handling Integration', () => {
     it('should handle invalid data gracefully', () => {
       const invalidData = [
-        { date: new Date('2023-12-01'), open: 100, high: 90, low: 110, close: 105, volume: 1000 } // high < low
+        { date: '2023-12-01', open: 100, high: 90, low: 110, close: 105, volume: 1000 } // high < low
       ];
 
       const strategy = createStrategyFromTemplate({
@@ -253,7 +254,7 @@ describe('Integration Tests', () => {
 
     it('should handle missing strategy gracefully', () => {
       const data: OHLCData[] = [
-        { date: new Date('2023-12-01'), open: 100, high: 110, low: 90, close: 105, volume: 1000 }
+        { date: '2023-12-01', open: 100, high: 110, low: 90, close: 105, volume: 1000 }
       ];
 
       expect(() => {

@@ -9,15 +9,15 @@ describe('CleanBacktestEngine', () => {
   let strategy: Strategy;
 
   beforeEach(() => {
-    // Use real test data based on Google stock data
+    // Use real test data based on Google stock data - dates are already YYYY-MM-DD strings
     sampleData = testData.data.map(bar => ({
-      date: new Date(bar.date),
+      date: bar.date, // TradingDate string
       open: bar.open,
       high: bar.high,
       low: bar.low,
       close: bar.close,
       volume: 1000 // Add volume for compatibility
-    }));
+    })) as OHLCData[];
 
     const template = {
       id: 'ibs-mean-reversion',
@@ -49,7 +49,7 @@ describe('CleanBacktestEngine', () => {
     it('should handle empty data gracefully', () => {
       const engine = new CleanBacktestEngine([], strategy);
       const result = engine.runBacktest();
-      
+
       expect(result.trades).toHaveLength(0);
       expect(result.equity).toHaveLength(0);
       expect(result.metrics).toBeDefined();
@@ -59,7 +59,7 @@ describe('CleanBacktestEngine', () => {
       const singleData = [sampleData[0]];
       const engine = new CleanBacktestEngine(singleData, strategy);
       const result = engine.runBacktest();
-      
+
       expect(result.trades).toHaveLength(0);
       expect(result.equity).toHaveLength(1);
       expect(result.equity[0].value).toBe(strategy.riskManagement.initialCapital);
@@ -84,15 +84,15 @@ describe('CleanBacktestEngine', () => {
       const result = engine.runBacktest();
 
       expect(result.equity).toHaveLength(sampleData.length);
-      
+
       // First equity point should equal initial capital
       expect(result.equity[0].value).toBe(strategy.riskManagement.initialCapital);
-      
+
       // All equity points should have valid values
       result.equity.forEach(point => {
         expect(point.value).toBeGreaterThan(0);
         expect(point.drawdown).toBeGreaterThanOrEqual(0);
-        expect(point.date).toBeInstanceOf(Date);
+        expect(typeof point.date).toBe('string'); // TradingDate is a string
       });
     });
 
@@ -102,7 +102,7 @@ describe('CleanBacktestEngine', () => {
 
       // Chart data should be generated for all bars
       expect(result.chartData).toHaveLength(sampleData.length);
-      
+
       result.chartData.forEach(candle => {
         expect(candle.time).toBeTypeOf('number');
         expect(candle.open).toBeTypeOf('number');
@@ -145,11 +145,11 @@ describe('CleanBacktestEngine', () => {
 
       // Should have at least one trade
       expect(result.trades.length).toBeGreaterThan(0);
-      
+
       // First trade should be an entry
       const firstTrade = result.trades[0];
-      expect(firstTrade.entryDate).toBeInstanceOf(Date);
-      expect(firstTrade.exitDate).toBeInstanceOf(Date);
+      expect(typeof firstTrade.entryDate).toBe('string'); // TradingDate is a string
+      expect(typeof firstTrade.exitDate).toBe('string');
       expect(firstTrade.entryPrice).toBeGreaterThan(0);
       expect(firstTrade.exitPrice).toBeGreaterThan(0);
       expect(firstTrade.quantity).toBeGreaterThan(0);
@@ -164,7 +164,7 @@ describe('CleanBacktestEngine', () => {
 
       // Should have at least one trade
       expect(result.trades.length).toBeGreaterThan(0);
-      
+
       const trade = result.trades[0];
       expect(trade.exitReason).toBe('ibs_signal');
     });
@@ -172,13 +172,13 @@ describe('CleanBacktestEngine', () => {
     it('should exit position after maxHoldDays', () => {
       // Create data where IBS never exceeds highIBS, forcing maxHoldDays exit
       const longHoldData: OHLCData[] = [
-        { date: new Date('2023-12-01'), open: 100, high: 101, low: 99, close: 99, volume: 1000 }, // IBS = 0.0 (entry)
-        { date: new Date('2023-12-02'), open: 99, high: 100, low: 99, close: 99.5, volume: 1000 }, // IBS = 0.5
-        { date: new Date('2023-12-03'), open: 99.5, high: 100, low: 99, close: 99.7, volume: 1000 }, // IBS = 0.7
-        { date: new Date('2023-12-04'), open: 99.7, high: 100, low: 99, close: 99.8, volume: 1000 }, // IBS = 0.8
-        { date: new Date('2023-12-05'), open: 99.8, high: 100, low: 99, close: 99.9, volume: 1000 }, // IBS = 0.9
-        { date: new Date('2023-12-06'), open: 99.9, high: 100, low: 99, close: 100, volume: 1000 }, // IBS = 1.0 (exit)
-        { date: new Date('2023-12-07'), open: 100, high: 101, low: 99, close: 100.5, volume: 1000 }
+        { date: '2023-12-01', open: 100, high: 101, low: 99, close: 99, volume: 1000 }, // IBS = 0.0 (entry)
+        { date: '2023-12-02', open: 99, high: 100, low: 99, close: 99.5, volume: 1000 }, // IBS = 0.5
+        { date: '2023-12-03', open: 99.5, high: 100, low: 99, close: 99.7, volume: 1000 }, // IBS = 0.7
+        { date: '2023-12-04', open: 99.7, high: 100, low: 99, close: 99.8, volume: 1000 }, // IBS = 0.8
+        { date: '2023-12-05', open: 99.8, high: 100, low: 99, close: 99.9, volume: 1000 }, // IBS = 0.9
+        { date: '2023-12-06', open: 99.9, high: 100, low: 99, close: 100, volume: 1000 }, // IBS = 1.0 (exit)
+        { date: '2023-12-07', open: 100, high: 101, low: 99, close: 100.5, volume: 1000 }
       ];
 
       const engine = new CleanBacktestEngine(longHoldData, strategy);
@@ -186,7 +186,7 @@ describe('CleanBacktestEngine', () => {
 
       // Should have at least one trade
       expect(result.trades.length).toBeGreaterThan(0);
-      
+
       const trade = result.trades[0];
       expect(trade.exitReason).toBe('ibs_signal'); // Will exit by IBS signal, not maxHoldDays
       expect(trade.duration).toBeGreaterThan(0);
@@ -208,7 +208,7 @@ describe('CleanBacktestEngine', () => {
         const trade = result.trades[0];
         const expectedInvestment = (strategy.riskManagement.initialCapital * 0.5);
         const actualInvestment = trade.quantity * trade.entryPrice;
-        
+
         // Should be close to 50% of capital (within 10% tolerance)
         expect(actualInvestment).toBeLessThanOrEqual(expectedInvestment * 1.1);
       }
@@ -250,9 +250,9 @@ describe('CleanBacktestEngine', () => {
   describe('edge cases', () => {
     it('should handle data with same high and low prices', () => {
       const flatData: OHLCData[] = [
-        { date: new Date('2023-12-01'), open: 100, high: 100, low: 100, close: 100, volume: 1000 },
-        { date: new Date('2023-12-02'), open: 100, high: 100, low: 100, close: 100, volume: 1000 },
-        { date: new Date('2023-12-03'), open: 100, high: 100, low: 100, close: 100, volume: 1000 }
+        { date: '2023-12-01', open: 100, high: 100, low: 100, close: 100, volume: 1000 },
+        { date: '2023-12-02', open: 100, high: 100, low: 100, close: 100, volume: 1000 },
+        { date: '2023-12-03', open: 100, high: 100, low: 100, close: 100, volume: 1000 }
       ];
 
       const engine = new CleanBacktestEngine(flatData, strategy);
@@ -264,9 +264,9 @@ describe('CleanBacktestEngine', () => {
 
     it('should handle data with extreme price movements', () => {
       const extremeData: OHLCData[] = [
-        { date: new Date('2023-12-01'), open: 100, high: 200, low: 50, close: 150, volume: 1000 },
-        { date: new Date('2023-12-02'), open: 150, high: 300, low: 100, close: 250, volume: 1000 },
-        { date: new Date('2023-12-03'), open: 250, high: 400, low: 200, close: 350, volume: 1000 }
+        { date: '2023-12-01', open: 100, high: 200, low: 50, close: 150, volume: 1000 },
+        { date: '2023-12-02', open: 150, high: 300, low: 100, close: 250, volume: 1000 },
+        { date: '2023-12-03', open: 250, high: 400, low: 200, close: 350, volume: 1000 }
       ];
 
       const engine = new CleanBacktestEngine(extremeData, strategy);

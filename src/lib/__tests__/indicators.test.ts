@@ -4,16 +4,16 @@ import type { OHLCData } from '../../types';
 
 describe('IndicatorEngine', () => {
   const sampleData: OHLCData[] = [
-    { date: new Date('2023-12-01'), open: 100, high: 110, low: 90, close: 105, volume: 1000 },
-    { date: new Date('2023-12-02'), open: 105, high: 115, low: 95, close: 110, volume: 1200 },
-    { date: new Date('2023-12-03'), open: 110, high: 120, low: 100, close: 115, volume: 1100 },
-    { date: new Date('2023-12-04'), open: 115, high: 125, low: 105, close: 120, volume: 1300 },
-    { date: new Date('2023-12-05'), open: 120, high: 130, low: 110, close: 125, volume: 1400 },
-    { date: new Date('2023-12-06'), open: 125, high: 135, low: 115, close: 130, volume: 1500 },
-    { date: new Date('2023-12-07'), open: 130, high: 140, low: 120, close: 135, volume: 1600 },
-    { date: new Date('2023-12-08'), open: 135, high: 145, low: 125, close: 140, volume: 1700 },
-    { date: new Date('2023-12-09'), open: 140, high: 150, low: 130, close: 145, volume: 1800 },
-    { date: new Date('2023-12-10'), open: 145, high: 155, low: 135, close: 150, volume: 1900 }
+    { date: '2023-12-01', open: 100, high: 110, low: 90, close: 105, volume: 1000 },
+    { date: '2023-12-02', open: 105, high: 115, low: 95, close: 110, volume: 1200 },
+    { date: '2023-12-03', open: 110, high: 120, low: 100, close: 115, volume: 1100 },
+    { date: '2023-12-04', open: 115, high: 125, low: 105, close: 120, volume: 1300 },
+    { date: '2023-12-05', open: 120, high: 130, low: 110, close: 125, volume: 1400 },
+    { date: '2023-12-06', open: 125, high: 135, low: 115, close: 130, volume: 1500 },
+    { date: '2023-12-07', open: 130, high: 140, low: 120, close: 135, volume: 1600 },
+    { date: '2023-12-08', open: 135, high: 145, low: 125, close: 140, volume: 1700 },
+    { date: '2023-12-09', open: 140, high: 150, low: 130, close: 145, volume: 1800 },
+    { date: '2023-12-10', open: 145, high: 155, low: 135, close: 150, volume: 1900 }
   ];
 
   describe('calculateSMA', () => {
@@ -112,7 +112,7 @@ describe('IndicatorEngine', () => {
 
     it('should handle bars with same high and low', () => {
       const dataWithSameHL: OHLCData[] = [
-        { date: new Date('2023-12-01'), open: 100, high: 100, low: 100, close: 100, volume: 1000 }
+        { date: '2023-12-01', open: 100, high: 100, low: 100, close: 100, volume: 1000 }
       ];
       
       const ibs = IndicatorEngine.calculateIBS(dataWithSameHL);

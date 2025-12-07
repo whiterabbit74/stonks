@@ -7,7 +7,7 @@
  */
 const fs = require('fs-extra');
 const { getApiConfig, DATASETS_DIR } = require('../config');
-const { getSettings } = require('./settings');
+const { readSettings } = require('./settings');
 const { resolveDatasetFilePathById } = require('./datasets');
 const { toSafeTicker } = require('../utils/helpers');
 const { fetchTodayRangeAndQuote } = require('../providers/finnhub');
@@ -104,7 +104,7 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
         }
 
         // Get configured provider
-        const settings = getSettings();
+        const settings = await readSettings();
         const histProvider = settings.resultsRefreshProvider || 'finnhub';
         const providerAbbrev = getProviderAbbrev(histProvider);
 

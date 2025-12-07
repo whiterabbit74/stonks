@@ -2,14 +2,18 @@
 import type { Strategy } from '../types';
 
 interface StrategyParametersProps {
-  strategy: Strategy;
+  strategy: Strategy | null;
   additionalParams?: Record<string, any>;
 }
 
 export function StrategyParameters({ strategy, additionalParams = {} }: StrategyParametersProps) {
+  if (!strategy) {
+    return null;
+  }
+
   const commission = strategy.riskManagement.commission;
   const leverage = strategy.riskManagement.leverage || 1;
-  
+
   // Форматируем комиссию
   const formatCommission = () => {
     switch (commission.type) {
@@ -29,7 +33,7 @@ export function StrategyParameters({ strategy, additionalParams = {} }: Strategy
       <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3">
         Параметры стратегии
       </h3>
-      
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
         {/* IBS параметры */}
         {strategy.entryConditions && Array.isArray(strategy.entryConditions) && strategy.entryConditions.find((c: any) => c.indicator === 'ibs') && (
@@ -49,7 +53,7 @@ export function StrategyParameters({ strategy, additionalParams = {} }: Strategy
             </span>
           </div>
         )}
-        
+
         {/* Удержание */}
         {strategy.riskManagement.maxHoldDays && (
           <div>
@@ -59,7 +63,7 @@ export function StrategyParameters({ strategy, additionalParams = {} }: Strategy
             </span>
           </div>
         )}
-        
+
         {/* Комиссии */}
         <div>
           <span className="font-medium text-gray-700 dark:text-gray-300">Комиссия:</span>
@@ -67,7 +71,7 @@ export function StrategyParameters({ strategy, additionalParams = {} }: Strategy
             {formatCommission()}
           </span>
         </div>
-        
+
         {/* Плечо */}
         <div>
           <span className="font-medium text-gray-700 dark:text-gray-300">Плечо:</span>
@@ -75,7 +79,7 @@ export function StrategyParameters({ strategy, additionalParams = {} }: Strategy
             {leverage}:1 ({leverage > 1 ? 'с плечом' : 'без плеча'})
           </span>
         </div>
-        
+
         {/* Стоп-лосс */}
         {strategy.riskManagement.stopLoss && (
           <div>
@@ -85,7 +89,7 @@ export function StrategyParameters({ strategy, additionalParams = {} }: Strategy
             </span>
           </div>
         )}
-        
+
         {/* Тейк-профит */}
         {strategy.riskManagement.takeProfit && (
           <div>
@@ -95,7 +99,7 @@ export function StrategyParameters({ strategy, additionalParams = {} }: Strategy
             </span>
           </div>
         )}
-        
+
         {/* Дополнительные параметры */}
         {Object.entries(additionalParams).map(([key, value]) => (
           <div key={key}>
@@ -106,7 +110,7 @@ export function StrategyParameters({ strategy, additionalParams = {} }: Strategy
           </div>
         ))}
       </div>
-      
+
       {/* Индикаторы проблем */}
       <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-600">
         <div className="text-xs text-gray-600 dark:text-gray-400">

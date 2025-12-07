@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import type { Strategy, OHLCData, Trade, EquityPoint } from '../types';
+import type { TradingDate } from '../lib/date-utils';
+import { daysBetweenTradingDates } from '../lib/date-utils';
 import { DatasetAPI } from '../lib/api';
 import { adjustOHLCForSplits, dedupeDailyOHLC } from '../lib/utils';
 import { IndicatorEngine } from '../lib/indicators';
@@ -10,13 +12,13 @@ import { Download } from 'lucide-react';
 
 // Performance optimization: create Map-based lookups for O(1) date-to-index access
 interface TickerDataWithIndex extends TickerData {
-  dateIndexMap: Map<number, number>;
+  dateIndexMap: Map<TradingDate, number>;
 }
 
-function createDateIndexMap(data: OHLCData[]): Map<number, number> {
-  const map = new Map<number, number>();
+function createDateIndexMap(data: OHLCData[]): Map<TradingDate, number> {
+  const map = new Map<TradingDate, number>();
   data.forEach((bar, index) => {
-    map.set(bar.date.getTime(), index);
+    map.set(bar.date, index); // bar.date is TradingDate string
   });
   return map;
 }
@@ -63,7 +65,7 @@ interface PortfolioState {
 
 interface Position {
   ticker: string;
-  entryDate: Date;
+  entryDate: TradingDate; // Use TradingDate string
   entryPrice: number;
   quantity: number;
   entryIndex: number;
@@ -77,17 +79,17 @@ interface Position {
  */
 async function loadTickerData(ticker: string): Promise<TickerData> {
   const ds = await DatasetAPI.getDataset(ticker);
-  
+
   let processedData: OHLCData[];
-  
+
   if ((ds as any).adjustedForSplits) {
     processedData = dedupeDailyOHLC(ds.data as unknown as OHLCData[]);
   } else {
     let splits: Array<{ date: string; factor: number }> = [];
-    try { 
-      splits = await DatasetAPI.getSplits(ds.ticker); 
-    } catch { 
-      splits = []; 
+    try {
+      splits = await DatasetAPI.getSplits(ds.ticker);
+    } catch {
+      splits = [];
     }
     processedData = dedupeDailyOHLC(adjustOHLCForSplits(ds.data as unknown as OHLCData[], splits));
   }
@@ -107,7 +109,7 @@ async function loadTickerData(ticker: string): Promise<TickerData> {
  */
 function calculateCommission(tradeValue: number, strategy: Strategy): number {
   const { commission } = strategy.riskManagement;
-  
+
   switch (commission.type) {
     case 'fixed':
       return commission.fixed || 0;
@@ -124,8 +126,8 @@ function calculateCommission(tradeValue: number, strategy: Strategy): number {
  * Вычисляет рыночную стоимость позиции на текущую дату с учетом leverage
  */
 function getPositionMarketValue(
-  position: Position, 
-  currentPrice: number, 
+  position: Position,
+  currentPrice: number,
   strategy: Strategy
 ): { marketValue: number; netValue: number; unrealizedPnL: number } {
   const marketValue = position.quantity * currentPrice;
@@ -134,11 +136,11 @@ function getPositionMarketValue(
   const stockPnL = (currentPrice - position.entryPrice) * position.quantity;
   const unrealizedPnL = stockPnL - exitCommission; // Нереализованная прибыль/убыток от изменения цены
   const netPositionValue = position.totalCost + unrealizedPnL; // Маржин + нереализованная P&L
-  
-  return { 
-    marketValue, 
+
+  return {
+    marketValue,
     netValue: netPositionValue, // Возвращаем стоимость позиции с учетом маржина
-    unrealizedPnL 
+    unrealizedPnL
   };
 }
 
@@ -149,16 +151,16 @@ function updatePortfolioState(
   portfolio: PortfolioState,
   position: Position | null,
   tickersData: TickerDataWithIndex[],
-  currentDateTime: number,
+  currentDate: TradingDate,
   strategy: Strategy
 ): PortfolioState {
   let positionValue = 0;
-  
+
   if (position) {
     // Найти данные для тикера текущей позиции
     const tickerData = tickersData.find(t => t.ticker === position.ticker);
     if (tickerData) {
-      const barIndex = tickerData.dateIndexMap.get(currentDateTime) ?? -1;
+      const barIndex = tickerData.dateIndexMap.get(currentDate) ?? -1;
       if (barIndex !== -1) {
         const currentPrice = tickerData.data[barIndex].close;
         const { netValue } = getPositionMarketValue(position, currentPrice, strategy);
@@ -173,7 +175,7 @@ function updatePortfolioState(
       }
     }
   }
-  
+
   // Правильный расчет общей стоимости портфеля с leverage
   return {
     freeCapital: portfolio.freeCapital,
@@ -193,23 +195,23 @@ function updatePortfolioState(
  * 5. Выбор лучшего сигнала среди всех тикеров
  */
 function runSinglePositionBacktest(
-  tickersData: TickerDataWithIndex[], 
+  tickersData: TickerDataWithIndex[],
   strategy: Strategy,
   leverage: number = 1
-): { 
-  equity: EquityPoint[]; 
-  finalValue: number; 
-  maxDrawdown: number; 
-  trades: Trade[]; 
-  metrics: any; 
+): {
+  equity: EquityPoint[];
+  finalValue: number;
+  maxDrawdown: number;
+  trades: Trade[];
+  metrics: any;
 } {
   if (!tickersData || tickersData.length === 0) {
-    return { 
-      equity: [], 
-      finalValue: 0, 
-      maxDrawdown: 0, 
-      trades: [], 
-      metrics: {} 
+    return {
+      equity: [],
+      finalValue: 0,
+      maxDrawdown: 0,
+      trades: [],
+      metrics: {}
     };
   }
 
@@ -230,12 +232,12 @@ function runSinglePositionBacktest(
   const equity: EquityPoint[] = [];
   let currentPosition: Position | null = null;
 
-  // Создаем единую временную шкалу из всех тикеров
-  const allDates = new Set<number>();
+  // Создаем единую временную шкалу из всех тикеров (TradingDate strings)
+  const allDates = new Set<TradingDate>();
   tickersData.forEach(({ data }) => {
-    data.forEach(bar => allDates.add(bar.date.getTime()));
+    data.forEach(bar => allDates.add(bar.date)); // bar.date is TradingDate string
   });
-  const sortedDates = Array.from(allDates).sort((a, b) => a - b);
+  const sortedDates = Array.from(allDates).sort(); // String sort works for YYYY-MM-DD
 
   console.log(`🚀 SINGLE POSITION MULTI-TICKER BACKTEST START`);
   console.log(`📊 Initial Capital: ${formatCurrencyCompact(initialCapital)} (${formatCurrencyUSD(initialCapital)})`);
@@ -244,23 +246,22 @@ function runSinglePositionBacktest(
   console.log(`💹 Leverage: ${leverage.toFixed(1)}:1 (${(leverage * 100).toFixed(0)}%)`);
 
   // ГЛАВНЫЙ ЦИКЛ
-  for (const dateTime of sortedDates) {
-    const currentDate = new Date(dateTime);
-    
+  for (const currentDate of sortedDates) {
+
     // 1. ОБНОВЛЯЕМ СОСТОЯНИЕ ПОРТФЕЛЯ НА ТЕКУЩУЮ ДАТУ
-    const updatedPortfolio = updatePortfolioState(portfolio, currentPosition, tickersData, dateTime, strategy);
+    const updatedPortfolio = updatePortfolioState(portfolio, currentPosition, tickersData, currentDate, strategy);
     Object.assign(portfolio, updatedPortfolio);
-    
+
     // 2. ОБРАБОТКА ТЕКУЩЕЙ ПОЗИЦИИ (ВЫХОД)
     if (currentPosition && currentPosition.ticker) {
       const tickerData = tickersData.find(t => t.ticker === currentPosition!.ticker);
       if (tickerData) {
-        const barIndex = tickerData.dateIndexMap.get(dateTime) ?? -1;
+        const barIndex = tickerData.dateIndexMap.get(currentDate) ?? -1;
         if (barIndex !== -1) {
           const bar = tickerData.data[barIndex];
           const ibs = tickerData.ibsValues[barIndex];
-          
-          const daysSinceEntry = Math.floor((bar.date.getTime() - currentPosition.entryDate.getTime()) / (1000 * 60 * 60 * 24));
+
+          const daysSinceEntry = daysBetweenTradingDates(currentPosition.entryDate, bar.date);
           let shouldExit = false;
           let exitReason = '';
 
@@ -277,7 +278,7 @@ function runSinglePositionBacktest(
             const stockProceeds = currentPosition.quantity * exitPrice;
             const exitCommission = calculateCommission(stockProceeds, strategy);
             const netProceeds = stockProceeds - exitCommission;
-            
+
             // Корректный расчет P&L с leverage
             const stockValueAtEntry = currentPosition.quantity * currentPosition.entryPrice;
             const totalCommissions = currentPosition.entryCommission + exitCommission;
@@ -285,16 +286,16 @@ function runSinglePositionBacktest(
             const totalPnL = stockPnL - totalCommissions;
             const totalCashInvested = currentPosition.totalCost + currentPosition.entryCommission;
             const pnlPercent = totalCashInvested > 0 ? (totalPnL / totalCashInvested) * 100 : 0;
-            
+
             // ОБНОВЛЯЕМ ПОРТФЕЛЬ 
             const capitalBeforeExit = portfolio.freeCapital;
             portfolio.freeCapital += totalCashInvested + totalPnL;    // Возвращаем весь капитал + P&L
             portfolio.totalInvestedCost = Math.max(0, portfolio.totalInvestedCost - totalCashInvested); // Убираем вложенный капитал
-            
+
             // ПЕРЕСЧИТЫВАЕМ ОБЩУЮ СТОИМОСТЬ ПОРТФЕЛЯ ПОСЛЕ СДЕЛКИ
-            const updatedPortfolioAfterExit = updatePortfolioState(portfolio, null, tickersData, dateTime, strategy);
+            const updatedPortfolioAfterExit = updatePortfolioState(portfolio, null, tickersData, currentDate, strategy);
             Object.assign(portfolio, updatedPortfolioAfterExit);
-            
+
             // СОЗДАЁМ СДЕЛКУ
             const trade: Trade = {
               id: `trade-${trades.length}`,
@@ -335,20 +336,20 @@ function runSinglePositionBacktest(
         }
       }
     }
-    
+
     // 3. ПОИСК НОВОГО ВХОДА (только если нет открытой позиции)
     if (!currentPosition) {
       let bestSignal: { tickerIndex: number; ibs: number; bar: OHLCData } | null = null;
-      
+
       // Ищем лучший сигнал среди всех тикеров
       for (let tickerIndex = 0; tickerIndex < tickersData.length; tickerIndex++) {
         const tickerData = tickersData[tickerIndex];
-        const barIndex = tickerData.dateIndexMap.get(dateTime) ?? -1;
+        const barIndex = tickerData.dateIndexMap.get(currentDate) ?? -1;
         if (barIndex === -1) continue;
-        
+
         const bar = tickerData.data[barIndex];
         const ibs = tickerData.ibsValues[barIndex];
-        
+
         // Проверяем сигнал входа
         if (ibs < lowIBS) {
           // Выбираем сигнал с самым низким IBS (самый сильный сигнал)
@@ -357,24 +358,24 @@ function runSinglePositionBacktest(
           }
         }
       }
-      
+
       // Открываем позицию по лучшему сигналу
       if (bestSignal) {
         const tickerData = tickersData[bestSignal.tickerIndex];
         const { bar, ibs } = bestSignal;
-        
+
         // Используем 100% доступного капитала с leverage
         const baseTargetInvestment = portfolio.freeCapital; // 100% СВОБОДНОГО депозита
         const targetInvestment = baseTargetInvestment * leverage; // Применяем плечо
         const entryPrice = bar.close;
         const quantity = Math.floor(targetInvestment / entryPrice);
-        
+
         if (quantity > 0) {
           const stockCost = quantity * entryPrice;
           const entryCommission = calculateCommission(stockCost, strategy);
           const marginRequired = stockCost / leverage; // Чистый маржинальный депозит
           const totalCashRequired = marginRequired + entryCommission; // Общие денежные затраты
-          
+
           // Проверяем наличие свободного капитала (должно быть >= totalCashRequired)
           if (portfolio.freeCapital >= totalCashRequired && totalCashRequired > 0) {
             // СОЗДАЁМ ПОЗИЦИЮ
@@ -388,11 +389,11 @@ function runSinglePositionBacktest(
               entryCommission: entryCommission,
               entryIBS: ibs
             };
-            
+
             // ОБНОВЛЯЕМ СОСТОЯНИЕ ПОРТФЕЛЯ
             portfolio.freeCapital -= totalCashRequired;
             portfolio.totalInvestedCost += totalCashRequired;
-            
+
             console.log(`🟢 ENTRY [${tickerData.ticker}]: IBS=${ibs.toFixed(3)} < ${lowIBS}`);
             console.log(`   💰 Stock Value: ${formatCurrencyCompact(stockCost)} | Margin: ${formatCurrencyCompact(marginRequired)} | Commission: ${formatCurrencyCompact(entryCommission)}`);
             console.log(`   📊 Portfolio: Free=${formatCurrencyCompact(portfolio.freeCapital)} | Invested=${formatCurrencyCompact(portfolio.totalInvestedCost)}`);
@@ -403,17 +404,17 @@ function runSinglePositionBacktest(
     }
 
     // ОБНОВЛЯЕМ ФИНАЛЬНОЕ СОСТОЯНИЕ ПОРТФЕЛЯ И EQUITY
-    const finalPortfolio = updatePortfolioState(portfolio, currentPosition, tickersData, dateTime, strategy);
+    const finalPortfolio = updatePortfolioState(portfolio, currentPosition, tickersData, currentDate, strategy);
     Object.assign(portfolio, finalPortfolio);
 
     // Рассчитываем drawdown
-    const peakValue = equity.length > 0 
+    const peakValue = equity.length > 0
       ? Math.max(...equity.map(e => e.value), portfolio.totalPortfolioValue)
       : portfolio.totalPortfolioValue;
     const drawdown = peakValue > 0 ? ((peakValue - portfolio.totalPortfolioValue) / peakValue) * 100 : 0;
 
     equity.push({
-      date: currentDate,
+      date: currentDate, // TradingDate string
       value: portfolio.totalPortfolioValue,
       drawdown: drawdown
     });
@@ -425,24 +426,24 @@ function runSinglePositionBacktest(
     if (tickerData) {
       const lastBarIndex = tickerData.data.length - 1;
       const lastBar = tickerData.data[lastBarIndex];
-      
+
       const exitPrice = lastBar.close;
       const stockProceeds = currentPosition.quantity * exitPrice;
       const exitCommission = calculateCommission(stockProceeds, strategy);
-      
+
       // Корректный расчет P&L для конца данных
       const stockValueAtEntry = currentPosition.quantity * currentPosition.entryPrice;
       const totalCommissions = currentPosition.entryCommission + exitCommission;
-      const stockPnL = (exitPrice - currentPosition.entryPrice) * currentPosition.quantity; 
+      const stockPnL = (exitPrice - currentPosition.entryPrice) * currentPosition.quantity;
       const totalPnL = stockPnL - totalCommissions;
       const totalCashInvested = currentPosition.totalCost + currentPosition.entryCommission;
       const pnlPercent = totalCashInvested > 0 ? (totalPnL / totalCashInvested) * 100 : 0;
-      const duration = Math.floor((lastBar.date.getTime() - currentPosition.entryDate.getTime()) / (1000 * 60 * 60 * 24));
+      const duration = daysBetweenTradingDates(currentPosition.entryDate, lastBar.date);
 
       portfolio.freeCapital += totalCashInvested + totalPnL;
       portfolio.totalInvestedCost = Math.max(0, portfolio.totalInvestedCost - totalCashInvested);
       portfolio.totalPortfolioValue = portfolio.freeCapital + portfolio.totalInvestedCost;
-      
+
       const trade: Trade = {
         id: `trade-${trades.length}`,
         entryDate: currentPosition.entryDate,
@@ -480,13 +481,13 @@ function runSinglePositionBacktest(
   const finalValue = portfolio.totalPortfolioValue;
   const totalReturn = ((finalValue - initialCapital) / initialCapital) * 100;
   const maxDrawdown = equity.length > 0 ? Math.max(...equity.map(e => e.drawdown)) : 0;
-  
+
   const winningTrades = trades.filter(t => (t.pnl ?? 0) > 0).length;
   const winRate = trades.length > 0 ? (winningTrades / trades.length) * 100 : 0;
-  
+
   // CAGR calculation
-  const daysDiff = equity.length > 0 ? 
-    (equity[equity.length - 1].date.getTime() - equity[0].date.getTime()) / (1000 * 60 * 60 * 24) : 1;
+  const daysDiff = equity.length > 0 ?
+    daysBetweenTradingDates(equity[0].date, equity[equity.length - 1].date) : 1;
   const years = daysDiff / 365.25;
   const cagr = years > 0 ? (Math.pow(finalValue / initialCapital, 1 / years) - 1) * 100 : 0;
 
@@ -504,12 +505,12 @@ function runSinglePositionBacktest(
   console.log(`📈 Total Return: ${totalReturn.toFixed(2)}%`);
   console.log(`🎯 Total Trades: ${trades.length}`);
 
-  return { 
-    equity, 
-    finalValue, 
-    maxDrawdown, 
-    trades, 
-    metrics 
+  return {
+    equity,
+    finalValue,
+    maxDrawdown,
+    trades,
+    metrics
   };
 }
 
@@ -527,7 +528,7 @@ export function SinglePositionSimulator({ strategy }: SinglePositionSimulatorPro
     trades: Trade[];
     metrics: any;
   } | null>(null);
-  
+
   // Настройки стратегии
   const [tickers, setTickers] = useState<string[]>(['AAPL', 'MSFT', 'AMZN', 'MAGS']);
   const [tickersInput, setTickersInput] = useState<string>('AAPL, MSFT, AMZN, MAGS');
@@ -543,7 +544,7 @@ export function SinglePositionSimulator({ strategy }: SinglePositionSimulatorPro
       exportDate: new Date().toISOString(),
       settings: {
         tickers: tickers,
-        leverage: `${(leveragePercent/100).toFixed(1)}:1`,
+        leverage: `${(leveragePercent / 100).toFixed(1)}:1`,
         leveragePercent: leveragePercent,
         positionSize: "100% депозита",
         strategy: "Single Position Multi-Ticker"
@@ -572,7 +573,7 @@ export function SinglePositionSimulator({ strategy }: SinglePositionSimulatorPro
     const jsonString = JSON.stringify(exportData, null, 2);
     const blob = new Blob([jsonString], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
-    
+
     const a = document.createElement('a');
     a.href = url;
     a.download = `single-position-strategy-${Date.now()}.json`;
@@ -598,16 +599,16 @@ export function SinglePositionSimulator({ strategy }: SinglePositionSimulatorPro
       leveragePercent,
       hasStrategy: !!strategy
     });
-    
+
     setIsLoading(true);
     setError(null);
-    
+
     try {
       // Загружаем данные для всех тикеров параллельно
       console.log('📥 Loading data for tickers:', tickers);
       const tickersDataPromises = tickers.map(ticker => loadTickerData(ticker));
       const tickersData = await Promise.all(tickersDataPromises);
-      
+
       console.log('✅ Loaded data:', tickersData.map(t => ({ ticker: t.ticker, bars: t.data.length })));
 
       if (tickersData.length === 0) {
@@ -617,7 +618,7 @@ export function SinglePositionSimulator({ strategy }: SinglePositionSimulatorPro
       const optimizedTickersData = optimizeTickerData(tickersData);
       const result = runSinglePositionBacktest(optimizedTickersData, strategy, leveragePercent / 100);
       setBacktest(result);
-      
+
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Неизвестная ошибка');
     } finally {
@@ -634,7 +635,7 @@ export function SinglePositionSimulator({ strategy }: SinglePositionSimulatorPro
         <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-4">
           🎯 Single Position Multi-Ticker Strategy
         </h3>
-        
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -652,10 +653,10 @@ export function SinglePositionSimulator({ strategy }: SinglePositionSimulatorPro
               placeholder="AAPL, MSFT, AMZN, MAGS"
             />
           </div>
-          
+
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Leverage: {(leveragePercent/100).toFixed(1)}:1
+              Leverage: {(leveragePercent / 100).toFixed(1)}:1
             </label>
             <select
               value={leveragePercent}
@@ -674,7 +675,7 @@ export function SinglePositionSimulator({ strategy }: SinglePositionSimulatorPro
             </select>
           </div>
         </div>
-        
+
         <div className="flex items-center justify-between mt-4">
           <div className="text-xs text-gray-500">
             Одна позиция на 100% депозита. Выбирается лучший сигнал среди всех тикеров.
@@ -687,11 +688,11 @@ export function SinglePositionSimulator({ strategy }: SinglePositionSimulatorPro
             {isLoading ? 'Расчёт...' : 'Запустить бэктест'}
           </button>
         </div>
-        
+
         <div className="mt-3 text-sm text-gray-600 dark:text-gray-400">
           <p>Тикеры: <span className="font-mono">{tickers.join(', ')}</span></p>
           <p>Размер позиции: <span className="font-mono text-green-600 dark:text-green-400">100% депозита</span></p>
-          <p>Leverage: <span className="font-mono text-orange-600 dark:text-orange-400">{(leveragePercent/100).toFixed(1)}:1</span></p>
+          <p>Leverage: <span className="font-mono text-orange-600 dark:text-orange-400">{(leveragePercent / 100).toFixed(1)}:1</span></p>
           <p className="text-blue-600 dark:text-blue-400">
             ✨ Single Position: Только одна позиция в любой момент времени
           </p>
@@ -719,7 +720,7 @@ export function SinglePositionSimulator({ strategy }: SinglePositionSimulatorPro
           </div>
         </div>
       )}
-      
+
       {!isLoading && backtest && (
         <>
           {/* Метрики */}
@@ -733,28 +734,28 @@ export function SinglePositionSimulator({ strategy }: SinglePositionSimulatorPro
               </div>
               <div className="text-sm text-gray-600 dark:text-gray-400">Итоговый баланс</div>
             </div>
-            
+
             <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 text-center">
               <div className="text-2xl font-bold text-blue-600">
                 {backtest.metrics.totalReturn?.toFixed(2)}%
               </div>
               <div className="text-sm text-gray-600 dark:text-gray-400">Общая доходность</div>
             </div>
-            
+
             <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 text-center">
               <div className="text-2xl font-bold text-orange-600">
                 {backtest.metrics.cagr?.toFixed(2)}%
               </div>
               <div className="text-sm text-gray-600 dark:text-gray-400">Годовые проценты</div>
             </div>
-            
+
             <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 text-center">
               <div className="text-2xl font-bold text-purple-600">
                 {backtest.metrics.winRate?.toFixed(1)}%
               </div>
               <div className="text-sm text-gray-600 dark:text-gray-400">Win Rate</div>
             </div>
-            
+
             <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 text-center">
               <div className="text-2xl font-bold text-red-600">
                 {backtest.maxDrawdown.toFixed(2)}%
@@ -789,9 +790,9 @@ export function SinglePositionSimulator({ strategy }: SinglePositionSimulatorPro
               <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-4">
                 История сделок ({backtest.trades.length}) - Single Position Strategy
               </h3>
-              
-              <StrategyParameters 
-                strategy={strategy} 
+
+              <StrategyParameters
+                strategy={strategy}
                 additionalParams={{
                   'Размер позиции': '100% депозита',
                   'Количество тикеров': tickers.length,
@@ -799,7 +800,7 @@ export function SinglePositionSimulator({ strategy }: SinglePositionSimulatorPro
                   'Логика': 'Single Position - одна позиция на весь депозит'
                 }}
               />
-              
+
               <div className="max-h-[600px] overflow-auto">
                 <TradesTable
                   trades={backtest.trades}

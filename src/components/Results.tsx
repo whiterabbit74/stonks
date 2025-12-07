@@ -2,8 +2,15 @@ import { useEffect, useMemo, useState } from 'react';
 import { Heart, RefreshCcw, AlertTriangle, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { DatasetAPI } from '../lib/api';
-import { formatOHLCYMD } from '../lib/utils';
-import { formatTradingDateDisplay } from '../lib/date-utils';
+import {
+  isValidTradingDate,
+  toTradingDate,
+  isSameDay,
+  formatTradingDateDisplay,
+  addDaysToTradingDate,
+  daysBetweenTradingDates
+} from '../lib/date-utils';
+import type { TradingDate } from '../lib/date-utils';
 import { useAppStore } from '../stores';
 import { useToastActions } from './ui';
 import { TradingChart } from './TradingChart';
@@ -116,14 +123,15 @@ export function Results() {
   const { hasDuplicateDates, duplicateDateKeys } = useMemo(() => {
     try {
       const dateKeyOf = (v: unknown): string => {
-        if (!v) return '';
         if (typeof v === 'string') {
           // TradingDate is already YYYY-MM-DD string
           return v.length >= 10 ? v.slice(0, 10) : v;
         }
-        // Fallback for legacy Date objects (shouldn't happen after migration)
-        const d = new Date(v as string | number | Date);
-        return Number.isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10);
+        // Fallback for legacy Date objects
+        if (v instanceof Date && !isNaN(v.getTime())) {
+          return v.toISOString().slice(0, 10);
+        }
+        return '';
       };
       const countByKey = new Map<string, number>();
       for (const bar of (marketData || [])) {
@@ -268,7 +276,9 @@ export function Results() {
 
       // Fallback: return parts from 1 day back if no trading day found
       console.warn('Could not find previous trading day within 30 days, using fallback');
-      return getETParts(new Date(fromUTC.getTime() - 24 * 60 * 60 * 1000));
+      // Subtract 1 day from TradingDate
+      // Subtract 1 day from TradingDate
+      return getETParts(new Date(addDaysToTradingDate(fromUTC as TradingDate, -1)));
     };
 
     // Determine if by now we should expect today's daily bar (after close + buffer) or yesterday's
@@ -310,7 +320,7 @@ export function Results() {
     const dataKeys = new Set(
       marketData.map(b => {
         // date is now TradingDate string (YYYY-MM-DD)
-        return formatOHLCYMD(b.date);
+        return b.date;
       })
     );
     const stale = !dataKeys.has(expectedKeyUTC);
@@ -439,7 +449,7 @@ export function Results() {
         const value = initialCapital * (price / firstPrice);
         if (value > peak) peak = value;
         const drawdown = peak > 0 ? ((peak - value) / peak) * 100 : 0;
-        const d = b.date instanceof Date ? b.date : new Date(b.date as unknown as string | number | Date);
+        const d = new Date(b.date);
         return { date: d, value, drawdown };
       });
       return series;
@@ -516,7 +526,7 @@ export function Results() {
                       const trades = backtestResults?.trades || [];
                       const lastTrade = trades[trades.length - 1];
                       const lastDataDate = marketData.length ? marketData[marketData.length - 1].date : null;
-                      const isOpen = !!(lastTrade && lastDataDate && new Date(lastTrade.exitDate).getTime() === new Date(lastDataDate).getTime());
+                      const isOpen = !!(lastTrade && lastDataDate && isSameDay(lastTrade.exitDate, lastDataDate));
                       await DatasetAPI.registerTelegramWatch({
                         symbol,
                         highIBS: Number(currentStrategy?.parameters?.highIBS ?? 0.75),
@@ -604,7 +614,7 @@ export function Results() {
                 {(() => {
                   const lastTrade = trades[trades.length - 1];
                   const lastDataDate = marketData.length ? marketData[marketData.length - 1].date : null;
-                  const isOpen = !!(lastTrade && lastDataDate && new Date(lastTrade.exitDate).getTime() === new Date(lastDataDate).getTime());
+                  const isOpen = !!(lastTrade && lastDataDate && isSameDay(lastTrade.exitDate, lastDataDate));
                   return (
                     <span>
                       Открытая сделка: <span className={isOpen ? 'text-emerald-600 dark:text-emerald-300' : 'text-gray-500'}>{isOpen ? 'да' : 'нет'}</span>
@@ -651,12 +661,12 @@ export function Results() {
                     isOpenPosition={(() => {
                       const lastTrade = trades[trades.length - 1];
                       const lastDataDate = marketData.length ? marketData[marketData.length - 1].date : null;
-                      return !!(lastTrade && lastDataDate && new Date(lastTrade.exitDate).getTime() === new Date(lastDataDate).getTime());
+                      return !!(lastTrade && lastDataDate && isSameDay(lastTrade.exitDate, lastDataDate));
                     })()}
                     entryPrice={(() => {
                       const lastTrade = trades[trades.length - 1];
                       const lastDataDate = marketData.length ? marketData[marketData.length - 1].date : null;
-                      const isOpen = !!(lastTrade && lastDataDate && new Date(lastTrade.exitDate).getTime() === new Date(lastDataDate).getTime());
+                      const isOpen = !!(lastTrade && lastDataDate && isSameDay(lastTrade.exitDate, lastDataDate));
                       return isOpen ? lastTrade?.entryPrice ?? null : null;
                     })()}
                   />
@@ -839,10 +849,13 @@ export function Results() {
             )}
             {activeChart === 'trades' && (
               <div className="space-y-4">
-                <TradesTable
-                  trades={trades}
-                  exportFileNamePrefix={`trades-${symbol || 'backtest'}`}
-                />
+                {/* Trades Table */}
+                {backtestResults.trades.length > 0 && (
+                  <TradesTable
+                    trades={trades}
+                    exportFileNamePrefix={`trades-${symbol || 'backtest'}`}
+                  />
+                )}
               </div>
             )}
             {activeChart === 'profit' && (
