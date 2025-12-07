@@ -71,9 +71,16 @@ export function AppSettings() {
 
   // Drag & Drop состояние
   const [draggedTab, setDraggedTab] = useState<string | null>(null);
+  const [dragOverTab, setDragOverTab] = useState<string | null>(null);
+  const [wasDragging, setWasDragging] = useState(false);
 
   // Функции для управления табами аналитики
   const toggleTabVisibility = (tabId: string) => {
+    // Блокируем toggle если только что было перетаскивание
+    if (wasDragging) {
+      setWasDragging(false);
+      return;
+    }
     const newConfig = analysisTabsConfig.map(tab =>
       tab.id === tabId ? { ...tab, visible: !tab.visible } : tab
     );
@@ -83,24 +90,42 @@ export function AppSettings() {
   // Drag & Drop функции
   const handleDragStart = (e: React.DragEvent, tabId: string) => {
     setDraggedTab(tabId);
+    setWasDragging(true);
     e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/html', tabId);
+    e.dataTransfer.setData('text/plain', tabId);
+    // Добавляем небольшую задержку для визуального эффекта
+    (e.target as HTMLElement).style.opacity = '0.5';
   };
 
-  const handleDragOver = (e: React.DragEvent) => {
+  const handleDragOver = (e: React.DragEvent, targetTabId?: string) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
+    if (targetTabId && targetTabId !== draggedTab) {
+      setDragOverTab(targetTabId);
+    }
+  };
+
+  const handleDragLeave = () => {
+    setDragOverTab(null);
   };
 
   const handleDrop = (e: React.DragEvent, targetTabId: string) => {
     e.preventDefault();
+    e.stopPropagation();
+    setDragOverTab(null);
 
-    if (!draggedTab || draggedTab === targetTabId) return;
+    if (!draggedTab || draggedTab === targetTabId) {
+      setDraggedTab(null);
+      return;
+    }
 
     const draggedIndex = analysisTabsConfig.findIndex(tab => tab.id === draggedTab);
     const targetIndex = analysisTabsConfig.findIndex(tab => tab.id === targetTabId);
 
-    if (draggedIndex === -1 || targetIndex === -1) return;
+    if (draggedIndex === -1 || targetIndex === -1) {
+      setDraggedTab(null);
+      return;
+    }
 
     const newConfig = [...analysisTabsConfig];
     const [draggedItem] = newConfig.splice(draggedIndex, 1);
@@ -110,8 +135,12 @@ export function AppSettings() {
     setDraggedTab(null);
   };
 
-  const handleDragEnd = () => {
+  const handleDragEnd = (e: React.DragEvent) => {
+    (e.target as HTMLElement).style.opacity = '1';
     setDraggedTab(null);
+    setDragOverTab(null);
+    // wasDragging сбросится при следующем клике или через таймаут
+    setTimeout(() => setWasDragging(false), 100);
   };
 
 
@@ -640,17 +669,19 @@ export function AppSettings() {
               key={tab.id}
               draggable
               onDragStart={(e) => handleDragStart(e, tab.id)}
-              onDragOver={handleDragOver}
+              onDragOver={(e) => handleDragOver(e, tab.id)}
+              onDragLeave={handleDragLeave}
               onDrop={(e) => handleDrop(e, tab.id)}
               onDragEnd={handleDragEnd}
               onClick={() => toggleTabVisibility(tab.id)}
               className={`
                 relative p-4 rounded-lg border-2 cursor-pointer transition-all duration-200
                 ${tab.visible
-                  ? 'bg-white border-blue-200 shadow-sm hover:shadow-md hover:border-blue-300'
-                  : 'bg-gray-100 border-gray-300 opacity-60 hover:opacity-80'
+                  ? 'bg-white border-blue-200 shadow-sm hover:shadow-md hover:border-blue-300 dark:bg-gray-800 dark:border-gray-600'
+                  : 'bg-gray-100 border-gray-300 opacity-60 hover:opacity-80 dark:bg-gray-700 dark:border-gray-600'
                 }
-                ${draggedTab === tab.id ? 'rotate-3 scale-105 shadow-lg z-10' : ''}
+                ${draggedTab === tab.id ? 'opacity-50 scale-105 shadow-lg z-10' : ''}
+                ${dragOverTab === tab.id && draggedTab !== tab.id ? 'ring-2 ring-blue-500 ring-offset-2 scale-105' : ''}
                 hover:scale-105 active:scale-95
               `}
               title={`${tab.visible ? 'Нажмите, чтобы скрыть' : 'Нажмите, чтобы показать'} • Перетаскивайте для изменения порядка`}
@@ -665,8 +696,8 @@ export function AppSettings() {
                 <div className={`
                   p-3 rounded-full transition-colors
                   ${tab.visible
-                    ? 'bg-blue-100 text-blue-600'
-                    : 'bg-gray-200 text-gray-500'
+                    ? 'bg-blue-100 text-blue-600 dark:bg-blue-900 dark:text-blue-300'
+                    : 'bg-gray-200 text-gray-500 dark:bg-gray-600 dark:text-gray-400'
                   }
                 `}>
                   {getTabIcon(tab.id)}
@@ -675,8 +706,8 @@ export function AppSettings() {
                 <div className={`
                   text-sm font-medium leading-tight
                   ${tab.visible
-                    ? 'text-gray-900'
-                    : 'text-gray-500 line-through'
+                    ? 'text-gray-900 dark:text-gray-100'
+                    : 'text-gray-500 line-through dark:text-gray-400'
                   }
                 `}>
                   {tab.label}

@@ -97,9 +97,9 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     return (
         <ToastContext.Provider value={{ toasts, addToast, removeToast }}>
             {children}
-            {/* Toast Container */}
+            {/* Toast Container - top right */}
             <div
-                className="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-sm w-full pointer-events-none"
+                className="fixed top-4 right-4 z-50 flex flex-col gap-2 max-w-sm w-full pointer-events-none"
                 aria-label="Уведомления"
             >
                 {toasts.map((toast) => (

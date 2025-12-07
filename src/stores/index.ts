@@ -38,7 +38,7 @@ interface AppState {
   // Multi-ticker page settings
   defaultMultiTickerSymbols: string; // тикеры по умолчанию для страницы "Несколько тикеров"
   setDefaultMultiTickerSymbols: (value: string) => void;
-  
+
   // Commission settings
   commissionType: 'fixed' | 'percentage' | 'combined';
   commissionFixed: number; // в валюте (например, в долларах)
@@ -46,18 +46,18 @@ interface AppState {
   setCommissionType: (type: 'fixed' | 'percentage' | 'combined') => void;
   setCommissionFixed: (value: number) => void;
   setCommissionPercentage: (value: number) => void;
-  
+
   // Analysis tabs configuration
   analysisTabsConfig: AnalysisTabConfig[];
   setAnalysisTabsConfig: (config: AnalysisTabConfig[]) => void;
-  
+
   // Strategy
   currentStrategy: Strategy | null;
-  
+
   // Backtest
   backtestResults: BacktestResult | null;
   backtestStatus: 'idle' | 'running' | 'completed' | 'error';
-  
+
   // Actions
   updateMarketData: (data: OHLCData[]) => void;
   setSplits: (splits: SplitEvent[]) => void;
@@ -71,7 +71,7 @@ interface AppState {
   setEnhancerProvider: (p: 'alpha_vantage' | 'finnhub' | 'twelve_data') => void;
   loadJSONData: (file: File) => Promise<void>;
   loadDatasetsFromServer: () => Promise<void>;
-  saveDatasetToServer: (ticker: string, name?: string) => Promise<void>;
+  saveDatasetToServer: (ticker: string, name?: string, metadata?: { companyName?: string; tag?: string }) => Promise<void>;
   loadDatasetFromServer: (datasetId: string) => Promise<void>;
   deleteDatasetFromServer: (datasetId: string) => Promise<void>;
   exportDatasetAsJSON: (datasetId: string) => void;
@@ -131,21 +131,21 @@ export const useAppStore = create<AppState>((set, get) => ({
           // Проверяем, есть ли новые табы в дефолтной конфигурации, которых нет в сохраненной
           const savedIds = new Set(parsed.map((tab: any) => tab.id));
           const missingTabs = defaultTabs.filter(tab => !savedIds.has(tab.id));
-          
+
           if (missingTabs.length > 0) {
             // Добавляем отсутствующие табы в конец списка
             const updatedTabs = [...parsed, ...missingTabs];
             localStorage.setItem('analysisTabsConfig', JSON.stringify(updatedTabs));
             return updatedTabs;
           }
-          
+
           return parsed;
         }
       }
     } catch (e) {
       console.warn('Failed to load analysis tabs config from localStorage:', e);
     }
-    
+
     // Сохраняем дефолтные настройки в localStorage
     localStorage.setItem('analysisTabsConfig', JSON.stringify(defaultTabs));
     return defaultTabs;
@@ -184,7 +184,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       throw e; // ИСПРАВЛЕНИЕ: перебрасываем ошибку, чтобы AppSettings мог ее обработать
     }
   },
-  
+
   setIndicatorPanePercent: (value: number) => set({ indicatorPanePercent: value }),
 
   setDefaultMultiTickerSymbols: (value: string) => set({ defaultMultiTickerSymbols: value }),
@@ -198,10 +198,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     const key = JSON.stringify((splits || []).slice().sort((a, b) => a.date.localeCompare(b.date)));
     const { marketData, lastAppliedSplitsKey } = get();
     // Apply splits only if they are different from previously applied ones
-    const shouldApplySplits = Array.isArray(marketData) && marketData.length > 0 && 
-                             Array.isArray(splits) && splits.length > 0 && 
-                             key !== lastAppliedSplitsKey; // Compare actual split keys, not just existence
-    
+    const shouldApplySplits = Array.isArray(marketData) && marketData.length > 0 &&
+      Array.isArray(splits) && splits.length > 0 &&
+      key !== lastAppliedSplitsKey; // Compare actual split keys, not just existence
+
     if (shouldApplySplits) {
       const adjusted = adjustOHLCForSplits(marketData, splits);
       set({ currentSplits: splits, marketData: adjusted, lastAppliedSplitsKey: key });
@@ -246,7 +246,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   loadJSONData: async (file: File) => {
     set({ isLoading: true, error: null });
-    
+
     try {
       const dataset = await loadDatasetFromJSON(file);
       const { savedDatasets } = get();
@@ -254,10 +254,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       // Применяем back-adjust по сплитам из самого датасета (если есть)
       const splits: SplitEvent[] = Array.isArray(dataset.splits) ? dataset.splits : [];
       const adjustedData = dedupeDailyOHLC(adjustOHLCForSplits(dataset.data, splits));
-      
+
       // Проверяем, есть ли уже такой датасет в библиотеке
       const existingIndex = savedDatasets.findIndex(d => d.name === dataset.name);
-      
+
       let updatedDatasets;
       if (existingIndex >= 0) {
         // Заменяем существующий
@@ -269,21 +269,21 @@ export const useAppStore = create<AppState>((set, get) => ({
         updatedDatasets = [...savedDatasets, dataset];
         console.log(`Датасет добавлен в библиотеке: ${dataset.name}`);
       }
-      
-      set({ 
+
+      set({
         marketData: adjustedData,
         currentDataset: dataset,
         currentSplits: splits,
         savedDatasets: updatedDatasets,
-        isLoading: false 
+        isLoading: false
       });
       try {
         logInfo('data', 'JSON dataset loaded', { name: dataset?.name, points: adjustedData?.length, splits: splits?.length }, 'store.loadJSONData');
       } catch { /* ignore */ }
     } catch (error) {
-      set({ 
+      set({
         error: error instanceof Error ? error.message : 'Failed to load JSON file',
-        isLoading: false 
+        isLoading: false
       });
       try { logError('data', 'Failed to load JSON file', { fileName: file?.name }, 'store.loadJSONData', error instanceof Error ? error.stack : undefined); } catch { /* ignore */ }
     }
@@ -297,7 +297,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
 
     set({ isLoading: true, error: null, currentLoadOperation: null });
-    
+
     try {
       const datasets = await DatasetAPI.getDatasets();
       // Нормализуем тикер/имя и обеспечим стабильный id
@@ -307,16 +307,16 @@ export const useAppStore = create<AppState>((set, get) => ({
         const ticker = (d.ticker || (hasId ? d.id : null) || d.name).toUpperCase();
         return { ...d, ticker, name: ticker } as typeof d;
       });
-      set({ 
+      set({
         savedDatasets: normalized,
-        isLoading: false 
+        isLoading: false
       });
       console.log(`Загружено ${normalized.length} датасетов с сервера`);
       try { logInfo('network', 'Datasets loaded from server', { count: normalized.length }, 'store.loadDatasetsFromServer'); } catch { /* ignore */ }
     } catch (error) {
       // Если сервер недоступен, просто логируем ошибку, но не показываем пользователю
       console.warn('Сервер недоступен, работаем без сохранения:', error instanceof Error ? error.message : 'Unknown error');
-      set({ 
+      set({
         savedDatasets: [],
         isLoading: false,
         error: null // Не показываем ошибку пользователю
@@ -324,9 +324,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
-  saveDatasetToServer: async (ticker: string, name?: string) => {
+  saveDatasetToServer: async (ticker: string, name?: string, metadata?: { companyName?: string; tag?: string }) => {
     const { marketData } = get();
-    
+
     if (!marketData || !marketData.length) {
       set({ error: 'Нет данных для сохранения' });
       return;
@@ -348,26 +348,28 @@ export const useAppStore = create<AppState>((set, get) => ({
         } : {
           from: new Date().toISOString().split('T')[0],
           to: new Date().toISOString().split('T')[0]
-        }
+        },
+        ...(metadata?.companyName && { companyName: metadata.companyName }),
+        ...(metadata?.tag && { tag: metadata.tag })
       } as SavedDataset;
 
       await DatasetAPI.saveDataset(dataset);
-      
+
       // Обновляем список датасетов
       await get().loadDatasetsFromServer();
-      
-      set({ 
+
+      set({
         currentDataset: dataset,
-        isLoading: false 
+        isLoading: false
       });
 
       console.log(`Датасет сохранен на сервере: ${dataset.name}`);
     } catch (error) {
       console.warn('Не удалось сохранить на сервер:', error instanceof Error ? error.message : 'Unknown error');
       try { logError('network', 'Save dataset failed', { ticker, points: marketData?.length }, 'store.saveDatasetToServer', error instanceof Error ? error.stack : undefined); } catch { /* ignore */ }
-      set({ 
+      set({
         error: 'Сервер недоступен. Запустите сервер для сохранения данных.',
-        isLoading: false 
+        isLoading: false
       });
     }
   },
@@ -382,7 +384,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     // Create new abort controller for this operation
     const abortController = new AbortController();
     set({ isLoading: true, error: null, currentLoadOperation: abortController });
-    
+
     try {
       // Check if operation was cancelled before starting
       if (abortController.signal.aborted) return;
@@ -411,13 +413,13 @@ export const useAppStore = create<AppState>((set, get) => ({
         // Загружаем только из центрального splits.json и применяем локально
         let splits: SplitEvent[] = [];
         try { splits = await DatasetAPI.getSplits(dataset.ticker); } catch { splits = []; }
-        
+
         // Check if operation was cancelled after splits fetch
         if (abortController.signal.aborted) return;
 
         const adjusted = dedupeDailyOHLC(adjustOHLCForSplits(dataset.data, splits));
         const key = JSON.stringify((splits || []).slice().sort((a, b) => a.date.localeCompare(b.date)));
-        
+
         // Check if still current operation before updating state
         if (get().currentLoadOperation === abortController) {
           set({
@@ -452,7 +454,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     } catch (error) {
       // Only update error state if this operation wasn't cancelled
       if (!abortController.signal.aborted && get().currentLoadOperation === abortController) {
-        set({ 
+        set({
           error: error instanceof Error ? error.message : 'Failed to load dataset from server',
           isLoading: false,
           currentLoadOperation: null
@@ -502,26 +504,26 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   deleteDatasetFromServer: async (datasetId: string) => {
     set({ isLoading: true, error: null });
-    
+
     try {
       await DatasetAPI.deleteDataset(datasetId);
-      
+
       // Обновляем список датасетов
       await get().loadDatasetsFromServer();
-      
+
       // Если удаляем текущий датасет, сбрасываем его
       const { currentDataset } = get();
       if (currentDataset && currentDataset.name === datasetId) {
         set({ currentDataset: null });
       }
-      
+
       set({ isLoading: false });
       console.log(`Датасет удален с сервера: ${datasetId}`);
       try { logInfo('network', 'Dataset deleted', { id: datasetId }, 'store.deleteDatasetFromServer'); } catch { /* ignore */ }
     } catch (error) {
-      set({ 
+      set({
         error: error instanceof Error ? error.message : 'Failed to delete dataset from server',
-        isLoading: false 
+        isLoading: false
       });
       try { logError('network', 'Dataset delete failed', { id: datasetId }, 'store.deleteDatasetFromServer', error instanceof Error ? error.stack : undefined); } catch { /* ignore */ }
     }
@@ -529,7 +531,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   exportDatasetAsJSON: (datasetId: string) => {
     const { savedDatasets } = get();
-    
+
     const datasetMeta = savedDatasets.find(d => d.name === datasetId);
     if (!datasetMeta) {
       set({ error: 'Датасет не найден' });
@@ -543,18 +545,18 @@ export const useAppStore = create<AppState>((set, get) => ({
         saveDatasetToJSON(full.data, full.ticker, full.name);
         try { logInfo('network', 'Dataset exported', { id: datasetMeta.name, points: Array.isArray(full?.data) ? full.data.length : 0 }, 'store.exportDatasetAsJSON'); } catch { /* ignore */ }
       } catch (error) {
-        set({ 
+        set({
           error: error instanceof Error ? error.message : 'Failed to export dataset'
         });
         try { logError('network', 'Dataset export failed', { id: datasetMeta.name }, 'store.exportDatasetAsJSON', error instanceof Error ? error.stack : undefined); } catch { /* ignore */ }
       }
     })();
   },
-  
+
   setStrategy: (strategy: Strategy | null) => {
     set({ currentStrategy: strategy });
   },
-  
+
   runBacktest: async () => {
     let { marketData, currentStrategy, currentDataset } = get(); // eslint-disable-line prefer-const
     // Гарантируем стратегию IBS по умолчанию (без динамического импорта)
@@ -590,20 +592,20 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ backtestStatus: 'running', error: null });
     try {
       const results = await executeBacktest(marketData, currentStrategy);
-      set({ 
+      set({
         backtestResults: results,
         backtestStatus: 'completed'
       });
       try { logInfo('backtest', 'Backtest completed', { trades: results?.trades?.length, equity: results?.equity?.length }, 'store.runBacktest'); } catch { /* ignore */ }
     } catch (error) {
-      set({ 
+      set({
         error: error instanceof Error ? error.message : 'Ошибка бэктеста',
         backtestStatus: 'error'
       });
       try { logError('backtest', 'Backtest failed', {}, 'store.runBacktest', error instanceof Error ? error.stack : undefined); } catch { /* ignore */ }
     }
   },
-  
+
   clearError: () => {
     set({ error: null });
   }

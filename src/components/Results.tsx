@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { DatasetAPI } from '../lib/api';
 import { formatOHLCYMD } from '../lib/utils';
 import { useAppStore } from '../stores';
+import { useToastActions } from './ui';
 import { TradingChart } from './TradingChart';
 import { EquityChart } from './EquityChart';
 import { TradeDrawdownChart } from './TradeDrawdownChart';
@@ -70,7 +71,7 @@ export function Results() {
   const resultsRefreshProvider = useAppStore((s) => s.resultsRefreshProvider);
   const loadDatasetFromServer = useAppStore((s) => s.loadDatasetFromServer);
   const analysisTabsConfig = useAppStore((s) => s.analysisTabsConfig);
-  const [quote, setQuote] = useState<{ open: number|null; high: number|null; low: number|null; current: number|null; prevClose: number|null } | null>(null);
+  const [quote, setQuote] = useState<{ open: number | null; high: number | null; low: number | null; current: number | null; prevClose: number | null } | null>(null);
   const [quoteError, setQuoteError] = useState<string | null>(null);
   const [isTrading, setIsTrading] = useState<boolean>(false);
   const [quoteLoading, setQuoteLoading] = useState<boolean>(false);
@@ -82,6 +83,7 @@ export function Results() {
   const [modal, setModal] = useState<{ type: 'info' | 'error' | null; title?: string; message?: string }>({ type: null });
   const [watching, setWatching] = useState(false);
   const [watchBusy, setWatchBusy] = useState(false);
+  const toast = useToastActions();
   // Trading calendar (holidays, short days, trading hours)
   type TradingCalendarData = {
     metadata: { years: string[] };
@@ -90,17 +92,17 @@ export function Results() {
     tradingHours: { normal: { start: string; end: string }; short: { start: string; end: string } };
   };
   const [tradingCalendar, setTradingCalendar] = useState<TradingCalendarData | null>(null);
-  
+
   type ChartTab = 'price' | 'equity' | 'buyhold' | 'drawdown' | 'trades' | 'profit' | 'duration' | 'openDayDrawdown' | 'margin' | 'buyAtClose' | 'buyAtClose4' | 'noStopLoss' | 'singlePosition' | 'splits';
-  
+
   // Определяем первый видимый таб как активный по умолчанию
   const firstVisibleTab = useMemo(() => {
     const visibleTab = analysisTabsConfig.find(tab => tab.visible);
     return visibleTab?.id as ChartTab || 'price';
   }, [analysisTabsConfig]);
-  
+
   const [activeChart, setActiveChart] = useState<ChartTab>(firstVisibleTab);
-  
+
   // Обновляем активный таб, если текущий стал невидимым
   useEffect(() => {
     const currentTabConfig = analysisTabsConfig.find(tab => tab.id === activeChart);
@@ -108,7 +110,7 @@ export function Results() {
       setActiveChart(firstVisibleTab);
     }
   }, [analysisTabsConfig, activeChart, firstVisibleTab]);
-  
+
   // Проверка дублей дат в marketData (ключ YYYY-MM-DD)
   const { hasDuplicateDates, duplicateDateKeys } = useMemo(() => {
     try {
@@ -138,19 +140,27 @@ export function Results() {
     currentDataset?.ticker || backtestResults?.symbol || backtestResults?.ticker || backtestResults?.meta?.ticker
   ), [currentDataset, backtestResults]);
 
-  
+
 
   const handleRefresh = async () => {
     if (!symbol) return;
     setRefreshing(true);
     setRefreshError(null);
     try {
-      await DatasetAPI.refreshDataset(symbol, resultsRefreshProvider as any);
+      const result = await DatasetAPI.refreshDataset(symbol, resultsRefreshProvider as any);
       // Reload the dataset to reflect server-updated data
       await loadDatasetFromServer(symbol);
+      // Show toast with result
+      const addedDays = result?.added ?? 0;
+      if (addedDays > 0) {
+        toast.success(`${symbol}: добавлено ${addedDays} ${addedDays === 1 ? 'день' : addedDays < 5 ? 'дня' : 'дней'}`);
+      } else {
+        toast.info(`${symbol}: данные актуальны`);
+      }
     } catch (e) {
       const message = e instanceof Error ? e.message : 'Не удалось обновить датасет';
       setRefreshError(message);
+      toast.error(`${symbol}: ${message}`);
     } finally {
       setRefreshing(false);
     }
@@ -196,15 +206,15 @@ export function Results() {
         year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'short',
       });
       const parts = fmt.formatToParts(date);
-      const map: Record<string,string> = {};
+      const map: Record<string, string> = {};
       parts.forEach(p => { if (p.type !== 'literal') map[p.type] = p.value; });
       const y = Number(map.year), m = Number(map.month), d = Number(map.day);
       const weekdayStr = map.weekday; // e.g., Mon, Tue
-      const weekdayMap: Record<string, number> = { Sun:0, Mon:1, Tue:2, Wed:3, Thu:4, Fri:5, Sat:6 };
+      const weekdayMap: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
       const weekday = weekdayMap[weekdayStr as keyof typeof weekdayMap] ?? 0;
       return { y, m, d, weekday };
     };
-    const isWeekendET = (p: {weekday:number}) => p.weekday === 0 || p.weekday === 6;
+    const isWeekendET = (p: { weekday: number }) => p.weekday === 0 || p.weekday === 6;
     const parseHmToMinutes = (hm: string | undefined | null): number | null => {
       try {
         if (!hm || typeof hm !== 'string' || hm.indexOf(':') < 0) return null;
@@ -215,48 +225,48 @@ export function Results() {
         return hh * 60 + mm;
       } catch { return null; }
     };
-    const isHolidayET = (p: {y:number;m:number;d:number}) => {
+    const isHolidayET = (p: { y: number; m: number; d: number }) => {
       try {
         if (!tradingCalendar) return false;
         const y = String(p.y);
-        const key = `${String(p.m).padStart(2,'0')}-${String(p.d).padStart(2,'0')}`;
+        const key = `${String(p.m).padStart(2, '0')}-${String(p.d).padStart(2, '0')}`;
         return !!(tradingCalendar.holidays[y] && tradingCalendar.holidays[y][key]);
       } catch { return false; }
     };
-    const isShortDayET = (p: {y:number;m:number;d:number}) => {
+    const isShortDayET = (p: { y: number; m: number; d: number }) => {
       try {
         if (!tradingCalendar) return false;
         const y = String(p.y);
-        const key = `${String(p.m).padStart(2,'0')}-${String(p.d).padStart(2,'0')}`;
+        const key = `${String(p.m).padStart(2, '0')}-${String(p.d).padStart(2, '0')}`;
         return !!(tradingCalendar.shortDays[y] && tradingCalendar.shortDays[y][key]);
       } catch { return false; }
     };
-    const getSessionForDateET = (p: {y:number;m:number;d:number}) => {
-      const open = parseHmToMinutes(tradingCalendar?.tradingHours?.normal?.start) ?? (9*60+30);
-      const normalClose = parseHmToMinutes(tradingCalendar?.tradingHours?.normal?.end) ?? (16*60);
-      const shortClose = parseHmToMinutes(tradingCalendar?.tradingHours?.short?.end) ?? (13*60);
+    const getSessionForDateET = (p: { y: number; m: number; d: number }) => {
+      const open = parseHmToMinutes(tradingCalendar?.tradingHours?.normal?.start) ?? (9 * 60 + 30);
+      const normalClose = parseHmToMinutes(tradingCalendar?.tradingHours?.normal?.end) ?? (16 * 60);
+      const shortClose = parseHmToMinutes(tradingCalendar?.tradingHours?.short?.end) ?? (13 * 60);
       const short = isShortDayET(p);
       return { openMin: open, closeMin: short ? shortClose : normalClose, short };
     };
     const previousTradingDayET = (fromUTC: Date) => {
       const cursor = new Date(fromUTC);
       // step back at least one day
-      cursor.setUTCDate(cursor.getUTCDate()-1);
-      
+      cursor.setUTCDate(cursor.getUTCDate() - 1);
+
       // Add safety limit to prevent infinite loop (max 30 days back)
       let attempts = 0;
       const maxAttempts = 30;
-      
+
       while (attempts < maxAttempts) {
         const parts = getETParts(cursor);
         if (!isWeekendET(parts) && !isHolidayET(parts)) return parts;
-        cursor.setUTCDate(cursor.getUTCDate()-1);
+        cursor.setUTCDate(cursor.getUTCDate() - 1);
         attempts++;
       }
-      
+
       // Fallback: return parts from 1 day back if no trading day found
       console.warn('Could not find previous trading day within 30 days, using fallback');
-      return getETParts(new Date(fromUTC.getTime() - 24*60*60*1000));
+      return getETParts(new Date(fromUTC.getTime() - 24 * 60 * 60 * 1000));
     };
 
     // Determine if by now we should expect today's daily bar (after close + buffer) or yesterday's
@@ -289,7 +299,7 @@ export function Results() {
     const etDate = new Date();
     etDate.setFullYear(expectedParts.y, expectedParts.m - 1, expectedParts.d);
     etDate.setHours(12, 0, 0, 0); // Use noon ET to avoid midnight boundary issues
-    
+
     // Convert to UTC date string consistently
     const expectedKeyUTC = etDate.toLocaleDateString('en-CA', {
       timeZone: 'America/New_York'
@@ -333,7 +343,7 @@ export function Results() {
       const fmtParts = fmt.formatToParts(new Date());
       const map: Record<string, string> = {};
       fmtParts.forEach(p => { if (p.type !== 'literal') map[p.type] = p.value; });
-      const weekdayMap: Record<string, number> = { Sun:0, Mon:1, Tue:2, Wed:3, Thu:4, Fri:5, Sat:6 };
+      const weekdayMap: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
       const weekday = weekdayMap[map.weekday] ?? 0;
       const hh = parseInt(map.hour || '0', 10);
       const mm = parseInt(map.minute || '0', 10);
@@ -349,7 +359,7 @@ export function Results() {
         try {
           if (!tradingCalendar) return false;
           const y = String(ymdObj.y);
-          const key = `${String(ymdObj.m).padStart(2,'0')}-${String(ymdObj.d).padStart(2,'0')}`;
+          const key = `${String(ymdObj.m).padStart(2, '0')}-${String(ymdObj.d).padStart(2, '0')}`;
           return !!(tradingCalendar.holidays[y] && tradingCalendar.holidays[y][key]);
         } catch { return false; }
       })();
@@ -358,7 +368,7 @@ export function Results() {
         try {
           if (!tradingCalendar) return false;
           const y = String(ymdObj.y);
-          const key = `${String(ymdObj.m).padStart(2,'0')}-${String(ymdObj.d).padStart(2,'0')}`;
+          const key = `${String(ymdObj.m).padStart(2, '0')}-${String(ymdObj.d).padStart(2, '0')}`;
           return !!(tradingCalendar.shortDays[y] && tradingCalendar.shortDays[y][key]);
         } catch { return false; }
       })();
@@ -366,12 +376,12 @@ export function Results() {
         if (!hm || hm.indexOf(':') < 0) return null;
         const [h, m] = hm.split(':');
         const H = parseInt(h, 10), M = parseInt(m, 10);
-        return Number.isFinite(H) && Number.isFinite(M) ? (H*60 + M) : null;
+        return Number.isFinite(H) && Number.isFinite(M) ? (H * 60 + M) : null;
       };
-      const openMin = parseHm(tradingCalendar?.tradingHours?.normal?.start) ?? (9*60+30);
+      const openMin = parseHm(tradingCalendar?.tradingHours?.normal?.start) ?? (9 * 60 + 30);
       const closeMin = short
-        ? (parseHm(tradingCalendar?.tradingHours?.short?.end) ?? (13*60))
-        : (parseHm(tradingCalendar?.tradingHours?.normal?.end) ?? (16*60));
+        ? (parseHm(tradingCalendar?.tradingHours?.short?.end) ?? (13 * 60))
+        : (parseHm(tradingCalendar?.tradingHours?.normal?.end) ?? (16 * 60));
       return minutes >= openMin && minutes <= closeMin;
     };
     setIsTrading(isMarketOpenNow());
@@ -392,10 +402,10 @@ export function Results() {
         const message = e instanceof Error ? e.message : 'Не удалось получить котировку';
         if (isMounted) setQuoteError(message);
       } finally {
-        if (isMounted) { 
-          setQuoteLoading(false); 
+        if (isMounted) {
+          setQuoteLoading(false);
           if (timer) clearTimeout(timer);
-          timer = setTimeout(fetchQuote, 15000); 
+          timer = setTimeout(fetchQuote, 15000);
         }
       }
     };
@@ -482,11 +492,11 @@ export function Results() {
   }
 
   const { metrics, trades, equity } = backtestResults;
-  
+
   // Расчет дополнительных метрик
   const finalValue = equity.length > 0 ? equity[equity.length - 1].value : initialCapital;
   const totalReturn = ((finalValue - initialCapital) / initialCapital) * 100;
-  
+
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Верхний блок: символ слева, правая панель с мини-графиком/ценами и кнопку мониторинга */}
@@ -635,7 +645,7 @@ export function Results() {
             <div className="flex-1 bg-white rounded-lg border p-3 dark:bg-gray-900 dark:border-gray-800">
               <div className="w-full">
                 <div className="h-[260px] sm:h-[300px]">
-                  <MiniQuoteChart 
+                  <MiniQuoteChart
                     history={marketData.slice(-10)}
                     today={quote}
                     trades={trades}
@@ -680,7 +690,7 @@ export function Results() {
                 <div className="text-xs text-gray-500 dark:text-gray-300">Сделок</div>
                 <div className="text-base font-semibold dark:text-gray-100">{(metrics.totalTrades ?? trades.length).toString()}</div>
               </div>
-              
+
               {/* Новые метрики */}
               <div className="rounded-lg border p-2 bg-blue-50 dark:bg-blue-900/30 dark:border-blue-800">
                 <div className="text-xs text-blue-600 dark:text-blue-300">Годовые %</div>
@@ -715,7 +725,7 @@ export function Results() {
                 const short = !!(tradingCalendar && tradingCalendar.shortDays && tradingCalendar.shortDays[y] && tradingCalendar.shortDays[y][md]);
                 const start = parseHm(tradingCalendar?.tradingHours?.normal?.start) || { H: 9, M: 30 };
                 const endHm = short ? (parseHm(tradingCalendar?.tradingHours?.short?.end) || { H: 13, M: 0 }) : (parseHm(tradingCalendar?.tradingHours?.normal?.end) || { H: 16, M: 0 });
-                const fmt = (x: { H: number; M: number }) => `${String(x.H).padStart(2,'0')}:${String(x.M).padStart(2,'0')}`;
+                const fmt = (x: { H: number; M: number }) => `${String(x.H).padStart(2, '0')}:${String(x.M).padStart(2, '0')}`;
                 return `Показываем в торговые часы (NYSE): ${fmt(start)}–${fmt(endHm)} ET${short ? ' (сокр.)' : ''}`;
               })()}
             </div>
@@ -738,7 +748,7 @@ export function Results() {
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg sm:text-xl font-semibold text-gray-900 dark:text-gray-100">Аналитика сделок</h2>
             </div>
-            
+
             <div className="horizontal-scroll pb-2">
               <div className="flex items-center gap-2 flex-nowrap min-w-max px-1">
                 {analysisTabsConfig
@@ -746,11 +756,10 @@ export function Results() {
                   .map(tab => (
                     <button
                       key={tab.id}
-                      className={`${
-                        activeChart === tab.id
-                          ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/30 dark:border-blue-900/40 dark:text-blue-200'
-                          : 'bg-white border-gray-200 text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'
-                      } px-3 py-1.5 rounded border`}
+                      className={`${activeChart === tab.id
+                        ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/30 dark:border-blue-900/40 dark:text-blue-200'
+                        : 'bg-white border-gray-200 text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'
+                        } px-3 py-1.5 rounded border`}
                       onClick={() => setActiveChart(tab.id as ChartTab)}
                     >
                       {tab.label}

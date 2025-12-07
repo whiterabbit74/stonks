@@ -1,27 +1,20 @@
-import { useState, useEffect, useRef } from 'react';
-import { AlertCircle, Upload, Download, TrendingUp, Loader2, AlertTriangle, CheckCircle } from 'lucide-react';
+import { useState, useEffect, useRef, useMemo } from 'react';
+import { Search, Upload, Download, Loader2, AlertTriangle, CheckCircle, AlertCircle, Check } from 'lucide-react';
 import { useAppStore } from '../stores';
 import { fetchWithCreds, API_BASE_URL } from '../lib/api';
 import { parseOHLCDate } from '../lib/utils';
+import { useToastActions } from './ui';
+import { TICKER_DATA, CATEGORIES, searchTickers, getTickerInfo } from '../lib/ticker-data';
 
 interface DataEnhancerProps {
   onNext?: () => void;
 }
 
-// interface YahooFinanceData {
-//   date: string;
-//   open: number;
-//   high: number;
-//   low: number;
-//   close: number;
-//   adjClose: number;
-//   volume: number;
-// }
-
 type TabType = 'enhance' | 'upload';
 
 export function DataEnhancer({ onNext }: DataEnhancerProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const {
     enhancerProvider,
     updateMarketData,
@@ -30,14 +23,36 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
     error: storeError,
     loadJSONData,
     loadDatasetsFromServer,
+    savedDatasets,
     currentDataset
   } = useAppStore();
 
   const [activeTab, setActiveTab] = useState<TabType>('enhance');
-  const [ticker, setTicker] = useState('AAPL');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('popular');
+  const [ticker, setTicker] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [loadingTicker, setLoadingTicker] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const toast = useToastActions();
+
+  // Get loaded ticker symbols
+  const loadedTickers = useMemo(() => {
+    return new Set(savedDatasets.map(d => d.ticker?.toUpperCase()));
+  }, [savedDatasets]);
+
+  // Filter tickers based on search and category
+  const filteredTickers = useMemo(() => {
+    return searchTickers(searchQuery, selectedCategory);
+  }, [searchQuery, selectedCategory]);
+
+  // Search suggestions for dropdown
+  const searchSuggestions = useMemo(() => {
+    if (!searchQuery.trim()) return [];
+    return searchTickers(searchQuery, 'all').slice(0, 8);
+  }, [searchQuery]);
 
   // При смене вкладки очищаем сообщения
   useEffect(() => {
@@ -52,55 +67,23 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
     }
   }, [currentDataset]);
 
-  // Load datasets on mount - auth is already verified by ProtectedLayout
+  // Load datasets on mount
   useEffect(() => {
     loadDatasetsFromServer().catch((error) => {
       console.warn('Failed to load datasets:', error);
     });
   }, [loadDatasetsFromServer]);
 
-  // Ticker lists by category
-  const tickerCategories = {
-    'Популярные': [
-      'AAPL', 'MSFT', 'AMZN', 'GOOGL', 'TSLA', 'META', 'NVDA', 'BRK.B', 'UNH', 'JNJ',
-      'XOM', 'JPM', 'V', 'PG', 'HD', 'CVX', 'MA', 'BAC', 'ABBV', 'PFE'
-    ],
-    'NASDAQ 100': [
-      'AAPL', 'MSFT', 'AMZN', 'NVDA', 'GOOGL', 'GOOG', 'META', 'TSLA', 'AVGO', 'COST',
-      'NFLX', 'TMUS', 'ASML', 'ADBE', 'PEP', 'AMD', 'LIN', 'CSCO', 'TXN', 'QCOM',
-      'CMCSA', 'HON', 'INTU', 'AMGN', 'AMAT', 'ISRG', 'BKNG', 'ADP', 'VRTX', 'GILD'
-    ],
-    'S&P 500': [
-      'AAPL', 'MSFT', 'AMZN', 'NVDA', 'GOOGL', 'BRK.B', 'GOOG', 'META', 'TSLA', 'UNH',
-      'XOM', 'LLY', 'JPM', 'V', 'JNJ', 'WMT', 'MA', 'PG', 'HD', 'CVX',
-      'MRK', 'ABBV', 'AVGO', 'BAC', 'KO', 'PEP', 'COST', 'PFE', 'TMO', 'MCD'
-    ],
-    'Технологии': [
-      'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META', 'NVDA', 'TSLA', 'NFLX', 'ADBE', 'CRM',
-      'ORCL', 'AMD', 'INTC', 'CSCO', 'IBM', 'QCOM', 'TXN', 'AVGO', 'AMAT', 'MU',
-      'LRCX', 'ADI', 'KLAC', 'MCHP', 'CDNS', 'SNPS', 'FTNT', 'PANW', 'CRWD', 'ZS'
-    ],
-    'Финансы': [
-      'JPM', 'BAC', 'WFC', 'GS', 'MS', 'C', 'BLK', 'SCHW', 'AXP', 'USB',
-      'TFC', 'PNC', 'COF', 'BK', 'STT', 'FITB', 'RF', 'KEY', 'CFG', 'HBAN',
-      'V', 'MA', 'PYPL', 'SQ', 'FIS', 'FISV', 'ADP', 'PAYX', 'INTU', 'TRV'
-    ],
-    'Здравоохранение': [
-      'UNH', 'JNJ', 'PFE', 'ABBV', 'MRK', 'TMO', 'ABT', 'LLY', 'DHR', 'BMY',
-      'AMGN', 'GILD', 'VRTX', 'REGN', 'ISRG', 'ZTS', 'CVS', 'CI', 'ANTM', 'HUM',
-      'BIIB', 'ILMN', 'IQV', 'BDX', 'BSX', 'MDT', 'SYK', 'EW', 'VAR', 'PKI'
-    ],
-    'Энергетика': [
-      'XOM', 'CVX', 'COP', 'EOG', 'SLB', 'PSX', 'VLO', 'MPC', 'OXY', 'BKR',
-      'HAL', 'DVN', 'FANG', 'APA', 'EQT', 'KMI', 'OKE', 'WMB', 'EPD', 'ET',
-      'TRGP', 'LNG', 'CHRD', 'MRO', 'HES', 'CTRA', 'PXD', 'CNX', 'AR', 'SM'
-    ],
-    'Потребительские товары': [
-      'AMZN', 'TSLA', 'HD', 'PG', 'KO', 'PEP', 'WMT', 'COST', 'MCD', 'SBUX',
-      'NKE', 'LOW', 'TJX', 'TGT', 'DG', 'DLTR', 'YUM', 'CMG', 'MO', 'PM',
-      'CL', 'KMB', 'CHD', 'CLX', 'SJM', 'K', 'HSY', 'CAG', 'CPB', 'GIS'
-    ]
-  };
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (searchInputRef.current && !searchInputRef.current.contains(e.target as Node)) {
+        setShowDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   // Handle file upload
   const handleFileSelect = async (file: File) => {
@@ -123,23 +106,32 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
     if (file) handleFileSelect(file);
   };
 
-  // Handle ticker click to populate input field
-  const handleTickerClick = (tickerSymbol: string) => {
+  // Handle ticker selection from grid or dropdown
+  const handleTickerSelect = (tickerSymbol: string) => {
     setTicker(tickerSymbol);
+    setSearchQuery('');
+    setShowDropdown(false);
   };
 
-  // Handle data enhancement
-  const handleEnhanceData = async () => {
+  // Handle data download
+  const handleDownloadData = async (symbol?: string) => {
+    const targetTicker = (symbol || ticker).trim().toUpperCase();
+    if (!targetTicker) {
+      setError('Укажите тикер');
+      return;
+    }
+
     try {
       setIsLoading(true);
+      setLoadingTicker(targetTicker);
       setError(null);
       setSuccess(null);
-      const symbol = ticker.trim().toUpperCase();
-      if (!symbol) throw new Error('Укажите тикер');
+
       const end = Math.floor(Date.now() / 1000);
       const start = end - 40 * 365 * 24 * 60 * 60;
       const prov = enhancerProvider;
-      const resp = await fetchWithCreds(`${API_BASE_URL}/yahoo-finance/${symbol}?start=${start}&end=${end}&provider=${prov}&adjustment=none`);
+      const resp = await fetchWithCreds(`${API_BASE_URL}/yahoo-finance/${targetTicker}?start=${start}&end=${end}&provider=${prov}&adjustment=none`);
+
       if (!resp.ok) {
         let msg = 'Не удалось получить данные';
         try { const j = await resp.json(); if (j && j.error) msg = j.error; } catch {
@@ -147,9 +139,11 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
         }
         throw new Error(msg);
       }
+
       const payload = await resp.json();
       const rows = Array.isArray(payload?.data) ? payload.data : [];
       if (!rows.length) throw new Error('Нет данных для этого тикера');
+
       const ohlc = rows.map((bar: any) => ({
         date: parseOHLCDate(bar.date),
         open: Number(bar.open),
@@ -159,27 +153,45 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
         adjClose: bar.adjClose != null ? Number(bar.adjClose) : undefined,
         volume: Number(bar.volume) || 0,
       }));
+
       updateMarketData(ohlc);
-      await saveDatasetToServer(symbol);
-      setSuccess(`✅ Загружено ${ohlc.length} точек для ${symbol} и сохранено на сервере`);
+
+      // Get company info from TICKER_DATA for metadata (only companyName, tags are added manually)
+      const tickerInfo = getTickerInfo(targetTicker);
+      const metadata = tickerInfo ? {
+        companyName: tickerInfo.name
+      } : undefined;
+
+      await saveDatasetToServer(targetTicker, undefined, metadata);
+      await loadDatasetsFromServer();
+
+      setSuccess(`✅ Загружено ${ohlc.length} точек для ${targetTicker}`);
+      toast.success(`${targetTicker}: загружено ${ohlc.length} точек`);
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Не удалось загрузить данные';
       setError(msg);
+      toast.error(`${targetTicker}: ${msg}`);
     } finally {
       setIsLoading(false);
+      setLoadingTicker(null);
     }
   };
 
   const tabs = [
-    { id: 'enhance' as TabType, label: 'Новые данные' },
+    { id: 'enhance' as TabType, label: 'Загрузка с API' },
     { id: 'upload' as TabType, label: 'Загрузка файла' }
   ];
 
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div className="text-center">
-        <h2 className="text-xl font-semibold text-gray-900 mb-2 dark:text-gray-100">Новые данные</h2>
-        <p className="text-gray-600 dark:text-gray-300">Загрузка данных для тестирования торговых стратегий</p>
+        <h2 className="text-xl font-semibold text-gray-900 mb-2 dark:text-gray-100">
+          Загрузка рыночных данных
+        </h2>
+        <p className="text-gray-600 dark:text-gray-300">
+          Выберите тикер для загрузки исторических данных
+        </p>
       </div>
 
       {/* Tab Navigation */}
@@ -190,8 +202,8 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
               className={`py-2 px-1 border-b-2 font-medium text-sm ${activeTab === tab.id
-                  ? 'border-blue-500 text-blue-600 dark:text-blue-400'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
+                ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
                 }`}
               aria-current={activeTab === tab.id ? 'page' : undefined}
             >
@@ -201,9 +213,10 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
         </nav>
       </div>
 
-      {/* Tab Content */}
+      {/* Tab Content - API Download */}
       {activeTab === 'enhance' && (
         <div className="space-y-6">
+          {/* Provider Badge */}
           <div className="bg-white border border-gray-200 rounded-lg p-4 dark:bg-gray-900 dark:border-gray-800">
             <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border text-sm bg-white dark:bg-gray-800 dark:border-gray-700">
               <span className="text-gray-600 dark:text-gray-300">Провайдер данных:</span>
@@ -212,82 +225,175 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
             <p className="text-xs text-gray-500 mt-2 dark:text-gray-400">Меняется на вкладке «Настройки».</p>
           </div>
 
-          <div className="bg-white border border-gray-200 rounded-lg p-6 dark:bg-gray-900 dark:border-gray-800">
-            <div className="space-y-4">
-              <div>
-                <label htmlFor="ticker" className="block text-sm font-medium text-gray-700 mb-2 dark:text-gray-300">Тикер</label>
-                <input
-                  id="ticker"
-                  type="text"
-                  value={ticker}
-                  onChange={(e) => setTicker(e.target.value.toUpperCase())}
-                  placeholder="например, AAPL, MSFT, GOOGL"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100"
-                />
-                <p className="text-xs text-gray-500 mt-1 dark:text-gray-400">Источник: серверные прокси к реальным API.</p>
-              </div>
-
-              <button
-                onClick={handleEnhanceData}
-                disabled={isLoading}
-                className="w-full mt-3 inline-flex items-center justify-center gap-2 bg-blue-600 text-white px-4 py-3 rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
-              >
-                {isLoading ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Download className="w-4 h-4" />
-                )}
-                {isLoading ? 'Загрузка...' : 'Загрузить данные'}
-              </button>
-            </div>
-          </div>
-
-          {/* Popular Tickers */}
-          <div className="space-y-6">
-            {Object.entries(tickerCategories).map(([category, tickers]) => (
-              <div key={category} className="bg-white rounded-lg border p-4 dark:bg-gray-900 dark:border-gray-800">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="flex items-center justify-center w-8 h-8 bg-green-50 rounded-lg dark:bg-green-950/20">
-                    <TrendingUp className="w-4 h-4 text-green-600" />
-                  </div>
-                  <div>
-                    <h3 className="font-semibold text-gray-900 dark:text-gray-100 text-base">
-                      {category}
-                    </h3>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">
-                      Нажмите на тикер, чтобы подставить его в поле выше
-                    </p>
-                  </div>
+          {/* Hero Search Section */}
+          <div className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-gray-800 dark:to-gray-900 border border-blue-100 dark:border-gray-700 rounded-xl p-6">
+            <div className="max-w-xl mx-auto">
+              {/* Search Input with Autocomplete */}
+              <div className="relative" ref={searchInputRef}>
+                <div className="relative">
+                  <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => {
+                      setSearchQuery(e.target.value.toUpperCase());
+                      setShowDropdown(true);
+                    }}
+                    onFocus={() => setShowDropdown(true)}
+                    placeholder="Поиск по тикеру или названию компании..."
+                    className="w-full pl-12 pr-4 py-4 text-lg border border-gray-300 dark:border-gray-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-800 dark:text-gray-100 shadow-sm"
+                  />
                 </div>
 
-                <div className="overflow-x-auto">
-                  <div className="flex gap-2 pb-2" style={{ width: 'fit-content' }}>
-                    {tickers.map((tickerSymbol) => {
-                      const isActive = ticker === tickerSymbol;
-
+                {/* Search Suggestions Dropdown */}
+                {showDropdown && searchSuggestions.length > 0 && (
+                  <div className="absolute z-20 w-full mt-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg max-h-80 overflow-y-auto">
+                    {searchSuggestions.map((item) => {
+                      const isLoaded = loadedTickers.has(item.symbol);
                       return (
                         <button
-                          key={tickerSymbol}
-                          onClick={() => handleTickerClick(tickerSymbol)}
-                          className={`flex-shrink-0 flex items-center justify-center px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 min-w-[60px] h-9 ${isActive
-                              ? 'bg-blue-100 text-blue-800 border-2 border-blue-300 shadow-sm dark:bg-blue-950/30 dark:text-blue-200 dark:border-blue-900/50'
-                              : 'bg-gray-50 text-gray-700 border border-gray-200 hover:bg-gray-100 hover:border-gray-300 hover:shadow-sm dark:bg-gray-800 dark:text-gray-200 dark:border-gray-700 dark:hover:bg-gray-700 dark:hover:border-gray-600'
-                            }`}
+                          key={item.symbol}
+                          onClick={() => handleTickerSelect(item.symbol)}
+                          className="w-full px-4 py-3 flex items-center gap-3 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-left border-b border-gray-100 dark:border-gray-700 last:border-b-0"
                         >
-                          {tickerSymbol}
+                          <span className={`font-mono font-semibold min-w-[60px] ${isLoaded ? 'text-green-600 dark:text-green-400' : 'text-gray-900 dark:text-gray-100'}`}>
+                            {item.symbol}
+                          </span>
+                          <span className="text-gray-600 dark:text-gray-300 text-sm truncate flex-1">
+                            {item.name}
+                          </span>
+                          {isLoaded && (
+                            <Check className="w-4 h-4 text-green-500 flex-shrink-0" />
+                          )}
                         </button>
                       );
                     })}
                   </div>
-                </div>
+                )}
               </div>
-            ))}
+
+              {/* Quick Input + Download */}
+              <div className="mt-4 flex gap-3">
+                <input
+                  type="text"
+                  value={ticker}
+                  onChange={(e) => setTicker(e.target.value.toUpperCase())}
+                  placeholder="AAPL"
+                  className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-800 dark:text-gray-100 font-mono text-center"
+                />
+                <button
+                  onClick={() => handleDownloadData()}
+                  disabled={isLoading || !ticker.trim()}
+                  className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed font-medium flex items-center gap-2 transition-colors"
+                >
+                  {isLoading && loadingTicker === ticker.toUpperCase() ? (
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                  ) : (
+                    <Download className="w-5 h-5" />
+                  )}
+                  Загрузить
+                </button>
+              </div>
+            </div>
           </div>
 
-          <p className="text-xs text-gray-500 text-center mt-2 dark:text-gray-400">📈 Источник данных: Alpha Vantage / Finnhub через локальный сервер</p>
+          {/* Category Chips */}
+          <div className="flex flex-wrap gap-2">
+            {CATEGORIES.map((cat) => {
+              const count = cat.id === 'all'
+                ? TICKER_DATA.length
+                : TICKER_DATA.filter(t => t.categories.includes(cat.id)).length;
+              const isActive = selectedCategory === cat.id;
+
+              return (
+                <button
+                  key={cat.id}
+                  onClick={() => {
+                    setSelectedCategory(cat.id);
+                    setSearchQuery('');
+                  }}
+                  className={`px-4 py-2 rounded-full text-sm font-medium transition-all duration-200 flex items-center gap-2 ${isActive
+                    ? 'bg-blue-600 text-white shadow-md'
+                    : 'bg-white text-gray-700 border border-gray-200 hover:border-gray-300 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-200 dark:border-gray-700 dark:hover:bg-gray-700'
+                    }`}
+                >
+                  <span>{cat.icon}</span>
+                  <span>{cat.label}</span>
+                  <span className={`text-xs ${isActive ? 'text-blue-200' : 'text-gray-400'}`}>
+                    ({count})
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Ticker Grid */}
+          <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-gray-900 dark:text-gray-100">
+                {searchQuery ? 'Результаты поиска' : CATEGORIES.find(c => c.id === selectedCategory)?.label}
+              </h3>
+              <span className="text-sm text-gray-500 dark:text-gray-400">
+                {filteredTickers.length} тикеров
+              </span>
+            </div>
+
+            {filteredTickers.length === 0 ? (
+              <div className="text-center py-12 text-gray-500 dark:text-gray-400">
+                <Search className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                <p>Ничего не найдено</p>
+                <p className="text-sm mt-1">Попробуйте другой запрос или категорию</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                {filteredTickers.map((item) => {
+                  const isLoaded = loadedTickers.has(item.symbol);
+                  const isCurrentlyLoading = loadingTicker === item.symbol;
+
+                  return (
+                    <button
+                      key={item.symbol}
+                      onClick={() => handleDownloadData(item.symbol)}
+                      disabled={isLoading}
+                      className={`relative p-3 rounded-lg text-left transition-all duration-200 group ${isLoaded
+                        ? 'bg-green-50 border-2 border-green-200 dark:bg-green-950/30 dark:border-green-900/50'
+                        : 'bg-gray-50 border border-gray-200 hover:bg-blue-50 hover:border-blue-300 dark:bg-gray-800 dark:border-gray-700 dark:hover:bg-blue-950/30 dark:hover:border-blue-800'
+                        } ${isCurrentlyLoading ? 'ring-2 ring-blue-400 ring-offset-2 dark:ring-offset-gray-900' : ''}`}
+                    >
+                      {isCurrentlyLoading ? (
+                        <div className="flex items-center justify-center py-2">
+                          <Loader2 className="w-5 h-5 animate-spin text-blue-600" />
+                        </div>
+                      ) : (
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0 flex-1">
+                            <div className={`text-sm font-medium truncate ${isLoaded ? 'text-green-800 dark:text-green-200' : 'text-gray-900 dark:text-gray-100'}`}>
+                              {item.name}
+                            </div>
+                            <div className={`text-xs font-mono mt-0.5 ${isLoaded ? 'text-green-600 dark:text-green-400' : 'text-gray-500 dark:text-gray-400'}`}>
+                              {item.symbol}
+                            </div>
+                          </div>
+                          {isLoaded && (
+                            <Check className="w-4 h-4 text-green-500 flex-shrink-0 mt-0.5" />
+                          )}
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+          </div>
+
+          <p className="text-xs text-gray-500 text-center dark:text-gray-400">
+            📈 Источник данных: Alpha Vantage / Finnhub через локальный сервер
+          </p>
         </div>
       )}
 
+      {/* Tab Content - File Upload */}
       {activeTab === 'upload' && (
         <div className="max-w-3xl mx-auto relative">
           {globalLoading && (
@@ -380,7 +486,7 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
         </div>
       )}
 
-      {/* Доп. действия */}
+      {/* Next button */}
       {onNext && (
         <div className="bg-gray-50 rounded-lg p-4 dark:bg-gray-800">
           <div className="flex justify-end">

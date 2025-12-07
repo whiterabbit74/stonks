@@ -1,0 +1,1580 @@
+[
+    {
+        "symbol": "AAPL",
+        "name": "Apple Inc.",
+        "categories": [
+            "popular",
+            "nasdaq100",
+            "sp500",
+            "tech"
+        ]
+    },
+    {
+        "symbol": "MSFT",
+        "name": "Microsoft Corporation",
+        "categories": [
+            "popular",
+            "nasdaq100",
+            "sp500",
+            "tech"
+        ]
+    },
+    {
+        "symbol": "AMZN",
+        "name": "Amazon.com Inc.",
+        "categories": [
+            "popular",
+            "nasdaq100",
+            "sp500",
+            "consumer",
+            "tech"
+        ]
+    },
+    {
+        "symbol": "GOOGL",
+        "name": "Alphabet Inc. Class A",
+        "categories": [
+            "popular",
+            "nasdaq100",
+            "sp500",
+            "tech"
+        ]
+    },
+    {
+        "symbol": "GOOG",
+        "name": "Alphabet Inc. Class C",
+        "categories": [
+            "nasdaq100",
+            "sp500",
+            "tech"
+        ]
+    },
+    {
+        "symbol": "TSLA",
+        "name": "Tesla Inc.",
+        "categories": [
+            "popular",
+            "nasdaq100",
+            "sp500",
+            "consumer",
+            "tech"
+        ]
+    },
+    {
+        "symbol": "META",
+        "name": "Meta Platforms Inc.",
+        "categories": [
+            "popular",
+            "nasdaq100",
+            "sp500",
+            "tech"
+        ]
+    },
+    {
+        "symbol": "NVDA",
+        "name": "NVIDIA Corporation",
+        "categories": [
+            "popular",
+            "nasdaq100",
+            "sp500",
+            "tech"
+        ]
+    },
+    {
+        "symbol": "BRK.B",
+        "name": "Berkshire Hathaway Inc.",
+        "categories": [
+            "popular",
+            "sp500",
+            "finance"
+        ]
+    },
+    {
+        "symbol": "UNH",
+        "name": "UnitedHealth Group Inc.",
+        "categories": [
+            "popular",
+            "sp500",
+            "health"
+        ]
+    },
+    {
+        "symbol": "JNJ",
+        "name": "Johnson & Johnson",
+        "categories": [
+            "popular",
+            "sp500",
+            "health"
+        ]
+    },
+    {
+        "symbol": "XOM",
+        "name": "Exxon Mobil Corporation",
+        "categories": [
+            "popular",
+            "sp500",
+            "energy"
+        ]
+    },
+    {
+        "symbol": "JPM",
+        "name": "JPMorgan Chase & Co.",
+        "categories": [
+            "popular",
+            "sp500",
+            "finance"
+        ]
+    },
+    {
+        "symbol": "V",
+        "name": "Visa Inc.",
+        "categories": [
+            "popular",
+            "sp500",
+            "finance"
+        ]
+    },
+    {
+        "symbol": "PG",
+        "name": "Procter & Gamble Co.",
+        "categories": [
+            "popular",
+            "sp500",
+            "consumer"
+        ]
+    },
+    {
+        "symbol": "HD",
+        "name": "The Home Depot Inc.",
+        "categories": [
+            "popular",
+            "sp500",
+            "consumer"
+        ]
+    },
+    {
+        "symbol": "CVX",
+        "name": "Chevron Corporation",
+        "categories": [
+            "popular",
+            "sp500",
+            "energy"
+        ]
+    },
+    {
+        "symbol": "MA",
+        "name": "Mastercard Inc.",
+        "categories": [
+            "popular",
+            "sp500",
+            "finance"
+        ]
+    },
+    {
+        "symbol": "BAC",
+        "name": "Bank of America Corp.",
+        "categories": [
+            "popular",
+            "sp500",
+            "finance"
+        ]
+    },
+    {
+        "symbol": "ABBV",
+        "name": "AbbVie Inc.",
+        "categories": [
+            "popular",
+            "sp500",
+            "health"
+        ]
+    },
+    {
+        "symbol": "PFE",
+        "name": "Pfizer Inc.",
+        "categories": [
+            "popular",
+            "sp500",
+            "health"
+        ]
+    },
+    {
+        "symbol": "AVGO",
+        "name": "Broadcom Inc.",
+        "categories": [
+            "nasdaq100",
+            "sp500",
+            "tech"
+        ]
+    },
+    {
+        "symbol": "COST",
+        "name": "Costco Wholesale",
+        "categories": [
+            "nasdaq100",
+            "sp500",
+            "consumer"
+        ]
+    },
+    {
+        "symbol": "NFLX",
+        "name": "Netflix Inc.",
+        "categories": [
+            "nasdaq100",
+            "sp500",
+            "tech",
+            "consumer"
+        ]
+    },
+    {
+        "symbol": "TMUS",
+        "name": "T-Mobile US Inc.",
+        "categories": [
+            "nasdaq100",
+            "sp500",
+            "tech"
+        ]
+    },
+    {
+        "symbol": "ASML",
+        "name": "ASML Holding N.V.",
+        "categories": [
+            "nasdaq100",
+            "tech"
+        ]
+    },
+    {
+        "symbol": "ADBE",
+        "name": "Adobe Inc.",
+        "categories": [
+            "nasdaq100",
+            "sp500",
+            "tech"
+        ]
+    },
+    {
+        "symbol": "PEP",
+        "name": "PepsiCo Inc.",
+        "categories": [
+            "nasdaq100",
+            "sp500",
+            "consumer"
+        ]
+    },
+    {
+        "symbol": "AMD",
+        "name": "Advanced Micro Devices",
+        "categories": [
+            "nasdaq100",
+            "sp500",
+            "tech"
+        ]
+    },
+    {
+        "symbol": "LIN",
+        "name": "Linde plc",
+        "categories": [
+            "nasdaq100",
+            "sp500"
+        ]
+    },
+    {
+        "symbol": "CSCO",
+        "name": "Cisco Systems Inc.",
+        "categories": [
+            "nasdaq100",
+            "sp500",
+            "tech"
+        ]
+    },
+    {
+        "symbol": "TXN",
+        "name": "Texas Instruments",
+        "categories": [
+            "nasdaq100",
+            "sp500",
+            "tech"
+        ]
+    },
+    {
+        "symbol": "QCOM",
+        "name": "Qualcomm Inc.",
+        "categories": [
+            "nasdaq100",
+            "sp500",
+            "tech"
+        ]
+    },
+    {
+        "symbol": "CMCSA",
+        "name": "Comcast Corporation",
+        "categories": [
+            "nasdaq100",
+            "sp500",
+            "tech"
+        ]
+    },
+    {
+        "symbol": "HON",
+        "name": "Honeywell International",
+        "categories": [
+            "nasdaq100",
+            "sp500"
+        ]
+    },
+    {
+        "symbol": "INTU",
+        "name": "Intuit Inc.",
+        "categories": [
+            "nasdaq100",
+            "sp500",
+            "tech",
+            "finance"
+        ]
+    },
+    {
+        "symbol": "AMGN",
+        "name": "Amgen Inc.",
+        "categories": [
+            "nasdaq100",
+            "sp500",
+            "health"
+        ]
+    },
+    {
+        "symbol": "AMAT",
+        "name": "Applied Materials",
+        "categories": [
+            "nasdaq100",
+            "sp500",
+            "tech"
+        ]
+    },
+    {
+        "symbol": "ISRG",
+        "name": "Intuitive Surgical",
+        "categories": [
+            "nasdaq100",
+            "sp500",
+            "health"
+        ]
+    },
+    {
+        "symbol": "BKNG",
+        "name": "Booking Holdings",
+        "categories": [
+            "nasdaq100",
+            "sp500",
+            "consumer"
+        ]
+    },
+    {
+        "symbol": "ADP",
+        "name": "Automatic Data Processing",
+        "categories": [
+            "nasdaq100",
+            "sp500",
+            "tech",
+            "finance"
+        ]
+    },
+    {
+        "symbol": "VRTX",
+        "name": "Vertex Pharmaceuticals",
+        "categories": [
+            "nasdaq100",
+            "sp500",
+            "health"
+        ]
+    },
+    {
+        "symbol": "GILD",
+        "name": "Gilead Sciences",
+        "categories": [
+            "nasdaq100",
+            "sp500",
+            "health"
+        ]
+    },
+    {
+        "symbol": "REGN",
+        "name": "Regeneron Pharma",
+        "categories": [
+            "nasdaq100",
+            "sp500",
+            "health"
+        ]
+    },
+    {
+        "symbol": "MU",
+        "name": "Micron Technology",
+        "categories": [
+            "nasdaq100",
+            "sp500",
+            "tech"
+        ]
+    },
+    {
+        "symbol": "ADI",
+        "name": "Analog Devices",
+        "categories": [
+            "nasdaq100",
+            "sp500",
+            "tech"
+        ]
+    },
+    {
+        "symbol": "LRCX",
+        "name": "Lam Research",
+        "categories": [
+            "nasdaq100",
+            "sp500",
+            "tech"
+        ]
+    },
+    {
+        "symbol": "KLAC",
+        "name": "KLA Corporation",
+        "categories": [
+            "nasdaq100",
+            "sp500",
+            "tech"
+        ]
+    },
+    {
+        "symbol": "MCHP",
+        "name": "Microchip Technology",
+        "categories": [
+            "nasdaq100",
+            "sp500",
+            "tech"
+        ]
+    },
+    {
+        "symbol": "CDNS",
+        "name": "Cadence Design",
+        "categories": [
+            "nasdaq100",
+            "sp500",
+            "tech"
+        ]
+    },
+    {
+        "symbol": "SNPS",
+        "name": "Synopsys Inc.",
+        "categories": [
+            "nasdaq100",
+            "sp500",
+            "tech"
+        ]
+    },
+    {
+        "symbol": "FTNT",
+        "name": "Fortinet Inc.",
+        "categories": [
+            "nasdaq100",
+            "tech"
+        ]
+    },
+    {
+        "symbol": "PANW",
+        "name": "Palo Alto Networks",
+        "categories": [
+            "nasdaq100",
+            "sp500",
+            "tech"
+        ]
+    },
+    {
+        "symbol": "CRWD",
+        "name": "CrowdStrike Holdings",
+        "categories": [
+            "nasdaq100",
+            "tech"
+        ]
+    },
+    {
+        "symbol": "ZS",
+        "name": "Zscaler Inc.",
+        "categories": [
+            "nasdaq100",
+            "tech"
+        ]
+    },
+    {
+        "symbol": "LLY",
+        "name": "Eli Lilly",
+        "categories": [
+            "sp500",
+            "health"
+        ]
+    },
+    {
+        "symbol": "WMT",
+        "name": "Walmart Inc.",
+        "categories": [
+            "sp500",
+            "consumer"
+        ]
+    },
+    {
+        "symbol": "MRK",
+        "name": "Merck & Co.",
+        "categories": [
+            "sp500",
+            "health"
+        ]
+    },
+    {
+        "symbol": "KO",
+        "name": "Coca-Cola Company",
+        "categories": [
+            "sp500",
+            "consumer"
+        ]
+    },
+    {
+        "symbol": "TMO",
+        "name": "Thermo Fisher Scientific",
+        "categories": [
+            "sp500",
+            "health"
+        ]
+    },
+    {
+        "symbol": "MCD",
+        "name": "McDonald's",
+        "categories": [
+            "sp500",
+            "consumer"
+        ]
+    },
+    {
+        "symbol": "DIS",
+        "name": "Walt Disney Company",
+        "categories": [
+            "sp500",
+            "consumer"
+        ]
+    },
+    {
+        "symbol": "ABT",
+        "name": "Abbott Laboratories",
+        "categories": [
+            "sp500",
+            "health"
+        ]
+    },
+    {
+        "symbol": "DHR",
+        "name": "Danaher Corporation",
+        "categories": [
+            "sp500",
+            "health"
+        ]
+    },
+    {
+        "symbol": "BMY",
+        "name": "Bristol-Myers Squibb",
+        "categories": [
+            "sp500",
+            "health"
+        ]
+    },
+    {
+        "symbol": "CRM",
+        "name": "Salesforce Inc.",
+        "categories": [
+            "sp500",
+            "tech"
+        ]
+    },
+    {
+        "symbol": "ORCL",
+        "name": "Oracle Corporation",
+        "categories": [
+            "sp500",
+            "tech"
+        ]
+    },
+    {
+        "symbol": "INTC",
+        "name": "Intel Corporation",
+        "categories": [
+            "sp500",
+            "tech"
+        ]
+    },
+    {
+        "symbol": "IBM",
+        "name": "IBM",
+        "categories": [
+            "sp500",
+            "tech"
+        ]
+    },
+    {
+        "symbol": "ACN",
+        "name": "Accenture plc",
+        "categories": [
+            "sp500",
+            "tech"
+        ]
+    },
+    {
+        "symbol": "NOW",
+        "name": "ServiceNow Inc.",
+        "categories": [
+            "sp500",
+            "tech"
+        ]
+    },
+    {
+        "symbol": "WFC",
+        "name": "Wells Fargo",
+        "categories": [
+            "sp500",
+            "finance"
+        ]
+    },
+    {
+        "symbol": "GS",
+        "name": "Goldman Sachs",
+        "categories": [
+            "sp500",
+            "finance"
+        ]
+    },
+    {
+        "symbol": "MS",
+        "name": "Morgan Stanley",
+        "categories": [
+            "sp500",
+            "finance"
+        ]
+    },
+    {
+        "symbol": "C",
+        "name": "Citigroup Inc.",
+        "categories": [
+            "sp500",
+            "finance"
+        ]
+    },
+    {
+        "symbol": "BLK",
+        "name": "BlackRock Inc.",
+        "categories": [
+            "sp500",
+            "finance"
+        ]
+    },
+    {
+        "symbol": "SCHW",
+        "name": "Charles Schwab",
+        "categories": [
+            "sp500",
+            "finance"
+        ]
+    },
+    {
+        "symbol": "AXP",
+        "name": "American Express",
+        "categories": [
+            "sp500",
+            "finance"
+        ]
+    },
+    {
+        "symbol": "USB",
+        "name": "U.S. Bancorp",
+        "categories": [
+            "sp500",
+            "finance"
+        ]
+    },
+    {
+        "symbol": "TFC",
+        "name": "Truist Financial",
+        "categories": [
+            "sp500",
+            "finance"
+        ]
+    },
+    {
+        "symbol": "PNC",
+        "name": "PNC Financial Services",
+        "categories": [
+            "sp500",
+            "finance"
+        ]
+    },
+    {
+        "symbol": "COF",
+        "name": "Capital One Financial",
+        "categories": [
+            "sp500",
+            "finance"
+        ]
+    },
+    {
+        "symbol": "BK",
+        "name": "Bank of New York Mellon",
+        "categories": [
+            "sp500",
+            "finance"
+        ]
+    },
+    {
+        "symbol": "STT",
+        "name": "State Street",
+        "categories": [
+            "sp500",
+            "finance"
+        ]
+    },
+    {
+        "symbol": "PYPL",
+        "name": "PayPal Holdings",
+        "categories": [
+            "sp500",
+            "finance",
+            "tech"
+        ]
+    },
+    {
+        "symbol": "SQ",
+        "name": "Block Inc.",
+        "categories": [
+            "finance",
+            "tech"
+        ]
+    },
+    {
+        "symbol": "FIS",
+        "name": "Fidelity National",
+        "categories": [
+            "sp500",
+            "finance",
+            "tech"
+        ]
+    },
+    {
+        "symbol": "FISV",
+        "name": "Fiserv Inc.",
+        "categories": [
+            "sp500",
+            "finance",
+            "tech"
+        ]
+    },
+    {
+        "symbol": "PAYX",
+        "name": "Paychex Inc.",
+        "categories": [
+            "sp500",
+            "finance"
+        ]
+    },
+    {
+        "symbol": "TRV",
+        "name": "Travelers Companies",
+        "categories": [
+            "sp500",
+            "finance"
+        ]
+    },
+    {
+        "symbol": "CVS",
+        "name": "CVS Health",
+        "categories": [
+            "sp500",
+            "health"
+        ]
+    },
+    {
+        "symbol": "CI",
+        "name": "Cigna Group",
+        "categories": [
+            "sp500",
+            "health"
+        ]
+    },
+    {
+        "symbol": "ELV",
+        "name": "Elevance Health",
+        "categories": [
+            "sp500",
+            "health"
+        ]
+    },
+    {
+        "symbol": "HUM",
+        "name": "Humana Inc.",
+        "categories": [
+            "sp500",
+            "health"
+        ]
+    },
+    {
+        "symbol": "BIIB",
+        "name": "Biogen Inc.",
+        "categories": [
+            "sp500",
+            "health"
+        ]
+    },
+    {
+        "symbol": "ILMN",
+        "name": "Illumina Inc.",
+        "categories": [
+            "sp500",
+            "health"
+        ]
+    },
+    {
+        "symbol": "IQV",
+        "name": "IQVIA Holdings",
+        "categories": [
+            "sp500",
+            "health"
+        ]
+    },
+    {
+        "symbol": "BDX",
+        "name": "Becton Dickinson",
+        "categories": [
+            "sp500",
+            "health"
+        ]
+    },
+    {
+        "symbol": "BSX",
+        "name": "Boston Scientific",
+        "categories": [
+            "sp500",
+            "health"
+        ]
+    },
+    {
+        "symbol": "MDT",
+        "name": "Medtronic plc",
+        "categories": [
+            "sp500",
+            "health"
+        ]
+    },
+    {
+        "symbol": "SYK",
+        "name": "Stryker Corporation",
+        "categories": [
+            "sp500",
+            "health"
+        ]
+    },
+    {
+        "symbol": "EW",
+        "name": "Edwards Lifesciences",
+        "categories": [
+            "sp500",
+            "health"
+        ]
+    },
+    {
+        "symbol": "ZTS",
+        "name": "Zoetis Inc.",
+        "categories": [
+            "sp500",
+            "health"
+        ]
+    },
+    {
+        "symbol": "MRNA",
+        "name": "Moderna Inc.",
+        "categories": [
+            "sp500",
+            "health"
+        ]
+    },
+    {
+        "symbol": "DXCM",
+        "name": "DexCom Inc.",
+        "categories": [
+            "sp500",
+            "health"
+        ]
+    },
+    {
+        "symbol": "COP",
+        "name": "ConocoPhillips",
+        "categories": [
+            "sp500",
+            "energy"
+        ]
+    },
+    {
+        "symbol": "EOG",
+        "name": "EOG Resources",
+        "categories": [
+            "sp500",
+            "energy"
+        ]
+    },
+    {
+        "symbol": "SLB",
+        "name": "Schlumberger",
+        "categories": [
+            "sp500",
+            "energy"
+        ]
+    },
+    {
+        "symbol": "PSX",
+        "name": "Phillips 66",
+        "categories": [
+            "sp500",
+            "energy"
+        ]
+    },
+    {
+        "symbol": "VLO",
+        "name": "Valero Energy",
+        "categories": [
+            "sp500",
+            "energy"
+        ]
+    },
+    {
+        "symbol": "MPC",
+        "name": "Marathon Petroleum",
+        "categories": [
+            "sp500",
+            "energy"
+        ]
+    },
+    {
+        "symbol": "OXY",
+        "name": "Occidental Petroleum",
+        "categories": [
+            "sp500",
+            "energy"
+        ]
+    },
+    {
+        "symbol": "BKR",
+        "name": "Baker Hughes",
+        "categories": [
+            "sp500",
+            "energy"
+        ]
+    },
+    {
+        "symbol": "HAL",
+        "name": "Halliburton",
+        "categories": [
+            "sp500",
+            "energy"
+        ]
+    },
+    {
+        "symbol": "DVN",
+        "name": "Devon Energy",
+        "categories": [
+            "sp500",
+            "energy"
+        ]
+    },
+    {
+        "symbol": "FANG",
+        "name": "Diamondback Energy",
+        "categories": [
+            "sp500",
+            "energy"
+        ]
+    },
+    {
+        "symbol": "APA",
+        "name": "APA Corporation",
+        "categories": [
+            "sp500",
+            "energy"
+        ]
+    },
+    {
+        "symbol": "EQT",
+        "name": "EQT Corporation",
+        "categories": [
+            "sp500",
+            "energy"
+        ]
+    },
+    {
+        "symbol": "KMI",
+        "name": "Kinder Morgan",
+        "categories": [
+            "sp500",
+            "energy"
+        ]
+    },
+    {
+        "symbol": "OKE",
+        "name": "ONEOK Inc.",
+        "categories": [
+            "sp500",
+            "energy"
+        ]
+    },
+    {
+        "symbol": "WMB",
+        "name": "Williams Companies",
+        "categories": [
+            "sp500",
+            "energy"
+        ]
+    },
+    {
+        "symbol": "EPD",
+        "name": "Enterprise Products",
+        "categories": [
+            "energy"
+        ]
+    },
+    {
+        "symbol": "ET",
+        "name": "Energy Transfer",
+        "categories": [
+            "energy"
+        ]
+    },
+    {
+        "symbol": "TRGP",
+        "name": "Targa Resources",
+        "categories": [
+            "sp500",
+            "energy"
+        ]
+    },
+    {
+        "symbol": "LNG",
+        "name": "Cheniere Energy",
+        "categories": [
+            "sp500",
+            "energy"
+        ]
+    },
+    {
+        "symbol": "MRO",
+        "name": "Marathon Oil",
+        "categories": [
+            "sp500",
+            "energy"
+        ]
+    },
+    {
+        "symbol": "HES",
+        "name": "Hess Corporation",
+        "categories": [
+            "sp500",
+            "energy"
+        ]
+    },
+    {
+        "symbol": "CTRA",
+        "name": "Coterra Energy",
+        "categories": [
+            "sp500",
+            "energy"
+        ]
+    },
+    {
+        "symbol": "NKE",
+        "name": "Nike Inc.",
+        "categories": [
+            "sp500",
+            "consumer"
+        ]
+    },
+    {
+        "symbol": "LOW",
+        "name": "Lowe's Companies",
+        "categories": [
+            "sp500",
+            "consumer"
+        ]
+    },
+    {
+        "symbol": "TJX",
+        "name": "TJX Companies",
+        "categories": [
+            "sp500",
+            "consumer"
+        ]
+    },
+    {
+        "symbol": "TGT",
+        "name": "Target Corporation",
+        "categories": [
+            "sp500",
+            "consumer"
+        ]
+    },
+    {
+        "symbol": "DG",
+        "name": "Dollar General",
+        "categories": [
+            "sp500",
+            "consumer"
+        ]
+    },
+    {
+        "symbol": "DLTR",
+        "name": "Dollar Tree",
+        "categories": [
+            "sp500",
+            "consumer"
+        ]
+    },
+    {
+        "symbol": "SBUX",
+        "name": "Starbucks",
+        "categories": [
+            "sp500",
+            "consumer"
+        ]
+    },
+    {
+        "symbol": "YUM",
+        "name": "Yum! Brands",
+        "categories": [
+            "sp500",
+            "consumer"
+        ]
+    },
+    {
+        "symbol": "CMG",
+        "name": "Chipotle Mexican Grill",
+        "categories": [
+            "sp500",
+            "consumer"
+        ]
+    },
+    {
+        "symbol": "MO",
+        "name": "Altria Group",
+        "categories": [
+            "sp500",
+            "consumer"
+        ]
+    },
+    {
+        "symbol": "PM",
+        "name": "Philip Morris",
+        "categories": [
+            "sp500",
+            "consumer"
+        ]
+    },
+    {
+        "symbol": "CL",
+        "name": "Colgate-Palmolive",
+        "categories": [
+            "sp500",
+            "consumer"
+        ]
+    },
+    {
+        "symbol": "KMB",
+        "name": "Kimberly-Clark",
+        "categories": [
+            "sp500",
+            "consumer"
+        ]
+    },
+    {
+        "symbol": "CHD",
+        "name": "Church & Dwight",
+        "categories": [
+            "sp500",
+            "consumer"
+        ]
+    },
+    {
+        "symbol": "CLX",
+        "name": "Clorox Company",
+        "categories": [
+            "sp500",
+            "consumer"
+        ]
+    },
+    {
+        "symbol": "SJM",
+        "name": "J.M. Smucker",
+        "categories": [
+            "sp500",
+            "consumer"
+        ]
+    },
+    {
+        "symbol": "K",
+        "name": "Kellogg Company",
+        "categories": [
+            "sp500",
+            "consumer"
+        ]
+    },
+    {
+        "symbol": "HSY",
+        "name": "Hershey Company",
+        "categories": [
+            "sp500",
+            "consumer"
+        ]
+    },
+    {
+        "symbol": "CAG",
+        "name": "Conagra Brands",
+        "categories": [
+            "sp500",
+            "consumer"
+        ]
+    },
+    {
+        "symbol": "CPB",
+        "name": "Campbell Soup",
+        "categories": [
+            "sp500",
+            "consumer"
+        ]
+    },
+    {
+        "symbol": "GIS",
+        "name": "General Mills",
+        "categories": [
+            "sp500",
+            "consumer"
+        ]
+    },
+    {
+        "symbol": "MDLZ",
+        "name": "Mondelez International",
+        "categories": [
+            "sp500",
+            "consumer"
+        ]
+    },
+    {
+        "symbol": "KHC",
+        "name": "Kraft Heinz",
+        "categories": [
+            "sp500",
+            "consumer"
+        ]
+    },
+    {
+        "symbol": "SPY",
+        "name": "SPDR S&P 500 ETF",
+        "categories": [
+            "etf"
+        ]
+    },
+    {
+        "symbol": "QQQ",
+        "name": "Invesco QQQ Trust",
+        "categories": [
+            "etf"
+        ]
+    },
+    {
+        "symbol": "IWM",
+        "name": "iShares Russell 2000",
+        "categories": [
+            "etf"
+        ]
+    },
+    {
+        "symbol": "DIA",
+        "name": "SPDR Dow Jones ETF",
+        "categories": [
+            "etf"
+        ]
+    },
+    {
+        "symbol": "VOO",
+        "name": "Vanguard S&P 500 ETF",
+        "categories": [
+            "etf"
+        ]
+    },
+    {
+        "symbol": "VTI",
+        "name": "Vanguard Total Stock",
+        "categories": [
+            "etf"
+        ]
+    },
+    {
+        "symbol": "VEA",
+        "name": "Vanguard Developed Mkts",
+        "categories": [
+            "etf"
+        ]
+    },
+    {
+        "symbol": "VWO",
+        "name": "Vanguard Emerging Mkts",
+        "categories": [
+            "etf"
+        ]
+    },
+    {
+        "symbol": "GLD",
+        "name": "SPDR Gold Shares",
+        "categories": [
+            "etf"
+        ]
+    },
+    {
+        "symbol": "SLV",
+        "name": "iShares Silver Trust",
+        "categories": [
+            "etf"
+        ]
+    },
+    {
+        "symbol": "TLT",
+        "name": "iShares 20+ Year Bond",
+        "categories": [
+            "etf"
+        ]
+    },
+    {
+        "symbol": "XLF",
+        "name": "Financial Select SPDR",
+        "categories": [
+            "etf"
+        ]
+    },
+    {
+        "symbol": "XLK",
+        "name": "Technology Select SPDR",
+        "categories": [
+            "etf"
+        ]
+    },
+    {
+        "symbol": "XLE",
+        "name": "Energy Select SPDR",
+        "categories": [
+            "etf"
+        ]
+    },
+    {
+        "symbol": "XLV",
+        "name": "Health Care Select SPDR",
+        "categories": [
+            "etf"
+        ]
+    },
+    {
+        "symbol": "XLI",
+        "name": "Industrial Select SPDR",
+        "categories": [
+            "etf"
+        ]
+    },
+    {
+        "symbol": "XLY",
+        "name": "Consumer Discr. SPDR",
+        "categories": [
+            "etf"
+        ]
+    },
+    {
+        "symbol": "XLP",
+        "name": "Consumer Staples SPDR",
+        "categories": [
+            "etf"
+        ]
+    },
+    {
+        "symbol": "ARKK",
+        "name": "ARK Innovation ETF",
+        "categories": [
+            "etf"
+        ]
+    },
+    {
+        "symbol": "MAGS",
+        "name": "Magnificent Seven ETF",
+        "categories": [
+            "etf"
+        ]
+    },
+    {
+        "symbol": "TQQQ",
+        "name": "ProShares QQQ 3x",
+        "categories": [
+            "etf",
+            "leveraged"
+        ]
+    },
+    {
+        "symbol": "SQQQ",
+        "name": "ProShares Short QQQ -3x",
+        "categories": [
+            "etf",
+            "leveraged"
+        ]
+    },
+    {
+        "symbol": "SPXL",
+        "name": "Direxion S&P 500 Bull 3x",
+        "categories": [
+            "etf",
+            "leveraged"
+        ]
+    },
+    {
+        "symbol": "SPXS",
+        "name": "Direxion S&P 500 Bear 3x",
+        "categories": [
+            "etf",
+            "leveraged"
+        ]
+    },
+    {
+        "symbol": "UPRO",
+        "name": "ProShares S&P 500 3x",
+        "categories": [
+            "etf",
+            "leveraged"
+        ]
+    },
+    {
+        "symbol": "SOXL",
+        "name": "Direxion Semi Bull 3x",
+        "categories": [
+            "etf",
+            "leveraged"
+        ]
+    },
+    {
+        "symbol": "SOXS",
+        "name": "Direxion Semi Bear 3x",
+        "categories": [
+            "etf",
+            "leveraged"
+        ]
+    },
+    {
+        "symbol": "FNGU",
+        "name": "MicroSectors FANG+ 3x",
+        "categories": [
+            "etf",
+            "leveraged"
+        ]
+    },
+    {
+        "symbol": "FNGD",
+        "name": "MicroSectors FANG+ -3x",
+        "categories": [
+            "etf",
+            "leveraged"
+        ]
+    },
+    {
+        "symbol": "TNA",
+        "name": "Direxion Small Cap Bull",
+        "categories": [
+            "etf",
+            "leveraged"
+        ]
+    },
+    {
+        "symbol": "TZA",
+        "name": "Direxion Small Cap Bear",
+        "categories": [
+            "etf",
+            "leveraged"
+        ]
+    },
+    {
+        "symbol": "LABU",
+        "name": "Direxion Biotech Bull 3x",
+        "categories": [
+            "etf",
+            "leveraged"
+        ]
+    },
+    {
+        "symbol": "LABD",
+        "name": "Direxion Biotech Bear 3x",
+        "categories": [
+            "etf",
+            "leveraged"
+        ]
+    },
+    {
+        "symbol": "TECL",
+        "name": "Direxion Tech Bull 3x",
+        "categories": [
+            "etf",
+            "leveraged"
+        ]
+    },
+    {
+        "symbol": "TECS",
+        "name": "Direxion Tech Bear 3x",
+        "categories": [
+            "etf",
+            "leveraged"
+        ]
+    },
+    {
+        "symbol": "FAS",
+        "name": "Direxion Fin Bull 3x",
+        "categories": [
+            "etf",
+            "leveraged"
+        ]
+    },
+    {
+        "symbol": "FAZ",
+        "name": "Direxion Fin Bear 3x",
+        "categories": [
+            "etf",
+            "leveraged"
+        ]
+    },
+    {
+        "symbol": "NUGT",
+        "name": "Direxion Gold Miners 2x",
+        "categories": [
+            "etf",
+            "leveraged"
+        ]
+    },
+    {
+        "symbol": "DUST",
+        "name": "Direxion Gold Bear 2x",
+        "categories": [
+            "etf",
+            "leveraged"
+        ]
+    },
+    {
+        "symbol": "UVXY",
+        "name": "ProShares Ultra VIX",
+        "categories": [
+            "etf",
+            "leveraged"
+        ]
+    },
+    {
+        "symbol": "SVXY",
+        "name": "ProShares Short VIX",
+        "categories": [
+            "etf",
+            "leveraged"
+        ]
+    }
+]

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-// Settings icon removed - no longer needed
+import { RefreshCw } from 'lucide-react';
+import { useToastActions } from './ui';
 import { useAppStore } from '../stores';
 import type { Strategy, OHLCData, Trade, EquityPoint, SplitEvent, MonitorTradeHistoryResponse } from '../types';
 import { DatasetAPI } from '../lib/api';
@@ -8,6 +9,7 @@ import { IndicatorEngine } from '../lib/indicators';
 import { MultiTickerChart } from './MultiTickerChart';
 import { EquityChart } from './EquityChart';
 import { TradesTable } from './TradesTable';
+import { ProfitFactorChart } from './ProfitFactorChart';
 import { runSinglePositionBacktest, optimizeTickerData, formatCurrencyCompact } from '../lib/singlePositionBacktest';
 import { MiniQuoteChart } from './MiniQuoteChart';
 import { createStrategyFromTemplate, STRATEGY_TEMPLATES } from '../lib/strategy';
@@ -88,12 +90,53 @@ export function MultiTickerPage() {
   const [backtestResults, setBacktestResults] = useState<BacktestResults | null>(null);
   const [monthlyContributionResults, setMonthlyContributionResults] = useState<BacktestResults | null>(null);
   const [tickersData, setTickersData] = useState<TickerData[]>([]);
-  type TabId = 'price' | 'equity' | 'trades' | 'monthlyContribution' | 'monitorTrades' | 'splits';
+  type TabId = 'price' | 'equity' | 'trades' | 'profit' | 'monthlyContribution' | 'monitorTrades' | 'splits';
   const [activeTab, setActiveTab] = useState<TabId>('price');
   const [selectedTradeTicker, setSelectedTradeTicker] = useState<'all' | string>('all');
   const [monitorTradeHistory, setMonitorTradeHistory] = useState<MonitorTradeHistoryResponse | null>(null);
   const [monitorTradesLoading, setMonitorTradesLoading] = useState(false);
   const [monitorTradesError, setMonitorTradesError] = useState<string | null>(null);
+  const [refreshingTickers, setRefreshingTickers] = useState<Set<string>>(new Set());
+
+  // Check if data is outdated (last bar is more than 1 trading day old)
+  const isDataOutdated = useCallback((lastDate: Date | undefined): boolean => {
+    if (!lastDate) return true;
+    const now = new Date();
+    const lastDateNormalized = new Date(lastDate);
+    // Get difference in days
+    const diffMs = now.getTime() - lastDateNormalized.getTime();
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    // Data is outdated if it's more than 2 days old (accounts for weekends)
+    return diffDays > 2;
+  }, []);
+
+  // Handle refresh for a single ticker
+  const toast = useToastActions();
+  const handleRefreshTicker = useCallback(async (ticker: string) => {
+    setRefreshingTickers(prev => new Set(prev).add(ticker));
+    try {
+      const result = await DatasetAPI.refreshDataset(ticker);
+      // Reload ticker data
+      const newData = await loadTickerData(ticker);
+      setTickersData(prev => prev.map(td => td.ticker === ticker ? newData : td));
+      // Show success toast with number of days added
+      const addedDays = result?.added ?? 0;
+      if (addedDays > 0) {
+        toast.success(`${ticker}: добавлено ${addedDays} ${addedDays === 1 ? 'день' : addedDays < 5 ? 'дня' : 'дней'}`);
+      } else {
+        toast.info(`${ticker}: данные актуальны`);
+      }
+    } catch (err) {
+      console.error(`Failed to refresh ${ticker}:`, err);
+      toast.error(`${ticker}: не удалось обновить данные`);
+    } finally {
+      setRefreshingTickers(prev => {
+        const next = new Set(prev);
+        next.delete(ticker);
+        return next;
+      });
+    }
+  }, [toast]);
 
   const currentStrategy = useAppStore(s => s.currentStrategy);
   const fallbackStrategyRef = useRef<Strategy | null>(null);
@@ -291,110 +334,267 @@ export function MultiTickerPage() {
 
   return (
     <div className="space-y-6">
-      {/* Заголовок и контролы */}
-      <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
+      {/* Заголовок и контролы — Card-based дизайн */}
+      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 shadow-sm">
+        {/* Заголовок */}
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
             Несколько тикеров
           </h1>
+          <div className="mt-2 h-px bg-gradient-to-r from-blue-500/50 via-purple-500/50 to-transparent" />
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-          <div>
-            <div className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Стратегия
-            </div>
-            <div className="h-full rounded-md border border-blue-200 bg-blue-50 p-4 text-sm dark:border-blue-900/60 dark:bg-blue-950/40">
-              <div className="text-base font-semibold text-blue-700 dark:text-blue-300">
-                {activeStrategy?.name || 'IBS Mean Reversion'}
+        {/* Две карточки */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+          {/* Карточка Стратегия */}
+          <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/40 dark:to-indigo-950/30 p-5 shadow-sm">
+            <div className="flex items-center gap-2 mb-4">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-500/10 dark:bg-blue-400/10">
+                <svg className="h-4 w-4 text-blue-600 dark:text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                </svg>
               </div>
-              <p className="mt-2 text-gray-700 dark:text-gray-200">
-                Вход при IBS ниже {Math.round(lowIBS * 100)}%, выход при превышении {Math.round(highIBS * 100)}% или по истечении {maxHoldDays} дн.
-              </p>
-              <dl className="mt-4 grid grid-cols-2 gap-3 text-xs text-gray-600 dark:text-gray-300">
-                <div>
-                  <dt className="uppercase tracking-wide">Риск-менеджмент</dt>
-                  <dd className="mt-1 font-medium text-gray-800 dark:text-gray-100">
-                    1 позиция • {activeStrategy?.riskManagement?.capitalUsage ?? 100}% капитала
-                  </dd>
-                </div>
-                <div>
-                  <dt className="uppercase tracking-wide">Комиссия</dt>
-                  <dd className="mt-1 font-medium text-gray-800 dark:text-gray-100">
-                    {activeStrategy?.riskManagement?.commission?.type === 'percentage'
-                      ? `${activeStrategy?.riskManagement?.commission?.percentage ?? 0}%`
-                      : activeStrategy?.riskManagement?.commission?.type === 'fixed'
-                        ? `$${activeStrategy?.riskManagement?.commission?.fixed ?? 0}`
-                        : 'Комбинированная'}
-                  </dd>
-                </div>
-              </dl>
+              <span className="text-sm font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                Стратегия
+              </span>
+            </div>
+
+            <div className="text-lg font-bold text-gray-900 dark:text-gray-100 mb-3">
+              {activeStrategy?.name || 'IBS Mean Reversion'}
+            </div>
+
+            <ul className="space-y-2 text-sm text-gray-600 dark:text-gray-300">
+              <li className="flex items-center gap-2">
+                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-green-500/10 text-green-600 dark:text-green-400">↓</span>
+                IBS &lt; {Math.round(lowIBS * 100)}% → покупка
+              </li>
+              <li className="flex items-center gap-2">
+                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-orange-500/10 text-orange-600 dark:text-orange-400">↑</span>
+                IBS &gt; {Math.round(highIBS * 100)}% → продажа
+              </li>
+              <li className="flex items-center gap-2">
+                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-purple-500/10 text-purple-600 dark:text-purple-400">⏱</span>
+                Макс. удержание {maxHoldDays} дней
+              </li>
+            </ul>
+
+            <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
+              <span>{activeStrategy?.riskManagement?.capitalUsage ?? 100}% капитала</span>
+              <span>
+                Комиссия: {activeStrategy?.riskManagement?.commission?.type === 'percentage'
+                  ? `${activeStrategy?.riskManagement?.commission?.percentage ?? 0}%`
+                  : activeStrategy?.riskManagement?.commission?.type === 'fixed'
+                    ? `$${activeStrategy?.riskManagement?.commission?.fixed ?? 0}`
+                    : 'комбинированная'}
+              </span>
             </div>
           </div>
 
-          {/* Тикеры */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Тикеры (через запятую)
-            </label>
-            <input
-              type="text"
-              value={tickersInput}
-              onChange={(e) => {
-                setTickersInput(e.target.value);
-                const parsedTickers = Array.from(new Set(
-                  e.target.value
-                    .split(',')
-                    .map(t => t.trim().toUpperCase())
-                    .filter(Boolean)
-                ));
-                setTickers(parsedTickers);
-              }}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
-              placeholder="AAPL, MSFT, AMZN, MAGS"
-            />
+          {/* Карточка Параметры */}
+          <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gradient-to-br from-gray-50 to-slate-50 dark:from-gray-900/60 dark:to-slate-900/40 p-5 shadow-sm">
+            <div className="flex items-center gap-2 mb-4">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-purple-500/10 dark:bg-purple-400/10">
+                <svg className="h-4 w-4 text-purple-600 dark:text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+                </svg>
+              </div>
+              <span className="text-sm font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                Параметры
+              </span>
+            </div>
+
+            <div className="space-y-4">
+              {/* Тикеры */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Тикеры
+                </label>
+                <input
+                  type="text"
+                  value={tickersInput}
+                  onChange={(e) => {
+                    setTickersInput(e.target.value);
+                    const parsedTickers = Array.from(new Set(
+                      e.target.value
+                        .split(',')
+                        .map(t => t.trim().toUpperCase())
+                        .filter(Boolean)
+                    ));
+                    setTickers(parsedTickers);
+                  }}
+                  className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-shadow"
+                  placeholder="AAPL, MSFT, AMZN, MAGS"
+                />
+                {tickers.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mt-2">
+                    {tickers.map((ticker, idx) => (
+                      <span
+                        key={ticker}
+                        className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${idx % 4 === 0 ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300' :
+                          idx % 4 === 1 ? 'bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-300' :
+                            idx % 4 === 2 ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/50 dark:text-orange-300' :
+                              'bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300'
+                          }`}
+                      >
+                        {ticker}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Leverage */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Leverage
+                </label>
+                <select
+                  value={leveragePercent}
+                  onChange={(e) => setLeveragePercent(Number(e.target.value))}
+                  className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-shadow"
+                >
+                  <option value={100}>1:1 — без плеча</option>
+                  <option value={150}>1.5:1</option>
+                  <option value={200}>2:1</option>
+                  <option value={250}>2.5:1</option>
+                  <option value={300}>3:1</option>
+                </select>
+              </div>
+            </div>
           </div>
-
-          {/* Leverage */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Leverage: {(leveragePercent / 100).toFixed(1)}:1
-            </label>
-            <select
-              value={leveragePercent}
-              onChange={(e) => setLeveragePercent(Number(e.target.value))}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
-            >
-              <option value={100}>100% (без плеча)</option>
-              <option value={150}>150% (1.5:1)</option>
-              <option value={200}>200% (2:1)</option>
-              <option value={250}>250% (2.5:1)</option>
-              <option value={300}>300% (3:1)</option>
-            </select>
-          </div>
-
-
         </div>
 
-        <div className="flex items-center justify-between mt-4">
-
+        {/* Кнопка запуска */}
+        <div className="flex justify-center">
           <button
             onClick={runBacktest}
             disabled={isLoading || !activeStrategy || tickers.length === 0}
-            className="inline-flex items-center px-6 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-medium rounded-md transition-colors"
+            className="inline-flex items-center gap-2 px-8 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 disabled:from-gray-400 disabled:to-gray-500 text-white font-semibold rounded-xl shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 disabled:shadow-none transition-all duration-200"
           >
-            {isLoading ? 'Расчёт...' : 'Запустить бэктест'}
+            {isLoading ? (
+              <>
+                <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                </svg>
+                Расчёт...
+              </>
+            ) : (
+              <>
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+                Запустить бэктест
+              </>
+            )}
           </button>
         </div>
       </div>
 
-      {/* Основной график */}
-      <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
-        <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
-          Сводный график тикеров
-        </h2>
-        <MultiTickerChart tickersData={tickersData} trades={backtestResults?.trades || []} height={650} />
-      </div>
+      {/* Индивидуальные графики тикеров */}
+      {tickersData.length > 0 && (
+        <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
+            Графики тикеров
+          </h2>
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            {tickersData.map(tickerData => {
+              const tradesForTicker = tradesByTicker[tickerData.ticker] || [];
+              const stats = calculateTradeStats(tradesForTicker);
+              const lastBar = tickerData.data[tickerData.data.length - 1];
+              const prevBar = tickerData.data.length > 1 ? tickerData.data[tickerData.data.length - 2] : undefined;
+              const dailyChange = lastBar && prevBar && prevBar.close !== 0
+                ? ((lastBar.close - prevBar.close) / prevBar.close) * 100
+                : null;
+
+              return (
+                <div
+                  key={tickerData.ticker}
+                  className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-900"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <div className="text-xl font-semibold text-gray-900 dark:text-gray-100">
+                          {tickerData.ticker}
+                        </div>
+                        {isDataOutdated(lastBar?.date) && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleRefreshTicker(tickerData.ticker);
+                            }}
+                            disabled={refreshingTickers.has(tickerData.ticker)}
+                            className="p-1.5 rounded-md text-orange-500 hover:text-orange-600 hover:bg-orange-50 dark:hover:bg-orange-900/20 transition-colors disabled:opacity-50"
+                            title="Обновить данные"
+                          >
+                            <RefreshCw className={`w-4 h-4 ${refreshingTickers.has(tickerData.ticker) ? 'animate-spin' : ''}`} />
+                          </button>
+                        )}
+                      </div>
+                      <div className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                        Баров: {tickerData.data.length}
+                      </div>
+                    </div>
+                    {lastBar && (
+                      <div className="text-right">
+                        <div className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                          ${lastBar.close.toFixed(2)}
+                        </div>
+                        {dailyChange !== null && Number.isFinite(dailyChange) && (
+                          <div className={`text-sm font-medium ${dailyChange >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-orange-500 dark:text-orange-400'}`}>
+                            {dailyChange >= 0 ? '+' : ''}{dailyChange.toFixed(2)}%
+                          </div>
+                        )}
+                        <div className="text-xs text-gray-500 dark:text-gray-400">
+                          Обновлено {lastBar.date.toLocaleDateString('ru-RU')}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="mt-4 h-48">
+                    <MiniQuoteChart
+                      history={tickerData.data}
+                      today={null}
+                      trades={tradesForTicker}
+                      highIBS={highIBS}
+                      isOpenPosition={false}
+                    />
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-2 gap-3 text-sm text-gray-600 dark:text-gray-300">
+                    <div>
+                      <div className="text-xs uppercase tracking-wide">Сделок</div>
+                      <div className="mt-1 text-base font-semibold text-gray-900 dark:text-gray-100">
+                        {stats.totalTrades}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs uppercase tracking-wide">Win rate</div>
+                      <div className="mt-1 text-base font-semibold text-gray-900 dark:text-gray-100">
+                        {stats.winRate.toFixed(1)}%
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs uppercase tracking-wide">PnL</div>
+                      <div className={`mt-1 text-base font-semibold ${stats.totalPnL >= 0 ? 'text-emerald-600 dark:text-emerald-300' : 'text-orange-500 dark:text-orange-300'}`}>
+                        {formatCurrencyCompact(stats.totalPnL)}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs uppercase tracking-wide">Средняя длительность</div>
+                      <div className="mt-1 text-base font-semibold text-gray-900 dark:text-gray-100">
+                        {stats.avgDuration.toFixed(1)} дн.
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Метрики доходности */}
       {backtestResults && (
@@ -459,6 +659,7 @@ export function MultiTickerPage() {
               { id: 'price' as TabId, label: 'Цены' },
               { id: 'equity' as TabId, label: 'Equity' },
               { id: 'trades' as TabId, label: 'Сделки (бэктест)' },
+              { id: 'profit' as TabId, label: 'Profit factor' },
               monthlyContributionResults ? { id: 'monthlyContribution' as TabId, label: 'Пополнения' } : null,
               { id: 'monitorTrades' as TabId, label: 'Сделки (мониторинг)' },
               { id: 'splits' as TabId, label: 'Сплиты' },
@@ -481,95 +682,9 @@ export function MultiTickerPage() {
             {activeTab === 'price' && (
               <div className="space-y-4">
                 <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                  Индивидуальные графики цен
+                  Сводный график тикеров
                 </h3>
-                {tickersData.length === 0 ? (
-                  <div className="h-48 rounded border border-dashed border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50 flex items-center justify-center text-gray-500 dark:text-gray-400">
-                    Нет данных для отображения. Запустите бэктест, чтобы загрузить котировки.
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-                    {tickersData.map(tickerData => {
-                      const tradesForTicker = tradesByTicker[tickerData.ticker] || [];
-                      const stats = calculateTradeStats(tradesForTicker);
-                      const lastBar = tickerData.data[tickerData.data.length - 1];
-                      const prevBar = tickerData.data.length > 1 ? tickerData.data[tickerData.data.length - 2] : undefined;
-                      const dailyChange = lastBar && prevBar && prevBar.close !== 0
-                        ? ((lastBar.close - prevBar.close) / prevBar.close) * 100
-                        : null;
-
-                      return (
-                        <div
-                          key={tickerData.ticker}
-                          className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-900"
-                        >
-                          <div className="flex flex-wrap items-start justify-between gap-3">
-                            <div>
-                              <div className="text-xl font-semibold text-gray-900 dark:text-gray-100">
-                                {tickerData.ticker}
-                              </div>
-                              <div className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                                Баров: {tickerData.data.length}
-                              </div>
-                            </div>
-                            {lastBar && (
-                              <div className="text-right">
-                                <div className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                                  ${lastBar.close.toFixed(2)}
-                                </div>
-                                {dailyChange !== null && Number.isFinite(dailyChange) && (
-                                  <div className={`text-sm font-medium ${dailyChange >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-orange-500 dark:text-orange-400'}`}>
-                                    {dailyChange >= 0 ? '+' : ''}{dailyChange.toFixed(2)}%
-                                  </div>
-                                )}
-                                <div className="text-xs text-gray-500 dark:text-gray-400">
-                                  Обновлено {lastBar.date.toLocaleDateString('ru-RU')}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-
-                          <div className="mt-4 h-48">
-                            <MiniQuoteChart
-                              history={tickerData.data}
-                              today={null}
-                              trades={tradesForTicker}
-                              highIBS={highIBS}
-                              isOpenPosition={false}
-                            />
-                          </div>
-
-                          <div className="mt-4 grid grid-cols-2 gap-3 text-sm text-gray-600 dark:text-gray-300">
-                            <div>
-                              <div className="text-xs uppercase tracking-wide">Сделок</div>
-                              <div className="mt-1 text-base font-semibold text-gray-900 dark:text-gray-100">
-                                {stats.totalTrades}
-                              </div>
-                            </div>
-                            <div>
-                              <div className="text-xs uppercase tracking-wide">Win rate</div>
-                              <div className="mt-1 text-base font-semibold text-gray-900 dark:text-gray-100">
-                                {stats.winRate.toFixed(1)}%
-                              </div>
-                            </div>
-                            <div>
-                              <div className="text-xs uppercase tracking-wide">PnL</div>
-                              <div className={`mt-1 text-base font-semibold ${stats.totalPnL >= 0 ? 'text-emerald-600 dark:text-emerald-300' : 'text-orange-500 dark:text-orange-300'}`}>
-                                {formatCurrencyCompact(stats.totalPnL)}
-                              </div>
-                            </div>
-                            <div>
-                              <div className="text-xs uppercase tracking-wide">Средняя длительность</div>
-                              <div className="mt-1 text-base font-semibold text-gray-900 dark:text-gray-100">
-                                {stats.avgDuration.toFixed(1)} дн.
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
+                <MultiTickerChart tickersData={tickersData} trades={backtestResults?.trades || []} height={650} />
               </div>
             )}
 
@@ -660,6 +775,24 @@ export function MultiTickerPage() {
                     <div className="text-gray-500 dark:text-gray-400 text-center">
                       <div className="text-lg font-medium mb-2">Trades Table</div>
                       <p className="text-sm">Для выбранного тикера сделки отсутствуют</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {activeTab === 'profit' && (
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                  Profit Factor по сделкам
+                </h3>
+                {backtestResults.trades.length > 0 ? (
+                  <ProfitFactorChart trades={backtestResults.trades} />
+                ) : (
+                  <div className="h-72 bg-gray-50 dark:bg-gray-900/50 rounded border border-dashed border-gray-300 dark:border-gray-600 flex items-center justify-center">
+                    <div className="text-gray-500 dark:text-gray-400 text-center">
+                      <div className="text-lg font-medium mb-2">Profit Factor Chart</div>
+                      <p className="text-sm">Нет сделок для отображения</p>
                     </div>
                   </div>
                 )}

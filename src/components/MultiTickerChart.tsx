@@ -190,28 +190,27 @@ export function MultiTickerChart({ tickersData, trades = [], height = 600 }: Mul
             const markers = tickerTrades.flatMap(trade => {
               const result = [];
 
-              // Entry marker
+              // Entry marker (matching TradingChart style)
               if (trade.entryDate) {
                 const entryTime = Math.floor(new Date(trade.entryDate).getTime() / 1000) as UTCTimestamp;
                 result.push({
                   time: entryTime,
                   position: 'belowBar' as const,
-                  color: '#10B981',
+                  color: '#2196F3',
                   shape: 'arrowUp' as const,
-                  text: `Buy $${trade.entryPrice.toFixed(2)}`
+                  text: `Buy @ ${Math.floor(trade.entryPrice)}`
                 });
               }
 
-              // Exit marker
-              if (trade.exitDate) {
+              // Exit marker (matching TradingChart style)
+              if (trade.exitDate && trade.exitReason !== 'end_of_data') {
                 const exitTime = Math.floor(new Date(trade.exitDate).getTime() / 1000) as UTCTimestamp;
-                const pnl = trade.pnl ?? 0;
                 result.push({
                   time: exitTime,
                   position: 'aboveBar' as const,
-                  color: pnl >= 0 ? '#10B981' : '#EF4444',
+                  color: '#2196F3',
                   shape: 'arrowDown' as const,
-                  text: `Sell ${pnl >= 0 ? '+' : ''}$${pnl.toFixed(0)}`
+                  text: `Sell @ ${Math.floor(trade.exitPrice)}`
                 });
               }
 
@@ -221,7 +220,7 @@ export function MultiTickerChart({ tickersData, trades = [], height = 600 }: Mul
             if (markers.length > 0) {
               // Sort markers by time
               markers.sort((a, b) => (a.time as number) - (b.time as number));
-              series.setMarkers(markers);
+              series.setMarkers?.(markers);
             }
           }
         } catch (e) {
