@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createChart, type IChartApi, type ISeriesApi, type UTCTimestamp } from 'lightweight-charts';
-import { formatOHLCYMD, parseOHLCDate } from '../lib/utils';
+import { formatOHLCYMD } from '../lib/utils';
+import { toChartTimestamp } from '../lib/date-utils';
 import type { OHLCData, Trade, SplitEvent } from '../types';
 import { useAppStore } from '../stores';
 import { logError } from '../lib/error-logger';
@@ -34,19 +35,19 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
   const calculateEMA = (data: OHLCData[], period: number): number[] => {
     const ema: number[] = [];
     const multiplier = 2 / (period + 1);
-    
+
     // Первое значение - это SMA
     let sum = 0;
     for (let i = 0; i < Math.min(period, data.length); i++) {
       sum += data[i].close;
     }
     ema[period - 1] = sum / period;
-    
+
     // Остальные значения - EMA
     for (let i = period; i < data.length; i++) {
       ema[i] = (data[i].close - ema[i - 1]) * multiplier + ema[i - 1];
     }
-    
+
     return ema;
   };
 
@@ -63,13 +64,13 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
       }
       unsubscribeRef.current = null;
     }
-    
+
     // Remove resize handler
     if (resizeHandlerRef.current) {
       window.removeEventListener('resize', resizeHandlerRef.current);
       resizeHandlerRef.current = null;
     }
-    
+
     // Remove tooltip DOM element
     if (tooltipRef.current && tooltipRef.current.parentElement) {
       try {
@@ -81,14 +82,14 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
       }
       tooltipRef.current = null;
     }
-    
+
     // Clear series references
     candlestickSeriesRef.current = null;
     ibsSeriesRef.current = null;
     volumeSeriesRef.current = null;
     ema20SeriesRef.current = null;
     ema200SeriesRef.current = null;
-    
+
     // Remove chart instance
     if (chartRef.current) {
       try {
@@ -168,7 +169,7 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
       // Convert data to chart format with validation
       const chartData = data.map((bar, idx) => {
         try {
-          const t = Math.floor(bar.date.getTime() / 1000) as UTCTimestamp;
+          const t = toChartTimestamp(bar.date);
           const open = Number(bar.open);
           const high = Number(bar.high);
           const low = Number(bar.low);
@@ -195,7 +196,7 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
       // Объём как overlay - займет нижние 20% согласно документации
       const volumeData = data.map((bar, idx) => {
         const value = Number(bar.volume);
-        const t = Math.floor(bar.date.getTime() / 1000) as UTCTimestamp;
+        const t = toChartTimestamp(bar.date);
         if (!Number.isFinite(value)) {
           logError('chart', 'Invalid volume value', { idx, value, bar }, 'TradingChart.volume');
         }
@@ -245,7 +246,7 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
         try {
           const range = Math.max(1e-9, bar.high - bar.low);
           const ibs = (bar.close - bar.low) / range; // 0..1
-          const t = Math.floor(bar.date.getTime() / 1000) as UTCTimestamp;
+          const t = toChartTimestamp(bar.date);
           const color = ibs <= 0.10
             ? (isDark ? 'rgba(5,150,105,1)' : 'rgba(5,150,105,1)')
             : (ibs >= 0.75 ? (isDark ? 'rgba(239,68,68,0.9)' : 'rgba(239,68,68,0.9)') : (isDark ? 'rgba(156,163,175,0.5)' : 'rgba(107,114,128,0.5)'));
@@ -277,7 +278,7 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
           const v = ema20Values[index];
           if (typeof v !== 'number' || !Number.isFinite(v)) return null;
           return {
-            time: Math.floor(bar.date.getTime() / 1000) as UTCTimestamp,
+            time: toChartTimestamp(bar.date),
             value: v,
           };
         })
@@ -299,7 +300,7 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
           const v = ema200Values[index];
           if (typeof v !== 'number' || !Number.isFinite(v)) return null;
           return {
-            time: Math.floor(bar.date.getTime() / 1000) as UTCTimestamp,
+            time: toChartTimestamp(bar.date),
             value: v,
           };
         })
@@ -310,13 +311,13 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
       ema200SeriesRef.current = ema200Series;
 
       // Собираем маркеры: сделки и сплиты
-      const allMarkers: Array<{ time: UTCTimestamp; position: 'belowBar' | 'aboveBar'; color: string; shape: 'arrowUp'|'arrowDown'|'circle'; text: string } > = [];
+      const allMarkers: Array<{ time: UTCTimestamp; position: 'belowBar' | 'aboveBar'; color: string; shape: 'arrowUp' | 'arrowDown' | 'circle'; text: string }> = [];
       if (trades.length > 0) {
         allMarkers.push(
           ...trades.flatMap(trade => {
-            const markers: Array<{ time: UTCTimestamp; position: 'belowBar' | 'aboveBar'; color: string; shape: 'arrowUp'|'arrowDown'|'circle'; text: string }> = [
+            const markers: Array<{ time: UTCTimestamp; position: 'belowBar' | 'aboveBar'; color: string; shape: 'arrowUp' | 'arrowDown' | 'circle'; text: string }> = [
               {
-                time: Math.floor(trade.entryDate.getTime() / 1000) as UTCTimestamp,
+                time: toChartTimestamp(trade.entryDate),
                 position: 'belowBar' as const,
                 color: '#2196F3',
                 shape: 'arrowUp' as const,
@@ -325,7 +326,7 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
             ];
             if (trade.exitReason !== 'end_of_data') {
               markers.push({
-                time: Math.floor(trade.exitDate.getTime() / 1000) as UTCTimestamp,
+                time: toChartTimestamp(trade.exitDate),
                 position: 'aboveBar' as const,
                 color: '#2196F3',
                 shape: 'arrowDown' as const,
@@ -341,11 +342,11 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
         const ymdToTime = new Map<string, number>();
         for (const bar of data) {
           const ymd = formatOHLCYMD(bar.date);
-          if (!ymdToTime.has(ymd)) ymdToTime.set(ymd, Math.floor(bar.date.getTime() / 1000));
+          if (!ymdToTime.has(ymd)) ymdToTime.set(ymd, toChartTimestamp(bar.date));
         }
         const splitMarkers = splits.map(s => {
-          const ymd = typeof s.date === 'string' ? s.date.slice(0, 10) : formatOHLCYMD(parseOHLCDate(String(s.date)));
-          const t = ymdToTime.get(ymd) ?? Math.floor(parseOHLCDate(String(s.date)).getTime() / 1000);
+          const ymd = typeof s.date === 'string' ? s.date.slice(0, 10) : formatOHLCYMD(s.date);
+          const t = ymdToTime.get(ymd) ?? toChartTimestamp(ymd);
           return {
             time: t as UTCTimestamp,
             position: 'belowBar' as const,
@@ -403,7 +404,7 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
         tooltipRef.current.textContent = `О ${o?.toFixed?.(2) ?? '-'} В ${h?.toFixed?.(2) ?? '-'} Н ${l?.toFixed?.(2) ?? '-'} З ${c?.toFixed?.(2) ?? '-'} · ${pct ? pct.toFixed(2) + '%' : ''}${ibsStr}${vol ? ' · Объём ' + vol.toLocaleString() : ''}`;
         tooltipRef.current.style.display = 'block';
       };
-      
+
       unsubscribeRef.current = chart.subscribeCrosshairMove(crosshairHandler);
 
       // Handle resize
@@ -470,31 +471,28 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
       <div className="flex gap-2 flex-wrap">
         <button
           onClick={() => setShowEMA20(!showEMA20)}
-          className={`px-3 py-1 text-sm rounded ${
-            showEMA20 
-              ? 'bg-blue-500 text-white' 
-              : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'
-          }`}
+          className={`px-3 py-1 text-sm rounded ${showEMA20
+            ? 'bg-blue-500 text-white'
+            : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'
+            }`}
         >
           EMA 20
         </button>
         <button
           onClick={() => setShowEMA200(!showEMA200)}
-          className={`px-3 py-1 text-sm rounded ${
-            showEMA200 
-              ? 'bg-orange-500 text-white' 
-              : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'
-          }`}
+          className={`px-3 py-1 text-sm rounded ${showEMA200
+            ? 'bg-orange-500 text-white'
+            : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'
+            }`}
         >
           EMA 200
         </button>
         <button
           onClick={() => { const next = !showIBS; setShowIBS(next); if (next) setShowVolume(false); }}
-          className={`px-3 py-1 text-sm rounded ${
-            showIBS
-              ? 'bg-gray-700 text-white'
-              : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'
-          }`}
+          className={`px-3 py-1 text-sm rounded ${showIBS
+            ? 'bg-gray-700 text-white'
+            : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'
+            }`}
           title="Показать IBS"
           aria-label="Показать IBS"
         >
@@ -502,11 +500,10 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
         </button>
         <button
           onClick={() => { const next = !showVolume; setShowVolume(next); if (next) setShowIBS(false); }}
-          className={`px-3 py-1 text-sm rounded ${
-            showVolume
-              ? 'bg-gray-500 text-white'
-              : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'
-          }`}
+          className={`px-3 py-1 text-sm rounded ${showVolume
+            ? 'bg-gray-500 text-white'
+            : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'
+            }`}
           title="Показать объём"
           aria-label="Показать объём"
         >

@@ -66,54 +66,64 @@ export function parseOHLCDate(value: string | Date): Date {
 }
 
 /**
- * Format Date back to YYYY-MM-DD using its UTC day parts (stable with midday UTC storage).
+ * Format Date back to YYYY-MM-DD using its UTC day parts.
+ * For TradingDate strings, just returns as-is.
+ * @deprecated For new code, use TradingDate strings directly
  */
-export function formatOHLCYMD(date: Date): string {
+export function formatOHLCYMD(date: Date | string): string {
+  if (typeof date === 'string') {
+    // Already a TradingDate string
+    return date.slice(0, 10);
+  }
   const y = date.getUTCFullYear();
   const m = String(date.getUTCMonth() + 1).padStart(2, '0');
   const d = String(date.getUTCDate()).padStart(2, '0');
   return `${y}-${m}-${d}`;
 }
 
-import type { OHLCData, SplitEvent } from '../types';
+import type { OHLCData, SplitEvent, TradingDate } from '../types';
+import { isBefore, compareTradingDates, toTradingDate } from './date-utils';
 
 /**
  * Back-adjust OHLC series for stock splits. Price fields are divided by cumulative factors,
  * volume is multiplied. Events format: { date: 'YYYY-MM-DD', factor: number }.
- * Исправлено накопление неточностей при множественных сплитах.
+ * Now uses TradingDate string comparisons for timezone safety.
  */
 export function adjustOHLCForSplits(ohlc: OHLCData[], splits: SplitEvent[] | undefined): OHLCData[] {
   if (!Array.isArray(ohlc) || ohlc.length === 0 || !Array.isArray(splits) || splits.length === 0) return ohlc;
-  const data = [...ohlc].sort((a, b) => a.date.getTime() - b.date.getTime());
+
+  // Sort data by TradingDate (string comparison works for YYYY-MM-DD)
+  const data = [...ohlc].sort((a, b) => compareTradingDates(a.date, b.date));
+
+  // Filter and sort split events
   const events = [...splits]
     .filter(s => s && s.date && s.factor && s.factor !== 1)
-    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    .map(s => ({ date: s.date.slice(0, 10) as TradingDate, factor: s.factor }))
+    .sort((a, b) => compareTradingDates(a.date, b.date));
   if (events.length === 0) return ohlc;
-  
-  // Превычисляем кумулятивные множители для минимизации неточностей
-  const splitFactors = new Map<number, number>(); // timestamp -> cumulative factor
-  
-  // Вычисляем кумулятивные множители один раз
+
+  // Pre-compute cumulative factors for each bar
+  const splitFactors = new Map<number, number>();
+
   for (let i = 0; i < data.length; i++) {
-    const barTime = data[i].date.getTime();
+    const barDate = data[i].date;
     let cumulative = 1;
-    
+
     for (const event of events) {
-      const eventTime = new Date(event.date).getTime();
-      if (barTime < eventTime) {
+      // Bar is before split date = needs adjustment
+      if (isBefore(barDate, event.date)) {
         cumulative *= event.factor;
       }
     }
-    
+
     splitFactors.set(i, cumulative);
   }
-  
-  // Применяем корректировки с отображением на фиксированное количество знаков после запятой
+
+  // Apply adjustments with fixed precision
   const result: OHLCData[] = data.map((bar, index) => {
     const cumulative = splitFactors.get(index) || 1;
-    
+
     if (cumulative !== 1) {
-      // Округляем до 6 знаков после запятой для минимизации неточностей
       return {
         ...bar,
         open: Math.round((bar.open / cumulative) * 1000000) / 1000000,
@@ -124,10 +134,10 @@ export function adjustOHLCForSplits(ohlc: OHLCData[], splits: SplitEvent[] | und
         volume: Math.round(bar.volume * cumulative),
       };
     }
-    
+
     return { ...bar };
   });
-  
+
   return result;
 }
 
@@ -142,16 +152,19 @@ export function adjustOHLCForSplits(ohlc: OHLCData[], splits: SplitEvent[] | und
  */
 export function dedupeDailyOHLC(ohlc: OHLCData[]): OHLCData[] {
   if (!Array.isArray(ohlc) || ohlc.length === 0) return ohlc;
-  // Ensure stable chronological order first
-  const sorted = [...ohlc].sort((a, b) => a.date.getTime() - b.date.getTime());
+
+  // Sort by TradingDate string (YYYY-MM-DD sorts lexicographically correctly)
+  const sorted = [...ohlc].sort((a, b) => compareTradingDates(a.date, b.date));
   const byDay = new Map<string, OHLCData>();
+
   for (const bar of sorted) {
+    // Normalize date to YYYY-MM-DD TradingDate
     const dayKey = formatOHLCYMD(bar.date);
     const existing = byDay.get(dayKey);
+
     if (!existing) {
-      // Normalize date to stable midday UTC for the day key
-      const dayDate = parseOHLCDate(dayKey);
-      byDay.set(dayKey, { ...bar, date: dayDate });
+      // Store with normalized TradingDate
+      byDay.set(dayKey, { ...bar, date: dayKey as TradingDate });
     } else {
       const high = Math.max(existing.high, bar.high);
       const low = Math.min(existing.low, bar.low);
@@ -170,7 +183,9 @@ export function dedupeDailyOHLC(ohlc: OHLCData[]): OHLCData[] {
       });
     }
   }
-  return Array.from(byDay.values()).sort((a, b) => a.date.getTime() - b.date.getTime());
+
+  // Sort result by TradingDate
+  return Array.from(byDay.values()).sort((a, b) => compareTradingDates(a.date, b.date));
 }
 
 /**
@@ -322,7 +337,7 @@ export function safeParseFloat(value: unknown, fallback = 0): number {
   if (value === null || value === undefined || value === '') {
     return fallback;
   }
-  
+
   const parsed = parseFloat(String(value));
   return isNaN(parsed) ? fallback : parsed;
 }
@@ -334,7 +349,7 @@ export function safeParseInt(value: unknown, fallback = 0): number {
   if (value === null || value === undefined || value === '') {
     return fallback;
   }
-  
+
   const parsed = parseInt(String(value), 10);
   return isNaN(parsed) ? fallback : parsed;
 }
@@ -358,7 +373,7 @@ export function roundTo(value: number, decimals: number): number {
  * Convert string to title case
  */
 export function toTitleCase(str: string): string {
-  return str.replace(/\w\S*/g, (txt) => 
+  return str.replace(/\w\S*/g, (txt) =>
     txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase()
   );
 }
@@ -370,15 +385,15 @@ export function deepClone<T>(obj: T): T {
   if (obj === null || typeof obj !== 'object') {
     return obj;
   }
-  
+
   if (obj instanceof Date) {
     return new Date(obj.getTime()) as unknown as T;
   }
-  
+
   if (Array.isArray(obj)) {
     return obj.map(item => deepClone(item)) as unknown as T;
   }
-  
+
   const cloned = {} as T;
   for (const key in obj) {
     if (Object.prototype.hasOwnProperty.call(obj, key)) {
@@ -386,7 +401,7 @@ export function deepClone<T>(obj: T): T {
       cloned[key] = deepClone((obj as Record<string, unknown>)[key] as unknown);
     }
   }
-  
+
   return cloned;
 }
 

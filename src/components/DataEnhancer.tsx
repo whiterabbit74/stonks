@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { Search, Upload, Download, Loader2, AlertTriangle, CheckCircle, AlertCircle, Check } from 'lucide-react';
 import { useAppStore } from '../stores';
 import { fetchWithCreds, API_BASE_URL } from '../lib/api';
-import { parseOHLCDate } from '../lib/utils';
+import { toTradingDate } from '../lib/date-utils';
 import { useToastActions } from './ui';
 import { TICKER_DATA, CATEGORIES, searchTickers, getTickerInfo } from '../lib/ticker-data';
 
@@ -145,7 +145,7 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
       if (!rows.length) throw new Error('Нет данных для этого тикера');
 
       const ohlc = rows.map((bar: any) => ({
-        date: parseOHLCDate(bar.date),
+        date: toTradingDate(bar.date),
         open: Number(bar.open),
         high: Number(bar.high),
         low: Number(bar.low),

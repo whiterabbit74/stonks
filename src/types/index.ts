@@ -1,6 +1,12 @@
 // Core data models for the simplified trading backtester
+
+// TradingDate is a string in 'YYYY-MM-DD' format representing a NYSE trading day
+// Re-exported from date-utils for convenience
+export type { TradingDate } from '../lib/date-utils';
+import type { TradingDate } from '../lib/date-utils';
+
 export interface OHLCData {
-  date: Date;
+  date: TradingDate;
   open: number;
   high: number;
   low: number;
@@ -84,7 +90,7 @@ export interface StrategyParameters {
 export interface IBSStrategyParameters extends StrategyParameters {
   /** IBS threshold below which to enter positions (0-1) */
   lowIBS: number;
-  /** IBS threshold above which to exit positions (0-1) */ 
+  /** IBS threshold above which to exit positions (0-1) */
   highIBS: number;
   /** Maximum days to hold a position */
   maxHoldDays: number;
@@ -136,8 +142,8 @@ export interface SavedDataset {
 
 export interface Trade {
   id: string;
-  entryDate: Date;
-  exitDate: Date;
+  entryDate: TradingDate;
+  exitDate: TradingDate;
   entryPrice: number;
   exitPrice: number;
   quantity: number;
@@ -190,7 +196,7 @@ export interface PerformanceMetrics {
 }
 
 export interface EquityPoint {
-  date: Date;
+  date: TradingDate;
   value: number;
   drawdown: number;
 }

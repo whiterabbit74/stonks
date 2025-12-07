@@ -1,6 +1,5 @@
 import type { SavedDataset, MonitorTradeHistoryResponse } from '../types';
 import { logError, logWarn } from './error-logger';
-import { parseOHLCDate } from './utils';
 
 // Runtime-safe API base to avoid hardcoded dev hosts in production bundles
 export const API_BASE_URL: string = '/api';
@@ -23,7 +22,7 @@ interface FetchOptions extends RequestInit {
 function createTimeoutPromise(timeoutMs: number): Promise<never> {
   return new Promise((_, reject) => {
     setTimeout(() => {
-      const error = new Error(`Request timeout after ${timeoutMs}ms`) as NetworkError;
+      const error = new Error(`Request timeout after ${timeoutMs} ms`) as NetworkError;
       error.code = 'TIMEOUT';
       error.retryable = true;
       reject(error);
@@ -121,7 +120,7 @@ export async function fetchWithCreds(
 
       // Only retry if error is retryable
       if (!isRetryableError(networkError)) {
-        logError('network', `Non-retryable error, aborting retries`, {
+        logError('network', `Non - retryable error, aborting retries`, {
           url: String(input),
           error: networkError.message,
           attempt
@@ -130,7 +129,7 @@ export async function fetchWithCreds(
       }
 
       // Log retry attempt
-      logWarn('network', `Request failed, retrying (${attempt + 1}/${retries})`, {
+      logWarn('network', `Request failed, retrying(${attempt + 1}/${retries})`, {
         url: String(input),
         error: networkError.message,
         nextRetryIn: retryDelay
@@ -196,7 +195,7 @@ export async function apiCall<T>(
   const response = await fetchWithCreds(url, fetchOptions);
 
   if (!response.ok) {
-    const error = new Error(`HTTP ${response.status}: ${response.statusText}`) as NetworkError;
+    const error = new Error(`HTTP ${response.status}: ${response.statusText} `) as NetworkError;
     error.status = response.status;
     error.retryable = response.status >= 500 || response.status === 429;
     throw error;
@@ -208,7 +207,7 @@ export async function apiCall<T>(
 export class DatasetAPI {
   static async getSplits(symbol: string): Promise<Array<{ date: string; factor: number }>> {
     try {
-      const response = await fetchWithCreds(`${API_BASE_URL}/splits/${encodeURIComponent(symbol)}`);
+      const response = await fetchWithCreds(`${API_BASE_URL} /splits/${encodeURIComponent(symbol)} `);
       if (!response.ok) {
         // Жёсткая политика: нет внешних провайдеров — только локальные сплиты; ошибки проглатываем → []
         logWarn('network', `Failed to fetch splits for ${symbol}, returning empty array`, {
@@ -436,12 +435,13 @@ export class DatasetAPI {
       }
 
       const dataset = await response.json();
-      // Конвертируем строки дат обратно в Date объекты стабильно (полдень UTC)
+      // Dates are already in TradingDate format (YYYY-MM-DD strings)
+      // No conversion needed - keep as strings for timezone safety
       dataset.data = dataset.data.map((bar: { date: string; open: number; high: number; low: number; close: number; adjClose?: number; volume: number; }) => ({
         ...bar,
-        date: parseOHLCDate(bar.date)
+        date: bar.date.slice(0, 10) // Normalize to YYYY-MM-DD
       }));
-      // splits оставляем как есть (массив {date, factor})
+      // splits remain as-is (array of {date, factor})
 
       return dataset;
     } catch (error) {

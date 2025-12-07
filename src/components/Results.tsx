@@ -3,6 +3,7 @@ import { Heart, RefreshCcw, AlertTriangle, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { DatasetAPI } from '../lib/api';
 import { formatOHLCYMD } from '../lib/utils';
+import { formatTradingDateDisplay } from '../lib/date-utils';
 import { useAppStore } from '../stores';
 import { useToastActions } from './ui';
 import { TradingChart } from './TradingChart';
@@ -117,9 +118,10 @@ export function Results() {
       const dateKeyOf = (v: unknown): string => {
         if (!v) return '';
         if (typeof v === 'string') {
-          // строка ISO или 'YYYY-MM-DD' — берём первые 10 символов
-          return v.length >= 10 ? v.slice(0, 10) : new Date(v).toISOString().slice(0, 10);
+          // TradingDate is already YYYY-MM-DD string
+          return v.length >= 10 ? v.slice(0, 10) : v;
         }
+        // Fallback for legacy Date objects (shouldn't happen after migration)
         const d = new Date(v as string | number | Date);
         return Number.isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10);
       };
@@ -307,12 +309,8 @@ export function Results() {
     // Проверяем наличие ожидаемой даты в данных, а не только последнюю дату
     const dataKeys = new Set(
       marketData.map(b => {
-        try {
-          const d = b.date instanceof Date ? b.date : new Date(b.date as unknown as string | number | Date);
-          return formatOHLCYMD(new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 12, 0, 0)));
-        } catch {
-          return '';
-        }
+        // date is now TradingDate string (YYYY-MM-DD)
+        return formatOHLCYMD(b.date);
       })
     );
     const stale = !dataKeys.has(expectedKeyUTC);
@@ -880,7 +878,7 @@ export function Results() {
                       {currentSplits.map((split, index) => (
                         <div key={index} className="flex justify-between items-center py-3 px-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
                           <span className="text-sm text-gray-600 dark:text-gray-400">
-                            {new Date(split.date).toLocaleDateString('ru-RU')}
+                            {formatTradingDateDisplay(split.date)}
                           </span>
                           <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
                             Коэффициент: {split.factor}:1

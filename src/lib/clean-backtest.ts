@@ -1,8 +1,9 @@
-import type { OHLCData, Strategy, BacktestResult, Trade, EquityPoint, SplitEvent } from '../types';
+import type { OHLCData, Strategy, BacktestResult, Trade, EquityPoint, SplitEvent, TradingDate } from '../types';
 import { IndicatorEngine } from './indicators';
 import { MetricsCalculator } from './metrics';
 import { adjustOHLCForSplits } from './utils';
 import { logWarn } from './error-logger';
+import { daysBetweenTradingDates, toChartTimestamp, compareTradingDates } from './date-utils';
 
 export interface CleanBacktestOptions {
   // Entry price timing: at current bar close, or at next day's open
@@ -34,7 +35,7 @@ export class CleanBacktestEngine {
    */
   private calculateCommission(tradeValue: number): number {
     const { commission } = this.strategy.riskManagement;
-    
+
     switch (commission.type) {
       case 'fixed':
         return commission.fixed || 0;
@@ -58,7 +59,7 @@ export class CleanBacktestEngine {
       ibsExitRequireAboveEntry: options?.ibsExitRequireAboveEntry ?? false,
       splits: options?.splits ?? []
     };
-    
+
     // Рассчитываем IBS для всех баров (без исключений на пустых данных)
     this.ibsValues = this.data && this.data.length > 0 ? IndicatorEngine.calculateIBS(this.data) : [];
   }
@@ -75,9 +76,9 @@ export class CleanBacktestEngine {
         insights: []
       };
     }
-    
+
     let position: {
-      entryDate: Date;
+      entryDate: TradingDate;
       entryPrice: number;
       quantity: number;
       entryIndex: number;
@@ -86,7 +87,7 @@ export class CleanBacktestEngine {
 
     const lowIBS = Number(this.strategy.parameters?.lowIBS ?? 0.1);
     const highIBS = Number(this.strategy.parameters?.highIBS ?? 0.75);
-    
+
     // Предупреждение о подозрительных настройках
     if (lowIBS > 0.3) {
       logWarn('backtest', `Подозрительная настройка lowIBS=${lowIBS}. Значения > 0.3 могут вызывать ложные сигналы при средних IBS (~0.5). Рекомендуется использовать 0.1-0.3.`, {
@@ -123,20 +124,20 @@ export class CleanBacktestEngine {
                 ibs: ibs,
                 price: bar.close
               }, 'CleanBacktest.runBacktest');
-              
+
               const quantity = Math.floor(investmentAmount / bar.close);
               if (quantity > 0) {
                 const totalCost = quantity * bar.close;
                 position = {
                   entryDate: bar.date,
-                  entryPrice: bar.close, 
+                  entryPrice: bar.close,
                   quantity: quantity,
                   entryIndex: i,
                   entryIBS: ibs
                 };
                 this.currentCapital -= totalCost;
-                console.log(`🟢 ENTRY SIGNAL: IBS=${ibs.toFixed(3)} < ${lowIBS} on ${bar.date.toISOString().split('T')[0]}`);
-                console.log(`🟢 ENTRY EXECUTION(fallback-close): bought ${quantity} shares at $${bar.close.toFixed(2)} on ${bar.date.toISOString().split('T')[0]} (no next day available)`);
+                console.log(`🟢 ENTRY SIGNAL: IBS=${ibs.toFixed(3)} < ${lowIBS} on ${bar.date}`);
+                console.log(`🟢 ENTRY EXECUTION(fallback-close): bought ${quantity} shares at $${bar.close.toFixed(2)} on ${bar.date} (no next day available)`);
               } else {
                 logWarn('backtest', 'Entry signal but insufficient funds for minimum quantity', {
                   date: bar.date,
@@ -157,8 +158,8 @@ export class CleanBacktestEngine {
                   entryIBS: ibs
                 };
                 this.currentCapital -= totalCost;
-                console.log(`🟢 ENTRY SIGNAL: IBS=${ibs.toFixed(3)} < ${lowIBS} on ${bar.date.toISOString().split('T')[0]}`);
-                console.log(`🟢 ENTRY EXECUTION(nextOpen): bought ${quantity} shares at $${nextBar.open.toFixed(2)} on ${nextBar.date.toISOString().split('T')[0]}`);
+                console.log(`🟢 ENTRY SIGNAL: IBS=${ibs.toFixed(3)} < ${lowIBS} on ${bar.date}`);
+                console.log(`🟢 ENTRY EXECUTION(nextOpen): bought ${quantity} shares at $${nextBar.open.toFixed(2)} on ${nextBar.date}`);
               }
             }
           } else {
@@ -174,8 +175,8 @@ export class CleanBacktestEngine {
                 entryIBS: ibs
               };
               this.currentCapital -= totalCost;
-              console.log(`🟢 ENTRY SIGNAL: IBS=${ibs.toFixed(3)} < ${lowIBS} on ${bar.date.toISOString().split('T')[0]}`);
-              console.log(`🟢 ENTRY EXECUTION(close): bought ${quantity} shares at $${bar.close.toFixed(2)} on ${bar.date.toISOString().split('T')[0]}`);
+              console.log(`🟢 ENTRY SIGNAL: IBS=${ibs.toFixed(3)} < ${lowIBS} on ${bar.date}`);
+              console.log(`🟢 ENTRY EXECUTION(close): bought ${quantity} shares at $${bar.close.toFixed(2)} on ${bar.date}`);
             }
           }
         }
@@ -204,7 +205,7 @@ export class CleanBacktestEngine {
           }
           // Проверяем максимальное время удержания
           else if (!this.options.ignoreMaxHoldDaysExit) {
-            const daysDiff = Math.floor((bar.date.getTime() - position.entryDate.getTime()) / (1000 * 60 * 60 * 24));
+            const daysDiff = daysBetweenTradingDates(position.entryDate, bar.date);
             if (daysDiff >= maxHoldDays) {
               shouldExit = true;
               exitReason = 'max_hold_days';
@@ -218,7 +219,7 @@ export class CleanBacktestEngine {
             const grossCost = position.quantity * position.entryPrice;
             const pnl = grossProceeds - grossCost;
             const pnlPercent = (pnl / grossCost) * 100;
-            const duration = Math.floor((bar.date.getTime() - position.entryDate.getTime()) / (1000 * 60 * 60 * 24));
+            const duration = daysBetweenTradingDates(position.entryDate, bar.date);
 
             // Создаем сделку
             const trade: Trade = {
@@ -243,14 +244,14 @@ export class CleanBacktestEngine {
 
             this.trades.push(trade);
             this.currentCapital += grossProceeds;
-            
+
             // Обновляем капитал в контексте сделки
             if (trade.context) {
               trade.context.currentCapitalAfterExit = this.currentCapital;
             }
 
             console.log(`🔴 EXIT: IBS=${ibs.toFixed(3)}, ${exitReason}, P&L=$${pnl.toFixed(2)}, Duration=${duration} days`);
-            
+
             position = null;
           }
         }
@@ -279,7 +280,7 @@ export class CleanBacktestEngine {
     // Обрабатываем последний бар отдельно (только для equity и выхода)
     const lastBar = this.data[this.data.length - 1];
     const lastIBS = this.ibsValues[this.data.length - 1];
-    
+
     if (position) {
       // Проверяем выход на последнем баре
       let shouldExit = false;
@@ -296,7 +297,7 @@ export class CleanBacktestEngine {
           exitReason = 'ibs_signal';
         }
       } else {
-        const daysDiff = Math.floor((lastBar.date.getTime() - position.entryDate.getTime()) / (1000 * 60 * 60 * 24));
+        const daysDiff = daysBetweenTradingDates(position.entryDate, lastBar.date);
         if (!this.options.ignoreMaxHoldDaysExit && daysDiff >= maxHoldDays) {
           shouldExit = true;
           exitReason = 'max_hold_days';
@@ -313,7 +314,7 @@ export class CleanBacktestEngine {
         const grossCost = position.quantity * position.entryPrice;
         const pnl = grossProceeds - grossCost;
         const pnlPercent = (pnl / grossCost) * 100;
-        const duration = Math.floor((lastBar.date.getTime() - position.entryDate.getTime()) / (1000 * 60 * 60 * 24));
+        const duration = daysBetweenTradingDates(position.entryDate, lastBar.date);
 
         const trade: Trade = {
           id: `trade-${this.trades.length}`,
@@ -355,7 +356,7 @@ export class CleanBacktestEngine {
     this.peakValue = Math.max(this.peakValue, finalValue);
     const finalDrawdown = this.peakValue > 0 ? ((this.peakValue - finalValue) / this.peakValue) * 100 : 0;
     const lastIdx = this.equity.length - 1;
-    if (lastIdx >= 0 && this.equity[lastIdx].date.getTime() === lastBar.date.getTime()) {
+    if (lastIdx >= 0 && this.equity[lastIdx].date === lastBar.date) {
       this.equity[lastIdx] = { date: lastBar.date, value: finalValue, drawdown: finalDrawdown };
     } else {
       this.equity.push({ date: lastBar.date, value: finalValue, drawdown: finalDrawdown });
@@ -376,7 +377,7 @@ export class CleanBacktestEngine {
 
     // Generate chart data from OHLC data
     const chartData = this.data.map(bar => ({
-      time: bar.date.getTime() / 1000, // Convert to seconds for TradingView
+      time: toChartTimestamp(bar.date), // Convert to seconds for TradingView
       open: bar.open,
       high: bar.high,
       low: bar.low,

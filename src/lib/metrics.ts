@@ -4,6 +4,7 @@ import type {
   PerformanceMetrics,
   OHLCData
 } from '../types';
+import { daysBetweenTradingDates } from './date-utils';
 
 /**
  * Performance metrics calculation system
@@ -19,8 +20,8 @@ export class MetricsCalculator {
   private _cachedAverageLoss?: number;
 
   constructor(
-    trades: Trade[], 
-    equity: EquityPoint[], 
+    trades: Trade[],
+    equity: EquityPoint[],
     initialCapital: number,
     benchmarkData?: OHLCData[]
   ) {
@@ -45,14 +46,14 @@ export class MetricsCalculator {
       maxDrawdown: this.calculateMaxDrawdown(),
       winRate: this.calculateWinRate(),
       sharpeRatio: this.calculateSharpeRatio(returns),
-      
+
       // Level 2 - Show More (Risk-Adjusted Metrics)
       sortinoRatio: this.calculateSortinoRatio(returns),
       calmarRatio: this.calculateCalmarRatio(returns, tradingPeriodYears),
       profitFactor: this.calculateProfitFactor(),
       averageWin: this.calculateAverageWin(),
       averageLoss: this.calculateAverageLoss(),
-      
+
       // Level 3 - Advanced (Statistical Metrics)
       beta: this.calculateBeta(returns),
       alpha: this.calculateAlpha(returns, tradingPeriodYears),
@@ -67,18 +68,18 @@ export class MetricsCalculator {
    * Generate equity curve from trade history
    */
   public static generateEquityCurve(
-    trades: Trade[], 
-    marketData: OHLCData[], 
+    trades: Trade[],
+    marketData: OHLCData[],
     initialCapital: number
   ): EquityPoint[] {
     const equity: EquityPoint[] = [];
     let currentCapital = initialCapital;
     let peakValue = initialCapital;
-    
+
     // Create a map of dates to trades for efficient lookup
     const tradesByDate = new Map<string, Trade[]>();
     trades.forEach(trade => {
-      const dateKey = trade.exitDate.toISOString().split('T')[0];
+      const dateKey = trade.exitDate; // TradingDate is already YYYY-MM-DD string
       if (!tradesByDate.has(dateKey)) {
         tradesByDate.set(dateKey, []);
       }
@@ -87,21 +88,21 @@ export class MetricsCalculator {
 
     // Process each market data point
     marketData.forEach(bar => {
-      const dateKey = bar.date.toISOString().split('T')[0];
+      const dateKey = bar.date; // TradingDate is already YYYY-MM-DD string
       const dayTrades = tradesByDate.get(dateKey) || [];
-      
+
       // Add P&L from trades that closed on this day
       const dayPnL = dayTrades.reduce((sum, trade) => sum + trade.pnl, 0);
       currentCapital += dayPnL;
-      
+
       // Update peak value
       if (currentCapital > peakValue) {
         peakValue = currentCapital;
       }
-      
+
       // Calculate drawdown
       const drawdown = peakValue > 0 ? ((peakValue - currentCapital) / peakValue) * 100 : 0;
-      
+
       equity.push({
         date: bar.date,
         value: currentCapital,
@@ -128,14 +129,14 @@ export class MetricsCalculator {
    */
   private calculateCAGR(finalValue: number, years: number): number {
     if (this.initialCapital <= 0 || years <= 0) return 0;
-    
+
     // Для периодов менее года не аннуализируем CAGR
     if (years < 1) {
       return ((finalValue - this.initialCapital) / this.initialCapital) * 100;
     }
-    
+
     const cagr = (Math.pow(finalValue / this.initialCapital, 1 / years) - 1) * 100;
-    
+
     return cagr;
   }
 
@@ -174,19 +175,19 @@ export class MetricsCalculator {
    */
   private calculateSharpeRatio(returns: number[]): number {
     if (returns.length === 0) return 0;
-    
+
     const meanReturn = this.calculateMean(returns);
     const stdDev = this.calculateStandardDeviation(returns);
-    
+
     if (stdDev === 0) return 0;
-    
+
     // Annualize assuming daily returns
     const annualizedReturn = meanReturn * 252;
     const annualizedStdDev = stdDev * Math.sqrt(252);
     const riskFreeRate = 0.02; // 2% risk-free rate assumption
-    
+
     const sharpeRatio = (annualizedReturn - riskFreeRate) / annualizedStdDev;
-    
+
     return sharpeRatio;
   }
 
@@ -197,19 +198,19 @@ export class MetricsCalculator {
    */
   private calculateSortinoRatio(returns: number[]): number {
     if (returns.length === 0) return 0;
-    
+
     const meanReturn = this.calculateMean(returns);
     const annualizedReturn = meanReturn * 252;
     const riskFreeRateAnnual = 0.02; // 2% годовых
     const marDaily = riskFreeRateAnnual / 252; // MAR на день
-    
+
     const downwardDeviation = this.calculateDownwardDeviation(returns, marDaily);
     if (downwardDeviation === 0) return 0;
-    
+
     const annualizedDownwardDev = downwardDeviation * Math.sqrt(252);
-    
+
     const sortinoRatio = (annualizedReturn - riskFreeRateAnnual) / annualizedDownwardDev;
-    
+
     return sortinoRatio;
   }
 
@@ -219,7 +220,7 @@ export class MetricsCalculator {
   private calculateCalmarRatio(_returns: number[], years: number): number {
     const cagr = this.calculateCAGR(this.getFinalValue(), years);
     const maxDrawdown = this.calculateMaxDrawdown();
-    
+
     if (maxDrawdown === 0) return 0;
     return cagr / maxDrawdown;
   }
@@ -231,7 +232,7 @@ export class MetricsCalculator {
     // Оптимизированный расчет в одном проходе
     let grossProfit = 0;
     let grossLoss = 0;
-    
+
     for (let i = 0; i < this.trades.length; i++) {
       const pnl = this.trades[i].pnl;
       if (pnl > 0) {
@@ -240,7 +241,7 @@ export class MetricsCalculator {
         grossLoss += Math.abs(pnl);
       }
     }
-    
+
     if (grossLoss === 0) return grossProfit > 0 ? Infinity : 0;
     return grossProfit / grossLoss;
   }
@@ -251,17 +252,17 @@ export class MetricsCalculator {
   private calculateAverageWin(): number {
     // Кешируем результат если он уже был вычислен
     if (this._cachedAverageWin !== undefined) return this._cachedAverageWin;
-    
+
     let totalWin = 0;
     let winCount = 0;
-    
+
     for (let i = 0; i < this.trades.length; i++) {
       if (this.trades[i].pnl > 0) {
         totalWin += this.trades[i].pnl;
         winCount++;
       }
     }
-    
+
     this._cachedAverageWin = winCount === 0 ? 0 : totalWin / winCount;
     return this._cachedAverageWin;
   }
@@ -272,17 +273,17 @@ export class MetricsCalculator {
   private calculateAverageLoss(): number {
     // Кешируем результат если он уже был вычислен
     if (this._cachedAverageLoss !== undefined) return this._cachedAverageLoss;
-    
+
     let totalLoss = 0;
     let lossCount = 0;
-    
+
     for (let i = 0; i < this.trades.length; i++) {
       if (this.trades[i].pnl < 0) {
         totalLoss += Math.abs(this.trades[i].pnl);
         lossCount++;
       }
     }
-    
+
     this._cachedAverageLoss = lossCount === 0 ? 0 : totalLoss / lossCount;
     return this._cachedAverageLoss;
   }
@@ -294,13 +295,13 @@ export class MetricsCalculator {
    */
   private calculateBeta(returns: number[]): number {
     if (!this.benchmarkData || returns.length === 0) return 1.0; // Default beta
-    
+
     const benchmarkReturns = this.calculateBenchmarkReturns();
     if (benchmarkReturns.length !== returns.length) return 1.0;
-    
+
     const covariance = this.calculateCovariance(returns, benchmarkReturns);
     const benchmarkVariance = this.calculateVariance(benchmarkReturns);
-    
+
     if (benchmarkVariance === 0) return 1.0;
     return covariance / benchmarkVariance;
   }
@@ -313,7 +314,7 @@ export class MetricsCalculator {
     const riskFreeRate = 2; // 2% assumption
     const marketReturn = 8; // 8% market return assumption
     const beta = this.calculateBeta(returns);
-    
+
     return cagr - (riskFreeRate + beta * (marketReturn - riskFreeRate));
   }
 
@@ -323,7 +324,7 @@ export class MetricsCalculator {
   private calculateRecoveryFactor(): number {
     const totalReturn = this.calculateTotalReturn(this.getFinalValue());
     const maxDrawdown = this.calculateMaxDrawdown();
-    
+
     if (maxDrawdown === 0) return totalReturn > 0 ? Infinity : 0;
     return totalReturn / maxDrawdown;
   }
@@ -333,16 +334,16 @@ export class MetricsCalculator {
    */
   private calculateSkewness(returns: number[]): number {
     if (returns.length < 3) return 0;
-    
+
     const mean = this.calculateMean(returns);
     const stdDev = this.calculateStandardDeviation(returns);
-    
+
     if (stdDev === 0) return 0;
-    
+
     const skewness = returns.reduce((sum, ret) => {
       return sum + Math.pow((ret - mean) / stdDev, 3);
     }, 0) / returns.length;
-    
+
     return skewness;
   }
 
@@ -351,16 +352,16 @@ export class MetricsCalculator {
    */
   private calculateKurtosis(returns: number[]): number {
     if (returns.length < 4) return 0;
-    
+
     const mean = this.calculateMean(returns);
     const stdDev = this.calculateStandardDeviation(returns);
-    
+
     if (stdDev === 0) return 0;
-    
+
     const kurtosis = returns.reduce((sum, ret) => {
       return sum + Math.pow((ret - mean) / stdDev, 4);
     }, 0) / returns.length;
-    
+
     return kurtosis - 3; // Excess kurtosis
   }
 
@@ -369,10 +370,10 @@ export class MetricsCalculator {
    */
   private calculateVaR(returns: number[], confidence: number): number {
     if (returns.length === 0) return 0;
-    
+
     const sortedReturns = [...returns].sort((a, b) => a - b);
     const index = Math.floor(returns.length * confidence);
-    
+
     return Math.abs(sortedReturns[index] || 0) * 100; // Convert to percentage
   }
 
@@ -383,17 +384,17 @@ export class MetricsCalculator {
    */
   private calculateReturns(): number[] {
     const returns: number[] = [];
-    
+
     for (let i = 1; i < this.equity.length; i++) {
       const prevValue = this.equity[i - 1].value;
       const currentValue = this.equity[i].value;
-      
+
       if (prevValue > 0) {
         const dailyReturn = (currentValue - prevValue) / prevValue;
         returns.push(dailyReturn);
       }
     }
-    
+
     return returns;
   }
 
@@ -408,17 +409,19 @@ export class MetricsCalculator {
 
   /**
    * Calculate trading period in years
-   * Исправлена проблема с некорректными расчетами для коротких периодов
+   * Uses TradingDate string comparisons
    */
   private getTradingPeriodYears(): number {
-    if (this.equity.length < 2) return 1/365.25; // 1 день
-    
+    if (this.equity.length < 2) return 1 / 365.25; // 1 day
+
     const startDate = this.equity[0]?.date;
     const endDate = this.equity[this.equity.length - 1]?.date;
-    
-    if (!startDate || !endDate) return 1/365.25;
-    const daysDiff = Math.max(1, (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
-    
+
+    if (!startDate || !endDate) return 1 / 365.25;
+
+    // Use daysBetweenTradingDates for TradingDate strings
+    const daysDiff = Math.max(1, daysBetweenTradingDates(startDate, endDate));
+
     return daysDiff / 365.25;
   }
 
@@ -435,10 +438,10 @@ export class MetricsCalculator {
    */
   private calculateStandardDeviation(values: number[]): number {
     if (values.length === 0) return 0;
-    
+
     const mean = this.calculateMean(values);
     const variance = values.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / values.length;
-    
+
     return Math.sqrt(variance);
   }
 
@@ -447,7 +450,7 @@ export class MetricsCalculator {
    */
   private calculateVariance(values: number[]): number {
     if (values.length === 0) return 0;
-    
+
     const mean = this.calculateMean(values);
     return values.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / values.length;
   }
@@ -473,15 +476,15 @@ export class MetricsCalculator {
    */
   private calculateCovariance(series1: number[], series2: number[]): number {
     if (series1.length !== series2.length || series1.length === 0) return 0;
-    
+
     const mean1 = this.calculateMean(series1);
     const mean2 = this.calculateMean(series2);
-    
+
     const covariance = series1.reduce((sum, val1, index) => {
       const val2 = series2[index];
       return sum + (val1 - mean1) * (val2 - mean2);
     }, 0) / series1.length;
-    
+
     return covariance;
   }
 
@@ -490,18 +493,18 @@ export class MetricsCalculator {
    */
   private calculateBenchmarkReturns(): number[] {
     if (!this.benchmarkData || this.benchmarkData.length < 2) return [];
-    
+
     const returns: number[] = [];
-    
+
     for (let i = 1; i < this.benchmarkData.length; i++) {
       const prevPrice = this.benchmarkData[i - 1].close;
       const currentPrice = this.benchmarkData[i].close;
-      
+
       if (prevPrice > 0) {
         returns.push((currentPrice - prevPrice) / prevPrice);
       }
     }
-    
+
     return returns;
   }
 }
@@ -558,22 +561,22 @@ export function formatMetricValue(metric: keyof PerformanceMetrics, value: numbe
   if (['totalReturn', 'cagr', 'maxDrawdown', 'winRate'].includes(metric)) {
     return `${value.toFixed(2)}%`;
   }
-  
+
   // Ratio metrics (2 decimal places)
   if (['sharpeRatio', 'sortinoRatio', 'calmarRatio', 'profitFactor', 'beta', 'recoveryFactor'].includes(metric)) {
     return value.toFixed(2);
   }
-  
+
   // Currency metrics
   if (['averageWin', 'averageLoss'].includes(metric)) {
     return `$${value.toFixed(2)}`;
   }
-  
+
   // Statistical metrics (3 decimal places)
   if (['alpha', 'skewness', 'kurtosis', 'valueAtRisk'].includes(metric)) {
     return value.toFixed(3);
   }
-  
+
   // Default formatting
   return value.toFixed(2);
 }
@@ -601,6 +604,6 @@ export function getMetricDescription(metric: keyof PerformanceMetrics): string {
     valueAtRisk: "Maximum expected loss at 95% confidence level",
     totalTrades: "Total number of executed trades"
   };
-  
+
   return descriptions[metric];
 }
