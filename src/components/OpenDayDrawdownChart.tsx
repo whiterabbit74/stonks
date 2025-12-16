@@ -23,7 +23,7 @@ export function OpenDayDrawdownChart({ trades, data }: OpenDayDrawdownChartProps
   }, []);
 
   // Map OHLC by YYYY-MM-DD for fast lookup
-  const dateKey = (d: Date) => {
+  const dateKey = (d: Date | string) => {
     try { return new Date(d).toISOString().slice(0, 10); } catch { return String(d).slice(0, 10); }
   };
   const ohlcByDay = new Map<string, OHLCData>();
@@ -33,10 +33,10 @@ export function OpenDayDrawdownChart({ trades, data }: OpenDayDrawdownChartProps
 
   const rows = trades.map((t) => {
     const bar = ohlcByDay.get(dateKey(t.entryDate));
-    if (!bar) return { time: Math.floor(t.entryDate.getTime() / 1000) as UTCTimestamp, value: 0, open: 0, low: 0 };
+    if (!bar) return { time: Math.floor(new Date(t.entryDate).getTime() / 1000) as UTCTimestamp, value: 0, open: 0, low: 0 };
     const dropPct = bar.open > 0 ? ((bar.open - bar.low) / bar.open) * 100 : 0; // % drop from open to low
     return {
-      time: Math.floor(t.entryDate.getTime() / 1000) as UTCTimestamp,
+      time: Math.floor(new Date(t.entryDate).getTime() / 1000) as UTCTimestamp,
       value: -dropPct, // negative to show drawdown below zero
       open: bar.open,
       low: bar.low,

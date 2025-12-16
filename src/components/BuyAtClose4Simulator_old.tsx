@@ -33,9 +33,9 @@ interface TickerData {
 }
 
 function formatCurrencyUSD(value: number): string {
-  return '$' + Number(value || 0).toLocaleString('en-US', { 
-    minimumFractionDigits: 2, 
-    maximumFractionDigits: 2 
+  return '$' + Number(value || 0).toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
   });
 }
 
@@ -44,17 +44,17 @@ function formatCurrencyUSD(value: number): string {
  */
 async function loadTickerData(ticker: string): Promise<TickerData> {
   const ds = await DatasetAPI.getDataset(ticker);
-  
+
   let processedData: OHLCData[];
-  
+
   if ('adjustedForSplits' in ds && ds.adjustedForSplits) {
     processedData = dedupeDailyOHLC(ds.data as unknown as OHLCData[]);
   } else {
     let splits: Array<{ date: string; factor: number }> = [];
-    try { 
-      splits = await DatasetAPI.getSplits(ds.ticker); 
-    } catch { 
-      splits = []; 
+    try {
+      splits = await DatasetAPI.getSplits(ds.ticker);
+    } catch {
+      splits = [];
     }
     processedData = dedupeDailyOHLC(adjustOHLCForSplits(ds.data as unknown as OHLCData[], splits));
   }
@@ -74,7 +74,7 @@ async function loadTickerData(ticker: string): Promise<TickerData> {
  */
 function calculateCommission(tradeValue: number, strategy: Strategy): number {
   const { commission } = strategy.riskManagement;
-  
+
   switch (commission.type) {
     case 'fixed':
       return commission.fixed || 0;
@@ -91,22 +91,22 @@ function calculateCommission(tradeValue: number, strategy: Strategy): number {
  * Основная функция бэктеста для 4-тикерной стратегии
  */
 function runMultiTickerBacktest(
-  tickersData: TickerData[], 
+  tickersData: TickerData[],
   strategy: Strategy
-): { 
-  equity: EquityPoint[]; 
-  finalValue: number; 
-  maxDrawdown: number; 
-  trades: Trade[]; 
-  metrics: any; 
+): {
+  equity: EquityPoint[];
+  finalValue: number;
+  maxDrawdown: number;
+  trades: Trade[];
+  metrics: any;
 } {
   if (!tickersData || tickersData.length === 0) {
-    return { 
-      equity: [], 
-      finalValue: 0, 
-      maxDrawdown: 0, 
-      trades: [], 
-      metrics: {} 
+    return {
+      equity: [],
+      finalValue: 0,
+      maxDrawdown: 0,
+      trades: [],
+      metrics: {}
     };
   }
 
@@ -127,7 +127,7 @@ function runMultiTickerBacktest(
   // Создаем единую временную шкалу из всех тикеров
   const allDates = new Set<number>();
   tickersData.forEach(({ data }) => {
-    data.forEach(bar => allDates.add(bar.date.getTime()));
+    data.forEach(bar => allDates.add(new Date(bar.date).getTime()));
   });
   const sortedDates = Array.from(allDates).sort((a, b) => a - b);
 
@@ -140,19 +140,19 @@ function runMultiTickerBacktest(
   // Основной цикл по датам
   for (const dateTime of sortedDates) {
     const currentDate = new Date(dateTime);
-    
+
     // Обрабатываем каждый тикер на текущую дату
     for (let tickerIndex = 0; tickerIndex < tickersData.length; tickerIndex++) {
       const tickerData = tickersData[tickerIndex];
       const position = positions[tickerIndex];
-      
+
       // Находим бар для текущей даты
-      const barIndex = tickerData.data.findIndex(bar => bar.date.getTime() === dateTime);
+      const barIndex = tickerData.data.findIndex(bar => new Date(bar.date).getTime() === dateTime);
       if (barIndex === -1) continue; // Нет данных для этой даты
-      
+
       const bar = tickerData.data[barIndex];
       const ibs = tickerData.ibsValues[barIndex];
-      
+
       // IBS теперь всегда валидный (0.5 для проблемных данных)
 
       // ЛОГИКА ВХОДА
@@ -163,12 +163,12 @@ function runMultiTickerBacktest(
           const investmentAmount = marginUsed; // Используем только маржу для покупки, без плеча
           const entryPrice = bar.close;
           const quantity = Math.floor(investmentAmount / entryPrice);
-          
+
           if (quantity > 0) {
             const grossValue = quantity * entryPrice; // Полная стоимость акций
             const entryCommission = calculateCommission(grossValue, strategy);
             const totalMarginNeeded = grossValue + entryCommission; // Фактическая стоимость покупки + комиссия
-            
+
             // Проверяем, хватает ли маржи (не всей суммы!)
             if (currentCapital >= totalMarginNeeded) {
               positions[tickerIndex] = {
@@ -183,9 +183,9 @@ function runMultiTickerBacktest(
                 grossValue: grossValue, // Общая стоимость акций
                 entryIBS: ibs // Сохраняем IBS входа
               };
-              
+
               currentCapital -= totalMarginNeeded; // Списываем только маржу!
-              
+
               console.log(`🟢 ENTRY [${tickerData.ticker}]: IBS=${ibs.toFixed(3)} < ${lowIBS}, bought ${quantity} shares at $${entryPrice.toFixed(2)}, cost: ${formatCurrencyUSD(totalMarginNeeded)}`);
             } else {
               logWarn('backtest', 'Entry signal but insufficient capital for margin requirement', {
@@ -211,7 +211,7 @@ function runMultiTickerBacktest(
       }
       // ЛОГИКА ВЫХОДА
       else {
-        const daysSinceEntry = Math.floor((bar.date.getTime() - position.entryDate.getTime()) / (1000 * 60 * 60 * 24));
+        const daysSinceEntry = Math.floor((new Date(bar.date).getTime() - new Date(position.entryDate).getTime()) / (1000 * 60 * 60 * 24));
         let shouldExit = false;
         let exitReason = '';
 
@@ -237,7 +237,7 @@ function runMultiTickerBacktest(
 
           // Обновляем капитал: возвращаем изначальные затраты + прибыль
           currentCapital += position.initialCost + pnl;
-          
+
           // Создаем торговую сделку с правильным депозитом
           const trade: Trade = {
             id: `trade-${trades.length}`,
@@ -278,13 +278,13 @@ function runMultiTickerBacktest(
 
     // Рассчитываем общую стоимость портфеля на конец дня
     let totalPortfolioValue = currentCapital;
-    
+
     for (let i = 0; i < positions.length; i++) {
       const position = positions[i];
       if (position) {
         const tickerData = tickersData[i];
-        const barIndex = tickerData.data.findIndex(bar => bar.date.getTime() === dateTime);
-        
+        const barIndex = tickerData.data.findIndex(bar => new Date(bar.date).getTime() === dateTime);
+
         if (barIndex !== -1) {
           const currentBar = tickerData.data[barIndex];
           const currentMarketValue = position.quantity * currentBar.close;
@@ -297,7 +297,7 @@ function runMultiTickerBacktest(
     }
 
     // Рассчитываем drawdown
-    const peakValue = equity.length > 0 
+    const peakValue = equity.length > 0
       ? Math.max(...equity.map(e => e.value), totalPortfolioValue)
       : totalPortfolioValue;
     const drawdown = peakValue > 0 ? ((peakValue - totalPortfolioValue) / peakValue) * 100 : 0;
@@ -317,7 +317,7 @@ function runMultiTickerBacktest(
       const tickerData = tickersData[i];
       const lastBarIndex = tickerData.data.length - 1;
       const lastBar = tickerData.data[lastBarIndex];
-      
+
       const exitPrice = lastBar.close;
       const grossProceeds = position.quantity * exitPrice;
       const exitCommission = calculateCommission(grossProceeds, strategy);
@@ -325,11 +325,11 @@ function runMultiTickerBacktest(
       const pnl = netProceeds - position.initialCost; // P&L относительно полной стоимости (стоимость акций + комиссии)
       // PnL процент от первоначальных затрат
       const pnlPercent = (pnl / position.initialCost) * 100;
-      const duration = Math.floor((lastBar.date.getTime() - position.entryDate.getTime()) / (1000 * 60 * 60 * 24));
+      const duration = Math.floor((new Date(lastBar.date).getTime() - new Date(position.entryDate).getTime()) / (1000 * 60 * 60 * 24));
 
       // Обновляем капитал: возвращаем изначальные затраты + прибыль
       currentCapital += position.initialCost + pnl;
-      
+
       const trade: Trade = {
         id: `trade-${trades.length}`,
         entryDate: position.entryDate,
@@ -367,7 +367,7 @@ function runMultiTickerBacktest(
 
   const finalValue = currentCapital;
   const maxDrawdown = equity.length > 0 ? Math.max(...equity.map(e => e.drawdown)) : 0;
-  
+
   // Базовые метрики
   const totalReturn = ((finalValue - initialCapital) / initialCapital) * 100;
   const winningTrades = trades.filter(t => t.pnl > 0);
@@ -378,10 +378,10 @@ function runMultiTickerBacktest(
   const profitFactor = (avgWin * winningTrades.length) / Math.abs(avgLoss * losingTrades.length) || 0;
 
   // Аннуализированная доходность
-  const daysDiff = sortedDates.length > 0 ? 
+  const daysDiff = sortedDates.length > 0 ?
     (sortedDates[sortedDates.length - 1] - sortedDates[0]) / (1000 * 60 * 60 * 24) : 1;
   const years = daysDiff / 365.25;
-  const cagr = years >= 1 ? 
+  const cagr = years >= 1 ?
     (Math.pow(finalValue / initialCapital, 1 / years) - 1) * 100 :
     totalReturn;
 
@@ -452,12 +452,12 @@ export function BuyAtClose4Simulator({ strategy, defaultTickers = ['AAPL', 'MSFT
       .split(',')
       .map(t => t.trim().toUpperCase())
       .filter(t => t.length > 0);
-    
+
     if (newTickers.length === 0) {
       setError('Введите хотя бы один тикер');
       return;
     }
-    
+
     setTickers(newTickers);
   };
 
@@ -512,7 +512,7 @@ export function BuyAtClose4Simulator({ strategy, defaultTickers = ['AAPL', 'MSFT
             Перезагрузить
           </button>
         </div>
-        
+
         <div className="mt-3 text-sm text-gray-600 dark:text-gray-400">
           <p>Текущие тикеры: <span className="font-mono">{tickers.join(', ')}</span></p>
           <p>Капитал на тикер: {capitalUsagePerTicker}% ({tickers.length} тикеров)</p>
@@ -540,28 +540,28 @@ export function BuyAtClose4Simulator({ strategy, defaultTickers = ['AAPL', 'MSFT
               </div>
               <div className="text-sm text-gray-600 dark:text-gray-400">Итоговый баланс</div>
             </div>
-            
+
             <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 text-center">
               <div className="text-2xl font-bold text-blue-600">
                 {backtest.metrics.totalReturn?.toFixed(2)}%
               </div>
               <div className="text-sm text-gray-600 dark:text-gray-400">Общая доходность</div>
             </div>
-            
+
             <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 text-center">
               <div className="text-2xl font-bold text-orange-600">
                 {backtest.metrics.cagr?.toFixed(2)}%
               </div>
               <div className="text-sm text-gray-600 dark:text-gray-400">Годовые проценты</div>
             </div>
-            
+
             <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 text-center">
               <div className="text-2xl font-bold text-purple-600">
                 {backtest.metrics.winRate?.toFixed(1)}%
               </div>
               <div className="text-sm text-gray-600 dark:text-gray-400">Win Rate</div>
             </div>
-            
+
             <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 text-center">
               <div className="text-2xl font-bold text-red-600">
                 {backtest.maxDrawdown.toFixed(2)}%
@@ -586,16 +586,16 @@ export function BuyAtClose4Simulator({ strategy, defaultTickers = ['AAPL', 'MSFT
               <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-4">
                 История сделок ({backtest.trades.length})
               </h3>
-              
-              <StrategyParameters 
-                strategy={strategy} 
+
+              <StrategyParameters
+                strategy={strategy}
                 additionalParams={{
                   'Капитал на тикер': `${capitalUsagePerTicker}%`,
                   'Количество тикеров': tickers.length,
                   'Начальный капитал': '$10,000'
                 }}
               />
-              
+
               <div className="max-h-[600px] overflow-auto">
                 <TradesTable
                   trades={backtest.trades}

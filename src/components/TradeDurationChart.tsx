@@ -55,7 +55,7 @@ export function TradeDurationChart({ trades }: TradeDurationChartProps) {
 		const green = isDark ? 'rgba(16,185,129,0.75)' : 'rgba(16,185,129,0.9)';
 		const red = isDark ? 'rgba(239,68,68,0.75)' : 'rgba(239,68,68,0.9)';
 		const data = trades.map((t) => ({
-			time: Math.floor(t.exitDate.getTime() / 1000) as UTCTimestamp,
+			time: Math.floor(new Date(t.exitDate).getTime() / 1000) as UTCTimestamp,
 			value: Math.round(t.duration ?? 0),
 			color: (t.pnl ?? 0) >= 0 ? green : red,
 		}));

@@ -54,7 +54,7 @@ export function ProfitFactorChart({ trades }: ProfitFactorChartProps) {
 		});
 
 		const data = trades.map((t) => ({
-			time: Math.floor(t.exitDate.getTime() / 1000) as UTCTimestamp,
+			time: Math.floor(new Date(t.exitDate).getTime() / 1000) as UTCTimestamp,
 			value: t.pnlPercent ?? 0,
 			color: (t.pnlPercent ?? 0) >= 0 ? (isDark ? 'rgba(16,185,129,0.7)' : 'rgba(16,185,129,0.9)') : (isDark ? 'rgba(239,68,68,0.7)' : 'rgba(239,68,68,0.9)'),
 		}));

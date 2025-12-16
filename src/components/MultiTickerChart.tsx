@@ -156,7 +156,7 @@ export function MultiTickerChart({ tickersData, trades = [], height = 600 }: Mul
         // Convert and set data
         const chartData = tickerData.data.map((bar, idx) => {
           try {
-            const t = Math.floor(bar.date.getTime() / 1000) as UTCTimestamp;
+            const t = Math.floor(new Date(bar.date).getTime() / 1000) as UTCTimestamp;
             const open = Number(bar.open);
             const high = Number(bar.high);
             const low = Number(bar.low);

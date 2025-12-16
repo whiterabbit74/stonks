@@ -76,17 +76,17 @@ export function TradeDrawdownChart({ trades, initialCapital }: TradeDrawdownChar
       trades.forEach((trade, index) => {
         // Update capital after trade
         runningCapital += trade.pnl;
-        
+
         // Update peak
         if (runningCapital > peakCapital) {
           peakCapital = runningCapital;
         }
-        
+
         // Calculate drawdown from peak
         const drawdown = peakCapital > 0 ? ((peakCapital - runningCapital) / peakCapital) * 100 : 0;
-        
+
         tradeDrawdownData.push({
-          time: Math.floor(trade.exitDate.getTime() / 1000),
+          time: Math.floor(new Date(trade.exitDate).getTime() / 1000),
           value: -drawdown, // Negative for visual representation
           tradeIndex: index + 1,
           pnl: trade.pnl,
@@ -195,7 +195,7 @@ export function TradeDrawdownChart({ trades, initialCapital }: TradeDrawdownChar
           <span className="text-gray-600 dark:text-gray-200">Частота просадок: {drawdownFrequency.toFixed(1)}%</span>
         </div>
       </div>
-      
+
       {/* Chart Container */}
       <div ref={chartContainerRef} className="w-full h-[400px] sm:h-[500px] min-h-0 overflow-hidden border rounded-lg" />
     </div>
