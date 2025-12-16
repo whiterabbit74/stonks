@@ -1,4 +1,5 @@
 import type { Strategy, OHLCData, Trade, EquityPoint } from '../types';
+import { toTradingDate } from './date-utils';
 
 export interface TickerDataWithIndex {
   ticker: string;
@@ -47,12 +48,12 @@ export function formatCurrencyUSD(value: number): string {
 function createDateIndexMap(data: OHLCData[]): Map<number, number> {
   const map = new Map<number, number>();
   data.forEach((bar, index) => {
-    map.set(bar.date.getTime(), index);
+    map.set(new Date(bar.date).getTime(), index);
   });
   return map;
 }
 
-export function optimizeTickerData(tickersData: Array<{ticker: string; data: OHLCData[]; ibsValues: number[]}>): TickerDataWithIndex[] {
+export function optimizeTickerData(tickersData: Array<{ ticker: string; data: OHLCData[]; ibsValues: number[] }>): TickerDataWithIndex[] {
   return tickersData.map(ticker => ({
     ...ticker,
     dateIndexMap: createDateIndexMap(ticker.data)
@@ -154,10 +155,10 @@ export function runSinglePositionBacktest(
   const monthlyContributionPlan =
     monthlyContribution && monthlyContribution.amount > 0
       ? {
-          amount: monthlyContribution.amount,
-          dayOfMonth: Math.min(Math.max(monthlyContribution.dayOfMonth ?? 1, 1), 28),
-          startDate: monthlyContribution.startDate ?? null
-        }
+        amount: monthlyContribution.amount,
+        dayOfMonth: Math.min(Math.max(monthlyContribution.dayOfMonth ?? 1, 1), 28),
+        startDate: monthlyContribution.startDate ?? null
+      }
       : null;
 
   if (!tickersData || tickersData.length === 0) {
@@ -192,7 +193,7 @@ export function runSinglePositionBacktest(
   // Create unified timeline from all tickers
   const allDates = new Set<number>();
   tickersData.forEach(({ data }) => {
-    data.forEach(bar => allDates.add(bar.date.getTime()));
+    data.forEach(bar => allDates.add(new Date(bar.date).getTime()));
   });
   const sortedDates = Array.from(allDates).sort((a, b) => a - b);
 
@@ -249,7 +250,7 @@ export function runSinglePositionBacktest(
           const bar = tickerData.data[barIndex];
           const ibs = tickerData.ibsValues[barIndex];
 
-          const daysSinceEntry = Math.floor((bar.date.getTime() - currentPosition.entryDate.getTime()) / (1000 * 60 * 60 * 24));
+          const daysSinceEntry = Math.floor((new Date(bar.date).getTime() - currentPosition.entryDate.getTime()) / (1000 * 60 * 60 * 24));
           let shouldExit = false;
           let exitReason = '';
 
@@ -283,10 +284,9 @@ export function runSinglePositionBacktest(
             const updatedPortfolioAfterExit = updatePortfolioState(portfolio, null, tickersData, dateTime, strategy);
             Object.assign(portfolio, updatedPortfolioAfterExit);
 
-            // Create trade
             const trade: Trade = {
               id: `trade-${trades.length}`,
-              entryDate: currentPosition.entryDate,
+              entryDate: toTradingDate(currentPosition.entryDate),
               exitDate: bar.date,
               entryPrice: currentPosition.entryPrice,
               exitPrice: exitPrice,
@@ -370,7 +370,7 @@ export function runSinglePositionBacktest(
             // Create position
             currentPosition = {
               ticker: tickerData.ticker,
-              entryDate: bar.date,
+              entryDate: new Date(bar.date),
               entryPrice: entryPrice,
               quantity: quantity,
               entryIndex: bestSignal.tickerIndex,
@@ -403,7 +403,7 @@ export function runSinglePositionBacktest(
     const drawdown = peakValue > 0 ? ((peakValue - portfolio.totalPortfolioValue) / peakValue) * 100 : 0;
 
     equity.push({
-      date: currentDate,
+      date: toTradingDate(currentDate),
       value: portfolio.totalPortfolioValue,
       drawdown: drawdown
     });
@@ -426,7 +426,7 @@ export function runSinglePositionBacktest(
       const totalPnL = stockPnL - totalCommissions;
       const totalCashInvested = currentPosition.totalCost + currentPosition.entryCommission;
       const pnlPercent = totalCashInvested > 0 ? (totalPnL / totalCashInvested) * 100 : 0;
-      const duration = Math.floor((lastBar.date.getTime() - currentPosition.entryDate.getTime()) / (1000 * 60 * 60 * 24));
+      const duration = Math.floor((new Date(lastBar.date).getTime() - currentPosition.entryDate.getTime()) / (1000 * 60 * 60 * 24));
 
       portfolio.freeCapital += totalCashInvested + totalPnL;
       portfolio.totalInvestedCost = Math.max(0, portfolio.totalInvestedCost - totalCashInvested);
@@ -434,7 +434,7 @@ export function runSinglePositionBacktest(
 
       const trade: Trade = {
         id: `trade-${trades.length}`,
-        entryDate: currentPosition.entryDate,
+        entryDate: toTradingDate(currentPosition.entryDate),
         exitDate: lastBar.date,
         entryPrice: currentPosition.entryPrice,
         exitPrice: exitPrice,
@@ -481,7 +481,7 @@ export function runSinglePositionBacktest(
 
   // CAGR calculation
   const daysDiff = equity.length > 0 ?
-    (equity[equity.length - 1].date.getTime() - equity[0].date.getTime()) / (1000 * 60 * 60 * 24) : 1;
+    (new Date(equity[equity.length - 1].date).getTime() - new Date(equity[0].date).getTime()) / (1000 * 60 * 60 * 24) : 1;
   const years = daysDiff / 365.25;
   const cagr = years > 0 ? (Math.pow(finalValue / initialCapital, 1 / years) - 1) * 100 : 0;
 

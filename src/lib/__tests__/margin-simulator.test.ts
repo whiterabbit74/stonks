@@ -111,7 +111,6 @@ describe('MarginSimulator Calculations', () => {
     it('should calculate leveraged returns correctly', () => {
       const leverage = 2.0;
       const baseReturn = 0.01; // 1% return
-      const expectedLeveragedReturn = baseReturn * leverage; // 2% return
 
       // Simulate the calculation
       const leveragedReturn = baseReturn * leverage;
@@ -121,7 +120,6 @@ describe('MarginSimulator Calculations', () => {
     it('should handle negative returns with leverage', () => {
       const leverage = 2.0;
       const baseReturn = -0.02; // -2% return
-      const expectedLeveragedReturn = baseReturn * leverage; // -4% return
 
       const leveragedReturn = baseReturn * leverage;
       expect(leveragedReturn).toBe(-0.04);
@@ -130,10 +128,10 @@ describe('MarginSimulator Calculations', () => {
     it('should prevent negative equity values', () => {
       const leverage = 5.0;
       const baseReturn = -0.25; // -25% return
-      const leveragedReturn = baseReturn * leverage; // -125% return
 
       // Simulate equity calculation
-      let currentValue = 10000;
+      const currentValue = 10000;
+      const leveragedReturn = baseReturn * leverage; // -125% return
       const newValue = currentValue * (1 + leveragedReturn);
       const finalValue = Math.max(0, newValue); // Prevent negative values
 

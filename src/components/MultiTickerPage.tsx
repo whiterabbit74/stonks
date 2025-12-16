@@ -99,7 +99,7 @@ export function MultiTickerPage() {
   const [refreshingTickers, setRefreshingTickers] = useState<Set<string>>(new Set());
 
   // Check if data is outdated (last bar is more than 1 trading day old)
-  const isDataOutdated = useCallback((lastDate: Date | undefined): boolean => {
+  const isDataOutdated = useCallback((lastDate: string | Date | undefined): boolean => {
     if (!lastDate) return true;
     const now = new Date();
     const lastDateNormalized = new Date(lastDate);
@@ -285,7 +285,7 @@ export function MultiTickerPage() {
               ? {
                 amount: monthlyContributionAmount,
                 dayOfMonth: monthlyContributionDay,
-                startDate: optimizedData[0]?.data?.[0]?.date
+                startDate: optimizedData[0]?.data?.[0]?.date ? new Date(optimizedData[0].data[0].date) : undefined
               }
               : null
         }
@@ -547,7 +547,7 @@ export function MultiTickerPage() {
                           </div>
                         )}
                         <div className="text-xs text-gray-500 dark:text-gray-400">
-                          Обновлено {lastBar.date.toLocaleDateString('ru-RU')}
+                          Обновлено {new Date(lastBar.date).toLocaleDateString('ru-RU')}
                         </div>
                       </div>
                     )}

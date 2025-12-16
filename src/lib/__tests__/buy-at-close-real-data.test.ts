@@ -53,7 +53,7 @@ describe('BuyAtCloseSimulator with Real GOOGL Data', () => {
       const maxHoldDays = Number(strategy.parameters.maxHoldDays ?? 30);
       
       let position = null;
-      let trades = [];
+      const trades = [];
       
       for (let i = 0; i < testData.length; i++) {
         const bar = testData[i];
@@ -109,7 +109,7 @@ describe('BuyAtCloseSimulator with Real GOOGL Data', () => {
       
       const results = thresholds.map(threshold => {
         let position = null;
-        let trades = [];
+        const trades = [];
         
         for (let i = 0; i < testData.length; i++) {
           const bar = testData[i];
@@ -166,7 +166,7 @@ describe('BuyAtCloseSimulator with Real GOOGL Data', () => {
       
       let cash = initialCapital;
       let position = null;
-      let equity = [];
+      const equity = [];
       
       for (let i = 0; i < testData.length; i++) {
         const bar = testData[i];
@@ -226,8 +226,8 @@ describe('BuyAtCloseSimulator with Real GOOGL Data', () => {
       
       let cash = initialCapital;
       let position = null;
-      let trades = [];
-      let equity = [];
+      const trades = [];
+      const equity = [];
       
       for (let i = 0; i < testData.length; i++) {
         const bar = testData[i];
@@ -298,8 +298,8 @@ describe('BuyAtCloseSimulator with Real GOOGL Data', () => {
       
       let cash = initialCapital;
       let position = null;
-      let trades = [];
-      let equity = [];
+      const trades = [];
+      const equity = [];
       
       for (let i = 0; i < testData.length; i++) {
         const bar = testData[i];
@@ -399,7 +399,7 @@ describe('BuyAtCloseSimulator with Real GOOGL Data', () => {
       const highIBS = Number(strategy.parameters.highIBS ?? 0.75);
       
       let position = null;
-      let trades = [];
+      const trades = [];
       
       for (let i = 0; i < testData.length; i++) {
         const bar = testData[i];
@@ -442,7 +442,7 @@ describe('BuyAtCloseSimulator with Real GOOGL Data', () => {
       const highIBS = Number(strategy.parameters.highIBS ?? 0.75);
       
       let position = null;
-      let trades = [];
+      const trades = [];
       
       for (let i = 0; i < testData.length; i++) {
         const bar = testData[i];

@@ -1,4 +1,4 @@
-import type { OHLCData, SavedDataset, TradingDate } from '../types';
+import type { OHLCData, SavedDataset } from '../types';
 import { toTradingDate, getTodayNYSE } from './date-utils';
 
 /**

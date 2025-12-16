@@ -53,7 +53,7 @@ describe('NoStopLossSimulator with Real GOOGL Data', () => {
       const maxHoldDays = Number(strategy.parameters.maxHoldDays ?? 30);
       
       let position = null;
-      let trades = [];
+      const trades = [];
       
       for (let i = 0; i < testData.length; i++) {
         const bar = testData[i];
@@ -102,7 +102,7 @@ describe('NoStopLossSimulator with Real GOOGL Data', () => {
       const highIBS = Number(strategy.parameters.highIBS ?? 0.75);
       
       let position = null;
-      let trades = [];
+      const trades = [];
       let maxDrawdown = 0;
       let peakValue = 0;
       
@@ -159,7 +159,7 @@ describe('NoStopLossSimulator with Real GOOGL Data', () => {
       const initialCapital = 10000;
       
       let position = null;
-      let equity = [];
+      const equity = [];
       let cash = initialCapital;
       
       for (let i = 0; i < testData.length; i++) {
@@ -222,7 +222,7 @@ describe('NoStopLossSimulator with Real GOOGL Data', () => {
       const marginCallThreshold = 0.2; // 20% margin call
       
       let position = null;
-      let equity = [];
+      const equity = [];
       let cash = initialCapital;
       let marginCalled = false;
       
@@ -296,12 +296,12 @@ describe('NoStopLossSimulator with Real GOOGL Data', () => {
       
       // Simulate with stop loss
       let positionWithSL = null;
-      let tradesWithSL = [];
+      const tradesWithSL = [];
       const stopLossPercent = 10; // 10% stop loss
       
       // Simulate without stop loss
       let positionNoSL = null;
-      let tradesNoSL = [];
+      const tradesNoSL = [];
       
       for (let i = 0; i < testData.length; i++) {
         const bar = testData[i];
@@ -380,7 +380,7 @@ describe('NoStopLossSimulator with Real GOOGL Data', () => {
       const positionSizePercent = 0.1; // 10% of capital per trade
       
       let position = null;
-      let trades = [];
+      const trades = [];
       let cash = initialCapital;
       
       for (let i = 0; i < testData.length; i++) {

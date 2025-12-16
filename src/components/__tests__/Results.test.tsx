@@ -1,12 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { Results } from '../Results';
 import { ToastProvider } from '../ui/Toast';
 import type { Strategy, OHLCData, BacktestResult } from '../../types';
-import { useAppStore } from '../../stores';
 import { DatasetAPI } from '../../lib/api';
-import { TradingDate } from '../../lib/date-utils';
 
 // Mock API first
 vi.mock('../../lib/api', () => ({

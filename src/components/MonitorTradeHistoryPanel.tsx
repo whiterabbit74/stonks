@@ -1,4 +1,5 @@
-import { RefreshCw, Download } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import { RefreshCw, Download, FileSpreadsheet, ChevronDown, ChevronUp, Filter } from 'lucide-react';
 import type { MonitorTradeHistoryResponse, MonitorTradeRecord } from '../types';
 
 interface MonitorTradeHistoryPanelProps {
@@ -13,6 +14,22 @@ function formatDate(value: string | null | undefined) {
   if (!value) return '—';
   try {
     return new Date(value).toLocaleDateString('ru-RU');
+  } catch {
+    return value;
+  }
+}
+
+function formatDateTime(value: string | null | undefined) {
+  if (!value) return '—';
+  try {
+    const d = new Date(value);
+    return d.toLocaleString('ru-RU', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
   } catch {
     return value;
   }
@@ -75,23 +92,51 @@ function TradeRow({ trade, isHighlighted }: { trade: MonitorTradeRecord; isHighl
 }
 
 export function MonitorTradeHistoryPanel({ data, loading = false, error = null, onRefresh, maxRows = 10 }: MonitorTradeHistoryPanelProps) {
+  const [showAll, setShowAll] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<'all' | 'open' | 'closed'>('all');
+  const [pnlFilter, setPnlFilter] = useState<'all' | 'profit' | 'loss'>('all');
   const trades = data?.trades ?? [];
   const openTrade = data?.openTrade ?? null;
 
+  // Apply filters
+  const filteredTrades = useMemo(() => {
+    let result = trades;
+
+    // Status filter
+    if (statusFilter !== 'all') {
+      result = result.filter(t => t.status === statusFilter);
+    }
+
+    // PnL filter
+    if (pnlFilter !== 'all') {
+      result = result.filter(t => {
+        if (pnlFilter === 'profit') return (t.pnlPercent ?? 0) > 0;
+        if (pnlFilter === 'loss') return (t.pnlPercent ?? 0) <= 0;
+        return true;
+      });
+    }
+
+    return result;
+  }, [trades, statusFilter, pnlFilter]);
+
   // Сортируем так, чтобы открытые позиции были вверху, затем остальные в обратном порядке
-  const sorted = [...trades].sort((a, b) => {
-    // Открытые позиции всегда выше
-    if (a.status === 'open' && b.status !== 'open') return -1;
-    if (a.status !== 'open' && b.status === 'open') return 1;
+  const sorted = useMemo(() => {
+    return [...filteredTrades].sort((a, b) => {
+      // Открытые позиции всегда выше
+      if (a.status === 'open' && b.status !== 'open') return -1;
+      if (a.status !== 'open' && b.status === 'open') return 1;
 
-    // Для остальных сортируем по дате выхода или входа (более свежие выше)
-    const dateA = a.exitDate || a.entryDate || '';
-    const dateB = b.exitDate || b.entryDate || '';
-    return dateB.localeCompare(dateA);
-  });
+      // Для остальных сортируем по дате выхода или входа (более свежие выше)
+      const dateA = a.exitDate || a.entryDate || '';
+      const dateB = b.exitDate || b.entryDate || '';
+      return dateB.localeCompare(dateA);
+    });
+  }, [filteredTrades]);
 
-  const rows = sorted.slice(0, maxRows);
+  const rows = showAll ? sorted : sorted.slice(0, maxRows);
+  const hasMoreRows = sorted.length > maxRows;
   const hasTrades = rows.length > 0;
+  const isFiltered = statusFilter !== 'all' || pnlFilter !== 'all';
 
   // Расчет общей доходности
   const closedTrades = trades.filter(t => t.status === 'closed' && t.pnlPercent !== null);
@@ -132,16 +177,59 @@ export function MonitorTradeHistoryPanel({ data, loading = false, error = null, 
     URL.revokeObjectURL(url);
   };
 
+  // Функция экспорта в CSV
+  const handleExportCSV = () => {
+    const headers = ['Тикер', 'Статус', 'Дата входа', 'Дата выхода', 'Цена входа', 'Цена выхода', 'IBS вход', 'IBS выход', 'PnL %'];
+    const csvRows = [headers.join(',')];
+
+    for (const t of trades) {
+      const row = [
+        t.symbol,
+        t.status === 'open' ? 'Открыта' : 'Закрыта',
+        t.entryDate || '',
+        t.exitDate || '',
+        t.entryPrice?.toFixed(2) || '',
+        t.exitPrice?.toFixed(2) || '',
+        t.entryIBS != null ? (t.entryIBS * 100).toFixed(1) : '',
+        t.exitIBS != null ? (t.exitIBS * 100).toFixed(1) : '',
+        t.pnlPercent?.toFixed(2) || ''
+      ];
+      csvRows.push(row.join(','));
+    }
+
+    const blob = new Blob([csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const timestamp = new Date().toISOString().replace(/[:]/g, '-').split('.')[0];
+    a.href = url;
+    a.download = `monitor-trades-${timestamp}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="mt-6 rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-900">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 px-4 py-3 dark:border-gray-800">
         <div>
           <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">История сделок мониторинга</h3>
           <div className="text-xs text-gray-500 dark:text-gray-400">
-            {data?.lastUpdated ? `Обновлено: ${formatDate(data.lastUpdated)}` : 'Нет данных об обновлении'}
+            {data?.lastUpdated ? `Обновлено: ${formatDateTime(data.lastUpdated)}` : 'Нет данных об обновлении'}
+            {trades.length > 0 && <span className="ml-2">• {trades.length} сделок</span>}
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={handleExportCSV}
+            disabled={!hasTrades}
+            className="inline-flex items-center gap-1 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+            type="button"
+            title="Экспортировать сделки в CSV (для Excel)"
+          >
+            <FileSpreadsheet className="h-4 w-4" />
+            CSV
+          </button>
           <button
             onClick={handleExportJSON}
             disabled={!hasTrades}
@@ -168,6 +256,67 @@ export function MonitorTradeHistoryPanel({ data, loading = false, error = null, 
       {error && (
         <div className="border-b border-gray-100 bg-red-50 px-4 py-2 text-sm text-red-600 dark:border-red-900/50 dark:bg-red-900/20 dark:text-red-200">
           {error}
+        </div>
+      )}
+
+      {/* Filter controls */}
+      {trades.length > 0 && (
+        <div className="flex flex-wrap items-center gap-3 px-4 py-2 border-b border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/50">
+          <div className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
+            <Filter className="h-3.5 w-3.5" />
+            Фильтр:
+          </div>
+          <div className="flex items-center gap-1">
+            <span className="text-xs text-gray-500 dark:text-gray-400">Статус:</span>
+            <div className="inline-flex rounded-md shadow-sm">
+              <button
+                onClick={() => setStatusFilter('all')}
+                className={`px-2 py-1 text-xs rounded-l-md border ${statusFilter === 'all' ? 'bg-blue-100 border-blue-400 text-blue-700 dark:bg-blue-900/50 dark:border-blue-600 dark:text-blue-300' : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700'}`}
+              >
+                Все
+              </button>
+              <button
+                onClick={() => setStatusFilter('open')}
+                className={`px-2 py-1 text-xs border-t border-b ${statusFilter === 'open' ? 'bg-emerald-100 border-emerald-400 text-emerald-700 dark:bg-emerald-900/50 dark:border-emerald-600 dark:text-emerald-300' : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700'}`}
+              >
+                Открытые
+              </button>
+              <button
+                onClick={() => setStatusFilter('closed')}
+                className={`px-2 py-1 text-xs rounded-r-md border ${statusFilter === 'closed' ? 'bg-gray-200 border-gray-400 text-gray-700 dark:bg-gray-700 dark:border-gray-500 dark:text-gray-200' : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700'}`}
+              >
+                Закрытые
+              </button>
+            </div>
+          </div>
+          <div className="flex items-center gap-1">
+            <span className="text-xs text-gray-500 dark:text-gray-400">Результат:</span>
+            <div className="inline-flex rounded-md shadow-sm">
+              <button
+                onClick={() => setPnlFilter('all')}
+                className={`px-2 py-1 text-xs rounded-l-md border ${pnlFilter === 'all' ? 'bg-blue-100 border-blue-400 text-blue-700 dark:bg-blue-900/50 dark:border-blue-600 dark:text-blue-300' : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700'}`}
+              >
+                Все
+              </button>
+              <button
+                onClick={() => setPnlFilter('profit')}
+                className={`px-2 py-1 text-xs border-t border-b ${pnlFilter === 'profit' ? 'bg-emerald-100 border-emerald-400 text-emerald-700 dark:bg-emerald-900/50 dark:border-emerald-600 dark:text-emerald-300' : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700'}`}
+              >
+                Прибыль
+              </button>
+              <button
+                onClick={() => setPnlFilter('loss')}
+                className={`px-2 py-1 text-xs rounded-r-md border ${pnlFilter === 'loss' ? 'bg-orange-100 border-orange-400 text-orange-700 dark:bg-orange-900/50 dark:border-orange-600 dark:text-orange-300' : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700'}`}
+              >
+                Убыток
+              </button>
+            </div>
+          </div>
+          {isFiltered && (
+            <span className="text-xs text-gray-500 dark:text-gray-400">
+              Показано: {sorted.length} из {trades.length}
+            </span>
+          )}
         </div>
       )}
 
@@ -218,6 +367,28 @@ export function MonitorTradeHistoryPanel({ data, loading = false, error = null, 
                 </tbody>
               </table>
             </div>
+
+            {/* Кнопка "Показать все" */}
+            {hasMoreRows && (
+              <div className="flex justify-center pt-2">
+                <button
+                  onClick={() => setShowAll(!showAll)}
+                  className="inline-flex items-center gap-1 px-3 py-1.5 text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 transition-colors"
+                >
+                  {showAll ? (
+                    <>
+                      <ChevronUp className="h-4 w-4" />
+                      Скрыть (показано {sorted.length})
+                    </>
+                  ) : (
+                    <>
+                      <ChevronDown className="h-4 w-4" />
+                      Показать все ({sorted.length})
+                    </>
+                  )}
+                </button>
+              </div>
+            )}
 
             {/* Общая статистика */}
             {closedTrades.length > 0 && (

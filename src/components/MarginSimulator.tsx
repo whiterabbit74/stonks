@@ -42,7 +42,7 @@ function simulateLeverage(equity: EquityPoint[], leverage: number): SimulationRe
   const marginCallThreshold = initialCapital * 0.3; // 30% от начального капитала
   const fullLiquidationThreshold = initialCapital * 0.1; // 10% от начального - полная ликвидация
   const recoveryThreshold = initialCapital * 0.6; // 60% от начального - восстановление плеча
-  
+
   let currentLeverage = leverage; // Текущее плечо (может изменяться)
   let lastMarginCallValue = 0;
 
@@ -50,7 +50,7 @@ function simulateLeverage(equity: EquityPoint[], leverage: number): SimulationRe
     const basePrev = equity[i - 1].value;
     const baseCurr = equity[i].value;
     if (basePrev <= 0) continue;
-    
+
     const baseReturn = (baseCurr - basePrev) / basePrev;
     const leveragedReturn = baseReturn * currentLeverage;
     currentValue = currentValue * (1 + leveragedReturn);
@@ -58,7 +58,7 @@ function simulateLeverage(equity: EquityPoint[], leverage: number): SimulationRe
     // Проверка полной ликвидации
     if (currentValue <= fullLiquidationThreshold) {
       marginCalls.push({
-        date: equity[i].date,
+        date: new Date(equity[i].date),
         value: currentValue,
         type: 'full'
       });
@@ -71,17 +71,17 @@ function simulateLeverage(equity: EquityPoint[], leverage: number): SimulationRe
     // Проверка частичной ликвидации (margin call)
     if (currentValue <= marginCallThreshold && currentValue > lastMarginCallValue * 1.1) {
       marginCalls.push({
-        date: equity[i].date,
+        date: new Date(equity[i].date),
         value: currentValue,
         type: 'partial'
       });
-      
+
       // Частичная ликвидация: возвращаем к безопасному уровню и убираем плечо
       currentValue = Math.max(marginCallThreshold * 1.2, currentValue * 0.7);
       currentLeverage = 1; // Убираем плечо после margin call
       lastMarginCallValue = currentValue;
     }
-    
+
     // Восстановление плеча при восстановлении капитала
     if (currentLeverage < leverage && currentValue >= recoveryThreshold) {
       currentLeverage = leverage; // Восстанавливаем плечо
@@ -104,21 +104,21 @@ export function MarginSimulator({ equity }: MarginSimulatorProps) {
   const { simEquity, simMaxDD, simFinal, marginCalls, annualReturn } = useMemo(() => {
     const leverage = appliedLeverage;
     const sim = simulateLeverage(equity, leverage);
-    
+
     // Рассчитываем годовые проценты
     let annualReturn = 0;
     if (sim.equity.length > 1) {
       const initialCapital = equity[0]?.value || 10000;
       const finalValue = sim.finalValue;
-      const startDate = sim.equity[0].date;
-      const endDate = sim.equity[sim.equity.length - 1].date;
+      const startDate = new Date(sim.equity[0].date);
+      const endDate = new Date(sim.equity[sim.equity.length - 1].date);
       const years = (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24 * 365.25);
-      
+
       if (years > 0 && initialCapital > 0) {
         annualReturn = (Math.pow(finalValue / initialCapital, 1 / years) - 1) * 100;
       }
     }
-    
+
     return {
       simEquity: sim.equity,
       simMaxDD: sim.maxDrawdown,
@@ -198,9 +198,9 @@ export function MarginSimulator({ equity }: MarginSimulatorProps) {
             ))}
           </div>
           <div className="mt-3 p-3 bg-red-100 rounded text-xs text-red-800 dark:bg-red-900/50 dark:text-red-200">
-            <strong>Логика системы:</strong><br/>
-            • При падении капитала до 30% от начального - частичная ликвидация и отключение плеча<br/>
-            • При восстановлении до 60% от начального - плечо восстанавливается<br/>
+            <strong>Логика системы:</strong><br />
+            • При падении капитала до 30% от начального - частичная ликвидация и отключение плеча<br />
+            • При восстановлении до 60% от начального - плечо восстанавливается<br />
             • При падении до 10% от начального - полная ликвидация
           </div>
         </div>

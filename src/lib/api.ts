@@ -663,7 +663,7 @@ export class DatasetAPI {
         const errorMsg = errorData.error || errorData.message || response.statusText;
         const details = errorData.errorCode ? ` (код ошибки: ${errorData.errorCode})` : '';
         throw new Error(`${errorMsg}${details}`);
-      } catch (parseError) {
+      } catch {
         // If we can't parse the error, use the HTTP status
         throw new Error(`${response.status} ${response.statusText}`);
       }

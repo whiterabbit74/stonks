@@ -164,10 +164,10 @@ export function BuyAtCloseSimulator({ data, strategy }: BuyAtCloseSimulatorProps
     if (leveraged.equity.length > 1) {
       const initialCapital = Number(strategy?.riskManagement?.initialCapital ?? 10000);
       const finalValue = leveraged.finalValue;
-      const startDate = leveraged.equity[0].date;
-      const endDate = leveraged.equity[leveraged.equity.length - 1].date;
+      const startDate = new Date(leveraged.equity[0].date);
+      const endDate = new Date(leveraged.equity[leveraged.equity.length - 1].date);
       const years = (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24 * 365.25);
-      
+
       if (years > 0 && initialCapital > 0) {
         return (Math.pow(finalValue / initialCapital, 1 / years) - 1) * 100;
       }
@@ -189,20 +189,20 @@ export function BuyAtCloseSimulator({ data, strategy }: BuyAtCloseSimulatorProps
       <div className="flex flex-wrap items-end gap-3">
         <div className="flex flex-col">
           <label htmlFor="low-ibs-input" className="text-xs text-gray-600 dark:text-gray-300">Порог входа IBS (&lt;)</label>
-          <input 
-            id="low-ibs-input" 
-            type="number" 
-            step="0.01" 
-            min={0} 
-            max={1} 
-            value={lowIbs} 
+          <input
+            id="low-ibs-input"
+            type="number"
+            step="0.01"
+            min={0}
+            max={1}
+            value={lowIbs}
             onChange={e => {
               const sanitized = sanitizeNumericInput(e.target.value, {
                 ...VALIDATION_CONSTRAINTS.ibs,
                 fallback: Number(lowIbs) || 0.1
               });
               setLowIbs(sanitized.toFixed(2));
-            }} 
+            }}
             className="px-3 py-2 border rounded-md w-32 dark:bg-gray-900 dark:border-gray-700 dark:text-gray-100"
             aria-describedby="low-ibs-desc"
           />
@@ -210,20 +210,20 @@ export function BuyAtCloseSimulator({ data, strategy }: BuyAtCloseSimulatorProps
         </div>
         <div className="flex flex-col">
           <label htmlFor="high-ibs-input" className="text-xs text-gray-600 dark:text-gray-300">Порог выхода IBS (&gt;)</label>
-          <input 
-            id="high-ibs-input" 
-            type="number" 
-            step="0.01" 
-            min={0} 
-            max={1} 
-            value={highIbs} 
+          <input
+            id="high-ibs-input"
+            type="number"
+            step="0.01"
+            min={0}
+            max={1}
+            value={highIbs}
             onChange={e => {
               const sanitized = sanitizeNumericInput(e.target.value, {
                 ...VALIDATION_CONSTRAINTS.ibs,
                 fallback: Number(highIbs) || 0.75
               });
               setHighIbs(sanitized.toFixed(2));
-            }} 
+            }}
             className="px-3 py-2 border rounded-md w-32 dark:bg-gray-900 dark:border-gray-700 dark:text-gray-100"
             aria-describedby="high-ibs-desc"
           />
@@ -231,19 +231,19 @@ export function BuyAtCloseSimulator({ data, strategy }: BuyAtCloseSimulatorProps
         </div>
         <div className="flex flex-col">
           <label htmlFor="max-hold-input" className="text-xs text-gray-600 dark:text-gray-300">Макс. дней удержания</label>
-          <input 
-            id="max-hold-input" 
-            type="number" 
-            step="1" 
-            min={1} 
-            value={maxHold} 
+          <input
+            id="max-hold-input"
+            type="number"
+            step="1"
+            min={1}
+            value={maxHold}
             onChange={e => {
               const sanitized = sanitizeNumericInput(e.target.value, {
                 ...VALIDATION_CONSTRAINTS.holdDays,
                 fallback: Number(maxHold) || 30
               });
               setMaxHold(String(Math.round(sanitized)));
-            }} 
+            }}
             className="px-3 py-2 border rounded-md w-36 dark:bg-gray-900 dark:border-gray-700 dark:text-gray-100"
             aria-describedby="max-hold-desc"
           />

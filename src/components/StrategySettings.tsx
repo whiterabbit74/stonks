@@ -51,6 +51,12 @@ export function StrategySettings({ strategy, onSave, onClose, mode = 'modal' }: 
   };
 
   const handleReset = () => {
+    // Confirmation dialog before reset
+    const confirmed = window.confirm(
+      'Вы уверены, что хотите сбросить настройки стратегии? Все изменения будут потеряны.'
+    );
+    if (!confirmed) return;
+
     const defaults = createDefaultStrategy();
     setEditedStrategy({
       id: strategy.id,
@@ -68,29 +74,29 @@ export function StrategySettings({ strategy, onSave, onClose, mode = 'modal' }: 
   const getParameterConfig = (strategyId: string) => {
     const configs: Record<string, Record<string, { label: string; min: number; max: number; step?: number; description?: string }>> = {
       'ibs-mean-reversion': {
-        lowIBS: { 
-          label: 'Порог входа (Low IBS)', 
-          min: 0.01, 
-          max: 0.5, 
-          step: 0.01, 
-          description: 'Вход в лонг, когда IBS ниже этого значения (close близко к дневному минимуму). По умолчанию: 0.1. ВНИМАНИЕ: значения > 0.3 могут приводить к ложным сигналам при средних IBS!' 
+        lowIBS: {
+          label: 'Порог входа (Low IBS)',
+          min: 0.01,
+          max: 0.5,
+          step: 0.01,
+          description: 'Вход в лонг, когда IBS ниже этого значения (close близко к дневному минимуму). По умолчанию: 0.1. ВНИМАНИЕ: значения > 0.3 могут приводить к ложным сигналам при средних IBS!'
         },
-        highIBS: { 
-          label: 'Порог выхода (High IBS)', 
-          min: 0.5, 
-          max: 0.99, 
-          step: 0.01, 
-          description: 'Выход из позиции, когда IBS выше этого значения (close близко к дневному максимуму). По умолчанию: 0.75' 
+        highIBS: {
+          label: 'Порог выхода (High IBS)',
+          min: 0.5,
+          max: 0.99,
+          step: 0.01,
+          description: 'Выход из позиции, когда IBS выше этого значения (close близко к дневному максимуму). По умолчанию: 0.75'
         },
-        maxHoldDays: { 
-          label: 'Максимум дней в позиции', 
-          min: 1, 
-          max: 365, 
-          description: 'Принудительный выход через указанное число дней, если условие IBS не выполнено. По умолчанию: 30' 
+        maxHoldDays: {
+          label: 'Максимум дней в позиции',
+          min: 1,
+          max: 365,
+          description: 'Принудительный выход через указанное число дней, если условие IBS не выполнено. По умолчанию: 30'
         }
       }
     } as const;
-    
+
     return configs[strategyId] || {};
   };
 
@@ -164,7 +170,7 @@ export function StrategySettings({ strategy, onSave, onClose, mode = 'modal' }: 
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                 Начальный капитал ($)
+                Начальный капитал ($)
               </label>
               <input
                 type="number"
@@ -179,7 +185,7 @@ export function StrategySettings({ strategy, onSave, onClose, mode = 'modal' }: 
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                 Использование капитала (%)
+                Использование капитала (%)
               </label>
               <p className="text-xs text-gray-500 mb-2">
                 Процент депозита, используемый в каждой сделке. 100% = весь доступный капитал
@@ -303,7 +309,7 @@ export function StrategySettings({ strategy, onSave, onClose, mode = 'modal' }: 
           <RotateCcw className="w-4 h-4" />
           Сбросить по умолчанию
         </button>
-        
+
         <div className="flex gap-3">
           {mode === 'modal' && (
             <button

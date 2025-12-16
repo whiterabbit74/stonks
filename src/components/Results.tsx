@@ -3,14 +3,12 @@ import { Heart, RefreshCcw, AlertTriangle, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { DatasetAPI } from '../lib/api';
 import {
-  isValidTradingDate,
-  toTradingDate,
   isSameDay,
   formatTradingDateDisplay,
-  addDaysToTradingDate,
-  daysBetweenTradingDates
+  addDaysToTradingDate
 } from '../lib/date-utils';
 import type { TradingDate } from '../lib/date-utils';
+import { formatMoney } from '../lib/formatters';
 import { useAppStore } from '../stores';
 import { useToastActions } from './ui';
 import { TradingChart } from './TradingChart';
@@ -51,17 +49,6 @@ function simulateLeverageForEquity(equity: EquityPoint[], leverage: number): Equ
     return result;
   } catch {
     return [];
-  }
-}
-
-// Функция для красивого форматирования денежных сумм
-function formatMoney(value: number): string {
-  if (value >= 1_000_000) {
-    return `$${(value / 1_000_000).toFixed(2)}M`;
-  } else if (value >= 1_000) {
-    return `$${(value / 1_000).toFixed(1)}K`;
-  } else {
-    return `$${value.toFixed(2)}`;
   }
 }
 
@@ -698,12 +685,6 @@ export function Results() {
                 <div className="text-xs text-gray-500 dark:text-gray-300">Сделок</div>
                 <div className="text-base font-semibold dark:text-gray-100">{(metrics.totalTrades ?? trades.length).toString()}</div>
               </div>
-
-              {/* Новые метрики */}
-              <div className="rounded-lg border p-2 bg-blue-50 dark:bg-blue-900/30 dark:border-blue-800">
-                <div className="text-xs text-blue-600 dark:text-blue-300">Годовые %</div>
-                <div className="text-base font-semibold text-blue-700 dark:text-blue-200">{metrics.cagr.toFixed(2)}%</div>
-              </div>
               <div className="rounded-lg border p-2 bg-green-50 dark:bg-green-900/30 dark:border-green-800">
                 <div className="text-xs text-green-600 dark:text-green-300">Общая доходность</div>
                 <div className="text-base font-semibold text-green-700 dark:text-green-200">{totalReturn.toFixed(2)}%</div>
@@ -757,13 +738,16 @@ export function Results() {
               <h2 className="text-lg sm:text-xl font-semibold text-gray-900 dark:text-gray-100">Аналитика сделок</h2>
             </div>
 
-            <div className="horizontal-scroll pb-2">
+            <div className="horizontal-scroll pb-2" role="tablist" aria-label="Вкладки аналитики">
               <div className="flex items-center gap-2 flex-nowrap min-w-max px-1">
                 {analysisTabsConfig
                   .filter(tab => tab.visible)
                   .map(tab => (
                     <button
                       key={tab.id}
+                      role="tab"
+                      aria-selected={activeChart === tab.id}
+                      tabIndex={activeChart === tab.id ? 0 : -1}
                       className={`${activeChart === tab.id
                         ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/30 dark:border-blue-900/40 dark:text-blue-200'
                         : 'bg-white border-gray-200 text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'
@@ -778,7 +762,7 @@ export function Results() {
 
 
             {activeChart === 'price' && (
-              <div className="h-[900px] mt-4 mb-6">
+              <div className="h-[65vh] min-h-[500px] max-h-[900px] mt-4 mb-6">
                 <TradingChart data={marketData} trades={trades} splits={currentSplits} />
               </div>
             )}
@@ -808,7 +792,7 @@ export function Results() {
                     );
                   })()}
                 </div>
-                <div className="h-[870px]">
+                <div className="h-[60vh] min-h-[450px] max-h-[870px]">
                   <EquityChart equity={equity} />
                 </div>
               </div>
@@ -839,7 +823,7 @@ export function Results() {
                     Текущее плечо: ×{buyHoldAppliedLeverage.toFixed(2)}
                   </div>
                 </div>
-                <div className="h-[870px]">
+                <div className="h-[60vh] min-h-[450px] max-h-[870px]">
                   <EquityChart equity={buyHoldSimEquity.length ? buyHoldSimEquity : (buyHoldEquity as unknown as EquityPoint[])} />
                 </div>
               </div>

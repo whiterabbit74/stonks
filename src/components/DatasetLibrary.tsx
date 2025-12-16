@@ -1,12 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { Database, Download, Trash2, Calendar, ServerOff, RefreshCw, Edit, List, LayoutGrid } from 'lucide-react';
+import { Database, Download, Trash2, Calendar, ServerOff, RefreshCw, Edit, List, LayoutGrid, Plus, MoreVertical } from 'lucide-react';
 import { useAppStore } from '../stores';
 import { createStrategyFromTemplate, STRATEGY_TEMPLATES } from '../lib/strategy';
 import { DatasetAPI } from '../lib/api';
 import type { SavedDataset } from '../types';
 import { ConfirmModal } from './ConfirmModal';
+import { Modal, ModalFooter } from './ui/Modal';
+import { Button } from './ui/Button';
 import { useNavigate } from 'react-router-dom';
 import { getTickerInfo } from '../lib/ticker-data';
+
+// Utility function to get consistent dataset ID
+function getDatasetId(dataset: Omit<SavedDataset, 'data'>): string {
+  return ((dataset as unknown as { id?: string }).id || dataset.ticker || dataset.name).toString();
+}
 
 export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {}) {
   const navigate = useNavigate();
@@ -27,10 +34,10 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
   const [loadingId, setLoadingId] = useState<string | null>(null);
 
   // Состояние для вида отображения (list = полный, compact = сетка)
-  const [viewMode, setViewMode] = useState<'list' | 'compact'>('list');
+  const [viewMode, setViewMode] = useState<'list' | 'compact'>('compact');
 
   // Состояние для фильтра по тегам
-  const [selectedTag, setSelectedTag] = useState<string>('top');
+  const [selectedTag, setSelectedTag] = useState<string>('all');
 
   // Получаем все уникальные теги из датасетов
   const allTags = React.useMemo(() => {
@@ -68,11 +75,14 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
   const [editCompanyName, setEditCompanyName] = useState('');
   const [savingEdit, setSavingEdit] = useState(false);
 
-  // Check server status on mount - auth is already verified by ProtectedLayout
+  // Check server status on mount with timeout
   useEffect(() => {
     const checkServerStatus = async () => {
+      const timeout = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Timeout')), 5000)
+      );
       try {
-        await DatasetAPI.getStatus();
+        await Promise.race([DatasetAPI.getStatus(), timeout]);
         setServerStatus('online');
       } catch {
         setServerStatus('offline');
@@ -225,6 +235,8 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
                 : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
                 }`}
               title="Список"
+              aria-label="Переключить на режим списка"
+              aria-pressed={viewMode === 'list'}
             >
               <List className="w-4 h-4" />
             </button>
@@ -235,6 +247,8 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
                 : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
                 }`}
               title="Компактный вид"
+              aria-label="Переключить на компактный вид"
+              aria-pressed={viewMode === 'compact'}
             >
               <LayoutGrid className="w-4 h-4" />
             </button>
@@ -291,14 +305,34 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
         )}
 
         {serverStatus !== 'offline' && savedDatasets.length > 0 && filteredDatasets.length === 0 && selectedTag !== 'all' && (
-          <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+          <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg dark:bg-blue-950/20 dark:border-blue-900/40">
             <div className="flex items-center gap-2 mb-2">
-              <Database className="w-5 h-5 text-blue-600" />
-              <span className="font-medium text-blue-800">Нет датасетов с тегом "{selectedTag}"</span>
+              <Database className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+              <span className="font-medium text-blue-800 dark:text-blue-200">Нет датасетов с тегом "{selectedTag}"</span>
             </div>
-            <p className="text-sm text-blue-700">
+            <p className="text-sm text-blue-700 dark:text-blue-300">
               Выберите другой фильтр или нажмите "Все" чтобы увидеть все датасеты.
             </p>
+          </div>
+        )}
+
+        {/* Empty State */}
+        {serverStatus === 'online' && savedDatasets.length === 0 && (
+          <div className="p-8 text-center border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-xl">
+            <Database className="w-12 h-12 text-gray-300 dark:text-gray-600 mx-auto mb-4" />
+            <h4 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-2">
+              Нет загруженных датасетов
+            </h4>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+              Загрузите данные тикера через API или импортируйте JSON файл
+            </p>
+            <button
+              onClick={() => navigate('/settings')}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              Загрузить данные
+            </button>
           </div>
         )}
 
@@ -308,14 +342,14 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
             key={dataset.name}
             dataset={dataset}
             isActive={currentDataset?.ticker === dataset.ticker}
-            onLoad={() => handleLoadDataset(((dataset as unknown as { id?: string }).id || dataset.ticker || dataset.name).toString())}
-            onDelete={(e) => handleDeleteDataset(((dataset as unknown as { id?: string }).id || dataset.ticker || dataset.name).toString(), e)}
-            onExport={(e) => handleExportDataset(((dataset as unknown as { id?: string }).id || dataset.ticker || dataset.name).toString(), e)}
+            onLoad={() => handleLoadDataset(getDatasetId(dataset))}
+            onDelete={(e) => handleDeleteDataset(getDatasetId(dataset), e)}
+            onExport={(e) => handleExportDataset(getDatasetId(dataset), e)}
             loading={loadingId === dataset.name}
             onEdit={(e) => handleEditDataset(dataset, e)}
             onRefresh={async (e) => {
               e.stopPropagation();
-              const id = (dataset.ticker || (dataset as unknown as { id?: string }).id || dataset.name).toString().toUpperCase();
+              const id = getDatasetId(dataset).toUpperCase();
               try {
                 setRefreshingId(id);
                 await DatasetAPI.refreshDataset(id, resultsRefreshProvider as any);
@@ -326,7 +360,7 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
                 setRefreshingId(null);
               }
             }}
-            refreshing={refreshingId === ((dataset.ticker || (dataset as unknown as { id?: string }).id || dataset.name).toString().toUpperCase())}
+            refreshing={refreshingId === getDatasetId(dataset).toUpperCase()}
           />
         ))}
 
@@ -338,7 +372,24 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
                 key={dataset.name}
                 dataset={dataset}
                 isActive={currentDataset?.ticker === dataset.ticker}
-                onLoad={() => handleLoadDataset(((dataset as unknown as { id?: string }).id || dataset.ticker || dataset.name).toString())}
+                onLoad={() => handleLoadDataset(getDatasetId(dataset))}
+                onDelete={(e) => handleDeleteDataset(getDatasetId(dataset), e)}
+                onExport={(e) => handleExportDataset(getDatasetId(dataset), e)}
+                onEdit={(e) => handleEditDataset(dataset, e)}
+                onRefresh={async (e) => {
+                  e.stopPropagation();
+                  const id = getDatasetId(dataset).toUpperCase();
+                  try {
+                    setRefreshingId(id);
+                    await DatasetAPI.refreshDataset(id, resultsRefreshProvider as any);
+                    await loadDatasetsFromServer();
+                  } catch (err) {
+                    console.warn('Refresh failed', err);
+                  } finally {
+                    setRefreshingId(null);
+                  }
+                }}
+                refreshing={refreshingId === getDatasetId(dataset).toUpperCase()}
                 loading={loadingId === dataset.name}
               />
             ))}
@@ -363,21 +414,14 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
       />
 
       {/* Модальное окно редактирования датасета */}
-      {editModalOpen && editingDataset && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 p-6 w-full max-w-md mx-4">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                Редактировать датасет
-              </h3>
-              <button
-                onClick={() => setEditModalOpen(false)}
-                className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
-              >
-                ✕
-              </button>
-            </div>
-
+      <Modal
+        isOpen={editModalOpen && !!editingDataset}
+        onClose={() => setEditModalOpen(false)}
+        title="Редактировать датасет"
+        size="md"
+      >
+        {editingDataset && (
+          <>
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -415,25 +459,25 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
               </div>
             </div>
 
-            <div className="flex justify-end gap-3 mt-6">
-              <button
+            <ModalFooter>
+              <Button
+                variant="secondary"
                 onClick={() => setEditModalOpen(false)}
-                className="px-4 py-2 text-sm border border-gray-300 dark:border-gray-700 rounded-md text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
                 disabled={savingEdit}
               >
                 Отмена
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="primary"
                 onClick={handleSaveEdit}
                 disabled={savingEdit}
-                className="px-4 py-2 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {savingEdit ? 'Сохранение...' : 'Сохранить'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+              </Button>
+            </ModalFooter>
+          </>
+        )}
+      </Modal>
     </div>
   );
 }
@@ -563,68 +607,139 @@ function DatasetCard({ dataset, isActive, onLoad, onDelete, onExport, onEdit, on
   );
 }
 
-// Compact card for grid view
+// Compact card for grid view with context menu
 interface CompactDatasetCardProps {
   dataset: Omit<SavedDataset, 'data'>;
   isActive: boolean;
   onLoad: () => void;
+  onDelete: (event: React.MouseEvent) => void;
+  onExport: (event: React.MouseEvent) => void;
+  onEdit: (event: React.MouseEvent) => void;
+  onRefresh: (event: React.MouseEvent) => void;
+  refreshing?: boolean;
   loading?: boolean;
 }
 
-function CompactDatasetCard({ dataset, isActive, onLoad, loading }: CompactDatasetCardProps) {
+function CompactDatasetCard({ dataset, isActive, onLoad, onDelete, onExport, onEdit, onRefresh, refreshing, loading }: CompactDatasetCardProps) {
+  const [menuOpen, setMenuOpen] = useState(false);
+
   // Get company name from dataset or look up from ticker-data
   const tickerInfo = dataset.ticker ? getTickerInfo(dataset.ticker) : undefined;
   const companyName = dataset.companyName || tickerInfo?.name;
 
+  const handleMenuClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setMenuOpen(!menuOpen);
+  };
+
+  const handleAction = (action: (e: React.MouseEvent) => void) => (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setMenuOpen(false);
+    action(e);
+  };
+
   return (
-    <button
-      onClick={loading ? undefined : onLoad}
-      disabled={loading}
-      className={`relative p-3 rounded-lg border text-left transition-all duration-200 ${isActive
-        ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200 dark:border-blue-400 dark:bg-blue-950/30 dark:ring-blue-900/50'
-        : 'border-gray-200 hover:border-blue-300 hover:bg-blue-50/50 dark:border-gray-700 dark:hover:border-blue-800 dark:bg-gray-900 dark:hover:bg-blue-950/20'
-        } ${loading ? 'opacity-50 cursor-wait' : 'cursor-pointer'}`}
-    >
-      {/* Active indicator */}
-      {isActive && (
-        <div className="absolute top-1.5 right-1.5 w-2 h-2 bg-green-500 rounded-full" />
-      )}
+    <div className="relative">
+      <button
+        onClick={loading ? undefined : onLoad}
+        disabled={loading}
+        className={`relative w-full p-3 rounded-lg border text-left transition-all duration-200 ${isActive
+          ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200 dark:border-blue-400 dark:bg-blue-950/30 dark:ring-blue-900/50'
+          : 'border-gray-200 hover:border-blue-300 hover:bg-blue-50/50 dark:border-gray-700 dark:hover:border-blue-800 dark:bg-gray-900 dark:hover:bg-blue-950/20'
+          } ${loading ? 'opacity-50 cursor-wait' : 'cursor-pointer'}`}
+      >
+        {/* Active indicator */}
+        {isActive && (
+          <div className="absolute top-1.5 left-1.5 w-2 h-2 bg-green-500 rounded-full" />
+        )}
 
-      {/* Loading indicator */}
-      {loading && (
-        <div className="absolute inset-0 flex items-center justify-center bg-white/50 dark:bg-gray-900/50 rounded-lg">
-          <RefreshCw className="w-4 h-4 animate-spin text-blue-600" />
+        {/* Context menu button */}
+        <button
+          onClick={handleMenuClick}
+          className="absolute top-1 right-1 p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+          aria-label="Открыть меню действий"
+        >
+          <MoreVertical className="w-3.5 h-3.5" />
+        </button>
+
+        {/* Loading indicator */}
+        {(loading || refreshing) && (
+          <div className="absolute inset-0 flex items-center justify-center bg-white/50 dark:bg-gray-900/50 rounded-lg">
+            <RefreshCw className="w-4 h-4 animate-spin text-blue-600" />
+          </div>
+        )}
+
+        {/* Ticker */}
+        <div className="font-mono font-semibold text-sm text-gray-900 dark:text-gray-100 pr-6">
+          {dataset.ticker}
         </div>
-      )}
 
-      {/* Ticker */}
-      <div className="font-mono font-semibold text-sm text-gray-900 dark:text-gray-100">
-        {dataset.ticker}
-      </div>
+        {/* Company name (truncated) */}
+        {companyName && (
+          <div className="text-xs text-gray-500 dark:text-gray-400 truncate mt-0.5" title={companyName}>
+            {companyName}
+          </div>
+        )}
 
-      {/* Company name (truncated) */}
-      {companyName && (
-        <div className="text-xs text-gray-500 dark:text-gray-400 truncate mt-0.5" title={companyName}>
-          {companyName}
-        </div>
-      )}
+        {/* Tags indicator */}
+        {dataset.tag && (
+          <div className="flex items-center gap-1 mt-1.5">
+            {dataset.tag.split(',').slice(0, 2).map((tag, index) => (
+              <span
+                key={index}
+                className="px-1.5 py-0.5 bg-gray-100 text-gray-600 text-[10px] rounded dark:bg-gray-800 dark:text-gray-400"
+              >
+                {tag.trim()}
+              </span>
+            ))}
+            {dataset.tag.split(',').length > 2 && (
+              <span className="text-[10px] text-gray-400">+{dataset.tag.split(',').length - 2}</span>
+            )}
+          </div>
+        )}
+      </button>
 
-      {/* Tags indicator */}
-      {dataset.tag && (
-        <div className="flex items-center gap-1 mt-1.5">
-          {dataset.tag.split(',').slice(0, 2).map((tag, index) => (
-            <span
-              key={index}
-              className="px-1.5 py-0.5 bg-gray-100 text-gray-600 text-[10px] rounded dark:bg-gray-800 dark:text-gray-400"
+      {/* Dropdown menu */}
+      {menuOpen && (
+        <>
+          {/* Overlay to close menu */}
+          <div
+            className="fixed inset-0 z-40"
+            onClick={() => setMenuOpen(false)}
+          />
+          <div className="absolute right-0 top-8 z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg py-1 min-w-[140px]">
+            <button
+              onClick={handleAction(onEdit)}
+              className="w-full px-3 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
             >
-              {tag.trim()}
-            </span>
-          ))}
-          {dataset.tag.split(',').length > 2 && (
-            <span className="text-[10px] text-gray-400">+{dataset.tag.split(',').length - 2}</span>
-          )}
-        </div>
+              <Edit className="w-4 h-4" />
+              Редактировать
+            </button>
+            <button
+              onClick={handleAction(onRefresh)}
+              className="w-full px-3 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
+            >
+              <RefreshCw className="w-4 h-4" />
+              Обновить
+            </button>
+            <button
+              onClick={handleAction(onExport)}
+              className="w-full px-3 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
+            >
+              <Download className="w-4 h-4" />
+              Экспорт
+            </button>
+            <div className="border-t border-gray-200 dark:border-gray-700 my-1" />
+            <button
+              onClick={handleAction(onDelete)}
+              className="w-full px-3 py-2 text-left text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 flex items-center gap-2"
+            >
+              <Trash2 className="w-4 h-4" />
+              Удалить
+            </button>
+          </div>
+        </>
       )}
-    </button>
+    </div>
   );
 }

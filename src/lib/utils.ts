@@ -82,7 +82,7 @@ export function formatOHLCYMD(date: Date | string): string {
 }
 
 import type { OHLCData, SplitEvent, TradingDate } from '../types';
-import { isBefore, compareTradingDates, toTradingDate } from './date-utils';
+import { isBefore, compareTradingDates } from './date-utils';
 
 /**
  * Back-adjust OHLC series for stock splits. Price fields are divided by cumulative factors,

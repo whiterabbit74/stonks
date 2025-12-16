@@ -9,7 +9,7 @@ import type {
 } from '../types';
 import type { IndicatorCondition } from '../types';
 import type { TradingDate } from './date-utils';
-import { isValidTradingDate, daysBetweenTradingDates, toChartTimestamp, formatTradingDateDisplay } from './date-utils';
+import { isValidTradingDate, daysBetweenTradingDates, toChartTimestamp } from './date-utils';
 import { IndicatorEngine } from './indicators';
 import { MetricsCalculator } from './metrics';
 import { CleanBacktestEngine } from './clean-backtest';

@@ -1,8 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { DatasetAPI } from '../lib/api';
 import { useAppStore } from '../stores';
 import { sanitizeNumericInput, sanitizeTextInput, VALIDATION_CONSTRAINTS } from '../lib/input-validation';
-import { BarChart3, TrendingUp, ShoppingCart, TrendingDown, Target, Calculator, Clock, AlertTriangle, PiggyBank, DollarSign, BarChart2, Layers, Info, X } from 'lucide-react';
+import { BarChart3, TrendingUp, ShoppingCart, TrendingDown, Target, Calculator, Clock, AlertTriangle, PiggyBank, DollarSign, BarChart2, Layers, Info, X, ChevronUp, ChevronDown, Save, Loader2 } from 'lucide-react';
 // import { StrategySettings } from './StrategySettings';
 
 // SettingsData interface removed - not actively used
@@ -34,7 +34,60 @@ export function AppSettings() {
   // Active tab state
   const [activeTab, setActiveTab] = useState<'general' | 'api' | 'telegram' | 'interface'>('general');
 
-  useEffect(() => { loadSettingsFromServer(); }, [loadSettingsFromServer]);
+  // Loading and initial values for unsaved changes detection
+  const [isLoadingSettings, setIsLoadingSettings] = useState(true);
+  const initialValuesRef = useRef<{
+    watchThresholdPct: number;
+    indicatorPanePercent: number;
+    defaultMultiTickerSymbols: string;
+    commissionType: 'fixed' | 'percentage' | 'combined';
+    commissionFixed: number;
+    commissionPercentage: number;
+    resultsQuoteProvider: string;
+    resultsRefreshProvider: string;
+    enhancerProvider: string;
+    analysisTabsConfig: typeof analysisTabsConfig;
+  } | null>(null);
+
+  useEffect(() => {
+    setIsLoadingSettings(true);
+    loadSettingsFromServer().finally(() => {
+      setIsLoadingSettings(false);
+      // Store initial values after first load
+      setTimeout(() => {
+        initialValuesRef.current = {
+          watchThresholdPct,
+          indicatorPanePercent,
+          defaultMultiTickerSymbols,
+          commissionType,
+          commissionFixed,
+          commissionPercentage,
+          resultsQuoteProvider,
+          resultsRefreshProvider,
+          enhancerProvider,
+          analysisTabsConfig
+        };
+      }, 100);
+    });
+  }, [loadSettingsFromServer]);
+
+  // Check for unsaved changes
+  const hasUnsavedChanges = useMemo(() => {
+    if (!initialValuesRef.current) return false;
+    const initial = initialValuesRef.current;
+    return (
+      watchThresholdPct !== initial.watchThresholdPct ||
+      indicatorPanePercent !== initial.indicatorPanePercent ||
+      defaultMultiTickerSymbols !== initial.defaultMultiTickerSymbols ||
+      commissionType !== initial.commissionType ||
+      commissionFixed !== initial.commissionFixed ||
+      commissionPercentage !== initial.commissionPercentage ||
+      resultsQuoteProvider !== initial.resultsQuoteProvider ||
+      resultsRefreshProvider !== initial.resultsRefreshProvider ||
+      enhancerProvider !== initial.enhancerProvider ||
+      JSON.stringify(analysisTabsConfig) !== JSON.stringify(initial.analysisTabsConfig)
+    );
+  }, [watchThresholdPct, indicatorPanePercent, defaultMultiTickerSymbols, commissionType, commissionFixed, commissionPercentage, resultsQuoteProvider, resultsRefreshProvider, enhancerProvider, analysisTabsConfig]);
 
   const [saving, setSaving] = useState(false);
   const [saveOk, setSaveOk] = useState<string | null>(null);
@@ -72,29 +125,40 @@ export function AppSettings() {
   // Drag & Drop состояние
   const [draggedTab, setDraggedTab] = useState<string | null>(null);
   const [dragOverTab, setDragOverTab] = useState<string | null>(null);
-  const [wasDragging, setWasDragging] = useState(false);
+  const [lastInteractionWasDrag, setLastInteractionWasDrag] = useState(false);
 
   // Функции для управления табами аналитики
-  const toggleTabVisibility = (tabId: string) => {
-    // Блокируем toggle если только что было перетаскивание
-    if (wasDragging) {
-      setWasDragging(false);
+  const toggleTabVisibility = useCallback((tabId: string, wasMouseEvent: boolean) => {
+    // Блокируем toggle если это был drag (определяем по флагу)
+    if (wasMouseEvent && lastInteractionWasDrag) {
+      setLastInteractionWasDrag(false);
       return;
     }
     const newConfig = analysisTabsConfig.map(tab =>
       tab.id === tabId ? { ...tab, visible: !tab.visible } : tab
     );
     setAnalysisTabsConfig(newConfig);
-  };
+  }, [analysisTabsConfig, lastInteractionWasDrag, setAnalysisTabsConfig]);
+
+  // Keyboard navigation for reordering
+  const moveTab = useCallback((tabId: string, direction: 'up' | 'down') => {
+    const currentIndex = analysisTabsConfig.findIndex(tab => tab.id === tabId);
+    if (currentIndex === -1) return;
+
+    const newIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+    if (newIndex < 0 || newIndex >= analysisTabsConfig.length) return;
+
+    const newConfig = [...analysisTabsConfig];
+    const [movedItem] = newConfig.splice(currentIndex, 1);
+    newConfig.splice(newIndex, 0, movedItem);
+    setAnalysisTabsConfig(newConfig);
+  }, [analysisTabsConfig, setAnalysisTabsConfig]);
 
   // Drag & Drop функции
   const handleDragStart = (e: React.DragEvent, tabId: string) => {
     setDraggedTab(tabId);
-    setWasDragging(true);
+    setLastInteractionWasDrag(true);
     e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', tabId);
-    // Добавляем небольшую задержку для визуального эффекта
-    (e.target as HTMLElement).style.opacity = '0.5';
   };
 
   const handleDragOver = (e: React.DragEvent, targetTabId?: string) => {
@@ -135,13 +199,19 @@ export function AppSettings() {
     setDraggedTab(null);
   };
 
-  const handleDragEnd = (e: React.DragEvent) => {
-    (e.target as HTMLElement).style.opacity = '1';
+  const handleDragEnd = () => {
     setDraggedTab(null);
     setDragOverTab(null);
-    // wasDragging сбросится при следующем клике или через таймаут
-    setTimeout(() => setWasDragging(false), 100);
   };
+
+  // Escape key to cancel drag
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Escape' && draggedTab) {
+      setDraggedTab(null);
+      setDragOverTab(null);
+      setLastInteractionWasDrag(false);
+    }
+  }, [draggedTab]);
 
 
   const sendTest = async () => {
@@ -195,14 +265,20 @@ export function AppSettings() {
         <label className="block text-sm font-medium text-gray-700 mb-2">Порог близости к IBS, %</label>
         <p className="text-xs text-gray-500 mb-2">Диапазон 0–20%. По умолчанию 5%.</p>
         <div className="flex items-center gap-4">
-          <input type="range" min={0} max={20} step={0.5} value={watchThresholdPct} onChange={(e) => {
-            const sanitized = sanitizeNumericInput(e.target.value, {
-              ...VALIDATION_CONSTRAINTS.thresholdPct,
-              max: 20,
-              fallback: watchThresholdPct
-            });
-            setWatchThresholdPct(sanitized);
-          }} className="flex-1" />
+          <div className="flex-1 flex flex-col">
+            <input type="range" min={0} max={20} step={0.5} value={watchThresholdPct} onChange={(e) => {
+              const sanitized = sanitizeNumericInput(e.target.value, {
+                ...VALIDATION_CONSTRAINTS.thresholdPct,
+                max: 20,
+                fallback: watchThresholdPct
+              });
+              setWatchThresholdPct(sanitized);
+            }} className="w-full" />
+            <div className="flex justify-between text-xs text-gray-400 mt-1">
+              <span>0%</span>
+              <span>20%</span>
+            </div>
+          </div>
           <input type="number" min={0} max={20} step={0.5} value={watchThresholdPct} onChange={(e) => {
             const sanitized = sanitizeNumericInput(e.target.value, {
               ...VALIDATION_CONSTRAINTS.thresholdPct,
@@ -221,14 +297,20 @@ export function AppSettings() {
         <label className="block text-sm font-medium text-gray-700 mb-2">Высота панели индикаторов (IBS/Объём), %</label>
         <p className="text-xs text-gray-500 mb-2">Диапазон 0–40%. По умолчанию 7%. Больше — выше панель, меньше — ниже.</p>
         <div className="flex items-center gap-4">
-          <input type="range" min={0} max={40} step={1} value={indicatorPanePercent} onChange={(e) => {
-            const sanitized = sanitizeNumericInput(e.target.value, {
-              ...VALIDATION_CONSTRAINTS.indicatorPane,
-              max: 40,
-              fallback: indicatorPanePercent
-            });
-            setIndicatorPanePercent(sanitized);
-          }} className="flex-1" />
+          <div className="flex-1 flex flex-col">
+            <input type="range" min={0} max={40} step={1} value={indicatorPanePercent} onChange={(e) => {
+              const sanitized = sanitizeNumericInput(e.target.value, {
+                ...VALIDATION_CONSTRAINTS.indicatorPane,
+                max: 40,
+                fallback: indicatorPanePercent
+              });
+              setIndicatorPanePercent(sanitized);
+            }} className="w-full" />
+            <div className="flex justify-between text-xs text-gray-400 mt-1">
+              <span>0%</span>
+              <span>40%</span>
+            </div>
+          </div>
           <input type="number" min={0} max={40} step={1} value={indicatorPanePercent} onChange={(e) => {
             const sanitized = sanitizeNumericInput(e.target.value, {
               ...VALIDATION_CONSTRAINTS.indicatorPane,
@@ -654,28 +736,52 @@ export function AppSettings() {
 
   // Interface Settings Tab
   const InterfaceTab = () => (
-    <div className="space-y-6">
+    <div className="space-y-6" onKeyDown={handleKeyDown}>
       {/* Управление табами аналитики */}
       <div className="p-6 rounded-lg border">
         <div className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">Управление табами "Аналитика сделок"</div>
-        <div className="text-sm text-gray-600 dark:text-gray-400 mb-6">
+        <div className="text-sm text-gray-600 dark:text-gray-400 mb-2">
           Перетаскивайте блоки для изменения порядка. Нажмите на блок, чтобы скрыть/показать вкладку.
+        </div>
+        <div className="text-xs text-gray-500 dark:text-gray-500 mb-6">
+          💡 Используйте кнопки ↑/↓ для клавиатурной навигации. Нажмите Escape для отмены перетаскивания.
         </div>
 
         {/* Draggable blocks */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
-          {analysisTabsConfig.map((tab) => (
+        <div
+          className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3"
+          role="listbox"
+          aria-label="Порядок вкладок аналитики"
+        >
+          {analysisTabsConfig.map((tab, index) => (
             <div
               key={tab.id}
+              role="option"
+              aria-selected={draggedTab === tab.id}
+              aria-grabbed={draggedTab === tab.id}
+              aria-roledescription="Перетаскиваемый элемент"
+              tabIndex={0}
               draggable
               onDragStart={(e) => handleDragStart(e, tab.id)}
               onDragOver={(e) => handleDragOver(e, tab.id)}
               onDragLeave={handleDragLeave}
               onDrop={(e) => handleDrop(e, tab.id)}
               onDragEnd={handleDragEnd}
-              onClick={() => toggleTabVisibility(tab.id)}
+              onClick={(e) => {
+                // Only toggle if it was a direct click, not drag end
+                if (e.detail > 0) { // e.detail === 0 for keyboard "click"
+                  toggleTabVisibility(tab.id, true);
+                }
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  toggleTabVisibility(tab.id, false);
+                }
+              }}
               className={`
-                relative p-4 rounded-lg border-2 cursor-pointer transition-all duration-200
+                relative p-4 rounded-lg border-2 cursor-pointer transition-all duration-200 outline-none
+                focus:ring-2 focus:ring-blue-500 focus:ring-offset-2
                 ${tab.visible
                   ? 'bg-white border-blue-200 shadow-sm hover:shadow-md hover:border-blue-300 dark:bg-gray-800 dark:border-gray-600'
                   : 'bg-gray-100 border-gray-300 opacity-60 hover:opacity-80 dark:bg-gray-700 dark:border-gray-600'
@@ -686,9 +792,32 @@ export function AppSettings() {
               `}
               title={`${tab.visible ? 'Нажмите, чтобы скрыть' : 'Нажмите, чтобы показать'} • Перетаскивайте для изменения порядка`}
             >
-              {/* Drag handle */}
-              <div className="absolute top-2 right-2 text-gray-400 text-xs">
-                ⋮⋮
+              {/* Keyboard navigation buttons */}
+              <div className="absolute top-1 right-1 flex flex-col gap-0.5">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    moveTab(tab.id, 'up');
+                  }}
+                  disabled={index === 0}
+                  className="p-0.5 text-gray-400 hover:text-gray-600 disabled:opacity-30 disabled:cursor-not-allowed"
+                  title="Переместить выше"
+                  aria-label={`Переместить ${tab.label} выше`}
+                >
+                  <ChevronUp className="w-3 h-3" />
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    moveTab(tab.id, 'down');
+                  }}
+                  disabled={index === analysisTabsConfig.length - 1}
+                  className="p-0.5 text-gray-400 hover:text-gray-600 disabled:opacity-30 disabled:cursor-not-allowed"
+                  title="Переместить ниже"
+                  aria-label={`Переместить ${tab.label} ниже`}
+                >
+                  <ChevronDown className="w-3 h-3" />
+                </button>
               </div>
 
               {/* Icon and label */}
@@ -804,59 +933,180 @@ export function AppSettings() {
     </div>
   );
 
+  // Global save handler
+  const handleGlobalSave = async () => {
+    setSaving(true);
+    setSaveOk(null);
+    setSaveErr(null);
+    try {
+      await saveSettingsToServer();
+      setSaveOk('Все настройки сохранены');
+      // Update initial values after successful save
+      initialValuesRef.current = {
+        watchThresholdPct,
+        indicatorPanePercent,
+        defaultMultiTickerSymbols,
+        commissionType,
+        commissionFixed,
+        commissionPercentage,
+        resultsQuoteProvider,
+        resultsRefreshProvider,
+        enhancerProvider,
+        analysisTabsConfig
+      };
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'Не удалось сохранить настройки';
+      setSaveErr(message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Loading skeleton component
+  const SettingsSkeleton = () => (
+    <div className="space-y-4 animate-pulse">
+      {[1, 2, 3].map(i => (
+        <div key={i} className="p-4 rounded-lg border">
+          <div className="h-4 bg-gray-200 rounded w-1/4 mb-4"></div>
+          <div className="h-10 bg-gray-200 rounded w-full mb-2"></div>
+          <div className="h-3 bg-gray-100 rounded w-1/2"></div>
+        </div>
+      ))}
+    </div>
+  );
+
+  const tabs = [
+    { id: 'general' as const, label: 'Общие' },
+    { id: 'api' as const, label: 'API' },
+    { id: 'telegram' as const, label: 'Telegram' },
+    { id: 'interface' as const, label: 'Интерфейс' }
+  ];
+
   return (
     <div className="space-y-4">
-      <h2 className="text-xl font-semibold text-gray-900">Настройки</h2>
+      {/* Header with save button */}
+      <div className="flex items-center justify-between flex-wrap gap-4">
+        <div className="flex items-center gap-2">
+          <h2 className="text-xl font-semibold text-gray-900">Настройки</h2>
+          {hasUnsavedChanges && (
+            <span className="text-orange-500 font-bold text-lg" title="Есть несохранённые изменения">*</span>
+          )}
+        </div>
+        <div className="flex items-center gap-3">
+          {saveOk && <span className="text-sm text-green-600">{saveOk}</span>}
+          {saveErr && <span className="text-sm text-red-600">{saveErr}</span>}
+          <button
+            onClick={handleGlobalSave}
+            disabled={saving || !hasUnsavedChanges}
+            className={`inline-flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${hasUnsavedChanges
+              ? 'bg-blue-600 text-white hover:bg-blue-700'
+              : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+              } disabled:opacity-50`}
+          >
+            {saving ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Save className="w-4 h-4" />
+            )}
+            {saving ? 'Сохранение...' : 'Сохранить всё'}
+          </button>
+        </div>
+      </div>
 
-      {/* Tabs */}
+      {/* Tabs with ARIA */}
       <div className="border-b border-gray-200">
-        <nav className="-mb-px flex space-x-8">
-          <button
-            onClick={() => setActiveTab('general')}
-            className={`whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm ${activeTab === 'general'
-              ? 'border-indigo-500 text-indigo-600'
-              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-          >
-            Общие
-          </button>
-          <button
-            onClick={() => setActiveTab('api')}
-            className={`whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm ${activeTab === 'api'
-              ? 'border-indigo-500 text-indigo-600'
-              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-          >
-            API
-          </button>
-          <button
-            onClick={() => setActiveTab('telegram')}
-            className={`whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm ${activeTab === 'telegram'
-              ? 'border-indigo-500 text-indigo-600'
-              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-          >
-            Telegram
-          </button>
-          <button
-            onClick={() => setActiveTab('interface')}
-            className={`whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm ${activeTab === 'interface'
-              ? 'border-indigo-500 text-indigo-600'
-              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-          >
-            Интерфейс
-          </button>
+        <nav
+          className="-mb-px flex space-x-8"
+          role="tablist"
+          aria-label="Настройки"
+        >
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              role="tab"
+              id={`tab-${tab.id}`}
+              aria-selected={activeTab === tab.id}
+              aria-controls={`tabpanel-${tab.id}`}
+              tabIndex={activeTab === tab.id ? 0 : -1}
+              onClick={() => setActiveTab(tab.id)}
+              onKeyDown={(e) => {
+                const currentIndex = tabs.findIndex(t => t.id === activeTab);
+                if (e.key === 'ArrowRight') {
+                  const nextIndex = (currentIndex + 1) % tabs.length;
+                  setActiveTab(tabs[nextIndex].id);
+                } else if (e.key === 'ArrowLeft') {
+                  const prevIndex = (currentIndex - 1 + tabs.length) % tabs.length;
+                  setActiveTab(tabs[prevIndex].id);
+                }
+              }}
+              className={`whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm transition-colors outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${activeTab === tab.id
+                ? 'border-indigo-500 text-indigo-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+            >
+              {tab.label}
+            </button>
+          ))}
         </nav>
       </div>
 
       {/* Tab Content */}
       <div className="mt-4">
-        {activeTab === 'general' && <GeneralTab />}
-        {activeTab === 'api' && <ApiTab />}
-        {activeTab === 'telegram' && <TelegramTab />}
-        {activeTab === 'interface' && <InterfaceTab />}
+        {isLoadingSettings ? (
+          <SettingsSkeleton />
+        ) : (
+          <>
+            <div
+              role="tabpanel"
+              id="tabpanel-general"
+              aria-labelledby="tab-general"
+              hidden={activeTab !== 'general'}
+            >
+              {activeTab === 'general' && <GeneralTab />}
+            </div>
+            <div
+              role="tabpanel"
+              id="tabpanel-api"
+              aria-labelledby="tab-api"
+              hidden={activeTab !== 'api'}
+            >
+              {activeTab === 'api' && <ApiTab />}
+            </div>
+            <div
+              role="tabpanel"
+              id="tabpanel-telegram"
+              aria-labelledby="tab-telegram"
+              hidden={activeTab !== 'telegram'}
+            >
+              {activeTab === 'telegram' && <TelegramTab />}
+            </div>
+            <div
+              role="tabpanel"
+              id="tabpanel-interface"
+              aria-labelledby="tab-interface"
+              hidden={activeTab !== 'interface'}
+            >
+              {activeTab === 'interface' && <InterfaceTab />}
+            </div>
+          </>
+        )}
       </div>
+
+      {/* Unsaved changes warning */}
+      {hasUnsavedChanges && (
+        <div className="fixed bottom-4 right-4 bg-orange-100 border border-orange-300 rounded-lg p-3 shadow-lg flex items-center gap-3 z-50">
+          <AlertTriangle className="w-5 h-5 text-orange-600" />
+          <span className="text-sm text-orange-800">Есть несохранённые изменения</span>
+          <button
+            onClick={handleGlobalSave}
+            disabled={saving}
+            className="inline-flex items-center gap-1 px-3 py-1 bg-orange-600 text-white rounded text-sm hover:bg-orange-700 disabled:opacity-50"
+          >
+            {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+            Сохранить
+          </button>
+        </div>
+      )}
     </div>
   );
 }

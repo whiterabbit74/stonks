@@ -1,5 +1,5 @@
-import { useEffect, useState, useCallback } from 'react';
-import { RefreshCw, Trash2, ExternalLink, Edit2, Check, X } from 'lucide-react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
+import { RefreshCw, Trash2, ExternalLink, Edit2, Check, X, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { DatasetAPI } from '../lib/api';
 import { ConfirmModal } from './ConfirmModal';
 import { InfoModal } from './InfoModal';
@@ -27,13 +27,43 @@ export function TelegramWatches() {
   const [error, setError] = useState<string | null>(null);
   // Тест уведомлений удалён
   const [confirm, setConfirm] = useState<{ open: boolean; symbol: string | null }>(() => ({ open: false, symbol: null }));
-  const [info, setInfo] = useState<{ open: boolean; title: string; message: string; kind?: 'success'|'error'|'info' }>({ open: false, title: '', message: '' });
+  const [info, setInfo] = useState<{ open: boolean; title: string; message: string; kind?: 'success' | 'error' | 'info' }>({ open: false, title: '', message: '' });
   const [secondsToNext, setSecondsToNext] = useState<number | null>(null);
   const [editingPrice, setEditingPrice] = useState<{ symbol: string; value: string } | null>(null);
   const [tradeHistory, setTradeHistory] = useState<MonitorTradeHistoryResponse | null>(null);
   const [tradesError, setTradesError] = useState<string | null>(null);
   const [tradesLoading, setTradesLoading] = useState(false);
+  const [sortConfig, setSortConfig] = useState<{ key: keyof WatchItem | null; direction: 'asc' | 'desc' }>({ key: null, direction: 'asc' });
   const watchThresholdPct = useAppStore(s => s.watchThresholdPct);
+
+  // Sorting logic
+  const sortedWatches = useMemo(() => {
+    if (!sortConfig.key) return watches;
+    return [...watches].sort((a, b) => {
+      const aVal = a[sortConfig.key!];
+      const bVal = b[sortConfig.key!];
+      if (aVal == null && bVal == null) return 0;
+      if (aVal == null) return 1;
+      if (bVal == null) return -1;
+      if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
+      if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }, [watches, sortConfig]);
+
+  const handleSort = (key: keyof WatchItem) => {
+    setSortConfig(prev => ({
+      key,
+      direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc'
+    }));
+  };
+
+  const SortIcon = ({ columnKey }: { columnKey: keyof WatchItem }) => {
+    if (sortConfig.key !== columnKey) return <ArrowUpDown className="w-3 h-3 ml-1 opacity-40" />;
+    return sortConfig.direction === 'asc'
+      ? <ArrowUp className="w-3 h-3 ml-1" />
+      : <ArrowDown className="w-3 h-3 ml-1" />;
+  };
 
   const handleTickerClick = (symbol: string) => {
     navigate(`/results?ticker=${encodeURIComponent(symbol)}`);
@@ -69,13 +99,13 @@ export function TelegramWatches() {
   const secondsUntilNextSignal = useCallback((now: Date = new Date()): number => {
     const p = getETParts(now);
     const secOfDay = p.hh * 3600 + p.mm * 60 + p.ss;
-    
+
     // Для упрощения используем обычные часы торгов: 9:30-16:00, короткие дни: 9:30-13:00
     // В реальности должен загружаться календарь торгов, но для данной задачи используем стандартное время
     const isNormalDay = true; // В реальности нужно проверить календарь
     const closeHour = isNormalDay ? 16 : 13;
     const closeMin = closeHour * 60; // в минутах от начала дня
-    
+
     const target1 = (closeMin - 11) * 60; // 11 минут до закрытия в секундах
     const target2 = (closeMin - 1) * 60;  // 1 минута до закрытия в секундах
     const isWeekday = p.weekday >= 1 && p.weekday <= 5;
@@ -90,14 +120,14 @@ export function TelegramWatches() {
     let wd = p.weekday;
     let attempts = 0;
     const maxAttempts = 7; // Safety limit for weekday search
-    
+
     while (attempts < maxAttempts) {
       wd = (wd + 1) % 7;
       if (wd >= 1 && wd <= 5) break;
       daysToAdd++;
       attempts++;
     }
-    
+
     // If no weekday found within 7 attempts, fallback to Monday (1)
     if (attempts >= maxAttempts) {
       console.warn('Could not find next weekday, using Monday as fallback');
@@ -114,12 +144,10 @@ export function TelegramWatches() {
     const hours = Math.floor((s % 86400) / 3600);
     const minutes = Math.floor((s % 3600) / 60);
     const secs = s % 60;
-    const parts: string[] = [];
-    if (days > 0) parts.push(`${days} д`);
-    if (hours > 0 || days > 0) parts.push(`${hours} ч`);
-    parts.push(`${minutes} мин`);
-    parts.push(`${secs} с`);
-    return parts.join(' ');
+    // Compact format: 1д 2ч 34м 56с
+    if (days > 0) return `${days}д ${hours}ч ${minutes}м`;
+    if (hours > 0) return `${hours}ч ${minutes}м ${secs}с`;
+    return `${minutes}м ${secs}с`;
   }
 
   const loadTrades = useCallback(async () => {
@@ -213,16 +241,36 @@ export function TelegramWatches() {
           <table className="w-full text-sm border-separate border-spacing-0">
             <thead className="bg-gray-50 dark:bg-gray-900">
               <tr>
-                <th className="text-left p-3 dark:text-gray-100">Тикер</th>
-                <th className="text-left p-3 dark:text-gray-100">IBS вход</th>
-                <th className="text-left p-3 dark:text-gray-100">IBS выход</th>
-                <th className="text-left p-3 dark:text-gray-100">Цена входа</th>
-                <th className="text-left p-3 dark:text-gray-100">Позиция</th>
+                <th className="text-left p-3 dark:text-gray-100">
+                  <button onClick={() => handleSort('symbol')} className="inline-flex items-center hover:text-blue-600 dark:hover:text-blue-400">
+                    Тикер <SortIcon columnKey="symbol" />
+                  </button>
+                </th>
+                <th className="text-left p-3 dark:text-gray-100">
+                  <button onClick={() => handleSort('lowIBS')} className="inline-flex items-center hover:text-blue-600 dark:hover:text-blue-400">
+                    IBS вход <SortIcon columnKey="lowIBS" />
+                  </button>
+                </th>
+                <th className="text-left p-3 dark:text-gray-100">
+                  <button onClick={() => handleSort('highIBS')} className="inline-flex items-center hover:text-blue-600 dark:hover:text-blue-400">
+                    IBS выход <SortIcon columnKey="highIBS" />
+                  </button>
+                </th>
+                <th className="text-left p-3 dark:text-gray-100">
+                  <button onClick={() => handleSort('entryPrice')} className="inline-flex items-center hover:text-blue-600 dark:hover:text-blue-400">
+                    Цена входа <SortIcon columnKey="entryPrice" />
+                  </button>
+                </th>
+                <th className="text-left p-3 dark:text-gray-100">
+                  <button onClick={() => handleSort('isOpenPosition')} className="inline-flex items-center hover:text-blue-600 dark:hover:text-blue-400">
+                    Позиция <SortIcon columnKey="isOpenPosition" />
+                  </button>
+                </th>
                 <th className="text-left p-3 dark:text-gray-100">Действия</th>
               </tr>
             </thead>
             <tbody className="divide-y dark:divide-gray-700">
-              {watches.map(w => (
+              {sortedWatches.map(w => (
                 <tr key={w.symbol} className="group hover:bg-gray-50 dark:hover:bg-gray-800">
                   <td className="p-3">
                     <button
@@ -250,8 +298,8 @@ export function TelegramWatches() {
                               const price = parseFloat(editingPrice.value);
                               if (!isNaN(price) && price >= 0) {
                                 try {
-                                  await DatasetAPI.updateTelegramWatch(w.symbol, { 
-                                    entryPrice: price > 0 ? price : null 
+                                  await DatasetAPI.updateTelegramWatch(w.symbol, {
+                                    entryPrice: price > 0 ? price : null
                                   });
                                   await load();
                                   setEditingPrice(null);
@@ -271,8 +319,8 @@ export function TelegramWatches() {
                             const price = parseFloat(editingPrice.value);
                             if (!isNaN(price) && price >= 0) {
                               try {
-                                await DatasetAPI.updateTelegramWatch(w.symbol, { 
-                                  entryPrice: price > 0 ? price : null 
+                                await DatasetAPI.updateTelegramWatch(w.symbol, {
+                                  entryPrice: price > 0 ? price : null
                                 });
                                 await load();
                                 setEditingPrice(null);
@@ -293,24 +341,16 @@ export function TelegramWatches() {
                         </button>
                       </div>
                     ) : (
-                      <div className="flex items-start gap-2">
-                        <div className="flex flex-col">
-                          <span className="dark:text-gray-300">
-                            {w.entryPrice != null ? `$${w.entryPrice.toFixed(2)}` : '—'}
-                          </span>
-                          {w.entryDate && (
-                            <span className="text-xs text-gray-500 dark:text-gray-400">
-                              {w.entryDate}
-                              {typeof w.entryIBS === 'number' ? ` • IBS ${(w.entryIBS * 100).toFixed(1)}%` : ''}
-                            </span>
-                          )}
-                        </div>
+                      <div className="flex items-center gap-1">
+                        <span className="dark:text-gray-300">
+                          {w.entryPrice != null ? `$${w.entryPrice.toFixed(2)}` : '—'}
+                        </span>
                         <button
                           onClick={() => setEditingPrice({
                             symbol: w.symbol,
                             value: w.entryPrice?.toString() || ''
                           })}
-                          className="p-1 text-blue-600 hover:text-blue-800 opacity-0 group-hover:opacity-100 transition-opacity"
+                          className="p-1 text-gray-400 hover:text-blue-600 dark:text-gray-500 dark:hover:text-blue-400 transition-colors"
                           title="Редактировать цену входа"
                         >
                           <Edit2 className="w-3 h-3" />
@@ -349,27 +389,29 @@ export function TelegramWatches() {
               onClick={async () => {
                 try {
                   const r = await DatasetAPI.simulateTelegram('overview');
-                  setInfo({ open: true, title: 'Тест отправки (11 мин)', message: r.success ? 'Сообщение отправлено (T-11, TEST)' : 'Отправка не произошла', kind: r.success ? 'success' : 'error' });
+                  setInfo({ open: true, title: 'Тест отправки (T-11)', message: r.success ? 'Сообщение отправлено (T-11, TEST)' : 'Отправка не произошла', kind: r.success ? 'success' : 'error' });
                 } catch (e) {
                   setInfo({ open: true, title: 'Ошибка', message: e instanceof Error ? e.message : 'Не удалось выполнить тест', kind: 'error' });
                 }
               }}
-              className="inline-flex items-center px-3 py-2 rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+              className="inline-flex items-center px-3 py-1.5 rounded-md border border-gray-300 bg-white text-sm text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+              title="Тест уведомления за 11 минут до закрытия рынка (обзор IBS)"
             >
-              Тест: 11 мин
+              Тест T-11
             </button>
             <button
               onClick={async () => {
                 try {
                   const r = await DatasetAPI.simulateTelegram('confirmations');
-                  setInfo({ open: true, title: 'Тест отправки (2 мин)', message: r.success ? 'Сообщение отправлено (T-2, TEST)' : 'Отправка не произошла', kind: r.success ? 'success' : 'error' });
+                  setInfo({ open: true, title: 'Тест отправки (T-2)', message: r.success ? 'Сообщение отправлено (T-2, TEST)' : 'Отправка не произошла', kind: r.success ? 'success' : 'error' });
                 } catch (e) {
                   setInfo({ open: true, title: 'Ошибка', message: e instanceof Error ? e.message : 'Не удалось выполнить тест', kind: 'error' });
                 }
               }}
-              className="inline-flex items-center px-3 py-2 rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+              className="inline-flex items-center px-3 py-1.5 rounded-md border border-gray-300 bg-white text-sm text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+              title="Тест уведомления за 2 минуты до закрытия рынка (подтверждение сигналов)"
             >
-              Тест: 2 мин
+              Тест T-2
             </button>
             <button
               onClick={async () => {
@@ -380,7 +422,7 @@ export function TelegramWatches() {
                     credentials: 'include'
                   });
                   const r = await response.json();
-                  
+
                   if (r.success) {
                     let pricesMessage = '';
                     if (r.prices.hasProblems) {
@@ -403,16 +445,16 @@ export function TelegramWatches() {
                         pricesMessage = `ℹ️ Цены: обновления не требуются`;
                       }
                     }
-                    
+
                     const changesCount = r.positions.changes?.length || 0;
-                    const changesList = r.positions.changes?.map((c: any) => 
+                    const changesList = r.positions.changes?.map((c: any) =>
                       `${c.symbol}: ${c.changeType === 'opened' ? 'открыта' : 'закрыта'} ${c.entryPrice ? `($${c.entryPrice.toFixed(2)})` : ''}`
                     ).join(', ') || '';
-                    
-                    const positionsMessage = changesCount > 0 
+
+                    const positionsMessage = changesCount > 0
                       ? `Позиции: обновлено ${r.positions.updated}, изменений: ${changesCount}. ${changesList}`
                       : `Позиции: обновлено ${r.positions.updated}, изменений нет`;
-                      
+
                     const message = `${pricesMessage}. ${positionsMessage}`;
                     const kind = r.prices.hasProblems ? 'error' : 'success';
                     setInfo({ open: true, title: 'Обновление цен и позиций', message, kind });

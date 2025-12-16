@@ -3,7 +3,7 @@ import { IndicatorEngine } from './indicators';
 import { MetricsCalculator } from './metrics';
 import { adjustOHLCForSplits } from './utils';
 import { logWarn } from './error-logger';
-import { daysBetweenTradingDates, toChartTimestamp, compareTradingDates } from './date-utils';
+import { daysBetweenTradingDates, toChartTimestamp } from './date-utils';
 
 export interface CleanBacktestOptions {
   // Entry price timing: at current bar close, or at next day's open

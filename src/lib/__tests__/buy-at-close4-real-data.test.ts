@@ -142,7 +142,7 @@ describe('BuyAtClose4Simulator with Real GOOGL Data', () => {
         // Process first 100 bars
         const testData = googlData.slice(0, 100);
         let position = null;
-        let trades = [];
+        const trades = [];
 
         for (let i = 0; i < testData.length; i++) {
           const bar = testData[i];
@@ -183,7 +183,7 @@ describe('BuyAtClose4Simulator with Real GOOGL Data', () => {
       const maxHoldDays = Number(strategy.parameters.maxHoldDays ?? 30);
 
       let position = null;
-      let trades = [];
+      const trades = [];
 
       for (let i = 0; i < testData.length; i++) {
         const bar = testData[i];
@@ -214,7 +214,6 @@ describe('BuyAtClose4Simulator with Real GOOGL Data', () => {
 
       if (trades.length > 0) {
         const winningTrades = trades.filter(t => t.pnl > 0);
-        const losingTrades = trades.filter(t => t.pnl < 0);
         const winRate = winningTrades.length / trades.length;
         const avgDuration = trades.reduce((sum, t) => sum + t.duration, 0) / trades.length;
 
@@ -237,7 +236,7 @@ describe('BuyAtClose4Simulator with Real GOOGL Data', () => {
 
       let cash = initialCapital;
       let position = null;
-      let equity = [];
+      const equity = [];
 
       for (let i = 0; i < testData.length; i++) {
         const bar = testData[i];
@@ -298,8 +297,8 @@ describe('BuyAtClose4Simulator with Real GOOGL Data', () => {
       const maxHoldDays = Number(strategy.parameters.maxHoldDays ?? 30);
 
       let position = null;
-      let trades = [];
-      let equity = [];
+      const trades = [];
+      const equity = [];
       let cash = 10000;
 
       for (let i = 0; i < testData.length; i++) {

@@ -1,18 +1,14 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
-  log,
   logError,
   logWarn,
   logInfo,
-  captureException,
   subscribe,
   getEvents,
   clearEvents,
   initErrorLogger,
-  destroyErrorLogger,
-  ErrorLevel,
-  ErrorCategory
+  destroyErrorLogger
 } from '../error-logger';
 
 describe('Error Logger', () => {
