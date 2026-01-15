@@ -7,10 +7,10 @@ const { toSafeTicker } = require('../utils/helpers');
 const { ensureRegularFileSync } = require('../utils/files');
 
 // Load splits from JSON file
-function loadSplits() {
+async function loadSplits() {
     try {
-        if (fs.existsSync(SPLITS_FILE)) {
-            return fs.readJsonSync(SPLITS_FILE);
+        if (await fs.pathExists(SPLITS_FILE)) {
+            return await fs.readJson(SPLITS_FILE);
         }
     } catch (e) {
         console.warn('Failed to load splits:', e.message);
