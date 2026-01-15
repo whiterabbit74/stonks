@@ -39,16 +39,16 @@ router.put('/settings', async (req, res) => {
     }
 });
 
-router.patch('/settings', (req, res) => {
+router.patch('/settings', async (req, res) => {
     try {
         const updates = req.body;
-        const currentSettings = loadSettings();
+        const currentSettings = await loadSettings();
 
         delete updates.api;
         delete updates.telegram;
 
         const newSettings = { ...currentSettings, ...updates };
-        fs.writeJsonSync(SETTINGS_FILE, newSettings, { spaces: 2 });
+        await fs.writeJson(SETTINGS_FILE, newSettings, { spaces: 2 });
 
         res.json({ success: true, message: 'Settings updated successfully' });
     } catch (e) {

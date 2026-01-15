@@ -83,10 +83,10 @@ function getApiConfig() {
 }
 
 // Settings from JSON file
-function loadSettings() {
+async function loadSettings() {
     try {
-        if (fs.existsSync(SETTINGS_FILE)) {
-            return fs.readJsonSync(SETTINGS_FILE);
+        if (await fs.pathExists(SETTINGS_FILE)) {
+            return await fs.readJson(SETTINGS_FILE);
         }
     } catch (e) {
         console.warn('Failed to load settings:', e.message);
