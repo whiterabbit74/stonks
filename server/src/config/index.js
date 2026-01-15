@@ -82,18 +82,6 @@ function getApiConfig() {
     };
 }
 
-// Settings from JSON file
-function loadSettings() {
-    try {
-        if (fs.existsSync(SETTINGS_FILE)) {
-            return fs.readJsonSync(SETTINGS_FILE);
-        }
-    } catch (e) {
-        console.warn('Failed to load settings:', e.message);
-    }
-    return {};
-}
-
 module.exports = {
     // Paths
     SERVER_DIR,
@@ -125,5 +113,4 @@ module.exports = {
 
     // Functions
     getApiConfig,
-    loadSettings,
 };
