@@ -8,7 +8,7 @@
 const fs = require('fs-extra');
 const { getApiConfig, DATASETS_DIR } = require('../config');
 const { readSettings } = require('./settings');
-const { resolveDatasetFilePathById } = require('./datasets');
+const { resolveDatasetFilePathByIdAsync } = require('./datasets');
 const { toSafeTicker } = require('../utils/helpers');
 const { fetchTodayRangeAndQuote } = require('../providers/finnhub');
 const { telegramWatches, scheduleSaveWatches, sendTelegramMessage, aggregateSendState, getAggregateState } = require('./telegram');
@@ -146,7 +146,7 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
                     let needsUpdate = true;
 
                     // Check if dataset already has previous trading day data
-                    const filePath = resolveDatasetFilePathById(w.symbol);
+                    const filePath = await resolveDatasetFilePathByIdAsync(w.symbol);
                     if (filePath && await fs.pathExists(filePath)) {
                         const dataset = await fs.readJson(filePath).catch(() => null);
                         if (dataset && dataset.data && Array.isArray(dataset.data)) {

@@ -24,6 +24,23 @@ function listDatasetFilesSync() {
     }
 }
 
+async function listDatasetFiles() {
+    try {
+        const main = (await fs.readdir(DATASETS_DIR))
+            .filter(f => f.endsWith('.json') && !f.startsWith('._'));
+        let keep = [];
+        try {
+            keep = (await fs.readdir(KEEP_DATASETS_DIR)).filter(f => f.endsWith('.json') && !f.startsWith('._'));
+        } catch { }
+        const byUpper = new Map();
+        for (const f of keep) byUpper.set(f.toUpperCase(), path.join(KEEP_DATASETS_DIR, f));
+        for (const f of main) byUpper.set(f.toUpperCase(), path.join(DATASETS_DIR, f));
+        return Array.from(byUpper.values()).map(p => path.basename(p));
+    } catch {
+        return [];
+    }
+}
+
 function resolveDatasetFilePathById(id) {
     const ticker = toSafeTicker((id || '').toString());
     if (!ticker) return null;
@@ -42,6 +59,29 @@ function resolveDatasetFilePathById(id) {
             const keepPath = path.join(KEEP_DATASETS_DIR, chosen);
             try { if (fs.existsSync(mainPath)) return mainPath; } catch { }
             try { if (fs.existsSync(keepPath)) return keepPath; } catch { }
+        }
+    } catch { }
+    return stableMain;
+}
+
+async function resolveDatasetFilePathByIdAsync(id) {
+    const ticker = toSafeTicker((id || '').toString());
+    if (!ticker) return null;
+    const stableMain = path.join(DATASETS_DIR, `${ticker}.json`);
+    const stableKeep = path.join(KEEP_DATASETS_DIR, `${ticker}.json`);
+    if (await fs.pathExists(stableMain)) return stableMain;
+    if (await fs.pathExists(stableKeep)) return stableKeep;
+    try {
+        const files = await listDatasetFiles();
+        const legacy = files
+            .filter(f => f.toUpperCase().startsWith(`${ticker}_`) && !f.startsWith('._'))
+            .sort();
+        if (legacy.length > 0) {
+            const chosen = legacy[legacy.length - 1];
+            const mainPath = path.join(DATASETS_DIR, chosen);
+            const keepPath = path.join(KEEP_DATASETS_DIR, chosen);
+            if (await fs.pathExists(mainPath)) return mainPath;
+            if (await fs.pathExists(keepPath)) return keepPath;
         }
     } catch { }
     return stableMain;
@@ -192,7 +232,9 @@ function getLastDateFromDataset(dataset) {
 
 module.exports = {
     listDatasetFilesSync,
+    listDatasetFiles,
     resolveDatasetFilePathById,
+    resolveDatasetFilePathByIdAsync,
     writeDatasetToTickerFile,
     normalizeStableDatasetsSync,
     migrateLegacyDatasetsSync,
