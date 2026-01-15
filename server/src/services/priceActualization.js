@@ -7,7 +7,7 @@
 const fs = require('fs-extra');
 const { getApiConfig, PRICE_ACTUALIZATION_REQUEST_DELAY_MS, PRICE_ACTUALIZATION_DELAY_JITTER_MS, DATASETS_DIR } = require('../config');
 const { readSettings } = require('./settings');
-const { resolveDatasetFilePathById, writeDatasetToTickerFile } = require('./datasets');
+const { resolveDatasetFilePathByIdAsync, writeDatasetToTickerFile } = require('./datasets');
 const { toSafeTicker } = require('../utils/helpers');
 const { fetchFromAlphaVantage } = require('../providers/alphaVantage');
 const { fetchFromFinnhub } = require('../providers/finnhub');
@@ -106,7 +106,7 @@ async function refreshTickerAndCheckFreshness(symbol, nowEtParts, provider = 'fi
     const prevKey = etKeyYMD(prev);
 
     let dataset;
-    let filePath = resolveDatasetFilePathById(ticker);
+    let filePath = await resolveDatasetFilePathByIdAsync(ticker);
     if (filePath && await fs.pathExists(filePath)) {
         dataset = await fs.readJson(filePath).catch(() => null);
     }

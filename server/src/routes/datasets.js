@@ -9,8 +9,8 @@ const multer = require('multer');
 const { DATASETS_DIR, KEEP_DATASETS_DIR } = require('../config');
 const { toSafeTicker } = require('../utils/helpers');
 const {
-    listDatasetFilesSync,
-    resolveDatasetFilePathById,
+    listDatasetFiles,
+    resolveDatasetFilePathByIdAsync,
     writeDatasetToTickerFile,
     getLastDateFromDataset
 } = require('../services/datasets');
@@ -76,7 +76,7 @@ router.get('/datasets/:id', async (req, res) => {
         const id = toSafeTicker(req.params.id);
         if (!id) return res.status(400).json({ error: 'Invalid dataset ID' });
 
-        const filePath = resolveDatasetFilePathById(id);
+        const filePath = await resolveDatasetFilePathByIdAsync(id);
         if (!filePath || !(await fs.pathExists(filePath))) {
             return res.status(404).json({ error: 'Dataset not found' });
         }
@@ -97,7 +97,7 @@ router.get('/datasets/:id/metadata', async (req, res) => {
         const id = toSafeTicker(req.params.id);
         if (!id) return res.status(400).json({ error: 'Invalid dataset ID' });
 
-        const filePath = resolveDatasetFilePathById(id);
+        const filePath = await resolveDatasetFilePathByIdAsync(id);
         if (!filePath || !(await fs.pathExists(filePath))) {
             return res.status(404).json({ error: 'Dataset not found' });
         }
@@ -172,7 +172,7 @@ router.put('/datasets/:id', async (req, res) => {
         const id = toSafeTicker(req.params.id);
         if (!id) return res.status(400).json({ error: 'Invalid dataset ID' });
 
-        const filePath = resolveDatasetFilePathById(id);
+        const filePath = await resolveDatasetFilePathByIdAsync(id);
         const existing = filePath && await fs.pathExists(filePath)
             ? await fs.readJson(filePath)
             : {};
@@ -208,7 +208,7 @@ router.delete('/datasets/:id', async (req, res) => {
         const id = toSafeTicker(req.params.id);
         if (!id) return res.status(400).json({ error: 'Invalid dataset ID' });
 
-        const filePath = resolveDatasetFilePathById(id);
+        const filePath = await resolveDatasetFilePathByIdAsync(id);
         if (filePath && await fs.pathExists(filePath)) {
             await fs.remove(filePath);
         }
@@ -234,7 +234,7 @@ router.post('/datasets/:id/refresh', async (req, res) => {
         });
         const reqProvider = (req.query && typeof req.query.provider === 'string') ? req.query.provider : null;
 
-        const filePath = resolveDatasetFilePathById(id);
+        const filePath = await resolveDatasetFilePathByIdAsync(id);
         if (!filePath || !await fs.pathExists(filePath)) {
             return res.status(404).json({ error: 'Dataset not found' });
         }
@@ -365,7 +365,7 @@ router.post('/datasets/:id/refresh', async (req, res) => {
 router.post('/datasets/:id/apply-splits', async (req, res) => {
     try {
         const { id } = req.params;
-        const filePath = resolveDatasetFilePathById(id);
+        const filePath = await resolveDatasetFilePathByIdAsync(id);
         if (!filePath || !await fs.pathExists(filePath)) {
             return res.status(404).json({ error: 'Dataset not found' });
         }
@@ -446,7 +446,7 @@ router.post('/datasets/:id/apply-splits', async (req, res) => {
 router.patch('/datasets/:id/metadata', async (req, res) => {
     try {
         const { id } = req.params;
-        const filePath = resolveDatasetFilePathById(id);
+        const filePath = await resolveDatasetFilePathByIdAsync(id);
         if (!filePath || !await fs.pathExists(filePath)) {
             return res.status(404).json({ error: 'Dataset not found' });
         }
