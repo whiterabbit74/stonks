@@ -18,7 +18,7 @@ const { apiLimiter, uploadLimiter } = require('./src/middleware/rateLimiter');
 const auth = require('./src/middleware/auth');
 
 // Import services
-const { normalizeStableDatasetsSync } = require('./src/services/datasets');
+const { normalizeStableDatasets } = require('./src/services/datasets');
 const { ensureSplitsFile } = require('./src/services/splits');
 const { loadWatches, sendTelegramMessage, telegramWatches, scheduleSaveWatches } = require('./src/services/telegram');
 const {
@@ -96,7 +96,9 @@ try { fs.ensureDirSync(DATASETS_DIR); } catch (e) {
 try { fs.ensureDirSync(config.KEEP_DATASETS_DIR); } catch { }
 
 // Run dataset migration on startup
-normalizeStableDatasetsSync();
+normalizeStableDatasets().catch(err => {
+  console.warn('Failed to normalize datasets on startup:', err.message);
+});
 
 // Import route handlers
 const calendarRoutes = require('./src/routes/calendar');
