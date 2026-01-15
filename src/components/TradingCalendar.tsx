@@ -27,15 +27,15 @@ interface CalendarData {
   };
 }
 
-const MONTHS = [
-  'Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
-  'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'
-];
-
-// Фиксированный порядок дней недели, начиная с понедельника
-const WEEKDAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
-
 export function TradingCalendar() {
+  const MONTHS = [
+    'Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
+    'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'
+  ];
+
+  // Фиксированный порядок дней недели, начиная с понедельника
+  const WEEKDAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+
   const [calendarData, setCalendarData] = useState<CalendarData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -49,14 +49,15 @@ export function TradingCalendar() {
   const modalTriggerRef = useRef<HTMLButtonElement | null>(null);
   const modalCloseRef = useRef<HTMLButtonElement | null>(null);
 
-  // Check if current view is today's month
-  const isCurrentMonth = parseInt(selectedYear) === currentYear && selectedMonth === currentMonth;
-
   // Получаем текущую дату для выделения
   const today = new Date();
   const currentYear = today.getFullYear();
   const currentMonth = today.getMonth();
   const currentDay = today.getDate();
+
+  // Check if current view is today's month
+  // Moved AFTER currentYear/currentMonth definitions to avoid TDZ error
+  const isCurrentMonth = parseInt(selectedYear) === currentYear && selectedMonth === currentMonth;
 
   // Функции навигации
   const goToPreviousMonth = () => {
