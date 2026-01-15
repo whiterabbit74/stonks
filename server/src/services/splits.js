@@ -4,7 +4,7 @@
 const fs = require('fs-extra');
 const { SPLITS_FILE } = require('../config');
 const { toSafeTicker } = require('../utils/helpers');
-const { ensureRegularFileSync } = require('../utils/files');
+const { ensureRegularFile } = require('../utils/files');
 
 // Load splits from JSON file
 async function loadSplits() {
@@ -20,7 +20,7 @@ async function loadSplits() {
 
 async function ensureSplitsFile() {
     try {
-        ensureRegularFileSync(SPLITS_FILE, {});
+        await ensureRegularFile(SPLITS_FILE, {});
     } catch { }
 }
 

@@ -33,7 +33,24 @@ function ensureRegularFileSync(filePath, defaultContent) {
     } catch { }
 }
 
+async function ensureRegularFile(filePath, defaultContent) {
+    try {
+        const exists = await fs.pathExists(filePath);
+        const st = exists ? await fs.stat(filePath) : null;
+        if (st && st.isDirectory()) {
+            const backup = `${filePath}.bak-${Date.now()}`;
+            try { await fs.rename(filePath, backup); } catch { }
+        }
+        if (!(await fs.pathExists(filePath)) || (st && st.isDirectory())) {
+            await fs.ensureFile(filePath);
+            await fs.writeJson(filePath, defaultContent, { spaces: 2 });
+        }
+    } catch { }
+}
+
+
 module.exports = {
     appendSafe,
     ensureRegularFileSync,
+    ensureRegularFile,
 };
