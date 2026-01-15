@@ -6,32 +6,16 @@ const fs = require('fs-extra');
 const { DATASETS_DIR, KEEP_DATASETS_DIR } = require('../config');
 const { toSafeTicker } = require('../utils/helpers');
 
-function listDatasetFilesSync() {
-    try {
-        const main = fs
-            .readdirSync(DATASETS_DIR)
-            .filter(f => f.endsWith('.json') && !f.startsWith('._'));
-        let keep = [];
-        try {
-            keep = fs.readdirSync(KEEP_DATASETS_DIR).filter(f => f.endsWith('.json') && !f.startsWith('._'));
-        } catch { }
-        const byUpper = new Map();
-        for (const f of keep) byUpper.set(f.toUpperCase(), path.join(KEEP_DATASETS_DIR, f));
-        for (const f of main) byUpper.set(f.toUpperCase(), path.join(DATASETS_DIR, f));
-        return Array.from(byUpper.values()).map(p => path.basename(p));
-    } catch {
-        return [];
-    }
-}
-
 async function listDatasetFiles() {
     try {
-        const main = (await fs.readdir(DATASETS_DIR))
-            .filter(f => f.endsWith('.json') && !f.startsWith('._'));
-        let keep = [];
-        try {
-            keep = (await fs.readdir(KEEP_DATASETS_DIR)).filter(f => f.endsWith('.json') && !f.startsWith('._'));
-        } catch { }
+        const [mainFiles, keepFiles] = await Promise.all([
+            fs.readdir(DATASETS_DIR).catch(() => []),
+            fs.readdir(KEEP_DATASETS_DIR).catch(() => [])
+        ]);
+
+        const main = mainFiles.filter(f => f.endsWith('.json') && !f.startsWith('._'));
+        const keep = keepFiles.filter(f => f.endsWith('.json') && !f.startsWith('._'));
+
         const byUpper = new Map();
         for (const f of keep) byUpper.set(f.toUpperCase(), path.join(KEEP_DATASETS_DIR, f));
         for (const f of main) byUpper.set(f.toUpperCase(), path.join(DATASETS_DIR, f));
@@ -39,29 +23,6 @@ async function listDatasetFiles() {
     } catch {
         return [];
     }
-}
-
-function resolveDatasetFilePathById(id) {
-    const ticker = toSafeTicker((id || '').toString());
-    if (!ticker) return null;
-    const stableMain = path.join(DATASETS_DIR, `${ticker}.json`);
-    const stableKeep = path.join(KEEP_DATASETS_DIR, `${ticker}.json`);
-    try { if (fs.existsSync(stableMain)) return stableMain; } catch { }
-    try { if (fs.existsSync(stableKeep)) return stableKeep; } catch { }
-    try {
-        const files = listDatasetFilesSync();
-        const legacy = files
-            .filter(f => f.toUpperCase().startsWith(`${ticker}_`) && !f.startsWith('._'))
-            .sort();
-        if (legacy.length > 0) {
-            const chosen = legacy[legacy.length - 1];
-            const mainPath = path.join(DATASETS_DIR, chosen);
-            const keepPath = path.join(KEEP_DATASETS_DIR, chosen);
-            try { if (fs.existsSync(mainPath)) return mainPath; } catch { }
-            try { if (fs.existsSync(keepPath)) return keepPath; } catch { }
-        }
-    } catch { }
-    return stableMain;
 }
 
 async function resolveDatasetFilePathByIdAsync(id) {
@@ -104,9 +65,11 @@ async function writeDatasetToTickerFile(dataset) {
     return { ticker, targetPath };
 }
 
-function normalizeStableDatasetsSync() {
+async function normalizeStableDatasets() {
     try {
-        const left = fs.readdirSync(DATASETS_DIR).filter(f => f.endsWith('.json'));
+        const left = (await fs.readdir(DATASETS_DIR).catch(() => []))
+            .filter(f => f.endsWith('.json'));
+
         const byTicker = new Map();
         for (const f of left) {
             const base = path.basename(f, '.json');
@@ -115,7 +78,13 @@ function normalizeStableDatasetsSync() {
             if (!byTicker.has(ticker)) byTicker.set(ticker, []);
             byTicker.get(ticker).push(f);
         }
-        for (const [ticker, arr] of byTicker.entries()) {
+
+        const entries = Array.from(byTicker.entries());
+
+        // Process sequentially to avoid too many open files if datasets are many
+        // But for performance, we can do some parallelism or just keep it simple as it is startup.
+        // Sequential is safer for fs operations on many files.
+        for (const [ticker, arr] of entries) {
             const stablePath = path.join(DATASETS_DIR, `${ticker}.json`);
             const legacyCandidates = arr.filter(f => f.toUpperCase() !== `${ticker}.JSON`).sort();
             const hasStable = arr.some(f => f.toUpperCase() === `${ticker}.JSON`);
@@ -123,15 +92,22 @@ function normalizeStableDatasetsSync() {
                 const chosen = legacyCandidates.length ? legacyCandidates[legacyCandidates.length - 1] : arr[0];
                 const sourceMain = path.join(DATASETS_DIR, chosen);
                 const sourceKeep = path.join(KEEP_DATASETS_DIR, chosen);
-                const source = (fs.existsSync(sourceMain) ? sourceMain : (fs.existsSync(sourceKeep) ? sourceKeep : sourceMain));
+
+                let source = sourceMain;
+                if (await fs.pathExists(sourceMain)) {
+                    source = sourceMain;
+                } else if (await fs.pathExists(sourceKeep)) {
+                    source = sourceKeep;
+                }
+
                 try {
-                    const payload = fs.readJsonSync(source);
+                    const payload = await fs.readJson(source).catch(() => null);
                     if (payload) {
                         payload.name = ticker;
                         payload.ticker = ticker;
-                        fs.writeJsonSync(stablePath, payload, { spaces: 2 });
+                        await fs.writeJson(stablePath, payload, { spaces: 2 });
                     } else {
-                        fs.copySync(source, stablePath, { overwrite: true });
+                        await fs.copy(source, stablePath, { overwrite: true });
                     }
                     console.log(`Normalized dataset for ${ticker} → ${path.basename(stablePath)}`);
                 } catch (e) {
@@ -139,28 +115,31 @@ function normalizeStableDatasetsSync() {
                 }
             } else {
                 try {
-                    const payload = fs.readJsonSync(stablePath);
+                    const payload = await fs.readJson(stablePath).catch(() => null);
                     let mutated = false;
                     if (payload && payload.name !== ticker) { payload.name = ticker; mutated = true; }
                     if (payload && payload.ticker !== ticker) { payload.ticker = ticker; mutated = true; }
-                    if (mutated) fs.writeJsonSync(stablePath, payload, { spaces: 2 });
+                    if (mutated) await fs.writeJson(stablePath, payload, { spaces: 2 });
                 } catch { }
             }
-            for (const f of arr) {
+
+            // Cleanup legacy files
+            await Promise.all(arr.map(f => {
                 const full = path.join(DATASETS_DIR, f);
-                if (full === stablePath) continue;
-                try { fs.removeSync(full); } catch { }
-            }
+                if (full === stablePath) return Promise.resolve();
+                return fs.remove(full).catch(() => {});
+            }));
         }
     } catch (e) {
         console.warn('Normalization skipped:', e.message);
     }
 }
 
-function migrateLegacyDatasetsSync() {
+async function migrateLegacyDatasets() {
     try {
-        const files = listDatasetFilesSync();
+        const files = await listDatasetFiles();
         if (!files || files.length === 0) return;
+
         const byTicker = new Map();
         for (const f of files) {
             const base = path.basename(f, '.json');
@@ -169,44 +148,60 @@ function migrateLegacyDatasetsSync() {
             if (!byTicker.has(ticker)) byTicker.set(ticker, []);
             byTicker.get(ticker).push(f);
         }
-        for (const [ticker, arr] of byTicker.entries()) {
+
+        const entries = Array.from(byTicker.entries());
+
+        for (const [ticker, arr] of entries) {
             const target = path.join(DATASETS_DIR, `${ticker}.json`);
-            if (fs.pathExistsSync(target)) {
-                for (const f of arr) {
-                    if (f.toUpperCase() === `${ticker}.JSON`) continue;
-                    try { fs.removeSync(path.join(DATASETS_DIR, f)); } catch { }
-                }
+            if (await fs.pathExists(target)) {
+                // If stable exists, delete legacy files
+                await Promise.all(arr.map(f => {
+                    if (f.toUpperCase() === `${ticker}.JSON`) return Promise.resolve();
+                    return fs.remove(path.join(DATASETS_DIR, f)).catch(() => {});
+                }));
+
                 try {
-                    const payload = fs.readJsonSync(target);
+                    const payload = await fs.readJson(target).catch(() => null);
                     let mutated = false;
                     if (payload && payload.name !== ticker) { payload.name = ticker; mutated = true; }
                     if (payload && payload.ticker !== ticker) { payload.ticker = ticker; mutated = true; }
-                    if (mutated) fs.writeJsonSync(target, payload, { spaces: 2 });
+                    if (mutated) await fs.writeJson(target, payload, { spaces: 2 });
                 } catch { }
                 continue;
             }
+
             const legacyCandidates = arr.filter(f => f.toUpperCase() !== `${ticker}.JSON`).sort();
             const chosen = legacyCandidates.length ? legacyCandidates[legacyCandidates.length - 1] : arr[0];
             const sourceMain = path.join(DATASETS_DIR, chosen);
             const sourceKeep = path.join(KEEP_DATASETS_DIR, chosen);
-            const source = (fs.existsSync(sourceMain) ? sourceMain : (fs.existsSync(sourceKeep) ? sourceKeep : sourceMain));
+
+            let source = sourceMain;
+            if (await fs.pathExists(sourceMain)) {
+                source = sourceMain;
+            } else if (await fs.pathExists(sourceKeep)) {
+                source = sourceKeep;
+            }
+
             try {
-                const payload = fs.readJsonSync(source);
+                const payload = await fs.readJson(source).catch(() => null);
                 if (payload) {
                     payload.name = ticker;
                     payload.ticker = ticker;
-                    fs.writeJsonSync(target, payload, { spaces: 2 });
+                    await fs.writeJson(target, payload, { spaces: 2 });
                 } else {
-                    fs.copySync(source, target, { overwrite: true });
+                    await fs.copy(source, target, { overwrite: true });
                 }
             } catch {
-                try { fs.copySync(source, target, { overwrite: true }); } catch { }
+                try { await fs.copy(source, target, { overwrite: true }); } catch { }
             }
-            for (const f of arr) {
+
+            // Remove old files
+            await Promise.all(arr.map(f => {
                 const p = path.join(DATASETS_DIR, f);
-                if (p === target) continue;
-                try { fs.removeSync(p); } catch { }
-            }
+                if (p === target) return Promise.resolve();
+                return fs.remove(p).catch(() => {});
+            }));
+
             console.log(`Migrated dataset files for ${ticker} → ${path.basename(target)}`);
         }
     } catch (e) {
@@ -231,12 +226,13 @@ function getLastDateFromDataset(dataset) {
 }
 
 module.exports = {
-    listDatasetFilesSync,
     listDatasetFiles,
-    resolveDatasetFilePathById,
     resolveDatasetFilePathByIdAsync,
     writeDatasetToTickerFile,
-    normalizeStableDatasetsSync,
-    migrateLegacyDatasetsSync,
+    normalizeStableDatasets,
+    migrateLegacyDatasets,
     getLastDateFromDataset,
+    // Kept for compatibility but as async wrappers if really needed, but better to remove
+    // listDatasetFilesSync: () => { throw new Error('Use listDatasetFiles (async) instead'); },
+    // resolveDatasetFilePathById: () => { throw new Error('Use resolveDatasetFilePathByIdAsync instead'); },
 };
