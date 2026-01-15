@@ -3,7 +3,6 @@
  */
 const express = require('express');
 const router = express.Router();
-const { loadSettings } = require('../config');
 const { readSettings, writeSettings, getDefaultSettings } = require('../services/settings');
 const fs = require('fs-extra');
 const { SETTINGS_FILE } = require('../config');
@@ -42,13 +41,13 @@ router.put('/settings', async (req, res) => {
 router.patch('/settings', async (req, res) => {
     try {
         const updates = req.body;
-        const currentSettings = await loadSettings();
+        const currentSettings = await readSettings();
 
         delete updates.api;
         delete updates.telegram;
 
         const newSettings = { ...currentSettings, ...updates };
-        await fs.writeJson(SETTINGS_FILE, newSettings, { spaces: 2 });
+        await writeSettings(newSettings);
 
         res.json({ success: true, message: 'Settings updated successfully' });
     } catch (e) {
