@@ -22,17 +22,13 @@ export const TradesTable = React.memo(function TradesTable({
 		return trades && trades.some(t => typeof (t.context as any)?.ticker === 'string' && (t.context as any)?.ticker);
 	}, [trades]);
 
-	const reversedTrades = useMemo(() => {
-		return [...(trades || [])].reverse();
-	}, [trades]);
-
 	const totalPages = useMemo(() => {
-		if (!reversedTrades || reversedTrades.length === 0) {
+		if (!trades || trades.length === 0) {
 			return 1;
 		}
 
-		return Math.max(1, Math.ceil(reversedTrades.length / PAGE_SIZE));
-	}, [reversedTrades]);
+		return Math.max(1, Math.ceil(trades.length / PAGE_SIZE));
+	}, [trades]);
 
 	useEffect(() => {
 		setPage(1);
@@ -45,10 +41,25 @@ export const TradesTable = React.memo(function TradesTable({
 	}, [page, totalPages]);
 
 	const paginatedTrades = useMemo(() => {
+		// Optimization: Avoid copying and reversing the entire trades array (which can be large).
+		// Instead, calculate the indices in the original array that correspond to the current page
+		// in reverse order, slice that small segment, and reverse it.
+		// reversedTrades[start...end] corresponds to trades[(L-end)...(L-start)] reversed.
+
+		const len = trades ? trades.length : 0;
+		if (len === 0) return [];
+
 		const start = (page - 1) * PAGE_SIZE;
 		const end = start + PAGE_SIZE;
-		return reversedTrades.slice(start, end);
-	}, [page, reversedTrades]);
+
+		// Indices in reversed array: start to end
+		// Indices in original array: (len - end) to (len - start)
+
+		const sliceStart = Math.max(0, len - end);
+		const sliceEnd = Math.max(0, len - start);
+
+		return trades.slice(sliceStart, sliceEnd).reverse();
+	}, [page, trades]);
 
 	const resolvedExportFileName = useMemo(() => {
 		const dateSuffix = new Date().toISOString().slice(0, 10);
@@ -78,12 +89,12 @@ export const TradesTable = React.memo(function TradesTable({
 	}, [resolvedExportFileName, trades]);
 
 	const pageStart = useMemo(() => {
-		return reversedTrades.length === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
-	}, [page, reversedTrades.length]);
+		return (!trades || trades.length === 0) ? 0 : (page - 1) * PAGE_SIZE + 1;
+	}, [page, trades]);
 
 	const pageEnd = useMemo(() => {
-		return Math.min(page * PAGE_SIZE, reversedTrades.length);
-	}, [page, reversedTrades.length]);
+		return Math.min(page * PAGE_SIZE, trades ? trades.length : 0);
+	}, [page, trades]);
 
 	if (!trades || trades.length === 0) {
 		return (
@@ -107,7 +118,7 @@ export const TradesTable = React.memo(function TradesTable({
 		<div className="w-full overflow-auto">
 			{showSummary && (
 				<div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mb-4 text-sm text-gray-600 dark:text-gray-300">
-					<div>Всего сделок: {reversedTrades.length}</div>
+					<div>Всего сделок: {trades.length}</div>
 					{showExport && (
 						<button
 							type="button"
@@ -187,7 +198,7 @@ export const TradesTable = React.memo(function TradesTable({
 			</table>
 			<div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mt-4 text-sm text-gray-600 dark:text-gray-300">
 				<div>
-					Показаны {pageStart}–{pageEnd} из {reversedTrades.length} сделок
+					Показаны {pageStart}–{pageEnd} из {trades.length} сделок
 				</div>
 				<div className="flex flex-wrap items-center gap-2">
 					<button
