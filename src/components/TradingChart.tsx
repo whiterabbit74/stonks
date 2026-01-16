@@ -28,8 +28,19 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
   // По умолчанию оба скрыты
   const [showIBS, setShowIBS] = useState(false);
   const [showVolume, setShowVolume] = useState(false);
+
+  // Refs to track current state for callbacks without triggering re-renders
+  const showIBSRef = useRef(showIBS);
+  const showVolumeRef = useRef(showVolume);
+
   const [isDark, setIsDark] = useState<boolean>(() => typeof document !== 'undefined' ? document.documentElement.classList.contains('dark') : false);
   const indicatorPanePercent = useAppStore(s => s.indicatorPanePercent);
+
+  // Update refs when state changes
+  useEffect(() => {
+    showIBSRef.current = showIBS;
+    showVolumeRef.current = showVolume;
+  }, [showIBS, showVolume]);
 
   // Функция для расчета EMA
   const calculateEMA = (data: OHLCData[], period: number): number[] => {
@@ -396,8 +407,9 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
           return;
         }
         const bar = seriesData.get(candlestickSeries as unknown as object) as { open?: number; high?: number; low?: number; close?: number } | undefined;
-        const vol = (showVolume && volumeSeriesRef.current) ? (seriesData.get(volumeSeriesRef.current as unknown as object) as { value?: number } | undefined)?.value : undefined;
-        const ibsVal = (showIBS && ibsSeriesRef.current) ? (seriesData.get(ibsSeriesRef.current as unknown as object) as { value?: number } | undefined)?.value : undefined;
+        // Use refs to get current visibility state without re-creating chart/listener
+        const vol = (showVolumeRef.current && volumeSeriesRef.current) ? (seriesData.get(volumeSeriesRef.current as unknown as object) as { value?: number } | undefined)?.value : undefined;
+        const ibsVal = (showIBSRef.current && ibsSeriesRef.current) ? (seriesData.get(ibsSeriesRef.current as unknown as object) as { value?: number } | undefined)?.value : undefined;
         const o = bar?.open, h = bar?.high, l = bar?.low, c = bar?.close;
         const pct = o ? (((c! - o) / o) * 100) : 0;
         const ibsStr = (typeof ibsVal === 'number') ? ` · IBS ${(ibsVal * 100).toFixed(0)}%` : '';
@@ -429,12 +441,52 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
       console.error('Error creating trading chart:', error);
       return;
     }
-  }, [data, trades, splits, isDark, indicatorPanePercent, showIBS, showVolume]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, trades, splits, isDark]); // Removed indicatorPanePercent, showIBS, showVolume to prevent re-renders
 
   // Cleanup on unmount
   useEffect(() => {
     return cleanupChart;
   }, []);
+
+  useEffect(() => {
+    // Dynamic layout update without chart recreation
+    if (!candlestickSeriesRef.current) return;
+
+    // Recalculate margins
+    const indicatorFraction = Math.max(0.05, Math.min(0.4, indicatorPanePercent / 100));
+    const priceBottomMargin = indicatorFraction + 0.1;
+    const volumeTopMargin = 1 - indicatorFraction;
+
+    try {
+      candlestickSeriesRef.current.priceScale().applyOptions({
+        scaleMargins: {
+          top: 0.1,
+          bottom: priceBottomMargin,
+        },
+      });
+
+      if (volumeSeriesRef.current) {
+        volumeSeriesRef.current.priceScale().applyOptions({
+          scaleMargins: {
+            top: volumeTopMargin,
+            bottom: 0,
+          },
+        });
+      }
+
+      if (ibsSeriesRef.current) {
+        ibsSeriesRef.current.priceScale().applyOptions({
+          scaleMargins: {
+            top: volumeTopMargin,
+            bottom: 0,
+          },
+        });
+      }
+    } catch {
+      // ignore
+    }
+  }, [indicatorPanePercent]);
 
   useEffect(() => {
     // Взаимоисключаемые индикаторы
