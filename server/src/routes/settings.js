@@ -41,10 +41,13 @@ router.patch('/settings', async (req, res) => {
         const updates = req.body;
         const currentSettings = await readSettings();
 
+        // Prevent updating protected fields
         delete updates.api;
         delete updates.telegram;
 
         const newSettings = { ...currentSettings, ...updates };
+
+        // Use optimized async write with caching
         await writeSettings(newSettings);
 
         res.json({ success: true, message: 'Settings updated successfully' });
