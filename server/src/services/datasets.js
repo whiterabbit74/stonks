@@ -6,6 +6,9 @@ const fs = require('fs-extra');
 const { DATASETS_DIR, KEEP_DATASETS_DIR } = require('../config');
 const { toSafeTicker } = require('../utils/helpers');
 
+/**
+ * Lists dataset files asynchronously from both main and keep directories.
+ */
 async function listDatasetFiles() {
     try {
         const [mainFiles, keepFiles] = await Promise.all([

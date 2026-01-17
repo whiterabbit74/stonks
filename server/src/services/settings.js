@@ -47,6 +47,7 @@ async function readSettings() {
 
 /**
  * Writes settings to disk and updates cache, ensuring thread safety.
+ * Uses asynchronous file I/O to avoid blocking the event loop.
  */
 async function writeSettings(settings) {
     return await settingsMutex.runExclusive(async () => {

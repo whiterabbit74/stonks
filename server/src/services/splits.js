@@ -19,6 +19,9 @@ async function ensureSplitsFile() {
     } catch { }
 }
 
+/**
+ * Reads splits from disk asynchronously.
+ */
 async function readSplitsMap() {
     // Return cached data if available
     if (splitsCache) {
