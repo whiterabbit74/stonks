@@ -232,7 +232,4 @@ module.exports = {
     normalizeStableDatasets,
     migrateLegacyDatasets,
     getLastDateFromDataset,
-    // Kept for compatibility but as async wrappers if really needed, but better to remove
-    // listDatasetFilesSync: () => { throw new Error('Use listDatasetFiles (async) instead'); },
-    // resolveDatasetFilePathById: () => { throw new Error('Use resolveDatasetFilePathByIdAsync instead'); },
 };
