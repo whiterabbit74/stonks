@@ -4,8 +4,6 @@
 const express = require('express');
 const router = express.Router();
 const { readSettings, writeSettings, getDefaultSettings } = require('../services/settings');
-const fs = require('fs-extra');
-const { SETTINGS_FILE } = require('../config');
 
 router.get('/settings', async (req, res) => {
     try {
