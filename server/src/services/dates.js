@@ -9,19 +9,21 @@ const { TRADING_CALENDAR_FILE } = require('../config');
 let _tradingCalendarCache = { data: null, loadedAt: 0 };
 const TRADING_CALENDAR_TTL_MS = 5 * 60 * 1000;
 
+// Reusable formatter for ET
+const etFormatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    weekday: 'short'
+});
+
 // Helpers for ET (America/New_York)
 function getETParts(date = new Date()) {
-    const fmt = new Intl.DateTimeFormat('en-US', {
-        timeZone: 'America/New_York',
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: false,
-        weekday: 'short'
-    });
-    const parts = fmt.formatToParts(date);
+    const parts = etFormatter.formatToParts(date);
     const map = {};
     parts.forEach(p => { if (p.type !== 'literal') map[p.type] = p.value; });
     const y = Number(map.year), m = Number(map.month), d = Number(map.day), hh = Number(map.hour), mm = Number(map.minute);
