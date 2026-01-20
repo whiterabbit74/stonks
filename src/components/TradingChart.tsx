@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useMemo, memo } from 'react';
 import { createChart, type IChartApi, type ISeriesApi, type UTCTimestamp } from 'lightweight-charts';
 import { formatOHLCYMD } from '../lib/utils';
 import { toChartTimestamp } from '../lib/date-utils';
@@ -32,7 +32,7 @@ interface TradingChartProps {
   splits?: SplitEvent[];
 }
 
-export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
+export const TradingChart = memo(function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candlestickSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
@@ -247,67 +247,97 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
     }
   }, [isDark]); // Recreate chart only on theme change
 
+  // Pre-calculate timestamps (Optimization: reduces parsing by 5x)
+  const times = useMemo(() => {
+    return data.map(d => {
+        try {
+            return toChartTimestamp(d.date);
+        } catch {
+            return 0 as UTCTimestamp;
+        }
+    });
+  }, [data]);
+
+  // Memoize data preparations to avoid recalculation on theme change or re-renders
+  const chartData = useMemo(() => {
+    if (!data.length) return [];
+    return data.map((bar, i) => {
+        const t = times[i];
+        if (t === 0) return { time: 0 as UTCTimestamp, open: 0, high: 0, low: 0, close: 0 };
+        return {
+            time: t,
+            open: Number(bar.open),
+            high: Number(bar.high),
+            low: Number(bar.low),
+            close: Number(bar.close)
+        };
+    });
+  }, [data, times]);
+
+  const ema20Values = useMemo(() => calculateEMA(data, 20), [data]);
+  const ema20Data = useMemo(() => {
+    if (!data.length) return [];
+    return data.map((_, index) => {
+        const v = ema20Values[index];
+        if (typeof v !== 'number' || !Number.isFinite(v)) return null;
+        return { time: times[index], value: v };
+    }).filter((p): p is {time: UTCTimestamp, value: number} => p !== null && p.time !== 0);
+  }, [data, ema20Values, times]);
+
+  const ema200Values = useMemo(() => calculateEMA(data, 200), [data]);
+  const ema200Data = useMemo(() => {
+    if (!data.length) return [];
+    return data.map((_, index) => {
+        const v = ema200Values[index];
+        if (typeof v !== 'number' || !Number.isFinite(v)) return null;
+        return { time: times[index], value: v };
+    }).filter((p): p is {time: UTCTimestamp, value: number} => p !== null && p.time !== 0);
+  }, [data, ema200Values, times]);
+
+  const volumeData = useMemo(() => {
+    if (!data.length) return [];
+    return data.map((bar, i) => ({
+        time: times[i],
+        value: Number(bar.volume),
+        color: bar.close >= bar.open ? (isDark ? 'rgba(16, 185, 129, 0.45)' : 'rgba(16, 185, 129, 0.6)') : (isDark ? 'rgba(239, 68, 68, 0.45)' : 'rgba(239, 68, 68, 0.6)')
+    }));
+  }, [data, isDark, times]);
+
+  const ibsData = useMemo(() => {
+     if (!data.length) return [];
+     return data.map((bar, i) => {
+        const range = Math.max(1e-9, bar.high - bar.low);
+        const ibs = (bar.close - bar.low) / range;
+        const color = ibs <= 0.10
+            ? (isDark ? 'rgba(5,150,105,1)' : 'rgba(5,150,105,1)')
+            : (ibs >= 0.75 ? (isDark ? 'rgba(239,68,68,0.9)' : 'rgba(239,68,68,0.9)') : (isDark ? 'rgba(156,163,175,0.5)' : 'rgba(107,114,128,0.5)'));
+        return { time: times[i], value: ibs, color };
+     });
+  }, [data, isDark, times]);
+
   // 2. Update Data
   useEffect(() => {
     if (!chartReady || !data.length || !candlestickSeriesRef.current) return;
 
     try {
-        const chartData = data.map((bar) => {
-            try {
-              const t = toChartTimestamp(bar.date);
-              const open = Number(bar.open);
-              const high = Number(bar.high);
-              const low = Number(bar.low);
-              const close = Number(bar.close);
-              return { time: t, open, high, low, close };
-            } catch {
-              return { time: 0 as UTCTimestamp, open: 0, high: 0, low: 0, close: 0 };
-            }
-        });
         candlestickSeriesRef.current.setData(chartData);
 
         // Initial time scale
         try { chartRef.current?.timeScale().applyOptions({ rightOffset: 8 }); } catch { /* ignore */ }
 
         if (volumeSeriesRef.current) {
-            const volumeData = data.map((bar) => ({
-                time: toChartTimestamp(bar.date),
-                value: Number(bar.volume),
-                color: bar.close >= bar.open ? (isDark ? 'rgba(16, 185, 129, 0.45)' : 'rgba(16, 185, 129, 0.6)') : (isDark ? 'rgba(239, 68, 68, 0.45)' : 'rgba(239, 68, 68, 0.6)')
-            }));
             volumeSeriesRef.current.setData(volumeData);
         }
 
         if (ibsSeriesRef.current) {
-             const ibsData = data.map((bar) => {
-                const range = Math.max(1e-9, bar.high - bar.low);
-                const ibs = (bar.close - bar.low) / range;
-                const t = toChartTimestamp(bar.date);
-                const color = ibs <= 0.10
-                    ? (isDark ? 'rgba(5,150,105,1)' : 'rgba(5,150,105,1)')
-                    : (ibs >= 0.75 ? (isDark ? 'rgba(239,68,68,0.9)' : 'rgba(239,68,68,0.9)') : (isDark ? 'rgba(156,163,175,0.5)' : 'rgba(107,114,128,0.5)'));
-                return { time: t, value: ibs, color };
-             });
              ibsSeriesRef.current.setData(ibsData);
         }
 
         if (ema20SeriesRef.current) {
-            const ema20Values = calculateEMA(data, 20);
-            const ema20Data = data.map((bar, index) => {
-                const v = ema20Values[index];
-                if (typeof v !== 'number' || !Number.isFinite(v)) return null;
-                return { time: toChartTimestamp(bar.date), value: v };
-            }).filter((p): p is {time: UTCTimestamp, value: number} => p !== null);
             ema20SeriesRef.current.setData(ema20Data);
         }
 
         if (ema200SeriesRef.current) {
-            const ema200Values = calculateEMA(data, 200);
-            const ema200Data = data.map((bar, index) => {
-                const v = ema200Values[index];
-                if (typeof v !== 'number' || !Number.isFinite(v)) return null;
-                return { time: toChartTimestamp(bar.date), value: v };
-            }).filter((p): p is {time: UTCTimestamp, value: number} => p !== null);
             ema200SeriesRef.current.setData(ema200Data);
         }
 
@@ -315,7 +345,7 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
         logError('chart', 'Error updating chart data', { error: (e as Error).message }, 'TradingChart.updateData');
     }
 
-  }, [chartReady, data, isDark]); // Adding isDark because colors in data map depend on it
+  }, [chartReady, data.length, chartData, volumeData, ibsData, ema20Data, ema200Data]);
 
   // 3. Update Markers
   useEffect(() => {
@@ -480,4 +510,4 @@ export function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
       </div>
     </div>
   );
-}
+});
