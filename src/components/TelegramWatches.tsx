@@ -4,7 +4,7 @@ import { DatasetAPI } from '../lib/api';
 import { ConfirmModal } from './ConfirmModal';
 import { InfoModal } from './InfoModal';
 import { useAppStore } from '../stores';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import type { MonitorTradeHistoryResponse } from '../types';
 import { MonitorTradeHistoryPanel } from './MonitorTradeHistoryPanel';
 
@@ -63,10 +63,6 @@ export function TelegramWatches() {
     return sortConfig.direction === 'asc'
       ? <ArrowUp className="w-3 h-3 ml-1" />
       : <ArrowDown className="w-3 h-3 ml-1" />;
-  };
-
-  const handleTickerClick = (symbol: string) => {
-    navigate(`/results?ticker=${encodeURIComponent(symbol)}`);
   };
 
   function getETParts(date: Date = new Date()): { y: number; m: number; d: number; hh: number; mm: number; ss: number; weekday: number } {
@@ -262,14 +258,14 @@ export function TelegramWatches() {
               {sortedWatches.map(w => (
                 <tr key={w.symbol} className="group hover:bg-gray-50 dark:hover:bg-gray-800">
                   <td className="p-3">
-                    <button
-                      onClick={() => handleTickerClick(w.symbol)}
+                    <Link
+                      to={`/results?ticker=${encodeURIComponent(w.symbol)}`}
                       className="inline-flex items-center gap-1 font-medium text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 transition-colors"
                       title={`Перейти к результатам для ${w.symbol}`}
                     >
                       {w.symbol}
                       <ExternalLink className="w-3 h-3" />
-                    </button>
+                    </Link>
                   </td>
                   <td className="p-3 dark:text-gray-300">≤ {(w.lowIBS ?? 0.1).toFixed(2)}</td>
                   <td className="p-3 dark:text-gray-300">≥ {w.highIBS.toFixed(2)}</td>
