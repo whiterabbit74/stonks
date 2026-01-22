@@ -52,14 +52,15 @@ export function blackScholes(
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function calculateVolatility(prices: number[], _window = 30): number {
-  if (prices.length < 2) return 0;
+  // Need at least 3 prices to get 2 returns for variance calculation (N-1)
+  if (prices.length < 3) return 0;
 
   const returns: number[] = [];
   for (let i = 1; i < prices.length; i++) {
     returns.push(Math.log(prices[i] / prices[i - 1]));
   }
 
-  if (returns.length === 0) return 0;
+  if (returns.length < 2) return 0;
 
   const mean = returns.reduce((a, b) => a + b, 0) / returns.length;
   const variance = returns.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / (returns.length - 1);
@@ -72,22 +73,23 @@ export function calculateVolatility(prices: number[], _window = 30): number {
 /**
  * Finds the expiration date based on a number of weeks ahead.
  * Adds `weeks * 7` days to the start date, then finds the next Friday (or stays on Friday).
+ * Uses UTC methods to ensure consistency across timezones.
  * @param fromDate Start date
  * @param weeks Number of weeks to add before finding the next Friday (default: 4)
  */
 export function getExpirationDate(fromDate: Date, weeks: number = 4): Date {
   const targetDate = new Date(fromDate);
-  targetDate.setDate(targetDate.getDate() + (weeks * 7));
+  targetDate.setUTCDate(targetDate.getUTCDate() + (weeks * 7));
 
   // Find the next Friday (5)
   // Day: 0 (Sun) to 6 (Sat)
-  const day = targetDate.getDay();
+  const day = targetDate.getUTCDay();
   const diff = 5 - day; // If Fri (5), diff=0. If Sat (6), diff=-1 (needs +6).
 
   let daysToAdd = diff;
   if (daysToAdd < 0) daysToAdd += 7; // Move to next week if passed
 
-  targetDate.setDate(targetDate.getDate() + daysToAdd);
+  targetDate.setUTCDate(targetDate.getUTCDate() + daysToAdd);
   return targetDate;
 }
 

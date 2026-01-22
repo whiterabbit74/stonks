@@ -87,7 +87,8 @@ export function runOptionsBacktest(
            if (matchingStockTrade) {
                // ENTER TRADE
                const state = getMarketState(dateStr);
-               if (state) {
+               // Require valid volatility to enter trade (prevents fake cheap options on missing data)
+               if (state && state.vol > 0) {
                    const spot = state.price;
                    // Strike: Current Price + X%, rounded to integer
                    const strikeRaw = spot * (1 + strikePct / 100);

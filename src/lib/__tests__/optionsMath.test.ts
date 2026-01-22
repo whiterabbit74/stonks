@@ -55,9 +55,11 @@ describe('Options Math Utilities', () => {
       // Next Friday is 2023-03-03.
       const start = new Date('2023-01-27T12:00:00Z');
       const expiry = getExpirationDate(start);
-      expect(expiry.getDay()).toBe(5);
+      // 2023-01-27 is Friday. 4 weeks = 28 days -> Feb 24 (Friday).
+      // Since it lands on Friday, it expires then. Diff = 28 days.
+      expect(expiry.getUTCDay()).toBe(5);
       const diffDays = (expiry.getTime() - start.getTime()) / (1000 * 3600 * 24);
-      expect(diffDays).toBeGreaterThan(28);
+      expect(diffDays).toBeGreaterThanOrEqual(28);
       expect(diffDays).toBeLessThan(45);
     });
   });
