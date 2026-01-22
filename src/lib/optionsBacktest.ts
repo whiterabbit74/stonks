@@ -130,7 +130,7 @@ export function runOptionsBacktest(
                            quantity: contracts
                        };
 
-                       currentCapital -= contracts * optionPrice; // Should be ~0
+                       currentCapital -= contracts * optionPrice * 100;
                    }
                }
            }
@@ -179,8 +179,17 @@ export function runOptionsBacktest(
                          activeTrade.exitReason = "option_expired";
                      }
 
-                     optionTrades.push(activeTrade);
                      currentCapital += activeTrade.contracts * activeTrade.optionExitPrice * 100;
+
+                     // Update context for UI to show correct capital
+                     if (!activeTrade.context) activeTrade.context = {};
+                     activeTrade.context = {
+                         ...activeTrade.context,
+                         currentCapitalAfterExit: currentCapital,
+                         initialInvestment: activeTrade.contracts * activeTrade.optionEntryPrice * 100
+                     };
+
+                     optionTrades.push(activeTrade);
                      activeTrade = null;
                  }
              }
