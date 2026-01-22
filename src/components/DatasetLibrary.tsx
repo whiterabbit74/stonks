@@ -7,7 +7,7 @@ import type { SavedDataset } from '../types';
 import { ConfirmModal } from './ConfirmModal';
 import { Modal, ModalFooter } from './ui/Modal';
 import { Button } from './ui/Button';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { getTickerInfo } from '../lib/ticker-data';
 
 // Utility function to get consistent dataset ID
@@ -103,27 +103,11 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
   const handleLoadDataset = async (datasetId: string) => {
     try {
       setLoadingId(datasetId);
-      await loadDatasetsFromServer();
-      await loadDatasetFromServer(datasetId);
-      // гарантируем наличие стратегии
-      if (!currentStrategy) {
-        try {
-          const tpl = STRATEGY_TEMPLATES[0];
-          const strat = createStrategyFromTemplate(tpl);
-          setStrategy(strat);
-        } catch (e) {
-          console.warn('Failed to ensure default strategy', e);
-        }
-      }
-      // снимаем лоадер сразу
-      setLoadingId(null);
-      // мгновенно переходим на «Результаты» через роутер
-      try { navigate('/results'); } catch { /* ignore */ }
       if (onAfterLoad) onAfterLoad();
-      // запускаем бэктест в фоне, не блокируя UI
-      try { runBacktest?.(); } catch (e) { console.warn('Failed to start backtest', e); }
+      setLoadingId(null);
     } catch (e) {
-      console.warn('Failed to load dataset', e);
+      console.warn('Failed to handle dataset load', e);
+      setLoadingId(null);
     }
   };
 
@@ -348,6 +332,7 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
             loading={loadingId === dataset.name}
             onEdit={(e) => handleEditDataset(dataset, e)}
             onRefresh={async (e) => {
+              e.preventDefault();
               e.stopPropagation();
               const id = getDatasetId(dataset).toUpperCase();
               try {
@@ -377,6 +362,7 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
                 onExport={(e) => handleExportDataset(getDatasetId(dataset), e)}
                 onEdit={(e) => handleEditDataset(dataset, e)}
                 onRefresh={async (e) => {
+                  e.preventDefault();
                   e.stopPropagation();
                   const id = getDatasetId(dataset).toUpperCase();
                   try {
@@ -509,9 +495,16 @@ function DatasetCard({ dataset, isActive, onLoad, onDelete, onExport, onEdit, on
   const label = companyName || dataset.ticker;
 
   return (
-    <div
-      onClick={loading ? undefined : onLoad}
-      className={`p-3 rounded-lg border cursor-pointer transition-colors ${isActive
+    <Link
+      to={`/results?ticker=${dataset.ticker}`}
+      onClick={(e) => {
+         if (loading) {
+            e.preventDefault();
+         } else {
+            onLoad();
+         }
+      }}
+      className={`block p-3 rounded-lg border cursor-pointer transition-colors ${isActive
         ? 'border-blue-500 bg-blue-50 dark:border-blue-400 dark:bg-blue-950/30'
         : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50 dark:border-gray-700 dark:hover:border-gray-600 dark:bg-gray-900 dark:hover:bg-gray-800'
         }`}
@@ -570,7 +563,7 @@ function DatasetCard({ dataset, isActive, onLoad, onDelete, onExport, onEdit, on
           <div className="flex items-center gap-1 w-full md:w-auto md:gap-2">
             {onEdit && (
               <button
-                onClick={onEdit}
+                onClick={(e) => { e.preventDefault(); onEdit(e); }}
                 className="p-2 text-gray-400 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-transparent rounded transition-colors flex-1 md:flex-none"
                 title="Редактировать датасет"
                 aria-label="Редактировать датасет"
@@ -579,7 +572,7 @@ function DatasetCard({ dataset, isActive, onLoad, onDelete, onExport, onEdit, on
               </button>
             )}
             <button
-              onClick={onRefresh}
+              onClick={(e) => { e.preventDefault(); if (onRefresh) onRefresh(e); }}
               className="p-2 text-gray-400 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-transparent rounded transition-colors flex-1 md:flex-none"
               title="Обновить датасет"
               aria-label="Обновить датасет"
@@ -587,14 +580,14 @@ function DatasetCard({ dataset, isActive, onLoad, onDelete, onExport, onEdit, on
               <RefreshCw className={`w-4 h-4 mx-auto ${refreshing ? 'animate-spin origin-center' : ''}`} />
             </button>
             <button
-              onClick={onExport}
+              onClick={(e) => { e.preventDefault(); onExport(e); }}
               className="p-2 text-gray-400 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-transparent rounded transition-colors flex-1 md:flex-none"
               title="Экспорт JSON"
             >
               <Download className="w-4 h-4 mx-auto transition-colors group-hover:text-blue-600" />
             </button>
             <button
-              onClick={onDelete}
+              onClick={(e) => { e.preventDefault(); onDelete(e); }}
               className="p-2 text-gray-400 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-transparent rounded transition-colors flex-1 md:flex-none"
               title="Удалить датасет"
             >
@@ -603,7 +596,7 @@ function DatasetCard({ dataset, isActive, onLoad, onDelete, onExport, onEdit, on
           </div>
         </div>
       </div>
-    </div>
+    </Link>
   );
 }
 
@@ -640,10 +633,16 @@ function CompactDatasetCard({ dataset, isActive, onLoad, onDelete, onExport, onE
 
   return (
     <div className="relative">
-      <button
-        onClick={loading ? undefined : onLoad}
-        disabled={loading}
-        className={`relative w-full p-3 rounded-lg border text-left transition-all duration-200 ${isActive
+      <Link
+        to={`/results?ticker=${dataset.ticker}`}
+        onClick={(e) => {
+           if (loading) {
+              e.preventDefault();
+           } else {
+              onLoad();
+           }
+        }}
+        className={`block relative w-full p-3 rounded-lg border text-left transition-all duration-200 ${isActive
           ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200 dark:border-blue-400 dark:bg-blue-950/30 dark:ring-blue-900/50'
           : 'border-gray-200 hover:border-blue-300 hover:bg-blue-50/50 dark:border-gray-700 dark:hover:border-blue-800 dark:bg-gray-900 dark:hover:bg-blue-950/20'
           } ${loading ? 'opacity-50 cursor-wait' : 'cursor-pointer'}`}
@@ -655,7 +654,7 @@ function CompactDatasetCard({ dataset, isActive, onLoad, onDelete, onExport, onE
 
         {/* Context menu button */}
         <button
-          onClick={handleMenuClick}
+          onClick={(e) => { e.preventDefault(); handleMenuClick(e); }}
           className="absolute top-1 right-1 p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
           aria-label="Открыть меню действий"
         >
@@ -697,7 +696,7 @@ function CompactDatasetCard({ dataset, isActive, onLoad, onDelete, onExport, onE
             )}
           </div>
         )}
-      </button>
+      </Link>
 
       {/* Dropdown menu */}
       {menuOpen && (

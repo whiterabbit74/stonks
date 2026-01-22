@@ -147,10 +147,14 @@ export function Results() {
   const lastSyncedSymbol = useRef(symbol);
 
   useEffect(() => {
-    if (requestedTicker && requestedTicker.toUpperCase() !== symbol) {
-      loadDatasetFromServer(requestedTicker.toUpperCase()).catch(console.error);
+    if (requestedTicker) {
+      const upperTicker = requestedTicker.toUpperCase();
+      // Only load if it's different from what we have (and what we are currently synced to)
+      if (upperTicker !== symbol) {
+        loadDatasetFromServer(upperTicker).catch(console.error);
+      }
     }
-  }, [requestedTicker, loadDatasetFromServer]); // Intentionally omitting symbol to avoid race conditions
+  }, [requestedTicker, symbol, loadDatasetFromServer]);
 
   useEffect(() => {
     // If symbol changed in store, update URL
@@ -478,10 +482,11 @@ export function Results() {
 
   // Redirect to data page if no dataset is selected
   useEffect(() => {
-    if (!currentDataset) {
+    // Only redirect if we don't have a dataset AND we aren't trying to load one via URL
+    if (!currentDataset && !searchParams.get('ticker')) {
       navigate('/data');
     }
-  }, [currentDataset, navigate]);
+  }, [currentDataset, navigate, searchParams]);
 
   if (!backtestResults) {
     return (
