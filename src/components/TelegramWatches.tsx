@@ -70,18 +70,7 @@ export function TelegramWatches() {
   };
 
   function getETParts(date: Date = new Date()): { y: number; m: number; d: number; hh: number; mm: number; ss: number; weekday: number } {
-    const fmt = new Intl.DateTimeFormat('en-US', {
-      timeZone: 'America/New_York',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: false,
-      weekday: 'short',
-    });
-    const parts = fmt.formatToParts(date);
+    const parts = ET_PARTS_FMT.formatToParts(date);
     const map: Record<string, string> = {};
     for (const p of parts) map[p.type] = p.value;
     const wdMap: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
