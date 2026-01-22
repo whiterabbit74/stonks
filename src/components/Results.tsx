@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useRef } from 'react';
-import { Heart, RefreshCcw, AlertTriangle, Loader2 } from 'lucide-react';
+import { Heart, RefreshCcw, AlertTriangle, Loader2, ChevronDown } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { DatasetAPI } from '../lib/api';
 import {
@@ -68,6 +68,9 @@ export function Results() {
   const resultsQuoteProvider = useAppStore((s) => s.resultsQuoteProvider);
   const resultsRefreshProvider = useAppStore((s) => s.resultsRefreshProvider);
   const loadDatasetFromServer = useAppStore((s) => s.loadDatasetFromServer);
+  const loadDatasetsFromServer = useAppStore((s) => s.loadDatasetsFromServer);
+  const savedDatasets = useAppStore((s) => s.savedDatasets);
+  const isLoading = useAppStore((s) => s.isLoading);
   const analysisTabsConfig = useAppStore((s) => s.analysisTabsConfig);
   const [quote, setQuote] = useState<{ open: number | null; high: number | null; low: number | null; current: number | null; prevClose: number | null } | null>(null);
   const [quoteError, setQuoteError] = useState<string | null>(null);
@@ -145,6 +148,13 @@ export function Results() {
   // Use a ref to track the last synced symbol to avoid loops
   // Initialize with current symbol to prevent overwriting URL on initial load if no param
   const lastSyncedSymbol = useRef(symbol);
+
+  // Load available datasets if we are in "empty" state (no ticker in URL)
+  useEffect(() => {
+    if (!requestedTicker && savedDatasets.length === 0) {
+      loadDatasetsFromServer();
+    }
+  }, [requestedTicker, savedDatasets.length, loadDatasetsFromServer]);
 
   useEffect(() => {
     if (requestedTicker) {
@@ -480,33 +490,82 @@ export function Results() {
     setBuyHoldAppliedLeverage(pct / 100);
   };
 
-  // Redirect to data page if no dataset is selected
-  useEffect(() => {
-    // Only redirect if we don't have a dataset AND we aren't trying to load one via URL
-    if (!currentDataset && !searchParams.get('ticker')) {
-      navigate('/data');
-    }
-  }, [currentDataset, navigate, searchParams]);
-
   if (!backtestResults) {
+    // 1. Ticker requested but not ready -> Show Loading
+    if (requestedTicker) {
+      return (
+        <div className="flex flex-col items-center justify-center min-h-[50vh] space-y-4 animate-fade-in">
+          <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
+          <div className="text-center space-y-2">
+            <p className="text-lg font-medium text-gray-900 dark:text-gray-100">
+              {isLoading
+                ? `Загрузка данных ${requestedTicker}...`
+                : (backtestStatus === 'running' ? 'Запуск бэктеста…' : `Подготовка ${requestedTicker}…`)}
+            </p>
+            {storeError && (
+              <div className="text-sm text-red-600 max-w-md mx-auto">{String(storeError)}</div>
+            )}
+            {!isLoading && backtestStatus !== 'running' && (
+               <button
+                 onClick={() => {
+                   if (requestedTicker) loadDatasetFromServer(requestedTicker.toUpperCase());
+                   else runBacktest();
+                 }}
+                 className="mt-2 inline-flex items-center px-4 py-2 rounded-md bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition"
+               >
+                 Повторить загрузку
+               </button>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    // 2. No ticker requested -> Show Selection Menu
     return (
-      <div className="text-center py-8">
-        <div className="space-y-3">
-          <p className="text-gray-600">
-            {backtestStatus === 'running' ? 'Запуск бэктеста…' : 'Готовим бэктест…'}
-          </p>
-          {storeError && (
-            <div className="text-sm text-red-600">{String(storeError)}</div>
-          )}
-          {backtestStatus !== 'running' && (
-            <button
-              onClick={() => runBacktest()}
-              className="inline-flex items-center px-3 py-1.5 rounded-md bg-blue-600 text-white text-sm hover:bg-blue-700"
+      <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-6 animate-fade-in">
+        <div className="text-center space-y-2">
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Выберите тикер</h2>
+          <p className="text-gray-500 dark:text-gray-400">Выберите актив для анализа и бэктеста</p>
+        </div>
+
+        <div className="w-full max-w-xs relative">
+          {savedDatasets.length > 0 ? (
+            <select
+              className="w-full px-4 py-3 pr-8 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 outline-none transition appearance-none cursor-pointer"
+              onChange={(e) => {
+                if (e.target.value) {
+                  setSearchParams({ ticker: e.target.value });
+                }
+              }}
+              defaultValue=""
             >
-              Запустить бэктест
-            </button>
+              <option value="" disabled>Список тикеров...</option>
+              {savedDatasets.map(d => (
+                <option key={d.ticker} value={d.ticker}>{d.ticker}</option>
+              ))}
+            </select>
+          ) : (
+            <div className="text-center p-4 border rounded-lg bg-gray-50 dark:bg-gray-800 dark:border-gray-700">
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">Нет доступных данных</p>
+              <button
+                onClick={() => navigate('/data')}
+                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition text-sm"
+              >
+                Загрузить данные
+              </button>
+            </div>
+          )}
+          {savedDatasets.length > 0 && (
+             <div className="absolute inset-y-0 right-0 flex items-center px-3 pointer-events-none text-gray-500">
+               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+             </div>
           )}
         </div>
+
+        {storeError && (
+          <div className="text-sm text-red-600 mt-4">{String(storeError)}</div>
+        )}
       </div>
     );
   }
