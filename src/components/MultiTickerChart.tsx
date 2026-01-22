@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import { createChart, type IChartApi, type ISeriesApi, type UTCTimestamp } from 'lightweight-charts';
 import type { OHLCData, Trade } from '../types';
 import { logError } from '../lib/error-logger';
+import { toChartTimestamp } from '../lib/date-utils';
 
 interface TickerData {
   ticker: string;
@@ -24,6 +25,99 @@ export function MultiTickerChart({ tickersData, trades = [], height = 600 }: Mul
   const [isDark, setIsDark] = useState<boolean>(() =>
     typeof document !== 'undefined' ? document.documentElement.classList.contains('dark') : false
   );
+
+  // Memoize data preparation to avoid recalculation on re-renders (e.g. theme change)
+  const preparedTickersData = useMemo(() => {
+    return tickersData.map(tickerData => {
+      const chartData = tickerData.data.map((bar, idx) => {
+        try {
+          // Optimization: Use toChartTimestamp which is faster and safer than new Date(string)
+          // toChartTimestamp uses Date.UTC which avoids parsing overhead
+          const t = toChartTimestamp(bar.date);
+          const open = Number(bar.open);
+          const high = Number(bar.high);
+          const low = Number(bar.low);
+          const close = Number(bar.close);
+
+          if (!Number.isFinite(open) || !Number.isFinite(high) ||
+            !Number.isFinite(low) || !Number.isFinite(close)) {
+            logError('chart', 'Invalid candle values', {
+              ticker: tickerData.ticker, idx, bar
+            }, 'MultiTickerChart.setData');
+            return null;
+          }
+          return { time: t, open, high, low, close };
+        } catch (e) {
+          logError('chart', 'Failed to map candle', {
+            ticker: tickerData.ticker, idx, bar
+          }, 'MultiTickerChart.setData', (e as any)?.stack);
+          return null;
+        }
+      }).filter((bar): bar is { time: UTCTimestamp; open: number; high: number; low: number; close: number } => bar !== null);
+
+      return {
+        ...tickerData,
+        chartData
+      };
+    });
+  }, [tickersData]);
+
+  // Memoize markers preparation
+  const markersByTicker = useMemo(() => {
+    const map = new Map<string, Array<{ time: UTCTimestamp; position: 'belowBar' | 'aboveBar'; color: string; shape: 'arrowUp' | 'arrowDown'; text: string }>>();
+    if (!trades.length) return map;
+
+    // Group trades by ticker first
+    const tradesByTicker = new Map<string, Trade[]>();
+    trades.forEach(t => {
+      const ticker = (t.context?.ticker || '').toUpperCase();
+      if (!ticker) return;
+      if (!tradesByTicker.has(ticker)) tradesByTicker.set(ticker, []);
+      tradesByTicker.get(ticker)!.push(t);
+    });
+
+    tradesByTicker.forEach((tickerTrades, ticker) => {
+      const markers = tickerTrades.flatMap(trade => {
+        const result: Array<{ time: UTCTimestamp; position: 'belowBar' | 'aboveBar'; color: string; shape: 'arrowUp' | 'arrowDown'; text: string }> = [];
+
+        // Entry marker
+        if (trade.entryDate) {
+          try {
+            const entryTime = toChartTimestamp(trade.entryDate);
+            result.push({
+              time: entryTime,
+              position: 'belowBar' as const,
+              color: '#2196F3',
+              shape: 'arrowUp' as const,
+              text: `Buy @ ${Math.floor(trade.entryPrice)}`
+            });
+          } catch { /* ignore invalid dates */ }
+        }
+
+        // Exit marker
+        if (trade.exitDate && trade.exitReason !== 'end_of_data') {
+          try {
+            const exitTime = toChartTimestamp(trade.exitDate);
+            result.push({
+              time: exitTime,
+              position: 'aboveBar' as const,
+              color: '#2196F3',
+              shape: 'arrowDown' as const,
+              text: `Sell @ ${Math.floor(trade.exitPrice)}`
+            });
+          } catch { /* ignore invalid dates */ }
+        }
+
+        return result;
+      });
+
+      if (markers.length > 0) {
+        markers.sort((a, b) => (a.time as number) - (b.time as number));
+        map.set(ticker, markers);
+      }
+    });
+    return map;
+  }, [trades]);
 
   // Cleanup function for chart resources
   const cleanupChart = () => {
@@ -74,7 +168,7 @@ export function MultiTickerChart({ tickersData, trades = [], height = 600 }: Mul
   }, []);
 
   useEffect(() => {
-    if (!chartContainerRef.current || !tickersData.length) return;
+    if (!chartContainerRef.current || !preparedTickersData.length) return;
 
     try {
       const bg = isDark ? '#0b1220' : '#ffffff';
@@ -119,11 +213,11 @@ export function MultiTickerChart({ tickersData, trades = [], height = 600 }: Mul
         { up: '#84CC16', down: '#DC2626' }, // Lime/Red
       ];
 
-      const numberOfTickers = tickersData.length;
+      const numberOfTickers = preparedTickersData.length;
       const heightPerTicker = 1 / numberOfTickers;
 
       // Create series for each ticker as a subplot
-      tickersData.forEach((tickerData, index) => {
+      preparedTickersData.forEach((tickerData, index) => {
         const colors = tickerColors[index % tickerColors.length];
 
         // Calculate margins for this subplot
@@ -153,81 +247,23 @@ export function MultiTickerChart({ tickersData, trades = [], height = 600 }: Mul
           borderVisible: true,
         });
 
-        // Convert and set data
-        const chartData = tickerData.data.map((bar, idx) => {
-          try {
-            const t = Math.floor(new Date(bar.date).getTime() / 1000) as UTCTimestamp;
-            const open = Number(bar.open);
-            const high = Number(bar.high);
-            const low = Number(bar.low);
-            const close = Number(bar.close);
-
-            if (!Number.isFinite(open) || !Number.isFinite(high) ||
-              !Number.isFinite(low) || !Number.isFinite(close)) {
-              logError('chart', 'Invalid candle values', {
-                ticker: tickerData.ticker, idx, bar
-              }, 'MultiTickerChart.setData');
-            }
-            return { time: t, open, high, low, close };
-          } catch (e) {
-            logError('chart', 'Failed to map candle', {
-              ticker: tickerData.ticker, idx, bar
-            }, 'MultiTickerChart.setData', (e as any)?.stack);
-            return { time: 0 as UTCTimestamp, open: 0, high: 0, low: 0, close: 0 };
-          }
-        });
-
         try {
-          series.setData(chartData);
+          series.setData(tickerData.chartData);
           seriesRefsRef.current.set(tickerData.ticker, series);
 
           // Add trade markers for this ticker
-          const tickerTrades = trades.filter(t =>
-            (t.context?.ticker || '').toUpperCase() === tickerData.ticker.toUpperCase()
-          );
+          const markers = markersByTicker.get(tickerData.ticker.toUpperCase());
 
-          if (tickerTrades.length > 0) {
-            const markers = tickerTrades.flatMap(trade => {
-              const result = [];
-
-              // Entry marker (matching TradingChart style)
-              if (trade.entryDate) {
-                const entryTime = Math.floor(new Date(trade.entryDate).getTime() / 1000) as UTCTimestamp;
-                result.push({
-                  time: entryTime,
-                  position: 'belowBar' as const,
-                  color: '#2196F3',
-                  shape: 'arrowUp' as const,
-                  text: `Buy @ ${Math.floor(trade.entryPrice)}`
-                });
-              }
-
-              // Exit marker (matching TradingChart style)
-              if (trade.exitDate && trade.exitReason !== 'end_of_data') {
-                const exitTime = Math.floor(new Date(trade.exitDate).getTime() / 1000) as UTCTimestamp;
-                result.push({
-                  time: exitTime,
-                  position: 'aboveBar' as const,
-                  color: '#2196F3',
-                  shape: 'arrowDown' as const,
-                  text: `Sell @ ${Math.floor(trade.exitPrice)}`
-                });
-              }
-
-              return result;
-            });
-
-            if (markers.length > 0) {
-              // Sort markers by time
-              markers.sort((a, b) => (a.time as number) - (b.time as number));
-              series.setMarkers?.(markers);
+          if (markers && markers.length > 0) {
+            if (typeof series.setMarkers === 'function') {
+              series.setMarkers(markers);
             }
           }
         } catch (e) {
           logError('chart', 'series.setData failed', {
             ticker: tickerData.ticker,
-            length: chartData.length,
-            sample: chartData.slice(0, 3)
+            length: tickerData.chartData.length,
+            sample: tickerData.chartData.slice(0, 3)
           }, 'MultiTickerChart', (e as any)?.stack);
         }
       });
@@ -240,7 +276,7 @@ export function MultiTickerChart({ tickersData, trades = [], height = 600 }: Mul
       tickerLabels.style.zIndex = '10';
       tickerLabels.style.pointerEvents = 'none';
 
-      tickersData.forEach((tickerData, index) => {
+      preparedTickersData.forEach((tickerData, index) => {
         const label = document.createElement('div');
         label.textContent = tickerData.ticker;
         label.style.position = 'absolute';
@@ -280,11 +316,11 @@ export function MultiTickerChart({ tickersData, trades = [], height = 600 }: Mul
       return cleanupChart;
     } catch (error) {
       logError('chart', 'Error creating multi-ticker chart', {
-        tickersCount: tickersData.length
+        tickersCount: preparedTickersData.length
       }, 'MultiTickerChart', (error as any)?.stack);
       return;
     }
-  }, [tickersData, height, isDark]);
+  }, [preparedTickersData, markersByTicker, height, isDark]);
 
   // Cleanup on unmount
   useEffect(() => {
