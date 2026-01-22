@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Database, Download, Trash2, Calendar, ServerOff, RefreshCw, Edit, List, LayoutGrid, Plus, MoreVertical } from 'lucide-react';
 import { useAppStore } from '../stores';
-import { createStrategyFromTemplate, STRATEGY_TEMPLATES } from '../lib/strategy';
 import { DatasetAPI } from '../lib/api';
 import type { SavedDataset } from '../types';
 import { ConfirmModal } from './ConfirmModal';
@@ -19,14 +18,10 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
   const navigate = useNavigate();
   const savedDatasets = useAppStore(s => s.savedDatasets);
   const currentDataset = useAppStore(s => s.currentDataset);
-  const currentStrategy = useAppStore(s => s.currentStrategy);
-  const setStrategy = useAppStore(s => s.setStrategy);
-  const loadDatasetFromServer = useAppStore(s => s.loadDatasetFromServer);
   const deleteDatasetFromServer = useAppStore(s => s.deleteDatasetFromServer);
   const exportDatasetAsJSON = useAppStore(s => s.exportDatasetAsJSON);
   const loadDatasetsFromServer = useAppStore(s => s.loadDatasetsFromServer);
   const resultsRefreshProvider = useAppStore(s => s.resultsRefreshProvider);
-  const runBacktest = useAppStore(s => s.runBacktest);
   const [refreshingId, setRefreshingId] = useState<string | null>(null);
   const [serverStatus, setServerStatus] = useState<'checking' | 'online' | 'offline'>('checking');
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -427,7 +422,7 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
                   value={editTag}
                   onChange={(e) => setEditTag(e.target.value)}
                   placeholder="Например: tech, growth, dividend (через запятую)"
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-800 dark:text-gray-100"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-800 dark:text-gray-100 text-base md:text-sm"
                 />
               </div>
 
@@ -440,7 +435,7 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
                   value={editCompanyName}
                   onChange={(e) => setEditCompanyName(e.target.value)}
                   placeholder="Например: Apple Inc."
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-800 dark:text-gray-100"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-800 dark:text-gray-100 text-base md:text-sm"
                 />
               </div>
             </div>

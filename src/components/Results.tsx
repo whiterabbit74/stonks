@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useRef } from 'react';
-import { Heart, RefreshCcw, AlertTriangle, Loader2, ChevronDown } from 'lucide-react';
+import { Heart, RefreshCcw, AlertTriangle, Loader2 } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { DatasetAPI } from '../lib/api';
 import {
@@ -746,7 +746,7 @@ export function Results() {
                 </div>
               </div>
             </div>
-            <div className="w-full xl:w-56 grid grid-cols-3 xl:flex xl:flex-col gap-2">
+            <div className="w-full xl:w-56 grid grid-cols-2 sm:grid-cols-3 xl:flex xl:flex-col gap-2">
               <div className="rounded-lg border p-2 bg-gray-50 dark:bg-gray-800 dark:border-gray-700">
                 <div className="text-xs text-gray-500 dark:text-gray-300">CAGR</div>
                 <div className="text-base font-semibold dark:text-gray-100">{metrics.cagr.toFixed(2)}%</div>
