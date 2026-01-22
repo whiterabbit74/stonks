@@ -73,23 +73,22 @@ export function calculateVolatility(prices: number[], _window = 30): number {
 /**
  * Finds the expiration date based on a number of weeks ahead.
  * Adds `weeks * 7` days to the start date, then finds the next Friday (or stays on Friday).
- * Uses UTC methods to ensure consistency across timezones.
  * @param fromDate Start date
  * @param weeks Number of weeks to add before finding the next Friday (default: 4)
  */
 export function getExpirationDate(fromDate: Date, weeks: number = 4): Date {
   const targetDate = new Date(fromDate);
-  targetDate.setUTCDate(targetDate.getUTCDate() + (weeks * 7));
+  targetDate.setDate(targetDate.getDate() + (weeks * 7));
 
   // Find the next Friday (5)
   // Day: 0 (Sun) to 6 (Sat)
-  const day = targetDate.getUTCDay();
+  const day = targetDate.getDay();
   const diff = 5 - day; // If Fri (5), diff=0. If Sat (6), diff=-1 (needs +6).
 
   let daysToAdd = diff;
   if (daysToAdd < 0) daysToAdd += 7; // Move to next week if passed
 
-  targetDate.setUTCDate(targetDate.getUTCDate() + daysToAdd);
+  targetDate.setDate(targetDate.getDate() + daysToAdd);
   return targetDate;
 }
 
