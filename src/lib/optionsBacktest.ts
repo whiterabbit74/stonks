@@ -7,6 +7,7 @@ interface OptionsBacktestConfig {
     volAdjPct: number; // e.g. 20 for 20%
     capitalPct: number; // e.g. 10 for 10% of current capital
     riskFreeRate?: number; // default 0.05
+    expirationWeeks?: number; // default 4
 }
 
 interface OptionTrade extends Trade {
@@ -25,7 +26,7 @@ export function runOptionsBacktest(
     marketData: OHLCData[],
     config: OptionsBacktestConfig
 ): { equity: EquityPoint[]; trades: OptionTrade[]; finalValue: number } {
-    const { strikePct, volAdjPct, capitalPct, riskFreeRate = 0.05 } = config;
+    const { strikePct, volAdjPct, capitalPct, riskFreeRate = 0.05, expirationWeeks = 4 } = config;
     const initialCapital = 10000; // Hardcoded base for simulation comparison
 
     // Create a map for quick price/index lookup
@@ -92,7 +93,7 @@ export function runOptionsBacktest(
                    const strikeRaw = spot * (1 + strikePct / 100);
                    const strike = Math.round(strikeRaw);
 
-                   const expiration = getExpirationDate(currentDate);
+                   const expiration = getExpirationDate(currentDate, expirationWeeks);
                    const T = getYearsToMaturity(currentDate, expiration);
 
                    // Option Price (Ask)
