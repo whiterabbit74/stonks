@@ -170,6 +170,15 @@ export const TradesTable = React.memo(function TradesTable({
 							formattedExitReason = `IBS ${(exitIBS * 100).toFixed(1)}%`;
 						}
 
+                        // Special handling for Option Trades
+                        const isOptionTrade = (t as any).optionType === 'call';
+                        const entryPriceDisplay = isOptionTrade ? (t as any).optionEntryPrice : t.entryPrice;
+                        const exitPriceDisplay = isOptionTrade ? (t as any).optionExitPrice : t.exitPrice;
+                        const quantityDisplay = isOptionTrade ? (t as any).contracts : t.quantity;
+                        const investedDisplay = isOptionTrade
+                             ? (t as any).contracts * (t as any).optionEntryPrice
+                             : (typeof t.context?.initialInvestment === 'number' ? t.context.initialInvestment : t.quantity * t.entryPrice);
+
 						return (
 							<tr key={t.id || `${t.entryDate}-${t.exitDate}-${i}`} className="border-b last:border-b-0 dark:border-gray-800">
 								<td className="px-3 py-2 text-gray-500">{(page - 1) * PAGE_SIZE + i + 1}</td>
@@ -180,11 +189,11 @@ export const TradesTable = React.memo(function TradesTable({
 										{typeof entryIBS === 'number' ? `${(entryIBS * 100).toFixed(1)}%` : '—'} - {typeof exitIBS === 'number' ? `${(exitIBS * 100).toFixed(1)}%` : '—'}
 									</div>
 								</td>
-								<td className="px-3 py-2 text-right font-mono">{t.entryPrice.toFixed(2)}</td>
-								<td className="px-3 py-2 text-right font-mono">{t.exitPrice.toFixed(2)}</td>
-								<td className="px-3 py-2 text-right">{t.quantity.toLocaleString()}</td>
+								<td className="px-3 py-2 text-right font-mono">{entryPriceDisplay?.toFixed(2)}</td>
+								<td className="px-3 py-2 text-right font-mono">{exitPriceDisplay?.toFixed(2)}</td>
+								<td className="px-3 py-2 text-right">{quantityDisplay?.toLocaleString()}</td>
 								<td className="px-3 py-2 text-right font-mono text-blue-600 dark:text-blue-400">
-									{typeof t.context?.initialInvestment === 'number' ? t.context.initialInvestment.toFixed(2) : (t.quantity * t.entryPrice).toFixed(2)}
+									{investedDisplay?.toFixed(2)}
 									{typeof (t.context as any)?.leverage === 'number' && (t.context as any)?.leverage > 1 && (
 										<div className="text-xs text-gray-500">{(t.context as any).leverage}:1</div>
 									)}
