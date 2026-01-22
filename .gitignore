@@ -42,8 +42,9 @@ server/telegram-watches.json
 server/settings.json
 server/*.log
 
-# Large data not needed in repo
-server/datasets/
+# Large data not needed in repo, except for specific test data
+server/datasets/*
+!server/datasets/GOOGL_production.json
 
 .env.remote
 
