@@ -237,10 +237,9 @@ describe('Validation Module', () => {
         close: 105,
         volume: 1000
       });
-      expect(result[0].date).toBeInstanceOf(Date);
-      expect(result[0].date.getFullYear()).toBe(2024);
-      expect(result[0].date.getMonth()).toBe(0); // January
-      expect(result[0].date.getDate()).toBe(1);
+      // Expected string format 'YYYY-MM-DD'
+      expect(typeof result[0].date).toBe('string');
+      expect(result[0].date).toBe('2024-01-01');
     });
 
     it('should handle CSV parsing errors', async () => {
