@@ -214,8 +214,10 @@ export const TradingChart = memo(function TradingChart({ data, trades, splits = 
         }
         const bar = seriesData.get(candlestickSeries as unknown as object) as { open?: number; high?: number; low?: number; close?: number } | undefined;
 
-        const vol = (showVolumeRef.current && volumeSeries) ? (seriesData.get(volumeSeries as unknown as object) as { value?: number } | undefined)?.value : undefined;
-        const ibsVal = (showIBSRef.current && ibsHist) ? (seriesData.get(ibsHist as unknown as object) as { value?: number } | undefined)?.value : undefined;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const vol = (showVolumeRef.current && volumeSeries) ? (seriesData.get(volumeSeries as any) as { value?: number } | undefined)?.value : undefined;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const ibsVal = (showIBSRef.current && ibsHist) ? (seriesData.get(ibsHist as any) as { value?: number } | undefined)?.value : undefined;
 
         const o = bar?.open, h = bar?.high, l = bar?.low, c = bar?.close;
         const pct = o ? (((c! - o) / o) * 100) : 0;
@@ -232,7 +234,11 @@ export const TradingChart = memo(function TradingChart({ data, trades, splits = 
         try {
           const w = chartContainerRef.current.clientWidth;
           const total = chartContainerRef.current.clientHeight || 600;
-          chartRef.current.applyOptions({ width: w, height: Math.max(total, 600) });
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          if (chartRef.current && typeof (chartRef.current as any).applyOptions === 'function') {
+             // eslint-disable-next-line @typescript-eslint/no-explicit-any
+             (chartRef.current as any).applyOptions({ width: w, height: Math.max(total, 600) });
+          }
         } catch {
            // ignore
         }
@@ -323,7 +329,8 @@ export const TradingChart = memo(function TradingChart({ data, trades, splits = 
         candlestickSeriesRef.current.setData(chartData);
 
         // Initial time scale
-        try { chartRef.current?.timeScale().applyOptions({ rightOffset: 8 }); } catch { /* ignore */ }
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        try { if (chartRef.current?.timeScale) (chartRef.current.timeScale() as any).applyOptions({ rightOffset: 8 }); } catch { /* ignore */ }
 
         if (volumeSeriesRef.current) {
             volumeSeriesRef.current.setData(volumeData);
@@ -410,29 +417,41 @@ export const TradingChart = memo(function TradingChart({ data, trades, splits = 
     const volumeTopMargin = 1 - indicatorFraction;
 
     try {
-      candlestickSeriesRef.current.priceScale().applyOptions({
-        scaleMargins: {
-          top: 0.1,
-          bottom: priceBottomMargin,
-        },
-      });
-
-      if (volumeSeriesRef.current) {
-        volumeSeriesRef.current.priceScale().applyOptions({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const candlePriceScale = candlestickSeriesRef.current.priceScale() as any;
+      if (candlePriceScale && typeof candlePriceScale.applyOptions === 'function') {
+        candlePriceScale.applyOptions({
           scaleMargins: {
-            top: volumeTopMargin,
-            bottom: 0,
+            top: 0.1,
+            bottom: priceBottomMargin,
           },
         });
       }
 
+      if (volumeSeriesRef.current) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const volPriceScale = volumeSeriesRef.current.priceScale() as any;
+        if (volPriceScale && typeof volPriceScale.applyOptions === 'function') {
+          volPriceScale.applyOptions({
+            scaleMargins: {
+              top: volumeTopMargin,
+              bottom: 0,
+            },
+          });
+        }
+      }
+
       if (ibsSeriesRef.current) {
-        ibsSeriesRef.current.priceScale().applyOptions({
-          scaleMargins: {
-            top: volumeTopMargin,
-            bottom: 0,
-          },
-        });
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const ibsPriceScale = ibsSeriesRef.current.priceScale() as any;
+        if (ibsPriceScale && typeof ibsPriceScale.applyOptions === 'function') {
+          ibsPriceScale.applyOptions({
+            scaleMargins: {
+              top: volumeTopMargin,
+              bottom: 0,
+            },
+          });
+        }
       }
     } catch {
       // ignore
@@ -446,10 +465,21 @@ export const TradingChart = memo(function TradingChart({ data, trades, splits = 
   }, [showIBS, showVolume]);
 
   useEffect(() => {
-    try { ibsSeriesRef.current?.applyOptions?.({ visible: showIBS }); } catch { /* ignore */ }
-    try { volumeSeriesRef.current?.applyOptions?.({ visible: showVolume }); } catch { /* ignore */ }
-    try { ema20SeriesRef.current?.applyOptions?.({ visible: showEMA20 }); } catch { /* ignore */ }
-    try { ema200SeriesRef.current?.applyOptions?.({ visible: showEMA200 }); } catch { /* ignore */ }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const sIBS = ibsSeriesRef.current as any;
+    if (sIBS?.applyOptions) try { sIBS.applyOptions({ visible: showIBS }); } catch { /* ignore */ }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const sVol = volumeSeriesRef.current as any;
+    if (sVol?.applyOptions) try { sVol.applyOptions({ visible: showVolume }); } catch { /* ignore */ }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const sEma20 = ema20SeriesRef.current as any;
+    if (sEma20?.applyOptions) try { sEma20.applyOptions({ visible: showEMA20 }); } catch { /* ignore */ }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const sEma200 = ema200SeriesRef.current as any;
+    if (sEma200?.applyOptions) try { sEma200.applyOptions({ visible: showEMA200 }); } catch { /* ignore */ }
   }, [showIBS, showVolume, showEMA20, showEMA200, chartReady]);
 
 

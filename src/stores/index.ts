@@ -344,8 +344,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         uploadDate: new Date().toISOString(),
         dataPoints: marketData.length,
         dateRange: marketData.length > 0 ? {
-          from: marketData[0].date.toISOString().split('T')[0],
-          to: marketData[marketData.length - 1].date.toISOString().split('T')[0]
+          from: String(marketData[0].date).slice(0, 10),
+          to: String(marketData[marketData.length - 1].date).slice(0, 10)
         } : {
           from: new Date().toISOString().split('T')[0],
           to: new Date().toISOString().split('T')[0]
@@ -484,8 +484,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         uploadDate: new Date().toISOString(),
         dataPoints: marketData.length,
         dateRange: marketData.length > 0 ? {
-          from: marketData[0].date.toISOString().split('T')[0],
-          to: marketData[marketData.length - 1].date.toISOString().split('T')[0],
+          from: String(marketData[0].date).slice(0, 10),
+          to: String(marketData[marketData.length - 1].date).slice(0, 10),
         } : {
           from: new Date().toISOString().split('T')[0],
           to: new Date().toISOString().split('T')[0],

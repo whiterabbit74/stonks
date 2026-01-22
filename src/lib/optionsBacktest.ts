@@ -62,7 +62,6 @@ export function runOptionsBacktest(
     // and rebuild the daily equity curve at the end or on the fly.
     // Let's do daily tracking to be accurate.
 
-    let tradeIndex = 0;
     let activeTrade: OptionTrade | null = null;
     let portfolioValue = initialCapital;
 
