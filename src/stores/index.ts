@@ -405,9 +405,7 @@ export const useAppStore = create<AppState>((set, get) => ({
             currentDataset: dataset,
             currentSplits: [],
             lastAppliedSplitsKey: null,
-            isLoading: false,
             error: null,
-            currentLoadOperation: null
           });
         }
       } else {
@@ -428,9 +426,7 @@ export const useAppStore = create<AppState>((set, get) => ({
             currentDataset: dataset,
             currentSplits: splits,
             lastAppliedSplitsKey: (splits && splits.length ? key : null),
-            isLoading: false,
             error: null,
-            currentLoadOperation: null
           });
         }
       }
@@ -443,6 +439,10 @@ export const useAppStore = create<AppState>((set, get) => ({
           const strat = createStrategyFromTemplate(STRATEGY_TEMPLATES[0]);
           set({ currentStrategy: strat });
         }
+
+        // Mark loading as complete
+        set({ isLoading: false, currentLoadOperation: null });
+
         // Run backtest asynchronously but don't await to prevent blocking
         get().runBacktest().catch((error) => {
           console.error('Backtest failed after dataset load:', error);
@@ -587,7 +587,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
     }
     if (!marketData.length || !currentStrategy) {
-      set({ error: 'Отсутствуют данные или стратегия' });
+      set({ error: 'Отсутствуют данные или стратегия', backtestStatus: 'error' });
       return;
     }
     set({ backtestStatus: 'running', error: null });

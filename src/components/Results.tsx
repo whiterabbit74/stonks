@@ -500,7 +500,9 @@ export function Results() {
             <p className="text-lg font-medium text-gray-900 dark:text-gray-100">
               {isLoading
                 ? `Загрузка данных ${requestedTicker}...`
-                : (backtestStatus === 'running' ? 'Запуск бэктеста…' : `Подготовка ${requestedTicker}…`)}
+                : (storeError
+                  ? `Ошибка загрузки ${requestedTicker}`
+                  : (backtestStatus === 'running' ? 'Запуск бэктеста…' : `Подготовка ${requestedTicker}…`))}
             </p>
             {storeError && (
               <div className="text-sm text-red-600 max-w-md mx-auto">{String(storeError)}</div>
