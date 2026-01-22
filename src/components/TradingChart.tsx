@@ -404,7 +404,9 @@ export const TradingChart = memo(function TradingChart({ data, trades, splits = 
         allMarkers.push(...splitMarkers);
       }
       try {
-        candlestickSeriesRef.current.setMarkers(allMarkers);
+        if (candlestickSeriesRef.current && typeof candlestickSeriesRef.current.setMarkers === 'function') {
+           candlestickSeriesRef.current.setMarkers(allMarkers);
+        }
       } catch { /* ignore */ }
   }, [chartReady, trades, splits, data]); // Data needed for split date matching? Yes.
 
@@ -467,19 +469,27 @@ export const TradingChart = memo(function TradingChart({ data, trades, splits = 
   useEffect(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const sIBS = ibsSeriesRef.current as any;
-    if (sIBS?.applyOptions) try { sIBS.applyOptions({ visible: showIBS }); } catch { /* ignore */ }
+    if (sIBS && typeof sIBS.applyOptions === 'function') {
+      try { sIBS.applyOptions({ visible: showIBS }); } catch { /* ignore */ }
+    }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const sVol = volumeSeriesRef.current as any;
-    if (sVol?.applyOptions) try { sVol.applyOptions({ visible: showVolume }); } catch { /* ignore */ }
+    if (sVol && typeof sVol.applyOptions === 'function') {
+      try { sVol.applyOptions({ visible: showVolume }); } catch { /* ignore */ }
+    }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const sEma20 = ema20SeriesRef.current as any;
-    if (sEma20?.applyOptions) try { sEma20.applyOptions({ visible: showEMA20 }); } catch { /* ignore */ }
+    if (sEma20 && typeof sEma20.applyOptions === 'function') {
+      try { sEma20.applyOptions({ visible: showEMA20 }); } catch { /* ignore */ }
+    }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const sEma200 = ema200SeriesRef.current as any;
-    if (sEma200?.applyOptions) try { sEma200.applyOptions({ visible: showEMA200 }); } catch { /* ignore */ }
+    if (sEma200 && typeof sEma200.applyOptions === 'function') {
+      try { sEma200.applyOptions({ visible: showEMA200 }); } catch { /* ignore */ }
+    }
   }, [showIBS, showVolume, showEMA20, showEMA200, chartReady]);
 
 
