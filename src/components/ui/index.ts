@@ -2,8 +2,9 @@
 export { Button } from './Button';
 export type { ButtonVariant, ButtonSize } from './Button';
 
-export { ToastProvider, useToast, useToastActions } from './Toast';
-export type { ToastType } from './Toast';
+export { ToastProvider } from './Toast';
+export { useToast, useToastActions } from './toast-context';
+export type { ToastType } from './toast-context';
 
 export { Skeleton, SkeletonCard, SkeletonTable, SkeletonChart } from './Skeleton';
 

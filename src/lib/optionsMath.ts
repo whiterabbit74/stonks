@@ -50,7 +50,8 @@ export function blackScholes(
  * @param window Window size (e.g. 30 days)
  * @returns annualized volatility (decimal)
  */
-export function calculateVolatility(prices: number[], _window: number = 30): number {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export function calculateVolatility(prices: number[], _window = 30): number {
   if (prices.length < 2) return 0;
 
   const returns: number[] = [];

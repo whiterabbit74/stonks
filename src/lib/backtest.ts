@@ -757,7 +757,7 @@ export class BacktestEngine {
     // Validate data integrity - now accepts TradingDate strings
     for (let i = 0; i < this.data.length; i++) {
       const bar = this.data[i];
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
       const hasValidDate = typeof bar.date === 'string' ? isValidTradingDate(bar.date) : ((bar.date as any) instanceof Date && !isNaN((bar.date as any).getTime()));
       if (!hasValidDate || bar.open == null || bar.high == null || bar.low == null || bar.close == null) {
         throw new Error(`Invalid data at index ${i}: missing required fields`);
