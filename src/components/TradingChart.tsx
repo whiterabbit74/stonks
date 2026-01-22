@@ -214,9 +214,9 @@ export const TradingChart = memo(function TradingChart({ data, trades, splits = 
         }
         const bar = seriesData.get(candlestickSeries as unknown as object) as { open?: number; high?: number; low?: number; close?: number } | undefined;
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
         const vol = (showVolumeRef.current && volumeSeries) ? (seriesData.get(volumeSeries as any) as { value?: number } | undefined)?.value : undefined;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
         const ibsVal = (showIBSRef.current && ibsHist) ? (seriesData.get(ibsHist as any) as { value?: number } | undefined)?.value : undefined;
 
         const o = bar?.open, h = bar?.high, l = bar?.low, c = bar?.close;
@@ -234,9 +234,9 @@ export const TradingChart = memo(function TradingChart({ data, trades, splits = 
         try {
           const w = chartContainerRef.current.clientWidth;
           const total = chartContainerRef.current.clientHeight || 600;
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
           if (chartRef.current && typeof (chartRef.current as any).applyOptions === 'function') {
-             // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
              (chartRef.current as any).applyOptions({ width: w, height: Math.max(total, 600) });
           }
         } catch {
@@ -329,7 +329,7 @@ export const TradingChart = memo(function TradingChart({ data, trades, splits = 
         candlestickSeriesRef.current.setData(chartData);
 
         // Initial time scale
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
         try { if (chartRef.current?.timeScale) (chartRef.current.timeScale() as any).applyOptions({ rightOffset: 8 }); } catch { /* ignore */ }
 
         if (volumeSeriesRef.current) {
@@ -419,7 +419,7 @@ export const TradingChart = memo(function TradingChart({ data, trades, splits = 
     const volumeTopMargin = 1 - indicatorFraction;
 
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
       const candlePriceScale = candlestickSeriesRef.current.priceScale() as any;
       if (candlePriceScale && typeof candlePriceScale.applyOptions === 'function') {
         candlePriceScale.applyOptions({
@@ -431,7 +431,7 @@ export const TradingChart = memo(function TradingChart({ data, trades, splits = 
       }
 
       if (volumeSeriesRef.current) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
         const volPriceScale = volumeSeriesRef.current.priceScale() as any;
         if (volPriceScale && typeof volPriceScale.applyOptions === 'function') {
           volPriceScale.applyOptions({
@@ -444,7 +444,7 @@ export const TradingChart = memo(function TradingChart({ data, trades, splits = 
       }
 
       if (ibsSeriesRef.current) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
         const ibsPriceScale = ibsSeriesRef.current.priceScale() as any;
         if (ibsPriceScale && typeof ibsPriceScale.applyOptions === 'function') {
           ibsPriceScale.applyOptions({
@@ -467,25 +467,25 @@ export const TradingChart = memo(function TradingChart({ data, trades, splits = 
   }, [showIBS, showVolume]);
 
   useEffect(() => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const sIBS = ibsSeriesRef.current as any;
     if (sIBS && typeof sIBS.applyOptions === 'function') {
       try { sIBS.applyOptions({ visible: showIBS }); } catch { /* ignore */ }
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const sVol = volumeSeriesRef.current as any;
     if (sVol && typeof sVol.applyOptions === 'function') {
       try { sVol.applyOptions({ visible: showVolume }); } catch { /* ignore */ }
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const sEma20 = ema20SeriesRef.current as any;
     if (sEma20 && typeof sEma20.applyOptions === 'function') {
       try { sEma20.applyOptions({ visible: showEMA20 }); } catch { /* ignore */ }
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const sEma200 = ema200SeriesRef.current as any;
     if (sEma200 && typeof sEma200.applyOptions === 'function') {
       try { sEma200.applyOptions({ visible: showEMA200 }); } catch { /* ignore */ }

@@ -32,7 +32,7 @@ interface NumericValidationOptions {
 
 // Enhanced OHLC data validation
 export function validateOHLCData(data: Partial<OHLCData>[]): ValidationResult & { warnings?: Array<{ field: string; message: string }> } {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   const errors: Array<{ code: string; message: string; row?: number }> = [];
   const warnings: Array<{ field: string; message: string }> = [];
 

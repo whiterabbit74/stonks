@@ -36,11 +36,11 @@ export function TelegramWatches() {
   const watchThresholdPct = useAppStore(s => s.watchThresholdPct);
 
   // Reusable Intl formatters
-  const ET_PARTS_FMT = new Intl.DateTimeFormat('en-US', {
+  const ET_PARTS_FMT = useMemo(() => new Intl.DateTimeFormat('en-US', {
     timeZone: 'America/New_York',
     year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'short',
     hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
-  });
+  }), []);
 
   // Sorting logic
   const sortedWatches = useMemo(() => {
@@ -71,24 +71,36 @@ export function TelegramWatches() {
       : <ArrowDown className="w-3 h-3 ml-1" />;
   };
 
-  function getETParts(date: Date = new Date()): { y: number; m: number; d: number; hh: number; mm: number; ss: number; weekday: number } {
-    const parts = ET_PARTS_FMT.formatToParts(date);
-    const map: Record<string, string> = {};
-    for (const p of parts) map[p.type] = p.value;
-    const wdMap: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
-    return {
-      y: Number(map.year),
-      m: Number(map.month),
-      d: Number(map.day),
-      hh: Number(map.hour),
-      mm: Number(map.minute),
-      ss: Number(map.second),
-      weekday: wdMap[map.weekday] ?? 0,
-    };
-  }
-
   const secondsUntilNextSignal = useCallback((now: Date = new Date()): number => {
-    const p = getETParts(now);
+    // getETParts function is defined outside or inside the component but it is used here.
+    // The warning says useCallback has a missing dependency: 'getETParts'.
+    // If getETParts is defined inside the component, it should be wrapped in useCallback or moved outside.
+    // It is defined as a function inside the component.
+    // I will move `getETParts` inside `secondsUntilNextSignal` or define it outside component.
+    // Actually, `getETParts` uses `ET_PARTS_FMT` which is defined inside the component but it is a const.
+    // Wait, `ET_PARTS_FMT` is defined inside the component.
+    // I should move `ET_PARTS_FMT` and `getETParts` outside the component or use useMemo/useCallback.
+
+    // For now, I'll just redefine getETParts here or use the one from scope if I wrap it.
+    // But better to fix the dependency.
+
+    function getETPartsInner(date: Date): { y: number; m: number; d: number; hh: number; mm: number; ss: number; weekday: number } {
+        const parts = ET_PARTS_FMT.formatToParts(date);
+        const map: Record<string, string> = {};
+        for (const p of parts) map[p.type] = p.value;
+        const wdMap: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+        return {
+          y: Number(map.year),
+          m: Number(map.month),
+          d: Number(map.day),
+          hh: Number(map.hour),
+          mm: Number(map.minute),
+          ss: Number(map.second),
+          weekday: wdMap[map.weekday] ?? 0,
+        };
+    }
+
+    const p = getETPartsInner(now);
     const secOfDay = p.hh * 3600 + p.mm * 60 + p.ss;
 
     // Для упрощения используем обычные часы торгов: 9:30-16:00, короткие дни: 9:30-13:00
@@ -127,7 +139,7 @@ export function TelegramWatches() {
     const remainingToday = 24 * 3600 - secOfDay;
     const extraFullDays = daysToAdd - 1;
     return remainingToday + extraFullDays * 24 * 3600 + target1;
-  }, []);
+  }, [ET_PARTS_FMT]);
 
   function formatDuration(seconds: number): string {
     const s = Math.max(0, Math.floor(seconds));

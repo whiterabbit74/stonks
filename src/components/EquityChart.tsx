@@ -133,7 +133,7 @@ export function EquityChart({ equity, hideHeader, comparisonEquity, comparisonLa
         const mapped = points
           .map((point, idx) => {
             try {
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
               const d = (point?.date as any) instanceof Date ? point.date : new Date(point?.date as any);
               const t = Math.floor((d as Date).getTime() / 1000) as UTCTimestamp;
               const v = Number(point?.value);
