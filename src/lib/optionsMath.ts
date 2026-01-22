@@ -70,27 +70,19 @@ export function calculateVolatility(prices: number[], _window = 30): number {
 }
 
 /**
- * Finds the date of the next month's Friday that corresponds to "Strike date a month ahead".
- * We'll interpret this as: Add 30 days, then find the nearest Friday (or specifically the Friday of that week).
- * Or as per prompt: "Use date month ahead, accordingly Friday".
- * Standard option expiration is 3rd Friday.
- * Let's approximate: Date + 30 days. Then find the next Friday.
+ * Finds the expiration date based on a number of weeks ahead.
+ * Adds `weeks * 7` days to the start date, then finds the next Friday (or stays on Friday).
+ * @param fromDate Start date
+ * @param weeks Number of weeks to add before finding the next Friday (default: 4)
  */
-export function getExpirationDate(fromDate: Date): Date {
-  // Add 1 month (roughly 30 days)
+export function getExpirationDate(fromDate: Date, weeks: number = 4): Date {
   const targetDate = new Date(fromDate);
-  targetDate.setDate(targetDate.getDate() + 30);
+  targetDate.setDate(targetDate.getDate() + (weeks * 7));
 
   // Find the next Friday (5)
   // Day: 0 (Sun) to 6 (Sat)
   const day = targetDate.getDay();
-  const diff = 5 - day; // If Fri (5), diff=0. If Sat (6), diff=-1 (prev Fri) or +6 (next Fri).
-
-  // If we want "upcoming" Friday, ensuring we don't go back?
-  // "Date month ahead, accordingly Friday".
-  // If target is Saturday, Next Friday is +6 days.
-  // If target is Friday, it's today.
-  // If target is Thursday, it's +1 day.
+  const diff = 5 - day; // If Fri (5), diff=0. If Sat (6), diff=-1 (needs +6).
 
   let daysToAdd = diff;
   if (daysToAdd < 0) daysToAdd += 7; // Move to next week if passed
