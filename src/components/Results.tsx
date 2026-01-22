@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import { Heart, RefreshCcw, AlertTriangle, Loader2 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { DatasetAPI } from '../lib/api';
 import {
   isSameDay,
@@ -81,6 +81,7 @@ function simulateLeverageForEquity(equity: EquityPoint[], leverage: number): Equ
 
 export function Results() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const backtestResults = useAppStore((s) => s.backtestResults);
   const marketData = useAppStore((s) => s.marketData);
   const currentStrategy = useAppStore((s) => s.currentStrategy);
@@ -164,7 +165,38 @@ export function Results() {
     currentDataset?.ticker || backtestResults?.symbol || backtestResults?.ticker || backtestResults?.meta?.ticker
   ), [currentDataset, backtestResults]);
 
+  // Sync URL with requested ticker
+  const requestedTicker = searchParams.get('ticker');
+  // Use a ref to track the last synced symbol to avoid loops
+  // Initialize with current symbol to prevent overwriting URL on initial load if no param
+  const lastSyncedSymbol = useRef(symbol);
 
+  useEffect(() => {
+    if (requestedTicker && requestedTicker.toUpperCase() !== symbol) {
+      loadDatasetFromServer(requestedTicker.toUpperCase()).catch(console.error);
+    }
+  }, [requestedTicker, loadDatasetFromServer]); // Intentionally omitting symbol to avoid race conditions
+
+  useEffect(() => {
+    // If symbol changed in store, update URL
+    if (symbol && symbol !== lastSyncedSymbol.current) {
+      setSearchParams(prev => {
+        const next = new URLSearchParams(prev);
+        next.set('ticker', symbol);
+        return next;
+      }, { replace: true });
+      lastSyncedSymbol.current = symbol;
+    }
+    // If we have a symbol but no URL param, set it (initial load case)
+    else if (symbol && !requestedTicker) {
+       setSearchParams(prev => {
+        const next = new URLSearchParams(prev);
+        next.set('ticker', symbol);
+        return next;
+      }, { replace: true });
+       lastSyncedSymbol.current = symbol;
+    }
+  }, [symbol, setSearchParams, requestedTicker]);
 
   const handleRefresh = async () => {
     if (!symbol) return;

@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
-import { RefreshCw, Download, FileSpreadsheet, ChevronDown, ChevronUp, Filter } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { RefreshCw, Download, FileSpreadsheet, ChevronDown, ChevronUp, Filter, ExternalLink } from 'lucide-react';
 import type { MonitorTradeHistoryResponse, MonitorTradeRecord } from '../types';
 
 interface MonitorTradeHistoryPanelProps {
@@ -66,7 +67,15 @@ function TradeRow({ trade, isHighlighted }: { trade: MonitorTradeRecord; isHighl
 
   return (
     <tr className={`border-b last:border-none ${isHighlighted ? 'bg-blue-50/60 dark:bg-blue-900/20' : ''}`}>
-      <td className="px-3 py-2 font-semibold text-gray-900 dark:text-gray-100">{trade.symbol}</td>
+      <td className="px-3 py-2 font-semibold text-gray-900 dark:text-gray-100">
+        <Link
+          to={`/results?ticker=${encodeURIComponent(trade.symbol)}`}
+          className="inline-flex items-center gap-1 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+        >
+          {trade.symbol}
+          <ExternalLink className="w-3 h-3 opacity-50" />
+        </Link>
+      </td>
       <td className="px-3 py-2 text-sm text-gray-600 dark:text-gray-300 whitespace-nowrap">
         <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${statusBadge}`}>
           {trade.status === 'open' ? 'Открыта' : 'Закрыта'}
@@ -324,7 +333,15 @@ export function MonitorTradeHistoryPanel({ data, loading = false, error = null, 
         <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200">
           {openTrade ? (
             <div className="flex flex-wrap items-center gap-4">
-              <div className="text-sm font-medium text-gray-900 dark:text-gray-100">Текущая позиция: {openTrade.symbol}</div>
+              <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                Текущая позиция:{' '}
+                <Link
+                  to={`/results?ticker=${encodeURIComponent(openTrade.symbol)}`}
+                  className="inline-flex items-center gap-1 hover:text-blue-600 dark:hover:text-blue-400 transition-colors underline decoration-dotted underline-offset-2"
+                >
+                  {openTrade.symbol}
+                </Link>
+              </div>
               <div className="text-sm text-gray-600 dark:text-gray-300">
                 Вход {formatDate(openTrade.entryDate)} по {openTrade.entryPrice != null ? `$${formatNumber(openTrade.entryPrice)}` : '—'}
               </div>
