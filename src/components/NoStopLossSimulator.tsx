@@ -5,6 +5,8 @@ import { CleanBacktestEngine, type CleanBacktestOptions } from '../lib/clean-bac
 import { TradesTable } from './TradesTable';
 import { StrategyParameters } from './StrategyParameters';
 import { Settings } from 'lucide-react';
+import { calculateCAGR } from '../lib/backtest-utils';
+import { SimulationStatsGrid } from './SimulationStatsGrid';
 
 interface NoStopLossSimulatorProps {
   data: OHLCData[];
@@ -67,15 +69,12 @@ function runNoStopLossBacktest(
   // Calculate CAGR
   let cagr = 0;
   if (result.equity.length > 1) {
-    const initialValue = result.equity[0].value;
-    const finalValue = result.equity[result.equity.length - 1].value;
-    const startDate = new Date(result.equity[0].date);
-    const endDate = new Date(result.equity[result.equity.length - 1].date);
-    const years = (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24 * 365.25);
-    
-    if (years > 0 && initialValue > 0) {
-      cagr = (Math.pow(finalValue / initialValue, 1 / years) - 1) * 100;
-    }
+    cagr = calculateCAGR(
+      result.equity[result.equity.length - 1].value,
+      result.equity[0].value,
+      result.equity[0].date,
+      result.equity[result.equity.length - 1].date
+    );
   }
 
   // Calculate max drawdown
@@ -266,26 +265,12 @@ export function NoStopLossSimulator({ data, strategy }: NoStopLossSimulatorProps
       </div>
 
       {/* Results */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-        <div className="rounded-lg border p-3 bg-gray-50 dark:bg-gray-800 dark:border-gray-700">
-          <div className="text-xs text-gray-500 dark:text-gray-300">Финальная стоимость</div>
-          <div className="text-base font-semibold dark:text-gray-100">
-            ${result.finalValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-          </div>
-        </div>
-        <div className="rounded-lg border p-3 bg-gray-50 dark:bg-gray-800 dark:border-gray-700">
-          <div className="text-xs text-gray-500 dark:text-gray-300">CAGR</div>
-          <div className="text-base font-semibold dark:text-gray-100">{result.cagr.toFixed(2)}%</div>
-        </div>
-        <div className="rounded-lg border p-3 bg-gray-50 dark:bg-gray-800 dark:border-gray-700">
-          <div className="text-xs text-gray-500 dark:text-gray-300">Макс. просадка</div>
-          <div className="text-base font-semibold dark:text-gray-100">{result.maxDrawdown.toFixed(2)}%</div>
-        </div>
-        <div className="rounded-lg border p-3 bg-gray-50 dark:bg-gray-800 dark:border-gray-700">
-          <div className="text-xs text-gray-500 dark:text-gray-300">Сделок</div>
-          <div className="text-base font-semibold dark:text-gray-100">{result.trades.length}</div>
-        </div>
-      </div>
+      <SimulationStatsGrid
+        finalValue={result.finalValue}
+        cagr={result.cagr}
+        maxDrawdown={result.maxDrawdown}
+        tradeCount={result.trades.length}
+      />
 
       {/* Chart */}
       <div className="h-[60vh] min-h-[400px] max-h-[600px]">

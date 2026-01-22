@@ -4,8 +4,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { DatasetAPI } from '../lib/api';
 import {
   isSameDay,
-  formatTradingDateDisplay,
-  addDaysToTradingDate
+  formatTradingDateDisplay
 } from '../lib/date-utils';
 import type { TradingDate } from '../lib/date-utils';
 import { formatMoney } from '../lib/formatters';
@@ -26,6 +25,7 @@ import { BuyAtClose4Simulator } from './BuyAtClose4Simulator';
 import { NoStopLossSimulator } from './NoStopLossSimulator';
 import { OptionsAnalysis } from './OptionsAnalysis';
 import type { EquityPoint } from '../types';
+import { simulateLeverage } from '../lib/backtest-utils';
 
 // Reusable Intl formatters
 const ET_PARTS_FMT = new Intl.DateTimeFormat('en-US', {
@@ -54,31 +54,6 @@ const ET_YMD_FMT = new Intl.DateTimeFormat('en-US', {
   timeZone: 'America/New_York',
   year: 'numeric', month: '2-digit', day: '2-digit'
 });
-
-function simulateLeverageForEquity(equity: EquityPoint[], leverage: number): EquityPoint[] {
-  try {
-    if (!Array.isArray(equity) || equity.length === 0 || !Number.isFinite(leverage) || leverage <= 0) return [];
-    const result: EquityPoint[] = [];
-    let currentValue = equity[0].value;
-    let peakValue = currentValue;
-    result.push({ date: equity[0].date, value: currentValue, drawdown: 0 });
-    for (let i = 1; i < equity.length; i++) {
-      const basePrev = equity[i - 1].value;
-      const baseCurr = equity[i].value;
-      if (!(basePrev > 0)) continue;
-      const baseReturn = (baseCurr - basePrev) / basePrev;
-      const leveragedReturn = baseReturn * leverage;
-      currentValue = currentValue * (1 + leveragedReturn);
-      if (currentValue < 0) currentValue = 0;
-      if (currentValue > peakValue) peakValue = currentValue;
-      const dd = peakValue > 0 ? ((peakValue - currentValue) / peakValue) * 100 : 0;
-      result.push({ date: equity[i].date, value: currentValue, drawdown: dd });
-    }
-    return result;
-  } catch {
-    return [];
-  }
-}
 
 export function Results() {
   const navigate = useNavigate();
@@ -320,9 +295,10 @@ export function Results() {
 
       // Fallback: return parts from 1 day back if no trading day found
       console.warn('Could not find previous trading day within 30 days, using fallback');
-      // Subtract 1 day from TradingDate
-      // Subtract 1 day from TradingDate
-      return getETParts(new Date(addDaysToTradingDate(fromUTC as TradingDate, -1)));
+
+      const prevDay = new Date(fromUTC);
+      prevDay.setUTCDate(prevDay.getUTCDate() - 1);
+      return getETParts(prevDay);
     };
 
     // Determine if by now we should expect today's daily bar (after close + buffer) or yesterday's
@@ -493,7 +469,7 @@ export function Results() {
   const [buyHoldMarginPctInput, setBuyHoldMarginPctInput] = useState<string>('100');
   const [buyHoldAppliedLeverage, setBuyHoldAppliedLeverage] = useState<number>(1);
   const buyHoldSimEquity = useMemo(() => (
-    simulateLeverageForEquity(buyHoldEquity as unknown as EquityPoint[], buyHoldAppliedLeverage)
+    simulateLeverage(buyHoldEquity as unknown as EquityPoint[], buyHoldAppliedLeverage).equity
   ), [buyHoldEquity, buyHoldAppliedLeverage]);
   const onApplyBuyHold = () => {
     const pct = Number(buyHoldMarginPctInput);

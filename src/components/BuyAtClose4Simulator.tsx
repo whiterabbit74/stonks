@@ -9,6 +9,8 @@ import { EquityChart } from './EquityChart';
 import { TradesTable } from './TradesTable';
 import { StrategyParameters } from './StrategyParameters';
 import { logWarn } from '../lib/error-logger';
+import { calculateCAGR } from '../lib/backtest-utils';
+import { SimulationStatsGrid } from './SimulationStatsGrid';
 
 interface BuyAtClose4SimulatorProps {
   strategy: Strategy | null;
@@ -501,13 +503,12 @@ function runMultiTickerBacktest(
   const avgLoss = losingTrades.length > 0 ? losingTrades.reduce((sum, t) => sum + t.pnl, 0) / losingTrades.length : 0;
   const profitFactor = (avgWin * winningTrades.length) / Math.abs(avgLoss * losingTrades.length) || 0;
 
-  // Аннуализированная доходность
-  const daysDiff = sortedDates.length > 0 ?
-    daysBetweenTradingDates(sortedDates[0], sortedDates[sortedDates.length - 1]) : 1;
-  const years = daysDiff / 365.25;
-  const cagr = years >= 1 ?
-    (Math.pow(finalValue / initialCapital, 1 / years) - 1) * 100 :
-    totalReturn;
+  const cagr = calculateCAGR(
+    finalValue,
+    initialCapital,
+    sortedDates.length > 0 ? sortedDates[0] : new Date(),
+    sortedDates.length > 0 ? sortedDates[sortedDates.length - 1] : new Date()
+  );
 
   const metrics = {
     totalReturn,
@@ -692,42 +693,15 @@ export function BuyAtClose4Simulator({ strategy, defaultTickers = ['AAPL', 'MSFT
       {!isLoading && loadedData.length > 0 && (
         <>
           {/* Метрики */}
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-            <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 text-center">
-              <div className="text-2xl font-bold text-green-600">
-                {formatCurrencyUSD(backtest.finalValue)}
-              </div>
-              <div className="text-sm text-gray-600 dark:text-gray-400">Итоговый баланс</div>
-            </div>
-
-            <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 text-center">
-              <div className="text-2xl font-bold text-blue-600">
-                {backtest.metrics.totalReturn?.toFixed(2)}%
-              </div>
-              <div className="text-sm text-gray-600 dark:text-gray-400">Общая доходность</div>
-            </div>
-
-            <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 text-center">
-              <div className="text-2xl font-bold text-orange-600">
-                {backtest.metrics.cagr?.toFixed(2)}%
-              </div>
-              <div className="text-sm text-gray-600 dark:text-gray-400">Годовые проценты</div>
-            </div>
-
-            <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 text-center">
-              <div className="text-2xl font-bold text-purple-600">
-                {backtest.metrics.winRate?.toFixed(1)}%
-              </div>
-              <div className="text-sm text-gray-600 dark:text-gray-400">Win Rate</div>
-            </div>
-
-            <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 text-center">
-              <div className="text-2xl font-bold text-red-600">
-                {backtest.maxDrawdown.toFixed(2)}%
-              </div>
-              <div className="text-sm text-gray-600 dark:text-gray-400">Макс. просадка</div>
-            </div>
-          </div>
+          <SimulationStatsGrid
+            finalValue={backtest.finalValue}
+            totalReturn={backtest.metrics.totalReturn}
+            cagr={backtest.metrics.cagr || 0}
+            winRate={backtest.metrics.winRate}
+            maxDrawdown={backtest.maxDrawdown}
+            tradeCount={backtest.trades.length}
+            leverage={leveragePercent / 100}
+          />
 
           {/* График equity */}
           <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4">

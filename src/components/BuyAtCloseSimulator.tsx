@@ -5,6 +5,8 @@ import { CleanBacktestEngine, type CleanBacktestOptions } from '../lib/clean-bac
 import { TradesTable } from './TradesTable';
 import { StrategyParameters } from './StrategyParameters';
 import { sanitizeNumericInput, VALIDATION_CONSTRAINTS } from '../lib/input-validation';
+import { simulateLeverage, calculateCAGR } from '../lib/backtest-utils';
+import { SimulationStatsGrid } from './SimulationStatsGrid';
 
 interface BuyAtCloseSimulatorProps {
   data: OHLCData[];
@@ -17,41 +19,6 @@ interface SimulationResult {
   maxDrawdown: number;
   trades: number;
   tradesList: Trade[];
-}
-
-/**
- * Simulates leverage on equity curve by amplifying returns
- * @param equity - Array of equity points from backtest
- * @param leverage - Leverage multiplier (e.g., 2 for 2x leverage)
- * @returns Leveraged equity curve with max drawdown and final value
- */
-function simulateLeverage(equity: EquityPoint[], leverage: number): { equity: EquityPoint[]; finalValue: number; maxDrawdown: number } {
-  if (!equity || equity.length === 0 || leverage <= 0) {
-    return { equity: [], finalValue: 0, maxDrawdown: 0 };
-  }
-  const result: EquityPoint[] = [];
-  let currentValue = equity[0].value;
-  let peakValue = currentValue;
-  let maxDD = 0;
-  result.push({ date: equity[0].date, value: currentValue, drawdown: 0 });
-  for (let i = 1; i < equity.length; i++) {
-    const basePrev = equity[i - 1].value;
-    const baseCurr = equity[i].value;
-    if (basePrev <= 0) continue;
-    const baseReturn = (baseCurr - basePrev) / basePrev;
-    const leveragedReturn = baseReturn * leverage;
-    currentValue = currentValue * (1 + leveragedReturn);
-    if (currentValue < 0) currentValue = 0;
-    if (currentValue > peakValue) peakValue = currentValue;
-    const dd = peakValue > 0 ? ((peakValue - currentValue) / peakValue) * 100 : 0;
-    if (dd > maxDD) maxDD = dd;
-    result.push({ date: equity[i].date, value: currentValue, drawdown: dd });
-  }
-  return { equity: result, finalValue: result[result.length - 1]?.value ?? currentValue, maxDrawdown: maxDD };
-}
-
-function formatCurrencyUSD(value: number): string {
-  return '$' + value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 /**
@@ -164,13 +131,12 @@ export function BuyAtCloseSimulator({ data, strategy }: BuyAtCloseSimulatorProps
     if (leveraged.equity.length > 1) {
       const initialCapital = Number(strategy?.riskManagement?.initialCapital ?? 10000);
       const finalValue = leveraged.finalValue;
-      const startDate = new Date(leveraged.equity[0].date);
-      const endDate = new Date(leveraged.equity[leveraged.equity.length - 1].date);
-      const years = (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24 * 365.25);
-
-      if (years > 0 && initialCapital > 0) {
-        return (Math.pow(finalValue / initialCapital, 1 / years) - 1) * 100;
-      }
+      return calculateCAGR(
+        finalValue,
+        initialCapital,
+        leveraged.equity[0].date,
+        leveraged.equity[leveraged.equity.length - 1].date
+      );
     }
     return 0;
   }, [leveraged.equity, leveraged.finalValue, strategy]);
@@ -274,15 +240,17 @@ export function BuyAtCloseSimulator({ data, strategy }: BuyAtCloseSimulatorProps
         <button onClick={() => setShowTrades(v => !v)} className="px-4 py-2 rounded-md border text-sm font-medium dark:border-gray-700">
           {showTrades ? 'Скрыть сделки' : 'Показать все сделки'}
         </button>
-        <div className="text-xs text-gray-500 dark:text-gray-300 ml-auto flex gap-3">
-          <span>Итог: {formatCurrencyUSD(leveraged.finalValue)}</span>
-          <span>Годовые проценты: {annualReturn.toFixed(2)}%</span>
-          <span>Макс. просадка: {leveraged.maxDrawdown.toFixed(2)}%</span>
-          <span>Сделок: {trades}</span>
-          {(start && end) && <span>Период: {start} — {end}</span>}
-          <span>Текущее плечо: ×{appliedLeverage.toFixed(2)}</span>
-        </div>
       </div>
+
+      <SimulationStatsGrid
+        finalValue={leveraged.finalValue}
+        cagr={annualReturn}
+        maxDrawdown={leveraged.maxDrawdown}
+        tradeCount={trades}
+        periodStart={start}
+        periodEnd={end}
+        leverage={appliedLeverage}
+      />
 
       <div className="text-xs text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-800 border dark:border-gray-700 rounded px-3 py-2">
         <span className="font-semibold">Стратегия:</span>{' '}
