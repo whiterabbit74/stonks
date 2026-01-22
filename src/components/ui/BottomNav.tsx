@@ -1,3 +1,4 @@
+import { useState, useRef, useEffect } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import {
     Database,
@@ -32,16 +33,52 @@ const secondaryNavItems: NavItem[] = [
 
 export function BottomNav() {
     const location = useLocation();
+    const [page, setPage] = useState(0);
+    const touchStart = useRef<number | null>(null);
+    const touchEnd = useRef<number | null>(null);
 
-    // Show secondary nav if on those pages
-    const isSecondaryPage = secondaryNavItems.some(item => location.pathname.startsWith(item.to));
-    const navItems = isSecondaryPage ? secondaryNavItems : primaryNavItems;
+    // Sync page with location when it changes
+    useEffect(() => {
+        const isSecondary = secondaryNavItems.some(item => location.pathname.startsWith(item.to));
+        setPage(isSecondary ? 1 : 0);
+    }, [location.pathname]);
+
+    const handleTouchStart = (e: React.TouchEvent) => {
+        touchStart.current = e.targetTouches[0].clientX;
+        touchEnd.current = null;
+    };
+
+    const handleTouchMove = (e: React.TouchEvent) => {
+        touchEnd.current = e.targetTouches[0].clientX;
+    };
+
+    const handleTouchEnd = () => {
+        if (!touchStart.current || !touchEnd.current) return;
+        const distance = touchStart.current - touchEnd.current;
+        const isLeftSwipe = distance > 50;
+        const isRightSwipe = distance < -50;
+
+        if (isLeftSwipe && page === 0) {
+            setPage(1);
+        }
+        if (isRightSwipe && page === 1) {
+            setPage(0);
+        }
+
+        touchStart.current = null;
+        touchEnd.current = null;
+    };
+
+    const navItems = page === 0 ? primaryNavItems : secondaryNavItems;
 
     return (
         <nav
             className="md:hidden fixed bottom-0 left-0 right-0 bg-white/95 dark:bg-gray-900/95 backdrop-blur-lg border-t border-gray-200 dark:border-gray-800 z-40 safe-area-pb"
             role="navigation"
             aria-label="Основная навигация"
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
         >
             <div className="flex justify-around items-center h-16">
                 {navItems.map((item) => (
@@ -75,9 +112,15 @@ export function BottomNav() {
             </div>
 
             {/* Page indicator dots */}
-            <div className="absolute -top-3 left-1/2 transform -translate-x-1/2 flex gap-1.5">
-                <div className={`w-1.5 h-1.5 rounded-full transition-colors ${!isSecondaryPage ? 'bg-indigo-600' : 'bg-gray-300 dark:bg-gray-600'}`} />
-                <div className={`w-1.5 h-1.5 rounded-full transition-colors ${isSecondaryPage ? 'bg-indigo-600' : 'bg-gray-300 dark:bg-gray-600'}`} />
+            <div className="absolute -top-3 left-1/2 transform -translate-x-1/2 flex gap-1.5 p-2">
+                <div
+                    onClick={() => setPage(0)}
+                    className={`w-2 h-2 rounded-full transition-colors cursor-pointer ${page === 0 ? 'bg-indigo-600' : 'bg-gray-300 dark:bg-gray-600'}`}
+                />
+                <div
+                    onClick={() => setPage(1)}
+                    className={`w-2 h-2 rounded-full transition-colors cursor-pointer ${page === 1 ? 'bg-indigo-600' : 'bg-gray-300 dark:bg-gray-600'}`}
+                />
             </div>
         </nav>
     );
