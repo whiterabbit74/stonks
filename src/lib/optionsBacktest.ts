@@ -102,15 +102,18 @@ export function runOptionsBacktest(
 
                    // Enforce minimum price of 0.01 to ensure trade execution even for deep OTM options
                    // This prevents trades from disappearing when changing strike/vol parameters
-                   if (optionPrice < 0.01) optionPrice = 0.01;
+                   // Also handles NaN or other invalid values
+                   if (Number.isNaN(optionPrice) || optionPrice < 0.01) optionPrice = 0.01;
 
                    if (optionPrice > 0) {
                        // Buy max contracts with available capital
-                       // Contract size usually 100.
-                       // For simplicity, let's treat it as buying fractional options or 1 unit = 1 option (not 100 shares).
-                       // To make it comparable to stock trading amount, we usually invest the same $ amount.
+                       // Contract size usually 100 shares.
+                       // We use the standard multiplier of 100.
+                       // To make it comparable to stock trading amount, we invest the configured % of capital.
                        const investAmount = currentCapital * (capitalPct / 100);
-                       const contracts = investAmount / optionPrice;
+
+                       // Contracts = Capital / (Price * 100)
+                       const contracts = investAmount / (optionPrice * 100);
 
                        activeTrade = {
                            ...matchingStockTrade,
@@ -147,7 +150,7 @@ export function runOptionsBacktest(
                  const vol = state.vol; // getMarketState applies the adjustment
 
                  const optionPrice = blackScholes('call', spot, activeTrade.strike, T, riskFreeRate, vol);
-                 portfolioValue = currentCapital + (activeTrade.contracts * optionPrice);
+                 portfolioValue = currentCapital + (activeTrade.contracts * optionPrice * 100);
 
                  // CHECK EXIT
                  const tExit = typeof activeTrade.exitDate === 'string' ? activeTrade.exitDate.slice(0, 10) : new Date(activeTrade.exitDate).toISOString().slice(0, 10);
@@ -164,16 +167,20 @@ export function runOptionsBacktest(
                      activeTrade.impliedVolAtExit = vol;
                      activeTrade.exitPrice = spot; // Stock price at exit
 
-                     const pnl = (activeTrade.optionExitPrice - activeTrade.optionEntryPrice) * activeTrade.contracts;
+                     // PnL = (Exit - Entry) * Contracts * 100
+                     const pnl = (activeTrade.optionExitPrice - activeTrade.optionEntryPrice) * activeTrade.contracts * 100;
                      activeTrade.pnl = pnl;
-                     activeTrade.pnlPercent = (pnl / (activeTrade.optionEntryPrice * activeTrade.contracts)) * 100;
+
+                     // PnL % = PnL / Invested
+                     // Invested = Entry * Contracts * 100
+                     activeTrade.pnlPercent = (pnl / (activeTrade.optionEntryPrice * activeTrade.contracts * 100)) * 100;
 
                      if (isExpired && !isStockExit) {
                          activeTrade.exitReason = "option_expired";
                      }
 
                      optionTrades.push(activeTrade);
-                     currentCapital += activeTrade.contracts * activeTrade.optionExitPrice;
+                     currentCapital += activeTrade.contracts * activeTrade.optionExitPrice * 100;
                      activeTrade = null;
                  }
              }
