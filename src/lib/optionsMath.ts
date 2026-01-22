@@ -52,14 +52,15 @@ export function blackScholes(
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function calculateVolatility(prices: number[], _window = 30): number {
-  if (prices.length < 2) return 0;
+  // Need at least 3 prices to get 2 returns for variance calculation (N-1)
+  if (prices.length < 3) return 0;
 
   const returns: number[] = [];
   for (let i = 1; i < prices.length; i++) {
     returns.push(Math.log(prices[i] / prices[i - 1]));
   }
 
-  if (returns.length === 0) return 0;
+  if (returns.length < 2) return 0;
 
   const mean = returns.reduce((a, b) => a + b, 0) / returns.length;
   const variance = returns.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / (returns.length - 1);

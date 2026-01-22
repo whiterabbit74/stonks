@@ -71,7 +71,9 @@ export function runOptionsBacktest(
     for (let i = 0; i < marketData.length; i++) {
         const bar = marketData[i];
         const dateStr = typeof bar.date === 'string' ? bar.date.slice(0, 10) : new Date(bar.date).toISOString().slice(0, 10);
-        const currentDate = new Date(dateStr);
+        // Create date at noon local time to ensure correct day-of-week calculation (avoids midnight timezone shifts)
+        const [y, m, d] = dateStr.split('-').map(Number);
+        const currentDate = new Date(y, m - 1, d, 12, 0, 0);
 
         // Check if we need to enter a trade
         // We look at stockTrades to see if any trade matches this entry date
@@ -87,7 +89,8 @@ export function runOptionsBacktest(
            if (matchingStockTrade) {
                // ENTER TRADE
                const state = getMarketState(dateStr);
-               if (state) {
+               // Require valid volatility to enter trade (prevents fake cheap options on missing data)
+               if (state && state.vol > 0) {
                    const spot = state.price;
                    // Strike: Current Price + X%, rounded to integer
                    const strikeRaw = spot * (1 + strikePct / 100);
