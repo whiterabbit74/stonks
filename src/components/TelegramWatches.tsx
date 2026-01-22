@@ -4,7 +4,7 @@ import { DatasetAPI } from '../lib/api';
 import { ConfirmModal } from './ConfirmModal';
 import { InfoModal } from './InfoModal';
 import { useAppStore } from '../stores';
-import { useNavigate, Link } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import type { MonitorTradeHistoryResponse } from '../types';
 import { MonitorTradeHistoryPanel } from './MonitorTradeHistoryPanel';
 
@@ -21,7 +21,6 @@ interface WatchItem {
 }
 
 export function TelegramWatches() {
-  const navigate = useNavigate();
   const [watches, setWatches] = useState<WatchItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -35,6 +34,13 @@ export function TelegramWatches() {
   const [tradesLoading, setTradesLoading] = useState(false);
   const [sortConfig, setSortConfig] = useState<{ key: keyof WatchItem | null; direction: 'asc' | 'desc' }>({ key: null, direction: 'asc' });
   const watchThresholdPct = useAppStore(s => s.watchThresholdPct);
+
+  // Reusable Intl formatters
+  const ET_PARTS_FMT = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'short',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
+  });
 
   // Sorting logic
   const sortedWatches = useMemo(() => {

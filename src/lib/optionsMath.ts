@@ -50,7 +50,7 @@ export function blackScholes(
  * @param window Window size (e.g. 30 days)
  * @returns annualized volatility (decimal)
  */
-export function calculateVolatility(prices: number[], window: number = 30): number {
+export function calculateVolatility(prices: number[], _window: number = 30): number {
   if (prices.length < 2) return 0;
 
   const returns: number[] = [];

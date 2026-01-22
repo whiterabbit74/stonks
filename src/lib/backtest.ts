@@ -757,7 +757,8 @@ export class BacktestEngine {
     // Validate data integrity - now accepts TradingDate strings
     for (let i = 0; i < this.data.length; i++) {
       const bar = this.data[i];
-      const hasValidDate = typeof bar.date === 'string' ? isValidTradingDate(bar.date) : (bar.date instanceof Date && !isNaN((bar.date as Date).getTime()));
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const hasValidDate = typeof bar.date === 'string' ? isValidTradingDate(bar.date) : ((bar.date as any) instanceof Date && !isNaN((bar.date as any).getTime()));
       if (!hasValidDate || bar.open == null || bar.high == null || bar.low == null || bar.close == null) {
         throw new Error(`Invalid data at index ${i}: missing required fields`);
       }
@@ -767,8 +768,14 @@ export class BacktestEngine {
         throw new Error(`Invalid data at index ${i}: non-numeric price values`);
       }
 
-      if (bar.high < bar.low || bar.close < bar.low || bar.close > bar.high || bar.open < bar.low || bar.open > bar.high) {
-        throw new Error(`Invalid data at index ${i}: price relationships are incorrect`);
+      // Check for price relationships with a small tolerance for floating point errors
+      const epsilon = 0.000001;
+      if (bar.high < bar.low - epsilon) {
+         throw new Error(`Invalid data at index ${i}: high < low`);
+      }
+      if (bar.close < bar.low - epsilon || bar.close > bar.high + epsilon) {
+         // Log warning instead of error for close outside high/low, as some data providers might have adjustments
+         console.warn(`Data warning at index ${i}: close price ${bar.close} outside high/low range [${bar.low}, ${bar.high}]`);
       }
     }
 

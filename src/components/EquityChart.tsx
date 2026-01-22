@@ -133,15 +133,17 @@ export function EquityChart({ equity, hideHeader, comparisonEquity, comparisonLa
         const mapped = points
           .map((point, idx) => {
             try {
-              const d = point?.date instanceof Date ? point.date : new Date(point?.date as any);
-              const t = Math.floor(d.getTime() / 1000) as UTCTimestamp;
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const d = (point?.date as any) instanceof Date ? point.date : new Date(point?.date as any);
+              const t = Math.floor((d as Date).getTime() / 1000) as UTCTimestamp;
               const v = Number(point?.value);
               if (!Number.isFinite(t as unknown as number) || !Number.isFinite(v)) {
                 logError('chart', 'Invalid equity data point', { idx, point, source }, 'EquityChart.setData');
               }
               return { time: t, value: v };
             } catch (e) {
-              logError('chart', 'Failed to map equity point', { idx, point, source }, 'EquityChart.setData', (e as any)?.stack);
+              const stack = (e instanceof Error) ? e.stack : undefined;
+              logError('chart', 'Failed to map equity point', { idx, point, source }, 'EquityChart.setData', stack);
               return { time: 0 as UTCTimestamp, value: 0 };
             }
           })

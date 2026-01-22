@@ -6,7 +6,6 @@ import {
   isSameDay,
   formatTradingDateDisplay
 } from '../lib/date-utils';
-import type { TradingDate } from '../lib/date-utils';
 import { formatMoney } from '../lib/formatters';
 import { useAppStore } from '../stores';
 import { useToastActions } from './ui';

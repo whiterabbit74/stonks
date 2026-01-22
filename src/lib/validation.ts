@@ -5,6 +5,7 @@ import type {
   OHLCData,
   ValidationResult
 } from '../types';
+import { toTradingDate } from './date-utils';
 
 // Date parsing result interface
 interface DateParseResult {
@@ -31,6 +32,7 @@ interface NumericValidationOptions {
 
 // Enhanced OHLC data validation
 export function validateOHLCData(data: Partial<OHLCData>[]): ValidationResult & { warnings?: Array<{ field: string; message: string }> } {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const errors: Array<{ code: string; message: string; row?: number }> = [];
   const warnings: Array<{ field: string; message: string }> = [];
 
@@ -235,7 +237,7 @@ export async function parseCSV(file: File): Promise<OHLCData[]> {
           
           // Basic CSV structure validation using existing validator on a sample
           const preview: Partial<OHLCData>[] = data.slice(0, 50).map((row) => ({
-            date: new Date(String(row.date || row.Date || row.DATE || '')),
+            date: toTradingDate(new Date(String(row.date || row.Date || row.DATE || ''))),
             open: Number(row.open ?? row.Open ?? row.OPEN ?? NaN),
             high: Number(row.high ?? row.High ?? row.HIGH ?? NaN),
             low: Number(row.low ?? row.Low ?? row.LOW ?? NaN),
@@ -277,7 +279,7 @@ export async function parseCSV(file: File): Promise<OHLCData[]> {
             if (typeof adjClose === 'number' && isFinite(adjClose) && adjClose > 0 && close > 0) {
               const factor = adjClose / close;
               return {
-                date: dateResult.date,
+                date: toTradingDate(dateResult.date!),
                 open: open * factor,
                 high: high * factor,
                 low: low * factor,
@@ -289,7 +291,7 @@ export async function parseCSV(file: File): Promise<OHLCData[]> {
             }
 
             return {
-              date: dateResult.date,
+              date: toTradingDate(dateResult.date!),
               open,
               high,
               low,
