@@ -168,9 +168,9 @@ describe('BuyAtClose4Simulator', () => {
       render(<BuyAtClose4Simulator strategy={mockStrategy} />);
     });
 
-    expect(screen.getByText('Итоговый баланс')).toBeInTheDocument();
+    expect(screen.getByText('Финальная стоимость')).toBeInTheDocument();
     expect(screen.getByText('Общая доходность')).toBeInTheDocument();
-    expect(screen.getByText('Годовые проценты')).toBeInTheDocument();
+    expect(screen.getByText('CAGR')).toBeInTheDocument();
     expect(screen.getByText('Win Rate')).toBeInTheDocument();
     expect(screen.getByText('Макс. просадка')).toBeInTheDocument();
   });

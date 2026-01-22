@@ -229,7 +229,7 @@ describe('Integration Tests', () => {
 
       expect(() => {
         new BacktestEngine(invalidData, strategy);
-      }).toThrow('price relationships are incorrect');
+      }).toThrow('Invalid data at index 0: high < low');
     });
 
     it('should handle empty data gracefully', () => {
