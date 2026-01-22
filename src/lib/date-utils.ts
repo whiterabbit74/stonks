@@ -147,18 +147,31 @@ export function addDaysToTradingDate(date: TradingDate, days: number): TradingDa
     return toTradingDate(dt);
 }
 
+// Reused formatters for NYSE/ET calculations
+const NYSE_DATE_FMT = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/New_York',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+});
+
+const NYSE_TIME_FMT = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    weekday: 'short',
+    hour12: false,
+});
+
 /**
  * Get today's date in NYSE timezone (America/New_York) as TradingDate
  */
 export function getTodayNYSE(): TradingDate {
     const now = new Date();
-    const fmt = new Intl.DateTimeFormat('en-CA', {
-        timeZone: 'America/New_York',
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-    });
-    return fmt.format(now) as TradingDate;
+    return NYSE_DATE_FMT.format(now) as TradingDate;
 }
 
 /**
@@ -166,17 +179,7 @@ export function getTodayNYSE(): TradingDate {
  */
 export function getCurrentTimeNYSE(): { year: number; month: number; day: number; hour: number; minute: number; dayOfWeek: number } {
     const now = new Date();
-    const fmt = new Intl.DateTimeFormat('en-US', {
-        timeZone: 'America/New_York',
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        weekday: 'short',
-        hour12: false,
-    });
-    const parts = fmt.formatToParts(now);
+    const parts = NYSE_TIME_FMT.formatToParts(now);
     const map: Record<string, string> = {};
     parts.forEach(p => { if (p.type !== 'literal') map[p.type] = p.value; });
 

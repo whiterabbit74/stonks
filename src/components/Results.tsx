@@ -27,6 +27,34 @@ import { NoStopLossSimulator } from './NoStopLossSimulator';
 import { SinglePositionSimulator } from './SinglePositionSimulator';
 import type { EquityPoint } from '../types';
 
+// Reusable Intl formatters
+const ET_PARTS_FMT = new Intl.DateTimeFormat('en-US', {
+  timeZone: 'America/New_York',
+  year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'short',
+});
+
+const ET_TIME_FMT = new Intl.DateTimeFormat('en-US', {
+  timeZone: 'America/New_York',
+  hour12: false,
+  year: 'numeric', month: '2-digit', day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+});
+
+const ET_FULL_FMT = new Intl.DateTimeFormat('en-US', {
+  timeZone: 'America/New_York',
+  hour12: false,
+  year: 'numeric', month: '2-digit', day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  weekday: 'short',
+});
+
+const ET_YMD_FMT = new Intl.DateTimeFormat('en-US', {
+  timeZone: 'America/New_York',
+  year: 'numeric', month: '2-digit', day: '2-digit'
+});
+
 function simulateLeverageForEquity(equity: EquityPoint[], leverage: number): EquityPoint[] {
   try {
     if (!Array.isArray(equity) || equity.length === 0 || !Number.isFinite(leverage) || leverage <= 0) return [];
@@ -198,11 +226,8 @@ export function Results() {
     const now = new Date();
 
     const getETParts = (date: Date) => {
-      const fmt = new Intl.DateTimeFormat('en-US', {
-        timeZone: 'America/New_York',
-        year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'short',
-      });
-      const parts = fmt.formatToParts(date);
+      // Optimization: Reused formatter
+      const parts = ET_PARTS_FMT.formatToParts(date);
       const map: Record<string, string> = {};
       parts.forEach(p => { if (p.type !== 'literal') map[p.type] = p.value; });
       const y = Number(map.year), m = Number(map.month), d = Number(map.day);
@@ -269,14 +294,8 @@ export function Results() {
     };
 
     // Determine if by now we should expect today's daily bar (after close + buffer) or yesterday's
-    const timeFmt = new Intl.DateTimeFormat('en-US', {
-      timeZone: 'America/New_York',
-      hour12: false,
-      year: 'numeric', month: '2-digit', day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-    const tparts = timeFmt.formatToParts(now);
+    // Optimization: Reused formatter
+    const tparts = ET_TIME_FMT.formatToParts(now);
     const tmap: Record<string, string> = {};
     tparts.forEach(p => { if (p.type !== 'literal') tmap[p.type] = p.value; });
     const hh = parseInt(tmap.hour || '0', 10);
@@ -327,15 +346,8 @@ export function Results() {
     if (!symbol) return;
     const isMarketOpenNow = () => {
       // Compute ET local time safely using Intl APIs
-      const fmt = new Intl.DateTimeFormat('en-US', {
-        timeZone: 'America/New_York',
-        hour12: false,
-        year: 'numeric', month: '2-digit', day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        weekday: 'short',
-      });
-      const fmtParts = fmt.formatToParts(new Date());
+      // Optimization: Reused formatter
+      const fmtParts = ET_FULL_FMT.formatToParts(new Date());
       const map: Record<string, string> = {};
       fmtParts.forEach(p => { if (p.type !== 'literal') map[p.type] = p.value; });
       const weekdayMap: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
@@ -346,7 +358,8 @@ export function Results() {
       const minutes = hh * 60 + mm;
       if (!isWeekday) return false;
       // Holiday/short-day aware session bounds
-      const ymd = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' })
+      // Optimization: Reused formatter
+      const ymd = ET_YMD_FMT
         .formatToParts(new Date())
         .reduce((acc: any, p) => { if (p.type !== 'literal') acc[p.type] = p.value; return acc; }, {});
       const ymdObj = { y: Number(ymd.year), m: Number(ymd.month), d: Number(ymd.day) };
@@ -706,7 +719,7 @@ export function Results() {
                   return Number.isFinite(H) && Number.isFinite(M) ? { H, M } : null;
                 };
                 const now = new Date();
-                const ymd = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' })
+                const ymd = ET_YMD_FMT
                   .formatToParts(now)
                   .reduce((acc: any, p) => { if (p.type !== 'literal') acc[p.type] = p.value; return acc; }, {});
                 const y = String(ymd.year);
