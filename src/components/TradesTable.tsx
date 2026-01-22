@@ -9,6 +9,9 @@ interface TradesTableProps {
 	showExport?: boolean;
 }
 
+// Optimization: Reuse formatter instance to avoid expensive re-creation in render loops
+const RUSSIAN_DATE_FMT = new Intl.DateTimeFormat('ru-RU', { timeZone: 'UTC' });
+
 export const TradesTable = React.memo(function TradesTable({
 	trades,
 	exportFileNamePrefix,
@@ -109,7 +112,7 @@ export const TradesTable = React.memo(function TradesTable({
 
 		try {
 			const date = typeof d === 'string' ? new Date(d) : d;
-			return new Intl.DateTimeFormat('ru-RU', { timeZone: 'UTC' }).format(date);
+			return RUSSIAN_DATE_FMT.format(date);
 		} catch {
 			return String(d);
 		}
