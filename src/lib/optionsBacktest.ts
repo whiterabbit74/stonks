@@ -98,7 +98,11 @@ export function runOptionsBacktest(
 
                    // Option Price (Ask)
                    // We don't have Bid/Ask, so we use theoretical price
-                   const optionPrice = blackScholes('call', spot, strike, T, riskFreeRate, state.vol);
+                   let optionPrice = blackScholes('call', spot, strike, T, riskFreeRate, state.vol);
+
+                   // Enforce minimum price of 0.01 to ensure trade execution even for deep OTM options
+                   // This prevents trades from disappearing when changing strike/vol parameters
+                   if (optionPrice < 0.01) optionPrice = 0.01;
 
                    if (optionPrice > 0) {
                        // Buy max contracts with available capital
