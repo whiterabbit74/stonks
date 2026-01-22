@@ -587,7 +587,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
     }
     if (!marketData.length || !currentStrategy) {
-      set({ error: 'Отсутствуют данные или стратегия' });
+      set({ error: 'Отсутствуют данные или стратегия', backtestStatus: 'error' });
       return;
     }
     set({ backtestStatus: 'running', error: null });
