@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react';
 import type { EquityPoint } from '../types';
 import { EquityChart } from './EquityChart';
+import { calculateCAGR, formatCurrencyUSD } from '../lib/backtest-utils';
+import { SimulationStatsGrid } from './SimulationStatsGrid';
 
 interface MarginSimulatorProps {
   equity: EquityPoint[];
@@ -19,14 +21,7 @@ interface MarginCallEvent {
   type: 'partial' | 'full';
 }
 
-function formatCurrency(value: number): string {
-  return '$' + value.toLocaleString('en-US', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  });
-}
-
-function simulateLeverage(equity: EquityPoint[], leverage: number): SimulationResult {
+function simulateLeverageWithMarginCalls(equity: EquityPoint[], leverage: number): SimulationResult {
   if (!equity || equity.length === 0 || leverage <= 0) {
     return { equity: [], maxDrawdown: 0, finalValue: 0, marginCalls: [] };
   }
@@ -103,20 +98,17 @@ export function MarginSimulator({ equity }: MarginSimulatorProps) {
 
   const { simEquity, simMaxDD, simFinal, marginCalls, annualReturn } = useMemo(() => {
     const leverage = appliedLeverage;
-    const sim = simulateLeverage(equity, leverage);
+    const sim = simulateLeverageWithMarginCalls(equity, leverage);
 
     // Рассчитываем годовые проценты
     let annualReturn = 0;
     if (sim.equity.length > 1) {
-      const initialCapital = equity[0]?.value || 10000;
-      const finalValue = sim.finalValue;
-      const startDate = new Date(sim.equity[0].date);
-      const endDate = new Date(sim.equity[sim.equity.length - 1].date);
-      const years = (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24 * 365.25);
-
-      if (years > 0 && initialCapital > 0) {
-        annualReturn = (Math.pow(finalValue / initialCapital, 1 / years) - 1) * 100;
-      }
+      annualReturn = calculateCAGR(
+        sim.finalValue,
+        equity[0]?.value || 10000,
+        sim.equity[0].date,
+        sim.equity[sim.equity.length - 1].date
+      );
     }
 
     return {
@@ -162,17 +154,14 @@ export function MarginSimulator({ equity }: MarginSimulatorProps) {
       </div>
 
       <div className="flex flex-wrap gap-3 text-sm">
-        <div className="bg-gray-50 px-3 py-2 rounded border dark:bg-gray-800 dark:border-gray-700">
-          Итоговый депозит: {formatCurrency(simFinal)}
-        </div>
-        <div className="bg-gray-50 px-3 py-2 rounded border dark:bg-gray-800 dark:border-gray-700">
-          Годовые проценты: {annualReturn.toFixed(2)}%
-        </div>
-        <div className="bg-gray-50 px-3 py-2 rounded border dark:bg-gray-800 dark:border-gray-700">
-          Макс. просадка: {simMaxDD.toFixed(2)}%
-        </div>
+        <SimulationStatsGrid
+          finalValue={simFinal}
+          cagr={annualReturn}
+          maxDrawdown={simMaxDD}
+          tradeCount={0} // Not applicable here really
+        />
         {marginCalls.length > 0 && (
-          <div className="px-3 py-2 rounded border border-red-300 bg-red-50 text-red-800 dark:bg-red-900/30 dark:border-red-800 dark:text-red-200">
+          <div className="w-full px-3 py-2 rounded border border-red-300 bg-red-50 text-red-800 dark:bg-red-900/30 dark:border-red-800 dark:text-red-200">
             Margin calls: {marginCalls.length} событий
             {marginCalls.some(mc => mc.type === 'full') ? ' (включая полную ликвидацию)' : ' (частичные ликвидации)'}
           </div>
@@ -192,7 +181,7 @@ export function MarginSimulator({ equity }: MarginSimulatorProps) {
                   {call.type === 'partial' ? 'Частичная ликвидация' : 'Полная ликвидация'}
                 </span>
                 <span className="text-red-700 dark:text-red-200">
-                  {call.date.toLocaleDateString('ru-RU')} - {formatCurrency(call.value)}
+                  {call.date.toLocaleDateString('ru-RU')} - {formatCurrencyUSD(call.value)}
                 </span>
               </div>
             ))}
