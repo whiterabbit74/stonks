@@ -5,6 +5,7 @@ import { toTradingDate } from './date-utils';
 interface OptionsBacktestConfig {
     strikePct: number; // e.g. 10 for 10%
     volAdjPct: number; // e.g. 20 for 20%
+    capitalPct: number; // e.g. 10 for 10% of current capital
     riskFreeRate?: number; // default 0.05
 }
 
@@ -24,7 +25,7 @@ export function runOptionsBacktest(
     marketData: OHLCData[],
     config: OptionsBacktestConfig
 ): { equity: EquityPoint[]; trades: OptionTrade[]; finalValue: number } {
-    const { strikePct, volAdjPct, riskFreeRate = 0.05 } = config;
+    const { strikePct, volAdjPct, capitalPct, riskFreeRate = 0.05 } = config;
     const initialCapital = 10000; // Hardcoded base for simulation comparison
 
     // Create a map for quick price/index lookup
@@ -103,7 +104,7 @@ export function runOptionsBacktest(
                        // Contract size usually 100.
                        // For simplicity, let's treat it as buying fractional options or 1 unit = 1 option (not 100 shares).
                        // To make it comparable to stock trading amount, we usually invest the same $ amount.
-                       const investAmount = currentCapital; // Invest all
+                       const investAmount = currentCapital * (capitalPct / 100);
                        const contracts = investAmount / optionPrice;
 
                        activeTrade = {
