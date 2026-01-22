@@ -24,7 +24,6 @@ import { MarginSimulator } from './MarginSimulator';
 import { BuyAtCloseSimulator } from './BuyAtCloseSimulator';
 import { BuyAtClose4Simulator } from './BuyAtClose4Simulator';
 import { NoStopLossSimulator } from './NoStopLossSimulator';
-import { SinglePositionSimulator } from './SinglePositionSimulator';
 import type { EquityPoint } from '../types';
 
 // Reusable Intl formatters
@@ -116,7 +115,7 @@ export function Results() {
   };
   const [tradingCalendar, setTradingCalendar] = useState<TradingCalendarData | null>(null);
 
-  type ChartTab = 'price' | 'equity' | 'buyhold' | 'drawdown' | 'trades' | 'profit' | 'duration' | 'openDayDrawdown' | 'margin' | 'buyAtClose' | 'buyAtClose4' | 'noStopLoss' | 'singlePosition' | 'splits';
+  type ChartTab = 'price' | 'equity' | 'buyhold' | 'drawdown' | 'trades' | 'profit' | 'duration' | 'openDayDrawdown' | 'margin' | 'buyAtClose' | 'buyAtClose4' | 'noStopLoss' | 'splits';
 
   // Определяем первый видимый таб как активный по умолчанию
   const firstVisibleTab = useMemo(() => {
@@ -875,9 +874,6 @@ export function Results() {
             )}
             {activeChart === 'noStopLoss' && (
               <NoStopLossSimulator data={marketData} strategy={currentStrategy} />
-            )}
-            {activeChart === 'singlePosition' && (
-              <SinglePositionSimulator strategy={currentStrategy} />
             )}
             {activeChart === 'splits' && (
               <div className="space-y-4">
