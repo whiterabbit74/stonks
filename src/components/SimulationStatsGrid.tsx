@@ -24,7 +24,7 @@ export function SimulationStatsGrid({
   totalReturn
 }: SimulationStatsGridProps) {
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 md:gap-3">
       <div className="rounded-lg border p-3 bg-gray-50 dark:bg-gray-800 dark:border-gray-700">
         <div className="text-xs text-gray-500 dark:text-gray-300">Финальная стоимость</div>
         <div className="text-base font-semibold text-green-600 dark:text-green-400">

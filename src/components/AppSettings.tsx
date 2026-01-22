@@ -286,7 +286,7 @@ export function AppSettings() {
               fallback: watchThresholdPct
             });
             setWatchThresholdPct(sanitized);
-          }} className="w-24 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm dark:bg-gray-700 dark:text-white" />
+          }} className="w-24 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-base md:text-sm dark:bg-gray-700 dark:text-white" />
           <span className="text-sm text-gray-500 dark:text-gray-400">%</span>
         </div>
       </div>
@@ -318,7 +318,7 @@ export function AppSettings() {
               fallback: indicatorPanePercent
             });
             setIndicatorPanePercent(sanitized);
-          }} className="w-24 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm dark:bg-gray-700 dark:text-white" />
+          }} className="w-24 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-base md:text-sm dark:bg-gray-700 dark:text-white" />
           <span className="text-sm text-gray-500 dark:text-gray-400">%</span>
         </div>
         <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">Подсказка: чтобы сделать столбики заметно ниже (примерно в 3 раза), установите ~7%.</div>
@@ -339,7 +339,7 @@ export function AppSettings() {
             });
             setDefaultMultiTickerSymbols(sanitized);
           }}
-          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-base md:text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
           placeholder="AAPL,MSFT,AMZN,MAGS"
         />
         <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Пример: AAPL,MSFT,AMZN,MAGS</p>
@@ -400,7 +400,7 @@ export function AppSettings() {
                   setCommissionFixed(sanitized);
                 }}
                 disabled={commissionType === 'percentage'}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-800 dark:bg-gray-700 dark:text-white"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-base md:text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-800 dark:bg-gray-700 dark:text-white"
               />
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">За каждую сделку (вход + выход)</p>
             </div>
@@ -423,7 +423,7 @@ export function AppSettings() {
                   setCommissionPercentage(sanitized);
                 }}
                 disabled={commissionType === 'fixed'}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-800 dark:bg-gray-700 dark:text-white"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-base md:text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-800 dark:bg-gray-700 dark:text-white"
               />
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">От суммы сделки (например, 0.1%)</p>
             </div>

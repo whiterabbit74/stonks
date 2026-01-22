@@ -18,17 +18,17 @@ interface NavItem {
 }
 
 const primaryNavItems: NavItem[] = [
-    { to: '/data', label: 'Данные', icon: <Database className="w-5 h-5" /> },
-    { to: '/results', label: 'Тикер', icon: <BarChart2 className="w-5 h-5" /> },
-    { to: '/multi-ticker', label: 'Мульти', icon: <LineChart className="w-5 h-5" /> },
-    { to: '/watches', label: 'Сигналы', icon: <Bell className="w-5 h-5" /> },
+    { to: '/data', label: 'Данные', icon: <Database className="w-6 h-6" /> },
+    { to: '/results', label: 'Тикер', icon: <BarChart2 className="w-6 h-6" /> },
+    { to: '/multi-ticker', label: 'Мульти', icon: <LineChart className="w-6 h-6" /> },
+    { to: '/watches', label: 'Сигналы', icon: <Bell className="w-6 h-6" /> },
 ];
 
 const secondaryNavItems: NavItem[] = [
-    { to: '/enhance', label: 'Новые', icon: <PlusCircle className="w-5 h-5" /> },
-    { to: '/calendar', label: 'Календарь', icon: <Calendar className="w-5 h-5" /> },
-    { to: '/split', label: 'Сплиты', icon: <Scissors className="w-5 h-5" /> },
-    { to: '/settings', label: 'Настройки', icon: <Settings className="w-5 h-5" /> },
+    { to: '/enhance', label: 'Новые', icon: <PlusCircle className="w-6 h-6" /> },
+    { to: '/calendar', label: 'Календарь', icon: <Calendar className="w-6 h-6" /> },
+    { to: '/split', label: 'Сплиты', icon: <Scissors className="w-6 h-6" /> },
+    { to: '/settings', label: 'Настройки', icon: <Settings className="w-6 h-6" /> },
 ];
 
 export function BottomNav() {
