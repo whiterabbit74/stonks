@@ -69,8 +69,8 @@ function runNoStopLossBacktest(
   if (result.equity.length > 1) {
     const initialValue = result.equity[0].value;
     const finalValue = result.equity[result.equity.length - 1].value;
-    const startDate = result.equity[0].date;
-    const endDate = result.equity[result.equity.length - 1].date;
+    const startDate = new Date(result.equity[0].date);
+    const endDate = new Date(result.equity[result.equity.length - 1].date);
     const years = (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24 * 365.25);
     
     if (years > 0 && initialValue > 0) {
