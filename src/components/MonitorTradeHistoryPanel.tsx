@@ -13,8 +13,17 @@ interface MonitorTradeHistoryPanelProps {
 
 function formatDate(value: string | null | undefined) {
   if (!value) return '—';
+  // Если это просто дата YYYY-MM-DD (торговый день Нью-Йорка), форматируем её как текст,
+  // чтобы избежать смещения часовых поясов браузера.
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    const [y, m, d] = value.split('-');
+    return `${d}.${m}.${y}`;
+  }
   try {
-    return new Date(value).toLocaleDateString('ru-RU');
+    // Если это ISO строка, приводим к времени Нью-Йорка
+    return new Date(value).toLocaleDateString('ru-RU', {
+      timeZone: 'America/New_York'
+    });
   } catch {
     return value;
   }
@@ -24,12 +33,15 @@ function formatDateTime(value: string | null | undefined) {
   if (!value) return '—';
   try {
     const d = new Date(value);
+    // Всегда отображаем время Нью-Йорка
     return d.toLocaleString('ru-RU', {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
       hour: '2-digit',
-      minute: '2-digit'
+      minute: '2-digit',
+      timeZone: 'America/New_York',
+      timeZoneName: 'short'
     });
   } catch {
     return value;
@@ -104,7 +116,7 @@ export function MonitorTradeHistoryPanel({ data, loading = false, error = null, 
   const [showAll, setShowAll] = useState(false);
   const [statusFilter, setStatusFilter] = useState<'all' | 'open' | 'closed'>('all');
   const [pnlFilter, setPnlFilter] = useState<'all' | 'profit' | 'loss'>('all');
-  const trades = data?.trades ?? [];
+  const trades = useMemo(() => data?.trades ?? [], [data]);
   const openTrade = data?.openTrade ?? null;
 
   // Apply filters
