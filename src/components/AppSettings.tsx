@@ -260,10 +260,10 @@ export function AppSettings() {
   const GeneralTab = () => (
     <div className="space-y-4">
       {/* Уведомления */}
-      <div className="p-4 rounded-lg border">
-        <div className="text-sm font-medium text-gray-700 mb-2">Уведомления</div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">Порог близости к IBS, %</label>
-        <p className="text-xs text-gray-500 mb-2">Диапазон 0–20%. По умолчанию 5%.</p>
+      <div className="p-4 rounded-lg border dark:border-gray-700">
+        <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Уведомления</div>
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Порог близости к IBS, %</label>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">Диапазон 0–20%. По умолчанию 5%.</p>
         <div className="flex items-center gap-4">
           <div className="flex-1 flex flex-col">
             <input type="range" min={0} max={20} step={0.5} value={watchThresholdPct} onChange={(e) => {
@@ -286,16 +286,16 @@ export function AppSettings() {
               fallback: watchThresholdPct
             });
             setWatchThresholdPct(sanitized);
-          }} className="w-24 px-3 py-2 border border-gray-300 rounded-md text-sm" />
-          <span className="text-sm text-gray-500">%</span>
+          }} className="w-24 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm dark:bg-gray-700 dark:text-white" />
+          <span className="text-sm text-gray-500 dark:text-gray-400">%</span>
         </div>
       </div>
 
       {/* График */}
-      <div className="p-4 rounded-lg border">
-        <div className="text-sm font-medium text-gray-700 mb-2">График</div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">Высота панели индикаторов (IBS/Объём), %</label>
-        <p className="text-xs text-gray-500 mb-2">Диапазон 0–40%. По умолчанию 7%. Больше — выше панель, меньше — ниже.</p>
+      <div className="p-4 rounded-lg border dark:border-gray-700">
+        <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">График</div>
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Высота панели индикаторов (IBS/Объём), %</label>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">Диапазон 0–40%. По умолчанию 7%. Больше — выше панель, меньше — ниже.</p>
         <div className="flex items-center gap-4">
           <div className="flex-1 flex flex-col">
             <input type="range" min={0} max={40} step={1} value={indicatorPanePercent} onChange={(e) => {
@@ -318,17 +318,17 @@ export function AppSettings() {
               fallback: indicatorPanePercent
             });
             setIndicatorPanePercent(sanitized);
-          }} className="w-24 px-3 py-2 border border-gray-300 rounded-md text-sm" />
-          <span className="text-sm text-gray-500">%</span>
+          }} className="w-24 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm dark:bg-gray-700 dark:text-white" />
+          <span className="text-sm text-gray-500 dark:text-gray-400">%</span>
         </div>
-        <div className="text-xs text-gray-500 mt-1">Подсказка: чтобы сделать столбики заметно ниже (примерно в 3 раза), установите ~7%.</div>
+        <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">Подсказка: чтобы сделать столбики заметно ниже (примерно в 3 раза), установите ~7%.</div>
       </div>
 
       {/* Тикеры по умолчанию для multi-ticker */}
-      <div className="p-4 rounded-lg border">
-        <div className="text-sm font-medium text-gray-700 mb-2">Страница "Несколько тикеров"</div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">Тикеры по умолчанию</label>
-        <p className="text-xs text-gray-500 mb-2">Список тикеров через запятую, которые будут использоваться при открытии страницы.</p>
+      <div className="p-4 rounded-lg border dark:border-gray-700">
+        <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Страница "Несколько тикеров"</div>
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Тикеры по умолчанию</label>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">Список тикеров через запятую, которые будут использоваться при открытии страницы.</p>
         <input
           type="text"
           value={defaultMultiTickerSymbols}
@@ -339,20 +339,20 @@ export function AppSettings() {
             });
             setDefaultMultiTickerSymbols(sanitized);
           }}
-          className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
           placeholder="AAPL,MSFT,AMZN,MAGS"
         />
-        <p className="text-xs text-gray-500 mt-1">Пример: AAPL,MSFT,AMZN,MAGS</p>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Пример: AAPL,MSFT,AMZN,MAGS</p>
       </div>
 
       {/* Комиссии */}
-      <div className="p-4 rounded-lg border">
-        <div className="text-sm font-medium text-gray-700 mb-3">Комиссии торговли</div>
+      <div className="p-4 rounded-lg border dark:border-gray-700">
+        <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Комиссии торговли</div>
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Тип комиссии</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Тип комиссии</label>
             <div className="flex flex-wrap gap-4">
-              <label className="flex items-center gap-2 text-sm">
+              <label className="flex items-center gap-2 text-sm dark:text-gray-300">
                 <input
                   type="radio"
                   name="commissionType"
@@ -361,7 +361,7 @@ export function AppSettings() {
                 />
                 Фиксированная
               </label>
-              <label className="flex items-center gap-2 text-sm">
+              <label className="flex items-center gap-2 text-sm dark:text-gray-300">
                 <input
                   type="radio"
                   name="commissionType"
@@ -370,7 +370,7 @@ export function AppSettings() {
                 />
                 Процентная
               </label>
-              <label className="flex items-center gap-2 text-sm">
+              <label className="flex items-center gap-2 text-sm dark:text-gray-300">
                 <input
                   type="radio"
                   name="commissionType"
@@ -384,7 +384,7 @@ export function AppSettings() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className={commissionType === 'percentage' ? 'opacity-50' : ''}>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 Фиксированная комиссия, $
               </label>
               <input
@@ -400,13 +400,13 @@ export function AppSettings() {
                   setCommissionFixed(sanitized);
                 }}
                 disabled={commissionType === 'percentage'}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-800 dark:bg-gray-700 dark:text-white"
               />
-              <p className="text-xs text-gray-500 mt-1">За каждую сделку (вход + выход)</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">За каждую сделку (вход + выход)</p>
             </div>
 
             <div className={commissionType === 'fixed' ? 'opacity-50' : ''}>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 Процентная комиссия, %
               </label>
               <input
@@ -423,77 +423,77 @@ export function AppSettings() {
                   setCommissionPercentage(sanitized);
                 }}
                 disabled={commissionType === 'fixed'}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-800 dark:bg-gray-700 dark:text-white"
               />
-              <p className="text-xs text-gray-500 mt-1">От суммы сделки (например, 0.1%)</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">От суммы сделки (например, 0.1%)</p>
             </div>
           </div>
 
-          <div className="text-xs text-gray-500 p-3 bg-blue-50 rounded-md">
-            💡 <strong>Типы комиссий:</strong><br />
-            • <strong>Фиксированная:</strong> одинаковая сумма за каждую сделку<br />
-            • <strong>Процентная:</strong> процент от суммы сделки<br />
-            • <strong>Комбинированная:</strong> фиксированная часть + процент
+          <div className="text-xs text-gray-500 dark:text-gray-400 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-md">
+            💡 <strong className="dark:text-gray-300">Типы комиссий:</strong><br />
+            • <strong className="dark:text-gray-300">Фиксированная:</strong> одинаковая сумма за каждую сделку<br />
+            • <strong className="dark:text-gray-300">Процентная:</strong> процент от суммы сделки<br />
+            • <strong className="dark:text-gray-300">Комбинированная:</strong> фиксированная часть + процент
           </div>
         </div>
       </div>
 
       {/* Провайдеры данных */}
-      <div className="p-4 rounded-lg border">
+      <div className="p-4 rounded-lg border dark:border-gray-700">
         <div className="flex items-center justify-between mb-3">
-          <div className="text-sm font-medium text-gray-700">Провайдеры данных</div>
+          <div className="text-sm font-medium text-gray-700 dark:text-gray-300">Провайдеры данных</div>
           <button
             onClick={() => setShowApiInfo(true)}
-            className="flex items-center gap-1 px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded transition-colors"
+            className="flex items-center gap-1 px-2 py-1 text-xs text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded transition-colors"
           >
             <Info className="w-4 h-4" />
             Подробнее
           </button>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="bg-gray-50 rounded p-3 border">
-            <div className="text-xs text-gray-500 mb-2">Котировки (страница «Результаты»)</div>
-            <label className="flex items-center gap-2 text-sm mb-1">
+          <div className="bg-gray-50 dark:bg-gray-800 rounded p-3 border dark:border-gray-700">
+            <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">Котировки (страница «Результаты»)</div>
+            <label className="flex items-center gap-2 text-sm mb-1 dark:text-gray-300">
               <input type="radio" name="quoteProvider" checked={resultsQuoteProvider === 'finnhub'} onChange={() => setResultsQuoteProvider('finnhub')} />
               Finnhub
             </label>
-            <label className="flex items-center gap-2 text-sm mb-1">
+            <label className="flex items-center gap-2 text-sm mb-1 dark:text-gray-300">
               <input type="radio" name="quoteProvider" checked={resultsQuoteProvider === 'alpha_vantage'} onChange={() => setResultsQuoteProvider('alpha_vantage')} />
               Alpha Vantage
             </label>
-            <label className="flex items-center gap-2 text-sm">
+            <label className="flex items-center gap-2 text-sm dark:text-gray-300">
               <input type="radio" name="quoteProvider" checked={resultsQuoteProvider === 'twelve_data'} onChange={() => setResultsQuoteProvider('twelve_data')} />
               Twelve Data
             </label>
           </div>
 
-          <div className="bg-gray-50 rounded p-3 border">
-            <div className="text-xs text-gray-500 mb-2">Актуализация датасета (серверный refresh)</div>
-            <label className="flex items-center gap-2 text-sm mb-1">
+          <div className="bg-gray-50 dark:bg-gray-800 rounded p-3 border dark:border-gray-700">
+            <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">Актуализация датасета (серверный refresh)</div>
+            <label className="flex items-center gap-2 text-sm mb-1 dark:text-gray-300">
               <input type="radio" name="refreshProvider" checked={resultsRefreshProvider === 'finnhub'} onChange={() => setResultsRefreshProvider('finnhub')} />
               Finnhub
             </label>
-            <label className="flex items-center gap-2 text-sm mb-1">
+            <label className="flex items-center gap-2 text-sm mb-1 dark:text-gray-300">
               <input type="radio" name="refreshProvider" checked={resultsRefreshProvider === 'alpha_vantage'} onChange={() => setResultsRefreshProvider('alpha_vantage')} />
               Alpha Vantage
             </label>
-            <label className="flex items-center gap-2 text-sm">
+            <label className="flex items-center gap-2 text-sm dark:text-gray-300">
               <input type="radio" name="refreshProvider" checked={resultsRefreshProvider === 'twelve_data'} onChange={() => setResultsRefreshProvider('twelve_data')} />
               Twelve Data
             </label>
           </div>
 
-          <div className="bg-gray-50 rounded p-3 border">
-            <div className="text-xs text-gray-500 mb-2">Импорт «Новые данные» (энхансер)</div>
-            <label className="flex items-center gap-2 text-sm mb-1">
+          <div className="bg-gray-50 dark:bg-gray-800 rounded p-3 border dark:border-gray-700">
+            <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">Импорт «Новые данные» (энхансер)</div>
+            <label className="flex items-center gap-2 text-sm mb-1 dark:text-gray-300">
               <input type="radio" name="enhancerProvider" checked={enhancerProvider === 'alpha_vantage'} onChange={() => setEnhancerProvider('alpha_vantage')} />
               Alpha Vantage
             </label>
-            <label className="flex items-center gap-2 text-sm mb-1">
+            <label className="flex items-center gap-2 text-sm mb-1 dark:text-gray-300">
               <input type="radio" name="enhancerProvider" checked={enhancerProvider === 'finnhub'} onChange={() => setEnhancerProvider('finnhub')} />
               Finnhub
             </label>
-            <label className="flex items-center gap-2 text-sm">
+            <label className="flex items-center gap-2 text-sm dark:text-gray-300">
               <input type="radio" name="enhancerProvider" checked={enhancerProvider === 'twelve_data'} onChange={() => setEnhancerProvider('twelve_data')} />
               Twelve Data
             </label>
@@ -506,18 +506,18 @@ export function AppSettings() {
           {saveOk && <span className="text-sm text-green-600">{saveOk}</span>}
           {saveErr && <span className="text-sm text-red-600">{saveErr}</span>}
         </div>
-        <div className="text-xs text-gray-500 mt-2">Подсказка: для refresh используйте провайдера, который стабильно доступен на вашем тарифе.</div>
+        <div className="text-xs text-gray-500 dark:text-gray-400 mt-2">Подсказка: для refresh используйте провайдера, который стабильно доступен на вашем тарифе.</div>
       </div>
 
       {/* API Info Modal */}
       {showApiInfo && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="sticky top-0 bg-white border-b p-4 flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-gray-900">Подробная информация о провайдерах API</h3>
+          <div className="bg-white dark:bg-gray-900 rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-white dark:bg-gray-900 border-b dark:border-gray-700 p-4 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Подробная информация о провайдерах API</h3>
               <button
                 onClick={() => setShowApiInfo(false)}
-                className="text-gray-400 hover:text-gray-600 transition-colors"
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -525,136 +525,136 @@ export function AppSettings() {
             <div className="p-6 space-y-6">
               {/* Quote Provider */}
               <div className="border-l-4 border-blue-500 pl-4">
-                <h4 className="font-semibold text-gray-900 mb-2">1. Котировки (страница «Результаты»)</h4>
-                <p className="text-sm text-gray-700 mb-2">
-                  <strong>Назначение:</strong> Получение реалтайм цены текущего дня (open, high, low, close, volume) для отображения на странице "Результаты".
+                <h4 className="font-semibold text-gray-900 dark:text-gray-100 mb-2">1. Котировки (страница «Результаты»)</h4>
+                <p className="text-sm text-gray-700 dark:text-gray-300 mb-2">
+                  <strong className="dark:text-gray-100">Назначение:</strong> Получение реалтайм цены текущего дня (open, high, low, close, volume) для отображения на странице "Результаты".
                 </p>
-                <p className="text-sm text-gray-700 mb-2">
-                  <strong>Когда вызывается:</strong> При открытии страницы Results и при обновлении текущей котировки.
+                <p className="text-sm text-gray-700 dark:text-gray-300 mb-2">
+                  <strong className="dark:text-gray-100">Когда вызывается:</strong> При открытии страницы Results и при обновлении текущей котировки.
                 </p>
-                <p className="text-sm text-gray-700 mb-2">
-                  <strong>Endpoint:</strong> <code className="bg-gray-100 px-1 rounded">/api/quote/:symbol</code>
+                <p className="text-sm text-gray-700 dark:text-gray-300 mb-2">
+                  <strong className="dark:text-gray-100">Endpoint:</strong> <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">/api/quote/:symbol</code>
                 </p>
-                <p className="text-sm text-gray-700 mb-2">
-                  <strong>Объем запросов:</strong> 1 запрос на тикер при загрузке страницы. При работе с 1 тикером: 1-5 запросов в день.
+                <p className="text-sm text-gray-700 dark:text-gray-300 mb-2">
+                  <strong className="dark:text-gray-100">Объем запросов:</strong> 1 запрос на тикер при загрузке страницы. При работе с 1 тикером: 1-5 запросов в день.
                 </p>
                 <div className="mt-2 space-y-1 text-sm">
                   <div className="flex items-start gap-2">
-                    <span className="text-green-600 font-medium">Alpha Vantage:</span>
-                    <span className="text-gray-600">5 запросов/минуту, 500/день. Хорош для редких обновлений.</span>
+                    <span className="text-green-600 dark:text-green-400 font-medium">Alpha Vantage:</span>
+                    <span className="text-gray-600 dark:text-gray-400">5 запросов/минуту, 500/день. Хорош для редких обновлений.</span>
                   </div>
                   <div className="flex items-start gap-2">
-                    <span className="text-blue-600 font-medium">Finnhub:</span>
-                    <span className="text-gray-600">60 запросов/минуту. Отлично для частых обновлений.</span>
+                    <span className="text-blue-600 dark:text-blue-400 font-medium">Finnhub:</span>
+                    <span className="text-gray-600 dark:text-gray-400">60 запросов/минуту. Отлично для частых обновлений.</span>
                   </div>
                   <div className="flex items-start gap-2">
-                    <span className="text-purple-600 font-medium">Twelve Data:</span>
-                    <span className="text-gray-600">8 запросов/минуту, 800/день. Баланс между скоростью и лимитами.</span>
+                    <span className="text-purple-600 dark:text-purple-400 font-medium">Twelve Data:</span>
+                    <span className="text-gray-600 dark:text-gray-400">8 запросов/минуту, 800/день. Баланс между скоростью и лимитами.</span>
                   </div>
                 </div>
               </div>
 
               {/* Refresh Provider */}
               <div className="border-l-4 border-green-500 pl-4">
-                <h4 className="font-semibold text-gray-900 mb-2">2. Актуализация датасета (серверный refresh)</h4>
-                <p className="text-sm text-gray-700 mb-2">
-                  <strong>Назначение:</strong> Обновление существующего датасета новыми историческими данными (последние 7 дней).
+                <h4 className="font-semibold text-gray-900 dark:text-gray-100 mb-2">2. Актуализация датасета (серверный refresh)</h4>
+                <p className="text-sm text-gray-700 dark:text-gray-300 mb-2">
+                  <strong className="dark:text-gray-100">Назначение:</strong> Обновление существующего датасета новыми историческими данными (последние 7 дней).
                 </p>
-                <p className="text-sm text-gray-700 mb-2">
-                  <strong>Когда вызывается:</strong> При нажатии кнопки "Обновить" на странице Results.
+                <p className="text-sm text-gray-700 dark:text-gray-300 mb-2">
+                  <strong className="dark:text-gray-100">Когда вызывается:</strong> При нажатии кнопки "Обновить" на странице Results.
                 </p>
-                <p className="text-sm text-gray-700 mb-2">
-                  <strong>Endpoint:</strong> <code className="bg-gray-100 px-1 rounded">/api/datasets/:id/refresh</code>
+                <p className="text-sm text-gray-700 dark:text-gray-300 mb-2">
+                  <strong className="dark:text-gray-100">Endpoint:</strong> <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">/api/datasets/:id/refresh</code>
                 </p>
-                <p className="text-sm text-gray-700 mb-2">
-                  <strong>Объем запросов:</strong> 1 запрос на обновление датасета. При регулярном использовании: 1-10 запросов в неделю.
+                <p className="text-sm text-gray-700 dark:text-gray-300 mb-2">
+                  <strong className="dark:text-gray-100">Объем запросов:</strong> 1 запрос на обновление датасета. При регулярном использовании: 1-10 запросов в неделю.
                 </p>
                 <div className="mt-2 space-y-1 text-sm">
                   <div className="flex items-start gap-2">
-                    <span className="text-green-600 font-medium">Alpha Vantage:</span>
-                    <span className="text-gray-600">Полный исторический набор данных, но медленный (лимит 5/мин).</span>
+                    <span className="text-green-600 dark:text-green-400 font-medium">Alpha Vantage:</span>
+                    <span className="text-gray-600 dark:text-gray-400">Полный исторический набор данных, но медленный (лимит 5/мин).</span>
                   </div>
                   <div className="flex items-start gap-2">
-                    <span className="text-blue-600 font-medium">Finnhub:</span>
-                    <span className="text-gray-600">Быстрый, но без split-adjusted данных.</span>
+                    <span className="text-blue-600 dark:text-blue-400 font-medium">Finnhub:</span>
+                    <span className="text-gray-600 dark:text-gray-400">Быстрый, но без split-adjusted данных.</span>
                   </div>
                   <div className="flex items-start gap-2">
-                    <span className="text-purple-600 font-medium">Twelve Data:</span>
-                    <span className="text-gray-600">До 5000 точек данных, баланс между скоростью и качеством.</span>
+                    <span className="text-purple-600 dark:text-purple-400 font-medium">Twelve Data:</span>
+                    <span className="text-gray-600 dark:text-gray-400">До 5000 точек данных, баланс между скоростью и качеством.</span>
                   </div>
                 </div>
               </div>
 
               {/* Enhancer Provider */}
               <div className="border-l-4 border-purple-500 pl-4">
-                <h4 className="font-semibold text-gray-900 mb-2">3. Импорт «Новые данные» (энхансер)</h4>
-                <p className="text-sm text-gray-700 mb-2">
-                  <strong>Назначение:</strong> Получение полного исторического набора данных при создании нового датасета (до 40 лет истории).
+                <h4 className="font-semibold text-gray-900 dark:text-gray-100 mb-2">3. Импорт «Новые данные» (энхансер)</h4>
+                <p className="text-sm text-gray-700 dark:text-gray-300 mb-2">
+                  <strong className="dark:text-gray-100">Назначение:</strong> Получение полного исторического набора данных при создании нового датасета (до 40 лет истории).
                 </p>
-                <p className="text-sm text-gray-700 mb-2">
-                  <strong>Когда вызывается:</strong> На странице "Данные" при вводе тикера и нажатии "Загрузить из API".
+                <p className="text-sm text-gray-700 dark:text-gray-300 mb-2">
+                  <strong className="dark:text-gray-100">Когда вызывается:</strong> На странице "Данные" при вводе тикера и нажатии "Загрузить из API".
                 </p>
-                <p className="text-sm text-gray-700 mb-2">
-                  <strong>Endpoint:</strong> <code className="bg-gray-100 px-1 rounded">/api/yahoo-finance/:symbol</code>
+                <p className="text-sm text-gray-700 dark:text-gray-300 mb-2">
+                  <strong className="dark:text-gray-100">Endpoint:</strong> <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">/api/yahoo-finance/:symbol</code>
                 </p>
-                <p className="text-sm text-gray-700 mb-2">
-                  <strong>Объем запросов:</strong> 1 запрос на создание датасета. При создании 5 датасетов: 5 запросов.
+                <p className="text-sm text-gray-700 dark:text-gray-300 mb-2">
+                  <strong className="dark:text-gray-100">Объем запросов:</strong> 1 запрос на создание датасета. При создании 5 датасетов: 5 запросов.
                 </p>
                 <div className="mt-2 space-y-1 text-sm">
                   <div className="flex items-start gap-2">
-                    <span className="text-green-600 font-medium">Alpha Vantage:</span>
-                    <span className="text-gray-600">✅ Лучший выбор! Полная история, split-adjusted данные, ~1 запрос на датасет.</span>
+                    <span className="text-green-600 dark:text-green-400 font-medium">Alpha Vantage:</span>
+                    <span className="text-gray-600 dark:text-gray-400">✅ Лучший выбор! Полная история, split-adjusted данные, ~1 запрос на датасет.</span>
                   </div>
                   <div className="flex items-start gap-2">
-                    <span className="text-blue-600 font-medium">Finnhub:</span>
-                    <span className="text-gray-600">Быстрый, но ограниченная история (несколько лет).</span>
+                    <span className="text-blue-600 dark:text-blue-400 font-medium">Finnhub:</span>
+                    <span className="text-gray-600 dark:text-gray-400">Быстрый, но ограниченная история (несколько лет).</span>
                   </div>
                   <div className="flex items-start gap-2">
-                    <span className="text-purple-600 font-medium">Twelve Data:</span>
-                    <span className="text-gray-600">До 5000 дней истории (~13 лет), хороший баланс.</span>
+                    <span className="text-purple-600 dark:text-purple-400 font-medium">Twelve Data:</span>
+                    <span className="text-gray-600 dark:text-gray-400">До 5000 дней истории (~13 лет), хороший баланс.</span>
                   </div>
                 </div>
               </div>
 
               {/* Telegram Monitoring */}
               <div className="border-l-4 border-yellow-500 pl-4">
-                <h4 className="font-semibold text-gray-900 mb-2">4. Мониторинг Telegram (фоновый процесс)</h4>
-                <p className="text-sm text-gray-700 mb-2">
-                  <strong>Назначение:</strong> Автоматическое обновление цен для мониторинга тикеров с отправкой уведомлений в Telegram.
+                <h4 className="font-semibold text-gray-900 dark:text-gray-100 mb-2">4. Мониторинг Telegram (фоновый процесс)</h4>
+                <p className="text-sm text-gray-700 dark:text-gray-300 mb-2">
+                  <strong className="dark:text-gray-100">Назначение:</strong> Автоматическое обновление цен для мониторинга тикеров с отправкой уведомлений в Telegram.
                 </p>
-                <p className="text-sm text-gray-700 mb-2">
-                  <strong>Когда вызывается:</strong> При ручном обновлении на странице "Мониторинг" или по расписанию (за 11 и 1 минуту до закрытия рынка).
+                <p className="text-sm text-gray-700 dark:text-gray-300 mb-2">
+                  <strong className="dark:text-gray-100">Когда вызывается:</strong> При ручном обновлении на странице "Мониторинг" или по расписанию (за 11 и 1 минуту до закрытия рынка).
                 </p>
-                <p className="text-sm text-gray-700 mb-2">
-                  <strong>Endpoint:</strong> <code className="bg-gray-100 px-1 rounded">/api/quote/:symbol</code> (используется Quote Provider)
+                <p className="text-sm text-gray-700 dark:text-gray-300 mb-2">
+                  <strong className="dark:text-gray-100">Endpoint:</strong> <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">/api/quote/:symbol</code> (используется Quote Provider)
                 </p>
-                <p className="text-sm text-gray-700 mb-2">
-                  <strong>Объем запросов:</strong> С 4-5 тикерами и задержкой 15с+2с джиттер: ~240 запросов/день.
+                <p className="text-sm text-gray-700 dark:text-gray-300 mb-2">
+                  <strong className="dark:text-gray-100">Объем запросов:</strong> С 4-5 тикерами и задержкой 15с+2с джиттер: ~240 запросов/день.
                 </p>
                 <div className="mt-2 space-y-1 text-sm">
                   <div className="flex items-start gap-2">
-                    <span className="text-green-600 font-medium">Alpha Vantage:</span>
-                    <span className="text-gray-600">⚠️ Может быть медленно при 5 тикерах (лимит 5/мин). Хватит на 500 запросов/день.</span>
+                    <span className="text-green-600 dark:text-green-400 font-medium">Alpha Vantage:</span>
+                    <span className="text-gray-600 dark:text-gray-400">⚠️ Может быть медленно при 5 тикерах (лимит 5/мин). Хватит на 500 запросов/день.</span>
                   </div>
                   <div className="flex items-start gap-2">
-                    <span className="text-blue-600 font-medium">Finnhub:</span>
-                    <span className="text-gray-600">✅ Отлично! 60 запросов/минуту - легко справится с любым количеством тикеров.</span>
+                    <span className="text-blue-600 dark:text-blue-400 font-medium">Finnhub:</span>
+                    <span className="text-gray-600 dark:text-gray-400">✅ Отлично! 60 запросов/минуту - легко справится с любым количеством тикеров.</span>
                   </div>
                   <div className="flex items-start gap-2">
-                    <span className="text-purple-600 font-medium">Twelve Data:</span>
-                    <span className="text-gray-600">✅ Хорошо! 8 запросов/мин, 800/день - с запасом для 4-5 тикеров (~240/день).</span>
+                    <span className="text-purple-600 dark:text-purple-400 font-medium">Twelve Data:</span>
+                    <span className="text-gray-600 dark:text-gray-400">✅ Хорошо! 8 запросов/мин, 800/день - с запасом для 4-5 тикеров (~240/день).</span>
                   </div>
                 </div>
               </div>
 
               {/* Recommendations */}
-              <div className="bg-blue-50 p-4 rounded-lg">
-                <h4 className="font-semibold text-blue-900 mb-2">💡 Рекомендации</h4>
-                <div className="space-y-2 text-sm text-blue-800">
+              <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg">
+                <h4 className="font-semibold text-blue-900 dark:text-blue-100 mb-2">💡 Рекомендации</h4>
+                <div className="space-y-2 text-sm text-blue-800 dark:text-blue-200">
                   <p><strong>Для начинающих:</strong> Finnhub для котировок и мониторинга, Alpha Vantage для создания датасетов.</p>
                   <p><strong>Для активной торговли:</strong> Twelve Data или Finnhub для всего - стабильные лимиты и хорошая скорость.</p>
                   <p><strong>Для экономии запросов:</strong> Alpha Vantage для редких операций, Twelve Data для ежедневного мониторинга.</p>
-                  <p className="pt-2 border-t border-blue-200"><strong>Важно:</strong> С 15-секундной задержкой между запросами вы находитесь в безопасной зоне для всех провайдеров на бесплатных тарифах!</p>
+                  <p className="pt-2 border-t border-blue-200 dark:border-blue-800"><strong>Важно:</strong> С 15-секундной задержкой между запросами вы находитесь в безопасной зоне для всех провайдеров на бесплатных тарифах!</p>
                 </div>
               </div>
             </div>
@@ -668,29 +668,29 @@ export function AppSettings() {
   const ApiTab = () => (
     <div className="space-y-4">
       {/* API Keys Info */}
-      <div className="p-4 rounded-lg border bg-blue-50">
-        <div className="text-sm font-medium text-gray-700 mb-2">🔑 API ключи</div>
-        <p className="text-sm text-gray-600">
-          API ключи настраиваются в файле <code className="bg-gray-100 px-1 rounded">.env</code> на сервере.
-          Для изменения ключей обратитесь к администратору или отредактируйте файл <code className="bg-gray-100 px-1 rounded">~/stonks-config/.env</code> на сервере.
+      <div className="p-4 rounded-lg border bg-blue-50 dark:bg-blue-900/20 dark:border-blue-900/30">
+        <div className="text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">🔑 API ключи</div>
+        <p className="text-sm text-gray-600 dark:text-gray-300">
+          API ключи настраиваются в файле <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">.env</code> на сервере.
+          Для изменения ключей обратитесь к администратору или отредактируйте файл <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">~/stonks-config/.env</code> на сервере.
         </p>
       </div>
 
       {/* API Testing */}
-      <div className="p-4 rounded-lg border">
-        <div className="text-sm font-medium text-gray-700 mb-3">Тестирование API</div>
-        <div className="text-xs text-gray-500 mb-3">Проверьте подключение к API провайдерам (используется тестовый символ AAPL)</div>
+      <div className="p-4 rounded-lg border dark:border-gray-700">
+        <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Тестирование API</div>
+        <div className="text-xs text-gray-500 dark:text-gray-400 mb-3">Проверьте подключение к API провайдерам (используется тестовый символ AAPL)</div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
             <button
               onClick={() => testProvider('alpha_vantage')}
               disabled={testingProvider === 'alpha_vantage'}
-              className="w-full px-3 py-2 rounded-md bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:bg-gray-400"
+              className="w-full px-3 py-2 rounded-md bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:bg-gray-400 dark:disabled:bg-gray-700"
             >
               {testingProvider === 'alpha_vantage' ? 'Тестирование...' : 'Тест Alpha Vantage'}
             </button>
             {testResults.alpha_vantage && (
-              <div className={`mt-2 text-xs ${testResults.alpha_vantage.error ? 'text-red-600' : 'text-green-600'}`}>
+              <div className={`mt-2 text-xs ${testResults.alpha_vantage.error ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`}>
                 {testResults.alpha_vantage.error
                   ? `❌ ${testResults.alpha_vantage.error}`
                   : `✅ ${testResults.alpha_vantage.symbol}: $${testResults.alpha_vantage.price}`}
@@ -701,12 +701,12 @@ export function AppSettings() {
             <button
               onClick={() => testProvider('finnhub')}
               disabled={testingProvider === 'finnhub'}
-              className="w-full px-3 py-2 rounded-md bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:bg-gray-400"
+              className="w-full px-3 py-2 rounded-md bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:bg-gray-400 dark:disabled:bg-gray-700"
             >
               {testingProvider === 'finnhub' ? 'Тестирование...' : 'Тест Finnhub'}
             </button>
             {testResults.finnhub && (
-              <div className={`mt-2 text-xs ${testResults.finnhub.error ? 'text-red-600' : 'text-green-600'}`}>
+              <div className={`mt-2 text-xs ${testResults.finnhub.error ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`}>
                 {testResults.finnhub.error
                   ? `❌ ${testResults.finnhub.error}`
                   : `✅ ${testResults.finnhub.symbol}: $${testResults.finnhub.price}`}
@@ -717,12 +717,12 @@ export function AppSettings() {
             <button
               onClick={() => testProvider('twelve_data')}
               disabled={testingProvider === 'twelve_data'}
-              className="w-full px-3 py-2 rounded-md bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:bg-gray-400"
+              className="w-full px-3 py-2 rounded-md bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:bg-gray-400 dark:disabled:bg-gray-700"
             >
               {testingProvider === 'twelve_data' ? 'Тестирование...' : 'Тест Twelve Data'}
             </button>
             {testResults.twelve_data && (
-              <div className={`mt-2 text-xs ${testResults.twelve_data.error ? 'text-red-600' : 'text-green-600'}`}>
+              <div className={`mt-2 text-xs ${testResults.twelve_data.error ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`}>
                 {testResults.twelve_data.error
                   ? `❌ ${testResults.twelve_data.error}`
                   : `✅ ${testResults.twelve_data.symbol}: $${testResults.twelve_data.price}`}
@@ -904,16 +904,16 @@ export function AppSettings() {
   const TelegramTab = () => (
     <div className="space-y-4">
       {/* Telegram Info */}
-      <div className="p-4 rounded-lg border bg-purple-50">
-        <div className="text-sm font-medium text-gray-700 mb-2">📱 Telegram настройки</div>
-        <p className="text-sm text-gray-600">
-          Telegram Bot Token и Chat ID настраиваются в файле <code className="bg-gray-100 px-1 rounded">.env</code> на сервере.
-          Для изменения отредактируйте файл <code className="bg-gray-100 px-1 rounded">~/stonks-config/.env</code> на сервере.
+      <div className="p-4 rounded-lg border bg-purple-50 dark:bg-purple-900/20 dark:border-purple-900/30">
+        <div className="text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">📱 Telegram настройки</div>
+        <p className="text-sm text-gray-600 dark:text-gray-300">
+          Telegram Bot Token и Chat ID настраиваются в файле <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">.env</code> на сервере.
+          Для изменения отредактируйте файл <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">~/stonks-config/.env</code> на сервере.
         </p>
       </div>
 
-      <div className="p-4 rounded-lg border bg-gray-50">
-        <div className="text-sm font-medium text-gray-700 mb-2">Тестовое сообщение в Telegram</div>
+      <div className="p-4 rounded-lg border bg-gray-50 dark:bg-gray-800 dark:border-gray-700">
+        <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Тестовое сообщение в Telegram</div>
         <div className="flex flex-wrap items-center gap-2">
           <input value={testMsg} onChange={(e) => {
             const sanitized = sanitizeTextInput(e.target.value, {
@@ -921,15 +921,15 @@ export function AppSettings() {
               removeHtml: true
             });
             setTestMsg(sanitized);
-          }} className="flex-1 min-w-[260px] px-3 py-2 rounded-md border" />
-          <button onClick={sendTest} disabled={sending} className="px-3 py-1.5 rounded-md bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:bg-gray-400">
+          }} className="flex-1 min-w-[260px] px-3 py-2 rounded-md border dark:bg-gray-700 dark:border-gray-600 dark:text-white" />
+          <button onClick={sendTest} disabled={sending} className="px-3 py-1.5 rounded-md bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:bg-gray-400 dark:disabled:bg-gray-700">
             {sending ? 'Отправка…' : 'Отправить тест'}
           </button>
         </div>
-        {error && <div className="text-sm text-red-600 mt-2">{error}</div>}
-        {ok && <div className="text-sm text-green-600 mt-2">{ok}</div>}
+        {error && <div className="text-sm text-red-600 dark:text-red-400 mt-2">{error}</div>}
+        {ok && <div className="text-sm text-green-600 dark:text-green-400 mt-2">{ok}</div>}
       </div>
-      <p className="text-xs text-gray-500">Примечание: Telegram-бот и чат должны быть настроены на сервере.</p>
+      <p className="text-xs text-gray-500 dark:text-gray-400">Примечание: Telegram-бот и чат должны быть настроены на сервере.</p>
     </div>
   );
 
@@ -987,20 +987,20 @@ export function AppSettings() {
       {/* Header with save button */}
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div className="flex items-center gap-2">
-          <h2 className="text-xl font-semibold text-gray-900">Настройки</h2>
+          <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Настройки</h2>
           {hasUnsavedChanges && (
             <span className="text-orange-500 font-bold text-lg" title="Есть несохранённые изменения">*</span>
           )}
         </div>
         <div className="flex items-center gap-3">
-          {saveOk && <span className="text-sm text-green-600">{saveOk}</span>}
-          {saveErr && <span className="text-sm text-red-600">{saveErr}</span>}
+          {saveOk && <span className="text-sm text-green-600 dark:text-green-400">{saveOk}</span>}
+          {saveErr && <span className="text-sm text-red-600 dark:text-red-400">{saveErr}</span>}
           <button
             onClick={handleGlobalSave}
             disabled={saving || !hasUnsavedChanges}
             className={`inline-flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${hasUnsavedChanges
               ? 'bg-blue-600 text-white hover:bg-blue-700'
-              : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+              : 'bg-gray-100 text-gray-400 cursor-not-allowed dark:bg-gray-800 dark:text-gray-500'
               } disabled:opacity-50`}
           >
             {saving ? (
@@ -1014,7 +1014,7 @@ export function AppSettings() {
       </div>
 
       {/* Tabs with ARIA */}
-      <div className="border-b border-gray-200">
+      <div className="border-b border-gray-200 dark:border-gray-700">
         <nav
           className="-mb-px flex space-x-8"
           role="tablist"
@@ -1040,8 +1040,8 @@ export function AppSettings() {
                 }
               }}
               className={`whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm transition-colors outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${activeTab === tab.id
-                ? 'border-indigo-500 text-indigo-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400 dark:border-indigo-400'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300 dark:hover:border-gray-600'
                 }`}
             >
               {tab.label}
