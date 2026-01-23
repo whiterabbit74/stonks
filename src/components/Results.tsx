@@ -9,6 +9,7 @@ import {
 import { formatMoney } from '../lib/formatters';
 import { useAppStore } from '../stores';
 import { useToastActions } from './ui';
+import { ErrorBoundary } from './ErrorBoundary';
 import { TradingChart } from './TradingChart';
 import { EquityChart } from './EquityChart';
 import { TradeDrawdownChart } from './TradeDrawdownChart';
@@ -869,7 +870,9 @@ export function Results() {
 
             {activeChart === 'price' && (
               <div className="h-[65vh] min-h-[300px] md:min-h-[500px] max-h-[900px] mt-4 mb-6">
-                <TradingChart data={marketData} trades={trades} splits={currentSplits} />
+                <ErrorBoundary>
+                  <TradingChart data={marketData} trades={trades} splits={currentSplits} />
+                </ErrorBoundary>
               </div>
             )}
             {activeChart === 'equity' && (
@@ -958,7 +961,7 @@ export function Results() {
               <OpenDayDrawdownChart trades={trades} data={marketData} />
             )}
             {activeChart === 'margin' && (
-              <MarginSimulator equity={equity} />
+              <MarginSimulator equity={equity} trades={trades} symbol={symbol} />
             )}
             {activeChart === 'buyAtClose' && (
               <BuyAtCloseSimulator data={marketData} strategy={currentStrategy} />

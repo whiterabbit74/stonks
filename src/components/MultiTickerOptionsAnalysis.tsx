@@ -37,7 +37,6 @@ export function MultiTickerOptionsAnalysis({ tickersData, tradesByTicker }: Mult
         });
 
         // 1. Aggregate Equity
-        const dateMap = new Map<string, number>();
         let minDateStr: string | null = null;
         let maxDateStr: string | null = null;
 
@@ -91,7 +90,7 @@ export function MultiTickerOptionsAnalysis({ tickersData, tradesByTicker }: Mult
             });
 
             return {
-                date: new Date(dateStr), // EquityChart expects Date objects or strings. Let's provide Date to be safe/standard
+                date: dateStr,
                 value: totalVal,
                 drawdown: 0 // Will calc later
             };
