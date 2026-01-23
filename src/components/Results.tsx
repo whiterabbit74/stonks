@@ -507,6 +507,24 @@ export function Results() {
     setBuyHoldAppliedLeverage(pct / 100);
   };
 
+  // Optimization: Memoize props for MiniQuoteChart to avoid re-renders/chart destruction
+  const miniChartHistory = useMemo(() => {
+    return marketData && marketData.length > 0 ? marketData.slice(-10) : [];
+  }, [marketData]);
+
+  const { miniChartIsOpen, miniChartEntryPrice } = useMemo(() => {
+    const trades = backtestResults?.trades || [];
+    if (!trades.length) return { miniChartIsOpen: false, miniChartEntryPrice: null };
+
+    const lastTrade = trades[trades.length - 1];
+    const lastDataDate = marketData.length ? marketData[marketData.length - 1].date : null;
+    const isOpen = !!(lastTrade && lastDataDate && isSameDay(lastTrade.exitDate, lastDataDate));
+    return {
+      miniChartIsOpen: isOpen,
+      miniChartEntryPrice: isOpen ? lastTrade?.entryPrice ?? null : null
+    };
+  }, [backtestResults, marketData]);
+
   if (!isDataReady) {
     // 1. Ticker requested but not ready -> Show Loading
     // Also show this if we have old results but user requested a new ticker (isDataReady will be false)
@@ -748,21 +766,12 @@ export function Results() {
               <div className="w-full">
                 <div className="h-[260px] sm:h-[300px]">
                   <MiniQuoteChart
-                    history={marketData.slice(-10)}
+                    history={miniChartHistory}
                     today={quote}
                     trades={trades}
                     highIBS={Number(currentStrategy?.parameters?.highIBS ?? 0.75)}
-                    isOpenPosition={(() => {
-                      const lastTrade = trades[trades.length - 1];
-                      const lastDataDate = marketData.length ? marketData[marketData.length - 1].date : null;
-                      return !!(lastTrade && lastDataDate && isSameDay(lastTrade.exitDate, lastDataDate));
-                    })()}
-                    entryPrice={(() => {
-                      const lastTrade = trades[trades.length - 1];
-                      const lastDataDate = marketData.length ? marketData[marketData.length - 1].date : null;
-                      const isOpen = !!(lastTrade && lastDataDate && isSameDay(lastTrade.exitDate, lastDataDate));
-                      return isOpen ? lastTrade?.entryPrice ?? null : null;
-                    })()}
+                    isOpenPosition={miniChartIsOpen}
+                    entryPrice={miniChartEntryPrice}
                   />
                 </div>
               </div>
