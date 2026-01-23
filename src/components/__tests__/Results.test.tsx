@@ -99,6 +99,7 @@ describe('Results - Position Monitoring Logic', () => {
   ];
 
   const mockBacktestResult: BacktestResult = {
+    symbol: 'TEST',
     equity: [
       { date: '2024-01-01', value: 10000, drawdown: 0 },
       { date: '2024-01-02', value: 10200, drawdown: 0 },
@@ -513,6 +514,7 @@ describe('Results - Position Monitoring Logic', () => {
 
     it('should handle empty results', async () => {
       const emptyResult: BacktestResult = {
+        symbol: 'TEST',
         equity: [],
         trades: [],
         metrics: {
