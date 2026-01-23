@@ -10,6 +10,8 @@ import { MultiTickerChart } from './MultiTickerChart';
 import { EquityChart } from './EquityChart';
 import { TradesTable } from './TradesTable';
 import { ProfitFactorChart } from './ProfitFactorChart';
+import { TradeDrawdownChart } from './TradeDrawdownChart';
+import { TradeDurationChart } from './TradeDurationChart';
 import { runSinglePositionBacktest, optimizeTickerData, formatCurrencyCompact } from '../lib/singlePositionBacktest';
 import { MiniQuoteChart } from './MiniQuoteChart';
 import { createStrategyFromTemplate, STRATEGY_TEMPLATES } from '../lib/strategy';
@@ -90,7 +92,7 @@ export function MultiTickerPage() {
   const [backtestResults, setBacktestResults] = useState<BacktestResults | null>(null);
   const [monthlyContributionResults, setMonthlyContributionResults] = useState<BacktestResults | null>(null);
   const [tickersData, setTickersData] = useState<TickerData[]>([]);
-  type TabId = 'price' | 'equity' | 'trades' | 'profit' | 'monthlyContribution' | 'splits' | 'options';
+  type TabId = 'price' | 'equity' | 'trades' | 'profit' | 'monthlyContribution' | 'splits' | 'options' | 'drawdown' | 'duration';
   const [activeTab, setActiveTab] = useState<TabId>('price');
   const [selectedTradeTicker, setSelectedTradeTicker] = useState<'all' | string>('all');
   const [refreshingTickers, setRefreshingTickers] = useState<Set<string>>(new Set());
@@ -638,8 +640,10 @@ export function MultiTickerPage() {
             {[
               { id: 'price' as TabId, label: 'Цены' },
               { id: 'equity' as TabId, label: 'Equity' },
+              { id: 'drawdown' as TabId, label: 'Просадка' },
               { id: 'trades' as TabId, label: 'Сделки (бэктест)' },
               { id: 'profit' as TabId, label: 'Profit factor' },
+              { id: 'duration' as TabId, label: 'Длительность' },
               monthlyContributionResults ? { id: 'monthlyContribution' as TabId, label: 'Пополнения' } : null,
               { id: 'options' as TabId, label: 'Опционы' },
               { id: 'splits' as TabId, label: 'Сплиты' },
@@ -685,6 +689,15 @@ export function MultiTickerPage() {
                     </div>
                   </div>
                 )}
+              </div>
+            )}
+
+            {activeTab === 'drawdown' && (
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                  Анализ просадки
+                </h3>
+                <TradeDrawdownChart trades={backtestResults.trades} initialCapital={initialCapital} />
               </div>
             )}
 
@@ -776,6 +789,15 @@ export function MultiTickerPage() {
                     </div>
                   </div>
                 )}
+              </div>
+            )}
+
+            {activeTab === 'duration' && (
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                  Анализ длительности сделок
+                </h3>
+                <TradeDurationChart trades={backtestResults.trades} />
               </div>
             )}
 
