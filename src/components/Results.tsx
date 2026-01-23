@@ -506,7 +506,7 @@ export function Results() {
     setBuyHoldAppliedLeverage(pct / 100);
   };
 
-  if (!isDataReady) {
+  if (!backtestResults || !isDataReady) {
     // 1. Ticker requested but not ready -> Show Loading
     // Also show this if we have old results but user requested a new ticker (isDataReady will be false)
     if (requestedTicker || effectiveSymbol) {
@@ -590,6 +590,9 @@ export function Results() {
       </div>
     );
   }
+
+  // TS Guard
+  if (!backtestResults) return null;
 
   const { metrics, trades, equity } = backtestResults;
 
@@ -868,7 +871,9 @@ export function Results() {
 
             {activeChart === 'price' && (
               <div className="h-[65vh] min-h-[300px] md:min-h-[500px] max-h-[900px] mt-4 mb-6">
-                <TradingChart data={marketData} trades={trades} splits={currentSplits} />
+                <ErrorBoundary>
+                  <TradingChart data={marketData} trades={trades} splits={currentSplits} />
+                </ErrorBoundary>
               </div>
             )}
             {activeChart === 'equity' && (
@@ -957,7 +962,7 @@ export function Results() {
               <OpenDayDrawdownChart trades={trades} data={marketData} />
             )}
             {activeChart === 'margin' && (
-              <MarginSimulator equity={equity} />
+              <MarginSimulator equity={equity} trades={trades} symbol={symbol} />
             )}
             {activeChart === 'buyAtClose' && (
               <BuyAtCloseSimulator data={marketData} strategy={currentStrategy} />

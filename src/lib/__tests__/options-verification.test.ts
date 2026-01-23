@@ -63,11 +63,11 @@ describe('Options Backtest Verification', () => {
     calcVolMock.mockImplementation((prices) => {
       const lastPrice = prices[prices.length - 1];
 
-      if (Math.abs(lastPrice - 149.3) < 0.001) return 0.21512318254228375; // Entry T1
-      if (Math.abs(lastPrice - 154.9) < 0.001) return 0.22267128384290083; // Exit T1
+      if (Math.abs(lastPrice - 149.3) < 0.001) return 0.2151231825422837; // Entry T1
+      if (Math.abs(lastPrice - 154.9) < 0.001) return 0.2226712838429008; // Exit T1
 
-      if (Math.abs(lastPrice - 110.0) < 0.001) return 2.150421451754819; // Entry T10
-      if (Math.abs(lastPrice - 109.5) < 0.001) return 2.1497846301874905; // Exit T10
+      if (Math.abs(lastPrice - 110.0) < 0.001) return 2.15042145175482; // Entry T10
+      if (Math.abs(lastPrice - 109.5) < 0.001) return 2.14978463018749; // Exit T10
 
       return 0.2; // Default
     });

@@ -1,11 +1,14 @@
-import { useMemo, useState } from 'react';
-import type { EquityPoint } from '../types';
+import { useMemo, useState, useCallback } from 'react';
+import { Download } from 'lucide-react';
+import type { EquityPoint, Trade } from '../types';
 import { EquityChart } from './EquityChart';
 import { calculateCAGR, formatCurrencyUSD } from '../lib/backtest-utils';
 import { SimulationStatsGrid } from './SimulationStatsGrid';
 
 interface MarginSimulatorProps {
   equity: EquityPoint[];
+  trades?: Trade[];
+  symbol?: string;
 }
 
 interface SimulationResult {
@@ -92,11 +95,10 @@ function simulateLeverageWithMarginCalls(equity: EquityPoint[], leverage: number
   return { equity: result, maxDrawdown: maxDD, finalValue, marginCalls };
 }
 
-export function MarginSimulator({ equity }: MarginSimulatorProps) {
-  const [marginPctInput, setMarginPctInput] = useState<string>('200');
+export function MarginSimulator({ equity, trades = [], symbol }: MarginSimulatorProps) {
   const [appliedLeverage, setAppliedLeverage] = useState<number>(2);
 
-  const { simEquity, simMaxDD, simFinal, marginCalls, annualReturn } = useMemo(() => {
+  const { simEquity, simMaxDD, simFinal, marginCalls, annualReturn, filteredTrades } = useMemo(() => {
     const leverage = appliedLeverage;
     const sim = simulateLeverageWithMarginCalls(equity, leverage);
 
@@ -111,44 +113,72 @@ export function MarginSimulator({ equity }: MarginSimulatorProps) {
       );
     }
 
+    // Определяем дату полной ликвидации (если была)
+    const liquidationCall = sim.marginCalls.find(c => c.type === 'full');
+    const liquidationDate = liquidationCall ? liquidationCall.date : null;
+
+    // Фильтруем сделки: убираем те, что были после ликвидации
+    const filteredTrades = liquidationDate
+      ? trades.filter(t => new Date(t.entryDate) <= liquidationDate)
+      : trades;
+
     return {
       simEquity: sim.equity,
       simMaxDD: sim.maxDrawdown,
       simFinal: sim.finalValue,
       marginCalls: sim.marginCalls,
-      annualReturn
+      annualReturn,
+      filteredTrades
     };
-  }, [equity, appliedLeverage]);
+  }, [equity, appliedLeverage, trades]);
 
-  const onApply = () => {
-    const pct = Number(marginPctInput);
-    if (!isFinite(pct) || pct <= 0) return;
-    setAppliedLeverage(pct / 100);
-  };
+  const handleExport = useCallback(() => {
+    if (!filteredTrades || filteredTrades.length === 0) return;
+
+    try {
+      const dateSuffix = new Date().toISOString().slice(0, 10);
+      const fileName = `trades-margin-${symbol || 'backtest'}-${dateSuffix}.json`;
+      const dataStr = JSON.stringify(filteredTrades, null, 2);
+      const blob = new Blob([dataStr], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Failed to export trades', err);
+    }
+  }, [filteredTrades, symbol]);
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-end gap-3">
         <div className="flex flex-col">
           <label className="text-xs text-gray-600 dark:text-gray-300">Маржинальность, %</label>
-          <input
-            type="number"
-            inputMode="decimal"
-            min={1}
-            step={1}
-            value={marginPctInput}
-            onChange={(e) => setMarginPctInput(e.target.value)}
-            className="px-3 py-2 border rounded-md w-40 dark:bg-gray-900 dark:border-gray-700 dark:text-gray-100"
-            placeholder="например, 200"
-          />
+          <select
+            value={Math.round(appliedLeverage * 100).toString()}
+            onChange={(e) => setAppliedLeverage(Number(e.target.value) / 100)}
+            className="px-3 py-2 border rounded-md w-40 bg-white dark:bg-gray-900 dark:border-gray-700 dark:text-gray-100 cursor-pointer"
+          >
+            {[100, 125, 150, 175, 200, 300].map(val => (
+              <option key={val} value={val}>{val}%</option>
+            ))}
+          </select>
         </div>
+
         <button
-          onClick={onApply}
-          className="px-4 py-2 rounded-md bg-blue-600 text-white text-sm font-medium hover:bg-blue-700"
+          onClick={handleExport}
+          disabled={!filteredTrades.length}
+          className="px-4 py-2 rounded-md bg-white border border-gray-300 text-gray-700 text-sm font-medium hover:bg-gray-50 disabled:opacity-50 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-700 flex items-center gap-2"
         >
-          Посчитать
+          <Download className="w-4 h-4" />
+          Скачать JSON
         </button>
-        <div className="text-xs text-gray-500 dark:text-gray-300">
+
+        <div className="text-xs text-gray-500 dark:text-gray-300 ml-auto sm:ml-0 self-center">
           Текущее плечо: ×{appliedLeverage.toFixed(2)}
         </div>
       </div>
@@ -158,7 +188,7 @@ export function MarginSimulator({ equity }: MarginSimulatorProps) {
           finalValue={simFinal}
           cagr={annualReturn}
           maxDrawdown={simMaxDD}
-          tradeCount={0} // Not applicable here really
+          tradeCount={filteredTrades.length}
         />
         {marginCalls.length > 0 && (
           <div className="w-full px-3 py-2 rounded border border-red-300 bg-red-50 text-red-800 dark:bg-red-900/30 dark:border-red-800 dark:text-red-200">
