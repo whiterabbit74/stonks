@@ -594,6 +594,14 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ backtestStatus: 'running', error: null });
     try {
       const results = await executeBacktest(marketData, currentStrategy);
+
+      // Inject ticker symbol if available in currentDataset
+      if (currentDataset && currentDataset.ticker) {
+        results.symbol = currentDataset.ticker;
+        results.ticker = currentDataset.ticker;
+        results.meta = { ...(results.meta || {}), ticker: currentDataset.ticker };
+      }
+
       set({
         backtestResults: results,
         backtestStatus: 'completed'
