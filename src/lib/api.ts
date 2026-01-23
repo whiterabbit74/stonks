@@ -207,7 +207,7 @@ export async function apiCall<T>(
 export class DatasetAPI {
   static async getSplits(symbol: string): Promise<Array<{ date: string; factor: number }>> {
     try {
-      const response = await fetchWithCreds(`${API_BASE_URL} /splits/${encodeURIComponent(symbol)} `);
+      const response = await fetchWithCreds(`${API_BASE_URL}/splits/${encodeURIComponent(symbol)}`);
       if (!response.ok) {
         // Жёсткая политика: нет внешних провайдеров — только локальные сплиты; ошибки проглатываем → []
         logWarn('network', `Failed to fetch splits for ${symbol}, returning empty array`, {

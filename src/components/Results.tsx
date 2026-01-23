@@ -591,6 +591,7 @@ export function Results() {
     );
   }
 
+  if (!backtestResults) return null;
   const { metrics, trades, equity } = backtestResults;
 
   // Расчет дополнительных метрик

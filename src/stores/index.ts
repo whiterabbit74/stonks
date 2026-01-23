@@ -395,7 +395,14 @@ export const useAppStore = create<AppState>((set, get) => ({
       // Check if operation was cancelled after dataset fetch
       if (abortController.signal.aborted) return;
 
-      // Если датасет уже пересчитан на сервере — не применяем сплиты повторно
+      // Загружаем сплиты из центрального источника всегда (для UI и/или коррекции)
+      let splits: SplitEvent[] = [];
+      try { splits = await DatasetAPI.getSplits(dataset.ticker); } catch { splits = []; }
+
+      // Check if operation was cancelled after splits fetch
+      if (abortController.signal.aborted) return;
+
+      // Если датасет уже пересчитан на сервере — не применяем сплиты повторно, но сохраняем их для UI
       const isAdjusted = 'adjustedForSplits' in dataset && Boolean(dataset.adjustedForSplits);
       if (isAdjusted) {
         // Check if still current operation before updating state
@@ -403,19 +410,13 @@ export const useAppStore = create<AppState>((set, get) => ({
           set({
             marketData: dedupeDailyOHLC(dataset.data as OHLCData[]),
             currentDataset: dataset,
-            currentSplits: [],
+            currentSplits: splits,
             lastAppliedSplitsKey: null,
             error: null,
           });
         }
       } else {
-        // Загружаем только из центрального splits.json и применяем локально
-        let splits: SplitEvent[] = [];
-        try { splits = await DatasetAPI.getSplits(dataset.ticker); } catch { splits = []; }
-
-        // Check if operation was cancelled after splits fetch
-        if (abortController.signal.aborted) return;
-
+        // Применяем локально
         const adjusted = dedupeDailyOHLC(adjustOHLCForSplits(dataset.data, splits));
         const key = JSON.stringify((splits || []).slice().sort((a, b) => a.date.localeCompare(b.date)));
 
