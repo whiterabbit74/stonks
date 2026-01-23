@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { DatasetAPI } from '../lib/api';
 import { useAppStore } from '../stores';
 import { sanitizeNumericInput, sanitizeTextInput, VALIDATION_CONSTRAINTS } from '../lib/input-validation';
@@ -36,7 +36,7 @@ export function AppSettings() {
 
   // Loading and initial values for unsaved changes detection
   const [isLoadingSettings, setIsLoadingSettings] = useState(true);
-  const initialValuesRef = useRef<{
+  const [initialValues, setInitialValues] = useState<{
     watchThresholdPct: number;
     indicatorPanePercent: number;
     defaultMultiTickerSymbols: string;
@@ -55,7 +55,7 @@ export function AppSettings() {
       setIsLoadingSettings(false);
       // Store initial values after first load
       setTimeout(() => {
-        initialValuesRef.current = {
+        setInitialValues({
           watchThresholdPct,
           indicatorPanePercent,
           defaultMultiTickerSymbols,
@@ -66,15 +66,15 @@ export function AppSettings() {
           resultsRefreshProvider,
           enhancerProvider,
           analysisTabsConfig
-        };
+        });
       }, 100);
     });
   }, [loadSettingsFromServer]);
 
   // Check for unsaved changes
   const hasUnsavedChanges = useMemo(() => {
-    if (!initialValuesRef.current) return false;
-    const initial = initialValuesRef.current;
+    if (!initialValues) return false;
+    const initial = initialValues;
     return (
       watchThresholdPct !== initial.watchThresholdPct ||
       indicatorPanePercent !== initial.indicatorPanePercent ||
@@ -87,7 +87,7 @@ export function AppSettings() {
       enhancerProvider !== initial.enhancerProvider ||
       JSON.stringify(analysisTabsConfig) !== JSON.stringify(initial.analysisTabsConfig)
     );
-  }, [watchThresholdPct, indicatorPanePercent, defaultMultiTickerSymbols, commissionType, commissionFixed, commissionPercentage, resultsQuoteProvider, resultsRefreshProvider, enhancerProvider, analysisTabsConfig]);
+  }, [initialValues, watchThresholdPct, indicatorPanePercent, defaultMultiTickerSymbols, commissionType, commissionFixed, commissionPercentage, resultsQuoteProvider, resultsRefreshProvider, enhancerProvider, analysisTabsConfig]);
 
   const [saving, setSaving] = useState(false);
   const [saveOk, setSaveOk] = useState<string | null>(null);
@@ -942,7 +942,7 @@ export function AppSettings() {
       await saveSettingsToServer();
       setSaveOk('Все настройки сохранены');
       // Update initial values after successful save
-      initialValuesRef.current = {
+      setInitialValues({
         watchThresholdPct,
         indicatorPanePercent,
         defaultMultiTickerSymbols,
@@ -953,7 +953,7 @@ export function AppSettings() {
         resultsRefreshProvider,
         enhancerProvider,
         analysisTabsConfig
-      };
+      });
     } catch (e) {
       const message = e instanceof Error ? e.message : 'Не удалось сохранить настройки';
       setSaveErr(message);
