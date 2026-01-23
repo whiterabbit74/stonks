@@ -641,7 +641,7 @@ export function MultiTickerPage() {
               { id: 'price' as TabId, label: 'Цены' },
               { id: 'equity' as TabId, label: 'Equity' },
               { id: 'drawdown' as TabId, label: 'Просадка' },
-              { id: 'trades' as TabId, label: 'Сделки (бэктест)' },
+              { id: 'trades' as TabId, label: 'Сделки' },
               { id: 'profit' as TabId, label: 'Profit factor' },
               { id: 'duration' as TabId, label: 'Длительность' },
               monthlyContributionResults ? { id: 'monthlyContribution' as TabId, label: 'Пополнения' } : null,
@@ -651,7 +651,7 @@ export function MultiTickerPage() {
               <button
                 key={tab!.id}
                 onClick={() => setActiveTab(tab!.id)}
-                className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === tab!.id
+                className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${activeTab === tab!.id
                   ? 'border-blue-500 text-blue-600 dark:text-blue-400'
                   : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
                   }`}
