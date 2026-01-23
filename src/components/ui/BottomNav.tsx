@@ -112,14 +112,12 @@ export function BottomNav() {
             </div>
 
             {/* Page indicator dots */}
-            <div className="absolute -top-3 left-1/2 transform -translate-x-1/2 flex gap-1.5 p-2">
+            <div className="absolute top-1 left-1/2 transform -translate-x-1/2 flex gap-1.5 p-2 pointer-events-none">
                 <div
-                    onClick={() => setPage(0)}
-                    className={`w-2 h-2 rounded-full transition-colors cursor-pointer ${page === 0 ? 'bg-indigo-600' : 'bg-gray-300 dark:bg-gray-600'}`}
+                    className={`w-2 h-2 rounded-full transition-colors ${page === 0 ? 'bg-indigo-600' : 'bg-gray-300 dark:bg-gray-600'}`}
                 />
                 <div
-                    onClick={() => setPage(1)}
-                    className={`w-2 h-2 rounded-full transition-colors cursor-pointer ${page === 1 ? 'bg-indigo-600' : 'bg-gray-300 dark:bg-gray-600'}`}
+                    className={`w-2 h-2 rounded-full transition-colors ${page === 1 ? 'bg-indigo-600' : 'bg-gray-300 dark:bg-gray-600'}`}
                 />
             </div>
         </nav>

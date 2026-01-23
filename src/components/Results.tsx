@@ -848,7 +848,7 @@ export function Results() {
 
 
             {activeChart === 'price' && (
-              <div className="h-[65vh] min-h-[500px] max-h-[900px] mt-4 mb-6">
+              <div className="h-[65vh] min-h-[300px] md:min-h-[500px] max-h-[900px] mt-4 mb-6">
                 <TradingChart data={marketData} trades={trades} splits={currentSplits} />
               </div>
             )}
@@ -878,7 +878,7 @@ export function Results() {
                     );
                   })()}
                 </div>
-                <div className="h-[60vh] min-h-[450px] max-h-[870px]">
+                <div className="h-[60vh] min-h-[300px] md:min-h-[450px] max-h-[870px]">
                   <EquityChart equity={equity} />
                 </div>
               </div>
@@ -909,7 +909,7 @@ export function Results() {
                     Текущее плечо: ×{buyHoldAppliedLeverage.toFixed(2)}
                   </div>
                 </div>
-                <div className="h-[60vh] min-h-[450px] max-h-[870px]">
+                <div className="h-[60vh] min-h-[300px] md:min-h-[450px] max-h-[870px]">
                   <EquityChart equity={buyHoldSimEquity.length ? buyHoldSimEquity : (buyHoldEquity as unknown as EquityPoint[])} />
                 </div>
               </div>

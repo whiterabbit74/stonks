@@ -118,7 +118,7 @@ export const TradesTable = React.memo(function TradesTable({
 		}
 	};
 	return (
-		<div className="w-full overflow-auto">
+		<div className="w-full">
 			{showSummary && (
 				<div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mb-4 text-sm text-gray-600 dark:text-gray-300">
 					<div>Всего сделок: {trades.length}</div>
@@ -135,79 +135,81 @@ export const TradesTable = React.memo(function TradesTable({
 					)}
 				</div>
 			)}
-			<table className="min-w-full text-sm">
-				<thead className="sticky top-0 bg-gray-100 border-b dark:bg-gray-800 dark:border-gray-700">
-					<tr>
-						<th className="text-left px-3 py-2 font-semibold">#</th>
-						{showTicker && <th className="text-left px-3 py-2 font-semibold">Тикер</th>}
-						<th className="text-left px-3 py-2 font-semibold">Дата сделки</th>
-						<th className="text-right px-3 py-2 font-semibold">Цена входа</th>
-						<th className="text-right px-3 py-2 font-semibold">Цена выхода</th>
-						<th className="text-right px-3 py-2 font-semibold">Кол-во</th>
-						<th className="text-right px-3 py-2 font-semibold">Вложено, $</th>
-						<th className="text-right px-3 py-2 font-semibold">PnL, $</th>
-						<th className="text-right px-3 py-2 font-semibold">PnL, %</th>
-						<th className="text-right px-3 py-2 font-semibold">Депозит, $</th>
-						<th className="text-right px-3 py-2 font-semibold">Дней</th>
-						<th className="text-left px-3 py-2 font-semibold">Причина выхода</th>
-					</tr>
-				</thead>
-				<tbody>
-					{paginatedTrades.map((t, i) => {
-						const positive = (t.pnl ?? 0) >= 0;
-						// Получаем IBS значения из контекста
-						const entryIBS = t.context?.indicatorValues?.IBS;
-						const exitIBS = t.context?.indicatorValues?.exitIBS;
+			<div className="w-full horizontal-scroll">
+				<table className="min-w-full text-sm">
+					<thead className="sticky top-0 bg-gray-100 border-b dark:bg-gray-800 dark:border-gray-700">
+						<tr>
+							<th className="text-left px-3 py-2 font-semibold">#</th>
+							{showTicker && <th className="text-left px-3 py-2 font-semibold">Тикер</th>}
+							<th className="text-left px-3 py-2 font-semibold">Дата сделки</th>
+							<th className="text-right px-3 py-2 font-semibold">Цена входа</th>
+							<th className="text-right px-3 py-2 font-semibold">Цена выхода</th>
+							<th className="text-right px-3 py-2 font-semibold">Кол-во</th>
+							<th className="text-right px-3 py-2 font-semibold">Вложено, $</th>
+							<th className="text-right px-3 py-2 font-semibold">PnL, $</th>
+							<th className="text-right px-3 py-2 font-semibold">PnL, %</th>
+							<th className="text-right px-3 py-2 font-semibold">Депозит, $</th>
+							<th className="text-right px-3 py-2 font-semibold">Дней</th>
+							<th className="text-left px-3 py-2 font-semibold">Причина выхода</th>
+						</tr>
+					</thead>
+					<tbody>
+						{paginatedTrades.map((t, i) => {
+							const positive = (t.pnl ?? 0) >= 0;
+							// Получаем IBS значения из контекста
+							const entryIBS = t.context?.indicatorValues?.IBS;
+							const exitIBS = t.context?.indicatorValues?.exitIBS;
 
-						// Проверяем проблемы с IBS для цветовой индикации
-						const hasEntryProblem = typeof entryIBS === 'number' && entryIBS > 0.1;
-						const hasExitProblem = typeof exitIBS === 'number' && exitIBS < 0.75;
-						const hasIBSProblem = hasEntryProblem || hasExitProblem;
+							// Проверяем проблемы с IBS для цветовой индикации
+							const hasEntryProblem = typeof entryIBS === 'number' && entryIBS > 0.1;
+							const hasExitProblem = typeof exitIBS === 'number' && exitIBS < 0.75;
+							const hasIBSProblem = hasEntryProblem || hasExitProblem;
 
-						// Форматируем причину выхода
-						let formattedExitReason = t.exitReason || '-';
-						if (t.exitReason === 'ibs_signal' && typeof exitIBS === 'number') {
-							formattedExitReason = `IBS ${(exitIBS * 100).toFixed(1)}%`;
-						}
+							// Форматируем причину выхода
+							let formattedExitReason = t.exitReason || '-';
+							if (t.exitReason === 'ibs_signal' && typeof exitIBS === 'number') {
+								formattedExitReason = `IBS ${(exitIBS * 100).toFixed(1)}%`;
+							}
 
-                        // Special handling for Option Trades
-                        const isOptionTrade = (t as any).optionType === 'call';
-                        const entryPriceDisplay = isOptionTrade ? (t as any).optionEntryPrice : t.entryPrice;
-                        const exitPriceDisplay = isOptionTrade ? (t as any).optionExitPrice : t.exitPrice;
-                        const quantityDisplay = isOptionTrade ? (t as any).contracts : t.quantity;
-                        const investedDisplay = isOptionTrade
-                             ? (t as any).contracts * (t as any).optionEntryPrice * 100
-                             : (typeof t.context?.initialInvestment === 'number' ? t.context.initialInvestment : t.quantity * t.entryPrice);
+							// Special handling for Option Trades
+							const isOptionTrade = (t as any).optionType === 'call';
+							const entryPriceDisplay = isOptionTrade ? (t as any).optionEntryPrice : t.entryPrice;
+							const exitPriceDisplay = isOptionTrade ? (t as any).optionExitPrice : t.exitPrice;
+							const quantityDisplay = isOptionTrade ? (t as any).contracts : t.quantity;
+							const investedDisplay = isOptionTrade
+								? (t as any).contracts * (t as any).optionEntryPrice * 100
+								: (typeof t.context?.initialInvestment === 'number' ? t.context.initialInvestment : t.quantity * t.entryPrice);
 
-						return (
-							<tr key={t.id || `${t.entryDate}-${t.exitDate}-${i}`} className="border-b last:border-b-0 dark:border-gray-800">
-								<td className="px-3 py-2 text-gray-500">{(page - 1) * PAGE_SIZE + i + 1}</td>
-								{showTicker && <td className="px-3 py-2 whitespace-nowrap text-gray-700 dark:text-gray-200">{(t.context as any)?.ticker || ''}</td>}
-								<td className={`px-3 py-2 whitespace-nowrap ${hasIBSProblem ? 'bg-orange-50 dark:bg-orange-950/20' : ''}`}>
-									<div>{fmtDate(t.entryDate)} - {fmtDate(t.exitDate)}</div>
-									<div className="text-xs text-gray-500">
-										{typeof entryIBS === 'number' ? `${(entryIBS * 100).toFixed(1)}%` : '—'} - {typeof exitIBS === 'number' ? `${(exitIBS * 100).toFixed(1)}%` : '—'}
-									</div>
-								</td>
-								<td className="px-3 py-2 text-right font-mono">{entryPriceDisplay?.toFixed(2)}</td>
-								<td className="px-3 py-2 text-right font-mono">{exitPriceDisplay?.toFixed(2)}</td>
-								<td className="px-3 py-2 text-right">{quantityDisplay?.toLocaleString()}</td>
-								<td className="px-3 py-2 text-right font-mono text-blue-600 dark:text-blue-400">
-									{investedDisplay?.toFixed(2)}
-									{typeof (t.context as any)?.leverage === 'number' && (t.context as any)?.leverage > 1 && (
-										<div className="text-xs text-gray-500">{(t.context as any).leverage}:1</div>
-									)}
-								</td>
-								<td className={`px-3 py-2 text-right font-mono ${positive ? 'text-emerald-600 dark:text-emerald-300' : 'text-orange-600 dark:text-orange-300'}`}>{(t.pnl ?? 0).toFixed(2)}</td>
-								<td className={`px-3 py-2 text-right font-mono ${positive ? 'text-emerald-600 dark:text-emerald-300' : 'text-orange-600 dark:text-orange-300'}`}>{(t.pnlPercent ?? 0).toFixed(2)}%</td>
-								<td className="px-3 py-2 text-right font-mono">{typeof t.context?.currentCapitalAfterExit === 'number' ? t.context.currentCapitalAfterExit.toFixed(2) : '—'}</td>
-								<td className="px-3 py-2 text-right">{t.duration ?? 0}</td>
-								<td className="px-3 py-2 whitespace-nowrap">{formattedExitReason}</td>
-							</tr>
-						);
-					})}
-				</tbody>
-			</table>
+							return (
+								<tr key={t.id || `${t.entryDate}-${t.exitDate}-${i}`} className="border-b last:border-b-0 dark:border-gray-800">
+									<td className="px-3 py-2 text-gray-500">{(page - 1) * PAGE_SIZE + i + 1}</td>
+									{showTicker && <td className="px-3 py-2 whitespace-nowrap text-gray-700 dark:text-gray-200">{(t.context as any)?.ticker || ''}</td>}
+									<td className={`px-3 py-2 whitespace-nowrap ${hasIBSProblem ? 'bg-orange-50 dark:bg-orange-950/20' : ''}`}>
+										<div>{fmtDate(t.entryDate)} - {fmtDate(t.exitDate)}</div>
+										<div className="text-xs text-gray-500">
+											{typeof entryIBS === 'number' ? `${(entryIBS * 100).toFixed(1)}%` : '—'} - {typeof exitIBS === 'number' ? `${(exitIBS * 100).toFixed(1)}%` : '—'}
+										</div>
+									</td>
+									<td className="px-3 py-2 text-right font-mono">{entryPriceDisplay?.toFixed(2)}</td>
+									<td className="px-3 py-2 text-right font-mono">{exitPriceDisplay?.toFixed(2)}</td>
+									<td className="px-3 py-2 text-right">{quantityDisplay?.toLocaleString()}</td>
+									<td className="px-3 py-2 text-right font-mono text-blue-600 dark:text-blue-400">
+										{investedDisplay?.toFixed(2)}
+										{typeof (t.context as any)?.leverage === 'number' && (t.context as any)?.leverage > 1 && (
+											<div className="text-xs text-gray-500">{(t.context as any).leverage}:1</div>
+										)}
+									</td>
+									<td className={`px-3 py-2 text-right font-mono ${positive ? 'text-emerald-600 dark:text-emerald-300' : 'text-orange-600 dark:text-orange-300'}`}>{(t.pnl ?? 0).toFixed(2)}</td>
+									<td className={`px-3 py-2 text-right font-mono ${positive ? 'text-emerald-600 dark:text-emerald-300' : 'text-orange-600 dark:text-orange-300'}`}>{(t.pnlPercent ?? 0).toFixed(2)}%</td>
+									<td className="px-3 py-2 text-right font-mono">{typeof t.context?.currentCapitalAfterExit === 'number' ? t.context.currentCapitalAfterExit.toFixed(2) : '—'}</td>
+									<td className="px-3 py-2 text-right">{t.duration ?? 0}</td>
+									<td className="px-3 py-2 whitespace-nowrap">{formattedExitReason}</td>
+								</tr>
+							);
+						})}
+					</tbody>
+				</table>
+			</div>
 			<div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mt-4 text-sm text-gray-600 dark:text-gray-300">
 				<div>
 					Показаны {pageStart}–{pageEnd} из {trades.length} сделок

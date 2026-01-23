@@ -116,7 +116,7 @@ export function TradeDurationChart({ trades }: TradeDurationChartProps) {
 			<div className="mt-6">
 				<div className="text-sm font-medium mb-2 text-gray-800 dark:text-gray-200">Статистика закрытия сделок по длительности</div>
 				<div className="w-full overflow-auto">
-					<table className="min-w-[360px] text-sm">
+					<table className="w-full text-sm">
 						<thead className="bg-gray-100 dark:bg-gray-800">
 							<tr>
 								<th className="text-left px-3 py-2">Дней удержания</th>

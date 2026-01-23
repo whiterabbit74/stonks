@@ -621,7 +621,7 @@ export function BuyAtClose4Simulator({ strategy, defaultTickers = ['AAPL', 'MSFT
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             placeholder="AAPL, MSFT, AMZN, MAGS"
-            className="flex-1 min-w-[300px] px-3 py-2 border rounded-md dark:bg-gray-900 dark:border-gray-600 dark:text-gray-100"
+            className="flex-1 min-w-[150px] px-3 py-2 border rounded-md dark:bg-gray-900 dark:border-gray-600 dark:text-gray-100"
           />
           <button
             onClick={applyTickers}

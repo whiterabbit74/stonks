@@ -313,11 +313,11 @@
   }
   
   /* Ensure minimum touch target sizes */
-  button, 
-  [role="button"], 
-  input[type="button"], 
-  input[type="submit"], 
-  input[type="reset"] {
+  button:not(.compact),
+  [role="button"]:not(.compact),
+  input[type="button"]:not(.compact),
+  input[type="submit"]:not(.compact),
+  input[type="reset"]:not(.compact) {
     min-height: 44px;
     min-width: 44px;
   }
