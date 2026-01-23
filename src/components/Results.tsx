@@ -145,6 +145,21 @@ export function Results() {
 
   // Sync URL with requested ticker
   const requestedTicker = searchParams.get('ticker');
+
+  // Determine effective symbol for UI - prefer requested ticker while loading
+  const effectiveSymbol = requestedTicker ? requestedTicker.toUpperCase() : symbol;
+
+  // Check if the currently loaded data matches what is requested
+  const isDataReady = useMemo(() => {
+    if (!backtestResults) return false;
+    // If no specific ticker requested, we are "ready" if we have any results
+    if (!requestedTicker) return true;
+
+    // If ticker requested, backtest results must match
+    const resultSym = backtestResults.symbol || backtestResults.ticker || backtestResults.meta?.ticker;
+    return resultSym && resultSym.toUpperCase() === requestedTicker.toUpperCase();
+  }, [backtestResults, requestedTicker]);
+
   // Use a ref to track the last synced symbol to avoid loops
   // Initialize with current symbol to prevent overwriting URL on initial load if no param
   const lastSyncedSymbol = useRef(symbol);
@@ -168,6 +183,7 @@ export function Results() {
 
   useEffect(() => {
     // If symbol changed in store, update URL
+    // Only update if the symbol is actually ready/loaded to avoid premature updates
     if (symbol && symbol !== lastSyncedSymbol.current) {
       setSearchParams(prev => {
         const next = new URLSearchParams(prev);
@@ -490,19 +506,21 @@ export function Results() {
     setBuyHoldAppliedLeverage(pct / 100);
   };
 
-  if (!backtestResults) {
+  if (!isDataReady) {
     // 1. Ticker requested but not ready -> Show Loading
-    if (requestedTicker) {
+    // Also show this if we have old results but user requested a new ticker (isDataReady will be false)
+    if (requestedTicker || effectiveSymbol) {
+      const displaySymbol = requestedTicker || effectiveSymbol || 'данных';
       return (
         <div className="flex flex-col items-center justify-center min-h-[50vh] space-y-4 animate-fade-in">
           <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
           <div className="text-center space-y-2">
             <p className="text-lg font-medium text-gray-900 dark:text-gray-100">
               {isLoading
-                ? `Загрузка данных ${requestedTicker}...`
+                ? `Загрузка данных ${displaySymbol}...`
                 : (storeError
-                  ? `Ошибка загрузки ${requestedTicker}`
-                  : (backtestStatus === 'running' ? 'Запуск бэктеста…' : `Подготовка ${requestedTicker}…`))}
+                  ? `Ошибка загрузки ${displaySymbol}`
+                  : (backtestStatus === 'running' ? 'Запуск бэктеста…' : `Подготовка ${displaySymbol}…`))}
             </p>
             {storeError && (
               <div className="text-sm text-red-600 max-w-md mx-auto">{String(storeError)}</div>
@@ -511,6 +529,7 @@ export function Results() {
                <button
                  onClick={() => {
                    if (requestedTicker) loadDatasetFromServer(requestedTicker.toUpperCase());
+                   else if (effectiveSymbol) loadDatasetFromServer(effectiveSymbol.toUpperCase());
                    else runBacktest();
                  }}
                  className="mt-2 inline-flex items-center px-4 py-2 rounded-md bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition"
