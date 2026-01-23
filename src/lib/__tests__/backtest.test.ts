@@ -68,8 +68,7 @@ describe('BacktestEngine', () => {
 
     it('should validate data integrity', () => {
       const invalidData: OHLCData[] = [
-        { date: '2023-01-01', open: 100, high: 105, low: 95, close: 100, volume: 1000 },
-        { date: '2023-01-02', open: 100, high: 105, low: 95, close: 110, volume: 1000 } // close > high
+        { date: '2023-01-01', open: 100, high: 90, low: 95, close: 100, volume: 1000 }, // high < low
       ];
 
       expect(() => {
