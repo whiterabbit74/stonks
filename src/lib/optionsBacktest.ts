@@ -2,7 +2,7 @@ import type { Trade, OHLCData, EquityPoint } from '../types';
 import { blackScholes, calculateVolatility, getExpirationDate, getYearsToMaturity } from './optionsMath';
 import { toTradingDate } from './date-utils';
 
-interface OptionsBacktestConfig {
+export interface OptionsBacktestConfig {
     strikePct: number; // e.g. 10 for 10%
     volAdjPct: number; // e.g. 20 for 20%
     capitalPct: number; // e.g. 10 for 10% of current capital

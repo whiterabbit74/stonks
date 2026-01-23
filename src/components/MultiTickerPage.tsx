@@ -13,6 +13,7 @@ import { ProfitFactorChart } from './ProfitFactorChart';
 import { runSinglePositionBacktest, optimizeTickerData, formatCurrencyCompact } from '../lib/singlePositionBacktest';
 import { MiniQuoteChart } from './MiniQuoteChart';
 import { createStrategyFromTemplate, STRATEGY_TEMPLATES } from '../lib/strategy';
+import { MultiTickerOptionsAnalysis } from './MultiTickerOptionsAnalysis';
 
 interface TickerData {
   ticker: string;
@@ -89,7 +90,7 @@ export function MultiTickerPage() {
   const [backtestResults, setBacktestResults] = useState<BacktestResults | null>(null);
   const [monthlyContributionResults, setMonthlyContributionResults] = useState<BacktestResults | null>(null);
   const [tickersData, setTickersData] = useState<TickerData[]>([]);
-  type TabId = 'price' | 'equity' | 'trades' | 'profit' | 'monthlyContribution' | 'splits';
+  type TabId = 'price' | 'equity' | 'trades' | 'profit' | 'monthlyContribution' | 'splits' | 'options';
   const [activeTab, setActiveTab] = useState<TabId>('price');
   const [selectedTradeTicker, setSelectedTradeTicker] = useState<'all' | string>('all');
   const [refreshingTickers, setRefreshingTickers] = useState<Set<string>>(new Set());
@@ -640,6 +641,7 @@ export function MultiTickerPage() {
               { id: 'trades' as TabId, label: 'Сделки (бэктест)' },
               { id: 'profit' as TabId, label: 'Profit factor' },
               monthlyContributionResults ? { id: 'monthlyContribution' as TabId, label: 'Пополнения' } : null,
+              { id: 'options' as TabId, label: 'Опционы' },
               { id: 'splits' as TabId, label: 'Сплиты' },
             ].filter(Boolean).map(tab => (
               <button
@@ -960,6 +962,13 @@ export function MultiTickerPage() {
                   </div>
                 </div>
               </div>
+            )}
+
+            {activeTab === 'options' && (
+              <MultiTickerOptionsAnalysis
+                tickersData={tickersData}
+                tradesByTicker={tradesByTicker}
+              />
             )}
 
             {activeTab === 'splits' && (
