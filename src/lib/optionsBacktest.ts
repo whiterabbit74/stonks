@@ -116,24 +116,27 @@ export function runOptionsBacktest(
                        const investAmount = currentCapital * (capitalPct / 100);
 
                        // Contracts = Capital / (Price * 100)
-                       const contracts = investAmount / (optionPrice * 100);
+                       // Floor to integer for realistic trading
+                       const contracts = Math.floor(investAmount / (optionPrice * 100));
 
-                       activeTrade = {
-                           ...matchingStockTrade,
-                           optionType: 'call',
-                           strike,
-                           expirationDate: toTradingDate(expiration),
-                           impliedVolAtEntry: state.vol,
-                           impliedVolAtExit: 0, // Placeholder
-                           optionEntryPrice: optionPrice,
-                           optionExitPrice: 0,
-                           contracts,
-                           // Override Trade specific fields for now
-                           entryPrice: spot, // Stock price
-                           quantity: contracts
-                       };
+                       if (contracts >= 1) {
+                           activeTrade = {
+                               ...matchingStockTrade,
+                               optionType: 'call',
+                               strike,
+                               expirationDate: toTradingDate(expiration),
+                               impliedVolAtEntry: state.vol,
+                               impliedVolAtExit: 0, // Placeholder
+                               optionEntryPrice: optionPrice,
+                               optionExitPrice: 0,
+                               contracts,
+                               // Override Trade specific fields for now
+                               entryPrice: spot, // Stock price
+                               quantity: contracts
+                           };
 
-                       currentCapital -= contracts * optionPrice * 100;
+                           currentCapital -= contracts * optionPrice * 100;
+                       }
                    }
                }
            }
