@@ -21,6 +21,11 @@ interface OptionTrade extends Trade {
     contracts: number;
 }
 
+interface TickerData {
+    ticker: string;
+    data: OHLCData[];
+}
+
 export function runOptionsBacktest(
     stockTrades: Trade[],
     marketData: OHLCData[],
@@ -220,6 +225,220 @@ export function runOptionsBacktest(
     return {
         equity,
         trades: optionTrades,
+        finalValue: portfolioValue
+    };
+}
+
+export function runMultiTickerOptionsBacktest(
+    stockTrades: Trade[],
+    tickersData: TickerData[],
+    config: OptionsBacktestConfig
+): { equity: EquityPoint[]; trades: OptionTrade[]; finalValue: number } {
+    const { strikePct, volAdjPct, capitalPct, riskFreeRate = 0.05, expirationWeeks = 4 } = config;
+    const initialCapital = 10000;
+
+    // 1. Prepare Data Maps for O(1) Access
+    // ticker -> date -> { close, index, vol }
+    interface DailyData { close: number; index: number; vol: number }
+    const tickerMaps = new Map<string, Map<string, DailyData>>();
+    const allDatesSet = new Set<string>();
+
+    tickersData.forEach(td => {
+        const dateMap = new Map<string, DailyData>();
+        const ticker = td.ticker.toUpperCase();
+
+        td.data.forEach((bar, idx) => {
+            const dateStr = typeof bar.date === 'string' ? bar.date.slice(0, 10) : new Date(bar.date).toISOString().slice(0, 10);
+            allDatesSet.add(dateStr);
+
+            // Calculate Volatility (30 day)
+            // Note: This is expensive to do on the fly if optimized, but fine for now.
+            const windowSize = 30;
+            const startIndex = Math.max(0, idx - windowSize);
+            const prices = td.data.slice(startIndex, idx + 1).map(b => b.close);
+            let vol = calculateVolatility(prices, windowSize);
+            vol = vol * (1 + volAdjPct / 100);
+
+            dateMap.set(dateStr, { close: bar.close, index: idx, vol });
+        });
+
+        tickerMaps.set(ticker, dateMap);
+    });
+
+    // Sort dates
+    const sortedDates = Array.from(allDatesSet).sort();
+
+    // 2. Simulation State
+    let currentCapital = initialCapital;
+    let portfolioValue = initialCapital;
+    const equity: EquityPoint[] = [];
+    const closedTrades: OptionTrade[] = [];
+    const activeTrades: OptionTrade[] = []; // Supports multiple open positions
+
+    // 3. Main Loop
+    for (const dateStr of sortedDates) {
+        // Create Date object for expiration calculations (noon to avoid TZ issues)
+        const [y, m, d] = dateStr.split('-').map(Number);
+        const currentDate = new Date(y, m - 1, d, 12, 0, 0);
+
+        // A. Mark to Market & Check Exits for Active Trades
+        // We use a reverse loop to safely remove items
+        for (let i = activeTrades.length - 1; i >= 0; i--) {
+            const trade = activeTrades[i];
+            const ticker = (trade.context?.ticker || '').toUpperCase();
+            const marketMap = tickerMaps.get(ticker);
+            const marketData = marketMap?.get(dateStr);
+
+            if (marketData) {
+                const spot = marketData.close;
+                const expiration = new Date(trade.expirationDate);
+                const T = getYearsToMaturity(currentDate, expiration);
+                const vol = marketData.vol;
+
+                // Mark to Market Price
+                let optionPrice = blackScholes('call', spot, trade.strike, T, riskFreeRate, vol);
+                if (Number.isNaN(optionPrice) || optionPrice < 0.01) optionPrice = 0.01;
+
+                // Check Conditions
+                const tExit = typeof trade.exitDate === 'string' ? trade.exitDate.slice(0, 10) : new Date(trade.exitDate).toISOString().slice(0, 10);
+                const isExpired = T <= 0;
+                const isStockExit = dateStr === tExit;
+
+                if (isStockExit || isExpired) {
+                    // CLOSE TRADE
+                    trade.optionExitPrice = optionPrice;
+                    trade.impliedVolAtExit = vol;
+                    trade.exitPrice = spot; // Stock price at exit
+
+                    const pnl = (trade.optionExitPrice - trade.optionEntryPrice) * trade.contracts * 100;
+                    trade.pnl = pnl;
+                    trade.pnlPercent = (pnl / (trade.optionEntryPrice * trade.contracts * 100)) * 100;
+
+                    if (isExpired && !isStockExit) {
+                         trade.exitReason = "option_expired";
+                    }
+
+                    // Update Capital
+                    currentCapital += trade.contracts * trade.optionExitPrice * 100;
+
+                    // Update Context
+                    if (!trade.context) trade.context = {};
+                    trade.context = {
+                         ...trade.context,
+                         currentCapitalAfterExit: currentCapital,
+                         initialInvestment: trade.contracts * trade.optionEntryPrice * 100
+                    };
+
+                    closedTrades.push(trade);
+                    activeTrades.splice(i, 1);
+                } else {
+                    // Update current val (for equity calc later)
+                    // We don't store it on trade object permanently, just use it for summation
+                    // But we can update context if we want debugging
+                }
+            } else {
+                // No data for this ticker today (e.g. halted, or different exchange holiday?)
+                // Keep previous value? Or skip?
+                // For now, if no data, we can't price it. We'll assume last known price effectively stays same if we don't change anything,
+                // but we need the option price.
+                // If we can't calculate, we might assume price=0 or last price.
+                // Ideally we should have filled forward data.
+                // For safety, if data missing, we skip update for this trade (assume price unchanged from yesterday)
+                // This requires storing 'lastOptionPrice' on the trade.
+            }
+        }
+
+        // B. Check New Entries
+        // Find trades starting today
+        const newStockTrades = stockTrades.filter(t => {
+            const tEntry = typeof t.entryDate === 'string' ? t.entryDate.slice(0, 10) : new Date(t.entryDate).toISOString().slice(0, 10);
+            return tEntry === dateStr;
+        });
+
+        for (const stockTrade of newStockTrades) {
+            const ticker = (stockTrade.context?.ticker || '').toUpperCase();
+            const marketMap = tickerMaps.get(ticker);
+            const marketData = marketMap?.get(dateStr);
+
+            // We can only enter if we have market data and valid volatility
+            if (marketData && marketData.vol > 0) {
+                const spot = marketData.close;
+                const strikeRaw = spot * (1 + strikePct / 100);
+                const strike = Math.round(strikeRaw);
+
+                const expiration = getExpirationDate(currentDate, expirationWeeks);
+                const T = getYearsToMaturity(currentDate, expiration);
+
+                let optionPrice = blackScholes('call', spot, strike, T, riskFreeRate, marketData.vol);
+                if (Number.isNaN(optionPrice) || optionPrice < 0.01) optionPrice = 0.01;
+
+                if (optionPrice > 0) {
+                    const investAmount = currentCapital * (capitalPct / 100);
+                    const contracts = Math.floor(investAmount / (optionPrice * 100));
+
+                    if (contracts >= 1) {
+                         const newTrade: OptionTrade = {
+                               ...stockTrade,
+                               optionType: 'call',
+                               strike,
+                               expirationDate: toTradingDate(expiration),
+                               impliedVolAtEntry: marketData.vol,
+                               impliedVolAtExit: 0,
+                               optionEntryPrice: optionPrice,
+                               optionExitPrice: 0,
+                               contracts,
+                               entryPrice: spot,
+                               quantity: contracts
+                           };
+
+                           currentCapital -= contracts * optionPrice * 100;
+                           activeTrades.push(newTrade);
+                    }
+                }
+            }
+        }
+
+        // C. Calculate Daily Equity
+        // Equity = Cash + Sum(Active Option Market Values)
+        let openPositionsValue = 0;
+        activeTrades.forEach(trade => {
+             // We need to re-calculate current value
+             // We just did it in step A for exits, but we need it for those that remained.
+             // Optimize: Step A could store the calculated price.
+             // For now, let's just re-calc or reuse if we had a way.
+             // Let's re-calc to be safe and simple.
+             const ticker = (trade.context?.ticker || '').toUpperCase();
+             const marketMap = tickerMaps.get(ticker);
+             const marketData = marketMap?.get(dateStr);
+             if (marketData) {
+                 const T = getYearsToMaturity(currentDate, new Date(trade.expirationDate));
+                 let price = blackScholes('call', marketData.close, trade.strike, T, riskFreeRate, marketData.vol);
+                 if (Number.isNaN(price) || price < 0.01) price = 0.01;
+                 openPositionsValue += trade.contracts * price * 100;
+             } else {
+                 // Fallback: use entry cost or 0? Use 0 to punish missing data.
+             }
+        });
+
+        portfolioValue = currentCapital + openPositionsValue;
+
+        equity.push({
+            date: dateStr, // Keep as string for consistency
+            value: portfolioValue,
+            drawdown: 0
+        });
+    }
+
+    // Post-process: Calculate Drawdowns
+    let peak = initialCapital;
+    equity.forEach(p => {
+        if (p.value > peak) peak = p.value;
+        p.drawdown = peak > 0 ? ((peak - p.value) / peak) * 100 : 0;
+    });
+
+    return {
+        equity,
+        trades: closedTrades,
         finalValue: portfolioValue
     };
 }

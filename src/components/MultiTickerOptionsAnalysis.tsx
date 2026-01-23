@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { HelpCircle } from 'lucide-react';
 import type { OHLCData, Trade } from '../types';
-import { runOptionsBacktest } from '../lib/optionsBacktest';
+import { runMultiTickerOptionsBacktest } from '../lib/optionsBacktest';
 import { EquityChart } from './EquityChart';
 import { TradesTable } from './TradesTable';
 import { formatCurrency, formatPercentage } from '../lib/utils';
@@ -24,102 +24,27 @@ export function MultiTickerOptionsAnalysis({ tickersData, tradesByTicker }: Mult
     const [expirationWeeks, setExpirationWeeks] = useState<number>(4);
 
     const { equity, trades, finalValue, totalReturn, initialCapital } = useMemo(() => {
-        // Run backtest for each ticker
-        const results = tickersData.map(td => {
-            const tickerTrades = tradesByTicker[td.ticker] || [];
-            // Assuming each backtest starts with 10k
-            return runOptionsBacktest(tickerTrades, td.data, {
-                strikePct,
-                volAdjPct,
-                capitalPct,
-                expirationWeeks
-            });
+        // Flatten and sort trades from all tickers to create a global timeline
+        const allStockTrades = Object.values(tradesByTicker).flat().sort((a, b) => {
+             const dateA = new Date(a.entryDate).getTime();
+             const dateB = new Date(b.entryDate).getTime();
+             return dateA - dateB;
         });
 
-        // 1. Aggregate Equity
-        let minDateStr: string | null = null;
-        let maxDateStr: string | null = null;
-
-        // Collect all dates from all equity curves to handle alignment
-        const allDates = new Set<string>();
-        results.forEach(res => {
-            res.equity.forEach(pt => {
-                // date is TradingDate string (YYYY-MM-DD) or Date
-                const d = typeof pt.date === 'string' ? pt.date.slice(0, 10) : new Date(pt.date).toISOString().slice(0, 10);
-                allDates.add(d);
-                if (!minDateStr || d < minDateStr) minDateStr = d;
-                if (!maxDateStr || d > maxDateStr) maxDateStr = d;
-            });
+        const result = runMultiTickerOptionsBacktest(allStockTrades, tickersData, {
+            strikePct,
+            volAdjPct,
+            capitalPct,
+            expirationWeeks
         });
 
-        const sortedDates = Array.from(allDates).sort();
-
-        // Sum equity for each date.
-        // If a ticker has no data for a date (e.g. hasn't started trading),
-        // we should theoretically add its initial capital (10000) assuming the money is sitting in cash,
-        // OR add the nearest previous value.
-        // runOptionsBacktest returns equity for all dates in marketData.
-
-        const aggregatedEquity = sortedDates.map(dateStr => {
-            let totalVal = 0;
-            results.forEach(res => {
-                // Find point for this date
-                const pt = res.equity.find(p => {
-                    const d = typeof p.date === 'string' ? p.date.slice(0, 10) : new Date(p.date).toISOString().slice(0, 10);
-                    return d === dateStr;
-                });
-
-                if (pt) {
-                    totalVal += pt.value;
-                } else {
-                    // If no point found for this date, look for the most recent previous point
-                    // If before start, assume initial capital (10000)
-                    const reversed = [...res.equity].reverse();
-                    const prev = reversed.find(p => {
-                        const d = typeof p.date === 'string' ? p.date.slice(0, 10) : new Date(p.date).toISOString().slice(0, 10);
-                        return d < dateStr;
-                    });
-
-                    if (prev) {
-                        totalVal += prev.value;
-                    } else {
-                        // Before simulation starts for this ticker
-                        totalVal += 10000;
-                    }
-                }
-            });
-
-            return {
-                date: dateStr,
-                value: totalVal,
-                drawdown: 0 // Will calc later
-            };
-        });
-
-        // Calculate Portfolio Drawdown
-        let peak = 0;
-        aggregatedEquity.forEach(pt => {
-            if (pt.value > peak) peak = pt.value;
-            pt.drawdown = peak > 0 ? ((peak - pt.value) / peak) * 100 : 0;
-        });
-
-        // 2. Aggregate Trades
-        const allTrades = results.flatMap(r => r.trades).sort((a, b) => {
-            const dateA = new Date(a.entryDate).getTime();
-            const dateB = new Date(b.entryDate).getTime();
-            return dateA - dateB;
-        });
-
-        // 3. Stats
-        // Each ticker starts with 10k
-        const totalInitialCapital = 10000 * tickersData.length;
-        const totalFinalValue = aggregatedEquity.length > 0 ? aggregatedEquity[aggregatedEquity.length - 1].value : totalInitialCapital;
-        const totalRet = totalInitialCapital > 0 ? ((totalFinalValue - totalInitialCapital) / totalInitialCapital) * 100 : 0;
+        const totalInitialCapital = 10000; // Hardcoded in backtest engine as shared pool
+        const totalRet = ((result.finalValue - totalInitialCapital) / totalInitialCapital) * 100;
 
         return {
-            equity: aggregatedEquity,
-            trades: allTrades,
-            finalValue: totalFinalValue,
+            equity: result.equity,
+            trades: result.trades,
+            finalValue: result.finalValue,
             totalReturn: totalRet,
             initialCapital: totalInitialCapital
         };
@@ -218,9 +143,9 @@ export function MultiTickerOptionsAnalysis({ tickersData, tradesByTicker }: Mult
                     <div>
                         <p className="font-semibold mb-1">О моделировании портфеля опционов:</p>
                         <ul className="list-disc list-inside space-y-1 opacity-90">
-                            <li>Симуляция проводится независимо для каждого тикера с начальным капиталом $10,000.</li>
-                            <li>Общий график показывает сумму капиталов всех стратегий (Старт: ${formatCurrency(initialCapital)}).</li>
-                            <li>Параметры применяются одинаково ко всем тикерам.</li>
+                            <li>Используется единый портфель с начальным капиталом ${formatCurrency(initialCapital)}.</li>
+                            <li>Сделки открываются последовательно по всем тикерам из общего бюджета.</li>
+                            <li>Размер позиции рассчитывается как % от текущего свободного капитала портфеля.</li>
                         </ul>
                     </div>
                 </div>
