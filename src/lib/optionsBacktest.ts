@@ -1,6 +1,7 @@
 import type { Trade, OHLCData, EquityPoint } from '../types';
 import { blackScholes, calculateVolatility, getExpirationDate, getYearsToMaturity } from './optionsMath';
 import { toTradingDate } from './date-utils';
+import { getRiskFreeRate } from './riskFreeRates';
 
 export interface OptionsBacktestConfig {
     strikePct: number; // e.g. 10 for 10%
@@ -80,6 +81,9 @@ export function runOptionsBacktest(
         const [y, m, d] = dateStr.split('-').map(Number);
         const currentDate = new Date(y, m - 1, d, 12, 0, 0);
 
+        // Determine Risk Free Rate for today (use historical if available, else config default)
+        const r = getRiskFreeRate(currentDate) ?? riskFreeRate;
+
         // Check if we need to enter a trade
         // We look at stockTrades to see if any trade matches this entry date
         // Note: stockTrades might have multiple trades, but usually non-overlapping for single pos strategy.
@@ -106,7 +110,7 @@ export function runOptionsBacktest(
 
                    // Option Price (Ask)
                    // We don't have Bid/Ask, so we use theoretical price
-                   let optionPrice = blackScholes('call', spot, strike, T, riskFreeRate, state.vol);
+                   let optionPrice = blackScholes('call', spot, strike, T, r, state.vol);
 
                    // Enforce minimum price of 0.01 to ensure trade execution even for deep OTM options
                    // This prevents trades from disappearing when changing strike/vol parameters
@@ -160,7 +164,7 @@ export function runOptionsBacktest(
                  // Note: In reality, IV might behave differently, but rolling vol is the request.
                  const vol = state.vol; // getMarketState applies the adjustment
 
-                 const optionPrice = blackScholes('call', spot, activeTrade.strike, T, riskFreeRate, vol);
+                 const optionPrice = blackScholes('call', spot, activeTrade.strike, T, r, vol);
                  portfolioValue = currentCapital + (activeTrade.contracts * optionPrice * 100);
 
                  // CHECK EXIT
@@ -281,6 +285,9 @@ export function runMultiTickerOptionsBacktest(
         const [y, m, d] = dateStr.split('-').map(Number);
         const currentDate = new Date(y, m - 1, d, 12, 0, 0);
 
+        // Determine Risk Free Rate for today
+        const r = getRiskFreeRate(currentDate) ?? riskFreeRate;
+
         // A. Mark to Market & Check Exits for Active Trades
         // We use a reverse loop to safely remove items
         for (let i = activeTrades.length - 1; i >= 0; i--) {
@@ -296,7 +303,7 @@ export function runMultiTickerOptionsBacktest(
                 const vol = marketData.vol;
 
                 // Mark to Market Price
-                let optionPrice = blackScholes('call', spot, trade.strike, T, riskFreeRate, vol);
+                let optionPrice = blackScholes('call', spot, trade.strike, T, r, vol);
                 if (Number.isNaN(optionPrice) || optionPrice < 0.01) optionPrice = 0.01;
 
                 // Check Conditions
@@ -369,7 +376,7 @@ export function runMultiTickerOptionsBacktest(
                 const expiration = getExpirationDate(currentDate, expirationWeeks);
                 const T = getYearsToMaturity(currentDate, expiration);
 
-                let optionPrice = blackScholes('call', spot, strike, T, riskFreeRate, marketData.vol);
+                let optionPrice = blackScholes('call', spot, strike, T, r, marketData.vol);
                 if (Number.isNaN(optionPrice) || optionPrice < 0.01) optionPrice = 0.01;
 
                 if (optionPrice > 0) {
@@ -412,7 +419,7 @@ export function runMultiTickerOptionsBacktest(
              const marketData = marketMap?.get(dateStr);
              if (marketData) {
                  const T = getYearsToMaturity(currentDate, new Date(trade.expirationDate));
-                 let price = blackScholes('call', marketData.close, trade.strike, T, riskFreeRate, marketData.vol);
+                 let price = blackScholes('call', marketData.close, trade.strike, T, r, marketData.vol);
                  if (Number.isNaN(price) || price < 0.01) price = 0.01;
                  openPositionsValue += trade.contracts * price * 100;
              } else {

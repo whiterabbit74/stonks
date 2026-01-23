@@ -4,6 +4,11 @@ import { runOptionsBacktest } from '../optionsBacktest';
 import { Trade, OHLCData } from '../../types';
 import * as optionsMath from '../optionsMath';
 
+// Mock riskFreeRate to return 0.05 to match the hardcoded expected values in this verification test
+vi.mock('../riskFreeRates', () => ({
+  getRiskFreeRate: vi.fn(() => 0.05),
+}));
+
 // Mock only calculateVolatility, keep others original
 vi.mock('../optionsMath', async (importOriginal) => {
   const actual = await importOriginal<typeof optionsMath>();
