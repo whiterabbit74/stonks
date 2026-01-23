@@ -5,6 +5,7 @@ import { Results } from '../Results';
 import { ToastProvider } from '../ui/Toast';
 import type { Strategy, OHLCData, BacktestResult } from '../../types';
 import { DatasetAPI } from '../../lib/api';
+import * as stores from '../../stores';
 
 // Mock API first
 vi.mock('../../lib/api', () => ({
@@ -23,7 +24,7 @@ vi.mock('../../lib/api', () => ({
   }
 }));
 
-// Mock stores
+// Mock the stores
 vi.mock('../../stores', () => ({
   useAppStore: vi.fn()
 }));
@@ -38,12 +39,6 @@ const renderWithRouter = (ui: React.ReactElement) => {
     </MemoryRouter>
   );
 };
-import * as stores from '../../stores';
-
-// Mock the stores
-vi.mock('../../stores', () => ({
-  useAppStore: vi.fn()
-}));
 
 // Mock components that are not under test
 vi.mock('../EquityChart', () => ({
@@ -187,6 +182,8 @@ describe('Results - Position Monitoring Logic', () => {
         resultsQuoteProvider: null,
         resultsRefreshProvider: null,
         loadDatasetFromServer: vi.fn(),
+        loadDatasetsFromServer: vi.fn(),
+        savedDatasets: [],
         analysisTabsConfig: [
           { id: 'price', label: 'Цена', visible: true },
           { id: 'equity', label: 'Эквити', visible: true },
@@ -233,6 +230,8 @@ describe('Results - Position Monitoring Logic', () => {
           telegramWatches: [],
           addTelegramWatch: vi.fn(),
           removeTelegramWatch: vi.fn(),
+          savedDatasets: [],
+          loadDatasetsFromServer: vi.fn(),
           analysisTabsConfig: [
             { id: 'price', label: 'Цена', visible: true },
             { id: 'equity', label: 'Эквити', visible: true },
@@ -282,6 +281,8 @@ describe('Results - Position Monitoring Logic', () => {
           telegramWatches: [],
           addTelegramWatch: vi.fn(),
           removeTelegramWatch: vi.fn(),
+          savedDatasets: [],
+          loadDatasetsFromServer: vi.fn(),
           analysisTabsConfig: [
             { id: 'price', label: 'Цена', visible: true },
             { id: 'equity', label: 'Эквити', visible: true },
@@ -332,6 +333,8 @@ describe('Results - Position Monitoring Logic', () => {
           telegramWatches: [],
           addTelegramWatch: vi.fn(),
           removeTelegramWatch: vi.fn(),
+          savedDatasets: [],
+          loadDatasetsFromServer: vi.fn(),
           analysisTabsConfig: [
             { id: 'price', label: 'Цена', visible: true },
             { id: 'equity', label: 'Эквити', visible: true },
@@ -383,6 +386,8 @@ describe('Results - Position Monitoring Logic', () => {
           telegramWatches: [],
           addTelegramWatch: vi.fn(),
           removeTelegramWatch: vi.fn(),
+          savedDatasets: [],
+          loadDatasetsFromServer: vi.fn(),
           analysisTabsConfig: [
             { id: 'price', label: 'Цена', visible: true },
             { id: 'equity', label: 'Эквити', visible: true },
@@ -432,6 +437,8 @@ describe('Results - Position Monitoring Logic', () => {
           telegramWatches: [],
           addTelegramWatch: mockAddTelegramWatch,
           removeTelegramWatch: vi.fn(),
+          savedDatasets: [],
+          loadDatasetsFromServer: vi.fn(),
           analysisTabsConfig: [
             { id: 'price', label: 'Цена', visible: true },
             { id: 'equity', label: 'Эквити', visible: true },
@@ -537,6 +544,8 @@ describe('Results - Position Monitoring Logic', () => {
           telegramWatches: [],
           addTelegramWatch: vi.fn(),
           removeTelegramWatch: vi.fn(),
+          savedDatasets: [],
+          loadDatasetsFromServer: vi.fn(),
           analysisTabsConfig: [
             { id: 'price', label: 'Цена', visible: true },
             { id: 'equity', label: 'Эквити', visible: true },

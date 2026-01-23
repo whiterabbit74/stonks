@@ -18,7 +18,7 @@ export function ErrorLogButton() {
     <>
       <button
         onClick={handleToggle}
-        className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg border transition-all duration-200 ${
+        className={`compact inline-flex items-center gap-2 px-3 py-2 rounded-lg border transition-all duration-200 ${
           showConsole
             ? 'bg-amber-600 border-amber-600 text-white hover:brightness-110 shadow-lg'
             : errorCount > 0
