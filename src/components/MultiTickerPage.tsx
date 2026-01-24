@@ -543,6 +543,7 @@ export function MultiTickerPage() {
                       <TradesTable
                         trades={filteredTrades}
                         exportFileNamePrefix={`trades-${selectedTradeTicker === 'all' ? 'all-tickers' : selectedTradeTicker}`}
+                        showTickerColumn={selectedTradeTicker === 'all'}
                       />
                     </div>
                   </div>
@@ -745,6 +746,7 @@ export function MultiTickerPage() {
                           <TradesTable
                             trades={monthlyContributionResults.trades}
                             exportFileNamePrefix={`trades-monthly-contribution-${monthlyContributionAmount}`}
+                            showTickerColumn={true}
                           />
                         </div>
                       </div>
