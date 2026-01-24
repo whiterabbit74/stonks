@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
-import { useToastActions } from './ui';
+import { useToastActions, MetricsGrid, ChartContainer } from './ui';
 import { useAppStore } from '../stores';
 import type { Strategy, OHLCData, Trade, EquityPoint, SplitEvent } from '../types';
 import { DatasetAPI } from '../lib/api';
@@ -293,15 +293,6 @@ export function MultiTickerOptionsPage() {
     }
   };
 
-  const formatCurrency = (value: number): string => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2
-    }).format(value);
-  };
-
   return (
     <div className="space-y-6">
       {/* Заголовок */}
@@ -574,50 +565,11 @@ export function MultiTickerOptionsPage() {
              {activeTab === 'equity' && (
               <div className="space-y-6">
                  {/* Metrics Grid at Top of Equity Tab */}
-                 <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
-                    <div className="col-span-2 md:col-span-1 bg-gray-50 dark:bg-gray-900/50 rounded-lg p-3 text-center border border-gray-200 dark:border-gray-700">
-                         <div className="text-2xl font-bold text-green-600 dark:text-green-400">
-                             {formatCurrency(backtestResults.finalValue)}
-                         </div>
-                         <div className="text-xs uppercase text-gray-500 dark:text-gray-400">Итоговый баланс</div>
-                    </div>
-                    <div className="col-span-2 md:col-span-1 bg-gray-50 dark:bg-gray-900/50 rounded-lg p-3 text-center border border-gray-200 dark:border-gray-700">
-                         <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-                             {backtestResults.metrics.totalReturn.toFixed(1)}%
-                         </div>
-                         <div className="text-xs uppercase text-gray-500 dark:text-gray-400">Общая доходность</div>
-                    </div>
-                     <div className="bg-gray-50 dark:bg-gray-900/50 rounded-lg p-3 text-center border border-gray-200 dark:border-gray-700">
-                         <div className="text-xl font-bold text-orange-600 dark:text-orange-400">
-                             {backtestResults.metrics.cagr.toFixed(1)}%
-                         </div>
-                         <div className="text-xs uppercase text-gray-500 dark:text-gray-400">CAGR</div>
-                    </div>
-                     <div className="bg-gray-50 dark:bg-gray-900/50 rounded-lg p-3 text-center border border-gray-200 dark:border-gray-700">
-                         <div className="text-xl font-bold text-purple-600 dark:text-purple-400">
-                             {backtestResults.metrics.winRate.toFixed(1)}%
-                         </div>
-                         <div className="text-xs uppercase text-gray-500 dark:text-gray-400">Win Rate</div>
-                    </div>
-                     <div className="bg-gray-50 dark:bg-gray-900/50 rounded-lg p-3 text-center border border-gray-200 dark:border-gray-700">
-                         <div className="text-xl font-bold text-red-600 dark:text-red-400">
-                             {backtestResults.maxDrawdown.toFixed(1)}%
-                         </div>
-                         <div className="text-xs uppercase text-gray-500 dark:text-gray-400">Drawdown</div>
-                    </div>
-                     <div className="bg-gray-50 dark:bg-gray-900/50 rounded-lg p-3 text-center border border-gray-200 dark:border-gray-700">
-                         <div className="text-xl font-bold text-indigo-600 dark:text-indigo-400">
-                             {backtestResults.metrics.totalTrades}
-                         </div>
-                         <div className="text-xs uppercase text-gray-500 dark:text-gray-400">Сделок</div>
-                    </div>
-                     <div className="bg-gray-50 dark:bg-gray-900/50 rounded-lg p-3 text-center border border-gray-200 dark:border-gray-700">
-                         <div className="text-xl font-bold text-teal-600 dark:text-teal-400">
-                             {backtestResults.metrics.profitFactor.toFixed(2)}
-                         </div>
-                         <div className="text-xs uppercase text-gray-500 dark:text-gray-400">Profit Factor</div>
-                    </div>
-                 </div>
+                 <MetricsGrid
+                   finalValue={backtestResults.finalValue}
+                   maxDrawdown={backtestResults.maxDrawdown}
+                   metrics={backtestResults.metrics}
+                 />
 
                 <div className="w-full h-[500px]">
                     <EquityChart equity={backtestResults.equity} hideHeader />
@@ -626,21 +578,15 @@ export function MultiTickerOptionsPage() {
             )}
 
             {activeTab === 'price' && (
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                  Сводный график тикеров
-                </h3>
+              <ChartContainer title="Сводный график тикеров">
                 <MultiTickerChart tickersData={tickersData} trades={backtestResults?.trades || []} height={650} />
-              </div>
+              </ChartContainer>
             )}
 
             {activeTab === 'drawdown' && (
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                  Анализ просадки
-                </h3>
+              <ChartContainer title="Анализ просадки">
                 <TradeDrawdownChart trades={backtestResults.trades} initialCapital={initialCapital} />
-              </div>
+              </ChartContainer>
             )}
 
             {activeTab === 'trades' && (
@@ -695,29 +641,19 @@ export function MultiTickerOptionsPage() {
             )}
 
              {activeTab === 'profit' && (
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                  Profit Factor по сделкам
-                </h3>
-                {backtestResults.trades.length > 0 ? (
-                  <ProfitFactorChart trades={backtestResults.trades} />
-                ) : (
-                  <div className="h-72 bg-gray-50 dark:bg-gray-900/50 rounded border border-dashed border-gray-300 dark:border-gray-600 flex items-center justify-center">
-                    <div className="text-gray-500 dark:text-gray-400 text-center">
-                      <p className="text-sm">Нет сделок для отображения</p>
-                    </div>
-                  </div>
-                )}
-              </div>
+              <ChartContainer
+                title="Profit Factor по сделкам"
+                isEmpty={!backtestResults.trades.length}
+                emptyMessage="Нет сделок для отображения"
+              >
+                <ProfitFactorChart trades={backtestResults.trades} />
+              </ChartContainer>
             )}
 
              {activeTab === 'duration' && (
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                  Анализ длительности сделок
-                </h3>
+              <ChartContainer title="Анализ длительности сделок">
                 <TradeDurationChart trades={backtestResults.trades} />
-              </div>
+              </ChartContainer>
             )}
 
             {activeTab === 'splits' && (

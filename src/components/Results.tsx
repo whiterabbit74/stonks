@@ -8,7 +8,7 @@ import {
 } from '../lib/date-utils';
 import { formatMoney } from '../lib/formatters';
 import { useAppStore } from '../stores';
-import { useToastActions } from './ui';
+import { useToastActions, ChartContainer } from './ui';
 import { ErrorBoundary } from './ErrorBoundary';
 import { TradingChart } from './TradingChart';
 import { EquityChart } from './EquityChart';
@@ -869,11 +869,11 @@ export function Results() {
 
 
             {activeChart === 'price' && (
-              <div className="h-[65vh] min-h-[300px] md:min-h-[500px] max-h-[900px] mt-4 mb-6">
+              <ChartContainer height="65vh" className="min-h-[300px] md:min-h-[500px] max-h-[900px] mt-4 mb-6">
                 <ErrorBoundary>
                   <TradingChart data={marketData} trades={trades} splits={currentSplits} />
                 </ErrorBoundary>
-              </div>
+              </ChartContainer>
             )}
             {activeChart === 'equity' && (
               <div className="space-y-4">
@@ -938,7 +938,9 @@ export function Results() {
               </div>
             )}
             {activeChart === 'drawdown' && (
-              <TradeDrawdownChart trades={trades} initialCapital={Number(currentStrategy?.riskManagement?.initialCapital ?? 10000)} />
+              <ChartContainer>
+                <TradeDrawdownChart trades={trades} initialCapital={Number(currentStrategy?.riskManagement?.initialCapital ?? 10000)} />
+              </ChartContainer>
             )}
             {activeChart === 'trades' && (
               <div className="space-y-4">
@@ -952,13 +954,19 @@ export function Results() {
               </div>
             )}
             {activeChart === 'profit' && (
-              <ProfitFactorChart trades={trades} />
+              <ChartContainer>
+                <ProfitFactorChart trades={trades} />
+              </ChartContainer>
             )}
             {activeChart === 'duration' && (
-              <TradeDurationChart trades={trades} />
+              <ChartContainer>
+                <TradeDurationChart trades={trades} />
+              </ChartContainer>
             )}
             {activeChart === 'openDayDrawdown' && (
-              <OpenDayDrawdownChart trades={trades} data={marketData} />
+              <ChartContainer>
+                <OpenDayDrawdownChart trades={trades} data={marketData} />
+              </ChartContainer>
             )}
             {activeChart === 'margin' && (
               <MarginSimulator equity={equity} trades={trades} symbol={symbol} />
