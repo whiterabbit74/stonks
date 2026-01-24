@@ -8,7 +8,8 @@ import {
     Bell,
     Calendar,
     Scissors,
-    Settings
+    Settings,
+    Layers
 } from 'lucide-react';
 
 interface NavItem {
@@ -25,6 +26,7 @@ const primaryNavItems: NavItem[] = [
 ];
 
 const secondaryNavItems: NavItem[] = [
+    { to: '/multi-ticker-options', label: 'Опционы', icon: <Layers className="w-6 h-6" /> },
     { to: '/enhance', label: 'Новые', icon: <PlusCircle className="w-6 h-6" /> },
     { to: '/calendar', label: 'Календарь', icon: <Calendar className="w-6 h-6" /> },
     { to: '/split', label: 'Сплиты', icon: <Scissors className="w-6 h-6" /> },
