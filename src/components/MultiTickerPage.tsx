@@ -13,9 +13,11 @@ import { ProfitFactorChart } from './ProfitFactorChart';
 import { TradeDrawdownChart } from './TradeDrawdownChart';
 import { TradeDurationChart } from './TradeDurationChart';
 import { runSinglePositionBacktest, optimizeTickerData, formatCurrencyCompact } from '../lib/singlePositionBacktest';
+import { calculateTradeStats } from '../lib/trade-utils';
 import { MiniQuoteChart } from './MiniQuoteChart';
+import { SplitsList } from './SplitsList';
+import { StrategyInfoCard } from './StrategyInfoCard';
 import { createStrategyFromTemplate, STRATEGY_TEMPLATES } from '../lib/strategy';
-import { MultiTickerOptionsAnalysis } from './MultiTickerOptionsAnalysis';
 
 interface TickerData {
   ticker: string;
@@ -44,35 +46,6 @@ interface BacktestResults {
   };
 }
 
-function calculateTradeStats(trades: Trade[] = []) {
-  const totalTrades = trades.length;
-  let wins = 0;
-  let losses = 0;
-  let totalPnL = 0;
-  let totalDuration = 0;
-
-  trades.forEach(trade => {
-    const pnl = trade.pnl ?? 0;
-    if (pnl > 0) wins += 1;
-    if (pnl < 0) losses += 1;
-    totalPnL += pnl;
-    totalDuration += trade.duration ?? 0;
-  });
-
-  const winRate = totalTrades > 0 ? (wins / totalTrades) * 100 : 0;
-  const avgDuration = totalTrades > 0 ? totalDuration / totalTrades : 0;
-
-  return {
-    totalTrades,
-    wins,
-    losses,
-    breakeven: totalTrades - wins - losses,
-    totalPnL,
-    winRate,
-    avgDuration
-  };
-}
-
 export function MultiTickerPage() {
   const defaultMultiTickerSymbols = useAppStore(s => s.defaultMultiTickerSymbols);
 
@@ -92,7 +65,7 @@ export function MultiTickerPage() {
   const [backtestResults, setBacktestResults] = useState<BacktestResults | null>(null);
   const [monthlyContributionResults, setMonthlyContributionResults] = useState<BacktestResults | null>(null);
   const [tickersData, setTickersData] = useState<TickerData[]>([]);
-  type TabId = 'price' | 'equity' | 'trades' | 'profit' | 'monthlyContribution' | 'splits' | 'options' | 'drawdown' | 'duration';
+  type TabId = 'price' | 'equity' | 'trades' | 'profit' | 'monthlyContribution' | 'splits' | 'drawdown' | 'duration';
   const [activeTab, setActiveTab] = useState<TabId>('price');
   const [selectedTradeTicker, setSelectedTradeTicker] = useState<'all' | string>('all');
   const [refreshingTickers, setRefreshingTickers] = useState<Set<string>>(new Set());
@@ -328,49 +301,12 @@ export function MultiTickerPage() {
 
         {/* Две карточки */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-          {/* Карточка Стратегия */}
-          <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/40 dark:to-indigo-950/30 p-5 shadow-sm">
-            <div className="flex items-center gap-2 mb-4">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-500/10 dark:bg-blue-400/10">
-                <svg className="h-4 w-4 text-blue-600 dark:text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                </svg>
-              </div>
-              <span className="text-sm font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                Стратегия
-              </span>
-            </div>
-
-            <div className="text-lg font-bold text-gray-900 dark:text-gray-100 mb-3">
-              {activeStrategy?.name || 'IBS Mean Reversion'}
-            </div>
-
-            <ul className="space-y-2 text-sm text-gray-600 dark:text-gray-300">
-              <li className="flex items-center gap-2">
-                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-green-500/10 text-green-600 dark:text-green-400">↓</span>
-                IBS &lt; {Math.round(lowIBS * 100)}% → покупка
-              </li>
-              <li className="flex items-center gap-2">
-                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-orange-500/10 text-orange-600 dark:text-orange-400">↑</span>
-                IBS &gt; {Math.round(highIBS * 100)}% → продажа
-              </li>
-              <li className="flex items-center gap-2">
-                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-purple-500/10 text-purple-600 dark:text-purple-400">⏱</span>
-                Макс. удержание {maxHoldDays} дней
-              </li>
-            </ul>
-
-            <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
-              <span>{activeStrategy?.riskManagement?.capitalUsage ?? 100}% капитала</span>
-              <span>
-                Комиссия: {activeStrategy?.riskManagement?.commission?.type === 'percentage'
-                  ? `${activeStrategy?.riskManagement?.commission?.percentage ?? 0}%`
-                  : activeStrategy?.riskManagement?.commission?.type === 'fixed'
-                    ? `$${activeStrategy?.riskManagement?.commission?.fixed ?? 0}`
-                    : 'комбинированная'}
-              </span>
-            </div>
-          </div>
+          <StrategyInfoCard
+            strategy={activeStrategy}
+            lowIBS={lowIBS}
+            highIBS={highIBS}
+            maxHoldDays={maxHoldDays}
+          />
 
           {/* Карточка Параметры */}
           <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gradient-to-br from-gray-50 to-slate-50 dark:from-gray-900/60 dark:to-slate-900/40 p-5 shadow-sm">
@@ -645,7 +581,6 @@ export function MultiTickerPage() {
               { id: 'profit' as TabId, label: 'Profit factor' },
               { id: 'duration' as TabId, label: 'Длительность' },
               monthlyContributionResults ? { id: 'monthlyContribution' as TabId, label: 'Пополнения' } : null,
-              { id: 'options' as TabId, label: 'Опционы' },
               { id: 'splits' as TabId, label: 'Сплиты' },
             ].filter(Boolean).map(tab => (
               <button
@@ -986,87 +921,8 @@ export function MultiTickerPage() {
               </div>
             )}
 
-            {activeTab === 'options' && (
-              <MultiTickerOptionsAnalysis
-                tickersData={tickersData}
-                tradesByTicker={tradesByTicker}
-              />
-            )}
-
             {activeTab === 'splits' && (
-              <div className="space-y-4">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                    История сплитов по тикерам
-                  </h3>
-                  <div className="text-sm text-gray-500 dark:text-gray-400">
-                    Всего сплитов: {totalSplitsCount}
-                  </div>
-                </div>
-
-                {tickersData.length === 0 ? (
-                  <div className="h-48 rounded border border-dashed border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50 flex items-center justify-center text-gray-500 dark:text-gray-400">
-                    Нет данных о сплитах. Запустите бэктест, чтобы загрузить истории тикеров.
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                    {tickersData.map(tickerData => {
-                      const sortedSplits = [...(tickerData.splits || [])].sort((a, b) => b.date.localeCompare(a.date));
-                      const hasSplits = sortedSplits.length > 0;
-
-                      return (
-                        <div
-                          key={tickerData.ticker}
-                          className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-900"
-                        >
-                          <div className="flex items-center justify-between gap-3">
-                            <div>
-                              <div className="text-base font-semibold text-gray-900 dark:text-gray-100">{tickerData.ticker}</div>
-                              <div className="text-xs text-gray-500 dark:text-gray-400">
-                                {hasSplits ? `Найдено ${sortedSplits.length} ${sortedSplits.length === 1 ? 'событие' : 'событий'}` : 'Сплиты не найдены'}
-                              </div>
-                            </div>
-                            {hasSplits && (
-                              <div className="text-xs text-gray-500 dark:text-gray-400 text-right">
-                                Последний: {new Date(sortedSplits[0].date).toLocaleDateString('ru-RU')}
-                              </div>
-                            )}
-                          </div>
-
-                          <div className="mt-3 space-y-2">
-                            {hasSplits ? (
-                              sortedSplits.map((split, index) => (
-                                <div
-                                  key={`${tickerData.ticker}-${split.date}-${index}`}
-                                  className="flex items-center justify-between rounded-md bg-gray-50 px-3 py-2 text-sm text-gray-700 dark:bg-gray-800 dark:text-gray-200"
-                                >
-                                  <span className="font-mono">{new Date(split.date).toLocaleDateString('ru-RU')}</span>
-                                  <span className="font-semibold text-gray-900 dark:text-gray-100">Коэфф.: {split.factor}:1</span>
-                                </div>
-                              ))
-                            ) : (
-                              <div className="rounded-md bg-gray-50 px-3 py-3 text-sm text-gray-500 dark:bg-gray-800 dark:text-gray-300">
-                                Для этого тикера сплиты не найдены.
-                              </div>
-                            )}
-                          </div>
-
-                          <div className="mt-4 text-xs">
-                            <a
-                              href={`https://seekingalpha.com/symbol/${tickerData.ticker}/splits`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-blue-600 underline transition-colors hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
-                            >
-                              Подробнее о сплитах {tickerData.ticker}
-                            </a>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
+              <SplitsList tickersData={tickersData} totalSplitsCount={totalSplitsCount} />
             )}
           </div>
         </div>

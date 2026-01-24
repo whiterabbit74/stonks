@@ -12,6 +12,7 @@ import { AppSettings } from './AppSettings';
 import { SplitsTab } from './SplitsTab';
 import { CalendarPage } from './CalendarPage';
 import { MultiTickerPage } from './MultiTickerPage';
+import { MultiTickerOptionsPage } from './MultiTickerOptionsPage';
 import { Footer } from './Footer';
 import { ThemeToggle } from './ThemeToggle';
 import { Logo } from './Logo';
@@ -124,6 +125,7 @@ function ProtectedLayout() {
     { to: '/enhance', label: 'Новые данные' },
     { to: '/results', label: 'Один тикер' },
     { to: '/multi-ticker', label: 'Несколько тикеров' },
+    { to: '/multi-ticker-options', label: 'Опционы' },
     { to: '/calendar', label: 'Календарь' },
     { to: '/split', label: 'Сплиты' },
     { to: '/watches', label: 'Мониторинг' },
@@ -333,6 +335,7 @@ export default function AppRouter() {
             <Route path="/enhance" element={<DataEnhancer />} />
             <Route path="/results" element={<Results />} />
             <Route path="/multi-ticker" element={<MultiTickerPage />} />
+            <Route path="/multi-ticker-options" element={<MultiTickerOptionsPage />} />
             <Route path="/calendar" element={<CalendarPage />} />
             <Route path="/split" element={<SplitsTab />} />
             <Route path="/watches" element={<TelegramWatches />} />
