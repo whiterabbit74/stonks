@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
-import { useToastActions } from './ui';
+import { useToastActions, MetricsGrid, ChartContainer } from './ui';
 import { useAppStore } from '../stores';
 import type { Strategy, OHLCData, Trade, EquityPoint, SplitEvent } from '../types';
 import { DatasetAPI } from '../lib/api';
@@ -516,56 +516,11 @@ export function MultiTickerPage() {
 
       {/* Метрики доходности */}
       {backtestResults && (
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
-          <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 text-center">
-            <div className="text-2xl font-bold text-green-600">
-              {formatCurrency(backtestResults.finalValue)}
-            </div>
-            <div className="text-sm text-gray-600 dark:text-gray-400">Итоговый баланс</div>
-          </div>
-
-          <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 text-center">
-            <div className="text-2xl font-bold text-blue-600">
-              {backtestResults.metrics.totalReturn.toFixed(1)}%
-            </div>
-            <div className="text-sm text-gray-600 dark:text-gray-400">Общая доходность</div>
-          </div>
-
-          <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 text-center">
-            <div className="text-2xl font-bold text-orange-600">
-              {backtestResults.metrics.cagr.toFixed(1)}%
-            </div>
-            <div className="text-sm text-gray-600 dark:text-gray-400">CAGR</div>
-          </div>
-
-          <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 text-center">
-            <div className="text-2xl font-bold text-purple-600">
-              {backtestResults.metrics.winRate.toFixed(1)}%
-            </div>
-            <div className="text-sm text-gray-600 dark:text-gray-400">Win Rate</div>
-          </div>
-
-          <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 text-center">
-            <div className="text-2xl font-bold text-red-600">
-              {backtestResults.maxDrawdown.toFixed(1)}%
-            </div>
-            <div className="text-sm text-gray-600 dark:text-gray-400">Макс. просадка</div>
-          </div>
-
-          <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 text-center">
-            <div className="text-2xl font-bold text-indigo-600">
-              {backtestResults.metrics.totalTrades}
-            </div>
-            <div className="text-sm text-gray-600 dark:text-gray-400">Всего сделок</div>
-          </div>
-
-          <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 text-center">
-            <div className="text-2xl font-bold text-teal-600">
-              {backtestResults.metrics.profitFactor.toFixed(2)}
-            </div>
-            <div className="text-sm text-gray-600 dark:text-gray-400">Profit Factor</div>
-          </div>
-        </div>
+        <MetricsGrid
+          finalValue={backtestResults.finalValue}
+          maxDrawdown={backtestResults.maxDrawdown}
+          metrics={backtestResults.metrics}
+        />
       )}
 
       {/* Табы с анализом */}
@@ -599,41 +554,28 @@ export function MultiTickerPage() {
           {/* Содержимое табов */}
           <div className="p-6">
             {activeTab === 'price' && (
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                  Сводный график тикеров
-                </h3>
+              <ChartContainer title="Сводный график тикеров">
                 <MultiTickerChart tickersData={tickersData} trades={backtestResults?.trades || []} height={650} />
-              </div>
+              </ChartContainer>
             )}
 
             {activeTab === 'equity' && (
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                  График капитала
-                </h3>
-                {backtestResults.equity.length > 0 ? (
-                  <div className="w-full h-[500px]">
-                    <EquityChart equity={backtestResults.equity} hideHeader />
-                  </div>
-                ) : (
-                  <div className="h-96 bg-gray-50 dark:bg-gray-900/50 rounded border border-dashed border-gray-300 dark:border-gray-600 flex items-center justify-center">
-                    <div className="text-gray-500 dark:text-gray-400 text-center">
-                      <div className="text-lg font-medium mb-2">Equity Chart</div>
-                      <p className="text-sm">Нет данных по equity</p>
-                    </div>
-                  </div>
-                )}
-              </div>
+              <ChartContainer
+                title="График капитала"
+                isEmpty={!backtestResults.equity.length}
+                emptyMessage="Нет данных по equity"
+                height={500}
+              >
+                <div className="w-full h-[500px]">
+                  <EquityChart equity={backtestResults.equity} hideHeader />
+                </div>
+              </ChartContainer>
             )}
 
             {activeTab === 'drawdown' && (
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                  Анализ просадки
-                </h3>
+              <ChartContainer title="Анализ просадки">
                 <TradeDrawdownChart trades={backtestResults.trades} initialCapital={initialCapital} />
-              </div>
+              </ChartContainer>
             )}
 
             {activeTab === 'trades' && (
@@ -710,30 +652,19 @@ export function MultiTickerPage() {
             )}
 
             {activeTab === 'profit' && (
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                  Profit Factor по сделкам
-                </h3>
-                {backtestResults.trades.length > 0 ? (
-                  <ProfitFactorChart trades={backtestResults.trades} />
-                ) : (
-                  <div className="h-72 bg-gray-50 dark:bg-gray-900/50 rounded border border-dashed border-gray-300 dark:border-gray-600 flex items-center justify-center">
-                    <div className="text-gray-500 dark:text-gray-400 text-center">
-                      <div className="text-lg font-medium mb-2">Profit Factor Chart</div>
-                      <p className="text-sm">Нет сделок для отображения</p>
-                    </div>
-                  </div>
-                )}
-              </div>
+              <ChartContainer
+                title="Profit Factor по сделкам"
+                isEmpty={!backtestResults.trades.length}
+                emptyMessage="Нет сделок для отображения"
+              >
+                <ProfitFactorChart trades={backtestResults.trades} />
+              </ChartContainer>
             )}
 
             {activeTab === 'duration' && (
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                  Анализ длительности сделок
-                </h3>
+              <ChartContainer title="Анализ длительности сделок">
                 <TradeDurationChart trades={backtestResults.trades} />
-              </div>
+              </ChartContainer>
             )}
 
             {activeTab === 'monthlyContribution' && monthlyContributionResults && (
