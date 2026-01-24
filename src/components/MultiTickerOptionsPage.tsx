@@ -539,6 +539,7 @@ export function MultiTickerOptionsPage() {
                       <TradesTable
                         trades={filteredTrades}
                         exportFileNamePrefix={`options-trades-${selectedTradeTicker}`}
+                        showTickerColumn={selectedTradeTicker === 'all'}
                       />
                     </div>
                   </div>

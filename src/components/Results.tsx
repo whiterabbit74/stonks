@@ -949,6 +949,7 @@ export function Results() {
                   <TradesTable
                     trades={trades}
                     exportFileNamePrefix={`trades-${symbol || 'backtest'}`}
+                    showTickerColumn={false}
                   />
                 )}
               </div>

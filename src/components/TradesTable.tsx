@@ -7,6 +7,7 @@ interface TradesTableProps {
 	exportFileNamePrefix?: string;
 	showSummary?: boolean;
 	showExport?: boolean;
+	showTickerColumn?: boolean;
 }
 
 // Optimization: Reuse formatter instance to avoid expensive re-creation in render loops
@@ -16,14 +17,16 @@ export const TradesTable = React.memo(function TradesTable({
 	trades,
 	exportFileNamePrefix,
 	showSummary = true,
-	showExport = true
+	showExport = true,
+	showTickerColumn
 }: TradesTableProps) {
 	const PAGE_SIZE = 50;
 	const [page, setPage] = useState(1);
 
 	const showTicker = useMemo(() => {
+		if (typeof showTickerColumn === 'boolean') return showTickerColumn;
 		return trades && trades.some(t => typeof (t.context as any)?.ticker === 'string' && (t.context as any)?.ticker);
-	}, [trades]);
+	}, [trades, showTickerColumn]);
 
 	const totalPages = useMemo(() => {
 		if (!trades || trades.length === 0) {
