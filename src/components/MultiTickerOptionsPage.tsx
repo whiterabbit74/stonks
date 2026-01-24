@@ -63,6 +63,7 @@ export function MultiTickerOptionsPage() {
   const [volAdjPct, setVolAdjPct] = useState<number>(20);
   const [capitalPct, setCapitalPct] = useState<number>(10);
   const [expirationWeeks, setExpirationWeeks] = useState<number>(4);
+  const [maxHoldingDays, setMaxHoldingDays] = useState<number>(30);
 
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -118,7 +119,8 @@ export function MultiTickerOptionsPage() {
   const activeStrategy = currentStrategy ?? fallbackStrategyRef.current;
   const lowIBS = Number(activeStrategy?.parameters?.lowIBS ?? 0.1);
   const highIBS = Number(activeStrategy?.parameters?.highIBS ?? 0.75);
-  const maxHoldDays = Number(
+  // Strategy max hold, purely informational if overridden by Options params, but actually stock signals depend on it.
+  const strategyMaxHoldDays = Number(
     typeof activeStrategy?.parameters?.maxHoldDays === 'number'
       ? activeStrategy.parameters.maxHoldDays
       : activeStrategy?.riskManagement?.maxHoldDays ?? 30
@@ -222,7 +224,8 @@ export function MultiTickerOptionsPage() {
         strikePct,
         volAdjPct,
         capitalPct,
-        expirationWeeks
+        expirationWeeks,
+        maxHoldingDays
       });
 
       // 3. Calculate Metrics for Options Result
@@ -309,7 +312,7 @@ export function MultiTickerOptionsPage() {
             strategy={activeStrategy}
             lowIBS={lowIBS}
             highIBS={highIBS}
-            maxHoldDays={maxHoldDays}
+            maxHoldDays={strategyMaxHoldDays}
             optionsMode={true}
           />
 
@@ -398,6 +401,19 @@ export function MultiTickerOptionsPage() {
                          <option value={12}>3 месяца</option>
                          <option value={24}>6 месяцев</option>
                     </select>
+                </div>
+                <div>
+                    <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        Макс. удержание (дней)
+                    </label>
+                    <input
+                        type="number"
+                        min={1}
+                        max={365}
+                        value={maxHoldingDays}
+                        onChange={(e) => setMaxHoldingDays(Number(e.target.value))}
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                    />
                 </div>
               </div>
             </div>
