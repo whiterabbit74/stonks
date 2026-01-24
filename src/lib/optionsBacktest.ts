@@ -209,10 +209,16 @@ export function runOptionsBacktest(
 
                      // Update context for UI to show correct capital
                      if (!activeTrade.context) activeTrade.context = {};
+                     const tradeCost = activeTrade.contracts * activeTrade.optionEntryPrice * 100;
+                     const tradeProceeds = activeTrade.contracts * activeTrade.optionExitPrice * 100;
+
                      activeTrade.context = {
                          ...activeTrade.context,
                          currentCapitalAfterExit: currentCapital,
-                         initialInvestment: activeTrade.contracts * activeTrade.optionEntryPrice * 100
+                         initialInvestment: tradeCost,
+                         grossInvestment: tradeCost,
+                         marginUsed: tradeCost,
+                         netProceeds: tradeProceeds
                      };
 
                      optionTrades.push(activeTrade);
@@ -352,10 +358,16 @@ export function runMultiTickerOptionsBacktest(
 
                     // Update Context
                     if (!trade.context) trade.context = {};
+                    const tradeCost = trade.contracts * trade.optionEntryPrice * 100;
+                    const tradeProceeds = trade.contracts * trade.optionExitPrice * 100;
+
                     trade.context = {
                          ...trade.context,
                          currentCapitalAfterExit: currentCapital,
-                         initialInvestment: trade.contracts * trade.optionEntryPrice * 100
+                         initialInvestment: tradeCost,
+                         grossInvestment: tradeCost,
+                         marginUsed: tradeCost,
+                         netProceeds: tradeProceeds
                     };
 
                     closedTrades.push(trade);
