@@ -1,5 +1,4 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { RefreshCw } from 'lucide-react';
 import { useToastActions, MetricsGrid, ChartContainer } from './ui';
 import { useAppStore } from '../stores';
 import type { Strategy, OHLCData, Trade, EquityPoint, SplitEvent } from '../types';
@@ -12,13 +11,12 @@ import { TradesTable } from './TradesTable';
 import { ProfitFactorChart } from './ProfitFactorChart';
 import { TradeDrawdownChart } from './TradeDrawdownChart';
 import { TradeDurationChart } from './TradeDurationChart';
-import { runSinglePositionBacktest, optimizeTickerData, formatCurrencyCompact } from '../lib/singlePositionBacktest';
-import { calculateTradeStats } from '../lib/trade-utils';
+import { runSinglePositionBacktest, optimizeTickerData } from '../lib/singlePositionBacktest';
 import { runMultiTickerOptionsBacktest } from '../lib/optionsBacktest'; // Import options backtest
-import { MiniQuoteChart } from './MiniQuoteChart';
 import { SplitsList } from './SplitsList';
 import { StrategyInfoCard } from './StrategyInfoCard';
 import { createStrategyFromTemplate, STRATEGY_TEMPLATES } from '../lib/strategy';
+import { TickerCardsGrid } from './TickerCardsGrid';
 
 interface TickerData {
   ticker: string;
@@ -70,7 +68,7 @@ export function MultiTickerOptionsPage() {
   const [backtestResults, setBacktestResults] = useState<BacktestResults | null>(null);
   const [tickersData, setTickersData] = useState<TickerData[]>([]);
 
-  type TabId = 'equity' | 'price' | 'drawdown' | 'trades' | 'profit' | 'duration' | 'splits';
+  type TabId = 'equity' | 'price' | 'tickerCharts' | 'drawdown' | 'trades' | 'profit' | 'duration' | 'splits';
   const [activeTab, setActiveTab] = useState<TabId>('equity');
   const [selectedTradeTicker, setSelectedTradeTicker] = useState<'all' | string>('all');
   const [refreshingTickers, setRefreshingTickers] = useState<Set<string>>(new Set());
@@ -455,6 +453,7 @@ export function MultiTickerOptionsPage() {
              {[
               { id: 'equity' as TabId, label: 'Equity' },
               { id: 'price' as TabId, label: 'Цены' },
+              { id: 'tickerCharts' as TabId, label: 'Графики тикеров' },
               { id: 'drawdown' as TabId, label: 'Просадка' },
               { id: 'trades' as TabId, label: 'Сделки' },
               { id: 'profit' as TabId, label: 'Profit factor' },
@@ -494,6 +493,17 @@ export function MultiTickerOptionsPage() {
               <ChartContainer title="Сводный график тикеров">
                 <MultiTickerChart tickersData={tickersData} trades={backtestResults?.trades || []} height={650} />
               </ChartContainer>
+            )}
+
+            {activeTab === 'tickerCharts' && (
+              <TickerCardsGrid
+                tickersData={tickersData}
+                tradesByTicker={tradesByTicker}
+                highIBS={highIBS}
+                isDataOutdated={isDataOutdated}
+                handleRefreshTicker={handleRefreshTicker}
+                refreshingTickers={refreshingTickers}
+              />
             )}
 
             {activeTab === 'drawdown' && (
