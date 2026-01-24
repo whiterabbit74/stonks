@@ -16,15 +16,17 @@ export function OptionsAnalysis({ stockTrades, marketData }: OptionsAnalysisProp
     const [volAdjPct, setVolAdjPct] = useState<number>(20);
     const [capitalPct, setCapitalPct] = useState<number>(10);
     const [expirationWeeks, setExpirationWeeks] = useState<number>(4);
+    const [maxHoldingDays, setMaxHoldingDays] = useState<number>(30);
 
     const { equity, trades, finalValue } = useMemo(() => {
         return runOptionsBacktest(stockTrades, marketData, {
             strikePct,
             volAdjPct,
             capitalPct,
-            expirationWeeks
+            expirationWeeks,
+            maxHoldingDays
         });
-    }, [stockTrades, marketData, strikePct, volAdjPct, capitalPct, expirationWeeks]);
+    }, [stockTrades, marketData, strikePct, volAdjPct, capitalPct, expirationWeeks, maxHoldingDays]);
 
     // Initial capital is hardcoded in backtest as 10000 for now
     const initialCapital = 10000;
@@ -114,6 +116,20 @@ export function OptionsAnalysis({ stockTrades, marketData }: OptionsAnalysisProp
                              <option value={20}>5 месяцев</option>
                              <option value={24}>6 месяцев</option>
                         </select>
+                    </div>
+
+                    <div className="space-y-1">
+                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                           Макс. удержание (дней)
+                        </label>
+                        <input
+                            type="number"
+                            min={1}
+                            max={365}
+                            value={maxHoldingDays}
+                            onChange={(e) => setMaxHoldingDays(Number(e.target.value))}
+                            className="block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100 sm:text-sm"
+                        />
                     </div>
                 </div>
 

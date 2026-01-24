@@ -9,6 +9,7 @@ export interface OptionsBacktestConfig {
     capitalPct: number; // e.g. 10 for 10% of current capital
     riskFreeRate?: number; // default 0.05
     expirationWeeks?: number; // default 4
+    maxHoldingDays?: number; // default 30
 }
 
 interface OptionTrade extends Trade {
@@ -32,7 +33,7 @@ export function runOptionsBacktest(
     marketData: OHLCData[],
     config: OptionsBacktestConfig
 ): { equity: EquityPoint[]; trades: OptionTrade[]; finalValue: number } {
-    const { strikePct, volAdjPct, capitalPct, riskFreeRate = 0.05, expirationWeeks = 4 } = config;
+    const { strikePct, volAdjPct, capitalPct, riskFreeRate = 0.05, expirationWeeks = 4, maxHoldingDays = 30 } = config;
     const initialCapital = 10000; // Hardcoded base for simulation comparison
 
     // Create a map for quick price/index lookup
@@ -170,13 +171,20 @@ export function runOptionsBacktest(
                  // CHECK EXIT
                  const tExit = typeof activeTrade.exitDate === 'string' ? activeTrade.exitDate.slice(0, 10) : new Date(activeTrade.exitDate).toISOString().slice(0, 10);
 
+                 // Calculate Days Held
+                 const entryStr = typeof activeTrade.entryDate === 'string' ? activeTrade.entryDate.slice(0, 10) : new Date(activeTrade.entryDate).toISOString().slice(0, 10);
+                 const [ey, em, ed] = entryStr.split('-').map(Number);
+                 const entryDate = new Date(ey, em - 1, ed, 12, 0, 0);
+                 const daysHeld = Math.floor((currentDate.getTime() - entryDate.getTime()) / (1000 * 3600 * 24));
+                 const isMaxHold = daysHeld >= maxHoldingDays;
+
                  // Force exit if expiration reached or stock trade exited
                  // Note: Stock trade exit might be AFTER expiration if stock held long.
                  // Options have fixed expiry.
                  const isExpired = T <= 0;
                  const isStockExit = dateStr === tExit;
 
-                 if (isStockExit || isExpired) {
+                 if (isStockExit || isExpired || isMaxHold) {
                      // EXIT TRADE
                      activeTrade.optionExitPrice = optionPrice;
                      activeTrade.impliedVolAtExit = vol;
@@ -190,7 +198,10 @@ export function runOptionsBacktest(
                      // Invested = Entry * Contracts * 100
                      activeTrade.pnlPercent = (pnl / (activeTrade.optionEntryPrice * activeTrade.contracts * 100)) * 100;
 
-                     if (isExpired && !isStockExit) {
+                     if (isMaxHold && !isStockExit && !isExpired) {
+                         activeTrade.exitReason = "max_hold";
+                         activeTrade.exitDate = dateStr;
+                     } else if (isExpired && !isStockExit) {
                          activeTrade.exitReason = "option_expired";
                      }
 
@@ -238,7 +249,7 @@ export function runMultiTickerOptionsBacktest(
     tickersData: TickerData[],
     config: OptionsBacktestConfig
 ): { equity: EquityPoint[]; trades: OptionTrade[]; finalValue: number } {
-    const { strikePct, volAdjPct, capitalPct, riskFreeRate = 0.05, expirationWeeks = 4 } = config;
+    const { strikePct, volAdjPct, capitalPct, riskFreeRate = 0.05, expirationWeeks = 4, maxHoldingDays = 30 } = config;
     const initialCapital = 10000;
 
     // 1. Prepare Data Maps for O(1) Access
@@ -308,10 +319,18 @@ export function runMultiTickerOptionsBacktest(
 
                 // Check Conditions
                 const tExit = typeof trade.exitDate === 'string' ? trade.exitDate.slice(0, 10) : new Date(trade.exitDate).toISOString().slice(0, 10);
+
+                // Calculate Days Held
+                const entryStr = typeof trade.entryDate === 'string' ? trade.entryDate.slice(0, 10) : new Date(trade.entryDate).toISOString().slice(0, 10);
+                const [ey, em, ed] = entryStr.split('-').map(Number);
+                const entryDate = new Date(ey, em - 1, ed, 12, 0, 0);
+                const daysHeld = Math.floor((currentDate.getTime() - entryDate.getTime()) / (1000 * 3600 * 24));
+                const isMaxHold = daysHeld >= maxHoldingDays;
+
                 const isExpired = T <= 0;
                 const isStockExit = dateStr === tExit;
 
-                if (isStockExit || isExpired) {
+                if (isStockExit || isExpired || isMaxHold) {
                     // CLOSE TRADE
                     trade.optionExitPrice = optionPrice;
                     trade.impliedVolAtExit = vol;
@@ -321,7 +340,10 @@ export function runMultiTickerOptionsBacktest(
                     trade.pnl = pnl;
                     trade.pnlPercent = (pnl / (trade.optionEntryPrice * trade.contracts * 100)) * 100;
 
-                    if (isExpired && !isStockExit) {
+                    if (isMaxHold && !isStockExit && !isExpired) {
+                        trade.exitReason = "max_hold";
+                        trade.exitDate = dateStr;
+                    } else if (isExpired && !isStockExit) {
                          trade.exitReason = "option_expired";
                     }
 
