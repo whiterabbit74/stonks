@@ -198,6 +198,9 @@ export function runOptionsBacktest(
                      // Invested = Entry * Contracts * 100
                      activeTrade.pnlPercent = (pnl / (activeTrade.optionEntryPrice * activeTrade.contracts * 100)) * 100;
 
+                     // Ensure duration reflects actual hold time, not original signal
+                     activeTrade.duration = daysHeld;
+
                      if (isMaxHold && !isStockExit && !isExpired) {
                          activeTrade.exitReason = "max_hold";
                          activeTrade.exitDate = dateStr;
@@ -345,6 +348,9 @@ export function runMultiTickerOptionsBacktest(
                     const pnl = (trade.optionExitPrice - trade.optionEntryPrice) * trade.contracts * 100;
                     trade.pnl = pnl;
                     trade.pnlPercent = (pnl / (trade.optionEntryPrice * trade.contracts * 100)) * 100;
+
+                    // Ensure duration reflects actual hold time, not original signal
+                    trade.duration = daysHeld;
 
                     if (isMaxHold && !isStockExit && !isExpired) {
                         trade.exitReason = "max_hold";
