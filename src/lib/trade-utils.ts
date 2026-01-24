@@ -9,8 +9,9 @@ export function calculateTradeStats(trades: Trade[] = []) {
 
   trades.forEach(trade => {
     const pnl = trade.pnl ?? 0;
-    if (pnl > 0) wins += 1;
-    if (pnl < 0) losses += 1;
+    // Use epsilon to ignore floating point noise
+    if (pnl > 0.01) wins += 1;
+    else if (pnl < -0.01) losses += 1;
     totalPnL += pnl;
     totalDuration += trade.duration ?? 0;
   });

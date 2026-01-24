@@ -12,7 +12,7 @@ export interface OptionsBacktestConfig {
     maxHoldingDays?: number; // default 30
 }
 
-interface OptionTrade extends Trade {
+export interface OptionTrade extends Trade {
     optionType: 'call';
     strike: number;
     expirationDate: string;

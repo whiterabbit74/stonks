@@ -163,7 +163,8 @@ export class MetricsCalculator {
     // Оптимизированный расчет без создания промежуточного массива
     let winningCount = 0;
     for (let i = 0; i < this.trades.length; i++) {
-      if (this.trades[i].pnl > 0) {
+      // Use epsilon to ignore floating point noise
+      if (this.trades[i].pnl > 0.01) {
         winningCount++;
       }
     }
@@ -235,9 +236,9 @@ export class MetricsCalculator {
 
     for (let i = 0; i < this.trades.length; i++) {
       const pnl = this.trades[i].pnl;
-      if (pnl > 0) {
+      if (pnl > 0.01) {
         grossProfit += pnl;
-      } else if (pnl < 0) {
+      } else if (pnl < -0.01) {
         grossLoss += Math.abs(pnl);
       }
     }
@@ -257,7 +258,7 @@ export class MetricsCalculator {
     let winCount = 0;
 
     for (let i = 0; i < this.trades.length; i++) {
-      if (this.trades[i].pnl > 0) {
+      if (this.trades[i].pnl > 0.01) {
         totalWin += this.trades[i].pnl;
         winCount++;
       }
@@ -278,7 +279,7 @@ export class MetricsCalculator {
     let lossCount = 0;
 
     for (let i = 0; i < this.trades.length; i++) {
-      if (this.trades[i].pnl < 0) {
+      if (this.trades[i].pnl < -0.01) {
         totalLoss += Math.abs(this.trades[i].pnl);
         lossCount++;
       }

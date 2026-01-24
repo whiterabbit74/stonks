@@ -229,19 +229,8 @@ export function MultiTickerOptionsPage() {
       });
 
       // 3. Calculate Metrics for Options Result
-      const totalTrades = optionsResult.trades.length;
-      let wins = 0;
-      let losses = 0;
-      let totalPnL = 0;
-
-      optionsResult.trades.forEach(t => {
-          const p = t.pnl || 0;
-          if (p > 0) wins++;
-          if (p < 0) losses++;
-          totalPnL += p;
-      });
-
-      const winRate = totalTrades > 0 ? (wins / totalTrades) * 100 : 0;
+      const stats = calculateTradeStats(optionsResult.trades);
+      const { totalTrades, wins, losses, winRate } = stats;
       const totalReturn = ((optionsResult.finalValue - initialCapital) / initialCapital) * 100;
 
       // Calculate Profit Factor properly
