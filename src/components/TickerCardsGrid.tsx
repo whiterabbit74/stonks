@@ -1,4 +1,3 @@
-import React from 'react';
 import { RefreshCw } from 'lucide-react';
 import { MiniQuoteChart } from './MiniQuoteChart';
 import { calculateTradeStats } from '../lib/trade-utils';
