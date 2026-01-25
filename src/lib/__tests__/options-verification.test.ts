@@ -99,12 +99,13 @@ describe('Options Backtest Verification', () => {
     expect(t1.expirationDate).toBe('2000-01-21');
 
     // Check Option Entry Price
-    expect(t1.optionEntryPrice).toBeCloseTo(1.8934866549537261, 4);
+    // Updated to expect Integer Contract Price: 1.8934... * 100 -> 189
+    expect(t1.optionEntryPrice).toBe(189);
 
     // Check Contracts - UPDATED to expect integer
     // Capital: 10000 -> 25% = 2500.
-    // Price: 1.89348... * 100 = 189.348...
-    // Contracts = floor(2500 / 189.348...) = 13
+    // Price: 189 (Contract Price)
+    // Contracts = floor(2500 / 189) = 13
     expect(t1.contracts).toBe(13);
 
     // Check PnL
