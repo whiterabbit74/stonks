@@ -177,7 +177,7 @@ export const TradesTable = React.memo(function TradesTable({
 							const exitPriceDisplay = isOptionTrade ? (t as any).optionExitPrice : t.exitPrice;
 							const quantityDisplay = isOptionTrade ? (t as any).contracts : t.quantity;
 							const investedDisplay = isOptionTrade
-								? (t as any).contracts * (t as any).optionEntryPrice * 100
+								? (t as any).contracts * (t as any).optionEntryPrice
 								: (typeof t.context?.initialInvestment === 'number' ? t.context.initialInvestment : t.quantity * t.entryPrice);
 
 							return (
