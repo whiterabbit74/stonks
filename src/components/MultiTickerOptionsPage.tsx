@@ -17,6 +17,7 @@ import { SplitsList } from './SplitsList';
 import { StrategyInfoCard } from './StrategyInfoCard';
 import { createStrategyFromTemplate, STRATEGY_TEMPLATES } from '../lib/strategy';
 import { TickerCardsGrid } from './TickerCardsGrid';
+import { calculateTradeStats } from '../lib/trade-utils';
 
 interface TickerData {
   ticker: string;
