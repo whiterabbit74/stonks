@@ -169,12 +169,12 @@ function ProtectedLayout() {
       </a>
       <header className="border-b bg-white/60 backdrop-blur dark:bg-slate-900/60 dark:border-slate-800">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
+          <NavLink to="/data" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
             <Logo size="sm" showText={false} />
             <span className="text-lg font-semibold tracking-tight text-gray-900 dark:text-gray-100">
               IBS Trading Strategy
             </span>
-          </div>
+          </NavLink>
           <div className="flex items-center gap-2">
             <ThemeToggle />
             <NavLink to="/settings" title="Настройки" aria-label="Настройки" className={({ isActive }) => `inline-flex items-center gap-2 px-3 py-2 rounded-full border ${isActive ? 'bg-indigo-600 text-white border-indigo-600' : 'border-gray-200 text-gray-700 hover:text-gray-900 hover:bg-gray-100 bg-white/80 backdrop-blur-sm shadow-sm dark:border-slate-700 dark:text-gray-200 dark:hover:text-white dark:hover:bg-slate-700/80 dark:bg-slate-800/80 dark:backdrop-blur-sm dark:shadow-sm'}`}>
