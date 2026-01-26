@@ -13,7 +13,7 @@ import { ErrorBoundary } from './ErrorBoundary';
 import { TradingChart } from './TradingChart';
 import { EquityChart } from './EquityChart';
 import { TradeDrawdownChart } from './TradeDrawdownChart';
-import { MiniQuoteChart } from './MiniQuoteChart';
+import { TickerCard } from './TickerCard';
 import { InfoModal } from './InfoModal';
 import { TradesTable } from './TradesTable';
 import { ProfitFactorChart } from './ProfitFactorChart';
@@ -743,64 +743,63 @@ export function Results() {
           </div>
 
           {/* Правая часть: мини-график + KPI (переносятся ниже при < ~1130px) */}
-          <div className="md:col-span-2 flex gap-3 flex-col xl:flex-row">
-            <div className="flex-1 bg-white rounded-lg border p-3 dark:bg-gray-900 dark:border-gray-800">
-              <div className="w-full">
-                <div className="h-[260px] sm:h-[300px]">
-                  <MiniQuoteChart
-                    history={marketData.slice(-10)}
-                    today={quote}
-                    trades={trades}
-                    highIBS={Number(currentStrategy?.parameters?.highIBS ?? 0.75)}
-                    isOpenPosition={(() => {
-                      const lastTrade = trades[trades.length - 1];
-                      const lastDataDate = marketData.length ? marketData[marketData.length - 1].date : null;
-                      return !!(lastTrade && lastDataDate && isSameDay(lastTrade.exitDate, lastDataDate));
-                    })()}
-                    entryPrice={(() => {
-                      const lastTrade = trades[trades.length - 1];
-                      const lastDataDate = marketData.length ? marketData[marketData.length - 1].date : null;
-                      const isOpen = !!(lastTrade && lastDataDate && isSameDay(lastTrade.exitDate, lastDataDate));
-                      return isOpen ? lastTrade?.entryPrice ?? null : null;
-                    })()}
-                  />
+          <div className="md:col-span-2">
+            <TickerCard
+              ticker={symbol || ''}
+              data={marketData}
+              trades={trades}
+              highIBS={Number(currentStrategy?.parameters?.highIBS ?? 0.75)}
+              currentQuote={quote}
+              isOpenPosition={(() => {
+                const lastTrade = trades[trades.length - 1];
+                const lastDataDate = marketData.length ? marketData[marketData.length - 1].date : null;
+                return !!(lastTrade && lastDataDate && isSameDay(lastTrade.exitDate, lastDataDate));
+              })()}
+              entryPrice={(() => {
+                const lastTrade = trades[trades.length - 1];
+                const lastDataDate = marketData.length ? marketData[marketData.length - 1].date : null;
+                const isOpen = !!(lastTrade && lastDataDate && isSameDay(lastTrade.exitDate, lastDataDate));
+                return isOpen ? lastTrade?.entryPrice ?? null : null;
+              })()}
+              hideHeader={true}
+              className="h-full"
+              customStats={
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  <div className="rounded-lg border p-2 bg-gray-50 dark:bg-gray-800 dark:border-gray-700">
+                    <div className="text-xs text-gray-500 dark:text-gray-300">CAGR</div>
+                    <div className="text-base font-semibold dark:text-gray-100">{metrics.cagr.toFixed(2)}%</div>
+                  </div>
+                  <div className="rounded-lg border p-2 bg-gray-50 dark:bg-gray-800 dark:border-gray-700">
+                    <div className="text-xs text-gray-500 dark:text-gray-300">Sharpe</div>
+                    <div className="text-base font-semibold dark:text-gray-100">{metrics.sharpeRatio.toFixed(2)}</div>
+                  </div>
+                  <div className="rounded-lg border p-2 bg-gray-50 dark:bg-gray-800 dark:border-gray-700">
+                    <div className="text-xs text-gray-500 dark:text-gray-300">Макс. просадка</div>
+                    <div className="text-base font-semibold dark:text-gray-100">{metrics.maxDrawdown.toFixed(2)}%</div>
+                  </div>
+                  <div className="rounded-lg border p-2 bg-gray-50 dark:bg-gray-800 dark:border-gray-700">
+                    <div className="text-xs text-gray-500 dark:text-gray-300">Win rate</div>
+                    <div className="text-base font-semibold dark:text-gray-100">{metrics.winRate.toFixed(2)}%</div>
+                  </div>
+                  <div className="rounded-lg border p-2 bg-gray-50 dark:bg-gray-800 dark:border-gray-700">
+                    <div className="text-xs text-gray-500 dark:text-gray-300">Profit factor</div>
+                    <div className="text-base font-semibold dark:text-gray-100">{metrics.profitFactor.toFixed(2)}</div>
+                  </div>
+                  <div className="rounded-lg border p-2 bg-gray-50 dark:bg-gray-800 dark:border-gray-700">
+                    <div className="text-xs text-gray-500 dark:text-gray-300">Сделок</div>
+                    <div className="text-base font-semibold dark:text-gray-100">{(metrics.totalTrades ?? trades.length).toString()}</div>
+                  </div>
+                  <div className="rounded-lg border p-2 bg-green-50 dark:bg-green-900/30 dark:border-green-800">
+                    <div className="text-xs text-green-600 dark:text-green-300">Общая доходность</div>
+                    <div className="text-base font-semibold text-green-700 dark:text-green-200">{totalReturn.toFixed(2)}%</div>
+                  </div>
+                  <div className="rounded-lg border p-2 bg-emerald-50 dark:bg-emerald-900/30 dark:border-emerald-800">
+                    <div className="text-xs text-emerald-600 dark:text-emerald-300">Итого капитал</div>
+                    <div className="text-base font-semibold text-emerald-700 dark:text-emerald-200">{formatMoney(finalValue)}</div>
+                  </div>
                 </div>
-              </div>
-            </div>
-            <div className="w-full xl:w-56 grid grid-cols-2 sm:grid-cols-3 xl:flex xl:flex-col gap-2">
-              <div className="rounded-lg border p-2 bg-gray-50 dark:bg-gray-800 dark:border-gray-700">
-                <div className="text-xs text-gray-500 dark:text-gray-300">CAGR</div>
-                <div className="text-base font-semibold dark:text-gray-100">{metrics.cagr.toFixed(2)}%</div>
-              </div>
-              <div className="rounded-lg border p-2 bg-gray-50 dark:bg-gray-800 dark:border-gray-700">
-                <div className="text-xs text-gray-500 dark:text-gray-300">Sharpe</div>
-                <div className="text-base font-semibold dark:text-gray-100">{metrics.sharpeRatio.toFixed(2)}</div>
-              </div>
-              <div className="rounded-lg border p-2 bg-gray-50 dark:bg-gray-800 dark:border-gray-700">
-                <div className="text-xs text-gray-500 dark:text-gray-300">Макс. просадка</div>
-                <div className="text-base font-semibold dark:text-gray-100">{metrics.maxDrawdown.toFixed(2)}%</div>
-              </div>
-              <div className="rounded-lg border p-2 bg-gray-50 dark:bg-gray-800 dark:border-gray-700">
-                <div className="text-xs text-gray-500 dark:text-gray-300">Win rate</div>
-                <div className="text-base font-semibold dark:text-gray-100">{metrics.winRate.toFixed(2)}%</div>
-              </div>
-              <div className="rounded-lg border p-2 bg-gray-50 dark:bg-gray-800 dark:border-gray-700">
-                <div className="text-xs text-gray-500 dark:text-gray-300">Profit factor</div>
-                <div className="text-base font-semibold dark:text-gray-100">{metrics.profitFactor.toFixed(2)}</div>
-              </div>
-              <div className="rounded-lg border p-2 bg-gray-50 dark:bg-gray-800 dark:border-gray-700">
-                <div className="text-xs text-gray-500 dark:text-gray-300">Сделок</div>
-                <div className="text-base font-semibold dark:text-gray-100">{(metrics.totalTrades ?? trades.length).toString()}</div>
-              </div>
-              <div className="rounded-lg border p-2 bg-green-50 dark:bg-green-900/30 dark:border-green-800">
-                <div className="text-xs text-green-600 dark:text-green-300">Общая доходность</div>
-                <div className="text-base font-semibold text-green-700 dark:text-green-200">{totalReturn.toFixed(2)}%</div>
-              </div>
-              <div className="rounded-lg border p-2 bg-emerald-50 dark:bg-emerald-900/30 dark:border-emerald-800">
-                <div className="text-xs text-emerald-600 dark:text-emerald-300">Итого капитал</div>
-                <div className="text-base font-semibold text-emerald-700 dark:text-emerald-200">{formatMoney(finalValue)}</div>
-              </div>
-            </div>
+              }
+            />
           </div>
           {/* Подсказки под правым блоком */}
           {!isTrading && (

@@ -63,9 +63,9 @@ export function MiniQuoteChart({ history, today, trades, highIBS, isOpenPosition
     // Ещё уменьшаем отступы: свечи занимают ~70–80% высоты (в 2 раза меньше воздуха)
     try { chart.priceScale('right').applyOptions({ scaleMargins: { top: 0.15, bottom: 0.15 } }); } catch { /* ignore */ }
 
-    // Build last 8 candles: 7 последних из истории + сегодняшняя синтетическая (если есть)
+    // Build last 21 candles: 20 последних из истории + сегодняшняя синтетическая (если есть)
     const sorted = [...history].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-    const historyCount = hasToday ? 7 : 8;
+    const historyCount = hasToday ? 20 : 21;
     const lastHistory = sorted.slice(-historyCount);
     const candles: { time: UTCTimestamp; open: number; high: number; low: number; close: number }[] = lastHistory.map(b => ({
       time: Math.floor(new Date(b.date).getTime() / 1000) as UTCTimestamp,
