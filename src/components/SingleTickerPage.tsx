@@ -4,12 +4,9 @@ import { useNavigate } from 'react-router-dom';
 import { DatasetAPI } from '../lib/api';
 import { isSameDay } from '../lib/date-utils';
 import { useAppStore } from '../stores';
-import { ChartContainer, AnalysisTabs, MetricsGrid } from './ui';
+import { ChartContainer, AnalysisTabs, MetricsGrid, Button } from './ui';
 import { TickerCard } from './TickerCard';
 import { InfoModal } from './InfoModal';
-import { EquityChart } from './EquityChart';
-import type { EquityPoint } from '../types';
-import { simulateLeverage } from '../lib/backtest-utils';
 import { BacktestResultsView } from './BacktestResultsView';
 import { StrategyInfoCard } from './StrategyInfoCard';
 import { MarginSimulator } from './MarginSimulator';
@@ -20,6 +17,7 @@ import { OptionsAnalysis } from './OptionsAnalysis';
 import { OpenDayDrawdownChart } from './OpenDayDrawdownChart';
 import { useSingleTickerData } from '../hooks/useSingleTickerData';
 import { BacktestPageShell } from './BacktestPageShell';
+import { BuyHoldAnalysis } from './BuyHoldAnalysis';
 
 // Reusable Intl formatters
 const ET_YMD_FMT = new Intl.DateTimeFormat('en-US', {
@@ -126,16 +124,16 @@ export function SingleTickerPage() {
           {/* We can show extra controls here if needed, but for now Shell handles basic loading */}
           {!isLoading && backtestStatus !== 'running' && storeError && (
                <div className="flex justify-center">
-                 <button
+                 <Button
                    onClick={() => {
                      if (requestedTicker) loadDatasetFromServer(requestedTicker.toUpperCase());
                      else if (effectiveSymbol) loadDatasetFromServer(effectiveSymbol.toUpperCase());
                      else runBacktest();
                    }}
-                   className="mt-2 inline-flex items-center px-4 py-2 rounded-md bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition"
+                   className="mt-2"
                  >
                    Повторить загрузку
-                 </button>
+                 </Button>
                </div>
           )}
         </BacktestPageShell>
@@ -169,12 +167,12 @@ export function SingleTickerPage() {
           ) : (
             <div className="text-center p-4 border rounded-lg bg-gray-50 dark:bg-gray-800 dark:border-gray-700">
               <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">Нет доступных данных</p>
-              <button
+              <Button
                 onClick={() => navigate('/data')}
-                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition text-sm"
+                className="bg-blue-600 hover:bg-blue-700 text-white"
               >
                 Загрузить данные
-              </button>
+              </Button>
             </div>
           )}
           {savedDatasets.length > 0 && (
@@ -232,7 +230,7 @@ export function SingleTickerPage() {
         return <OptionsAnalysis stockTrades={trades} marketData={marketData || []} />;
     }
     if (activeChart === 'buyhold' && marketData) {
-        return <BuyHoldView marketData={marketData} initialCapital={initialCapital} />;
+        return <BuyHoldAnalysis marketData={marketData} initialCapital={initialCapital} />;
     }
     return null;
   };
@@ -487,70 +485,3 @@ export function SingleTickerPage() {
   );
 }
 
-function BuyHoldView({ marketData, initialCapital }: { marketData: import('../types').OHLCData[], initialCapital: number }) {
-  const [buyHoldMarginPctInput, setBuyHoldMarginPctInput] = useState<string>('100');
-  const [buyHoldAppliedLeverage, setBuyHoldAppliedLeverage] = useState<number>(1);
-
-  const buyHoldEquity = useMemo(() => {
-    try {
-      if (!Array.isArray(marketData) || marketData.length === 0) return [] as { date: Date; value: number; drawdown: number }[];
-      const first = marketData[0];
-      const firstPrice = typeof first?.adjClose === 'number' && first.adjClose > 0 ? first.adjClose : first.close;
-      if (!firstPrice || firstPrice <= 0) return [] as { date: Date; value: number; drawdown: number }[];
-      let peak = initialCapital;
-      const series = marketData.map(b => {
-        const price = typeof b?.adjClose === 'number' && b.adjClose > 0 ? b.adjClose : b.close;
-        const value = initialCapital * (price / firstPrice);
-        if (value > peak) peak = value;
-        const drawdown = peak > 0 ? ((peak - value) / peak) * 100 : 0;
-        const d = new Date(b.date);
-        return { date: d, value, drawdown };
-      });
-      return series;
-    } catch {
-      return [] as { date: Date; value: number; drawdown: number }[];
-    }
-  }, [marketData, initialCapital]);
-
-  const buyHoldSimEquity = useMemo(() => (
-    simulateLeverage(buyHoldEquity as unknown as EquityPoint[], buyHoldAppliedLeverage).equity
-  ), [buyHoldEquity, buyHoldAppliedLeverage]);
-
-  const onApplyBuyHold = () => {
-    const pct = Number(buyHoldMarginPctInput);
-    if (!isFinite(pct) || pct <= 0) return;
-    setBuyHoldAppliedLeverage(pct / 100);
-  };
-
-  return (
-      <div className="space-y-4">
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="flex flex-col">
-            <label className="text-xs text-gray-600 dark:text-gray-300">Маржинальность, %</label>
-            <input
-              type="number"
-              inputMode="decimal"
-              min={1}
-              step={1}
-              value={buyHoldMarginPctInput}
-              onChange={(e) => setBuyHoldMarginPctInput(e.target.value)}
-              className="px-3 py-2 border rounded-md w-40 dark:bg-gray-900 dark:border-gray-700 dark:text-gray-100"
-              placeholder="например, 100"
-            />
-          </div>
-          <button
-            onClick={onApplyBuyHold}
-            className="px-4 py-2 rounded-md bg-blue-600 text-white text-sm font-medium hover:bg-blue-700"
-          >
-            Посчитать
-          </button>
-          <div className="text-xs text-gray-500 dark:text-gray-300">
-            Текущее плечо: ×{buyHoldAppliedLeverage.toFixed(2)}
-          </div>
-        </div>
-        <div className="h-[60vh] min-h-[300px] md:min-h-[450px] max-h-[870px]">
-          <EquityChart equity={buyHoldSimEquity.length ? buyHoldSimEquity : (buyHoldEquity as unknown as EquityPoint[])} />
-        </div>
-      </div>
-  );
-}
