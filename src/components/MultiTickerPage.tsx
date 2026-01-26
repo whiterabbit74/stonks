@@ -8,7 +8,7 @@ import { IndicatorEngine } from '../lib/indicators';
 import { MultiTickerChart } from './MultiTickerChart';
 import { EquityChart } from './EquityChart';
 import { TradesTable } from './TradesTable';
-import { ProfitFactorChart } from './ProfitFactorChart';
+import { ProfitFactorAnalysis } from './ProfitFactorAnalysis';
 import { TradeDrawdownChart } from './TradeDrawdownChart';
 import { DurationAnalysis } from './DurationAnalysis';
 import { runSinglePositionBacktest, optimizeTickerData, formatCurrencyCompact } from '../lib/singlePositionBacktest';
@@ -563,7 +563,7 @@ export function MultiTickerPage() {
                 isEmpty={!backtestResults.trades.length}
                 emptyMessage="Нет сделок для отображения"
               >
-                <ProfitFactorChart trades={backtestResults.trades} />
+                <ProfitFactorAnalysis trades={backtestResults.trades} />
               </ChartContainer>
             )}
 
