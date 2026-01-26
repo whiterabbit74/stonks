@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { useToastActions, MetricsGrid, ChartContainer } from './ui';
+import { useToastActions, MetricsGrid, ChartContainer, AnalysisTabs } from './ui';
 import { useAppStore } from '../stores';
 import type { Strategy, OHLCData, Trade, EquityPoint, SplitEvent } from '../types';
 import { DatasetAPI } from '../lib/api';
@@ -439,29 +439,20 @@ export function MultiTickerOptionsPage() {
       {/* Main Analysis Block */}
       {backtestResults && (
         <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
-          <div className="flex border-b border-gray-200 dark:border-gray-700 overflow-x-auto">
-             {[
-              { id: 'equity' as TabId, label: 'Equity' },
-              { id: 'price' as TabId, label: 'Цены' },
-              { id: 'tickerCharts' as TabId, label: 'Графики тикеров' },
-              { id: 'drawdown' as TabId, label: 'Просадка' },
-              { id: 'trades' as TabId, label: 'Сделки' },
-              { id: 'profit' as TabId, label: 'Profit factor' },
-              { id: 'duration' as TabId, label: 'Длительность' },
-              { id: 'splits' as TabId, label: 'Сплиты' },
-            ].map(tab => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${activeTab === tab.id
-                  ? 'border-blue-500 text-blue-600 dark:text-blue-400'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
-                  }`}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
+          <AnalysisTabs
+            tabs={[
+              { id: 'equity', label: 'Equity' },
+              { id: 'price', label: 'Цены' },
+              { id: 'tickerCharts', label: 'Графики тикеров' },
+              { id: 'drawdown', label: 'Просадка' },
+              { id: 'trades', label: 'Сделки' },
+              { id: 'profit', label: 'Profit factor' },
+              { id: 'duration', label: 'Длительность' },
+              { id: 'splits', label: 'Сплиты' },
+            ]}
+            activeTab={activeTab}
+            onChange={(id) => setActiveTab(id as TabId)}
+          />
 
           <div className="p-6">
              {activeTab === 'equity' && (

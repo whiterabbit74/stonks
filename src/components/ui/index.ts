@@ -1,3 +1,4 @@
+export * from './AnalysisTabs';
 export * from './BottomNav';
 export * from './Button';
 export * from './ChartContainer';

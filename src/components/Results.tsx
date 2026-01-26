@@ -3,12 +3,10 @@ import { Heart, RefreshCcw, AlertTriangle, Loader2 } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { DatasetAPI } from '../lib/api';
 import {
-  isSameDay,
-  formatTradingDateDisplay
+  isSameDay
 } from '../lib/date-utils';
-import { formatMoney } from '../lib/formatters';
 import { useAppStore } from '../stores';
-import { useToastActions, ChartContainer } from './ui';
+import { useToastActions, ChartContainer, AnalysisTabs, MetricsGrid } from './ui';
 import { ErrorBoundary } from './ErrorBoundary';
 import { TradingChart } from './TradingChart';
 import { EquityChart } from './EquityChart';
@@ -16,6 +14,7 @@ import { TradeDrawdownChart } from './TradeDrawdownChart';
 import { TickerCard } from './TickerCard';
 import { InfoModal } from './InfoModal';
 import { TradesTable } from './TradesTable';
+import { SplitsList } from './SplitsList';
 import { ProfitFactorAnalysis } from './ProfitFactorAnalysis';
 import { DurationAnalysis } from './DurationAnalysis';
 import { OpenDayDrawdownChart } from './OpenDayDrawdownChart';
@@ -597,7 +596,6 @@ export function Results() {
 
   // Расчет дополнительных метрик
   const finalValue = equity.length > 0 ? equity[equity.length - 1].value : initialCapital;
-  const totalReturn = ((finalValue - initialCapital) / initialCapital) * 100;
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -763,42 +761,6 @@ export function Results() {
               })()}
               hideHeader={true}
               className="h-full"
-              customStats={
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  <div className="rounded-lg border p-2 bg-gray-50 dark:bg-gray-800 dark:border-gray-700">
-                    <div className="text-xs text-gray-500 dark:text-gray-300">CAGR</div>
-                    <div className="text-base font-semibold dark:text-gray-100">{metrics.cagr.toFixed(2)}%</div>
-                  </div>
-                  <div className="rounded-lg border p-2 bg-gray-50 dark:bg-gray-800 dark:border-gray-700">
-                    <div className="text-xs text-gray-500 dark:text-gray-300">Sharpe</div>
-                    <div className="text-base font-semibold dark:text-gray-100">{metrics.sharpeRatio.toFixed(2)}</div>
-                  </div>
-                  <div className="rounded-lg border p-2 bg-gray-50 dark:bg-gray-800 dark:border-gray-700">
-                    <div className="text-xs text-gray-500 dark:text-gray-300">Макс. просадка</div>
-                    <div className="text-base font-semibold dark:text-gray-100">{metrics.maxDrawdown.toFixed(2)}%</div>
-                  </div>
-                  <div className="rounded-lg border p-2 bg-gray-50 dark:bg-gray-800 dark:border-gray-700">
-                    <div className="text-xs text-gray-500 dark:text-gray-300">Win rate</div>
-                    <div className="text-base font-semibold dark:text-gray-100">{metrics.winRate.toFixed(2)}%</div>
-                  </div>
-                  <div className="rounded-lg border p-2 bg-gray-50 dark:bg-gray-800 dark:border-gray-700">
-                    <div className="text-xs text-gray-500 dark:text-gray-300">Profit factor</div>
-                    <div className="text-base font-semibold dark:text-gray-100">{metrics.profitFactor.toFixed(2)}</div>
-                  </div>
-                  <div className="rounded-lg border p-2 bg-gray-50 dark:bg-gray-800 dark:border-gray-700">
-                    <div className="text-xs text-gray-500 dark:text-gray-300">Сделок</div>
-                    <div className="text-base font-semibold dark:text-gray-100">{(metrics.totalTrades ?? trades.length).toString()}</div>
-                  </div>
-                  <div className="rounded-lg border p-2 bg-green-50 dark:bg-green-900/30 dark:border-green-800">
-                    <div className="text-xs text-green-600 dark:text-green-300">Общая доходность</div>
-                    <div className="text-base font-semibold text-green-700 dark:text-green-200">{totalReturn.toFixed(2)}%</div>
-                  </div>
-                  <div className="rounded-lg border p-2 bg-emerald-50 dark:bg-emerald-900/30 dark:border-emerald-800">
-                    <div className="text-xs text-emerald-600 dark:text-emerald-300">Итого капитал</div>
-                    <div className="text-base font-semibold text-emerald-700 dark:text-emerald-200">{formatMoney(finalValue)}</div>
-                  </div>
-                </div>
-              }
             />
           </div>
           {/* Подсказки под правым блоком */}
@@ -844,27 +806,12 @@ export function Results() {
               <h2 className="text-lg sm:text-xl font-semibold text-gray-900 dark:text-gray-100">Аналитика сделок</h2>
             </div>
 
-            <div className="horizontal-scroll pb-2" role="tablist" aria-label="Вкладки аналитики">
-              <div className="flex items-center gap-2 flex-nowrap min-w-max px-1">
-                {analysisTabsConfig
-                  .filter(tab => tab.visible)
-                  .map(tab => (
-                    <button
-                      key={tab.id}
-                      role="tab"
-                      aria-selected={activeChart === tab.id}
-                      tabIndex={activeChart === tab.id ? 0 : -1}
-                      className={`${activeChart === tab.id
-                        ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/30 dark:border-blue-900/40 dark:text-blue-200'
-                        : 'bg-white border-gray-200 text-gray-700 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-300'
-                        } px-3 py-1.5 rounded border`}
-                      onClick={() => setActiveChart(tab.id as ChartTab)}
-                    >
-                      {tab.label}
-                    </button>
-                  ))}
-              </div>
-            </div>
+            <AnalysisTabs
+              tabs={analysisTabsConfig.filter(tab => tab.visible)}
+              activeTab={activeChart}
+              onChange={(id) => setActiveChart(id as ChartTab)}
+              className="mb-4"
+            />
 
 
             {activeChart === 'price' && (
@@ -875,7 +822,12 @@ export function Results() {
               </ChartContainer>
             )}
             {activeChart === 'equity' && (
-              <div className="space-y-4">
+              <div className="space-y-6">
+                <MetricsGrid
+                  finalValue={finalValue}
+                  maxDrawdown={metrics.maxDrawdown}
+                  metrics={metrics}
+                />
                 {/* Strategy summary - показывается только во вкладке Equity */}
                 <div className="text-xs text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded px-3 py-2">
                   {(() => {
@@ -983,51 +935,7 @@ export function Results() {
               <OptionsAnalysis stockTrades={trades} marketData={marketData} />
             )}
             {activeChart === 'splits' && (
-              <div className="space-y-4">
-                <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 p-4">
-                  <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">История сплитов</h3>
-                  {currentSplits && Array.isArray(currentSplits) && currentSplits.length > 0 ? (
-                    <div className="space-y-2">
-                      {currentSplits.map((split, index) => (
-                        <div key={index} className="flex justify-between items-center py-3 px-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                          <span className="text-sm text-gray-600 dark:text-gray-400">
-                            {formatTradingDateDisplay(split.date)}
-                          </span>
-                          <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                            Коэффициент: {split.factor}:1
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="text-center py-8 text-gray-500 dark:text-gray-400">
-                      <p>Для этой акции сплиты не найдены</p>
-                    </div>
-                  )}
-
-                  {/* Ссылки на внешние ресурсы */}
-                  <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-                    <div className="flex flex-wrap gap-3 text-sm">
-                      <a
-                        href={`https://seekingalpha.com/symbol/${symbol}/splits`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 underline"
-                      >
-                        посмотреть сплиты
-                      </a>
-                      <a
-                        href="https://divvydiary.com/en/microsectors-fang-index-3x-leveraged-etn-etf-US0636795348?utm_source=chatgpt.com"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 underline"
-                      >
-                        и вот здесь
-                      </a>
-                    </div>
-                  </div>
-                </div>
-              </div>
+              <SplitsList splits={currentSplits || []} ticker={symbol || ''} />
             )}
           </section>
         </div>

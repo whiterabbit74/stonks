@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { useToastActions, MetricsGrid, ChartContainer } from './ui';
+import { useToastActions, MetricsGrid, ChartContainer, AnalysisTabs } from './ui';
 import { useAppStore } from '../stores';
 import type { Strategy, OHLCData, Trade, EquityPoint, SplitEvent } from '../types';
 import { DatasetAPI } from '../lib/api';
@@ -420,31 +420,21 @@ export function MultiTickerPage() {
       {/* Табы с анализом */}
       {backtestResults && (
         <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
-          {/* Заголовки табов */}
-          <div className="flex border-b border-gray-200 dark:border-gray-700 overflow-x-auto">
-            {[
-              { id: 'price' as TabId, label: 'Цены' },
-              { id: 'tickerCharts' as TabId, label: 'Графики тикеров' },
-              { id: 'equity' as TabId, label: 'Equity' },
-              { id: 'drawdown' as TabId, label: 'Просадка' },
-              { id: 'trades' as TabId, label: 'Сделки' },
-              { id: 'profit' as TabId, label: 'Profit factor' },
-              { id: 'duration' as TabId, label: 'Длительность' },
-              monthlyContributionResults ? { id: 'monthlyContribution' as TabId, label: 'Пополнения' } : null,
-              { id: 'splits' as TabId, label: 'Сплиты' },
-            ].filter(Boolean).map(tab => (
-              <button
-                key={tab!.id}
-                onClick={() => setActiveTab(tab!.id)}
-                className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${activeTab === tab!.id
-                  ? 'border-blue-500 text-blue-600 dark:text-blue-400'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
-                  }`}
-              >
-                {tab!.label}
-              </button>
-            ))}
-          </div>
+          <AnalysisTabs
+            tabs={[
+              { id: 'price', label: 'Цены' },
+              { id: 'tickerCharts', label: 'Графики тикеров' },
+              { id: 'equity', label: 'Equity' },
+              { id: 'drawdown', label: 'Просадка' },
+              { id: 'trades', label: 'Сделки' },
+              { id: 'profit', label: 'Profit factor' },
+              { id: 'duration', label: 'Длительность' },
+              monthlyContributionResults ? { id: 'monthlyContribution', label: 'Пополнения' } : null,
+              { id: 'splits', label: 'Сплиты' },
+            ].filter((t): t is { id: string; label: string } => !!t)}
+            activeTab={activeTab}
+            onChange={(id) => setActiveTab(id as TabId)}
+          />
 
           {/* Содержимое табов */}
           <div className="p-6">
