@@ -1,5 +1,6 @@
 import type { Strategy, OHLCData, Trade, EquityPoint } from '../types';
 import { toTradingDate } from './date-utils';
+import { calculateBacktestMetrics } from './backtest-statistics';
 
 export interface TickerDataWithIndex {
   ticker: string;
@@ -465,53 +466,23 @@ export function runSinglePositionBacktest(
     }
   }
 
-  // Calculate metrics
-  const finalValue = portfolio.totalPortfolioValue;
-  const totalReturn = ((finalValue - initialCapital) / initialCapital) * 100;
-  const maxDrawdown = equity.length > 0 ? Math.max(...equity.map(e => e.drawdown)) : 0;
-
-  const winningTrades = trades.filter(t => (t.pnl ?? 0) > 0).length;
-  const losingTrades = trades.filter(t => (t.pnl ?? 0) < 0).length;
-  const winRate = trades.length > 0 ? (winningTrades / trades.length) * 100 : 0;
-
-  // Profit factor
-  const grossProfit = trades.filter(t => (t.pnl ?? 0) > 0).reduce((sum, t) => sum + (t.pnl ?? 0), 0);
-  const grossLoss = Math.abs(trades.filter(t => (t.pnl ?? 0) < 0).reduce((sum, t) => sum + (t.pnl ?? 0), 0));
-  const profitFactor = grossLoss > 0 ? grossProfit / grossLoss : grossProfit > 0 ? 999 : 0;
-
-  // CAGR calculation
-  const daysDiff = equity.length > 0 ?
-    (new Date(equity[equity.length - 1].date).getTime() - new Date(equity[0].date).getTime()) / (1000 * 60 * 60 * 24) : 1;
-  const years = daysDiff / 365.25;
-  const cagr = years > 0 ? (Math.pow(finalValue / initialCapital, 1 / years) - 1) * 100 : 0;
-
-  const investedCapital = initialCapital + totalMonthlyContributions;
-  const netProfit = finalValue - investedCapital;
-  const netReturn = investedCapital > 0 ? (netProfit / investedCapital) * 100 : 0;
-
-  const metrics = {
-    totalReturn,
-    cagr,
-    winRate,
-    totalTrades: trades.length,
-    winningTrades,
-    losingTrades,
-    profitFactor,
-    netProfit,
-    netReturn,
-    totalContribution: totalMonthlyContributions,
-    contributionCount
-  };
+  // Calculate metrics using centralized logic
+  const metrics = calculateBacktestMetrics(
+    trades,
+    equity,
+    initialCapital,
+    { total: totalMonthlyContributions, count: contributionCount }
+  );
 
   console.log(`✅ SINGLE POSITION BACKTEST COMPLETE`);
-  console.log(`📊 Final Value: ${formatCurrencyCompact(finalValue)} (${formatCurrencyUSD(finalValue)})`);
-  console.log(`📈 Total Return: ${totalReturn.toFixed(2)}%`);
+  console.log(`📊 Final Value: ${formatCurrencyCompact(portfolio.totalPortfolioValue)} (${formatCurrencyUSD(portfolio.totalPortfolioValue)})`);
+  console.log(`📈 Total Return: ${metrics.totalReturn.toFixed(2)}%`);
   console.log(`🎯 Total Trades: ${trades.length}`);
 
   return {
     equity,
-    finalValue,
-    maxDrawdown,
+    finalValue: portfolio.totalPortfolioValue,
+    maxDrawdown: metrics.maxDrawdown,
     trades,
     metrics
   };
