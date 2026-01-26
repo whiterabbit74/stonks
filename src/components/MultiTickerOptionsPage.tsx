@@ -10,7 +10,7 @@ import { EquityChart } from './EquityChart';
 import { TradesTable } from './TradesTable';
 import { ProfitFactorChart } from './ProfitFactorChart';
 import { TradeDrawdownChart } from './TradeDrawdownChart';
-import { TradeDurationChart } from './TradeDurationChart';
+import { DurationAnalysis } from './DurationAnalysis';
 import { runSinglePositionBacktest, optimizeTickerData } from '../lib/singlePositionBacktest';
 import { runMultiTickerOptionsBacktest } from '../lib/optionsBacktest'; // Import options backtest
 import { SplitsList } from './SplitsList';
@@ -565,7 +565,7 @@ export function MultiTickerOptionsPage() {
 
              {activeTab === 'duration' && (
               <ChartContainer title="Анализ длительности сделок">
-                <TradeDurationChart trades={backtestResults.trades} />
+                <DurationAnalysis trades={backtestResults.trades} />
               </ChartContainer>
             )}
 

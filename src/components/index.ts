@@ -14,7 +14,7 @@ export { Logo } from './Logo';
 export { ThemeToggle } from './ThemeToggle';
 export { TradesTable } from './TradesTable';
 export { ProfitFactorChart } from './ProfitFactorChart';
-export { TradeDurationChart } from './TradeDurationChart';
+export { DurationAnalysis } from './DurationAnalysis';
 export { OpenDayDrawdownChart } from './OpenDayDrawdownChart';
 export { MarginSimulator } from './MarginSimulator';
 export { TradingCalendar } from './TradingCalendar';
