@@ -1,12 +1,10 @@
-import { useEffect, useMemo, useState, useRef } from 'react';
-import { Heart, RefreshCcw, AlertTriangle, Loader2 } from 'lucide-react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
+import { Heart, RefreshCcw, AlertTriangle } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { DatasetAPI } from '../lib/api';
-import {
-  isSameDay
-} from '../lib/date-utils';
+import { isSameDay } from '../lib/date-utils';
 import { useAppStore } from '../stores';
-import { useToastActions, ChartContainer, AnalysisTabs, MetricsGrid } from './ui';
+import { ChartContainer, AnalysisTabs, MetricsGrid } from './ui';
 import { TickerCard } from './TickerCard';
 import { InfoModal } from './InfoModal';
 import { EquityChart } from './EquityChart';
@@ -20,30 +18,10 @@ import { BuyAtClose4Simulator } from './BuyAtClose4Simulator';
 import { NoStopLossSimulator } from './NoStopLossSimulator';
 import { OptionsAnalysis } from './OptionsAnalysis';
 import { OpenDayDrawdownChart } from './OpenDayDrawdownChart';
+import { useSingleTickerData } from '../hooks/useSingleTickerData';
+import { BacktestPageShell } from './BacktestPageShell';
 
 // Reusable Intl formatters
-const ET_PARTS_FMT = new Intl.DateTimeFormat('en-US', {
-  timeZone: 'America/New_York',
-  year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'short',
-});
-
-const ET_TIME_FMT = new Intl.DateTimeFormat('en-US', {
-  timeZone: 'America/New_York',
-  hour12: false,
-  year: 'numeric', month: '2-digit', day: '2-digit',
-  hour: '2-digit',
-  minute: '2-digit',
-});
-
-const ET_FULL_FMT = new Intl.DateTimeFormat('en-US', {
-  timeZone: 'America/New_York',
-  hour12: false,
-  year: 'numeric', month: '2-digit', day: '2-digit',
-  hour: '2-digit',
-  minute: '2-digit',
-  weekday: 'short',
-});
-
 const ET_YMD_FMT = new Intl.DateTimeFormat('en-US', {
   timeZone: 'America/New_York',
   year: 'numeric', month: '2-digit', day: '2-digit'
@@ -51,47 +29,47 @@ const ET_YMD_FMT = new Intl.DateTimeFormat('en-US', {
 
 export function SingleTickerPage() {
   const navigate = useNavigate();
-  const [searchParams, setSearchParams] = useSearchParams();
-  const backtestResults = useAppStore((s) => s.backtestResults);
-  const marketData = useAppStore((s) => s.marketData);
-  const currentStrategy = useAppStore((s) => s.currentStrategy);
-  const runBacktest = useAppStore((s) => s.runBacktest);
-  const backtestStatus = useAppStore((s) => s.backtestStatus);
-  const storeError = useAppStore((s) => s.error);
+  const {
+    symbol,
+    requestedTicker,
+    effectiveSymbol,
+    isDataReady,
+    marketData,
+    backtestResults,
+    currentStrategy,
+    isLoading,
+    storeError,
+    quote,
+    quoteError,
+    quoteLoading,
+    isTrading,
+    lastUpdatedAt,
+    isStale,
+    staleInfo,
+    refreshing,
+    refreshError,
+    handleRefresh,
+    watching,
+    watchBusy,
+    setWatching,
+    setWatchBusy,
+    savedDatasets,
+    loadDatasetFromServer,
+    runBacktest,
+    backtestStatus,
+    setSearchParams,
+    tradingCalendar
+  } = useSingleTickerData();
+
   const currentSplits = useAppStore((s) => s.currentSplits);
-  const currentDataset = useAppStore((s) => s.currentDataset);
   const resultsQuoteProvider = useAppStore((s) => s.resultsQuoteProvider);
-  const resultsRefreshProvider = useAppStore((s) => s.resultsRefreshProvider);
-  const loadDatasetFromServer = useAppStore((s) => s.loadDatasetFromServer);
-  const loadDatasetsFromServer = useAppStore((s) => s.loadDatasetsFromServer);
-  const savedDatasets = useAppStore((s) => s.savedDatasets);
-  const isLoading = useAppStore((s) => s.isLoading);
   const analysisTabsConfig = useAppStore((s) => s.analysisTabsConfig);
-  const [quote, setQuote] = useState<{ open: number | null; high: number | null; low: number | null; current: number | null; prevClose: number | null } | null>(null);
-  const [quoteError, setQuoteError] = useState<string | null>(null);
-  const [isTrading, setIsTrading] = useState<boolean>(false);
-  const [quoteLoading, setQuoteLoading] = useState<boolean>(false);
-  const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
-  const [isStale, setIsStale] = useState<boolean>(false);
-  const [staleInfo, setStaleInfo] = useState<string | null>(null);
-  const [refreshing, setRefreshing] = useState<boolean>(false);
-  const [refreshError, setRefreshError] = useState<string | null>(null);
+
   const [modal, setModal] = useState<{ type: 'info' | 'error' | null; title?: string; message?: string }>({ type: null });
-  const [watching, setWatching] = useState(false);
-  const [watchBusy, setWatchBusy] = useState(false);
-  const toast = useToastActions();
-  // Trading calendar (holidays, short days, trading hours)
-  type TradingCalendarData = {
-    metadata: { years: string[] };
-    holidays: Record<string, Record<string, { name: string; type: string; description: string }>>;
-    shortDays: Record<string, Record<string, { name: string; type: string; description: string; hours?: number }>>;
-    tradingHours: { normal: { start: string; end: string }; short: { start: string; end: string } };
-  };
-  const [tradingCalendar, setTradingCalendar] = useState<TradingCalendarData | null>(null);
 
   type ChartTab = 'price' | 'equity' | 'buyhold' | 'drawdown' | 'trades' | 'profit' | 'duration' | 'openDayDrawdown' | 'margin' | 'buyAtClose' | 'buyAtClose4' | 'noStopLoss' | 'splits' | 'options';
 
-  // Определяем первый видимый таб как активный по умолчанию
+  // Determine active tab
   const firstVisibleTab = useMemo(() => {
     const visibleTab = analysisTabsConfig.find(tab => tab.visible);
     return visibleTab?.id as ChartTab || 'price';
@@ -99,7 +77,6 @@ export function SingleTickerPage() {
 
   const [activeChart, setActiveChart] = useState<ChartTab>(firstVisibleTab);
 
-  // Обновляем активный таб, если текущий стал невидимым
   useEffect(() => {
     const currentTabConfig = analysisTabsConfig.find(tab => tab.id === activeChart);
     if (!currentTabConfig || !currentTabConfig.visible) {
@@ -107,18 +84,12 @@ export function SingleTickerPage() {
     }
   }, [analysisTabsConfig, activeChart, firstVisibleTab]);
 
-  // Проверка дублей дат в marketData (ключ YYYY-MM-DD)
+  // Check duplicate dates
   const { hasDuplicateDates, duplicateDateKeys } = useMemo(() => {
     try {
       const dateKeyOf = (v: unknown): string => {
-        if (typeof v === 'string') {
-          // TradingDate is already YYYY-MM-DD string
-          return v.length >= 10 ? v.slice(0, 10) : v;
-        }
-        // Fallback for legacy Date objects
-        if (v instanceof Date && !isNaN(v.getTime())) {
-          return v.toISOString().slice(0, 10);
-        }
+        if (typeof v === 'string') return v.length >= 10 ? v.slice(0, 10) : v;
+        if (v instanceof Date && !isNaN(v.getTime())) return v.toISOString().slice(0, 10);
         return '';
       };
       const countByKey = new Map<string, number>();
@@ -134,379 +105,44 @@ export function SingleTickerPage() {
     }
   }, [marketData]);
 
-  const symbol = useMemo(() => (
-    currentDataset?.ticker || backtestResults?.symbol || backtestResults?.ticker || backtestResults?.meta?.ticker
-  ), [currentDataset, backtestResults]);
-
-  // Sync URL with requested ticker
-  const requestedTicker = searchParams.get('ticker');
-
-  // Determine effective symbol for UI - prefer requested ticker while loading
-  const effectiveSymbol = requestedTicker ? requestedTicker.toUpperCase() : symbol;
-
-  // Check if the currently loaded data matches what is requested
-  const isDataReady = useMemo(() => {
-    if (!backtestResults) return false;
-    // If no specific ticker requested, we are "ready" if we have any results
-    if (!requestedTicker) return true;
-
-    // If ticker requested, backtest results must match
-    const resultSym = backtestResults.symbol || backtestResults.ticker || backtestResults.meta?.ticker;
-    return resultSym && resultSym.toUpperCase() === requestedTicker.toUpperCase();
-  }, [backtestResults, requestedTicker]);
-
-  // Use a ref to track the last synced symbol to avoid loops
-  // Initialize with current symbol to prevent overwriting URL on initial load if no param
-  const lastSyncedSymbol = useRef(symbol);
-
-  // Load available datasets if we are in "empty" state (no ticker in URL)
-  useEffect(() => {
-    if (!requestedTicker && savedDatasets.length === 0) {
-      loadDatasetsFromServer();
-    }
-  }, [requestedTicker, savedDatasets.length, loadDatasetsFromServer]);
-
-  useEffect(() => {
-    if (requestedTicker) {
-      const upperTicker = requestedTicker.toUpperCase();
-      // Only load if it's different from what we have (and what we are currently synced to)
-      if (upperTicker !== symbol) {
-        loadDatasetFromServer(upperTicker).catch(console.error);
-      }
-    }
-  }, [requestedTicker, symbol, loadDatasetFromServer]);
-
-  useEffect(() => {
-    // If symbol changed in store, update URL
-    // Only update if the symbol is actually ready/loaded to avoid premature updates
-    if (symbol && symbol !== lastSyncedSymbol.current) {
-      setSearchParams(prev => {
-        const next = new URLSearchParams(prev);
-        next.set('ticker', symbol);
-        return next;
-      }, { replace: true });
-      lastSyncedSymbol.current = symbol;
-    }
-    // If we have a symbol but no URL param, set it (initial load case)
-    else if (symbol && !requestedTicker) {
-       setSearchParams(prev => {
-        const next = new URLSearchParams(prev);
-        next.set('ticker', symbol);
-        return next;
-      }, { replace: true });
-       lastSyncedSymbol.current = symbol;
-    }
-  }, [symbol, setSearchParams, requestedTicker]);
-
-  const handleRefresh = async () => {
-    if (!symbol) return;
-    setRefreshing(true);
-    setRefreshError(null);
-    try {
-      const result = await DatasetAPI.refreshDataset(symbol, resultsRefreshProvider as any);
-      // Reload the dataset to reflect server-updated data
-      await loadDatasetFromServer(symbol);
-      // Show toast with result
-      const addedDays = result?.added ?? 0;
-      if (addedDays > 0) {
-        toast.success(`${symbol}: добавлено ${addedDays} ${addedDays === 1 ? 'день' : addedDays < 5 ? 'дня' : 'дней'}`);
-      } else {
-        toast.info(`${symbol}: данные актуальны`);
-      }
-    } catch (e) {
-      const message = e instanceof Error ? e.message : 'Не удалось обновить датасет';
-      setRefreshError(message);
-      toast.error(`${symbol}: ${message}`);
-    } finally {
-      setRefreshing(false);
-    }
-  };
-
-  // Load trading calendar once to detect early-close days
-  useEffect(() => {
-    let active = true;
-    (async () => {
-      try {
-        const cal = await DatasetAPI.getTradingCalendar();
-        if (active) setTradingCalendar(cal);
-      } catch {
-        if (active) setTradingCalendar(null);
-      }
-    })();
-    return () => { active = false; };
-  }, []);
-
-  useEffect(() => {
-    let active = true;
-    (async () => {
-      try {
-        if (!symbol) { setWatching(false); return; }
-        const list = await DatasetAPI.listTelegramWatches();
-        if (!active) return;
-        setWatching(!!list.find(w => (w.symbol || '').toUpperCase() === symbol.toUpperCase()));
-      } catch {
-        if (active) setWatching(false);
-      }
-    })();
-    return () => { active = false; };
-  }, [symbol, setWatching]);
-
-  // Быстрая проверка актуальности данных (ожидаем бар за текущий торговый день после закрытия, иначе — за предыдущий)
-  useEffect(() => {
-    if (!marketData || marketData.length === 0) { setIsStale(false); setStaleInfo(null); return; }
-    const now = new Date();
-
-    const getETParts = (date: Date) => {
-      // Optimization: Reused formatter
-      const parts = ET_PARTS_FMT.formatToParts(date);
-      const map: Record<string, string> = {};
-      parts.forEach(p => { if (p.type !== 'literal') map[p.type] = p.value; });
-      const y = Number(map.year), m = Number(map.month), d = Number(map.day);
-      const weekdayStr = map.weekday; // e.g., Mon, Tue
-      const weekdayMap: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
-      const weekday = weekdayMap[weekdayStr as keyof typeof weekdayMap] ?? 0;
-      return { y, m, d, weekday };
-    };
-    const isWeekendET = (p: { weekday: number }) => p.weekday === 0 || p.weekday === 6;
-    const parseHmToMinutes = (hm: string | undefined | null): number | null => {
-      try {
-        if (!hm || typeof hm !== 'string' || hm.indexOf(':') < 0) return null;
-        const [h, m] = hm.split(':');
-        const hh = parseInt(h, 10);
-        const mm = parseInt(m, 10);
-        if (!Number.isFinite(hh) || !Number.isFinite(mm)) return null;
-        return hh * 60 + mm;
-      } catch { return null; }
-    };
-    const isHolidayET = (p: { y: number; m: number; d: number }) => {
-      try {
-        if (!tradingCalendar) return false;
-        const y = String(p.y);
-        const key = `${String(p.m).padStart(2, '0')}-${String(p.d).padStart(2, '0')}`;
-        return !!(tradingCalendar.holidays[y] && tradingCalendar.holidays[y][key]);
-      } catch { return false; }
-    };
-    const isShortDayET = (p: { y: number; m: number; d: number }) => {
-      try {
-        if (!tradingCalendar) return false;
-        const y = String(p.y);
-        const key = `${String(p.m).padStart(2, '0')}-${String(p.d).padStart(2, '0')}`;
-        return !!(tradingCalendar.shortDays[y] && tradingCalendar.shortDays[y][key]);
-      } catch { return false; }
-    };
-    const getSessionForDateET = (p: { y: number; m: number; d: number }) => {
-      const open = parseHmToMinutes(tradingCalendar?.tradingHours?.normal?.start) ?? (9 * 60 + 30);
-      const normalClose = parseHmToMinutes(tradingCalendar?.tradingHours?.normal?.end) ?? (16 * 60);
-      const shortClose = parseHmToMinutes(tradingCalendar?.tradingHours?.short?.end) ?? (13 * 60);
-      const short = isShortDayET(p);
-      return { openMin: open, closeMin: short ? shortClose : normalClose, short };
-    };
-    const previousTradingDayET = (fromUTC: Date) => {
-      const cursor = new Date(fromUTC);
-      // step back at least one day
-      cursor.setUTCDate(cursor.getUTCDate() - 1);
-
-      // Add safety limit to prevent infinite loop (max 30 days back)
-      let attempts = 0;
-      const maxAttempts = 30;
-
-      while (attempts < maxAttempts) {
-        const parts = getETParts(cursor);
-        if (!isWeekendET(parts) && !isHolidayET(parts)) return parts;
-        cursor.setUTCDate(cursor.getUTCDate() - 1);
-        attempts++;
-      }
-
-      // Fallback: return parts from 1 day back if no trading day found
-      console.warn('Could not find previous trading day within 30 days, using fallback');
-
-      const prevDay = new Date(fromUTC);
-      prevDay.setUTCDate(prevDay.getUTCDate() - 1);
-      return getETParts(prevDay);
-    };
-
-    // Determine if by now we should expect today's daily bar (after close + buffer) or yesterday's
-    // Optimization: Reused formatter
-    const tparts = ET_TIME_FMT.formatToParts(now);
-    const tmap: Record<string, string> = {};
-    tparts.forEach(p => { if (p.type !== 'literal') tmap[p.type] = p.value; });
-    const hh = parseInt(tmap.hour || '0', 10);
-    const mm = parseInt(tmap.minute || '0', 10);
-    const minutes = hh * 60 + mm;
-    const session = getSessionForDateET(getETParts(now));
-    const closeMin = session.closeMin; // dynamic close (short day aware)
-    const bufferMin = 30; // safety buffer after close for data providers
-    const todayET = getETParts(now);
-
-    const todayIsTradingDay = !isWeekendET(todayET) && !isHolidayET(todayET);
-
-    const expectedParts = (todayIsTradingDay && minutes >= (closeMin + bufferMin))
-      ? todayET
-      : previousTradingDayET(now);
-
-    // Convert ET date to proper UTC date accounting for timezone offset
-    // Use a consistent method that respects ET timezone rules
-    const etDate = new Date();
-    etDate.setFullYear(expectedParts.y, expectedParts.m - 1, expectedParts.d);
-    etDate.setHours(12, 0, 0, 0); // Use noon ET to avoid midnight boundary issues
-
-    // Convert to UTC date string consistently
-    const expectedKeyUTC = etDate.toLocaleDateString('en-CA', {
-      timeZone: 'America/New_York'
-    }); // Returns YYYY-MM-DD format in ET timezone
-    // Проверяем наличие ожидаемой даты в данных, а не только последнюю дату
-    const dataKeys = new Set(
-      marketData.map(b => {
-        // date is now TradingDate string (YYYY-MM-DD)
-        return b.date;
-      })
-    );
-    const stale = !dataKeys.has(expectedKeyUTC);
-    setIsStale(stale);
-    if (stale) {
-      const displayDate = new Date(Date.UTC(expectedParts.y, expectedParts.m - 1, expectedParts.d, 12, 0, 0));
-      setStaleInfo(`Отсутствует бар за ${displayDate.toLocaleDateString('ru-RU', { timeZone: 'America/New_York' })}`);
-    } else {
-      setStaleInfo(null);
-    }
-  }, [marketData, tradingCalendar]);
-
-  // Авто-пуллинг котировок (пропускаем вызовы API в выходные/вне торговых часов)
-  useEffect(() => {
-    let isMounted = true;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    if (!symbol) return;
-    const isMarketOpenNow = () => {
-      // Compute ET local time safely using Intl APIs
-      // Optimization: Reused formatter
-      const fmtParts = ET_FULL_FMT.formatToParts(new Date());
-      const map: Record<string, string> = {};
-      fmtParts.forEach(p => { if (p.type !== 'literal') map[p.type] = p.value; });
-      const weekdayMap: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
-      const weekday = weekdayMap[map.weekday] ?? 0;
-      const hh = parseInt(map.hour || '0', 10);
-      const mm = parseInt(map.minute || '0', 10);
-      const isWeekday = weekday >= 1 && weekday <= 5; // Mon..Fri in ET
-      const minutes = hh * 60 + mm;
-      if (!isWeekday) return false;
-      // Holiday/short-day aware session bounds
-      // Optimization: Reused formatter
-      const ymd = ET_YMD_FMT
-        .formatToParts(new Date())
-        .reduce((acc: any, p) => { if (p.type !== 'literal') acc[p.type] = p.value; return acc; }, {});
-      const ymdObj = { y: Number(ymd.year), m: Number(ymd.month), d: Number(ymd.day) };
-      const isHoliday = (() => {
-        try {
-          if (!tradingCalendar) return false;
-          const y = String(ymdObj.y);
-          const key = `${String(ymdObj.m).padStart(2, '0')}-${String(ymdObj.d).padStart(2, '0')}`;
-          return !!(tradingCalendar.holidays[y] && tradingCalendar.holidays[y][key]);
-        } catch { return false; }
-      })();
-      if (isHoliday) return false;
-      const short = (() => {
-        try {
-          if (!tradingCalendar) return false;
-          const y = String(ymdObj.y);
-          const key = `${String(ymdObj.m).padStart(2, '0')}-${String(ymdObj.d).padStart(2, '0')}`;
-          return !!(tradingCalendar.shortDays[y] && tradingCalendar.shortDays[y][key]);
-        } catch { return false; }
-      })();
-      const parseHm = (hm?: string) => {
-        if (!hm || hm.indexOf(':') < 0) return null;
-        const [h, m] = hm.split(':');
-        const H = parseInt(h, 10), M = parseInt(m, 10);
-        return Number.isFinite(H) && Number.isFinite(M) ? (H * 60 + M) : null;
-      };
-      const openMin = parseHm(tradingCalendar?.tradingHours?.normal?.start) ?? (9 * 60 + 30);
-      const closeMin = short
-        ? (parseHm(tradingCalendar?.tradingHours?.short?.end) ?? (13 * 60))
-        : (parseHm(tradingCalendar?.tradingHours?.normal?.end) ?? (16 * 60));
-      return minutes >= openMin && minutes <= closeMin;
-    };
-    setIsTrading(isMarketOpenNow());
-    const fetchQuote = async () => {
-      try {
-        const open = isMarketOpenNow();
-        if (!open) {
-          if (isMounted) setIsTrading(false);
-          // Вне часов/выходные — не дергаем API, редкий опрос для смены статуса
-          if (timer) clearTimeout(timer);
-          timer = setTimeout(fetchQuote, 5 * 60 * 1000);
-          return;
-        }
-        if (isMounted) { setIsTrading(true); setQuoteLoading(true); }
-        const q = await DatasetAPI.getQuote(symbol, (resultsQuoteProvider || 'finnhub') as any);
-        if (isMounted) { setQuote(q); setQuoteError(null); setLastUpdatedAt(new Date()); }
-      } catch (e) {
-        const message = e instanceof Error ? e.message : 'Не удалось получить котировку';
-        if (isMounted) setQuoteError(message);
-      } finally {
-        if (isMounted) {
-          setQuoteLoading(false);
-          if (timer) clearTimeout(timer);
-          timer = setTimeout(fetchQuote, 15000);
-        }
-      }
-    };
-    fetchQuote();
-    return () => { isMounted = false; if (timer) clearTimeout(timer); };
-  }, [symbol, resultsQuoteProvider, tradingCalendar]);
-
-  // Автозапуск бэктеста, если результатов ещё нет, но данные и стратегия готовы
-  useEffect(() => {
-    if (!backtestResults && marketData.length > 0 && currentStrategy && backtestStatus !== 'running') {
-      runBacktest();
-    }
-  }, [backtestResults, marketData, currentStrategy, backtestStatus, runBacktest]);
-  // Лёгкий повтор через короткую задержку, если всё готово, а статуса запуска нет
-  useEffect(() => {
-    if (!backtestResults && marketData.length > 0 && currentStrategy && backtestStatus === 'idle') {
-      const t = setTimeout(() => { runBacktest(); }, 300);
-      return () => clearTimeout(t);
-    }
-  }, [backtestResults, marketData, currentStrategy, backtestStatus, runBacktest]);
-
-  // Compute once regardless of results presence to keep hook order stable
   const initialCapital = Number(currentStrategy?.riskManagement?.initialCapital ?? 10000);
 
+  // If not data ready, show Shell with loading or selection
   if (!isDataReady) {
-    // 1. Ticker requested but not ready -> Show Loading
-    // Also show this if we have old results but user requested a new ticker (isDataReady will be false)
     if (requestedTicker || effectiveSymbol) {
       const displaySymbol = requestedTicker || effectiveSymbol || 'данных';
       return (
-        <div className="flex flex-col items-center justify-center min-h-[50vh] space-y-4 animate-fade-in">
-          <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
-          <div className="text-center space-y-2">
-            <p className="text-lg font-medium text-gray-900 dark:text-gray-100">
-              {isLoading
-                ? `Загрузка данных ${displaySymbol}...`
-                : (storeError
-                  ? `Ошибка загрузки ${displaySymbol}`
-                  : (backtestStatus === 'running' ? 'Запуск бэктеста…' : `Подготовка ${displaySymbol}…`))}
-            </p>
-            {storeError && (
-              <div className="text-sm text-red-600 max-w-md mx-auto">{String(storeError)}</div>
-            )}
-            {!isLoading && backtestStatus !== 'running' && (
-               <button
-                 onClick={() => {
-                   if (requestedTicker) loadDatasetFromServer(requestedTicker.toUpperCase());
-                   else if (effectiveSymbol) loadDatasetFromServer(effectiveSymbol.toUpperCase());
-                   else runBacktest();
-                 }}
-                 className="mt-2 inline-flex items-center px-4 py-2 rounded-md bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition"
-               >
-                 Повторить загрузку
-               </button>
-            )}
-          </div>
-        </div>
+        <BacktestPageShell
+          isLoading={true}
+          loadingMessage={
+            isLoading
+              ? `Загрузка данных ${displaySymbol}...`
+              : (storeError
+                ? `Ошибка загрузки ${displaySymbol}`
+                : (backtestStatus === 'running' ? 'Запуск бэктеста…' : `Подготовка ${displaySymbol}…`))
+          }
+          error={storeError}
+        >
+          {/* We can show extra controls here if needed, but for now Shell handles basic loading */}
+          {!isLoading && backtestStatus !== 'running' && storeError && (
+               <div className="flex justify-center">
+                 <button
+                   onClick={() => {
+                     if (requestedTicker) loadDatasetFromServer(requestedTicker.toUpperCase());
+                     else if (effectiveSymbol) loadDatasetFromServer(effectiveSymbol.toUpperCase());
+                     else runBacktest();
+                   }}
+                   className="mt-2 inline-flex items-center px-4 py-2 rounded-md bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition"
+                 >
+                   Повторить загрузку
+                 </button>
+               </div>
+          )}
+        </BacktestPageShell>
       );
     }
 
-    // 2. No ticker requested -> Show Selection Menu
+    // No ticker requested -> Selection Menu
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-6 animate-fade-in">
         <div className="text-center space-y-2">
@@ -572,7 +208,6 @@ export function SingleTickerPage() {
     maxDrawdown: backtestResults.metrics.maxDrawdown
   };
 
-  // Render specific tab content that is not shared
   const renderSpecificTab = () => {
     if (activeChart === 'openDayDrawdown') {
         return (
@@ -604,10 +239,9 @@ export function SingleTickerPage() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      {/* Верхний блок: символ слева, правая панель с мини-графиком/ценами и кнопку мониторинга */}
+      {/* Header section */}
       <section className="rounded-xl border bg-white p-4 dark:bg-gray-900 dark:border-gray-800">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {/* Левая часть: символ и статус */}
           <div className="space-y-2 md:col-span-1">
             <div className="flex items-center gap-3 w-full">
               <div className="text-4xl sm:text-5xl font-black tracking-tight text-gray-900 dark:text-gray-100">
@@ -655,7 +289,9 @@ export function SingleTickerPage() {
                 {quote?.current != null ? `$${Number(quote.current).toFixed(2)}` : '—'}
               </div>
               {quoteLoading && (
-                <Loader2 className="w-6 h-6 text-gray-400 animate-spin" />
+                <div className="animate-spin text-gray-400">
+                   <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24"><path stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"></path></svg>
+                </div>
               )}
             </div>
             <div>
@@ -705,7 +341,7 @@ export function SingleTickerPage() {
                 <div className="font-mono text-sm">{quote?.current ?? '—'}</div>
               </div>
             </div>
-            {/* Под стикером: инфо об открытой сделке и компактный алерт об устаревании + иконка обновления */}
+
             <div className="mt-2 space-y-2">
               <div className="text-sm text-gray-600 dark:text-gray-300">
                 {(() => {
@@ -745,7 +381,6 @@ export function SingleTickerPage() {
             </div>
           </div>
 
-          {/* Правая часть: мини-график + KPI (переносятся ниже при < ~1130px) */}
           <div className="md:col-span-2">
             <TickerCard
               ticker={symbol || ''}
@@ -768,7 +403,7 @@ export function SingleTickerPage() {
               className="h-full"
             />
           </div>
-          {/* Подсказки под правым блоком */}
+
           {!isTrading && (
             <div className="text-sm text-gray-500">
               {(() => {
@@ -796,23 +431,19 @@ export function SingleTickerPage() {
         </div>
       </section>
 
-      {/* Основной контент: графики (во всю ширину) */}
       <div className="space-y-6">
         <div className="space-y-6">
-          {/* Компактный алерт о дублях дат */}
           {hasDuplicateDates && (
             <div className="rounded-lg border p-3 bg-amber-50 border-amber-200 text-amber-900 dark:bg-amber-950/30 dark:border-amber-900/40 dark:text-amber-200">
               Дубли дат в данных: {duplicateDateKeys.join(', ')}
             </div>
           )}
-          {/* Метрики доходности */}
           <MetricsGrid
             finalValue={augmentedResults.finalValue}
             maxDrawdown={augmentedResults.maxDrawdown}
             metrics={augmentedResults.metrics}
           />
 
-          {/* Табы для графиков */}
           <section className="rounded-xl border bg-white p-4 dark:bg-gray-900 dark:border-gray-800">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg sm:text-xl font-semibold text-gray-900 dark:text-gray-100">Аналитика сделок</h2>
