@@ -805,6 +805,13 @@ export function SingleTickerPage() {
               Дубли дат в данных: {duplicateDateKeys.join(', ')}
             </div>
           )}
+          {/* Метрики доходности */}
+          <MetricsGrid
+            finalValue={augmentedResults.finalValue}
+            maxDrawdown={augmentedResults.maxDrawdown}
+            metrics={augmentedResults.metrics}
+          />
+
           {/* Табы для графиков */}
           <section className="rounded-xl border bg-white p-4 dark:bg-gray-900 dark:border-gray-800">
             <div className="flex items-center justify-between mb-4">

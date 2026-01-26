@@ -1,4 +1,4 @@
-import { ChartContainer, MetricsGrid } from './ui';
+import { ChartContainer } from './ui';
 import { ErrorBoundary } from './ErrorBoundary';
 import { TradingChart } from './TradingChart';
 import { EquityChart } from './EquityChart';
@@ -9,8 +9,9 @@ import { ProfitFactorAnalysis } from './ProfitFactorAnalysis';
 import { DurationAnalysis } from './DurationAnalysis';
 import { SplitsList } from './SplitsList';
 import { MultiTickerChart } from './MultiTickerChart';
-import type { OHLCData, Trade, EquityPoint, SplitEvent, Strategy, TickerData, PerformanceMetrics } from '../types';
-import { useMemo, ReactNode } from 'react';
+import type { OHLCData, Trade, EquityPoint, SplitEvent, Strategy, TickerData } from '../types';
+import { useMemo } from 'react';
+import type { ReactNode } from 'react';
 import { formatCurrencyCompact } from '../lib/singlePositionBacktest';
 import { calculateTradeStats } from '../lib/trade-utils';
 
@@ -24,7 +25,7 @@ interface BacktestResultsViewProps {
     finalValue: number;
     maxDrawdown: number;
     trades: Trade[];
-    metrics: PerformanceMetrics;
+    metrics: any;
   } | null;
 
   // Single Ticker Specifics
@@ -68,8 +69,6 @@ export function BacktestResultsView({
 
   const trades = backtestResults?.trades || [];
   const equity = backtestResults?.equity || [];
-  const metrics = backtestResults?.metrics;
-  const finalValue = backtestResults?.finalValue || initialCapital;
 
   // For Multi Ticker Trades Tab logic
   const tradesByTicker = useMemo(() => {
@@ -128,14 +127,6 @@ export function BacktestResultsView({
     if (mode === 'single') {
        return (
          <div className="space-y-6">
-           {metrics && (
-             <MetricsGrid
-                finalValue={finalValue}
-                maxDrawdown={backtestResults?.maxDrawdown || 0}
-                metrics={metrics}
-             />
-           )}
-
            {/* Injected Strategy Info */}
            {extraEquityInfo}
 
@@ -149,13 +140,6 @@ export function BacktestResultsView({
     } else {
        return (
          <div className="space-y-6">
-            {mode === 'options' && metrics && (
-                 <MetricsGrid
-                   finalValue={finalValue}
-                   maxDrawdown={backtestResults?.maxDrawdown || 0}
-                   metrics={metrics}
-                 />
-            )}
             <ChartContainer
                 title="График капитала"
                 isEmpty={!equity.length}

@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { useToastActions, MetricsGrid, AnalysisTabs } from './ui';
+import { MetricsGrid, AnalysisTabs } from './ui';
 import { useAppStore } from '../stores';
 import type { Strategy, Trade, EquityPoint } from '../types';
 import { runSinglePositionBacktest, optimizeTickerData } from '../lib/singlePositionBacktest';
@@ -342,6 +342,14 @@ export function MultiTickerOptionsPage() {
       </div>
 
       {/* Main Analysis Block */}
+      {backtestResults && (
+        <MetricsGrid
+          finalValue={backtestResults.finalValue}
+          maxDrawdown={backtestResults.maxDrawdown}
+          metrics={backtestResults.metrics}
+        />
+      )}
+
       {backtestResults && (
         <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
           <AnalysisTabs
