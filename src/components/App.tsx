@@ -4,7 +4,7 @@ import { useAppStore } from '../stores';
 import { DataUpload } from './DataUpload';
 import { DataEnhancer } from './DataEnhancer';
 // import { StrategySettings } from './StrategySettings';
-import { Results } from './Results';
+import { SingleTickerPage } from './SingleTickerPage';
 import { TelegramWatches } from './TelegramWatches';
 import { AppSettings } from './AppSettings';
 import { createStrategyFromTemplate, STRATEGY_TEMPLATES } from '../lib/strategy';
@@ -227,7 +227,7 @@ export default function App() {
 
         {activeTab === 'data' && <DataUpload />}
         {activeTab === 'enhance' && <DataEnhancer />}
-        {activeTab === 'results' && <Results />}
+        {activeTab === 'results' && <SingleTickerPage />}
         {activeTab === 'watches' && <TelegramWatches />}
         {activeTab === 'settings' && <AppSettings />}
       </main>

@@ -54,7 +54,7 @@ const ET_YMD_FMT = new Intl.DateTimeFormat('en-US', {
   year: 'numeric', month: '2-digit', day: '2-digit'
 });
 
-export function Results() {
+export function SingleTickerPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const backtestResults = useAppStore((s) => s.backtestResults);

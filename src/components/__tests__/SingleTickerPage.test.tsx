@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { Results } from '../Results';
+import { SingleTickerPage } from '../SingleTickerPage';
 import { ToastProvider } from '../ui/Toast';
 import type { Strategy, OHLCData, BacktestResult } from '../../types';
 import { DatasetAPI } from '../../lib/api';
@@ -61,7 +61,7 @@ vi.mock('../StrategyParameters', () => ({
   StrategyParameters: () => <div data-testid="strategy-parameters">Strategy Parameters</div>
 }));
 
-describe('Results - Position Monitoring Logic', () => {
+describe('SingleTickerPage - Position Monitoring Logic', () => {
   const mockStrategy: Strategy = {
     id: 'test-strategy',
     name: 'IBS Mean Reversion Test',
@@ -243,7 +243,7 @@ describe('Results - Position Monitoring Logic', () => {
       });
 
       await act(async () => {
-        renderWithRouter(<Results />);
+        renderWithRouter(<SingleTickerPage />);
       });
 
       const monitorButton = screen.getByRole('button', { name: /Добавить в мониторинг/i });
@@ -294,7 +294,7 @@ describe('Results - Position Monitoring Logic', () => {
       });
 
       await act(async () => {
-        renderWithRouter(<Results />);
+        renderWithRouter(<SingleTickerPage />);
       });
 
       const monitorButton = screen.getByRole('button', { name: /Добавить в мониторинг/i });
@@ -346,7 +346,7 @@ describe('Results - Position Monitoring Logic', () => {
       });
 
       await act(async () => {
-        renderWithRouter(<Results />);
+        renderWithRouter(<SingleTickerPage />);
       });
 
       expect(screen.getByRole('button', { name: /Добавить в мониторинг/i })).toBeInTheDocument();
@@ -399,7 +399,7 @@ describe('Results - Position Monitoring Logic', () => {
       });
 
       await act(async () => {
-        renderWithRouter(<Results />);
+        renderWithRouter(<SingleTickerPage />);
       });
 
       expect(screen.getByRole('button', { name: /Добавить в мониторинг/i })).toBeInTheDocument();
@@ -450,7 +450,7 @@ describe('Results - Position Monitoring Logic', () => {
       });
 
       await act(async () => {
-        renderWithRouter(<Results />);
+        renderWithRouter(<SingleTickerPage />);
       });
 
       const monitorButton = screen.getByRole('button', { name: /Добавить в мониторинг/i });
@@ -474,7 +474,7 @@ describe('Results - Position Monitoring Logic', () => {
   describe('UI Rendering', () => {
     it('should render all result metrics', async () => {
       await act(async () => {
-        renderWithRouter(<Results />);
+        renderWithRouter(<SingleTickerPage />);
       });
 
       const equityTab = screen.getByText('Эквити');
@@ -491,7 +491,7 @@ describe('Results - Position Monitoring Logic', () => {
 
     it('should render equity chart', async () => {
       await act(async () => {
-        renderWithRouter(<Results />);
+        renderWithRouter(<SingleTickerPage />);
       });
 
       const equityTab = screen.getByText('Эквити');
@@ -505,7 +505,7 @@ describe('Results - Position Monitoring Logic', () => {
 
     it('should show strategy parameters when trades table is visible', async () => {
       await act(async () => {
-        renderWithRouter(<Results />);
+        renderWithRouter(<SingleTickerPage />);
       });
 
       const tradesTab = screen.getByText('Сделки');
@@ -563,7 +563,7 @@ describe('Results - Position Monitoring Logic', () => {
       });
 
       await act(async () => {
-        renderWithRouter(<Results />);
+        renderWithRouter(<SingleTickerPage />);
       });
 
       const equityTab = screen.getByText('Эквити');
