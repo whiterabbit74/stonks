@@ -16,7 +16,7 @@ import { TradeDrawdownChart } from './TradeDrawdownChart';
 import { TickerCard } from './TickerCard';
 import { InfoModal } from './InfoModal';
 import { TradesTable } from './TradesTable';
-import { ProfitFactorChart } from './ProfitFactorChart';
+import { ProfitFactorAnalysis } from './ProfitFactorAnalysis';
 import { DurationAnalysis } from './DurationAnalysis';
 import { OpenDayDrawdownChart } from './OpenDayDrawdownChart';
 import { MarginSimulator } from './MarginSimulator';
@@ -954,7 +954,7 @@ export function Results() {
             )}
             {activeChart === 'profit' && (
               <ChartContainer>
-                <ProfitFactorChart trades={trades} />
+                <ProfitFactorAnalysis trades={trades} />
               </ChartContainer>
             )}
             {activeChart === 'duration' && (

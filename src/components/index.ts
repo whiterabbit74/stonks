@@ -13,7 +13,7 @@ export { Footer } from './Footer';
 export { Logo } from './Logo';
 export { ThemeToggle } from './ThemeToggle';
 export { TradesTable } from './TradesTable';
-export { ProfitFactorChart } from './ProfitFactorChart';
+export { ProfitFactorAnalysis } from './ProfitFactorAnalysis';
 export { DurationAnalysis } from './DurationAnalysis';
 export { OpenDayDrawdownChart } from './OpenDayDrawdownChart';
 export { MarginSimulator } from './MarginSimulator';
