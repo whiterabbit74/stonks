@@ -77,20 +77,6 @@ export const TradingChart = memo(function TradingChart({ data, trades, splits = 
     };
   }, []);
 
-  // Cleanup chart on unmount
-  useEffect(() => {
-    return () => {
-      if (unsubscribeRef.current) unsubscribeRef.current();
-      if (resizeHandlerRef.current) window.removeEventListener('resize', resizeHandlerRef.current);
-      if (chartRef.current) chartRef.current.remove();
-      if (tooltipRef.current && tooltipRef.current.parentElement) {
-        try {
-          tooltipRef.current.parentElement.removeChild(tooltipRef.current);
-        } catch { /* ignore */ }
-      }
-    };
-  }, []);
-
   // 1. Initialize Chart (only when container is available and theme changes)
   useEffect(() => {
     if (!chartContainerRef.current) return;
@@ -101,6 +87,14 @@ export const TradingChart = memo(function TradingChart({ data, trades, splits = 
         if (resizeHandlerRef.current) window.removeEventListener('resize', resizeHandlerRef.current);
         chartRef.current.remove();
         chartRef.current = null;
+
+        // IMPORTANT: Clear series refs to avoid using disposed series
+        candlestickSeriesRef.current = null;
+        ibsSeriesRef.current = null;
+        volumeSeriesRef.current = null;
+        ema20SeriesRef.current = null;
+        ema200SeriesRef.current = null;
+
         setChartReady(false);
         if (tooltipRef.current) tooltipRef.current.style.display = 'none';
     }
@@ -251,6 +245,30 @@ export const TradingChart = memo(function TradingChart({ data, trades, splits = 
     } catch (error) {
       console.error('Error creating chart', error);
     }
+
+    return () => {
+      if (unsubscribeRef.current) { unsubscribeRef.current(); unsubscribeRef.current = null; }
+      if (resizeHandlerRef.current) { window.removeEventListener('resize', resizeHandlerRef.current); resizeHandlerRef.current = null; }
+
+      if (chartRef.current) {
+          chartRef.current.remove();
+          chartRef.current = null;
+      }
+
+      // Cleanup series refs on unmount
+      candlestickSeriesRef.current = null;
+      ibsSeriesRef.current = null;
+      volumeSeriesRef.current = null;
+      ema20SeriesRef.current = null;
+      ema200SeriesRef.current = null;
+
+      if (tooltipRef.current && tooltipRef.current.parentElement) {
+        try {
+          tooltipRef.current.parentElement.removeChild(tooltipRef.current);
+        } catch { /* ignore */ }
+        tooltipRef.current = null;
+      }
+    };
   }, [isDark]); // Recreate chart only on theme change
 
   // Pre-calculate timestamps (Optimization: reduces parsing by 5x)
@@ -326,7 +344,7 @@ export const TradingChart = memo(function TradingChart({ data, trades, splits = 
     if (!chartReady || !data.length || !candlestickSeriesRef.current) return;
 
     try {
-        candlestickSeriesRef.current.setData(chartData);
+        if (candlestickSeriesRef.current) candlestickSeriesRef.current.setData(chartData);
 
         // Initial time scale
 

@@ -7,24 +7,19 @@ import {
 } from '../lib/date-utils';
 import { useAppStore } from '../stores';
 import { useToastActions, ChartContainer, AnalysisTabs, MetricsGrid } from './ui';
-import { ErrorBoundary } from './ErrorBoundary';
-import { TradingChart } from './TradingChart';
-import { EquityChart } from './EquityChart';
-import { TradeDrawdownChart } from './TradeDrawdownChart';
 import { TickerCard } from './TickerCard';
 import { InfoModal } from './InfoModal';
-import { TradesTable } from './TradesTable';
-import { SplitsList } from './SplitsList';
-import { ProfitFactorAnalysis } from './ProfitFactorAnalysis';
-import { DurationAnalysis } from './DurationAnalysis';
-import { OpenDayDrawdownChart } from './OpenDayDrawdownChart';
+import { EquityChart } from './EquityChart';
+import type { EquityPoint } from '../types';
+import { simulateLeverage } from '../lib/backtest-utils';
+import { BacktestResultsView } from './BacktestResultsView';
+import { StrategyInfoCard } from './StrategyInfoCard';
 import { MarginSimulator } from './MarginSimulator';
 import { BuyAtCloseSimulator } from './BuyAtCloseSimulator';
 import { BuyAtClose4Simulator } from './BuyAtClose4Simulator';
 import { NoStopLossSimulator } from './NoStopLossSimulator';
 import { OptionsAnalysis } from './OptionsAnalysis';
-import type { EquityPoint } from '../types';
-import { simulateLeverage } from '../lib/backtest-utils';
+import { OpenDayDrawdownChart } from './OpenDayDrawdownChart';
 
 // Reusable Intl formatters
 const ET_PARTS_FMT = new Intl.DateTimeFormat('en-US', {
@@ -474,37 +469,6 @@ export function SingleTickerPage() {
 
   // Compute once regardless of results presence to keep hook order stable
   const initialCapital = Number(currentStrategy?.riskManagement?.initialCapital ?? 10000);
-  const buyHoldEquity = useMemo(() => {
-    try {
-      if (!Array.isArray(marketData) || marketData.length === 0) return [] as { date: Date; value: number; drawdown: number }[];
-      const first = marketData[0];
-      const firstPrice = typeof first?.adjClose === 'number' && first.adjClose > 0 ? first.adjClose : first.close;
-      if (!firstPrice || firstPrice <= 0) return [] as { date: Date; value: number; drawdown: number }[];
-      let peak = initialCapital;
-      const series = marketData.map(b => {
-        const price = typeof b?.adjClose === 'number' && b.adjClose > 0 ? b.adjClose : b.close;
-        const value = initialCapital * (price / firstPrice);
-        if (value > peak) peak = value;
-        const drawdown = peak > 0 ? ((peak - value) / peak) * 100 : 0;
-        const d = new Date(b.date);
-        return { date: d, value, drawdown };
-      });
-      return series;
-    } catch {
-      return [] as { date: Date; value: number; drawdown: number }[];
-    }
-  }, [marketData, initialCapital]);
-
-  const [buyHoldMarginPctInput, setBuyHoldMarginPctInput] = useState<string>('100');
-  const [buyHoldAppliedLeverage, setBuyHoldAppliedLeverage] = useState<number>(1);
-  const buyHoldSimEquity = useMemo(() => (
-    simulateLeverage(buyHoldEquity as unknown as EquityPoint[], buyHoldAppliedLeverage).equity
-  ), [buyHoldEquity, buyHoldAppliedLeverage]);
-  const onApplyBuyHold = () => {
-    const pct = Number(buyHoldMarginPctInput);
-    if (!isFinite(pct) || pct <= 0) return;
-    setBuyHoldAppliedLeverage(pct / 100);
-  };
 
   if (!isDataReady) {
     // 1. Ticker requested but not ready -> Show Loading
@@ -592,10 +556,51 @@ export function SingleTickerPage() {
   }
 
   if (!backtestResults) return null;
-  const { metrics, trades, equity } = backtestResults;
+  const { trades } = backtestResults;
 
-  // Расчет дополнительных метрик
-  const finalValue = equity.length > 0 ? equity[equity.length - 1].value : initialCapital;
+  const lowIBS = Number(currentStrategy?.parameters?.lowIBS ?? 0.1);
+  const highIBS = Number(currentStrategy?.parameters?.highIBS ?? 0.75);
+  const maxHoldDays = Number(
+    typeof currentStrategy?.parameters?.maxHoldDays === 'number'
+      ? currentStrategy?.parameters?.maxHoldDays
+      : currentStrategy?.riskManagement?.maxHoldDays ?? 30
+  );
+
+  const augmentedResults = {
+    ...backtestResults,
+    finalValue: backtestResults.equity.length > 0 ? backtestResults.equity[backtestResults.equity.length - 1].value : initialCapital,
+    maxDrawdown: backtestResults.metrics.maxDrawdown
+  };
+
+  // Render specific tab content that is not shared
+  const renderSpecificTab = () => {
+    if (activeChart === 'openDayDrawdown') {
+        return (
+          <ChartContainer>
+             <OpenDayDrawdownChart trades={trades} data={marketData || []} />
+          </ChartContainer>
+        );
+    }
+    if (activeChart === 'margin') {
+        return <MarginSimulator equity={backtestResults.equity} trades={trades} symbol={symbol} />;
+    }
+    if (activeChart === 'buyAtClose') {
+        return <BuyAtCloseSimulator data={marketData || []} strategy={currentStrategy} />;
+    }
+    if (activeChart === 'buyAtClose4') {
+        return <BuyAtClose4Simulator strategy={currentStrategy} />;
+    }
+    if (activeChart === 'noStopLoss') {
+        return <NoStopLossSimulator data={marketData || []} strategy={currentStrategy} />;
+    }
+    if (activeChart === 'options') {
+        return <OptionsAnalysis stockTrades={trades} marketData={marketData || []} />;
+    }
+    if (activeChart === 'buyhold' && marketData) {
+        return <BuyHoldView marketData={marketData} initialCapital={initialCapital} />;
+    }
+    return null;
+  };
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -813,129 +818,27 @@ export function SingleTickerPage() {
               className="mb-4"
             />
 
-
-            {activeChart === 'price' && (
-              <ChartContainer height="65vh" className="min-h-[300px] md:min-h-[500px] max-h-[900px] mt-4 mb-6">
-                <ErrorBoundary>
-                  <TradingChart data={marketData} trades={trades} splits={currentSplits} />
-                </ErrorBoundary>
-              </ChartContainer>
-            )}
-            {activeChart === 'equity' && (
-              <div className="space-y-6">
-                <MetricsGrid
-                  finalValue={finalValue}
-                  maxDrawdown={metrics.maxDrawdown}
-                  metrics={metrics}
-                />
-                {/* Strategy summary - показывается только во вкладке Equity */}
-                <div className="text-xs text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded px-3 py-2">
-                  {(() => {
-                    const low = Number(currentStrategy?.parameters?.lowIBS ?? 0.1);
-                    const high = Number(currentStrategy?.parameters?.highIBS ?? 0.75);
-                    const hold = Number(
-                      typeof currentStrategy?.parameters?.maxHoldDays === 'number'
-                        ? currentStrategy?.parameters?.maxHoldDays
-                        : currentStrategy?.riskManagement?.maxHoldDays ?? 30
-                    );
-                    const useSL = !!currentStrategy?.riskManagement?.useStopLoss;
-                    const useTP = !!currentStrategy?.riskManagement?.useTakeProfit;
-                    const sl = Number(currentStrategy?.riskManagement?.stopLoss ?? 0);
-                    const tp = Number(currentStrategy?.riskManagement?.takeProfit ?? 0);
-                    return (
-                      <div>
-                        <span className="font-semibold">Стратегия IBS:</span>{' '}
-                        <span>Вход — IBS &lt; {low}; </span>
-                        <span>Выход — IBS &gt; {high} или по истечении {hold} дней.</span>{' '}
-                        <span className="ml-2">SL: {useSL ? `${sl}%` : 'выкл'}, TP: {useTP ? `${tp}%` : 'выкл'}</span>
-                      </div>
-                    );
-                  })()}
-                </div>
-                <div className="h-[60vh] min-h-[300px] md:min-h-[450px] max-h-[870px]">
-                  <EquityChart equity={equity} />
-                </div>
-              </div>
-            )}
-            {activeChart === 'buyhold' && (
-              <div className="space-y-4">
-                <div className="flex flex-wrap items-end gap-3">
-                  <div className="flex flex-col">
-                    <label className="text-xs text-gray-600 dark:text-gray-300">Маржинальность, %</label>
-                    <input
-                      type="number"
-                      inputMode="decimal"
-                      min={1}
-                      step={1}
-                      value={buyHoldMarginPctInput}
-                      onChange={(e) => setBuyHoldMarginPctInput(e.target.value)}
-                      className="px-3 py-2 border rounded-md w-40 dark:bg-gray-900 dark:border-gray-700 dark:text-gray-100"
-                      placeholder="например, 100"
-                    />
-                  </div>
-                  <button
-                    onClick={onApplyBuyHold}
-                    className="px-4 py-2 rounded-md bg-blue-600 text-white text-sm font-medium hover:bg-blue-700"
-                  >
-                    Посчитать
-                  </button>
-                  <div className="text-xs text-gray-500 dark:text-gray-300">
-                    Текущее плечо: ×{buyHoldAppliedLeverage.toFixed(2)}
-                  </div>
-                </div>
-                <div className="h-[60vh] min-h-[300px] md:min-h-[450px] max-h-[870px]">
-                  <EquityChart equity={buyHoldSimEquity.length ? buyHoldSimEquity : (buyHoldEquity as unknown as EquityPoint[])} />
-                </div>
-              </div>
-            )}
-            {activeChart === 'drawdown' && (
-              <ChartContainer>
-                <TradeDrawdownChart trades={trades} initialCapital={Number(currentStrategy?.riskManagement?.initialCapital ?? 10000)} />
-              </ChartContainer>
-            )}
-            {activeChart === 'trades' && (
-              <div className="space-y-4">
-                {/* Trades Table */}
-                {backtestResults.trades.length > 0 && (
-                  <TradesTable
-                    trades={trades}
-                    exportFileNamePrefix={`trades-${symbol || 'backtest'}`}
-                  />
-                )}
-              </div>
-            )}
-            {activeChart === 'profit' && (
-              <ChartContainer>
-                <ProfitFactorAnalysis trades={trades} />
-              </ChartContainer>
-            )}
-            {activeChart === 'duration' && (
-              <ChartContainer>
-                <DurationAnalysis trades={trades} />
-              </ChartContainer>
-            )}
-            {activeChart === 'openDayDrawdown' && (
-              <ChartContainer>
-                <OpenDayDrawdownChart trades={trades} data={marketData} />
-              </ChartContainer>
-            )}
-            {activeChart === 'margin' && (
-              <MarginSimulator equity={equity} trades={trades} symbol={symbol} />
-            )}
-            {activeChart === 'buyAtClose' && (
-              <BuyAtCloseSimulator data={marketData} strategy={currentStrategy} />
-            )}
-            {activeChart === 'buyAtClose4' && (
-              <BuyAtClose4Simulator strategy={currentStrategy} />
-            )}
-            {activeChart === 'noStopLoss' && (
-              <NoStopLossSimulator data={marketData} strategy={currentStrategy} />
-            )}
-            {activeChart === 'options' && (
-              <OptionsAnalysis stockTrades={trades} marketData={marketData} />
-            )}
-            {activeChart === 'splits' && (
-              <SplitsList splits={currentSplits || []} ticker={symbol || ''} />
+            {renderSpecificTab() || (
+              <BacktestResultsView
+                 mode="single"
+                 activeTab={activeChart}
+                 backtestResults={augmentedResults}
+                 marketData={marketData}
+                 currentSplits={currentSplits}
+                 symbol={symbol}
+                 strategy={currentStrategy}
+                 initialCapital={initialCapital}
+                 extraEquityInfo={
+                   <div className="mb-4 mt-2">
+                     <StrategyInfoCard
+                        strategy={currentStrategy}
+                        lowIBS={lowIBS}
+                        highIBS={highIBS}
+                        maxHoldDays={maxHoldDays}
+                     />
+                   </div>
+                 }
+              />
             )}
           </section>
         </div>
@@ -943,5 +846,73 @@ export function SingleTickerPage() {
 
       <InfoModal open={modal.type != null} title={modal.title || ''} message={modal.message || ''} onClose={() => setModal({ type: null })} kind={modal.type === 'error' ? 'error' : 'info'} />
     </div>
+  );
+}
+
+function BuyHoldView({ marketData, initialCapital }: { marketData: import('../types').OHLCData[], initialCapital: number }) {
+  const [buyHoldMarginPctInput, setBuyHoldMarginPctInput] = useState<string>('100');
+  const [buyHoldAppliedLeverage, setBuyHoldAppliedLeverage] = useState<number>(1);
+
+  const buyHoldEquity = useMemo(() => {
+    try {
+      if (!Array.isArray(marketData) || marketData.length === 0) return [] as { date: Date; value: number; drawdown: number }[];
+      const first = marketData[0];
+      const firstPrice = typeof first?.adjClose === 'number' && first.adjClose > 0 ? first.adjClose : first.close;
+      if (!firstPrice || firstPrice <= 0) return [] as { date: Date; value: number; drawdown: number }[];
+      let peak = initialCapital;
+      const series = marketData.map(b => {
+        const price = typeof b?.adjClose === 'number' && b.adjClose > 0 ? b.adjClose : b.close;
+        const value = initialCapital * (price / firstPrice);
+        if (value > peak) peak = value;
+        const drawdown = peak > 0 ? ((peak - value) / peak) * 100 : 0;
+        const d = new Date(b.date);
+        return { date: d, value, drawdown };
+      });
+      return series;
+    } catch {
+      return [] as { date: Date; value: number; drawdown: number }[];
+    }
+  }, [marketData, initialCapital]);
+
+  const buyHoldSimEquity = useMemo(() => (
+    simulateLeverage(buyHoldEquity as unknown as EquityPoint[], buyHoldAppliedLeverage).equity
+  ), [buyHoldEquity, buyHoldAppliedLeverage]);
+
+  const onApplyBuyHold = () => {
+    const pct = Number(buyHoldMarginPctInput);
+    if (!isFinite(pct) || pct <= 0) return;
+    setBuyHoldAppliedLeverage(pct / 100);
+  };
+
+  return (
+      <div className="space-y-4">
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="flex flex-col">
+            <label className="text-xs text-gray-600 dark:text-gray-300">Маржинальность, %</label>
+            <input
+              type="number"
+              inputMode="decimal"
+              min={1}
+              step={1}
+              value={buyHoldMarginPctInput}
+              onChange={(e) => setBuyHoldMarginPctInput(e.target.value)}
+              className="px-3 py-2 border rounded-md w-40 dark:bg-gray-900 dark:border-gray-700 dark:text-gray-100"
+              placeholder="например, 100"
+            />
+          </div>
+          <button
+            onClick={onApplyBuyHold}
+            className="px-4 py-2 rounded-md bg-blue-600 text-white text-sm font-medium hover:bg-blue-700"
+          >
+            Посчитать
+          </button>
+          <div className="text-xs text-gray-500 dark:text-gray-300">
+            Текущее плечо: ×{buyHoldAppliedLeverage.toFixed(2)}
+          </div>
+        </div>
+        <div className="h-[60vh] min-h-[300px] md:min-h-[450px] max-h-[870px]">
+          <EquityChart equity={buyHoldSimEquity.length ? buyHoldSimEquity : (buyHoldEquity as unknown as EquityPoint[])} />
+        </div>
+      </div>
   );
 }

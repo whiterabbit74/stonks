@@ -1,29 +1,14 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { useToastActions, MetricsGrid, ChartContainer, AnalysisTabs } from './ui';
+import { useToastActions, MetricsGrid, AnalysisTabs } from './ui';
 import { useAppStore } from '../stores';
-import type { Strategy, OHLCData, Trade, EquityPoint, SplitEvent } from '../types';
-import { DatasetAPI } from '../lib/api';
-import { adjustOHLCForSplits, dedupeDailyOHLC } from '../lib/utils';
-import { IndicatorEngine } from '../lib/indicators';
-import { MultiTickerChart } from './MultiTickerChart';
-import { EquityChart } from './EquityChart';
-import { TradesTable } from './TradesTable';
-import { ProfitFactorAnalysis } from './ProfitFactorAnalysis';
-import { TradeDrawdownChart } from './TradeDrawdownChart';
-import { DurationAnalysis } from './DurationAnalysis';
+import type { Strategy, Trade, EquityPoint } from '../types';
 import { runSinglePositionBacktest, optimizeTickerData, formatCurrencyCompact } from '../lib/singlePositionBacktest';
-import { calculateTradeStats } from '../lib/trade-utils';
-import { SplitsList } from './SplitsList';
 import { StrategyInfoCard } from './StrategyInfoCard';
 import { createStrategyFromTemplate, STRATEGY_TEMPLATES } from '../lib/strategy';
-import { TickerCardsGrid } from './TickerCardsGrid';
-
-interface TickerData {
-  ticker: string;
-  data: OHLCData[];
-  ibsValues: number[];
-  splits: SplitEvent[];
-}
+import { useMultiTickerData } from '../hooks/useMultiTickerData';
+import { BacktestResultsView } from './BacktestResultsView';
+import { EquityChart } from './EquityChart';
+import { TradesTable } from './TradesTable';
 
 interface BacktestResults {
   equity: EquityPoint[];
@@ -63,51 +48,19 @@ export function MultiTickerPage() {
   const [error, setError] = useState<string | null>(null);
   const [backtestResults, setBacktestResults] = useState<BacktestResults | null>(null);
   const [monthlyContributionResults, setMonthlyContributionResults] = useState<BacktestResults | null>(null);
-  const [tickersData, setTickersData] = useState<TickerData[]>([]);
+
   type TabId = 'price' | 'tickerCharts' | 'equity' | 'trades' | 'profit' | 'monthlyContribution' | 'splits' | 'drawdown' | 'duration';
   const [activeTab, setActiveTab] = useState<TabId>('price');
   const [selectedTradeTicker, setSelectedTradeTicker] = useState<'all' | string>('all');
-  const [refreshingTickers, setRefreshingTickers] = useState<Set<string>>(new Set());
 
-  // Check if data is outdated (last bar is more than 1 trading day old)
-  const isDataOutdated = useCallback((lastDate: string | Date | undefined): boolean => {
-    if (!lastDate) return true;
-    const now = new Date();
-    const lastDateNormalized = new Date(lastDate);
-    // Get difference in days
-    const diffMs = now.getTime() - lastDateNormalized.getTime();
-    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-    // Data is outdated if it's more than 2 days old (accounts for weekends)
-    return diffDays > 2;
-  }, []);
-
-  // Handle refresh for a single ticker
-  const toast = useToastActions();
-  const handleRefreshTicker = useCallback(async (ticker: string) => {
-    setRefreshingTickers(prev => new Set(prev).add(ticker));
-    try {
-      const result = await DatasetAPI.refreshDataset(ticker);
-      // Reload ticker data
-      const newData = await loadTickerData(ticker);
-      setTickersData(prev => prev.map(td => td.ticker === ticker ? newData : td));
-      // Show success toast with number of days added
-      const addedDays = result?.added ?? 0;
-      if (addedDays > 0) {
-        toast.success(`${ticker}: добавлено ${addedDays} ${addedDays === 1 ? 'день' : addedDays < 5 ? 'дня' : 'дней'}`);
-      } else {
-        toast.info(`${ticker}: данные актуальны`);
-      }
-    } catch (err) {
-      console.error(`Failed to refresh ${ticker}:`, err);
-      toast.error(`${ticker}: не удалось обновить данные`);
-    } finally {
-      setRefreshingTickers(prev => {
-        const next = new Set(prev);
-        next.delete(ticker);
-        return next;
-      });
-    }
-  }, [toast]);
+  const {
+    tickersData,
+    setTickersData,
+    loadTickerData,
+    handleRefreshTicker,
+    refreshingTickers,
+    isDataOutdated
+  } = useMultiTickerData();
 
   const currentStrategy = useAppStore(s => s.currentStrategy);
   const fallbackStrategyRef = useRef<Strategy | null>(null);
@@ -126,28 +79,6 @@ export function MultiTickerPage() {
   );
   const initialCapital = Number(activeStrategy?.riskManagement?.initialCapital ?? 10000);
 
-  const tradesByTicker = useMemo(() => {
-    if (!backtestResults?.trades) return {} as Record<string, Trade[]>;
-    return backtestResults.trades.reduce<Record<string, Trade[]>>((acc, trade) => {
-      const ticker = (trade.context?.ticker || '').toUpperCase();
-      if (!ticker) return acc;
-      if (!acc[ticker]) acc[ticker] = [];
-      acc[ticker].push(trade);
-      return acc;
-    }, {});
-  }, [backtestResults]);
-
-  const filteredTrades = useMemo(() => {
-    if (!backtestResults) return [] as Trade[];
-    if (selectedTradeTicker === 'all') return backtestResults.trades;
-    const targetTicker = (selectedTradeTicker || '').toUpperCase();
-    return backtestResults.trades.filter(
-      trade => (trade.context?.ticker || '').toUpperCase() === targetTicker
-    );
-  }, [backtestResults, selectedTradeTicker]);
-
-  const filteredTradeStats = useMemo(() => calculateTradeStats(filteredTrades), [filteredTrades]);
-
   const monthlyScenarioDiff = useMemo(() => {
     if (!backtestResults || !monthlyContributionResults) return null;
 
@@ -159,40 +90,13 @@ export function MultiTickerPage() {
     };
   }, [backtestResults, monthlyContributionResults]);
 
-  const totalSplitsCount = useMemo(
-    () => tickersData.reduce((sum, ticker) => sum + (ticker.splits?.length || 0), 0),
-    [tickersData]
-  );
-
-  // Функция загрузки данных тикера
-  const loadTickerData = async (ticker: string): Promise<TickerData> => {
-    const ds = await DatasetAPI.getDataset(ticker);
-
-    const normalizedTicker = (ds.ticker || ticker).toUpperCase();
-
-    let splits: SplitEvent[] = [];
-    try {
-      splits = await DatasetAPI.getSplits(normalizedTicker);
-    } catch {
-      splits = [];
-    }
-
-    let processedData: OHLCData[];
-
-    if ((ds as any).adjustedForSplits) {
-      processedData = dedupeDailyOHLC(ds.data as unknown as OHLCData[]);
-    } else {
-      processedData = dedupeDailyOHLC(adjustOHLCForSplits(ds.data as unknown as OHLCData[], splits));
-    }
-
-    const ibsValues = processedData.length > 0 ? IndicatorEngine.calculateIBS(processedData) : [];
-
-    return {
-      ticker: normalizedTicker,
-      data: processedData,
-      ibsValues,
-      splits
-    };
+  const formatCurrency = (value: number): string => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    }).format(value);
   };
 
   // Запуск бэктеста
@@ -274,16 +178,6 @@ export function MultiTickerPage() {
     } finally {
       setIsLoading(false);
     }
-  };
-
-  // Format currency with comma separators (e.g. $1,234,567.89)
-  const formatCurrency = (value: number): string => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2
-    }).format(value);
   };
 
   return (
@@ -438,134 +332,8 @@ export function MultiTickerPage() {
 
           {/* Содержимое табов */}
           <div className="p-6">
-            {activeTab === 'price' && (
-              <ChartContainer title="Сводный график тикеров">
-                <MultiTickerChart tickersData={tickersData} trades={backtestResults?.trades || []} height={650} />
-              </ChartContainer>
-            )}
-
-            {activeTab === 'tickerCharts' && (
-              <TickerCardsGrid
-                tickersData={tickersData}
-                tradesByTicker={tradesByTicker}
-                highIBS={highIBS}
-                isDataOutdated={isDataOutdated}
-                handleRefreshTicker={handleRefreshTicker}
-                refreshingTickers={refreshingTickers}
-              />
-            )}
-
-            {activeTab === 'equity' && (
-              <ChartContainer
-                title="График капитала"
-                isEmpty={!backtestResults.equity.length}
-                emptyMessage="Нет данных по equity"
-                height={500}
-              >
-                <div className="w-full h-[500px]">
-                  <EquityChart equity={backtestResults.equity} hideHeader />
-                </div>
-              </ChartContainer>
-            )}
-
-            {activeTab === 'drawdown' && (
-              <ChartContainer title="Анализ просадки">
-                <TradeDrawdownChart trades={backtestResults.trades} initialCapital={initialCapital} />
-              </ChartContainer>
-            )}
-
-            {activeTab === 'trades' && (
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                  История сделок ({backtestResults.trades.length})
-                </h3>
-                <div className="flex flex-wrap items-center gap-2">
-                  <button
-                    onClick={() => setSelectedTradeTicker('all')}
-                    className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${selectedTradeTicker === 'all'
-                      ? 'bg-blue-600 text-white shadow-sm'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'
-                      }`}
-                  >
-                    Все ({backtestResults.trades.length})
-                  </button>
-                  {tickersData.map(tickerData => {
-                    const tradesForTicker = tradesByTicker[tickerData.ticker] || [];
-                    return (
-                      <button
-                        key={tickerData.ticker}
-                        onClick={() => setSelectedTradeTicker(tickerData.ticker)}
-                        className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${selectedTradeTicker === tickerData.ticker
-                          ? 'bg-blue-600 text-white shadow-sm'
-                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'
-                          }`}
-                      >
-                        {tickerData.ticker} ({tradesForTicker.length})
-                      </button>
-                    );
-                  })}
-                </div>
-
-                <div className="grid grid-cols-2 gap-4 rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm dark:border-gray-700 dark:bg-gray-900/40 md:grid-cols-4">
-                  <div>
-                    <div className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Сделок</div>
-                    <div className="mt-1 text-lg font-semibold text-gray-900 dark:text-gray-100">{filteredTradeStats.totalTrades}</div>
-                  </div>
-                  <div>
-                    <div className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Win rate</div>
-                    <div className="mt-1 text-lg font-semibold text-gray-900 dark:text-gray-100">{filteredTradeStats.winRate.toFixed(1)}%</div>
-                  </div>
-                  <div>
-                    <div className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">PnL</div>
-                    <div className={`mt-1 text-lg font-semibold ${filteredTradeStats.totalPnL >= 0 ? 'text-emerald-600 dark:text-emerald-300' : 'text-orange-500 dark:text-orange-300'}`}>
-                      {formatCurrencyCompact(filteredTradeStats.totalPnL)}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Средняя длительность</div>
-                    <div className="mt-1 text-lg font-semibold text-gray-900 dark:text-gray-100">{filteredTradeStats.avgDuration.toFixed(1)} дн.</div>
-                  </div>
-                </div>
-
-                {filteredTrades.length > 0 ? (
-                  <div className="-mx-6 overflow-x-auto">
-                    <div className="min-w-full px-6">
-                      <TradesTable
-                        trades={filteredTrades}
-                        exportFileNamePrefix={`trades-${selectedTradeTicker === 'all' ? 'all-tickers' : selectedTradeTicker}`}
-                      />
-                    </div>
-                  </div>
-                ) : (
-                  <div className="h-72 bg-gray-50 dark:bg-gray-900/50 rounded border border-dashed border-gray-300 dark:border-gray-600 flex items-center justify-center">
-                    <div className="text-gray-500 dark:text-gray-400 text-center">
-                      <div className="text-lg font-medium mb-2">Trades Table</div>
-                      <p className="text-sm">Для выбранного тикера сделки отсутствуют</p>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {activeTab === 'profit' && (
-              <ChartContainer
-                title="Profit Factor по сделкам"
-                isEmpty={!backtestResults.trades.length}
-                emptyMessage="Нет сделок для отображения"
-              >
-                <ProfitFactorAnalysis trades={backtestResults.trades} />
-              </ChartContainer>
-            )}
-
-            {activeTab === 'duration' && (
-              <ChartContainer title="Анализ длительности сделок">
-                <DurationAnalysis trades={backtestResults.trades} />
-              </ChartContainer>
-            )}
-
-            {activeTab === 'monthlyContribution' && monthlyContributionResults && (
-              <div className="space-y-6">
-                {/* Настройки пополнения */}
+            {activeTab === 'monthlyContribution' && monthlyContributionResults ? (
+                <div className="space-y-6">
                 <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 dark:border-blue-900/60 dark:bg-blue-950/30">
                   <h4 className="text-sm font-semibold text-blue-800 dark:text-blue-200 mb-3">Настройки ежемесячного пополнения</h4>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -619,7 +387,7 @@ export function MultiTickerPage() {
                 </div>
 
                 <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                  <div className="rounded-lg border border-gray-200 bg-white p-4 text-center shadow-sm dark:border-gray-700 dark:bg-gray-900">
+                   <div className="rounded-lg border border-gray-200 bg-white p-4 text-center shadow-sm dark:border-gray-700 dark:bg-gray-900">
                     <div className="text-sm uppercase tracking-wide text-gray-500 dark:text-gray-400">Итоговый баланс</div>
                     <div className="mt-2 text-2xl font-bold text-green-600 dark:text-green-400">
                       {formatCurrency(monthlyContributionResults.finalValue)}
@@ -687,7 +455,7 @@ export function MultiTickerPage() {
                         <span>Δ общей доходности</span>
                         <span className="font-semibold">{monthlyScenarioDiff.totalReturnDelta >= 0 ? '+' : ''}{monthlyScenarioDiff.totalReturnDelta.toFixed(1)}%</span>
                       </li>
-                      <li className="flex items-center justify-between">
+                       <li className="flex items-center justify-between">
                         <span>Δ CAGR</span>
                         <span className="font-semibold">{monthlyScenarioDiff.cagrDelta >= 0 ? '+' : ''}{monthlyScenarioDiff.cagrDelta.toFixed(1)}%</span>
                       </li>
@@ -745,11 +513,23 @@ export function MultiTickerPage() {
                     )}
                   </div>
                 </div>
-              </div>
-            )}
 
-            {activeTab === 'splits' && (
-              <SplitsList tickersData={tickersData} totalSplitsCount={totalSplitsCount} />
+            </div>
+            ) : (
+              <BacktestResultsView
+                  mode="multi"
+                  activeTab={activeTab}
+                  backtestResults={backtestResults}
+                  tickersData={tickersData}
+                  strategy={activeStrategy}
+                  handlers={{
+                      isDataOutdated,
+                      handleRefreshTicker,
+                      refreshingTickers,
+                      selectedTradeTicker,
+                      setSelectedTradeTicker
+                  }}
+              />
             )}
           </div>
         </div>
