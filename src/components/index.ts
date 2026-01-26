@@ -1,6 +1,6 @@
 // Export simplified components for the refactored app
 
-export { Results } from './Results';
+export { SingleTickerPage } from './SingleTickerPage';
 export { StrategySettings } from './StrategySettings';
 export { TradingChart } from './TradingChart';
 export { EquityChart } from './EquityChart';

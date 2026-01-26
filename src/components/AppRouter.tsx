@@ -5,7 +5,7 @@ import { Settings, Menu, X, Loader2 } from 'lucide-react';
 import { useAppStore } from '../stores';
 import { DataUpload } from './DataUpload';
 import { DataEnhancer } from './DataEnhancer';
-import { Results } from './Results';
+import { SingleTickerPage } from './SingleTickerPage';
 import { TelegramWatches } from './TelegramWatches';
 import { AppSettings } from './AppSettings';
 
@@ -333,7 +333,7 @@ export default function AppRouter() {
             <Route index element={<Navigate to="/data" replace />} />
             <Route path="/data" element={<DataUpload />} />
             <Route path="/enhance" element={<DataEnhancer />} />
-            <Route path="/results" element={<Results />} />
+            <Route path="/results" element={<SingleTickerPage />} />
             <Route path="/multi-ticker" element={<MultiTickerPage />} />
             <Route path="/multi-ticker-options" element={<MultiTickerOptionsPage />} />
             <Route path="/calendar" element={<CalendarPage />} />
