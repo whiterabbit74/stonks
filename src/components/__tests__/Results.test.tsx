@@ -477,10 +477,15 @@ describe('Results - Position Monitoring Logic', () => {
         renderWithRouter(<Results />);
       });
 
-      expect(screen.getAllByText('8.00%')[0]).toBeInTheDocument();
-      expect(screen.getAllByText('15.20%')[0]).toBeInTheDocument();
-      expect(screen.getAllByText('1.90%')[0]).toBeInTheDocument();
-      expect(screen.getAllByText('50.00%')[0]).toBeInTheDocument();
+      const equityTab = screen.getByText('Эквити');
+      await act(async () => {
+        fireEvent.click(equityTab);
+      });
+
+      expect(screen.getAllByText('8.0%')[0]).toBeInTheDocument();
+      expect(screen.getAllByText('15.2%')[0]).toBeInTheDocument();
+      expect(screen.getAllByText('1.9%')[0]).toBeInTheDocument();
+      expect(screen.getAllByText('50.0%')[0]).toBeInTheDocument();
       expect(screen.getAllByText('2.50')[0]).toBeInTheDocument();
     });
 
