@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { MetricsGrid, AnalysisTabs } from './ui';
+import { MetricsGrid, AnalysisTabs, PageHeader, Select, Input, Label, Button, TickerInput } from './ui';
 import { useAppStore } from '../stores';
 import type { Strategy, Trade, EquityPoint } from '../types';
 import { optimizeTickerData, runSinglePositionBacktest } from '../lib/singlePositionBacktest';
@@ -154,12 +154,7 @@ export function MultiTickerOptionsPage() {
     <div className="space-y-6">
       {/* Заголовок */}
       <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 shadow-sm">
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
-            Опционы (Мульти)
-          </h1>
-          <div className="mt-2 h-px bg-gradient-to-r from-blue-500/50 via-purple-500/50 to-transparent" />
-        </div>
+        <PageHeader title="Опционы (Мульти)" />
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
           <StrategyInfoCard
@@ -178,69 +173,48 @@ export function MultiTickerOptionsPage() {
              <div className="space-y-4">
                {/* Tickers */}
               <div>
-                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Тикеры
-                </label>
-                <input
-                  type="text"
+                <Label>Тикеры</Label>
+                <TickerInput
                   value={tickersInput}
-                  onChange={(e) => {
-                    setTickersInput(e.target.value);
-                    const parsedTickers = Array.from(new Set(
-                      e.target.value.split(',').map(t => t.trim().toUpperCase()).filter(Boolean)
-                    ));
-                    setTickers(parsedTickers);
-                  }}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500"
-                  placeholder="AAPL, MSFT..."
+                  onChange={setTickersInput}
+                  tickers={tickers}
+                  onTickersChange={setTickers}
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                  <div>
-                    <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                        Страйк (+%)
-                    </label>
-                    <select
+                    <Label>Страйк (+%)</Label>
+                    <Select
                         value={strikePct}
                         onChange={(e) => setStrikePct(Number(e.target.value))}
-                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
                     >
                         {[5, 10, 15, 20].map(v => <option key={v} value={v}>+{v}%</option>)}
-                    </select>
+                    </Select>
                 </div>
                  <div>
-                    <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                        IV Adj (+%)
-                    </label>
-                    <select
+                    <Label>IV Adj (+%)</Label>
+                    <Select
                         value={volAdjPct}
                         onChange={(e) => setVolAdjPct(Number(e.target.value))}
-                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
                     >
                         {[0, 5, 10, 15, 20, 25, 30, 40, 50].map(v => <option key={v} value={v}>+{v}%</option>)}
-                    </select>
+                    </Select>
                 </div>
                 <div>
-                    <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                        Капитал на сделку
-                    </label>
-                    <select
+                    <Label>Капитал на сделку</Label>
+                    <Select
                         value={capitalPct}
                         onChange={(e) => setCapitalPct(Number(e.target.value))}
-                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
                     >
                         {[5, 10, 15, 20, 25, 30, 50].map(v => <option key={v} value={v}>{v}%</option>)}
-                    </select>
+                    </Select>
                 </div>
                 <div>
-                    <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                        Экспирация
-                    </label>
-                    <select
+                    <Label>Экспирация</Label>
+                    <Select
                         value={expirationWeeks}
                         onChange={(e) => setExpirationWeeks(Number(e.target.value))}
-                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
                     >
                          <option value={1}>1 неделя</option>
                          <option value={2}>2 недели</option>
@@ -248,25 +222,42 @@ export function MultiTickerOptionsPage() {
                          <option value={8}>2 месяца</option>
                          <option value={12}>3 месяца</option>
                          <option value={24}>6 месяцев</option>
-                    </select>
+                    </Select>
                 </div>
                 <div>
-                    <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                        Макс. удержание (дней)
-                    </label>
-                    <input
+                    <Label>Макс. удержание (дней)</Label>
+                    <Input
                         type="number"
                         min={1}
                         max={365}
                         value={maxHoldingDays}
                         onChange={(e) => setMaxHoldingDays(Number(e.target.value))}
-                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
                     />
                 </div>
               </div>
             </div>
           </StrategyConfigurationCard>
         </div>
+
+        <div className="flex justify-center">
+          <Button
+            onClick={runBacktest}
+            disabled={isLoading || !activeStrategy || tickers.length === 0}
+            isLoading={isLoading}
+            variant="primary"
+            size="lg"
+            className="px-8 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 shadow-lg shadow-blue-500/25 border-0"
+            leftIcon={!isLoading ? (
+               <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+            ) : undefined}
+          >
+            Запустить бэктест
+          </Button>
+        </div>
+
+      </div>
 
       <BacktestPageShell isLoading={isLoading} error={error} loadingMessage="Загрузка данных и выполнение бэктеста...">
         {/* Main Analysis Block */}
