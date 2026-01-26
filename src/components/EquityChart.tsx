@@ -19,51 +19,6 @@ export function EquityChart({ equity, hideHeader, comparisonEquity, comparisonLa
   const resizeHandlerRef = useRef<(() => void) | null>(null);
   const [isDark, setIsDark] = useState<boolean>(() => typeof document !== 'undefined' ? document.documentElement.classList.contains('dark') : false);
 
-  // Cleanup function for chart resources
-  const cleanupChart = () => {
-    // Unsubscribe from crosshair events
-    if (unsubscribeRef.current) {
-      try {
-        unsubscribeRef.current();
-      } catch (error) {
-        logError('chart', 'Failed to unsubscribe from crosshair events', {
-          error: (error as Error).message
-        }, 'EquityChart.cleanup');
-      }
-      unsubscribeRef.current = null;
-    }
-    
-    // Remove resize handler
-    if (resizeHandlerRef.current) {
-      window.removeEventListener('resize', resizeHandlerRef.current);
-      resizeHandlerRef.current = null;
-    }
-    
-    // Remove tooltip DOM element
-    if (tooltipRef.current && tooltipRef.current.parentElement) {
-      try {
-        tooltipRef.current.parentElement.removeChild(tooltipRef.current);
-      } catch (error) {
-        logError('chart', 'Failed to remove tooltip element', {
-          error: (error as Error).message
-        }, 'EquityChart.cleanup');
-      }
-      tooltipRef.current = null;
-    }
-    
-    // Remove chart instance
-    if (chartRef.current) {
-      try {
-        chartRef.current.remove();
-      } catch (error) {
-        logError('chart', 'Failed to remove chart instance', {
-          error: (error as Error).message
-        }, 'EquityChart.cleanup');
-      }
-      chartRef.current = null;
-    }
-  };
-
   useEffect(() => {
     const onTheme = (e: CustomEvent) => {
       const dark = !!((e.detail as { effectiveDark?: boolean })?.effectiveDark ?? document.documentElement.classList.contains('dark'));
@@ -80,6 +35,18 @@ export function EquityChart({ equity, hideHeader, comparisonEquity, comparisonLa
     if (!chartContainerRef.current || !equity.length) return;
 
     try {
+        // Clean up previous chart if any
+        if (chartRef.current) {
+            if (unsubscribeRef.current) { unsubscribeRef.current(); unsubscribeRef.current = null; }
+            if (resizeHandlerRef.current) { window.removeEventListener('resize', resizeHandlerRef.current); resizeHandlerRef.current = null; }
+            if (tooltipRef.current && tooltipRef.current.parentElement) {
+                 try { tooltipRef.current.parentElement.removeChild(tooltipRef.current); } catch { /* ignore */ }
+                 tooltipRef.current = null;
+            }
+            try { chartRef.current.remove(); } catch { /* ignore */ }
+            chartRef.current = null;
+        }
+
       const bg = isDark ? '#0b1220' : '#ffffff';
       const text = isDark ? '#e5e7eb' : '#1f2937';
       const grid = isDark ? '#1f2937' : '#eef2ff';
@@ -249,17 +216,33 @@ export function EquityChart({ equity, hideHeader, comparisonEquity, comparisonLa
       resizeHandlerRef.current = handleResize;
       window.addEventListener('resize', handleResize);
 
-      return cleanupChart;
     } catch (error) {
       logError('chart', 'Error creating equity chart', {}, 'EquityChart', (error as any)?.stack);
-      return;
     }
-  }, [equity, comparisonEquity, comparisonLabel, primaryLabel, isDark]);
 
-  // Cleanup on unmount
-  useEffect(() => {
-    return cleanupChart;
-  }, []);
+    // Cleanup function
+    return () => {
+        if (unsubscribeRef.current) {
+            try { unsubscribeRef.current(); } catch { /* ignore */ }
+            unsubscribeRef.current = null;
+        }
+
+        if (resizeHandlerRef.current) {
+            window.removeEventListener('resize', resizeHandlerRef.current);
+            resizeHandlerRef.current = null;
+        }
+
+        if (tooltipRef.current && tooltipRef.current.parentElement) {
+            try { tooltipRef.current.parentElement.removeChild(tooltipRef.current); } catch { /* ignore */ }
+            tooltipRef.current = null;
+        }
+
+        if (chartRef.current) {
+            try { chartRef.current.remove(); } catch { /* ignore */ }
+            chartRef.current = null;
+        }
+    };
+  }, [equity, comparisonEquity, comparisonLabel, primaryLabel, isDark]);
 
   if (!equity.length) {
     return (

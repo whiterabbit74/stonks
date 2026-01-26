@@ -20,6 +20,13 @@ export interface SplitEvent {
   factor: number; // коэффициент сплита, например 2 для 2:1
 }
 
+export interface TickerData {
+  ticker: string;
+  data: OHLCData[];
+  ibsValues: number[];
+  splits: SplitEvent[];
+}
+
 export interface Strategy {
   id: string;
   name: string;

@@ -119,42 +119,6 @@ export function MultiTickerChart({ tickersData, trades = [], height = 600 }: Mul
     return map;
   }, [trades]);
 
-  // Cleanup function for chart resources
-  const cleanupChart = () => {
-    // Unsubscribe from events
-    if (unsubscribeRef.current) {
-      try {
-        unsubscribeRef.current();
-      } catch (error) {
-        logError('chart', 'Failed to unsubscribe from events', {
-          error: (error as Error).message
-        }, 'MultiTickerChart.cleanup');
-      }
-      unsubscribeRef.current = null;
-    }
-
-    // Remove resize handler
-    if (resizeHandlerRef.current) {
-      window.removeEventListener('resize', resizeHandlerRef.current);
-      resizeHandlerRef.current = null;
-    }
-
-    // Clear series references
-    seriesRefsRef.current.clear();
-
-    // Remove chart instance
-    if (chartRef.current) {
-      try {
-        chartRef.current.remove();
-      } catch (error) {
-        logError('chart', 'Failed to remove chart instance', {
-          error: (error as Error).message
-        }, 'MultiTickerChart.cleanup');
-      }
-      chartRef.current = null;
-    }
-  };
-
   useEffect(() => {
     const onTheme = (e: CustomEvent) => {
       const dark = !!((e.detail as { effectiveDark?: boolean })?.effectiveDark ??
@@ -171,6 +135,21 @@ export function MultiTickerChart({ tickersData, trades = [], height = 600 }: Mul
     if (!chartContainerRef.current || !preparedTickersData.length) return;
 
     try {
+      // Clean up previous chart if any
+      if (chartRef.current) {
+        if (unsubscribeRef.current) {
+             try { unsubscribeRef.current(); } catch { /* ignore */ }
+             unsubscribeRef.current = null;
+        }
+        if (resizeHandlerRef.current) {
+             window.removeEventListener('resize', resizeHandlerRef.current);
+             resizeHandlerRef.current = null;
+        }
+        try { chartRef.current.remove(); } catch { /* ignore */ }
+        chartRef.current = null;
+        seriesRefsRef.current.clear();
+      }
+
       const bg = isDark ? '#0b1220' : '#ffffff';
       const text = isDark ? '#e5e7eb' : '#1f2937';
       const grid = isDark ? '#1f2937' : '#eef2ff';
@@ -269,7 +248,18 @@ export function MultiTickerChart({ tickersData, trades = [], height = 600 }: Mul
       });
 
       // Add ticker labels on the left side
+      // Check if labels already exist (from previous renders inside the container if it wasn't cleared)
+      // Actually createChart clears the container usually, but we are appending labels to the container.
+      // We should clear labels if we can, but removing chart usually clears canvas.
+      // The labels are DOM nodes appended to chartContainerRef.current.
+      // createChart creates a div inside chartContainerRef.current.
+      // So our labels will be siblings or children.
+
+      const existingLabels = chartContainerRef.current.querySelectorAll('.ticker-label-overlay');
+      existingLabels.forEach(el => el.remove());
+
       const tickerLabels = document.createElement('div');
+      tickerLabels.className = 'ticker-label-overlay'; // Mark for cleanup
       tickerLabels.style.position = 'absolute';
       tickerLabels.style.left = '10px';
       tickerLabels.style.top = '10px';
@@ -313,19 +303,38 @@ export function MultiTickerChart({ tickersData, trades = [], height = 600 }: Mul
       resizeHandlerRef.current = handleResize;
       window.addEventListener('resize', handleResize);
 
-      return cleanupChart;
     } catch (error) {
       logError('chart', 'Error creating multi-ticker chart', {
         tickersCount: preparedTickersData.length
       }, 'MultiTickerChart', (error as any)?.stack);
-      return;
     }
-  }, [preparedTickersData, markersByTicker, height, isDark]);
 
-  // Cleanup on unmount
-  useEffect(() => {
-    return cleanupChart;
-  }, []);
+    return () => {
+       // Cleanup logic inside the effect return
+        if (unsubscribeRef.current) {
+            try { unsubscribeRef.current(); } catch { /* ignore */ }
+            unsubscribeRef.current = null;
+        }
+
+        if (resizeHandlerRef.current) {
+            window.removeEventListener('resize', resizeHandlerRef.current);
+            resizeHandlerRef.current = null;
+        }
+
+        seriesRefsRef.current.clear();
+
+        if (chartRef.current) {
+            try { chartRef.current.remove(); } catch { /* ignore */ }
+            chartRef.current = null;
+        }
+
+        // Cleanup labels
+        if (chartContainerRef.current) {
+             const labels = chartContainerRef.current.querySelectorAll('.ticker-label-overlay');
+             labels.forEach(el => el.remove());
+        }
+    };
+  }, [preparedTickersData, markersByTicker, height, isDark]);
 
   if (!tickersData.length) {
     return (
