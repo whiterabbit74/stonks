@@ -1,6 +1,6 @@
 import type { Trade, OHLCData, EquityPoint } from '../types';
 import { blackScholes, calculateVolatility, getExpirationDate, getYearsToMaturity } from './optionsMath';
-import { toTradingDate } from './date-utils';
+import { toTradingDate, daysBetweenTradingDates, type TradingDate } from './date-utils';
 import { getRiskFreeRate } from './riskFreeRates';
 
 export interface OptionsBacktestConfig {
@@ -170,9 +170,7 @@ export function runOptionsBacktest(
 
                  const tExit = typeof activeTrade.exitDate === 'string' ? activeTrade.exitDate.slice(0, 10) : new Date(activeTrade.exitDate).toISOString().slice(0, 10);
                  const entryStr = typeof activeTrade.entryDate === 'string' ? activeTrade.entryDate.slice(0, 10) : new Date(activeTrade.entryDate).toISOString().slice(0, 10);
-                 const [ey, em, ed] = entryStr.split('-').map(Number);
-                 const entryDate = new Date(ey, em - 1, ed, 12, 0, 0);
-                 const daysHeld = Math.floor((currentDate.getTime() - entryDate.getTime()) / (1000 * 3600 * 24));
+                 const daysHeld = daysBetweenTradingDates(entryStr as TradingDate, dateStr as TradingDate);
                  const isMaxHold = daysHeld >= maxHoldingDays;
                  const isExpired = T <= 0;
                  const isStockExit = dateStr === tExit;
@@ -301,9 +299,7 @@ export function runMultiTickerOptionsBacktest(
 
                 const tExit = typeof trade.exitDate === 'string' ? trade.exitDate.slice(0, 10) : new Date(trade.exitDate).toISOString().slice(0, 10);
                 const entryStr = typeof trade.entryDate === 'string' ? trade.entryDate.slice(0, 10) : new Date(trade.entryDate).toISOString().slice(0, 10);
-                const [ey, em, ed] = entryStr.split('-').map(Number);
-                const entryDate = new Date(ey, em - 1, ed, 12, 0, 0);
-                const daysHeld = Math.floor((currentDate.getTime() - entryDate.getTime()) / (1000 * 3600 * 24));
+                const daysHeld = daysBetweenTradingDates(entryStr as TradingDate, dateStr as TradingDate);
                 const isMaxHold = daysHeld >= maxHoldingDays;
                 const isExpired = T <= 0;
                 const isStockExit = dateStr === tExit;
