@@ -1,4 +1,4 @@
-import { type ReactNode, useMemo } from 'react';
+import { type ReactNode, useMemo, memo } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { MiniQuoteChart } from './MiniQuoteChart';
 import { calculateTradeStats } from '../lib/trade-utils';
@@ -21,7 +21,7 @@ export interface TickerCardProps {
   className?: string;
 }
 
-export function TickerCard({
+export const TickerCard = memo(function TickerCard({
   ticker,
   data,
   trades,
@@ -153,4 +153,4 @@ export function TickerCard({
       </div>
     </div>
   );
-}
+});
