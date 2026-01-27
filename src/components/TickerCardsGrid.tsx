@@ -1,3 +1,4 @@
+import { memo, useCallback } from 'react';
 import { TickerCard } from './TickerCard';
 import type { OHLCData, Trade, SplitEvent } from '../types';
 
@@ -17,6 +18,40 @@ interface TickerCardsGridProps {
   refreshingTickers: Set<string>;
 }
 
+// Optimization: Memoized wrapper to prevent re-rendering of all cards when one updates
+// or when parent re-renders but props specific to this card haven't changed.
+const TickerCardItem = memo(function TickerCardItem({
+  tickerData,
+  trades,
+  highIBS,
+  isOutdated,
+  handleRefreshTicker,
+  isRefreshing
+}: {
+  tickerData: TickerData;
+  trades: Trade[];
+  highIBS: number;
+  isOutdated: boolean;
+  handleRefreshTicker: (ticker: string) => void;
+  isRefreshing: boolean;
+}) {
+  const handleRefresh = useCallback(() => {
+    handleRefreshTicker(tickerData.ticker);
+  }, [handleRefreshTicker, tickerData.ticker]);
+
+  return (
+    <TickerCard
+      ticker={tickerData.ticker}
+      data={tickerData.data}
+      trades={trades}
+      highIBS={highIBS}
+      isOutdated={isOutdated}
+      onRefresh={handleRefresh}
+      isRefreshing={isRefreshing}
+    />
+  );
+});
+
 export function TickerCardsGrid({
   tickersData,
   tradesByTicker,
@@ -30,17 +65,18 @@ export function TickerCardsGrid({
       {tickersData.map(tickerData => {
         const tradesForTicker = tradesByTicker[tickerData.ticker] || [];
         const lastBar = tickerData.data.length > 0 ? tickerData.data[tickerData.data.length - 1] : undefined;
+        const isOutdated = isDataOutdated(lastBar?.date);
+        const isRefreshing = refreshingTickers.has(tickerData.ticker);
 
         return (
-          <TickerCard
+          <TickerCardItem
             key={tickerData.ticker}
-            ticker={tickerData.ticker}
-            data={tickerData.data}
+            tickerData={tickerData}
             trades={tradesForTicker}
             highIBS={highIBS}
-            isOutdated={isDataOutdated(lastBar?.date)}
-            onRefresh={() => handleRefreshTicker(tickerData.ticker)}
-            isRefreshing={refreshingTickers.has(tickerData.ticker)}
+            isOutdated={isOutdated}
+            handleRefreshTicker={handleRefreshTicker}
+            isRefreshing={isRefreshing}
           />
         );
       })}
