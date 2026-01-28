@@ -39,7 +39,7 @@ export function TickerCardsGrid({
             trades={tradesForTicker}
             highIBS={highIBS}
             isOutdated={isDataOutdated(lastBar?.date)}
-            onRefresh={() => handleRefreshTicker(tickerData.ticker)}
+            onRefresh={handleRefreshTicker}
             isRefreshing={refreshingTickers.has(tickerData.ticker)}
           />
         );
