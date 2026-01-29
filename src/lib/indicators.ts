@@ -90,6 +90,10 @@ export class IndicatorEngine {
     const gains: number[] = [];
     const losses: number[] = [];
     
+    // Track smoothed averages for O(N) performance (replacing expensive recalculation)
+    let avgGain = 0;
+    let avgLoss = 0;
+
     // Calculate price changes
     for (let i = 0; i < data.length; i++) {
       if (i === 0) {
@@ -98,21 +102,24 @@ export class IndicatorEngine {
         losses.push(0);
       } else {
         const change = data[i] - data[i - 1];
-        gains.push(change > 0 ? change : 0);
-        losses.push(change < 0 ? Math.abs(change) : 0);
+        const gain = change > 0 ? change : 0;
+        const loss = change < 0 ? Math.abs(change) : 0;
+
+        gains.push(gain);
+        losses.push(loss);
         
         if (i < period) {
           result.push(NaN);
         } else if (i === period) {
-          // First RSI calculation using simple average (optimized)
+          // First RSI calculation using simple average
           let sumGains = 0;
           let sumLosses = 0;
           for (let j = 1; j <= period; j++) {
             sumGains += gains[j];
             sumLosses += losses[j];
           }
-          const avgGain = sumGains / period;
-          const avgLoss = sumLosses / period;
+          avgGain = sumGains / period;
+          avgLoss = sumLosses / period;
           
           if (avgLoss === 0) {
             result.push(100);
@@ -123,11 +130,9 @@ export class IndicatorEngine {
           }
         } else {
           // Subsequent RSI calculations using smoothed averages
-          const prevAvgGain = this.getRSIAverage(gains.slice(1, i), period, i - period - 1);
-          const prevAvgLoss = this.getRSIAverage(losses.slice(1, i), period, i - period - 1);
-          
-          const avgGain = (prevAvgGain * (period - 1) + gains[i]) / period;
-          const avgLoss = (prevAvgLoss * (period - 1) + losses[i]) / period;
+          // Update running averages in O(1) instead of recalculating from scratch
+          avgGain = (avgGain * (period - 1) + gain) / period;
+          avgLoss = (avgLoss * (period - 1) + loss) / period;
           
           if (avgLoss === 0) {
             result.push(100);
@@ -187,34 +192,6 @@ export class IndicatorEngine {
       
       return (close - low) / (high - low);
     });
-  }
-
-  /**
-   * Helper function to get RSI average for smoothed calculation
-   */
-  private static getRSIAverage(data: number[], period: number, index: number): number {
-    if (index === 0) {
-      // Optimize: avoid array slicing
-      let sum = 0;
-      for (let i = 0; i < period; i++) {
-        sum += data[i];
-      }
-      return sum / period;
-    }
-    
-    // Use iterative approach instead of recursion to avoid stack overflow
-    // Optimize: avoid array slicing
-    let sum = 0;
-    for (let i = 0; i < period; i++) {
-      sum += data[i];
-    }
-    let avg = sum / period;
-    
-    for (let i = 1; i <= index; i++) {
-      avg = (avg * (period - 1) + data[i + period - 1]) / period;
-    }
-    
-    return avg;
   }
 
   /**

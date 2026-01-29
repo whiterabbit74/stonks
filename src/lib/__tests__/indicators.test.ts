@@ -81,6 +81,19 @@ describe('IndicatorEngine', () => {
       }
     });
 
+    it('should calculate RSI values correctly against known sample', () => {
+      const data = [10, 12, 11, 13, 15, 14, 16, 18, 17, 19, 21, 20, 22, 24, 23];
+      const rsi = IndicatorEngine.calculateRSI(data, 5);
+
+      // Index 5 (6th element)
+      // AvgGain = 1.2, AvgLoss = 0.4, RS = 3, RSI = 75
+      expect(rsi[5]).toBeCloseTo(75, 4);
+
+      // Index 6 (7th element)
+      // AvgGain = 1.36, AvgLoss = 0.32, RS = 4.25, RSI = 80.95238
+      expect(rsi[6]).toBeCloseTo(80.95238, 4);
+    });
+
     it('should handle period larger than data length', () => {
       const rsi = IndicatorEngine.calculateRSI(sampleData.map(d => d.close), 20);
       
