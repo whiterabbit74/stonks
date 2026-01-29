@@ -1,4 +1,4 @@
-import { type ReactNode, useMemo } from 'react';
+import { type ReactNode, useMemo, memo } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { MiniQuoteChart } from './MiniQuoteChart';
 import { calculateTradeStats } from '../lib/trade-utils';
@@ -14,14 +14,19 @@ export interface TickerCardProps {
   isOpenPosition?: boolean;
   entryPrice?: number | null;
   isOutdated?: boolean;
-  onRefresh?: () => void;
+  onRefresh?: (ticker: string) => void;
   isRefreshing?: boolean;
   hideHeader?: boolean;
   customStats?: ReactNode;
   className?: string;
 }
 
-export function TickerCard({
+/**
+ * Optimized TickerCard component.
+ * Uses React.memo to prevent unnecessary re-renders when parent grid updates.
+ * Internal heavy calculations (stats, chart history) are memoized.
+ */
+export const TickerCard = memo(function TickerCard({
   ticker,
   data,
   trades,
@@ -52,7 +57,8 @@ export function TickerCard({
     }
   }
 
-  const defaultStats = !customStats ? calculateTradeStats(trades) : null;
+  // Memoize trade stats calculation to avoid O(N) operation on every render
+  const defaultStats = useMemo(() => !customStats ? calculateTradeStats(trades) : null, [customStats, trades]);
 
   // Slice data for chart performance (pass only what's needed + buffer)
   const chartHistory = useMemo(() => data.slice(-30), [data]);
@@ -72,7 +78,7 @@ export function TickerCard({
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    onRefresh();
+                    onRefresh(ticker);
                   }}
                   disabled={isRefreshing}
                   className="p-1.5 rounded-md text-orange-500 hover:text-orange-600 hover:bg-orange-50 dark:hover:bg-orange-900/20 transition-colors disabled:opacity-50"
@@ -153,4 +159,4 @@ export function TickerCard({
       </div>
     </div>
   );
-}
+});
