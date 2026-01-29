@@ -72,6 +72,9 @@ export function BacktestResultsView({
 
   // For Multi Ticker Trades Tab logic
   const tradesByTicker = useMemo(() => {
+    // Optimization: Skip expensive O(N) grouping in single-ticker mode
+    if (mode === 'single') return {};
+
     if (!trades) return {} as Record<string, Trade[]>;
     return trades.reduce<Record<string, Trade[]>>((acc, trade) => {
       const ticker = (trade.context?.ticker || '').toUpperCase();
@@ -80,16 +83,23 @@ export function BacktestResultsView({
       acc[ticker].push(trade);
       return acc;
     }, {});
-  }, [trades]);
+  }, [trades, mode]);
 
   const filteredTrades = useMemo(() => {
     if (!trades) return [] as Trade[];
     if (!handlers?.selectedTradeTicker || handlers.selectedTradeTicker === 'all') return trades;
+
+    // Optimization: Use O(1) lookup map instead of O(N) filter in multi-ticker mode
+    if (mode !== 'single') {
+      const targetTicker = (handlers.selectedTradeTicker || '').toUpperCase();
+      return tradesByTicker[targetTicker] || [];
+    }
+
     const targetTicker = (handlers.selectedTradeTicker || '').toUpperCase();
     return trades.filter(
       trade => (trade.context?.ticker || '').toUpperCase() === targetTicker
     );
-  }, [trades, handlers?.selectedTradeTicker]);
+  }, [trades, handlers?.selectedTradeTicker, tradesByTicker, mode]);
 
   const filteredTradeStats = useMemo(() => calculateTradeStats(filteredTrades), [filteredTrades]);
 

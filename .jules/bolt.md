@@ -5,3 +5,7 @@
 ## 2026-01-22 - Memoized Chart Data Preparation
 **Learning:** In components using `lightweight-charts`, data preparation (looping over thousands of bars and parsing dates) is expensive. If this logic is inside `useEffect` or the render body, it runs on every unrelated re-render (like theme toggles or resizes), blocking the UI.
 **Action:** Extract data transformation logic into `useMemo` blocks dependent only on the data source. Use efficient date parsing (like `Date.UTC` via helper) instead of `new Date(string)` inside loops.
+
+## 2025-05-22 - Optimizing Shared Components with Mode-Specific Logic
+**Learning:** Components shared between different modes (Single vs Multi ticker) often compute derived state needed only for one mode. In `BacktestResultsView`, grouping trades by ticker (O(N)) was running even in SingleTicker mode where it's unused.
+**Action:** Explicitly check the `mode` prop before running expensive `useMemo` calculations derived from large datasets.
