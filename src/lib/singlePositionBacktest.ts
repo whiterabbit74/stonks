@@ -209,6 +209,9 @@ export function runSinglePositionBacktest(
   console.log(`💰 Position Size: 100% депозита на сделку`);
   console.log(`💹 Leverage: ${leverage.toFixed(1)}:1 (${(leverage * 100).toFixed(0)}%)`);
 
+  // Track peak value for O(1) drawdown calculation
+  let peakValue = portfolio.totalPortfolioValue;
+
   // Main loop
   for (let index = 0; index < sortedDates.length; index++) {
     const dateTime = sortedDates[index];
@@ -397,10 +400,10 @@ export function runSinglePositionBacktest(
     const finalPortfolio = updatePortfolioState(portfolio, currentPosition, tickersData, dateTime, strategy);
     Object.assign(portfolio, finalPortfolio);
 
-    // Calculate drawdown
-    const peakValue = equity.length > 0
-      ? Math.max(...equity.map(e => e.value), portfolio.totalPortfolioValue)
-      : portfolio.totalPortfolioValue;
+    // Calculate drawdown (optimized O(1))
+    if (portfolio.totalPortfolioValue > peakValue) {
+      peakValue = portfolio.totalPortfolioValue;
+    }
     const drawdown = peakValue > 0 ? ((peakValue - portfolio.totalPortfolioValue) / peakValue) * 100 : 0;
 
     equity.push({
