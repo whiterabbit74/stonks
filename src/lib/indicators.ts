@@ -158,40 +158,62 @@ export class IndicatorEngine {
     if (!ohlcData || ohlcData.length === 0) {
       throw new Error('OHLC data is required for IBS calculation');
     }
+
+    let invalidCount = 0;
+    let zeroRangeCount = 0;
+    let firstInvalidExample: { index: number, bar: OHLCData } | null = null;
+    let firstZeroRangeExample: { index: number, bar: OHLCData } | null = null;
     
-    return ohlcData.map((bar, index) => {
+    const result = ohlcData.map((bar, index) => {
       const { high, low, close } = bar;
       
       // Validate bar data
       if (high < low || close < low || close > high) {
-        // Log data quality issue and return neutral IBS
-        if (typeof window !== 'undefined') {
-          logWarn('calc', `Invalid OHLC data: H=${high}, L=${low}, C=${close}`, {
-            bar: index,
-            date: bar.date,
-            high,
-            low,
-            close
-          }, 'calculateIBS');
+        invalidCount++;
+        if (!firstInvalidExample) {
+          firstInvalidExample = { index, bar };
         }
         return 0.5; // Return neutral IBS
       }
       
       // Handle case where high equals low (no range) - prevents division by zero
       if (high === low) {
-        // Log zero-range bar and return neutral IBS
-        if (typeof window !== 'undefined') {
-          logInfo('calc', `Zero-range bar: H=L=${high}, C=${close}`, {
-            bar: index,
-            date: bar.date,
-            value: high
-          }, 'calculateIBS');
+        zeroRangeCount++;
+        if (!firstZeroRangeExample) {
+          firstZeroRangeExample = { index, bar };
         }
         return 0.5; // Return neutral IBS
       }
       
       return (close - low) / (high - low);
     });
+
+    // Log batched warnings/infos if issues were found to prevent console flooding
+    if (typeof window !== 'undefined') {
+      if (invalidCount > 0 && firstInvalidExample) {
+        const { index, bar } = firstInvalidExample;
+        logWarn('calc', `Found ${invalidCount} invalid OHLC bars. First at index ${index}: H=${bar.high}, L=${bar.low}, C=${bar.close}`, {
+          count: invalidCount,
+          firstIndex: index,
+          firstDate: bar.date,
+          high: bar.high,
+          low: bar.low,
+          close: bar.close
+        }, 'calculateIBS');
+      }
+
+      if (zeroRangeCount > 0 && firstZeroRangeExample) {
+        const { index, bar } = firstZeroRangeExample;
+        logInfo('calc', `Found ${zeroRangeCount} zero-range bars. First at index ${index}: H=L=${bar.high}, C=${bar.close}`, {
+          count: zeroRangeCount,
+          firstIndex: index,
+          firstDate: bar.date,
+          value: bar.high
+        }, 'calculateIBS');
+      }
+    }
+
+    return result;
   }
 
   /**
