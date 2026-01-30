@@ -87,46 +87,43 @@ export class IndicatorEngine {
     this.validatePeriod(period, data.length);
     
     const result: number[] = [];
-    const gains: number[] = [];
-    const losses: number[] = [];
     
-    // Track smoothed averages for O(N) performance (replacing expensive recalculation)
+    // Track smoothed averages for O(N) performance
     let avgGain = 0;
     let avgLoss = 0;
+
+    // Accumulators for initial average
+    let sumGains = 0;
+    let sumLosses = 0;
 
     // Calculate price changes
     for (let i = 0; i < data.length; i++) {
       if (i === 0) {
         result.push(NaN);
-        gains.push(0);
-        losses.push(0);
       } else {
         const change = data[i] - data[i - 1];
         const gain = change > 0 ? change : 0;
         const loss = change < 0 ? Math.abs(change) : 0;
 
-        gains.push(gain);
-        losses.push(loss);
-        
-        if (i < period) {
-          result.push(NaN);
-        } else if (i === period) {
-          // First RSI calculation using simple average
-          let sumGains = 0;
-          let sumLosses = 0;
-          for (let j = 1; j <= period; j++) {
-            sumGains += gains[j];
-            sumLosses += losses[j];
-          }
-          avgGain = sumGains / period;
-          avgLoss = sumLosses / period;
-          
-          if (avgLoss === 0) {
-            result.push(100);
+        if (i <= period) {
+          // Accumulate sums for the first 'period' changes (indices 1 to period)
+          sumGains += gain;
+          sumLosses += loss;
+
+          if (i < period) {
+            result.push(NaN);
           } else {
-            const rs = avgGain / avgLoss;
-            const rsi = 100 - (100 / (1 + rs));
-            result.push(rsi);
+            // i === period: First RSI calculation using simple average
+            avgGain = sumGains / period;
+            avgLoss = sumLosses / period;
+
+            if (avgLoss === 0) {
+              result.push(100);
+            } else {
+              const rs = avgGain / avgLoss;
+              const rsi = 100 - (100 / (1 + rs));
+              result.push(rsi);
+            }
           }
         } else {
           // Subsequent RSI calculations using smoothed averages
@@ -159,39 +156,38 @@ export class IndicatorEngine {
       throw new Error('OHLC data is required for IBS calculation');
     }
     
-    return ohlcData.map((bar, index) => {
+    let invalidCount = 0;
+    let zeroRangeCount = 0;
+
+    const result = ohlcData.map((bar) => {
       const { high, low, close } = bar;
       
       // Validate bar data
       if (high < low || close < low || close > high) {
-        // Log data quality issue and return neutral IBS
-        if (typeof window !== 'undefined') {
-          logWarn('calc', `Invalid OHLC data: H=${high}, L=${low}, C=${close}`, {
-            bar: index,
-            date: bar.date,
-            high,
-            low,
-            close
-          }, 'calculateIBS');
-        }
+        invalidCount++;
         return 0.5; // Return neutral IBS
       }
       
       // Handle case where high equals low (no range) - prevents division by zero
       if (high === low) {
-        // Log zero-range bar and return neutral IBS
-        if (typeof window !== 'undefined') {
-          logInfo('calc', `Zero-range bar: H=L=${high}, C=${close}`, {
-            bar: index,
-            date: bar.date,
-            value: high
-          }, 'calculateIBS');
-        }
+        zeroRangeCount++;
         return 0.5; // Return neutral IBS
       }
       
       return (close - low) / (high - low);
     });
+
+    // Log summary of data quality issues if any found
+    if (typeof window !== 'undefined') {
+      if (invalidCount > 0) {
+        logWarn('calc', `Found ${invalidCount} invalid bars in IBS calculation (H<L or C out of range)`, { count: invalidCount }, 'calculateIBS');
+      }
+      if (zeroRangeCount > 0) {
+        logInfo('calc', `Found ${zeroRangeCount} zero-range bars in IBS calculation (H=L)`, { count: zeroRangeCount }, 'calculateIBS');
+      }
+    }
+
+    return result;
   }
 
   /**
