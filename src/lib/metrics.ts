@@ -39,27 +39,34 @@ export class MetricsCalculator {
     const finalValue = this.getFinalValue();
     const tradingPeriodYears = this.getTradingPeriodYears();
 
+    // Pre-calculate statistics to avoid redundant O(N) iterations
+    const meanReturn = this.calculateMean(returns);
+    const cagr = this.calculateCAGR(finalValue, tradingPeriodYears);
+    const beta = this.calculateBeta(returns, meanReturn);
+    const maxDrawdown = this.calculateMaxDrawdown();
+    const totalReturn = this.calculateTotalReturn(finalValue);
+
     return {
       // Level 1 - Always Visible (Hero Metrics)
-      totalReturn: this.calculateTotalReturn(finalValue),
-      cagr: this.calculateCAGR(finalValue, tradingPeriodYears),
-      maxDrawdown: this.calculateMaxDrawdown(),
+      totalReturn: totalReturn,
+      cagr: cagr,
+      maxDrawdown: maxDrawdown,
       winRate: this.calculateWinRate(),
-      sharpeRatio: this.calculateSharpeRatio(returns),
+      sharpeRatio: this.calculateSharpeRatio(returns, meanReturn),
 
       // Level 2 - Show More (Risk-Adjusted Metrics)
-      sortinoRatio: this.calculateSortinoRatio(returns),
-      calmarRatio: this.calculateCalmarRatio(returns, tradingPeriodYears),
+      sortinoRatio: this.calculateSortinoRatio(returns, meanReturn),
+      calmarRatio: this.calculateCalmarRatio(cagr, maxDrawdown),
       profitFactor: this.calculateProfitFactor(),
       averageWin: this.calculateAverageWin(),
       averageLoss: this.calculateAverageLoss(),
 
       // Level 3 - Advanced (Statistical Metrics)
-      beta: this.calculateBeta(returns),
-      alpha: this.calculateAlpha(returns, tradingPeriodYears),
-      recoveryFactor: this.calculateRecoveryFactor(),
-      skewness: this.calculateSkewness(returns),
-      kurtosis: this.calculateKurtosis(returns),
+      beta: beta,
+      alpha: this.calculateAlpha(cagr, beta),
+      recoveryFactor: this.calculateRecoveryFactor(totalReturn, maxDrawdown),
+      skewness: this.calculateSkewness(returns, meanReturn),
+      kurtosis: this.calculateKurtosis(returns, meanReturn),
       valueAtRisk: this.calculateVaR(returns, 0.05)
     };
   }
@@ -174,11 +181,11 @@ export class MetricsCalculator {
   /**
    * Calculate Sharpe ratio (risk-adjusted return)
    */
-  private calculateSharpeRatio(returns: number[]): number {
+  private calculateSharpeRatio(returns: number[], mean?: number): number {
     if (returns.length === 0) return 0;
 
-    const meanReturn = this.calculateMean(returns);
-    const stdDev = this.calculateStandardDeviation(returns);
+    const meanReturn = mean ?? this.calculateMean(returns);
+    const stdDev = this.calculateStandardDeviation(returns, meanReturn);
 
     if (stdDev === 0) return 0;
 
@@ -197,10 +204,10 @@ export class MetricsCalculator {
   /**
    * Calculate Sortino ratio (downside deviation adjusted return)
    */
-  private calculateSortinoRatio(returns: number[]): number {
+  private calculateSortinoRatio(returns: number[], mean?: number): number {
     if (returns.length === 0) return 0;
 
-    const meanReturn = this.calculateMean(returns);
+    const meanReturn = mean ?? this.calculateMean(returns);
     const annualizedReturn = meanReturn * 252;
     const riskFreeRateAnnual = 0.02; // 2% годовых
     const marDaily = riskFreeRateAnnual / 252; // MAR на день
@@ -218,10 +225,7 @@ export class MetricsCalculator {
   /**
    * Calculate Calmar ratio (CAGR / Max Drawdown)
    */
-  private calculateCalmarRatio(_returns: number[], years: number): number {
-    const cagr = this.calculateCAGR(this.getFinalValue(), years);
-    const maxDrawdown = this.calculateMaxDrawdown();
-
+  private calculateCalmarRatio(cagr: number, maxDrawdown: number): number {
     if (maxDrawdown === 0) return 0;
     return cagr / maxDrawdown;
   }
@@ -294,14 +298,15 @@ export class MetricsCalculator {
   /**
    * Calculate beta (correlation with benchmark)
    */
-  private calculateBeta(returns: number[]): number {
+  private calculateBeta(returns: number[], returnsMean?: number): number {
     if (!this.benchmarkData || returns.length === 0) return 1.0; // Default beta
 
     const benchmarkReturns = this.calculateBenchmarkReturns();
     if (benchmarkReturns.length !== returns.length) return 1.0;
 
-    const covariance = this.calculateCovariance(returns, benchmarkReturns);
-    const benchmarkVariance = this.calculateVariance(benchmarkReturns);
+    const benchmarkMean = this.calculateMean(benchmarkReturns);
+    const covariance = this.calculateCovariance(returns, benchmarkReturns, returnsMean, benchmarkMean);
+    const benchmarkVariance = this.calculateVariance(benchmarkReturns, benchmarkMean);
 
     if (benchmarkVariance === 0) return 1.0;
     return covariance / benchmarkVariance;
@@ -310,11 +315,9 @@ export class MetricsCalculator {
   /**
    * Calculate alpha (excess return over benchmark)
    */
-  private calculateAlpha(returns: number[], years: number): number {
-    const cagr = this.calculateCAGR(this.getFinalValue(), years);
+  private calculateAlpha(cagr: number, beta: number): number {
     const riskFreeRate = 2; // 2% assumption
     const marketReturn = 8; // 8% market return assumption
-    const beta = this.calculateBeta(returns);
 
     return cagr - (riskFreeRate + beta * (marketReturn - riskFreeRate));
   }
@@ -322,10 +325,7 @@ export class MetricsCalculator {
   /**
    * Calculate recovery factor (total return / max drawdown)
    */
-  private calculateRecoveryFactor(): number {
-    const totalReturn = this.calculateTotalReturn(this.getFinalValue());
-    const maxDrawdown = this.calculateMaxDrawdown();
-
+  private calculateRecoveryFactor(totalReturn: number, maxDrawdown: number): number {
     if (maxDrawdown === 0) return totalReturn > 0 ? Infinity : 0;
     return totalReturn / maxDrawdown;
   }
@@ -333,16 +333,16 @@ export class MetricsCalculator {
   /**
    * Calculate skewness (asymmetry of return distribution)
    */
-  private calculateSkewness(returns: number[]): number {
+  private calculateSkewness(returns: number[], mean?: number): number {
     if (returns.length < 3) return 0;
 
-    const mean = this.calculateMean(returns);
-    const stdDev = this.calculateStandardDeviation(returns);
+    const m = mean ?? this.calculateMean(returns);
+    const stdDev = this.calculateStandardDeviation(returns, m);
 
     if (stdDev === 0) return 0;
 
     const skewness = returns.reduce((sum, ret) => {
-      return sum + Math.pow((ret - mean) / stdDev, 3);
+      return sum + Math.pow((ret - m) / stdDev, 3);
     }, 0) / returns.length;
 
     return skewness;
@@ -351,16 +351,16 @@ export class MetricsCalculator {
   /**
    * Calculate kurtosis (tail risk measure)
    */
-  private calculateKurtosis(returns: number[]): number {
+  private calculateKurtosis(returns: number[], mean?: number): number {
     if (returns.length < 4) return 0;
 
-    const mean = this.calculateMean(returns);
-    const stdDev = this.calculateStandardDeviation(returns);
+    const m = mean ?? this.calculateMean(returns);
+    const stdDev = this.calculateStandardDeviation(returns, m);
 
     if (stdDev === 0) return 0;
 
     const kurtosis = returns.reduce((sum, ret) => {
-      return sum + Math.pow((ret - mean) / stdDev, 4);
+      return sum + Math.pow((ret - m) / stdDev, 4);
     }, 0) / returns.length;
 
     return kurtosis - 3; // Excess kurtosis
@@ -437,11 +437,11 @@ export class MetricsCalculator {
   /**
    * Calculate standard deviation
    */
-  private calculateStandardDeviation(values: number[]): number {
+  private calculateStandardDeviation(values: number[], mean?: number): number {
     if (values.length === 0) return 0;
 
-    const mean = this.calculateMean(values);
-    const variance = values.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / values.length;
+    const m = mean ?? this.calculateMean(values);
+    const variance = values.reduce((sum, val) => sum + Math.pow(val - m, 2), 0) / values.length;
 
     return Math.sqrt(variance);
   }
@@ -449,11 +449,11 @@ export class MetricsCalculator {
   /**
    * Calculate variance
    */
-  private calculateVariance(values: number[]): number {
+  private calculateVariance(values: number[], mean?: number): number {
     if (values.length === 0) return 0;
 
-    const mean = this.calculateMean(values);
-    return values.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / values.length;
+    const m = mean ?? this.calculateMean(values);
+    return values.reduce((sum, val) => sum + Math.pow(val - m, 2), 0) / values.length;
   }
 
   /**
@@ -475,15 +475,15 @@ export class MetricsCalculator {
   /**
    * Calculate covariance between two series
    */
-  private calculateCovariance(series1: number[], series2: number[]): number {
+  private calculateCovariance(series1: number[], series2: number[], mean1?: number, mean2?: number): number {
     if (series1.length !== series2.length || series1.length === 0) return 0;
 
-    const mean1 = this.calculateMean(series1);
-    const mean2 = this.calculateMean(series2);
+    const m1 = mean1 ?? this.calculateMean(series1);
+    const m2 = mean2 ?? this.calculateMean(series2);
 
     const covariance = series1.reduce((sum, val1, index) => {
       const val2 = series2[index];
-      return sum + (val1 - mean1) * (val2 - mean2);
+      return sum + (val1 - m1) * (val2 - m2);
     }, 0) / series1.length;
 
     return covariance;
