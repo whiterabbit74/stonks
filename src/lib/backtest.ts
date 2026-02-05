@@ -9,7 +9,7 @@ import type {
 } from '../types';
 import type { IndicatorCondition } from '../types';
 import type { TradingDate } from './date-utils';
-import { isValidTradingDate, daysBetweenTradingDates, toChartTimestamp } from './date-utils';
+import { isValidTradingDate, daysBetweenTradingDates } from './date-utils';
 import { IndicatorEngine } from './indicators';
 import { MetricsCalculator } from './metrics';
 import { CleanBacktestEngine } from './clean-backtest';
@@ -77,7 +77,6 @@ export class BacktestEngine {
       trades: this.trades,
       metrics,
       equity: this.equity,
-      chartData: this.generateChartData(),
       insights: []
     };
 
@@ -835,19 +834,6 @@ export class BacktestEngine {
       }
     }
     console.log(`   Max consecutive days with IBS > ${highThreshold}: ${maxConsecutiveHigh}`);
-  }
-
-  /**
-   * Generate chart data for visualization
-   */
-  private generateChartData(): { time: number; open: number; high: number; low: number; close: number }[] {
-    return this.data.map((bar) => ({
-      time: toChartTimestamp(bar.date),
-      open: bar.open,
-      high: bar.high,
-      low: bar.low,
-      close: bar.close,
-    }));
   }
 
   /**
