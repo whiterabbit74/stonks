@@ -212,6 +212,13 @@ describe('MetricsCalculator - Critical Calculations', () => {
 
       expect(metrics.winRate).toBe(0);
     });
+
+    it('should expose total trades count for UI metrics blocks', () => {
+      const calculator = new MetricsCalculator(sampleTrades, sampleEquity, initialCapital);
+      const metrics = calculator.calculateAllMetrics();
+
+      expect(metrics.totalTrades).toBe(sampleTrades.length);
+    });
   });
 
   describe('profit factor calculation', () => {

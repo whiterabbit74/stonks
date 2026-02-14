@@ -101,6 +101,7 @@ export function useSingleTickerData() {
 
   const requestedTicker = searchParams.get('ticker');
   const effectiveSymbol = requestedTicker ? requestedTicker.toUpperCase() : symbol;
+  const autoloadRecoveryTicker = useRef<string | null>(null);
 
   const isDataReady = useMemo(() => {
     if (!backtestResults) return false;
@@ -120,13 +121,33 @@ export function useSingleTickerData() {
 
   // Load dataset when URL changes
   useEffect(() => {
-    if (requestedTicker) {
-      const upperTicker = requestedTicker.toUpperCase();
-      if (upperTicker !== symbol) {
+    if (!requestedTicker) {
+      autoloadRecoveryTicker.current = null;
+      return;
+    }
+
+    const upperTicker = requestedTicker.toUpperCase();
+    const isIdle = !isLoading && backtestStatus !== 'running';
+
+    if (upperTicker !== symbol) {
+      autoloadRecoveryTicker.current = null;
+      if (isIdle && !storeError) {
         loadDatasetFromServer(upperTicker).catch(console.error);
       }
+      return;
     }
-  }, [requestedTicker, symbol, loadDatasetFromServer]);
+
+    if (isDataReady) {
+      autoloadRecoveryTicker.current = null;
+      return;
+    }
+
+    // Recover once if autoload ended without error, but results for ticker are still not ready.
+    if (isIdle && !storeError && autoloadRecoveryTicker.current !== upperTicker) {
+      autoloadRecoveryTicker.current = upperTicker;
+      loadDatasetFromServer(upperTicker).catch(console.error);
+    }
+  }, [requestedTicker, symbol, isLoading, backtestStatus, storeError, isDataReady, loadDatasetFromServer]);
 
   // Sync URL with store
   useEffect(() => {

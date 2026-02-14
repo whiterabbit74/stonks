@@ -52,6 +52,7 @@ export class MetricsCalculator {
       cagr: cagr,
       maxDrawdown: maxDrawdown,
       winRate: this.calculateWinRate(),
+      totalTrades: this.trades.length,
       sharpeRatio: this.calculateSharpeRatio(returns, meanReturn),
 
       // Level 2 - Show More (Risk-Adjusted Metrics)

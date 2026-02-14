@@ -89,7 +89,7 @@ export function MultiTickerChart({ tickersData, trades = [], height = 600 }: Mul
               position: 'belowBar' as const,
               color: '#2196F3',
               shape: 'arrowUp' as const,
-              text: `Buy @ ${Math.floor(trade.entryPrice)}`
+              text: ''
             });
           } catch { /* ignore invalid dates */ }
         }
@@ -103,7 +103,7 @@ export function MultiTickerChart({ tickersData, trades = [], height = 600 }: Mul
               position: 'aboveBar' as const,
               color: '#2196F3',
               shape: 'arrowDown' as const,
-              text: `Sell @ ${Math.floor(trade.exitPrice)}`
+              text: ''
             });
           } catch { /* ignore invalid dates */ }
         }

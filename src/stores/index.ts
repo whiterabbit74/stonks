@@ -318,13 +318,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   loadDatasetsFromServer: async () => {
-    // Cancel any current dataset loading operation since we're refreshing the list
-    const currentState = get();
-    if (currentState.currentLoadOperation) {
-      currentState.currentLoadOperation.abort();
-    }
+    const hasActiveDatasetLoad = Boolean(get().currentLoadOperation);
 
-    set({ isLoading: true, error: null, currentLoadOperation: null });
+    // Do not interrupt active ticker loading while refreshing the library list.
+    if (!hasActiveDatasetLoad) {
+      set({ isLoading: true, error: null, currentLoadOperation: null });
+    }
 
     try {
       const datasets = await DatasetAPI.getDatasets();
@@ -335,20 +334,20 @@ export const useAppStore = create<AppState>((set, get) => ({
         const ticker = (d.ticker || (hasId ? d.id : null) || d.name).toUpperCase();
         return { ...d, ticker, name: ticker } as typeof d;
       });
-      set({
+      set((state) => ({
         savedDatasets: normalized,
-        isLoading: false
-      });
+        isLoading: state.currentLoadOperation ? state.isLoading : false
+      }));
       console.log(`Загружено ${normalized.length} датасетов с сервера`);
       try { logInfo('network', 'Datasets loaded from server', { count: normalized.length }, 'store.loadDatasetsFromServer'); } catch { /* ignore */ }
     } catch (error) {
       // Если сервер недоступен, просто логируем ошибку, но не показываем пользователю
       console.warn('Сервер недоступен, работаем без сохранения:', error instanceof Error ? error.message : 'Unknown error');
-      set({
-        savedDatasets: [],
-        isLoading: false,
-        error: null // Не показываем ошибку пользователю
-      });
+      set((state) => ({
+        savedDatasets: state.currentLoadOperation ? state.savedDatasets : [],
+        isLoading: state.currentLoadOperation ? state.isLoading : false,
+        error: state.currentLoadOperation ? state.error : null // Не показываем ошибку пользователю
+      }));
     }
   },
 
