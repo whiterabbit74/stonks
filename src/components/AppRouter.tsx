@@ -1,23 +1,42 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { Settings, Menu, X, Loader2 } from 'lucide-react';
 
 import { useAppStore } from '../stores';
-import { DataUpload } from './DataUpload';
-import { DataEnhancer } from './DataEnhancer';
-import { SingleTickerPage } from './SingleTickerPage';
-import { TelegramWatches } from './TelegramWatches';
-import { AppSettings } from './AppSettings';
-
-import { SplitsTab } from './SplitsTab';
-import { CalendarPage } from './CalendarPage';
-import { MultiTickerPage } from './MultiTickerPage';
-import { MultiTickerOptionsPage } from './MultiTickerOptionsPage';
 import { Footer } from './Footer';
 import { ThemeToggle } from './ThemeToggle';
 import { Logo } from './Logo';
 import { API_BASE_URL } from '../lib/api';
 import { ToastProvider, BottomNav } from './ui';
+
+const DataUpload = lazy(() => import('./DataUpload').then(m => ({ default: m.DataUpload })));
+const DataEnhancer = lazy(() => import('./DataEnhancer').then(m => ({ default: m.DataEnhancer })));
+const SingleTickerPage = lazy(() => import('./SingleTickerPage').then(m => ({ default: m.SingleTickerPage })));
+const TelegramWatches = lazy(() => import('./TelegramWatches').then(m => ({ default: m.TelegramWatches })));
+const AppSettings = lazy(() => import('./AppSettings').then(m => ({ default: m.AppSettings })));
+const SplitsTab = lazy(() => import('./SplitsTab').then(m => ({ default: m.SplitsTab })));
+const CalendarPage = lazy(() => import('./CalendarPage').then(m => ({ default: m.CalendarPage })));
+const MultiTickerPage = lazy(() => import('./MultiTickerPage').then(m => ({ default: m.MultiTickerPage })));
+const MultiTickerOptionsPage = lazy(() => import('./MultiTickerOptionsPage').then(m => ({ default: m.MultiTickerOptionsPage })));
+
+function RouteLoader() {
+  return (
+    <div className="w-full rounded-lg border border-gray-200 bg-white p-6 text-sm text-gray-600 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300">
+      <div className="flex items-center gap-2">
+        <Loader2 className="h-4 w-4 animate-spin text-indigo-600" />
+        <span>Загрузка раздела…</span>
+      </div>
+    </div>
+  );
+}
+
+function withRouteSuspense(element: React.ReactElement) {
+  return (
+    <Suspense fallback={<RouteLoader />}>
+      {element}
+    </Suspense>
+  );
+}
 
 // App is now always served from root '/'
 
@@ -331,15 +350,15 @@ export default function AppRouter() {
           <Route path="/login" element={<LoginPage />} />
           <Route element={<ProtectedLayout />}>
             <Route index element={<Navigate to="/data" replace />} />
-            <Route path="/data" element={<DataUpload />} />
-            <Route path="/enhance" element={<DataEnhancer />} />
-            <Route path="/results" element={<SingleTickerPage />} />
-            <Route path="/multi-ticker" element={<MultiTickerPage />} />
-            <Route path="/multi-ticker-options" element={<MultiTickerOptionsPage />} />
-            <Route path="/calendar" element={<CalendarPage />} />
-            <Route path="/split" element={<SplitsTab />} />
-            <Route path="/watches" element={<TelegramWatches />} />
-            <Route path="/settings" element={<AppSettings />} />
+            <Route path="/data" element={withRouteSuspense(<DataUpload />)} />
+            <Route path="/enhance" element={withRouteSuspense(<DataEnhancer />)} />
+            <Route path="/results" element={withRouteSuspense(<SingleTickerPage />)} />
+            <Route path="/multi-ticker" element={withRouteSuspense(<MultiTickerPage />)} />
+            <Route path="/multi-ticker-options" element={withRouteSuspense(<MultiTickerOptionsPage />)} />
+            <Route path="/calendar" element={withRouteSuspense(<CalendarPage />)} />
+            <Route path="/split" element={withRouteSuspense(<SplitsTab />)} />
+            <Route path="/watches" element={withRouteSuspense(<TelegramWatches />)} />
+            <Route path="/settings" element={withRouteSuspense(<AppSettings />)} />
           </Route>
           <Route path="*" element={<Navigate to="/data" replace />} />
         </Routes>

@@ -16,13 +16,24 @@ router.get('/settings', async (req, res) => {
 
 router.put('/settings', async (req, res) => {
     try {
-        const { watchThresholdPct, resultsQuoteProvider, enhancerProvider, resultsRefreshProvider, indicatorPanePercent, defaultMultiTickerSymbols } = req.body || {};
+        const {
+            watchThresholdPct,
+            resultsQuoteProvider,
+            enhancerProvider,
+            resultsRefreshProvider,
+            enablePostClosePriceActualization,
+            indicatorPanePercent,
+            defaultMultiTickerSymbols
+        } = req.body || {};
         const validProvider = (p) => ['alpha_vantage', 'finnhub', 'twelve_data'].includes(p);
         const next = getDefaultSettings();
         if (typeof watchThresholdPct === 'number') next.watchThresholdPct = watchThresholdPct;
         if (validProvider(resultsQuoteProvider)) next.resultsQuoteProvider = resultsQuoteProvider;
         if (validProvider(enhancerProvider)) next.enhancerProvider = enhancerProvider;
         if (validProvider(resultsRefreshProvider)) next.resultsRefreshProvider = resultsRefreshProvider;
+        if (typeof enablePostClosePriceActualization === 'boolean') {
+            next.enablePostClosePriceActualization = enablePostClosePriceActualization;
+        }
         if (typeof indicatorPanePercent === 'number' && indicatorPanePercent >= 0 && indicatorPanePercent <= 100) {
             next.indicatorPanePercent = indicatorPanePercent;
         }

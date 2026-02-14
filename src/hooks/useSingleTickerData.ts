@@ -32,6 +32,37 @@ const ET_YMD_FMT = new Intl.DateTimeFormat('en-US', {
   year: 'numeric', month: '2-digit', day: '2-digit'
 });
 
+type TradingCalendarData = {
+  metadata?: { years?: Array<string | number> };
+  holidays?: Record<string, Record<string, unknown> | unknown>;
+  shortDays?: Record<string, Record<string, unknown> | unknown>;
+  tradingHours?: {
+    normal?: { start?: string; end?: string };
+    short?: { start?: string; end?: string };
+  };
+};
+
+function hasCalendarDateEntry(
+  map: TradingCalendarData['holidays'] | TradingCalendarData['shortDays'],
+  y: number,
+  m: number,
+  d: number
+): boolean {
+  if (!map || typeof map !== 'object') return false;
+
+  const yearKey = String(y);
+  const monthDayKey = `${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  const fullDateKey = `${yearKey}-${monthDayKey}`;
+  const root = map as Record<string, unknown>;
+
+  const byYear = root[yearKey];
+  if (byYear && typeof byYear === 'object' && !Array.isArray(byYear)) {
+    return Boolean((byYear as Record<string, unknown>)[monthDayKey]);
+  }
+
+  return Boolean(root[fullDateKey]);
+}
+
 export function useSingleTickerData() {
   const [searchParams, setSearchParams] = useSearchParams();
   const backtestResults = useAppStore((s) => s.backtestResults);
@@ -62,13 +93,6 @@ export function useSingleTickerData() {
 
   const toast = useToastActions();
 
-  // Trading calendar
-  type TradingCalendarData = {
-    metadata: { years: string[] };
-    holidays: Record<string, Record<string, { name: string; type: string; description: string }>>;
-    shortDays: Record<string, Record<string, { name: string; type: string; description: string; hours?: number }>>;
-    tradingHours: { normal: { start: string; end: string }; short: { start: string; end: string } };
-  };
   const [tradingCalendar, setTradingCalendar] = useState<TradingCalendarData | null>(null);
 
   const symbol = useMemo(() => (
@@ -194,10 +218,7 @@ export function useSingleTickerData() {
     const isWeekendET = (p: { weekday: number }) => p.weekday === 0 || p.weekday === 6;
     const isHolidayET = (p: { y: number; m: number; d: number }) => {
       try {
-        if (!tradingCalendar) return false;
-        const y = String(p.y);
-        const key = `${String(p.m).padStart(2, '0')}-${String(p.d).padStart(2, '0')}`;
-        return !!(tradingCalendar.holidays[y] && tradingCalendar.holidays[y][key]);
+        return hasCalendarDateEntry(tradingCalendar?.holidays, p.y, p.m, p.d);
       } catch { return false; }
     };
     const parseHmToMinutes = (hm: string | undefined | null): number | null => {
@@ -209,10 +230,7 @@ export function useSingleTickerData() {
     };
     const isShortDayET = (p: { y: number; m: number; d: number }) => {
       try {
-        if (!tradingCalendar) return false;
-        const y = String(p.y);
-        const key = `${String(p.m).padStart(2, '0')}-${String(p.d).padStart(2, '0')}`;
-        return !!(tradingCalendar.shortDays[y] && tradingCalendar.shortDays[y][key]);
+        return hasCalendarDateEntry(tradingCalendar?.shortDays, p.y, p.m, p.d);
       } catch { return false; }
     };
     const getSessionForDateET = (p: { y: number; m: number; d: number }) => {
@@ -273,7 +291,21 @@ export function useSingleTickerData() {
   useEffect(() => {
     let isMounted = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    let isFetching = false;
     if (!symbol) return;
+
+    const clearTimer = () => {
+      if (timer) {
+        clearTimeout(timer);
+        timer = undefined;
+      }
+    };
+
+    const isPageVisible = () => {
+      if (typeof document === 'undefined') return true;
+      return !document.hidden;
+    };
+
     const isMarketOpenNow = () => {
       const fmtParts = ET_FULL_FMT.formatToParts(new Date());
       const map: Record<string, string> = {};
@@ -287,9 +319,9 @@ export function useSingleTickerData() {
       if (!isWeekday) return false;
       const ymd = ET_YMD_FMT.formatToParts(new Date()).reduce((acc: any, p) => { if (p.type !== 'literal') acc[p.type] = p.value; return acc; }, {});
       const ymdObj = { y: Number(ymd.year), m: Number(ymd.month), d: Number(ymd.day) };
-      const isHoliday = tradingCalendar ? !!(tradingCalendar.holidays[String(ymdObj.y)]?.[`${String(ymdObj.m).padStart(2, '0')}-${String(ymdObj.d).padStart(2, '0')}`]) : false;
+      const isHoliday = hasCalendarDateEntry(tradingCalendar?.holidays, ymdObj.y, ymdObj.m, ymdObj.d);
       if (isHoliday) return false;
-      const short = tradingCalendar ? !!(tradingCalendar.shortDays[String(ymdObj.y)]?.[`${String(ymdObj.m).padStart(2, '0')}-${String(ymdObj.d).padStart(2, '0')}`]) : false;
+      const short = hasCalendarDateEntry(tradingCalendar?.shortDays, ymdObj.y, ymdObj.m, ymdObj.d);
       const parseHm = (hm?: string) => {
          if (!hm || hm.indexOf(':') < 0) return null;
          const [h, m] = hm.split(':');
@@ -303,39 +335,78 @@ export function useSingleTickerData() {
     };
 
     setIsTrading(isMarketOpenNow());
+    const scheduleNext = (delayMs: number) => {
+      clearTimer();
+      timer = setTimeout(() => {
+        void fetchQuote();
+      }, delayMs);
+    };
+
     const fetchQuote = async () => {
+      if (!isMounted) return;
+      if (!isPageVisible()) {
+        setQuoteLoading(false);
+        return;
+      }
+
+      const open = isMarketOpenNow();
+      if (!open) {
+        setIsTrading(false);
+        setQuoteLoading(false);
+        scheduleNext(5 * 60 * 1000);
+        return;
+      }
+
+      if (isFetching) {
+        return;
+      }
+
+      isFetching = true;
+      setIsTrading(true);
+      setQuoteLoading(true);
       try {
-        const open = isMarketOpenNow();
-        if (!open) {
-          if (isMounted) setIsTrading(false);
-          if (timer) clearTimeout(timer);
-          timer = setTimeout(fetchQuote, 5 * 60 * 1000);
-          return;
-        }
-        if (isMounted) { setIsTrading(true); setQuoteLoading(true); }
         const q = await DatasetAPI.getQuote(symbol, (resultsQuoteProvider || 'finnhub') as any);
         if (isMounted) { setQuote(q); setQuoteError(null); setLastUpdatedAt(new Date()); }
       } catch (e) {
         if (isMounted) setQuoteError(e instanceof Error ? e.message : 'Не удалось получить котировку');
       } finally {
         if (isMounted) {
+          isFetching = false;
           setQuoteLoading(false);
-          if (timer) clearTimeout(timer);
-          timer = setTimeout(fetchQuote, 15000);
+          if (isPageVisible()) {
+            scheduleNext(15000);
+          } else {
+            clearTimer();
+          }
         }
       }
     };
+
+    const handleVisibilityChange = () => {
+      if (!isMounted || typeof document === 'undefined') return;
+      if (document.hidden) {
+        clearTimer();
+        setQuoteLoading(false);
+        return;
+      }
+      void fetchQuote();
+    };
+
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+    }
+
     fetchQuote();
-    return () => { isMounted = false; if (timer) clearTimeout(timer); };
+    return () => {
+      isMounted = false;
+      clearTimer();
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+      }
+    };
   }, [symbol, resultsQuoteProvider, tradingCalendar]);
 
-  // Auto run backtest
-  useEffect(() => {
-    if (!backtestResults && marketData.length > 0 && currentStrategy && backtestStatus !== 'running') {
-      runBacktest();
-    }
-  }, [backtestResults, marketData, currentStrategy, backtestStatus, runBacktest]);
-
+  // Auto run backtest (single entrypoint to avoid duplicate starts)
   useEffect(() => {
     if (!backtestResults && marketData.length > 0 && currentStrategy && backtestStatus === 'idle') {
       const t = setTimeout(() => { runBacktest(); }, 300);

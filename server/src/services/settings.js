@@ -15,6 +15,7 @@ function getDefaultSettings() {
         resultsQuoteProvider: 'alpha_vantage',
         enhancerProvider: 'finnhub',
         resultsRefreshProvider: 'finnhub',
+        enablePostClosePriceActualization: false,
         indicatorPanePercent: 30,
         defaultMultiTickerSymbols: 'SPY,QQQ,IWM'
     };

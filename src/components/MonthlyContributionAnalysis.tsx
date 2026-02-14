@@ -210,7 +210,7 @@ export function MonthlyContributionAnalysis({
             График капитала (сравнение со стандартным режимом)
           </h4>
           {results.equity.length > 0 ? (
-            <div className="w-full h-[440px] lg:h-[520px]">
+            <div className="w-full h-[560px] lg:h-[660px]">
               <EquityChart
                 equity={results.equity}
                 comparisonEquity={comparisonEquity}

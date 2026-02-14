@@ -169,7 +169,7 @@ export function OptionsAnalysis({ stockTrades, marketData }: OptionsAnalysisProp
                  </div>
             </div>
 
-            <div className="h-[500px]">
+            <div className="h-[620px] lg:h-[700px]">
                 <EquityChart equity={equity} />
             </div>
 

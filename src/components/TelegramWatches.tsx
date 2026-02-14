@@ -444,6 +444,8 @@ export function TelegramWatches() {
                         pricesMessage = `⏰ Цены: скрипт не запускался (${r.prices.currentTime || 'неизвестно'}, нужно: ${r.prices.targetRunTime || '16:16 ET'})`;
                       } else if (r.prices.reason === 'not_trading_day') {
                         pricesMessage = `📅 Цены: не торговый день, скрипт не запускался`;
+                      } else if (r.prices.reason === 'disabled_by_settings') {
+                        pricesMessage = '⏸️ Цены: автоактуализация после закрытия рынка выключена в настройках';
                       } else {
                         pricesMessage = `ℹ️ Цены: обновления не требуются`;
                       }
@@ -505,5 +507,4 @@ export function TelegramWatches() {
     </div>
   );
 }
-
 

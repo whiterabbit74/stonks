@@ -104,8 +104,6 @@ function getClientIp(req) {
         if (req.ip) return req.ip;
         if (Array.isArray(req.ips) && req.ips.length) return req.ips[0];
     } catch { }
-    const xf = (req.headers['x-forwarded-for'] || '').toString();
-    if (xf) return xf.split(',')[0].trim();
     return (req.socket && req.socket.remoteAddress) || 'unknown';
 }
 
@@ -136,8 +134,7 @@ function requireAuth(req, res, next) {
         req.path === '/api/login' ||
         req.path === '/api/logout' ||
         req.path === '/api/auth/check' ||
-        req.path === '/api/trading-calendar' ||
-        req.path.match(/^\/api\/datasets\/[^\/]+\/metadata$/)
+        req.path === '/api/trading-calendar'
     ) {
         return next();
     }
@@ -181,7 +178,7 @@ async function handleLogin(req, res) {
         const uok = !!username && String(username).toLowerCase() === ADMIN_USERNAME;
         if (!uok) {
             logLoginAttempt({ ip, success: false, reason: 'INVALID_USERNAME', username });
-            return res.status(401).json({ error: 'Invalid login' });
+            return res.status(401).json({ error: 'Invalid credentials' });
         }
 
         let passwordValid = false;
@@ -199,7 +196,7 @@ async function handleLogin(req, res) {
 
         if (!password || !passwordValid) {
             logLoginAttempt({ ip, success: false, reason: 'INVALID_PASSWORD', username });
-            return res.status(401).json({ error: 'Invalid password' });
+            return res.status(401).json({ error: 'Invalid credentials' });
         }
 
         const token = createToken();
@@ -208,7 +205,7 @@ async function handleLogin(req, res) {
         setAuthCookie(req, res, token, !!remember);
         loginRate.delete(ip);
         logLoginAttempt({ ip, success: true, username });
-        res.json({ success: true, token });
+        res.json({ success: true });
     } catch (e) {
         res.status(500).json({ error: 'Login failed' });
     }

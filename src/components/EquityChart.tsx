@@ -12,6 +12,7 @@ interface EquityChartProps {
 }
 
 export function EquityChart({ equity, hideHeader, comparisonEquity, comparisonLabel, primaryLabel }: EquityChartProps) {
+  const MIN_CHART_HEIGHT = 520;
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const tooltipRef = useRef<HTMLDivElement | null>(null);
@@ -55,7 +56,7 @@ export function EquityChart({ equity, hideHeader, comparisonEquity, comparisonLa
       // Create new chart
       const chart = createChart(chartContainerRef.current, {
         width: chartContainerRef.current.clientWidth,
-        height: chartContainerRef.current.clientHeight || 600,
+        height: Math.max(chartContainerRef.current.clientHeight || 0, MIN_CHART_HEIGHT),
         layout: {
           background: { color: bg },
           textColor: text,
@@ -203,7 +204,7 @@ export function EquityChart({ equity, hideHeader, comparisonEquity, comparisonLa
           try {
             chartRef.current.applyOptions({
               width: chartContainerRef.current.clientWidth,
-              height: Math.max(chartContainerRef.current.clientHeight || 0, 600),
+              height: Math.max(chartContainerRef.current.clientHeight || 0, MIN_CHART_HEIGHT),
             });
           } catch (error) {
             logError('chart', 'Failed to resize chart', {
@@ -287,9 +288,9 @@ export function EquityChart({ equity, hideHeader, comparisonEquity, comparisonLa
   };
 
   return (
-    <div className="w-full h-full">
+    <div className="w-full h-full min-h-0 flex flex-col">
       {!hideHeader && (
-        <div className="flex flex-wrap gap-4 mb-4 text-sm">
+        <div className="flex flex-wrap gap-4 mb-4 text-sm shrink-0">
           <div className="bg-gray-50 px-3 py-2 rounded border dark:bg-gray-800 dark:border-gray-700">
             <span className="text-gray-700 dark:text-gray-200">Итоговый портфель: {formatCurrency(finalValue)}</span>
           </div>
@@ -303,21 +304,21 @@ export function EquityChart({ equity, hideHeader, comparisonEquity, comparisonLa
           </div>
         </div>
       )}
-      <div className="w-full h-full">
+      <div className="w-full flex-1 min-h-0">
         <div ref={chartContainerRef} className="w-full h-full min-h-0 overflow-hidden" />
-        {hasComparisonLegend && (
-          <div className="mt-3 flex flex-wrap items-center gap-4 text-xs text-gray-500 dark:text-gray-400">
-            <div className="flex items-center gap-2">
-              <span className="h-2 w-2 rounded-full bg-indigo-500" />
-              <span>{primaryLegendLabel}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="h-2 w-2 rounded-full bg-orange-500" />
-              <span>{comparisonLegendLabel}</span>
-            </div>
-          </div>
-        )}
       </div>
+      {hasComparisonLegend && (
+        <div className="mt-3 flex flex-wrap items-center gap-4 text-xs text-gray-500 dark:text-gray-400 shrink-0">
+          <div className="flex items-center gap-2">
+            <span className="h-2 w-2 rounded-full bg-indigo-500" />
+            <span>{primaryLegendLabel}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="h-2 w-2 rounded-full bg-orange-500" />
+            <span>{comparisonLegendLabel}</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

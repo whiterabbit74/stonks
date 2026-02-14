@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { lazy, Suspense, useRef, useState } from 'react';
 import { MetricsGrid, AnalysisTabs, PageHeader, Select, Input, Label, Button, TickerInput } from './ui';
 import { useAppStore } from '../stores';
 import type { Strategy, Trade, EquityPoint } from '../types';
@@ -10,8 +10,8 @@ import { calculateBacktestMetrics } from '../lib/backtest-statistics';
 import type { BacktestMetrics } from '../lib/backtest-statistics';
 import { createStrategyFromTemplate, STRATEGY_TEMPLATES } from '../lib/strategy';
 import { useMultiTickerData } from '../hooks/useMultiTickerData';
-import { BacktestResultsView } from './BacktestResultsView';
 import { BacktestPageShell } from './BacktestPageShell';
+const BacktestResultsView = lazy(() => import('./BacktestResultsView').then((m) => ({ default: m.BacktestResultsView })));
 
 interface BacktestResults {
   equity: EquityPoint[];
@@ -19,6 +19,14 @@ interface BacktestResults {
   maxDrawdown: number;
   trades: Trade[];
   metrics: BacktestMetrics;
+}
+
+function ResultsPanelLoader() {
+  return (
+    <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600 dark:border-gray-700 dark:bg-gray-900/40 dark:text-gray-300">
+      Загрузка аналитики...
+    </div>
+  );
 }
 
 export function MultiTickerOptionsPage() {
@@ -46,6 +54,7 @@ export function MultiTickerOptionsPage() {
   type TabId = 'equity' | 'price' | 'tickerCharts' | 'drawdown' | 'trades' | 'profit' | 'duration' | 'splits';
   const [activeTab, setActiveTab] = useState<TabId>('equity');
   const [selectedTradeTicker, setSelectedTradeTicker] = useState<'all' | string>('all');
+  const lazyFallback = <ResultsPanelLoader />;
 
   const {
     tickersData,
@@ -287,21 +296,23 @@ export function MultiTickerOptionsPage() {
             />
 
             <div className="p-6">
-              <BacktestResultsView
-                  mode="options"
-                  activeTab={activeTab}
-                  backtestResults={backtestResults}
-                  tickersData={tickersData}
-                  strategy={activeStrategy}
-                  initialCapital={initialCapital}
-                  handlers={{
-                      isDataOutdated,
-                      handleRefreshTicker,
-                      refreshingTickers,
-                      selectedTradeTicker,
-                      setSelectedTradeTicker
-                  }}
-              />
+              <Suspense fallback={lazyFallback}>
+                <BacktestResultsView
+                    mode="options"
+                    activeTab={activeTab}
+                    backtestResults={backtestResults}
+                    tickersData={tickersData}
+                    strategy={activeStrategy}
+                    initialCapital={initialCapital}
+                    handlers={{
+                        isDataOutdated,
+                        handleRefreshTicker,
+                        refreshingTickers,
+                        selectedTradeTicker,
+                        setSelectedTradeTicker
+                    }}
+                />
+              </Suspense>
             </div>
           </div>
         )}

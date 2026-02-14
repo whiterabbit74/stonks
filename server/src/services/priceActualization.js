@@ -213,6 +213,16 @@ async function runPriceActualization(options = {}) {
     // Get configured provider
     const settings = await readSettings();
     const provider = settings.resultsRefreshProvider || 'finnhub';
+    const autoActualizationEnabled = settings.enablePostClosePriceActualization === true;
+
+    if (!force && !autoActualizationEnabled) {
+        return {
+            updated: false,
+            reason: 'disabled_by_settings',
+            todayKey,
+            provider
+        };
+    }
 
     // Check if we should run
     const cal = getCachedTradingCalendar();

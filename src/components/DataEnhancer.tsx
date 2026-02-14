@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { Search, Upload, Download, Loader2, AlertTriangle, CheckCircle, AlertCircle, Check, Settings, ChevronRight } from 'lucide-react';
 import { useAppStore } from '../stores';
 import { fetchWithCreds, API_BASE_URL } from '../lib/api';
@@ -150,12 +150,12 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
   };
 
   // Handle ticker selection from dropdown and trigger download
-  const handleTickerSelectAndDownload = useCallback((tickerSymbol: string) => {
+  const handleTickerSelectAndDownload = (tickerSymbol: string) => {
     setSearchQuery('');
     setShowDropdown(false);
     setHighlightedIndex(-1);
     handleDownloadData(tickerSymbol);
-  }, []);
+  };
 
   // Handle keyboard navigation in search
   const handleSearchKeyDown = (e: React.KeyboardEvent) => {

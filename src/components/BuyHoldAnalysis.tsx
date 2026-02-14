@@ -70,7 +70,7 @@ export function BuyHoldAnalysis({ marketData, initialCapital }: BuyHoldAnalysisP
             Текущее плечо: ×{buyHoldAppliedLeverage.toFixed(2)}
           </div>
         </div>
-        <div className="h-[60vh] min-h-[300px] md:min-h-[450px] max-h-[870px]">
+        <div className="h-[72vh] min-h-[560px] md:min-h-[700px] max-h-[1100px]">
           <EquityChart equity={buyHoldSimEquity.length ? buyHoldSimEquity : (buyHoldEquity as unknown as EquityPoint[])} />
         </div>
       </div>

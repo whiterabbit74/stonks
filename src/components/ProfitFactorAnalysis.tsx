@@ -124,7 +124,7 @@ export function ProfitFactorAnalysis({ trades }: ProfitFactorAnalysisProps) {
       </div>
 
       {/* Chart */}
-      <div className="flex-1 min-h-[300px] rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 overflow-hidden relative">
+      <div className="flex-1 min-h-[420px] rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 overflow-hidden relative">
          <div ref={containerRef} className="absolute inset-0" />
       </div>
     </div>

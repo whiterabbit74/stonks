@@ -61,6 +61,15 @@ const PRICE_ACTUALIZATION_DELAY_JITTER_MS = parseNonNegativeNumber(
 // Environment
 const IS_PROD = process.env.NODE_ENV === 'production';
 const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || 'http://localhost:5173';
+const TRUST_PROXY = (() => {
+    const raw = (process.env.TRUST_PROXY || '').toString().trim();
+    if (!raw) return false;
+    const lower = raw.toLowerCase();
+    if (lower === 'true') return true;
+    if (lower === 'false') return false;
+    if (/^\d+$/.test(raw)) return Number(raw);
+    return raw;
+})();
 
 // Auth constants
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '';
@@ -103,6 +112,7 @@ module.exports = {
     // Environment
     IS_PROD,
     FRONTEND_ORIGIN,
+    TRUST_PROXY,
 
     // Auth
     ADMIN_PASSWORD,

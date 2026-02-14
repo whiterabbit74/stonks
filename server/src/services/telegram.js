@@ -77,8 +77,8 @@ async function loadWatches(synchronizeWatchesWithTradeHistory, loadTradeHistory,
 
 async function sendTelegramMessage(chatId, text, parseMode = 'HTML') {
     const telegramBotToken = getApiConfig().TELEGRAM_BOT_TOKEN;
-
-    console.log(`TELEGRAM_BOT_TOKEN from env: "${telegramBotToken}" (length: ${telegramBotToken.length})`);
+    const tokenLength = typeof telegramBotToken === 'string' ? telegramBotToken.length : 0;
+    console.log(`Telegram bot token configured: ${tokenLength > 0 ? 'yes' : 'no'}${tokenLength > 0 ? ` (length: ${tokenLength})` : ''}`);
 
     if (!telegramBotToken) {
         console.warn('Telegram Token is MISSING or EMPTY');

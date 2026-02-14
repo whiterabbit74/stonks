@@ -43,7 +43,7 @@ describe('BacktestResultsView Logic Optimization', () => {
     }
   ] as any[];
 
-  it('renders all trades in single mode', () => {
+  it('renders all trades in single mode', async () => {
     render(
       <BacktestResultsView
         mode="single"
@@ -53,11 +53,11 @@ describe('BacktestResultsView Logic Optimization', () => {
       />
     );
 
-    const rows = screen.getAllByTestId('trade-row');
+    const rows = await screen.findAllByTestId('trade-row');
     expect(rows).toHaveLength(3);
   });
 
-  it('renders all trades in multi mode when selectedTradeTicker is all', () => {
+  it('renders all trades in multi mode when selectedTradeTicker is all', async () => {
     render(
       <BacktestResultsView
         mode="multi"
@@ -71,11 +71,11 @@ describe('BacktestResultsView Logic Optimization', () => {
       />
     );
 
-    const rows = screen.getAllByTestId('trade-row');
+    const rows = await screen.findAllByTestId('trade-row');
     expect(rows).toHaveLength(3);
   });
 
-  it('renders filtered trades in multi mode when specific ticker selected', () => {
+  it('renders filtered trades in multi mode when specific ticker selected', async () => {
     render(
       <BacktestResultsView
         mode="multi"
@@ -89,7 +89,7 @@ describe('BacktestResultsView Logic Optimization', () => {
       />
     );
 
-    const rows = screen.getAllByTestId('trade-row');
+    const rows = await screen.findAllByTestId('trade-row');
     expect(rows).toHaveLength(2);
     expect(rows[0].textContent).toBe('AAPL');
     expect(rows[1].textContent).toBe('AAPL');

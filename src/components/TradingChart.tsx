@@ -33,6 +33,7 @@ interface TradingChartProps {
 }
 
 export const TradingChart = memo(function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
+  const MIN_CHART_HEIGHT = 520;
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candlestickSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
@@ -107,7 +108,7 @@ export const TradingChart = memo(function TradingChart({ data, trades, splits = 
       const border = isDark ? '#374151' : '#e5e7eb';
 
       const el = chartContainerRef.current;
-      const totalH = el.clientHeight || 600;
+      const totalH = Math.max(el.clientHeight || 0, MIN_CHART_HEIGHT);
       const chart = createChart(el, {
         width: el.clientWidth,
         height: totalH,
@@ -227,11 +228,10 @@ export const TradingChart = memo(function TradingChart({ data, trades, splits = 
         if (!chartContainerRef.current || !chartRef.current) return;
         try {
           const w = chartContainerRef.current.clientWidth;
-          const total = chartContainerRef.current.clientHeight || 600;
+          const total = Math.max(chartContainerRef.current.clientHeight || 0, MIN_CHART_HEIGHT);
 
           if (chartRef.current && typeof (chartRef.current as any).applyOptions === 'function') {
-
-             (chartRef.current as any).applyOptions({ width: w, height: Math.max(total, 600) });
+             (chartRef.current as any).applyOptions({ width: w, height: total });
           }
         } catch {
            // ignore
@@ -386,7 +386,7 @@ export const TradingChart = memo(function TradingChart({ data, trades, splits = 
                 position: 'belowBar' as const,
                 color: '#2196F3',
                 shape: 'arrowUp' as const,
-                text: `Buy @ ${Math.floor(trade.entryPrice)}`,
+                text: '',
               },
             ];
             if (trade.exitReason !== 'end_of_data') {
@@ -395,7 +395,7 @@ export const TradingChart = memo(function TradingChart({ data, trades, splits = 
                 position: 'aboveBar' as const,
                 color: '#2196F3',
                 shape: 'arrowDown' as const,
-                text: `Sell @ ${Math.floor(trade.exitPrice)}`,
+                text: '',
               });
             }
             return markers;

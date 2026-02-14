@@ -161,7 +161,7 @@ export function DurationAnalysis({ trades }: DurationAnalysisProps) {
 			</div>
 
 			{/* Chart */}
-			<div ref={containerRef} className="w-full h-[500px] min-h-0 overflow-hidden rounded-lg border border-gray-100 dark:border-gray-800" />
+			<div ref={containerRef} className="w-full h-[560px] min-h-0 overflow-hidden rounded-lg border border-gray-100 dark:border-gray-800" />
 
 			{/* Bottom Analysis Tables */}
 			<div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

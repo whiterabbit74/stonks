@@ -66,9 +66,11 @@ interface AppState {
   resultsQuoteProvider: 'alpha_vantage' | 'finnhub' | 'twelve_data';
   resultsRefreshProvider: 'alpha_vantage' | 'finnhub' | 'twelve_data';
   enhancerProvider: 'alpha_vantage' | 'finnhub' | 'twelve_data';
+  enablePostClosePriceActualization: boolean;
   setResultsQuoteProvider: (p: 'alpha_vantage' | 'finnhub' | 'twelve_data') => void;
   setResultsRefreshProvider: (p: 'alpha_vantage' | 'finnhub' | 'twelve_data') => void;
   setEnhancerProvider: (p: 'alpha_vantage' | 'finnhub' | 'twelve_data') => void;
+  setEnablePostClosePriceActualization: (enabled: boolean) => void;
   loadJSONData: (file: File) => Promise<void>;
   loadDatasetsFromServer: () => Promise<void>;
   saveDatasetToServer: (ticker: string, name?: string, metadata?: { companyName?: string; tag?: string }) => Promise<void>;
@@ -98,6 +100,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   resultsQuoteProvider: 'finnhub',
   resultsRefreshProvider: 'finnhub',
   enhancerProvider: 'alpha_vantage',
+  enablePostClosePriceActualization: false,
   watchThresholdPct: 5,
   indicatorPanePercent: 10,
   defaultMultiTickerSymbols: 'AAPL,MSFT,AMZN,MAGS',
@@ -163,6 +166,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         resultsQuoteProvider: s.resultsQuoteProvider,
         enhancerProvider: s.enhancerProvider,
         resultsRefreshProvider: s.resultsRefreshProvider || s.resultsQuoteProvider,
+        enablePostClosePriceActualization: s.enablePostClosePriceActualization === true,
         indicatorPanePercent: typeof s.indicatorPanePercent === 'number' ? s.indicatorPanePercent : 10,
         defaultMultiTickerSymbols: typeof s.defaultMultiTickerSymbols === 'string' ? s.defaultMultiTickerSymbols : 'AAPL,MSFT,AMZN,MAGS',
         commissionType: (s.commissionType as 'fixed' | 'percentage' | 'combined') || 'percentage',
@@ -177,8 +181,30 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   saveSettingsToServer: async () => {
     try {
-      const { watchThresholdPct, resultsQuoteProvider, enhancerProvider, resultsRefreshProvider, indicatorPanePercent, defaultMultiTickerSymbols, commissionType, commissionFixed, commissionPercentage } = get();
-      await DatasetAPI.saveAppSettings({ watchThresholdPct, resultsQuoteProvider, enhancerProvider, resultsRefreshProvider, indicatorPanePercent, defaultMultiTickerSymbols, commissionType, commissionFixed, commissionPercentage });
+      const {
+        watchThresholdPct,
+        resultsQuoteProvider,
+        enhancerProvider,
+        resultsRefreshProvider,
+        enablePostClosePriceActualization,
+        indicatorPanePercent,
+        defaultMultiTickerSymbols,
+        commissionType,
+        commissionFixed,
+        commissionPercentage
+      } = get();
+      await DatasetAPI.saveAppSettings({
+        watchThresholdPct,
+        resultsQuoteProvider,
+        enhancerProvider,
+        resultsRefreshProvider,
+        enablePostClosePriceActualization,
+        indicatorPanePercent,
+        defaultMultiTickerSymbols,
+        commissionType,
+        commissionFixed,
+        commissionPercentage
+      });
       // analysisTabsConfig теперь сохраняется автоматически в localStorage
     } catch (e) {
       console.warn('Failed to save app settings:', e instanceof Error ? e.message : e);
@@ -218,6 +244,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   setResultsQuoteProvider: (p: 'alpha_vantage' | 'finnhub' | 'twelve_data') => set({ resultsQuoteProvider: p }),
   setResultsRefreshProvider: (p: 'alpha_vantage' | 'finnhub' | 'twelve_data') => set({ resultsRefreshProvider: p }),
   setEnhancerProvider: (p: 'alpha_vantage' | 'finnhub' | 'twelve_data') => set({ enhancerProvider: p }),
+  setEnablePostClosePriceActualization: (enabled: boolean) => set({ enablePostClosePriceActualization: enabled }),
 
   setWatchThresholdPct: (value: number) => {
     set({ watchThresholdPct: value });

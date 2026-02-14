@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { daysBetweenTradingDates, toTradingDate } from '../date-utils';
+import { daysBetweenTradingDates } from '../date-utils';
 
 describe('DST Duration Calculation', () => {
     // Scenario described by user: March 10 to March 18, 2023 (8 days).

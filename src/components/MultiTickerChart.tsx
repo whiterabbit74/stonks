@@ -132,7 +132,9 @@ export function MultiTickerChart({ tickersData, trades = [], height = 600 }: Mul
   }, []);
 
   useEffect(() => {
-    if (!chartContainerRef.current || !preparedTickersData.length) return;
+    const containerEl = chartContainerRef.current;
+    if (!containerEl || !preparedTickersData.length) return;
+    const seriesRefs = seriesRefsRef.current;
 
     try {
       // Clean up previous chart if any
@@ -147,7 +149,7 @@ export function MultiTickerChart({ tickersData, trades = [], height = 600 }: Mul
         }
         try { chartRef.current.remove(); } catch { /* ignore */ }
         chartRef.current = null;
-        seriesRefsRef.current.clear();
+        seriesRefs.clear();
       }
 
       const bg = isDark ? '#0b1220' : '#ffffff';
@@ -156,8 +158,8 @@ export function MultiTickerChart({ tickersData, trades = [], height = 600 }: Mul
       const border = isDark ? '#374151' : '#e5e7eb';
 
       // Create chart with multiple price scales for subplots
-      const chart = createChart(chartContainerRef.current, {
-        width: chartContainerRef.current.clientWidth,
+      const chart = createChart(containerEl, {
+        width: containerEl.clientWidth,
         height: height,
         layout: {
           background: { color: bg },
@@ -255,7 +257,7 @@ export function MultiTickerChart({ tickersData, trades = [], height = 600 }: Mul
       // createChart creates a div inside chartContainerRef.current.
       // So our labels will be siblings or children.
 
-      const existingLabels = chartContainerRef.current.querySelectorAll('.ticker-label-overlay');
+      const existingLabels = containerEl.querySelectorAll('.ticker-label-overlay');
       existingLabels.forEach(el => el.remove());
 
       const tickerLabels = document.createElement('div');
@@ -282,13 +284,13 @@ export function MultiTickerChart({ tickersData, trades = [], height = 600 }: Mul
         tickerLabels.appendChild(label);
       });
 
-      chartContainerRef.current.appendChild(tickerLabels);
+      containerEl.appendChild(tickerLabels);
 
       // Handle resize
       const handleResize = () => {
-        if (!chartContainerRef.current || !chartRef.current) return;
+        if (!chartRef.current) return;
         try {
-          const newWidth = chartContainerRef.current.clientWidth;
+          const newWidth = containerEl.clientWidth;
           chartRef.current.applyOptions({
             width: newWidth,
             height: height,
@@ -321,7 +323,7 @@ export function MultiTickerChart({ tickersData, trades = [], height = 600 }: Mul
             resizeHandlerRef.current = null;
         }
 
-        seriesRefsRef.current.clear();
+        seriesRefs.clear();
 
         if (chartRef.current) {
             try { chartRef.current.remove(); } catch { /* ignore */ }
@@ -329,10 +331,8 @@ export function MultiTickerChart({ tickersData, trades = [], height = 600 }: Mul
         }
 
         // Cleanup labels
-        if (chartContainerRef.current) {
-             const labels = chartContainerRef.current.querySelectorAll('.ticker-label-overlay');
-             labels.forEach(el => el.remove());
-        }
+        const labels = containerEl.querySelectorAll('.ticker-label-overlay');
+        labels.forEach(el => el.remove());
     };
   }, [preparedTickersData, markersByTicker, height, isDark]);
 

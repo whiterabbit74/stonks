@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { Heart, RefreshCcw, AlertTriangle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { DatasetAPI } from '../lib/api';
@@ -7,23 +7,31 @@ import { useAppStore } from '../stores';
 import { ChartContainer, AnalysisTabs, MetricsGrid, Button } from './ui';
 import { TickerCard } from './TickerCard';
 import { InfoModal } from './InfoModal';
-import { BacktestResultsView } from './BacktestResultsView';
 import { StrategyInfoCard } from './StrategyInfoCard';
-import { MarginSimulator } from './MarginSimulator';
-import { BuyAtCloseSimulator } from './BuyAtCloseSimulator';
-import { BuyAtClose4Simulator } from './BuyAtClose4Simulator';
-import { NoStopLossSimulator } from './NoStopLossSimulator';
-import { OptionsAnalysis } from './OptionsAnalysis';
-import { OpenDayDrawdownChart } from './OpenDayDrawdownChart';
 import { useSingleTickerData } from '../hooks/useSingleTickerData';
 import { BacktestPageShell } from './BacktestPageShell';
-import { BuyHoldAnalysis } from './BuyHoldAnalysis';
+const BacktestResultsView = lazy(() => import('./BacktestResultsView').then((m) => ({ default: m.BacktestResultsView })));
+const MarginSimulator = lazy(() => import('./MarginSimulator').then((m) => ({ default: m.MarginSimulator })));
+const BuyAtCloseSimulator = lazy(() => import('./BuyAtCloseSimulator').then((m) => ({ default: m.BuyAtCloseSimulator })));
+const BuyAtClose4Simulator = lazy(() => import('./BuyAtClose4Simulator').then((m) => ({ default: m.BuyAtClose4Simulator })));
+const NoStopLossSimulator = lazy(() => import('./NoStopLossSimulator').then((m) => ({ default: m.NoStopLossSimulator })));
+const OptionsAnalysis = lazy(() => import('./OptionsAnalysis').then((m) => ({ default: m.OptionsAnalysis })));
+const OpenDayDrawdownChart = lazy(() => import('./OpenDayDrawdownChart').then((m) => ({ default: m.OpenDayDrawdownChart })));
+const BuyHoldAnalysis = lazy(() => import('./BuyHoldAnalysis').then((m) => ({ default: m.BuyHoldAnalysis })));
 
 // Reusable Intl formatters
 const ET_YMD_FMT = new Intl.DateTimeFormat('en-US', {
   timeZone: 'America/New_York',
   year: 'numeric', month: '2-digit', day: '2-digit'
 });
+
+function ResultsSectionLoader() {
+  return (
+    <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600 dark:border-gray-700 dark:bg-gray-900/40 dark:text-gray-300">
+      Загрузка аналитики...
+    </div>
+  );
+}
 
 export function SingleTickerPage() {
   const navigate = useNavigate();
@@ -104,14 +112,16 @@ export function SingleTickerPage() {
   }, [marketData]);
 
   const initialCapital = Number(currentStrategy?.riskManagement?.initialCapital ?? 10000);
+  const lazyFallback = <ResultsSectionLoader />;
 
   // If not data ready, show Shell with loading or selection
   if (!isDataReady) {
     if (requestedTicker || effectiveSymbol) {
       const displaySymbol = requestedTicker || effectiveSymbol || 'данных';
+      const isBusy = isLoading || backtestStatus === 'running';
       return (
         <BacktestPageShell
-          isLoading={true}
+          isLoading={isBusy}
           loadingMessage={
             isLoading
               ? `Загрузка данных ${displaySymbol}...`
@@ -119,22 +129,28 @@ export function SingleTickerPage() {
                 ? `Ошибка загрузки ${displaySymbol}`
                 : (backtestStatus === 'running' ? 'Запуск бэктеста…' : `Подготовка ${displaySymbol}…`))
           }
-          error={storeError}
+          error={null}
         >
-          {/* We can show extra controls here if needed, but for now Shell handles basic loading */}
-          {!isLoading && backtestStatus !== 'running' && storeError && (
-               <div className="flex justify-center">
-                 <Button
-                   onClick={() => {
-                     if (requestedTicker) loadDatasetFromServer(requestedTicker.toUpperCase());
-                     else if (effectiveSymbol) loadDatasetFromServer(effectiveSymbol.toUpperCase());
-                     else runBacktest();
-                   }}
-                   className="mt-2"
-                 >
-                   Повторить загрузку
-                 </Button>
-               </div>
+          {!isBusy && (
+            <div className="max-w-lg mx-auto text-center p-4 border rounded-lg bg-white dark:bg-gray-900 dark:border-gray-800 space-y-3">
+              <p className={`text-sm ${storeError ? 'text-red-600 dark:text-red-400' : 'text-gray-600 dark:text-gray-300'}`}>
+                {storeError
+                  ? String(storeError)
+                  : `Автозагрузка данных ${displaySymbol} не завершилась. Повторите попытку.`}
+              </p>
+              <div className="flex justify-center">
+                <Button
+                  onClick={() => {
+                    if (requestedTicker) loadDatasetFromServer(requestedTicker.toUpperCase());
+                    else if (effectiveSymbol) loadDatasetFromServer(effectiveSymbol.toUpperCase());
+                    else runBacktest();
+                  }}
+                  className="mt-1"
+                >
+                  Повторить загрузку
+                </Button>
+              </div>
+            </div>
           )}
         </BacktestPageShell>
       );
@@ -239,8 +255,8 @@ export function SingleTickerPage() {
     <div className="space-y-6 animate-fade-in">
       {/* Header section */}
       <section className="rounded-xl border bg-white p-4 dark:bg-gray-900 dark:border-gray-800">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="space-y-2 md:col-span-1">
+        <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(280px,500px)] gap-4">
+          <div className="space-y-2">
             <div className="flex items-center gap-3 w-full">
               <div className="text-4xl sm:text-5xl font-black tracking-tight text-gray-900 dark:text-gray-100">
                 {symbol || '—'}
@@ -379,7 +395,7 @@ export function SingleTickerPage() {
             </div>
           </div>
 
-          <div className="md:col-span-2">
+          <div className="w-full">
             <TickerCard
               ticker={symbol || ''}
               data={marketData}
@@ -436,11 +452,13 @@ export function SingleTickerPage() {
               Дубли дат в данных: {duplicateDateKeys.join(', ')}
             </div>
           )}
-          <MetricsGrid
-            finalValue={augmentedResults.finalValue}
-            maxDrawdown={augmentedResults.maxDrawdown}
-            metrics={augmentedResults.metrics}
-          />
+          <section className="rounded-xl border bg-white p-4 dark:bg-gray-900 dark:border-gray-800">
+            <MetricsGrid
+              finalValue={augmentedResults.finalValue}
+              maxDrawdown={augmentedResults.maxDrawdown}
+              metrics={augmentedResults.metrics}
+            />
+          </section>
 
           <section className="rounded-xl border bg-white p-4 dark:bg-gray-900 dark:border-gray-800">
             <div className="flex items-center justify-between mb-4">
@@ -454,28 +472,30 @@ export function SingleTickerPage() {
               className="mb-4"
             />
 
-            {renderSpecificTab() || (
-              <BacktestResultsView
-                 mode="single"
-                 activeTab={activeChart}
-                 backtestResults={augmentedResults}
-                 marketData={marketData}
-                 currentSplits={currentSplits}
-                 symbol={symbol}
-                 strategy={currentStrategy}
-                 initialCapital={initialCapital}
-                 extraEquityInfo={
-                   <div className="mb-4 mt-2">
-                     <StrategyInfoCard
-                        strategy={currentStrategy}
-                        lowIBS={lowIBS}
-                        highIBS={highIBS}
-                        maxHoldDays={maxHoldDays}
-                     />
-                   </div>
-                 }
-              />
-            )}
+            <Suspense fallback={lazyFallback}>
+              {renderSpecificTab() || (
+                <BacktestResultsView
+                  mode="single"
+                  activeTab={activeChart}
+                  backtestResults={augmentedResults}
+                  marketData={marketData}
+                  currentSplits={currentSplits}
+                  symbol={symbol}
+                  strategy={currentStrategy}
+                  initialCapital={initialCapital}
+                  extraEquityInfo={
+                    <div className="mb-4 mt-2">
+                      <StrategyInfoCard
+                         strategy={currentStrategy}
+                         lowIBS={lowIBS}
+                         highIBS={highIBS}
+                         maxHoldDays={maxHoldDays}
+                      />
+                    </div>
+                  }
+                />
+              )}
+            </Suspense>
           </section>
         </div>
       </div>
@@ -484,4 +504,3 @@ export function SingleTickerPage() {
     </div>
   );
 }
-

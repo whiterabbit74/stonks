@@ -13,9 +13,11 @@ export function AppSettings() {
   const resultsQuoteProvider = useAppStore(s => s.resultsQuoteProvider);
   const resultsRefreshProvider = useAppStore(s => s.resultsRefreshProvider);
   const enhancerProvider = useAppStore(s => s.enhancerProvider);
+  const enablePostClosePriceActualization = useAppStore(s => s.enablePostClosePriceActualization);
   const setResultsQuoteProvider = useAppStore(s => s.setResultsQuoteProvider);
   const setResultsRefreshProvider = useAppStore(s => s.setResultsRefreshProvider);
   const setEnhancerProvider = useAppStore(s => s.setEnhancerProvider);
+  const setEnablePostClosePriceActualization = useAppStore(s => s.setEnablePostClosePriceActualization);
   const watchThresholdPct = useAppStore(s => s.watchThresholdPct);
   const setWatchThresholdPct = useAppStore(s => s.setWatchThresholdPct);
   const indicatorPanePercent = useAppStore(s => s.indicatorPanePercent);
@@ -46,30 +48,57 @@ export function AppSettings() {
     resultsQuoteProvider: string;
     resultsRefreshProvider: string;
     enhancerProvider: string;
+    enablePostClosePriceActualization: boolean;
     analysisTabsConfig: typeof analysisTabsConfig;
   } | null>(null);
 
   useEffect(() => {
+    let isCancelled = false;
     setIsLoadingSettings(true);
-    loadSettingsFromServer().finally(() => {
-      setIsLoadingSettings(false);
-      // Store initial values after first load
-      setTimeout(() => {
-        setInitialValues({
-          watchThresholdPct,
-          indicatorPanePercent,
-          defaultMultiTickerSymbols,
-          commissionType,
-          commissionFixed,
-          commissionPercentage,
-          resultsQuoteProvider,
-          resultsRefreshProvider,
-          enhancerProvider,
-          analysisTabsConfig
-        });
-      }, 100);
-    });
+    loadSettingsFromServer()
+      .catch(() => {
+        // Store handles error state separately.
+      })
+      .finally(() => {
+        if (!isCancelled) {
+          setIsLoadingSettings(false);
+        }
+      });
+    return () => {
+      isCancelled = true;
+    };
   }, [loadSettingsFromServer]);
+
+  useEffect(() => {
+    if (isLoadingSettings || initialValues) return;
+    setInitialValues({
+      watchThresholdPct,
+      indicatorPanePercent,
+      defaultMultiTickerSymbols,
+      commissionType,
+      commissionFixed,
+      commissionPercentage,
+      resultsQuoteProvider,
+      resultsRefreshProvider,
+      enhancerProvider,
+      enablePostClosePriceActualization,
+      analysisTabsConfig
+    });
+  }, [
+    isLoadingSettings,
+    initialValues,
+    watchThresholdPct,
+    indicatorPanePercent,
+    defaultMultiTickerSymbols,
+    commissionType,
+    commissionFixed,
+    commissionPercentage,
+    resultsQuoteProvider,
+    resultsRefreshProvider,
+    enhancerProvider,
+    enablePostClosePriceActualization,
+    analysisTabsConfig
+  ]);
 
   // Check for unsaved changes
   const hasUnsavedChanges = useMemo(() => {
@@ -85,9 +114,10 @@ export function AppSettings() {
       resultsQuoteProvider !== initial.resultsQuoteProvider ||
       resultsRefreshProvider !== initial.resultsRefreshProvider ||
       enhancerProvider !== initial.enhancerProvider ||
+      enablePostClosePriceActualization !== initial.enablePostClosePriceActualization ||
       JSON.stringify(analysisTabsConfig) !== JSON.stringify(initial.analysisTabsConfig)
     );
-  }, [initialValues, watchThresholdPct, indicatorPanePercent, defaultMultiTickerSymbols, commissionType, commissionFixed, commissionPercentage, resultsQuoteProvider, resultsRefreshProvider, enhancerProvider, analysisTabsConfig]);
+  }, [initialValues, watchThresholdPct, indicatorPanePercent, defaultMultiTickerSymbols, commissionType, commissionFixed, commissionPercentage, resultsQuoteProvider, resultsRefreshProvider, enhancerProvider, enablePostClosePriceActualization, analysisTabsConfig]);
 
   const [saving, setSaving] = useState(false);
   const [saveOk, setSaveOk] = useState<string | null>(null);
@@ -499,6 +529,24 @@ export function AppSettings() {
             </label>
           </div>
         </div>
+
+        <div className="mt-4 rounded p-3 border bg-gray-50 dark:bg-gray-800 dark:border-gray-700">
+          <label className="flex items-start gap-3 text-sm text-gray-700 dark:text-gray-300">
+            <input
+              type="checkbox"
+              checked={enablePostClosePriceActualization}
+              onChange={(e) => setEnablePostClosePriceActualization(e.target.checked)}
+              className="mt-0.5 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 dark:bg-gray-900 dark:border-gray-700"
+            />
+            <span>
+              Автоактуализация цен после закрытия рынка (T+16 минут)
+              <span className="block text-xs text-gray-500 dark:text-gray-400 mt-1">
+                Серверный запуск через 16-30 минут после закрытия. По умолчанию выключено.
+              </span>
+            </span>
+          </label>
+        </div>
+
         <div className="mt-3 flex items-center gap-2">
           <button onClick={saveProviders} disabled={saving} className="px-3 py-1.5 rounded-md bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:bg-gray-400">
             {saving ? 'Сохранение…' : 'Сохранить'}
@@ -952,6 +1000,7 @@ export function AppSettings() {
         resultsQuoteProvider,
         resultsRefreshProvider,
         enhancerProvider,
+        enablePostClosePriceActualization,
         analysisTabsConfig
       });
     } catch (e) {
@@ -1110,6 +1159,4 @@ export function AppSettings() {
     </div>
   );
 }
-
-
 

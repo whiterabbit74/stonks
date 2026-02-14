@@ -1,19 +1,30 @@
 import { ChartContainer } from './ui';
 import { ErrorBoundary } from './ErrorBoundary';
-import { TradingChart } from './TradingChart';
-import { EquityChart } from './EquityChart';
-import { TradeDrawdownChart } from './TradeDrawdownChart';
-import { TickerCardsGrid } from './TickerCardsGrid';
-import { TradesTable } from './TradesTable';
-import { ProfitFactorAnalysis } from './ProfitFactorAnalysis';
-import { DurationAnalysis } from './DurationAnalysis';
-import { SplitsList } from './SplitsList';
-import { MultiTickerChart } from './MultiTickerChart';
 import type { OHLCData, Trade, EquityPoint, SplitEvent, Strategy, TickerData } from '../types';
-import { useMemo } from 'react';
+import { lazy, Suspense, useMemo } from 'react';
 import type { ReactNode } from 'react';
 import { formatCurrencyCompact } from '../lib/singlePositionBacktest';
 import { calculateTradeStats } from '../lib/trade-utils';
+
+const EMPTY_TRADES: Trade[] = [];
+const EMPTY_EQUITY: EquityPoint[] = [];
+const TradingChart = lazy(() => import('./TradingChart').then((m) => ({ default: m.TradingChart })));
+const EquityChart = lazy(() => import('./EquityChart').then((m) => ({ default: m.EquityChart })));
+const TradeDrawdownChart = lazy(() => import('./TradeDrawdownChart').then((m) => ({ default: m.TradeDrawdownChart })));
+const TickerCardsGrid = lazy(() => import('./TickerCardsGrid').then((m) => ({ default: m.TickerCardsGrid })));
+const TradesTable = lazy(() => import('./TradesTable').then((m) => ({ default: m.TradesTable })));
+const ProfitFactorAnalysis = lazy(() => import('./ProfitFactorAnalysis').then((m) => ({ default: m.ProfitFactorAnalysis })));
+const DurationAnalysis = lazy(() => import('./DurationAnalysis').then((m) => ({ default: m.DurationAnalysis })));
+const SplitsList = lazy(() => import('./SplitsList').then((m) => ({ default: m.SplitsList })));
+const MultiTickerChart = lazy(() => import('./MultiTickerChart').then((m) => ({ default: m.MultiTickerChart })));
+
+function TabContentLoader() {
+  return (
+    <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600 dark:border-gray-700 dark:bg-gray-900/40 dark:text-gray-300">
+      Загрузка аналитики...
+    </div>
+  );
+}
 
 interface BacktestResultsViewProps {
   mode: 'single' | 'multi' | 'options';
@@ -67,8 +78,9 @@ export function BacktestResultsView({
   extraEquityInfo
 }: BacktestResultsViewProps) {
 
-  const trades = backtestResults?.trades || [];
-  const equity = backtestResults?.equity || [];
+  const trades = backtestResults?.trades ?? EMPTY_TRADES;
+  const equity = backtestResults?.equity ?? EMPTY_EQUITY;
+  const lazyFallback = <TabContentLoader />;
 
   // For Multi Ticker Trades Tab logic
   const tradesByTicker = useMemo(() => {
@@ -115,9 +127,11 @@ export function BacktestResultsView({
   if (activeTab === 'price') {
     if (mode === 'single') {
        return (
-          <ChartContainer height="65vh" className="min-h-[300px] md:min-h-[500px] max-h-[900px] mt-4 mb-6">
+          <ChartContainer height="72vh" className="min-h-[560px] md:min-h-[700px] max-h-[1100px] mt-4 mb-6">
             <ErrorBoundary>
-              <TradingChart data={marketData || []} trades={trades} splits={currentSplits} />
+              <Suspense fallback={lazyFallback}>
+                <TradingChart data={marketData || []} trades={trades} splits={currentSplits} />
+              </Suspense>
             </ErrorBoundary>
           </ChartContainer>
        );
@@ -125,7 +139,9 @@ export function BacktestResultsView({
        return (
           <ChartContainer title="Сводный график тикеров">
             <ErrorBoundary>
-              <MultiTickerChart tickersData={tickersData || []} trades={trades} height={650} />
+              <Suspense fallback={lazyFallback}>
+                <MultiTickerChart tickersData={tickersData || []} trades={trades} height={650} />
+              </Suspense>
             </ErrorBoundary>
           </ChartContainer>
        );
@@ -140,9 +156,11 @@ export function BacktestResultsView({
            {/* Injected Strategy Info */}
            {extraEquityInfo}
 
-           <div className="h-[60vh] min-h-[300px] md:min-h-[450px] max-h-[870px]">
+           <div className="h-[72vh] min-h-[560px] md:min-h-[700px] max-h-[1100px]">
              <ErrorBoundary>
-               <EquityChart equity={equity} />
+               <Suspense fallback={lazyFallback}>
+                 <EquityChart equity={equity} />
+               </Suspense>
              </ErrorBoundary>
            </div>
          </div>
@@ -154,11 +172,13 @@ export function BacktestResultsView({
                 title="График капитала"
                 isEmpty={!equity.length}
                 emptyMessage="Нет данных по equity"
-                height={500}
+                height={620}
               >
-                <div className="w-full h-[500px]">
+                <div className="w-full h-[620px]">
                   <ErrorBoundary>
-                    <EquityChart equity={equity} hideHeader />
+                    <Suspense fallback={lazyFallback}>
+                      <EquityChart equity={equity} hideHeader />
+                    </Suspense>
                   </ErrorBoundary>
                 </div>
             </ChartContainer>
@@ -171,14 +191,16 @@ export function BacktestResultsView({
   if (activeTab === 'tickerCharts' && (mode === 'multi' || mode === 'options')) {
       const highIBS = Number(strategy?.parameters?.highIBS ?? 0.75);
       return (
-        <TickerCardsGrid
-          tickersData={tickersData || []}
-          tradesByTicker={tradesByTicker}
-          highIBS={highIBS}
-          isDataOutdated={handlers?.isDataOutdated || (() => false)}
-          handleRefreshTicker={handlers?.handleRefreshTicker || (() => {})}
-          refreshingTickers={handlers?.refreshingTickers || new Set()}
-        />
+        <Suspense fallback={lazyFallback}>
+          <TickerCardsGrid
+            tickersData={tickersData || []}
+            tradesByTicker={tradesByTicker}
+            highIBS={highIBS}
+            isDataOutdated={handlers?.isDataOutdated || (() => false)}
+            handleRefreshTicker={handlers?.handleRefreshTicker || (() => {})}
+            refreshingTickers={handlers?.refreshingTickers || new Set()}
+          />
+        </Suspense>
       );
   }
 
@@ -190,7 +212,9 @@ export function BacktestResultsView({
 
       return (
           <ChartContainer title={mode === 'single' ? undefined : "Анализ просадки"}>
-            <TradeDrawdownChart trades={trades} initialCapital={capital} />
+            <Suspense fallback={lazyFallback}>
+              <TradeDrawdownChart trades={trades} initialCapital={capital} />
+            </Suspense>
           </ChartContainer>
       );
   }
@@ -201,10 +225,12 @@ export function BacktestResultsView({
          return (
               <div className="space-y-4">
                 {trades.length > 0 && (
-                  <TradesTable
-                    trades={trades}
-                    exportFileNamePrefix={`trades-${symbol || 'backtest'}`}
-                  />
+                  <Suspense fallback={lazyFallback}>
+                    <TradesTable
+                      trades={trades}
+                      exportFileNamePrefix={`trades-${symbol || 'backtest'}`}
+                    />
+                  </Suspense>
                 )}
               </div>
          );
@@ -269,10 +295,12 @@ export function BacktestResultsView({
                 {filteredTrades.length > 0 ? (
                   <div className="-mx-6 overflow-x-auto">
                     <div className="min-w-full px-6">
-                      <TradesTable
-                        trades={filteredTrades}
-                        exportFileNamePrefix={mode === 'options' ? `options-trades-${currentTicker}` : `trades-${currentTicker === 'all' ? 'all-tickers' : currentTicker}`}
-                      />
+                      <Suspense fallback={lazyFallback}>
+                        <TradesTable
+                          trades={filteredTrades}
+                          exportFileNamePrefix={mode === 'options' ? `options-trades-${currentTicker}` : `trades-${currentTicker === 'all' ? 'all-tickers' : currentTicker}`}
+                        />
+                      </Suspense>
                     </div>
                   </div>
                 ) : (
@@ -296,7 +324,9 @@ export function BacktestResultsView({
             isEmpty={!trades.length}
             emptyMessage="Нет сделок для отображения"
           >
-            <ProfitFactorAnalysis trades={trades} />
+            <Suspense fallback={lazyFallback}>
+              <ProfitFactorAnalysis trades={trades} />
+            </Suspense>
           </ChartContainer>
       );
   }
@@ -305,7 +335,9 @@ export function BacktestResultsView({
   if (activeTab === 'duration') {
       return (
           <ChartContainer title={mode === 'single' ? undefined : "Анализ длительности сделок"}>
-            <DurationAnalysis trades={trades} />
+            <Suspense fallback={lazyFallback}>
+              <DurationAnalysis trades={trades} />
+            </Suspense>
           </ChartContainer>
       );
   }
@@ -314,11 +346,15 @@ export function BacktestResultsView({
   if (activeTab === 'splits') {
       if (mode === 'single') {
          return (
-            <SplitsList splits={currentSplits || []} ticker={symbol || ''} />
+            <Suspense fallback={lazyFallback}>
+              <SplitsList splits={currentSplits || []} ticker={symbol || ''} />
+            </Suspense>
          );
       } else {
          return (
-            <SplitsList tickersData={tickersData || []} totalSplitsCount={totalSplitsCount} />
+            <Suspense fallback={lazyFallback}>
+              <SplitsList tickersData={tickersData || []} totalSplitsCount={totalSplitsCount} />
+            </Suspense>
          );
       }
   }

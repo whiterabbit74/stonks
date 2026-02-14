@@ -5,7 +5,7 @@
 
 // Load configuration first (handles dotenv)
 const config = require('./src/config');
-const { PORT, DATASETS_DIR, FRONTEND_ORIGIN, IS_PROD, getApiConfig } = config;
+const { PORT, DATASETS_DIR, FRONTEND_ORIGIN, IS_PROD, TRUST_PROXY, getApiConfig } = config;
 
 const express = require('express');
 const cors = require('cors');
@@ -32,7 +32,7 @@ const { ensureRegularFileSync } = require('./src/utils/files');
 
 // Create Express app
 const app = express();
-app.set('trust proxy', true);
+app.set('trust proxy', TRUST_PROXY);
 app.disable('x-powered-by');
 
 // Apply global middleware
@@ -171,7 +171,7 @@ app.listen(PORT, () => {
       console.warn('Scheduler error:', e && e.message ? e.message : e);
     }
   }, 20000);
-  console.log('📅 Smart scheduler started: T-11/T-1 messages and price actualization (every 20s)');
+  console.log('📅 Smart scheduler started: T-11/T-1 messages and post-close price actualization (if enabled, every 20s)');
 });
 
 module.exports = app;

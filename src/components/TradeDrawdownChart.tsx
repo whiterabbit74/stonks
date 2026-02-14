@@ -197,7 +197,7 @@ export function TradeDrawdownChart({ trades, initialCapital }: TradeDrawdownChar
       </div>
 
       {/* Chart Container */}
-      <div ref={chartContainerRef} className="w-full h-[400px] sm:h-[500px] min-h-0 overflow-hidden border rounded-lg" />
+      <div ref={chartContainerRef} className="w-full h-[460px] sm:h-[560px] min-h-0 overflow-hidden border rounded-lg" />
     </div>
   );
 }

@@ -4,9 +4,8 @@ import type { Trade, OHLCData } from '../../types';
 
 // Mock optionsMath to return predictable values
 vi.mock('../optionsMath', async (importOriginal) => {
-    const actual = await importOriginal();
+    const actual = await importOriginal<typeof import('../optionsMath')>();
     return {
-        // @ts-ignore
         ...actual,
         calculateVolatility: () => 0.2, // Fixed 20% vol
         blackScholes: () => 5.0, // Fixed option price $5.00
