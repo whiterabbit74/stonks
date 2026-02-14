@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { createChart, type IChartApi, type ISeriesApi, type UTCTimestamp } from 'lightweight-charts';
+import { HistogramSeries, createChart, type IChartApi, type ISeriesApi } from 'lightweight-charts';
 import type { OHLCData, Trade } from '../types';
+import { toChartTimestamp, toTradingDate } from '../lib/date-utils';
 
 interface OpenDayDrawdownChartProps {
   trades: Trade[];
@@ -24,7 +25,7 @@ export function OpenDayDrawdownChart({ trades, data }: OpenDayDrawdownChartProps
 
   // Map OHLC by YYYY-MM-DD for fast lookup
   const dateKey = (d: Date | string) => {
-    try { return new Date(d).toISOString().slice(0, 10); } catch { return String(d).slice(0, 10); }
+    try { return toTradingDate(d); } catch { return String(d).slice(0, 10); }
   };
   const ohlcByDay = new Map<string, OHLCData>();
   for (const bar of data) {
@@ -33,10 +34,10 @@ export function OpenDayDrawdownChart({ trades, data }: OpenDayDrawdownChartProps
 
   const rows = trades.map((t) => {
     const bar = ohlcByDay.get(dateKey(t.entryDate));
-    if (!bar) return { time: Math.floor(new Date(t.entryDate).getTime() / 1000) as UTCTimestamp, value: 0, open: 0, low: 0 };
+    if (!bar) return { time: toChartTimestamp(t.entryDate), value: 0, open: 0, low: 0 };
     const dropPct = bar.open > 0 ? ((bar.open - bar.low) / bar.open) * 100 : 0; // % drop from open to low
     return {
-      time: Math.floor(new Date(t.entryDate).getTime() / 1000) as UTCTimestamp,
+      time: toChartTimestamp(t.entryDate),
       value: -dropPct, // negative to show drawdown below zero
       open: bar.open,
       low: bar.low,
@@ -62,6 +63,7 @@ export function OpenDayDrawdownChart({ trades, data }: OpenDayDrawdownChartProps
     const border = isDark ? '#374151' : '#e5e7eb';
 
     const chart = createChart(containerRef.current, {
+      autoSize: true,
       width: containerRef.current.clientWidth,
       height: containerRef.current.clientHeight || 400,
       layout: { background: { color: bg }, textColor: text },
@@ -72,7 +74,7 @@ export function OpenDayDrawdownChart({ trades, data }: OpenDayDrawdownChartProps
     });
     chartRef.current = chart;
 
-    const series: ISeriesApi<'Histogram'> = chart.addHistogramSeries({
+    const series: ISeriesApi<'Histogram'> = chart.addSeries(HistogramSeries, {
       color: isDark ? 'rgba(239,68,68,0.85)' : 'rgba(239,68,68,0.9)',
       base: 0,
       priceFormat: { type: 'price', precision: 2, minMove: 0.01 },
@@ -88,13 +90,7 @@ export function OpenDayDrawdownChart({ trades, data }: OpenDayDrawdownChartProps
       // Ignore price line creation errors
     }
 
-    const handleResize = () => {
-      if (!containerRef.current || !chart) return;
-      chart.applyOptions({ width: containerRef.current.clientWidth, height: Math.max(containerRef.current.clientHeight || 0, 360) });
-    };
-    window.addEventListener('resize', handleResize);
     return () => {
-      window.removeEventListener('resize', handleResize);
       try { chart.remove(); } catch {
         // Ignore chart cleanup errors
       }

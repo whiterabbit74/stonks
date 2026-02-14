@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { createChart, type IChartApi, type ISeriesApi, type UTCTimestamp } from 'lightweight-charts';
+import { HistogramSeries, createChart, type IChartApi, type ISeriesApi } from 'lightweight-charts';
 import type { Trade } from '../types';
+import { toChartTimestamp } from '../lib/date-utils';
 
 interface DurationAnalysisProps {
 	trades: Trade[];
@@ -74,6 +75,7 @@ export function DurationAnalysis({ trades }: DurationAnalysisProps) {
 		const border = isDark ? '#374151' : '#e5e7eb';
 
 		const chart = createChart(containerRef.current, {
+			autoSize: true,
 			width: containerRef.current.clientWidth,
 			height: containerRef.current.clientHeight || 400,
 			layout: { background: { color: bg }, textColor: text },
@@ -84,7 +86,7 @@ export function DurationAnalysis({ trades }: DurationAnalysisProps) {
 		});
 		chartRef.current = chart;
 
-		const series: ISeriesApi<'Histogram'> = chart.addHistogramSeries({
+		const series: ISeriesApi<'Histogram'> = chart.addSeries(HistogramSeries, {
 			color: isDark ? 'rgba(59,130,246,0.7)' : 'rgba(59,130,246,0.9)',
 			base: 0,
 			priceFormat: { type: 'price', precision: 0, minMove: 1 },
@@ -94,7 +96,7 @@ export function DurationAnalysis({ trades }: DurationAnalysisProps) {
 		const red = isDark ? 'rgba(239,68,68,0.75)' : 'rgba(239,68,68,0.9)';
 
 		const data = trades.map((t) => ({
-			time: Math.floor(new Date(t.exitDate).getTime() / 1000) as UTCTimestamp,
+			time: toChartTimestamp(t.exitDate),
 			value: Math.round(t.duration ?? 0),
 			color: (t.pnl ?? 0) >= 0 ? green : red,
 		}));
@@ -117,13 +119,7 @@ export function DurationAnalysis({ trades }: DurationAnalysisProps) {
 			} catch { /* ignore */ }
 		}
 
-		const handleResize = () => {
-			if (!containerRef.current || !chart) return;
-			chart.applyOptions({ width: containerRef.current.clientWidth, height: Math.max(containerRef.current.clientHeight || 0, 360) });
-		};
-		window.addEventListener('resize', handleResize);
 		return () => {
-			window.removeEventListener('resize', handleResize);
 			try { chart.remove(); } catch { /* ignore */ }
 		};
 	}, [trades, isDark, stats]);

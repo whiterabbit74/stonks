@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, useMemo } from 'react';
-import { createChart, type IChartApi, type ISeriesApi, type UTCTimestamp } from 'lightweight-charts';
+import { HistogramSeries, LineSeries, createChart, type IChartApi, type ISeriesApi } from 'lightweight-charts';
 import type { Trade } from '../types';
 import { calculateTradeStats } from '../lib/trade-utils';
 import { formatMoney } from '../lib/formatters';
+import { toChartTimestamp } from '../lib/date-utils';
 
 interface ProfitFactorAnalysisProps {
   trades: Trade[];
@@ -43,6 +44,7 @@ export function ProfitFactorAnalysis({ trades }: ProfitFactorAnalysisProps) {
     const border = isDark ? '#374151' : '#e5e7eb';
 
     const chart = createChart(containerRef.current, {
+      autoSize: true,
       width: containerRef.current.clientWidth,
       height: containerRef.current.clientHeight || 400,
       layout: { background: { color: bg }, textColor: text },
@@ -53,14 +55,14 @@ export function ProfitFactorAnalysis({ trades }: ProfitFactorAnalysisProps) {
     });
     chartRef.current = chart;
 
-    const series: ISeriesApi<'Histogram'> = chart.addHistogramSeries({
+    const series: ISeriesApi<'Histogram'> = chart.addSeries(HistogramSeries, {
       color: isDark ? 'rgba(156,163,175,0.5)' : 'rgba(107,114,128,0.5)',
       base: 0,
       priceFormat: { type: 'price', precision: 2, minMove: 0.01 },
     });
 
     const data = trades.map((t) => ({
-      time: Math.floor(new Date(t.exitDate).getTime() / 1000) as UTCTimestamp,
+      time: toChartTimestamp(t.exitDate),
       value: t.pnlPercent ?? 0,
       color: (t.pnlPercent ?? 0) >= 0
         ? (isDark ? 'rgba(16,185,129,0.7)' : 'rgba(16,185,129,0.9)')
@@ -68,24 +70,14 @@ export function ProfitFactorAnalysis({ trades }: ProfitFactorAnalysisProps) {
     }));
     series.setData(data);
 
-    const zeroLine = chart.addLineSeries({
+    const zeroLine = chart.addSeries(LineSeries, {
       color: isDark ? '#9ca3af' : '#9ca3af',
       lineWidth: 1,
       lineStyle: 2,
       title: '0%'
     });
     zeroLine.setData(data.map(d => ({ time: d.time, value: 0 })));
-
-    const handleResize = () => {
-      if (!containerRef.current || !chart) return;
-      chart.applyOptions({
-        width: containerRef.current.clientWidth,
-        height: Math.max(containerRef.current.clientHeight || 0, 360)
-      });
-    };
-    window.addEventListener('resize', handleResize);
     return () => {
-      window.removeEventListener('resize', handleResize);
       try { chart.remove(); } catch { /* ignore */ }
     };
   }, [trades, isDark]);

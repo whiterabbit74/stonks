@@ -1,5 +1,16 @@
-import { useEffect, useRef, useState, useMemo } from 'react';
-import { createChart, type IChartApi, type ISeriesApi, type UTCTimestamp } from 'lightweight-charts';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  CandlestickSeries,
+  LineSeries,
+  createChart,
+  createSeriesMarkers,
+  type IChartApi,
+  type ISeriesApi,
+  type ISeriesMarkersPluginApi,
+  type SeriesMarker,
+  type Time,
+  type UTCTimestamp,
+} from 'lightweight-charts';
 import type { OHLCData, Trade } from '../types';
 import { logError } from '../lib/error-logger';
 import { toChartTimestamp } from '../lib/date-utils';
@@ -16,99 +27,141 @@ interface MultiTickerChartProps {
   height?: number;
 }
 
+type ViewMode = 'candles' | 'normalized';
+
+const PALETTE = [
+  { up: '#10B981', down: '#EF4444', line: '#10B981' },
+  { up: '#3B82F6', down: '#F59E0B', line: '#3B82F6' },
+  { up: '#8B5CF6', down: '#EF4444', line: '#8B5CF6' },
+  { up: '#06B6D4', down: '#F97316', line: '#06B6D4' },
+  { up: '#84CC16', down: '#DC2626', line: '#84CC16' },
+  { up: '#F97316', down: '#2563EB', line: '#F97316' },
+  { up: '#14B8A6', down: '#BE185D', line: '#14B8A6' },
+  { up: '#EAB308', down: '#7C3AED', line: '#EAB308' },
+];
+
 export function MultiTickerChart({ tickersData, trades = [], height = 600 }: MultiTickerChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
-  const seriesRefsRef = useRef<Map<string, ISeriesApi<'Candlestick'>>>(new Map());
-  const unsubscribeRef = useRef<(() => void) | null>(null);
-  const resizeHandlerRef = useRef<(() => void) | null>(null);
+  const candleSeriesRefsRef = useRef<Map<string, ISeriesApi<'Candlestick'>>>(new Map());
+  const lineSeriesRefsRef = useRef<Map<string, ISeriesApi<'Line'>>>(new Map());
+  const markersApiRefsRef = useRef<Map<string, ISeriesMarkersPluginApi<Time>>>(new Map());
+
   const [isDark, setIsDark] = useState<boolean>(() =>
     typeof document !== 'undefined' ? document.documentElement.classList.contains('dark') : false
   );
+  const [viewMode, setViewMode] = useState<ViewMode>('candles');
+  const [maxVisibleTickers, setMaxVisibleTickers] = useState<number>(6);
+  const [selectedTickers, setSelectedTickers] = useState<string[]>([]);
 
-  // Memoize data preparation to avoid recalculation on re-renders (e.g. theme change)
   const preparedTickersData = useMemo(() => {
-    return tickersData.map(tickerData => {
-      const chartData = tickerData.data.map((bar, idx) => {
-        try {
-          // Optimization: Use toChartTimestamp which is faster and safer than new Date(string)
-          // toChartTimestamp uses Date.UTC which avoids parsing overhead
-          const t = toChartTimestamp(bar.date);
-          const open = Number(bar.open);
-          const high = Number(bar.high);
-          const low = Number(bar.low);
-          const close = Number(bar.close);
+    return tickersData.map((tickerData) => {
+      const chartData = tickerData.data
+        .map((bar, idx) => {
+          try {
+            const t = toChartTimestamp(bar.date);
+            const open = Number(bar.open);
+            const high = Number(bar.high);
+            const low = Number(bar.low);
+            const close = Number(bar.close);
 
-          if (!Number.isFinite(open) || !Number.isFinite(high) ||
-            !Number.isFinite(low) || !Number.isFinite(close)) {
-            logError('chart', 'Invalid candle values', {
-              ticker: tickerData.ticker, idx, bar
-            }, 'MultiTickerChart.setData');
+            if (!Number.isFinite(open) || !Number.isFinite(high) || !Number.isFinite(low) || !Number.isFinite(close)) {
+              logError('chart', 'Invalid candle values', { ticker: tickerData.ticker, idx, bar }, 'MultiTickerChart.prepare');
+              return null;
+            }
+
+            return { time: t, open, high, low, close };
+          } catch (e) {
+            logError('chart', 'Failed to map candle', { ticker: tickerData.ticker, idx, bar }, 'MultiTickerChart.prepare', (e as Error)?.stack);
             return null;
           }
-          return { time: t, open, high, low, close };
-        } catch (e) {
-          logError('chart', 'Failed to map candle', {
-            ticker: tickerData.ticker, idx, bar
-          }, 'MultiTickerChart.setData', (e as any)?.stack);
-          return null;
-        }
-      }).filter((bar): bar is { time: UTCTimestamp; open: number; high: number; low: number; close: number } => bar !== null);
+        })
+        .filter((bar): bar is { time: UTCTimestamp; open: number; high: number; low: number; close: number } => bar !== null)
+        .sort((a, b) => (a.time as number) - (b.time as number));
+
+      const baseClose = chartData[0]?.close ?? 0;
+      const normalizedData = baseClose > 0
+        ? chartData.map((bar) => ({ time: bar.time, value: Number(((bar.close / baseClose) * 100).toFixed(4)) }))
+        : [];
 
       return {
         ...tickerData,
-        chartData
+        chartData,
+        normalizedData,
       };
     });
   }, [tickersData]);
 
-  // Memoize markers preparation
+  useEffect(() => {
+    const available = preparedTickersData.map((t) => t.ticker);
+    if (!available.length) {
+      setSelectedTickers([]);
+      return;
+    }
+
+    setSelectedTickers((prev) => {
+      const filtered = prev.filter((ticker) => available.includes(ticker));
+      if (filtered.length > 0) return filtered;
+      return available.slice(0, Math.min(available.length, maxVisibleTickers));
+    });
+  }, [preparedTickersData, maxVisibleTickers]);
+
+  const selectedPreparedTickers = useMemo(() => {
+    const active = preparedTickersData.filter((t) => selectedTickers.includes(t.ticker));
+    const fallback = active.length ? active : preparedTickersData;
+    return fallback.slice(0, maxVisibleTickers);
+  }, [preparedTickersData, selectedTickers, maxVisibleTickers]);
+
+  const hiddenSelectedCount = Math.max(
+    0,
+    preparedTickersData.filter((t) => selectedTickers.includes(t.ticker)).length - selectedPreparedTickers.length
+  );
+
+  const visibleTickerKey = useMemo(() => selectedPreparedTickers.map((t) => t.ticker).join('|'), [selectedPreparedTickers]);
+
   const markersByTicker = useMemo(() => {
-    const map = new Map<string, Array<{ time: UTCTimestamp; position: 'belowBar' | 'aboveBar'; color: string; shape: 'arrowUp' | 'arrowDown'; text: string }>>();
+    const map = new Map<string, SeriesMarker<Time>[]>();
     if (!trades.length) return map;
 
-    // Group trades by ticker first
     const tradesByTicker = new Map<string, Trade[]>();
-    trades.forEach(t => {
-      const ticker = (t.context?.ticker || '').toUpperCase();
+    trades.forEach((trade) => {
+      const ticker = (trade.context?.ticker || '').toUpperCase();
       if (!ticker) return;
       if (!tradesByTicker.has(ticker)) tradesByTicker.set(ticker, []);
-      tradesByTicker.get(ticker)!.push(t);
+      tradesByTicker.get(ticker)?.push(trade);
     });
 
     tradesByTicker.forEach((tickerTrades, ticker) => {
-      const markers = tickerTrades.flatMap(trade => {
-        const result: Array<{ time: UTCTimestamp; position: 'belowBar' | 'aboveBar'; color: string; shape: 'arrowUp' | 'arrowDown'; text: string }> = [];
+      const markers = tickerTrades.flatMap((trade) => {
+        const points: SeriesMarker<Time>[] = [];
 
-        // Entry marker
-        if (trade.entryDate) {
-          try {
-            const entryTime = toChartTimestamp(trade.entryDate);
-            result.push({
-              time: entryTime,
-              position: 'belowBar' as const,
-              color: '#2196F3',
-              shape: 'arrowUp' as const,
-              text: ''
-            });
-          } catch { /* ignore invalid dates */ }
+        try {
+          points.push({
+            time: toChartTimestamp(trade.entryDate),
+            position: 'belowBar',
+            color: '#2196F3',
+            shape: 'arrowUp',
+            text: '',
+          });
+        } catch {
+          // ignore invalid entry date
         }
 
-        // Exit marker
-        if (trade.exitDate && trade.exitReason !== 'end_of_data') {
+        if (trade.exitReason !== 'end_of_data') {
           try {
-            const exitTime = toChartTimestamp(trade.exitDate);
-            result.push({
-              time: exitTime,
-              position: 'aboveBar' as const,
+            points.push({
+              time: toChartTimestamp(trade.exitDate),
+              position: 'aboveBar',
               color: '#2196F3',
-              shape: 'arrowDown' as const,
-              text: ''
+              shape: 'arrowDown',
+              text: '',
             });
-          } catch { /* ignore invalid dates */ }
+          } catch {
+            // ignore invalid exit date
+          }
         }
 
-        return result;
+        return points;
       });
 
       if (markers.length > 0) {
@@ -116,225 +169,155 @@ export function MultiTickerChart({ tickersData, trades = [], height = 600 }: Mul
         map.set(ticker, markers);
       }
     });
+
     return map;
   }, [trades]);
 
   useEffect(() => {
-    const onTheme = (e: CustomEvent) => {
-      const dark = !!((e.detail as { effectiveDark?: boolean })?.effectiveDark ??
-        document.documentElement.classList.contains('dark'));
+    const onTheme = (e: Event) => {
+      const dark = !!((e as CustomEvent<{ effectiveDark?: boolean }>).detail?.effectiveDark ?? document.documentElement.classList.contains('dark'));
       setIsDark(dark);
     };
-    window.addEventListener('themechange' as keyof WindowEventMap, onTheme as EventListener);
-    return () => {
-      window.removeEventListener('themechange' as keyof WindowEventMap, onTheme as EventListener);
-    };
+
+    window.addEventListener('themechange', onTheme);
+    return () => window.removeEventListener('themechange', onTheme);
   }, []);
 
   useEffect(() => {
     const containerEl = chartContainerRef.current;
-    if (!containerEl || !preparedTickersData.length) return;
-    const seriesRefs = seriesRefsRef.current;
+    if (!containerEl) return;
 
-    try {
-      // Clean up previous chart if any
+    const cleanupChart = () => {
+      markersApiRefsRef.current.clear();
+      candleSeriesRefsRef.current.clear();
+      lineSeriesRefsRef.current.clear();
+
       if (chartRef.current) {
-        if (unsubscribeRef.current) {
-             try { unsubscribeRef.current(); } catch { /* ignore */ }
-             unsubscribeRef.current = null;
+        try {
+          chartRef.current.remove();
+        } catch {
+          // ignore
         }
-        if (resizeHandlerRef.current) {
-             window.removeEventListener('resize', resizeHandlerRef.current);
-             resizeHandlerRef.current = null;
-        }
-        try { chartRef.current.remove(); } catch { /* ignore */ }
         chartRef.current = null;
-        seriesRefs.clear();
       }
+    };
 
-      const bg = isDark ? '#0b1220' : '#ffffff';
-      const text = isDark ? '#e5e7eb' : '#1f2937';
-      const grid = isDark ? '#1f2937' : '#eef2ff';
-      const border = isDark ? '#374151' : '#e5e7eb';
+    cleanupChart();
 
-      // Create chart with multiple price scales for subplots
-      const chart = createChart(containerEl, {
-        width: containerEl.clientWidth,
-        height: height,
-        layout: {
-          background: { color: bg },
-          textColor: text,
-        },
-        grid: {
-          vertLines: { color: grid },
-          horzLines: { color: grid },
-        },
-        crosshair: {
-          mode: 1,
-        },
-        rightPriceScale: {
-          borderColor: border,
-          visible: true,
-        },
-        timeScale: {
-          borderColor: border,
-          timeVisible: true,
-          secondsVisible: false,
-        },
-      });
+    if (!selectedPreparedTickers.length) return cleanupChart;
 
-      chartRef.current = chart;
+    const bg = isDark ? '#0b1220' : '#ffffff';
+    const text = isDark ? '#e5e7eb' : '#1f2937';
+    const grid = isDark ? '#1f2937' : '#eef2ff';
+    const border = isDark ? '#374151' : '#e5e7eb';
 
-      // Colors for different tickers
-      const tickerColors = [
-        { up: '#10B981', down: '#EF4444' }, // Green/Red
-        { up: '#3B82F6', down: '#F59E0B' }, // Blue/Orange
-        { up: '#8B5CF6', down: '#EF4444' }, // Purple/Red
-        { up: '#06B6D4', down: '#F97316' }, // Cyan/Orange
-        { up: '#84CC16', down: '#DC2626' }, // Lime/Red
-      ];
+    const chart = createChart(containerEl, {
+      autoSize: true,
+      width: containerEl.clientWidth,
+      height,
+      layout: { background: { color: bg }, textColor: text },
+      grid: { vertLines: { color: grid }, horzLines: { color: grid } },
+      crosshair: { mode: 1 },
+      rightPriceScale: { borderColor: border, visible: true },
+      timeScale: { borderColor: border, timeVisible: true, secondsVisible: false },
+    });
 
-      const numberOfTickers = preparedTickersData.length;
-      const heightPerTicker = 1 / numberOfTickers;
+    chartRef.current = chart;
 
-      // Create series for each ticker as a subplot
-      preparedTickersData.forEach((tickerData, index) => {
-        const colors = tickerColors[index % tickerColors.length];
+    if (viewMode === 'candles') {
+      const count = selectedPreparedTickers.length;
+      const heightPerTicker = 1 / count;
 
-        // Calculate margins for this subplot
+      selectedPreparedTickers.forEach((tickerData, index) => {
+        const colors = PALETTE[index % PALETTE.length];
         const topMargin = index * heightPerTicker;
-        const bottomMargin = 1 - ((index + 1) * heightPerTicker);
+        const bottomMargin = 1 - (index + 1) * heightPerTicker;
+        const padding = Math.min(0.04, heightPerTicker * 0.25);
 
-        // Create price scale for this ticker
-        const priceScaleId = `ticker-${tickerData.ticker}`;
-
-        const series = chart.addCandlestickSeries({
+        const series = chart.addSeries(CandlestickSeries, {
           upColor: colors.up,
           downColor: colors.down,
           borderUpColor: colors.up,
           borderDownColor: colors.down,
           wickUpColor: colors.up,
           wickDownColor: colors.down,
-          priceScaleId: priceScaleId,
+          priceScaleId: `ticker-${tickerData.ticker}`,
           title: tickerData.ticker,
         });
 
-        // Configure margins for subplot
         series.priceScale().applyOptions({
           scaleMargins: {
-            top: topMargin + 0.05, // Add 5% padding
-            bottom: bottomMargin + 0.05,
+            top: Math.min(0.95, topMargin + padding),
+            bottom: Math.min(0.95, bottomMargin + padding),
           },
           borderVisible: true,
         });
 
-        try {
-          series.setData(tickerData.chartData);
-          seriesRefsRef.current.set(tickerData.ticker, series);
-
-          // Add trade markers for this ticker
-          const markers = markersByTicker.get(tickerData.ticker.toUpperCase());
-
-          if (markers && markers.length > 0) {
-            if (typeof series.setMarkers === 'function') {
-              series.setMarkers(markers);
-            }
-          }
-        } catch (e) {
-          logError('chart', 'series.setData failed', {
-            ticker: tickerData.ticker,
-            length: tickerData.chartData.length,
-            sample: tickerData.chartData.slice(0, 3)
-          }, 'MultiTickerChart', (e as any)?.stack);
-        }
+        candleSeriesRefsRef.current.set(tickerData.ticker, series);
+        markersApiRefsRef.current.set(tickerData.ticker, createSeriesMarkers(series, []));
       });
-
-      // Add ticker labels on the left side
-      // Check if labels already exist (from previous renders inside the container if it wasn't cleared)
-      // Actually createChart clears the container usually, but we are appending labels to the container.
-      // We should clear labels if we can, but removing chart usually clears canvas.
-      // The labels are DOM nodes appended to chartContainerRef.current.
-      // createChart creates a div inside chartContainerRef.current.
-      // So our labels will be siblings or children.
-
-      const existingLabels = containerEl.querySelectorAll('.ticker-label-overlay');
-      existingLabels.forEach(el => el.remove());
-
-      const tickerLabels = document.createElement('div');
-      tickerLabels.className = 'ticker-label-overlay'; // Mark for cleanup
-      tickerLabels.style.position = 'absolute';
-      tickerLabels.style.left = '10px';
-      tickerLabels.style.top = '10px';
-      tickerLabels.style.zIndex = '10';
-      tickerLabels.style.pointerEvents = 'none';
-
-      preparedTickersData.forEach((tickerData, index) => {
-        const label = document.createElement('div');
-        label.textContent = tickerData.ticker;
-        label.style.position = 'absolute';
-        label.style.top = `${(index * heightPerTicker * 100) + 5}%`;
-        label.style.left = '0px';
-        label.style.fontSize = '14px';
-        label.style.fontWeight = 'bold';
-        label.style.color = isDark ? '#e5e7eb' : '#1f2937';
-        label.style.backgroundColor = isDark ? 'rgba(31,41,55,0.8)' : 'rgba(255,255,255,0.8)';
-        label.style.padding = '4px 8px';
-        label.style.borderRadius = '4px';
-        label.style.backdropFilter = 'blur(4px)';
-        tickerLabels.appendChild(label);
+    } else {
+      selectedPreparedTickers.forEach((tickerData, index) => {
+        const color = PALETTE[index % PALETTE.length].line;
+        const series = chart.addSeries(LineSeries, {
+          color,
+          lineWidth: 2,
+          title: `${tickerData.ticker} (base 100)`,
+        });
+        lineSeriesRefsRef.current.set(tickerData.ticker, series);
       });
-
-      containerEl.appendChild(tickerLabels);
-
-      // Handle resize
-      const handleResize = () => {
-        if (!chartRef.current) return;
-        try {
-          const newWidth = containerEl.clientWidth;
-          chartRef.current.applyOptions({
-            width: newWidth,
-            height: height,
-          });
-        } catch (error) {
-          logError('chart', 'Failed to resize multi-ticker chart', {
-            error: (error as Error).message
-          }, 'MultiTickerChart.resize');
-        }
-      };
-
-      resizeHandlerRef.current = handleResize;
-      window.addEventListener('resize', handleResize);
-
-    } catch (error) {
-      logError('chart', 'Error creating multi-ticker chart', {
-        tickersCount: preparedTickersData.length
-      }, 'MultiTickerChart', (error as any)?.stack);
     }
 
-    return () => {
-       // Cleanup logic inside the effect return
-        if (unsubscribeRef.current) {
-            try { unsubscribeRef.current(); } catch { /* ignore */ }
-            unsubscribeRef.current = null;
+    return cleanupChart;
+  }, [viewMode, isDark, height, visibleTickerKey, selectedPreparedTickers]);
+
+  useEffect(() => {
+    if (!chartRef.current || !selectedPreparedTickers.length) return;
+
+    if (viewMode === 'candles') {
+      selectedPreparedTickers.forEach((tickerData) => {
+        const series = candleSeriesRefsRef.current.get(tickerData.ticker);
+        if (!series) return;
+
+        try {
+          series.setData(tickerData.chartData);
+          const markersApi = markersApiRefsRef.current.get(tickerData.ticker);
+          markersApi?.setMarkers(markersByTicker.get(tickerData.ticker.toUpperCase()) || []);
+        } catch (e) {
+          logError('chart', 'Failed to set multi-candle series', {
+            ticker: tickerData.ticker,
+            size: tickerData.chartData.length,
+          }, 'MultiTickerChart.updateCandles', (e as Error)?.stack);
         }
+      });
+    } else {
+      selectedPreparedTickers.forEach((tickerData) => {
+        const series = lineSeriesRefsRef.current.get(tickerData.ticker);
+        if (!series) return;
 
-        if (resizeHandlerRef.current) {
-            window.removeEventListener('resize', resizeHandlerRef.current);
-            resizeHandlerRef.current = null;
+        try {
+          series.setData(tickerData.normalizedData);
+        } catch (e) {
+          logError('chart', 'Failed to set normalized series', {
+            ticker: tickerData.ticker,
+            size: tickerData.normalizedData.length,
+          }, 'MultiTickerChart.updateNormalized', (e as Error)?.stack);
         }
+      });
+    }
 
-        seriesRefs.clear();
+    chartRef.current.timeScale().fitContent();
+  }, [selectedPreparedTickers, viewMode, markersByTicker]);
 
-        if (chartRef.current) {
-            try { chartRef.current.remove(); } catch { /* ignore */ }
-            chartRef.current = null;
-        }
-
-        // Cleanup labels
-        const labels = containerEl.querySelectorAll('.ticker-label-overlay');
-        labels.forEach(el => el.remove());
-    };
-  }, [preparedTickersData, markersByTicker, height, isDark]);
+  const toggleTicker = (ticker: string) => {
+    setSelectedTickers((prev) => {
+      if (prev.includes(ticker)) {
+        const next = prev.filter((t) => t !== ticker);
+        return next.length > 0 ? next : prev;
+      }
+      return [...prev, ticker];
+    });
+  };
 
   if (!tickersData.length) {
     return (
@@ -343,7 +326,7 @@ export function MultiTickerChart({ tickersData, trades = [], height = 600 }: Mul
         style={{ height }}
       >
         <div className="text-center">
-          <div className="text-lg font-medium mb-2">📊 Multi-Ticker Chart</div>
+          <div className="text-lg font-medium mb-2">Multi-Ticker Chart</div>
           <p className="text-sm">Загрузите данные для отображения графиков</p>
         </div>
       </div>
@@ -351,38 +334,73 @@ export function MultiTickerChart({ tickersData, trades = [], height = 600 }: Mul
   }
 
   return (
-    <div className="relative">
+    <div className="relative space-y-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          onClick={() => setViewMode('candles')}
+          className={`px-3 py-1 text-sm rounded ${viewMode === 'candles'
+            ? 'bg-indigo-600 text-white'
+            : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'
+            }`}
+        >
+          Candles
+        </button>
+        <button
+          onClick={() => setViewMode('normalized')}
+          className={`px-3 py-1 text-sm rounded ${viewMode === 'normalized'
+            ? 'bg-indigo-600 text-white'
+            : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'
+            }`}
+        >
+          Normalized (Base 100)
+        </button>
+        <label className="text-sm text-gray-700 dark:text-gray-300 flex items-center gap-2 ml-2">
+          Макс. тикеров:
+          <select
+            value={maxVisibleTickers}
+            onChange={(e) => setMaxVisibleTickers(Number(e.target.value))}
+            className="rounded border border-gray-300 bg-white px-2 py-1 text-sm dark:bg-gray-900 dark:border-gray-700"
+          >
+            {[2, 4, 6, 8, 10].map((value) => (
+              <option key={value} value={value}>{value}</option>
+            ))}
+          </select>
+        </label>
+      </div>
+
       <div
         ref={chartContainerRef}
         className="w-full overflow-hidden rounded border border-gray-200 dark:border-gray-700"
         style={{ height }}
       />
 
-      {/* Legend */}
-      <div className="mt-2 flex flex-wrap gap-2">
-        {tickersData.map((ticker, index) => {
-          const colors = [
-            { up: '#10B981', down: '#EF4444' },
-            { up: '#3B82F6', down: '#F59E0B' },
-            { up: '#8B5CF6', down: '#EF4444' },
-            { up: '#06B6D4', down: '#F97316' },
-            { up: '#84CC16', down: '#DC2626' },
-          ];
-          const color = colors[index % colors.length];
+      {hiddenSelectedCount > 0 && (
+        <div className="text-xs text-amber-700 dark:text-amber-300">
+          Отображаются первые {maxVisibleTickers} выбранных тикеров. Скрыто: {hiddenSelectedCount}.
+        </div>
+      )}
 
+      <div className="mt-2 flex flex-wrap gap-2">
+        {preparedTickersData.map((ticker, index) => {
+          const selected = selectedTickers.includes(ticker.ticker);
+          const color = PALETTE[index % PALETTE.length];
           return (
-            <div key={ticker.ticker} className="flex items-center gap-2">
-              <div
-                className="w-3 h-3 rounded border"
-                style={{ backgroundColor: color.up, borderColor: color.down }}
+            <button
+              key={ticker.ticker}
+              onClick={() => toggleTicker(ticker.ticker)}
+              className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-sm transition ${selected
+                ? 'border-indigo-500 bg-indigo-50 text-indigo-700 dark:border-indigo-400 dark:bg-indigo-950/40 dark:text-indigo-200'
+                : 'border-gray-300 bg-white text-gray-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300'
+                }`}
+              title={selected ? 'Убрать тикер с графика' : 'Добавить тикер на график'}
+            >
+              <span
+                className="h-2.5 w-2.5 rounded-full"
+                style={{ backgroundColor: viewMode === 'normalized' ? color.line : color.up }}
               />
-              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                {ticker.ticker}
-              </span>
-              <span className="text-xs text-gray-500">
-                ({ticker.data.length} bars)
-              </span>
-            </div>
+              <span>{ticker.ticker}</span>
+              <span className="text-xs opacity-70">({ticker.data.length})</span>
+            </button>
           );
         })}
       </div>

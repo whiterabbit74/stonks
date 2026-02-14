@@ -1,7 +1,17 @@
-import { useEffect, useRef, useState } from 'react';
-import { createChart, type IChartApi, type ISeriesApi, type UTCTimestamp, type MouseEventParams } from 'lightweight-charts';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  AreaSeries,
+  LineSeries,
+  createChart,
+  type IChartApi,
+  type ISeriesApi,
+  type MouseEventParams,
+  type Time,
+  type UTCTimestamp,
+} from 'lightweight-charts';
 import type { EquityPoint } from '../types';
 import { logError } from '../lib/error-logger';
+import { toChartTimestamp } from '../lib/date-utils';
 
 interface EquityChartProps {
   equity: EquityPoint[];
@@ -11,246 +21,267 @@ interface EquityChartProps {
   primaryLabel?: string;
 }
 
+type RangeKey = 'ALL' | '1Y' | '6M' | '3M' | '1M';
+
+const MIN_CHART_HEIGHT = 520;
+
+function prepareSeriesData(points: EquityPoint[], source: string): Array<{ time: UTCTimestamp; value: number }> {
+  const mapped = points
+    .map((point, idx) => {
+      try {
+        const t = toChartTimestamp(point?.date as string | Date);
+        const v = Number(point?.value);
+
+        if (!Number.isFinite(v)) {
+          logError('chart', 'Invalid equity point value', { idx, point, source }, 'EquityChart.prepareSeriesData');
+          return null;
+        }
+
+        return { time: t, value: v };
+      } catch (e) {
+        const stack = e instanceof Error ? e.stack : undefined;
+        logError('chart', 'Failed to map equity point', { idx, point, source }, 'EquityChart.prepareSeriesData', stack);
+        return null;
+      }
+    })
+    .filter((p): p is { time: UTCTimestamp; value: number } => p !== null);
+
+  const sorted = mapped.slice().sort((a, b) => (a.time as number) - (b.time as number));
+  const deduped: Array<{ time: UTCTimestamp; value: number }> = [];
+  let lastTime: number | null = null;
+
+  for (const point of sorted) {
+    const time = point.time as number;
+    if (lastTime === time && deduped.length > 0) {
+      deduped[deduped.length - 1] = point;
+    } else {
+      deduped.push(point);
+      lastTime = time;
+    }
+  }
+
+  return deduped;
+}
+
 export function EquityChart({ equity, hideHeader, comparisonEquity, comparisonLabel, primaryLabel }: EquityChartProps) {
-  const MIN_CHART_HEIGHT = 520;
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
+  const equitySeriesRef = useRef<ISeriesApi<'Area'> | null>(null);
+  const comparisonSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
+  const crosshairHandlerRef = useRef<((param: MouseEventParams<Time>) => void) | null>(null);
   const tooltipRef = useRef<HTMLDivElement | null>(null);
-  const unsubscribeRef = useRef<(() => void) | null>(null);
-  const resizeHandlerRef = useRef<(() => void) | null>(null);
-  const [isDark, setIsDark] = useState<boolean>(() => typeof document !== 'undefined' ? document.documentElement.classList.contains('dark') : false);
+  const primaryLabelRef = useRef(primaryLabel);
+  const comparisonLabelRef = useRef(comparisonLabel);
+
+  const [activeRange, setActiveRange] = useState<RangeKey>('ALL');
+  const [isDark, setIsDark] = useState<boolean>(() =>
+    typeof document !== 'undefined' ? document.documentElement.classList.contains('dark') : false
+  );
 
   useEffect(() => {
-    const onTheme = (e: CustomEvent) => {
-      const dark = !!((e.detail as { effectiveDark?: boolean })?.effectiveDark ?? document.documentElement.classList.contains('dark'));
+    primaryLabelRef.current = primaryLabel;
+    comparisonLabelRef.current = comparisonLabel;
+  }, [primaryLabel, comparisonLabel]);
+
+  useEffect(() => {
+    const onTheme = (e: Event) => {
+      const dark = !!((e as CustomEvent<{ effectiveDark?: boolean }>).detail?.effectiveDark ?? document.documentElement.classList.contains('dark'));
       setIsDark(dark);
     };
-    // Cast because 'themechange' is a custom event not present in WindowEventMap
-    window.addEventListener('themechange' as keyof WindowEventMap, onTheme as EventListener);
+    window.addEventListener('themechange', onTheme);
+    return () => window.removeEventListener('themechange', onTheme);
+  }, []);
+
+  useEffect(() => {
+    if (!chartContainerRef.current) return;
+
+    const darkNow = typeof document !== 'undefined' ? document.documentElement.classList.contains('dark') : false;
+    const bg = darkNow ? '#0b1220' : '#ffffff';
+    const text = darkNow ? '#e5e7eb' : '#1f2937';
+    const grid = darkNow ? '#1f2937' : '#eef2ff';
+    const border = darkNow ? '#374151' : '#e5e7eb';
+
+    const chart = createChart(chartContainerRef.current, {
+      autoSize: true,
+      width: chartContainerRef.current.clientWidth,
+      height: Math.max(chartContainerRef.current.clientHeight || 0, MIN_CHART_HEIGHT),
+      layout: { background: { color: bg }, textColor: text },
+      grid: { vertLines: { color: grid }, horzLines: { color: grid } },
+      crosshair: { mode: 1 },
+      rightPriceScale: { borderColor: border },
+      timeScale: { borderColor: border, timeVisible: true, secondsVisible: false },
+    });
+
+    chartRef.current = chart;
+
+    const equitySeries = chart.addSeries(AreaSeries, {
+      lineColor: '#6366F1',
+      topColor: 'rgba(99, 102, 241, 0.25)',
+      bottomColor: 'rgba(99, 102, 241, 0.03)',
+      lineWidth: 2,
+      title: primaryLabelRef.current || 'Стоимость портфеля',
+    });
+    equitySeriesRef.current = equitySeries;
+
+    const comparisonSeries = chart.addSeries(LineSeries, {
+      color: '#F97316',
+      lineWidth: 2,
+      title: comparisonLabelRef.current || 'Сравнительный режим',
+      priceLineVisible: false,
+      visible: false,
+    });
+    comparisonSeriesRef.current = comparisonSeries;
+
+    const tooltipEl = document.createElement('div');
+    tooltipEl.style.position = 'absolute';
+    tooltipEl.style.left = '12px';
+    tooltipEl.style.top = '8px';
+    tooltipEl.style.zIndex = '10';
+    tooltipEl.style.pointerEvents = 'none';
+    tooltipEl.style.background = darkNow ? 'rgba(31,41,55,0.75)' : 'rgba(17,24,39,0.7)';
+    tooltipEl.style.color = 'white';
+    tooltipEl.style.padding = '6px 8px';
+    tooltipEl.style.borderRadius = '6px';
+    tooltipEl.style.fontSize = '12px';
+    tooltipEl.style.backdropFilter = 'blur(4px)';
+    tooltipEl.style.display = 'none';
+    chartContainerRef.current.appendChild(tooltipEl);
+    tooltipRef.current = tooltipEl;
+
+    const crosshairHandler = (param: MouseEventParams<Time>) => {
+      if (!tooltipRef.current || !param.time || !param.seriesData) {
+        if (tooltipRef.current) tooltipRef.current.style.display = 'none';
+        return;
+      }
+
+      const mainValue = (param.seriesData.get(equitySeries) as { value?: number } | undefined)?.value;
+      const cmpValue = comparisonSeriesRef.current
+        ? (param.seriesData.get(comparisonSeriesRef.current) as { value?: number } | undefined)?.value
+        : undefined;
+
+      if (typeof mainValue !== 'number' && typeof cmpValue !== 'number') {
+        tooltipRef.current.style.display = 'none';
+        return;
+      }
+
+      const epochSec = typeof param.time === 'number' ? param.time : undefined;
+      const dateStr = epochSec ? new Date(epochSec * 1000).toLocaleDateString('ru-RU') : '';
+
+      const lines: string[] = [];
+      if (typeof mainValue === 'number') {
+        lines.push(`${primaryLabelRef.current || 'Основной режим'}: ${mainValue.toFixed(2)}`);
+      }
+      if (typeof cmpValue === 'number' && comparisonSeriesRef.current) {
+        lines.push(`${comparisonLabelRef.current || 'Сравнительный режим'}: ${cmpValue.toFixed(2)}`);
+      }
+
+      tooltipRef.current.innerHTML = `${dateStr ? `<div>${dateStr}</div>` : ''}${lines.map((line) => `<div>${line}</div>`).join('')}`;
+      tooltipRef.current.style.display = 'block';
+    };
+
+    crosshairHandlerRef.current = crosshairHandler;
+    chart.subscribeCrosshairMove(crosshairHandler);
+
     return () => {
-      window.removeEventListener('themechange' as keyof WindowEventMap, onTheme as EventListener);
+      if (crosshairHandlerRef.current && chartRef.current) {
+        try {
+          chartRef.current.unsubscribeCrosshairMove(crosshairHandlerRef.current);
+        } catch {
+          // ignore
+        }
+      }
+      crosshairHandlerRef.current = null;
+
+      if (tooltipRef.current && tooltipRef.current.parentElement) {
+        try {
+          tooltipRef.current.parentElement.removeChild(tooltipRef.current);
+        } catch {
+          // ignore
+        }
+      }
+      tooltipRef.current = null;
+
+      equitySeriesRef.current = null;
+      comparisonSeriesRef.current = null;
+
+      if (chartRef.current) {
+        chartRef.current.remove();
+        chartRef.current = null;
+      }
     };
   }, []);
 
   useEffect(() => {
-    if (!chartContainerRef.current || !equity.length) return;
+    if (!chartRef.current) return;
 
-    try {
-        // Clean up previous chart if any
-        if (chartRef.current) {
-            if (unsubscribeRef.current) { unsubscribeRef.current(); unsubscribeRef.current = null; }
-            if (resizeHandlerRef.current) { window.removeEventListener('resize', resizeHandlerRef.current); resizeHandlerRef.current = null; }
-            if (tooltipRef.current && tooltipRef.current.parentElement) {
-                 try { tooltipRef.current.parentElement.removeChild(tooltipRef.current); } catch { /* ignore */ }
-                 tooltipRef.current = null;
-            }
-            try { chartRef.current.remove(); } catch { /* ignore */ }
-            chartRef.current = null;
-        }
+    const bg = isDark ? '#0b1220' : '#ffffff';
+    const text = isDark ? '#e5e7eb' : '#1f2937';
+    const grid = isDark ? '#1f2937' : '#eef2ff';
+    const border = isDark ? '#374151' : '#e5e7eb';
 
-      const bg = isDark ? '#0b1220' : '#ffffff';
-      const text = isDark ? '#e5e7eb' : '#1f2937';
-      const grid = isDark ? '#1f2937' : '#eef2ff';
-      const border = isDark ? '#374151' : '#e5e7eb';
+    chartRef.current.applyOptions({
+      layout: { background: { color: bg }, textColor: text },
+      grid: { vertLines: { color: grid }, horzLines: { color: grid } },
+      rightPriceScale: { borderColor: border },
+      timeScale: { borderColor: border },
+    });
 
-      // Create new chart
-      const chart = createChart(chartContainerRef.current, {
-        width: chartContainerRef.current.clientWidth,
-        height: Math.max(chartContainerRef.current.clientHeight || 0, MIN_CHART_HEIGHT),
-        layout: {
-          background: { color: bg },
-          textColor: text,
-        },
-        grid: {
-          vertLines: { color: grid },
-          horzLines: { color: grid },
-        },
-        crosshair: {
-          mode: 1,
-        },
-        rightPriceScale: {
-          borderColor: border,
-        },
-        timeScale: {
-          borderColor: border,
-          timeVisible: true,
-          secondsVisible: false,
-        },
-      });
+    if (tooltipRef.current) {
+      tooltipRef.current.style.background = isDark ? 'rgba(31,41,55,0.75)' : 'rgba(17,24,39,0.7)';
+    }
+  }, [isDark]);
 
-      chartRef.current = chart;
+  const primarySeriesData = useMemo(() => prepareSeriesData(equity, 'primary'), [equity]);
+  const comparisonSeriesData = useMemo(
+    () => (Array.isArray(comparisonEquity) && comparisonEquity.length > 0 ? prepareSeriesData(comparisonEquity, 'comparison') : []),
+    [comparisonEquity]
+  );
 
-      // Verify chart methods exist
-      if (!chart || typeof chart.addLineSeries !== 'function') {
-        console.error('Chart object is invalid or missing addLineSeries method');
-        return;
-      }
+  useEffect(() => {
+    if (!equitySeriesRef.current || !comparisonSeriesRef.current) return;
 
-      const hasComparison = Array.isArray(comparisonEquity) && comparisonEquity.length > 0;
+    equitySeriesRef.current.setData(primarySeriesData);
+    equitySeriesRef.current.applyOptions({
+      title: primaryLabel || 'Стоимость портфеля',
+    });
 
-      // Area-серия с градиентом
-      const equitySeries: ISeriesApi<'Area'> = chart.addAreaSeries({
-        lineColor: '#6366F1',
-        topColor: 'rgba(99, 102, 241, 0.25)',
-        bottomColor: 'rgba(99, 102, 241, 0.03)',
-        lineWidth: 2,
-        title: 'Стоимость портфеля',
-      });
+    const hasComparison = comparisonSeriesData.length > 0;
+    comparisonSeriesRef.current.applyOptions({
+      visible: hasComparison,
+      title: comparisonLabel || 'Сравнительный режим',
+    });
+    comparisonSeriesRef.current.setData(comparisonSeriesData);
+  }, [primarySeriesData, comparisonSeriesData, comparisonLabel, primaryLabel]);
 
-      const prepareSeriesData = (points: EquityPoint[], source: string) => {
-        const mapped = points
-          .map((point, idx) => {
-            try {
+  useEffect(() => {
+    if (!chartRef.current || !primarySeriesData.length) return;
 
-              const d = (point?.date as any) instanceof Date ? point.date : new Date(point?.date as any);
-              const t = Math.floor((d as Date).getTime() / 1000) as UTCTimestamp;
-              const v = Number(point?.value);
-              if (!Number.isFinite(t as unknown as number) || !Number.isFinite(v)) {
-                logError('chart', 'Invalid equity data point', { idx, point, source }, 'EquityChart.setData');
-              }
-              return { time: t, value: v };
-            } catch (e) {
-              const stack = (e instanceof Error) ? e.stack : undefined;
-              logError('chart', 'Failed to map equity point', { idx, point, source }, 'EquityChart.setData', stack);
-              return { time: 0 as UTCTimestamp, value: 0 };
-            }
-          })
-          .filter(p => Number.isFinite(p.time as unknown as number) && Number.isFinite(p.value));
+    const rightEdge = primarySeriesData[primarySeriesData.length - 1].time as number;
+    const leftEdge = primarySeriesData[0].time as number;
 
-        const sorted = mapped.slice().sort((a, b) => (a.time as number) - (b.time as number));
-        const seriesData: Array<{ time: UTCTimestamp; value: number }> = [];
-        let lastTime: number | null = null;
-
-        for (const p of sorted) {
-          const t = p.time as unknown as number;
-          if (lastTime === t) {
-            seriesData[seriesData.length - 1] = { time: p.time, value: p.value };
-          } else {
-            seriesData.push(p);
-            lastTime = t;
-          }
-        }
-
-        return seriesData;
-      };
-
-      equitySeries.setData(prepareSeriesData(equity, 'primary'));
-
-      let comparisonSeries: ISeriesApi<'Line'> | null = null;
-      if (hasComparison) {
-        comparisonSeries = chart.addLineSeries({
-          color: '#F97316',
-          lineWidth: 2,
-          title: comparisonLabel || 'Сравнительный режим',
-          priceLineVisible: false,
-        });
-        comparisonSeries.setData(prepareSeriesData(comparisonEquity ?? [], 'comparison'));
-      }
-
-      chart.timeScale().fitContent();
-
-      // Простой тултип
-      const tooltipEl = document.createElement('div');
-      tooltipEl.style.position = 'absolute';
-      tooltipEl.style.left = '12px';
-      tooltipEl.style.top = '8px';
-      tooltipEl.style.zIndex = '10';
-      tooltipEl.style.pointerEvents = 'none';
-      tooltipEl.style.background = isDark ? 'rgba(31,41,55,0.75)' : 'rgba(17,24,39,0.7)';
-      tooltipEl.style.color = 'white';
-      tooltipEl.style.padding = '6px 8px';
-      tooltipEl.style.borderRadius = '6px';
-      tooltipEl.style.fontSize = '12px';
-      tooltipEl.style.backdropFilter = 'blur(4px)';
-      tooltipEl.style.display = 'none';
-      chartContainerRef.current.appendChild(tooltipEl);
-      tooltipRef.current = tooltipEl;
-
-      const crosshairHandler = (param: MouseEventParams) => {
-        if (!tooltipRef.current) return;
-        if (!param || !param.time) { tooltipRef.current.style.display = 'none'; return; }
-
-        const mainValue = (param.seriesData?.get?.(equitySeries) as { value?: number } | undefined)?.value;
-        const comparisonValue = comparisonSeries
-          ? (param.seriesData?.get?.(comparisonSeries) as { value?: number } | undefined)?.value
-          : undefined;
-
-        if (typeof mainValue !== 'number' && typeof comparisonValue !== 'number') {
-          tooltipRef.current.style.display = 'none';
-          return;
-        }
-
-        const epochSec = typeof param.time === 'number' ? param.time : (param as { time?: { timestamp?: number } }).time?.timestamp;
-        const d = epochSec ? new Date(epochSec * 1000) : null;
-        const dateStr = d ? d.toLocaleDateString('ru-RU') : '';
-
-        const lines: string[] = [];
-        if (typeof mainValue === 'number') {
-          lines.push(`${(primaryLabel || 'Основной режим')}: ${mainValue.toFixed(2)}`);
-        }
-        if (comparisonSeries && typeof comparisonValue === 'number') {
-          lines.push(`${(comparisonLabel || 'Сравнительный режим')}: ${comparisonValue.toFixed(2)}`);
-        }
-
-        tooltipEl.innerHTML = `${dateStr ? `<div>${dateStr}</div>` : ''}${lines.map(line => `<div>${line}</div>`).join('')}`;
-        tooltipRef.current.style.display = 'block';
-      };
-      
-      unsubscribeRef.current = chart.subscribeCrosshairMove(crosshairHandler);
-
-      // Handle resize
-      const handleResize = () => {
-        if (chartContainerRef.current && chartRef.current) {
-          try {
-            chartRef.current.applyOptions({
-              width: chartContainerRef.current.clientWidth,
-              height: Math.max(chartContainerRef.current.clientHeight || 0, MIN_CHART_HEIGHT),
-            });
-          } catch (error) {
-            logError('chart', 'Failed to resize chart', {
-              error: (error as Error).message
-            }, 'EquityChart.resize');
-          }
-        }
-      };
-      
-      resizeHandlerRef.current = handleResize;
-      window.addEventListener('resize', handleResize);
-
-    } catch (error) {
-      logError('chart', 'Error creating equity chart', {}, 'EquityChart', (error as any)?.stack);
+    if (activeRange === 'ALL') {
+      chartRef.current.timeScale().fitContent();
+      return;
     }
 
-    // Cleanup function
-    return () => {
-        if (unsubscribeRef.current) {
-            try { unsubscribeRef.current(); } catch { /* ignore */ }
-            unsubscribeRef.current = null;
-        }
-
-        if (resizeHandlerRef.current) {
-            window.removeEventListener('resize', resizeHandlerRef.current);
-            resizeHandlerRef.current = null;
-        }
-
-        if (tooltipRef.current && tooltipRef.current.parentElement) {
-            try { tooltipRef.current.parentElement.removeChild(tooltipRef.current); } catch { /* ignore */ }
-            tooltipRef.current = null;
-        }
-
-        if (chartRef.current) {
-            try { chartRef.current.remove(); } catch { /* ignore */ }
-            chartRef.current = null;
-        }
+    const daysByRange: Record<Exclude<RangeKey, 'ALL'>, number> = {
+      '1Y': 365,
+      '6M': 180,
+      '3M': 90,
+      '1M': 30,
     };
-  }, [equity, comparisonEquity, comparisonLabel, primaryLabel, isDark]);
+
+    const days = daysByRange[activeRange];
+    const from = Math.max(leftEdge, rightEdge - days * 24 * 60 * 60);
+
+    chartRef.current.timeScale().setVisibleRange({
+      from: from as UTCTimestamp,
+      to: rightEdge as UTCTimestamp,
+    });
+  }, [activeRange, primarySeriesData]);
 
   if (!equity.length) {
-    return (
-      <div className="flex items-center justify-center h-full text-gray-500">
-        Нет данных по капиталу
-      </div>
-    );
+    return <div className="flex items-center justify-center h-full text-gray-500">Нет данных по капиталу</div>;
   }
 
   const finalValue = equity[equity.length - 1]?.value ?? 0;
@@ -259,25 +290,24 @@ export function EquityChart({ equity, hideHeader, comparisonEquity, comparisonLa
   const hasComparisonLegend = Array.isArray(comparisonEquity) && comparisonEquity.length > 0;
   const primaryLegendLabel = primaryLabel || 'Основной режим';
   const comparisonLegendLabel = comparisonLabel || 'Сравнительный режим';
-  
-  // Рассчитываем годовые проценты (CAGR) с учетом сложного процента
+
   const annualReturn = (() => {
     if (equity.length < 2) return 0;
+
     const initialValue = equity[0]?.value ?? 0;
     if (initialValue <= 0) return 0;
-    
+
     const startDateObj = equity[0]?.date ? new Date(equity[0].date) : null;
     const endDateObj = equity[equity.length - 1]?.date ? new Date(equity[equity.length - 1].date) : null;
-    
+
     if (!startDateObj || !endDateObj) return 0;
-    
+
     const daysDiff = (endDateObj.getTime() - startDateObj.getTime()) / (1000 * 60 * 60 * 24);
-    const years = Math.max(daysDiff / 365.25, 1/365.25); // Минимум 1 день
-    
+    const years = Math.max(daysDiff / 365.25, 1 / 365.25);
+
     return (Math.pow(finalValue / initialValue, 1 / years) - 1) * 100;
   })();
 
-  // Функция для форматирования валюты в долларах с разделителями тысяч
   const formatCurrency = (value: number): string => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
@@ -294,7 +324,7 @@ export function EquityChart({ equity, hideHeader, comparisonEquity, comparisonLa
           <div className="bg-gray-50 px-3 py-2 rounded border dark:bg-gray-800 dark:border-gray-700">
             <span className="text-gray-700 dark:text-gray-200">Итоговый портфель: {formatCurrency(finalValue)}</span>
           </div>
-          {(startDate && endDate) && (
+          {startDate && endDate && (
             <div className="bg-gray-50 px-3 py-2 rounded border dark:bg-gray-800 dark:border-gray-700">
               <span className="text-gray-700 dark:text-gray-200">Период: {startDate} — {endDate}</span>
             </div>
@@ -304,9 +334,26 @@ export function EquityChart({ equity, hideHeader, comparisonEquity, comparisonLa
           </div>
         </div>
       )}
+
+      <div className="mb-3 flex gap-2 flex-wrap shrink-0">
+        {(['1M', '3M', '6M', '1Y', 'ALL'] as RangeKey[]).map((range) => (
+          <button
+            key={range}
+            onClick={() => setActiveRange(range)}
+            className={`px-3 py-1 text-sm rounded ${activeRange === range
+              ? 'bg-indigo-600 text-white'
+              : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'
+              }`}
+          >
+            {range}
+          </button>
+        ))}
+      </div>
+
       <div className="w-full flex-1 min-h-0">
         <div ref={chartContainerRef} className="w-full h-full min-h-0 overflow-hidden" />
       </div>
+
       {hasComparisonLegend && (
         <div className="mt-3 flex flex-wrap items-center gap-4 text-xs text-gray-500 dark:text-gray-400 shrink-0">
           <div className="flex items-center gap-2">
