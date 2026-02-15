@@ -1,19 +1,22 @@
 import { render } from '@testing-library/react';
 import { MiniQuoteChart } from '../MiniQuoteChart';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
-import { createChart } from 'lightweight-charts';
+import { CandlestickSeries, createChart } from 'lightweight-charts';
 
 // Mock lightweight-charts
 const mockSeries = {
   setData: vi.fn(),
   applyOptions: vi.fn(),
-  setMarkers: vi.fn(),
   createPriceLine: vi.fn().mockReturnValue({}), // Return dummy object for price line
   removePriceLine: vi.fn(),
 };
 
+const mockMarkersApi = {
+  setMarkers: vi.fn(),
+};
+
 const mockChart = {
-  addCandlestickSeries: vi.fn().mockReturnValue(mockSeries),
+  addSeries: vi.fn().mockReturnValue(mockSeries),
   priceScale: vi.fn().mockReturnValue({ applyOptions: vi.fn() }),
   timeScale: vi.fn().mockReturnValue({ applyOptions: vi.fn() }),
   applyOptions: vi.fn(),
@@ -21,7 +24,9 @@ const mockChart = {
 };
 
 vi.mock('lightweight-charts', () => ({
+  CandlestickSeries: Symbol('CandlestickSeries'),
   createChart: vi.fn(() => mockChart),
+  createSeriesMarkers: vi.fn(() => mockMarkersApi),
 }));
 
 describe('MiniQuoteChart Optimization', () => {
@@ -46,7 +51,8 @@ describe('MiniQuoteChart Optimization', () => {
     render(<MiniQuoteChart {...props} />);
 
     expect(createChart).toHaveBeenCalledTimes(1);
-    expect(mockChart.addCandlestickSeries).toHaveBeenCalledTimes(1);
+    expect(mockChart.addSeries).toHaveBeenCalledTimes(1);
+    expect(mockChart.addSeries).toHaveBeenCalledWith(CandlestickSeries, expect.any(Object));
   });
 
   it('should NOT recreate chart when props change (optimization check)', () => {

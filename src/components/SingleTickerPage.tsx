@@ -430,10 +430,14 @@ export function SingleTickerPage() {
                 const now = new Date();
                 const ymd = ET_YMD_FMT
                   .formatToParts(now)
-                  .reduce((acc: any, p) => { if (p.type !== 'literal') acc[p.type] = p.value; return acc; }, {});
+                  .reduce<Record<string, string>>((acc, p) => {
+                    if (p.type !== 'literal') acc[p.type] = p.value;
+                    return acc;
+                  }, {});
                 const y = String(ymd.year);
                 const md = `${ymd.month}-${ymd.day}`;
-                const short = !!(tradingCalendar && tradingCalendar.shortDays && tradingCalendar.shortDays[y] && tradingCalendar.shortDays[y][md]);
+                const shortDays = tradingCalendar?.shortDays as Record<string, Record<string, boolean>> | undefined;
+                const short = !!shortDays?.[y]?.[md];
                 const start = parseHm(tradingCalendar?.tradingHours?.normal?.start) || { H: 9, M: 30 };
                 const endHm = short ? (parseHm(tradingCalendar?.tradingHours?.short?.end) || { H: 13, M: 0 }) : (parseHm(tradingCalendar?.tradingHours?.normal?.end) || { H: 16, M: 0 });
                 const fmt = (x: { H: number; M: number }) => `${String(x.H).padStart(2, '0')}:${String(x.M).padStart(2, '0')}`;

@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { createChart } from 'lightweight-charts';
+import { AreaSeries, LineSeries, createChart } from 'lightweight-charts';
 import type { UTCTimestamp } from 'lightweight-charts';
 import type { Trade } from '../types';
+import { toChartTimestamp } from '../lib/date-utils';
 
 interface TradeDrawdownChartProps {
   trades: Trade[];
@@ -33,6 +34,7 @@ export function TradeDrawdownChart({ trades, initialCapital }: TradeDrawdownChar
 
       // Create new chart
       const chart = createChart(chartContainerRef.current, {
+        autoSize: true,
         width: chartContainerRef.current.clientWidth,
         height: chartContainerRef.current.clientHeight || 400,
         layout: {
@@ -86,7 +88,7 @@ export function TradeDrawdownChart({ trades, initialCapital }: TradeDrawdownChar
         const drawdown = peakCapital > 0 ? ((peakCapital - runningCapital) / peakCapital) * 100 : 0;
 
         tradeDrawdownData.push({
-          time: Math.floor(new Date(trade.exitDate).getTime() / 1000),
+          time: toChartTimestamp(trade.exitDate),
           value: -drawdown, // Negative for visual representation
           tradeIndex: index + 1,
           pnl: trade.pnl,
@@ -95,7 +97,7 @@ export function TradeDrawdownChart({ trades, initialCapital }: TradeDrawdownChar
       });
 
       // Add drawdown area series
-      const drawdownSeries = chart.addAreaSeries({
+      const drawdownSeries = chart.addSeries(AreaSeries, {
         topColor: isDark ? 'rgba(248, 113, 113, 0.35)' : 'rgba(244, 67, 54, 0.4)',
         bottomColor: isDark ? 'rgba(248, 113, 113, 0.08)' : 'rgba(244, 67, 54, 0.1)',
         lineColor: isDark ? '#f87171' : '#F44336',
@@ -109,7 +111,7 @@ export function TradeDrawdownChart({ trades, initialCapital }: TradeDrawdownChar
       })));
 
       // Add zero line for reference
-      const zeroLineSeries = chart.addLineSeries({
+      const zeroLineSeries = chart.addSeries(LineSeries, {
         color: isDark ? '#9ca3af' : '#666666',
         lineWidth: 1,
         lineStyle: 2, // Dashed line
@@ -123,20 +125,7 @@ export function TradeDrawdownChart({ trades, initialCapital }: TradeDrawdownChar
 
       zeroLineSeries.setData(zeroLineData);
 
-      // Handle resize
-      const handleResize = () => {
-        if (chartContainerRef.current && chart) {
-          chart.applyOptions({
-            width: chartContainerRef.current.clientWidth,
-            height: Math.max(chartContainerRef.current.clientHeight || 0, 360),
-          });
-        }
-      };
-
-      window.addEventListener('resize', handleResize);
-
       return () => {
-        window.removeEventListener('resize', handleResize);
         if (chart) {
           try {
             chart.remove();
