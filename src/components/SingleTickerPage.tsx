@@ -370,13 +370,11 @@ export function SingleTickerPage() {
   })();
   const maintenanceLiquidationEvents = marginSimulation?.maintenanceLiquidationEvents ?? [];
   const lastMaintenanceLiquidationEvent = maintenanceLiquidationEvents[maintenanceLiquidationEvents.length - 1] ?? null;
-  const maintenanceLiquidationDates = useMemo(() => {
-    if (!maintenanceLiquidationEvents.length) return '';
-    const uniqueDates = Array.from(
+  const maintenanceLiquidationDates = maintenanceLiquidationEvents.length
+    ? Array.from(
       new Set(maintenanceLiquidationEvents.map((event) => new Date(event.date).toLocaleDateString('ru-RU')))
-    );
-    return uniqueDates.join(', ');
-  }, [maintenanceLiquidationEvents]);
+    ).join(', ')
+    : '';
 
   const comparisonResults = leverageMultiplier > 1 ? baselineResults : null;
   const trades = selectedResults.trades;
