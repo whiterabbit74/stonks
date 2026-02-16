@@ -1,7 +1,7 @@
 import type { EquityPoint, OHLCData, Trade } from '../types';
 import { daysBetweenTradingDates } from './date-utils';
 
-export type PositionRiskTrigger = 'position_stop_loss' | 'maintenance_margin';
+export type PositionRiskTrigger = 'maintenance_margin';
 
 export interface PositionRiskEvent {
   type: PositionRiskTrigger;
@@ -20,7 +20,6 @@ export interface MarginSimulationByTradesResult {
   trades: Trade[];
   maxDrawdown: number;
   finalValue: number;
-  positionStopEvents: PositionRiskEvent[];
   maintenanceLiquidationEvents: PositionRiskEvent[];
   liquidationEvent: PositionRiskEvent | null;
 }
@@ -40,9 +39,7 @@ interface SimulateMarginByTradesParams {
   trades: Trade[];
   initialCapital: number;
   leverage: number;
-  positionStopLossPct?: number;
   maintenanceMarginPct?: number;
-  stopAfterMaintenanceLiquidation?: boolean;
   capitalUsagePct?: number;
 }
 
@@ -55,9 +52,7 @@ export function simulateMarginByTrades({
   trades,
   initialCapital,
   leverage,
-  positionStopLossPct = 20,
   maintenanceMarginPct = 25,
-  stopAfterMaintenanceLiquidation = false,
   capitalUsagePct = 100,
 }: SimulateMarginByTradesParams): MarginSimulationByTradesResult {
   if (!Array.isArray(marketData) || marketData.length === 0 || leverage <= 0) {
@@ -66,7 +61,6 @@ export function simulateMarginByTrades({
       trades: [],
       maxDrawdown: 0,
       finalValue: Math.max(0, initialCapital || 0),
-      positionStopEvents: [],
       maintenanceLiquidationEvents: [],
       liquidationEvent: null,
     };
@@ -79,9 +73,7 @@ export function simulateMarginByTrades({
   });
 
   const usage = clamp(capitalUsagePct, 0, 100) / 100;
-  const stopLossThreshold = clamp(positionStopLossPct, 1, 95);
   const maintenanceThreshold = clamp(maintenanceMarginPct, 1, 95);
-  const stopLossFactor = 1 - stopLossThreshold / 100;
   const maintenanceFraction = maintenanceThreshold / 100;
 
   let cash = Math.max(0, initialCapital || 0);
@@ -92,7 +84,6 @@ export function simulateMarginByTrades({
 
   const equity: EquityPoint[] = [];
   const simulatedTrades: Trade[] = [];
-  const positionStopEvents: PositionRiskEvent[] = [];
   const maintenanceLiquidationEvents: PositionRiskEvent[] = [];
 
   for (const bar of sortedBars) {
@@ -131,26 +122,21 @@ export function simulateMarginByTrades({
     }
 
     let totalValue = cash;
-    let stoppedByLiquidation = false;
 
     if (position) {
       const canLiquidate = currentDate > position.entryDate;
-      const stopLossPrice = position.entryPrice * stopLossFactor;
       const maintenanceDenominator = position.quantity * (1 - maintenanceFraction);
       const maintenancePriceRaw = maintenanceDenominator > 0
         ? position.borrowed / maintenanceDenominator
         : Number.POSITIVE_INFINITY;
       const maintenancePrice = Math.min(position.entryPrice, Math.max(0, maintenancePriceRaw));
 
-      const hitStopLoss = canLiquidate && bar.low <= stopLossPrice;
       const hitMaintenance = canLiquidate && bar.low <= maintenancePrice;
 
-      if (hitStopLoss || hitMaintenance) {
-        const triggerType: PositionRiskTrigger = hitStopLoss && hitMaintenance
-          ? (maintenancePrice >= stopLossPrice ? 'maintenance_margin' : 'position_stop_loss')
-          : (hitMaintenance ? 'maintenance_margin' : 'position_stop_loss');
-        const triggerPrice = triggerType === 'maintenance_margin' ? maintenancePrice : stopLossPrice;
-        const thresholdPct = triggerType === 'maintenance_margin' ? maintenanceThreshold : stopLossThreshold;
+      if (hitMaintenance) {
+        const triggerType: PositionRiskTrigger = 'maintenance_margin';
+        const triggerPrice = maintenancePrice;
+        const thresholdPct = maintenanceThreshold;
         const forcedExitPrice = Math.max(0, triggerPrice);
         const proceeds = position.quantity * forcedExitPrice;
         const positionEquityAtExit = Math.max(0, proceeds - position.borrowed);
@@ -175,7 +161,7 @@ export function simulateMarginByTrades({
           pnl,
           pnlPercent,
           duration,
-          exitReason: triggerType === 'maintenance_margin' ? 'margin_liquidation' : 'position_stop_loss',
+          exitReason: 'margin_liquidation',
           context: {
             ...(position.template.context || {}),
             leverage,
@@ -184,7 +170,6 @@ export function simulateMarginByTrades({
             grossInvestment: position.quantity * position.entryPrice,
             currentCapitalAfterExit: cash,
             marginTriggerType: triggerType,
-            positionStopLossPct: stopLossThreshold,
             maintenanceMarginPct: maintenanceThreshold,
             marginRatioAtTrigger,
           },
@@ -203,15 +188,10 @@ export function simulateMarginByTrades({
           marginRatioAtTrigger,
         };
 
-        if (triggerType === 'maintenance_margin') {
-          liquidationEvent = event;
-          maintenanceLiquidationEvents.push(event);
-        } else {
-          positionStopEvents.push(event);
-        }
+        liquidationEvent = event;
+        maintenanceLiquidationEvents.push(event);
 
         position = null;
-        stoppedByLiquidation = triggerType === 'maintenance_margin' && stopAfterMaintenanceLiquidation;
       } else if (currentDate === position.plannedExitDate) {
         const plannedExitPrice = position.template.exitPrice;
         const proceeds = position.quantity * plannedExitPrice;
@@ -254,10 +234,6 @@ export function simulateMarginByTrades({
       value: totalValue,
       drawdown,
     });
-
-    if (stoppedByLiquidation) {
-      break;
-    }
   }
 
   const finalValue = equity[equity.length - 1]?.value ?? cash;
@@ -268,7 +244,6 @@ export function simulateMarginByTrades({
     trades: simulatedTrades,
     maxDrawdown,
     finalValue,
-    positionStopEvents,
     maintenanceLiquidationEvents,
     liquidationEvent,
   };

@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
-import { Heart, RefreshCcw, AlertTriangle } from 'lucide-react';
+import { Heart, RefreshCcw, AlertTriangle, HelpCircle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { DatasetAPI } from '../lib/api';
 import { isSameDay } from '../lib/date-utils';
@@ -37,12 +37,9 @@ const ET_YMD_FMT = new Intl.DateTimeFormat('en-US', {
   year: 'numeric', month: '2-digit', day: '2-digit'
 });
 const MARGIN_PERCENT_OPTIONS = [100, 125, 150, 175, 200] as const;
+const MAINTENANCE_MARGIN_OPTIONS = [20, 25, 30, 35, 40] as const;
 const DEFAULT_MARGIN_PERCENT = 100;
-const DEFAULT_POSITION_STOP_LOSS_PERCENT = 20;
 const DEFAULT_MAINTENANCE_MARGIN_PERCENT = 25;
-const DEFAULT_STOP_AFTER_LIQUIDATION = false;
-const MIN_THRESHOLD_PERCENT = 1;
-const MAX_THRESHOLD_PERCENT = 95;
 
 function ResultsSectionLoader() {
   return (
@@ -58,17 +55,20 @@ function normalizeMarginPercent(value: number): number {
     : DEFAULT_MARGIN_PERCENT;
 }
 
-function normalizeThresholdPercent(value: number, fallback: number): number {
-  if (!Number.isFinite(value)) return fallback;
-  return Math.min(MAX_THRESHOLD_PERCENT, Math.max(MIN_THRESHOLD_PERCENT, Math.round(value)));
-}
-
-function normalizePositionStopLossPercent(value: number): number {
-  return normalizeThresholdPercent(value, DEFAULT_POSITION_STOP_LOSS_PERCENT);
-}
-
 function normalizeMaintenanceMarginPercent(value: number): number {
-  return normalizeThresholdPercent(value, DEFAULT_MAINTENANCE_MARGIN_PERCENT);
+  return MAINTENANCE_MARGIN_OPTIONS.includes(value as (typeof MAINTENANCE_MARGIN_OPTIONS)[number])
+    ? value
+    : DEFAULT_MAINTENANCE_MARGIN_PERCENT;
+}
+
+function estimateLiquidationDropPct(leverage: number, maintenanceMarginPct: number): number | null {
+  if (!Number.isFinite(leverage) || leverage <= 1) return null;
+  const m = maintenanceMarginPct / 100;
+  if (m >= 1) return 0;
+  const liquidationRatio = ((leverage - 1) / leverage) / (1 - m);
+  const dropPct = (1 - liquidationRatio) * 100;
+  if (!Number.isFinite(dropPct)) return null;
+  return Math.max(0, Math.min(99.99, dropPct));
 }
 
 export function SingleTickerPage() {
@@ -115,21 +115,10 @@ export function SingleTickerPage() {
     const raw = Number(window.localStorage.getItem('results.marginPercent') || DEFAULT_MARGIN_PERCENT);
     return normalizeMarginPercent(raw);
   });
-  const [positionStopLossPct, setPositionStopLossPct] = useState<number>(() => {
-    if (typeof window === 'undefined') return DEFAULT_POSITION_STOP_LOSS_PERCENT;
-    const raw = Number(window.localStorage.getItem('results.positionStopLossPct') || DEFAULT_POSITION_STOP_LOSS_PERCENT);
-    return normalizePositionStopLossPercent(raw);
-  });
   const [maintenanceMarginPct, setMaintenanceMarginPct] = useState<number>(() => {
     if (typeof window === 'undefined') return DEFAULT_MAINTENANCE_MARGIN_PERCENT;
     const raw = Number(window.localStorage.getItem('results.maintenanceMarginPct') || DEFAULT_MAINTENANCE_MARGIN_PERCENT);
     return normalizeMaintenanceMarginPercent(raw);
-  });
-  const [stopAfterLiquidation, setStopAfterLiquidation] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return DEFAULT_STOP_AFTER_LIQUIDATION;
-    const raw = window.localStorage.getItem('results.stopAfterLiquidation');
-    if (raw == null) return DEFAULT_STOP_AFTER_LIQUIDATION;
-    return raw === 'true';
   });
 
   type ChartTab = 'price' | 'equity' | 'buyhold' | 'drawdown' | 'trades' | 'profit' | 'duration' | 'openDayDrawdown' | 'buyAtClose' | 'buyAtClose4' | 'noStopLoss' | 'splits' | 'options';
@@ -149,18 +138,8 @@ export function SingleTickerPage() {
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    window.localStorage.setItem('results.positionStopLossPct', String(positionStopLossPct));
-  }, [positionStopLossPct]);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
     window.localStorage.setItem('results.maintenanceMarginPct', String(maintenanceMarginPct));
   }, [maintenanceMarginPct]);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    window.localStorage.setItem('results.stopAfterLiquidation', String(stopAfterLiquidation));
-  }, [stopAfterLiquidation]);
 
   useEffect(() => {
     const currentTabConfig = analysisTabsConfig.find(tab => tab.id === activeChart);
@@ -239,6 +218,15 @@ export function SingleTickerPage() {
 
   const initialCapital = Number(currentStrategy?.riskManagement?.initialCapital ?? 10000);
   const leverageMultiplier = marginPercent / 100;
+  const currentLiquidationDropPct = estimateLiquidationDropPct(leverageMultiplier, maintenanceMarginPct);
+  const liquidationDropByLeverage = useMemo(() => {
+    return MARGIN_PERCENT_OPTIONS
+      .filter((opt) => opt > 100)
+      .map((opt) => {
+        const drop = estimateLiquidationDropPct(opt / 100, maintenanceMarginPct);
+        return { marginPercent: opt, dropPct: drop };
+      });
+  }, [maintenanceMarginPct]);
   const lazyFallback = <ResultsSectionLoader />;
 
   // If not data ready, show Shell with loading or selection
@@ -355,9 +343,7 @@ export function SingleTickerPage() {
       trades: baselineResults.trades,
       initialCapital,
       leverage: leverageMultiplier,
-      positionStopLossPct,
       maintenanceMarginPct,
-      stopAfterMaintenanceLiquidation: stopAfterLiquidation,
       capitalUsagePct: Number(currentStrategy?.riskManagement?.capitalUsage ?? 100),
     })
     : null;
@@ -382,10 +368,15 @@ export function SingleTickerPage() {
       maxDrawdown: marginSimulation.maxDrawdown
     };
   })();
-  const positionStopEvents = marginSimulation?.positionStopEvents ?? [];
   const maintenanceLiquidationEvents = marginSimulation?.maintenanceLiquidationEvents ?? [];
-  const lastPositionStopEvent = positionStopEvents[positionStopEvents.length - 1] ?? null;
   const lastMaintenanceLiquidationEvent = maintenanceLiquidationEvents[maintenanceLiquidationEvents.length - 1] ?? null;
+  const maintenanceLiquidationDates = useMemo(() => {
+    if (!maintenanceLiquidationEvents.length) return '';
+    const uniqueDates = Array.from(
+      new Set(maintenanceLiquidationEvents.map((event) => new Date(event.date).toLocaleDateString('ru-RU')))
+    );
+    return uniqueDates.join(', ');
+  }, [maintenanceLiquidationEvents]);
 
   const comparisonResults = leverageMultiplier > 1 ? baselineResults : null;
   const trades = selectedResults.trades;
@@ -414,6 +405,52 @@ export function SingleTickerPage() {
         return <BuyHoldAnalysis marketData={marketData} initialCapital={initialCapital} />;
     }
     return null;
+  };
+
+  const openMarginHelp = () => {
+    setModal({
+      type: 'info',
+      title: 'Маржинальность: как читать',
+      message: [
+        'Маржинальность показывает размер позиции относительно собственного капитала.',
+        '100% = без плеча (1.0x), 125% = 1.25x, 150% = 1.5x, 200% = 2.0x.',
+        '',
+        `Пример: при капитале ${formatCurrencyUSD(initialCapital)} и маржинальности 150% размер позиции ≈ ${formatCurrencyUSD(initialCapital * 1.5)}.`,
+        '',
+        'Чем выше маржинальность, тем меньше падение цены, при котором достигается брокерская ликвидация.',
+        '',
+        'Оценка падения до ликвидации при текущем Maintenance Margin:',
+        ...liquidationDropByLeverage.map(({ marginPercent: mp, dropPct }) => {
+          if (dropPct == null) return `${mp}%: ликвидация не применяется.`;
+          return `${mp}% (${(mp / 100).toFixed(2)}x): ликвидация около падения ${dropPct.toFixed(2)}% от цены входа.`;
+        }),
+      ].join('\n'),
+    });
+  };
+
+  const openMaintenanceMarginHelp = () => {
+    setModal({
+      type: 'info',
+      title: 'Maintenance Margin: брокерская ликвидация',
+      message: [
+        'Maintenance Margin (%) — минимальная доля собственных средств в открытой позиции, которую требует брокер.',
+        'Если маржинальный уровень падает ниже порога, брокер принудительно закрывает позицию (ликвидация).',
+        'После маржин-колла расчет всегда продолжается с оставшимся капиталом.',
+        '',
+        'Маржинальный уровень:',
+        'equity / positionValue, где equity = positionValue - debt.',
+        '',
+        'Реалистичные значения для акций обычно 20-35%.',
+        '25% часто используется как базовый уровень; 30-40% — более консервативно для волатильных бумаг.',
+        '',
+        `Текущие настройки: маржинальность ${marginPercent}%, maintenance ${maintenanceMarginPct}%.`,
+        currentLiquidationDropPct == null
+          ? 'При 100% (без плеча) брокерская ликвидация по марже не срабатывает.'
+          : `Оценочно ликвидация наступает при падении около ${currentLiquidationDropPct.toFixed(2)}% от цены входа.`,
+        '',
+        'Пример для 2.0x и maintenance 25%: ликвидация примерно при -33.33% от входа.',
+      ].join('\n'),
+    });
   };
 
   return (
@@ -624,12 +661,23 @@ export function SingleTickerPage() {
           <section className="rounded-xl border bg-white p-4 dark:bg-gray-900 dark:border-gray-800 space-y-4">
             <div className="flex flex-wrap items-end justify-between gap-3">
               <div>
-                <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">Маржинальность стратегии</div>
+                <div className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-gray-100">
+                  Маржинальность стратегии
+                  <button
+                    type="button"
+                    onClick={openMarginHelp}
+                    className="inline-flex h-5 w-5 items-center justify-center rounded-full text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-300"
+                    title="Пояснение по маржинальности"
+                    aria-label="Пояснение по маржинальности"
+                  >
+                    <HelpCircle className="h-4 w-4" />
+                  </button>
+                </div>
                 <div className="text-xs text-gray-500 dark:text-gray-400">
-                  100% = без маржи, 200% = 2x. Эти пороги работают только при маржинальности выше 100%.
+                  Оставлен только один риск-триггер: брокерская ликвидация по Maintenance Margin.
                 </div>
               </div>
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-4">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <div className="flex items-center gap-2">
                   <label htmlFor="results-margin-percent" className="text-xs text-gray-600 dark:text-gray-300">
                     Маржинальность, %
@@ -648,71 +696,38 @@ export function SingleTickerPage() {
                   </select>
                 </div>
                 <div className="flex items-center gap-2">
-                  <label htmlFor="results-position-stop-loss" className="text-xs text-gray-600 dark:text-gray-300">
-                    Position Stop Loss, %
-                  </label>
-                  <input
-                    id="results-position-stop-loss"
-                    type="number"
-                    min={MIN_THRESHOLD_PERCENT}
-                    max={MAX_THRESHOLD_PERCENT}
-                    step={1}
-                    value={positionStopLossPct}
-                    onChange={(e) => setPositionStopLossPct(normalizePositionStopLossPercent(Number(e.target.value)))}
-                    className="w-24 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none transition focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
-                  />
-                </div>
-                <div className="flex items-center gap-2">
                   <label htmlFor="results-maintenance-margin" className="text-xs text-gray-600 dark:text-gray-300">
                     Maintenance Margin, %
                   </label>
-                  <input
+                  <select
                     id="results-maintenance-margin"
-                    type="number"
-                    min={MIN_THRESHOLD_PERCENT}
-                    max={MAX_THRESHOLD_PERCENT}
-                    step={1}
                     value={maintenanceMarginPct}
                     onChange={(e) => setMaintenanceMarginPct(normalizeMaintenanceMarginPercent(Number(e.target.value)))}
-                    className="w-24 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none transition focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
-                  />
+                    className="w-28 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none transition focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+                  >
+                    {MAINTENANCE_MARGIN_OPTIONS.map((opt) => (
+                      <option key={opt} value={opt}>
+                        {opt}%
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={openMaintenanceMarginHelp}
+                    className="inline-flex h-5 w-5 items-center justify-center rounded-full text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-300"
+                    title="Пояснение по Maintenance Margin"
+                    aria-label="Пояснение по Maintenance Margin"
+                  >
+                    <HelpCircle className="h-4 w-4" />
+                  </button>
                 </div>
-                <label htmlFor="results-stop-after-liquidation" className="flex items-center gap-2 text-xs text-gray-700 dark:text-gray-300">
-                  <input
-                    id="results-stop-after-liquidation"
-                    type="checkbox"
-                    checked={stopAfterLiquidation}
-                    onChange={(e) => setStopAfterLiquidation(e.target.checked)}
-                    className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900"
-                  />
-                  Остановить после ликвидации
-                </label>
               </div>
             </div>
 
             {leverageMultiplier > 1 && (
-              <div className="grid grid-cols-1 gap-3 rounded-lg border border-gray-200 bg-gray-50/70 p-3 text-xs text-gray-700 dark:border-gray-700 dark:bg-gray-900/30 dark:text-gray-300 md:grid-cols-2">
-                <div className="space-y-1">
-                  <div className="font-semibold text-gray-900 dark:text-gray-100">Position Stop Loss %</div>
-                  <div>
-                    Порог падения цены от цены входа текущей позиции.
-                    Формула: <span className="font-mono">triggerPrice = entryPrice × (1 - stopLoss% / 100)</span>.
-                  </div>
-                  <div>
-                    Если дневной минимум касается порога, позиция закрывается принудительно, но расчет продолжается.
-                  </div>
-                </div>
-                <div className="space-y-1">
-                  <div className="font-semibold text-gray-900 dark:text-gray-100">Maintenance Margin %</div>
-                  <div>
-                    Минимально допустимая доля собственных средств в открытой позиции.
-                    Маржинальный уровень: <span className="font-mono">equity / positionValue</span>.
-                  </div>
-                  <div>
-                    Если уровень падает до порога, происходит брокерская ликвидация позиции.
-                    Далее расчет либо продолжается с остатком капитала, либо останавливается (по чекбоксу).
-                  </div>
-                </div>
+              <div className="rounded-lg border border-gray-200 bg-gray-50/70 p-3 text-xs text-gray-700 dark:border-gray-700 dark:bg-gray-900/30 dark:text-gray-300">
+                При маржинальности {marginPercent}% и maintenance {maintenanceMarginPct}% ликвидация наступает примерно
+                при падении позиции на <span className="font-semibold">{currentLiquidationDropPct != null ? `${currentLiquidationDropPct.toFixed(2)}%` : '—'}</span> от цены входа.
               </div>
             )}
 
@@ -741,17 +756,11 @@ export function SingleTickerPage() {
               </div>
             )}
 
-            {lastPositionStopEvent && (
-              <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-900/40 dark:bg-amber-950/20 dark:text-amber-200">
-                Position Stop Loss ({positionStopLossPct}%) сработал {positionStopEvents.length} раз(а). Последний: {new Date(lastPositionStopEvent.date).toLocaleDateString('ru-RU')}, падение позиции {lastPositionStopEvent.positionDropPct.toFixed(2)}%. Остаток капитала после принудительного закрытия: {formatCurrencyUSD(lastPositionStopEvent.remainingCapital)}.
-              </div>
-            )}
-
             {lastMaintenanceLiquidationEvent && (
               <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-800 dark:border-red-900/40 dark:bg-red-950/20 dark:text-red-200">
                 Ликвидация по Maintenance Margin ({maintenanceMarginPct}%): {new Date(lastMaintenanceLiquidationEvent.date).toLocaleDateString('ru-RU')}, падение позиции {lastMaintenanceLiquidationEvent.positionDropPct.toFixed(2)}%, маржинальный уровень {(
                   lastMaintenanceLiquidationEvent.marginRatioAtTrigger * 100
-                ).toFixed(2)}%. Срабатываний: {maintenanceLiquidationEvents.length}. {stopAfterLiquidation ? 'Расчет остановлен.' : 'Расчет продолжается с остатком капитала.'} Остаток капитала: {formatCurrencyUSD(lastMaintenanceLiquidationEvent.remainingCapital)}.
+                ).toFixed(2)}%. Срабатываний: {maintenanceLiquidationEvents.length}. Даты маржин-коллов: {maintenanceLiquidationDates}. Расчет продолжается с остатком капитала. Остаток капитала: {formatCurrencyUSD(lastMaintenanceLiquidationEvent.remainingCapital)}.
               </div>
             )}
 

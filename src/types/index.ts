@@ -178,7 +178,6 @@ export interface Trade {
     netProceeds?: number;
     marginUsed?: number;
     marginTriggerType?: string;
-    positionStopLossPct?: number;
     maintenanceMarginPct?: number;
     marginRatioAtTrigger?: number;
     stopLoss?: number;
