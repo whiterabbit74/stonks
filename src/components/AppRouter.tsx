@@ -8,16 +8,39 @@ import { ThemeToggle } from './ThemeToggle';
 import { Logo } from './Logo';
 import { API_BASE_URL } from '../lib/api';
 import { ToastProvider, BottomNav } from './ui';
+import { scheduleIdleTask } from '../lib/prefetch';
 
-const DataUpload = lazy(() => import('./DataUpload').then(m => ({ default: m.DataUpload })));
-const DataEnhancer = lazy(() => import('./DataEnhancer').then(m => ({ default: m.DataEnhancer })));
-const SingleTickerPage = lazy(() => import('./SingleTickerPage').then(m => ({ default: m.SingleTickerPage })));
-const TelegramWatches = lazy(() => import('./TelegramWatches').then(m => ({ default: m.TelegramWatches })));
-const AppSettings = lazy(() => import('./AppSettings').then(m => ({ default: m.AppSettings })));
-const SplitsTab = lazy(() => import('./SplitsTab').then(m => ({ default: m.SplitsTab })));
-const CalendarPage = lazy(() => import('./CalendarPage').then(m => ({ default: m.CalendarPage })));
-const MultiTickerPage = lazy(() => import('./MultiTickerPage').then(m => ({ default: m.MultiTickerPage })));
-const MultiTickerOptionsPage = lazy(() => import('./MultiTickerOptionsPage').then(m => ({ default: m.MultiTickerOptionsPage })));
+const importDataUpload = () => import('./DataUpload');
+const importDataEnhancer = () => import('./DataEnhancer');
+const importSingleTickerPage = () => import('./SingleTickerPage');
+const importTelegramWatches = () => import('./TelegramWatches');
+const importAppSettings = () => import('./AppSettings');
+const importSplitsTab = () => import('./SplitsTab');
+const importCalendarPage = () => import('./CalendarPage');
+const importMultiTickerPage = () => import('./MultiTickerPage');
+const importMultiTickerOptionsPage = () => import('./MultiTickerOptionsPage');
+
+const DataUpload = lazy(() => importDataUpload().then(m => ({ default: m.DataUpload })));
+const DataEnhancer = lazy(() => importDataEnhancer().then(m => ({ default: m.DataEnhancer })));
+const SingleTickerPage = lazy(() => importSingleTickerPage().then(m => ({ default: m.SingleTickerPage })));
+const TelegramWatches = lazy(() => importTelegramWatches().then(m => ({ default: m.TelegramWatches })));
+const AppSettings = lazy(() => importAppSettings().then(m => ({ default: m.AppSettings })));
+const SplitsTab = lazy(() => importSplitsTab().then(m => ({ default: m.SplitsTab })));
+const CalendarPage = lazy(() => importCalendarPage().then(m => ({ default: m.CalendarPage })));
+const MultiTickerPage = lazy(() => importMultiTickerPage().then(m => ({ default: m.MultiTickerPage })));
+const MultiTickerOptionsPage = lazy(() => importMultiTickerOptionsPage().then(m => ({ default: m.MultiTickerOptionsPage })));
+
+const routePrefetchers: Record<string, () => Promise<unknown>> = {
+  '/data': importDataUpload,
+  '/enhance': importDataEnhancer,
+  '/results': importSingleTickerPage,
+  '/multi-ticker': importMultiTickerPage,
+  '/multi-ticker-options': importMultiTickerOptionsPage,
+  '/calendar': importCalendarPage,
+  '/split': importSplitsTab,
+  '/watches': importTelegramWatches,
+  '/settings': importAppSettings,
+};
 
 function RouteLoader() {
   return (
@@ -150,6 +173,23 @@ function ProtectedLayout() {
     { to: '/watches', label: 'Мониторинг' },
   ];
 
+  const prefetchRoute = (path: string) => {
+    const loader = routePrefetchers[path];
+    if (loader) {
+      void loader();
+    }
+  };
+
+  useEffect(() => {
+    if (!authorized) return;
+
+    return scheduleIdleTask(() => {
+      Object.values(routePrefetchers).forEach((loader) => {
+        void loader();
+      });
+    }, 2000);
+  }, [authorized]);
+
   const closeMobileMenu = () => setIsMobileMenuOpen(false);
 
   const handleLogout = async () => {
@@ -223,6 +263,9 @@ function ProtectedLayout() {
                   key={t.to}
                   to={t.to}
                   onClick={closeMobileMenu}
+                  onMouseEnter={() => prefetchRoute(t.to)}
+                  onFocus={() => prefetchRoute(t.to)}
+                  onTouchStart={() => prefetchRoute(t.to)}
                   className={({ isActive }) => `block px-3 py-2 rounded-md text-base font-medium transition-colors ${isActive ? 'bg-indigo-600 text-white' : 'text-gray-700 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-200 dark:hover:bg-slate-700 dark:hover:text-white'}`}
                 >
                   {t.label}
@@ -244,7 +287,14 @@ function ProtectedLayout() {
           {/* Desktop navigation */}
           <nav className="hidden md:flex gap-2 flex-wrap">
             {tabs.map(t => (
-              <NavLink key={t.to} to={t.to} className={({ isActive }) => `px-3 py-1 rounded text-sm border ${isActive ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white hover:bg-gray-50 text-gray-700 border-gray-200 dark:bg-gray-900 dark:text-gray-200 dark:border-gray-800 dark:hover:bg-gray-800'}`}>
+              <NavLink
+                key={t.to}
+                to={t.to}
+                onMouseEnter={() => prefetchRoute(t.to)}
+                onFocus={() => prefetchRoute(t.to)}
+                onTouchStart={() => prefetchRoute(t.to)}
+                className={({ isActive }) => `px-3 py-1 rounded text-sm border ${isActive ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white hover:bg-gray-50 text-gray-700 border-gray-200 dark:bg-gray-900 dark:text-gray-200 dark:border-gray-800 dark:hover:bg-gray-800'}`}
+              >
                 {t.label}
               </NavLink>
             ))}

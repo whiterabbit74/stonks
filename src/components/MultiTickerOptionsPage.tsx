@@ -1,4 +1,4 @@
-import { lazy, Suspense, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { MetricsGrid, AnalysisTabs, PageHeader, Select, Input, Label, Button, TickerInput } from './ui';
 import { useAppStore } from '../stores';
 import type { Strategy, Trade, EquityPoint } from '../types';
@@ -11,7 +11,10 @@ import type { BacktestMetrics } from '../lib/backtest-statistics';
 import { createStrategyFromTemplate, STRATEGY_TEMPLATES } from '../lib/strategy';
 import { useMultiTickerData } from '../hooks/useMultiTickerData';
 import { BacktestPageShell } from './BacktestPageShell';
-const BacktestResultsView = lazy(() => import('./BacktestResultsView').then((m) => ({ default: m.BacktestResultsView })));
+import { scheduleIdleTask } from '../lib/prefetch';
+
+const importBacktestResultsView = () => import('./BacktestResultsView');
+const BacktestResultsView = lazy(() => importBacktestResultsView().then((m) => ({ default: m.BacktestResultsView })));
 
 interface BacktestResults {
   equity: EquityPoint[];
@@ -55,6 +58,12 @@ export function MultiTickerOptionsPage() {
   const [activeTab, setActiveTab] = useState<TabId>('equity');
   const [selectedTradeTicker, setSelectedTradeTicker] = useState<'all' | string>('all');
   const lazyFallback = <ResultsPanelLoader />;
+
+  const prefetchAnalysisTab = (tabId: string) => {
+    void importBacktestResultsView().then((module) => {
+      module.prefetchBacktestTab(tabId, 'options');
+    });
+  };
 
   const {
     tickersData,
@@ -158,6 +167,16 @@ export function MultiTickerOptionsPage() {
       setIsLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (!backtestResults) return;
+
+    return scheduleIdleTask(() => {
+      void importBacktestResultsView().then((module) => {
+        module.prefetchBacktestResultsChunks('options');
+      });
+    }, 1000);
+  }, [backtestResults]);
 
   return (
     <div className="space-y-6">
@@ -293,6 +312,7 @@ export function MultiTickerOptionsPage() {
               ]}
               activeTab={activeTab}
               onChange={(id) => setActiveTab(id as TabId)}
+              onTabIntent={prefetchAnalysisTab}
             />
 
             <div className="p-6">

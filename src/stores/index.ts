@@ -118,7 +118,6 @@ export const useAppStore = create<AppState>((set, get) => ({
       { id: 'profit', label: 'Profit factor', visible: true },
       { id: 'duration', label: 'Длительность', visible: true },
       { id: 'openDayDrawdown', label: 'Стартовая просадка', visible: true },
-      { id: 'margin', label: 'Маржа', visible: true },
       { id: 'buyAtClose', label: 'Покупка на открытии', visible: true },
       { id: 'buyAtClose4', label: 'Мультитикер', visible: true },
       { id: 'noStopLoss', label: 'Без stop loss', visible: true },
@@ -132,18 +131,24 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed)) {
-          // Проверяем, есть ли новые табы в дефолтной конфигурации, которых нет в сохраненной
-          const savedIds = new Set(parsed.map((tab: any) => tab.id));
-          const missingTabs = defaultTabs.filter(tab => !savedIds.has(tab.id));
+          const defaultById = new Map(defaultTabs.map((tab) => [tab.id, tab]));
+          const normalizedSaved = parsed
+            .filter((tab: any) => tab && typeof tab.id === 'string' && typeof tab.visible === 'boolean')
+            .filter((tab: any) => defaultById.has(tab.id))
+            .map((tab: any) => {
+              const base = defaultById.get(tab.id)!;
+              return { ...base, visible: tab.visible };
+            });
 
-          if (missingTabs.length > 0) {
-            // Добавляем отсутствующие табы в конец списка
-            const updatedTabs = [...parsed, ...missingTabs];
+          const normalizedIds = new Set(normalizedSaved.map((tab) => tab.id));
+          const missingTabs = defaultTabs.filter((tab) => !normalizedIds.has(tab.id));
+          const updatedTabs = [...normalizedSaved, ...missingTabs];
+
+          if (JSON.stringify(updatedTabs) !== JSON.stringify(parsed)) {
             localStorage.setItem('analysisTabsConfig', JSON.stringify(updatedTabs));
-            return updatedTabs;
           }
 
-          return parsed;
+          return updatedTabs;
         }
       }
     } catch (e) {

@@ -21,7 +21,8 @@ interface EquityChartProps {
   primaryLabel?: string;
 }
 
-type RangeKey = 'ALL' | '1Y' | '6M' | '3M' | '1M';
+type RangeKey = 'ALL' | 'YTD' | '5Y' | '3Y' | '1Y' | '6M' | '3M' | '1M';
+const RANGE_OPTIONS: RangeKey[] = ['1M', '3M', '6M', '1Y', '3Y', '5Y', 'YTD', 'ALL'];
 
 const MIN_CHART_HEIGHT = 520;
 
@@ -264,15 +265,24 @@ export function EquityChart({ equity, hideHeader, comparisonEquity, comparisonLa
       return;
     }
 
-    const daysByRange: Record<Exclude<RangeKey, 'ALL'>, number> = {
-      '1Y': 365,
-      '6M': 180,
-      '3M': 90,
-      '1M': 30,
-    };
+    let from = leftEdge;
+    if (activeRange === 'YTD') {
+      const rightEdgeDate = new Date(rightEdge * 1000);
+      const ytdStart = Math.floor(Date.UTC(rightEdgeDate.getUTCFullYear(), 0, 1) / 1000);
+      from = Math.max(leftEdge, ytdStart);
+    } else {
+      const daysByRange: Record<Exclude<RangeKey, 'ALL' | 'YTD'>, number> = {
+        '5Y': 365 * 5,
+        '3Y': 365 * 3,
+        '1Y': 365,
+        '6M': 180,
+        '3M': 90,
+        '1M': 30,
+      };
 
-    const days = daysByRange[activeRange];
-    const from = Math.max(leftEdge, rightEdge - days * 24 * 60 * 60);
+      const days = daysByRange[activeRange];
+      from = Math.max(leftEdge, rightEdge - days * 24 * 60 * 60);
+    }
 
     chartRef.current.timeScale().setVisibleRange({
       from: from as UTCTimestamp,
@@ -336,7 +346,7 @@ export function EquityChart({ equity, hideHeader, comparisonEquity, comparisonLa
       )}
 
       <div className="mb-3 flex gap-2 flex-wrap shrink-0">
-        {(['1M', '3M', '6M', '1Y', 'ALL'] as RangeKey[]).map((range) => (
+        {RANGE_OPTIONS.map((range) => (
           <button
             key={range}
             onClick={() => setActiveRange(range)}

@@ -177,6 +177,10 @@ export interface Trade {
     leverageDebt?: number;
     netProceeds?: number;
     marginUsed?: number;
+    marginTriggerType?: string;
+    positionStopLossPct?: number;
+    maintenanceMarginPct?: number;
+    marginRatioAtTrigger?: number;
     stopLoss?: number;
     takeProfit?: number;
   };

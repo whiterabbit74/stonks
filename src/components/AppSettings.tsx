@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { DatasetAPI } from '../lib/api';
 import { useAppStore } from '../stores';
 import { sanitizeNumericInput, sanitizeTextInput, VALIDATION_CONSTRAINTS } from '../lib/input-validation';
-import { BarChart3, TrendingUp, ShoppingCart, TrendingDown, Target, Calculator, Clock, AlertTriangle, PiggyBank, DollarSign, BarChart2, Layers, Info, X, ChevronUp, ChevronDown, Save, Loader2 } from 'lucide-react';
+import { BarChart3, TrendingUp, ShoppingCart, TrendingDown, Target, Calculator, Clock, AlertTriangle, DollarSign, BarChart2, Layers, Info, X, ChevronUp, ChevronDown, Save, Loader2 } from 'lucide-react';
 // import { StrategySettings } from './StrategySettings';
 
 // SettingsData interface removed - not actively used
@@ -145,7 +145,6 @@ export function AppSettings() {
       profit: <Calculator className="w-4 h-4" />,
       duration: <Clock className="w-4 h-4" />,
       openDayDrawdown: <AlertTriangle className="w-4 h-4" />,
-      margin: <PiggyBank className="w-4 h-4" />,
       singlePosition: <DollarSign className="w-4 h-4" />,
       splits: <Layers className="w-4 h-4" />
     };
@@ -1159,4 +1158,3 @@ export function AppSettings() {
     </div>
   );
 }
-

@@ -10,20 +10,39 @@ import { InfoModal } from './InfoModal';
 import { StrategyInfoCard } from './StrategyInfoCard';
 import { useSingleTickerData } from '../hooks/useSingleTickerData';
 import { BacktestPageShell } from './BacktestPageShell';
-const BacktestResultsView = lazy(() => import('./BacktestResultsView').then((m) => ({ default: m.BacktestResultsView })));
-const MarginSimulator = lazy(() => import('./MarginSimulator').then((m) => ({ default: m.MarginSimulator })));
-const BuyAtCloseSimulator = lazy(() => import('./BuyAtCloseSimulator').then((m) => ({ default: m.BuyAtCloseSimulator })));
-const BuyAtClose4Simulator = lazy(() => import('./BuyAtClose4Simulator').then((m) => ({ default: m.BuyAtClose4Simulator })));
-const NoStopLossSimulator = lazy(() => import('./NoStopLossSimulator').then((m) => ({ default: m.NoStopLossSimulator })));
-const OptionsAnalysis = lazy(() => import('./OptionsAnalysis').then((m) => ({ default: m.OptionsAnalysis })));
-const OpenDayDrawdownChart = lazy(() => import('./OpenDayDrawdownChart').then((m) => ({ default: m.OpenDayDrawdownChart })));
-const BuyHoldAnalysis = lazy(() => import('./BuyHoldAnalysis').then((m) => ({ default: m.BuyHoldAnalysis })));
+import { scheduleIdleTask } from '../lib/prefetch';
+import { MetricsCalculator } from '../lib/metrics';
+import { formatCurrencyUSD } from '../lib/formatters';
+import { simulateMarginByTrades } from '../lib/margin-simulation';
+
+const importBacktestResultsView = () => import('./BacktestResultsView');
+const importBuyAtCloseSimulator = () => import('./BuyAtCloseSimulator');
+const importBuyAtClose4Simulator = () => import('./BuyAtClose4Simulator');
+const importNoStopLossSimulator = () => import('./NoStopLossSimulator');
+const importOptionsAnalysis = () => import('./OptionsAnalysis');
+const importOpenDayDrawdownChart = () => import('./OpenDayDrawdownChart');
+const importBuyHoldAnalysis = () => import('./BuyHoldAnalysis');
+
+const BacktestResultsView = lazy(() => importBacktestResultsView().then((m) => ({ default: m.BacktestResultsView })));
+const BuyAtCloseSimulator = lazy(() => importBuyAtCloseSimulator().then((m) => ({ default: m.BuyAtCloseSimulator })));
+const BuyAtClose4Simulator = lazy(() => importBuyAtClose4Simulator().then((m) => ({ default: m.BuyAtClose4Simulator })));
+const NoStopLossSimulator = lazy(() => importNoStopLossSimulator().then((m) => ({ default: m.NoStopLossSimulator })));
+const OptionsAnalysis = lazy(() => importOptionsAnalysis().then((m) => ({ default: m.OptionsAnalysis })));
+const OpenDayDrawdownChart = lazy(() => importOpenDayDrawdownChart().then((m) => ({ default: m.OpenDayDrawdownChart })));
+const BuyHoldAnalysis = lazy(() => importBuyHoldAnalysis().then((m) => ({ default: m.BuyHoldAnalysis })));
 
 // Reusable Intl formatters
 const ET_YMD_FMT = new Intl.DateTimeFormat('en-US', {
   timeZone: 'America/New_York',
   year: 'numeric', month: '2-digit', day: '2-digit'
 });
+const MARGIN_PERCENT_OPTIONS = [100, 125, 150, 175, 200] as const;
+const DEFAULT_MARGIN_PERCENT = 100;
+const DEFAULT_POSITION_STOP_LOSS_PERCENT = 20;
+const DEFAULT_MAINTENANCE_MARGIN_PERCENT = 25;
+const DEFAULT_STOP_AFTER_LIQUIDATION = false;
+const MIN_THRESHOLD_PERCENT = 1;
+const MAX_THRESHOLD_PERCENT = 95;
 
 function ResultsSectionLoader() {
   return (
@@ -31,6 +50,25 @@ function ResultsSectionLoader() {
       Загрузка аналитики...
     </div>
   );
+}
+
+function normalizeMarginPercent(value: number): number {
+  return MARGIN_PERCENT_OPTIONS.includes(value as (typeof MARGIN_PERCENT_OPTIONS)[number])
+    ? value
+    : DEFAULT_MARGIN_PERCENT;
+}
+
+function normalizeThresholdPercent(value: number, fallback: number): number {
+  if (!Number.isFinite(value)) return fallback;
+  return Math.min(MAX_THRESHOLD_PERCENT, Math.max(MIN_THRESHOLD_PERCENT, Math.round(value)));
+}
+
+function normalizePositionStopLossPercent(value: number): number {
+  return normalizeThresholdPercent(value, DEFAULT_POSITION_STOP_LOSS_PERCENT);
+}
+
+function normalizeMaintenanceMarginPercent(value: number): number {
+  return normalizeThresholdPercent(value, DEFAULT_MAINTENANCE_MARGIN_PERCENT);
 }
 
 export function SingleTickerPage() {
@@ -72,8 +110,29 @@ export function SingleTickerPage() {
   const analysisTabsConfig = useAppStore((s) => s.analysisTabsConfig);
 
   const [modal, setModal] = useState<{ type: 'info' | 'error' | null; title?: string; message?: string }>({ type: null });
+  const [marginPercent, setMarginPercent] = useState<number>(() => {
+    if (typeof window === 'undefined') return DEFAULT_MARGIN_PERCENT;
+    const raw = Number(window.localStorage.getItem('results.marginPercent') || DEFAULT_MARGIN_PERCENT);
+    return normalizeMarginPercent(raw);
+  });
+  const [positionStopLossPct, setPositionStopLossPct] = useState<number>(() => {
+    if (typeof window === 'undefined') return DEFAULT_POSITION_STOP_LOSS_PERCENT;
+    const raw = Number(window.localStorage.getItem('results.positionStopLossPct') || DEFAULT_POSITION_STOP_LOSS_PERCENT);
+    return normalizePositionStopLossPercent(raw);
+  });
+  const [maintenanceMarginPct, setMaintenanceMarginPct] = useState<number>(() => {
+    if (typeof window === 'undefined') return DEFAULT_MAINTENANCE_MARGIN_PERCENT;
+    const raw = Number(window.localStorage.getItem('results.maintenanceMarginPct') || DEFAULT_MAINTENANCE_MARGIN_PERCENT);
+    return normalizeMaintenanceMarginPercent(raw);
+  });
+  const [stopAfterLiquidation, setStopAfterLiquidation] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return DEFAULT_STOP_AFTER_LIQUIDATION;
+    const raw = window.localStorage.getItem('results.stopAfterLiquidation');
+    if (raw == null) return DEFAULT_STOP_AFTER_LIQUIDATION;
+    return raw === 'true';
+  });
 
-  type ChartTab = 'price' | 'equity' | 'buyhold' | 'drawdown' | 'trades' | 'profit' | 'duration' | 'openDayDrawdown' | 'margin' | 'buyAtClose' | 'buyAtClose4' | 'noStopLoss' | 'splits' | 'options';
+  type ChartTab = 'price' | 'equity' | 'buyhold' | 'drawdown' | 'trades' | 'profit' | 'duration' | 'openDayDrawdown' | 'buyAtClose' | 'buyAtClose4' | 'noStopLoss' | 'splits' | 'options';
 
   // Determine active tab
   const firstVisibleTab = useMemo(() => {
@@ -84,11 +143,78 @@ export function SingleTickerPage() {
   const [activeChart, setActiveChart] = useState<ChartTab>(firstVisibleTab);
 
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem('results.marginPercent', String(marginPercent));
+  }, [marginPercent]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem('results.positionStopLossPct', String(positionStopLossPct));
+  }, [positionStopLossPct]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem('results.maintenanceMarginPct', String(maintenanceMarginPct));
+  }, [maintenanceMarginPct]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem('results.stopAfterLiquidation', String(stopAfterLiquidation));
+  }, [stopAfterLiquidation]);
+
+  useEffect(() => {
     const currentTabConfig = analysisTabsConfig.find(tab => tab.id === activeChart);
     if (!currentTabConfig || !currentTabConfig.visible) {
       setActiveChart(firstVisibleTab);
     }
   }, [analysisTabsConfig, activeChart, firstVisibleTab]);
+
+  const prefetchAnalysisTab = (tabId: string) => {
+    if (tabId === 'openDayDrawdown') {
+      void importOpenDayDrawdownChart();
+      return;
+    }
+    if (tabId === 'buyAtClose') {
+      void importBuyAtCloseSimulator();
+      return;
+    }
+    if (tabId === 'buyAtClose4') {
+      void importBuyAtClose4Simulator();
+      return;
+    }
+    if (tabId === 'noStopLoss') {
+      void importNoStopLossSimulator();
+      return;
+    }
+    if (tabId === 'options') {
+      void importOptionsAnalysis();
+      return;
+    }
+    if (tabId === 'buyhold') {
+      void importBuyHoldAnalysis();
+      return;
+    }
+
+    void importBacktestResultsView().then((module) => {
+      module.prefetchBacktestTab(tabId, 'single');
+    });
+  };
+
+  useEffect(() => {
+    if (!backtestResults) return;
+
+    return scheduleIdleTask(() => {
+      void importBacktestResultsView().then((module) => {
+        module.prefetchBacktestResultsChunks('single');
+      });
+      void importOpenDayDrawdownChart();
+      void importBuyAtCloseSimulator();
+      void importBuyAtClose4Simulator();
+      void importNoStopLossSimulator();
+      void importOptionsAnalysis();
+      void importBuyHoldAnalysis();
+    }, 1000);
+  }, [backtestResults]);
 
   // Check duplicate dates
   const { hasDuplicateDates, duplicateDateKeys } = useMemo(() => {
@@ -112,6 +238,7 @@ export function SingleTickerPage() {
   }, [marketData]);
 
   const initialCapital = Number(currentStrategy?.riskManagement?.initialCapital ?? 10000);
+  const leverageMultiplier = marginPercent / 100;
   const lazyFallback = <ResultsSectionLoader />;
 
   // If not data ready, show Shell with loading or selection
@@ -206,7 +333,13 @@ export function SingleTickerPage() {
   }
 
   if (!backtestResults) return null;
-  const { trades } = backtestResults;
+  const baselineResults = {
+    ...backtestResults,
+    finalValue: backtestResults.equity.length > 0
+      ? backtestResults.equity[backtestResults.equity.length - 1].value
+      : initialCapital,
+    maxDrawdown: Number(backtestResults.metrics?.maxDrawdown ?? 0)
+  };
 
   const lowIBS = Number(currentStrategy?.parameters?.lowIBS ?? 0.1);
   const highIBS = Number(currentStrategy?.parameters?.highIBS ?? 0.75);
@@ -216,11 +349,46 @@ export function SingleTickerPage() {
       : currentStrategy?.riskManagement?.maxHoldDays ?? 30
   );
 
-  const augmentedResults = {
-    ...backtestResults,
-    finalValue: backtestResults.equity.length > 0 ? backtestResults.equity[backtestResults.equity.length - 1].value : initialCapital,
-    maxDrawdown: backtestResults.metrics.maxDrawdown
-  };
+  const marginSimulation = leverageMultiplier > 1
+    ? simulateMarginByTrades({
+      marketData: marketData || [],
+      trades: baselineResults.trades,
+      initialCapital,
+      leverage: leverageMultiplier,
+      positionStopLossPct,
+      maintenanceMarginPct,
+      stopAfterMaintenanceLiquidation: stopAfterLiquidation,
+      capitalUsagePct: Number(currentStrategy?.riskManagement?.capitalUsage ?? 100),
+    })
+    : null;
+
+  const selectedResults = (() => {
+    if (!marginSimulation) {
+      return baselineResults;
+    }
+
+    const metrics = new MetricsCalculator(
+      marginSimulation.trades,
+      marginSimulation.equity,
+      initialCapital
+    ).calculateAllMetrics();
+
+    return {
+      ...baselineResults,
+      trades: marginSimulation.trades,
+      equity: marginSimulation.equity,
+      metrics,
+      finalValue: marginSimulation.finalValue,
+      maxDrawdown: marginSimulation.maxDrawdown
+    };
+  })();
+  const positionStopEvents = marginSimulation?.positionStopEvents ?? [];
+  const maintenanceLiquidationEvents = marginSimulation?.maintenanceLiquidationEvents ?? [];
+  const lastPositionStopEvent = positionStopEvents[positionStopEvents.length - 1] ?? null;
+  const lastMaintenanceLiquidationEvent = maintenanceLiquidationEvents[maintenanceLiquidationEvents.length - 1] ?? null;
+
+  const comparisonResults = leverageMultiplier > 1 ? baselineResults : null;
+  const trades = selectedResults.trades;
 
   const renderSpecificTab = () => {
     if (activeChart === 'openDayDrawdown') {
@@ -229,9 +397,6 @@ export function SingleTickerPage() {
              <OpenDayDrawdownChart trades={trades} data={marketData || []} />
           </ChartContainer>
         );
-    }
-    if (activeChart === 'margin') {
-        return <MarginSimulator equity={backtestResults.equity} trades={trades} symbol={symbol} />;
     }
     if (activeChart === 'buyAtClose') {
         return <BuyAtCloseSimulator data={marketData || []} strategy={currentStrategy} />;
@@ -456,11 +621,144 @@ export function SingleTickerPage() {
               Дубли дат в данных: {duplicateDateKeys.join(', ')}
             </div>
           )}
-          <section className="rounded-xl border bg-white p-4 dark:bg-gray-900 dark:border-gray-800">
+          <section className="rounded-xl border bg-white p-4 dark:bg-gray-900 dark:border-gray-800 space-y-4">
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">Маржинальность стратегии</div>
+                <div className="text-xs text-gray-500 dark:text-gray-400">
+                  100% = без маржи, 200% = 2x. Эти пороги работают только при маржинальности выше 100%.
+                </div>
+              </div>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-4">
+                <div className="flex items-center gap-2">
+                  <label htmlFor="results-margin-percent" className="text-xs text-gray-600 dark:text-gray-300">
+                    Маржинальность, %
+                  </label>
+                  <select
+                    id="results-margin-percent"
+                    value={marginPercent}
+                    onChange={(e) => setMarginPercent(normalizeMarginPercent(Number(e.target.value)))}
+                    className="w-28 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none transition focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+                  >
+                    {MARGIN_PERCENT_OPTIONS.map((opt) => (
+                      <option key={opt} value={opt}>
+                        {opt}%
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex items-center gap-2">
+                  <label htmlFor="results-position-stop-loss" className="text-xs text-gray-600 dark:text-gray-300">
+                    Position Stop Loss, %
+                  </label>
+                  <input
+                    id="results-position-stop-loss"
+                    type="number"
+                    min={MIN_THRESHOLD_PERCENT}
+                    max={MAX_THRESHOLD_PERCENT}
+                    step={1}
+                    value={positionStopLossPct}
+                    onChange={(e) => setPositionStopLossPct(normalizePositionStopLossPercent(Number(e.target.value)))}
+                    className="w-24 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none transition focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <label htmlFor="results-maintenance-margin" className="text-xs text-gray-600 dark:text-gray-300">
+                    Maintenance Margin, %
+                  </label>
+                  <input
+                    id="results-maintenance-margin"
+                    type="number"
+                    min={MIN_THRESHOLD_PERCENT}
+                    max={MAX_THRESHOLD_PERCENT}
+                    step={1}
+                    value={maintenanceMarginPct}
+                    onChange={(e) => setMaintenanceMarginPct(normalizeMaintenanceMarginPercent(Number(e.target.value)))}
+                    className="w-24 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none transition focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+                  />
+                </div>
+                <label htmlFor="results-stop-after-liquidation" className="flex items-center gap-2 text-xs text-gray-700 dark:text-gray-300">
+                  <input
+                    id="results-stop-after-liquidation"
+                    type="checkbox"
+                    checked={stopAfterLiquidation}
+                    onChange={(e) => setStopAfterLiquidation(e.target.checked)}
+                    className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900"
+                  />
+                  Остановить после ликвидации
+                </label>
+              </div>
+            </div>
+
+            {leverageMultiplier > 1 && (
+              <div className="grid grid-cols-1 gap-3 rounded-lg border border-gray-200 bg-gray-50/70 p-3 text-xs text-gray-700 dark:border-gray-700 dark:bg-gray-900/30 dark:text-gray-300 md:grid-cols-2">
+                <div className="space-y-1">
+                  <div className="font-semibold text-gray-900 dark:text-gray-100">Position Stop Loss %</div>
+                  <div>
+                    Порог падения цены от цены входа текущей позиции.
+                    Формула: <span className="font-mono">triggerPrice = entryPrice × (1 - stopLoss% / 100)</span>.
+                  </div>
+                  <div>
+                    Если дневной минимум касается порога, позиция закрывается принудительно, но расчет продолжается.
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <div className="font-semibold text-gray-900 dark:text-gray-100">Maintenance Margin %</div>
+                  <div>
+                    Минимально допустимая доля собственных средств в открытой позиции.
+                    Маржинальный уровень: <span className="font-mono">equity / positionValue</span>.
+                  </div>
+                  <div>
+                    Если уровень падает до порога, происходит брокерская ликвидация позиции.
+                    Далее расчет либо продолжается с остатком капитала, либо останавливается (по чекбоксу).
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {comparisonResults && (
+              <div className="grid grid-cols-2 gap-3 rounded-lg border border-indigo-200 bg-indigo-50/70 p-3 text-sm dark:border-indigo-900/40 dark:bg-indigo-950/20 md:grid-cols-4">
+                <div>
+                  <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">Итоговый баланс</div>
+                  <div className="text-xs text-gray-600 dark:text-gray-300">100%: {formatCurrencyUSD(comparisonResults.finalValue)}</div>
+                  <div className="text-xs font-semibold text-indigo-700 dark:text-indigo-300">{marginPercent}%: {formatCurrencyUSD(selectedResults.finalValue)}</div>
+                </div>
+                <div>
+                  <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">Доходность</div>
+                  <div className="text-xs text-gray-600 dark:text-gray-300">100%: {Number(comparisonResults.metrics?.totalReturn ?? 0).toFixed(2)}%</div>
+                  <div className="text-xs font-semibold text-indigo-700 dark:text-indigo-300">{marginPercent}%: {Number(selectedResults.metrics?.totalReturn ?? 0).toFixed(2)}%</div>
+                </div>
+                <div>
+                  <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">CAGR</div>
+                  <div className="text-xs text-gray-600 dark:text-gray-300">100%: {Number(comparisonResults.metrics?.cagr ?? 0).toFixed(2)}%</div>
+                  <div className="text-xs font-semibold text-indigo-700 dark:text-indigo-300">{marginPercent}%: {Number(selectedResults.metrics?.cagr ?? 0).toFixed(2)}%</div>
+                </div>
+                <div>
+                  <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">Макс. просадка</div>
+                  <div className="text-xs text-gray-600 dark:text-gray-300">100%: {Number(comparisonResults.maxDrawdown ?? 0).toFixed(2)}%</div>
+                  <div className="text-xs font-semibold text-indigo-700 dark:text-indigo-300">{marginPercent}%: {Number(selectedResults.maxDrawdown ?? 0).toFixed(2)}%</div>
+                </div>
+              </div>
+            )}
+
+            {lastPositionStopEvent && (
+              <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-900/40 dark:bg-amber-950/20 dark:text-amber-200">
+                Position Stop Loss ({positionStopLossPct}%) сработал {positionStopEvents.length} раз(а). Последний: {new Date(lastPositionStopEvent.date).toLocaleDateString('ru-RU')}, падение позиции {lastPositionStopEvent.positionDropPct.toFixed(2)}%. Остаток капитала после принудительного закрытия: {formatCurrencyUSD(lastPositionStopEvent.remainingCapital)}.
+              </div>
+            )}
+
+            {lastMaintenanceLiquidationEvent && (
+              <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-800 dark:border-red-900/40 dark:bg-red-950/20 dark:text-red-200">
+                Ликвидация по Maintenance Margin ({maintenanceMarginPct}%): {new Date(lastMaintenanceLiquidationEvent.date).toLocaleDateString('ru-RU')}, падение позиции {lastMaintenanceLiquidationEvent.positionDropPct.toFixed(2)}%, маржинальный уровень {(
+                  lastMaintenanceLiquidationEvent.marginRatioAtTrigger * 100
+                ).toFixed(2)}%. Срабатываний: {maintenanceLiquidationEvents.length}. {stopAfterLiquidation ? 'Расчет остановлен.' : 'Расчет продолжается с остатком капитала.'} Остаток капитала: {formatCurrencyUSD(lastMaintenanceLiquidationEvent.remainingCapital)}.
+              </div>
+            )}
+
             <MetricsGrid
-              finalValue={augmentedResults.finalValue}
-              maxDrawdown={augmentedResults.maxDrawdown}
-              metrics={augmentedResults.metrics}
+              finalValue={selectedResults.finalValue}
+              maxDrawdown={selectedResults.maxDrawdown}
+              metrics={selectedResults.metrics}
             />
           </section>
 
@@ -473,6 +771,7 @@ export function SingleTickerPage() {
               tabs={analysisTabsConfig.filter(tab => tab.visible)}
               activeTab={activeChart}
               onChange={(id) => setActiveChart(id as ChartTab)}
+              onTabIntent={prefetchAnalysisTab}
               className="mb-4"
             />
 
@@ -481,7 +780,10 @@ export function SingleTickerPage() {
                 <BacktestResultsView
                   mode="single"
                   activeTab={activeChart}
-                  backtestResults={augmentedResults}
+                  backtestResults={selectedResults}
+                  comparisonBacktestResults={comparisonResults}
+                  primarySeriesLabel={marginPercent > 100 ? `С маржей ${marginPercent}%` : 'Без маржи (100%)'}
+                  comparisonSeriesLabel="Без маржи (100%)"
                   marketData={marketData}
                   currentSplits={currentSplits}
                   symbol={symbol}

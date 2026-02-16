@@ -7,6 +7,8 @@ import { useAppStore } from '../stores';
 import { Link } from 'react-router-dom';
 import type { MonitorTradeHistoryResponse } from '../types';
 import { MonitorTradeHistoryPanel } from './MonitorTradeHistoryPanel';
+import { calculateMonitorTradeMetrics } from '../lib/monitor-trade-metrics';
+import { formatCurrencyUSD } from '../lib/formatters';
 
 interface WatchItem {
   symbol: string;
@@ -34,6 +36,8 @@ export function TelegramWatches() {
   const [tradesLoading, setTradesLoading] = useState(false);
   const [sortConfig, setSortConfig] = useState<{ key: keyof WatchItem | null; direction: 'asc' | 'desc' }>({ key: null, direction: 'asc' });
   const watchThresholdPct = useAppStore(s => s.watchThresholdPct);
+  const currentStrategy = useAppStore(s => s.currentStrategy);
+  const initialCapital = Number(currentStrategy?.riskManagement?.initialCapital ?? 10000);
 
   // Reusable Intl formatters
   const ET_PARTS_FMT = useMemo(() => new Intl.DateTimeFormat('en-US', {
@@ -204,6 +208,15 @@ export function TelegramWatches() {
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
   }, [secondsUntilNextSignal]);
+
+  const monitorMetrics = useMemo(
+    () => calculateMonitorTradeMetrics(tradeHistory?.trades ?? [], initialCapital),
+    [tradeHistory, initialCapital]
+  );
+
+  const formatSignedPercent = (value: number) => `${value > 0 ? '+' : ''}${value.toFixed(2)}%`;
+  const formatSignedMoney = (value: number) => `${value > 0 ? '+' : ''}${formatCurrencyUSD(value)}`;
+  const hasClosedTrades = monitorMetrics.closedTradesCount > 0;
 
   return (
     <div className="space-y-4">
@@ -482,11 +495,77 @@ export function TelegramWatches() {
         </div>
       )}
 
+      <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-900">
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Результат по совершенным сделкам</h3>
+          <span className="text-xs text-gray-500 dark:text-gray-400">
+            База расчета: {formatCurrencyUSD(monitorMetrics.initialCapital)}
+          </span>
+        </div>
+
+        {hasClosedTrades ? (
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-8">
+            <div className="col-span-2 rounded-lg border border-gray-200 bg-gray-50 p-3 text-center dark:border-gray-700 dark:bg-gray-800">
+              <div className="text-2xl font-bold text-green-600 dark:text-emerald-300">{formatCurrencyUSD(monitorMetrics.finalBalance)}</div>
+              <div className="text-xs text-gray-600 dark:text-gray-400">Итоговый баланс</div>
+            </div>
+
+            <div className="col-span-2 rounded-lg border border-gray-200 bg-gray-50 p-3 text-center dark:border-gray-700 dark:bg-gray-800">
+              <div className={`text-2xl font-bold ${monitorMetrics.totalReturnPct > 0 ? 'text-emerald-600 dark:text-emerald-300' : monitorMetrics.totalReturnPct < 0 ? 'text-orange-600 dark:text-orange-300' : 'text-gray-700 dark:text-gray-200'}`}>
+                {formatSignedPercent(monitorMetrics.totalReturnPct)}
+              </div>
+              <div className="text-xs text-gray-600 dark:text-gray-400">Общая доходность</div>
+            </div>
+
+            <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-center dark:border-gray-700 dark:bg-gray-800">
+              <div className="text-xl font-bold text-red-600 dark:text-red-300">{monitorMetrics.maxDrawdownPct.toFixed(2)}%</div>
+              <div className="text-xs text-gray-600 dark:text-gray-400">Макс. просадка</div>
+            </div>
+
+            <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-center dark:border-gray-700 dark:bg-gray-800">
+              <div className="text-xl font-bold text-blue-600 dark:text-blue-300">{monitorMetrics.winRatePct.toFixed(1)}%</div>
+              <div className="text-xs text-gray-600 dark:text-gray-400">Win Rate</div>
+            </div>
+
+            <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-center dark:border-gray-700 dark:bg-gray-800">
+              <div className="text-xl font-bold text-indigo-600 dark:text-indigo-300">{monitorMetrics.closedTradesCount}</div>
+              <div className="text-xs text-gray-600 dark:text-gray-400">Закрытых сделок</div>
+            </div>
+
+            <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-center dark:border-gray-700 dark:bg-gray-800">
+              <div className={`text-xl font-bold ${monitorMetrics.avgReturnPct > 0 ? 'text-emerald-600 dark:text-emerald-300' : monitorMetrics.avgReturnPct < 0 ? 'text-orange-600 dark:text-orange-300' : 'text-gray-700 dark:text-gray-200'}`}>
+                {formatSignedPercent(monitorMetrics.avgReturnPct)}
+              </div>
+              <div className="text-xs text-gray-600 dark:text-gray-400">Средняя сделка</div>
+            </div>
+
+            <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-center dark:border-gray-700 dark:bg-gray-800">
+              <div className={`text-xl font-bold ${monitorMetrics.netProfit > 0 ? 'text-emerald-600 dark:text-emerald-300' : monitorMetrics.netProfit < 0 ? 'text-orange-600 dark:text-orange-300' : 'text-gray-700 dark:text-gray-200'}`}>
+                {formatSignedMoney(monitorMetrics.netProfit)}
+              </div>
+              <div className="text-xs text-gray-600 dark:text-gray-400">Чистая прибыль</div>
+            </div>
+
+            <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-center dark:border-gray-700 dark:bg-gray-800">
+              <div className="text-xl font-bold text-teal-600 dark:text-teal-300">
+                {Number.isFinite(monitorMetrics.profitFactor) ? monitorMetrics.profitFactor.toFixed(2) : '∞'}
+              </div>
+              <div className="text-xs text-gray-600 dark:text-gray-400">Profit Factor</div>
+            </div>
+          </div>
+        ) : (
+          <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 px-4 py-6 text-center text-sm text-gray-600 dark:border-gray-700 dark:bg-gray-800/50 dark:text-gray-300">
+            Пока нет закрытых сделок. Метрики появятся после первого завершенного трейда.
+          </div>
+        )}
+      </section>
+
       <MonitorTradeHistoryPanel
         data={tradeHistory}
         loading={tradesLoading}
         error={tradesError}
         onRefresh={loadTrades}
+        initialCapital={initialCapital}
       />
 
       <ConfirmModal
@@ -507,4 +586,3 @@ export function TelegramWatches() {
     </div>
   );
 }
-

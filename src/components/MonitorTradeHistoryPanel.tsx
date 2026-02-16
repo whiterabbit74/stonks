@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { RefreshCw, Download, FileSpreadsheet, ChevronDown, ChevronUp, Filter, ExternalLink } from 'lucide-react';
 import type { MonitorTradeHistoryResponse, MonitorTradeRecord } from '../types';
+import { calculateMonitorTradeMetrics } from '../lib/monitor-trade-metrics';
 
 interface MonitorTradeHistoryPanelProps {
   data: MonitorTradeHistoryResponse | null;
@@ -9,6 +10,7 @@ interface MonitorTradeHistoryPanelProps {
   error?: string | null;
   onRefresh?: () => void;
   maxRows?: number;
+  initialCapital?: number;
 }
 
 function formatDate(value: string | null | undefined) {
@@ -112,7 +114,14 @@ function TradeRow({ trade, isHighlighted }: { trade: MonitorTradeRecord; isHighl
   );
 }
 
-export function MonitorTradeHistoryPanel({ data, loading = false, error = null, onRefresh, maxRows = 10 }: MonitorTradeHistoryPanelProps) {
+export function MonitorTradeHistoryPanel({
+  data,
+  loading = false,
+  error = null,
+  onRefresh,
+  maxRows = 10,
+  initialCapital = 10000
+}: MonitorTradeHistoryPanelProps) {
   const [showAll, setShowAll] = useState(false);
   const [statusFilter, setStatusFilter] = useState<'all' | 'open' | 'closed'>('all');
   const [pnlFilter, setPnlFilter] = useState<'all' | 'profit' | 'loss'>('all');
@@ -159,13 +168,10 @@ export function MonitorTradeHistoryPanel({ data, loading = false, error = null, 
   const hasTrades = rows.length > 0;
   const isFiltered = statusFilter !== 'all' || pnlFilter !== 'all';
 
-  // Расчет общей доходности
-  const closedTrades = trades.filter(t => t.status === 'closed' && t.pnlPercent !== null);
-  const totalPnlPercent = closedTrades.reduce((sum, t) => sum + (t.pnlPercent || 0), 0);
-  const avgPnlPercent = closedTrades.length > 0 ? totalPnlPercent / closedTrades.length : 0;
-  const winCount = closedTrades.filter(t => (t.pnlPercent || 0) > 0).length;
-  const lossCount = closedTrades.filter(t => (t.pnlPercent || 0) <= 0).length;
-  const winRate = closedTrades.length > 0 ? (winCount / closedTrades.length) * 100 : 0;
+  const summaryStats = useMemo(
+    () => calculateMonitorTradeMetrics(trades, initialCapital),
+    [trades, initialCapital]
+  );
 
   // Функция экспорта в JSON
   const handleExportJSON = () => {
@@ -174,13 +180,18 @@ export function MonitorTradeHistoryPanel({ data, loading = false, error = null, 
       openTrade: openTrade,
       statistics: {
         totalTrades: trades.length,
-        closedTrades: closedTrades.length,
+        closedTrades: summaryStats.closedTradesCount,
         openTrades: trades.filter(t => t.status === 'open').length,
-        totalPnlPercent,
-        avgPnlPercent,
-        winCount,
-        lossCount,
-        winRate
+        totalPnlPercent: summaryStats.sumReturnPct,
+        avgPnlPercent: summaryStats.avgReturnPct,
+        winCount: summaryStats.winCount,
+        lossCount: summaryStats.lossCount,
+        winRate: summaryStats.winRatePct,
+        totalReturnPct: summaryStats.totalReturnPct,
+        finalBalance: summaryStats.finalBalance,
+        netProfit: summaryStats.netProfit,
+        maxDrawdownPct: summaryStats.maxDrawdownPct,
+        profitFactor: summaryStats.profitFactor
       },
       exportedAt: new Date().toISOString(),
       lastUpdated: data?.lastUpdated || null
@@ -419,36 +430,6 @@ export function MonitorTradeHistoryPanel({ data, loading = false, error = null, 
               </div>
             )}
 
-            {/* Общая статистика */}
-            {closedTrades.length > 0 && (
-              <div className="rounded-lg border border-gray-200 bg-gradient-to-r from-blue-50 to-indigo-50 px-4 py-3 dark:border-gray-700 dark:from-blue-900/20 dark:to-indigo-900/20">
-                <div className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-2">Общий результат</div>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                  <div>
-                    <div className="text-xs text-gray-600 dark:text-gray-400">Закрытых сделок</div>
-                    <div className="text-base font-semibold text-gray-900 dark:text-gray-100">{closedTrades.length}</div>
-                  </div>
-                  <div>
-                    <div className="text-xs text-gray-600 dark:text-gray-400">Средний PnL</div>
-                    <div className={`text-base font-semibold font-mono ${avgPnlPercent > 0 ? 'text-emerald-600 dark:text-emerald-300' : avgPnlPercent < 0 ? 'text-orange-600 dark:text-orange-300' : 'text-gray-600 dark:text-gray-300'}`}>
-                      {avgPnlPercent > 0 ? '+' : ''}{avgPnlPercent.toFixed(2)}%
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-xs text-gray-600 dark:text-gray-400">Суммарный PnL</div>
-                    <div className={`text-base font-semibold font-mono ${totalPnlPercent > 0 ? 'text-emerald-600 dark:text-emerald-300' : totalPnlPercent < 0 ? 'text-orange-600 dark:text-orange-300' : 'text-gray-600 dark:text-gray-300'}`}>
-                      {totalPnlPercent > 0 ? '+' : ''}{totalPnlPercent.toFixed(2)}%
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-xs text-gray-600 dark:text-gray-400">Win Rate</div>
-                    <div className="text-base font-semibold text-gray-900 dark:text-gray-100">
-                      {winRate.toFixed(1)}% <span className="text-xs font-normal text-gray-500">({winCount}W/{lossCount}L)</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
           </>
         )}
       </div>

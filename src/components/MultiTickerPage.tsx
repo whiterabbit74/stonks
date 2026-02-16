@@ -1,4 +1,4 @@
-import { lazy, Suspense, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { MetricsGrid, AnalysisTabs, PageHeader, Select, Button, TickerInput } from './ui';
 import { useAppStore } from '../stores';
 import type { Strategy, Trade, EquityPoint } from '../types';
@@ -10,7 +10,10 @@ import type { BacktestMetrics } from '../lib/backtest-statistics';
 import { createStrategyFromTemplate, STRATEGY_TEMPLATES } from '../lib/strategy';
 import { useMultiTickerData } from '../hooks/useMultiTickerData';
 import { BacktestPageShell } from './BacktestPageShell';
-const BacktestResultsView = lazy(() => import('./BacktestResultsView').then((m) => ({ default: m.BacktestResultsView })));
+import { scheduleIdleTask } from '../lib/prefetch';
+
+const importBacktestResultsView = () => import('./BacktestResultsView');
+const BacktestResultsView = lazy(() => importBacktestResultsView().then((m) => ({ default: m.BacktestResultsView })));
 
 interface BacktestResults {
   equity: EquityPoint[];
@@ -51,6 +54,13 @@ export function MultiTickerPage() {
   const [activeTab, setActiveTab] = useState<TabId>('price');
   const [selectedTradeTicker, setSelectedTradeTicker] = useState<'all' | string>('all');
   const lazyFallback = <ResultsPanelLoader />;
+
+  const prefetchAnalysisTab = (tabId: string) => {
+    if (tabId === 'monthlyContribution') return;
+    void importBacktestResultsView().then((module) => {
+      module.prefetchBacktestTab(tabId, 'multi');
+    });
+  };
 
   const {
     tickersData,
@@ -153,6 +163,16 @@ export function MultiTickerPage() {
     }
   };
 
+  useEffect(() => {
+    if (!backtestResults) return;
+
+    return scheduleIdleTask(() => {
+      void importBacktestResultsView().then((module) => {
+        module.prefetchBacktestResultsChunks('multi');
+      });
+    }, 1000);
+  }, [backtestResults]);
+
   return (
     <div className="space-y-6">
       {/* Заголовок и контролы — Card-based дизайн */}
@@ -248,6 +268,7 @@ export function MultiTickerPage() {
               ].filter((t): t is { id: string; label: string } => !!t)}
               activeTab={activeTab}
               onChange={(id) => setActiveTab(id as TabId)}
+              onTabIntent={prefetchAnalysisTab}
             />
 
             {/* Содержимое табов */}
