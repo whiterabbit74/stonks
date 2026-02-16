@@ -47,9 +47,10 @@ interface TradingChartProps {
   data: OHLCData[];
   trades: Trade[];
   splits?: SplitEvent[];
+  isVisible?: boolean;
 }
 
-export const TradingChart = memo(function TradingChart({ data, trades, splits = [] }: TradingChartProps) {
+export const TradingChart = memo(function TradingChart({ data, trades, splits = [], isVisible = true }: TradingChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candlestickSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
@@ -516,6 +517,34 @@ export const TradingChart = memo(function TradingChart({ data, trades, splits = 
       to: rightEdge as UTCTimestamp,
     });
   }, [activeRange, chartData]);
+
+  // The chart can receive zero size while parent tab is hidden (`display: none`).
+  // Force a resize when the tab becomes visible again to restore rendering.
+  useEffect(() => {
+    if (!isVisible || !chartRef.current || !chartContainerRef.current) return;
+
+    const resizeWhenVisible = () => {
+      const el = chartContainerRef.current;
+      const chart = chartRef.current;
+      if (!el || !chart) return;
+
+      const width = el.clientWidth;
+      const height = Math.max(el.clientHeight || 0, MIN_CHART_HEIGHT);
+      if (width <= 0 || height <= 0) return;
+
+      chart.resize(width, height);
+      if (activeRange === 'ALL') {
+        chart.timeScale().fitContent();
+      }
+    };
+
+    const raf1 = requestAnimationFrame(() => {
+      resizeWhenVisible();
+      requestAnimationFrame(resizeWhenVisible);
+    });
+
+    return () => cancelAnimationFrame(raf1);
+  }, [isVisible, activeRange, chartData.length]);
 
   return (
     <div className="w-full grid grid-rows-[auto,1fr] gap-4 relative">

@@ -21,4 +21,12 @@ describe('Trade Statistics Calculation with Epsilon', () => {
     expect(stats.winRate).toBe(20); // 1 win out of 5 trades = 20%
     expect(stats.breakeven).toBe(3); // 1 exact zero + 2 noise trades
   });
+
+  it('uses the same epsilon for Profit Factor components', () => {
+    const stats = calculateTradeStats(trades);
+
+    expect(stats.grossProfit).toBe(100);
+    expect(stats.grossLoss).toBe(100);
+    expect(stats.profitFactor).toBe(1);
+  });
 });

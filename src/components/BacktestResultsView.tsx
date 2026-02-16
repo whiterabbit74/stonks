@@ -349,7 +349,12 @@ export function BacktestResultsView({
           <ChartContainer height="86.4vh" className="min-h-[672px] md:min-h-[840px] max-h-[1320px] mt-4 mb-6">
             <ErrorBoundary>
               <Suspense fallback={lazyFallback}>
-                <TradingChart data={marketData || []} trades={trades} splits={currentSplits} />
+                <TradingChart
+                  data={marketData || []}
+                  trades={trades}
+                  splits={currentSplits}
+                  isVisible={tabId === activeTab}
+                />
               </Suspense>
             </ErrorBoundary>
           </ChartContainer>

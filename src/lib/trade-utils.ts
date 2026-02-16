@@ -1,5 +1,7 @@
 import type { Trade } from '../types';
 
+export const TRADE_PNL_EPSILON = 0.01;
+
 export function calculateTradeStats(trades: Trade[] = []) {
   const totalTrades = trades.length;
   let wins = 0;
@@ -12,20 +14,18 @@ export function calculateTradeStats(trades: Trade[] = []) {
   trades.forEach(trade => {
     const pnl = trade.pnl ?? 0;
 
-    // Win/Loss counting with epsilon
-    if (pnl > 0.01) wins += 1;
-    else if (pnl < -0.01) losses += 1;
+    // Win/Loss and gross P/L use the same epsilon to keep metrics consistent.
+    if (pnl > TRADE_PNL_EPSILON) {
+      wins += 1;
+      grossProfit += pnl;
+    } else if (pnl < -TRADE_PNL_EPSILON) {
+      losses += 1;
+      grossLoss += Math.abs(pnl);
+    }
 
     // Accumulators
     totalPnL += pnl;
     totalDuration += trade.duration ?? 0;
-
-    // Gross Profit/Loss
-    if (pnl > 0) {
-      grossProfit += pnl;
-    } else {
-      grossLoss += Math.abs(pnl);
-    }
   });
 
   const winRate = totalTrades > 0 ? (wins / totalTrades) * 100 : 0;

@@ -5,6 +5,7 @@ import type {
   OHLCData
 } from '../types';
 import { daysBetweenTradingDates } from './date-utils';
+import { TRADE_PNL_EPSILON } from './trade-utils';
 
 /**
  * Performance metrics calculation system
@@ -172,7 +173,7 @@ export class MetricsCalculator {
     let winningCount = 0;
     for (let i = 0; i < this.trades.length; i++) {
       // Use epsilon to ignore floating point noise
-      if (this.trades[i].pnl > 0.01) {
+      if (this.trades[i].pnl > TRADE_PNL_EPSILON) {
         winningCount++;
       }
     }
@@ -241,9 +242,9 @@ export class MetricsCalculator {
 
     for (let i = 0; i < this.trades.length; i++) {
       const pnl = this.trades[i].pnl;
-      if (pnl > 0.01) {
+      if (pnl > TRADE_PNL_EPSILON) {
         grossProfit += pnl;
-      } else if (pnl < -0.01) {
+      } else if (pnl < -TRADE_PNL_EPSILON) {
         grossLoss += Math.abs(pnl);
       }
     }
@@ -263,7 +264,7 @@ export class MetricsCalculator {
     let winCount = 0;
 
     for (let i = 0; i < this.trades.length; i++) {
-      if (this.trades[i].pnl > 0.01) {
+      if (this.trades[i].pnl > TRADE_PNL_EPSILON) {
         totalWin += this.trades[i].pnl;
         winCount++;
       }
@@ -284,7 +285,7 @@ export class MetricsCalculator {
     let lossCount = 0;
 
     for (let i = 0; i < this.trades.length; i++) {
-      if (this.trades[i].pnl < -0.01) {
+      if (this.trades[i].pnl < -TRADE_PNL_EPSILON) {
         totalLoss += Math.abs(this.trades[i].pnl);
         lossCount++;
       }
