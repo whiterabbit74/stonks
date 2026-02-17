@@ -7,6 +7,7 @@ export interface MonitorTradeMetrics {
   totalReturnPct: number;
   sumReturnPct: number;
   avgReturnPct: number;
+  avgHoldingDays: number;
   maxDrawdownPct: number;
   winRatePct: number;
   winCount: number;
@@ -25,6 +26,24 @@ function safeNumber(value: unknown): number | null {
 
 function getTradeSortKey(trade: MonitorTradeRecord): string {
   return trade.exitDecisionTime || trade.exitDate || trade.entryDecisionTime || trade.entryDate || '';
+}
+
+function parseDateMs(value: string | null): number | null {
+  if (typeof value !== 'string' || !value.trim()) return null;
+  const normalized = /^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00Z` : value;
+  const ts = Date.parse(normalized);
+  return Number.isFinite(ts) ? ts : null;
+}
+
+function getHoldingDays(trade: MonitorTradeRecord): number | null {
+  const holdingDays = safeNumber(trade.holdingDays);
+  if (holdingDays != null && holdingDays >= 0) return holdingDays;
+
+  const entryTs = parseDateMs(trade.entryDate);
+  const exitTs = parseDateMs(trade.exitDate);
+  if (entryTs == null || exitTs == null || exitTs < entryTs) return null;
+
+  return (exitTs - entryTs) / (1000 * 60 * 60 * 24);
 }
 
 export function calculateMonitorTradeMetrics(
@@ -46,6 +65,7 @@ export function calculateMonitorTradeMetrics(
       totalReturnPct: 0,
       sumReturnPct: 0,
       avgReturnPct: 0,
+      avgHoldingDays: 0,
       maxDrawdownPct: 0,
       winRatePct: 0,
       winCount: 0,
@@ -65,6 +85,8 @@ export function calculateMonitorTradeMetrics(
   let lossCount = 0;
   let grossProfitPct = 0;
   let grossLossPct = 0;
+  let totalHoldingDays = 0;
+  let holdingDaysCount = 0;
 
   for (const trade of closedTrades) {
     const pct = safeNumber(trade.pnlPercent) ?? 0;
@@ -83,11 +105,18 @@ export function calculateMonitorTradeMetrics(
     if (balance > peak) peak = balance;
     const drawdownPct = peak > 0 ? ((peak - balance) / peak) * 100 : 0;
     if (drawdownPct > maxDrawdownPct) maxDrawdownPct = drawdownPct;
+
+    const holdingDays = getHoldingDays(trade);
+    if (holdingDays != null) {
+      totalHoldingDays += holdingDays;
+      holdingDaysCount += 1;
+    }
   }
 
   const closedTradesCount = closedTrades.length;
   const totalReturnPct = normalizedInitial > 0 ? ((balance - normalizedInitial) / normalizedInitial) * 100 : 0;
   const avgReturnPct = closedTradesCount > 0 ? sumReturnPct / closedTradesCount : 0;
+  const avgHoldingDays = holdingDaysCount > 0 ? totalHoldingDays / holdingDaysCount : 0;
   const winRatePct = closedTradesCount > 0 ? (winCount / closedTradesCount) * 100 : 0;
   const profitFactor = grossLossPct > 0
     ? grossProfitPct / grossLossPct
@@ -100,6 +129,7 @@ export function calculateMonitorTradeMetrics(
     totalReturnPct,
     sumReturnPct,
     avgReturnPct,
+    avgHoldingDays,
     maxDrawdownPct,
     winRatePct,
     winCount,

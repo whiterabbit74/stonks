@@ -30,6 +30,7 @@ describe('calculateMonitorTradeMetrics', () => {
     expect(metrics.totalReturnPct).toBe(0);
     expect(metrics.winRatePct).toBe(0);
     expect(metrics.maxDrawdownPct).toBe(0);
+    expect(metrics.avgHoldingDays).toBe(0);
   });
 
   it('calculates compounded balance and returns from closed trades', () => {
@@ -47,6 +48,7 @@ describe('calculateMonitorTradeMetrics', () => {
     expect(metrics.totalReturnPct).toBeCloseTo(25.4, 5);
     expect(metrics.sumReturnPct).toBeCloseTo(25, 5);
     expect(metrics.avgReturnPct).toBeCloseTo(8.333333, 5);
+    expect(metrics.avgHoldingDays).toBeCloseTo(3, 5);
     expect(metrics.winRatePct).toBeCloseTo(66.666666, 5);
     expect(metrics.maxDrawdownPct).toBeCloseTo(5, 5);
     expect(metrics.profitFactor).toBeCloseTo(6, 5);
@@ -64,6 +66,7 @@ describe('calculateMonitorTradeMetrics', () => {
 
     expect(metrics.closedTradesCount).toBe(2);
     expect(metrics.totalReturnPct).toBeCloseTo(2.9, 5); // 1.05 * 0.98 = 1.029
+    expect(metrics.avgHoldingDays).toBeCloseTo(3, 5);
     expect(metrics.winCount).toBe(1);
     expect(metrics.lossCount).toBe(1);
   });

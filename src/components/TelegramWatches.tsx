@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
-import { RefreshCw, Trash2, ExternalLink, Edit2, Check, X, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { RefreshCw, Trash2, ExternalLink, Edit2, Check, X, ArrowUpDown, ArrowUp, ArrowDown, HelpCircle } from 'lucide-react';
 import { DatasetAPI } from '../lib/api';
 import { ConfirmModal } from './ConfirmModal';
 import { InfoModal } from './InfoModal';
@@ -31,6 +31,13 @@ const WATCH_TAB_ITEMS: Array<{ id: WatchTab; label: string }> = [
   { id: 'trades', label: 'Сделки' },
   { id: 'tickers', label: 'Тикеры' },
 ];
+
+const MONITOR_MARGIN_OPTIONS = [100, 125, 150, 175, 200] as const;
+
+function normalizeMonitorMarginPercent(value: number): number {
+  const normalized = Number.isFinite(value) ? Math.round(value) : 100;
+  return MONITOR_MARGIN_OPTIONS.includes(normalized as typeof MONITOR_MARGIN_OPTIONS[number]) ? normalized : 100;
+}
 
 function getMonitorTradeSortKey(trade: MonitorTradeRecord): string {
   return trade.exitDecisionTime || trade.exitDate || trade.entryDecisionTime || trade.entryDate || '';
@@ -70,6 +77,25 @@ function buildMonitorBalanceEquity(trades: MonitorTradeRecord[], initialCapital 
   return points;
 }
 
+function applyMonitorMarginSimulation(trades: MonitorTradeRecord[], marginPercent: number): MonitorTradeRecord[] {
+  const leverage = Math.max(1, marginPercent / 100);
+  if (leverage === 1) return trades;
+
+  return trades.map((trade) => {
+    if (trade.status !== 'closed') return trade;
+    if (typeof trade.pnlPercent !== 'number' || !Number.isFinite(trade.pnlPercent)) return trade;
+
+    const simulatedPnlPct = Math.max(-100, trade.pnlPercent * leverage);
+    return {
+      ...trade,
+      pnlPercent: simulatedPnlPct,
+      pnlAbsolute: typeof trade.pnlAbsolute === 'number' && Number.isFinite(trade.pnlAbsolute)
+        ? trade.pnlAbsolute * leverage
+        : trade.pnlAbsolute,
+    };
+  });
+}
+
 export function TelegramWatches() {
   const [watches, setWatches] = useState<WatchItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -84,6 +110,11 @@ export function TelegramWatches() {
   const [tradesLoading, setTradesLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<WatchTab>('summary');
   const [sortConfig, setSortConfig] = useState<{ key: keyof WatchItem | null; direction: 'asc' | 'desc' }>({ key: null, direction: 'asc' });
+  const [monitorMarginPercent, setMonitorMarginPercent] = useState<number>(() => {
+    if (typeof window === 'undefined') return 100;
+    return normalizeMonitorMarginPercent(Number(window.localStorage.getItem('monitor.marginPercent') || 100));
+  });
+  const [showMarginHelp, setShowMarginHelp] = useState(false);
   const watchThresholdPct = useAppStore(s => s.watchThresholdPct);
   const currentStrategy = useAppStore(s => s.currentStrategy);
   const initialCapital = Number(currentStrategy?.riskManagement?.initialCapital ?? 10000);
@@ -258,18 +289,40 @@ export function TelegramWatches() {
     return () => clearInterval(id);
   }, [secondsUntilNextSignal]);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem('monitor.marginPercent', String(monitorMarginPercent));
+  }, [monitorMarginPercent]);
+
+  useEffect(() => {
+    if (!showMarginHelp) return;
+    const onPointerDown = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('[data-monitor-margin-help]')) return;
+      setShowMarginHelp(false);
+    };
+    window.addEventListener('mousedown', onPointerDown);
+    return () => window.removeEventListener('mousedown', onPointerDown);
+  }, [showMarginHelp]);
+
+  const simulatedTrades = useMemo(
+    () => applyMonitorMarginSimulation(tradeHistory?.trades ?? [], monitorMarginPercent),
+    [tradeHistory, monitorMarginPercent]
+  );
+
   const monitorMetrics = useMemo(
-    () => calculateMonitorTradeMetrics(tradeHistory?.trades ?? [], initialCapital),
-    [tradeHistory, initialCapital]
+    () => calculateMonitorTradeMetrics(simulatedTrades, initialCapital),
+    [simulatedTrades, initialCapital]
   );
 
   const formatSignedPercent = (value: number) => `${value > 0 ? '+' : ''}${value.toFixed(2)}%`;
   const formatSignedMoney = (value: number) => `${value > 0 ? '+' : ''}${formatCurrencyUSD(value)}`;
+  const formatHoldingDays = (value: number) => `${value.toFixed(1)} дн.`;
   const hasClosedTrades = monitorMetrics.closedTradesCount > 0;
-  const monitorBalanceInitialCapital = 10000;
+  const monitorBalanceInitialCapital = initialCapital;
   const monitorBalanceEquity = useMemo(
-    () => buildMonitorBalanceEquity(tradeHistory?.trades ?? [], monitorBalanceInitialCapital),
-    [tradeHistory]
+    () => buildMonitorBalanceEquity(simulatedTrades, monitorBalanceInitialCapital),
+    [simulatedTrades, monitorBalanceInitialCapital]
   );
 
   return (
@@ -315,53 +368,98 @@ export function TelegramWatches() {
             </div>
 
             {hasClosedTrades ? (
-              <div className="grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-8">
-                <div className="col-span-2 rounded-lg border border-gray-200 bg-gray-50 p-3 text-center dark:border-gray-700 dark:bg-gray-800">
-                  <div className="text-2xl font-bold text-green-600 dark:text-emerald-300">{formatCurrencyUSD(monitorMetrics.finalBalance)}</div>
-                  <div className="text-xs text-gray-600 dark:text-gray-400">Итоговый баланс</div>
-                </div>
-
-                <div className="col-span-2 rounded-lg border border-gray-200 bg-gray-50 p-3 text-center dark:border-gray-700 dark:bg-gray-800">
-                  <div className={`text-2xl font-bold ${monitorMetrics.totalReturnPct > 0 ? 'text-emerald-600 dark:text-emerald-300' : monitorMetrics.totalReturnPct < 0 ? 'text-orange-600 dark:text-orange-300' : 'text-gray-700 dark:text-gray-200'}`}>
-                    {formatSignedPercent(monitorMetrics.totalReturnPct)}
+              <div className="grid gap-3 lg:grid-cols-[minmax(0,320px)_minmax(0,1fr)]">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-1">
+                  <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-center dark:border-gray-700 dark:bg-gray-800">
+                    <div className="text-2xl font-bold text-green-600 dark:text-emerald-300">{formatCurrencyUSD(monitorMetrics.finalBalance)}</div>
+                    <div className="text-xs text-gray-600 dark:text-gray-400">Итоговый баланс</div>
                   </div>
-                  <div className="text-xs text-gray-600 dark:text-gray-400">Общая доходность</div>
-                </div>
 
-                <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-center dark:border-gray-700 dark:bg-gray-800">
-                  <div className="text-xl font-bold text-red-600 dark:text-red-300">{monitorMetrics.maxDrawdownPct.toFixed(2)}%</div>
-                  <div className="text-xs text-gray-600 dark:text-gray-400">Макс. просадка</div>
-                </div>
-
-                <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-center dark:border-gray-700 dark:bg-gray-800">
-                  <div className="text-xl font-bold text-blue-600 dark:text-blue-300">{monitorMetrics.winRatePct.toFixed(1)}%</div>
-                  <div className="text-xs text-gray-600 dark:text-gray-400">Win Rate</div>
-                </div>
-
-                <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-center dark:border-gray-700 dark:bg-gray-800">
-                  <div className="text-xl font-bold text-indigo-600 dark:text-indigo-300">{monitorMetrics.closedTradesCount}</div>
-                  <div className="text-xs text-gray-600 dark:text-gray-400">Закрытых сделок</div>
-                </div>
-
-                <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-center dark:border-gray-700 dark:bg-gray-800">
-                  <div className={`text-xl font-bold ${monitorMetrics.avgReturnPct > 0 ? 'text-emerald-600 dark:text-emerald-300' : monitorMetrics.avgReturnPct < 0 ? 'text-orange-600 dark:text-orange-300' : 'text-gray-700 dark:text-gray-200'}`}>
-                    {formatSignedPercent(monitorMetrics.avgReturnPct)}
+                  <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-center dark:border-gray-700 dark:bg-gray-800">
+                    <div className={`text-2xl font-bold ${monitorMetrics.totalReturnPct > 0 ? 'text-emerald-600 dark:text-emerald-300' : monitorMetrics.totalReturnPct < 0 ? 'text-orange-600 dark:text-orange-300' : 'text-gray-700 dark:text-gray-200'}`}>
+                      {formatSignedPercent(monitorMetrics.totalReturnPct)}
+                    </div>
+                    <div className="text-xs text-gray-600 dark:text-gray-400">Общая доходность</div>
                   </div>
-                  <div className="text-xs text-gray-600 dark:text-gray-400">Средняя сделка</div>
                 </div>
 
-                <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-center dark:border-gray-700 dark:bg-gray-800">
-                  <div className={`text-xl font-bold ${monitorMetrics.netProfit > 0 ? 'text-emerald-600 dark:text-emerald-300' : monitorMetrics.netProfit < 0 ? 'text-orange-600 dark:text-orange-300' : 'text-gray-700 dark:text-gray-200'}`}>
-                    {formatSignedMoney(monitorMetrics.netProfit)}
+                <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+                  <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-center dark:border-gray-700 dark:bg-gray-800">
+                    <div className="text-xl font-bold text-red-600 dark:text-red-300">{monitorMetrics.maxDrawdownPct.toFixed(2)}%</div>
+                    <div className="text-xs text-gray-600 dark:text-gray-400">Макс. просадка</div>
                   </div>
-                  <div className="text-xs text-gray-600 dark:text-gray-400">Чистая прибыль</div>
-                </div>
 
-                <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-center dark:border-gray-700 dark:bg-gray-800">
-                  <div className="text-xl font-bold text-teal-600 dark:text-teal-300">
-                    {Number.isFinite(monitorMetrics.profitFactor) ? monitorMetrics.profitFactor.toFixed(2) : '∞'}
+                  <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-center dark:border-gray-700 dark:bg-gray-800">
+                    <div className="text-xl font-bold text-blue-600 dark:text-blue-300">{monitorMetrics.winRatePct.toFixed(1)}%</div>
+                    <div className="text-xs text-gray-600 dark:text-gray-400">Win Rate</div>
                   </div>
-                  <div className="text-xs text-gray-600 dark:text-gray-400">Profit Factor</div>
+
+                  <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-center dark:border-gray-700 dark:bg-gray-800">
+                    <div className="text-xl font-bold text-indigo-600 dark:text-indigo-300">{monitorMetrics.closedTradesCount}</div>
+                    <div className="text-xs text-gray-600 dark:text-gray-400">Закрытых сделок</div>
+                  </div>
+
+                  <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-center dark:border-gray-700 dark:bg-gray-800">
+                    <div className={`text-xl font-bold ${monitorMetrics.avgReturnPct > 0 ? 'text-emerald-600 dark:text-emerald-300' : monitorMetrics.avgReturnPct < 0 ? 'text-orange-600 dark:text-orange-300' : 'text-gray-700 dark:text-gray-200'}`}>
+                      {formatSignedPercent(monitorMetrics.avgReturnPct)}
+                    </div>
+                    <div className="text-xs text-gray-600 dark:text-gray-400">Средняя сделка</div>
+                  </div>
+
+                  <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-center dark:border-gray-700 dark:bg-gray-800">
+                    <div className="text-xl font-bold text-violet-600 dark:text-violet-300">
+                      {formatHoldingDays(monitorMetrics.avgHoldingDays)}
+                    </div>
+                    <div className="text-xs text-gray-600 dark:text-gray-400">Средняя длительность</div>
+                  </div>
+
+                  <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-center dark:border-gray-700 dark:bg-gray-800">
+                    <div className={`text-xl font-bold ${monitorMetrics.netProfit > 0 ? 'text-emerald-600 dark:text-emerald-300' : monitorMetrics.netProfit < 0 ? 'text-orange-600 dark:text-orange-300' : 'text-gray-700 dark:text-gray-200'}`}>
+                      {formatSignedMoney(monitorMetrics.netProfit)}
+                    </div>
+                    <div className="text-xs text-gray-600 dark:text-gray-400">Чистая прибыль</div>
+                  </div>
+
+                  <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-center dark:border-gray-700 dark:bg-gray-800">
+                    <div className="text-xl font-bold text-teal-600 dark:text-teal-300">
+                      {Number.isFinite(monitorMetrics.profitFactor) ? monitorMetrics.profitFactor.toFixed(2) : '∞'}
+                    </div>
+                    <div className="text-xs text-gray-600 dark:text-gray-400">Profit Factor</div>
+                  </div>
+
+                  <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-800">
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <div className="text-xs text-gray-600 dark:text-gray-400">Маржинальность</div>
+                      <div className="relative" data-monitor-margin-help>
+                        <button
+                          type="button"
+                          onClick={() => setShowMarginHelp((prev) => !prev)}
+                          className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-gray-300 text-gray-500 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+                          title="Пояснение по симуляции маржи"
+                          aria-label="Пояснение по симуляции маржи"
+                        >
+                          <HelpCircle className="h-3.5 w-3.5" />
+                        </button>
+                        {showMarginHelp && (
+                          <div className="absolute right-0 top-full z-10 mt-1.5 w-52 rounded-lg border border-gray-200 bg-white p-2 text-xs text-gray-700 shadow-lg dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200">
+                            Коэффициент применяем к доходности каждой закрытой сделки. 100% = без маржи, 200% = 2x.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <select
+                      value={monitorMarginPercent}
+                      onChange={(e) => setMonitorMarginPercent(normalizeMonitorMarginPercent(Number(e.target.value)))}
+                      className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 outline-none transition focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
+                      aria-label="Маржинальность мониторинга"
+                    >
+                      {MONITOR_MARGIN_OPTIONS.map((option) => (
+                        <option key={option} value={option}>
+                          {option}%
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
               </div>
             ) : (
