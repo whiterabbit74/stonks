@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { OHLCData, Trade } from '../types';
 import { runOptionsBacktest } from '../lib/optionsBacktest';
 import { EquityChart } from './EquityChart';
@@ -17,6 +17,8 @@ export function OptionsAnalysis({ stockTrades, marketData }: OptionsAnalysisProp
     const [capitalPct, setCapitalPct] = useState<number>(10);
     const [expirationWeeks, setExpirationWeeks] = useState<number>(4);
     const [maxHoldingDays, setMaxHoldingDays] = useState<number>(30);
+    const [showModelingInfo, setShowModelingInfo] = useState(false);
+    const modelingInfoRef = useRef<HTMLDivElement | null>(null);
 
     const { equity, trades, finalValue } = useMemo(() => {
         return runOptionsBacktest(stockTrades, marketData, {
@@ -31,6 +33,20 @@ export function OptionsAnalysis({ stockTrades, marketData }: OptionsAnalysisProp
     // Initial capital is hardcoded in backtest as 10000 for now
     const initialCapital = 10000;
     const totalReturn = ((finalValue - initialCapital) / initialCapital) * 100;
+
+    useEffect(() => {
+        if (!showModelingInfo) return;
+
+        const handleOutsideClick = (event: MouseEvent) => {
+            if (!modelingInfoRef.current) return;
+            if (!modelingInfoRef.current.contains(event.target as Node)) {
+                setShowModelingInfo(false);
+            }
+        };
+
+        document.addEventListener('mousedown', handleOutsideClick);
+        return () => document.removeEventListener('mousedown', handleOutsideClick);
+    }, [showModelingInfo]);
 
     return (
         <div className="space-y-6">
@@ -131,19 +147,29 @@ export function OptionsAnalysis({ stockTrades, marketData }: OptionsAnalysisProp
                             className="block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100 sm:text-sm"
                         />
                     </div>
-                </div>
 
-                <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded-md p-3 text-sm text-blue-800 dark:text-blue-200 flex items-start gap-2">
-                    <HelpCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
-                    <div>
-                        <p className="font-semibold mb-1">О моделировании:</p>
-                        <ul className="list-disc list-inside space-y-1 opacity-90">
-                            <li>Покупка Call-опционов вместо акций при сигналах стратегии.</li>
-                            <li>Экспирация: расчетная дата (через выбранный период + до ближайшей пятницы).</li>
-                            <li>Цена опциона: теоретическая (Black-Scholes).</li>
-                            <li>Волатильность: историческая за 30 дней + ваша коррекция.</li>
-                            <li>Страйк округляется до ближайшего целого числа.</li>
-                        </ul>
+                    <div ref={modelingInfoRef} className="relative md:ml-auto">
+                        <button
+                            type="button"
+                            onClick={() => setShowModelingInfo((prev) => !prev)}
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-300 text-gray-500 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+                            title="Информация о моделировании"
+                            aria-label="Информация о моделировании"
+                        >
+                            <HelpCircle className="h-4 w-4" />
+                        </button>
+                        {showModelingInfo && (
+                            <div className="absolute right-0 top-full z-20 mt-2 w-80 rounded-lg border border-gray-200 bg-white p-3 text-sm text-gray-700 shadow-lg dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200">
+                                <p className="font-semibold mb-2">О моделировании</p>
+                                <ul className="list-disc list-inside space-y-1">
+                                    <li>Покупка Call-опционов вместо акций при сигналах стратегии.</li>
+                                    <li>Экспирация: расчетная дата (через выбранный период + до ближайшей пятницы).</li>
+                                    <li>Цена опциона: теоретическая (Black-Scholes).</li>
+                                    <li>Волатильность: историческая за 30 дней + ваша коррекция.</li>
+                                    <li>Страйк округляется до ближайшего целого числа.</li>
+                                </ul>
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>

@@ -6,7 +6,6 @@ import { isSameDay } from '../lib/date-utils';
 import { useAppStore } from '../stores';
 import { ChartContainer, AnalysisTabs, MetricsGrid, Button } from './ui';
 import { InfoModal } from './InfoModal';
-import { StrategyInfoCard } from './StrategyInfoCard';
 import { AnimatedPrice } from './AnimatedPrice';
 import { HeroLineChart } from './HeroLineChart';
 import { useSingleTickerData } from '../hooks/useSingleTickerData';
@@ -378,14 +377,6 @@ export function SingleTickerPage() {
       : initialCapital,
     maxDrawdown: Number(backtestResults.metrics?.maxDrawdown ?? 0)
   };
-
-  const lowIBS = Number(currentStrategy?.parameters?.lowIBS ?? 0.1);
-  const highIBS = Number(currentStrategy?.parameters?.highIBS ?? 0.75);
-  const maxHoldDays = Number(
-    typeof currentStrategy?.parameters?.maxHoldDays === 'number'
-      ? currentStrategy?.parameters?.maxHoldDays
-      : currentStrategy?.riskManagement?.maxHoldDays ?? 30
-  );
 
   const marginSimulation = leverageMultiplier > 1
     ? simulateMarginByTrades({
@@ -977,16 +968,6 @@ export function SingleTickerPage() {
                     symbol={symbol}
                     strategy={currentStrategy}
                     initialCapital={initialCapital}
-                    extraEquityInfo={
-                      <div className="mb-4 mt-2">
-                        <StrategyInfoCard
-                           strategy={currentStrategy}
-                           lowIBS={lowIBS}
-                           highIBS={highIBS}
-                           maxHoldDays={maxHoldDays}
-                        />
-                      </div>
-                    }
                   />
                 )}
               </Suspense>

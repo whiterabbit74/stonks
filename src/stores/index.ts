@@ -111,11 +111,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   analysisTabsConfig: (() => {
     const defaultTabs = [
       { id: 'price', label: 'Цена', visible: true },
-      { id: 'equity', label: 'Equity', visible: true },
+      { id: 'equity', label: 'Баланс', visible: true },
       { id: 'buyhold', label: 'Buy and hold', visible: true },
       { id: 'drawdown', label: 'Просадки', visible: true },
       { id: 'trades', label: 'Сделки', visible: true },
-      { id: 'profit', label: 'Profit factor', visible: true },
+      { id: 'profit', label: 'Профит Фактор', visible: true },
       { id: 'duration', label: 'Длительность', visible: true },
       { id: 'openDayDrawdown', label: 'Стартовая просадка', visible: true },
       { id: 'buyAtClose', label: 'Покупка на открытии', visible: true },

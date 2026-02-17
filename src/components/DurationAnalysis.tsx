@@ -7,6 +7,21 @@ interface DurationAnalysisProps {
 	trades: Trade[];
 }
 
+function centerFewPointsOnTimeScale(chart: IChartApi, pointsCount: number) {
+	if (!pointsCount) return;
+	chart.timeScale().fitContent();
+
+	if (pointsCount >= 40) return;
+
+	const minFillRatio = 0.7;
+	const logicalSpan = Math.max(pointsCount / minFillRatio, pointsCount + 2);
+	const padding = Math.max(0, (logicalSpan - pointsCount) / 2);
+	chart.timeScale().setVisibleLogicalRange({
+		from: -padding,
+		to: pointsCount - 1 + padding,
+	});
+}
+
 export function DurationAnalysis({ trades }: DurationAnalysisProps) {
 	const containerRef = useRef<HTMLDivElement>(null);
 	const chartRef = useRef<IChartApi | null>(null);
@@ -106,9 +121,9 @@ export function DurationAnalysis({ trades }: DurationAnalysisProps) {
 
 		series.setData(data);
 
-		if (stats) {
-			try {
-				series.createPriceLine({
+			if (stats) {
+				try {
+					series.createPriceLine({
 					price: stats.avg,
 					color: '#9CA3AF',
 					lineWidth: 1,
@@ -116,11 +131,13 @@ export function DurationAnalysis({ trades }: DurationAnalysisProps) {
 					axisLabelVisible: true,
 					title: 'Среднее'
 				});
-			} catch { /* ignore */ }
-		}
+				} catch { /* ignore */ }
+			}
 
-		return () => {
-			try { chart.remove(); } catch { /* ignore */ }
+			centerFewPointsOnTimeScale(chart, data.length);
+
+			return () => {
+				try { chart.remove(); } catch { /* ignore */ }
 		};
 	}, [trades, isDark, stats]);
 
@@ -176,24 +193,17 @@ export function DurationAnalysis({ trades }: DurationAnalysisProps) {
 									<th className="text-right px-4 py-3 font-medium text-gray-500 dark:text-gray-400">% от общего</th>
 								</tr>
 							</thead>
-							<tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-								{stats.distribution.slice(0, 10).map(([days, count]) => (
-									<tr key={days} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
-										<td className="px-4 py-2.5 text-gray-900 dark:text-gray-100">{days}</td>
-										<td className="px-4 py-2.5 text-right text-gray-900 dark:text-gray-100">{count}</td>
-										<td className="px-4 py-2.5 text-right text-gray-500 dark:text-gray-400">{((count / trades.length) * 100).toFixed(1)}%</td>
-									</tr>
-								))}
-								{stats.distribution.length > 10 && (
-									<tr>
-										<td colSpan={3} className="px-4 py-2 text-center text-xs text-gray-500 italic">
-											...и еще {stats.distribution.length - 10} строк
-										</td>
-									</tr>
-								)}
-							</tbody>
-						</table>
-					</div>
+								<tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+									{stats.distribution.map(([days, count]) => (
+										<tr key={days} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
+											<td className="px-4 py-2.5 text-gray-900 dark:text-gray-100">{days}</td>
+											<td className="px-4 py-2.5 text-right text-gray-900 dark:text-gray-100">{count}</td>
+											<td className="px-4 py-2.5 text-right text-gray-500 dark:text-gray-400">{((count / trades.length) * 100).toFixed(1)}%</td>
+										</tr>
+									))}
+								</tbody>
+							</table>
+						</div>
 				</div>
 
 				{/* Exit Reason Analysis */}

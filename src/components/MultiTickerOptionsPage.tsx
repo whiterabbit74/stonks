@@ -301,12 +301,12 @@ export function MultiTickerOptionsPage() {
           <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
             <AnalysisTabs
               tabs={[
-                { id: 'equity', label: 'Equity' },
+                { id: 'equity', label: 'Баланс' },
                 { id: 'price', label: 'Цены' },
                 { id: 'tickerCharts', label: 'Графики тикеров' },
                 { id: 'drawdown', label: 'Просадка' },
                 { id: 'trades', label: 'Сделки' },
-                { id: 'profit', label: 'Profit factor' },
+                { id: 'profit', label: 'Профит Фактор' },
                 { id: 'duration', label: 'Длительность' },
                 { id: 'splits', label: 'Сплиты' },
               ]}

@@ -258,10 +258,10 @@ export function MultiTickerPage() {
               tabs={[
                 { id: 'price', label: 'Цены' },
                 { id: 'tickerCharts', label: 'Графики тикеров' },
-                { id: 'equity', label: 'Equity' },
+                { id: 'equity', label: 'Баланс' },
                 { id: 'drawdown', label: 'Просадка' },
                 { id: 'trades', label: 'Сделки' },
-                { id: 'profit', label: 'Profit factor' },
+                { id: 'profit', label: 'Профит Фактор' },
                 { id: 'duration', label: 'Длительность' },
                 monthlyContributionResults ? { id: 'monthlyContribution', label: 'Пополнения' } : null,
                 { id: 'splits', label: 'Сплиты' },

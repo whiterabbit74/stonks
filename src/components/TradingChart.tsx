@@ -19,10 +19,19 @@ import type { OHLCData, Trade, SplitEvent } from '../types';
 import { useAppStore } from '../stores';
 import { logError } from '../lib/error-logger';
 
-const MIN_CHART_HEIGHT = 520;
+const MIN_CHART_HEIGHT = 680;
 
 type RangeKey = 'ALL' | 'YTD' | '5Y' | '3Y' | '1Y' | '6M' | '3M' | '1M';
-const RANGE_OPTIONS: RangeKey[] = ['1M', '3M', '6M', '1Y', '3Y', '5Y', 'YTD', 'ALL'];
+const RANGE_OPTIONS: Array<{ value: RangeKey; label: string }> = [
+  { value: '1M', label: '1 месяц' },
+  { value: '3M', label: '3 месяца' },
+  { value: '6M', label: '6 месяцев' },
+  { value: '1Y', label: '1 год' },
+  { value: '3Y', label: '3 года' },
+  { value: '5Y', label: '5 лет' },
+  { value: 'YTD', label: 'С начала года' },
+  { value: 'ALL', label: 'Весь период' },
+];
 
 const calculateEMA = (data: OHLCData[], period: number): number[] => {
   if (data.length < period) return [];
@@ -52,6 +61,7 @@ interface TradingChartProps {
 
 export const TradingChart = memo(function TradingChart({ data, trades, splits = [], isVisible = true }: TradingChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
+  const indicatorMenuRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candlestickSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
   const ibsSeriesRef = useRef<ISeriesApi<'Histogram'> | null>(null);
@@ -63,12 +73,13 @@ export const TradingChart = memo(function TradingChart({ data, trades, splits = 
   const tooltipRef = useRef<HTMLDivElement | null>(null);
 
   const [chartReady, setChartReady] = useState(false);
-  const [activeRange, setActiveRange] = useState<RangeKey>('ALL');
+  const [activeRange, setActiveRange] = useState<RangeKey>('3Y');
 
   const [showEMA20, setShowEMA20] = useState(false);
   const [showEMA200, setShowEMA200] = useState(false);
   const [showIBS, setShowIBS] = useState(false);
   const [showVolume, setShowVolume] = useState(false);
+  const [showIndicatorsMenu, setShowIndicatorsMenu] = useState(false);
 
   const showIBSRef = useRef(showIBS);
   const showVolumeRef = useRef(showVolume);
@@ -82,6 +93,20 @@ export const TradingChart = memo(function TradingChart({ data, trades, splits = 
     showIBSRef.current = showIBS;
     showVolumeRef.current = showVolume;
   }, [showIBS, showVolume]);
+
+  useEffect(() => {
+    if (!showIndicatorsMenu) return;
+
+    const handleOutsideClick = (event: MouseEvent) => {
+      if (!indicatorMenuRef.current) return;
+      if (!indicatorMenuRef.current.contains(event.target as Node)) {
+        setShowIndicatorsMenu(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, [showIndicatorsMenu]);
 
   useEffect(() => {
     const onTheme = (e: Event) => {
@@ -449,31 +474,58 @@ export const TradingChart = memo(function TradingChart({ data, trades, splits = 
   useEffect(() => {
     if (!candlestickSeriesRef.current) return;
 
-    const indicatorFraction = Math.max(0.05, Math.min(0.4, indicatorPanePercent / 100));
-    const priceBottomMargin = indicatorFraction + 0.1;
-    const indicatorTopMargin = 1 - indicatorFraction;
+    const hasIndicatorPane = showIBS || showVolume;
 
+    if (hasIndicatorPane) {
+      const indicatorFraction = Math.max(0.05, Math.min(0.4, indicatorPanePercent / 100));
+      const priceBottomMargin = indicatorFraction + 0.1;
+      const indicatorTopMargin = 1 - indicatorFraction;
+
+      candlestickSeriesRef.current.priceScale().applyOptions({
+        scaleMargins: {
+          top: 0.08,
+          bottom: priceBottomMargin,
+        },
+      });
+
+      volumeSeriesRef.current?.priceScale().applyOptions({
+        scaleMargins: {
+          top: indicatorTopMargin,
+          bottom: 0,
+        },
+      });
+
+      ibsSeriesRef.current?.priceScale().applyOptions({
+        scaleMargins: {
+          top: indicatorTopMargin,
+          bottom: 0,
+        },
+      });
+      return;
+    }
+
+    // Do not reserve indicator space when indicator panes are hidden.
     candlestickSeriesRef.current.priceScale().applyOptions({
       scaleMargins: {
-        top: 0.1,
-        bottom: priceBottomMargin,
+        top: 0.08,
+        bottom: 0.06,
       },
     });
 
     volumeSeriesRef.current?.priceScale().applyOptions({
       scaleMargins: {
-        top: indicatorTopMargin,
+        top: 0.88,
         bottom: 0,
       },
     });
 
     ibsSeriesRef.current?.priceScale().applyOptions({
       scaleMargins: {
-        top: indicatorTopMargin,
+        top: 0.88,
         bottom: 0,
       },
     });
-  }, [indicatorPanePercent, chartReady]);
+  }, [indicatorPanePercent, chartReady, showIBS, showVolume]);
 
   useEffect(() => {
     ibsSeriesRef.current?.applyOptions({ visible: showIBS });
@@ -546,61 +598,60 @@ export const TradingChart = memo(function TradingChart({ data, trades, splits = 
     return () => cancelAnimationFrame(raf1);
   }, [isVisible, activeRange, chartData.length]);
 
+  const indicatorsCount = Number(showEMA20) + Number(showEMA200) + Number(showIBS) + Number(showVolume);
+
   return (
-    <div className="w-full grid grid-rows-[auto,1fr] gap-4 relative">
-      <div className="flex gap-2 flex-wrap">
-        {RANGE_OPTIONS.map((range) => (
-          <button
-            key={range}
-            onClick={() => setActiveRange(range)}
-            className={`px-3 py-1 text-sm rounded ${activeRange === range
-              ? 'bg-indigo-600 text-white'
-              : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'
-              }`}
+    <div className="w-full grid grid-rows-[auto,1fr] gap-2 relative">
+      <div className="flex flex-wrap items-end gap-2">
+        <label className="flex flex-col gap-1 text-xs text-gray-600 dark:text-gray-300">
+          <span className="font-medium">Период</span>
+          <select
+            value={activeRange}
+            onChange={(event) => setActiveRange(event.target.value as RangeKey)}
+            className="min-w-[180px] rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-sm text-gray-900 outline-none transition focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+            aria-label="Период отображения"
           >
-            {range}
+            {RANGE_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <div ref={indicatorMenuRef} className="relative">
+          <button
+            type="button"
+            onClick={() => setShowIndicatorsMenu((prev) => !prev)}
+            className="inline-flex h-[38px] items-center rounded-md border border-gray-300 bg-white px-3 text-sm text-gray-800 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:hover:bg-gray-800"
+            aria-haspopup="menu"
+            aria-expanded={showIndicatorsMenu}
+            title="Выбор индикаторов"
+          >
+            Индикаторы{indicatorsCount > 0 ? ` (${indicatorsCount})` : ''}
           </button>
-        ))}
-        <button
-          onClick={() => setShowEMA20(!showEMA20)}
-          className={`px-3 py-1 text-sm rounded ${showEMA20
-            ? 'bg-blue-500 text-white'
-            : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'
-            }`}
-        >
-          EMA 20
-        </button>
-        <button
-          onClick={() => setShowEMA200(!showEMA200)}
-          className={`px-3 py-1 text-sm rounded ${showEMA200
-            ? 'bg-orange-500 text-white'
-            : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'
-            }`}
-        >
-          EMA 200
-        </button>
-        <button
-          onClick={() => setShowIBS(!showIBS)}
-          className={`px-3 py-1 text-sm rounded ${showIBS
-            ? 'bg-gray-700 text-white'
-            : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'
-            }`}
-          title="Показать IBS"
-          aria-label="Показать IBS"
-        >
-          IBS
-        </button>
-        <button
-          onClick={() => setShowVolume(!showVolume)}
-          className={`px-3 py-1 text-sm rounded ${showVolume
-            ? 'bg-gray-500 text-white'
-            : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'
-            }`}
-          title="Показать объём"
-          aria-label="Показать объём"
-        >
-          Объём
-        </button>
+
+          {showIndicatorsMenu && (
+            <div className="absolute left-0 top-full z-20 mt-1.5 w-52 rounded-lg border border-gray-200 bg-white p-2 shadow-lg dark:border-gray-700 dark:bg-gray-900">
+              <label className="flex items-center gap-2 rounded px-2 py-1.5 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-800">
+                <input type="checkbox" checked={showEMA20} onChange={() => setShowEMA20((prev) => !prev)} />
+                <span>EMA 20</span>
+              </label>
+              <label className="flex items-center gap-2 rounded px-2 py-1.5 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-800">
+                <input type="checkbox" checked={showEMA200} onChange={() => setShowEMA200((prev) => !prev)} />
+                <span>EMA 200</span>
+              </label>
+              <label className="flex items-center gap-2 rounded px-2 py-1.5 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-800">
+                <input type="checkbox" checked={showIBS} onChange={() => setShowIBS((prev) => !prev)} />
+                <span>IBS</span>
+              </label>
+              <label className="flex items-center gap-2 rounded px-2 py-1.5 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-800">
+                <input type="checkbox" checked={showVolume} onChange={() => setShowVolume((prev) => !prev)} />
+                <span>Объём</span>
+              </label>
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="relative w-full h-full min-h-0">
