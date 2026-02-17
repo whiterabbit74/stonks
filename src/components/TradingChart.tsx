@@ -33,7 +33,7 @@ const RANGE_OPTIONS: Array<{ value: RangeKey; label: string }> = [
   { value: 'ALL', label: 'Весь период' },
 ];
 
-const calculateEMA = (data: OHLCData[], period: number): number[] => {
+const calculateEMA = (data: Array<{ close: number }>, period: number): number[] => {
   if (data.length < period) return [];
 
   const ema: number[] = [];
@@ -296,108 +296,112 @@ export const TradingChart = memo(function TradingChart({ data, trades, splits = 
     volumeSeriesRef.current?.applyOptions({ color: isDark ? 'rgba(148, 163, 184, 0.35)' : 'rgba(148, 163, 184, 0.45)' });
   }, [isDark]);
 
-  const times = useMemo(
+  const normalizedBars = useMemo(() => {
+    if (!data.length) return [] as Array<{ time: UTCTimestamp; open: number; high: number; low: number; close: number; volume: number }>;
+
+    const dedup = new Map<number, { time: UTCTimestamp; open: number; high: number; low: number; close: number; volume: number }>();
+
+    for (const bar of data) {
+      let t: UTCTimestamp;
+      try {
+        t = toChartTimestamp(bar.date);
+      } catch {
+        continue;
+      }
+
+      const openRaw = Number(bar.open);
+      const highRaw = Number(bar.high);
+      const lowRaw = Number(bar.low);
+      const closeRaw = Number(bar.close);
+      const volumeRaw = Number(bar.volume);
+
+      if (![openRaw, highRaw, lowRaw, closeRaw].every((v) => Number.isFinite(v))) continue;
+
+      const high = Math.max(highRaw, openRaw, lowRaw, closeRaw);
+      const low = Math.min(lowRaw, openRaw, highRaw, closeRaw);
+      const volume = Number.isFinite(volumeRaw) && volumeRaw > 0 ? volumeRaw : 0;
+
+      dedup.set(Number(t), {
+        time: t,
+        open: openRaw,
+        high,
+        low,
+        close: closeRaw,
+        volume,
+      });
+    }
+
+    return Array.from(dedup.values()).sort((a, b) => Number(a.time) - Number(b.time));
+  }, [data]);
+
+  const chartData = useMemo(
     () =>
-      data.map((d) => {
-        try {
-          return toChartTimestamp(d.date);
-        } catch {
-          return 0 as UTCTimestamp;
-        }
-      }),
-    [data]
+      normalizedBars.map((bar) => ({
+        time: bar.time,
+        open: bar.open,
+        high: bar.high,
+        low: bar.low,
+        close: bar.close,
+      })),
+    [normalizedBars]
   );
 
-  const chartData = useMemo(() => {
-    if (!data.length) return [];
-    return data
-      .map((bar, i) => {
-        const t = times[i];
-        if (t === 0) return null;
-        return {
-          time: t,
-          open: Number(bar.open),
-          high: Number(bar.high),
-          low: Number(bar.low),
-          close: Number(bar.close),
-        };
-      })
-      .filter((point): point is { time: UTCTimestamp; open: number; high: number; low: number; close: number } => point !== null);
-  }, [data, times]);
-
-  const ema20Values = useMemo(() => calculateEMA(data, 20), [data]);
+  const ema20Values = useMemo(() => calculateEMA(normalizedBars, 20), [normalizedBars]);
   const ema20Data = useMemo(
-    () =>
-      data
-        .map((_, index) => {
-          const v = ema20Values[index];
-          const t = times[index];
-          if (typeof v !== 'number' || !Number.isFinite(v) || t === 0) return null;
-          return { time: t, value: v };
-        })
-        .filter((p): p is { time: UTCTimestamp; value: number } => p !== null),
-    [data, ema20Values, times]
+    () => normalizedBars
+      .map((bar, index) => {
+        const v = ema20Values[index];
+        if (typeof v !== 'number' || !Number.isFinite(v)) return null;
+        return { time: bar.time, value: v };
+      })
+      .filter((p): p is { time: UTCTimestamp; value: number } => p !== null),
+    [normalizedBars, ema20Values]
   );
 
-  const ema200Values = useMemo(() => calculateEMA(data, 200), [data]);
+  const ema200Values = useMemo(() => calculateEMA(normalizedBars, 200), [normalizedBars]);
   const ema200Data = useMemo(
-    () =>
-      data
-        .map((_, index) => {
-          const v = ema200Values[index];
-          const t = times[index];
-          if (typeof v !== 'number' || !Number.isFinite(v) || t === 0) return null;
-          return { time: t, value: v };
-        })
-        .filter((p): p is { time: UTCTimestamp; value: number } => p !== null),
-    [data, ema200Values, times]
+    () => normalizedBars
+      .map((bar, index) => {
+        const v = ema200Values[index];
+        if (typeof v !== 'number' || !Number.isFinite(v)) return null;
+        return { time: bar.time, value: v };
+      })
+      .filter((p): p is { time: UTCTimestamp; value: number } => p !== null),
+    [normalizedBars, ema200Values]
   );
 
   const volumeData = useMemo(
-    () =>
-      data
-        .map((bar, i) => {
-          const t = times[i];
-          if (t === 0) return null;
-          return {
-            time: t,
-            value: Number(bar.volume),
-            color:
-              bar.close >= bar.open
-                ? isDark
-                  ? 'rgba(16, 185, 129, 0.45)'
-                  : 'rgba(16, 185, 129, 0.6)'
-                : isDark
-                  ? 'rgba(239, 68, 68, 0.45)'
-                  : 'rgba(239, 68, 68, 0.6)',
-          };
-        })
-        .filter((point): point is { time: UTCTimestamp; value: number; color: string } => point !== null),
-    [data, isDark, times]
+    () => normalizedBars.map((bar) => ({
+      time: bar.time,
+      value: bar.volume,
+      color:
+        bar.close >= bar.open
+          ? isDark
+            ? 'rgba(16, 185, 129, 0.45)'
+            : 'rgba(16, 185, 129, 0.6)'
+          : isDark
+            ? 'rgba(239, 68, 68, 0.45)'
+            : 'rgba(239, 68, 68, 0.6)',
+    })),
+    [normalizedBars, isDark]
   );
 
   const ibsData = useMemo(
-    () =>
-      data
-        .map((bar, i) => {
-          const t = times[i];
-          if (t === 0) return null;
+    () => normalizedBars.map((bar) => {
+      const range = Math.max(1e-9, bar.high - bar.low);
+      const ibs = (bar.close - bar.low) / range;
+      const color =
+        ibs <= 0.1
+          ? 'rgba(5,150,105,1)'
+          : ibs >= 0.75
+            ? 'rgba(239,68,68,0.9)'
+            : isDark
+              ? 'rgba(156,163,175,0.5)'
+              : 'rgba(107,114,128,0.5)';
 
-          const range = Math.max(1e-9, bar.high - bar.low);
-          const ibs = (bar.close - bar.low) / range;
-          const color =
-            ibs <= 0.1
-              ? 'rgba(5,150,105,1)'
-              : ibs >= 0.75
-                ? 'rgba(239,68,68,0.9)'
-                : isDark
-                  ? 'rgba(156,163,175,0.5)'
-                  : 'rgba(107,114,128,0.5)';
-
-          return { time: t, value: ibs, color };
-        })
-        .filter((point): point is { time: UTCTimestamp; value: number; color: string } => point !== null),
-    [data, isDark, times]
+      return { time: bar.time, value: ibs, color };
+    }),
+    [normalizedBars, isDark]
   );
 
   useEffect(() => {
@@ -552,52 +556,71 @@ export const TradingChart = memo(function TradingChart({ data, trades, splits = 
   }, [showIBS, showVolume, showEMA20, showEMA200, chartReady]);
 
   useEffect(() => {
-    if (!chartRef.current || !chartData.length) return;
+    if (!chartRef.current || !chartReady || !chartData.length) return;
 
-    const rightEdge = chartData[chartData.length - 1].time as number;
-    const leftEdge = chartData[0].time as number;
+    const chart = chartRef.current;
+    const rightEdgeTs = Number(chartData[chartData.length - 1].time);
+    const leftEdgeTs = Number(chartData[0].time);
 
-    if (activeRange === 'ALL') {
-      chartRef.current.timeScale().fitContent();
-      return;
-    }
-
-    let from = leftEdge;
-    if (activeRange === 'YTD') {
-      const rightEdgeDate = new Date(rightEdge * 1000);
-      const ytdStart = Math.floor(Date.UTC(rightEdgeDate.getUTCFullYear(), 0, 1) / 1000);
-      from = Math.max(leftEdge, ytdStart);
-    } else {
-      const daysByRange: Record<Exclude<RangeKey, 'ALL' | 'YTD'>, number> = {
-        '5Y': 365 * 5,
-        '3Y': 365 * 3,
-        '1Y': 365,
-        '6M': 180,
-        '3M': 90,
-        '1M': 30,
-      };
-
-      const days = daysByRange[activeRange];
-      from = Math.max(leftEdge, rightEdge - days * 24 * 60 * 60);
-    }
-
-    try {
-      chartRef.current.timeScale().setVisibleRange({
-        from: from as UTCTimestamp,
-        to: rightEdge as UTCTimestamp,
-      });
-    } catch (e) {
-      logError('chart', 'Failed to set visible range, fallback to fitContent', {
-        error: (e as Error).message,
-        activeRange,
-      }, 'TradingChart.setVisibleRange');
-      try {
-        chartRef.current.timeScale().fitContent();
-      } catch {
-        // ignore
+    const applyRange = () => {
+      if (activeRange === 'ALL') {
+        chart.timeScale().fitContent();
+        return;
       }
-    }
-  }, [activeRange, chartData]);
+
+      let fromTs = leftEdgeTs;
+      if (activeRange === 'YTD') {
+        const rightEdgeDate = new Date(rightEdgeTs * 1000);
+        const ytdStart = Math.floor(Date.UTC(rightEdgeDate.getUTCFullYear(), 0, 1) / 1000);
+        fromTs = Math.max(leftEdgeTs, ytdStart);
+      } else {
+        const daysByRange: Record<Exclude<RangeKey, 'ALL' | 'YTD'>, number> = {
+          '5Y': 365 * 5,
+          '3Y': 365 * 3,
+          '1Y': 365,
+          '6M': 180,
+          '3M': 90,
+          '1M': 30,
+        };
+        const days = daysByRange[activeRange];
+        fromTs = Math.max(leftEdgeTs, rightEdgeTs - days * 24 * 60 * 60);
+      }
+
+      let leftIndex = 0;
+      for (let i = 0; i < chartData.length; i++) {
+        if (Number(chartData[i].time) >= fromTs) {
+          leftIndex = i;
+          break;
+        }
+        if (i === chartData.length - 1) {
+          leftIndex = chartData.length - 1;
+        }
+      }
+
+      const rightIndex = chartData.length - 1;
+      const visibleBars = Math.max(1, rightIndex - leftIndex + 1);
+      const padding = Math.max(1, Math.round(visibleBars * 0.02));
+
+      chart.timeScale().setVisibleLogicalRange({
+        from: Math.max(-0.5, leftIndex - padding),
+        to: rightIndex + padding,
+      });
+    };
+
+    const raf = requestAnimationFrame(() => {
+      try {
+        applyRange();
+      } catch {
+        try {
+          chart.timeScale().fitContent();
+        } catch {
+          // ignore
+        }
+      }
+    });
+
+    return () => cancelAnimationFrame(raf);
+  }, [activeRange, chartData, chartReady]);
 
   // The chart can receive zero size while parent tab is hidden (`display: none`).
   // Force a resize when the tab becomes visible again to restore rendering.

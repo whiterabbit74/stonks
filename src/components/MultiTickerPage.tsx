@@ -4,13 +4,13 @@ import { useAppStore } from '../stores';
 import type { Strategy, Trade, EquityPoint } from '../types';
 import { runSinglePositionBacktest, optimizeTickerData } from '../lib/singlePositionBacktest';
 import { StrategyInfoCard } from './StrategyInfoCard';
-import { StrategyConfigurationCard } from './StrategyConfigurationCard';
 import { MonthlyContributionAnalysis } from './MonthlyContributionAnalysis';
 import type { BacktestMetrics } from '../lib/backtest-statistics';
 import { createStrategyFromTemplate, STRATEGY_TEMPLATES } from '../lib/strategy';
 import { useMultiTickerData } from '../hooks/useMultiTickerData';
 import { BacktestPageShell } from './BacktestPageShell';
 import { scheduleIdleTask } from '../lib/prefetch';
+import { HelpCircle } from 'lucide-react';
 
 const importBacktestResultsView = () => import('./BacktestResultsView');
 const BacktestResultsView = lazy(() => importBacktestResultsView().then((m) => ({ default: m.BacktestResultsView })));
@@ -45,6 +45,7 @@ export function MultiTickerPage() {
   const [leveragePercent, setLeveragePercent] = useState(200);
   const [monthlyContributionAmount, setMonthlyContributionAmount] = useState<number>(500);
   const [monthlyContributionDay, setMonthlyContributionDay] = useState<number>(1);
+  const [showStrategyInfo, setShowStrategyInfo] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [backtestResults, setBacktestResults] = useState<BacktestResults | null>(null);
@@ -54,6 +55,7 @@ export function MultiTickerPage() {
   const [activeTab, setActiveTab] = useState<TabId>('price');
   const [selectedTradeTicker, setSelectedTradeTicker] = useState<'all' | string>('all');
   const lazyFallback = <ResultsPanelLoader />;
+  const strategyHelpRef = useRef<HTMLDivElement | null>(null);
 
   const prefetchAnalysisTab = (tabId: string) => {
     if (tabId === 'monthlyContribution') return;
@@ -87,6 +89,28 @@ export function MultiTickerPage() {
       : activeStrategy?.riskManagement?.maxHoldDays ?? 30
   );
   const initialCapital = Number(activeStrategy?.riskManagement?.initialCapital ?? 10000);
+
+  useEffect(() => {
+    if (!showStrategyInfo) return;
+
+    const onClickOutside = (event: MouseEvent) => {
+      if (!strategyHelpRef.current) return;
+      if (!strategyHelpRef.current.contains(event.target as Node)) {
+        setShowStrategyInfo(false);
+      }
+    };
+
+    const onEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setShowStrategyInfo(false);
+    };
+
+    document.addEventListener('mousedown', onClickOutside);
+    document.addEventListener('keydown', onEscape);
+    return () => {
+      document.removeEventListener('mousedown', onClickOutside);
+      document.removeEventListener('keydown', onEscape);
+    };
+  }, [showStrategyInfo]);
 
   // Запуск бэктеста
   const runBacktest = async () => {
@@ -176,68 +200,80 @@ export function MultiTickerPage() {
   return (
     <div className="space-y-6">
       {/* Заголовок и контролы — Card-based дизайн */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 shadow-sm">
+      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 shadow-sm">
         <PageHeader title="Несколько тикеров" />
 
-        {/* Две карточки */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-          <StrategyInfoCard
-            strategy={activeStrategy}
-            lowIBS={lowIBS}
-            highIBS={highIBS}
-            maxHoldDays={maxHoldDays}
-          />
+        <div className="relative rounded-xl border border-gray-200 dark:border-gray-700 bg-gradient-to-br from-gray-50 to-slate-50 dark:from-gray-900/60 dark:to-slate-900/40 p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <span className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+              Параметры
+            </span>
 
-          <StrategyConfigurationCard
-            title="Параметры"
-            fields={[
-              {
-                label: "Тикеры",
-                content: (
-                  <TickerInput
-                    value={tickersInput}
-                    onChange={setTickersInput}
-                    tickers={tickers}
-                    onTickersChange={setTickers}
+            <div ref={strategyHelpRef} className="relative">
+              <button
+                type="button"
+                onClick={() => setShowStrategyInfo((prev) => !prev)}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-gray-300 text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-gray-100"
+                title="Показать описание стратегии"
+                aria-label="Показать описание стратегии"
+                aria-expanded={showStrategyInfo}
+              >
+                <HelpCircle className="h-4 w-4" />
+              </button>
+
+              {showStrategyInfo && (
+                <div className="absolute right-0 top-full z-20 mt-2 w-[min(94vw,430px)]">
+                  <StrategyInfoCard
+                    strategy={activeStrategy}
+                    lowIBS={lowIBS}
+                    highIBS={highIBS}
+                    maxHoldDays={maxHoldDays}
                   />
-                )
-              },
-              {
-                label: "Leverage",
-                content: (
-                  <Select
-                    value={leveragePercent}
-                    onChange={(e) => setLeveragePercent(Number(e.target.value))}
-                  >
-                    <option value={100}>1:1 — без плеча</option>
-                    <option value={150}>1.5:1</option>
-                    <option value={200}>2:1</option>
-                    <option value={250}>2.5:1</option>
-                    <option value={300}>3:1</option>
-                  </Select>
-                )
-              }
-            ]}
-          />
-        </div>
+                </div>
+              )}
+            </div>
+          </div>
 
-        {/* Кнопка запуска */}
-        <div className="flex justify-center">
-          <Button
-            onClick={runBacktest}
-            disabled={isLoading || !activeStrategy || tickers.length === 0}
-            isLoading={isLoading}
-            variant="primary"
-            size="lg"
-            className="px-8 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 shadow-lg shadow-blue-500/25 border-0"
-            leftIcon={!isLoading ? (
-               <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                </svg>
-            ) : undefined}
-          >
-            Запустить бэктест
-          </Button>
+          <div className="grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr),220px,auto] xl:items-end">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">Тикеры</label>
+              <TickerInput
+                value={tickersInput}
+                onChange={setTickersInput}
+                tickers={tickers}
+                onTickersChange={setTickers}
+              />
+            </div>
+
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">Маржинальность</label>
+              <Select
+                value={leveragePercent}
+                onChange={(e) => setLeveragePercent(Number(e.target.value))}
+              >
+                <option value={100}>100%</option>
+                <option value={125}>125%</option>
+                <option value={150}>150%</option>
+                <option value={175}>175%</option>
+                <option value={200}>200%</option>
+                <option value={225}>225%</option>
+                <option value={250}>250%</option>
+                <option value={275}>275%</option>
+                <option value={300}>300%</option>
+              </Select>
+            </div>
+
+            <Button
+              onClick={runBacktest}
+              disabled={isLoading || !activeStrategy || tickers.length === 0}
+              isLoading={isLoading}
+              variant="primary"
+              size="md"
+              className="xl:self-end"
+            >
+              Запустить бэктест
+            </Button>
+          </div>
         </div>
       </div>
 
