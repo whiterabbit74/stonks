@@ -37,6 +37,12 @@ function normalizeIntradayRange(range, quote) {
     return { low: min, high: max };
 }
 
+function parseUnixTs(value, fallback) {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+    return Math.floor(parsed);
+}
+
 router.get('/quote/:symbol', async (req, res) => {
     try {
         const symbol = toSafeTicker(req.params.symbol);
@@ -46,6 +52,52 @@ router.get('/quote/:symbol', async (req, res) => {
         res.json({ symbol, dateKey, range: normRange, quote });
     } catch (e) {
         res.status(500).json({ error: e.message || 'Failed to fetch quote' });
+    }
+});
+
+// Backward-compatible endpoint used by "Новые данные" page.
+router.get('/yahoo-finance/:symbol', async (req, res) => {
+    try {
+        const symbol = toSafeTicker(req.params.symbol);
+        if (!symbol) return res.status(400).json({ error: 'Invalid symbol' });
+
+        const nowTs = Math.floor(Date.now() / 1000);
+        const endTs = parseUnixTs(req.query && req.query.end, nowTs);
+        const defaultStart = endTs - 40 * 365 * 24 * 60 * 60;
+        const startTs = parseUnixTs(req.query && req.query.start, defaultStart);
+        if (startTs >= endTs) return res.status(400).json({ error: 'Invalid time range' });
+
+        const requestedProvider = typeof req.query?.provider === 'string' ? req.query.provider : 'alpha_vantage';
+        const provider = ['alpha_vantage', 'finnhub', 'twelve_data', 'polygon'].includes(requestedProvider)
+            ? requestedProvider
+            : 'alpha_vantage';
+        const adjustment = req.query?.adjustment === 'split_only' ? 'split_only' : 'none';
+
+        let data;
+        switch (provider) {
+            case 'alpha_vantage': {
+                const avResult = await fetchFromAlphaVantage(symbol, startTs, endTs, { adjustment });
+                data = Array.isArray(avResult) ? avResult : (Array.isArray(avResult?.data) ? avResult.data : []);
+                break;
+            }
+            case 'finnhub':
+                data = await fetchFromFinnhub(symbol, startTs, endTs);
+                break;
+            case 'twelve_data':
+                data = await fetchFromTwelveData(symbol, startTs, endTs);
+                break;
+            case 'polygon':
+                data = await fetchFromPolygon(symbol, startTs, endTs);
+                break;
+            default:
+                return res.status(400).json({ error: 'Unknown provider' });
+        }
+
+        const rows = Array.isArray(data) ? data : [];
+        return res.json({ symbol, provider, dataPoints: rows.length, data: rows });
+    } catch (e) {
+        const status = e.status || 500;
+        return res.status(status).json({ error: e.message || 'Failed to fetch data' });
     }
 });
 

@@ -18,6 +18,8 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const initialDatasetLoadRequestedRef = useRef(false);
+  const latestDownloadRequestIdRef = useRef(0);
   const {
     enhancerProvider,
     updateMarketData,
@@ -68,10 +70,14 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
 
   // Load datasets on mount
   useEffect(() => {
+    if (initialDatasetLoadRequestedRef.current) return;
+    if (savedDatasets.length > 0 || globalLoading) return;
+    initialDatasetLoadRequestedRef.current = true;
+
     loadDatasetsFromServer().catch((error) => {
       console.warn('Failed to load datasets:', error);
     });
-  }, [loadDatasetsFromServer]);
+  }, [loadDatasetsFromServer, savedDatasets.length, globalLoading]);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -211,6 +217,12 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
       setError('Укажите тикер');
       return;
     }
+    // Avoid launching duplicate requests before loading state is reflected in UI.
+    if (isLoading) {
+      return;
+    }
+
+    const requestId = ++latestDownloadRequestIdRef.current;
 
     try {
       setIsLoading(true);
@@ -222,7 +234,9 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
       const end = Math.floor(Date.now() / 1000);
       const start = end - 40 * 365 * 24 * 60 * 60;
       const prov = enhancerProvider;
-      const resp = await fetchWithCreds(`${API_BASE_URL}/yahoo-finance/${targetTicker}?start=${start}&end=${end}&provider=${prov}&adjustment=none`);
+      const encodedTicker = encodeURIComponent(targetTicker);
+      const resp = await fetchWithCreds(`${API_BASE_URL}/yahoo-finance/${encodedTicker}?start=${start}&end=${end}&provider=${prov}&adjustment=none`);
+      if (requestId !== latestDownloadRequestIdRef.current) return;
 
       if (!resp.ok) {
         let msg = 'Не удалось получить данные';
@@ -234,18 +248,31 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
 
       setLoadingStage('processing');
       const payload = await resp.json();
+      if (requestId !== latestDownloadRequestIdRef.current) return;
       const rows = Array.isArray(payload?.data) ? payload.data : [];
       if (!rows.length) throw new Error('Нет данных для этого тикера');
 
-      const ohlc = rows.map((bar: any) => ({
-        date: toTradingDate(bar.date),
-        open: Number(bar.open),
-        high: Number(bar.high),
-        low: Number(bar.low),
-        close: Number(bar.close),
-        adjClose: bar.adjClose != null ? Number(bar.adjClose) : undefined,
-        volume: Number(bar.volume) || 0,
-      }));
+      const ohlc = rows.flatMap((bar: any) => {
+        try {
+          const date = toTradingDate(bar?.date);
+          const open = Number(bar?.open);
+          const high = Number(bar?.high);
+          const low = Number(bar?.low);
+          const close = Number(bar?.close);
+          if (![open, high, low, close].every((value) => Number.isFinite(value))) return [];
+
+          const adjRaw = bar?.adjClose != null ? Number(bar.adjClose) : undefined;
+          const adjClose = Number.isFinite(adjRaw) ? adjRaw : undefined;
+          const volumeRaw = Number(bar?.volume);
+          const volume = Number.isFinite(volumeRaw) && volumeRaw > 0 ? volumeRaw : 0;
+
+          return [{ date, open, high, low, close, adjClose, volume }];
+        } catch {
+          return [];
+        }
+      });
+      if (!ohlc.length) throw new Error('Ответ провайдера содержит некорректные OHLC-данные');
+      if (requestId !== latestDownloadRequestIdRef.current) return;
 
       updateMarketData(ohlc);
 
@@ -257,15 +284,17 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
       } : undefined;
 
       await saveDatasetToServer(targetTicker, undefined, metadata);
-      await loadDatasetsFromServer();
+      if (requestId !== latestDownloadRequestIdRef.current) return;
 
       setSuccess(`✅ Загружено ${ohlc.length} точек для ${targetTicker}`);
       toast.success(`${targetTicker}: загружено ${ohlc.length} точек`);
     } catch (e) {
+      if (requestId !== latestDownloadRequestIdRef.current) return;
       const msg = e instanceof Error ? e.message : 'Не удалось загрузить данные';
       setError(msg);
       toast.error(`${targetTicker}: ${msg}`);
     } finally {
+      if (requestId !== latestDownloadRequestIdRef.current) return;
       setIsLoading(false);
       setLoadingTicker(null);
       setLoadingStage(null);
