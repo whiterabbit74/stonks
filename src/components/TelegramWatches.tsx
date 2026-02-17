@@ -351,6 +351,116 @@ export function TelegramWatches() {
         </div>
       )}
 
+      <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-900">
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Результат по совершенным сделкам</h3>
+          <span className="text-xs text-gray-500 dark:text-gray-400">
+            База расчета: {formatCurrencyUSD(monitorMetrics.initialCapital)}
+          </span>
+        </div>
+
+        {hasClosedTrades ? (
+          <div className="grid gap-3 lg:grid-cols-[minmax(0,320px)_minmax(0,1fr)]">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-1">
+              <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-center dark:border-gray-700 dark:bg-gray-800">
+                <div className="text-2xl font-bold text-green-600 dark:text-emerald-300">{formatCurrencyUSD(monitorMetrics.finalBalance)}</div>
+                <div className="text-xs text-gray-600 dark:text-gray-400">Итоговый баланс</div>
+              </div>
+
+              <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-center dark:border-gray-700 dark:bg-gray-800">
+                <div className={`text-2xl font-bold ${monitorMetrics.totalReturnPct > 0 ? 'text-emerald-600 dark:text-emerald-300' : monitorMetrics.totalReturnPct < 0 ? 'text-orange-600 dark:text-orange-300' : 'text-gray-700 dark:text-gray-200'}`}>
+                  {formatSignedPercent(monitorMetrics.totalReturnPct)}
+                </div>
+                <div className="text-xs text-gray-600 dark:text-gray-400">Общая доходность</div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 xl:grid-cols-8">
+              <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-center dark:border-gray-700 dark:bg-gray-800">
+                <div className="text-xl font-bold text-red-600 dark:text-red-300">{monitorMetrics.maxDrawdownPct.toFixed(2)}%</div>
+                <div className="text-xs text-gray-600 dark:text-gray-400">Макс. просадка</div>
+              </div>
+
+              <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-center dark:border-gray-700 dark:bg-gray-800">
+                <div className="text-xl font-bold text-blue-600 dark:text-blue-300">{monitorMetrics.winRatePct.toFixed(1)}%</div>
+                <div className="text-xs text-gray-600 dark:text-gray-400">Win Rate</div>
+              </div>
+
+              <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-center dark:border-gray-700 dark:bg-gray-800">
+                <div className="text-xl font-bold text-indigo-600 dark:text-indigo-300">{monitorMetrics.closedTradesCount}</div>
+                <div className="text-xs text-gray-600 dark:text-gray-400">Закрытых сделок</div>
+              </div>
+
+              <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-center dark:border-gray-700 dark:bg-gray-800">
+                <div className={`text-xl font-bold ${monitorMetrics.avgReturnPct > 0 ? 'text-emerald-600 dark:text-emerald-300' : monitorMetrics.avgReturnPct < 0 ? 'text-orange-600 dark:text-orange-300' : 'text-gray-700 dark:text-gray-200'}`}>
+                  {formatSignedPercent(monitorMetrics.avgReturnPct)}
+                </div>
+                <div className="text-xs text-gray-600 dark:text-gray-400">Средняя сделка</div>
+              </div>
+
+              <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-center dark:border-gray-700 dark:bg-gray-800">
+                <div className="text-xl font-bold text-violet-600 dark:text-violet-300">
+                  {formatHoldingDays(monitorMetrics.avgHoldingDays)}
+                </div>
+                <div className="text-xs text-gray-600 dark:text-gray-400">Средняя длительность</div>
+              </div>
+
+              <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-center dark:border-gray-700 dark:bg-gray-800">
+                <div className={`text-xl font-bold ${monitorMetrics.netProfit > 0 ? 'text-emerald-600 dark:text-emerald-300' : monitorMetrics.netProfit < 0 ? 'text-orange-600 dark:text-orange-300' : 'text-gray-700 dark:text-gray-200'}`}>
+                  {formatSignedMoney(monitorMetrics.netProfit)}
+                </div>
+                <div className="text-xs text-gray-600 dark:text-gray-400">Чистая прибыль</div>
+              </div>
+
+              <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-center dark:border-gray-700 dark:bg-gray-800">
+                <div className="text-xl font-bold text-teal-600 dark:text-teal-300">
+                  {Number.isFinite(monitorMetrics.profitFactor) ? monitorMetrics.profitFactor.toFixed(2) : '∞'}
+                </div>
+                <div className="text-xs text-gray-600 dark:text-gray-400">Profit Factor</div>
+              </div>
+
+              <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-800">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <div className="text-xs text-gray-600 dark:text-gray-400">Маржинальность</div>
+                  <div className="relative" data-monitor-margin-help>
+                    <button
+                      type="button"
+                      onClick={() => setShowMarginHelp((prev) => !prev)}
+                      className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-gray-300 text-gray-500 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+                      title="Пояснение по симуляции маржи"
+                      aria-label="Пояснение по симуляции маржи"
+                    >
+                      <HelpCircle className="h-3.5 w-3.5" />
+                    </button>
+                    {showMarginHelp && (
+                      <div className="absolute right-0 top-full z-10 mt-1.5 w-52 rounded-lg border border-gray-200 bg-white p-2 text-xs text-gray-700 shadow-lg dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200">
+                        Коэффициент применяем к доходности каждой закрытой сделки. 100% = без маржи, 200% = 2x.
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <select
+                  value={monitorMarginPercent}
+                  onChange={(e) => setMonitorMarginPercent(normalizeMonitorMarginPercent(Number(e.target.value)))}
+                  className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 outline-none transition focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
+                  aria-label="Маржинальность мониторинга"
+                >
+                  {MONITOR_MARGIN_OPTIONS.map((option) => (
+                    <option key={option} value={option}>
+                      {option}%
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 px-4 py-6 text-center text-sm text-gray-600 dark:border-gray-700 dark:bg-gray-800/50 dark:text-gray-300">
+            Пока нет закрытых сделок. Метрики появятся после первого завершенного трейда.
+          </div>
+        )}
+      </section>
+
       <AnalysisTabs
         tabs={WATCH_TAB_ITEMS}
         activeTab={activeTab}
@@ -358,138 +468,26 @@ export function TelegramWatches() {
       />
 
       {activeTab === 'summary' && (
-        <div className="space-y-4">
-          <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-900">
-            <div className="mb-3 flex items-center justify-between gap-2">
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Результат по совершенным сделкам</h3>
-              <span className="text-xs text-gray-500 dark:text-gray-400">
-                База расчета: {formatCurrencyUSD(monitorMetrics.initialCapital)}
-              </span>
-            </div>
-
-            {hasClosedTrades ? (
-              <div className="grid gap-3 lg:grid-cols-[minmax(0,320px)_minmax(0,1fr)]">
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-1">
-                  <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-center dark:border-gray-700 dark:bg-gray-800">
-                    <div className="text-2xl font-bold text-green-600 dark:text-emerald-300">{formatCurrencyUSD(monitorMetrics.finalBalance)}</div>
-                    <div className="text-xs text-gray-600 dark:text-gray-400">Итоговый баланс</div>
-                  </div>
-
-                  <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-center dark:border-gray-700 dark:bg-gray-800">
-                    <div className={`text-2xl font-bold ${monitorMetrics.totalReturnPct > 0 ? 'text-emerald-600 dark:text-emerald-300' : monitorMetrics.totalReturnPct < 0 ? 'text-orange-600 dark:text-orange-300' : 'text-gray-700 dark:text-gray-200'}`}>
-                      {formatSignedPercent(monitorMetrics.totalReturnPct)}
-                    </div>
-                    <div className="text-xs text-gray-600 dark:text-gray-400">Общая доходность</div>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 xl:grid-cols-8">
-                  <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-center dark:border-gray-700 dark:bg-gray-800">
-                    <div className="text-xl font-bold text-red-600 dark:text-red-300">{monitorMetrics.maxDrawdownPct.toFixed(2)}%</div>
-                    <div className="text-xs text-gray-600 dark:text-gray-400">Макс. просадка</div>
-                  </div>
-
-                  <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-center dark:border-gray-700 dark:bg-gray-800">
-                    <div className="text-xl font-bold text-blue-600 dark:text-blue-300">{monitorMetrics.winRatePct.toFixed(1)}%</div>
-                    <div className="text-xs text-gray-600 dark:text-gray-400">Win Rate</div>
-                  </div>
-
-                  <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-center dark:border-gray-700 dark:bg-gray-800">
-                    <div className="text-xl font-bold text-indigo-600 dark:text-indigo-300">{monitorMetrics.closedTradesCount}</div>
-                    <div className="text-xs text-gray-600 dark:text-gray-400">Закрытых сделок</div>
-                  </div>
-
-                  <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-center dark:border-gray-700 dark:bg-gray-800">
-                    <div className={`text-xl font-bold ${monitorMetrics.avgReturnPct > 0 ? 'text-emerald-600 dark:text-emerald-300' : monitorMetrics.avgReturnPct < 0 ? 'text-orange-600 dark:text-orange-300' : 'text-gray-700 dark:text-gray-200'}`}>
-                      {formatSignedPercent(monitorMetrics.avgReturnPct)}
-                    </div>
-                    <div className="text-xs text-gray-600 dark:text-gray-400">Средняя сделка</div>
-                  </div>
-
-                  <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-center dark:border-gray-700 dark:bg-gray-800">
-                    <div className="text-xl font-bold text-violet-600 dark:text-violet-300">
-                      {formatHoldingDays(monitorMetrics.avgHoldingDays)}
-                    </div>
-                    <div className="text-xs text-gray-600 dark:text-gray-400">Средняя длительность</div>
-                  </div>
-
-                  <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-center dark:border-gray-700 dark:bg-gray-800">
-                    <div className={`text-xl font-bold ${monitorMetrics.netProfit > 0 ? 'text-emerald-600 dark:text-emerald-300' : monitorMetrics.netProfit < 0 ? 'text-orange-600 dark:text-orange-300' : 'text-gray-700 dark:text-gray-200'}`}>
-                      {formatSignedMoney(monitorMetrics.netProfit)}
-                    </div>
-                    <div className="text-xs text-gray-600 dark:text-gray-400">Чистая прибыль</div>
-                  </div>
-
-                  <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-center dark:border-gray-700 dark:bg-gray-800">
-                    <div className="text-xl font-bold text-teal-600 dark:text-teal-300">
-                      {Number.isFinite(monitorMetrics.profitFactor) ? monitorMetrics.profitFactor.toFixed(2) : '∞'}
-                    </div>
-                    <div className="text-xs text-gray-600 dark:text-gray-400">Profit Factor</div>
-                  </div>
-
-                  <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-800">
-                    <div className="mb-2 flex items-center justify-between gap-2">
-                      <div className="text-xs text-gray-600 dark:text-gray-400">Маржинальность</div>
-                      <div className="relative" data-monitor-margin-help>
-                        <button
-                          type="button"
-                          onClick={() => setShowMarginHelp((prev) => !prev)}
-                          className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-gray-300 text-gray-500 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
-                          title="Пояснение по симуляции маржи"
-                          aria-label="Пояснение по симуляции маржи"
-                        >
-                          <HelpCircle className="h-3.5 w-3.5" />
-                        </button>
-                        {showMarginHelp && (
-                          <div className="absolute right-0 top-full z-10 mt-1.5 w-52 rounded-lg border border-gray-200 bg-white p-2 text-xs text-gray-700 shadow-lg dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200">
-                            Коэффициент применяем к доходности каждой закрытой сделки. 100% = без маржи, 200% = 2x.
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                    <select
-                      value={monitorMarginPercent}
-                      onChange={(e) => setMonitorMarginPercent(normalizeMonitorMarginPercent(Number(e.target.value)))}
-                      className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 outline-none transition focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
-                      aria-label="Маржинальность мониторинга"
-                    >
-                      {MONITOR_MARGIN_OPTIONS.map((option) => (
-                        <option key={option} value={option}>
-                          {option}%
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-              </div>
+        <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-900">
+          <ChartContainer
+            title={`Баланс мониторинга (старт ${formatCurrencyUSD(monitorBalanceInitialCapital)})`}
+            isEmpty={!tradesLoading && !tradesError && monitorBalanceEquity.length === 0}
+            emptyMessage="Нет закрытых сделок для построения кривой баланса."
+            height={560}
+          >
+            {tradesLoading ? (
+              <div className="flex h-[560px] items-center justify-center text-sm text-gray-500 dark:text-gray-400">Загрузка истории сделок…</div>
+            ) : tradesError ? (
+              <div className="flex h-[560px] items-center justify-center text-sm text-red-600 dark:text-red-400">{tradesError}</div>
             ) : (
-              <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 px-4 py-6 text-center text-sm text-gray-600 dark:border-gray-700 dark:bg-gray-800/50 dark:text-gray-300">
-                Пока нет закрытых сделок. Метрики появятся после первого завершенного трейда.
-              </div>
+              <EquityChart
+                equity={monitorBalanceEquity}
+                primaryLabel={`Мониторинг (старт ${formatCurrencyUSD(monitorBalanceInitialCapital)})`}
+                hideHeader={false}
+              />
             )}
-          </section>
-
-          <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-900">
-            <ChartContainer
-              title={`Баланс мониторинга (старт ${formatCurrencyUSD(monitorBalanceInitialCapital)})`}
-              isEmpty={!tradesLoading && !tradesError && monitorBalanceEquity.length === 0}
-              emptyMessage="Нет закрытых сделок для построения кривой баланса."
-              height={560}
-            >
-              {tradesLoading ? (
-                <div className="flex h-[560px] items-center justify-center text-sm text-gray-500 dark:text-gray-400">Загрузка истории сделок…</div>
-              ) : tradesError ? (
-                <div className="flex h-[560px] items-center justify-center text-sm text-red-600 dark:text-red-400">{tradesError}</div>
-              ) : (
-                <EquityChart
-                  equity={monitorBalanceEquity}
-                  primaryLabel={`Мониторинг (старт ${formatCurrencyUSD(monitorBalanceInitialCapital)})`}
-                  hideHeader={false}
-                />
-              )}
-            </ChartContainer>
-          </section>
-        </div>
+          </ChartContainer>
+        </section>
       )}
 
       {activeTab === 'trades' && (

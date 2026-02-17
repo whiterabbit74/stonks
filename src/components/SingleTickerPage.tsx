@@ -122,13 +122,22 @@ export function SingleTickerPage() {
     return normalizeMaintenanceMarginPercent(raw);
   });
 
-  type ChartTab = 'price' | 'equity' | 'buyhold' | 'drawdown' | 'trades' | 'profit' | 'duration' | 'openDayDrawdown' | 'buyAtClose' | 'buyAtClose4' | 'noStopLoss' | 'splits' | 'options';
+  type ChartTab = 'summary' | 'price' | 'equity' | 'buyhold' | 'drawdown' | 'trades' | 'profit' | 'duration' | 'openDayDrawdown' | 'buyAtClose' | 'buyAtClose4' | 'noStopLoss' | 'splits' | 'options';
+
+  const visibleAnalysisTabs = useMemo(
+    () => [
+      { id: 'summary', label: 'Сводка' },
+      ...analysisTabsConfig
+        .filter((tab) => tab.visible && tab.id !== 'summary')
+        .map((tab) => ({ id: tab.id, label: tab.label })),
+    ],
+    [analysisTabsConfig]
+  );
 
   // Determine active tab
   const firstVisibleTab = useMemo(() => {
-    const visibleTab = analysisTabsConfig.find(tab => tab.visible);
-    return visibleTab?.id as ChartTab || 'price';
-  }, [analysisTabsConfig]);
+    return (visibleAnalysisTabs[0]?.id as ChartTab) || 'summary';
+  }, [visibleAnalysisTabs]);
 
   const [activeChart, setActiveChart] = useState<ChartTab>(firstVisibleTab);
   const [heroChartKind, setHeroChartKind] = useState<'line' | 'candles'>('line');
@@ -149,11 +158,11 @@ export function SingleTickerPage() {
   }, [maintenanceMarginPct]);
 
   useEffect(() => {
-    const currentTabConfig = analysisTabsConfig.find(tab => tab.id === activeChart);
-    if (!currentTabConfig || !currentTabConfig.visible) {
+    const hasActiveTab = visibleAnalysisTabs.some((tab) => tab.id === activeChart);
+    if (!hasActiveTab) {
       setActiveChart(firstVisibleTab);
     }
-  }, [analysisTabsConfig, activeChart, firstVisibleTab]);
+  }, [visibleAnalysisTabs, activeChart, firstVisibleTab]);
 
   useEffect(() => {
     if (!showQuoteDetails) return;
@@ -184,6 +193,7 @@ export function SingleTickerPage() {
   }, [showHeroSettings]);
 
   const prefetchAnalysisTab = (tabId: string) => {
+    if (tabId === 'summary') return;
     if (tabId === 'openDayDrawdown') {
       void importOpenDayDrawdownChart();
       return;
@@ -535,9 +545,8 @@ export function SingleTickerPage() {
     }
   };
 
-  return (
-    <div className="space-y-6 animate-fade-in">
-      {/* Header section */}
+  const renderHeroSummarySection = () => (
+    <>
       <section className="rounded-xl border bg-white p-4 dark:bg-gray-900 dark:border-gray-800">
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_280px]">
           <div className="space-y-3 rounded-xl border border-gray-200 bg-gray-50/70 p-3 dark:border-gray-800 dark:bg-gray-950/40">
@@ -892,7 +901,11 @@ export function SingleTickerPage() {
         </div>
         {quoteError && <div className="mt-3 text-sm text-red-600">{quoteError}</div>}
       </section>
+    </>
+  );
 
+  return (
+    <div className="space-y-6 animate-fade-in">
       <div className="space-y-6">
         <div className="space-y-6">
           {hasDuplicateDates && (
@@ -924,40 +937,44 @@ export function SingleTickerPage() {
             </div>
 
             <AnalysisTabs
-              tabs={analysisTabsConfig.filter(tab => tab.visible)}
+              tabs={visibleAnalysisTabs}
               activeTab={activeChart}
               onChange={(id) => setActiveChart(id as ChartTab)}
               onTabIntent={prefetchAnalysisTab}
               className="mb-4"
             />
 
-            <Suspense fallback={lazyFallback}>
-              {renderSpecificTab() || (
-                <BacktestResultsView
-                  mode="single"
-                  activeTab={activeChart}
-                  backtestResults={selectedResults}
-                  comparisonBacktestResults={comparisonResults}
-                  primarySeriesLabel={marginPercent > 100 ? `С маржей ${marginPercent}%` : 'Без маржи (100%)'}
-                  comparisonSeriesLabel="Без маржи (100%)"
-                  marketData={marketData}
-                  currentSplits={currentSplits}
-                  symbol={symbol}
-                  strategy={currentStrategy}
-                  initialCapital={initialCapital}
-                  extraEquityInfo={
-                    <div className="mb-4 mt-2">
-                      <StrategyInfoCard
-                         strategy={currentStrategy}
-                         lowIBS={lowIBS}
-                         highIBS={highIBS}
-                         maxHoldDays={maxHoldDays}
-                      />
-                    </div>
-                  }
-                />
-              )}
-            </Suspense>
+            {activeChart === 'summary' ? (
+              renderHeroSummarySection()
+            ) : (
+              <Suspense fallback={lazyFallback}>
+                {renderSpecificTab() || (
+                  <BacktestResultsView
+                    mode="single"
+                    activeTab={activeChart}
+                    backtestResults={selectedResults}
+                    comparisonBacktestResults={comparisonResults}
+                    primarySeriesLabel={marginPercent > 100 ? `С маржей ${marginPercent}%` : 'Без маржи (100%)'}
+                    comparisonSeriesLabel="Без маржи (100%)"
+                    marketData={marketData}
+                    currentSplits={currentSplits}
+                    symbol={symbol}
+                    strategy={currentStrategy}
+                    initialCapital={initialCapital}
+                    extraEquityInfo={
+                      <div className="mb-4 mt-2">
+                        <StrategyInfoCard
+                           strategy={currentStrategy}
+                           lowIBS={lowIBS}
+                           highIBS={highIBS}
+                           maxHoldDays={maxHoldDays}
+                        />
+                      </div>
+                    }
+                  />
+                )}
+              </Suspense>
+            )}
           </section>
         </div>
       </div>
