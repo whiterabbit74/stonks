@@ -271,7 +271,7 @@ echo "📨 Отправка уведомления в Telegram..."
 
 # Получаем настройки напрямую из контейнера
 echo "🔍 Получаем настройки из контейнера..."
-SETTINGS_RESPONSE=$(ssh ubuntu@146.235.212.239 "docker exec stonks-backend cat /app/server/settings.json 2>/dev/null || echo '{}'" 2>/dev/null || echo "{}")
+SETTINGS_RESPONSE=$(ssh ubuntu@146.235.212.239 "docker exec stonks-server cat /app/server/settings.json 2>/dev/null || echo '{}'" 2>/dev/null || echo "{}")
 echo "📝 Настройки из контейнера: $SETTINGS_RESPONSE"
 
 # Парсим Telegram настройки из JSON
