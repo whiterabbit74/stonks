@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
-import { Heart, RefreshCcw, HelpCircle } from 'lucide-react';
+import { Heart, RefreshCcw, HelpCircle, Settings2, ArrowUpRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { DatasetAPI } from '../lib/api';
 import { isSameDay } from '../lib/date-utils';
@@ -131,8 +131,12 @@ export function SingleTickerPage() {
   }, [analysisTabsConfig]);
 
   const [activeChart, setActiveChart] = useState<ChartTab>(firstVisibleTab);
+  const [heroChartKind, setHeroChartKind] = useState<'line' | 'candles'>('line');
+  const [heroShowTrades, setHeroShowTrades] = useState(true);
+  const [showHeroSettings, setShowHeroSettings] = useState(false);
   const [showQuoteDetails, setShowQuoteDetails] = useState(false);
   const quoteDetailsRef = useRef<HTMLDivElement | null>(null);
+  const heroSettingsRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -164,6 +168,20 @@ export function SingleTickerPage() {
     document.addEventListener('mousedown', onPointerDown);
     return () => document.removeEventListener('mousedown', onPointerDown);
   }, [showQuoteDetails]);
+
+  useEffect(() => {
+    if (!showHeroSettings) return;
+
+    const onPointerDown = (event: MouseEvent) => {
+      if (!heroSettingsRef.current) return;
+      if (!heroSettingsRef.current.contains(event.target as Node)) {
+        setShowHeroSettings(false);
+      }
+    };
+
+    document.addEventListener('mousedown', onPointerDown);
+    return () => document.removeEventListener('mousedown', onPointerDown);
+  }, [showHeroSettings]);
 
   const prefetchAnalysisTab = (tabId: string) => {
     if (tabId === 'openDayDrawdown') {
@@ -568,6 +586,66 @@ export function SingleTickerPage() {
               </div>
               <div className="ml-auto flex items-start gap-1.5">
                 <button
+                  type="button"
+                  onClick={openProfessionalChart}
+                  className="inline-flex h-8 items-center gap-1 rounded-full border border-gray-300 px-2 text-[11px] text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+                  title="Открыть профессиональный график во вкладке Цена"
+                >
+                  Pro
+                  <ArrowUpRight className="h-3 w-3" />
+                </button>
+                <div ref={heroSettingsRef} className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setShowHeroSettings((prev) => !prev)}
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-gray-300 text-gray-500 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+                    title="Настройки графика"
+                    aria-label="Настройки графика"
+                  >
+                    <Settings2 className="h-4 w-4" />
+                  </button>
+                  {showHeroSettings && (
+                    <div className="absolute right-0 top-full z-20 mt-1.5 w-48 rounded-lg border border-gray-200 bg-white p-2.5 shadow-lg dark:border-gray-700 dark:bg-gray-900">
+                      <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                        Настройки
+                      </div>
+                      <div className="mt-2 text-[11px] text-gray-600 dark:text-gray-300">Тип графика</div>
+                      <div className="mt-1 grid grid-cols-2 gap-1">
+                        <button
+                          type="button"
+                          onClick={() => setHeroChartKind('line')}
+                          className={`rounded px-2 py-1 text-[11px] ${heroChartKind === 'line'
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'
+                            }`}
+                        >
+                          Линия
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setHeroChartKind('candles')}
+                          className={`rounded px-2 py-1 text-[11px] ${heroChartKind === 'candles'
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'
+                            }`}
+                        >
+                          Свечи
+                        </button>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setHeroShowTrades((prev) => !prev)}
+                        className="mt-2 flex w-full items-center justify-between rounded bg-gray-100 px-2 py-1.5 text-[11px] text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+                      >
+                        <span>Показывать сделки</span>
+                        <span className={heroShowTrades ? 'text-green-600 dark:text-green-300' : 'text-gray-500'}>
+                          {heroShowTrades ? 'Вкл' : 'Выкл'}
+                        </span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+                <button
                   disabled={!symbol || watchBusy}
                   onClick={async () => {
                     if (!symbol) return;
@@ -652,7 +730,8 @@ export function SingleTickerPage() {
               data={marketData}
               trades={trades}
               currentPrice={quote?.current ?? null}
-              onOpenProChart={openProfessionalChart}
+              chartKind={heroChartKind}
+              showTrades={heroShowTrades}
               isTrading={isTrading}
               isStale={isStale}
               isUpdating={quoteLoading || refreshing}

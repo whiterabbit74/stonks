@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowUpRight, Settings2 } from 'lucide-react';
 import {
   CandlestickSeries,
   LineSeries,
@@ -32,7 +31,8 @@ interface HeroLineChartProps {
   data: OHLCData[];
   trades?: Trade[];
   currentPrice?: number | null;
-  onOpenProChart?: () => void;
+  chartKind?: ChartKind;
+  showTrades?: boolean;
   isTrading?: boolean;
   isStale?: boolean;
   isUpdating?: boolean;
@@ -42,7 +42,8 @@ export function HeroLineChart({
   data,
   trades = [],
   currentPrice = null,
-  onOpenProChart,
+  chartKind = 'line',
+  showTrades = true,
   isTrading = false,
   isStale = false,
   isUpdating = false,
@@ -53,14 +54,10 @@ export function HeroLineChart({
   const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
   const lineMarkersApiRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
   const candleMarkersApiRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
-  const settingsRef = useRef<HTMLDivElement | null>(null);
   const hasAppliedInitialRangeRef = useRef(false);
   const previousRangeRef = useRef<RangeKey>('3M');
 
   const [activeRange, setActiveRange] = useState<RangeKey>('3M');
-  const [chartKind, setChartKind] = useState<ChartKind>('line');
-  const [showTrades, setShowTrades] = useState(true);
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isDark, setIsDark] = useState<boolean>(() =>
     typeof document !== 'undefined' ? document.documentElement.classList.contains('dark') : false
   );
@@ -167,20 +164,6 @@ export function HeroLineChart({
     window.addEventListener('themechange', onTheme);
     return () => window.removeEventListener('themechange', onTheme);
   }, []);
-
-  useEffect(() => {
-    if (!isSettingsOpen) return;
-
-    const onPointerDown = (event: MouseEvent) => {
-      if (!settingsRef.current) return;
-      if (!settingsRef.current.contains(event.target as Node)) {
-        setIsSettingsOpen(false);
-      }
-    };
-
-    document.addEventListener('mousedown', onPointerDown);
-    return () => document.removeEventListener('mousedown', onPointerDown);
-  }, [isSettingsOpen]);
 
   useEffect(() => {
     if (!chartContainerRef.current) return;
@@ -309,77 +292,6 @@ export function HeroLineChart({
 
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-2.5 dark:border-gray-700 dark:bg-gray-900">
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5 pl-0.5">
-          <span
-            className={`h-2 w-2 rounded-full ${statusDotClass} ${isUpdating ? 'animate-[pulse_2.4s_ease-in-out_infinite]' : ''}`}
-            title={isStale && !isUpdating ? 'Нет актуального обновления' : (isUpdating ? 'Идёт обновление' : 'Данные актуальны')}
-            aria-label={isStale && !isUpdating ? 'Нет актуального обновления' : (isUpdating ? 'Идёт обновление' : 'Данные актуальны')}
-          />
-          <div className="text-xs font-semibold text-gray-900 dark:text-gray-100">Динамика цены</div>
-          <div ref={settingsRef} className="relative">
-            <button
-              type="button"
-              onClick={() => setIsSettingsOpen((prev) => !prev)}
-              className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-gray-300 text-gray-500 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
-              title="Настройки графика"
-              aria-label="Настройки графика"
-            >
-              <Settings2 className="h-3.5 w-3.5" />
-            </button>
-            {isSettingsOpen && (
-              <div className="absolute left-0 top-full z-20 mt-1.5 w-48 rounded-lg border border-gray-200 bg-white p-2.5 shadow-lg dark:border-gray-700 dark:bg-gray-900">
-                <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                  Настройки
-                </div>
-                <div className="mt-2 text-[11px] text-gray-600 dark:text-gray-300">Тип графика</div>
-                <div className="mt-1 grid grid-cols-2 gap-1">
-                  <button
-                    type="button"
-                    onClick={() => setChartKind('line')}
-                    className={`rounded px-2 py-1 text-[11px] ${chartKind === 'line'
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'
-                      }`}
-                  >
-                    Линия
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setChartKind('candles')}
-                    className={`rounded px-2 py-1 text-[11px] ${chartKind === 'candles'
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'
-                      }`}
-                  >
-                    Свечи
-                  </button>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setShowTrades((prev) => !prev)}
-                  className="mt-2 flex w-full items-center justify-between rounded bg-gray-100 px-2 py-1.5 text-[11px] text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
-                >
-                  <span>Показывать сделки</span>
-                  <span className={showTrades ? 'text-green-600 dark:text-green-300' : 'text-gray-500'}>
-                    {showTrades ? 'Вкл' : 'Выкл'}
-                  </span>
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-        <button
-          type="button"
-          onClick={onOpenProChart}
-          className="inline-flex items-center gap-1 rounded-full border border-gray-300 px-2.5 py-1 text-[11px] text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
-          title="Открыть профессиональный график во вкладке Цена"
-        >
-          Проф. график
-          <ArrowUpRight className="h-3 w-3" />
-        </button>
-      </div>
-
       <div className="relative h-[375px] w-full overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700">
         <div ref={chartContainerRef} className="h-full w-full" />
         {!lineData.length && (
@@ -408,10 +320,15 @@ export function HeroLineChart({
               ))}
             </div>
           </div>
-          <div className={`inline-flex shrink-0 rounded-full border px-2 py-0.5 text-[11px] ${isTrading
+          <div className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] ${isTrading
             ? 'bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-950/30 dark:border-emerald-900/40 dark:text-emerald-200'
             : 'bg-amber-100 border-amber-200 text-amber-800 dark:bg-amber-950/30 dark:border-amber-900/40 dark:text-amber-200'
             }`}>
+            <span
+              className={`h-2 w-2 rounded-full ${statusDotClass} ${isUpdating ? 'animate-[pulse_2.4s_ease-in-out_infinite]' : ''}`}
+              title={isStale && !isUpdating ? 'Нет актуального обновления' : (isUpdating ? 'Идёт обновление' : 'Данные актуальны')}
+              aria-label={isStale && !isUpdating ? 'Нет актуального обновления' : (isUpdating ? 'Идёт обновление' : 'Данные актуальны')}
+            />
             {isTrading ? 'Рынок открыт' : 'Рынок закрыт'}
           </div>
         </div>
