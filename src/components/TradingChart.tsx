@@ -418,33 +418,43 @@ export const TradingChart = memo(function TradingChart({ data, trades, splits = 
     if (!chartReady || !markersApiRef.current) return;
 
     const allMarkers: SeriesMarker<Time>[] = [];
+    const existingTimes = new Set<number>(chartData.map((bar) => Number(bar.time)).filter((value) => Number.isFinite(value)));
+
+    const getMarkerTimeIfExists = (dateLike: unknown): UTCTimestamp | null => {
+      try {
+        const ts = toChartTimestamp(dateLike as string | Date);
+        return existingTimes.has(Number(ts)) ? ts : null;
+      } catch {
+        return null;
+      }
+    };
 
     if (trades.length > 0) {
-      allMarkers.push(
-        ...trades.flatMap((trade) => {
-          const markers: SeriesMarker<Time>[] = [
-            {
-              time: toChartTimestamp(trade.entryDate),
-              position: 'belowBar',
-              color: '#2196F3',
-              shape: 'arrowUp',
-              text: '',
-            },
-          ];
+      for (const trade of trades) {
+        const entryTime = getMarkerTimeIfExists(trade.entryDate);
+        if (entryTime != null) {
+          allMarkers.push({
+            time: entryTime,
+            position: 'belowBar',
+            color: '#2196F3',
+            shape: 'arrowUp',
+            text: '',
+          });
+        }
 
-          if (trade.exitReason !== 'end_of_data') {
-            markers.push({
-              time: toChartTimestamp(trade.exitDate),
+        if (trade.exitReason !== 'end_of_data') {
+          const exitTime = getMarkerTimeIfExists(trade.exitDate);
+          if (exitTime != null) {
+            allMarkers.push({
+              time: exitTime,
               position: 'aboveBar',
               color: '#2196F3',
               shape: 'arrowDown',
               text: '',
             });
           }
-
-          return markers;
-        })
-      );
+        }
+      }
     }
 
     if (splits.length > 0) {
@@ -454,22 +464,29 @@ export const TradingChart = memo(function TradingChart({ data, trades, splits = 
         if (!ymdToTime.has(ymd)) ymdToTime.set(ymd, toChartTimestamp(bar.date));
       }
 
-      const splitMarkers: SeriesMarker<Time>[] = splits.map((split) => {
+      for (const split of splits) {
         const ymd = typeof split.date === 'string' ? split.date.slice(0, 10) : formatOHLCYMD(split.date);
-        return {
-          time: ymdToTime.get(ymd) ?? toChartTimestamp(ymd),
+        const splitTime = ymdToTime.get(ymd);
+        if (splitTime == null || !existingTimes.has(Number(splitTime))) continue;
+
+        allMarkers.push({
+          time: splitTime,
           position: 'belowBar',
           color: '#9C27B0',
           shape: 'circle',
           text: 'S',
-        };
-      });
-
-      allMarkers.push(...splitMarkers);
+        });
+      }
     }
 
-    markersApiRef.current.setMarkers(allMarkers);
-  }, [chartReady, trades, splits, data]);
+    allMarkers.sort((a, b) => Number(a.time) - Number(b.time));
+
+    try {
+      markersApiRef.current.setMarkers(allMarkers);
+    } catch (e) {
+      logError('chart', 'Error applying chart markers', { error: (e as Error).message }, 'TradingChart.setMarkers');
+    }
+  }, [chartReady, trades, splits, data, chartData]);
 
   useEffect(() => {
     if (!candlestickSeriesRef.current) return;
@@ -564,10 +581,22 @@ export const TradingChart = memo(function TradingChart({ data, trades, splits = 
       from = Math.max(leftEdge, rightEdge - days * 24 * 60 * 60);
     }
 
-    chartRef.current.timeScale().setVisibleRange({
-      from: from as UTCTimestamp,
-      to: rightEdge as UTCTimestamp,
-    });
+    try {
+      chartRef.current.timeScale().setVisibleRange({
+        from: from as UTCTimestamp,
+        to: rightEdge as UTCTimestamp,
+      });
+    } catch (e) {
+      logError('chart', 'Failed to set visible range, fallback to fitContent', {
+        error: (e as Error).message,
+        activeRange,
+      }, 'TradingChart.setVisibleRange');
+      try {
+        chartRef.current.timeScale().fitContent();
+      } catch {
+        // ignore
+      }
+    }
   }, [activeRange, chartData]);
 
   // The chart can receive zero size while parent tab is hidden (`display: none`).

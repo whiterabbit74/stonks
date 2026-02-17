@@ -29,9 +29,18 @@ async function fetchFromFinnhub(symbol, startDate, endDate) {
                 try {
                     const jsonData = JSON.parse(data);
 
-                    if (jsonData.s !== 'ok') {
-                        reject(new Error(`Finnhub: ${jsonData.s}`));
-                        return;
+                    if (response.statusCode && response.statusCode !== 200) {
+                        const reason = jsonData?.error || jsonData?.message || jsonData?.s || `HTTP ${response.statusCode}`;
+                        const err = new Error(`Finnhub: ${reason}`);
+                        err.status = response.statusCode;
+                        return reject(err);
+                    }
+
+                    if (jsonData?.s !== 'ok') {
+                        const reason = jsonData?.error || jsonData?.message || jsonData?.s || 'Unknown error';
+                        const err = new Error(`Finnhub: ${reason}`);
+                        if (jsonData?.s === 'no_data') err.status = 404;
+                        return reject(err);
                     }
 
                     const result = [];
@@ -51,7 +60,9 @@ async function fetchFromFinnhub(symbol, startDate, endDate) {
                     resolve(result);
 
                 } catch (error) {
-                    reject(new Error(`Failed to parse Finnhub response: ${error.message}`));
+                    const err = new Error(`Failed to parse Finnhub response: ${error.message}`);
+                    err.status = 502;
+                    reject(err);
                 }
             });
         }).on('error', reject);
@@ -68,7 +79,16 @@ async function fetchTodayRangeAndQuote(symbol) {
             let data = '';
             response.on('data', c => data += c);
             response.on('end', () => {
-                try { resolve(JSON.parse(data)); }
+                try {
+                    const json = JSON.parse(data);
+                    if (response.statusCode && response.statusCode !== 200) {
+                        const reason = json?.error || json?.message || `HTTP ${response.statusCode}`;
+                        const err = new Error(`Finnhub quote: ${reason}`);
+                        err.status = response.statusCode;
+                        return reject(err);
+                    }
+                    resolve(json);
+                }
                 catch (e) { reject(e); }
             });
         }).on('error', reject);
