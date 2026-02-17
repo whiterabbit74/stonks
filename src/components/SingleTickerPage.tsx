@@ -1,13 +1,13 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
-import { Heart, RefreshCcw, AlertTriangle, HelpCircle } from 'lucide-react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { Heart, RefreshCcw, HelpCircle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { DatasetAPI } from '../lib/api';
 import { isSameDay } from '../lib/date-utils';
 import { useAppStore } from '../stores';
 import { ChartContainer, AnalysisTabs, MetricsGrid, Button } from './ui';
-import { TickerCard } from './TickerCard';
 import { InfoModal } from './InfoModal';
 import { StrategyInfoCard } from './StrategyInfoCard';
+import { HeroLineChart } from './HeroLineChart';
 import { useSingleTickerData } from '../hooks/useSingleTickerData';
 import { BacktestPageShell } from './BacktestPageShell';
 import { scheduleIdleTask } from '../lib/prefetch';
@@ -130,6 +130,8 @@ export function SingleTickerPage() {
   }, [analysisTabsConfig]);
 
   const [activeChart, setActiveChart] = useState<ChartTab>(firstVisibleTab);
+  const [showQuoteDetails, setShowQuoteDetails] = useState(false);
+  const quoteDetailsRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -147,6 +149,20 @@ export function SingleTickerPage() {
       setActiveChart(firstVisibleTab);
     }
   }, [analysisTabsConfig, activeChart, firstVisibleTab]);
+
+  useEffect(() => {
+    if (!showQuoteDetails) return;
+
+    const onPointerDown = (event: MouseEvent) => {
+      if (!quoteDetailsRef.current) return;
+      if (!quoteDetailsRef.current.contains(event.target as Node)) {
+        setShowQuoteDetails(false);
+      }
+    };
+
+    document.addEventListener('mousedown', onPointerDown);
+    return () => document.removeEventListener('mousedown', onPointerDown);
+  }, [showQuoteDetails]);
 
   const prefetchAnalysisTab = (tabId: string) => {
     if (tabId === 'openDayDrawdown') {
@@ -474,15 +490,117 @@ export function SingleTickerPage() {
     });
   };
 
+  const quoteProviderLabel = resultsQuoteProvider === 'alpha_vantage'
+    ? 'Alpha Vantage'
+    : (resultsQuoteProvider === 'twelve_data' ? 'Twelve Data' : 'Finnhub');
+  const lastTrade = trades[trades.length - 1];
+  const lastDataDate = marketData.length ? marketData[marketData.length - 1].date : null;
+  const isOpenPosition = !!(lastTrade && lastDataDate && isSameDay(lastTrade.exitDate, lastDataDate));
+  const openEntryPrice = isOpenPosition ? lastTrade?.entryPrice ?? null : null;
+  const formatQuoteValue = (value: number | null | undefined) => (
+    value != null && Number.isFinite(value) ? Number(value).toFixed(2) : '—'
+  );
+  const openProfessionalChart = () => {
+    setActiveChart('price');
+    if (typeof window !== 'undefined') {
+      window.requestAnimationFrame(() => {
+        document.getElementById('results-analytics')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    }
+  };
+
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Header section */}
       <section className="rounded-xl border bg-white p-4 dark:bg-gray-900 dark:border-gray-800">
-        <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(280px,500px)] gap-4">
-          <div className="space-y-2">
-            <div className="flex items-center gap-3 w-full">
-              <div className="text-4xl sm:text-5xl font-black tracking-tight text-gray-900 dark:text-gray-100">
-                {symbol || '—'}
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+          <div className="space-y-4 rounded-xl border border-gray-200 bg-gray-50/70 p-4 dark:border-gray-800 dark:bg-gray-950/40">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="space-y-2">
+                <div className="text-4xl sm:text-5xl font-black tracking-tight text-gray-900 dark:text-gray-100">
+                  {symbol || '—'}
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="text-3xl sm:text-4xl font-extrabold text-gray-900 dark:text-gray-100">
+                    {quote?.current != null ? `$${Number(quote.current).toFixed(2)}` : '—'}
+                  </div>
+                  {quoteLoading && (
+                    <div className="animate-spin text-gray-400">
+                      <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24">
+                        <path stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"></path>
+                      </svg>
+                    </div>
+                  )}
+                  <div ref={quoteDetailsRef} className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setShowQuoteDetails((prev) => !prev)}
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-gray-300 text-gray-500 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+                      title="Детали котировки"
+                      aria-label="Детали котировки"
+                    >
+                      <HelpCircle className="h-4 w-4" />
+                    </button>
+                    {showQuoteDetails && (
+                      <div className="absolute left-0 top-full z-20 mt-2 w-64 rounded-lg border border-gray-200 bg-white p-3 shadow-lg dark:border-gray-700 dark:bg-gray-900">
+                        <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                          Детали котировки
+                        </div>
+                        <div className="mt-2 space-y-1.5 text-xs text-gray-700 dark:text-gray-200">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-gray-500 dark:text-gray-400">Источник</span>
+                            <span>{quoteProviderLabel}</span>
+                          </div>
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-gray-500 dark:text-gray-400">Обновлено</span>
+                            <span>{lastUpdatedAt ? lastUpdatedAt.toLocaleTimeString('ru-RU') : '—'}</span>
+                          </div>
+                          <div className="mt-2 grid grid-cols-2 gap-1.5">
+                            <div className="rounded border border-gray-200 px-2 py-1 dark:border-gray-700">
+                              <div className="text-[10px] uppercase tracking-wide text-gray-500 dark:text-gray-400">Откр</div>
+                              <div className="font-mono text-xs">{formatQuoteValue(quote?.open)}</div>
+                            </div>
+                            <div className="rounded border border-gray-200 px-2 py-1 dark:border-gray-700">
+                              <div className="text-[10px] uppercase tracking-wide text-gray-500 dark:text-gray-400">Макс</div>
+                              <div className="font-mono text-xs">{formatQuoteValue(quote?.high)}</div>
+                            </div>
+                            <div className="rounded border border-gray-200 px-2 py-1 dark:border-gray-700">
+                              <div className="text-[10px] uppercase tracking-wide text-gray-500 dark:text-gray-400">Мин</div>
+                              <div className="font-mono text-xs">{formatQuoteValue(quote?.low)}</div>
+                            </div>
+                            <div className="rounded border border-gray-200 px-2 py-1 dark:border-gray-700">
+                              <div className="text-[10px] uppercase tracking-wide text-gray-500 dark:text-gray-400">Текущ</div>
+                              <div className="font-mono text-xs">{formatQuoteValue(quote?.current)}</div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  {(() => {
+                    const prev = quote?.prevClose ?? null;
+                    const cur = quote?.current ?? null;
+                    if (prev == null || cur == null) {
+                      return <div className="text-sm text-gray-500">{isTrading ? 'Сегодня' : 'Вне сессии'}</div>;
+                    }
+                    const delta = cur - prev;
+                    const pct = prev !== 0 ? (delta / prev) * 100 : 0;
+                    const positive = delta >= 0;
+                    const color = positive ? 'text-green-600 dark:text-emerald-300' : 'text-orange-600 dark:text-orange-300';
+                    const sign = positive ? '+' : '';
+                    return (
+                      <div className={`text-lg font-semibold ${color}`}>
+                        {`${sign}$${delta.toFixed(2)} (${sign}${pct.toFixed(2)}%)`}{' '}
+                        <span className="font-normal text-gray-800 dark:text-gray-300">{isTrading ? 'Сегодня' : 'С предыдущего закрытия'}</span>
+                      </div>
+                    );
+                  })()}
+                </div>
+                <div className={`inline-flex w-fit rounded-full border px-2 py-0.5 text-xs ${isTrading ? 'bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-950/30 dark:border-emerald-900/40 dark:text-emerald-200' : 'bg-amber-100 border-amber-200 text-amber-800 dark:bg-amber-950/30 dark:border-amber-900/40 dark:text-amber-200'}`}>
+                  {isTrading ? 'Рынок открыт' : 'Рынок закрыт'}
+                </div>
               </div>
               <button
                 disabled={!symbol || watchBusy}
@@ -491,16 +609,12 @@ export function SingleTickerPage() {
                   setWatchBusy(true);
                   try {
                     if (!watching) {
-                      const trades = backtestResults?.trades || [];
-                      const lastTrade = trades[trades.length - 1];
-                      const lastDataDate = marketData.length ? marketData[marketData.length - 1].date : null;
-                      const isOpen = !!(lastTrade && lastDataDate && isSameDay(lastTrade.exitDate, lastDataDate));
                       await DatasetAPI.registerTelegramWatch({
                         symbol,
                         highIBS: Number(currentStrategy?.parameters?.highIBS ?? 0.75),
                         lowIBS: Number(currentStrategy?.parameters?.lowIBS ?? 0.1),
-                        entryPrice: isOpen ? lastTrade?.entryPrice ?? null : null,
-                        isOpenPosition: isOpen,
+                        entryPrice: isOpenPosition ? openEntryPrice : null,
+                        isOpenPosition,
                       });
                       setWatching(true);
                     } else {
@@ -514,224 +628,122 @@ export function SingleTickerPage() {
                     setWatchBusy(false);
                   }
                 }}
-                className={`ml-auto inline-flex items-center justify-center w-10 h-10 rounded-full border transition ${watching ? 'bg-rose-600 border-rose-600 text-white hover:brightness-110' : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-700'}`}
+                className={`ml-auto inline-flex h-10 w-10 items-center justify-center rounded-full border transition ${watching ? 'bg-rose-600 border-rose-600 text-white hover:brightness-110' : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-700'}`}
                 title={watching ? 'Удалить из мониторинга' : 'Добавить в мониторинг'}
                 aria-label={watching ? 'Удалить из мониторинга' : 'Добавить в мониторинг'}
               >
-                <Heart className={`w-5 h-5 ${watching ? 'fill-current animate-heartbeat' : ''}`} />
+                <Heart className={`h-5 w-5 ${watching ? 'fill-current animate-heartbeat' : ''}`} />
               </button>
             </div>
-            <div className="flex items-center gap-3">
-              <div className="text-3xl sm:text-4xl font-extrabold text-gray-900 dark:text-gray-100">
-                {quote?.current != null ? `$${Number(quote.current).toFixed(2)}` : '—'}
-              </div>
-              {quoteLoading && (
-                <div className="animate-spin text-gray-400">
-                   <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24"><path stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"></path></svg>
-                </div>
-              )}
-            </div>
-            <div>
-              {(() => {
-                const prev = quote?.prevClose ?? null;
-                const cur = quote?.current ?? null;
-                if (prev == null || cur == null) {
-                  return <div className="text-sm text-gray-500">{isTrading ? 'Сегодня' : 'Вне сессии'}</div>;
-                }
-                const delta = cur - prev;
-                const pct = prev !== 0 ? (delta / prev) * 100 : 0;
-                const positive = delta >= 0;
-                const color = positive ? 'text-green-600 dark:text-emerald-300' : 'text-orange-600 dark:text-orange-300';
-                const sign = positive ? '+' : '';
-                return (
-                  <div className={`text-lg font-semibold ${color}`}>
-                    {`${sign}$${delta.toFixed(2)} (${sign}${pct.toFixed(2)}%)`}{' '}
-                    <span className="text-gray-800 font-normal dark:text-gray-300">{isTrading ? 'Сегодня' : 'С предыдущего закрытия'}</span>
-                  </div>
-                );
-              })()}
-            </div>
-            <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
-              <span className="px-2 py-0.5 rounded bg-gray-100 border dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700">Источник: {resultsQuoteProvider === 'alpha_vantage' ? 'Alpha Vantage' : (resultsQuoteProvider === 'twelve_data' ? 'Twelve Data' : 'Finnhub')}</span>
-              {lastUpdatedAt && (
-                <span className="px-2 py-0.5 rounded bg-gray-100 border dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700">Обновлено: {lastUpdatedAt.toLocaleTimeString('ru-RU')}</span>
-              )}
-              <span className={`px-2 py-0.5 rounded border ${isTrading ? 'bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-950/30 dark:border-emerald-900/40 dark:text-emerald-200' : 'bg-amber-100 border-amber-200 text-amber-800 dark:bg-amber-950/30 dark:border-amber-900/40 dark:text-amber-200'}`}>
-                {isTrading ? 'Рынок открыт' : 'Рынок закрыт'}
-              </span>
-            </div>
-            <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2 text-center sm:text-left">
-              <div className="p-2 rounded border bg-gray-50 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100">
-                <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-300">Откр</div>
-                <div className="font-mono text-sm">{quote?.open ?? '—'}</div>
-              </div>
-              <div className="p-2 rounded border bg-gray-50 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100">
-                <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-300">Макс</div>
-                <div className="font-mono text-sm">{quote?.high ?? '—'}</div>
-              </div>
-              <div className="p-2 rounded border bg-gray-50 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100">
-                <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-300">Мин</div>
-                <div className="font-mono text-sm">{quote?.low ?? '—'}</div>
-              </div>
-              <div className="p-2 rounded border bg-gray-50 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100">
-                <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-300">Текущ</div>
-                <div className="font-mono text-sm">{quote?.current ?? '—'}</div>
-              </div>
-            </div>
 
-            <div className="mt-2 space-y-2">
-              <div className="text-sm text-gray-600 dark:text-gray-300">
-                {(() => {
-                  const lastTrade = trades[trades.length - 1];
-                  const lastDataDate = marketData.length ? marketData[marketData.length - 1].date : null;
-                  const isOpen = !!(lastTrade && lastDataDate && isSameDay(lastTrade.exitDate, lastDataDate));
-                  return (
-                    <span>
-                      Открытая сделка: <span className={isOpen ? 'text-emerald-600 dark:text-emerald-300' : 'text-gray-500'}>{isOpen ? 'да' : 'нет'}</span>
-                      {isOpen && lastTrade?.entryPrice != null && (
-                        <span className="ml-2 text-xs text-gray-500">вход: ${Number(lastTrade.entryPrice).toFixed(2)}</span>
-                      )}
-                    </span>
-                  );
-                })()}
-              </div>
-              {isStale && (
-                <div className="flex items-center gap-2 text-xs text-amber-700 dark:text-amber-300">
-                  <AlertTriangle className="w-4 h-4" />
-                  <span>Данные не актуальны{staleInfo ? ` — ${staleInfo}` : ''}</span>
-                </div>
-              )}
-              {isStale && (
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={handleRefresh}
-                    className="inline-flex items-center justify-center w-9 h-9 rounded-full border bg-white hover:bg-gray-50 text-gray-600 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-700 disabled:opacity-50"
-                    title="Обновить данные"
-                    aria-label="Обновить данные"
-                    disabled={refreshing}
-                  >
-                    <RefreshCcw className={`w-5 h-5 ${refreshing ? 'animate-spin' : ''}`} />
-                  </button>
-                  {refreshError && <span className="text-xs text-red-600">{refreshError}</span>}
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="w-full">
-            <TickerCard
-              ticker={symbol || ''}
+            <HeroLineChart
               data={marketData}
-              trades={trades}
-              highIBS={Number(currentStrategy?.parameters?.highIBS ?? 0.75)}
-              currentQuote={quote}
-              isOpenPosition={(() => {
-                const lastTrade = trades[trades.length - 1];
-                const lastDataDate = marketData.length ? marketData[marketData.length - 1].date : null;
-                return !!(lastTrade && lastDataDate && isSameDay(lastTrade.exitDate, lastDataDate));
-              })()}
-              entryPrice={(() => {
-                const lastTrade = trades[trades.length - 1];
-                const lastDataDate = marketData.length ? marketData[marketData.length - 1].date : null;
-                const isOpen = !!(lastTrade && lastDataDate && isSameDay(lastTrade.exitDate, lastDataDate));
-                return isOpen ? lastTrade?.entryPrice ?? null : null;
-              })()}
-              hideHeader={true}
-              className="h-full"
+              currentPrice={quote?.current ?? null}
+              onOpenProChart={openProfessionalChart}
             />
+
+            {isStale && (
+              <div className="flex flex-wrap items-center gap-2 text-xs text-amber-700 dark:text-amber-300">
+                <span>Данные не актуальны{staleInfo ? ` — ${staleInfo}` : ''}</span>
+                <button
+                  onClick={handleRefresh}
+                  className="inline-flex items-center gap-1 rounded border border-amber-300 bg-amber-50 px-2 py-0.5 text-xs text-amber-800 hover:bg-amber-100 dark:border-amber-900/50 dark:bg-amber-950/20 dark:text-amber-200 dark:hover:bg-amber-900/30 disabled:opacity-50"
+                  title="Обновить данные"
+                  aria-label="Обновить данные"
+                  disabled={refreshing}
+                >
+                  <RefreshCcw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />
+                  <span>Обновить данные</span>
+                </button>
+                {refreshError && <span className="text-xs text-red-600">{refreshError}</span>}
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <div className="text-sm text-gray-600 dark:text-gray-300">
+                <span>
+                  Открытая сделка:{' '}
+                  <span className={isOpenPosition ? 'text-emerald-600 dark:text-emerald-300' : 'text-gray-500'}>
+                    {isOpenPosition ? 'да' : 'нет'}
+                  </span>
+                  {isOpenPosition && openEntryPrice != null && (
+                    <span className="ml-2 text-xs text-gray-500">вход: ${Number(openEntryPrice).toFixed(2)}</span>
+                  )}
+                </span>
+              </div>
+              {!isTrading && (
+                <div className="text-xs text-gray-500">
+                  {(() => {
+                    const parseHm = (hm?: string) => {
+                      if (!hm || hm.indexOf(':') < 0) return null;
+                      const [h, m] = hm.split(':');
+                      const H = parseInt(h, 10), M = parseInt(m, 10);
+                      return Number.isFinite(H) && Number.isFinite(M) ? { H, M } : null;
+                    };
+                    const now = new Date();
+                    const ymd = ET_YMD_FMT
+                      .formatToParts(now)
+                      .reduce<Record<string, string>>((acc, p) => {
+                        if (p.type !== 'literal') acc[p.type] = p.value;
+                        return acc;
+                      }, {});
+                    const y = String(ymd.year);
+                    const md = `${ymd.month}-${ymd.day}`;
+                    const shortDays = tradingCalendar?.shortDays as Record<string, Record<string, boolean>> | undefined;
+                    const short = !!shortDays?.[y]?.[md];
+                    const start = parseHm(tradingCalendar?.tradingHours?.normal?.start) || { H: 9, M: 30 };
+                    const endHm = short ? (parseHm(tradingCalendar?.tradingHours?.short?.end) || { H: 13, M: 0 }) : (parseHm(tradingCalendar?.tradingHours?.normal?.end) || { H: 16, M: 0 });
+                    const fmt = (x: { H: number; M: number }) => `${String(x.H).padStart(2, '0')}:${String(x.M).padStart(2, '0')}`;
+                    return `Показываем в торговые часы (NYSE): ${fmt(start)}–${fmt(endHm)} ET${short ? ' (сокр.)' : ''}`;
+                  })()}
+                </div>
+              )}
+            </div>
           </div>
 
-          {!isTrading && (
-            <div className="text-sm text-gray-500">
-              {(() => {
-                const parseHm = (hm?: string) => {
-                  if (!hm || hm.indexOf(':') < 0) return null;
-                  const [h, m] = hm.split(':');
-                  const H = parseInt(h, 10), M = parseInt(m, 10);
-                  return Number.isFinite(H) && Number.isFinite(M) ? { H, M } : null;
-                };
-                const now = new Date();
-                const ymd = ET_YMD_FMT
-                  .formatToParts(now)
-                  .reduce<Record<string, string>>((acc, p) => {
-                    if (p.type !== 'literal') acc[p.type] = p.value;
-                    return acc;
-                  }, {});
-                const y = String(ymd.year);
-                const md = `${ymd.month}-${ymd.day}`;
-                const shortDays = tradingCalendar?.shortDays as Record<string, Record<string, boolean>> | undefined;
-                const short = !!shortDays?.[y]?.[md];
-                const start = parseHm(tradingCalendar?.tradingHours?.normal?.start) || { H: 9, M: 30 };
-                const endHm = short ? (parseHm(tradingCalendar?.tradingHours?.short?.end) || { H: 13, M: 0 }) : (parseHm(tradingCalendar?.tradingHours?.normal?.end) || { H: 16, M: 0 });
-                const fmt = (x: { H: number; M: number }) => `${String(x.H).padStart(2, '0')}:${String(x.M).padStart(2, '0')}`;
-                return `Показываем в торговые часы (NYSE): ${fmt(start)}–${fmt(endHm)} ET${short ? ' (сокр.)' : ''}`;
-              })()}
-            </div>
-          )}
-          {quoteError && <div className="text-sm text-red-600">{quoteError}</div>}
-        </div>
-      </section>
-
-      <div className="space-y-6">
-        <div className="space-y-6">
-          {hasDuplicateDates && (
-            <div className="rounded-lg border p-3 bg-amber-50 border-amber-200 text-amber-900 dark:bg-amber-950/30 dark:border-amber-900/40 dark:text-amber-200">
-              Дубли дат в данных: {duplicateDateKeys.join(', ')}
-            </div>
-          )}
-          <section className="rounded-xl border bg-white p-4 dark:bg-gray-900 dark:border-gray-800 space-y-4">
-            <div className="flex flex-wrap items-end justify-between gap-3">
-              <div>
-                <div className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-gray-100">
-                  Маржинальность стратегии
-                  <button
-                    type="button"
-                    onClick={openMarginHelp}
-                    className="inline-flex h-5 w-5 items-center justify-center rounded-full text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-300"
-                    title="Пояснение по маржинальности"
-                    aria-label="Пояснение по маржинальности"
-                  >
-                    <HelpCircle className="h-4 w-4" />
-                  </button>
-                </div>
-                <div className="text-xs text-gray-500 dark:text-gray-400">
-                  Оставлен только один риск-триггер: брокерская ликвидация по Maintenance Margin.
-                </div>
+          <aside className="space-y-4 rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900/70">
+            <div>
+              <div className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-gray-100">
+                Маржинальность стратегии
+                <button
+                  type="button"
+                  onClick={openMarginHelp}
+                  className="inline-flex h-5 w-5 items-center justify-center rounded-full text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-300"
+                  title="Пояснение по маржинальности"
+                  aria-label="Пояснение по маржинальности"
+                >
+                  <HelpCircle className="h-4 w-4" />
+                </button>
               </div>
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                <div className="flex items-center gap-2">
-                  <label htmlFor="results-margin-percent" className="text-xs text-gray-600 dark:text-gray-300">
-                    Маржинальность, %
-                  </label>
-                  <select
-                    id="results-margin-percent"
-                    value={marginPercent}
-                    onChange={(e) => setMarginPercent(normalizeMarginPercent(Number(e.target.value)))}
-                    className="w-28 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none transition focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
-                  >
-                    {MARGIN_PERCENT_OPTIONS.map((opt) => (
-                      <option key={opt} value={opt}>
-                        {opt}%
-                      </option>
-                    ))}
-                  </select>
-                </div>
+              <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                Оставлен только один риск-триггер: брокерская ликвидация по Maintenance Margin.
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label htmlFor="results-margin-percent" className="text-xs text-gray-600 dark:text-gray-300">
+                  Маржинальность, %
+                </label>
+                <select
+                  id="results-margin-percent"
+                  value={marginPercent}
+                  onChange={(e) => setMarginPercent(normalizeMarginPercent(Number(e.target.value)))}
+                  className="mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none transition focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+                >
+                  {MARGIN_PERCENT_OPTIONS.map((opt) => (
+                    <option key={opt} value={opt}>
+                      {opt}%
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
                 <div className="flex items-center gap-2">
                   <label htmlFor="results-maintenance-margin" className="text-xs text-gray-600 dark:text-gray-300">
                     Maintenance Margin, %
                   </label>
-                  <select
-                    id="results-maintenance-margin"
-                    value={maintenanceMarginPct}
-                    onChange={(e) => setMaintenanceMarginPct(normalizeMaintenanceMarginPercent(Number(e.target.value)))}
-                    className="w-28 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none transition focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
-                  >
-                    {MAINTENANCE_MARGIN_OPTIONS.map((opt) => (
-                      <option key={opt} value={opt}>
-                        {opt}%
-                      </option>
-                    ))}
-                  </select>
                   <button
                     type="button"
                     onClick={openMaintenanceMarginHelp}
@@ -742,17 +754,67 @@ export function SingleTickerPage() {
                     <HelpCircle className="h-4 w-4" />
                   </button>
                 </div>
+                <select
+                  id="results-maintenance-margin"
+                  value={maintenanceMarginPct}
+                  onChange={(e) => setMaintenanceMarginPct(normalizeMaintenanceMarginPercent(Number(e.target.value)))}
+                  className="mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none transition focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+                >
+                  {MAINTENANCE_MARGIN_OPTIONS.map((opt) => (
+                    <option key={opt} value={opt}>
+                      {opt}%
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900 dark:border-blue-900/40 dark:bg-blue-950/20 dark:text-blue-100">
+              <div className="text-[11px] uppercase tracking-wide text-blue-700 dark:text-blue-300">Текущий риск-профиль</div>
+              <div className="mt-1 font-semibold">{marginPercent}% ({leverageMultiplier.toFixed(2)}x)</div>
+              <div className="mt-1 text-xs text-blue-800 dark:text-blue-200">
+                {currentLiquidationDropPct == null
+                  ? 'При 100% (без плеча) ликвидация по марже не срабатывает.'
+                  : `Оценка ликвидации: падение около ${currentLiquidationDropPct.toFixed(2)}% от цены входа.`}
               </div>
             </div>
 
             {lastMaintenanceLiquidationEvent && (
               <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-800 dark:border-red-900/40 dark:bg-red-950/20 dark:text-red-200">
-                Ликвидация по Maintenance Margin ({maintenanceMarginPct}%): {new Date(lastMaintenanceLiquidationEvent.date).toLocaleDateString('ru-RU')}, падение позиции {lastMaintenanceLiquidationEvent.positionDropPct.toFixed(2)}%, маржинальный уровень {(
-                  lastMaintenanceLiquidationEvent.marginRatioAtTrigger * 100
-                ).toFixed(2)}%. Срабатываний: {maintenanceLiquidationEvents.length}. Даты маржин-коллов: {maintenanceLiquidationDates}. Расчет продолжается с остатком капитала. Остаток капитала: {formatCurrencyUSD(lastMaintenanceLiquidationEvent.remainingCapital)}.
+                <div className="font-semibold">
+                  Ликвидация по Maintenance Margin ({maintenanceMarginPct}%)
+                </div>
+                <div className="mt-1">
+                  Дата: {new Date(lastMaintenanceLiquidationEvent.date).toLocaleDateString('ru-RU')}, падение позиции {lastMaintenanceLiquidationEvent.positionDropPct.toFixed(2)}%, маржинальный уровень {(lastMaintenanceLiquidationEvent.marginRatioAtTrigger * 100).toFixed(2)}%.
+                </div>
+                <div className="mt-1 text-xs">
+                  Срабатываний: {maintenanceLiquidationEvents.length}. Даты: {maintenanceLiquidationDates}. Остаток капитала: {formatCurrencyUSD(lastMaintenanceLiquidationEvent.remainingCapital)}.
+                </div>
               </div>
             )}
+          </aside>
+        </div>
+        {quoteError && <div className="mt-3 text-sm text-red-600">{quoteError}</div>}
+      </section>
 
+      <div className="space-y-6">
+        <div className="space-y-6">
+          {hasDuplicateDates && (
+            <div className="rounded-lg border p-3 bg-amber-50 border-amber-200 text-amber-900 dark:bg-amber-950/30 dark:border-amber-900/40 dark:text-amber-200">
+              Дубли дат в данных: {duplicateDateKeys.join(', ')}
+            </div>
+          )}
+          <section id="results-analytics" className="rounded-xl border bg-white p-4 dark:bg-gray-900 dark:border-gray-800">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <h2 className="text-lg sm:text-xl font-semibold text-gray-900 dark:text-gray-100">
+                Ключевые метрики
+              </h2>
+              {marginPercent > 100 && (
+                <div className="rounded-md border border-indigo-200 bg-indigo-50 px-2 py-1 text-[11px] text-indigo-700 dark:border-indigo-900/40 dark:bg-indigo-950/20 dark:text-indigo-300">
+                  Сравнение 100% vs {marginPercent}% доступно в аналитике
+                </div>
+              )}
+            </div>
             <MetricsGrid
               finalValue={selectedResults.finalValue}
               maxDrawdown={selectedResults.maxDrawdown}
