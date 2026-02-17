@@ -10,24 +10,35 @@ import {
 import type { OHLCData } from '../types';
 import { toChartTimestamp } from '../lib/date-utils';
 
-type RangeKey = '1M' | '3M' | '6M' | '1Y' | '3Y' | 'MAX';
+type RangeKey = '1M' | '3M' | '6M' | '1Y' | '3Y' | '5Y' | 'MAX';
 
-const RANGE_OPTIONS: RangeKey[] = ['1M', '3M', '6M', '1Y', '3Y', 'MAX'];
+const RANGE_OPTIONS: RangeKey[] = ['1M', '3M', '6M', '1Y', '3Y', '5Y', 'MAX'];
 const RANGE_DAYS: Record<Exclude<RangeKey, 'MAX'>, number> = {
   '1M': 30,
   '3M': 90,
   '6M': 180,
   '1Y': 365,
   '3Y': 365 * 3,
+  '5Y': 365 * 5,
 };
 
 interface HeroLineChartProps {
   data: OHLCData[];
   currentPrice?: number | null;
   onOpenProChart?: () => void;
+  isTrading?: boolean;
+  isStale?: boolean;
+  isUpdating?: boolean;
 }
 
-export function HeroLineChart({ data, currentPrice = null, onOpenProChart }: HeroLineChartProps) {
+export function HeroLineChart({
+  data,
+  currentPrice = null,
+  onOpenProChart,
+  isTrading = false,
+  isStale = false,
+  isUpdating = false,
+}: HeroLineChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<'Line'> | null>(null);
@@ -58,6 +69,10 @@ export function HeroLineChart({ data, currentPrice = null, onOpenProChart }: Her
     if (lineData.length < 2) return true;
     return lineData[lineData.length - 1].value >= lineData[0].value;
   }, [lineData]);
+
+  const statusDotClass = isStale && !isUpdating
+    ? 'bg-red-500'
+    : (trendPositive ? 'bg-green-500' : 'bg-orange-500');
 
   useEffect(() => {
     const onTheme = (e: Event) => {
@@ -154,7 +169,14 @@ export function HeroLineChart({ data, currentPrice = null, onOpenProChart }: Her
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-900">
       <div className="mb-3 flex items-center justify-between gap-2">
-        <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">Динамика цены</div>
+        <div className="flex items-center gap-2 pl-1">
+          <span
+            className={`h-2.5 w-2.5 rounded-full ${statusDotClass} ${isUpdating ? 'animate-[pulse_2.4s_ease-in-out_infinite]' : ''}`}
+            title={isStale && !isUpdating ? 'Нет актуального обновления' : (isUpdating ? 'Идёт обновление' : 'Данные актуальны')}
+            aria-label={isStale && !isUpdating ? 'Нет актуального обновления' : (isUpdating ? 'Идёт обновление' : 'Данные актуальны')}
+          />
+          <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">Динамика цены</div>
+        </div>
         <button
           type="button"
           onClick={onOpenProChart}
@@ -175,20 +197,32 @@ export function HeroLineChart({ data, currentPrice = null, onOpenProChart }: Her
         )}
       </div>
 
-      <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-gray-200 pt-3 dark:border-gray-700">
-        {RANGE_OPTIONS.map((range) => (
-          <button
-            key={range}
-            type="button"
-            onClick={() => setActiveRange(range)}
-            className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${activeRange === range
-              ? 'bg-blue-600 text-white'
-              : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'
-              }`}
-          >
-            {range}
-          </button>
-        ))}
+      <div className="mt-3 border-t border-gray-200 pt-3 dark:border-gray-700">
+        <div className="grid grid-cols-[1fr_auto] items-center gap-2">
+          <div className="min-w-0 overflow-x-auto">
+            <div className="flex min-w-max items-center gap-2">
+              {RANGE_OPTIONS.map((range) => (
+                <button
+                  key={range}
+                  type="button"
+                  onClick={() => setActiveRange(range)}
+                  className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${activeRange === range
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'
+                    }`}
+                >
+                  {range}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className={`inline-flex shrink-0 rounded-full border px-2 py-0.5 text-xs ${isTrading
+            ? 'bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-950/30 dark:border-emerald-900/40 dark:text-emerald-200'
+            : 'bg-amber-100 border-amber-200 text-amber-800 dark:bg-amber-950/30 dark:border-amber-900/40 dark:text-amber-200'
+            }`}>
+            {isTrading ? 'Рынок открыт' : 'Рынок закрыт'}
+          </div>
+        </div>
       </div>
     </div>
   );

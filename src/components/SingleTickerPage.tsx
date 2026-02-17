@@ -7,6 +7,7 @@ import { useAppStore } from '../stores';
 import { ChartContainer, AnalysisTabs, MetricsGrid, Button } from './ui';
 import { InfoModal } from './InfoModal';
 import { StrategyInfoCard } from './StrategyInfoCard';
+import { AnimatedPrice } from './AnimatedPrice';
 import { HeroLineChart } from './HeroLineChart';
 import { useSingleTickerData } from '../hooks/useSingleTickerData';
 import { BacktestPageShell } from './BacktestPageShell';
@@ -521,16 +522,10 @@ export function SingleTickerPage() {
                   {symbol || '—'}
                 </div>
                 <div className="flex items-center gap-2">
-                  <div className="text-3xl sm:text-4xl font-extrabold text-gray-900 dark:text-gray-100">
-                    {quote?.current != null ? `$${Number(quote.current).toFixed(2)}` : '—'}
-                  </div>
-                  {quoteLoading && (
-                    <div className="animate-spin text-gray-400">
-                      <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24">
-                        <path stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"></path>
-                      </svg>
-                    </div>
-                  )}
+                  <AnimatedPrice
+                    value={quote?.current}
+                    className="text-3xl sm:text-4xl font-extrabold text-gray-900 dark:text-gray-100"
+                  />
                   <div ref={quoteDetailsRef} className="relative">
                     <button
                       type="button"
@@ -598,9 +593,6 @@ export function SingleTickerPage() {
                     );
                   })()}
                 </div>
-                <div className={`inline-flex w-fit rounded-full border px-2 py-0.5 text-xs ${isTrading ? 'bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-950/30 dark:border-emerald-900/40 dark:text-emerald-200' : 'bg-amber-100 border-amber-200 text-amber-800 dark:bg-amber-950/30 dark:border-amber-900/40 dark:text-amber-200'}`}>
-                  {isTrading ? 'Рынок открыт' : 'Рынок закрыт'}
-                </div>
               </div>
               <button
                 disabled={!symbol || watchBusy}
@@ -640,37 +632,12 @@ export function SingleTickerPage() {
               data={marketData}
               currentPrice={quote?.current ?? null}
               onOpenProChart={openProfessionalChart}
+              isTrading={isTrading}
+              isStale={isStale}
+              isUpdating={quoteLoading || refreshing}
             />
 
-            {isStale && (
-              <div className="flex flex-wrap items-center gap-2 text-xs text-amber-700 dark:text-amber-300">
-                <span>Данные не актуальны{staleInfo ? ` — ${staleInfo}` : ''}</span>
-                <button
-                  onClick={handleRefresh}
-                  className="inline-flex items-center gap-1 rounded border border-amber-300 bg-amber-50 px-2 py-0.5 text-xs text-amber-800 hover:bg-amber-100 dark:border-amber-900/50 dark:bg-amber-950/20 dark:text-amber-200 dark:hover:bg-amber-900/30 disabled:opacity-50"
-                  title="Обновить данные"
-                  aria-label="Обновить данные"
-                  disabled={refreshing}
-                >
-                  <RefreshCcw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />
-                  <span>Обновить данные</span>
-                </button>
-                {refreshError && <span className="text-xs text-red-600">{refreshError}</span>}
-              </div>
-            )}
-
             <div className="space-y-2">
-              <div className="text-sm text-gray-600 dark:text-gray-300">
-                <span>
-                  Открытая сделка:{' '}
-                  <span className={isOpenPosition ? 'text-emerald-600 dark:text-emerald-300' : 'text-gray-500'}>
-                    {isOpenPosition ? 'да' : 'нет'}
-                  </span>
-                  {isOpenPosition && openEntryPrice != null && (
-                    <span className="ml-2 text-xs text-gray-500">вход: ${Number(openEntryPrice).toFixed(2)}</span>
-                  )}
-                </span>
-              </div>
               {!isTrading && (
                 <div className="text-xs text-gray-500">
                   {(() => {
@@ -792,6 +759,36 @@ export function SingleTickerPage() {
                 </div>
               </div>
             )}
+
+            {isStale && (
+              <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/20 dark:text-amber-200">
+                <div className="flex items-start justify-between gap-2">
+                  <div>Данные не актуальны{staleInfo ? ` — ${staleInfo}` : ''}</div>
+                  <button
+                    onClick={handleRefresh}
+                    className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-amber-300 bg-amber-100 text-amber-800 hover:bg-amber-200 dark:border-amber-900/60 dark:bg-amber-900/30 dark:text-amber-200 dark:hover:bg-amber-900/50 disabled:opacity-50"
+                    title="Обновить данные"
+                    aria-label="Обновить данные"
+                    disabled={refreshing}
+                  >
+                    <RefreshCcw className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+                {refreshError && <div className="mt-1 text-red-600">{refreshError}</div>}
+              </div>
+            )}
+
+            <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-xs text-gray-700 dark:border-gray-700 dark:bg-gray-800/40 dark:text-gray-200">
+              <span>
+                Открытая сделка:{' '}
+                <span className={isOpenPosition ? 'text-emerald-600 dark:text-emerald-300' : 'text-gray-500'}>
+                  {isOpenPosition ? 'да' : 'нет'}
+                </span>
+                {isOpenPosition && openEntryPrice != null && (
+                  <span className="ml-1 text-gray-600 dark:text-gray-300">вход: ${Number(openEntryPrice).toFixed(2)}</span>
+                )}
+              </span>
+            </div>
           </aside>
         </div>
         {quoteError && <div className="mt-3 text-sm text-red-600">{quoteError}</div>}
