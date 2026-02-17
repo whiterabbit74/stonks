@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { Heart, RefreshCcw, HelpCircle, Settings2, ArrowUpRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { DatasetAPI } from '../lib/api';
@@ -44,8 +44,12 @@ const DEFAULT_MAINTENANCE_MARGIN_PERCENT = 25;
 
 function ResultsSectionLoader() {
   return (
-    <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600 dark:border-gray-700 dark:bg-gray-900/40 dark:text-gray-300">
-      Загрузка аналитики...
+    <div className="rounded-lg border border-gray-200 bg-gray-50/90 p-4 dark:border-gray-700 dark:bg-gray-900/40">
+      <div className="animate-pulse space-y-3">
+        <div className="h-4 w-40 rounded bg-gray-200 dark:bg-gray-700" />
+        <div className="h-3 w-1/3 rounded bg-gray-200 dark:bg-gray-700" />
+        <div className="h-48 rounded bg-gray-200/80 dark:bg-gray-800" />
+      </div>
     </div>
   );
 }
@@ -140,6 +144,7 @@ export function SingleTickerPage() {
   }, [visibleAnalysisTabs]);
 
   const [activeChart, setActiveChart] = useState<ChartTab>(firstVisibleTab);
+  const [isChartTransitionPending, startChartTransition] = useTransition();
   const [heroChartKind, setHeroChartKind] = useState<'line' | 'candles'>('line');
   const [heroShowTrades, setHeroShowTrades] = useState(true);
   const [showHeroSettings, setShowHeroSettings] = useState(false);
@@ -904,6 +909,14 @@ export function SingleTickerPage() {
     </>
   );
 
+  const handleChartTabChange = (nextTabId: string) => {
+    const nextTab = nextTabId as ChartTab;
+    if (nextTab === activeChart) return;
+    startChartTransition(() => {
+      setActiveChart(nextTab);
+    });
+  };
+
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="space-y-6">
@@ -934,12 +947,15 @@ export function SingleTickerPage() {
           <section className="rounded-xl border bg-white p-4 dark:bg-gray-900 dark:border-gray-800">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg sm:text-xl font-semibold text-gray-900 dark:text-gray-100">Аналитика сделок</h2>
+              {isChartTransitionPending && (
+                <div className="text-xs text-gray-500 dark:text-gray-400">Подготовка вкладки...</div>
+              )}
             </div>
 
             <AnalysisTabs
               tabs={visibleAnalysisTabs}
               activeTab={activeChart}
-              onChange={(id) => setActiveChart(id as ChartTab)}
+              onChange={handleChartTabChange}
               onTabIntent={prefetchAnalysisTab}
               className="mb-4"
             />

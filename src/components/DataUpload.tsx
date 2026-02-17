@@ -1,5 +1,5 @@
-import { useEffect } from 'react';
-import { ArrowRight, AlertTriangle } from 'lucide-react';
+import { useEffect, useRef } from 'react';
+import { ArrowRight, AlertTriangle, RefreshCw } from 'lucide-react';
 import { useAppStore } from '../stores';
 import { DatasetLibrary } from './DatasetLibrary';
 
@@ -8,26 +8,36 @@ interface DataUploadProps {
 }
 
 export function DataUpload({ onNext }: DataUploadProps) {
-  const { marketData, isLoading, error, loadDatasetsFromServer } = useAppStore();
+  const { marketData, savedDatasets, isLoading, error, loadDatasetsFromServer } = useAppStore();
+  const requestedOnMountRef = useRef(false);
 
-  // Load datasets on mount - auth is already verified by ProtectedLayout
+  // Fallback load: avoid duplicate fetch when datasets are already loaded by ProtectedLayout.
   useEffect(() => {
+    if (requestedOnMountRef.current) return;
+    if (savedDatasets.length > 0 || isLoading) return;
+    requestedOnMountRef.current = true;
+
     loadDatasetsFromServer().catch((error) => {
       console.warn('Failed to load datasets:', error);
     });
-  }, [loadDatasetsFromServer]);
+  }, [loadDatasetsFromServer, savedDatasets.length, isLoading]);
+
+  const loadingHint = isLoading ? (
+    <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+      <span>Обновляем список датасетов…</span>
+    </div>
+  ) : null;
 
   if (marketData.length > 0) {
     return (
       <div className="space-y-6">
         {/* Список тикеров показан ниже карточки */}
 
+        {loadingHint}
 
         {/* Библиотека датасетов (всегда доступна) */}
-        <div className="mt-6 relative">
-          {isLoading && (
-            <div className="absolute inset-0 bg-white/60 dark:bg-gray-900/60 backdrop-blur-sm z-10 rounded-lg" />
-          )}
+        <div className="mt-6">
           <DatasetLibrary onAfterLoad={onNext} />
         </div>
 
@@ -55,6 +65,8 @@ export function DataUpload({ onNext }: DataUploadProps) {
         <p className="text-gray-600 dark:text-gray-300">Управление загруженными датасетами</p>
       </div>
 
+      {loadingHint}
+
       {/* Error Notification */}
       {error && (
         <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3 dark:bg-red-950/30 dark:border-red-900/40">
@@ -66,13 +78,9 @@ export function DataUpload({ onNext }: DataUploadProps) {
         </div>
       )}
 
-      <div className="relative">
-        {isLoading && (
-          <div className="absolute inset-0 bg-white/60 dark:bg-gray-900/60 backdrop-blur-sm z-10 rounded-lg" />
-        )}
+      <div>
         <DatasetLibrary />
       </div>
     </div>
   );
 }
-
