@@ -514,64 +514,18 @@ export function SingleTickerPage() {
     <div className="space-y-6 animate-fade-in">
       {/* Header section */}
       <section className="rounded-xl border bg-white p-4 dark:bg-gray-900 dark:border-gray-800">
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
-          <div className="space-y-4 rounded-xl border border-gray-200 bg-gray-50/70 p-4 dark:border-gray-800 dark:bg-gray-950/40">
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_280px]">
+          <div className="space-y-3 rounded-xl border border-gray-200 bg-gray-50/70 p-3 dark:border-gray-800 dark:bg-gray-950/40">
             <div className="flex flex-wrap items-start justify-between gap-3">
-              <div className="space-y-2">
-                <div className="text-4xl sm:text-5xl font-black tracking-tight text-gray-900 dark:text-gray-100">
+              <div className="space-y-1.5">
+                <div className="text-3xl sm:text-4xl font-black tracking-tight text-gray-900 dark:text-gray-100">
                   {symbol || '—'}
                 </div>
                 <div className="flex items-center gap-2">
                   <AnimatedPrice
                     value={quote?.current}
-                    className="text-3xl sm:text-4xl font-extrabold text-gray-900 dark:text-gray-100"
+                    className="text-2xl sm:text-3xl font-extrabold text-gray-900 dark:text-gray-100"
                   />
-                  <div ref={quoteDetailsRef} className="relative">
-                    <button
-                      type="button"
-                      onClick={() => setShowQuoteDetails((prev) => !prev)}
-                      className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-gray-300 text-gray-500 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
-                      title="Детали котировки"
-                      aria-label="Детали котировки"
-                    >
-                      <HelpCircle className="h-4 w-4" />
-                    </button>
-                    {showQuoteDetails && (
-                      <div className="absolute left-0 top-full z-20 mt-2 w-64 rounded-lg border border-gray-200 bg-white p-3 shadow-lg dark:border-gray-700 dark:bg-gray-900">
-                        <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                          Детали котировки
-                        </div>
-                        <div className="mt-2 space-y-1.5 text-xs text-gray-700 dark:text-gray-200">
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="text-gray-500 dark:text-gray-400">Источник</span>
-                            <span>{quoteProviderLabel}</span>
-                          </div>
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="text-gray-500 dark:text-gray-400">Обновлено</span>
-                            <span>{lastUpdatedAt ? lastUpdatedAt.toLocaleTimeString('ru-RU') : '—'}</span>
-                          </div>
-                          <div className="mt-2 grid grid-cols-2 gap-1.5">
-                            <div className="rounded border border-gray-200 px-2 py-1 dark:border-gray-700">
-                              <div className="text-[10px] uppercase tracking-wide text-gray-500 dark:text-gray-400">Откр</div>
-                              <div className="font-mono text-xs">{formatQuoteValue(quote?.open)}</div>
-                            </div>
-                            <div className="rounded border border-gray-200 px-2 py-1 dark:border-gray-700">
-                              <div className="text-[10px] uppercase tracking-wide text-gray-500 dark:text-gray-400">Макс</div>
-                              <div className="font-mono text-xs">{formatQuoteValue(quote?.high)}</div>
-                            </div>
-                            <div className="rounded border border-gray-200 px-2 py-1 dark:border-gray-700">
-                              <div className="text-[10px] uppercase tracking-wide text-gray-500 dark:text-gray-400">Мин</div>
-                              <div className="font-mono text-xs">{formatQuoteValue(quote?.low)}</div>
-                            </div>
-                            <div className="rounded border border-gray-200 px-2 py-1 dark:border-gray-700">
-                              <div className="text-[10px] uppercase tracking-wide text-gray-500 dark:text-gray-400">Текущ</div>
-                              <div className="font-mono text-xs">{formatQuoteValue(quote?.current)}</div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
                 </div>
                 <div>
                   {(() => {
@@ -586,50 +540,99 @@ export function SingleTickerPage() {
                     const color = positive ? 'text-green-600 dark:text-emerald-300' : 'text-orange-600 dark:text-orange-300';
                     const sign = positive ? '+' : '';
                     return (
-                      <div className={`text-lg font-semibold ${color}`}>
+                      <div className={`text-sm font-semibold ${color}`}>
                         {`${sign}$${delta.toFixed(2)} (${sign}${pct.toFixed(2)}%)`}{' '}
-                        <span className="font-normal text-gray-800 dark:text-gray-300">{isTrading ? 'Сегодня' : 'С предыдущего закрытия'}</span>
+                        <span className="font-normal text-xs text-gray-800 dark:text-gray-300">{isTrading ? 'Сегодня' : 'С предыдущего закрытия'}</span>
                       </div>
                     );
                   })()}
                 </div>
               </div>
-              <button
-                disabled={!symbol || watchBusy}
-                onClick={async () => {
-                  if (!symbol) return;
-                  setWatchBusy(true);
-                  try {
-                    if (!watching) {
-                      await DatasetAPI.registerTelegramWatch({
-                        symbol,
-                        highIBS: Number(currentStrategy?.parameters?.highIBS ?? 0.75),
-                        lowIBS: Number(currentStrategy?.parameters?.lowIBS ?? 0.1),
-                        entryPrice: isOpenPosition ? openEntryPrice : null,
-                        isOpenPosition,
-                      });
-                      setWatching(true);
-                    } else {
-                      await DatasetAPI.deleteTelegramWatch(symbol);
-                      setWatching(false);
+              <div className="ml-auto flex items-start gap-1.5">
+                <button
+                  disabled={!symbol || watchBusy}
+                  onClick={async () => {
+                    if (!symbol) return;
+                    setWatchBusy(true);
+                    try {
+                      if (!watching) {
+                        await DatasetAPI.registerTelegramWatch({
+                          symbol,
+                          highIBS: Number(currentStrategy?.parameters?.highIBS ?? 0.75),
+                          lowIBS: Number(currentStrategy?.parameters?.lowIBS ?? 0.1),
+                          entryPrice: isOpenPosition ? openEntryPrice : null,
+                          isOpenPosition,
+                        });
+                        setWatching(true);
+                      } else {
+                        await DatasetAPI.deleteTelegramWatch(symbol);
+                        setWatching(false);
+                      }
+                    } catch (e) {
+                      const message = e instanceof Error ? e.message : 'Операция не выполнена';
+                      setModal({ type: 'error', title: watching ? 'Ошибка удаления' : 'Ошибка добавления', message });
+                    } finally {
+                      setWatchBusy(false);
                     }
-                  } catch (e) {
-                    const message = e instanceof Error ? e.message : 'Операция не выполнена';
-                    setModal({ type: 'error', title: watching ? 'Ошибка удаления' : 'Ошибка добавления', message });
-                  } finally {
-                    setWatchBusy(false);
-                  }
-                }}
-                className={`ml-auto inline-flex h-10 w-10 items-center justify-center rounded-full border transition ${watching ? 'bg-rose-600 border-rose-600 text-white hover:brightness-110' : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-700'}`}
-                title={watching ? 'Удалить из мониторинга' : 'Добавить в мониторинг'}
-                aria-label={watching ? 'Удалить из мониторинга' : 'Добавить в мониторинг'}
-              >
-                <Heart className={`h-5 w-5 ${watching ? 'fill-current animate-heartbeat' : ''}`} />
-              </button>
+                  }}
+                  className={`inline-flex h-8 w-8 items-center justify-center rounded-full border transition ${watching ? 'bg-rose-600 border-rose-600 text-white hover:brightness-110' : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-700'}`}
+                  title={watching ? 'Удалить из мониторинга' : 'Добавить в мониторинг'}
+                  aria-label={watching ? 'Удалить из мониторинга' : 'Добавить в мониторинг'}
+                >
+                  <Heart className={`h-4 w-4 ${watching ? 'fill-current animate-heartbeat' : ''}`} />
+                </button>
+                <div ref={quoteDetailsRef} className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setShowQuoteDetails((prev) => !prev)}
+                    className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-gray-300 text-gray-500 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+                    title="Детали котировки"
+                    aria-label="Детали котировки"
+                  >
+                    <HelpCircle className="h-4 w-4" />
+                  </button>
+                  {showQuoteDetails && (
+                    <div className="absolute right-0 top-full z-20 mt-1.5 w-64 rounded-lg border border-gray-200 bg-white p-3 shadow-lg dark:border-gray-700 dark:bg-gray-900">
+                      <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                        Детали котировки
+                      </div>
+                      <div className="mt-2 space-y-1.5 text-xs text-gray-700 dark:text-gray-200">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-gray-500 dark:text-gray-400">Источник</span>
+                          <span>{quoteProviderLabel}</span>
+                        </div>
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-gray-500 dark:text-gray-400">Обновлено</span>
+                          <span>{lastUpdatedAt ? lastUpdatedAt.toLocaleTimeString('ru-RU') : '—'}</span>
+                        </div>
+                        <div className="mt-2 grid grid-cols-2 gap-1.5">
+                          <div className="rounded border border-gray-200 px-2 py-1 dark:border-gray-700">
+                            <div className="text-[10px] uppercase tracking-wide text-gray-500 dark:text-gray-400">Откр</div>
+                            <div className="font-mono text-xs">{formatQuoteValue(quote?.open)}</div>
+                          </div>
+                          <div className="rounded border border-gray-200 px-2 py-1 dark:border-gray-700">
+                            <div className="text-[10px] uppercase tracking-wide text-gray-500 dark:text-gray-400">Макс</div>
+                            <div className="font-mono text-xs">{formatQuoteValue(quote?.high)}</div>
+                          </div>
+                          <div className="rounded border border-gray-200 px-2 py-1 dark:border-gray-700">
+                            <div className="text-[10px] uppercase tracking-wide text-gray-500 dark:text-gray-400">Мин</div>
+                            <div className="font-mono text-xs">{formatQuoteValue(quote?.low)}</div>
+                          </div>
+                          <div className="rounded border border-gray-200 px-2 py-1 dark:border-gray-700">
+                            <div className="text-[10px] uppercase tracking-wide text-gray-500 dark:text-gray-400">Текущ</div>
+                            <div className="font-mono text-xs">{formatQuoteValue(quote?.current)}</div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
 
             <HeroLineChart
               data={marketData}
+              trades={trades}
               currentPrice={quote?.current ?? null}
               onOpenProChart={openProfessionalChart}
               isTrading={isTrading}
@@ -668,7 +671,7 @@ export function SingleTickerPage() {
             </div>
           </div>
 
-          <aside className="space-y-4 rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900/70">
+          <aside className="space-y-3 rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-900/70">
             <div>
               <div className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-gray-100">
                 Маржинальность стратегии
