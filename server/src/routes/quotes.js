@@ -43,6 +43,13 @@ function parseUnixTs(value, fallback) {
     return Math.floor(parsed);
 }
 
+function getLastCloseFromRows(rows) {
+    if (!Array.isArray(rows) || rows.length === 0) return null;
+    const last = rows[rows.length - 1];
+    const value = Number(last && last.close);
+    return Number.isFinite(value) ? value : null;
+}
+
 router.get('/quote/:symbol', async (req, res) => {
     try {
         const symbol = toSafeTicker(req.params.symbol);
@@ -172,6 +179,61 @@ router.get('/test/twelve-data', async (req, res) => {
         res.json({ success: true, dataPoints: result.length });
     } catch (e) {
         res.json({ success: false, error: e.message });
+    }
+});
+
+// Backward-compatible endpoint used by Settings -> API tests in frontend.
+router.post('/test-provider', async (req, res) => {
+    try {
+        const provider = typeof req.body?.provider === 'string' ? req.body.provider : '';
+        const endTs = Math.floor(Date.now() / 1000);
+        const startTs = endTs - 7 * 24 * 60 * 60;
+        const symbol = 'AAPL';
+
+        if (provider === 'alpha_vantage') {
+            if (!getApiConfig().ALPHA_VANTAGE_API_KEY) {
+                return res.json({ success: false, error: 'API key not configured' });
+            }
+            const result = await fetchFromAlphaVantage(symbol, startTs, endTs);
+            const rows = Array.isArray(result?.data) ? result.data : [];
+            const price = getLastCloseFromRows(rows);
+            if (price == null) return res.json({ success: false, error: 'No data returned from provider' });
+            return res.json({ success: true, symbol, price: price.toFixed(2) });
+        }
+
+        if (provider === 'finnhub') {
+            if (!getApiConfig().FINNHUB_API_KEY) {
+                return res.json({ success: false, error: 'API key not configured' });
+            }
+            const rows = await fetchFromFinnhub(symbol, startTs, endTs);
+            const price = getLastCloseFromRows(rows);
+            if (price == null) return res.json({ success: false, error: 'No data returned from provider' });
+            return res.json({ success: true, symbol, price: price.toFixed(2) });
+        }
+
+        if (provider === 'twelve_data') {
+            if (!getApiConfig().TWELVE_DATA_API_KEY) {
+                return res.json({ success: false, error: 'API key not configured' });
+            }
+            const rows = await fetchFromTwelveData(symbol, startTs, endTs);
+            const price = getLastCloseFromRows(rows);
+            if (price == null) return res.json({ success: false, error: 'No data returned from provider' });
+            return res.json({ success: true, symbol, price: price.toFixed(2) });
+        }
+
+        if (provider === 'polygon') {
+            if (!getApiConfig().POLYGON_API_KEY) {
+                return res.json({ success: false, error: 'API key not configured' });
+            }
+            const rows = await fetchFromPolygon(symbol, startTs, endTs);
+            const price = getLastCloseFromRows(rows);
+            if (price == null) return res.json({ success: false, error: 'No data returned from provider' });
+            return res.json({ success: true, symbol, price: price.toFixed(2) });
+        }
+
+        return res.status(400).json({ success: false, error: 'Unknown provider' });
+    } catch (e) {
+        return res.json({ success: false, error: e.message || 'Failed to test provider' });
     }
 });
 

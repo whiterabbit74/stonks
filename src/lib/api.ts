@@ -696,11 +696,30 @@ export class DatasetAPI {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ provider })
     });
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || `${response.status} ${response.statusText}`);
+    const rawBody = await response.text();
+    const isLikelyHtml = rawBody.trim().startsWith('<!DOCTYPE') || rawBody.trim().startsWith('<html');
+
+    let payload: { success?: boolean; error?: string; price?: string; symbol?: string } | null = null;
+    if (!isLikelyHtml && rawBody) {
+      try {
+        payload = JSON.parse(rawBody);
+      } catch {
+        payload = null;
+      }
     }
-    return await response.json();
+
+    if (!response.ok) {
+      const errorMessage = payload?.error
+        || (isLikelyHtml ? 'API endpoint returned HTML instead of JSON' : null)
+        || `${response.status} ${response.statusText}`;
+      throw new Error(errorMessage);
+    }
+
+    if (isLikelyHtml || !payload) {
+      throw new Error('API endpoint returned invalid JSON');
+    }
+
+    return payload;
   }
 
   static async simulateTelegram(stage: 'overview' | 'confirmations' = 'overview'): Promise<{ success: boolean; stage: string }> {
