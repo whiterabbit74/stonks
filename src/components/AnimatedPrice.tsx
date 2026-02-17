@@ -142,7 +142,7 @@ export function AnimatedPrice({ value, className = '' }: AnimatedPriceProps) {
 
             if (!slot.changed || previousValue == null) {
               return (
-                <span key={`stable-${idx}`} className="inline-flex w-[0.68ch] justify-center">
+                <span key={`stable-${idx}`} className="inline-flex w-[0.82ch] justify-center">
                   {currChar}
                 </span>
               );
@@ -152,7 +152,7 @@ export function AnimatedPrice({ value, className = '' }: AnimatedPriceProps) {
             const previousTransform = phase === 'run' ? leavingEnd : 'translateY(0%)';
 
             return (
-              <span key={`anim-${idx}`} className="relative inline-flex h-[1em] w-[0.68ch] justify-center overflow-hidden">
+              <span key={`anim-${idx}`} className="relative inline-flex h-[1em] w-[0.82ch] justify-center overflow-hidden">
                 <span
                   className="absolute left-0 top-0 inline-flex w-full justify-center transition-transform duration-300 ease-out"
                   style={{ transform: previousTransform }}

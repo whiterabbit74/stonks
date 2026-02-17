@@ -498,6 +498,14 @@ export function SingleTickerPage() {
   const lastDataDate = marketData.length ? marketData[marketData.length - 1].date : null;
   const isOpenPosition = !!(lastTrade && lastDataDate && isSameDay(lastTrade.exitDate, lastDataDate));
   const openEntryPrice = isOpenPosition ? lastTrade?.entryPrice ?? null : null;
+  const companyName = useMemo(() => {
+    const target = (symbol || requestedTicker || '').toUpperCase();
+    if (!target) return '';
+
+    const match = savedDatasets.find((dataset) => (dataset.ticker || '').toUpperCase() === target);
+    const name = typeof match?.companyName === 'string' ? match.companyName.trim() : '';
+    return name;
+  }, [savedDatasets, symbol, requestedTicker]);
   const formatQuoteValue = (value: number | null | undefined) => (
     value != null && Number.isFinite(value) ? Number(value).toFixed(2) : '—'
   );
@@ -518,8 +526,18 @@ export function SingleTickerPage() {
           <div className="space-y-3 rounded-xl border border-gray-200 bg-gray-50/70 p-3 dark:border-gray-800 dark:bg-gray-950/40">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="space-y-1.5">
-                <div className="text-3xl sm:text-4xl font-black tracking-tight text-gray-900 dark:text-gray-100">
-                  {symbol || '—'}
+                <div className="flex items-baseline gap-2">
+                  <div className="text-3xl sm:text-4xl font-black tracking-tight text-gray-900 dark:text-gray-100">
+                    {symbol || '—'}
+                  </div>
+                  {companyName && (
+                    <div
+                      className="max-w-[20rem] truncate text-sm font-medium text-gray-500 dark:text-gray-400"
+                      title={companyName}
+                    >
+                      {companyName}
+                    </div>
+                  )}
                 </div>
                 <div className="flex items-center gap-2">
                   <AnimatedPrice

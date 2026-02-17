@@ -54,6 +54,8 @@ export function HeroLineChart({
   const lineMarkersApiRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
   const candleMarkersApiRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
   const settingsRef = useRef<HTMLDivElement | null>(null);
+  const hasAppliedInitialRangeRef = useRef(false);
+  const previousRangeRef = useRef<RangeKey>('3M');
 
   const [activeRange, setActiveRange] = useState<RangeKey>('3M');
   const [chartKind, setChartKind] = useState<ChartKind>('line');
@@ -192,7 +194,7 @@ export function HeroLineChart({
     const chart = createChart(chartContainerRef.current, {
       autoSize: true,
       width: chartContainerRef.current.clientWidth,
-      height: chartContainerRef.current.clientHeight || 250,
+      height: chartContainerRef.current.clientHeight || 375,
       layout: { background: { color: bg }, textColor: text },
       grid: { vertLines: { color: grid }, horzLines: { color: grid } },
       rightPriceScale: { borderColor: border },
@@ -275,23 +277,35 @@ export function HeroLineChart({
   }, [lineTradeMarkers, candleTradeMarkers]);
 
   useEffect(() => {
-    if (!chartRef.current || !candlesData.length) return;
+    if (!candlesData.length) {
+      hasAppliedInitialRangeRef.current = false;
+      return;
+    }
+
+    if (!chartRef.current) return;
+
+    const rangeChanged = previousRangeRef.current !== activeRange;
+    if (hasAppliedInitialRangeRef.current && !rangeChanged) {
+      return;
+    }
 
     const rightEdge = candlesData[candlesData.length - 1].time as number;
     const leftEdge = candlesData[0].time as number;
 
     if (activeRange === 'MAX') {
       chartRef.current.timeScale().fitContent();
-      return;
+    } else {
+      const days = RANGE_DAYS[activeRange];
+      const from = Math.max(leftEdge, rightEdge - days * 24 * 60 * 60);
+      chartRef.current.timeScale().setVisibleRange({
+        from: from as UTCTimestamp,
+        to: rightEdge as UTCTimestamp,
+      });
     }
 
-    const days = RANGE_DAYS[activeRange];
-    const from = Math.max(leftEdge, rightEdge - days * 24 * 60 * 60);
-    chartRef.current.timeScale().setVisibleRange({
-      from: from as UTCTimestamp,
-      to: rightEdge as UTCTimestamp,
-    });
-  }, [activeRange, candlesData, chartKind]);
+    previousRangeRef.current = activeRange;
+    hasAppliedInitialRangeRef.current = true;
+  }, [activeRange, candlesData.length]);
 
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-2.5 dark:border-gray-700 dark:bg-gray-900">
@@ -366,7 +380,7 @@ export function HeroLineChart({
         </button>
       </div>
 
-      <div className="relative h-[250px] w-full overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700">
+      <div className="relative h-[375px] w-full overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700">
         <div ref={chartContainerRef} className="h-full w-full" />
         {!lineData.length && (
           <div className="absolute inset-0 flex items-center justify-center bg-white/85 text-sm text-gray-500 dark:bg-gray-900/80 dark:text-gray-400">
