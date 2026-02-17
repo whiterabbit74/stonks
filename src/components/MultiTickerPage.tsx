@@ -234,18 +234,19 @@ export function MultiTickerPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr),220px,auto] xl:items-end">
-            <div>
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:gap-3">
+            <div className="w-full lg:w-[380px]">
               <label className="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">Тикеры</label>
               <TickerInput
                 value={tickersInput}
                 onChange={setTickersInput}
                 tickers={tickers}
                 onTickersChange={setTickers}
+                showBadges={false}
               />
             </div>
 
-            <div>
+            <div className="w-full lg:w-[220px]">
               <label className="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">Маржинальность</label>
               <Select
                 value={leveragePercent}
@@ -263,16 +264,19 @@ export function MultiTickerPage() {
               </Select>
             </div>
 
-            <Button
-              onClick={runBacktest}
-              disabled={isLoading || !activeStrategy || tickers.length === 0}
-              isLoading={isLoading}
-              variant="primary"
-              size="md"
-              className="xl:self-end"
-            >
-              Запустить бэктест
-            </Button>
+            <div className="w-full lg:w-auto lg:min-w-[220px]">
+              <span className="mb-1 block text-xs font-medium text-transparent select-none">Запуск</span>
+              <Button
+                onClick={runBacktest}
+                disabled={isLoading || !activeStrategy || tickers.length === 0}
+                isLoading={isLoading}
+                variant="primary"
+                size="md"
+                className="w-full"
+              >
+                Запустить бэктест
+              </Button>
+            </div>
           </div>
         </div>
       </div>

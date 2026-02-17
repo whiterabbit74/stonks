@@ -346,7 +346,7 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
 
         {/* Compact Grid View */}
         {viewMode === 'compact' && (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
             {filteredDatasets.map((dataset: Omit<SavedDataset, 'data'>) => (
               <CompactDatasetCard
                 key={dataset.name}
@@ -650,10 +650,10 @@ function CompactDatasetCard({ dataset, isActive, onLoad, onDelete, onExport, onE
         {/* Context menu button */}
         <button
           onClick={(e) => { e.preventDefault(); handleMenuClick(e); }}
-          className="absolute top-1 right-1 p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+          className="absolute top-2 right-2 inline-flex h-6 w-6 items-center justify-center rounded-md hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
           aria-label="Открыть меню действий"
         >
-          <MoreVertical className="w-3.5 h-3.5" />
+          <MoreVertical className="w-4 h-4" />
         </button>
 
         {/* Loading indicator */}
@@ -701,7 +701,7 @@ function CompactDatasetCard({ dataset, isActive, onLoad, onDelete, onExport, onE
             className="fixed inset-0 z-40"
             onClick={() => setMenuOpen(false)}
           />
-          <div className="absolute right-0 top-8 z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg py-1 min-w-[140px]">
+          <div className="absolute right-0 top-9 z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg py-1 min-w-[140px]">
             <button
               onClick={handleAction(onEdit)}
               className="w-full px-3 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"

@@ -8,6 +8,7 @@ interface TickerInputProps {
   tickers: string[];
   className?: string;
   placeholder?: string;
+  showBadges?: boolean;
 }
 
 export function TickerInput({
@@ -16,7 +17,8 @@ export function TickerInput({
   onTickersChange,
   tickers,
   className = '',
-  placeholder = 'AAPL, MSFT, AMZN, MAGS'
+  placeholder = 'AAPL, MSFT, AMZN, MAGS',
+  showBadges = true
 }: TickerInputProps) {
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -40,7 +42,7 @@ export function TickerInput({
         onChange={handleChange}
         placeholder={placeholder}
       />
-      {tickers.length > 0 && (
+      {showBadges && tickers.length > 0 && (
         <div className="flex flex-wrap gap-1.5 mt-2">
           {tickers.map((ticker, idx) => (
             <span

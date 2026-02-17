@@ -15,6 +15,12 @@ export function ErrorConsole({ open, onClose }: ErrorConsoleProps) {
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   useEffect(() => {
+    if (open) {
+      setIsFullscreen(true);
+    }
+  }, [open]);
+
+  useEffect(() => {
     const unsub = subscribe((_evt, all) => {
       setEvents(all);
     });
@@ -158,4 +164,3 @@ export function ErrorConsole({ open, onClose }: ErrorConsoleProps) {
     </div>
   );
 }
-
