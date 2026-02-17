@@ -345,8 +345,8 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
         <div className="space-y-4">
           {/* Search + Provider */}
           <div className="bg-white border border-gray-200 rounded-lg p-4 dark:bg-gray-900 dark:border-gray-800">
-            <div className="flex items-start justify-between flex-wrap gap-4">
-              <div className="flex-1 min-w-[260px]">
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <div className="w-full max-w-[560px]">
                 <div className="mb-2 text-sm font-medium text-gray-700 dark:text-gray-200">Тикер</div>
                 <div className="relative" ref={searchInputRef}>
                   <div className="flex gap-2">
@@ -426,19 +426,15 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
                 </div>
               </div>
 
-              <div className="flex flex-col items-end gap-1 min-w-[150px]">
-                <span className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Провайдер</span>
-                <div className="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-md border border-gray-200 bg-gray-50 dark:bg-gray-800 dark:border-gray-700">
-                  <span className="font-medium text-sm text-gray-900 uppercase dark:text-gray-100">{enhancerProvider}</span>
-                  <Link
-                    to="/settings"
-                    className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-gray-300 text-gray-600 hover:text-gray-900 hover:bg-white dark:border-gray-600 dark:text-gray-300 dark:hover:text-gray-100 dark:hover:bg-gray-700"
-                    title="Изменить провайдера"
-                    aria-label="Изменить провайдера"
-                  >
-                    <Settings className="w-4 h-4" />
-                  </Link>
-                </div>
+              <div className="flex items-center pb-0.5">
+                <Link
+                  to="/settings"
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-gray-300 text-gray-600 hover:text-gray-900 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:text-gray-100 dark:hover:bg-gray-800"
+                  title="Настройки провайдера"
+                  aria-label="Настройки провайдера"
+                >
+                  <Settings className="w-4 h-4" />
+                </Link>
               </div>
             </div>
 
