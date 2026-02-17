@@ -447,6 +447,29 @@ export function SingleTickerPage() {
           : `Оценочно ликвидация наступает при падении около ${currentLiquidationDropPct.toFixed(2)}% от цены входа.`,
         '',
         'Пример для 2.0x и maintenance 25%: ликвидация примерно при -33.33% от входа.',
+        ...(leverageMultiplier > 1
+          ? [
+            '',
+            'Подсказка по текущим настройкам:',
+            `При маржинальности ${marginPercent}% и maintenance ${maintenanceMarginPct}% ликвидация наступает примерно при падении позиции на ${currentLiquidationDropPct != null ? `${currentLiquidationDropPct.toFixed(2)}%` : '—'} от цены входа.`,
+            '',
+            'Итоговый баланс',
+            `100%: ${formatCurrencyUSD(comparisonResults?.finalValue ?? baselineResults.finalValue)}`,
+            `${marginPercent}%: ${formatCurrencyUSD(selectedResults.finalValue)}`,
+            '',
+            'Доходность',
+            `100%: ${Number(comparisonResults?.metrics?.totalReturn ?? baselineResults.metrics?.totalReturn ?? 0).toFixed(2)}%`,
+            `${marginPercent}%: ${Number(selectedResults.metrics?.totalReturn ?? 0).toFixed(2)}%`,
+            '',
+            'CAGR',
+            `100%: ${Number(comparisonResults?.metrics?.cagr ?? baselineResults.metrics?.cagr ?? 0).toFixed(2)}%`,
+            `${marginPercent}%: ${Number(selectedResults.metrics?.cagr ?? 0).toFixed(2)}%`,
+            '',
+            'Макс. просадка',
+            `100%: ${Number(comparisonResults?.maxDrawdown ?? baselineResults.maxDrawdown ?? 0).toFixed(2)}%`,
+            `${marginPercent}%: ${Number(selectedResults.maxDrawdown ?? 0).toFixed(2)}%`,
+          ]
+          : []),
       ].join('\n'),
     });
   };
@@ -529,7 +552,7 @@ export function SingleTickerPage() {
               })()}
             </div>
             <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
-              <span className="px-2 py-0.5 rounded bg-gray-100 border dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700">Источник: {(resultsQuoteProvider === 'alpha_vantage') ? 'Alpha Vantage' : 'Finnhub'}</span>
+              <span className="px-2 py-0.5 rounded bg-gray-100 border dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700">Источник: {resultsQuoteProvider === 'alpha_vantage' ? 'Alpha Vantage' : (resultsQuoteProvider === 'twelve_data' ? 'Twelve Data' : 'Finnhub')}</span>
               {lastUpdatedAt && (
                 <span className="px-2 py-0.5 rounded bg-gray-100 border dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700">Обновлено: {lastUpdatedAt.toLocaleTimeString('ru-RU')}</span>
               )}
@@ -721,38 +744,6 @@ export function SingleTickerPage() {
                 </div>
               </div>
             </div>
-
-            {leverageMultiplier > 1 && (
-              <div className="rounded-lg border border-gray-200 bg-gray-50/70 p-3 text-xs text-gray-700 dark:border-gray-700 dark:bg-gray-900/30 dark:text-gray-300">
-                При маржинальности {marginPercent}% и maintenance {maintenanceMarginPct}% ликвидация наступает примерно
-                при падении позиции на <span className="font-semibold">{currentLiquidationDropPct != null ? `${currentLiquidationDropPct.toFixed(2)}%` : '—'}</span> от цены входа.
-              </div>
-            )}
-
-            {comparisonResults && (
-              <div className="grid grid-cols-2 gap-3 rounded-lg border border-indigo-200 bg-indigo-50/70 p-3 text-sm dark:border-indigo-900/40 dark:bg-indigo-950/20 md:grid-cols-4">
-                <div>
-                  <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">Итоговый баланс</div>
-                  <div className="text-xs text-gray-600 dark:text-gray-300">100%: {formatCurrencyUSD(comparisonResults.finalValue)}</div>
-                  <div className="text-xs font-semibold text-indigo-700 dark:text-indigo-300">{marginPercent}%: {formatCurrencyUSD(selectedResults.finalValue)}</div>
-                </div>
-                <div>
-                  <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">Доходность</div>
-                  <div className="text-xs text-gray-600 dark:text-gray-300">100%: {Number(comparisonResults.metrics?.totalReturn ?? 0).toFixed(2)}%</div>
-                  <div className="text-xs font-semibold text-indigo-700 dark:text-indigo-300">{marginPercent}%: {Number(selectedResults.metrics?.totalReturn ?? 0).toFixed(2)}%</div>
-                </div>
-                <div>
-                  <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">CAGR</div>
-                  <div className="text-xs text-gray-600 dark:text-gray-300">100%: {Number(comparisonResults.metrics?.cagr ?? 0).toFixed(2)}%</div>
-                  <div className="text-xs font-semibold text-indigo-700 dark:text-indigo-300">{marginPercent}%: {Number(selectedResults.metrics?.cagr ?? 0).toFixed(2)}%</div>
-                </div>
-                <div>
-                  <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">Макс. просадка</div>
-                  <div className="text-xs text-gray-600 dark:text-gray-300">100%: {Number(comparisonResults.maxDrawdown ?? 0).toFixed(2)}%</div>
-                  <div className="text-xs font-semibold text-indigo-700 dark:text-indigo-300">{marginPercent}%: {Number(selectedResults.maxDrawdown ?? 0).toFixed(2)}%</div>
-                </div>
-              </div>
-            )}
 
             {lastMaintenanceLiquidationEvent && (
               <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-800 dark:border-red-900/40 dark:bg-red-950/20 dark:text-red-200">

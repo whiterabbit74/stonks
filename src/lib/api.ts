@@ -400,7 +400,26 @@ export class DatasetAPI {
       if (e && typeof e.error === 'string') msg = e.error;
       throw new Error(msg);
     }
-    return response.json();
+    const payload = await response.json();
+    const sourceQuote = (payload && typeof payload === 'object' && payload.quote && typeof payload.quote === 'object')
+      ? payload.quote
+      : payload;
+    const sourceRange = (payload && typeof payload === 'object' && payload.range && typeof payload.range === 'object')
+      ? payload.range
+      : null;
+
+    const toNullableNumber = (value: unknown): number | null => {
+      const n = (typeof value === 'number') ? value : Number(value);
+      return Number.isFinite(n) ? n : null;
+    };
+
+    return {
+      open: toNullableNumber(sourceQuote?.open ?? sourceQuote?.o),
+      high: toNullableNumber(sourceQuote?.high ?? sourceQuote?.h ?? sourceRange?.high),
+      low: toNullableNumber(sourceQuote?.low ?? sourceQuote?.l ?? sourceRange?.low),
+      current: toNullableNumber(sourceQuote?.current ?? sourceQuote?.c),
+      prevClose: toNullableNumber(sourceQuote?.prevClose ?? sourceQuote?.pc),
+    };
   }
 
   /**
