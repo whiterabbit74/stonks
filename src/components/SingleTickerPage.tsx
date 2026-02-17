@@ -516,14 +516,13 @@ export function SingleTickerPage() {
   const lastDataDate = marketData.length ? marketData[marketData.length - 1].date : null;
   const isOpenPosition = !!(lastTrade && lastDataDate && isSameDay(lastTrade.exitDate, lastDataDate));
   const openEntryPrice = isOpenPosition ? lastTrade?.entryPrice ?? null : null;
-  const companyName = useMemo(() => {
-    const target = (symbol || requestedTicker || '').toUpperCase();
-    if (!target) return '';
-
-    const match = savedDatasets.find((dataset) => (dataset.ticker || '').toUpperCase() === target);
-    const name = typeof match?.companyName === 'string' ? match.companyName.trim() : '';
-    return name;
-  }, [savedDatasets, symbol, requestedTicker]);
+  const companyNameTarget = (symbol || requestedTicker || '').toUpperCase();
+  const companyNameMatch = companyNameTarget
+    ? savedDatasets.find((dataset) => (dataset.ticker || '').toUpperCase() === companyNameTarget)
+    : null;
+  const companyName = typeof companyNameMatch?.companyName === 'string'
+    ? companyNameMatch.companyName.trim()
+    : '';
   const formatQuoteValue = (value: number | null | undefined) => (
     value != null && Number.isFinite(value) ? Number(value).toFixed(2) : '—'
   );
