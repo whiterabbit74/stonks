@@ -60,7 +60,8 @@ function runNoStopLossBacktest(
   const options: CleanBacktestOptions = {
     entryExecution: 'nextOpen',
     ignoreMaxHoldDaysExit: config.exitMode === 'never' || config.exitMode === 'ibs-only',
-    ibsExitRequireAboveEntry: config.requireProfitableExit
+    ibsExitRequireAboveEntry: config.requireProfitableExit,
+    generateChartData: false
   };
 
   const engine = new CleanBacktestEngine(data, modifiedStrategy, options);
