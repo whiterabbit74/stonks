@@ -165,18 +165,35 @@ function normalizePositions(positions: unknown) {
 }
 
 function normalizeOrders(payload: unknown) {
-  return asArray(payload).map((item, index) => ({
-    id: String(firstDefined(item, ['client_order_id', 'order_id', 'id']) ?? index),
-    symbol: String(firstDefined(item, ['symbol', 'ticker']) ?? '—'),
-    side: String(firstDefined(item, ['side', 'action']) ?? '—'),
-    status: String(firstDefined(item, ['status', 'order_status']) ?? '—'),
-    quantity: firstDefined(item, ['quantity', 'qty', 'filled_quantity', 'filled_qty']),
-    filledQuantity: firstDefined(item, ['filled_quantity', 'filled_qty', 'deal_quantity']),
-    orderType: String(firstDefined(item, ['order_type', 'type']) ?? '—'),
-    avgPrice: firstDefined(item, ['avg_price', 'average_price', 'filled_avg_price', 'deal_price']),
-    limitPrice: firstDefined(item, ['limit_price', 'limitPrice']),
-    createdAt: firstDefined(item, ['create_time', 'created_at', 'createdAt', 'update_time']),
-  }));
+  return asArray(payload).flatMap((item, index) => {
+    const nestedOrders = asArray(item.orders);
+    const rows = nestedOrders.length > 0 ? nestedOrders : [item];
+
+    return rows.map((row, rowIndex) => {
+      const merged: RowRecord = { ...item, ...row };
+      return {
+        id: String(firstDefined(merged, ['client_order_id', 'order_id', 'combo_order_id', 'id']) ?? `${index}-${rowIndex}`),
+        symbol: String(firstDefined(merged, ['symbol', 'ticker']) ?? '—'),
+        side: String(firstDefined(merged, ['side', 'action']) ?? '—'),
+        status: String(firstDefined(merged, ['status', 'order_status']) ?? '—'),
+        quantity: firstDefined(merged, ['total_quantity', 'quantity', 'qty', 'filled_quantity', 'filled_qty']),
+        filledQuantity: firstDefined(merged, ['filled_quantity', 'filled_qty', 'deal_quantity', 'total_quantity']),
+        orderType: String(firstDefined(merged, ['order_type', 'type']) ?? '—'),
+        avgPrice: firstDefined(merged, ['filled_price', 'avg_price', 'average_price', 'filled_avg_price', 'deal_price']),
+        limitPrice: firstDefined(merged, ['limit_price', 'limitPrice']),
+        createdAt: firstDefined(merged, [
+          'filled_time_at',
+          'place_time_at',
+          'create_time_at',
+          'update_time_at',
+          'create_time',
+          'created_at',
+          'createdAt',
+          'update_time',
+        ]),
+      };
+    });
+  });
 }
 
 function normalizeTrackedStatus(status: string): ManualCloseState['status'] {
