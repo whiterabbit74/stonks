@@ -565,7 +565,6 @@ export function WebullAccountPage() {
                 </tbody>
               </table>
             </div>
-          </div>
           </section>
           <RawJson title="Raw order history payload" value={data.orderHistory} />
         </div>
