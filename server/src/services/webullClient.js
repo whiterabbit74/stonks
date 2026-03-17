@@ -29,6 +29,10 @@ function buildTimestamp() {
     return new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
 }
 
+function buildNonce() {
+    return crypto.randomUUID();
+}
+
 function buildSignature({ path, query = {}, bodyString = '', headersToSign, appSecret }) {
     const merged = new Map();
     for (const [key, value] of Object.entries(query || {})) {
@@ -58,7 +62,7 @@ function requestWebull({ method, path, query = {}, body, configOverrides = {}, i
     }
 
     const timestamp = buildTimestamp();
-    const nonce = crypto.randomUUID().replace(/-/g, '');
+    const nonce = buildNonce();
     const host = buildHostHeader(runtime);
     const bodyString = body == null ? '' : JSON.stringify(body);
     const headersToSign = {
