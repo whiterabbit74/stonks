@@ -173,15 +173,33 @@ function normalizeOrders(payload: unknown) {
       const merged: RowRecord = { ...item, ...row };
       return {
         id: String(firstDefined(merged, ['client_order_id', 'order_id', 'combo_order_id', 'id']) ?? `${index}-${rowIndex}`),
+        clientOrderId: String(firstDefined(merged, ['client_order_id']) ?? '—'),
+        orderId: String(firstDefined(merged, ['order_id', 'combo_order_id']) ?? '—'),
+        comboType: String(firstDefined(merged, ['combo_type']) ?? '—'),
         symbol: String(firstDefined(merged, ['symbol', 'ticker']) ?? '—'),
         side: String(firstDefined(merged, ['side', 'action']) ?? '—'),
         status: String(firstDefined(merged, ['status', 'order_status']) ?? '—'),
         quantity: firstDefined(merged, ['total_quantity', 'quantity', 'qty', 'filled_quantity', 'filled_qty']),
         filledQuantity: firstDefined(merged, ['filled_quantity', 'filled_qty', 'deal_quantity', 'total_quantity']),
         orderType: String(firstDefined(merged, ['order_type', 'type']) ?? '—'),
+        instrumentType: String(firstDefined(merged, ['instrument_type']) ?? '—'),
+        entrustType: String(firstDefined(merged, ['entrust_type']) ?? '—'),
+        timeInForce: String(firstDefined(merged, ['time_in_force', 'tif']) ?? '—'),
+        tradingSession: String(firstDefined(merged, ['support_trading_session', 'trading_session', 'session']) ?? '—'),
         avgPrice: firstDefined(merged, ['filled_price', 'avg_price', 'average_price', 'filled_avg_price', 'deal_price']),
         limitPrice: firstDefined(merged, ['limit_price', 'limitPrice']),
+        placeTime: firstDefined(merged, ['place_time', 'placeTime']),
+        filledTime: firstDefined(merged, ['filled_time', 'filledTime']),
         createdAt: firstDefined(merged, [
+          'place_time_at',
+          'create_time_at',
+          'update_time_at',
+          'create_time',
+          'created_at',
+          'createdAt',
+          'update_time',
+        ]),
+        filledAt: firstDefined(merged, [
           'filled_time_at',
           'place_time_at',
           'create_time_at',
@@ -291,6 +309,8 @@ export function WebullAccountPage() {
   const accounts = useMemo(() => asArray(data?.accounts), [data?.accounts]);
   const pendingOrders = useMemo(() => logs?.pending ?? [], [logs?.pending]);
   const recentTrackedOrders = useMemo(() => logs?.recent ?? [], [logs?.recent]);
+  const monitorLogLines = useMemo(() => [...(logs?.monitor ?? [])].reverse(), [logs?.monitor]);
+  const autotradeLogLines = useMemo(() => [...(logs?.autotrade ?? [])].reverse(), [logs?.autotrade]);
   const trackedOrders = useMemo(() => {
     const merged = [...pendingOrders, ...recentTrackedOrders];
     const seen = new Set<string>();
@@ -521,20 +541,38 @@ export function WebullAccountPage() {
                     <th className="px-4 py-3 font-medium">Side</th>
                     <th className="px-4 py-3 font-medium">Статус</th>
                     <th className="px-4 py-3 font-medium text-right">Qty</th>
+                    <th className="px-4 py-3 font-medium text-right">Filled Qty</th>
+                    <th className="px-4 py-3 font-medium">Type</th>
+                    <th className="px-4 py-3 font-medium">Instrument</th>
+                    <th className="px-4 py-3 font-medium">Combo</th>
+                    <th className="px-4 py-3 font-medium">Entrust</th>
+                    <th className="px-4 py-3 font-medium">TIF</th>
+                    <th className="px-4 py-3 font-medium">Session</th>
                     <th className="px-4 py-3 font-medium text-right">Цена</th>
+                    <th className="px-4 py-3 font-medium">Order ID</th>
+                    <th className="px-4 py-3 font-medium">Client ID</th>
                     <th className="px-4 py-3 font-medium">Создан</th>
                   </tr>
                 </thead>
                 <tbody>
                   {openOrders.length === 0 ? (
-                    <tr><td colSpan={6} className="px-4 py-6 text-center text-gray-500 dark:text-gray-400">Активных ордеров нет</td></tr>
+                    <tr><td colSpan={14} className="px-4 py-6 text-center text-gray-500 dark:text-gray-400">Активных ордеров нет</td></tr>
                   ) : openOrders.map((order) => (
                     <tr key={order.id} className="border-t border-gray-100 dark:border-gray-800">
                       <td className="px-4 py-3 font-semibold text-gray-900 dark:text-gray-100">{order.symbol}</td>
                       <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{order.side}</td>
                       <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{order.status}</td>
                       <td className="px-4 py-3 text-right font-mono text-gray-700 dark:text-gray-300">{formatNumber(order.quantity, 4)}</td>
+                      <td className="px-4 py-3 text-right font-mono text-gray-700 dark:text-gray-300">{formatNumber(order.filledQuantity, 4)}</td>
+                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{order.orderType}</td>
+                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{order.instrumentType}</td>
+                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{order.comboType}</td>
+                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{order.entrustType}</td>
+                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{order.timeInForce}</td>
+                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{order.tradingSession}</td>
                       <td className="px-4 py-3 text-right font-mono text-gray-700 dark:text-gray-300">{formatMoney(order.limitPrice ?? order.avgPrice)}</td>
+                      <td className="px-4 py-3 font-mono text-xs text-gray-700 dark:text-gray-300">{order.orderId}</td>
+                      <td className="px-4 py-3 font-mono text-xs text-gray-700 dark:text-gray-300">{order.clientOrderId}</td>
                       <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{formatDateTime(order.createdAt)}</td>
                     </tr>
                   ))}
@@ -558,25 +596,43 @@ export function WebullAccountPage() {
               <table className="min-w-full text-sm">
                 <thead className="bg-gray-50 text-left text-gray-500 dark:bg-gray-950/40 dark:text-gray-400">
                   <tr>
-                    <th className="px-4 py-3 font-medium">Дата</th>
+                    <th className="px-4 py-3 font-medium">Исполнено</th>
                     <th className="px-4 py-3 font-medium">Тикер</th>
                     <th className="px-4 py-3 font-medium">Side</th>
                     <th className="px-4 py-3 font-medium">Статус</th>
                     <th className="px-4 py-3 font-medium text-right">Qty</th>
+                    <th className="px-4 py-3 font-medium text-right">Order Qty</th>
+                    <th className="px-4 py-3 font-medium">Type</th>
+                    <th className="px-4 py-3 font-medium">Instrument</th>
+                    <th className="px-4 py-3 font-medium">Combo</th>
+                    <th className="px-4 py-3 font-medium">Entrust</th>
+                    <th className="px-4 py-3 font-medium">TIF</th>
+                    <th className="px-4 py-3 font-medium">Session</th>
                     <th className="px-4 py-3 font-medium text-right">Avg Price</th>
+                    <th className="px-4 py-3 font-medium">Order ID</th>
+                    <th className="px-4 py-3 font-medium">Client ID</th>
                   </tr>
                 </thead>
                 <tbody>
                   {orderHistory.length === 0 ? (
-                    <tr><td colSpan={6} className="px-4 py-6 text-center text-gray-500 dark:text-gray-400">История ордеров пока не пришла</td></tr>
+                    <tr><td colSpan={14} className="px-4 py-6 text-center text-gray-500 dark:text-gray-400">История ордеров пока не пришла</td></tr>
                   ) : orderHistory.map((order) => (
                     <tr key={order.id} className="border-t border-gray-100 dark:border-gray-800">
-                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{formatDateTime(order.createdAt)}</td>
+                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{formatDateTime(order.filledAt ?? order.createdAt)}</td>
                       <td className="px-4 py-3 font-semibold text-gray-900 dark:text-gray-100">{order.symbol}</td>
                       <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{order.side}</td>
                       <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{order.status}</td>
                       <td className="px-4 py-3 text-right font-mono text-gray-700 dark:text-gray-300">{formatNumber(order.filledQuantity ?? order.quantity, 4)}</td>
+                      <td className="px-4 py-3 text-right font-mono text-gray-700 dark:text-gray-300">{formatNumber(order.quantity, 4)}</td>
+                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{order.orderType}</td>
+                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{order.instrumentType}</td>
+                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{order.comboType}</td>
+                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{order.entrustType}</td>
+                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{order.timeInForce}</td>
+                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{order.tradingSession}</td>
                       <td className="px-4 py-3 text-right font-mono text-gray-700 dark:text-gray-300">{formatMoney(order.avgPrice ?? order.limitPrice)}</td>
+                      <td className="px-4 py-3 font-mono text-xs text-gray-700 dark:text-gray-300">{order.orderId}</td>
+                      <td className="px-4 py-3 font-mono text-xs text-gray-700 dark:text-gray-300">{order.clientOrderId}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -609,6 +665,9 @@ export function WebullAccountPage() {
             </div>
             <p className="mt-4 text-sm text-gray-600 dark:text-gray-400">
               Исполнение подвязано к существующему T-1 механизму в мониторинге. Сигнал берётся из текущей логики проверки перед закрытием, а Webull используется как broker execution layer.
+            </p>
+            <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
+              `Pending / last tracked orders` показывает только заявки, которые были отправлены этим сайтом через manual close или T-1 execution. Обычные брокерские ордера из Webull без участия сайта здесь не появятся.
             </p>
           </div>
           <div className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
@@ -664,13 +723,13 @@ export function WebullAccountPage() {
             <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Наши логи</h2>
             <Button variant="secondary" size="sm" isLoading={logsLoading} onClick={() => void loadLogs()}>Обновить логи</Button>
           </div>
-          <pre className="max-h-[520px] overflow-auto p-4 text-xs text-gray-800 dark:text-gray-100">{(logs?.monitor ?? []).join('\n') || 'Логи мониторинга пока пусты'}</pre>
+          <pre className="max-h-[520px] overflow-auto p-4 text-xs text-gray-800 dark:text-gray-100">{monitorLogLines.join('\n') || 'Логи мониторинга пока пусты'}</pre>
         </div>
         <div className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
           <div className="border-b border-gray-100 px-4 py-3 dark:border-gray-800">
             <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Webull / autotrade логи</h2>
           </div>
-          <pre className="max-h-[520px] overflow-auto p-4 text-xs text-gray-800 dark:text-gray-100">{(logs?.autotrade ?? []).map(formatAutotradeLogLine).join('\n') || 'Логи автоторговли пока пусты'}</pre>
+          <pre className="max-h-[520px] overflow-auto p-4 text-xs text-gray-800 dark:text-gray-100">{autotradeLogLines.map(formatAutotradeLogLine).join('\n') || 'Логи автоторговли пока пусты'}</pre>
         </div>
       </div>
     );
