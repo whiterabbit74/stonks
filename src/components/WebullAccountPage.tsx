@@ -437,127 +437,138 @@ export function WebullAccountPage() {
 
     if (activeTab === 'positions') {
       return (
-        <section className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
-          <div className="border-b border-gray-100 px-4 py-3 dark:border-gray-800">
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Открытые позиции</h2>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-sm">
-              <thead className="bg-gray-50 text-left text-gray-500 dark:bg-gray-950/40 dark:text-gray-400">
-                <tr>
-                  <th className="px-4 py-3 font-medium">Тикер</th>
-                  <th className="px-4 py-3 font-medium text-right">Кол-во</th>
-                  <th className="px-4 py-3 font-medium text-right">Средняя</th>
-                  <th className="px-4 py-3 font-medium text-right">Рынок</th>
-                  <th className="px-4 py-3 font-medium text-right">Value</th>
-                  <th className="px-4 py-3 font-medium text-right">PnL</th>
-                  <th className="px-4 py-3 font-medium text-right">Действие</th>
-                </tr>
-              </thead>
-              <tbody>
-                {positions.length === 0 ? (
-                  <tr><td colSpan={7} className="px-4 py-6 text-center text-gray-500 dark:text-gray-400">Открытых позиций нет</td></tr>
-                ) : positions.map((position) => (
-                  <tr key={position.id} className="border-t border-gray-100 dark:border-gray-800">
-                    <td className="px-4 py-3 font-semibold text-gray-900 dark:text-gray-100">{position.symbol}</td>
-                    <td className="px-4 py-3 text-right font-mono text-gray-700 dark:text-gray-300">{formatNumber(position.quantity, 4)}</td>
-                    <td className="px-4 py-3 text-right font-mono text-gray-700 dark:text-gray-300">{formatMoney(position.avgPrice)}</td>
-                    <td className="px-4 py-3 text-right font-mono text-gray-700 dark:text-gray-300">{formatMoney(position.marketPrice)}</td>
-                    <td className="px-4 py-3 text-right font-mono text-gray-700 dark:text-gray-300">{formatMoney(position.marketValue)}</td>
-                    <td className="px-4 py-3 text-right font-mono text-gray-700 dark:text-gray-300">{formatMoney(position.unrealizedPnl)}</td>
-                    <td className="px-4 py-3 text-right">
-                      <Button
-                        size="sm"
-                        variant="danger"
-                        isLoading={closingSymbol === position.symbol}
-                        onClick={() => void handleClosePosition(position.symbol)}
-                      >
-                        Закрыть по рынку
-                      </Button>
-                      {renderManualCloseState(position.symbol)}
-                    </td>
+        <div className="space-y-4">
+          <section className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
+            <div className="border-b border-gray-100 px-4 py-3 dark:border-gray-800">
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Открытые позиции</h2>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead className="bg-gray-50 text-left text-gray-500 dark:bg-gray-950/40 dark:text-gray-400">
+                  <tr>
+                    <th className="px-4 py-3 font-medium">Тикер</th>
+                    <th className="px-4 py-3 font-medium text-right">Кол-во</th>
+                    <th className="px-4 py-3 font-medium text-right">Средняя</th>
+                    <th className="px-4 py-3 font-medium text-right">Рынок</th>
+                    <th className="px-4 py-3 font-medium text-right">Value</th>
+                    <th className="px-4 py-3 font-medium text-right">PnL</th>
+                    <th className="px-4 py-3 font-medium text-right">Действие</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
+                </thead>
+                <tbody>
+                  {positions.length === 0 ? (
+                    <tr><td colSpan={7} className="px-4 py-6 text-center text-gray-500 dark:text-gray-400">Открытых позиций нет</td></tr>
+                  ) : positions.map((position) => (
+                    <tr key={position.id} className="border-t border-gray-100 dark:border-gray-800">
+                      <td className="px-4 py-3 font-semibold text-gray-900 dark:text-gray-100">{position.symbol}</td>
+                      <td className="px-4 py-3 text-right font-mono text-gray-700 dark:text-gray-300">{formatNumber(position.quantity, 4)}</td>
+                      <td className="px-4 py-3 text-right font-mono text-gray-700 dark:text-gray-300">{formatMoney(position.avgPrice)}</td>
+                      <td className="px-4 py-3 text-right font-mono text-gray-700 dark:text-gray-300">{formatMoney(position.marketPrice)}</td>
+                      <td className="px-4 py-3 text-right font-mono text-gray-700 dark:text-gray-300">{formatMoney(position.marketValue)}</td>
+                      <td className="px-4 py-3 text-right font-mono text-gray-700 dark:text-gray-300">{formatMoney(position.unrealizedPnl)}</td>
+                      <td className="px-4 py-3 text-right">
+                        <Button
+                          size="sm"
+                          variant="danger"
+                          isLoading={closingSymbol === position.symbol}
+                          onClick={() => void handleClosePosition(position.symbol)}
+                        >
+                          Закрыть по рынку
+                        </Button>
+                        {renderManualCloseState(position.symbol)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+          <RawJson title="Raw positions payload" value={data.positions} />
+          <RawJson title="Raw accounts payload" value={data.accounts} />
+        </div>
       );
     }
 
     if (activeTab === 'orders') {
       return (
-        <section className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
-          <div className="border-b border-gray-100 px-4 py-3 dark:border-gray-800">
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Активные ордера</h2>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-sm">
-              <thead className="bg-gray-50 text-left text-gray-500 dark:bg-gray-950/40 dark:text-gray-400">
-                <tr>
-                  <th className="px-4 py-3 font-medium">Тикер</th>
-                  <th className="px-4 py-3 font-medium">Side</th>
-                  <th className="px-4 py-3 font-medium">Статус</th>
-                  <th className="px-4 py-3 font-medium text-right">Qty</th>
-                  <th className="px-4 py-3 font-medium text-right">Цена</th>
-                  <th className="px-4 py-3 font-medium">Создан</th>
-                </tr>
-              </thead>
-              <tbody>
-                {openOrders.length === 0 ? (
-                  <tr><td colSpan={6} className="px-4 py-6 text-center text-gray-500 dark:text-gray-400">Активных ордеров нет</td></tr>
-                ) : openOrders.map((order) => (
-                  <tr key={order.id} className="border-t border-gray-100 dark:border-gray-800">
-                    <td className="px-4 py-3 font-semibold text-gray-900 dark:text-gray-100">{order.symbol}</td>
-                    <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{order.side}</td>
-                    <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{order.status}</td>
-                    <td className="px-4 py-3 text-right font-mono text-gray-700 dark:text-gray-300">{formatNumber(order.quantity, 4)}</td>
-                    <td className="px-4 py-3 text-right font-mono text-gray-700 dark:text-gray-300">{formatMoney(order.limitPrice ?? order.avgPrice)}</td>
-                    <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{formatDateTime(order.createdAt)}</td>
+        <div className="space-y-4">
+          <section className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
+            <div className="border-b border-gray-100 px-4 py-3 dark:border-gray-800">
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Активные ордера</h2>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead className="bg-gray-50 text-left text-gray-500 dark:bg-gray-950/40 dark:text-gray-400">
+                  <tr>
+                    <th className="px-4 py-3 font-medium">Тикер</th>
+                    <th className="px-4 py-3 font-medium">Side</th>
+                    <th className="px-4 py-3 font-medium">Статус</th>
+                    <th className="px-4 py-3 font-medium text-right">Qty</th>
+                    <th className="px-4 py-3 font-medium text-right">Цена</th>
+                    <th className="px-4 py-3 font-medium">Создан</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
+                </thead>
+                <tbody>
+                  {openOrders.length === 0 ? (
+                    <tr><td colSpan={6} className="px-4 py-6 text-center text-gray-500 dark:text-gray-400">Активных ордеров нет</td></tr>
+                  ) : openOrders.map((order) => (
+                    <tr key={order.id} className="border-t border-gray-100 dark:border-gray-800">
+                      <td className="px-4 py-3 font-semibold text-gray-900 dark:text-gray-100">{order.symbol}</td>
+                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{order.side}</td>
+                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{order.status}</td>
+                      <td className="px-4 py-3 text-right font-mono text-gray-700 dark:text-gray-300">{formatNumber(order.quantity, 4)}</td>
+                      <td className="px-4 py-3 text-right font-mono text-gray-700 dark:text-gray-300">{formatMoney(order.limitPrice ?? order.avgPrice)}</td>
+                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{formatDateTime(order.createdAt)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+          <RawJson title="Raw open orders payload" value={data.openOrders} />
+        </div>
       );
     }
 
     if (activeTab === 'deals') {
       return (
-        <section className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
-          <div className="border-b border-gray-100 px-4 py-3 dark:border-gray-800">
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">История сделок / ордеров</h2>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-sm">
-              <thead className="bg-gray-50 text-left text-gray-500 dark:bg-gray-950/40 dark:text-gray-400">
-                <tr>
-                  <th className="px-4 py-3 font-medium">Дата</th>
-                  <th className="px-4 py-3 font-medium">Тикер</th>
-                  <th className="px-4 py-3 font-medium">Side</th>
-                  <th className="px-4 py-3 font-medium">Статус</th>
-                  <th className="px-4 py-3 font-medium text-right">Qty</th>
-                  <th className="px-4 py-3 font-medium text-right">Avg Price</th>
-                </tr>
-              </thead>
-              <tbody>
-                {orderHistory.length === 0 ? (
-                  <tr><td colSpan={6} className="px-4 py-6 text-center text-gray-500 dark:text-gray-400">История ордеров пока не пришла</td></tr>
-                ) : orderHistory.map((order) => (
-                  <tr key={order.id} className="border-t border-gray-100 dark:border-gray-800">
-                    <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{formatDateTime(order.createdAt)}</td>
-                    <td className="px-4 py-3 font-semibold text-gray-900 dark:text-gray-100">{order.symbol}</td>
-                    <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{order.side}</td>
-                    <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{order.status}</td>
-                    <td className="px-4 py-3 text-right font-mono text-gray-700 dark:text-gray-300">{formatNumber(order.filledQuantity ?? order.quantity, 4)}</td>
-                    <td className="px-4 py-3 text-right font-mono text-gray-700 dark:text-gray-300">{formatMoney(order.avgPrice ?? order.limitPrice)}</td>
+        <div className="space-y-4">
+          <section className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
+            <div className="border-b border-gray-100 px-4 py-3 dark:border-gray-800">
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">История сделок / ордеров</h2>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead className="bg-gray-50 text-left text-gray-500 dark:bg-gray-950/40 dark:text-gray-400">
+                  <tr>
+                    <th className="px-4 py-3 font-medium">Дата</th>
+                    <th className="px-4 py-3 font-medium">Тикер</th>
+                    <th className="px-4 py-3 font-medium">Side</th>
+                    <th className="px-4 py-3 font-medium">Статус</th>
+                    <th className="px-4 py-3 font-medium text-right">Qty</th>
+                    <th className="px-4 py-3 font-medium text-right">Avg Price</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {orderHistory.length === 0 ? (
+                    <tr><td colSpan={6} className="px-4 py-6 text-center text-gray-500 dark:text-gray-400">История ордеров пока не пришла</td></tr>
+                  ) : orderHistory.map((order) => (
+                    <tr key={order.id} className="border-t border-gray-100 dark:border-gray-800">
+                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{formatDateTime(order.createdAt)}</td>
+                      <td className="px-4 py-3 font-semibold text-gray-900 dark:text-gray-100">{order.symbol}</td>
+                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{order.side}</td>
+                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{order.status}</td>
+                      <td className="px-4 py-3 text-right font-mono text-gray-700 dark:text-gray-300">{formatNumber(order.filledQuantity ?? order.quantity, 4)}</td>
+                      <td className="px-4 py-3 text-right font-mono text-gray-700 dark:text-gray-300">{formatMoney(order.avgPrice ?? order.limitPrice)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </section>
+          </section>
+          <RawJson title="Raw order history payload" value={data.orderHistory} />
+        </div>
       );
     }
 
@@ -620,6 +631,10 @@ export function WebullAccountPage() {
                 </tbody>
               </table>
             </div>
+          </div>
+          <div className="grid gap-4 xl:grid-cols-2">
+            <RawJson title="Raw connection payload" value={data.connection} />
+            <RawJson title="Raw tracked orders payload" value={{ pending: logs?.pending ?? [], recent: logs?.recent ?? [] }} />
           </div>
           <RawJson title="Raw dashboard payload" value={data} />
         </div>
