@@ -17,7 +17,32 @@ function getDefaultSettings() {
         resultsRefreshProvider: 'finnhub',
         enablePostClosePriceActualization: false,
         indicatorPanePercent: 30,
-        defaultMultiTickerSymbols: 'SPY,QQQ,IWM'
+        defaultMultiTickerSymbols: 'SPY,QQQ,IWM',
+        autoTrading: {
+            enabled: false,
+            dryRun: true,
+            provider: 'finnhub',
+            lowIBS: 0.1,
+            highIBS: 0.75,
+            executionWindowSeconds: 90,
+            allowNewEntries: true,
+            allowExits: true,
+            onlyFromTelegramWatches: true,
+            symbols: '',
+            sizingMode: 'notional',
+            fixedQuantity: 1,
+            fixedNotionalUsd: 1000,
+            maxPositionUsd: 1000,
+            allowFractionalShares: false,
+            orderType: 'MARKET',
+            timeInForce: 'DAY',
+            supportTradingSession: 'CORE',
+            maxSlippageBps: 25,
+            previewBeforeSend: true,
+            cancelOpenOrdersBeforeEntry: false,
+            notes: '',
+            lastModifiedAt: null
+        }
     };
 }
 
@@ -33,7 +58,15 @@ async function readSettings() {
         try {
             if (await fs.pathExists(SETTINGS_FILE)) {
                 const stored = await fs.readJson(SETTINGS_FILE);
-                cachedSettings = { ...getDefaultSettings(), ...stored };
+                const defaults = getDefaultSettings();
+                cachedSettings = {
+                    ...defaults,
+                    ...stored,
+                    autoTrading: {
+                        ...defaults.autoTrading,
+                        ...(stored && stored.autoTrading ? stored.autoTrading : {})
+                    }
+                };
                 return { ...cachedSettings };
             }
         } catch (e) {

@@ -1,0 +1,648 @@
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { AlertCircle, BriefcaseBusiness, History, RefreshCw, ShieldCheck, Wallet } from 'lucide-react';
+import type { AutotradeLogsResponse, WebullDashboardResponse } from '../types';
+import { DatasetAPI } from '../lib/api';
+import { PageHeader } from './ui/PageHeader';
+import { Button } from './ui/Button';
+
+type RowRecord = Record<string, unknown>;
+type BrokerTab = 'overview' | 'positions' | 'orders' | 'deals' | 'autotrade' | 'logs';
+type ManualCloseState = {
+  status: 'idle' | 'submitted' | 'filled' | 'rejected' | 'cancelled' | 'expired' | 'error';
+  clientOrderId?: string | null;
+  message?: string;
+  dashboardSynced?: boolean;
+};
+
+function formatMoney(value: unknown) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return '—';
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    maximumFractionDigits: 2,
+  }).format(num);
+}
+
+function formatNumber(value: unknown, fractionDigits = 2) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return '—';
+  return num.toFixed(fractionDigits);
+}
+
+function formatDateTime(value: unknown) {
+  if (typeof value !== 'string' || !value) return '—';
+  const ts = Date.parse(value);
+  if (!Number.isFinite(ts)) return value;
+  return new Date(ts).toLocaleString('ru-RU', {
+    dateStyle: 'short',
+    timeStyle: 'short',
+    timeZone: 'America/New_York',
+  });
+}
+
+function formatAutotradeLogLine(line: string) {
+  try {
+    const parsed = JSON.parse(line) as Record<string, unknown>;
+    const ts = typeof parsed.ts === 'string' ? formatDateTime(parsed.ts) : '—';
+    const level = typeof parsed.level === 'string' ? parsed.level.toUpperCase() : 'INFO';
+    const event = typeof parsed.event === 'string' ? parsed.event : 'message';
+    const summaryParts = [
+      parsed.symbol ? String(parsed.symbol) : null,
+      parsed.action ? String(parsed.action) : null,
+      parsed.status ? String(parsed.status) : null,
+      parsed.client_order_id ? `id=${String(parsed.client_order_id)}` : null,
+      parsed.error ? `error=${String(parsed.error)}` : null,
+      parsed.message ? String(parsed.message) : null,
+    ].filter(Boolean);
+    return `${ts} ${level} ${event}${summaryParts.length > 0 ? ` • ${summaryParts.join(' • ')}` : ''}`;
+  } catch {
+    return line;
+  }
+}
+
+function asArray(value: unknown): RowRecord[] {
+  if (Array.isArray(value)) {
+    return value.filter((item): item is RowRecord => !!item && typeof item === 'object');
+  }
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    const nestedArrayKeys = ['list', 'items', 'data', 'rows', 'positions', 'orders', 'accounts'];
+    for (const key of nestedArrayKeys) {
+      if (Array.isArray(record[key])) {
+        return record[key] as RowRecord[];
+      }
+    }
+  }
+  return [];
+}
+
+function asObject(value: unknown): RowRecord | null {
+  return value && typeof value === 'object' && !Array.isArray(value) ? (value as RowRecord) : null;
+}
+
+function firstDefined(record: RowRecord | null, keys: string[]) {
+  if (!record) return null;
+  for (const key of keys) {
+    const value = record[key];
+    if (value !== undefined && value !== null && value !== '') return value;
+  }
+  return null;
+}
+
+function extractBalanceSummary(balance: unknown) {
+  const root = asObject(balance);
+  const candidate = root?.data && typeof root.data === 'object' && !Array.isArray(root.data)
+    ? root.data as RowRecord
+    : root;
+
+  return {
+    totalAssets: firstDefined(candidate, ['net_liquidation_value', 'netLiquidationValue', 'total_assets', 'totalAssets', 'market_value', 'marketValue']),
+    cashBalance: firstDefined(candidate, ['cash_balance', 'cashBalance', 'settled_cash', 'settledCash', 'cash']),
+    buyingPower: firstDefined(candidate, ['buying_power', 'buyingPower', 'day_trading_buying_power', 'dayTradingBuyingPower']),
+    unrealizedPnl: firstDefined(candidate, ['unrealized_profit_loss', 'unrealizedProfitLoss', 'unrealized_pnl', 'unrealizedPnl']),
+    accountType: firstDefined(candidate, ['account_type', 'accountType']),
+    currency: firstDefined(candidate, ['currency', 'base_currency', 'baseCurrency']) ?? 'USD',
+  };
+}
+
+function normalizePositions(positions: unknown) {
+  return asArray(positions).map((item, index) => ({
+    id: String(firstDefined(item, ['position_id', 'id', 'symbol']) ?? index),
+    symbol: String(firstDefined(item, ['symbol', 'ticker', 'display_symbol']) ?? '—'),
+    quantity: firstDefined(item, ['quantity', 'qty', 'position', 'holding']),
+    avgPrice: firstDefined(item, ['avg_price', 'average_price', 'avgPrice', 'cost_price']),
+    marketPrice: firstDefined(item, ['last_price', 'market_price', 'marketPrice', 'current_price']),
+    marketValue: firstDefined(item, ['market_value', 'marketValue', 'value']),
+    unrealizedPnl: firstDefined(item, ['unrealized_profit_loss', 'unrealizedPnl', 'unrealized_pnl']),
+  }));
+}
+
+function normalizeOrders(payload: unknown) {
+  return asArray(payload).map((item, index) => ({
+    id: String(firstDefined(item, ['client_order_id', 'order_id', 'id']) ?? index),
+    symbol: String(firstDefined(item, ['symbol', 'ticker']) ?? '—'),
+    side: String(firstDefined(item, ['side', 'action']) ?? '—'),
+    status: String(firstDefined(item, ['status', 'order_status']) ?? '—'),
+    quantity: firstDefined(item, ['quantity', 'qty', 'filled_quantity', 'filled_qty']),
+    filledQuantity: firstDefined(item, ['filled_quantity', 'filled_qty', 'deal_quantity']),
+    orderType: String(firstDefined(item, ['order_type', 'type']) ?? '—'),
+    avgPrice: firstDefined(item, ['avg_price', 'average_price', 'filled_avg_price', 'deal_price']),
+    limitPrice: firstDefined(item, ['limit_price', 'limitPrice']),
+    createdAt: firstDefined(item, ['create_time', 'created_at', 'createdAt', 'update_time']),
+  }));
+}
+
+function normalizeTrackedStatus(status: string): ManualCloseState['status'] {
+  if (status === 'filled') return 'filled';
+  if (status === 'rejected') return 'rejected';
+  if (status === 'cancelled') return 'cancelled';
+  if (status === 'expired') return 'expired';
+  return 'submitted';
+}
+
+function isFinalTrackedStatus(status: ManualCloseState['status']) {
+  return ['filled', 'rejected', 'cancelled', 'expired'].includes(status);
+}
+
+function InfoCard({ title, value, hint, icon }: { title: string; value: string; hint?: string; icon: ReactNode }) {
+  return (
+    <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+      <div className="mb-3 flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+        <span className="text-indigo-600 dark:text-indigo-400">{icon}</span>
+        <span>{title}</span>
+      </div>
+      <div className="text-2xl font-semibold text-gray-900 dark:text-gray-100">{value}</div>
+      {hint ? <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">{hint}</div> : null}
+    </div>
+  );
+}
+
+function RawJson({ title, value }: { title: string; value: unknown }) {
+  return (
+    <details className="rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-800 dark:bg-gray-900">
+      <summary className="cursor-pointer text-sm font-medium text-gray-700 dark:text-gray-200">{title}</summary>
+      <pre className="mt-3 overflow-auto rounded-lg bg-gray-950 p-3 text-xs text-gray-100">
+        {JSON.stringify(value, null, 2)}
+      </pre>
+    </details>
+  );
+}
+
+const tabs: Array<{ id: BrokerTab; label: string }> = [
+  { id: 'overview', label: 'Обзор' },
+  { id: 'positions', label: 'Позиции' },
+  { id: 'orders', label: 'Ордера' },
+  { id: 'deals', label: 'Сделки' },
+  { id: 'autotrade', label: 'Автоторговля' },
+  { id: 'logs', label: 'Логи' },
+];
+
+export function WebullAccountPage() {
+  const [data, setData] = useState<WebullDashboardResponse | null>(null);
+  const [logs, setLogs] = useState<AutotradeLogsResponse | null>(null);
+  const [activeTab, setActiveTab] = useState<BrokerTab>('overview');
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [logsLoading, setLogsLoading] = useState(false);
+  const [closingSymbol, setClosingSymbol] = useState<string | null>(null);
+  const [manualCloseStates, setManualCloseStates] = useState<Record<string, ManualCloseState>>({});
+  const [error, setError] = useState<string | null>(null);
+
+  const loadDashboard = async (isRefresh = false) => {
+    try {
+      if (isRefresh) setRefreshing(true);
+      else setLoading(true);
+      setError(null);
+      const next = await DatasetAPI.getWebullDashboard(isRefresh);
+      setData(next);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Не удалось загрузить кабинет Webull');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  const loadLogs = async () => {
+    try {
+      setLogsLoading(true);
+      const next = await DatasetAPI.getAutotradeLogs(300);
+      setLogs(next);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Не удалось загрузить логи');
+    } finally {
+      setLogsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadDashboard(false);
+    void loadLogs();
+  }, []);
+
+  const balance = useMemo(() => extractBalanceSummary(data?.balance), [data?.balance]);
+  const positions = useMemo(() => normalizePositions(data?.positions), [data?.positions]);
+  const openOrders = useMemo(() => normalizeOrders(data?.openOrders), [data?.openOrders]);
+  const orderHistory = useMemo(() => normalizeOrders(data?.orderHistory), [data?.orderHistory]);
+  const accounts = useMemo(() => asArray(data?.accounts), [data?.accounts]);
+  const pendingOrders = useMemo(() => logs?.pending ?? [], [logs?.pending]);
+  const recentTrackedOrders = useMemo(() => logs?.recent ?? [], [logs?.recent]);
+  const trackedOrders = useMemo(() => {
+    const merged = [...pendingOrders, ...recentTrackedOrders];
+    const seen = new Set<string>();
+    return merged.filter((order) => {
+      const key = `${order.clientOrderId}:${order.action}:${order.status}:${order.lastCheckedAt ?? ''}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    }).slice(0, 20);
+  }, [pendingOrders, recentTrackedOrders]);
+
+  useEffect(() => {
+    const tracked = [...(logs?.pending ?? []), ...(logs?.recent ?? [])]
+      .filter((item) => item.action === 'exit')
+      .sort((a, b) => {
+        const left = Date.parse(String(b.lastCheckedAt ?? b.startedAt ?? '')) || 0;
+        const right = Date.parse(String(a.lastCheckedAt ?? a.startedAt ?? '')) || 0;
+        return left - right;
+      });
+    if (tracked.length === 0) return;
+
+    const trackedByOrderId = new Map<string, typeof tracked[number]>();
+    for (const item of tracked) {
+      if (!trackedByOrderId.has(item.clientOrderId)) {
+        trackedByOrderId.set(item.clientOrderId, item);
+      }
+    }
+    setManualCloseStates((prev) => {
+      const next = { ...prev };
+      for (const [symbol, currentState] of Object.entries(prev)) {
+        const trackedOrder = currentState.clientOrderId
+          ? trackedByOrderId.get(currentState.clientOrderId)
+          : tracked.find((item) => item.symbol === symbol);
+        if (!trackedOrder) continue;
+
+        next[symbol] = {
+          ...currentState,
+          clientOrderId: currentState.clientOrderId ?? trackedOrder.clientOrderId,
+          status: normalizeTrackedStatus(trackedOrder.status),
+          message: trackedOrder.lastCheckedAt ? `Проверено ${formatDateTime(trackedOrder.lastCheckedAt)}` : undefined,
+          dashboardSynced: isFinalTrackedStatus(normalizeTrackedStatus(trackedOrder.status))
+            ? currentState.dashboardSynced
+            : false,
+        };
+      }
+      return next;
+    });
+  }, [logs]);
+
+  useEffect(() => {
+    const hasSubmittedManualClose = Object.values(manualCloseStates).some((item) => item.status === 'submitted');
+    const hasPendingTrackers = pendingOrders.length > 0;
+    if (!hasSubmittedManualClose && !hasPendingTrackers) return;
+
+    const intervalId = window.setInterval(() => {
+      void loadLogs();
+    }, 4000);
+
+    return () => window.clearInterval(intervalId);
+  }, [manualCloseStates, pendingOrders.length]);
+
+  useEffect(() => {
+    const needsDashboardRefresh = Object.values(manualCloseStates).some((item) => isFinalTrackedStatus(item.status) && !item.dashboardSynced);
+    if (!needsDashboardRefresh) return;
+
+    void loadDashboard(true).then(() => {
+      setManualCloseStates((prev) => {
+        const next = { ...prev };
+        for (const [symbol, state] of Object.entries(prev)) {
+          if (isFinalTrackedStatus(state.status)) {
+            next[symbol] = { ...state, dashboardSynced: true };
+          }
+        }
+        return next;
+      });
+    });
+  }, [manualCloseStates]);
+
+  const handleClosePosition = async (symbol: string) => {
+    const confirmed = window.confirm(`Закрыть позицию ${symbol} рыночным ордером в Webull?`);
+    if (!confirmed) return;
+    try {
+      setClosingSymbol(symbol);
+      setError(null);
+      setManualCloseStates((prev) => ({
+        ...prev,
+        [symbol]: {
+          status: 'submitted',
+          clientOrderId: prev[symbol]?.clientOrderId ?? null,
+          message: 'MARKET ордер отправлен, ждём финальный статус',
+          dashboardSynced: false,
+        }
+      }));
+      const result = await DatasetAPI.closeWebullPosition(symbol);
+      setManualCloseStates((prev) => ({
+        ...prev,
+        [symbol]: {
+          ...(prev[symbol] ?? { status: 'submitted' }),
+          status: 'submitted',
+          clientOrderId: result.clientOrderId ?? result.result?.clientOrderId ?? result.result?.order?.client_order_id ?? null,
+          message: 'MARKET ордер отправлен, ждём финальный статус',
+          dashboardSynced: false,
+        }
+      }));
+      await loadLogs();
+    } catch (err) {
+      setManualCloseStates((prev) => ({
+        ...prev,
+        [symbol]: {
+          status: 'error',
+          clientOrderId: prev[symbol]?.clientOrderId ?? null,
+          message: err instanceof Error ? err.message : `Не удалось закрыть позицию ${symbol}`,
+          dashboardSynced: false,
+        }
+      }));
+      setError(err instanceof Error ? err.message : `Не удалось закрыть позицию ${symbol}`);
+    } finally {
+      setClosingSymbol(null);
+    }
+  };
+
+  const renderManualCloseState = (symbol: string) => {
+    const state = manualCloseStates[symbol];
+    if (!state || state.status === 'idle') return null;
+
+    const tone = state.status === 'filled'
+      ? 'text-emerald-600 dark:text-emerald-300'
+      : state.status === 'submitted'
+        ? 'text-amber-600 dark:text-amber-300'
+        : state.status === 'error' || state.status === 'rejected'
+          ? 'text-red-600 dark:text-red-300'
+          : 'text-gray-600 dark:text-gray-300';
+
+    return (
+      <div className={`mt-1 text-xs ${tone}`}>
+        {state.status === 'submitted' ? 'Заявка отправлена' : state.status}
+        {state.message ? ` • ${state.message}` : ''}
+      </div>
+    );
+  };
+
+  const renderTabContent = () => {
+    if (!data) return null;
+
+    if (activeTab === 'overview') {
+      return (
+        <div className="space-y-6">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <InfoCard title="Всего активов" value={formatMoney(balance.totalAssets)} hint={`Валюта: ${String(balance.currency ?? 'USD')}`} icon={<Wallet className="h-4 w-4" />} />
+            <InfoCard title="Свободные деньги" value={formatMoney(balance.cashBalance)} hint="Cash / settled cash" icon={<ShieldCheck className="h-4 w-4" />} />
+            <InfoCard title="Buying Power" value={formatMoney(balance.buyingPower)} hint={balance.accountType ? `Тип счёта: ${String(balance.accountType)}` : undefined} icon={<BriefcaseBusiness className="h-4 w-4" />} />
+            <InfoCard title="Нереализованный PnL" value={formatMoney(balance.unrealizedPnl)} hint={data.fetchedAt ? `Обновлено ${formatDateTime(data.fetchedAt)}` : undefined} icon={<History className="h-4 w-4" />} />
+          </div>
+          <div className="grid gap-4 xl:grid-cols-2">
+            <RawJson title="Raw balance payload" value={data.balance} />
+            <RawJson title="Raw account payload" value={data.accounts} />
+          </div>
+        </div>
+      );
+    }
+
+    if (activeTab === 'positions') {
+      return (
+        <section className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
+          <div className="border-b border-gray-100 px-4 py-3 dark:border-gray-800">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Открытые позиции</h2>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead className="bg-gray-50 text-left text-gray-500 dark:bg-gray-950/40 dark:text-gray-400">
+                <tr>
+                  <th className="px-4 py-3 font-medium">Тикер</th>
+                  <th className="px-4 py-3 font-medium text-right">Кол-во</th>
+                  <th className="px-4 py-3 font-medium text-right">Средняя</th>
+                  <th className="px-4 py-3 font-medium text-right">Рынок</th>
+                  <th className="px-4 py-3 font-medium text-right">Value</th>
+                  <th className="px-4 py-3 font-medium text-right">PnL</th>
+                  <th className="px-4 py-3 font-medium text-right">Действие</th>
+                </tr>
+              </thead>
+              <tbody>
+                {positions.length === 0 ? (
+                  <tr><td colSpan={7} className="px-4 py-6 text-center text-gray-500 dark:text-gray-400">Открытых позиций нет</td></tr>
+                ) : positions.map((position) => (
+                  <tr key={position.id} className="border-t border-gray-100 dark:border-gray-800">
+                    <td className="px-4 py-3 font-semibold text-gray-900 dark:text-gray-100">{position.symbol}</td>
+                    <td className="px-4 py-3 text-right font-mono text-gray-700 dark:text-gray-300">{formatNumber(position.quantity, 4)}</td>
+                    <td className="px-4 py-3 text-right font-mono text-gray-700 dark:text-gray-300">{formatMoney(position.avgPrice)}</td>
+                    <td className="px-4 py-3 text-right font-mono text-gray-700 dark:text-gray-300">{formatMoney(position.marketPrice)}</td>
+                    <td className="px-4 py-3 text-right font-mono text-gray-700 dark:text-gray-300">{formatMoney(position.marketValue)}</td>
+                    <td className="px-4 py-3 text-right font-mono text-gray-700 dark:text-gray-300">{formatMoney(position.unrealizedPnl)}</td>
+                    <td className="px-4 py-3 text-right">
+                      <Button
+                        size="sm"
+                        variant="danger"
+                        isLoading={closingSymbol === position.symbol}
+                        onClick={() => void handleClosePosition(position.symbol)}
+                      >
+                        Закрыть по рынку
+                      </Button>
+                      {renderManualCloseState(position.symbol)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      );
+    }
+
+    if (activeTab === 'orders') {
+      return (
+        <section className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
+          <div className="border-b border-gray-100 px-4 py-3 dark:border-gray-800">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Активные ордера</h2>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead className="bg-gray-50 text-left text-gray-500 dark:bg-gray-950/40 dark:text-gray-400">
+                <tr>
+                  <th className="px-4 py-3 font-medium">Тикер</th>
+                  <th className="px-4 py-3 font-medium">Side</th>
+                  <th className="px-4 py-3 font-medium">Статус</th>
+                  <th className="px-4 py-3 font-medium text-right">Qty</th>
+                  <th className="px-4 py-3 font-medium text-right">Цена</th>
+                  <th className="px-4 py-3 font-medium">Создан</th>
+                </tr>
+              </thead>
+              <tbody>
+                {openOrders.length === 0 ? (
+                  <tr><td colSpan={6} className="px-4 py-6 text-center text-gray-500 dark:text-gray-400">Активных ордеров нет</td></tr>
+                ) : openOrders.map((order) => (
+                  <tr key={order.id} className="border-t border-gray-100 dark:border-gray-800">
+                    <td className="px-4 py-3 font-semibold text-gray-900 dark:text-gray-100">{order.symbol}</td>
+                    <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{order.side}</td>
+                    <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{order.status}</td>
+                    <td className="px-4 py-3 text-right font-mono text-gray-700 dark:text-gray-300">{formatNumber(order.quantity, 4)}</td>
+                    <td className="px-4 py-3 text-right font-mono text-gray-700 dark:text-gray-300">{formatMoney(order.limitPrice ?? order.avgPrice)}</td>
+                    <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{formatDateTime(order.createdAt)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      );
+    }
+
+    if (activeTab === 'deals') {
+      return (
+        <section className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
+          <div className="border-b border-gray-100 px-4 py-3 dark:border-gray-800">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">История сделок / ордеров</h2>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead className="bg-gray-50 text-left text-gray-500 dark:bg-gray-950/40 dark:text-gray-400">
+                <tr>
+                  <th className="px-4 py-3 font-medium">Дата</th>
+                  <th className="px-4 py-3 font-medium">Тикер</th>
+                  <th className="px-4 py-3 font-medium">Side</th>
+                  <th className="px-4 py-3 font-medium">Статус</th>
+                  <th className="px-4 py-3 font-medium text-right">Qty</th>
+                  <th className="px-4 py-3 font-medium text-right">Avg Price</th>
+                </tr>
+              </thead>
+              <tbody>
+                {orderHistory.length === 0 ? (
+                  <tr><td colSpan={6} className="px-4 py-6 text-center text-gray-500 dark:text-gray-400">История ордеров пока не пришла</td></tr>
+                ) : orderHistory.map((order) => (
+                  <tr key={order.id} className="border-t border-gray-100 dark:border-gray-800">
+                    <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{formatDateTime(order.createdAt)}</td>
+                    <td className="px-4 py-3 font-semibold text-gray-900 dark:text-gray-100">{order.symbol}</td>
+                    <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{order.side}</td>
+                    <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{order.status}</td>
+                    <td className="px-4 py-3 text-right font-mono text-gray-700 dark:text-gray-300">{formatNumber(order.filledQuantity ?? order.quantity, 4)}</td>
+                    <td className="px-4 py-3 text-right font-mono text-gray-700 dark:text-gray-300">{formatMoney(order.avgPrice ?? order.limitPrice)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      );
+    }
+
+    if (activeTab === 'autotrade') {
+      return (
+        <div className="space-y-4">
+          <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Состояние автоторговли</h2>
+            <div className="mt-3 grid gap-3 md:grid-cols-2">
+              <div className="rounded-xl bg-gray-50 p-3 dark:bg-gray-950/40">
+                <div className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Подключение</div>
+                <div className="mt-1 text-sm text-gray-900 dark:text-gray-100">
+                  {data.connection.configured ? 'Webull подключен' : 'Webull не настроен'}
+                </div>
+              </div>
+              <div className="rounded-xl bg-gray-50 p-3 dark:bg-gray-950/40">
+                <div className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Token / Account</div>
+                <div className="mt-1 text-sm text-gray-900 dark:text-gray-100">
+                  token {data.connection.hasAccessToken ? 'есть' : 'не задан'} • account {data.connection.hasAccountId ? 'задан' : 'не задан'}
+                </div>
+              </div>
+            </div>
+            <p className="mt-4 text-sm text-gray-600 dark:text-gray-400">
+              Исполнение подвязано к существующему T-1 механизму в мониторинге. Сигнал берётся из текущей логики проверки перед закрытием, а Webull используется как broker execution layer.
+            </p>
+          </div>
+          <div className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
+            <div className="border-b border-gray-100 px-4 py-3 dark:border-gray-800">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Pending / last tracked orders</h3>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead className="bg-gray-50 text-left text-gray-500 dark:bg-gray-950/40 dark:text-gray-400">
+                  <tr>
+                    <th className="px-4 py-3 font-medium">Тикер</th>
+                    <th className="px-4 py-3 font-medium">Action</th>
+                    <th className="px-4 py-3 font-medium">Статус</th>
+                    <th className="px-4 py-3 font-medium text-right">Qty</th>
+                    <th className="px-4 py-3 font-medium">Старт</th>
+                    <th className="px-4 py-3 font-medium">Последняя проверка</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pendingOrders.length === 0 && recentTrackedOrders.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="px-4 py-6 text-center text-gray-500 dark:text-gray-400">
+                        Tracked orders пока нет
+                      </td>
+                    </tr>
+                  ) : trackedOrders.map((order, index) => (
+                      <tr key={`${order.clientOrderId}:${order.action}:${index}`} className="border-t border-gray-100 dark:border-gray-800">
+                        <td className="px-4 py-3 font-semibold text-gray-900 dark:text-gray-100">{order.symbol}</td>
+                        <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{order.action}</td>
+                        <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{order.status}</td>
+                        <td className="px-4 py-3 text-right font-mono text-gray-700 dark:text-gray-300">{formatNumber(order.quantity, 4)}</td>
+                        <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{formatDateTime(order.startedAt)}</td>
+                        <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{formatDateTime(order.lastCheckedAt)}</td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <RawJson title="Raw dashboard payload" value={data} />
+        </div>
+      );
+    }
+
+    return (
+      <div className="grid gap-4 xl:grid-cols-2">
+        <div className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
+          <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-gray-800">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Наши логи</h2>
+            <Button variant="secondary" size="sm" isLoading={logsLoading} onClick={() => void loadLogs()}>Обновить логи</Button>
+          </div>
+          <pre className="max-h-[520px] overflow-auto p-4 text-xs text-gray-800 dark:text-gray-100">{(logs?.monitor ?? []).join('\n') || 'Логи мониторинга пока пусты'}</pre>
+        </div>
+        <div className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
+          <div className="border-b border-gray-100 px-4 py-3 dark:border-gray-800">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Webull / autotrade логи</h2>
+          </div>
+          <pre className="max-h-[520px] overflow-auto p-4 text-xs text-gray-800 dark:text-gray-100">{(logs?.autotrade ?? []).map(formatAutotradeLogLine).join('\n') || 'Логи автоторговли пока пусты'}</pre>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <PageHeader title="Кабинет Webull" />
+          <p className="-mt-3 max-w-3xl text-sm text-gray-600 dark:text-gray-400">
+            Баланс счёта, позиции, ордера, история и логи исполнения по Webull.
+          </p>
+        </div>
+        <Button variant="secondary" onClick={() => void Promise.all([loadDashboard(true), loadLogs()])} isLoading={refreshing} leftIcon={<RefreshCw className="h-4 w-4" />}>
+          Обновить
+        </Button>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => setActiveTab(tab.id)}
+            className={`rounded-full border px-4 py-2 text-sm transition-colors ${activeTab === tab.id
+              ? 'border-indigo-600 bg-indigo-600 text-white'
+              : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800'
+              }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {error ? (
+        <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-200">
+          <div className="flex items-start gap-2">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+            <div>{error}</div>
+          </div>
+        </div>
+      ) : null}
+
+      {loading ? (
+        <div className="rounded-2xl border border-gray-200 bg-white p-6 text-sm text-gray-600 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-300">
+          Загрузка данных кабинета…
+        </div>
+      ) : renderTabContent()}
+    </div>
+  );
+}

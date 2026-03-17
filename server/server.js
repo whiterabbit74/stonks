@@ -110,6 +110,7 @@ const telegramRoutes = require('./src/routes/telegram');
 const tradesRoutes = require('./src/routes/trades');
 const quotesRoutes = require('./src/routes/quotes');
 const statusRoutes = require('./src/routes/status');
+const autotradeRoutes = require('./src/routes/autotrade');
 
 // Public routes (before auth middleware)
 app.use('/api', calendarRoutes);
@@ -126,11 +127,13 @@ app.use('/api', telegramRoutes);
 app.use('/api', tradesRoutes);
 app.use('/api', quotesRoutes);
 app.use('/api', statusRoutes);
+app.use('/api', autotradeRoutes);
 
 // Import scheduler functions
 const { runTelegramAggregation } = require('./src/services/telegramAggregation');
 const { runPriceActualization } = require('./src/services/priceActualization');
 const { getETParts, getCachedTradingCalendar, isTradingDayByCalendarET, getTradingSessionForDateET } = require('./src/services/dates');
+const { initializeAutotradeRuntime } = require('./src/services/autotrade');
 
 // Start server
 app.listen(PORT, () => {
@@ -142,6 +145,9 @@ app.listen(PORT, () => {
     console.warn('Failed to initialize telegram watches:', err && err.message ? err.message : err);
   });
   ensureTradeHistoryLoaded();
+  initializeAutotradeRuntime().catch(err => {
+    console.warn('Failed to initialize autotrade runtime:', err && err.message ? err.message : err);
+  });
 
   // Smart scheduler: check time BEFORE calling functions to save API limits
   setInterval(async () => {

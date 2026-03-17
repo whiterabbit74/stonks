@@ -19,6 +19,7 @@ const importSplitsTab = () => import('./SplitsTab');
 const importCalendarPage = () => import('./CalendarPage');
 const importMultiTickerPage = () => import('./MultiTickerPage');
 const importMultiTickerOptionsPage = () => import('./MultiTickerOptionsPage');
+const importWebullAccountPage = () => import('./WebullAccountPage');
 
 const DataUpload = lazy(() => importDataUpload().then(m => ({ default: m.DataUpload })));
 const DataEnhancer = lazy(() => importDataEnhancer().then(m => ({ default: m.DataEnhancer })));
@@ -29,6 +30,7 @@ const SplitsTab = lazy(() => importSplitsTab().then(m => ({ default: m.SplitsTab
 const CalendarPage = lazy(() => importCalendarPage().then(m => ({ default: m.CalendarPage })));
 const MultiTickerPage = lazy(() => importMultiTickerPage().then(m => ({ default: m.MultiTickerPage })));
 const MultiTickerOptionsPage = lazy(() => importMultiTickerOptionsPage().then(m => ({ default: m.MultiTickerOptionsPage })));
+const WebullAccountPage = lazy(() => importWebullAccountPage().then(m => ({ default: m.WebullAccountPage })));
 
 const routePrefetchers: Record<string, () => Promise<unknown>> = {
   '/data': importDataUpload,
@@ -40,6 +42,7 @@ const routePrefetchers: Record<string, () => Promise<unknown>> = {
   '/split': importSplitsTab,
   '/watches': importTelegramWatches,
   '/settings': importAppSettings,
+  '/broker': importWebullAccountPage,
 };
 
 function RouteLoader() {
@@ -171,6 +174,7 @@ function ProtectedLayout() {
     { to: '/calendar', label: 'Календарь' },
     { to: '/split', label: 'Сплиты' },
     { to: '/watches', label: 'Мониторинг' },
+    { to: '/broker', label: 'Брокер' },
   ];
 
   const prefetchRoute = (path: string) => {
@@ -409,6 +413,7 @@ export default function AppRouter() {
             <Route path="/split" element={withRouteSuspense(<SplitsTab />)} />
             <Route path="/watches" element={withRouteSuspense(<TelegramWatches />)} />
             <Route path="/settings" element={withRouteSuspense(<AppSettings />)} />
+            <Route path="/broker" element={withRouteSuspense(<WebullAccountPage />)} />
           </Route>
           <Route path="*" element={<Navigate to="/data" replace />} />
         </Routes>

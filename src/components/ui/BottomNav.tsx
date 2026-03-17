@@ -9,7 +9,8 @@ import {
     Calendar,
     Scissors,
     Settings,
-    Layers
+    Layers,
+    Wallet
 } from 'lucide-react';
 
 interface NavItem {
@@ -30,6 +31,7 @@ const secondaryNavItems: NavItem[] = [
     { to: '/enhance', label: 'Новые', icon: <PlusCircle className="w-6 h-6" /> },
     { to: '/calendar', label: 'Календарь', icon: <Calendar className="w-6 h-6" /> },
     { to: '/split', label: 'Сплиты', icon: <Scissors className="w-6 h-6" /> },
+    { to: '/broker', label: 'Брокер', icon: <Wallet className="w-6 h-6" /> },
     { to: '/settings', label: 'Настройки', icon: <Settings className="w-6 h-6" /> },
 ];
 

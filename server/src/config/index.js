@@ -46,6 +46,8 @@ const WATCHES_FILE = process.env.WATCHES_FILE || path.join(SERVER_DIR, 'telegram
 const TRADE_HISTORY_FILE = process.env.TRADE_HISTORY_FILE || path.join(SERVER_DIR, 'trade-history.json');
 const MONITOR_LOG_FILE = process.env.MONITOR_LOG_PATH || path.join(DATASETS_DIR, 'monitoring.log');
 const LOGIN_LOG_FILE = process.env.LOGIN_LOG_PATH || path.join(DATASETS_DIR, 'login-attempts.log');
+const AUTOTRADE_LOG_FILE = process.env.AUTOTRADE_LOG_PATH || path.join(DATASETS_DIR, 'autotrade.log');
+const AUTOTRADE_STATE_FILE = process.env.AUTOTRADE_STATE_PATH || path.join(DATASETS_DIR, 'autotrade-state.json');
 const TRADING_CALENDAR_FILE = path.join(SERVER_DIR, 'trading-calendar.json');
 
 // Timing constants
@@ -87,7 +89,14 @@ function getApiConfig() {
         POLYGON_API_KEY: process.env.POLYGON_API_KEY || '',
         PREFERRED_API_PROVIDER: process.env.PREFERRED_API_PROVIDER || 'alpha_vantage',
         TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN || '',
-        TELEGRAM_CHAT_ID: process.env.TELEGRAM_CHAT_ID || ''
+        TELEGRAM_CHAT_ID: process.env.TELEGRAM_CHAT_ID || '',
+        WEBULL_APP_KEY: process.env.WEBULL_APP_KEY || '',
+        WEBULL_APP_SECRET: process.env.WEBULL_APP_SECRET || '',
+        WEBULL_ACCESS_TOKEN: process.env.WEBULL_ACCESS_TOKEN || '',
+        WEBULL_ACCOUNT_ID: process.env.WEBULL_ACCOUNT_ID || '',
+        WEBULL_API_HOST: process.env.WEBULL_API_HOST || 'api.webull.com',
+        WEBULL_API_PROTOCOL: process.env.WEBULL_API_PROTOCOL || 'https:',
+        WEBULL_API_PORT: process.env.WEBULL_API_PORT || '',
     };
 }
 
@@ -103,6 +112,8 @@ module.exports = {
     TRADE_HISTORY_FILE,
     MONITOR_LOG_FILE,
     LOGIN_LOG_FILE,
+    AUTOTRADE_LOG_FILE,
+    AUTOTRADE_STATE_FILE,
     TRADING_CALENDAR_FILE,
 
     // Timing

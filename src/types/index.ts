@@ -246,6 +246,67 @@ export interface MonitorTradeHistoryResponse {
   lastUpdated: string | null;
 }
 
+export interface WebullDashboardResponse {
+  connection: {
+    configured: boolean;
+    hasAccessToken: boolean;
+    hasAccountId: boolean;
+    host: string;
+    protocol: string;
+    port: string | null;
+  };
+  accounts: unknown;
+  balance: unknown;
+  positions: unknown;
+  openOrders: unknown;
+  orderHistory: unknown;
+  fetchedAt: string | null;
+}
+
+export interface AutotradeLogsResponse {
+  fetchedAt: string | null;
+  autotrade: string[];
+  monitor: string[];
+  pending?: Array<{
+    clientOrderId: string;
+    symbol: string;
+    action: string;
+    status: string;
+    quantity?: number | null;
+    startedAt?: string | null;
+    lastCheckedAt?: string | null;
+    fillPrice?: number | null;
+    filledQty?: number | null;
+    source?: string | null;
+  }>;
+  recent?: Array<{
+    clientOrderId: string;
+    symbol: string;
+    action: string;
+    status: string;
+    quantity?: number | null;
+    startedAt?: string | null;
+    lastCheckedAt?: string | null;
+    fillPrice?: number | null;
+    filledQty?: number | null;
+    source?: string | null;
+  }>;
+}
+
+export interface CloseWebullPositionResponse {
+  success: boolean;
+  clientOrderId: string | null;
+  result: {
+    clientOrderId?: string | null;
+    submitted?: boolean;
+    simulated?: boolean;
+    error?: string | null;
+    order?: {
+      client_order_id?: string | null;
+    } | null;
+  };
+}
+
 export type IndicatorType = typeof IndicatorType[keyof typeof IndicatorType];
 
 // Simple utility types

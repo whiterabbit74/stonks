@@ -1,4 +1,4 @@
-import type { SavedDataset, MonitorTradeHistoryResponse } from '../types';
+import type { SavedDataset, MonitorTradeHistoryResponse, WebullDashboardResponse, AutotradeLogsResponse, CloseWebullPositionResponse } from '../types';
 import { logError, logWarn } from './error-logger';
 
 // Runtime-safe API base to avoid hardcoded dev hosts in production bundles
@@ -667,6 +667,31 @@ export class DatasetAPI {
       throw new Error(`${response.status} ${response.statusText}`);
     }
     return await response.json();
+  }
+
+  static async getWebullDashboard(forceRefresh = false): Promise<WebullDashboardResponse> {
+    const suffix = forceRefresh ? '?refresh=1' : '';
+    return apiCall<WebullDashboardResponse>(`${API_BASE_URL}/autotrade/webull/dashboard${suffix}`, {
+      timeout: 30000,
+      retries: 1,
+    });
+  }
+
+  static async getAutotradeLogs(limit = 200): Promise<AutotradeLogsResponse> {
+    return apiCall<AutotradeLogsResponse>(`${API_BASE_URL}/autotrade/logs?limit=${encodeURIComponent(String(limit))}`, {
+      timeout: 30000,
+      retries: 1,
+    });
+  }
+
+  static async closeWebullPosition(symbol: string): Promise<CloseWebullPositionResponse> {
+    return apiCall<CloseWebullPositionResponse>(`${API_BASE_URL}/autotrade/webull/close-position`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ symbol }),
+      timeout: 30000,
+      retries: 0,
+    });
   }
 
   static async sendTelegramTest(message?: string): Promise<{ success: boolean }> {

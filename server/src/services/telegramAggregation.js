@@ -5,6 +5,7 @@
  * ИСПРАВЛЕНО: Использует настраиваемый провайдер вместо захардкоженного Alpha Vantage
  * Сообщение теперь показывает "Hist✅/❌" вместо "AV✅/❌" и реальное имя провайдера
  */
+const crypto = require('crypto');
 const fs = require('fs-extra');
 const { getApiConfig, DATASETS_DIR } = require('../config');
 const { readSettings } = require('./settings');
@@ -21,6 +22,7 @@ const {
     isTradeHistoryLoaded,
     serializeTradeForResponse
 } = require('./trades');
+const { executeWebullSignal, appendAutotradeEvent } = require('./autotrade');
 const { getETParts, etKeyYMD, previousTradingDayET, getTradingSessionForDateET, isTradingDayByCalendarET, getCachedTradingCalendar } = require('./dates');
 const { refreshTickerAndCheckFreshness, appendMonitorLog } = require('./priceActualization');
 
@@ -291,9 +293,17 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
             // T-1 confirmations message
             if (minutesUntilClose === 1 && (!state.t1Sent || (options && options.forceSend))) {
                 const nowIso = new Date().toISOString();
+                const shouldPersistState = !options || options.updateState !== false;
                 const entryCandidates = [];
                 const potentialExitDetails = [];
                 const potentialEntryDetails = [];
+                const executionLogLines = [`T-1 execution start → chat ${chatId} date=${todayKey}`];
+                await appendAutotradeEvent('t1_execution_started', {
+                    source: 'telegram_t1',
+                    chat_id: String(chatId),
+                    date_key: todayKey,
+                    mode: options && options.test ? 'dry_run' : 'live',
+                });
 
                 // Sort by IBS (lowest first for entries)
                 const sortedByIBS = list.slice().sort((a, b) => {
@@ -327,20 +337,70 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
                         });
 
                         if (rec.confirmExit) {
-                            const trade = recordTradeExit({
+                            const exitCorrelationId = crypto.randomUUID().replace(/-/g, '');
+                            const brokerExit = await executeWebullSignal({
+                                action: 'exit',
                                 symbol: w.symbol,
-                                price: rec.quote?.current ?? null,
+                                currentPrice: rec.quote?.current ?? null,
                                 ibs: rec.ibs,
                                 decisionTime: nowIso,
                                 dateKey: todayKey,
+                                source: 'telegram_t1_exit',
+                                forceDryRun: !!(options && options.test),
+                                correlationId: exitCorrelationId,
                             });
-                            if (trade) {
+                            await appendAutotradeEvent('t1_signal_confirmed', {
+                                source: 'telegram_t1_exit',
+                                correlation_id: brokerExit.correlationId || exitCorrelationId,
+                                symbol: w.symbol,
+                                action: 'exit',
+                                status: brokerExit.submitted ? 'submitted' : 'blocked',
+                                mode: brokerExit.mode,
+                                quantity: brokerExit.quantity ?? null,
+                                price: typeof rec.quote?.current === 'number' ? Number(rec.quote.current.toFixed(4)) : null,
+                                ibs: typeof rec.ibs === 'number' ? Number(rec.ibs.toFixed(4)) : null,
+                                decision_time: nowIso,
+                                date_key: todayKey,
+                                error: brokerExit.error || null,
+                                simulated: !!brokerExit.simulated,
+                                client_order_id: brokerExit.clientOrderId || null,
+                                chat_id: String(chatId),
+                            }, brokerExit.submitted ? 'info' : 'warn');
+                            executionLogLines.push(`exit symbol=${w.symbol} broker_mode=${brokerExit.mode} submitted=${brokerExit.submitted ? 'yes' : 'no'} simulated=${brokerExit.simulated ? 'yes' : 'no'}${brokerExit.error ? ` error=${brokerExit.error}` : ''}`);
+                            if (shouldPersistState && brokerExit.shouldRecordLocalTrade) {
+                                const trade = recordTradeExit({
+                                    symbol: w.symbol,
+                                    price: rec.quote?.current ?? null,
+                                    ibs: rec.ibs,
+                                    decisionTime: nowIso,
+                                    dateKey: todayKey,
+                                });
+                                if (!trade) {
+                                    executionLogLines.push(`exit symbol=${w.symbol} local_record=failed`);
+                                } else {
+                                    executionLogLines.push(`exit symbol=${w.symbol} local_record=ok`);
+                                }
+                                await appendAutotradeEvent('t1_local_trade_recorded', {
+                                    source: 'telegram_t1_exit',
+                                    correlation_id: brokerExit.correlationId || exitCorrelationId,
+                                    symbol: w.symbol,
+                                    action: 'exit',
+                                    price: typeof rec.quote?.current === 'number' ? Number(rec.quote.current.toFixed(4)) : null,
+                                    ibs: typeof rec.ibs === 'number' ? Number(rec.ibs.toFixed(4)) : null,
+                                    decision_time: nowIso,
+                                    date_key: todayKey,
+                                    chat_id: String(chatId),
+                                    local_record: trade ? 'ok' : 'failed',
+                                }, trade ? 'info' : 'error');
+                            }
+                            if (brokerExit.submitted || brokerExit.shouldRecordLocalTrade) {
                                 exitAction = {
                                     symbol: w.symbol,
                                     price: rec.quote?.current ?? null,
                                     ibs: rec.ibs,
+                                    broker: brokerExit,
                                 };
-                                if (!options || options.updateState !== false) {
+                                if (shouldPersistState) {
                                     w.sent.confirm1 = true;
                                 }
                             }
@@ -362,7 +422,7 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
                 // Sync after potential exit
                 if (exitAction) {
                     const syncResult = synchronizeWatchesWithTradeHistory();
-                    if (syncResult.changes.length && (!options || options.updateState !== false)) {
+                    if (syncResult.changes.length && shouldPersistState) {
                         scheduleSaveWatches();
                     }
                 }
@@ -380,18 +440,68 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
                         }, null);
 
                         if (best) {
-                            const trade = recordTradeEntry({
+                            const entryCorrelationId = crypto.randomUUID().replace(/-/g, '');
+                            const brokerEntry = await executeWebullSignal({
+                                action: 'entry',
                                 symbol: best.w.symbol,
-                                price: best.quote?.current ?? null,
+                                currentPrice: best.quote?.current ?? null,
                                 ibs: best.ibs,
                                 decisionTime: nowIso,
                                 dateKey: todayKey,
+                                source: 'telegram_t1_entry',
+                                forceDryRun: !!(options && options.test),
+                                correlationId: entryCorrelationId,
                             });
-                            if (trade) {
+                            await appendAutotradeEvent('t1_signal_confirmed', {
+                                source: 'telegram_t1_entry',
+                                correlation_id: brokerEntry.correlationId || entryCorrelationId,
+                                symbol: best.w.symbol,
+                                action: 'entry',
+                                status: brokerEntry.submitted ? 'submitted' : 'blocked',
+                                mode: brokerEntry.mode,
+                                quantity: brokerEntry.quantity ?? null,
+                                price: typeof best.quote?.current === 'number' ? Number(best.quote.current.toFixed(4)) : null,
+                                ibs: typeof best.ibs === 'number' ? Number(best.ibs.toFixed(4)) : null,
+                                decision_time: nowIso,
+                                date_key: todayKey,
+                                error: brokerEntry.error || null,
+                                simulated: !!brokerEntry.simulated,
+                                client_order_id: brokerEntry.clientOrderId || null,
+                                chat_id: String(chatId),
+                            }, brokerEntry.submitted ? 'info' : 'warn');
+                            executionLogLines.push(`entry symbol=${best.w.symbol} broker_mode=${brokerEntry.mode} submitted=${brokerEntry.submitted ? 'yes' : 'no'} simulated=${brokerEntry.simulated ? 'yes' : 'no'}${brokerEntry.error ? ` error=${brokerEntry.error}` : ''}`);
+                            if (shouldPersistState && brokerEntry.shouldRecordLocalTrade) {
+                                const trade = recordTradeEntry({
+                                    symbol: best.w.symbol,
+                                    price: best.quote?.current ?? null,
+                                    ibs: best.ibs,
+                                    decisionTime: nowIso,
+                                    dateKey: todayKey,
+                                });
+                                if (!trade) {
+                                    executionLogLines.push(`entry symbol=${best.w.symbol} local_record=failed`);
+                                } else {
+                                    executionLogLines.push(`entry symbol=${best.w.symbol} local_record=ok`);
+                                }
+                                await appendAutotradeEvent('t1_local_trade_recorded', {
+                                    source: 'telegram_t1_entry',
+                                    correlation_id: brokerEntry.correlationId || entryCorrelationId,
+                                    symbol: best.w.symbol,
+                                    action: 'entry',
+                                    price: typeof best.quote?.current === 'number' ? Number(best.quote.current.toFixed(4)) : null,
+                                    ibs: typeof best.ibs === 'number' ? Number(best.ibs.toFixed(4)) : null,
+                                    decision_time: nowIso,
+                                    date_key: todayKey,
+                                    chat_id: String(chatId),
+                                    local_record: trade ? 'ok' : 'failed',
+                                }, trade ? 'info' : 'error');
+                            }
+                            if (brokerEntry.submitted || brokerEntry.shouldRecordLocalTrade) {
                                 entryAction = {
                                     symbol: best.w.symbol,
                                     price: best.quote?.current ?? null,
                                     ibs: best.ibs,
+                                    broker: brokerEntry,
                                 };
                             }
                         }
@@ -400,7 +510,7 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
 
                 // Final sync
                 const syncResult = synchronizeWatchesWithTradeHistory();
-                if (syncResult.changes.length && (!options || options.updateState !== false)) {
+                if (syncResult.changes.length && shouldPersistState) {
                     scheduleSaveWatches();
                 }
 
@@ -411,11 +521,29 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
                     const price = typeof exitAction.price === 'number' ? `$${exitAction.price.toFixed(2)}` : '—';
                     const ibs = exitAction.ibs != null ? `${(exitAction.ibs * 100).toFixed(1)}%` : '—';
                     decisionLines.push(`• Закрываем ${exitAction.symbol} по ${price} (IBS ${ibs})`);
+                    if (exitAction.broker) {
+                        if (exitAction.broker.submitted && exitAction.broker.simulated) {
+                            decisionLines.push(`• Webull: dry-run SELL MARKET (${exitAction.broker.quantity ?? '—'} шт.)`);
+                        } else if (exitAction.broker.submitted) {
+                            decisionLines.push(`• Webull: SELL MARKET отправлен (${exitAction.broker.quantity ?? '—'} шт.)`);
+                        } else {
+                            decisionLines.push(`• Webull ошибка: ${exitAction.broker.error || 'ордер не отправлен'}`);
+                        }
+                    }
                 }
                 if (entryAction) {
                     const price = typeof entryAction.price === 'number' ? `$${entryAction.price.toFixed(2)}` : '—';
                     const ibs = entryAction.ibs != null ? `${(entryAction.ibs * 100).toFixed(1)}%` : '—';
                     decisionLines.push(`• Открываем ${entryAction.symbol} по ${price} (IBS ${ibs})`);
+                    if (entryAction.broker) {
+                        if (entryAction.broker.submitted && entryAction.broker.simulated) {
+                            decisionLines.push(`• Webull: dry-run BUY MARKET (${entryAction.broker.quantity ?? '—'} шт.)`);
+                        } else if (entryAction.broker.submitted) {
+                            decisionLines.push(`• Webull: BUY MARKET отправлен (${entryAction.broker.quantity ?? '—'} шт.)`);
+                        } else {
+                            decisionLines.push(`• Webull ошибка: ${entryAction.broker.error || 'ордер не отправлен'}`);
+                        }
+                    }
                 }
                 if (!decisionLines.length) {
                     decisionLines.push('• Действий нет');
@@ -448,11 +576,25 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
                 const resp = await sendTelegramMessage(chatId, text);
 
                 if (resp.ok) {
-                    if (!options || options.updateState !== false) {
+                    if (shouldPersistState) {
                         state.t1Sent = true;
                         aggregateSendState.set(chatId, state);
                     }
-                    await appendMonitorLog([`T-1 report → chat ${chatId}`, ...decisionLines]);
+                    await appendMonitorLog([`T-1 report → chat ${chatId}`, ...decisionLines, ...executionLogLines]);
+                    await appendAutotradeEvent('t1_report_sent', {
+                        source: 'telegram_t1',
+                        chat_id: String(chatId),
+                        date_key: todayKey,
+                        decisions: decisionLines,
+                    });
+                } else {
+                    await appendMonitorLog([`T-1 report send failed → chat ${chatId}`, ...decisionLines, ...executionLogLines]);
+                    await appendAutotradeEvent('t1_report_failed', {
+                        source: 'telegram_t1',
+                        chat_id: String(chatId),
+                        date_key: todayKey,
+                        decisions: decisionLines,
+                    }, 'warn');
                 }
             }
         }
