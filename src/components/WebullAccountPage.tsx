@@ -95,14 +95,60 @@ function extractBalanceSummary(balance: unknown) {
   const candidate = root?.data && typeof root.data === 'object' && !Array.isArray(root.data)
     ? root.data as RowRecord
     : root;
+  const currencyAssets = Array.isArray(candidate?.account_currency_assets)
+    ? candidate.account_currency_assets.filter((item): item is RowRecord => !!item && typeof item === 'object')
+    : [];
+  const preferredCurrencyAsset = currencyAssets.find((item) => String(item.currency ?? '').toUpperCase() === 'USD')
+    ?? currencyAssets[0]
+    ?? null;
+  const currency = firstDefined(preferredCurrencyAsset, ['currency'])
+    ?? firstDefined(candidate, ['total_asset_currency', 'currency', 'base_currency', 'baseCurrency'])
+    ?? 'USD';
 
   return {
-    totalAssets: firstDefined(candidate, ['net_liquidation_value', 'netLiquidationValue', 'total_assets', 'totalAssets', 'market_value', 'marketValue']),
-    cashBalance: firstDefined(candidate, ['cash_balance', 'cashBalance', 'settled_cash', 'settledCash', 'cash']),
-    buyingPower: firstDefined(candidate, ['buying_power', 'buyingPower', 'day_trading_buying_power', 'dayTradingBuyingPower']),
-    unrealizedPnl: firstDefined(candidate, ['unrealized_profit_loss', 'unrealizedProfitLoss', 'unrealized_pnl', 'unrealizedPnl']),
+    totalAssets: firstDefined(candidate, [
+      'total_net_liquidation_value',
+      'net_liquidation_value',
+      'netLiquidationValue',
+      'total_assets',
+      'totalAssets',
+      'market_value',
+      'marketValue',
+    ]),
+    cashBalance: firstDefined(candidate, [
+      'total_cash_balance',
+      'cash_balance',
+      'cashBalance',
+      'settled_cash',
+      'settledCash',
+      'cash',
+    ]) ?? firstDefined(preferredCurrencyAsset, ['cash_balance', 'cashBalance']),
+    buyingPower: firstDefined(preferredCurrencyAsset, [
+      'overnight_buying_power',
+      'overnightBuyingPower',
+      'day_buying_power',
+      'dayBuyingPower',
+      'option_buying_power',
+      'optionBuyingPower',
+      'night_trading_buying_power',
+      'nightTradingBuyingPower',
+      'buying_power',
+      'buyingPower',
+    ]) ?? firstDefined(candidate, ['buying_power', 'buyingPower', 'day_trading_buying_power', 'dayTradingBuyingPower']),
+    unrealizedPnl: firstDefined(candidate, [
+      'total_unrealized_profit_loss',
+      'unrealized_profit_loss',
+      'unrealizedProfitLoss',
+      'unrealized_pnl',
+      'unrealizedPnl',
+    ]) ?? firstDefined(preferredCurrencyAsset, ['unrealized_profit_loss', 'unrealizedProfitLoss']),
+    dayPnl: firstDefined(candidate, [
+      'total_day_profit_loss',
+      'day_profit_loss',
+      'dayProfitLoss',
+    ]) ?? firstDefined(preferredCurrencyAsset, ['day_profit_loss', 'dayProfitLoss']),
     accountType: firstDefined(candidate, ['account_type', 'accountType']),
-    currency: firstDefined(candidate, ['currency', 'base_currency', 'baseCurrency']) ?? 'USD',
+    currency,
   };
 }
 
