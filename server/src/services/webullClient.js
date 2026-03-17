@@ -86,6 +86,7 @@ function requestWebull({ method, path, query = {}, body, configOverrides = {}, i
     const headers = {
         Accept: 'application/json',
         host,
+        'x-version': 'v2',
         'x-app-key': runtime.appKey,
         'x-signature-algorithm': 'HMAC-SHA1',
         'x-signature-nonce': nonce,
