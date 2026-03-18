@@ -45,8 +45,8 @@
 - если позиция открыта:
   - ищет сигнал выхода по `IBS >= highIBS`;
 - собирает Webull equity order;
-- при `dryRun=true` только возвращает решение;
-- при `dryRun=false` отправляет `preview` и `place order`, затем синхронизирует локальную trade history.
+- если автоторговля выключена, возвращает статус `off`;
+- если автоторговля включена, отправляет `preview` и `place order`, затем синхронизирует локальную trade history.
 
 ### 3. API routes
 
@@ -94,8 +94,7 @@
 На странице [`/broker`](/Users/q/Work/MAINPROJECTS/site_tradingibs/src/components/WebullAccountPage.tsx) теперь есть:
 
 - переключатель включения / выключения автоторговли;
-- отдельный выбор режима `dry-run / live`;
-- отображение текущего статуса `enabled / dry-run / live`;
+- отображение текущего статуса `[LIVE] / [OFF]`;
 - кнопка тестового `BUY AAPL 1 share MARKET` для проверки реального Webull order flow;
 - логи в обратном порядке, чтобы новые записи были сверху;
 - raw panels на вкладках для быстрой сверки payload'ов.
@@ -107,7 +106,6 @@
 ```json
 {
   "enabled": false,
-  "dryRun": true,
   "provider": "finnhub",
   "lowIBS": 0.1,
   "highIBS": 0.75,
@@ -140,7 +138,7 @@
 - Если аккаунт под 2FA, создать токен через `POST /api/autotrade/webull/token/create`.
 - Подтвердить токен в Webull App.
 - Проверить токен через `POST /api/autotrade/webull/token/check`.
-- Держать `dryRun=true`, `enabled=false`.
+- Держать `enabled=false`.
 
 ### Phase 2. Strategy validation
 
@@ -151,9 +149,8 @@
 
 ### Phase 3. Controlled execution
 
-- Включить `enabled=true`, но оставить `dryRun=true`.
+- Включить `enabled=true`.
 - Несколько сессий собрать логи решений.
-- После проверки перевести в `dryRun=false`.
 
 ### Phase 4. Hardening
 
@@ -172,7 +169,7 @@
 
 ### Already covered
 
-- `dryRun` включён по умолчанию;
+- автоторговля выключена по умолчанию;
 - секреты не пишутся в `settings.json`;
 - торговля ограничена одной активной позицией, как в текущей логике проекта;
 - используется только `EQUITY` order flow.
@@ -303,7 +300,7 @@
 Проверить руками:
 
 1. `GET /api/autotrade/config`
-2. `PATCH /api/autotrade/config` с `dryRun=true`, `enabled=true`
+2. `PATCH /api/autotrade/config` с `enabled=true`
 3. `POST /api/autotrade/evaluate`
 4. `GET /api/autotrade/webull/account`
 5. только потом `POST /api/autotrade/execute`

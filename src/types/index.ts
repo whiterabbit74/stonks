@@ -265,7 +265,6 @@ export interface WebullDashboardResponse {
 
 export interface AutoTradingConfig {
   enabled: boolean;
-  dryRun: boolean;
   provider: string;
   lowIBS: number;
   highIBS: number;

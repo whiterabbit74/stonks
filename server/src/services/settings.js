@@ -20,7 +20,6 @@ function getDefaultSettings() {
         defaultMultiTickerSymbols: 'SPY,QQQ,IWM',
         autoTrading: {
             enabled: false,
-            dryRun: true,
             provider: 'finnhub',
             lowIBS: 0.1,
             highIBS: 0.75,
@@ -47,6 +46,12 @@ function getDefaultSettings() {
     };
 }
 
+function normalizeAutoTradingSettings(autoTrading = {}) {
+    const next = { ...autoTrading };
+    delete next.dryRun;
+    return next;
+}
+
 /**
  * Reads settings from cache or disk, ensuring thread safety.
  */
@@ -65,9 +70,12 @@ async function readSettings() {
                     ...stored,
                     autoTrading: {
                         ...defaults.autoTrading,
-                        ...(stored && stored.autoTrading ? stored.autoTrading : {})
+                        ...normalizeAutoTradingSettings(stored && stored.autoTrading ? stored.autoTrading : {})
                     }
                 };
+                if (cachedSettings.autoTrading) {
+                    delete cachedSettings.autoTrading.dryRun;
+                }
                 return { ...cachedSettings };
             }
         } catch (e) {
@@ -87,8 +95,12 @@ async function readSettings() {
 async function writeSettings(settings) {
     return await settingsMutex.runExclusive(async () => {
         try {
-            await fs.writeJson(SETTINGS_FILE, settings, { spaces: 2 });
-            cachedSettings = { ...settings };
+            const sanitized = {
+                ...settings,
+                autoTrading: normalizeAutoTradingSettings(settings && settings.autoTrading ? settings.autoTrading : {})
+            };
+            await fs.writeJson(SETTINGS_FILE, sanitized, { spaces: 2 });
+            cachedSettings = { ...sanitized };
             return { ...cachedSettings };
         } catch (e) {
             console.error('Failed to write settings:', e.message);

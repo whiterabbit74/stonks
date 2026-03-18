@@ -116,7 +116,9 @@ router.post('/autotrade/webull/test-buy', async (req, res) => {
         res.json({ success: true, clientOrderId: result.clientOrderId || result.order?.client_order_id || null, result });
     } catch (error) {
         const message = error && error.message ? error.message : 'Failed to submit Webull test buy';
-        res.status(500).json({ error: message });
+        const response = error && error.response ? error.response : null;
+        const status = /market|session|outside|after-hours|after hours/i.test(message) ? 409 : 500;
+        res.status(status).json({ error: message, response });
     }
 });
 

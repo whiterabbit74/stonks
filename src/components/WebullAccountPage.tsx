@@ -393,9 +393,7 @@ export function WebullAccountPage() {
   }, [manualCloseStates, pendingOrders.length]);
 
   const autotradeStatusLabel = autotradeConfig
-    ? autotradeConfig.enabled
-      ? (autotradeConfig.dryRun ? 'Включена, dry-run' : 'Включена, live')
-      : 'Выключена'
+    ? (autotradeConfig.enabled ? 'LIVE' : 'OFF')
     : '—';
 
   const autotradeLastResult = autotradeState?.lastResult && typeof autotradeState.lastResult === 'object'
@@ -409,7 +407,7 @@ export function WebullAccountPage() {
     if (!autotradeConfig) return;
     const nextEnabled = !autotradeConfig.enabled;
     const confirmed = window.confirm(nextEnabled
-      ? `Включить автоторговлю? Сейчас режим: ${autotradeConfig.dryRun ? 'dry-run' : 'live'}`
+      ? 'Включить автоторговлю в live-режиме?'
       : 'Выключить автоторговлю?');
     if (!confirmed) return;
 
@@ -422,32 +420,6 @@ export function WebullAccountPage() {
       await loadAutotradeConfig();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Не удалось изменить статус автоторговли');
-    } finally {
-      setConfigSaving(false);
-    }
-  };
-
-  const handleSetAutotradeMode = async (dryRun: boolean) => {
-    if (!autotradeConfig) return;
-    if (autotradeConfig.dryRun === dryRun && autotradeConfig.enabled) {
-      return;
-    }
-    const confirmed = window.confirm(
-      dryRun
-        ? 'Переключить автоторговлю в dry-run? Реальные ордера отправляться не будут.'
-        : 'Переключить автоторговлю в live? Реальные ордера Webull будут отправляться при сигналах.'
-    );
-    if (!confirmed) return;
-
-    try {
-      setConfigSaving(true);
-      setError(null);
-      const next = await DatasetAPI.updateAutotradeConfig({ dryRun, enabled: true });
-      setAutotradeConfig(next.config);
-      setActionMessage(dryRun ? 'Режим переключён в dry-run и включён' : 'Режим переключён в live и включён');
-      await loadAutotradeConfig();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Не удалось изменить режим автоторговли');
     } finally {
       setConfigSaving(false);
     }
@@ -776,20 +748,6 @@ export function WebullAccountPage() {
               <Button variant={autotradeConfig?.enabled ? 'danger' : 'primary'} onClick={() => void handleToggleAutotrading()} isLoading={configSaving}>
                 {autotradeConfig?.enabled ? 'Выключить автоторговлю' : 'Включить автоторговлю'}
               </Button>
-              <Button
-                variant={autotradeConfig?.dryRun ? 'secondary' : 'primary'}
-                onClick={() => void handleSetAutotradeMode(true)}
-                isLoading={configSaving}
-              >
-                Dry-run
-              </Button>
-              <Button
-                variant={!autotradeConfig?.dryRun && autotradeConfig?.enabled ? 'danger' : 'primary'}
-                onClick={() => void handleSetAutotradeMode(false)}
-                isLoading={configSaving}
-              >
-                Live
-              </Button>
               <Button variant="secondary" onClick={() => void handleTestBuyAapl()} isLoading={testBuying}>
                 BUY AAPL 1 шт по рынку
               </Button>
@@ -804,8 +762,6 @@ export function WebullAccountPage() {
               `Pending / last tracked orders` показывает только заявки, которые были отправлены этим сайтом через manual close или T-1 execution. Обычные брокерские ордера из Webull без участия сайта здесь не появятся.
               {' '}
               Тестовая кнопка `BUY AAPL 1 шт по рынку` отправляет реальный ордер для проверки API и подписи.
-              {' '}
-              Кнопка `Live` переключает `autoTrading.dryRun=false` и включает боевое исполнение.
             </p>
           </div>
           <div className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
@@ -883,9 +839,20 @@ export function WebullAccountPage() {
             Баланс счёта, позиции, ордера, история и логи исполнения по Webull.
           </p>
         </div>
-        <Button variant="secondary" onClick={() => void Promise.all([loadDashboard(true), loadLogs()])} isLoading={refreshing} leftIcon={<RefreshCw className="h-4 w-4" />}>
-          Обновить
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <div
+            className={`rounded-full px-3 py-1 text-xs font-semibold tracking-wide ${
+              autotradeConfig?.enabled
+                ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-200'
+                : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-200'
+            }`}
+          >
+            {autotradeConfig?.enabled ? '[LIVE]' : '[OFF]'}
+          </div>
+          <Button variant="secondary" onClick={() => void Promise.all([loadDashboard(true), loadLogs(), loadAutotradeConfig()])} isLoading={refreshing} leftIcon={<RefreshCw className="h-4 w-4" />}>
+            Обновить
+          </Button>
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-2">

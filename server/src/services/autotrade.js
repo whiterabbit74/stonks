@@ -360,10 +360,11 @@ function splitSymbols(raw) {
 
 function sanitizeAutoTradingConfig(input, current = {}) {
     const next = { ...current };
-    const booleanFields = ['enabled', 'dryRun', 'allowNewEntries', 'allowExits', 'onlyFromTelegramWatches', 'allowFractionalShares', 'previewBeforeSend', 'cancelOpenOrdersBeforeEntry'];
+    const booleanFields = ['enabled', 'allowNewEntries', 'allowExits', 'onlyFromTelegramWatches', 'allowFractionalShares', 'previewBeforeSend', 'cancelOpenOrdersBeforeEntry'];
     for (const field of booleanFields) {
         if (typeof input[field] === 'boolean') next[field] = input[field];
     }
+    delete next.dryRun;
 
     const numberFields = ['lowIBS', 'highIBS', 'executionWindowSeconds', 'fixedQuantity', 'fixedNotionalUsd', 'maxPositionUsd', 'maxSlippageBps'];
     for (const field of numberFields) {
@@ -1020,7 +1021,7 @@ async function executeWebullSignal({ action, symbol, currentPrice, ibs, decision
     const autoTrading = settings.autoTrading || {};
     const runtime = buildWebullRuntimeConfig();
     const liveEnabled = forceLive || autoTrading.enabled === true;
-    const dryRun = forceLive ? false : (forceDryRun || autoTrading.dryRun !== false);
+    const dryRun = false;
     const normalizedSymbol = toSafeTicker(symbol);
     const resolvedCorrelationId = correlationId || generateCorrelationId();
 
@@ -1039,12 +1040,12 @@ async function executeWebullSignal({ action, symbol, currentPrice, ibs, decision
                 ibs,
                 decisionTime,
                 dateKey,
-                mode: dryRun ? 'dry_run' : 'live',
+                mode: 'live',
             }),
             reason: `pending_${action}_tracker_exists`,
         }, 'warn');
         return {
-            mode: dryRun ? 'dry_run' : 'live',
+            mode: 'live',
             submitted: false,
             simulated: false,
             shouldRecordLocalTrade: false,
@@ -1065,11 +1066,11 @@ async function executeWebullSignal({ action, symbol, currentPrice, ibs, decision
                 ibs,
                 decisionTime,
                 dateKey,
-                mode: 'disabled',
+                mode: 'off',
             }),
             reason: 'autotrading_disabled',
         });
-        return { mode: 'disabled', submitted: false, shouldRecordLocalTrade: false, clientOrderId: null, correlationId: resolvedCorrelationId, error: 'Autotrading is disabled' };
+        return { mode: 'off', submitted: false, shouldRecordLocalTrade: false, clientOrderId: null, correlationId: resolvedCorrelationId, error: 'Autotrading is disabled' };
     }
 
     if (!runtime.appKey || !runtime.appSecret || !runtime.accountId) {
@@ -1083,11 +1084,11 @@ async function executeWebullSignal({ action, symbol, currentPrice, ibs, decision
                 ibs,
                 decisionTime,
                 dateKey,
-                mode: 'misconfigured',
+                mode: 'off',
             }),
             reason: 'missing_webull_credentials',
         }, 'error');
-        return { mode: 'misconfigured', submitted: false, shouldRecordLocalTrade: false, error: 'Webull credentials are missing', clientOrderId: null, correlationId: resolvedCorrelationId };
+        return { mode: 'off', submitted: false, shouldRecordLocalTrade: false, error: 'Webull credentials are missing', clientOrderId: null, correlationId: resolvedCorrelationId };
     }
 
     const side = action === 'entry' ? 'BUY' : 'SELL';
@@ -1128,11 +1129,11 @@ async function executeWebullSignal({ action, symbol, currentPrice, ibs, decision
                         ibs,
                         decisionTime,
                         dateKey,
-                        mode: dryRun ? 'dry_run' : 'live',
+                        mode: 'live',
                     }),
                     reason: 'no_broker_position_for_exit',
                 }, 'warn');
-                return { mode: dryRun ? 'dry_run' : 'live', submitted: false, shouldRecordLocalTrade: false, error: `No broker position found for ${normalizedSymbol}`, clientOrderId: null, correlationId: resolvedCorrelationId };
+                return { mode: 'live', submitted: false, shouldRecordLocalTrade: false, error: `No broker position found for ${normalizedSymbol}`, clientOrderId: null, correlationId: resolvedCorrelationId };
             }
             orderBuild = {
                 item: {
@@ -1164,12 +1165,12 @@ async function executeWebullSignal({ action, symbol, currentPrice, ibs, decision
                 ibs,
                 decisionTime,
                 dateKey,
-                mode: dryRun ? 'dry_run' : 'live',
+                mode: 'live',
             }),
             reason: message,
         }, 'error');
         return {
-            mode: dryRun ? 'dry_run' : 'live',
+            mode: 'live',
             submitted: false,
             simulated: false,
             shouldRecordLocalTrade: false,
@@ -1180,37 +1181,6 @@ async function executeWebullSignal({ action, symbol, currentPrice, ibs, decision
     }
 
     const order = orderBuild.item;
-    if (dryRun) {
-        await appendAutotradeEvent('order_simulated', {
-            ...buildExecutionLogContext({
-                source,
-                correlationId: resolvedCorrelationId,
-                symbol: normalizedSymbol,
-                action,
-                clientOrderId: order.client_order_id,
-                quantity,
-                price: currentPrice,
-                ibs,
-                entryFunds,
-                decisionTime,
-                dateKey,
-                mode: 'dry_run',
-            }),
-            side,
-            order_type: 'MARKET',
-        });
-        return {
-            mode: 'dry_run',
-            submitted: true,
-            simulated: true,
-            shouldRecordLocalTrade: true,
-            order,
-            quantity,
-            clientOrderId: order.client_order_id,
-            correlationId: resolvedCorrelationId,
-        };
-    }
-
     let stage = 'place_order';
     try {
         if (action === 'entry' && autoTrading.cancelOpenOrdersBeforeEntry) {
@@ -1442,7 +1412,7 @@ async function buyWebullTestMarket(symbol = 'AAPL', quantity = 1, options = {}) 
         side: 'BUY',
         order_type: 'MARKET',
         quantity: String(numericQuantity),
-        support_trading_session: 'CORE',
+        support_trading_session: 'N',
         entrust_type: 'QTY',
         time_in_force: 'DAY',
     };
@@ -1581,7 +1551,7 @@ async function executeAutoTradeCycle(options = {}) {
     if (decision.action === 'none') {
         autoTradeState.lastRunAt = new Date().toISOString();
         autoTradeState.lastResult = evaluation;
-        return { ...evaluation, executed: false, live: !autoTrading.dryRun };
+        return { ...evaluation, executed: false, live: !!autoTrading.enabled };
     }
 
     if (!decision.candidate || !decision.candidate.ok) {
@@ -1591,7 +1561,7 @@ async function executeAutoTradeCycle(options = {}) {
     const result = {
         ...evaluation,
         executed: false,
-        live: !autoTrading.dryRun,
+        live: !!autoTrading.enabled,
         broker: null
     };
 
@@ -1602,8 +1572,7 @@ async function executeAutoTradeCycle(options = {}) {
         ibs: decision.candidate.ibs,
         decisionTime: evaluation.evaluatedAt,
         dateKey: evaluation.todayKey,
-        source: options.trigger || 'execute_autotrade_cycle',
-        forceDryRun: autoTrading.dryRun === true,
+            source: options.trigger || 'execute_autotrade_cycle',
         notifyOnResult: true,
     });
     result.broker = brokerResult;
