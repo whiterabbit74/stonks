@@ -379,6 +379,7 @@ function sanitizeAutoTradingConfig(input, current = {}) {
     if (typeof next.maxSlippageBps === 'number') next.maxSlippageBps = Math.max(0, Math.min(1000, next.maxSlippageBps));
 
     if (typeof input.provider === 'string' && ['finnhub'].includes(input.provider)) next.provider = input.provider;
+    if (typeof input.entrySizingMode === 'string' && ['balance', 'quantity', 'notional'].includes(input.entrySizingMode)) next.entrySizingMode = input.entrySizingMode;
     if (typeof input.sizingMode === 'string' && ['quantity', 'notional'].includes(input.sizingMode)) next.sizingMode = input.sizingMode;
     if (typeof input.orderType === 'string' && ['MARKET', 'LIMIT'].includes(input.orderType)) next.orderType = input.orderType;
     if (typeof input.timeInForce === 'string' && ['DAY', 'GTC'].includes(input.timeInForce)) next.timeInForce = input.timeInForce;
@@ -446,16 +447,79 @@ async function evaluateMarketSnapshotForSymbols(symbols, autoTrading) {
     return rows;
 }
 
-function computeOrderQuantity(currentPrice, autoTrading) {
+function extractEntryFundsFromBalance(balancePayload, autoTrading = {}) {
+    const root = balancePayload && typeof balancePayload === 'object' && balancePayload.data && typeof balancePayload.data === 'object'
+        ? balancePayload.data
+        : balancePayload;
+    if (!root || typeof root !== 'object') return null;
+
+    const assets = Array.isArray(root.account_currency_assets)
+        ? root.account_currency_assets.filter((item) => item && typeof item === 'object')
+        : [];
+    const preferredAsset = assets.find((item) => String(item.currency || '').toUpperCase() === 'USD') || assets[0] || null;
+    const session = String(autoTrading.supportTradingSession || 'CORE').toUpperCase();
+    const candidates = [];
+
+    if (preferredAsset) {
+        if (session === 'N') {
+            candidates.push(
+                preferredAsset.night_trading_buying_power,
+                preferredAsset.overnight_buying_power,
+                preferredAsset.day_buying_power,
+                preferredAsset.option_buying_power,
+                preferredAsset.cash_balance,
+                preferredAsset.net_liquidation_value,
+            );
+        } else {
+            candidates.push(
+                preferredAsset.day_buying_power,
+                preferredAsset.overnight_buying_power,
+                preferredAsset.night_trading_buying_power,
+                preferredAsset.option_buying_power,
+                preferredAsset.cash_balance,
+                preferredAsset.net_liquidation_value,
+            );
+        }
+    }
+
+    candidates.push(
+        root.total_cash_balance,
+        root.cash_balance,
+        root.total_net_liquidation_value,
+        root.net_liquidation_value,
+    );
+
+    for (const value of candidates) {
+        const numeric = toFiniteNumber(value);
+        if (numeric != null && numeric > 0) {
+            return numeric;
+        }
+    }
+    return null;
+}
+
+function computeOrderQuantity(currentPrice, autoTrading, availableFunds = null) {
     if (!(currentPrice > 0)) {
         throw new Error('Invalid market price for quantity calculation');
     }
 
-    let quantity = autoTrading.sizingMode === 'quantity'
-        ? autoTrading.fixedQuantity
-        : autoTrading.fixedNotionalUsd / currentPrice;
-    const notionalCapQty = autoTrading.maxPositionUsd / currentPrice;
-    quantity = Math.min(quantity, notionalCapQty);
+    const sizingMode = String(autoTrading.entrySizingMode || autoTrading.sizingMode || 'balance').toLowerCase();
+    let quantity;
+    if (sizingMode === 'quantity') {
+        quantity = autoTrading.fixedQuantity;
+    } else if (sizingMode === 'notional') {
+        quantity = autoTrading.fixedNotionalUsd / currentPrice;
+        const notionalCapQty = autoTrading.maxPositionUsd > 0 ? autoTrading.maxPositionUsd / currentPrice : null;
+        if (notionalCapQty != null) {
+            quantity = Math.min(quantity, notionalCapQty);
+        }
+    } else {
+        if (!(Number.isFinite(availableFunds) && availableFunds > 0)) {
+            throw new Error('Unable to read available funds for balance sizing');
+        }
+        const funds = availableFunds;
+        quantity = funds / currentPrice;
+    }
 
     if (!autoTrading.allowFractionalShares) {
         quantity = Math.floor(quantity);
@@ -464,7 +528,7 @@ function computeOrderQuantity(currentPrice, autoTrading) {
     }
 
     if (!(quantity > 0)) {
-        throw new Error('Calculated order quantity is zero; increase quantity or notional limits');
+        throw new Error('Calculated order quantity is zero; increase funds or reduce price');
     }
     return quantity;
 }
@@ -478,8 +542,8 @@ function buildOrderPrice(side, currentPrice, autoTrading) {
     return Number(raw.toFixed(4));
 }
 
-function buildEquityOrderItem({ symbol, side, currentPrice, autoTrading }) {
-    const quantity = computeOrderQuantity(currentPrice, autoTrading);
+function buildEquityOrderItem({ symbol, side, currentPrice, autoTrading, availableFunds = null }) {
+    const quantity = computeOrderQuantity(currentPrice, autoTrading, availableFunds);
     const limitPrice = buildOrderPrice(side, currentPrice, autoTrading);
     const item = {
         client_order_id: crypto.randomUUID().replace(/-/g, ''),
@@ -638,6 +702,7 @@ function buildExecutionLogContext(base = {}) {
         quantity: base.quantity ?? null,
         price: typeof base.price === 'number' ? Number(base.price.toFixed(4)) : null,
         ibs: typeof base.ibs === 'number' ? Number(base.ibs.toFixed(4)) : null,
+        entry_funds: typeof base.entryFunds === 'number' ? Number(base.entryFunds.toFixed(4)) : null,
         decision_time: base.decisionTime || null,
         date_key: base.dateKey || null,
         attempt: base.attempt ?? null,
@@ -1028,58 +1093,89 @@ async function executeWebullSignal({ action, symbol, currentPrice, ibs, decision
     const side = action === 'entry' ? 'BUY' : 'SELL';
     let orderBuild;
     let quantity;
+    let entryFunds = null;
 
-    if (action === 'entry') {
-        orderBuild = buildEquityOrderItem({
-            symbol: normalizedSymbol,
-            side,
-            currentPrice,
-            autoTrading: { ...autoTrading, orderType: 'MARKET' }
-        });
-        quantity = orderBuild.quantity;
-    } else {
-        const positionsResp = await getAccountPositions(runtime.accountId);
-        const positions = Array.isArray(positionsResp?.data)
-            ? positionsResp.data
-            : (Array.isArray(positionsResp?.data?.positions) ? positionsResp.data.positions : []);
-        const brokerPosition = positions.find((position) => {
-            const candidate = toSafeTicker(position?.symbol || position?.ticker || position?.display_symbol || '');
-            return candidate === normalizedSymbol;
-        });
-        quantity = normalizePositionQuantity(brokerPosition, autoTrading.allowFractionalShares === true);
-        if (!(quantity > 0)) {
-            await appendAutotradeEvent('execution_blocked', {
-                ...buildExecutionLogContext({
-                    source,
-                    correlationId: resolvedCorrelationId,
-                    symbol: normalizedSymbol,
-                    action,
-                    price: currentPrice,
-                    ibs,
-                    decisionTime,
-                    dateKey,
-                    mode: dryRun ? 'dry_run' : 'live',
-                }),
-                reason: 'no_broker_position_for_exit',
-            }, 'warn');
-            return { mode: dryRun ? 'dry_run' : 'live', submitted: false, shouldRecordLocalTrade: false, error: `No broker position found for ${normalizedSymbol}`, clientOrderId: null, correlationId: resolvedCorrelationId };
-        }
-        orderBuild = {
-            item: {
-                client_order_id: crypto.randomUUID().replace(/-/g, ''),
-                combo_type: 'NORMAL',
-                instrument_type: 'EQUITY',
+    try {
+        if (action === 'entry') {
+            const entryBalanceResp = await getAccountBalance(runtime.accountId);
+            entryFunds = extractEntryFundsFromBalance(entryBalanceResp, autoTrading);
+            orderBuild = buildEquityOrderItem({
                 symbol: normalizedSymbol,
-                market: 'US',
                 side,
-                order_type: 'MARKET',
-                quantity: autoTrading.allowFractionalShares ? quantity.toFixed(5).replace(/0+$/, '').replace(/\.$/, '') : String(quantity),
-                support_trading_session: autoTrading.supportTradingSession || 'CORE',
-                entrust_type: 'QTY',
-                time_in_force: autoTrading.timeInForce || 'DAY',
-            },
-            quantity,
-            limitPrice: null,
+                currentPrice,
+                autoTrading: { ...autoTrading, orderType: 'MARKET', entrySizingMode: autoTrading.entrySizingMode || 'balance' },
+                availableFunds: entryFunds,
+            });
+            quantity = orderBuild.quantity;
+        } else {
+            const positionsResp = await getAccountPositions(runtime.accountId);
+            const positions = Array.isArray(positionsResp?.data)
+                ? positionsResp.data
+                : (Array.isArray(positionsResp?.data?.positions) ? positionsResp.data.positions : []);
+            const brokerPosition = positions.find((position) => {
+                const candidate = toSafeTicker(position?.symbol || position?.ticker || position?.display_symbol || '');
+                return candidate === normalizedSymbol;
+            });
+            quantity = normalizePositionQuantity(brokerPosition, autoTrading.allowFractionalShares === true);
+            if (!(quantity > 0)) {
+                await appendAutotradeEvent('execution_blocked', {
+                    ...buildExecutionLogContext({
+                        source,
+                        correlationId: resolvedCorrelationId,
+                        symbol: normalizedSymbol,
+                        action,
+                        price: currentPrice,
+                        ibs,
+                        decisionTime,
+                        dateKey,
+                        mode: dryRun ? 'dry_run' : 'live',
+                    }),
+                    reason: 'no_broker_position_for_exit',
+                }, 'warn');
+                return { mode: dryRun ? 'dry_run' : 'live', submitted: false, shouldRecordLocalTrade: false, error: `No broker position found for ${normalizedSymbol}`, clientOrderId: null, correlationId: resolvedCorrelationId };
+            }
+            orderBuild = {
+                item: {
+                    client_order_id: crypto.randomUUID().replace(/-/g, ''),
+                    combo_type: 'NORMAL',
+                    instrument_type: 'EQUITY',
+                    symbol: normalizedSymbol,
+                    market: 'US',
+                    side,
+                    order_type: 'MARKET',
+                    quantity: autoTrading.allowFractionalShares ? quantity.toFixed(5).replace(/0+$/, '').replace(/\.$/, '') : String(quantity),
+                    support_trading_session: autoTrading.supportTradingSession || 'CORE',
+                    entrust_type: 'QTY',
+                    time_in_force: autoTrading.timeInForce || 'DAY',
+                },
+                quantity,
+                limitPrice: null,
+            };
+        }
+    } catch (error) {
+        const message = error && error.message ? error.message : 'order_build_failed';
+        await appendAutotradeEvent('execution_blocked', {
+            ...buildExecutionLogContext({
+                source,
+                correlationId: resolvedCorrelationId,
+                symbol: normalizedSymbol,
+                action,
+                price: currentPrice,
+                ibs,
+                decisionTime,
+                dateKey,
+                mode: dryRun ? 'dry_run' : 'live',
+            }),
+            reason: message,
+        }, 'error');
+        return {
+            mode: dryRun ? 'dry_run' : 'live',
+            submitted: false,
+            simulated: false,
+            shouldRecordLocalTrade: false,
+            error: message,
+            clientOrderId: null,
+            correlationId: resolvedCorrelationId,
         };
     }
 
@@ -1095,6 +1191,7 @@ async function executeWebullSignal({ action, symbol, currentPrice, ibs, decision
                 quantity,
                 price: currentPrice,
                 ibs,
+                entryFunds,
                 decisionTime,
                 dateKey,
                 mode: 'dry_run',
@@ -1178,6 +1275,7 @@ async function executeWebullSignal({ action, symbol, currentPrice, ibs, decision
                 quantity,
                 price: currentPrice,
                 ibs,
+                entryFunds,
                 decisionTime,
                 dateKey,
                 mode: 'live',
@@ -1223,6 +1321,7 @@ async function executeWebullSignal({ action, symbol, currentPrice, ibs, decision
                 quantity,
                 price: currentPrice,
                 ibs,
+                entryFunds,
                 decisionTime,
                 dateKey,
                 mode: 'live',
