@@ -1,6 +1,11 @@
 const https = require('https');
 const crypto = require('crypto');
+const fs = require('fs-extra');
+const fsp = require('fs/promises');
+const path = require('path');
 const { getApiConfig } = require('../config');
+const { WEBULL_RAW_LOG_FILE } = require('../config');
+const { getETParts } = require('./dates');
 
 function buildWebullRuntimeConfig(overrides = {}) {
     const env = getApiConfig();
@@ -19,6 +24,74 @@ function buildWebullRuntimeConfig(overrides = {}) {
 
 function buildHostHeader({ hostname, port }) {
     return port ? `${hostname}:${port}` : hostname;
+}
+
+function getWebullRawLogBaseParts() {
+    const ext = path.extname(WEBULL_RAW_LOG_FILE) || '.log';
+    const dir = path.dirname(WEBULL_RAW_LOG_FILE);
+    const base = path.basename(WEBULL_RAW_LOG_FILE, ext);
+    return { dir, base, ext };
+}
+
+function getWebullRawLogMonthKey(date = new Date()) {
+    const et = getETParts(date);
+    return `${et.y}-${String(et.m).padStart(2, '0')}`;
+}
+
+function getWebullRawLogPathForMonth(monthKey) {
+    const { dir, base, ext } = getWebullRawLogBaseParts();
+    return path.join(dir, `${base}-${monthKey}${ext}`);
+}
+
+function getCurrentWebullRawLogPath() {
+    return getWebullRawLogPathForMonth(getWebullRawLogMonthKey(new Date()));
+}
+
+function maskHeaderValue(key, value) {
+    const normalizedKey = String(key || '').toLowerCase();
+    if (value === undefined || value === null) return value;
+    if (normalizedKey.includes('secret')) return '***';
+    if (normalizedKey.includes('token')) {
+        const raw = String(value);
+        return raw.length > 12 ? `${raw.slice(0, 6)}***${raw.slice(-4)}` : '***';
+    }
+    if (normalizedKey === 'authorization') return '***';
+    return value;
+}
+
+function sanitizeHeaders(headers = {}) {
+    const out = {};
+    for (const [key, value] of Object.entries(headers || {})) {
+        out[key] = maskHeaderValue(key, value);
+    }
+    return out;
+}
+
+function normalizeRawLogEntry(entry) {
+    if (entry && typeof entry === 'object') {
+        return {
+            ts: entry.ts || new Date().toISOString(),
+            level: entry.level || 'info',
+            event: entry.event || 'webull_request',
+            ...entry,
+        };
+    }
+    return {
+        ts: new Date().toISOString(),
+        level: 'info',
+        event: 'webull_request',
+        message: String(entry),
+    };
+}
+
+async function appendWebullRawLog(entry) {
+    try {
+        const logPath = getCurrentWebullRawLogPath();
+        await fs.ensureFile(logPath);
+        await fs.appendFile(logPath, `${JSON.stringify(normalizeRawLogEntry(entry))}\n`);
+    } catch (error) {
+        console.warn('Failed to append Webull raw log:', error && error.message ? error.message : error);
+    }
 }
 
 function getEquityOrderCategory(orderItems) {
@@ -66,7 +139,7 @@ function buildSignature({ path, query = {}, bodyString = '', headersToSign, appS
         .digest('base64');
 }
 
-function requestWebull({ method, path, query = {}, body, configOverrides = {}, includeAccessToken = true, signedHeaders = {}, requestHeaders = {} }) {
+function requestWebull({ method, path, query = {}, body, configOverrides = {}, includeAccessToken = true, signedHeaders = {}, requestHeaders = {}, version = 'v1' }) {
     const runtime = buildWebullRuntimeConfig(configOverrides);
     if (!runtime.appKey || !runtime.appSecret) {
         throw new Error('Webull credentials are not configured');
@@ -102,7 +175,7 @@ function requestWebull({ method, path, query = {}, body, configOverrides = {}, i
     const headers = {
         Accept: 'application/json',
         host,
-        'x-version': 'v2',
+        'x-version': version,
         'x-app-key': runtime.appKey,
         'x-signature-algorithm': 'HMAC-SHA1',
         'x-signature-nonce': nonce,
@@ -121,6 +194,7 @@ function requestWebull({ method, path, query = {}, body, configOverrides = {}, i
     }
 
     return new Promise((resolve, reject) => {
+        const startedAt = new Date().toISOString();
         const req = https.request({
             protocol: runtime.protocol,
             hostname: runtime.hostname,
@@ -139,6 +213,21 @@ function requestWebull({ method, path, query = {}, body, configOverrides = {}, i
                     parsed = raw;
                 }
                 if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
+                    void appendWebullRawLog({
+                        ts: startedAt,
+                        level: 'info',
+                        event: 'request_ok',
+                        method,
+                        path,
+                        query,
+                        body: body || null,
+                        requestHeaders: sanitizeHeaders(headers),
+                        responseStatus: res.statusCode,
+                        responseHeaders: sanitizeHeaders(res.headers),
+                        responseBody: parsed,
+                        host: runtime.hostname,
+                        requestPath,
+                    });
                     return resolve({
                         statusCode: res.statusCode,
                         headers: res.headers,
@@ -158,10 +247,44 @@ function requestWebull({ method, path, query = {}, body, configOverrides = {}, i
                 err.errorCode = errorCode;
                 err.errorMsg = errorMessage;
                 err.requestId = requestId;
+                void appendWebullRawLog({
+                    ts: startedAt,
+                    level: 'error',
+                    event: 'request_failed',
+                    method,
+                    path,
+                    query,
+                    body: body || null,
+                    requestHeaders: sanitizeHeaders(headers),
+                    responseStatus: res.statusCode,
+                    responseHeaders: sanitizeHeaders(res.headers),
+                    responseBody: responseObject || parsed,
+                    error: message,
+                    errorCode,
+                    errorMsg: errorMessage,
+                    requestId,
+                    host: runtime.hostname,
+                    requestPath,
+                });
                 reject(err);
             });
         });
-        req.on('error', reject);
+        req.on('error', (error) => {
+            void appendWebullRawLog({
+                ts: startedAt,
+                level: 'error',
+                event: 'request_error',
+                method,
+                path,
+                query,
+                body: body || null,
+                requestHeaders: sanitizeHeaders(headers),
+                error: error && error.message ? error.message : String(error),
+                host: runtime.hostname,
+                requestPath,
+            });
+            reject(error);
+        });
         req.setTimeout(15000, () => req.destroy(new Error('Webull request timeout')));
         if (bodyString) req.write(bodyString);
         req.end();
@@ -175,7 +298,7 @@ async function getAccountList(configOverrides = {}) {
 async function getAccountBalance(accountId, configOverrides = {}) {
     return requestWebull({
         method: 'GET',
-        path: '/openapi/assets/balance',
+        path: '/openapi/account/balance',
         query: { account_id: accountId || buildWebullRuntimeConfig(configOverrides).accountId },
         configOverrides
     });
@@ -184,7 +307,7 @@ async function getAccountBalance(accountId, configOverrides = {}) {
 async function getAccountPositions(accountId, configOverrides = {}) {
     return requestWebull({
         method: 'GET',
-        path: '/openapi/assets/positions',
+        path: '/openapi/account/positions',
         query: { account_id: accountId || buildWebullRuntimeConfig(configOverrides).accountId },
         configOverrides
     });
@@ -196,7 +319,8 @@ async function createAccessToken(configOverrides = {}) {
         path: '/openapi/auth/token/create',
         body: {},
         configOverrides,
-        includeAccessToken: false
+        includeAccessToken: false,
+        version: 'v2'
     });
 }
 
@@ -206,7 +330,8 @@ async function checkAccessToken(token, configOverrides = {}) {
         path: '/openapi/auth/token/check',
         body: { token: token || buildWebullRuntimeConfig(configOverrides).accessToken },
         configOverrides,
-        includeAccessToken: false
+        includeAccessToken: false,
+        version: 'v2'
     });
 }
 
@@ -214,7 +339,7 @@ async function previewOrder(accountId, orderItems, configOverrides = {}) {
     const category = getEquityOrderCategory(orderItems);
     return requestWebull({
         method: 'POST',
-        path: '/openapi/trade/order/preview',
+        path: '/openapi/account/orders/preview',
         body: {
             account_id: accountId || buildWebullRuntimeConfig(configOverrides).accountId,
             new_orders: orderItems
@@ -229,7 +354,7 @@ async function placeOrder(accountId, orderItems, configOverrides = {}) {
     const category = getEquityOrderCategory(orderItems);
     return requestWebull({
         method: 'POST',
-        path: '/openapi/trade/order/place',
+        path: '/openapi/account/orders/place',
         body: {
             account_id: accountId || buildWebullRuntimeConfig(configOverrides).accountId,
             new_orders: orderItems
@@ -243,7 +368,7 @@ async function placeOrder(accountId, orderItems, configOverrides = {}) {
 async function cancelOrder(accountId, clientOrderId, configOverrides = {}) {
     return requestWebull({
         method: 'POST',
-        path: '/openapi/trade/order/cancel',
+        path: '/openapi/account/orders/cancel',
         body: {
             account_id: accountId || buildWebullRuntimeConfig(configOverrides).accountId,
             client_order_id: clientOrderId
@@ -255,7 +380,7 @@ async function cancelOrder(accountId, clientOrderId, configOverrides = {}) {
 async function getOrderDetail(accountId, clientOrderId, configOverrides = {}) {
     return requestWebull({
         method: 'GET',
-        path: '/openapi/trade/order/detail',
+        path: '/openapi/account/orders/detail',
         query: {
             account_id: accountId || buildWebullRuntimeConfig(configOverrides).accountId,
             client_order_id: clientOrderId
@@ -272,7 +397,7 @@ async function getOpenOrders(accountId, options = {}, configOverrides = {}) {
     if (options.lastClientOrderId) query.last_client_order_id = options.lastClientOrderId;
     return requestWebull({
         method: 'GET',
-        path: '/openapi/trade/order/open',
+        path: '/trade/orders/list-open',
         query,
         configOverrides
     });
@@ -286,7 +411,7 @@ async function getOrderHistory(accountId, options = {}, configOverrides = {}) {
     if (options.lastClientOrderId) query.last_client_order_id = options.lastClientOrderId;
     return requestWebull({
         method: 'GET',
-        path: '/openapi/trade/order/history',
+        path: '/openapi/account/orders/history',
         query,
         configOverrides
     });
@@ -296,6 +421,7 @@ module.exports = {
     buildWebullRuntimeConfig,
     buildSignature,
     requestWebull,
+    getCurrentWebullRawLogPath,
     getAccountList,
     getAccountBalance,
     getAccountPositions,

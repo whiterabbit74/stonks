@@ -58,3 +58,4 @@ server-*.tgz
 
 # Local reference clones / scratch space
 .codex_tmp/
+.codex/

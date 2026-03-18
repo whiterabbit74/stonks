@@ -494,6 +494,10 @@ export function AppSettings() {
               <input type="radio" name="quoteProvider" checked={resultsQuoteProvider === 'twelve_data'} onChange={() => setResultsQuoteProvider('twelve_data')} />
               Twelve Data
             </label>
+            <label className="flex items-center gap-2 text-sm dark:text-gray-300">
+              <input type="radio" name="quoteProvider" checked={resultsQuoteProvider === 'webull'} onChange={() => setResultsQuoteProvider('webull')} />
+              Webull
+            </label>
           </div>
 
           <div className="bg-gray-50 dark:bg-gray-800 rounded p-3 border dark:border-gray-700">
@@ -598,6 +602,10 @@ export function AppSettings() {
                     <span className="text-purple-600 dark:text-purple-400 font-medium">Twelve Data:</span>
                     <span className="text-gray-600 dark:text-gray-400">8 запросов/минуту, 800/день. Баланс между скоростью и лимитами.</span>
                   </div>
+                  <div className="flex items-start gap-2">
+                    <span className="text-indigo-600 dark:text-indigo-400 font-medium">Webull:</span>
+                    <span className="text-gray-600 dark:text-gray-400">Real-time snapshot через OpenAPI market-data. Подходит для /results и мониторинга, если доступен market-data access.</span>
+                  </div>
                 </div>
               </div>
 
@@ -628,6 +636,10 @@ export function AppSettings() {
                   <div className="flex items-start gap-2">
                     <span className="text-purple-600 dark:text-purple-400 font-medium">Twelve Data:</span>
                     <span className="text-gray-600 dark:text-gray-400">До 5000 точек данных, баланс между скоростью и качеством.</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <span className="text-indigo-600 dark:text-indigo-400 font-medium">Webull:</span>
+                    <span className="text-gray-600 dark:text-gray-400">Для historical refresh не выбран по умолчанию. Используй только как quote provider для /results и мониторинга.</span>
                   </div>
                 </div>
               </div>
@@ -660,6 +672,10 @@ export function AppSettings() {
                     <span className="text-purple-600 dark:text-purple-400 font-medium">Twelve Data:</span>
                     <span className="text-gray-600 dark:text-gray-400">До 5000 дней истории (~13 лет), хороший баланс.</span>
                   </div>
+                  <div className="flex items-start gap-2">
+                    <span className="text-indigo-600 dark:text-indigo-400 font-medium">Webull:</span>
+                    <span className="text-gray-600 dark:text-gray-400">Можно использовать для котировок /results и мониторинга. Исторический импорт датасетов через него не основной сценарий.</span>
+                  </div>
                 </div>
               </div>
 
@@ -691,6 +707,10 @@ export function AppSettings() {
                     <span className="text-purple-600 dark:text-purple-400 font-medium">Twelve Data:</span>
                     <span className="text-gray-600 dark:text-gray-400">✅ Хорошо! 8 запросов/мин, 800/день - с запасом для 4-5 тикеров (~240/день).</span>
                   </div>
+                  <div className="flex items-start gap-2">
+                    <span className="text-indigo-600 dark:text-indigo-400 font-medium">Webull:</span>
+                    <span className="text-gray-600 dark:text-gray-400">Подходит как quote provider для мониторинга, если market-data subscription активен. Для heavy polling лучше Finnhub.</span>
+                  </div>
                 </div>
               </div>
 
@@ -699,6 +719,7 @@ export function AppSettings() {
                 <h4 className="font-semibold text-blue-900 dark:text-blue-100 mb-2">💡 Рекомендации</h4>
                 <div className="space-y-2 text-sm text-blue-800 dark:text-blue-200">
                   <p><strong>Для начинающих:</strong> Finnhub для котировок и мониторинга, Alpha Vantage для создания датасетов.</p>
+                  <p><strong>Для привязки к брокеру:</strong> Webull как quote provider на /results и в /broker мониторинге, если у тебя включён market-data доступ.</p>
                   <p><strong>Для активной торговли:</strong> Twelve Data или Finnhub для всего - стабильные лимиты и хорошая скорость.</p>
                   <p><strong>Для экономии запросов:</strong> Alpha Vantage для редких операций, Twelve Data для ежедневного мониторинга.</p>
                   <p className="pt-2 border-t border-blue-200 dark:border-blue-800"><strong>Важно:</strong> С 15-секундной задержкой между запросами вы находитесь в безопасной зоне для всех провайдеров на бесплатных тарифах!</p>

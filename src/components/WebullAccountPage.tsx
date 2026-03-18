@@ -1,17 +1,34 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { AlertCircle, BriefcaseBusiness, History, RefreshCw, ShieldCheck, Wallet } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { AlertCircle, BriefcaseBusiness, History, RefreshCw, ShieldCheck, Wallet, Radar } from 'lucide-react';
 import type { AutoTradingConfig, AutoTradeState, AutotradeLogsResponse, WebullDashboardResponse } from '../types';
 import { DatasetAPI } from '../lib/api';
 import { PageHeader } from './ui/PageHeader';
 import { Button } from './ui/Button';
+import { useAppStore } from '../stores';
 
 type RowRecord = Record<string, unknown>;
-type BrokerTab = 'overview' | 'positions' | 'orders' | 'deals' | 'autotrade' | 'logs';
+type BrokerTab = 'overview' | 'positions' | 'orders' | 'deals' | 'autotrade' | 'monitoring' | 'logs';
 type ManualCloseState = {
   status: 'idle' | 'submitted' | 'filled' | 'rejected' | 'cancelled' | 'expired' | 'error';
   clientOrderId?: string | null;
   message?: string;
   dashboardSynced?: boolean;
+};
+
+type MonitoringRow = {
+  symbol: string;
+  highIBS: number | null;
+  lowIBS: number | null;
+  thresholdPct: number | null;
+  entryPrice: number | null;
+  isOpenPosition: boolean;
+  currentPrice: number | null;
+  prevClose: number | null;
+  change: number | null;
+  changePct: number | null;
+  quoteProvider: string;
+  quoteUpdatedAt: string | null;
+  quoteError: string | null;
 };
 
 function formatMoney(value: unknown) {
@@ -260,6 +277,7 @@ const tabs: Array<{ id: BrokerTab; label: string }> = [
   { id: 'orders', label: 'Ордера' },
   { id: 'deals', label: 'Сделки' },
   { id: 'autotrade', label: 'Автоторговля' },
+  { id: 'monitoring', label: 'Мониторинг' },
   { id: 'logs', label: 'Логи' },
 ];
 
@@ -268,16 +286,28 @@ export function WebullAccountPage() {
   const [autotradeConfig, setAutotradeConfig] = useState<AutoTradingConfig | null>(null);
   const [autotradeState, setAutotradeState] = useState<AutoTradeState | null>(null);
   const [logs, setLogs] = useState<AutotradeLogsResponse | null>(null);
+  const [monitoringRows, setMonitoringRows] = useState<MonitoringRow[]>([]);
   const [activeTab, setActiveTab] = useState<BrokerTab>('overview');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [configSaving, setConfigSaving] = useState(false);
   const [testBuying, setTestBuying] = useState(false);
+  const [monitoringLoading, setMonitoringLoading] = useState(false);
+  const [monitoringError, setMonitoringError] = useState<string | null>(null);
+  const [monitoringLastUpdatedAt, setMonitoringLastUpdatedAt] = useState<string | null>(null);
+  const [monitoringAutoRefreshEnabled, setMonitoringAutoRefreshEnabled] = useState(false);
+  const [monitoringActivityTick, setMonitoringActivityTick] = useState(0);
   const [logsLoading, setLogsLoading] = useState(false);
   const [closingSymbol, setClosingSymbol] = useState<string | null>(null);
   const [manualCloseStates, setManualCloseStates] = useState<Record<string, ManualCloseState>>({});
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const monitoringLastInteractionRef = useRef<number>(Date.now());
+  const monitoringIdleTimerRef = useRef<number | null>(null);
+  const monitoringAutoTimerRef = useRef<number | null>(null);
+  const quoteProvider = useAppStore((s) => s.resultsQuoteProvider);
+  const MONITORING_REFRESH_MS = 15 * 60 * 1000;
+  const MONITORING_IDLE_MS = 5 * 60 * 1000;
 
   const loadDashboard = async (isRefresh = false) => {
     try {
@@ -316,10 +346,160 @@ export function WebullAccountPage() {
     }
   };
 
+  const loadMonitoringData = async (force = false) => {
+    try {
+      setMonitoringLoading(true);
+      setMonitoringError(null);
+      const watches = await DatasetAPI.listTelegramWatches();
+      const rows = await Promise.all(watches.map(async (watch) => {
+        try {
+          const quote = await DatasetAPI.getQuote(
+            watch.symbol,
+            quoteProvider === 'twelve_data' ? 'twelve_data' : quoteProvider
+          );
+          const current = quote.current;
+          const prevClose = quote.prevClose;
+          const change = current != null && prevClose != null ? current - prevClose : null;
+          const changePct = change != null && prevClose && prevClose !== 0 ? (change / prevClose) * 100 : null;
+          return {
+            symbol: watch.symbol,
+            highIBS: Number.isFinite(Number(watch.highIBS)) ? Number(watch.highIBS) : null,
+            lowIBS: Number.isFinite(Number(watch.lowIBS ?? null)) ? Number(watch.lowIBS ?? null) : null,
+            thresholdPct: Number.isFinite(Number(watch.thresholdPct ?? null)) ? Number(watch.thresholdPct ?? null) : null,
+            entryPrice: typeof watch.entryPrice === 'number' ? watch.entryPrice : null,
+            isOpenPosition: !!watch.isOpenPosition,
+            currentPrice: current,
+            prevClose,
+            change,
+            changePct,
+            quoteProvider,
+            quoteUpdatedAt: new Date().toISOString(),
+            quoteError: null,
+          } satisfies MonitoringRow;
+        } catch (quoteError) {
+          return {
+            symbol: watch.symbol,
+            highIBS: Number.isFinite(Number(watch.highIBS)) ? Number(watch.highIBS) : null,
+            lowIBS: Number.isFinite(Number(watch.lowIBS ?? null)) ? Number(watch.lowIBS ?? null) : null,
+            thresholdPct: Number.isFinite(Number(watch.thresholdPct ?? null)) ? Number(watch.thresholdPct ?? null) : null,
+            entryPrice: typeof watch.entryPrice === 'number' ? watch.entryPrice : null,
+            isOpenPosition: !!watch.isOpenPosition,
+            currentPrice: null,
+            prevClose: null,
+            change: null,
+            changePct: null,
+            quoteProvider,
+            quoteUpdatedAt: null,
+            quoteError: quoteError instanceof Error ? quoteError.message : 'Не удалось получить котировку',
+          } satisfies MonitoringRow;
+        }
+      }));
+      setMonitoringRows(rows);
+      setMonitoringLastUpdatedAt(new Date().toISOString());
+    } catch (err) {
+      setMonitoringError(err instanceof Error ? err.message : 'Не удалось загрузить мониторинг');
+    } finally {
+      setMonitoringLoading(false);
+      if (force) setActionMessage('Мониторинг обновлён вручную');
+    }
+  };
+
   useEffect(() => {
     void loadDashboard(false);
     void loadAutotradeConfig();
     void loadLogs();
+  }, []);
+
+  useEffect(() => {
+    if (activeTab !== 'monitoring') {
+      setMonitoringAutoRefreshEnabled(false);
+      if (monitoringAutoTimerRef.current) {
+        window.clearTimeout(monitoringAutoTimerRef.current);
+        monitoringAutoTimerRef.current = null;
+      }
+      if (monitoringIdleTimerRef.current) {
+        window.clearTimeout(monitoringIdleTimerRef.current);
+        monitoringIdleTimerRef.current = null;
+      }
+      return;
+    }
+
+    if (typeof document === 'undefined' || document.visibilityState !== 'visible') {
+      setMonitoringAutoRefreshEnabled(false);
+      return;
+    }
+
+    const isFreshInteraction = Date.now() - monitoringLastInteractionRef.current <= MONITORING_IDLE_MS;
+    if (!isFreshInteraction) {
+      setMonitoringAutoRefreshEnabled(false);
+      return;
+    }
+
+    setMonitoringAutoRefreshEnabled(true);
+    if (monitoringRows.length === 0 || !monitoringLastUpdatedAt) {
+      void loadMonitoringData(false);
+    }
+
+    if (monitoringAutoTimerRef.current) {
+      window.clearTimeout(monitoringAutoTimerRef.current);
+    }
+    if (monitoringIdleTimerRef.current) {
+      window.clearTimeout(monitoringIdleTimerRef.current);
+    }
+
+    monitoringAutoTimerRef.current = window.setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      if (Date.now() - monitoringLastInteractionRef.current > MONITORING_IDLE_MS) {
+        setMonitoringAutoRefreshEnabled(false);
+        return;
+      }
+      void loadMonitoringData(false);
+    }, MONITORING_REFRESH_MS);
+
+    monitoringIdleTimerRef.current = window.setTimeout(() => {
+      setMonitoringAutoRefreshEnabled(false);
+    }, MONITORING_IDLE_MS);
+
+    return () => {
+      if (monitoringAutoTimerRef.current) {
+        window.clearInterval(monitoringAutoTimerRef.current);
+        monitoringAutoTimerRef.current = null;
+      }
+      if (monitoringIdleTimerRef.current) {
+        window.clearTimeout(monitoringIdleTimerRef.current);
+        monitoringIdleTimerRef.current = null;
+      }
+    };
+  }, [activeTab, monitoringActivityTick, monitoringLastUpdatedAt, monitoringRows.length, quoteProvider]);
+
+  useEffect(() => {
+    const markInteraction = () => {
+      monitoringLastInteractionRef.current = Date.now();
+      setMonitoringActivityTick((value) => value + 1);
+    };
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        markInteraction();
+      } else {
+        setMonitoringAutoRefreshEnabled(false);
+      }
+    };
+
+    window.addEventListener('mousemove', markInteraction, { passive: true });
+    window.addEventListener('keydown', markInteraction);
+    window.addEventListener('click', markInteraction);
+    window.addEventListener('scroll', markInteraction, { passive: true });
+    window.addEventListener('focus', markInteraction);
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      window.removeEventListener('mousemove', markInteraction);
+      window.removeEventListener('keydown', markInteraction);
+      window.removeEventListener('click', markInteraction);
+      window.removeEventListener('scroll', markInteraction);
+      window.removeEventListener('focus', markInteraction);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
   }, []);
 
   const balance = useMemo(() => extractBalanceSummary(data?.balance), [data?.balance]);
@@ -331,6 +511,7 @@ export function WebullAccountPage() {
   const recentTrackedOrders = useMemo(() => logs?.recent ?? [], [logs?.recent]);
   const monitorLogLines = useMemo(() => [...(logs?.monitor ?? [])].reverse(), [logs?.monitor]);
   const autotradeLogLines = useMemo(() => [...(logs?.autotrade ?? [])].reverse(), [logs?.autotrade]);
+  const brokerRawLogLines = useMemo(() => [...(logs?.brokerRaw ?? [])].reverse(), [logs?.brokerRaw]);
   const trackedOrders = useMemo(() => {
     const merged = [...pendingOrders, ...recentTrackedOrders];
     const seen = new Set<string>();
@@ -426,13 +607,13 @@ export function WebullAccountPage() {
   };
 
   const handleTestBuyAapl = async () => {
-    const confirmed = window.confirm('Отправить тестовый BUY MARKET для AAPL на 1 акцию? Это реальный ордер.');
+    const confirmed = window.confirm('Отправить тестовый BUY MARKET для AAL на 1 акцию? Это реальный ордер.');
     if (!confirmed) return;
     try {
       setTestBuying(true);
       setError(null);
-      const result = await DatasetAPI.testWebullAaplBuy(1);
-      setActionMessage(`Тестовый ордер AAPL отправлен. client_order_id: ${result.clientOrderId ?? '—'}`);
+      const result = await DatasetAPI.testWebullAalBuy(1);
+      setActionMessage(`Тестовый ордер AAL отправлен. client_order_id: ${result.clientOrderId ?? '—'}`);
       await Promise.all([loadDashboard(true), loadLogs(), loadAutotradeConfig()]);
     } catch (err) {
       if (err instanceof Error && 'body' in err && (err as { body?: unknown }).body) {
@@ -757,7 +938,7 @@ export function WebullAccountPage() {
                 {autotradeConfig?.enabled ? 'Выключить автоторговлю' : 'Включить автоторговлю'}
               </Button>
               <Button variant="secondary" onClick={() => void handleTestBuyAapl()} isLoading={testBuying}>
-                BUY AAPL 1 шт по рынку
+                BUY AAL 1 шт по рынку
               </Button>
               <Button variant="secondary" onClick={() => void Promise.all([loadDashboard(true), loadAutotradeConfig(), loadLogs()])} isLoading={refreshing}>
                 Обновить статус
@@ -769,7 +950,7 @@ export function WebullAccountPage() {
             <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
               `Pending / last tracked orders` показывает только заявки, которые были отправлены этим сайтом через manual close или T-1 execution. Обычные брокерские ордера из Webull без участия сайта здесь не появятся.
               {' '}
-              Тестовая кнопка `BUY AAPL 1 шт по рынку` отправляет реальный ордер для проверки API и подписи.
+              Тестовая кнопка `BUY AAL 1 шт по рынку` отправляет реальный ордер для проверки API и подписи.
             </p>
           </div>
           <div className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
@@ -819,8 +1000,91 @@ export function WebullAccountPage() {
       );
     }
 
+    if (activeTab === 'monitoring') {
+      const openCount = monitoringRows.filter((row) => row.isOpenPosition).length;
+      return (
+        <div className="space-y-4">
+          <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Мониторинг отслеживаемых акций</h2>
+                <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
+                  Цены берутся из текущего quote-провайдера и обновляются только когда вкладка открыта, страница видима и есть активность пользователя.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <div className={`rounded-full px-3 py-1 text-xs font-semibold tracking-wide ${monitoringAutoRefreshEnabled ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-200' : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-200'}`}>
+                  {monitoringAutoRefreshEnabled ? 'AUTO ON' : 'AUTO OFF'}
+                </div>
+                <Button variant="secondary" onClick={() => void loadMonitoringData(true)} isLoading={monitoringLoading}>
+                  Обновить цены
+                </Button>
+              </div>
+            </div>
+            <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <InfoCard title="Отслеживаемые" value={String(monitoringRows.length)} hint="Акции из /watches" icon={<Radar className="h-4 w-4" />} />
+              <InfoCard title="Открытые позиции" value={String(openCount)} hint={openCount > 0 ? 'Есть текущие входы' : 'Открытых позиций нет'} icon={<BriefcaseBusiness className="h-4 w-4" />} />
+              <InfoCard title="Quote provider" value={quoteProvider} hint="Используется для цен в мониторинге" icon={<ShieldCheck className="h-4 w-4" />} />
+              <InfoCard title="Последнее обновление" value={monitoringLastUpdatedAt ? formatDateTime(monitoringLastUpdatedAt) : '—'} hint={monitoringAutoRefreshEnabled ? 'Автообновление активно' : 'Автообновление неактивно'} icon={<History className="h-4 w-4" />} />
+            </div>
+            {monitoringError ? (
+              <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-200">
+                {monitoringError}
+              </div>
+            ) : null}
+          </div>
+          <section className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
+            <div className="border-b border-gray-100 px-4 py-3 dark:border-gray-800">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Отслеживаемые тикеры</h3>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead className="bg-gray-50 text-left text-gray-500 dark:bg-gray-950/40 dark:text-gray-400">
+                  <tr>
+                    <th className="px-4 py-3 font-medium">Тикер</th>
+                    <th className="px-4 py-3 font-medium text-right">Цена</th>
+                    <th className="px-4 py-3 font-medium text-right">Δ</th>
+                    <th className="px-4 py-3 font-medium text-right">Prev Close</th>
+                    <th className="px-4 py-3 font-medium text-right">Entry</th>
+                    <th className="px-4 py-3 font-medium text-right">High IBS</th>
+                    <th className="px-4 py-3 font-medium text-right">Low IBS</th>
+                    <th className="px-4 py-3 font-medium text-right">Threshold %</th>
+                    <th className="px-4 py-3 font-medium">Позиция</th>
+                    <th className="px-4 py-3 font-medium">Обновлено</th>
+                    <th className="px-4 py-3 font-medium">Источник</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {monitoringRows.length === 0 ? (
+                    <tr>
+                      <td colSpan={11} className="px-4 py-6 text-center text-gray-500 dark:text-gray-400">Нет отслеживаемых акций</td>
+                    </tr>
+                  ) : monitoringRows.map((row) => (
+                    <tr key={row.symbol} className="border-t border-gray-100 dark:border-gray-800">
+                      <td className="px-4 py-3 font-semibold text-gray-900 dark:text-gray-100">{row.symbol}</td>
+                      <td className="px-4 py-3 text-right font-mono text-gray-700 dark:text-gray-300">{formatMoney(row.currentPrice)}</td>
+                      <td className={`px-4 py-3 text-right font-mono ${row.change != null && row.change < 0 ? 'text-rose-600 dark:text-rose-300' : 'text-emerald-600 dark:text-emerald-300'}`}>{row.change == null ? '—' : `${row.change >= 0 ? '+' : ''}${formatMoney(row.change)}`}</td>
+                      <td className="px-4 py-3 text-right font-mono text-gray-700 dark:text-gray-300">{formatMoney(row.prevClose)}</td>
+                      <td className="px-4 py-3 text-right font-mono text-gray-700 dark:text-gray-300">{formatMoney(row.entryPrice)}</td>
+                      <td className="px-4 py-3 text-right font-mono text-gray-700 dark:text-gray-300">{row.highIBS == null ? '—' : formatNumber(row.highIBS, 4)}</td>
+                      <td className="px-4 py-3 text-right font-mono text-gray-700 dark:text-gray-300">{row.lowIBS == null ? '—' : formatNumber(row.lowIBS, 4)}</td>
+                      <td className="px-4 py-3 text-right font-mono text-gray-700 dark:text-gray-300">{row.thresholdPct == null ? '—' : formatNumber(row.thresholdPct, 2)}</td>
+                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{row.isOpenPosition ? 'Открыта' : 'В мониторинге'}</td>
+                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{formatDateTime(row.quoteUpdatedAt)}</td>
+                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{row.quoteError ? row.quoteError : row.quoteProvider}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+          <RawJson title="Raw monitoring payload" value={{ watches: monitoringRows, quoteProvider, lastUpdatedAt: monitoringLastUpdatedAt }} />
+        </div>
+      );
+    }
+
     return (
-      <div className="grid gap-4 xl:grid-cols-2">
+      <div className="grid gap-4 xl:grid-cols-3">
         <div className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
           <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-gray-800">
             <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Наши логи</h2>
@@ -833,6 +1097,12 @@ export function WebullAccountPage() {
             <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Webull / autotrade логи</h2>
           </div>
           <pre className="max-h-[520px] overflow-auto p-4 text-xs text-gray-800 dark:text-gray-100">{autotradeLogLines.map(formatAutotradeLogLine).join('\n') || 'Логи автоторговли пока пусты'}</pre>
+        </div>
+        <div className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
+          <div className="border-b border-gray-100 px-4 py-3 dark:border-gray-800">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Raw broker log (monthly)</h2>
+          </div>
+          <pre className="max-h-[520px] overflow-auto p-4 text-xs text-gray-800 dark:text-gray-100">{brokerRawLogLines.join('\n') || 'Raw broker log пока пуст'}</pre>
         </div>
       </div>
     );

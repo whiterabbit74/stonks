@@ -25,7 +25,7 @@ router.put('/settings', async (req, res) => {
             indicatorPanePercent,
             defaultMultiTickerSymbols
         } = req.body || {};
-        const validProvider = (p) => ['alpha_vantage', 'finnhub', 'twelve_data'].includes(p);
+        const validProvider = (p) => ['alpha_vantage', 'finnhub', 'twelve_data', 'webull'].includes(p);
         const next = getDefaultSettings();
         if (typeof watchThresholdPct === 'number') next.watchThresholdPct = watchThresholdPct;
         if (validProvider(resultsQuoteProvider)) next.resultsQuoteProvider = resultsQuoteProvider;

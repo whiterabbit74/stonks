@@ -61,15 +61,15 @@ interface AppState {
   // Actions
   updateMarketData: (data: OHLCData[]) => void;
   setSplits: (splits: SplitEvent[]) => void;
-  setDataProvider: (provider: 'alpha_vantage' | 'finnhub' | 'twelve_data') => void;
+  setDataProvider: (provider: 'alpha_vantage' | 'finnhub' | 'twelve_data' | 'webull') => void;
   // Источники API управления из настроек
-  resultsQuoteProvider: 'alpha_vantage' | 'finnhub' | 'twelve_data';
-  resultsRefreshProvider: 'alpha_vantage' | 'finnhub' | 'twelve_data';
-  enhancerProvider: 'alpha_vantage' | 'finnhub' | 'twelve_data';
+  resultsQuoteProvider: 'alpha_vantage' | 'finnhub' | 'twelve_data' | 'webull';
+  resultsRefreshProvider: 'alpha_vantage' | 'finnhub' | 'twelve_data' | 'webull';
+  enhancerProvider: 'alpha_vantage' | 'finnhub' | 'twelve_data' | 'webull';
   enablePostClosePriceActualization: boolean;
-  setResultsQuoteProvider: (p: 'alpha_vantage' | 'finnhub' | 'twelve_data') => void;
-  setResultsRefreshProvider: (p: 'alpha_vantage' | 'finnhub' | 'twelve_data') => void;
-  setEnhancerProvider: (p: 'alpha_vantage' | 'finnhub' | 'twelve_data') => void;
+  setResultsQuoteProvider: (p: 'alpha_vantage' | 'finnhub' | 'twelve_data' | 'webull') => void;
+  setResultsRefreshProvider: (p: 'alpha_vantage' | 'finnhub' | 'twelve_data' | 'webull') => void;
+  setEnhancerProvider: (p: 'alpha_vantage' | 'finnhub' | 'twelve_data' | 'webull') => void;
   setEnablePostClosePriceActualization: (enabled: boolean) => void;
   loadJSONData: (file: File) => Promise<void>;
   loadDatasetsFromServer: () => Promise<void>;
@@ -242,13 +242,13 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
-  setDataProvider: (provider: 'alpha_vantage' | 'finnhub' | 'twelve_data') => {
+  setDataProvider: (provider: 'alpha_vantage' | 'finnhub' | 'twelve_data' | 'webull') => {
     set({ dataProvider: provider });
   },
 
-  setResultsQuoteProvider: (p: 'alpha_vantage' | 'finnhub' | 'twelve_data') => set({ resultsQuoteProvider: p }),
-  setResultsRefreshProvider: (p: 'alpha_vantage' | 'finnhub' | 'twelve_data') => set({ resultsRefreshProvider: p }),
-  setEnhancerProvider: (p: 'alpha_vantage' | 'finnhub' | 'twelve_data') => set({ enhancerProvider: p }),
+  setResultsQuoteProvider: (p: 'alpha_vantage' | 'finnhub' | 'twelve_data' | 'webull') => set({ resultsQuoteProvider: p }),
+  setResultsRefreshProvider: (p: 'alpha_vantage' | 'finnhub' | 'twelve_data' | 'webull') => set({ resultsRefreshProvider: p }),
+  setEnhancerProvider: (p: 'alpha_vantage' | 'finnhub' | 'twelve_data' | 'webull') => set({ enhancerProvider: p }),
   setEnablePostClosePriceActualization: (enabled: boolean) => set({ enablePostClosePriceActualization: enabled }),
 
   setWatchThresholdPct: (value: number) => {

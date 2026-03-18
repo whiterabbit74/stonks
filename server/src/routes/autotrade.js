@@ -148,7 +148,7 @@ router.post('/autotrade/webull/close-position', async (req, res) => {
 
 router.post('/autotrade/webull/test-buy', async (req, res) => {
     try {
-        const symbol = typeof req.body?.symbol === 'string' && req.body.symbol.trim() ? req.body.symbol.trim() : 'AAPL';
+        const symbol = typeof req.body?.symbol === 'string' && req.body.symbol.trim() ? req.body.symbol.trim() : 'AAL';
         const requestedQuantity = req.body?.quantity;
         const quantity = Number.isFinite(Number(requestedQuantity)) ? Number(requestedQuantity) : 1;
         const result = await buyWebullTestMarket(symbol, quantity, { source: 'api_manual_test_buy' });

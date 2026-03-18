@@ -517,7 +517,9 @@ export function SingleTickerPage() {
 
   const quoteProviderLabel = resultsQuoteProvider === 'alpha_vantage'
     ? 'Alpha Vantage'
-    : (resultsQuoteProvider === 'twelve_data' ? 'Twelve Data' : 'Finnhub');
+    : (resultsQuoteProvider === 'twelve_data'
+      ? 'Twelve Data'
+      : (resultsQuoteProvider === 'webull' ? 'Webull' : 'Finnhub'));
   const lastTrade = trades[trades.length - 1];
   const lastDataDate = marketData.length ? marketData[marketData.length - 1].date : null;
   const isOpenPosition = !!(lastTrade && lastDataDate && isSameDay(lastTrade.exitDate, lastDataDate));

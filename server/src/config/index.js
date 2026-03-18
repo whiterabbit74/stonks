@@ -48,6 +48,7 @@ const MONITOR_LOG_FILE = process.env.MONITOR_LOG_PATH || path.join(DATASETS_DIR,
 const LOGIN_LOG_FILE = process.env.LOGIN_LOG_PATH || path.join(DATASETS_DIR, 'login-attempts.log');
 const AUTOTRADE_LOG_FILE = process.env.AUTOTRADE_LOG_PATH || path.join(DATASETS_DIR, 'autotrade.log');
 const AUTOTRADE_STATE_FILE = process.env.AUTOTRADE_STATE_PATH || path.join(DATASETS_DIR, 'autotrade-state.json');
+const WEBULL_RAW_LOG_FILE = process.env.WEBULL_RAW_LOG_PATH || path.join(DATASETS_DIR, 'webull-raw.log');
 const TRADING_CALENDAR_FILE = path.join(SERVER_DIR, 'trading-calendar.json');
 
 // Timing constants
@@ -114,6 +115,7 @@ module.exports = {
     LOGIN_LOG_FILE,
     AUTOTRADE_LOG_FILE,
     AUTOTRADE_STATE_FILE,
+    WEBULL_RAW_LOG_FILE,
     TRADING_CALENDAR_FILE,
 
     // Timing

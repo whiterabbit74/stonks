@@ -18,16 +18,19 @@
 
 - собирать Webull signature по правилам из `webull-api-full.md`;
 - выполнять signed HTTP requests;
+- писать raw broker request/response log в monthly files `webull-raw-YYYY-MM.log`;
 - вызывать:
   - `GET /openapi/account/list`
-  - `GET /openapi/assets/balance`
-  - `GET /openapi/assets/positions`
+  - `GET /openapi/account/balance`
+  - `GET /openapi/account/positions`
   - `POST /openapi/auth/token/create`
   - `POST /openapi/auth/token/check`
-  - `POST /openapi/trade/order/preview`
-  - `POST /openapi/trade/order/place`
-  - `POST /openapi/trade/order/cancel`
-  - `GET /openapi/trade/order/detail`
+  - `POST /openapi/account/orders/preview`
+  - `POST /openapi/account/orders/place`
+  - `POST /openapi/account/orders/cancel`
+  - `GET /openapi/account/orders/detail`
+  - `GET /trade/orders/list-open`
+  - `GET /openapi/account/orders/history`
 
 ### 2. Autotrade engine
 
@@ -87,6 +90,7 @@
 - `WEBULL_API_PROTOCOL`
 - `WEBULL_API_HOST`
 - `WEBULL_API_PORT`
+- `WEBULL_RAW_LOG_PATH`
 
 ### 6. Broker UI controls
 
@@ -94,9 +98,14 @@
 
 - переключатель включения / выключения автоторговли;
 - отображение текущего статуса `[LIVE] / [OFF]`;
-- кнопка тестового `BUY AAPL 1 share MARKET` для проверки реального Webull order flow;
+- кнопка тестового `BUY AAL 1 share MARKET` для проверки реального Webull order flow;
+- вкладка `Мониторинг` со списком отслеживаемых тикеров из `/watches` и их онлайн-ценами;
+- автообновление мониторинга только когда вкладка открыта, страница видима и есть активность пользователя;
+- ручная кнопка обновления цен;
 - логи в обратном порядке, чтобы новые записи были сверху;
 - raw panels на вкладках для быстрой сверки payload'ов.
+- `Raw broker log` на `/broker` читает monthly Webull raw logs и показывает full request/response payloads с маскировкой секретов в request headers.
+- quote provider `webull` доступен для `/api/quote/:symbol`, а значит и для страницы Results / мониторинга, если его выбрать в settings.
 
 ## Current Autotrade Config
 
@@ -187,6 +196,10 @@
 Документация Webull в файле подтверждает обычные `MARKET`/`LIMIT` equity orders, но не описывает MOC/LOC-поток для точного исполнения “на закрытии”.
 Поэтому текущая реализация технически исполняет сигнал в узком окне перед close, а не гарантирует официальную биржевую механику `market-on-close`.
 
+### Operational note
+
+- Изменения в коде не деплоятся автоматически. Деплой запускается только после явного запроса пользователя.
+
 ## What Webull Gives For Free And What Is Limited
 
 Ниже только то, что следует из `webull-api-full.md`.
@@ -200,6 +213,7 @@
   - order preview
   - order place / replace / cancel
   - order history / order detail / open orders
+- Webull market-data snapshot can be used as quote provider for `/api/quote/:symbol`, `/results`, and the broker Monitoring tab when market-data access is available.
 - Test environment:
   - публичные test accounts;
   - test app key / secret;
@@ -230,7 +244,8 @@
 Что совпадает с SDK:
 
 - `HTTPS` only;
-- `x-version: v2`;
+- `x-version: v1` для trade/account/market-data запросов;
+- `x-version: v2` для token create/check;
 - `x-app-key`, `x-app-secret`, `x-signature`, `x-signature-version`, `x-signature-algorithm`, `x-signature-nonce`;
 - signing через `HMAC-SHA1`;
 - account / balance / positions / order detail / order history / open orders flow;

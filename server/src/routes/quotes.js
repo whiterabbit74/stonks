@@ -6,9 +6,10 @@ const router = express.Router();
 const { getApiConfig } = require('../config');
 const { toSafeTicker, toFiniteNumber } = require('../utils/helpers');
 const { fetchFromAlphaVantage } = require('../providers/alphaVantage');
-const { fetchFromFinnhub, fetchTodayRangeAndQuote } = require('../providers/finnhub');
+const { fetchFromFinnhub, fetchTodayRangeAndQuote: fetchFinnhubTodayRangeAndQuote } = require('../providers/finnhub');
 const { fetchFromTwelveData } = require('../providers/twelveData');
 const { fetchFromPolygon } = require('../providers/polygon');
+const { fetchTodayRangeAndQuote: fetchWebullTodayRangeAndQuote } = require('../providers/webull');
 
 function normalizeIntradayRange(range, quote) {
     const low = toFiniteNumber(range && range.low);
@@ -50,13 +51,73 @@ function getLastCloseFromRows(rows) {
     return Number.isFinite(value) ? value : null;
 }
 
+function sortRowsAscending(rows) {
+    return [...rows].sort((a, b) => String(a?.date ?? '').localeCompare(String(b?.date ?? '')));
+}
+
+function buildQuoteFromRows(rows) {
+    const ordered = sortRowsAscending(Array.isArray(rows) ? rows : []);
+    if (ordered.length === 0) {
+        const err = new Error('No quote data returned');
+        err.status = 404;
+        throw err;
+    }
+    const last = ordered[ordered.length - 1];
+    const prev = ordered.length > 1 ? ordered[ordered.length - 2] : null;
+    const open = toFiniteNumber(last?.open);
+    const high = toFiniteNumber(last?.high);
+    const low = toFiniteNumber(last?.low);
+    const current = toFiniteNumber(last?.close);
+    const prevClose = toFiniteNumber(prev?.close);
+    return {
+        range: {
+            open,
+            high,
+            low,
+        },
+        quote: {
+            open,
+            high,
+            low,
+            current,
+            prevClose,
+        },
+        dateKey: String(last?.date ?? new Date().toISOString().slice(0, 10)),
+    };
+}
+
 router.get('/quote/:symbol', async (req, res) => {
     try {
         const symbol = toSafeTicker(req.params.symbol);
         if (!symbol) return res.status(400).json({ error: 'Invalid symbol' });
-        const { range, quote, dateKey } = await fetchTodayRangeAndQuote(symbol);
+        const requestedProvider = typeof req.query?.provider === 'string' ? req.query.provider : 'finnhub';
+        const provider = ['alpha_vantage', 'finnhub', 'twelve_data', 'polygon', 'webull'].includes(requestedProvider)
+            ? requestedProvider
+            : 'finnhub';
+
+        let payload;
+        if (provider === 'finnhub') {
+            payload = await fetchFinnhubTodayRangeAndQuote(symbol);
+        } else if (provider === 'webull') {
+            payload = await fetchWebullTodayRangeAndQuote(symbol);
+        } else {
+            const endTs = Math.floor(Date.now() / 1000);
+            const startTs = endTs - 90 * 24 * 60 * 60;
+            let rows;
+            if (provider === 'alpha_vantage') {
+                const result = await fetchFromAlphaVantage(symbol, startTs, endTs, { adjustment: 'none' });
+                rows = Array.isArray(result?.data) ? result.data : [];
+            } else if (provider === 'twelve_data') {
+                rows = await fetchFromTwelveData(symbol, startTs, endTs);
+            } else if (provider === 'polygon') {
+                rows = await fetchFromPolygon(symbol, startTs, endTs);
+            }
+            payload = buildQuoteFromRows(rows);
+        }
+
+        const { range, quote, dateKey } = payload;
         const normRange = normalizeIntradayRange(range, quote);
-        res.json({ symbol, dateKey, range: normRange, quote });
+        res.json({ symbol, dateKey, range: normRange, quote, provider });
     } catch (e) {
         res.status(500).json({ error: e.message || 'Failed to fetch quote' });
     }
@@ -75,7 +136,7 @@ router.get('/yahoo-finance/:symbol', async (req, res) => {
         if (startTs >= endTs) return res.status(400).json({ error: 'Invalid time range' });
 
         const requestedProvider = typeof req.query?.provider === 'string' ? req.query.provider : 'alpha_vantage';
-        const provider = ['alpha_vantage', 'finnhub', 'twelve_data', 'polygon'].includes(requestedProvider)
+        const provider = ['alpha_vantage', 'finnhub', 'twelve_data', 'polygon', 'webull'].includes(requestedProvider)
             ? requestedProvider
             : 'alpha_vantage';
         const adjustment = req.query?.adjustment === 'split_only' ? 'split_only' : 'none';
@@ -96,6 +157,19 @@ router.get('/yahoo-finance/:symbol', async (req, res) => {
             case 'polygon':
                 data = await fetchFromPolygon(symbol, startTs, endTs);
                 break;
+            case 'webull': {
+                const snapshot = await fetchWebullTodayRangeAndQuote(symbol);
+                data = [{
+                    date: snapshot.dateKey,
+                    open: snapshot.quote.open,
+                    high: snapshot.quote.high,
+                    low: snapshot.quote.low,
+                    close: snapshot.quote.current,
+                    adjClose: snapshot.quote.current,
+                    volume: null,
+                }];
+                break;
+            }
             default:
                 return res.status(400).json({ error: 'Unknown provider' });
         }
@@ -132,6 +206,19 @@ router.get('/fetch/:provider/:symbol', async (req, res) => {
             case 'polygon':
                 data = await fetchFromPolygon(symbol, startTs, endTs);
                 break;
+            case 'webull': {
+                const snapshot = await fetchWebullTodayRangeAndQuote(symbol);
+                data = [{
+                    date: snapshot.dateKey,
+                    open: snapshot.quote.open,
+                    high: snapshot.quote.high,
+                    low: snapshot.quote.low,
+                    close: snapshot.quote.current,
+                    adjClose: snapshot.quote.current,
+                    volume: null,
+                }];
+                break;
+            }
             default:
                 return res.status(400).json({ error: 'Unknown provider' });
         }
@@ -229,6 +316,13 @@ router.post('/test-provider', async (req, res) => {
             const price = getLastCloseFromRows(rows);
             if (price == null) return res.json({ success: false, error: 'No data returned from provider' });
             return res.json({ success: true, symbol, price: price.toFixed(2) });
+        }
+
+        if (provider === 'webull') {
+            const snapshot = await fetchWebullTodayRangeAndQuote(symbol);
+            const price = snapshot?.quote?.current ?? snapshot?.quote?.prevClose ?? null;
+            if (price == null) return res.json({ success: false, error: 'No data returned from provider' });
+            return res.json({ success: true, symbol, price: Number(price).toFixed(2) });
         }
 
         return res.status(400).json({ success: false, error: 'Unknown provider' });

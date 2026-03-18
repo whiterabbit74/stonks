@@ -311,6 +311,7 @@ export interface AutotradeLogsResponse {
   fetchedAt: string | null;
   autotrade: string[];
   monitor: string[];
+  brokerRaw?: string[];
   pending?: Array<{
     clientOrderId: string;
     symbol: string;

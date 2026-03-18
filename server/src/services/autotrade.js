@@ -7,7 +7,7 @@ const { readSettings, writeSettings } = require('./settings');
 const { telegramWatches, scheduleSaveWatches, sendTelegramMessage } = require('./telegram');
 const { fetchTodayRangeAndQuote } = require('../providers/finnhub');
 const { toFiniteNumber, toSafeTicker } = require('../utils/helpers');
-const { AUTOTRADE_LOG_FILE, AUTOTRADE_STATE_FILE, MONITOR_LOG_FILE, getApiConfig } = require('../config');
+const { AUTOTRADE_LOG_FILE, AUTOTRADE_STATE_FILE, MONITOR_LOG_FILE, WEBULL_RAW_LOG_FILE, getApiConfig } = require('../config');
 const { getETParts, etKeyYMD, getCachedTradingCalendar, isTradingDayByCalendarET, getTradingSessionForDateET } = require('./dates');
 const {
     loadTradeHistory,
@@ -199,6 +199,42 @@ function getCurrentAutotradeLogPath() {
     return getAutotradeLogPathForMonth(getAutotradeLogMonthKey(new Date()));
 }
 
+function getWebullRawLogBaseParts() {
+    const ext = path.extname(WEBULL_RAW_LOG_FILE) || '.log';
+    const dir = path.dirname(WEBULL_RAW_LOG_FILE);
+    const base = path.basename(WEBULL_RAW_LOG_FILE, ext);
+    return { dir, base, ext };
+}
+
+function getWebullRawLogMonthKey(date = new Date()) {
+    const et = getETParts(date);
+    return `${et.y}-${String(et.m).padStart(2, '0')}`;
+}
+
+function getWebullRawLogPathForMonth(monthKey) {
+    const { dir, base, ext } = getWebullRawLogBaseParts();
+    return path.join(dir, `${base}-${monthKey}${ext}`);
+}
+
+function getCurrentWebullRawLogPath() {
+    return getWebullRawLogPathForMonth(getWebullRawLogMonthKey(new Date()));
+}
+
+async function listWebullRawLogFilesDesc() {
+    try {
+        const { dir, base, ext } = getWebullRawLogBaseParts();
+        const files = await fs.readdir(dir);
+        const pattern = new RegExp(`^${escapeRegExp(base)}-\\d{4}-\\d{2}${escapeRegExp(ext)}$`);
+        return files
+            .filter((file) => pattern.test(file))
+            .sort()
+            .reverse()
+            .map((file) => path.join(dir, file));
+    } catch {
+        return [];
+    }
+}
+
 function escapeRegExp(value) {
     return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -283,6 +319,24 @@ async function readLogTail(filePath, limit = 200) {
 
 async function readAutotradeLogTail(limit = 200) {
     const files = await listAutotradeLogFilesDesc();
+    if (files.length === 0) return [];
+
+    let remaining = Math.max(1, Math.min(2000, limit));
+    const segments = [];
+
+    for (const file of files) {
+        if (remaining <= 0) break;
+        const lines = await readLogTail(file, remaining);
+        if (lines.length === 0) continue;
+        segments.unshift(lines);
+        remaining = Math.max(0, remaining - lines.length);
+    }
+
+    return segments.flat().slice(-Math.max(1, Math.min(2000, limit)));
+}
+
+async function readWebullRawLogTail(limit = 200) {
+    const files = await listWebullRawLogFilesDesc();
     if (files.length === 0) return [];
 
     let remaining = Math.max(1, Math.min(2000, limit));
@@ -1376,7 +1430,7 @@ async function closeWebullPositionMarket(symbol, options = {}) {
     return result;
 }
 
-async function buyWebullTestMarket(symbol = 'AAPL', quantity = 1, options = {}) {
+async function buyWebullTestMarket(symbol = 'AAL', quantity = 1, options = {}) {
     await initializeAutotradeRuntime();
     const runtime = buildWebullRuntimeConfig();
     if (!runtime.appKey || !runtime.appSecret || !runtime.accountId) {
@@ -1402,7 +1456,7 @@ async function buyWebullTestMarket(symbol = 'AAPL', quantity = 1, options = {}) 
     const nowEt = getETParts(now);
     const calendar = await getCachedTradingCalendar();
     if (!isTradingDayByCalendarET(nowEt, calendar)) {
-        const closedError = new Error('AAPL market test-buy is only allowed during a trading day');
+        const closedError = new Error('AAL market test-buy is only allowed during a trading day');
         closedError.status = 409;
         closedError.errorCode = 'MARKET_CLOSED';
         closedError.errorMsg = 'Trading day is closed';
@@ -1416,7 +1470,7 @@ async function buyWebullTestMarket(symbol = 'AAPL', quantity = 1, options = {}) 
     const session = getTradingSessionForDateET(nowEt, calendar);
     const minutesNow = nowEt.hh * 60 + nowEt.mm;
     if (minutesNow < session.openMin || minutesNow >= session.closeMin) {
-        const closedError = new Error('AAPL market test-buy is only allowed during core trading hours');
+        const closedError = new Error('AAL market test-buy is only allowed during core trading hours');
         closedError.status = 409;
         closedError.errorCode = 'MARKET_CLOSED';
         closedError.errorMsg = 'Core session is closed';
@@ -1764,14 +1818,16 @@ async function getWebullDashboardSnapshot(configOverrides = {}, options = {}) {
 
 async function getExecutionLogs(limit = 200) {
     await initializeAutotradeRuntime();
-    const [autotrade, monitor] = await Promise.all([
+    const [autotrade, monitor, brokerRaw] = await Promise.all([
         readAutotradeLogTail(limit),
         readLogTail(MONITOR_LOG_FILE, limit),
+        readWebullRawLogTail(limit),
     ]);
     return {
         fetchedAt: new Date().toISOString(),
         autotrade,
         monitor,
+        brokerRaw,
         pending: Array.from(pendingOrderTrackers.values()).map(buildTrackerSnapshot),
         recent: recentTrackedOrders.slice(0, 20),
     };
