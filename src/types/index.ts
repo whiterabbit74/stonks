@@ -260,6 +260,7 @@ export interface WebullDashboardResponse {
   positions: unknown;
   openOrders: unknown;
   orderHistory: unknown;
+  errors?: string[];
   fetchedAt: string | null;
 }
 

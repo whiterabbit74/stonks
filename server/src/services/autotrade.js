@@ -1749,16 +1749,27 @@ async function getWebullAccountSnapshot(configOverrides = {}) {
         throw new Error('Webull credentials are not configured');
     }
     const accountId = runtime.accountId;
-    const [accounts, balance, positions] = await Promise.all([
+    const [accounts, balance, positions] = await Promise.allSettled([
         getAccountList(configOverrides),
         accountId ? getAccountBalance(accountId, configOverrides) : Promise.resolve(null),
         accountId ? getAccountPositions(accountId, configOverrides) : Promise.resolve(null),
     ]);
+
+    const errors = [];
+    const accountList = accounts.status === 'fulfilled' ? accounts.value : null;
+    const accountBalance = balance.status === 'fulfilled' ? balance.value : null;
+    const accountPositions = positions.status === 'fulfilled' ? positions.value : null;
+    for (const item of [accounts, balance, positions]) {
+        if (item.status === 'rejected') {
+            errors.push(item.reason && item.reason.message ? item.reason.message : String(item.reason));
+        }
+    }
     return {
         connection: await getWebullConnectionSummary(configOverrides),
-        accounts: accounts ? accounts.data : null,
-        balance: balance ? balance.data : null,
-        positions: positions ? positions.data : null,
+        accounts: accountList ? accountList.data : null,
+        balance: accountBalance ? accountBalance.data : null,
+        positions: accountPositions ? accountPositions.data : null,
+        errors,
     };
 }
 
@@ -1779,7 +1790,7 @@ async function getWebullDashboardSnapshot(configOverrides = {}, options = {}) {
         throw new Error('Webull credentials are not configured');
     }
     const accountId = runtime.accountId;
-    const [accounts, balance, positions, openOrders, orderHistory] = await Promise.all([
+    const [accounts, balance, positions, openOrders, orderHistory] = await Promise.allSettled([
         getAccountList(configOverrides),
         accountId ? getAccountBalance(accountId, configOverrides) : Promise.resolve(null),
         accountId ? getAccountPositions(accountId, configOverrides) : Promise.resolve(null),
@@ -1787,13 +1798,26 @@ async function getWebullDashboardSnapshot(configOverrides = {}, options = {}) {
         accountId ? getOrderHistory(accountId, { pageSize: 100 }, configOverrides) : Promise.resolve(null),
     ]);
 
+    const errors = [];
+    const accountsValue = accounts.status === 'fulfilled' ? accounts.value : null;
+    const balanceValue = balance.status === 'fulfilled' ? balance.value : null;
+    const positionsValue = positions.status === 'fulfilled' ? positions.value : null;
+    const openOrdersValue = openOrders.status === 'fulfilled' ? openOrders.value : null;
+    const orderHistoryValue = orderHistory.status === 'fulfilled' ? orderHistory.value : null;
+    for (const item of [accounts, balance, positions, openOrders, orderHistory]) {
+        if (item.status === 'rejected') {
+            errors.push(item.reason && item.reason.message ? item.reason.message : String(item.reason));
+        }
+    }
+
         const snapshot = {
         connection: await getWebullConnectionSummary(configOverrides),
-        accounts: accounts ? accounts.data : null,
-        balance: balance ? balance.data : null,
-        positions: positions ? positions.data : null,
-        openOrders: openOrders ? openOrders.data : null,
-        orderHistory: orderHistory ? orderHistory.data : null,
+        accounts: accountsValue ? accountsValue.data : null,
+        balance: balanceValue ? balanceValue.data : null,
+        positions: positionsValue ? positionsValue.data : null,
+        openOrders: openOrdersValue ? openOrdersValue.data : null,
+        orderHistory: orderHistoryValue ? orderHistoryValue.data : null,
+        errors,
         fetchedAt: new Date().toISOString(),
         };
 
