@@ -94,6 +94,7 @@
 На странице [`/broker`](/Users/q/Work/MAINPROJECTS/site_tradingibs/src/components/WebullAccountPage.tsx) теперь есть:
 
 - переключатель включения / выключения автоторговли;
+- отдельный выбор режима `dry-run / live`;
 - отображение текущего статуса `enabled / dry-run / live`;
 - кнопка тестового `BUY AAPL 1 share MARKET` для проверки реального Webull order flow;
 - логи в обратном порядке, чтобы новые записи были сверху;

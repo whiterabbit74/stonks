@@ -427,6 +427,32 @@ export function WebullAccountPage() {
     }
   };
 
+  const handleSetAutotradeMode = async (dryRun: boolean) => {
+    if (!autotradeConfig) return;
+    if (autotradeConfig.dryRun === dryRun && autotradeConfig.enabled) {
+      return;
+    }
+    const confirmed = window.confirm(
+      dryRun
+        ? 'Переключить автоторговлю в dry-run? Реальные ордера отправляться не будут.'
+        : 'Переключить автоторговлю в live? Реальные ордера Webull будут отправляться при сигналах.'
+    );
+    if (!confirmed) return;
+
+    try {
+      setConfigSaving(true);
+      setError(null);
+      const next = await DatasetAPI.updateAutotradeConfig({ dryRun, enabled: true });
+      setAutotradeConfig(next.config);
+      setActionMessage(dryRun ? 'Режим переключён в dry-run и включён' : 'Режим переключён в live и включён');
+      await loadAutotradeConfig();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Не удалось изменить режим автоторговли');
+    } finally {
+      setConfigSaving(false);
+    }
+  };
+
   const handleTestBuyAapl = async () => {
     const confirmed = window.confirm('Отправить тестовый BUY MARKET для AAPL на 1 акцию? Это реальный ордер.');
     if (!confirmed) return;
@@ -750,6 +776,20 @@ export function WebullAccountPage() {
               <Button variant={autotradeConfig?.enabled ? 'danger' : 'primary'} onClick={() => void handleToggleAutotrading()} isLoading={configSaving}>
                 {autotradeConfig?.enabled ? 'Выключить автоторговлю' : 'Включить автоторговлю'}
               </Button>
+              <Button
+                variant={autotradeConfig?.dryRun ? 'secondary' : 'primary'}
+                onClick={() => void handleSetAutotradeMode(true)}
+                isLoading={configSaving}
+              >
+                Dry-run
+              </Button>
+              <Button
+                variant={!autotradeConfig?.dryRun && autotradeConfig?.enabled ? 'danger' : 'primary'}
+                onClick={() => void handleSetAutotradeMode(false)}
+                isLoading={configSaving}
+              >
+                Live
+              </Button>
               <Button variant="secondary" onClick={() => void handleTestBuyAapl()} isLoading={testBuying}>
                 BUY AAPL 1 шт по рынку
               </Button>
@@ -764,6 +804,8 @@ export function WebullAccountPage() {
               `Pending / last tracked orders` показывает только заявки, которые были отправлены этим сайтом через manual close или T-1 execution. Обычные брокерские ордера из Webull без участия сайта здесь не появятся.
               {' '}
               Тестовая кнопка `BUY AAPL 1 шт по рынку` отправляет реальный ордер для проверки API и подписи.
+              {' '}
+              Кнопка `Live` переключает `autoTrading.dryRun=false` и включает боевое исполнение.
             </p>
           </div>
           <div className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
