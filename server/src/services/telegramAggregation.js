@@ -522,9 +522,7 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
                     const ibs = exitAction.ibs != null ? `${(exitAction.ibs * 100).toFixed(1)}%` : '—';
                     decisionLines.push(`• Закрываем ${exitAction.symbol} по ${price} (IBS ${ibs})`);
                     if (exitAction.broker) {
-                        if (exitAction.broker.submitted && exitAction.broker.simulated) {
-                            decisionLines.push(`• Webull: dry-run SELL MARKET (${exitAction.broker.quantity ?? '—'} шт.)`);
-                        } else if (exitAction.broker.submitted) {
+                        if (exitAction.broker.submitted) {
                             decisionLines.push(`• Webull: SELL MARKET отправлен (${exitAction.broker.quantity ?? '—'} шт.)`);
                         } else {
                             decisionLines.push(`• Webull ошибка: ${exitAction.broker.error || 'ордер не отправлен'}`);
@@ -536,9 +534,7 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
                     const ibs = entryAction.ibs != null ? `${(entryAction.ibs * 100).toFixed(1)}%` : '—';
                     decisionLines.push(`• Открываем ${entryAction.symbol} по ${price} (IBS ${ibs})`);
                     if (entryAction.broker) {
-                        if (entryAction.broker.submitted && entryAction.broker.simulated) {
-                            decisionLines.push(`• Webull: dry-run BUY MARKET (${entryAction.broker.quantity ?? '—'} шт.)`);
-                        } else if (entryAction.broker.submitted) {
+                        if (entryAction.broker.submitted) {
                             decisionLines.push(`• Webull: BUY MARKET отправлен (${entryAction.broker.quantity ?? '—'} шт.)`);
                         } else {
                             decisionLines.push(`• Webull ошибка: ${entryAction.broker.error || 'ордер не отправлен'}`);

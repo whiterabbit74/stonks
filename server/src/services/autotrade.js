@@ -1015,13 +1015,12 @@ async function findOrderSnapshotByClientOrderId(accountId, clientOrderId) {
     }) || null;
 }
 
-async function executeWebullSignal({ action, symbol, currentPrice, ibs, decisionTime, dateKey, source = 'unknown', forceDryRun = false, forceLive = false, notifyOnResult = true, correlationId = null }) {
+async function executeWebullSignal({ action, symbol, currentPrice, ibs, decisionTime, dateKey, source = 'unknown', forceLive = false, notifyOnResult = true, correlationId = null }) {
     await initializeAutotradeRuntime();
     const settings = await readSettings();
     const autoTrading = settings.autoTrading || {};
     const runtime = buildWebullRuntimeConfig();
     const liveEnabled = forceLive || autoTrading.enabled === true;
-    const dryRun = false;
     const normalizedSymbol = toSafeTicker(symbol);
     const resolvedCorrelationId = correlationId || generateCorrelationId();
 
@@ -1401,6 +1400,33 @@ async function buyWebullTestMarket(symbol = 'AAPL', quantity = 1, options = {}) 
 
     const now = options.now || new Date();
     const nowEt = getETParts(now);
+    const calendar = await getCachedTradingCalendar();
+    if (!isTradingDayByCalendarET(nowEt, calendar)) {
+        const closedError = new Error('AAPL market test-buy is only allowed during a trading day');
+        closedError.status = 409;
+        closedError.errorCode = 'MARKET_CLOSED';
+        closedError.errorMsg = 'Trading day is closed';
+        closedError.response = {
+            nowEt,
+            session: null,
+            reason: 'non_trading_day',
+        };
+        throw closedError;
+    }
+    const session = getTradingSessionForDateET(nowEt, calendar);
+    const minutesNow = nowEt.hh * 60 + nowEt.mm;
+    if (minutesNow < session.openMin || minutesNow >= session.closeMin) {
+        const closedError = new Error('AAPL market test-buy is only allowed during core trading hours');
+        closedError.status = 409;
+        closedError.errorCode = 'MARKET_CLOSED';
+        closedError.errorMsg = 'Core session is closed';
+        closedError.response = {
+            nowEt,
+            session,
+            reason: 'outside_core_hours',
+        };
+        throw closedError;
+    }
     const correlationId = options.correlationId || generateCorrelationId();
     const clientOrderId = crypto.randomUUID().replace(/-/g, '');
     const order = {
@@ -1432,7 +1458,35 @@ async function buyWebullTestMarket(symbol = 'AAPL', quantity = 1, options = {}) 
         }),
     });
 
-    const placed = await placeOrder(runtime.accountId, [order]);
+    let placed;
+    try {
+        placed = await placeOrder(runtime.accountId, [order]);
+    } catch (error) {
+        const message = error && error.message ? error.message : 'Webull test buy failed';
+        await appendAutotradeEvent('manual_test_buy_failed', {
+            ...buildExecutionLogContext({
+                source: options.source || 'manual_test_buy',
+                correlationId,
+                symbol: normalizedSymbol,
+                action: 'entry',
+                clientOrderId,
+                status: 'failed',
+                quantity: numericQuantity,
+                decisionTime: now.toISOString(),
+                dateKey: etKeyYMD(nowEt),
+                mode: 'live',
+            }),
+            side: 'BUY',
+            order_type: 'MARKET',
+            error: message,
+            http_status: error && error.status ? error.status : null,
+            broker_summary: error && error.response ? summarizeBrokerPayload(error.response) : null,
+            broker_error_code: error && (error.errorCode || null),
+            broker_error_msg: error && (error.errorMsg || null),
+            broker_request_id: error && (error.requestId || null),
+        }, 'error');
+        throw error;
+    }
     invalidateDashboardSnapshotCache();
     await appendAutotradeEvent('manual_test_buy_submitted', {
         ...buildExecutionLogContext({

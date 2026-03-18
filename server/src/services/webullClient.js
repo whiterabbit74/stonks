@@ -145,12 +145,19 @@ function requestWebull({ method, path, query = {}, body, configOverrides = {}, i
                         data: parsed
                     });
                 }
-                const message = typeof parsed === 'object' && parsed
-                    ? (parsed.message || parsed.msg || parsed.error || `Webull request failed with ${res.statusCode}`)
-                    : `Webull request failed with ${res.statusCode}`;
+                const responseObject = parsed && typeof parsed === 'object' ? parsed : null;
+                const errorCode = responseObject?.error_code || responseObject?.errorCode || responseObject?.code || null;
+                const errorMessage = responseObject?.message || responseObject?.msg || responseObject?.error_msg || responseObject?.error || null;
+                const requestId = responseObject?.request_id || responseObject?.requestId || res.headers['x-request-id'] || res.headers['request-id'] || null;
+                const message = errorCode && errorMessage
+                    ? `${errorCode}: ${errorMessage}`
+                    : (errorMessage || `Webull request failed with ${res.statusCode}`);
                 const err = new Error(message);
                 err.status = res.statusCode;
-                err.response = parsed;
+                err.response = responseObject || parsed;
+                err.errorCode = errorCode;
+                err.errorMsg = errorMessage;
+                err.requestId = requestId;
                 reject(err);
             });
         });

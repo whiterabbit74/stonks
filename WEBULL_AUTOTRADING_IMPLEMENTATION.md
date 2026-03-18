@@ -7,7 +7,6 @@
 - принимать торговое решение по watched tickers;
 - выбирать минимальный IBS ниже порога входа;
 - закрывать открытую позицию при достижении порога выхода;
-- работать в `dry-run` по умолчанию;
 - уметь отправлять реальные equity orders в Webull после явного включения;
 - не хранить секреты в `settings.json`, только в `server/.env`.
 
@@ -163,7 +162,7 @@
 - Telegram/UI alerts по результату `preview/place`;
 - UI-панель управления автоторговлей;
 - fallback market-data provider на случай отказа Finnhub;
-- E2E smoke-тест на `dry-run` цикл.
+- E2E smoke-тест на live цикл с минимальным объёмом.
 
 ## Important Limitations
 

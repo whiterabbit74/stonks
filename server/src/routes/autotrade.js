@@ -16,6 +16,38 @@ const {
     checkAccessToken,
 } = require('../services/autotrade');
 
+function formatWebullError(error, fallbackMessage) {
+    const response = error && error.response ? error.response : null;
+    const errorCode = error && (error.errorCode || (response && (response.error_code || response.errorCode || response.code)) || null);
+    const errorMsg = error && (error.errorMsg || (response && (response.message || response.msg || response.error_msg || response.error)) || null);
+    const requestId = error && (error.requestId || (response && (response.request_id || response.requestId)) || null);
+    const message = errorCode && errorMsg
+        ? `${errorCode}: ${errorMsg}`
+        : (errorMsg || (error && error.message) || fallbackMessage);
+    return { message, errorCode, errorMsg, requestId, response };
+}
+
+function resolveWebullHttpStatus(error, message, defaultStatus = 502) {
+    if (error && error.status) {
+        if ([400, 401, 403, 404, 409, 422, 429].includes(error.status)) {
+            return error.status;
+        }
+        if (error.status >= 500) {
+            return 502;
+        }
+    }
+    if (/invalid symbol|quantity must be|missing|credentials|account id/i.test(message)) {
+        return 400;
+    }
+    if (/market|session|outside|after-hours|after hours|closed/i.test(message)) {
+        return 409;
+    }
+    if (error && error.response) {
+        return 502;
+    }
+    return defaultStatus;
+}
+
 router.get('/autotrade/config', async (req, res) => {
     try {
         const [config, webull] = await Promise.all([
@@ -101,9 +133,16 @@ router.post('/autotrade/webull/close-position', async (req, res) => {
         const result = await closeWebullPositionMarket(symbol, { source: 'api_manual_close_position' });
         res.json({ success: true, clientOrderId: result.clientOrderId || result.order?.client_order_id || null, result });
     } catch (error) {
-        const message = error && error.message ? error.message : 'Failed to close Webull position';
-        const status = /invalid symbol|no broker position|pending exit order/i.test(message) ? 400 : 500;
-        res.status(status).json({ error: message });
+        const formatted = formatWebullError(error, 'Failed to close Webull position');
+        const status = resolveWebullHttpStatus(error, formatted.message, 502);
+        res.status(status).json({
+            error: formatted.message,
+            errorCode: formatted.errorCode,
+            errorMsg: formatted.errorMsg,
+            requestId: formatted.requestId,
+            response: formatted.response,
+            status,
+        });
     }
 });
 
@@ -115,10 +154,16 @@ router.post('/autotrade/webull/test-buy', async (req, res) => {
         const result = await buyWebullTestMarket(symbol, quantity, { source: 'api_manual_test_buy' });
         res.json({ success: true, clientOrderId: result.clientOrderId || result.order?.client_order_id || null, result });
     } catch (error) {
-        const message = error && error.message ? error.message : 'Failed to submit Webull test buy';
-        const response = error && error.response ? error.response : null;
-        const status = /market|session|outside|after-hours|after hours/i.test(message) ? 409 : 500;
-        res.status(status).json({ error: message, response });
+        const formatted = formatWebullError(error, 'Failed to submit Webull test buy');
+        const status = resolveWebullHttpStatus(error, formatted.message, 502);
+        res.status(status).json({
+            error: formatted.message,
+            errorCode: formatted.errorCode,
+            errorMsg: formatted.errorMsg,
+            requestId: formatted.requestId,
+            response: formatted.response,
+            status,
+        });
     }
 });
 

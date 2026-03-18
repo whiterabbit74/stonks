@@ -205,9 +205,31 @@ export async function apiCall<T>(
   const response = await fetchWithCreds(url, fetchOptions);
 
   if (!response.ok) {
-    const error = new Error(`HTTP ${response.status}: ${response.statusText} `) as NetworkError;
+    let body: unknown = null;
+    try {
+      body = await response.clone().json();
+    } catch {
+      try {
+        body = await response.clone().text();
+      } catch {
+        body = null;
+      }
+    }
+    const bodyMessage = body && typeof body === 'object'
+      ? (
+          (typeof (body as { error?: unknown }).error === 'string' && (body as { error: string }).error.trim())
+          || (typeof (body as { message?: unknown }).message === 'string' && (body as { message: string }).message.trim())
+          || (typeof (body as { msg?: unknown }).msg === 'string' && (body as { msg: string }).msg.trim())
+          || (typeof (body as { errorMsg?: unknown }).errorMsg === 'string' && (body as { errorMsg: string }).errorMsg.trim())
+          || (typeof (body as { error_code?: unknown }).error_code === 'string' && typeof (body as { error_msg?: unknown }).error_msg === 'string'
+              ? `${(body as { error_code: string }).error_code}: ${(body as { error_msg: string }).error_msg}`.trim()
+              : null)
+        )
+      : (typeof body === 'string' && body.trim() ? body.trim() : null);
+    const error = new Error(bodyMessage || `HTTP ${response.status}: ${response.statusText}`) as NetworkError & { body?: unknown };
     error.status = response.status;
     error.retryable = response.status >= 500 || response.status === 429;
+    (error as { body?: unknown }).body = body;
     throw error;
   }
 

@@ -435,7 +435,15 @@ export function WebullAccountPage() {
       setActionMessage(`Тестовый ордер AAPL отправлен. client_order_id: ${result.clientOrderId ?? '—'}`);
       await Promise.all([loadDashboard(true), loadLogs(), loadAutotradeConfig()]);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Не удалось отправить тестовый BUY');
+      if (err instanceof Error && 'body' in err && (err as { body?: unknown }).body) {
+        const body = (err as { body?: unknown }).body;
+        const bodyText = typeof body === 'string'
+          ? body
+          : JSON.stringify(body, null, 2);
+        setError(`${err.message}${bodyText ? ` | ${bodyText}` : ''}`);
+      } else {
+        setError(err instanceof Error ? err.message : 'Не удалось отправить тестовый BUY');
+      }
     } finally {
       setTestBuying(false);
     }
