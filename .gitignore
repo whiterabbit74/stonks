@@ -55,3 +55,6 @@ cookies.txt
 config-update.tgz
 frontend-*.tgz
 server-*.tgz
+
+# Local reference clones / scratch space
+.codex_tmp/

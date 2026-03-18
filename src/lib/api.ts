@@ -1,4 +1,14 @@
-import type { SavedDataset, MonitorTradeHistoryResponse, WebullDashboardResponse, AutotradeLogsResponse, CloseWebullPositionResponse } from '../types';
+import type {
+  SavedDataset,
+  MonitorTradeHistoryResponse,
+  WebullDashboardResponse,
+  AutotradeLogsResponse,
+  CloseWebullPositionResponse,
+  AutoTradingConfig,
+  AutotradeConfigResponse,
+  AutotradeStatusResponse,
+  WebullTestBuyResponse,
+} from '../types';
 import { logError, logWarn } from './error-logger';
 
 // Runtime-safe API base to avoid hardcoded dev hosts in production bundles
@@ -677,6 +687,30 @@ export class DatasetAPI {
     });
   }
 
+  static async getAutotradeConfig(): Promise<AutotradeConfigResponse> {
+    return apiCall<AutotradeConfigResponse>(`${API_BASE_URL}/autotrade/config`, {
+      timeout: 30000,
+      retries: 1,
+    });
+  }
+
+  static async updateAutotradeConfig(updates: Partial<AutoTradingConfig>): Promise<{ success: boolean; config: AutoTradingConfig }> {
+    return apiCall<{ success: boolean; config: AutoTradingConfig }>(`${API_BASE_URL}/autotrade/config`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates),
+      timeout: 30000,
+      retries: 0,
+    });
+  }
+
+  static async getAutotradeStatus(): Promise<AutotradeStatusResponse> {
+    return apiCall<AutotradeStatusResponse>(`${API_BASE_URL}/autotrade/status`, {
+      timeout: 30000,
+      retries: 1,
+    });
+  }
+
   static async getAutotradeLogs(limit = 200): Promise<AutotradeLogsResponse> {
     return apiCall<AutotradeLogsResponse>(`${API_BASE_URL}/autotrade/logs?limit=${encodeURIComponent(String(limit))}`, {
       timeout: 30000,
@@ -689,6 +723,16 @@ export class DatasetAPI {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ symbol }),
+      timeout: 30000,
+      retries: 0,
+    });
+  }
+
+  static async testWebullAaplBuy(quantity = 1): Promise<WebullTestBuyResponse> {
+    return apiCall<WebullTestBuyResponse>(`${API_BASE_URL}/autotrade/webull/test-buy`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ symbol: 'AAPL', quantity }),
       timeout: 30000,
       retries: 0,
     });

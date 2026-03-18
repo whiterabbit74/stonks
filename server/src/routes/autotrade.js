@@ -11,6 +11,7 @@ const {
     getWebullDashboardSnapshot,
     getExecutionLogs,
     closeWebullPositionMarket,
+    buyWebullTestMarket,
     createAccessToken,
     checkAccessToken,
 } = require('../services/autotrade');
@@ -103,6 +104,19 @@ router.post('/autotrade/webull/close-position', async (req, res) => {
         const message = error && error.message ? error.message : 'Failed to close Webull position';
         const status = /invalid symbol|no broker position|pending exit order/i.test(message) ? 400 : 500;
         res.status(status).json({ error: message });
+    }
+});
+
+router.post('/autotrade/webull/test-buy', async (req, res) => {
+    try {
+        const symbol = typeof req.body?.symbol === 'string' && req.body.symbol.trim() ? req.body.symbol.trim() : 'AAPL';
+        const requestedQuantity = req.body?.quantity;
+        const quantity = Number.isFinite(Number(requestedQuantity)) ? Number(requestedQuantity) : 1;
+        const result = await buyWebullTestMarket(symbol, quantity, { source: 'api_manual_test_buy' });
+        res.json({ success: true, clientOrderId: result.clientOrderId || result.order?.client_order_id || null, result });
+    } catch (error) {
+        const message = error && error.message ? error.message : 'Failed to submit Webull test buy';
+        res.status(500).json({ error: message });
     }
 });
 

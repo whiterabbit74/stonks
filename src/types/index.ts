@@ -263,6 +263,51 @@ export interface WebullDashboardResponse {
   fetchedAt: string | null;
 }
 
+export interface AutoTradingConfig {
+  enabled: boolean;
+  dryRun: boolean;
+  provider: string;
+  lowIBS: number;
+  highIBS: number;
+  executionWindowSeconds: number;
+  allowNewEntries: boolean;
+  allowExits: boolean;
+  onlyFromTelegramWatches: boolean;
+  symbols: string;
+  entrySizingMode: string;
+  sizingMode: string;
+  fixedQuantity: number;
+  fixedNotionalUsd: number;
+  maxPositionUsd: number;
+  allowFractionalShares: boolean;
+  orderType: string;
+  timeInForce: string;
+  supportTradingSession: string;
+  maxSlippageBps: number;
+  previewBeforeSend: boolean;
+  cancelOpenOrdersBeforeEntry: boolean;
+  notes: string;
+  lastModifiedAt: string | null;
+}
+
+export interface AutoTradeState {
+  lastSchedulerAttemptKey: string | null;
+  lastRunAt: string | null;
+  lastResult: unknown;
+}
+
+export interface AutotradeConfigResponse {
+  config: AutoTradingConfig;
+  webull: WebullDashboardResponse['connection'];
+  state: AutoTradeState;
+}
+
+export interface AutotradeStatusResponse {
+  evaluation: unknown;
+  webull: WebullDashboardResponse['connection'];
+  state: AutoTradeState;
+}
+
 export interface AutotradeLogsResponse {
   fetchedAt: string | null;
   autotrade: string[];
@@ -294,6 +339,20 @@ export interface AutotradeLogsResponse {
 }
 
 export interface CloseWebullPositionResponse {
+  success: boolean;
+  clientOrderId: string | null;
+  result: {
+    clientOrderId?: string | null;
+    submitted?: boolean;
+    simulated?: boolean;
+    error?: string | null;
+    order?: {
+      client_order_id?: string | null;
+    } | null;
+  };
+}
+
+export interface WebullTestBuyResponse {
   success: boolean;
   clientOrderId: string | null;
   result: {

@@ -1407,6 +1407,109 @@ async function closeWebullPositionMarket(symbol, options = {}) {
     return result;
 }
 
+async function buyWebullTestMarket(symbol = 'AAPL', quantity = 1, options = {}) {
+    await initializeAutotradeRuntime();
+    const runtime = buildWebullRuntimeConfig();
+    if (!runtime.appKey || !runtime.appSecret || !runtime.accountId) {
+        throw new Error('Webull credentials are missing');
+    }
+
+    const normalizedSymbol = toSafeTicker(symbol);
+    if (!normalizedSymbol) {
+        throw new Error('Invalid symbol');
+    }
+
+    const pendingTracker = findPendingTracker(normalizedSymbol, 'entry');
+    if (pendingTracker) {
+        throw new Error(`Pending entry order already exists for ${normalizedSymbol}`);
+    }
+
+    const numericQuantity = Number(quantity);
+    if (!(Number.isInteger(numericQuantity) && numericQuantity > 0)) {
+        throw new Error('Test buy quantity must be a positive integer');
+    }
+
+    const now = options.now || new Date();
+    const nowEt = getETParts(now);
+    const correlationId = options.correlationId || generateCorrelationId();
+    const clientOrderId = crypto.randomUUID().replace(/-/g, '');
+    const order = {
+        client_order_id: clientOrderId,
+        combo_type: 'NORMAL',
+        instrument_type: 'EQUITY',
+        symbol: normalizedSymbol,
+        market: 'US',
+        side: 'BUY',
+        order_type: 'MARKET',
+        quantity: String(numericQuantity),
+        support_trading_session: 'CORE',
+        entrust_type: 'QTY',
+        time_in_force: 'DAY',
+    };
+
+    await appendAutotradeEvent('manual_test_buy_requested', {
+        ...buildExecutionLogContext({
+            source: options.source || 'manual_test_buy',
+            correlationId,
+            symbol: normalizedSymbol,
+            action: 'entry',
+            clientOrderId,
+            status: 'submitted',
+            quantity: numericQuantity,
+            decisionTime: now.toISOString(),
+            dateKey: etKeyYMD(nowEt),
+            mode: 'live',
+        }),
+    });
+
+    const placed = await placeOrder(runtime.accountId, [order]);
+    invalidateDashboardSnapshotCache();
+    await appendAutotradeEvent('manual_test_buy_submitted', {
+        ...buildExecutionLogContext({
+            source: options.source || 'manual_test_buy',
+            correlationId,
+            symbol: normalizedSymbol,
+            action: 'entry',
+            clientOrderId,
+            status: 'submitted',
+            quantity: numericQuantity,
+            decisionTime: now.toISOString(),
+            dateKey: etKeyYMD(nowEt),
+            mode: 'live',
+        }),
+        side: 'BUY',
+        order_type: 'MARKET',
+        http_status: placed?.statusCode || null,
+        broker_summary: summarizeBrokerPayload(placed?.data),
+    });
+
+    void trackSubmittedOrder({
+        accountId: runtime.accountId,
+        clientOrderId,
+        symbol: normalizedSymbol,
+        action: 'entry',
+        decisionTime: now.toISOString(),
+        dateKey: etKeyYMD(nowEt),
+        ibs: null,
+        source: options.source || 'manual_test_buy',
+        quantity: numericQuantity,
+        notifyOnResult: true,
+        correlationId,
+    });
+
+    return {
+        mode: 'live',
+        submitted: true,
+        simulated: false,
+        shouldRecordLocalTrade: false,
+        order,
+        quantity: numericQuantity,
+        response: placed?.data || null,
+        clientOrderId,
+        correlationId,
+    };
+}
+
 async function evaluateAutoTradeCycle(options = {}) {
     if (!isTradeHistoryLoaded()) {
         await loadTradeHistory();
@@ -1692,6 +1795,7 @@ module.exports = {
     sanitizeAutoTradingConfig,
     executeWebullSignal,
     closeWebullPositionMarket,
+    buyWebullTestMarket,
     evaluateAutoTradeCycle,
     executeAutoTradeCycle,
     getAutoTradeConfig,

@@ -21,6 +21,17 @@ function buildHostHeader({ hostname, port }) {
     return port ? `${hostname}:${port}` : hostname;
 }
 
+function getEquityOrderCategory(orderItems) {
+    const items = Array.isArray(orderItems) ? orderItems : [orderItems];
+    const firstEquity = items.find((item) => String(item?.instrument_type || '').toUpperCase() === 'EQUITY');
+    if (!firstEquity) return null;
+    const market = String(firstEquity.market || '').toUpperCase();
+    if (market === 'US') return 'US_STOCK';
+    if (market === 'HK') return 'HK_STOCK';
+    if (market === 'CN') return 'CN_STOCK';
+    return null;
+}
+
 function md5Upper(input) {
     return crypto.createHash('md5').update(input).digest('hex').toUpperCase();
 }
@@ -55,7 +66,7 @@ function buildSignature({ path, query = {}, bodyString = '', headersToSign, appS
         .digest('base64');
 }
 
-function requestWebull({ method, path, query = {}, body, configOverrides = {}, includeAccessToken = true }) {
+function requestWebull({ method, path, query = {}, body, configOverrides = {}, includeAccessToken = true, signedHeaders = {}, requestHeaders = {} }) {
     const runtime = buildWebullRuntimeConfig(configOverrides);
     if (!runtime.appKey || !runtime.appSecret) {
         throw new Error('Webull credentials are not configured');
@@ -72,6 +83,7 @@ function requestWebull({ method, path, query = {}, body, configOverrides = {}, i
         'x-signature-nonce': nonce,
         'x-signature-version': '1.0',
         'x-timestamp': timestamp,
+        ...signedHeaders,
     };
     const signature = buildSignature({
         path,
@@ -97,6 +109,7 @@ function requestWebull({ method, path, query = {}, body, configOverrides = {}, i
         'x-signature-version': '1.0',
         'x-timestamp': timestamp,
         'x-signature': signature,
+        ...requestHeaders,
     };
 
     if (bodyString) {
@@ -191,6 +204,7 @@ async function checkAccessToken(token, configOverrides = {}) {
 }
 
 async function previewOrder(accountId, orderItems, configOverrides = {}) {
+    const category = getEquityOrderCategory(orderItems);
     return requestWebull({
         method: 'POST',
         path: '/openapi/trade/order/preview',
@@ -198,11 +212,14 @@ async function previewOrder(accountId, orderItems, configOverrides = {}) {
             account_id: accountId || buildWebullRuntimeConfig(configOverrides).accountId,
             new_orders: orderItems
         },
-        configOverrides
+        configOverrides,
+        signedHeaders: category ? { category } : {},
+        requestHeaders: category ? { category } : {},
     });
 }
 
 async function placeOrder(accountId, orderItems, configOverrides = {}) {
+    const category = getEquityOrderCategory(orderItems);
     return requestWebull({
         method: 'POST',
         path: '/openapi/trade/order/place',
@@ -210,7 +227,9 @@ async function placeOrder(accountId, orderItems, configOverrides = {}) {
             account_id: accountId || buildWebullRuntimeConfig(configOverrides).accountId,
             new_orders: orderItems
         },
-        configOverrides
+        configOverrides,
+        signedHeaders: category ? { category } : {},
+        requestHeaders: category ? { category } : {},
     });
 }
 

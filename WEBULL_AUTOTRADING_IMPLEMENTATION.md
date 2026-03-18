@@ -89,6 +89,16 @@
 - `WEBULL_API_HOST`
 - `WEBULL_API_PORT`
 
+### 6. Broker UI controls
+
+На странице [`/broker`](/Users/q/Work/MAINPROJECTS/site_tradingibs/src/components/WebullAccountPage.tsx) теперь есть:
+
+- переключатель включения / выключения автоторговли;
+- отображение текущего статуса `enabled / dry-run / live`;
+- кнопка тестового `BUY AAPL 1 share MARKET` для проверки реального Webull order flow;
+- логи в обратном порядке, чтобы новые записи были сверху;
+- raw panels на вкладках для быстрой сверки payload'ов.
+
 ## Current Autotrade Config
 
 `settings.autoTrading`:
@@ -215,6 +225,26 @@
 - Crypto market data:
   - в таблице fees строка есть, но явная цена не указана;
   - из документа нельзя надёжно вывести, что она бесплатная.
+
+## SDK Validation
+
+Для проверки я скачал официальный Python SDK в локальную папку [`/Users/q/Work/MAINPROJECTS/site_tradingibs/.codex_tmp/webull-openapi-python-sdk`](/Users/q/Work/MAINPROJECTS/site_tradingibs/.codex_tmp/webull-openapi-python-sdk) и сверил его с нашим Node-клиентом.
+
+Что совпадает с SDK:
+
+- `HTTPS` only;
+- `x-version: v2`;
+- `x-app-key`, `x-app-secret`, `x-signature`, `x-signature-version`, `x-signature-algorithm`, `x-signature-nonce`;
+- signing через `HMAC-SHA1`;
+- account / balance / positions / order detail / order history / open orders flow;
+- equity order requests с `category=US_STOCK` для US stock order flow;
+- `account_id` передаётся как query/body parameter в trade endpoints.
+
+Что важно:
+
+- официальная Python-библиотека использует тот же auth-паттерн, что и наш `webullClient.js`;
+- для equity place/preview мы теперь явно добавляем `category=US_STOCK`, как это делает SDK;
+- папка SDK оставлена только как локальный ориентир и исключена из git через `.gitignore`.
 
 ## Main Webull Limits From The Docs
 

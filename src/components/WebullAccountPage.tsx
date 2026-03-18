@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { AlertCircle, BriefcaseBusiness, History, RefreshCw, ShieldCheck, Wallet } from 'lucide-react';
-import type { AutotradeLogsResponse, WebullDashboardResponse } from '../types';
+import type { AutoTradingConfig, AutoTradeState, AutotradeLogsResponse, WebullDashboardResponse } from '../types';
 import { DatasetAPI } from '../lib/api';
 import { PageHeader } from './ui/PageHeader';
 import { Button } from './ui/Button';
@@ -28,6 +28,10 @@ function formatNumber(value: unknown, fractionDigits = 2) {
   const num = Number(value);
   if (!Number.isFinite(num)) return '—';
   return num.toFixed(fractionDigits);
+}
+
+function formatYesNo(value: unknown) {
+  return value ? 'Да' : 'Нет';
 }
 
 function formatDateTime(value: unknown) {
@@ -261,13 +265,18 @@ const tabs: Array<{ id: BrokerTab; label: string }> = [
 
 export function WebullAccountPage() {
   const [data, setData] = useState<WebullDashboardResponse | null>(null);
+  const [autotradeConfig, setAutotradeConfig] = useState<AutoTradingConfig | null>(null);
+  const [autotradeState, setAutotradeState] = useState<AutoTradeState | null>(null);
   const [logs, setLogs] = useState<AutotradeLogsResponse | null>(null);
   const [activeTab, setActiveTab] = useState<BrokerTab>('overview');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [configSaving, setConfigSaving] = useState(false);
+  const [testBuying, setTestBuying] = useState(false);
   const [logsLoading, setLogsLoading] = useState(false);
   const [closingSymbol, setClosingSymbol] = useState<string | null>(null);
   const [manualCloseStates, setManualCloseStates] = useState<Record<string, ManualCloseState>>({});
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const loadDashboard = async (isRefresh = false) => {
@@ -285,6 +294,16 @@ export function WebullAccountPage() {
     }
   };
 
+  const loadAutotradeConfig = async () => {
+    try {
+      const next = await DatasetAPI.getAutotradeConfig();
+      setAutotradeConfig(next.config);
+      setAutotradeState(next.state);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Не удалось загрузить настройки автоторговли');
+    }
+  };
+
   const loadLogs = async () => {
     try {
       setLogsLoading(true);
@@ -299,6 +318,7 @@ export function WebullAccountPage() {
 
   useEffect(() => {
     void loadDashboard(false);
+    void loadAutotradeConfig();
     void loadLogs();
   }, []);
 
@@ -371,6 +391,57 @@ export function WebullAccountPage() {
 
     return () => window.clearInterval(intervalId);
   }, [manualCloseStates, pendingOrders.length]);
+
+  const autotradeStatusLabel = autotradeConfig
+    ? autotradeConfig.enabled
+      ? (autotradeConfig.dryRun ? 'Включена, dry-run' : 'Включена, live')
+      : 'Выключена'
+    : '—';
+
+  const autotradeLastResult = autotradeState?.lastResult && typeof autotradeState.lastResult === 'object'
+    ? autotradeState.lastResult as Record<string, unknown>
+    : null;
+  const autotradeLastDecision = autotradeLastResult && typeof autotradeLastResult.decision === 'object'
+    ? autotradeLastResult.decision as Record<string, unknown>
+    : null;
+
+  const handleToggleAutotrading = async () => {
+    if (!autotradeConfig) return;
+    const nextEnabled = !autotradeConfig.enabled;
+    const confirmed = window.confirm(nextEnabled
+      ? `Включить автоторговлю? Сейчас режим: ${autotradeConfig.dryRun ? 'dry-run' : 'live'}`
+      : 'Выключить автоторговлю?');
+    if (!confirmed) return;
+
+    try {
+      setConfigSaving(true);
+      setError(null);
+      const next = await DatasetAPI.updateAutotradeConfig({ enabled: nextEnabled });
+      setAutotradeConfig(next.config);
+      setActionMessage(nextEnabled ? 'Автоторговля включена' : 'Автоторговля выключена');
+      await loadAutotradeConfig();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Не удалось изменить статус автоторговли');
+    } finally {
+      setConfigSaving(false);
+    }
+  };
+
+  const handleTestBuyAapl = async () => {
+    const confirmed = window.confirm('Отправить тестовый BUY MARKET для AAPL на 1 акцию? Это реальный ордер.');
+    if (!confirmed) return;
+    try {
+      setTestBuying(true);
+      setError(null);
+      const result = await DatasetAPI.testWebullAaplBuy(1);
+      setActionMessage(`Тестовый ордер AAPL отправлен. client_order_id: ${result.clientOrderId ?? '—'}`);
+      await Promise.all([loadDashboard(true), loadLogs(), loadAutotradeConfig()]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Не удалось отправить тестовый BUY');
+    } finally {
+      setTestBuying(false);
+    }
+  };
 
   useEffect(() => {
     const needsDashboardRefresh = Object.values(manualCloseStates).some((item) => isFinalTrackedStatus(item.status) && !item.dashboardSynced);
@@ -663,11 +734,36 @@ export function WebullAccountPage() {
                 </div>
               </div>
             </div>
+            <div className="mt-4 grid gap-4 xl:grid-cols-4">
+              <InfoCard title="Статус" value={autotradeStatusLabel} hint={autotradeConfig?.lastModifiedAt ? `Обновлено ${formatDateTime(autotradeConfig.lastModifiedAt)}` : 'Настройки ещё не загружены'} icon={<ShieldCheck className="h-4 w-4" />} />
+              <InfoCard title="Last run" value={autotradeState?.lastRunAt ? formatDateTime(autotradeState.lastRunAt) : '—'} hint={autotradeState?.lastSchedulerAttemptKey ? `Key: ${autotradeState.lastSchedulerAttemptKey}` : undefined} icon={<History className="h-4 w-4" />} />
+              <InfoCard title="Entries/Exits" value={autotradeConfig ? `${formatYesNo(autotradeConfig.allowNewEntries)}/${formatYesNo(autotradeConfig.allowExits)}` : '—'} hint={autotradeConfig?.supportTradingSession ? `Session: ${autotradeConfig.supportTradingSession}` : undefined} icon={<BriefcaseBusiness className="h-4 w-4" />} />
+              <InfoCard title="Webull" value={data.connection.configured ? 'Ready' : 'Not ready'} hint={data.connection.hasAccessToken ? 'Access token ok' : 'Missing token'} icon={<Wallet className="h-4 w-4" />} />
+              <InfoCard title="Последнее решение" value={autotradeLastDecision?.action ? String(autotradeLastDecision.action) : '—'} hint={autotradeLastDecision?.reason ? String(autotradeLastDecision.reason) : undefined} icon={<History className="h-4 w-4" />} />
+            </div>
+            {actionMessage ? (
+              <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-200">
+                {actionMessage}
+              </div>
+            ) : null}
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Button variant={autotradeConfig?.enabled ? 'danger' : 'primary'} onClick={() => void handleToggleAutotrading()} isLoading={configSaving}>
+                {autotradeConfig?.enabled ? 'Выключить автоторговлю' : 'Включить автоторговлю'}
+              </Button>
+              <Button variant="secondary" onClick={() => void handleTestBuyAapl()} isLoading={testBuying}>
+                BUY AAPL 1 шт по рынку
+              </Button>
+              <Button variant="secondary" onClick={() => void Promise.all([loadDashboard(true), loadAutotradeConfig(), loadLogs()])} isLoading={refreshing}>
+                Обновить статус
+              </Button>
+            </div>
             <p className="mt-4 text-sm text-gray-600 dark:text-gray-400">
               Исполнение подвязано к существующему T-1 механизму в мониторинге. Сигнал берётся из текущей логики проверки перед закрытием, а Webull используется как broker execution layer.
             </p>
             <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
               `Pending / last tracked orders` показывает только заявки, которые были отправлены этим сайтом через manual close или T-1 execution. Обычные брокерские ордера из Webull без участия сайта здесь не появятся.
+              {' '}
+              Тестовая кнопка `BUY AAPL 1 шт по рынку` отправляет реальный ордер для проверки API и подписи.
             </p>
           </div>
           <div className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
@@ -709,6 +805,7 @@ export function WebullAccountPage() {
           </div>
           <div className="grid gap-4 xl:grid-cols-2">
             <RawJson title="Raw connection payload" value={data.connection} />
+            <RawJson title="Raw autotrade config payload" value={{ config: autotradeConfig, state: autotradeState }} />
             <RawJson title="Raw tracked orders payload" value={{ pending: logs?.pending ?? [], recent: logs?.recent ?? [] }} />
           </div>
           <RawJson title="Raw dashboard payload" value={data} />
