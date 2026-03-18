@@ -1069,7 +1069,7 @@ async function executeWebullSignal({ action, symbol, currentPrice, ibs, decision
             }),
             reason: 'autotrading_disabled',
         });
-        return { mode: 'disabled', submitted: false, shouldRecordLocalTrade: true, clientOrderId: null, correlationId: resolvedCorrelationId };
+        return { mode: 'disabled', submitted: false, shouldRecordLocalTrade: false, clientOrderId: null, correlationId: resolvedCorrelationId, error: 'Autotrading is disabled' };
     }
 
     if (!runtime.appKey || !runtime.appSecret || !runtime.accountId) {
