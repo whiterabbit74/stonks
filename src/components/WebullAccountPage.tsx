@@ -977,7 +977,7 @@ export function WebullAccountPage() {
                 <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Мониторинг отслеживаемых акций</h2>
                 <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
                   Цены берутся из текущего quote-провайдера. Обновляй вручную: по кнопке у строки или общей кнопке.
-                </p>                </p>
+                </p>
               </div>
               <Button variant="secondary" onClick={() => void loadMonitoringData(true)} isLoading={monitoringLoading}>
                 Обновить все цены
