@@ -82,6 +82,11 @@ function initSchema(db) {
 
         CREATE INDEX IF NOT EXISTS idx_trades_status ON trades(status);
         CREATE INDEX IF NOT EXISTS idx_trades_entry_date ON trades(entry_date);
+
+        CREATE TABLE IF NOT EXISTS calendar (
+            id      INTEGER PRIMARY KEY CHECK (id = 1),
+            data    TEXT NOT NULL
+        );
     `);
 }
 

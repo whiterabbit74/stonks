@@ -4,10 +4,12 @@
  */
 const fs = require('fs-extra');
 const { TRADING_CALENDAR_FILE } = require('../config');
+const { getDb } = require('../db');
 
 // Cache for trading calendar
 let _tradingCalendarCache = { data: null, loadedAt: 0 };
 const TRADING_CALENDAR_TTL_MS = 5 * 60 * 1000;
+let _calMigrated = false;
 
 // Reusable formatter for ET
 const etFormatter = new Intl.DateTimeFormat('en-US', {
@@ -96,20 +98,51 @@ function isTradingDayET(p) {
     return !isWeekendET(p) && !nyseHolidaysET(p.y).has(etKeyYMD(p));
 }
 
-// Calendar JSON helpers
+// ─── Calendar migration ───────────────────────────────────────────────────────
+
+function migrateCalendarJsonToDb() {
+    if (_calMigrated) return;
+    _calMigrated = true;
+
+    const db = getDb();
+    const existing = db.prepare('SELECT id FROM calendar WHERE id = 1').get();
+    if (existing) return;
+
+    if (!fs.pathExistsSync(TRADING_CALENDAR_FILE)) return;
+
+    try {
+        const json = fs.readJsonSync(TRADING_CALENDAR_FILE);
+        db.prepare('INSERT OR REPLACE INTO calendar (id, data) VALUES (1, ?)').run(JSON.stringify(json));
+        console.log('calendar: migrated from JSON to SQLite');
+    } catch (e) {
+        console.warn('calendar: migration failed:', e.message);
+    }
+}
+
+// Calendar helpers
 async function loadTradingCalendarJSON() {
     try {
         const nowTs = Date.now();
         if (_tradingCalendarCache.data && (nowTs - _tradingCalendarCache.loadedAt) < TRADING_CALENDAR_TTL_MS) {
             return _tradingCalendarCache.data;
         }
-        if (await fs.pathExists(TRADING_CALENDAR_FILE)) {
-            const json = await fs.readJson(TRADING_CALENDAR_FILE);
+        migrateCalendarJsonToDb();
+        const db = getDb();
+        const row = db.prepare('SELECT data FROM calendar WHERE id = 1').get();
+        if (row) {
+            const json = JSON.parse(row.data);
             _tradingCalendarCache = { data: json, loadedAt: nowTs };
             return json;
         }
     } catch { }
     return null;
+}
+
+function saveCalendarToDb(calendarData) {
+    migrateCalendarJsonToDb();
+    const db = getDb();
+    db.prepare('INSERT OR REPLACE INTO calendar (id, data) VALUES (1, ?)').run(JSON.stringify(calendarData));
+    _tradingCalendarCache = { data: calendarData, loadedAt: Date.now() };
 }
 
 function getCachedTradingCalendar() {
@@ -204,6 +237,7 @@ module.exports = {
     nyseHolidaysET,
     isTradingDayET,
     loadTradingCalendarJSON,
+    saveCalendarToDb,
     getCachedTradingCalendar,
     parseHmToMinutes,
     isHolidayByCalendarET,
