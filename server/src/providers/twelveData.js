@@ -5,22 +5,8 @@ const https = require('https');
 const { getApiConfig } = require('../config');
 const { toSafeTicker } = require('../utils/helpers');
 
-/**
- * Fetch OHLC data from Twelve Data
- */
-async function fetchFromTwelveData(symbol, startDate, endDate) {
-    if (!getApiConfig().TWELVE_DATA_API_KEY) {
-        throw new Error('Twelve Data API key not configured');
-    }
-
-    const startDateStr = new Date(startDate * 1000).toISOString().split('T')[0];
-    const endDateStr = new Date(endDate * 1000).toISOString().split('T')[0];
-    const safeSymbol = toSafeTicker(symbol);
-    if (!safeSymbol) {
-        throw new Error('Invalid symbol');
-    }
-
-    const url = `https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(safeSymbol)}&interval=1day&start_date=${startDateStr}&end_date=${endDateStr}&outputsize=5000&apikey=${getApiConfig().TWELVE_DATA_API_KEY}`;
+function fetchOnePage(safeSymbol, startDateStr, endDateStr, apiKey) {
+    const url = `https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(safeSymbol)}&interval=1day&start_date=${startDateStr}&end_date=${endDateStr}&outputsize=5000&apikey=${apiKey}`;
 
     return new Promise((resolve, reject) => {
         https.get(url, (response) => {
@@ -38,21 +24,15 @@ async function fetchFromTwelveData(symbol, startDate, endDate) {
 
                     if (jsonData.status === 'error') {
                         const err = new Error(`Twelve Data: ${jsonData.message || 'Unknown error'}`);
-                        if (jsonData.code === 429 || (jsonData.message && jsonData.message.includes('limit'))) {
-                            err.status = 429;
-                        } else {
-                            err.status = 400;
-                        }
+                        err.status = (jsonData.code === 429 || (jsonData.message && jsonData.message.includes('limit'))) ? 429 : 400;
                         return reject(err);
                     }
 
                     if (!jsonData.values || !Array.isArray(jsonData.values)) {
-                        const err = new Error('Twelve Data: No data found for this symbol/period');
-                        err.status = 404;
-                        return reject(err);
+                        return resolve([]);
                     }
 
-                    const result = jsonData.values.map(item => ({
+                    resolve(jsonData.values.map(item => ({
                         date: item.datetime,
                         open: parseFloat(item.open),
                         high: parseFloat(item.high),
@@ -60,11 +40,7 @@ async function fetchFromTwelveData(symbol, startDate, endDate) {
                         close: parseFloat(item.close),
                         adjClose: parseFloat(item.close),
                         volume: parseInt(item.volume || '0')
-                    }));
-
-                    result.sort((a, b) => new Date(a.date) - new Date(b.date));
-                    resolve(result);
-
+                    })));
                 } catch (error) {
                     const err = new Error(`Не удалось обработать ответ Twelve Data: ${error.message}`);
                     err.status = 502;
@@ -73,6 +49,48 @@ async function fetchFromTwelveData(symbol, startDate, endDate) {
             });
         }).on('error', reject);
     });
+}
+
+/**
+ * Fetch OHLC data from Twelve Data.
+ * Splits into 2 sequential requests to cover ranges > 5000 trading days (~20 years).
+ */
+async function fetchFromTwelveData(symbol, startDate, endDate) {
+    if (!getApiConfig().TWELVE_DATA_API_KEY) {
+        throw new Error('Twelve Data API key not configured');
+    }
+
+    const safeSymbol = toSafeTicker(symbol);
+    if (!safeSymbol) throw new Error('Invalid symbol');
+
+    const apiKey = getApiConfig().TWELVE_DATA_API_KEY;
+    const midTs = Math.floor((startDate + endDate) / 2);
+    const midDateStr = new Date(midTs * 1000).toISOString().split('T')[0];
+    const startDateStr = new Date(startDate * 1000).toISOString().split('T')[0];
+    const endDateStr = new Date(endDate * 1000).toISOString().split('T')[0];
+
+    // First half, then second half (sequential to respect 8 req/min rate limit)
+    const part1 = await fetchOnePage(safeSymbol, startDateStr, midDateStr, apiKey);
+    const part2 = await fetchOnePage(safeSymbol, midDateStr, endDateStr, apiKey);
+
+    // Merge, deduplicate by date, sort ascending
+    const seen = new Set();
+    const merged = [];
+    for (const row of [...part1, ...part2]) {
+        if (!seen.has(row.date)) {
+            seen.add(row.date);
+            merged.push(row);
+        }
+    }
+    merged.sort((a, b) => a.date.localeCompare(b.date));
+
+    if (merged.length === 0) {
+        const err = new Error('Twelve Data: No data found for this symbol/period');
+        err.status = 404;
+        throw err;
+    }
+
+    return merged;
 }
 
 module.exports = {
