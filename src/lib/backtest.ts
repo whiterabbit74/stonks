@@ -126,7 +126,6 @@ export class BacktestEngine {
     const lowThreshold = this.strategy.parameters.lowIBS || 0.1;
 
     if (this.evaluateConditions(this.strategy.entryConditions, index)) {
-      console.log(`🟢 ENTRY SIGNAL: IBS=${ibsValue?.toFixed(3)} < ${lowThreshold} on ${bar.date}`);
       this.enterPosition(index, bar);
     }
   }
@@ -209,7 +208,6 @@ export class BacktestEngine {
     // Check if we have enough capital
     const totalCost = (quantity * slippageAdjustedPrice) + entryCommission;
     if (totalCost > this.currentCapital) {
-      console.log(`Not enough capital: need $${totalCost.toFixed(2)}, have $${this.currentCapital.toFixed(2)}`);
       return; // Not enough capital
     }
 
@@ -240,8 +238,6 @@ export class BacktestEngine {
     this.currentCapital -= totalCost;
 
     const pos = this.currentPosition!;
-    console.log(`🟢 ENTERED POSITION: ${quantity} shares at $${slippageAdjustedPrice.toFixed(2)}, date: ${bar.date}`);
-    console.log(`📊 Position details: maxHoldDays=${pos.maxHoldDays}, stopLoss=$${pos.stopLoss?.toFixed(2)}, takeProfit=$${pos.takeProfit?.toFixed(2)}`);
 
     // Record signal
     this.signals.push({
@@ -284,7 +280,6 @@ export class BacktestEngine {
     const duration = daysBetweenTradingDates(this.currentPosition.entryDate, bar.date);
 
     // Debug: проверяем причину выхода и инвестиции
-    console.log(`🔚 TRADE: ${duration} days, Reason: ${exitReason}, Investment: $${initialInvestment.toFixed(2)}, P&L: $${pnl.toFixed(2)}, Capital before: $${this.currentCapital.toFixed(2)}`);
 
     // Create trade record with detailed information
     const trade: Trade = {
@@ -322,7 +317,6 @@ export class BacktestEngine {
     // At exit: capital += (quantity * exitPrice - exitCommission)
     this.currentCapital += grossProceeds - exitCommission;
 
-    console.log(`💰 Capital updated: $${this.currentCapital.toFixed(2)} (was $${(this.currentCapital - grossProceeds + exitCommission).toFixed(2)})`);
 
     // Add current capital to trade context
     if (trade.context) {
@@ -375,11 +369,9 @@ export class BacktestEngine {
     if (totalCost > this.currentCapital) {
       // Reduce quantity to fit available capital
       const adjustedQuantity = Math.floor((this.currentCapital - actualCommission) / price);
-      console.log(`⚠️ Reducing quantity from ${quantity} to ${adjustedQuantity} due to capital constraints`);
       return Math.max(0, adjustedQuantity);
     }
 
-    console.log(`📊 Position size: ${quantity} shares at $${price.toFixed(2)}, total cost: $${totalCost.toFixed(2)} (${capitalUsagePercent}% of $${this.currentCapital.toFixed(2)})`);
 
     return quantity;
   }
@@ -511,13 +503,11 @@ export class BacktestEngine {
     const indicatorValues = this.indicators.get(indicatorKey);
 
     if (!indicatorValues || index >= indicatorValues.length) {
-      console.log(`No indicator values for ${indicatorKey} at index ${index}`);
       return false;
     }
 
     const currentValue = indicatorValues[index];
     if (isNaN(currentValue)) {
-      console.log(`NaN value for ${indicatorKey} at index ${index}`);
       return false;
     }
 
@@ -539,7 +529,6 @@ export class BacktestEngine {
 
     // Debug logging for IBS conditions (only for exits)
     if (condition.indicator === 'IBS' && condition.operator === '>' && result) {
-      console.log(`IBS EXIT condition met: ${currentValue.toFixed(3)} > ${conditionValue} at index ${index}`);
     }
 
     return result;
@@ -619,7 +608,6 @@ export class BacktestEngine {
       totalValue += positionValue;
 
       // Debug: показываем расчет equity
-      console.log(`📈 Equity: Cash=$${this.currentCapital.toFixed(2)} + Position=$${positionValue.toFixed(2)} = Total=$${totalValue.toFixed(2)}`);
     }
 
     // Calculate drawdown
@@ -647,7 +635,6 @@ export class BacktestEngine {
     // Calculate indicators based on strategy conditions
     const allConditions = [...this.strategy.entryConditions, ...this.strategy.exitConditions];
 
-    console.log('🔧 STRATEGY PARAMETERS:', this.strategy.parameters);
 
     allConditions.forEach(condition => {
       if (condition.type === 'indicator' && condition.indicator) {
@@ -656,7 +643,6 @@ export class BacktestEngine {
         if (!this.indicators.has(key)) {
           const values = this.calculateIndicatorValues(condition.indicator, condition as IndicatorCondition);
           this.indicators.set(key, values);
-          console.log(`Calculated ${key}: ${values.length} values`);
         }
       }
     });
@@ -786,11 +772,8 @@ export class BacktestEngine {
         const daysDiff = daysBetweenTradingDates(this.data[i - 1].date, this.data[i].date);
         intervals.push(daysDiff);
       }
-      console.log(`🗓️ DATA INTERVALS (days between bars):`, intervals);
-      console.log(`📅 First 5 dates:`, this.data.slice(0, 5).map(d => d.date));
 
       const avgInterval = intervals.reduce((sum, val) => sum + val, 0) / intervals.length;
-      console.log(`📊 Average interval: ${avgInterval.toFixed(1)} days`);
 
       if (avgInterval > 5) {
         console.warn(`⚠️ WARNING: Data appears to be weekly (avg ${avgInterval.toFixed(1)} days between bars)!`);
@@ -818,10 +801,6 @@ export class BacktestEngine {
     const max = Math.max(...validIBS);
     const avg = validIBS.reduce((sum, v) => sum + v, 0) / validIBS.length;
 
-    console.log(`📊 IBS STATISTICS:`);
-    console.log(`   Range: ${min.toFixed(3)} - ${max.toFixed(3)}, Average: ${avg.toFixed(3)}`);
-    console.log(`   Entry opportunities (IBS < ${lowThreshold}): ${belowLow}/${validIBS.length} (${(belowLow / validIBS.length * 100).toFixed(1)}%)`);
-    console.log(`   Exit opportunities (IBS > ${highThreshold}): ${aboveHigh}/${validIBS.length} (${(aboveHigh / validIBS.length * 100).toFixed(1)}%)`);
 
     // Проверим последовательности
     let consecutiveHigh = 0;
@@ -834,7 +813,6 @@ export class BacktestEngine {
         consecutiveHigh = 0;
       }
     }
-    console.log(`   Max consecutive days with IBS > ${highThreshold}: ${maxConsecutiveHigh}`);
   }
 
   /**
@@ -928,7 +906,6 @@ export class BacktestEngine {
  * Simple backtest runner for the simplified app
  */
 export function runBacktest(data: OHLCData[], strategy: Strategy): BacktestResult {
-  console.log('Running backtest with strategy:', strategy.id, 'and', data.length, 'data points');
 
   // Используем чистый бэктест только для IBS стратегии
   const engine = new CleanBacktestEngine(data, strategy);

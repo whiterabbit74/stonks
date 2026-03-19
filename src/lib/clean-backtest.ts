@@ -65,7 +65,6 @@ export class CleanBacktestEngine {
   }
 
   public runBacktest(): BacktestResult {
-    console.log('🔧 STRATEGY PARAMETERS:', this.strategy.parameters);
     // Пустые данные -> пустой результат без ошибок
     if (!this.data || this.data.length === 0) {
       return {
@@ -136,8 +135,6 @@ export class CleanBacktestEngine {
                   entryIBS: ibs
                 };
                 this.currentCapital -= totalCost;
-                console.log(`🟢 ENTRY SIGNAL: IBS=${ibs.toFixed(3)} < ${lowIBS} on ${bar.date}`);
-                console.log(`🟢 ENTRY EXECUTION(fallback-close): bought ${quantity} shares at $${bar.close.toFixed(2)} on ${bar.date} (no next day available)`);
               } else {
                 logWarn('backtest', 'Entry signal but insufficient funds for minimum quantity', {
                   date: bar.date,
@@ -158,8 +155,6 @@ export class CleanBacktestEngine {
                   entryIBS: ibs
                 };
                 this.currentCapital -= totalCost;
-                console.log(`🟢 ENTRY SIGNAL: IBS=${ibs.toFixed(3)} < ${lowIBS} on ${bar.date}`);
-                console.log(`🟢 ENTRY EXECUTION(nextOpen): bought ${quantity} shares at $${nextBar.open.toFixed(2)} on ${nextBar.date}`);
               }
             }
           } else {
@@ -175,8 +170,6 @@ export class CleanBacktestEngine {
                 entryIBS: ibs
               };
               this.currentCapital -= totalCost;
-              console.log(`🟢 ENTRY SIGNAL: IBS=${ibs.toFixed(3)} < ${lowIBS} on ${bar.date}`);
-              console.log(`🟢 ENTRY EXECUTION(close): bought ${quantity} shares at $${bar.close.toFixed(2)} on ${bar.date}`);
             }
           }
         }
@@ -250,7 +243,6 @@ export class CleanBacktestEngine {
               trade.context.currentCapitalAfterExit = this.currentCapital;
             }
 
-            console.log(`🔴 EXIT: IBS=${ibs.toFixed(3)}, ${exitReason}, P&L=$${pnl.toFixed(2)}, Duration=${duration} days`);
 
             position = null;
           }
@@ -373,7 +365,6 @@ export class CleanBacktestEngine {
 
     const metrics = metricsCalculator.calculateAllMetrics();
 
-    console.log(`✅ Backtest completed: ${this.trades.length} trades, Final capital: $${this.currentCapital.toFixed(2)}`);
 
     // Generate chart data from OHLC data
     const chartData = this.data.map(bar => ({
