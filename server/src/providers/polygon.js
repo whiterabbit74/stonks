@@ -8,7 +8,7 @@ const { toSafeTicker } = require('../utils/helpers');
 /**
  * Fetch OHLC data from Polygon.io
  */
-async function fetchFromPolygon(symbol, startDate, endDate) {
+async function fetchFromPolygon(symbol, startDate, endDate, apiKeyOverride = null) {
     const safeSymbol = toSafeTicker(symbol);
     if (!safeSymbol) {
         throw new Error('Symbol is required');
@@ -20,7 +20,7 @@ async function fetchFromPolygon(symbol, startDate, endDate) {
     const fromDate = startDateObj.toISOString().split('T')[0];
     const toDate = endDateObj.toISOString().split('T')[0];
 
-    const apiKey = getApiConfig().POLYGON_API_KEY || (IS_PROD ? '' : 'demo');
+    const apiKey = apiKeyOverride || getApiConfig().POLYGON_API_KEY || (IS_PROD ? '' : 'demo');
     if (!apiKey) {
         throw new Error('Polygon API key not configured');
     }

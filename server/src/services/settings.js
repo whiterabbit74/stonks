@@ -16,6 +16,7 @@ function getDefaultSettings() {
         enhancerProvider: 'finnhub',
         resultsRefreshProvider: 'finnhub',
         enablePostClosePriceActualization: false,
+        polygonApiKey: '',
         indicatorPanePercent: 30,
         defaultMultiTickerSymbols: 'SPY,QQQ,IWM',
         autoTrading: {

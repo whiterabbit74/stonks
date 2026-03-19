@@ -4,6 +4,7 @@
 const express = require('express');
 const router = express.Router();
 const { getApiConfig } = require('../config');
+const { readSettings } = require('../services/settings');
 const { toSafeTicker, toFiniteNumber } = require('../utils/helpers');
 const { fetchFromAlphaVantage } = require('../providers/alphaVantage');
 const { fetchFromFinnhub, fetchTodayRangeAndQuote: fetchFinnhubTodayRangeAndQuote } = require('../providers/finnhub');
@@ -13,6 +14,16 @@ const { fetchTodayRangeAndQuote: fetchWebullTodayRangeAndQuote, fetchBatchTodayR
 
 // Lightweight Alpha Vantage test — GLOBAL_QUOTE instead of full TIME_SERIES_DAILY
 // Uses ~200 bytes vs ~1MB, doesn't waste one of the 25 daily free-tier requests on history
+async function getPolygonApiKey() {
+    try {
+        const settings = await readSettings();
+        const override = settings && settings.polygonApiKey && settings.polygonApiKey.trim();
+        return override || getApiConfig().POLYGON_API_KEY || '';
+    } catch {
+        return getApiConfig().POLYGON_API_KEY || '';
+    }
+}
+
 function fetchTwelveDataPrice(symbol, apiKey) {
     const https = require('https');
     const url = `https://api.twelvedata.com/price?symbol=${encodeURIComponent(symbol)}&apikey=${apiKey}`;
@@ -156,7 +167,7 @@ router.get('/quote/:symbol', async (req, res) => {
             } else if (provider === 'twelve_data') {
                 rows = await fetchFromTwelveData(symbol, startTs, endTs);
             } else if (provider === 'polygon') {
-                rows = await fetchFromPolygon(symbol, startTs, endTs);
+                rows = await fetchFromPolygon(symbol, startTs, endTs, await getPolygonApiKey() || null);
             }
             payload = buildQuoteFromRows(rows);
         }
@@ -224,7 +235,7 @@ router.get('/yahoo-finance/:symbol', async (req, res) => {
                 data = await fetchFromTwelveData(symbol, startTs, endTs);
                 break;
             case 'polygon':
-                data = await fetchFromPolygon(symbol, startTs, endTs);
+                data = await fetchFromPolygon(symbol, startTs, endTs, await getPolygonApiKey() || null);
                 break;
             case 'webull':
                 return res.status(400).json({ error: 'Webull не поддерживает загрузку исторических данных. Выберите другой провайдер (Alpha Vantage, Finnhub, Twelve Data или Polygon) в настройках.' });
@@ -262,7 +273,7 @@ router.get('/fetch/:provider/:symbol', async (req, res) => {
                 data = await fetchFromTwelveData(symbol, startTs, endTs);
                 break;
             case 'polygon':
-                data = await fetchFromPolygon(symbol, startTs, endTs);
+                data = await fetchFromPolygon(symbol, startTs, endTs, await getPolygonApiKey() || null);
                 break;
             case 'webull': {
                 const snapshot = await fetchWebullTodayRangeAndQuote(symbol);
@@ -364,10 +375,11 @@ router.post('/test-provider', async (req, res) => {
         }
 
         if (provider === 'polygon') {
-            if (!getApiConfig().POLYGON_API_KEY) {
+            const polygonKey = await getPolygonApiKey();
+            if (!polygonKey) {
                 return res.json({ success: false, error: 'API key not configured' });
             }
-            const rows = await fetchFromPolygon(symbol, startTs, endTs);
+            const rows = await fetchFromPolygon(symbol, startTs, endTs, polygonKey);
             const price = getLastCloseFromRows(rows);
             if (price == null) return res.json({ success: false, error: 'No data returned from provider' });
             return res.json({ success: true, symbol, price: price.toFixed(2) });

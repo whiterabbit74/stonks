@@ -23,14 +23,19 @@ router.put('/settings', async (req, res) => {
             resultsRefreshProvider,
             enablePostClosePriceActualization,
             indicatorPanePercent,
-            defaultMultiTickerSymbols
+            defaultMultiTickerSymbols,
+            polygonApiKey
         } = req.body || {};
-        const validProvider = (p) => ['alpha_vantage', 'finnhub', 'twelve_data', 'webull'].includes(p);
+        const validProvider = (p) => ['alpha_vantage', 'finnhub', 'twelve_data', 'webull', 'polygon'].includes(p);
+        const current = await readSettings();
         const next = getDefaultSettings();
+        // Preserve polygonApiKey across PUT calls (it's managed separately via PATCH)
+        next.polygonApiKey = current.polygonApiKey || '';
         if (typeof watchThresholdPct === 'number') next.watchThresholdPct = watchThresholdPct;
         if (validProvider(resultsQuoteProvider)) next.resultsQuoteProvider = resultsQuoteProvider;
         if (validProvider(enhancerProvider)) next.enhancerProvider = enhancerProvider;
         if (validProvider(resultsRefreshProvider)) next.resultsRefreshProvider = resultsRefreshProvider;
+        if (typeof polygonApiKey === 'string') next.polygonApiKey = polygonApiKey.trim();
         if (typeof enablePostClosePriceActualization === 'boolean') {
             next.enablePostClosePriceActualization = enablePostClosePriceActualization;
         }
