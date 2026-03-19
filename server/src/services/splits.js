@@ -1,53 +1,46 @@
 /**
- * Stock splits management service
+ * Stock splits management service — backed by SQLite
  */
 const fs = require('fs-extra');
-const { Mutex } = require('async-mutex');
+const { getDb } = require('../db');
 const { SPLITS_FILE } = require('../config');
 const { toSafeTicker } = require('../utils/helpers');
-const { ensureRegularFile } = require('../utils/files');
 
-// In-memory cache for splits data
-let splitsCache = null;
+// ─── Migration ────────────────────────────────────────────────────────────────
 
-// Mutex to ensure thread-safe (in terms of event loop race conditions) writes
-const fileMutex = new Mutex();
+let _migrated = false;
 
-async function ensureSplitsFile() {
-    try {
-        await ensureRegularFile(SPLITS_FILE, {});
-    } catch { }
-}
+function migrateJsonToDb() {
+    if (_migrated) return;
+    _migrated = true;
 
-/**
- * Reads splits from disk asynchronously.
- */
-async function readSplitsMap() {
-    // Return cached data if available
-    if (splitsCache) {
-        return splitsCache;
-    }
+    const db = getDb();
+    const count = db.prepare('SELECT COUNT(*) AS n FROM splits').get().n;
+    if (count > 0) return;
+
+    if (!fs.pathExistsSync(SPLITS_FILE)) return;
 
     try {
-        await ensureSplitsFile();
-        if (await fs.pathExists(SPLITS_FILE)) {
-            const json = await fs.readJson(SPLITS_FILE);
-            splitsCache = (json && typeof json === 'object') ? json : {};
-            return splitsCache;
-        }
+        const json = fs.readJsonSync(SPLITS_FILE);
+        if (!json || typeof json !== 'object') return;
+
+        const insert = db.prepare('INSERT OR IGNORE INTO splits (ticker, date, factor) VALUES (?, ?, ?)');
+        const run = db.transaction((map) => {
+            for (const [ticker, events] of Object.entries(map)) {
+                const key = toSafeTicker(ticker);
+                for (const e of normalizeSplitEvents(events)) {
+                    insert.run(key, e.date, e.factor);
+                }
+            }
+        });
+        run(json);
+        console.log('splits: migrated from JSON to SQLite');
     } catch (e) {
-        console.warn('Failed to load splits:', e.message);
+        console.warn('splits: migration failed:', e.message);
     }
-
-    // Fallback to empty object if file read fails, but don't cache it as valid
-    // unless we want to cache failures too. For now, let's just return empty.
-    return {};
 }
 
-// Load splits from JSON file (alias for readSplitsMap for compatibility)
-async function loadSplits() {
-    return await readSplitsMap();
-}
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function normalizeSplitEvents(events) {
     const list = Array.isArray(events) ? events : [];
@@ -57,95 +50,77 @@ function normalizeSplitEvents(events) {
         .filter(e => e.factor !== 1);
     const byDate = new Map();
     for (const e of valid) byDate.set(e.date, e);
-    return Array.from(byDate.values()).sort((a, b) => new Date(a.date) - new Date(b.date));
+    return Array.from(byDate.values()).sort((a, b) => (a.date < b.date ? -1 : 1));
 }
 
-async function getTickerSplits(ticker) {
-    const map = await readSplitsMap();
+// ─── Read ─────────────────────────────────────────────────────────────────────
+
+function readSplitsMap() {
+    migrateJsonToDb();
+    const db = getDb();
+    const rows = db.prepare('SELECT ticker, date, factor FROM splits ORDER BY ticker, date').all();
+    const map = {};
+    for (const row of rows) {
+        if (!map[row.ticker]) map[row.ticker] = [];
+        map[row.ticker].push({ date: row.date, factor: row.factor });
+    }
+    return map;
+}
+
+async function loadSplits() {
+    return readSplitsMap();
+}
+
+function getTickerSplits(ticker) {
+    migrateJsonToDb();
+    const db = getDb();
     const key = toSafeTicker(ticker);
-    const arr = normalizeSplitEvents(map[key] || []);
-    return arr;
+    return db.prepare('SELECT date, factor FROM splits WHERE ticker = ? ORDER BY date').all(key);
 }
 
-// Internal helper to update map safely
-async function updateSplitsMap(updateFn) {
-    return await fileMutex.runExclusive(async () => {
-        // Ensure cache is populated
-        const currentMap = await readSplitsMap();
+// ─── Write ────────────────────────────────────────────────────────────────────
 
-        // Create a deep clone to work on, ensuring we don't mutate the cache/current state
-        // until we successfully write to disk.
-        // Using JSON serialization for deep clone as the data structure is simple (JSON-serializable).
-        const workingMap = JSON.parse(JSON.stringify(currentMap));
-
-        // Apply update to the working copy
-        const result = updateFn(workingMap);
-
-        // Write to disk
-        await fs.writeJson(SPLITS_FILE, workingMap, { spaces: 2 });
-
-        // Update cache only after successful write
-        splitsCache = workingMap;
-
-        return result;
-    });
-}
-
-async function upsertTickerSplits(ticker, events) {
+function upsertTickerSplits(ticker, events) {
+    migrateJsonToDb();
+    const db = getDb();
     const key = toSafeTicker(ticker);
-
-    return await updateSplitsMap((map) => {
-        const existing = normalizeSplitEvents(map[key] || []);
-        const incoming = normalizeSplitEvents(events || []);
-        const byDate = new Map();
-        for (const e of existing) byDate.set(e.date, e);
-        for (const e of incoming) byDate.set(e.date, e);
-        const merged = Array.from(byDate.values()).sort((a, b) => new Date(a.date) - new Date(b.date));
-        map[key] = merged;
-        return merged;
-    });
+    const incoming = normalizeSplitEvents(events || []);
+    const insert = db.prepare('INSERT OR REPLACE INTO splits (ticker, date, factor) VALUES (?, ?, ?)');
+    db.transaction(() => { for (const e of incoming) insert.run(key, e.date, e.factor); })();
+    return getTickerSplits(key);
 }
 
-async function setTickerSplits(ticker, events) {
+function setTickerSplits(ticker, events) {
+    migrateJsonToDb();
+    const db = getDb();
     const key = toSafeTicker(ticker);
-
-    return await updateSplitsMap((map) => {
-        const normalized = normalizeSplitEvents(events || []);
-        if (normalized.length > 0) {
-            map[key] = normalized;
-        } else {
-            delete map[key];
-        }
-        return map[key] || [];
-    });
+    const normalized = normalizeSplitEvents(events || []);
+    db.transaction(() => {
+        db.prepare('DELETE FROM splits WHERE ticker = ?').run(key);
+        const insert = db.prepare('INSERT INTO splits (ticker, date, factor) VALUES (?, ?, ?)');
+        for (const e of normalized) insert.run(key, e.date, e.factor);
+    })();
+    return getTickerSplits(key);
 }
 
-async function deleteTickerSplitByDate(ticker, date) {
+function deleteTickerSplitByDate(ticker, date) {
+    migrateJsonToDb();
+    const db = getDb();
     const key = toSafeTicker(ticker);
-
-    return await updateSplitsMap((map) => {
-        const existing = normalizeSplitEvents(map[key] || []);
-        const safeDate = (date || '').toString().slice(0, 10);
-        const filtered = existing.filter(e => e.date !== safeDate);
-        if (filtered.length > 0) {
-            map[key] = filtered;
-        } else {
-            delete map[key];
-        }
-        return map[key] || [];
-    });
+    const safeDate = (date || '').toString().slice(0, 10);
+    db.prepare('DELETE FROM splits WHERE ticker = ? AND date = ?').run(key, safeDate);
+    return getTickerSplits(key);
 }
 
-async function deleteTickerSplits(ticker) {
-    const key = toSafeTicker(ticker);
-
-    return await updateSplitsMap((map) => {
-        if (map[key]) delete map[key];
-        return true;
-    });
+function deleteTickerSplits(ticker) {
+    migrateJsonToDb();
+    const db = getDb();
+    db.prepare('DELETE FROM splits WHERE ticker = ?').run(toSafeTicker(ticker));
+    return true;
 }
 
-// Detect splits from OHLC data heuristics
+// ─── Detection ────────────────────────────────────────────────────────────────
+
 function detectSplitsFromOHLC(ohlc) {
     const factors = [2, 3, 4, 5, 10, 0.5, 0.333, 0.25, 0.2, 0.1];
     const splits = [];
@@ -164,6 +139,8 @@ function detectSplitsFromOHLC(ohlc) {
     }
     return splits;
 }
+
+async function ensureSplitsFile() { /* no-op, DB handles init */ }
 
 module.exports = {
     loadSplits,

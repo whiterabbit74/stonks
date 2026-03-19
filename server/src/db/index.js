@@ -52,6 +52,15 @@ function initSchema(db) {
         );
 
         CREATE INDEX IF NOT EXISTS idx_ohlc_ticker_date ON ohlc(ticker, date);
+
+        CREATE TABLE IF NOT EXISTS splits (
+            ticker  TEXT NOT NULL,
+            date    TEXT NOT NULL,
+            factor  REAL NOT NULL,
+            PRIMARY KEY (ticker, date)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_splits_ticker ON splits(ticker);
     `);
 }
 
