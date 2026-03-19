@@ -21,13 +21,13 @@ Summary of free tier limits and known quirks for each market data provider used 
 
 ## Finnhub
 
-**Free tier:** 60 requests/минуту (по документации), 30 calls/second глобальный лимит
+**Free tier:** 60 requests/минуту, 30 calls/second глобальный лимит
 
 **Historical data:**
-- Endpoint `/stock/candle` — возвращает полную историю бесплатно (проверено).
-- Используется для: мониторинга цен (IBS), загрузки исторических данных, обновления датасетов.
+- Endpoint `/stock/candle` — **требует платного плана**. На free возвращает 403 "You don't have access to this resource".
+- Endpoint `/quote` (текущая цена) — работает бесплатно.
 
-**Вывод:** Лучший вариант для загрузки исторических данных на free. Рекомендуемый провайдер по умолчанию.
+**Вывод:** Finnhub **не пригоден для загрузки исторических данных** на free-тарифе. Использовать только для real-time котировок и мониторинга IBS.
 
 **Ключ:** `FINNHUB_API_KEY`
 
@@ -77,8 +77,8 @@ Summary of free tier limits and known quirks for each market data provider used 
 
 | Задача | Рекомендуемый провайдер |
 |--------|------------------------|
-| Загрузка исторических данных (Новые данные) | **Finnhub** или Twelve Data |
-| Обновление датасета (Results → Refresh) | **Finnhub** |
+| Загрузка исторических данных (Новые данные) | **Polygon** или Twelve Data |
+| Обновление датасета (Results → Refresh) | **Polygon** или Twelve Data |
 | Real-time котировки для мониторинга | **Finnhub** или Webull |
 | Автоторговля | **Webull** |
 | Если есть платный план | Alpha Vantage (высокое качество данных) |
