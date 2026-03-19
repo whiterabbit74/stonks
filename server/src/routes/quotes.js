@@ -13,6 +13,27 @@ const { fetchTodayRangeAndQuote: fetchWebullTodayRangeAndQuote, fetchBatchTodayR
 
 // Lightweight Alpha Vantage test — GLOBAL_QUOTE instead of full TIME_SERIES_DAILY
 // Uses ~200 bytes vs ~1MB, doesn't waste one of the 25 daily free-tier requests on history
+function fetchTwelveDataPrice(symbol, apiKey) {
+    const https = require('https');
+    const url = `https://api.twelvedata.com/price?symbol=${encodeURIComponent(symbol)}&apikey=${apiKey}`;
+    return new Promise((resolve, reject) => {
+        https.get(url, (res) => {
+            let data = '';
+            res.on('data', c => data += c);
+            res.on('end', () => {
+                try {
+                    const json = JSON.parse(data);
+                    if (json.status === 'error') return reject(new Error(`Twelve Data: ${json.message || 'Unknown error'}`));
+                    const price = json?.price;
+                    resolve(price != null ? Number(price) : null);
+                } catch (e) {
+                    reject(new Error(`Failed to parse Twelve Data response: ${e.message}`));
+                }
+            });
+        }).on('error', reject);
+    });
+}
+
 function fetchAlphaVantageGlobalQuote(symbol, apiKey) {
     const https = require('https');
     const url = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${encodeURIComponent(symbol)}&apikey=${apiKey}`;
@@ -348,10 +369,9 @@ router.post('/test-provider', async (req, res) => {
             if (!getApiConfig().TWELVE_DATA_API_KEY) {
                 return res.json({ success: false, error: 'API key not configured' });
             }
-            const rows = await fetchFromTwelveData(symbol, startTs, endTs);
-            const price = getLastCloseFromRows(rows);
+            const price = await fetchTwelveDataPrice(symbol, getApiConfig().TWELVE_DATA_API_KEY);
             if (price == null) return res.json({ success: false, error: 'No data returned from provider' });
-            return res.json({ success: true, symbol, price: price.toFixed(2) });
+            return res.json({ success: true, symbol, price: Number(price).toFixed(2) });
         }
 
         if (provider === 'polygon') {
