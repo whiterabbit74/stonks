@@ -14,13 +14,16 @@ ENV NODE_OPTIONS="--dns-result-order=ipv6first --max-old-space-size=256" \
     NPM_CONFIG_REGISTRY=${NPM_REGISTRY}
 
 COPY server/package*.json ./server/
-# Build tools for native modules (better-sqlite3 requires node-gyp)
-RUN apt-get update -qq && apt-get install -y --no-install-recommends python3 make g++ && rm -rf /var/lib/apt/lists/*
-# Robust npm ci with retries to avoid transient DNS/network hangs (IPv6-friendly)
-RUN set -e; cd server; npm config set registry "${NPM_CONFIG_REGISTRY}"; for i in 1 2 3 4 5; do \
+# Install build tools, compile native modules, then remove build tools — keeps image small
+RUN set -e; \
+    apt-get update -qq && apt-get install -y --no-install-recommends python3 make g++; \
+    cd server; npm config set registry "${NPM_CONFIG_REGISTRY}"; \
+    for i in 1 2 3 4 5; do \
       npm ci --no-audit --no-fund --omit=dev && break; \
       echo "npm ci failed (attempt $i), retrying..."; sleep $((i*3)); \
-    done
+    done; \
+    apt-get purge -y --auto-remove python3 make g++; \
+    rm -rf /var/lib/apt/lists/*
 
 COPY server ./server
 COPY docker/entrypoint.sh /entrypoint.sh
