@@ -311,7 +311,7 @@ export function SplitsTab() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100">Управление сплитами</h3>
-          <p className="text-sm text-gray-500 dark:text-gray-400">server/splits.json</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400">Хранится в базе данных</p>
         </div>
         <button
           className="px-4 py-2 text-sm rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700 self-start sm:self-auto"
@@ -799,7 +799,7 @@ export function SplitsTab() {
       </div>
 
       <div className="text-xs text-gray-500 dark:text-gray-400 border-t pt-4">
-        Изменения сохраняются на сервере в файле <code>server/splits.json</code>
+        Изменения сохраняются в базе данных
       </div>
     </div>
   );
