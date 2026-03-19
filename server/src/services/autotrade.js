@@ -1084,7 +1084,7 @@ async function findOrderSnapshotByClientOrderId(accountId, clientOrderId) {
     }) || null;
 }
 
-async function executeWebullSignal({ action, symbol, currentPrice, ibs, decisionTime, dateKey, source = 'unknown', forceLive = false, notifyOnResult = true, correlationId = null }) {
+async function executeWebullSignal({ action, symbol, currentPrice, ibs, decisionTime, dateKey, source = 'unknown', forceLive = false, notifyOnResult = true, correlationId = null, quantityOverride = null }) {
     await initializeAutotradeRuntime();
     const settings = await readSettings();
     const autoTrading = settings.autoTrading || {};
@@ -1182,7 +1182,7 @@ async function executeWebullSignal({ action, symbol, currentPrice, ibs, decision
                 instrumentId,
                 side,
                 currentPrice,
-                autoTrading: { ...autoTrading, orderType: 'MARKET', entrySizingMode: autoTrading.entrySizingMode || 'balance' },
+                autoTrading: { ...autoTrading, orderType: 'MARKET', ...(quantityOverride > 0 ? { entrySizingMode: 'quantity', fixedQuantity: quantityOverride } : { entrySizingMode: autoTrading.entrySizingMode || 'balance' }) },
                 availableFunds: entryFunds,
             });
             quantity = orderBuild.quantity;
@@ -1499,6 +1499,7 @@ async function buyWebullTestMarket(symbol = 'AAL', quantity = 1, options = {}) {
         source: options.source || 'manual_test_buy',
         forceLive: true,
         notifyOnResult: true,
+        quantityOverride: numericQuantity,
         correlationId,
     });
 
