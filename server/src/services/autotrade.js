@@ -1169,7 +1169,8 @@ async function executeWebullSignal({ action, symbol, currentPrice, ibs, decision
         if (action === 'entry') {
             const entryBalanceResp = await getAccountBalance(runtime.accountId);
             entryFunds = extractEntryFundsFromBalance(entryBalanceResp, autoTrading);
-            if (entryFunds == null) {
+            const needsBalance = !(quantityOverride > 0) && (autoTrading.entrySizingMode || 'balance') === 'balance';
+            if (entryFunds == null && needsBalance) {
                 const root = entryBalanceResp?.data && typeof entryBalanceResp.data === 'object' ? entryBalanceResp.data : entryBalanceResp;
                 const rootKeys = root && typeof root === 'object' ? Object.keys(root).join(',') : 'null';
                 const assets = Array.isArray(root?.account_currency_assets) ? root.account_currency_assets : [];
