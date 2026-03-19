@@ -273,81 +273,22 @@ echo ""
 # 10. ОТПРАВКА УВЕДОМЛЕНИЯ В TELEGRAM
 echo "📨 Отправка уведомления в Telegram..."
 
-# Получаем настройки напрямую из контейнера
-echo "🔍 Получаем настройки из контейнера..."
-SETTINGS_RESPONSE=$(ssh ubuntu@146.235.212.239 "docker exec stonks-server cat /app/server/settings.json 2>/dev/null || echo '{}'" 2>/dev/null || echo "{}")
-echo "📝 Настройки из контейнера: $SETTINGS_RESPONSE"
+# Читаем токен и chat_id прямо из .env на сервере
+BOT_TOKEN=$(ssh ubuntu@146.235.212.239 "grep '^TELEGRAM_BOT_TOKEN=' /home/ubuntu/stonks-config/.env 2>/dev/null | cut -d'=' -f2-" 2>/dev/null || echo "")
+CHAT_ID=$(ssh ubuntu@146.235.212.239 "grep '^TELEGRAM_CHAT_ID=' /home/ubuntu/stonks-config/.env 2>/dev/null | cut -d'=' -f2-" 2>/dev/null || echo "")
 
-# Парсим Telegram настройки из JSON
-if [ -n "$SETTINGS_RESPONSE" ] && [ "$SETTINGS_RESPONSE" != "{}" ]; then
-    BOT_TOKEN=$(echo "$SETTINGS_RESPONSE" | grep -o '"botToken":"[^"]*"' | cut -d'"' -f4 || echo "")
-    CHAT_ID=$(echo "$SETTINGS_RESPONSE" | grep -o '"chatId":"[^"]*"' | cut -d'"' -f4 || echo "")
-    
-    echo "🤖 Bot Token: ${BOT_TOKEN:0:10}... (длина: ${#BOT_TOKEN})"
-    echo "💬 Chat ID: $CHAT_ID"
-    
-    if [ -n "$BOT_TOKEN" ] && [ -n "$CHAT_ID" ] && [ "${#BOT_TOKEN}" -gt 10 ] && [ "$CHAT_ID" != "" ]; then
-        echo "📤 Отправляем сообщение..."
-        
-        MESSAGE="🚀 Сервер обновлен!"
-        MESSAGE="$MESSAGE\n\n💻 Версия: ${GIT_COMMIT}"
-        MESSAGE="$MESSAGE\n🕰 Дата: ${GIT_DATE}"
-        MESSAGE="$MESSAGE\n🌐 Сайт: https://tradingibs.site"
-        MESSAGE="$MESSAGE\n\n✅ Развертывание завершено!"
-        
-        TELEGRAM_RESPONSE=$(curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
-             -H "Content-Type: application/x-www-form-urlencoded" \
-             -d "chat_id=${CHAT_ID}" \
-             -d "text=${MESSAGE}" \
-             -d "parse_mode=Markdown" 2>&1)
-        
-        if echo "$TELEGRAM_RESPONSE" | grep -q '"ok":true'; then
-            echo "✅ Уведомление успешно отправлено в Telegram!"
-        else
-            echo "⚠️  Ошибка отправки в Telegram: $TELEGRAM_RESPONSE"
-        fi
+if [ -n "$BOT_TOKEN" ] && [ -n "$CHAT_ID" ]; then
+    MESSAGE="🚀 Сервер обновлен!%0A%0A💻 Версия: ${GIT_COMMIT}%0A🕰 Дата: ${GIT_DATE}%0A🌐 Сайт: https://tradingibs.site%0A%0A✅ Развертывание завершено!"
+    TELEGRAM_RESPONSE=$(curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+        -d "chat_id=${CHAT_ID}" \
+        -d "text=${MESSAGE}" 2>&1)
+    if echo "$TELEGRAM_RESPONSE" | grep -q '"ok":true'; then
+        echo "✅ Уведомление отправлено в Telegram!"
     else
-        echo "⚠️  Telegram настройки некорректны или пусты"
-        echo "   Bot Token length: ${#BOT_TOKEN}, Chat ID: '$CHAT_ID'"
+        echo "⚠️  Ошибка отправки в Telegram: $TELEGRAM_RESPONSE"
     fi
 else
-    echo "⚠️  Не удалось получить настройки из контейнера, пробуем через API..."
-    SETTINGS_RESPONSE=$(curl -s "https://tradingibs.site/api/settings" || echo "")
-    echo "📝 Ответ API: $SETTINGS_RESPONSE"
-    
-    if [ -n "$SETTINGS_RESPONSE" ]; then
-        BOT_TOKEN=$(echo "$SETTINGS_RESPONSE" | grep -o '"botToken":"[^"]*"' | cut -d'"' -f4 || echo "")
-        CHAT_ID=$(echo "$SETTINGS_RESPONSE" | grep -o '"chatId":"[^"]*"' | cut -d'"' -f4 || echo "")
-        
-        echo "🤖 Bot Token (API): ${BOT_TOKEN:0:10}... (длина: ${#BOT_TOKEN})"
-        echo "💬 Chat ID (API): $CHAT_ID"
-        
-        if [ -n "$BOT_TOKEN" ] && [ -n "$CHAT_ID" ] && [ "${#BOT_TOKEN}" -gt 10 ] && [ "$CHAT_ID" != "" ]; then
-            echo "📤 Отправляем сообщение через API настройки..."
-            
-            MESSAGE="🚀 Сервер обновлен!"
-            MESSAGE="$MESSAGE\n\n💻 Версия: ${GIT_COMMIT}"
-            MESSAGE="$MESSAGE\n🕰 Дата: ${GIT_DATE}"
-            MESSAGE="$MESSAGE\n🌐 Сайт: https://tradingibs.site"
-            MESSAGE="$MESSAGE\n\n✅ Развертывание завершено!"
-            
-            TELEGRAM_RESPONSE=$(curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
-                 -H "Content-Type: application/x-www-form-urlencoded" \
-                 -d "chat_id=${CHAT_ID}" \
-                 -d "text=${MESSAGE}" \
-                 -d "parse_mode=Markdown" 2>&1)
-            
-            if echo "$TELEGRAM_RESPONSE" | grep -q '"ok":true'; then
-                echo "✅ Уведомление успешно отправлено в Telegram (через API)!"
-            else
-                echo "⚠️  Ошибка отправки в Telegram (API): $TELEGRAM_RESPONSE"
-            fi
-        else
-            echo "⚠️  Telegram настройки некорректны (API)"
-        fi
-    else
-        echo "⚠️  API также недоступен"
-    fi
+    echo "⚠️  TELEGRAM_BOT_TOKEN или TELEGRAM_CHAT_ID не найдены в /home/ubuntu/stonks-config/.env"
 fi
 
 echo ""
