@@ -30,9 +30,12 @@ fi
 
 echo "📊 Данные в SQLite: $DB_CHECK"
 
+# Extract just the JSON line (ignore log output like "DB: connected →")
+JSON_LINE=$(echo "$DB_CHECK" | grep -E '^\{.*\}$' | tail -1)
+
 # Parse counts — require at least splits or calendar to be present
-SPLITS=$(echo "$DB_CHECK" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['splits'])" 2>/dev/null || echo "0")
-CALENDAR=$(echo "$DB_CHECK" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['calendar'])" 2>/dev/null || echo "0")
+SPLITS=$(echo "$JSON_LINE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['splits'])" 2>/dev/null || echo "0")
+CALENDAR=$(echo "$JSON_LINE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['calendar'])" 2>/dev/null || echo "0")
 
 if [ "$SPLITS" -eq 0 ] && [ "$CALENDAR" -eq 0 ]; then
     echo "⚠️  SQLite пуст (splits=0, calendar=0) — миграция не прошла или данных не было."
