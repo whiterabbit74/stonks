@@ -161,7 +161,7 @@ function buildSignature({ path, query = {}, bodyString = '', headersToSign, appS
         .digest('base64');
 }
 
-function requestWebull({ method, path, query = {}, body, configOverrides = {}, includeAccessToken = true, signedHeaders = {}, requestHeaders = {}, version = 'v1' }) {
+function requestWebull({ method, path, query = {}, body, configOverrides = {}, includeAccessToken = true, signedHeaders = {}, requestHeaders = {}, version = 'v2' }) {
     const runtime = buildWebullRuntimeConfig(configOverrides);
     if (!runtime.appKey || !runtime.appSecret) {
         throw new Error('Webull credentials are not configured');
@@ -314,7 +314,11 @@ function requestWebull({ method, path, query = {}, body, configOverrides = {}, i
 }
 
 async function getAccountList(configOverrides = {}) {
-    throw new Error('Webull US account list is not supported');
+    return requestWebull({
+        method: 'GET',
+        path: '/openapi/account/list',
+        configOverrides,
+    });
 }
 
 async function getAccountBalance(accountId, configOverrides = {}) {
