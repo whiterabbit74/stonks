@@ -21,7 +21,12 @@ function formatMoney(n) {
 }
 
 function toFiniteNumber(value) {
-    return typeof value === 'number' && Number.isFinite(value) ? value : null;
+    if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+    if (typeof value === 'string' && value.trim() !== '') {
+        const n = Number(value);
+        return Number.isFinite(n) ? n : null;
+    }
+    return null;
 }
 
 function sleep(ms) {
