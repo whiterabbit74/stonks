@@ -39,6 +39,7 @@ const { parseNonNegativeNumber } = require('../utils/helpers');
 const SERVER_DIR = path.join(__dirname, '../..');
 const PORT = process.env.PORT || 3001;
 const DATASETS_DIR = process.env.DATASETS_DIR || path.join(SERVER_DIR, 'datasets');
+const DB_DIR = process.env.DB_DIR || path.join(SERVER_DIR, 'db');
 const KEEP_DATASETS_DIR = path.join(SERVER_DIR, '_keep', 'datasets');
 const SETTINGS_FILE = process.env.SETTINGS_FILE || path.join(SERVER_DIR, 'settings.json');
 const SPLITS_FILE = process.env.SPLITS_FILE || path.join(SERVER_DIR, 'splits.json');
@@ -106,6 +107,7 @@ module.exports = {
     SERVER_DIR,
     PORT,
     DATASETS_DIR,
+    DB_DIR,
     KEEP_DATASETS_DIR,
     SETTINGS_FILE,
     SPLITS_FILE,

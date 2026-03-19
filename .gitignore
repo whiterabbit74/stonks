@@ -60,3 +60,8 @@ server-*.tgz
 .codex_tmp/
 .codex/
 webull-sdk/
+
+# SQLite database
+server/db/*.db
+server/db/*.db-shm
+server/db/*.db-wal

@@ -94,6 +94,10 @@ try { fs.ensureDirSync(DATASETS_DIR); } catch (e) {
   console.warn(`Cannot create datasets dir ${DATASETS_DIR}:`, e.message);
 }
 try { fs.ensureDirSync(config.KEEP_DATASETS_DIR); } catch { }
+try { fs.ensureDirSync(config.DB_DIR); } catch { }
+
+// Initialize DB (creates schema, triggers JSON migration on first run)
+require('./src/db').getDb();
 
 // Run dataset migration on startup
 normalizeStableDatasets().catch(err => {
