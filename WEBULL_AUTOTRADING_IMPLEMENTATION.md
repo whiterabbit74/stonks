@@ -20,17 +20,16 @@
 - выполнять signed HTTP requests;
 - писать raw broker request/response log в monthly files `webull-raw-YYYY-MM.log`;
 - вызывать:
-  - `GET /openapi/account/list`
-  - `GET /openapi/account/balance`
-  - `GET /openapi/account/positions`
+  - `GET /account/balance`
+  - `GET /account/positions`
   - `POST /openapi/auth/token/create`
   - `POST /openapi/auth/token/check`
-  - `POST /openapi/account/orders/preview`
-  - `POST /openapi/account/orders/place`
-  - `POST /openapi/account/orders/cancel`
-  - `GET /openapi/account/orders/detail`
+  - `GET /instrument/list`
+  - `POST /trade/order/place`
+  - `POST /trade/order/cancel`
+  - `GET /trade/order/detail`
   - `GET /trade/orders/list-open`
-  - `GET /openapi/account/orders/history`
+  - `GET /trade/orders/list-today`
 
 ### 2. Autotrade engine
 
@@ -46,9 +45,10 @@
   - выбирает тикер с минимальным IBS среди тех, где `IBS <= lowIBS`;
 - если позиция открыта:
   - ищет сигнал выхода по `IBS >= highIBS`;
-- собирает Webull equity order;
+- резолвит `instrument_id` через `GET /instrument/list`;
+- собирает Webull US equity order в формате `stock_order`;
 - если автоторговля выключена, возвращает статус `off`;
-- если автоторговля включена, отправляет `preview` и `place order`, затем синхронизирует локальную trade history.
+- если автоторговля включена, отправляет `place order`, затем трекает заявку и синхронизирует локальную trade history.
 
 ### 3. API routes
 
@@ -196,6 +196,8 @@
 Документация Webull в файле подтверждает обычные `MARKET`/`LIMIT` equity orders, но не описывает MOC/LOC-поток для точного исполнения “на закрытии”.
 Поэтому текущая реализация технически исполняет сигнал в узком окне перед close, а не гарантирует официальную биржевую механику `market-on-close`.
 
+Для Webull US мы не используем `account/list` и `openapi/account/*` для balance / positions / order history, потому что SDK помечает их как не поддерживаемые для Webull US. Dashboard строится от `WEBULL_ACCOUNT_ID` и US-v1 маршрутов `/account/balance`, `/account/positions`, `/trade/orders/list-open`, `/trade/orders/list-today`.
+
 ### Operational note
 
 - Изменения в коде не деплоятся автоматически. Деплой запускается только после явного запроса пользователя.
@@ -207,12 +209,10 @@
 ### Free or clearly available without paid market-data add-on
 
 - Trading API после одобрения OpenAPI и открытия US brokerage account:
-  - account list
   - account balance
   - account positions
-  - order preview
   - order place / replace / cancel
-  - order history / order detail / open orders
+  - order detail / open orders / today orders
 - Webull market-data snapshot can be used as quote provider for `/api/quote/:symbol`, `/results`, and the broker Monitoring tab when market-data access is available.
 - Test environment:
   - публичные test accounts;
@@ -248,14 +248,14 @@
 - `x-version: v2` для token create/check;
 - `x-app-key`, `x-app-secret`, `x-signature`, `x-signature-version`, `x-signature-algorithm`, `x-signature-nonce`;
 - signing через `HMAC-SHA1`;
-- account / balance / positions / order detail / order history / open orders flow;
-- equity order requests с `category=US_STOCK` для US stock order flow;
+- balance / positions / order detail / open orders / today orders flow для Webull US;
+- equity order requests с `stock_order` + `instrument_id` и `category=US_STOCK` для US stock order flow;
 - `account_id` передаётся как query/body parameter в trade endpoints.
 
 Что важно:
 
 - официальная Python-библиотека использует тот же auth-паттерн, что и наш `webullClient.js`;
-- для equity place/preview мы теперь явно добавляем `category=US_STOCK`, как это делает SDK;
+- для US equity place мы теперь явно отправляем `stock_order` + `instrument_id` и добавляем `category=US_STOCK`, как это делает SDK;
 - папка SDK оставлена только как локальный ориентир и исключена из git через `.gitignore`.
 
 ## Main Webull Limits From The Docs
@@ -270,14 +270,13 @@
 
 ### Trading API limits
 
-- Account list: `10 requests / 30s`
+- Account list: available in SDK, but not used for Webull US dashboard
 - Account balance: `2 / 2s`
 - Account positions: `2 / 2s`
-- Order preview: `150 / 10s`
 - Place orders: `600 / 60s`
 - Replace orders: `600 / 60s`
 - Cancel orders: `600 / 60s`
-- Order history: `2 / 2s`
+- Order history / today orders: `2 / 2s`
 - Open orders: `2 / 2s`
 - Order detail: `2 / 2s`
 - Create token: `10 / 30s`

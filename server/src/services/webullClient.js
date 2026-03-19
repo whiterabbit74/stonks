@@ -98,10 +98,32 @@ function getEquityOrderCategory(orderItems) {
     const items = Array.isArray(orderItems) ? orderItems : [orderItems];
     const firstEquity = items.find((item) => String(item?.instrument_type || '').toUpperCase() === 'EQUITY');
     if (!firstEquity) return null;
-    const market = String(firstEquity.market || '').toUpperCase();
+    const market = String(firstEquity.market || 'US').toUpperCase();
     if (market === 'US') return 'US_STOCK';
     if (market === 'HK') return 'HK_STOCK';
     if (market === 'CN') return 'CN_STOCK';
+    return null;
+}
+
+function normalizeWebullArrayPayload(payload) {
+    if (!payload || typeof payload !== 'object') return [];
+    if (Array.isArray(payload)) return payload;
+    if (Array.isArray(payload.data)) return payload.data;
+    if (Array.isArray(payload.result)) return payload.result;
+    if (Array.isArray(payload.items)) return payload.items;
+    if (Array.isArray(payload.list)) return payload.list;
+    if (Array.isArray(payload.rows)) return payload.rows;
+    if (Array.isArray(payload.instruments)) return payload.instruments;
+    return [];
+}
+
+function normalizeStockOrderPayload(orderItems) {
+    if (Array.isArray(orderItems)) {
+        return orderItems[0] || null;
+    }
+    if (orderItems && typeof orderItems === 'object') {
+        return orderItems;
+    }
     return null;
 }
 
@@ -292,14 +314,17 @@ function requestWebull({ method, path, query = {}, body, configOverrides = {}, i
 }
 
 async function getAccountList(configOverrides = {}) {
-    return requestWebull({ method: 'GET', path: '/openapi/account/list', configOverrides });
+    throw new Error('Webull US account list is not supported');
 }
 
 async function getAccountBalance(accountId, configOverrides = {}) {
     return requestWebull({
         method: 'GET',
-        path: '/openapi/account/balance',
-        query: { account_id: accountId || buildWebullRuntimeConfig(configOverrides).accountId },
+        path: '/account/balance',
+        query: {
+            account_id: accountId || buildWebullRuntimeConfig(configOverrides).accountId,
+            total_asset_currency: 'USD',
+        },
         configOverrides
     });
 }
@@ -307,10 +332,37 @@ async function getAccountBalance(accountId, configOverrides = {}) {
 async function getAccountPositions(accountId, configOverrides = {}) {
     return requestWebull({
         method: 'GET',
-        path: '/openapi/account/positions',
-        query: { account_id: accountId || buildWebullRuntimeConfig(configOverrides).accountId },
+        path: '/account/positions',
+        query: {
+            account_id: accountId || buildWebullRuntimeConfig(configOverrides).accountId,
+            page_size: 100,
+        },
         configOverrides
     });
+}
+
+async function getInstruments(symbols, category = 'US_STOCK', configOverrides = {}) {
+    return requestWebull({
+        method: 'GET',
+        path: '/instrument/list',
+        query: {
+            symbols,
+            category,
+        },
+        configOverrides,
+        includeAccessToken: false,
+    });
+}
+
+async function resolveInstrumentId(symbol, configOverrides = {}) {
+    const response = await getInstruments(symbol, 'US_STOCK', configOverrides);
+    const rows = normalizeWebullArrayPayload(response?.data);
+    const first = rows.find((row) => row && typeof row === 'object') || null;
+    const instrumentId = first && (first.instrument_id || first.instrumentId || first.id || first.security_id);
+    if (!instrumentId) {
+        throw new Error(`Unable to resolve Webull instrument_id for ${symbol}`);
+    }
+    return String(instrumentId);
 }
 
 async function createAccessToken(configOverrides = {}) {
@@ -336,13 +388,21 @@ async function checkAccessToken(token, configOverrides = {}) {
 }
 
 async function previewOrder(accountId, orderItems, configOverrides = {}) {
+    const stockOrder = normalizeStockOrderPayload(orderItems);
+    if (!stockOrder) {
+        throw new Error('Missing order payload');
+    }
+    const market = String(stockOrder.market || 'US').toUpperCase();
+    if (market === 'US') {
+        throw new Error('Webull US preview order is not supported');
+    }
     const category = getEquityOrderCategory(orderItems);
     return requestWebull({
         method: 'POST',
         path: '/openapi/account/orders/preview',
         body: {
             account_id: accountId || buildWebullRuntimeConfig(configOverrides).accountId,
-            new_orders: orderItems
+            new_orders: Array.isArray(orderItems) ? orderItems : [orderItems]
         },
         configOverrides,
         signedHeaders: category ? { category } : {},
@@ -351,13 +411,17 @@ async function previewOrder(accountId, orderItems, configOverrides = {}) {
 }
 
 async function placeOrder(accountId, orderItems, configOverrides = {}) {
-    const category = getEquityOrderCategory(orderItems);
+    const stockOrder = normalizeStockOrderPayload(orderItems);
+    if (!stockOrder) {
+        throw new Error('Missing order payload');
+    }
+    const category = getEquityOrderCategory(stockOrder);
     return requestWebull({
         method: 'POST',
-        path: '/openapi/account/orders/place',
+        path: '/trade/order/place',
         body: {
             account_id: accountId || buildWebullRuntimeConfig(configOverrides).accountId,
-            new_orders: orderItems
+            stock_order: stockOrder
         },
         configOverrides,
         signedHeaders: category ? { category } : {},
@@ -368,7 +432,7 @@ async function placeOrder(accountId, orderItems, configOverrides = {}) {
 async function cancelOrder(accountId, clientOrderId, configOverrides = {}) {
     return requestWebull({
         method: 'POST',
-        path: '/openapi/account/orders/cancel',
+        path: '/trade/order/cancel',
         body: {
             account_id: accountId || buildWebullRuntimeConfig(configOverrides).accountId,
             client_order_id: clientOrderId
@@ -380,7 +444,7 @@ async function cancelOrder(accountId, clientOrderId, configOverrides = {}) {
 async function getOrderDetail(accountId, clientOrderId, configOverrides = {}) {
     return requestWebull({
         method: 'GET',
-        path: '/openapi/account/orders/detail',
+        path: '/trade/order/detail',
         query: {
             account_id: accountId || buildWebullRuntimeConfig(configOverrides).accountId,
             client_order_id: clientOrderId
@@ -411,7 +475,7 @@ async function getOrderHistory(accountId, options = {}, configOverrides = {}) {
     if (options.lastClientOrderId) query.last_client_order_id = options.lastClientOrderId;
     return requestWebull({
         method: 'GET',
-        path: '/openapi/account/orders/history',
+        path: '/trade/orders/list-today',
         query,
         configOverrides
     });
@@ -425,6 +489,8 @@ module.exports = {
     getAccountList,
     getAccountBalance,
     getAccountPositions,
+    getInstruments,
+    resolveInstrumentId,
     createAccessToken,
     checkAccessToken,
     previewOrder,

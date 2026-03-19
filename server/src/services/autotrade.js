@@ -20,17 +20,16 @@ const {
 } = require('./trades');
 const {
     buildWebullRuntimeConfig,
-    getAccountList,
     getAccountBalance,
     getAccountPositions,
     createAccessToken,
     checkAccessToken,
-    previewOrder,
     placeOrder,
     cancelOrder,
     getOpenOrders,
     getOrderHistory,
-    getOrderDetail
+    getOrderDetail,
+    resolveInstrumentId,
 } = require('./webullClient');
 
 const autoTradeState = {
@@ -597,21 +596,18 @@ function buildOrderPrice(side, currentPrice, autoTrading) {
     return Number(raw.toFixed(4));
 }
 
-function buildEquityOrderItem({ symbol, side, currentPrice, autoTrading, availableFunds = null }) {
+function buildEquityOrderItem({ symbol, instrumentId, side, currentPrice, autoTrading, availableFunds = null }) {
     const quantity = computeOrderQuantity(currentPrice, autoTrading, availableFunds);
     const limitPrice = buildOrderPrice(side, currentPrice, autoTrading);
     const item = {
         client_order_id: crypto.randomUUID().replace(/-/g, ''),
-        combo_type: 'NORMAL',
+        instrument_id: instrumentId,
         instrument_type: 'EQUITY',
-        symbol,
-        market: 'US',
         side,
-        order_type: autoTrading.orderType,
-        quantity: autoTrading.allowFractionalShares ? quantity.toFixed(5).replace(/0+$/, '').replace(/\.$/, '') : String(quantity),
-        support_trading_session: autoTrading.supportTradingSession,
-        entrust_type: 'QTY',
-        time_in_force: autoTrading.timeInForce,
+        order_type: autoTrading.orderType || 'MARKET',
+        qty: autoTrading.allowFractionalShares ? quantity.toFixed(5).replace(/0+$/, '').replace(/\.$/, '') : String(quantity),
+        tif: autoTrading.timeInForce || 'DAY',
+        extended_hours_trading: false,
     };
     if (limitPrice != null) {
         item.limit_price = String(limitPrice);
@@ -1148,13 +1144,16 @@ async function executeWebullSignal({ action, symbol, currentPrice, ibs, decision
     let orderBuild;
     let quantity;
     let entryFunds = null;
+    let instrumentId = null;
 
     try {
         if (action === 'entry') {
             const entryBalanceResp = await getAccountBalance(runtime.accountId);
             entryFunds = extractEntryFundsFromBalance(entryBalanceResp, autoTrading);
+            instrumentId = await resolveInstrumentId(normalizedSymbol);
             orderBuild = buildEquityOrderItem({
                 symbol: normalizedSymbol,
+                instrumentId,
                 side,
                 currentPrice,
                 autoTrading: { ...autoTrading, orderType: 'MARKET', entrySizingMode: autoTrading.entrySizingMode || 'balance' },
@@ -1171,6 +1170,7 @@ async function executeWebullSignal({ action, symbol, currentPrice, ibs, decision
                 return candidate === normalizedSymbol;
             });
             quantity = normalizePositionQuantity(brokerPosition, autoTrading.allowFractionalShares === true);
+            instrumentId = await resolveInstrumentId(normalizedSymbol);
             if (!(quantity > 0)) {
                 await appendAutotradeEvent('execution_blocked', {
                     ...buildExecutionLogContext({
@@ -1191,16 +1191,13 @@ async function executeWebullSignal({ action, symbol, currentPrice, ibs, decision
             orderBuild = {
                 item: {
                     client_order_id: crypto.randomUUID().replace(/-/g, ''),
-                    combo_type: 'NORMAL',
+                    instrument_id: instrumentId,
                     instrument_type: 'EQUITY',
-                    symbol: normalizedSymbol,
-                    market: 'US',
                     side,
                     order_type: 'MARKET',
-                    quantity: autoTrading.allowFractionalShares ? quantity.toFixed(5).replace(/0+$/, '').replace(/\.$/, '') : String(quantity),
-                    support_trading_session: autoTrading.supportTradingSession || 'CORE',
-                    entrust_type: 'QTY',
-                    time_in_force: autoTrading.timeInForce || 'DAY',
+                    qty: autoTrading.allowFractionalShares ? quantity.toFixed(5).replace(/0+$/, '').replace(/\.$/, '') : String(quantity),
+                    tif: autoTrading.timeInForce || 'DAY',
+                    extended_hours_trading: false,
                 },
                 quantity,
                 limitPrice: null,
@@ -1262,8 +1259,7 @@ async function executeWebullSignal({ action, symbol, currentPrice, ibs, decision
 
         if (autoTrading.previewBeforeSend) {
             stage = 'preview_order';
-            const preview = await previewOrder(runtime.accountId, [order]);
-            await appendAutotradeEvent('order_preview_ok', {
+            await appendAutotradeEvent('order_preview_skipped', {
                 ...buildExecutionLogContext({
                     source,
                     correlationId: resolvedCorrelationId,
@@ -1280,12 +1276,12 @@ async function executeWebullSignal({ action, symbol, currentPrice, ibs, decision
                 }),
                 side,
                 order_type: 'MARKET',
-                broker_summary: summarizeBrokerPayload(preview?.data),
-            });
+                broker_summary: 'preview_unsupported_for_webull_us',
+            }, 'warn');
         }
 
         stage = 'place_order';
-        const placed = await placeOrder(runtime.accountId, [order]);
+        const placed = await placeOrder(runtime.accountId, order);
         invalidateDashboardSnapshotCache();
         await appendAutotradeEvent('order_submit_ok', {
             ...buildExecutionLogContext({
@@ -1483,18 +1479,16 @@ async function buyWebullTestMarket(symbol = 'AAL', quantity = 1, options = {}) {
     }
     const correlationId = options.correlationId || generateCorrelationId();
     const clientOrderId = crypto.randomUUID().replace(/-/g, '');
+    const instrumentId = await resolveInstrumentId(normalizedSymbol);
     const order = {
         client_order_id: clientOrderId,
-        combo_type: 'NORMAL',
+        instrument_id: instrumentId,
         instrument_type: 'EQUITY',
-        symbol: normalizedSymbol,
-        market: 'US',
         side: 'BUY',
         order_type: 'MARKET',
-        quantity: String(numericQuantity),
-        support_trading_session: 'N',
-        entrust_type: 'QTY',
-        time_in_force: 'DAY',
+        qty: String(numericQuantity),
+        tif: 'DAY',
+        extended_hours_trading: false,
     };
 
     await appendAutotradeEvent('manual_test_buy_requested', {
@@ -1514,7 +1508,7 @@ async function buyWebullTestMarket(symbol = 'AAL', quantity = 1, options = {}) {
 
     let placed;
     try {
-        placed = await placeOrder(runtime.accountId, [order]);
+        placed = await placeOrder(runtime.accountId, order);
     } catch (error) {
         const message = error && error.message ? error.message : 'Webull test buy failed';
         await appendAutotradeEvent('manual_test_buy_failed', {
@@ -1749,24 +1743,29 @@ async function getWebullAccountSnapshot(configOverrides = {}) {
         throw new Error('Webull credentials are not configured');
     }
     const accountId = runtime.accountId;
-    const [accounts, balance, positions] = await Promise.allSettled([
-        getAccountList(configOverrides),
+    const [balance, positions] = await Promise.allSettled([
         accountId ? getAccountBalance(accountId, configOverrides) : Promise.resolve(null),
         accountId ? getAccountPositions(accountId, configOverrides) : Promise.resolve(null),
     ]);
 
     const errors = [];
-    const accountList = accounts.status === 'fulfilled' ? accounts.value : null;
     const accountBalance = balance.status === 'fulfilled' ? balance.value : null;
     const accountPositions = positions.status === 'fulfilled' ? positions.value : null;
-    for (const item of [accounts, balance, positions]) {
+    for (const item of [balance, positions]) {
         if (item.status === 'rejected') {
             errors.push(item.reason && item.reason.message ? item.reason.message : String(item.reason));
         }
     }
     return {
         connection: await getWebullConnectionSummary(configOverrides),
-        accounts: accountList ? accountList.data : null,
+        accounts: [{
+            account_id: accountId || null,
+            account_number: accountId ? `${accountId.slice(0, 4)}...` : null,
+            account_type: 'MARGIN',
+            account_label: 'Configured Webull US account',
+            account_class: 'WEBULL_US',
+            user_id: null,
+        }],
         balance: accountBalance ? accountBalance.data : null,
         positions: accountPositions ? accountPositions.data : null,
         errors,
@@ -1790,8 +1789,7 @@ async function getWebullDashboardSnapshot(configOverrides = {}, options = {}) {
         throw new Error('Webull credentials are not configured');
     }
     const accountId = runtime.accountId;
-    const [accounts, balance, positions, openOrders, orderHistory] = await Promise.allSettled([
-        getAccountList(configOverrides),
+    const [balance, positions, openOrders, orderHistory] = await Promise.allSettled([
         accountId ? getAccountBalance(accountId, configOverrides) : Promise.resolve(null),
         accountId ? getAccountPositions(accountId, configOverrides) : Promise.resolve(null),
         accountId ? getOpenOrders(accountId, { pageSize: 50 }, configOverrides) : Promise.resolve(null),
@@ -1799,12 +1797,11 @@ async function getWebullDashboardSnapshot(configOverrides = {}, options = {}) {
     ]);
 
     const errors = [];
-    const accountsValue = accounts.status === 'fulfilled' ? accounts.value : null;
     const balanceValue = balance.status === 'fulfilled' ? balance.value : null;
     const positionsValue = positions.status === 'fulfilled' ? positions.value : null;
     const openOrdersValue = openOrders.status === 'fulfilled' ? openOrders.value : null;
     const orderHistoryValue = orderHistory.status === 'fulfilled' ? orderHistory.value : null;
-    for (const item of [accounts, balance, positions, openOrders, orderHistory]) {
+    for (const item of [balance, positions, openOrders, orderHistory]) {
         if (item.status === 'rejected') {
             errors.push(item.reason && item.reason.message ? item.reason.message : String(item.reason));
         }
@@ -1812,7 +1809,14 @@ async function getWebullDashboardSnapshot(configOverrides = {}, options = {}) {
 
         const snapshot = {
         connection: await getWebullConnectionSummary(configOverrides),
-        accounts: accountsValue ? accountsValue.data : null,
+        accounts: [{
+            account_id: accountId || null,
+            account_number: accountId ? `${accountId.slice(0, 4)}...` : null,
+            account_type: 'MARGIN',
+            account_label: 'Configured Webull US account',
+            account_class: 'WEBULL_US',
+            user_id: null,
+        }],
         balance: balanceValue ? balanceValue.data : null,
         positions: positionsValue ? positionsValue.data : null,
         openOrders: openOrdersValue ? openOrdersValue.data : null,
