@@ -66,37 +66,33 @@ export function Modal({
         [onClose, closeOnEscape]
     );
 
+    // Effect 1: scroll lock, initial focus, restore focus on close
+    // Runs only when isOpen changes — NOT when handleKeyDown changes
     useEffect(() => {
         if (isOpen) {
-            // Store current active element
             previousActiveElement.current = document.activeElement as HTMLElement;
-
-            // Lock body scroll
             document.body.style.overflow = 'hidden';
-
-            // Add event listener
-            document.addEventListener('keydown', handleKeyDown);
-
-            // Focus first focusable element
             setTimeout(() => {
-                const modal = modalRef.current;
-                if (modal) {
-                    const firstFocusable = modal.querySelector<HTMLElement>(
-                        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-                    );
-                    firstFocusable?.focus();
-                }
+                const firstFocusable = modalRef.current?.querySelector<HTMLElement>(
+                    'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+                );
+                firstFocusable?.focus();
             }, 10);
         } else {
             document.body.style.overflow = '';
-            document.removeEventListener('keydown', handleKeyDown);
-
-            // Restore focus to previous element
             previousActiveElement.current?.focus();
         }
-
         return () => {
             document.body.style.overflow = '';
+        };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isOpen]);
+
+    // Effect 2: keyboard event listener — re-attaches when handler reference changes
+    useEffect(() => {
+        if (!isOpen) return;
+        document.addEventListener('keydown', handleKeyDown);
+        return () => {
             document.removeEventListener('keydown', handleKeyDown);
         };
     }, [isOpen, handleKeyDown]);
