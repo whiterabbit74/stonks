@@ -61,6 +61,27 @@ function initSchema(db) {
         );
 
         CREATE INDEX IF NOT EXISTS idx_splits_ticker ON splits(ticker);
+
+        CREATE TABLE IF NOT EXISTS trades (
+            id                  TEXT PRIMARY KEY,
+            symbol              TEXT NOT NULL,
+            status              TEXT NOT NULL DEFAULT 'open',
+            entry_date          TEXT,
+            exit_date           TEXT,
+            entry_price         REAL,
+            exit_price          REAL,
+            entry_ibs           REAL,
+            exit_ibs            REAL,
+            entry_decision_time TEXT,
+            exit_decision_time  TEXT,
+            pnl_percent         REAL,
+            pnl_absolute        REAL,
+            holding_days        INTEGER,
+            notes               TEXT
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_trades_status ON trades(status);
+        CREATE INDEX IF NOT EXISTS idx_trades_entry_date ON trades(entry_date);
     `);
 }
 
