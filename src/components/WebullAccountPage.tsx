@@ -92,7 +92,7 @@ function asArray(value: unknown): RowRecord[] {
   }
   if (value && typeof value === 'object') {
     const record = value as Record<string, unknown>;
-    const nestedArrayKeys = ['list', 'items', 'data', 'rows', 'positions', 'orders', 'accounts'];
+    const nestedArrayKeys = ['list', 'items', 'data', 'rows', 'positions', 'orders', 'accounts', 'holdings'];
     for (const key of nestedArrayKeys) {
       if (Array.isArray(record[key])) {
         return record[key] as RowRecord[];
@@ -137,9 +137,10 @@ function extractBalanceSummary(balance: unknown) {
       'netLiquidationValue',
       'total_assets',
       'totalAssets',
+      'total_market_value',
       'market_value',
       'marketValue',
-    ]),
+    ]) ?? firstDefined(preferredCurrencyAsset, ['net_liquidation_value', 'netLiquidationValue']),
     cashBalance: firstDefined(candidate, [
       'total_cash_balance',
       'cash_balance',
@@ -159,6 +160,8 @@ function extractBalanceSummary(balance: unknown) {
       'nightTradingBuyingPower',
       'buying_power',
       'buyingPower',
+      'margin_power',
+      'cash_power',
     ]) ?? firstDefined(candidate, ['buying_power', 'buyingPower', 'day_trading_buying_power', 'dayTradingBuyingPower']),
     unrealizedPnl: firstDefined(candidate, [
       'total_unrealized_profit_loss',
@@ -191,7 +194,7 @@ function normalizePositions(positions: unknown) {
 
 function normalizeOrders(payload: unknown) {
   return asArray(payload).flatMap((item, index) => {
-    const nestedOrders = asArray(item.orders);
+    const nestedOrders = asArray(item.orders).length > 0 ? asArray(item.orders) : asArray(item.items);
     const rows = nestedOrders.length > 0 ? nestedOrders : [item];
 
     return rows.map((row, rowIndex) => {
