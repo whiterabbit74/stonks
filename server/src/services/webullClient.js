@@ -363,7 +363,9 @@ async function resolveInstrumentId(symbol, configOverrides = {}) {
     const first = rows.find((row) => row && typeof row === 'object') || null;
     const instrumentId = first && (first.instrument_id || first.instrumentId || first.id || first.security_id);
     if (!instrumentId) {
-        throw new Error(`Unable to resolve Webull instrument_id for ${symbol}`);
+        const dataKeys = first ? Object.keys(first).join(',') : 'null';
+        const rowCount = rows.length;
+        throw new Error(`Unable to resolve Webull instrument_id for ${symbol} (rows=${rowCount}, keys=${dataKeys})`);
     }
     return String(instrumentId);
 }
