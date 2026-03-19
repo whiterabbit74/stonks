@@ -315,10 +315,10 @@ router.post('/test-provider', async (req, res) => {
             if (!getApiConfig().FINNHUB_API_KEY) {
                 return res.json({ success: false, error: 'API key not configured' });
             }
-            const rows = await fetchFromFinnhub(symbol, startTs, endTs);
-            const price = getLastCloseFromRows(rows);
+            const snapshot = await fetchFinnhubTodayRangeAndQuote(symbol);
+            const price = snapshot?.quote?.current ?? snapshot?.quote?.prevClose ?? null;
             if (price == null) return res.json({ success: false, error: 'No data returned from provider' });
-            return res.json({ success: true, symbol, price: price.toFixed(2) });
+            return res.json({ success: true, symbol, price: Number(price).toFixed(2) });
         }
 
         if (provider === 'twelve_data') {
