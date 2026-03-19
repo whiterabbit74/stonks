@@ -297,7 +297,7 @@ export function WebullAccountPage() {
   const [activeTab, setActiveTab] = useState<BrokerTab>('overview');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [configSaving, setConfigSaving] = useState(false);
+
   const [testBuying, setTestBuying] = useState(false);
   const [monitoringLoading, setMonitoringLoading] = useState(false);
   const [monitoringError, setMonitoringError] = useState<string | null>(null);
@@ -552,27 +552,6 @@ export function WebullAccountPage() {
     ? autotradeLastResult.decision as Record<string, unknown>
     : null;
 
-  const handleToggleAutotrading = async () => {
-    if (!autotradeConfig) return;
-    const nextEnabled = !autotradeConfig.enabled;
-    const confirmed = window.confirm(nextEnabled
-      ? 'Включить автоторговлю в live-режиме?'
-      : 'Выключить автоторговлю?');
-    if (!confirmed) return;
-
-    try {
-      setConfigSaving(true);
-      setError(null);
-      const next = await DatasetAPI.updateAutotradeConfig({ enabled: nextEnabled });
-      setAutotradeConfig(next.config);
-      setActionMessage(nextEnabled ? 'Автоторговля включена' : 'Автоторговля выключена');
-      await loadAutotradeConfig();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Не удалось изменить статус автоторговли');
-    } finally {
-      setConfigSaving(false);
-    }
-  };
 
   const handleTestBuyAapl = async () => {
     const confirmed = window.confirm('Отправить тестовый BUY MARKET для AAL на 1 акцию? Это реальный ордер.');
@@ -902,9 +881,6 @@ export function WebullAccountPage() {
               </div>
             ) : null}
             <div className="mt-4 flex flex-wrap gap-2">
-              <Button variant={autotradeConfig?.enabled ? 'danger' : 'primary'} onClick={() => void handleToggleAutotrading()} isLoading={configSaving}>
-                {autotradeConfig?.enabled ? 'Выключить автоторговлю' : 'Включить автоторговлю'}
-              </Button>
               <Button variant="secondary" onClick={() => void handleTestBuyAapl()} isLoading={testBuying}>
                 BUY AAL 1 шт по рынку
               </Button>
