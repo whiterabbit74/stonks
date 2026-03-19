@@ -225,8 +225,16 @@ if [ $? -ne 0 ]; then
     exit 1
 fi &&
 
-echo '⏳ Ожидание запуска (30 сек)...' &&
-sleep 30 &&
+echo '⏳ Ожидание готовности API (макс 60 сек)...' &&
+for i in \$(seq 1 12); do
+  STATUS=\$(timeout 5 curl -s https://tradingibs.site/api/status 2>/dev/null | head -1 || echo '')
+  if [ -n "\$STATUS" ]; then
+    echo "✅ API ответил: \$STATUS"
+    break
+  fi
+  echo "  [\${i}/12] Ещё не готов, ждём 5 сек..."
+  sleep 5
+done &&
 
 echo '✅ ПРОВЕРКА РАЗВЕРТЫВАНИЯ:' &&
 echo 'Контейнеры:' &&
@@ -238,26 +246,12 @@ cat ~/stonks/build-info.json &&
 echo -e '\nСвежие файлы:' &&
 docker exec stonks-frontend find /usr/share/nginx/html/assets -name 'index-*.js' -exec ls -la {} \\; 2>/dev/null || echo 'Контейнер не запущен' &&
 
-echo -e '\nТест API:' &&
-timeout 15 curl -s https://tradingibs.site/api/status | head -1 2>/dev/null || echo 'API недоступен' &&
-
 # Очистка
 rm ~/${ARCHIVE_NAME} ~/build-info.json ~/server/ ~/dist/ -rf
 "
 
-# 8. УБЕЖДАЕМСЯ ЧТО КОНТЕЙНЕРЫ ЗАПУЩЕНЫ
-echo "🔄 Финальная проверка и запуск контейнеров..."
-ssh ubuntu@146.235.212.239 "
-cd ~/stonks &&
-echo 'Проверяем статус контейнеров...' &&
-docker compose ps &&
-echo 'Запускаем контейнеры (если не запущены)...' &&
-docker compose up -d
-"
-
-# 9. ФИНАЛЬНАЯ ПРОВЕРКА
+# 8. ФИНАЛЬНАЯ ПРОВЕРКА
 echo "🎯 ФИНАЛЬНАЯ ПРОВЕРКА..."
-sleep 5
 
 # Проверка доступности сайта
 if curl -s -I https://tradingibs.site/ | grep -q "200"; then
