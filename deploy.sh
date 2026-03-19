@@ -110,7 +110,10 @@ echo "{
   \"build_time\": \"$(date)\"
 }" > build-info.json
 
-COPYFILE_DISABLE=1 tar --no-xattrs --no-mac-metadata -czf "${ARCHIVE_NAME}" dist/ server/ build-info.json
+COPYFILE_DISABLE=1 tar --no-xattrs --no-mac-metadata \
+    --exclude='server/node_modules' \
+    --exclude='server/db' \
+    -czf "${ARCHIVE_NAME}" dist/ server/ build-info.json
 
 # 6. ОТПРАВКА НА СЕРВЕР
 echo "📤 Отправка на сервер..."
@@ -145,6 +148,7 @@ fi &&
 [ -f ~/stonks/server/telegram-watches.json ] && cp ~/stonks/server/telegram-watches.json \$BACKUP_DIR/\$BACKUP_NAME/ 2>/dev/null || true
 [ -f ~/stonks/server/trade-history.json ] && cp ~/stonks/server/trade-history.json \$BACKUP_DIR/\$BACKUP_NAME/ 2>/dev/null || true
 [ -f ~/stonks/server/trading-calendar.json ] && cp ~/stonks/server/trading-calendar.json \$BACKUP_DIR/\$BACKUP_NAME/ 2>/dev/null || true
+[ -d ~/stonks/server/db ] && cp -r ~/stonks/server/db \$BACKUP_DIR/\$BACKUP_NAME/ 2>/dev/null || true
 
 echo "✅ Бекап создан: \$BACKUP_NAME" &&
 
