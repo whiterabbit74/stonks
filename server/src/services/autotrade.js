@@ -1438,11 +1438,6 @@ async function buyWebullTestMarket(symbol = 'AAL', quantity = 1, options = {}) {
         throw new Error('Invalid symbol');
     }
 
-    const pendingTracker = findPendingTracker(normalizedSymbol, 'entry');
-    if (pendingTracker) {
-        throw new Error(`Pending entry order already exists for ${normalizedSymbol}`);
-    }
-
     const numericQuantity = Number(quantity);
     if (!(Number.isInteger(numericQuantity) && numericQuantity > 0)) {
         throw new Error('Test buy quantity must be a positive integer');
@@ -1450,136 +1445,32 @@ async function buyWebullTestMarket(symbol = 'AAL', quantity = 1, options = {}) {
 
     const now = options.now || new Date();
     const nowEt = getETParts(now);
-    const calendar = await getCachedTradingCalendar();
-    if (!isTradingDayByCalendarET(nowEt, calendar)) {
-        const closedError = new Error('AAL market test-buy is only allowed during a trading day');
-        closedError.status = 409;
-        closedError.errorCode = 'MARKET_CLOSED';
-        closedError.errorMsg = 'Trading day is closed';
-        closedError.response = {
-            nowEt,
-            session: null,
-            reason: 'non_trading_day',
-        };
-        throw closedError;
-    }
-    const session = getTradingSessionForDateET(nowEt, calendar);
-    const minutesNow = nowEt.hh * 60 + nowEt.mm;
-    if (minutesNow < session.openMin || minutesNow >= session.closeMin) {
-        const closedError = new Error('AAL market test-buy is only allowed during core trading hours');
-        closedError.status = 409;
-        closedError.errorCode = 'MARKET_CLOSED';
-        closedError.errorMsg = 'Core session is closed';
-        closedError.response = {
-            nowEt,
-            session,
-            reason: 'outside_core_hours',
-        };
-        throw closedError;
-    }
     const correlationId = options.correlationId || generateCorrelationId();
-    const clientOrderId = crypto.randomUUID().replace(/-/g, '');
-    const instrumentId = await resolveInstrumentId(normalizedSymbol);
-    const order = {
-        client_order_id: clientOrderId,
-        instrument_id: instrumentId,
-        instrument_type: 'EQUITY',
-        side: 'BUY',
-        order_type: 'MARKET',
-        qty: String(numericQuantity),
-        tif: 'DAY',
-        extended_hours_trading: false,
-    };
 
-    await appendAutotradeEvent('manual_test_buy_requested', {
-        ...buildExecutionLogContext({
-            source: options.source || 'manual_test_buy',
-            correlationId,
-            symbol: normalizedSymbol,
-            action: 'entry',
-            clientOrderId,
-            status: 'submitted',
-            quantity: numericQuantity,
-            decisionTime: now.toISOString(),
-            dateKey: etKeyYMD(nowEt),
-            mode: 'live',
-        }),
-    });
-
-    let placed;
-    try {
-        placed = await placeOrder(runtime.accountId, order);
-    } catch (error) {
-        const message = error && error.message ? error.message : 'Webull test buy failed';
-        await appendAutotradeEvent('manual_test_buy_failed', {
-            ...buildExecutionLogContext({
-                source: options.source || 'manual_test_buy',
-                correlationId,
-                symbol: normalizedSymbol,
-                action: 'entry',
-                clientOrderId,
-                status: 'failed',
-                quantity: numericQuantity,
-                decisionTime: now.toISOString(),
-                dateKey: etKeyYMD(nowEt),
-                mode: 'live',
-            }),
-            side: 'BUY',
-            order_type: 'MARKET',
-            error: message,
-            http_status: error && error.status ? error.status : null,
-            broker_summary: error && error.response ? summarizeBrokerPayload(error.response) : null,
-            broker_error_code: error && (error.errorCode || null),
-            broker_error_msg: error && (error.errorMsg || null),
-            broker_request_id: error && (error.requestId || null),
-        }, 'error');
-        throw error;
+    // Fetch current price — same as real autotrade
+    const { range, quote } = await fetchTodayRangeAndQuote(normalizedSymbol);
+    const currentPrice = toFiniteNumber(quote && quote.current);
+    if (!currentPrice) {
+        throw new Error(`Unable to fetch current price for ${normalizedSymbol}`);
     }
-    invalidateDashboardSnapshotCache();
-    await appendAutotradeEvent('manual_test_buy_submitted', {
-        ...buildExecutionLogContext({
-            source: options.source || 'manual_test_buy',
-            correlationId,
-            symbol: normalizedSymbol,
-            action: 'entry',
-            clientOrderId,
-            status: 'submitted',
-            quantity: numericQuantity,
-            decisionTime: now.toISOString(),
-            dateKey: etKeyYMD(nowEt),
-            mode: 'live',
-        }),
-        side: 'BUY',
-        order_type: 'MARKET',
-        http_status: placed?.statusCode || null,
-        broker_summary: summarizeBrokerPayload(placed?.data),
-    });
 
-    void trackSubmittedOrder({
-        accountId: runtime.accountId,
-        clientOrderId,
-        symbol: normalizedSymbol,
+    // Go through executeWebullSignal — same code path as real autotrade
+    const result = await executeWebullSignal({
         action: 'entry',
+        symbol: normalizedSymbol,
+        currentPrice,
+        ibs: range && range.high > range.low
+            ? Math.max(0, Math.min(1, (currentPrice - range.low) / (range.high - range.low)))
+            : null,
         decisionTime: now.toISOString(),
         dateKey: etKeyYMD(nowEt),
-        ibs: null,
         source: options.source || 'manual_test_buy',
-        quantity: numericQuantity,
+        forceLive: true,
         notifyOnResult: true,
         correlationId,
     });
 
-    return {
-        mode: 'live',
-        submitted: true,
-        simulated: false,
-        shouldRecordLocalTrade: false,
-        order,
-        quantity: numericQuantity,
-        response: placed?.data || null,
-        clientOrderId,
-        correlationId,
-    };
+    return result;
 }
 
 async function evaluateAutoTradeCycle(options = {}) {
