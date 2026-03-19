@@ -423,7 +423,7 @@ export class DatasetAPI {
   /**
    * Получить котировку в реальном времени (open/high/low/current/prevClose)
    */
-  static async getQuote(symbol: string, provider: 'alpha_vantage' | 'finnhub' | 'twelve_data' | 'webull' = 'finnhub'):
+  static async getQuote(symbol: string, provider: 'alpha_vantage' | 'finnhub' | 'twelve_data' | 'webull' | 'polygon' = 'finnhub'):
     Promise<{ open: number | null; high: number | null; low: number | null; current: number | null; prevClose: number | null }> {
     const response = await fetchWithCreds(`${API_BASE_URL}/quote/${encodeURIComponent(symbol)}?provider=${provider}`);
     if (!response.ok) {
@@ -897,7 +897,7 @@ export class DatasetAPI {
     return response.json();
   }
 
-  static async saveAppSettings(settings: { watchThresholdPct: number; resultsQuoteProvider: 'alpha_vantage' | 'finnhub' | 'twelve_data' | 'webull'; enhancerProvider: 'alpha_vantage' | 'finnhub' | 'twelve_data' | 'webull'; resultsRefreshProvider?: 'alpha_vantage' | 'finnhub' | 'twelve_data' | 'webull'; enablePostClosePriceActualization?: boolean; indicatorPanePercent?: number; defaultMultiTickerSymbols?: string; commissionType?: string; commissionFixed?: number; commissionPercentage?: number }): Promise<void> {
+  static async saveAppSettings(settings: { watchThresholdPct: number; resultsQuoteProvider: 'alpha_vantage' | 'finnhub' | 'twelve_data' | 'webull' | 'polygon'; enhancerProvider: 'alpha_vantage' | 'finnhub' | 'twelve_data' | 'webull' | 'polygon'; resultsRefreshProvider?: 'alpha_vantage' | 'finnhub' | 'twelve_data' | 'webull' | 'polygon'; enablePostClosePriceActualization?: boolean; indicatorPanePercent?: number; defaultMultiTickerSymbols?: string; commissionType?: string; commissionFixed?: number; commissionPercentage?: number }): Promise<void> {
     const response = await fetchWithCreds(`${API_BASE_URL}/settings`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
