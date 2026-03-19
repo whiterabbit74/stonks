@@ -22,10 +22,14 @@ type MonitoringRow = {
   thresholdPct: number | null;
   entryPrice: number | null;
   isOpenPosition: boolean;
+  todayOpen: number | null;
+  todayHigh: number | null;
+  todayLow: number | null;
   currentPrice: number | null;
   prevClose: number | null;
   change: number | null;
   changePct: number | null;
+  currentIbs: number | null;
   quoteProvider: string;
   quoteUpdatedAt: string | null;
   quoteError: string | null;
@@ -296,6 +300,7 @@ export function WebullAccountPage() {
   const [monitoringError, setMonitoringError] = useState<string | null>(null);
   const [monitoringLastUpdatedAt, setMonitoringLastUpdatedAt] = useState<string | null>(null);
   const [monitoringRefreshingSymbols, setMonitoringRefreshingSymbols] = useState<Record<string, boolean>>({});
+  const [monitoringListLoaded, setMonitoringListLoaded] = useState(false);
   const [logsLoading, setLogsLoading] = useState(false);
   const [closingSymbol, setClosingSymbol] = useState<string | null>(null);
   const [manualCloseStates, setManualCloseStates] = useState<Record<string, ManualCloseState>>({});
@@ -340,6 +345,54 @@ export function WebullAccountPage() {
     }
   };
 
+  const buildMonitoringRow = (watch: { symbol: string; highIBS: number; lowIBS?: number; thresholdPct?: number; entryPrice: number | null; isOpenPosition: boolean }, quote?: { open: number | null; high: number | null; low: number | null; current: number | null; prevClose: number | null }, quoteError?: string | null): MonitoringRow => {
+    const current = quote?.current ?? null;
+    const prevClose = quote?.prevClose ?? null;
+    const todayLow = quote?.low ?? null;
+    const todayHigh = quote?.high ?? null;
+    const todayOpen = quote?.open ?? null;
+    const change = current != null && prevClose != null ? current - prevClose : null;
+    const changePct = change != null && prevClose && prevClose !== 0 ? (change / prevClose) * 100 : null;
+    const currentIbs = current != null && todayLow != null && todayHigh != null && todayHigh > todayLow
+      ? (current - todayLow) / (todayHigh - todayLow)
+      : null;
+    return {
+      symbol: watch.symbol,
+      highIBS: Number.isFinite(Number(watch.highIBS)) ? Number(watch.highIBS) : null,
+      lowIBS: Number.isFinite(Number(watch.lowIBS ?? null)) ? Number(watch.lowIBS ?? null) : null,
+      thresholdPct: Number.isFinite(Number(watch.thresholdPct ?? null)) ? Number(watch.thresholdPct ?? null) : null,
+      entryPrice: typeof watch.entryPrice === 'number' ? watch.entryPrice : null,
+      isOpenPosition: !!watch.isOpenPosition,
+      todayOpen,
+      todayHigh,
+      todayLow,
+      currentPrice: current,
+      prevClose,
+      change,
+      changePct,
+      currentIbs,
+      quoteProvider,
+      quoteUpdatedAt: quote ? new Date().toISOString() : null,
+      quoteError: quoteError ?? null,
+    };
+  };
+
+  const loadMonitoringList = async () => {
+    try {
+      setMonitoringLoading(true);
+      setMonitoringError(null);
+      const watches = await DatasetAPI.listTelegramWatches();
+      setMonitoringRows(watches.map((watch) => buildMonitoringRow(watch)));
+      setMonitoringListLoaded(true);
+      setMonitoringLastUpdatedAt(new Date().toISOString());
+      setActionMessage('Список мониторинга загружен');
+    } catch (err) {
+      setMonitoringError(err instanceof Error ? err.message : 'Не удалось загрузить список мониторинга');
+    } finally {
+      setMonitoringLoading(false);
+    }
+  };
+
   const loadMonitoringData = async (force = false) => {
     try {
       setMonitoringLoading(true);
@@ -351,45 +404,14 @@ export function WebullAccountPage() {
             watch.symbol,
             quoteProvider === 'twelve_data' ? 'twelve_data' : quoteProvider
           );
-          const current = quote.current;
-          const prevClose = quote.prevClose;
-          const change = current != null && prevClose != null ? current - prevClose : null;
-          const changePct = change != null && prevClose && prevClose !== 0 ? (change / prevClose) * 100 : null;
-          return {
-            symbol: watch.symbol,
-            highIBS: Number.isFinite(Number(watch.highIBS)) ? Number(watch.highIBS) : null,
-            lowIBS: Number.isFinite(Number(watch.lowIBS ?? null)) ? Number(watch.lowIBS ?? null) : null,
-            thresholdPct: Number.isFinite(Number(watch.thresholdPct ?? null)) ? Number(watch.thresholdPct ?? null) : null,
-            entryPrice: typeof watch.entryPrice === 'number' ? watch.entryPrice : null,
-            isOpenPosition: !!watch.isOpenPosition,
-            currentPrice: current,
-            prevClose,
-            change,
-            changePct,
-            quoteProvider,
-            quoteUpdatedAt: new Date().toISOString(),
-            quoteError: null,
-          } satisfies MonitoringRow;
+          return buildMonitoringRow(watch, quote, null);
         } catch (quoteError) {
-          return {
-            symbol: watch.symbol,
-            highIBS: Number.isFinite(Number(watch.highIBS)) ? Number(watch.highIBS) : null,
-            lowIBS: Number.isFinite(Number(watch.lowIBS ?? null)) ? Number(watch.lowIBS ?? null) : null,
-            thresholdPct: Number.isFinite(Number(watch.thresholdPct ?? null)) ? Number(watch.thresholdPct ?? null) : null,
-            entryPrice: typeof watch.entryPrice === 'number' ? watch.entryPrice : null,
-            isOpenPosition: !!watch.isOpenPosition,
-            currentPrice: null,
-            prevClose: null,
-            change: null,
-            changePct: null,
-            quoteProvider,
-            quoteUpdatedAt: null,
-            quoteError: quoteError instanceof Error ? quoteError.message : 'Не удалось получить котировку',
-          } satisfies MonitoringRow;
+          return buildMonitoringRow(watch, undefined, quoteError instanceof Error ? quoteError.message : 'Не удалось получить котировку');
         }
       }));
       setMonitoringRows(rows);
       setMonitoringLastUpdatedAt(new Date().toISOString());
+      setMonitoringListLoaded(true);
     } catch (err) {
       setMonitoringError(err instanceof Error ? err.message : 'Не удалось загрузить мониторинг');
     } finally {
@@ -408,22 +430,9 @@ export function WebullAccountPage() {
         symbol,
         quoteProvider === 'twelve_data' ? 'twelve_data' : quoteProvider
       );
-      const current = quote.current;
-      const prevClose = quote.prevClose;
-      const change = current != null && prevClose != null ? current - prevClose : null;
-      const changePct = change != null && prevClose && prevClose !== 0 ? (change / prevClose) * 100 : null;
       setMonitoringRows((prev) => prev.map((item) => (
         item.symbol === symbol
-          ? {
-              ...item,
-              currentPrice: current,
-              prevClose,
-              change,
-              changePct,
-              quoteProvider,
-              quoteUpdatedAt: new Date().toISOString(),
-              quoteError: null,
-            }
+          ? buildMonitoringRow(item, quote, null)
           : item
       )));
       setMonitoringLastUpdatedAt(new Date().toISOString());
@@ -435,8 +444,12 @@ export function WebullAccountPage() {
               ...item,
               currentPrice: null,
               prevClose: null,
+              todayOpen: null,
+              todayHigh: null,
+              todayLow: null,
               change: null,
               changePct: null,
+              currentIbs: null,
               quoteProvider,
               quoteUpdatedAt: null,
               quoteError: quoteError instanceof Error ? quoteError.message : 'Не удалось получить котировку',
@@ -454,12 +467,6 @@ export function WebullAccountPage() {
     void loadAutotradeConfig();
     void loadLogs();
   }, []);
-
-  useEffect(() => {
-    if (activeTab === 'monitoring' && monitoringRows.length === 0 && !monitoringLoading) {
-      void loadMonitoringData(false);
-    }
-  }, [activeTab, monitoringRows.length, monitoringLoading]);
 
   const balance = useMemo(() => extractBalanceSummary(data?.balance), [data?.balance]);
   const positions = useMemo(() => normalizePositions(data?.positions), [data?.positions]);
@@ -968,10 +975,13 @@ export function WebullAccountPage() {
               <div>
                 <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Мониторинг отслеживаемых акций</h2>
                 <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-                  Цены берутся из текущего quote-провайдера. Обновление только вручную: по кнопке у строки или общей кнопке сверху.
+                  Цены берутся из текущего quote-провайдера. Сначала загрузи список, потом обновляй цены только вручную: по кнопке у строки или общей кнопке сверху.
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
+                <Button variant="secondary" onClick={() => void loadMonitoringList()} isLoading={monitoringLoading}>
+                  Загрузить список
+                </Button>
                 <Button variant="secondary" onClick={() => void loadMonitoringData(true)} isLoading={monitoringLoading}>
                   Обновить все цены
                 </Button>
@@ -981,7 +991,7 @@ export function WebullAccountPage() {
               <InfoCard title="Отслеживаемые" value={String(monitoringRows.length)} hint="Акции из /watches" icon={<Radar className="h-4 w-4" />} />
               <InfoCard title="Открытые позиции" value={String(openCount)} hint={openCount > 0 ? 'Есть текущие входы' : 'Открытых позиций нет'} icon={<BriefcaseBusiness className="h-4 w-4" />} />
               <InfoCard title="Quote provider" value={quoteProvider} hint="Используется для цен в мониторинге" icon={<ShieldCheck className="h-4 w-4" />} />
-              <InfoCard title="Последнее обновление" value={monitoringLastUpdatedAt ? formatDateTime(monitoringLastUpdatedAt) : '—'} hint="Только ручные refresh" icon={<History className="h-4 w-4" />} />
+              <InfoCard title="Последнее обновление" value={monitoringLastUpdatedAt ? formatDateTime(monitoringLastUpdatedAt) : '—'} hint={monitoringListLoaded ? 'Список загружен' : 'Список не загружен'} icon={<History className="h-4 w-4" />} />
             </div>
             {monitoringError ? (
               <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-200">
@@ -998,9 +1008,13 @@ export function WebullAccountPage() {
                 <thead className="bg-gray-50 text-left text-gray-500 dark:bg-gray-950/40 dark:text-gray-400">
                   <tr>
                     <th className="px-4 py-3 font-medium">Тикер</th>
+                    <th className="px-4 py-3 font-medium text-right">Open</th>
+                    <th className="px-4 py-3 font-medium text-right">High</th>
+                    <th className="px-4 py-3 font-medium text-right">Low</th>
                     <th className="px-4 py-3 font-medium text-right">Цена</th>
-                    <th className="px-4 py-3 font-medium text-right">Δ</th>
+                    <th className="px-4 py-3 font-medium text-right">Current IBS</th>
                     <th className="px-4 py-3 font-medium text-right">Prev Close</th>
+                    <th className="px-4 py-3 font-medium text-right">Δ</th>
                     <th className="px-4 py-3 font-medium text-right">Entry</th>
                     <th className="px-4 py-3 font-medium text-right">High IBS</th>
                     <th className="px-4 py-3 font-medium text-right">Low IBS</th>
@@ -1014,14 +1028,20 @@ export function WebullAccountPage() {
                 <tbody>
                   {monitoringRows.length === 0 ? (
                     <tr>
-                      <td colSpan={12} className="px-4 py-6 text-center text-gray-500 dark:text-gray-400">Нет отслеживаемых акций</td>
+                      <td colSpan={15} className="px-4 py-6 text-center text-gray-500 dark:text-gray-400">
+                        {monitoringListLoaded ? 'Нет отслеживаемых акций' : 'Нажми "Загрузить список"'}
+                      </td>
                     </tr>
                   ) : monitoringRows.map((row) => (
                     <tr key={row.symbol} className="border-t border-gray-100 dark:border-gray-800">
                       <td className="px-4 py-3 font-semibold text-gray-900 dark:text-gray-100">{row.symbol}</td>
+                      <td className="px-4 py-3 text-right font-mono text-gray-700 dark:text-gray-300">{formatMoney(row.todayOpen)}</td>
+                      <td className="px-4 py-3 text-right font-mono text-gray-700 dark:text-gray-300">{formatMoney(row.todayHigh)}</td>
+                      <td className="px-4 py-3 text-right font-mono text-gray-700 dark:text-gray-300">{formatMoney(row.todayLow)}</td>
                       <td className="px-4 py-3 text-right font-mono text-gray-700 dark:text-gray-300">{formatMoney(row.currentPrice)}</td>
-                      <td className={`px-4 py-3 text-right font-mono ${row.change != null && row.change < 0 ? 'text-rose-600 dark:text-rose-300' : 'text-emerald-600 dark:text-emerald-300'}`}>{row.change == null ? '—' : `${row.change >= 0 ? '+' : ''}${formatMoney(row.change)}`}</td>
+                      <td className="px-4 py-3 text-right font-mono text-gray-700 dark:text-gray-300">{row.currentIbs == null ? '—' : formatNumber(row.currentIbs, 4)}</td>
                       <td className="px-4 py-3 text-right font-mono text-gray-700 dark:text-gray-300">{formatMoney(row.prevClose)}</td>
+                      <td className={`px-4 py-3 text-right font-mono ${row.change != null && row.change < 0 ? 'text-rose-600 dark:text-rose-300' : 'text-emerald-600 dark:text-emerald-300'}`}>{row.change == null ? '—' : `${row.change >= 0 ? '+' : ''}${formatMoney(row.change)}`}</td>
                       <td className="px-4 py-3 text-right font-mono text-gray-700 dark:text-gray-300">{formatMoney(row.entryPrice)}</td>
                       <td className="px-4 py-3 text-right font-mono text-gray-700 dark:text-gray-300">{row.highIBS == null ? '—' : formatNumber(row.highIBS, 4)}</td>
                       <td className="px-4 py-3 text-right font-mono text-gray-700 dark:text-gray-300">{row.lowIBS == null ? '—' : formatNumber(row.lowIBS, 4)}</td>
@@ -1045,7 +1065,7 @@ export function WebullAccountPage() {
               </table>
             </div>
           </section>
-          <RawJson title="Raw monitoring payload" value={{ watches: monitoringRows, quoteProvider, lastUpdatedAt: monitoringLastUpdatedAt }} />
+          <RawJson title="Raw monitoring payload" value={{ watches: monitoringRows, quoteProvider, lastUpdatedAt: monitoringLastUpdatedAt, monitoringListLoaded }} />
         </div>
       );
     }
