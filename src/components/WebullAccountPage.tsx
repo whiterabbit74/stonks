@@ -394,22 +394,6 @@ export function WebullAccountPage() {
     };
   };
 
-  const loadMonitoringList = async () => {
-    try {
-      setMonitoringLoading(true);
-      setMonitoringError(null);
-      const watches = await DatasetAPI.listTelegramWatches();
-      setMonitoringRows(watches.map((watch) => buildMonitoringRow(watch)));
-      setMonitoringListLoaded(true);
-      setMonitoringLastUpdatedAt(new Date().toISOString());
-      setActionMessage('Список мониторинга загружен');
-    } catch (err) {
-      setMonitoringError(err instanceof Error ? err.message : 'Не удалось загрузить список мониторинга');
-    } finally {
-      setMonitoringLoading(false);
-    }
-  };
-
   const loadMonitoringData = async (force = false) => {
     try {
       setMonitoringLoading(true);
@@ -484,6 +468,12 @@ export function WebullAccountPage() {
     void loadAutotradeConfig();
     void loadLogs();
   }, []);
+
+  useEffect(() => {
+    if (activeTab === 'monitoring' && !monitoringListLoaded && !monitoringLoading) {
+      void loadMonitoringData();
+    }
+  }, [activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const balance = useMemo(() => extractBalanceSummary(data?.balance), [data?.balance]);
   const positions = useMemo(() => normalizePositions(data?.positions), [data?.positions]);
@@ -967,17 +957,12 @@ export function WebullAccountPage() {
               <div>
                 <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Мониторинг отслеживаемых акций</h2>
                 <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-                  Цены берутся из текущего quote-провайдера. Сначала загрузи список, потом обновляй цены только вручную: по кнопке у строки или общей кнопке сверху.
-                </p>
+                  Цены берутся из текущего quote-провайдера. Обновляй вручную: по кнопке у строки или общей кнопке.
+                </p>                </p>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <Button variant="secondary" onClick={() => void loadMonitoringList()} isLoading={monitoringLoading}>
-                  Загрузить список
-                </Button>
-                <Button variant="secondary" onClick={() => void loadMonitoringData(true)} isLoading={monitoringLoading}>
-                  Обновить все цены
-                </Button>
-              </div>
+              <Button variant="secondary" onClick={() => void loadMonitoringData(true)} isLoading={monitoringLoading}>
+                Обновить все цены
+              </Button>
             </div>
             <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               <InfoCard title="Отслеживаемые" value={String(monitoringRows.length)} hint="Акции из /watches" icon={<Radar className="h-4 w-4" />} />
@@ -1021,7 +1006,7 @@ export function WebullAccountPage() {
                   {monitoringRows.length === 0 ? (
                     <tr>
                       <td colSpan={15} className="px-4 py-6 text-center text-gray-500 dark:text-gray-400">
-                        {monitoringListLoaded ? 'Нет отслеживаемых акций' : 'Нажми "Загрузить список"'}
+                        {monitoringLoading ? 'Загрузка…' : 'Нет отслеживаемых акций'}
                       </td>
                     </tr>
                   ) : monitoringRows.map((row) => (
