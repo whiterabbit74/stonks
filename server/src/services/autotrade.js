@@ -112,12 +112,16 @@ function buildTrackerSnapshot(tracker) {
 
 async function persistAutotradeState() {
     await autotradeStateMutex.runExclusive(async () => {
-        await fs.ensureFile(AUTOTRADE_STATE_FILE);
-        await fs.writeJson(AUTOTRADE_STATE_FILE, {
+        const data = {
             updatedAt: new Date().toISOString(),
             pending: Array.from(pendingOrderTrackers.values()).map(buildTrackerSnapshot),
             recent: recentTrackedOrders.slice(0, 20),
-        }, { spaces: 2 });
+        };
+        // Atomic write: write to tmp then rename — prevents corrupt file on crash
+        const tmpFile = AUTOTRADE_STATE_FILE + '.tmp';
+        await fs.ensureFile(tmpFile);
+        await fs.writeJson(tmpFile, data, { spaces: 2 });
+        await fs.move(tmpFile, AUTOTRADE_STATE_FILE, { overwrite: true });
     });
 }
 
