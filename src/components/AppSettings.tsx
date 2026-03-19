@@ -623,7 +623,7 @@ export function AppSettings() {
             <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">Кнопка «Обновить» — дозагружает историю OHLC за последние дни</div>
             <label className="flex items-center gap-2 text-sm mb-1 dark:text-gray-300">
               <input type="radio" name="refreshProvider" checked={resultsRefreshProvider === 'polygon'} onChange={() => setResultsRefreshProvider('polygon')} />
-              Polygon.io ✅
+              Polygon.io
             </label>
             <label className="flex items-center gap-2 text-sm mb-1 dark:text-gray-300">
               <input type="radio" name="refreshProvider" checked={resultsRefreshProvider === 'twelve_data'} onChange={() => setResultsRefreshProvider('twelve_data')} />
@@ -644,7 +644,7 @@ export function AppSettings() {
             <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">Загрузка полной истории OHLC для нового датасета</div>
             <label className="flex items-center gap-2 text-sm mb-1 dark:text-gray-300">
               <input type="radio" name="enhancerProvider" checked={enhancerProvider === 'polygon'} onChange={() => setEnhancerProvider('polygon')} />
-              Polygon.io ✅
+              Polygon.io
             </label>
             <label className="flex items-center gap-2 text-sm mb-1 dark:text-gray-300">
               <input type="radio" name="enhancerProvider" checked={enhancerProvider === 'twelve_data'} onChange={() => setEnhancerProvider('twelve_data')} />
@@ -706,9 +706,9 @@ export function AppSettings() {
                   <tbody className="text-gray-700 dark:text-gray-300">
                     <tr>
                       <td className="p-2 border dark:border-gray-700 font-medium">Polygon.io</td>
-                      <td className="p-2 border dark:border-gray-700 text-green-600 dark:text-green-400">✅ Полная история бесплатно</td>
+                      <td className="p-2 border dark:border-gray-700 text-red-600 dark:text-red-400">❌ Только ~500 дней (free)</td>
                       <td className="p-2 border dark:border-gray-700 text-yellow-600 dark:text-yellow-400">⚠️ Задержка 15 мин</td>
-                      <td className="p-2 border dark:border-gray-700">Неограниченно (историч.)</td>
+                      <td className="p-2 border dark:border-gray-700">500 баров/запрос (free)</td>
                     </tr>
                     <tr className="bg-gray-50 dark:bg-gray-800/50">
                       <td className="p-2 border dark:border-gray-700 font-medium">Twelve Data</td>
@@ -754,7 +754,7 @@ export function AppSettings() {
                 <h4 className="font-semibold text-gray-900 dark:text-gray-100 mb-1">Обновление датасета (кнопка «Обновить»)</h4>
                 <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">Endpoint: <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">/api/datasets/:id/refresh</code> — дозагружает последние дни OHLC</p>
                 <div className="text-sm space-y-0.5">
-                  <div><span className="text-orange-600 dark:text-orange-400 font-medium">Polygon.io:</span> <span className="text-gray-600 dark:text-gray-400">✅ Рекомендуется. Полная история бесплатно, без лимитов на исторические запросы.</span></div>
+                  <div><span className="text-orange-600 dark:text-orange-400 font-medium">Polygon.io:</span> <span className="text-gray-600 dark:text-gray-400">❌ Free-тариф ограничен ~500 барами. Для полной истории нужен платный план.</span></div>
                   <div><span className="text-purple-600 dark:text-purple-400 font-medium">Twelve Data:</span> <span className="text-gray-600 dark:text-gray-400">✅ Хорошо. До 5000 точек за запрос, 2 запроса на полную историю (~40 лет).</span></div>
                   <div><span className="text-blue-600 dark:text-blue-400 font-medium">Finnhub:</span> <span className="text-gray-600 dark:text-gray-400">❌ Исторические данные — только платный план (403 на free).</span></div>
                   <div><span className="text-green-600 dark:text-green-400 font-medium">Alpha Vantage:</span> <span className="text-gray-600 dark:text-gray-400">❌ outputsize=full — только платный план. Free даёт 100 дней.</span></div>
@@ -765,7 +765,7 @@ export function AppSettings() {
                 <h4 className="font-semibold text-gray-900 dark:text-gray-100 mb-1">Новые данные — загрузка полной истории</h4>
                 <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">Endpoint: <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">/api/yahoo-finance/:symbol</code> — 1 запрос при создании датасета</p>
                 <div className="text-sm space-y-0.5">
-                  <div><span className="text-orange-600 dark:text-orange-400 font-medium">Polygon.io:</span> <span className="text-gray-600 dark:text-gray-400">✅ Лучший выбор. Полная история (2000+), split-adjusted, без дневных лимитов.</span></div>
+                  <div><span className="text-orange-600 dark:text-orange-400 font-medium">Polygon.io:</span> <span className="text-gray-600 dark:text-gray-400">❌ Free-тариф — только ~500 дней. Полная история только на платном плане.</span></div>
                   <div><span className="text-purple-600 dark:text-purple-400 font-medium">Twelve Data:</span> <span className="text-gray-600 dark:text-gray-400">✅ Полная история через 2 запроса. Лимит 800/день не проблема при ручном использовании.</span></div>
                   <div><span className="text-blue-600 dark:text-blue-400 font-medium">Finnhub:</span> <span className="text-gray-600 dark:text-gray-400">❌ /stock/candle — только платный план.</span></div>
                   <div><span className="text-green-600 dark:text-green-400 font-medium">Alpha Vantage:</span> <span className="text-gray-600 dark:text-gray-400">❌ Полная история — только платный план.</span></div>
@@ -775,7 +775,7 @@ export function AppSettings() {
               <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg">
                 <h4 className="font-semibold text-blue-900 dark:text-blue-100 mb-2">Рекомендации</h4>
                 <div className="space-y-1 text-sm text-blue-800 dark:text-blue-200">
-                  <p><strong>Исторические данные:</strong> Polygon.io (бесплатно, без лимитов) или Twelve Data (8 req/мин).</p>
+                  <p><strong>Исторические данные:</strong> Twelve Data (до ~27 лет, 8 req/мин). Polygon — только ~500 дней на free.</p>
                   <p><strong>Котировки и мониторинг:</strong> Finnhub (60 req/мин) или Twelve Data.</p>
                   <p><strong>Брокерская интеграция:</strong> Webull как quote provider при наличии market-data доступа.</p>
                 </div>

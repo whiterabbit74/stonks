@@ -49,13 +49,13 @@ Summary of free tier limits and known quirks for each market data provider used 
 
 ## Polygon.io
 
-**Free tier:** Неограниченный доступ к **историческим** данным (задержка 15 минут на real-time). Нет явного лимита на количество запросов к историческим эндпоинтам.
+**Free tier:** Ограничение — **500 баров на запрос** для исторических данных (задержка 15 минут на real-time).
 
 **Historical data:**
-- Endpoint `/v2/aggs/ticker/{ticker}/range/...` — полная история бесплатно.
+- Endpoint `/v2/aggs/ticker/{ticker}/range/...` — на free-тарифе возвращает не более **500 дней** даже при `limit=50000` и пагинации. Платный план снимает это ограничение.
 - Real-time котировки (для мониторинга) — только с задержкой 15 мин на free.
 
-**Вывод:** Хороший источник для исторических данных. Не подходит для real-time мониторинга на free-тарифе.
+**Вывод:** На free-тарифе подходит только для коротких периодов (~2 года). Для полной истории нужен платный план.
 
 **Ключ:** `POLYGON_API_KEY`
 
@@ -77,8 +77,8 @@ Summary of free tier limits and known quirks for each market data provider used 
 
 | Задача | Рекомендуемый провайдер |
 |--------|------------------------|
-| Загрузка исторических данных (Новые данные) | **Polygon** или Twelve Data |
-| Обновление датасета (Results → Refresh) | **Polygon** или Twelve Data |
+| Загрузка исторических данных (Новые данные) | **Twelve Data** (free) или Polygon (платный) |
+| Обновление датасета (Results → Refresh) | **Twelve Data** (free) или Polygon (платный) |
 | Real-time котировки для мониторинга | **Finnhub** или Webull |
 | Автоторговля | **Webull** |
 | Если есть платный план | Alpha Vantage (высокое качество данных) |
