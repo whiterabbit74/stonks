@@ -559,7 +559,7 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
           </div>
 
           <p className="text-xs text-gray-500 dark:text-gray-400">
-            Источник данных: Alpha Vantage / Finnhub через локальный сервер
+            Источник данных: {enhancerProvider.replace('_', ' ')} через локальный сервер
           </p>
         </div>
       )}

@@ -226,19 +226,8 @@ router.get('/yahoo-finance/:symbol', async (req, res) => {
             case 'polygon':
                 data = await fetchFromPolygon(symbol, startTs, endTs);
                 break;
-            case 'webull': {
-                const snapshot = await fetchWebullTodayRangeAndQuote(symbol);
-                data = [{
-                    date: snapshot.dateKey,
-                    open: snapshot.quote.open,
-                    high: snapshot.quote.high,
-                    low: snapshot.quote.low,
-                    close: snapshot.quote.current,
-                    adjClose: snapshot.quote.current,
-                    volume: null,
-                }];
-                break;
-            }
+            case 'webull':
+                return res.status(400).json({ error: 'Webull не поддерживает загрузку исторических данных. Выберите другой провайдер (Alpha Vantage, Finnhub, Twelve Data или Polygon) в настройках.' });
             default:
                 return res.status(400).json({ error: 'Unknown provider' });
         }
