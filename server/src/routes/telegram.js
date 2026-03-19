@@ -5,7 +5,7 @@ const express = require('express');
 const router = express.Router();
 const { getApiConfig } = require('../config');
 const { toSafeTicker } = require('../utils/helpers');
-const { sendTelegramMessage, telegramWatches, scheduleSaveWatches } = require('../services/telegram');
+const { sendTelegramMessage, telegramWatches, scheduleSaveWatches, deleteWatchFromDb } = require('../services/telegram');
 const {
     buildTradeHistoryMessage,
     synchronizeWatchesWithTradeHistory,
@@ -51,7 +51,7 @@ router.delete('/telegram/watch/:symbol', (req, res) => {
     const sym = toSafeTicker(req.params.symbol || '');
     if (!sym) return res.status(400).json({ success: false, error: 'Invalid symbol' });
     telegramWatches.delete(sym);
-    scheduleSaveWatches();
+    deleteWatchFromDb(sym);
     res.json({ success: true });
 });
 

@@ -87,6 +87,25 @@ function initSchema(db) {
             id      INTEGER PRIMARY KEY CHECK (id = 1),
             data    TEXT NOT NULL
         );
+
+        CREATE TABLE IF NOT EXISTS telegram_watches (
+            symbol               TEXT PRIMARY KEY,
+            high_ibs             REAL NOT NULL DEFAULT 0.75,
+            low_ibs              REAL NOT NULL DEFAULT 0.1,
+            threshold_pct        REAL NOT NULL DEFAULT 0.3,
+            chat_id              TEXT,
+            entry_price          REAL,
+            entry_date           TEXT,
+            entry_ibs            REAL,
+            entry_decision_time  TEXT,
+            current_trade_id     TEXT,
+            is_open_position     INTEGER NOT NULL DEFAULT 0,
+            sent_date_key        TEXT,
+            sent_warn10          INTEGER NOT NULL DEFAULT 0,
+            sent_confirm1        INTEGER NOT NULL DEFAULT 0,
+            sent_entry_warn10    INTEGER NOT NULL DEFAULT 0,
+            sent_entry_confirm1  INTEGER NOT NULL DEFAULT 0
+        );
     `);
 }
 
