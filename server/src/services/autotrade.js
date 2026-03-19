@@ -28,8 +28,10 @@ const {
     cancelOrder,
     getOpenOrders,
     getOrderHistory,
+    getOrderHistoryByDateRange,
     getOrderDetail,
     resolveInstrumentId,
+    fetchTodayRangeAndQuoteViaWebull,
 } = require('./webullClient');
 
 const autoTradeState = {
@@ -467,12 +469,25 @@ function getThresholdsForSymbol(symbol, autoTrading) {
     };
 }
 
+function resolveQuoteProvider(autoTrading) {
+    const p = autoTrading && autoTrading.provider;
+    return p === 'webull' ? 'webull' : 'finnhub';
+}
+
+async function fetchQuoteWithProvider(symbol, provider) {
+    if (provider === 'webull') {
+        return fetchTodayRangeAndQuoteViaWebull(symbol);
+    }
+    return fetchTodayRangeAndQuote(symbol);
+}
+
 async function evaluateMarketSnapshotForSymbols(symbols, autoTrading) {
     const rows = [];
+    const quoteProvider = resolveQuoteProvider(autoTrading);
     for (const symbol of symbols) {
         const thresholds = getThresholdsForSymbol(symbol, autoTrading);
         try {
-            const { range, quote } = await fetchTodayRangeAndQuote(symbol);
+            const { range, quote } = await fetchQuoteWithProvider(symbol, quoteProvider);
             const normalizedRange = normalizeIntradayRange(range, quote);
             const currentPrice = toFiniteNumber(quote && quote.current);
             if (!normalizedRange || currentPrice == null) {
@@ -1447,8 +1462,10 @@ async function buyWebullTestMarket(symbol = 'AAL', quantity = 1, options = {}) {
     const nowEt = getETParts(now);
     const correlationId = options.correlationId || generateCorrelationId();
 
-    // Fetch current price — same as real autotrade
-    const { range, quote } = await fetchTodayRangeAndQuote(normalizedSymbol);
+    // Fetch current price — same as real autotrade, use configured provider
+    const settings = await readSettings();
+    const quoteProvider = resolveQuoteProvider(settings.autoTrading);
+    const { range, quote } = await fetchQuoteWithProvider(normalizedSymbol, quoteProvider);
     const currentPrice = toFiniteNumber(quote && quote.current);
     if (!currentPrice) {
         throw new Error(`Unable to fetch current price for ${normalizedSymbol}`);
@@ -1680,11 +1697,16 @@ async function getWebullDashboardSnapshot(configOverrides = {}, options = {}) {
         throw new Error('Webull credentials are not configured');
     }
     const accountId = runtime.accountId;
+
+    // Build 30-day date range for order history (ET date)
+    const endDateStr = etKeyYMD(getETParts(new Date()));
+    const startDateStr = etKeyYMD(getETParts(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)));
+
     const [balance, positions, openOrders, orderHistory] = await Promise.allSettled([
         accountId ? getAccountBalance(accountId, configOverrides) : Promise.resolve(null),
         accountId ? getAccountPositions(accountId, configOverrides) : Promise.resolve(null),
         accountId ? getOpenOrders(accountId, { pageSize: 50 }, configOverrides) : Promise.resolve(null),
-        accountId ? getOrderHistory(accountId, { pageSize: 100 }, configOverrides) : Promise.resolve(null),
+        accountId ? getOrderHistoryByDateRange(accountId, { startDate: startDateStr, endDate: endDateStr, pageSize: 100 }, configOverrides) : Promise.resolve(null),
     ]);
 
     const errors = [];

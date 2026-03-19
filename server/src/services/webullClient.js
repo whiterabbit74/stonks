@@ -5,7 +5,7 @@ const fsp = require('fs/promises');
 const path = require('path');
 const { getApiConfig } = require('../config');
 const { WEBULL_RAW_LOG_FILE } = require('../config');
-const { getETParts } = require('./dates');
+const { getETParts, etKeyYMD } = require('./dates');
 
 function buildWebullRuntimeConfig(overrides = {}) {
     const env = getApiConfig();
@@ -485,6 +485,71 @@ async function getOrderHistory(accountId, options = {}, configOverrides = {}) {
     });
 }
 
+async function getStockSnapshot(symbols, configOverrides = {}) {
+    const symbolList = Array.isArray(symbols) ? symbols.join(',') : symbols;
+    return requestWebull({
+        method: 'GET',
+        path: '/openapi/market-data/stock/snapshot',
+        query: { symbols: symbolList, category: 'US_STOCK' },
+        configOverrides,
+        includeAccessToken: false,
+    });
+}
+
+// Returns same shape as finnhub's fetchTodayRangeAndQuote: { range, quote, dateKey, ohlc }
+async function fetchTodayRangeAndQuoteViaWebull(symbol, configOverrides = {}) {
+    const response = await getStockSnapshot(symbol, configOverrides);
+    const rows = normalizeWebullArrayPayload(response?.data);
+    const row = rows.find((r) => r && (
+        String(r.symbol || r.ticker || '').toUpperCase() === String(symbol).toUpperCase()
+    )) || rows[0] || null;
+
+    if (!row) throw new Error(`Webull snapshot: no data for ${symbol}`);
+
+    // Field name candidates (Webull uses snake_case in REST responses)
+    const pick = (...keys) => {
+        for (const k of keys) {
+            const v = row[k];
+            if (v != null && v !== '') return Number(v);
+        }
+        return null;
+    };
+
+    const open = pick('open', 'openPrice', 'open_price');
+    const high = pick('high', 'highPrice', 'high_price', 'day_high');
+    const low = pick('low', 'lowPrice', 'low_price', 'day_low');
+    // 'price' = current intraday price; 'close' during trading hours = prev day's close in most broker APIs
+    const current = pick('price', 'lastPrice', 'last_price', 'tradePrice', 'trade_price', 'close');
+    const prevClose = pick('pre_close', 'preClose', 'prev_close', 'prevClose', 'previousClose');
+
+    const todayKey = etKeyYMD(getETParts(new Date()));
+    return {
+        range: { open, high, low },
+        quote: { open, high, low, current, prevClose },
+        dateKey: todayKey,
+        ohlc: null,
+    };
+}
+
+// Full date-range order history via /openapi/trade/order/history
+// options: { startDate: 'YYYY-MM-DD', endDate: 'YYYY-MM-DD', pageSize, lastOrderId, lastClientOrderId }
+async function getOrderHistoryByDateRange(accountId, options = {}, configOverrides = {}) {
+    const query = {
+        account_id: accountId || buildWebullRuntimeConfig(configOverrides).accountId,
+    };
+    if (options.startDate) query.start_date = options.startDate;
+    if (options.endDate) query.end_date = options.endDate;
+    if (options.pageSize != null) query.page_size = options.pageSize;
+    if (options.lastOrderId) query.last_order_id = options.lastOrderId;
+    if (options.lastClientOrderId) query.last_client_order_id = options.lastClientOrderId;
+    return requestWebull({
+        method: 'GET',
+        path: '/openapi/trade/order/history',
+        query,
+        configOverrides
+    });
+}
+
 module.exports = {
     buildWebullRuntimeConfig,
     buildSignature,
@@ -503,4 +568,7 @@ module.exports = {
     getOrderDetail,
     getOpenOrders,
     getOrderHistory,
+    getOrderHistoryByDateRange,
+    getStockSnapshot,
+    fetchTodayRangeAndQuoteViaWebull,
 };

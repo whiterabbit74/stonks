@@ -264,6 +264,18 @@ export function AppSettings() {
     }
   };
 
+  const handleChangeAutotradeProvider = async (provider: string) => {
+    try {
+      setAutotradeError(null);
+      setAutotradeOk(null);
+      const next = await DatasetAPI.updateAutotradeConfig({ provider });
+      setAutotradeConfig(next.config);
+      setAutotradeOk(`Провайдер котировок: ${provider}`);
+    } catch (e) {
+      setAutotradeError(e instanceof Error ? e.message : 'Не удалось сохранить провайдер');
+    }
+  };
+
   const handleToggleAutotrade = async () => {
     if (!autotradeConfig) return;
     const nextEnabled = !autotradeConfig.enabled;
@@ -1101,6 +1113,38 @@ export function AppSettings() {
           )}
           {autotradeOk && (
             <div className="mt-3 text-sm text-emerald-600 dark:text-emerald-400">{autotradeOk}</div>
+          )}
+        </div>
+
+        <div className="p-4 rounded-lg border dark:border-gray-700">
+          <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Провайдер котировок</div>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+            Источник цен для торгового скрипта за минуту до закрытия. Webull — точнее для расчёта LIMIT-ордера, но имеет низкие лимиты запросов.
+          </p>
+          {autotradeLoading ? (
+            <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              Загрузка…
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {(['finnhub', 'webull'] as const).map((p) => (
+                <label key={p} className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="autotradeProvider"
+                    value={p}
+                    checked={(autotradeConfig?.provider ?? 'finnhub') === p}
+                    disabled={autotradeConfig === null}
+                    onChange={() => void handleChangeAutotradeProvider(p)}
+                    className="accent-indigo-600"
+                  />
+                  <span className="text-sm text-gray-700 dark:text-gray-300">
+                    {p === 'finnhub' ? 'Finnhub' : 'Webull'}
+                  </span>
+                </label>
+              ))}
+            </div>
           )}
         </div>
 
