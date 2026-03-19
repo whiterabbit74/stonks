@@ -471,7 +471,16 @@ export function WebullAccountPage() {
 
   useEffect(() => {
     if (activeTab === 'monitoring' && !monitoringListLoaded && !monitoringLoading) {
-      void loadMonitoringData();
+      setMonitoringLoading(true);
+      setMonitoringError(null);
+      DatasetAPI.listTelegramWatches()
+        .then((watches) => {
+          setMonitoringRows(watches.map((watch) => buildMonitoringRow(watch)));
+          setMonitoringListLoaded(true);
+          setMonitoringLastUpdatedAt(new Date().toISOString());
+        })
+        .catch((err) => setMonitoringError(err instanceof Error ? err.message : 'Не удалось загрузить список'))
+        .finally(() => setMonitoringLoading(false));
     }
   }, [activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
 
