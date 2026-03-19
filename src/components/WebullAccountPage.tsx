@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { AlertCircle, BriefcaseBusiness, History, RefreshCw, ShieldCheck, Wallet, Radar } from 'lucide-react';
 import type { AutoTradingConfig, AutoTradeState, AutotradeLogsResponse, WebullDashboardResponse } from '../types';
 import { DatasetAPI } from '../lib/api';
@@ -295,19 +295,13 @@ export function WebullAccountPage() {
   const [monitoringLoading, setMonitoringLoading] = useState(false);
   const [monitoringError, setMonitoringError] = useState<string | null>(null);
   const [monitoringLastUpdatedAt, setMonitoringLastUpdatedAt] = useState<string | null>(null);
-  const [monitoringAutoRefreshEnabled, setMonitoringAutoRefreshEnabled] = useState(false);
-  const [monitoringActivityTick, setMonitoringActivityTick] = useState(0);
+  const [monitoringRefreshingSymbols, setMonitoringRefreshingSymbols] = useState<Record<string, boolean>>({});
   const [logsLoading, setLogsLoading] = useState(false);
   const [closingSymbol, setClosingSymbol] = useState<string | null>(null);
   const [manualCloseStates, setManualCloseStates] = useState<Record<string, ManualCloseState>>({});
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const monitoringLastInteractionRef = useRef<number>(Date.now());
-  const monitoringIdleTimerRef = useRef<number | null>(null);
-  const monitoringAutoTimerRef = useRef<number | null>(null);
   const quoteProvider = useAppStore((s) => s.resultsQuoteProvider);
-  const MONITORING_REFRESH_MS = 15 * 60 * 1000;
-  const MONITORING_IDLE_MS = 5 * 60 * 1000;
 
   const loadDashboard = async (isRefresh = false) => {
     try {
@@ -404,6 +398,57 @@ export function WebullAccountPage() {
     }
   };
 
+  const refreshMonitoringSymbol = async (symbol: string) => {
+    const row = monitoringRows.find((item) => item.symbol === symbol);
+    if (!row) return;
+    try {
+      setMonitoringRefreshingSymbols((prev) => ({ ...prev, [symbol]: true }));
+      setMonitoringError(null);
+      const quote = await DatasetAPI.getQuote(
+        symbol,
+        quoteProvider === 'twelve_data' ? 'twelve_data' : quoteProvider
+      );
+      const current = quote.current;
+      const prevClose = quote.prevClose;
+      const change = current != null && prevClose != null ? current - prevClose : null;
+      const changePct = change != null && prevClose && prevClose !== 0 ? (change / prevClose) * 100 : null;
+      setMonitoringRows((prev) => prev.map((item) => (
+        item.symbol === symbol
+          ? {
+              ...item,
+              currentPrice: current,
+              prevClose,
+              change,
+              changePct,
+              quoteProvider,
+              quoteUpdatedAt: new Date().toISOString(),
+              quoteError: null,
+            }
+          : item
+      )));
+      setMonitoringLastUpdatedAt(new Date().toISOString());
+      setActionMessage(`${symbol} обновлён вручную`);
+    } catch (quoteError) {
+      setMonitoringRows((prev) => prev.map((item) => (
+        item.symbol === symbol
+          ? {
+              ...item,
+              currentPrice: null,
+              prevClose: null,
+              change: null,
+              changePct: null,
+              quoteProvider,
+              quoteUpdatedAt: null,
+              quoteError: quoteError instanceof Error ? quoteError.message : 'Не удалось получить котировку',
+            }
+          : item
+      )));
+      setMonitoringError(quoteError instanceof Error ? quoteError.message : 'Не удалось обновить котировку');
+    } finally {
+      setMonitoringRefreshingSymbols((prev) => ({ ...prev, [symbol]: false }));
+    }
+  };
+
   useEffect(() => {
     void loadDashboard(false);
     void loadAutotradeConfig();
@@ -411,96 +456,10 @@ export function WebullAccountPage() {
   }, []);
 
   useEffect(() => {
-    if (activeTab !== 'monitoring') {
-      setMonitoringAutoRefreshEnabled(false);
-      if (monitoringAutoTimerRef.current) {
-        window.clearTimeout(monitoringAutoTimerRef.current);
-        monitoringAutoTimerRef.current = null;
-      }
-      if (monitoringIdleTimerRef.current) {
-        window.clearTimeout(monitoringIdleTimerRef.current);
-        monitoringIdleTimerRef.current = null;
-      }
-      return;
-    }
-
-    if (typeof document === 'undefined' || document.visibilityState !== 'visible') {
-      setMonitoringAutoRefreshEnabled(false);
-      return;
-    }
-
-    const isFreshInteraction = Date.now() - monitoringLastInteractionRef.current <= MONITORING_IDLE_MS;
-    if (!isFreshInteraction) {
-      setMonitoringAutoRefreshEnabled(false);
-      return;
-    }
-
-    setMonitoringAutoRefreshEnabled(true);
-    if (monitoringRows.length === 0 || !monitoringLastUpdatedAt) {
+    if (activeTab === 'monitoring' && monitoringRows.length === 0 && !monitoringLoading) {
       void loadMonitoringData(false);
     }
-
-    if (monitoringAutoTimerRef.current) {
-      window.clearTimeout(monitoringAutoTimerRef.current);
-    }
-    if (monitoringIdleTimerRef.current) {
-      window.clearTimeout(monitoringIdleTimerRef.current);
-    }
-
-    monitoringAutoTimerRef.current = window.setInterval(() => {
-      if (document.visibilityState !== 'visible') return;
-      if (Date.now() - monitoringLastInteractionRef.current > MONITORING_IDLE_MS) {
-        setMonitoringAutoRefreshEnabled(false);
-        return;
-      }
-      void loadMonitoringData(false);
-    }, MONITORING_REFRESH_MS);
-
-    monitoringIdleTimerRef.current = window.setTimeout(() => {
-      setMonitoringAutoRefreshEnabled(false);
-    }, MONITORING_IDLE_MS);
-
-    return () => {
-      if (monitoringAutoTimerRef.current) {
-        window.clearInterval(monitoringAutoTimerRef.current);
-        monitoringAutoTimerRef.current = null;
-      }
-      if (monitoringIdleTimerRef.current) {
-        window.clearTimeout(monitoringIdleTimerRef.current);
-        monitoringIdleTimerRef.current = null;
-      }
-    };
-  }, [activeTab, monitoringActivityTick, monitoringLastUpdatedAt, monitoringRows.length, quoteProvider]);
-
-  useEffect(() => {
-    const markInteraction = () => {
-      monitoringLastInteractionRef.current = Date.now();
-      setMonitoringActivityTick((value) => value + 1);
-    };
-    const handleVisibility = () => {
-      if (document.visibilityState === 'visible') {
-        markInteraction();
-      } else {
-        setMonitoringAutoRefreshEnabled(false);
-      }
-    };
-
-    window.addEventListener('mousemove', markInteraction, { passive: true });
-    window.addEventListener('keydown', markInteraction);
-    window.addEventListener('click', markInteraction);
-    window.addEventListener('scroll', markInteraction, { passive: true });
-    window.addEventListener('focus', markInteraction);
-    document.addEventListener('visibilitychange', handleVisibility);
-
-    return () => {
-      window.removeEventListener('mousemove', markInteraction);
-      window.removeEventListener('keydown', markInteraction);
-      window.removeEventListener('click', markInteraction);
-      window.removeEventListener('scroll', markInteraction);
-      window.removeEventListener('focus', markInteraction);
-      document.removeEventListener('visibilitychange', handleVisibility);
-    };
-  }, []);
+  }, [activeTab, monitoringRows.length, monitoringLoading]);
 
   const balance = useMemo(() => extractBalanceSummary(data?.balance), [data?.balance]);
   const positions = useMemo(() => normalizePositions(data?.positions), [data?.positions]);
@@ -1009,15 +968,12 @@ export function WebullAccountPage() {
               <div>
                 <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Мониторинг отслеживаемых акций</h2>
                 <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-                  Цены берутся из текущего quote-провайдера и обновляются только когда вкладка открыта, страница видима и есть активность пользователя.
+                  Цены берутся из текущего quote-провайдера. Обновление только вручную: по кнопке у строки или общей кнопке сверху.
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <div className={`rounded-full px-3 py-1 text-xs font-semibold tracking-wide ${monitoringAutoRefreshEnabled ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-200' : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-200'}`}>
-                  {monitoringAutoRefreshEnabled ? 'AUTO ON' : 'AUTO OFF'}
-                </div>
                 <Button variant="secondary" onClick={() => void loadMonitoringData(true)} isLoading={monitoringLoading}>
-                  Обновить цены
+                  Обновить все цены
                 </Button>
               </div>
             </div>
@@ -1025,7 +981,7 @@ export function WebullAccountPage() {
               <InfoCard title="Отслеживаемые" value={String(monitoringRows.length)} hint="Акции из /watches" icon={<Radar className="h-4 w-4" />} />
               <InfoCard title="Открытые позиции" value={String(openCount)} hint={openCount > 0 ? 'Есть текущие входы' : 'Открытых позиций нет'} icon={<BriefcaseBusiness className="h-4 w-4" />} />
               <InfoCard title="Quote provider" value={quoteProvider} hint="Используется для цен в мониторинге" icon={<ShieldCheck className="h-4 w-4" />} />
-              <InfoCard title="Последнее обновление" value={monitoringLastUpdatedAt ? formatDateTime(monitoringLastUpdatedAt) : '—'} hint={monitoringAutoRefreshEnabled ? 'Автообновление активно' : 'Автообновление неактивно'} icon={<History className="h-4 w-4" />} />
+              <InfoCard title="Последнее обновление" value={monitoringLastUpdatedAt ? formatDateTime(monitoringLastUpdatedAt) : '—'} hint="Только ручные refresh" icon={<History className="h-4 w-4" />} />
             </div>
             {monitoringError ? (
               <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-200">
@@ -1052,12 +1008,13 @@ export function WebullAccountPage() {
                     <th className="px-4 py-3 font-medium">Позиция</th>
                     <th className="px-4 py-3 font-medium">Обновлено</th>
                     <th className="px-4 py-3 font-medium">Источник</th>
+                    <th className="px-4 py-3 font-medium text-right">Действие</th>
                   </tr>
                 </thead>
                 <tbody>
                   {monitoringRows.length === 0 ? (
                     <tr>
-                      <td colSpan={11} className="px-4 py-6 text-center text-gray-500 dark:text-gray-400">Нет отслеживаемых акций</td>
+                      <td colSpan={12} className="px-4 py-6 text-center text-gray-500 dark:text-gray-400">Нет отслеживаемых акций</td>
                     </tr>
                   ) : monitoringRows.map((row) => (
                     <tr key={row.symbol} className="border-t border-gray-100 dark:border-gray-800">
@@ -1072,6 +1029,16 @@ export function WebullAccountPage() {
                       <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{row.isOpenPosition ? 'Открыта' : 'В мониторинге'}</td>
                       <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{formatDateTime(row.quoteUpdatedAt)}</td>
                       <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{row.quoteError ? row.quoteError : row.quoteProvider}</td>
+                      <td className="px-4 py-3 text-right">
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          isLoading={!!monitoringRefreshingSymbols[row.symbol]}
+                          onClick={() => void refreshMonitoringSymbol(row.symbol)}
+                        >
+                          Обновить
+                        </Button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
