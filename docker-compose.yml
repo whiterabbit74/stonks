@@ -11,12 +11,14 @@ services:
     environment:
       - PORT=3001
       - DATASETS_DIR=/data/datasets
+      - DB_DIR=/data/db
       - SETTINGS_FILE=/data/state/settings.json
       - WATCHES_FILE=/data/state/telegram-watches.json
       - SPLITS_FILE=/data/state/splits.json
       - TRADE_HISTORY_FILE=/data/state/trade-history.json
     volumes:
       - stonks_datasets:/data/datasets
+      - stonks_db:/data/db
       - stonks_state:/data/state
     ports:
       - "3001:3001"
@@ -84,12 +86,14 @@ services:
     environment:
       - PORT=3001
       - DATASETS_DIR=/data/datasets
+      - DB_DIR=/data/db
       - SETTINGS_FILE=/data/state/settings.json
       - WATCHES_FILE=/data/state/telegram-watches.json
       - SPLITS_FILE=/data/state/splits.json
       - TRADE_HISTORY_FILE=/data/state/trade-history.json
     volumes:
       - ./server/datasets:/data/datasets
+      - ./server/db:/data/db
       - ./server/settings.json:/data/state/settings.json
       - ./server/telegram-watches.json:/data/state/telegram-watches.json
       - ./server/splits.json:/data/state/splits.json
@@ -128,6 +132,7 @@ services:
 
 volumes:
   stonks_datasets:
+  stonks_db:
   stonks_state:
   caddy_data:
     driver: local
