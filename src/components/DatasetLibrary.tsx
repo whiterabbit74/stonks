@@ -21,6 +21,7 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
   const deleteDatasetFromServer = useAppStore(s => s.deleteDatasetFromServer);
   const exportDatasetAsJSON = useAppStore(s => s.exportDatasetAsJSON);
   const loadDatasetsFromServer = useAppStore(s => s.loadDatasetsFromServer);
+  const loadDatasetFromServer = useAppStore(s => s.loadDatasetFromServer);
   const resultsRefreshProvider = useAppStore(s => s.resultsRefreshProvider);
   const [refreshingId, setRefreshingId] = useState<string | null>(null);
   const [serverStatus, setServerStatus] = useState<'checking' | 'online' | 'offline'>('checking');
@@ -346,6 +347,9 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
                 setRefreshError(null);
                 await DatasetAPI.refreshDataset(id, resultsRefreshProvider as any);
                 await loadDatasetsFromServer();
+                if (currentDataset && getDatasetId(currentDataset).toUpperCase() === id) {
+                  await loadDatasetFromServer(id);
+                }
               } catch (err) {
                 setRefreshError(err instanceof Error ? err.message : 'Не удалось обновить датасет');
               } finally {
@@ -376,6 +380,9 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
                     setRefreshingId(id);
                     await DatasetAPI.refreshDataset(id, resultsRefreshProvider as any);
                     await loadDatasetsFromServer();
+                    if (currentDataset && getDatasetId(currentDataset).toUpperCase() === id) {
+                      await loadDatasetFromServer(id);
+                    }
                   } catch (err) {
                     console.warn('Refresh failed', err);
                   } finally {
