@@ -88,6 +88,14 @@ function initSchema(db) {
             data    TEXT NOT NULL
         );
 
+        CREATE TABLE IF NOT EXISTS sessions (
+            token      TEXT PRIMARY KEY,
+            created_at INTEGER NOT NULL,
+            expires_at INTEGER NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at);
+
         CREATE TABLE IF NOT EXISTS telegram_watches (
             symbol               TEXT PRIMARY KEY,
             high_ibs             REAL NOT NULL DEFAULT 0.75,

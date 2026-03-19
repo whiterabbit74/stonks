@@ -13,10 +13,40 @@ const {
     LOGIN_LOG_FILE
 } = require('../config');
 const { appendSafe } = require('../utils/files');
+const { getDb } = require('../db');
 
-// Session storage
-const sessions = new Map(); // token -> { createdAt, expiresAt }
+// loginRate stays in-memory (intentional — resets on restart is fine for rate limiting)
 const loginRate = new Map(); // ip -> { count, resetAt }
+
+// ─── Session DB helpers ───────────────────────────────────────────────────────
+
+function dbSessionGet(token) {
+    const row = getDb().prepare('SELECT created_at, expires_at FROM sessions WHERE token = ?').get(token);
+    if (!row) return undefined;
+    return { createdAt: row.created_at, expiresAt: row.expires_at };
+}
+
+function dbSessionSet(token, createdAt, expiresAt) {
+    getDb().prepare('INSERT OR REPLACE INTO sessions (token, created_at, expires_at) VALUES (?, ?, ?)').run(token, createdAt, expiresAt);
+}
+
+function dbSessionDelete(token) {
+    getDb().prepare('DELETE FROM sessions WHERE token = ?').run(token);
+}
+
+function dbSessionPurgeExpired() {
+    getDb().prepare('DELETE FROM sessions WHERE expires_at < ?').run(Date.now());
+}
+
+// Purge expired sessions periodically (every hour)
+setInterval(dbSessionPurgeExpired, 60 * 60 * 1000).unref();
+
+// Legacy export shim — keeps `sessions` export working if anything imports it
+const sessions = {
+    get: dbSessionGet,
+    set: (token, obj) => dbSessionSet(token, obj.createdAt, obj.expiresAt),
+    delete: dbSessionDelete,
+};
 
 // Telegram message sender (will be set by telegram service)
 let sendTelegramMessageFn = null;
@@ -143,9 +173,9 @@ function requireAuth(req, res, next) {
     let token = cookies.auth_token || getAuthTokenFromHeader(req);
     if (!isValidToken(token)) token = null;
     if (!token) return res.status(401).json({ error: 'Unauthorized' });
-    const sess = sessions.get(token);
+    const sess = dbSessionGet(token);
     if (!sess || sess.expiresAt < Date.now()) {
-        sessions.delete(token);
+        if (sess) dbSessionDelete(token);
         return res.status(401).json({ error: 'Unauthorized' });
     }
     return next();
@@ -201,7 +231,7 @@ async function handleLogin(req, res) {
 
         const token = createToken();
         const ts = Date.now();
-        sessions.set(token, { createdAt: ts, expiresAt: ts + SESSION_TTL_MS });
+        dbSessionSet(token, ts, ts + SESSION_TTL_MS);
         setAuthCookie(req, res, token, !!remember);
         loginRate.delete(ip);
         logLoginAttempt({ ip, success: true, username });
@@ -215,7 +245,7 @@ function handleAuthCheck(req, res) {
     if (!ADMIN_PASSWORD) return res.json({ ok: true, disabled: true });
     const cookies = parseCookies(req);
     const token = cookies.auth_token || getAuthTokenFromHeader(req);
-    const sess = token && sessions.get(token);
+    const sess = token ? dbSessionGet(token) : null;
     if (!sess || sess.expiresAt < Date.now()) return res.status(401).json({ error: 'Unauthorized' });
     res.json({ ok: true });
 }
@@ -224,7 +254,7 @@ function handleLogout(req, res) {
     try {
         const cookies = parseCookies(req);
         const token = cookies.auth_token || getAuthTokenFromHeader(req);
-        if (token) sessions.delete(token);
+        if (token) dbSessionDelete(token);
         clearAuthCookie(req, res);
         res.json({ success: true });
     } catch (e) {
