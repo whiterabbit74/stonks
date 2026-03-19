@@ -201,7 +201,7 @@ export function MultiTickerPage() {
     <div className="space-y-6">
       {/* Заголовок и контролы — Card-based дизайн */}
       <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 shadow-sm">
-        <PageHeader title="Несколько тикеров" />
+        <PageHeader title="Несколько тикеров" subtitle="Бэктест стратегии на нескольких активах" />
 
         <div className="relative rounded-xl border border-gray-200 dark:border-gray-700 bg-gradient-to-br from-gray-50 to-slate-50 dark:from-gray-900/60 dark:to-slate-900/40 p-4">
           <div className="mb-3 flex items-center justify-between">

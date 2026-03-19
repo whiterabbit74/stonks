@@ -9,7 +9,7 @@ import type { MonitorTradeHistoryResponse, MonitorTradeRecord, EquityPoint } fro
 import { MonitorTradeHistoryPanel } from './MonitorTradeHistoryPanel';
 import { calculateMonitorTradeMetrics } from '../lib/monitor-trade-metrics';
 import { formatCurrencyUSD } from '../lib/formatters';
-import { AnalysisTabs, ChartContainer } from './ui';
+import { AnalysisTabs, ChartContainer, PageHeader } from './ui';
 import { EquityChart } from './EquityChart';
 
 interface WatchItem {
@@ -327,17 +327,20 @@ export function TelegramWatches() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-xl font-semibold text-gray-900">Мониторинг</h2>
-        <button
-          onClick={load}
-          className="inline-flex items-center justify-center w-9 h-9 rounded-full border border-gray-300 bg-white text-gray-600 hover:bg-gray-50 hover:text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
-          title="Обновить список"
-          aria-label="Обновить список"
-        >
-          <RefreshCw className="w-4 h-4" />
-        </button>
-      </div>
+      <PageHeader
+        title="Мониторинг"
+        subtitle="Отслеживание позиций и уведомления в Telegram"
+        actions={
+          <button
+            onClick={load}
+            className="inline-flex items-center justify-center w-9 h-9 rounded-full border border-gray-300 bg-white text-gray-600 hover:bg-gray-50 hover:text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+            title="Обновить список"
+            aria-label="Обновить список"
+          >
+            <RefreshCw className="w-4 h-4" />
+          </button>
+        }
+      />
 
       {typeof watchThresholdPct === 'number' && (
         <div className="text-sm text-gray-600 dark:text-gray-300">

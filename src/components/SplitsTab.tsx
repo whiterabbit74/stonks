@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { Edit, Trash2, Plus, Upload, Download, List } from 'lucide-react';
 import { DatasetAPI } from '../lib/api';
 import { useAppStore } from '../stores';
+import { PageHeader } from './ui/PageHeader';
 
 type SplitEvent = { date: string; factor: number };
 type SplitsMap = Record<string, Array<SplitEvent>>;
@@ -763,9 +764,7 @@ export function SplitsTab() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Сплиты</h2>
-      </div>
+      <PageHeader title="Сплиты" subtitle="Управление дроблениями акций" />
 
       {/* Tab Navigation */}
       <div className="border-b border-gray-200 dark:border-gray-700">

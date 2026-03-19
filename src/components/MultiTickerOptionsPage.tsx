@@ -182,7 +182,7 @@ export function MultiTickerOptionsPage() {
     <div className="space-y-6">
       {/* Заголовок */}
       <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 shadow-sm">
-        <PageHeader title="Опционы (Мульти)" />
+        <PageHeader title="Опционы (Мульти)" subtitle="Анализ опционных стратегий на нескольких активах" />
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
           <StrategyInfoCard

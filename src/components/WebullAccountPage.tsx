@@ -1093,28 +1093,26 @@ export function WebullAccountPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <PageHeader title="Кабинет Webull" />
-          <p className="-mt-3 max-w-3xl text-sm text-gray-600 dark:text-gray-400">
-            Баланс счёта, позиции, ордера, история и логи исполнения по Webull.
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <div
-            className={`rounded-full px-3 py-1 text-xs font-semibold tracking-wide ${
-              autotradeConfig?.enabled
-                ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-200'
-                : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-200'
-            }`}
-          >
-            {autotradeConfig?.enabled ? '[LIVE]' : '[OFF]'}
+      <PageHeader
+        title="Кабинет Webull"
+        subtitle="Баланс счёта, позиции, ордера, история и логи исполнения по Webull"
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            <div
+              className={`rounded-full px-3 py-1 text-xs font-semibold tracking-wide ${
+                autotradeConfig?.enabled
+                  ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-200'
+                  : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-200'
+              }`}
+            >
+              {autotradeConfig?.enabled ? '[LIVE]' : '[OFF]'}
+            </div>
+            <Button variant="secondary" onClick={() => void Promise.all([loadDashboard(true), loadLogs(), loadAutotradeConfig()])} isLoading={refreshing} leftIcon={<RefreshCw className="h-4 w-4" />}>
+              Обновить
+            </Button>
           </div>
-          <Button variant="secondary" onClick={() => void Promise.all([loadDashboard(true), loadLogs(), loadAutotradeConfig()])} isLoading={refreshing} leftIcon={<RefreshCw className="h-4 w-4" />}>
-            Обновить
-          </Button>
-        </div>
-      </div>
+        }
+      />
 
       <div className="flex flex-wrap gap-2">
         {tabs.map((tab) => (

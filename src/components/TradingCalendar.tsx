@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react';
-import { Calendar, Clock, AlertCircle, CalendarX2, ChevronLeft, ChevronRight, Info, TrendingUp, X, CalendarOff } from 'lucide-react';
+import { Clock, AlertCircle, CalendarX2, ChevronLeft, ChevronRight, Info, TrendingUp, X, CalendarOff } from 'lucide-react';
 import { API_BASE_URL } from '../lib/api';
+import { PageHeader } from './ui/PageHeader';
 
 interface HolidayData {
   name: string;
@@ -463,24 +464,16 @@ export function TradingCalendar() {
 
   return (
     <div className="max-w-7xl mx-auto space-y-8">
-      {/* Заголовок */}
-      <div className="bg-white rounded-xl border border-gray-200 p-6 dark:bg-gray-900 dark:border-gray-800">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="p-2 bg-indigo-100 rounded-lg dark:bg-indigo-950/30">
-              <Calendar className="w-6 h-6 text-indigo-600" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Календарь торгов</h1>
-              <p className="text-gray-600 dark:text-gray-400">NYSE • Американский рынок акций</p>
-            </div>
-          </div>
+      <PageHeader
+        title="Календарь торгов"
+        subtitle="NYSE • Американский рынок акций"
+        actions={
           <div className="hidden md:flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
             <TrendingUp className="w-4 h-4" />
             <span>Актуальные данные</span>
           </div>
-        </div>
-      </div>
+        }
+      />
 
       {/* Легенда календаря */}
       <div className="bg-white rounded-xl border border-gray-200 dark:bg-gray-900 dark:border-gray-800">

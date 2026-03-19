@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { ArrowRight, AlertTriangle, RefreshCw } from 'lucide-react';
 import { useAppStore } from '../stores';
 import { DatasetLibrary } from './DatasetLibrary';
+import { PageHeader } from './ui/PageHeader';
 
 interface DataUploadProps {
   onNext?: () => void;
@@ -24,11 +25,7 @@ export function DataUpload({ onNext }: DataUploadProps) {
 
   return (
     <div className="space-y-5">
-      {/* Hero — same pattern as all other pages */}
-      <div className="space-y-1">
-        <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Данные</h2>
-        <p className="text-sm text-gray-600 dark:text-gray-300">Управление загруженными датасетами</p>
-      </div>
+      <PageHeader title="Данные" subtitle="Управление загруженными датасетами" />
 
       {isLoading && (
         <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">

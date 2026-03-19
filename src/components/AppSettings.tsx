@@ -4,6 +4,7 @@ import { useAppStore } from '../stores';
 import { sanitizeNumericInput, sanitizeTextInput, VALIDATION_CONSTRAINTS } from '../lib/input-validation';
 import { BarChart3, TrendingUp, ShoppingCart, TrendingDown, Target, Calculator, Clock, AlertTriangle, DollarSign, BarChart2, Layers, Info, X, ChevronUp, ChevronDown, Save, Loader2 } from 'lucide-react';
 import type { AutoTradingConfig } from '../types';
+import { PageHeader } from './ui/PageHeader';
 // import { StrategySettings } from './StrategySettings';
 
 // SettingsData interface removed - not actively used
@@ -1167,34 +1168,38 @@ export function AppSettings() {
 
   return (
     <div className="space-y-4">
-      {/* Header with save button */}
-      <div className="flex items-center justify-between flex-wrap gap-4">
-        <div className="flex items-center gap-2">
-          <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Настройки</h2>
-          {hasUnsavedChanges && (
-            <span className="text-orange-500 font-bold text-lg" title="Есть несохранённые изменения">*</span>
-          )}
-        </div>
-        <div className="flex items-center gap-3">
-          {saveOk && <span className="text-sm text-green-600 dark:text-green-400">{saveOk}</span>}
-          {saveErr && <span className="text-sm text-red-600 dark:text-red-400">{saveErr}</span>}
-          <button
-            onClick={handleGlobalSave}
-            disabled={saving || !hasUnsavedChanges}
-            className={`inline-flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${hasUnsavedChanges
-              ? 'bg-blue-600 text-white hover:bg-blue-700'
-              : 'bg-gray-100 text-gray-400 cursor-not-allowed dark:bg-gray-800 dark:text-gray-500'
-              } disabled:opacity-50`}
-          >
-            {saving ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <Save className="w-4 h-4" />
+      <PageHeader
+        title={
+          <span className="flex items-center gap-2">
+            Настройки
+            {hasUnsavedChanges && (
+              <span className="text-orange-500 font-bold text-lg" title="Есть несохранённые изменения">*</span>
             )}
-            {saving ? 'Сохранение...' : 'Сохранить всё'}
-          </button>
-        </div>
-      </div>
+          </span>
+        }
+        subtitle="Конфигурация приложения и параметры стратегии"
+        actions={
+          <div className="flex items-center gap-3">
+            {saveOk && <span className="text-sm text-green-600 dark:text-green-400">{saveOk}</span>}
+            {saveErr && <span className="text-sm text-red-600 dark:text-red-400">{saveErr}</span>}
+            <button
+              onClick={handleGlobalSave}
+              disabled={saving || !hasUnsavedChanges}
+              className={`inline-flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${hasUnsavedChanges
+                ? 'bg-blue-600 text-white hover:bg-blue-700'
+                : 'bg-gray-100 text-gray-400 cursor-not-allowed dark:bg-gray-800 dark:text-gray-500'
+                } disabled:opacity-50`}
+            >
+              {saving ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Save className="w-4 h-4" />
+              )}
+              {saving ? 'Сохранение...' : 'Сохранить всё'}
+            </button>
+          </div>
+        }
+      />
 
       {/* Tabs with ARIA */}
       <div className="border-b border-gray-200 dark:border-gray-700">

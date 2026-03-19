@@ -3,7 +3,7 @@ import { Search, Download, Loader2, AlertCircle, CheckCircle, Check, Settings } 
 import { useAppStore } from '../stores';
 import { fetchWithCreds, API_BASE_URL } from '../lib/api';
 import { toTradingDate } from '../lib/date-utils';
-import { useToastActions } from './ui';
+import { useToastActions, PageHeader } from './ui';
 import { TICKER_DATA, CATEGORIES, searchTickers, getTickerInfo } from '../lib/ticker-data';
 import { Link } from 'react-router-dom';
 
@@ -208,14 +208,7 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
 
   return (
     <div className="space-y-5">
-      <div className="space-y-1">
-        <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
-          Новые данные
-        </h2>
-        <p className="text-sm text-gray-600 dark:text-gray-300">
-          Выберите тикер для загрузки исторических данных
-        </p>
-      </div>
+      <PageHeader title="Новые данные" subtitle="Загрузка исторических данных из API" />
 
       <div className="bg-white border border-gray-200 rounded-lg p-4 dark:bg-gray-900 dark:border-gray-800">
         <div className="flex flex-wrap items-end justify-between gap-3">
