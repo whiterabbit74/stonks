@@ -228,7 +228,7 @@ fi &&
 echo '⏳ Ожидание готовности API (макс 60 сек)...' &&
 for i in \$(seq 1 12); do
   STATUS=\$(timeout 5 curl -s https://tradingibs.site/api/status 2>/dev/null | head -1 || echo '')
-  if [ -n "\$STATUS" ]; then
+  if [ -n \"\$STATUS\" ]; then
     echo "✅ API ответил: \$STATUS"
     break
   fi
