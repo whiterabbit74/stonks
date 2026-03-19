@@ -620,12 +620,16 @@ function buildEquityOrderItem({ symbol, instrumentId, side, currentPrice, autoTr
     const limitPrice = buildOrderPrice(side, currentPrice, autoTrading);
     const item = {
         client_order_id: crypto.randomUUID().replace(/-/g, ''),
+        symbol,
         instrument_id: instrumentId,
         instrument_type: 'EQUITY',
+        market: 'US',
         side,
         order_type: autoTrading.orderType || 'MARKET',
-        qty: autoTrading.allowFractionalShares ? quantity.toFixed(5).replace(/0+$/, '').replace(/\.$/, '') : String(quantity),
-        tif: autoTrading.timeInForce || 'DAY',
+        quantity: autoTrading.allowFractionalShares ? quantity.toFixed(5).replace(/0+$/, '').replace(/\.$/, '') : String(quantity),
+        time_in_force: autoTrading.timeInForce || 'DAY',
+        support_trading_session: autoTrading.supportTradingSession || 'CORE',
+        entrust_type: 'QTY',
         extended_hours_trading: false,
     };
     if (limitPrice != null) {
@@ -1222,12 +1226,16 @@ async function executeWebullSignal({ action, symbol, currentPrice, ibs, decision
             orderBuild = {
                 item: {
                     client_order_id: crypto.randomUUID().replace(/-/g, ''),
+                    symbol: normalizedSymbol,
                     instrument_id: instrumentId,
                     instrument_type: 'EQUITY',
+                    market: 'US',
                     side,
                     order_type: 'MARKET',
-                    qty: autoTrading.allowFractionalShares ? quantity.toFixed(5).replace(/0+$/, '').replace(/\.$/, '') : String(quantity),
-                    tif: autoTrading.timeInForce || 'DAY',
+                    quantity: autoTrading.allowFractionalShares ? quantity.toFixed(5).replace(/0+$/, '').replace(/\.$/, '') : String(quantity),
+                    time_in_force: autoTrading.timeInForce || 'DAY',
+                    support_trading_session: autoTrading.supportTradingSession || 'CORE',
+                    entrust_type: 'QTY',
                     extended_hours_trading: false,
                 },
                 quantity,

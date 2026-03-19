@@ -410,7 +410,6 @@ async function previewOrder(accountId, orderItems, configOverrides = {}) {
             new_orders: Array.isArray(orderItems) ? orderItems : [orderItems]
         },
         configOverrides,
-        signedHeaders: category ? { category } : {},
         requestHeaders: category ? { category } : {},
     });
 }
@@ -423,13 +422,12 @@ async function placeOrder(accountId, orderItems, configOverrides = {}) {
     const category = getEquityOrderCategory(stockOrder);
     return requestWebull({
         method: 'POST',
-        path: '/trade/order/place',
+        path: '/openapi/trade/stock/order/place',
         body: {
             account_id: accountId || buildWebullRuntimeConfig(configOverrides).accountId,
-            stock_order: stockOrder
+            new_orders: Array.isArray(orderItems) ? orderItems : [stockOrder],
         },
         configOverrides,
-        signedHeaders: category ? { category } : {},
         requestHeaders: category ? { category } : {},
     });
 }
