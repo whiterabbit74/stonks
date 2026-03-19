@@ -307,6 +307,7 @@ export function WebullAccountPage() {
   const [autotradeConfig, setAutotradeConfig] = useState<AutoTradingConfig | null>(null);
   const [autotradeState, setAutotradeState] = useState<AutoTradeState | null>(null);
   const [logs, setLogs] = useState<AutotradeLogsResponse | null>(null);
+  const [brokerLogRaw, setBrokerLogRaw] = useState(false);
   const [monitoringRows, setMonitoringRows] = useState<MonitoringRow[]>([]);
   const [activeTab, setActiveTab] = useState<BrokerTab>('overview');
   const [loading, setLoading] = useState(true);
@@ -1082,10 +1083,20 @@ export function WebullAccountPage() {
           <pre className="max-h-[520px] overflow-auto p-4 text-xs text-gray-800 dark:text-gray-100">{autotradeLogLines.map(formatLogLine).join('\n') || 'Логи автоторговли пока пусты'}</pre>
         </div>
         <div className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
-          <div className="border-b border-gray-100 px-4 py-3 dark:border-gray-800">
+          <div className="border-b border-gray-100 px-4 py-3 dark:border-gray-800 flex items-center justify-between">
             <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Raw broker log (monthly)</h2>
+            <button
+              onClick={() => setBrokerLogRaw(v => !v)}
+              className="text-xs px-2 py-1 rounded border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
+            >
+              {brokerLogRaw ? 'Форматировать' : 'Raw JSON'}
+            </button>
           </div>
-          <pre className="max-h-[520px] overflow-auto p-4 text-xs text-gray-800 dark:text-gray-100">{brokerRawLogLines.map(formatLogLine).join('\n') || 'Raw broker log пока пуст'}</pre>
+          <pre className="max-h-[520px] overflow-auto p-4 text-xs text-gray-800 dark:text-gray-100">
+            {brokerLogRaw
+              ? brokerRawLogLines.join('\n') || 'Raw broker log пока пуст'
+              : brokerRawLogLines.map(formatLogLine).join('\n') || 'Raw broker log пока пуст'}
+          </pre>
         </div>
       </div>
     );
