@@ -11,6 +11,31 @@ const { fetchFromTwelveData } = require('../providers/twelveData');
 const { fetchFromPolygon } = require('../providers/polygon');
 const { fetchTodayRangeAndQuote: fetchWebullTodayRangeAndQuote, fetchBatchTodayRangeAndQuote: fetchWebullBatch } = require('../providers/webull');
 
+// Lightweight Alpha Vantage test — GLOBAL_QUOTE instead of full TIME_SERIES_DAILY
+// Uses ~200 bytes vs ~1MB, doesn't waste one of the 25 daily free-tier requests on history
+function fetchAlphaVantageGlobalQuote(symbol, apiKey) {
+    const https = require('https');
+    const url = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${encodeURIComponent(symbol)}&apikey=${apiKey}`;
+    return new Promise((resolve, reject) => {
+        https.get(url, (res) => {
+            let data = '';
+            res.on('data', c => data += c);
+            res.on('end', () => {
+                try {
+                    const json = JSON.parse(data);
+                    if (json['Note'] || json['Information']) {
+                        return reject(new Error('Достигнут лимит API Alpha Vantage'));
+                    }
+                    const price = json?.['Global Quote']?.['05. price'];
+                    resolve(price != null ? Number(price) : null);
+                } catch (e) {
+                    reject(new Error(`Failed to parse Alpha Vantage response: ${e.message}`));
+                }
+            });
+        }).on('error', reject);
+    });
+}
+
 function normalizeIntradayRange(range, quote) {
     const low = toFiniteNumber(range && range.low);
     const high = toFiniteNumber(range && range.high);
@@ -304,11 +329,9 @@ router.post('/test-provider', async (req, res) => {
             if (!getApiConfig().ALPHA_VANTAGE_API_KEY) {
                 return res.json({ success: false, error: 'API key not configured' });
             }
-            const result = await fetchFromAlphaVantage(symbol, startTs, endTs);
-            const rows = Array.isArray(result?.data) ? result.data : [];
-            const price = getLastCloseFromRows(rows);
+            const price = await fetchAlphaVantageGlobalQuote(symbol, getApiConfig().ALPHA_VANTAGE_API_KEY);
             if (price == null) return res.json({ success: false, error: 'No data returned from provider' });
-            return res.json({ success: true, symbol, price: price.toFixed(2) });
+            return res.json({ success: true, symbol, price: Number(price).toFixed(2) });
         }
 
         if (provider === 'finnhub') {
