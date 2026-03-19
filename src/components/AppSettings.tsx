@@ -72,12 +72,6 @@ export function AppSettings() {
           setIsLoadingSettings(false);
         }
       });
-    // Load polygon key separately (not in store)
-    DatasetAPI.getAppSettings().then((s: any) => {
-      if (!isCancelled && typeof s.polygonApiKey === 'string') {
-        setPolygonApiKey(s.polygonApiKey);
-      }
-    }).catch(() => {});
     return () => {
       isCancelled = true;
     };
@@ -145,8 +139,6 @@ export function AppSettings() {
   const [testingProvider, setTestingProvider] = useState<string | null>(null);
   const [testResults, setTestResults] = useState<Record<string, { success?: boolean; error?: string; price?: string; symbol?: string }>>({});
 
-  // Polygon API key state
-  const [polygonApiKey, setPolygonApiKey] = useState('');
 
   // API info modal state
   const [showApiInfo, setShowApiInfo] = useState(false);
@@ -321,7 +313,6 @@ export function AppSettings() {
     setSaving(true); setSaveOk(null); setSaveErr(null);
     try {
       await saveSettingsToServer();
-      await DatasetAPI.updateSettings({ polygonApiKey });
       setSaveOk('Сохранено');
     } catch (e) {
       const message = e instanceof Error ? e.message : 'Не удалось сохранить';
@@ -534,26 +525,6 @@ export function AppSettings() {
   // API Settings Tab
   const ApiTab = () => (
     <div className="space-y-4">
-      {/* API Keys */}
-      <div className="p-4 rounded-lg border dark:border-gray-700">
-        <div className="text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">🔑 API ключи</div>
-        <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
-          Большинство ключей задаётся в <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">~/stonks-config/.env</code> на сервере.
-          Ключ Polygon можно ввести здесь — он сохраняется в настройках приложения.
-        </p>
-        <div className="flex items-center gap-2">
-          <label className="text-xs text-gray-600 dark:text-gray-400 whitespace-nowrap">Polygon API Key</label>
-          <input
-            type="password"
-            value={polygonApiKey}
-            onChange={e => setPolygonApiKey(e.target.value)}
-            placeholder="введите ключ..."
-            className="flex-1 px-2 py-1.5 text-sm border rounded dark:bg-gray-800 dark:border-gray-600 dark:text-gray-200 font-mono"
-          />
-        </div>
-        <div className="mt-1 text-xs text-gray-400 dark:text-gray-500">Ключ сохранится вместе с провайдерами (кнопка «Сохранить» в разделе ниже)</div>
-      </div>
-
       {/* API Testing */}
       <div className="p-4 rounded-lg border dark:border-gray-700">
         <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Тестирование API</div>
