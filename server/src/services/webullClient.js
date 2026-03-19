@@ -354,7 +354,6 @@ async function getInstruments(symbols, category = 'US_STOCK', configOverrides = 
             category,
         },
         configOverrides,
-        includeAccessToken: false,
     });
 }
 
