@@ -25,7 +25,7 @@ async function fetchFromPolygon(symbol, startDate, endDate, apiKeyOverride = nul
         throw new Error('Polygon API key not configured');
     }
 
-    const url = `https://api.polygon.io/v2/aggs/ticker/${encodeURIComponent(safeSymbol)}/range/1/day/${fromDate}/${toDate}?adjusted=true&sort=asc&apikey=${encodeURIComponent(apiKey)}`;
+    const url = `https://api.polygon.io/v2/aggs/ticker/${encodeURIComponent(safeSymbol)}/range/1/day/${fromDate}/${toDate}?adjusted=true&sort=asc&limit=50000&apikey=${encodeURIComponent(apiKey)}`;
 
     console.log(`Fetching real data for ${safeSymbol} from Polygon.io...`);
 
