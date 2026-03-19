@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react';
-import { Clock, AlertCircle, CalendarX2, ChevronLeft, ChevronRight, Info, TrendingUp, X, CalendarOff } from 'lucide-react';
+import { Clock, AlertCircle, CalendarX2, ChevronLeft, ChevronRight, X, CalendarOff } from 'lucide-react';
 import { API_BASE_URL } from '../lib/api';
 import { PageHeader } from './ui/PageHeader';
 
@@ -34,7 +34,6 @@ export function TradingCalendar() {
     'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'
   ];
 
-  // Фиксированный порядок дней недели, начиная с понедельника
   const WEEKDAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
 
   const [calendarData, setCalendarData] = useState<CalendarData | null>(null);
@@ -50,17 +49,13 @@ export function TradingCalendar() {
   const modalTriggerRef = useRef<HTMLButtonElement | null>(null);
   const modalCloseRef = useRef<HTMLButtonElement | null>(null);
 
-  // Получаем текущую дату для выделения
   const today = new Date();
   const currentYear = today.getFullYear();
   const currentMonth = today.getMonth();
   const currentDay = today.getDate();
 
-  // Check if current view is today's month
-  // Moved AFTER currentYear/currentMonth definitions to avoid TDZ error
   const isCurrentMonth = parseInt(selectedYear) === currentYear && selectedMonth === currentMonth;
 
-  // Функции навигации
   const goToPreviousMonth = () => {
     if (selectedMonth === 0) {
       setSelectedMonth(11);
@@ -89,9 +84,7 @@ export function TradingCalendar() {
     const loadCalendar = async () => {
       try {
         const response = await fetch(`${API_BASE_URL}/trading-calendar`);
-        if (!response.ok) {
-          throw new Error('Failed to load calendar data');
-        }
+        if (!response.ok) throw new Error('Failed to load calendar data');
         const data = await response.json();
         setCalendarData(data);
       } catch (err) {
@@ -100,22 +93,14 @@ export function TradingCalendar() {
         setLoading(false);
       }
     };
-
     loadCalendar();
   }, []);
 
-  // Focused day management across month changes
   useEffect(() => {
     const daysInMonth = getDaysInMonth(parseInt(selectedYear), selectedMonth);
-    // Prefer to keep current focusedDay if set, otherwise default to today or 1st
     setFocusedDay(prev => {
-      if (prev && prev >= 1) {
-        return Math.min(prev, daysInMonth);
-      }
-      if (
-        parseInt(selectedYear) === currentYear &&
-        selectedMonth === currentMonth
-      ) {
+      if (prev && prev >= 1) return Math.min(prev, daysInMonth);
+      if (parseInt(selectedYear) === currentYear && selectedMonth === currentMonth) {
         return Math.min(currentDay, daysInMonth);
       }
       return 1;
@@ -126,73 +111,43 @@ export function TradingCalendar() {
     if (detailsOpen) {
       const prev = document.body.style.overflow;
       document.body.style.overflow = 'hidden';
-      // Focus the close button when modal opens
-      requestAnimationFrame(() => {
-        modalCloseRef.current?.focus();
-      });
+      requestAnimationFrame(() => { modalCloseRef.current?.focus(); });
       return () => { document.body.style.overflow = prev; };
     }
   }, [detailsOpen]);
 
   const getDayType = (year: string, month: number, day: number) => {
     if (!calendarData) return 'normal';
-
     const monthStr = String(month + 1).padStart(2, '0');
     const dayStr = String(day).padStart(2, '0');
     const dateKey = `${monthStr}-${dayStr}`;
-
-    // Проверяем праздники
-    if (calendarData.holidays[year]?.[dateKey]) {
-      return 'holiday';
-    }
-
-    // Проверяем сокращенные дни
-    if (calendarData.shortDays[year]?.[dateKey]) {
-      return 'short';
-    }
-
-    // Проверяем выходные (независимо от локали)
+    if (calendarData.holidays[year]?.[dateKey]) return 'holiday';
+    if (calendarData.shortDays[year]?.[dateKey]) return 'short';
     const date = new Date(parseInt(year), month, day);
     const dayName = date.toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
-    if (dayName === 'saturday' || dayName === 'sunday') {
-      return 'weekend';
-    }
-
+    if (dayName === 'saturday' || dayName === 'sunday') return 'weekend';
     return 'normal';
   };
 
   const getDayData = (year: string, month: number, day: number) => {
     if (!calendarData) return null;
-
     const monthStr = String(month + 1).padStart(2, '0');
     const dayStr = String(day).padStart(2, '0');
     const dateKey = `${monthStr}-${dayStr}`;
-
-    return calendarData.holidays[year]?.[dateKey] ||
-      calendarData.shortDays[year]?.[dateKey] ||
-      null;
+    return calendarData.holidays[year]?.[dateKey] || calendarData.shortDays[year]?.[dateKey] || null;
   };
 
-  const getDaysInMonth = (year: number, month: number) => {
-    return new Date(year, month + 1, 0).getDate();
-  };
+  const getDaysInMonth = (year: number, month: number) => new Date(year, month + 1, 0).getDate();
 
   const getFirstDayOfMonth = (year: number, month: number) => {
-    const firstDay = new Date(year, month, 1);
-    const dayOfWeek = firstDay.getDay(); // 0 = воскресенье, 1 = понедельник, etc.
-
-    // Преобразуем в наш порядок (понедельник = 0, вторник = 1, ..., воскресенье = 6)
-    const adjustedDay = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
-
-    return adjustedDay;
+    const dayOfWeek = new Date(year, month, 1).getDay();
+    return dayOfWeek === 0 ? 6 : dayOfWeek - 1;
   };
 
   const monthHeaderId = useMemo(() => `month-label-${selectedYear}-${selectedMonth}`, [selectedYear, selectedMonth]);
 
   const openDetails = useCallback((year: string, month: number, day: number, triggerElement?: HTMLButtonElement | null) => {
-    if (triggerElement) {
-      modalTriggerRef.current = triggerElement;
-    }
+    if (triggerElement) modalTriggerRef.current = triggerElement;
     setDetailsDate({ year, month, day });
     setDetailsOpen(true);
   }, []);
@@ -200,10 +155,7 @@ export function TradingCalendar() {
   const closeDetails = useCallback(() => {
     setDetailsOpen(false);
     setDetailsDate(null);
-    // Return focus to trigger element
-    requestAnimationFrame(() => {
-      modalTriggerRef.current?.focus();
-    });
+    requestAnimationFrame(() => { modalTriggerRef.current?.focus(); });
   }, []);
 
   const handleGridTouchStart = (e: React.TouchEvent) => {
@@ -218,156 +170,79 @@ export function TradingCalendar() {
     const dy = t.clientY - touchStartRef.current.y;
     touchStartRef.current = null;
     if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy)) {
-      if (dx > 0) {
-        goToPreviousMonth();
-      } else {
-        goToNextMonth();
-      }
+      if (dx > 0) goToPreviousMonth(); else goToNextMonth();
     }
   };
 
   const focusDay = (day: number) => {
     setFocusedDay(day);
-    // Focus after render
-    requestAnimationFrame(() => {
-      dayRefs.current[day - 1]?.focus();
-    });
+    requestAnimationFrame(() => { dayRefs.current[day - 1]?.focus(); });
   };
 
   const handleDayKeyDown = (day: number, e: React.KeyboardEvent<HTMLButtonElement>) => {
     const year = parseInt(selectedYear);
     const daysInMonth = getDaysInMonth(year, selectedMonth);
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      openDetails(selectedYear, selectedMonth, day);
-      return;
-    }
-    if (e.key === 'ArrowRight') {
-      e.preventDefault();
-      if (day < daysInMonth) {
-        focusDay(day + 1);
-      } else {
-        goToNextMonth();
-        setTimeout(() => focusDay(1), 0);
-      }
-    } else if (e.key === 'ArrowLeft') {
-      e.preventDefault();
-      if (day > 1) {
-        focusDay(day - 1);
-      } else {
-        goToPreviousMonth();
-        setTimeout(() => {
-          const prevDays = getDaysInMonth(year, selectedMonth === 0 ? 11 : selectedMonth - 1);
-          focusDay(prevDays);
-        }, 0);
-      }
-    } else if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      if (day + 7 <= daysInMonth) {
-        focusDay(day + 7);
-      } else {
-        goToNextMonth();
-        setTimeout(() => focusDay(((day + 7) - daysInMonth)), 0);
-      }
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      if (day - 7 >= 1) {
-        focusDay(day - 7);
-      } else {
-        goToPreviousMonth();
-        setTimeout(() => {
-          const prevDays = getDaysInMonth(year, selectedMonth === 0 ? 11 : selectedMonth - 1);
-          focusDay(prevDays - (7 - day));
-        }, 0);
-      }
-    } else if (e.key === 'Home') {
-      e.preventDefault();
-      focusDay(1);
-    } else if (e.key === 'End') {
-      e.preventDefault();
-      focusDay(daysInMonth);
-    } else if (e.key === 'PageUp') {
-      e.preventDefault();
-      goToPreviousMonth();
-      setTimeout(() => focusDay(Math.min(day, getDaysInMonth(year, selectedMonth === 0 ? 11 : selectedMonth - 1))), 0);
-    } else if (e.key === 'PageDown') {
-      e.preventDefault();
-      goToNextMonth();
-      setTimeout(() => focusDay(Math.min(day, getDaysInMonth(year, selectedMonth === 11 ? 0 : selectedMonth + 1))), 0);
-    }
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openDetails(selectedYear, selectedMonth, day); return; }
+    if (e.key === 'ArrowRight') { e.preventDefault(); if (day < daysInMonth) focusDay(day + 1); else { goToNextMonth(); setTimeout(() => focusDay(1), 0); } }
+    else if (e.key === 'ArrowLeft') { e.preventDefault(); if (day > 1) focusDay(day - 1); else { goToPreviousMonth(); setTimeout(() => { focusDay(getDaysInMonth(year, selectedMonth === 0 ? 11 : selectedMonth - 1)); }, 0); } }
+    else if (e.key === 'ArrowDown') { e.preventDefault(); if (day + 7 <= daysInMonth) focusDay(day + 7); else { goToNextMonth(); setTimeout(() => focusDay((day + 7) - daysInMonth), 0); } }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); if (day - 7 >= 1) focusDay(day - 7); else { goToPreviousMonth(); setTimeout(() => { focusDay(getDaysInMonth(year, selectedMonth === 0 ? 11 : selectedMonth - 1) - (7 - day)); }, 0); } }
+    else if (e.key === 'Home') { e.preventDefault(); focusDay(1); }
+    else if (e.key === 'End') { e.preventDefault(); focusDay(daysInMonth); }
+    else if (e.key === 'PageUp') { e.preventDefault(); goToPreviousMonth(); setTimeout(() => focusDay(Math.min(day, getDaysInMonth(year, selectedMonth === 0 ? 11 : selectedMonth - 1))), 0); }
+    else if (e.key === 'PageDown') { e.preventDefault(); goToNextMonth(); setTimeout(() => focusDay(Math.min(day, getDaysInMonth(year, selectedMonth === 11 ? 0 : selectedMonth + 1))), 0); }
   };
 
   const renderCalendar = () => {
     const year = parseInt(selectedYear);
     const daysInMonth = getDaysInMonth(year, selectedMonth);
     const firstDayOfMonth = getFirstDayOfMonth(year, selectedMonth);
-
     const days = [];
 
-    // Пустые ячейки для дней до начала месяца
     for (let i = 0; i < firstDayOfMonth; i++) {
       days.push(
-        <div
-          key={`empty-${i}`}
-          role="gridcell"
-          aria-hidden="true"
-          className="min-h-[60px] md:min-h-[96px] border-r border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"
-        ></div>
+        <div key={`empty-${i}`} role="gridcell" aria-hidden="true"
+          className="min-h-[40px] border-r border-b border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/50" />
       );
     }
 
-    // Дни месяца
     for (let day = 1; day <= daysInMonth; day++) {
       const dayType = getDayType(selectedYear, selectedMonth, day);
       const dayData = getDayData(selectedYear, selectedMonth, day);
+      const isToday = parseInt(selectedYear) === currentYear && selectedMonth === currentMonth && day === currentDay;
 
-      // Определяем стили для разных типов дней
-      let bgColor = 'bg-white hover:bg-gray-50 dark:bg-gray-900 dark:hover:bg-gray-800';
-      let textColor = 'text-gray-900 dark:text-gray-100';
-      let borderColor = 'border-gray-200 dark:border-gray-700';
-      let shadow = '';
-      let emoji = '';
-      let isToday = false;
+      let cellCls = 'bg-white hover:bg-gray-50 dark:bg-gray-900 dark:hover:bg-gray-800/70';
+      let numCls = 'text-gray-800 dark:text-gray-200';
+      let borderCls = 'border-gray-100 dark:border-gray-800';
+      let badge: React.ReactNode = null;
 
-      // Проверяем, является ли этот день сегодняшним
-      if (parseInt(selectedYear) === currentYear &&
-        selectedMonth === currentMonth &&
-        day === currentDay) {
-        isToday = true;
-        bgColor = 'bg-indigo-600 text-white hover:bg-indigo-700 dark:bg-indigo-700 dark:hover:bg-indigo-600';
-        textColor = 'text-white';
-        borderColor = 'border-indigo-600 dark:border-indigo-700';
-        shadow = 'shadow-lg ring-2 ring-indigo-300 dark:ring-indigo-500';
+      if (isToday) {
+        cellCls = 'bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-700 dark:hover:bg-indigo-600';
+        numCls = 'text-white';
+        borderCls = 'border-indigo-500';
       } else {
         switch (dayType) {
           case 'holiday':
-            bgColor = 'bg-red-50 hover:bg-red-100 dark:bg-red-950/20 dark:hover:bg-red-950/30';
-            textColor = 'text-red-900 dark:text-red-200';
-            borderColor = 'border-red-300 dark:border-red-800';
-            emoji = '🏖️';
-            shadow = 'hover:shadow-md';
+            cellCls = 'bg-red-50 hover:bg-red-100 dark:bg-red-950/20 dark:hover:bg-red-950/30';
+            numCls = 'text-red-700 dark:text-red-300';
+            borderCls = 'border-red-200 dark:border-red-900/50';
+            badge = <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-red-500" />;
             break;
           case 'short':
-            bgColor = 'bg-yellow-50 hover:bg-yellow-100 dark:bg-yellow-950/20 dark:hover:bg-yellow-950/30';
-            textColor = 'text-yellow-900 dark:text-yellow-200';
-            borderColor = 'border-yellow-300 dark:border-yellow-800';
-            emoji = '⏰';
-            shadow = 'hover:shadow-md';
+            cellCls = 'bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/20 dark:hover:bg-amber-950/30';
+            numCls = 'text-amber-800 dark:text-amber-300';
+            borderCls = 'border-amber-200 dark:border-amber-900/50';
+            badge = <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-amber-500" />;
             break;
           case 'weekend':
-            bgColor = 'bg-gray-50 hover:bg-gray-100 dark:bg-gray-800 dark:hover:bg-gray-700';
-            textColor = 'text-gray-600 dark:text-gray-400';
-            borderColor = 'border-gray-300 dark:border-gray-600';
-            shadow = 'hover:shadow-sm';
+            cellCls = 'bg-gray-50 dark:bg-gray-800/40';
+            numCls = 'text-gray-400 dark:text-gray-500';
             break;
-          default:
-            shadow = 'hover:shadow-sm';
         }
       }
 
       const ariaLabel = (() => {
-        const monthName = MONTHS[selectedMonth];
-        const base = `${day} ${monthName} ${selectedYear}`;
+        const base = `${day} ${MONTHS[selectedMonth]} ${selectedYear}`;
         if (dayType === 'holiday' && dayData) return `${base} — Праздник: ${dayData.name}`;
         if (dayType === 'short' && dayData) return `${base} — Раннее закрытие`;
         if (dayType === 'weekend') return `${base} — Выходной`;
@@ -385,28 +260,11 @@ export function TradingCalendar() {
           aria-selected={focusedDay === day}
           aria-label={ariaLabel}
           tabIndex={focusedDay === day ? 0 : -1}
-          className={`min-h-[60px] md:min-h-[96px] border-r border-b ${borderColor} ${bgColor} ${textColor} ${shadow} p-3 text-sm flex flex-col items-center justify-center transition-all duration-200 transform hover:scale-[1.02] relative overflow-hidden focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-1`}
           title={dayData ? `${dayData.name}: ${dayData.description}` : undefined}
+          className={`relative min-h-[40px] border-r border-b ${borderCls} ${cellCls} ${numCls} p-1.5 text-sm flex items-center justify-center transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-inset`}
         >
-          {isToday && (
-            <div className="absolute inset-0 bg-indigo-600 opacity-10 rounded"></div>
-          )}
-          <span className={`font-bold text-lg mb-1 relative z-10 ${isToday ? 'text-white' : ''}`}>
-            {day}
-          </span>
-          {dayData && (
-            <div className="text-lg mb-1 relative z-10">
-              {emoji}
-            </div>
-          )}
-          {dayData && (
-            <div className={`text-xs font-medium text-center leading-tight max-w-full truncate relative z-10 ${isToday ? 'text-indigo-100' : ''}`}>
-              {dayData.name.length > 15 ? dayData.name.substring(0, 12) + '...' : dayData.name}
-            </div>
-          )}
-          {isToday && (
-            <div className="absolute bottom-1 right-1 w-2 h-2 bg-white rounded-full shadow-sm"></div>
-          )}
+          <span className={`text-sm font-medium leading-none ${isToday ? 'text-white' : ''}`}>{day}</span>
+          {badge}
         </button>
       );
     }
@@ -416,25 +274,13 @@ export function TradingCalendar() {
 
   if (loading) {
     return (
-      <div className="max-w-7xl mx-auto space-y-8">
-        {/* Skeleton header */}
-        <div className="bg-white rounded-xl border border-gray-200 p-6 dark:bg-gray-900 dark:border-gray-800">
-          <div className="flex items-center gap-4">
-            <div className="w-10 h-10 bg-gray-200 dark:bg-gray-700 rounded-lg animate-pulse"></div>
-            <div className="space-y-2">
-              <div className="h-6 w-48 bg-gray-200 dark:bg-gray-700 rounded animate-pulse"></div>
-              <div className="h-4 w-32 bg-gray-100 dark:bg-gray-800 rounded animate-pulse"></div>
-            </div>
-          </div>
-        </div>
-        {/* Skeleton calendar */}
-        <div className="bg-white rounded-xl border border-gray-200 dark:bg-gray-900 dark:border-gray-800 overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800">
-            <div className="h-6 w-40 mx-auto bg-gray-200 dark:bg-gray-700 rounded animate-pulse"></div>
-          </div>
-          <div className="grid grid-cols-7 gap-px bg-gray-200 dark:bg-gray-700">
+      <div className="space-y-4">
+        <div className="h-8 w-56 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
+        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+          <div className="h-10 bg-gray-50 dark:bg-gray-800 animate-pulse border-b border-gray-200 dark:border-gray-700" />
+          <div className="grid grid-cols-7">
             {Array.from({ length: 35 }).map((_, i) => (
-              <div key={i} className="min-h-[60px] md:min-h-[96px] bg-white dark:bg-gray-900 animate-pulse"></div>
+              <div key={i} className="min-h-[40px] bg-gray-50 dark:bg-gray-900 animate-pulse border-r border-b border-gray-100 dark:border-gray-800" />
             ))}
           </div>
         </div>
@@ -444,207 +290,113 @@ export function TradingCalendar() {
 
   if (error) {
     return (
-      <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
-        <div className="flex items-center gap-2 text-red-800">
-          <AlertCircle className="w-5 h-5" />
-          <span className="font-medium">Ошибка загрузки календаря</span>
+      <div className="space-y-4">
+        <PageHeader title="Календарь торгов" subtitle="NYSE • Американский рынок акций" />
+        <div className="p-4 bg-red-50 border border-red-200 rounded-lg dark:bg-red-950/20 dark:border-red-900/40">
+          <div className="flex items-center gap-2 text-red-800 dark:text-red-300">
+            <AlertCircle className="w-4 h-4 flex-shrink-0" />
+            <span className="font-medium">Ошибка загрузки: {error}</span>
+          </div>
         </div>
-        <p className="text-red-600 mt-1">{error}</p>
       </div>
     );
   }
 
-  if (!calendarData) {
-    return (
-      <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg">
-        <div className="text-gray-600">Данные календаря недоступны</div>
-      </div>
-    );
-  }
+  if (!calendarData) return null;
+
+  const holidaysThisYear = Object.entries(calendarData.holidays[selectedYear] || {});
+  const shortDaysThisYear = Object.entries(calendarData.shortDays[selectedYear] || {});
 
   return (
-    <div className="max-w-7xl mx-auto space-y-8">
-      <PageHeader
-        title="Календарь торгов"
-        subtitle="NYSE • Американский рынок акций"
-        actions={
-          <div className="hidden md:flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
-            <TrendingUp className="w-4 h-4" />
-            <span>Актуальные данные</span>
-          </div>
-        }
-      />
+    <div className="space-y-4">
+      <PageHeader title="Календарь торгов" subtitle="NYSE • Американский рынок акций" />
 
-      {/* Легенда календаря */}
-      <div className="bg-white rounded-xl border border-gray-200 dark:bg-gray-900 dark:border-gray-800">
-        <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-800">
-          <h3 className="font-semibold text-gray-900 flex items-center gap-2 dark:text-gray-100">
-            <Info className="w-5 h-5 text-gray-600 dark:text-gray-400" />
-            Легенда календаря
-          </h3>
-        </div>
-        <div className="p-6">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="flex items-center gap-3 p-4 bg-gray-50 border border-gray-200 rounded-lg dark:bg-gray-800 dark:border-gray-700">
-              <div className="w-4 h-4 bg-green-500 rounded-full"></div>
-              <div>
-                <div className="font-medium text-gray-900 dark:text-gray-100">Торговый день</div>
-                <div className="text-sm text-gray-600 dark:text-gray-400">9:30-16:00 EST</div>
-              </div>
-            </div>
-            <div className="flex items-center gap-3 p-4 bg-gray-50 border border-gray-200 rounded-lg dark:bg-gray-800 dark:border-gray-700">
-              <CalendarOff className="w-5 h-5 text-gray-500 dark:text-gray-400" />
-              <div>
-                <div className="font-medium text-gray-900 dark:text-gray-100">Выходной</div>
-                <div className="text-sm text-gray-600 dark:text-gray-400">Сб, Вс</div>
-              </div>
-            </div>
-            <div className="flex items-center gap-3 p-4 bg-gray-50 border border-gray-200 rounded-lg dark:bg-gray-800 dark:border-gray-700">
-              <Clock className="w-5 h-5 text-yellow-600 dark:text-yellow-500" />
-              <div>
-                <div className="font-medium text-gray-900 dark:text-gray-100">Раннее закрытие</div>
-                <div className="text-sm text-gray-600 dark:text-gray-400">до 13:00 EST</div>
-              </div>
-            </div>
-            <div className="flex items-center gap-3 p-4 bg-gray-50 border border-gray-200 rounded-lg dark:bg-gray-800 dark:border-gray-700">
-              <CalendarX2 className="w-5 h-5 text-red-600 dark:text-red-500" />
-              <div>
-                <div className="font-medium text-gray-900 dark:text-gray-100">Праздник</div>
-                <div className="text-sm text-gray-600 dark:text-gray-400">Биржа закрыта</div>
-              </div>
-            </div>
-          </div>
-        </div>
+      {/* Legend — compact inline row */}
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-gray-600 dark:text-gray-400">
+        <span className="flex items-center gap-1.5">
+          <span className="w-2.5 h-2.5 rounded-full bg-green-500 flex-shrink-0" />
+          Торговый · {calendarData.tradingHours.normal.start}–{calendarData.tradingHours.normal.end}
+        </span>
+        <span className="flex items-center gap-1.5">
+          <CalendarOff className="w-3.5 h-3.5 flex-shrink-0" />
+          Выходной (Сб, Вс)
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="w-2.5 h-2.5 rounded-full bg-amber-500 flex-shrink-0" />
+          Раннее закрытие · до {calendarData.tradingHours.short.end}
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="w-2.5 h-2.5 rounded-full bg-red-500 flex-shrink-0" />
+          Праздник · биржа закрыта
+        </span>
+        <span className="ml-auto text-xs text-gray-400 dark:text-gray-500">
+          Обновлено: {calendarData.metadata.lastUpdated}
+        </span>
       </div>
 
-      {/* Часы работы */}
-      <div className="bg-white rounded-xl border border-gray-200 dark:bg-gray-900 dark:border-gray-800 p-6">
-        <div className="flex items-start gap-4">
-          <div className="p-2 bg-blue-100 rounded-lg dark:bg-blue-950/30">
-            <Clock className="w-6 h-6 text-blue-600" />
-          </div>
-          <div className="flex-1">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4 dark:text-gray-100">Часы работы NYSE</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg dark:bg-gray-800 dark:border-gray-700">
-                <div className="flex items-center gap-2 mb-2">
-                  <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-                  <span className="font-medium text-gray-900 dark:text-gray-100">Обычные часы</span>
-                </div>
-                <div className="text-xl font-bold text-gray-900 dark:text-gray-100">
-                  {calendarData.tradingHours.normal.start} - {calendarData.tradingHours.normal.end}
-                </div>
-                <div className="text-sm text-gray-600 dark:text-gray-400 mt-1">EST/EDT (Восточное время)</div>
-              </div>
-              <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg dark:bg-gray-800 dark:border-gray-700">
-                <div className="flex items-center gap-2 mb-2">
-                  <div className="w-3 h-3 bg-yellow-500 rounded-full"></div>
-                  <span className="font-medium text-gray-900 dark:text-gray-100">Раннее закрытие</span>
-                </div>
-                <div className="text-xl font-bold text-gray-900 dark:text-gray-100">
-                  до {calendarData.tradingHours.short.end}
-                </div>
-                <div className="text-sm text-gray-600 dark:text-gray-400 mt-1">В праздничные дни</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+      {/* Calendar card */}
+      <div className="bg-white rounded-xl border border-gray-200 dark:bg-gray-900 dark:border-gray-800 overflow-hidden">
+        {/* Navigation bar */}
+        <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60">
+          <button onClick={goToPreviousMonth} className="p-1.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors" title="Предыдущий месяц">
+            <ChevronLeft className="w-4 h-4 text-gray-600 dark:text-gray-400" />
+          </button>
 
-      {/* Навигация календаря */}
-      <div className="bg-white rounded-xl border border-gray-200 dark:bg-gray-900 dark:border-gray-800 p-6">
-        <div className="flex flex-col lg:flex-row gap-6 items-start lg:items-center justify-between">
-          {/* Управление месяцем/годом */}
-          <div className="flex items-center gap-4">
-            <button
-              onClick={goToPreviousMonth}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors dark:hover:bg-gray-800"
-              title="Предыдущий месяц"
+          <div className="flex items-center gap-2">
+            <h2 id={monthHeaderId} className="text-sm font-semibold text-gray-900 dark:text-gray-100 min-w-[120px] text-center">
+              {MONTHS[selectedMonth]} {selectedYear}
+            </h2>
+            <select
+              value={selectedYear}
+              onChange={(e) => setSelectedYear(e.target.value)}
+              className="text-xs px-2 py-1 bg-white border border-gray-300 rounded dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100 focus:ring-1 focus:ring-blue-500"
+              aria-label="Год"
             >
-              <ChevronLeft className="w-5 h-5 text-gray-600 dark:text-gray-400" />
-            </button>
-
-            <div className="flex gap-3">
-              <select
-                value={selectedYear}
-                onChange={(e) => setSelectedYear(e.target.value)}
-                className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-900 font-medium focus:ring-2 focus:ring-blue-500 focus:border-blue-500 hover:border-gray-400 transition-colors dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100"
-                aria-label="Год"
-              >
-                {calendarData.metadata.years.map(year => (
-                  <option key={year} value={year}>{year}</option>
-                ))}
-              </select>
-
-              <select
-                value={selectedMonth}
-                onChange={(e) => {
-                  const value = parseInt(e.target.value, 10);
-                  setSelectedMonth(isNaN(value) ? 0 : Math.max(0, Math.min(11, value)));
-                }}
-                className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-900 font-medium focus:ring-2 focus:ring-blue-500 focus:border-blue-500 hover:border-gray-400 transition-colors dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100"
-                aria-label="Месяц"
-              >
-                {MONTHS.map((month, index) => (
-                  <option key={index} value={index}>{month}</option>
-                ))}
-              </select>
-            </div>
-
-            <button
-              onClick={goToNextMonth}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors dark:hover:bg-gray-800"
-              title="Следующий месяц"
+              {calendarData.metadata.years.map(year => (
+                <option key={year} value={year}>{year}</option>
+              ))}
+            </select>
+            <select
+              value={selectedMonth}
+              onChange={(e) => {
+                const value = parseInt(e.target.value, 10);
+                setSelectedMonth(isNaN(value) ? 0 : Math.max(0, Math.min(11, value)));
+              }}
+              className="text-xs px-2 py-1 bg-white border border-gray-300 rounded dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100 focus:ring-1 focus:ring-blue-500"
+              aria-label="Месяц"
             >
-              <ChevronRight className="w-5 h-5 text-gray-600 dark:text-gray-400" />
-            </button>
+              {MONTHS.map((month, index) => (
+                <option key={index} value={index}>{month}</option>
+              ))}
+            </select>
           </div>
 
-          {/* Кнопка "Сегодня" и информация */}
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-1">
             <button
               onClick={goToToday}
               disabled={isCurrentMonth}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${isCurrentMonth
-                  ? 'bg-gray-200 text-gray-500 cursor-not-allowed dark:bg-gray-700 dark:text-gray-400'
-                  : 'bg-indigo-600 text-white hover:bg-indigo-700'
-                }`}
+              className={`text-xs px-2.5 py-1 rounded font-medium transition-colors ${isCurrentMonth ? 'text-gray-400 dark:text-gray-500 cursor-default' : 'text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/30'}`}
             >
               Сегодня
             </button>
-
-            <div className="text-sm text-gray-500 dark:text-gray-400">
-              Данные на: <span className="font-medium text-gray-900 dark:text-gray-100">{calendarData.metadata.lastUpdated}</span>
-            </div>
+            <button onClick={goToNextMonth} className="p-1.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors" title="Следующий месяц">
+              <ChevronRight className="w-4 h-4 text-gray-600 dark:text-gray-400" />
+            </button>
           </div>
         </div>
-      </div>
 
-      {/* Календарь */}
-      <div className="bg-white rounded-xl border border-gray-200 dark:bg-gray-900 dark:border-gray-800 overflow-hidden">
-        {/* Заголовок месяца */}
-        <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800">
-          <h2 id={monthHeaderId} className="text-xl font-bold text-center text-gray-900 dark:text-gray-100">
-            {MONTHS[selectedMonth]} {selectedYear}
-          </h2>
-          <p className="text-gray-600 text-center mt-1 text-sm dark:text-gray-400">
-            Торговый календарь NYSE
-          </p>
-          <div className="sr-only" aria-live="polite" aria-atomic="true">{MONTHS[selectedMonth]} {selectedYear}</div>
-        </div>
-
-        {/* Дни недели */}
-        <div className="grid grid-cols-7 bg-gray-50 dark:bg-gray-800">
+        {/* Weekday headers */}
+        <div className="grid grid-cols-7 bg-gray-50 dark:bg-gray-800/40 border-b border-gray-200 dark:border-gray-700">
           {WEEKDAYS.map(day => (
-            <div key={day} className="px-4 py-3 text-center text-sm font-medium text-gray-700 dark:text-gray-300 border-r border-gray-200 dark:border-gray-700 last:border-r-0">
+            <div key={day} className="py-1.5 text-center text-xs font-medium text-gray-500 dark:text-gray-400 border-r border-gray-100 dark:border-gray-800 last:border-r-0">
               {day}
             </div>
           ))}
         </div>
 
-        {/* Дни месяца */}
+        {/* Calendar grid */}
         <div
-          className="grid grid-cols-7 bg-white dark:bg-gray-900 touch-manipulation"
+          className="grid grid-cols-7 touch-manipulation"
           role="grid"
           aria-labelledby={monthHeaderId}
           onTouchStart={handleGridTouchStart}
@@ -652,116 +404,67 @@ export function TradingCalendar() {
         >
           {renderCalendar()}
         </div>
+        <div className="sr-only" aria-live="polite" aria-atomic="true">{MONTHS[selectedMonth]} {selectedYear}</div>
       </div>
 
-      {/* Карточки праздников */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Федеральные праздники */}
-        <div className="bg-white rounded-xl border border-gray-200 dark:bg-gray-900 dark:border-gray-800 overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-800 bg-red-50 dark:bg-red-950/20">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-red-100 rounded-lg dark:bg-red-950/30">
-                <CalendarX2 className="w-5 h-5 text-red-600 dark:text-red-400" />
-              </div>
-              <div>
-                <h3 className="text-lg font-semibold text-red-900 dark:text-red-200">Федеральные праздники</h3>
-                <p className="text-red-600 dark:text-red-400 text-sm">Биржа закрыта</p>
-              </div>
+      {/* Holidays + Short days — compact two-column table */}
+      {(holidaysThisYear.length > 0 || shortDaysThisYear.length > 0) && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {/* Holidays */}
+          <div className="bg-white rounded-xl border border-gray-200 dark:bg-gray-900 dark:border-gray-800 overflow-hidden">
+            <div className="flex items-center gap-2 px-4 py-2.5 border-b border-gray-100 dark:border-gray-800 bg-red-50 dark:bg-red-950/20">
+              <CalendarX2 className="w-4 h-4 text-red-600 dark:text-red-400 flex-shrink-0" />
+              <span className="text-sm font-semibold text-red-900 dark:text-red-200">Праздники {selectedYear}</span>
+              <span className="ml-auto text-xs text-red-500 dark:text-red-400">{holidaysThisYear.length}</span>
             </div>
-          </div>
-
-          <div className="p-6">
-            <div className="grid gap-3">
-              {Object.keys(calendarData.holidays[selectedYear] || {}).length === 0 ? (
-                <div className="text-center py-8 text-gray-500 dark:text-gray-400">
-                  <CalendarX2 className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                  <p>Нет праздников в {selectedYear} году</p>
-                </div>
-              ) : (
-                Object.entries(calendarData.holidays[selectedYear] || {}).map(([date, data]) => {
+            {holidaysThisYear.length === 0 ? (
+              <p className="text-sm text-gray-400 dark:text-gray-500 px-4 py-3">Нет праздников</p>
+            ) : (
+              <div className="divide-y divide-gray-100 dark:divide-gray-800">
+                {holidaysThisYear.map(([date, data]) => {
                   const [month, day] = date.split('-');
-                  const monthName = MONTHS[parseInt(month) - 1];
-                  const formattedDate = `${parseInt(day)} ${monthName}`;
                   return (
-                    <div key={date} className="bg-gray-50 border border-gray-200 rounded-lg p-4 hover:shadow-md transition-colors dark:bg-gray-800 dark:border-gray-700">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center dark:bg-red-950/30">
-                            <span className="text-red-600 text-sm dark:text-red-400">🏖️</span>
-                          </div>
-                          <div>
-                            <h4 className="font-medium text-gray-900 dark:text-gray-100">{data.name}</h4>
-                            <p className="text-sm text-gray-600 dark:text-gray-400">{data.description}</p>
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <div className="bg-red-600 text-white px-3 py-1 rounded-lg font-medium text-sm">
-                            {formattedDate}
-                          </div>
-                        </div>
-                      </div>
+                    <div key={date} className="flex items-center justify-between px-4 py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                      <span className="text-gray-800 dark:text-gray-200 truncate mr-2">{data.name}</span>
+                      <span className="text-xs text-red-600 dark:text-red-400 flex-shrink-0 font-medium">
+                        {parseInt(day)} {MONTHS[parseInt(month) - 1].slice(0, 3)}
+                      </span>
                     </div>
                   );
-                })
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Дни с ранним закрытием */}
-        <div className="bg-white rounded-xl border border-gray-200 dark:bg-gray-900 dark:border-gray-800 overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-800 bg-yellow-50 dark:bg-yellow-950/20">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-yellow-100 rounded-lg dark:bg-yellow-950/30">
-                <Clock className="w-5 h-5 text-yellow-600 dark:text-yellow-400" />
+                })}
               </div>
-              <div>
-                <h3 className="text-lg font-semibold text-yellow-900 dark:text-yellow-200">Раннее закрытие</h3>
-                <p className="text-yellow-600 dark:text-yellow-400 text-sm">Сокращенный день</p>
-              </div>
-            </div>
+            )}
           </div>
 
-          <div className="p-6">
-            <div className="grid gap-3">
-              {Object.keys(calendarData.shortDays[selectedYear] || {}).length === 0 ? (
-                <div className="text-center py-8 text-gray-500 dark:text-gray-400">
-                  <Clock className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                  <p>Нет сокращённых дней в {selectedYear} году</p>
-                </div>
-              ) : (
-                Object.entries(calendarData.shortDays[selectedYear] || {}).map(([date, data]) => {
+          {/* Short days */}
+          <div className="bg-white rounded-xl border border-gray-200 dark:bg-gray-900 dark:border-gray-800 overflow-hidden">
+            <div className="flex items-center gap-2 px-4 py-2.5 border-b border-gray-100 dark:border-gray-800 bg-amber-50 dark:bg-amber-950/20">
+              <Clock className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0" />
+              <span className="text-sm font-semibold text-amber-900 dark:text-amber-200">Раннее закрытие {selectedYear}</span>
+              <span className="ml-auto text-xs text-amber-500 dark:text-amber-400">{shortDaysThisYear.length}</span>
+            </div>
+            {shortDaysThisYear.length === 0 ? (
+              <p className="text-sm text-gray-400 dark:text-gray-500 px-4 py-3">Нет сокращённых дней</p>
+            ) : (
+              <div className="divide-y divide-gray-100 dark:divide-gray-800">
+                {shortDaysThisYear.map(([date, data]) => {
                   const [month, day] = date.split('-');
-                  const monthName = MONTHS[parseInt(month) - 1];
-                  const formattedDate = `${parseInt(day)} ${monthName}`;
                   return (
-                    <div key={date} className="bg-gray-50 border border-gray-200 rounded-lg p-4 hover:shadow-md transition-colors dark:bg-gray-800 dark:border-gray-700">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 bg-yellow-100 rounded-full flex items-center justify-center dark:bg-yellow-950/30">
-                            <span className="text-yellow-600 text-sm dark:text-yellow-400">⏰</span>
-                          </div>
-                          <div>
-                            <h4 className="font-medium text-gray-900 dark:text-gray-100">{data.name}</h4>
-                            <p className="text-sm text-gray-600 dark:text-gray-400">Работает {data.hours} часов</p>
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <div className="bg-yellow-600 text-white px-3 py-1 rounded-lg font-medium text-sm">
-                            {formattedDate}
-                          </div>
-                        </div>
-                      </div>
+                    <div key={date} className="flex items-center justify-between px-4 py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                      <span className="text-gray-800 dark:text-gray-200 truncate mr-2">{data.name}</span>
+                      <span className="text-xs text-amber-600 dark:text-amber-400 flex-shrink-0 font-medium">
+                        {parseInt(day)} {MONTHS[parseInt(month) - 1].slice(0, 3)}
+                      </span>
                     </div>
                   );
-                })
-              )}
-            </div>
+                })}
+              </div>
+            )}
           </div>
         </div>
-      </div>
+      )}
 
-      {/* Details modal/sheet */}
+      {/* Day details modal */}
       {detailsOpen && detailsDate && (
         <div
           className="fixed inset-0 z-50 flex items-end md:items-center justify-center"
@@ -770,60 +473,40 @@ export function TradingCalendar() {
           aria-labelledby="calendar-day-details-title"
           onKeyDown={(e) => { if (e.key === 'Escape') closeDetails(); }}
         >
-          <div className="absolute inset-0 bg-black/40" onClick={closeDetails}></div>
-          <div className="relative w-full md:max-w-lg md:rounded-xl bg-white border border-gray-200 p-4 md:p-6 shadow-lg dark:bg-gray-900 dark:border-gray-800 md:mx-4 rounded-t-2xl">
+          <div className="absolute inset-0 bg-black/40" onClick={closeDetails} />
+          <div className="relative w-full md:max-w-sm md:rounded-xl bg-white border border-gray-200 p-4 shadow-lg dark:bg-gray-900 dark:border-gray-800 md:mx-4 rounded-t-2xl">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <h3 id="calendar-day-details-title" className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                  {(() => {
-                    const d = detailsDate;
-                    return `${d.day} ${MONTHS[d.month]} ${d.year}`;
-                  })()}
+                <h3 id="calendar-day-details-title" className="text-base font-semibold text-gray-900 dark:text-gray-100">
+                  {detailsDate.day} {MONTHS[detailsDate.month]} {detailsDate.year}
                 </h3>
-                <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
                   {(() => {
                     const data = getDayData(detailsDate.year, detailsDate.month, detailsDate.day);
                     const type = getDayType(detailsDate.year, detailsDate.month, detailsDate.day);
-                    if (type === 'holiday' && data) return `Праздник — ${data.name}. ${data.description}`;
-                    if (type === 'short' && data) return `Сокращённый день. Открыто до ${calendarData.tradingHours.short.end}`;
-                    if (type === 'weekend') return 'Выходной день. Биржа закрыта';
-                    return `Обычные часы: ${calendarData.tradingHours.normal.start}–${calendarData.tradingHours.normal.end} (EST)`;
+                    if (type === 'holiday' && data) return `Праздник — ${data.name}`;
+                    if (type === 'short') return `Раннее закрытие · до ${calendarData.tradingHours.short.end} EST`;
+                    if (type === 'weekend') return 'Выходной · биржа закрыта';
+                    return `Торговый день · ${calendarData.tradingHours.normal.start}–${calendarData.tradingHours.normal.end} EST`;
                   })()}
                 </p>
               </div>
               <button
                 ref={modalCloseRef}
                 onClick={closeDetails}
-                className="inline-flex items-center justify-center p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 aria-label="Закрыть"
               >
-                <X className="w-5 h-5 text-gray-600 dark:text-gray-400" />
+                <X className="w-4 h-4 text-gray-500" />
               </button>
             </div>
-            {/* Show hours only for trading days */}
             {(() => {
-              const type = getDayType(detailsDate.year, detailsDate.month, detailsDate.day);
-              if (type === 'weekend' || type === 'holiday') return null;
+              const data = getDayData(detailsDate.year, detailsDate.month, detailsDate.day);
+              if (!data) return null;
               return (
-                <div className="mt-4">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div className="p-3 bg-gray-50 rounded-lg border border-gray-200 dark:bg-gray-800 dark:border-gray-700">
-                      <div className="text-xs text-gray-500 dark:text-gray-400">Обычные часы</div>
-                      <div className="font-medium text-gray-900 dark:text-gray-100">{calendarData.tradingHours.normal.start} – {calendarData.tradingHours.normal.end}</div>
-                    </div>
-                    {type === 'short' && (
-                      <div className="p-3 bg-yellow-50 rounded-lg border border-yellow-200 dark:bg-yellow-950/20 dark:border-yellow-800">
-                        <div className="text-xs text-yellow-600 dark:text-yellow-400">Сокращённый день</div>
-                        <div className="font-medium text-yellow-900 dark:text-yellow-200">до {calendarData.tradingHours.short.end}</div>
-                      </div>
-                    )}
-                  </div>
-                </div>
+                <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">{data.description}</p>
               );
             })()}
-            <div className="mt-6 flex justify-end">
-              <button onClick={closeDetails} className="px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2">Закрыть</button>
-            </div>
           </div>
         </div>
       )}
