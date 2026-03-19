@@ -619,6 +619,7 @@ function buildEquityOrderItem({ symbol, instrumentId, side, currentPrice, autoTr
     const quantity = computeOrderQuantity(currentPrice, autoTrading, availableFunds);
     const limitPrice = buildOrderPrice(side, currentPrice, autoTrading);
     const item = {
+        combo_type: 'NORMAL',
         client_order_id: crypto.randomUUID().replace(/-/g, ''),
         symbol,
         instrument_id: instrumentId,
@@ -1225,6 +1226,7 @@ async function executeWebullSignal({ action, symbol, currentPrice, ibs, decision
             }
             orderBuild = {
                 item: {
+                    combo_type: 'NORMAL',
                     client_order_id: crypto.randomUUID().replace(/-/g, ''),
                     symbol: normalizedSymbol,
                     instrument_id: instrumentId,
