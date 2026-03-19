@@ -1177,9 +1177,13 @@ async function executeWebullSignal({ action, symbol, currentPrice, ibs, decision
             quantity = orderBuild.quantity;
         } else {
             const positionsResp = await getAccountPositions(runtime.accountId);
-            const positions = Array.isArray(positionsResp?.data)
-                ? positionsResp.data
-                : (Array.isArray(positionsResp?.data?.positions) ? positionsResp.data.positions : []);
+            const posData = positionsResp?.data;
+            // Webull returns { has_next, holdings: [...] } — check all known array keys
+            const positions = Array.isArray(posData)
+                ? posData
+                : (Array.isArray(posData?.holdings) ? posData.holdings
+                : (Array.isArray(posData?.positions) ? posData.positions
+                : []));
             const brokerPosition = positions.find((position) => {
                 const candidate = toSafeTicker(position?.symbol || position?.ticker || position?.display_symbol || '');
                 return candidate === normalizedSymbol;
