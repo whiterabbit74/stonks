@@ -9,7 +9,7 @@ const { fetchFromAlphaVantage } = require('../providers/alphaVantage');
 const { fetchFromFinnhub, fetchTodayRangeAndQuote: fetchFinnhubTodayRangeAndQuote } = require('../providers/finnhub');
 const { fetchFromTwelveData } = require('../providers/twelveData');
 const { fetchFromPolygon } = require('../providers/polygon');
-const { fetchTodayRangeAndQuote: fetchWebullTodayRangeAndQuote } = require('../providers/webull');
+const { fetchTodayRangeAndQuote: fetchWebullTodayRangeAndQuote, fetchBatchTodayRangeAndQuote: fetchWebullBatch } = require('../providers/webull');
 
 function normalizeIntradayRange(range, quote) {
     const low = toFiniteNumber(range && range.low);
@@ -120,6 +120,29 @@ router.get('/quote/:symbol', async (req, res) => {
         res.json({ symbol, dateKey, range: normRange, quote, provider });
     } catch (e) {
         res.status(500).json({ error: e.message || 'Failed to fetch quote' });
+    }
+});
+
+// Batch Webull quotes — single API call for multiple symbols
+// GET /quotes/webull-batch?symbols=AAL,AAPL,MSFT
+router.get('/quotes/webull-batch', async (req, res) => {
+    try {
+        const raw = typeof req.query?.symbols === 'string' ? req.query.symbols : '';
+        const symbols = raw.split(',').map((s) => toSafeTicker(s.trim())).filter(Boolean);
+        if (symbols.length === 0) return res.status(400).json({ error: 'No valid symbols' });
+        if (symbols.length > 50) return res.status(400).json({ error: 'Too many symbols (max 50)' });
+
+        const batchMap = await fetchWebullBatch(symbols);
+        const results = symbols.map((symbol) => {
+            const payload = batchMap.get(symbol);
+            if (!payload) return { symbol, error: 'No data' };
+            const normRange = normalizeIntradayRange(payload.range, payload.quote);
+            return { symbol, dateKey: payload.dateKey, range: normRange, quote: payload.quote, provider: 'webull' };
+        });
+
+        res.json({ provider: 'webull', count: results.length, results });
+    } catch (e) {
+        res.status(500).json({ error: e.message || 'Failed to fetch batch quotes' });
     }
 });
 

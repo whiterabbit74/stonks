@@ -454,6 +454,30 @@ export class DatasetAPI {
     };
   }
 
+  static async getWebullBatchQuotes(symbols: string[]): Promise<Map<string, { open: number | null; high: number | null; low: number | null; current: number | null; prevClose: number | null }>> {
+    const response = await fetchWithCreds(`${API_BASE_URL}/quotes/webull-batch?symbols=${symbols.map(encodeURIComponent).join(',')}`);
+    if (!response.ok) {
+      const e = await response.json().catch(() => null);
+      throw new Error((e && typeof e.error === 'string') ? e.error : `${response.status} ${response.statusText}`);
+    }
+    const payload = await response.json() as { results: Array<{ symbol: string; quote?: Record<string, unknown>; range?: Record<string, unknown>; error?: string }> };
+    const map = new Map<string, { open: number | null; high: number | null; low: number | null; current: number | null; prevClose: number | null }>();
+    const toN = (v: unknown): number | null => { const n = Number(v); return Number.isFinite(n) ? n : null; };
+    for (const item of payload.results ?? []) {
+      if (!item.symbol || item.error) continue;
+      const q = item.quote ?? {};
+      const r = item.range ?? {};
+      map.set(item.symbol, {
+        open:      toN(q.open ?? q.o),
+        high:      toN(q.high ?? q.h ?? (r as Record<string, unknown>).high),
+        low:       toN(q.low  ?? q.l ?? (r as Record<string, unknown>).low),
+        current:   toN(q.current ?? q.c),
+        prevClose: toN(q.prevClose ?? q.pc),
+      });
+    }
+    return map;
+  }
+
   /**
    * Получить конкретный датасет с данными
    */

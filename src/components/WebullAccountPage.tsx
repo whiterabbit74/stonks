@@ -399,17 +399,27 @@ export function WebullAccountPage() {
       setMonitoringLoading(true);
       setMonitoringError(null);
       const watches = await DatasetAPI.listTelegramWatches();
-      const rows = await Promise.all(watches.map(async (watch) => {
-        try {
-          const quote = await DatasetAPI.getQuote(
-            watch.symbol,
-            quoteProvider === 'twelve_data' ? 'twelve_data' : quoteProvider
-          );
-          return buildMonitoringRow(watch, quote, null);
-        } catch (quoteError) {
-          return buildMonitoringRow(watch, undefined, quoteError instanceof Error ? quoteError.message : 'Не удалось получить котировку');
-        }
-      }));
+      const provider = quoteProvider === 'twelve_data' ? 'twelve_data' : quoteProvider as 'alpha_vantage' | 'finnhub' | 'twelve_data' | 'webull';
+
+      let rows: MonitoringRow[];
+      if (provider === 'webull' && watches.length > 0) {
+        const symbols = watches.map((w) => w.symbol);
+        const batchMap = await DatasetAPI.getWebullBatchQuotes(symbols).catch(() => new Map());
+        rows = watches.map((watch) => {
+          const quote = batchMap.get(watch.symbol);
+          return buildMonitoringRow(watch, quote ?? undefined, quote ? null : 'Нет данных от Webull');
+        });
+      } else {
+        rows = await Promise.all(watches.map(async (watch) => {
+          try {
+            const quote = await DatasetAPI.getQuote(watch.symbol, provider);
+            return buildMonitoringRow(watch, quote, null);
+          } catch (quoteError) {
+            return buildMonitoringRow(watch, undefined, quoteError instanceof Error ? quoteError.message : 'Не удалось получить котировку');
+          }
+        }));
+      }
+
       setMonitoringRows(rows);
       setMonitoringLastUpdatedAt(new Date().toISOString());
       setMonitoringListLoaded(true);
