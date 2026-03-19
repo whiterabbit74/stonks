@@ -533,7 +533,8 @@ export function AppSettings() {
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="bg-gray-50 dark:bg-gray-800 rounded p-3 border dark:border-gray-700">
-            <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">Котировки (страница «Результаты»)</div>
+            <div className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-0.5">Котировки — страница «Результаты»</div>
+            <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">Текущая цена тикера, обновляется каждые 15 сек в торговые часы</div>
             <label className="flex items-center gap-2 text-sm mb-1 dark:text-gray-300">
               <input type="radio" name="quoteProvider" checked={resultsQuoteProvider === 'finnhub'} onChange={() => setResultsQuoteProvider('finnhub')} />
               Finnhub
@@ -542,7 +543,7 @@ export function AppSettings() {
               <input type="radio" name="quoteProvider" checked={resultsQuoteProvider === 'alpha_vantage'} onChange={() => setResultsQuoteProvider('alpha_vantage')} />
               Alpha Vantage
             </label>
-            <label className="flex items-center gap-2 text-sm dark:text-gray-300">
+            <label className="flex items-center gap-2 text-sm mb-1 dark:text-gray-300">
               <input type="radio" name="quoteProvider" checked={resultsQuoteProvider === 'twelve_data'} onChange={() => setResultsQuoteProvider('twelve_data')} />
               Twelve Data
             </label>
@@ -553,7 +554,8 @@ export function AppSettings() {
           </div>
 
           <div className="bg-gray-50 dark:bg-gray-800 rounded p-3 border dark:border-gray-700">
-            <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">Актуализация датасета (серверный refresh)</div>
+            <div className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-0.5">Обновление датасета</div>
+            <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">Кнопка «Обновить» в библиотеке датасетов — дозагружает историю OHLC</div>
             <label className="flex items-center gap-2 text-sm mb-1 dark:text-gray-300">
               <input type="radio" name="refreshProvider" checked={resultsRefreshProvider === 'finnhub'} onChange={() => setResultsRefreshProvider('finnhub')} />
               Finnhub
@@ -569,7 +571,8 @@ export function AppSettings() {
           </div>
 
           <div className="bg-gray-50 dark:bg-gray-800 rounded p-3 border dark:border-gray-700">
-            <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">Импорт «Новые данные» (энхансер)</div>
+            <div className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-0.5">Новые данные — страница «Энхансер»</div>
+            <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">Импорт недостающих дат в существующий датасет</div>
             <label className="flex items-center gap-2 text-sm mb-1 dark:text-gray-300">
               <input type="radio" name="enhancerProvider" checked={enhancerProvider === 'alpha_vantage'} onChange={() => setEnhancerProvider('alpha_vantage')} />
               Alpha Vantage
@@ -1117,9 +1120,9 @@ export function AppSettings() {
         </div>
 
         <div className="p-4 rounded-lg border dark:border-gray-700">
-          <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Провайдер котировок</div>
+          <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Провайдер котировок для автоторговли</div>
           <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
-            Источник цен для торгового скрипта за минуту до закрытия. Webull — точнее для расчёта LIMIT-ордера, но имеет низкие лимиты запросов.
+            Цены для расчёта IBS и LIMIT-ордера за 1 минуту до закрытия. Webull — один запрос на все тикеры, цена точнее (реальный intraday). Finnhub — по запросу на тикер с задержкой, надёжнее при высокой нагрузке.
           </p>
           {autotradeLoading ? (
             <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
