@@ -60,27 +60,41 @@ function formatDateTime(value: unknown) {
   const ts = Date.parse(value);
   if (!Number.isFinite(ts)) return value;
   return new Date(ts).toLocaleString('ru-RU', {
-    dateStyle: 'short',
-    timeStyle: 'short',
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
     timeZone: 'America/New_York',
   });
 }
 
-function formatAutotradeLogLine(line: string) {
+function formatLogLine(line: string) {
   try {
-    const parsed = JSON.parse(line) as Record<string, unknown>;
-    const ts = typeof parsed.ts === 'string' ? formatDateTime(parsed.ts) : '—';
-    const level = typeof parsed.level === 'string' ? parsed.level.toUpperCase() : 'INFO';
-    const event = typeof parsed.event === 'string' ? parsed.event : 'message';
-    const summaryParts = [
-      parsed.symbol ? String(parsed.symbol) : null,
-      parsed.action ? String(parsed.action) : null,
-      parsed.status ? String(parsed.status) : null,
-      parsed.client_order_id ? `id=${String(parsed.client_order_id)}` : null,
-      parsed.error ? `error=${String(parsed.error)}` : null,
-      parsed.message ? String(parsed.message) : null,
+    const p = JSON.parse(line) as Record<string, unknown>;
+    const ts = typeof p.ts === 'string' ? formatDateTime(p.ts) : '—';
+    const level = typeof p.level === 'string' ? p.level.toUpperCase().padEnd(5) : 'INFO ';
+    const event = typeof p.event === 'string' ? p.event : 'message';
+
+    // Raw broker log fields
+    if (p.method || p.path) {
+      const method = p.method ? String(p.method) : '';
+      const path = p.path ? String(p.path) : '';
+      const status = p.responseStatus != null ? `→ ${String(p.responseStatus)}` : '';
+      const err = p.error ? ` ⚠ ${String(p.error)}` : '';
+      return `${ts} ${level} ${method} ${path} ${status}${err}`.trimEnd();
+    }
+
+    // Autotrade log fields
+    const parts = [
+      p.symbol ? String(p.symbol) : null,
+      p.action ? String(p.action) : null,
+      p.status ? String(p.status) : null,
+      p.client_order_id ? `id=${String(p.client_order_id)}` : null,
+      p.error ? `⚠ ${String(p.error)}` : null,
+      p.message ? String(p.message) : null,
     ].filter(Boolean);
-    return `${ts} ${level} ${event}${summaryParts.length > 0 ? ` • ${summaryParts.join(' • ')}` : ''}`;
+    return `${ts} ${level} ${event}${parts.length > 0 ? ` • ${parts.join(' • ')}` : ''}`;
   } catch {
     return line;
   }
@@ -1061,13 +1075,13 @@ export function WebullAccountPage() {
           <div className="border-b border-gray-100 px-4 py-3 dark:border-gray-800">
             <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Webull / autotrade логи</h2>
           </div>
-          <pre className="max-h-[520px] overflow-auto p-4 text-xs text-gray-800 dark:text-gray-100">{autotradeLogLines.map(formatAutotradeLogLine).join('\n') || 'Логи автоторговли пока пусты'}</pre>
+          <pre className="max-h-[520px] overflow-auto p-4 text-xs text-gray-800 dark:text-gray-100">{autotradeLogLines.map(formatLogLine).join('\n') || 'Логи автоторговли пока пусты'}</pre>
         </div>
         <div className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
           <div className="border-b border-gray-100 px-4 py-3 dark:border-gray-800">
             <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Raw broker log (monthly)</h2>
           </div>
-          <pre className="max-h-[520px] overflow-auto p-4 text-xs text-gray-800 dark:text-gray-100">{brokerRawLogLines.join('\n') || 'Raw broker log пока пуст'}</pre>
+          <pre className="max-h-[520px] overflow-auto p-4 text-xs text-gray-800 dark:text-gray-100">{brokerRawLogLines.map(formatLogLine).join('\n') || 'Raw broker log пока пуст'}</pre>
         </div>
       </div>
     );
