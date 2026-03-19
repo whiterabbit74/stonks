@@ -7,7 +7,7 @@
 const fs = require('fs-extra');
 const { getApiConfig, PRICE_ACTUALIZATION_REQUEST_DELAY_MS, PRICE_ACTUALIZATION_DELAY_JITTER_MS, DATASETS_DIR } = require('../config');
 const { readSettings } = require('./settings');
-const { resolveDatasetFilePathByIdAsync, writeDatasetToTickerFile } = require('./datasets');
+const { getDataset, getDatasetMetadata, mergeOhlcRows, saveDataset } = require('./datasets');
 const { toSafeTicker } = require('../utils/helpers');
 const { fetchFromAlphaVantage } = require('../providers/alphaVantage');
 const { fetchFromFinnhub } = require('../providers/finnhub');
@@ -105,11 +105,7 @@ async function refreshTickerAndCheckFreshness(symbol, nowEtParts, provider = 'fi
     const prev = previousTradingDayET(nowEtParts);
     const prevKey = etKeyYMD(prev);
 
-    let dataset;
-    let filePath = await resolveDatasetFilePathByIdAsync(ticker);
-    if (filePath && await fs.pathExists(filePath)) {
-        dataset = await fs.readJson(filePath).catch(() => null);
-    }
+    let dataset = getDataset(ticker);
     if (!dataset) {
         dataset = {
             name: ticker,
@@ -117,7 +113,7 @@ async function refreshTickerAndCheckFreshness(symbol, nowEtParts, provider = 'fi
             data: [],
             dataPoints: 0,
             dateRange: { from: null, to: null },
-            uploadDate: new Date().toISOString()
+            uploadDate: new Date().toISOString(),
         };
     }
 
@@ -183,17 +179,11 @@ async function refreshTickerAndCheckFreshness(symbol, nowEtParts, provider = 'fi
         }
 
         const mergedArray = Array.from(mergedByDate.values()).sort((a, b) => a.date.localeCompare(b.date));
-        dataset.data = mergedArray;
-        dataset.dataPoints = mergedArray.length;
-        if (mergedArray.length) {
-            dataset.dateRange = { from: mergedArray[0].date, to: mergedArray[mergedArray.length - 1].date };
-        }
-        dataset.uploadDate = new Date().toISOString();
-        dataset.name = ticker;
-        await writeDatasetToTickerFile(dataset);
+        saveDataset({ ...dataset, data: mergedArray, uploadDate: new Date().toISOString(), name: ticker });
 
         const fresh = mergedByDate.has(prevKey);
-        return { fresh, provider, lastDate: dataset.dateRange?.to };
+        const updatedMeta = getDatasetMetadata(ticker);
+        return { fresh, provider, lastDate: updatedMeta?.dateRange?.to };
     } catch (e) {
         console.warn(`Failed to refresh ${ticker} via ${provider}:`, e.message);
         return { fresh: false, provider, error: e.message };
