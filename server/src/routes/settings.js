@@ -29,8 +29,9 @@ router.put('/settings', async (req, res) => {
         const validProvider = (p) => ['alpha_vantage', 'finnhub', 'twelve_data', 'webull', 'polygon'].includes(p);
         const current = await readSettings();
         const next = getDefaultSettings();
-        // Preserve polygonApiKey across PUT calls (it's managed separately via PATCH)
+        // Preserve polygonApiKey and autoTrading across PUT calls (managed separately via PATCH)
         next.polygonApiKey = current.polygonApiKey || '';
+        next.autoTrading = current.autoTrading || next.autoTrading;
         if (typeof watchThresholdPct === 'number') next.watchThresholdPct = watchThresholdPct;
         if (validProvider(resultsQuoteProvider)) next.resultsQuoteProvider = resultsQuoteProvider;
         if (validProvider(enhancerProvider)) next.enhancerProvider = enhancerProvider;
