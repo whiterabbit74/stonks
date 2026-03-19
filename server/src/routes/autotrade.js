@@ -152,7 +152,12 @@ router.post('/autotrade/webull/test-buy', async (req, res) => {
         const requestedQuantity = req.body?.quantity;
         const quantity = Number.isFinite(Number(requestedQuantity)) ? Number(requestedQuantity) : 1;
         const result = await buyWebullTestMarket(symbol, quantity, { source: 'api_manual_test_buy' });
-        res.json({ success: true, clientOrderId: result.clientOrderId || result.order?.client_order_id || null, result });
+        const clientOrderId = result.clientOrderId || result.order?.client_order_id || null;
+        if (!result.submitted) {
+            const reason = result.error || result.reason || 'execution_blocked';
+            return res.status(422).json({ success: false, submitted: false, clientOrderId, error: reason, result });
+        }
+        res.json({ success: true, submitted: true, clientOrderId, result });
     } catch (error) {
         const formatted = formatWebullError(error, 'Failed to submit Webull test buy');
         const status = resolveWebullHttpStatus(error, formatted.message, 502);
