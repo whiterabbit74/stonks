@@ -348,7 +348,7 @@ export function WebullAccountPage() {
     }
   };
 
-  const buildMonitoringRow = (watch: { symbol: string; highIBS: number; lowIBS?: number; thresholdPct?: number; entryPrice: number | null; isOpenPosition: boolean }, quote?: { open: number | null; high: number | null; low: number | null; current: number | null; prevClose: number | null }, quoteError?: string | null): MonitoringRow => {
+  const buildMonitoringRow = (watch: { symbol: string; highIBS: number | null; lowIBS?: number | null; thresholdPct?: number | null; entryPrice: number | null; isOpenPosition: boolean }, quote?: { open: number | null; high: number | null; low: number | null; current: number | null; prevClose: number | null }, quoteError?: string | null): MonitoringRow => {
     const current = quote?.current ?? null;
     const prevClose = quote?.prevClose ?? null;
     const todayLow = quote?.low ?? null;
@@ -475,7 +475,6 @@ export function WebullAccountPage() {
   const positions = useMemo(() => normalizePositions(data?.positions), [data?.positions]);
   const openOrders = useMemo(() => normalizeOrders(data?.openOrders), [data?.openOrders]);
   const orderHistory = useMemo(() => normalizeOrders(data?.orderHistory), [data?.orderHistory]);
-  const accounts = useMemo(() => asArray(data?.accounts), [data?.accounts]);
   const pendingOrders = useMemo(() => logs?.pending ?? [], [logs?.pending]);
   const recentTrackedOrders = useMemo(() => logs?.recent ?? [], [logs?.recent]);
   const monitorLogLines = useMemo(() => [...(logs?.monitor ?? [])].reverse(), [logs?.monitor]);

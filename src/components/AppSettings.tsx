@@ -3,6 +3,7 @@ import { DatasetAPI } from '../lib/api';
 import { useAppStore } from '../stores';
 import { sanitizeNumericInput, sanitizeTextInput, VALIDATION_CONSTRAINTS } from '../lib/input-validation';
 import { BarChart3, TrendingUp, ShoppingCart, TrendingDown, Target, Calculator, Clock, AlertTriangle, DollarSign, BarChart2, Layers, Info, X, ChevronUp, ChevronDown, Save, Loader2 } from 'lucide-react';
+import type { AutoTradingConfig } from '../types';
 // import { StrategySettings } from './StrategySettings';
 
 // SettingsData interface removed - not actively used
@@ -34,7 +35,14 @@ export function AppSettings() {
   const setAnalysisTabsConfig = useAppStore(s => s.setAnalysisTabsConfig);
 
   // Active tab state
-  const [activeTab, setActiveTab] = useState<'general' | 'api' | 'telegram' | 'interface'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'api' | 'telegram' | 'interface' | 'autotrade'>('general');
+
+  // Autotrade state
+  const [autotradeConfig, setAutotradeConfig] = useState<AutoTradingConfig | null>(null);
+  const [autotradeLoading, setAutotradeLoading] = useState(false);
+  const [autotradeToggling, setAutotradeToggling] = useState(false);
+  const [autotradeError, setAutotradeError] = useState<string | null>(null);
+  const [autotradeOk, setAutotradeOk] = useState<string | null>(null);
 
   // Loading and initial values for unsaved changes detection
   const [isLoadingSettings, setIsLoadingSettings] = useState(true);
@@ -242,6 +250,38 @@ export function AppSettings() {
     }
   }, [draggedTab]);
 
+
+  const loadAutotradeConfig = async () => {
+    try {
+      setAutotradeLoading(true);
+      setAutotradeError(null);
+      const next = await DatasetAPI.getAutotradeConfig();
+      setAutotradeConfig(next.config);
+    } catch (e) {
+      setAutotradeError(e instanceof Error ? e.message : 'Не удалось загрузить настройки автоторговли');
+    } finally {
+      setAutotradeLoading(false);
+    }
+  };
+
+  const handleToggleAutotrade = async () => {
+    if (!autotradeConfig) return;
+    const nextEnabled = !autotradeConfig.enabled;
+    const confirmed = window.confirm(nextEnabled ? 'Включить автоторговлю в live-режиме?' : 'Выключить автоторговлю?');
+    if (!confirmed) return;
+    try {
+      setAutotradeToggling(true);
+      setAutotradeError(null);
+      setAutotradeOk(null);
+      const next = await DatasetAPI.updateAutotradeConfig({ enabled: nextEnabled });
+      setAutotradeConfig(next.config);
+      setAutotradeOk(nextEnabled ? 'Автоторговля включена' : 'Автоторговля выключена');
+    } catch (e) {
+      setAutotradeError(e instanceof Error ? e.message : 'Не удалось изменить статус автоторговли');
+    } finally {
+      setAutotradeToggling(false);
+    }
+  };
 
   const sendTest = async () => {
     setSending(true); setError(null); setOk(null);
@@ -1001,6 +1041,79 @@ export function AppSettings() {
     </div>
   );
 
+  // Autotrade Settings Tab
+  const AutotradeTab = () => {
+    useEffect(() => {
+      if (!autotradeConfig && !autotradeLoading) {
+        void loadAutotradeConfig();
+      }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    const isEnabled = autotradeConfig?.enabled ?? false;
+
+    return (
+      <div className="space-y-4">
+        <div className="p-4 rounded-lg border dark:border-gray-700">
+          <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Статус автоторговли</div>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+            Включает или выключает автоматическое исполнение ордеров через Webull по сигналам T-1 мониторинга.
+          </p>
+
+          {autotradeLoading ? (
+            <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              Загрузка…
+            </div>
+          ) : (
+            <div className="flex items-center gap-4">
+              <button
+                type="button"
+                role="switch"
+                aria-checked={isEnabled}
+                onClick={() => void handleToggleAutotrade()}
+                disabled={autotradeToggling || autotradeConfig === null}
+                className={`relative inline-flex h-7 w-14 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed ${
+                  isEnabled ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-gray-600'
+                }`}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+                    isEnabled ? 'translate-x-7' : 'translate-x-0'
+                  }`}
+                />
+              </button>
+              <div>
+                <div className={`text-sm font-semibold ${isEnabled ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-500 dark:text-gray-400'}`}>
+                  {autotradeToggling ? 'Применяется…' : isEnabled ? 'LIVE — автоторговля включена' : 'OFF — автоторговля выключена'}
+                </div>
+                {autotradeConfig?.lastModifiedAt ? (
+                  <div className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                    Обновлено: {new Date(autotradeConfig.lastModifiedAt).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short', timeZone: 'America/New_York' })} ET
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          )}
+
+          {autotradeError && (
+            <div className="mt-3 text-sm text-red-600 dark:text-red-400">{autotradeError}</div>
+          )}
+          {autotradeOk && (
+            <div className="mt-3 text-sm text-emerald-600 dark:text-emerald-400">{autotradeOk}</div>
+          )}
+        </div>
+
+        <div className="p-4 rounded-lg border bg-gray-50 dark:bg-gray-800 dark:border-gray-700">
+          <div className="text-xs text-gray-500 dark:text-gray-400 space-y-1">
+            <p>• Подробные настройки автоторговли доступны на странице <strong className="text-gray-700 dark:text-gray-300">/broker → Автоторговля</strong>.</p>
+            <p>• Переключатель здесь синхронизирован с переключателем на странице брокера.</p>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   // Global save handler
   const handleGlobalSave = async () => {
     setSaving(true);
@@ -1048,7 +1161,8 @@ export function AppSettings() {
     { id: 'general' as const, label: 'Общие' },
     { id: 'api' as const, label: 'API' },
     { id: 'telegram' as const, label: 'Telegram' },
-    { id: 'interface' as const, label: 'Интерфейс' }
+    { id: 'interface' as const, label: 'Интерфейс' },
+    { id: 'autotrade' as const, label: 'Автоторговля' },
   ];
 
   return (
@@ -1156,6 +1270,14 @@ export function AppSettings() {
               hidden={activeTab !== 'interface'}
             >
               {activeTab === 'interface' && <InterfaceTab />}
+            </div>
+            <div
+              role="tabpanel"
+              id="tabpanel-autotrade"
+              aria-labelledby="tab-autotrade"
+              hidden={activeTab !== 'autotrade'}
+            >
+              {activeTab === 'autotrade' && <AutotradeTab />}
             </div>
           </>
         )}

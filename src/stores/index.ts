@@ -26,7 +26,7 @@ interface AppState {
   // Race condition prevention
   currentLoadOperation: AbortController | null;
   // Provider settings
-  dataProvider: 'alpha_vantage' | 'finnhub' | 'twelve_data';
+  dataProvider: 'alpha_vantage' | 'finnhub' | 'twelve_data' | 'webull';
   // Notification settings
   watchThresholdPct: number; // близость к IBS-цели для уведомления, %
   setWatchThresholdPct: (value: number) => void;
