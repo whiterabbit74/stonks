@@ -69,6 +69,8 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
   const [editTag, setEditTag] = useState('');
   const [editCompanyName, setEditCompanyName] = useState('');
   const [savingEdit, setSavingEdit] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
 
   // Check server status on mount with timeout
   useEffect(() => {
@@ -122,6 +124,7 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
     setEditingDataset(dataset);
     setEditTag(dataset.tag || '');
     setEditCompanyName(dataset.companyName || '');
+    setEditError(null);
     setEditModalOpen(true);
   };
 
@@ -146,7 +149,7 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
       setEditTag('');
       setEditCompanyName('');
     } catch (error) {
-      console.error('Failed to update dataset metadata:', error);
+      setEditError(error instanceof Error ? error.message : 'Не удалось сохранить изменения');
     } finally {
       setSavingEdit(false);
     }
@@ -315,6 +318,14 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
           </div>
         )}
 
+        {/* Refresh error */}
+        {refreshError && (
+          <div className="mb-2 px-3 py-2 rounded-md bg-red-50 dark:bg-red-900/20 text-sm text-red-600 dark:text-red-400 flex items-center justify-between gap-2">
+            <span>{refreshError}</span>
+            <button onClick={() => setRefreshError(null)} className="text-red-400 hover:text-red-600 flex-shrink-0">✕</button>
+          </div>
+        )}
+
         {/* List View */}
         {viewMode === 'list' && filteredDatasets.map((dataset: Omit<SavedDataset, 'data'>) => (
           <DatasetCard
@@ -332,10 +343,11 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
               const id = getDatasetId(dataset).toUpperCase();
               try {
                 setRefreshingId(id);
+                setRefreshError(null);
                 await DatasetAPI.refreshDataset(id, resultsRefreshProvider as any);
                 await loadDatasetsFromServer();
               } catch (err) {
-                console.warn('Refresh failed', err);
+                setRefreshError(err instanceof Error ? err.message : 'Не удалось обновить датасет');
               } finally {
                 setRefreshingId(null);
               }
@@ -440,6 +452,9 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
               </div>
             </div>
 
+            {editError && (
+              <div className="mt-3 text-sm text-red-600 dark:text-red-400">{editError}</div>
+            )}
             <ModalFooter>
               <Button
                 variant="secondary"
