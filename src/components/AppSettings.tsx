@@ -309,19 +309,6 @@ export function AppSettings() {
     }
   };
 
-  const saveProviders = async () => {
-    setSaving(true); setSaveOk(null); setSaveErr(null);
-    try {
-      await saveSettingsToServer();
-      setSaveOk('Сохранено');
-    } catch (e) {
-      const message = e instanceof Error ? e.message : 'Не удалось сохранить';
-      setSaveErr(message);
-    } finally {
-      setSaving(false);
-    }
-  };
-
   // Test API provider
   const testProvider = async (provider: string) => {
     setTestingProvider(provider);
@@ -691,13 +678,6 @@ export function AppSettings() {
           </label>
         </div>
 
-        <div className="mt-3 flex items-center gap-2">
-          <button onClick={saveProviders} disabled={saving} className="px-3 py-1.5 rounded-md bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:bg-gray-400">
-            {saving ? 'Сохранение…' : 'Сохранить'}
-          </button>
-          {saveOk && <span className="text-sm text-green-600">{saveOk}</span>}
-          {saveErr && <span className="text-sm text-red-600">{saveErr}</span>}
-        </div>
       </div>
 
       {/* API Info Modal */}
