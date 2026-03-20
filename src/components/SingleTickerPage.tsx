@@ -940,9 +940,6 @@ export function SingleTickerPage() {
           <section className="rounded-xl border bg-white p-4 dark:bg-gray-900 dark:border-gray-800">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg sm:text-xl font-semibold text-gray-900 dark:text-gray-100">Аналитика сделок</h2>
-              {isChartTransitionPending && (
-                <div className="text-xs text-gray-500 dark:text-gray-400">Подготовка вкладки...</div>
-              )}
             </div>
 
             <AnalysisTabs
