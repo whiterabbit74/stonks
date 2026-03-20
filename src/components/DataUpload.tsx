@@ -1,6 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { ArrowRight, AlertTriangle, Download, RefreshCw } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { ArrowRight, AlertTriangle, RefreshCw } from 'lucide-react';
 import { useAppStore } from '../stores';
 import { DatasetLibrary } from './DatasetLibrary';
 import { PageHeader } from './ui/PageHeader';
@@ -26,19 +25,7 @@ export function DataUpload({ onNext }: DataUploadProps) {
 
   return (
     <div className="space-y-5">
-      <PageHeader
-        title="Данные"
-        subtitle="Управление загруженными датасетами"
-        actions={
-          <Link
-            to="/enhance"
-            title="Загрузить новые данные из API"
-            className="inline-flex items-center justify-center rounded-xl border border-gray-200 bg-white p-2 text-gray-600 shadow-sm transition-colors hover:bg-gray-50 hover:text-indigo-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-indigo-400"
-          >
-            <Download className="h-4 w-4" />
-          </Link>
-        }
-      />
+      <PageHeader title="Данные" subtitle="Управление загруженными датасетами" />
 
       {isLoading && (
         <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">

@@ -193,6 +193,13 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
               {filteredDatasets.length}{selectedTag !== 'all' ? ` из ${savedDatasets.length}` : ''} датасетов
             </p>
           </div>
+          <Link
+            to="/enhance"
+            title="Загрузить новые данные из API"
+            className="inline-flex items-center justify-center w-8 h-8 rounded-lg border border-gray-200 bg-white text-gray-500 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition-colors dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-indigo-950/30 dark:hover:text-indigo-400"
+          >
+            <Plus className="w-4 h-4" />
+          </Link>
         </div>
 
         {/* Row 2: Status and Current Dataset */}
