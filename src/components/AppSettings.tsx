@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { DatasetAPI } from '../lib/api';
 import { useAppStore } from '../stores';
 import { sanitizeNumericInput, sanitizeTextInput, VALIDATION_CONSTRAINTS } from '../lib/input-validation';
-import { BarChart3, TrendingUp, ShoppingCart, TrendingDown, Target, Calculator, Clock, AlertTriangle, DollarSign, BarChart2, Layers, Info, X, ChevronUp, ChevronDown, Save, Loader2 } from 'lucide-react';
+import { BarChart3, TrendingUp, ShoppingCart, TrendingDown, Target, Calculator, Clock, AlertTriangle, DollarSign, BarChart2, Layers, Info, X, ChevronUp, ChevronDown, Save, Loader2, Check } from 'lucide-react';
 import type { AutoTradingConfig } from '../types';
 import { PageHeader } from './ui/PageHeader';
 // import { StrategySettings } from './StrategySettings';
@@ -18,6 +18,27 @@ interface AutotradeTabProps {
   onLoad: () => void;
   onToggle: () => void;
   onChangeProvider: (p: string) => void;
+}
+
+function ToggleSwitch({ checked, onChange, disabled = false }: { checked: boolean; onChange: () => void; disabled?: boolean }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      onClick={onChange}
+      disabled={disabled}
+      className={`relative inline-flex h-5 w-10 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed ${
+        checked ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-gray-600'
+      }`}
+    >
+      <span
+        className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+          checked ? 'translate-x-5' : 'translate-x-0'
+        }`}
+      />
+    </button>
+  );
 }
 
 function AutotradeTab({
@@ -53,26 +74,10 @@ function AutotradeTab({
             Загрузка…
           </div>
         ) : (
-          <div className="flex items-center gap-4">
-            <button
-              type="button"
-              role="switch"
-              aria-checked={isEnabled}
-              onClick={onToggle}
-              disabled={autotradeToggling || autotradeConfig === null}
-              className={`relative inline-flex h-7 w-14 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed ${
-                isEnabled ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-gray-600'
-              }`}
-            >
-              <span
-                className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
-                  isEnabled ? 'translate-x-7' : 'translate-x-0'
-                }`}
-              />
-            </button>
+          <div className="flex items-center justify-between gap-4">
             <div>
-              <div className={`text-sm font-semibold ${isEnabled ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-500 dark:text-gray-400'}`}>
-                {autotradeToggling ? 'Применяется…' : isEnabled ? 'LIVE — автоторговля включена' : 'OFF — автоторговля выключена'}
+              <div className={`text-sm font-medium ${isEnabled ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-700 dark:text-gray-300'}`}>
+                {autotradeToggling ? 'Применяется…' : isEnabled ? 'Включена' : 'Выключена'}
               </div>
               {autotradeConfig?.lastModifiedAt ? (
                 <div className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
@@ -80,6 +85,11 @@ function AutotradeTab({
                 </div>
               ) : null}
             </div>
+            <ToggleSwitch
+              checked={isEnabled}
+              onChange={onToggle}
+              disabled={autotradeToggling || autotradeConfig === null}
+            />
           </div>
         )}
 
@@ -791,20 +801,16 @@ export function AppSettings() {
         </div>
 
         <div className="mt-4 rounded p-3 border bg-gray-50 dark:bg-gray-800 dark:border-gray-700">
-          <label className="flex items-start gap-3 text-sm text-gray-700 dark:text-gray-300">
-            <input
-              type="checkbox"
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <div className="text-sm font-medium text-gray-700 dark:text-gray-300">Автоактуализация цен после закрытия рынка</div>
+              <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Серверный запуск через 16-30 минут после закрытия (T+16 мин). По умолчанию выключено.</div>
+            </div>
+            <ToggleSwitch
               checked={enablePostClosePriceActualization}
-              onChange={(e) => setEnablePostClosePriceActualization(e.target.checked)}
-              className="mt-0.5 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 dark:bg-gray-900 dark:border-gray-700"
+              onChange={() => setEnablePostClosePriceActualization(!enablePostClosePriceActualization)}
             />
-            <span>
-              Автоактуализация цен после закрытия рынка (T+16 минут)
-              <span className="block text-xs text-gray-500 dark:text-gray-400 mt-1">
-                Серверный запуск через 16-30 минут после закрытия. По умолчанию выключено.
-              </span>
-            </span>
-          </label>
+          </div>
         </div>
 
       </div>
@@ -1115,6 +1121,18 @@ export function AppSettings() {
     </div>
   );
 
+  // Auto-dismiss saveOk after 3s
+  useEffect(() => {
+    if (!saveOk) return;
+    const t = setTimeout(() => setSaveOk(null), 3000);
+    return () => clearTimeout(t);
+  }, [saveOk]);
+
+  // Clear success message immediately when new unsaved changes appear
+  useEffect(() => {
+    if (hasUnsavedChanges && saveOk) setSaveOk(null);
+  }, [hasUnsavedChanges, saveOk]);
+
   // Global save handler
   const handleGlobalSave = async () => {
     setSaving(true);
@@ -1169,33 +1187,32 @@ export function AppSettings() {
   return (
     <div className="space-y-4">
       <PageHeader
-        title={
-          <span className="flex items-center gap-2">
-            Настройки
-            {hasUnsavedChanges && (
-              <span className="text-orange-500 font-bold text-lg" title="Есть несохранённые изменения">*</span>
-            )}
-          </span>
-        }
+        title="Настройки"
         subtitle="Конфигурация приложения и параметры стратегии"
         actions={
           <div className="flex items-center gap-3">
-            {saveOk && <span className="text-sm text-green-600 dark:text-green-400">{saveOk}</span>}
             {saveErr && <span className="text-sm text-red-600 dark:text-red-400">{saveErr}</span>}
             <button
               onClick={handleGlobalSave}
-              disabled={saving || !hasUnsavedChanges}
-              className={`inline-flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${hasUnsavedChanges
-                ? 'bg-blue-600 text-white hover:bg-blue-700'
-                : 'bg-gray-100 text-gray-400 cursor-not-allowed dark:bg-gray-800 dark:text-gray-500'
-                } disabled:opacity-50`}
+              disabled={saving || (!hasUnsavedChanges && !saveOk)}
+              className={`inline-flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                saving
+                  ? 'bg-blue-600 text-white opacity-70 cursor-not-allowed'
+                  : saveOk
+                  ? 'bg-emerald-600 text-white cursor-default'
+                  : hasUnsavedChanges
+                  ? 'bg-blue-600 text-white hover:bg-blue-700'
+                  : 'bg-gray-100 text-gray-400 cursor-not-allowed dark:bg-gray-800 dark:text-gray-500'
+              }`}
             >
               {saving ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
+              ) : saveOk ? (
+                <Check className="w-4 h-4" />
               ) : (
                 <Save className="w-4 h-4" />
               )}
-              {saving ? 'Сохранение...' : 'Сохранить всё'}
+              {saving ? 'Сохранение…' : saveOk ? 'Сохранено' : 'Сохранить'}
             </button>
           </div>
         }
@@ -1250,7 +1267,7 @@ export function AppSettings() {
               aria-labelledby="tab-general"
               hidden={activeTab !== 'general'}
             >
-              {activeTab === 'general' && <GeneralTab />}
+              {activeTab === 'general' && GeneralTab()}
             </div>
             <div
               role="tabpanel"
@@ -1258,7 +1275,7 @@ export function AppSettings() {
               aria-labelledby="tab-api"
               hidden={activeTab !== 'api'}
             >
-              {activeTab === 'api' && <ApiTab />}
+              {activeTab === 'api' && ApiTab()}
             </div>
             <div
               role="tabpanel"
@@ -1266,7 +1283,7 @@ export function AppSettings() {
               aria-labelledby="tab-telegram"
               hidden={activeTab !== 'telegram'}
             >
-              {activeTab === 'telegram' && <TelegramTab />}
+              {activeTab === 'telegram' && TelegramTab()}
             </div>
             <div
               role="tabpanel"
@@ -1274,7 +1291,7 @@ export function AppSettings() {
               aria-labelledby="tab-interface"
               hidden={activeTab !== 'interface'}
             >
-              {activeTab === 'interface' && <InterfaceTab />}
+              {activeTab === 'interface' && InterfaceTab()}
             </div>
             <div
               role="tabpanel"
@@ -1299,21 +1316,6 @@ export function AppSettings() {
         )}
       </div>
 
-      {/* Unsaved changes warning */}
-      {hasUnsavedChanges && (
-        <div className="fixed bottom-4 right-4 bg-orange-100 border border-orange-300 rounded-lg p-3 shadow-lg flex items-center gap-3 z-50">
-          <AlertTriangle className="w-5 h-5 text-orange-600" />
-          <span className="text-sm text-orange-800">Есть несохранённые изменения</span>
-          <button
-            onClick={handleGlobalSave}
-            disabled={saving}
-            className="inline-flex items-center gap-1 px-3 py-1 bg-orange-600 text-white rounded text-sm hover:bg-orange-700 disabled:opacity-50"
-          >
-            {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
-            Сохранить
-          </button>
-        </div>
-      )}
     </div>
   );
 }

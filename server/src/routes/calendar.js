@@ -3,7 +3,10 @@
  */
 const express = require('express');
 const router = express.Router();
-const { getETParts, etKeyYMD, previousTradingDayET, loadTradingCalendarJSON } = require('../services/dates');
+const {
+    getETParts, etKeyYMD, previousTradingDayET, loadTradingCalendarJSON, saveCalendarToDb,
+    observedFixedET, nthWeekdayOfMonthET, lastWeekdayOfMonthET, goodFridayET,
+} = require('../services/dates');
 const { getTradeCalendar } = require('../services/webullClient');
 
 const DEFAULT_CALENDAR = {
@@ -82,6 +85,203 @@ router.post('/trading-calendar/sync-webull', async (req, res) => {
     } catch (e) {
         console.error('Webull calendar fetch error:', e);
         res.status(500).json({ error: e && e.message ? e.message : 'Webull calendar fetch failed' });
+    }
+});
+
+// ─── Holiday name resolution ──────────────────────────────────────────────────
+
+function resolveHolidayName(ymd) {
+    const year = parseInt(ymd.slice(0, 4));
+    const mmdd = ymd.slice(5);
+    try {
+        const names = {
+            [etKeyYMD(observedFixedET(year, 0, 1)).slice(5)]: "New Year's Day",
+            [etKeyYMD(nthWeekdayOfMonthET(year, 0, 1, 3)).slice(5)]: 'Martin Luther King Jr. Day',
+            [etKeyYMD(nthWeekdayOfMonthET(year, 1, 1, 3)).slice(5)]: "Presidents' Day",
+            [etKeyYMD(goodFridayET(year)).slice(5)]: 'Good Friday',
+            [etKeyYMD(lastWeekdayOfMonthET(year, 4, 1)).slice(5)]: 'Memorial Day',
+            [etKeyYMD(observedFixedET(year, 5, 19)).slice(5)]: 'Juneteenth',
+            [etKeyYMD(observedFixedET(year, 6, 4)).slice(5)]: 'Independence Day',
+            [etKeyYMD(nthWeekdayOfMonthET(year, 8, 1, 1)).slice(5)]: 'Labor Day',
+            [etKeyYMD(nthWeekdayOfMonthET(year, 10, 4, 4)).slice(5)]: 'Thanksgiving Day',
+            [etKeyYMD(observedFixedET(year, 11, 25)).slice(5)]: 'Christmas Day',
+        };
+        return names[mmdd] || 'Market Holiday';
+    } catch {
+        return 'Market Holiday';
+    }
+}
+
+function resolveShortDayName(ymd) {
+    const year = parseInt(ymd.slice(0, 4));
+    const mmdd = ymd.slice(5);
+    if (mmdd === '12-24') return 'Christmas Eve';
+    if (mmdd === '07-03') return 'Independence Day Eve';
+    try {
+        const thanksgiving = new Date(etKeyYMD(nthWeekdayOfMonthET(year, 10, 4, 4)) + 'T12:00:00Z');
+        thanksgiving.setUTCDate(thanksgiving.getUTCDate() - 1);
+        if (dateToYMD(thanksgiving) === ymd) return 'Thanksgiving Eve';
+    } catch { /* ignore */ }
+    return 'Early Close';
+}
+
+// Known Webull trade_date_type values. Any unknown value blocks the import.
+const WEBULL_KNOWN_TYPES = new Set(['FULL_DAY', 'HALF_DAY']);
+
+// POST /api/trading-calendar/import-webull
+// Fetches Webull trade calendar from last covered date → +6 months.
+// Derives holidays (weekdays absent from Webull response) and short days (HALF_DAY).
+// Unknown trade_date_type values abort the import — calendar data is sensitive.
+// Merges into stored calendar and saves.
+router.post('/trading-calendar/import-webull', async (req, res) => {
+    try {
+        const market = (req.body && req.body.market) || 'US';
+
+        // Load current calendar
+        const calendarData = await loadTradingCalendarJSON().catch(() => null) || { ...DEFAULT_CALENDAR };
+
+        // Determine start date (day after last Webull coverage, or today)
+        const coverageThrough = calendarData.metadata && calendarData.metadata.webullCoverageThrough;
+        let startDate;
+        if (coverageThrough) {
+            startDate = new Date(coverageThrough + 'T00:00:00Z');
+            startDate = new Date(startDate.getTime() + DAY_MS);
+        } else {
+            startDate = new Date();
+            startDate.setUTCHours(0, 0, 0, 0);
+        }
+
+        // End date: 6 months forward
+        const endDate = new Date(startDate);
+        endDate.setUTCMonth(endDate.getUTCMonth() + 6);
+
+        // Fetch from Webull in ≤29-day chunks
+        const chunks = buildChunks(startDate, endDate);
+        const tradingDays = new Map(); // ymd → trade_date_type
+        let fetchErrors = 0;
+        const unknownTypes = new Map(); // type → first date seen
+
+        for (const { start, end } of chunks) {
+            try {
+                const resp = await getTradeCalendar(market, start, end);
+                const items = Array.isArray(resp && resp.data) ? resp.data : [];
+                for (const item of items) {
+                    if (!item || !item.trade_day) continue;
+                    const type = item.trade_date_type;
+                    if (type && !WEBULL_KNOWN_TYPES.has(type)) {
+                        if (!unknownTypes.has(type)) unknownTypes.set(type, item.trade_day);
+                    }
+                    tradingDays.set(item.trade_day, type || 'FULL_DAY');
+                }
+            } catch (err) {
+                fetchErrors++;
+                console.warn(`Calendar import chunk ${start}..${end} failed:`, err && err.message);
+            }
+        }
+
+        if (tradingDays.size === 0 && fetchErrors > 0) {
+            return res.status(502).json({ error: 'All Webull requests failed — check credentials', fetchErrors });
+        }
+
+        // Abort if Webull returned unknown day types — calendar is sensitive data
+        if (unknownTypes.size > 0) {
+            const details = Array.from(unknownTypes.entries())
+                .map(([type, date]) => `"${type}" (first seen: ${date})`)
+                .join(', ');
+            const msg = `Webull вернул неизвестные типы торговых дней: ${details}. ` +
+                `Известные типы: ${Array.from(WEBULL_KNOWN_TYPES).join(', ')}. ` +
+                `Импорт отменён — обновите код перед продолжением.`;
+            console.error('[calendar-import]', msg);
+            return res.status(422).json({ error: msg, unknownTypes: Object.fromEntries(unknownTypes) });
+        }
+
+        // Build new holidays and short days from the fetched range
+        const newHolidays = {};
+        const newShortDays = {};
+
+        const cursor = new Date(startDate);
+        while (cursor <= endDate) {
+            const dow = cursor.getUTCDay(); // 0=Sun, 6=Sat
+            if (dow !== 0 && dow !== 6) {
+                const ymd = dateToYMD(cursor);
+                const year = ymd.slice(0, 4);
+                const mmdd = ymd.slice(5);
+                const existingHoliday = calendarData.holidays && calendarData.holidays[year] && calendarData.holidays[year][mmdd];
+                const existingShort = calendarData.shortDays && calendarData.shortDays[year] && calendarData.shortDays[year][mmdd];
+
+                if (!tradingDays.has(ymd)) {
+                    // Weekday absent from Webull response → holiday (market closed)
+                    if (!existingHoliday) {
+                        if (!newHolidays[year]) newHolidays[year] = {};
+                        newHolidays[year][mmdd] = {
+                            name: resolveHolidayName(ymd),
+                            type: 'holiday',
+                            description: 'Market Closed',
+                        };
+                    }
+                } else if (tradingDays.get(ymd) === 'HALF_DAY') {
+                    // HALF_DAY → short day (early close)
+                    if (!existingShort) {
+                        if (!newShortDays[year]) newShortDays[year] = {};
+                        newShortDays[year][mmdd] = {
+                            name: resolveShortDayName(ymd),
+                            type: 'short',
+                            description: 'Early close at 1:00 PM',
+                            hours: 3.5,
+                        };
+                    }
+                }
+                // FULL_DAY → normal trading day, nothing to store
+            }
+            cursor.setUTCDate(cursor.getUTCDate() + 1);
+        }
+
+        // Merge into calendar
+        const mergedHolidays = { ...(calendarData.holidays || {}) };
+        for (const [year, days] of Object.entries(newHolidays)) {
+            mergedHolidays[year] = { ...(mergedHolidays[year] || {}), ...days };
+        }
+        const mergedShortDays = { ...(calendarData.shortDays || {}) };
+        for (const [year, days] of Object.entries(newShortDays)) {
+            mergedShortDays[year] = { ...(mergedShortDays[year] || {}), ...days };
+        }
+
+        const allYears = Array.from(new Set([
+            ...Object.keys(mergedHolidays),
+            ...Object.keys(mergedShortDays),
+            ...((calendarData.metadata && calendarData.metadata.years) || []),
+        ])).sort();
+
+        const updatedCalendar = {
+            ...calendarData,
+            metadata: {
+                ...(calendarData.metadata || {}),
+                lastUpdated: dateToYMD(new Date()),
+                webullCoverageThrough: dateToYMD(endDate),
+                years: allYears,
+            },
+            holidays: mergedHolidays,
+            shortDays: mergedShortDays,
+        };
+
+        saveCalendarToDb(updatedCalendar);
+
+        const newHolidayCount = Object.values(newHolidays).reduce((s, y) => s + Object.keys(y).length, 0);
+        const newShortDayCount = Object.values(newShortDays).reduce((s, y) => s + Object.keys(y).length, 0);
+
+        res.json({
+            ok: true,
+            from: dateToYMD(startDate),
+            to: dateToYMD(endDate),
+            coverageThrough: dateToYMD(endDate),
+            tradingDaysFound: tradingDays.size,
+            newHolidays: newHolidayCount,
+            newShortDays: newShortDayCount,
+            fetchErrors,
+        });
+    } catch (e) {
+        console.error('Calendar import error:', e);
+        res.status(500).json({ error: e && e.message ? e.message : 'Import failed' });
     }
 });
 

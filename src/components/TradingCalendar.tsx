@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react';
-import { Clock, AlertCircle, CalendarX2, ChevronLeft, ChevronRight, X, CalendarOff, RefreshCw } from 'lucide-react';
+import { Clock, AlertCircle, CalendarX2, ChevronLeft, ChevronRight, X, CalendarOff, RefreshCw, Download, CheckCircle2 } from 'lucide-react';
 import { API_BASE_URL, DatasetAPI } from '../lib/api';
 import { PageHeader } from './ui/PageHeader';
 
@@ -16,6 +16,7 @@ interface CalendarData {
     description: string;
     lastUpdated: string;
     years: string[];
+    webullCoverageThrough?: string;
   };
   holidays: Record<string, Record<string, HolidayData>>;
   shortDays: Record<string, Record<string, HolidayData>>;
@@ -48,9 +49,12 @@ export function TradingCalendar() {
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
   const modalTriggerRef = useRef<HTMLButtonElement | null>(null);
   const modalCloseRef = useRef<HTMLButtonElement | null>(null);
-  const [syncing, setSyncing] = useState(false);
-  const [syncRaw, setSyncRaw] = useState<unknown>(null);
-  const [syncError, setSyncError] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<{
+    from: string; to: string; coverageThrough: string;
+    tradingDaysFound: number; newHolidays: number; newShortDays: number; fetchErrors: number;
+  } | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
 
   const today = new Date();
   const currentYear = today.getFullYear();
@@ -98,17 +102,19 @@ export function TradingCalendar() {
 
   useEffect(() => { loadCalendar(); }, [loadCalendar]);
 
-  const handleSyncWebull = async () => {
-    setSyncing(true);
-    setSyncRaw(null);
-    setSyncError(null);
+  const handleImportWebull = async () => {
+    setImporting(true);
+    setImportResult(null);
+    setImportError(null);
     try {
-      const result = await DatasetAPI.fetchWebullCalendarRaw();
-      setSyncRaw(result.raw);
+      const result = await DatasetAPI.importWebullCalendar();
+      setImportResult(result);
+      // Reload calendar to reflect imported data
+      await loadCalendar();
     } catch (err) {
-      setSyncError(err instanceof Error ? err.message : String(err));
+      setImportError(err instanceof Error ? err.message : String(err));
     } finally {
-      setSyncing(false);
+      setImporting(false);
     }
   };
 
@@ -325,7 +331,14 @@ export function TradingCalendar() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Календарь торгов" subtitle="NYSE • Американский рынок акций" />
+      <PageHeader
+        title="Календарь торгов"
+        subtitle={
+          calendarData.metadata?.webullCoverageThrough
+            ? `NYSE · данные по ${calendarData.metadata.webullCoverageThrough}`
+            : 'NYSE · Американский рынок акций'
+        }
+      />
 
       {/* Legend — compact inline row */}
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-gray-600 dark:text-gray-400">
@@ -345,18 +358,19 @@ export function TradingCalendar() {
           <span className="w-2.5 h-2.5 rounded-full bg-red-500 flex-shrink-0" />
           Праздник · биржа закрыта
         </span>
-        <div className="ml-auto flex items-center gap-2">
-          <span className="text-xs text-gray-400 dark:text-gray-500">
-            Обновлено: {calendarData.metadata.lastUpdated}
-          </span>
+        <div className="ml-auto flex items-center gap-2 flex-shrink-0">
           <button
-            onClick={handleSyncWebull}
-            disabled={syncing}
-            title="Получить raw-данные календаря из Webull"
-            className="flex items-center gap-1 text-xs px-2 py-1 rounded border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50 disabled:cursor-wait transition-colors"
+            onClick={handleImportWebull}
+            disabled={importing}
+            title="Импортировать данные из Webull (от последней покрытой даты на 6 месяцев вперёд)"
+            className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded border border-indigo-300 dark:border-indigo-700 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 disabled:opacity-50 disabled:cursor-wait transition-colors"
           >
-            <RefreshCw className={`w-3 h-3 ${syncing ? 'animate-spin' : ''}`} />
-            Webull raw
+            {importing ? (
+              <RefreshCw className="w-3 h-3 animate-spin" />
+            ) : (
+              <Download className="w-3 h-3" />
+            )}
+            {importing ? 'Импорт…' : 'Импорт из Webull'}
           </button>
         </div>
       </div>
@@ -538,26 +552,43 @@ export function TradingCalendar() {
         </div>
       )}
 
-      {/* Webull raw response */}
-      {(syncRaw !== null || syncError) && (
-        <div className="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
-          <div className="flex items-center justify-between px-4 py-2 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
-            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Webull — raw response</span>
+      {/* Import result */}
+      {(importResult !== null || importError) && (
+        <div className={`rounded-xl border overflow-hidden ${importError ? 'border-red-200 dark:border-red-900/40' : 'border-emerald-200 dark:border-emerald-900/40'}`}>
+          <div className={`flex items-center justify-between px-4 py-2 border-b ${importError ? 'bg-red-50 dark:bg-red-950/20 border-red-200 dark:border-red-900/40' : 'bg-emerald-50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-900/40'}`}>
+            <div className="flex items-center gap-2">
+              {importError ? (
+                <AlertCircle className="w-4 h-4 text-red-500" />
+              ) : (
+                <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+              )}
+              <span className={`text-sm font-medium ${importError ? 'text-red-800 dark:text-red-200' : 'text-emerald-800 dark:text-emerald-200'}`}>
+                {importError ? 'Ошибка импорта' : 'Импорт завершён'}
+              </span>
+            </div>
             <button
-              onClick={() => { setSyncRaw(null); setSyncError(null); }}
-              className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700"
+              onClick={() => { setImportResult(null); setImportError(null); }}
+              className="p-1 rounded hover:bg-white/50 dark:hover:bg-white/10"
               aria-label="Закрыть"
             >
               <X className="w-4 h-4 text-gray-500" />
             </button>
           </div>
-          {syncError ? (
-            <div className="p-4 text-sm text-red-600 dark:text-red-400">{syncError}</div>
-          ) : (
-            <pre className="p-4 text-xs text-gray-800 dark:text-gray-200 overflow-auto max-h-96 bg-white dark:bg-gray-900">
-              {JSON.stringify(syncRaw, null, 2)}
-            </pre>
-          )}
+          <div className="px-4 py-3 bg-white dark:bg-gray-900">
+            {importError ? (
+              <p className="text-sm text-red-600 dark:text-red-400">{importError}</p>
+            ) : importResult && (
+              <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm text-gray-700 dark:text-gray-300">
+                <span>Период: <strong>{importResult.from}</strong> — <strong>{importResult.to}</strong></span>
+                <span>Торговых дней: <strong>{importResult.tradingDaysFound}</strong></span>
+                <span>Новых праздников: <strong className="text-red-600 dark:text-red-400">{importResult.newHolidays}</strong></span>
+                <span>Коротких дней: <strong className="text-amber-600 dark:text-amber-400">{importResult.newShortDays}</strong></span>
+                {importResult.fetchErrors > 0 && (
+                  <span className="text-orange-600 dark:text-orange-400">Ошибок чанков: {importResult.fetchErrors}</span>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
