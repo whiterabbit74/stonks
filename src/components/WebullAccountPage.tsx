@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { AlertCircle, BriefcaseBusiness, History, RefreshCw, ShieldCheck, Wallet, Radar } from 'lucide-react';
-import type { AutoTradingConfig, AutoTradeState, AutotradeLogsResponse, WebullDashboardResponse } from '../types';
+import type { AutoTradingConfig, AutoTradeState, AutotradeLogsResponse, WebullDashboardResponse, MonitorTradeRecord } from '../types';
 import { DatasetAPI } from '../lib/api';
 import { PageHeader } from './ui/PageHeader';
 import { Button } from './ui/Button';
 import { useAppStore } from '../stores';
 
 type RowRecord = Record<string, unknown>;
-type BrokerTab = 'overview' | 'positions' | 'orders' | 'deals' | 'autotrade' | 'monitoring' | 'logs';
+type BrokerTab = 'overview' | 'positions' | 'orders' | 'deals' | 'autotrade' | 'monitoring' | 'trades' | 'logs';
 type ManualCloseState = {
   status: 'idle' | 'submitted' | 'filled' | 'rejected' | 'cancelled' | 'expired' | 'error';
   clientOrderId?: string | null;
@@ -197,12 +197,17 @@ function extractBalanceSummary(balance: unknown) {
 function normalizePositions(positions: unknown) {
   return asArray(positions).map((item, index) => ({
     id: String(firstDefined(item, ['position_id', 'id', 'symbol']) ?? index),
-    symbol: String(firstDefined(item, ['symbol', 'ticker', 'display_symbol']) ?? '—'),
+    symbol: String(firstDefined(item, ['symbol', 'ticker', 'display_symbol', 'short_name']) ?? '—'),
     quantity: firstDefined(item, ['quantity', 'qty', 'position', 'holding']),
-    avgPrice: firstDefined(item, ['avg_price', 'average_price', 'avgPrice', 'cost_price']),
+    avgPrice: firstDefined(item, ['avg_price', 'average_price', 'avgPrice', 'cost_price', 'unit_cost']),
+    totalCost: firstDefined(item, ['total_cost', 'totalCost', 'cost']),
     marketPrice: firstDefined(item, ['last_price', 'market_price', 'marketPrice', 'current_price']),
     marketValue: firstDefined(item, ['market_value', 'marketValue', 'value']),
     unrealizedPnl: firstDefined(item, ['unrealized_profit_loss', 'unrealizedPnl', 'unrealized_pnl']),
+    unrealizedPnlRate: firstDefined(item, ['unrealized_profit_loss_rate', 'unrealizedProfitLossRate', 'unrealized_pnl_rate']),
+    holdingProportion: firstDefined(item, ['holding_proportion', 'holdingProportion', 'weight']),
+    instrumentType: firstDefined(item, ['instrument_type', 'instrumentType', 'security_type']),
+    currency: firstDefined(item, ['currency']),
   }));
 }
 
@@ -296,7 +301,8 @@ const tabs: Array<{ id: BrokerTab; label: string }> = [
   { id: 'overview', label: 'Обзор' },
   { id: 'positions', label: 'Позиции' },
   { id: 'orders', label: 'Ордера' },
-  { id: 'deals', label: 'Сделки' },
+  { id: 'deals', label: 'Исполненные' },
+  { id: 'trades', label: 'Журнал сделок' },
   { id: 'autotrade', label: 'Автоторговля' },
   { id: 'monitoring', label: 'Мониторинг' },
   { id: 'logs', label: 'Логи' },
@@ -325,6 +331,16 @@ export function WebullAccountPage() {
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const quoteProvider = useAppStore((s) => s.resultsQuoteProvider);
+
+  // Trades tab state
+  const [tradesData, setTradesData] = useState<MonitorTradeRecord[]>([]);
+  const [tradesLoading, setTradesLoading] = useState(false);
+  const [tradesShowHidden, setTradesShowHidden] = useState(false);
+  const [tradesLoaded, setTradesLoaded] = useState(false);
+  const [addTradeForm, setAddTradeForm] = useState<{ open: boolean; symbol: string; entryDate: string; exitDate: string; entryPrice: string; exitPrice: string; quantity: string; notes: string }>({
+    open: false, symbol: '', entryDate: '', exitDate: '', entryPrice: '', exitPrice: '', quantity: '', notes: '',
+  });
+  const [addTradeLoading, setAddTradeLoading] = useState(false);
 
   const loadDashboard = async (isRefresh = false) => {
     try {
@@ -360,6 +376,61 @@ export function WebullAccountPage() {
       setError(err instanceof Error ? err.message : 'Не удалось загрузить логи');
     } finally {
       setLogsLoading(false);
+    }
+  };
+
+  const loadTrades = async () => {
+    try {
+      setTradesLoading(true);
+      const resp = await DatasetAPI.getMonitorTradeHistory(true);
+      setTradesData(resp.trades);
+      setTradesLoaded(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Не удалось загрузить журнал сделок');
+    } finally {
+      setTradesLoading(false);
+    }
+  };
+
+  const handleToggleHide = async (trade: MonitorTradeRecord) => {
+    try {
+      const updated = await DatasetAPI.updateTrade(trade.id, { isHidden: !trade.isHidden });
+      setTradesData(prev => prev.map(t => t.id === updated.id ? updated : t));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Не удалось обновить сделку');
+    }
+  };
+
+  const handleDeleteTrade = async (id: string) => {
+    if (!window.confirm('Удалить сделку? Это действие нельзя отменить.')) return;
+    try {
+      await DatasetAPI.deleteTrade(id);
+      setTradesData(prev => prev.filter(t => t.id !== id));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Не удалось удалить сделку');
+    }
+  };
+
+  const handleAddTrade = async () => {
+    if (!addTradeForm.symbol) return;
+    try {
+      setAddTradeLoading(true);
+      const data = {
+        symbol: addTradeForm.symbol,
+        entryDate: addTradeForm.entryDate || undefined,
+        exitDate: addTradeForm.exitDate || undefined,
+        entryPrice: addTradeForm.entryPrice ? Number(addTradeForm.entryPrice) : undefined,
+        exitPrice: addTradeForm.exitPrice ? Number(addTradeForm.exitPrice) : undefined,
+        quantity: addTradeForm.quantity ? Number(addTradeForm.quantity) : undefined,
+        notes: addTradeForm.notes || undefined,
+      };
+      const created = await DatasetAPI.createManualTrade(data);
+      setTradesData(prev => [created, ...prev]);
+      setAddTradeForm({ open: false, symbol: '', entryDate: '', exitDate: '', entryPrice: '', exitPrice: '', quantity: '', notes: '' });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Не удалось создать сделку');
+    } finally {
+      setAddTradeLoading(false);
     }
   };
 
@@ -479,6 +550,12 @@ export function WebullAccountPage() {
     void loadAutotradeConfig();
     void loadLogs();
   }, []);
+
+  useEffect(() => {
+    if (activeTab === 'trades' && !tradesLoaded && !tradesLoading) {
+      void loadTrades();
+    }
+  }, [activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (activeTab === 'monitoring' && !monitoringListLoaded && !monitoringLoading) {
@@ -713,25 +790,47 @@ export function WebullAccountPage() {
                 <thead className="bg-gray-50 text-left text-gray-500 dark:bg-gray-950/40 dark:text-gray-400">
                   <tr>
                     <th className="px-4 py-3 font-medium">Тикер</th>
+                    <th className="px-4 py-3 font-medium">Тип</th>
+                    <th className="px-4 py-3 font-medium">Валюта</th>
                     <th className="px-4 py-3 font-medium text-right">Кол-во</th>
-                    <th className="px-4 py-3 font-medium text-right">Средняя</th>
-                    <th className="px-4 py-3 font-medium text-right">Рынок</th>
-                    <th className="px-4 py-3 font-medium text-right">Value</th>
-                    <th className="px-4 py-3 font-medium text-right">PnL</th>
+                    <th className="px-4 py-3 font-medium text-right">Средняя (unit_cost)</th>
+                    <th className="px-4 py-3 font-medium text-right">Себестоимость</th>
+                    <th className="px-4 py-3 font-medium text-right">Рыночная цена</th>
+                    <th className="px-4 py-3 font-medium text-right">Рыночная стоимость</th>
+                    <th className="px-4 py-3 font-medium text-right">Нереализ. PnL</th>
+                    <th className="px-4 py-3 font-medium text-right">PnL %</th>
+                    <th className="px-4 py-3 font-medium text-right">Доля</th>
                     <th className="px-4 py-3 font-medium text-right">Действие</th>
                   </tr>
                 </thead>
                 <tbody>
                   {positions.length === 0 ? (
-                    <tr><td colSpan={7} className="px-4 py-6 text-center text-gray-500 dark:text-gray-400">Открытых позиций нет</td></tr>
-                  ) : positions.map((position) => (
+                    <tr><td colSpan={12} className="px-4 py-6 text-center text-gray-500 dark:text-gray-400">Открытых позиций нет</td></tr>
+                  ) : positions.map((position) => {
+                    const pnlNum = Number(position.unrealizedPnl);
+                    const pnlColor = Number.isFinite(pnlNum) && pnlNum < 0
+                      ? 'text-rose-600 dark:text-rose-300'
+                      : Number.isFinite(pnlNum) && pnlNum > 0
+                        ? 'text-emerald-600 dark:text-emerald-300'
+                        : 'text-gray-700 dark:text-gray-300';
+                    const pnlRateNum = Number(position.unrealizedPnlRate);
+                    return (
                     <tr key={position.id} className="border-t border-gray-100 dark:border-gray-800">
                       <td className="px-4 py-3 font-semibold text-gray-900 dark:text-gray-100">{position.symbol}</td>
-                      <td className="px-4 py-3 text-right font-mono text-gray-700 dark:text-gray-300">{formatNumber(position.quantity, 4)}</td>
+                      <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400">{String(position.instrumentType ?? '—')}</td>
+                      <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400">{String(position.currency ?? '—')}</td>
+                      <td className="px-4 py-3 text-right font-mono text-gray-700 dark:text-gray-300">{formatNumber(position.quantity, 0)}</td>
                       <td className="px-4 py-3 text-right font-mono text-gray-700 dark:text-gray-300">{formatMoney(position.avgPrice)}</td>
+                      <td className="px-4 py-3 text-right font-mono text-gray-700 dark:text-gray-300">{formatMoney(position.totalCost)}</td>
                       <td className="px-4 py-3 text-right font-mono text-gray-700 dark:text-gray-300">{formatMoney(position.marketPrice)}</td>
                       <td className="px-4 py-3 text-right font-mono text-gray-700 dark:text-gray-300">{formatMoney(position.marketValue)}</td>
-                      <td className="px-4 py-3 text-right font-mono text-gray-700 dark:text-gray-300">{formatMoney(position.unrealizedPnl)}</td>
+                      <td className={`px-4 py-3 text-right font-mono ${pnlColor}`}>{formatMoney(position.unrealizedPnl)}</td>
+                      <td className={`px-4 py-3 text-right font-mono ${pnlColor}`}>
+                        {Number.isFinite(pnlRateNum) ? `${(pnlRateNum * 100).toFixed(2)}%` : '—'}
+                      </td>
+                      <td className="px-4 py-3 text-right font-mono text-gray-500 dark:text-gray-400">
+                        {Number.isFinite(Number(position.holdingProportion)) ? `${(Number(position.holdingProportion) * 100).toFixed(1)}%` : '—'}
+                      </td>
                       <td className="px-4 py-3 text-right">
                         <Button
                           size="sm"
@@ -739,12 +838,13 @@ export function WebullAccountPage() {
                           isLoading={closingSymbol === position.symbol}
                           onClick={() => void handleClosePosition(position.symbol)}
                         >
-                          Закрыть по рынку
+                          Закрыть
                         </Button>
                         {renderManualCloseState(position.symbol)}
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -1013,8 +1113,6 @@ export function WebullAccountPage() {
                     <th className="px-4 py-3 font-medium text-right">Prev Close</th>
                     <th className="px-4 py-3 font-medium text-right">Δ</th>
                     <th className="px-4 py-3 font-medium text-right">Entry</th>
-                    <th className="px-4 py-3 font-medium text-right">High IBS</th>
-                    <th className="px-4 py-3 font-medium text-right">Low IBS</th>
                     <th className="px-4 py-3 font-medium text-right">Threshold %</th>
                     <th className="px-4 py-3 font-medium">Позиция</th>
                     <th className="px-4 py-3 font-medium">Обновлено</th>
@@ -1025,7 +1123,7 @@ export function WebullAccountPage() {
                 <tbody>
                   {monitoringRows.length === 0 ? (
                     <tr>
-                      <td colSpan={15} className="px-4 py-6 text-center text-gray-500 dark:text-gray-400">
+                      <td colSpan={13} className="px-4 py-6 text-center text-gray-500 dark:text-gray-400">
                         {monitoringLoading ? 'Загрузка…' : 'Нет отслеживаемых акций'}
                       </td>
                     </tr>
@@ -1036,12 +1134,16 @@ export function WebullAccountPage() {
                       <td className="px-4 py-3 text-right font-mono text-gray-700 dark:text-gray-300">{formatMoney(row.todayHigh)}</td>
                       <td className="px-4 py-3 text-right font-mono text-gray-700 dark:text-gray-300">{formatMoney(row.todayLow)}</td>
                       <td className="px-4 py-3 text-right font-mono text-gray-700 dark:text-gray-300">{formatMoney(row.currentPrice)}</td>
-                      <td className="px-4 py-3 text-right font-mono text-gray-700 dark:text-gray-300">{row.currentIbs == null ? '—' : formatNumber(row.currentIbs, 4)}</td>
+                      <td className={`px-4 py-3 text-right font-mono font-semibold ${
+                        row.currentIbs != null && row.currentIbs < 0.10
+                          ? 'text-rose-600 dark:text-rose-400'
+                          : row.currentIbs != null && row.currentIbs > 0.75
+                            ? 'text-emerald-600 dark:text-emerald-400'
+                            : 'text-gray-700 dark:text-gray-300'
+                      }`}>{row.currentIbs == null ? '—' : `${(row.currentIbs * 100).toFixed(1)}%`}</td>
                       <td className="px-4 py-3 text-right font-mono text-gray-700 dark:text-gray-300">{formatMoney(row.prevClose)}</td>
                       <td className={`px-4 py-3 text-right font-mono ${row.change != null && row.change < 0 ? 'text-rose-600 dark:text-rose-300' : 'text-emerald-600 dark:text-emerald-300'}`}>{row.change == null ? '—' : `${row.change >= 0 ? '+' : ''}${formatMoney(row.change)}`}</td>
                       <td className="px-4 py-3 text-right font-mono text-gray-700 dark:text-gray-300">{formatMoney(row.entryPrice)}</td>
-                      <td className="px-4 py-3 text-right font-mono text-gray-700 dark:text-gray-300">{row.highIBS == null ? '—' : formatNumber(row.highIBS, 4)}</td>
-                      <td className="px-4 py-3 text-right font-mono text-gray-700 dark:text-gray-300">{row.lowIBS == null ? '—' : formatNumber(row.lowIBS, 4)}</td>
                       <td className="px-4 py-3 text-right font-mono text-gray-700 dark:text-gray-300">{row.thresholdPct == null ? '—' : formatNumber(row.thresholdPct, 2)}</td>
                       <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{row.isOpenPosition ? 'Открыта' : 'В мониторинге'}</td>
                       <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{formatDateTime(row.quoteUpdatedAt)}</td>
@@ -1063,6 +1165,125 @@ export function WebullAccountPage() {
             </div>
           </section>
           <RawJson title="Raw monitoring payload" value={{ watches: monitoringRows, quoteProvider, lastUpdatedAt: monitoringLastUpdatedAt, monitoringListLoaded }} />
+        </div>
+      );
+    }
+
+    if (activeTab === 'trades') {
+      const visibleTrades = tradesShowHidden ? tradesData : tradesData.filter(t => !t.isHidden);
+      const sourceBadge = (s: string) => {
+        const base = 'rounded px-1.5 py-0.5 text-xs font-medium';
+        if (s === 'manual') return <span className={`${base} bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300`}>manual</span>;
+        if (s === 'test') return <span className={`${base} bg-yellow-100 text-yellow-700 dark:bg-yellow-950/60 dark:text-yellow-300`}>test</span>;
+        return <span className={`${base} bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300`}>auto</span>;
+      };
+      return (
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <Button variant="secondary" size="sm" isLoading={tradesLoading} onClick={() => void loadTrades()}>Обновить</Button>
+            <label className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400 cursor-pointer">
+              <input type="checkbox" checked={tradesShowHidden} onChange={e => setTradesShowHidden(e.target.checked)} className="rounded" />
+              Показать скрытые
+            </label>
+            <Button variant="secondary" size="sm" onClick={() => setAddTradeForm(f => ({ ...f, open: !f.open }))}>
+              {addTradeForm.open ? 'Отмена' : '+ Добавить вручную'}
+            </Button>
+          </div>
+
+          {addTradeForm.open && (
+            <div className="rounded-2xl border border-blue-200 bg-blue-50 dark:border-blue-900/60 dark:bg-blue-950/20 p-4 space-y-3">
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Новая сделка (вручную)</h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div><label className="text-xs text-gray-500 dark:text-gray-400">Тикер *</label><input className="mt-1 w-full rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-2 py-1 text-sm text-gray-900 dark:text-gray-100" value={addTradeForm.symbol} onChange={e => setAddTradeForm(f => ({ ...f, symbol: e.target.value.toUpperCase() }))} placeholder="AAPL" /></div>
+                <div><label className="text-xs text-gray-500 dark:text-gray-400">Дата входа</label><input type="date" className="mt-1 w-full rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-2 py-1 text-sm text-gray-900 dark:text-gray-100" value={addTradeForm.entryDate} onChange={e => setAddTradeForm(f => ({ ...f, entryDate: e.target.value }))} /></div>
+                <div><label className="text-xs text-gray-500 dark:text-gray-400">Дата выхода</label><input type="date" className="mt-1 w-full rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-2 py-1 text-sm text-gray-900 dark:text-gray-100" value={addTradeForm.exitDate} onChange={e => setAddTradeForm(f => ({ ...f, exitDate: e.target.value }))} /></div>
+                <div><label className="text-xs text-gray-500 dark:text-gray-400">Кол-во</label><input type="number" className="mt-1 w-full rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-2 py-1 text-sm text-gray-900 dark:text-gray-100" value={addTradeForm.quantity} onChange={e => setAddTradeForm(f => ({ ...f, quantity: e.target.value }))} placeholder="1" /></div>
+                <div><label className="text-xs text-gray-500 dark:text-gray-400">Цена входа</label><input type="number" step="0.01" className="mt-1 w-full rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-2 py-1 text-sm text-gray-900 dark:text-gray-100" value={addTradeForm.entryPrice} onChange={e => setAddTradeForm(f => ({ ...f, entryPrice: e.target.value }))} placeholder="100.00" /></div>
+                <div><label className="text-xs text-gray-500 dark:text-gray-400">Цена выхода</label><input type="number" step="0.01" className="mt-1 w-full rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-2 py-1 text-sm text-gray-900 dark:text-gray-100" value={addTradeForm.exitPrice} onChange={e => setAddTradeForm(f => ({ ...f, exitPrice: e.target.value }))} placeholder="105.00" /></div>
+                <div className="col-span-2"><label className="text-xs text-gray-500 dark:text-gray-400">Заметки</label><input className="mt-1 w-full rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-2 py-1 text-sm text-gray-900 dark:text-gray-100" value={addTradeForm.notes} onChange={e => setAddTradeForm(f => ({ ...f, notes: e.target.value }))} placeholder="Комментарий" /></div>
+              </div>
+              <Button variant="primary" size="sm" isLoading={addTradeLoading} onClick={() => void handleAddTrade()} disabled={!addTradeForm.symbol}>
+                Сохранить
+              </Button>
+            </div>
+          )}
+
+          <section className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead className="bg-gray-50 text-left text-gray-500 dark:bg-gray-950/40 dark:text-gray-400">
+                  <tr>
+                    <th className="px-3 py-3 font-medium">Тикер</th>
+                    <th className="px-3 py-3 font-medium">Источник</th>
+                    <th className="px-3 py-3 font-medium">Статус</th>
+                    <th className="px-3 py-3 font-medium">Вход</th>
+                    <th className="px-3 py-3 font-medium">Выход</th>
+                    <th className="px-3 py-3 font-medium text-right">Цена входа</th>
+                    <th className="px-3 py-3 font-medium text-right">Цена выхода</th>
+                    <th className="px-3 py-3 font-medium text-right">Кол-во</th>
+                    <th className="px-3 py-3 font-medium text-right">PnL $</th>
+                    <th className="px-3 py-3 font-medium text-right">PnL %</th>
+                    <th className="px-3 py-3 font-medium text-right">IBS вход</th>
+                    <th className="px-3 py-3 font-medium text-right">IBS выход</th>
+                    <th className="px-3 py-3 font-medium text-right">Дней</th>
+                    <th className="px-3 py-3 font-medium">Client Order ID</th>
+                    <th className="px-3 py-3 font-medium">Broker Order ID</th>
+                    <th className="px-3 py-3 font-medium">Заметки</th>
+                    <th className="px-3 py-3 font-medium text-right">Действие</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {tradesLoading ? (
+                    <tr><td colSpan={17} className="px-3 py-6 text-center text-gray-500">Загрузка…</td></tr>
+                  ) : visibleTrades.length === 0 ? (
+                    <tr><td colSpan={17} className="px-3 py-6 text-center text-gray-500">Сделок нет</td></tr>
+                  ) : visibleTrades.map((trade) => {
+                    const pnlColor = trade.pnlAbsolute != null
+                      ? trade.pnlAbsolute > 0 ? 'text-emerald-600 dark:text-emerald-400' : trade.pnlAbsolute < 0 ? 'text-rose-600 dark:text-rose-400' : ''
+                      : '';
+                    const rowClass = trade.isHidden ? 'opacity-40' : '';
+                    return (
+                      <tr key={trade.id} className={`border-t border-gray-100 dark:border-gray-800 ${rowClass}`}>
+                        <td className="px-3 py-2 font-semibold text-gray-900 dark:text-gray-100">{trade.symbol}</td>
+                        <td className="px-3 py-2">{sourceBadge(trade.source)}</td>
+                        <td className="px-3 py-2 text-gray-600 dark:text-gray-400">{trade.status === 'open' ? <span className="text-amber-600 dark:text-amber-400 font-medium">открыта</span> : 'закрыта'}</td>
+                        <td className="px-3 py-2 font-mono text-xs text-gray-600 dark:text-gray-400">{trade.entryDate ?? '—'}</td>
+                        <td className="px-3 py-2 font-mono text-xs text-gray-600 dark:text-gray-400">{trade.exitDate ?? '—'}</td>
+                        <td className="px-3 py-2 text-right font-mono text-gray-700 dark:text-gray-300">{formatMoney(trade.entryPrice)}</td>
+                        <td className="px-3 py-2 text-right font-mono text-gray-700 dark:text-gray-300">{formatMoney(trade.exitPrice)}</td>
+                        <td className="px-3 py-2 text-right font-mono text-gray-700 dark:text-gray-300">{trade.filledQty ?? trade.quantity ?? '—'}</td>
+                        <td className={`px-3 py-2 text-right font-mono ${pnlColor}`}>{formatMoney(trade.pnlAbsolute)}</td>
+                        <td className={`px-3 py-2 text-right font-mono ${pnlColor}`}>{trade.pnlPercent != null ? `${trade.pnlPercent >= 0 ? '+' : ''}${trade.pnlPercent.toFixed(2)}%` : '—'}</td>
+                        <td className="px-3 py-2 text-right font-mono text-xs text-gray-500">{trade.entryIBS != null ? `${(trade.entryIBS * 100).toFixed(1)}%` : '—'}</td>
+                        <td className="px-3 py-2 text-right font-mono text-xs text-gray-500">{trade.exitIBS != null ? `${(trade.exitIBS * 100).toFixed(1)}%` : '—'}</td>
+                        <td className="px-3 py-2 text-right font-mono text-gray-500">{trade.holdingDays ?? '—'}</td>
+                        <td className="px-3 py-2 font-mono text-xs text-gray-400 max-w-[120px] truncate" title={trade.clientOrderId ?? ''}>{trade.clientOrderId ?? '—'}</td>
+                        <td className="px-3 py-2 font-mono text-xs text-gray-400 max-w-[120px] truncate" title={trade.brokerOrderId ?? ''}>{trade.brokerOrderId ?? '—'}</td>
+                        <td className="px-3 py-2 text-xs text-gray-500 max-w-[100px] truncate" title={trade.notes ?? ''}>{trade.notes ?? '—'}</td>
+                        <td className="px-3 py-2 text-right">
+                          <div className="flex justify-end gap-1">
+                            <button
+                              onClick={() => void handleToggleHide(trade)}
+                              className="rounded px-2 py-1 text-xs border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
+                              title={trade.isHidden ? 'Показать' : 'Скрыть из расчётов'}
+                            >
+                              {trade.isHidden ? 'Показать' : 'Скрыть'}
+                            </button>
+                            <button
+                              onClick={() => void handleDeleteTrade(trade.id)}
+                              className="rounded px-2 py-1 text-xs border border-rose-300 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30"
+                            >
+                              ×
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </section>
         </div>
       );
     }

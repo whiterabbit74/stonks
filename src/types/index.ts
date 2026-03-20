@@ -237,6 +237,14 @@ export interface MonitorTradeRecord {
   pnlPercent: number | null;
   pnlAbsolute: number | null;
   holdingDays: number | null;
+  notes: string | null;
+  source: 'auto' | 'manual' | 'test' | string;
+  isHidden: boolean;
+  isTest: boolean;
+  brokerOrderId: string | null;
+  clientOrderId: string | null;
+  filledQty: number | null;
+  quantity: number | null;
 }
 
 export interface MonitorTradeHistoryResponse {

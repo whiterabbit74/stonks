@@ -82,6 +82,23 @@ function initSchema(db) {
 
         CREATE INDEX IF NOT EXISTS idx_trades_status ON trades(status);
         CREATE INDEX IF NOT EXISTS idx_trades_entry_date ON trades(entry_date);
+    `);
+
+    // Migrations: add new columns to trades if they don't exist yet
+    const tradeMigrations = [
+        `ALTER TABLE trades ADD COLUMN source TEXT DEFAULT 'auto'`,
+        `ALTER TABLE trades ADD COLUMN is_hidden INTEGER NOT NULL DEFAULT 0`,
+        `ALTER TABLE trades ADD COLUMN is_test INTEGER NOT NULL DEFAULT 0`,
+        `ALTER TABLE trades ADD COLUMN broker_order_id TEXT`,
+        `ALTER TABLE trades ADD COLUMN client_order_id TEXT`,
+        `ALTER TABLE trades ADD COLUMN filled_qty REAL`,
+        `ALTER TABLE trades ADD COLUMN quantity REAL`,
+    ];
+    for (const sql of tradeMigrations) {
+        try { db.exec(sql); } catch { /* column already exists */ }
+    }
+
+    db.exec(`
 
         CREATE TABLE IF NOT EXISTS calendar (
             id      INTEGER PRIMARY KEY CHECK (id = 1),

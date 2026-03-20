@@ -708,7 +708,14 @@ async function maybeSendExecutionTelegram(text, context = {}) {
     }
 }
 
-async function finalizeTrackedTrade({ action, symbol, price, ibs, decisionTime, dateKey }) {
+async function finalizeTrackedTrade({ action, symbol, price, ibs, decisionTime, dateKey, source, clientOrderId, brokerOrderId, filledQty, quantity }) {
+    // Test buys should not create persistent trade records
+    if (source === 'test') {
+        const syncResult = synchronizeWatchesWithTradeHistory();
+        if (syncResult.changes.length) scheduleSaveWatches();
+        return { skipped: true, reason: 'test_source' };
+    }
+
     let trade = null;
     if (action === 'entry') {
         trade = recordTradeEntry({
@@ -717,6 +724,11 @@ async function finalizeTrackedTrade({ action, symbol, price, ibs, decisionTime, 
             ibs: typeof ibs === 'number' ? ibs : null,
             decisionTime,
             dateKey,
+            source: source || 'auto',
+            clientOrderId: clientOrderId || null,
+            brokerOrderId: brokerOrderId || null,
+            filledQty: filledQty ?? null,
+            quantity: quantity ?? null,
         });
     } else if (action === 'exit') {
         trade = recordTradeExit({
@@ -725,6 +737,9 @@ async function finalizeTrackedTrade({ action, symbol, price, ibs, decisionTime, 
             ibs: typeof ibs === 'number' ? ibs : null,
             decisionTime,
             dateKey,
+            clientOrderId: clientOrderId || null,
+            brokerOrderId: brokerOrderId || null,
+            filledQty: filledQty ?? null,
         });
     }
 
@@ -804,6 +819,11 @@ async function finalizeTracker(trackerId, statusOverride = null) {
             ibs: tracker.ibs,
             decisionTime: tracker.decisionTime,
             dateKey: tracker.dateKey,
+            source: tracker.source,
+            clientOrderId: tracker.clientOrderId,
+            brokerOrderId: tracker.orderId ?? null,
+            filledQty: tracker.filledQty ?? null,
+            quantity: tracker.quantity ?? null,
         });
         await appendAutotradeEvent('local_trade_recorded', {
             ...buildExecutionLogContext({

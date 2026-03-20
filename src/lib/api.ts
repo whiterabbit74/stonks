@@ -1,6 +1,7 @@
 import type {
   SavedDataset,
   MonitorTradeHistoryResponse,
+  MonitorTradeRecord,
   WebullDashboardResponse,
   AutotradeLogsResponse,
   CloseWebullPositionResponse,
@@ -717,12 +718,40 @@ export class DatasetAPI {
     return await response.json();
   }
 
-  static async getMonitorTradeHistory(): Promise<MonitorTradeHistoryResponse> {
-    const response = await fetchWithCreds(`${API_BASE_URL}/trades`);
+  static async getMonitorTradeHistory(includeHidden = false): Promise<MonitorTradeHistoryResponse> {
+    const suffix = includeHidden ? '?includeHidden=1' : '';
+    const response = await fetchWithCreds(`${API_BASE_URL}/trades${suffix}`);
     if (!response.ok) {
       throw new Error(`${response.status} ${response.statusText}`);
     }
     return await response.json();
+  }
+
+  static async createManualTrade(data: {
+    symbol: string; entryDate?: string; exitDate?: string;
+    entryPrice?: number; exitPrice?: number; entryIBS?: number; exitIBS?: number;
+    notes?: string; quantity?: number;
+  }): Promise<MonitorTradeRecord> {
+    return apiCall<MonitorTradeRecord>(`${API_BASE_URL}/trades`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+  }
+
+  static async updateTrade(id: string, data: {
+    notes?: string; isHidden?: boolean; isTest?: boolean;
+    exitDate?: string; exitPrice?: number; exitIBS?: number;
+  }): Promise<MonitorTradeRecord> {
+    return apiCall<MonitorTradeRecord>(`${API_BASE_URL}/trades/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+  }
+
+  static async deleteTrade(id: string): Promise<void> {
+    return apiCall<void>(`${API_BASE_URL}/trades/${id}`, { method: 'DELETE' });
   }
 
   static async getWebullDashboard(forceRefresh = false): Promise<WebullDashboardResponse> {
