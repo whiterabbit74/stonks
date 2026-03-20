@@ -35,48 +35,50 @@ router.get('/trading/expected-prev-day', async (req, res) => {
     }
 });
 
-// Webull allows max 30 days per request — split a year into monthly chunks.
-function monthChunksForYear(year) {
+const DAY_MS = 24 * 60 * 60 * 1000;
+const WEBULL_MAX_DAYS = 29; // stay under the 30-day hard limit
+
+function dateToYMD(d) {
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
+}
+
+// Split [startDate, endDate] into chunks of at most WEBULL_MAX_DAYS days.
+function buildChunks(startDate, endDate) {
     const chunks = [];
-    for (let month = 0; month < 12; month++) {
-        const start = new Date(Date.UTC(year, month, 1));
-        const end = new Date(Date.UTC(year, month + 1, 0)); // last day of month
-        const pad = (n) => String(n).padStart(2, '0');
-        chunks.push({
-            start: `${year}-${pad(month + 1)}-01`,
-            end: `${year}-${pad(month + 1)}-${pad(end.getUTCDate())}`,
-        });
+    let cursor = new Date(startDate);
+    while (cursor <= endDate) {
+        const chunkEnd = new Date(Math.min(cursor.getTime() + WEBULL_MAX_DAYS * DAY_MS, endDate.getTime()));
+        chunks.push({ start: dateToYMD(cursor), end: dateToYMD(chunkEnd) });
+        cursor = new Date(chunkEnd.getTime() + DAY_MS);
     }
     return chunks;
 }
 
 // POST /api/trading-calendar/sync-webull
 // Returns raw Webull trade calendar response for analysis (no file writes).
-// Fetches month-by-month because Webull limits queries to 30 days.
-// Body: { years: [2026], market: 'US' } — all optional, defaults to current + next year, US market.
+// Fetches in ≤29-day chunks from today to +365 days (Webull hard limit: 30 days/request).
+// Body: { market: 'US' } — optional, defaults to US market.
 router.post('/trading-calendar/sync-webull', async (req, res) => {
     try {
-        const nowEt = getETParts(new Date());
-        const years = req.body && Array.isArray(req.body.years)
-            ? req.body.years.map(Number)
-            : [nowEt.y, nowEt.y + 1];
         const market = (req.body && req.body.market) || 'US';
 
+        const today = new Date();
+        today.setUTCHours(0, 0, 0, 0);
+        const yearAhead = new Date(today.getTime() + 365 * DAY_MS);
+
+        const chunks = buildChunks(today, yearAhead);
         const raw = {};
-        for (const year of years) {
-            const months = {};
-            for (const { start, end } of monthChunksForYear(year)) {
-                const monthKey = start.slice(0, 7); // "YYYY-MM"
-                try {
-                    months[monthKey] = await getTradeCalendar(market, start, end);
-                } catch (err) {
-                    months[monthKey] = { error: err && err.message ? err.message : String(err), errorCode: err && err.errorCode };
-                }
+        for (const { start, end } of chunks) {
+            const key = `${start}..${end}`;
+            try {
+                raw[key] = await getTradeCalendar(market, start, end);
+            } catch (err) {
+                raw[key] = { error: err && err.message ? err.message : String(err), errorCode: err && err.errorCode };
             }
-            raw[year] = months;
         }
 
-        res.json({ ok: true, market, years, raw });
+        res.json({ ok: true, market, from: dateToYMD(today), to: dateToYMD(yearAhead), chunks: chunks.length, raw });
     } catch (e) {
         console.error('Webull calendar fetch error:', e);
         res.status(500).json({ error: e && e.message ? e.message : 'Webull calendar fetch failed' });
