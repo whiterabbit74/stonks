@@ -35,8 +35,24 @@ router.get('/trading/expected-prev-day', async (req, res) => {
     }
 });
 
+// Webull allows max 30 days per request — split a year into monthly chunks.
+function monthChunksForYear(year) {
+    const chunks = [];
+    for (let month = 0; month < 12; month++) {
+        const start = new Date(Date.UTC(year, month, 1));
+        const end = new Date(Date.UTC(year, month + 1, 0)); // last day of month
+        const pad = (n) => String(n).padStart(2, '0');
+        chunks.push({
+            start: `${year}-${pad(month + 1)}-01`,
+            end: `${year}-${pad(month + 1)}-${pad(end.getUTCDate())}`,
+        });
+    }
+    return chunks;
+}
+
 // POST /api/trading-calendar/sync-webull
 // Returns raw Webull trade calendar response for analysis (no file writes).
+// Fetches month-by-month because Webull limits queries to 30 days.
 // Body: { years: [2026], market: 'US' } — all optional, defaults to current + next year, US market.
 router.post('/trading-calendar/sync-webull', async (req, res) => {
     try {
@@ -48,12 +64,16 @@ router.post('/trading-calendar/sync-webull', async (req, res) => {
 
         const raw = {};
         for (const year of years) {
-            try {
-                const response = await getTradeCalendar(market, `${year}-01-01`, `${year}-12-31`);
-                raw[year] = response;
-            } catch (err) {
-                raw[year] = { error: err && err.message ? err.message : String(err), errorCode: err && err.errorCode };
+            const months = {};
+            for (const { start, end } of monthChunksForYear(year)) {
+                const monthKey = start.slice(0, 7); // "YYYY-MM"
+                try {
+                    months[monthKey] = await getTradeCalendar(market, start, end);
+                } catch (err) {
+                    months[monthKey] = { error: err && err.message ? err.message : String(err), errorCode: err && err.errorCode };
+                }
             }
+            raw[year] = months;
         }
 
         res.json({ ok: true, market, years, raw });
