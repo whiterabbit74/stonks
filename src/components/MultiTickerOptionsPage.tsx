@@ -13,6 +13,42 @@ import { useMultiTickerData } from '../hooks/useMultiTickerData';
 import { BacktestPageShell } from './BacktestPageShell';
 import { scheduleIdleTask } from '../lib/prefetch';
 
+const OPTIONS_SETTINGS_KEY = 'optionsPageSettings';
+
+interface OptionsPageSettings {
+  strikePct: number;
+  volAdjPct: number;
+  capitalPct: number;
+  expirationWeeks: number;
+  maxHoldingDays: number;
+  // Зарезервировано для будущих стратегий (Фаза 1 задач):
+  strategyType: string;
+  spreadWidthPct: number;
+}
+
+const DEFAULT_OPTIONS_SETTINGS: OptionsPageSettings = {
+  strikePct: 10,
+  volAdjPct: 20,
+  capitalPct: 10,
+  expirationWeeks: 4,
+  maxHoldingDays: 30,
+  strategyType: 'otm_call',
+  spreadWidthPct: 5,
+};
+
+function loadOptionsSettings(): OptionsPageSettings {
+  try {
+    const saved = localStorage.getItem(OPTIONS_SETTINGS_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (parsed && typeof parsed === 'object') {
+        return { ...DEFAULT_OPTIONS_SETTINGS, ...parsed };
+      }
+    }
+  } catch { /* ignore */ }
+  return { ...DEFAULT_OPTIONS_SETTINGS };
+}
+
 const importBacktestResultsView = () => import('./BacktestResultsView');
 const BacktestResultsView = lazy(() => importBacktestResultsView().then((m) => ({ default: m.BacktestResultsView })));
 
@@ -43,12 +79,20 @@ export function MultiTickerOptionsPage() {
   const [tickers, setTickers] = useState<string[]>(getDefaultTickers());
   const [tickersInput, setTickersInput] = useState<string>(defaultMultiTickerSymbols || 'AAPL, MSFT, AMZN, MAGS');
 
-  // Options specific state
-  const [strikePct, setStrikePct] = useState<number>(10);
-  const [volAdjPct, setVolAdjPct] = useState<number>(20);
-  const [capitalPct, setCapitalPct] = useState<number>(10);
-  const [expirationWeeks, setExpirationWeeks] = useState<number>(4);
-  const [maxHoldingDays, setMaxHoldingDays] = useState<number>(30);
+  // Options specific state — загружаем из localStorage
+  const [optSettings, setOptSettings] = useState<OptionsPageSettings>(loadOptionsSettings);
+
+  const strikePct = optSettings.strikePct;
+  const volAdjPct = optSettings.volAdjPct;
+  const capitalPct = optSettings.capitalPct;
+  const expirationWeeks = optSettings.expirationWeeks;
+  const maxHoldingDays = optSettings.maxHoldingDays;
+
+  const setStrikePct = (v: number) => setOptSettings(s => ({ ...s, strikePct: v }));
+  const setVolAdjPct = (v: number) => setOptSettings(s => ({ ...s, volAdjPct: v }));
+  const setCapitalPct = (v: number) => setOptSettings(s => ({ ...s, capitalPct: v }));
+  const setExpirationWeeks = (v: number) => setOptSettings(s => ({ ...s, expirationWeeks: v }));
+  const setMaxHoldingDays = (v: number) => setOptSettings(s => ({ ...s, maxHoldingDays: v }));
 
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -167,6 +211,13 @@ export function MultiTickerOptionsPage() {
       setIsLoading(false);
     }
   };
+
+  // Сохраняем настройки опционов в localStorage при каждом изменении
+  useEffect(() => {
+    try {
+      localStorage.setItem(OPTIONS_SETTINGS_KEY, JSON.stringify(optSettings));
+    } catch { /* ignore */ }
+  }, [optSettings]);
 
   useEffect(() => {
     if (!backtestResults) return;
