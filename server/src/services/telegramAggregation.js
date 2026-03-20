@@ -17,8 +17,6 @@ const {
     loadTradeHistory,
     synchronizeWatchesWithTradeHistory,
     getCurrentOpenTrade,
-    recordTradeEntry,
-    recordTradeExit,
     isTradeHistoryLoaded,
     serializeTradeForResponse
 } = require('./trades');
@@ -364,33 +362,7 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
                                 chat_id: String(chatId),
                             }, brokerExit.submitted ? 'info' : 'warn');
                             executionLogLines.push(`exit symbol=${w.symbol} broker_mode=${brokerExit.mode} submitted=${brokerExit.submitted ? 'yes' : 'no'} simulated=${brokerExit.simulated ? 'yes' : 'no'}${brokerExit.error ? ` error=${brokerExit.error}` : ''}`);
-                            if (shouldPersistState && brokerExit.shouldRecordLocalTrade) {
-                                const trade = recordTradeExit({
-                                    symbol: w.symbol,
-                                    price: rec.quote?.current ?? null,
-                                    ibs: rec.ibs,
-                                    decisionTime: nowIso,
-                                    dateKey: todayKey,
-                                });
-                                if (!trade) {
-                                    executionLogLines.push(`exit symbol=${w.symbol} local_record=failed`);
-                                } else {
-                                    executionLogLines.push(`exit symbol=${w.symbol} local_record=ok`);
-                                }
-                                await appendAutotradeEvent('t1_local_trade_recorded', {
-                                    source: 'telegram_t1_exit',
-                                    correlation_id: brokerExit.correlationId || exitCorrelationId,
-                                    symbol: w.symbol,
-                                    action: 'exit',
-                                    price: typeof rec.quote?.current === 'number' ? Number(rec.quote.current.toFixed(4)) : null,
-                                    ibs: typeof rec.ibs === 'number' ? Number(rec.ibs.toFixed(4)) : null,
-                                    decision_time: nowIso,
-                                    date_key: todayKey,
-                                    chat_id: String(chatId),
-                                    local_record: trade ? 'ok' : 'failed',
-                                }, trade ? 'info' : 'error');
-                            }
-                            if (brokerExit.submitted || brokerExit.shouldRecordLocalTrade) {
+                            if (brokerExit.submitted) {
                                 exitAction = {
                                     symbol: w.symbol,
                                     price: rec.quote?.current ?? null,
@@ -424,8 +396,11 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
                     }
                 }
 
-                // Execute best entry if no open position
-                const openTradeAfterExit = getCurrentOpenTrade();
+                // Execute best entry if no open position.
+                // If we just submitted an exit order, treat the position as clearing —
+                // the DB still shows it open (fill confirmed async by tracker), but
+                // blocking entry here would prevent same-day reentry entirely.
+                const openTradeAfterExit = exitAction ? null : getCurrentOpenTrade();
                 if (!openTradeAfterExit && entryCandidates.length > 0) {
                     const available = entryCandidates.filter(r => r.confirmEntry && r.dataOk);
                     if (available.length > 0) {
@@ -467,33 +442,7 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
                                 chat_id: String(chatId),
                             }, brokerEntry.submitted ? 'info' : 'warn');
                             executionLogLines.push(`entry symbol=${best.w.symbol} broker_mode=${brokerEntry.mode} submitted=${brokerEntry.submitted ? 'yes' : 'no'} simulated=${brokerEntry.simulated ? 'yes' : 'no'}${brokerEntry.error ? ` error=${brokerEntry.error}` : ''}`);
-                            if (shouldPersistState && brokerEntry.shouldRecordLocalTrade) {
-                                const trade = recordTradeEntry({
-                                    symbol: best.w.symbol,
-                                    price: best.quote?.current ?? null,
-                                    ibs: best.ibs,
-                                    decisionTime: nowIso,
-                                    dateKey: todayKey,
-                                });
-                                if (!trade) {
-                                    executionLogLines.push(`entry symbol=${best.w.symbol} local_record=failed`);
-                                } else {
-                                    executionLogLines.push(`entry symbol=${best.w.symbol} local_record=ok`);
-                                }
-                                await appendAutotradeEvent('t1_local_trade_recorded', {
-                                    source: 'telegram_t1_entry',
-                                    correlation_id: brokerEntry.correlationId || entryCorrelationId,
-                                    symbol: best.w.symbol,
-                                    action: 'entry',
-                                    price: typeof best.quote?.current === 'number' ? Number(best.quote.current.toFixed(4)) : null,
-                                    ibs: typeof best.ibs === 'number' ? Number(best.ibs.toFixed(4)) : null,
-                                    decision_time: nowIso,
-                                    date_key: todayKey,
-                                    chat_id: String(chatId),
-                                    local_record: trade ? 'ok' : 'failed',
-                                }, trade ? 'info' : 'error');
-                            }
-                            if (brokerEntry.submitted || brokerEntry.shouldRecordLocalTrade) {
+                            if (brokerEntry.submitted) {
                                 entryAction = {
                                     symbol: best.w.symbol,
                                     price: best.quote?.current ?? null,

@@ -1194,6 +1194,31 @@ async function executeWebullSignal({ action, symbol, currentPrice, ibs, decision
         if (action === 'entry') {
             const entryBalanceResp = await getAccountBalance(runtime.accountId);
             entryFunds = extractEntryFundsFromBalance(entryBalanceResp, autoTrading);
+            {
+                const root = entryBalanceResp?.data && typeof entryBalanceResp.data === 'object' ? entryBalanceResp.data : entryBalanceResp;
+                const assets = Array.isArray(root?.account_currency_assets) ? root.account_currency_assets : [];
+                const usdAsset = assets.find((a) => String(a?.currency || '').toUpperCase() === 'USD') || assets[0] || null;
+                await appendAutotradeEvent('balance_snapshot', {
+                    ...buildExecutionLogContext({
+                        source,
+                        correlationId: resolvedCorrelationId,
+                        symbol: normalizedSymbol,
+                        action,
+                        price: currentPrice,
+                        ibs,
+                        decisionTime,
+                        dateKey,
+                        mode: 'live',
+                    }),
+                    entryFunds,
+                    sizingMode: autoTrading.entrySizingMode || 'balance',
+                    day_buying_power: usdAsset?.day_buying_power ?? null,
+                    overnight_buying_power: usdAsset?.overnight_buying_power ?? null,
+                    cash_balance: usdAsset?.cash_balance ?? null,
+                    net_liquidation_value: usdAsset?.net_liquidation_value ?? null,
+                    currency: usdAsset?.currency ?? null,
+                }, 'info');
+            }
             const needsBalance = !(quantityOverride > 0) && (autoTrading.entrySizingMode || 'balance') === 'balance';
             if (entryFunds == null && needsBalance) {
                 const root = entryBalanceResp?.data && typeof entryBalanceResp.data === 'object' ? entryBalanceResp.data : entryBalanceResp;
@@ -1633,28 +1658,6 @@ async function executeAutoTradeCycle(options = {}) {
         notifyOnResult: true,
     });
     result.broker = brokerResult;
-
-    if (brokerResult.shouldRecordLocalTrade) {
-        if (decision.action === 'entry') {
-            const trade = recordTradeEntry({
-                symbol: decision.symbol,
-                price: decision.candidate.currentPrice,
-                ibs: decision.candidate.ibs,
-                decisionTime: evaluation.evaluatedAt,
-                dateKey: evaluation.todayKey
-            });
-            result.trade = trade ? serializeTradeForResponse(trade) : null;
-        } else if (decision.action === 'exit') {
-            const trade = recordTradeExit({
-                symbol: decision.symbol,
-                price: decision.candidate.currentPrice,
-                ibs: decision.candidate.ibs,
-                decisionTime: evaluation.evaluatedAt,
-                dateKey: evaluation.todayKey
-            });
-            result.trade = trade ? serializeTradeForResponse(trade) : null;
-        }
-    }
 
     result.executed = !!brokerResult.submitted;
     result.simulated = !!brokerResult.simulated;

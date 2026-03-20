@@ -167,7 +167,6 @@ function ProtectedLayout() {
 
   const tabs = [
     { to: '/data', label: 'Данные' },
-    { to: '/enhance', label: 'Новые данные' },
     { to: '/results', label: 'Один тикер' },
     { to: '/multi-ticker', label: 'Несколько тикеров' },
     { to: '/multi-ticker-options', label: 'Опционы' },
@@ -176,6 +175,8 @@ function ProtectedLayout() {
     { to: '/watches', label: 'Мониторинг' },
     { to: '/broker', label: 'Брокер' },
   ];
+
+  const mobileMenuTabs = [...tabs, { to: '/settings', label: 'Настройки' }];
 
   const prefetchRoute = (path: string) => {
     const loader = routePrefetchers[path];
@@ -240,7 +241,7 @@ function ProtectedLayout() {
           </NavLink>
           <div className="flex items-center gap-2">
             <ThemeToggle />
-            <NavLink to="/settings" title="Настройки" aria-label="Настройки" className={({ isActive }) => `inline-flex items-center gap-2 px-3 py-2 rounded-full border ${isActive ? 'bg-indigo-600 text-white border-indigo-600' : 'border-gray-200 text-gray-700 hover:text-gray-900 hover:bg-gray-100 bg-white/80 backdrop-blur-sm shadow-sm dark:border-slate-700 dark:text-gray-200 dark:hover:text-white dark:hover:bg-slate-700/80 dark:bg-slate-800/80 dark:backdrop-blur-sm dark:shadow-sm'}`}>
+            <NavLink to="/settings" title="Настройки" aria-label="Настройки" className={({ isActive }) => `hidden md:inline-flex items-center gap-2 px-3 py-2 rounded-full border ${isActive ? 'bg-indigo-600 text-white border-indigo-600' : 'border-gray-200 text-gray-700 hover:text-gray-900 hover:bg-gray-100 bg-white/80 backdrop-blur-sm shadow-sm dark:border-slate-700 dark:text-gray-200 dark:hover:text-white dark:hover:bg-slate-700/80 dark:bg-slate-800/80 dark:backdrop-blur-sm dark:shadow-sm'}`}>
               <Settings className="w-5 h-5" />
             </NavLink>
             {/* Mobile menu button */}
@@ -262,7 +263,7 @@ function ProtectedLayout() {
         {isMobileMenuOpen && (
           <div className="md:hidden border-t border-gray-200 dark:border-gray-700 bg-white/95 backdrop-blur-sm dark:bg-slate-900/95">
             <div className="px-4 py-3 space-y-2">
-              {tabs.map(t => (
+              {mobileMenuTabs.map(t => (
                 <NavLink
                   key={t.to}
                   to={t.to}

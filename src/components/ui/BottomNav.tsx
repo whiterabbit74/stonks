@@ -2,7 +2,6 @@ import { useState, useRef, useEffect } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import {
     Database,
-    PlusCircle,
     BarChart2,
     LineChart,
     Bell,
@@ -28,7 +27,6 @@ const primaryNavItems: NavItem[] = [
 
 const secondaryNavItems: NavItem[] = [
     { to: '/multi-ticker-options', label: 'Опционы', icon: <Layers className="w-6 h-6" /> },
-    { to: '/enhance', label: 'Новые', icon: <PlusCircle className="w-6 h-6" /> },
     { to: '/calendar', label: 'Календарь', icon: <Calendar className="w-6 h-6" /> },
     { to: '/split', label: 'Сплиты', icon: <Scissors className="w-6 h-6" /> },
     { to: '/broker', label: 'Брокер', icon: <Wallet className="w-6 h-6" /> },

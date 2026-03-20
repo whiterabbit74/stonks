@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { AlertCircle, BriefcaseBusiness, History, RefreshCw, ShieldCheck, Wallet, Radar } from 'lucide-react';
+import { AlertCircle, BriefcaseBusiness, ChevronDown, ChevronUp, History, RefreshCw, ShieldCheck, Wallet, Radar } from 'lucide-react';
 import type { AutoTradingConfig, AutoTradeState, AutotradeLogsResponse, WebullDashboardResponse, MonitorTradeRecord } from '../types';
 import { DatasetAPI } from '../lib/api';
 import { PageHeader } from './ui/PageHeader';
@@ -326,6 +326,7 @@ export function WebullAccountPage() {
   const [monitoringRefreshingSymbols, setMonitoringRefreshingSymbols] = useState<Record<string, boolean>>({});
   const [monitoringListLoaded, setMonitoringListLoaded] = useState(false);
   const [logsLoading, setLogsLoading] = useState(false);
+  const [logsCollapsed, setLogsCollapsed] = useState<Record<string, boolean>>({});
   const [closingSymbol, setClosingSymbol] = useState<string | null>(null);
   const [manualCloseStates, setManualCloseStates] = useState<Record<string, ManualCloseState>>({});
   const [actionMessage, setActionMessage] = useState<string | null>(null);
@@ -1080,9 +1081,14 @@ export function WebullAccountPage() {
                   Цены берутся из текущего quote-провайдера. Обновляй вручную: по кнопке у строки или общей кнопке.
                 </p>
               </div>
-              <Button variant="secondary" onClick={() => void loadMonitoringData(true)} isLoading={monitoringLoading}>
-                Обновить все цены
-              </Button>
+              <button
+                title="Обновить все цены"
+                disabled={monitoringLoading}
+                onClick={() => void loadMonitoringData(true)}
+                className="inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white p-2 text-gray-600 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+              >
+                <RefreshCw className={`h-4 w-4 ${monitoringLoading ? 'animate-spin' : ''}`} />
+              </button>
             </div>
             <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               <InfoCard title="Отслеживаемые" value={String(monitoringRows.length)} hint="Акции из /watches" icon={<Radar className="h-4 w-4" />} />
@@ -1149,14 +1155,14 @@ export function WebullAccountPage() {
                       <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{formatDateTime(row.quoteUpdatedAt)}</td>
                       <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{row.quoteError ? row.quoteError : row.quoteProvider}</td>
                       <td className="px-4 py-3 text-right">
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          isLoading={!!monitoringRefreshingSymbols[row.symbol]}
+                        <button
+                          title={`Обновить ${row.symbol}`}
+                          disabled={!!monitoringRefreshingSymbols[row.symbol]}
                           onClick={() => void refreshMonitoringSymbol(row.symbol)}
+                          className="inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white p-1.5 text-gray-600 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
                         >
-                          Обновить
-                        </Button>
+                          <RefreshCw className={`h-3.5 w-3.5 ${monitoringRefreshingSymbols[row.symbol] ? 'animate-spin' : ''}`} />
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -1288,36 +1294,73 @@ export function WebullAccountPage() {
       );
     }
 
+    const toggleLog = (key: string) => setLogsCollapsed(prev => ({ ...prev, [key]: !prev[key] }));
     return (
-      <div className="grid gap-4 xl:grid-cols-3">
+      <div className="space-y-3">
+        {/* Наши логи */}
         <div className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
-          <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-gray-800">
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Наши логи</h2>
-            <Button variant="secondary" size="sm" isLoading={logsLoading} onClick={() => void loadLogs()}>Обновить логи</Button>
-          </div>
-          <pre className="max-h-[520px] overflow-auto p-4 text-xs text-gray-800 dark:text-gray-100">{monitorLogLines.join('\n') || 'Логи мониторинга пока пусты'}</pre>
-        </div>
-        <div className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
-          <div className="border-b border-gray-100 px-4 py-3 dark:border-gray-800">
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Webull / autotrade логи</h2>
-          </div>
-          <pre className="max-h-[520px] overflow-auto p-4 text-xs text-gray-800 dark:text-gray-100">{autotradeLogLines.map(formatLogLine).join('\n') || 'Логи автоторговли пока пусты'}</pre>
-        </div>
-        <div className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
-          <div className="border-b border-gray-100 px-4 py-3 dark:border-gray-800 flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Raw broker log (monthly)</h2>
+          <div
+            className="flex cursor-pointer items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-gray-800"
+            onClick={() => toggleLog('monitor')}
+          >
+            <div className="flex items-center gap-2">
+              {logsCollapsed['monitor'] ? <ChevronDown className="h-4 w-4 text-gray-400" /> : <ChevronUp className="h-4 w-4 text-gray-400" />}
+              <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Наши логи <span className="ml-2 text-xs font-normal text-gray-400">({monitorLogLines.length} строк)</span></h2>
+            </div>
             <button
-              onClick={() => setBrokerLogRaw(v => !v)}
+              title="Обновить логи"
+              disabled={logsLoading}
+              onClick={(e) => { e.stopPropagation(); void loadLogs(); }}
+              className="inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white p-1.5 text-gray-600 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${logsLoading ? 'animate-spin' : ''}`} />
+            </button>
+          </div>
+          {!logsCollapsed['monitor'] && (
+            <pre className="max-h-[520px] overflow-auto p-4 text-xs text-gray-800 dark:text-gray-100">{monitorLogLines.join('\n') || 'Логи мониторинга пока пусты'}</pre>
+          )}
+        </div>
+
+        {/* Autotrade логи */}
+        <div className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
+          <div
+            className="flex cursor-pointer items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-gray-800"
+            onClick={() => toggleLog('autotrade')}
+          >
+            <div className="flex items-center gap-2">
+              {logsCollapsed['autotrade'] ? <ChevronDown className="h-4 w-4 text-gray-400" /> : <ChevronUp className="h-4 w-4 text-gray-400" />}
+              <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Webull / autotrade логи <span className="ml-2 text-xs font-normal text-gray-400">({autotradeLogLines.length} строк)</span></h2>
+            </div>
+          </div>
+          {!logsCollapsed['autotrade'] && (
+            <pre className="max-h-[520px] overflow-auto p-4 text-xs text-gray-800 dark:text-gray-100">{autotradeLogLines.map(formatLogLine).join('\n') || 'Логи автоторговли пока пусты'}</pre>
+          )}
+        </div>
+
+        {/* Raw broker log */}
+        <div className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
+          <div
+            className="flex cursor-pointer items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-gray-800"
+            onClick={() => toggleLog('broker')}
+          >
+            <div className="flex items-center gap-2">
+              {logsCollapsed['broker'] ? <ChevronDown className="h-4 w-4 text-gray-400" /> : <ChevronUp className="h-4 w-4 text-gray-400" />}
+              <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Raw broker log (monthly) <span className="ml-2 text-xs font-normal text-gray-400">({brokerRawLogLines.length} строк)</span></h2>
+            </div>
+            <button
+              onClick={(e) => { e.stopPropagation(); setBrokerLogRaw(v => !v); }}
               className="text-xs px-2 py-1 rounded border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
             >
               {brokerLogRaw ? 'Форматировать' : 'Raw JSON'}
             </button>
           </div>
-          <pre className="max-h-[520px] overflow-auto p-4 text-xs text-gray-800 dark:text-gray-100">
-            {brokerLogRaw
-              ? brokerRawLogLines.join('\n') || 'Raw broker log пока пуст'
-              : brokerRawLogLines.map(formatLogLine).join('\n') || 'Raw broker log пока пуст'}
-          </pre>
+          {!logsCollapsed['broker'] && (
+            <pre className="max-h-[520px] overflow-auto p-4 text-xs text-gray-800 dark:text-gray-100">
+              {brokerLogRaw
+                ? brokerRawLogLines.join('\n') || 'Raw broker log пока пуст'
+                : brokerRawLogLines.map(formatLogLine).join('\n') || 'Raw broker log пока пуст'}
+            </pre>
+          )}
         </div>
       </div>
     );
@@ -1339,9 +1382,14 @@ export function WebullAccountPage() {
             >
               {autotradeConfig?.enabled ? '[LIVE]' : '[OFF]'}
             </div>
-            <Button variant="secondary" onClick={() => void Promise.all([loadDashboard(true), loadLogs(), loadAutotradeConfig()])} isLoading={refreshing} leftIcon={<RefreshCw className="h-4 w-4" />}>
-              Обновить
-            </Button>
+            <button
+              title="Обновить"
+              disabled={refreshing}
+              onClick={() => void Promise.all([loadDashboard(true), loadLogs(), loadAutotradeConfig()])}
+              className="inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white p-2 text-gray-600 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+            >
+              <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+            </button>
           </div>
         }
       />

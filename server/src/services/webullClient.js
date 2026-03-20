@@ -530,6 +530,21 @@ async function fetchTodayRangeAndQuoteViaWebull(symbol, configOverrides = {}) {
     };
 }
 
+// Trade calendar: returns trading days for market in a date range
+// market: 'US' | 'HK' | 'CN', startDate/endDate: 'YYYY-MM-DD'
+async function getTradeCalendar(market = 'US', startDate, endDate, configOverrides = {}) {
+    const query = { market };
+    if (startDate) query.start = startDate;
+    if (endDate) query.end = endDate;
+    return requestWebull({
+        method: 'GET',
+        path: '/trade/calendar',
+        query,
+        configOverrides,
+        version: 'v2',
+    });
+}
+
 // Full date-range order history via /openapi/trade/order/history
 // options: { startDate: 'YYYY-MM-DD', endDate: 'YYYY-MM-DD', pageSize, lastOrderId, lastClientOrderId }
 async function getOrderHistoryByDateRange(accountId, options = {}, configOverrides = {}) {
@@ -568,6 +583,7 @@ module.exports = {
     getOpenOrders,
     getOrderHistory,
     getOrderHistoryByDateRange,
+    getTradeCalendar,
     getStockSnapshot,
     fetchTodayRangeAndQuoteViaWebull,
 };

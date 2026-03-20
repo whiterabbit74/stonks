@@ -926,6 +926,17 @@ export class DatasetAPI {
     return response.json();
   }
 
+  static async fetchWebullCalendarRaw(years?: number[], market?: string): Promise<{ ok: boolean; market: string; years: number[]; raw: Record<number, unknown> }> {
+    const response = await fetchWithCreds(`${API_BASE_URL}/trading-calendar/sync-webull`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...(years ? { years } : {}), ...(market ? { market } : {}) }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data?.error || `${response.status} ${response.statusText}`);
+    return data;
+  }
+
   static async saveAppSettings(settings: { watchThresholdPct: number; resultsQuoteProvider: 'alpha_vantage' | 'finnhub' | 'twelve_data' | 'webull' | 'polygon'; enhancerProvider: 'alpha_vantage' | 'finnhub' | 'twelve_data' | 'webull' | 'polygon'; resultsRefreshProvider?: 'alpha_vantage' | 'finnhub' | 'twelve_data' | 'webull' | 'polygon'; enablePostClosePriceActualization?: boolean; indicatorPanePercent?: number; defaultMultiTickerSymbols?: string; commissionType?: string; commissionFixed?: number; commissionPercentage?: number }): Promise<void> {
     const response = await fetchWithCreds(`${API_BASE_URL}/settings`, {
       method: 'PUT',

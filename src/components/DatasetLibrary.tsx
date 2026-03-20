@@ -89,6 +89,26 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
     checkServerStatus();
   }, []);
 
+  // Пустой state: нет датасетов и сервер онлайн — показываем подсказку
+  if (savedDatasets.length === 0 && serverStatus !== 'offline') {
+    return (
+      <div className="rounded-lg border border-dashed border-gray-300 bg-white p-8 text-center dark:border-gray-700 dark:bg-gray-900">
+        <Database className="mx-auto mb-3 h-10 w-10 text-gray-300 dark:text-gray-600" />
+        <h3 className="mb-1 text-base font-semibold text-gray-700 dark:text-gray-300">Датасетов пока нет</h3>
+        <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">
+          Загрузите данные по тикерам из API, чтобы начать бэктестинг
+        </p>
+        <Link
+          to="/enhance"
+          className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+        >
+          <Plus className="h-4 w-4" />
+          Загрузить тикеры
+        </Link>
+      </div>
+    );
+  }
+
   // Показываем компонент даже если нет датасетов, чтобы показать статус сервера
   const shouldShow = savedDatasets.length > 0 || serverStatus === 'offline';
 

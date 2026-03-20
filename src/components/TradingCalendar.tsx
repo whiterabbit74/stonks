@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react';
-import { Clock, AlertCircle, CalendarX2, ChevronLeft, ChevronRight, X, CalendarOff } from 'lucide-react';
-import { API_BASE_URL } from '../lib/api';
+import { Clock, AlertCircle, CalendarX2, ChevronLeft, ChevronRight, X, CalendarOff, RefreshCw } from 'lucide-react';
+import { API_BASE_URL, DatasetAPI } from '../lib/api';
 import { PageHeader } from './ui/PageHeader';
 
 interface HolidayData {
@@ -48,6 +48,9 @@ export function TradingCalendar() {
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
   const modalTriggerRef = useRef<HTMLButtonElement | null>(null);
   const modalCloseRef = useRef<HTMLButtonElement | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [syncRaw, setSyncRaw] = useState<unknown>(null);
+  const [syncError, setSyncError] = useState<string | null>(null);
 
   const today = new Date();
   const currentYear = today.getFullYear();
@@ -80,21 +83,34 @@ export function TradingCalendar() {
     setFocusedDay(currentDay);
   };
 
-  useEffect(() => {
-    const loadCalendar = async () => {
-      try {
-        const response = await fetch(`${API_BASE_URL}/trading-calendar`);
-        if (!response.ok) throw new Error('Failed to load calendar data');
-        const data = await response.json();
-        setCalendarData(data);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load calendar');
-      } finally {
-        setLoading(false);
-      }
-    };
-    loadCalendar();
+  const loadCalendar = useCallback(async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/trading-calendar`);
+      if (!response.ok) throw new Error('Failed to load calendar data');
+      const data = await response.json();
+      setCalendarData(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load calendar');
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => { loadCalendar(); }, [loadCalendar]);
+
+  const handleSyncWebull = async () => {
+    setSyncing(true);
+    setSyncRaw(null);
+    setSyncError(null);
+    try {
+      const result = await DatasetAPI.fetchWebullCalendarRaw();
+      setSyncRaw(result.raw);
+    } catch (err) {
+      setSyncError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   useEffect(() => {
     const daysInMonth = getDaysInMonth(parseInt(selectedYear), selectedMonth);
@@ -329,9 +345,20 @@ export function TradingCalendar() {
           <span className="w-2.5 h-2.5 rounded-full bg-red-500 flex-shrink-0" />
           Праздник · биржа закрыта
         </span>
-        <span className="ml-auto text-xs text-gray-400 dark:text-gray-500">
-          Обновлено: {calendarData.metadata.lastUpdated}
-        </span>
+        <div className="ml-auto flex items-center gap-2">
+          <span className="text-xs text-gray-400 dark:text-gray-500">
+            Обновлено: {calendarData.metadata.lastUpdated}
+          </span>
+          <button
+            onClick={handleSyncWebull}
+            disabled={syncing}
+            title="Получить raw-данные календаря из Webull"
+            className="flex items-center gap-1 text-xs px-2 py-1 rounded border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50 disabled:cursor-wait transition-colors"
+          >
+            <RefreshCw className={`w-3 h-3 ${syncing ? 'animate-spin' : ''}`} />
+            Webull raw
+          </button>
+        </div>
       </div>
 
       {/* Calendar card */}
@@ -508,6 +535,29 @@ export function TradingCalendar() {
               );
             })()}
           </div>
+        </div>
+      )}
+
+      {/* Webull raw response */}
+      {(syncRaw !== null || syncError) && (
+        <div className="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-2 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Webull — raw response</span>
+            <button
+              onClick={() => { setSyncRaw(null); setSyncError(null); }}
+              className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700"
+              aria-label="Закрыть"
+            >
+              <X className="w-4 h-4 text-gray-500" />
+            </button>
+          </div>
+          {syncError ? (
+            <div className="p-4 text-sm text-red-600 dark:text-red-400">{syncError}</div>
+          ) : (
+            <pre className="p-4 text-xs text-gray-800 dark:text-gray-200 overflow-auto max-h-96 bg-white dark:bg-gray-900">
+              {JSON.stringify(syncRaw, null, 2)}
+            </pre>
+          )}
         </div>
       )}
     </div>
