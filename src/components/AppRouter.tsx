@@ -1,6 +1,6 @@
 import React, { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { Settings, Menu, X, Loader2 } from 'lucide-react';
+import { BarChart2, Bell, Briefcase, Calendar, Database, LineChart, LogOut, Layers, Scissors, Settings, Menu, X, Loader2 } from 'lucide-react';
 
 import { useAppStore } from '../stores';
 import { Footer } from './Footer';
@@ -176,7 +176,17 @@ function ProtectedLayout() {
     { to: '/broker', label: 'Брокер' },
   ];
 
-  const mobileMenuTabs = [...tabs, { to: '/settings', label: 'Настройки' }];
+  const mobileMenuTabs: { to: string; label: string; icon: React.ReactNode }[] = [
+    { to: '/data',                label: 'Данные',              icon: <Database className="w-5 h-5" /> },
+    { to: '/results',             label: 'Один тикер',          icon: <BarChart2 className="w-5 h-5" /> },
+    { to: '/multi-ticker',        label: 'Несколько тикеров',   icon: <LineChart className="w-5 h-5" /> },
+    { to: '/multi-ticker-options',label: 'Опционы',             icon: <Layers className="w-5 h-5" /> },
+    { to: '/calendar',            label: 'Календарь',           icon: <Calendar className="w-5 h-5" /> },
+    { to: '/split',               label: 'Сплиты',              icon: <Scissors className="w-5 h-5" /> },
+    { to: '/watches',             label: 'Мониторинг',          icon: <Bell className="w-5 h-5" /> },
+    { to: '/broker',              label: 'Брокер',              icon: <Briefcase className="w-5 h-5" /> },
+    { to: '/settings',            label: 'Настройки',           icon: <Settings className="w-5 h-5" /> },
+  ];
 
   const prefetchRoute = (path: string) => {
     const loader = routePrefetchers[path];
@@ -262,7 +272,7 @@ function ProtectedLayout() {
         {/* Mobile menu */}
         {isMobileMenuOpen && (
           <div className="md:hidden border-t border-gray-200 dark:border-gray-700 bg-white/95 backdrop-blur-sm dark:bg-slate-900/95">
-            <div className="px-4 py-3 space-y-2">
+            <div className="px-3 py-3 space-y-0.5">
               {mobileMenuTabs.map(t => (
                 <NavLink
                   key={t.to}
@@ -271,15 +281,22 @@ function ProtectedLayout() {
                   onMouseEnter={() => prefetchRoute(t.to)}
                   onFocus={() => prefetchRoute(t.to)}
                   onTouchStart={() => prefetchRoute(t.to)}
-                  className={({ isActive }) => `block px-3 py-2 rounded-md text-base font-medium transition-colors ${isActive ? 'bg-indigo-600 text-white' : 'text-gray-700 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-200 dark:hover:bg-slate-700 dark:hover:text-white'}`}
+                  className={({ isActive }) => `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${isActive ? 'bg-indigo-600 text-white' : 'text-gray-700 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-200 dark:hover:bg-slate-700 dark:hover:text-white'}`}
                 >
-                  {t.label}
+                  {({ isActive }) => (
+                    <>
+                      <span className={isActive ? 'text-white' : 'text-gray-400 dark:text-gray-500'}>{t.icon}</span>
+                      {t.label}
+                    </>
+                  )}
                 </NavLink>
               ))}
+              <div className="my-1.5 border-t border-gray-200 dark:border-gray-700" />
               <button
                 onClick={handleLogout}
-                className="block w-full text-left px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-200 dark:hover:bg-slate-700 dark:hover:text-white"
+                className="flex w-full items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-200 dark:hover:bg-slate-700 dark:hover:text-white"
               >
+                <LogOut className="w-5 h-5 text-gray-400 dark:text-gray-500" />
                 Выйти
               </button>
             </div>
