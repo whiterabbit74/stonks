@@ -148,8 +148,10 @@
 }
 
 /* Enhanced smooth transitions for all interactive elements */
+/* NOTE: transform intentionally excluded — global transform transitions cause
+   layout-shift flicker when tab content height changes (scroll anchor fires). */
 * {
-  transition-property: color, background-color, border-color, text-decoration-color, fill, stroke, opacity, box-shadow, transform, filter, backdrop-filter;
+  transition-property: color, background-color, border-color, text-decoration-color, fill, stroke, opacity, box-shadow, filter, backdrop-filter;
   transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
   transition-duration: 150ms;
 }
@@ -503,10 +505,16 @@
   body {
     @apply bg-white text-gray-900 font-sans;
     font-feature-settings: "rlig" 1, "calt" 1;
+    /* Disable scroll anchoring — prevents automatic scroll-position corrections
+       (triggered by tab content height changes) from causing layout-shift flicker. */
+    overflow-anchor: none;
   }
-  
+
   html {
-    scroll-behavior: smooth;
+    /* scroll-behavior: smooth removed — it caused browser scroll-anchor corrections
+       to animate visually, making the block above tabs briefly visible during
+       tab switches. Explicit scrollIntoView({ behavior: 'smooth' }) still works. */
+    scroll-behavior: auto;
   }
 }
 
