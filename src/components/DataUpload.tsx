@@ -4,14 +4,13 @@ import { Link } from 'react-router-dom';
 import { useAppStore } from '../stores';
 import { DatasetLibrary } from './DatasetLibrary';
 import { PageHeader } from './ui/PageHeader';
-import { ProviderBadge, PROVIDER_OPTIONS } from './ui/ProviderBadge';
 
 interface DataUploadProps {
   onNext?: () => void;
 }
 
 export function DataUpload({ onNext }: DataUploadProps) {
-  const { marketData, savedDatasets, isLoading, error, loadDatasetsFromServer, enhancerProvider, setEnhancerProvider } = useAppStore();
+  const { marketData, savedDatasets, isLoading, error, loadDatasetsFromServer } = useAppStore();
   const requestedOnMountRef = useRef(false);
 
   // Fallback load: avoid duplicate fetch when datasets are already loaded by ProtectedLayout.
@@ -31,21 +30,13 @@ export function DataUpload({ onNext }: DataUploadProps) {
         title="Данные"
         subtitle="Управление загруженными датасетами"
         actions={
-          <div className="flex items-center gap-2">
-            <ProviderBadge
-              label="Провайдер данных"
-              provider={enhancerProvider}
-              options={PROVIDER_OPTIONS}
-              onChange={setEnhancerProvider}
-            />
-            <Link
-              to="/enhance"
-              title="Загрузить новые данные из API"
-              className="inline-flex items-center justify-center rounded-xl border border-gray-200 bg-white p-2 text-gray-600 shadow-sm transition-colors hover:bg-gray-50 hover:text-indigo-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-indigo-400"
-            >
-              <Download className="h-4 w-4" />
-            </Link>
-          </div>
+          <Link
+            to="/enhance"
+            title="Загрузить новые данные из API"
+            className="inline-flex items-center justify-center rounded-xl border border-gray-200 bg-white p-2 text-gray-600 shadow-sm transition-colors hover:bg-gray-50 hover:text-indigo-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-indigo-400"
+          >
+            <Download className="h-4 w-4" />
+          </Link>
         }
       />
 

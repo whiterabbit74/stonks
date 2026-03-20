@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { Search, Download, Loader2, AlertCircle, CheckCircle, Check, Settings } from 'lucide-react';
+import { ProviderBadge } from './ui/ProviderBadge';
 import { useAppStore } from '../stores';
 import { fetchWithCreds, API_BASE_URL } from '../lib/api';
 import { toTradingDate } from '../lib/date-utils';
@@ -208,7 +209,11 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
 
   return (
     <div className="space-y-5">
-      <PageHeader title="Новые данные" subtitle="Загрузка исторических данных из API" />
+      <PageHeader
+        title="Новые данные"
+        subtitle="Загрузка исторических данных из API"
+        actions={<ProviderBadge label="Провайдер данных" provider={enhancerProvider} />}
+      />
 
       <div className="bg-white border border-gray-200 rounded-lg p-4 dark:bg-gray-900 dark:border-gray-800">
         <div className="flex flex-wrap items-end justify-between gap-3">
