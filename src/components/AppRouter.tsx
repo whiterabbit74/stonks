@@ -168,7 +168,7 @@ function ProtectedLayout() {
   const tabs = [
     { to: '/data', label: 'Данные' },
     { to: '/results', label: 'Один тикер' },
-    { to: '/multi-ticker', label: 'Несколько тикеров' },
+    { to: '/multi-ticker', label: 'Акции' },
     { to: '/multi-ticker-options', label: 'Опционы' },
     { to: '/calendar', label: 'Календарь' },
     { to: '/split', label: 'Сплиты' },
@@ -179,7 +179,7 @@ function ProtectedLayout() {
   const mobileMenuTabs: { to: string; label: string; icon: React.ReactNode }[] = [
     { to: '/data',                label: 'Данные',              icon: <Database className="w-5 h-5" /> },
     { to: '/results',             label: 'Один тикер',          icon: <BarChart2 className="w-5 h-5" /> },
-    { to: '/multi-ticker',        label: 'Несколько тикеров',   icon: <LineChart className="w-5 h-5" /> },
+    { to: '/multi-ticker',        label: 'Акции',   icon: <LineChart className="w-5 h-5" /> },
     { to: '/multi-ticker-options',label: 'Опционы',             icon: <Layers className="w-5 h-5" /> },
     { to: '/calendar',            label: 'Календарь',           icon: <Calendar className="w-5 h-5" /> },
     { to: '/split',               label: 'Сплиты',              icon: <Scissors className="w-5 h-5" /> },

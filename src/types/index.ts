@@ -254,6 +254,38 @@ export interface MonitorTradeHistoryResponse {
   lastUpdated: string | null;
 }
 
+export interface BrokerTradeRecord {
+  id: string;
+  symbol: string;
+  status: 'open' | 'closed';
+  entryDate: string | null;
+  exitDate: string | null;
+  entryPrice: number | null;
+  exitPrice: number | null;
+  entryIBS: number | null;
+  exitIBS: number | null;
+  entryDecisionTime: string | null;
+  exitDecisionTime: string | null;
+  pnlPercent: number | null;
+  pnlAbsolute: number | null;
+  holdingDays: number | null;
+  notes: string | null;
+  source: 'auto' | 'manual' | 'test' | string;
+  isHidden: boolean;
+  isTest: boolean;
+  brokerOrderId: string | null;
+  clientOrderId: string | null;
+  filledQty: number | null;
+  quantity: number | null;
+}
+
+export interface BrokerTradeHistoryResponse {
+  trades: BrokerTradeRecord[];
+  openTrade: BrokerTradeRecord | null;
+  total: number;
+  lastUpdated: string | null;
+}
+
 export interface WebullDashboardResponse {
   connection: {
     configured: boolean;

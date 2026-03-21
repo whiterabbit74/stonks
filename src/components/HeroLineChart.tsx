@@ -31,6 +31,7 @@ interface HeroLineChartProps {
   data: OHLCData[];
   trades?: Trade[];
   currentPrice?: number | null;
+  todayQuote?: { open: number | null; high: number | null; low: number | null } | null;
   chartKind?: ChartKind;
   showTrades?: boolean;
   isTrading?: boolean;
@@ -42,6 +43,7 @@ export function HeroLineChart({
   data,
   trades = [],
   currentPrice = null,
+  todayQuote = null,
   chartKind = 'line',
   showTrades = true,
   isTrading = false,
@@ -75,13 +77,25 @@ export function HeroLineChart({
     }));
 
     if (typeof currentPrice === 'number' && Number.isFinite(currentPrice) && points.length > 0) {
+      const nyseToday = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+      const todayTs = toChartTimestamp(nyseToday);
       const last = points[points.length - 1];
-      points[points.length - 1] = {
-        ...last,
-        close: currentPrice,
-        high: Math.max(last.high, currentPrice),
-        low: Math.min(last.low, currentPrice),
-      };
+
+      if (isTrading && (last.time as number) < (todayTs as number)) {
+        // Market is open and last bar is from a previous day — add today's bar
+        const open = typeof todayQuote?.open === 'number' ? todayQuote.open : currentPrice;
+        const high = typeof todayQuote?.high === 'number' ? Math.max(todayQuote.high, currentPrice) : currentPrice;
+        const low = typeof todayQuote?.low === 'number' ? Math.min(todayQuote.low, currentPrice) : currentPrice;
+        points.push({ time: todayTs, open, high, low, close: currentPrice });
+      } else {
+        // Update close (and high/low) of the last existing bar
+        points[points.length - 1] = {
+          ...last,
+          close: currentPrice,
+          high: Math.max(last.high, currentPrice),
+          low: Math.min(last.low, currentPrice),
+        };
+      }
     }
 
     return points;

@@ -736,6 +736,7 @@ export function SingleTickerPage() {
               data={marketData}
               trades={trades}
               currentPrice={quote?.current ?? null}
+              todayQuote={quote ? { open: quote.open, high: quote.high, low: quote.low } : null}
               chartKind={heroChartKind}
               showTrades={heroShowTrades}
               isTrading={isTrading}

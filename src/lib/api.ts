@@ -2,6 +2,8 @@ import type {
   SavedDataset,
   MonitorTradeHistoryResponse,
   MonitorTradeRecord,
+  BrokerTradeHistoryResponse,
+  BrokerTradeRecord,
   WebullDashboardResponse,
   AutotradeLogsResponse,
   CloseWebullPositionResponse,
@@ -752,6 +754,45 @@ export class DatasetAPI {
 
   static async deleteTrade(id: string): Promise<void> {
     return apiCall<void>(`${API_BASE_URL}/trades/${id}`, { method: 'DELETE' });
+  }
+
+  // ─── Broker trades (real executed trades) ───────────────────────────────────
+
+  static async getBrokerTrades(includeHidden = false): Promise<BrokerTradeHistoryResponse> {
+    const suffix = includeHidden ? '?includeHidden=1' : '';
+    const response = await fetchWithCreds(`${API_BASE_URL}/broker-trades${suffix}`);
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({})) as { error?: string };
+      throw new Error(err.error ?? `HTTP ${response.status}`);
+    }
+    return await response.json();
+  }
+
+  static async createBrokerTrade(data: {
+    symbol: string; entryDate?: string; exitDate?: string;
+    entryPrice?: number; exitPrice?: number; entryIBS?: number; exitIBS?: number;
+    notes?: string; quantity?: number;
+  }): Promise<BrokerTradeRecord> {
+    return apiCall<BrokerTradeRecord>(`${API_BASE_URL}/broker-trades`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+  }
+
+  static async updateBrokerTrade(id: string, data: {
+    notes?: string; isHidden?: boolean; isTest?: boolean;
+    exitDate?: string; exitPrice?: number; exitIBS?: number;
+  }): Promise<BrokerTradeRecord> {
+    return apiCall<BrokerTradeRecord>(`${API_BASE_URL}/broker-trades/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+  }
+
+  static async deleteBrokerTrade(id: string): Promise<void> {
+    return apiCall<void>(`${API_BASE_URL}/broker-trades/${id}`, { method: 'DELETE' });
   }
 
   static async getWebullDashboard(forceRefresh = false): Promise<WebullDashboardResponse> {

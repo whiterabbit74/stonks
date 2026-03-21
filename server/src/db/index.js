@@ -113,6 +113,34 @@ function initSchema(db) {
 
         CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at);
 
+        CREATE TABLE IF NOT EXISTS broker_trades (
+            id                  TEXT PRIMARY KEY,
+            symbol              TEXT NOT NULL,
+            status              TEXT NOT NULL DEFAULT 'open',
+            entry_date          TEXT,
+            exit_date           TEXT,
+            entry_price         REAL,
+            exit_price          REAL,
+            entry_ibs           REAL,
+            exit_ibs            REAL,
+            entry_decision_time TEXT,
+            exit_decision_time  TEXT,
+            pnl_percent         REAL,
+            pnl_absolute        REAL,
+            holding_days        INTEGER,
+            notes               TEXT,
+            source              TEXT DEFAULT 'auto',
+            is_hidden           INTEGER NOT NULL DEFAULT 0,
+            is_test             INTEGER NOT NULL DEFAULT 0,
+            broker_order_id     TEXT,
+            client_order_id     TEXT,
+            filled_qty          REAL,
+            quantity            REAL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_broker_trades_status ON broker_trades(status);
+        CREATE INDEX IF NOT EXISTS idx_broker_trades_entry_date ON broker_trades(entry_date);
+
         CREATE TABLE IF NOT EXISTS telegram_watches (
             symbol               TEXT PRIMARY KEY,
             high_ibs             REAL NOT NULL DEFAULT 0.75,

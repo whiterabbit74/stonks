@@ -12,12 +12,14 @@ const { getETParts, etKeyYMD, getCachedTradingCalendar, isTradingDayByCalendarET
 const {
     loadTradeHistory,
     isTradeHistoryLoaded,
-    getCurrentOpenTrade,
-    recordTradeEntry,
-    recordTradeExit,
     synchronizeWatchesWithTradeHistory,
-    serializeTradeForResponse
 } = require('./trades');
+const {
+    getCurrentOpenBrokerTrade,
+    recordBrokerEntry,
+    recordBrokerExit,
+    serializeBrokerTradeForResponse,
+} = require('./brokerTrades');
 const {
     buildWebullRuntimeConfig,
     getAccountBalance,
@@ -718,7 +720,7 @@ async function finalizeTrackedTrade({ action, symbol, price, ibs, decisionTime, 
 
     let trade = null;
     if (action === 'entry') {
-        trade = recordTradeEntry({
+        trade = recordBrokerEntry({
             symbol,
             price: typeof price === 'number' ? price : null,
             ibs: typeof ibs === 'number' ? ibs : null,
@@ -731,7 +733,7 @@ async function finalizeTrackedTrade({ action, symbol, price, ibs, decisionTime, 
             quantity: quantity ?? null,
         });
     } else if (action === 'exit') {
-        trade = recordTradeExit({
+        trade = recordBrokerExit({
             symbol,
             price: typeof price === 'number' ? price : null,
             ibs: typeof ibs === 'number' ? ibs : null,
@@ -1573,7 +1575,7 @@ async function evaluateAutoTradeCycle(options = {}) {
     const todayKey = etKeyYMD(nowEt);
     const symbols = getConfiguredSymbols(autoTrading);
     const quotes = await evaluateMarketSnapshotForSymbols(symbols, autoTrading);
-    const openTrade = getCurrentOpenTrade();
+    const openTrade = getCurrentOpenBrokerTrade();
 
     let decision = {
         action: 'none',
@@ -1620,7 +1622,7 @@ async function evaluateAutoTradeCycle(options = {}) {
         autoTrading,
         symbols,
         quotes,
-        openTrade: openTrade ? serializeTradeForResponse(openTrade) : null,
+        openTrade: openTrade ? serializeBrokerTradeForResponse(openTrade) : null,
         decision,
     };
 }
@@ -1847,7 +1849,7 @@ async function runAutoTradingSchedulerTick() {
         return { executed: false, reason: 'outside_execution_window', secondsUntilClose };
     }
 
-    const schedulerKey = `${etKeyYMD(nowEt)}:${Math.floor(secondsUntilClose / 20)}:${getCurrentOpenTrade() ? 'open' : 'flat'}`;
+    const schedulerKey = `${etKeyYMD(nowEt)}:${Math.floor(secondsUntilClose / 20)}:${getCurrentOpenBrokerTrade() ? 'open' : 'flat'}`;
     if (autoTradeState.lastSchedulerAttemptKey === schedulerKey) {
         return { executed: false, reason: 'already_attempted_bucket', secondsUntilClose };
     }

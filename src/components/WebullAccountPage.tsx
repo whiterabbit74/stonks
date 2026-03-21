@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { AlertCircle, BriefcaseBusiness, ChevronDown, ChevronUp, History, RefreshCw, ShieldCheck, Wallet, Radar } from 'lucide-react';
-import type { AutoTradingConfig, AutoTradeState, AutotradeLogsResponse, WebullDashboardResponse, MonitorTradeRecord } from '../types';
+import type { AutoTradingConfig, AutoTradeState, AutotradeLogsResponse, WebullDashboardResponse, BrokerTradeRecord } from '../types';
 import { DatasetAPI } from '../lib/api';
 import { PageHeader } from './ui/PageHeader';
 import { Button } from './ui/Button';
@@ -334,7 +334,7 @@ export function WebullAccountPage() {
   const quoteProvider = useAppStore((s) => s.resultsQuoteProvider);
 
   // Trades tab state
-  const [tradesData, setTradesData] = useState<MonitorTradeRecord[]>([]);
+  const [tradesData, setTradesData] = useState<BrokerTradeRecord[]>([]);
   const [tradesLoading, setTradesLoading] = useState(false);
   const [tradesShowHidden, setTradesShowHidden] = useState(false);
   const [tradesLoaded, setTradesLoaded] = useState(false);
@@ -383,7 +383,7 @@ export function WebullAccountPage() {
   const loadTrades = async () => {
     try {
       setTradesLoading(true);
-      const resp = await DatasetAPI.getMonitorTradeHistory(true);
+      const resp = await DatasetAPI.getBrokerTrades(true);
       setTradesData(resp.trades);
       setTradesLoaded(true);
     } catch (err) {
@@ -393,9 +393,9 @@ export function WebullAccountPage() {
     }
   };
 
-  const handleToggleHide = async (trade: MonitorTradeRecord) => {
+  const handleToggleHide = async (trade: BrokerTradeRecord) => {
     try {
-      const updated = await DatasetAPI.updateTrade(trade.id, { isHidden: !trade.isHidden });
+      const updated = await DatasetAPI.updateBrokerTrade(trade.id, { isHidden: !trade.isHidden });
       setTradesData(prev => prev.map(t => t.id === updated.id ? updated : t));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Не удалось обновить сделку');
@@ -405,7 +405,7 @@ export function WebullAccountPage() {
   const handleDeleteTrade = async (id: string) => {
     if (!window.confirm('Удалить сделку? Это действие нельзя отменить.')) return;
     try {
-      await DatasetAPI.deleteTrade(id);
+      await DatasetAPI.deleteBrokerTrade(id);
       setTradesData(prev => prev.filter(t => t.id !== id));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Не удалось удалить сделку');
@@ -425,7 +425,7 @@ export function WebullAccountPage() {
         quantity: addTradeForm.quantity ? Number(addTradeForm.quantity) : undefined,
         notes: addTradeForm.notes || undefined,
       };
-      const created = await DatasetAPI.createManualTrade(data);
+      const created = await DatasetAPI.createBrokerTrade(data);
       setTradesData(prev => [created, ...prev]);
       setAddTradeForm({ open: false, symbol: '', entryDate: '', exitDate: '', entryPrice: '', exitPrice: '', quantity: '', notes: '' });
     } catch (err) {
