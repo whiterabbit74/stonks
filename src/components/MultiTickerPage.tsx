@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { HelpCircle, Settings2, RefreshCcw, ArrowUpRight } from 'lucide-react';
+import { HelpCircle, Settings2, RefreshCw, ArrowUpRight } from 'lucide-react';
 import { MetricsGrid, AnalysisTabs, PageHeader, Select, Button, TickerInput, ChartContainer } from './ui';
 import { useAppStore } from '../stores';
 import type { Strategy, Trade, EquityPoint } from '../types';
@@ -498,10 +498,10 @@ export function MultiTickerPage() {
                       .finally(() => setChartQuoteLoading(false));
                   }}
                   disabled={chartQuoteLoading}
-                  className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-gray-300 text-gray-500 hover:bg-gray-100 disabled:opacity-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-300 text-gray-500 hover:bg-gray-100 disabled:opacity-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800 transition-colors"
                   title="Обновить котировку"
                 >
-                  <RefreshCcw className={`h-3.5 w-3.5 ${chartQuoteLoading ? 'animate-spin' : ''}`} />
+                  <RefreshCw className={`h-3.5 w-3.5 ${chartQuoteLoading ? 'animate-spin' : ''}`} />
                 </button>
 
                 {/* Quote details popup */}
@@ -509,7 +509,7 @@ export function MultiTickerPage() {
                   <button
                     type="button"
                     onClick={() => setShowQuoteDetails((prev) => !prev)}
-                    className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-gray-300 text-gray-500 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-300 text-gray-500 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800 transition-colors"
                     title="Детали котировки"
                   >
                     <HelpCircle className="h-3.5 w-3.5" />
@@ -552,7 +552,7 @@ export function MultiTickerPage() {
                   <button
                     type="button"
                     onClick={() => setShowHeroSettings((prev) => !prev)}
-                    className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-gray-300 text-gray-500 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-300 text-gray-500 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800 transition-colors"
                     title="Настройки графика"
                   >
                     <Settings2 className="h-3.5 w-3.5" />
@@ -621,7 +621,7 @@ export function MultiTickerPage() {
                 <button
                   type="button"
                   onClick={() => setShowStrategyInfo((prev) => !prev)}
-                  className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-gray-300 text-gray-500 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800"
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-300 text-gray-500 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 transition-colors"
                   title="Показать описание стратегии"
                   aria-expanded={showStrategyInfo}
                 >
@@ -662,7 +662,7 @@ export function MultiTickerPage() {
                       setTickersInput(defaultList.join(', '));
                       void runBacktest(defaultList);
                     }}
-                    className="mt-1.5 w-full rounded-md border border-dashed border-gray-300 px-2 py-1 text-left text-[11px] text-gray-500 hover:border-blue-400 hover:bg-blue-50 hover:text-blue-600 dark:border-gray-600 dark:text-gray-400 dark:hover:border-blue-500 dark:hover:bg-blue-950/20 dark:hover:text-blue-300 transition-colors"
+                    className="mt-1.5 w-full rounded-lg border border-dashed border-gray-300 px-2 py-1 text-left text-[11px] text-gray-500 hover:border-blue-400 hover:bg-blue-50 hover:text-blue-600 dark:border-gray-600 dark:text-gray-400 dark:hover:border-blue-500 dark:hover:bg-blue-950/20 dark:hover:text-blue-300 transition-colors"
                     title="Вернуться к дефолтным тикерам"
                   >
                     ↩ {getDefaultTickers().join(', ')}
@@ -734,7 +734,7 @@ export function MultiTickerPage() {
                     className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-amber-300 bg-amber-100 text-amber-800 hover:bg-amber-200 disabled:opacity-50 dark:border-amber-900/60 dark:bg-amber-900/30 dark:text-amber-200 dark:hover:bg-amber-900/50"
                     title="Обновить данные"
                   >
-                    <RefreshCcw className={`h-3.5 w-3.5 ${isRefreshingSelected ? 'animate-spin' : ''}`} />
+                    <RefreshCw className={`h-3.5 w-3.5 ${isRefreshingSelected ? 'animate-spin' : ''}`} />
                   </button>
                 </div>
               </div>

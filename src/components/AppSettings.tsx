@@ -154,7 +154,7 @@ function AutotradeTab({
           type="button"
           onClick={handleSave}
           disabled={!hasChanges || autotradeToggling || autotradeLoading}
-          className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed"
+          className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {autotradeToggling ? (
             <><Loader2 className="w-4 h-4 animate-spin" />Сохранение…</>
@@ -1113,7 +1113,7 @@ export function AppSettings() {
               disabled={saving || (!hasUnsavedChanges && !saveOk)}
               className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                 saving
-                  ? 'bg-blue-600 text-white opacity-70 cursor-not-allowed'
+                  ? 'bg-blue-600 text-white opacity-50 cursor-not-allowed'
                   : saveOk
                   ? 'bg-emerald-600 text-white cursor-default'
                   : hasUnsavedChanges

@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, useTransition } from 'react';
-import { Heart, RefreshCcw, HelpCircle, Settings2, ArrowUpRight } from 'lucide-react';
+import { Heart, RefreshCw, HelpCircle, Settings2, ArrowUpRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { DatasetAPI } from '../lib/api';
 import { isSameDay } from '../lib/date-utils';
@@ -803,7 +803,7 @@ export function SingleTickerPage() {
                   id="results-margin-percent"
                   value={marginPercent}
                   onChange={(e) => setMarginPercent(normalizeMarginPercent(Number(e.target.value)))}
-                  className="mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none transition focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+                  className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none transition focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
                 >
                   {MARGIN_PERCENT_OPTIONS.map((opt) => (
                     <option key={opt} value={opt}>
@@ -832,7 +832,7 @@ export function SingleTickerPage() {
                   id="results-maintenance-margin"
                   value={maintenanceMarginPct}
                   onChange={(e) => setMaintenanceMarginPct(normalizeMaintenanceMarginPercent(Number(e.target.value)))}
-                  className="mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none transition focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+                  className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none transition focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
                 >
                   {MAINTENANCE_MARGIN_OPTIONS.map((opt) => (
                     <option key={opt} value={opt}>
@@ -878,7 +878,7 @@ export function SingleTickerPage() {
                     aria-label="Обновить данные"
                     disabled={refreshing}
                   >
-                    <RefreshCcw className="h-3.5 w-3.5" />
+                    <RefreshCw className="h-3.5 w-3.5" />
                   </button>
                 </div>
                 {refreshError && <div className="mt-1 text-red-600">{refreshError}</div>}

@@ -156,7 +156,7 @@ export function StrategySettings({ strategy, onSave, onClose, mode = 'modal' }: 
                     step={config.step || 1}
                     value={editedStrategy.parameters[key] as number || config.min}
                     onChange={(e) => handleParameterChange(key, Number(e.target.value))}
-                    className="w-20 px-3 py-2 border border-gray-300 rounded-md text-sm"
+                    className="w-20 px-3 py-2 border border-gray-300 rounded-lg text-sm"
                   />
                 </div>
               </div>
@@ -179,7 +179,7 @@ export function StrategySettings({ strategy, onSave, onClose, mode = 'modal' }: 
                 step={1000}
                 value={editedStrategy.riskManagement.initialCapital}
                 onChange={(e) => handleRiskManagementChange('initialCapital', Number(e.target.value))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
               />
             </div>
 
@@ -205,7 +205,7 @@ export function StrategySettings({ strategy, onSave, onClose, mode = 'modal' }: 
                   max={100}
                   value={editedStrategy.riskManagement.capitalUsage}
                   onChange={(e) => handleRiskManagementChange('capitalUsage', Number(e.target.value))}
-                  className="w-20 px-3 py-2 border border-gray-300 rounded-md text-sm"
+                  className="w-20 px-3 py-2 border border-gray-300 rounded-lg text-sm"
                 />
                 <span className="text-sm text-gray-500">%</span>
               </div>
@@ -235,7 +235,7 @@ export function StrategySettings({ strategy, onSave, onClose, mode = 'modal' }: 
                   step={5}
                   value={((editedStrategy.riskManagement.leverage || 1) - 1) * 100}
                   onChange={(e) => handleRiskManagementChange('leverage', 1 + Number(e.target.value) / 100)}
-                  className="w-20 px-3 py-2 border border-gray-300 rounded-md text-sm"
+                  className="w-20 px-3 py-2 border border-gray-300 rounded-lg text-sm"
                 />
                 <span className="text-sm text-gray-500">%</span>
               </div>
@@ -249,7 +249,7 @@ export function StrategySettings({ strategy, onSave, onClose, mode = 'modal' }: 
               <select
                 value={editedStrategy.riskManagement.commission.type}
                 onChange={(e) => handleCommissionChange('type', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
               >
                 <option value="percentage">Процент от стоимости сделки</option>
                 <option value="fixed">Фиксированная сумма в долларах</option>
@@ -272,7 +272,7 @@ export function StrategySettings({ strategy, onSave, onClose, mode = 'modal' }: 
                   step={0.01}
                   value={editedStrategy.riskManagement.commission.percentage || 0}
                   onChange={(e) => handleCommissionChange('percentage', Number(e.target.value))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                 />
               </div>
             )}
@@ -292,7 +292,7 @@ export function StrategySettings({ strategy, onSave, onClose, mode = 'modal' }: 
                   step={0.01}
                   value={editedStrategy.riskManagement.commission.fixed || 0}
                   onChange={(e) => handleCommissionChange('fixed', Number(e.target.value))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                 />
               </div>
             )}
@@ -304,7 +304,7 @@ export function StrategySettings({ strategy, onSave, onClose, mode = 'modal' }: 
       <div className="flex items-center justify-between p-6 border-t bg-gray-50">
         <button
           onClick={handleReset}
-          className="inline-flex items-center gap-2 px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+          className="inline-flex items-center gap-2 px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
         >
           <RotateCcw className="w-4 h-4" />
           Сбросить по умолчанию
@@ -314,14 +314,14 @@ export function StrategySettings({ strategy, onSave, onClose, mode = 'modal' }: 
           {mode === 'modal' && (
             <button
               onClick={onClose}
-              className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+              className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
             >
               Отмена
             </button>
           )}
           <button
             onClick={handleSave}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
           >
             <Save className="w-4 h-4" />
             Сохранить

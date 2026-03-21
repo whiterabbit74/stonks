@@ -271,11 +271,11 @@ export function SplitPage() {
 									</div>
 								</div>
 							))}
-							<button className="px-2 py-1 text-xs rounded border hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800" onClick={addEvent}>Добавить событие</button>
+							<button className="px-2 py-1 text-xs rounded-lg border hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800 transition-colors" onClick={addEvent}>Добавить событие</button>
 						</div>
 						<div className="flex flex-wrap gap-2 items-center">
-							<button className="px-3 py-1.5 text-sm rounded bg-green-600 text-white hover:bg-green-700 disabled:opacity-60" onClick={saveSplits} disabled={busy || !selected}>Сохранить сплиты</button>
-							<button className="px-3 py-1.5 text-sm rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60" onClick={applySplits} disabled={busy || !selected}>Пересчитать датасет</button>
+							<button className="px-3 py-1.5 text-sm rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors" onClick={saveSplits} disabled={busy || !selected}>Сохранить сплиты</button>
+							<button className="px-3 py-1.5 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors" onClick={applySplits} disabled={busy || !selected}>Пересчитать датасет</button>
 							{msg && <div className="text-xs text-gray-500">{msg}</div>}
 						</div>
 					</div>
@@ -328,7 +328,7 @@ export function SplitPage() {
 								</div>
 							)}
 							<button
-								className="px-3 py-1.5 text-sm rounded bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-60"
+								className="px-3 py-1.5 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
 								onClick={applyJsonUpdates}
 								disabled={busy || !!jsonError || Object.keys(jsonUpdates).length === 0}
 							>

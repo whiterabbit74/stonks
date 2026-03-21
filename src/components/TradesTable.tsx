@@ -126,7 +126,7 @@ export const TradesTable = React.memo(function TradesTable({
 						<button
 							type="button"
 							onClick={handleExport}
-							className="inline-flex items-center gap-2 px-3 py-1.5 border border-gray-300 rounded-md bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-60 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+							className="inline-flex items-center gap-2 px-3 py-1.5 border border-gray-300 rounded-lg bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700 transition-colors"
 							disabled={!trades.length}
 						>
 							<Download className="w-4 h-4" />

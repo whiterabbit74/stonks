@@ -62,7 +62,7 @@ export function MultiTickerOptionsAnalysis({ tickersData, tradesByTicker }: Mult
                         <select
                             value={strikePct}
                             onChange={(e) => setStrikePct(Number(e.target.value))}
-                            className="block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100 sm:text-sm"
+                            className="block w-full px-3 py-2 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100 text-sm"
                         >
                             <option value={5}>+5%</option>
                             <option value={10}>+10%</option>
@@ -78,7 +78,7 @@ export function MultiTickerOptionsAnalysis({ tickersData, tradesByTicker }: Mult
                         <select
                             value={volAdjPct}
                             onChange={(e) => setVolAdjPct(Number(e.target.value))}
-                            className="block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100 sm:text-sm"
+                            className="block w-full px-3 py-2 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100 text-sm"
                         >
                              <option value={0}>0%</option>
                              <option value={5}>+5%</option>
@@ -101,7 +101,7 @@ export function MultiTickerOptionsAnalysis({ tickersData, tradesByTicker }: Mult
                         <select
                             value={capitalPct}
                             onChange={(e) => setCapitalPct(Number(e.target.value))}
-                            className="block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100 sm:text-sm"
+                            className="block w-full px-3 py-2 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100 text-sm"
                         >
                              <option value={5}>5%</option>
                              <option value={10}>10%</option>
@@ -123,7 +123,7 @@ export function MultiTickerOptionsAnalysis({ tickersData, tradesByTicker }: Mult
                         <select
                             value={expirationWeeks}
                             onChange={(e) => setExpirationWeeks(Number(e.target.value))}
-                            className="block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100 sm:text-sm"
+                            className="block w-full px-3 py-2 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100 text-sm"
                         >
                              <option value={1}>1 неделя</option>
                              <option value={2}>2 недели</option>
@@ -138,7 +138,7 @@ export function MultiTickerOptionsAnalysis({ tickersData, tradesByTicker }: Mult
                     </div>
                 </div>
 
-                <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded-md p-3 text-sm text-blue-800 dark:text-blue-200 flex items-start gap-2">
+                <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded-lg p-3 text-sm text-blue-800 dark:text-blue-200 flex items-start gap-2">
                     <HelpCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
                     <div>
                         <p className="font-semibold mb-1">О моделировании портфеля опционов:</p>

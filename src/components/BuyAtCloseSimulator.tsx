@@ -169,7 +169,7 @@ export function BuyAtCloseSimulator({ data, strategy }: BuyAtCloseSimulatorProps
               });
               setLowIbs(sanitized.toFixed(2));
             }}
-            className="px-3 py-2 border rounded-md w-32 dark:bg-gray-900 dark:border-gray-700 dark:text-gray-100"
+            className="px-3 py-2 border rounded-lg w-32 dark:bg-gray-900 dark:border-gray-700 dark:text-gray-100"
             aria-describedby="low-ibs-desc"
           />
           <div id="low-ibs-desc" className="sr-only">Введите значение IBS ниже которого происходит вход в позицию</div>
@@ -190,7 +190,7 @@ export function BuyAtCloseSimulator({ data, strategy }: BuyAtCloseSimulatorProps
               });
               setHighIbs(sanitized.toFixed(2));
             }}
-            className="px-3 py-2 border rounded-md w-32 dark:bg-gray-900 dark:border-gray-700 dark:text-gray-100"
+            className="px-3 py-2 border rounded-lg w-32 dark:bg-gray-900 dark:border-gray-700 dark:text-gray-100"
             aria-describedby="high-ibs-desc"
           />
           <div id="high-ibs-desc" className="sr-only">Введите значение IBS выше которого происходит выход из позиции</div>
@@ -210,7 +210,7 @@ export function BuyAtCloseSimulator({ data, strategy }: BuyAtCloseSimulatorProps
               });
               setMaxHold(String(Math.round(sanitized)));
             }}
-            className="px-3 py-2 border rounded-md w-36 dark:bg-gray-900 dark:border-gray-700 dark:text-gray-100"
+            className="px-3 py-2 border rounded-lg w-36 dark:bg-gray-900 dark:border-gray-700 dark:text-gray-100"
             aria-describedby="max-hold-desc"
           />
           <div id="max-hold-desc" className="sr-only">Максимальное количество дней для удержания позиции</div>
@@ -232,12 +232,12 @@ export function BuyAtCloseSimulator({ data, strategy }: BuyAtCloseSimulatorProps
               });
               setMarginPctInput(String(sanitized));
             }}
-            className="px-3 py-2 border rounded-md w-36 dark:bg-gray-900 dark:border-gray-700 dark:text-gray-100"
+            className="px-3 py-2 border rounded-lg w-36 dark:bg-gray-900 dark:border-gray-700 dark:text-gray-100"
             placeholder="например, 100"
           />
         </div>
-        <button onClick={onApplyMargin} className="px-4 py-2 rounded-md bg-blue-600 text-white text-sm font-medium hover:bg-blue-700">Посчитать</button>
-        <button onClick={() => setShowTrades(v => !v)} className="px-4 py-2 rounded-md border text-sm font-medium dark:border-gray-700">
+        <button onClick={onApplyMargin} className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors">Посчитать</button>
+        <button onClick={() => setShowTrades(v => !v)} className="px-4 py-2 rounded-lg border text-sm font-medium dark:border-gray-700 transition-colors">
           {showTrades ? 'Скрыть сделки' : 'Показать все сделки'}
         </button>
       </div>

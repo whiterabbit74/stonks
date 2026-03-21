@@ -297,7 +297,7 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
           <div className="flex items-center pb-0.5">
             <Link
               to="/settings"
-              className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-gray-300 text-gray-600 hover:text-gray-900 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:text-gray-100 dark:hover:bg-gray-800"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-gray-300 text-gray-600 hover:text-gray-900 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:text-gray-100 dark:hover:bg-gray-800"
               title="Настройки провайдера"
               aria-label="Настройки провайдера"
             >
@@ -341,7 +341,7 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
                   setSelectedCategory(cat.id);
                   setSearchQuery('');
                 }}
-                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors flex items-center gap-1.5 whitespace-nowrap flex-shrink-0 border ${isActive
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-1.5 whitespace-nowrap flex-shrink-0 border ${isActive
                   ? 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/30 dark:text-blue-200 dark:border-blue-800'
                   : 'bg-white text-gray-700 border-gray-200 hover:border-gray-300 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-200 dark:border-gray-700 dark:hover:bg-gray-700'
                   }`}
@@ -385,7 +385,7 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
                   onClick={() => handleDownloadData(item.symbol)}
                   disabled={isLoading}
                   title={isLoaded ? `${item.symbol} уже загружен. Нажмите для обновления` : `Нажмите для загрузки ${item.symbol}`}
-                  className={`relative p-2.5 rounded-md text-left transition-all duration-200 group ${isLoaded
+                  className={`relative p-2.5 rounded-lg text-left transition-all duration-200 group ${isLoaded
                     ? 'bg-green-50 border-2 border-green-200 dark:bg-green-950/30 dark:border-green-900/50'
                     : 'bg-gray-50 border border-gray-200 hover:bg-blue-50 hover:border-blue-300 dark:bg-gray-800 dark:border-gray-700 dark:hover:bg-blue-950/30 dark:hover:border-blue-800'
                     } ${isCurrentlyLoading ? 'ring-2 ring-blue-400 ring-offset-2 dark:ring-offset-gray-900' : ''}`}
@@ -449,7 +449,7 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
       {onNext && hasData && (
         <div className="bg-gray-50 rounded-lg p-4 dark:bg-gray-800">
           <div className="flex justify-end">
-            <button onClick={onNext} className="inline-flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 text-sm font-medium">
+            <button onClick={onNext} className="inline-flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 text-sm font-medium transition-colors">
               Перейти к результатам
             </button>
           </div>

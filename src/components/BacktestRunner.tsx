@@ -1,4 +1,4 @@
-import { Play, CheckCircle, ArrowRight } from 'lucide-react';
+import { Play, CheckCircle, ArrowRight, Loader2 } from 'lucide-react';
 import { useAppStore } from '../stores';
 
 interface BacktestRunnerProps {
@@ -92,15 +92,11 @@ export function BacktestRunner({ onNext }: BacktestRunnerProps) {
         <button
           onClick={handleRunBacktest}
           disabled={backtestStatus === 'running'}
-          className={`inline-flex items-center gap-2 px-6 py-3 rounded-lg font-medium ${
-            backtestStatus === 'running'
-              ? 'bg-gray-400 text-white cursor-not-allowed'
-              : 'bg-blue-600 text-white hover:bg-blue-700'
-          }`}
+          className="inline-flex items-center gap-2 px-6 py-3 rounded-lg font-medium bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
           {backtestStatus === 'running' ? (
             <>
-              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+              <Loader2 className="w-4 h-4 animate-spin" />
               Выполняется…
             </>
           ) : (

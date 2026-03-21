@@ -621,19 +621,19 @@ export function BuyAtClose4Simulator({ strategy, defaultTickers = ['AAPL', 'MSFT
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             placeholder="AAPL, MSFT, AMZN, MAGS"
-            className="flex-1 min-w-[150px] px-3 py-2 border rounded-md dark:bg-gray-900 dark:border-gray-600 dark:text-gray-100"
+            className="flex-1 min-w-[150px] px-3 py-2 border rounded-lg dark:bg-gray-900 dark:border-gray-600 dark:text-gray-100"
           />
           <button
             onClick={applyTickers}
             disabled={isLoading}
-            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400"
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             {isLoading ? 'Загрузка...' : 'Применить'}
           </button>
           <button
             onClick={loadAllData}
             disabled={isLoading}
-            className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-gray-400"
+            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             Перезагрузить
           </button>
@@ -745,7 +745,7 @@ export function BuyAtClose4Simulator({ strategy, defaultTickers = ['AAPL', 'MSFT
       {/* Индикатор загрузки */}
       {isLoading && (
         <div className="text-center py-8">
-          <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+          <svg className="animate-spin h-8 w-8 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
           <p className="mt-2 text-gray-600 dark:text-gray-400">Загружаем данные...</p>
         </div>
       )}

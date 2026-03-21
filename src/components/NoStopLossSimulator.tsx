@@ -138,7 +138,7 @@ export function NoStopLossSimulator({ data, strategy }: NoStopLossSimulatorProps
         </div>
         <button
           onClick={() => setShowSettings(!showSettings)}
-          className="inline-flex items-center gap-2 px-3 py-2 text-sm rounded-md border border-gray-300 bg-white hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+          className="inline-flex items-center gap-2 px-3 py-2 text-sm rounded-lg border border-gray-300 bg-white hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700 transition-colors"
         >
           <Settings className="w-4 h-4" />
           Настройки
@@ -158,7 +158,7 @@ export function NoStopLossSimulator({ data, strategy }: NoStopLossSimulatorProps
             <select
               value={config.exitMode}
               onChange={(e) => setConfig(prev => ({ ...prev, exitMode: e.target.value as ExitMode }))}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md dark:bg-gray-900 dark:border-gray-700 dark:text-gray-100"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg dark:bg-gray-900 dark:border-gray-700 dark:text-gray-100"
             >
               {Object.entries(exitModeLabels).map(([value, label]) => (
                 <option key={value} value={value}>{label}</option>
@@ -182,7 +182,7 @@ export function NoStopLossSimulator({ data, strategy }: NoStopLossSimulatorProps
   const value = parseInt(e.target.value, 10);
   setConfig(prev => ({ ...prev, maxHoldDays: isNaN(value) ? 30 : Math.max(1, value) }));
 }}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md dark:bg-gray-900 dark:border-gray-700 dark:text-gray-100"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg dark:bg-gray-900 dark:border-gray-700 dark:text-gray-100"
                 />
               </div>
             )}
@@ -203,7 +203,7 @@ export function NoStopLossSimulator({ data, strategy }: NoStopLossSimulatorProps
   const value = parseFloat(e.target.value);
   setConfig(prev => ({ ...prev, profitTarget: isNaN(value) ? 0 : Math.max(0, value) }));
 }}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md dark:bg-gray-900 dark:border-gray-700 dark:text-gray-100"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg dark:bg-gray-900 dark:border-gray-700 dark:text-gray-100"
                 />
               </div>
             )}
@@ -223,7 +223,7 @@ export function NoStopLossSimulator({ data, strategy }: NoStopLossSimulatorProps
   const value = parseFloat(e.target.value);
   setConfig(prev => ({ ...prev, leverage: isNaN(value) ? 1 : Math.max(0.1, Math.min(10, value)) }));
 }}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md dark:bg-gray-900 dark:border-gray-700 dark:text-gray-100"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg dark:bg-gray-900 dark:border-gray-700 dark:text-gray-100"
               />
             </div>
           </div>
@@ -281,7 +281,7 @@ export function NoStopLossSimulator({ data, strategy }: NoStopLossSimulatorProps
       <div className="flex justify-center">
         <button
           onClick={() => setShowTrades(!showTrades)}
-          className="px-4 py-2 text-sm rounded-md border border-gray-300 bg-white hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+          className="px-4 py-2 text-sm rounded-lg border border-gray-300 bg-white hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700 transition-colors"
         >
           {showTrades ? 'Скрыть сделки' : `Показать сделки (${result.trades.length})`}
         </button>

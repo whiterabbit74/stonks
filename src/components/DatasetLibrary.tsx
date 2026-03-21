@@ -100,7 +100,7 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
         </p>
         <Link
           to="/enhance"
-          className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+          className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
         >
           <Plus className="h-4 w-4" />
           Загрузить тикеры
@@ -348,7 +348,7 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
 
         {/* Refresh error */}
         {refreshError && (
-          <div className="mb-2 px-3 py-2 rounded-md bg-red-50 dark:bg-red-900/20 text-sm text-red-600 dark:text-red-400 flex items-center justify-between gap-2">
+          <div className="mb-2 px-3 py-2 rounded-lg bg-red-50 dark:bg-red-950/30 text-sm text-red-600 dark:text-red-400 flex items-center justify-between gap-2">
             <span>{refreshError}</span>
             <button onClick={() => setRefreshError(null)} className="text-red-400 hover:text-red-600 flex-shrink-0">✕</button>
           </div>
@@ -454,7 +454,7 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Тикер
                 </label>
-                <div className="px-3 py-2 bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-md text-gray-900 dark:text-gray-100">
+                <div className="px-3 py-2 bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg text-gray-900 dark:text-gray-100">
                   {editingDataset.ticker}
                 </div>
               </div>
@@ -468,7 +468,7 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
                   value={editTag}
                   onChange={(e) => setEditTag(e.target.value)}
                   placeholder="Например: tech, growth, dividend (через запятую)"
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-800 dark:text-gray-100 text-base md:text-sm"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-800 dark:text-gray-100 text-sm"
                 />
               </div>
 
@@ -481,7 +481,7 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
                   value={editCompanyName}
                   onChange={(e) => setEditCompanyName(e.target.value)}
                   placeholder="Например: Apple Inc."
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-800 dark:text-gray-100 text-base md:text-sm"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-800 dark:text-gray-100 text-sm"
                 />
               </div>
             </div>

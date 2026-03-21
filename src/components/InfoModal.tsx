@@ -20,7 +20,7 @@ export function InfoModal({ open, title, message, onClose, kind = 'info' }: Info
           <p className="text-sm text-gray-700 whitespace-pre-line">{message}</p>
         </div>
         <div className="px-5 py-3 border-t flex items-center justify-end shrink-0">
-          <button onClick={onClose} className="px-3 py-1.5 rounded-md bg-gray-900 text-white text-sm">ОК</button>
+          <button onClick={onClose} className="px-3 py-1.5 rounded-lg bg-gray-900 text-white text-sm hover:bg-gray-700 transition-colors">ОК</button>
         </div>
       </div>
     </div>

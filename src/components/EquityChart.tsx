@@ -351,7 +351,7 @@ export function EquityChart({ equity, hideHeader, comparisonEquity, comparisonLa
             key={range}
             onClick={() => setActiveRange(range)}
             className={`px-3 py-1 text-sm rounded ${activeRange === range
-              ? 'bg-indigo-600 text-white'
+              ? 'bg-blue-600 text-white'
               : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'
               }`}
           >

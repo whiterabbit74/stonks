@@ -59,7 +59,7 @@ export function OptionsAnalysis({ stockTrades, marketData }: OptionsAnalysisProp
                         <select
                             value={strikePct}
                             onChange={(e) => setStrikePct(Number(e.target.value))}
-                            className="block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100 sm:text-sm"
+                            className="block w-full px-3 py-2 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100 text-sm"
                         >
                             <option value={5}>+5%</option>
                             <option value={10}>+10%</option>
@@ -75,7 +75,7 @@ export function OptionsAnalysis({ stockTrades, marketData }: OptionsAnalysisProp
                         <select
                             value={volAdjPct}
                             onChange={(e) => setVolAdjPct(Number(e.target.value))}
-                            className="block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100 sm:text-sm"
+                            className="block w-full px-3 py-2 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100 text-sm"
                         >
                              <option value={0}>0%</option>
                              <option value={5}>+5%</option>
@@ -98,7 +98,7 @@ export function OptionsAnalysis({ stockTrades, marketData }: OptionsAnalysisProp
                         <select
                             value={capitalPct}
                             onChange={(e) => setCapitalPct(Number(e.target.value))}
-                            className="block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100 sm:text-sm"
+                            className="block w-full px-3 py-2 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100 text-sm"
                         >
                              <option value={5}>5%</option>
                              <option value={10}>10%</option>
@@ -120,7 +120,7 @@ export function OptionsAnalysis({ stockTrades, marketData }: OptionsAnalysisProp
                         <select
                             value={expirationWeeks}
                             onChange={(e) => setExpirationWeeks(Number(e.target.value))}
-                            className="block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100 sm:text-sm"
+                            className="block w-full px-3 py-2 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100 text-sm"
                         >
                              <option value={1}>1 неделя</option>
                              <option value={2}>2 недели</option>
@@ -144,7 +144,7 @@ export function OptionsAnalysis({ stockTrades, marketData }: OptionsAnalysisProp
                             max={365}
                             value={maxHoldingDays}
                             onChange={(e) => setMaxHoldingDays(Number(e.target.value))}
-                            className="block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100 sm:text-sm"
+                            className="block w-full px-3 py-2 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100 text-sm"
                         />
                     </div>
 

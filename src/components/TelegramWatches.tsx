@@ -445,7 +445,7 @@ export function TelegramWatches() {
                 <select
                   value={monitorMarginPercent}
                   onChange={(e) => setMonitorMarginPercent(normalizeMonitorMarginPercent(Number(e.target.value)))}
-                  className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 outline-none transition focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
+                  className="w-full rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 outline-none transition focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
                   aria-label="Маржинальность мониторинга"
                 >
                   {MONITOR_MARGIN_OPTIONS.map((option) => (
@@ -669,7 +669,7 @@ export function TelegramWatches() {
                       setInfo({ open: true, title: 'Ошибка', message: e instanceof Error ? e.message : 'Не удалось выполнить тест', kind: 'error' });
                     }
                   }}
-                  className="inline-flex items-center px-3 py-1.5 rounded-md border border-gray-300 bg-white text-sm text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+                  className="inline-flex items-center px-3 py-1.5 rounded-lg border border-gray-300 bg-white text-sm text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700 transition-colors"
                   title="Тест уведомления за 11 минут до закрытия рынка (обзор IBS)"
                 >
                   Тест T-11
@@ -683,7 +683,7 @@ export function TelegramWatches() {
                       setInfo({ open: true, title: 'Ошибка', message: e instanceof Error ? e.message : 'Не удалось выполнить тест', kind: 'error' });
                     }
                   }}
-                  className="inline-flex items-center px-3 py-1.5 rounded-md border border-gray-300 bg-white text-sm text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+                  className="inline-flex items-center px-3 py-1.5 rounded-lg border border-gray-300 bg-white text-sm text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700 transition-colors"
                   title="Тест уведомления за 2 минуты до закрытия рынка (подтверждение сигналов)"
                 >
                   Тест T-2
@@ -745,7 +745,7 @@ export function TelegramWatches() {
                       setLoading(false);
                     }
                   }}
-                  className="inline-flex items-center px-3 py-2 rounded-md border border-green-300 bg-green-50 text-green-700 hover:bg-green-100 dark:border-green-700 dark:bg-green-900/30 dark:text-green-300 dark:hover:bg-green-900/50"
+                  className="inline-flex items-center px-3 py-2 rounded-lg border border-green-300 bg-green-50 text-green-700 hover:bg-green-100 dark:border-green-700 dark:bg-green-900/30 dark:text-green-300 dark:hover:bg-green-900/50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                   disabled={loading}
                 >
                   {loading ? 'Обновление...' : 'Обновить цены и позиции'}

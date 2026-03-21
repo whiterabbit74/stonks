@@ -630,7 +630,7 @@ function ComparisonMetric({
   currentLabel: string;
 }) {
   return (
-    <div className="rounded-md border border-indigo-200/80 bg-white/80 p-3 dark:border-indigo-900/60 dark:bg-slate-900/40">
+    <div className="rounded-lg border border-indigo-200/80 bg-white/80 p-3 dark:border-indigo-900/60 dark:bg-slate-900/40">
       <div className="mb-1 text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">{label}</div>
       <div className="text-xs text-gray-600 dark:text-gray-300">
         {baseLabel}: <span className="font-semibold">{baseValue}</span>

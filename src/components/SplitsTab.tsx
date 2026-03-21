@@ -595,7 +595,7 @@ export function SplitsTab() {
                       {/* Save/Cancel buttons for mobile */}
                       <div className="grid grid-cols-2 gap-3 pt-2">
                         <button
-                          className="px-4 py-3 text-sm font-medium rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-60 transition-colors"
+                          className="px-4 py-3 text-sm font-medium rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                           onClick={saveEdits}
                           disabled={actionBusy}
                         >
