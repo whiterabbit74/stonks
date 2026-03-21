@@ -88,6 +88,25 @@ export function MultiTickerPage() {
     return defaultMultiTickerSymbols || 'AAPL, MSFT, AMZN, MAGS';
   };
 
+  // ─── localStorage persistence helpers ────────────────────────────────────────
+  const LS_CHART_KIND   = 'stocks.heroChartKind';
+  const LS_SHOW_TRADES  = 'stocks.heroShowTrades';
+  const LS_RANGE        = 'stocks.heroRange';
+  const LS_TICKER       = 'stocks.selectedChartTicker';
+
+  const lsGet = <T,>(key: string, fallback: T): T => {
+    try { const v = localStorage.getItem(key); return v !== null ? JSON.parse(v) as T : fallback; } catch { return fallback; }
+  };
+
+  const getInitialSelectedTicker = () => {
+    const urlTickers = searchParams.get('tickers');
+    if (urlTickers) {
+      const first = urlTickers.split(',').map(s => s.trim().toUpperCase()).filter(Boolean)[0];
+      if (first) return first;
+    }
+    return lsGet<string>(LS_TICKER, getDefaultTickers()[0] ?? '');
+  };
+
   const [tickers, setTickers] = useState<string[]>(getInitialTickers);
   const [tickersInput, setTickersInput] = useState<string>(getInitialTickersInput);
   const [leveragePercent, setLeveragePercent] = useState(200);
@@ -105,11 +124,12 @@ export function MultiTickerPage() {
   const [selectedTradeTicker, setSelectedTradeTicker] = useState<'all' | string>('all');
 
   // Сводка tab state
-  const [selectedChartTicker, setSelectedChartTicker] = useState<string>(() => getDefaultTickers()[0] ?? '');
+  const [selectedChartTicker, setSelectedChartTicker] = useState<string>(getInitialSelectedTicker);
   const [chartQuote, setChartQuote] = useState<ChartQuote | null>(null);
   const [chartQuoteLoading, setChartQuoteLoading] = useState(false);
-  const [heroChartKind, setHeroChartKind] = useState<'line' | 'candles'>('line');
-  const [heroShowTrades, setHeroShowTrades] = useState(true);
+  const [heroChartKind, setHeroChartKind] = useState<'line' | 'candles'>(() => lsGet<'line' | 'candles'>(LS_CHART_KIND, 'line'));
+  const [heroShowTrades, setHeroShowTrades] = useState<boolean>(() => lsGet<boolean>(LS_SHOW_TRADES, true));
+  const [heroRange, setHeroRange] = useState<'1M' | '3M' | '6M' | '1Y' | '3Y' | '5Y' | 'MAX'>(() => lsGet(LS_RANGE, '3M'));
   const [showHeroSettings, setShowHeroSettings] = useState(false);
   const [isMarketOpen, setIsMarketOpen] = useState(getIsMarketOpen);
 
@@ -304,6 +324,12 @@ export function MultiTickerPage() {
       setSelectedChartTicker(tickers[0]);
     }
   }, [tickers]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Persist chart settings to localStorage
+  useEffect(() => { try { localStorage.setItem(LS_CHART_KIND, JSON.stringify(heroChartKind)); } catch {} }, [heroChartKind]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { try { localStorage.setItem(LS_SHOW_TRADES, JSON.stringify(heroShowTrades)); } catch {} }, [heroShowTrades]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { try { localStorage.setItem(LS_RANGE, JSON.stringify(heroRange)); } catch {} }, [heroRange]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { try { localStorage.setItem(LS_TICKER, JSON.stringify(selectedChartTicker)); } catch {} }, [selectedChartTicker]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Keep selectedPriceTicker in sync with tickers list
   useEffect(() => {
@@ -587,6 +613,8 @@ export function MultiTickerPage() {
                 showTrades={heroShowTrades}
                 isTrading={isMarketOpen}
                 isUpdating={chartQuoteLoading}
+                initialRange={heroRange}
+                onRangeChange={setHeroRange}
               />
             )}
           </div>

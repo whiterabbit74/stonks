@@ -37,6 +37,8 @@ interface HeroLineChartProps {
   isTrading?: boolean;
   isStale?: boolean;
   isUpdating?: boolean;
+  initialRange?: RangeKey;
+  onRangeChange?: (range: RangeKey) => void;
 }
 
 export function HeroLineChart({
@@ -49,6 +51,8 @@ export function HeroLineChart({
   isTrading = false,
   isStale = false,
   isUpdating = false,
+  initialRange,
+  onRangeChange,
 }: HeroLineChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -59,7 +63,12 @@ export function HeroLineChart({
   const hasAppliedInitialRangeRef = useRef(false);
   const previousRangeRef = useRef<RangeKey>('3M');
 
-  const [activeRange, setActiveRange] = useState<RangeKey>('3M');
+  const [activeRange, setActiveRange] = useState<RangeKey>(initialRange ?? '3M');
+
+  const handleSetRange = (range: RangeKey) => {
+    setActiveRange(range);
+    onRangeChange?.(range);
+  };
   const [isDark, setIsDark] = useState<boolean>(() =>
     typeof document !== 'undefined' ? document.documentElement.classList.contains('dark') : false
   );
@@ -323,7 +332,7 @@ export function HeroLineChart({
                 <button
                   key={range}
                   type="button"
-                  onClick={() => setActiveRange(range)}
+                  onClick={() => handleSetRange(range)}
                   className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium transition-colors ${activeRange === range
                     ? 'bg-blue-600 text-white'
                     : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'
