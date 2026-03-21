@@ -203,12 +203,6 @@ export function runSinglePositionBacktest(
     : null;
   let lastContributionMonthKey: string | null = null;
 
-  console.log(`🚀 SINGLE POSITION MULTI-TICKER BACKTEST START`);
-  console.log(`📊 Initial Capital: ${formatCurrencyCompact(initialCapital)} (${formatCurrencyUSD(initialCapital)})`);
-  console.log(`📈 Tickers: ${tickersData.map(t => t.ticker).join(', ')}`);
-  console.log(`💰 Position Size: 100% депозита на сделку`);
-  console.log(`💹 Leverage: ${leverage.toFixed(1)}:1 (${(leverage * 100).toFixed(0)}%)`);
-
   // Track peak value for O(1) drawdown calculation
   let peakValue = portfolio.totalPortfolioValue;
 
@@ -234,9 +228,6 @@ export function runSinglePositionBacktest(
           totalMonthlyContributions += monthlyContributionPlan.amount;
           contributionCount += 1;
           lastContributionMonthKey = monthKey;
-          console.log(
-            `➕ CONTRIBUTION: +${formatCurrencyCompact(monthlyContributionPlan.amount)} on ${currentDate.toISOString().slice(0, 10)}`
-          );
         }
       }
     }
@@ -321,9 +312,6 @@ export function runSinglePositionBacktest(
             currentPosition = null;
             exitedThisBar = true;
 
-            console.log(`🔴 EXIT [${trade.context?.ticker}]: IBS=${ibs.toFixed(3)}, ${exitReason}`);
-            console.log(`   💰 P&L=${formatCurrencyCompact(totalPnL)} (${pnlPercent.toFixed(2)}%), Duration=${daysSinceEntry} days`);
-            console.log(`   📊 Portfolio: ${formatCurrencyCompact(portfolio.totalPortfolioValue)}`);
           }
         }
       }
@@ -387,10 +375,6 @@ export function runSinglePositionBacktest(
             portfolio.freeCapital -= totalCashRequired;
             portfolio.totalInvestedCost += totalCashRequired;
 
-            console.log(`🟢 ENTRY [${tickerData.ticker}]: IBS=${ibs.toFixed(3)} < ${lowIBS}`);
-            console.log(`   💰 Stock Value: ${formatCurrencyCompact(stockCost)} | Margin: ${formatCurrencyCompact(marginRequired)} | Commission: ${formatCurrencyCompact(entryCommission)}`);
-            console.log(`   📊 Portfolio: Free=${formatCurrencyCompact(portfolio.freeCapital)} | Invested=${formatCurrencyCompact(portfolio.totalInvestedCost)}`);
-            console.log(`   🎯 Leverage: ${leverage.toFixed(1)}:1 | Total Cash Required: ${formatCurrencyCompact(totalCashRequired)}`);
           }
         }
       }
@@ -477,10 +461,6 @@ export function runSinglePositionBacktest(
     { total: totalMonthlyContributions, count: contributionCount }
   );
 
-  console.log(`✅ SINGLE POSITION BACKTEST COMPLETE`);
-  console.log(`📊 Final Value: ${formatCurrencyCompact(portfolio.totalPortfolioValue)} (${formatCurrencyUSD(portfolio.totalPortfolioValue)})`);
-  console.log(`📈 Total Return: ${metrics.totalReturn.toFixed(2)}%`);
-  console.log(`🎯 Total Trades: ${trades.length}`);
 
   return {
     equity,
