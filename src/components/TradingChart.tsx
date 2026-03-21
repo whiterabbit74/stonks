@@ -22,16 +22,31 @@ import { logError } from '../lib/error-logger';
 const MIN_CHART_HEIGHT = 680;
 
 type RangeKey = 'ALL' | 'YTD' | '5Y' | '3Y' | '1Y' | '6M' | '3M' | '1M';
-const RANGE_OPTIONS: Array<{ value: RangeKey; label: string }> = [
-  { value: '1M', label: '1 месяц' },
-  { value: '3M', label: '3 месяца' },
-  { value: '6M', label: '6 месяцев' },
-  { value: '1Y', label: '1 год' },
-  { value: '3Y', label: '3 года' },
-  { value: '5Y', label: '5 лет' },
-  { value: 'YTD', label: 'С начала года' },
-  { value: 'ALL', label: 'Весь период' },
+const RANGE_OPTIONS: Array<{ value: RangeKey; label: string; short: string }> = [
+  { value: '1M', label: '1 месяц', short: '1М' },
+  { value: '3M', label: '3 месяца', short: '3М' },
+  { value: '6M', label: '6 месяцев', short: '6М' },
+  { value: '1Y', label: '1 год', short: '1Y' },
+  { value: '3Y', label: '3 года', short: '3Y' },
+  { value: '5Y', label: '5 лет', short: '5Y' },
+  { value: 'YTD', label: 'С начала года', short: 'YTD' },
+  { value: 'ALL', label: 'Весь период', short: 'Всё' },
 ];
+
+const CHART_PREFS_KEY = 'chart-prefs';
+
+function loadChartPrefs() {
+  try {
+    const raw = localStorage.getItem(CHART_PREFS_KEY);
+    return raw ? (JSON.parse(raw) as Partial<{ range: RangeKey; ema20: boolean; ema200: boolean; ibs: boolean; volume: boolean }>) : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveChartPrefs(prefs: { range: RangeKey; ema20: boolean; ema200: boolean; ibs: boolean; volume: boolean }) {
+  try { localStorage.setItem(CHART_PREFS_KEY, JSON.stringify(prefs)); } catch { /* ignore */ }
+}
 
 const calculateEMA = (data: Array<{ close: number }>, period: number): number[] => {
   if (data.length < period) return [];
@@ -62,7 +77,6 @@ interface TradingChartProps {
 
 export const TradingChart = memo(function TradingChart({ data, trades, splits = [], isVisible = true, toolbarPrefix }: TradingChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
-  const indicatorMenuRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candlestickSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
   const ibsSeriesRef = useRef<ISeriesApi<'Histogram'> | null>(null);
@@ -74,13 +88,12 @@ export const TradingChart = memo(function TradingChart({ data, trades, splits = 
   const tooltipRef = useRef<HTMLDivElement | null>(null);
 
   const [chartReady, setChartReady] = useState(false);
-  const [activeRange, setActiveRange] = useState<RangeKey>('3Y');
+  const [activeRange, setActiveRange] = useState<RangeKey>(() => loadChartPrefs()?.range ?? '3Y');
 
-  const [showEMA20, setShowEMA20] = useState(false);
-  const [showEMA200, setShowEMA200] = useState(false);
-  const [showIBS, setShowIBS] = useState(false);
-  const [showVolume, setShowVolume] = useState(false);
-  const [showIndicatorsMenu, setShowIndicatorsMenu] = useState(false);
+  const [showEMA20, setShowEMA20] = useState(() => loadChartPrefs()?.ema20 ?? false);
+  const [showEMA200, setShowEMA200] = useState(() => loadChartPrefs()?.ema200 ?? false);
+  const [showIBS, setShowIBS] = useState(() => loadChartPrefs()?.ibs ?? false);
+  const [showVolume, setShowVolume] = useState(() => loadChartPrefs()?.volume ?? false);
 
   const showIBSRef = useRef(showIBS);
   const showVolumeRef = useRef(showVolume);
@@ -96,18 +109,8 @@ export const TradingChart = memo(function TradingChart({ data, trades, splits = 
   }, [showIBS, showVolume]);
 
   useEffect(() => {
-    if (!showIndicatorsMenu) return;
-
-    const handleOutsideClick = (event: MouseEvent) => {
-      if (!indicatorMenuRef.current) return;
-      if (!indicatorMenuRef.current.contains(event.target as Node)) {
-        setShowIndicatorsMenu(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handleOutsideClick);
-    return () => document.removeEventListener('mousedown', handleOutsideClick);
-  }, [showIndicatorsMenu]);
+    saveChartPrefs({ range: activeRange, ema20: showEMA20, ema200: showEMA200, ibs: showIBS, volume: showVolume });
+  }, [activeRange, showEMA20, showEMA200, showIBS, showVolume]);
 
   useEffect(() => {
     const onTheme = (e: Event) => {
@@ -651,60 +654,54 @@ export const TradingChart = memo(function TradingChart({ data, trades, splits = 
     return () => cancelAnimationFrame(raf1);
   }, [isVisible, activeRange, chartData.length]);
 
-  const indicatorsCount = Number(showEMA20) + Number(showEMA200) + Number(showIBS) + Number(showVolume);
-
   return (
     <div className="w-full grid grid-rows-[auto,1fr] gap-2 relative">
       <div className="flex flex-wrap items-center gap-2">
         {toolbarPrefix}
-        <label className="flex flex-col gap-1 text-xs text-gray-600 dark:text-gray-300">
-          <span className="font-medium">Период</span>
-          <select
-            value={activeRange}
-            onChange={(event) => setActiveRange(event.target.value as RangeKey)}
-            className="min-w-[180px] rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-sm text-gray-900 outline-none transition focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
-            aria-label="Период отображения"
-          >
-            {RANGE_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
 
-        <div ref={indicatorMenuRef} className="relative">
-          <button
-            type="button"
-            onClick={() => setShowIndicatorsMenu((prev) => !prev)}
-            className="inline-flex h-[38px] items-center rounded-md border border-gray-300 bg-white px-3 text-sm text-gray-800 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:hover:bg-gray-800"
-            aria-haspopup="menu"
-            aria-expanded={showIndicatorsMenu}
-            title="Выбор индикаторов"
-          >
-            Индикаторы{indicatorsCount > 0 ? ` (${indicatorsCount})` : ''}
-          </button>
+        {/* Period selector */}
+        <div className="flex items-center" role="group" aria-label="Период">
+          {RANGE_OPTIONS.map((opt, i) => (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => setActiveRange(opt.value)}
+              title={opt.label}
+              className={`px-2.5 py-1.5 text-xs font-medium border transition-colors
+                ${i === 0 ? 'rounded-l-lg' : ''}
+                ${i === RANGE_OPTIONS.length - 1 ? 'rounded-r-lg' : ''}
+                ${i > 0 ? '-ml-px' : ''}
+                ${activeRange === opt.value
+                  ? 'relative z-10 bg-blue-600 text-white border-blue-600'
+                  : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50 dark:bg-gray-900 dark:text-gray-300 dark:border-gray-700 dark:hover:bg-gray-800'
+                }`}
+            >
+              {opt.short}
+            </button>
+          ))}
+        </div>
 
-          {showIndicatorsMenu && (
-            <div className="absolute left-0 top-full z-20 mt-1.5 w-52 rounded-lg border border-gray-200 bg-white p-2 shadow-lg dark:border-gray-700 dark:bg-gray-900">
-              <label className="flex items-center gap-2 rounded px-2 py-1.5 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-800">
-                <input type="checkbox" checked={showEMA20} onChange={() => setShowEMA20((prev) => !prev)} />
-                <span>EMA 20</span>
-              </label>
-              <label className="flex items-center gap-2 rounded px-2 py-1.5 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-800">
-                <input type="checkbox" checked={showEMA200} onChange={() => setShowEMA200((prev) => !prev)} />
-                <span>EMA 200</span>
-              </label>
-              <label className="flex items-center gap-2 rounded px-2 py-1.5 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-800">
-                <input type="checkbox" checked={showIBS} onChange={() => setShowIBS((prev) => !prev)} />
-                <span>IBS</span>
-              </label>
-              <label className="flex items-center gap-2 rounded px-2 py-1.5 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-800">
-                <input type="checkbox" checked={showVolume} onChange={() => setShowVolume((prev) => !prev)} />
-                <span>Объём</span>
-              </label>
-            </div>
-          )}
+        {/* Indicator toggles */}
+        <div className="flex items-center gap-1.5" role="group" aria-label="Индикаторы">
+          {([
+            { label: 'EMA 20', active: showEMA20, toggle: () => setShowEMA20(v => !v) },
+            { label: 'EMA 200', active: showEMA200, toggle: () => setShowEMA200(v => !v) },
+            { label: 'IBS', active: showIBS, toggle: () => setShowIBS(v => !v) },
+            { label: 'Объём', active: showVolume, toggle: () => setShowVolume(v => !v) },
+          ] as const).map(ind => (
+            <button
+              key={ind.label}
+              type="button"
+              onClick={ind.toggle}
+              className={`px-2.5 py-1.5 text-xs font-medium rounded-lg border transition-colors ${
+                ind.active
+                  ? 'bg-blue-600 text-white border-blue-600'
+                  : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50 dark:bg-gray-900 dark:text-gray-300 dark:border-gray-700 dark:hover:bg-gray-800'
+              }`}
+            >
+              {ind.label}
+            </button>
+          ))}
         </div>
       </div>
 
