@@ -121,10 +121,6 @@ export class BacktestEngine {
    * Check entry conditions for the current bar
    */
   private checkEntryConditions(index: number, bar: OHLCData): void {
-    const ibsKey = this.getIndicatorKey('IBS', { type: 'indicator', indicator: 'IBS', operator: '<', value: 0.1 } as any);
-    const ibsValue = this.indicators.get(ibsKey)?.[index];
-    const lowThreshold = this.strategy.parameters.lowIBS || 0.1;
-
     if (this.evaluateConditions(this.strategy.entryConditions, index)) {
       this.enterPosition(index, bar);
     }
@@ -236,8 +232,6 @@ export class BacktestEngine {
 
     // Update capital - subtract the total cost
     this.currentCapital -= totalCost;
-
-    const pos = this.currentPosition!;
 
     // Record signal
     this.signals.push({
@@ -792,15 +786,7 @@ export class BacktestEngine {
     const validIBS = ibsValues.filter(v => !isNaN(v));
     if (validIBS.length === 0) return;
 
-    const lowThreshold = Number(this.strategy.parameters.lowIBS ?? 0.1);
     const highThreshold = Number(this.strategy.parameters.highIBS ?? 0.75);
-
-    const belowLow = validIBS.filter(v => v < lowThreshold).length;
-    const aboveHigh = validIBS.filter(v => v > highThreshold).length;
-    const min = Math.min(...validIBS);
-    const max = Math.max(...validIBS);
-    const avg = validIBS.reduce((sum, v) => sum + v, 0) / validIBS.length;
-
 
     // Проверим последовательности
     let consecutiveHigh = 0;

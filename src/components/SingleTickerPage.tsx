@@ -143,7 +143,7 @@ export function SingleTickerPage() {
   }, [visibleAnalysisTabs]);
 
   const [activeChart, setActiveChart] = useState<ChartTab>(firstVisibleTab);
-  const [isChartTransitionPending, startChartTransition] = useTransition();
+  const [, startChartTransition] = useTransition();
   const [heroChartKind, setHeroChartKind] = useState<'line' | 'candles'>('line');
   const [heroShowTrades, setHeroShowTrades] = useState(true);
   const [showHeroSettings, setShowHeroSettings] = useState(false);
