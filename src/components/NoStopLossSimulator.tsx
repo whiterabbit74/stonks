@@ -273,7 +273,7 @@ export function NoStopLossSimulator({ data, strategy }: NoStopLossSimulatorProps
       />
 
       {/* Chart */}
-      <div className="h-[72vh] min-h-[560px] max-h-[900px]">
+      <div className="h-[65vh] min-h-[440px] md:min-h-[560px] max-h-[900px]">
         <EquityChart equity={result.equity} hideHeader />
       </div>
 

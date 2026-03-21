@@ -24,7 +24,7 @@ export function SimulationStatsGrid({
   totalReturn
 }: SimulationStatsGridProps) {
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 md:gap-3">
+    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 md:gap-3">
       <div className="rounded-lg border p-3 bg-gray-50 dark:bg-gray-800 dark:border-gray-700">
         <div className="text-xs text-gray-500 dark:text-gray-300">Финальная стоимость</div>
         <div className="text-base font-semibold text-green-600 dark:text-green-400">
@@ -72,7 +72,7 @@ export function SimulationStatsGrid({
       </div>
 
       {(periodStart || periodEnd || leverage !== undefined) && (
-        <div className="col-span-2 sm:col-span-3 lg:col-span-5 flex flex-wrap gap-4 text-xs text-gray-500 dark:text-gray-400 px-1 items-center">
+        <div className="col-span-2 sm:col-span-3 md:col-span-5 flex flex-wrap gap-4 text-xs text-gray-500 dark:text-gray-400 px-1 items-center">
           {(periodStart && periodEnd) && <span>Период: {periodStart} — {periodEnd}</span>}
           {leverage !== undefined && <span>Текущее плечо: ×{leverage.toFixed(2)}</span>}
         </div>

@@ -411,7 +411,7 @@ export function SplitsTab() {
       ) : (
         <>
           {/* Desktop Table View */}
-          <div className="hidden lg:block">
+          <div className="hidden md:block">
             <div className="overflow-x-auto">
               <table className="w-full text-sm border-separate border-spacing-0">
                 <thead className="bg-gray-50 dark:bg-gray-900">
@@ -516,7 +516,7 @@ export function SplitsTab() {
           </div>
 
           {/* Mobile Card View */}
-          <div className="lg:hidden space-y-4">
+          <div className="md:hidden space-y-4">
             {tickers.length === 0 ? (
               <div className="text-center py-8 text-gray-500 dark:text-gray-400">
                 Нет данных

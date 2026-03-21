@@ -404,10 +404,10 @@ export function TradingCalendar() {
       </div>
 
       {/* Main layout: calendar left, lists right on wide screens */}
-      <div className="flex flex-col xl:flex-row gap-4">
+      <div className="flex flex-col lg:flex-row gap-4">
 
         {/* Calendar card — constrained width on wide screens */}
-        <div className="xl:w-[480px] xl:flex-shrink-0 bg-white rounded-xl border border-gray-200 dark:bg-gray-900 dark:border-gray-800 overflow-hidden">
+        <div className="lg:w-[440px] lg:flex-shrink-0 bg-white rounded-xl border border-gray-200 dark:bg-gray-900 dark:border-gray-800 overflow-hidden">
           {/* Navigation bar */}
           <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60">
             <button onClick={goToPreviousMonth} className="p-1.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors" title="Предыдущий месяц">

@@ -433,7 +433,7 @@ export function MultiTickerPage() {
 
     return (
       <div className="space-y-3">
-        <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_280px]">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_240px] lg:grid-cols-[minmax(0,1fr)_280px]">
           {/* ── Left: chart ── */}
           <div className="space-y-3 rounded-xl border border-gray-200 bg-gray-50/70 p-3 dark:border-gray-800 dark:bg-gray-950/40">
             {/* Toolbar: ticker pills + chart settings */}

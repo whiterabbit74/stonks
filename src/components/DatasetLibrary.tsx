@@ -389,7 +389,7 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
 
         {/* Compact Grid View */}
         {viewMode === 'compact' && (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-2">
             {filteredDatasets.map((dataset: Omit<SavedDataset, 'data'>) => (
               <CompactDatasetCard
                 key={dataset.name}

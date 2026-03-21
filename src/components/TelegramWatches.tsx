@@ -364,7 +364,7 @@ export function TelegramWatches() {
 
         {hasClosedTrades ? (
           <div className="grid gap-3 lg:grid-cols-[minmax(0,320px)_minmax(0,1fr)]">
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-1">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-center dark:border-gray-700 dark:bg-gray-800">
                 <div className="text-2xl font-bold text-green-600 dark:text-emerald-300">{formatCurrencyUSD(monitorMetrics.finalBalance)}</div>
                 <div className="text-xs text-gray-600 dark:text-gray-400">Итоговый баланс</div>

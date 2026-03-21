@@ -93,13 +93,13 @@ export function prefetchBacktestResultsChunks(mode: BacktestViewMode = 'single')
 function getLoaderClass(tabId: TabId, mode: BacktestViewMode): string {
   if (tabId === 'price') {
     return mode === 'single'
-      ? 'h-[86.4vh] min-h-[672px] md:min-h-[840px] max-h-[1320px] flex items-center justify-center'
+      ? 'h-[80vh] min-h-[480px] md:min-h-[672px] lg:min-h-[840px] max-h-[1320px] flex items-center justify-center'
       : 'h-[650px] flex items-center justify-center';
   }
 
   if (tabId === 'equity') {
     return mode === 'single'
-      ? 'h-[72vh] min-h-[560px] md:min-h-[700px] max-h-[1100px] flex items-center justify-center'
+      ? 'h-[65vh] min-h-[440px] md:min-h-[560px] lg:min-h-[700px] max-h-[1100px] flex items-center justify-center'
       : 'h-[620px] flex items-center justify-center';
   }
 
@@ -346,7 +346,7 @@ export function BacktestResultsView({
     if (tabId === 'price') {
       if (mode === 'single') {
         return (
-          <ChartContainer height="86.4vh" className="min-h-[672px] md:min-h-[840px] max-h-[1320px] mt-4 mb-6">
+          <ChartContainer height="80vh" className="min-h-[480px] md:min-h-[672px] lg:min-h-[840px] max-h-[1320px] mt-4 mb-6">
             <ErrorBoundary>
               <Suspense fallback={lazyFallback}>
                 <TradingChart
@@ -379,7 +379,7 @@ export function BacktestResultsView({
           <div className="space-y-6">
             {renderComparisonPanel(tabId)}
             {extraEquityInfo}
-            <div className="h-[72vh] min-h-[560px] md:min-h-[700px] max-h-[1100px]">
+            <div className="h-[65vh] min-h-[440px] md:min-h-[560px] lg:min-h-[700px] max-h-[1100px]">
               <ErrorBoundary>
                 <Suspense fallback={lazyFallback}>
                   <EquityChart
