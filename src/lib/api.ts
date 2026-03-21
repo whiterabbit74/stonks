@@ -967,6 +967,18 @@ export class DatasetAPI {
     return response.json();
   }
 
+  static async updateCalendarDay(year: string, mmdd: string, type: 'normal' | 'holiday' | 'short', name?: string): Promise<void> {
+    const response = await fetchWithCreds(`${API_BASE_URL}/trading-calendar/day`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ year, mmdd, type, name }),
+    });
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data?.error || `${response.status} ${response.statusText}`);
+    }
+  }
+
   static async importWebullCalendar(market?: string): Promise<{
     ok: boolean; from: string; to: string; coverageThrough: string;
     tradingDaysFound: number; newHolidays: number; newShortDays: number; fetchErrors: number;

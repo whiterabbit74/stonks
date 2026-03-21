@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react';
-import { Clock, AlertCircle, CalendarX2, ChevronLeft, ChevronRight, X, CalendarOff, RefreshCw, Download, CheckCircle2 } from 'lucide-react';
+import { Clock, AlertCircle, CalendarX2, ChevronLeft, ChevronRight, X, CalendarOff, RefreshCw, Download, CheckCircle2, Pencil } from 'lucide-react';
 import { API_BASE_URL, DatasetAPI } from '../lib/api';
 import { PageHeader } from './ui/PageHeader';
 
@@ -29,6 +29,8 @@ interface CalendarData {
   };
 }
 
+type DayEditType = 'normal' | 'holiday' | 'short';
+
 export function TradingCalendar() {
   const MONTHS = [
     'Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
@@ -55,6 +57,11 @@ export function TradingCalendar() {
     tradingDaysFound: number; newHolidays: number; newShortDays: number; fetchErrors: number;
   } | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
+
+  // Edit state
+  const [editType, setEditType] = useState<DayEditType>('normal');
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
 
   const today = new Date();
   const currentYear = today.getFullYear();
@@ -109,7 +116,6 @@ export function TradingCalendar() {
     try {
       const result = await DatasetAPI.importWebullCalendar();
       setImportResult(result);
-      // Reload calendar to reflect imported data
       await loadCalendar();
     } catch (err) {
       setImportError(err instanceof Error ? err.message : String(err));
@@ -172,13 +178,39 @@ export function TradingCalendar() {
     if (triggerElement) modalTriggerRef.current = triggerElement;
     setDetailsDate({ year, month, day });
     setDetailsOpen(true);
-  }, []);
+    setEditError(null);
+    // Pre-set edit type from current day type
+    const monthStr = String(month + 1).padStart(2, '0');
+    const dayStr = String(day).padStart(2, '0');
+    const dateKey = `${monthStr}-${dayStr}`;
+    if (calendarData?.holidays[year]?.[dateKey]) setEditType('holiday');
+    else if (calendarData?.shortDays[year]?.[dateKey]) setEditType('short');
+    else setEditType('normal');
+  }, [calendarData]);
 
   const closeDetails = useCallback(() => {
     setDetailsOpen(false);
     setDetailsDate(null);
+    setEditError(null);
     requestAnimationFrame(() => { modalTriggerRef.current?.focus(); });
   }, []);
+
+  const handleSaveDay = async () => {
+    if (!detailsDate) return;
+    const { year, month, day } = detailsDate;
+    const mmdd = `${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    setEditSaving(true);
+    setEditError(null);
+    try {
+      await DatasetAPI.updateCalendarDay(year, mmdd, editType);
+      await loadCalendar();
+      closeDetails();
+    } catch (err) {
+      setEditError(err instanceof Error ? err.message : 'Ошибка сохранения');
+    } finally {
+      setEditSaving(false);
+    }
+  };
 
   const handleGridTouchStart = (e: React.TouchEvent) => {
     const t = e.touches[0];
@@ -340,7 +372,7 @@ export function TradingCalendar() {
         }
       />
 
-      {/* Legend — compact inline row */}
+      {/* Legend + import button */}
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-gray-600 dark:text-gray-400">
         <span className="flex items-center gap-1.5">
           <span className="w-2.5 h-2.5 rounded-full bg-green-500 flex-shrink-0" />
@@ -365,147 +397,147 @@ export function TradingCalendar() {
             title="Импортировать данные из Webull (от последней покрытой даты на 6 месяцев вперёд)"
             className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded border border-indigo-300 dark:border-indigo-700 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 disabled:opacity-50 disabled:cursor-wait transition-colors"
           >
-            {importing ? (
-              <RefreshCw className="w-3 h-3 animate-spin" />
-            ) : (
-              <Download className="w-3 h-3" />
-            )}
+            {importing ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
             {importing ? 'Импорт…' : 'Импорт из Webull'}
           </button>
         </div>
       </div>
 
-      {/* Calendar card */}
-      <div className="bg-white rounded-xl border border-gray-200 dark:bg-gray-900 dark:border-gray-800 overflow-hidden">
-        {/* Navigation bar */}
-        <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60">
-          <button onClick={goToPreviousMonth} className="p-1.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors" title="Предыдущий месяц">
-            <ChevronLeft className="w-4 h-4 text-gray-600 dark:text-gray-400" />
-          </button>
+      {/* Main layout: calendar left, lists right on wide screens */}
+      <div className="flex flex-col xl:flex-row gap-4">
 
-          <div className="flex items-center gap-2">
-            <h2 id={monthHeaderId} className="text-sm font-semibold text-gray-900 dark:text-gray-100 min-w-[120px] text-center">
-              {MONTHS[selectedMonth]} {selectedYear}
-            </h2>
-            <select
-              value={selectedYear}
-              onChange={(e) => setSelectedYear(e.target.value)}
-              className="text-xs px-2 py-1 bg-white border border-gray-300 rounded dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100 focus:ring-1 focus:ring-blue-500"
-              aria-label="Год"
-            >
-              {calendarData.metadata.years.map(year => (
-                <option key={year} value={year}>{year}</option>
-              ))}
-            </select>
-            <select
-              value={selectedMonth}
-              onChange={(e) => {
-                const value = parseInt(e.target.value, 10);
-                setSelectedMonth(isNaN(value) ? 0 : Math.max(0, Math.min(11, value)));
-              }}
-              className="text-xs px-2 py-1 bg-white border border-gray-300 rounded dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100 focus:ring-1 focus:ring-blue-500"
-              aria-label="Месяц"
-            >
-              {MONTHS.map((month, index) => (
-                <option key={index} value={index}>{month}</option>
-              ))}
-            </select>
-          </div>
-
-          <div className="flex items-center gap-1">
-            <button
-              onClick={goToToday}
-              disabled={isCurrentMonth}
-              className={`text-xs px-2.5 py-1 rounded font-medium transition-colors ${isCurrentMonth ? 'text-gray-400 dark:text-gray-500 cursor-default' : 'text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/30'}`}
-            >
-              Сегодня
+        {/* Calendar card — constrained width on wide screens */}
+        <div className="xl:w-[480px] xl:flex-shrink-0 bg-white rounded-xl border border-gray-200 dark:bg-gray-900 dark:border-gray-800 overflow-hidden">
+          {/* Navigation bar */}
+          <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60">
+            <button onClick={goToPreviousMonth} className="p-1.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors" title="Предыдущий месяц">
+              <ChevronLeft className="w-4 h-4 text-gray-600 dark:text-gray-400" />
             </button>
-            <button onClick={goToNextMonth} className="p-1.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors" title="Следующий месяц">
-              <ChevronRight className="w-4 h-4 text-gray-600 dark:text-gray-400" />
-            </button>
-          </div>
-        </div>
 
-        {/* Weekday headers */}
-        <div className="grid grid-cols-7 bg-gray-50 dark:bg-gray-800/40 border-b border-gray-200 dark:border-gray-700">
-          {WEEKDAYS.map(day => (
-            <div key={day} className="py-1.5 text-center text-xs font-medium text-gray-500 dark:text-gray-400 border-r border-gray-100 dark:border-gray-800 last:border-r-0">
-              {day}
+            <div className="flex items-center gap-2">
+              <h2 id={monthHeaderId} className="text-sm font-semibold text-gray-900 dark:text-gray-100 min-w-[120px] text-center">
+                {MONTHS[selectedMonth]} {selectedYear}
+              </h2>
+              <select
+                value={selectedYear}
+                onChange={(e) => setSelectedYear(e.target.value)}
+                className="text-xs px-2 py-1 bg-white border border-gray-300 rounded dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100 focus:ring-1 focus:ring-blue-500"
+                aria-label="Год"
+              >
+                {calendarData.metadata.years.map(year => (
+                  <option key={year} value={year}>{year}</option>
+                ))}
+              </select>
+              <select
+                value={selectedMonth}
+                onChange={(e) => {
+                  const value = parseInt(e.target.value, 10);
+                  setSelectedMonth(isNaN(value) ? 0 : Math.max(0, Math.min(11, value)));
+                }}
+                className="text-xs px-2 py-1 bg-white border border-gray-300 rounded dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100 focus:ring-1 focus:ring-blue-500"
+                aria-label="Месяц"
+              >
+                {MONTHS.map((month, index) => (
+                  <option key={index} value={index}>{month}</option>
+                ))}
+              </select>
             </div>
-          ))}
+
+            <div className="flex items-center gap-1">
+              <button
+                onClick={goToToday}
+                disabled={isCurrentMonth}
+                className={`text-xs px-2.5 py-1 rounded font-medium transition-colors ${isCurrentMonth ? 'text-gray-400 dark:text-gray-500 cursor-default' : 'text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/30'}`}
+              >
+                Сегодня
+              </button>
+              <button onClick={goToNextMonth} className="p-1.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors" title="Следующий месяц">
+                <ChevronRight className="w-4 h-4 text-gray-600 dark:text-gray-400" />
+              </button>
+            </div>
+          </div>
+
+          {/* Weekday headers */}
+          <div className="grid grid-cols-7 bg-gray-50 dark:bg-gray-800/40 border-b border-gray-200 dark:border-gray-700">
+            {WEEKDAYS.map(day => (
+              <div key={day} className="py-1.5 text-center text-xs font-medium text-gray-500 dark:text-gray-400 border-r border-gray-100 dark:border-gray-800 last:border-r-0">
+                {day}
+              </div>
+            ))}
+          </div>
+
+          {/* Calendar grid */}
+          <div
+            className="grid grid-cols-7 touch-manipulation"
+            role="grid"
+            aria-labelledby={monthHeaderId}
+            onTouchStart={handleGridTouchStart}
+            onTouchEnd={handleGridTouchEnd}
+          >
+            {renderCalendar()}
+          </div>
+          <div className="sr-only" aria-live="polite" aria-atomic="true">{MONTHS[selectedMonth]} {selectedYear}</div>
         </div>
 
-        {/* Calendar grid */}
-        <div
-          className="grid grid-cols-7 touch-manipulation"
-          role="grid"
-          aria-labelledby={monthHeaderId}
-          onTouchStart={handleGridTouchStart}
-          onTouchEnd={handleGridTouchEnd}
-        >
-          {renderCalendar()}
-        </div>
-        <div className="sr-only" aria-live="polite" aria-atomic="true">{MONTHS[selectedMonth]} {selectedYear}</div>
+        {/* Right column: holidays + short days */}
+        {(holidaysThisYear.length > 0 || shortDaysThisYear.length > 0) && (
+          <div className="flex-1 flex flex-col gap-4 min-w-0">
+            {/* Holidays */}
+            <div className="bg-white rounded-xl border border-gray-200 dark:bg-gray-900 dark:border-gray-800 overflow-hidden">
+              <div className="flex items-center gap-2 px-4 py-2.5 border-b border-gray-100 dark:border-gray-800 bg-red-50 dark:bg-red-950/20">
+                <CalendarX2 className="w-4 h-4 text-red-600 dark:text-red-400 flex-shrink-0" />
+                <span className="text-sm font-semibold text-red-900 dark:text-red-200">Праздники {selectedYear}</span>
+                <span className="ml-auto text-xs text-red-500 dark:text-red-400">{holidaysThisYear.length}</span>
+              </div>
+              {holidaysThisYear.length === 0 ? (
+                <p className="text-sm text-gray-400 dark:text-gray-500 px-4 py-3">Нет праздников</p>
+              ) : (
+                <div className="divide-y divide-gray-100 dark:divide-gray-800">
+                  {holidaysThisYear.map(([date, data]) => {
+                    const [month, day] = date.split('-');
+                    return (
+                      <div key={date} className="flex items-center justify-between px-4 py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                        <span className="text-gray-800 dark:text-gray-200 truncate mr-2">{data.name}</span>
+                        <span className="text-xs text-red-600 dark:text-red-400 flex-shrink-0 font-medium">
+                          {parseInt(day)} {MONTHS[parseInt(month) - 1].slice(0, 3)}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Short days */}
+            <div className="bg-white rounded-xl border border-gray-200 dark:bg-gray-900 dark:border-gray-800 overflow-hidden">
+              <div className="flex items-center gap-2 px-4 py-2.5 border-b border-gray-100 dark:border-gray-800 bg-amber-50 dark:bg-amber-950/20">
+                <Clock className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0" />
+                <span className="text-sm font-semibold text-amber-900 dark:text-amber-200">Раннее закрытие {selectedYear}</span>
+                <span className="ml-auto text-xs text-amber-500 dark:text-amber-400">{shortDaysThisYear.length}</span>
+              </div>
+              {shortDaysThisYear.length === 0 ? (
+                <p className="text-sm text-gray-400 dark:text-gray-500 px-4 py-3">Нет сокращённых дней</p>
+              ) : (
+                <div className="divide-y divide-gray-100 dark:divide-gray-800">
+                  {shortDaysThisYear.map(([date, data]) => {
+                    const [month, day] = date.split('-');
+                    return (
+                      <div key={date} className="flex items-center justify-between px-4 py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                        <span className="text-gray-800 dark:text-gray-200 truncate mr-2">{data.name}</span>
+                        <span className="text-xs text-amber-600 dark:text-amber-400 flex-shrink-0 font-medium">
+                          {parseInt(day)} {MONTHS[parseInt(month) - 1].slice(0, 3)}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Holidays + Short days — compact two-column table */}
-      {(holidaysThisYear.length > 0 || shortDaysThisYear.length > 0) && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {/* Holidays */}
-          <div className="bg-white rounded-xl border border-gray-200 dark:bg-gray-900 dark:border-gray-800 overflow-hidden">
-            <div className="flex items-center gap-2 px-4 py-2.5 border-b border-gray-100 dark:border-gray-800 bg-red-50 dark:bg-red-950/20">
-              <CalendarX2 className="w-4 h-4 text-red-600 dark:text-red-400 flex-shrink-0" />
-              <span className="text-sm font-semibold text-red-900 dark:text-red-200">Праздники {selectedYear}</span>
-              <span className="ml-auto text-xs text-red-500 dark:text-red-400">{holidaysThisYear.length}</span>
-            </div>
-            {holidaysThisYear.length === 0 ? (
-              <p className="text-sm text-gray-400 dark:text-gray-500 px-4 py-3">Нет праздников</p>
-            ) : (
-              <div className="divide-y divide-gray-100 dark:divide-gray-800">
-                {holidaysThisYear.map(([date, data]) => {
-                  const [month, day] = date.split('-');
-                  return (
-                    <div key={date} className="flex items-center justify-between px-4 py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                      <span className="text-gray-800 dark:text-gray-200 truncate mr-2">{data.name}</span>
-                      <span className="text-xs text-red-600 dark:text-red-400 flex-shrink-0 font-medium">
-                        {parseInt(day)} {MONTHS[parseInt(month) - 1].slice(0, 3)}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
-          {/* Short days */}
-          <div className="bg-white rounded-xl border border-gray-200 dark:bg-gray-900 dark:border-gray-800 overflow-hidden">
-            <div className="flex items-center gap-2 px-4 py-2.5 border-b border-gray-100 dark:border-gray-800 bg-amber-50 dark:bg-amber-950/20">
-              <Clock className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0" />
-              <span className="text-sm font-semibold text-amber-900 dark:text-amber-200">Раннее закрытие {selectedYear}</span>
-              <span className="ml-auto text-xs text-amber-500 dark:text-amber-400">{shortDaysThisYear.length}</span>
-            </div>
-            {shortDaysThisYear.length === 0 ? (
-              <p className="text-sm text-gray-400 dark:text-gray-500 px-4 py-3">Нет сокращённых дней</p>
-            ) : (
-              <div className="divide-y divide-gray-100 dark:divide-gray-800">
-                {shortDaysThisYear.map(([date, data]) => {
-                  const [month, day] = date.split('-');
-                  return (
-                    <div key={date} className="flex items-center justify-between px-4 py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                      <span className="text-gray-800 dark:text-gray-200 truncate mr-2">{data.name}</span>
-                      <span className="text-xs text-amber-600 dark:text-amber-400 flex-shrink-0 font-medium">
-                        {parseInt(day)} {MONTHS[parseInt(month) - 1].slice(0, 3)}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Day details modal */}
+      {/* Day details + edit modal */}
       {detailsOpen && detailsDate && (
         <div
           className="fixed inset-0 z-50 flex items-end md:items-center justify-center"
@@ -516,6 +548,7 @@ export function TradingCalendar() {
         >
           <div className="absolute inset-0 bg-black/40" onClick={closeDetails} />
           <div className="relative w-full md:max-w-sm md:rounded-xl bg-white border border-gray-200 p-4 shadow-lg dark:bg-gray-900 dark:border-gray-800 md:mx-4 rounded-t-2xl">
+            {/* Header */}
             <div className="flex items-start justify-between gap-4">
               <div>
                 <h3 id="calendar-day-details-title" className="text-base font-semibold text-gray-900 dark:text-gray-100">
@@ -541,13 +574,41 @@ export function TradingCalendar() {
                 <X className="w-4 h-4 text-gray-500" />
               </button>
             </div>
+
             {(() => {
               const data = getDayData(detailsDate.year, detailsDate.month, detailsDate.day);
               if (!data) return null;
-              return (
-                <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">{data.description}</p>
-              );
+              return <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">{data.description}</p>;
             })()}
+
+            {/* Edit section — only for non-weekend days */}
+            {getDayType(detailsDate.year, detailsDate.month, detailsDate.day) !== 'weekend' && (
+              <div className="mt-4 border-t border-gray-100 dark:border-gray-800 pt-3 space-y-3">
+                <div className="flex items-center gap-1.5 text-xs font-medium text-gray-500 dark:text-gray-400">
+                  <Pencil className="w-3.5 h-3.5" />
+                  Изменить тип дня
+                </div>
+                <select
+                  value={editType}
+                  onChange={(e) => setEditType(e.target.value as DayEditType)}
+                  className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+                >
+                  <option value="normal">Торговый день</option>
+                  <option value="short">Раннее закрытие</option>
+                  <option value="holiday">Праздник (биржа закрыта)</option>
+                </select>
+                {editError && (
+                  <p className="text-xs text-red-600 dark:text-red-400">{editError}</p>
+                )}
+                <button
+                  onClick={handleSaveDay}
+                  disabled={editSaving}
+                  className="w-full rounded-md bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  {editSaving ? 'Сохранение…' : 'Сохранить'}
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

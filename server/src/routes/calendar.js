@@ -285,4 +285,59 @@ router.post('/trading-calendar/import-webull', async (req, res) => {
     }
 });
 
+// PATCH /api/trading-calendar/day
+// Body: { year: "2025", mmdd: "07-04", type: "normal" | "holiday" | "short", name?: string }
+// Sets the day type in the calendar. "normal" removes any overrides.
+router.patch('/trading-calendar/day', async (req, res) => {
+    try {
+        const { year, mmdd, type, name } = req.body || {};
+        if (!year || !mmdd || !type) {
+            return res.status(400).json({ error: 'year, mmdd and type are required' });
+        }
+        if (!['normal', 'holiday', 'short'].includes(type)) {
+            return res.status(400).json({ error: 'type must be normal, holiday or short' });
+        }
+
+        const calendarData = await loadTradingCalendarJSON().catch(() => null) || { ...DEFAULT_CALENDAR };
+
+        // Remove from both collections first
+        if (calendarData.holidays[year]) delete calendarData.holidays[year][mmdd];
+        if (calendarData.shortDays[year]) delete calendarData.shortDays[year][mmdd];
+
+        const ymd = `${year}-${mmdd}`;
+
+        if (type === 'holiday') {
+            if (!calendarData.holidays[year]) calendarData.holidays[year] = {};
+            calendarData.holidays[year][mmdd] = {
+                name: name || resolveHolidayName(ymd),
+                type: 'holiday',
+                description: 'Market Closed',
+            };
+        } else if (type === 'short') {
+            if (!calendarData.shortDays[year]) calendarData.shortDays[year] = {};
+            calendarData.shortDays[year][mmdd] = {
+                name: name || resolveShortDayName(ymd),
+                type: 'short',
+                description: 'Early close at 1:00 PM',
+                hours: 3.5,
+            };
+        }
+
+        // Ensure year is listed in metadata
+        const years = Array.from(new Set([
+            ...((calendarData.metadata && calendarData.metadata.years) || []),
+            year,
+            ...Object.keys(calendarData.holidays),
+            ...Object.keys(calendarData.shortDays),
+        ])).sort();
+        calendarData.metadata = { ...(calendarData.metadata || {}), years, lastUpdated: dateToYMD(new Date()) };
+
+        saveCalendarToDb(calendarData);
+        res.json({ ok: true, year, mmdd, type });
+    } catch (e) {
+        console.error('Calendar day update error:', e);
+        res.status(500).json({ error: e && e.message ? e.message : 'Failed to update day' });
+    }
+});
+
 module.exports = router;
