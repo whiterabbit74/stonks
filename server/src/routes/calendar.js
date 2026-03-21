@@ -66,8 +66,9 @@ router.post('/trading-calendar/sync-webull', async (req, res) => {
     try {
         const market = (req.body && req.body.market) || 'US';
 
-        const today = new Date();
-        today.setUTCHours(0, 0, 0, 0);
+        // Use ET date to match NYSE calendar — avoids off-by-one after 8 PM ET
+        const todayET = etKeyYMD(getETParts(new Date()));
+        const today = new Date(todayET + 'T00:00:00Z');
         const yearAhead = new Date(today.getTime() + 365 * DAY_MS);
 
         const chunks = buildChunks(today, yearAhead);
@@ -140,31 +141,43 @@ router.post('/trading-calendar/import-webull', async (req, res) => {
         // Load current calendar
         const calendarData = await loadTradingCalendarJSON().catch(() => null) || { ...DEFAULT_CALENDAR };
 
-        // Determine start date (day after last Webull coverage, or today)
+        // Determine start date (day after last Webull coverage, or today in ET)
         const coverageThrough = calendarData.metadata && calendarData.metadata.webullCoverageThrough;
         let startDate;
         if (coverageThrough) {
             startDate = new Date(coverageThrough + 'T00:00:00Z');
             startDate = new Date(startDate.getTime() + DAY_MS);
         } else {
-            startDate = new Date();
-            startDate.setUTCHours(0, 0, 0, 0);
+            // Use ET date — avoids off-by-one bug after 20:00 ET when UTC is already next day
+            const todayET = etKeyYMD(getETParts(new Date()));
+            startDate = new Date(todayET + 'T00:00:00Z');
         }
 
-        // End date: 6 months forward
+        // End date: 6 months forward from start
         const endDate = new Date(startDate);
         endDate.setUTCMonth(endDate.getUTCMonth() + 6);
 
-        // Fetch from Webull in ≤29-day chunks
+        // Fetch from Webull in ≤29-day chunks.
+        // Stop immediately on the first error or empty response to avoid gaps in coverage.
         const chunks = buildChunks(startDate, endDate);
         const tradingDays = new Map(); // ymd → trade_date_type
+        let lastSuccessfulEnd = null;  // last chunk end YMD that actually returned data
         let fetchErrors = 0;
+        let stoppedEarly = false;
         const unknownTypes = new Map(); // type → first date seen
 
         for (const { start, end } of chunks) {
             try {
                 const resp = await getTradeCalendar(market, start, end);
                 const items = Array.isArray(resp && resp.data) ? resp.data : [];
+
+                if (items.length === 0) {
+                    // Webull returned no trading days — likely reached its data horizon.
+                    // Stop here; don't process further chunks or mark these days as holidays.
+                    stoppedEarly = true;
+                    break;
+                }
+
                 for (const item of items) {
                     if (!item || !item.trade_day) continue;
                     const type = item.trade_date_type;
@@ -173,14 +186,25 @@ router.post('/trading-calendar/import-webull', async (req, res) => {
                     }
                     tradingDays.set(item.trade_day, type || 'FULL_DAY');
                 }
+                lastSuccessfulEnd = end;
             } catch (err) {
                 fetchErrors++;
+                stoppedEarly = true;
                 console.warn(`Calendar import chunk ${start}..${end} failed:`, err && err.message);
+                // Stop on first error — processing more chunks would leave a gap in coverage
+                // that would be incorrectly filled with holidays.
+                break;
             }
         }
 
-        if (tradingDays.size === 0 && fetchErrors > 0) {
-            return res.status(502).json({ error: 'All Webull requests failed — check credentials', fetchErrors });
+        if (tradingDays.size === 0) {
+            return res.status(502).json({
+                error: fetchErrors > 0
+                    ? 'Webull requests failed — check credentials'
+                    : 'Webull вернул 0 торговых дней — данные ещё не доступны или формат ответа изменился',
+                fetchErrors,
+                stoppedEarly,
+            });
         }
 
         // Abort if Webull returned unknown day types — calendar is sensitive data
@@ -195,12 +219,14 @@ router.post('/trading-calendar/import-webull', async (req, res) => {
             return res.status(422).json({ error: msg, unknownTypes: Object.fromEntries(unknownTypes) });
         }
 
-        // Build new holidays and short days from the fetched range
+        // Build new holidays and short days only within the range actually covered by Webull.
+        // Using effectiveEndDate (last chunk with data) avoids marking un-fetched days as holidays.
+        const effectiveEndDate = new Date(lastSuccessfulEnd + 'T00:00:00Z');
         const newHolidays = {};
         const newShortDays = {};
 
         const cursor = new Date(startDate);
-        while (cursor <= endDate) {
+        while (cursor <= effectiveEndDate) {
             const dow = cursor.getUTCDay(); // 0=Sun, 6=Sat
             if (dow !== 0 && dow !== 6) {
                 const ymd = dateToYMD(cursor);
@@ -257,7 +283,7 @@ router.post('/trading-calendar/import-webull', async (req, res) => {
             metadata: {
                 ...(calendarData.metadata || {}),
                 lastUpdated: dateToYMD(new Date()),
-                webullCoverageThrough: dateToYMD(endDate),
+                webullCoverageThrough: lastSuccessfulEnd,
                 years: allYears,
             },
             holidays: mergedHolidays,
@@ -272,12 +298,13 @@ router.post('/trading-calendar/import-webull', async (req, res) => {
         res.json({
             ok: true,
             from: dateToYMD(startDate),
-            to: dateToYMD(endDate),
-            coverageThrough: dateToYMD(endDate),
+            to: lastSuccessfulEnd,
+            coverageThrough: lastSuccessfulEnd,
             tradingDaysFound: tradingDays.size,
             newHolidays: newHolidayCount,
             newShortDays: newShortDayCount,
             fetchErrors,
+            stoppedEarly,
         });
     } catch (e) {
         console.error('Calendar import error:', e);
