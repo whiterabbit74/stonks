@@ -83,7 +83,7 @@ function TradeRow({ trade, isHighlighted }: { trade: MonitorTradeRecord; isHighl
     <tr className={`border-b last:border-none ${isHighlighted ? 'bg-blue-50/60 dark:bg-blue-900/20' : ''}`}>
       <td className="px-3 py-2 font-semibold text-gray-900 dark:text-gray-100">
         <Link
-          to={`/results?ticker=${encodeURIComponent(trade.symbol)}`}
+          to={`/stocks?tickers=${encodeURIComponent(trade.symbol)}`}
           className="inline-flex items-center gap-1 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
         >
           {trade.symbol}

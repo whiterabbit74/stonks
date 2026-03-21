@@ -540,7 +540,7 @@ function DatasetCard({ dataset, isActive, onLoad, onDelete, onExport, onEdit, on
 
   return (
     <Link
-      to={`/results?ticker=${dataset.ticker}`}
+      to={`/stocks?tickers=${dataset.ticker}`}
       onClick={(e) => {
          if (loading) {
             e.preventDefault();
@@ -678,7 +678,7 @@ function CompactDatasetCard({ dataset, isActive, onLoad, onDelete, onExport, onE
   return (
     <div className="relative">
       <Link
-        to={`/results?ticker=${dataset.ticker}`}
+        to={`/stocks?tickers=${dataset.ticker}`}
         onClick={(e) => {
            if (loading) {
               e.preventDefault();

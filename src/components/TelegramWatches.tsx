@@ -549,7 +549,7 @@ export function TelegramWatches() {
                     <tr key={w.symbol} className="group hover:bg-gray-50 dark:hover:bg-gray-800">
                       <td className="p-3">
                         <Link
-                          to={`/results?ticker=${encodeURIComponent(w.symbol)}`}
+                          to={`/stocks?tickers=${encodeURIComponent(w.symbol)}`}
                           className="inline-flex items-center gap-1 font-medium text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 transition-colors"
                           title={`Перейти к результатам для ${w.symbol}`}
                         >

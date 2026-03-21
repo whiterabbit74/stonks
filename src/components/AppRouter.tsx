@@ -1,6 +1,6 @@
 import React, { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { BarChart2, Bell, Briefcase, Calendar, Database, LineChart, LogOut, Layers, Scissors, Settings, Menu, X, Loader2 } from 'lucide-react';
+import { Bell, Briefcase, Calendar, Database, LineChart, LogOut, Layers, Scissors, Settings, Menu, X, Loader2 } from 'lucide-react';
 
 import { useAppStore } from '../stores';
 import { Footer } from './Footer';
@@ -12,7 +12,6 @@ import { scheduleIdleTask } from '../lib/prefetch';
 
 const importDataUpload = () => import('./DataUpload');
 const importDataEnhancer = () => import('./DataEnhancer');
-const importSingleTickerPage = () => import('./SingleTickerPage');
 const importTelegramWatches = () => import('./TelegramWatches');
 const importAppSettings = () => import('./AppSettings');
 const importSplitsTab = () => import('./SplitsTab');
@@ -23,7 +22,6 @@ const importWebullAccountPage = () => import('./WebullAccountPage');
 
 const DataUpload = lazy(() => importDataUpload().then(m => ({ default: m.DataUpload })));
 const DataEnhancer = lazy(() => importDataEnhancer().then(m => ({ default: m.DataEnhancer })));
-const SingleTickerPage = lazy(() => importSingleTickerPage().then(m => ({ default: m.SingleTickerPage })));
 const TelegramWatches = lazy(() => importTelegramWatches().then(m => ({ default: m.TelegramWatches })));
 const AppSettings = lazy(() => importAppSettings().then(m => ({ default: m.AppSettings })));
 const SplitsTab = lazy(() => importSplitsTab().then(m => ({ default: m.SplitsTab })));
@@ -35,8 +33,7 @@ const WebullAccountPage = lazy(() => importWebullAccountPage().then(m => ({ defa
 const routePrefetchers: Record<string, () => Promise<unknown>> = {
   '/data': importDataUpload,
   '/enhance': importDataEnhancer,
-  '/results': importSingleTickerPage,
-  '/multi-ticker': importMultiTickerPage,
+  '/stocks': importMultiTickerPage,
   '/multi-ticker-options': importMultiTickerOptionsPage,
   '/calendar': importCalendarPage,
   '/split': importSplitsTab,
@@ -157,18 +154,17 @@ function ProtectedLayout() {
     }
   }, [marketData, currentStrategy, backtestStatus, runBacktest]);
 
-  // Navigate to results once available (one-time)
+  // Navigate to stocks once available (one-time)
   useEffect(() => {
     if (backtestResults && !hasAutoNavigatedRef.current) {
       hasAutoNavigatedRef.current = true;
-      navigate('/results');
+      navigate('/stocks');
     }
   }, [backtestResults, navigate]);
 
   const tabs = [
     { to: '/data', label: 'Данные' },
-    { to: '/results', label: 'Один тикер' },
-    { to: '/multi-ticker', label: 'Акции' },
+    { to: '/stocks', label: 'Акции' },
     { to: '/multi-ticker-options', label: 'Опционы' },
     { to: '/calendar', label: 'Календарь' },
     { to: '/split', label: 'Сплиты' },
@@ -178,8 +174,7 @@ function ProtectedLayout() {
 
   const mobileMenuTabs: { to: string; label: string; icon: React.ReactNode }[] = [
     { to: '/data',                label: 'Данные',              icon: <Database className="w-5 h-5" /> },
-    { to: '/results',             label: 'Один тикер',          icon: <BarChart2 className="w-5 h-5" /> },
-    { to: '/multi-ticker',        label: 'Акции',   icon: <LineChart className="w-5 h-5" /> },
+    { to: '/stocks',        label: 'Акции',   icon: <LineChart className="w-5 h-5" /> },
     { to: '/multi-ticker-options',label: 'Опционы',             icon: <Layers className="w-5 h-5" /> },
     { to: '/calendar',            label: 'Календарь',           icon: <Calendar className="w-5 h-5" /> },
     { to: '/split',               label: 'Сплиты',              icon: <Scissors className="w-5 h-5" /> },
@@ -424,8 +419,8 @@ export default function AppRouter() {
             <Route index element={<Navigate to="/data" replace />} />
             <Route path="/data" element={withRouteSuspense(<DataUpload />)} />
             <Route path="/enhance" element={withRouteSuspense(<DataEnhancer />)} />
-            <Route path="/results" element={withRouteSuspense(<SingleTickerPage />)} />
-            <Route path="/multi-ticker" element={withRouteSuspense(<MultiTickerPage />)} />
+            <Route path="/results" element={<Navigate to="/stocks" replace />} />
+            <Route path="/stocks" element={withRouteSuspense(<MultiTickerPage />)} />
             <Route path="/multi-ticker-options" element={withRouteSuspense(<MultiTickerOptionsPage />)} />
             <Route path="/calendar" element={withRouteSuspense(<CalendarPage />)} />
             <Route path="/split" element={withRouteSuspense(<SplitsTab />)} />
