@@ -110,20 +110,21 @@ export const useAppStore = create<AppState>((set, get) => ({
   // ИНИЦИАЛИЗАЦИЯ: Загружаем из localStorage или дефолтные настройки
   analysisTabsConfig: (() => {
     const defaultTabs = [
-      { id: 'price', label: 'Цена', visible: true },
+      { id: 'price', label: 'Цены', visible: true },
+      { id: 'tickerCharts', label: 'Графики тикеров', visible: true },
       { id: 'equity', label: 'Баланс', visible: true },
-      { id: 'buyhold', label: 'Buy and hold', visible: true },
-      { id: 'drawdown', label: 'Просадки', visible: true },
+      { id: 'drawdown', label: 'Просадка', visible: true },
       { id: 'trades', label: 'Сделки', visible: true },
       { id: 'profit', label: 'Профит Фактор', visible: true },
       { id: 'duration', label: 'Длительность', visible: true },
-      { id: 'openDayDrawdown', label: 'Стартовая просадка', visible: true },
-      { id: 'buyAtClose', label: 'Покупка на открытии', visible: true },
-      { id: 'buyAtClose4', label: 'Мультитикер', visible: true },
-      { id: 'noStopLoss', label: 'Без stop loss', visible: true },
+      { id: 'monthlyContribution', label: 'Пополнения', visible: true },
+      { id: 'splits', label: 'Сплиты', visible: true },
+      { id: 'buyhold', label: 'Buy & Hold', visible: true },
+      { id: 'openDayDrawdown', label: 'Просадка дня', visible: true },
+      { id: 'buyAtClose', label: 'BuyAtClose', visible: true },
+      { id: 'buyAtClose4', label: 'BuyAtClose4', visible: true },
+      { id: 'noStopLoss', label: 'Без стоп-лосса', visible: true },
       { id: 'options', label: 'Опционы', visible: true },
-      { id: 'singlePosition', label: 'Одна позиция', visible: true },
-      { id: 'splits', label: 'Сплиты', visible: true }
     ];
 
     try {

@@ -4,6 +4,7 @@ import type { AutoTradingConfig, AutoTradeState, AutotradeLogsResponse, WebullDa
 import { DatasetAPI } from '../lib/api';
 import { PageHeader } from './ui/PageHeader';
 import { Button } from './ui/Button';
+import { AnalysisTabs } from './ui/AnalysisTabs';
 import { useAppStore } from '../stores';
 
 type RowRecord = Record<string, unknown>;
@@ -1384,9 +1385,10 @@ export function WebullAccountPage() {
             </div>
             <button
               title="Обновить"
+              aria-label="Обновить"
               disabled={refreshing}
               onClick={() => void Promise.all([loadDashboard(true), loadLogs(), loadAutotradeConfig()])}
-              className="inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white p-2 text-gray-600 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-300 bg-white text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-800 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
             >
               <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
             </button>
@@ -1394,36 +1396,28 @@ export function WebullAccountPage() {
         }
       />
 
-      <div className="flex flex-wrap gap-2">
-        {tabs.map((tab) => (
-          <button
-            key={tab.id}
-            type="button"
-            onClick={() => setActiveTab(tab.id)}
-            className={`rounded-full border px-4 py-2 text-sm transition-colors ${activeTab === tab.id
-              ? 'border-indigo-600 bg-indigo-600 text-white'
-              : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800'
-              }`}
-          >
-            {tab.label}
-          </button>
-        ))}
+      <div className="rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
+        <AnalysisTabs
+          tabs={tabs}
+          activeTab={activeTab}
+          onChange={(id) => setActiveTab(id as BrokerTab)}
+        />
+        <div className="space-y-4 p-4">
+          {error ? (
+            <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-200">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                <div>{error}</div>
+              </div>
+            </div>
+          ) : null}
+          {loading ? (
+            <div className="p-6 text-sm text-gray-600 dark:text-gray-300">
+              Загрузка данных кабинета…
+            </div>
+          ) : renderTabContent()}
+        </div>
       </div>
-
-      {error ? (
-        <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-200">
-          <div className="flex items-start gap-2">
-            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-            <div>{error}</div>
-          </div>
-        </div>
-      ) : null}
-
-      {loading ? (
-        <div className="rounded-2xl border border-gray-200 bg-white p-6 text-sm text-gray-600 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-300">
-          Загрузка данных кабинета…
-        </div>
-      ) : renderTabContent()}
     </div>
   );
 }

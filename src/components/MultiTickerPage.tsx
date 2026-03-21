@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { HelpCircle, Settings2, RefreshCcw, ArrowUpRight } from 'lucide-react';
 import { MetricsGrid, AnalysisTabs, PageHeader, Select, Button, TickerInput, ChartContainer } from './ui';
@@ -164,6 +164,7 @@ export function MultiTickerPage() {
     isDataOutdated
   } = useMultiTickerData();
 
+  const analysisTabsConfig = useAppStore(s => s.analysisTabsConfig);
   const currentStrategy = useAppStore(s => s.currentStrategy);
   const fallbackStrategyRef = useRef<Strategy | null>(null);
 
@@ -369,28 +370,26 @@ export function MultiTickerPage() {
 
   const isSingleTicker = tickers.length === 1;
 
-  const summaryTabs: { id: string; label: string }[] = [
-    { id: 'summary', label: 'Сводка' },
-    ...(backtestResults ? [
-      { id: 'price', label: 'Цены' },
-      ...(!isSingleTicker ? [{ id: 'tickerCharts', label: 'Графики тикеров' }] : []),
-      { id: 'equity', label: 'Баланс' },
-      { id: 'drawdown', label: 'Просадка' },
-      { id: 'trades', label: 'Сделки' },
-      { id: 'profit', label: 'Профит Фактор' },
-      { id: 'duration', label: 'Длительность' },
-      ...(monthlyContributionResults ? [{ id: 'monthlyContribution', label: 'Пополнения' }] : []),
-      { id: 'splits', label: 'Сплиты' },
-      ...(isSingleTicker ? [
-        { id: 'buyhold', label: 'Buy & Hold' },
-        { id: 'openDayDrawdown', label: 'Просадка дня' },
-        { id: 'buyAtClose', label: 'BuyAtClose' },
-        { id: 'buyAtClose4', label: 'BuyAtClose4' },
-        { id: 'noStopLoss', label: 'Без стоп-лосса' },
-        { id: 'options', label: 'Опционы' },
-      ] : []),
-    ] : []),
-  ];
+  // Single-ticker-only tab IDs
+  const SINGLE_TICKER_ONLY_TABS = new Set(['buyhold', 'openDayDrawdown', 'buyAtClose', 'buyAtClose4', 'noStopLoss', 'options']);
+  // Multi-ticker-only tab IDs
+  const MULTI_TICKER_ONLY_TABS = new Set(['tickerCharts']);
+
+  const summaryTabs = useMemo(() => {
+    const result: { id: string; label: string }[] = [{ id: 'summary', label: 'Сводка' }];
+    if (!backtestResults) return result;
+
+    for (const tab of analysisTabsConfig) {
+      if (!tab.visible) continue;
+      if (SINGLE_TICKER_ONLY_TABS.has(tab.id) && !isSingleTicker) continue;
+      if (MULTI_TICKER_ONLY_TABS.has(tab.id) && isSingleTicker) continue;
+      if (tab.id === 'monthlyContribution' && !monthlyContributionResults) continue;
+      result.push({ id: tab.id, label: tab.label });
+    }
+
+    return result;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [analysisTabsConfig, backtestResults, isSingleTicker, monthlyContributionResults]);
 
   // ─── Сводка tab ──────────────────────────────────────────────────────────────
 
@@ -584,17 +583,6 @@ export function MultiTickerPage() {
                   )}
                 </div>
 
-                {/* Market status */}
-                <div className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] ${
-                  isMarketOpen
-                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-950/30 dark:text-emerald-200'
-                    : 'border-amber-200 bg-amber-100 text-amber-800 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-200'
-                }`}>
-                  <span className={`h-1.5 w-1.5 rounded-full ${
-                    isMarketOpen ? 'bg-emerald-500' : 'bg-amber-500'
-                  } ${chartQuoteLoading ? 'animate-[pulse_2.4s_ease-in-out_infinite]' : ''}`} />
-                  {isMarketOpen ? 'Открыт' : 'Закрыт'}
-                </div>
               </div>
             </div>
 
@@ -811,29 +799,29 @@ export function MultiTickerPage() {
             {/* Цены tab: TradingChart with ticker selector pills */}
             {backtestResults && activeTab === 'price' && (
               <Suspense fallback={lazyFallback}>
-                {tickers.length > 1 && (
-                  <div className="mb-3 flex flex-wrap gap-1.5">
-                    {tickers.map((t) => (
-                      <button
-                        key={t}
-                        type="button"
-                        onClick={() => setSelectedPriceTicker(t)}
-                        className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
-                          t === selectedPriceTicker
-                            ? 'bg-blue-600 text-white'
-                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'
-                        }`}
-                      >
-                        {t}
-                      </button>
-                    ))}
-                  </div>
-                )}
                 <TradingChart
                   data={tickersData.find(t => t.ticker === selectedPriceTicker)?.data ?? []}
                   trades={backtestResults.trades}
                   splits={tickersData.find(t => t.ticker === selectedPriceTicker)?.splits}
                   isVisible={activeTab === 'price'}
+                  toolbarPrefix={tickers.length > 1 ? (
+                    <div className="flex flex-wrap gap-1.5">
+                      {tickers.map((t) => (
+                        <button
+                          key={t}
+                          type="button"
+                          onClick={() => setSelectedPriceTicker(t)}
+                          className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
+                            t === selectedPriceTicker
+                              ? 'bg-blue-600 text-white'
+                              : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'
+                          }`}
+                        >
+                          {t}
+                        </button>
+                      ))}
+                    </div>
+                  ) : undefined}
                 />
               </Suspense>
             )}

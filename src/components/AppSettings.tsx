@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { DatasetAPI } from '../lib/api';
 import { useAppStore } from '../stores';
 import { sanitizeNumericInput, sanitizeTextInput, VALIDATION_CONSTRAINTS } from '../lib/input-validation';
-import { BarChart3, TrendingUp, ShoppingCart, TrendingDown, Target, Calculator, Clock, AlertTriangle, DollarSign, BarChart2, Layers, Info, X, ChevronUp, ChevronDown, Save, Loader2, Check } from 'lucide-react';
+import { Info, X, Save, Loader2, Check } from 'lucide-react';
 import type { AutoTradingConfig } from '../types';
 import { PageHeader } from './ui/PageHeader';
 // import { StrategySettings } from './StrategySettings';
@@ -28,12 +28,12 @@ function ToggleSwitch({ checked, onChange, disabled = false }: { checked: boolea
       aria-checked={checked}
       onClick={onChange}
       disabled={disabled}
-      className={`relative inline-flex h-5 w-10 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed ${
+      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed ${
         checked ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-gray-600'
       }`}
     >
       <span
-        className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
           checked ? 'translate-x-5' : 'translate-x-0'
         }`}
       />
@@ -58,7 +58,30 @@ function AutotradeTab({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const isEnabled = autotradeConfig?.enabled ?? false;
+  // Local pending state — changes accumulate until Save is clicked
+  const [pendingEnabled, setPendingEnabled] = useState<boolean | null>(null);
+  const [pendingProvider, setPendingProvider] = useState<string | null>(null);
+
+  // Sync pending state when config loads
+  useEffect(() => {
+    if (autotradeConfig) {
+      setPendingEnabled(prev => prev === null ? autotradeConfig.enabled : prev);
+      setPendingProvider(prev => prev === null ? (autotradeConfig.provider ?? 'finnhub') : prev);
+    }
+  }, [autotradeConfig]);
+
+  const effectiveEnabled = pendingEnabled ?? autotradeConfig?.enabled ?? false;
+  const effectiveProvider = pendingProvider ?? autotradeConfig?.provider ?? 'finnhub';
+  const savedEnabled = autotradeConfig?.enabled ?? false;
+  const savedProvider = autotradeConfig?.provider ?? 'finnhub';
+  const hasChanges = autotradeConfig !== null && (
+    effectiveEnabled !== savedEnabled || effectiveProvider !== savedProvider
+  );
+
+  const handleSave = () => {
+    if (effectiveEnabled !== savedEnabled) onToggle();
+    if (effectiveProvider !== savedProvider) onChangeProvider(effectiveProvider);
+  };
 
   return (
     <div className="space-y-4">
@@ -76,8 +99,8 @@ function AutotradeTab({
         ) : (
           <div className="flex items-center justify-between gap-4">
             <div>
-              <div className={`text-sm font-medium ${isEnabled ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-700 dark:text-gray-300'}`}>
-                {autotradeToggling ? 'Применяется…' : isEnabled ? 'Включена' : 'Выключена'}
+              <div className={`text-sm font-medium ${effectiveEnabled ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-700 dark:text-gray-300'}`}>
+                {autotradeToggling ? 'Применяется…' : effectiveEnabled ? 'Включена' : 'Выключена'}
               </div>
               {autotradeConfig?.lastModifiedAt ? (
                 <div className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
@@ -86,18 +109,11 @@ function AutotradeTab({
               ) : null}
             </div>
             <ToggleSwitch
-              checked={isEnabled}
-              onChange={onToggle}
+              checked={effectiveEnabled}
+              onChange={() => setPendingEnabled(v => !(v ?? savedEnabled))}
               disabled={autotradeToggling || autotradeConfig === null}
             />
           </div>
-        )}
-
-        {autotradeError && (
-          <div className="mt-3 text-sm text-red-600 dark:text-red-400">{autotradeError}</div>
-        )}
-        {autotradeOk && (
-          <div className="mt-3 text-sm text-emerald-600 dark:text-emerald-400">{autotradeOk}</div>
         )}
       </div>
 
@@ -119,9 +135,9 @@ function AutotradeTab({
                   type="radio"
                   name="autotradeProvider"
                   value={p}
-                  checked={(autotradeConfig?.provider ?? 'finnhub') === p}
+                  checked={effectiveProvider === p}
                   disabled={autotradeConfig === null}
-                  onChange={() => onChangeProvider(p)}
+                  onChange={() => setPendingProvider(p)}
                   className="accent-indigo-600"
                 />
                 <span className="text-sm text-gray-700 dark:text-gray-300">
@@ -130,6 +146,30 @@ function AutotradeTab({
               </label>
             ))}
           </div>
+        )}
+      </div>
+
+      {/* Save button */}
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={!hasChanges || autotradeToggling || autotradeLoading}
+          className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          {autotradeToggling ? (
+            <><Loader2 className="w-4 h-4 animate-spin" />Сохранение…</>
+          ) : (
+            <><Save className="w-4 h-4" />Сохранить</>
+          )}
+        </button>
+        {autotradeOk && (
+          <span className="flex items-center gap-1 text-sm text-emerald-600 dark:text-emerald-400">
+            <Check className="w-4 h-4" />{autotradeOk}
+          </span>
+        )}
+        {autotradeError && (
+          <span className="text-sm text-red-600 dark:text-red-400">{autotradeError}</span>
         )}
       </div>
 
@@ -278,23 +318,6 @@ export function AppSettings() {
   // API info modal state
   const [showApiInfo, setShowApiInfo] = useState(false);
 
-  // Иконки для табов
-  const getTabIcon = (tabId: string) => {
-    const iconMap: Record<string, React.ReactNode> = {
-      price: <BarChart3 className="w-4 h-4" />,
-      equity: <TrendingUp className="w-4 h-4" />,
-      buyhold: <ShoppingCart className="w-4 h-4" />,
-      drawdown: <TrendingDown className="w-4 h-4" />,
-      trades: <Target className="w-4 h-4" />,
-      profit: <Calculator className="w-4 h-4" />,
-      duration: <Clock className="w-4 h-4" />,
-      openDayDrawdown: <AlertTriangle className="w-4 h-4" />,
-      singlePosition: <DollarSign className="w-4 h-4" />,
-      splits: <Layers className="w-4 h-4" />
-    };
-    return iconMap[tabId] || <BarChart2 className="w-4 h-4" />;
-  };
-
   // Drag & Drop состояние
   const [draggedTab, setDraggedTab] = useState<string | null>(null);
   const [dragOverTab, setDragOverTab] = useState<string | null>(null);
@@ -312,20 +335,6 @@ export function AppSettings() {
     );
     setAnalysisTabsConfig(newConfig);
   }, [analysisTabsConfig, lastInteractionWasDrag, setAnalysisTabsConfig]);
-
-  // Keyboard navigation for reordering
-  const moveTab = useCallback((tabId: string, direction: 'up' | 'down') => {
-    const currentIndex = analysisTabsConfig.findIndex(tab => tab.id === tabId);
-    if (currentIndex === -1) return;
-
-    const newIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
-    if (newIndex < 0 || newIndex >= analysisTabsConfig.length) return;
-
-    const newConfig = [...analysisTabsConfig];
-    const [movedItem] = newConfig.splice(currentIndex, 1);
-    newConfig.splice(newIndex, 0, movedItem);
-    setAnalysisTabsConfig(newConfig);
-  }, [analysisTabsConfig, setAnalysisTabsConfig]);
 
   // Drag & Drop функции
   const handleDragStart = (e: React.DragEvent, tabId: string) => {
@@ -924,166 +933,74 @@ export function AppSettings() {
 
   // Interface Settings Tab
   const InterfaceTab = () => (
-    <div className="space-y-6" onKeyDown={handleKeyDown}>
-      {/* Управление табами аналитики */}
-      <div className="p-6 rounded-lg border">
-        <div className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">Управление табами "Аналитика сделок"</div>
-        <div className="text-sm text-gray-600 dark:text-gray-400 mb-2">
-          Перетаскивайте блоки для изменения порядка. Нажмите на блок, чтобы скрыть/показать вкладку.
-        </div>
-        <div className="text-xs text-gray-500 dark:text-gray-500 mb-6">
-          💡 Используйте кнопки ↑/↓ для клавиатурной навигации. Нажмите Escape для отмены перетаскивания.
-        </div>
-
-        {/* Draggable blocks */}
-        <div
-          className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3"
-          role="listbox"
-          aria-label="Порядок вкладок аналитики"
-        >
-          {analysisTabsConfig.map((tab, index) => (
-            <div
-              key={tab.id}
-              role="option"
-              aria-selected={draggedTab === tab.id}
-              aria-grabbed={draggedTab === tab.id}
-              aria-roledescription="Перетаскиваемый элемент"
-              tabIndex={0}
-              draggable
-              onDragStart={(e) => handleDragStart(e, tab.id)}
-              onDragOver={(e) => handleDragOver(e, tab.id)}
-              onDragLeave={handleDragLeave}
-              onDrop={(e) => handleDrop(e, tab.id)}
-              onDragEnd={handleDragEnd}
-              onClick={(e) => {
-                // Only toggle if it was a direct click, not drag end
-                if (e.detail > 0) { // e.detail === 0 for keyboard "click"
-                  toggleTabVisibility(tab.id, true);
-                }
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault();
-                  toggleTabVisibility(tab.id, false);
-                }
-              }}
-              className={`
-                relative p-4 rounded-lg border-2 cursor-pointer transition-all duration-200 outline-none
-                focus:ring-2 focus:ring-blue-500 focus:ring-offset-2
-                ${tab.visible
-                  ? 'bg-white border-blue-200 shadow-sm hover:shadow-md hover:border-blue-300 dark:bg-gray-800 dark:border-gray-600'
-                  : 'bg-gray-100 border-gray-300 opacity-60 hover:opacity-80 dark:bg-gray-700 dark:border-gray-600'
-                }
-                ${draggedTab === tab.id ? 'opacity-50 scale-105 shadow-lg z-10' : ''}
-                ${dragOverTab === tab.id && draggedTab !== tab.id ? 'ring-2 ring-blue-500 ring-offset-2 scale-105' : ''}
-                hover:scale-105 active:scale-95
-              `}
-              title={`${tab.visible ? 'Нажмите, чтобы скрыть' : 'Нажмите, чтобы показать'} • Перетаскивайте для изменения порядка`}
-            >
-              {/* Keyboard navigation buttons */}
-              <div className="absolute top-1 right-1 flex flex-col gap-0.5">
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    moveTab(tab.id, 'up');
-                  }}
-                  disabled={index === 0}
-                  className="p-0.5 text-gray-400 hover:text-gray-600 disabled:opacity-30 disabled:cursor-not-allowed"
-                  title="Переместить выше"
-                  aria-label={`Переместить ${tab.label} выше`}
-                >
-                  <ChevronUp className="w-3 h-3" />
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    moveTab(tab.id, 'down');
-                  }}
-                  disabled={index === analysisTabsConfig.length - 1}
-                  className="p-0.5 text-gray-400 hover:text-gray-600 disabled:opacity-30 disabled:cursor-not-allowed"
-                  title="Переместить ниже"
-                  aria-label={`Переместить ${tab.label} ниже`}
-                >
-                  <ChevronDown className="w-3 h-3" />
-                </button>
-              </div>
-
-              {/* Icon and label */}
-              <div className="flex flex-col items-center text-center space-y-2">
-                <div className={`
-                  p-3 rounded-full transition-colors
-                  ${tab.visible
-                    ? 'bg-blue-100 text-blue-600 dark:bg-blue-900 dark:text-blue-300'
-                    : 'bg-gray-200 text-gray-500 dark:bg-gray-600 dark:text-gray-400'
-                  }
-                `}>
-                  {getTabIcon(tab.id)}
-                </div>
-
-                <div className={`
-                  text-sm font-medium leading-tight
-                  ${tab.visible
-                    ? 'text-gray-900 dark:text-gray-100'
-                    : 'text-gray-500 line-through dark:text-gray-400'
-                  }
-                `}>
-                  {tab.label}
-                </div>
-              </div>
-
-              {/* Status indicator */}
-              <div className={`
-                absolute bottom-2 left-2 w-2 h-2 rounded-full
-                ${tab.visible ? 'bg-green-400' : 'bg-red-400'}
-              `} />
-            </div>
-          ))}
-        </div>
-
-        {/* Statistics */}
-        <div className="mt-6 flex items-center justify-between text-sm text-gray-600 dark:text-gray-400">
-          <div>
-            Видимые вкладки: <span className="font-medium text-green-600">
-              {analysisTabsConfig.filter(tab => tab.visible).length}
-            </span> из {analysisTabsConfig.length}
-          </div>
-          <div className="flex items-center gap-4 text-xs">
-            <div className="flex items-center gap-1">
-              <div className="w-2 h-2 rounded-full bg-green-400"></div>
-              Показана
-            </div>
-            <div className="flex items-center gap-1">
-              <div className="w-2 h-2 rounded-full bg-red-400"></div>
-              Скрыта
-            </div>
+    <div onKeyDown={handleKeyDown}>
+      <div className="rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
+        <div className="border-b border-gray-200 px-4 pt-4 pb-2 dark:border-gray-700">
+          <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">Вкладки страницы «Акции»</div>
+          <div className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+            Перетащите для изменения порядка · Нажмите, чтобы скрыть или показать
           </div>
         </div>
-      </div>
 
-      {/* Предварительный просмотр */}
-      <div className="p-4 rounded-lg border bg-gray-50 dark:bg-gray-800">
-        <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Предварительный просмотр</div>
-        <div className="text-xs text-gray-500 mb-3">Так будут выглядеть вкладки в разделе "Аналитика сделок":</div>
-
-        <div className="flex flex-wrap gap-2">
-          {analysisTabsConfig
-            .filter(tab => tab.visible)
-            .map((tab, index) => (
-              <div key={tab.id} className="flex items-center gap-2">
-                <button className="flex items-center gap-2 px-3 py-1.5 rounded border bg-white border-gray-200 text-gray-700 text-sm">
-                  {getTabIcon(tab.id)}
-                  {tab.label}
-                </button>
-                {index < analysisTabsConfig.filter(tab => tab.visible).length - 1 && (
-                  <span className="text-gray-300">•</span>
-                )}
+        {/* Draggable tab row */}
+        <div className="overflow-x-auto">
+          <div
+            className="flex items-stretch border-b border-gray-200 dark:border-gray-700"
+            role="listbox"
+            aria-label="Порядок вкладок страницы Акции"
+          >
+            {analysisTabsConfig.map((tab) => (
+              <div
+                key={tab.id}
+                role="option"
+                aria-selected={tab.visible}
+                draggable
+                onDragStart={(e) => handleDragStart(e, tab.id)}
+                onDragOver={(e) => handleDragOver(e, tab.id)}
+                onDragLeave={handleDragLeave}
+                onDrop={(e) => handleDrop(e, tab.id)}
+                onDragEnd={handleDragEnd}
+                onClick={(e) => {
+                  if (e.detail > 0) toggleTabVisibility(tab.id, true);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    toggleTabVisibility(tab.id, false);
+                  }
+                }}
+                tabIndex={0}
+                title={tab.visible ? 'Нажмите, чтобы скрыть' : 'Нажмите, чтобы показать'}
+                className={`
+                  relative select-none whitespace-nowrap px-5 py-3 text-sm font-medium
+                  border-b-2 transition-all duration-150 outline-none
+                  cursor-grab active:cursor-grabbing
+                  focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500
+                  ${tab.visible
+                    ? 'border-blue-500 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/20'
+                    : 'border-transparent text-gray-400 opacity-50 hover:opacity-70 dark:text-gray-500'
+                  }
+                  ${draggedTab === tab.id ? 'opacity-20' : ''}
+                  ${dragOverTab === tab.id && draggedTab !== tab.id
+                    ? 'bg-blue-50 dark:bg-blue-950/30 border-blue-300'
+                    : ''
+                  }
+                `}
+              >
+                {tab.label}
               </div>
             ))}
+          </div>
         </div>
 
-        {analysisTabsConfig.filter(tab => tab.visible).length === 0 && (
-          <div className="text-gray-500 text-sm italic">Нет видимых вкладок</div>
-        )}
+        <div className="flex items-center justify-between px-4 py-2 text-xs text-gray-400 dark:text-gray-500">
+          <span>
+            Сводка — всегда первая и не скрывается
+          </span>
+          <span>
+            {analysisTabsConfig.filter(t => t.visible).length} / {analysisTabsConfig.length} показано
+          </span>
+        </div>
       </div>
     </div>
   );

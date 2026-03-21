@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, memo } from 'react';
+import { useEffect, useMemo, useRef, useState, memo, type ReactNode } from 'react';
 import {
   CandlestickSeries,
   HistogramSeries,
@@ -57,9 +57,10 @@ interface TradingChartProps {
   trades: Trade[];
   splits?: SplitEvent[];
   isVisible?: boolean;
+  toolbarPrefix?: ReactNode;
 }
 
-export const TradingChart = memo(function TradingChart({ data, trades, splits = [], isVisible = true }: TradingChartProps) {
+export const TradingChart = memo(function TradingChart({ data, trades, splits = [], isVisible = true, toolbarPrefix }: TradingChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const indicatorMenuRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -654,7 +655,8 @@ export const TradingChart = memo(function TradingChart({ data, trades, splits = 
 
   return (
     <div className="w-full grid grid-rows-[auto,1fr] gap-2 relative">
-      <div className="flex flex-wrap items-end gap-2">
+      <div className="flex flex-wrap items-center gap-2">
+        {toolbarPrefix}
         <label className="flex flex-col gap-1 text-xs text-gray-600 dark:text-gray-300">
           <span className="font-medium">Период</span>
           <select
