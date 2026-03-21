@@ -72,11 +72,24 @@ export function MultiTickerPage() {
     return symbolsStr.split(',').map(s => s.trim().toUpperCase()).filter(Boolean);
   };
 
+  // ─── localStorage persistence helpers ────────────────────────────────────────
+  const LS_CHART_KIND   = 'stocks.heroChartKind';
+  const LS_SHOW_TRADES  = 'stocks.heroShowTrades';
+  const LS_RANGE        = 'stocks.heroRange';
+  const LS_TICKER       = 'stocks.selectedChartTicker';
+  const LS_TICKERS      = 'stocks.tickers';
+
+  const lsGet = <T,>(key: string, fallback: T): T => {
+    try { const v = localStorage.getItem(key); return v !== null ? JSON.parse(v) as T : fallback; } catch { return fallback; }
+  };
+
   const getInitialTickers = () => {
     const urlTickers = searchParams.get('tickers');
     if (urlTickers) {
       return urlTickers.split(',').map(s => s.trim().toUpperCase()).filter(Boolean);
     }
+    const saved = lsGet<string[] | null>(LS_TICKERS, null);
+    if (saved && saved.length > 0) return saved;
     return getDefaultTickers();
   };
 
@@ -85,17 +98,9 @@ export function MultiTickerPage() {
     if (urlTickers) {
       return urlTickers.split(',').map(s => s.trim().toUpperCase()).filter(Boolean).join(', ');
     }
+    const saved = lsGet<string[] | null>(LS_TICKERS, null);
+    if (saved && saved.length > 0) return saved.join(', ');
     return defaultMultiTickerSymbols || 'AAPL, MSFT, AMZN, MAGS';
-  };
-
-  // ─── localStorage persistence helpers ────────────────────────────────────────
-  const LS_CHART_KIND   = 'stocks.heroChartKind';
-  const LS_SHOW_TRADES  = 'stocks.heroShowTrades';
-  const LS_RANGE        = 'stocks.heroRange';
-  const LS_TICKER       = 'stocks.selectedChartTicker';
-
-  const lsGet = <T,>(key: string, fallback: T): T => {
-    try { const v = localStorage.getItem(key); return v !== null ? JSON.parse(v) as T : fallback; } catch { return fallback; }
   };
 
   const getInitialSelectedTicker = () => {
@@ -331,6 +336,7 @@ export function MultiTickerPage() {
   useEffect(() => { try { localStorage.setItem(LS_SHOW_TRADES, JSON.stringify(heroShowTrades)); } catch {} }, [heroShowTrades]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { try { localStorage.setItem(LS_RANGE, JSON.stringify(heroRange)); } catch {} }, [heroRange]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { try { localStorage.setItem(LS_TICKER, JSON.stringify(selectedChartTicker)); } catch {} }, [selectedChartTicker]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { try { localStorage.setItem(LS_TICKERS, JSON.stringify(tickers)); } catch {} }, [tickers]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Keep selectedPriceTicker in sync with tickers list
   useEffect(() => {
