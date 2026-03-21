@@ -85,7 +85,7 @@ function AutotradeTab({
 
   return (
     <div className="space-y-4">
-      <div className="p-4 rounded-lg border dark:border-gray-700">
+      <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700">
         <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Статус автоторговли</div>
         <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
           Включает или выключает автоматическое исполнение ордеров через Webull по сигналам T-1 мониторинга.
@@ -117,7 +117,7 @@ function AutotradeTab({
         )}
       </div>
 
-      <div className="p-4 rounded-lg border dark:border-gray-700">
+      <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700">
         <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Провайдер котировок для автоторговли</div>
         <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
           Цены для расчёта IBS и LIMIT-ордера за 1 минуту до закрытия. Webull — один запрос на все тикеры, цена точнее (реальный intraday). Finnhub — по запросу на тикер с задержкой, надёжнее при высокой нагрузке.
@@ -138,7 +138,7 @@ function AutotradeTab({
                   checked={effectiveProvider === p}
                   disabled={autotradeConfig === null}
                   onChange={() => setPendingProvider(p)}
-                  className="accent-indigo-600"
+                  className="accent-blue-600"
                 />
                 <span className="text-sm text-gray-700 dark:text-gray-300">
                   {p === 'finnhub' ? 'Finnhub' : 'Webull'}
@@ -149,7 +149,6 @@ function AutotradeTab({
         )}
       </div>
 
-      {/* Save button */}
       <div className="flex items-center gap-3">
         <button
           type="button"
@@ -173,12 +172,34 @@ function AutotradeTab({
         )}
       </div>
 
-      <div className="p-4 rounded-lg border bg-gray-50 dark:bg-gray-800 dark:border-gray-700">
+      <div className="p-4 rounded-xl border border-gray-200 bg-gray-50 dark:bg-gray-800 dark:border-gray-700">
         <div className="text-xs text-gray-500 dark:text-gray-400 space-y-1">
           <p>• Подробные настройки автоторговли доступны на странице <strong className="text-gray-700 dark:text-gray-300">/broker → Автоторговля</strong>.</p>
           <p>• Переключатель здесь синхронизирован с переключателем на странице брокера.</p>
         </div>
       </div>
+    </div>
+  );
+}
+
+const SETTINGS_TABS = [
+  { id: 'general' as const, label: 'Общие' },
+  { id: 'api' as const, label: 'API' },
+  { id: 'telegram' as const, label: 'Telegram' },
+  { id: 'interface' as const, label: 'Интерфейс' },
+  { id: 'autotrade' as const, label: 'Автоторговля' },
+];
+
+function SettingsSkeleton() {
+  return (
+    <div className="space-y-4 animate-pulse">
+      {[1, 2, 3].map(i => (
+        <div key={i} className="p-4 rounded-xl border border-gray-200 dark:border-gray-700">
+          <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-1/4 mb-4" />
+          <div className="h-10 bg-gray-200 dark:bg-gray-700 rounded w-full mb-2" />
+          <div className="h-3 bg-gray-100 dark:bg-gray-800 rounded w-1/2" />
+        </div>
+      ))}
     </div>
   );
 }
@@ -476,7 +497,7 @@ export function AppSettings() {
   const GeneralTab = () => (
     <div className="space-y-4">
       {/* Уведомления */}
-      <div className="p-4 rounded-lg border dark:border-gray-700">
+      <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700">
         <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Уведомления</div>
         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Порог близости к IBS, %</label>
         <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">Диапазон 0–20%. По умолчанию 5%.</p>
@@ -502,13 +523,13 @@ export function AppSettings() {
               fallback: watchThresholdPct
             });
             setWatchThresholdPct(sanitized);
-          }} className="w-24 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-base md:text-sm dark:bg-gray-700 dark:text-white" />
+          }} className="w-24 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
           <span className="text-sm text-gray-500 dark:text-gray-400">%</span>
         </div>
       </div>
 
       {/* График */}
-      <div className="p-4 rounded-lg border dark:border-gray-700">
+      <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700">
         <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">График</div>
         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Высота панели индикаторов (IBS/Объём), %</label>
         <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">Диапазон 0–40%. По умолчанию 7%. Больше — выше панель, меньше — ниже.</p>
@@ -534,14 +555,14 @@ export function AppSettings() {
               fallback: indicatorPanePercent
             });
             setIndicatorPanePercent(sanitized);
-          }} className="w-24 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-base md:text-sm dark:bg-gray-700 dark:text-white" />
+          }} className="w-24 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
           <span className="text-sm text-gray-500 dark:text-gray-400">%</span>
         </div>
         <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">Подсказка: чтобы сделать столбики заметно ниже (примерно в 3 раза), установите ~7%.</div>
       </div>
 
       {/* Тикеры по умолчанию для multi-ticker */}
-      <div className="p-4 rounded-lg border dark:border-gray-700">
+      <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700">
         <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Страница "Несколько тикеров"</div>
         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Тикеры по умолчанию</label>
         <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">Список тикеров через запятую, которые будут использоваться при открытии страницы.</p>
@@ -555,14 +576,14 @@ export function AppSettings() {
             });
             setDefaultMultiTickerSymbols(sanitized);
           }}
-          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-base md:text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
           placeholder="AAPL,MSFT,AMZN,MAGS"
         />
         <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Пример: AAPL,MSFT,AMZN,MAGS</p>
       </div>
 
       {/* Комиссии */}
-      <div className="p-4 rounded-lg border dark:border-gray-700">
+      <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700">
         <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Комиссии торговли</div>
         <div className="space-y-4">
           <div>
@@ -616,7 +637,7 @@ export function AppSettings() {
                   setCommissionFixed(sanitized);
                 }}
                 disabled={commissionType === 'percentage'}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-base md:text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-800 dark:bg-gray-700 dark:text-white"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-800 dark:bg-gray-700 dark:text-white"
               />
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">За каждую сделку (вход + выход)</p>
             </div>
@@ -639,13 +660,13 @@ export function AppSettings() {
                   setCommissionPercentage(sanitized);
                 }}
                 disabled={commissionType === 'fixed'}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-base md:text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-800 dark:bg-gray-700 dark:text-white"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-800 dark:bg-gray-700 dark:text-white"
               />
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">От суммы сделки (например, 0.1%)</p>
             </div>
           </div>
 
-          <div className="text-xs text-gray-500 dark:text-gray-400 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-md">
+          <div className="text-xs text-gray-500 dark:text-gray-400 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
             💡 <strong className="dark:text-gray-300">Типы комиссий:</strong><br />
             • <strong className="dark:text-gray-300">Фиксированная:</strong> одинаковая сумма за каждую сделку<br />
             • <strong className="dark:text-gray-300">Процентная:</strong> процент от суммы сделки<br />
@@ -661,7 +682,7 @@ export function AppSettings() {
   const ApiTab = () => (
     <div className="space-y-4">
       {/* API Testing */}
-      <div className="p-4 rounded-lg border dark:border-gray-700">
+      <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700">
         <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Тестирование API</div>
         <div className="text-xs text-gray-500 dark:text-gray-400 mb-3">Проверьте подключение к API провайдерам (используется тестовый символ AAPL)</div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -669,7 +690,7 @@ export function AppSettings() {
             <button
               onClick={() => testProvider('alpha_vantage')}
               disabled={testingProvider === 'alpha_vantage'}
-              className="w-full px-3 py-2 rounded-md bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:bg-gray-400 dark:disabled:bg-gray-700"
+              className="w-full px-3 py-2 rounded-lg bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               {testingProvider === 'alpha_vantage' ? 'Тестирование...' : 'Тест Alpha Vantage'}
             </button>
@@ -685,7 +706,7 @@ export function AppSettings() {
             <button
               onClick={() => testProvider('finnhub')}
               disabled={testingProvider === 'finnhub'}
-              className="w-full px-3 py-2 rounded-md bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:bg-gray-400 dark:disabled:bg-gray-700"
+              className="w-full px-3 py-2 rounded-lg bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               {testingProvider === 'finnhub' ? 'Тестирование...' : 'Тест Finnhub'}
             </button>
@@ -701,7 +722,7 @@ export function AppSettings() {
             <button
               onClick={() => testProvider('twelve_data')}
               disabled={testingProvider === 'twelve_data'}
-              className="w-full px-3 py-2 rounded-md bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:bg-gray-400 dark:disabled:bg-gray-700"
+              className="w-full px-3 py-2 rounded-lg bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               {testingProvider === 'twelve_data' ? 'Тестирование...' : 'Тест Twelve Data'}
             </button>
@@ -717,7 +738,7 @@ export function AppSettings() {
             <button
               onClick={() => testProvider('polygon')}
               disabled={testingProvider === 'polygon'}
-              className="w-full px-3 py-2 rounded-md bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:bg-gray-400 dark:disabled:bg-gray-700"
+              className="w-full px-3 py-2 rounded-lg bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               {testingProvider === 'polygon' ? 'Тестирование...' : 'Тест Polygon'}
             </button>
@@ -733,7 +754,7 @@ export function AppSettings() {
       </div>
 
       {/* Провайдеры данных */}
-      <div className="p-4 rounded-lg border dark:border-gray-700">
+      <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700">
         <div className="flex items-center justify-between mb-3">
           <div className="text-sm font-medium text-gray-700 dark:text-gray-300">Провайдеры данных</div>
           <button
@@ -745,7 +766,7 @@ export function AppSettings() {
           </button>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="bg-gray-50 dark:bg-gray-800 rounded p-3 border dark:border-gray-700">
+          <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3 border border-gray-200 dark:border-gray-700">
             <div className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-0.5">Котировки — страница «Результаты»</div>
             <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">Текущая цена тикера, обновляется каждые 15 сек в торговые часы</div>
             <label className="flex items-center gap-2 text-sm mb-1 dark:text-gray-300">
@@ -766,7 +787,7 @@ export function AppSettings() {
             </label>
           </div>
 
-          <div className="bg-gray-50 dark:bg-gray-800 rounded p-3 border dark:border-gray-700">
+          <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3 border border-gray-200 dark:border-gray-700">
             <div className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-0.5">Обновление датасета</div>
             <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">Кнопка «Обновить» — дозагружает историю OHLC за последние дни</div>
             <label className="flex items-center gap-2 text-sm mb-1 dark:text-gray-300">
@@ -787,7 +808,7 @@ export function AppSettings() {
             </label>
           </div>
 
-          <div className="bg-gray-50 dark:bg-gray-800 rounded p-3 border dark:border-gray-700">
+          <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3 border border-gray-200 dark:border-gray-700">
             <div className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-0.5">Новые данные — страница «Энхансер»</div>
             <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">Загрузка полной истории OHLC для нового датасета</div>
             <label className="flex items-center gap-2 text-sm mb-1 dark:text-gray-300">
@@ -809,7 +830,7 @@ export function AppSettings() {
           </div>
         </div>
 
-        <div className="mt-4 rounded p-3 border bg-gray-50 dark:bg-gray-800 dark:border-gray-700">
+        <div className="mt-4 rounded-lg p-3 border border-gray-200 bg-gray-50 dark:bg-gray-800 dark:border-gray-700">
           <div className="flex items-center justify-between gap-4">
             <div>
               <div className="text-sm font-medium text-gray-700 dark:text-gray-300">Автоактуализация цен после закрытия рынка</div>
@@ -933,8 +954,7 @@ export function AppSettings() {
 
   // Interface Settings Tab
   const InterfaceTab = () => (
-    <div onKeyDown={handleKeyDown}>
-      <div className="rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
+    <div className="rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900" onKeyDown={handleKeyDown}>
         <div className="border-b border-gray-200 px-4 pt-4 pb-2 dark:border-gray-700">
           <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">Вкладки страницы «Акции»</div>
           <div className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
@@ -1001,7 +1021,6 @@ export function AppSettings() {
             {analysisTabsConfig.filter(t => t.visible).length} / {analysisTabsConfig.length} показано
           </span>
         </div>
-      </div>
     </div>
   );
 
@@ -1009,7 +1028,7 @@ export function AppSettings() {
   const TelegramTab = () => (
     <div className="space-y-4">
       {/* Telegram Info */}
-      <div className="p-4 rounded-lg border bg-purple-50 dark:bg-purple-900/20 dark:border-purple-900/30">
+      <div className="p-4 rounded-xl border border-purple-200 bg-purple-50 dark:bg-purple-900/20 dark:border-purple-900/30">
         <div className="text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">📱 Telegram настройки</div>
         <p className="text-sm text-gray-600 dark:text-gray-300">
           Telegram Bot Token и Chat ID настраиваются в файле <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">.env</code> на сервере.
@@ -1017,7 +1036,7 @@ export function AppSettings() {
         </p>
       </div>
 
-      <div className="p-4 rounded-lg border bg-gray-50 dark:bg-gray-800 dark:border-gray-700">
+      <div className="p-4 rounded-xl border border-gray-200 bg-gray-50 dark:bg-gray-800 dark:border-gray-700">
         <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Тестовое сообщение в Telegram</div>
         <div className="flex flex-wrap items-center gap-2">
           <input value={testMsg} onChange={(e) => {
@@ -1026,8 +1045,8 @@ export function AppSettings() {
               removeHtml: true
             });
             setTestMsg(sanitized);
-          }} className="flex-1 min-w-[260px] px-3 py-2 rounded-md border dark:bg-gray-700 dark:border-gray-600 dark:text-white" />
-          <button onClick={sendTest} disabled={sending} className="px-3 py-1.5 rounded-md bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:bg-gray-400 dark:disabled:bg-gray-700">
+          }} className="flex-1 min-w-[260px] px-3 py-2 rounded-lg border border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+          <button onClick={sendTest} disabled={sending} className="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
             {sending ? 'Отправка…' : 'Отправить тест'}
           </button>
         </div>
@@ -1080,26 +1099,6 @@ export function AppSettings() {
     }
   };
 
-  // Loading skeleton component
-  const SettingsSkeleton = () => (
-    <div className="space-y-4 animate-pulse">
-      {[1, 2, 3].map(i => (
-        <div key={i} className="p-4 rounded-lg border">
-          <div className="h-4 bg-gray-200 rounded w-1/4 mb-4"></div>
-          <div className="h-10 bg-gray-200 rounded w-full mb-2"></div>
-          <div className="h-3 bg-gray-100 rounded w-1/2"></div>
-        </div>
-      ))}
-    </div>
-  );
-
-  const tabs = [
-    { id: 'general' as const, label: 'Общие' },
-    { id: 'api' as const, label: 'API' },
-    { id: 'telegram' as const, label: 'Telegram' },
-    { id: 'interface' as const, label: 'Интерфейс' },
-    { id: 'autotrade' as const, label: 'Автоторговля' },
-  ];
 
   return (
     <div className="space-y-4">
@@ -1112,7 +1111,7 @@ export function AppSettings() {
             <button
               onClick={handleGlobalSave}
               disabled={saving || (!hasUnsavedChanges && !saveOk)}
-              className={`inline-flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+              className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                 saving
                   ? 'bg-blue-600 text-white opacity-70 cursor-not-allowed'
                   : saveOk
@@ -1135,14 +1134,12 @@ export function AppSettings() {
         }
       />
 
-      {/* Tabs with ARIA */}
-      <div className="border-b border-gray-200 dark:border-gray-700">
-        <nav
-          className="-mb-px flex space-x-8"
+      <div className="border-b border-gray-200 dark:border-gray-700 overflow-x-auto">
+        <nav className="flex items-center gap-2 flex-nowrap min-w-max px-1"
           role="tablist"
           aria-label="Настройки"
         >
-          {tabs.map((tab) => (
+          {SETTINGS_TABS.map((tab) => (
             <button
               key={tab.id}
               role="tab"
@@ -1152,18 +1149,18 @@ export function AppSettings() {
               tabIndex={activeTab === tab.id ? 0 : -1}
               onClick={() => setActiveTab(tab.id)}
               onKeyDown={(e) => {
-                const currentIndex = tabs.findIndex(t => t.id === activeTab);
+                const currentIndex = SETTINGS_TABS.findIndex(t => t.id === activeTab);
                 if (e.key === 'ArrowRight') {
-                  const nextIndex = (currentIndex + 1) % tabs.length;
-                  setActiveTab(tabs[nextIndex].id);
+                  const nextIndex = (currentIndex + 1) % SETTINGS_TABS.length;
+                  setActiveTab(SETTINGS_TABS[nextIndex].id);
                 } else if (e.key === 'ArrowLeft') {
-                  const prevIndex = (currentIndex - 1 + tabs.length) % tabs.length;
-                  setActiveTab(tabs[prevIndex].id);
+                  const prevIndex = (currentIndex - 1 + SETTINGS_TABS.length) % SETTINGS_TABS.length;
+                  setActiveTab(SETTINGS_TABS[prevIndex].id);
                 }
               }}
-              className={`whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm transition-colors outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${activeTab === tab.id
-                ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400 dark:border-indigo-400'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300 dark:hover:border-gray-600'
+              className={`whitespace-nowrap py-3 px-6 border-b-2 font-medium text-sm transition-colors outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${activeTab === tab.id
+                ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
                 }`}
             >
               {tab.label}
@@ -1172,7 +1169,6 @@ export function AppSettings() {
         </nav>
       </div>
 
-      {/* Tab Content */}
       <div className="mt-4">
         {isLoadingSettings ? (
           <SettingsSkeleton />

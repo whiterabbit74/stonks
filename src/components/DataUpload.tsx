@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { ArrowRight, AlertTriangle, RefreshCw } from 'lucide-react';
+import { ArrowRight, AlertTriangle, Loader2 } from 'lucide-react';
 import { useAppStore } from '../stores';
 import { DatasetLibrary } from './DatasetLibrary';
 import { PageHeader } from './ui/PageHeader';
@@ -29,7 +29,7 @@ export function DataUpload({ onNext }: DataUploadProps) {
 
       {isLoading && (
         <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+          <Loader2 className="w-4 h-4 animate-spin" />
           <span>Обновляем список датасетов…</span>
         </div>
       )}
@@ -47,15 +47,13 @@ export function DataUpload({ onNext }: DataUploadProps) {
       <DatasetLibrary onAfterLoad={onNext} />
 
       {onNext && marketData.length > 0 && (
-        <div>
-          <button
-            onClick={onNext}
-            className="inline-flex items-center gap-2 bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 font-medium hover-lift"
-          >
-            Дальше
-            <ArrowRight className="w-4 h-4" />
-          </button>
-        </div>
+        <button
+          onClick={onNext}
+          className="inline-flex items-center gap-2 bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 font-medium hover-lift"
+        >
+          Дальше
+          <ArrowRight className="w-4 h-4" />
+        </button>
       )}
     </div>
   );

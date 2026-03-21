@@ -1,13 +1,22 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Edit, Trash2, Plus, Upload, Download, List, Database } from 'lucide-react';
+import { Edit, Trash2, RefreshCw, Loader2 } from 'lucide-react';
 import { DatasetAPI, fetchWithCreds } from '../lib/api';
 import { useAppStore } from '../stores';
 import { PageHeader } from './ui/PageHeader';
+import { AnalysisTabs } from './ui/AnalysisTabs';
 
 type SplitEvent = { date: string; factor: number };
 type SplitsMap = Record<string, Array<SplitEvent>>;
 
 type TabType = 'list' | 'create' | 'import' | 'export' | 'webull';
+
+const SPLITS_TABS = [
+  { id: 'list', label: 'Список' },
+  { id: 'create', label: 'Добавить' },
+  { id: 'import', label: 'Импорт' },
+  { id: 'export', label: 'Экспорт' },
+  { id: 'webull', label: 'Webull API' },
+];
 
 export function SplitsTab() {
   const currentDataset = useAppStore(s => s.currentDataset);
@@ -337,7 +346,7 @@ export function SplitsTab() {
         </p>
       </div>
 
-      <div className="p-4 bg-white border rounded-lg space-y-4 dark:bg-gray-900 dark:border-gray-800">
+      <div className="p-4 bg-white border rounded-xl border-gray-200 space-y-4 dark:bg-gray-900 dark:border-gray-700">
         <div className="flex flex-wrap gap-3 items-end">
           <div className="flex flex-col gap-1">
             <label className="text-xs font-medium text-gray-600 dark:text-gray-400">Тикер</label>
@@ -368,7 +377,7 @@ export function SplitsTab() {
             />
           </div>
           <button
-            className="px-4 py-2 text-sm rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60"
+            className="px-4 py-2 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             onClick={fetchWebullRaw}
             disabled={webullLoading || !webullSymbol.trim()}
           >
@@ -394,33 +403,10 @@ export function SplitsTab() {
     </div>
   );
 
-  const tabs = [
-    { id: 'list', label: 'Список', icon: List },
-    { id: 'create', label: 'Добавить', icon: Plus },
-    { id: 'import', label: 'Импорт', icon: Upload },
-    { id: 'export', label: 'Экспорт', icon: Download },
-    { id: 'webull', label: 'Webull API', icon: Database },
-  ] as const;
 
   const renderListTab = () => (
     <div className="space-y-4">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100">Управление сплитами</h3>
-          <p className="text-sm text-gray-500 dark:text-gray-400">Хранится в базе данных</p>
-        </div>
-        <button
-          className="px-4 py-2 text-sm rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700 self-start sm:self-auto"
-          onClick={refresh}
-          disabled={loading || actionBusy}
-        >
-          Обновить
-        </button>
-      </div>
-
-      {loading ? (
-        <div className="text-sm text-gray-500 dark:text-gray-400">Загрузка…</div>
-      ) : error ? (
+      {loading ? null : error ? (
         <div className="text-sm text-red-600">{error}</div>
       ) : (
         <>
@@ -448,7 +434,7 @@ export function SplitsTab() {
                               <div key={i} className="flex flex-wrap gap-2 items-center">
                                 <input
                                   type="date"
-                                  className="border rounded px-2 py-1 text-sm dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100"
+                                  className="border border-gray-300 rounded-lg px-2 py-1 text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                                   value={(s.date || '').slice(0,10)}
                                   onChange={e => updateEvent(i, { date: e.target.value })}
                                 />
@@ -461,7 +447,7 @@ export function SplitsTab() {
                                   onChange={e => updateEvent(i, { factor: Number(e.target.value) })}
                                 />
                                 <button
-                                  className="px-2 py-1 text-xs rounded border hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+                                  className="px-2 py-1 text-xs rounded-lg border border-gray-300 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800 transition-colors"
                                   onClick={() => removeEventRow(i)}
                                 >
                                   Удалить
@@ -469,7 +455,7 @@ export function SplitsTab() {
                               </div>
                             ))}
                             <button
-                              className="px-2 py-1 text-xs rounded border hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+                              className="px-2 py-1 text-xs rounded-lg border border-gray-300 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800 transition-colors"
                               onClick={addEventRow}
                             >
                               Добавить событие
@@ -489,14 +475,14 @@ export function SplitsTab() {
                         {editingTicker === tk ? (
                           <>
                             <button
-                              className="px-3 py-1.5 text-sm rounded bg-green-600 text-white hover:bg-green-700 disabled:opacity-60"
+                              className="px-3 py-1.5 text-sm rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 transition-colors"
                               onClick={saveEdits}
                               disabled={actionBusy}
                             >
                               Сохранить
                             </button>
                             <button
-                              className="px-3 py-1.5 text-sm rounded border bg-white hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+                              className="px-3 py-1.5 text-sm rounded-lg border border-gray-300 bg-white hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700 transition-colors"
                               onClick={cancelEdit}
                             >
                               Отмена
@@ -505,14 +491,14 @@ export function SplitsTab() {
                         ) : (
                           <>
                             <button
-                              className="inline-flex items-center justify-center px-2 py-1.5 text-sm rounded border bg-white hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700 transition-colors"
+                              className="inline-flex items-center justify-center px-2 py-1.5 text-sm rounded-lg border border-gray-300 bg-white hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700 transition-colors"
                               onClick={() => beginEdit(tk)}
                               title="Редактировать"
                             >
                               <Edit className="w-4 h-4" />
                             </button>
                             <button
-                              className="inline-flex items-center justify-center px-2 py-1.5 text-sm rounded border bg-white hover:bg-red-50 text-red-600 dark:border-gray-700 dark:bg-gray-800 dark:text-red-400 dark:hover:bg-red-900/30 transition-colors"
+                              className="inline-flex items-center justify-center px-2 py-1.5 text-sm rounded-lg border border-gray-300 bg-white hover:bg-red-50 text-red-600 dark:border-gray-600 dark:bg-gray-800 dark:text-red-400 dark:hover:bg-red-900/30 transition-colors"
                               onClick={() => deleteTicker(tk)}
                               disabled={actionBusy}
                               title="Удалить тикер"
@@ -536,21 +522,21 @@ export function SplitsTab() {
                 Нет данных
               </div>
             ) : tickers.map(tk => (
-              <div key={tk} className="bg-white dark:bg-gray-800 rounded-lg border dark:border-gray-700 p-4 space-y-3">
+              <div key={tk} className="rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900 p-4 space-y-3">
                 {/* Header with ticker and actions */}
                 <div className="flex items-center justify-between">
                   <h4 className="text-lg font-semibold text-gray-900 dark:text-gray-100">{tk}</h4>
                   {editingTicker !== tk && (
                     <div className="flex gap-2">
                       <button
-                        className="inline-flex items-center justify-center w-10 h-10 rounded-lg border bg-white hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600 transition-colors"
+                        className="inline-flex items-center justify-center w-10 h-10 rounded-lg border border-gray-300 bg-white hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600 transition-colors"
                         onClick={() => beginEdit(tk)}
                         title="Редактировать"
                       >
                         <Edit className="w-5 h-5" />
                       </button>
                       <button
-                        className="inline-flex items-center justify-center w-10 h-10 rounded-lg border bg-white hover:bg-red-50 text-red-600 dark:border-gray-600 dark:bg-gray-700 dark:text-red-400 dark:hover:bg-red-900/30 transition-colors"
+                        className="inline-flex items-center justify-center w-10 h-10 rounded-lg border border-gray-300 bg-white hover:bg-red-50 text-red-600 dark:border-gray-600 dark:bg-gray-700 dark:text-red-400 dark:hover:bg-red-900/30 transition-colors"
                         onClick={() => deleteTicker(tk)}
                         disabled={actionBusy}
                         title="Удалить тикер"
@@ -652,14 +638,14 @@ export function SplitsTab() {
         <p className="text-sm text-gray-500 dark:text-gray-400">Создайте новый тикер с первым событием сплита</p>
       </div>
       
-      <div className="p-4 bg-white border rounded-lg space-y-4 dark:bg-gray-900 dark:border-gray-800">
+      <div className="p-4 bg-white border rounded-xl border-gray-200 space-y-4 dark:bg-gray-900 dark:border-gray-700">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               Тикер
             </label>
             <input
-              className="w-full border rounded-md px-3 py-2 text-sm uppercase dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm uppercase dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               placeholder="AAPL"
               value={newTicker}
               onChange={e => setNewTicker(e.target.value)}
@@ -671,7 +657,7 @@ export function SplitsTab() {
             </label>
             <input
               type="date"
-              className="w-full border rounded-md px-3 py-2 text-sm dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               value={newDate}
               onChange={e => setNewDate(e.target.value)}
             />
@@ -684,7 +670,7 @@ export function SplitsTab() {
               type="number"
               step="0.01"
               min="0"
-              className="w-full border rounded-md px-3 py-2 text-sm dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               placeholder="2.0"
               value={newFactor}
               onChange={e => setNewFactor(e.target.value)}
@@ -697,7 +683,7 @@ export function SplitsTab() {
             Коэффициент: 2 = сплит 2:1, 0.5 = обратный сплит 1:2
           </div>
           <button
-            className="px-4 py-2 text-sm rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60"
+            className="px-4 py-2 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             onClick={createTicker}
             disabled={actionBusy}
           >
@@ -706,7 +692,7 @@ export function SplitsTab() {
         </div>
         
         {actionMsg && (
-          <div className={`text-sm p-2 rounded ${actionMsg.includes('Ошибка') ? 'text-red-600 bg-red-50 dark:bg-red-900/20' : 'text-green-600 bg-green-50 dark:bg-green-900/20'}`}>
+          <div className={`text-sm p-3 rounded-lg ${actionMsg.includes('Ошибка') ? 'text-red-600 bg-red-50 dark:bg-red-900/20' : 'text-green-600 bg-green-50 dark:bg-green-900/20'}`}>
             {actionMsg}
           </div>
         )}
@@ -722,7 +708,7 @@ export function SplitsTab() {
       </div>
 
       {/* File Import */}
-      <div className="p-4 bg-white border rounded-lg space-y-4 dark:bg-gray-900 dark:border-gray-800">
+      <div className="p-4 bg-white border rounded-xl border-gray-200 space-y-4 dark:bg-gray-900 dark:border-gray-700">
         <h4 className="font-medium text-gray-900 dark:text-gray-100">Импорт из файла</h4>
         <div className="flex items-center gap-4">
           <input
@@ -733,7 +719,7 @@ export function SplitsTab() {
             onChange={onImportFileChange}
           />
           <button
-            className="px-4 py-2 text-sm rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+            className="px-4 py-2 text-sm rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700 disabled:opacity-50 transition-colors"
             onClick={() => fileInputRef.current?.click()}
             disabled={loading || actionBusy}
           >
@@ -746,7 +732,7 @@ export function SplitsTab() {
       </div>
 
       {/* JSON Paste */}
-      <div className="p-4 bg-white border rounded-lg space-y-4 dark:bg-gray-900 dark:border-gray-800">
+      <div className="p-4 bg-white border rounded-xl border-gray-200 space-y-4 dark:bg-gray-900 dark:border-gray-700">
         <h4 className="font-medium text-gray-900 dark:text-gray-100">Вставить JSON</h4>
         <div className="text-sm text-gray-500 dark:text-gray-400">Поддерживаются два формата:</div>
         
@@ -776,7 +762,7 @@ export function SplitsTab() {
         </div>
         
         <textarea
-          className="w-full h-40 border rounded-md px-3 py-2 text-sm font-mono dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100"
+          className="w-full h-40 border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           placeholder="Вставьте JSON данные здесь..."
           value={jsonText}
           onChange={e => parseJsonInput(e.target.value)}
@@ -805,7 +791,7 @@ export function SplitsTab() {
             )}
           </div>
           <button
-            className="px-4 py-2 text-sm rounded-md bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-60"
+            className="px-4 py-2 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             onClick={applyJsonUpdates}
             disabled={actionBusy || Object.keys(jsonUpdates).length === 0}
           >
@@ -823,7 +809,7 @@ export function SplitsTab() {
         <p className="text-sm text-gray-500 dark:text-gray-400">Скачайте все сплиты в формате JSON</p>
       </div>
       
-      <div className="p-4 bg-white border rounded-lg space-y-4 dark:bg-gray-900 dark:border-gray-800">
+      <div className="p-4 bg-white border rounded-xl border-gray-200 space-y-4 dark:bg-gray-900 dark:border-gray-700">
         <div className="flex items-center justify-between">
           <div>
             <h4 className="font-medium text-gray-900 dark:text-gray-100">Экспорт всех сплитов</h4>
@@ -832,7 +818,7 @@ export function SplitsTab() {
             </p>
           </div>
           <button
-            className="px-4 py-2 text-sm rounded-md bg-green-600 text-white hover:bg-green-700 disabled:opacity-60"
+            className="px-4 py-2 text-sm rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             onClick={exportAllSplits}
             disabled={loading || actionBusy}
           >
@@ -859,32 +845,27 @@ export function SplitsTab() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Сплиты" subtitle="Управление дроблениями акций" />
+      <PageHeader
+        title="Сплиты"
+        subtitle="Управление дроблениями акций"
+        actions={
+          <button
+            onClick={refresh}
+            disabled={loading || actionBusy}
+            title="Обновить список сплитов"
+            className="inline-flex items-center justify-center h-9 w-9 rounded-full border border-gray-300 bg-white text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 disabled:opacity-50 transition-colors"
+          >
+            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+          </button>
+        }
+      />
 
-      {/* Tab Navigation */}
-      <div className="border-b border-gray-200 dark:border-gray-700">
-        <nav className="flex space-x-8">
-          {tabs.map(tab => {
-            const Icon = tab.icon;
-            return (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id as TabType)}
-                className={`inline-flex items-center gap-2 py-2 px-1 border-b-2 font-medium text-sm transition-colors ${
-                  activeTab === tab.id
-                    ? 'border-blue-500 text-blue-600 dark:text-blue-400'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
-                }`}
-              >
-                <Icon className="w-4 h-4" />
-                {tab.label}
-              </button>
-            );
-          })}
-        </nav>
-      </div>
+      <AnalysisTabs
+        tabs={SPLITS_TABS}
+        activeTab={activeTab}
+        onChange={(id) => setActiveTab(id as TabType)}
+      />
 
-      {/* Tab Content */}
       <div className="mt-6">
         {activeTab === 'list' && renderListTab()}
         {activeTab === 'create' && renderCreateTab()}
