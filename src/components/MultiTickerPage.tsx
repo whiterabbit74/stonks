@@ -402,14 +402,6 @@ export function MultiTickerPage() {
 
     return (
       <div className="space-y-3">
-        {backtestResults && (
-          <MetricsGrid
-            finalValue={backtestResults.finalValue}
-            maxDrawdown={backtestResults.maxDrawdown}
-            metrics={backtestResults.metrics}
-          />
-        )}
-
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_280px]">
           {/* ── Left: chart ── */}
           <div className="space-y-3 rounded-xl border border-gray-200 bg-gray-50/70 p-3 dark:border-gray-800 dark:bg-gray-950/40">
@@ -755,6 +747,14 @@ export function MultiTickerPage() {
       </div>
 
       <BacktestPageShell isLoading={false} error={error} loadingMessage="Загрузка данных и выполнение бэктеста...">
+        {backtestResults && (
+          <MetricsGrid
+            finalValue={backtestResults.finalValue}
+            maxDrawdown={backtestResults.maxDrawdown}
+            metrics={backtestResults.metrics}
+          />
+        )}
+
         <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
           <AnalysisTabs
             tabs={summaryTabs}
