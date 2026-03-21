@@ -1,13 +1,13 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Edit, Trash2, Plus, Upload, Download, List } from 'lucide-react';
-import { DatasetAPI } from '../lib/api';
+import { Edit, Trash2, Plus, Upload, Download, List, Database } from 'lucide-react';
+import { DatasetAPI, fetchWithCreds } from '../lib/api';
 import { useAppStore } from '../stores';
 import { PageHeader } from './ui/PageHeader';
 
 type SplitEvent = { date: string; factor: number };
 type SplitsMap = Record<string, Array<SplitEvent>>;
 
-type TabType = 'list' | 'create' | 'import' | 'export';
+type TabType = 'list' | 'create' | 'import' | 'export' | 'webull';
 
 export function SplitsTab() {
   const currentDataset = useAppStore(s => s.currentDataset);
@@ -31,6 +31,14 @@ export function SplitsTab() {
   const [jsonText, setJsonText] = useState<string>('');
   const [jsonUpdates, setJsonUpdates] = useState<Record<string, Array<SplitEvent>>>({});
   const [jsonError, setJsonError] = useState<string | null>(null);
+
+  // Webull raw fetch state
+  const [webullSymbol, setWebullSymbol] = useState<string>(currentDataset?.ticker || '');
+  const [webullStartDate, setWebullStartDate] = useState<string>('2000-01-01');
+  const [webullEndDate, setWebullEndDate] = useState<string>(new Date().toISOString().slice(0, 10));
+  const [webullLoading, setWebullLoading] = useState(false);
+  const [webullResult, setWebullResult] = useState<unknown>(null);
+  const [webullError, setWebullError] = useState<string | null>(null);
 
   async function refresh() {
     setLoading(true); setError(null);
@@ -300,11 +308,98 @@ export function SplitsTab() {
     void importSplitsFromFile(f);
   }
 
+  async function fetchWebullRaw() {
+    const sym = webullSymbol.trim().toUpperCase();
+    if (!sym) return;
+    setWebullLoading(true);
+    setWebullResult(null);
+    setWebullError(null);
+    try {
+      const params = new URLSearchParams({ symbol: sym });
+      if (webullStartDate) params.set('startDate', webullStartDate);
+      if (webullEndDate) params.set('endDate', webullEndDate);
+      const resp = await fetchWithCreds(`/api/splits/webull-raw?${params.toString()}`);
+      const json = await resp.json();
+      setWebullResult(json);
+    } catch (e) {
+      setWebullError(e instanceof Error ? e.message : 'Ошибка запроса');
+    } finally {
+      setWebullLoading(false);
+    }
+  }
+
+  const renderWebullTab = () => (
+    <div className="space-y-4">
+      <div>
+        <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-1">Сырые данные Webull</h3>
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          Запрос corp-action (события по акциям) из Webull API — для анализа
+        </p>
+      </div>
+
+      <div className="p-4 bg-white border rounded-lg space-y-4 dark:bg-gray-900 dark:border-gray-800">
+        <div className="flex flex-wrap gap-3 items-end">
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-gray-600 dark:text-gray-400">Тикер</label>
+            <input
+              type="text"
+              className="border rounded px-3 py-2 text-sm w-28 uppercase dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100"
+              placeholder="AAPL"
+              value={webullSymbol}
+              onChange={e => setWebullSymbol(e.target.value.toUpperCase())}
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-gray-600 dark:text-gray-400">С даты</label>
+            <input
+              type="date"
+              className="border rounded px-3 py-2 text-sm dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100"
+              value={webullStartDate}
+              onChange={e => setWebullStartDate(e.target.value)}
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-gray-600 dark:text-gray-400">По дату</label>
+            <input
+              type="date"
+              className="border rounded px-3 py-2 text-sm dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100"
+              value={webullEndDate}
+              onChange={e => setWebullEndDate(e.target.value)}
+            />
+          </div>
+          <button
+            className="px-4 py-2 text-sm rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60"
+            onClick={fetchWebullRaw}
+            disabled={webullLoading || !webullSymbol.trim()}
+          >
+            {webullLoading ? 'Загрузка…' : 'Запросить'}
+          </button>
+        </div>
+
+        {webullError && (
+          <div className="text-sm text-red-600 bg-red-50 dark:bg-red-900/20 p-3 rounded">
+            {webullError}
+          </div>
+        )}
+
+        {webullResult !== null && (
+          <div className="space-y-2">
+            <div className="text-xs font-medium text-gray-600 dark:text-gray-400">Ответ API (raw JSON):</div>
+            <pre className="text-xs p-3 rounded border bg-gray-50 overflow-auto max-h-[500px] dark:bg-gray-800 dark:border-gray-700 dark:text-gray-200 whitespace-pre-wrap break-all">
+              {JSON.stringify(webullResult, null, 2)}
+            </pre>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
   const tabs = [
     { id: 'list', label: 'Список', icon: List },
     { id: 'create', label: 'Добавить', icon: Plus },
     { id: 'import', label: 'Импорт', icon: Upload },
     { id: 'export', label: 'Экспорт', icon: Download },
+    { id: 'webull', label: 'Webull API', icon: Database },
   ] as const;
 
   const renderListTab = () => (
@@ -795,6 +890,7 @@ export function SplitsTab() {
         {activeTab === 'create' && renderCreateTab()}
         {activeTab === 'import' && renderImportTab()}
         {activeTab === 'export' && renderExportTab()}
+        {activeTab === 'webull' && renderWebullTab()}
       </div>
 
       <div className="text-xs text-gray-500 dark:text-gray-400 border-t pt-4">

@@ -530,6 +530,26 @@ async function fetchTodayRangeAndQuoteViaWebull(symbol, configOverrides = {}) {
     };
 }
 
+// Corporate actions (splits, dividends, etc.) by instrument_id
+// event_types: comma-separated codes, e.g. "301,302" (302 = stock split)
+// instrument_ids: comma-separated Webull instrument IDs
+async function getCorpActions(instrumentIds, options = {}, configOverrides = {}) {
+    const ids = Array.isArray(instrumentIds) ? instrumentIds.join(',') : String(instrumentIds || '');
+    const query = { instrument_ids: ids };
+    if (options.eventTypes) query.event_types = options.eventTypes;
+    if (options.startDate) query.start_date = options.startDate;
+    if (options.endDate) query.end_date = options.endDate;
+    if (options.pageNumber != null) query.page_number = options.pageNumber;
+    if (options.pageSize != null) query.page_size = options.pageSize;
+    return requestWebull({
+        method: 'GET',
+        path: '/instrument/corp-action',
+        query,
+        configOverrides,
+        version: 'v2',
+    });
+}
+
 // Trade calendar: returns trading days for market in a date range
 // market: 'US' | 'HK' | 'CN', startDate/endDate: 'YYYY-MM-DD'
 async function getTradeCalendar(market = 'US', startDate, endDate, configOverrides = {}) {
@@ -586,4 +606,5 @@ module.exports = {
     getTradeCalendar,
     getStockSnapshot,
     fetchTodayRangeAndQuoteViaWebull,
+    getCorpActions,
 };
