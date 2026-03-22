@@ -147,6 +147,12 @@
   animation: heartbeat 1s ease-in-out infinite;
 }
 
+/* Reserve scrollbar gutter space at all times so scrollbar appearing/disappearing
+   doesn't shift content horizontally (affects all pages). */
+html {
+  scrollbar-gutter: stable;
+}
+
 /* Enhanced smooth transitions for all interactive elements */
 /* NOTE: transform intentionally excluded — global transform transitions cause
    layout-shift flicker when tab content height changes (scroll anchor fires). */

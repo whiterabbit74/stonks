@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState, memo, type ReactNode } from 'react';
+import { Settings2 } from 'lucide-react';
 import {
   CandlestickSeries,
   HistogramSeries,
   LineSeries,
+  LineStyle,
   createChart,
   createSeriesMarkers,
   type IChartApi,
@@ -22,6 +24,10 @@ import { logError } from '../lib/error-logger';
 const MIN_CHART_HEIGHT = 680;
 
 type RangeKey = 'ALL' | 'YTD' | '5Y' | '3Y' | '1Y' | '6M' | '3M' | '1M';
+type LineWidth = 1 | 2 | 3;
+type MarkerShape = 'arrow' | 'circle' | 'square';
+
+const MARKER_COLORS = ['#2196F3', '#10B981', '#EF4444', '#F59E0B', '#8B5CF6'] as const;
 const RANGE_OPTIONS: Array<{ value: RangeKey; label: string; short: string }> = [
   { value: '1M', label: '1 месяц', short: '1М' },
   { value: '3M', label: '3 месяца', short: '3М' },
@@ -35,16 +41,31 @@ const RANGE_OPTIONS: Array<{ value: RangeKey; label: string; short: string }> = 
 
 const CHART_PREFS_KEY = 'chart-prefs';
 
-function loadChartPrefs() {
+interface ChartPrefs {
+  range?: RangeKey;
+  ema20?: boolean;
+  ema200?: boolean;
+  ibs?: boolean;
+  volume?: boolean;
+  ema20Width?: LineWidth;
+  ema20Style?: 0 | 2;
+  ema200Width?: LineWidth;
+  ema200Style?: 0 | 2;
+  showTradeMarkers?: boolean;
+  tradeMarkerColor?: string;
+  tradeMarkerShape?: MarkerShape;
+}
+
+function loadChartPrefs(): ChartPrefs | null {
   try {
     const raw = localStorage.getItem(CHART_PREFS_KEY);
-    return raw ? (JSON.parse(raw) as Partial<{ range: RangeKey; ema20: boolean; ema200: boolean; ibs: boolean; volume: boolean }>) : null;
+    return raw ? (JSON.parse(raw) as ChartPrefs) : null;
   } catch {
     return null;
   }
 }
 
-function saveChartPrefs(prefs: { range: RangeKey; ema20: boolean; ema200: boolean; ibs: boolean; volume: boolean }) {
+function saveChartPrefs(prefs: ChartPrefs) {
   try { localStorage.setItem(CHART_PREFS_KEY, JSON.stringify(prefs)); } catch { /* ignore */ }
 }
 
@@ -95,6 +116,16 @@ export const TradingChart = memo(function TradingChart({ data, trades, splits = 
   const [showIBS, setShowIBS] = useState(() => loadChartPrefs()?.ibs ?? false);
   const [showVolume, setShowVolume] = useState(() => loadChartPrefs()?.volume ?? false);
 
+  const [ema20Width, setEma20Width] = useState<LineWidth>(() => (loadChartPrefs()?.ema20Width as LineWidth) ?? 2);
+  const [ema20LineStyle, setEma20LineStyle] = useState<0 | 2>(() => (loadChartPrefs()?.ema20Style as 0 | 2) ?? 0);
+  const [ema200Width, setEma200Width] = useState<LineWidth>(() => (loadChartPrefs()?.ema200Width as LineWidth) ?? 2);
+  const [ema200LineStyle, setEma200LineStyle] = useState<0 | 2>(() => (loadChartPrefs()?.ema200Style as 0 | 2) ?? 0);
+  const [showTradeMarkers, setShowTradeMarkers] = useState<boolean>(() => loadChartPrefs()?.showTradeMarkers ?? true);
+  const [tradeMarkerColor, setTradeMarkerColor] = useState<string>(() => loadChartPrefs()?.tradeMarkerColor ?? '#2196F3');
+  const [tradeMarkerShape, setTradeMarkerShape] = useState<MarkerShape>(() => (loadChartPrefs()?.tradeMarkerShape as MarkerShape) ?? 'arrow');
+  const [showChartSettings, setShowChartSettings] = useState(false);
+  const settingsRef = useRef<HTMLDivElement | null>(null);
+
   const showIBSRef = useRef(showIBS);
   const showVolumeRef = useRef(showVolume);
 
@@ -109,8 +140,8 @@ export const TradingChart = memo(function TradingChart({ data, trades, splits = 
   }, [showIBS, showVolume]);
 
   useEffect(() => {
-    saveChartPrefs({ range: activeRange, ema20: showEMA20, ema200: showEMA200, ibs: showIBS, volume: showVolume });
-  }, [activeRange, showEMA20, showEMA200, showIBS, showVolume]);
+    saveChartPrefs({ range: activeRange, ema20: showEMA20, ema200: showEMA200, ibs: showIBS, volume: showVolume, ema20Width, ema20Style: ema20LineStyle, ema200Width, ema200Style: ema200LineStyle, showTradeMarkers, tradeMarkerColor, tradeMarkerShape });
+  }, [activeRange, showEMA20, showEMA200, showIBS, showVolume, ema20Width, ema20LineStyle, ema200Width, ema200LineStyle, showTradeMarkers, tradeMarkerColor, tradeMarkerShape]);
 
   useEffect(() => {
     const onTheme = (e: Event) => {
@@ -437,15 +468,17 @@ export const TradingChart = memo(function TradingChart({ data, trades, splits = 
       }
     };
 
-    if (trades.length > 0) {
+    if (trades.length > 0 && showTradeMarkers) {
+      const entryShape = tradeMarkerShape === 'arrow' ? 'arrowUp' : tradeMarkerShape;
+      const exitShape = tradeMarkerShape === 'arrow' ? 'arrowDown' : tradeMarkerShape;
       for (const trade of trades) {
         const entryTime = getMarkerTimeIfExists(trade.entryDate);
         if (entryTime != null) {
           allMarkers.push({
             time: entryTime,
             position: 'belowBar',
-            color: '#2196F3',
-            shape: 'arrowUp',
+            color: tradeMarkerColor,
+            shape: entryShape,
             text: '',
           });
         }
@@ -456,8 +489,8 @@ export const TradingChart = memo(function TradingChart({ data, trades, splits = 
             allMarkers.push({
               time: exitTime,
               position: 'aboveBar',
-              color: '#2196F3',
-              shape: 'arrowDown',
+              color: tradeMarkerColor,
+              shape: exitShape,
               text: '',
             });
           }
@@ -494,7 +527,7 @@ export const TradingChart = memo(function TradingChart({ data, trades, splits = 
     } catch (e) {
       logError('chart', 'Error applying chart markers', { error: (e as Error).message }, 'TradingChart.setMarkers');
     }
-  }, [chartReady, trades, splits, data, chartData]);
+  }, [chartReady, trades, splits, data, chartData, showTradeMarkers, tradeMarkerColor, tradeMarkerShape]);
 
   useEffect(() => {
     if (!candlestickSeriesRef.current) return;
@@ -558,6 +591,23 @@ export const TradingChart = memo(function TradingChart({ data, trades, splits = 
     ema20SeriesRef.current?.applyOptions({ visible: showEMA20 });
     ema200SeriesRef.current?.applyOptions({ visible: showEMA200 });
   }, [showIBS, showVolume, showEMA20, showEMA200, chartReady]);
+
+  useEffect(() => {
+    if (!chartReady) return;
+    ema20SeriesRef.current?.applyOptions({ lineWidth: ema20Width, lineStyle: ema20LineStyle as LineStyle });
+    ema200SeriesRef.current?.applyOptions({ lineWidth: ema200Width, lineStyle: ema200LineStyle as LineStyle });
+  }, [chartReady, ema20Width, ema20LineStyle, ema200Width, ema200LineStyle]);
+
+  useEffect(() => {
+    if (!showChartSettings) return;
+    const onPointerDown = (e: MouseEvent) => {
+      if (settingsRef.current && !settingsRef.current.contains(e.target as Node)) {
+        setShowChartSettings(false);
+      }
+    };
+    document.addEventListener('mousedown', onPointerDown);
+    return () => document.removeEventListener('mousedown', onPointerDown);
+  }, [showChartSettings]);
 
   useEffect(() => {
     if (!chartRef.current || !chartReady || !chartData.length) return;
@@ -702,6 +752,125 @@ export const TradingChart = memo(function TradingChart({ data, trades, splits = 
               {ind.label}
             </button>
           ))}
+        </div>
+
+        {/* Chart visual settings */}
+        <div ref={settingsRef} className="relative ml-auto">
+          <button
+            type="button"
+            onClick={() => setShowChartSettings(v => !v)}
+            className={`p-1.5 rounded-lg border transition-colors ${showChartSettings ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50 dark:bg-gray-900 dark:text-gray-300 dark:border-gray-700 dark:hover:bg-gray-800'}`}
+            title="Настройки графика"
+            aria-label="Настройки графика"
+          >
+            <Settings2 className="w-4 h-4" />
+          </button>
+
+          {showChartSettings && (
+            <div className="absolute right-0 top-full z-30 mt-1.5 w-64 rounded-lg border border-gray-200 bg-white p-3 shadow-lg dark:border-gray-700 dark:bg-gray-900 space-y-3">
+              {/* EMA 20 */}
+              <div>
+                <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-2">EMA 20</div>
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-gray-500 dark:text-gray-400 w-14 shrink-0">Толщина</span>
+                    <div className="flex items-center">
+                      {([1, 2, 3] as const).map((w, i) => (
+                        <button key={w} type="button" onClick={() => setEma20Width(w)}
+                          className={`px-2.5 py-1 text-xs font-medium border transition-colors ${i === 0 ? 'rounded-l-md' : ''} ${i === 2 ? 'rounded-r-md' : ''} ${i > 0 ? '-ml-px' : ''} ${ema20Width === w ? 'relative z-10 bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50 dark:bg-gray-900 dark:text-gray-300 dark:border-gray-700'}`}
+                        >{w}</button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-gray-500 dark:text-gray-400 w-14 shrink-0">Стиль</span>
+                    <div className="flex items-center">
+                      {([{ label: '——', value: 0 }, { label: '- -', value: 2 }] as const).map((opt, i) => (
+                        <button key={opt.value} type="button" onClick={() => setEma20LineStyle(opt.value)}
+                          className={`px-2.5 py-1 text-xs font-medium border transition-colors ${i === 0 ? 'rounded-l-md' : 'rounded-r-md -ml-px'} ${ema20LineStyle === opt.value ? 'relative z-10 bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50 dark:bg-gray-900 dark:text-gray-300 dark:border-gray-700'}`}
+                        >{opt.label}</button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="border-t border-gray-100 dark:border-gray-800" />
+
+              {/* EMA 200 */}
+              <div>
+                <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-2">EMA 200</div>
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-gray-500 dark:text-gray-400 w-14 shrink-0">Толщина</span>
+                    <div className="flex items-center">
+                      {([1, 2, 3] as const).map((w, i) => (
+                        <button key={w} type="button" onClick={() => setEma200Width(w)}
+                          className={`px-2.5 py-1 text-xs font-medium border transition-colors ${i === 0 ? 'rounded-l-md' : ''} ${i === 2 ? 'rounded-r-md' : ''} ${i > 0 ? '-ml-px' : ''} ${ema200Width === w ? 'relative z-10 bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50 dark:bg-gray-900 dark:text-gray-300 dark:border-gray-700'}`}
+                        >{w}</button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-gray-500 dark:text-gray-400 w-14 shrink-0">Стиль</span>
+                    <div className="flex items-center">
+                      {([{ label: '——', value: 0 }, { label: '- -', value: 2 }] as const).map((opt, i) => (
+                        <button key={opt.value} type="button" onClick={() => setEma200LineStyle(opt.value)}
+                          className={`px-2.5 py-1 text-xs font-medium border transition-colors ${i === 0 ? 'rounded-l-md' : 'rounded-r-md -ml-px'} ${ema200LineStyle === opt.value ? 'relative z-10 bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50 dark:bg-gray-900 dark:text-gray-300 dark:border-gray-700'}`}
+                        >{opt.label}</button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="border-t border-gray-100 dark:border-gray-800" />
+
+              {/* Trade markers */}
+              <div>
+                <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-2">Сделки на графике</div>
+                <div className="space-y-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setShowTradeMarkers(v => !v)}
+                    className={`w-full flex items-center justify-between rounded-lg border px-2.5 py-1.5 text-xs transition-colors ${showTradeMarkers ? 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/30 dark:text-blue-300 dark:border-blue-900/60' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50 dark:bg-gray-900 dark:text-gray-400 dark:border-gray-700'}`}
+                  >
+                    <span>Показывать</span>
+                    <span className="font-medium">{showTradeMarkers ? 'Вкл' : 'Выкл'}</span>
+                  </button>
+                  {showTradeMarkers && (
+                    <>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] text-gray-500 dark:text-gray-400 w-14 shrink-0">Цвет</span>
+                        <div className="flex items-center gap-1.5">
+                          {MARKER_COLORS.map(color => (
+                            <button
+                              key={color}
+                              type="button"
+                              onClick={() => setTradeMarkerColor(color)}
+                              className={`w-5 h-5 rounded-full border-2 transition-transform ${tradeMarkerColor === color ? 'border-gray-700 scale-125 dark:border-gray-200' : 'border-transparent hover:scale-110'}`}
+                              style={{ backgroundColor: color }}
+                              title={color}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] text-gray-500 dark:text-gray-400 w-14 shrink-0">Маркер</span>
+                        <div className="flex items-center">
+                          {([{ label: '↑↓', value: 'arrow' }, { label: '●', value: 'circle' }, { label: '■', value: 'square' }] as const).map((opt, i) => (
+                            <button key={opt.value} type="button" onClick={() => setTradeMarkerShape(opt.value)}
+                              className={`px-2.5 py-1 text-xs font-medium border transition-colors ${i === 0 ? 'rounded-l-md' : ''} ${i === 2 ? 'rounded-r-md' : ''} ${i > 0 ? '-ml-px' : ''} ${tradeMarkerShape === opt.value ? 'relative z-10 bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50 dark:bg-gray-900 dark:text-gray-300 dark:border-gray-700'}`}
+                            >{opt.label}</button>
+                          ))}
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
