@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
+import { useClickOutside } from '../hooks/useClickOutside';
 import type { OHLCData, Trade } from '../types';
 import { runOptionsBacktest } from '../lib/optionsBacktest';
 import { EquityChart } from './EquityChart';
@@ -34,19 +35,7 @@ export function OptionsAnalysis({ stockTrades, marketData }: OptionsAnalysisProp
     const initialCapital = 10000;
     const totalReturn = ((finalValue - initialCapital) / initialCapital) * 100;
 
-    useEffect(() => {
-        if (!showModelingInfo) return;
-
-        const handleOutsideClick = (event: MouseEvent) => {
-            if (!modelingInfoRef.current) return;
-            if (!modelingInfoRef.current.contains(event.target as Node)) {
-                setShowModelingInfo(false);
-            }
-        };
-
-        document.addEventListener('mousedown', handleOutsideClick);
-        return () => document.removeEventListener('mousedown', handleOutsideClick);
-    }, [showModelingInfo]);
+    useClickOutside(modelingInfoRef, showModelingInfo, () => setShowModelingInfo(false), false);
 
     return (
         <div className="space-y-6">

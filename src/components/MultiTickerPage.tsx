@@ -3,11 +3,10 @@ import { useSearchParams } from 'react-router-dom';
 import { HelpCircle, Settings2, RefreshCw, ArrowUpRight } from 'lucide-react';
 import { MetricsGrid, AnalysisTabs, PageHeader, Select, Button, TickerInput, ChartContainer } from './ui';
 import { useAppStore } from '../stores';
-import type { Strategy, Trade, EquityPoint } from '../types';
+import type { Strategy, MultiTickerBacktestResults, ChartQuote } from '../types';
 import { runSinglePositionBacktest, optimizeTickerData } from '../lib/singlePositionBacktest';
 import { StrategyInfoCard } from './StrategyInfoCard';
 import { MonthlyContributionAnalysis } from './MonthlyContributionAnalysis';
-import type { BacktestMetrics } from '../lib/backtest-statistics';
 import { createStrategyFromTemplate, STRATEGY_TEMPLATES } from '../lib/strategy';
 import { useMultiTickerData } from '../hooks/useMultiTickerData';
 import { BacktestPageShell } from './BacktestPageShell';
@@ -16,6 +15,13 @@ import { HeroLineChart } from './HeroLineChart';
 import { AnimatedPrice } from './AnimatedPrice';
 import { DatasetAPI } from '../lib/api';
 import { isSameDay } from '../lib/date-utils';
+import { getIsMarketOpen } from '../lib/market-utils';
+import { lsGet } from '../lib/storage';
+import { useClickOutside } from '../hooks/useClickOutside';
+import { CompactMetrics } from './CompactMetrics';
+import { StaleDataWarning } from './StaleDataWarning';
+import { OpenPositionBadge } from './OpenPositionBadge';
+import { TabContentLoader } from './ui/TabContentLoader';
 
 const importBacktestResultsView = () => import('./BacktestResultsView');
 const importTradingChart = () => import('./TradingChart');
@@ -35,32 +41,7 @@ const OptionsAnalysis = lazy(() => importOptionsAnalysis().then((m) => ({ defaul
 const OpenDayDrawdownChart = lazy(() => importOpenDayDrawdownChart().then((m) => ({ default: m.OpenDayDrawdownChart })));
 const BuyHoldAnalysis = lazy(() => importBuyHoldAnalysis().then((m) => ({ default: m.BuyHoldAnalysis })));
 
-interface BacktestResults {
-  equity: EquityPoint[];
-  finalValue: number;
-  maxDrawdown: number;
-  trades: Trade[];
-  metrics: BacktestMetrics;
-}
-
-type ChartQuote = { open: number | null; high: number | null; low: number | null; current: number | null; prevClose: number | null };
-
-function ResultsPanelLoader() {
-  return (
-    <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600 dark:border-gray-700 dark:bg-gray-900/40 dark:text-gray-300">
-      Загрузка аналитики...
-    </div>
-  );
-}
-
-function getIsMarketOpen(): boolean {
-  const now = new Date();
-  const day = now.toLocaleDateString('en-US', { timeZone: 'America/New_York', weekday: 'long' });
-  const t = now.toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour12: false, hour: '2-digit', minute: '2-digit' });
-  const [h, m] = t.split(':').map(Number);
-  const mins = h * 60 + m;
-  return !['Saturday', 'Sunday'].includes(day) && mins >= 9 * 60 + 30 && mins < 16 * 60;
-}
+type BacktestResults = MultiTickerBacktestResults;
 
 export function MultiTickerPage() {
   const defaultMultiTickerSymbols = useAppStore(s => s.defaultMultiTickerSymbols);
@@ -72,16 +53,12 @@ export function MultiTickerPage() {
     return symbolsStr.split(',').map(s => s.trim().toUpperCase()).filter(Boolean);
   };
 
-  // ─── localStorage persistence helpers ────────────────────────────────────────
+  // ─── localStorage keys ────────────────────────────────────────────────────────
   const LS_CHART_KIND   = 'stocks.heroChartKind';
   const LS_SHOW_TRADES  = 'stocks.heroShowTrades';
   const LS_RANGE        = 'stocks.heroRange';
   const LS_TICKER       = 'stocks.selectedChartTicker';
   const LS_TICKERS      = 'stocks.tickers';
-
-  const lsGet = <T,>(key: string, fallback: T): T => {
-    try { const v = localStorage.getItem(key); return v !== null ? JSON.parse(v) as T : fallback; } catch { return fallback; }
-  };
 
   const getInitialTickers = () => {
     const urlTickers = searchParams.get('tickers');
@@ -141,7 +118,7 @@ export function MultiTickerPage() {
   const [showQuoteDetails, setShowQuoteDetails] = useState(false);
   const quoteDetailsRef = useRef<HTMLDivElement | null>(null);
 
-  const lazyFallback = <ResultsPanelLoader />;
+  const lazyFallback = <TabContentLoader />;
   const strategyHelpRef = useRef<HTMLDivElement | null>(null);
   const heroSettingsRef = useRef<HTMLDivElement | null>(null);
   const hasAutoRun = useRef(false);
@@ -187,43 +164,9 @@ export function MultiTickerPage() {
   );
   const initialCapital = Number(activeStrategy?.riskManagement?.initialCapital ?? 10000);
 
-  // Strategy help popup close-on-outside-click
-  useEffect(() => {
-    if (!showStrategyInfo) return;
-    const onClickOutside = (event: MouseEvent) => {
-      if (!strategyHelpRef.current) return;
-      if (!strategyHelpRef.current.contains(event.target as Node)) setShowStrategyInfo(false);
-    };
-    const onEscape = (event: KeyboardEvent) => { if (event.key === 'Escape') setShowStrategyInfo(false); };
-    document.addEventListener('mousedown', onClickOutside);
-    document.addEventListener('keydown', onEscape);
-    return () => {
-      document.removeEventListener('mousedown', onClickOutside);
-      document.removeEventListener('keydown', onEscape);
-    };
-  }, [showStrategyInfo]);
-
-  // Hero settings popup close-on-outside-click
-  useEffect(() => {
-    if (!showHeroSettings) return;
-    const onClickOutside = (event: MouseEvent) => {
-      if (!heroSettingsRef.current) return;
-      if (!heroSettingsRef.current.contains(event.target as Node)) setShowHeroSettings(false);
-    };
-    document.addEventListener('mousedown', onClickOutside);
-    return () => document.removeEventListener('mousedown', onClickOutside);
-  }, [showHeroSettings]);
-
-  // Quote details popup close-on-outside-click
-  useEffect(() => {
-    if (!showQuoteDetails) return;
-    const onClickOutside = (event: MouseEvent) => {
-      if (!quoteDetailsRef.current) return;
-      if (!quoteDetailsRef.current.contains(event.target as Node)) setShowQuoteDetails(false);
-    };
-    document.addEventListener('mousedown', onClickOutside);
-    return () => document.removeEventListener('mousedown', onClickOutside);
-  }, [showQuoteDetails]);
+  useClickOutside(strategyHelpRef, showStrategyInfo, () => setShowStrategyInfo(false));
+  useClickOutside(heroSettingsRef, showHeroSettings, () => setShowHeroSettings(false), false);
+  useClickOutside(quoteDetailsRef, showQuoteDetails, () => setShowQuoteDetails(false), false);
 
   // ─── Backtest ────────────────────────────────────────────────────────────────
 
@@ -700,59 +643,20 @@ export function MultiTickerPage() {
               Запустить бэктест
             </Button>
 
-            {/* Compact metrics after backtest */}
             {backtestResults && (
-              <div className="space-y-1.5 border-t border-gray-200 pt-3 dark:border-gray-700">
-                <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Результаты</div>
-                {(() => {
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  const m = backtestResults.metrics as any;
-                  return [
-                    { label: 'CAGR', value: m?.cagr != null ? `${Number(m.cagr).toFixed(1)}%` : '—' },
-                    { label: 'Макс. просадка', value: m?.maxDrawdown != null ? `${(Number(m.maxDrawdown) * 100).toFixed(1)}%` : '—' },
-                    { label: 'Win rate', value: m?.winRate != null ? `${(Number(m.winRate) * 100).toFixed(1)}%` : '—' },
-                    { label: 'Sharpe', value: m?.sharpeRatio != null ? Number(m.sharpeRatio).toFixed(2) : '—' },
-                    { label: 'Сделок', value: String(backtestResults.trades.length) },
-                  ];
-                })().map(({ label, value }) => (
-                  <div key={label} className="flex items-center justify-between text-xs">
-                    <span className="text-gray-500 dark:text-gray-400">{label}</span>
-                    <span className="font-mono font-semibold text-gray-900 dark:text-gray-100">{value}</span>
-                  </div>
-                ))}
-              </div>
+              <CompactMetrics metrics={backtestResults.metrics} trades={backtestResults.trades} />
             )}
 
-            {/* Stale data warning */}
             {isSelectedTickerStale && selectedChartTicker && (
-              <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/20 dark:text-amber-200">
-                <div className="flex items-start justify-between gap-2">
-                  <div>Данные {selectedChartTicker} не актуальны</div>
-                  <button
-                    onClick={() => void handleRefreshTicker(selectedChartTicker)}
-                    disabled={isRefreshingSelected}
-                    className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-amber-300 bg-amber-100 text-amber-800 hover:bg-amber-200 disabled:opacity-50 dark:border-amber-900/60 dark:bg-amber-900/30 dark:text-amber-200 dark:hover:bg-amber-900/50"
-                    title="Обновить данные"
-                  >
-                    <RefreshCw className={`h-3.5 w-3.5 ${isRefreshingSelected ? 'animate-spin' : ''}`} />
-                  </button>
-                </div>
-              </div>
+              <StaleDataWarning
+                ticker={selectedChartTicker}
+                isRefreshing={isRefreshingSelected}
+                onRefresh={() => void handleRefreshTicker(selectedChartTicker)}
+              />
             )}
 
-            {/* Open position indicator */}
             {backtestResults && (
-              <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-xs text-gray-700 dark:border-gray-700 dark:bg-gray-800/40 dark:text-gray-200">
-                <span>
-                  Открытая сделка:{' '}
-                  <span className={isOpenPosition ? 'text-emerald-600 dark:text-emerald-300' : 'text-gray-500'}>
-                    {isOpenPosition ? 'да' : 'нет'}
-                  </span>
-                  {isOpenPosition && openEntryPrice != null && (
-                    <span className="ml-1 text-gray-600 dark:text-gray-300">вход: ${Number(openEntryPrice).toFixed(2)}</span>
-                  )}
-                </span>
-              </div>
+              <OpenPositionBadge isOpen={isOpenPosition} entryPrice={openEntryPrice} />
             )}
           </aside>
         </div>

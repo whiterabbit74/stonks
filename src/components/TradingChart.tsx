@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, memo, type ReactNode } from 'react';
 import { Settings2 } from 'lucide-react';
 import { useIsDark } from '../hooks/useIsDark';
+import { useClickOutside } from '../hooks/useClickOutside';
 import { getChartColors } from '../lib/chart-theme';
 import {
   CandlestickSeries,
@@ -583,16 +584,7 @@ export const TradingChart = memo(function TradingChart({ data, trades, splits = 
     ema200SeriesRef.current?.applyOptions({ lineWidth: ema200Width, lineStyle: ema200LineStyle as LineStyle });
   }, [chartReady, ema20Width, ema20LineStyle, ema200Width, ema200LineStyle]);
 
-  useEffect(() => {
-    if (!showChartSettings) return;
-    const onPointerDown = (e: MouseEvent) => {
-      if (settingsRef.current && !settingsRef.current.contains(e.target as Node)) {
-        setShowChartSettings(false);
-      }
-    };
-    document.addEventListener('mousedown', onPointerDown);
-    return () => document.removeEventListener('mousedown', onPointerDown);
-  }, [showChartSettings]);
+  useClickOutside(settingsRef, showChartSettings, () => setShowChartSettings(false), false);
 
   useEffect(() => {
     if (!chartRef.current || !chartReady || !chartData.length) return;

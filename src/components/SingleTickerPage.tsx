@@ -3,6 +3,7 @@ import { Heart, RefreshCw, HelpCircle, Settings2, ArrowUpRight } from 'lucide-re
 import { useNavigate } from 'react-router-dom';
 import { DatasetAPI } from '../lib/api';
 import { isSameDay } from '../lib/date-utils';
+import { useClickOutside } from '../hooks/useClickOutside';
 import { useAppStore } from '../stores';
 import { ChartContainer, AnalysisTabs, MetricsGrid, Button } from './ui';
 import { InfoModal } from './InfoModal';
@@ -168,33 +169,8 @@ export function SingleTickerPage() {
     }
   }, [visibleAnalysisTabs, activeChart, firstVisibleTab]);
 
-  useEffect(() => {
-    if (!showQuoteDetails) return;
-
-    const onPointerDown = (event: MouseEvent) => {
-      if (!quoteDetailsRef.current) return;
-      if (!quoteDetailsRef.current.contains(event.target as Node)) {
-        setShowQuoteDetails(false);
-      }
-    };
-
-    document.addEventListener('mousedown', onPointerDown);
-    return () => document.removeEventListener('mousedown', onPointerDown);
-  }, [showQuoteDetails]);
-
-  useEffect(() => {
-    if (!showHeroSettings) return;
-
-    const onPointerDown = (event: MouseEvent) => {
-      if (!heroSettingsRef.current) return;
-      if (!heroSettingsRef.current.contains(event.target as Node)) {
-        setShowHeroSettings(false);
-      }
-    };
-
-    document.addEventListener('mousedown', onPointerDown);
-    return () => document.removeEventListener('mousedown', onPointerDown);
-  }, [showHeroSettings]);
+  useClickOutside(quoteDetailsRef, showQuoteDetails, () => setShowQuoteDetails(false), false);
+  useClickOutside(heroSettingsRef, showHeroSettings, () => setShowHeroSettings(false), false);
 
   const prefetchAnalysisTab = (tabId: string) => {
     if (tabId === 'summary') return;

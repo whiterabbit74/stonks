@@ -418,3 +418,21 @@ export interface ValidationResult {
   isValid: boolean;
   errors: string[] | Array<{ code: string; message: string; row?: number }>;
 }
+
+// Shared backtest result type used by multi-ticker pages
+export interface MultiTickerBacktestResults {
+  equity: EquityPoint[];
+  finalValue: number;
+  maxDrawdown: number;
+  trades: Trade[];
+  metrics: import('../lib/backtest-statistics').BacktestMetrics;
+}
+
+// Real-time quote snapshot for the hero chart
+export interface ChartQuote {
+  open: number | null;
+  high: number | null;
+  low: number | null;
+  current: number | null;
+  prevClose: number | null;
+}

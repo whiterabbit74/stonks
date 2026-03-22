@@ -1,5 +1,6 @@
 import { ChevronDown, Zap } from 'lucide-react';
-import { useState, useRef, useEffect, type ReactNode } from 'react';
+import { useState, useRef, type ReactNode } from 'react';
+import { useClickOutside } from '../../hooks/useClickOutside';
 
 export interface ProviderOption {
   value: string;
@@ -42,14 +43,7 @@ export function ProviderBadge({ label, provider, icon, options, onChange }: Prov
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (!open) return;
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [open]);
+  useClickOutside(ref, open, () => setOpen(false), false);
 
   const canChange = !!(options && onChange);
 
