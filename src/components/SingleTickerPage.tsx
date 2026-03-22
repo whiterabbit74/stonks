@@ -951,27 +951,29 @@ export function SingleTickerPage() {
               className="mb-4"
             />
 
-            {activeChart === 'summary' ? (
-              renderHeroSummarySection()
-            ) : (
-              <Suspense fallback={lazyFallback}>
-                {renderSpecificTab() || (
-                  <BacktestResultsView
-                    mode="single"
-                    activeTab={activeChart}
-                    backtestResults={selectedResults}
-                    comparisonBacktestResults={comparisonResults}
-                    primarySeriesLabel={marginPercent > 100 ? `С маржей ${marginPercent}%` : 'Без маржи (100%)'}
-                    comparisonSeriesLabel="Без маржи (100%)"
-                    marketData={marketData}
-                    currentSplits={currentSplits}
-                    symbol={symbol}
-                    strategy={currentStrategy}
-                    initialCapital={initialCapital}
-                  />
-                )}
-              </Suspense>
-            )}
+            <div className="min-h-[420px]">
+              {activeChart === 'summary' ? (
+                renderHeroSummarySection()
+              ) : (
+                <Suspense fallback={lazyFallback}>
+                  {renderSpecificTab() || (
+                    <BacktestResultsView
+                      mode="single"
+                      activeTab={activeChart}
+                      backtestResults={selectedResults}
+                      comparisonBacktestResults={comparisonResults}
+                      primarySeriesLabel={marginPercent > 100 ? `С маржей ${marginPercent}%` : 'Без маржи (100%)'}
+                      comparisonSeriesLabel="Без маржи (100%)"
+                      marketData={marketData}
+                      currentSplits={currentSplits}
+                      symbol={symbol}
+                      strategy={currentStrategy}
+                      initialCapital={initialCapital}
+                    />
+                  )}
+                </Suspense>
+              )}
+            </div>
           </section>
         </div>
       </div>

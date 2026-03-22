@@ -148,9 +148,12 @@
 }
 
 /* Reserve scrollbar gutter space at all times so scrollbar appearing/disappearing
-   doesn't shift content horizontally (affects all pages). */
+   doesn't shift content horizontally (affects all pages).
+   overflow-anchor: none on html disables scroll anchoring at the viewport level —
+   Chrome requires it on the scroll container (html), not just body. */
 html {
   scrollbar-gutter: stable;
+  overflow-anchor: none;
 }
 
 /* Enhanced smooth transitions for all interactive elements */

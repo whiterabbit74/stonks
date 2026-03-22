@@ -785,7 +785,7 @@ export function MultiTickerPage() {
             onTabIntent={prefetchAnalysisTab}
           />
 
-          <div className="p-4">
+          <div className="p-4 min-h-[420px]">
             {activeTab === 'summary' && renderSummaryTab()}
 
             {activeTab === 'monthlyContribution' && monthlyContributionResults && backtestResults && (

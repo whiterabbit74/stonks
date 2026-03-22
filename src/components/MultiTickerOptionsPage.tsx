@@ -706,7 +706,7 @@ export function MultiTickerOptionsPage() {
             onTabIntent={prefetchAnalysisTab}
           />
 
-          <div className="p-4">
+          <div className="p-4 min-h-[420px]">
             {activeTab === 'summary' && renderSummaryTab()}
 
             {backtestResults && activeTab !== 'summary' && (
