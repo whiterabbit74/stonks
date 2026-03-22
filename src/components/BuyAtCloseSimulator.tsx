@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { EquityPoint, OHLCData, Strategy, Trade } from '../types';
+import { LS } from '../constants';
 import { EquityChart } from './EquityChart';
 import { CleanBacktestEngine, type CleanBacktestOptions } from '../lib/clean-backtest';
 import { TradesTable } from './TradesTable';
@@ -100,7 +101,7 @@ export function BuyAtCloseSimulator({ data, strategy }: BuyAtCloseSimulatorProps
     try {
       const params = new URLSearchParams(window.location.search);
       const fromUrl = params.get('margin');
-      const saved = localStorage.getItem('buyAtClose.marginPct');
+      const saved = localStorage.getItem(LS.BUY_AT_CLOSE_MARGIN_PCT);
       const source = fromUrl ?? saved ?? undefined;
       if (source) {
         setMarginPctInput(source);
@@ -117,7 +118,7 @@ export function BuyAtCloseSimulator({ data, strategy }: BuyAtCloseSimulatorProps
     if (!isFinite(pct) || pct <= 0) return;
     setAppliedLeverage(pct / 100);
     try {
-      localStorage.setItem('buyAtClose.marginPct', String(pct));
+      localStorage.setItem(LS.BUY_AT_CLOSE_MARGIN_PCT, String(pct));
       const url = new URL(window.location.href);
       url.searchParams.set('margin', String(pct));
       window.history.replaceState(null, '', url.toString());

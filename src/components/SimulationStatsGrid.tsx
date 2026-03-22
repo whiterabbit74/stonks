@@ -21,59 +21,50 @@ export function SimulationStatsGrid({
   periodEnd,
   leverage,
   winRate,
-  totalReturn
+  totalReturn,
 }: SimulationStatsGridProps) {
+  const card = 'bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 text-center';
+  const label = 'text-sm text-gray-600 dark:text-gray-400';
+
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 md:gap-3">
-      <div className="rounded-lg border p-3 bg-gray-50 dark:bg-gray-800 dark:border-gray-700">
-        <div className="text-xs text-gray-500 dark:text-gray-300">Финальная стоимость</div>
-        <div className="text-base font-semibold text-green-600 dark:text-green-400">
-          {formatCurrencyUSD(finalValue)}
-        </div>
+    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+      <div className={card}>
+        <div className="text-2xl font-bold text-green-600">{formatCurrencyUSD(finalValue)}</div>
+        <div className={label}>Финальная стоимость</div>
       </div>
 
       {totalReturn !== undefined && (
-        <div className="rounded-lg border p-3 bg-gray-50 dark:bg-gray-800 dark:border-gray-700">
-          <div className="text-xs text-gray-500 dark:text-gray-300">Общая доходность</div>
-          <div className="text-base font-semibold text-blue-600 dark:text-blue-400">
-            {totalReturn.toFixed(2)}%
-          </div>
+        <div className={card}>
+          <div className="text-2xl font-bold text-blue-600">{totalReturn.toFixed(1)}%</div>
+          <div className={label}>Общая доходность</div>
         </div>
       )}
 
-      <div className="rounded-lg border p-3 bg-gray-50 dark:bg-gray-800 dark:border-gray-700">
-        <div className="text-xs text-gray-500 dark:text-gray-300">CAGR</div>
-        <div className="text-base font-semibold text-orange-600 dark:text-orange-400">
-          {cagr.toFixed(2)}%
-        </div>
+      <div className={card}>
+        <div className="text-2xl font-bold text-orange-600">{cagr.toFixed(1)}%</div>
+        <div className={label}>CAGR</div>
       </div>
 
       {winRate !== undefined && (
-        <div className="rounded-lg border p-3 bg-gray-50 dark:bg-gray-800 dark:border-gray-700">
-          <div className="text-xs text-gray-500 dark:text-gray-300">Win Rate</div>
-          <div className="text-base font-semibold text-purple-600 dark:text-purple-400">
-            {winRate.toFixed(1)}%
-          </div>
+        <div className={card}>
+          <div className="text-2xl font-bold text-purple-600">{winRate.toFixed(1)}%</div>
+          <div className={label}>Win Rate</div>
         </div>
       )}
 
-      <div className="rounded-lg border p-3 bg-gray-50 dark:bg-gray-800 dark:border-gray-700">
-        <div className="text-xs text-gray-500 dark:text-gray-300">Макс. просадка</div>
-        <div className="text-base font-semibold text-red-600 dark:text-red-400">
-          {maxDrawdown.toFixed(2)}%
-        </div>
+      <div className={card}>
+        <div className="text-2xl font-bold text-red-600">{maxDrawdown.toFixed(1)}%</div>
+        <div className={label}>Макс. просадка</div>
       </div>
 
-      {/* If we have fewer items than columns in a row, trades might wrap weirdly or take a whole spot.
-          Let's just keep it simple. */}
-      <div className="rounded-lg border p-3 bg-gray-50 dark:bg-gray-800 dark:border-gray-700">
-        <div className="text-xs text-gray-500 dark:text-gray-300">Сделок</div>
-        <div className="text-base font-semibold dark:text-gray-100">{tradeCount}</div>
+      <div className={card}>
+        <div className="text-2xl font-bold text-indigo-600">{tradeCount}</div>
+        <div className={label}>Всего сделок</div>
       </div>
 
       {(periodStart || periodEnd || leverage !== undefined) && (
-        <div className="col-span-2 sm:col-span-3 md:col-span-5 flex flex-wrap gap-4 text-xs text-gray-500 dark:text-gray-400 px-1 items-center">
-          {(periodStart && periodEnd) && <span>Период: {periodStart} — {periodEnd}</span>}
+        <div className="col-span-2 md:col-span-4 lg:col-span-6 flex flex-wrap gap-4 text-xs text-gray-500 dark:text-gray-400 px-1 items-center">
+          {periodStart && periodEnd && <span>Период: {periodStart} — {periodEnd}</span>}
           {leverage !== undefined && <span>Текущее плечо: ×{leverage.toFixed(2)}</span>}
         </div>
       )}

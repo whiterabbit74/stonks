@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Laptop, Moon, Sun } from 'lucide-react';
+import { LS } from '../constants';
 
 export type ThemeMode = 'auto' | 'dark' | 'light';
 
@@ -35,7 +36,7 @@ export function ThemeToggle() {
 
   useEffect(() => {
     try {
-      const stored = (localStorage.getItem('theme') as ThemeMode | null) || 'auto';
+      const stored = (localStorage.getItem(LS.THEME) as ThemeMode | null) || 'auto';
       setMode(stored);
     } catch {
       // Ignore localStorage errors
@@ -44,7 +45,7 @@ export function ThemeToggle() {
 
   useEffect(() => {
     applyTheme(mode);
-    try { localStorage.setItem('theme', mode); } catch {
+    try { localStorage.setItem(LS.THEME, mode); } catch {
       // Ignore localStorage errors
     }
   }, [mode]);

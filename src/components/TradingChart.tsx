@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, memo, type ReactNode } from 'reac
 import { Settings2 } from 'lucide-react';
 import { useIsDark } from '../hooks/useIsDark';
 import { useClickOutside } from '../hooks/useClickOutside';
+import { LS } from '../constants';
 import { getChartColors } from '../lib/chart-theme';
 import {
   CandlestickSeries,
@@ -42,7 +43,7 @@ const RANGE_OPTIONS: Array<{ value: RangeKey; label: string; short: string }> = 
   { value: 'ALL', label: 'Весь период', short: 'Всё' },
 ];
 
-const CHART_PREFS_KEY = 'chart-prefs';
+const CHART_PREFS_KEY = LS.CHART_PREFS;
 
 interface ChartPrefs {
   range?: RangeKey;

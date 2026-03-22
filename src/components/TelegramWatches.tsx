@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
+import { LS } from '../constants';
 import { RefreshCw, Trash2, ExternalLink, Edit2, Check, X, ArrowUpDown, ArrowUp, ArrowDown, HelpCircle } from 'lucide-react';
 import { DatasetAPI } from '../lib/api';
 import { ConfirmModal } from './ConfirmModal';
@@ -112,7 +113,7 @@ export function TelegramWatches() {
   const [sortConfig, setSortConfig] = useState<{ key: keyof WatchItem | null; direction: 'asc' | 'desc' }>({ key: null, direction: 'asc' });
   const [monitorMarginPercent, setMonitorMarginPercent] = useState<number>(() => {
     if (typeof window === 'undefined') return 100;
-    return normalizeMonitorMarginPercent(Number(window.localStorage.getItem('monitor.marginPercent') || 100));
+    return normalizeMonitorMarginPercent(Number(window.localStorage.getItem(LS.MONITOR_MARGIN_PCT) || 100));
   });
   const [showMarginHelp, setShowMarginHelp] = useState(false);
   const watchThresholdPct = useAppStore(s => s.watchThresholdPct);
@@ -291,7 +292,7 @@ export function TelegramWatches() {
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    window.localStorage.setItem('monitor.marginPercent', String(monitorMarginPercent));
+    window.localStorage.setItem(LS.MONITOR_MARGIN_PCT, String(monitorMarginPercent));
   }, [monitorMarginPercent]);
 
   useEffect(() => {

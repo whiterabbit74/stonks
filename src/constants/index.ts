@@ -55,6 +55,41 @@ export const PERFORMANCE = {
   MAX_CHART_POINTS: 5000,
 } as const;
 
+/** localStorage key names — single source of truth for all persisted UI state */
+export const LS = {
+  // Shared between stocks and options pages
+  TICKERS:                    'stocks.tickers',
+
+  // Stocks page (MultiTickerPage)
+  STOCKS_CHART_KIND:          'stocks.heroChartKind',
+  STOCKS_SHOW_TRADES:         'stocks.heroShowTrades',
+  STOCKS_RANGE:               'stocks.heroRange',
+  STOCKS_SELECTED_TICKER:     'stocks.selectedChartTicker',
+
+  // Options page (MultiTickerOptionsPage)
+  OPTIONS_CHART_KIND:         'options.heroChartKind',
+  OPTIONS_SHOW_TRADES:        'options.heroShowTrades',
+  OPTIONS_RANGE:              'options.heroRange',
+  OPTIONS_SELECTED_TICKER:    'options.selectedChartTicker',
+  OPTIONS_SETTINGS:           'optionsPageSettings',
+
+  // Single ticker results page
+  RESULTS_MARGIN_PCT:         'results.marginPercent',
+  RESULTS_MAINTENANCE_MARGIN: 'results.maintenanceMarginPct',
+
+  // BuyAtClose simulator
+  BUY_AT_CLOSE_MARGIN_PCT:    'buyAtClose.marginPct',
+
+  // TradingChart
+  CHART_PREFS:                'chart-prefs',
+
+  // TelegramWatches
+  MONITOR_MARGIN_PCT:         'monitor.marginPercent',
+
+  // Theme
+  THEME:                      'theme',
+} as const;
+
 /** Validation limits */
 export const VALIDATION_LIMITS = {
   /** Minimum IBS value */

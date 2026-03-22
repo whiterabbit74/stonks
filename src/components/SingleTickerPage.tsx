@@ -5,6 +5,7 @@ import { DatasetAPI } from '../lib/api';
 import { isSameDay } from '../lib/date-utils';
 import { useClickOutside } from '../hooks/useClickOutside';
 import { useAppStore } from '../stores';
+import { LS } from '../constants';
 import { ChartContainer, AnalysisTabs, MetricsGrid, Button } from './ui';
 import { InfoModal } from './InfoModal';
 import { AnimatedPrice } from './AnimatedPrice';
@@ -117,12 +118,12 @@ export function SingleTickerPage() {
   const [modal, setModal] = useState<{ type: 'info' | 'error' | null; title?: string; message?: string }>({ type: null });
   const [marginPercent, setMarginPercent] = useState<number>(() => {
     if (typeof window === 'undefined') return DEFAULT_MARGIN_PERCENT;
-    const raw = Number(window.localStorage.getItem('results.marginPercent') || DEFAULT_MARGIN_PERCENT);
+    const raw = Number(window.localStorage.getItem(LS.RESULTS_MARGIN_PCT) || DEFAULT_MARGIN_PERCENT);
     return normalizeMarginPercent(raw);
   });
   const [maintenanceMarginPct, setMaintenanceMarginPct] = useState<number>(() => {
     if (typeof window === 'undefined') return DEFAULT_MAINTENANCE_MARGIN_PERCENT;
-    const raw = Number(window.localStorage.getItem('results.maintenanceMarginPct') || DEFAULT_MAINTENANCE_MARGIN_PERCENT);
+    const raw = Number(window.localStorage.getItem(LS.RESULTS_MAINTENANCE_MARGIN) || DEFAULT_MAINTENANCE_MARGIN_PERCENT);
     return normalizeMaintenanceMarginPercent(raw);
   });
 
@@ -154,12 +155,12 @@ export function SingleTickerPage() {
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    window.localStorage.setItem('results.marginPercent', String(marginPercent));
+    window.localStorage.setItem(LS.RESULTS_MARGIN_PCT, String(marginPercent));
   }, [marginPercent]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    window.localStorage.setItem('results.maintenanceMarginPct', String(maintenanceMarginPct));
+    window.localStorage.setItem(LS.RESULTS_MAINTENANCE_MARGIN, String(maintenanceMarginPct));
   }, [maintenanceMarginPct]);
 
   useEffect(() => {
