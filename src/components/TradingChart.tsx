@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState, memo, type ReactNode } from 'react';
 import { Settings2 } from 'lucide-react';
+import { useIsDark } from '../hooks/useIsDark';
+import { getChartColors } from '../lib/chart-theme';
 import {
   CandlestickSeries,
   HistogramSeries,
@@ -129,9 +131,7 @@ export const TradingChart = memo(function TradingChart({ data, trades, splits = 
   const showIBSRef = useRef(showIBS);
   const showVolumeRef = useRef(showVolume);
 
-  const [isDark, setIsDark] = useState<boolean>(() =>
-    typeof document !== 'undefined' ? document.documentElement.classList.contains('dark') : false
-  );
+  const isDark = useIsDark();
   const indicatorPanePercent = useAppStore((s) => s.indicatorPanePercent);
 
   useEffect(() => {
@@ -144,23 +144,11 @@ export const TradingChart = memo(function TradingChart({ data, trades, splits = 
   }, [activeRange, showEMA20, showEMA200, showIBS, showVolume, ema20Width, ema20LineStyle, ema200Width, ema200LineStyle, showTradeMarkers, tradeMarkerColor, tradeMarkerShape]);
 
   useEffect(() => {
-    const onTheme = (e: Event) => {
-      const dark = !!((e as CustomEvent<{ effectiveDark?: boolean }>).detail?.effectiveDark ?? document.documentElement.classList.contains('dark'));
-      setIsDark(dark);
-    };
-    window.addEventListener('themechange', onTheme);
-    return () => window.removeEventListener('themechange', onTheme);
-  }, []);
-
-  useEffect(() => {
     if (!chartContainerRef.current) return;
 
     const el = chartContainerRef.current;
     const darkNow = typeof document !== 'undefined' ? document.documentElement.classList.contains('dark') : false;
-    const bg = darkNow ? '#0b1220' : '#ffffff';
-    const text = darkNow ? '#e5e7eb' : '#1f2937';
-    const grid = darkNow ? '#1f2937' : '#eef2ff';
-    const border = darkNow ? '#374151' : '#e5e7eb';
+    const { bg, text, grid, border } = getChartColors(darkNow);
 
     const chart = createChart(el, {
       autoSize: true,
@@ -310,10 +298,7 @@ export const TradingChart = memo(function TradingChart({ data, trades, splits = 
   useEffect(() => {
     if (!chartRef.current) return;
 
-    const bg = isDark ? '#0b1220' : '#ffffff';
-    const text = isDark ? '#e5e7eb' : '#1f2937';
-    const grid = isDark ? '#1f2937' : '#eef2ff';
-    const border = isDark ? '#374151' : '#e5e7eb';
+    const { bg, text, grid, border } = getChartColors(isDark);
 
     chartRef.current.applyOptions({
       layout: { background: { color: bg }, textColor: text },

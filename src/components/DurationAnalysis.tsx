@@ -1,40 +1,19 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { HistogramSeries, createChart, type IChartApi, type ISeriesApi } from 'lightweight-charts';
 import type { Trade } from '../types';
 import { toChartTimestamp } from '../lib/date-utils';
+import { useIsDark } from '../hooks/useIsDark';
+import { getChartColors } from '../lib/chart-theme';
+import { centerFewPointsOnTimeScale } from '../lib/chart-utils';
 
 interface DurationAnalysisProps {
 	trades: Trade[];
 }
 
-function centerFewPointsOnTimeScale(chart: IChartApi, pointsCount: number) {
-	if (!pointsCount) return;
-	chart.timeScale().fitContent();
-
-	if (pointsCount >= 40) return;
-
-	const minFillRatio = 0.7;
-	const logicalSpan = Math.max(pointsCount / minFillRatio, pointsCount + 2);
-	const padding = Math.max(0, (logicalSpan - pointsCount) / 2);
-	chart.timeScale().setVisibleLogicalRange({
-		from: -padding,
-		to: pointsCount - 1 + padding,
-	});
-}
-
 export function DurationAnalysis({ trades }: DurationAnalysisProps) {
 	const containerRef = useRef<HTMLDivElement>(null);
 	const chartRef = useRef<IChartApi | null>(null);
-	const [isDark, setIsDark] = useState<boolean>(() => typeof document !== 'undefined' ? document.documentElement.classList.contains('dark') : false);
-
-	useEffect(() => {
-		const onTheme = (e: Event) => {
-			const dark = !!((e as any)?.detail?.effectiveDark ?? document.documentElement.classList.contains('dark'));
-			setIsDark(dark);
-		};
-		window.addEventListener('themechange', onTheme);
-		return () => window.removeEventListener('themechange', onTheme);
-	}, []);
+	const isDark = useIsDark();
 
 	// Statistics Calculation
 	const stats = useMemo(() => {
@@ -84,10 +63,7 @@ export function DurationAnalysis({ trades }: DurationAnalysisProps) {
 			chartRef.current = null;
 		}
 
-		const bg = isDark ? '#0b1220' : '#ffffff';
-		const text = isDark ? '#e5e7eb' : '#1f2937';
-		const grid = isDark ? '#1f2937' : '#eef2ff';
-		const border = isDark ? '#374151' : '#e5e7eb';
+		const { bg, text, grid, border } = getChartColors(isDark);
 
 		const chart = createChart(containerRef.current, {
 			autoSize: true,

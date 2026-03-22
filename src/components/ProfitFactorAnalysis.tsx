@@ -1,49 +1,27 @@
-import { useEffect, useRef, useState, useMemo } from 'react';
+import { useEffect, useRef, useMemo } from 'react';
 import { HistogramSeries, LineSeries, createChart, type IChartApi, type ISeriesApi } from 'lightweight-charts';
 import type { Trade } from '../types';
 import { calculateTradeStats } from '../lib/trade-utils';
 import { formatMoney } from '../lib/formatters';
 import { toChartTimestamp } from '../lib/date-utils';
+import { useIsDark } from '../hooks/useIsDark';
+import { getChartColors } from '../lib/chart-theme';
+import { centerFewPointsOnTimeScale } from '../lib/chart-utils';
 
 interface ProfitFactorAnalysisProps {
   trades: Trade[];
 }
 
-function centerFewPointsOnTimeScale(chart: IChartApi, pointsCount: number) {
-  if (!pointsCount) return;
-  chart.timeScale().fitContent();
-
-  if (pointsCount >= 40) return;
-
-  const minFillRatio = 0.7;
-  const logicalSpan = Math.max(pointsCount / minFillRatio, pointsCount + 2);
-  const padding = Math.max(0, (logicalSpan - pointsCount) / 2);
-  chart.timeScale().setVisibleLogicalRange({
-    from: -padding,
-    to: pointsCount - 1 + padding,
-  });
-}
-
 export function ProfitFactorAnalysis({ trades }: ProfitFactorAnalysisProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
-  const [isDark, setIsDark] = useState<boolean>(() => typeof document !== 'undefined' ? document.documentElement.classList.contains('dark') : false);
+  const isDark = useIsDark();
 
   // Derived Stats
   const stats = useMemo(() => calculateTradeStats(trades), [trades]);
   const avgPnlPercent = stats.totalTrades > 0
     ? (trades.reduce((sum, t) => sum + (t.pnlPercent ?? 0), 0) / stats.totalTrades)
     : 0;
-
-  useEffect(() => {
-    const onTheme = (e: Event) => {
-      const customEvent = e as CustomEvent<{ mode: string; effectiveDark: boolean }>;
-      const dark = !!(customEvent?.detail?.effectiveDark ?? document.documentElement.classList.contains('dark'));
-      setIsDark(dark);
-    };
-    window.addEventListener('themechange', onTheme);
-    return () => window.removeEventListener('themechange', onTheme);
-  }, []);
 
   useEffect(() => {
     if (!containerRef.current || !trades.length) return;
@@ -53,10 +31,7 @@ export function ProfitFactorAnalysis({ trades }: ProfitFactorAnalysisProps) {
       chartRef.current = null;
     }
 
-    const bg = isDark ? '#0b1220' : '#ffffff';
-    const text = isDark ? '#e5e7eb' : '#1f2937';
-    const grid = isDark ? '#1f2937' : '#eef2ff';
-    const border = isDark ? '#374151' : '#e5e7eb';
+    const { bg, text, grid, border } = getChartColors(isDark);
 
     const chart = createChart(containerRef.current, {
       autoSize: true,

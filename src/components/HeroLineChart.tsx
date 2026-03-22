@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useIsDark } from '../hooks/useIsDark';
 import {
   CandlestickSeries,
   LineSeries,
@@ -69,9 +70,7 @@ export function HeroLineChart({
     setActiveRange(range);
     onRangeChange?.(range);
   };
-  const [isDark, setIsDark] = useState<boolean>(() =>
-    typeof document !== 'undefined' ? document.documentElement.classList.contains('dark') : false
-  );
+  const isDark = useIsDark();
 
   const candlesData = useMemo(() => {
     if (!data.length) return [] as Array<{ time: UTCTimestamp; open: number; high: number; low: number; close: number }>;
@@ -178,15 +177,6 @@ export function HeroLineChart({
 
     return markers;
   }, [showTrades, trades]);
-
-  useEffect(() => {
-    const onTheme = (e: Event) => {
-      const dark = !!((e as CustomEvent<{ effectiveDark?: boolean }>).detail?.effectiveDark ?? document.documentElement.classList.contains('dark'));
-      setIsDark(dark);
-    };
-    window.addEventListener('themechange', onTheme);
-    return () => window.removeEventListener('themechange', onTheme);
-  }, []);
 
   useEffect(() => {
     if (!chartContainerRef.current) return;

@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
+import { useIsDark } from '../hooks/useIsDark';
 import {
   CandlestickSeries,
   createChart,
@@ -32,9 +33,7 @@ export function MiniQuoteChart({ history, today, trades, highIBS, isOpenPosition
   const targetLineRef = useRef<IPriceLine | null>(null);
   const entryLineRef = useRef<IPriceLine | null>(null);
 
-  const [isDark, setIsDark] = useState<boolean>(() =>
-    typeof document !== 'undefined' ? document.documentElement.classList.contains('dark') : false
-  );
+  const isDark = useIsDark();
 
   const candles = useMemo(() => {
     const hasToday = !!(today && today.low != null && today.high != null && today.open != null && today.current != null);
@@ -104,15 +103,6 @@ export function MiniQuoteChart({ history, today, trades, highIBS, isOpenPosition
 
     return output;
   }, [candles, trades]);
-
-  useEffect(() => {
-    const onTheme = (e: Event) => {
-      const dark = !!((e as CustomEvent<{ effectiveDark?: boolean }>).detail?.effectiveDark ?? document.documentElement.classList.contains('dark'));
-      setIsDark(dark);
-    };
-    window.addEventListener('themechange', onTheme);
-    return () => window.removeEventListener('themechange', onTheme);
-  }, []);
 
   useEffect(() => {
     if (!containerRef.current) return;

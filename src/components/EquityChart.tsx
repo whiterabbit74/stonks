@@ -12,6 +12,8 @@ import {
 import type { EquityPoint } from '../types';
 import { logError } from '../lib/error-logger';
 import { toChartTimestamp } from '../lib/date-utils';
+import { useIsDark } from '../hooks/useIsDark';
+import { getChartColors } from '../lib/chart-theme';
 
 interface EquityChartProps {
   equity: EquityPoint[];
@@ -75,9 +77,7 @@ export function EquityChart({ equity, hideHeader, comparisonEquity, comparisonLa
   const comparisonLabelRef = useRef(comparisonLabel);
 
   const [activeRange, setActiveRange] = useState<RangeKey>('ALL');
-  const [isDark, setIsDark] = useState<boolean>(() =>
-    typeof document !== 'undefined' ? document.documentElement.classList.contains('dark') : false
-  );
+  const isDark = useIsDark();
 
   useEffect(() => {
     primaryLabelRef.current = primaryLabel;
@@ -85,22 +85,10 @@ export function EquityChart({ equity, hideHeader, comparisonEquity, comparisonLa
   }, [primaryLabel, comparisonLabel]);
 
   useEffect(() => {
-    const onTheme = (e: Event) => {
-      const dark = !!((e as CustomEvent<{ effectiveDark?: boolean }>).detail?.effectiveDark ?? document.documentElement.classList.contains('dark'));
-      setIsDark(dark);
-    };
-    window.addEventListener('themechange', onTheme);
-    return () => window.removeEventListener('themechange', onTheme);
-  }, []);
-
-  useEffect(() => {
     if (!chartContainerRef.current) return;
 
     const darkNow = typeof document !== 'undefined' ? document.documentElement.classList.contains('dark') : false;
-    const bg = darkNow ? '#0b1220' : '#ffffff';
-    const text = darkNow ? '#e5e7eb' : '#1f2937';
-    const grid = darkNow ? '#1f2937' : '#eef2ff';
-    const border = darkNow ? '#374151' : '#e5e7eb';
+    const { bg, text, grid, border } = getChartColors(darkNow);
 
     const chart = createChart(chartContainerRef.current, {
       autoSize: true,
@@ -215,10 +203,7 @@ export function EquityChart({ equity, hideHeader, comparisonEquity, comparisonLa
   useEffect(() => {
     if (!chartRef.current) return;
 
-    const bg = isDark ? '#0b1220' : '#ffffff';
-    const text = isDark ? '#e5e7eb' : '#1f2937';
-    const grid = isDark ? '#1f2937' : '#eef2ff';
-    const border = isDark ? '#374151' : '#e5e7eb';
+    const { bg, text, grid, border } = getChartColors(isDark);
 
     chartRef.current.applyOptions({
       layout: { background: { color: bg }, textColor: text },

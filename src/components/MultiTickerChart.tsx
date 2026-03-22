@@ -14,6 +14,8 @@ import {
 import type { OHLCData, Trade } from '../types';
 import { logError } from '../lib/error-logger';
 import { toChartTimestamp } from '../lib/date-utils';
+import { useIsDark } from '../hooks/useIsDark';
+import { getChartColors } from '../lib/chart-theme';
 
 interface TickerData {
   ticker: string;
@@ -47,9 +49,7 @@ export function MultiTickerChart({ tickersData, trades = [], height = 600 }: Mul
   const lineSeriesRefsRef = useRef<Map<string, ISeriesApi<'Line'>>>(new Map());
   const markersApiRefsRef = useRef<Map<string, ISeriesMarkersPluginApi<Time>>>(new Map());
 
-  const [isDark, setIsDark] = useState<boolean>(() =>
-    typeof document !== 'undefined' ? document.documentElement.classList.contains('dark') : false
-  );
+  const isDark = useIsDark();
   const [viewMode, setViewMode] = useState<ViewMode>('candles');
   const [maxVisibleTickers, setMaxVisibleTickers] = useState<number>(6);
   const [selectedTickers, setSelectedTickers] = useState<string[]>([]);
@@ -174,16 +174,6 @@ export function MultiTickerChart({ tickersData, trades = [], height = 600 }: Mul
   }, [trades]);
 
   useEffect(() => {
-    const onTheme = (e: Event) => {
-      const dark = !!((e as CustomEvent<{ effectiveDark?: boolean }>).detail?.effectiveDark ?? document.documentElement.classList.contains('dark'));
-      setIsDark(dark);
-    };
-
-    window.addEventListener('themechange', onTheme);
-    return () => window.removeEventListener('themechange', onTheme);
-  }, []);
-
-  useEffect(() => {
     const containerEl = chartContainerRef.current;
     if (!containerEl) return;
 
@@ -206,10 +196,7 @@ export function MultiTickerChart({ tickersData, trades = [], height = 600 }: Mul
 
     if (!selectedPreparedTickers.length) return cleanupChart;
 
-    const bg = isDark ? '#0b1220' : '#ffffff';
-    const text = isDark ? '#e5e7eb' : '#1f2937';
-    const grid = isDark ? '#1f2937' : '#eef2ff';
-    const border = isDark ? '#374151' : '#e5e7eb';
+    const { bg, text, grid, border } = getChartColors(isDark);
 
     const chart = createChart(containerEl, {
       autoSize: true,

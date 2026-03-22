@@ -1,7 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { HistogramSeries, createChart, type IChartApi, type ISeriesApi } from 'lightweight-charts';
 import type { OHLCData, Trade } from '../types';
 import { toChartTimestamp, toTradingDate } from '../lib/date-utils';
+import { useIsDark } from '../hooks/useIsDark';
+import { getChartColors } from '../lib/chart-theme';
 
 interface OpenDayDrawdownChartProps {
   trades: Trade[];
@@ -11,17 +13,7 @@ interface OpenDayDrawdownChartProps {
 export function OpenDayDrawdownChart({ trades, data }: OpenDayDrawdownChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
-  const [isDark, setIsDark] = useState<boolean>(() => typeof document !== 'undefined' ? document.documentElement.classList.contains('dark') : false);
-
-  useEffect(() => {
-    const onTheme = (e: Event) => {
-      const customEvent = e as CustomEvent<{ mode: string; effectiveDark: boolean }>;
-      const dark = !!(customEvent?.detail?.effectiveDark ?? document.documentElement.classList.contains('dark'));
-      setIsDark(dark);
-    };
-    window.addEventListener('themechange', onTheme);
-    return () => window.removeEventListener('themechange', onTheme);
-  }, []);
+  const isDark = useIsDark();
 
   // Map OHLC by YYYY-MM-DD for fast lookup
   const dateKey = (d: Date | string) => {
@@ -57,10 +49,7 @@ export function OpenDayDrawdownChart({ trades, data }: OpenDayDrawdownChartProps
       chartRef.current = null;
     }
 
-    const bg = isDark ? '#0b1220' : '#ffffff';
-    const text = isDark ? '#e5e7eb' : '#1f2937';
-    const grid = isDark ? '#1f2937' : '#eef2ff';
-    const border = isDark ? '#374151' : '#e5e7eb';
+    const { bg, text, grid, border } = getChartColors(isDark);
 
     const chart = createChart(containerRef.current, {
       autoSize: true,
