@@ -3,7 +3,7 @@ import { IndicatorEngine } from './indicators';
 import { MetricsCalculator } from './metrics';
 import { adjustOHLCForSplits } from './utils';
 import { logWarn } from './error-logger';
-import { daysBetweenTradingDates, toChartTimestamp } from './date-utils';
+import { daysBetweenTradingDates } from './date-utils';
 
 export interface CleanBacktestOptions {
   // Entry price timing: at current bar close, or at next day's open
@@ -366,20 +366,10 @@ export class CleanBacktestEngine {
     const metrics = metricsCalculator.calculateAllMetrics();
 
 
-    // Generate chart data from OHLC data
-    const chartData = this.data.map(bar => ({
-      time: toChartTimestamp(bar.date), // Convert to seconds for TradingView
-      open: bar.open,
-      high: bar.high,
-      low: bar.low,
-      close: bar.close
-    }));
-
     return {
       trades: this.trades,
       metrics: metrics,
       equity: this.equity,
-      chartData: chartData,
       insights: []
     };
   }
