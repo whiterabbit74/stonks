@@ -141,21 +141,39 @@ BACKUP_NAME=backup_\$(date +%Y%m%d_%H%M%S) &&
 mkdir -p \$BACKUP_DIR/\$BACKUP_NAME &&
 
 mkdir -p \$BACKUP_DIR/\$BACKUP_NAME/state \$BACKUP_DIR/\$BACKUP_NAME/db \$BACKUP_DIR/\$BACKUP_NAME/datasets &&
-if docker volume inspect stonks_state >/dev/null 2>&1; then
-    docker run --rm -v stonks_state:/source -v \$BACKUP_DIR/\$BACKUP_NAME/state:/backup alpine sh -lc 'cp -a /source/. /backup/ 2>/dev/null || true'
-else
-    echo '⚠️ volume stonks_state не найден'
-fi &&
-if docker volume inspect stonks_db >/dev/null 2>&1; then
-    docker run --rm -v stonks_db:/source -v \$BACKUP_DIR/\$BACKUP_NAME/db:/backup alpine sh -lc 'cp -a /source/. /backup/ 2>/dev/null || true'
-else
-    echo '⚠️ volume stonks_db не найден'
-fi &&
-if docker volume inspect stonks_datasets >/dev/null 2>&1; then
-    docker run --rm -v stonks_datasets:/source -v \$BACKUP_DIR/\$BACKUP_NAME/datasets:/backup alpine sh -lc 'cp -a /source/. /backup/ 2>/dev/null || true'
-else
-    echo '⚠️ volume stonks_datasets не найден'
-fi
+resolve_volume_name() {
+    local container_name=\"\$1\"
+    local destination=\"\$2\"
+    local fallback_suffix=\"\$3\"
+    local resolved=\"\"
+
+    resolved=\$(docker inspect \"\$container_name\" --format '{{range .Mounts}}{{println .Destination "\t" .Name "\t" .Type}}{{end}}' 2>/dev/null | awk -v dest=\"\$destination\" '\$1 == dest && \$3 == \"volume\" { print \$2; exit }')
+
+    if [ -z \"\$resolved\" ]; then
+        resolved=\$(docker volume ls --format '{{.Name}}' | grep -E \"(^|_)\${fallback_suffix}\$\" | head -n 1 || true)
+    fi
+
+    printf '%s' \"\$resolved\"
+} &&
+backup_volume() {
+    local actual_volume=\"\$1\"
+    local target_dir=\"\$2\"
+    local label=\"\$3\"
+
+    if [ -n \"\$actual_volume\" ] && docker volume inspect \"\$actual_volume\" >/dev/null 2>&1; then
+        echo \"📦 backup \$label volume: \$actual_volume\"
+        docker run --rm -v \"\$actual_volume:/source\" -v \"\$target_dir:/backup\" alpine sh -lc 'cp -a /source/. /backup/ 2>/dev/null || true'
+    else
+        echo \"⚠️ volume для \$label не найден\"
+    fi
+} &&
+STATE_VOLUME=\$(resolve_volume_name stonks-server /data/state stonks_state) &&
+DB_VOLUME=\$(resolve_volume_name stonks-server /data/db stonks_db) &&
+DATASETS_VOLUME=\$(resolve_volume_name stonks-server /data/datasets stonks_datasets) &&
+echo \"🔎 Найдены volumes: state=\${STATE_VOLUME:-missing} db=\${DB_VOLUME:-missing} datasets=\${DATASETS_VOLUME:-missing}\" &&
+backup_volume \"\$STATE_VOLUME\" \"\$BACKUP_DIR/\$BACKUP_NAME/state\" state &&
+backup_volume \"\$DB_VOLUME\" \"\$BACKUP_DIR/\$BACKUP_NAME/db\" db &&
+backup_volume \"\$DATASETS_VOLUME\" \"\$BACKUP_DIR/\$BACKUP_NAME/datasets\" datasets
 
 echo "✅ Бекап создан: \$BACKUP_NAME" &&
 
