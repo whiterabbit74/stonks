@@ -12,14 +12,15 @@ const { toSafeTicker } = require('../utils/helpers');
 const { fetchFromAlphaVantage } = require('../providers/alphaVantage');
 const { fetchFromFinnhub } = require('../providers/finnhub');
 const { fetchFromTwelveData } = require('../providers/twelveData');
-const { telegramWatches, scheduleSaveWatches, sendTelegramMessage } = require('./telegram');
+const { telegramWatches, sendTelegramMessage } = require('./telegram');
 const {
     loadTradeHistory,
-    synchronizeWatchesWithTradeHistory,
+    syncWatchesWithTradeState,
     getCurrentOpenTrade,
     isTradeHistoryLoaded
 } = require('./trades');
 const { getETParts, etKeyYMD, previousTradingDayET, getTradingSessionForDateET, isTradingDayByCalendarET, getCachedTradingCalendar } = require('./dates');
+const { reconcileMonitorState } = require('./monitorConsistency');
 
 // Price actualization state
 const priceActualizationState = {
@@ -311,10 +312,8 @@ async function runPriceActualization(options = {}) {
             });
         }
 
-        const syncResult = synchronizeWatchesWithTradeHistory();
-        if (syncResult.changes.length) {
-            scheduleSaveWatches();
-        }
+        reconcileMonitorState({ apply: true });
+        syncWatchesWithTradeState();
 
         const openTradeAfterSync = getCurrentOpenTrade();
 
@@ -384,10 +383,8 @@ async function updateAllPositions() {
         });
     }
 
-    const syncResult = synchronizeWatchesWithTradeHistory();
-    if (syncResult.changes.length) {
-        scheduleSaveWatches();
-    }
+    const reconcileSummary = reconcileMonitorState({ apply: true });
+    const syncResult = syncWatchesWithTradeState();
 
     const openTrade = getCurrentOpenTrade();
     console.log(`✅ Position sync completed. Changes: ${syncResult.changes.length}`);
@@ -395,6 +392,7 @@ async function updateAllPositions() {
     return {
         changes: syncResult.changes,
         openTrade,
+        consistency: reconcileSummary,
     };
 }
 

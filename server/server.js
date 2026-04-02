@@ -113,6 +113,7 @@ const splitsRoutes = require('./src/routes/splits');
 const telegramRoutes = require('./src/routes/telegram');
 const tradesRoutes = require('./src/routes/trades');
 const brokerTradesRoutes = require('./src/routes/brokerTrades');
+const monitorRoutes = require('./src/routes/monitor');
 const quotesRoutes = require('./src/routes/quotes');
 const statusRoutes = require('./src/routes/status');
 const autotradeRoutes = require('./src/routes/autotrade');
@@ -131,6 +132,7 @@ app.use('/api', splitsRoutes);
 app.use('/api', telegramRoutes);
 app.use('/api', tradesRoutes);
 app.use('/api', brokerTradesRoutes);
+app.use('/api', monitorRoutes);
 app.use('/api', quotesRoutes);
 app.use('/api', statusRoutes);
 app.use('/api', autotradeRoutes);
@@ -140,6 +142,7 @@ const { runTelegramAggregation } = require('./src/services/telegramAggregation')
 const { runPriceActualization } = require('./src/services/priceActualization');
 const { getETParts, getCachedTradingCalendar, isTradingDayByCalendarET, getTradingSessionForDateET } = require('./src/services/dates');
 const { initializeAutotradeRuntime } = require('./src/services/autotrade');
+const { reconcileMonitorState } = require('./src/services/monitorConsistency');
 
 // Start server
 app.listen(PORT, () => {
@@ -151,6 +154,11 @@ app.listen(PORT, () => {
     console.warn('Failed to initialize telegram watches:', err && err.message ? err.message : err);
   });
   ensureTradeHistoryLoaded();
+  try {
+    reconcileMonitorState({ apply: true });
+  } catch (err) {
+    console.warn('Failed to reconcile monitor state on startup:', err && err.message ? err.message : err);
+  }
   initializeAutotradeRuntime().catch(err => {
     console.warn('Failed to initialize autotrade runtime:', err && err.message ? err.message : err);
   });

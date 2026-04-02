@@ -245,6 +245,7 @@ export interface MonitorTradeRecord {
   clientOrderId: string | null;
   filledQty: number | null;
   quantity: number | null;
+  linkedBrokerTradeId: string | null;
 }
 
 export interface MonitorTradeHistoryResponse {
@@ -252,6 +253,20 @@ export interface MonitorTradeHistoryResponse {
   openTrade: MonitorTradeRecord | null;
   total: number;
   lastUpdated: string | null;
+}
+
+export interface TelegramWatchRecord {
+  symbol: string;
+  highIBS: number;
+  lowIBS?: number;
+  thresholdPct?: number;
+  entryPrice: number | null;
+  entryDate?: string | null;
+  entryIBS?: number | null;
+  entryDecisionTime?: string | null;
+  currentTradeId?: string | null;
+  linkedBrokerTradeId?: string | null;
+  isOpenPosition: boolean;
 }
 
 export interface BrokerTradeRecord {
@@ -284,6 +299,37 @@ export interface BrokerTradeHistoryResponse {
   openTrade: BrokerTradeRecord | null;
   total: number;
   lastUpdated: string | null;
+}
+
+export interface MonitorConsistencyIssue {
+  code: string;
+  severity: 'info' | 'warn' | 'error';
+  message: string;
+  symbol: string | null;
+  monitorTradeId: string | null;
+  brokerTradeId: string | null;
+  autoFixable: boolean;
+}
+
+export interface MonitorConsistencyAction {
+  type: string;
+  description: string;
+  autoApplicable: boolean;
+  monitorTradeId: string | null;
+  brokerTradeId: string | null;
+  symbol: string | null;
+  appliedAt?: string;
+}
+
+export interface MonitorConsistencyResponse {
+  fetchedAt: string | null;
+  openMonitorTrade: MonitorTradeRecord | null;
+  openBrokerTrade: BrokerTradeRecord | null;
+  issues: MonitorConsistencyIssue[];
+  proposedActions: MonitorConsistencyAction[];
+  appliedActions?: MonitorConsistencyAction[];
+  mode?: 'preview' | 'apply';
+  preview?: boolean;
 }
 
 export interface WebullDashboardResponse {

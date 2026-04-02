@@ -32,6 +32,8 @@ e2e/
 # Re-include unit tests within the src directory
 !src/**/*.test.ts
 !src/**/*.test.tsx
+!server/**/*.test.js
+!server/**/*.test.ts
 
 # Env/Secrets
 .env

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { AlertCircle, BriefcaseBusiness, ChevronDown, ChevronUp, History, RefreshCw, ShieldCheck, Wallet, Radar } from 'lucide-react';
-import type { AutoTradingConfig, AutoTradeState, AutotradeLogsResponse, WebullDashboardResponse, BrokerTradeRecord } from '../types';
+import type { AutoTradingConfig, AutoTradeState, AutotradeLogsResponse, WebullDashboardResponse, BrokerTradeRecord, MonitorConsistencyResponse } from '../types';
 import { DatasetAPI } from '../lib/api';
 import { PageHeader } from './ui/PageHeader';
 import { Button } from './ui/Button';
@@ -35,6 +35,13 @@ type MonitoringRow = {
   quoteUpdatedAt: string | null;
   quoteError: string | null;
 };
+
+function getMonitorConsistencyStatus(snapshot: MonitorConsistencyResponse | null): 'ok' | 'mismatch' | 'reconcile_candidate' {
+  if (!snapshot) return 'ok';
+  if (snapshot.proposedActions.some((action) => action.autoApplicable)) return 'reconcile_candidate';
+  if (snapshot.issues.length > 0) return 'mismatch';
+  return 'ok';
+}
 
 function formatMoney(value: unknown) {
   const num = Number(value);
@@ -326,6 +333,9 @@ export function WebullAccountPage() {
   const [monitoringLastUpdatedAt, setMonitoringLastUpdatedAt] = useState<string | null>(null);
   const [monitoringRefreshingSymbols, setMonitoringRefreshingSymbols] = useState<Record<string, boolean>>({});
   const [monitoringListLoaded, setMonitoringListLoaded] = useState(false);
+  const [monitorConsistency, setMonitorConsistency] = useState<MonitorConsistencyResponse | null>(null);
+  const [monitorConsistencyLoading, setMonitorConsistencyLoading] = useState(false);
+  const [monitorReconcileApplying, setMonitorReconcileApplying] = useState(false);
   const [logsLoading, setLogsLoading] = useState(false);
   const [logsCollapsed, setLogsCollapsed] = useState<Record<string, boolean>>({});
   const [closingSymbol, setClosingSymbol] = useState<string | null>(null);
@@ -333,6 +343,7 @@ export function WebullAccountPage() {
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const quoteProvider = useAppStore((s) => s.resultsQuoteProvider);
+  const monitorConsistencyStatus = getMonitorConsistencyStatus(monitorConsistency);
 
   // Trades tab state
   const [tradesData, setTradesData] = useState<BrokerTradeRecord[]>([]);
@@ -472,7 +483,11 @@ export function WebullAccountPage() {
     try {
       setMonitoringLoading(true);
       setMonitoringError(null);
-      const watches = await DatasetAPI.listTelegramWatches();
+      setMonitorConsistencyLoading(true);
+      const [watches, consistency] = await Promise.all([
+        DatasetAPI.listTelegramWatches(),
+        DatasetAPI.getMonitorConsistency(),
+      ]);
       const provider = quoteProvider === 'twelve_data' ? 'twelve_data' : quoteProvider as 'alpha_vantage' | 'finnhub' | 'twelve_data' | 'webull';
 
       let rows: MonitoringRow[];
@@ -495,13 +510,32 @@ export function WebullAccountPage() {
       }
 
       setMonitoringRows(rows);
+      setMonitorConsistency(consistency);
       setMonitoringLastUpdatedAt(new Date().toISOString());
       setMonitoringListLoaded(true);
     } catch (err) {
       setMonitoringError(err instanceof Error ? err.message : 'Не удалось загрузить мониторинг');
     } finally {
       setMonitoringLoading(false);
+      setMonitorConsistencyLoading(false);
       if (force) setActionMessage('Мониторинг обновлён вручную');
+    }
+  };
+
+  const handleMonitorReconcile = async () => {
+    try {
+      setMonitorReconcileApplying(true);
+      setMonitoringError(null);
+      const result = await DatasetAPI.reconcileMonitorState('apply');
+      setMonitorConsistency(result);
+      await loadMonitoringData(true);
+      setActionMessage(result.appliedActions && result.appliedActions.length > 0
+        ? `Reconcile применён: ${result.appliedActions.length} действий`
+        : 'Reconcile завершён: исправлений не потребовалось');
+    } catch (err) {
+      setMonitoringError(err instanceof Error ? err.message : 'Не удалось выполнить reconcile');
+    } finally {
+      setMonitorReconcileApplying(false);
     }
   };
 
@@ -561,16 +595,7 @@ export function WebullAccountPage() {
 
   useEffect(() => {
     if (activeTab === 'monitoring' && !monitoringListLoaded && !monitoringLoading) {
-      setMonitoringLoading(true);
-      setMonitoringError(null);
-      DatasetAPI.listTelegramWatches()
-        .then((watches) => {
-          setMonitoringRows(watches.map((watch) => buildMonitoringRow(watch)));
-          setMonitoringListLoaded(true);
-          setMonitoringLastUpdatedAt(new Date().toISOString());
-        })
-        .catch((err) => setMonitoringError(err instanceof Error ? err.message : 'Не удалось загрузить список'))
-        .finally(() => setMonitoringLoading(false));
+      void loadMonitoringData(false);
     }
   }, [activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1082,24 +1107,43 @@ export function WebullAccountPage() {
                   Цены берутся из текущего quote-провайдера. Обновляй вручную: по кнопке у строки или общей кнопке.
                 </p>
               </div>
-              <button
-                title="Обновить все цены"
-                disabled={monitoringLoading}
-                onClick={() => void loadMonitoringData(true)}
-                className="inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white p-2 text-gray-600 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
-              >
-                <RefreshCw className={`h-4 w-4 ${monitoringLoading ? 'animate-spin' : ''}`} />
-              </button>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => void handleMonitorReconcile()}
+                  isLoading={monitorReconcileApplying}
+                >
+                  Reconcile
+                </Button>
+                <button
+                  title="Обновить все цены"
+                  disabled={monitoringLoading}
+                  onClick={() => void loadMonitoringData(true)}
+                  className="inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white p-2 text-gray-600 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+                >
+                  <RefreshCw className={`h-4 w-4 ${monitoringLoading ? 'animate-spin' : ''}`} />
+                </button>
+              </div>
             </div>
             <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               <InfoCard title="Отслеживаемые" value={String(monitoringRows.length)} hint="Акции из /watches" icon={<Radar className="h-4 w-4" />} />
               <InfoCard title="Открытые позиции" value={String(openCount)} hint={openCount > 0 ? 'Есть текущие входы' : 'Открытых позиций нет'} icon={<BriefcaseBusiness className="h-4 w-4" />} />
-              <InfoCard title="Quote provider" value={quoteProvider} hint="Используется для цен в мониторинге" icon={<ShieldCheck className="h-4 w-4" />} />
+              <InfoCard title="Consistency" value={monitorConsistencyStatus === 'ok' ? 'OK' : monitorConsistencyStatus === 'reconcile_candidate' ? 'Reconcile' : 'Mismatch'} hint={monitorConsistencyLoading ? 'Проверяем…' : monitorConsistency?.issues[0]?.message ?? 'Состояние monitor/broker'} icon={<ShieldCheck className="h-4 w-4" />} />
               <InfoCard title="Последнее обновление" value={monitoringLastUpdatedAt ? formatDateTime(monitoringLastUpdatedAt) : '—'} hint={monitoringListLoaded ? 'Список загружен' : 'Список не загружен'} icon={<History className="h-4 w-4" />} />
             </div>
             {monitoringError ? (
               <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-200">
                 {monitoringError}
+              </div>
+            ) : null}
+            {monitorConsistency && monitorConsistency.issues.length > 0 ? (
+              <div className="mt-4 space-y-2">
+                {monitorConsistency.issues.map((issue) => (
+                  <div key={`${issue.code}:${issue.monitorTradeId ?? 'none'}`} className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
+                    {issue.message}
+                  </div>
+                ))}
               </div>
             ) : null}
           </div>
@@ -1171,7 +1215,7 @@ export function WebullAccountPage() {
               </table>
             </div>
           </section>
-          <RawJson title="Raw monitoring payload" value={{ watches: monitoringRows, quoteProvider, lastUpdatedAt: monitoringLastUpdatedAt, monitoringListLoaded }} />
+          <RawJson title="Raw monitoring payload" value={{ watches: monitoringRows, quoteProvider, lastUpdatedAt: monitoringLastUpdatedAt, monitoringListLoaded, monitorConsistency }} />
         </div>
       );
     }

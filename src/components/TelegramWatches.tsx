@@ -1,12 +1,13 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { LS } from '../constants';
-import { RefreshCw, Trash2, ExternalLink, Edit2, Check, X, ArrowUpDown, ArrowUp, ArrowDown, HelpCircle } from 'lucide-react';
+import { RefreshCw, Trash2, ExternalLink, ArrowUpDown, ArrowUp, ArrowDown, HelpCircle } from 'lucide-react';
 import { DatasetAPI } from '../lib/api';
 import { ConfirmModal } from './ConfirmModal';
 import { InfoModal } from './InfoModal';
+import { CloseMonitorTradeModal } from './CloseMonitorTradeModal';
 import { useAppStore } from '../stores';
 import { Link } from 'react-router-dom';
-import type { MonitorTradeHistoryResponse, MonitorTradeRecord, EquityPoint } from '../types';
+import type { MonitorTradeHistoryResponse, MonitorTradeRecord, EquityPoint, MonitorConsistencyResponse } from '../types';
 import { MonitorTradeHistoryPanel } from './MonitorTradeHistoryPanel';
 import { calculateMonitorTradeMetrics } from '../lib/monitor-trade-metrics';
 import { formatCurrencyUSD } from '../lib/formatters';
@@ -22,6 +23,7 @@ interface WatchItem {
   entryIBS: number | null;
   entryDecisionTime: string | null;
   currentTradeId: string | null;
+  linkedBrokerTradeId: string | null;
   isOpenPosition: boolean;
 }
 
@@ -97,6 +99,24 @@ function applyMonitorMarginSimulation(trades: MonitorTradeRecord[], marginPercen
   });
 }
 
+function getEtDateKey(date: Date = new Date()): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/New_York',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date);
+  const map: Record<string, string> = {};
+  for (const part of parts) map[part.type] = part.value;
+  return `${map.year}-${map.month}-${map.day}`;
+}
+
+function calculateLiveIbs(quote: { high: number | null; low: number | null; current: number | null }): number | null {
+  if (quote.high == null || quote.low == null || quote.current == null) return null;
+  if (!(quote.high > quote.low)) return null;
+  return Math.max(0, Math.min(1, (quote.current - quote.low) / (quote.high - quote.low)));
+}
+
 export function TelegramWatches() {
   const [watches, setWatches] = useState<WatchItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -105,12 +125,33 @@ export function TelegramWatches() {
   const [confirm, setConfirm] = useState<{ open: boolean; symbol: string | null }>(() => ({ open: false, symbol: null }));
   const [info, setInfo] = useState<{ open: boolean; title: string; message: string; kind?: 'success' | 'error' | 'info' }>({ open: false, title: '', message: '' });
   const [secondsToNext, setSecondsToNext] = useState<number | null>(null);
-  const [editingPrice, setEditingPrice] = useState<{ symbol: string; value: string } | null>(null);
   const [tradeHistory, setTradeHistory] = useState<MonitorTradeHistoryResponse | null>(null);
   const [tradesError, setTradesError] = useState<string | null>(null);
   const [tradesLoading, setTradesLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<WatchTab>('summary');
   const [sortConfig, setSortConfig] = useState<{ key: keyof WatchItem | null; direction: 'asc' | 'desc' }>({ key: null, direction: 'asc' });
+  const [monitorConsistency, setMonitorConsistency] = useState<MonitorConsistencyResponse | null>(null);
+  const [closeMonitorState, setCloseMonitorState] = useState<{
+    open: boolean;
+    symbol: string | null;
+    tradeId: string | null;
+    exitDate: string;
+    exitPrice: number | null;
+    exitIbs: number | null;
+    quoteHint: string | null;
+    loading: boolean;
+    error: string | null;
+  }>({
+    open: false,
+    symbol: null,
+    tradeId: null,
+    exitDate: getEtDateKey(),
+    exitPrice: null,
+    exitIbs: null,
+    quoteHint: null,
+    loading: false,
+    error: null,
+  });
   const [monitorMarginPercent, setMonitorMarginPercent] = useState<number>(() => {
     if (typeof window === 'undefined') return 100;
     return normalizeMonitorMarginPercent(Number(window.localStorage.getItem(LS.MONITOR_MARGIN_PCT) || 100));
@@ -118,6 +159,7 @@ export function TelegramWatches() {
   const [showMarginHelp, setShowMarginHelp] = useState(false);
   const watchThresholdPct = useAppStore(s => s.watchThresholdPct);
   const currentStrategy = useAppStore(s => s.currentStrategy);
+  const resultsQuoteProvider = useAppStore(s => s.resultsQuoteProvider);
   const initialCapital = Number(currentStrategy?.riskManagement?.initialCapital ?? 10000);
 
   // Reusable Intl formatters
@@ -255,7 +297,10 @@ export function TelegramWatches() {
     setLoading(true);
     setError(null);
     try {
-      const list = await DatasetAPI.listTelegramWatches();
+      const [list, consistency] = await Promise.all([
+        DatasetAPI.listTelegramWatches(),
+        DatasetAPI.getMonitorConsistency(),
+      ]);
       const mapped = list.map((w: unknown) => {
         const watch = w as Record<string, unknown>;
         const item: WatchItem = {
@@ -267,11 +312,13 @@ export function TelegramWatches() {
           entryIBS: typeof watch.entryIBS === 'number' ? watch.entryIBS : null,
           entryDecisionTime: (watch.entryDecisionTime as string | undefined) ?? null,
           currentTradeId: (watch.currentTradeId as string | undefined) ?? null,
+          linkedBrokerTradeId: (watch.linkedBrokerTradeId as string | undefined) ?? null,
           isOpenPosition: !!watch.isOpenPosition
         };
         return item;
       });
       setWatches(mapped);
+      setMonitorConsistency(consistency);
     } catch (e) {
       const message = e instanceof Error ? e.message : 'Не удалось загрузить список';
       setError(message);
@@ -315,6 +362,13 @@ export function TelegramWatches() {
     () => calculateMonitorTradeMetrics(simulatedTrades, initialCapital),
     [simulatedTrades, initialCapital]
   );
+  const consistencyStatus = useMemo<'ok' | 'mismatch' | 'reconcile_candidate'>(() => {
+    if (!monitorConsistency) return 'ok';
+    if (monitorConsistency.proposedActions.some(action => action.autoApplicable)) return 'reconcile_candidate';
+    if (monitorConsistency.issues.length > 0) return 'mismatch';
+    return 'ok';
+  }, [monitorConsistency]);
+  const openConsistencyTradeId = monitorConsistency?.openMonitorTrade?.id ?? null;
 
   const formatSignedPercent = (value: number) => `${value > 0 ? '+' : ''}${value.toFixed(2)}%`;
   const formatSignedMoney = (value: number) => `${value > 0 ? '+' : ''}${formatCurrencyUSD(value)}`;
@@ -325,6 +379,77 @@ export function TelegramWatches() {
     () => buildMonitorBalanceEquity(simulatedTrades, monitorBalanceInitialCapital),
     [simulatedTrades, monitorBalanceInitialCapital]
   );
+
+  const openMonitorCloseDialog = useCallback(async (watch: WatchItem) => {
+    const fallbackDate = getEtDateKey();
+    setCloseMonitorState({
+      open: true,
+      symbol: watch.symbol,
+      tradeId: watch.currentTradeId,
+      exitDate: fallbackDate,
+      exitPrice: watch.entryPrice,
+      exitIbs: null,
+      quoteHint: 'Подтягиваю текущую котировку…',
+      loading: false,
+      error: null,
+    });
+
+    try {
+      const quote = await DatasetAPI.getQuote(watch.symbol, resultsQuoteProvider);
+      const liveIbs = calculateLiveIbs(quote);
+      setCloseMonitorState((prev) => ({
+        ...prev,
+        exitPrice: quote.current ?? prev.exitPrice,
+        exitIbs: liveIbs,
+        quoteHint: quote.current != null
+          ? `Текущая цена ${quote.current.toFixed(2)} USD из ${resultsQuoteProvider}`
+          : 'Котировка недоступна, укажи цену вручную.',
+      }));
+    } catch (e) {
+      setCloseMonitorState((prev) => ({
+        ...prev,
+        quoteHint: 'Котировка недоступна, укажи цену вручную.',
+        error: e instanceof Error ? e.message : 'Не удалось получить текущую котировку',
+      }));
+    }
+  }, [resultsQuoteProvider]);
+
+  const handleCloseMonitorTrade = useCallback(async (payload: {
+    exitDate: string;
+    exitPrice: number;
+    exitIBS: number | null;
+    note: string;
+  }) => {
+    if (!closeMonitorState.tradeId || !closeMonitorState.symbol) return;
+    try {
+      setCloseMonitorState((prev) => ({ ...prev, loading: true, error: null }));
+      await DatasetAPI.closeMonitorTrade(closeMonitorState.tradeId, payload);
+      await load();
+      setCloseMonitorState({
+        open: false,
+        symbol: null,
+        tradeId: null,
+        exitDate: getEtDateKey(),
+        exitPrice: null,
+        exitIbs: null,
+        quoteHint: null,
+        loading: false,
+        error: null,
+      });
+      setInfo({
+        open: true,
+        title: 'Мониторинг закрыт',
+        message: `Monitor-позиция ${closeMonitorState.symbol} закрыта вручную.`,
+        kind: 'success',
+      });
+    } catch (e) {
+      setCloseMonitorState((prev) => ({
+        ...prev,
+        loading: false,
+        error: e instanceof Error ? e.message : 'Не удалось закрыть monitor-позицию',
+      }));
+    }
+  }, [closeMonitorState.symbol, closeMonitorState.tradeId, load]);
 
   return (
     <div className="space-y-4">
@@ -353,6 +478,39 @@ export function TelegramWatches() {
         <div className="text-sm text-gray-600 dark:text-gray-300">
           До следующего подсчёта сигналов: {formatDuration(secondsToNext)}
         </div>
+      )}
+
+      {monitorConsistency && (
+        <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-900">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Согласованность monitor / broker</h3>
+              <p className="text-sm text-gray-600 dark:text-gray-300">
+                Статус синхронизации виртуальной monitor-позиции и реального брокерского журнала.
+              </p>
+            </div>
+            <span className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold ${
+              consistencyStatus === 'ok'
+                ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300'
+                : consistencyStatus === 'reconcile_candidate'
+                  ? 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-300'
+                  : 'border-red-200 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-900/30 dark:text-red-300'
+            }`}>
+              {consistencyStatus === 'ok' ? 'OK' : consistencyStatus === 'reconcile_candidate' ? 'Reconcile Candidate' : 'Mismatch'}
+            </span>
+          </div>
+          {monitorConsistency.issues.length > 0 ? (
+            <div className="mt-3 space-y-2">
+              {monitorConsistency.issues.map((issue) => (
+                <div key={`${issue.code}:${issue.monitorTradeId ?? 'none'}`} className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700 dark:border-gray-800 dark:bg-gray-800/70 dark:text-gray-200">
+                  {issue.message}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="mt-3 text-sm text-gray-600 dark:text-gray-300">Monitor и broker журналы сейчас согласованы.</p>
+          )}
+        </section>
       )}
 
       <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-900">
@@ -561,78 +719,22 @@ export function TelegramWatches() {
                       <td className="p-3 dark:text-gray-300">≤ {(w.lowIBS ?? 0.1).toFixed(2)}</td>
                       <td className="p-3 dark:text-gray-300">≥ {w.highIBS.toFixed(2)}</td>
                       <td className="p-3">
-                        {editingPrice?.symbol === w.symbol ? (
-                          <div className="flex items-center gap-2">
-                            <input
-                              type="number"
-                              step="0.01"
-                              value={editingPrice.value}
-                              onChange={(e) => setEditingPrice({ symbol: w.symbol, value: e.target.value })}
-                              className="w-20 px-2 py-1 text-xs border border-gray-300 rounded dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
-                              onKeyDown={async (e) => {
-                                if (e.key === 'Enter') {
-                                  const price = parseFloat(editingPrice.value);
-                                  if (!isNaN(price) && price >= 0) {
-                                    try {
-                                      await DatasetAPI.updateTelegramWatch(w.symbol, {
-                                        entryPrice: price > 0 ? price : null
-                                      });
-                                      await load();
-                                      setEditingPrice(null);
-                                    } catch (e) {
-                                      setError(e instanceof Error ? e.message : 'Не удалось обновить цену');
-                                    }
-                                  }
-                                }
-                                if (e.key === 'Escape') {
-                                  setEditingPrice(null);
-                                }
-                              }}
-                              autoFocus
-                            />
-                            <button
-                              onClick={async () => {
-                                const price = parseFloat(editingPrice.value);
-                                if (!isNaN(price) && price >= 0) {
-                                  try {
-                                    await DatasetAPI.updateTelegramWatch(w.symbol, {
-                                      entryPrice: price > 0 ? price : null
-                                    });
-                                    await load();
-                                    setEditingPrice(null);
-                                  } catch (e) {
-                                    setError(e instanceof Error ? e.message : 'Не удалось обновить цену');
-                                  }
-                                }
-                              }}
-                              className="p-1 text-green-600 hover:text-green-800"
-                            >
-                              <Check className="w-3 h-3" />
-                            </button>
-                            <button
-                              onClick={() => setEditingPrice(null)}
-                              className="p-1 text-gray-600 hover:text-gray-800"
-                            >
-                              <X className="w-3 h-3" />
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="flex items-center gap-1">
-                            <span className="dark:text-gray-300">
-                              {w.entryPrice != null ? `$${w.entryPrice.toFixed(2)}` : '—'}
+                        {w.currentTradeId && w.currentTradeId === openConsistencyTradeId ? (
+                          <div className="mb-2">
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                              consistencyStatus === 'ok'
+                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-800'
+                                : consistencyStatus === 'reconcile_candidate'
+                                  ? 'bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800'
+                                  : 'bg-red-50 text-red-700 border border-red-200 dark:bg-red-900/30 dark:text-red-300 dark:border-red-800'
+                            }`}>
+                              {consistencyStatus === 'ok' ? 'OK' : consistencyStatus === 'reconcile_candidate' ? 'Reconcile candidate' : 'Mismatch'}
                             </span>
-                            <button
-                              onClick={() => setEditingPrice({
-                                symbol: w.symbol,
-                                value: w.entryPrice?.toString() || ''
-                              })}
-                              className="p-1 text-gray-400 hover:text-blue-600 dark:text-gray-500 dark:hover:text-blue-400 transition-colors"
-                              title="Редактировать цену входа"
-                            >
-                              <Edit2 className="w-3 h-3" />
-                            </button>
                           </div>
-                        )}
+                        ) : null}
+                        <span className="dark:text-gray-300">
+                          {w.entryPrice != null ? `$${w.entryPrice.toFixed(2)}` : '—'}
+                        </span>
                       </td>
                       <td className="p-3">
                         <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${w.isOpenPosition ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-800' : 'bg-gray-100 text-gray-600 border border-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700'}`}>
@@ -646,14 +748,25 @@ export function TelegramWatches() {
                         )}
                       </td>
                       <td className="p-3">
-                        <button
-                          onClick={() => setConfirm({ open: true, symbol: w.symbol })}
-                          className="inline-flex items-center justify-center w-8 h-8 rounded-full border border-gray-300 bg-white text-gray-600 hover:bg-red-50 hover:text-red-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-red-900/30"
-                          title="Удалить из мониторинга"
-                          aria-label="Удалить из мониторинга"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        <div className="flex items-center gap-2">
+                          {w.isOpenPosition && w.currentTradeId && !w.linkedBrokerTradeId ? (
+                            <button
+                              onClick={() => void openMonitorCloseDialog(w)}
+                              className="inline-flex items-center rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-300 dark:hover:bg-amber-900/40"
+                              title="Закрыть monitor-позицию вручную"
+                            >
+                              Закрыть monitor
+                            </button>
+                          ) : null}
+                          <button
+                            onClick={() => setConfirm({ open: true, symbol: w.symbol })}
+                            className="inline-flex items-center justify-center w-8 h-8 rounded-full border border-gray-300 bg-white text-gray-600 hover:bg-red-50 hover:text-red-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-red-900/30"
+                            title="Удалить из мониторинга"
+                            aria-label="Удалить из мониторинга"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -770,6 +883,28 @@ export function TelegramWatches() {
           finally { setConfirm({ open: false, symbol: null }); }
         }}
         onClose={() => setConfirm({ open: false, symbol: null })}
+      />
+      <CloseMonitorTradeModal
+        open={closeMonitorState.open}
+        symbol={closeMonitorState.symbol}
+        initialExitDate={closeMonitorState.exitDate}
+        initialExitPrice={closeMonitorState.exitPrice}
+        initialExitIbs={closeMonitorState.exitIbs}
+        loading={closeMonitorState.loading}
+        error={closeMonitorState.error}
+        quoteHint={closeMonitorState.quoteHint}
+        onClose={() => setCloseMonitorState({
+          open: false,
+          symbol: null,
+          tradeId: null,
+          exitDate: getEtDateKey(),
+          exitPrice: null,
+          exitIbs: null,
+          quoteHint: null,
+          loading: false,
+          error: null,
+        })}
+        onSubmit={handleCloseMonitorTrade}
       />
       <InfoModal open={info.open} title={info.title} message={info.message} kind={info.kind} onClose={() => setInfo({ open: false, title: '', message: '' })} />
     </div>

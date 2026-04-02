@@ -148,6 +148,96 @@ describe('API Module', () => {
       await expect(DatasetAPI.getDatasets())
         .rejects.toThrow('Failed to fetch datasets: 500 Internal Server Error');
     });
+
+    it('should request monitor consistency snapshot', async () => {
+      const mockSnapshot = {
+        fetchedAt: '2026-04-02T00:00:00.000Z',
+        openMonitorTrade: null,
+        openBrokerTrade: null,
+        issues: [],
+        proposedActions: []
+      };
+      (global.fetch as any).mockResolvedValue({
+        ok: true,
+        json: vi.fn().mockResolvedValue(mockSnapshot)
+      });
+
+      const result = await DatasetAPI.getMonitorConsistency();
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        `${API_BASE_URL}/monitor/consistency`,
+        expect.objectContaining({
+          credentials: 'include',
+          cache: 'no-store'
+        })
+      );
+      expect(result).toEqual(mockSnapshot);
+    });
+
+    it('should apply monitor reconcile', async () => {
+      const mockResponse = {
+        fetchedAt: '2026-04-02T00:00:00.000Z',
+        openMonitorTrade: null,
+        openBrokerTrade: null,
+        issues: [],
+        proposedActions: [],
+        appliedActions: [{ type: 'close_legacy_monitor_trade' }],
+        mode: 'apply',
+        preview: false
+      };
+      (global.fetch as any).mockResolvedValue({
+        ok: true,
+        json: vi.fn().mockResolvedValue(mockResponse)
+      });
+
+      const result = await DatasetAPI.reconcileMonitorState('apply');
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        `${API_BASE_URL}/monitor/reconcile`,
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ mode: 'apply' })
+        })
+      );
+      expect(result).toEqual(mockResponse);
+    });
+
+    it('should close a monitor trade manually', async () => {
+      const closedTrade = {
+        id: 'trade-1',
+        symbol: 'V',
+        status: 'closed',
+        entryDate: '2026-03-18',
+        exitDate: '2026-04-02',
+        entryPrice: 298.96,
+        exitPrice: 299.38
+      };
+      (global.fetch as any).mockResolvedValue({
+        ok: true,
+        json: vi.fn().mockResolvedValue(closedTrade)
+      });
+
+      const result = await DatasetAPI.closeMonitorTrade('trade-1', {
+        exitDate: '2026-04-02',
+        exitPrice: 299.38,
+        exitIBS: 0.825,
+        note: 'manual_monitor_close_from_ui'
+      });
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        `${API_BASE_URL}/trades/trade-1/close-monitor`,
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({
+            exitDate: '2026-04-02',
+            exitPrice: 299.38,
+            exitIBS: 0.825,
+            note: 'manual_monitor_close_from_ui'
+          })
+        })
+      );
+      expect(result).toEqual(closedTrade);
+    });
   });
 
   describe('API_BASE_URL', () => {

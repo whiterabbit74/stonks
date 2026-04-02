@@ -3,15 +3,18 @@
  */
 const express = require('express');
 const router = express.Router();
+const { getETParts, etKeyYMD } = require('../services/dates');
 const {
     loadTradeHistory,
     getSortedTradeHistory,
     getCurrentOpenTrade,
+    getTradeById,
     serializeTradeForResponse,
     getTradeHistory,
     isTradeHistoryLoaded,
     createManualTrade,
     updateTrade,
+    closeMonitorTradeById,
     deleteTrade,
 } = require('../services/trades');
 
@@ -59,6 +62,39 @@ router.patch('/trades/:id', (req, res) => {
         res.json(serializeTradeForResponse(updated));
     } catch (e) {
         res.status(500).json({ error: e && e.message ? e.message : 'Failed to update trade' });
+    }
+});
+
+// POST /api/trades/:id/close-monitor — manual close for monitor-only / legacy trades
+router.post('/trades/:id/close-monitor', (req, res) => {
+    try {
+        const { id } = req.params;
+        const existing = getTradeById(id);
+        if (!existing) return res.status(404).json({ error: 'Trade not found' });
+        if (existing.status !== 'open') return res.status(409).json({ error: 'Trade is already closed' });
+        if (existing.linkedBrokerTradeId) {
+            return res.status(409).json({ error: 'Linked broker-backed monitor trades must be reconciled automatically' });
+        }
+
+        const { exitDate, exitPrice, exitIBS, note } = req.body || {};
+        const numericExitPrice = typeof exitPrice === 'number' ? exitPrice : Number(exitPrice);
+        if (!Number.isFinite(numericExitPrice) || numericExitPrice <= 0) {
+            return res.status(400).json({ error: 'exitPrice must be a positive number' });
+        }
+
+        const nowEt = getETParts(new Date());
+        const resolvedExitDate = typeof exitDate === 'string' && exitDate.trim() ? exitDate.trim() : etKeyYMD(nowEt);
+        const updated = closeMonitorTradeById(id, {
+            exitDate: resolvedExitDate,
+            exitPrice: numericExitPrice,
+            exitIBS: typeof exitIBS === 'number' ? exitIBS : null,
+            exitDecisionTime: new Date().toISOString(),
+            note: typeof note === 'string' && note.trim() ? note.trim() : 'manual_monitor_close_from_ui',
+        });
+
+        res.json(serializeTradeForResponse(updated));
+    } catch (e) {
+        res.status(500).json({ error: e && e.message ? e.message : 'Failed to close monitor trade' });
     }
 });
 

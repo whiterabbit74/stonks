@@ -111,6 +111,7 @@ router.get('/telegram/watches', async (req, res) => {
                 entryIBS,
                 entryDecisionTime,
                 currentTradeId: matchesOpenTrade ? openId : null,
+                linkedBrokerTradeId: matchesOpenTrade ? (openTrade.linkedBrokerTradeId ?? null) : null,
                 isOpenPosition: matchesOpenTrade,
                 chatId: w.chatId ? 'configured' : null,
             };
@@ -198,7 +199,8 @@ router.post('/telegram/update-positions', async (req, res) => {
             success: true,
             updated: summary.changes.length,
             changes: summary.changes,
-            openTrade: summary.openTrade ? serializeTradeForResponse(summary.openTrade) : null
+            openTrade: summary.openTrade ? serializeTradeForResponse(summary.openTrade) : null,
+            consistency: summary.consistency || null,
         });
     } catch (error) {
         console.error('Error updating positions:', error);
@@ -234,7 +236,8 @@ router.post('/telegram/update-all', async (req, res) => {
             positions: {
                 updated: positionResults.changes.length,
                 changes: positionResults.changes,
-                openTrade: positionResults.openTrade ? serializeTradeForResponse(positionResults.openTrade) : null
+                openTrade: positionResults.openTrade ? serializeTradeForResponse(positionResults.openTrade) : null,
+                consistency: positionResults.consistency || null,
             }
         });
     } catch (error) {
@@ -278,5 +281,3 @@ router.post('/telegram/command', async (req, res) => {
 });
 
 module.exports = router;
-
-

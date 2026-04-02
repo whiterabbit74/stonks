@@ -2,8 +2,10 @@ import type {
   SavedDataset,
   MonitorTradeHistoryResponse,
   MonitorTradeRecord,
+  TelegramWatchRecord,
   BrokerTradeHistoryResponse,
   BrokerTradeRecord,
+  MonitorConsistencyResponse,
   WebullDashboardResponse,
   AutotradeLogsResponse,
   CloseWebullPositionResponse,
@@ -712,7 +714,7 @@ export class DatasetAPI {
     return json ?? { success: true };
   }
 
-  static async listTelegramWatches(): Promise<Array<{ symbol: string; highIBS: number; thresholdPct?: number; entryPrice: number | null; isOpenPosition: boolean }>> {
+  static async listTelegramWatches(): Promise<TelegramWatchRecord[]> {
     const response = await fetchWithCreds(`${API_BASE_URL}/telegram/watches`);
     if (!response.ok) {
       throw new Error(`${response.status} ${response.statusText}`);
@@ -754,6 +756,36 @@ export class DatasetAPI {
 
   static async deleteTrade(id: string): Promise<void> {
     return apiCall<void>(`${API_BASE_URL}/trades/${id}`, { method: 'DELETE' });
+  }
+
+  static async closeMonitorTrade(id: string, data: {
+    exitDate?: string;
+    exitPrice: number;
+    exitIBS?: number | null;
+    note?: string;
+  }): Promise<MonitorTradeRecord> {
+    return apiCall<MonitorTradeRecord>(`${API_BASE_URL}/trades/${id}/close-monitor`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+  }
+
+  static async getMonitorConsistency(): Promise<MonitorConsistencyResponse> {
+    return apiCall<MonitorConsistencyResponse>(`${API_BASE_URL}/monitor/consistency`, {
+      timeout: 30000,
+      retries: 1,
+    });
+  }
+
+  static async reconcileMonitorState(mode: 'preview' | 'apply' = 'preview'): Promise<MonitorConsistencyResponse> {
+    return apiCall<MonitorConsistencyResponse>(`${API_BASE_URL}/monitor/reconcile`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode }),
+      timeout: 30000,
+      retries: 0,
+    });
   }
 
   // ─── Broker trades (real executed trades) ───────────────────────────────────

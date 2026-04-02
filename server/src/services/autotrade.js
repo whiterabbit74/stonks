@@ -4,7 +4,7 @@ const fsp = require('fs/promises');
 const path = require('path');
 const { Mutex } = require('async-mutex');
 const { readSettings, writeSettings } = require('./settings');
-const { telegramWatches, scheduleSaveWatches, sendTelegramMessage } = require('./telegram');
+const { telegramWatches, sendTelegramMessage } = require('./telegram');
 const { fetchTodayRangeAndQuote } = require('../providers/finnhub');
 const { toFiniteNumber, toSafeTicker } = require('../utils/helpers');
 const { AUTOTRADE_LOG_FILE, AUTOTRADE_STATE_FILE, MONITOR_LOG_FILE, WEBULL_RAW_LOG_FILE, getApiConfig } = require('../config');
@@ -12,7 +12,9 @@ const { getETParts, etKeyYMD, getCachedTradingCalendar, isTradingDayByCalendarET
 const {
     loadTradeHistory,
     isTradeHistoryLoaded,
-    synchronizeWatchesWithTradeHistory,
+    syncWatchesWithTradeState,
+    upsertMonitorTradeFromBrokerTrade,
+    closeMonitorTradeFromBrokerTrade,
 } = require('./trades');
 const {
     getCurrentOpenBrokerTrade,
@@ -20,6 +22,7 @@ const {
     recordBrokerExit,
     serializeBrokerTradeForResponse,
 } = require('./brokerTrades');
+const { reconcileMonitorState } = require('./monitorConsistency');
 const {
     buildWebullRuntimeConfig,
     getAccountBalance,
@@ -713,14 +716,14 @@ async function maybeSendExecutionTelegram(text, context = {}) {
 async function finalizeTrackedTrade({ action, symbol, price, ibs, decisionTime, dateKey, source, clientOrderId, brokerOrderId, filledQty, quantity }) {
     // Test buys should not create persistent trade records
     if (source === 'test') {
-        const syncResult = synchronizeWatchesWithTradeHistory();
-        if (syncResult.changes.length) scheduleSaveWatches();
+        syncWatchesWithTradeState();
         return { skipped: true, reason: 'test_source' };
     }
 
-    let trade = null;
+    let brokerTrade = null;
+    let monitorTrade = null;
     if (action === 'entry') {
-        trade = recordBrokerEntry({
+        brokerTrade = recordBrokerEntry({
             symbol,
             price: typeof price === 'number' ? price : null,
             ibs: typeof ibs === 'number' ? ibs : null,
@@ -732,8 +735,11 @@ async function finalizeTrackedTrade({ action, symbol, price, ibs, decisionTime, 
             filledQty: filledQty ?? null,
             quantity: quantity ?? null,
         });
+        if (brokerTrade) {
+            monitorTrade = upsertMonitorTradeFromBrokerTrade(brokerTrade);
+        }
     } else if (action === 'exit') {
-        trade = recordBrokerExit({
+        brokerTrade = recordBrokerExit({
             symbol,
             price: typeof price === 'number' ? price : null,
             ibs: typeof ibs === 'number' ? ibs : null,
@@ -743,14 +749,21 @@ async function finalizeTrackedTrade({ action, symbol, price, ibs, decisionTime, 
             brokerOrderId: brokerOrderId || null,
             filledQty: filledQty ?? null,
         });
+        if (brokerTrade) {
+            monitorTrade = closeMonitorTradeFromBrokerTrade(brokerTrade, {
+                allowLegacyMatch: true,
+                note: 'closed_from_broker_fill',
+            });
+        }
     }
 
-    const syncResult = synchronizeWatchesWithTradeHistory();
-    if (syncResult.changes.length) {
-        scheduleSaveWatches();
+    const reconcileSummary = reconcileMonitorState({ apply: true });
+    if (!monitorTrade && reconcileSummary.appliedActions.length > 0) {
+        monitorTrade = reconcileSummary.openMonitorTrade;
     }
 
-    return trade;
+    syncWatchesWithTradeState();
+    return brokerTrade;
 }
 
 function extractOrdersArray(payload) {
@@ -1111,7 +1124,7 @@ async function findOrderSnapshotByClientOrderId(accountId, clientOrderId) {
     }) || null;
 }
 
-async function executeWebullSignal({ action, symbol, currentPrice, ibs, decisionTime, dateKey, source = 'unknown', forceLive = false, notifyOnResult = true, correlationId = null, quantityOverride = null }) {
+async function executeWebullSignal({ action, symbol, currentPrice, ibs, decisionTime, dateKey, source = 'unknown', forceDryRun = false, forceLive = false, notifyOnResult = true, correlationId = null, quantityOverride = null }) {
     await initializeAutotradeRuntime();
     const settings = await readSettings();
     const autoTrading = settings.autoTrading || {};
@@ -1146,6 +1159,37 @@ async function executeWebullSignal({ action, symbol, currentPrice, ibs, decision
             shouldRecordLocalTrade: false,
             error: `Pending ${action} order already exists for ${normalizedSymbol}`,
             clientOrderId: pendingTracker.clientOrderId,
+            correlationId: resolvedCorrelationId,
+        };
+    }
+
+    if (forceDryRun) {
+        const simulatedQuantity = Number.isFinite(quantityOverride) && quantityOverride > 0
+            ? quantityOverride
+            : null;
+        await appendAutotradeEvent('execution_dry_run', {
+            ...buildExecutionLogContext({
+                source,
+                correlationId: resolvedCorrelationId,
+                symbol: normalizedSymbol,
+                action,
+                quantity: simulatedQuantity,
+                price: currentPrice,
+                ibs,
+                decisionTime,
+                dateKey,
+                mode: 'dry_run',
+            }),
+            reason: 'force_dry_run',
+        });
+        return {
+            mode: 'dry_run',
+            submitted: false,
+            simulated: true,
+            shouldRecordLocalTrade: false,
+            quantity: simulatedQuantity,
+            error: 'Dry run mode: order not sent',
+            clientOrderId: null,
             correlationId: resolvedCorrelationId,
         };
     }

@@ -38,8 +38,8 @@ function migrateJsonToDb() {
             INSERT OR IGNORE INTO trades
             (id, symbol, status, entry_date, exit_date, entry_price, exit_price,
              entry_ibs, exit_ibs, entry_decision_time, exit_decision_time,
-             pnl_percent, pnl_absolute, holding_days, notes)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             pnl_percent, pnl_absolute, holding_days, notes, linked_broker_trade_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
         db.transaction(() => {
             for (const rec of data) {
@@ -51,7 +51,8 @@ function migrateJsonToDb() {
                     t.entryIBS, t.exitIBS,
                     t.entryDecisionTime, t.exitDecisionTime,
                     t.pnlPercent, t.pnlAbsolute, t.holdingDays,
-                    t.notes ?? null
+                    t.notes ?? null,
+                    t.linkedBrokerTradeId ?? null
                 );
             }
         })();
@@ -109,6 +110,7 @@ function normalizeTradeRecord(rec) {
         pnlAbsolute,
         holdingDays,
         notes: typeof safe.notes === 'string' ? safe.notes : undefined,
+        linkedBrokerTradeId: typeof safe.linkedBrokerTradeId === 'string' ? safe.linkedBrokerTradeId : null,
     };
 }
 
@@ -136,6 +138,7 @@ function rowToTrade(row) {
         clientOrderId: row.client_order_id ?? null,
         filledQty: row.filled_qty ?? null,
         quantity: row.quantity ?? null,
+        linkedBrokerTradeId: row.linked_broker_trade_id ?? null,
     };
 }
 
@@ -158,6 +161,14 @@ function getTradeHistory() {
     return db.prepare('SELECT * FROM trades').all().map(rowToTrade);
 }
 
+function getTradeById(id) {
+    if (!id) return null;
+    migrateJsonToDb();
+    const db = getDb();
+    const row = db.prepare('SELECT * FROM trades WHERE id = ?').get(id);
+    return row ? rowToTrade(row) : null;
+}
+
 function getSortedTradeHistory() {
     migrateJsonToDb();
     const db = getDb();
@@ -165,6 +176,47 @@ function getSortedTradeHistory() {
         SELECT * FROM trades
         ORDER BY COALESCE(exit_decision_time, exit_date, entry_decision_time, entry_date) DESC
     `).all().map(rowToTrade);
+}
+
+function syncWatchesWithTradeState() {
+    const syncResult = synchronizeWatchesWithTradeHistory();
+    if (syncResult.changes.length && scheduleSaveWatchesFn) {
+        scheduleSaveWatchesFn();
+    }
+    return syncResult;
+}
+
+function mergeNotes(existingNotes, nextNote) {
+    const base = typeof existingNotes === 'string' && existingNotes.trim()
+        ? existingNotes.trim()
+        : '';
+    const addition = typeof nextNote === 'string' && nextNote.trim()
+        ? nextNote.trim()
+        : '';
+    if (!addition) return base || null;
+    if (!base) return addition;
+    if (base.includes(addition)) return base;
+    return `${base}\n${addition}`;
+}
+
+function calculateTradePnl(entryPrice, exitPrice) {
+    if (!Number.isFinite(entryPrice) || !Number.isFinite(exitPrice) || entryPrice === 0) {
+        return { pnlAbsolute: null, pnlPercent: null };
+    }
+    const diff = exitPrice - entryPrice;
+    return {
+        pnlAbsolute: Number(diff.toFixed(6)),
+        pnlPercent: Number(((diff / entryPrice) * 100).toFixed(6)),
+    };
+}
+
+function calculateHoldingDays(entryDate, exitDate) {
+    if (!entryDate || !exitDate) return null;
+    const d1 = new Date(entryDate);
+    const d2 = new Date(exitDate);
+    if (Number.isNaN(d1.valueOf()) || Number.isNaN(d2.valueOf())) return null;
+    const diff = Math.round((d2.getTime() - d1.getTime()) / (24 * 3600 * 1000));
+    return diff >= 0 ? Math.max(1, diff) : null;
 }
 
 // ─── Write ────────────────────────────────────────────────────────────────────
@@ -193,8 +245,8 @@ function recordTradeEntry({ symbol, price, ibs, decisionTime, dateKey, source, c
     db.prepare(`
         INSERT INTO trades
             (id, symbol, status, entry_date, entry_price, entry_ibs, entry_decision_time,
-             source, broker_order_id, client_order_id, filled_qty, quantity)
-        VALUES (?, ?, 'open', ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             source, broker_order_id, client_order_id, filled_qty, quantity, linked_broker_trade_id)
+        VALUES (?, ?, 'open', ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
     `).run(id, normalizedSymbol, entryDate, entryPrice, entryIBS, entryDecisionTime,
            tradeSource, brokerOrderId ?? null, clientOrderId ?? null, filledQtyVal, qty);
 
@@ -217,23 +269,8 @@ function recordTradeExit({ symbol, price, ibs, decisionTime, dateKey, clientOrde
     const exitDate = dateKey || null;
     const exitDecisionTime = decisionTime || new Date().toISOString();
 
-    let pnlAbsolute = null;
-    let pnlPercent = null;
-    if (typeof openTrade.entryPrice === 'number' && typeof exitPrice === 'number') {
-        const diff = exitPrice - openTrade.entryPrice;
-        pnlAbsolute = Number(diff.toFixed(6));
-        pnlPercent = Number(((diff / openTrade.entryPrice) * 100).toFixed(6));
-    }
-
-    let holdingDays = null;
-    if (openTrade.entryDate && exitDate) {
-        const d1 = new Date(openTrade.entryDate);
-        const d2 = new Date(exitDate);
-        if (!Number.isNaN(d1.valueOf()) && !Number.isNaN(d2.valueOf())) {
-            const diff = Math.round((d2.getTime() - d1.getTime()) / (24 * 3600 * 1000));
-            holdingDays = diff >= 0 ? Math.max(1, diff) : null;
-        }
-    }
+    const { pnlAbsolute, pnlPercent } = calculateTradePnl(openTrade.entryPrice, exitPrice);
+    const holdingDays = calculateHoldingDays(openTrade.entryDate, exitDate);
 
     db.prepare(`
         UPDATE trades SET
@@ -258,6 +295,184 @@ function recordTradeExit({ symbol, price, ibs, decisionTime, dateKey, clientOrde
     return rowToTrade(db.prepare('SELECT * FROM trades WHERE id = ?').get(openTrade.id));
 }
 
+function upsertMonitorTradeFromBrokerTrade(brokerTrade) {
+    if (!brokerTrade || brokerTrade.status !== 'open' || !brokerTrade.id || !brokerTrade.symbol) {
+        return null;
+    }
+    migrateJsonToDb();
+    const db = getDb();
+    const openTrade = getCurrentOpenTrade();
+    const normalizedSymbol = brokerTrade.symbol.toUpperCase();
+    const qty = typeof brokerTrade.quantity === 'number'
+        ? brokerTrade.quantity
+        : (typeof brokerTrade.filledQty === 'number' ? brokerTrade.filledQty : null);
+
+    if (openTrade) {
+        const isSameLinkedTrade = openTrade.linkedBrokerTradeId === brokerTrade.id;
+        const canAdoptLegacyOpenTrade = (
+            openTrade.symbol === normalizedSymbol
+            && openTrade.entryDate === (brokerTrade.entryDate ?? null)
+            && !openTrade.linkedBrokerTradeId
+            && openTrade.source === 'auto'
+        );
+
+        if (!isSameLinkedTrade && !canAdoptLegacyOpenTrade) {
+            console.warn(`Cannot link broker trade ${brokerTrade.id} to monitor trade: monitor trade ${openTrade.id} is still open for ${openTrade.symbol}`);
+            return null;
+        }
+
+        db.prepare(`
+            UPDATE trades SET
+                symbol = ?,
+                entry_date = ?,
+                entry_price = ?,
+                entry_ibs = ?,
+                entry_decision_time = ?,
+                source = ?,
+                broker_order_id = COALESCE(?, broker_order_id),
+                client_order_id = COALESCE(?, client_order_id),
+                filled_qty = COALESCE(?, filled_qty),
+                quantity = COALESCE(?, quantity),
+                linked_broker_trade_id = ?,
+                status = 'open'
+            WHERE id = ?
+        `).run(
+            normalizedSymbol,
+            brokerTrade.entryDate ?? null,
+            typeof brokerTrade.entryPrice === 'number' ? brokerTrade.entryPrice : null,
+            typeof brokerTrade.entryIBS === 'number' ? brokerTrade.entryIBS : null,
+            brokerTrade.entryDecisionTime ?? null,
+            brokerTrade.source || openTrade.source || 'auto',
+            brokerTrade.brokerOrderId ?? null,
+            brokerTrade.clientOrderId ?? null,
+            typeof brokerTrade.filledQty === 'number' ? brokerTrade.filledQty : null,
+            qty,
+            brokerTrade.id,
+            openTrade.id
+        );
+
+        const trade = rowToTrade(db.prepare('SELECT * FROM trades WHERE id = ?').get(openTrade.id));
+        syncWatchesWithTradeState();
+        return trade;
+    }
+
+    const id = crypto.randomUUID();
+    db.prepare(`
+        INSERT INTO trades
+            (id, symbol, status, entry_date, entry_price, entry_ibs, entry_decision_time,
+             source, broker_order_id, client_order_id, filled_qty, quantity, linked_broker_trade_id)
+        VALUES (?, ?, 'open', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+        id,
+        normalizedSymbol,
+        brokerTrade.entryDate ?? null,
+        typeof brokerTrade.entryPrice === 'number' ? brokerTrade.entryPrice : null,
+        typeof brokerTrade.entryIBS === 'number' ? brokerTrade.entryIBS : null,
+        brokerTrade.entryDecisionTime ?? null,
+        brokerTrade.source || 'auto',
+        brokerTrade.brokerOrderId ?? null,
+        brokerTrade.clientOrderId ?? null,
+        typeof brokerTrade.filledQty === 'number' ? brokerTrade.filledQty : null,
+        qty,
+        brokerTrade.id
+    );
+
+    const trade = rowToTrade(db.prepare('SELECT * FROM trades WHERE id = ?').get(id));
+    syncWatchesWithTradeState();
+    return trade;
+}
+
+function closeMonitorTradeById(id, { exitDate, exitPrice, exitIBS, exitDecisionTime, note, clientOrderId, brokerOrderId, filledQty, linkedBrokerTradeId } = {}) {
+    if (!id) return null;
+    migrateJsonToDb();
+    const db = getDb();
+    const existing = db.prepare('SELECT * FROM trades WHERE id = ?').get(id);
+    if (!existing) return null;
+    if (existing.status !== 'open') {
+        return rowToTrade(existing);
+    }
+
+    const normalizedExitPrice = typeof exitPrice === 'number' ? exitPrice : Number(exitPrice);
+    if (!Number.isFinite(normalizedExitPrice) || normalizedExitPrice <= 0) {
+        throw new Error('exitPrice must be a positive number');
+    }
+
+    const resolvedExitDate = exitDate || null;
+    const resolvedExitDecisionTime = exitDecisionTime || new Date().toISOString();
+    const { pnlAbsolute, pnlPercent } = calculateTradePnl(existing.entry_price, normalizedExitPrice);
+    const holdingDays = calculateHoldingDays(existing.entry_date, resolvedExitDate);
+    const mergedNotes = mergeNotes(existing.notes, note);
+
+    db.prepare(`
+        UPDATE trades SET
+            status = 'closed',
+            exit_date = ?,
+            exit_price = ?,
+            exit_ibs = ?,
+            exit_decision_time = ?,
+            pnl_absolute = ?,
+            pnl_percent = ?,
+            holding_days = ?,
+            notes = ?,
+            broker_order_id = COALESCE(broker_order_id, ?),
+            client_order_id = COALESCE(client_order_id, ?),
+            filled_qty = COALESCE(?, filled_qty),
+            linked_broker_trade_id = COALESCE(linked_broker_trade_id, ?)
+        WHERE id = ?
+    `).run(
+        resolvedExitDate,
+        normalizedExitPrice,
+        typeof exitIBS === 'number' ? exitIBS : null,
+        resolvedExitDecisionTime,
+        pnlAbsolute,
+        pnlPercent,
+        holdingDays,
+        mergedNotes,
+        brokerOrderId ?? null,
+        clientOrderId ?? null,
+        typeof filledQty === 'number' ? filledQty : null,
+        linkedBrokerTradeId ?? null,
+        id
+    );
+
+    const trade = rowToTrade(db.prepare('SELECT * FROM trades WHERE id = ?').get(id));
+    syncWatchesWithTradeState();
+    return trade;
+}
+
+function closeMonitorTradeFromBrokerTrade(brokerTrade, options = {}) {
+    if (!brokerTrade || brokerTrade.status !== 'closed' || !brokerTrade.symbol) {
+        return null;
+    }
+    const openTrade = getCurrentOpenTrade();
+    if (!openTrade) return null;
+
+    const isLinkedTrade = openTrade.linkedBrokerTradeId === brokerTrade.id;
+    const isLegacyAutoMatch = (
+        options.allowLegacyMatch !== false
+        && !openTrade.linkedBrokerTradeId
+        && openTrade.source === 'auto'
+        && openTrade.symbol === brokerTrade.symbol
+        && openTrade.entryDate === (brokerTrade.entryDate ?? null)
+    );
+
+    if (!isLinkedTrade && !isLegacyAutoMatch) {
+        return null;
+    }
+
+    return closeMonitorTradeById(openTrade.id, {
+        exitDate: brokerTrade.exitDate ?? null,
+        exitPrice: brokerTrade.exitPrice,
+        exitIBS: brokerTrade.exitIBS,
+        exitDecisionTime: brokerTrade.exitDecisionTime,
+        note: options.note,
+        clientOrderId: brokerTrade.clientOrderId ?? null,
+        brokerOrderId: brokerTrade.brokerOrderId ?? null,
+        filledQty: brokerTrade.filledQty ?? null,
+        linkedBrokerTradeId: brokerTrade.id,
+    });
+}
+
 // ─── Manual trade management ──────────────────────────────────────────────────
 
 function createManualTrade({ symbol, entryDate, exitDate, entryPrice, exitPrice, entryIBS, exitIBS, notes, quantity }) {
@@ -270,31 +485,16 @@ function createManualTrade({ symbol, entryDate, exitDate, entryPrice, exitPrice,
     const xp = typeof exitPrice === 'number' ? exitPrice : (exitPrice != null ? Number(exitPrice) : null);
     const status = (exitDate || xp != null) ? 'closed' : 'open';
 
-    let pnlAbsolute = null;
-    let pnlPercent = null;
-    if (ep != null && xp != null) {
-        const diff = xp - ep;
-        pnlAbsolute = Number(diff.toFixed(6));
-        pnlPercent = Number(((diff / ep) * 100).toFixed(6));
-    }
-
-    let holdingDays = null;
-    if (entryDate && exitDate) {
-        const d1 = new Date(entryDate);
-        const d2 = new Date(exitDate);
-        if (!Number.isNaN(d1.valueOf()) && !Number.isNaN(d2.valueOf())) {
-            const diff = Math.round((d2.getTime() - d1.getTime()) / (24 * 3600 * 1000));
-            holdingDays = diff >= 0 ? Math.max(1, diff) : null;
-        }
-    }
+    const { pnlAbsolute, pnlPercent } = calculateTradePnl(ep, xp);
+    const holdingDays = calculateHoldingDays(entryDate, exitDate);
 
     const id = crypto.randomUUID();
     db.prepare(`
         INSERT INTO trades
             (id, symbol, status, entry_date, exit_date, entry_price, exit_price,
              entry_ibs, exit_ibs, pnl_absolute, pnl_percent, holding_days, notes,
-             source, quantity)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'manual', ?)
+             source, quantity, linked_broker_trade_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'manual', ?, NULL)
     `).run(id, normalizedSymbol, status, entryDate || null, exitDate || null,
            ep, xp,
            typeof entryIBS === 'number' ? entryIBS : null,
@@ -303,10 +503,14 @@ function createManualTrade({ symbol, entryDate, exitDate, entryPrice, exitPrice,
            typeof notes === 'string' ? notes : null,
            typeof quantity === 'number' ? quantity : null);
 
-    return rowToTrade(db.prepare('SELECT * FROM trades WHERE id = ?').get(id));
+    const trade = rowToTrade(db.prepare('SELECT * FROM trades WHERE id = ?').get(id));
+    if (trade.status === 'open') {
+        syncWatchesWithTradeState();
+    }
+    return trade;
 }
 
-function updateTrade(id, { notes, isHidden, isTest, exitDate, exitPrice, exitIBS }) {
+function updateTrade(id, { notes, isHidden, isTest, exitDate, exitPrice, exitIBS, linkedBrokerTradeId }) {
     if (!id) return null;
     migrateJsonToDb();
     const db = getDb();
@@ -320,6 +524,7 @@ function updateTrade(id, { notes, isHidden, isTest, exitDate, exitPrice, exitIBS
     if (notes !== undefined) { updates.push('notes = ?'); params.push(notes); }
     if (isHidden !== undefined) { updates.push('is_hidden = ?'); params.push(isHidden ? 1 : 0); }
     if (isTest !== undefined) { updates.push('is_test = ?'); params.push(isTest ? 1 : 0); }
+    if (linkedBrokerTradeId !== undefined) { updates.push('linked_broker_trade_id = ?'); params.push(linkedBrokerTradeId); }
 
     // Allow updating exit info for manual/open trades
     if (exitDate !== undefined) { updates.push('exit_date = ?'); params.push(exitDate); }
@@ -327,10 +532,10 @@ function updateTrade(id, { notes, isHidden, isTest, exitDate, exitPrice, exitIBS
         const xp = typeof exitPrice === 'number' ? exitPrice : Number(exitPrice);
         updates.push('exit_price = ?'); params.push(xp);
         const ep = existing.entry_price;
-        if (ep && xp) {
-            const diff = xp - ep;
-            updates.push('pnl_absolute = ?'); params.push(Number(diff.toFixed(6)));
-            updates.push('pnl_percent = ?'); params.push(Number(((diff / ep) * 100).toFixed(6)));
+        if (Number.isFinite(ep) && Number.isFinite(xp) && ep !== 0) {
+            const { pnlAbsolute, pnlPercent } = calculateTradePnl(ep, xp);
+            updates.push('pnl_absolute = ?'); params.push(pnlAbsolute);
+            updates.push('pnl_percent = ?'); params.push(pnlPercent);
             updates.push("status = 'closed'");
         }
     }
@@ -340,14 +545,27 @@ function updateTrade(id, { notes, isHidden, isTest, exitDate, exitPrice, exitIBS
 
     params.push(id);
     db.prepare(`UPDATE trades SET ${updates.join(', ')} WHERE id = ?`).run(...params);
-    return rowToTrade(db.prepare('SELECT * FROM trades WHERE id = ?').get(id));
+    const trade = rowToTrade(db.prepare('SELECT * FROM trades WHERE id = ?').get(id));
+    if (
+        exitDate !== undefined
+        || exitPrice !== undefined
+        || linkedBrokerTradeId !== undefined
+        || (existing.status === 'open' && trade.status !== existing.status)
+    ) {
+        syncWatchesWithTradeState();
+    }
+    return trade;
 }
 
 function deleteTrade(id) {
     if (!id) return false;
     migrateJsonToDb();
     const db = getDb();
+    const existing = db.prepare('SELECT * FROM trades WHERE id = ?').get(id);
     const result = db.prepare('DELETE FROM trades WHERE id = ?').run(id);
+    if (result.changes > 0 && existing && existing.status === 'open') {
+        syncWatchesWithTradeState();
+    }
     return result.changes > 0;
 }
 
@@ -365,7 +583,7 @@ function synchronizeWatchesWithTradeHistory() {
     if (!telegramWatches) return { openTrade, changes };
 
     for (const watch of telegramWatches.values()) {
-        const hadEntryPrice = isPositionOpen(watch);
+        const hadEntryPrice = !!(watch.isOpenPosition || isPositionOpen(watch) || watch.currentTradeId);
         const shouldBeOpen = !!openSymbol && watch.symbol.toUpperCase() === openSymbol;
 
         if (shouldBeOpen) {
@@ -459,6 +677,7 @@ function serializeTradeForResponse(trade) {
         clientOrderId: trade.clientOrderId ?? null,
         filledQty: trade.filledQty ?? null,
         quantity: trade.quantity ?? null,
+        linkedBrokerTradeId: trade.linkedBrokerTradeId ?? null,
     };
 }
 
@@ -468,10 +687,7 @@ function serializeTradeForResponse(trade) {
 async function loadTradeHistory() {
     migrateJsonToDb();
     if (telegramWatches && telegramWatches.size > 0) {
-        const syncResult = synchronizeWatchesWithTradeHistory();
-        if (syncResult.changes.length && scheduleSaveWatchesFn) {
-            scheduleSaveWatchesFn();
-        }
+        syncWatchesWithTradeState();
     }
 }
 
@@ -498,13 +714,18 @@ module.exports = {
     loadTradeHistory,
     ensureTradeHistoryLoaded,
     getCurrentOpenTrade,
+    getTradeById,
     recordTradeEntry,
     recordTradeExit,
+    upsertMonitorTradeFromBrokerTrade,
+    closeMonitorTradeById,
+    closeMonitorTradeFromBrokerTrade,
     createManualTrade,
     updateTrade,
     deleteTrade,
     isPositionOpen,
     synchronizeWatchesWithTradeHistory,
+    syncWatchesWithTradeState,
     formatTradeSummary,
     buildTradeHistoryMessage,
     serializeTradeForResponse,

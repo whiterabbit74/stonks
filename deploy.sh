@@ -133,22 +133,29 @@ git fetch origin &&
 git reset --hard origin/main &&
 echo 'Актуальный коммит на сервере:' &&
 git log --oneline -1 &&
+echo SERVER_GIT_SHA_BEFORE_DEPLOY=\$(git rev-parse HEAD) &&
 
-echo '💾 БЕКАП JSON ДАННЫХ...' &&
+echo '💾 БЕКАП DOCKER DATA VOLUMES...' &&
 BACKUP_DIR=~/stonks-backups &&
 BACKUP_NAME=backup_\$(date +%Y%m%d_%H%M%S) &&
 mkdir -p \$BACKUP_DIR/\$BACKUP_NAME &&
 
-# Копируем JSON данные если они существуют
-if [ -d ~/stonks/server/datasets ]; then
-    cp -r ~/stonks/server/datasets \$BACKUP_DIR/\$BACKUP_NAME/ 2>/dev/null || true
+mkdir -p \$BACKUP_DIR/\$BACKUP_NAME/state \$BACKUP_DIR/\$BACKUP_NAME/db \$BACKUP_DIR/\$BACKUP_NAME/datasets &&
+if docker volume inspect stonks_state >/dev/null 2>&1; then
+    docker run --rm -v stonks_state:/source -v \$BACKUP_DIR/\$BACKUP_NAME/state:/backup alpine sh -lc 'cp -a /source/. /backup/ 2>/dev/null || true'
+else
+    echo '⚠️ volume stonks_state не найден'
 fi &&
-[ -f ~/stonks/server/settings.json ] && cp ~/stonks/server/settings.json \$BACKUP_DIR/\$BACKUP_NAME/ 2>/dev/null || true
-[ -f ~/stonks/server/splits.json ] && cp ~/stonks/server/splits.json \$BACKUP_DIR/\$BACKUP_NAME/ 2>/dev/null || true
-[ -f ~/stonks/server/telegram-watches.json ] && cp ~/stonks/server/telegram-watches.json \$BACKUP_DIR/\$BACKUP_NAME/ 2>/dev/null || true
-[ -f ~/stonks/server/trade-history.json ] && cp ~/stonks/server/trade-history.json \$BACKUP_DIR/\$BACKUP_NAME/ 2>/dev/null || true
-[ -f ~/stonks/server/trading-calendar.json ] && cp ~/stonks/server/trading-calendar.json \$BACKUP_DIR/\$BACKUP_NAME/ 2>/dev/null || true
-[ -d ~/stonks/server/db ] && cp -r ~/stonks/server/db \$BACKUP_DIR/\$BACKUP_NAME/ 2>/dev/null || true
+if docker volume inspect stonks_db >/dev/null 2>&1; then
+    docker run --rm -v stonks_db:/source -v \$BACKUP_DIR/\$BACKUP_NAME/db:/backup alpine sh -lc 'cp -a /source/. /backup/ 2>/dev/null || true'
+else
+    echo '⚠️ volume stonks_db не найден'
+fi &&
+if docker volume inspect stonks_datasets >/dev/null 2>&1; then
+    docker run --rm -v stonks_datasets:/source -v \$BACKUP_DIR/\$BACKUP_NAME/datasets:/backup alpine sh -lc 'cp -a /source/. /backup/ 2>/dev/null || true'
+else
+    echo '⚠️ volume stonks_datasets не найден'
+fi
 
 echo "✅ Бекап создан: \$BACKUP_NAME" &&
 
@@ -242,6 +249,11 @@ docker ps --format 'table {{.Names}}\t{{.Status}}' &&
 
 echo -e '\nИнформация о сборке:' &&
 cat ~/stonks/build-info.json &&
+
+echo -e '\nServer git SHA после деплоя:' &&
+cd ~/stonks &&
+git rev-parse HEAD &&
+cd ~ &&
 
 echo -e '\nСвежие файлы:' &&
 docker exec stonks-frontend find /usr/share/nginx/html/assets -name 'index-*.js' -exec ls -la {} \\; 2>/dev/null || echo 'Контейнер не запущен' &&

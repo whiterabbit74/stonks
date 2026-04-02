@@ -24,6 +24,13 @@ function getDb() {
     return _db;
 }
 
+function closeDb() {
+    if (_db) {
+        _db.close();
+        _db = null;
+    }
+}
+
 function initSchema(db) {
     db.exec(`
         CREATE TABLE IF NOT EXISTS dataset_meta (
@@ -77,7 +84,8 @@ function initSchema(db) {
             pnl_percent         REAL,
             pnl_absolute        REAL,
             holding_days        INTEGER,
-            notes               TEXT
+            notes               TEXT,
+            linked_broker_trade_id TEXT
         );
 
         CREATE INDEX IF NOT EXISTS idx_trades_status ON trades(status);
@@ -93,6 +101,7 @@ function initSchema(db) {
         `ALTER TABLE trades ADD COLUMN client_order_id TEXT`,
         `ALTER TABLE trades ADD COLUMN filled_qty REAL`,
         `ALTER TABLE trades ADD COLUMN quantity REAL`,
+        `ALTER TABLE trades ADD COLUMN linked_broker_trade_id TEXT`,
     ];
     for (const sql of tradeMigrations) {
         try { db.exec(sql); } catch { /* column already exists */ }
@@ -162,4 +171,4 @@ function initSchema(db) {
     `);
 }
 
-module.exports = { getDb };
+module.exports = { getDb, closeDb };
