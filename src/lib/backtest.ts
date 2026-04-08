@@ -894,6 +894,7 @@ export class BacktestEngine {
 export function runBacktest(data: OHLCData[], strategy: Strategy): BacktestResult {
 
   // Используем чистый бэктест только для IBS стратегии
-  const engine = new CleanBacktestEngine(data, strategy);
+  // Optimization: Skip chartData generation as the UI calculates it independently
+  const engine = new CleanBacktestEngine(data, strategy, { generateChartData: false });
   return engine.runBacktest();
 }
