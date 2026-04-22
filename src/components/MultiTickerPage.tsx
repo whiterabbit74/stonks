@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { HelpCircle, Settings2, RefreshCw, ArrowUpRight } from 'lucide-react';
-import { MetricsGrid, AnalysisTabs, PageHeader, Select, Button, TickerInput, ChartContainer } from './ui';
+import { MetricsGrid, AnalysisTabs, PageHeader, Select, Button, TickerInput, ChartContainer, IconButton, Panel } from './ui';
 import { useAppStore } from '../stores';
 import { LS } from '../constants';
 import type { Strategy, MultiTickerBacktestResults, ChartQuote } from '../types';
@@ -373,7 +373,7 @@ export function MultiTickerPage() {
       <div className="space-y-3">
         <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_240px] lg:grid-cols-[minmax(0,1fr)_280px]">
           {/* ── Left: chart ── */}
-          <div className="space-y-3 rounded-xl border border-gray-200 bg-gray-50/70 p-3 dark:border-gray-800 dark:bg-gray-950/40">
+          <Panel tone="subtle" padding="sm" className="space-y-3">
             {/* Toolbar: ticker pills + chart settings */}
             <div className="flex flex-wrap items-center gap-1.5">
               {/* Ticker pills */}
@@ -413,20 +413,20 @@ export function MultiTickerPage() {
               <div className="ml-auto flex items-center gap-1.5">
                 {/* Pro button */}
                 {backtestResults && (
-                  <button
-                    type="button"
+                  <Button
                     onClick={() => setActiveTab('price')}
-                    className="inline-flex h-7 items-center gap-1 rounded-full border border-gray-300 px-2 text-[11px] text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+                    variant="secondary"
+                    size="sm"
+                    className="h-7 rounded-full px-2.5 text-[11px]"
                     title="Открыть профессиональный график"
+                    rightIcon={<ArrowUpRight className="h-3 w-3" />}
                   >
                     Pro
-                    <ArrowUpRight className="h-3 w-3" />
-                  </button>
+                  </Button>
                 )}
 
                 {/* Refresh quote */}
-                <button
-                  type="button"
+                <IconButton
                   onClick={() => {
                     if (!selectedChartTicker) return;
                     setChartQuoteLoading(true);
@@ -436,24 +436,25 @@ export function MultiTickerPage() {
                       .finally(() => setChartQuoteLoading(false));
                   }}
                   disabled={chartQuoteLoading}
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-300 text-gray-500 hover:bg-gray-100 disabled:opacity-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800 transition-colors"
+                  variant="outline"
+                  size="md"
                   title="Обновить котировку"
                 >
                   <RefreshCw className={`h-3.5 w-3.5 ${chartQuoteLoading ? 'animate-spin' : ''}`} />
-                </button>
+                </IconButton>
 
                 {/* Quote details popup */}
                 <div ref={quoteDetailsRef} className="relative">
-                  <button
-                    type="button"
+                  <IconButton
                     onClick={() => setShowQuoteDetails((prev) => !prev)}
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-300 text-gray-500 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800 transition-colors"
+                    variant="outline"
+                    size="md"
                     title="Детали котировки"
                   >
                     <HelpCircle className="h-3.5 w-3.5" />
-                  </button>
+                  </IconButton>
                   {showQuoteDetails && (
-                    <div className="absolute right-0 top-full z-20 mt-1.5 w-56 rounded-lg border border-gray-200 bg-white p-3 shadow-lg dark:border-gray-700 dark:bg-gray-900">
+                    <Panel className="absolute right-0 top-full z-20 mt-1.5 w-56 p-3 shadow-lg dark:border-gray-700">
                       <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
                         Детали котировки
                       </div>
@@ -481,22 +482,22 @@ export function MultiTickerPage() {
                           </div>
                         </div>
                       </div>
-                    </div>
+                    </Panel>
                   )}
                 </div>
 
                 {/* Chart type settings */}
                 <div ref={heroSettingsRef} className="relative">
-                  <button
-                    type="button"
+                  <IconButton
                     onClick={() => setShowHeroSettings((prev) => !prev)}
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-300 text-gray-500 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800 transition-colors"
+                    variant="outline"
+                    size="md"
                     title="Настройки графика"
                   >
                     <Settings2 className="h-3.5 w-3.5" />
-                  </button>
+                  </IconButton>
                   {showHeroSettings && (
-                    <div className="absolute right-0 top-full z-20 mt-1.5 w-48 rounded-lg border border-gray-200 bg-white p-2.5 shadow-lg dark:border-gray-700 dark:bg-gray-900">
+                    <Panel className="absolute right-0 top-full z-20 mt-1.5 w-48 p-2.5 shadow-lg dark:border-gray-700">
                       <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Тип графика</div>
                       <div className="mt-1.5 grid grid-cols-2 gap-1">
                         {(['line', 'candles'] as const).map((kind) => (
@@ -523,7 +524,7 @@ export function MultiTickerPage() {
                           {heroShowTrades ? 'Вкл' : 'Выкл'}
                         </span>
                       </button>
-                    </div>
+                    </Panel>
                   )}
                 </div>
 
@@ -549,22 +550,22 @@ export function MultiTickerPage() {
                 onRangeChange={setHeroRange}
               />
             )}
-          </div>
+          </Panel>
 
           {/* ── Right: parameters ── */}
-          <aside className="space-y-3 rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-900/70">
+          <Panel as="aside" tone="soft" padding="sm" className="space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">Параметры</span>
               <div ref={strategyHelpRef} className="relative">
-                <button
-                  type="button"
+                <IconButton
                   onClick={() => setShowStrategyInfo((prev) => !prev)}
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-300 text-gray-500 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 transition-colors"
+                  variant="outline"
+                  size="md"
                   title="Показать описание стратегии"
                   aria-expanded={showStrategyInfo}
                 >
                   <HelpCircle className="h-4 w-4" />
-                </button>
+                </IconButton>
                 {showStrategyInfo && (
                   <div className="absolute right-0 top-full z-20 mt-2 w-[min(94vw,430px)]">
                     <StrategyInfoCard
@@ -653,7 +654,7 @@ export function MultiTickerPage() {
             {backtestResults && (
               <OpenPositionBadge isOpen={isOpenPosition} entryPrice={openEntryPrice} />
             )}
-          </aside>
+          </Panel>
         </div>
       </div>
     );

@@ -3,9 +3,8 @@ import { AlertCircle, BriefcaseBusiness, ChevronDown, ChevronUp, History, Refres
 import type { AutoTradingConfig, AutoTradeState, AutotradeLogsResponse, WebullDashboardResponse, BrokerTradeRecord, MonitorConsistencyResponse } from '../types';
 import { DatasetAPI } from '../lib/api';
 import { getEntryCapitalModeOption } from '../lib/autotrade-config';
-import { PageHeader } from './ui/PageHeader';
-import { Button } from './ui/Button';
-import { AnalysisTabs } from './ui/AnalysisTabs';
+import { formatCurrencyValue, formatDateTimeET, formatHoldingDays, formatNumberOrDash, formatRatioPercent, formatSignedPercentValue } from '../lib/formatters';
+import { AnalysisTabs, Button, IconButton, PageHeader, Panel } from './ui';
 import { ManualBrokerTradeModal } from './ManualBrokerTradeModal';
 import { useAppStore } from '../stores';
 
@@ -51,28 +50,6 @@ function getMonitorConsistencyStatus(snapshot: MonitorConsistencyResponse | null
   return 'ok';
 }
 
-function formatMoney(value: unknown) {
-  const num = Number(value);
-  if (!Number.isFinite(num)) return '—';
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    maximumFractionDigits: 2,
-  }).format(num);
-}
-
-function formatNumber(value: unknown, fractionDigits = 2) {
-  const num = Number(value);
-  if (!Number.isFinite(num)) return '—';
-  return num.toFixed(fractionDigits);
-}
-
-function formatRatioPercent(value: unknown, fractionDigits = 1) {
-  const num = Number(value);
-  if (!Number.isFinite(num)) return '—';
-  return `${(num * 100).toFixed(fractionDigits)}%`;
-}
-
 function formatYesNo(value: unknown) {
   return value ? 'Да' : 'Нет';
 }
@@ -93,18 +70,17 @@ function formatTradingSession(value: unknown) {
   return session || '—';
 }
 
+function formatMoney(value: unknown) {
+  return formatCurrencyValue(value);
+}
+
+function formatNumber(value: unknown, fractionDigits = 2) {
+  return formatNumberOrDash(value, fractionDigits);
+}
+
 function formatDateTime(value: unknown) {
   if (typeof value !== 'string' || !value) return '—';
-  const ts = Date.parse(value);
-  if (!Number.isFinite(ts)) return value;
-  return new Date(ts).toLocaleString('ru-RU', {
-    day: '2-digit',
-    month: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    timeZone: 'America/New_York',
-  });
+  return formatDateTimeET(value, { withSeconds: true });
 }
 
 function formatLogLine(line: string) {
@@ -313,20 +289,20 @@ function isFinalTrackedStatus(status: ManualCloseState['status']) {
 
 function InfoCard({ title, value, hint, icon }: { title: string; value: string; hint?: string; icon: ReactNode }) {
   return (
-    <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+    <Panel radius="2xl" className="h-full">
       <div className="mb-3 flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
         <span className="text-indigo-600 dark:text-indigo-400">{icon}</span>
         <span>{title}</span>
       </div>
       <div className="text-2xl font-semibold text-gray-900 dark:text-gray-100">{value}</div>
       {hint ? <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">{hint}</div> : null}
-    </div>
+    </Panel>
   );
 }
 
 function ReadonlyConfigSection({ title, items }: { title: string; items: ReadonlyConfigItem[] }) {
   return (
-    <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+    <Panel radius="2xl">
       <div className="flex items-start justify-between gap-3">
         <div>
           <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">{title}</h3>
@@ -344,18 +320,40 @@ function ReadonlyConfigSection({ title, items }: { title: string; items: Readonl
           </div>
         ))}
       </div>
-    </div>
+    </Panel>
   );
 }
 
 function RawJson({ title, value }: { title: string; value: unknown }) {
   return (
-    <details className="rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-800 dark:bg-gray-900">
+    <Panel as="details" tone="soft" padding="sm" shadow={false}>
       <summary className="cursor-pointer text-sm font-medium text-gray-700 dark:text-gray-200">{title}</summary>
       <pre className="mt-3 overflow-auto rounded-lg bg-gray-950 p-3 text-xs text-gray-100">
         {JSON.stringify(value, null, 2)}
       </pre>
-    </details>
+    </Panel>
+  );
+}
+
+function SectionPanel({
+  title,
+  children,
+  actions,
+}: {
+  title?: string;
+  children: ReactNode;
+  actions?: ReactNode;
+}) {
+  return (
+    <Panel as="section" radius="2xl" padding="none">
+      {title ? (
+        <div className="flex items-center justify-between gap-3 border-b border-gray-100 px-4 py-3 dark:border-gray-800">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">{title}</h2>
+          {actions}
+        </div>
+      ) : null}
+      {children}
+    </Panel>
   );
 }
 
@@ -961,10 +959,7 @@ export function WebullAccountPage() {
     if (activeTab === 'positions') {
       return (
         <div className="space-y-4">
-          <section className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
-            <div className="border-b border-gray-100 px-4 py-3 dark:border-gray-800">
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Открытые позиции</h2>
-            </div>
+          <SectionPanel title="Открытые позиции">
             <div className="overflow-x-auto">
               <table className="min-w-full text-sm">
                 <thead className="bg-gray-50 text-left text-gray-500 dark:bg-gray-950/40 dark:text-gray-400">
@@ -1006,10 +1001,10 @@ export function WebullAccountPage() {
                       <td className="px-4 py-3 text-right font-mono text-gray-700 dark:text-gray-300">{formatMoney(position.marketValue)}</td>
                       <td className={`px-4 py-3 text-right font-mono ${pnlColor}`}>{formatMoney(position.unrealizedPnl)}</td>
                       <td className={`px-4 py-3 text-right font-mono ${pnlColor}`}>
-                        {Number.isFinite(pnlRateNum) ? `${(pnlRateNum * 100).toFixed(2)}%` : '—'}
+                        {formatRatioPercent(pnlRateNum, 2)}
                       </td>
                       <td className="px-4 py-3 text-right font-mono text-gray-500 dark:text-gray-400">
-                        {Number.isFinite(Number(position.holdingProportion)) ? `${(Number(position.holdingProportion) * 100).toFixed(1)}%` : '—'}
+                        {formatRatioPercent(position.holdingProportion, 1)}
                       </td>
                       <td className="px-4 py-3 text-right">
                         <Button
@@ -1028,7 +1023,7 @@ export function WebullAccountPage() {
                 </tbody>
               </table>
             </div>
-          </section>
+          </SectionPanel>
           <RawJson title="Raw positions payload" value={data.positions} />
           <RawJson title="Raw accounts payload" value={data.accounts} />
         </div>
@@ -1038,10 +1033,7 @@ export function WebullAccountPage() {
     if (activeTab === 'orders') {
       return (
         <div className="space-y-4">
-          <section className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
-            <div className="border-b border-gray-100 px-4 py-3 dark:border-gray-800">
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Активные ордера</h2>
-            </div>
+          <SectionPanel title="Активные ордера">
             <div className="overflow-x-auto">
               <table className="min-w-full text-sm">
                 <thead className="bg-gray-50 text-left text-gray-500 dark:bg-gray-950/40 dark:text-gray-400">
@@ -1088,7 +1080,7 @@ export function WebullAccountPage() {
                 </tbody>
               </table>
             </div>
-          </section>
+          </SectionPanel>
           <RawJson title="Raw open orders payload" value={data.openOrders} />
         </div>
       );
@@ -1097,10 +1089,7 @@ export function WebullAccountPage() {
     if (activeTab === 'deals') {
       return (
         <div className="space-y-4">
-          <section className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
-            <div className="border-b border-gray-100 px-4 py-3 dark:border-gray-800">
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">История сделок / ордеров</h2>
-            </div>
+          <SectionPanel title="История сделок / ордеров">
             <div className="overflow-x-auto">
               <table className="min-w-full text-sm">
                 <thead className="bg-gray-50 text-left text-gray-500 dark:bg-gray-950/40 dark:text-gray-400">
@@ -1147,7 +1136,7 @@ export function WebullAccountPage() {
                 </tbody>
               </table>
             </div>
-          </section>
+          </SectionPanel>
           <RawJson title="Raw order history payload" value={data.orderHistory} />
         </div>
       );
@@ -1156,7 +1145,7 @@ export function WebullAccountPage() {
     if (activeTab === 'autotrade') {
       return (
         <div className="space-y-4">
-          <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+          <Panel radius="2xl" className="p-4">
             <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Состояние автоторговли</h2>
             <div className="mt-3 grid gap-3 md:grid-cols-2">
               <div className="rounded-xl bg-gray-50 p-3 dark:bg-gray-950/40">
@@ -1207,11 +1196,8 @@ export function WebullAccountPage() {
               {' '}
               Тестовая кнопка `BUY AAL 1 шт по рынку` отправляет реальный ордер для проверки API и подписи.
             </p>
-          </div>
-          <div className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
-            <div className="border-b border-gray-100 px-4 py-3 dark:border-gray-800">
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Pending / last tracked orders</h3>
-            </div>
+          </Panel>
+          <SectionPanel title="Pending / last tracked orders">
             <div className="overflow-x-auto">
               <table className="min-w-full text-sm">
                 <thead className="bg-gray-50 text-left text-gray-500 dark:bg-gray-950/40 dark:text-gray-400">
@@ -1244,7 +1230,7 @@ export function WebullAccountPage() {
                 </tbody>
               </table>
             </div>
-          </div>
+          </SectionPanel>
           <div className="grid gap-4 xl:grid-cols-2">
             <RawJson title="Raw connection payload" value={data.connection} />
             <RawJson title="Raw autotrade config payload" value={{ config: autotradeConfig, state: autotradeState }} />
@@ -1259,7 +1245,7 @@ export function WebullAccountPage() {
       const openCount = monitoringRows.filter((row) => row.isOpenPosition).length;
       return (
         <div className="space-y-4">
-          <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+          <Panel radius="2xl" className="p-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Мониторинг отслеживаемых акций</h2>
@@ -1276,14 +1262,15 @@ export function WebullAccountPage() {
                 >
                   Reconcile
                 </Button>
-                <button
+                <IconButton
                   title="Обновить все цены"
                   disabled={monitoringLoading}
                   onClick={() => void loadMonitoringData(true)}
-                  className="inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white p-2 text-gray-600 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+                  variant="outline"
+                  size="md"
                 >
                   <RefreshCw className={`h-4 w-4 ${monitoringLoading ? 'animate-spin' : ''}`} />
-                </button>
+                </IconButton>
               </div>
             </div>
             <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -1306,11 +1293,8 @@ export function WebullAccountPage() {
                 ))}
               </div>
             ) : null}
-          </div>
-          <section className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
-            <div className="border-b border-gray-100 px-4 py-3 dark:border-gray-800">
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Отслеживаемые тикеры</h3>
-            </div>
+          </Panel>
+          <SectionPanel title="Отслеживаемые тикеры">
             <div className="overflow-x-auto">
               <table className="min-w-full text-sm">
                 <thead className="bg-gray-50 text-left text-gray-500 dark:bg-gray-950/40 dark:text-gray-400">
@@ -1351,7 +1335,7 @@ export function WebullAccountPage() {
                           : row.currentIbs != null && row.currentIbs > 0.75
                             ? 'text-emerald-600 dark:text-emerald-400'
                             : 'text-gray-700 dark:text-gray-300'
-                      }`}>{row.currentIbs == null ? '—' : `${(row.currentIbs * 100).toFixed(1)}%`}</td>
+                      }`}>{formatRatioPercent(row.currentIbs, 1)}</td>
                       <td className="px-4 py-3 text-right font-mono text-gray-700 dark:text-gray-300">{formatMoney(row.prevClose)}</td>
                       <td className={`px-4 py-3 text-right font-mono ${row.change != null && row.change < 0 ? 'text-rose-600 dark:text-rose-300' : 'text-emerald-600 dark:text-emerald-300'}`}>{row.change == null ? '—' : `${row.change >= 0 ? '+' : ''}${formatMoney(row.change)}`}</td>
                       <td className="px-4 py-3 text-right font-mono text-gray-700 dark:text-gray-300">{formatMoney(row.entryPrice)}</td>
@@ -1360,21 +1344,22 @@ export function WebullAccountPage() {
                       <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{formatDateTime(row.quoteUpdatedAt)}</td>
                       <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{row.quoteError ? row.quoteError : row.quoteProvider}</td>
                       <td className="px-4 py-3 text-right">
-                        <button
+                        <IconButton
                           title={`Обновить ${row.symbol}`}
                           disabled={!!monitoringRefreshingSymbols[row.symbol]}
                           onClick={() => void refreshMonitoringSymbol(row.symbol)}
-                          className="inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white p-1.5 text-gray-600 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+                          variant="outline"
+                          size="sm"
                         >
                           <RefreshCw className={`h-3.5 w-3.5 ${monitoringRefreshingSymbols[row.symbol] ? 'animate-spin' : ''}`} />
-                        </button>
+                        </IconButton>
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-          </section>
+          </SectionPanel>
           <RawJson title="Raw monitoring payload" value={{ watches: monitoringRows, quoteProvider, lastUpdatedAt: monitoringLastUpdatedAt, monitoringListLoaded, monitorConsistency }} />
         </div>
       );
@@ -1408,7 +1393,7 @@ export function WebullAccountPage() {
             onSubmit={handleAddTrade}
           />
 
-          <section className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
+          <SectionPanel title="Журнал сделок">
             <div className="overflow-x-auto">
               <table className="min-w-full text-sm">
                 <thead className="bg-gray-50 text-left text-gray-500 dark:bg-gray-950/40 dark:text-gray-400">
@@ -1453,10 +1438,10 @@ export function WebullAccountPage() {
                         <td className="px-3 py-2 text-right font-mono text-gray-700 dark:text-gray-300">{formatMoney(trade.exitPrice)}</td>
                         <td className="px-3 py-2 text-right font-mono text-gray-700 dark:text-gray-300">{trade.filledQty ?? trade.quantity ?? '—'}</td>
                         <td className={`px-3 py-2 text-right font-mono ${pnlColor}`}>{formatMoney(trade.pnlAbsolute)}</td>
-                        <td className={`px-3 py-2 text-right font-mono ${pnlColor}`}>{trade.pnlPercent != null ? `${trade.pnlPercent >= 0 ? '+' : ''}${trade.pnlPercent.toFixed(2)}%` : '—'}</td>
-                        <td className="px-3 py-2 text-right font-mono text-xs text-gray-500">{trade.entryIBS != null ? `${(trade.entryIBS * 100).toFixed(1)}%` : '—'}</td>
-                        <td className="px-3 py-2 text-right font-mono text-xs text-gray-500">{trade.exitIBS != null ? `${(trade.exitIBS * 100).toFixed(1)}%` : '—'}</td>
-                        <td className="px-3 py-2 text-right font-mono text-gray-500">{trade.holdingDays ?? '—'}</td>
+                        <td className={`px-3 py-2 text-right font-mono ${pnlColor}`}>{formatSignedPercentValue(trade.pnlPercent)}</td>
+                        <td className="px-3 py-2 text-right font-mono text-xs text-gray-500">{formatRatioPercent(trade.entryIBS, 1)}</td>
+                        <td className="px-3 py-2 text-right font-mono text-xs text-gray-500">{formatRatioPercent(trade.exitIBS, 1)}</td>
+                        <td className="px-3 py-2 text-right font-mono text-gray-500">{formatHoldingDays(trade.holdingDays, 0)}</td>
                         <td className="px-3 py-2 font-mono text-xs text-gray-400 max-w-[120px] truncate" title={trade.clientOrderId ?? ''}>{trade.clientOrderId ?? '—'}</td>
                         <td className="px-3 py-2 font-mono text-xs text-gray-400 max-w-[120px] truncate" title={trade.brokerOrderId ?? ''}>{trade.brokerOrderId ?? '—'}</td>
                         <td className="px-3 py-2 text-xs text-gray-500 max-w-[100px] truncate" title={trade.notes ?? ''}>{trade.notes ?? '—'}</td>
@@ -1483,7 +1468,7 @@ export function WebullAccountPage() {
                 </tbody>
               </table>
             </div>
-          </section>
+          </SectionPanel>
         </div>
       );
     }
@@ -1492,7 +1477,7 @@ export function WebullAccountPage() {
     return (
       <div className="space-y-3">
         {/* Наши логи */}
-        <div className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
+        <Panel radius="2xl" padding="none">
           <div
             className="flex cursor-pointer items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-gray-800"
             onClick={() => toggleLog('monitor')}
@@ -1501,22 +1486,23 @@ export function WebullAccountPage() {
               {logsCollapsed['monitor'] ? <ChevronDown className="h-4 w-4 text-gray-400" /> : <ChevronUp className="h-4 w-4 text-gray-400" />}
               <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Наши логи <span className="ml-2 text-xs font-normal text-gray-400">({monitorLogLines.length} строк)</span></h2>
             </div>
-            <button
+            <IconButton
               title="Обновить логи"
               disabled={logsLoading}
               onClick={(e) => { e.stopPropagation(); void loadLogs(); }}
-              className="inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white p-1.5 text-gray-600 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+              variant="outline"
+              size="sm"
             >
               <RefreshCw className={`h-3.5 w-3.5 ${logsLoading ? 'animate-spin' : ''}`} />
-            </button>
+            </IconButton>
           </div>
           {!logsCollapsed['monitor'] && (
             <pre className="max-h-[520px] overflow-auto p-4 text-xs text-gray-800 dark:text-gray-100">{monitorLogLines.join('\n') || 'Логи мониторинга пока пусты'}</pre>
           )}
-        </div>
+        </Panel>
 
         {/* Autotrade логи */}
-        <div className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
+        <Panel radius="2xl" padding="none">
           <div
             className="flex cursor-pointer items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-gray-800"
             onClick={() => toggleLog('autotrade')}
@@ -1529,10 +1515,10 @@ export function WebullAccountPage() {
           {!logsCollapsed['autotrade'] && (
             <pre className="max-h-[520px] overflow-auto p-4 text-xs text-gray-800 dark:text-gray-100">{autotradeLogLines.map(formatLogLine).join('\n') || 'Логи автоторговли пока пусты'}</pre>
           )}
-        </div>
+        </Panel>
 
         {/* Raw broker log */}
-        <div className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
+        <Panel radius="2xl" padding="none">
           <div
             className="flex cursor-pointer items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-gray-800"
             onClick={() => toggleLog('broker')}
@@ -1555,7 +1541,7 @@ export function WebullAccountPage() {
                 : brokerRawLogLines.map(formatLogLine).join('\n') || 'Raw broker log пока пуст'}
             </pre>
           )}
-        </div>
+        </Panel>
       </div>
     );
   };
@@ -1576,20 +1562,21 @@ export function WebullAccountPage() {
             >
               {autotradeConfig?.enabled ? '[LIVE]' : '[OFF]'}
             </div>
-            <button
+            <IconButton
               title="Обновить"
               aria-label="Обновить"
               disabled={refreshing}
               onClick={() => void Promise.all([loadDashboard(true), loadLogs(), loadAutotradeConfig()])}
-              className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-300 bg-white text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-800 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+              variant="glass"
+              size="md"
             >
               <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
-            </button>
+            </IconButton>
           </div>
         }
       />
 
-      <div className="rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
+      <Panel padding="none" tone="soft">
         <AnalysisTabs
           tabs={tabs}
           activeTab={activeTab}
@@ -1610,7 +1597,7 @@ export function WebullAccountPage() {
             </div>
           ) : renderTabContent()}
         </div>
-      </div>
+      </Panel>
     </div>
   );
 }

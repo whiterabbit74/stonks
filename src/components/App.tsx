@@ -12,6 +12,7 @@ import { Footer } from './Footer';
 import { API_BASE_URL } from '../lib/api';
 import { ThemeToggle } from './ThemeToggle';
 import { Logo } from './Logo';
+import { getIconButtonClasses } from './ui/IconButton';
 
 type Tab = 'data' | 'enhance' | 'results' | 'watches' | 'settings';
 
@@ -186,7 +187,12 @@ export default function App() {
           <Logo size="sm" />
           <div className="flex items-center gap-2">
             <ThemeToggle />
-            <a className="inline-flex items-center gap-2 px-3 py-2 rounded-full border border-gray-200 text-gray-700 hover:text-gray-900 hover:bg-gray-100 bg-white/80 backdrop-blur-sm shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:border-slate-700 dark:text-gray-200 dark:hover:text-white dark:hover:bg-slate-700/80 dark:bg-slate-800/80 dark:backdrop-blur-sm dark:shadow-sm" href="#settings" title="Настройки" aria-label="Настройки">
+            <a
+              className={getIconButtonClasses({ variant: 'glass', size: 'lg' })}
+              href="#settings"
+              title="Настройки"
+              aria-label="Настройки"
+            >
               <Settings className="w-5 h-5" />
             </a>
             {authorized && (

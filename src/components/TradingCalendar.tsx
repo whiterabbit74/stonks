@@ -2,6 +2,9 @@ import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react'
 import { Clock, AlertCircle, CalendarX2, ChevronLeft, ChevronRight, X, CalendarOff, RefreshCw, Download, CheckCircle2, Pencil } from 'lucide-react';
 import { API_BASE_URL, DatasetAPI } from '../lib/api';
 import { PageHeader } from './ui/PageHeader';
+import { Button } from './ui/Button';
+import { Modal } from './ui/Modal';
+import { Select } from './ui/Select';
 
 interface HolidayData {
   name: string;
@@ -539,15 +542,18 @@ export function TradingCalendar() {
 
       {/* Day details + edit modal */}
       {detailsOpen && detailsDate && (
-        <div
-          className="fixed inset-0 z-50 flex items-end md:items-center justify-center"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="calendar-day-details-title"
-          onKeyDown={(e) => { if (e.key === 'Escape') closeDetails(); }}
+        <Modal
+          isOpen={detailsOpen}
+          onClose={closeDetails}
+          title={undefined}
+          showCloseButton={false}
+          size="sm"
+          containerClassName="items-end md:items-center"
+          overlayClassName="bg-black/40 backdrop-blur-0"
+          contentClassName="max-w-none md:max-w-sm rounded-t-2xl md:rounded-xl md:mx-4 overflow-hidden"
+          bodyClassName="p-4"
         >
-          <div className="absolute inset-0 bg-black/40" onClick={closeDetails} />
-          <div className="relative w-full md:max-w-sm md:rounded-xl bg-white border border-gray-200 p-4 shadow-lg dark:bg-gray-900 dark:border-gray-800 md:mx-4 rounded-t-2xl">
+          <div aria-labelledby="calendar-day-details-title">
             {/* Header */}
             <div className="flex items-start justify-between gap-4">
               <div>
@@ -588,29 +594,28 @@ export function TradingCalendar() {
                   <Pencil className="w-3.5 h-3.5" />
                   Изменить тип дня
                 </div>
-                <select
+                <Select
                   value={editType}
                   onChange={(e) => setEditType(e.target.value as DayEditType)}
-                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
                 >
                   <option value="normal">Торговый день</option>
                   <option value="short">Раннее закрытие</option>
                   <option value="holiday">Праздник (биржа закрыта)</option>
-                </select>
+                </Select>
                 {editError && (
                   <p className="text-xs text-red-600 dark:text-red-400">{editError}</p>
                 )}
-                <button
+                <Button
                   onClick={handleSaveDay}
                   disabled={editSaving}
-                  className="w-full rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  fullWidth
                 >
                   {editSaving ? 'Сохранение…' : 'Сохранить'}
-                </button>
+                </Button>
               </div>
             )}
           </div>
-        </div>
+        </Modal>
       )}
 
       {/* Import result */}

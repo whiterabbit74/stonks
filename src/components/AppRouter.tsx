@@ -8,6 +8,7 @@ import { ThemeToggle } from './ThemeToggle';
 import { Logo } from './Logo';
 import { API_BASE_URL } from '../lib/api';
 import { ToastProvider, BottomNav } from './ui';
+import { getIconButtonClasses } from './ui/IconButton';
 import { scheduleIdleTask } from '../lib/prefetch';
 
 const importDataUpload = () => import('./DataUpload');
@@ -246,13 +247,20 @@ function ProtectedLayout() {
           </NavLink>
           <div className="flex items-center gap-2">
             <ThemeToggle />
-            <NavLink to="/settings" title="Настройки" aria-label="Настройки" className={({ isActive }) => `hidden md:inline-flex items-center gap-2 px-3 py-2 rounded-full border ${isActive ? 'bg-indigo-600 text-white border-indigo-600' : 'border-gray-200 text-gray-700 hover:text-gray-900 hover:bg-gray-100 bg-white/80 backdrop-blur-sm shadow-sm dark:border-slate-700 dark:text-gray-200 dark:hover:text-white dark:hover:bg-slate-700/80 dark:bg-slate-800/80 dark:backdrop-blur-sm dark:shadow-sm'}`}>
+            <NavLink
+              to="/settings"
+              title="Настройки"
+              aria-label="Настройки"
+              className={({ isActive }) =>
+                `hidden md:inline-flex ${getIconButtonClasses({ variant: 'glass', size: 'lg', active: isActive })}`
+              }
+            >
               <Settings className="w-5 h-5" />
             </NavLink>
             {/* Mobile menu button */}
             <button
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-              className="md:hidden inline-flex items-center gap-2 px-3 py-2 rounded-full border border-gray-200 text-gray-700 hover:text-gray-900 hover:bg-gray-100 bg-white/80 backdrop-blur-sm shadow-sm dark:border-slate-700 dark:text-gray-200 dark:hover:text-white dark:hover:bg-slate-700/80 dark:bg-slate-800/80 dark:backdrop-blur-sm dark:shadow-sm"
+              className={`md:hidden ${getIconButtonClasses({ variant: 'glass', size: 'lg' })}`}
               title="Меню"
               aria-label="Открыть меню"
             >

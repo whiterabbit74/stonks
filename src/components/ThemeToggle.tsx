@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Laptop, Moon, Sun } from 'lucide-react';
 import { LS } from '../constants';
+import { IconButton } from './ui/IconButton';
 
 export type ThemeMode = 'auto' | 'dark' | 'light';
 
@@ -66,13 +67,14 @@ export function ThemeToggle() {
   const label = mode === 'auto' ? 'Авто' : mode === 'dark' ? 'Тёмная' : 'Светлая';
 
   return (
-    <button
+    <IconButton
       onClick={cycle}
-      className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 text-gray-700 hover:text-gray-900 hover:bg-gray-100 bg-white/80 backdrop-blur-sm shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:border-slate-700 dark:text-gray-200 dark:hover:text-white dark:hover:bg-slate-700/80 dark:bg-slate-800/80 dark:backdrop-blur-sm dark:shadow-sm dark:focus-visible:ring-offset-slate-900 transition-colors"
+      variant="glass"
+      size="lg"
       title={`Тема: ${label}`}
       aria-label={`Тема: ${label}`}
     >
       {icon}
-    </button>
+    </IconButton>
   );
 }

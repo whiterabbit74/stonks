@@ -31,33 +31,37 @@ vi.mock('../EquityChart', () => ({
   EquityChart: () => <div data-testid="equity-chart">equity</div>
 }));
 
-vi.mock('../ui', () => ({
-  PageHeader: ({ title, actions }: { title: string; actions?: React.ReactNode }) => (
-    <div>
-      <h1>{title}</h1>
-      {actions}
-    </div>
-  ),
-  AnalysisTabs: ({ tabs, activeTab, onChange }: {
-    tabs: Array<{ id: string; label: string }>;
-    activeTab: string;
-    onChange: (id: string) => void;
-  }) => (
-    <div>
-      {tabs.map((tab) => (
-        <button
-          key={tab.id}
-          type="button"
-          onClick={() => onChange(tab.id)}
-          aria-pressed={tab.id === activeTab}
-        >
-          {tab.label}
-        </button>
-      ))}
-    </div>
-  ),
-  ChartContainer: ({ children }: { children: React.ReactNode }) => <div>{children}</div>
-}));
+vi.mock('../ui', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../ui')>();
+  return {
+    ...actual,
+    PageHeader: ({ title, actions }: { title: string; actions?: React.ReactNode }) => (
+      <div>
+        <h1>{title}</h1>
+        {actions}
+      </div>
+    ),
+    AnalysisTabs: ({ tabs, activeTab, onChange }: {
+      tabs: Array<{ id: string; label: string }>;
+      activeTab: string;
+      onChange: (id: string) => void;
+    }) => (
+      <div>
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => onChange(tab.id)}
+            aria-pressed={tab.id === activeTab}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+    ),
+    ChartContainer: ({ children }: { children: React.ReactNode }) => <div>{children}</div>
+  };
+});
 
 vi.mock('../ConfirmModal', () => ({
   ConfirmModal: () => null

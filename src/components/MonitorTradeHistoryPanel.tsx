@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom';
 import { RefreshCw, Download, FileSpreadsheet, ChevronDown, ChevronUp, Filter, ExternalLink } from 'lucide-react';
 import type { MonitorTradeHistoryResponse, MonitorTradeRecord } from '../types';
 import { calculateMonitorTradeMetrics } from '../lib/monitor-trade-metrics';
+import { formatCurrencyValue, formatDateET, formatDateTimeET, formatRatioPercent, formatSignedPercentValue } from '../lib/formatters';
+import { Button, Panel } from './ui';
 
 interface MonitorTradeHistoryPanelProps {
   data: MonitorTradeHistoryResponse | null;
@@ -13,63 +15,15 @@ interface MonitorTradeHistoryPanelProps {
   initialCapital?: number;
 }
 
-function formatDate(value: string | null | undefined) {
-  if (!value) return '—';
-  // Если это просто дата YYYY-MM-DD (торговый день Нью-Йорка), форматируем её как текст,
-  // чтобы избежать смещения часовых поясов браузера.
-  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    const [y, m, d] = value.split('-');
-    return `${d}.${m}.${y}`;
-  }
-  try {
-    // Если это ISO строка, приводим к времени Нью-Йорка
-    return new Date(value).toLocaleDateString('ru-RU', {
-      timeZone: 'America/New_York'
-    });
-  } catch {
-    return value;
-  }
-}
-
-function formatDateTime(value: string | null | undefined) {
-  if (!value) return '—';
-  try {
-    const d = new Date(value);
-    // Всегда отображаем время Нью-Йорка
-    return d.toLocaleString('ru-RU', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      timeZone: 'America/New_York',
-      timeZoneName: 'short'
-    });
-  } catch {
-    return value;
-  }
-}
-
 function formatDateRange(entry: string | null, exit: string | null) {
-  const entryStr = formatDate(entry);
-  const exitStr = exit ? formatDate(exit) : '—';
+  const entryStr = formatDateET(entry);
+  const exitStr = exit ? formatDateET(exit) : '—';
   return `${entryStr} → ${exitStr}`;
 }
 
-function formatNumber(value: number | null | undefined, fractionDigits = 2) {
-  if (value == null || Number.isNaN(value)) return '—';
-  return value.toFixed(fractionDigits);
-}
-
-function formatPercent(value: number | null | undefined) {
-  if (value == null || Number.isNaN(value)) return '—';
-  const sign = value > 0 ? '+' : '';
-  return `${sign}${value.toFixed(2)}%`;
-}
-
 function renderIBS(entry: number | null | undefined, exit: number | null | undefined) {
-  const entryStr = entry != null ? `${(entry * 100).toFixed(1)}%` : '—';
-  const exitStr = exit != null ? `${(exit * 100).toFixed(1)}%` : '—';
+  const entryStr = formatRatioPercent(entry, 1);
+  const exitStr = formatRatioPercent(exit, 1);
   return `${entryStr} → ${exitStr}`;
 }
 
@@ -99,16 +53,16 @@ function TradeRow({ trade, isHighlighted }: { trade: MonitorTradeRecord; isHighl
         {formatDateRange(trade.entryDate, trade.exitDate)}
       </td>
       <td className="px-3 py-2 text-right font-mono text-sm text-gray-800 dark:text-gray-100">
-        {trade.entryPrice != null ? `$${formatNumber(trade.entryPrice)}` : '—'}
+        {formatCurrencyValue(trade.entryPrice)}
       </td>
       <td className="px-3 py-2 text-right font-mono text-sm text-gray-800 dark:text-gray-100">
-        {trade.exitPrice != null ? `$${formatNumber(trade.exitPrice)}` : '—'}
+        {formatCurrencyValue(trade.exitPrice)}
       </td>
       <td className="px-3 py-2 text-sm text-gray-600 dark:text-gray-300 whitespace-nowrap">
         {renderIBS(trade.entryIBS, trade.exitIBS)}
       </td>
       <td className={`px-3 py-2 text-right font-mono text-sm ${pnlPositive ? 'text-emerald-600 dark:text-emerald-300' : trade.pnlPercent === null ? 'text-gray-500 dark:text-gray-400' : 'text-orange-600 dark:text-orange-300'}`}>
-        {formatPercent(trade.pnlPercent)}
+        {formatSignedPercentValue(trade.pnlPercent)}
       </td>
     </tr>
   );
@@ -242,45 +196,45 @@ export function MonitorTradeHistoryPanel({
   };
 
   return (
-    <div className="mt-6 rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-900">
+    <Panel className="mt-6" tone="soft" padding="none">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 px-4 py-3 dark:border-gray-800">
         <div>
           <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">История сделок мониторинга</h3>
           <div className="text-xs text-gray-500 dark:text-gray-400">
-            {data?.lastUpdated ? `Обновлено: ${formatDateTime(data.lastUpdated)}` : 'Нет данных об обновлении'}
+            {data?.lastUpdated ? `Обновлено: ${formatDateTimeET(data.lastUpdated, { includeZone: true })}` : 'Нет данных об обновлении'}
             {trades.length > 0 && <span className="ml-2">• {trades.length} сделок</span>}
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <button
+          <Button
             onClick={handleExportCSV}
             disabled={!hasTrades}
-            className="inline-flex items-center gap-1 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700 transition-colors"
-            type="button"
+            variant="secondary"
+            size="sm"
             title="Экспортировать сделки в CSV (для Excel)"
+            leftIcon={<FileSpreadsheet className="h-4 w-4" />}
           >
-            <FileSpreadsheet className="h-4 w-4" />
             CSV
-          </button>
-          <button
+          </Button>
+          <Button
             onClick={handleExportJSON}
             disabled={!hasTrades}
-            className="inline-flex items-center gap-1 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700 transition-colors"
-            type="button"
+            variant="secondary"
+            size="sm"
             title="Экспортировать сделки в JSON"
+            leftIcon={<Download className="h-4 w-4" />}
           >
-            <Download className="h-4 w-4" />
             JSON
-          </button>
+          </Button>
           {onRefresh && (
-            <button
+            <Button
               onClick={onRefresh}
-              className="inline-flex items-center gap-1 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700 transition-colors"
-              type="button"
+              variant="secondary"
+              size="sm"
+              leftIcon={<RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />}
             >
-              <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
               Обновить
-            </button>
+            </Button>
           )}
         </div>
       </div>
@@ -366,10 +320,10 @@ export function MonitorTradeHistoryPanel({
                 </Link>
               </div>
               <div className="text-sm text-gray-600 dark:text-gray-300">
-                Вход {formatDate(openTrade.entryDate)} по {openTrade.entryPrice != null ? `$${formatNumber(openTrade.entryPrice)}` : '—'}
+                Вход {formatDateET(openTrade.entryDate)} по {formatCurrencyValue(openTrade.entryPrice)}
               </div>
               <div className="text-sm text-gray-600 dark:text-gray-300">
-                IBS {openTrade.entryIBS != null ? `${(openTrade.entryIBS * 100).toFixed(1)}%` : '—'}
+                IBS {formatRatioPercent(openTrade.entryIBS, 1)}
               </div>
             </div>
           ) : (
@@ -433,6 +387,6 @@ export function MonitorTradeHistoryPanel({
           </>
         )}
       </div>
-    </div>
+    </Panel>
   );
 }

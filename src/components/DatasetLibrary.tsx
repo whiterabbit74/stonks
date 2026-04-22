@@ -6,6 +6,7 @@ import type { SavedDataset } from '../types';
 import { ConfirmModal } from './ConfirmModal';
 import { Modal, ModalFooter } from './ui/Modal';
 import { Button } from './ui/Button';
+import { DropdownMenu, DropdownMenuDivider, DropdownMenuItem } from './ui/DropdownMenu';
 import { useNavigate, Link } from 'react-router-dom';
 import { getTickerInfo } from '../lib/ticker-data';
 
@@ -744,44 +745,21 @@ function CompactDatasetCard({ dataset, isActive, onLoad, onDelete, onExport, onE
 
       {/* Dropdown menu */}
       {menuOpen && (
-        <>
-          {/* Overlay to close menu */}
-          <div
-            className="fixed inset-0 z-40"
-            onClick={() => setMenuOpen(false)}
-          />
-          <div className="absolute right-0 top-9 z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg py-1 min-w-[140px]">
-            <button
-              onClick={handleAction(onEdit)}
-              className="w-full px-3 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
-            >
-              <Edit className="w-4 h-4" />
-              Редактировать
-            </button>
-            <button
-              onClick={handleAction(onRefresh)}
-              className="w-full px-3 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
-            >
-              <RefreshCw className="w-4 h-4" />
-              Обновить
-            </button>
-            <button
-              onClick={handleAction(onExport)}
-              className="w-full px-3 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
-            >
-              <Download className="w-4 h-4" />
-              Экспорт
-            </button>
-            <div className="border-t border-gray-200 dark:border-gray-700 my-1" />
-            <button
-              onClick={handleAction(onDelete)}
-              className="w-full px-3 py-2 text-left text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 flex items-center gap-2"
-            >
-              <Trash2 className="w-4 h-4" />
-              Удалить
-            </button>
-          </div>
-        </>
+        <DropdownMenu open={menuOpen} onClose={() => setMenuOpen(false)} overlay widthClassName="min-w-[140px]" className="top-9 mt-0">
+          <DropdownMenuItem onClick={handleAction(onEdit)} icon={<Edit className="w-4 h-4" />}>
+            Редактировать
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={handleAction(onRefresh)} icon={<RefreshCw className="w-4 h-4" />}>
+            Обновить
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={handleAction(onExport)} icon={<Download className="w-4 h-4" />}>
+            Экспорт
+          </DropdownMenuItem>
+          <DropdownMenuDivider />
+          <DropdownMenuItem onClick={handleAction(onDelete)} icon={<Trash2 className="w-4 h-4" />} danger>
+            Удалить
+          </DropdownMenuItem>
+        </DropdownMenu>
       )}
     </div>
   );

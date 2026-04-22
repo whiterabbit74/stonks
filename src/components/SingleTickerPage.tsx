@@ -6,7 +6,7 @@ import { isSameDay } from '../lib/date-utils';
 import { useClickOutside } from '../hooks/useClickOutside';
 import { useAppStore } from '../stores';
 import { LS } from '../constants';
-import { ChartContainer, AnalysisTabs, MetricsGrid, Button } from './ui';
+import { ChartContainer, AnalysisTabs, MetricsGrid, Button, IconButton, Panel, Select } from './ui';
 import { InfoModal } from './InfoModal';
 import { AnimatedPrice } from './AnimatedPrice';
 import { HeroLineChart } from './HeroLineChart';
@@ -522,9 +522,9 @@ export function SingleTickerPage() {
 
   const renderHeroSummarySection = () => (
     <>
-      <section className="rounded-xl border bg-white p-4 dark:bg-gray-900 dark:border-gray-800">
+      <Panel as="section" className="p-4">
         <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_240px] lg:grid-cols-[minmax(0,1fr)_280px]">
-          <div className="space-y-3 rounded-xl border border-gray-200 bg-gray-50/70 p-3 dark:border-gray-800 dark:bg-gray-950/40">
+          <Panel tone="subtle" padding="sm" className="space-y-3">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="space-y-1.5">
                 <div className="flex items-baseline gap-2">
@@ -568,27 +568,28 @@ export function SingleTickerPage() {
                 </div>
               </div>
               <div className="ml-auto flex items-start gap-1.5">
-                <button
-                  type="button"
+                <Button
                   onClick={openProfessionalChart}
-                  className="inline-flex h-8 items-center gap-1 rounded-full border border-gray-300 px-2 text-[11px] text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+                  variant="secondary"
+                  size="sm"
+                  className="h-8 rounded-full px-2.5 text-[11px]"
                   title="Открыть профессиональный график во вкладке Цена"
+                  rightIcon={<ArrowUpRight className="h-3 w-3" />}
                 >
                   Pro
-                  <ArrowUpRight className="h-3 w-3" />
-                </button>
+                </Button>
                 <div ref={heroSettingsRef} className="relative">
-                  <button
-                    type="button"
+                  <IconButton
                     onClick={() => setShowHeroSettings((prev) => !prev)}
-                    className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-gray-300 text-gray-500 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+                    variant="outline"
+                    size="sm"
                     title="Настройки графика"
                     aria-label="Настройки графика"
                   >
                     <Settings2 className="h-4 w-4" />
-                  </button>
+                  </IconButton>
                   {showHeroSettings && (
-                    <div className="absolute right-0 top-full z-20 mt-1.5 w-48 rounded-lg border border-gray-200 bg-white p-2.5 shadow-lg dark:border-gray-700 dark:bg-gray-900">
+                    <Panel className="absolute right-0 top-full z-20 mt-1.5 w-52 p-2.5 shadow-lg dark:border-gray-700">
                       <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
                         Настройки
                       </div>
@@ -625,10 +626,10 @@ export function SingleTickerPage() {
                           {heroShowTrades ? 'Вкл' : 'Выкл'}
                         </span>
                       </button>
-                    </div>
+                    </Panel>
                   )}
                 </div>
-                <button
+                <IconButton
                   disabled={!symbol || watchBusy}
                   onClick={async () => {
                     if (!symbol) return;
@@ -654,24 +655,26 @@ export function SingleTickerPage() {
                       setWatchBusy(false);
                     }
                   }}
-                  className={`inline-flex h-8 w-8 items-center justify-center rounded-full border transition ${watching ? 'bg-rose-600 border-rose-600 text-white hover:brightness-110' : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-700'}`}
+                  size="sm"
+                  className={watching ? 'border-rose-600 bg-rose-600 text-white hover:bg-rose-600 hover:text-white hover:brightness-110 dark:border-rose-500 dark:bg-rose-500' : ''}
                   title={watching ? 'Удалить из мониторинга' : 'Добавить в мониторинг'}
                   aria-label={watching ? 'Удалить из мониторинга' : 'Добавить в мониторинг'}
                 >
                   <Heart className={`h-4 w-4 ${watching ? 'fill-current animate-heartbeat' : ''}`} />
-                </button>
+                </IconButton>
                 <div ref={quoteDetailsRef} className="relative">
-                  <button
-                    type="button"
+                  <IconButton
                     onClick={() => setShowQuoteDetails((prev) => !prev)}
-                    className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-gray-300 text-gray-500 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+                    variant="outline"
+                    size="sm"
+                    className="h-6 w-6"
                     title="Детали котировки"
                     aria-label="Детали котировки"
                   >
                     <HelpCircle className="h-4 w-4" />
-                  </button>
+                  </IconButton>
                   {showQuoteDetails && (
-                    <div className="absolute right-0 top-full z-20 mt-1.5 w-64 rounded-lg border border-gray-200 bg-white p-3 shadow-lg dark:border-gray-700 dark:bg-gray-900">
+                    <Panel className="absolute right-0 top-full z-20 mt-1.5 w-64 p-3 shadow-lg dark:border-gray-700">
                       <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
                         Детали котировки
                       </div>
@@ -703,7 +706,7 @@ export function SingleTickerPage() {
                           </div>
                         </div>
                       </div>
-                    </div>
+                    </Panel>
                   )}
                 </div>
               </div>
@@ -750,21 +753,22 @@ export function SingleTickerPage() {
                 </div>
               )}
             </div>
-          </div>
+          </Panel>
 
-          <aside className="space-y-3 rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-900/70">
+          <Panel as="aside" tone="soft" padding="sm" className="space-y-3">
             <div>
               <div className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-gray-100">
                 Маржинальность стратегии
-                <button
-                  type="button"
+                <IconButton
                   onClick={openMarginHelp}
-                  className="inline-flex h-5 w-5 items-center justify-center rounded-full text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-300"
+                  variant="ghost"
+                  size="sm"
+                  className="h-5 w-5 text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-300"
                   title="Пояснение по маржинальности"
                   aria-label="Пояснение по маржинальности"
                 >
                   <HelpCircle className="h-4 w-4" />
-                </button>
+                </IconButton>
               </div>
               <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                 Оставлен только один риск-триггер: брокерская ликвидация по Maintenance Margin.
@@ -776,18 +780,18 @@ export function SingleTickerPage() {
                 <label htmlFor="results-margin-percent" className="text-xs text-gray-600 dark:text-gray-300">
                   Маржинальность, %
                 </label>
-                <select
+                <Select
                   id="results-margin-percent"
                   value={marginPercent}
                   onChange={(e) => setMarginPercent(normalizeMarginPercent(Number(e.target.value)))}
-                  className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none transition focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+                  className="mt-1 px-3 py-2"
                 >
                   {MARGIN_PERCENT_OPTIONS.map((opt) => (
                     <option key={opt} value={opt}>
                       {opt}%
                     </option>
                   ))}
-                </select>
+                </Select>
               </div>
 
               <div>
@@ -795,28 +799,29 @@ export function SingleTickerPage() {
                   <label htmlFor="results-maintenance-margin" className="text-xs text-gray-600 dark:text-gray-300">
                     Maintenance Margin, %
                   </label>
-                  <button
-                    type="button"
+                  <IconButton
                     onClick={openMaintenanceMarginHelp}
-                    className="inline-flex h-5 w-5 items-center justify-center rounded-full text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-300"
+                    variant="ghost"
+                    size="sm"
+                    className="h-5 w-5 text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-300"
                     title="Пояснение по Maintenance Margin"
                     aria-label="Пояснение по Maintenance Margin"
                   >
                     <HelpCircle className="h-4 w-4" />
-                  </button>
+                  </IconButton>
                 </div>
-                <select
+                <Select
                   id="results-maintenance-margin"
                   value={maintenanceMarginPct}
                   onChange={(e) => setMaintenanceMarginPct(normalizeMaintenanceMarginPercent(Number(e.target.value)))}
-                  className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none transition focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+                  className="mt-1 px-3 py-2"
                 >
                   {MAINTENANCE_MARGIN_OPTIONS.map((opt) => (
                     <option key={opt} value={opt}>
                       {opt}%
                     </option>
                   ))}
-                </select>
+                </Select>
               </div>
             </div>
 
@@ -848,15 +853,17 @@ export function SingleTickerPage() {
               <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/20 dark:text-amber-200">
                 <div className="flex items-start justify-between gap-2">
                   <div>Данные не актуальны{staleInfo ? ` — ${staleInfo}` : ''}</div>
-                  <button
+                  <IconButton
                     onClick={handleRefresh}
-                    className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-amber-300 bg-amber-100 text-amber-800 hover:bg-amber-200 dark:border-amber-900/60 dark:bg-amber-900/30 dark:text-amber-200 dark:hover:bg-amber-900/50 disabled:opacity-50"
+                    variant="outline"
+                    size="sm"
+                    className="h-6 w-6 shrink-0 border-amber-300 bg-amber-100 text-amber-800 hover:bg-amber-200 hover:text-amber-900 dark:border-amber-900/60 dark:bg-amber-900/30 dark:text-amber-200 dark:hover:bg-amber-900/50"
                     title="Обновить данные"
                     aria-label="Обновить данные"
                     disabled={refreshing}
                   >
                     <RefreshCw className="h-3.5 w-3.5" />
-                  </button>
+                  </IconButton>
                 </div>
                 {refreshError && <div className="mt-1 text-red-600">{refreshError}</div>}
               </div>
@@ -873,10 +880,10 @@ export function SingleTickerPage() {
                 )}
               </span>
             </div>
-          </aside>
+          </Panel>
         </div>
         {quoteError && <div className="mt-3 text-sm text-red-600">{quoteError}</div>}
-      </section>
+      </Panel>
     </>
   );
 
@@ -897,7 +904,7 @@ export function SingleTickerPage() {
               Дубли дат в данных: {duplicateDateKeys.join(', ')}
             </div>
           )}
-          <section id="results-analytics" className="rounded-xl border bg-white p-4 dark:bg-gray-900 dark:border-gray-800">
+          <Panel as="section" id="results-analytics" className="p-4">
             <div className="mb-4 flex items-center justify-between gap-3">
               <h2 className="text-lg sm:text-xl font-semibold text-gray-900 dark:text-gray-100">
                 Ключевые метрики
@@ -913,9 +920,9 @@ export function SingleTickerPage() {
               maxDrawdown={selectedResults.maxDrawdown}
               metrics={selectedResults.metrics}
             />
-          </section>
+          </Panel>
 
-          <section className="rounded-xl border bg-white p-4 dark:bg-gray-900 dark:border-gray-800">
+          <Panel as="section" className="p-4">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg sm:text-xl font-semibold text-gray-900 dark:text-gray-100">Аналитика сделок</h2>
             </div>
@@ -951,7 +958,7 @@ export function SingleTickerPage() {
                 </Suspense>
               )}
             </div>
-          </section>
+          </Panel>
         </div>
       </div>
 

@@ -6,10 +6,15 @@ interface ModalProps {
     onClose: () => void;
     title?: string;
     children: React.ReactNode;
-    size?: 'sm' | 'md' | 'lg' | 'xl';
+    size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '4xl';
     showCloseButton?: boolean;
     closeOnOverlayClick?: boolean;
     closeOnEscape?: boolean;
+    containerClassName?: string;
+    overlayClassName?: string;
+    contentClassName?: string;
+    bodyClassName?: string;
+    headerClassName?: string;
 }
 
 const sizeStyles = {
@@ -17,6 +22,8 @@ const sizeStyles = {
     md: 'max-w-md',
     lg: 'max-w-lg',
     xl: 'max-w-xl',
+    '2xl': 'max-w-2xl',
+    '4xl': 'max-w-4xl',
 };
 
 export function Modal({
@@ -28,6 +35,11 @@ export function Modal({
     showCloseButton = true,
     closeOnOverlayClick = true,
     closeOnEscape = true,
+    containerClassName = '',
+    overlayClassName = '',
+    contentClassName = '',
+    bodyClassName = '',
+    headerClassName = '',
 }: ModalProps) {
     const modalRef = useRef<HTMLDivElement>(null);
     const previousActiveElement = useRef<HTMLElement | null>(null);
@@ -101,14 +113,14 @@ export function Modal({
 
     return (
         <div
-            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            className={`fixed inset-0 z-50 flex items-center justify-center p-4 ${containerClassName}`.trim()}
             role="dialog"
             aria-modal="true"
             aria-labelledby={title ? 'modal-title' : undefined}
         >
             {/* Overlay */}
             <div
-                className="absolute inset-0 bg-black/50 backdrop-blur-sm animate-fade-in"
+                className={`absolute inset-0 bg-black/50 backdrop-blur-sm animate-fade-in ${overlayClassName}`.trim()}
                 onClick={closeOnOverlayClick ? onClose : undefined}
                 aria-hidden="true"
             />
@@ -122,11 +134,12 @@ export function Modal({
           rounded-xl shadow-2xl
           border border-gray-200 dark:border-gray-800
           animate-bounce-in
+          ${contentClassName}
         `}
             >
                 {/* Header */}
                 {(title || showCloseButton) && (
-                    <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-800">
+                    <div className={`flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-800 ${headerClassName}`.trim()}>
                         {title && (
                             <h2
                                 id="modal-title"
@@ -148,7 +161,7 @@ export function Modal({
                 )}
 
                 {/* Body */}
-                <div className="px-6 py-4">{children}</div>
+                <div className={`px-6 py-4 ${bodyClassName}`.trim()}>{children}</div>
             </div>
         </div>
     );

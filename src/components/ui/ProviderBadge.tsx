@@ -1,6 +1,7 @@
 import { ChevronDown, Zap } from 'lucide-react';
 import { useState, useRef, type ReactNode } from 'react';
 import { useClickOutside } from '../../hooks/useClickOutside';
+import { DropdownMenu, DropdownMenuItem } from './DropdownMenu';
 
 export interface ProviderOption {
   value: string;
@@ -73,21 +74,17 @@ export function ProviderBadge({ label, provider, icon, options, onChange }: Prov
       </div>
 
       {open && canChange && (
-        <div className="absolute right-0 top-full z-30 mt-1 min-w-[160px] rounded-xl border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-700 dark:bg-gray-900">
+        <DropdownMenu open={open} widthClassName="min-w-[160px]" className="mt-1">
           {options!.map((opt) => (
-            <button
+            <DropdownMenuItem
               key={opt.value}
               onClick={() => { onChange!(opt.value); setOpen(false); }}
-              className={`block w-full px-3 py-2 text-left text-sm transition-colors hover:bg-gray-50 dark:hover:bg-gray-800 ${
-                opt.value === provider
-                  ? 'font-semibold text-indigo-600 dark:text-indigo-400'
-                  : 'text-gray-700 dark:text-gray-300'
-              }`}
+              active={opt.value === provider}
             >
               {opt.label}
-            </button>
+            </DropdownMenuItem>
           ))}
-        </div>
+        </DropdownMenu>
       )}
     </div>
   );

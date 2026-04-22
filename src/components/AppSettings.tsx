@@ -6,6 +6,7 @@ import { sanitizeNumericInput, sanitizeTextInput, VALIDATION_CONSTRAINTS } from 
 import { Info, X, Save, Loader2, Check } from 'lucide-react';
 import type { AutoTradingConfig } from '../types';
 import { PageHeader } from './ui/PageHeader';
+import { Modal } from './ui/Modal';
 // import { StrategySettings } from './StrategySettings';
 
 // SettingsData interface removed - not actively used
@@ -890,15 +891,22 @@ export function AppSettings() {
 
       {/* API Info Modal */}
       {showApiInfo && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-gray-900 rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="sticky top-0 bg-white dark:bg-gray-900 border-b dark:border-gray-700 p-4 flex items-center justify-between">
+        <Modal
+          isOpen={showApiInfo}
+          onClose={() => setShowApiInfo(false)}
+          size="4xl"
+          showCloseButton={false}
+          bodyClassName="p-0"
+          contentClassName="max-h-[90vh] overflow-hidden"
+        >
+          <div className="max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 z-10 flex items-center justify-between border-b bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
               <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Провайдеры данных — лимиты и особенности</h3>
               <button onClick={() => setShowApiInfo(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <div className="p-6 space-y-5">
+            <div className="space-y-5 p-6">
 
               {/* Quick reference table */}
               <div className="overflow-x-auto">
@@ -990,7 +998,7 @@ export function AppSettings() {
               </div>
             </div>
           </div>
-        </div>
+        </Modal>
       )}
     </div>
   );

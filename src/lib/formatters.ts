@@ -61,3 +61,78 @@ export function formatNumber(value: number, decimals: number = 0): string {
         maximumFractionDigits: decimals,
     }).format(value);
 }
+
+export function formatCurrencyValue(value: unknown, decimals: number = 2): string {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return '—';
+    return new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: 'USD',
+        minimumFractionDigits: decimals,
+        maximumFractionDigits: decimals,
+    }).format(numeric);
+}
+
+export function formatNumberOrDash(value: unknown, decimals: number = 2): string {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return '—';
+    return numeric.toFixed(decimals);
+}
+
+export function formatRatioPercent(value: unknown, decimals: number = 1): string {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return '—';
+    return `${(numeric * 100).toFixed(decimals)}%`;
+}
+
+export function formatSignedPercentValue(value: unknown, decimals: number = 2): string {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return '—';
+    const sign = numeric > 0 ? '+' : '';
+    return `${sign}${numeric.toFixed(decimals)}%`;
+}
+
+export function formatHoldingDays(value: unknown, decimals: number = 1): string {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return '—';
+    return `${numeric.toFixed(decimals)} дн.`;
+}
+
+export function formatDateET(value: string | null | undefined): string {
+    if (!value) return '—';
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+        const [year, month, day] = value.split('-');
+        return `${day}.${month}.${year}`;
+    }
+    try {
+        return new Date(value).toLocaleDateString('ru-RU', {
+            timeZone: 'America/New_York',
+        });
+    } catch {
+        return value;
+    }
+}
+
+export function formatDateTimeET(
+    value: string | null | undefined,
+    options: {
+        withSeconds?: boolean;
+        includeZone?: boolean;
+    } = {}
+): string {
+    if (!value) return '—';
+    try {
+        return new Date(value).toLocaleString('ru-RU', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+            ...(options.withSeconds ? { second: '2-digit' as const } : {}),
+            ...(options.includeZone ? { timeZoneName: 'short' as const } : {}),
+            timeZone: 'America/New_York',
+        });
+    } catch {
+        return value;
+    }
+}

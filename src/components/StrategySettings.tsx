@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { X, Save, RotateCcw } from 'lucide-react';
 import type { Strategy } from '../types';
 import { createDefaultStrategy } from '../lib/strategy';
+import { Button } from './ui/Button';
+import { Modal } from './ui/Modal';
 
 interface StrategySettingsProps {
   strategy: Strategy;
@@ -103,14 +105,14 @@ export function StrategySettings({ strategy, onSave, onClose, mode = 'modal' }: 
   const parameterConfig = getParameterConfig(strategy.id);
 
   const content = (
-    <div className={`bg-white rounded-lg ${mode === 'modal' ? 'shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto' : 'border'}`}>
+    <div className={mode === 'inline' ? 'rounded-lg border bg-white dark:border-gray-800 dark:bg-gray-900' : ''}>
       {/* Header */}
-      <div className="flex items-center justify-between p-6 border-b">
+      <div className="flex items-center justify-between border-b p-6 dark:border-gray-800">
         <div>
-          <h2 className="text-xl font-semibold text-gray-900">Параметры стратегии</h2>
-          <p className="text-sm text-gray-600 mt-1">{strategy.name}</p>
+          <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Параметры стратегии</h2>
+          <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">{strategy.name}</p>
           {strategy.id === 'ibs-mean-reversion' && (
-            <p className="text-xs text-blue-600 mt-1">
+            <p className="mt-1 text-xs text-blue-600 dark:text-blue-400">
               IBS = (Close − Low) / (High − Low) • Показывает, где закрытие дня внутри дневного диапазона
             </p>
           )}
@@ -301,31 +303,30 @@ export function StrategySettings({ strategy, onSave, onClose, mode = 'modal' }: 
       </div>
 
       {/* Footer */}
-      <div className="flex items-center justify-between p-6 border-t bg-gray-50">
-        <button
+      <div className="flex items-center justify-between border-t bg-gray-50 p-6 dark:border-gray-800 dark:bg-gray-900/50">
+        <Button
           onClick={handleReset}
-          className="inline-flex items-center gap-2 px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+          variant="secondary"
+          leftIcon={<RotateCcw className="w-4 h-4" />}
         >
-          <RotateCcw className="w-4 h-4" />
           Сбросить по умолчанию
-        </button>
+        </Button>
 
         <div className="flex gap-3">
           {mode === 'modal' && (
-            <button
+            <Button
               onClick={onClose}
-              className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+              variant="secondary"
             >
               Отмена
-            </button>
+            </Button>
           )}
-          <button
+          <Button
             onClick={handleSave}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            leftIcon={<Save className="w-4 h-4" />}
           >
-            <Save className="w-4 h-4" />
             Сохранить
-          </button>
+          </Button>
         </div>
       </div>
     </div>
@@ -336,8 +337,15 @@ export function StrategySettings({ strategy, onSave, onClose, mode = 'modal' }: 
   }
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      {content}
-    </div>
+    <Modal
+      isOpen
+      onClose={onClose}
+      showCloseButton={false}
+      size="2xl"
+      bodyClassName="p-0"
+      contentClassName="max-h-[90vh] overflow-hidden"
+    >
+      <div className="max-h-[90vh] overflow-y-auto">{content}</div>
+    </Modal>
   );
 }
