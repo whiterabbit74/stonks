@@ -49,6 +49,15 @@ const recentTrackedOrders = [];
 const trackerTimers = new Map();
 const autotradeStateMutex = new Mutex();
 const TRACKING_DELAYS_MS = [1500, 3000, 5000, 8000, 12000, 30000, 60000];
+const DEFAULT_ENTRY_CAPITAL_MODE = 'standard_safe';
+const ENTRY_CAPITAL_MODE_CONFIG = Object.freeze({
+    standard_safe: { multiplier: 1, reservePct: 0.022 },
+    cash_100: { multiplier: 1, reservePct: 0 },
+    margin_125: { multiplier: 1.25, reservePct: 0 },
+    margin_150: { multiplier: 1.5, reservePct: 0 },
+    margin_175: { multiplier: 1.75, reservePct: 0 },
+    margin_200: { multiplier: 2, reservePct: 0 },
+});
 const DASHBOARD_CACHE_TTL_MS = 2000;
 const dashboardSnapshotCache = {
     value: null,
@@ -249,6 +258,19 @@ function escapeRegExp(value) {
     return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+function normalizeEntryCapitalMode(value) {
+    const mode = typeof value === 'string' ? value : '';
+    return ENTRY_CAPITAL_MODE_CONFIG[mode] ? mode : DEFAULT_ENTRY_CAPITAL_MODE;
+}
+
+function getEntryCapitalModeConfig(autoTrading = {}) {
+    const mode = normalizeEntryCapitalMode(autoTrading.entryCapitalMode);
+    return {
+        mode,
+        ...ENTRY_CAPITAL_MODE_CONFIG[mode],
+    };
+}
+
 async function listAutotradeLogFilesDesc() {
     try {
         const { dir, base, ext } = getAutotradeLogBaseParts();
@@ -443,8 +465,9 @@ function sanitizeAutoTradingConfig(input, current = {}) {
     if (typeof next.maxPositionUsd === 'number') next.maxPositionUsd = Math.max(1, next.maxPositionUsd);
     if (typeof next.maxSlippageBps === 'number') next.maxSlippageBps = Math.max(0, Math.min(1000, next.maxSlippageBps));
 
-    if (typeof input.provider === 'string' && ['finnhub'].includes(input.provider)) next.provider = input.provider;
+    if (typeof input.provider === 'string' && ['finnhub', 'webull'].includes(input.provider)) next.provider = input.provider;
     if (typeof input.entrySizingMode === 'string' && ['balance', 'quantity', 'notional'].includes(input.entrySizingMode)) next.entrySizingMode = input.entrySizingMode;
+    if (typeof input.entryCapitalMode === 'string' && ENTRY_CAPITAL_MODE_CONFIG[input.entryCapitalMode]) next.entryCapitalMode = input.entryCapitalMode;
     if (typeof input.sizingMode === 'string' && ['quantity', 'notional'].includes(input.sizingMode)) next.sizingMode = input.sizingMode;
     if (typeof input.orderType === 'string' && ['MARKET', 'LIMIT'].includes(input.orderType)) next.orderType = input.orderType;
     if (typeof input.timeInForce === 'string' && ['DAY', 'GTC'].includes(input.timeInForce)) next.timeInForce = input.timeInForce;
@@ -576,12 +599,71 @@ function extractEntryFundsFromBalance(balancePayload, autoTrading = {}) {
     return null;
 }
 
-function computeOrderQuantity(currentPrice, autoTrading, availableFunds = null) {
+function extractEntryBaseCapitalFromBalance(balancePayload) {
+    const root = balancePayload && typeof balancePayload === 'object' && balancePayload.data && typeof balancePayload.data === 'object'
+        ? balancePayload.data
+        : balancePayload;
+    if (!root || typeof root !== 'object') return null;
+
+    const assets = Array.isArray(root.account_currency_assets)
+        ? root.account_currency_assets.filter((item) => item && typeof item === 'object')
+        : [];
+    const preferredAsset = assets.find((item) => String(item.currency || '').toUpperCase() === 'USD') || assets[0] || null;
+    const candidates = [
+        preferredAsset?.cash_balance,
+        root.total_cash_balance,
+        root.cash_balance,
+        preferredAsset?.net_liquidation_value,
+        root.total_net_liquidation_value,
+        root.net_liquidation_value,
+    ];
+
+    for (const value of candidates) {
+        const numeric = toFiniteNumber(value);
+        if (numeric != null && numeric > 0) {
+            return numeric;
+        }
+    }
+    return null;
+}
+
+function resolveEntryBalanceSizing(balancePayload, autoTrading = {}) {
+    const buyingPower = extractEntryFundsFromBalance(balancePayload, autoTrading);
+    const baseCapital = extractEntryBaseCapitalFromBalance(balancePayload);
+    const modeConfig = getEntryCapitalModeConfig(autoTrading);
+    const multiplierBase = Number.isFinite(baseCapital) && baseCapital > 0 ? baseCapital : buyingPower;
+    let entryFunds = Number.isFinite(multiplierBase) && multiplierBase > 0
+        ? multiplierBase * modeConfig.multiplier
+        : buyingPower;
+
+    if (Number.isFinite(buyingPower) && buyingPower > 0 && Number.isFinite(entryFunds) && entryFunds > 0) {
+        entryFunds = Math.min(entryFunds, buyingPower);
+    }
+
+    return {
+        entryFunds: Number.isFinite(entryFunds) && entryFunds > 0 ? entryFunds : null,
+        buyingPower: Number.isFinite(buyingPower) && buyingPower > 0 ? buyingPower : null,
+        baseCapital: Number.isFinite(baseCapital) && baseCapital > 0 ? baseCapital : null,
+        capitalMode: modeConfig.mode,
+        multiplier: modeConfig.multiplier,
+        reservePct: modeConfig.reservePct,
+    };
+}
+
+function getEntryBuyingPowerHeadroomFactor(autoTrading = {}) {
+    const modeConfig = getEntryCapitalModeConfig(autoTrading);
+    return 1 + modeConfig.reservePct;
+}
+
+function computeOrderQuantity(currentPrice, autoTrading, availableFunds = null, options = {}) {
     if (!(currentPrice > 0)) {
         throw new Error('Invalid market price for quantity calculation');
     }
 
     const sizingMode = String(autoTrading.entrySizingMode || autoTrading.sizingMode || 'balance').toLowerCase();
+    const buyingPowerHeadroomFactor = Number.isFinite(options.buyingPowerHeadroomFactor) && options.buyingPowerHeadroomFactor > 0
+        ? options.buyingPowerHeadroomFactor
+        : 1;
     let quantity;
     if (sizingMode === 'quantity') {
         quantity = autoTrading.fixedQuantity;
@@ -595,7 +677,7 @@ function computeOrderQuantity(currentPrice, autoTrading, availableFunds = null) 
         if (!(Number.isFinite(availableFunds) && availableFunds > 0)) {
             throw new Error('Unable to read available funds for balance sizing');
         }
-        const funds = availableFunds;
+        const funds = availableFunds / buyingPowerHeadroomFactor;
         quantity = funds / currentPrice;
     }
 
@@ -621,7 +703,10 @@ function buildOrderPrice(side, currentPrice, autoTrading) {
 }
 
 function buildEquityOrderItem({ symbol, instrumentId, side, currentPrice, autoTrading, availableFunds = null }) {
-    const quantity = computeOrderQuantity(currentPrice, autoTrading, availableFunds);
+    const buyingPowerHeadroomFactor = side === 'BUY'
+        ? getEntryBuyingPowerHeadroomFactor(autoTrading)
+        : 1;
+    const quantity = computeOrderQuantity(currentPrice, autoTrading, availableFunds, { buyingPowerHeadroomFactor });
     const limitPrice = buildOrderPrice(side, currentPrice, autoTrading);
     const item = {
         combo_type: 'NORMAL',
@@ -1239,7 +1324,8 @@ async function executeWebullSignal({ action, symbol, currentPrice, ibs, decision
     try {
         if (action === 'entry') {
             const entryBalanceResp = await getAccountBalance(runtime.accountId);
-            entryFunds = extractEntryFundsFromBalance(entryBalanceResp, autoTrading);
+            const entryBalanceSizing = resolveEntryBalanceSizing(entryBalanceResp, autoTrading);
+            entryFunds = entryBalanceSizing.entryFunds;
             {
                 const root = entryBalanceResp?.data && typeof entryBalanceResp.data === 'object' ? entryBalanceResp.data : entryBalanceResp;
                 const assets = Array.isArray(root?.account_currency_assets) ? root.account_currency_assets : [];
@@ -1257,6 +1343,11 @@ async function executeWebullSignal({ action, symbol, currentPrice, ibs, decision
                         mode: 'live',
                     }),
                     entryFunds,
+                    entryCapitalMode: entryBalanceSizing.capitalMode,
+                    entryCapitalMultiplier: entryBalanceSizing.multiplier,
+                    entryCapitalReservePct: entryBalanceSizing.reservePct,
+                    entryBaseCapital: entryBalanceSizing.baseCapital,
+                    entryBuyingPower: entryBalanceSizing.buyingPower,
                     sizingMode: autoTrading.entrySizingMode || 'balance',
                     day_buying_power: usdAsset?.day_buying_power ?? null,
                     overnight_buying_power: usdAsset?.overnight_buying_power ?? null,
@@ -1923,4 +2014,12 @@ module.exports = {
     runAutoTradingSchedulerTick,
     createAccessToken,
     checkAccessToken,
+    __testables: {
+        computeOrderQuantity,
+        getEntryBuyingPowerHeadroomFactor,
+        getEntryCapitalModeConfig,
+        resolveEntryBalanceSizing,
+        DEFAULT_ENTRY_CAPITAL_MODE,
+        ENTRY_CAPITAL_MODE_CONFIG,
+    },
 };

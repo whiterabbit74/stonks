@@ -361,6 +361,7 @@ export interface AutoTradingConfig {
   onlyFromTelegramWatches: boolean;
   symbols: string;
   entrySizingMode: string;
+  entryCapitalMode: string;
   sizingMode: string;
   fixedQuantity: number;
   fixedNotionalUsd: number;

@@ -1,6 +1,7 @@
 import { useLayoutEffect, useState } from 'react';
-import { Button } from './ui/Button';
-import { Modal, ModalFooter } from './ui/Modal';
+import { CompactFormModal } from './ui/CompactFormModal';
+import { Input } from './ui/Input';
+import { Label } from './ui/Label';
 
 interface CloseMonitorTradeModalProps {
   open: boolean;
@@ -68,39 +69,50 @@ export function CloseMonitorTradeModal({
   };
 
   return (
-    <Modal isOpen={open} onClose={onClose} title={symbol ? `Закрыть мониторинг: ${symbol}` : 'Закрыть мониторинг'} size="md">
-      <div className="space-y-4">
-        <p className="text-sm text-gray-600 dark:text-gray-300">
+    <CompactFormModal
+      open={open}
+      onClose={onClose}
+      onSubmit={handleSubmit}
+      title={symbol ? `Закрыть мониторинг: ${symbol}` : 'Закрыть мониторинг'}
+      description={(
+        <p>
           Это действие закроет только нашу monitor-сделку. Webull-ордер не отправляется.
         </p>
-
-        <label className="block">
-          <span className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">Дата выхода (ET)</span>
-          <input
+      )}
+      error={localError || error}
+      loading={loading}
+      submitLabel="Закрыть мониторинг"
+      submitVariant="danger"
+    >
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="block">
+          <Label>Дата выхода (ET)</Label>
+          <Input
+            aria-label="Дата выхода (ET)"
             type="date"
             value={exitDate}
             onChange={(event) => setExitDate(event.target.value)}
-            className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
           />
-        </label>
+        </div>
 
-        <label className="block">
-          <span className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">Цена выхода</span>
-          <input
+        <div className="block">
+          <Label>Цена выхода</Label>
+          <Input
+            aria-label="Цена выхода"
             type="number"
             step="0.01"
             value={exitPrice}
             onChange={(event) => setExitPrice(event.target.value)}
-            className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
           />
           {quoteHint ? (
             <span className="mt-1 block text-xs text-gray-500 dark:text-gray-400">{quoteHint}</span>
           ) : null}
-        </label>
+        </div>
 
-        <label className="block">
-          <span className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">Exit IBS, %</span>
-          <input
+        <div className="block sm:col-span-2">
+          <Label>Exit IBS, %</Label>
+          <Input
+            aria-label="Exit IBS, %"
             type="number"
             step="0.1"
             min="0"
@@ -108,25 +120,9 @@ export function CloseMonitorTradeModal({
             value={exitIbs}
             onChange={(event) => setExitIbs(event.target.value)}
             placeholder="Необязательно"
-            className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
           />
-        </label>
-
-        {localError || error ? (
-          <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-200">
-            {localError || error}
-          </div>
-        ) : null}
+        </div>
       </div>
-
-      <ModalFooter>
-        <Button variant="secondary" onClick={onClose} disabled={loading}>
-          Отмена
-        </Button>
-        <Button variant="danger" onClick={() => void handleSubmit()} isLoading={loading}>
-          Закрыть мониторинг
-        </Button>
-      </ModalFooter>
-    </Modal>
+    </CompactFormModal>
   );
 }

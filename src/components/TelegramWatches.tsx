@@ -470,7 +470,6 @@ export function TelegramWatches() {
     entryDate: string;
     entryPrice: number;
     entryIBS?: number;
-    quantity?: number;
     notes?: string;
   }) => {
     try {

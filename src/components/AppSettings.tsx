@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { DatasetAPI } from '../lib/api';
+import { DEFAULT_ENTRY_CAPITAL_MODE, ENTRY_CAPITAL_MODE_OPTIONS } from '../lib/autotrade-config';
 import { useAppStore } from '../stores';
 import { sanitizeNumericInput, sanitizeTextInput, VALIDATION_CONSTRAINTS } from '../lib/input-validation';
 import { Info, X, Save, Loader2, Check } from 'lucide-react';
@@ -16,8 +17,7 @@ interface AutotradeTabProps {
   autotradeError: string | null;
   autotradeOk: string | null;
   onLoad: () => void;
-  onToggle: () => void;
-  onChangeProvider: (p: string) => void;
+  onSaveConfig: (updates: Partial<AutoTradingConfig>) => void;
 }
 
 function ToggleSwitch({ checked, onChange, disabled = false }: { checked: boolean; onChange: () => void; disabled?: boolean }) {
@@ -48,8 +48,7 @@ function AutotradeTab({
   autotradeError,
   autotradeOk,
   onLoad,
-  onToggle,
-  onChangeProvider,
+  onSaveConfig,
 }: AutotradeTabProps) {
   useEffect(() => {
     if (!autotradeConfig && !autotradeLoading) {
@@ -61,26 +60,35 @@ function AutotradeTab({
   // Local pending state — changes accumulate until Save is clicked
   const [pendingEnabled, setPendingEnabled] = useState<boolean | null>(null);
   const [pendingProvider, setPendingProvider] = useState<string | null>(null);
+  const [pendingEntryCapitalMode, setPendingEntryCapitalMode] = useState<string | null>(null);
 
   // Sync pending state when config loads
   useEffect(() => {
     if (autotradeConfig) {
       setPendingEnabled(prev => prev === null ? autotradeConfig.enabled : prev);
       setPendingProvider(prev => prev === null ? (autotradeConfig.provider ?? 'finnhub') : prev);
+      setPendingEntryCapitalMode(prev => prev === null ? (autotradeConfig.entryCapitalMode ?? DEFAULT_ENTRY_CAPITAL_MODE) : prev);
     }
   }, [autotradeConfig]);
 
   const effectiveEnabled = pendingEnabled ?? autotradeConfig?.enabled ?? false;
   const effectiveProvider = pendingProvider ?? autotradeConfig?.provider ?? 'finnhub';
+  const effectiveEntryCapitalMode = pendingEntryCapitalMode ?? autotradeConfig?.entryCapitalMode ?? DEFAULT_ENTRY_CAPITAL_MODE;
   const savedEnabled = autotradeConfig?.enabled ?? false;
   const savedProvider = autotradeConfig?.provider ?? 'finnhub';
+  const savedEntryCapitalMode = autotradeConfig?.entryCapitalMode ?? DEFAULT_ENTRY_CAPITAL_MODE;
   const hasChanges = autotradeConfig !== null && (
-    effectiveEnabled !== savedEnabled || effectiveProvider !== savedProvider
+    effectiveEnabled !== savedEnabled || effectiveProvider !== savedProvider || effectiveEntryCapitalMode !== savedEntryCapitalMode
   );
 
   const handleSave = () => {
-    if (effectiveEnabled !== savedEnabled) onToggle();
-    if (effectiveProvider !== savedProvider) onChangeProvider(effectiveProvider);
+    const updates: Partial<AutoTradingConfig> = {};
+    if (effectiveEnabled !== savedEnabled) updates.enabled = effectiveEnabled;
+    if (effectiveProvider !== savedProvider) updates.provider = effectiveProvider;
+    if (effectiveEntryCapitalMode !== savedEntryCapitalMode) updates.entryCapitalMode = effectiveEntryCapitalMode;
+    if (Object.keys(updates).length > 0) {
+      onSaveConfig(updates);
+    }
   };
 
   return (
@@ -149,6 +157,55 @@ function AutotradeTab({
         )}
       </div>
 
+      <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700">
+        <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Профиль использования капитала для входа</div>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+          Работает для режима входа <strong className="text-gray-700 dark:text-gray-300">balance</strong>. Профиль задаёт, на какую долю базового капитала покупать при входе, и нужен ли защитный запас против отказа Webull по buying power.
+        </p>
+        {autotradeLoading ? (
+          <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            Загрузка…
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <div className="space-y-2">
+              {ENTRY_CAPITAL_MODE_OPTIONS.map((option) => (
+                <label
+                  key={option.value}
+                  className={`block cursor-pointer rounded-xl border p-3 transition-colors ${
+                    effectiveEntryCapitalMode === option.value
+                      ? 'border-blue-500 bg-blue-50 dark:border-blue-500 dark:bg-blue-900/20'
+                      : 'border-gray-200 bg-gray-50 hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-900 dark:hover:bg-gray-800'
+                  }`}
+                >
+                  <div className="flex items-start gap-3">
+                    <input
+                      type="radio"
+                      name="entryCapitalMode"
+                      value={option.value}
+                      checked={effectiveEntryCapitalMode === option.value}
+                      disabled={autotradeConfig === null}
+                      onChange={() => setPendingEntryCapitalMode(option.value)}
+                      className="mt-1 accent-blue-600"
+                    />
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium text-gray-900 dark:text-gray-100">{option.label}</div>
+                      <div className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">{option.shortLabel}</div>
+                      <div className="mt-2 text-xs text-gray-600 dark:text-gray-300">{option.description}</div>
+                      <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">{option.hint}</div>
+                    </div>
+                  </div>
+                </label>
+              ))}
+            </div>
+            <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-400">
+              База расчёта профиля: сначала берётся <strong className="text-gray-700 dark:text-gray-300">cash balance</strong>, если его нет — fallback на <strong className="text-gray-700 dark:text-gray-300">net liquidation value</strong>. После этого итоговый размер всё равно ограничивается реальным broker buying power.
+            </div>
+          </div>
+        )}
+      </div>
+
       <div className="flex items-center gap-3">
         <button
           type="button"
@@ -174,7 +231,7 @@ function AutotradeTab({
 
       <div className="p-4 rounded-xl border border-gray-200 bg-gray-50 dark:bg-gray-800 dark:border-gray-700">
         <div className="text-xs text-gray-500 dark:text-gray-400 space-y-1">
-          <p>• Подробные настройки автоторговли доступны на странице <strong className="text-gray-700 dark:text-gray-300">/broker → Автоторговля</strong>.</p>
+          <p>• На странице <strong className="text-gray-700 dark:text-gray-300">/broker → Автоторговля</strong> видно, какой профиль реально активен и какие поля приехали с сервера.</p>
           <p>• Переключатель здесь синхронизирован с переключателем на странице брокера.</p>
         </div>
       </div>
@@ -430,30 +487,16 @@ export function AppSettings() {
     }
   };
 
-  const handleChangeAutotradeProvider = async (provider: string) => {
-    try {
-      setAutotradeError(null);
-      setAutotradeOk(null);
-      const next = await DatasetAPI.updateAutotradeConfig({ provider });
-      setAutotradeConfig(next.config);
-      setAutotradeOk(`Провайдер котировок: ${provider}`);
-    } catch (e) {
-      setAutotradeError(e instanceof Error ? e.message : 'Не удалось сохранить провайдер');
-    }
-  };
-
-  const handleToggleAutotrade = async () => {
-    if (!autotradeConfig) return;
-    const nextEnabled = !autotradeConfig.enabled;
+  const handleSaveAutotradeConfig = async (updates: Partial<AutoTradingConfig>) => {
     try {
       setAutotradeToggling(true);
       setAutotradeError(null);
       setAutotradeOk(null);
-      const next = await DatasetAPI.updateAutotradeConfig({ enabled: nextEnabled });
+      const next = await DatasetAPI.updateAutotradeConfig(updates);
       setAutotradeConfig(next.config);
-      setAutotradeOk(nextEnabled ? 'Автоторговля включена' : 'Автоторговля выключена');
+      setAutotradeOk('Настройки автоторговли сохранены');
     } catch (e) {
-      setAutotradeError(e instanceof Error ? e.message : 'Не удалось изменить статус автоторговли');
+      setAutotradeError(e instanceof Error ? e.message : 'Не удалось сохранить настройки автоторговли');
     } finally {
       setAutotradeToggling(false);
     }
@@ -1220,8 +1263,7 @@ export function AppSettings() {
                   autotradeError={autotradeError}
                   autotradeOk={autotradeOk}
                   onLoad={() => void loadAutotradeConfig()}
-                  onToggle={() => void handleToggleAutotrade()}
-                  onChangeProvider={(p) => void handleChangeAutotradeProvider(p)}
+                  onSaveConfig={(updates) => void handleSaveAutotradeConfig(updates)}
                 />
               )}
             </div>

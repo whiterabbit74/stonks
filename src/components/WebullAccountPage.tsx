@@ -2,9 +2,11 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { AlertCircle, BriefcaseBusiness, ChevronDown, ChevronUp, History, RefreshCw, ShieldCheck, Wallet, Radar } from 'lucide-react';
 import type { AutoTradingConfig, AutoTradeState, AutotradeLogsResponse, WebullDashboardResponse, BrokerTradeRecord, MonitorConsistencyResponse } from '../types';
 import { DatasetAPI } from '../lib/api';
+import { getEntryCapitalModeOption } from '../lib/autotrade-config';
 import { PageHeader } from './ui/PageHeader';
 import { Button } from './ui/Button';
 import { AnalysisTabs } from './ui/AnalysisTabs';
+import { ManualBrokerTradeModal } from './ManualBrokerTradeModal';
 import { useAppStore } from '../stores';
 
 type RowRecord = Record<string, unknown>;
@@ -36,6 +38,12 @@ type MonitoringRow = {
   quoteError: string | null;
 };
 
+type ReadonlyConfigItem = {
+  label: string;
+  value: string;
+  hint?: string;
+};
+
 function getMonitorConsistencyStatus(snapshot: MonitorConsistencyResponse | null): 'ok' | 'mismatch' | 'reconcile_candidate' {
   if (!snapshot) return 'ok';
   if (snapshot.proposedActions.some((action) => action.autoApplicable)) return 'reconcile_candidate';
@@ -59,8 +67,30 @@ function formatNumber(value: unknown, fractionDigits = 2) {
   return num.toFixed(fractionDigits);
 }
 
+function formatRatioPercent(value: unknown, fractionDigits = 1) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return '—';
+  return `${(num * 100).toFixed(fractionDigits)}%`;
+}
+
 function formatYesNo(value: unknown) {
   return value ? 'Да' : 'Нет';
+}
+
+function formatEntrySizingMode(value: unknown) {
+  const mode = String(value || '').toLowerCase();
+  if (mode === 'balance') return 'По buying power';
+  if (mode === 'quantity') return 'Фиксированное количество';
+  if (mode === 'notional') return 'Фиксированный notional';
+  return mode ? mode.toUpperCase() : '—';
+}
+
+function formatTradingSession(value: unknown) {
+  const session = String(value || '').toUpperCase();
+  if (session === 'CORE') return 'CORE';
+  if (session === 'ALL') return 'ALL';
+  if (session === 'N') return 'NIGHT';
+  return session || '—';
 }
 
 function formatDateTime(value: unknown) {
@@ -294,6 +324,30 @@ function InfoCard({ title, value, hint, icon }: { title: string; value: string; 
   );
 }
 
+function ReadonlyConfigSection({ title, items }: { title: string; items: ReadonlyConfigItem[] }) {
+  return (
+    <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">{title}</h3>
+          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Только для просмотра. Изменение через этот блок недоступно.</p>
+        </div>
+      </div>
+      <div className="mt-4 grid gap-3 md:grid-cols-2">
+        {items.map((item) => (
+          <div key={`${title}:${item.label}`} className="rounded-xl bg-gray-50 p-3 dark:bg-gray-950/40">
+            <div className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">{item.label}</div>
+            <div className="mt-1 text-sm font-medium text-gray-900 dark:text-gray-100">{item.value}</div>
+            {item.hint ? (
+              <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">{item.hint}</div>
+            ) : null}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function RawJson({ title, value }: { title: string; value: unknown }) {
   return (
     <details className="rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-800 dark:bg-gray-900">
@@ -350,10 +404,9 @@ export function WebullAccountPage() {
   const [tradesLoading, setTradesLoading] = useState(false);
   const [tradesShowHidden, setTradesShowHidden] = useState(false);
   const [tradesLoaded, setTradesLoaded] = useState(false);
-  const [addTradeForm, setAddTradeForm] = useState<{ open: boolean; symbol: string; entryDate: string; exitDate: string; entryPrice: string; exitPrice: string; quantity: string; notes: string }>({
-    open: false, symbol: '', entryDate: '', exitDate: '', entryPrice: '', exitPrice: '', quantity: '', notes: '',
-  });
+  const [manualTradeModalOpen, setManualTradeModalOpen] = useState(false);
   const [addTradeLoading, setAddTradeLoading] = useState(false);
+  const [addTradeError, setAddTradeError] = useState<string | null>(null);
 
   const loadDashboard = async (isRefresh = false) => {
     try {
@@ -424,27 +477,38 @@ export function WebullAccountPage() {
     }
   };
 
-  const handleAddTrade = async () => {
-    if (!addTradeForm.symbol) return;
+  const handleAddTrade = async (payload: {
+    symbol: string;
+    entryDate?: string;
+    exitDate?: string;
+    entryPrice?: number;
+    exitPrice?: number;
+    quantity?: number;
+    notes?: string;
+  }) => {
     try {
       setAddTradeLoading(true);
-      const data = {
-        symbol: addTradeForm.symbol,
-        entryDate: addTradeForm.entryDate || undefined,
-        exitDate: addTradeForm.exitDate || undefined,
-        entryPrice: addTradeForm.entryPrice ? Number(addTradeForm.entryPrice) : undefined,
-        exitPrice: addTradeForm.exitPrice ? Number(addTradeForm.exitPrice) : undefined,
-        quantity: addTradeForm.quantity ? Number(addTradeForm.quantity) : undefined,
-        notes: addTradeForm.notes || undefined,
-      };
-      const created = await DatasetAPI.createBrokerTrade(data);
+      setAddTradeError(null);
+      const created = await DatasetAPI.createBrokerTrade(payload);
       setTradesData(prev => [created, ...prev]);
-      setAddTradeForm({ open: false, symbol: '', entryDate: '', exitDate: '', entryPrice: '', exitPrice: '', quantity: '', notes: '' });
+      setManualTradeModalOpen(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Не удалось создать сделку');
+      const message = err instanceof Error ? err.message : 'Не удалось создать сделку';
+      setAddTradeError(message);
     } finally {
       setAddTradeLoading(false);
     }
+  };
+
+  const handleOpenManualTradeModal = () => {
+    setAddTradeError(null);
+    setManualTradeModalOpen(true);
+  };
+
+  const handleCloseManualTradeModal = () => {
+    if (addTradeLoading) return;
+    setManualTradeModalOpen(false);
+    setAddTradeError(null);
   };
 
   const buildMonitoringRow = (watch: { symbol: string; highIBS: number | null; lowIBS?: number | null; thresholdPct?: number | null; entryPrice: number | null; isOpenPosition: boolean }, quote?: { open: number | null; high: number | null; low: number | null; current: number | null; prevClose: number | null }, quoteError?: string | null): MonitoringRow => {
@@ -679,6 +743,95 @@ export function WebullAccountPage() {
   const autotradeLastDecision = autotradeLastResult && typeof autotradeLastResult.decision === 'object'
     ? autotradeLastResult.decision as Record<string, unknown>
     : null;
+  const autotradeReadonlySections = useMemo(() => {
+    if (!autotradeConfig) return [];
+    const entryCapitalMode = getEntryCapitalModeOption(autotradeConfig.entryCapitalMode);
+
+    const executionItems: ReadonlyConfigItem[] = [
+      {
+        label: 'Режим входа',
+        value: formatEntrySizingMode(autotradeConfig.entrySizingMode),
+      },
+      {
+        label: 'База профиля',
+        value: 'Cash balance',
+        hint: 'Если cash balance не найден, сервер падает обратно на net liquidation value, а итог всегда ограничивается broker buying power',
+      },
+      {
+        label: 'Профиль капитала',
+        value: entryCapitalMode.shortLabel,
+        hint: entryCapitalMode.hint,
+      },
+      {
+        label: 'Дробные акции',
+        value: formatYesNo(autotradeConfig.allowFractionalShares),
+        hint: autotradeConfig.allowFractionalShares ? 'Qty может быть дробным' : 'Qty округляется вниз до целого',
+      },
+      {
+        label: 'Fixed quantity',
+        value: formatNumber(autotradeConfig.fixedQuantity, 5),
+      },
+      {
+        label: 'Fixed notional',
+        value: formatMoney(autotradeConfig.fixedNotionalUsd),
+      },
+      {
+        label: 'Max position',
+        value: autotradeConfig.maxPositionUsd > 0 ? formatMoney(autotradeConfig.maxPositionUsd) : 'Без лимита',
+      },
+      {
+        label: 'Order type / TIF',
+        value: `${autotradeConfig.orderType} / ${autotradeConfig.timeInForce}`,
+        hint: `Session: ${formatTradingSession(autotradeConfig.supportTradingSession)}`,
+      },
+      {
+        label: 'Резерв buying power',
+        value: entryCapitalMode.reservePct > 0 ? `+${(entryCapitalMode.reservePct * 100).toFixed(1)}%` : 'Не применяется',
+        hint: entryCapitalMode.reservePct > 0
+          ? 'Используется только в стандартном safe-профиле, чтобы не упираться в правило Webull для market buy'
+          : 'Для exact и margin-профилей дополнительный reserve не добавляется',
+      },
+      {
+        label: 'Preview / cancel open',
+        value: `${formatYesNo(autotradeConfig.previewBeforeSend)} / ${formatYesNo(autotradeConfig.cancelOpenOrdersBeforeEntry)}`,
+        hint: 'Preview для Webull US логируется как skipped, но флаг сохраняется в конфиге',
+      },
+    ];
+
+    const signalItems: ReadonlyConfigItem[] = [
+      {
+        label: 'Провайдер',
+        value: autotradeConfig.provider === 'webull' ? 'Webull' : 'Finnhub',
+      },
+      {
+        label: 'IBS threshold',
+        value: `${formatRatioPercent(autotradeConfig.lowIBS)} / ${formatRatioPercent(autotradeConfig.highIBS)}`,
+        hint: 'Entry / Exit',
+      },
+      {
+        label: 'Execution window',
+        value: `${formatNumber(autotradeConfig.executionWindowSeconds, 0)} сек.`,
+      },
+      {
+        label: 'Entries / exits',
+        value: `${formatYesNo(autotradeConfig.allowNewEntries)} / ${formatYesNo(autotradeConfig.allowExits)}`,
+      },
+      {
+        label: 'Источник тикеров',
+        value: autotradeConfig.onlyFromTelegramWatches ? 'Только Telegram watches' : 'Поле symbols',
+      },
+      {
+        label: 'Symbols',
+        value: autotradeConfig.symbols?.trim() ? autotradeConfig.symbols : '—',
+        hint: autotradeConfig.onlyFromTelegramWatches ? 'Сейчас поле игнорируется, пока включён режим onlyFromTelegramWatches' : undefined,
+      },
+    ];
+
+    return [
+      { title: 'Параметры сигналов', items: signalItems },
+      { title: 'Параметры исполнения', items: executionItems },
+    ];
+  }, [autotradeConfig]);
 
 
   const handleTestBuyAapl = async () => {
@@ -1026,6 +1179,13 @@ export function WebullAccountPage() {
               <InfoCard title="Webull" value={data.connection.configured ? 'Ready' : 'Not ready'} hint={data.connection.hasAccessToken ? 'Access token ok' : 'Missing token'} icon={<Wallet className="h-4 w-4" />} />
               <InfoCard title="Последнее решение" value={autotradeLastDecision?.action ? String(autotradeLastDecision.action) : '—'} hint={autotradeLastDecision?.reason ? String(autotradeLastDecision.reason) : undefined} icon={<History className="h-4 w-4" />} />
             </div>
+            {autotradeReadonlySections.length > 0 ? (
+              <div className="mt-4 grid gap-4 xl:grid-cols-2">
+                {autotradeReadonlySections.map((section) => (
+                  <ReadonlyConfigSection key={section.title} title={section.title} items={section.items} />
+                ))}
+              </div>
+            ) : null}
             {actionMessage ? (
               <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-200">
                 {actionMessage}
@@ -1236,28 +1396,17 @@ export function WebullAccountPage() {
               <input type="checkbox" checked={tradesShowHidden} onChange={e => setTradesShowHidden(e.target.checked)} className="rounded" />
               Показать скрытые
             </label>
-            <Button variant="secondary" size="sm" onClick={() => setAddTradeForm(f => ({ ...f, open: !f.open }))}>
-              {addTradeForm.open ? 'Отмена' : '+ Добавить вручную'}
+            <Button variant="secondary" size="sm" onClick={handleOpenManualTradeModal}>
+              + Добавить вручную
             </Button>
           </div>
-
-          {addTradeForm.open && (
-            <div className="rounded-2xl border border-blue-200 bg-blue-50 dark:border-blue-900/60 dark:bg-blue-950/20 p-4 space-y-3">
-              <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Новая сделка (вручную)</h3>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <div><label className="text-xs text-gray-500 dark:text-gray-400">Тикер *</label><input className="mt-1 w-full rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-2 py-1 text-sm text-gray-900 dark:text-gray-100" value={addTradeForm.symbol} onChange={e => setAddTradeForm(f => ({ ...f, symbol: e.target.value.toUpperCase() }))} placeholder="AAPL" /></div>
-                <div><label className="text-xs text-gray-500 dark:text-gray-400">Дата входа</label><input type="date" className="mt-1 w-full rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-2 py-1 text-sm text-gray-900 dark:text-gray-100" value={addTradeForm.entryDate} onChange={e => setAddTradeForm(f => ({ ...f, entryDate: e.target.value }))} /></div>
-                <div><label className="text-xs text-gray-500 dark:text-gray-400">Дата выхода</label><input type="date" className="mt-1 w-full rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-2 py-1 text-sm text-gray-900 dark:text-gray-100" value={addTradeForm.exitDate} onChange={e => setAddTradeForm(f => ({ ...f, exitDate: e.target.value }))} /></div>
-                <div><label className="text-xs text-gray-500 dark:text-gray-400">Кол-во</label><input type="number" className="mt-1 w-full rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-2 py-1 text-sm text-gray-900 dark:text-gray-100" value={addTradeForm.quantity} onChange={e => setAddTradeForm(f => ({ ...f, quantity: e.target.value }))} placeholder="1" /></div>
-                <div><label className="text-xs text-gray-500 dark:text-gray-400">Цена входа</label><input type="number" step="0.01" className="mt-1 w-full rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-2 py-1 text-sm text-gray-900 dark:text-gray-100" value={addTradeForm.entryPrice} onChange={e => setAddTradeForm(f => ({ ...f, entryPrice: e.target.value }))} placeholder="100.00" /></div>
-                <div><label className="text-xs text-gray-500 dark:text-gray-400">Цена выхода</label><input type="number" step="0.01" className="mt-1 w-full rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-2 py-1 text-sm text-gray-900 dark:text-gray-100" value={addTradeForm.exitPrice} onChange={e => setAddTradeForm(f => ({ ...f, exitPrice: e.target.value }))} placeholder="105.00" /></div>
-                <div className="col-span-2"><label className="text-xs text-gray-500 dark:text-gray-400">Заметки</label><input className="mt-1 w-full rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-2 py-1 text-sm text-gray-900 dark:text-gray-100" value={addTradeForm.notes} onChange={e => setAddTradeForm(f => ({ ...f, notes: e.target.value }))} placeholder="Комментарий" /></div>
-              </div>
-              <Button variant="primary" size="sm" isLoading={addTradeLoading} onClick={() => void handleAddTrade()} disabled={!addTradeForm.symbol}>
-                Сохранить
-              </Button>
-            </div>
-          )}
+          <ManualBrokerTradeModal
+            open={manualTradeModalOpen}
+            loading={addTradeLoading}
+            error={addTradeError}
+            onClose={handleCloseManualTradeModal}
+            onSubmit={handleAddTrade}
+          />
 
           <section className="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
             <div className="overflow-x-auto">

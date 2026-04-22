@@ -1,10 +1,10 @@
 import { useEffect, useLayoutEffect, useState } from 'react';
 import { DatasetAPI } from '../lib/api';
-import { Button } from './ui/Button';
+import { CompactFormModal } from './ui/CompactFormModal';
 import { Input } from './ui/Input';
 import { Label } from './ui/Label';
-import { Modal, ModalFooter } from './ui/Modal';
 import { Select } from './ui/Select';
+import { Textarea } from './ui/Textarea';
 
 type QuoteProvider = 'alpha_vantage' | 'finnhub' | 'twelve_data' | 'webull' | 'polygon';
 
@@ -20,7 +20,6 @@ interface ManualMonitorTradeModalProps {
     entryDate: string;
     entryPrice: number;
     entryIBS?: number;
-    quantity?: number;
     notes?: string;
   }) => Promise<void> | void;
 }
@@ -56,7 +55,6 @@ export function ManualMonitorTradeModal({
   const [entryDate, setEntryDate] = useState(getEtDateKey());
   const [entryPrice, setEntryPrice] = useState('');
   const [entryIbs, setEntryIbs] = useState('');
-  const [quantity, setQuantity] = useState('1');
   const [notes, setNotes] = useState('');
   const [quoteHint, setQuoteHint] = useState<string | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
@@ -68,7 +66,6 @@ export function ManualMonitorTradeModal({
     setEntryDate(getEtDateKey());
     setEntryPrice('');
     setEntryIbs('');
-    setQuantity('1');
     setNotes('');
     setQuoteHint(firstSymbol ? `Подтягиваю текущую котировку по ${firstSymbol}…` : 'Сначала добавьте тикер в мониторинг.');
     setLocalError(null);
@@ -137,33 +134,37 @@ export function ManualMonitorTradeModal({
       return;
     }
 
-    const numericQuantityRaw = quantity.trim() === '' ? null : Number(quantity);
-    if (numericQuantityRaw != null && (!Number.isFinite(numericQuantityRaw) || numericQuantityRaw <= 0)) {
-      setLocalError('Количество должно быть положительным числом.');
-      return;
-    }
-
     setLocalError(null);
     await onSubmit({
       symbol,
       entryDate,
       entryPrice: numericPrice,
       entryIBS: numericIbsRaw == null ? undefined : numericIbsRaw / 100,
-      quantity: numericQuantityRaw == null ? undefined : numericQuantityRaw,
       notes: notes.trim() || undefined,
     });
   };
 
   return (
-    <Modal isOpen={open} onClose={onClose} title="Добавить ручную сделку" size="md">
-      <div className="space-y-4">
-        <p className="text-sm text-gray-600 dark:text-gray-300">
+    <CompactFormModal
+      open={open}
+      onClose={onClose}
+      onSubmit={handleSubmit}
+      title="Добавить ручную сделку"
+      description={(
+        <p>
           Сделка добавляется только в monitor-журнал. После сохранения стратегия будет считать позицию открытой и искать сигнал на выход.
         </p>
-
+      )}
+      error={localError || error}
+      loading={loading}
+      submitLabel="Добавить сделку"
+      submitDisabled={watchSymbols.length === 0}
+    >
+      <div className="grid gap-4 sm:grid-cols-2">
         <div className="block">
           <Label>Тикер из мониторинга</Label>
           <Select
+            aria-label="Тикер из мониторинга"
             value={symbol}
             onChange={(event) => handleSymbolChange(event.target.value)}
             disabled={watchSymbols.length === 0}
@@ -183,6 +184,7 @@ export function ManualMonitorTradeModal({
         <div className="block">
           <Label>Дата входа (ET)</Label>
           <Input
+            aria-label="Дата входа (ET)"
             type="date"
             value={entryDate}
             onChange={(event) => setEntryDate(event.target.value)}
@@ -192,6 +194,7 @@ export function ManualMonitorTradeModal({
         <div className="block">
           <Label>Цена входа</Label>
           <Input
+            aria-label="Цена входа"
             type="number"
             step="0.01"
             value={entryPrice}
@@ -203,59 +206,32 @@ export function ManualMonitorTradeModal({
           ) : null}
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="block">
-            <Label description="Необязательно. Можно оставить пустым, если IBS неизвестен.">Entry IBS, %</Label>
-            <Input
-              type="number"
-              step="0.1"
-              min="0"
-              max="100"
-              value={entryIbs}
-              onChange={(event) => setEntryIbs(event.target.value)}
-              placeholder="Например, 14.3"
-            />
-          </div>
-
-          <div className="block">
-            <Label description="Необязательно, но полезно для справки.">Количество</Label>
-            <Input
-              type="number"
-              step="0.0001"
-              min="0"
-              value={quantity}
-              onChange={(event) => setQuantity(event.target.value)}
-              placeholder="1"
-            />
-          </div>
-        </div>
-
         <div className="block">
-          <Label description="Например, почему пришлось корректировать мониторинг вручную.">Комментарий</Label>
-          <textarea
-            value={notes}
-            onChange={(event) => setNotes(event.target.value)}
-            rows={3}
-            placeholder="Причина корректировки, источник входа, любые заметки"
-            className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+          <Label description="Необязательно. Можно оставить пустым, если IBS неизвестен.">Entry IBS, %</Label>
+          <Input
+            aria-label="Entry IBS, %"
+            type="number"
+            step="0.1"
+            min="0"
+            max="100"
+            value={entryIbs}
+            onChange={(event) => setEntryIbs(event.target.value)}
+            placeholder="Например, 14.3"
           />
         </div>
-
-        {localError || error ? (
-          <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-200">
-            {localError || error}
-          </div>
-        ) : null}
       </div>
 
-      <ModalFooter>
-        <Button variant="secondary" onClick={onClose} disabled={loading}>
-          Отмена
-        </Button>
-        <Button onClick={() => void handleSubmit()} isLoading={loading} disabled={watchSymbols.length === 0}>
-          Добавить сделку
-        </Button>
-      </ModalFooter>
-    </Modal>
+      <div className="block">
+        <Label description="Например, почему пришлось корректировать мониторинг вручную.">Комментарий</Label>
+        <Textarea
+          aria-label="Комментарий"
+          value={notes}
+          onChange={(event) => setNotes(event.target.value)}
+          rows={3}
+          placeholder="Причина корректировки, источник входа, любые заметки"
+          className="resize-y"
+        />
+      </div>
+    </CompactFormModal>
   );
 }

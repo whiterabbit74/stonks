@@ -354,6 +354,7 @@ export function BacktestResultsView({
                   trades={trades}
                   splits={currentSplits}
                   isVisible={tabId === activeTab}
+                  exportFileNamePrefix={`price-data-${(symbol || 'single').toLowerCase()}`}
                 />
               </Suspense>
             </ErrorBoundary>

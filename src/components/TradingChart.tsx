@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, memo, type ReactNode } from 'react';
-import { Settings2 } from 'lucide-react';
+import { Download, RotateCcw, Settings2 } from 'lucide-react';
 import { useIsDark } from '../hooks/useIsDark';
 import { useClickOutside } from '../hooks/useClickOutside';
 import { LS } from '../constants';
@@ -28,10 +28,31 @@ import { logError } from '../lib/error-logger';
 const MIN_CHART_HEIGHT = 680;
 
 type RangeKey = 'ALL' | 'YTD' | '5Y' | '3Y' | '1Y' | '6M' | '3M' | '1M';
-type LineWidth = 1 | 2 | 3;
-type MarkerShape = 'arrow' | 'circle' | 'square';
+type LineWidth = 1 | 2 | 3 | 4;
+type LineStyleValue = 0 | 1 | 2;
+type MarkerVariant = 'arrow' | 'circle' | 'square' | 'circleSquare' | 'squareCircle';
 
-const MARKER_COLORS = ['#2196F3', '#10B981', '#EF4444', '#F59E0B', '#8B5CF6'] as const;
+const EMA20_DEFAULT_COLOR = '#2563EB';
+const EMA200_DEFAULT_COLOR = '#F59E0B';
+const TRADE_MARKER_DEFAULT_COLOR = '#2563EB';
+const EMA_DEFAULT_OPACITY = 85;
+const TRADE_MARKER_DEFAULT_OPACITY = 90;
+const TRADE_MARKER_DEFAULT_SIZE = 100;
+
+const COLOR_SWATCHES = [
+  '#2563EB',
+  '#0EA5E9',
+  '#14B8A6',
+  '#10B981',
+  '#84CC16',
+  '#F59E0B',
+  '#F97316',
+  '#EF4444',
+  '#F43F5E',
+  '#A855F7',
+  '#8B5CF6',
+  '#64748B',
+] as const;
 const RANGE_OPTIONS: Array<{ value: RangeKey; label: string; short: string }> = [
   { value: '1M', label: '1 месяц', short: '1М' },
   { value: '3M', label: '3 месяца', short: '3М' },
@@ -52,17 +73,24 @@ interface ChartPrefs {
   ibs?: boolean;
   volume?: boolean;
   ema20Width?: LineWidth;
-  ema20Style?: 0 | 2;
+  ema20Style?: LineStyleValue;
+  ema20Color?: string;
+  ema20Opacity?: number;
   ema200Width?: LineWidth;
-  ema200Style?: 0 | 2;
+  ema200Style?: LineStyleValue;
+  ema200Color?: string;
+  ema200Opacity?: number;
   showTradeMarkers?: boolean;
   tradeMarkerColor?: string;
-  tradeMarkerShape?: MarkerShape;
+  tradeMarkerShape?: MarkerVariant;
+  tradeMarkerOpacity?: number;
+  tradeMarkerSize?: number;
 }
 
 function loadChartPrefs(): ChartPrefs | null {
+  if (typeof window === 'undefined') return null;
   try {
-    const raw = localStorage.getItem(CHART_PREFS_KEY);
+    const raw = window.localStorage.getItem(CHART_PREFS_KEY);
     return raw ? (JSON.parse(raw) as ChartPrefs) : null;
   } catch {
     return null;
@@ -70,7 +98,12 @@ function loadChartPrefs(): ChartPrefs | null {
 }
 
 function saveChartPrefs(prefs: ChartPrefs) {
-  try { localStorage.setItem(CHART_PREFS_KEY, JSON.stringify(prefs)); } catch { /* ignore */ }
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(CHART_PREFS_KEY, JSON.stringify(prefs));
+  } catch {
+    // ignore
+  }
 }
 
 const calculateEMA = (data: Array<{ close: number }>, period: number): number[] => {
@@ -92,15 +125,119 @@ const calculateEMA = (data: Array<{ close: number }>, period: number): number[] 
   return ema;
 };
 
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function normalizePercent(value: number | undefined, fallback: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;
+  return Math.round(clamp(value, 5, 100));
+}
+
+function normalizeMarkerSize(value: number | undefined, fallback: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;
+  return Math.round(clamp(value, 40, 180));
+}
+
+function withAlpha(color: string, opacityPercent: number): string {
+  const alpha = clamp(opacityPercent, 0, 100) / 100;
+  const hex = color.trim();
+
+  if (/^#([a-f0-9]{3}){1,2}$/i.test(hex)) {
+    const normalized = hex.length === 4
+      ? `#${hex[1]}${hex[1]}${hex[2]}${hex[2]}${hex[3]}${hex[3]}`
+      : hex;
+    const int = Number.parseInt(normalized.slice(1), 16);
+    const r = (int >> 16) & 255;
+    const g = (int >> 8) & 255;
+    const b = int & 255;
+    return `rgba(${r}, ${g}, ${b}, ${alpha.toFixed(2)})`;
+  }
+
+  const rgb = hex.match(/^rgba?\(([^)]+)\)$/i);
+  if (rgb) {
+    const parts = rgb[1].split(',').map((part) => part.trim());
+    if (parts.length >= 3) {
+      return `rgba(${parts[0]}, ${parts[1]}, ${parts[2]}, ${alpha.toFixed(2)})`;
+    }
+  }
+
+  return color;
+}
+
+function markerVariantToShapes(variant: MarkerVariant): { entry: 'arrowUp' | 'circle' | 'square'; exit: 'arrowDown' | 'circle' | 'square' } {
+  switch (variant) {
+    case 'circle':
+      return { entry: 'circle', exit: 'circle' };
+    case 'square':
+      return { entry: 'square', exit: 'square' };
+    case 'circleSquare':
+      return { entry: 'circle', exit: 'square' };
+    case 'squareCircle':
+      return { entry: 'square', exit: 'circle' };
+    case 'arrow':
+    default:
+      return { entry: 'arrowUp', exit: 'arrowDown' };
+  }
+}
+
+function formatExportValue(value: number | null | undefined, digits = 6): string {
+  if (value == null || !Number.isFinite(value)) return '';
+  return Number(value).toFixed(digits);
+}
+
+function escapeCsvCell(value: string): string {
+  if (/["\n,]/.test(value)) {
+    return `"${value.replace(/"/g, '""')}"`;
+  }
+  return value;
+}
+
+function downloadCsv(rows: string[][], prefix: string) {
+  const csvContent = `\uFEFF${rows.map((row) => row.map(escapeCsvCell).join(',')).join('\n')}`;
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  const timestamp = new Date().toISOString().replace(/[:]/g, '-').split('.')[0];
+  link.href = url;
+  link.download = `${prefix}-${timestamp}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+const EMA_STYLE_OPTIONS: Array<{ label: string; value: LineStyleValue }> = [
+  { label: 'Сплошная', value: 0 },
+  { label: 'Точки', value: 1 },
+  { label: 'Пунктир', value: 2 },
+];
+
+const MARKER_VARIANT_OPTIONS: Array<{ label: string; value: MarkerVariant; preview: string }> = [
+  { label: 'Стрелки', value: 'arrow', preview: '↑ ↓' },
+  { label: 'Круги', value: 'circle', preview: '● ●' },
+  { label: 'Квадраты', value: 'square', preview: '■ ■' },
+  { label: 'Вход ● / выход ■', value: 'circleSquare', preview: '● ■' },
+  { label: 'Вход ■ / выход ●', value: 'squareCircle', preview: '■ ●' },
+];
+
 interface TradingChartProps {
   data: OHLCData[];
   trades: Trade[];
   splits?: SplitEvent[];
   isVisible?: boolean;
   toolbarPrefix?: ReactNode;
+  exportFileNamePrefix?: string;
 }
 
-export const TradingChart = memo(function TradingChart({ data, trades, splits = [], isVisible = true, toolbarPrefix }: TradingChartProps) {
+export const TradingChart = memo(function TradingChart({
+  data,
+  trades,
+  splits = [],
+  isVisible = true,
+  toolbarPrefix,
+  exportFileNamePrefix = 'chart-data',
+}: TradingChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candlestickSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
@@ -111,22 +248,29 @@ export const TradingChart = memo(function TradingChart({ data, trades, splits = 
   const markersApiRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
   const crosshairHandlerRef = useRef<((param: MouseEventParams<Time>) => void) | null>(null);
   const tooltipRef = useRef<HTMLDivElement | null>(null);
+  const storedPrefs = useMemo(() => loadChartPrefs(), []);
 
   const [chartReady, setChartReady] = useState(false);
-  const [activeRange, setActiveRange] = useState<RangeKey>(() => loadChartPrefs()?.range ?? '3Y');
+  const [activeRange, setActiveRange] = useState<RangeKey>(() => storedPrefs?.range ?? '3Y');
 
-  const [showEMA20, setShowEMA20] = useState(() => loadChartPrefs()?.ema20 ?? false);
-  const [showEMA200, setShowEMA200] = useState(() => loadChartPrefs()?.ema200 ?? false);
-  const [showIBS, setShowIBS] = useState(() => loadChartPrefs()?.ibs ?? false);
-  const [showVolume, setShowVolume] = useState(() => loadChartPrefs()?.volume ?? false);
+  const [showEMA20, setShowEMA20] = useState(() => storedPrefs?.ema20 ?? false);
+  const [showEMA200, setShowEMA200] = useState(() => storedPrefs?.ema200 ?? false);
+  const [showIBS, setShowIBS] = useState(() => storedPrefs?.ibs ?? false);
+  const [showVolume, setShowVolume] = useState(() => storedPrefs?.volume ?? false);
 
-  const [ema20Width, setEma20Width] = useState<LineWidth>(() => (loadChartPrefs()?.ema20Width as LineWidth) ?? 2);
-  const [ema20LineStyle, setEma20LineStyle] = useState<0 | 2>(() => (loadChartPrefs()?.ema20Style as 0 | 2) ?? 0);
-  const [ema200Width, setEma200Width] = useState<LineWidth>(() => (loadChartPrefs()?.ema200Width as LineWidth) ?? 2);
-  const [ema200LineStyle, setEma200LineStyle] = useState<0 | 2>(() => (loadChartPrefs()?.ema200Style as 0 | 2) ?? 0);
-  const [showTradeMarkers, setShowTradeMarkers] = useState<boolean>(() => loadChartPrefs()?.showTradeMarkers ?? true);
-  const [tradeMarkerColor, setTradeMarkerColor] = useState<string>(() => loadChartPrefs()?.tradeMarkerColor ?? '#2196F3');
-  const [tradeMarkerShape, setTradeMarkerShape] = useState<MarkerShape>(() => (loadChartPrefs()?.tradeMarkerShape as MarkerShape) ?? 'arrow');
+  const [ema20Width, setEma20Width] = useState<LineWidth>(() => storedPrefs?.ema20Width ?? 2);
+  const [ema20LineStyle, setEma20LineStyle] = useState<LineStyleValue>(() => storedPrefs?.ema20Style ?? 0);
+  const [ema20Color, setEma20Color] = useState<string>(() => storedPrefs?.ema20Color ?? EMA20_DEFAULT_COLOR);
+  const [ema20Opacity, setEma20Opacity] = useState<number>(() => normalizePercent(storedPrefs?.ema20Opacity, EMA_DEFAULT_OPACITY));
+  const [ema200Width, setEma200Width] = useState<LineWidth>(() => storedPrefs?.ema200Width ?? 2);
+  const [ema200LineStyle, setEma200LineStyle] = useState<LineStyleValue>(() => storedPrefs?.ema200Style ?? 0);
+  const [ema200Color, setEma200Color] = useState<string>(() => storedPrefs?.ema200Color ?? EMA200_DEFAULT_COLOR);
+  const [ema200Opacity, setEma200Opacity] = useState<number>(() => normalizePercent(storedPrefs?.ema200Opacity, EMA_DEFAULT_OPACITY));
+  const [showTradeMarkers, setShowTradeMarkers] = useState<boolean>(() => storedPrefs?.showTradeMarkers ?? true);
+  const [tradeMarkerColor, setTradeMarkerColor] = useState<string>(() => storedPrefs?.tradeMarkerColor ?? TRADE_MARKER_DEFAULT_COLOR);
+  const [tradeMarkerShape, setTradeMarkerShape] = useState<MarkerVariant>(() => storedPrefs?.tradeMarkerShape ?? 'arrow');
+  const [tradeMarkerOpacity, setTradeMarkerOpacity] = useState<number>(() => normalizePercent(storedPrefs?.tradeMarkerOpacity, TRADE_MARKER_DEFAULT_OPACITY));
+  const [tradeMarkerSize, setTradeMarkerSize] = useState<number>(() => normalizeMarkerSize(storedPrefs?.tradeMarkerSize, TRADE_MARKER_DEFAULT_SIZE));
   const [showChartSettings, setShowChartSettings] = useState(false);
   const settingsRef = useRef<HTMLDivElement | null>(null);
 
@@ -142,8 +286,46 @@ export const TradingChart = memo(function TradingChart({ data, trades, splits = 
   }, [showIBS, showVolume]);
 
   useEffect(() => {
-    saveChartPrefs({ range: activeRange, ema20: showEMA20, ema200: showEMA200, ibs: showIBS, volume: showVolume, ema20Width, ema20Style: ema20LineStyle, ema200Width, ema200Style: ema200LineStyle, showTradeMarkers, tradeMarkerColor, tradeMarkerShape });
-  }, [activeRange, showEMA20, showEMA200, showIBS, showVolume, ema20Width, ema20LineStyle, ema200Width, ema200LineStyle, showTradeMarkers, tradeMarkerColor, tradeMarkerShape]);
+    saveChartPrefs({
+      range: activeRange,
+      ema20: showEMA20,
+      ema200: showEMA200,
+      ibs: showIBS,
+      volume: showVolume,
+      ema20Width,
+      ema20Style: ema20LineStyle,
+      ema20Color,
+      ema20Opacity,
+      ema200Width,
+      ema200Style: ema200LineStyle,
+      ema200Color,
+      ema200Opacity,
+      showTradeMarkers,
+      tradeMarkerColor,
+      tradeMarkerShape,
+      tradeMarkerOpacity,
+      tradeMarkerSize,
+    });
+  }, [
+    activeRange,
+    showEMA20,
+    showEMA200,
+    showIBS,
+    showVolume,
+    ema20Width,
+    ema20LineStyle,
+    ema20Color,
+    ema20Opacity,
+    ema200Width,
+    ema200LineStyle,
+    ema200Color,
+    ema200Opacity,
+    showTradeMarkers,
+    tradeMarkerColor,
+    tradeMarkerShape,
+    tradeMarkerOpacity,
+    tradeMarkerSize,
+  ]);
 
   useEffect(() => {
     if (!chartContainerRef.current) return;
@@ -196,16 +378,18 @@ export const TradingChart = memo(function TradingChart({ data, trades, splits = 
     ibsSeriesRef.current = ibsHist;
 
     const ema20Series = chart.addSeries(LineSeries, {
-      color: darkNow ? '#60a5fa' : '#2196F3',
+      color: withAlpha(EMA20_DEFAULT_COLOR, EMA_DEFAULT_OPACITY),
       lineWidth: 2,
+      lineStyle: 0,
       title: 'EMA 20',
       visible: false,
     });
     ema20SeriesRef.current = ema20Series;
 
     const ema200Series = chart.addSeries(LineSeries, {
-      color: darkNow ? '#fbbf24' : '#FF9800',
+      color: withAlpha(EMA200_DEFAULT_COLOR, EMA_DEFAULT_OPACITY),
       lineWidth: 2,
+      lineStyle: 0,
       title: 'EMA 200',
       visible: false,
     });
@@ -313,15 +497,33 @@ export const TradingChart = memo(function TradingChart({ data, trades, splits = 
       tooltipRef.current.style.background = isDark ? 'rgba(31,41,55,0.75)' : 'rgba(17,24,39,0.7)';
     }
 
-    ema20SeriesRef.current?.applyOptions({ color: isDark ? '#60a5fa' : '#2196F3' });
-    ema200SeriesRef.current?.applyOptions({ color: isDark ? '#fbbf24' : '#FF9800' });
     volumeSeriesRef.current?.applyOptions({ color: isDark ? 'rgba(148, 163, 184, 0.35)' : 'rgba(148, 163, 184, 0.45)' });
   }, [isDark]);
 
   const normalizedBars = useMemo(() => {
-    if (!data.length) return [] as Array<{ time: UTCTimestamp; open: number; high: number; low: number; close: number; volume: number }>;
+    if (!data.length) {
+      return [] as Array<{
+        date: string;
+        time: UTCTimestamp;
+        open: number;
+        high: number;
+        low: number;
+        close: number;
+        adjClose: number | null;
+        volume: number;
+      }>;
+    }
 
-    const dedup = new Map<number, { time: UTCTimestamp; open: number; high: number; low: number; close: number; volume: number }>();
+    const dedup = new Map<number, {
+      date: string;
+      time: UTCTimestamp;
+      open: number;
+      high: number;
+      low: number;
+      close: number;
+      adjClose: number | null;
+      volume: number;
+    }>();
 
     for (const bar of data) {
       let t: UTCTimestamp;
@@ -335,6 +537,7 @@ export const TradingChart = memo(function TradingChart({ data, trades, splits = 
       const highRaw = Number(bar.high);
       const lowRaw = Number(bar.low);
       const closeRaw = Number(bar.close);
+      const adjCloseRaw = Number(bar.adjClose);
       const volumeRaw = Number(bar.volume);
 
       if (![openRaw, highRaw, lowRaw, closeRaw].every((v) => Number.isFinite(v))) continue;
@@ -344,11 +547,13 @@ export const TradingChart = memo(function TradingChart({ data, trades, splits = 
       const volume = Number.isFinite(volumeRaw) && volumeRaw > 0 ? volumeRaw : 0;
 
       dedup.set(Number(t), {
+        date: formatOHLCYMD(bar.date),
         time: t,
         open: openRaw,
         high,
         low,
         close: closeRaw,
+        adjClose: Number.isFinite(adjCloseRaw) ? adjCloseRaw : null,
         volume,
       });
     }
@@ -390,6 +595,28 @@ export const TradingChart = memo(function TradingChart({ data, trades, splits = 
       })
       .filter((p): p is { time: UTCTimestamp; value: number } => p !== null),
     [normalizedBars, ema200Values]
+  );
+
+  const exportRows = useMemo(
+    () =>
+      normalizedBars.map((bar, index) => {
+        const range = bar.high - bar.low;
+        const ibs = range > 0 ? (bar.close - bar.low) / range : null;
+        return [
+          bar.date,
+          formatExportValue(bar.close, 4),
+          formatExportValue(bar.open, 4),
+          formatExportValue(bar.high, 4),
+          formatExportValue(bar.low, 4),
+          formatExportValue(bar.close, 4),
+          formatExportValue(bar.adjClose, 4),
+          formatExportValue(bar.volume, 0),
+          formatExportValue(ibs, 6),
+          formatExportValue(ema20Values[index], 6),
+          formatExportValue(ema200Values[index], 6),
+        ];
+      }),
+    [normalizedBars, ema20Values, ema200Values]
   );
 
   const volumeData = useMemo(
@@ -445,6 +672,9 @@ export const TradingChart = memo(function TradingChart({ data, trades, splits = 
 
     const allMarkers: SeriesMarker<Time>[] = [];
     const existingTimes = new Set<number>(chartData.map((bar) => Number(bar.time)).filter((value) => Number.isFinite(value)));
+    const { entry, exit } = markerVariantToShapes(tradeMarkerShape);
+    const markerColor = withAlpha(tradeMarkerColor, tradeMarkerOpacity);
+    const markerSize = tradeMarkerSize / 100;
 
     const getMarkerTimeIfExists = (dateLike: unknown): UTCTimestamp | null => {
       try {
@@ -456,17 +686,16 @@ export const TradingChart = memo(function TradingChart({ data, trades, splits = 
     };
 
     if (trades.length > 0 && showTradeMarkers) {
-      const entryShape = tradeMarkerShape === 'arrow' ? 'arrowUp' : tradeMarkerShape;
-      const exitShape = tradeMarkerShape === 'arrow' ? 'arrowDown' : tradeMarkerShape;
       for (const trade of trades) {
         const entryTime = getMarkerTimeIfExists(trade.entryDate);
         if (entryTime != null) {
           allMarkers.push({
             time: entryTime,
             position: 'belowBar',
-            color: tradeMarkerColor,
-            shape: entryShape,
+            color: markerColor,
+            shape: entry,
             text: '',
+            size: markerSize,
           });
         }
 
@@ -476,9 +705,10 @@ export const TradingChart = memo(function TradingChart({ data, trades, splits = 
             allMarkers.push({
               time: exitTime,
               position: 'aboveBar',
-              color: tradeMarkerColor,
-              shape: exitShape,
+              color: markerColor,
+              shape: exit,
               text: '',
+              size: markerSize,
             });
           }
         }
@@ -514,7 +744,7 @@ export const TradingChart = memo(function TradingChart({ data, trades, splits = 
     } catch (e) {
       logError('chart', 'Error applying chart markers', { error: (e as Error).message }, 'TradingChart.setMarkers');
     }
-  }, [chartReady, trades, splits, data, chartData, showTradeMarkers, tradeMarkerColor, tradeMarkerShape]);
+  }, [chartReady, trades, splits, data, chartData, showTradeMarkers, tradeMarkerColor, tradeMarkerShape, tradeMarkerOpacity, tradeMarkerSize]);
 
   useEffect(() => {
     if (!candlestickSeriesRef.current) return;
@@ -581,11 +811,47 @@ export const TradingChart = memo(function TradingChart({ data, trades, splits = 
 
   useEffect(() => {
     if (!chartReady) return;
-    ema20SeriesRef.current?.applyOptions({ lineWidth: ema20Width, lineStyle: ema20LineStyle as LineStyle });
-    ema200SeriesRef.current?.applyOptions({ lineWidth: ema200Width, lineStyle: ema200LineStyle as LineStyle });
-  }, [chartReady, ema20Width, ema20LineStyle, ema200Width, ema200LineStyle]);
+    ema20SeriesRef.current?.applyOptions({
+      lineWidth: ema20Width,
+      lineStyle: ema20LineStyle as LineStyle,
+      color: withAlpha(ema20Color, ema20Opacity),
+    });
+    ema200SeriesRef.current?.applyOptions({
+      lineWidth: ema200Width,
+      lineStyle: ema200LineStyle as LineStyle,
+      color: withAlpha(ema200Color, ema200Opacity),
+    });
+  }, [chartReady, ema20Width, ema20LineStyle, ema20Color, ema20Opacity, ema200Width, ema200LineStyle, ema200Color, ema200Opacity]);
 
   useClickOutside(settingsRef, showChartSettings, () => setShowChartSettings(false), false);
+
+  const handleExportChartData = () => {
+    if (exportRows.length === 0) return;
+    downloadCsv([
+      ['date', 'price', 'open', 'high', 'low', 'close', 'adj_close', 'volume', 'ibs', 'ema20', 'ema200'],
+      ...exportRows,
+    ], exportFileNamePrefix);
+  };
+
+  const handleResetChartSettings = () => {
+    setShowEMA20(false);
+    setShowEMA200(false);
+    setShowIBS(false);
+    setShowVolume(false);
+    setEma20Width(2);
+    setEma20LineStyle(0);
+    setEma20Color(EMA20_DEFAULT_COLOR);
+    setEma20Opacity(EMA_DEFAULT_OPACITY);
+    setEma200Width(2);
+    setEma200LineStyle(0);
+    setEma200Color(EMA200_DEFAULT_COLOR);
+    setEma200Opacity(EMA_DEFAULT_OPACITY);
+    setShowTradeMarkers(true);
+    setTradeMarkerColor(TRADE_MARKER_DEFAULT_COLOR);
+    setTradeMarkerShape('arrow');
+    setTradeMarkerOpacity(TRADE_MARKER_DEFAULT_OPACITY);
+    setTradeMarkerSize(TRADE_MARKER_DEFAULT_SIZE);
+  };
 
   useEffect(() => {
     if (!chartRef.current || !chartReady || !chartData.length) return;
@@ -732,123 +998,353 @@ export const TradingChart = memo(function TradingChart({ data, trades, splits = 
           ))}
         </div>
 
-        {/* Chart visual settings */}
-        <div ref={settingsRef} className="relative ml-auto">
+        <div className="ml-auto flex items-center gap-2">
           <button
             type="button"
-            onClick={() => setShowChartSettings(v => !v)}
-            className={`p-1.5 rounded-lg border transition-colors ${showChartSettings ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50 dark:bg-gray-900 dark:text-gray-300 dark:border-gray-700 dark:hover:bg-gray-800'}`}
-            title="Настройки графика"
-            aria-label="Настройки графика"
+            onClick={handleExportChartData}
+            disabled={exportRows.length === 0}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800"
+            title="Экспортировать данные графика в CSV"
+            aria-label="Экспортировать данные графика в CSV"
           >
-            <Settings2 className="w-4 h-4" />
+            <Download className="h-4 w-4" />
+            <span>Экспорт CSV</span>
           </button>
 
-          {showChartSettings && (
-            <div className="absolute right-0 top-full z-30 mt-1.5 w-64 rounded-lg border border-gray-200 bg-white p-3 shadow-lg dark:border-gray-700 dark:bg-gray-900 space-y-3">
-              {/* EMA 20 */}
-              <div>
-                <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-2">EMA 20</div>
-                <div className="space-y-1.5">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[11px] text-gray-500 dark:text-gray-400 w-14 shrink-0">Толщина</span>
-                    <div className="flex items-center">
-                      {([1, 2, 3] as const).map((w, i) => (
-                        <button key={w} type="button" onClick={() => setEma20Width(w)}
-                          className={`px-2.5 py-1 text-xs font-medium border transition-colors ${i === 0 ? 'rounded-l-md' : ''} ${i === 2 ? 'rounded-r-md' : ''} ${i > 0 ? '-ml-px' : ''} ${ema20Width === w ? 'relative z-10 bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50 dark:bg-gray-900 dark:text-gray-300 dark:border-gray-700'}`}
-                        >{w}</button>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[11px] text-gray-500 dark:text-gray-400 w-14 shrink-0">Стиль</span>
-                    <div className="flex items-center">
-                      {([{ label: '——', value: 0 }, { label: '- -', value: 2 }] as const).map((opt, i) => (
-                        <button key={opt.value} type="button" onClick={() => setEma20LineStyle(opt.value)}
-                          className={`px-2.5 py-1 text-xs font-medium border transition-colors ${i === 0 ? 'rounded-l-md' : 'rounded-r-md -ml-px'} ${ema20LineStyle === opt.value ? 'relative z-10 bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50 dark:bg-gray-900 dark:text-gray-300 dark:border-gray-700'}`}
-                        >{opt.label}</button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </div>
+          <div ref={settingsRef} className="relative">
+            <button
+              type="button"
+              onClick={() => setShowChartSettings(v => !v)}
+              className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                showChartSettings
+                  ? 'bg-blue-600 text-white border-blue-600'
+                  : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50 dark:bg-gray-900 dark:text-gray-300 dark:border-gray-700 dark:hover:bg-gray-800'
+              }`}
+              title="Настройки графика"
+              aria-label="Настройки графика"
+            >
+              <Settings2 className="w-4 h-4" />
+              <span>Вид</span>
+            </button>
 
-              <div className="border-t border-gray-100 dark:border-gray-800" />
-
-              {/* EMA 200 */}
-              <div>
-                <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-2">EMA 200</div>
-                <div className="space-y-1.5">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[11px] text-gray-500 dark:text-gray-400 w-14 shrink-0">Толщина</span>
-                    <div className="flex items-center">
-                      {([1, 2, 3] as const).map((w, i) => (
-                        <button key={w} type="button" onClick={() => setEma200Width(w)}
-                          className={`px-2.5 py-1 text-xs font-medium border transition-colors ${i === 0 ? 'rounded-l-md' : ''} ${i === 2 ? 'rounded-r-md' : ''} ${i > 0 ? '-ml-px' : ''} ${ema200Width === w ? 'relative z-10 bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50 dark:bg-gray-900 dark:text-gray-300 dark:border-gray-700'}`}
-                        >{w}</button>
-                      ))}
-                    </div>
+            {showChartSettings && (
+              <div className="absolute right-0 top-full z-30 mt-2 w-[22rem] max-w-[calc(100vw-1rem)] rounded-2xl border border-gray-200 bg-white/95 p-3 shadow-2xl backdrop-blur dark:border-gray-700 dark:bg-gray-900/95">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">Настройки графика</div>
+                    <p className="mt-1 text-[11px] leading-4 text-gray-500 dark:text-gray-400">
+                      Цвета, прозрачность и размер маркеров теперь можно настроить без тесной сетки.
+                    </p>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[11px] text-gray-500 dark:text-gray-400 w-14 shrink-0">Стиль</span>
-                    <div className="flex items-center">
-                      {([{ label: '——', value: 0 }, { label: '- -', value: 2 }] as const).map((opt, i) => (
-                        <button key={opt.value} type="button" onClick={() => setEma200LineStyle(opt.value)}
-                          className={`px-2.5 py-1 text-xs font-medium border transition-colors ${i === 0 ? 'rounded-l-md' : 'rounded-r-md -ml-px'} ${ema200LineStyle === opt.value ? 'relative z-10 bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50 dark:bg-gray-900 dark:text-gray-300 dark:border-gray-700'}`}
-                        >{opt.label}</button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="border-t border-gray-100 dark:border-gray-800" />
-
-              {/* Trade markers */}
-              <div>
-                <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-2">Сделки на графике</div>
-                <div className="space-y-1.5">
                   <button
                     type="button"
-                    onClick={() => setShowTradeMarkers(v => !v)}
-                    className={`w-full flex items-center justify-between rounded-lg border px-2.5 py-1.5 text-xs transition-colors ${showTradeMarkers ? 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/30 dark:text-blue-300 dark:border-blue-900/60' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50 dark:bg-gray-900 dark:text-gray-400 dark:border-gray-700'}`}
+                    onClick={handleResetChartSettings}
+                    className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2 py-1 text-[11px] font-medium text-gray-500 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+                    aria-label="Сбросить настройки графика"
                   >
-                    <span>Показывать</span>
-                    <span className="font-medium">{showTradeMarkers ? 'Вкл' : 'Выкл'}</span>
+                    <RotateCcw className="h-3.5 w-3.5" />
+                    <span>Сброс</span>
                   </button>
-                  {showTradeMarkers && (
-                    <>
-                      <div className="flex items-center gap-2">
-                        <span className="text-[11px] text-gray-500 dark:text-gray-400 w-14 shrink-0">Цвет</span>
-                        <div className="flex items-center gap-1.5">
-                          {MARKER_COLORS.map(color => (
-                            <button
-                              key={color}
-                              type="button"
-                              onClick={() => setTradeMarkerColor(color)}
-                              className={`w-5 h-5 rounded-full border-2 transition-transform ${tradeMarkerColor === color ? 'border-gray-700 scale-125 dark:border-gray-200' : 'border-transparent hover:scale-110'}`}
-                              style={{ backgroundColor: color }}
-                              title={color}
-                            />
-                          ))}
-                        </div>
+                </div>
+
+                <div className="mt-3 max-h-[70vh] space-y-3 overflow-y-auto pr-1">
+                  <section className="space-y-3 rounded-xl border border-gray-200 bg-gray-50/80 p-3 dark:border-gray-800 dark:bg-gray-950/40">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <div className="text-xs font-semibold text-gray-900 dark:text-gray-100">EMA 20</div>
+                        <div className="mt-1 h-1.5 w-20 rounded-full" style={{ backgroundColor: withAlpha(ema20Color, ema20Opacity) }} />
                       </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-[11px] text-gray-500 dark:text-gray-400 w-14 shrink-0">Маркер</span>
-                        <div className="flex items-center">
-                          {([{ label: '↑↓', value: 'arrow' }, { label: '●', value: 'circle' }, { label: '■', value: 'square' }] as const).map((opt, i) => (
-                            <button key={opt.value} type="button" onClick={() => setTradeMarkerShape(opt.value)}
-                              className={`px-2.5 py-1 text-xs font-medium border transition-colors ${i === 0 ? 'rounded-l-md' : ''} ${i === 2 ? 'rounded-r-md' : ''} ${i > 0 ? '-ml-px' : ''} ${tradeMarkerShape === opt.value ? 'relative z-10 bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50 dark:bg-gray-900 dark:text-gray-300 dark:border-gray-700'}`}
-                            >{opt.label}</button>
-                          ))}
-                        </div>
+                      <button
+                        type="button"
+                        onClick={() => setShowEMA20(v => !v)}
+                        className={`rounded-full px-2.5 py-1 text-[11px] font-semibold transition-colors ${
+                          showEMA20
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-white text-gray-500 ring-1 ring-gray-200 dark:bg-gray-900 dark:text-gray-300 dark:ring-gray-700'
+                        }`}
+                      >
+                        {showEMA20 ? 'Вкл' : 'Выкл'}
+                      </button>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <div className="text-[11px] font-medium text-gray-500 dark:text-gray-400">Цвет</div>
+                      <div className="grid grid-cols-6 gap-1.5">
+                        {COLOR_SWATCHES.map((color) => (
+                          <button
+                            key={`ema20-${color}`}
+                            type="button"
+                            onClick={() => setEma20Color(color)}
+                            className={`h-4 w-4 rounded-full ring-2 ring-offset-2 ring-offset-white transition-transform hover:scale-110 dark:ring-offset-gray-900 ${
+                              ema20Color === color ? 'ring-gray-700 dark:ring-gray-100' : 'ring-transparent'
+                            }`}
+                            style={{ backgroundColor: color }}
+                            title={color}
+                            aria-label={`Цвет EMA 20 ${color}`}
+                          />
+                        ))}
                       </div>
-                    </>
-                  )}
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <span className="w-20 shrink-0 text-[11px] text-gray-500 dark:text-gray-400">Непрозр.</span>
+                      <input
+                        aria-label="Непрозрачность EMA 20"
+                        type="range"
+                        min="10"
+                        max="100"
+                        step="5"
+                        value={ema20Opacity}
+                        onChange={(event) => setEma20Opacity(Number(event.target.value))}
+                        className="w-full accent-blue-600"
+                      />
+                      <span className="w-10 text-right text-[11px] font-medium text-gray-700 dark:text-gray-200">{ema20Opacity}%</span>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <span className="w-20 shrink-0 text-[11px] text-gray-500 dark:text-gray-400">Толщина</span>
+                      <div className="flex flex-1 items-center">
+                        {([1, 2, 3, 4] as const).map((w, i) => (
+                          <button
+                            key={`ema20-width-${w}`}
+                            type="button"
+                            onClick={() => setEma20Width(w)}
+                            className={`flex-1 border px-2 py-1 text-xs font-medium transition-colors ${
+                              i === 0 ? 'rounded-l-md' : ''
+                            } ${
+                              i === 3 ? 'rounded-r-md' : ''
+                            } ${
+                              i > 0 ? '-ml-px' : ''
+                            } ${
+                              ema20Width === w
+                                ? 'relative z-10 border-blue-600 bg-blue-600 text-white'
+                                : 'border-gray-300 bg-white text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800'
+                            }`}
+                          >
+                            {w}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <div className="text-[11px] font-medium text-gray-500 dark:text-gray-400">Стиль линии</div>
+                      <div className="grid grid-cols-3 gap-1.5">
+                        {EMA_STYLE_OPTIONS.map((opt) => (
+                          <button
+                            key={`ema20-style-${opt.value}`}
+                            type="button"
+                            onClick={() => setEma20LineStyle(opt.value)}
+                            className={`rounded-lg border px-2 py-1.5 text-[11px] font-medium transition-colors ${
+                              ema20LineStyle === opt.value
+                                ? 'border-blue-600 bg-blue-600 text-white'
+                                : 'border-gray-300 bg-white text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800'
+                            }`}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </section>
+
+                  <section className="space-y-3 rounded-xl border border-gray-200 bg-gray-50/80 p-3 dark:border-gray-800 dark:bg-gray-950/40">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <div className="text-xs font-semibold text-gray-900 dark:text-gray-100">EMA 200</div>
+                        <div className="mt-1 h-1.5 w-20 rounded-full" style={{ backgroundColor: withAlpha(ema200Color, ema200Opacity) }} />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setShowEMA200(v => !v)}
+                        className={`rounded-full px-2.5 py-1 text-[11px] font-semibold transition-colors ${
+                          showEMA200
+                            ? 'bg-amber-500 text-white'
+                            : 'bg-white text-gray-500 ring-1 ring-gray-200 dark:bg-gray-900 dark:text-gray-300 dark:ring-gray-700'
+                        }`}
+                      >
+                        {showEMA200 ? 'Вкл' : 'Выкл'}
+                      </button>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <div className="text-[11px] font-medium text-gray-500 dark:text-gray-400">Цвет</div>
+                      <div className="grid grid-cols-6 gap-1.5">
+                        {COLOR_SWATCHES.map((color) => (
+                          <button
+                            key={`ema200-${color}`}
+                            type="button"
+                            onClick={() => setEma200Color(color)}
+                            className={`h-4 w-4 rounded-full ring-2 ring-offset-2 ring-offset-white transition-transform hover:scale-110 dark:ring-offset-gray-900 ${
+                              ema200Color === color ? 'ring-gray-700 dark:ring-gray-100' : 'ring-transparent'
+                            }`}
+                            style={{ backgroundColor: color }}
+                            title={color}
+                            aria-label={`Цвет EMA 200 ${color}`}
+                          />
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <span className="w-20 shrink-0 text-[11px] text-gray-500 dark:text-gray-400">Непрозр.</span>
+                      <input
+                        aria-label="Непрозрачность EMA 200"
+                        type="range"
+                        min="10"
+                        max="100"
+                        step="5"
+                        value={ema200Opacity}
+                        onChange={(event) => setEma200Opacity(Number(event.target.value))}
+                        className="w-full accent-amber-500"
+                      />
+                      <span className="w-10 text-right text-[11px] font-medium text-gray-700 dark:text-gray-200">{ema200Opacity}%</span>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <span className="w-20 shrink-0 text-[11px] text-gray-500 dark:text-gray-400">Толщина</span>
+                      <div className="flex flex-1 items-center">
+                        {([1, 2, 3, 4] as const).map((w, i) => (
+                          <button
+                            key={`ema200-width-${w}`}
+                            type="button"
+                            onClick={() => setEma200Width(w)}
+                            className={`flex-1 border px-2 py-1 text-xs font-medium transition-colors ${
+                              i === 0 ? 'rounded-l-md' : ''
+                            } ${
+                              i === 3 ? 'rounded-r-md' : ''
+                            } ${
+                              i > 0 ? '-ml-px' : ''
+                            } ${
+                              ema200Width === w
+                                ? 'relative z-10 border-amber-500 bg-amber-500 text-white'
+                                : 'border-gray-300 bg-white text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800'
+                            }`}
+                          >
+                            {w}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <div className="text-[11px] font-medium text-gray-500 dark:text-gray-400">Стиль линии</div>
+                      <div className="grid grid-cols-3 gap-1.5">
+                        {EMA_STYLE_OPTIONS.map((opt) => (
+                          <button
+                            key={`ema200-style-${opt.value}`}
+                            type="button"
+                            onClick={() => setEma200LineStyle(opt.value)}
+                            className={`rounded-lg border px-2 py-1.5 text-[11px] font-medium transition-colors ${
+                              ema200LineStyle === opt.value
+                                ? 'border-amber-500 bg-amber-500 text-white'
+                                : 'border-gray-300 bg-white text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800'
+                            }`}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </section>
+
+                  <section className="space-y-3 rounded-xl border border-gray-200 bg-gray-50/80 p-3 dark:border-gray-800 dark:bg-gray-950/40">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <div className="text-xs font-semibold text-gray-900 dark:text-gray-100">Маркеры сделок</div>
+                        <div className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">Вход и выход теперь можно сделать компактнее.</div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setShowTradeMarkers(v => !v)}
+                        className={`rounded-full px-2.5 py-1 text-[11px] font-semibold transition-colors ${
+                          showTradeMarkers
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-white text-gray-500 ring-1 ring-gray-200 dark:bg-gray-900 dark:text-gray-300 dark:ring-gray-700'
+                        }`}
+                      >
+                        {showTradeMarkers ? 'Вкл' : 'Выкл'}
+                      </button>
+                    </div>
+
+                    {showTradeMarkers && (
+                      <>
+                        <div className="space-y-1.5">
+                          <div className="text-[11px] font-medium text-gray-500 dark:text-gray-400">Цвет</div>
+                          <div className="grid grid-cols-6 gap-1.5">
+                            {COLOR_SWATCHES.map((color) => (
+                              <button
+                                key={`marker-${color}`}
+                                type="button"
+                                onClick={() => setTradeMarkerColor(color)}
+                                className={`h-4 w-4 rounded-full ring-2 ring-offset-2 ring-offset-white transition-transform hover:scale-110 dark:ring-offset-gray-900 ${
+                                  tradeMarkerColor === color ? 'ring-gray-700 dark:ring-gray-100' : 'ring-transparent'
+                                }`}
+                                style={{ backgroundColor: color }}
+                                title={color}
+                                aria-label={`Цвет маркеров ${color}`}
+                              />
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-3">
+                          <span className="w-20 shrink-0 text-[11px] text-gray-500 dark:text-gray-400">Непрозр.</span>
+                          <input
+                            aria-label="Непрозрачность маркеров"
+                            type="range"
+                            min="10"
+                            max="100"
+                            step="5"
+                            value={tradeMarkerOpacity}
+                            onChange={(event) => setTradeMarkerOpacity(Number(event.target.value))}
+                            className="w-full accent-blue-600"
+                          />
+                          <span className="w-10 text-right text-[11px] font-medium text-gray-700 dark:text-gray-200">{tradeMarkerOpacity}%</span>
+                        </div>
+
+                        <div className="flex items-center gap-3">
+                          <span className="w-20 shrink-0 text-[11px] text-gray-500 dark:text-gray-400">Размер</span>
+                          <input
+                            aria-label="Размер маркеров"
+                            type="range"
+                            min="40"
+                            max="180"
+                            step="10"
+                            value={tradeMarkerSize}
+                            onChange={(event) => setTradeMarkerSize(Number(event.target.value))}
+                            className="w-full accent-blue-600"
+                          />
+                          <span className="w-10 text-right text-[11px] font-medium text-gray-700 dark:text-gray-200">{tradeMarkerSize}%</span>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <div className="text-[11px] font-medium text-gray-500 dark:text-gray-400">Вариант маркеров</div>
+                          <div className="grid gap-1.5">
+                            {MARKER_VARIANT_OPTIONS.map((opt) => (
+                              <button
+                                key={opt.value}
+                                type="button"
+                                onClick={() => setTradeMarkerShape(opt.value)}
+                                className={`flex items-center justify-between rounded-lg border px-2.5 py-1.5 text-left text-[11px] font-medium transition-colors ${
+                                  tradeMarkerShape === opt.value
+                                    ? 'border-blue-600 bg-blue-600 text-white'
+                                    : 'border-gray-300 bg-white text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800'
+                                }`}
+                              >
+                                <span>{opt.label}</span>
+                                <span className="font-semibold tracking-wide">{opt.preview}</span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </section>
                 </div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
 

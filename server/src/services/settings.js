@@ -30,6 +30,7 @@ function getDefaultSettings() {
             onlyFromTelegramWatches: true,
             symbols: '',
             entrySizingMode: 'balance',
+            entryCapitalMode: 'standard_safe',
             sizingMode: 'notional',
             fixedQuantity: 1,
             fixedNotionalUsd: 1000,

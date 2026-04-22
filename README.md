@@ -1,341 +1,195 @@
-# 🚀 Premium Trading Strategy Backtester
+# Trading IBS Backtester
 
-**Тестировщик торговых стратегий IBS** — интерактивное веб‑приложение для тестирования торговых стратегий на исторических данных. Поддерживает загрузку CSV, конструктор стратегий, бэктестинг, визуализацию графиков на `lightweight‑charts`, локальное хранение датасетов на сервере и e2e/юнит‑тесты.
+Интерактивное приложение для тестирования и сопровождения торговых сценариев на исторических данных. Репозиторий объединяет React/Vite frontend для анализа и Express API для хранения датасетов, мониторинга, уведомлений и служебных интеграций.
 
----
+## Что умеет проект
 
-## 📈 Регламент торговли IBS
+- загружать и хранить датасеты с OHLC-данными
+- запускать бэктесты и показывать метрики, сделки и графики
+- работать со страницами `Акции`, `Опционы`, `Календарь`, `Сплиты`, `Мониторинг`, `Брокер`
+- поддерживать Telegram watches, историю сделок и серверные настройки
+- использовать внешние провайдеры котировок и Webull-интеграции
+- запускаться локально без Docker и разворачиваться через Docker Compose
 
-> Эти правила обязательны для всех запусков стратегии и должны соблюдаться независимо от способа развёртывания.
+## Торговая логика IBS в проекте
 
-- **Торгуем только на закрытии сессии.** Новые позиции открываются исключительно по цене закрытия текущего торгового дня.
-- **Перед закрытием используем оперативные данные IBS.** За одну минуту до конца торгов получаем актуальные значения IBS и фиксируем их для принятия решения.
-- **Выбор инструмента из мониторинга.** Из списка акций в разделе «Мониторинг» выбираем тикер с минимальным IBS среди тех, где показатель строго ниже 10. Если ни один инструмент не удовлетворяет порогу, сделку не открываем.
-- **Держим позицию до закрытия.** После открытия ждём полного закрытия позиции согласно логике стратегии и только затем рассматриваем новые входы.
-- **Повторный вход возможен в тот же день.** Как только позиция закрыта, допускается открытие новой сделки в этот же торговый день при повторном выполнении условий выше.
+- входы выполняются только на закрытии торговой сессии
+- перед закрытием используются актуальные значения IBS
+- новый инструмент выбирается из мониторинга по минимальному IBS ниже порога
+- после закрытия позиции возможен повторный вход в тот же день
 
----
+## Стек
 
-## 🚀 Развертывание
+**Frontend**
+- React 19
+- TypeScript
+- Vite
+- Tailwind CSS
+- Zustand
+- lightweight-charts
 
-### 🎯 Быстрый алгоритм
+**Backend**
+- Node.js
+- Express 5
+- better-sqlite3
+- multer
+- helmet
+- bcrypt
 
-**Продакшен:**
-```bash
-./super-reliable-deploy.sh  # Развернуть (свежий код из GitHub)
-./check-deployment.sh       # Проверить состояние
-```
+**Тесты и инфраструктура**
+- Vitest
+- Testing Library
+- Playwright
+- Docker Compose
+- Nginx
+- Caddy
 
-**Разработка:**
-```bash
-./quick-deploy.sh      # Быстрое обновление и перезапуск
-./check-deployment.sh  # Проверка
-```
+## Быстрый старт
 
-Подробный справочник по скриптам: [`SCRIPTS.md`](SCRIPTS.md)
-Расширённое руководство по системе развертывания: [`DEPLOYMENT.md`](DEPLOYMENT.md)
+Требования:
+- Node.js 18+
+- npm
 
-Рекомендации:
-- Всегда используйте `./super-reliable-deploy.sh` для продакшена
-- После деплоя выполняйте `./check-deployment.sh`
-- При проблемах: `./health-check.sh` → при необходимости `./rollback.sh`
+### 1. Установите зависимости
 
----
-
-## 🏗️ Архитектура и окружение
-
-### Переменные окружения
-
-Правильная схема (реализована в проекте):
-```
-project/
-├── server/
-│   ├── .env              # все секреты и конфигурация (не в git)
-│   ├── .env.example      # шаблон (в git)
-│   └── ...
-├── docker-compose.yml    # только системные переменные и тома
-└── ...
-```
-
-`server/.env` (пример локально):
-```env
-# Порт API
-PORT=3001
-
-# CORS для dev
-FRONTEND_ORIGIN=http://localhost:5173
-
-# Базовая авторизация (в prod пароль обязателен)
-ADMIN_USERNAME=admin@example.com
-ADMIN_PASSWORD=
-
-# Интеграции (опционально)
-TELEGRAM_BOT_TOKEN=
-TELEGRAM_CHAT_ID=
-ALPHA_VANTAGE_API_KEY=
-FINNHUB_API_KEY=
-TWELVE_DATA_API_KEY=
-POLYGON_API_KEY=
-
-# Предпочитаемый провайдер котировок (опционально)
-PREFERRED_API_PROVIDER=alpha_vantage
-
-# Идентификатор сборки (используется фронтендом)
-BUILD_ID=dev
-```
-
-`docker-compose.yml` — только системные переменные и тома (не дублируйте секреты):
-```yaml
-environment:
-  - PORT=3001
-  - DATASETS_DIR=/data/datasets
-  - SETTINGS_FILE=/data/state/settings.json
-  - WATCHES_FILE=/data/state/telegram-watches.json
-  - SPLITS_FILE=/data/state/splits.json
-```
-
-Безопасность:
-- `server/.env` не коммитится
-- Секреты — только в `server/.env` или Docker secrets
-- В `docker-compose.yml` — системные переменные и тома
-
----
-
-## ⚙️ Быстрый старт (локально)
-
-Требования: Node.js 18+ (рекомендуется 18 или 20)
-
-Установка и запуск фронтенда:
 ```bash
 npm install
+cd server
+npm install
+```
+
+### 2. Подготовьте окружение
+
+Для локальной разработки удобнее всего взять шаблон [server/.env.example](server/.env.example) и создать свой `server/.env`.
+
+```bash
+cp server/.env.example server/.env
+```
+
+Минимум, который обычно нужно проверить или переопределить локально:
+
+```env
+FRONTEND_ORIGIN=http://localhost:5173
+ADMIN_USERNAME=admin@example.com
+ADMIN_PASSWORD=
+```
+
+API-ключи, Telegram и Webull-параметры опциональны и нужны только для соответствующих сценариев.
+
+### 3. Запустите API
+
+```bash
+cd server
 npm run dev
 ```
-Откройте `http://localhost:5173` (точный порт покажет Vite).
 
-Сборка и предпросмотр (для e2e/предпрод):
+Сервер будет доступен на `http://localhost:3001`.
+
+### 4. Запустите frontend
+
+В отдельном терминале:
+
 ```bash
+npm run dev
+```
+
+Frontend поднимется на `http://localhost:5173`. В dev-режиме Vite проксирует запросы `/api` на `http://localhost:3001`.
+
+Для быстрой проверки интерфейса можно использовать пример данных из [public/sample-data.csv](public/sample-data.csv).
+
+## Тестирование
+
+```bash
+npm run test:run
+npm run test:e2e
+```
+
+Полезные команды:
+
+```bash
+npm run lint
 npm run build
 npm run preview
 ```
-По умолчанию предпросмотр на `http://localhost:4173`.
 
----
+Если Playwright запускается впервые:
 
-## 🗄️ Локальный сервер датасетов (`server/`)
-
-Позволяет сохранять/загружать датасеты, управлять сплитами и интеграциями.
-
-Установка и запуск:
 ```bash
-cd server
-npm install
-npm run dev
+npx playwright install
 ```
-API доступен на `http://localhost:3001`.
 
-Базовые эндпоинты:
-- `GET /api/status` — статус
-- `GET /api/datasets` — метаданные датасетов
-- `GET /api/datasets/:id` — датасет с данными
-- `POST /api/datasets` — создать
-- `PUT /api/datasets/:id` — обновить
-- `DELETE /api/datasets/:id` — удалить
+## Docker и деплой
 
-Дополнительно:
-- `POST /api/datasets/:id/refresh?provider=alpha_vantage|finnhub`
-- `GET /api/quote/:symbol?provider=alpha_vantage|finnhub`
-- `GET /api/splits`, `GET/PUT/PATCH/DELETE /api/splits/:symbol[/date]`
-- `POST /api/telegram/notify`, `POST /api/telegram/test`
-- `POST /api/auth/login`, `GET /api/auth/check`, `POST /api/auth/logout`
+В репозитории есть production-oriented `docker-compose.yml`. Он поднимает три сервиса:
 
-Переменные окружения сервера (локально): см. блок «Переменные окружения» выше.
+- `server` - Express API
+- `frontend` - собранный frontend за Nginx
+- `caddy` - reverse proxy и TLS
 
----
+Основной сценарий запуска:
 
-## 🐳 Запуск через Docker Compose
-
-1) Подготовка
-- Установите Docker и Docker Compose
-- Создайте `server/.env` (или используйте Docker secrets); ориентир — `server/.env.example`
-- Данные и конфиги хранятся в именованных томах, git на них не влияет
-
-2) Старт (prod):
 ```bash
-docker compose pull
-docker compose up -d
-```
-- Фронтенд: `http://localhost/`
-- API: `/api/*` → контейнер `server:3001`
-
-3) Старт (dev):
-```bash
-docker compose --profile dev up --build -d
-```
-
-4) Остановка:
-```bash
-docker compose down
-```
-
-Пути данных и миграция:
-- `DATASETS_DIR=/data/datasets`
-- `SETTINGS_FILE=/data/state/settings.json`
-- `WATCHES_FILE=/data/state/telegram-watches.json`
-- `SPLITS_FILE=/data/state/splits.json`
-При первом старте пустых томов entrypoint автоматически перенесёт данные из `server/*` в тома.
-
-Secrets:
-- Простой вариант: `env_file: server/.env`
-- Усиленный: Docker secrets в `/run/secrets/*` (entrypoint подхватит, если переменная не задана)
-- Не дублируйте значения в `environment`, чтобы не перебить `env_file`
-
-Бэкапы томов:
-```bash
-# Резервная копия
-docker run --rm -v stonks_datasets:/v -v $(pwd):/b busybox sh -c 'cd /v && tar czf /b/stonks_datasets.tgz .'
-docker run --rm -v stonks_state:/v -v $(pwd):/b busybox sh -c 'cd /v && tar czf /b/stonks_state.tgz .'
-
-# Восстановление
-docker run --rm -v stonks_datasets:/v -v $(pwd):/b busybox sh -c 'cd /v && tar xzf /b/stonks_datasets.tgz'
-docker run --rm -v stonks_state:/v -v $(pwd):/b busybox sh -c 'cd /v && tar xzf /b/stonks_state.tgz'
-```
-
----
-
-## 📈 Реальные рыночные данные (опционально)
-
-Поддерживаются Alpha Vantage, Finnhub, Twelve Data, Polygon. Установите ключи (локально — `server/.env`, в Docker — корневой `.env` или secrets):
-```env
-ALPHA_VANTAGE_API_KEY=...
-FINNHUB_API_KEY=...
-TWELVE_DATA_API_KEY=...
-POLYGON_API_KEY=...
-```
-Затем используйте UI или клиент `src/lib/api.ts`.
-
----
-
-## 🧪 Тестирование
-
-Юнит‑тесты (Vitest):
-```bash
-npm run test        # интерактивно
-npm run test:run    # одноразовый прогон
-```
-
-E2E‑тесты (Playwright):
-```bash
-npx playwright install   # однократно установить браузеры
-npm run test:e2e
-npm run test:e2e:chromium
-npm run test:e2e:firefox
-npm run test:e2e:webkit
-npm run test:e2e:ui      # UI‑режим
-```
-E2E автоматически собирают проект и запускают предпросмотр (`npm run build && npm run preview`) на `http://localhost:4173`.
-
-Скрипты npm (корень): `dev`, `build`, `build:check`, `preview`, `lint`, `test*`.
-Скрипты сервера — в `server/package.json` (`dev`, `start`).
-
----
-
-## 🧱 Структура проекта
-
-```
-trading_strategies/
-├── src/                        # фронтенд (React + TS)
-│   ├── components/             # графики, формы, дашборды, сплиты, Telegram
-│   ├── lib/                    # бэктест‑логика, индикаторы, метрики, API‑клиент
-│   ├── stores/                 # состояние (zustand)
-│   └── types/                  # типы
-├── server/                     # Express‑сервер (модульная архитектура)
-│   ├── server.js               # точка входа (~140 строк)
-│   ├── src/                    # модули сервера
-│   │   ├── config/             # конфигурация и переменные окружения
-│   │   ├── middleware/         # auth.js, rateLimiter.js
-│   │   ├── providers/          # API-провайдеры данных
-│   │   │   ├── alphaVantage.js
-│   │   │   ├── finnhub.js
-│   │   │   ├── twelveData.js
-│   │   │   └── polygon.js
-│   │   ├── routes/             # обработчики маршрутов
-│   │   │   ├── auth.js
-│   │   │   ├── calendar.js
-│   │   │   ├── datasets.js
-│   │   │   ├── quotes.js
-│   │   │   ├── settings.js
-│   │   │   ├── splits.js
-│   │   │   ├── status.js
-│   │   │   ├── telegram.js
-│   │   │   └── trades.js
-│   │   ├── services/           # бизнес‑логика
-│   │   │   ├── datasets.js
-│   │   │   ├── dates.js
-│   │   │   ├── settings.js
-│   │   │   ├── splits.js
-│   │   │   ├── telegram.js
-│   │   │   └── trades.js
-│   │   └── utils/              # вспомогательные функции
-│   ├── datasets/               # хранилище датасетов (JSON)
-│   └── *.json                  # файлы состояния (splits, settings, watches, etc.)
-├── public/                     # статические файлы (sample CSV)
-├── docker/                     # Dockerfile фронта, nginx.conf, entrypoint
-├── caddy/                      # Caddyfile (прод HTTPS)
-├── README.md                   # этот файл
-└── ...                         # конфиги, отчёты тестов, скрипты
-```
-
-Настройки фронтенда:
-- `VITE_BUILD_ID` — отображается в футере
-- Базовый путь `/`, прокси `/api`
-- Клиент `src/lib/api.ts` использует относительный `/api`
-
-Используемые технологии:
-- React 19, TypeScript 5, Vite 7, Tailwind CSS
-- Zustand, clsx, lucide‑react, papaparse, lightweight‑charts
-- Vitest, Testing Library, Playwright, axe‑core
-
-Лицензия: не указана.
-
----
-
-## 🌐 Прод‑деплой с HTTPS через Caddy
-
-`docker-compose.yml` содержит сервисы `server`, `frontend`, `caddy`. Caddy принимает 80/443 и проксирует `/api/*` → `server:3001`, остальные запросы — `frontend:80`.
-
-Пример `caddy/Caddyfile`:
-```
-example.com {
-  encode gzip
-  log {
-    output file /var/log/caddy/access.log
-  }
-  handle_path /api/* {
-    reverse_proxy server:3001
-  }
-  handle {
-    reverse_proxy frontend:80
-  }
-}
-```
-
-Команды:
-```bash
-docker compose down
 docker compose up -d --build
 ```
-Проверка:
-- `https://example.com/` — SPA
-- `https://example.com/api/status` — 200 OK
 
-TLS‑сертификаты выпускаются автоматически (Let’s Encrypt).
+Что важно знать:
 
----
+- compose-файл по умолчанию ожидает production env в `/home/ubuntu/stonks-config/.env`
+- данные и состояние выносятся в Docker volumes
+- для серверного обслуживания в репозитории есть [deploy.sh](deploy.sh), [health-check.sh](health-check.sh) и [cleanup-server.sh](cleanup-server.sh)
 
-## 📌 Примечания
+Если нужен именно локальный режим разработки, проще использовать `npm run dev` для frontend и `cd server && npm run dev` для API.
 
-- Минимум 2 ГБ RAM для сборки фронтенда (лучше 4 ГБ). На слабых серверах включите swap или собирайте фронтенд локально/в CI
-- В Docker сборка фронта проходит в стадии `builder` с `NODE_OPTIONS=--max-old-space-size=256`
-- В runtime у сервера используются только прод‑зависимости
-- Для быстрого деплоя без пересборки фронта можно положить готовый `dist` и заменить стадию сборки во фронтенд‑Dockerfile на `COPY dist /usr/share/nginx/html`
+## Переменные окружения
 
+Сервер умеет подхватывать настройки из нескольких мест. Для локальной разработки обычно достаточно `server/.env`, а для production в текущем compose используется внешний файл `/home/ubuntu/stonks-config/.env`.
+
+Порядок загрузки для dev-окружения:
+
+- `~/stonks-config/.env`
+- `server/.env`
+- корневой `.env`
+- переменные процесса
+
+Наиболее важные переменные:
+
+- `PORT`
+- `FRONTEND_ORIGIN`
+- `ADMIN_USERNAME`
+- `ADMIN_PASSWORD`
+- `ALPHA_VANTAGE_API_KEY`
+- `FINNHUB_API_KEY`
+- `TWELVE_DATA_API_KEY`
+- `POLYGON_API_KEY`
+- `TELEGRAM_BOT_TOKEN`
+- `TELEGRAM_CHAT_ID`
+- `WEBULL_APP_KEY`
+- `WEBULL_APP_SECRET`
+- `WEBULL_ACCESS_TOKEN`
+- `WEBULL_ACCOUNT_ID`
+
+Подробный шаблон находится в [server/.env.example](server/.env.example).
+
+## Структура проекта
+
+```text
+.
+├── src/              # frontend: страницы, компоненты, hooks, lib
+├── server/           # backend: routes, services, middleware, providers
+├── public/           # статические файлы и sample CSV
+├── docker/           # Dockerfile и runtime-конфиги
+├── caddy/            # Caddyfile для reverse proxy/TLS
+├── deploy.sh         # серверный деплой
+├── health-check.sh   # диагностика окружения
+└── README.md
+```
+
+## Полезные файлы
+
+- [server/README.md](server/README.md) - детали серверной архитектуры и API
+- [ENVIRONMENT.md](ENVIRONMENT.md) - работа с переменными окружения
+- [PROVIDERS.md](PROVIDERS.md) - заметки по провайдерам рыночных данных
+
+## Статус
+
+Проект активно развивается. Если вы обновляете документацию, лучше сверять README с реальными `package.json`, `docker-compose.yml` и файлами в `server/src/routes`, чтобы команды и эндпоинты не расходились с кодом.

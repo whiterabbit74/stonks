@@ -709,6 +709,7 @@ export function MultiTickerPage() {
                   trades={backtestResults.trades}
                   splits={tickersData.find(t => t.ticker === selectedPriceTicker)?.splits}
                   isVisible={activeTab === 'price'}
+                  exportFileNamePrefix={`price-data-${selectedPriceTicker.toLowerCase()}`}
                   toolbarPrefix={tickers.length > 1 ? (
                     <div className="flex flex-wrap gap-1.5">
                       {tickers.map((t) => (

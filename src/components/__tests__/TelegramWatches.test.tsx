@@ -339,6 +339,7 @@ describe('TelegramWatches manual close flow', () => {
 
     await screen.findByRole('dialog');
     await screen.findByText(/Текущая цена 198\.42 USD/);
+    expect(screen.queryByText('Количество')).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Добавить сделку' }));
 
@@ -347,7 +348,6 @@ describe('TelegramWatches manual close flow', () => {
         expect.objectContaining({
           symbol: 'AAPL',
           entryPrice: 198.42,
-          quantity: 1
         })
       );
     });
