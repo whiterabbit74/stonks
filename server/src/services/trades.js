@@ -199,6 +199,12 @@ function mergeNotes(existingNotes, nextNote) {
     return `${base}\n${addition}`;
 }
 
+function createTradeError(status, message) {
+    const error = new Error(message);
+    error.status = status;
+    return error;
+}
+
 function calculateTradePnl(entryPrice, exitPrice) {
     if (!Number.isFinite(entryPrice) || !Number.isFinite(exitPrice) || entryPrice === 0) {
         return { pnlAbsolute: null, pnlPercent: null };
@@ -476,7 +482,9 @@ function closeMonitorTradeFromBrokerTrade(brokerTrade, options = {}) {
 // ─── Manual trade management ──────────────────────────────────────────────────
 
 function createManualTrade({ symbol, entryDate, exitDate, entryPrice, exitPrice, entryIBS, exitIBS, notes, quantity }) {
-    if (!symbol) return null;
+    if (!symbol) {
+        throw createTradeError(400, 'symbol is required');
+    }
     migrateJsonToDb();
     const db = getDb();
 
@@ -484,6 +492,35 @@ function createManualTrade({ symbol, entryDate, exitDate, entryPrice, exitPrice,
     const ep = typeof entryPrice === 'number' ? entryPrice : (entryPrice != null ? Number(entryPrice) : null);
     const xp = typeof exitPrice === 'number' ? exitPrice : (exitPrice != null ? Number(exitPrice) : null);
     const status = (exitDate || xp != null) ? 'closed' : 'open';
+    const openTrade = status === 'open' ? getCurrentOpenTrade() : null;
+
+    if (!entryDate || typeof entryDate !== 'string') {
+        throw createTradeError(400, 'entryDate is required');
+    }
+    if (!Number.isFinite(ep) || ep <= 0) {
+        throw createTradeError(400, 'entryPrice must be a positive number');
+    }
+    if (xp != null && (!Number.isFinite(xp) || xp <= 0)) {
+        throw createTradeError(400, 'exitPrice must be a positive number');
+    }
+    if (typeof entryIBS === 'number' && (entryIBS < 0 || entryIBS > 1)) {
+        throw createTradeError(400, 'entryIBS must be in the range 0-1');
+    }
+    if (typeof exitIBS === 'number' && (exitIBS < 0 || exitIBS > 1)) {
+        throw createTradeError(400, 'exitIBS must be in the range 0-1');
+    }
+    if (quantity != null) {
+        const qty = Number(quantity);
+        if (!Number.isFinite(qty) || qty <= 0) {
+            throw createTradeError(400, 'quantity must be a positive number');
+        }
+    }
+    if (status === 'open' && openTrade) {
+        throw createTradeError(409, `Cannot open manual trade for ${normalizedSymbol}: trade ${openTrade.id} is still open for ${openTrade.symbol}`);
+    }
+    if (status === 'open' && telegramWatches instanceof Map && !telegramWatches.has(normalizedSymbol)) {
+        throw createTradeError(400, `Cannot open manual trade for ${normalizedSymbol}: add this ticker to monitoring first`);
+    }
 
     const { pnlAbsolute, pnlPercent } = calculateTradePnl(ep, xp);
     const holdingDays = calculateHoldingDays(entryDate, exitDate);

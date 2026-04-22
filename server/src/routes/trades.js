@@ -48,7 +48,7 @@ router.post('/trades', (req, res) => {
         if (!trade) return res.status(500).json({ error: 'Failed to create trade' });
         res.status(201).json(serializeTradeForResponse(trade));
     } catch (e) {
-        res.status(500).json({ error: e && e.message ? e.message : 'Failed to create trade' });
+        res.status(e && Number.isInteger(e.status) ? e.status : 500).json({ error: e && e.message ? e.message : 'Failed to create trade' });
     }
 });
 

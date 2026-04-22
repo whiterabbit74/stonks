@@ -202,6 +202,47 @@ describe('API Module', () => {
       expect(result).toEqual(mockResponse);
     });
 
+    it('should create a manual monitor trade', async () => {
+      const createdTrade = {
+        id: 'trade-2',
+        symbol: 'AAPL',
+        status: 'open',
+        entryDate: '2026-04-01',
+        entryPrice: 198.42,
+        entryIBS: 0.14,
+        quantity: 3
+      };
+      (global.fetch as any).mockResolvedValue({
+        ok: true,
+        json: vi.fn().mockResolvedValue(createdTrade)
+      });
+
+      const result = await DatasetAPI.createManualTrade({
+        symbol: 'AAPL',
+        entryDate: '2026-04-01',
+        entryPrice: 198.42,
+        entryIBS: 0.14,
+        quantity: 3,
+        notes: 'manual monitor correction'
+      });
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        `${API_BASE_URL}/trades`,
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({
+            symbol: 'AAPL',
+            entryDate: '2026-04-01',
+            entryPrice: 198.42,
+            entryIBS: 0.14,
+            quantity: 3,
+            notes: 'manual monitor correction'
+          })
+        })
+      );
+      expect(result).toEqual(createdTrade);
+    });
+
     it('should close a monitor trade manually', async () => {
       const closedTrade = {
         id: 'trade-1',

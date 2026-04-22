@@ -11,6 +11,7 @@ vi.mock('../../lib/api', () => ({
     getMonitorConsistency: vi.fn(),
     getMonitorTradeHistory: vi.fn(),
     getQuote: vi.fn(),
+    createManualTrade: vi.fn(),
     closeMonitorTrade: vi.fn(),
     deleteTelegramWatch: vi.fn(),
     simulateTelegram: vi.fn(),
@@ -236,5 +237,128 @@ describe('TelegramWatches manual close flow', () => {
     expect(await screen.findByText('Мониторинг закрыт')).toBeInTheDocument();
     expect(screen.getByText('Monitor-позиция V закрыта вручную.')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Закрыть monitor' })).not.toBeInTheDocument();
+  });
+
+  it('creates a manual monitor trade from the trades tab and refreshes state', async () => {
+    const watch = {
+      symbol: 'AAPL',
+      highIBS: 0.75,
+      lowIBS: 0.1,
+      thresholdPct: 0.3,
+      entryPrice: null,
+      entryDate: null,
+      entryIBS: null,
+      entryDecisionTime: null,
+      currentTradeId: null,
+      linkedBrokerTradeId: null,
+      isOpenPosition: false
+    };
+    const beforeSnapshot = {
+      fetchedAt: '2026-04-02T00:00:00.000Z',
+      openMonitorTrade: null,
+      openBrokerTrade: null,
+      issues: [],
+      proposedActions: []
+    };
+    const afterSnapshot = {
+      ...beforeSnapshot,
+      fetchedAt: '2026-04-02T00:01:00.000Z',
+      openMonitorTrade: {
+        id: 'trade-aapl',
+        symbol: 'AAPL',
+        status: 'open',
+        entryDate: '2026-04-02',
+        exitDate: null,
+        entryPrice: 198.42,
+        exitPrice: null,
+        entryIBS: 0.14,
+        exitIBS: null,
+        entryDecisionTime: null,
+        exitDecisionTime: null,
+        pnlPercent: null,
+        pnlAbsolute: null,
+        holdingDays: null,
+        notes: null,
+        source: 'manual',
+        isHidden: false,
+        isTest: false,
+        brokerOrderId: null,
+        clientOrderId: null,
+        filledQty: null,
+        quantity: 1,
+        linkedBrokerTradeId: null
+      }
+    };
+    const historyBefore = {
+      trades: [],
+      openTrade: null,
+      total: 0,
+      lastUpdated: '2026-04-02T00:00:00.000Z'
+    };
+    const historyAfter = {
+      trades: [afterSnapshot.openMonitorTrade],
+      openTrade: afterSnapshot.openMonitorTrade,
+      total: 1,
+      lastUpdated: '2026-04-02T00:01:00.000Z'
+    };
+
+    vi.mocked(DatasetAPI.listTelegramWatches)
+      .mockResolvedValueOnce([watch] as any)
+      .mockResolvedValueOnce([{
+        ...watch,
+        entryPrice: 198.42,
+        entryDate: '2026-04-02',
+        entryIBS: 0.14,
+        currentTradeId: 'trade-aapl',
+        isOpenPosition: true
+      }] as any);
+    vi.mocked(DatasetAPI.getMonitorConsistency)
+      .mockResolvedValueOnce(beforeSnapshot as any)
+      .mockResolvedValueOnce(afterSnapshot as any);
+    vi.mocked(DatasetAPI.getMonitorTradeHistory)
+      .mockResolvedValueOnce(historyBefore as any)
+      .mockResolvedValueOnce(historyAfter as any);
+    vi.mocked(DatasetAPI.getQuote).mockResolvedValue({
+      current: 198.42,
+      high: 200,
+      low: 196,
+      open: 197.5,
+      prevClose: 197.1
+    } as any);
+    vi.mocked(DatasetAPI.createManualTrade).mockResolvedValue(afterSnapshot.openMonitorTrade as any);
+
+    render(
+      <MemoryRouter>
+        <TelegramWatches />
+      </MemoryRouter>
+    );
+
+    await screen.findByText('Мониторинг');
+    fireEvent.click(screen.getByRole('button', { name: 'Сделки' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Добавить ручную сделку' }));
+
+    await screen.findByRole('dialog');
+    await screen.findByText(/Текущая цена 198\.42 USD/);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Добавить сделку' }));
+
+    await waitFor(() => {
+      expect(DatasetAPI.createManualTrade).toHaveBeenCalledWith(
+        expect.objectContaining({
+          symbol: 'AAPL',
+          entryPrice: 198.42,
+          quantity: 1
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(DatasetAPI.listTelegramWatches).toHaveBeenCalledTimes(2);
+      expect(DatasetAPI.getMonitorTradeHistory).toHaveBeenCalledTimes(2);
+      expect(DatasetAPI.getMonitorConsistency).toHaveBeenCalledTimes(2);
+    });
+
+    expect(await screen.findByText('Сделка добавлена')).toBeInTheDocument();
+    expect(screen.getByText('Monitor-позиция AAPL добавлена вручную и теперь считается открытой.')).toBeInTheDocument();
   });
 });

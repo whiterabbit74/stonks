@@ -5,6 +5,7 @@ import { DatasetAPI } from '../lib/api';
 import { ConfirmModal } from './ConfirmModal';
 import { InfoModal } from './InfoModal';
 import { CloseMonitorTradeModal } from './CloseMonitorTradeModal';
+import { ManualMonitorTradeModal } from './ManualMonitorTradeModal';
 import { useAppStore } from '../stores';
 import { Link } from 'react-router-dom';
 import type { MonitorTradeHistoryResponse, MonitorTradeRecord, EquityPoint, MonitorConsistencyResponse } from '../types';
@@ -152,6 +153,15 @@ export function TelegramWatches() {
     loading: false,
     error: null,
   });
+  const [manualTradeState, setManualTradeState] = useState<{
+    open: boolean;
+    loading: boolean;
+    error: string | null;
+  }>({
+    open: false,
+    loading: false,
+    error: null,
+  });
   const [monitorMarginPercent, setMonitorMarginPercent] = useState<number>(() => {
     if (typeof window === 'undefined') return 100;
     return normalizeMonitorMarginPercent(Number(window.localStorage.getItem(LS.MONITOR_MARGIN_PCT) || 100));
@@ -183,6 +193,10 @@ export function TelegramWatches() {
       return 0;
     });
   }, [watches, sortConfig]);
+  const watchSymbols = useMemo(
+    () => Array.from(new Set(watches.map((watch) => watch.symbol))).sort((a, b) => a.localeCompare(b)),
+    [watches]
+  );
 
   const handleSort = (key: keyof WatchItem) => {
     setSortConfig(prev => ({
@@ -451,6 +465,38 @@ export function TelegramWatches() {
     }
   }, [closeMonitorState.symbol, closeMonitorState.tradeId, load]);
 
+  const handleCreateManualTrade = useCallback(async (payload: {
+    symbol: string;
+    entryDate: string;
+    entryPrice: number;
+    entryIBS?: number;
+    quantity?: number;
+    notes?: string;
+  }) => {
+    try {
+      setManualTradeState((prev) => ({ ...prev, loading: true, error: null }));
+      const createdTrade = await DatasetAPI.createManualTrade(payload);
+      await load();
+      setManualTradeState({
+        open: false,
+        loading: false,
+        error: null,
+      });
+      setInfo({
+        open: true,
+        title: 'Сделка добавлена',
+        message: `Monitor-позиция ${createdTrade.symbol} добавлена вручную и теперь считается открытой.`,
+        kind: 'success',
+      });
+    } catch (e) {
+      setManualTradeState((prev) => ({
+        ...prev,
+        loading: false,
+        error: e instanceof Error ? e.message : 'Не удалось добавить ручную сделку',
+      }));
+    }
+  }, [load]);
+
   return (
     <div className="space-y-4">
       <PageHeader
@@ -653,13 +699,46 @@ export function TelegramWatches() {
       )}
 
       {activeTab === 'trades' && (
-        <MonitorTradeHistoryPanel
-          data={tradeHistory}
-          loading={tradesLoading}
-          error={tradesError}
-          onRefresh={loadTrades}
-          initialCapital={initialCapital}
-        />
+        <>
+          <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-900">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="max-w-2xl">
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Ручная корректировка monitor-сделки</h3>
+                <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
+                  Если сайт пропустил вход или позиция была открыта вне системы, можно добавить её вручную. После этого monitor будет считать позицию открытой и продолжит искать выход по стратегии.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setManualTradeState({ open: true, loading: false, error: null })}
+                disabled={manualTradeState.loading || !!tradeHistory?.openTrade || watchSymbols.length === 0}
+                className="inline-flex items-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-indigo-500 dark:hover:bg-indigo-600"
+              >
+                Добавить ручную сделку
+              </button>
+            </div>
+
+            {tradeHistory?.openTrade ? (
+              <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
+                Сейчас уже открыта monitor-позиция {tradeHistory.openTrade.symbol}. Сначала закройте её, чтобы не сломать расчёт состояния.
+              </div>
+            ) : null}
+
+            {!tradeHistory?.openTrade && watchSymbols.length === 0 ? (
+              <div className="mt-3 rounded-lg border border-dashed border-gray-300 bg-gray-50 px-3 py-2 text-sm text-gray-600 dark:border-gray-700 dark:bg-gray-800/50 dark:text-gray-300">
+                Сначала добавьте тикер в мониторинг на вкладке «Тикеры», иначе стратегия не сможет искать выход для ручной позиции.
+              </div>
+            ) : null}
+          </section>
+
+          <MonitorTradeHistoryPanel
+            data={tradeHistory}
+            loading={tradesLoading}
+            error={tradesError}
+            onRefresh={loadTrades}
+            initialCapital={initialCapital}
+          />
+        </>
       )}
 
       {activeTab === 'tickers' && (
@@ -905,6 +984,22 @@ export function TelegramWatches() {
           error: null,
         })}
         onSubmit={handleCloseMonitorTrade}
+      />
+      <ManualMonitorTradeModal
+        open={manualTradeState.open}
+        watchSymbols={watchSymbols}
+        quoteProvider={resultsQuoteProvider}
+        loading={manualTradeState.loading}
+        error={manualTradeState.error}
+        onClose={() => {
+          if (manualTradeState.loading) return;
+          setManualTradeState({
+            open: false,
+            loading: false,
+            error: null,
+          });
+        }}
+        onSubmit={handleCreateManualTrade}
       />
       <InfoModal open={info.open} title={info.title} message={info.message} kind={info.kind} onClose={() => setInfo({ open: false, title: '', message: '' })} />
     </div>

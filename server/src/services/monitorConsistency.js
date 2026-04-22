@@ -136,7 +136,7 @@ function getMonitorConsistencySnapshot() {
                         monitorTradeId: openMonitorTrade.id,
                         brokerTradeId: openBrokerTrade.id,
                     }));
-                } else {
+                } else if (!sameDayOpenBrokerMatch) {
                     issues.push(buildIssue({
                         code: 'monitor_broker_symbol_mismatch',
                         severity: 'error',
@@ -173,7 +173,7 @@ function getMonitorConsistencySnapshot() {
                     monitorTradeId: openMonitorTrade.id,
                     autoFixable: false,
                 }));
-            } else {
+            } else if (openMonitorTrade.source !== 'manual') {
                 issues.push(buildIssue({
                     code: 'monitor_trade_without_broker_position',
                     severity: 'error',
