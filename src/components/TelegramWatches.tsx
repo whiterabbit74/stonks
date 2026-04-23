@@ -5,6 +5,7 @@ import { DatasetAPI } from '../lib/api';
 import { ConfirmModal } from './ConfirmModal';
 import { InfoModal } from './InfoModal';
 import { CloseMonitorTradeModal } from './CloseMonitorTradeModal';
+import { EditMonitorTradeModal } from './EditMonitorTradeModal';
 import { ManualMonitorTradeModal } from './ManualMonitorTradeModal';
 import { useAppStore } from '../stores';
 import { Link } from 'react-router-dom';
@@ -159,6 +160,17 @@ export function TelegramWatches() {
     error: string | null;
   }>({
     open: false,
+    loading: false,
+    error: null,
+  });
+  const [editTradeState, setEditTradeState] = useState<{
+    open: boolean;
+    trade: MonitorTradeRecord | null;
+    loading: boolean;
+    error: string | null;
+  }>({
+    open: false,
+    trade: null,
     loading: false,
     error: null,
   });
@@ -428,6 +440,41 @@ export function TelegramWatches() {
     }
   }, [resultsQuoteProvider]);
 
+  const openMonitorCloseDialogFromTrade = useCallback(async (trade: MonitorTradeRecord) => {
+    if (trade.status !== 'open') return;
+    const fallbackDate = getEtDateKey();
+    setCloseMonitorState({
+      open: true,
+      symbol: trade.symbol,
+      tradeId: trade.id,
+      exitDate: fallbackDate,
+      exitPrice: trade.exitPrice ?? trade.entryPrice,
+      exitIbs: trade.exitIBS,
+      quoteHint: 'Подтягиваю текущую котировку…',
+      loading: false,
+      error: null,
+    });
+
+    try {
+      const quote = await DatasetAPI.getQuote(trade.symbol, resultsQuoteProvider);
+      const liveIbs = calculateLiveIbs(quote);
+      setCloseMonitorState((prev) => ({
+        ...prev,
+        exitPrice: quote.current ?? prev.exitPrice,
+        exitIbs: liveIbs,
+        quoteHint: quote.current != null
+          ? `Текущая цена ${quote.current.toFixed(2)} USD из ${resultsQuoteProvider}`
+          : 'Котировка недоступна, укажи цену вручную.',
+      }));
+    } catch (e) {
+      setCloseMonitorState((prev) => ({
+        ...prev,
+        quoteHint: 'Котировка недоступна, укажи цену вручную.',
+        error: e instanceof Error ? e.message : 'Не удалось получить текущую котировку',
+      }));
+    }
+  }, [resultsQuoteProvider]);
+
   const handleCloseMonitorTrade = useCallback(async (payload: {
     exitDate: string;
     exitPrice: number;
@@ -495,6 +542,45 @@ export function TelegramWatches() {
       }));
     }
   }, [load]);
+
+  const handleUpdateMonitorTrade = useCallback(async (payload: {
+    entryDate: string;
+    entryPrice: number;
+    entryIBS: number | null;
+    exitDate?: string | null;
+    exitPrice?: number | null;
+    exitIBS?: number | null;
+    quantity: number | null;
+    notes: string | null;
+    isHidden: boolean;
+    isTest: boolean;
+  }) => {
+    const trade = editTradeState.trade;
+    if (!trade) return;
+    try {
+      setEditTradeState((prev) => ({ ...prev, loading: true, error: null }));
+      const updatedTrade = await DatasetAPI.updateTrade(trade.id, payload);
+      await load();
+      setEditTradeState({
+        open: false,
+        trade: null,
+        loading: false,
+        error: null,
+      });
+      setInfo({
+        open: true,
+        title: 'Сделка обновлена',
+        message: `Monitor-сделка ${updatedTrade.symbol} сохранена.`,
+        kind: 'success',
+      });
+    } catch (e) {
+      setEditTradeState((prev) => ({
+        ...prev,
+        loading: false,
+        error: e instanceof Error ? e.message : 'Не удалось сохранить сделку',
+      }));
+    }
+  }, [editTradeState.trade, load]);
 
   return (
     <div className="space-y-4">
@@ -737,6 +823,8 @@ export function TelegramWatches() {
             loading={tradesLoading}
             error={tradesError}
             onRefresh={loadTrades}
+            onEditTrade={(trade) => setEditTradeState({ open: true, trade, loading: false, error: null })}
+            onCloseTrade={openMonitorCloseDialogFromTrade}
             initialCapital={initialCapital}
           />
         </>
@@ -1001,6 +1089,22 @@ export function TelegramWatches() {
           });
         }}
         onSubmit={handleCreateManualTrade}
+      />
+      <EditMonitorTradeModal
+        open={editTradeState.open}
+        trade={editTradeState.trade}
+        loading={editTradeState.loading}
+        error={editTradeState.error}
+        onClose={() => {
+          if (editTradeState.loading) return;
+          setEditTradeState({
+            open: false,
+            trade: null,
+            loading: false,
+            error: null,
+          });
+        }}
+        onSubmit={handleUpdateMonitorTrade}
       />
       <InfoModal open={info.open} title={info.title} message={info.message} kind={info.kind} onClose={() => setInfo({ open: false, title: '', message: '' })} />
     </div>

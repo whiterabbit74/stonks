@@ -547,7 +547,19 @@ function createManualTrade({ symbol, entryDate, exitDate, entryPrice, exitPrice,
     return trade;
 }
 
-function updateTrade(id, { notes, isHidden, isTest, exitDate, exitPrice, exitIBS, linkedBrokerTradeId }) {
+function updateTrade(id, {
+    notes,
+    isHidden,
+    isTest,
+    entryDate,
+    entryPrice,
+    entryIBS,
+    exitDate,
+    exitPrice,
+    exitIBS,
+    quantity,
+    linkedBrokerTradeId,
+}) {
     if (!id) return null;
     migrateJsonToDb();
     const db = getDb();
@@ -557,26 +569,84 @@ function updateTrade(id, { notes, isHidden, isTest, exitDate, exitPrice, exitIBS
 
     const updates = [];
     const params = [];
+    let nextEntryDate = existing.entry_date;
+    let nextExitDate = existing.exit_date;
+    let nextEntryPrice = existing.entry_price;
+    let nextExitPrice = existing.exit_price;
+    let shouldSyncProjection = false;
+    let shouldRecalculate = false;
+
+    const normalizePositiveNumber = (value, fieldName) => {
+        const num = typeof value === 'number' ? value : Number(value);
+        if (!Number.isFinite(num) || num <= 0) {
+            throw createTradeError(400, `${fieldName} must be a positive number`);
+        }
+        return num;
+    };
+
+    const normalizeIbs = (value, fieldName) => {
+        if (value === null) return null;
+        const num = typeof value === 'number' ? value : Number(value);
+        if (!Number.isFinite(num) || num < 0 || num > 1) {
+            throw createTradeError(400, `${fieldName} must be in the range 0-1`);
+        }
+        return num;
+    };
 
     if (notes !== undefined) { updates.push('notes = ?'); params.push(notes); }
     if (isHidden !== undefined) { updates.push('is_hidden = ?'); params.push(isHidden ? 1 : 0); }
     if (isTest !== undefined) { updates.push('is_test = ?'); params.push(isTest ? 1 : 0); }
     if (linkedBrokerTradeId !== undefined) { updates.push('linked_broker_trade_id = ?'); params.push(linkedBrokerTradeId); }
 
-    // Allow updating exit info for manual/open trades
-    if (exitDate !== undefined) { updates.push('exit_date = ?'); params.push(exitDate); }
+    if (entryDate !== undefined) {
+        nextEntryDate = typeof entryDate === 'string' && entryDate.trim() ? entryDate.trim() : null;
+        updates.push('entry_date = ?'); params.push(nextEntryDate);
+        shouldSyncProjection = true;
+        shouldRecalculate = true;
+    }
+    if (entryPrice !== undefined) {
+        nextEntryPrice = normalizePositiveNumber(entryPrice, 'entryPrice');
+        updates.push('entry_price = ?'); params.push(nextEntryPrice);
+        shouldSyncProjection = true;
+        shouldRecalculate = true;
+    }
+    if (entryIBS !== undefined) {
+        updates.push('entry_ibs = ?'); params.push(normalizeIbs(entryIBS, 'entryIBS'));
+        shouldSyncProjection = true;
+    }
+    if (quantity !== undefined) {
+        const nextQuantity = quantity === null ? null : normalizePositiveNumber(quantity, 'quantity');
+        updates.push('quantity = ?'); params.push(nextQuantity);
+    }
+
+    if (exitDate !== undefined) {
+        nextExitDate = typeof exitDate === 'string' && exitDate.trim() ? exitDate.trim() : null;
+        updates.push('exit_date = ?'); params.push(nextExitDate);
+        shouldSyncProjection = true;
+        shouldRecalculate = true;
+    }
     if (exitPrice !== undefined) {
-        const xp = typeof exitPrice === 'number' ? exitPrice : Number(exitPrice);
-        updates.push('exit_price = ?'); params.push(xp);
-        const ep = existing.entry_price;
-        if (Number.isFinite(ep) && Number.isFinite(xp) && ep !== 0) {
-            const { pnlAbsolute, pnlPercent } = calculateTradePnl(ep, xp);
-            updates.push('pnl_absolute = ?'); params.push(pnlAbsolute);
-            updates.push('pnl_percent = ?'); params.push(pnlPercent);
+        nextExitPrice = exitPrice === null ? null : normalizePositiveNumber(exitPrice, 'exitPrice');
+        updates.push('exit_price = ?'); params.push(nextExitPrice);
+        shouldSyncProjection = true;
+        shouldRecalculate = true;
+    }
+    if (exitIBS !== undefined) {
+        updates.push('exit_ibs = ?'); params.push(normalizeIbs(exitIBS, 'exitIBS'));
+        shouldSyncProjection = true;
+    }
+
+    if (shouldRecalculate) {
+        const { pnlAbsolute, pnlPercent } = calculateTradePnl(nextEntryPrice, nextExitPrice);
+        updates.push('pnl_absolute = ?'); params.push(pnlAbsolute);
+        updates.push('pnl_percent = ?'); params.push(pnlPercent);
+        updates.push('holding_days = ?'); params.push(calculateHoldingDays(nextEntryDate, nextExitDate));
+        if (Number.isFinite(nextExitPrice) || nextExitDate) {
             updates.push("status = 'closed'");
+        } else if (exitPrice === null && exitDate === null) {
+            updates.push("status = 'open'");
         }
     }
-    if (exitIBS !== undefined) { updates.push('exit_ibs = ?'); params.push(exitIBS); }
 
     if (updates.length === 0) return rowToTrade(existing);
 
@@ -584,8 +654,7 @@ function updateTrade(id, { notes, isHidden, isTest, exitDate, exitPrice, exitIBS
     db.prepare(`UPDATE trades SET ${updates.join(', ')} WHERE id = ?`).run(...params);
     const trade = rowToTrade(db.prepare('SELECT * FROM trades WHERE id = ?').get(id));
     if (
-        exitDate !== undefined
-        || exitPrice !== undefined
+        shouldSyncProjection
         || linkedBrokerTradeId !== undefined
         || (existing.status === 'open' && trade.status !== existing.status)
     ) {

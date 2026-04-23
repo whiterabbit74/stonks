@@ -398,6 +398,53 @@ describe('monitor routes', () => {
     }
   });
 
+  it('PATCH /api/trades/:id edits an open manual monitor trade and syncs watch projection', async () => {
+    cleanupEnv = createTempEnv();
+    const context = loadTestContext();
+    cleanupDb = context.dbModule;
+    createWatch(context.telegram, 'AMZN');
+
+    const trade = context.trades.createManualTrade({
+      symbol: 'AMZN',
+      entryDate: '2026-04-17',
+      entryPrice: 250.23,
+      entryIBS: 0.12,
+      quantity: 2,
+      notes: 'manual entry',
+    });
+
+    const server = await createTestServer(context.tradesRoutes);
+    try {
+      const response = await requestJson(server.raw, 'PATCH', `/api/trades/${trade.id}`, {
+        entryDate: '2026-04-18',
+        entryPrice: 251.11,
+        entryIBS: 0.18,
+        quantity: 3,
+        notes: 'corrected entry',
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toMatchObject({
+        id: trade.id,
+        status: 'open',
+        entryDate: '2026-04-18',
+        entryPrice: 251.11,
+        entryIBS: 0.18,
+        quantity: 3,
+        notes: 'corrected entry',
+      });
+      expect(context.telegram.telegramWatches.get('AMZN')).toMatchObject({
+        isOpenPosition: true,
+        currentTradeId: trade.id,
+        entryPrice: 251.11,
+        entryDate: '2026-04-18',
+        entryIBS: 0.18,
+      });
+    } finally {
+      await server.close();
+    }
+  });
+
   it('POST /api/trades/:id/close-monitor closes a monitor-only trade and clears watch projection', async () => {
     cleanupEnv = createTempEnv();
     const context = loadTestContext();

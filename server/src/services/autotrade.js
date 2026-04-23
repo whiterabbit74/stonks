@@ -12,9 +12,11 @@ const { getETParts, etKeyYMD, getCachedTradingCalendar, isTradingDayByCalendarET
 const {
     loadTradeHistory,
     isTradeHistoryLoaded,
+    getCurrentOpenTrade,
     syncWatchesWithTradeState,
     upsertMonitorTradeFromBrokerTrade,
     closeMonitorTradeFromBrokerTrade,
+    closeMonitorTradeById,
 } = require('./trades');
 const {
     getCurrentOpenBrokerTrade,
@@ -839,6 +841,26 @@ async function finalizeTrackedTrade({ action, symbol, price, ibs, decisionTime, 
                 allowLegacyMatch: true,
                 note: 'closed_from_broker_fill',
             });
+        } else {
+            const openMonitorTrade = getCurrentOpenTrade();
+            const exitPrice = typeof price === 'number' ? price : null;
+            if (
+                openMonitorTrade
+                && openMonitorTrade.symbol === toSafeTicker(symbol)
+                && !openMonitorTrade.linkedBrokerTradeId
+                && exitPrice != null
+            ) {
+                monitorTrade = closeMonitorTradeById(openMonitorTrade.id, {
+                    exitDate: dateKey || null,
+                    exitPrice,
+                    exitIBS: typeof ibs === 'number' ? ibs : null,
+                    exitDecisionTime: decisionTime || new Date().toISOString(),
+                    note: 'closed_from_broker_fill_without_local_broker_entry',
+                    clientOrderId: clientOrderId || null,
+                    brokerOrderId: brokerOrderId || null,
+                    filledQty: filledQty ?? null,
+                });
+            }
         }
     }
 
@@ -848,7 +870,7 @@ async function finalizeTrackedTrade({ action, symbol, price, ibs, decisionTime, 
     }
 
     syncWatchesWithTradeState();
-    return brokerTrade;
+    return brokerTrade || monitorTrade;
 }
 
 function extractOrdersArray(payload) {
@@ -2016,6 +2038,7 @@ module.exports = {
     checkAccessToken,
     __testables: {
         computeOrderQuantity,
+        finalizeTrackedTrade,
         getEntryBuyingPowerHeadroomFactor,
         getEntryCapitalModeConfig,
         resolveEntryBalanceSizing,

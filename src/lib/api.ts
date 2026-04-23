@@ -744,8 +744,10 @@ export class DatasetAPI {
   }
 
   static async updateTrade(id: string, data: {
-    notes?: string; isHidden?: boolean; isTest?: boolean;
-    exitDate?: string; exitPrice?: number; exitIBS?: number;
+    notes?: string | null; isHidden?: boolean; isTest?: boolean;
+    entryDate?: string; entryPrice?: number; entryIBS?: number | null;
+    exitDate?: string | null; exitPrice?: number | null; exitIBS?: number | null;
+    quantity?: number | null; linkedBrokerTradeId?: string | null;
   }): Promise<MonitorTradeRecord> {
     return apiCall<MonitorTradeRecord>(`${API_BASE_URL}/trades/${id}`, {
       method: 'PATCH',

@@ -56,12 +56,36 @@ router.post('/trades', (req, res) => {
 router.patch('/trades/:id', (req, res) => {
     try {
         const { id } = req.params;
-        const { notes, isHidden, isTest, exitDate, exitPrice, exitIBS } = req.body;
-        const updated = updateTrade(id, { notes, isHidden, isTest, exitDate, exitPrice, exitIBS });
+        const {
+            notes,
+            isHidden,
+            isTest,
+            entryDate,
+            entryPrice,
+            entryIBS,
+            exitDate,
+            exitPrice,
+            exitIBS,
+            quantity,
+            linkedBrokerTradeId,
+        } = req.body;
+        const updated = updateTrade(id, {
+            notes,
+            isHidden,
+            isTest,
+            entryDate,
+            entryPrice,
+            entryIBS,
+            exitDate,
+            exitPrice,
+            exitIBS,
+            quantity,
+            linkedBrokerTradeId,
+        });
         if (!updated) return res.status(404).json({ error: 'Trade not found' });
         res.json(serializeTradeForResponse(updated));
     } catch (e) {
-        res.status(500).json({ error: e && e.message ? e.message : 'Failed to update trade' });
+        res.status(e && Number.isInteger(e.status) ? e.status : 500).json({ error: e && e.message ? e.message : 'Failed to update trade' });
     }
 });
 

@@ -74,9 +74,57 @@ function loadAutotradeTestables() {
   };
 }
 
+function loadManualExitContext() {
+  purgeServerCache();
+  const telegram = require(path.join(serverRoot, 'src/services/telegram.js'));
+  const trades = require(path.join(serverRoot, 'src/services/trades.js'));
+  const brokerTrades = require(path.join(serverRoot, 'src/services/brokerTrades.js'));
+  const autotrade = require(path.join(serverRoot, 'src/services/autotrade.js'));
+  const dbModule = require(path.join(serverRoot, 'src/db/index.js'));
+
+  telegram.telegramWatches.clear();
+  trades.setTelegramWatches(telegram.telegramWatches, () => {});
+
+  return {
+    telegram,
+    trades,
+    brokerTrades,
+    finalizeTrackedTrade: autotrade.__testables.finalizeTrackedTrade,
+    dbModule,
+  };
+}
+
+function createWatch(telegram, symbol) {
+  telegram.telegramWatches.set(symbol, {
+    symbol,
+    highIBS: 0.75,
+    lowIBS: 0.1,
+    thresholdPct: 0.3,
+    chatId: 'test-chat',
+    entryPrice: null,
+    entryDate: null,
+    entryIBS: null,
+    entryDecisionTime: null,
+    currentTradeId: null,
+    isOpenPosition: false,
+    sent: {
+      dateKey: null,
+      warn10: false,
+      confirm1: false,
+      entryWarn10: false,
+      entryConfirm1: false,
+    },
+  });
+}
+
 let cleanupEnv = null;
+let cleanupDb = null;
 
 afterEach(() => {
+  if (cleanupDb) {
+    cleanupDb.closeDb();
+    cleanupDb = null;
+  }
   purgeServerCache();
   if (cleanupEnv) {
     cleanupEnv.restore();
@@ -206,5 +254,55 @@ describe('autotrade buying power sizing', () => {
     const next = sanitizeAutoTradingConfig({ entryCapitalMode: 'margin_150' }, { entryCapitalMode: 'standard_safe' });
 
     expect(next.entryCapitalMode).toBe('margin_150');
+  });
+});
+
+describe('autotrade execution finalization', () => {
+  it('closes a manual monitor position when a Webull exit fills without a local broker entry', async () => {
+    cleanupEnv = createTempEnv();
+    const context = loadManualExitContext();
+    cleanupDb = context.dbModule;
+    createWatch(context.telegram, 'AMZN');
+
+    const manualTrade = context.trades.createManualTrade({
+      symbol: 'AMZN',
+      entryDate: '2026-04-17',
+      entryPrice: 250.23,
+      entryIBS: 0.12,
+      quantity: 2,
+      notes: 'manual Webull entry',
+    });
+
+    expect(context.brokerTrades.getCurrentOpenBrokerTrade()).toBeNull();
+
+    const finalized = await context.finalizeTrackedTrade({
+      action: 'exit',
+      symbol: 'AMZN',
+      price: 255.32,
+      ibs: 0.881,
+      decisionTime: '2026-04-23T19:59:49.000Z',
+      dateKey: '2026-04-23',
+      source: 'telegram_t1_exit',
+      clientOrderId: 'manual-exit-client',
+      brokerOrderId: 'manual-exit-order',
+      filledQty: 2,
+      quantity: 2,
+    });
+
+    expect(finalized).toMatchObject({
+      id: manualTrade.id,
+      status: 'closed',
+      exitPrice: 255.32,
+      exitIBS: 0.881,
+      clientOrderId: 'manual-exit-client',
+      brokerOrderId: 'manual-exit-order',
+      filledQty: 2,
+    });
+    expect(context.trades.getCurrentOpenTrade()).toBeNull();
+    expect(context.telegram.telegramWatches.get('AMZN')).toMatchObject({
+      isOpenPosition: false,
+      currentTradeId: null,
+      entryPrice: null,
+    });
   });
 });

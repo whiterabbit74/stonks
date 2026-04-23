@@ -1,16 +1,18 @@
 import { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { RefreshCw, Download, FileSpreadsheet, ChevronDown, ChevronUp, Filter, ExternalLink } from 'lucide-react';
+import { RefreshCw, Download, FileSpreadsheet, ChevronDown, ChevronUp, Filter, ExternalLink, Pencil, XCircle } from 'lucide-react';
 import type { MonitorTradeHistoryResponse, MonitorTradeRecord } from '../types';
 import { calculateMonitorTradeMetrics } from '../lib/monitor-trade-metrics';
 import { formatCurrencyValue, formatDateET, formatDateTimeET, formatRatioPercent, formatSignedPercentValue } from '../lib/formatters';
-import { Button, Panel } from './ui';
+import { Button, IconButton, Panel } from './ui';
 
 interface MonitorTradeHistoryPanelProps {
   data: MonitorTradeHistoryResponse | null;
   loading?: boolean;
   error?: string | null;
   onRefresh?: () => void;
+  onEditTrade?: (trade: MonitorTradeRecord) => void;
+  onCloseTrade?: (trade: MonitorTradeRecord) => void;
   maxRows?: number;
   initialCapital?: number;
 }
@@ -27,11 +29,23 @@ function renderIBS(entry: number | null | undefined, exit: number | null | undef
   return `${entryStr} → ${exitStr}`;
 }
 
-function TradeRow({ trade, isHighlighted }: { trade: MonitorTradeRecord; isHighlighted: boolean }) {
+function TradeRow({
+  trade,
+  isHighlighted,
+  onEditTrade,
+  onCloseTrade,
+}: {
+  trade: MonitorTradeRecord;
+  isHighlighted: boolean;
+  onEditTrade?: (trade: MonitorTradeRecord) => void;
+  onCloseTrade?: (trade: MonitorTradeRecord) => void;
+}) {
   const pnlPositive = (trade.pnlPercent ?? 0) > 0;
   const statusBadge = trade.status === 'open'
     ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
     : 'bg-gray-100 text-gray-600 border border-gray-200';
+  const hasActions = !!onEditTrade || !!onCloseTrade;
+  const canClose = trade.status === 'open' && !trade.linkedBrokerTradeId && !!onCloseTrade;
 
   return (
     <tr className={`border-b last:border-none ${isHighlighted ? 'bg-blue-50/60 dark:bg-blue-900/20' : ''}`}>
@@ -64,6 +78,35 @@ function TradeRow({ trade, isHighlighted }: { trade: MonitorTradeRecord; isHighl
       <td className={`px-3 py-2 text-right font-mono text-sm ${pnlPositive ? 'text-emerald-600 dark:text-emerald-300' : trade.pnlPercent === null ? 'text-gray-500 dark:text-gray-400' : 'text-orange-600 dark:text-orange-300'}`}>
         {formatSignedPercentValue(trade.pnlPercent)}
       </td>
+      {hasActions ? (
+        <td className="px-3 py-2">
+          <div className="flex justify-end gap-1">
+            {onEditTrade ? (
+              <IconButton
+                size="sm"
+                variant="ghost"
+                aria-label={`Редактировать ${trade.symbol}`}
+                title="Редактировать"
+                onClick={() => onEditTrade(trade)}
+              >
+                <Pencil className="h-4 w-4" />
+              </IconButton>
+            ) : null}
+            {onCloseTrade ? (
+              <IconButton
+                size="sm"
+                variant="ghost"
+                aria-label={`Закрыть ${trade.symbol}`}
+                title={trade.linkedBrokerTradeId ? 'Связанная broker-сделка закрывается через reconcile' : 'Закрыть monitor-сделку'}
+                disabled={!canClose}
+                onClick={() => onCloseTrade(trade)}
+              >
+                <XCircle className="h-4 w-4" />
+              </IconButton>
+            ) : null}
+          </div>
+        </td>
+      ) : null}
     </tr>
   );
 }
@@ -73,6 +116,8 @@ export function MonitorTradeHistoryPanel({
   loading = false,
   error = null,
   onRefresh,
+  onEditTrade,
+  onCloseTrade,
   maxRows = 10,
   initialCapital = 10000
 }: MonitorTradeHistoryPanelProps) {
@@ -121,6 +166,7 @@ export function MonitorTradeHistoryPanel({
   const hasMoreRows = sorted.length > maxRows;
   const hasTrades = rows.length > 0;
   const isFiltered = statusFilter !== 'all' || pnlFilter !== 'all';
+  const hasActions = !!onEditTrade || !!onCloseTrade;
 
   const summaryStats = useMemo(
     () => calculateMonitorTradeMetrics(trades, initialCapital),
@@ -309,22 +355,51 @@ export function MonitorTradeHistoryPanel({
       <div className="px-4 py-4 space-y-4">
         <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200">
           {openTrade ? (
-            <div className="flex flex-wrap items-center gap-4">
-              <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                Текущая позиция:{' '}
-                <Link
-                  to={`/results?ticker=${encodeURIComponent(openTrade.symbol)}`}
-                  className="inline-flex items-center gap-1 hover:text-blue-600 dark:hover:text-blue-400 transition-colors underline decoration-dotted underline-offset-2"
-                >
-                  {openTrade.symbol}
-                </Link>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-4">
+                <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                  Текущая позиция:{' '}
+                  <Link
+                    to={`/results?ticker=${encodeURIComponent(openTrade.symbol)}`}
+                    className="inline-flex items-center gap-1 hover:text-blue-600 dark:hover:text-blue-400 transition-colors underline decoration-dotted underline-offset-2"
+                  >
+                    {openTrade.symbol}
+                  </Link>
+                </div>
+                <div className="text-sm text-gray-600 dark:text-gray-300">
+                  Вход {formatDateET(openTrade.entryDate)} по {formatCurrencyValue(openTrade.entryPrice)}
+                </div>
+                <div className="text-sm text-gray-600 dark:text-gray-300">
+                  IBS {formatRatioPercent(openTrade.entryIBS, 1)}
+                </div>
               </div>
-              <div className="text-sm text-gray-600 dark:text-gray-300">
-                Вход {formatDateET(openTrade.entryDate)} по {formatCurrencyValue(openTrade.entryPrice)}
-              </div>
-              <div className="text-sm text-gray-600 dark:text-gray-300">
-                IBS {formatRatioPercent(openTrade.entryIBS, 1)}
-              </div>
+              {hasActions ? (
+                <div className="flex items-center gap-2">
+                  {onEditTrade ? (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      leftIcon={<Pencil className="h-4 w-4" />}
+                      onClick={() => onEditTrade(openTrade)}
+                    >
+                      Изменить
+                    </Button>
+                  ) : null}
+                  {onCloseTrade ? (
+                    <Button
+                      type="button"
+                      variant="danger"
+                      size="sm"
+                      leftIcon={<XCircle className="h-4 w-4" />}
+                      disabled={!!openTrade.linkedBrokerTradeId}
+                      onClick={() => onCloseTrade(openTrade)}
+                    >
+                      Закрыть
+                    </Button>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
           ) : (
             <div className="text-sm text-gray-600 dark:text-gray-300">Открытых позиций нет</div>
@@ -352,11 +427,18 @@ export function MonitorTradeHistoryPanel({
                     <th className="px-3 py-2 text-right font-semibold">Выход</th>
                     <th className="px-3 py-2 text-left font-semibold">IBS</th>
                     <th className="px-3 py-2 text-right font-semibold">PnL</th>
+                    {hasActions ? <th className="px-3 py-2 text-right font-semibold">Действия</th> : null}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
                   {rows.map(trade => (
-                    <TradeRow key={trade.id} trade={trade} isHighlighted={openTrade?.id === trade.id} />
+                    <TradeRow
+                      key={trade.id}
+                      trade={trade}
+                      isHighlighted={openTrade?.id === trade.id}
+                      onEditTrade={onEditTrade}
+                      onCloseTrade={onCloseTrade}
+                    />
                   ))}
                 </tbody>
               </table>
