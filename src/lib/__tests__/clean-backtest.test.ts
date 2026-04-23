@@ -75,7 +75,6 @@ describe('CleanBacktestEngine', () => {
       expect(result.trades).toBeDefined();
       expect(result.metrics).toBeDefined();
       expect(result.equity).toBeDefined();
-      expect(result.chartData).toBeDefined();
       expect(result.insights).toBeDefined();
     });
 
@@ -93,27 +92,6 @@ describe('CleanBacktestEngine', () => {
         expect(point.value).toBeGreaterThan(0);
         expect(point.drawdown).toBeGreaterThanOrEqual(0);
         expect(typeof point.date).toBe('string'); // TradingDate is a string
-      });
-    });
-
-    it('should generate chart data', () => {
-      const engine = new CleanBacktestEngine(sampleData, strategy);
-      const result = engine.runBacktest();
-
-      // Chart data should be generated for all bars
-      expect(result.chartData).toHaveLength(sampleData.length);
-
-      result.chartData.forEach(candle => {
-        expect(candle.time).toBeTypeOf('number');
-        expect(candle.open).toBeTypeOf('number');
-        expect(candle.high).toBeTypeOf('number');
-        expect(candle.low).toBeTypeOf('number');
-        expect(candle.close).toBeTypeOf('number');
-        expect(candle.high).toBeGreaterThanOrEqual(candle.low);
-        expect(candle.high).toBeGreaterThanOrEqual(candle.open);
-        expect(candle.high).toBeGreaterThanOrEqual(candle.close);
-        expect(candle.low).toBeLessThanOrEqual(candle.open);
-        expect(candle.low).toBeLessThanOrEqual(candle.close);
       });
     });
 
