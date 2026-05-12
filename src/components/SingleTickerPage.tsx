@@ -1,9 +1,8 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState, useTransition } from 'react';
-import { Heart, RefreshCw, HelpCircle, Settings2, ArrowUpRight } from 'lucide-react';
+import { lazy, Suspense, useEffect, useMemo, useState, useTransition } from 'react';
+import { Heart, RefreshCw, HelpCircle, ArrowUpRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { DatasetAPI } from '../lib/api';
 import { isSameDay } from '../lib/date-utils';
-import { useClickOutside } from '../hooks/useClickOutside';
 import { useAppStore } from '../stores';
 import { LS } from '../constants';
 import { ChartContainer, AnalysisTabs, MetricsGrid, Button, IconButton, Panel, Select } from './ui';
@@ -16,6 +15,9 @@ import { scheduleIdleTask } from '../lib/prefetch';
 import { MetricsCalculator } from '../lib/metrics';
 import { formatCurrencyUSD } from '../lib/formatters';
 import { simulateMarginByTrades } from '../lib/margin-simulation';
+import { lsGet, lsSet } from '../lib/storage';
+import { QuoteDetailsPopover } from './QuoteDetailsPopover';
+import { HeroChartSettingsPopover } from './HeroChartSettingsPopover';
 
 const importBacktestResultsView = () => import('./BacktestResultsView');
 const importBuyAtCloseSimulator = () => import('./BuyAtCloseSimulator');
@@ -117,13 +119,11 @@ export function SingleTickerPage() {
 
   const [modal, setModal] = useState<{ type: 'info' | 'error' | null; title?: string; message?: string }>({ type: null });
   const [marginPercent, setMarginPercent] = useState<number>(() => {
-    if (typeof window === 'undefined') return DEFAULT_MARGIN_PERCENT;
-    const raw = Number(window.localStorage.getItem(LS.RESULTS_MARGIN_PCT) || DEFAULT_MARGIN_PERCENT);
+    const raw = Number(lsGet<number | string>(LS.RESULTS_MARGIN_PCT, DEFAULT_MARGIN_PERCENT));
     return normalizeMarginPercent(raw);
   });
   const [maintenanceMarginPct, setMaintenanceMarginPct] = useState<number>(() => {
-    if (typeof window === 'undefined') return DEFAULT_MAINTENANCE_MARGIN_PERCENT;
-    const raw = Number(window.localStorage.getItem(LS.RESULTS_MAINTENANCE_MARGIN) || DEFAULT_MAINTENANCE_MARGIN_PERCENT);
+    const raw = Number(lsGet<number | string>(LS.RESULTS_MAINTENANCE_MARGIN, DEFAULT_MAINTENANCE_MARGIN_PERCENT));
     return normalizeMaintenanceMarginPercent(raw);
   });
 
@@ -148,19 +148,13 @@ export function SingleTickerPage() {
   const [, startChartTransition] = useTransition();
   const [heroChartKind, setHeroChartKind] = useState<'line' | 'candles'>('line');
   const [heroShowTrades, setHeroShowTrades] = useState(true);
-  const [showHeroSettings, setShowHeroSettings] = useState(false);
-  const [showQuoteDetails, setShowQuoteDetails] = useState(false);
-  const quoteDetailsRef = useRef<HTMLDivElement | null>(null);
-  const heroSettingsRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    window.localStorage.setItem(LS.RESULTS_MARGIN_PCT, String(marginPercent));
+    lsSet(LS.RESULTS_MARGIN_PCT, marginPercent);
   }, [marginPercent]);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    window.localStorage.setItem(LS.RESULTS_MAINTENANCE_MARGIN, String(maintenanceMarginPct));
+    lsSet(LS.RESULTS_MAINTENANCE_MARGIN, maintenanceMarginPct);
   }, [maintenanceMarginPct]);
 
   useEffect(() => {
@@ -169,9 +163,6 @@ export function SingleTickerPage() {
       setActiveChart(firstVisibleTab);
     }
   }, [visibleAnalysisTabs, activeChart, firstVisibleTab]);
-
-  useClickOutside(quoteDetailsRef, showQuoteDetails, () => setShowQuoteDetails(false), false);
-  useClickOutside(heroSettingsRef, showHeroSettings, () => setShowHeroSettings(false), false);
 
   const prefetchAnalysisTab = (tabId: string) => {
     if (tabId === 'summary') return;
@@ -492,11 +483,6 @@ export function SingleTickerPage() {
     });
   };
 
-  const quoteProviderLabel = resultsQuoteProvider === 'alpha_vantage'
-    ? 'Alpha Vantage'
-    : (resultsQuoteProvider === 'twelve_data'
-      ? 'Twelve Data'
-      : (resultsQuoteProvider === 'webull' ? 'Webull' : 'Finnhub'));
   const lastTrade = trades[trades.length - 1];
   const lastDataDate = marketData.length ? marketData[marketData.length - 1].date : null;
   const isOpenPosition = !!(lastTrade && lastDataDate && isSameDay(lastTrade.exitDate, lastDataDate));
@@ -508,9 +494,6 @@ export function SingleTickerPage() {
   const companyName = typeof companyNameMatch?.companyName === 'string'
     ? companyNameMatch.companyName.trim()
     : '';
-  const formatQuoteValue = (value: number | null | undefined) => (
-    value != null && Number.isFinite(value) ? Number(value).toFixed(2) : '—'
-  );
   const openProfessionalChart = () => {
     setActiveChart('price');
     if (typeof window !== 'undefined') {
@@ -578,57 +561,14 @@ export function SingleTickerPage() {
                 >
                   Pro
                 </Button>
-                <div ref={heroSettingsRef} className="relative">
-                  <IconButton
-                    onClick={() => setShowHeroSettings((prev) => !prev)}
-                    variant="outline"
-                    size="sm"
-                    title="Настройки графика"
-                    aria-label="Настройки графика"
-                  >
-                    <Settings2 className="h-4 w-4" />
-                  </IconButton>
-                  {showHeroSettings && (
-                    <Panel className="absolute right-0 top-full z-20 mt-1.5 w-52 p-2.5 shadow-lg dark:border-gray-700">
-                      <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                        Настройки
-                      </div>
-                      <div className="mt-2 text-[11px] text-gray-600 dark:text-gray-300">Тип графика</div>
-                      <div className="mt-1 grid grid-cols-2 gap-1">
-                        <button
-                          type="button"
-                          onClick={() => setHeroChartKind('line')}
-                          className={`rounded px-2 py-1 text-[11px] ${heroChartKind === 'line'
-                            ? 'bg-blue-600 text-white'
-                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'
-                            }`}
-                        >
-                          Линия
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setHeroChartKind('candles')}
-                          className={`rounded px-2 py-1 text-[11px] ${heroChartKind === 'candles'
-                            ? 'bg-blue-600 text-white'
-                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'
-                            }`}
-                        >
-                          Свечи
-                        </button>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setHeroShowTrades((prev) => !prev)}
-                        className="mt-2 flex w-full items-center justify-between rounded bg-gray-100 px-2 py-1.5 text-[11px] text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
-                      >
-                        <span>Показывать сделки</span>
-                        <span className={heroShowTrades ? 'text-green-600 dark:text-green-300' : 'text-gray-500'}>
-                          {heroShowTrades ? 'Вкл' : 'Выкл'}
-                        </span>
-                      </button>
-                    </Panel>
-                  )}
-                </div>
+                <HeroChartSettingsPopover
+                  chartKind={heroChartKind}
+                  onChartKindChange={setHeroChartKind}
+                  showTrades={heroShowTrades}
+                  onShowTradesChange={setHeroShowTrades}
+                  buttonSize="sm"
+                  iconClassName="h-4 w-4"
+                />
                 <IconButton
                   disabled={!symbol || watchBusy}
                   onClick={async () => {
@@ -662,53 +602,14 @@ export function SingleTickerPage() {
                 >
                   <Heart className={`h-4 w-4 ${watching ? 'fill-current animate-heartbeat' : ''}`} />
                 </IconButton>
-                <div ref={quoteDetailsRef} className="relative">
-                  <IconButton
-                    onClick={() => setShowQuoteDetails((prev) => !prev)}
-                    variant="outline"
-                    size="sm"
-                    className="h-6 w-6"
-                    title="Детали котировки"
-                    aria-label="Детали котировки"
-                  >
-                    <HelpCircle className="h-4 w-4" />
-                  </IconButton>
-                  {showQuoteDetails && (
-                    <Panel className="absolute right-0 top-full z-20 mt-1.5 w-64 p-3 shadow-lg dark:border-gray-700">
-                      <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                        Детали котировки
-                      </div>
-                      <div className="mt-2 space-y-1.5 text-xs text-gray-700 dark:text-gray-200">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-gray-500 dark:text-gray-400">Источник</span>
-                          <span>{quoteProviderLabel}</span>
-                        </div>
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-gray-500 dark:text-gray-400">Обновлено</span>
-                          <span>{lastUpdatedAt ? lastUpdatedAt.toLocaleTimeString('ru-RU') : '—'}</span>
-                        </div>
-                        <div className="mt-2 grid grid-cols-2 gap-1.5">
-                          <div className="rounded border border-gray-200 px-2 py-1 dark:border-gray-700">
-                            <div className="text-[10px] uppercase tracking-wide text-gray-500 dark:text-gray-400">Откр</div>
-                            <div className="font-mono text-xs">{formatQuoteValue(quote?.open)}</div>
-                          </div>
-                          <div className="rounded border border-gray-200 px-2 py-1 dark:border-gray-700">
-                            <div className="text-[10px] uppercase tracking-wide text-gray-500 dark:text-gray-400">Макс</div>
-                            <div className="font-mono text-xs">{formatQuoteValue(quote?.high)}</div>
-                          </div>
-                          <div className="rounded border border-gray-200 px-2 py-1 dark:border-gray-700">
-                            <div className="text-[10px] uppercase tracking-wide text-gray-500 dark:text-gray-400">Мин</div>
-                            <div className="font-mono text-xs">{formatQuoteValue(quote?.low)}</div>
-                          </div>
-                          <div className="rounded border border-gray-200 px-2 py-1 dark:border-gray-700">
-                            <div className="text-[10px] uppercase tracking-wide text-gray-500 dark:text-gray-400">Текущ</div>
-                            <div className="font-mono text-xs">{formatQuoteValue(quote?.current)}</div>
-                          </div>
-                        </div>
-                      </div>
-                    </Panel>
-                  )}
-                </div>
+                <QuoteDetailsPopover
+                  quote={quote}
+                  provider={resultsQuoteProvider || 'finnhub'}
+                  updatedAt={lastUpdatedAt}
+                  buttonSize="sm"
+                  buttonClassName="h-6 w-6"
+                  iconClassName="h-4 w-4"
+                />
               </div>
             </div>
 

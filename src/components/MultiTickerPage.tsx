@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { HelpCircle, Settings2, RefreshCw, ArrowUpRight } from 'lucide-react';
+import { HelpCircle, RefreshCw, ArrowUpRight } from 'lucide-react';
 import { MetricsGrid, AnalysisTabs, PageHeader, Select, Button, TickerInput, ChartContainer, IconButton, Panel } from './ui';
 import { useAppStore } from '../stores';
 import { LS } from '../constants';
@@ -23,6 +23,8 @@ import { CompactMetrics } from './CompactMetrics';
 import { StaleDataWarning } from './StaleDataWarning';
 import { OpenPositionBadge } from './OpenPositionBadge';
 import { TabContentLoader } from './ui/TabContentLoader';
+import { QuoteDetailsPopover } from './QuoteDetailsPopover';
+import { HeroChartSettingsPopover } from './HeroChartSettingsPopover';
 
 const importBacktestResultsView = () => import('./BacktestResultsView');
 const importTradingChart = () => import('./TradingChart');
@@ -107,15 +109,10 @@ export function MultiTickerPage() {
   const [heroChartKind, setHeroChartKind] = useState<'line' | 'candles'>(() => lsGet<'line' | 'candles'>(LS.STOCKS_CHART_KIND, 'line'));
   const [heroShowTrades, setHeroShowTrades] = useState<boolean>(() => lsGet<boolean>(LS.STOCKS_SHOW_TRADES, true));
   const [heroRange, setHeroRange] = useState<'1M' | '3M' | '6M' | '1Y' | '3Y' | '5Y' | 'MAX'>(() => lsGet(LS.STOCKS_RANGE, '3M'));
-  const [showHeroSettings, setShowHeroSettings] = useState(false);
   const [isMarketOpen, setIsMarketOpen] = useState(getIsMarketOpen);
-
-  const [showQuoteDetails, setShowQuoteDetails] = useState(false);
-  const quoteDetailsRef = useRef<HTMLDivElement | null>(null);
 
   const lazyFallback = <TabContentLoader />;
   const strategyHelpRef = useRef<HTMLDivElement | null>(null);
-  const heroSettingsRef = useRef<HTMLDivElement | null>(null);
   const hasAutoRun = useRef(false);
 
   const prefetchAnalysisTab = (tabId: string) => {
@@ -160,8 +157,6 @@ export function MultiTickerPage() {
   const initialCapital = Number(activeStrategy?.riskManagement?.initialCapital ?? 10000);
 
   useClickOutside(strategyHelpRef, showStrategyInfo, () => setShowStrategyInfo(false));
-  useClickOutside(heroSettingsRef, showHeroSettings, () => setShowHeroSettings(false), false);
-  useClickOutside(quoteDetailsRef, showQuoteDetails, () => setShowQuoteDetails(false), false);
 
   // ─── Backtest ────────────────────────────────────────────────────────────────
 
@@ -270,11 +265,11 @@ export function MultiTickerPage() {
   }, [tickers]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Persist chart settings to localStorage
-  useEffect(() => { lsSet(LS.STOCKS_CHART_KIND, heroChartKind); }, [heroChartKind]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { lsSet(LS.STOCKS_SHOW_TRADES, heroShowTrades); }, [heroShowTrades]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { lsSet(LS.STOCKS_RANGE, heroRange); }, [heroRange]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { lsSet(LS.STOCKS_SELECTED_TICKER, selectedChartTicker); }, [selectedChartTicker]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { lsSet(LS.TICKERS, tickers); }, [tickers]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { lsSet(LS.STOCKS_CHART_KIND, heroChartKind); }, [heroChartKind]);
+  useEffect(() => { lsSet(LS.STOCKS_SHOW_TRADES, heroShowTrades); }, [heroShowTrades]);
+  useEffect(() => { lsSet(LS.STOCKS_RANGE, heroRange); }, [heroRange]);
+  useEffect(() => { lsSet(LS.STOCKS_SELECTED_TICKER, selectedChartTicker); }, [selectedChartTicker]);
+  useEffect(() => { lsSet(LS.TICKERS, tickers); }, [tickers]);
 
   // Keep selectedPriceTicker in sync with tickers list
   useEffect(() => {
@@ -360,15 +355,6 @@ export function MultiTickerPage() {
     const isSelectedTickerStale = isDataOutdated(selectedTickerLastDate);
     const isRefreshingSelected = refreshingTickers.has(selectedChartTicker);
 
-    const quoteProviderLabel = resultsQuoteProvider === 'alpha_vantage'
-      ? 'Alpha Vantage'
-      : (resultsQuoteProvider === 'twelve_data'
-        ? 'Twelve Data'
-        : (resultsQuoteProvider === 'webull' ? 'Webull' : 'Finnhub'));
-
-    const formatQuoteValue = (value: number | null | undefined) =>
-      value != null && Number.isFinite(value) ? Number(value).toFixed(2) : '—';
-
     return (
       <div className="space-y-3">
         <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_240px] lg:grid-cols-[minmax(0,1fr)_280px]">
@@ -385,7 +371,7 @@ export function MultiTickerPage() {
                     onClick={() => setSelectedChartTicker(t)}
                     className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold transition-colors ${
                       t === selectedChartTicker
-                        ? 'bg-blue-600 text-white'
+                        ? 'bg-indigo-600 text-white'
                         : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'
                     }`}
                   >
@@ -443,90 +429,15 @@ export function MultiTickerPage() {
                   <RefreshCw className={`h-3.5 w-3.5 ${chartQuoteLoading ? 'animate-spin' : ''}`} />
                 </IconButton>
 
-                {/* Quote details popup */}
-                <div ref={quoteDetailsRef} className="relative">
-                  <IconButton
-                    onClick={() => setShowQuoteDetails((prev) => !prev)}
-                    variant="outline"
-                    size="md"
-                    title="Детали котировки"
-                  >
-                    <HelpCircle className="h-3.5 w-3.5" />
-                  </IconButton>
-                  {showQuoteDetails && (
-                    <Panel className="absolute right-0 top-full z-20 mt-1.5 w-56 p-3 shadow-lg dark:border-gray-700">
-                      <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                        Детали котировки
-                      </div>
-                      <div className="mt-2 space-y-1.5 text-xs text-gray-700 dark:text-gray-200">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-gray-500 dark:text-gray-400">Источник</span>
-                          <span>{quoteProviderLabel}</span>
-                        </div>
-                        <div className="mt-1.5 grid grid-cols-2 gap-1.5">
-                          <div className="rounded border border-gray-200 px-2 py-1 dark:border-gray-700">
-                            <div className="text-[10px] uppercase tracking-wide text-gray-500 dark:text-gray-400">Откр</div>
-                            <div className="font-mono text-xs">{formatQuoteValue(chartQuote?.open)}</div>
-                          </div>
-                          <div className="rounded border border-gray-200 px-2 py-1 dark:border-gray-700">
-                            <div className="text-[10px] uppercase tracking-wide text-gray-500 dark:text-gray-400">Макс</div>
-                            <div className="font-mono text-xs">{formatQuoteValue(chartQuote?.high)}</div>
-                          </div>
-                          <div className="rounded border border-gray-200 px-2 py-1 dark:border-gray-700">
-                            <div className="text-[10px] uppercase tracking-wide text-gray-500 dark:text-gray-400">Мин</div>
-                            <div className="font-mono text-xs">{formatQuoteValue(chartQuote?.low)}</div>
-                          </div>
-                          <div className="rounded border border-gray-200 px-2 py-1 dark:border-gray-700">
-                            <div className="text-[10px] uppercase tracking-wide text-gray-500 dark:text-gray-400">Текущ</div>
-                            <div className="font-mono text-xs">{formatQuoteValue(chartQuote?.current)}</div>
-                          </div>
-                        </div>
-                      </div>
-                    </Panel>
-                  )}
-                </div>
+                <QuoteDetailsPopover quote={chartQuote} provider={resultsQuoteProvider || 'finnhub'} />
 
                 {/* Chart type settings */}
-                <div ref={heroSettingsRef} className="relative">
-                  <IconButton
-                    onClick={() => setShowHeroSettings((prev) => !prev)}
-                    variant="outline"
-                    size="md"
-                    title="Настройки графика"
-                  >
-                    <Settings2 className="h-3.5 w-3.5" />
-                  </IconButton>
-                  {showHeroSettings && (
-                    <Panel className="absolute right-0 top-full z-20 mt-1.5 w-48 p-2.5 shadow-lg dark:border-gray-700">
-                      <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Тип графика</div>
-                      <div className="mt-1.5 grid grid-cols-2 gap-1">
-                        {(['line', 'candles'] as const).map((kind) => (
-                          <button
-                            key={kind}
-                            type="button"
-                            onClick={() => setHeroChartKind(kind)}
-                            className={`rounded px-2 py-1 text-[11px] ${heroChartKind === kind
-                              ? 'bg-blue-600 text-white'
-                              : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'
-                            }`}
-                          >
-                            {kind === 'line' ? 'Линия' : 'Свечи'}
-                          </button>
-                        ))}
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setHeroShowTrades((prev) => !prev)}
-                        className="mt-2 flex w-full items-center justify-between rounded bg-gray-100 px-2 py-1.5 text-[11px] text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
-                      >
-                        <span>Показывать сделки</span>
-                        <span className={heroShowTrades ? 'text-green-600 dark:text-green-300' : 'text-gray-500'}>
-                          {heroShowTrades ? 'Вкл' : 'Выкл'}
-                        </span>
-                      </button>
-                    </Panel>
-                  )}
-                </div>
+                <HeroChartSettingsPopover
+                  chartKind={heroChartKind}
+                  onChartKindChange={setHeroChartKind}
+                  showTrades={heroShowTrades}
+                  onShowTradesChange={setHeroShowTrades}
+                />
 
               </div>
             </div>
@@ -601,7 +512,7 @@ export function MultiTickerPage() {
                       setTickersInput(defaultList.join(', '));
                       void runBacktest(defaultList);
                     }}
-                    className="mt-1.5 w-full rounded-lg border border-dashed border-gray-300 px-2 py-1 text-left text-[11px] text-gray-500 hover:border-blue-400 hover:bg-blue-50 hover:text-blue-600 dark:border-gray-600 dark:text-gray-400 dark:hover:border-blue-500 dark:hover:bg-blue-950/20 dark:hover:text-blue-300 transition-colors"
+                    className="mt-1.5 w-full rounded-lg border border-dashed border-gray-300 px-2 py-1 text-left text-[11px] text-gray-500 transition-colors hover:border-indigo-400 hover:bg-indigo-50 hover:text-indigo-600 dark:border-gray-600 dark:text-gray-400 dark:hover:border-indigo-500 dark:hover:bg-indigo-950/20 dark:hover:text-indigo-300"
                     title="Вернуться к дефолтным тикерам"
                   >
                     ↩ {getDefaultTickers().join(', ')}
@@ -664,9 +575,9 @@ export function MultiTickerPage() {
 
   return (
     <div className="space-y-6">
-      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 shadow-sm">
-        <PageHeader title="Акции" subtitle="Бэктест стратегии на нескольких активах" />
-      </div>
+      <Panel as="section" padding="md">
+        <PageHeader className="mb-0" title="Акции" subtitle="Бэктест стратегии на нескольких активах" />
+      </Panel>
 
       <BacktestPageShell isLoading={false} error={error} loadingMessage="Загрузка данных и выполнение бэктеста...">
         {backtestResults && (
@@ -720,7 +631,7 @@ export function MultiTickerPage() {
                           onClick={() => setSelectedPriceTicker(t)}
                           className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
                             t === selectedPriceTicker
-                              ? 'bg-blue-600 text-white'
+                              ? 'bg-indigo-600 text-white'
                               : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'
                           }`}
                         >

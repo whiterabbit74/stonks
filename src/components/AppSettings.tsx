@@ -176,7 +176,7 @@ function AutotradeTab({
                   key={option.value}
                   className={`block cursor-pointer rounded-xl border p-3 transition-colors ${
                     effectiveEntryCapitalMode === option.value
-                      ? 'border-blue-500 bg-blue-50 dark:border-blue-500 dark:bg-blue-900/20'
+                      ? 'border-indigo-500 bg-indigo-50 dark:border-indigo-500 dark:bg-indigo-950/30'
                       : 'border-gray-200 bg-gray-50 hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-900 dark:hover:bg-gray-800'
                   }`}
                 >
@@ -212,7 +212,7 @@ function AutotradeTab({
           type="button"
           onClick={handleSave}
           disabled={!hasChanges || autotradeToggling || autotradeLoading}
-          className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {autotradeToggling ? (
             <><Loader2 className="w-4 h-4 animate-spin" />Сохранение…</>
@@ -567,7 +567,7 @@ export function AppSettings() {
               fallback: watchThresholdPct
             });
             setWatchThresholdPct(sanitized);
-          }} className="w-24 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+          }} className="w-24 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent" />
           <span className="text-sm text-gray-500 dark:text-gray-400">%</span>
         </div>
       </div>
@@ -599,7 +599,7 @@ export function AppSettings() {
               fallback: indicatorPanePercent
             });
             setIndicatorPanePercent(sanitized);
-          }} className="w-24 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+          }} className="w-24 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent" />
           <span className="text-sm text-gray-500 dark:text-gray-400">%</span>
         </div>
         <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">Подсказка: чтобы сделать столбики заметно ниже (примерно в 3 раза), установите ~7%.</div>
@@ -620,7 +620,7 @@ export function AppSettings() {
             });
             setDefaultMultiTickerSymbols(sanitized);
           }}
-          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
           placeholder="AAPL,MSFT,AMZN,MAGS"
         />
         <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Пример: AAPL,MSFT,AMZN,MAGS</p>
@@ -681,7 +681,7 @@ export function AppSettings() {
                   setCommissionFixed(sanitized);
                 }}
                 disabled={commissionType === 'percentage'}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-800 dark:bg-gray-700 dark:text-white"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-800 dark:bg-gray-700 dark:text-white"
               />
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">За каждую сделку (вход + выход)</p>
             </div>
@@ -704,7 +704,7 @@ export function AppSettings() {
                   setCommissionPercentage(sanitized);
                 }}
                 disabled={commissionType === 'fixed'}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-800 dark:bg-gray-700 dark:text-white"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-800 dark:bg-gray-700 dark:text-white"
               />
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">От суммы сделки (например, 0.1%)</p>
             </div>
@@ -734,7 +734,7 @@ export function AppSettings() {
             <button
               onClick={() => testProvider('alpha_vantage')}
               disabled={testingProvider === 'alpha_vantage'}
-              className="w-full px-3 py-2 rounded-lg bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="w-full px-3 py-2 rounded-lg bg-indigo-600 text-white text-sm hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               {testingProvider === 'alpha_vantage' ? 'Тестирование...' : 'Тест Alpha Vantage'}
             </button>
@@ -750,7 +750,7 @@ export function AppSettings() {
             <button
               onClick={() => testProvider('finnhub')}
               disabled={testingProvider === 'finnhub'}
-              className="w-full px-3 py-2 rounded-lg bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="w-full px-3 py-2 rounded-lg bg-indigo-600 text-white text-sm hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               {testingProvider === 'finnhub' ? 'Тестирование...' : 'Тест Finnhub'}
             </button>
@@ -766,7 +766,7 @@ export function AppSettings() {
             <button
               onClick={() => testProvider('twelve_data')}
               disabled={testingProvider === 'twelve_data'}
-              className="w-full px-3 py-2 rounded-lg bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="w-full px-3 py-2 rounded-lg bg-indigo-600 text-white text-sm hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               {testingProvider === 'twelve_data' ? 'Тестирование...' : 'Тест Twelve Data'}
             </button>
@@ -782,7 +782,7 @@ export function AppSettings() {
             <button
               onClick={() => testProvider('polygon')}
               disabled={testingProvider === 'polygon'}
-              className="w-full px-3 py-2 rounded-lg bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="w-full px-3 py-2 rounded-lg bg-indigo-600 text-white text-sm hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               {testingProvider === 'polygon' ? 'Тестирование...' : 'Тест Polygon'}
             </button>
@@ -1046,14 +1046,14 @@ export function AppSettings() {
                   relative select-none whitespace-nowrap px-5 py-3 text-sm font-medium
                   border-b-2 transition-all duration-150 outline-none
                   cursor-grab active:cursor-grabbing
-                  focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500
+                  focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500
                   ${tab.visible
-                    ? 'border-blue-500 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/20'
+                    ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/20'
                     : 'border-transparent text-gray-400 opacity-50 hover:opacity-70 dark:text-gray-500'
                   }
                   ${draggedTab === tab.id ? 'opacity-20' : ''}
                   ${dragOverTab === tab.id && draggedTab !== tab.id
-                    ? 'bg-blue-50 dark:bg-blue-950/30 border-blue-300'
+                    ? 'border-indigo-300 bg-indigo-50 dark:bg-indigo-950/30'
                     : ''
                   }
                 `}
@@ -1096,8 +1096,8 @@ export function AppSettings() {
               removeHtml: true
             });
             setTestMsg(sanitized);
-          }} className="flex-1 min-w-[260px] px-3 py-2 rounded-lg border border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
-          <button onClick={sendTest} disabled={sending} className="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+          }} className="flex-1 min-w-[260px] px-3 py-2 rounded-lg border border-gray-300 dark:bg-gray-700 dark:border-gray-600 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent" />
+          <button onClick={sendTest} disabled={sending} className="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-sm hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
             {sending ? 'Отправка…' : 'Отправить тест'}
           </button>
         </div>
@@ -1164,11 +1164,11 @@ export function AppSettings() {
               disabled={saving || (!hasUnsavedChanges && !saveOk)}
               className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                 saving
-                  ? 'bg-blue-600 text-white opacity-50 cursor-not-allowed'
+                  ? 'bg-indigo-600 text-white opacity-50 cursor-not-allowed'
                   : saveOk
                   ? 'bg-emerald-600 text-white cursor-default'
                   : hasUnsavedChanges
-                  ? 'bg-blue-600 text-white hover:bg-blue-700'
+                  ? 'bg-indigo-600 text-white hover:bg-indigo-700'
                   : 'bg-gray-100 text-gray-400 cursor-not-allowed dark:bg-gray-800 dark:text-gray-500'
               }`}
             >
@@ -1209,8 +1209,8 @@ export function AppSettings() {
                   setActiveTab(SETTINGS_TABS[prevIndex].id);
                 }
               }}
-              className={`whitespace-nowrap py-3 px-6 border-b-2 font-medium text-sm transition-colors outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${activeTab === tab.id
-                ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+              className={`whitespace-nowrap py-3 px-6 border-b-2 font-medium text-sm transition-colors outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 ${activeTab === tab.id
+                ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
                 : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
                 }`}
             >

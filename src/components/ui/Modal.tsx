@@ -97,7 +97,6 @@ export function Modal({
         return () => {
             document.body.style.overflow = '';
         };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isOpen]);
 
     // Effect 2: keyboard event listener — re-attaches when handler reference changes

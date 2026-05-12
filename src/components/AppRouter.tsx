@@ -233,15 +233,15 @@ function ProtectedLayout() {
       {/* Skip to main content link */}
       <a
         href="#main-content"
-        className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:bg-blue-600 focus:text-white focus:px-4 focus:py-2 focus:rounded"
+        className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:bg-indigo-600 focus:text-white focus:px-4 focus:py-2 focus:rounded"
       >
         Перейти к основному содержимому
       </a>
       <header className="border-b bg-white/60 backdrop-blur dark:bg-slate-900/60 dark:border-slate-800">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between">
-          <NavLink to="/data" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between gap-3">
+          <NavLink to="/data" className="flex min-w-0 items-center gap-3 hover:opacity-80 transition-opacity">
             <Logo size="sm" showText={false} />
-            <span className="text-lg font-semibold tracking-tight text-gray-900 dark:text-gray-100">
+            <span className="hidden truncate text-lg font-semibold tracking-tight text-gray-900 dark:text-gray-100 xs:inline">
               IBS Trading Strategy
             </span>
           </NavLink>
@@ -373,10 +373,10 @@ function LoginPage() {
   return (
     <div className="min-h-screen bg-gray-50 text-gray-800 dark:text-gray-100 flex flex-col">
       <header className="border-b bg-white/60 backdrop-blur dark:bg-slate-900/60 dark:border-slate-800">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3">
             <Logo size="sm" showText={false} />
-            <span className="text-lg font-semibold tracking-tight text-gray-900 dark:text-gray-100">
+            <span className="hidden truncate text-lg font-semibold tracking-tight text-gray-900 dark:text-gray-100 xs:inline">
               IBS Trading Strategy
             </span>
           </div>
@@ -406,7 +406,7 @@ function LoginPage() {
               Запомнить меня
             </label>
             <div className="flex justify-end gap-2">
-              <button type="submit" className="px-3 py-1.5 rounded-lg text-sm bg-blue-600 text-white hover:bg-blue-700 transition-colors">Войти</button>
+              <button type="submit" className="px-3 py-1.5 rounded-lg text-sm bg-indigo-600 text-white hover:bg-indigo-700 transition-colors">Войти</button>
             </div>
           </form>
         </div>

@@ -499,8 +499,8 @@ describe('SingleTickerPage - Position Monitoring Logic', () => {
         fireEvent.click(equityTab);
       });
 
-      expect(screen.getByTestId('equity-chart')).toBeInTheDocument();
-      expect(screen.getByText('Chart with data')).toBeInTheDocument();
+      expect(await screen.findByTestId('equity-chart')).toBeInTheDocument();
+      expect(await screen.findByText('Chart with data')).toBeInTheDocument();
     });
 
     it('should show strategy parameters when trades table is visible', async () => {
@@ -513,7 +513,6 @@ describe('SingleTickerPage - Position Monitoring Logic', () => {
         fireEvent.click(tradesTab);
       });
 
-      screen.debug();
       expect(screen.getByTestId('trades-table')).toBeInTheDocument();
     });
 

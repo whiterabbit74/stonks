@@ -8,6 +8,7 @@ export interface ProviderOption {
   label: string;
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const PROVIDER_OPTIONS: ProviderOption[] = [
   { value: 'alpha_vantage', label: 'Alpha Vantage' },
   { value: 'finnhub', label: 'Finnhub' },
@@ -20,6 +21,7 @@ const PROVIDER_LABELS: Record<string, string> = Object.fromEntries(
   PROVIDER_OPTIONS.map((o) => [o.value, o.label]),
 );
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function providerDisplayName(provider: string) {
   return PROVIDER_LABELS[provider] ?? provider;
 }

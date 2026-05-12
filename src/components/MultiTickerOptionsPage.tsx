@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
-import { HelpCircle, Settings2, RefreshCw, ArrowUpRight } from 'lucide-react';
-import { MetricsGrid, AnalysisTabs, PageHeader, Select, Input, Button, TickerInput } from './ui';
+import { HelpCircle, RefreshCw, ArrowUpRight } from 'lucide-react';
+import { MetricsGrid, AnalysisTabs, PageHeader, Select, Input, Button, TickerInput, IconButton, Panel } from './ui';
 import { useAppStore } from '../stores';
 import type { Strategy, MultiTickerBacktestResults, ChartQuote } from '../types';
 import { optimizeTickerData, runSinglePositionBacktest } from '../lib/singlePositionBacktest';
@@ -23,6 +23,8 @@ import { CompactMetrics } from './CompactMetrics';
 import { StaleDataWarning } from './StaleDataWarning';
 import { OpenPositionBadge } from './OpenPositionBadge';
 import { TabContentLoader } from './ui/TabContentLoader';
+import { QuoteDetailsPopover } from './QuoteDetailsPopover';
+import { HeroChartSettingsPopover } from './HeroChartSettingsPopover';
 
 
 interface OptionsPageSettings {
@@ -110,12 +112,10 @@ export function MultiTickerOptionsPage() {
   const [heroChartKind, setHeroChartKind] = useState<'line' | 'candles'>(() => lsGet<'line' | 'candles'>(LS.OPTIONS_CHART_KIND, 'line'));
   const [heroShowTrades, setHeroShowTrades] = useState<boolean>(() => lsGet<boolean>(LS.OPTIONS_SHOW_TRADES, true));
   const [heroRange, setHeroRange] = useState<'1M' | '3M' | '6M' | '1Y' | '3Y' | '5Y' | 'MAX'>(() => lsGet(LS.OPTIONS_RANGE, '3M'));
-  const [showHeroSettings, setShowHeroSettings] = useState(false);
   const [showStrategyInfo, setShowStrategyInfo] = useState(false);
   const [isMarketOpen, setIsMarketOpen] = useState(getIsMarketOpen);
 
   const strategyHelpRef = useRef<HTMLDivElement | null>(null);
-  const heroSettingsRef = useRef<HTMLDivElement | null>(null);
   const hasAutoRun = useRef(false);
   const lazyFallback = <TabContentLoader />;
 
@@ -152,7 +152,6 @@ export function MultiTickerOptionsPage() {
   const initialCapital = 10000;
 
   useClickOutside(strategyHelpRef, showStrategyInfo, () => setShowStrategyInfo(false));
-  useClickOutside(heroSettingsRef, showHeroSettings, () => setShowHeroSettings(false), false);
 
   const runBacktest = async (tickersOverride?: string[]) => {
     if (!activeStrategy) {
@@ -223,11 +222,11 @@ export function MultiTickerOptionsPage() {
   }, [activeStrategy]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { lsSet(LS.OPTIONS_SETTINGS, optSettings); }, [optSettings]);
-  useEffect(() => { lsSet(LS.TICKERS, tickers); }, [tickers]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { lsSet(LS.OPTIONS_CHART_KIND, heroChartKind); }, [heroChartKind]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { lsSet(LS.OPTIONS_SHOW_TRADES, heroShowTrades); }, [heroShowTrades]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { lsSet(LS.OPTIONS_RANGE, heroRange); }, [heroRange]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { lsSet(LS.OPTIONS_SELECTED_TICKER, selectedChartTicker); }, [selectedChartTicker]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { lsSet(LS.TICKERS, tickers); }, [tickers]);
+  useEffect(() => { lsSet(LS.OPTIONS_CHART_KIND, heroChartKind); }, [heroChartKind]);
+  useEffect(() => { lsSet(LS.OPTIONS_SHOW_TRADES, heroShowTrades); }, [heroShowTrades]);
+  useEffect(() => { lsSet(LS.OPTIONS_RANGE, heroRange); }, [heroRange]);
+  useEffect(() => { lsSet(LS.OPTIONS_SELECTED_TICKER, selectedChartTicker); }, [selectedChartTicker]);
 
   // Keep selectedChartTicker in sync with tickers list
   useEffect(() => {
@@ -244,7 +243,7 @@ export function MultiTickerOptionsPage() {
         module.prefetchBacktestResultsChunks('options');
       });
     }, 1000);
-  }, [backtestResults]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [backtestResults]);
 
   // Quote fetch + auto-refresh
   useEffect(() => {
@@ -266,7 +265,7 @@ export function MultiTickerOptionsPage() {
     void fetchQuote();
     const interval = setInterval(() => void fetchQuote(), 60_000);
     return () => { cancelled = true; clearInterval(interval); };
-  }, [selectedChartTicker, resultsQuoteProvider]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [selectedChartTicker, resultsQuoteProvider]);
 
   // ─── Derived ─────────────────────────────────────────────────────────────────
 
@@ -294,13 +293,12 @@ export function MultiTickerOptionsPage() {
       : null;
     const isOpenPosition = !!(lastTrade && lastDataDate && isSameDay(lastTrade.exitDate, lastDataDate));
     const openEntryPrice = isOpenPosition ? lastTrade?.entryPrice ?? null : null;
-
     return (
       <div className="space-y-3">
         <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_240px] lg:grid-cols-[minmax(0,1fr)_280px]">
 
           {/* ── Left: chart ── */}
-          <div className="space-y-3 rounded-xl border border-gray-200 bg-gray-50/70 p-3 dark:border-gray-800 dark:bg-gray-950/40">
+          <Panel tone="subtle" padding="sm" className="space-y-3">
             {/* Toolbar */}
             <div className="flex flex-wrap items-center gap-1.5">
               {/* Ticker pills */}
@@ -312,7 +310,7 @@ export function MultiTickerOptionsPage() {
                     onClick={() => setSelectedChartTicker(t)}
                     className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold transition-colors ${
                       t === selectedChartTicker
-                        ? 'bg-blue-600 text-white'
+                        ? 'bg-indigo-600 text-white'
                         : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'
                     }`}
                   >
@@ -336,19 +334,19 @@ export function MultiTickerOptionsPage() {
               {/* Right buttons */}
               <div className="ml-auto flex items-center gap-1.5">
                 {backtestResults && (
-                  <button
-                    type="button"
+                  <Button
                     onClick={() => setActiveTab('equity')}
-                    className="inline-flex h-7 items-center gap-1 rounded-full border border-gray-300 px-2 text-[11px] text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+                    variant="secondary"
+                    size="sm"
+                    className="h-7 rounded-full px-2.5 text-[11px]"
                     title="Открыть баланс"
+                    rightIcon={<ArrowUpRight className="h-3 w-3" />}
                   >
                     Equity
-                    <ArrowUpRight className="h-3 w-3" />
-                  </button>
+                  </Button>
                 )}
 
-                <button
-                  type="button"
+                <IconButton
                   onClick={() => {
                     if (!selectedChartTicker) return;
                     setChartQuoteLoading(true);
@@ -358,53 +356,22 @@ export function MultiTickerOptionsPage() {
                       .finally(() => setChartQuoteLoading(false));
                   }}
                   disabled={chartQuoteLoading}
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-300 text-gray-500 hover:bg-gray-100 disabled:opacity-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800 transition-colors"
+                  variant="outline"
+                  size="md"
                   title="Обновить котировку"
                 >
                   <RefreshCw className={`h-3.5 w-3.5 ${chartQuoteLoading ? 'animate-spin' : ''}`} />
-                </button>
+                </IconButton>
+
+                <QuoteDetailsPopover quote={chartQuote} provider={resultsQuoteProvider || 'finnhub'} />
 
                 {/* Chart settings */}
-                <div ref={heroSettingsRef} className="relative">
-                  <button
-                    type="button"
-                    onClick={() => setShowHeroSettings((prev) => !prev)}
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-300 text-gray-500 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800 transition-colors"
-                    title="Настройки графика"
-                  >
-                    <Settings2 className="h-3.5 w-3.5" />
-                  </button>
-                  {showHeroSettings && (
-                    <div className="absolute right-0 top-full z-20 mt-1.5 w-48 rounded-lg border border-gray-200 bg-white p-2.5 shadow-lg dark:border-gray-700 dark:bg-gray-900">
-                      <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Тип графика</div>
-                      <div className="mt-1.5 grid grid-cols-2 gap-1">
-                        {(['line', 'candles'] as const).map((kind) => (
-                          <button
-                            key={kind}
-                            type="button"
-                            onClick={() => setHeroChartKind(kind)}
-                            className={`rounded px-2 py-1 text-[11px] ${heroChartKind === kind
-                              ? 'bg-blue-600 text-white'
-                              : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'
-                            }`}
-                          >
-                            {kind === 'line' ? 'Линия' : 'Свечи'}
-                          </button>
-                        ))}
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setHeroShowTrades((prev) => !prev)}
-                        className="mt-2 flex w-full items-center justify-between rounded bg-gray-100 px-2 py-1.5 text-[11px] text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
-                      >
-                        <span>Показывать сделки</span>
-                        <span className={heroShowTrades ? 'text-green-600 dark:text-green-300' : 'text-gray-500'}>
-                          {heroShowTrades ? 'Вкл' : 'Выкл'}
-                        </span>
-                      </button>
-                    </div>
-                  )}
-                </div>
+                <HeroChartSettingsPopover
+                  chartKind={heroChartKind}
+                  onChartKindChange={setHeroChartKind}
+                  showTrades={heroShowTrades}
+                  onShowTradesChange={setHeroShowTrades}
+                />
               </div>
             </div>
 
@@ -427,22 +394,22 @@ export function MultiTickerOptionsPage() {
                 onRangeChange={setHeroRange}
               />
             )}
-          </div>
+          </Panel>
 
           {/* ── Right: parameters ── */}
-          <aside className="space-y-3 rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-900/70">
+          <Panel as="aside" tone="soft" padding="sm" className="space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">Параметры</span>
               <div ref={strategyHelpRef} className="relative">
-                <button
-                  type="button"
+                <IconButton
                   onClick={() => setShowStrategyInfo((prev) => !prev)}
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-300 text-gray-500 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 transition-colors"
+                  variant="outline"
+                  size="md"
                   title="Показать описание стратегии"
                   aria-expanded={showStrategyInfo}
                 >
                   <HelpCircle className="h-4 w-4" />
-                </button>
+                </IconButton>
                 {showStrategyInfo && (
                   <div className="absolute right-0 top-full z-20 mt-2 w-[min(94vw,430px)]">
                     <StrategyInfoCard
@@ -480,7 +447,7 @@ export function MultiTickerOptionsPage() {
                       setTickersInput(defaultList.join(', '));
                       void runBacktest(defaultList);
                     }}
-                    className="mt-1.5 w-full rounded-lg border border-dashed border-gray-300 px-2 py-1 text-left text-[11px] text-gray-500 hover:border-blue-400 hover:bg-blue-50 hover:text-blue-600 dark:border-gray-600 dark:text-gray-400 dark:hover:border-blue-500 dark:hover:bg-blue-950/20 dark:hover:text-blue-300 transition-colors"
+                    className="mt-1.5 w-full rounded-lg border border-dashed border-gray-300 px-2 py-1 text-left text-[11px] text-gray-500 transition-colors hover:border-indigo-400 hover:bg-indigo-50 hover:text-indigo-600 dark:border-gray-600 dark:text-gray-400 dark:hover:border-indigo-500 dark:hover:bg-indigo-950/20 dark:hover:text-indigo-300"
                     title="Вернуться к дефолтным тикерам"
                   >
                     ↩ {getDefaultTickers().join(', ')}
@@ -558,7 +525,7 @@ export function MultiTickerOptionsPage() {
             {backtestResults && (
               <OpenPositionBadge isOpen={isOpenPosition} entryPrice={openEntryPrice} />
             )}
-          </aside>
+          </Panel>
         </div>
       </div>
     );
@@ -568,9 +535,9 @@ export function MultiTickerOptionsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 shadow-sm">
-        <PageHeader title="Опционы" subtitle="Бэктест опционных стратегий на нескольких активах" />
-      </div>
+      <Panel as="section" padding="md">
+        <PageHeader className="mb-0" title="Опционы" subtitle="Бэктест опционных стратегий на нескольких активах" />
+      </Panel>
 
       <BacktestPageShell isLoading={false} error={error} loadingMessage="Загрузка данных и выполнение бэктеста...">
         {backtestResults && (

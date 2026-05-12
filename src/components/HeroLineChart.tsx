@@ -107,7 +107,7 @@ export function HeroLineChart({
     }
 
     return points;
-  }, [data, currentPrice]);
+  }, [data, currentPrice, isTrading, todayQuote?.high, todayQuote?.low, todayQuote?.open]);
 
   const lineData = useMemo(
     () => candlesData.map((candle) => ({ time: candle.time, value: candle.close })),
@@ -201,7 +201,7 @@ export function HeroLineChart({
     });
 
     const lineSeries = chart.addSeries(LineSeries, {
-      color: lineColor,
+      color: '#16a34a',
       lineWidth: 2,
       priceLineVisible: false,
       lastValueVisible: true,
@@ -301,7 +301,7 @@ export function HeroLineChart({
 
     previousRangeRef.current = activeRange;
     hasAppliedInitialRangeRef.current = true;
-  }, [activeRange, candlesData.length]);
+  }, [activeRange, candlesData]);
 
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-2.5 dark:border-gray-700 dark:bg-gray-900">
@@ -324,7 +324,7 @@ export function HeroLineChart({
                   type="button"
                   onClick={() => handleSetRange(range)}
                   className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium transition-colors ${activeRange === range
-                    ? 'bg-blue-600 text-white'
+                    ? 'bg-indigo-600 text-white'
                     : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'
                     }`}
                 >

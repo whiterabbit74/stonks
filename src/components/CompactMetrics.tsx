@@ -7,8 +7,7 @@ interface Props {
 }
 
 export function CompactMetrics({ metrics, trades }: Props) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const m = metrics as any;
+  const m = metrics as BacktestMetrics & { sharpeRatio?: number };
   const rows = [
     { label: 'CAGR', value: m?.cagr != null ? `${Number(m.cagr).toFixed(1)}%` : '—' },
     { label: 'Макс. просадка', value: m?.maxDrawdown != null ? `${(Number(m.maxDrawdown) * 100).toFixed(1)}%` : '—' },

@@ -78,12 +78,15 @@ function getTabImporters(tabId: TabId, mode: BacktestViewMode): Array<() => Prom
   }
 }
 
+// Used by route-level prefetching; kept here with the lazy tab imports it needs.
+// eslint-disable-next-line react-refresh/only-export-components
 export function prefetchBacktestTab(tabId: TabId, mode: BacktestViewMode) {
   for (const load of getTabImporters(tabId, mode)) {
     void load();
   }
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function prefetchBacktestResultsChunks(mode: BacktestViewMode = 'single') {
   for (const tab of MODE_TAB_ORDER[mode]) {
     prefetchBacktestTab(tab, mode);

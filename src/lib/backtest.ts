@@ -521,10 +521,6 @@ export class BacktestEngine {
 
     const result = this.evaluateOperator(condition.operator, currentValue, conditionValue, indicatorValues, index);
 
-    // Debug logging for IBS conditions (only for exits)
-    if (condition.indicator === 'IBS' && condition.operator === '>' && result) {
-    }
-
     return result;
   }
 

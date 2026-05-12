@@ -34,6 +34,8 @@ const activeStyles: Record<IconButtonVariant, string> = {
   ghost: 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:text-indigo-300 dark:hover:bg-indigo-900/40',
 };
 
+// Shared by NavLink render props that need the exact same button treatment.
+// eslint-disable-next-line react-refresh/only-export-components
 export function getIconButtonClasses({
   variant = 'outline',
   size = 'md',

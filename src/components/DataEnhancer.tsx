@@ -198,10 +198,11 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
       setError(msg);
       toast.error(`${targetTicker}: ${msg}`);
     } finally {
-      if (requestId !== latestDownloadRequestIdRef.current) return;
-      setIsLoading(false);
-      setLoadingTicker(null);
-      setLoadingStage(null);
+      if (requestId === latestDownloadRequestIdRef.current) {
+        setIsLoading(false);
+        setLoadingTicker(null);
+        setLoadingStage(null);
+      }
     }
   };
 
