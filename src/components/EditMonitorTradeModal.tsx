@@ -56,6 +56,7 @@ export function EditMonitorTradeModal({
   const [localError, setLocalError] = useState<string | null>(null);
 
   const isClosed = trade?.status === 'closed';
+  const hasExitDraft = exitDate.trim() !== '' || exitPrice.trim() !== '' || exitIbs.trim() !== '';
 
   useLayoutEffect(() => {
     if (!open || !trade) return;
@@ -103,7 +104,12 @@ export function EditMonitorTradeModal({
 
     try {
       const numericExitPrice = exitPrice.trim() === '' ? null : Number(exitPrice);
-      if (isClosed && (numericExitPrice == null || !Number.isFinite(numericExitPrice) || numericExitPrice <= 0)) {
+      const shouldSubmitExit = isClosed || hasExitDraft;
+      if (shouldSubmitExit && !exitDate) {
+        setLocalError('Укажите дату выхода.');
+        return;
+      }
+      if (shouldSubmitExit && (numericExitPrice == null || !Number.isFinite(numericExitPrice) || numericExitPrice <= 0)) {
         setLocalError('Укажите корректную цену выхода.');
         return;
       }
@@ -113,9 +119,9 @@ export function EditMonitorTradeModal({
         entryDate,
         entryPrice: numericEntryPrice,
         entryIBS: parseIbs(entryIbs, 'Entry IBS'),
-        exitDate: isClosed ? (exitDate || null) : undefined,
-        exitPrice: isClosed ? numericExitPrice : undefined,
-        exitIBS: isClosed ? parseIbs(exitIbs, 'Exit IBS') : undefined,
+        exitDate: shouldSubmitExit ? exitDate : undefined,
+        exitPrice: shouldSubmitExit ? numericExitPrice : undefined,
+        exitIBS: shouldSubmitExit ? parseIbs(exitIbs, 'Exit IBS') : undefined,
         quantity: numericQuantity,
         notes: notes.trim() || null,
         isHidden,
@@ -186,44 +192,40 @@ export function EditMonitorTradeModal({
           />
         </div>
 
-        {isClosed ? (
-          <>
-            <div className="block">
-              <Label>Дата выхода (ET)</Label>
-              <Input
-                aria-label="Дата выхода (ET)"
-                type="date"
-                value={exitDate}
-                onChange={(event) => setExitDate(event.target.value)}
-              />
-            </div>
+        <div className="block">
+          <Label>Дата выхода (ET)</Label>
+          <Input
+            aria-label="Дата выхода (ET)"
+            type="date"
+            value={exitDate}
+            onChange={(event) => setExitDate(event.target.value)}
+          />
+        </div>
 
-            <div className="block">
-              <Label>Цена выхода</Label>
-              <Input
-                aria-label="Цена выхода"
-                type="number"
-                step="0.01"
-                value={exitPrice}
-                onChange={(event) => setExitPrice(event.target.value)}
-              />
-            </div>
+        <div className="block">
+          <Label>Цена выхода</Label>
+          <Input
+            aria-label="Цена выхода"
+            type="number"
+            step="0.01"
+            value={exitPrice}
+            onChange={(event) => setExitPrice(event.target.value)}
+          />
+        </div>
 
-            <div className="block">
-              <Label>Exit IBS, %</Label>
-              <Input
-                aria-label="Exit IBS, %"
-                type="number"
-                step="0.1"
-                min="0"
-                max="100"
-                value={exitIbs}
-                onChange={(event) => setExitIbs(event.target.value)}
-                placeholder="Необязательно"
-              />
-            </div>
-          </>
-        ) : null}
+        <div className="block">
+          <Label>Exit IBS, %</Label>
+          <Input
+            aria-label="Exit IBS, %"
+            type="number"
+            step="0.1"
+            min="0"
+            max="100"
+            value={exitIbs}
+            onChange={(event) => setExitIbs(event.target.value)}
+            placeholder="Необязательно"
+          />
+        </div>
       </div>
 
       <div className="grid gap-2 sm:grid-cols-2">
