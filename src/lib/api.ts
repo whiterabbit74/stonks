@@ -815,8 +815,8 @@ export class DatasetAPI {
   }
 
   static async updateBrokerTrade(id: string, data: {
-    notes?: string; isHidden?: boolean; isTest?: boolean;
-    exitDate?: string; exitPrice?: number; exitIBS?: number;
+    notes?: string | null; isHidden?: boolean; isTest?: boolean;
+    exitDate?: string; exitPrice?: number; exitIBS?: number | null;
   }): Promise<BrokerTradeRecord> {
     return apiCall<BrokerTradeRecord>(`${API_BASE_URL}/broker-trades/${id}`, {
       method: 'PATCH',

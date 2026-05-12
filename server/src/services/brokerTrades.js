@@ -186,24 +186,49 @@ function updateBrokerTrade(id, { notes, isHidden, isTest, exitDate, exitPrice, e
 
     const updates = [];
     const params = [];
+    let nextExitDate = existing.exit_date;
+    let nextExitPrice = existing.exit_price;
+    let shouldRecalculateCloseFields = false;
 
     if (notes !== undefined) { updates.push('notes = ?'); params.push(notes); }
     if (isHidden !== undefined) { updates.push('is_hidden = ?'); params.push(isHidden ? 1 : 0); }
     if (isTest !== undefined) { updates.push('is_test = ?'); params.push(isTest ? 1 : 0); }
 
-    if (exitDate !== undefined) { updates.push('exit_date = ?'); params.push(exitDate); }
+    if (exitDate !== undefined) {
+        nextExitDate = exitDate || null;
+        updates.push('exit_date = ?'); params.push(nextExitDate);
+        shouldRecalculateCloseFields = true;
+    }
     if (exitPrice !== undefined) {
-        const xp = typeof exitPrice === 'number' ? exitPrice : Number(exitPrice);
-        updates.push('exit_price = ?'); params.push(xp);
-        const ep = existing.entry_price;
-        if (ep && xp) {
-            const { pnlAbsolute, pnlPercent } = calcPnl(ep, xp);
-            updates.push('pnl_absolute = ?'); params.push(pnlAbsolute);
-            updates.push('pnl_percent = ?'); params.push(pnlPercent);
+        const xp = exitPrice === null ? null : (typeof exitPrice === 'number' ? exitPrice : Number(exitPrice));
+        if (xp != null && (!Number.isFinite(xp) || xp <= 0)) {
+            throw new Error('exitPrice must be a positive number');
+        }
+        nextExitPrice = xp;
+        updates.push('exit_price = ?'); params.push(nextExitPrice);
+        shouldRecalculateCloseFields = true;
+    }
+    if (exitIBS !== undefined) {
+        const ibs = exitIBS === null ? null : (typeof exitIBS === 'number' ? exitIBS : Number(exitIBS));
+        if (ibs != null && (!Number.isFinite(ibs) || ibs < 0 || ibs > 1)) {
+            throw new Error('exitIBS must be between 0 and 1');
+        }
+        updates.push('exit_ibs = ?'); params.push(ibs);
+    }
+
+    if (shouldRecalculateCloseFields) {
+        const { pnlAbsolute, pnlPercent } = calcPnl(existing.entry_price, nextExitPrice);
+        const holdingDays = calcHoldingDays(existing.entry_date, nextExitDate);
+        updates.push('pnl_absolute = ?'); params.push(pnlAbsolute);
+        updates.push('pnl_percent = ?'); params.push(pnlPercent);
+        updates.push('holding_days = ?'); params.push(holdingDays);
+
+        if (nextExitDate && nextExitPrice != null) {
             updates.push("status = 'closed'");
+        } else {
+            updates.push("status = 'open'");
         }
     }
-    if (exitIBS !== undefined) { updates.push('exit_ibs = ?'); params.push(exitIBS); }
 
     if (updates.length === 0) return rowToTrade(existing);
 

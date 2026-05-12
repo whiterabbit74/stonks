@@ -77,6 +77,7 @@ function loadTestContext() {
   const monitorConsistency = require(path.join(serverRoot, 'src/services/monitorConsistency.js'));
   const monitorRoutes = require(path.join(serverRoot, 'src/routes/monitor.js'));
   const tradesRoutes = require(path.join(serverRoot, 'src/routes/trades.js'));
+  const brokerTradesRoutes = require(path.join(serverRoot, 'src/routes/brokerTrades.js'));
   const dbModule = require(path.join(serverRoot, 'src/db/index.js'));
 
   telegram.telegramWatches.clear();
@@ -89,6 +90,7 @@ function loadTestContext() {
     monitorConsistency,
     monitorRoutes,
     tradesRoutes,
+    brokerTradesRoutes,
     dbModule,
   };
 }
@@ -589,6 +591,62 @@ describe('monitor routes', () => {
       expect(response.body.openMonitorTrade).toBeNull();
       expect(context.trades.getTradeById(openTrade.id)).toMatchObject({
         status: 'closed',
+      });
+    } finally {
+      await server.close();
+    }
+  });
+});
+
+describe('broker trade routes', () => {
+  it('PATCH /api/broker-trades/:id closes an open broker trade and recalculates metrics', async () => {
+    cleanupEnv = createTempEnv();
+    const context = loadTestContext();
+    cleanupDb = context.dbModule;
+
+    const trade = context.brokerTrades.recordBrokerEntry({
+      symbol: 'AAPL',
+      price: 198.42,
+      ibs: 0.14,
+      decisionTime: '2026-04-01T19:59:00.000Z',
+      dateKey: '2026-04-01',
+      source: 'auto',
+      clientOrderId: 'entry-client',
+      brokerOrderId: 'entry-order',
+      filledQty: 1,
+      quantity: 1,
+    });
+
+    const server = await createTestServer(context.brokerTradesRoutes);
+    try {
+      const response = await requestJson(server.raw, 'PATCH', `/api/broker-trades/${trade.id}`, {
+        exitDate: '2026-04-03',
+        exitPrice: 205.75,
+        exitIBS: 0.825,
+        notes: 'closed manually',
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toMatchObject({
+        id: trade.id,
+        symbol: 'AAPL',
+        status: 'closed',
+        exitDate: '2026-04-03',
+        exitPrice: 205.75,
+        exitIBS: 0.825,
+        pnlAbsolute: 7.33,
+        pnlPercent: 3.694184,
+        holdingDays: 2,
+        notes: 'closed manually',
+      });
+
+      const history = await requestJson(server.raw, 'GET', '/api/broker-trades?includeHidden=1');
+      expect(history.status).toBe(200);
+      expect(history.body.openTrade).toBeNull();
+      expect(history.body.trades[0]).toMatchObject({
+        id: trade.id,
+        status: 'closed',
+        holdingDays: 2,
       });
     } finally {
       await server.close();

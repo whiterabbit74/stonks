@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { AlertCircle, BriefcaseBusiness, ChevronDown, ChevronUp, History, RefreshCw, ShieldCheck, Wallet, Radar } from 'lucide-react';
+import { AlertCircle, BriefcaseBusiness, ChevronDown, ChevronUp, History, Pencil, RefreshCw, ShieldCheck, Wallet, Radar } from 'lucide-react';
 import type { AutoTradingConfig, AutoTradeState, AutotradeLogsResponse, WebullDashboardResponse, BrokerTradeRecord, MonitorConsistencyResponse } from '../types';
 import { DatasetAPI } from '../lib/api';
 import { getEntryCapitalModeOption } from '../lib/autotrade-config';
 import { formatCurrencyValue, formatDateTimeET, formatHoldingDays, formatNumberOrDash, formatRatioPercent, formatSignedPercentValue } from '../lib/formatters';
 import { AnalysisTabs, Button, IconButton, PageHeader, Panel } from './ui';
 import { ManualBrokerTradeModal } from './ManualBrokerTradeModal';
+import { EditBrokerTradeModal, type EditBrokerTradePayload } from './EditBrokerTradeModal';
 import { useAppStore } from '../stores';
 
 type RowRecord = Record<string, unknown>;
@@ -405,6 +406,17 @@ export function WebullAccountPage() {
   const [manualTradeModalOpen, setManualTradeModalOpen] = useState(false);
   const [addTradeLoading, setAddTradeLoading] = useState(false);
   const [addTradeError, setAddTradeError] = useState<string | null>(null);
+  const [editTradeState, setEditTradeState] = useState<{
+    open: boolean;
+    trade: BrokerTradeRecord | null;
+    loading: boolean;
+    error: string | null;
+  }>({
+    open: false,
+    trade: null,
+    loading: false,
+    error: null,
+  });
 
   const loadDashboard = async (isRefresh = false) => {
     try {
@@ -462,6 +474,44 @@ export function WebullAccountPage() {
       setTradesData(prev => prev.map(t => t.id === updated.id ? updated : t));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Не удалось обновить сделку');
+    }
+  };
+
+  const handleOpenEditTradeModal = (trade: BrokerTradeRecord) => {
+    setEditTradeState({
+      open: true,
+      trade,
+      loading: false,
+      error: null,
+    });
+  };
+
+  const handleCloseEditTradeModal = () => {
+    if (editTradeState.loading) return;
+    setEditTradeState({
+      open: false,
+      trade: null,
+      loading: false,
+      error: null,
+    });
+  };
+
+  const handleUpdateTrade = async (payload: EditBrokerTradePayload) => {
+    if (!editTradeState.trade) return;
+
+    try {
+      setEditTradeState((prev) => ({ ...prev, loading: true, error: null }));
+      const updated = await DatasetAPI.updateBrokerTrade(editTradeState.trade.id, payload);
+      setTradesData(prev => prev.map(t => t.id === updated.id ? updated : t));
+      setEditTradeState({
+        open: false,
+        trade: null,
+        loading: false,
+        error: null,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Не удалось обновить сделку';
+      setEditTradeState((prev) => ({ ...prev, loading: false, error: message }));
     }
   };
 
@@ -1392,6 +1442,14 @@ export function WebullAccountPage() {
             onClose={handleCloseManualTradeModal}
             onSubmit={handleAddTrade}
           />
+          <EditBrokerTradeModal
+            open={editTradeState.open}
+            trade={editTradeState.trade}
+            loading={editTradeState.loading}
+            error={editTradeState.error}
+            onClose={handleCloseEditTradeModal}
+            onSubmit={handleUpdateTrade}
+          />
 
           <SectionPanel title="Журнал сделок">
             <div className="overflow-x-auto">
@@ -1447,6 +1505,15 @@ export function WebullAccountPage() {
                         <td className="px-3 py-2 text-xs text-gray-500 max-w-[100px] truncate" title={trade.notes ?? ''}>{trade.notes ?? '—'}</td>
                         <td className="px-3 py-2 text-right">
                           <div className="flex justify-end gap-1">
+                            <button
+                              onClick={() => handleOpenEditTradeModal(trade)}
+                              className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
+                              title={`Редактировать ${trade.symbol}`}
+                              aria-label={`Редактировать ${trade.symbol}`}
+                            >
+                              <Pencil className="h-3 w-3" />
+                              <span>Редактировать</span>
+                            </button>
                             <button
                               onClick={() => void handleToggleHide(trade)}
                               className="rounded px-2 py-1 text-xs border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
