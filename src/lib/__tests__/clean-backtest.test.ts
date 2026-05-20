@@ -68,14 +68,15 @@ describe('CleanBacktestEngine', () => {
 
   describe('runBacktest', () => {
     it('should run complete backtest and return valid result', () => {
-      const engine = new CleanBacktestEngine(sampleData, strategy);
+      const engine = new CleanBacktestEngine(sampleData, strategy, { generateChartData: false });
       const result = engine.runBacktest();
 
       expect(result).toBeDefined();
       expect(result.trades).toBeDefined();
       expect(result.metrics).toBeDefined();
       expect(result.equity).toBeDefined();
-      expect(result.chartData).toBeDefined();
+      // By default chartData should NOT be generated (optimization)
+      expect(result.chartData).toBeUndefined();
       expect(result.insights).toBeDefined();
     });
 
@@ -103,7 +104,7 @@ describe('CleanBacktestEngine', () => {
       // Chart data should be generated for all bars
       expect(result.chartData).toHaveLength(sampleData.length);
 
-      result.chartData.forEach(candle => {
+      result.chartData?.forEach(candle => {
         expect(candle.time).toBeTypeOf('number');
         expect(candle.open).toBeTypeOf('number');
         expect(candle.high).toBeTypeOf('number');

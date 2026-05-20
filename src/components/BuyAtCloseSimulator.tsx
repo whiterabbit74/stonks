@@ -35,7 +35,8 @@ function runCleanBuyAtClose(data: OHLCData[], strategy: Strategy): SimulationRes
   const options: CleanBacktestOptions = {
     entryExecution: 'nextOpen',
     ignoreMaxHoldDaysExit: false,
-    ibsExitRequireAboveEntry: false
+    ibsExitRequireAboveEntry: false,
+    generateChartData: false
   };
   const engine = new CleanBacktestEngine(data, strategy, options);
   const res = engine.runBacktest();
