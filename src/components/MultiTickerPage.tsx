@@ -619,6 +619,7 @@ export function MultiTickerPage() {
                 <TradingChart
                   data={tickersData.find(t => t.ticker === selectedPriceTicker)?.data ?? []}
                   trades={backtestResults.trades}
+                  ticker={selectedPriceTicker}
                   splits={tickersData.find(t => t.ticker === selectedPriceTicker)?.splits}
                   isVisible={activeTab === 'price'}
                   exportFileNamePrefix={`price-data-${selectedPriceTicker.toLowerCase()}`}

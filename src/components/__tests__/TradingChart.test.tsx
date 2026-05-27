@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { TradingChart } from '../TradingChart';
+import { toChartTimestamp } from '../../lib/date-utils';
 
 const mockPriceScale = { applyOptions: vi.fn() };
 const mockSeries = {
@@ -108,5 +109,53 @@ describe('TradingChart', () => {
     expect(text).toContain('2024-01-01,105.0000,100.0000,110.0000,90.0000,105.0000,104.0000,1000,0.750000');
     expect(clickSpy).toHaveBeenCalledTimes(1);
     expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:chart-export');
+  });
+
+  it('shows trade markers only for the selected ticker', async () => {
+    const data = [
+      { date: '2024-01-01', open: 100, high: 110, low: 90, close: 105, adjClose: 104, volume: 1000 },
+      { date: '2024-01-02', open: 105, high: 112, low: 101, close: 108, adjClose: 107, volume: 1200 },
+      { date: '2024-01-03', open: 108, high: 114, low: 102, close: 110, adjClose: 109, volume: 900 },
+    ];
+    const trades = [
+      {
+        id: 'aapl-trade',
+        entryDate: '2024-01-01',
+        exitDate: '2024-01-02',
+        entryPrice: 100,
+        exitPrice: 108,
+        quantity: 1,
+        pnl: 8,
+        pnlPercent: 8,
+        duration: 1,
+        exitReason: 'ibs_signal',
+        context: { ticker: 'AAPL' },
+      },
+      {
+        id: 'msft-trade',
+        entryDate: '2024-01-02',
+        exitDate: '2024-01-03',
+        entryPrice: 200,
+        exitPrice: 210,
+        quantity: 1,
+        pnl: 10,
+        pnlPercent: 5,
+        duration: 1,
+        exitReason: 'ibs_signal',
+        context: { ticker: 'MSFT' },
+      },
+    ];
+
+    render(<TradingChart data={data} trades={trades} ticker="AAPL" />);
+
+    await waitFor(() => {
+      expect(mockMarkersApi.setMarkers).toHaveBeenCalled();
+      const markers = mockMarkersApi.setMarkers.mock.calls.at(-1)?.[0] ?? [];
+      expect(markers).toHaveLength(2);
+      expect(markers.map((marker) => marker.time)).toEqual([
+        toChartTimestamp('2024-01-01'),
+        toChartTimestamp('2024-01-02'),
+      ]);
+    });
   });
 });

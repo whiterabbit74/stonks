@@ -355,6 +355,7 @@ export function BacktestResultsView({
                 <TradingChart
                   data={marketData || []}
                   trades={trades}
+                  ticker={symbol}
                   splits={currentSplits}
                   isVisible={tabId === activeTab}
                   exportFileNamePrefix={`price-data-${(symbol || 'single').toLowerCase()}`}
