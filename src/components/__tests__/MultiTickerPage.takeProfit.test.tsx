@@ -63,6 +63,7 @@ vi.mock('../ui', () => ({
   ),
   PageHeader: ({ title, subtitle }: any) => <header><h1>{title}</h1><p>{subtitle}</p></header>,
   Select: (props: any) => <select {...props} />,
+  Input: (props: any) => <input {...props} />,
   Button: ({ children, onClick, disabled, isLoading }: any) => (
     <button type="button" onClick={onClick} disabled={disabled}>
       {isLoading ? 'Загрузка...' : children}
@@ -155,7 +156,7 @@ describe('MultiTickerPage take-profit control', () => {
     });
   });
 
-  it('passes the selected take-profit percent to both stock backtest runs', async () => {
+  it('passes a custom take-profit percent to both stock backtest runs and remembers it', async () => {
     render(
       <MemoryRouter>
         <MultiTickerPage />
@@ -165,17 +166,36 @@ describe('MultiTickerPage take-profit control', () => {
     await waitFor(() => expect(mocks.runSinglePositionBacktest).toHaveBeenCalledTimes(2));
     mocks.runSinglePositionBacktest.mockClear();
 
-    const takeProfitSelect = screen.getAllByRole('combobox')[1];
-    fireEvent.change(takeProfitSelect, { target: { value: '3' } });
+    const takeProfitInput = screen.getByRole('spinbutton', { name: 'Тейк-профит' });
+    fireEvent.change(takeProfitInput, { target: { value: '2.5' } });
     fireEvent.click(screen.getByRole('button', { name: 'Запустить бэктест' }));
 
     await waitFor(() => expect(mocks.runSinglePositionBacktest).toHaveBeenCalledTimes(2));
 
     expect(mocks.runSinglePositionBacktest.mock.calls[0][3]).toEqual(
-      expect.objectContaining({ allowSameDayReentry: true, takeProfitPercent: 3 })
+      expect.objectContaining({ allowSameDayReentry: true, takeProfitPercent: 2.5 })
     );
     expect(mocks.runSinglePositionBacktest.mock.calls[1][3]).toEqual(
-      expect.objectContaining({ allowSameDayReentry: true, takeProfitPercent: 3 })
+      expect.objectContaining({ allowSameDayReentry: true, takeProfitPercent: 2.5 })
+    );
+
+    await waitFor(() => expect(window.localStorage.setItem).toHaveBeenCalledWith('stocks.takeProfitPercent', '2.5'));
+  });
+
+  it('loads a remembered custom take-profit percent', async () => {
+    window.localStorage.setItem('stocks.takeProfitPercent', '2.5');
+
+    render(
+      <MemoryRouter>
+        <MultiTickerPage />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByRole('spinbutton', { name: 'Тейк-профит' })).toHaveValue(2.5);
+
+    await waitFor(() => expect(mocks.runSinglePositionBacktest).toHaveBeenCalledTimes(2));
+    expect(mocks.runSinglePositionBacktest.mock.calls[0][3]).toEqual(
+      expect.objectContaining({ allowSameDayReentry: true, takeProfitPercent: 2.5 })
     );
   });
 });

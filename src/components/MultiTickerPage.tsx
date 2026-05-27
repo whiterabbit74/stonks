@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { HelpCircle, RefreshCw, ArrowUpRight } from 'lucide-react';
-import { MetricsGrid, AnalysisTabs, PageHeader, Select, Button, TickerInput, ChartContainer, IconButton, Panel } from './ui';
+import { MetricsGrid, AnalysisTabs, PageHeader, Select, Input, Button, TickerInput, ChartContainer, IconButton, Panel } from './ui';
 import { useAppStore } from '../stores';
 import { LS } from '../constants';
 import type { Strategy, MultiTickerBacktestResults, ChartQuote } from '../types';
@@ -45,13 +45,21 @@ const OpenDayDrawdownChart = lazy(() => importOpenDayDrawdownChart().then((m) =>
 const BuyHoldAnalysis = lazy(() => importBuyHoldAnalysis().then((m) => ({ default: m.BuyHoldAnalysis })));
 
 type BacktestResults = MultiTickerBacktestResults;
-const TAKE_PROFIT_PERCENT_OPTIONS = [1, 2, 3, 4, 5, 6, 7, 8, 10] as const;
 
-function normalizeTakeProfitPercent(value: number | null): number | null {
+function parseTakeProfitPercent(value: number | string | null): number | null {
   if (value == null) return null;
-  return TAKE_PROFIT_PERCENT_OPTIONS.includes(value as (typeof TAKE_PROFIT_PERCENT_OPTIONS)[number])
+  const parsed = typeof value === 'number'
     ? value
-    : null;
+    : Number(value.trim().replace(',', '.'));
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function formatTakeProfitInput(value: number | null): string {
+  return value == null ? '' : String(value);
+}
+
+function getInitialTakeProfitPercent(): number | null {
+  return parseTakeProfitPercent(lsGet<number | string | null>(LS.STOCKS_TAKE_PROFIT_PCT, null));
 }
 
 export function MultiTickerPage() {
@@ -104,9 +112,8 @@ export function MultiTickerPage() {
   const [error, setError] = useState<string | null>(null);
   const [backtestResults, setBacktestResults] = useState<BacktestResults | null>(null);
   const [monthlyContributionResults, setMonthlyContributionResults] = useState<BacktestResults | null>(null);
-  const [takeProfitPercent, setTakeProfitPercent] = useState<number | null>(() => (
-    normalizeTakeProfitPercent(lsGet<number | null>(LS.STOCKS_TAKE_PROFIT_PCT, null))
-  ));
+  const [takeProfitInput, setTakeProfitInput] = useState<string>(() => formatTakeProfitInput(getInitialTakeProfitPercent()));
+  const takeProfitPercent = parseTakeProfitPercent(takeProfitInput);
 
   type TabId = 'summary' | 'price' | 'tickerCharts' | 'equity' | 'trades' | 'profit' | 'monthlyContribution' | 'splits' | 'drawdown' | 'duration' | 'buyhold' | 'openDayDrawdown' | 'buyAtClose' | 'buyAtClose4' | 'noStopLoss' | 'options';
   const [activeTab, setActiveTab] = useState<TabId>('summary');
@@ -556,22 +563,20 @@ export function MultiTickerPage() {
             </div>
 
             <div>
-              <label className="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">Тейк-профит</label>
+              <label htmlFor="take-profit-percent-input" className="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">Тейк-профит</label>
               <p className="mb-1 text-[11px] leading-snug text-gray-500 dark:text-gray-400">
-                Досрочный выход, если максимум дня достиг процента прибыли от цены входа.
+                Досрочный выход, если максимум дня достиг процента прибыли от цены входа. Пусто или 0 выключает условие.
               </p>
-              <Select
-                value={takeProfitPercent ?? 0}
-                onChange={(e) => {
-                  const value = Number(e.target.value);
-                  setTakeProfitPercent(value > 0 ? normalizeTakeProfitPercent(value) : null);
-                }}
-              >
-                <option value={0}>Выкл</option>
-                {TAKE_PROFIT_PERCENT_OPTIONS.map((value) => (
-                  <option key={value} value={value}>{value}%</option>
-                ))}
-              </Select>
+              <Input
+                id="take-profit-percent-input"
+                type="number"
+                min={0}
+                step={0.1}
+                inputMode="decimal"
+                value={takeProfitInput}
+                onChange={(e) => setTakeProfitInput(e.target.value)}
+                placeholder="Например, 2.5"
+              />
             </div>
 
             <Button
