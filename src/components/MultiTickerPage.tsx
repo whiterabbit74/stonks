@@ -45,6 +45,14 @@ const OpenDayDrawdownChart = lazy(() => importOpenDayDrawdownChart().then((m) =>
 const BuyHoldAnalysis = lazy(() => importBuyHoldAnalysis().then((m) => ({ default: m.BuyHoldAnalysis })));
 
 type BacktestResults = MultiTickerBacktestResults;
+const TAKE_PROFIT_PERCENT_OPTIONS = [1, 2, 3, 4, 5, 6, 7, 8, 10] as const;
+
+function normalizeTakeProfitPercent(value: number | null): number | null {
+  if (value == null) return null;
+  return TAKE_PROFIT_PERCENT_OPTIONS.includes(value as (typeof TAKE_PROFIT_PERCENT_OPTIONS)[number])
+    ? value
+    : null;
+}
 
 export function MultiTickerPage() {
   const defaultMultiTickerSymbols = useAppStore(s => s.defaultMultiTickerSymbols);
@@ -96,6 +104,9 @@ export function MultiTickerPage() {
   const [error, setError] = useState<string | null>(null);
   const [backtestResults, setBacktestResults] = useState<BacktestResults | null>(null);
   const [monthlyContributionResults, setMonthlyContributionResults] = useState<BacktestResults | null>(null);
+  const [takeProfitPercent, setTakeProfitPercent] = useState<number | null>(() => (
+    normalizeTakeProfitPercent(lsGet<number | null>(LS.STOCKS_TAKE_PROFIT_PCT, null))
+  ));
 
   type TabId = 'summary' | 'price' | 'tickerCharts' | 'equity' | 'trades' | 'profit' | 'monthlyContribution' | 'splits' | 'drawdown' | 'duration' | 'buyhold' | 'openDayDrawdown' | 'buyAtClose' | 'buyAtClose4' | 'noStopLoss' | 'options';
   const [activeTab, setActiveTab] = useState<TabId>('summary');
@@ -114,6 +125,10 @@ export function MultiTickerPage() {
   const lazyFallback = <TabContentLoader />;
   const strategyHelpRef = useRef<HTMLDivElement | null>(null);
   const hasAutoRun = useRef(false);
+
+  useEffect(() => {
+    lsSet(LS.STOCKS_TAKE_PROFIT_PCT, takeProfitPercent);
+  }, [takeProfitPercent]);
 
   const prefetchAnalysisTab = (tabId: string) => {
     if (tabId === 'summary' || tabId === 'monthlyContribution') return;
@@ -186,7 +201,7 @@ export function MultiTickerPage() {
         optimizedData,
         activeStrategy,
         leveragePercent / 100,
-        { allowSameDayReentry: true }
+        { allowSameDayReentry: true, takeProfitPercent }
       );
 
       const monthlyResult = runSinglePositionBacktest(
@@ -195,6 +210,7 @@ export function MultiTickerPage() {
         leveragePercent / 100,
         {
           allowSameDayReentry: true,
+          takeProfitPercent,
           monthlyContribution:
             monthlyContributionAmount > 0
               ? {
@@ -536,6 +552,25 @@ export function MultiTickerPage() {
                 <option value={250}>250%</option>
                 <option value={275}>275%</option>
                 <option value={300}>300%</option>
+              </Select>
+            </div>
+
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">Тейк-профит</label>
+              <p className="mb-1 text-[11px] leading-snug text-gray-500 dark:text-gray-400">
+                Досрочный выход, если максимум дня достиг процента прибыли от цены входа.
+              </p>
+              <Select
+                value={takeProfitPercent ?? 0}
+                onChange={(e) => {
+                  const value = Number(e.target.value);
+                  setTakeProfitPercent(value > 0 ? normalizeTakeProfitPercent(value) : null);
+                }}
+              >
+                <option value={0}>Выкл</option>
+                {TAKE_PROFIT_PERCENT_OPTIONS.map((value) => (
+                  <option key={value} value={value}>{value}%</option>
+                ))}
               </Select>
             </div>
 
