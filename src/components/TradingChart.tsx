@@ -224,6 +224,7 @@ const MARKER_VARIANT_OPTIONS: Array<{ label: string; value: MarkerVariant; previ
 interface TradingChartProps {
   data: OHLCData[];
   trades: Trade[];
+  ticker?: string;
   splits?: SplitEvent[];
   isVisible?: boolean;
   toolbarPrefix?: ReactNode;
@@ -233,6 +234,7 @@ interface TradingChartProps {
 export const TradingChart = memo(function TradingChart({
   data,
   trades,
+  ticker,
   splits = [],
   isVisible = true,
   toolbarPrefix,
@@ -653,6 +655,16 @@ export const TradingChart = memo(function TradingChart({
     [normalizedBars, isDark]
   );
 
+  const visibleTrades = useMemo(() => {
+    const chartTicker = ticker?.trim().toUpperCase();
+    if (!chartTicker) return trades;
+
+    return trades.filter((trade) => {
+      const tradeTicker = trade.context?.ticker?.trim().toUpperCase();
+      return !tradeTicker || tradeTicker === chartTicker;
+    });
+  }, [trades, ticker]);
+
   useEffect(() => {
     if (!chartReady || !candlestickSeriesRef.current) return;
 
@@ -685,8 +697,8 @@ export const TradingChart = memo(function TradingChart({
       }
     };
 
-    if (trades.length > 0 && showTradeMarkers) {
-      for (const trade of trades) {
+    if (visibleTrades.length > 0 && showTradeMarkers) {
+      for (const trade of visibleTrades) {
         const entryTime = getMarkerTimeIfExists(trade.entryDate);
         if (entryTime != null) {
           allMarkers.push({
@@ -744,7 +756,7 @@ export const TradingChart = memo(function TradingChart({
     } catch (e) {
       logError('chart', 'Error applying chart markers', { error: (e as Error).message }, 'TradingChart.setMarkers');
     }
-  }, [chartReady, trades, splits, data, chartData, showTradeMarkers, tradeMarkerColor, tradeMarkerShape, tradeMarkerOpacity, tradeMarkerSize]);
+  }, [chartReady, visibleTrades, splits, data, chartData, showTradeMarkers, tradeMarkerColor, tradeMarkerShape, tradeMarkerOpacity, tradeMarkerSize]);
 
   useEffect(() => {
     if (!candlestickSeriesRef.current) return;

@@ -137,6 +137,20 @@ interface MonthlyContributionOptions {
 interface BacktestOptions {
   allowSameDayReentry?: boolean;
   monthlyContribution?: MonthlyContributionOptions | null;
+  takeProfitPercent?: number | null;
+}
+
+function normalizeTakeProfitPercent(value: unknown): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
+    return null;
+  }
+
+  return value;
+}
+
+function calculateTakeProfitPrice(entryPrice: number, takeProfitPercent: number | null): number | null {
+  if (takeProfitPercent == null) return null;
+  return entryPrice * (1 + takeProfitPercent / 100);
 }
 
 export function runSinglePositionBacktest(
@@ -177,6 +191,10 @@ export function runSinglePositionBacktest(
   const lowIBS = Number(strategy.parameters?.lowIBS ?? 0.1);
   const highIBS = Number(strategy.parameters?.highIBS ?? 0.75);
   const maxHoldDays = Number(strategy.parameters?.maxHoldDays ?? 30);
+  const configuredTakeProfitPercent = Object.prototype.hasOwnProperty.call(options, 'takeProfitPercent')
+    ? options.takeProfitPercent
+    : (strategy.riskManagement?.useTakeProfit ? strategy.riskManagement.takeProfit : null);
+  const takeProfitPercent = normalizeTakeProfitPercent(configuredTakeProfitPercent);
 
   // Portfolio state - single position only
   const portfolio: PortfolioState = {
@@ -248,8 +266,14 @@ export function runSinglePositionBacktest(
           const daysSinceEntry = Math.floor((new Date(bar.date).getTime() - currentPosition.entryDate.getTime()) / (1000 * 60 * 60 * 24));
           let shouldExit = false;
           let exitReason = '';
+          let exitPrice = bar.close;
+          const takeProfitPrice = calculateTakeProfitPrice(currentPosition.entryPrice, takeProfitPercent);
 
-          if (ibs > highIBS) {
+          if (takeProfitPrice != null && bar.high >= takeProfitPrice) {
+            shouldExit = true;
+            exitReason = 'take_profit';
+            exitPrice = takeProfitPrice;
+          } else if (ibs > highIBS) {
             shouldExit = true;
             exitReason = 'ibs_signal';
           } else if (daysSinceEntry >= maxHoldDays) {
@@ -258,7 +282,6 @@ export function runSinglePositionBacktest(
           }
 
           if (shouldExit) {
-            const exitPrice = bar.close;
             const stockProceeds = currentPosition.quantity * exitPrice;
             const exitCommission = calculateCommission(stockProceeds, strategy);
             const netProceeds = stockProceeds - exitCommission;
@@ -304,7 +327,8 @@ export function runSinglePositionBacktest(
                 netProceeds: netProceeds,
                 capitalBeforeExit: capitalBeforeExit,
                 currentCapitalAfterExit: portfolio.totalPortfolioValue,
-                marginUsed: currentPosition.totalCost
+                marginUsed: currentPosition.totalCost,
+                takeProfit: takeProfitPercent ?? undefined
               }
             };
 

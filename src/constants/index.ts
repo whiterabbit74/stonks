@@ -65,6 +65,7 @@ export const LS = {
   STOCKS_SHOW_TRADES:         'stocks.heroShowTrades',
   STOCKS_RANGE:               'stocks.heroRange',
   STOCKS_SELECTED_TICKER:     'stocks.selectedChartTicker',
+  STOCKS_TAKE_PROFIT_PCT:     'stocks.takeProfitPercent',
 
   // Options page (MultiTickerOptionsPage)
   OPTIONS_CHART_KIND:         'options.heroChartKind',
