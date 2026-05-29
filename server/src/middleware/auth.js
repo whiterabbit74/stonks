@@ -158,14 +158,18 @@ function requireAuth(req, res, next) {
     }
     if (req.method === 'OPTIONS') return next();
 
-    // Public routes
-    if (
-        req.path === '/api/status' ||
-        req.path === '/api/login' ||
-        req.path === '/api/logout' ||
-        req.path === '/api/auth/check' ||
-        req.path === '/api/trading-calendar'
-    ) {
+    // Public routes. Keep method checks explicit so same-path mutations cannot inherit read-only access.
+    const isPublicRead =
+        req.method === 'GET' && (
+            req.path === '/api/status' ||
+            req.path === '/api/auth/check' ||
+            req.path === '/api/trading-calendar' ||
+            req.path === '/api/trading/expected-prev-day'
+        );
+    const isPublicAuthAction =
+        (req.method === 'POST' && req.path === '/api/login') ||
+        (req.method === 'POST' && req.path === '/api/logout');
+    if (isPublicRead || isPublicAuthAction) {
         return next();
     }
 

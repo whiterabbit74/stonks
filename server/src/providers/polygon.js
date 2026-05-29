@@ -5,6 +5,27 @@ const https = require('https');
 const { getApiConfig, IS_PROD } = require('../config');
 const { toSafeTicker } = require('../utils/helpers');
 
+const POLYGON_HOST = 'api.polygon.io';
+
+function buildPolygonPageUrl(rawUrl, apiKey) {
+    let parsed;
+    try {
+        parsed = new URL(rawUrl, `https://${POLYGON_HOST}`);
+    } catch {
+        throw new Error('Polygon returned an invalid pagination URL');
+    }
+    if (parsed.protocol !== 'https:' || parsed.hostname !== POLYGON_HOST || parsed.username || parsed.password) {
+        throw new Error('Polygon returned an unsafe pagination URL');
+    }
+    if (!parsed.pathname.startsWith('/v2/')) {
+        throw new Error('Polygon returned an unexpected pagination path');
+    }
+    if (!parsed.searchParams.has('apikey')) {
+        parsed.searchParams.set('apikey', apiKey);
+    }
+    return parsed.toString();
+}
+
 /**
  * Fetch OHLC data from Polygon.io
  */
@@ -25,7 +46,7 @@ async function fetchFromPolygon(symbol, startDate, endDate, apiKeyOverride = nul
         throw new Error('Polygon API key not configured');
     }
 
-    const firstUrl = `https://api.polygon.io/v2/aggs/ticker/${encodeURIComponent(safeSymbol)}/range/1/day/${fromDate}/${toDate}?adjusted=true&sort=asc&limit=50000&apikey=${encodeURIComponent(apiKey)}`;
+    const firstUrl = `https://${POLYGON_HOST}/v2/aggs/ticker/${encodeURIComponent(safeSymbol)}/range/1/day/${fromDate}/${toDate}?adjusted=true&sort=asc&limit=50000&apikey=${encodeURIComponent(apiKey)}`;
 
     console.log(`Fetching real data for ${safeSymbol} from Polygon.io...`);
 
@@ -56,10 +77,7 @@ async function fetchFromPolygon(symbol, startDate, endDate, apiKeyOverride = nul
     let pages = 0;
 
     while (nextUrl && pages < 20) {
-        // Polygon's next_url omits apikey — append it
-        const pageUrl = nextUrl.includes('apikey=')
-            ? nextUrl
-            : `${nextUrl}${nextUrl.includes('?') ? '&' : '?'}apikey=${encodeURIComponent(apiKey)}`;
+        const pageUrl = buildPolygonPageUrl(nextUrl, apiKey);
 
         const data = await fetchPage(pageUrl);
 
@@ -99,4 +117,5 @@ async function fetchFromPolygon(symbol, startDate, endDate, apiKeyOverride = nul
 
 module.exports = {
     fetchFromPolygon,
+    buildPolygonPageUrl,
 };

@@ -37,6 +37,7 @@ const {
     getOrderHistory,
     getOrderHistoryByDateRange,
     getOrderDetail,
+    redactSensitivePayload,
     resolveInstrumentId,
     fetchTodayRangeAndQuoteViaWebull,
 } = require('./webullClient');
@@ -47,6 +48,7 @@ const autoTradeState = {
     lastResult: null,
 };
 const pendingOrderTrackers = new Map();
+const orderSubmissionReservations = new Map();
 const recentTrackedOrders = [];
 const trackerTimers = new Map();
 const autotradeStateMutex = new Mutex();
@@ -79,14 +81,47 @@ function trackerKeyFor({ clientOrderId, action }) {
     return `${clientOrderId}:${action}`;
 }
 
+function reservationKeyFor(symbol, action) {
+    return `${toSafeTicker(symbol)}:${action}`;
+}
+
 function findPendingTracker(symbol, action) {
     const normalizedSymbol = toSafeTicker(symbol);
+    const reservation = orderSubmissionReservations.get(reservationKeyFor(normalizedSymbol, action));
+    if (reservation) return reservation;
     for (const tracker of pendingOrderTrackers.values()) {
         if (tracker.symbol === normalizedSymbol && tracker.action === action) {
             return tracker;
         }
     }
     return null;
+}
+
+function reserveOrderSubmission({ symbol, action, source, correlationId, decisionTime, dateKey, ibs }) {
+    const normalizedSymbol = toSafeTicker(symbol);
+    const key = reservationKeyFor(normalizedSymbol, action);
+    if (!normalizedSymbol || orderSubmissionReservations.has(key) || findPendingTracker(normalizedSymbol, action)) {
+        return null;
+    }
+    const reservation = {
+        clientOrderId: null,
+        symbol: normalizedSymbol,
+        action,
+        correlationId,
+        source,
+        decisionTime,
+        dateKey,
+        ibs,
+        status: 'submitting',
+        quantity: null,
+        startedAt: new Date().toISOString(),
+    };
+    orderSubmissionReservations.set(key, reservation);
+    return key;
+}
+
+function releaseOrderSubmissionReservation(key) {
+    if (key) orderSubmissionReservations.delete(key);
 }
 
 function summarizeBrokerPayload(payload) {
@@ -384,7 +419,15 @@ async function readWebullRawLogTail(limit = 200) {
         remaining = Math.max(0, remaining - lines.length);
     }
 
-    return segments.flat().slice(-Math.max(1, Math.min(2000, limit)));
+    return segments.flat()
+        .slice(-Math.max(1, Math.min(2000, limit)))
+        .map((line) => {
+            try {
+                return JSON.stringify(redactSensitivePayload(JSON.parse(line)));
+            } catch {
+                return redactSensitivePayload(line);
+            }
+        });
 }
 
 async function initializeAutotradeRuntime() {
@@ -655,6 +698,11 @@ function resolveEntryBalanceSizing(balancePayload, autoTrading = {}) {
 function getEntryBuyingPowerHeadroomFactor(autoTrading = {}) {
     const modeConfig = getEntryCapitalModeConfig(autoTrading);
     return 1 + modeConfig.reservePct;
+}
+
+function getLiveTestBuyMaxQuantity() {
+    const raw = Number(process.env.WEBULL_LIVE_TEST_BUY_MAX_QUANTITY);
+    return Number.isInteger(raw) && raw > 0 ? Math.min(raw, 100) : 1;
 }
 
 function computeOrderQuantity(currentPrice, autoTrading, availableFunds = null, options = {}) {
@@ -1150,7 +1198,6 @@ async function trackSubmittedOrder({
     notifyOnResult = true,
     correlationId = null,
 }) {
-    await initializeAutotradeRuntime();
     const tracker = {
         accountId,
         clientOrderId,
@@ -1239,6 +1286,18 @@ async function executeWebullSignal({ action, symbol, currentPrice, ibs, decision
     const liveEnabled = forceLive || autoTrading.enabled === true;
     const normalizedSymbol = toSafeTicker(symbol);
     const resolvedCorrelationId = correlationId || generateCorrelationId();
+
+    if (!['entry', 'exit'].includes(action)) {
+        return {
+            mode: liveEnabled ? 'live' : 'off',
+            submitted: false,
+            simulated: false,
+            shouldRecordLocalTrade: false,
+            error: 'Invalid Webull signal action',
+            clientOrderId: null,
+            correlationId: resolvedCorrelationId,
+        };
+    }
 
     const pendingTracker = findPendingTracker(normalizedSymbol, action);
     if (pendingTracker) {
@@ -1337,6 +1396,45 @@ async function executeWebullSignal({ action, symbol, currentPrice, ibs, decision
         return { mode: 'off', submitted: false, shouldRecordLocalTrade: false, error: 'Webull credentials are missing', clientOrderId: null, correlationId: resolvedCorrelationId };
     }
 
+    const reservationKey = reserveOrderSubmission({
+        symbol: normalizedSymbol,
+        action,
+        source,
+        correlationId: resolvedCorrelationId,
+        decisionTime,
+        dateKey,
+        ibs,
+    });
+    if (!reservationKey) {
+        const blocker = findPendingTracker(normalizedSymbol, action);
+        await appendAutotradeEvent('order_guarded', {
+            ...buildExecutionLogContext({
+                source,
+                correlationId: resolvedCorrelationId,
+                symbol: normalizedSymbol,
+                action,
+                clientOrderId: blocker ? blocker.clientOrderId : null,
+                status: blocker ? blocker.status : 'submitting',
+                quantity: blocker ? blocker.quantity : null,
+                price: currentPrice,
+                ibs,
+                decisionTime,
+                dateKey,
+                mode: 'live',
+            }),
+            reason: `pending_${action}_submission_exists`,
+        }, 'warn');
+        return {
+            mode: 'live',
+            submitted: false,
+            simulated: false,
+            shouldRecordLocalTrade: false,
+            error: `Pending ${action} order already exists for ${normalizedSymbol}`,
+            clientOrderId: blocker ? blocker.clientOrderId : null,
+            correlationId: resolvedCorrelationId,
+        };
+    }
+
     const side = action === 'entry' ? 'BUY' : 'SELL';
     let orderBuild;
     let quantity;
@@ -1426,6 +1524,7 @@ async function executeWebullSignal({ action, symbol, currentPrice, ibs, decision
                     }),
                     reason: 'no_broker_position_for_exit',
                 }, 'warn');
+                releaseOrderSubmissionReservation(reservationKey);
                 return { mode: 'live', submitted: false, shouldRecordLocalTrade: false, error: `No broker position found for ${normalizedSymbol}`, clientOrderId: null, correlationId: resolvedCorrelationId };
             }
             orderBuild = {
@@ -1464,6 +1563,7 @@ async function executeWebullSignal({ action, symbol, currentPrice, ibs, decision
             }),
             reason: message,
         }, 'error');
+        releaseOrderSubmissionReservation(reservationKey);
         return {
             mode: 'live',
             submitted: false,
@@ -1550,19 +1650,42 @@ async function executeWebullSignal({ action, symbol, currentPrice, ibs, decision
             http_status: placed?.statusCode || null,
             broker_summary: summarizeBrokerPayload(placed?.data),
         });
-        void trackSubmittedOrder({
-            accountId: runtime.accountId,
-            clientOrderId: order.client_order_id,
-            symbol: normalizedSymbol,
-            action,
-            decisionTime,
-            dateKey,
-            ibs,
-            source,
-            quantity,
-            notifyOnResult,
-            correlationId: resolvedCorrelationId,
-        });
+        try {
+            await trackSubmittedOrder({
+                accountId: runtime.accountId,
+                clientOrderId: order.client_order_id,
+                symbol: normalizedSymbol,
+                action,
+                decisionTime,
+                dateKey,
+                ibs,
+                source,
+                quantity,
+                notifyOnResult,
+                correlationId: resolvedCorrelationId,
+            });
+        } catch (trackingError) {
+            await appendAutotradeEvent('order_tracking_start_failed', {
+                ...buildExecutionLogContext({
+                    source,
+                    correlationId: resolvedCorrelationId,
+                    symbol: normalizedSymbol,
+                    action,
+                    clientOrderId: order.client_order_id,
+                    status: 'submitted',
+                    quantity,
+                    price: currentPrice,
+                    ibs,
+                    decisionTime,
+                    dateKey,
+                    mode: 'live',
+                    stage: 'track_order',
+                }),
+                error: trackingError && trackingError.message ? trackingError.message : String(trackingError),
+            }, 'error');
+        } finally {
+            releaseOrderSubmissionReservation(reservationKey);
+        }
         return {
             mode: 'live',
             submitted: true,
@@ -1575,6 +1698,7 @@ async function executeWebullSignal({ action, symbol, currentPrice, ibs, decision
             correlationId: resolvedCorrelationId,
         };
     } catch (error) {
+        releaseOrderSubmissionReservation(reservationKey);
         await appendAutotradeEvent('order_submit_failed', {
             ...buildExecutionLogContext({
                 source,
@@ -1673,6 +1797,24 @@ async function closeWebullPositionMarket(symbol, options = {}) {
 
 async function buyWebullTestMarket(symbol = 'AAL', quantity = 1, options = {}) {
     await initializeAutotradeRuntime();
+    if (process.env.WEBULL_ENABLE_LIVE_TEST_BUY !== 'true') {
+        const error = new Error('Live Webull test buy is disabled');
+        error.status = 403;
+        throw error;
+    }
+    const numericQuantity = Number(quantity);
+    if (!(Number.isInteger(numericQuantity) && numericQuantity > 0)) {
+        const error = new Error('Test buy quantity must be a positive integer');
+        error.status = 400;
+        throw error;
+    }
+    const maxQuantity = getLiveTestBuyMaxQuantity();
+    if (numericQuantity > maxQuantity) {
+        const error = new Error(`Test buy quantity must be between 1 and ${maxQuantity}`);
+        error.status = 400;
+        throw error;
+    }
+
     const runtime = buildWebullRuntimeConfig();
     if (!runtime.appKey || !runtime.appSecret || !runtime.accountId) {
         throw new Error('Webull credentials are missing');
@@ -1681,11 +1823,6 @@ async function buyWebullTestMarket(symbol = 'AAL', quantity = 1, options = {}) {
     const normalizedSymbol = toSafeTicker(symbol);
     if (!normalizedSymbol) {
         throw new Error('Invalid symbol');
-    }
-
-    const numericQuantity = Number(quantity);
-    if (!(Number.isInteger(numericQuantity) && numericQuantity > 0)) {
-        throw new Error('Test buy quantity must be a positive integer');
     }
 
     const now = options.now || new Date();
@@ -1978,7 +2115,10 @@ async function getExecutionLogs(limit = 200) {
         autotrade,
         monitor,
         brokerRaw,
-        pending: Array.from(pendingOrderTrackers.values()).map(buildTrackerSnapshot),
+        pending: [
+            ...Array.from(pendingOrderTrackers.values()).map(buildTrackerSnapshot),
+            ...Array.from(orderSubmissionReservations.values()).map(buildTrackerSnapshot),
+        ],
         recent: recentTrackedOrders.slice(0, 20),
     };
 }

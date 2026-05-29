@@ -67,6 +67,34 @@ function sanitizeHeaders(headers = {}) {
     return out;
 }
 
+const REDACTED = '[REDACTED]';
+const SENSITIVE_FIELD_RE = /(^|[_-])(access|refresh)?token($|[_-])|secret|authorization|cookie|password|session|account[_-]?id|app[_-]?(key|secret)/i;
+
+function redactSensitiveText(value) {
+    return String(value)
+        .replace(/((?:access|refresh)?token["'\s:=]+)([^"',\s}]+)/ig, `$1${REDACTED}`)
+        .replace(/((?:authorization|cookie|secret|password)["'\s:=]+)([^"',\s}]+)/ig, `$1${REDACTED}`);
+}
+
+function redactSensitivePayload(value, depth = 0, key = '') {
+    if (value == null) return value;
+    if (SENSITIVE_FIELD_RE.test(String(key))) return REDACTED;
+    if (depth > 12) return '[REDACTED_DEPTH_LIMIT]';
+    if (Array.isArray(value)) {
+        return value.map((item) => redactSensitivePayload(item, depth + 1));
+    }
+    if (value instanceof Date) return value.toISOString();
+    if (typeof value === 'object') {
+        const out = {};
+        for (const [childKey, childValue] of Object.entries(value)) {
+            out[childKey] = redactSensitivePayload(childValue, depth + 1, childKey);
+        }
+        return out;
+    }
+    if (typeof value === 'string') return redactSensitiveText(value);
+    return value;
+}
+
 function normalizeRawLogEntry(entry) {
     if (entry && typeof entry === 'object') {
         return {
@@ -242,11 +270,11 @@ function requestWebull({ method, path, query = {}, body, configOverrides = {}, i
                         method,
                         path,
                         query,
-                        body: body || null,
+                        body: body ? redactSensitivePayload(body) : null,
                         requestHeaders: sanitizeHeaders(headers),
                         responseStatus: res.statusCode,
                         responseHeaders: sanitizeHeaders(res.headers),
-                        responseBody: parsed,
+                        responseBody: redactSensitivePayload(parsed),
                         host: runtime.hostname,
                         requestPath,
                     });
@@ -276,11 +304,11 @@ function requestWebull({ method, path, query = {}, body, configOverrides = {}, i
                     method,
                     path,
                     query,
-                    body: body || null,
+                    body: body ? redactSensitivePayload(body) : null,
                     requestHeaders: sanitizeHeaders(headers),
                     responseStatus: res.statusCode,
                     responseHeaders: sanitizeHeaders(res.headers),
-                    responseBody: responseObject || parsed,
+                    responseBody: redactSensitivePayload(responseObject || parsed),
                     error: message,
                     errorCode,
                     errorMsg: errorMessage,
@@ -588,6 +616,7 @@ module.exports = {
     buildWebullRuntimeConfig,
     buildSignature,
     requestWebull,
+    redactSensitivePayload,
     getCurrentWebullRawLogPath,
     getAccountList,
     getAccountBalance,

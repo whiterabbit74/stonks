@@ -17,6 +17,46 @@ const DEFAULT_CALENDAR = {
     tradingHours: { normal: { start: '09:30', end: '16:00' }, short: { start: '09:30', end: '13:00' } }
 };
 
+const BLOCKED_OBJECT_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
+
+function isBlockedObjectKey(value) {
+    return BLOCKED_OBJECT_KEYS.has(String(value || '').trim());
+}
+
+function isValidMmdd(value) {
+    const raw = String(value || '').trim();
+    const match = /^(\d{2})-(\d{2})$/.exec(raw);
+    if (!match || isBlockedObjectKey(raw)) return false;
+    const month = Number(match[1]);
+    const day = Number(match[2]);
+    const probe = new Date(Date.UTC(2024, month - 1, day));
+    return probe.getUTCMonth() === month - 1 && probe.getUTCDate() === day;
+}
+
+function normalizeCalendarDayInput({ year, mmdd, type }) {
+    const normalizedYear = String(year || '').trim();
+    const normalizedMmdd = String(mmdd || '').trim();
+    const normalizedType = String(type || '').trim();
+    if (!/^\d{4}$/.test(normalizedYear) || isBlockedObjectKey(normalizedYear)) {
+        return { error: 'year must be a four-digit year' };
+    }
+    const yearNumber = Number(normalizedYear);
+    if (!Number.isInteger(yearNumber) || yearNumber < 1900 || yearNumber > 2200) {
+        return { error: 'year must be between 1900 and 2200' };
+    }
+    if (!isValidMmdd(normalizedMmdd)) {
+        return { error: 'mmdd must be a valid MM-DD date' };
+    }
+    if (!['normal', 'holiday', 'short'].includes(normalizedType)) {
+        return { error: 'type must be normal, holiday or short' };
+    }
+    return { year: normalizedYear, mmdd: normalizedMmdd, type: normalizedType };
+}
+
+function hasOwn(obj, key) {
+    return Object.prototype.hasOwnProperty.call(obj || {}, key);
+}
+
 router.get('/trading-calendar', async (req, res) => {
     try {
         const calendarData = await loadTradingCalendarJSON();
@@ -318,32 +358,43 @@ router.post('/trading-calendar/import-webull', async (req, res) => {
 router.patch('/trading-calendar/day', async (req, res) => {
     try {
         const { year, mmdd, type, name } = req.body || {};
-        if (!year || !mmdd || !type) {
+        if (year == null || mmdd == null || type == null) {
             return res.status(400).json({ error: 'year, mmdd and type are required' });
         }
-        if (!['normal', 'holiday', 'short'].includes(type)) {
-            return res.status(400).json({ error: 'type must be normal, holiday or short' });
+        const normalized = normalizeCalendarDayInput({ year, mmdd, type });
+        if (normalized.error) {
+            return res.status(400).json({ error: normalized.error });
         }
+        const safeYear = normalized.year;
+        const safeMmdd = normalized.mmdd;
+        const safeType = normalized.type;
+        const safeName = typeof name === 'string' && name.trim() ? name.trim().slice(0, 120) : null;
 
         const calendarData = await loadTradingCalendarJSON().catch(() => null) || { ...DEFAULT_CALENDAR };
+        calendarData.holidays = calendarData.holidays && typeof calendarData.holidays === 'object' ? calendarData.holidays : {};
+        calendarData.shortDays = calendarData.shortDays && typeof calendarData.shortDays === 'object' ? calendarData.shortDays : {};
 
         // Remove from both collections first
-        if (calendarData.holidays[year]) delete calendarData.holidays[year][mmdd];
-        if (calendarData.shortDays[year]) delete calendarData.shortDays[year][mmdd];
+        if (hasOwn(calendarData.holidays, safeYear)) delete calendarData.holidays[safeYear][safeMmdd];
+        if (hasOwn(calendarData.shortDays, safeYear)) delete calendarData.shortDays[safeYear][safeMmdd];
 
-        const ymd = `${year}-${mmdd}`;
+        const ymd = `${safeYear}-${safeMmdd}`;
 
-        if (type === 'holiday') {
-            if (!calendarData.holidays[year]) calendarData.holidays[year] = {};
-            calendarData.holidays[year][mmdd] = {
-                name: name || resolveHolidayName(ymd),
+        if (safeType === 'holiday') {
+            if (!hasOwn(calendarData.holidays, safeYear) || !calendarData.holidays[safeYear] || typeof calendarData.holidays[safeYear] !== 'object') {
+                calendarData.holidays[safeYear] = {};
+            }
+            calendarData.holidays[safeYear][safeMmdd] = {
+                name: safeName || resolveHolidayName(ymd),
                 type: 'holiday',
                 description: 'Market Closed',
             };
-        } else if (type === 'short') {
-            if (!calendarData.shortDays[year]) calendarData.shortDays[year] = {};
-            calendarData.shortDays[year][mmdd] = {
-                name: name || resolveShortDayName(ymd),
+        } else if (safeType === 'short') {
+            if (!hasOwn(calendarData.shortDays, safeYear) || !calendarData.shortDays[safeYear] || typeof calendarData.shortDays[safeYear] !== 'object') {
+                calendarData.shortDays[safeYear] = {};
+            }
+            calendarData.shortDays[safeYear][safeMmdd] = {
+                name: safeName || resolveShortDayName(ymd),
                 type: 'short',
                 description: 'Early close at 1:00 PM',
                 hours: 3.5,
@@ -353,14 +404,14 @@ router.patch('/trading-calendar/day', async (req, res) => {
         // Ensure year is listed in metadata
         const years = Array.from(new Set([
             ...((calendarData.metadata && calendarData.metadata.years) || []),
-            year,
+            safeYear,
             ...Object.keys(calendarData.holidays),
             ...Object.keys(calendarData.shortDays),
         ])).sort();
         calendarData.metadata = { ...(calendarData.metadata || {}), years, lastUpdated: dateToYMD(new Date()) };
 
         saveCalendarToDb(calendarData);
-        res.json({ ok: true, year, mmdd, type });
+        res.json({ ok: true, year: safeYear, mmdd: safeMmdd, type: safeType });
     } catch (e) {
         console.error('Calendar day update error:', e);
         res.status(500).json({ error: e && e.message ? e.message : 'Failed to update day' });

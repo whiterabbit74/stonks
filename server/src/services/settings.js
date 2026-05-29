@@ -54,6 +54,22 @@ function normalizeAutoTradingSettings(autoTrading = {}) {
     return next;
 }
 
+function maskSecret(value) {
+    const raw = typeof value === 'string' ? value.trim() : '';
+    if (!raw) return '';
+    if (raw.length <= 8) return '***';
+    return `${raw.slice(0, 4)}***${raw.slice(-4)}`;
+}
+
+function serializeSettingsForClient(settings = {}) {
+    const safe = { ...settings };
+    const polygonApiKey = typeof safe.polygonApiKey === 'string' ? safe.polygonApiKey.trim() : '';
+    delete safe.polygonApiKey;
+    safe.polygonApiKeyConfigured = polygonApiKey.length > 0;
+    safe.polygonApiKeyMasked = maskSecret(polygonApiKey);
+    return safe;
+}
+
 /**
  * Reads settings from cache or disk, ensuring thread safety.
  */
@@ -115,4 +131,5 @@ module.exports = {
     getDefaultSettings,
     readSettings,
     writeSettings,
+    serializeSettingsForClient,
 };

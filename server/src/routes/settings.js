@@ -3,12 +3,12 @@
  */
 const express = require('express');
 const router = express.Router();
-const { readSettings, writeSettings, getDefaultSettings } = require('../services/settings');
+const { readSettings, writeSettings, getDefaultSettings, serializeSettingsForClient } = require('../services/settings');
 
 router.get('/settings', async (req, res) => {
     try {
         const s = await readSettings();
-        res.json(s);
+        res.json(serializeSettingsForClient(s));
     } catch (e) {
         res.status(500).json({ error: e.message || 'Failed to read settings' });
     }
@@ -47,7 +47,7 @@ router.put('/settings', async (req, res) => {
             next.defaultMultiTickerSymbols = defaultMultiTickerSymbols;
         }
         const saved = await writeSettings(next);
-        res.json({ success: true, settings: saved });
+        res.json({ success: true, settings: serializeSettingsForClient(saved) });
     } catch (e) {
         res.status(500).json({ error: e.message || 'Failed to save settings' });
     }
@@ -55,12 +55,17 @@ router.put('/settings', async (req, res) => {
 
 router.patch('/settings', async (req, res) => {
     try {
-        const updates = req.body;
+        const updates = req.body && typeof req.body === 'object' && !Array.isArray(req.body)
+            ? { ...req.body }
+            : {};
         const currentSettings = await readSettings();
 
         // Prevent updating protected fields
         delete updates.api;
         delete updates.telegram;
+        if (Object.prototype.hasOwnProperty.call(updates, 'autoTrading')) {
+            return res.status(400).json({ error: 'autoTrading must be updated through /api/autotrade/config' });
+        }
 
         const newSettings = { ...currentSettings, ...updates };
 

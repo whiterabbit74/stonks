@@ -5,7 +5,8 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "nodemon server.js"
+    "dev": "nodemon server.js",
+    "security:regression": "node scripts/security-regression-check.js"
   },
   "dependencies": {
     "async-mutex": "^0.5.0",

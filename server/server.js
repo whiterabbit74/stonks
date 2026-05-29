@@ -118,14 +118,12 @@ const quotesRoutes = require('./src/routes/quotes');
 const statusRoutes = require('./src/routes/status');
 const autotradeRoutes = require('./src/routes/autotrade');
 
-// Public routes (before auth middleware)
-app.use('/api', calendarRoutes);
-
 // Auth middleware
 app.use(auth.requireAuth);
 
 // Protected routes
 app.use('/api', authRoutes);
+app.use('/api', calendarRoutes);
 app.use('/api', settingsRoutes);
 app.use('/api', datasetsRoutes);
 app.use('/api', splitsRoutes);

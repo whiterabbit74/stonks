@@ -419,12 +419,20 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
                     }
                 }
 
-                // Execute best entry if no open position.
-                // If we just submitted an exit order, treat the position as clearing —
-                // the DB still shows it open (fill confirmed async by tracker), but
-                // blocking entry here would prevent same-day reentry entirely.
-                const openTradeAfterExit = exitAction ? null : getCurrentOpenTrade();
-                if (!openTradeAfterExit && entryCandidates.length > 0) {
+                const waitingForExitFill = !!(exitAction && exitAction.broker && exitAction.broker.submitted);
+                const openTradeAfterExit = getCurrentOpenTrade();
+                if (waitingForExitFill) {
+                    executionLogLines.push(`entry blocked: waiting for exit fill confirmation for ${exitAction.symbol}`);
+                    await appendAutotradeEvent('t1_entry_blocked_waiting_exit_fill', {
+                        source: 'telegram_t1_entry',
+                        chat_id: String(chatId),
+                        date_key: todayKey,
+                        symbol: exitAction.symbol,
+                        exit_client_order_id: exitAction.broker.clientOrderId || null,
+                        mode: exitAction.broker.mode,
+                    }, 'warn');
+                }
+                if (!waitingForExitFill && !openTradeAfterExit && entryCandidates.length > 0) {
                     const available = entryCandidates.filter(r => r.confirmEntry && r.dataOk);
                     if (available.length > 0) {
                         const best = available.reduce((best, rec) => {
