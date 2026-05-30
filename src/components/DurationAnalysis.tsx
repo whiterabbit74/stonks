@@ -105,7 +105,6 @@ export function DurationAnalysis({ trades }: DurationAnalysisProps) {
 					lineWidth: 1,
 					lineStyle: 2,
 					axisLabelVisible: true,
-					title: 'Среднее'
 				});
 				} catch { /* ignore */ }
 			}

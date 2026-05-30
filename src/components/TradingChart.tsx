@@ -4,6 +4,7 @@ import { useIsDark } from '../hooks/useIsDark';
 import { useClickOutside } from '../hooks/useClickOutside';
 import { LS } from '../constants';
 import { getChartColors } from '../lib/chart-theme';
+import { aggregateOhlcToWeekly, mapDateToAggregatedBarTime, type CandleTimeframe } from '../lib/candles';
 import {
   CandlestickSeries,
   HistogramSeries,
@@ -24,6 +25,7 @@ import { toChartTimestamp } from '../lib/date-utils';
 import type { OHLCData, Trade, SplitEvent } from '../types';
 import { useAppStore } from '../stores';
 import { logError } from '../lib/error-logger';
+import { ChartLegend } from './ChartLegend';
 
 const MIN_CHART_HEIGHT = 680;
 
@@ -68,6 +70,7 @@ const CHART_PREFS_KEY = LS.CHART_PREFS;
 
 interface ChartPrefs {
   range?: RangeKey;
+  timeframe?: CandleTimeframe;
   ema20?: boolean;
   ema200?: boolean;
   ibs?: boolean;
@@ -254,6 +257,7 @@ export const TradingChart = memo(function TradingChart({
 
   const [chartReady, setChartReady] = useState(false);
   const [activeRange, setActiveRange] = useState<RangeKey>(() => storedPrefs?.range ?? '3Y');
+  const [activeTimeframe, setActiveTimeframe] = useState<CandleTimeframe>(() => storedPrefs?.timeframe ?? 'daily');
 
   const [showEMA20, setShowEMA20] = useState(() => storedPrefs?.ema20 ?? false);
   const [showEMA200, setShowEMA200] = useState(() => storedPrefs?.ema200 ?? false);
@@ -290,6 +294,7 @@ export const TradingChart = memo(function TradingChart({
   useEffect(() => {
     saveChartPrefs({
       range: activeRange,
+      timeframe: activeTimeframe,
       ema20: showEMA20,
       ema200: showEMA200,
       ibs: showIBS,
@@ -310,6 +315,7 @@ export const TradingChart = memo(function TradingChart({
     });
   }, [
     activeRange,
+    activeTimeframe,
     showEMA20,
     showEMA200,
     showIBS,
@@ -366,7 +372,6 @@ export const TradingChart = memo(function TradingChart({
       priceScaleId: '',
       base: 0,
       visible: false,
-      title: 'Объём',
     });
     volumeSeriesRef.current = volumeSeries;
 
@@ -375,7 +380,6 @@ export const TradingChart = memo(function TradingChart({
       base: 0,
       priceFormat: { type: 'price', precision: 2, minMove: 0.01 },
       visible: false,
-      title: 'IBS',
     });
     ibsSeriesRef.current = ibsHist;
 
@@ -383,7 +387,6 @@ export const TradingChart = memo(function TradingChart({
       color: withAlpha(EMA20_DEFAULT_COLOR, EMA_DEFAULT_OPACITY),
       lineWidth: 2,
       lineStyle: 0,
-      title: 'EMA 20',
       visible: false,
     });
     ema20SeriesRef.current = ema20Series;
@@ -392,7 +395,6 @@ export const TradingChart = memo(function TradingChart({
       color: withAlpha(EMA200_DEFAULT_COLOR, EMA_DEFAULT_OPACITY),
       lineWidth: 2,
       lineStyle: 0,
-      title: 'EMA 200',
       visible: false,
     });
     ema200SeriesRef.current = ema200Series;
@@ -502,8 +504,13 @@ export const TradingChart = memo(function TradingChart({
     volumeSeriesRef.current?.applyOptions({ color: isDark ? 'rgba(148, 163, 184, 0.35)' : 'rgba(148, 163, 184, 0.45)' });
   }, [isDark]);
 
+  const timeframeData = useMemo(
+    () => (activeTimeframe === 'weekly' ? aggregateOhlcToWeekly(data) : data),
+    [activeTimeframe, data]
+  );
+
   const normalizedBars = useMemo(() => {
-    if (!data.length) {
+    if (!timeframeData.length) {
       return [] as Array<{
         date: string;
         time: UTCTimestamp;
@@ -527,7 +534,7 @@ export const TradingChart = memo(function TradingChart({
       volume: number;
     }>();
 
-    for (const bar of data) {
+    for (const bar of timeframeData) {
       let t: UTCTimestamp;
       try {
         t = toChartTimestamp(bar.date);
@@ -561,7 +568,7 @@ export const TradingChart = memo(function TradingChart({
     }
 
     return Array.from(dedup.values()).sort((a, b) => Number(a.time) - Number(b.time));
-  }, [data]);
+  }, [timeframeData]);
 
   const chartData = useMemo(
     () =>
@@ -690,7 +697,8 @@ export const TradingChart = memo(function TradingChart({
 
     const getMarkerTimeIfExists = (dateLike: unknown): UTCTimestamp | null => {
       try {
-        const ts = toChartTimestamp(dateLike as string | Date);
+        const mappedDate = mapDateToAggregatedBarTime(String(dateLike), activeTimeframe, timeframeData);
+        const ts = toChartTimestamp(mappedDate);
         return existingTimes.has(Number(ts)) ? ts : null;
       } catch {
         return null;
@@ -729,13 +737,14 @@ export const TradingChart = memo(function TradingChart({
 
     if (splits.length > 0) {
       const ymdToTime = new Map<string, UTCTimestamp>();
-      for (const bar of data) {
+      for (const bar of timeframeData) {
         const ymd = formatOHLCYMD(bar.date);
         if (!ymdToTime.has(ymd)) ymdToTime.set(ymd, toChartTimestamp(bar.date));
       }
 
       for (const split of splits) {
-        const ymd = typeof split.date === 'string' ? split.date.slice(0, 10) : formatOHLCYMD(split.date);
+        const rawYmd = typeof split.date === 'string' ? split.date.slice(0, 10) : formatOHLCYMD(split.date);
+        const ymd = mapDateToAggregatedBarTime(rawYmd, activeTimeframe, timeframeData);
         const splitTime = ymdToTime.get(ymd);
         if (splitTime == null || !existingTimes.has(Number(splitTime))) continue;
 
@@ -756,7 +765,7 @@ export const TradingChart = memo(function TradingChart({
     } catch (e) {
       logError('chart', 'Error applying chart markers', { error: (e as Error).message }, 'TradingChart.setMarkers');
     }
-  }, [chartReady, visibleTrades, splits, data, chartData, showTradeMarkers, tradeMarkerColor, tradeMarkerShape, tradeMarkerOpacity, tradeMarkerSize]);
+  }, [chartReady, visibleTrades, splits, timeframeData, activeTimeframe, chartData, showTradeMarkers, tradeMarkerColor, tradeMarkerShape, tradeMarkerOpacity, tradeMarkerSize]);
 
   useEffect(() => {
     if (!candlestickSeriesRef.current) return;
@@ -863,6 +872,7 @@ export const TradingChart = memo(function TradingChart({
     setTradeMarkerShape('arrow');
     setTradeMarkerOpacity(TRADE_MARKER_DEFAULT_OPACITY);
     setTradeMarkerSize(TRADE_MARKER_DEFAULT_SIZE);
+    setActiveTimeframe('daily');
   };
 
   useEffect(() => {
@@ -983,6 +993,29 @@ export const TradingChart = memo(function TradingChart({
                 }`}
             >
               {opt.short}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex items-center" role="group" aria-label="Свечи">
+          {([
+            { value: 'daily', label: 'День' },
+            { value: 'weekly', label: 'Неделя' },
+          ] as const).map((opt, i) => (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => setActiveTimeframe(opt.value)}
+              className={`px-2.5 py-1.5 text-xs font-medium border transition-colors
+                ${i === 0 ? 'rounded-l-lg' : ''}
+                ${i === 1 ? 'rounded-r-lg' : ''}
+                ${i > 0 ? '-ml-px' : ''}
+                ${activeTimeframe === opt.value
+                  ? 'relative z-10 bg-emerald-600 text-white border-emerald-600'
+                  : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50 dark:bg-gray-900 dark:text-gray-300 dark:border-gray-700 dark:hover:bg-gray-800'
+                }`}
+            >
+              {opt.label}
             </button>
           ))}
         </div>
@@ -1368,6 +1401,17 @@ export const TradingChart = memo(function TradingChart({
           </div>
         )}
       </div>
+
+      <ChartLegend
+        items={[
+          { label: 'Цена', color: '#10B981' },
+          ...(showEMA20 ? [{ label: 'EMA 20', color: withAlpha(ema20Color, ema20Opacity) }] : []),
+          ...(showEMA200 ? [{ label: 'EMA 200', color: withAlpha(ema200Color, ema200Opacity) }] : []),
+          ...(showIBS ? [{ label: 'IBS', color: '#059669' }] : []),
+          ...(showVolume ? [{ label: 'Объём', color: '#94A3B8' }] : []),
+          ...(showTradeMarkers ? [{ label: 'Сделки', color: withAlpha(tradeMarkerColor, tradeMarkerOpacity) }] : []),
+        ]}
+      />
     </div>
   );
 });

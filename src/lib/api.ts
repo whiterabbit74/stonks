@@ -3,6 +3,7 @@ import type {
   MonitorTradeHistoryResponse,
   MonitorTradeRecord,
   TelegramWatchRecord,
+  TelegramEmaAlertRecord,
   BrokerTradeHistoryResponse,
   BrokerTradeRecord,
   MonitorConsistencyResponse,
@@ -718,6 +719,47 @@ export class DatasetAPI {
     const response = await fetchWithCreds(`${API_BASE_URL}/telegram/watches`);
     if (!response.ok) {
       throw new Error(`${response.status} ${response.statusText}`);
+    }
+    return await response.json();
+  }
+
+  static async listTelegramEmaAlerts(): Promise<TelegramEmaAlertRecord[]> {
+    const response = await fetchWithCreds(`${API_BASE_URL}/telegram/ema-alerts`);
+    if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+    return await response.json();
+  }
+
+  static async createTelegramEmaAlert(params: Omit<TelegramEmaAlertRecord, 'id' | 'createdAt' | 'updatedAt'>): Promise<TelegramEmaAlertRecord> {
+    const response = await fetchWithCreds(`${API_BASE_URL}/telegram/ema-alerts`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    });
+    if (!response.ok) {
+      const e = await response.json().catch(() => null);
+      throw new Error((e && e.error) || `${response.status} ${response.statusText}`);
+    }
+    return await response.json();
+  }
+
+  static async updateTelegramEmaAlert(id: string, params: Partial<TelegramEmaAlertRecord>): Promise<TelegramEmaAlertRecord> {
+    const response = await fetchWithCreds(`${API_BASE_URL}/telegram/ema-alerts/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    });
+    if (!response.ok) {
+      const e = await response.json().catch(() => null);
+      throw new Error((e && e.error) || `${response.status} ${response.statusText}`);
+    }
+    return await response.json();
+  }
+
+  static async deleteTelegramEmaAlert(id: string): Promise<{ success: boolean }> {
+    const response = await fetchWithCreds(`${API_BASE_URL}/telegram/ema-alerts/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    if (!response.ok) {
+      const e = await response.json().catch(() => null);
+      throw new Error((e && e.error) || `${response.status} ${response.statusText}`);
     }
     return await response.json();
   }

@@ -4,6 +4,7 @@ import { Database, LineChart, Layers, Wallet } from 'lucide-react';
 const NAV_ITEMS = [
     { to: '/data', label: 'Данные', icon: <Database className="w-6 h-6" /> },
     { to: '/stocks', label: 'Акции', icon: <LineChart className="w-6 h-6" /> },
+    { to: '/ema', label: 'EMA', icon: <LineChart className="w-6 h-6" /> },
     { to: '/multi-ticker-options', label: 'Опционы', icon: <Layers className="w-6 h-6" /> },
     { to: '/broker', label: 'Брокер', icon: <Wallet className="w-6 h-6" /> },
 ];
@@ -15,7 +16,7 @@ export function BottomNav() {
             role="navigation"
             aria-label="Основная навигация"
         >
-            <div className="grid grid-cols-4 items-center h-16">
+            <div className="grid grid-cols-5 items-center h-16">
                 {NAV_ITEMS.map((item) => (
                     <NavLink
                         key={item.to}

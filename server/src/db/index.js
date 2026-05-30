@@ -168,6 +168,20 @@ function initSchema(db) {
             sent_entry_warn10    INTEGER NOT NULL DEFAULT 0,
             sent_entry_confirm1  INTEGER NOT NULL DEFAULT 0
         );
+
+        CREATE TABLE IF NOT EXISTS telegram_ema_alerts (
+            id             TEXT PRIMARY KEY,
+            symbol         TEXT NOT NULL,
+            ema_period     INTEGER NOT NULL DEFAULT 200,
+            level_pct      REAL NOT NULL DEFAULT 0,
+            direction      TEXT NOT NULL DEFAULT 'above',
+            threshold_pct  REAL NOT NULL DEFAULT 0.5,
+            enabled        INTEGER NOT NULL DEFAULT 1,
+            created_at     TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at     TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_telegram_ema_alerts_symbol ON telegram_ema_alerts(symbol);
     `);
 }
 

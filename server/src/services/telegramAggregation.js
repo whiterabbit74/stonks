@@ -16,11 +16,14 @@ const { telegramWatches, sendTelegramMessage, aggregateSendState, getAggregateSt
 const {
     syncWatchesWithTradeState,
     getCurrentOpenTrade,
+    recordTradeEntry,
+    recordTradeExit,
 } = require('./trades');
 const { executeWebullSignal, appendAutotradeEvent } = require('./autotrade');
 const { getETParts, etKeyYMD, previousTradingDayET, getTradingSessionForDateET, isTradingDayByCalendarET, getCachedTradingCalendar } = require('./dates');
 const { refreshTickerAndCheckFreshness, appendMonitorLog } = require('./priceActualization');
 const { reconcileMonitorState, getBlockingMonitorMismatch } = require('./monitorConsistency');
+const { evaluateEmaAlerts, listEmaAlerts } = require('./emaAlerts');
 
 // Helper functions
 function toFiniteNumber(value) {
@@ -76,7 +79,13 @@ function getProviderAbbrev(provider) {
  */
 async function runTelegramAggregation(minutesOverride = null, options = {}) {
     try {
-        if (telegramWatches.size === 0) return { sent: false };
+        let configuredEmaAlerts = [];
+        try {
+            configuredEmaAlerts = listEmaAlerts({ enabledOnly: true });
+        } catch {
+            configuredEmaAlerts = [];
+        }
+        if (telegramWatches.size === 0 && configuredEmaAlerts.length === 0) return { sent: false };
 
         const nowEt = getETParts(new Date());
         const todayKey = etKeyYMD(nowEt);
@@ -102,6 +111,14 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
         const histProvider = settings.resultsRefreshProvider || 'finnhub';
         const providerAbbrev = getProviderAbbrev(histProvider);
         const consistencySnapshot = reconcileMonitorState({ apply: !(options && options.test) });
+        let emaAlerts = [];
+        if (configuredEmaAlerts.length > 0) {
+            try {
+                emaAlerts = await evaluateEmaAlerts();
+            } catch {
+                emaAlerts = [];
+            }
+        }
 
         // Tolerance for IBS thresholds
         const delta = 0.02;
@@ -113,6 +130,10 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
             if (!chatId) continue;
             if (!byChat.has(chatId)) byChat.set(chatId, []);
             byChat.get(chatId).push({ w: watch });
+        }
+        if (byChat.size === 0 && emaAlerts.length > 0) {
+            const defaultChatId = getApiConfig().TELEGRAM_CHAT_ID;
+            if (defaultChatId) byChat.set(defaultChatId, []);
         }
 
         // Track API calls for statistics
@@ -214,6 +235,7 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
                 // Collect signals
                 const entrySignals = [];
                 const exitSignals = [];
+                const nearEmaSignals = emaAlerts.filter((alert) => alert.dataOk && alert.near);
                 const blocks = [];
                 const logLines = [`T-11 overview → chat ${chatId}`];
                 const openTradeForOverview = getCurrentOpenTrade();
@@ -266,11 +288,22 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
                 signalsSummary += exitSignals.length > 0
                     ? `• На выход: ${exitSignals.join(', ')}`
                     : '• На выход: нет';
+                signalsSummary += nearEmaSignals.length > 0
+                    ? `\n• EMA: ${nearEmaSignals.map((alert) => `${alert.symbol} EMA${alert.emaPeriod} ${alert.deviationPct.toFixed(1)}% к уровню ${alert.levelPct}%`).join(', ')}`
+                    : '\n• EMA: нет';
+
+                const emaDetails = emaAlerts.length > 0
+                    ? `\n\n📈 EMA:\n${emaAlerts.map((alert) => {
+                        if (!alert.dataOk) return `${alert.symbol} EMA${alert.emaPeriod} ${alert.levelPct}% • нет данных (${alert.reason || 'ошибка'})`;
+                        const dir = alert.direction === 'below' ? 'ниже' : 'выше';
+                        return `${alert.symbol} EMA${alert.emaPeriod} ${dir} ${alert.levelPct}% • сейчас ${alert.deviationPct.toFixed(2)}% • ${alert.near ? 'близко ✅' : 'далеко'}`;
+                    }).join('\n')}`
+                    : '';
 
                 const consistencySummary = consistencySnapshot.issues.length > 0
                     ? `\n\n⚠️ СОСТОЯНИЕ:\n${consistencySnapshot.issues.map((issue) => `• ${issue.message}`).join('\n')}`
                     : '';
-                const text = `<pre>${header}\n\n${signalsSummary}${consistencySummary}\n\n📊 ПОДРОБНО:\n\n${blocks.join('\n\n')}</pre>`;
+                const text = `<pre>${header}\n\n${signalsSummary}${consistencySummary}${emaDetails}\n\n📊 ПОДРОБНО:\n\n${blocks.join('\n\n')}</pre>`;
                 const resp = await sendTelegramMessage(chatId, text);
 
                 if (resp.ok) {
@@ -331,7 +364,7 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
                 }
 
                 // Process each symbol
-                for (const rec of blockingMismatch ? [] : sortedByIBS) {
+                for (const rec of sortedByIBS) {
                     if (!rec.dataOk) continue;
                     const { w } = rec;
                     const ibsPercent = typeof rec.ibs === 'number' ? (rec.ibs * 100).toFixed(1) : '—';
@@ -378,23 +411,26 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
                                 chat_id: String(chatId),
                             }, brokerExit.submitted ? 'info' : 'warn');
                             executionLogLines.push(`exit symbol=${w.symbol} broker_mode=${brokerExit.mode} submitted=${brokerExit.submitted ? 'yes' : 'no'} simulated=${brokerExit.simulated ? 'yes' : 'no'}${brokerExit.error ? ` error=${brokerExit.error}` : ''}`);
-                            if (brokerExit.submitted) {
-                                exitAction = {
+                            const monitorExit = shouldPersistState
+                                ? recordTradeExit({
                                     symbol: w.symbol,
                                     price: rec.quote?.current ?? null,
                                     ibs: rec.ibs,
-                                    broker: brokerExit,
-                                };
-                                if (shouldPersistState) {
-                                    w.sent.confirm1 = true;
-                                }
-                            } else {
-                                exitBlockedAction = {
-                                    symbol: w.symbol,
-                                    price: rec.quote?.current ?? null,
-                                    ibs: rec.ibs,
-                                    broker: brokerExit,
-                                };
+                                    decisionTime: nowIso,
+                                    dateKey: todayKey,
+                                    clientOrderId: brokerExit.clientOrderId || null,
+                                    filledQty: brokerExit.quantity ?? null,
+                                })
+                                : null;
+                            exitAction = {
+                                symbol: w.symbol,
+                                price: rec.quote?.current ?? null,
+                                ibs: rec.ibs,
+                                broker: brokerExit,
+                                monitorTrade: monitorExit,
+                            };
+                            if (shouldPersistState) {
+                                w.sent.confirm1 = true;
                             }
                         }
                     }
@@ -419,7 +455,7 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
                     }
                 }
 
-                const waitingForExitFill = !!(exitAction && exitAction.broker && exitAction.broker.submitted);
+                const waitingForExitFill = false;
                 const openTradeAfterExit = getCurrentOpenTrade();
                 if (waitingForExitFill) {
                     executionLogLines.push(`entry blocked: waiting for exit fill confirmation for ${exitAction.symbol}`);
@@ -473,21 +509,26 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
                                 chat_id: String(chatId),
                             }, brokerEntry.submitted ? 'info' : 'warn');
                             executionLogLines.push(`entry symbol=${best.w.symbol} broker_mode=${brokerEntry.mode} submitted=${brokerEntry.submitted ? 'yes' : 'no'} simulated=${brokerEntry.simulated ? 'yes' : 'no'}${brokerEntry.error ? ` error=${brokerEntry.error}` : ''}`);
-                            if (brokerEntry.submitted) {
-                                entryAction = {
+                            const monitorEntry = shouldPersistState
+                                ? recordTradeEntry({
                                     symbol: best.w.symbol,
                                     price: best.quote?.current ?? null,
                                     ibs: best.ibs,
-                                    broker: brokerEntry,
-                                };
-                            } else {
-                                entryBlockedAction = {
-                                    symbol: best.w.symbol,
-                                    price: best.quote?.current ?? null,
-                                    ibs: best.ibs,
-                                    broker: brokerEntry,
-                                };
-                            }
+                                    decisionTime: nowIso,
+                                    dateKey: todayKey,
+                                    source: brokerEntry.submitted ? 'telegram_t1_entry' : 'telegram_t1_entry_monitor_only',
+                                    clientOrderId: brokerEntry.clientOrderId || null,
+                                    filledQty: brokerEntry.quantity ?? null,
+                                    quantity: brokerEntry.quantity ?? null,
+                                })
+                                : null;
+                            entryAction = {
+                                symbol: best.w.symbol,
+                                price: best.quote?.current ?? null,
+                                ibs: best.ibs,
+                                broker: brokerEntry,
+                                monitorTrade: monitorEntry,
+                            };
                         }
                     }
                 }
@@ -500,10 +541,12 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
                 // Build T-1 message
                 const openTradeNow = getCurrentOpenTrade();
                 const decisionLines = [];
+                const reachedEmaAlerts = emaAlerts.filter((alert) => alert.dataOk && alert.reached);
                 if (blockingMismatch) {
-                    decisionLines.push(`• Рассинхрон состояния: ${blockingMismatch.message}`);
-                    decisionLines.push('• Автозакрытие пропущено до reconcile / ручного close monitor');
-                } else if (exitAction) {
+                    decisionLines.push(`• Состояние брокера: ${blockingMismatch.message}`);
+                    decisionLines.push('• Monitor продолжает считать позиции независимо от брокера');
+                }
+                if (exitAction) {
                     const price = typeof exitAction.price === 'number' ? `$${exitAction.price.toFixed(2)}` : '—';
                     const ibs = exitAction.ibs != null ? `${(exitAction.ibs * 100).toFixed(1)}%` : '—';
                     decisionLines.push(`• Закрываем ${exitAction.symbol} по ${price} (IBS ${ibs})`);
@@ -536,6 +579,13 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
                     const ibs = entryBlockedAction.ibs != null ? `${(entryBlockedAction.ibs * 100).toFixed(1)}%` : '—';
                     decisionLines.push(`• Вход ${entryBlockedAction.symbol} подтвержден по ${price} (IBS ${ibs}), но не отправлен`);
                     decisionLines.push(`• Webull: ${entryBlockedAction.broker.error || 'ордер не отправлен'}`);
+                }
+                if (reachedEmaAlerts.length > 0) {
+                    decisionLines.push('• EMA-уровни:');
+                    for (const alert of reachedEmaAlerts) {
+                        const dir = alert.direction === 'below' ? 'ниже' : 'выше';
+                        decisionLines.push(`  ${alert.symbol} EMA${alert.emaPeriod}: ${alert.deviationPct.toFixed(2)}% (${dir} ${alert.levelPct}%)`);
+                    }
                 }
                 if (!decisionLines.length) {
                     decisionLines.push('• Действий нет');

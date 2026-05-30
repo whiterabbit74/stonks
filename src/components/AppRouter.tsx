@@ -18,6 +18,7 @@ const importAppSettings = () => import('./AppSettings');
 const importSplitsTab = () => import('./SplitsTab');
 const importCalendarPage = () => import('./CalendarPage');
 const importMultiTickerPage = () => import('./MultiTickerPage');
+const importEmaStrategyPage = () => import('./EmaStrategyPage');
 const importMultiTickerOptionsPage = () => import('./MultiTickerOptionsPage');
 const importWebullAccountPage = () => import('./WebullAccountPage');
 
@@ -28,6 +29,7 @@ const AppSettings = lazy(() => importAppSettings().then(m => ({ default: m.AppSe
 const SplitsTab = lazy(() => importSplitsTab().then(m => ({ default: m.SplitsTab })));
 const CalendarPage = lazy(() => importCalendarPage().then(m => ({ default: m.CalendarPage })));
 const MultiTickerPage = lazy(() => importMultiTickerPage().then(m => ({ default: m.MultiTickerPage })));
+const EmaStrategyPage = lazy(() => importEmaStrategyPage().then(m => ({ default: m.EmaStrategyPage })));
 const MultiTickerOptionsPage = lazy(() => importMultiTickerOptionsPage().then(m => ({ default: m.MultiTickerOptionsPage })));
 const WebullAccountPage = lazy(() => importWebullAccountPage().then(m => ({ default: m.WebullAccountPage })));
 
@@ -35,6 +37,7 @@ const routePrefetchers: Record<string, () => Promise<unknown>> = {
   '/data': importDataUpload,
   '/enhance': importDataEnhancer,
   '/stocks': importMultiTickerPage,
+  '/ema': importEmaStrategyPage,
   '/multi-ticker-options': importMultiTickerOptionsPage,
   '/calendar': importCalendarPage,
   '/split': importSplitsTab,
@@ -166,6 +169,7 @@ function ProtectedLayout() {
   const tabs = [
     { to: '/data', label: 'Данные' },
     { to: '/stocks', label: 'Акции' },
+    { to: '/ema', label: 'EMA' },
     { to: '/multi-ticker-options', label: 'Опционы' },
     { to: '/calendar', label: 'Календарь' },
     { to: '/split', label: 'Сплиты' },
@@ -176,6 +180,7 @@ function ProtectedLayout() {
   const mobileMenuTabs: { to: string; label: string; icon: React.ReactNode }[] = [
     { to: '/data',                label: 'Данные',              icon: <Database className="w-5 h-5" /> },
     { to: '/stocks',        label: 'Акции',   icon: <LineChart className="w-5 h-5" /> },
+    { to: '/ema',                 label: 'EMA',                 icon: <LineChart className="w-5 h-5" /> },
     { to: '/multi-ticker-options',label: 'Опционы',             icon: <Layers className="w-5 h-5" /> },
     { to: '/calendar',            label: 'Календарь',           icon: <Calendar className="w-5 h-5" /> },
     { to: '/split',               label: 'Сплиты',              icon: <Scissors className="w-5 h-5" /> },
@@ -429,6 +434,7 @@ export default function AppRouter() {
             <Route path="/enhance" element={withRouteSuspense(<DataEnhancer />)} />
             <Route path="/results" element={<Navigate to="/stocks" replace />} />
             <Route path="/stocks" element={withRouteSuspense(<MultiTickerPage />)} />
+            <Route path="/ema" element={withRouteSuspense(<EmaStrategyPage />)} />
             <Route path="/multi-ticker-options" element={withRouteSuspense(<MultiTickerOptionsPage />)} />
             <Route path="/calendar" element={withRouteSuspense(<CalendarPage />)} />
             <Route path="/split" element={withRouteSuspense(<SplitsTab />)} />

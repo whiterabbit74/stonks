@@ -112,7 +112,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     const defaultTabs = [
       { id: 'price', label: 'Цены', visible: true },
       { id: 'tickerCharts', label: 'Графики тикеров', visible: true },
-      { id: 'equity', label: 'Баланс', visible: true },
+      { id: 'equity', label: 'Капитал', visible: true },
+      { id: 'exposure', label: 'Экспозиция', visible: true },
       { id: 'drawdown', label: 'Просадка', visible: true },
       { id: 'trades', label: 'Сделки', visible: true },
       { id: 'profit', label: 'Профит Фактор', visible: true },

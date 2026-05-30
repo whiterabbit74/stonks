@@ -6,6 +6,14 @@ import type {
   RiskManagement
 } from '../types';
 
+let lastGeneratedStrategyId = 0;
+
+function generateStrategyId(prefix = 'strategy'): string {
+  const now = Date.now();
+  lastGeneratedStrategyId = Math.max(lastGeneratedStrategyId + 1, now);
+  return `${prefix}-${lastGeneratedStrategyId}`;
+}
+
 // Default strategy structure
 export function createDefaultStrategy(): Partial<Strategy> {
   return {
@@ -128,7 +136,7 @@ export function createStrategy(templateId: string, customId?: string): Strategy 
     if (v !== undefined) normalizedParams[k] = v as number | string | boolean;
   });
   const strategyObj = {
-    id: customId || `${templateId}-${Date.now()}`,
+    id: customId || generateStrategyId(templateId),
     name: template.name,
     description: template.description,
     type: templateId,
@@ -245,7 +253,7 @@ export function createStrategyFromTemplate(template: any, customId?: string): St
   const defaultStrategy = template.defaultStrategy as Pick<Strategy, 'name' | 'description' | 'entryConditions' | 'exitConditions' | 'parameters'>;
   const base = createDefaultStrategy();
   const strategyObj2 = {
-    id: customId || `strategy-${Date.now()}`,
+    id: customId || generateStrategyId(),
     name: defaultStrategy.name,
     description: defaultStrategy.description,
     type: template.id, // Add template id as type for backward compatibility

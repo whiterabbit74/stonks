@@ -95,7 +95,6 @@ export function TradeDrawdownChart({ trades, initialCapital }: TradeDrawdownChar
         bottomColor: isDark ? 'rgba(248, 113, 113, 0.08)' : 'rgba(244, 67, 54, 0.1)',
         lineColor: isDark ? '#f87171' : '#F44336',
         lineWidth: 2,
-        title: 'Просадка по сделкам, %',
       });
 
       drawdownSeries.setData(tradeDrawdownData.map(d => ({
@@ -108,7 +107,6 @@ export function TradeDrawdownChart({ trades, initialCapital }: TradeDrawdownChar
         color: isDark ? '#9ca3af' : '#666666',
         lineWidth: 1,
         lineStyle: 2, // Dashed line
-        title: 'Нулевая линия',
       });
 
       const zeroLineData = tradeDrawdownData.map(d => ({

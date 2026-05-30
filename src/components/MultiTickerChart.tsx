@@ -16,6 +16,8 @@ import { logError } from '../lib/error-logger';
 import { toChartTimestamp } from '../lib/date-utils';
 import { useIsDark } from '../hooks/useIsDark';
 import { getChartColors } from '../lib/chart-theme';
+import { LS } from '../constants';
+import { aggregateOhlcToWeekly, mapDateToAggregatedBarTime, type CandleTimeframe } from '../lib/candles';
 
 interface TickerData {
   ticker: string;
@@ -42,6 +44,28 @@ const PALETTE = [
   { up: '#EAB308', down: '#7C3AED', line: '#EAB308' },
 ];
 
+function loadTimeframePreference(): CandleTimeframe {
+  if (typeof window === 'undefined') return 'daily';
+  try {
+    const raw = window.localStorage.getItem(LS.CHART_PREFS);
+    const parsed = raw ? JSON.parse(raw) as { timeframe?: CandleTimeframe } : null;
+    return parsed?.timeframe === 'weekly' ? 'weekly' : 'daily';
+  } catch {
+    return 'daily';
+  }
+}
+
+function saveTimeframePreference(timeframe: CandleTimeframe) {
+  if (typeof window === 'undefined') return;
+  try {
+    const raw = window.localStorage.getItem(LS.CHART_PREFS);
+    const parsed = raw ? JSON.parse(raw) as Record<string, unknown> : {};
+    window.localStorage.setItem(LS.CHART_PREFS, JSON.stringify({ ...parsed, timeframe }));
+  } catch {
+    // ignore storage errors
+  }
+}
+
 export function MultiTickerChart({ tickersData, trades = [], height = 600 }: MultiTickerChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -51,12 +75,18 @@ export function MultiTickerChart({ tickersData, trades = [], height = 600 }: Mul
 
   const isDark = useIsDark();
   const [viewMode, setViewMode] = useState<ViewMode>('candles');
+  const [activeTimeframe, setActiveTimeframe] = useState<CandleTimeframe>(loadTimeframePreference);
   const [maxVisibleTickers, setMaxVisibleTickers] = useState<number>(6);
   const [selectedTickers, setSelectedTickers] = useState<string[]>([]);
 
+  useEffect(() => {
+    saveTimeframePreference(activeTimeframe);
+  }, [activeTimeframe]);
+
   const preparedTickersData = useMemo(() => {
     return tickersData.map((tickerData) => {
-      const chartData = tickerData.data
+      const sourceData = activeTimeframe === 'weekly' ? aggregateOhlcToWeekly(tickerData.data) : tickerData.data;
+      const chartData = sourceData
         .map((bar, idx) => {
           try {
             const t = toChartTimestamp(bar.date);
@@ -86,11 +116,12 @@ export function MultiTickerChart({ tickersData, trades = [], height = 600 }: Mul
 
       return {
         ...tickerData,
+        data: sourceData,
         chartData,
         normalizedData,
       };
     });
-  }, [tickersData]);
+  }, [tickersData, activeTimeframe]);
 
   useEffect(() => {
     const available = preparedTickersData.map((t) => t.ticker);
@@ -137,7 +168,7 @@ export function MultiTickerChart({ tickersData, trades = [], height = 600 }: Mul
 
         try {
           points.push({
-            time: toChartTimestamp(trade.entryDate),
+            time: toChartTimestamp(mapDateToAggregatedBarTime(trade.entryDate, activeTimeframe, preparedTickersData.find((item) => item.ticker.toUpperCase() === ticker)?.data ?? [])),
             position: 'belowBar',
             color: '#2196F3',
             shape: 'arrowUp',
@@ -150,7 +181,7 @@ export function MultiTickerChart({ tickersData, trades = [], height = 600 }: Mul
         if (trade.exitReason !== 'end_of_data') {
           try {
             points.push({
-              time: toChartTimestamp(trade.exitDate),
+              time: toChartTimestamp(mapDateToAggregatedBarTime(trade.exitDate, activeTimeframe, preparedTickersData.find((item) => item.ticker.toUpperCase() === ticker)?.data ?? [])),
               position: 'aboveBar',
               color: '#2196F3',
               shape: 'arrowDown',
@@ -171,7 +202,7 @@ export function MultiTickerChart({ tickersData, trades = [], height = 600 }: Mul
     });
 
     return map;
-  }, [trades]);
+  }, [trades, activeTimeframe, preparedTickersData]);
 
   useEffect(() => {
     const containerEl = chartContainerRef.current;
@@ -229,7 +260,6 @@ export function MultiTickerChart({ tickersData, trades = [], height = 600 }: Mul
           wickUpColor: colors.up,
           wickDownColor: colors.down,
           priceScaleId: `ticker-${tickerData.ticker}`,
-          title: tickerData.ticker,
         });
 
         series.priceScale().applyOptions({
@@ -249,7 +279,6 @@ export function MultiTickerChart({ tickersData, trades = [], height = 600 }: Mul
         const series = chart.addSeries(LineSeries, {
           color,
           lineWidth: 2,
-          title: `${tickerData.ticker} (base 100)`,
         });
         lineSeriesRefsRef.current.set(tickerData.ticker, series);
       });
@@ -332,6 +361,28 @@ export function MultiTickerChart({ tickersData, trades = [], height = 600 }: Mul
         >
           Candles
         </button>
+        <div className="flex items-center" role="group" aria-label="Свечи">
+          {([
+            { value: 'daily', label: 'День' },
+            { value: 'weekly', label: 'Неделя' },
+          ] as const).map((opt, i) => (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => setActiveTimeframe(opt.value)}
+              className={`px-3 py-1 text-sm border transition-colors
+                ${i === 0 ? 'rounded-l' : ''}
+                ${i === 1 ? 'rounded-r' : ''}
+                ${i > 0 ? '-ml-px' : ''}
+                ${activeTimeframe === opt.value
+                  ? 'relative z-10 border-emerald-600 bg-emerald-600 text-white'
+                  : 'border-gray-300 bg-gray-100 text-gray-700 hover:bg-gray-200 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'
+                }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
         <button
           onClick={() => setViewMode('normalized')}
           className={`px-3 py-1 text-sm rounded ${viewMode === 'normalized'

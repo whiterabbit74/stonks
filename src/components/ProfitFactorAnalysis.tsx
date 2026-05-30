@@ -64,7 +64,6 @@ export function ProfitFactorAnalysis({ trades }: ProfitFactorAnalysisProps) {
       color: isDark ? '#9ca3af' : '#9ca3af',
       lineWidth: 1,
       lineStyle: 2,
-      title: '0%'
     });
     zeroLine.setData(data.map(d => ({ time: d.time, value: 0 })));
     centerFewPointsOnTimeScale(chart, data.length);

@@ -67,6 +67,11 @@ export const LS = {
   STOCKS_SELECTED_TICKER:     'stocks.selectedChartTicker',
   STOCKS_TAKE_PROFIT_PCT:     'stocks.takeProfitPercent',
 
+  // EMA strategy page
+  EMA_TICKERS:                 'ema.tickers',
+  EMA_SETTINGS:                'ema.settings',
+  EMA_SELECTED_TICKER:         'ema.selectedTicker',
+
   // Options page (MultiTickerOptionsPage)
   OPTIONS_CHART_KIND:         'options.heroChartKind',
   OPTIONS_SHOW_TRADES:        'options.heroShowTrades',

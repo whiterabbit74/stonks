@@ -156,26 +156,29 @@ describe('MultiTickerPage take-profit control', () => {
     });
   });
 
-  it('passes a custom take-profit percent to both stock backtest runs and remembers it', async () => {
+  it('passes a custom take-profit percent to all stock backtest runs and remembers it', async () => {
     render(
       <MemoryRouter>
         <MultiTickerPage />
       </MemoryRouter>
     );
 
-    await waitFor(() => expect(mocks.runSinglePositionBacktest).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(mocks.runSinglePositionBacktest).toHaveBeenCalledTimes(3));
     mocks.runSinglePositionBacktest.mockClear();
 
     const takeProfitInput = screen.getByRole('spinbutton', { name: 'Тейк-профит' });
     fireEvent.change(takeProfitInput, { target: { value: '2.5' } });
     fireEvent.click(screen.getByRole('button', { name: 'Запустить бэктест' }));
 
-    await waitFor(() => expect(mocks.runSinglePositionBacktest).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(mocks.runSinglePositionBacktest).toHaveBeenCalledTimes(3));
 
     expect(mocks.runSinglePositionBacktest.mock.calls[0][3]).toEqual(
       expect.objectContaining({ allowSameDayReentry: true, takeProfitPercent: 2.5 })
     );
     expect(mocks.runSinglePositionBacktest.mock.calls[1][3]).toEqual(
+      expect.objectContaining({ allowSameDayReentry: true, takeProfitPercent: 2.5 })
+    );
+    expect(mocks.runSinglePositionBacktest.mock.calls[2][3]).toEqual(
       expect.objectContaining({ allowSameDayReentry: true, takeProfitPercent: 2.5 })
     );
 
@@ -193,7 +196,7 @@ describe('MultiTickerPage take-profit control', () => {
 
     expect(screen.getByRole('spinbutton', { name: 'Тейк-профит' })).toHaveValue(2.5);
 
-    await waitFor(() => expect(mocks.runSinglePositionBacktest).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(mocks.runSinglePositionBacktest).toHaveBeenCalledTimes(3));
     expect(mocks.runSinglePositionBacktest.mock.calls[0][3]).toEqual(
       expect.objectContaining({ allowSameDayReentry: true, takeProfitPercent: 2.5 })
     );

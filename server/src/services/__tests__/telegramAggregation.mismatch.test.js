@@ -60,8 +60,8 @@ describe('telegramAggregation mismatch handling', () => {
 
     const mismatchIssue = {
       code: 'monitor_trade_without_broker_position',
-      severity: 'error',
-      message: 'Monitor trade V is open while broker is flat. Manual monitor close is required.',
+      severity: 'warn',
+      message: 'Monitor trade V is open while broker is flat. Monitor state remains active independently from broker execution.',
       symbol: 'V',
       monitorTradeId: 'monitor-v',
       brokerTradeId: null,
@@ -109,7 +109,7 @@ describe('telegramAggregation mismatch handling', () => {
     });
     stubModule('src/services/autotrade.js', {
       executeWebullSignal: async () => {
-        throw new Error('executeWebullSignal must not be called when mismatch blocks T-1');
+        throw new Error('executeWebullSignal should not be called without a confirmed signal');
       },
       appendAutotradeEvent: async (eventName, payload) => {
         autotradeEvents.push({ eventName, payload });
@@ -151,8 +151,8 @@ describe('telegramAggregation mismatch handling', () => {
 
     expect(result.sent).toBe(true);
     expect(sendCalls).toHaveLength(1);
-    expect(sendCalls[0].text).toContain('Рассинхрон состояния');
-    expect(sendCalls[0].text).toContain('Автозакрытие пропущено');
+    expect(sendCalls[0].text).toContain('Состояние брокера');
+    expect(sendCalls[0].text).toContain('Monitor продолжает считать позиции независимо от брокера');
     expect(sendCalls[0].text).not.toContain('Действий нет');
     expect(monitorLogs.flat().join('\n')).toContain('monitor_mismatch');
     expect(autotradeEvents.map((item) => item.eventName)).toContain('t1_monitor_mismatch');

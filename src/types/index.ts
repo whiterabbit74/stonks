@@ -122,6 +122,7 @@ export interface BacktestResult {
   trades: Trade[];
   metrics: PerformanceMetrics;
   equity: EquityPoint[];
+  exposure?: ExposurePoint[];
   chartData?: ChartCandle[];
   insights?: InsightItem[];
   // Optional metadata that some views read from
@@ -211,6 +212,42 @@ export interface EquityPoint {
   drawdown: number;
 }
 
+export interface ExposurePoint {
+  date: TradingDate;
+  equity: number;
+  positionValue: number;
+  exposurePct: number;
+  activePositions: number;
+}
+
+export type EmaPeriod = 20 | 200;
+export type EmaSignalSource = 'close' | 'intraday';
+
+export interface EmaZone {
+  id: string;
+  levelPct: number;
+  enabled: boolean;
+}
+
+export interface EmaZoneStrategyParams {
+  initialCapital: number;
+  leverage: number;
+  emaPeriod: number;
+  buyZones: EmaZone[];
+  sellZones: EmaZone[];
+  takeProfitPercent: number | null;
+  noSellAtLoss: boolean;
+  signalSource: EmaSignalSource;
+}
+
+export interface EmaDeviationPoint {
+  date: TradingDate;
+  ticker: string;
+  price: number;
+  ema: number;
+  deviationPct: number;
+}
+
 // Simple enums for the basic functionality
 export const IndicatorType = {
   SMA: 'SMA',
@@ -267,6 +304,18 @@ export interface TelegramWatchRecord {
   currentTradeId?: string | null;
   linkedBrokerTradeId?: string | null;
   isOpenPosition: boolean;
+}
+
+export interface TelegramEmaAlertRecord {
+  id: string;
+  symbol: string;
+  emaPeriod: 20 | 200;
+  levelPct: number;
+  direction: 'above' | 'below';
+  thresholdPct: number;
+  enabled: boolean;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface BrokerTradeRecord {
@@ -469,6 +518,7 @@ export interface ValidationResult {
 // Shared backtest result type used by multi-ticker pages
 export interface MultiTickerBacktestResults {
   equity: EquityPoint[];
+  exposure?: ExposurePoint[];
   finalValue: number;
   maxDrawdown: number;
   trades: Trade[];

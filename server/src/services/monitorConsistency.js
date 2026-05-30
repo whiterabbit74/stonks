@@ -176,8 +176,8 @@ function getMonitorConsistencySnapshot() {
             } else if (openMonitorTrade.source !== 'manual') {
                 issues.push(buildIssue({
                     code: 'monitor_trade_without_broker_position',
-                    severity: 'error',
-                    message: `Monitor trade ${openMonitorTrade.symbol} is open while broker is flat. Manual monitor close is required.`,
+                    severity: 'warn',
+                    message: `Monitor trade ${openMonitorTrade.symbol} is open while broker is flat. Monitor state remains active independently from broker execution.`,
                     symbol: openMonitorTrade.symbol,
                     monitorTradeId: openMonitorTrade.id,
                     autoFixable: false,
@@ -267,8 +267,7 @@ function reconcileMonitorState({ apply = false } = {}) {
 function getBlockingMonitorMismatch(snapshot = null) {
     const resolved = snapshot || getMonitorConsistencySnapshot();
     const blockingIssue = resolved.issues.find((issue) => (
-        issue.code === 'monitor_trade_without_broker_position'
-        || issue.code === 'monitor_broker_symbol_mismatch'
+        issue.code === 'monitor_broker_symbol_mismatch'
         || issue.code === 'linked_monitor_trade_missing_broker_match'
         || issue.code === 'legacy_monitor_trade_ambiguous_broker_match'
     ));

@@ -16,6 +16,12 @@ const {
 } = require('../services/trades');
 const { runTelegramAggregation } = require('../services/telegramAggregation');
 const { runPriceActualization, updateAllPositions } = require('../services/priceActualization');
+const {
+    listEmaAlerts,
+    createEmaAlert,
+    updateEmaAlert,
+    deleteEmaAlert,
+} = require('../services/emaAlerts');
 
 router.post('/telegram/watch', (req, res) => {
     try {
@@ -121,6 +127,40 @@ router.get('/telegram/watches', async (req, res) => {
     } catch (error) {
         const message = error instanceof Error ? error.message : 'Не удалось загрузить список';
         res.status(500).json({ error: message });
+    }
+});
+
+router.get('/telegram/ema-alerts', (req, res) => {
+    try {
+        res.json(listEmaAlerts());
+    } catch (e) {
+        res.status(500).json({ error: e.message || 'Failed to list EMA alerts' });
+    }
+});
+
+router.post('/telegram/ema-alerts', (req, res) => {
+    try {
+        res.json(createEmaAlert(req.body || {}));
+    } catch (e) {
+        res.status(400).json({ error: e.message || 'Failed to create EMA alert' });
+    }
+});
+
+router.patch('/telegram/ema-alerts/:id', (req, res) => {
+    try {
+        const updated = updateEmaAlert(req.params.id, req.body || {});
+        if (!updated) return res.status(404).json({ error: 'EMA alert not found' });
+        res.json(updated);
+    } catch (e) {
+        res.status(400).json({ error: e.message || 'Failed to update EMA alert' });
+    }
+});
+
+router.delete('/telegram/ema-alerts/:id', (req, res) => {
+    try {
+        res.json(deleteEmaAlert(req.params.id));
+    } catch (e) {
+        res.status(500).json({ error: e.message || 'Failed to delete EMA alert' });
     }
 });
 

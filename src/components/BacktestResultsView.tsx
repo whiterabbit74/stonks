@@ -1,6 +1,6 @@
 import { ChartContainer } from './ui';
 import { ErrorBoundary } from './ErrorBoundary';
-import type { OHLCData, Trade, EquityPoint, SplitEvent, Strategy, TickerData } from '../types';
+import type { OHLCData, Trade, EquityPoint, SplitEvent, Strategy, TickerData, ExposurePoint } from '../types';
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { formatCurrencyCompact } from '../lib/singlePositionBacktest';
@@ -18,11 +18,13 @@ type TabId =
   | 'trades'
   | 'profit'
   | 'duration'
+  | 'exposure'
   | 'splits'
   | string;
 
 type BacktestResultsData = {
   equity: EquityPoint[];
+  exposure?: ExposurePoint[];
   finalValue: number;
   maxDrawdown: number;
   trades: Trade[];
@@ -38,6 +40,7 @@ const importProfitFactorAnalysis = () => import('./ProfitFactorAnalysis');
 const importDurationAnalysis = () => import('./DurationAnalysis');
 const importSplitsList = () => import('./SplitsList');
 const importMultiTickerChart = () => import('./MultiTickerChart');
+const importExposureChart = () => import('./ExposureChart');
 
 const TradingChart = lazy(() => importTradingChart().then((m) => ({ default: m.TradingChart })));
 const EquityChart = lazy(() => importEquityChart().then((m) => ({ default: m.EquityChart })));
@@ -48,11 +51,12 @@ const ProfitFactorAnalysis = lazy(() => importProfitFactorAnalysis().then((m) =>
 const DurationAnalysis = lazy(() => importDurationAnalysis().then((m) => ({ default: m.DurationAnalysis })));
 const SplitsList = lazy(() => importSplitsList().then((m) => ({ default: m.SplitsList })));
 const MultiTickerChart = lazy(() => importMultiTickerChart().then((m) => ({ default: m.MultiTickerChart })));
+const ExposureChart = lazy(() => importExposureChart().then((m) => ({ default: m.ExposureChart })));
 
 const MODE_TAB_ORDER: Record<BacktestViewMode, TabId[]> = {
-  single: ['price', 'equity', 'drawdown', 'trades', 'profit', 'duration', 'splits'],
-  multi: ['price', 'tickerCharts', 'equity', 'drawdown', 'trades', 'profit', 'duration', 'splits'],
-  options: ['equity', 'price', 'tickerCharts', 'drawdown', 'trades', 'profit', 'duration', 'splits'],
+  single: ['price', 'equity', 'exposure', 'drawdown', 'trades', 'profit', 'duration', 'splits'],
+  multi: ['price', 'tickerCharts', 'equity', 'exposure', 'drawdown', 'trades', 'profit', 'duration', 'splits'],
+  options: ['equity', 'price', 'tickerCharts', 'exposure', 'drawdown', 'trades', 'profit', 'duration', 'splits'],
 };
 
 function getTabImporters(tabId: TabId, mode: BacktestViewMode): Array<() => Promise<unknown>> {
@@ -61,6 +65,8 @@ function getTabImporters(tabId: TabId, mode: BacktestViewMode): Array<() => Prom
       return [mode === 'single' ? importTradingChart : importMultiTickerChart];
     case 'equity':
       return [importEquityChart];
+    case 'exposure':
+      return [importExposureChart];
     case 'tickerCharts':
       return [importTickerCardsGrid];
     case 'drawdown':
@@ -108,6 +114,10 @@ function getLoaderClass(tabId: TabId, mode: BacktestViewMode): string {
 
   if (tabId === 'tickerCharts') {
     return 'min-h-[620px] flex items-center justify-center';
+  }
+
+  if (tabId === 'exposure') {
+    return 'min-h-[520px] flex items-center justify-center';
   }
 
   if (tabId === 'drawdown') {
@@ -198,7 +208,8 @@ export function BacktestResultsView({
   const equity = backtestResults?.equity ?? EMPTY_EQUITY;
   const comparisonTrades = comparisonBacktestResults?.trades ?? EMPTY_TRADES;
   const comparisonEquity = comparisonBacktestResults?.equity ?? EMPTY_EQUITY;
-  const hasSingleComparison = mode === 'single' && !!comparisonBacktestResults;
+  const exposure = backtestResults?.exposure ?? [];
+  const hasComparison = !!comparisonBacktestResults;
 
   const [visitedTabs, setVisitedTabs] = useState<TabId[]>(() => [activeTab]);
 
@@ -260,8 +271,8 @@ export function BacktestResultsView({
   );
 
   const renderComparisonPanel = (tabId: TabId): ReactNode => {
-    if (!hasSingleComparison || !comparisonBacktestResults) return null;
-    if (tabId === 'price' || tabId === 'splits') return null;
+    if (!hasComparison || !comparisonBacktestResults) return null;
+    if (tabId === 'price' || tabId === 'splits' || tabId === 'exposure') return null;
 
     if (tabId === 'equity' || tabId === 'drawdown') {
       return (
@@ -271,7 +282,7 @@ export function BacktestResultsView({
           </div>
           <div className="grid grid-cols-2 gap-3 text-sm md:grid-cols-4">
             <ComparisonMetric
-              label="Итоговый баланс"
+              label="Итоговый капитал"
               baseValue={formatCurrencyCompact(comparisonBacktestResults.finalValue)}
               currentValue={formatCurrencyCompact(backtestResults?.finalValue ?? 0)}
               baseLabel={comparisonSeriesLabel}
@@ -389,7 +400,7 @@ export function BacktestResultsView({
                 <Suspense fallback={lazyFallback}>
                   <EquityChart
                     equity={equity}
-                    comparisonEquity={hasSingleComparison ? comparisonEquity : undefined}
+                    comparisonEquity={hasComparison ? comparisonEquity : undefined}
                     primaryLabel={primarySeriesLabel}
                     comparisonLabel={comparisonSeriesLabel}
                   />
@@ -411,12 +422,35 @@ export function BacktestResultsView({
             <div className="w-full h-[620px]">
               <ErrorBoundary>
                 <Suspense fallback={lazyFallback}>
-                  <EquityChart equity={equity} hideHeader />
+                  <EquityChart
+                    equity={equity}
+                    comparisonEquity={hasComparison ? comparisonEquity : undefined}
+                    primaryLabel={primarySeriesLabel}
+                    comparisonLabel={comparisonSeriesLabel}
+                    hideHeader
+                  />
                 </Suspense>
               </ErrorBoundary>
             </div>
           </ChartContainer>
         </div>
+      );
+    }
+
+    if (tabId === 'exposure') {
+      return (
+        <ChartContainer
+          title="Экспозиция стратегии"
+          isEmpty={!exposure.length}
+          emptyMessage="Нет данных по экспозиции"
+          height={620}
+        >
+          <ErrorBoundary>
+            <Suspense fallback={lazyFallback}>
+              <ExposureChart exposure={exposure} />
+            </Suspense>
+          </ErrorBoundary>
+        </ChartContainer>
       );
     }
 

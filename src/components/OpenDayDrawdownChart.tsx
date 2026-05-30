@@ -67,14 +67,13 @@ export function OpenDayDrawdownChart({ trades, data }: OpenDayDrawdownChartProps
       color: isDark ? 'rgba(239,68,68,0.85)' : 'rgba(239,68,68,0.9)',
       base: 0,
       priceFormat: { type: 'price', precision: 2, minMove: 0.01 },
-      title: 'Просадка от открытия, %',
     });
 
     series.setData(rows.map(r => ({ time: r.time, value: r.value })));
 
     try {
-      series.createPriceLine({ price: 0, color: '#9CA3AF', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: '0%' });
-      series.createPriceLine({ price: -avgDrop, color: '#9CA3AF', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: 'Средняя' });
+      series.createPriceLine({ price: 0, color: '#9CA3AF', lineWidth: 1, lineStyle: 2, axisLabelVisible: true });
+      series.createPriceLine({ price: -avgDrop, color: '#9CA3AF', lineWidth: 1, lineStyle: 2, axisLabelVisible: true });
     } catch {
       // Ignore price line creation errors
     }

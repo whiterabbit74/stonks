@@ -1,6 +1,12 @@
-import type { Strategy, OHLCData, Trade, EquityPoint } from '../types';
+import type { Strategy, OHLCData, Trade, EquityPoint, ExposurePoint } from '../types';
 import { toTradingDate } from './date-utils';
 import { calculateBacktestMetrics } from './backtest-statistics';
+import {
+  calculateExposurePct,
+  calculateTakeProfitPrice,
+  normalizeTakeProfitPercent,
+  shouldTakeProfit,
+} from './backtest-execution';
 
 export interface TickerDataWithIndex {
   ticker: string;
@@ -140,19 +146,6 @@ interface BacktestOptions {
   takeProfitPercent?: number | null;
 }
 
-function normalizeTakeProfitPercent(value: unknown): number | null {
-  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
-    return null;
-  }
-
-  return value;
-}
-
-function calculateTakeProfitPrice(entryPrice: number, takeProfitPercent: number | null): number | null {
-  if (takeProfitPercent == null) return null;
-  return entryPrice * (1 + takeProfitPercent / 100);
-}
-
 export function runSinglePositionBacktest(
   tickersData: TickerDataWithIndex[],
   strategy: Strategy,
@@ -164,6 +157,7 @@ export function runSinglePositionBacktest(
   maxDrawdown: number;
   trades: Trade[];
   metrics: any;
+  exposure: ExposurePoint[];
 } {
   const { allowSameDayReentry = false, monthlyContribution } = options;
 
@@ -182,7 +176,8 @@ export function runSinglePositionBacktest(
       finalValue: 0,
       maxDrawdown: 0,
       trades: [],
-      metrics: {}
+      metrics: {},
+      exposure: []
     };
   }
 
@@ -205,6 +200,7 @@ export function runSinglePositionBacktest(
 
   const trades: Trade[] = [];
   const equity: EquityPoint[] = [];
+  const exposure: ExposurePoint[] = [];
   let currentPosition: Position | null = null;
   let totalMonthlyContributions = 0;
   let contributionCount = 0;
@@ -269,10 +265,10 @@ export function runSinglePositionBacktest(
           let exitPrice = bar.close;
           const takeProfitPrice = calculateTakeProfitPrice(currentPosition.entryPrice, takeProfitPercent);
 
-          if (takeProfitPrice != null && bar.high >= takeProfitPrice) {
+          if (shouldTakeProfit(bar.high, takeProfitPrice)) {
             shouldExit = true;
             exitReason = 'take_profit';
-            exitPrice = takeProfitPrice;
+            exitPrice = takeProfitPrice ?? bar.close;
           } else if (ibs > highIBS) {
             shouldExit = true;
             exitReason = 'ibs_signal';
@@ -419,6 +415,23 @@ export function runSinglePositionBacktest(
       value: portfolio.totalPortfolioValue,
       drawdown: drawdown
     });
+
+    let positionValue = 0;
+    if (currentPosition) {
+      const tickerData = tickersData.find(t => t.ticker === currentPosition!.ticker);
+      const barIndex = tickerData?.dateIndexMap.get(dateTime) ?? -1;
+      if (tickerData && barIndex !== -1) {
+        positionValue = currentPosition.quantity * tickerData.data[barIndex].close;
+      }
+    }
+
+    exposure.push({
+      date: toTradingDate(currentDate),
+      equity: portfolio.totalPortfolioValue,
+      positionValue,
+      exposurePct: calculateExposurePct(positionValue, portfolio.totalPortfolioValue),
+      activePositions: currentPosition ? 1 : 0
+    });
   }
 
   // Close remaining position if any
@@ -491,6 +504,7 @@ export function runSinglePositionBacktest(
     finalValue: portfolio.totalPortfolioValue,
     maxDrawdown: metrics.maxDrawdown,
     trades,
-    metrics
+    metrics,
+    exposure
   };
 }

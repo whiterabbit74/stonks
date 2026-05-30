@@ -216,7 +216,6 @@ export function MiniQuoteChart({ history, today, trades, highIBS, isOpenPosition
         lineWidth: 2,
         lineStyle: 0,
         axisLabelVisible: true,
-        title: 'Цель IBS',
       });
     }
 
@@ -227,7 +226,6 @@ export function MiniQuoteChart({ history, today, trades, highIBS, isOpenPosition
         lineWidth: 1,
         lineStyle: 2,
         axisLabelVisible: true,
-        title: 'Вход',
       });
     }
   }, [markers, isOpenPosition, highIBS, entryPrice, today]);

@@ -14,6 +14,9 @@ import {
 } from 'lightweight-charts';
 import type { OHLCData, Trade } from '../types';
 import { toChartTimestamp } from '../lib/date-utils';
+import { LS } from '../constants';
+import { aggregateOhlcToWeekly, mapDateToAggregatedBarTime, type CandleTimeframe } from '../lib/candles';
+import { ChartLegend } from './ChartLegend';
 
 type RangeKey = '1M' | '3M' | '6M' | '1Y' | '3Y' | '5Y' | 'MAX';
 type ChartKind = 'line' | 'candles';
@@ -27,6 +30,28 @@ const RANGE_DAYS: Record<Exclude<RangeKey, 'MAX'>, number> = {
   '3Y': 365 * 3,
   '5Y': 365 * 5,
 };
+
+function loadTimeframePreference(): CandleTimeframe {
+  if (typeof window === 'undefined') return 'daily';
+  try {
+    const raw = window.localStorage.getItem(LS.CHART_PREFS);
+    const parsed = raw ? JSON.parse(raw) as { timeframe?: CandleTimeframe } : null;
+    return parsed?.timeframe === 'weekly' ? 'weekly' : 'daily';
+  } catch {
+    return 'daily';
+  }
+}
+
+function saveTimeframePreference(timeframe: CandleTimeframe) {
+  if (typeof window === 'undefined') return;
+  try {
+    const raw = window.localStorage.getItem(LS.CHART_PREFS);
+    const parsed = raw ? JSON.parse(raw) as Record<string, unknown> : {};
+    window.localStorage.setItem(LS.CHART_PREFS, JSON.stringify({ ...parsed, timeframe }));
+  } catch {
+    // ignore storage errors
+  }
+}
 
 interface HeroLineChartProps {
   data: OHLCData[];
@@ -63,8 +88,10 @@ export function HeroLineChart({
   const candleMarkersApiRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
   const hasAppliedInitialRangeRef = useRef(false);
   const previousRangeRef = useRef<RangeKey>('3M');
+  const previousTimeframeRef = useRef<CandleTimeframe>('daily');
 
   const [activeRange, setActiveRange] = useState<RangeKey>(initialRange ?? '3M');
+  const [activeTimeframe, setActiveTimeframe] = useState<CandleTimeframe>(loadTimeframePreference);
 
   const handleSetRange = (range: RangeKey) => {
     setActiveRange(range);
@@ -72,32 +99,36 @@ export function HeroLineChart({
   };
   const isDark = useIsDark();
 
-  const candlesData = useMemo(() => {
-    if (!data.length) return [] as Array<{ time: UTCTimestamp; open: number; high: number; low: number; close: number }>;
+  useEffect(() => {
+    saveTimeframePreference(activeTimeframe);
+  }, [activeTimeframe]);
+
+  const timeframeData = useMemo(() => {
+    if (!data.length) return [] as OHLCData[];
 
     const sorted = [...data].sort((a, b) => (toChartTimestamp(a.date) as number) - (toChartTimestamp(b.date) as number));
-    const points = sorted.map((bar) => ({
-      time: toChartTimestamp(bar.date),
+    const dailyData = sorted.map((bar) => ({
+      date: bar.date,
       open: Number(bar.open),
       high: Number(bar.high),
       low: Number(bar.low),
       close: Number(bar.close),
+      volume: Number(bar.volume ?? 0),
     }));
 
-    if (typeof currentPrice === 'number' && Number.isFinite(currentPrice) && points.length > 0) {
+    if (typeof currentPrice === 'number' && Number.isFinite(currentPrice) && dailyData.length > 0) {
       const nyseToday = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
-      const todayTs = toChartTimestamp(nyseToday);
-      const last = points[points.length - 1];
+      const last = dailyData[dailyData.length - 1];
 
-      if (isTrading && (last.time as number) < (todayTs as number)) {
+      if (isTrading && (toChartTimestamp(last.date) as number) < (toChartTimestamp(nyseToday) as number)) {
         // Market is open and last bar is from a previous day — add today's bar
         const open = typeof todayQuote?.open === 'number' ? todayQuote.open : currentPrice;
         const high = typeof todayQuote?.high === 'number' ? Math.max(todayQuote.high, currentPrice) : currentPrice;
         const low = typeof todayQuote?.low === 'number' ? Math.min(todayQuote.low, currentPrice) : currentPrice;
-        points.push({ time: todayTs, open, high, low, close: currentPrice });
+        dailyData.push({ date: nyseToday, open, high, low, close: currentPrice, volume: 0 });
       } else {
         // Update close (and high/low) of the last existing bar
-        points[points.length - 1] = {
+        dailyData[dailyData.length - 1] = {
           ...last,
           close: currentPrice,
           high: Math.max(last.high, currentPrice),
@@ -106,8 +137,19 @@ export function HeroLineChart({
       }
     }
 
-    return points;
-  }, [data, currentPrice, isTrading, todayQuote?.high, todayQuote?.low, todayQuote?.open]);
+    return activeTimeframe === 'weekly' ? aggregateOhlcToWeekly(dailyData) : dailyData;
+  }, [activeTimeframe, data, currentPrice, isTrading, todayQuote?.high, todayQuote?.low, todayQuote?.open]);
+
+  const candlesData = useMemo(
+    () => timeframeData.map((bar) => ({
+      time: toChartTimestamp(bar.date),
+      open: Number(bar.open),
+      high: Number(bar.high),
+      low: Number(bar.low),
+      close: Number(bar.close),
+    })),
+    [timeframeData]
+  );
 
   const lineData = useMemo(
     () => candlesData.map((candle) => ({ time: candle.time, value: candle.close })),
@@ -129,17 +171,25 @@ export function HeroLineChart({
 
     const markers: SeriesMarker<Time>[] = [];
     trades.forEach((trade) => {
+      const entryTime = activeTimeframe === 'weekly'
+        ? toChartTimestamp(mapDateToAggregatedBarTime(trade.entryDate, activeTimeframe, timeframeData))
+        : toChartTimestamp(trade.entryDate);
+      const exitTime = activeTimeframe === 'weekly'
+        ? toChartTimestamp(mapDateToAggregatedBarTime(trade.exitDate, activeTimeframe, timeframeData))
+        : toChartTimestamp(trade.exitDate);
+      if (!entryTime) return;
+
       markers.push({
-        time: toChartTimestamp(trade.entryDate),
+        time: entryTime,
         position: 'inBar',
         color: '#16a34a',
         shape: 'circle',
         text: '',
       });
 
-      if (trade.exitReason !== 'end_of_data') {
+      if (trade.exitReason !== 'end_of_data' && exitTime) {
         markers.push({
-          time: toChartTimestamp(trade.exitDate),
+          time: exitTime,
           position: 'inBar',
           color: '#dc2626',
           shape: 'circle',
@@ -149,24 +199,32 @@ export function HeroLineChart({
     });
 
     return markers;
-  }, [showTrades, trades]);
+  }, [activeTimeframe, showTrades, timeframeData, trades]);
 
   const candleTradeMarkers = useMemo(() => {
     if (!showTrades || !trades.length) return [] as SeriesMarker<Time>[];
 
     const markers: SeriesMarker<Time>[] = [];
     trades.forEach((trade) => {
+      const entryTime = activeTimeframe === 'weekly'
+        ? toChartTimestamp(mapDateToAggregatedBarTime(trade.entryDate, activeTimeframe, timeframeData))
+        : toChartTimestamp(trade.entryDate);
+      const exitTime = activeTimeframe === 'weekly'
+        ? toChartTimestamp(mapDateToAggregatedBarTime(trade.exitDate, activeTimeframe, timeframeData))
+        : toChartTimestamp(trade.exitDate);
+      if (!entryTime) return;
+
       markers.push({
-        time: toChartTimestamp(trade.entryDate),
+        time: entryTime,
         position: 'belowBar',
         color: '#16a34a',
         shape: 'arrowUp',
         text: '',
       });
 
-      if (trade.exitReason !== 'end_of_data') {
+      if (trade.exitReason !== 'end_of_data' && exitTime) {
         markers.push({
-          time: toChartTimestamp(trade.exitDate),
+          time: exitTime,
           position: 'aboveBar',
           color: '#dc2626',
           shape: 'arrowDown',
@@ -176,7 +234,7 @@ export function HeroLineChart({
     });
 
     return markers;
-  }, [showTrades, trades]);
+  }, [activeTimeframe, showTrades, timeframeData, trades]);
 
   useEffect(() => {
     if (!chartContainerRef.current) return;
@@ -281,7 +339,8 @@ export function HeroLineChart({
     if (!chartRef.current) return;
 
     const rangeChanged = previousRangeRef.current !== activeRange;
-    if (hasAppliedInitialRangeRef.current && !rangeChanged) {
+    const timeframeChanged = previousTimeframeRef.current !== activeTimeframe;
+    if (hasAppliedInitialRangeRef.current && !rangeChanged && !timeframeChanged) {
       return;
     }
 
@@ -300,8 +359,9 @@ export function HeroLineChart({
     }
 
     previousRangeRef.current = activeRange;
+    previousTimeframeRef.current = activeTimeframe;
     hasAppliedInitialRangeRef.current = true;
-  }, [activeRange, candlesData]);
+  }, [activeRange, activeTimeframe, candlesData]);
 
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-2.5 dark:border-gray-700 dark:bg-gray-900">
@@ -333,17 +393,49 @@ export function HeroLineChart({
               ))}
             </div>
           </div>
-          <div className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] ${isTrading
-            ? 'bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-950/30 dark:border-emerald-900/40 dark:text-emerald-200'
-            : 'bg-amber-100 border-amber-200 text-amber-800 dark:bg-amber-950/30 dark:border-amber-900/40 dark:text-amber-200'
-            }`}>
-            <span
-              className={`h-2 w-2 rounded-full ${statusDotClass} ${isUpdating ? 'animate-[pulse_2.4s_ease-in-out_infinite]' : ''}`}
-              title={isStale && !isUpdating ? 'Нет актуального обновления' : (isUpdating ? 'Идёт обновление' : 'Данные актуальны')}
-              aria-label={isStale && !isUpdating ? 'Нет актуального обновления' : (isUpdating ? 'Идёт обновление' : 'Данные актуальны')}
-            />
-            {isTrading ? 'Рынок открыт' : 'Рынок закрыт'}
+          <div className="flex shrink-0 items-center gap-1.5">
+            <div className="inline-flex rounded-lg border border-gray-200 bg-gray-100 p-0.5 dark:border-gray-700 dark:bg-gray-800">
+              {([
+                { value: 'daily', label: 'День' },
+                { value: 'weekly', label: 'Неделя' },
+              ] as const).map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => setActiveTimeframe(option.value)}
+                  className={`rounded-md px-2 py-1 text-[11px] font-semibold transition-colors ${
+                    activeTimeframe === option.value
+                      ? 'bg-white text-indigo-700 shadow-sm dark:bg-gray-900 dark:text-indigo-300'
+                      : 'text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white'
+                  }`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+            <div className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] ${isTrading
+              ? 'bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-950/30 dark:border-emerald-900/40 dark:text-emerald-200'
+              : 'bg-amber-100 border-amber-200 text-amber-800 dark:bg-amber-950/30 dark:border-amber-900/40 dark:text-amber-200'
+              }`}>
+              <span
+                className={`h-2 w-2 rounded-full ${statusDotClass} ${isUpdating ? 'animate-[pulse_2.4s_ease-in-out_infinite]' : ''}`}
+                title={isStale && !isUpdating ? 'Нет актуального обновления' : (isUpdating ? 'Идёт обновление' : 'Данные актуальны')}
+                aria-label={isStale && !isUpdating ? 'Нет актуального обновления' : (isUpdating ? 'Идёт обновление' : 'Данные актуальны')}
+              />
+              {isTrading ? 'Рынок открыт' : 'Рынок закрыт'}
+            </div>
           </div>
+        </div>
+        <div className="mt-2">
+          <ChartLegend
+            items={[
+              { label: chartKind === 'line' ? 'Цена закрытия' : 'Свечи', color: lineColor },
+              ...(showTrades ? [
+                { label: 'Покупка', color: '#16a34a' },
+                { label: 'Продажа', color: '#dc2626' },
+              ] : []),
+            ]}
+          />
         </div>
       </div>
     </div>

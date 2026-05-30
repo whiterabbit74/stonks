@@ -111,11 +111,12 @@ export function MultiTickerPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [backtestResults, setBacktestResults] = useState<BacktestResults | null>(null);
+  const [comparisonBacktestResults, setComparisonBacktestResults] = useState<BacktestResults | null>(null);
   const [monthlyContributionResults, setMonthlyContributionResults] = useState<BacktestResults | null>(null);
   const [takeProfitInput, setTakeProfitInput] = useState<string>(() => formatTakeProfitInput(getInitialTakeProfitPercent()));
   const takeProfitPercent = parseTakeProfitPercent(takeProfitInput);
 
-  type TabId = 'summary' | 'price' | 'tickerCharts' | 'equity' | 'trades' | 'profit' | 'monthlyContribution' | 'splits' | 'drawdown' | 'duration' | 'buyhold' | 'openDayDrawdown' | 'buyAtClose' | 'buyAtClose4' | 'noStopLoss' | 'options';
+  type TabId = 'summary' | 'price' | 'tickerCharts' | 'equity' | 'exposure' | 'trades' | 'profit' | 'monthlyContribution' | 'splits' | 'drawdown' | 'duration' | 'buyhold' | 'openDayDrawdown' | 'buyAtClose' | 'buyAtClose4' | 'noStopLoss' | 'options';
   const [activeTab, setActiveTab] = useState<TabId>('summary');
   const [selectedPriceTicker, setSelectedPriceTicker] = useState<string>(() => getDefaultTickers()[0] ?? '');
   const [selectedTradeTicker, setSelectedTradeTicker] = useState<'all' | string>('all');
@@ -193,6 +194,7 @@ export function MultiTickerPage() {
     setIsLoading(true);
     setError(null);
     setMonthlyContributionResults(null);
+    setComparisonBacktestResults(null);
 
     try {
       const loadedData = await Promise.all(tickersToRun.map(ticker => loadTickerData(ticker)));
@@ -204,17 +206,26 @@ export function MultiTickerPage() {
       setTickersData(loadedData);
 
       const optimizedData = optimizeTickerData(loadedData);
+      const leverage = leveragePercent / 100;
+      const baselineResult = leverage > 1
+        ? runSinglePositionBacktest(
+          optimizedData,
+          activeStrategy,
+          1,
+          { allowSameDayReentry: true, takeProfitPercent }
+        )
+        : null;
       const backtestResult = runSinglePositionBacktest(
         optimizedData,
         activeStrategy,
-        leveragePercent / 100,
+        leverage,
         { allowSameDayReentry: true, takeProfitPercent }
       );
 
       const monthlyResult = runSinglePositionBacktest(
         optimizedData,
         activeStrategy,
-        leveragePercent / 100,
+        leverage,
         {
           allowSameDayReentry: true,
           takeProfitPercent,
@@ -231,14 +242,25 @@ export function MultiTickerPage() {
 
       setBacktestResults({
         equity: backtestResult.equity,
+        exposure: backtestResult.exposure,
         finalValue: backtestResult.finalValue,
         maxDrawdown: backtestResult.maxDrawdown,
         trades: backtestResult.trades,
         metrics: backtestResult.metrics
       });
 
+      setComparisonBacktestResults(baselineResult ? {
+        equity: baselineResult.equity,
+        exposure: baselineResult.exposure,
+        finalValue: baselineResult.finalValue,
+        maxDrawdown: baselineResult.maxDrawdown,
+        trades: baselineResult.trades,
+        metrics: baselineResult.metrics
+      } : null);
+
       setMonthlyContributionResults({
         equity: monthlyResult.equity,
+        exposure: monthlyResult.exposure,
         finalValue: monthlyResult.finalValue,
         maxDrawdown: monthlyResult.maxDrawdown,
         trades: monthlyResult.trades,
@@ -717,6 +739,9 @@ export function MultiTickerPage() {
                   mode="multi"
                   activeTab={activeTab}
                   backtestResults={backtestResults}
+                  comparisonBacktestResults={comparisonBacktestResults}
+                  primarySeriesLabel={`${leveragePercent}%`}
+                  comparisonSeriesLabel="Без маржи (100%)"
                   tickersData={tickersData}
                   strategy={activeStrategy}
                   handlers={{

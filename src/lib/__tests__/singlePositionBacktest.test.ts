@@ -54,6 +54,41 @@ function strategy(overrides: Partial<Strategy> = {}): Strategy {
 }
 
 describe('runSinglePositionBacktest take-profit exits', () => {
+  it('closes take-profit and re-enters on the same bar when the close still has an entry signal', () => {
+    const data = [
+      bar('2024-01-01', 101, 112, 99, 100),
+      bar('2024-01-02', 100, 103, 98, 98.2),
+      bar('2024-01-03', 99, 101, 98, 99),
+    ];
+
+    const result = runSinglePositionBacktest(
+      tickerData('AAPL', data),
+      strategy(),
+      1,
+      { allowSameDayReentry: true, takeProfitPercent: 2 }
+    );
+
+    expect(result.trades).toHaveLength(2);
+
+    expect(result.trades[0].entryDate).toBe('2024-01-01');
+    expect(result.trades[0].exitDate).toBe('2024-01-02');
+    expect(result.trades[0].exitReason).toBe('take_profit');
+    expect(result.trades[0].entryPrice).toBe(100);
+    expect(result.trades[0].exitPrice).toBe(102);
+    expect(result.trades[0].quantity).toBe(100);
+    expect(result.trades[0].pnl).toBe(200);
+
+    expect(result.trades[1].entryDate).toBe('2024-01-02');
+    expect(result.trades[1].exitDate).toBe('2024-01-03');
+    expect(result.trades[1].exitReason).toBe('take_profit');
+    expect(result.trades[1].entryPrice).toBe(98.2);
+    expect(result.trades[1].exitPrice).toBeCloseTo(100.164);
+    expect(result.trades[1].quantity).toBe(103);
+    expect(result.trades[1].pnl).toBeCloseTo(202.292);
+
+    expect(result.finalValue).toBeCloseTo(10402.292);
+  });
+
   it('exits at the exact take-profit target when the daily high reaches it', () => {
     const data = [
       bar('2024-01-01', 101, 112, 99, 100),
@@ -115,5 +150,28 @@ describe('runSinglePositionBacktest take-profit exits', () => {
     expect(result.trades[0].exitPrice).toBe(103.8);
     expect(result.trades[0].pnl).toBeCloseTo(380);
     expect(result.finalValue).toBeCloseTo(10380);
+  });
+
+  it('records daily strategy exposure as position value divided by portfolio equity', () => {
+    const data = [
+      bar('2024-01-01', 101, 112, 99, 100),
+      bar('2024-01-02', 100, 104, 100, 103.8),
+    ];
+
+    const result = runSinglePositionBacktest(
+      tickerData('AAPL', data),
+      strategy(),
+      2,
+      { allowSameDayReentry: true }
+    );
+
+    expect(result.exposure).toHaveLength(2);
+    expect(result.exposure[0]).toMatchObject({
+      date: '2024-01-01',
+      positionValue: 20000,
+      exposurePct: 200,
+      activePositions: 1,
+    });
+    expect(result.exposure[1].exposurePct).toBe(0);
   });
 });

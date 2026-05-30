@@ -14,6 +14,7 @@ import { logError } from '../lib/error-logger';
 import { toChartTimestamp } from '../lib/date-utils';
 import { useIsDark } from '../hooks/useIsDark';
 import { getChartColors } from '../lib/chart-theme';
+import { formatCompactNumber } from '../lib/formatters';
 
 interface EquityChartProps {
   equity: EquityPoint[];
@@ -98,6 +99,9 @@ export function EquityChart({ equity, hideHeader, comparisonEquity, comparisonLa
       grid: { vertLines: { color: grid }, horzLines: { color: grid } },
       crosshair: { mode: 1 },
       rightPriceScale: { borderColor: border },
+      localization: {
+        priceFormatter: (price: number) => `$${formatCompactNumber(price)}`,
+      },
       timeScale: { borderColor: border, timeVisible: true, secondsVisible: false },
     });
 
@@ -108,14 +112,12 @@ export function EquityChart({ equity, hideHeader, comparisonEquity, comparisonLa
       topColor: 'rgba(99, 102, 241, 0.25)',
       bottomColor: 'rgba(99, 102, 241, 0.03)',
       lineWidth: 2,
-      title: primaryLabelRef.current || 'Стоимость портфеля',
     });
     equitySeriesRef.current = equitySeries;
 
     const comparisonSeries = chart.addSeries(LineSeries, {
       color: '#F97316',
       lineWidth: 2,
-      title: comparisonLabelRef.current || 'Сравнительный режим',
       priceLineVisible: false,
       visible: false,
     });
@@ -227,14 +229,10 @@ export function EquityChart({ equity, hideHeader, comparisonEquity, comparisonLa
     if (!equitySeriesRef.current || !comparisonSeriesRef.current) return;
 
     equitySeriesRef.current.setData(primarySeriesData);
-    equitySeriesRef.current.applyOptions({
-      title: primaryLabel || 'Стоимость портфеля',
-    });
 
     const hasComparison = comparisonSeriesData.length > 0;
     comparisonSeriesRef.current.applyOptions({
       visible: hasComparison,
-      title: comparisonLabel || 'Сравнительный режим',
     });
     comparisonSeriesRef.current.setData(comparisonSeriesData);
   }, [primarySeriesData, comparisonSeriesData, comparisonLabel, primaryLabel]);
