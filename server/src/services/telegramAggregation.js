@@ -23,7 +23,7 @@ const { executeWebullSignal, appendAutotradeEvent } = require('./autotrade');
 const { getETParts, etKeyYMD, previousTradingDayET, getTradingSessionForDateET, isTradingDayByCalendarET, getCachedTradingCalendar } = require('./dates');
 const { refreshTickerAndCheckFreshness, appendMonitorLog } = require('./priceActualization');
 const { reconcileMonitorState, getBlockingMonitorMismatch } = require('./monitorConsistency');
-const { evaluateEmaAlerts, listEmaAlerts } = require('./emaAlerts');
+const { evaluateEmaAlerts, listEmaAlerts, markEmaAlertsTriggered } = require('./emaAlerts');
 
 // Helper functions
 function toFiniteNumber(value) {
@@ -59,6 +59,18 @@ function normalizeIntradayRange(range, quote) {
 
 function formatMoney(n) {
     return (typeof n === 'number' && isFinite(n)) ? `$${n.toFixed(2)}` : '-';
+}
+
+function formatEmaAlertLine(alert, detailed = false) {
+    const action = alert.action === 'sell' ? 'продажа' : 'покупка';
+    const actionText = alert.action === 'sell' ? 'продавай' : 'покупай';
+    const comparator = alert.action === 'sell' ? '≥' : '≤';
+    const current = Number.isFinite(alert.deviationPct) ? `${alert.deviationPct.toFixed(2)}%` : '—';
+    const range = `${alert.buyLevelPct}%–${alert.sellLevelPct}%`;
+    if (detailed) {
+        return `${alert.symbol} EMA${alert.emaPeriod} ${range} • ждём: ${action} (${comparator} ${alert.activeLevelPct}%) • сейчас ${current} • ${alert.near ? 'близко ✅' : 'далеко'}`;
+    }
+    return `${alert.symbol} EMA${alert.emaPeriod}: ${actionText} при ${comparator} ${alert.activeLevelPct}% (сейчас ${current})`;
 }
 
 /**
@@ -289,14 +301,14 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
                     ? `• На выход: ${exitSignals.join(', ')}`
                     : '• На выход: нет';
                 signalsSummary += nearEmaSignals.length > 0
-                    ? `\n• EMA: ${nearEmaSignals.map((alert) => `${alert.symbol} EMA${alert.emaPeriod} ${alert.deviationPct.toFixed(1)}% к уровню ${alert.levelPct}%`).join(', ')}`
+                    ? `\n• EMA: ${nearEmaSignals.map((alert) => formatEmaAlertLine(alert)).join(', ')}`
                     : '\n• EMA: нет';
 
                 const emaDetails = emaAlerts.length > 0
                     ? `\n\n📈 EMA:\n${emaAlerts.map((alert) => {
-                        if (!alert.dataOk) return `${alert.symbol} EMA${alert.emaPeriod} ${alert.levelPct}% • нет данных (${alert.reason || 'ошибка'})`;
-                        const dir = alert.direction === 'below' ? 'ниже' : 'выше';
-                        return `${alert.symbol} EMA${alert.emaPeriod} ${dir} ${alert.levelPct}% • сейчас ${alert.deviationPct.toFixed(2)}% • ${alert.near ? 'близко ✅' : 'далеко'}`;
+                        const range = `${alert.buyLevelPct ?? alert.levelPct}%–${alert.sellLevelPct ?? alert.levelPct}%`;
+                        if (!alert.dataOk) return `${alert.symbol} EMA${alert.emaPeriod} ${range} • нет данных (${alert.reason || 'ошибка'})`;
+                        return formatEmaAlertLine(alert, true);
                     }).join('\n')}`
                     : '';
 
@@ -583,8 +595,9 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
                 if (reachedEmaAlerts.length > 0) {
                     decisionLines.push('• EMA-уровни:');
                     for (const alert of reachedEmaAlerts) {
-                        const dir = alert.direction === 'below' ? 'ниже' : 'выше';
-                        decisionLines.push(`  ${alert.symbol} EMA${alert.emaPeriod}: ${alert.deviationPct.toFixed(2)}% (${dir} ${alert.levelPct}%)`);
+                        const actionText = alert.action === 'sell' ? 'ПРОДАВАЙ' : 'ПОКУПАЙ';
+                        const comparator = alert.action === 'sell' ? '≥' : '≤';
+                        decisionLines.push(`  ${actionText}: ${alert.symbol} EMA${alert.emaPeriod} ${alert.buyLevelPct}%–${alert.sellLevelPct}% • сейчас ${alert.deviationPct.toFixed(2)}% (${comparator} ${alert.activeLevelPct}%)`);
                     }
                 }
                 if (!decisionLines.length) {
@@ -621,6 +634,7 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
                     if (shouldPersistState) {
                         state.t1Sent = true;
                         aggregateSendState.set(chatId, state);
+                        markEmaAlertsTriggered(reachedEmaAlerts, nowIso);
                     }
                     await appendMonitorLog([`T-1 report → chat ${chatId}`, ...decisionLines, ...executionLogLines]);
                     await appendAutotradeEvent('t1_report_sent', {

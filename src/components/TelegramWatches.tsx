@@ -138,8 +138,9 @@ export function TelegramWatches() {
   const [emaForm, setEmaForm] = useState({
     symbol: '',
     emaPeriod: 200 as 20 | 200,
-    levelPct: 0,
-    direction: 'above' as 'above' | 'below',
+    buyLevelPct: 15,
+    sellLevelPct: 40,
+    nextAction: 'buy' as 'buy' | 'sell',
     thresholdPct: 0.5,
   });
   const [closeMonitorState, setCloseMonitorState] = useState<{
@@ -1058,7 +1059,7 @@ export function TelegramWatches() {
 
       {activeTab === 'ema' && (
         <Panel as="section" tone="soft" className="space-y-4">
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-[1fr,140px,140px,140px,140px,auto]">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-[1fr,130px,130px,130px,150px,130px,auto]">
             <label className="space-y-1 text-xs font-medium text-gray-700 dark:text-gray-300">
               Тикер
               <input
@@ -1079,22 +1080,31 @@ export function TelegramWatches() {
               </Select>
             </label>
             <label className="space-y-1 text-xs font-medium text-gray-700 dark:text-gray-300">
-              Уровень, %
+              Покупка ≤ %
               <input
                 type="number"
-                value={emaForm.levelPct}
-                onChange={(event) => setEmaForm((prev) => ({ ...prev, levelPct: Number(event.target.value) }))}
+                value={emaForm.buyLevelPct}
+                onChange={(event) => setEmaForm((prev) => ({ ...prev, buyLevelPct: Number(event.target.value) }))}
                 className="w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
               />
             </label>
             <label className="space-y-1 text-xs font-medium text-gray-700 dark:text-gray-300">
-              Направление
+              Продажа ≥ %
+              <input
+                type="number"
+                value={emaForm.sellLevelPct}
+                onChange={(event) => setEmaForm((prev) => ({ ...prev, sellLevelPct: Number(event.target.value) }))}
+                className="w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+              />
+            </label>
+            <label className="space-y-1 text-xs font-medium text-gray-700 dark:text-gray-300">
+              Сейчас ждём
               <Select
-                value={emaForm.direction}
-                onChange={(event) => setEmaForm((prev) => ({ ...prev, direction: event.target.value as 'above' | 'below' }))}
+                value={emaForm.nextAction}
+                onChange={(event) => setEmaForm((prev) => ({ ...prev, nextAction: event.target.value as 'buy' | 'sell' }))}
               >
-                <option value="above">Выше</option>
-                <option value="below">Ниже</option>
+                <option value="buy">Покупку</option>
+                <option value="sell">Продажу</option>
               </Select>
             </label>
             <label className="space-y-1 text-xs font-medium text-gray-700 dark:text-gray-300">
@@ -1115,7 +1125,7 @@ export function TelegramWatches() {
                   try {
                     await DatasetAPI.createTelegramEmaAlert({ ...emaForm, enabled: true });
                     await load();
-                    setInfo({ open: true, title: 'EMA-оповещение добавлено', message: `${emaForm.symbol} EMA${emaForm.emaPeriod} ${emaForm.levelPct}%`, kind: 'success' });
+                    setInfo({ open: true, title: 'EMA-цикл добавлен', message: `${emaForm.symbol} EMA${emaForm.emaPeriod} ${emaForm.buyLevelPct}–${emaForm.sellLevelPct}%`, kind: 'success' });
                   } catch (e) {
                     setInfo({ open: true, title: 'Ошибка', message: e instanceof Error ? e.message : 'Не удалось добавить EMA-оповещение', kind: 'error' });
                   }
@@ -1133,8 +1143,8 @@ export function TelegramWatches() {
                 <tr>
                   <th className="p-3 text-left dark:text-gray-100">Тикер</th>
                   <th className="p-3 text-left dark:text-gray-100">EMA</th>
-                  <th className="p-3 text-left dark:text-gray-100">Уровень</th>
-                  <th className="p-3 text-left dark:text-gray-100">Направление</th>
+                  <th className="p-3 text-left dark:text-gray-100">Диапазон</th>
+                  <th className="p-3 text-left dark:text-gray-100">Ждём</th>
                   <th className="p-3 text-left dark:text-gray-100">Близость</th>
                   <th className="p-3 text-left dark:text-gray-100">Статус</th>
                   <th className="p-3 text-left dark:text-gray-100">Действия</th>
@@ -1145,8 +1155,20 @@ export function TelegramWatches() {
                   <tr key={alert.id} className="hover:bg-gray-50 dark:hover:bg-gray-800">
                     <td className="p-3 font-medium text-gray-900 dark:text-gray-100">{alert.symbol}</td>
                     <td className="p-3 dark:text-gray-300">EMA {alert.emaPeriod}</td>
-                    <td className="p-3 dark:text-gray-300">{alert.levelPct}%</td>
-                    <td className="p-3 dark:text-gray-300">{alert.direction === 'above' ? 'выше' : 'ниже'}</td>
+                    <td className="p-3 dark:text-gray-300">
+                      <div className="font-medium">{alert.buyLevelPct}%–{alert.sellLevelPct}%</div>
+                      <div className="text-xs text-gray-500">покупка ≤ {alert.buyLevelPct}%, продажа ≥ {alert.sellLevelPct}%</div>
+                    </td>
+                    <td className="p-3 dark:text-gray-300">
+                      <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${alert.nextAction === 'buy' ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300' : 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'}`}>
+                        {alert.nextAction === 'buy' ? 'Покупку' : 'Продажу'}
+                      </span>
+                      {alert.lastTriggeredAction && (
+                        <div className="mt-1 text-xs text-gray-500">
+                          Было: {alert.lastTriggeredAction === 'buy' ? 'покупка' : 'продажа'}
+                        </div>
+                      )}
+                    </td>
                     <td className="p-3 dark:text-gray-300">{alert.thresholdPct}%</td>
                     <td className="p-3">
                       <button
@@ -1161,18 +1183,42 @@ export function TelegramWatches() {
                       </button>
                     </td>
                     <td className="p-3">
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          await DatasetAPI.deleteTelegramEmaAlert(alert.id);
-                          await load();
-                        }}
-                        className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-gray-300 bg-white text-gray-600 hover:bg-red-50 hover:text-red-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-                        title="Удалить EMA-оповещение"
-                        aria-label="Удалить EMA-оповещение"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            await DatasetAPI.updateTelegramEmaAlert(alert.id, { nextAction: 'buy' });
+                            await load();
+                          }}
+                          className="rounded border border-gray-300 px-2 py-1 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+                          disabled={alert.nextAction === 'buy'}
+                        >
+                          Ждать покупку
+                        </button>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            await DatasetAPI.updateTelegramEmaAlert(alert.id, { nextAction: 'sell' });
+                            await load();
+                          }}
+                          className="rounded border border-gray-300 px-2 py-1 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+                          disabled={alert.nextAction === 'sell'}
+                        >
+                          Ждать продажу
+                        </button>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            await DatasetAPI.deleteTelegramEmaAlert(alert.id);
+                            await load();
+                          }}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-gray-300 bg-white text-gray-600 hover:bg-red-50 hover:text-red-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                          title="Удалить EMA-оповещение"
+                          aria-label="Удалить EMA-оповещение"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}

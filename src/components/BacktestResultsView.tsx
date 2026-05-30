@@ -482,7 +482,14 @@ export function BacktestResultsView({
           {renderComparisonPanel(tabId)}
           <ChartContainer title={mode === 'single' ? undefined : 'Анализ просадки'}>
             <Suspense fallback={lazyFallback}>
-              <TradeDrawdownChart trades={trades} initialCapital={capital} />
+              <TradeDrawdownChart
+                trades={trades}
+                initialCapital={capital}
+                equity={equity}
+                comparisonEquity={hasComparison ? comparisonEquity : undefined}
+                primaryLabel={primarySeriesLabel}
+                comparisonLabel={comparisonSeriesLabel}
+              />
             </Suspense>
           </ChartContainer>
         </div>

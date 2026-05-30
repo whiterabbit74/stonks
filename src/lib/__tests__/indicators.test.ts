@@ -49,11 +49,18 @@ describe('IndicatorEngine', () => {
       
       expect(ema).toHaveLength(sampleData.length);
       
-      // First value should be the first close price
-      expect(ema[0]).toBe(105);
+      // First 4 values should be NaN (not enough data)
+      for (let i = 0; i < 4; i++) {
+        expect(ema[i]).toBeNaN();
+      }
       
-      // Subsequent values should be calculated using EMA formula
-      expect(ema[1]).toBeCloseTo(107.5, 2); // EMA with alpha = 2/(5+1) = 1/3
+      // 5th value should use SMA as the first true EMA point
+      const expectedEMA5 = (105 + 110 + 115 + 120 + 125) / 5;
+      expect(ema[4]).toBeCloseTo(expectedEMA5, 2);
+
+      // 6th value should use the standard EMA formula
+      const expectedEMA6 = (130 * (2 / (5 + 1))) + (expectedEMA5 * (1 - (2 / (5 + 1))));
+      expect(ema[5]).toBeCloseTo(expectedEMA6, 2);
     });
 
     it('should handle single data point', () => {

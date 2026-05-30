@@ -1,23 +1,110 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { AreaSeries, LineSeries, createChart } from 'lightweight-charts';
 import type { UTCTimestamp } from 'lightweight-charts';
-import type { Trade } from '../types';
+import type { EquityPoint, Trade } from '../types';
 import { toChartTimestamp } from '../lib/date-utils';
 import { useIsDark } from '../hooks/useIsDark';
 import { centerFewPointsOnTimeScale } from '../lib/chart-utils';
+import { ChartLegend } from './ChartLegend';
 
 interface TradeDrawdownChartProps {
   trades: Trade[];
   initialCapital: number;
+  equity?: EquityPoint[];
+  comparisonEquity?: EquityPoint[];
+  primaryLabel?: string;
+  comparisonLabel?: string;
 }
 
-export function TradeDrawdownChart({ trades, initialCapital }: TradeDrawdownChartProps) {
+interface DrawdownDataPoint {
+  time: UTCTimestamp;
+  value: number;
+  drawdown: number;
+}
+
+function prepareDailyDrawdownData(equity: EquityPoint[]): DrawdownDataPoint[] {
+  const sorted = equity
+    .map((point) => {
+      try {
+        const value = Number(point.value);
+        if (!Number.isFinite(value)) return null;
+        return {
+          time: toChartTimestamp(point.date),
+          equity: value,
+        };
+      } catch {
+        return null;
+      }
+    })
+    .filter((point): point is { time: UTCTimestamp; equity: number } => point !== null)
+    .sort((a, b) => Number(a.time) - Number(b.time));
+
+  let peak = -Infinity;
+
+  return sorted.map((point) => {
+    peak = Math.max(peak, point.equity);
+    const drawdown = peak > 0 ? ((peak - point.equity) / peak) * 100 : 0;
+    return {
+      time: point.time,
+      value: -drawdown,
+      drawdown,
+    };
+  });
+}
+
+function prepareTradeDrawdownData(trades: Trade[], initialCapital: number): DrawdownDataPoint[] {
+  let runningCapital = initialCapital;
+  let peakCapital = initialCapital;
+
+  return trades.map((trade) => {
+    runningCapital += trade.pnl;
+    peakCapital = Math.max(peakCapital, runningCapital);
+    const drawdown = peakCapital > 0 ? ((peakCapital - runningCapital) / peakCapital) * 100 : 0;
+    return {
+      time: toChartTimestamp(trade.exitDate),
+      value: -drawdown,
+      drawdown,
+    };
+  });
+}
+
+function calculateDrawdownStats(points: DrawdownDataPoint[]): { maxDrawdown: number; drawdownDays: number; frequency: number } {
+  if (!points.length) return { maxDrawdown: 0, drawdownDays: 0, frequency: 0 };
+  const maxDrawdown = points.reduce((max, point) => Math.max(max, point.drawdown), 0);
+  const drawdownDays = points.filter((point) => point.drawdown > 0).length;
+  return {
+    maxDrawdown,
+    drawdownDays,
+    frequency: (drawdownDays / points.length) * 100,
+  };
+}
+
+export function TradeDrawdownChart({
+  trades,
+  initialCapital,
+  equity = [],
+  comparisonEquity,
+  primaryLabel = 'Основной режим',
+  comparisonLabel = 'Сравнение',
+}: TradeDrawdownChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<ReturnType<typeof createChart> | null>(null);
   const isDark = useIsDark();
+  const primaryData = useMemo(
+    () => equity.length > 0
+      ? prepareDailyDrawdownData(equity)
+      : prepareTradeDrawdownData(trades, initialCapital),
+    [equity, trades, initialCapital]
+  );
+  const comparisonData = useMemo(
+    () => comparisonEquity?.length ? prepareDailyDrawdownData(comparisonEquity) : [],
+    [comparisonEquity]
+  );
+  const stats = useMemo(() => calculateDrawdownStats(primaryData), [primaryData]);
+  const pointLabel = equity.length > 0 ? 'дней' : 'сделок';
 
   useEffect(() => {
-    if (!chartContainerRef.current || !trades.length) return;
+    if (!chartContainerRef.current || !primaryData.length) return;
 
     try {
       const bg = isDark ? '#0b1220' : '#ffffff';
@@ -53,69 +140,53 @@ export function TradeDrawdownChart({ trades, initialCapital }: TradeDrawdownChar
           timeVisible: true,
           secondsVisible: false,
         },
+        localization: {
+          priceFormatter: (value: number) => `${value.toFixed(1)}%`,
+        },
       });
 
       chartRef.current = chart;
 
-      // Calculate running capital and drawdown for each trade
-      let runningCapital = initialCapital;
-      let peakCapital = initialCapital;
-      const tradeDrawdownData: Array<{
-        time: number;
-        value: number;
-        tradeIndex: number;
-        pnl: number;
-        drawdown: number;
-      }> = [];
-
-      trades.forEach((trade, index) => {
-        // Update capital after trade
-        runningCapital += trade.pnl;
-
-        // Update peak
-        if (runningCapital > peakCapital) {
-          peakCapital = runningCapital;
-        }
-
-        // Calculate drawdown from peak
-        const drawdown = peakCapital > 0 ? ((peakCapital - runningCapital) / peakCapital) * 100 : 0;
-
-        tradeDrawdownData.push({
-          time: toChartTimestamp(trade.exitDate),
-          value: -drawdown, // Negative for visual representation
-          tradeIndex: index + 1,
-          pnl: trade.pnl,
-          drawdown: drawdown
-        });
-      });
-
-      // Add drawdown area series
       const drawdownSeries = chart.addSeries(AreaSeries, {
         topColor: isDark ? 'rgba(248, 113, 113, 0.35)' : 'rgba(244, 67, 54, 0.4)',
         bottomColor: isDark ? 'rgba(248, 113, 113, 0.08)' : 'rgba(244, 67, 54, 0.1)',
         lineColor: isDark ? '#f87171' : '#F44336',
         lineWidth: 2,
+        priceLineVisible: false,
       });
 
-      drawdownSeries.setData(tradeDrawdownData.map(d => ({
-        time: d.time as unknown as UTCTimestamp,
+      drawdownSeries.setData(primaryData.map(d => ({
+        time: d.time,
         value: d.value
       })));
 
-      // Add zero line for reference
+      if (comparisonData.length > 0) {
+        const comparisonSeries = chart.addSeries(LineSeries, {
+          color: '#F97316',
+          lineWidth: 2,
+          priceLineVisible: false,
+        });
+
+        comparisonSeries.setData(comparisonData.map(d => ({
+          time: d.time,
+          value: d.value,
+        })));
+      }
+
       const zeroLineSeries = chart.addSeries(LineSeries, {
         color: isDark ? '#9ca3af' : '#666666',
         lineWidth: 1,
         lineStyle: 2, // Dashed line
+        priceLineVisible: false,
       });
 
-      const zeroLineData = tradeDrawdownData.map(d => ({
-        time: d.time as unknown as UTCTimestamp,
+      const zeroLineData = primaryData.map(d => ({
+        time: d.time,
         value: 0,
       }));
 
       zeroLineSeries.setData(zeroLineData);
-      centerFewPointsOnTimeScale(chart, tradeDrawdownData.length);
+      centerFewPointsOnTimeScale(chart, primaryData.length);
 
       return () => {
         if (chart) {
@@ -130,55 +201,38 @@ export function TradeDrawdownChart({ trades, initialCapital }: TradeDrawdownChar
       console.error('Error creating trade drawdown chart:', error);
       return;
     }
-  }, [trades, initialCapital, isDark]);
+  }, [primaryData, comparisonData, isDark]);
 
-  if (!trades.length) {
+  if (!primaryData.length) {
     return (
       <div className="flex items-center justify-center h-full text-gray-500">
-        Нет данных по сделкам для анализа просадки
+        Нет данных для анализа просадки
       </div>
     );
   }
 
-  // Calculate trade-based drawdown statistics
-  let runningCapital = initialCapital;
-  let peakCapital = initialCapital;
-  let maxDrawdown = 0;
-  let drawdownTrades = 0;
-
-  trades.forEach(trade => {
-    runningCapital += trade.pnl;
-    if (runningCapital > peakCapital) {
-      peakCapital = runningCapital;
-    }
-    const drawdown = peakCapital > 0 ? ((peakCapital - runningCapital) / peakCapital) * 100 : 0;
-    if (drawdown > maxDrawdown) {
-      maxDrawdown = drawdown;
-    }
-    if (drawdown > 0) {
-      drawdownTrades++;
-    }
-  });
-
-  const drawdownFrequency = (drawdownTrades / trades.length) * 100;
-
   return (
     <div className="w-full space-y-4">
-      {/* Trade Drawdown Statistics */}
       <div className="flex flex-wrap gap-4 text-sm">
         <div className="bg-red-50 px-3 py-2 rounded dark:bg-red-950/30 dark:text-red-300">
-          <span className="text-red-600 font-medium dark:text-red-300">Макс. просадка по сделке: {maxDrawdown.toFixed(2)}%</span>
+          <span className="text-red-600 font-medium dark:text-red-300">Макс. дневная просадка: {stats.maxDrawdown.toFixed(2)}%</span>
         </div>
         <div className="bg-gray-50 px-3 py-2 rounded dark:bg-gray-800 dark:text-gray-200">
-          <span className="text-gray-600 dark:text-gray-200">Сделок с просадкой: {drawdownTrades}/{trades.length}</span>
+          <span className="text-gray-600 dark:text-gray-200">Точек с просадкой: {stats.drawdownDays}/{primaryData.length} {pointLabel}</span>
         </div>
         <div className="bg-gray-50 px-3 py-2 rounded dark:bg-gray-800 dark:text-gray-200">
-          <span className="text-gray-600 dark:text-gray-200">Частота просадок: {drawdownFrequency.toFixed(1)}%</span>
+          <span className="text-gray-600 dark:text-gray-200">Частота просадок: {stats.frequency.toFixed(1)}%</span>
         </div>
       </div>
 
-      {/* Chart Container */}
       <div ref={chartContainerRef} className="w-full h-[360px] sm:h-[460px] md:h-[560px] min-h-0 overflow-hidden border rounded-lg" />
+      <ChartLegend
+        items={[
+          { label: `Просадка: ${primaryLabel}`, color: '#F44336' },
+          ...(comparisonData.length ? [{ label: `Просадка: ${comparisonLabel}`, color: '#F97316' }] : []),
+          { label: 'Новый максимум капитала', color: isDark ? '#9ca3af' : '#666666' },
+        ]}
+      />
     </div>
   );
 }

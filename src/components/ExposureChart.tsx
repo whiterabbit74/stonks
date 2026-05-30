@@ -27,9 +27,10 @@ export function ExposureChart({ exposure }: ExposureChartProps) {
   const seriesData = useMemo(() => exposure
     .map((point) => {
       try {
+        const exposurePct = Number(point.exposurePct);
         return {
           time: toChartTimestamp(point.date),
-          value: Number(point.exposurePct) || 0,
+          value: Number.isFinite(exposurePct) ? exposurePct : 0,
         };
       } catch {
         return null;
@@ -37,6 +38,12 @@ export function ExposureChart({ exposure }: ExposureChartProps) {
     })
     .filter((point): point is { time: UTCTimestamp; value: number } => point !== null)
     .sort((a, b) => Number(a.time) - Number(b.time)), [exposure]);
+
+  const averageExposurePct = useMemo(() => {
+    if (!seriesData.length) return 0;
+    const total = seriesData.reduce((sum, point) => sum + point.value, 0);
+    return total / seriesData.length;
+  }, [seriesData]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -95,10 +102,22 @@ export function ExposureChart({ exposure }: ExposureChartProps) {
 
   return (
     <div className="flex h-full min-h-[520px] flex-col gap-3">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+        <div>
+          <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">Фактическая экспозиция</div>
+          <div className="text-xs text-gray-500 dark:text-gray-400">Стоимость открытых позиций / текущий капитал</div>
+        </div>
+        <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-right dark:border-gray-700 dark:bg-gray-800">
+          <div className="text-xs text-gray-500 dark:text-gray-400">Средняя экспозиция</div>
+          <div className="text-lg font-semibold tabular-nums text-gray-900 dark:text-gray-100">
+            {averageExposurePct.toFixed(1)}%
+          </div>
+        </div>
+      </div>
       <div ref={containerRef} className="min-h-0 flex-1 overflow-hidden rounded border border-gray-200 dark:border-gray-700" />
       <ChartLegend
         items={[
-          { label: 'Экспозиция стратегии', color: '#0EA5E9' },
+          { label: 'Фактическая экспозиция стратегии', color: '#0EA5E9' },
           { label: '100% капитала', color: '#9CA3AF' },
         ]}
       />

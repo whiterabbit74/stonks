@@ -171,7 +171,11 @@ export function EmaStrategyPage() {
       if (!loaded.length) throw new Error('Нет данных для выбранных тикеров');
       setTickersData(loaded);
 
-      const source = loaded.map((item) => ({ ticker: item.ticker, data: item.data }));
+      const source = loaded.map((item) => ({
+        ticker: item.ticker,
+        data: item.holderData && item.holderData.length ? item.holderData : item.data,
+        rawData: item.rawData,
+      }));
       const leverage = settings.leveragePercent / 100;
       const params = {
         initialCapital: 10000,

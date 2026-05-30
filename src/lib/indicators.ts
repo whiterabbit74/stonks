@@ -46,26 +46,20 @@ export class IndicatorEngine {
   static calculateEMA(data: number[], period: number): number[] {
     this.validatePeriod(period, data.length);
     
-    const result: number[] = [];
+    const result: number[] = new Array(data.length).fill(NaN);
     const multiplier = 2 / (period + 1);
     let runningSum = 0;
     
     for (let i = 0; i < data.length; i++) {
-      if (i === 0) {
-        runningSum = data[0];
-        result.push(data[0]);
-      } else if (i < period - 1) {
-        // Use cumulative SMA for the first period-1 values (more efficient)
+      if (i < period - 1) {
         runningSum += data[i];
-        result.push(runningSum / (i + 1));
       } else if (i === period - 1) {
         // First true EMA value uses SMA as the starting point
         runningSum += data[i];
-        result.push(runningSum / period);
+        result[i] = runningSum / period;
       } else {
         // Standard EMA calculation
-        const ema = (data[i] * multiplier) + (result[i - 1] * (1 - multiplier));
-        result.push(ema);
+        result[i] = (data[i] * multiplier) + (result[i - 1] * (1 - multiplier));
       }
     }
     

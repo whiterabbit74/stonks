@@ -175,6 +175,12 @@ function initSchema(db) {
             ema_period     INTEGER NOT NULL DEFAULT 200,
             level_pct      REAL NOT NULL DEFAULT 0,
             direction      TEXT NOT NULL DEFAULT 'above',
+            buy_level_pct  REAL,
+            sell_level_pct REAL,
+            next_action    TEXT NOT NULL DEFAULT 'buy',
+            last_triggered_action TEXT,
+            last_triggered_at TEXT,
+            last_triggered_deviation_pct REAL,
             threshold_pct  REAL NOT NULL DEFAULT 0.5,
             enabled        INTEGER NOT NULL DEFAULT 1,
             created_at     TEXT NOT NULL DEFAULT (datetime('now')),
@@ -183,6 +189,18 @@ function initSchema(db) {
 
         CREATE INDEX IF NOT EXISTS idx_telegram_ema_alerts_symbol ON telegram_ema_alerts(symbol);
     `);
+
+    const emaAlertMigrations = [
+        `ALTER TABLE telegram_ema_alerts ADD COLUMN buy_level_pct REAL`,
+        `ALTER TABLE telegram_ema_alerts ADD COLUMN sell_level_pct REAL`,
+        `ALTER TABLE telegram_ema_alerts ADD COLUMN next_action TEXT NOT NULL DEFAULT 'buy'`,
+        `ALTER TABLE telegram_ema_alerts ADD COLUMN last_triggered_action TEXT`,
+        `ALTER TABLE telegram_ema_alerts ADD COLUMN last_triggered_at TEXT`,
+        `ALTER TABLE telegram_ema_alerts ADD COLUMN last_triggered_deviation_pct REAL`,
+    ];
+    for (const sql of emaAlertMigrations) {
+        try { db.exec(sql); } catch { /* column already exists */ }
+    }
 }
 
 module.exports = { getDb, closeDb };

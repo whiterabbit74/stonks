@@ -1,7 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import {
   adjustOHLCForSplits,
+  applyOHLCForHolderValue,
   dedupeDailyOHLC,
+  detectSplitsFromOHLC,
   formatOHLCYMD,
   parseOHLCDate
 } from '../utils';
@@ -119,5 +121,47 @@ describe('Utils', () => {
       expect(result).toEqual(data);
     });
   });
-});
 
+  describe('detectSplitsFromOHLC', () => {
+    it('detects forward splits from a raw OHLC price gap', () => {
+      const data = [
+        { date: '2024-01-01', open: 198, high: 202, low: 195, close: 200, volume: 1000 },
+        { date: '2024-01-02', open: 99, high: 103, low: 98, close: 101, volume: 2000 },
+        { date: '2024-01-03', open: 102, high: 105, low: 100, close: 104, volume: 1500 },
+      ];
+
+      expect(detectSplitsFromOHLC(data)).toEqual([{ date: '2024-01-02', factor: 2 }]);
+    });
+  });
+
+  describe('applyOHLCForHolderValue', () => {
+    it('builds a continuous holder-value row and keeps raw close for display', () => {
+      const data = [
+        { date: '2024-01-01', open: 198, high: 202, low: 195, close: 200, volume: 1000 },
+        { date: '2024-01-02', open: 99, high: 103, low: 98, close: 101, volume: 2000 },
+        { date: '2024-01-03', open: 102, high: 105, low: 100, close: 104, volume: 1500 },
+      ];
+
+      const result = applyOHLCForHolderValue(data, [{ date: '2024-01-02', factor: 2 }]);
+
+      expect(result[0]).toMatchObject({
+        close: 200,
+        rawClose: 200,
+        splitFactor: 1,
+        priceBasis: 'holder_value',
+      });
+      expect(result[1]).toMatchObject({
+        open: 198,
+        high: 206,
+        low: 196,
+        close: 202,
+        rawOpen: 99,
+        rawClose: 101,
+        splitFactor: 2,
+        priceBasis: 'holder_value',
+      });
+      expect(result[2].close).toBe(208);
+      expect(result[2].rawClose).toBe(104);
+    });
+  });
+});

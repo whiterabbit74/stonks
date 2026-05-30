@@ -172,4 +172,37 @@ describe('TradesTable', () => {
     expect(screen.getByText('52500.00')).toBeInTheDocument(); // PnL
     expect(screen.getByText('1052500.00')).toBeInTheDocument(); // Capital
   });
+
+  it('labels EMA holder-value prices as index prices and shows raw close separately', () => {
+    const holderTrade: Trade = {
+      id: 'ema-holder',
+      entryDate: '2024-01-04',
+      exitDate: '2024-01-05',
+      entryPrice: 100,
+      exitPrice: 150,
+      quantity: 100.25,
+      pnl: 5012.5,
+      pnlPercent: 50.125,
+      duration: 1,
+      exitReason: 'ema_sell_0',
+      context: {
+        ticker: 'TQQQ',
+        priceBasis: 'holder_value',
+        priceBasisLabel: 'Индексная цена с учетом сплитов',
+        quantityBasis: 'index_units',
+        entryRawClose: 50,
+        exitRawClose: 75,
+        currentCapitalAfterExit: 15012.5,
+      },
+    };
+
+    render(<TradesTable trades={[holderTrade]} />);
+
+    expect(screen.getByText('Цена входа (индекс)')).toBeInTheDocument();
+    expect(screen.getByText('Цена выхода (индекс)')).toBeInTheDocument();
+    expect(screen.getByText(/Индексная цена с учетом сплитов/)).toBeInTheDocument();
+    expect(screen.getByText('close 50.00')).toBeInTheDocument();
+    expect(screen.getByText('close 75.00')).toBeInTheDocument();
+    expect(screen.getByText('100.25')).toBeInTheDocument();
+  });
 });

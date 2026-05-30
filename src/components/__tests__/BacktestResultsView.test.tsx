@@ -3,6 +3,8 @@ import { describe, it, expect, vi } from 'vitest';
 import { BacktestResultsView } from '../BacktestResultsView';
 import type { Trade } from '../../types';
 
+const drawdownChartMock = vi.hoisted(() => vi.fn());
+
 // Mock child components to avoid rendering complexity
 vi.mock('../ui', () => ({
   ChartContainer: ({ children, title }: any) => <div data-testid="chart-container" title={title}>{children}</div>
@@ -25,7 +27,12 @@ vi.mock('../TradesTable', () => ({
 vi.mock('../ProfitFactorAnalysis', () => ({ ProfitFactorAnalysis: () => <div>ProfitFactorAnalysis</div> }));
 vi.mock('../DurationAnalysis', () => ({ DurationAnalysis: () => <div>DurationAnalysis</div> }));
 vi.mock('../SplitsList', () => ({ SplitsList: () => <div>SplitsList</div> }));
-vi.mock('../TradeDrawdownChart', () => ({ TradeDrawdownChart: () => <div>TradeDrawdownChart</div> }));
+vi.mock('../TradeDrawdownChart', () => ({
+  TradeDrawdownChart: (props: any) => {
+    drawdownChartMock(props);
+    return <div>TradeDrawdownChart</div>;
+  }
+}));
 
 describe('BacktestResultsView Logic Optimization', () => {
   const mockTrades: Trade[] = [
@@ -93,5 +100,30 @@ describe('BacktestResultsView Logic Optimization', () => {
     expect(rows).toHaveLength(2);
     expect(rows[0].textContent).toBe('AAPL');
     expect(rows[1].textContent).toBe('AAPL');
+  });
+
+  it('passes daily equity points to the drawdown chart', async () => {
+    const equity = [
+      { date: '2024-01-01', value: 10000, drawdown: 0 },
+      { date: '2024-01-02', value: 8000, drawdown: 20 },
+    ];
+
+    render(
+      <BacktestResultsView
+        mode="multi"
+        activeTab="drawdown"
+        backtestResults={{
+          trades: mockTrades,
+          equity,
+          finalValue: 8000,
+          maxDrawdown: 20,
+          metrics: {},
+        } as any}
+        initialCapital={10000}
+      />
+    );
+
+    await screen.findByText('TradeDrawdownChart');
+    expect(drawdownChartMock).toHaveBeenCalledWith(expect.objectContaining({ equity }));
   });
 });

@@ -13,6 +13,12 @@ export interface OHLCData {
   close: number;
   adjClose?: number;
   volume: number;
+  rawOpen?: number;
+  rawHigh?: number;
+  rawLow?: number;
+  rawClose?: number;
+  splitFactor?: number;
+  priceBasis?: 'raw' | 'split_adjusted_index' | 'holder_value';
 }
 
 export interface SplitEvent {
@@ -23,6 +29,8 @@ export interface SplitEvent {
 export interface TickerData {
   ticker: string;
   data: OHLCData[];
+  rawData?: OHLCData[];
+  holderData?: OHLCData[];
   ibsValues: number[];
   splits: SplitEvent[];
 }
@@ -183,6 +191,13 @@ export interface Trade {
     marginRatioAtTrigger?: number;
     stopLoss?: number;
     takeProfit?: number;
+    priceBasis?: 'raw' | 'split_adjusted_index' | 'holder_value';
+    priceBasisLabel?: string;
+    quantityBasis?: 'shares' | 'index_units';
+    entryRawClose?: number;
+    exitRawClose?: number;
+    entryIndexPrice?: number;
+    exitIndexPrice?: number;
   };
 }
 
@@ -310,8 +325,15 @@ export interface TelegramEmaAlertRecord {
   id: string;
   symbol: string;
   emaPeriod: 20 | 200;
-  levelPct: number;
-  direction: 'above' | 'below';
+  levelPct?: number;
+  direction?: 'above' | 'below';
+  buyLevelPct: number;
+  sellLevelPct: number;
+  nextAction: 'buy' | 'sell';
+  activeLevelPct?: number;
+  lastTriggeredAction?: 'buy' | 'sell' | null;
+  lastTriggeredAt?: string | null;
+  lastTriggeredDeviationPct?: number | null;
   thresholdPct: number;
   enabled: boolean;
   createdAt?: string;

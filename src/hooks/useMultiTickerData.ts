@@ -1,6 +1,12 @@
 import { useState, useCallback } from 'react';
 import { DatasetAPI } from '../lib/api';
-import { adjustOHLCForSplits, dedupeDailyOHLC } from '../lib/utils';
+import {
+  adjustOHLCForSplits,
+  applyOHLCForHolderValue,
+  dedupeDailyOHLC,
+  detectSplitsFromOHLC,
+  mergeSplitEvents,
+} from '../lib/utils';
 import { IndicatorEngine } from '../lib/indicators';
 import { useToastActions } from '../components/ui';
 import type { TickerData, OHLCData, SplitEvent } from '../types';
@@ -35,12 +41,21 @@ export function useMultiTickerData() {
       splits = [];
     }
 
+    const rawData = dedupeDailyOHLC(ds.data as unknown as OHLCData[]);
+    const detectedSplits = (ds as any).adjustedForSplits ? [] : detectSplitsFromOHLC(rawData);
+    const resolvedSplits = mergeSplitEvents(splits, detectedSplits);
     let processedData: OHLCData[];
+    let holderData: OHLCData[];
 
     if ((ds as any).adjustedForSplits) {
-      processedData = dedupeDailyOHLC(ds.data as unknown as OHLCData[]);
+      processedData = rawData.map((bar) => ({
+        ...bar,
+        priceBasis: 'split_adjusted_index',
+      }));
+      holderData = processedData;
     } else {
-      processedData = dedupeDailyOHLC(adjustOHLCForSplits(ds.data as unknown as OHLCData[], splits));
+      processedData = dedupeDailyOHLC(adjustOHLCForSplits(rawData, resolvedSplits));
+      holderData = applyOHLCForHolderValue(rawData, resolvedSplits);
     }
 
     const ibsValues = processedData.length > 0 ? IndicatorEngine.calculateIBS(processedData) : [];
@@ -48,8 +63,10 @@ export function useMultiTickerData() {
     return {
       ticker: normalizedTicker,
       data: processedData,
+      rawData: (ds as any).adjustedForSplits ? undefined : rawData,
+      holderData,
       ibsValues,
-      splits
+      splits: resolvedSplits
     };
   };
 

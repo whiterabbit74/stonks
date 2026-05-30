@@ -11,6 +11,19 @@ interface TradesTableProps {
 
 // Optimization: Reuse formatter instance to avoid expensive re-creation in render loops
 const RUSSIAN_DATE_FMT = new Intl.DateTimeFormat('ru-RU', { timeZone: 'UTC' });
+const INDEX_PRICE_BASES = new Set(['holder_value', 'split_adjusted_index']);
+
+function isIndexPriceTrade(trade: Trade): boolean {
+	return INDEX_PRICE_BASES.has(String(trade.context?.priceBasis ?? ''));
+}
+
+function formatQuantity(value: number | null | undefined): string {
+	if (typeof value !== 'number' || !Number.isFinite(value)) return '—';
+	return value.toLocaleString('en-US', {
+		minimumFractionDigits: Number.isInteger(value) ? 0 : 0,
+		maximumFractionDigits: Number.isInteger(value) ? 0 : 4,
+	});
+}
 
 export const TradesTable = React.memo(function TradesTable({
 	trades,
@@ -23,6 +36,15 @@ export const TradesTable = React.memo(function TradesTable({
 
 	const showTicker = useMemo(() => {
 		return trades && trades.some(t => typeof (t.context as any)?.ticker === 'string' && (t.context as any)?.ticker);
+	}, [trades]);
+
+	const hasIndexPriceBasis = useMemo(() => {
+		return trades && trades.some(isIndexPriceTrade);
+	}, [trades]);
+
+	const indexPriceBasisLabel = useMemo(() => {
+		const trade = trades?.find(isIndexPriceTrade);
+		return trade?.context?.priceBasisLabel ?? 'Индексная цена с учетом сплитов';
 	}, [trades]);
 
 	const totalPages = useMemo(() => {
@@ -135,6 +157,11 @@ export const TradesTable = React.memo(function TradesTable({
 					)}
 				</div>
 			)}
+			{hasIndexPriceBasis && (
+				<div className="mb-3 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100">
+					{indexPriceBasisLabel}: сигналы и PnL считаются по этой непрерывной базе; реальная close показана второй строкой, если она есть.
+				</div>
+			)}
 			<div className="w-full horizontal-scroll">
 				<table className="min-w-full text-sm">
 					<thead className="sticky top-0 bg-gray-100 border-b dark:bg-gray-800 dark:border-gray-700">
@@ -142,9 +169,9 @@ export const TradesTable = React.memo(function TradesTable({
 							<th className="text-left px-3 py-2 font-semibold">#</th>
 							{showTicker && <th className="text-left px-3 py-2 font-semibold">Тикер</th>}
 							<th className="text-left px-3 py-2 font-semibold">Дата сделки</th>
-							<th className="text-right px-3 py-2 font-semibold">Цена входа</th>
-							<th className="text-right px-3 py-2 font-semibold">Цена выхода</th>
-							<th className="text-right px-3 py-2 font-semibold">Кол-во</th>
+							<th className="text-right px-3 py-2 font-semibold">{hasIndexPriceBasis ? 'Цена входа (индекс)' : 'Цена входа'}</th>
+							<th className="text-right px-3 py-2 font-semibold">{hasIndexPriceBasis ? 'Цена выхода (индекс)' : 'Цена выхода'}</th>
+							<th className="text-right px-3 py-2 font-semibold">{hasIndexPriceBasis ? 'Кол-во (ед.)' : 'Кол-во'}</th>
 							<th className="text-right px-3 py-2 font-semibold">Вложено, $</th>
 							<th className="text-right px-3 py-2 font-semibold">PnL, $</th>
 							<th className="text-right px-3 py-2 font-semibold">PnL, %</th>
@@ -176,6 +203,7 @@ export const TradesTable = React.memo(function TradesTable({
 							const entryPriceDisplay = isOptionTrade ? (t as any).optionEntryPrice : t.entryPrice;
 							const exitPriceDisplay = isOptionTrade ? (t as any).optionExitPrice : t.exitPrice;
 							const quantityDisplay = isOptionTrade ? (t as any).contracts : t.quantity;
+							const isIndexPrice = isIndexPriceTrade(t);
 							const investedDisplay = isOptionTrade
 								? (t as any).contracts * (t as any).optionEntryPrice
 								: (typeof t.context?.initialInvestment === 'number' ? t.context.initialInvestment : t.quantity * t.entryPrice);
@@ -190,9 +218,19 @@ export const TradesTable = React.memo(function TradesTable({
 											{typeof entryIBS === 'number' ? `${(entryIBS * 100).toFixed(1)}%` : '—'} - {typeof exitIBS === 'number' ? `${(exitIBS * 100).toFixed(1)}%` : '—'}
 										</div>
 									</td>
-									<td className="px-3 py-2 text-right font-mono">{entryPriceDisplay?.toFixed(2)}</td>
-									<td className="px-3 py-2 text-right font-mono">{exitPriceDisplay?.toFixed(2)}</td>
-									<td className="px-3 py-2 text-right">{quantityDisplay?.toLocaleString()}</td>
+									<td className="px-3 py-2 text-right font-mono">
+										<div>{entryPriceDisplay?.toFixed(2)}</div>
+										{isIndexPrice && typeof t.context?.entryRawClose === 'number' && (
+											<div className="text-xs font-sans text-gray-500">close {t.context.entryRawClose.toFixed(2)}</div>
+										)}
+									</td>
+									<td className="px-3 py-2 text-right font-mono">
+										<div>{exitPriceDisplay?.toFixed(2)}</div>
+										{isIndexPrice && typeof t.context?.exitRawClose === 'number' && (
+											<div className="text-xs font-sans text-gray-500">close {t.context.exitRawClose.toFixed(2)}</div>
+										)}
+									</td>
+									<td className="px-3 py-2 text-right">{formatQuantity(quantityDisplay)}</td>
 									<td className="px-3 py-2 text-right font-mono text-blue-600 dark:text-blue-400">
 										{investedDisplay?.toFixed(2)}
 										{typeof (t.context as any)?.leverage === 'number' && (t.context as any)?.leverage > 1 && (

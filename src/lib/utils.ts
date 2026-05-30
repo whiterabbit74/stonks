@@ -141,6 +141,85 @@ export function adjustOHLCForSplits(ohlc: OHLCData[], splits: SplitEvent[] | und
   return result;
 }
 
+function normalizeSplitEvents(splits: SplitEvent[] | undefined): SplitEvent[] {
+  if (!Array.isArray(splits)) return [];
+  const byDate = new Map<string, SplitEvent>();
+  for (const split of splits) {
+    if (!split?.date || !Number.isFinite(split.factor) || split.factor <= 0 || split.factor === 1) continue;
+    const date = split.date.slice(0, 10);
+    byDate.set(date, { date, factor: split.factor });
+  }
+  return Array.from(byDate.values()).sort((a, b) => compareTradingDates(a.date as TradingDate, b.date as TradingDate));
+}
+
+function roundPrice(value: number): number {
+  return Math.round(value * 1000000) / 1000000;
+}
+
+export function detectSplitsFromOHLC(ohlc: OHLCData[]): SplitEvent[] {
+  if (!Array.isArray(ohlc) || ohlc.length < 2) return [];
+
+  const factors = [2, 3, 4, 5, 10, 1.5, 0.5, 0.333, 0.25, 0.2, 0.1];
+  const data = [...ohlc].sort((a, b) => compareTradingDates(a.date, b.date));
+  const splits: SplitEvent[] = [];
+
+  for (let i = 1; i < data.length; i++) {
+    const prev = data[i - 1];
+    const curr = data[i];
+    if (!prev || !curr || !Number.isFinite(prev.close) || !Number.isFinite(curr.open) || curr.open === 0) continue;
+
+    const ratio = prev.close / curr.open;
+    const factor = factors.find((candidate) => Math.abs(ratio - candidate) < 0.05);
+    if (factor != null) {
+      splits.push({ date: curr.date, factor });
+    }
+  }
+
+  return splits;
+}
+
+export function mergeSplitEvents(...groups: Array<SplitEvent[] | undefined>): SplitEvent[] {
+  const byDate = new Map<string, SplitEvent>();
+  for (const group of groups) {
+    for (const event of normalizeSplitEvents(group)) {
+      byDate.set(event.date, event);
+    }
+  }
+  return Array.from(byDate.values()).sort((a, b) => compareTradingDates(a.date as TradingDate, b.date as TradingDate));
+}
+
+export function applyOHLCForHolderValue(ohlc: OHLCData[], splits: SplitEvent[] | undefined): OHLCData[] {
+  if (!Array.isArray(ohlc) || ohlc.length === 0) return ohlc;
+
+  const data = [...ohlc].sort((a, b) => compareTradingDates(a.date, b.date));
+  const events = normalizeSplitEvents(splits);
+  let splitIndex = 0;
+  let cumulativeFactor = 1;
+
+  return data.map((bar) => {
+    const barDate = bar.date;
+    while (splitIndex < events.length && compareTradingDates(events[splitIndex].date as TradingDate, barDate) <= 0) {
+      cumulativeFactor *= events[splitIndex].factor;
+      splitIndex += 1;
+    }
+
+    return {
+      ...bar,
+      rawOpen: bar.rawOpen ?? bar.open,
+      rawHigh: bar.rawHigh ?? bar.high,
+      rawLow: bar.rawLow ?? bar.low,
+      rawClose: bar.rawClose ?? bar.close,
+      open: roundPrice(bar.open * cumulativeFactor),
+      high: roundPrice(bar.high * cumulativeFactor),
+      low: roundPrice(bar.low * cumulativeFactor),
+      close: roundPrice(bar.close * cumulativeFactor),
+      adjClose: typeof bar.adjClose === 'number' ? roundPrice(bar.adjClose * cumulativeFactor) : undefined,
+      splitFactor: roundPrice(cumulativeFactor),
+      priceBasis: events.length > 0 ? 'holder_value' : 'raw',
+    };
+  });
+}
+
 /**
  * Deduplicate OHLC array by trading day (YYYY-MM-DD), combining duplicates into a single daily bar.
  * - open: first bar's open
