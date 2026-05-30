@@ -212,4 +212,38 @@ describe('runEmaZoneBacktest', () => {
       exitIndexPrice: 150,
     });
   });
+
+  it('re-enters the same buy zone after a full sell cycle and records capital after each exit', () => {
+    const result = runEmaZoneBacktest(
+      [{ ticker: 'TQQQ', data: [
+        bar('2024-01-01', 100),
+        bar('2024-01-02', 100),
+        bar('2024-01-03', 100),
+        bar('2024-01-04', 400),
+        bar('2024-01-05', 100),
+        bar('2024-01-06', 450),
+      ] }],
+      {
+        initialCapital: 10000,
+        leverage: 1,
+        emaPeriod: 3,
+        signalSource: 'close',
+        takeProfitPercent: null,
+        noSellAtLoss: false,
+        buyZones: [{ id: 'buy-15', levelPct: 15, enabled: true }],
+        sellZones: [{ id: 'sell-40', levelPct: 40, enabled: true }],
+      }
+    );
+
+    expect(result.trades).toHaveLength(2);
+    expect(result.trades.map((trade) => `${trade.entryDate}->${trade.exitDate}`)).toEqual([
+      '2024-01-03->2024-01-04',
+      '2024-01-05->2024-01-06',
+    ]);
+    expect(result.trades.map((trade) => trade.context?.currentCapitalAfterExit)).toEqual([
+      40000,
+      180000,
+    ]);
+    expect(result.finalValue).toBe(180000);
+  });
 });

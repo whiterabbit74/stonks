@@ -57,6 +57,10 @@ function calculateDeviation(price: number, ema: number): number {
   return ((price / ema) - 1) * 100;
 }
 
+function capitalTolerance(value: number): number {
+  return Math.max(1e-8, Math.abs(value) * 1e-10);
+}
+
 function getPriceBasisLabel(priceBasis: NonNullable<OHLCData['priceBasis']>): string {
   if (priceBasis === 'holder_value') return 'Индексная цена с учетом сплитов';
   if (priceBasis === 'split_adjusted_index') return 'Split-adjusted индексная цена';
@@ -256,6 +260,7 @@ export function runEmaZoneBacktest(
         const takeProfitPrice = calculateTakeProfitPrice(lot.entryPrice, params.takeProfitPercent);
         if (!shouldTakeProfit(bar.high, takeProfitPrice)) continue;
 
+        const capitalBeforeExit = currentEquityValue(date);
         const trade = closeLot({
           lot,
           quantity: lot.quantity,
@@ -269,6 +274,11 @@ export function runEmaZoneBacktest(
         trades.push(trade);
         cash += lot.marginUsed + trade.pnl;
         lots.splice(lots.indexOf(lot), 1);
+        trade.context = {
+          ...trade.context,
+          capitalBeforeExit,
+          currentCapitalAfterExit: currentEquityValue(date),
+        };
       }
 
       for (const sellZone of sellZones) {
@@ -287,6 +297,7 @@ export function runEmaZoneBacktest(
           if (quantityToClose <= 0) continue;
           if (params.noSellAtLoss && signal.executionPrice < lot.entryPrice) continue;
 
+          const capitalBeforeExit = currentEquityValue(date);
           const trade = closeLot({
             lot,
             quantity: quantityToClose,
@@ -308,6 +319,11 @@ export function runEmaZoneBacktest(
           if (lot.quantity <= 0) {
             lots.splice(lots.indexOf(lot), 1);
           }
+          trade.context = {
+            ...trade.context,
+            capitalBeforeExit,
+            currentCapitalAfterExit: currentEquityValue(date),
+          };
         }
       }
 
@@ -320,9 +336,12 @@ export function runEmaZoneBacktest(
         if (!signal.reached) continue;
 
         const grossTarget = equityBeforeBuys * leverage / buyZones.length;
-        const quantity = grossTarget / signal.executionPrice;
-        const marginUsed = quantity * signal.executionPrice / leverage;
-        if (quantity <= 0 || marginUsed <= 0 || marginUsed > cash) continue;
+        const targetMargin = grossTarget / leverage;
+        if (targetMargin > cash + capitalTolerance(cash)) continue;
+
+        const marginUsed = Math.min(targetMargin, cash);
+        const quantity = (marginUsed * leverage) / signal.executionPrice;
+        if (quantity <= 0 || marginUsed <= 0) continue;
 
         cash -= marginUsed;
         lots.push({
@@ -364,6 +383,7 @@ export function runEmaZoneBacktest(
       const lastBar = ticker?.byDate.get(lastDate)?.bar ?? ticker?.data[ticker.data.length - 1];
       if (!lastBar) continue;
 
+      const capitalBeforeExit = currentEquityValue(lastBar.date);
       const trade = closeLot({
         lot,
         quantity: lot.quantity,
@@ -377,6 +397,11 @@ export function runEmaZoneBacktest(
       trades.push(trade);
       cash += lot.marginUsed + trade.pnl;
       lots.splice(lots.indexOf(lot), 1);
+      trade.context = {
+        ...trade.context,
+        capitalBeforeExit,
+        currentCapitalAfterExit: currentEquityValue(lastBar.date),
+      };
     }
   }
 
