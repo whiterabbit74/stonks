@@ -160,6 +160,7 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
       const payload = await resp.json();
       if (requestId !== latestDownloadRequestIdRef.current) return;
       const rows = Array.isArray(payload?.data) ? payload.data : [];
+      const splits = Array.isArray(payload?.splits) ? payload.splits : [];
       if (!rows.length) throw new Error('Нет данных для этого тикера');
 
       const ohlc = rows.flatMap((bar: any) => {
@@ -187,10 +188,10 @@ export function DataEnhancer({ onNext }: DataEnhancerProps) {
       setLoadingStage('saving');
       const tickerInfo = getTickerInfo(targetTicker);
       const metadata = tickerInfo ? { companyName: tickerInfo.name } : undefined;
-      await saveDatasetToServer(targetTicker, undefined, metadata);
+      await saveDatasetToServer(targetTicker, undefined, metadata, splits);
       if (requestId !== latestDownloadRequestIdRef.current) return;
 
-      setSuccess(`✅ Загружено ${ohlc.length} точек для ${targetTicker}`);
+      setSuccess(`✅ Загружено ${ohlc.length} точек для ${targetTicker}${splits.length ? `, сплитов: ${splits.length}` : ''}`);
       toast.success(`${targetTicker}: загружено ${ohlc.length} точек`);
     } catch (e) {
       if (requestId !== latestDownloadRequestIdRef.current) return;

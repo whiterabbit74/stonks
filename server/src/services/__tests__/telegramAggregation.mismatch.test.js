@@ -158,4 +158,101 @@ describe('telegramAggregation mismatch handling', () => {
     expect(autotradeEvents.map((item) => item.eventName)).toContain('t1_monitor_mismatch');
     expect(autotradeEvents.map((item) => item.eventName)).not.toContain('t1_signal_confirmed');
   });
+
+  it('adds a data integrity block and suppresses IBS signals on split-like price jumps', async () => {
+    purgeServerCache();
+
+    const sendCalls = [];
+    const telegramWatches = new Map([
+      ['TQQQ', {
+        symbol: 'TQQQ',
+        highIBS: 0.75,
+        lowIBS: 0.1,
+        thresholdPct: 0.3,
+        chatId: 'chat-1',
+        sent: {
+          dateKey: null,
+          warn10: false,
+          confirm1: false,
+          entryWarn10: false,
+          entryConfirm1: false,
+        },
+      }],
+    ]);
+
+    stubModule('src/config/index.js', {
+      getApiConfig: () => ({ TELEGRAM_CHAT_ID: 'chat-1' }),
+      DATASETS_DIR: repoRoot,
+    });
+    stubModule('src/services/settings.js', {
+      readSettings: async () => ({ resultsRefreshProvider: 'finnhub' }),
+    });
+    stubModule('src/services/datasets.js', {
+      getDataset: () => ({
+        adjustedForSplits: false,
+        data: [
+          { date: '2025-08-27', close: 91.04 },
+          { date: '2025-08-28', close: 92.7 },
+        ],
+      }),
+    });
+    stubModule('src/services/splits.js', {
+      getTickerSplits: () => [],
+    });
+    stubModule('src/providers/finnhub.js', {
+      fetchTodayRangeAndQuote: async () => ({
+        range: { low: 44, high: 50 },
+        quote: { current: 44.68, low: 44, high: 50, open: 45.71, prevClose: 92.7 },
+      }),
+    });
+    stubModule('src/services/telegram.js', {
+      telegramWatches,
+      aggregateSendState: new Map(),
+      getAggregateState: () => ({ dateKey: '2025-08-29', t11Sent: false, t1Sent: false }),
+      sendTelegramMessage: async (chatId, text) => {
+        sendCalls.push({ chatId, text });
+        return { ok: true };
+      },
+    });
+    stubModule('src/services/trades.js', {
+      syncWatchesWithTradeState: () => ({ openTrade: null, changes: [] }),
+      getCurrentOpenTrade: () => null,
+    });
+    stubModule('src/services/autotrade.js', {
+      executeWebullSignal: async () => {
+        throw new Error('executeWebullSignal should not be called from T-11 overview');
+      },
+      appendAutotradeEvent: async () => {},
+    });
+    stubModule('src/services/dates.js', {
+      getETParts: () => ({ hh: 15, mm: 49, ss: 0 }),
+      etKeyYMD: (value) => value?.key || '2025-08-29',
+      previousTradingDayET: () => ({ key: '2025-08-28' }),
+      getTradingSessionForDateET: () => ({ closeMin: 16 * 60, short: false }),
+      isTradingDayByCalendarET: () => true,
+      getCachedTradingCalendar: () => ({}),
+    });
+    stubModule('src/services/priceActualization.js', {
+      refreshTickerAndCheckFreshness: async () => ({ fresh: true }),
+      appendMonitorLog: async () => {},
+    });
+    stubModule('src/services/monitorConsistency.js', {
+      reconcileMonitorState: () => ({ issues: [] }),
+      getBlockingMonitorMismatch: () => null,
+    });
+    stubModule('src/services/emaAlerts.js', {
+      listEmaAlerts: () => [],
+      evaluateEmaAlerts: async () => [],
+      markEmaAlertsTriggered: () => [],
+    });
+
+    const { runTelegramAggregation } = require(path.join(serverRoot, 'src/services/telegramAggregation.js'));
+    const result = await runTelegramAggregation(11, { test: true, forceSend: true, updateState: false });
+
+    expect(result.sent).toBe(true);
+    expect(sendCalls).toHaveLength(1);
+    expect(sendCalls[0].text).toContain('ПРОВЕРКА ДАННЫХ');
+    expect(sendCalls[0].text).toContain('EMA/IBS сигналы заблокированы');
+    expect(sendCalls[0].text).not.toContain('На вход: TQQQ');
+  });
 });

@@ -122,7 +122,7 @@ function deleteTickerSplits(ticker) {
 // ─── Detection ────────────────────────────────────────────────────────────────
 
 function detectSplitsFromOHLC(ohlc) {
-    const factors = [2, 3, 4, 5, 10, 0.5, 0.333, 0.25, 0.2, 0.1];
+    const factors = [2, 3, 4, 5, 7, 10, 20, 0.5, 0.333, 0.25, 0.2, 0.1];
     const splits = [];
     if (!Array.isArray(ohlc) || ohlc.length < 2) return splits;
     for (let i = 1; i < ohlc.length; i++) {

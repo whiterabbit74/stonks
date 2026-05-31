@@ -11,6 +11,7 @@ const { fetchFromFinnhub, fetchTodayRangeAndQuote: fetchFinnhubTodayRangeAndQuot
 const { fetchFromTwelveData } = require('../providers/twelveData');
 const { fetchFromPolygon } = require('../providers/polygon');
 const { fetchTodayRangeAndQuote: fetchWebullTodayRangeAndQuote, fetchBatchTodayRangeAndQuote: fetchWebullBatch } = require('../providers/webull');
+const { fetchHistoricalMarketData } = require('../services/dataIngestion');
 
 // Lightweight Alpha Vantage test — GLOBAL_QUOTE instead of full TIME_SERIES_DAILY
 // Uses ~200 bytes vs ~1MB, doesn't waste one of the 25 daily free-tier requests on history
@@ -221,30 +222,21 @@ router.get('/yahoo-finance/:symbol', async (req, res) => {
             : 'alpha_vantage';
         const adjustment = req.query?.adjustment === 'split_only' ? 'split_only' : 'none';
 
-        let data;
-        switch (provider) {
-            case 'alpha_vantage': {
-                const avResult = await fetchFromAlphaVantage(symbol, startTs, endTs, { adjustment });
-                data = Array.isArray(avResult) ? avResult : (Array.isArray(avResult?.data) ? avResult.data : []);
-                break;
-            }
-            case 'finnhub':
-                data = await fetchFromFinnhub(symbol, startTs, endTs);
-                break;
-            case 'twelve_data':
-                data = await fetchFromTwelveData(symbol, startTs, endTs);
-                break;
-            case 'polygon':
-                data = await fetchFromPolygon(symbol, startTs, endTs, await getPolygonApiKey() || null);
-                break;
-            case 'webull':
-                return res.status(400).json({ error: 'Webull не поддерживает загрузку исторических данных. Выберите другой провайдер (Alpha Vantage, Finnhub, Twelve Data или Polygon) в настройках.' });
-            default:
-                return res.status(400).json({ error: 'Unknown provider' });
+        if (provider === 'webull') {
+            return res.status(400).json({ error: 'Webull не поддерживает загрузку исторических данных. Выберите другой провайдер (Alpha Vantage, Finnhub, Twelve Data или Polygon) в настройках.' });
         }
 
-        const rows = Array.isArray(data) ? data : [];
-        return res.json({ symbol, provider, dataPoints: rows.length, data: rows });
+        const fetched = await fetchHistoricalMarketData(symbol, startTs, endTs, provider, {
+            adjustment,
+            polygonApiKey: await getPolygonApiKey() || null,
+        });
+        return res.json({
+            symbol,
+            provider,
+            dataPoints: fetched.rows.length,
+            data: fetched.rows,
+            splits: fetched.splits,
+        });
     } catch (e) {
         const status = e.status || 500;
         return res.status(status).json({ error: e.message || 'Failed to fetch data' });
@@ -261,20 +253,20 @@ router.get('/fetch/:provider/:symbol', async (req, res) => {
         const startTs = endTs - 365 * 24 * 60 * 60; // 1 year
 
         let data;
+        let splits = [];
         switch (provider) {
             case 'alpha_vantage':
-                const avResult = await fetchFromAlphaVantage(symbol, startTs, endTs);
-                data = avResult.data;
-                break;
             case 'finnhub':
-                data = await fetchFromFinnhub(symbol, startTs, endTs);
-                break;
             case 'twelve_data':
-                data = await fetchFromTwelveData(symbol, startTs, endTs);
+            case 'polygon': {
+                const fetched = await fetchHistoricalMarketData(symbol, startTs, endTs, provider, {
+                    adjustment: 'none',
+                    polygonApiKey: await getPolygonApiKey() || null,
+                });
+                data = fetched.rows;
+                splits = fetched.splits;
                 break;
-            case 'polygon':
-                data = await fetchFromPolygon(symbol, startTs, endTs, await getPolygonApiKey() || null);
-                break;
+            }
             case 'webull': {
                 const snapshot = await fetchWebullTodayRangeAndQuote(symbol);
                 data = [{
@@ -292,7 +284,7 @@ router.get('/fetch/:provider/:symbol', async (req, res) => {
                 return res.status(400).json({ error: 'Unknown provider' });
         }
 
-        res.json({ symbol, provider, dataPoints: data.length, data });
+        res.json({ symbol, provider, dataPoints: data.length, data, splits });
     } catch (e) {
         const status = e.status || 500;
         res.status(status).json({ error: e.message || 'Failed to fetch data' });

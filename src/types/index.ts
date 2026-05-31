@@ -33,6 +33,7 @@ export interface TickerData {
   holderData?: OHLCData[];
   ibsValues: number[];
   splits: SplitEvent[];
+  detectedSplits?: SplitEvent[];
 }
 
 export interface Strategy {

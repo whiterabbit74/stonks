@@ -24,6 +24,8 @@ const { getETParts, etKeyYMD, previousTradingDayET, getTradingSessionForDateET, 
 const { refreshTickerAndCheckFreshness, appendMonitorLog } = require('./priceActualization');
 const { reconcileMonitorState, getBlockingMonitorMismatch } = require('./monitorConsistency');
 const { evaluateEmaAlerts, listEmaAlerts, markEmaAlertsTriggered } = require('./emaAlerts');
+const { getTickerSplits } = require('./splits');
+const { evaluatePriceIntegrity, formatIntegrityWarningBlock, integrityWarningKey } = require('./marketDataIntegrity');
 
 // Helper functions
 function toFiniteNumber(value) {
@@ -71,6 +73,21 @@ function formatEmaAlertLine(alert, detailed = false) {
         return `${alert.symbol} EMA${alert.emaPeriod} ${range} • ждём: ${action} (${comparator} ${alert.activeLevelPct}%) • сейчас ${current} • ${alert.near ? 'близко ✅' : 'далеко'}`;
     }
     return `${alert.symbol} EMA${alert.emaPeriod}: ${actionText} при ${comparator} ${alert.activeLevelPct}% (сейчас ${current})`;
+}
+
+function collectIntegrityWarnings(records = [], emaAlerts = []) {
+    const warnings = new Map();
+    for (const rec of Array.isArray(records) ? records : []) {
+        if (rec && rec.integrityWarning && rec.integrityWarning.blockSignals) {
+            warnings.set(integrityWarningKey(rec.integrityWarning), rec.integrityWarning);
+        }
+    }
+    for (const alert of Array.isArray(emaAlerts) ? emaAlerts : []) {
+        if (alert && alert.integrityWarning && alert.integrityWarning.blockSignals) {
+            warnings.set(integrityWarningKey(alert.integrityWarning), alert.integrityWarning);
+        }
+    }
+    return Array.from(warnings.values());
 }
 
 /**
@@ -162,6 +179,8 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
                 rec.ibs = null;
                 rec.quote = null;
                 rec.range = null;
+                rec.dataset = null;
+                rec.integrityWarning = null;
                 rec.closeEnoughToExit = false;
                 rec.closeEnoughToEntry = false;
                 rec.confirmExit = false;
@@ -175,6 +194,7 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
 
                     // Check if dataset already has previous trading day data
                     const dataset = getDataset(w.symbol);
+                    rec.dataset = dataset || null;
                     if (dataset && Array.isArray(dataset.data)) {
                         const hasYesterday = dataset.data.some(d => d && d.date === prevKey);
                         if (hasYesterday) {
@@ -204,6 +224,30 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
 
                     const currentPrice = toFiniteNumber(quote && quote.current);
                     if (currentPrice == null) throw new Error('no range/quote');
+
+                    let knownSplits = [];
+                    try {
+                        knownSplits = getTickerSplits(w.symbol);
+                    } catch {
+                        knownSplits = [];
+                    }
+                    const integrity = evaluatePriceIntegrity({
+                        symbol: w.symbol,
+                        dataset: rec.dataset || getDataset(w.symbol),
+                        currentPrice,
+                        currentDate: todayKey,
+                        quote,
+                        knownSplits,
+                    });
+                    if (integrity.blockSignals) {
+                        rec.integrityWarning = integrity;
+                        rec.quote = { ...quote, current: currentPrice };
+                        rec.range = { ...range, low: normalizedRange.low, high: normalizedRange.high };
+                        rec.fetchError = 'integrity_blocked';
+                        rec.dataOk = false;
+                        rec.rtFresh = true;
+                        continue;
+                    }
 
                     const span = normalizedRange.high - normalizedRange.low;
                     if (!(span > 0)) throw new Error('invalid range');
@@ -248,6 +292,8 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
                 const entrySignals = [];
                 const exitSignals = [];
                 const nearEmaSignals = emaAlerts.filter((alert) => alert.dataOk && alert.near);
+                const integrityWarnings = collectIntegrityWarnings(sorted, emaAlerts);
+                const integritySummary = formatIntegrityWarningBlock(integrityWarnings);
                 const blocks = [];
                 const logLines = [`T-11 overview → chat ${chatId}`];
                 const openTradeForOverview = getCurrentOpenTrade();
@@ -258,7 +304,7 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
                     const type = positionOpen ? 'выход' : 'вход';
                     const near = positionOpen ? rec.closeEnoughToExit : rec.closeEnoughToEntry;
                     const nearStr = rec.dataOk ? (near ? 'да' : 'нет') : '—';
-                    const priceStr = rec.dataOk && rec.quote ? formatMoney(rec.quote.current) : '-';
+                    const priceStr = rec.quote ? formatMoney(rec.quote.current) : '-';
                     const ibsStr = rec.dataOk && Number.isFinite(rec.ibs) ? rec.ibs.toFixed(3) : '-';
                     const thresholdStr = positionOpen
                         ? `≥ ${(w.highIBS - delta).toFixed(2)} (цель ${w.highIBS})`
@@ -284,7 +330,9 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
                     const line2 = `IBS ${ibsStr}  [${bar}]`;
                     // ИСПРАВЛЕНО: Показываем реальный провайдер вместо "AV"
                     const line3 = `${providerAbbrev}${rec.histFresh ? '✅' : '❌'}  RT${rec.rtFresh ? '✅' : '❌'}`;
-                    const line4 = `Сигнал (${type}): ${nearStr}`;
+                    const line4 = rec.integrityWarning
+                        ? 'Сигнал: заблокирован проверкой данных'
+                        : `Сигнал (${type}): ${nearStr}`;
                     blocks.push([line1, line2, line3, line4].join('\n'));
 
                     logLines.push(rec.dataOk
@@ -315,7 +363,8 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
                 const consistencySummary = consistencySnapshot.issues.length > 0
                     ? `\n\n⚠️ СОСТОЯНИЕ:\n${consistencySnapshot.issues.map((issue) => `• ${issue.message}`).join('\n')}`
                     : '';
-                const text = `<pre>${header}\n\n${signalsSummary}${consistencySummary}${emaDetails}\n\n📊 ПОДРОБНО:\n\n${blocks.join('\n\n')}</pre>`;
+                const integrityBlock = integritySummary ? `\n\n${integritySummary}` : '';
+                const text = `<pre>${header}\n\n${signalsSummary}${integrityBlock}${consistencySummary}${emaDetails}\n\n📊 ПОДРОБНО:\n\n${blocks.join('\n\n')}</pre>`;
                 const resp = await sendTelegramMessage(chatId, text);
 
                 if (resp.ok) {
@@ -554,6 +603,8 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
                 const openTradeNow = getCurrentOpenTrade();
                 const decisionLines = [];
                 const reachedEmaAlerts = emaAlerts.filter((alert) => alert.dataOk && alert.reached);
+                const integrityWarnings = collectIntegrityWarnings(list, emaAlerts);
+                const integritySummary = formatIntegrityWarningBlock(integrityWarnings);
                 if (blockingMismatch) {
                     decisionLines.push(`• Состояние брокера: ${blockingMismatch.message}`);
                     decisionLines.push('• Monitor продолжает считать позиции независимо от брокера');
@@ -600,6 +651,9 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
                         decisionLines.push(`  ${actionText}: ${alert.symbol} EMA${alert.emaPeriod} ${alert.buyLevelPct}%–${alert.sellLevelPct}% • сейчас ${alert.deviationPct.toFixed(2)}% (${comparator} ${alert.activeLevelPct}%)`);
                     }
                 }
+                if (integrityWarnings.length > 0) {
+                    decisionLines.push(`• Проверка данных: сигналы заблокированы по ${integrityWarnings.map((warning) => warning.symbol).join(', ')}`);
+                }
                 if (!decisionLines.length) {
                     decisionLines.push('• Действий нет');
                 }
@@ -620,6 +674,7 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
                 const messageParts = [
                     '<b>⏱️ 1 минута до закрытия</b>',
                     '',
+                    ...(integritySummary ? [integritySummary, ''] : []),
                     '<b>🎯 РЕШЕНИЕ:</b>',
                     ...decisionLines,
                     '',

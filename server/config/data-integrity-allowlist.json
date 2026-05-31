@@ -1,0 +1,18 @@
+{
+  "AAPL": [
+    {
+      "previousDate": "2000-09-28",
+      "currentDate": "2000-09-29",
+      "reason": "Apple profit warning caused an approximately 50% market drop, not a stock split.",
+      "source": "https://www.latimes.com/archives/la-xpm-2000-sep-29-fi-28565-story.html"
+    }
+  ],
+  "MSTR": [
+    {
+      "previousDate": "2000-03-17",
+      "currentDate": "2000-03-20",
+      "reason": "MicroStrategy revenue restatement caused a one-day market drop, not a stock split.",
+      "source": "https://www.sec.gov/litigation/admin/34-43724.htm"
+    }
+  ]
+}

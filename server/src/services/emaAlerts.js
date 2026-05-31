@@ -1,7 +1,8 @@
 const crypto = require('crypto');
 const { getDb } = require('../db');
 const { getDataset } = require('./datasets');
-const { getTickerSplits, detectSplitsFromOHLC } = require('./splits');
+const { getTickerSplits } = require('./splits');
+const { evaluatePriceIntegrity } = require('./marketDataIntegrity');
 const { toSafeTicker } = require('../utils/helpers');
 const { fetchTodayRangeAndQuote } = require('../providers/finnhub');
 
@@ -156,7 +157,7 @@ function normalizeSplitEvents(events) {
     return Array.from(byDate.values()).sort((a, b) => a.date.localeCompare(b.date));
 }
 
-function buildContinuousPrices(symbol, dataset, history, currentPrice) {
+function buildContinuousPrices(symbol, dataset, history, currentPrice, knownSplits = null) {
     if (dataset && dataset.adjustedForSplits) {
         return {
             closes: history.map((bar) => Number(bar.close)).filter((value) => Number.isFinite(value)),
@@ -166,13 +167,14 @@ function buildContinuousPrices(symbol, dataset, history, currentPrice) {
     }
 
     let splits = [];
-    try {
-        splits = getTickerSplits(symbol);
-    } catch {
-        splits = [];
-    }
-    if (!splits.length) {
-        splits = detectSplitsFromOHLC(history);
+    if (Array.isArray(knownSplits)) {
+        splits = knownSplits;
+    } else {
+        try {
+            splits = getTickerSplits(symbol);
+        } catch {
+            splits = [];
+        }
     }
     const events = normalizeSplitEvents(splits);
     let splitIndex = 0;
@@ -216,7 +218,33 @@ async function evaluateEmaAlert(alert) {
         return { ...alert, dataOk: false, reason: 'no_quote' };
     }
 
-    const continuous = buildContinuousPrices(alert.symbol, dataset, history, currentPrice);
+    let knownSplits = [];
+    try {
+        knownSplits = getTickerSplits(alert.symbol);
+    } catch {
+        knownSplits = [];
+    }
+    const integrity = evaluatePriceIntegrity({
+        symbol: alert.symbol,
+        dataset,
+        currentPrice,
+        quote: quoteResult && quoteResult.quote,
+        knownSplits,
+        adjustedForSplits: !!(dataset && dataset.adjustedForSplits),
+    });
+    if (integrity.blockSignals) {
+        return {
+            ...alert,
+            dataOk: false,
+            reason: 'integrity_blocked',
+            currentPrice,
+            near: false,
+            reached: false,
+            integrityWarning: integrity,
+        };
+    }
+
+    const continuous = buildContinuousPrices(alert.symbol, dataset, history, currentPrice, knownSplits);
     const ema = calculateEma([...continuous.closes, continuous.currentPrice], alert.emaPeriod);
     if (!Number.isFinite(ema) || ema === 0) {
         return { ...alert, dataOk: false, reason: 'no_ema' };

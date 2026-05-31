@@ -73,7 +73,7 @@ interface AppState {
   setEnablePostClosePriceActualization: (enabled: boolean) => void;
   loadJSONData: (file: File) => Promise<void>;
   loadDatasetsFromServer: () => Promise<void>;
-  saveDatasetToServer: (ticker: string, name?: string, metadata?: { companyName?: string; tag?: string }) => Promise<void>;
+  saveDatasetToServer: (ticker: string, name?: string, metadata?: { companyName?: string; tag?: string }, splits?: SplitEvent[]) => Promise<void>;
   loadDatasetFromServer: (datasetId: string) => Promise<void>;
   deleteDatasetFromServer: (datasetId: string) => Promise<void>;
   exportDatasetAsJSON: (datasetId: string) => void;
@@ -358,22 +358,23 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
-  saveDatasetToServer: async (ticker: string, name?: string, metadata?: { companyName?: string; tag?: string }) => {
+  saveDatasetToServer: async (ticker: string, name?: string, metadata?: { companyName?: string; tag?: string }, splits?: SplitEvent[]) => {
     const { marketData } = get();
 
     if (!marketData || !marketData.length) {
       set({ error: 'Нет данных для сохранения' });
-      return;
+      throw new Error('Нет данных для сохранения');
     }
 
     set({ isLoading: true, error: null });
 
     try {
-      // Создаем новый датасет (без поля splits)
+      // Создаем новый датасет. Если провайдер вернул сплиты, сохраняем их вместе с данными.
       const dataset: SavedDataset = {
         name: name || `${ticker}_${new Date().toISOString().split('T')[0]}`,
         ticker: ticker.toUpperCase(),
         data: [...marketData],
+        ...(Array.isArray(splits) && splits.length > 0 && { splits }),
         uploadDate: new Date().toISOString(),
         dataPoints: marketData.length,
         dateRange: marketData.length > 0 ? {
@@ -394,6 +395,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
       set({
         currentDataset: dataset,
+        currentSplits: Array.isArray(splits) ? splits : get().currentSplits,
         isLoading: false
       });
 
@@ -401,10 +403,12 @@ export const useAppStore = create<AppState>((set, get) => ({
     } catch (error) {
       console.warn('Не удалось сохранить на сервер:', error instanceof Error ? error.message : 'Unknown error');
       try { logError('network', 'Save dataset failed', { ticker, points: marketData?.length }, 'store.saveDatasetToServer', error instanceof Error ? error.stack : undefined); } catch { /* ignore */ }
+      const message = error instanceof Error ? error.message : 'Сервер недоступен. Запустите сервер для сохранения данных.';
       set({
-        error: 'Сервер недоступен. Запустите сервер для сохранения данных.',
+        error: message,
         isLoading: false
       });
+      throw error;
     }
   },
 

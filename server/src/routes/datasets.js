@@ -16,11 +16,14 @@ const {
     updateDatasetMetadata,
     getLastDateFromDataset,
 } = require('../services/datasets');
-const { getTickerSplits } = require('../services/splits');
+const { getTickerSplits, setTickerSplits, upsertTickerSplits } = require('../services/splits');
 const { readSettings } = require('../services/settings');
-const { fetchFromAlphaVantage } = require('../providers/alphaVantage');
-const { fetchFromFinnhub } = require('../providers/finnhub');
-const { fetchFromTwelveData } = require('../providers/twelveData');
+const {
+    assertDatasetPayloadIntegrity,
+    assertOhlcMergeIntegrity,
+    fetchHistoricalMarketData,
+    normalizeSplitEvents,
+} = require('../services/dataIngestion');
 
 const upload = multer({
     storage: multer.memoryStorage(),
@@ -106,11 +109,21 @@ router.post('/datasets', upload.single('file'), async (req, res) => {
             }
         }
 
+        const knownSplits = Array.isArray(payload.splits) ? payload.splits : await getTickerSplits(ticker);
+        assertDatasetPayloadIntegrity({ symbol: ticker, payload, knownSplits });
+
         saveDataset(payload);
+        if (Array.isArray(payload.splits)) {
+            setTickerSplits(ticker, payload.splits);
+        }
         res.json({ success: true, id: ticker, ticker, dataPoints: payload.dataPoints || 0 });
     } catch (e) {
         console.error('Failed to upload dataset:', e);
-        res.status(500).json({ error: e.message || 'Failed to upload dataset' });
+        res.status(e?.status || 500).json({
+            error: e.message || 'Failed to upload dataset',
+            code: e?.code,
+            integrity: e?.integrity,
+        });
     }
 });
 
@@ -134,11 +147,21 @@ router.put('/datasets/:id', async (req, res) => {
             }
         }
 
+        const knownSplits = Array.isArray(payload.splits) ? payload.splits : await getTickerSplits(id);
+        assertDatasetPayloadIntegrity({ symbol: id, payload, knownSplits });
+
         saveDataset(payload);
+        if (Array.isArray(payload.splits)) {
+            setTickerSplits(id, payload.splits);
+        }
         res.json({ success: true, id, dataPoints: payload.dataPoints || 0 });
     } catch (e) {
         console.error('Failed to update dataset:', e);
-        res.status(500).json({ error: 'Failed to update dataset' });
+        res.status(e?.status || 500).json({
+            error: e?.message || 'Failed to update dataset',
+            code: e?.code,
+            integrity: e?.integrity,
+        });
     }
 });
 
@@ -181,30 +204,26 @@ router.post('/datasets/:id/refresh', async (req, res) => {
         const startTs = Math.floor(start.getTime() / 1000);
         const endTs = Math.floor(Date.now() / 1000);
 
-        let rows = [];
-        if (provider === 'finnhub') {
-            const fh = await fetchFromFinnhub(ticker, startTs, endTs);
-            rows = (Array.isArray(fh) ? fh : []).map(r => ({
-                date: toDateKey(r.date), open: Number(r.open), high: Number(r.high),
-                low: Number(r.low), close: Number(r.close),
-                adjClose: r.adjClose != null ? Number(r.adjClose) : Number(r.close),
-                volume: Number(r.volume) || 0,
-            }));
-        } else if (provider === 'twelve_data') {
-            const td = await fetchFromTwelveData(ticker, startTs, endTs);
-            rows = (Array.isArray(td) ? td : []).map(r => ({
-                date: toDateKey(r.date), open: Number(r.open), high: Number(r.high),
-                low: Number(r.low), close: Number(r.close),
-                adjClose: r.adjClose != null ? Number(r.adjClose) : Number(r.close),
-                volume: Number(r.volume) || 0,
-            }));
-        } else {
-            const av = await fetchFromAlphaVantage(ticker, startTs, endTs, { adjustment: 'none' });
-            const base = Array.isArray(av) ? av : (av?.data || []);
-            rows = base.map(r => ({
-                date: toDateKey(r.date), open: r.open, high: r.high, low: r.low,
-                close: r.close, adjClose: r.adjClose ?? r.close, volume: r.volume || 0,
-            }));
+        const fetched = await fetchHistoricalMarketData(ticker, startTs, endTs, provider, { adjustment: 'none' });
+        const rows = fetched.rows;
+
+        const dataset = getDataset(ticker);
+        let knownSplits = [];
+        try {
+            knownSplits = await getTickerSplits(ticker);
+        } catch {
+            knownSplits = [];
+        }
+        const fetchedSplits = normalizeSplitEvents(fetched.splits);
+        const integrity = assertOhlcMergeIntegrity({
+            symbol: ticker,
+            existingRows: dataset?.data || [],
+            incomingRows: rows,
+            knownSplits: [...knownSplits, ...fetchedSplits],
+            adjustedForSplits: Boolean(dataset?.adjustedForSplits || meta.adjustedForSplits),
+        });
+        if (fetchedSplits.length > 0) {
+            upsertTickerSplits(ticker, fetchedSplits);
         }
 
         const added = mergeOhlcRows(ticker, rows);
@@ -213,7 +232,11 @@ router.post('/datasets/:id/refresh', async (req, res) => {
         return res.json({ success: true, id: ticker, added, to: updatedMeta?.dateRange?.to, provider });
     } catch (e) {
         console.error('Error refreshing dataset:', e);
-        res.status(500).json({ error: e?.message || 'Failed to refresh dataset' });
+        res.status(e?.status || 500).json({
+            error: e?.message || 'Failed to refresh dataset',
+            code: e?.code,
+            integrity: e?.integrity,
+        });
     }
 });
 

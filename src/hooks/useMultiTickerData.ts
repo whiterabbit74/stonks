@@ -1,15 +1,8 @@
 import { useState, useCallback } from 'react';
 import { DatasetAPI } from '../lib/api';
-import {
-  adjustOHLCForSplits,
-  applyOHLCForHolderValue,
-  dedupeDailyOHLC,
-  detectSplitsFromOHLC,
-  mergeSplitEvents,
-} from '../lib/utils';
-import { IndicatorEngine } from '../lib/indicators';
+import { prepareTickerDataFromDataset } from '../lib/ticker-data-processing';
 import { useToastActions } from '../components/ui';
-import type { TickerData, OHLCData, SplitEvent } from '../types';
+import type { TickerData, SplitEvent } from '../types';
 
 export function useMultiTickerData() {
   const [tickersData, setTickersData] = useState<TickerData[]>([]);
@@ -29,7 +22,7 @@ export function useMultiTickerData() {
   }, []);
 
   // Function to load data for a single ticker
-  const loadTickerData = async (ticker: string): Promise<TickerData> => {
+  const loadTickerData = useCallback(async (ticker: string): Promise<TickerData> => {
     const ds = await DatasetAPI.getDataset(ticker);
 
     const normalizedTicker = (ds.ticker || ticker).toUpperCase();
@@ -41,34 +34,18 @@ export function useMultiTickerData() {
       splits = [];
     }
 
-    const rawData = dedupeDailyOHLC(ds.data as unknown as OHLCData[]);
-    const detectedSplits = (ds as any).adjustedForSplits ? [] : detectSplitsFromOHLC(rawData);
-    const resolvedSplits = mergeSplitEvents(splits, detectedSplits);
-    let processedData: OHLCData[];
-    let holderData: OHLCData[];
-
-    if ((ds as any).adjustedForSplits) {
-      processedData = rawData.map((bar) => ({
-        ...bar,
-        priceBasis: 'split_adjusted_index',
-      }));
-      holderData = processedData;
-    } else {
-      processedData = dedupeDailyOHLC(adjustOHLCForSplits(rawData, resolvedSplits));
-      holderData = applyOHLCForHolderValue(rawData, resolvedSplits);
+    const prepared = prepareTickerDataFromDataset({ ticker, dataset: ds, splits });
+    if (prepared.detectedSplits && prepared.detectedSplits.length > 0) {
+      const first = prepared.detectedSplits[0];
+      const suffix = prepared.detectedSplits.length > 1 ? ` и еще ${prepared.detectedSplits.length - 1}` : '';
+      toast.warning(
+        `${prepared.ticker}: найден скачок цены, похожий на сплит ${first.factor}:1 (${first.date})${suffix}. Расчеты используют только ручные сплиты.`,
+        9000
+      );
     }
 
-    const ibsValues = processedData.length > 0 ? IndicatorEngine.calculateIBS(processedData) : [];
-
-    return {
-      ticker: normalizedTicker,
-      data: processedData,
-      rawData: (ds as any).adjustedForSplits ? undefined : rawData,
-      holderData,
-      ibsValues,
-      splits: resolvedSplits
-    };
-  };
+    return prepared;
+  }, [toast]);
 
   // Handle refresh for a single ticker
   const handleRefreshTicker = useCallback(async (ticker: string) => {
@@ -95,7 +72,7 @@ export function useMultiTickerData() {
         return next;
       });
     }
-  }, [toast]);
+  }, [loadTickerData, toast]);
 
   return {
     tickersData,

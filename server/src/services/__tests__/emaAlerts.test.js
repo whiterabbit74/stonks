@@ -47,9 +47,9 @@ function withTempDb() {
   };
 }
 
-function loadEmaAlerts({ currentPrice }) {
+function loadEmaAlerts({ currentPrice, history: customHistory, adjustedForSplits = true, knownSplits = [] }) {
   purgeServerCache();
-  const history = Array.from({ length: 20 }, (_, index) => ({
+  const history = customHistory || Array.from({ length: 20 }, (_, index) => ({
     date: `2024-01-${String(index + 1).padStart(2, '0')}`,
     open: 100,
     high: 100,
@@ -60,9 +60,12 @@ function loadEmaAlerts({ currentPrice }) {
 
   stubModule('src/services/datasets.js', {
     getDataset: () => ({
-      adjustedForSplits: true,
+      adjustedForSplits,
       data: history,
     }),
+  });
+  stubModule('src/services/splits.js', {
+    getTickerSplits: () => knownSplits,
   });
   stubModule('src/providers/finnhub.js', {
     fetchTodayRangeAndQuote: async () => ({
@@ -153,6 +156,46 @@ describe('EMA cycle alerts', () => {
         activeLevelPct: 40,
         nextAction: 'sell',
       });
+    } finally {
+      env.restore();
+    }
+  });
+
+  it('blocks EMA signals when live price looks like an unknown split boundary', async () => {
+    const env = withTempDb();
+    try {
+      const history = Array.from({ length: 20 }, (_, index) => ({
+        date: `2025-08-${String(index + 9).padStart(2, '0')}`,
+        open: 92,
+        high: 94,
+        low: 90,
+        close: index === 19 ? 92.7 : 92,
+        volume: 1000,
+      }));
+      const emaAlerts = loadEmaAlerts({
+        currentPrice: 44.68,
+        history,
+        adjustedForSplits: false,
+        knownSplits: [],
+      });
+      emaAlerts.createEmaAlert({
+        symbol: 'TQQQ',
+        emaPeriod: 20,
+        buyLevelPct: 15,
+        sellLevelPct: 40,
+        nextAction: 'buy',
+        thresholdPct: 100,
+      });
+
+      const [signal] = await emaAlerts.evaluateEmaAlerts();
+
+      expect(signal).toMatchObject({
+        dataOk: false,
+        reason: 'integrity_blocked',
+        reached: false,
+        near: false,
+      });
+      expect(signal.integrityWarning.blockSignals).toBe(true);
     } finally {
       env.restore();
     }

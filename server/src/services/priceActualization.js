@@ -7,12 +7,16 @@
 const fs = require('fs-extra');
 const { getApiConfig, PRICE_ACTUALIZATION_REQUEST_DELAY_MS, PRICE_ACTUALIZATION_DELAY_JITTER_MS, DATASETS_DIR } = require('../config');
 const { readSettings } = require('./settings');
-const { getDataset, getDatasetMetadata, mergeOhlcRows, saveDataset } = require('./datasets');
+const { getDataset, getDatasetMetadata, saveDataset } = require('./datasets');
 const { toSafeTicker } = require('../utils/helpers');
-const { fetchFromAlphaVantage } = require('../providers/alphaVantage');
-const { fetchFromFinnhub } = require('../providers/finnhub');
-const { fetchFromTwelveData } = require('../providers/twelveData');
 const { telegramWatches, sendTelegramMessage } = require('./telegram');
+const { getTickerSplits, upsertTickerSplits } = require('./splits');
+const { formatIntegrityWarningBlock } = require('./marketDataIntegrity');
+const {
+    assertOhlcMergeIntegrity,
+    fetchHistoricalMarketData,
+    normalizeSplitEvents,
+} = require('./dataIngestion');
 const {
     loadTradeHistory,
     syncWatchesWithTradeState,
@@ -65,22 +69,6 @@ async function waitForPriceActualizationThrottle({ symbol, index, total }) {
         `⏳ Throttling requests: waiting ${seconds}s before next ticker (processed ${index + 1}/${total}, last ${symbol})`
     );
     await new Promise((resolve) => setTimeout(resolve, delayMs));
-}
-
-/**
- * Fetch historical data using configured provider
- * ИСПРАВЛЕНО: Использует настраиваемый провайдер вместо захардкоженного Alpha Vantage
- */
-async function fetchHistoricalData(ticker, startTs, endTs, provider) {
-    switch (provider) {
-        case 'finnhub':
-            return fetchFromFinnhub(ticker, startTs, endTs);
-        case 'twelve_data':
-            return fetchFromTwelveData(ticker, startTs, endTs);
-        case 'alpha_vantage':
-        default:
-            return fetchFromAlphaVantage(ticker, startTs, endTs, { adjustment: 'none' });
-    }
 }
 
 /**
@@ -138,56 +126,40 @@ async function refreshTickerAndCheckFreshness(symbol, nowEtParts, provider = 'fi
     }
 
     try {
-        const fetchedData = await fetchHistoricalData(ticker, startTs, endTs, provider);
-        const base = Array.isArray(fetchedData) ? fetchedData : (fetchedData && fetchedData.data) || [];
-        const rows = base.map(r => ({
-            date: r.date,
-            open: Number(r.open),
-            high: Number(r.high),
-            low: Number(r.low),
-            close: Number(r.close),
-            adjClose: (r.adjClose != null ? Number(r.adjClose) : Number(r.close)),
-            volume: Number(r.volume) || 0,
-        }));
+        const fetched = await fetchHistoricalMarketData(ticker, startTs, endTs, provider, { adjustment: 'none' });
+        const rows = fetched.rows;
 
-        // Merge existing data with new data
-        const mergedByDate = new Map();
-        for (const b of (dataset.data || [])) {
-            const key = toDateKey(b && b.date);
-            if (!key) continue;
-            mergedByDate.set(key, {
-                date: key,
-                open: Number(b.open),
-                high: Number(b.high),
-                low: Number(b.low),
-                close: Number(b.close),
-                adjClose: (b.adjClose != null ? Number(b.adjClose) : Number(b.close)),
-                volume: Number(b.volume) || 0,
-            });
+        let knownSplits = [];
+        try {
+            knownSplits = getTickerSplits(ticker);
+        } catch {
+            knownSplits = [];
         }
-        for (const r of rows) {
-            const key = toDateKey(r && r.date);
-            if (!key) continue;
-            mergedByDate.set(key, {
-                date: key,
-                open: Number(r.open),
-                high: Number(r.high),
-                low: Number(r.low),
-                close: Number(r.close),
-                adjClose: (r.adjClose != null ? Number(r.adjClose) : Number(r.close)),
-                volume: Number(r.volume) || 0,
-            });
+        const fetchedSplits = normalizeSplitEvents(fetched.splits);
+        const integrity = assertOhlcMergeIntegrity({
+            symbol: ticker,
+            existingRows: dataset.data || [],
+            incomingRows: rows,
+            knownSplits: [...knownSplits, ...fetchedSplits],
+            adjustedForSplits: Boolean(dataset.adjustedForSplits),
+        });
+
+        saveDataset({ ...dataset, data: integrity.mergedRows, uploadDate: new Date().toISOString(), name: ticker });
+        if (fetchedSplits.length > 0) {
+            upsertTickerSplits(ticker, fetchedSplits);
         }
 
-        const mergedArray = Array.from(mergedByDate.values()).sort((a, b) => a.date.localeCompare(b.date));
-        saveDataset({ ...dataset, data: mergedArray, uploadDate: new Date().toISOString(), name: ticker });
-
-        const fresh = mergedByDate.has(prevKey);
+        const fresh = integrity.mergedRows.some((row) => row.date === prevKey);
         const updatedMeta = getDatasetMetadata(ticker);
         return { fresh, provider, lastDate: updatedMeta?.dateRange?.to };
     } catch (e) {
         console.warn(`Failed to refresh ${ticker} via ${provider}:`, e.message);
-        return { fresh: false, provider, error: e.message };
+        return {
+            fresh: false,
+            provider,
+            error: e.message,
+            integrityWarnings: Array.isArray(e.integrity?.warnings) ? e.integrity.warnings : [],
+        };
     }
 }
 
@@ -286,7 +258,11 @@ async function runPriceActualization(options = {}) {
                 const result = await refreshTickerAndCheckFreshness(symbol, nowEt, provider);
 
                 if (result.error) {
-                    failedTickers.push({ symbol, reason: result.error });
+                    failedTickers.push({
+                        symbol,
+                        reason: result.error,
+                        integrityWarnings: result.integrityWarnings || [],
+                    });
                 } else if (result.fresh) {
                     updatedTickers.push(symbol);
                 } else {
@@ -328,6 +304,12 @@ async function runPriceActualization(options = {}) {
             }
             if (failedTickers.length > 0) {
                 telegramMsg += `• Ошибки: ${failedTickers.map(t => t.symbol).join(', ')}\n`;
+            }
+
+            const integrityWarnings = failedTickers.flatMap((ticker) => ticker.integrityWarnings || []);
+            const integrityBlock = formatIntegrityWarningBlock(integrityWarnings);
+            if (integrityBlock) {
+                telegramMsg += `\n${integrityBlock}\n`;
             }
 
             telegramMsg += `\n📊 Успешно: ${actuallyUpdated}/${totalTickers}`;

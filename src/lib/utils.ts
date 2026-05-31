@@ -159,7 +159,7 @@ function roundPrice(value: number): number {
 export function detectSplitsFromOHLC(ohlc: OHLCData[]): SplitEvent[] {
   if (!Array.isArray(ohlc) || ohlc.length < 2) return [];
 
-  const factors = [2, 3, 4, 5, 10, 1.5, 0.5, 0.333, 0.25, 0.2, 0.1];
+  const factors = [2, 3, 4, 5, 7, 10, 20, 1.5, 0.5, 0.333, 0.25, 0.2, 0.1];
   const data = [...ohlc].sort((a, b) => compareTradingDates(a.date, b.date));
   const splits: SplitEvent[] = [];
 
