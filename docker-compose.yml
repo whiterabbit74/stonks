@@ -55,6 +55,37 @@ services:
       - VITE_API_BASE=/api
     container_name: stonks-frontend
 
+  mcp:
+    build:
+      context: .
+      dockerfile: mcp/Dockerfile
+    env_file:
+      - /home/ubuntu/stonks-config/.env
+    environment:
+      - MCP_ADDR=:8080
+      - MCP_ENDPOINT_PATH=/mcp/transcribe/
+      - MCP_ALLOWED_ORIGINS=${MCP_ALLOWED_ORIGINS:-https://chatgpt.com,https://chat.openai.com,https://tradingibs.site}
+    expose:
+      - "8080"
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,noexec,nosuid,nodev
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 64
+    mem_limit: 128m
+    cpus: "0.35"
+    healthcheck:
+      test: ["CMD", "/mcp-server", "healthcheck"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    container_name: stonks-mcp
+
   caddy:
     image: caddy:2
     ports:
@@ -63,6 +94,7 @@ services:
     depends_on:
       - frontend
       - server
+      - mcp
     volumes:
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
@@ -138,5 +170,4 @@ volumes:
     driver: local
   caddy_config:
     driver: local
-
 

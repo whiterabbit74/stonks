@@ -33,7 +33,7 @@ log_error() {
 check_containers() {
     log_info "Проверяю Docker контейнеры..."
 
-    local containers=("stonks-server" "stonks-frontend" "stonks-caddy")
+    local containers=("stonks-server" "stonks-frontend" "stonks-mcp" "stonks-caddy")
     local all_healthy=true
 
     for container in "${containers[@]}"; do
@@ -68,6 +68,7 @@ check_api() {
         "http://localhost:3001/api/status"
         "http://localhost:3001/api/splits"
         "https://tradingibs.site/api/status"
+        "https://tradingibs.site/mcp/transcribe/healthz"
     )
 
     local all_ok=true
@@ -175,6 +176,15 @@ check_logs() {
         log_warning "⚠️  Найдено $nginx_errors ошибок в логах nginx за последний час"
     else
         log_success "✅ Ошибок в логах nginx не найдено"
+    fi
+
+    # Проверить логи MCP на ошибки
+    mcp_errors=$(docker logs --since 1h stonks-mcp 2>&1 | grep -i error | wc -l)
+    if [[ $mcp_errors -gt 0 ]]; then
+        log_warning "⚠️  Найдено $mcp_errors ошибок в логах MCP за последний час"
+        docker logs --since 1h stonks-mcp 2>&1 | grep -i error | tail -5
+    else
+        log_success "✅ Ошибок в логах MCP не найдено"
     fi
 }
 

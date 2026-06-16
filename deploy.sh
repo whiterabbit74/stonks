@@ -233,6 +233,40 @@ if [ ! -f /home/ubuntu/stonks-config/.env ]; then
 fi &&
 echo '✅ Файл конфигурации найден' &&
 
+ensure_mcp_tokens() {
+    local env_file=\"/home/ubuntu/stonks-config/.env\"
+    local current=\"\"
+
+    current=\$(grep '^MCP_BEARER_TOKENS=' \"\$env_file\" 2>/dev/null | tail -n 1 | cut -d'=' -f2- || true)
+
+    make_mcp_token() {
+        if command -v openssl >/dev/null 2>&1; then
+            openssl rand -hex 32
+        else
+            head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n'
+        fi
+    }
+
+    if [ -z \"\$current\" ]; then
+        local token_one token_two token_three
+        token_one=\$(make_mcp_token)
+        token_two=\$(make_mcp_token)
+        token_three=\$(make_mcp_token)
+        printf '\nMCP_BEARER_TOKENS=%s,%s,%s\n' \"\$token_one\" \"\$token_two\" \"\$token_three\" >> \"\$env_file\"
+        echo '✅ MCP_BEARER_TOKENS создан (3 токена, значения не выводятся)'
+    else
+        echo '✅ MCP_BEARER_TOKENS уже задан, существующие токены сохранены'
+    fi
+
+    if ! grep -q '^MCP_ALLOWED_ORIGINS=' \"\$env_file\"; then
+        printf 'MCP_ALLOWED_ORIGINS=https://chatgpt.com,https://chat.openai.com,https://tradingibs.site\n' >> \"\$env_file\"
+        echo '✅ MCP_ALLOWED_ORIGINS добавлен'
+    fi
+
+    chmod 600 \"\$env_file\" || true
+} &&
+ensure_mcp_tokens &&
+
 echo '🔨 Пересборка контейнеров...' &&
 cd ~/stonks &&
 docker compose build &&
