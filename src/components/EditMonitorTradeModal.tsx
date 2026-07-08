@@ -234,7 +234,7 @@ export function EditMonitorTradeModal({
             type="checkbox"
             checked={isHidden}
             onChange={(event) => setIsHidden(event.target.checked)}
-            className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+            className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-800"
           />
           Скрыть из списка
         </label>
@@ -243,7 +243,7 @@ export function EditMonitorTradeModal({
             type="checkbox"
             checked={isTest}
             onChange={(event) => setIsTest(event.target.checked)}
-            className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+            className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-800"
           />
           Тестовая сделка
         </label>
