@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
-import { AnalysisTabs, Button, ChartContainer, Input, PageHeader, Panel, Select, TickerInput } from './ui';
+import { AnalysisTabs, Button, ChartContainer, IconButton, Input, PageHeader, Panel, Select, TickerInput } from './ui';
 import { MetricsGrid } from './ui/MetricsGrid';
 import { LS } from '../constants';
 import type { EmaSignalSource, EmaZone, MultiTickerBacktestResults } from '../types';
@@ -27,6 +27,33 @@ interface EmaSettings {
 
 const DEFAULT_BUY_ZONES: EmaZone[] = [{ id: 'buy-20', levelPct: -20, enabled: true }];
 const DEFAULT_SELL_ZONES: EmaZone[] = [{ id: 'sell-40', levelPct: 40, enabled: true }];
+
+// Snapshot of the params that actually produced the current `result`, so the
+// deviation chart lines, markers and equity labels always match the displayed
+// trades/metrics even after the user edits a zone before re-running.
+interface EmaRunParams {
+  tickers: string[];
+  emaPeriod: number;
+  leveragePercent: number;
+  takeProfit: string;
+  noSellAtLoss: boolean;
+  signalSource: EmaSignalSource;
+  buyZones: EmaZone[];
+  sellZones: EmaZone[];
+}
+
+function snapshotRunParams(settings: EmaSettings, tickers: string[]): EmaRunParams {
+  return {
+    tickers,
+    emaPeriod: settings.emaPeriod,
+    leveragePercent: settings.leveragePercent,
+    takeProfit: settings.takeProfit,
+    noSellAtLoss: settings.noSellAtLoss,
+    signalSource: settings.signalSource,
+    buyZones: settings.buyZones,
+    sellZones: settings.sellZones,
+  };
+}
 
 function parseTickersInput(value: string): string[] {
   return value.split(',').map((item) => item.trim().toUpperCase()).filter(Boolean);
@@ -64,19 +91,42 @@ function ZoneEditor({
   onChange: (zones: EmaZone[]) => void;
   defaultLevel: number;
 }) {
+  // Per-row raw edit buffer so the field can be cleared/typed ("-", "") without
+  // snapping to 0 or pushing NaN into params/spreads/price-lines. We only commit
+  // a parsed number to the model when the current text is a finite number.
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+
+  const handleLevelChange = (id: string, raw: string) => {
+    setDrafts((prev) => ({ ...prev, [id]: raw }));
+    const parsed = Number(raw);
+    if (raw.trim() !== '' && Number.isFinite(parsed)) {
+      onChange(zones.map((item) => (item.id === id ? { ...item, levelPct: parsed } : item)));
+    }
+  };
+
+  const handleLevelBlur = (id: string) => {
+    // Drop the draft so the field falls back to the committed numeric value.
+    setDrafts((prev) => {
+      if (!(id in prev)) return prev;
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+  };
+
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between gap-2">
         <div className="text-xs font-semibold text-gray-700 dark:text-gray-300">{title}</div>
-        <button
-          type="button"
+        <IconButton
+          variant="outline"
+          size="sm"
           onClick={() => onChange([...zones, makeZone(defaultLevel < 0 ? 'buy' : 'sell', defaultLevel)])}
-          className="inline-flex h-7 w-7 items-center justify-center rounded border border-gray-300 text-gray-600 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
           title="Добавить зону"
           aria-label="Добавить зону"
         >
           <Plus className="h-3.5 w-3.5" />
-        </button>
+        </IconButton>
       </div>
       <div className="space-y-1.5">
         {zones.map((zone) => (
@@ -88,21 +138,27 @@ function ZoneEditor({
               className="h-4 w-4 accent-blue-600"
               aria-label="Включить зону"
             />
-            <Input
-              type="number"
-              step={1}
-              value={zone.levelPct}
-              onChange={(event) => onChange(zones.map((item) => item.id === zone.id ? { ...item, levelPct: Number(event.target.value) } : item))}
-            />
-            <button
-              type="button"
+            <div className="relative">
+              <Input
+                type="number"
+                step={1}
+                className="pr-7"
+                aria-label="Уровень зоны, %"
+                value={drafts[zone.id] ?? String(zone.levelPct)}
+                onChange={(event) => handleLevelChange(zone.id, event.target.value)}
+                onBlur={() => handleLevelBlur(zone.id)}
+              />
+              <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-gray-400 dark:text-gray-500">%</span>
+            </div>
+            <IconButton
+              variant="outline"
+              size="sm"
               onClick={() => onChange(zones.filter((item) => item.id !== zone.id))}
-              className="inline-flex h-8 w-8 items-center justify-center rounded border border-gray-300 text-gray-500 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800"
               title="Удалить зону"
               aria-label="Удалить зону"
             >
               <Trash2 className="h-3.5 w-3.5" />
-            </button>
+            </IconButton>
           </div>
         ))}
       </div>
@@ -111,12 +167,17 @@ function ZoneEditor({
 }
 
 export function EmaStrategyPage() {
-  const savedTickers = lsGet<string[]>(LS.EMA_TICKERS, ['TQQQ']);
-  const savedSettings = normalizeSettings(lsGet<Partial<EmaSettings> | null>(LS.EMA_SETTINGS, null));
-  const [tickers, setTickers] = useState<string[]>(savedTickers.length ? savedTickers : ['TQQQ']);
-  const [tickersInput, setTickersInput] = useState<string>((savedTickers.length ? savedTickers : ['TQQQ']).join(', '));
+  const [tickers, setTickers] = useState<string[]>(() => {
+    const saved = lsGet<string[]>(LS.EMA_TICKERS, ['TQQQ']);
+    return saved.length ? saved : ['TQQQ'];
+  });
+  const [tickersInput, setTickersInput] = useState<string>(() => {
+    const saved = lsGet<string[]>(LS.EMA_TICKERS, ['TQQQ']);
+    return (saved.length ? saved : ['TQQQ']).join(', ');
+  });
   const [selectedTicker, setSelectedTicker] = useState<string>(() => lsGet<string>(LS.EMA_SELECTED_TICKER, 'TQQQ'));
-  const [settings, setSettings] = useState<EmaSettings>(savedSettings);
+  const [settings, setSettings] = useState<EmaSettings>(() => normalizeSettings(lsGet<Partial<EmaSettings> | null>(LS.EMA_SETTINGS, null)));
+  const [runParams, setRunParams] = useState<EmaRunParams | null>(null);
   const [activeTab, setActiveTab] = useState('summary');
   const [selectedTradeTicker, setSelectedTradeTicker] = useState<'all' | string>('all');
   const [isLoading, setIsLoading] = useState(false);
@@ -161,6 +222,24 @@ export function EmaStrategyPage() {
     ];
   }, [result]);
 
+  // The result reflects `runParams`; if the editable settings/tickers now differ,
+  // the chart lines and metrics are out of sync until the user re-runs.
+  const isStale = useMemo(() => {
+    if (!result || !runParams) return false;
+    return JSON.stringify(snapshotRunParams(settings, tickers)) !== JSON.stringify(runParams);
+  }, [result, runParams, settings, tickers]);
+
+  // Zones/leverage that actually produced `result` — used for the deviation chart
+  // and the equity label so they never drift ahead of the displayed trades.
+  const displayBuyZones = runParams?.buyZones ?? settings.buyZones;
+  const displaySellZones = runParams?.sellZones ?? settings.sellZones;
+  const displayLeveragePercent = runParams?.leveragePercent ?? settings.leveragePercent;
+
+  const prefetchAnalysisTab = (tabId: string) => {
+    if (['summary', 'price', 'emaDeviation', 'spreads'].includes(tabId)) return;
+    void importBacktestResultsView();
+  };
+
   const runBacktest = async (overrideTickers?: string[]) => {
     const tickersToRun = overrideTickers ?? tickers;
     setIsLoading(true);
@@ -194,6 +273,7 @@ export function EmaStrategyPage() {
 
       setResult(nextResult);
       setComparisonResult(nextComparison);
+      setRunParams(snapshotRunParams(settings, tickersToRun));
       setSelectedTradeTicker('all');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Ошибка расчета EMA-стратегии');
@@ -261,11 +341,15 @@ export function EmaStrategyPage() {
         </div>
 
         <div>
-          <label className="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">Take profit, %</label>
+          <label className="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">Тейк-профит</label>
+          <p className="mb-1 text-[11px] leading-snug text-gray-500 dark:text-gray-400">
+            Досрочный выход, если максимум дня достиг процента прибыли от цены входа. Пусто или 0 выключает условие.
+          </p>
           <Input
             type="number"
             min={0}
             step={0.1}
+            inputMode="decimal"
             value={settings.takeProfit}
             onChange={(event) => setSettings((prev) => ({ ...prev, takeProfit: event.target.value }))}
             placeholder="Пусто выключает"
@@ -295,6 +379,11 @@ export function EmaStrategyPage() {
           onChange={(sellZones) => setSettings((prev) => ({ ...prev, sellZones }))}
         />
 
+        {isStale && (
+          <p className="text-[11px] leading-snug text-amber-600 dark:text-amber-400">
+            Параметры изменены — обновите расчёт
+          </p>
+        )}
         <Button
           variant="primary"
           size="md"
@@ -324,8 +413,8 @@ export function EmaStrategyPage() {
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-          {settings.buyZones.filter((zone) => zone.enabled).flatMap((buyZone) =>
-            settings.sellZones.filter((zone) => zone.enabled).map((sellZone) => (
+          {displayBuyZones.filter((zone) => zone.enabled).flatMap((buyZone) =>
+            displaySellZones.filter((zone) => zone.enabled).map((sellZone) => (
               <tr key={`${buyZone.id}-${sellZone.id}`}>
                 <td className="px-4 py-2 text-gray-700 dark:text-gray-300">{buyZone.levelPct}%</td>
                 <td className="px-4 py-2 text-gray-700 dark:text-gray-300">{sellZone.levelPct}%</td>
@@ -344,9 +433,9 @@ export function EmaStrategyPage() {
         <PageHeader className="mb-0" title="EMA" subtitle="Симулятор торговли по отклонению цены от EMA" />
       </Panel>
 
-      <BacktestPageShell isLoading={isLoading && !result} error={error} loadingMessage="Расчет EMA-стратегии...">
+      <BacktestPageShell isLoading={false} error={error} loadingMessage="Расчет EMA-стратегии...">
         <div className="rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
-          <AnalysisTabs tabs={tabs} activeTab={activeTab} onChange={setActiveTab} />
+          <AnalysisTabs tabs={tabs} activeTab={activeTab} onChange={setActiveTab} onTabIntent={prefetchAnalysisTab} />
           <div className="min-h-[420px] p-4">
             {activeTab === 'summary' && renderSummary()}
 
@@ -385,8 +474,8 @@ export function EmaStrategyPage() {
                 <EmaDeviationChart
                   data={result.deviation}
                   trades={result.trades}
-                  buyZones={settings.buyZones}
-                  sellZones={settings.sellZones}
+                  buyZones={displayBuyZones}
+                  sellZones={displaySellZones}
                   ticker={selectedTicker}
                 />
               </ChartContainer>
@@ -401,7 +490,7 @@ export function EmaStrategyPage() {
                   activeTab={activeTab}
                   backtestResults={result}
                   comparisonBacktestResults={comparisonResult}
-                  primarySeriesLabel={`${settings.leveragePercent}%`}
+                  primarySeriesLabel={`${displayLeveragePercent}%`}
                   comparisonSeriesLabel="Без маржи (100%)"
                   tickersData={tickersData}
                   strategy={null}
