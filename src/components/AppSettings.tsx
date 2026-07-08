@@ -7,6 +7,7 @@ import { Info, X, Save, Loader2, Check } from 'lucide-react';
 import type { AutoTradingConfig } from '../types';
 import { PageHeader } from './ui/PageHeader';
 import { Modal } from './ui/Modal';
+import { Panel } from './ui/Panel';
 // import { StrategySettings } from './StrategySettings';
 
 // SettingsData interface removed - not actively used
@@ -94,7 +95,7 @@ function AutotradeTab({
 
   return (
     <div className="space-y-4">
-      <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700">
+      <Panel padding="md">
         <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Статус автоторговли</div>
         <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
           Включает или выключает автоматическое исполнение ордеров через Webull по сигналам T-1 мониторинга.
@@ -124,9 +125,9 @@ function AutotradeTab({
             />
           </div>
         )}
-      </div>
+      </Panel>
 
-      <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700">
+      <Panel padding="md">
         <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Провайдер котировок для автоторговли</div>
         <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
           Цены для расчёта IBS и LIMIT-ордера за 1 минуту до закрытия. Webull — один запрос на все тикеры, цена точнее (реальный intraday). Finnhub — по запросу на тикер с задержкой, надёжнее при высокой нагрузке.
@@ -156,9 +157,9 @@ function AutotradeTab({
             ))}
           </div>
         )}
-      </div>
+      </Panel>
 
-      <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700">
+      <Panel padding="md">
         <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Профиль использования капитала для входа</div>
         <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
           Работает для режима входа <strong className="text-gray-700 dark:text-gray-300">balance</strong>. Профиль задаёт, на какую долю базового капитала покупать при входе, и нужен ли защитный запас против отказа Webull по buying power.
@@ -205,7 +206,7 @@ function AutotradeTab({
             </div>
           </div>
         )}
-      </div>
+      </Panel>
 
       <div className="flex items-center gap-3">
         <button
@@ -541,7 +542,7 @@ export function AppSettings() {
   const GeneralTab = () => (
     <div className="space-y-4">
       {/* Уведомления */}
-      <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700">
+      <Panel padding="md">
         <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Уведомления</div>
         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Порог близости к IBS, %</label>
         <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">Диапазон 0–20%. По умолчанию 5%.</p>
@@ -570,10 +571,10 @@ export function AppSettings() {
           }} className="w-24 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent" />
           <span className="text-sm text-gray-500 dark:text-gray-400">%</span>
         </div>
-      </div>
+      </Panel>
 
       {/* График */}
-      <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700">
+      <Panel padding="md">
         <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">График</div>
         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Высота панели индикаторов (IBS/Объём), %</label>
         <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">Диапазон 0–40%. По умолчанию 7%. Больше — выше панель, меньше — ниже.</p>
@@ -603,10 +604,10 @@ export function AppSettings() {
           <span className="text-sm text-gray-500 dark:text-gray-400">%</span>
         </div>
         <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">Подсказка: чтобы сделать столбики заметно ниже (примерно в 3 раза), установите ~7%.</div>
-      </div>
+      </Panel>
 
       {/* Тикеры по умолчанию для multi-ticker */}
-      <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700">
+      <Panel padding="md">
         <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Страница "Несколько тикеров"</div>
         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Тикеры по умолчанию</label>
         <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">Список тикеров через запятую, которые будут использоваться при открытии страницы.</p>
@@ -624,10 +625,10 @@ export function AppSettings() {
           placeholder="AAPL,MSFT,AMZN,MAGS"
         />
         <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Пример: AAPL,MSFT,AMZN,MAGS</p>
-      </div>
+      </Panel>
 
       {/* Комиссии */}
-      <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700">
+      <Panel padding="md">
         <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Комиссии торговли</div>
         <div className="space-y-4">
           <div>
@@ -717,7 +718,7 @@ export function AppSettings() {
             • <strong className="dark:text-gray-300">Комбинированная:</strong> фиксированная часть + процент
           </div>
         </div>
-      </div>
+      </Panel>
 
     </div>
   );
@@ -726,7 +727,7 @@ export function AppSettings() {
   const ApiTab = () => (
     <div className="space-y-4">
       {/* API Testing */}
-      <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700">
+      <Panel padding="md">
         <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Тестирование API</div>
         <div className="text-xs text-gray-500 dark:text-gray-400 mb-3">Проверьте подключение к API провайдерам (используется тестовый символ AAPL)</div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -795,10 +796,10 @@ export function AppSettings() {
             )}
           </div>
         </div>
-      </div>
+      </Panel>
 
       {/* Провайдеры данных */}
-      <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700">
+      <Panel padding="md">
         <div className="flex items-center justify-between mb-3">
           <div className="text-sm font-medium text-gray-700 dark:text-gray-300">Провайдеры данных</div>
           <button
@@ -887,7 +888,7 @@ export function AppSettings() {
           </div>
         </div>
 
-      </div>
+      </Panel>
 
       {/* API Info Modal */}
       {showApiInfo && (
