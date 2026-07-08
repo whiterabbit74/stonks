@@ -114,14 +114,17 @@ function getSignalPrice(bar: OHLCData, ema: number, levelPct: number, side: 'buy
   rawExecutionPrice?: number;
 } {
   if (source === 'intraday') {
+    // "reached" is decided by the intraday probe (low/high), but the recorded
+    // deviation must reflect the EXECUTION price so the displayed value matches
+    // the configured zone level (e.g. a -20% zone records -20%, not the probe low).
     const probePrice = side === 'buy' ? bar.low : bar.high;
-    const deviationPct = calculateDeviation(probePrice, ema);
-    const reached = side === 'buy' ? deviationPct <= levelPct : deviationPct >= levelPct;
+    const probeDeviationPct = calculateDeviation(probePrice, ema);
+    const reached = side === 'buy' ? probeDeviationPct <= levelPct : probeDeviationPct >= levelPct;
     const executionPrice = ema * (1 + levelPct / 100);
     return {
       reached,
       executionPrice,
-      deviationPct,
+      deviationPct: calculateDeviation(executionPrice, ema),
       rawExecutionPrice: rawPriceForExecution(bar, executionPrice),
     };
   }
