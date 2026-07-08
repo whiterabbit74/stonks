@@ -3,7 +3,7 @@ import { Plus, Trash2 } from 'lucide-react';
 import { AnalysisTabs, Button, ChartContainer, IconButton, Input, PageHeader, Panel, Select, TickerInput } from './ui';
 import { MetricsGrid } from './ui/MetricsGrid';
 import { LS } from '../constants';
-import type { EmaZone, MultiTickerBacktestResults } from '../types';
+import type { EmaSignalSource, EmaZone, MultiTickerBacktestResults } from '../types';
 import { lsGet, lsSet } from '../lib/storage';
 import { useMultiTickerData } from '../hooks/useMultiTickerData';
 import { runEmaZoneBacktest, type EmaZoneBacktestResult } from '../lib/ema-zone-strategy';
@@ -21,6 +21,7 @@ interface EmaSettings {
   leveragePercent: number;
   takeProfit: string;
   noSellAtLoss: boolean;
+  signalSource: EmaSignalSource;
   buyZones: EmaZone[];
   sellZones: EmaZone[];
 }
@@ -39,6 +40,7 @@ interface EmaRunParams {
   // "5" vs "5.0") don't trigger a false-positive stale badge.
   takeProfit: number | null;
   noSellAtLoss: boolean;
+  signalSource: EmaSignalSource;
   buyZones: EmaZone[];
   sellZones: EmaZone[];
 }
@@ -50,6 +52,7 @@ function snapshotRunParams(settings: EmaSettings, tickers: string[]): EmaRunPara
     leveragePercent: settings.leveragePercent,
     takeProfit: parseTakeProfit(settings.takeProfit),
     noSellAtLoss: settings.noSellAtLoss,
+    signalSource: settings.signalSource,
     buyZones: settings.buyZones,
     sellZones: settings.sellZones,
   };
@@ -74,6 +77,7 @@ function normalizeSettings(value: Partial<EmaSettings> | null): EmaSettings {
     leveragePercent: Number.isFinite(value?.leveragePercent) ? Number(value?.leveragePercent) : 100,
     takeProfit: typeof value?.takeProfit === 'string' ? value.takeProfit : '',
     noSellAtLoss: value?.noSellAtLoss ?? false,
+    signalSource: value?.signalSource === 'intraday' ? 'intraday' : 'close',
     buyZones: Array.isArray(value?.buyZones) && value.buyZones.length ? value.buyZones : DEFAULT_BUY_ZONES,
     sellZones: Array.isArray(value?.sellZones) && value.sellZones.length ? value.sellZones : DEFAULT_SELL_ZONES,
   };
@@ -301,9 +305,7 @@ export function EmaStrategyPage() {
         sellZones: settings.sellZones,
         takeProfitPercent: parseTakeProfit(settings.takeProfit),
         noSellAtLoss: settings.noSellAtLoss,
-        // Entries/exits trigger on an intraday touch of the zone (a wick into the
-        // zone counts) but fill at the session close, per the "trade at close" rule.
-        signalSource: 'intraday' as const,
+        signalSource: settings.signalSource,
       };
       const nextResult = runEmaZoneBacktest(source, params);
       const nextComparison = leverage > 1
@@ -481,6 +483,17 @@ export function EmaStrategyPage() {
               ))}
             </Select>
           </div>
+        </div>
+
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">Сигнал входа/выхода</label>
+          <Select value={settings.signalSource} onChange={(event) => setSettings((prev) => ({ ...prev, signalSource: event.target.value as EmaSignalSource }))}>
+            <option value="close">По закрытию свечи</option>
+            <option value="intraday">Касание внутри дня (вход по закрытию)</option>
+          </Select>
+          <p className="mt-1 text-[11px] leading-snug text-gray-500 dark:text-gray-400">
+            «Касание» активирует зону, если её задела тень свечи; сделка всё равно исполняется по закрытию дня.
+          </p>
         </div>
 
         <div>
