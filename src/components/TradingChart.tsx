@@ -22,7 +22,7 @@ import {
 } from 'lightweight-charts';
 import { formatOHLCYMD } from '../lib/utils';
 import { toChartTimestamp } from '../lib/date-utils';
-import type { OHLCData, Trade, SplitEvent, EmaZone } from '../types';
+import type { OHLCData, Trade, SplitEvent, EmaZone, EmaStartMode } from '../types';
 import { useAppStore } from '../stores';
 import { logError } from '../lib/error-logger';
 import { ChartLegend } from './ChartLegend';
@@ -113,12 +113,23 @@ function saveChartPrefs(prefs: ChartPrefs) {
   }
 }
 
-const calculateEMA = (data: Array<{ close: number }>, period: number): number[] => {
+const calculateEMA = (data: Array<{ close: number }>, period: number, startMode: EmaStartMode = 'full_history'): number[] => {
+  const multiplier = 2 / (period + 1);
+
+  if (startMode === 'from_start') {
+    // Seed at bar #0 so the line (and zone bands) start from the first candle.
+    const ema: number[] = [];
+    if (data.length === 0) return ema;
+    ema[0] = data[0].close;
+    for (let i = 1; i < data.length; i++) {
+      ema[i] = (data[i].close - ema[i - 1]) * multiplier + ema[i - 1];
+    }
+    return ema;
+  }
+
   if (data.length < period) return [];
 
   const ema: number[] = [];
-  const multiplier = 2 / (period + 1);
-
   let sum = 0;
   for (let i = 0; i < period; i++) {
     sum += data[i].close;
@@ -241,7 +252,7 @@ interface TradingChartProps {
   isVisible?: boolean;
   toolbarPrefix?: ReactNode;
   exportFileNamePrefix?: string;
-  emaZones?: { emaPeriod: number; buyZones: EmaZone[]; sellZones: EmaZone[] };
+  emaZones?: { emaPeriod: number; startMode?: EmaStartMode; buyZones: EmaZone[]; sellZones: EmaZone[] };
 }
 
 export const TradingChart = memo(function TradingChart({
@@ -634,7 +645,7 @@ export const TradingChart = memo(function TradingChart({
     }
 
     const period = emaZones.emaPeriod;
-    const emaValues = calculateEMA(normalizedBars, period);
+    const emaValues = calculateEMA(normalizedBars, period, emaZones.startMode ?? 'full_history');
 
     const buildBand = (factor: number) =>
       normalizedBars

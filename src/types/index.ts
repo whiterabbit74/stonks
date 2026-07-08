@@ -239,6 +239,13 @@ export interface ExposurePoint {
 export type EmaPeriod = 20 | 200;
 export type EmaSignalSource = 'close' | 'intraday';
 
+// Where the EMA line (and therefore the first tradable bar) begins:
+// - 'full_history': EMA is undefined until `emaPeriod` full bars exist (SMA seed
+//   at bar #period). This is the "real" 200-EMA — no trades before 200 days.
+// - 'from_start': EMA is seeded at bar #0 and grows from the first candle, so
+//   trades can begin almost immediately from the start of the chart.
+export type EmaStartMode = 'full_history' | 'from_start';
+
 export interface EmaZone {
   id: string;
   levelPct: number;
@@ -254,6 +261,7 @@ export interface EmaZoneStrategyParams {
   takeProfitPercent: number | null;
   noSellAtLoss: boolean;
   signalSource: EmaSignalSource;
+  emaStartMode?: EmaStartMode;
 }
 
 export interface EmaDeviationPoint {

@@ -67,6 +67,27 @@ export class IndicatorEngine {
   }
 
   /**
+   * EMA seeded at the very first bar so every index has a value (the average
+   * "grows into" the full period). Use this when trading should begin from the
+   * start of the chart instead of waiting for `period` full bars.
+   * @param data Array of numeric values (typically closing prices)
+   * @param period Number of periods for the EMA smoothing factor
+   * @returns Array of EMA values with a finite number at every index
+   */
+  static calculateEMAFromStart(data: number[], period: number): number[] {
+    const result: number[] = new Array(data.length).fill(NaN);
+    if (data.length === 0) return result;
+
+    const multiplier = 2 / (period + 1);
+    result[0] = data[0];
+    for (let i = 1; i < data.length; i++) {
+      result[i] = (data[i] * multiplier) + (result[i - 1] * (1 - multiplier));
+    }
+
+    return result;
+  }
+
+  /**
    * Calculate Relative Strength Index (RSI)
    * @param data Array of numeric values (typically closing prices)
    * @param period Number of periods for RSI calculation (default: 14)

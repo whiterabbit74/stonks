@@ -3,7 +3,7 @@ import { Plus, Trash2 } from 'lucide-react';
 import { AnalysisTabs, Button, ChartContainer, IconButton, Input, PageHeader, Panel, Select, TickerInput } from './ui';
 import { MetricsGrid } from './ui/MetricsGrid';
 import { LS } from '../constants';
-import type { EmaSignalSource, EmaZone, MultiTickerBacktestResults } from '../types';
+import type { EmaSignalSource, EmaStartMode, EmaZone, MultiTickerBacktestResults } from '../types';
 import { lsGet, lsSet } from '../lib/storage';
 import { useMultiTickerData } from '../hooks/useMultiTickerData';
 import { runEmaZoneBacktest, type EmaZoneBacktestResult } from '../lib/ema-zone-strategy';
@@ -22,6 +22,7 @@ interface EmaSettings {
   takeProfit: string;
   noSellAtLoss: boolean;
   signalSource: EmaSignalSource;
+  emaStartMode: EmaStartMode;
   buyZones: EmaZone[];
   sellZones: EmaZone[];
 }
@@ -41,6 +42,7 @@ interface EmaRunParams {
   takeProfit: number | null;
   noSellAtLoss: boolean;
   signalSource: EmaSignalSource;
+  emaStartMode: EmaStartMode;
   buyZones: EmaZone[];
   sellZones: EmaZone[];
 }
@@ -53,6 +55,7 @@ function snapshotRunParams(settings: EmaSettings, tickers: string[]): EmaRunPara
     takeProfit: parseTakeProfit(settings.takeProfit),
     noSellAtLoss: settings.noSellAtLoss,
     signalSource: settings.signalSource,
+    emaStartMode: settings.emaStartMode,
     buyZones: settings.buyZones,
     sellZones: settings.sellZones,
   };
@@ -78,6 +81,7 @@ function normalizeSettings(value: Partial<EmaSettings> | null): EmaSettings {
     takeProfit: typeof value?.takeProfit === 'string' ? value.takeProfit : '',
     noSellAtLoss: value?.noSellAtLoss ?? false,
     signalSource: value?.signalSource === 'intraday' ? 'intraday' : 'close',
+    emaStartMode: value?.emaStartMode === 'from_start' ? 'from_start' : 'full_history',
     buyZones: Array.isArray(value?.buyZones) && value.buyZones.length ? value.buyZones : DEFAULT_BUY_ZONES,
     sellZones: Array.isArray(value?.sellZones) && value.sellZones.length ? value.sellZones : DEFAULT_SELL_ZONES,
   };
@@ -274,6 +278,7 @@ export function EmaStrategyPage() {
   const displayBuyZones = runParams?.buyZones ?? settings.buyZones;
   const displaySellZones = runParams?.sellZones ?? settings.sellZones;
   const displayEmaPeriod = runParams?.emaPeriod ?? settings.emaPeriod;
+  const displayEmaStartMode = runParams?.emaStartMode ?? settings.emaStartMode;
   const displayLeveragePercent = runParams?.leveragePercent ?? settings.leveragePercent;
 
   const prefetchAnalysisTab = (tabId: string) => {
@@ -306,6 +311,7 @@ export function EmaStrategyPage() {
         takeProfitPercent: parseTakeProfit(settings.takeProfit),
         noSellAtLoss: settings.noSellAtLoss,
         signalSource: settings.signalSource,
+        emaStartMode: settings.emaStartMode,
       };
       const nextResult = runEmaZoneBacktest(source, params);
       const nextComparison = leverage > 1
@@ -497,6 +503,17 @@ export function EmaStrategyPage() {
         </div>
 
         <div>
+          <label className="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">Старт EMA</label>
+          <Select value={settings.emaStartMode} onChange={(event) => setSettings((prev) => ({ ...prev, emaStartMode: event.target.value as EmaStartMode }))}>
+            <option value="full_history">После полной истории ({settings.emaPeriod} дней)</option>
+            <option value="from_start">С самого начала графика</option>
+          </Select>
+          <p className="mt-1 text-[11px] leading-snug text-gray-500 dark:text-gray-400">
+            «После полной истории» — сделки только когда накоплено {settings.emaPeriod} баров (реальная EMA {settings.emaPeriod}). «С самого начала» — EMA растёт с первой свечи, сделки могут начаться сразу.
+          </p>
+        </div>
+
+        <div>
           <label className="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">Тейк-профит</label>
           <p className="mb-1 text-[11px] leading-snug text-gray-500 dark:text-gray-400">
             Досрочный выход, если максимум дня достиг процента прибыли от цены входа. Пусто или 0 выключает условие.
@@ -607,7 +624,7 @@ export function EmaStrategyPage() {
                   ticker={selectedTicker}
                   splits={selectedTickerData?.splits}
                   isVisible={activeTab === 'price'}
-                  emaZones={{ emaPeriod: displayEmaPeriod, buyZones: displayBuyZones, sellZones: displaySellZones }}
+                  emaZones={{ emaPeriod: displayEmaPeriod, startMode: displayEmaStartMode, buyZones: displayBuyZones, sellZones: displaySellZones }}
                   toolbarPrefix={tickers.length > 1 ? (
                     <div className="flex flex-wrap gap-1.5">
                       {tickers.map((ticker) => (

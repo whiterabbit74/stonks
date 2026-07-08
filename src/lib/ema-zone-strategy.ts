@@ -1,5 +1,6 @@
 import type {
   EmaDeviationPoint,
+  EmaStartMode,
   EmaZone,
   EmaZoneStrategyParams,
   EquityPoint,
@@ -80,7 +81,15 @@ function rawPriceForExecution(bar: OHLCData, executionPrice: number): number | u
   return rawCloseForBar(bar);
 }
 
-function prepareTickerData(tickersData: EmaTickerData[], emaPeriod: number): PreparedTicker[] {
+function computeEma(closes: number[], emaPeriod: number, startMode: EmaStartMode): number[] {
+  if (closes.length === 0) return [];
+  if (startMode === 'from_start') {
+    return IndicatorEngine.calculateEMAFromStart(closes, emaPeriod);
+  }
+  return closes.length >= emaPeriod ? IndicatorEngine.calculateEMA(closes, emaPeriod) : [];
+}
+
+function prepareTickerData(tickersData: EmaTickerData[], emaPeriod: number, startMode: EmaStartMode): PreparedTicker[] {
   return tickersData
     .map((tickerData) => {
       const rawByDate = new Map<string, OHLCData>();
@@ -99,7 +108,7 @@ function prepareTickerData(tickersData: EmaTickerData[], emaPeriod: number): Pre
           };
         });
       const closes = data.map((bar) => Number(bar.close));
-      const ema = closes.length >= emaPeriod ? IndicatorEngine.calculateEMA(closes, emaPeriod) : [];
+      const ema = computeEma(closes, emaPeriod, startMode);
       const byDate = new Map<string, { bar: OHLCData; index: number }>();
       data.forEach((bar, index) => byDate.set(bar.date, { bar, index }));
       return { ticker: tickerData.ticker.toUpperCase(), data, ema, byDate, rawByDate };
@@ -204,8 +213,12 @@ function closeLot({
   };
 }
 
-export function calculateEmaDeviationData(tickersData: EmaTickerData[], emaPeriod: number): EmaDeviationPoint[] {
-  const prepared = prepareTickerData(tickersData, emaPeriod);
+export function calculateEmaDeviationData(
+  tickersData: EmaTickerData[],
+  emaPeriod: number,
+  startMode: EmaStartMode = 'full_history'
+): EmaDeviationPoint[] {
+  const prepared = prepareTickerData(tickersData, emaPeriod, startMode);
   return prepared.flatMap((tickerData) => tickerData.data.map((bar, index) => {
     const ema = tickerData.ema[index];
     if (!Number.isFinite(ema)) return null;
@@ -227,7 +240,9 @@ export function runEmaZoneBacktest(
   const leverage = Number.isFinite(params.leverage) && params.leverage > 0 ? params.leverage : 1;
   const buyZones = enabledZones(params.buyZones).sort((a, b) => b.levelPct - a.levelPct);
   const sellZones = enabledZones(params.sellZones).sort((a, b) => a.levelPct - b.levelPct);
-  const prepared = prepareTickerData(tickersData, Math.max(1, Math.round(params.emaPeriod)));
+  const emaPeriod = Math.max(1, Math.round(params.emaPeriod));
+  const startMode: EmaStartMode = params.emaStartMode === 'from_start' ? 'from_start' : 'full_history';
+  const prepared = prepareTickerData(tickersData, emaPeriod, startMode);
   const allDates = Array.from(new Set(prepared.flatMap((tickerData) => tickerData.data.map((bar) => bar.date)))).sort();
   const trades: Trade[] = [];
   const equity: EquityPoint[] = [];
@@ -236,7 +251,7 @@ export function runEmaZoneBacktest(
   let cash = initialCapital;
   let peak = initialCapital;
 
-  const deviation = calculateEmaDeviationData(tickersData, Math.max(1, Math.round(params.emaPeriod)));
+  const deviation = calculateEmaDeviationData(tickersData, emaPeriod, startMode);
 
   const currentPositionValue = (date: string): number => {
     return lots.reduce((sum, lot) => {

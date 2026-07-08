@@ -247,6 +247,31 @@ describe('runEmaZoneBacktest', () => {
     expect(result.finalValue).toBe(180000);
   });
 
+  it('starts trading before the full period with from_start EMA, but waits for full history by default', () => {
+    // Two bars only, EMA period 3. from_start seeds the EMA at bar #0 so a signal
+    // can fire on bar #1; full_history has no EMA until 3 bars exist, so no trade.
+    const data = [bar('2024-01-01', 100), bar('2024-01-02', 70)];
+    const params = {
+      initialCapital: 10000,
+      leverage: 1,
+      emaPeriod: 3,
+      signalSource: 'close',
+      takeProfitPercent: null,
+      noSellAtLoss: false,
+      // Mean-reversion buy: fires only once price is >=15% below the EMA. Bar #0
+      // sits on the EMA (0%), bar #1 drops to ~-17.6% from the from_start EMA.
+      buyZones: [{ id: 'buy-15', levelPct: -15, enabled: true }],
+      sellZones: [],
+    } as const;
+
+    const fromStart = runEmaZoneBacktest([{ ticker: 'TQQQ', data }], { ...params, emaStartMode: 'from_start' });
+    expect(fromStart.trades).toHaveLength(1);
+    expect(fromStart.trades[0].entryDate).toBe('2024-01-02');
+
+    const fullHistory = runEmaZoneBacktest([{ ticker: 'TQQQ', data }], { ...params, emaStartMode: 'full_history' });
+    expect(fullHistory.trades).toHaveLength(0);
+  });
+
   it('triggers on an intraday touch of the buy zone but fills at the close, not the zone level', () => {
     // EMA settles at 97.5 on the last bar; a -20% buy zone sits at 78. The bar
     // dips to a low of 77 (inside the zone) but closes at 95 (back above it).
