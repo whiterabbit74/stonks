@@ -6,6 +6,7 @@ import { LS } from '../constants';
 import type { EmaSignalSource, EmaStartMode, EmaZone, MultiTickerBacktestResults } from '../types';
 import { lsGet, lsSet } from '../lib/storage';
 import { useMultiTickerData } from '../hooks/useMultiTickerData';
+import { useMarketOpen } from '../hooks/useMarketOpen';
 import { runEmaZoneBacktest, type EmaZoneBacktestResult } from '../lib/ema-zone-strategy';
 import { BacktestPageShell } from './BacktestPageShell';
 import { TabContentLoader } from './ui/TabContentLoader';
@@ -228,6 +229,7 @@ export function EmaStrategyPage() {
   const [presetName, setPresetName] = useState('');
   const [selectedPresetId, setSelectedPresetId] = useState('');
   const hasAutoRun = useRef(false);
+  const isMarketOpen = useMarketOpen();
 
   const {
     tickersData,
@@ -422,6 +424,7 @@ export function EmaStrategyPage() {
               data={priceChartData}
               trades={result.trades}
               showTrades
+              isTrading={isMarketOpen}
             />
           </>
         ) : (
