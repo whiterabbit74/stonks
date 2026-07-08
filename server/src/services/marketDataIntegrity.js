@@ -1,7 +1,10 @@
 const COMMON_SPLIT_FACTORS = [2, 3, 4, 5, 7, 10, 20];
 const DEFAULT_FACTOR_TOLERANCE = 0.08;
-const DEFAULT_SPLIT_LIKE_MOVE_PCT = 25;
-const DEFAULT_EXTREME_MOVE_PCT = 45;
+// Minimum bar-to-bar ratio worth treating as split-like. A real split is at
+// least 1:2, so nothing under ~2x is a split — smaller moves are normal market
+// action and must not be flagged. 1.9 leaves ~5% slack for imperfect data below
+// a clean 2.0 while staying well clear of ordinary volatility.
+const DEFAULT_MIN_SPLIT_FACTOR = 1.9;
 
 function toFiniteNumber(value) {
     const num = Number(value);
@@ -174,10 +177,13 @@ function evaluatePriceIntegrity(input = {}) {
         matchedFactor,
         knownSplits: input.knownSplits,
     });
-    const splitLikeMovePct = toFiniteNumber(input.splitLikeMovePct) ?? DEFAULT_SPLIT_LIKE_MOVE_PCT;
-    const extremeMovePct = toFiniteNumber(input.extremeMovePct) ?? DEFAULT_EXTREME_MOVE_PCT;
-    const splitLike = !!nearest && Math.abs(percentChange) >= splitLikeMovePct;
-    const extremeGap = Math.abs(percentChange) >= extremeMovePct;
+    // A real split is at least 1:2 (one share → two, price ~halves; or a reverse
+    // split, price ~doubles). So the ONLY thing worth flagging is a move whose
+    // ratio is at least ~2x. Everyday volatility — even a violent +45% / -30% day
+    // on a leveraged or freshly-listed ticker — stays below this and is ignored.
+    const minSplitFactor = toFiniteNumber(input.minSplitFactor) ?? DEFAULT_MIN_SPLIT_FACTOR;
+    const splitLike = !!nearest;                      // ratio sits on a clean split factor (2,3,4,…)
+    const extremeGap = factorRatio >= minSplitFactor;  // ≥ ~2x but not a clean factor (e.g. 2.5x, 6x, 15x)
 
     const common = {
         ...base,
@@ -242,8 +248,7 @@ function validateOhlcSeriesIntegrity(input = {}) {
             knownSplits: input.knownSplits,
             adjustedForSplits: input.adjustedForSplits,
             factorTolerance: input.factorTolerance,
-            splitLikeMovePct: input.splitLikeMovePct,
-            extremeMovePct: input.extremeMovePct,
+            minSplitFactor: input.minSplitFactor,
         });
 
         if (warning && warning.blockSignals) {

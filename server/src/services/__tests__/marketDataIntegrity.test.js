@@ -44,6 +44,32 @@ describe('market data integrity guard', () => {
     expect(result.telegramLines.join('\n')).toContain('x2.07');
   });
 
+  it('does not flag a large but sub-split move (a real split is at least 1:2)', () => {
+    // +50% pop on a volatile/new ticker: ratio 1.5 — nowhere near a 2x split.
+    const up = evaluatePriceIntegrity({
+      symbol: 'SPCX',
+      previousBar: { date: '2026-06-12', close: 70 },
+      currentPrice: 105,
+      currentDate: '2026-06-13',
+      knownSplits: [],
+      adjustedForSplits: false,
+    });
+    expect(up.ok).toBe(true);
+    expect(up.blockSignals).toBe(false);
+
+    // -40% crash: ratio 1.667 — still below the 1:2 split floor.
+    const down = evaluatePriceIntegrity({
+      symbol: 'SPCX',
+      previousBar: { date: '2026-06-13', close: 100 },
+      currentPrice: 60,
+      currentDate: '2026-06-16',
+      knownSplits: [],
+      adjustedForSplits: false,
+    });
+    expect(down.ok).toBe(true);
+    expect(down.blockSignals).toBe(false);
+  });
+
   it('allows a known manual split boundary for raw data', () => {
     const result = evaluatePriceIntegrity({
       symbol: 'TQQQ',
