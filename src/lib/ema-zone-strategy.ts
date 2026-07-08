@@ -114,18 +114,21 @@ function getSignalPrice(bar: OHLCData, ema: number, levelPct: number, side: 'buy
   rawExecutionPrice?: number;
 } {
   if (source === 'intraday') {
-    // "reached" is decided by the intraday probe (low/high), but the recorded
-    // deviation must reflect the EXECUTION price so the displayed value matches
-    // the configured zone level (e.g. a -20% zone records -20%, not the probe low).
+    // Trigger and fill are separate concerns. The zone is "reached" when the
+    // intraday extreme (low for buys, high for sells) touches the level, so a
+    // bar that wicks into the zone and closes back out still counts. But the
+    // fill happens at the session CLOSE — never pinned to the exact zone level.
+    // Pinning to ema*(1+level) would cap every take-profit at exactly +40% and
+    // overpay every entry at exactly +15%, which massively understates returns
+    // versus executing at the real close.
     const probePrice = side === 'buy' ? bar.low : bar.high;
     const probeDeviationPct = calculateDeviation(probePrice, ema);
     const reached = side === 'buy' ? probeDeviationPct <= levelPct : probeDeviationPct >= levelPct;
-    const executionPrice = ema * (1 + levelPct / 100);
     return {
       reached,
-      executionPrice,
-      deviationPct: calculateDeviation(executionPrice, ema),
-      rawExecutionPrice: rawPriceForExecution(bar, executionPrice),
+      executionPrice: bar.close,
+      deviationPct: calculateDeviation(bar.close, ema),
+      rawExecutionPrice: rawPriceForExecution(bar, bar.close),
     };
   }
 

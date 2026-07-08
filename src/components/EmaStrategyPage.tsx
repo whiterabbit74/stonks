@@ -300,8 +300,8 @@ export function EmaStrategyPage() {
         sellZones: settings.sellZones,
         takeProfitPercent: parseTakeProfit(settings.takeProfit),
         noSellAtLoss: settings.noSellAtLoss,
-        // Entries/exits always trigger on an intraday touch of the zone
-        // (fill at the zone level), never close-only.
+        // Entries/exits trigger on an intraday touch of the zone (a wick into the
+        // zone counts) but fill at the session close, per the "trade at close" rule.
         signalSource: 'intraday' as const,
       };
       const nextResult = runEmaZoneBacktest(source, params);
