@@ -637,9 +637,7 @@ export function MultiTickerPage() {
 
   return (
     <div className="space-y-6">
-      <Panel as="section" padding="md">
-        <PageHeader className="mb-0" title="Акции" subtitle="Бэктест стратегии на нескольких активах" />
-      </Panel>
+      <PageHeader title="Акции" subtitle="Бэктест стратегии на нескольких активах" />
 
       <BacktestPageShell isLoading={false} error={error} loadingMessage="Загрузка данных и выполнение бэктеста...">
         {backtestResults && (

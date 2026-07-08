@@ -611,9 +611,7 @@ export function EmaStrategyPage() {
 
   return (
     <div className="space-y-6">
-      <Panel as="section" padding="md">
-        <PageHeader className="mb-0" title="EMA" subtitle="Симулятор торговли по отклонению цены от EMA" />
-      </Panel>
+      <PageHeader title="EMA" subtitle="Симулятор торговли по отклонению цены от EMA" />
 
       <BacktestPageShell isLoading={false} error={error} loadingMessage="Расчет EMA-стратегии...">
         {result && (
