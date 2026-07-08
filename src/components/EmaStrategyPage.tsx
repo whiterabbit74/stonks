@@ -82,6 +82,39 @@ function normalizeSettings(value: Partial<EmaSettings> | null): EmaSettings {
   };
 }
 
+interface EmaPreset {
+  id: string;
+  name: string;
+  tickers: string[];
+  settings: EmaSettings;
+}
+
+// Shallow-clone each zone object so a preset never shares zone references with
+// the live settings (editing a zone after save/apply must not mutate the store).
+function cloneZones(zones: EmaZone[]): EmaZone[] {
+  return zones.map((zone) => ({ ...zone }));
+}
+
+// Drop malformed presets from persisted storage (bad id/name/tickers/settings).
+function sanitizePresets(value: unknown): EmaPreset[] {
+  if (!Array.isArray(value)) return [];
+  const result: EmaPreset[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== 'object') continue;
+    const candidate = item as Partial<EmaPreset>;
+    if (typeof candidate.id !== 'string' || typeof candidate.name !== 'string') continue;
+    if (!Array.isArray(candidate.tickers) || !candidate.tickers.every((t) => typeof t === 'string')) continue;
+    if (!candidate.settings || typeof candidate.settings !== 'object') continue;
+    result.push({
+      id: candidate.id,
+      name: candidate.name,
+      tickers: [...candidate.tickers],
+      settings: candidate.settings as EmaSettings,
+    });
+  }
+  return result;
+}
+
 function ZoneEditor({
   title,
   zones,
@@ -186,6 +219,9 @@ export function EmaStrategyPage() {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<EmaZoneBacktestResult | null>(null);
   const [comparisonResult, setComparisonResult] = useState<MultiTickerBacktestResults | null>(null);
+  const [presets, setPresets] = useState<EmaPreset[]>(() => sanitizePresets(lsGet<EmaPreset[]>(LS.EMA_PRESETS, [])));
+  const [presetName, setPresetName] = useState('');
+  const [selectedPresetId, setSelectedPresetId] = useState('');
   const hasAutoRun = useRef(false);
 
   const {
@@ -200,6 +236,7 @@ export function EmaStrategyPage() {
   useEffect(() => { lsSet(LS.EMA_TICKERS, tickers); }, [tickers]);
   useEffect(() => { lsSet(LS.EMA_SETTINGS, settings); }, [settings]);
   useEffect(() => { lsSet(LS.EMA_SELECTED_TICKER, selectedTicker); }, [selectedTicker]);
+  useEffect(() => { lsSet(LS.EMA_PRESETS, presets); }, [presets]);
 
   useEffect(() => {
     if (tickers.length > 0 && !tickers.includes(selectedTicker)) {
@@ -291,6 +328,55 @@ export function EmaStrategyPage() {
     void runBacktest();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const handleSavePreset = () => {
+    const name = presetName.trim();
+    if (!name) return;
+    // Deep-copy zones so later edits to `settings` don't mutate the stored preset.
+    const snapshot: EmaSettings = {
+      ...settings,
+      buyZones: cloneZones(settings.buyZones),
+      sellZones: cloneZones(settings.sellZones),
+    };
+    const snapshotTickers = [...tickers];
+    let savedId = '';
+    setPresets((prev) => {
+      const existing = prev.find((p) => p.name.trim().toLowerCase() === name.toLowerCase());
+      if (existing) {
+        savedId = existing.id;
+        return prev.map((p) =>
+          p.id === existing.id ? { ...p, name, tickers: snapshotTickers, settings: snapshot } : p
+        );
+      }
+      savedId = `preset-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      return [...prev, { id: savedId, name, tickers: snapshotTickers, settings: snapshot }];
+    });
+    setSelectedPresetId(savedId);
+    setPresetName('');
+  };
+
+  const handleApplyPreset = (id: string) => {
+    const preset = presets.find((p) => p.id === id);
+    if (!preset) return;
+    // normalizeSettings guards malformed stored fields; clone zones so edits stay local.
+    const applied = normalizeSettings({
+      ...preset.settings,
+      buyZones: cloneZones(preset.settings.buyZones ?? []),
+      sellZones: cloneZones(preset.settings.sellZones ?? []),
+    });
+    const appliedTickers = [...preset.tickers];
+    setSettings(applied);
+    setTickers(appliedTickers);
+    setTickersInput(appliedTickers.join(', '));
+    setSelectedPresetId(id);
+    void runBacktest(appliedTickers);
+  };
+
+  const handleDeletePreset = () => {
+    if (!selectedPresetId) return;
+    setPresets((prev) => prev.filter((p) => p.id !== selectedPresetId));
+    setSelectedPresetId('');
+  };
+
   const selectedTickerData = tickersData.find((item) => item.ticker === selectedTicker);
 
   const renderSummary = () => (
@@ -303,6 +389,45 @@ export function EmaStrategyPage() {
         )}
       </Panel>
       <Panel as="aside" tone="soft" padding="sm" className="space-y-4">
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">Пресеты</label>
+          <div className="flex items-center gap-2">
+            <Select
+              value={selectedPresetId}
+              onChange={(event) => handleApplyPreset(event.target.value)}
+            >
+              <option value="" disabled>— Выбрать пресет —</option>
+              {presets.map((preset) => (
+                <option key={preset.id} value={preset.id}>{preset.name}</option>
+              ))}
+            </Select>
+            <IconButton
+              variant="outline"
+              size="sm"
+              onClick={handleDeletePreset}
+              disabled={!selectedPresetId}
+              title="Удалить пресет"
+              aria-label="Удалить пресет"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </IconButton>
+          </div>
+          <div className="mt-2 flex items-center gap-2">
+            <Input
+              value={presetName}
+              onChange={(event) => setPresetName(event.target.value)}
+              placeholder="Название пресета"
+            />
+            <Button
+              size="sm"
+              onClick={handleSavePreset}
+              disabled={!presetName.trim()}
+            >
+              Сохранить
+            </Button>
+          </div>
+        </div>
+
         <div>
           <label className="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">Тикеры</label>
           <TickerInput

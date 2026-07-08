@@ -681,6 +681,21 @@ export const TradingChart = memo(function TradingChart({
 
   const overlayIdsKey = useMemo(() => emaOverlays.map((o) => o.id).join('|'), [emaOverlays]);
 
+  // Prune ephemeral visibility flags for overlays that no longer exist, so a
+  // hide → disable-zone → re-enable-zone cycle doesn't resurrect the overlay hidden.
+  useEffect(() => {
+    const ids = new Set(emaOverlays.map((o) => o.id));
+    setOverlayHidden((prev) => {
+      const next: Record<string, boolean> = {};
+      let changed = false;
+      for (const [k, v] of Object.entries(prev)) {
+        if (ids.has(k)) next[k] = v;
+        else changed = true;
+      }
+      return changed ? next : prev;
+    });
+  }, [overlayIdsKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const exportRows = useMemo(
     () =>
       normalizedBars.map((bar, index) => {
@@ -1523,6 +1538,7 @@ export const TradingChart = memo(function TradingChart({
                   key={overlay.id}
                   type="button"
                   onClick={() => setOverlayHidden((prev) => ({ ...prev, [overlay.id]: prev[overlay.id] !== true }))}
+                  aria-pressed={active}
                   className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors ${
                     active
                       ? 'border-gray-300 bg-white text-gray-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200'
