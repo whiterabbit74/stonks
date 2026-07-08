@@ -35,7 +35,9 @@ interface EmaRunParams {
   tickers: string[];
   emaPeriod: number;
   leveragePercent: number;
-  takeProfit: string;
+  // Parsed take-profit (number | null) so equivalent strings ("" vs "0",
+  // "5" vs "5.0") don't trigger a false-positive stale badge.
+  takeProfit: number | null;
   noSellAtLoss: boolean;
   signalSource: EmaSignalSource;
   buyZones: EmaZone[];
@@ -47,7 +49,7 @@ function snapshotRunParams(settings: EmaSettings, tickers: string[]): EmaRunPara
     tickers,
     emaPeriod: settings.emaPeriod,
     leveragePercent: settings.leveragePercent,
-    takeProfit: settings.takeProfit,
+    takeProfit: parseTakeProfit(settings.takeProfit),
     noSellAtLoss: settings.noSellAtLoss,
     signalSource: settings.signalSource,
     buyZones: settings.buyZones,
