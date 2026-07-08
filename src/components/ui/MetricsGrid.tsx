@@ -69,7 +69,7 @@ export function MetricsGrid({ finalValue, maxDrawdown, metrics }: MetricsGridPro
 
       <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 text-center">
         <div className="text-2xl font-bold text-teal-600">
-          {fmtNum(metrics.profitFactor)}
+          {Number.isFinite(metrics.profitFactor) ? fmtNum(metrics.profitFactor) : '∞'}
         </div>
         <div className="text-sm text-gray-600 dark:text-gray-400">Profit Factor</div>
       </div>
