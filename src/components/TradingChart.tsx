@@ -22,7 +22,7 @@ import {
 } from 'lightweight-charts';
 import { formatOHLCYMD } from '../lib/utils';
 import { toChartTimestamp } from '../lib/date-utils';
-import type { OHLCData, Trade, SplitEvent } from '../types';
+import type { OHLCData, Trade, SplitEvent, EmaZone } from '../types';
 import { useAppStore } from '../stores';
 import { logError } from '../lib/error-logger';
 import { ChartLegend } from './ChartLegend';
@@ -36,6 +36,10 @@ type MarkerVariant = 'arrow' | 'circle' | 'square' | 'circleSquare' | 'squareCir
 
 const EMA20_DEFAULT_COLOR = '#2563EB';
 const EMA200_DEFAULT_COLOR = '#F59E0B';
+// Strategy overlay colors (match EmaDeviationChart for cross-tab consistency).
+const STRATEGY_EMA_OVERLAY_COLOR = '#F59E0B';
+const ZONE_BUY_OVERLAY_COLOR = '#10B981';
+const ZONE_SELL_OVERLAY_COLOR = '#EF4444';
 const TRADE_MARKER_DEFAULT_COLOR = '#2563EB';
 const EMA_DEFAULT_OPACITY = 85;
 const TRADE_MARKER_DEFAULT_OPACITY = 90;
@@ -184,6 +188,11 @@ function markerVariantToShapes(variant: MarkerVariant): { entry: 'arrowUp' | 'ci
   }
 }
 
+function formatZoneLevel(levelPct: number): string {
+  const sign = levelPct > 0 ? '+' : levelPct < 0 ? '−' : '';
+  return `${sign}${Math.abs(levelPct)}%`;
+}
+
 function formatExportValue(value: number | null | undefined, digits = 6): string {
   if (value == null || !Number.isFinite(value)) return '';
   return Number(value).toFixed(digits);
@@ -232,6 +241,7 @@ interface TradingChartProps {
   isVisible?: boolean;
   toolbarPrefix?: ReactNode;
   exportFileNamePrefix?: string;
+  emaZones?: { emaPeriod: number; buyZones: EmaZone[]; sellZones: EmaZone[] };
 }
 
 export const TradingChart = memo(function TradingChart({
@@ -242,6 +252,7 @@ export const TradingChart = memo(function TradingChart({
   isVisible = true,
   toolbarPrefix,
   exportFileNamePrefix = 'chart-data',
+  emaZones,
 }: TradingChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -250,6 +261,7 @@ export const TradingChart = memo(function TradingChart({
   const volumeSeriesRef = useRef<ISeriesApi<'Histogram'> | null>(null);
   const ema20SeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
   const ema200SeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
+  const overlaySeriesRef = useRef<Map<string, ISeriesApi<'Line'>>>(new Map());
   const markersApiRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
   const crosshairHandlerRef = useRef<((param: MouseEventParams<Time>) => void) | null>(null);
   const tooltipRef = useRef<HTMLDivElement | null>(null);
@@ -279,6 +291,8 @@ export const TradingChart = memo(function TradingChart({
   const [tradeMarkerSize, setTradeMarkerSize] = useState<number>(() => normalizeMarkerSize(storedPrefs?.tradeMarkerSize, TRADE_MARKER_DEFAULT_SIZE));
   const [showChartSettings, setShowChartSettings] = useState(false);
   const settingsRef = useRef<HTMLDivElement | null>(null);
+  // Ephemeral visibility for strategy EMA/zone overlays, keyed by overlay id. Missing = visible.
+  const [overlayHidden, setOverlayHidden] = useState<Record<string, boolean>>({});
 
   const showIBSRef = useRef(showIBS);
   const showVolumeRef = useRef(showVolume);
@@ -337,6 +351,8 @@ export const TradingChart = memo(function TradingChart({
 
   useEffect(() => {
     if (!chartContainerRef.current) return;
+
+    const overlayMap = overlaySeriesRef.current;
 
     const el = chartContainerRef.current;
     const darkNow = typeof document !== 'undefined' ? document.documentElement.classList.contains('dark') : false;
@@ -475,6 +491,7 @@ export const TradingChart = memo(function TradingChart({
       volumeSeriesRef.current = null;
       ema20SeriesRef.current = null;
       ema200SeriesRef.current = null;
+      overlayMap.clear();
 
       if (chartRef.current) {
         chartRef.current.remove();
@@ -606,6 +623,64 @@ export const TradingChart = memo(function TradingChart({
     [normalizedBars, ema200Values]
   );
 
+  // Strategy EMA + zone overlays, computed from the SAME normalizedBars the price chart
+  // renders (never from result.deviation, which lives on a different absolute scale).
+  // Each band = EMA × (1 + levelPct / 100) at every bar index.
+  const emaOverlays = useMemo(() => {
+    if (!emaZones) {
+      return [] as Array<{ id: string; label: string; color: string; data: Array<{ time: UTCTimestamp; value: number }> }>;
+    }
+
+    const period = emaZones.emaPeriod;
+    const emaValues = calculateEMA(normalizedBars, period);
+
+    const buildBand = (factor: number) =>
+      normalizedBars
+        .map((bar, index) => {
+          const v = emaValues[index];
+          if (typeof v !== 'number' || !Number.isFinite(v)) return null;
+          const value = v * factor;
+          if (!Number.isFinite(value)) return null;
+          return { time: bar.time, value };
+        })
+        .filter((p): p is { time: UTCTimestamp; value: number } => p !== null);
+
+    const overlays: Array<{ id: string; label: string; color: string; data: Array<{ time: UTCTimestamp; value: number }> }> = [];
+
+    if (Number.isFinite(period) && period > 0) {
+      overlays.push({
+        id: `ema:${period}`,
+        label: `EMA ${period}`,
+        color: STRATEGY_EMA_OVERLAY_COLOR,
+        data: buildBand(1),
+      });
+    }
+
+    for (const zone of emaZones.buyZones) {
+      if (!zone.enabled || !Number.isFinite(zone.levelPct)) continue;
+      overlays.push({
+        id: `buy:${zone.id}`,
+        label: formatZoneLevel(zone.levelPct),
+        color: ZONE_BUY_OVERLAY_COLOR,
+        data: buildBand(1 + zone.levelPct / 100),
+      });
+    }
+
+    for (const zone of emaZones.sellZones) {
+      if (!zone.enabled || !Number.isFinite(zone.levelPct)) continue;
+      overlays.push({
+        id: `sell:${zone.id}`,
+        label: formatZoneLevel(zone.levelPct),
+        color: ZONE_SELL_OVERLAY_COLOR,
+        data: buildBand(1 + zone.levelPct / 100),
+      });
+    }
+
+    return overlays;
+  }, [emaZones, normalizedBars]);
+
+  const overlayIdsKey = useMemo(() => emaOverlays.map((o) => o.id).join('|'), [emaOverlays]);
+
   const exportRows = useMemo(
     () =>
       normalizedBars.map((bar, index) => {
@@ -672,6 +747,42 @@ export const TradingChart = memo(function TradingChart({
     });
   }, [trades, ticker]);
 
+  // Create / dispose overlay LineSeries as the set of overlay ids changes
+  // (period change, zone add/remove/enable-toggle). Mirrors the ema20/200 teardown.
+  useEffect(() => {
+    if (!chartReady || !chartRef.current) return;
+
+    const chart = chartRef.current;
+    const map = overlaySeriesRef.current;
+    const wanted = new Set(emaOverlays.map((o) => o.id));
+
+    for (const [id, series] of Array.from(map.entries())) {
+      if (!wanted.has(id)) {
+        try {
+          chart.removeSeries(series);
+        } catch {
+          // ignore
+        }
+        map.delete(id);
+      }
+    }
+
+    for (const overlay of emaOverlays) {
+      if (map.has(overlay.id)) continue;
+      const series = chart.addSeries(LineSeries, {
+        color: overlay.color,
+        lineWidth: 2,
+        lineStyle: LineStyle.Dashed,
+        lastValueVisible: false,
+        priceLineVisible: false,
+        visible: overlayHidden[overlay.id] !== true,
+      });
+      map.set(overlay.id, series);
+    }
+    // overlayHidden intentionally omitted: visibility is handled by a dedicated effect
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chartReady, overlayIdsKey]);
+
   useEffect(() => {
     if (!chartReady || !candlestickSeriesRef.current) return;
 
@@ -681,10 +792,13 @@ export const TradingChart = memo(function TradingChart({
       ibsSeriesRef.current?.setData(ibsData);
       ema20SeriesRef.current?.setData(ema20Data);
       ema200SeriesRef.current?.setData(ema200Data);
+      for (const overlay of emaOverlays) {
+        overlaySeriesRef.current.get(overlay.id)?.setData(overlay.data);
+      }
     } catch (e) {
       logError('chart', 'Error updating chart data', { error: (e as Error).message }, 'TradingChart.updateData');
     }
-  }, [chartReady, chartData, volumeData, ibsData, ema20Data, ema200Data]);
+  }, [chartReady, chartData, volumeData, ibsData, ema20Data, ema200Data, emaOverlays]);
 
   useEffect(() => {
     if (!chartReady || !markersApiRef.current) return;
@@ -829,6 +943,13 @@ export const TradingChart = memo(function TradingChart({
     ema20SeriesRef.current?.applyOptions({ visible: showEMA20 });
     ema200SeriesRef.current?.applyOptions({ visible: showEMA200 });
   }, [showIBS, showVolume, showEMA20, showEMA200, chartReady]);
+
+  useEffect(() => {
+    if (!chartReady) return;
+    for (const overlay of emaOverlays) {
+      overlaySeriesRef.current.get(overlay.id)?.applyOptions({ visible: overlayHidden[overlay.id] !== true });
+    }
+  }, [chartReady, overlayIdsKey, emaOverlays, overlayHidden]);
 
   useEffect(() => {
     if (!chartReady) return;
@@ -1391,6 +1512,31 @@ export const TradingChart = memo(function TradingChart({
             )}
           </div>
         </div>
+
+        {emaZones && emaOverlays.length > 0 && (
+          <div className="flex w-full basis-full flex-wrap items-center gap-1.5" role="group" aria-label="Оверлеи стратегии">
+            <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400">Оверлеи:</span>
+            {emaOverlays.map((overlay) => {
+              const active = overlayHidden[overlay.id] !== true;
+              return (
+                <button
+                  key={overlay.id}
+                  type="button"
+                  onClick={() => setOverlayHidden((prev) => ({ ...prev, [overlay.id]: prev[overlay.id] !== true }))}
+                  className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                    active
+                      ? 'border-gray-300 bg-white text-gray-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200'
+                      : 'border-gray-200 bg-gray-50 text-gray-400 line-through dark:border-gray-800 dark:bg-gray-950 dark:text-gray-500'
+                  }`}
+                  title={active ? 'Скрыть оверлей' : 'Показать оверлей'}
+                >
+                  <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: overlay.color, opacity: active ? 1 : 0.4 }} />
+                  <span>{overlay.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       <div className="relative w-full h-full min-h-0">
@@ -1410,6 +1556,9 @@ export const TradingChart = memo(function TradingChart({
           ...(showIBS ? [{ label: 'IBS', color: '#059669' }] : []),
           ...(showVolume ? [{ label: 'Объём', color: '#94A3B8' }] : []),
           ...(showTradeMarkers ? [{ label: 'Сделки', color: withAlpha(tradeMarkerColor, tradeMarkerOpacity) }] : []),
+          ...emaOverlays
+            .filter((overlay) => overlayHidden[overlay.id] !== true)
+            .map((overlay) => ({ label: overlay.label, color: overlay.color })),
         ]}
       />
     </div>

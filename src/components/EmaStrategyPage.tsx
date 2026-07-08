@@ -449,6 +449,7 @@ export function EmaStrategyPage() {
                   ticker={selectedTicker}
                   splits={selectedTickerData?.splits}
                   isVisible={activeTab === 'price'}
+                  emaZones={{ emaPeriod: settings.emaPeriod, buyZones: settings.buyZones, sellZones: settings.sellZones }}
                   toolbarPrefix={tickers.length > 1 ? (
                     <div className="flex flex-wrap gap-1.5">
                       {tickers.map((ticker) => (
