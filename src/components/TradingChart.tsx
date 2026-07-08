@@ -26,6 +26,7 @@ import type { OHLCData, Trade, SplitEvent, EmaZone, EmaStartMode } from '../type
 import { useAppStore } from '../stores';
 import { logError } from '../lib/error-logger';
 import { ChartLegend } from './ChartLegend';
+import { Panel } from './ui/Panel';
 
 const MIN_CHART_HEIGHT = 680;
 
@@ -1339,7 +1340,7 @@ export const TradingChart = memo(function TradingChart({
               </button>
 
               {showIndicators && (
-                <div className="absolute left-0 top-full z-30 mt-2 w-52 rounded-xl border border-gray-200 bg-white/95 p-1.5 shadow-2xl backdrop-blur dark:border-gray-700 dark:bg-gray-900/95">
+                <Panel padding="none" shadow={false} className="absolute left-0 top-full z-20 mt-1.5 w-52 p-1.5 shadow-lg">
                   {indicators.map(ind => (
                     <button
                       key={ind.label}
@@ -1365,7 +1366,7 @@ export const TradingChart = memo(function TradingChart({
                       )}
                     </button>
                   ))}
-                </div>
+                </Panel>
               )}
             </div>
           );
@@ -1401,7 +1402,7 @@ export const TradingChart = memo(function TradingChart({
             </button>
 
             {showChartSettings && (
-              <div className="absolute right-0 top-full z-30 mt-2 w-80 max-w-[calc(100vw-1rem)] rounded-2xl border border-gray-200 bg-white/95 p-2.5 shadow-2xl backdrop-blur dark:border-gray-700 dark:bg-gray-900/95">
+              <Panel padding="none" shadow={false} className="absolute right-0 top-full z-20 mt-1.5 w-80 max-w-[calc(100vw-1rem)] p-2.5 shadow-lg">
                 <div className="flex items-center justify-between gap-3">
                   <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">Настройки графика</div>
                   <button
@@ -1537,7 +1538,7 @@ export const TradingChart = memo(function TradingChart({
                     )}
                   </section>
                 </div>
-              </div>
+              </Panel>
             )}
           </div>
         </div>
