@@ -386,6 +386,15 @@ export function EmaStrategyPage() {
 
   const selectedTickerData = tickersData.find((item) => item.ticker === selectedTicker);
 
+  // The backtest runs on holder-value prices (item.holderData ?? item.data), and
+  // the deviation series is built from them too. Feed the price chart the SAME
+  // series so its EMA line, zone bands and trade markers line up with the trades
+  // and the "Отклонение" tab — the back-adjusted `data` basis drifts around split
+  // boundaries and makes buys look like they sit on the EMA.
+  const priceChartData = selectedTickerData?.holderData?.length
+    ? selectedTickerData.holderData
+    : selectedTickerData?.data ?? [];
+
   const renderSummary = () => (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
       <Panel tone="subtle" padding="sm" className="space-y-3">
@@ -410,7 +419,7 @@ export function EmaStrategyPage() {
               </div>
             )}
             <HeroLineChart
-              data={selectedTickerData?.data ?? []}
+              data={priceChartData}
               trades={result.trades}
               showTrades
             />
@@ -619,7 +628,7 @@ export function EmaStrategyPage() {
             {result && activeTab === 'price' && (
               <ChartContainer height={680}>
                 <TradingChart
-                  data={selectedTickerData?.data ?? []}
+                  data={priceChartData}
                   trades={result.trades}
                   ticker={selectedTicker}
                   splits={selectedTickerData?.splits}
