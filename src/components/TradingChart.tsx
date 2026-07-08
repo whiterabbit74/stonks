@@ -636,21 +636,39 @@ export const TradingChart = memo(function TradingChart({
     [normalizedBars, ema200Values]
   );
 
-  // Strategy EMA + zone overlays, computed from the SAME normalizedBars the price chart
-  // renders (never from result.deviation, which lives on a different absolute scale).
-  // Each band = EMA × (1 + levelPct / 100) at every bar index.
+  // Strategy EMA + zone overlays. The strategy EMA is a DAILY construct (it trades
+  // on daily closes), so compute it on the daily `data` prop and SAMPLE it onto the
+  // displayed bars by date — never recompute it on weekly-aggregated bars, which
+  // would turn EMA 200 into a 200-week line and diverge radically from the trades
+  // and the deviation tab. Each band = daily EMA × (1 + levelPct / 100).
+  const strategyEmaByDate = useMemo(() => {
+    const map = new Map<string, number>();
+    if (!emaZones) return map;
+    const dailyBars = [...data]
+      .filter((bar) => bar && typeof bar.date === 'string')
+      .sort((a, b) => String(a.date).localeCompare(String(b.date)));
+    const closes = dailyBars.map((bar) => ({ close: Number(bar.close) }));
+    const emaValues = calculateEMA(closes, emaZones.emaPeriod, emaZones.startMode ?? 'full_history');
+    dailyBars.forEach((bar, index) => {
+      const v = emaValues[index];
+      if (typeof v === 'number' && Number.isFinite(v)) {
+        map.set(formatOHLCYMD(bar.date), v);
+      }
+    });
+    return map;
+  }, [emaZones, data]);
+
   const emaOverlays = useMemo(() => {
     if (!emaZones) {
       return [] as Array<{ id: string; label: string; color: string; data: Array<{ time: UTCTimestamp; value: number }> }>;
     }
 
     const period = emaZones.emaPeriod;
-    const emaValues = calculateEMA(normalizedBars, period, emaZones.startMode ?? 'full_history');
 
     const buildBand = (factor: number) =>
       normalizedBars
-        .map((bar, index) => {
-          const v = emaValues[index];
+        .map((bar) => {
+          const v = strategyEmaByDate.get(bar.date);
           if (typeof v !== 'number' || !Number.isFinite(v)) return null;
           const value = v * factor;
           if (!Number.isFinite(value)) return null;
@@ -690,7 +708,7 @@ export const TradingChart = memo(function TradingChart({
     }
 
     return overlays;
-  }, [emaZones, normalizedBars]);
+  }, [emaZones, normalizedBars, strategyEmaByDate]);
 
   const overlayIdsKey = useMemo(() => emaOverlays.map((o) => o.id).join('|'), [emaOverlays]);
 
