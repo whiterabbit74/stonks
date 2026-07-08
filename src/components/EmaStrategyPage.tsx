@@ -3,7 +3,7 @@ import { Plus, Trash2 } from 'lucide-react';
 import { AnalysisTabs, Button, ChartContainer, IconButton, Input, PageHeader, Panel, Select, TickerInput } from './ui';
 import { MetricsGrid } from './ui/MetricsGrid';
 import { LS } from '../constants';
-import type { EmaSignalSource, EmaZone, MultiTickerBacktestResults } from '../types';
+import type { EmaZone, MultiTickerBacktestResults } from '../types';
 import { lsGet, lsSet } from '../lib/storage';
 import { useMultiTickerData } from '../hooks/useMultiTickerData';
 import { runEmaZoneBacktest, type EmaZoneBacktestResult } from '../lib/ema-zone-strategy';
@@ -20,7 +20,6 @@ interface EmaSettings {
   leveragePercent: number;
   takeProfit: string;
   noSellAtLoss: boolean;
-  signalSource: EmaSignalSource;
   buyZones: EmaZone[];
   sellZones: EmaZone[];
 }
@@ -39,7 +38,6 @@ interface EmaRunParams {
   // "5" vs "5.0") don't trigger a false-positive stale badge.
   takeProfit: number | null;
   noSellAtLoss: boolean;
-  signalSource: EmaSignalSource;
   buyZones: EmaZone[];
   sellZones: EmaZone[];
 }
@@ -51,7 +49,6 @@ function snapshotRunParams(settings: EmaSettings, tickers: string[]): EmaRunPara
     leveragePercent: settings.leveragePercent,
     takeProfit: parseTakeProfit(settings.takeProfit),
     noSellAtLoss: settings.noSellAtLoss,
-    signalSource: settings.signalSource,
     buyZones: settings.buyZones,
     sellZones: settings.sellZones,
   };
@@ -76,28 +73,9 @@ function normalizeSettings(value: Partial<EmaSettings> | null): EmaSettings {
     leveragePercent: Number.isFinite(value?.leveragePercent) ? Number(value?.leveragePercent) : 100,
     takeProfit: typeof value?.takeProfit === 'string' ? value.takeProfit : '',
     noSellAtLoss: value?.noSellAtLoss ?? false,
-    // Default to intraday touch: a bar that dips into the zone and bounces back
-    // up should still trigger an entry (fill at the zone level), matching how a
-    // resting limit order would fill. 'close' stays available as an explicit choice.
-    signalSource: value?.signalSource === 'close' ? 'close' : 'intraday',
     buyZones: Array.isArray(value?.buyZones) && value.buyZones.length ? value.buyZones : DEFAULT_BUY_ZONES,
     sellZones: Array.isArray(value?.sellZones) && value.sellZones.length ? value.sellZones : DEFAULT_SELL_ZONES,
   };
-}
-
-// One-time migration: earlier builds persisted signalSource:'close' automatically
-// (it was the old default), so an existing user would keep close-only entries even
-// after the default flipped to intraday touch. Flip that legacy auto-'close' to
-// 'intraday' exactly once; any explicit close chosen afterwards is respected.
-function loadInitialSettings(): EmaSettings {
-  const stored = lsGet<Partial<EmaSettings> | null>(LS.EMA_SETTINGS, null);
-  if (!lsGet<boolean>(LS.EMA_SIGNAL_MIGRATED, false)) {
-    lsSet(LS.EMA_SIGNAL_MIGRATED, true);
-    if (stored && stored.signalSource === 'close') {
-      return normalizeSettings({ ...stored, signalSource: 'intraday' });
-    }
-  }
-  return normalizeSettings(stored);
 }
 
 interface EmaPreset {
@@ -229,7 +207,7 @@ export function EmaStrategyPage() {
     return (saved.length ? saved : ['TQQQ']).join(', ');
   });
   const [selectedTicker, setSelectedTicker] = useState<string>(() => lsGet<string>(LS.EMA_SELECTED_TICKER, 'TQQQ'));
-  const [settings, setSettings] = useState<EmaSettings>(loadInitialSettings);
+  const [settings, setSettings] = useState<EmaSettings>(() => normalizeSettings(lsGet<Partial<EmaSettings> | null>(LS.EMA_SETTINGS, null)));
   const [runParams, setRunParams] = useState<EmaRunParams | null>(null);
   const [activeTab, setActiveTab] = useState('summary');
   const [selectedTradeTicker, setSelectedTradeTicker] = useState<'all' | string>('all');
@@ -322,7 +300,9 @@ export function EmaStrategyPage() {
         sellZones: settings.sellZones,
         takeProfitPercent: parseTakeProfit(settings.takeProfit),
         noSellAtLoss: settings.noSellAtLoss,
-        signalSource: settings.signalSource,
+        // Entries/exits always trigger on an intraday touch of the zone
+        // (fill at the zone level), never close-only.
+        signalSource: 'intraday' as const,
       };
       const nextResult = runEmaZoneBacktest(source, params);
       const nextComparison = leverage > 1
@@ -476,14 +456,6 @@ export function EmaStrategyPage() {
               ))}
             </Select>
           </div>
-        </div>
-
-        <div>
-          <label className="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">Данные входа/выхода</label>
-          <Select value={settings.signalSource} onChange={(event) => setSettings((prev) => ({ ...prev, signalSource: event.target.value as EmaSignalSource }))}>
-            <option value="intraday">Касание внутри свечи (High/Low)</option>
-            <option value="close">Только закрытие свечи (Close)</option>
-          </Select>
         </div>
 
         <div>
