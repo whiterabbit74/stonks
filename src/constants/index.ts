@@ -72,6 +72,7 @@ export const LS = {
   EMA_SETTINGS:                'ema.settings',
   EMA_SELECTED_TICKER:         'ema.selectedTicker',
   EMA_PRESETS:                 'ema.presets',
+  EMA_SIGNAL_MIGRATED:         'ema.signalSourceMigratedV1',
 
   // Options page (MultiTickerOptionsPage)
   OPTIONS_CHART_KIND:         'options.heroChartKind',

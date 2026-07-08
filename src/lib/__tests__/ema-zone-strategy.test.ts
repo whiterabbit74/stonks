@@ -246,4 +246,34 @@ describe('runEmaZoneBacktest', () => {
     ]);
     expect(result.finalValue).toBe(180000);
   });
+
+  it('enters on an intraday touch of the buy zone even when the bar closes back above it', () => {
+    // EMA settles at 100; a -20% buy zone sits at 80. The bar dips to a low of 78
+    // (inside the zone) but closes at 100 (above it).
+    const touchData: OHLCData[] = [
+      bar('2024-01-01', 100),
+      bar('2024-01-02', 100),
+      bar('2024-01-03', 100),
+      { date: '2024-01-04', open: 100, high: 101, low: 78, close: 100, volume: 1000 },
+    ];
+    const params = {
+      initialCapital: 10000,
+      leverage: 1,
+      emaPeriod: 3,
+      takeProfitPercent: null,
+      noSellAtLoss: false,
+      buyZones: [{ id: 'buy-20', levelPct: -20, enabled: true }],
+      sellZones: [],
+    } as const;
+
+    const intraday = runEmaZoneBacktest([{ ticker: 'TQQQ', data: touchData }], { ...params, signalSource: 'intraday' });
+    expect(intraday.trades).toHaveLength(1);
+    expect(intraday.trades[0].entryDate).toBe('2024-01-04');
+    expect(intraday.trades[0].entryPrice).toBe(80); // filled at the zone level, not the close
+    expect(intraday.trades[0].context?.indicatorValues?.entryDeviationPct).toBeCloseTo(-20, 6);
+
+    // Close-only mode misses the same touch because the close is back at the EMA.
+    const closeOnly = runEmaZoneBacktest([{ ticker: 'TQQQ', data: touchData }], { ...params, signalSource: 'close' });
+    expect(closeOnly.trades).toHaveLength(0);
+  });
 });
