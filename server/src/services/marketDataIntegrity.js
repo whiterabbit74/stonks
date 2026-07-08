@@ -316,6 +316,39 @@ function integrityWarningKey(warning) {
     ].join('|');
 }
 
+// Per-warning lines for the DATA-WRITE alert. Unlike buildTelegramLines (which
+// says signals were BLOCKED), here the data was written and just needs a human
+// to confirm whether the gap is a real split or a bad bar.
+function buildDataWriteAlertLines(symbol, action, warning) {
+    const matchedText = warning.matchedFactor
+        ? `похоже на сплит ${warning.matchedFactor}:1`
+        : 'слишком большой разрыв';
+    return [
+        `${symbol}: данные записаны, нужна проверка`,
+        `действие: ${action}`,
+        `разрыв ${warning.previousDate || '—'} → ${warning.currentDate || '—'}`,
+        `${formatPrice(warning.previousClose)} → ${formatPrice(warning.currentPrice)} (${formatFactor(warning.factorRatio)}, ${matchedText})`,
+        'реальный сплит → добавьте его в ручные сплиты; ошибка данных → поправьте/удалите бар',
+    ];
+}
+
+function formatDataWriteIntegrityAlert(symbol, action, warnings) {
+    const unique = new Map();
+    for (const warning of Array.isArray(warnings) ? warnings : []) {
+        if (!warning) continue;
+        unique.set(integrityWarningKey(warning), warning);
+    }
+    if (unique.size === 0) return '';
+
+    const chunks = [];
+    for (const warning of unique.values()) {
+        const lines = buildDataWriteAlertLines(symbol, action, warning);
+        chunks.push(lines.map((line, index) => index === 0 ? `• ${line}` : `  ${line}`).join('\n'));
+    }
+
+    return `⚠️ ПРОВЕРКА ДАННЫХ (записано)\n${chunks.join('\n')}`;
+}
+
 function formatIntegrityWarningBlock(warnings) {
     const unique = new Map();
     for (const warning of Array.isArray(warnings) ? warnings : []) {
@@ -339,6 +372,7 @@ module.exports = {
     createOhlcIntegrityError,
     evaluatePriceIntegrity,
     findNearestSplitFactor,
+    formatDataWriteIntegrityAlert,
     formatIntegrityWarningBlock,
     getLastFiniteCloseBar,
     integrityWarningKey,

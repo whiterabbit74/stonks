@@ -5,7 +5,7 @@ const { fetchFromFinnhub } = require('../providers/finnhub');
 const { fetchFromTwelveData } = require('../providers/twelveData');
 const { fetchFromPolygon } = require('../providers/polygon');
 const {
-    createOhlcIntegrityError,
+    formatDataWriteIntegrityAlert,
     validateOhlcMergeIntegrity,
     validateOhlcSeriesIntegrity,
 } = require('./marketDataIntegrity');
@@ -80,32 +80,46 @@ function filterAllowedWarnings(validation, allowlist) {
     };
 }
 
-function assertDatasetPayloadIntegrity(input = {}) {
+// NOTE: these no longer throw/block the write. A split-like or extreme gap is
+// written through and flagged via `warnings` so the caller can send a Telegram
+// alert for manual review (see sendDataIntegrityAlert). The separate live-signal
+// guard (blockSignals during monitoring) is unaffected.
+function evaluateDatasetPayloadIntegrity(input = {}) {
     const symbol = String(input.symbol || input.payload?.ticker || input.payload?.name || 'UNKNOWN').toUpperCase();
     const rows = normalizeFetchedRows(input.payload?.data);
     const knownSplits = normalizeSplitEvents(input.knownSplits);
     const allowlist = input.allowlist || loadDataIntegrityAllowlist();
-    const validation = filterAllowedWarnings(validateOhlcSeriesIntegrity({
+    return filterAllowedWarnings(validateOhlcSeriesIntegrity({
         symbol,
         rows,
         knownSplits,
         adjustedForSplits: Boolean(input.payload?.adjustedForSplits),
     }), allowlist);
-
-    if (validation.blockWrite) {
-        throw createOhlcIntegrityError(validation, { symbol });
-    }
-    return validation;
 }
 
-function assertOhlcMergeIntegrity(input = {}) {
-    const symbol = String(input.symbol || 'UNKNOWN').toUpperCase();
+function evaluateOhlcMergeIntegrity(input = {}) {
     const allowlist = input.allowlist || loadDataIntegrityAllowlist();
-    const validation = filterAllowedWarnings(validateOhlcMergeIntegrity(input), allowlist);
-    if (validation.blockWrite) {
-        throw createOhlcIntegrityError(validation, { symbol });
+    return filterAllowedWarnings(validateOhlcMergeIntegrity(input), allowlist);
+}
+
+// Fire-and-forget Telegram notification for a written-through integrity gap.
+// Never throws — a Telegram/config failure must not break the data write.
+async function sendDataIntegrityAlert({ symbol, action, warnings } = {}) {
+    try {
+        if (!Array.isArray(warnings) || warnings.length === 0) return { ok: false, reason: 'no_warnings' };
+        const upperSymbol = String(symbol || (warnings[0] && warnings[0].symbol) || 'UNKNOWN').toUpperCase();
+        const text = formatDataWriteIntegrityAlert(upperSymbol, action || 'запись данных', warnings);
+        if (!text) return { ok: false, reason: 'empty_message' };
+
+        // Lazy require to avoid load-order coupling with the telegram/config modules.
+        const { getApiConfig } = require('../config');
+        const { sendTelegramMessage } = require('./telegram');
+        const chatId = getApiConfig().TELEGRAM_CHAT_ID;
+        return await sendTelegramMessage(chatId, text);
+    } catch (error) {
+        console.warn('Failed to send data-integrity alert:', error && error.message);
+        return { ok: false, reason: 'send_failed', error: error && error.message };
     }
-    return validation;
 }
 
 async function fetchHistoricalMarketData(symbol, startTs, endTs, provider, options = {}) {
@@ -139,8 +153,9 @@ async function fetchHistoricalMarketData(symbol, startTs, endTs, provider, optio
 }
 
 module.exports = {
-    assertDatasetPayloadIntegrity,
-    assertOhlcMergeIntegrity,
+    evaluateDatasetPayloadIntegrity,
+    evaluateOhlcMergeIntegrity,
+    sendDataIntegrityAlert,
     fetchHistoricalMarketData,
     filterAllowedWarnings,
     isAllowedWarning,

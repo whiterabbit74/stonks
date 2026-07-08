@@ -13,7 +13,8 @@ const { telegramWatches, sendTelegramMessage } = require('./telegram');
 const { getTickerSplits, upsertTickerSplits } = require('./splits');
 const { formatIntegrityWarningBlock } = require('./marketDataIntegrity');
 const {
-    assertOhlcMergeIntegrity,
+    evaluateOhlcMergeIntegrity,
+    sendDataIntegrityAlert,
     fetchHistoricalMarketData,
     normalizeSplitEvents,
 } = require('./dataIngestion');
@@ -136,7 +137,7 @@ async function refreshTickerAndCheckFreshness(symbol, nowEtParts, provider = 'fi
             knownSplits = [];
         }
         const fetchedSplits = normalizeSplitEvents(fetched.splits);
-        const integrity = assertOhlcMergeIntegrity({
+        const integrity = evaluateOhlcMergeIntegrity({
             symbol: ticker,
             existingRows: dataset.data || [],
             incomingRows: rows,
@@ -147,6 +148,9 @@ async function refreshTickerAndCheckFreshness(symbol, nowEtParts, provider = 'fi
         saveDataset({ ...dataset, data: integrity.mergedRows, uploadDate: new Date().toISOString(), name: ticker });
         if (fetchedSplits.length > 0) {
             upsertTickerSplits(ticker, fetchedSplits);
+        }
+        if (integrity.warnings.length > 0) {
+            await sendDataIntegrityAlert({ symbol: ticker, action: `актуализация цен (${provider})`, warnings: integrity.warnings });
         }
 
         const fresh = integrity.mergedRows.some((row) => row.date === prevKey);

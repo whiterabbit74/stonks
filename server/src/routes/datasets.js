@@ -19,8 +19,9 @@ const {
 const { getTickerSplits, setTickerSplits, upsertTickerSplits } = require('../services/splits');
 const { readSettings } = require('../services/settings');
 const {
-    assertDatasetPayloadIntegrity,
-    assertOhlcMergeIntegrity,
+    evaluateDatasetPayloadIntegrity,
+    evaluateOhlcMergeIntegrity,
+    sendDataIntegrityAlert,
     fetchHistoricalMarketData,
     normalizeSplitEvents,
 } = require('../services/dataIngestion');
@@ -110,13 +111,16 @@ router.post('/datasets', upload.single('file'), async (req, res) => {
         }
 
         const knownSplits = Array.isArray(payload.splits) ? payload.splits : await getTickerSplits(ticker);
-        assertDatasetPayloadIntegrity({ symbol: ticker, payload, knownSplits });
+        const integrity = evaluateDatasetPayloadIntegrity({ symbol: ticker, payload, knownSplits });
 
         saveDataset(payload);
         if (Array.isArray(payload.splits)) {
             setTickerSplits(ticker, payload.splits);
         }
-        res.json({ success: true, id: ticker, ticker, dataPoints: payload.dataPoints || 0 });
+        if (integrity.warnings.length > 0) {
+            void sendDataIntegrityAlert({ symbol: ticker, action: 'загрузка датасета', warnings: integrity.warnings });
+        }
+        res.json({ success: true, id: ticker, ticker, dataPoints: payload.dataPoints || 0, integrityWarnings: integrity.warnings });
     } catch (e) {
         console.error('Failed to upload dataset:', e);
         res.status(e?.status || 500).json({
@@ -148,13 +152,16 @@ router.put('/datasets/:id', async (req, res) => {
         }
 
         const knownSplits = Array.isArray(payload.splits) ? payload.splits : await getTickerSplits(id);
-        assertDatasetPayloadIntegrity({ symbol: id, payload, knownSplits });
+        const integrity = evaluateDatasetPayloadIntegrity({ symbol: id, payload, knownSplits });
 
         saveDataset(payload);
         if (Array.isArray(payload.splits)) {
             setTickerSplits(id, payload.splits);
         }
-        res.json({ success: true, id, dataPoints: payload.dataPoints || 0 });
+        if (integrity.warnings.length > 0) {
+            void sendDataIntegrityAlert({ symbol: id, action: 'замена датасета', warnings: integrity.warnings });
+        }
+        res.json({ success: true, id, dataPoints: payload.dataPoints || 0, integrityWarnings: integrity.warnings });
     } catch (e) {
         console.error('Failed to update dataset:', e);
         res.status(e?.status || 500).json({
@@ -215,7 +222,7 @@ router.post('/datasets/:id/refresh', async (req, res) => {
             knownSplits = [];
         }
         const fetchedSplits = normalizeSplitEvents(fetched.splits);
-        const integrity = assertOhlcMergeIntegrity({
+        const integrity = evaluateOhlcMergeIntegrity({
             symbol: ticker,
             existingRows: dataset?.data || [],
             incomingRows: rows,
@@ -227,9 +234,12 @@ router.post('/datasets/:id/refresh', async (req, res) => {
         }
 
         const added = mergeOhlcRows(ticker, rows);
+        if (integrity.warnings.length > 0) {
+            void sendDataIntegrityAlert({ symbol: ticker, action: `обновление данных (${provider})`, warnings: integrity.warnings });
+        }
         const updatedMeta = getDatasetMetadata(ticker);
         console.log(`Dataset refreshed: ${ticker} (+${added} new rows)`);
-        return res.json({ success: true, id: ticker, added, to: updatedMeta?.dateRange?.to, provider });
+        return res.json({ success: true, id: ticker, added, to: updatedMeta?.dateRange?.to, provider, integrityWarnings: integrity.warnings });
     } catch (e) {
         console.error('Error refreshing dataset:', e);
         res.status(e?.status || 500).json({

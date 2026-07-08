@@ -8,7 +8,7 @@ const require = createRequire(import.meta.url);
 
 describe('data ingestion guard', () => {
   const {
-    assertDatasetPayloadIntegrity,
+    evaluateDatasetPayloadIntegrity,
     normalizeFetchedRows,
   } = require(path.join(serverRoot, 'src/services/dataIngestion.js'));
 
@@ -23,8 +23,8 @@ describe('data ingestion guard', () => {
     ]);
   });
 
-  it('blocks full dataset upload when split-like gaps have no explicit split', () => {
-    expect(() => assertDatasetPayloadIntegrity({
+  it('flags (without blocking) a full dataset upload when split-like gaps have no explicit split', () => {
+    const result = evaluateDatasetPayloadIntegrity({
       symbol: 'TQQQ',
       payload: {
         adjustedForSplits: false,
@@ -34,11 +34,16 @@ describe('data ingestion guard', () => {
         ],
       },
       knownSplits: [],
-    })).toThrow(/запись данных заблокирована/);
+    });
+
+    // No throw: the write proceeds, but a warning is surfaced for Telegram review.
+    expect(result.ok).toBe(false);
+    expect(result.warnings).toHaveLength(1);
+    expect(result.warnings[0]).toMatchObject({ symbol: 'TQQQ', previousDate: '2025-08-28', currentDate: '2025-08-29' });
   });
 
   it('allows full dataset upload when split-like gaps have explicit splits', () => {
-    const result = assertDatasetPayloadIntegrity({
+    const result = evaluateDatasetPayloadIntegrity({
       symbol: 'V',
       payload: {
         adjustedForSplits: false,
