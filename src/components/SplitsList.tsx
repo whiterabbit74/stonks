@@ -1,4 +1,6 @@
 import type { SplitEvent } from '../types';
+import { formatTradingDateDisplay } from '../lib/date-utils';
+import type { TradingDate } from '../lib/date-utils';
 
 interface SplitsListProps {
   tickersData?: {
@@ -61,7 +63,7 @@ export function SplitsList({ tickersData, splits, ticker, totalSplitsCount }: Sp
                     </div>
                     {hasSplits && (
                       <div className="text-xs text-gray-500 dark:text-gray-400 text-right">
-                        Последний: {new Date(sortedSplits[0].date).toLocaleDateString('ru-RU')}
+                        Последний: {formatTradingDateDisplay(sortedSplits[0].date as TradingDate)}
                       </div>
                     )}
                   </div>
@@ -74,7 +76,7 @@ export function SplitsList({ tickersData, splits, ticker, totalSplitsCount }: Sp
                         key={`${displayTicker}-${split.date}-${index}`}
                         className="flex items-center justify-between rounded-md bg-gray-50 px-3 py-2 text-sm text-gray-700 dark:bg-gray-800 dark:text-gray-200"
                       >
-                        <span className="font-mono">{new Date(split.date).toLocaleDateString('ru-RU')}</span>
+                        <span className="font-mono">{formatTradingDateDisplay(split.date as TradingDate)}</span>
                         <span className="font-semibold text-gray-900 dark:text-gray-100">Коэфф.: {split.factor}:1</span>
                       </div>
                     ))

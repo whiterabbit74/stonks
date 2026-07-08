@@ -7,6 +7,7 @@ import { TradesTable } from './TradesTable';
 import { StrategyParameters } from './StrategyParameters';
 import { sanitizeNumericInput, VALIDATION_CONSTRAINTS } from '../lib/input-validation';
 import { simulateLeverage, calculateCAGR } from '../lib/backtest-utils';
+import { formatTradingDateDisplay } from '../lib/date-utils';
 import { SimulationStatsGrid } from './SimulationStatsGrid';
 
 interface BuyAtCloseSimulatorProps {
@@ -148,8 +149,8 @@ export function BuyAtCloseSimulator({ data, strategy }: BuyAtCloseSimulatorProps
     );
   }
 
-  const start = equity[0]?.date ? new Date(equity[0].date).toLocaleDateString('ru-RU') : '';
-  const end = equity[equity.length - 1]?.date ? new Date(equity[equity.length - 1].date).toLocaleDateString('ru-RU') : '';
+  const start = equity[0]?.date ? formatTradingDateDisplay(equity[0].date) : '';
+  const end = equity[equity.length - 1]?.date ? formatTradingDateDisplay(equity[equity.length - 1].date) : '';
 
   return (
     <div className="space-y-4">

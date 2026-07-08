@@ -4,6 +4,7 @@ import { MiniQuoteChart } from './MiniQuoteChart';
 import { calculateTradeStats } from '../lib/trade-utils';
 import { formatCurrencyCompact } from '../lib/singlePositionBacktest';
 import type { OHLCData, Trade } from '../types';
+import { formatTradingDateDisplay } from '../lib/date-utils';
 
 export interface TickerCardProps {
   ticker: string;
@@ -104,7 +105,7 @@ export const TickerCard = memo(function TickerCard({
               )}
               {lastBar && (
                 <div className="text-xs text-gray-500 dark:text-gray-400">
-                   {currentQuote ? 'Сейчас' : `Обновлено ${new Date(lastBar.date).toLocaleDateString('ru-RU')}`}
+                   {currentQuote ? 'Сейчас' : `Обновлено ${formatTradingDateDisplay(lastBar.date)}`}
                 </div>
               )}
             </div>

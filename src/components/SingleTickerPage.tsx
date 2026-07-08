@@ -2,7 +2,8 @@ import { lazy, Suspense, useEffect, useMemo, useState, useTransition } from 'rea
 import { Heart, RefreshCw, HelpCircle, ArrowUpRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { DatasetAPI } from '../lib/api';
-import { isSameDay } from '../lib/date-utils';
+import { isSameDay, formatTradingDateDisplay } from '../lib/date-utils';
+import type { TradingDate } from '../lib/date-utils';
 import { useAppStore } from '../stores';
 import { LS } from '../constants';
 import { ChartContainer, AnalysisTabs, MetricsGrid, Button, IconButton, Panel, Select } from './ui';
@@ -381,7 +382,7 @@ export function SingleTickerPage() {
   const lastMaintenanceLiquidationEvent = maintenanceLiquidationEvents[maintenanceLiquidationEvents.length - 1] ?? null;
   const maintenanceLiquidationDates = maintenanceLiquidationEvents.length
     ? Array.from(
-      new Set(maintenanceLiquidationEvents.map((event) => new Date(event.date).toLocaleDateString('ru-RU')))
+      new Set(maintenanceLiquidationEvents.map((event) => formatTradingDateDisplay(event.date as TradingDate)))
     ).join(', ')
     : '';
 
@@ -742,7 +743,7 @@ export function SingleTickerPage() {
                   Ликвидация по Maintenance Margin ({maintenanceMarginPct}%)
                 </div>
                 <div className="mt-1">
-                  Дата: {new Date(lastMaintenanceLiquidationEvent.date).toLocaleDateString('ru-RU')}, падение позиции {lastMaintenanceLiquidationEvent.positionDropPct.toFixed(2)}%, маржинальный уровень {(lastMaintenanceLiquidationEvent.marginRatioAtTrigger * 100).toFixed(2)}%.
+                  Дата: {formatTradingDateDisplay(lastMaintenanceLiquidationEvent.date as TradingDate)}, падение позиции {lastMaintenanceLiquidationEvent.positionDropPct.toFixed(2)}%, маржинальный уровень {(lastMaintenanceLiquidationEvent.marginRatioAtTrigger * 100).toFixed(2)}%.
                 </div>
                 <div className="mt-1 text-xs">
                   Срабатываний: {maintenanceLiquidationEvents.length}. Даты: {maintenanceLiquidationDates}. Остаток капитала: {formatCurrencyUSD(lastMaintenanceLiquidationEvent.remainingCapital)}.

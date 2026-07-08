@@ -11,7 +11,7 @@ import {
 } from 'lightweight-charts';
 import type { EquityPoint } from '../types';
 import { logError } from '../lib/error-logger';
-import { toChartTimestamp } from '../lib/date-utils';
+import { toChartTimestamp, formatTradingDateDisplay } from '../lib/date-utils';
 import { useIsDark } from '../hooks/useIsDark';
 import { getChartColors } from '../lib/chart-theme';
 import { formatCompactNumber } from '../lib/formatters';
@@ -278,8 +278,8 @@ export function EquityChart({ equity, hideHeader, comparisonEquity, comparisonLa
   }
 
   const finalValue = equity[equity.length - 1]?.value ?? 0;
-  const startDate = equity[0]?.date ? new Date(equity[0].date).toLocaleDateString('ru-RU') : '';
-  const endDate = equity[equity.length - 1]?.date ? new Date(equity[equity.length - 1].date).toLocaleDateString('ru-RU') : '';
+  const startDate = equity[0]?.date ? formatTradingDateDisplay(equity[0].date) : '';
+  const endDate = equity[equity.length - 1]?.date ? formatTradingDateDisplay(equity[equity.length - 1].date) : '';
   const hasComparisonLegend = Array.isArray(comparisonEquity) && comparisonEquity.length > 0;
   const primaryLegendLabel = primaryLabel || 'Основной режим';
   const comparisonLegendLabel = comparisonLabel || 'Сравнительный режим';

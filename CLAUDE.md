@@ -13,6 +13,16 @@ This is a React 19 + TypeScript trading strategy backtester with an Express.js b
 - At the close select the instrument with the **lowest IBS strictly below 10** from the monitoring list; if no ticker meets the threshold, skip the trade.
 - **Hold the position until it is fully closed**, then you may re-enter later the same day provided the above conditions are met again.
 
+### Core Invariants (do not violate)
+
+- **Dates only — no time, no timezones.** The whole app operates in a single implicit timezone (the exchange's), so time-of-day and timezone offsets must never appear in logic or display. All trading dates are plain `YYYY-MM-DD` strings (`TradingDate`).
+  - **Never** do `new Date("2024-11-17").toLocaleDateString(...)` to render a trading date: `new Date("YYYY-MM-DD")` parses as **UTC midnight**, and `toLocaleString*` renders in the viewer's local zone, so in any negative-offset zone the day shifts back by one (e.g. 17 Nov → 16 Nov). This exact bug hit the splits list.
+  - To **display** a `YYYY-MM-DD` date, use `formatTradingDateDisplay(date)` from `src/lib/date-utils.ts` (pure string split, no `Date`). To **compare / diff** dates, use `compareTradingDates` / `daysBetweenTradingDates`. To convert for lightweight-charts, use `toChartTimestamp` (midday-UTC).
+  - Do **not** use `new Date(...).getTime()`, `.toISOString()`, or `.toLocaleDateString()` on a trading-date string. The only legitimate `Date`/timezone use is an **explicit** `timeZone: 'America/New_York'` on genuine wall-clock timestamps (e.g. `getNYSECurrentDate`, "last modified at", monitor decision times) — never on bare calendar dates.
+  - Server-side date math must pin UTC explicitly (`new Date(\`${d}T00:00:00.000Z\`)`) or compare `YYYY-MM-DD` strings directly.
+
+- **Commit changes.** Every completed change is committed locally (do not push/deploy unless explicitly asked). Commit messages end with the `Co-Authored-By` trailer used across the history.
+
 ## Architecture
 
 ### Frontend (React SPA)

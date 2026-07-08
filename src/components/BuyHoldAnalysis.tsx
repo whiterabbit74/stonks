@@ -13,29 +13,28 @@ export function BuyHoldAnalysis({ marketData, initialCapital }: BuyHoldAnalysisP
   const [buyHoldMarginPctInput, setBuyHoldMarginPctInput] = useState<string>('100');
   const [buyHoldAppliedLeverage, setBuyHoldAppliedLeverage] = useState<number>(1);
 
-  const buyHoldEquity = useMemo(() => {
+  const buyHoldEquity = useMemo<EquityPoint[]>(() => {
     try {
-      if (!Array.isArray(marketData) || marketData.length === 0) return [] as { date: Date; value: number; drawdown: number }[];
+      if (!Array.isArray(marketData) || marketData.length === 0) return [];
       const first = marketData[0];
       const firstPrice = typeof first?.adjClose === 'number' && first.adjClose > 0 ? first.adjClose : first.close;
-      if (!firstPrice || firstPrice <= 0) return [] as { date: Date; value: number; drawdown: number }[];
+      if (!firstPrice || firstPrice <= 0) return [];
       let peak = initialCapital;
-      const series = marketData.map(b => {
+      const series: EquityPoint[] = marketData.map(b => {
         const price = typeof b?.adjClose === 'number' && b.adjClose > 0 ? b.adjClose : b.close;
         const value = initialCapital * (price / firstPrice);
         if (value > peak) peak = value;
         const drawdown = peak > 0 ? ((peak - value) / peak) * 100 : 0;
-        const d = new Date(b.date);
-        return { date: d, value, drawdown };
+        return { date: b.date, value, drawdown };
       });
       return series;
     } catch {
-      return [] as { date: Date; value: number; drawdown: number }[];
+      return [];
     }
   }, [marketData, initialCapital]);
 
   const buyHoldSimEquity = useMemo(() => (
-    simulateLeverage(buyHoldEquity as unknown as EquityPoint[], buyHoldAppliedLeverage).equity
+    simulateLeverage(buyHoldEquity, buyHoldAppliedLeverage).equity
   ), [buyHoldEquity, buyHoldAppliedLeverage]);
 
   const onApplyBuyHold = () => {
@@ -71,7 +70,7 @@ export function BuyHoldAnalysis({ marketData, initialCapital }: BuyHoldAnalysisP
           </div>
         </div>
         <div className="h-[65vh] min-h-[440px] md:min-h-[560px] lg:min-h-[700px] max-h-[1100px]">
-          <EquityChart equity={buyHoldSimEquity.length ? buyHoldSimEquity : (buyHoldEquity as unknown as EquityPoint[])} />
+          <EquityChart equity={buyHoldSimEquity.length ? buyHoldSimEquity : buyHoldEquity} />
         </div>
       </div>
   );
