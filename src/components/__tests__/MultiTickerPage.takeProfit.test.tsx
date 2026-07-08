@@ -38,8 +38,8 @@ vi.mock('../../lib/api', () => ({
   },
 }));
 
-vi.mock('../../lib/market-utils', () => ({
-  getIsMarketOpen: () => false,
+vi.mock('../../hooks/useMarketOpen', () => ({
+  useMarketOpen: () => false,
 }));
 
 vi.mock('../../lib/prefetch', () => ({

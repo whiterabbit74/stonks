@@ -15,7 +15,7 @@ import { HeroLineChart } from './HeroLineChart';
 import { AnimatedPrice } from './AnimatedPrice';
 import { DatasetAPI } from '../lib/api';
 import { isSameDay } from '../lib/date-utils';
-import { getIsMarketOpen } from '../lib/market-utils';
+import { useMarketOpen } from '../hooks/useMarketOpen';
 import { lsGet, lsSet } from '../lib/storage';
 import { LS } from '../constants';
 import { useClickOutside } from '../hooks/useClickOutside';
@@ -113,7 +113,7 @@ export function MultiTickerOptionsPage() {
   const [heroShowTrades, setHeroShowTrades] = useState<boolean>(() => lsGet<boolean>(LS.OPTIONS_SHOW_TRADES, true));
   const [heroRange, setHeroRange] = useState<'1M' | '3M' | '6M' | '1Y' | '3Y' | '5Y' | 'MAX'>(() => lsGet(LS.OPTIONS_RANGE, '3M'));
   const [showStrategyInfo, setShowStrategyInfo] = useState(false);
-  const [isMarketOpen, setIsMarketOpen] = useState(getIsMarketOpen);
+  const isMarketOpen = useMarketOpen();
 
   const strategyHelpRef = useRef<HTMLDivElement | null>(null);
   const hasAutoRun = useRef(false);
@@ -256,7 +256,6 @@ export function MultiTickerOptionsPage() {
         const q = await DatasetAPI.getQuote(selectedChartTicker, (resultsQuoteProvider || 'finnhub') as 'alpha_vantage' | 'finnhub' | 'twelve_data' | 'webull');
         if (!cancelled) {
           setChartQuote(q);
-          setIsMarketOpen(getIsMarketOpen());
         }
       } catch { /* quote not critical */ }
       if (!cancelled) setChartQuoteLoading(false);
@@ -351,7 +350,7 @@ export function MultiTickerOptionsPage() {
                     if (!selectedChartTicker) return;
                     setChartQuoteLoading(true);
                     DatasetAPI.getQuote(selectedChartTicker, (resultsQuoteProvider || 'finnhub') as 'alpha_vantage' | 'finnhub' | 'twelve_data' | 'webull')
-                      .then(q => { setChartQuote(q); setIsMarketOpen(getIsMarketOpen()); })
+                      .then(q => { setChartQuote(q); })
                       .catch(() => {})
                       .finally(() => setChartQuoteLoading(false));
                   }}

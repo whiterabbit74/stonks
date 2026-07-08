@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { useAppStore } from '../stores';
 import { DatasetAPI } from '../lib/api';
 import { useToastActions } from '../components/ui';
+import { getIsMarketOpen, hasCalendarDateEntry, type TradingCalendarData } from '../lib/market-utils';
 
 // Intl formatters
 const ET_TIME_FMT = new Intl.DateTimeFormat('en-US', {
@@ -17,51 +18,6 @@ const ET_PARTS_FMT = new Intl.DateTimeFormat('en-US', {
   timeZone: 'America/New_York',
   year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'short',
 });
-
-const ET_FULL_FMT = new Intl.DateTimeFormat('en-US', {
-  timeZone: 'America/New_York',
-  hour12: false,
-  year: 'numeric', month: '2-digit', day: '2-digit',
-  hour: '2-digit',
-  minute: '2-digit',
-  weekday: 'short',
-});
-
-const ET_YMD_FMT = new Intl.DateTimeFormat('en-US', {
-  timeZone: 'America/New_York',
-  year: 'numeric', month: '2-digit', day: '2-digit'
-});
-
-type TradingCalendarData = {
-  metadata?: { years?: Array<string | number> };
-  holidays?: Record<string, Record<string, unknown> | unknown>;
-  shortDays?: Record<string, Record<string, unknown> | unknown>;
-  tradingHours?: {
-    normal?: { start?: string; end?: string };
-    short?: { start?: string; end?: string };
-  };
-};
-
-function hasCalendarDateEntry(
-  map: TradingCalendarData['holidays'] | TradingCalendarData['shortDays'],
-  y: number,
-  m: number,
-  d: number
-): boolean {
-  if (!map || typeof map !== 'object') return false;
-
-  const yearKey = String(y);
-  const monthDayKey = `${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-  const fullDateKey = `${yearKey}-${monthDayKey}`;
-  const root = map as Record<string, unknown>;
-
-  const byYear = root[yearKey];
-  if (byYear && typeof byYear === 'object' && !Array.isArray(byYear)) {
-    return Boolean((byYear as Record<string, unknown>)[monthDayKey]);
-  }
-
-  return Boolean(root[fullDateKey]);
-}
 
 export function useSingleTickerData() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -327,33 +283,7 @@ export function useSingleTickerData() {
       return !document.hidden;
     };
 
-    const isMarketOpenNow = () => {
-      const fmtParts = ET_FULL_FMT.formatToParts(new Date());
-      const map: Record<string, string> = {};
-      fmtParts.forEach(p => { if (p.type !== 'literal') map[p.type] = p.value; });
-      const weekdayMap: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
-      const weekday = weekdayMap[map.weekday] ?? 0;
-      const hh = parseInt(map.hour || '0', 10);
-      const mm = parseInt(map.minute || '0', 10);
-      const isWeekday = weekday >= 1 && weekday <= 5;
-      const minutes = hh * 60 + mm;
-      if (!isWeekday) return false;
-      const ymd = ET_YMD_FMT.formatToParts(new Date()).reduce((acc: any, p) => { if (p.type !== 'literal') acc[p.type] = p.value; return acc; }, {});
-      const ymdObj = { y: Number(ymd.year), m: Number(ymd.month), d: Number(ymd.day) };
-      const isHoliday = hasCalendarDateEntry(tradingCalendar?.holidays, ymdObj.y, ymdObj.m, ymdObj.d);
-      if (isHoliday) return false;
-      const short = hasCalendarDateEntry(tradingCalendar?.shortDays, ymdObj.y, ymdObj.m, ymdObj.d);
-      const parseHm = (hm?: string) => {
-         if (!hm || hm.indexOf(':') < 0) return null;
-         const [h, m] = hm.split(':');
-         return parseInt(h, 10) * 60 + parseInt(m, 10);
-      };
-      const openMin = parseHm(tradingCalendar?.tradingHours?.normal?.start) ?? (9 * 60 + 30);
-      const closeMin = short
-        ? (parseHm(tradingCalendar?.tradingHours?.short?.end) ?? (13 * 60))
-        : (parseHm(tradingCalendar?.tradingHours?.normal?.end) ?? (16 * 60));
-      return minutes >= openMin && minutes <= closeMin;
-    };
+    const isMarketOpenNow = () => getIsMarketOpen(tradingCalendar);
 
     setIsTrading(isMarketOpenNow());
     const scheduleNext = (delayMs: number) => {
