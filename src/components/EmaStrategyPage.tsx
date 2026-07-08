@@ -235,6 +235,7 @@ export function EmaStrategyPage() {
   // and the equity label so they never drift ahead of the displayed trades.
   const displayBuyZones = runParams?.buyZones ?? settings.buyZones;
   const displaySellZones = runParams?.sellZones ?? settings.sellZones;
+  const displayEmaPeriod = runParams?.emaPeriod ?? settings.emaPeriod;
   const displayLeveragePercent = runParams?.leveragePercent ?? settings.leveragePercent;
 
   const prefetchAnalysisTab = (tabId: string) => {
@@ -449,7 +450,7 @@ export function EmaStrategyPage() {
                   ticker={selectedTicker}
                   splits={selectedTickerData?.splits}
                   isVisible={activeTab === 'price'}
-                  emaZones={{ emaPeriod: settings.emaPeriod, buyZones: settings.buyZones, sellZones: settings.sellZones }}
+                  emaZones={{ emaPeriod: displayEmaPeriod, buyZones: displayBuyZones, sellZones: displaySellZones }}
                   toolbarPrefix={tickers.length > 1 ? (
                     <div className="flex flex-wrap gap-1.5">
                       {tickers.map((ticker) => (
