@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, memo, type ReactNode } from 'react';
-import { Download, RotateCcw, Settings2 } from 'lucide-react';
+import { Check, ChevronDown, Download, RotateCcw, Settings2 } from 'lucide-react';
 import { useIsDark } from '../hooks/useIsDark';
 import { useClickOutside } from '../hooks/useClickOutside';
 import { LS } from '../constants';
@@ -291,6 +291,8 @@ export const TradingChart = memo(function TradingChart({
   const [tradeMarkerSize, setTradeMarkerSize] = useState<number>(() => normalizeMarkerSize(storedPrefs?.tradeMarkerSize, TRADE_MARKER_DEFAULT_SIZE));
   const [showChartSettings, setShowChartSettings] = useState(false);
   const settingsRef = useRef<HTMLDivElement | null>(null);
+  const [showIndicators, setShowIndicators] = useState(false);
+  const indicatorsRef = useRef<HTMLDivElement | null>(null);
   // Ephemeral visibility for strategy EMA/zone overlays, keyed by overlay id. Missing = visible.
   const [overlayHidden, setOverlayHidden] = useState<Record<string, boolean>>({});
 
@@ -981,6 +983,7 @@ export const TradingChart = memo(function TradingChart({
   }, [chartReady, ema20Width, ema20LineStyle, ema20Color, ema20Opacity, ema200Width, ema200LineStyle, ema200Color, ema200Opacity]);
 
   useClickOutside(settingsRef, showChartSettings, () => setShowChartSettings(false), false);
+  useClickOutside(indicatorsRef, showIndicators, () => setShowIndicators(false), false);
 
   const handleExportChartData = () => {
     if (exportRows.length === 0) return;
@@ -1156,28 +1159,61 @@ export const TradingChart = memo(function TradingChart({
           ))}
         </div>
 
-        {/* Indicator toggles */}
-        <div className="flex items-center gap-1.5" role="group" aria-label="Индикаторы">
-          {([
+        {/* Indicator toggles — collapsed into a single dropdown */}
+        {(() => {
+          const indicators = [
             { label: 'EMA 20', active: showEMA20, toggle: () => setShowEMA20(v => !v) },
             { label: 'EMA 200', active: showEMA200, toggle: () => setShowEMA200(v => !v) },
             { label: 'IBS', active: showIBS, toggle: () => setShowIBS(v => !v) },
             { label: 'Объём', active: showVolume, toggle: () => setShowVolume(v => !v) },
-          ] as const).map(ind => (
-            <button
-              key={ind.label}
-              type="button"
-              onClick={ind.toggle}
-              className={`px-2.5 py-1.5 text-xs font-medium rounded-lg border transition-colors ${
-                ind.active
-                  ? 'bg-blue-600 text-white border-blue-600'
-                  : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50 dark:bg-gray-900 dark:text-gray-300 dark:border-gray-700 dark:hover:bg-gray-800'
-              }`}
-            >
-              {ind.label}
-            </button>
-          ))}
-        </div>
+          ] as const;
+          const activeCount = indicators.filter(ind => ind.active).length;
+          return (
+            <div ref={indicatorsRef} className="relative">
+              <button
+                type="button"
+                onClick={() => setShowIndicators(v => !v)}
+                className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                  showIndicators || activeCount > 0
+                    ? 'bg-blue-600 text-white border-blue-600'
+                    : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50 dark:bg-gray-900 dark:text-gray-300 dark:border-gray-700 dark:hover:bg-gray-800'
+                }`}
+                aria-haspopup="true"
+                aria-expanded={showIndicators}
+                title="Индикаторы"
+              >
+                <span>Индикаторы{activeCount > 0 ? ` · ${activeCount}` : ''}</span>
+                <ChevronDown className="h-3.5 w-3.5" />
+              </button>
+
+              {showIndicators && (
+                <div className="absolute left-0 top-full z-30 mt-2 w-48 rounded-xl border border-gray-200 bg-white/95 p-1.5 shadow-2xl backdrop-blur dark:border-gray-700 dark:bg-gray-900/95">
+                  {indicators.map(ind => (
+                    <button
+                      key={ind.label}
+                      type="button"
+                      onClick={ind.toggle}
+                      className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs font-medium text-gray-700 transition-colors hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800"
+                      role="menuitemcheckbox"
+                      aria-checked={ind.active}
+                    >
+                      <span
+                        className={`flex h-4 w-4 items-center justify-center rounded border transition-colors ${
+                          ind.active
+                            ? 'border-blue-600 bg-blue-600 text-white'
+                            : 'border-gray-300 bg-white dark:border-gray-600 dark:bg-gray-900'
+                        }`}
+                      >
+                        {ind.active && <Check className="h-3 w-3" />}
+                      </span>
+                      {ind.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         <div className="ml-auto flex items-center gap-2">
           <button
