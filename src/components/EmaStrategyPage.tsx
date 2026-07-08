@@ -251,7 +251,7 @@ export function EmaStrategyPage() {
     return [
       ...base,
       { id: 'price', label: 'Цены' },
-      { id: 'emaDeviation', label: 'Отклонение от EMA' },
+      { id: 'emaDeviation', label: 'Отклонение' },
       { id: 'equity', label: 'Капитал' },
       { id: 'exposure', label: 'Экспозиция' },
       { id: 'drawdown', label: 'Просадка' },
