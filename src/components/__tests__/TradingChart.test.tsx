@@ -84,8 +84,12 @@ describe('TradingChart', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Настройки графика' }));
 
-    expect(screen.getByLabelText('Непрозрачность EMA 20')).toBeInTheDocument();
-    expect(screen.getByLabelText('Непрозрачность EMA 200')).toBeInTheDocument();
+    // EMA line controls collapse when the line is off — enable both first.
+    const offToggles = screen.getAllByRole('button', { name: 'Выкл' });
+    offToggles.forEach((btn) => fireEvent.click(btn));
+
+    expect(screen.getByLabelText('EMA 20: непрозрачность')).toBeInTheDocument();
+    expect(screen.getByLabelText('EMA 200: непрозрачность')).toBeInTheDocument();
     expect(screen.getByLabelText('Размер маркеров')).toBeInTheDocument();
     expect(screen.getByText('Вход ● / выход ■')).toBeInTheDocument();
   });
