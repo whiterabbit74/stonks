@@ -11,6 +11,7 @@ import { BacktestPageShell } from './BacktestPageShell';
 import { TabContentLoader } from './ui/TabContentLoader';
 import { TradingChart } from './TradingChart';
 import { EmaDeviationChart } from './EmaDeviationChart';
+import { HeroLineChart } from './HeroLineChart';
 
 const importBacktestResultsView = () => import('./BacktestResultsView');
 const BacktestResultsView = lazy(() => importBacktestResultsView().then((module) => ({ default: module.BacktestResultsView })));
@@ -381,7 +382,31 @@ export function EmaStrategyPage() {
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
       <Panel tone="subtle" padding="sm" className="space-y-3">
         {result ? (
-          <MetricsGrid finalValue={result.finalValue} maxDrawdown={result.maxDrawdown} metrics={result.metrics} />
+          <>
+            {tickers.length > 1 && (
+              <div className="flex flex-wrap gap-1">
+                {tickers.map((ticker) => (
+                  <button
+                    key={ticker}
+                    type="button"
+                    onClick={() => setSelectedTicker(ticker)}
+                    className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold transition-colors ${
+                      ticker === selectedTicker
+                        ? 'bg-indigo-600 text-white'
+                        : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'
+                    }`}
+                  >
+                    {ticker}
+                  </button>
+                ))}
+              </div>
+            )}
+            <HeroLineChart
+              data={selectedTickerData?.data ?? []}
+              trades={result.trades}
+              showTrades
+            />
+          </>
         ) : (
           <div className="flex h-72 items-center justify-center text-gray-500">Запустите расчет EMA-стратегии</div>
         )}
@@ -552,6 +577,10 @@ export function EmaStrategyPage() {
       </Panel>
 
       <BacktestPageShell isLoading={false} error={error} loadingMessage="Расчет EMA-стратегии...">
+        {result && (
+          <MetricsGrid finalValue={result.finalValue} maxDrawdown={result.maxDrawdown} metrics={result.metrics} />
+        )}
+
         <div className="rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
           <AnalysisTabs tabs={tabs} activeTab={activeTab} onChange={setActiveTab} onTabIntent={prefetchAnalysisTab} />
           <div className="min-h-[420px] p-4">
