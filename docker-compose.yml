@@ -90,7 +90,10 @@ services:
     image: caddy:2
     ports:
       - "80:80"
-      - "127.0.0.1:8443:443"
+      # TCP-only 443 so UDP/443 stays free for the host VPN (AmneziaWG).
+      # Docker maps TCP by default when no /udp suffix is given, which also
+      # keeps Caddy from grabbing UDP/443 for HTTP/3.
+      - "443:443"
     depends_on:
       - frontend
       - server
