@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   LineSeries,
   createChart,
@@ -31,6 +31,7 @@ export function EmaDeviationChart({ data, trades, buyZones, sellZones, ticker }:
   const seriesRef = useRef<ISeriesApi<'Line'> | null>(null);
   const markersRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
   const priceLinesRef = useRef<IPriceLine[]>([]);
+  const [chartVersion, setChartVersion] = useState(0);
   const isDark = useIsDark();
 
   const filteredData = useMemo(() => {
@@ -70,6 +71,9 @@ export function EmaDeviationChart({ data, trades, buyZones, sellZones, ticker }:
     });
     seriesRef.current = series;
     markersRef.current = createSeriesMarkers(series, []);
+    // Signal that a fresh chart instance exists so the data/marker effects
+    // re-run and repopulate it (e.g. after a dark-mode rebuild).
+    setChartVersion((version) => version + 1);
 
     return () => {
       markersRef.current = null;
@@ -101,7 +105,7 @@ export function EmaDeviationChart({ data, trades, buyZones, sellZones, ticker }:
       priceLinesRef.current.push(seriesRef.current.createPriceLine({ price: zone.levelPct, color: '#EF4444', lineWidth: 1, lineStyle: 2, axisLabelVisible: true }));
     }
     chartRef.current.timeScale().fitContent();
-  }, [filteredData, buyZones, sellZones]);
+  }, [filteredData, buyZones, sellZones, chartVersion]);
 
   useEffect(() => {
     if (!markersRef.current) return;
@@ -136,15 +140,19 @@ export function EmaDeviationChart({ data, trades, buyZones, sellZones, ticker }:
 
     markers.sort((a, b) => Number(a.time as UTCTimestamp) - Number(b.time as UTCTimestamp));
     markersRef.current.setMarkers(markers);
-  }, [filteredData, ticker, trades]);
+  }, [filteredData, ticker, trades, chartVersion]);
 
-  if (!filteredData.length) {
-    return <div className="flex h-72 items-center justify-center text-gray-500">Недостаточно данных для EMA</div>;
-  }
-
+  // The chart container stays mounted even when there is no data so the
+  // creation effect always has a ref to attach to; the empty state is shown as
+  // an overlay. This keeps chart creation working on an empty→non-empty transition.
   return (
     <div className="flex min-h-[560px] flex-col gap-3">
-      <div ref={containerRef} className="min-h-[520px] flex-1 overflow-hidden rounded border border-gray-200 dark:border-gray-700" />
+      <div className="relative min-h-[520px] flex-1">
+        <div ref={containerRef} className="absolute inset-0 overflow-hidden rounded border border-gray-200 dark:border-gray-700" />
+        {!filteredData.length && (
+          <div className="absolute inset-0 flex items-center justify-center text-gray-500">Недостаточно данных для EMA</div>
+        )}
+      </div>
       <ChartLegend
         items={[
           { label: 'Отклонение цены от EMA', color: '#2563EB' },
