@@ -68,3 +68,6 @@ webull-sdk/
 server/db/*.db
 server/db/*.db-shm
 server/db/*.db-wal
+
+# Token Savior MCP index cache
+.token-savior-cache.json
