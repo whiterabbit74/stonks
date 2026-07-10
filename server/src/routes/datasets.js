@@ -259,6 +259,12 @@ router.post('/datasets/:id/apply-splits', async (req, res) => {
         const dataset = getDataset(id);
         if (!dataset) return res.status(404).json({ error: 'Dataset not found' });
 
+        // Re-applying would divide already-adjusted prices a second time and
+        // permanently corrupt the dataset, so this endpoint is a no-op once applied.
+        if (dataset.adjustedForSplits) {
+            return res.json({ success: true, id, alreadyApplied: true, message: 'Датасет уже пересчитан с учётом сплитов' });
+        }
+
         const events = await getTickerSplits(id);
         const data = Array.isArray(dataset.data) ? dataset.data : [];
 

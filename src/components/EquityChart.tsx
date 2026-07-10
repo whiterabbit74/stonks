@@ -11,7 +11,7 @@ import {
 } from 'lightweight-charts';
 import type { EquityPoint } from '../types';
 import { logError } from '../lib/error-logger';
-import { toChartTimestamp, formatTradingDateDisplay } from '../lib/date-utils';
+import { toChartTimestamp, toTradingDate, formatTradingDateDisplay } from '../lib/date-utils';
 import { useIsDark } from '../hooks/useIsDark';
 import { getChartColors } from '../lib/chart-theme';
 import { formatCompactNumber } from '../lib/formatters';
@@ -155,8 +155,12 @@ export function EquityChart({ equity, hideHeader, comparisonEquity, comparisonLa
         return;
       }
 
+      // Метка времени — полдень UTC (toChartTimestamp), поэтому дату берём из
+      // UTC-частей: toLocaleDateString сдвигал бы день в зонах восточнее UTC+12
       const epochSec = typeof param.time === 'number' ? param.time : undefined;
-      const dateStr = epochSec ? new Date(epochSec * 1000).toLocaleDateString('ru-RU') : '';
+      const dateStr = epochSec
+        ? formatTradingDateDisplay(toTradingDate(new Date(epochSec * 1000).toISOString().slice(0, 10)))
+        : '';
 
       const lines: string[] = [];
       if (typeof mainValue === 'number') {

@@ -33,20 +33,6 @@ interface FetchOptions extends RequestInit {
 }
 
 /**
- * Creates a timeout promise that rejects after specified milliseconds
- */
-function createTimeoutPromise(timeoutMs: number): Promise<never> {
-  return new Promise((_, reject) => {
-    setTimeout(() => {
-      const error = new Error(`Request timeout after ${timeoutMs} ms`) as NetworkError;
-      error.code = 'TIMEOUT';
-      error.retryable = true;
-      reject(error);
-    }, timeoutMs);
-  });
-}
-
-/**
  * Determines if an error is retryable
  */
 function isRetryableError(error: NetworkError): boolean {
@@ -81,10 +67,16 @@ export async function fetchWithCreds(
 ): Promise<Response> {
   const {
     timeout = 30000, // 30 second default timeout
-    retries = 3,
+    retries,
     retryDelay = 1000,
     ...fetchInit
   } = init || {};
+
+  // A retried mutation can re-execute server-side work that already succeeded
+  // (the first request keeps running on the server even after our timeout),
+  // so only idempotent methods are retried unless the caller opts in.
+  const method = (fetchInit.method || 'GET').toUpperCase();
+  const maxRetries = retries ?? (method === 'GET' || method === 'HEAD' ? 3 : 0);
 
   const merged: RequestInit = {
     credentials: 'include',
@@ -98,17 +90,15 @@ export async function fetchWithCreds(
 
   let lastError: NetworkError | null = null;
 
-  for (let attempt = 0; attempt <= retries; attempt++) {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    // Abort the underlying request when the timeout fires, so it does not
+    // keep running on the server while we retry.
+    const controller = new AbortController();
+    const timeoutTimer = setTimeout(() => controller.abort(), timeout);
     try {
-      // Create AbortController for timeout
-      const controller = new AbortController();
       merged.signal = controller.signal;
 
-      // Race between fetch and timeout
-      const response = await Promise.race([
-        fetch(input, merged),
-        createTimeoutPromise(timeout)
-      ]);
+      const response = await fetch(input, merged);
 
       // Log successful request after retries
       if (attempt > 0) {
@@ -120,7 +110,13 @@ export async function fetchWithCreds(
 
       return response;
     } catch (error: any) {
-      const networkError = error as NetworkError;
+      let networkError = error as NetworkError;
+
+      if (error?.name === 'AbortError') {
+        networkError = new Error(`Request timeout after ${timeout} ms`) as NetworkError;
+        networkError.code = 'TIMEOUT';
+        networkError.retryable = true;
+      }
 
       // Enhance error with status if it's a Response
       if (error.status) {
@@ -130,7 +126,7 @@ export async function fetchWithCreds(
       lastError = networkError;
 
       // Don't retry on last attempt
-      if (attempt === retries) {
+      if (attempt === maxRetries) {
         break;
       }
 
@@ -145,7 +141,7 @@ export async function fetchWithCreds(
       }
 
       // Log retry attempt
-      logWarn('network', `Request failed, retrying(${attempt + 1}/${retries})`, {
+      logWarn('network', `Request failed, retrying(${attempt + 1}/${maxRetries})`, {
         url: String(input),
         error: networkError.message,
         nextRetryIn: retryDelay
@@ -153,11 +149,13 @@ export async function fetchWithCreds(
 
       // Wait before retry with exponential backoff
       await delay(retryDelay * Math.pow(2, attempt));
+    } finally {
+      clearTimeout(timeoutTimer);
     }
   }
 
   // Log final failure
-  logError('network', `Request failed after ${retries + 1} attempts`, {
+  logError('network', `Request failed after ${maxRetries + 1} attempts`, {
     url: String(input),
     error: lastError?.message,
     finalError: lastError

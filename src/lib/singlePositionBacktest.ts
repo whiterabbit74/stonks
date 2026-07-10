@@ -52,6 +52,22 @@ export function formatCurrencyUSD(value: number): string {
   }).format(value);
 }
 
+function findLastBarIndexAtOrBefore(data: OHLCData[], timestamp: number): number {
+  let lo = 0;
+  let hi = data.length - 1;
+  let result = -1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (new Date(data[mid].date).getTime() <= timestamp) {
+      result = mid;
+      lo = mid + 1;
+    } else {
+      hi = mid - 1;
+    }
+  }
+  return result;
+}
+
 function createDateIndexMap(data: OHLCData[]): Map<number, number> {
   const map = new Map<number, number>();
   data.forEach((bar, index) => {
@@ -118,7 +134,10 @@ export function updatePortfolioState(
         const { netValue } = getPositionMarketValue(position, currentPrice, strategy);
         positionValue = Math.max(0, netValue);
       } else {
-        const lastBar = tickerData.data[tickerData.data.length - 1];
+        // The ticker has no bar for this timeline date: value the position at
+        // its most recent close, never at a later (future) bar.
+        const lastKnownIndex = findLastBarIndexAtOrBefore(tickerData.data, currentDateTime);
+        const lastBar = lastKnownIndex !== -1 ? tickerData.data[lastKnownIndex] : undefined;
         if (lastBar) {
           const { netValue } = getPositionMarketValue(position, lastBar.close, strategy);
           positionValue = Math.max(0, netValue);

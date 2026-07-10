@@ -12,6 +12,7 @@ import { Link } from 'react-router-dom';
 import type { MonitorTradeHistoryResponse, MonitorTradeRecord, EquityPoint, MonitorConsistencyResponse, TelegramEmaAlertRecord } from '../types';
 import { MonitorTradeHistoryPanel } from './MonitorTradeHistoryPanel';
 import { calculateMonitorTradeMetrics } from '../lib/monitor-trade-metrics';
+import { getTodayNYSE } from '../lib/date-utils';
 import { formatCurrencyUSD } from '../lib/formatters';
 import { AnalysisTabs, ChartContainer, IconButton, PageHeader, Panel, Select } from './ui';
 import { EquityChart } from './EquityChart';
@@ -50,7 +51,7 @@ function getMonitorTradeSortKey(trade: MonitorTradeRecord): string {
 }
 
 function getMonitorTradePointDate(trade: MonitorTradeRecord): string {
-  return trade.exitDate || trade.exitDecisionTime || trade.entryDate || trade.entryDecisionTime || new Date().toISOString().slice(0, 10);
+  return trade.exitDate || trade.exitDecisionTime || trade.entryDate || trade.entryDecisionTime || getTodayNYSE();
 }
 
 function buildMonitorBalanceEquity(trades: MonitorTradeRecord[], initialCapital = 10000): EquityPoint[] {

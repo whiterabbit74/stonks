@@ -13,6 +13,7 @@ import { saveDatasetToJSON, loadDatasetFromJSON } from '../lib/data-persistence'
 import { DatasetAPI } from '../lib/api';
 import { adjustOHLCForSplits, dedupeDailyOHLC } from '../lib/utils';
 import { logError, logInfo } from '../lib/error-logger';
+import { getTodayNYSE } from '../lib/date-utils';
 
 interface AppState {
   // Data
@@ -371,7 +372,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     try {
       // Создаем новый датасет. Если провайдер вернул сплиты, сохраняем их вместе с данными.
       const dataset: SavedDataset = {
-        name: name || `${ticker}_${new Date().toISOString().split('T')[0]}`,
+        name: name || `${ticker}_${getTodayNYSE()}`,
         ticker: ticker.toUpperCase(),
         data: [...marketData],
         ...(Array.isArray(splits) && splits.length > 0 && { splits }),
@@ -381,8 +382,8 @@ export const useAppStore = create<AppState>((set, get) => ({
           from: String(marketData[0].date).slice(0, 10),
           to: String(marketData[marketData.length - 1].date).slice(0, 10)
         } : {
-          from: new Date().toISOString().split('T')[0],
-          to: new Date().toISOString().split('T')[0]
+          from: getTodayNYSE(),
+          to: getTodayNYSE()
         },
         ...(metadata?.companyName && { companyName: metadata.companyName }),
         ...(metadata?.tag && { tag: metadata.tag })
@@ -525,8 +526,8 @@ export const useAppStore = create<AppState>((set, get) => ({
           from: String(marketData[0].date).slice(0, 10),
           to: String(marketData[marketData.length - 1].date).slice(0, 10),
         } : {
-          from: new Date().toISOString().split('T')[0],
-          to: new Date().toISOString().split('T')[0],
+          from: getTodayNYSE(),
+          to: getTodayNYSE(),
         },
       } as SavedDataset;
       // Используем стабильный ID по тикеру, а не name

@@ -30,24 +30,6 @@ export class CleanBacktestEngine {
   private options: Required<CleanBacktestOptions>;
   private peakValue: number = 0;
 
-  /**
-   * Рассчитать комиссию для сделки
-   */
-  private calculateCommission(tradeValue: number): number {
-    const { commission } = this.strategy.riskManagement;
-
-    switch (commission.type) {
-      case 'fixed':
-        return commission.fixed || 0;
-      case 'percentage':
-        return tradeValue * ((commission.percentage || 0) / 100);
-      case 'combined':
-        return (commission.fixed || 0) + tradeValue * ((commission.percentage || 0) / 100);
-      default:
-        return 0;
-    }
-  }
-
   constructor(data: OHLCData[], strategy: Strategy, options?: CleanBacktestOptions) {
     // Применяем сплиты к данным если они предоставлены
     this.data = options?.splits ? adjustOHLCForSplits(data, options.splits) : data;
@@ -107,55 +89,28 @@ export class CleanBacktestEngine {
 
       // IBS теперь всегда валидный (0.5 для проблемных данных)
 
-      // Если нет позиции - проверяем вход
+      // Если нет позиции - проверяем вход.
+      // На последнем баре не входим: позицию пришлось бы тут же закрыть тем же
+      // закрытием, создавая фиктивную сделку с нулевым P&L и длительностью 0.
       if (!position) {
         // Проверяем условие входа
-        if (ibs < lowIBS) {
+        if (ibs < lowIBS && nextBar) {
           // СИГНАЛ ВХОДА: IBS текущего дня < lowIBS
           const investmentAmount = (this.currentCapital * capitalUsage) / 100;
 
           if (this.options.entryExecution === 'nextOpen') {
             // ПОКУПКА: по цене открытия следующего дня
-            if (!nextBar) {
-              // Если нет следующего дня, покупаем по текущей цене закрытия как fallback
-              logWarn('backtest', 'Fallback to close price - no next day available for entry', {
-                date: bar.date,
-                ibs: ibs,
-                price: bar.close
-              }, 'CleanBacktest.runBacktest');
-
-              const quantity = Math.floor(investmentAmount / bar.close);
-              if (quantity > 0) {
-                const totalCost = quantity * bar.close;
-                position = {
-                  entryDate: bar.date,
-                  entryPrice: bar.close,
-                  quantity: quantity,
-                  entryIndex: i,
-                  entryIBS: ibs
-                };
-                this.currentCapital -= totalCost;
-              } else {
-                logWarn('backtest', 'Entry signal but insufficient funds for minimum quantity', {
-                  date: bar.date,
-                  investmentAmount,
-                  price: bar.close,
-                  quantity
-                }, 'CleanBacktest.runBacktest');
-              }
-            } else {
-              const quantity = Math.floor(investmentAmount / nextBar.open);
-              if (quantity > 0) {
-                const totalCost = quantity * nextBar.open;
-                position = {
-                  entryDate: nextBar.date, // Дата покупки = следующий день
-                  entryPrice: nextBar.open, // Цена покупки = открытие следующего дня
-                  quantity: quantity,
-                  entryIndex: i + 1, // Индекс следующего дня
-                  entryIBS: ibs
-                };
-                this.currentCapital -= totalCost;
-              }
+            const quantity = Math.floor(investmentAmount / nextBar.open);
+            if (quantity > 0) {
+              const totalCost = quantity * nextBar.open;
+              position = {
+                entryDate: nextBar.date, // Дата покупки = следующий день
+                entryPrice: nextBar.open, // Цена покупки = открытие следующего дня
+                quantity: quantity,
+                entryIndex: i + 1, // Индекс следующего дня
+                entryIBS: ibs
+              };
+              this.currentCapital -= totalCost;
             }
           } else {
             // entryExecution === 'close' -> покупка по цене закрытия текущего дня
@@ -186,18 +141,14 @@ export class CleanBacktestEngine {
 
           // Проверяем IBS условие выхода (только если IBS валидное)
           if (!isNaN(ibs) && ibs > highIBS) {
-            if (this.options.ibsExitRequireAboveEntry) {
-              if (bar.close > position.entryPrice) {
-                shouldExit = true;
-                exitReason = 'ibs_signal';
-              }
-            } else {
+            if (!this.options.ibsExitRequireAboveEntry || bar.close > position.entryPrice) {
               shouldExit = true;
               exitReason = 'ibs_signal';
             }
           }
-          // Проверяем максимальное время удержания
-          else if (!this.options.ignoreMaxHoldDaysExit) {
+          // Проверяем максимальное время удержания независимо от того, был ли
+          // IBS-выход подавлен фильтром "только выше цены входа"
+          if (!shouldExit && !this.options.ignoreMaxHoldDaysExit) {
             const daysDiff = daysBetweenTradingDates(position.entryDate, bar.date);
             if (daysDiff >= maxHoldDays) {
               shouldExit = true;
@@ -249,13 +200,11 @@ export class CleanBacktestEngine {
         }
       }
 
-      // Обновляем equity curve
+      // Обновляем equity curve. Движок безкомиссионный: входы и выходы не
+      // списывают комиссию, поэтому и открытая позиция оценивается без неё.
       let totalValue = this.currentCapital;
       if (position) {
-        // Учитываем комиссию на выход при расчете equity для открытых позиций
-        const grossValue = position.quantity * bar.close;
-        const commission = this.calculateCommission(grossValue);
-        totalValue += grossValue - commission;
+        totalValue += position.quantity * bar.close;
       }
 
       // Рассчитываем drawdown (оптимизировано для производительности)
@@ -278,16 +227,10 @@ export class CleanBacktestEngine {
       let shouldExit = false;
       let exitReason = '';
 
-      if (!isNaN(lastIBS) && lastIBS > highIBS) {
-        if (this.options.ibsExitRequireAboveEntry) {
-          if (lastBar.close > position.entryPrice) {
-            shouldExit = true;
-            exitReason = 'ibs_signal';
-          }
-        } else {
-          shouldExit = true;
-          exitReason = 'ibs_signal';
-        }
+      if (!isNaN(lastIBS) && lastIBS > highIBS
+        && (!this.options.ibsExitRequireAboveEntry || lastBar.close > position.entryPrice)) {
+        shouldExit = true;
+        exitReason = 'ibs_signal';
       } else {
         const daysDiff = daysBetweenTradingDates(position.entryDate, lastBar.date);
         if (!this.options.ignoreMaxHoldDaysExit && daysDiff >= maxHoldDays) {
@@ -295,6 +238,7 @@ export class CleanBacktestEngine {
           exitReason = 'max_hold_days';
         } else {
           // Всегда выходим на последнем баре, даже если ignoreMaxHoldDaysExit = true
+          // или IBS-выход подавлен фильтром "только выше цены входа"
           shouldExit = true;
           exitReason = 'end_of_data';
         }
@@ -340,10 +284,7 @@ export class CleanBacktestEngine {
     // Обновляем последний equity point без дублирования временной метки
     let finalValue = this.currentCapital;
     if (position) {
-      // Учитываем комиссию на выход для открытых позиций
-      const grossValue = position.quantity * lastBar.close;
-      const commission = this.calculateCommission(grossValue);
-      finalValue += grossValue - commission;
+      finalValue += position.quantity * lastBar.close;
     }
     this.peakValue = Math.max(this.peakValue, finalValue);
     const finalDrawdown = this.peakValue > 0 ? ((this.peakValue - finalValue) / this.peakValue) * 100 : 0;
