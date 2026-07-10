@@ -1,11 +1,11 @@
-import { useMemo, useRef, useState } from 'react';
-import { useClickOutside } from '../hooks/useClickOutside';
+import { useMemo, useState } from 'react';
 import type { OHLCData, Trade } from '../types';
 import { runOptionsBacktest } from '../lib/optionsBacktest';
 import { EquityChart } from './EquityChart';
 import { TradesTable } from './TradesTable';
 import { formatCurrency, formatPercentage } from '../lib/utils';
-import { HelpCircle } from 'lucide-react';
+import { HelpTooltip } from './ui';
+
 
 interface OptionsAnalysisProps {
     stockTrades: Trade[];
@@ -18,9 +18,6 @@ export function OptionsAnalysis({ stockTrades, marketData }: OptionsAnalysisProp
     const [capitalPct, setCapitalPct] = useState<number>(10);
     const [expirationWeeks, setExpirationWeeks] = useState<number>(4);
     const [maxHoldingDays, setMaxHoldingDays] = useState<number>(30);
-    const [showModelingInfo, setShowModelingInfo] = useState(false);
-    const modelingInfoRef = useRef<HTMLDivElement | null>(null);
-
     const { equity, trades, finalValue } = useMemo(() => {
         return runOptionsBacktest(stockTrades, marketData, {
             strikePct,
@@ -35,7 +32,6 @@ export function OptionsAnalysis({ stockTrades, marketData }: OptionsAnalysisProp
     const initialCapital = 10000;
     const totalReturn = ((finalValue - initialCapital) / initialCapital) * 100;
 
-    useClickOutside(modelingInfoRef, showModelingInfo, () => setShowModelingInfo(false), false);
 
     return (
         <div className="space-y-6">
@@ -137,19 +133,11 @@ export function OptionsAnalysis({ stockTrades, marketData }: OptionsAnalysisProp
                         />
                     </div>
 
-                    <div ref={modelingInfoRef} className="relative md:ml-auto">
-                        <button
-                            type="button"
-                            onClick={() => setShowModelingInfo((prev) => !prev)}
-                            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-300 text-gray-500 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
-                            title="Информация о моделировании"
-                            aria-label="Информация о моделировании"
-                        >
-                            <HelpCircle className="h-4 w-4" />
-                        </button>
-                        {showModelingInfo && (
-                            <div className="absolute right-0 top-full z-20 mt-2 w-80 rounded-lg border border-gray-200 bg-white p-3 text-sm text-gray-700 shadow-lg dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200">
-                                <p className="font-semibold mb-2">О моделировании</p>
+                    <div className="relative md:ml-auto flex items-center h-9">
+                        <HelpTooltip
+                            title="О моделировании"
+                            size="lg"
+                            content={
                                 <ul className="list-disc list-inside space-y-1">
                                     <li>Покупка Call-опционов вместо акций при сигналах стратегии.</li>
                                     <li>Экспирация: расчетная дата (через выбранный период + до ближайшей пятницы).</li>
@@ -157,8 +145,8 @@ export function OptionsAnalysis({ stockTrades, marketData }: OptionsAnalysisProp
                                     <li>Волатильность: историческая за 30 дней + ваша коррекция.</li>
                                     <li>Страйк округляется до ближайшего целого числа.</li>
                                 </ul>
-                            </div>
-                        )}
+                            }
+                        />
                     </div>
                 </div>
             </div>

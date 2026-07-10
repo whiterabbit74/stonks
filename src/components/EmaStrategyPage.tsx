@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
-import { AnalysisTabs, Button, ChartContainer, IconButton, Input, PageHeader, Panel, Select, TickerInput } from './ui';
+import { AnalysisTabs, Button, ChartContainer, IconButton, Input, PageHeader, Panel, Select, TickerInput, HelpTooltip } from './ui';
 import { MetricsGrid } from './ui/MetricsGrid';
 import { LS } from '../constants';
 import type { EmaSignalSource, EmaStartMode, EmaZone, MultiTickerBacktestResults } from '../types';
@@ -504,32 +504,32 @@ export function EmaStrategyPage() {
         </div>
 
         <div>
-          <label className="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">Сигнал входа/выхода</label>
+          <div className="flex items-center gap-1.5 mb-1">
+            <label className="text-xs font-medium text-gray-700 dark:text-gray-300">Сигнал входа/выхода</label>
+            <HelpTooltip content="«Касание» активирует зону, если её задела тень свечи; сделка всё равно исполняется по закрытию дня." />
+          </div>
           <Select value={settings.signalSource} onChange={(event) => setSettings((prev) => ({ ...prev, signalSource: event.target.value as EmaSignalSource }))}>
             <option value="close">По закрытию свечи</option>
             <option value="intraday">Касание внутри дня (вход по закрытию)</option>
           </Select>
-          <p className="mt-1 text-[11px] leading-snug text-gray-500 dark:text-gray-400">
-            «Касание» активирует зону, если её задела тень свечи; сделка всё равно исполняется по закрытию дня.
-          </p>
         </div>
 
         <div>
-          <label className="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">Старт EMA</label>
+          <div className="flex items-center gap-1.5 mb-1">
+            <label className="text-xs font-medium text-gray-700 dark:text-gray-300">Старт EMA</label>
+            <HelpTooltip content={`«После полной истории» — сделки только когда накоплено ${settings.emaPeriod} баров (реальная EMA ${settings.emaPeriod}). «С самого начала» — EMA растёт с первой свечи, сделки могут начаться сразу.`} />
+          </div>
           <Select value={settings.emaStartMode} onChange={(event) => setSettings((prev) => ({ ...prev, emaStartMode: event.target.value as EmaStartMode }))}>
             <option value="full_history">После полной истории ({settings.emaPeriod} дней)</option>
             <option value="from_start">С самого начала графика</option>
           </Select>
-          <p className="mt-1 text-[11px] leading-snug text-gray-500 dark:text-gray-400">
-            «После полной истории» — сделки только когда накоплено {settings.emaPeriod} баров (реальная EMA {settings.emaPeriod}). «С самого начала» — EMA растёт с первой свечи, сделки могут начаться сразу.
-          </p>
         </div>
 
         <div>
-          <label className="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">Тейк-профит</label>
-          <p className="mb-1 text-[11px] leading-snug text-gray-500 dark:text-gray-400">
-            Досрочный выход, если максимум дня достиг процента прибыли от цены входа. Пусто или 0 выключает условие.
-          </p>
+          <div className="flex items-center gap-1.5 mb-1">
+            <label className="text-xs font-medium text-gray-700 dark:text-gray-300">Тейк-профит</label>
+            <HelpTooltip content="Досрочный выход, если максимум дня достиг процента прибыли от цены входа. Пусто или 0 выключает условие." />
+          </div>
           <Input
             type="number"
             min={0}
@@ -540,6 +540,7 @@ export function EmaStrategyPage() {
             placeholder="Пусто выключает"
           />
         </div>
+
 
         <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
           <input

@@ -79,6 +79,7 @@ vi.mock('../ui', () => ({
     </button>
   ),
   Panel: ({ children, as: Component = 'div', ...props }: any) => <Component {...props}>{children}</Component>,
+  HelpTooltip: ({ content, title }: any) => <div data-testid="help-tooltip" title={title}>{content}</div>,
 }));
 
 vi.mock('../BacktestPageShell', () => ({

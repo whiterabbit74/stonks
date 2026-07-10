@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { HelpCircle, RefreshCw, ArrowUpRight } from 'lucide-react';
-import { MetricsGrid, AnalysisTabs, PageHeader, Select, Input, Button, TickerInput, IconButton, Panel } from './ui';
+import { MetricsGrid, AnalysisTabs, PageHeader, Select, Input, Button, TickerInput, IconButton, Panel, HelpTooltip } from './ui';
 import { useAppStore } from '../stores';
 import type { Strategy, MultiTickerBacktestResults, ChartQuote } from '../types';
 import { optimizeTickerData, runSinglePositionBacktest } from '../lib/singlePositionBacktest';
@@ -18,7 +18,8 @@ import { isSameDay } from '../lib/date-utils';
 import { useMarketOpen } from '../hooks/useMarketOpen';
 import { lsGet, lsSet } from '../lib/storage';
 import { LS } from '../constants';
-import { useClickOutside } from '../hooks/useClickOutside';
+
+
 import { CompactMetrics } from './CompactMetrics';
 import { StaleDataWarning } from './StaleDataWarning';
 import { OpenPositionBadge } from './OpenPositionBadge';
@@ -112,10 +113,10 @@ export function MultiTickerOptionsPage() {
   const [heroChartKind, setHeroChartKind] = useState<'line' | 'candles'>(() => lsGet<'line' | 'candles'>(LS.OPTIONS_CHART_KIND, 'line'));
   const [heroShowTrades, setHeroShowTrades] = useState<boolean>(() => lsGet<boolean>(LS.OPTIONS_SHOW_TRADES, true));
   const [heroRange, setHeroRange] = useState<'1M' | '3M' | '6M' | '1Y' | '3Y' | '5Y' | 'MAX'>(() => lsGet(LS.OPTIONS_RANGE, '3M'));
-  const [showStrategyInfo, setShowStrategyInfo] = useState(false);
+
   const isMarketOpen = useMarketOpen();
 
-  const strategyHelpRef = useRef<HTMLDivElement | null>(null);
+
   const hasAutoRun = useRef(false);
   const lazyFallback = <TabContentLoader />;
 
@@ -151,7 +152,7 @@ export function MultiTickerOptionsPage() {
   );
   const initialCapital = 10000;
 
-  useClickOutside(strategyHelpRef, showStrategyInfo, () => setShowStrategyInfo(false));
+
 
   const runBacktest = async (tickersOverride?: string[]) => {
     if (!activeStrategy) {
@@ -399,28 +400,19 @@ export function MultiTickerOptionsPage() {
           <Panel as="aside" tone="soft" padding="sm" className="space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">Параметры</span>
-              <div ref={strategyHelpRef} className="relative">
-                <IconButton
-                  onClick={() => setShowStrategyInfo((prev) => !prev)}
-                  variant="outline"
-                  size="md"
-                  title="Показать описание стратегии"
-                  aria-expanded={showStrategyInfo}
-                >
-                  <HelpCircle className="h-4 w-4" />
-                </IconButton>
-                {showStrategyInfo && (
-                  <div className="absolute right-0 top-full z-20 mt-2 w-[min(94vw,430px)]">
-                    <StrategyInfoCard
-                      strategy={activeStrategy}
-                      lowIBS={lowIBS}
-                      highIBS={highIBS}
-                      maxHoldDays={strategyMaxHoldDays}
-                      optionsMode={true}
-                    />
-                  </div>
-                )}
-              </div>
+              <HelpTooltip
+                size="max"
+                title="Описание стратегии"
+                content={
+                  <StrategyInfoCard
+                    strategy={activeStrategy}
+                    lowIBS={lowIBS}
+                    highIBS={highIBS}
+                    maxHoldDays={strategyMaxHoldDays}
+                    optionsMode={true}
+                  />
+                }
+              />
             </div>
 
             {/* Tickers */}

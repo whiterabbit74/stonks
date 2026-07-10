@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { LS } from '../constants';
-import { RefreshCw, Trash2, ExternalLink, ArrowUpDown, ArrowUp, ArrowDown, HelpCircle } from 'lucide-react';
+import { RefreshCw, Trash2, ExternalLink, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { DatasetAPI } from '../lib/api';
 import { ConfirmModal } from './ConfirmModal';
 import { InfoModal } from './InfoModal';
@@ -14,7 +14,7 @@ import { MonitorTradeHistoryPanel } from './MonitorTradeHistoryPanel';
 import { calculateMonitorTradeMetrics } from '../lib/monitor-trade-metrics';
 import { getTodayNYSE } from '../lib/date-utils';
 import { formatCurrencyUSD } from '../lib/formatters';
-import { AnalysisTabs, ChartContainer, IconButton, PageHeader, Panel, Select } from './ui';
+import { AnalysisTabs, ChartContainer, IconButton, PageHeader, Panel, Select, HelpTooltip } from './ui';
 import { EquityChart } from './EquityChart';
 
 interface WatchItem {
@@ -189,7 +189,7 @@ export function TelegramWatches() {
     if (typeof window === 'undefined') return 100;
     return normalizeMonitorMarginPercent(Number(window.localStorage.getItem(LS.MONITOR_MARGIN_PCT) || 100));
   });
-  const [showMarginHelp, setShowMarginHelp] = useState(false);
+
   const watchThresholdPct = useAppStore(s => s.watchThresholdPct);
   const currentStrategy = useAppStore(s => s.currentStrategy);
   const resultsQuoteProvider = useAppStore(s => s.resultsQuoteProvider);
@@ -388,16 +388,7 @@ export function TelegramWatches() {
     window.localStorage.setItem(LS.MONITOR_MARGIN_PCT, String(monitorMarginPercent));
   }, [monitorMarginPercent]);
 
-  useEffect(() => {
-    if (!showMarginHelp) return;
-    const onPointerDown = (event: MouseEvent) => {
-      const target = event.target as HTMLElement | null;
-      if (target?.closest('[data-monitor-margin-help]')) return;
-      setShowMarginHelp(false);
-    };
-    window.addEventListener('mousedown', onPointerDown);
-    return () => window.removeEventListener('mousedown', onPointerDown);
-  }, [showMarginHelp]);
+
 
   const simulatedTrades = useMemo(
     () => applyMonitorMarginSimulation(tradeHistory?.trades ?? [], monitorMarginPercent),
@@ -736,23 +727,10 @@ export function TelegramWatches() {
               <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-800">
                 <div className="mb-2 flex items-center justify-between gap-2">
                   <div className="text-xs text-gray-600 dark:text-gray-400">Маржинальность</div>
-                  <div className="relative" data-monitor-margin-help>
-                    <IconButton
-                      onClick={() => setShowMarginHelp((prev) => !prev)}
-                      variant="outline"
-                      size="sm"
-                      className="h-5 w-5"
-                      title="Пояснение по симуляции маржи"
-                      aria-label="Пояснение по симуляции маржи"
-                    >
-                      <HelpCircle className="h-3.5 w-3.5" />
-                    </IconButton>
-                    {showMarginHelp && (
-                      <Panel className="absolute right-0 top-full z-10 mt-1.5 w-52 p-2 text-xs text-gray-700 shadow-lg dark:border-gray-700 dark:text-gray-200">
-                        Коэффициент применяем к доходности каждой закрытой сделки. 100% = без маржи, 200% = 2x.
-                      </Panel>
-                    )}
-                  </div>
+                  <HelpTooltip
+                    size="sm"
+                    content="Коэффициент применяем к доходности каждой закрытой сделки. 100% = без маржи, 200% = 2x."
+                  />
                 </div>
                 <Select
                   value={monitorMarginPercent}

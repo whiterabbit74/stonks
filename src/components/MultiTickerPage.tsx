@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { HelpCircle, RefreshCw, ArrowUpRight } from 'lucide-react';
-import { MetricsGrid, AnalysisTabs, PageHeader, Select, Input, Button, TickerInput, ChartContainer, IconButton, Panel } from './ui';
+import { MetricsGrid, AnalysisTabs, PageHeader, Select, Input, Button, TickerInput, ChartContainer, IconButton, Panel, HelpTooltip } from './ui';
 import { useAppStore } from '../stores';
 import { LS } from '../constants';
 import type { Strategy, MultiTickerBacktestResults, ChartQuote } from '../types';
@@ -18,7 +18,8 @@ import { DatasetAPI } from '../lib/api';
 import { isSameDay } from '../lib/date-utils';
 import { useMarketOpen } from '../hooks/useMarketOpen';
 import { lsGet, lsSet } from '../lib/storage';
-import { useClickOutside } from '../hooks/useClickOutside';
+
+
 import { CompactMetrics } from './CompactMetrics';
 import { StaleDataWarning } from './StaleDataWarning';
 import { OpenPositionBadge } from './OpenPositionBadge';
@@ -107,7 +108,7 @@ export function MultiTickerPage() {
   const [leveragePercent, setLeveragePercent] = useState(200);
   const [monthlyContributionAmount, setMonthlyContributionAmount] = useState<number>(500);
   const [monthlyContributionDay, setMonthlyContributionDay] = useState<number>(1);
-  const [showStrategyInfo, setShowStrategyInfo] = useState(false);
+
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [backtestResults, setBacktestResults] = useState<BacktestResults | null>(null);
@@ -131,7 +132,7 @@ export function MultiTickerPage() {
   const isMarketOpen = useMarketOpen();
 
   const lazyFallback = <TabContentLoader />;
-  const strategyHelpRef = useRef<HTMLDivElement | null>(null);
+
   const hasAutoRun = useRef(false);
 
   useEffect(() => {
@@ -179,7 +180,7 @@ export function MultiTickerPage() {
   );
   const initialCapital = Number(activeStrategy?.riskManagement?.initialCapital ?? 10000);
 
-  useClickOutside(strategyHelpRef, showStrategyInfo, () => setShowStrategyInfo(false));
+
 
   // ─── Backtest ────────────────────────────────────────────────────────────────
 
@@ -511,27 +512,18 @@ export function MultiTickerPage() {
           <Panel as="aside" tone="soft" padding="sm" className="space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">Параметры</span>
-              <div ref={strategyHelpRef} className="relative">
-                <IconButton
-                  onClick={() => setShowStrategyInfo((prev) => !prev)}
-                  variant="outline"
-                  size="md"
-                  title="Показать описание стратегии"
-                  aria-expanded={showStrategyInfo}
-                >
-                  <HelpCircle className="h-4 w-4" />
-                </IconButton>
-                {showStrategyInfo && (
-                  <div className="absolute right-0 top-full z-20 mt-2 w-[min(94vw,430px)]">
-                    <StrategyInfoCard
-                      strategy={activeStrategy}
-                      lowIBS={lowIBS}
-                      highIBS={highIBS}
-                      maxHoldDays={maxHoldDays}
-                    />
-                  </div>
-                )}
-              </div>
+              <HelpTooltip
+                size="max"
+                title="Описание стратегии"
+                content={
+                  <StrategyInfoCard
+                    strategy={activeStrategy}
+                    lowIBS={lowIBS}
+                    highIBS={highIBS}
+                    maxHoldDays={maxHoldDays}
+                  />
+                }
+              />
             </div>
 
             <div>
@@ -584,10 +576,10 @@ export function MultiTickerPage() {
             </div>
 
             <div>
-              <label htmlFor="take-profit-percent-input" className="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">Тейк-профит</label>
-              <p className="mb-1 text-[11px] leading-snug text-gray-500 dark:text-gray-400">
-                Досрочный выход, если максимум дня достиг процента прибыли от цены входа. Пусто или 0 выключает условие.
-              </p>
+              <div className="flex items-center gap-1.5 mb-1">
+                <label htmlFor="take-profit-percent-input" className="block text-xs font-medium text-gray-700 dark:text-gray-300">Тейк-профит</label>
+                <HelpTooltip content="Досрочный выход, если максимум дня достиг процента прибыли от цены входа. Пусто или 0 выключает условие." />
+              </div>
               <Input
                 id="take-profit-percent-input"
                 type="number"
