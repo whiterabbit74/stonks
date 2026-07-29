@@ -188,6 +188,17 @@ function initSchema(db) {
         );
 
         CREATE INDEX IF NOT EXISTS idx_telegram_ema_alerts_symbol ON telegram_ema_alerts(symbol);
+
+        CREATE TABLE IF NOT EXISTS webull_token (
+            id                    TEXT PRIMARY KEY CHECK (id = 'current'),
+            token                 TEXT,
+            created_at            TEXT,
+            expires_at            TEXT,
+            last_check_status     TEXT,
+            last_check_at         TEXT,
+            last_health_check_date TEXT,
+            updated_at            TEXT
+        );
     `);
 
     const emaAlertMigrations = [
@@ -199,6 +210,19 @@ function initSchema(db) {
         `ALTER TABLE telegram_ema_alerts ADD COLUMN last_triggered_deviation_pct REAL`,
     ];
     for (const sql of emaAlertMigrations) {
+        try { db.exec(sql); } catch { /* column already exists */ }
+    }
+
+    const webullTokenMigrations = [
+        `ALTER TABLE webull_token ADD COLUMN token TEXT`,
+        `ALTER TABLE webull_token ADD COLUMN created_at TEXT`,
+        `ALTER TABLE webull_token ADD COLUMN expires_at TEXT`,
+        `ALTER TABLE webull_token ADD COLUMN last_check_status TEXT`,
+        `ALTER TABLE webull_token ADD COLUMN last_check_at TEXT`,
+        `ALTER TABLE webull_token ADD COLUMN last_health_check_date TEXT`,
+        `ALTER TABLE webull_token ADD COLUMN updated_at TEXT`,
+    ];
+    for (const sql of webullTokenMigrations) {
         try { db.exec(sql); } catch { /* column already exists */ }
     }
 }
