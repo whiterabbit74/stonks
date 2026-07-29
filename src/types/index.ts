@@ -344,6 +344,10 @@ export interface TelegramEmaAlertRecord {
   lastTriggeredAt?: string | null;
   lastTriggeredDeviationPct?: number | null;
   thresholdPct: number;
+  /** Info-only level (default -20%): notifies on crossing, never affects buy/sell alternation. */
+  infoLevelPct?: number;
+  infoLastSide?: 'above' | 'below' | null;
+  infoLastNotifiedAt?: string | null;
   enabled: boolean;
   createdAt?: string;
   updatedAt?: string;

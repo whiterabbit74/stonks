@@ -197,6 +197,9 @@ function initSchema(db) {
         `ALTER TABLE telegram_ema_alerts ADD COLUMN last_triggered_action TEXT`,
         `ALTER TABLE telegram_ema_alerts ADD COLUMN last_triggered_at TEXT`,
         `ALTER TABLE telegram_ema_alerts ADD COLUMN last_triggered_deviation_pct REAL`,
+        `ALTER TABLE telegram_ema_alerts ADD COLUMN info_level_pct REAL`,
+        `ALTER TABLE telegram_ema_alerts ADD COLUMN info_last_side TEXT`,
+        `ALTER TABLE telegram_ema_alerts ADD COLUMN info_last_notified_at TEXT`,
     ];
     for (const sql of emaAlertMigrations) {
         try { db.exec(sql); } catch { /* column already exists */ }
