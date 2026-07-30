@@ -221,8 +221,9 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
 
         // Info-level (-20% by default) first observation: record the current side immediately,
         // no Telegram notification involved — there's nothing to compare against yet.
+        // Skipped for dry runs (updateState: false) so tests never seed a production baseline.
         try {
-            for (const alert of emaAlerts) {
+            for (const alert of (!options || options.updateState !== false) ? emaAlerts : []) {
                 if (alert.dataOk && alert.infoPrevSide == null && alert.infoSide) {
                     recordEmaInfoSide(alert.id, alert.infoSide);
                 }
