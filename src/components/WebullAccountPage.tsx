@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { AlertCircle, BriefcaseBusiness, ChevronDown, ChevronUp, History, Pencil, RefreshCw, ShieldCheck, Wallet, Radar } from 'lucide-react';
 import type { AutoTradingConfig, AutoTradeState, AutotradeLogsResponse, WebullDashboardResponse, BrokerTradeRecord, MonitorConsistencyResponse } from '../types';
-import { DatasetAPI } from '../lib/api';
+import { API_BASE_URL, DatasetAPI, fetchWithCreds } from '../lib/api';
 import { getEntryCapitalModeOption } from '../lib/autotrade-config';
 import { formatCurrencyValue, formatDateTimeET, formatHoldingDays, formatNumberOrDash, formatRatioPercent, formatSignedPercentValue } from '../lib/formatters';
 import { AnalysisTabs, Button, IconButton, PageHeader, Panel } from './ui';
@@ -16,6 +16,15 @@ type ManualCloseState = {
   clientOrderId?: string | null;
   message?: string;
   dashboardSynced?: boolean;
+};
+
+type WebullTokenStatus = {
+  hasToken: boolean;
+  source: 'db' | 'env' | 'none';
+  expiresAt: string | null;
+  daysLeft: number | null;
+  lastCheckStatus: string | null;
+  lastCheckAt: string | null;
 };
 
 type MonitoringRow = {
@@ -395,6 +404,9 @@ export function WebullAccountPage() {
   const [manualCloseStates, setManualCloseStates] = useState<Record<string, ManualCloseState>>({});
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [tokenStatus, setTokenStatus] = useState<WebullTokenStatus | null>(null);
+  const [tokenInput, setTokenInput] = useState('');
+  const [tokenActionLoading, setTokenActionLoading] = useState(false);
   const quoteProvider = useAppStore((s) => s.resultsQuoteProvider);
   const monitorConsistencyStatus = getMonitorConsistencyStatus(monitorConsistency);
 
@@ -440,6 +452,49 @@ export function WebullAccountPage() {
       setAutotradeState(next.state);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Не удалось загрузить настройки автоторговли');
+    }
+  };
+
+  const tokenApiCall = async <T,>(path: string, init?: RequestInit): Promise<T> => {
+    const response = await fetchWithCreds(`${API_BASE_URL}/autotrade/webull/token${path}`, init);
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({})) as { error?: string };
+      throw new Error(body.error ?? `HTTP ${response.status}`);
+    }
+    return response.json() as Promise<T>;
+  };
+
+  const loadTokenStatus = async () => {
+    try {
+      setTokenStatus(await tokenApiCall<WebullTokenStatus>('/status'));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Не удалось загрузить статус токена');
+    }
+  };
+
+  const runTokenAction = async (action: 'check' | 'create' | 'save') => {
+    try {
+      setTokenActionLoading(true);
+      setError(null);
+      if (action === 'check') {
+        await tokenApiCall('/check', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+        setActionMessage('Проверка токена Webull выполнена.');
+      } else if (action === 'create') {
+        const result = await tokenApiCall<{ persisted: boolean }>('/create', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+        setActionMessage(result.persisted
+          ? 'Токен создан и сохранён. Подтвердите SMS в приложении Webull, затем проверьте токен.'
+          : 'Токен создан, но НЕ сохранён автоматически — вставьте его вручную и нажмите Сохранить');
+      } else {
+        await tokenApiCall('', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: tokenInput }) });
+        setTokenInput('');
+        setActionMessage('Токен сохранён. Выполните проверку после SMS-подтверждения.');
+      }
+      await loadTokenStatus();
+      await loadDashboard(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Операция с токеном не выполнена');
+    } finally {
+      setTokenActionLoading(false);
     }
   };
 
@@ -697,6 +752,7 @@ export function WebullAccountPage() {
     void loadDashboard(false);
     void loadAutotradeConfig();
     void loadLogs();
+    void loadTokenStatus();
   }, []);
 
   useEffect(() => {
@@ -1207,7 +1263,26 @@ export function WebullAccountPage() {
               <div className="rounded-xl bg-gray-50 p-3 dark:bg-gray-950/40">
                 <div className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Token / Account</div>
                 <div className="mt-1 text-sm text-gray-900 dark:text-gray-100">
-                  token {data.connection.hasAccessToken ? 'есть' : 'не задан'} • account {data.connection.hasAccountId ? 'задан' : 'не задан'}
+                  token {(tokenStatus?.hasToken ?? data.connection.hasAccessToken) ? 'есть' : 'не задан'} • account {data.connection.hasAccountId ? 'задан' : 'не задан'}
+                </div>
+                <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  Истекает: {tokenStatus?.expiresAt ? formatDateTime(tokenStatus.expiresAt) : '—'} • осталось: {tokenStatus?.daysLeft ?? '—'} дн. • проверка: {tokenStatus?.lastCheckStatus ?? '—'}
+                </div>
+                {tokenStatus?.lastCheckAt ? <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">Проверено: {formatDateTime(tokenStatus.lastCheckAt)}</div> : null}
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <Button variant="secondary" onClick={() => void runTokenAction('check')} isLoading={tokenActionLoading}>Проверить токен</Button>
+                  <Button variant="secondary" onClick={() => void runTokenAction('create')} isLoading={tokenActionLoading}>Создать токен</Button>
+                </div>
+                <div className="mt-2 flex gap-2">
+                  <input
+                    value={tokenInput}
+                    onChange={(event) => setTokenInput(event.target.value)}
+                    placeholder="Вставьте Webull token"
+                    className="min-w-0 flex-1 rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-900 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+                    type="password"
+                    autoComplete="off"
+                  />
+                  <Button variant="secondary" onClick={() => void runTokenAction('save')} isLoading={tokenActionLoading} disabled={!tokenInput.trim()}>Сохранить токен</Button>
                 </div>
               </div>
             </div>

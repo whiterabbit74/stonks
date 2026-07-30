@@ -15,6 +15,20 @@ const {
     createAccessToken,
     checkAccessToken,
 } = require('../services/autotrade');
+const { getApiConfig } = require('../config');
+const { getStoredToken, saveToken, updateCheckStatus, getDaysLeft } = require('../services/webullToken');
+
+function extractTokenValue(data) {
+    return data?.token || data?.access_token || data?.accessToken || data?.data?.token || data?.data?.access_token || '';
+}
+
+function extractTokenExpiry(data) {
+    return data?.expires_at || data?.expiresAt || data?.expiration_time || data?.expirationTime || data?.expire_time || data?.data?.expires_at || data?.data?.expiresAt || null;
+}
+
+function extractTokenStatus(data) {
+    return String(data?.status || data?.token_status || data?.tokenStatus || data?.data?.status || 'UNKNOWN').toUpperCase();
+}
 
 function formatWebullError(error, fallbackMessage) {
     const response = error && error.response ? error.response : null;
@@ -174,8 +188,11 @@ router.post('/autotrade/webull/test-buy', async (req, res) => {
 
 router.post('/autotrade/webull/token/create', async (req, res) => {
     try {
-        const token = await createAccessToken();
-        res.json(token.data);
+        const result = await createAccessToken();
+        const token = extractTokenValue(result.data);
+        const persisted = !!token;
+        if (persisted) saveToken({ token, expiresAt: extractTokenExpiry(result.data) });
+        res.json({ ...(result.data || {}), persisted });
     } catch (error) {
         res.status(500).json({ error: error.message || 'Failed to create Webull token' });
     }
@@ -185,10 +202,36 @@ router.post('/autotrade/webull/token/check', async (req, res) => {
     try {
         const token = typeof req.body?.token === 'string' ? req.body.token : '';
         const result = await checkAccessToken(token);
+        updateCheckStatus(extractTokenStatus(result.data));
         res.json(result.data);
     } catch (error) {
         res.status(500).json({ error: error.message || 'Failed to check Webull token' });
     }
+});
+
+router.put('/autotrade/webull/token', (req, res) => {
+    try {
+        const saved = saveToken({ token: req.body?.token, expiresAt: req.body?.expiresAt });
+        res.json({ success: true, expiresAt: saved.expires_at, daysLeft: getDaysLeft(saved.expires_at) });
+    } catch (error) {
+        res.status(400).json({ error: error.message || 'Failed to save Webull token' });
+    }
+});
+
+router.get('/autotrade/webull/token/status', (req, res) => {
+    const stored = getStoredToken();
+    const storedExpiresAt = Date.parse(stored?.expires_at || '');
+    const hasValidStoredToken = !!stored?.token && !Number.isNaN(storedExpiresAt) && storedExpiresAt > Date.now();
+    const hasEnvToken = !!getApiConfig().WEBULL_ACCESS_TOKEN;
+    const source = hasValidStoredToken ? 'db' : (hasEnvToken ? 'env' : 'none');
+    res.json({
+        hasToken: source !== 'none',
+        source,
+        expiresAt: source === 'db' ? stored.expires_at : null,
+        daysLeft: source === 'db' ? getDaysLeft(stored.expires_at) : null,
+        lastCheckStatus: stored?.last_check_status || null,
+        lastCheckAt: stored?.last_check_at || null,
+    });
 });
 
 module.exports = router;

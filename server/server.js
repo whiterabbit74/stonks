@@ -141,6 +141,7 @@ const { runPriceActualization } = require('./src/services/priceActualization');
 const { getETParts, getCachedTradingCalendar, isTradingDayByCalendarET, getTradingSessionForDateET } = require('./src/services/dates');
 const { initializeAutotradeRuntime } = require('./src/services/autotrade');
 const { reconcileMonitorState } = require('./src/services/monitorConsistency');
+const { runDailyTokenHealthCheck } = require('./src/services/webullToken');
 
 // Start server
 app.listen(PORT, () => {
@@ -173,6 +174,11 @@ app.listen(PORT, () => {
       const session = getTradingSessionForDateET(nowEt, cal);
       const nowMinutes = nowEt.hh * 60 + nowEt.mm;
       const minutesUntilClose = session.closeMin - nowMinutes;
+
+      // Webull token health: once per trading day during the first hour of the regular session.
+      if (nowMinutes >= 9 * 60 + 30 && nowMinutes <= 10 * 60 + 30) {
+        await runDailyTokenHealthCheck();
+      }
 
       // Telegram aggregation: only at T-11 and T-1 (±1 minute window for 20s interval)
       if ((minutesUntilClose >= 10 && minutesUntilClose <= 12) ||

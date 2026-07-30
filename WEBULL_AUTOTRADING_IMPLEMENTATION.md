@@ -204,6 +204,14 @@
 
 ## What Webull Gives For Free And What Is Limited
 
+## Обновление Webull токена
+
+Access token Webull авто-продлевается при активности и протухает после ~15 дней БЕЗ обращений к API (подтверждено webull-openapi-mcp: «Token is valid for 15 days and auto-refreshes»). Поэтому сервер каждый торговый день делает keep-alive: аутентифицированный запрос `account/list` (с заголовком `x-access-token`) плюс `token/check` для статуса — в обычном режиме токен не должен протухать вовсе.
+
+Если токен всё же умер (INVALID/EXPIRED): создайте новый через `POST /api/autotrade/webull/token/create` (или кнопку на `/broker`), подтвердите SMS в приложении Webull и затем выполните `token/check`. Внешне созданный токен также можно вставить и сохранить на `/broker` — без правки `.env` и перезапуска контейнера.
+
+Сервер сохраняет токен в SQLite и присылает напоминание в Telegram за 3 дня до расчётного истечения, а также при статусе проверки, отличном от `NORMAL`.
+
 Ниже только то, что следует из `webull-api-full.md`.
 
 ### Free or clearly available without paid market-data add-on

@@ -14,7 +14,11 @@ function buildWebullRuntimeConfig(overrides = {}) {
     const port = overrides.port || env.WEBULL_API_PORT || '';
     const appKey = overrides.appKey || env.WEBULL_APP_KEY || '';
     const appSecret = overrides.appSecret || env.WEBULL_APP_SECRET || '';
-    const accessToken = overrides.accessToken || env.WEBULL_ACCESS_TOKEN || '';
+    // Lazy load avoids a module initialization cycle: webullToken health checks use this client.
+    const stored = require('./webullToken').getStoredToken();
+    const storedExpiresAt = Date.parse(stored?.expires_at || '');
+    const storedToken = stored?.token && !Number.isNaN(storedExpiresAt) && storedExpiresAt > Date.now() ? stored.token : '';
+    const accessToken = overrides.accessToken || storedToken || env.WEBULL_ACCESS_TOKEN || '';
     const accountId = overrides.accountId || env.WEBULL_ACCOUNT_ID || '';
     if (protocol !== 'https:') {
         throw new Error('Webull OpenAPI requires HTTPS');
