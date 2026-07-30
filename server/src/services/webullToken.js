@@ -80,7 +80,11 @@ async function runDailyTokenHealthCheck() {
         const source = storedToken ? 'db' : (envToken ? 'env' : 'none');
         let status = 'MISSING';
         if (source !== 'none') {
-            const { checkAccessToken } = require('./webullClient');
+            const { checkAccessToken, getAccountList } = require('./webullClient');
+            // Keep-alive: Webull tokens auto-refresh on activity and die after ~15 idle days,
+            // so a daily authenticated request (x-access-token header) keeps the token alive.
+            // token/check alone is not enough - it sends the token in the body, unauthenticated.
+            try { await getAccountList(); } catch { /* best-effort; status check below still runs */ }
             const result = await checkAccessToken();
             status = extractCheckStatus(result?.data);
         }
