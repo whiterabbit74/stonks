@@ -72,28 +72,35 @@ async function runDailyTokenHealthCheck() {
         const todayEt = etKeyYMD(getETParts(new Date()));
         if (stored?.last_health_check_date === todayEt) return { skipped: true };
 
-        const runMarkedAt = new Date().toISOString();
-        getDb().prepare(`
-            INSERT INTO webull_token (id, last_health_check_date, updated_at)
-            VALUES ('current', ?, ?)
-            ON CONFLICT(id) DO UPDATE SET last_health_check_date = excluded.last_health_check_date, updated_at = excluded.updated_at
-        `).run(todayEt, runMarkedAt);
-
+        const storedExpiresAt = Date.parse(stored?.expires_at || '');
+        const storedToken = stored?.token && !Number.isNaN(storedExpiresAt) && storedExpiresAt > Date.now()
+            ? stored.token
+            : '';
+        const envToken = getApiConfig().WEBULL_ACCESS_TOKEN || '';
+        const source = storedToken ? 'db' : (envToken ? 'env' : 'none');
         let status = 'MISSING';
-        if (stored?.token || getApiConfig().WEBULL_ACCESS_TOKEN) {
+        if (source !== 'none') {
             const { checkAccessToken } = require('./webullClient');
             const result = await checkAccessToken();
             status = extractCheckStatus(result?.data);
         }
         updateCheckStatus(status);
 
-        const daysLeft = getDaysLeft(stored?.expires_at);
-        if (status !== 'NORMAL' || (daysLeft != null && daysLeft <= RENEWAL_WARNING_DAYS)) {
+        const daysLeft = source === 'db' ? getDaysLeft(stored?.expires_at) : null;
+        if (status !== 'NORMAL' || (source === 'db' && daysLeft != null && daysLeft <= RENEWAL_WARNING_DAYS)) {
             const reason = status !== 'NORMAL'
                 ? `Статус токена Webull: ${status}.`
                 : `Токен Webull истекает через ${daysLeft} дн.`;
-            await sendTelegramMessage(getApiConfig().TELEGRAM_CHAT_ID, `⚠️ ${reason}\n${RENEWAL_INSTRUCTION}`);
+            const telegramResult = await sendTelegramMessage(getApiConfig().TELEGRAM_CHAT_ID, `⚠️ ${reason}\n${RENEWAL_INSTRUCTION}`);
+            if (!telegramResult?.ok) throw new Error(`Failed to send Webull token warning: ${telegramResult?.error || telegramResult?.reason || 'unknown error'}`);
         }
+
+        const completedAt = new Date().toISOString();
+        getDb().prepare(`
+            INSERT INTO webull_token (id, last_health_check_date, updated_at)
+            VALUES ('current', ?, ?)
+            ON CONFLICT(id) DO UPDATE SET last_health_check_date = excluded.last_health_check_date, updated_at = excluded.updated_at
+        `).run(todayEt, completedAt);
         return { status, daysLeft };
     } catch (error) {
         console.warn('Webull token health check failed:', error && error.message ? error.message : error);

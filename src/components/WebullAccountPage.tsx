@@ -480,8 +480,10 @@ export function WebullAccountPage() {
         await tokenApiCall('/check', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
         setActionMessage('Проверка токена Webull выполнена.');
       } else if (action === 'create') {
-        await tokenApiCall('/create', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
-        setActionMessage('Токен создан и сохранён. Подтвердите SMS в приложении Webull, затем проверьте токен.');
+        const result = await tokenApiCall<{ persisted: boolean }>('/create', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+        setActionMessage(result.persisted
+          ? 'Токен создан и сохранён. Подтвердите SMS в приложении Webull, затем проверьте токен.'
+          : 'Токен создан, но НЕ сохранён автоматически — вставьте его вручную и нажмите Сохранить');
       } else {
         await tokenApiCall('', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: tokenInput }) });
         setTokenInput('');

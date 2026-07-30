@@ -190,8 +190,9 @@ router.post('/autotrade/webull/token/create', async (req, res) => {
     try {
         const result = await createAccessToken();
         const token = extractTokenValue(result.data);
-        if (token) saveToken({ token, expiresAt: extractTokenExpiry(result.data) });
-        res.json(result.data);
+        const persisted = !!token;
+        if (persisted) saveToken({ token, expiresAt: extractTokenExpiry(result.data) });
+        res.json({ ...(result.data || {}), persisted });
     } catch (error) {
         res.status(500).json({ error: error.message || 'Failed to create Webull token' });
     }
@@ -226,8 +227,8 @@ router.get('/autotrade/webull/token/status', (req, res) => {
     res.json({
         hasToken: source !== 'none',
         source,
-        expiresAt: stored?.expires_at || null,
-        daysLeft: getDaysLeft(stored?.expires_at),
+        expiresAt: source === 'db' ? stored.expires_at : null,
+        daysLeft: source === 'db' ? getDaysLeft(stored.expires_at) : null,
         lastCheckStatus: stored?.last_check_status || null,
         lastCheckAt: stored?.last_check_at || null,
     });
