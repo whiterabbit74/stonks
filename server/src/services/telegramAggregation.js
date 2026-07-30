@@ -23,7 +23,7 @@ const { executeWebullSignal, appendAutotradeEvent } = require('./autotrade');
 const { getETParts, etKeyYMD, previousTradingDayET, getTradingSessionForDateET, isTradingDayByCalendarET, getCachedTradingCalendar } = require('./dates');
 const { refreshTickerAndCheckFreshness, appendMonitorLog } = require('./priceActualization');
 const { reconcileMonitorState, getBlockingMonitorMismatch } = require('./monitorConsistency');
-const { evaluateEmaAlerts, listEmaAlerts, markEmaAlertsTriggered } = require('./emaAlerts');
+const { evaluateEmaAlerts, listEmaAlerts, markEmaAlertsTriggered, recordEmaInfoSide, recordEmaInfoSides } = require('./emaAlerts');
 const { getTickerSplits } = require('./splits');
 const { evaluatePriceIntegrity, formatIntegrityWarningBlock, integrityWarningKey } = require('./marketDataIntegrity');
 
@@ -73,6 +73,76 @@ function formatEmaAlertLine(alert, detailed = false) {
         return `${alert.symbol} EMA${alert.emaPeriod} ${range} • ждём: ${action} (${comparator} ${alert.activeLevelPct}%) • сейчас ${current} • ${alert.near ? 'близко ✅' : 'далеко'}`;
     }
     return `${alert.symbol} EMA${alert.emaPeriod}: ${actionText} при ${comparator} ${alert.activeLevelPct}% (сейчас ${current})`;
+}
+
+function formatEmaInfoCrossingLine(alert) {
+    const dev = Number.isFinite(alert.deviationPct) ? `${alert.deviationPct.toFixed(2)}%` : '—';
+    const levelStr = `${alert.infoLevelPct}%`;
+    if (alert.infoCrossing === 'down') {
+        return `⚠️ ${alert.symbol} пересёк ${levelStr} от EMA${alert.emaPeriod} вниз (отклонение ${dev})`;
+    }
+    return `${alert.symbol} вернулся выше ${levelStr} от EMA${alert.emaPeriod} (отклонение ${dev})`;
+}
+
+/**
+ * Builds the standalone T-11 "EMA сигналы" message body: near buy/sell signals, the full
+ * configured-alert detail listing (same content the old inline "📈 EMA" block had), plus
+ * any info-level (-20% default) crossing notices. Returns null when there is nothing to report.
+ */
+function buildEmaOverviewMessageText(emaAlerts) {
+    if (!Array.isArray(emaAlerts) || emaAlerts.length === 0) return null;
+
+    const nearSignals = emaAlerts.filter((alert) => alert.dataOk && alert.near);
+    const crossingAlerts = emaAlerts.filter((alert) => alert.dataOk && alert.infoCrossing);
+
+    const lines = ['📐 EMA сигналы', ''];
+    lines.push(nearSignals.length > 0
+        ? `Близко: ${nearSignals.map((alert) => formatEmaAlertLine(alert)).join(', ')}`
+        : 'Близко: нет');
+
+    lines.push('');
+    lines.push(...emaAlerts.map((alert) => {
+        const range = `${alert.buyLevelPct ?? alert.levelPct}%–${alert.sellLevelPct ?? alert.levelPct}%`;
+        if (!alert.dataOk) return `${alert.symbol} EMA${alert.emaPeriod} ${range} • нет данных (${alert.reason || 'ошибка'})`;
+        return formatEmaAlertLine(alert, true);
+    }));
+
+    if (crossingAlerts.length > 0) {
+        lines.push('');
+        lines.push('Инфо-уровень:');
+        lines.push(...crossingAlerts.map((alert) => formatEmaInfoCrossingLine(alert)));
+    }
+
+    return `<pre>${lines.join('\n')}</pre>`;
+}
+
+/**
+ * Builds the standalone T-1 "EMA сигналы" message body: only reached buy/sell levels and/or
+ * info-level crossings — nothing to report otherwise, so returns null in that case.
+ */
+function buildEmaDecisionMessageText(reachedEmaAlerts, emaAlerts) {
+    const crossingAlerts = (Array.isArray(emaAlerts) ? emaAlerts : []).filter((alert) => alert.dataOk && alert.infoCrossing);
+    const reached = Array.isArray(reachedEmaAlerts) ? reachedEmaAlerts : [];
+    if (reached.length === 0 && crossingAlerts.length === 0) return null;
+
+    const lines = ['📐 EMA сигналы', ''];
+
+    if (reached.length > 0) {
+        lines.push('Достигнутые уровни:');
+        for (const alert of reached) {
+            const actionText = alert.action === 'sell' ? 'ПРОДАВАЙ' : 'ПОКУПАЙ';
+            const comparator = alert.action === 'sell' ? '≥' : '≤';
+            lines.push(`  ${actionText}: ${alert.symbol} EMA${alert.emaPeriod} ${alert.buyLevelPct}%–${alert.sellLevelPct}% • сейчас ${alert.deviationPct.toFixed(2)}% (${comparator} ${alert.activeLevelPct}%)`);
+        }
+    }
+
+    if (crossingAlerts.length > 0) {
+        if (reached.length > 0) lines.push('');
+        lines.push('Инфо-уровень:');
+        lines.push(...crossingAlerts.map((alert) => formatEmaInfoCrossingLine(alert)));
+    }
+
+    return `<pre>${lines.join('\n')}</pre>`;
 }
 
 function collectIntegrityWarnings(records = [], emaAlerts = []) {
@@ -148,6 +218,17 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
                 emaAlerts = [];
             }
         }
+
+        // Info-level (-20% by default) first observation: record the current side immediately,
+        // no Telegram notification involved — there's nothing to compare against yet.
+        // Skipped for dry runs (updateState: false) so tests never seed a production baseline.
+        try {
+            for (const alert of (!options || options.updateState !== false) ? emaAlerts : []) {
+                if (alert.dataOk && alert.infoPrevSide == null && alert.infoSide) {
+                    recordEmaInfoSide(alert.id, alert.infoSide);
+                }
+            }
+        } catch { /* non-fatal */ }
 
         // Tolerance for IBS thresholds
         const delta = 0.02;
@@ -291,7 +372,6 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
                 // Collect signals
                 const entrySignals = [];
                 const exitSignals = [];
-                const nearEmaSignals = emaAlerts.filter((alert) => alert.dataOk && alert.near);
                 const integrityWarnings = collectIntegrityWarnings(sorted, emaAlerts);
                 const integritySummary = formatIntegrityWarningBlock(integrityWarnings);
                 const blocks = [];
@@ -340,7 +420,7 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
                         : `${w.symbol} pos=${positionOpen ? 'open' : 'none'} data=NA err=${rec.fetchError}`);
                 }
 
-                // Build signals summary
+                // Build signals summary (EMA content lives in a separate message now — see below)
                 let signalsSummary = '🔔 СИГНАЛЫ:\n';
                 signalsSummary += entrySignals.length > 0
                     ? `• На вход: ${entrySignals.join(', ')}\n`
@@ -348,23 +428,12 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
                 signalsSummary += exitSignals.length > 0
                     ? `• На выход: ${exitSignals.join(', ')}`
                     : '• На выход: нет';
-                signalsSummary += nearEmaSignals.length > 0
-                    ? `\n• EMA: ${nearEmaSignals.map((alert) => formatEmaAlertLine(alert)).join(', ')}`
-                    : '\n• EMA: нет';
-
-                const emaDetails = emaAlerts.length > 0
-                    ? `\n\n📈 EMA:\n${emaAlerts.map((alert) => {
-                        const range = `${alert.buyLevelPct ?? alert.levelPct}%–${alert.sellLevelPct ?? alert.levelPct}%`;
-                        if (!alert.dataOk) return `${alert.symbol} EMA${alert.emaPeriod} ${range} • нет данных (${alert.reason || 'ошибка'})`;
-                        return formatEmaAlertLine(alert, true);
-                    }).join('\n')}`
-                    : '';
 
                 const consistencySummary = consistencySnapshot.issues.length > 0
                     ? `\n\n⚠️ СОСТОЯНИЕ:\n${consistencySnapshot.issues.map((issue) => `• ${issue.message}`).join('\n')}`
                     : '';
                 const integrityBlock = integritySummary ? `\n\n${integritySummary}` : '';
-                const text = `<pre>${header}\n\n${signalsSummary}${integrityBlock}${consistencySummary}${emaDetails}\n\n📊 ПОДРОБНО:\n\n${blocks.join('\n\n')}</pre>`;
+                const text = `<pre>${header}\n\n${signalsSummary}${integrityBlock}${consistencySummary}\n\n📊 ПОДРОБНО:\n\n${blocks.join('\n\n')}</pre>`;
                 const resp = await sendTelegramMessage(chatId, text);
 
                 if (resp.ok) {
@@ -373,6 +442,24 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
                         aggregateSendState.set(chatId, state);
                     }
                     await appendMonitorLog([...logLines, options && options.test ? '→ sent ok [TEST]' : '→ sent ok']);
+
+                    // Separate EMA message (buy/sell near info + info-level -20% crossing), sent
+                    // only after the standard overview lands successfully, and only if there's content.
+                    const emaText = buildEmaOverviewMessageText(emaAlerts);
+                    if (emaText) {
+                        const emaResp = await sendTelegramMessage(chatId, emaText);
+                        if (emaResp.ok) {
+                            const shouldPersistEma = !options || options.updateState !== false;
+                            if (shouldPersistEma) {
+                                try {
+                                    recordEmaInfoSides(emaAlerts, new Date().toISOString());
+                                } catch { /* non-fatal */ }
+                            }
+                            await appendMonitorLog([`T-11 EMA message → chat ${chatId}`, '→ sent ok']);
+                        } else {
+                            await appendMonitorLog([`T-11 EMA message → chat ${chatId}`, '→ send failed']);
+                        }
+                    }
                 } else {
                     await appendMonitorLog([...logLines, '→ send failed']);
                 }
@@ -643,14 +730,8 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
                     decisionLines.push(`• Вход ${entryBlockedAction.symbol} подтвержден по ${price} (IBS ${ibs}), но не отправлен`);
                     decisionLines.push(`• Webull: ${entryBlockedAction.broker.error || 'ордер не отправлен'}`);
                 }
-                if (reachedEmaAlerts.length > 0) {
-                    decisionLines.push('• EMA-уровни:');
-                    for (const alert of reachedEmaAlerts) {
-                        const actionText = alert.action === 'sell' ? 'ПРОДАВАЙ' : 'ПОКУПАЙ';
-                        const comparator = alert.action === 'sell' ? '≥' : '≤';
-                        decisionLines.push(`  ${actionText}: ${alert.symbol} EMA${alert.emaPeriod} ${alert.buyLevelPct}%–${alert.sellLevelPct}% • сейчас ${alert.deviationPct.toFixed(2)}% (${comparator} ${alert.activeLevelPct}%)`);
-                    }
-                }
+                // EMA reached/info-crossing content now lives in a separate message (see below),
+                // sent only after this standard decision message lands successfully.
                 if (integrityWarnings.length > 0) {
                     decisionLines.push(`• Проверка данных: сигналы заблокированы по ${integrityWarnings.map((warning) => warning.symbol).join(', ')}`);
                 }
@@ -689,7 +770,6 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
                     if (shouldPersistState) {
                         state.t1Sent = true;
                         aggregateSendState.set(chatId, state);
-                        markEmaAlertsTriggered(reachedEmaAlerts, nowIso);
                     }
                     await appendMonitorLog([`T-1 report → chat ${chatId}`, ...decisionLines, ...executionLogLines]);
                     await appendAutotradeEvent('t1_report_sent', {
@@ -698,6 +778,26 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
                         date_key: todayKey,
                         decisions: decisionLines,
                     });
+
+                    // Separate EMA message (reached buy/sell levels + info-level -20% crossings).
+                    // The buy/sell alternation flip (markEmaAlertsTriggered) is tied to THIS
+                    // message's successful send — if it fails, next_action must NOT flip, since
+                    // the trader never actually saw the reached-level notification.
+                    const emaText = buildEmaDecisionMessageText(reachedEmaAlerts, emaAlerts);
+                    if (emaText) {
+                        const emaResp = await sendTelegramMessage(chatId, emaText);
+                        if (emaResp.ok) {
+                            if (shouldPersistState) {
+                                markEmaAlertsTriggered(reachedEmaAlerts, nowIso);
+                                try {
+                                    recordEmaInfoSides(emaAlerts, nowIso);
+                                } catch { /* non-fatal */ }
+                            }
+                            await appendMonitorLog([`T-1 EMA message → chat ${chatId}`, '→ sent ok']);
+                        } else {
+                            await appendMonitorLog([`T-1 EMA message send failed → chat ${chatId}`]);
+                        }
+                    }
                 } else {
                     await appendMonitorLog([`T-1 report send failed → chat ${chatId}`, ...decisionLines, ...executionLogLines]);
                     await appendAutotradeEvent('t1_report_failed', {

@@ -143,6 +143,7 @@ export function TelegramWatches() {
     sellLevelPct: 40,
     nextAction: 'buy' as 'buy' | 'sell',
     thresholdPct: 0.5,
+    infoLevelPct: -20,
   });
   const [closeMonitorState, setCloseMonitorState] = useState<{
     open: boolean;
@@ -1038,7 +1039,7 @@ export function TelegramWatches() {
 
       {activeTab === 'ema' && (
         <Panel as="section" tone="soft" className="space-y-4">
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-[1fr,130px,130px,130px,150px,130px,auto]">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-[1fr,130px,130px,130px,150px,130px,160px,auto]">
             <label className="space-y-1 text-xs font-medium text-gray-700 dark:text-gray-300">
               Тикер
               <input
@@ -1097,6 +1098,16 @@ export function TelegramWatches() {
                 className="w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
               />
             </label>
+            <label className="space-y-1 text-xs font-medium text-gray-700 dark:text-gray-300">
+              Инфо-уровень, % (сигнал без торговли)
+              <input
+                type="number"
+                step={0.1}
+                value={emaForm.infoLevelPct}
+                onChange={(event) => setEmaForm((prev) => ({ ...prev, infoLevelPct: Number(event.target.value) }))}
+                className="w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+              />
+            </label>
             <div className="flex items-end">
               <button
                 type="button"
@@ -1137,6 +1148,9 @@ export function TelegramWatches() {
                     <td className="p-3 dark:text-gray-300">
                       <div className="font-medium">{alert.buyLevelPct}%–{alert.sellLevelPct}%</div>
                       <div className="text-xs text-gray-500">покупка ≤ {alert.buyLevelPct}%, продажа ≥ {alert.sellLevelPct}%</div>
+                      {alert.infoLevelPct != null && (
+                        <div className="text-xs text-gray-400">инфо-уровень: {alert.infoLevelPct}%</div>
+                      )}
                     </td>
                     <td className="p-3 dark:text-gray-300">
                       <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${alert.nextAction === 'buy' ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300' : 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'}`}>
