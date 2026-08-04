@@ -197,14 +197,12 @@ export async function apiCall<T>(
   url: string,
   options?: FetchOptions & { waitForOnline?: boolean }
 ): Promise<T> {
-  const { waitForOnline: shouldWaitForOnline = true, ...fetchOptions } = options || {};
+  const { waitForOnline: _waitForOnline, ...fetchOptions } = options || {};
 
-  // Wait for connectivity if offline and requested
-  if (shouldWaitForOnline && !isOnline()) {
-    logWarn('network', 'Waiting for network connectivity', { url });
-    await waitForOnline();
-    logWarn('network', 'Network connectivity restored', { url });
-  }
+  // navigator.onLine is only a browser hint, not a reachability check. Waiting
+  // for its "online" event can leave a request pending forever even when this
+  // origin is reachable (for example after a network-interface transition).
+  // Always issue the request and let fetchWithCreds report the real result.
 
   const response = await fetchWithCreds(url, fetchOptions);
 

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { DatasetAPI, fetchWithCreds, API_BASE_URL } from '../api';
+import { apiCall, DatasetAPI, fetchWithCreds, API_BASE_URL } from '../api';
 
 // Mock fetch globally
 global.fetch = vi.fn();
@@ -63,6 +63,23 @@ describe('API Module', () => {
       // fetchWithCreds returns the response, it doesn't throw on HTTP errors
       const result = await fetchWithCreds('/test');
       expect(result).toBe(mockResponse);
+    });
+  });
+
+  describe('apiCall', () => {
+    it('still performs the request when navigator reports offline', async () => {
+      const mockResponse = { ok: true, json: vi.fn().mockResolvedValue({ ok: true }) };
+      (global.fetch as any).mockResolvedValue(mockResponse);
+      const onlineSpy = vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+
+      await expect(apiCall<{ ok: boolean }>('/api/health', { waitForOnline: true }))
+        .resolves.toEqual({ ok: true });
+
+      expect(global.fetch).toHaveBeenCalledWith('/api/health', expect.objectContaining({
+        credentials: 'include',
+        cache: 'no-store',
+      }));
+      onlineSpy.mockRestore();
     });
   });
 
