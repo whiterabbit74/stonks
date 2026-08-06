@@ -14,6 +14,9 @@ export interface CleanBacktestOptions {
   ibsExitRequireAboveEntry?: boolean;
   // Stock splits to apply to the data
   splits?: SplitEvent[];
+  // If true, generate chartData in result (expensive, use only if needed)
+  // Default: true (for backward compatibility)
+  generateChartData?: boolean;
 }
 
 /**
@@ -39,7 +42,8 @@ export class CleanBacktestEngine {
       entryExecution: options?.entryExecution ?? 'close',
       ignoreMaxHoldDaysExit: options?.ignoreMaxHoldDaysExit ?? false,
       ibsExitRequireAboveEntry: options?.ibsExitRequireAboveEntry ?? false,
-      splits: options?.splits ?? []
+      splits: options?.splits ?? [],
+      generateChartData: options?.generateChartData ?? true
     };
 
     // Рассчитываем IBS для всех баров (без исключений на пустых данных)
@@ -307,14 +311,16 @@ export class CleanBacktestEngine {
     const metrics = metricsCalculator.calculateAllMetrics();
 
 
-    // Generate chart data from OHLC data
-    const chartData = this.data.map(bar => ({
-      time: toChartTimestamp(bar.date), // Convert to seconds for TradingView
-      open: bar.open,
-      high: bar.high,
-      low: bar.low,
-      close: bar.close
-    }));
+    // Generate chart data from OHLC data only if requested
+    const chartData = this.options.generateChartData
+      ? this.data.map(bar => ({
+          time: toChartTimestamp(bar.date), // Convert to seconds for TradingView
+          open: bar.open,
+          high: bar.high,
+          low: bar.low,
+          close: bar.close
+        }))
+      : undefined;
 
     return {
       trades: this.trades,
