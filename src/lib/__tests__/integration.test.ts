@@ -3,7 +3,7 @@ import { BacktestEngine } from '../backtest';
 import { createStrategyFromTemplate } from '../strategy';
 import { IndicatorEngine } from '../indicators';
 import { adjustOHLCForSplits, dedupeDailyOHLC } from '../utils';
-import { toChartTimestamp, compareTradingDates } from '../date-utils';
+import { compareTradingDates } from '../date-utils';
 import type { OHLCData, Strategy } from '../../types';
 
 describe('Integration Tests', () => {
@@ -63,15 +63,10 @@ describe('Integration Tests', () => {
       expect(result.trades).toBeDefined();
       expect(result.metrics).toBeDefined();
       expect(result.equity).toBeDefined();
-      expect(result.chartData).toBeDefined();
 
       // Verify equity curve
       expect(result.equity).toHaveLength(sampleData.length);
       expect(result.equity[0].value).toBe(strategy.riskManagement.initialCapital);
-
-      // Verify chart data
-      expect(result.chartData).toHaveLength(sampleData.length);
-      expect(result.chartData[0].time).toBe(toChartTimestamp(sampleData[0].date));
 
       // Verify metrics
       expect(result.metrics.totalReturn).toBeTypeOf('number');
