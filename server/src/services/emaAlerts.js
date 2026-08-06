@@ -4,7 +4,7 @@ const { getDataset } = require('./datasets');
 const { getTickerSplits } = require('./splits');
 const { evaluatePriceIntegrity } = require('./marketDataIntegrity');
 const { toSafeTicker } = require('../utils/helpers');
-const { fetchTodayRangeAndQuote } = require('../providers/finnhub');
+const { fetchTodayRangeAndQuote } = require('../providers/quote');
 
 function toNumber(value, fallback) {
     const num = Number(value);
@@ -308,7 +308,18 @@ async function evaluateEmaAlerts() {
         try {
             results.push(await evaluateEmaAlert(alert));
         } catch (error) {
-            results.push({ ...alert, dataOk: false, reason: error && error.message ? error.message : 'failed' });
+            const raw = error && error.message ? String(error.message) : 'failed';
+            // Keep Telegram reasons short and readable (no raw JSON parse dumps).
+            let reason = raw;
+            const cdnMatch = raw.match(/CDN error\s+(\d+)/i);
+            if (cdnMatch) {
+                reason = `котировка временно недоступна (CDN ${cdnMatch[1]})`;
+            } else if (/Unexpected token|not valid JSON|invalid JSON|non-JSON|quote unavailable/i.test(raw)) {
+                reason = 'котировка временно недоступна';
+            } else if (raw.length > 80) {
+                reason = `${raw.slice(0, 77)}…`;
+            }
+            results.push({ ...alert, dataOk: false, reason });
         }
     }
     return results;

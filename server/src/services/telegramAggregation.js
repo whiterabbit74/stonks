@@ -11,7 +11,7 @@ const { getApiConfig, DATASETS_DIR } = require('../config');
 const { readSettings } = require('./settings');
 const { getDataset } = require('./datasets');
 const { toSafeTicker } = require('../utils/helpers');
-const { fetchTodayRangeAndQuote } = require('../providers/finnhub');
+const { fetchTodayRangeAndQuote } = require('../providers/quote');
 const { telegramWatches, sendTelegramMessage, aggregateSendState, getAggregateState } = require('./telegram');
 const {
     syncWatchesWithTradeState,

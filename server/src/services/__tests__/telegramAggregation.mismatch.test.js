@@ -83,10 +83,11 @@ describe('telegramAggregation mismatch handling', () => {
     stubModule('src/utils/helpers.js', {
       toSafeTicker: (value) => String(value || '').toUpperCase(),
     });
-    stubModule('src/providers/finnhub.js', {
+    stubModule('src/providers/quote.js', {
       fetchTodayRangeAndQuote: async () => ({
         range: { low: 295, high: 305 },
         quote: { current: 302.16, low: 295, high: 305, open: 299.5, prevClose: 298.7 },
+        source: 'finnhub',
       }),
     });
     stubModule('src/services/telegram.js', {
@@ -199,10 +200,11 @@ describe('telegramAggregation mismatch handling', () => {
     stubModule('src/services/splits.js', {
       getTickerSplits: () => [],
     });
-    stubModule('src/providers/finnhub.js', {
+    stubModule('src/providers/quote.js', {
       fetchTodayRangeAndQuote: async () => ({
         range: { low: 44, high: 50 },
         quote: { current: 44.68, low: 44, high: 50, open: 45.71, prevClose: 92.7 },
+        source: 'finnhub',
       }),
     });
     stubModule('src/services/telegram.js', {

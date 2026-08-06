@@ -67,9 +67,10 @@ function loadEmaAlerts({ currentPrice, history: customHistory, adjustedForSplits
   stubModule('src/services/splits.js', {
     getTickerSplits: () => knownSplits,
   });
-  stubModule('src/providers/finnhub.js', {
+  stubModule('src/providers/quote.js', {
     fetchTodayRangeAndQuote: async () => ({
       quote: { current: currentPrice },
+      source: 'finnhub',
     }),
   });
   stubModule('src/utils/helpers.js', {
