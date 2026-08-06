@@ -67,8 +67,9 @@ check_api() {
     local endpoints=(
         "http://localhost:3001/api/status"
         "http://localhost:3001/api/splits"
-        "https://tradingibs.site/api/status"
-        "https://tradingibs.site/mcp/transcribe/healthz"
+        "https://mktorder.com/api/status"
+        "https://mktorder.com/mcp/transcribe/healthz"
+        "https://mktorder.com/music/api/health"
     )
 
     local all_ok=true
@@ -102,7 +103,7 @@ check_frontend() {
 
     local urls=(
         "http://localhost/"
-        "https://tradingibs.site/"
+        "https://mktorder.com/"
     )
 
     local all_ok=true

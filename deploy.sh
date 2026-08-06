@@ -258,14 +258,45 @@ ensure_mcp_tokens() {
         echo '✅ MCP_BEARER_TOKENS уже задан, существующие токены сохранены'
     fi
 
+    # Domain migration: tradingibs.site → mktorder.com
+    if grep -q 'tradingibs\.site' \"\$env_file\" 2>/dev/null; then
+        sed -i 's|https://tradingibs\\.site|https://mktorder.com|g' \"\$env_file\"
+        sed -i 's|=tradingibs\\.site|=mktorder.com|g' \"\$env_file\"
+        echo '✅ DOMAIN/origins обновлены: tradingibs.site → mktorder.com'
+    fi
+
     if ! grep -q '^MCP_ALLOWED_ORIGINS=' \"\$env_file\"; then
-        printf 'MCP_ALLOWED_ORIGINS=https://chatgpt.com,https://chat.openai.com,https://tradingibs.site\n' >> \"\$env_file\"
+        printf 'MCP_ALLOWED_ORIGINS=https://chatgpt.com,https://chat.openai.com,https://mktorder.com\n' >> \"\$env_file\"
         echo '✅ MCP_ALLOWED_ORIGINS добавлен'
+    fi
+
+    if ! grep -q '^FRONTEND_ORIGIN=' \"\$env_file\"; then
+        printf 'FRONTEND_ORIGIN=https://mktorder.com\n' >> \"\$env_file\"
+        echo '✅ FRONTEND_ORIGIN=https://mktorder.com добавлен'
+    else
+        # Production should not keep localhost CORS origin
+        if grep -q '^FRONTEND_ORIGIN=http://localhost' \"\$env_file\"; then
+            sed -i 's|^FRONTEND_ORIGIN=http://localhost[^[:space:]]*|FRONTEND_ORIGIN=https://mktorder.com|' \"\$env_file\"
+            echo '✅ FRONTEND_ORIGIN переведён с localhost на https://mktorder.com'
+        fi
     fi
 
     chmod 600 \"\$env_file\" || true
 } &&
 ensure_mcp_tokens &&
+
+# Compose env for Caddy DOMAIN / TLS
+if [ -f ~/stonks/.env ]; then
+    if grep -q '^DOMAIN=' ~/stonks/.env; then
+        sed -i 's|^DOMAIN=.*|DOMAIN=mktorder.com|' ~/stonks/.env
+    else
+        printf '\\nDOMAIN=mktorder.com\\n' >> ~/stonks/.env
+    fi
+    if ! grep -q '^TLS_CA=' ~/stonks/.env; then
+        printf 'TLS_CA=https://acme-v02.api.letsencrypt.org/directory\\n' >> ~/stonks/.env
+    fi
+    echo '✅ ~/stonks/.env DOMAIN=mktorder.com'
+fi &&
 
 echo '🔨 Пересборка контейнеров...' &&
 cd ~/stonks &&
@@ -286,7 +317,7 @@ fi &&
 
 echo '⏳ Ожидание готовности API (макс 60 сек)...' &&
 for i in \$(seq 1 12); do
-  STATUS=\$(timeout 5 curl -s https://tradingibs.site/api/status 2>/dev/null | head -1 || echo '')
+  STATUS=\$(timeout 5 curl -s https://mktorder.com/api/status 2>/dev/null | head -1 || echo '')
   if [ -n \"\$STATUS\" ]; then
     echo "✅ API ответил: \$STATUS"
     break
@@ -318,10 +349,18 @@ rm ~/${ARCHIVE_NAME} ~/build-info.json ~/server/ ~/dist/ -rf
 echo "🎯 ФИНАЛЬНАЯ ПРОВЕРКА..."
 
 # Проверка доступности сайта
-if curl -s -I https://tradingibs.site/ | grep -q "200"; then
+if curl -s -I https://mktorder.com/ | grep -q "200"; then
     echo "✅ САЙТ ДОСТУПЕН!"
 else
-    echo "⚠️  САЙТ НЕДОСТУПЕН (возможно, еще запускается)"
+    echo "⚠️  САЙТ НЕДОСТУПЕН (возможно, еще запускается или Cloudflare SSL не готов)"
+fi
+
+# Проверка редиректа со старого домена
+REDIR_LOC=$(curl -sI https://tradingibs.site/ 2>/dev/null | tr -d '\r' | awk 'tolower($1)=="location:" {print $2; exit}')
+if echo "$REDIR_LOC" | grep -q "mktorder.com"; then
+    echo "✅ Редирект tradingibs.site → mktorder.com работает"
+else
+    echo "⚠️  Редирект со старого домена: ожидался mktorder.com, получено: ${REDIR_LOC:-none}"
 fi
 
 # Очистка локальных файлов
@@ -336,7 +375,7 @@ BOT_TOKEN=$(ssh ubuntu@146.235.212.239 "grep '^TELEGRAM_BOT_TOKEN=' /home/ubuntu
 CHAT_ID=$(ssh ubuntu@146.235.212.239 "grep '^TELEGRAM_CHAT_ID=' /home/ubuntu/stonks-config/.env 2>/dev/null | cut -d'=' -f2-" 2>/dev/null || echo "")
 
 if [ -n "$BOT_TOKEN" ] && [ -n "$CHAT_ID" ]; then
-    MESSAGE="🚀 Сервер обновлен!%0A%0A💻 Версия: ${GIT_COMMIT}%0A🕰 Дата: ${GIT_DATE}%0A🌐 Сайт: https://tradingibs.site%0A%0A✅ Развертывание завершено!"
+    MESSAGE="🚀 Сервер обновлен!%0A%0A💻 Версия: ${GIT_COMMIT}%0A🕰 Дата: ${GIT_DATE}%0A🌐 Сайт: https://mktorder.com%0A%0A✅ Развертывание завершено!"
     TELEGRAM_RESPONSE=$(curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
         -d "chat_id=${CHAT_ID}" \
         -d "text=${MESSAGE}" 2>&1)
@@ -352,7 +391,7 @@ fi
 echo ""
 echo "🎉 РАЗВЕРТЫВАНИЕ ЗАВЕРШЕНО!"
 echo "📋 Версия: ${GIT_COMMIT} от ${GIT_DATE}"
-echo "🌐 Сайт: https://tradingibs.site"
+echo "🌐 Сайт: https://mktorder.com"
 echo ""
 echo "💡 ГАРАНТИИ НАДЕЖНОСТИ:"
 echo "   ✅ Код только из GitHub (последний коммит)"

@@ -1,8 +1,8 @@
-# Dynamic domain from environment variable
-{$DOMAIN:tradingibs.site} {
-  # TEMPORARY: Use staging certificates to bypass rate limits
+# Primary domain
+{$DOMAIN:mktorder.com} {
+  # Override with TLS_CA=https://acme-staging-v02.api.letsencrypt.org/directory only for testing
   tls {
-    ca {$TLS_CA:https://acme-staging-v02.api.letsencrypt.org/directory}
+    ca {$TLS_CA:https://acme-v02.api.letsencrypt.org/directory}
   }
 
   encode gzip
@@ -10,15 +10,59 @@
     output file /var/log/caddy/access.log
   }
 
+  header {
+    Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+    X-Content-Type-Options nosniff
+    Referrer-Policy strict-origin-when-cross-origin
+    -Server
+  }
+
+  # Trading API
   handle /api/** {
     reverse_proxy server:3001
   }
 
+  # MCP (ChatGPT / clients)
   handle /mcp/transcribe* {
     reverse_proxy mcp:8080
   }
 
+  # Music server (ytplayer / musicplay) under /music
+  # /music/foo → musicplay:3001/foo
+  redir /music /music/ permanent
+  handle_path /music/* {
+    reverse_proxy musicplay:3001
+  }
+
+  # Frontend SPA
   handle {
     reverse_proxy frontend:80
+  }
+}
+
+# Legacy domain → permanent redirect (path + query preserved, including /music/*)
+tradingibs.site {
+  tls {
+    ca {$TLS_CA:https://acme-v02.api.letsencrypt.org/directory}
+  }
+
+  redir https://mktorder.com{uri} permanent
+}
+
+# Separate app on the same Caddy instance
+macdiff.com {
+  encode gzip
+
+  header {
+    Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+    X-Content-Type-Options nosniff
+    Referrer-Policy strict-origin-when-cross-origin
+    -Server
+  }
+
+  reverse_proxy macdiff:8080 {
+    header_up X-Real-IP {remote_host}
+    header_up X-Forwarded-For {remote_host}
+    header_up X-Forwarded-Proto {scheme}
   }
 }

@@ -64,7 +64,7 @@ services:
     environment:
       - MCP_ADDR=:8080
       - MCP_ENDPOINT_PATH=/mcp/transcribe/
-      - MCP_ALLOWED_ORIGINS=${MCP_ALLOWED_ORIGINS:-https://chatgpt.com,https://chat.openai.com,https://tradingibs.site}
+      - MCP_ALLOWED_ORIGINS=${MCP_ALLOWED_ORIGINS:-https://chatgpt.com,https://chat.openai.com,https://mktorder.com}
     expose:
       - "8080"
     restart: unless-stopped
@@ -103,7 +103,7 @@ services:
       - caddy_data:/data
       - caddy_config:/config
     environment:
-      - DOMAIN=${DOMAIN:-tradingibs.site}
+      - DOMAIN=${DOMAIN:-mktorder.com}
       - TLS_CA=${TLS_CA:-https://acme-v02.api.letsencrypt.org/directory}
     restart: unless-stopped
     container_name: stonks-caddy

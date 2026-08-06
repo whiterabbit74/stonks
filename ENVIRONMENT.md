@@ -122,7 +122,7 @@ cd ~/stonks
 docker compose up -d
 
 # Generate hash
-curl -X POST https://tradingibs.site/api/auth/hash-password \
+curl -X POST https://mktorder.com/api/auth/hash-password \
   -H "Content-Type: application/json" \
   -d '{"password": "your_secure_password"}'
 
@@ -156,7 +156,7 @@ Docker Compose reads `env_file` only when **creating** a container, not when res
 docker compose logs server --tail=50
 
 # Test API status
-curl https://tradingibs.site/api/status
+curl https://mktorder.com/api/status
 
 # Verify .env was loaded
 docker compose exec server env | grep ADMIN_USERNAME
@@ -287,7 +287,7 @@ openssl rand -base64 32
 
 ```bash
 # Using the API (after server is running)
-curl -X POST https://tradingibs.site/api/auth/hash-password \
+curl -X POST https://mktorder.com/api/auth/hash-password \
   -H "Content-Type: application/json" \
   -d '{"password": "8fJ2kL9pQ3mN6vR4wX7tY1zB5cD0eA"}'
 
@@ -358,7 +358,7 @@ docker compose exec server env | grep ADMIN
 cat ~/stonks-config/.env | grep ADMIN
 
 # Regenerate password hash
-curl -X POST https://tradingibs.site/api/auth/hash-password \
+curl -X POST https://mktorder.com/api/auth/hash-password \
   -H "Content-Type: application/json" \
   -d '{"password": "your_password"}'
 
@@ -432,7 +432,7 @@ nano ~/stonks-config/.env
 cd ~/stonks && docker compose up -d
 
 # Test via app
-curl -X POST https://tradingibs.site/api/telegram/test
+curl -X POST https://mktorder.com/api/telegram/test
 ```
 
 ---

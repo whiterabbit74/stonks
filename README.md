@@ -137,7 +137,7 @@ docker compose up -d --build
 
 - compose-файл по умолчанию ожидает production env в `/home/ubuntu/stonks-config/.env`
 - данные и состояние выносятся в Docker volumes
-- MCP доступен публично через `https://tradingibs.site/mcp/transcribe/` и требует `Authorization: Bearer <token>`
+- MCP доступен публично через `https://mktorder.com/mcp/transcribe/` и требует `Authorization: Bearer <token>`
 - для серверного обслуживания в репозитории есть [deploy.sh](deploy.sh), [health-check.sh](health-check.sh) и [cleanup-server.sh](cleanup-server.sh)
 
 Если нужен именно локальный режим разработки, проще использовать `npm run dev` для frontend и `cd server && npm run dev` для API.

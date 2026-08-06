@@ -8,7 +8,7 @@ echo "===================================="
 
 # Получаем настройки с сервера
 echo "📡 Получаем настройки с сервера..."
-SETTINGS_RESPONSE=$(curl -s "https://tradingibs.site/api/settings" || echo "")
+SETTINGS_RESPONSE=$(curl -s "https://mktorder.com/api/settings" || echo "")
 
 if [ -z "$SETTINGS_RESPONSE" ]; then
     echo "❌ Сервер недоступен или не отвечает"

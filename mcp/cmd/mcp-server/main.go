@@ -60,7 +60,7 @@ func main() {
 	}
 
 	endpointPath := env("MCP_ENDPOINT_PATH", "/mcp/transcribe/")
-	origins := mcpserver.OriginsFromEnv(env("MCP_ALLOWED_ORIGINS", "https://chatgpt.com,https://chat.openai.com,https://tradingibs.site"))
+	origins := mcpserver.OriginsFromEnv(env("MCP_ALLOWED_ORIGINS", "https://chatgpt.com,https://chat.openai.com,https://mktorder.com"))
 	tokens := mcpserver.TokensFromEnv(os.Getenv("MCP_BEARER_TOKENS"))
 
 	config := mcpserver.Config{

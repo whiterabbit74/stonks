@@ -7,7 +7,7 @@ Go MCP server for the TradingIBS site. It exposes the first tool in the `/mcp/` 
 Production endpoint:
 
 ```text
-https://tradingibs.site/mcp/transcribe/
+https://mktorder.com/mcp/transcribe/
 ```
 
 The server requires `Authorization: Bearer <token>` on MCP requests. Tokens are configured through `MCP_BEARER_TOKENS` as a comma-separated list in `/home/ubuntu/stonks-config/.env`.
