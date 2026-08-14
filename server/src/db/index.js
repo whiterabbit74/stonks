@@ -197,6 +197,7 @@ function initSchema(db) {
             last_check_status     TEXT,
             last_check_at         TEXT,
             last_health_check_date TEXT,
+            last_health_check_attempt_at TEXT,
             updated_at            TEXT
         );
     `);
@@ -223,6 +224,7 @@ function initSchema(db) {
         `ALTER TABLE webull_token ADD COLUMN last_check_status TEXT`,
         `ALTER TABLE webull_token ADD COLUMN last_check_at TEXT`,
         `ALTER TABLE webull_token ADD COLUMN last_health_check_date TEXT`,
+        `ALTER TABLE webull_token ADD COLUMN last_health_check_attempt_at TEXT`,
         `ALTER TABLE webull_token ADD COLUMN updated_at TEXT`,
     ];
     for (const sql of webullTokenMigrations) {

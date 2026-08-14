@@ -1266,7 +1266,7 @@ export function WebullAccountPage() {
                   token {(tokenStatus?.hasToken ?? data.connection.hasAccessToken) ? 'есть' : 'не задан'} • account {data.connection.hasAccountId ? 'задан' : 'не задан'}
                 </div>
                 <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                  Истекает: {tokenStatus?.expiresAt ? formatDateTime(tokenStatus.expiresAt) : '—'} • осталось: {tokenStatus?.daysLeft ?? '—'} дн. • проверка: {tokenStatus?.lastCheckStatus ?? '—'}
+                  Срок от Webull: {tokenStatus?.expiresAt ? formatDateTime(tokenStatus.expiresAt) : '—'} • осталось: {tokenStatus?.daysLeft ?? '—'} дн. • проверка: {tokenStatus?.lastCheckStatus ?? '—'}
                 </div>
                 {tokenStatus?.lastCheckAt ? <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">Проверено: {formatDateTime(tokenStatus.lastCheckAt)}</div> : null}
                 <div className="mt-2 flex flex-wrap gap-2">

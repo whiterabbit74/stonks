@@ -16,8 +16,11 @@ function buildWebullRuntimeConfig(overrides = {}) {
     const appSecret = overrides.appSecret || env.WEBULL_APP_SECRET || '';
     // Lazy load avoids a module initialization cycle: webullToken health checks use this client.
     const stored = require('./webullToken').getStoredToken();
-    const storedExpiresAt = Date.parse(stored?.expires_at || '');
-    const storedToken = stored?.token && !Number.isNaN(storedExpiresAt) && storedExpiresAt > Date.now() ? stored.token : '';
+    const storedStatus = String(stored?.last_check_status || '').toUpperCase();
+    // Webull invalidates active tokens after 15 idle days, not on a fixed local deadline.
+    // The authoritative state is the latest Webull status check; never discard a NORMAL token
+    // merely because an old expires value remains in SQLite.
+    const storedToken = stored?.token && storedStatus === 'NORMAL' ? stored.token : '';
     const accessToken = overrides.accessToken || storedToken || env.WEBULL_ACCESS_TOKEN || '';
     const accountId = overrides.accountId || env.WEBULL_ACCOUNT_ID || '';
     if (protocol !== 'https:') {
@@ -414,10 +417,15 @@ async function createAccessToken(configOverrides = {}) {
 }
 
 async function checkAccessToken(token, configOverrides = {}) {
+    const stored = require('./webullToken').getStoredToken();
+    const storedToken = typeof stored?.token === 'string' ? stored.token.trim() : '';
+    const envToken = getApiConfig().WEBULL_ACCESS_TOKEN || '';
     return requestWebull({
         method: 'POST',
         path: '/openapi/auth/token/check',
-        body: { token: token || buildWebullRuntimeConfig(configOverrides).accessToken },
+        // A PENDING token must be checkable after the user confirms SMS in Webull App.
+        // It is intentionally not eligible for authenticated trading requests yet.
+        body: { token: token || storedToken || envToken },
         configOverrides,
         includeAccessToken: false,
         version: 'v2'

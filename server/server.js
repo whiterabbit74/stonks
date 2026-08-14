@@ -168,17 +168,17 @@ app.listen(PORT, () => {
       const nowEt = getETParts(new Date());
       const cal = getCachedTradingCalendar();
 
-      // Skip non-trading days entirely
+      // Webull invalidates a token after 15 days without authenticated API use. The
+      // health check itself deduplicates successful daily calls and backs off failures,
+      // so it is safe to invoke on every scheduler tick, including weekends/holidays.
+      await runDailyTokenHealthCheck();
+
+      // Skip market-specific jobs on non-trading days.
       if (!isTradingDayByCalendarET(nowEt, cal)) return;
 
       const session = getTradingSessionForDateET(nowEt, cal);
       const nowMinutes = nowEt.hh * 60 + nowEt.mm;
       const minutesUntilClose = session.closeMin - nowMinutes;
-
-      // Webull token health: once per trading day during the first hour of the regular session.
-      if (nowMinutes >= 9 * 60 + 30 && nowMinutes <= 10 * 60 + 30) {
-        await runDailyTokenHealthCheck();
-      }
 
       // Telegram aggregation: only at T-11 and T-1 (±1 minute window for 20s interval)
       if ((minutesUntilClose >= 10 && minutesUntilClose <= 12) ||
