@@ -28,9 +28,15 @@ describe('Utils', () => {
       const dateStr = '2023-12-25';
       const result = parseOHLCDate(dateStr);
       expect(result).toBeInstanceOf(Date);
-      expect(result.getFullYear()).toBe(2023);
-      expect(result.getMonth()).toBe(11); // December is 11
-      expect(result.getDate()).toBe(25);
+      // The trading day is fixed in UTC, so local getters would move it in UTC+13
+      expect(result.getUTCFullYear()).toBe(2023);
+      expect(result.getUTCMonth()).toBe(11); // December is 11
+      expect(result.getUTCDate()).toBe(25);
+    });
+
+    it('should keep the day regardless of the machine timezone', () => {
+      expect(formatOHLCYMD(parseOHLCDate('2023-12-25'))).toBe('2023-12-25');
+      expect(formatOHLCYMD(parseOHLCDate('2024-01-01'))).toBe('2024-01-01');
     });
   });
 
