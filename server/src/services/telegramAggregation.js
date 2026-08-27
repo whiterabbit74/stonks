@@ -172,6 +172,33 @@ function getProviderAbbrev(provider) {
     }
 }
 
+function uniqueEmaSymbols(alerts) {
+    const symbols = [];
+    const seen = new Set();
+    for (const alert of Array.isArray(alerts) ? alerts : []) {
+        const symbol = toSafeTicker(alert && alert.symbol);
+        if (!symbol || seen.has(symbol)) continue;
+        seen.add(symbol);
+        symbols.push(symbol);
+    }
+    return symbols;
+}
+
+async function refreshHistIfMissingYesterday(symbol, nowEt, histProvider) {
+    const prevKey = etKeyYMD(previousTradingDayET(nowEt));
+    const dataset = getDataset(symbol);
+    const hasYesterday = dataset && Array.isArray(dataset.data) && dataset.data.some((d) => d && d.date === prevKey);
+    if (hasYesterday) {
+        return { dataset, histFresh: true, fetched: false };
+    }
+    const histStatus = await refreshTickerAndCheckFreshness(symbol, nowEt, histProvider);
+    return {
+        dataset: getDataset(symbol) || dataset || null,
+        histFresh: !!(histStatus && histStatus.fresh),
+        fetched: true,
+    };
+}
+
 /**
  * Main Telegram aggregation function
  * Sends messages at T-11 (overview) and T-1 (confirmations)
@@ -210,6 +237,19 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
         const histProvider = settings.resultsRefreshProvider || 'finnhub';
         const providerAbbrev = getProviderAbbrev(histProvider);
         const consistencySnapshot = reconcileMonitorState({ apply: !(options && options.test) });
+
+        let apiCallsMade = 0;
+        let apiCallsSkipped = 0;
+        for (const symbol of uniqueEmaSymbols(configuredEmaAlerts)) {
+            try {
+                const hist = await refreshHistIfMissingYesterday(symbol, nowEt, histProvider);
+                if (hist.fetched) apiCallsMade++;
+                else apiCallsSkipped++;
+            } catch {
+                // same as watch loop: keep going so EMA eval still uses whatever history we have
+            }
+        }
+
         let emaAlerts = [];
         if (configuredEmaAlerts.length > 0) {
             try {
@@ -246,10 +286,6 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
             if (defaultChatId) byChat.set(defaultChatId, []);
         }
 
-        // Track API calls for statistics
-        let apiCallsMade = 0;
-        let apiCallsSkipped = 0;
-
         // Fetch data for all watched symbols
         for (const list of byChat.values()) {
             for (const rec of list) {
@@ -269,28 +305,11 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
 
                 // 1) Check historical data freshness
                 try {
-                    const prev = previousTradingDayET(nowEt);
-                    const prevKey = etKeyYMD(prev);
-                    let needsUpdate = true;
-
-                    // Check if dataset already has previous trading day data
-                    const dataset = getDataset(w.symbol);
-                    rec.dataset = dataset || null;
-                    if (dataset && Array.isArray(dataset.data)) {
-                        const hasYesterday = dataset.data.some(d => d && d.date === prevKey);
-                        if (hasYesterday) {
-                            rec.histFresh = true;
-                            apiCallsSkipped++;
-                            needsUpdate = false;
-                        }
-                    }
-
-                    // Fetch if needed
-                    if (needsUpdate) {
-                        apiCallsMade++;
-                        const histStatus = await refreshTickerAndCheckFreshness(w.symbol, nowEt, histProvider);
-                        rec.histFresh = !!(histStatus && histStatus.fresh);
-                    }
+                    const hist = await refreshHistIfMissingYesterday(w.symbol, nowEt, histProvider);
+                    rec.dataset = hist.dataset || null;
+                    rec.histFresh = hist.histFresh;
+                    if (hist.fetched) apiCallsMade++;
+                    else apiCallsSkipped++;
                 } catch (e) {
                     rec.histFresh = false;
                 }

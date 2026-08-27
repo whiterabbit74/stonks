@@ -257,4 +257,119 @@ describe('telegramAggregation mismatch handling', () => {
     expect(sendCalls[0].text).toContain('EMA/IBS сигналы заблокированы');
     expect(sendCalls[0].text).not.toContain('На вход: TQQQ');
   });
+
+  it('refreshes EMA ticker history before evaluate, even when the ticker is not a watch', async () => {
+    purgeServerCache();
+
+    const order = [];
+    const telegramWatches = new Map([
+      ['AAPL', {
+        symbol: 'AAPL',
+        highIBS: 0.75,
+        lowIBS: 0.1,
+        thresholdPct: 0.3,
+        chatId: 'chat-1',
+        sent: {
+          dateKey: null,
+          warn10: false,
+          confirm1: false,
+          entryWarn10: false,
+          entryConfirm1: false,
+        },
+      }],
+    ]);
+
+    stubModule('src/config/index.js', {
+      getApiConfig: () => ({ TELEGRAM_CHAT_ID: 'chat-1' }),
+      DATASETS_DIR: repoRoot,
+    });
+    stubModule('src/services/settings.js', {
+      readSettings: async () => ({ resultsRefreshProvider: 'finnhub' }),
+    });
+    stubModule('src/services/datasets.js', {
+      getDataset: (symbol) => {
+        if (symbol === 'TQQQ') return { data: [{ date: '2026-03-28' }] };
+        return { data: [{ date: '2026-03-30' }] };
+      },
+    });
+    stubModule('src/utils/helpers.js', {
+      toSafeTicker: (value) => String(value || '').toUpperCase(),
+    });
+    stubModule('src/providers/quote.js', {
+      fetchTodayRangeAndQuote: async () => ({
+        range: { low: 100, high: 110 },
+        quote: { current: 105, low: 100, high: 110, open: 102, prevClose: 101 },
+        source: 'finnhub',
+      }),
+    });
+    stubModule('src/services/telegram.js', {
+      telegramWatches,
+      aggregateSendState: new Map(),
+      getAggregateState: () => ({ dateKey: '2026-03-31', t11Sent: false, t1Sent: false }),
+      sendTelegramMessage: async () => ({ ok: true }),
+    });
+    stubModule('src/services/trades.js', {
+      syncWatchesWithTradeState: () => ({ openTrade: null, changes: [] }),
+      getCurrentOpenTrade: () => null,
+    });
+    stubModule('src/services/autotrade.js', {
+      executeWebullSignal: async () => {
+        throw new Error('executeWebullSignal should not be called from T-11 overview');
+      },
+      appendAutotradeEvent: async () => {},
+    });
+    stubModule('src/services/dates.js', {
+      getETParts: () => ({ hh: 15, mm: 49, ss: 0 }),
+      etKeyYMD: (value) => value?.key || '2026-03-31',
+      previousTradingDayET: () => ({ key: '2026-03-30' }),
+      getTradingSessionForDateET: () => ({ closeMin: 16 * 60, short: false }),
+      isTradingDayByCalendarET: () => true,
+      getCachedTradingCalendar: () => ({}),
+    });
+    stubModule('src/services/priceActualization.js', {
+      refreshTickerAndCheckFreshness: async (symbol) => {
+        order.push(`refresh:${symbol}`);
+        return { fresh: true };
+      },
+      appendMonitorLog: async () => {},
+    });
+    stubModule('src/services/monitorConsistency.js', {
+      reconcileMonitorState: () => ({ issues: [] }),
+      getBlockingMonitorMismatch: () => null,
+    });
+    stubModule('src/services/splits.js', {
+      getTickerSplits: () => [],
+    });
+    stubModule('src/services/emaAlerts.js', {
+      listEmaAlerts: () => [
+        { symbol: 'TQQQ', emaPeriod: 200, enabled: true },
+        { symbol: 'tqqq', emaPeriod: 20, enabled: true },
+      ],
+      evaluateEmaAlerts: async () => {
+        order.push('evaluate');
+        return [{
+          symbol: 'TQQQ',
+          emaPeriod: 200,
+          buyLevelPct: 15,
+          sellLevelPct: 40,
+          dataOk: true,
+          near: false,
+          reached: false,
+          infoCrossing: null,
+          deviationPct: -5,
+          action: 'buy',
+          activeLevelPct: 15,
+        }];
+      },
+      markEmaAlertsTriggered: () => [],
+      recordEmaInfoSide: () => null,
+      recordEmaInfoSides: () => [],
+    });
+
+    const { runTelegramAggregation } = require(path.join(serverRoot, 'src/services/telegramAggregation.js'));
+    const result = await runTelegramAggregation(11, { test: true, forceSend: true, updateState: false });
+
+    expect(result.sent).toBe(true);
+    expect(order).toEqual(['refresh:TQQQ', 'evaluate']);
+  });
 });

@@ -26,6 +26,7 @@ const {
 } = require('./trades');
 const { getETParts, etKeyYMD, previousTradingDayET, getTradingSessionForDateET, isTradingDayByCalendarET, getCachedTradingCalendar } = require('./dates');
 const { reconcileMonitorState } = require('./monitorConsistency');
+const { listEmaAlerts } = require('./emaAlerts');
 
 // Price actualization state
 const priceActualizationState = {
@@ -58,6 +59,24 @@ function computePriceActualizationDelayMs() {
     }
     const jitter = jitterMax > 0 ? Math.floor(Math.random() * (jitterMax + 1)) : 0;
     return base + jitter;
+}
+
+function collectActualizationSymbols() {
+    const seen = new Set();
+    const symbols = [];
+    const add = (raw) => {
+        const ticker = toSafeTicker(raw);
+        if (!ticker || seen.has(ticker)) return;
+        seen.add(ticker);
+        symbols.push(ticker);
+    };
+    for (const watch of telegramWatches.values()) add(watch.symbol);
+    try {
+        for (const alert of listEmaAlerts()) add(alert.symbol);
+    } catch {
+        // no DB / no EMA alerts → watches only
+    }
+    return symbols;
 }
 
 async function waitForPriceActualizationThrottle({ symbol, index, total }) {
@@ -237,8 +256,8 @@ async function runPriceActualization(options = {}) {
     await appendMonitorLog([`T+16min: начало актуализации цен (${provider})`]);
 
     try {
-        const watchList = Array.from(telegramWatches.values());
-        const totalTickers = watchList.length;
+        const symbols = collectActualizationSymbols();
+        const totalTickers = symbols.length;
 
         if (totalTickers === 0) {
             priceActualizationState.status = 'completed';
@@ -254,9 +273,8 @@ async function runPriceActualization(options = {}) {
         const failedTickers = [];
         const tickersWithoutTodayData = [];
 
-        for (let i = 0; i < watchList.length; i++) {
-            const watch = watchList[i];
-            const symbol = watch.symbol;
+        for (let i = 0; i < symbols.length; i++) {
+            const symbol = symbols[i];
 
             try {
                 const result = await refreshTickerAndCheckFreshness(symbol, nowEt, provider);
@@ -277,7 +295,7 @@ async function runPriceActualization(options = {}) {
             }
 
             // Throttle between requests
-            if (i < watchList.length - 1) {
+            if (i < symbols.length - 1) {
                 await waitForPriceActualizationThrottle({ symbol, index: i, total: totalTickers });
             }
         }
@@ -391,6 +409,7 @@ module.exports = {
     getPriceActualizationState,
     appendMonitorLog,
     refreshTickerAndCheckFreshness,
+    collectActualizationSymbols,
     runPriceActualization,
     updateAllPositions,
     waitForPriceActualizationThrottle,
