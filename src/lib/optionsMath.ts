@@ -1,3 +1,9 @@
+import {
+  addDaysToTradingDate,
+  dayOfWeekTradingDate,
+  daysBetweenTradingDates,
+  type TradingDate,
+} from './date-utils';
 
 // Standard Normal Cumulative Distribution Function
 function cnd(x: number): number {
@@ -76,23 +82,16 @@ export function calculateVolatility(prices: number[], _window = 30): number {
  * @param fromDate Start date
  * @param weeks Number of weeks to add before finding the next Friday (default: 4)
  */
-export function getExpirationDate(fromDate: Date, weeks: number = 4): Date {
-  const targetDate = new Date(fromDate);
-  targetDate.setDate(targetDate.getDate() + (weeks * 7));
+export function getExpirationDate(fromDate: TradingDate, weeks: number = 4): TradingDate {
+  const target = addDaysToTradingDate(fromDate, weeks * 7);
 
-  // Find the next Friday (5)
-  // Day: 0 (Sun) to 6 (Sat)
-  const day = targetDate.getDay();
-  const diff = 5 - day; // If Fri (5), diff=0. If Sat (6), diff=-1 (needs +6).
+  // Find the next Friday (5). Day: 0 (Sun) to 6 (Sat)
+  const day = dayOfWeekTradingDate(target);
+  const daysToAdd = (5 - day + 7) % 7; // Friday itself expires the same day
 
-  let daysToAdd = diff;
-  if (daysToAdd < 0) daysToAdd += 7; // Move to next week if passed
-
-  targetDate.setDate(targetDate.getDate() + daysToAdd);
-  return targetDate;
+  return addDaysToTradingDate(target, daysToAdd);
 }
 
-export function getYearsToMaturity(fromDate: Date, toDate: Date): number {
-    const diffMs = toDate.getTime() - fromDate.getTime();
-    return diffMs / (1000 * 60 * 60 * 24 * 365.25);
+export function getYearsToMaturity(fromDate: TradingDate, toDate: TradingDate): number {
+    return daysBetweenTradingDates(fromDate, toDate) / 365.25;
 }

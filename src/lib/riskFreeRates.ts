@@ -5,6 +5,8 @@
  * Values are annualized decimal rates (e.g., 0.05 for 5%).
  */
 
+import type { TradingDate } from './date-utils';
+
 export const RISK_FREE_RATES: Record<string, number> = {
     "1999-01": 0.0434,
     "1999-02": 0.0444,
@@ -333,15 +335,12 @@ export const RISK_FREE_RATES: Record<string, number> = {
 };
 
 /**
- * Gets the risk-free rate for a given date.
+ * Gets the risk-free rate for a given trading date.
  * Returns the rate for the specific month (YYYY-MM).
  * If no data is available for the month, returns undefined.
- * @param date Date object
+ * @param date TradingDate ('YYYY-MM-DD')
  * @returns Risk free rate (decimal) or undefined
  */
-export function getRiskFreeRate(date: Date): number | undefined {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const key = `${year}-${month}`;
-    return RISK_FREE_RATES[key];
+export function getRiskFreeRate(date: TradingDate): number | undefined {
+    return RISK_FREE_RATES[date.slice(0, 7)];
 }

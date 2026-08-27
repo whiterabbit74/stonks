@@ -10,22 +10,18 @@ describe('Risk Free Rate Data', () => {
     });
 
     it('should return correct rate from helper function', () => {
-        // 1999-01-15 -> Should return 1999-01 rate
-        const date1 = new Date(1999, 0, 15);
-        expect(getRiskFreeRate(date1)).toBeCloseTo(0.0434);
+        expect(getRiskFreeRate('1999-01-15')).toBeCloseTo(0.0434);
+        expect(getRiskFreeRate('2020-04-01')).toBeCloseTo(0.0014);
+    });
 
-        // 2020-04-01 -> Should return 2020-04 rate (0.0014)
-        const date2 = new Date(2020, 3, 1);
-        expect(getRiskFreeRate(date2)).toBeCloseTo(0.0014);
+    it('should take the month from the trading date itself', () => {
+        // First and last day of a month must resolve to that same month
+        expect(getRiskFreeRate('2020-04-30')).toBeCloseTo(0.0014);
+        expect(getRiskFreeRate('2020-04-01')).toBe(getRiskFreeRate('2020-04-30'));
     });
 
     it('should return undefined for future dates or dates out of range', () => {
-        // Way in the future (assuming data stops at 2025)
-        const dateFuture = new Date(2030, 0, 1);
-        expect(getRiskFreeRate(dateFuture)).toBeUndefined();
-
-        // Way in the past
-        const datePast = new Date(1980, 0, 1);
-        expect(getRiskFreeRate(datePast)).toBeUndefined();
+        expect(getRiskFreeRate('2030-01-01')).toBeUndefined();
+        expect(getRiskFreeRate('1980-01-01')).toBeUndefined();
     });
 });

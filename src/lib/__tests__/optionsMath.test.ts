@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { blackScholes, calculateVolatility, getExpirationDate, getYearsToMaturity } from '../optionsMath';
+import { dayOfWeekTradingDate } from '../date-utils';
 
 describe('Options Math Utilities', () => {
   describe('blackScholes', () => {
@@ -40,38 +41,32 @@ describe('Options Math Utilities', () => {
 
   describe('getExpirationDate', () => {
     it('should find next Friday roughly a month away', () => {
-      // 2023-01-01 is Sunday.
-      // +4 weeks = 2023-01-29 (Sunday).
+      // 2023-01-01 is Sunday. +4 weeks = 2023-01-29 (Sunday).
       // Next Friday from Sunday is 2023-02-03.
-      // Use local noon to match application logic
-      const start = new Date(2023, 0, 1, 12, 0, 0);
-      const expiry = getExpirationDate(start);
-      // Verify result
-      expect(expiry.getDay()).toBe(5); // Friday
-      // Check rough distance (approx 33 days)
-      const diffDays = (expiry.getTime() - start.getTime()) / (1000 * 3600 * 24);
-      expect(diffDays).toBeGreaterThan(28);
-      expect(diffDays).toBeLessThan(40);
+      expect(getExpirationDate('2023-01-01')).toBe('2023-02-03');
+      expect(dayOfWeekTradingDate(getExpirationDate('2023-01-01'))).toBe(5);
     });
 
-    it('should handle wrapping correctly', () => {
-      // 2023-01-27 is Friday. 4 weeks = 28 days -> Feb 24 (Friday).
-      // Since it lands on Friday, it expires then. Diff = 28 days.
-      const start = new Date(2023, 0, 27, 12, 0, 0);
-      const expiry = getExpirationDate(start);
+    it('should expire the same day when it lands on a Friday', () => {
+      // 2023-01-27 is Friday, +4 weeks = 2023-02-24, also Friday
+      expect(getExpirationDate('2023-01-27')).toBe('2023-02-24');
+    });
 
-      expect(expiry.getDay()).toBe(5);
-      const diffDays = (expiry.getTime() - start.getTime()) / (1000 * 3600 * 24);
-      expect(diffDays).toBeCloseTo(28, 1);
+    it('should not depend on the machine timezone', () => {
+      // The whole app lives in the exchange's calendar: the same input date
+      // must always give the same expiration string
+      expect(getExpirationDate('2000-01-03')).toBe('2000-02-04');
+      expect(getExpirationDate('2024-12-31', 1)).toBe('2025-01-10');
     });
   });
 
   describe('getYearsToMaturity', () => {
       it('should calculate fractional years correctly', () => {
-          const d1 = new Date('2023-01-01');
-          const d2 = new Date('2024-01-01');
-          const T = getYearsToMaturity(d1, d2);
-          expect(T).toBeCloseTo(1.0, 2);
+          expect(getYearsToMaturity('2023-01-01', '2024-01-01')).toBeCloseTo(1.0, 2);
+      });
+
+      it('should be zero on the expiration day', () => {
+          expect(getYearsToMaturity('2024-03-15', '2024-03-15')).toBe(0);
       });
   });
 });

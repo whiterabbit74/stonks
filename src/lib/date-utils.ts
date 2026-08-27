@@ -138,6 +138,15 @@ export function daysBetweenTradingDates(from: TradingDate, to: TradingDate): num
 }
 
 /**
+ * Day of week of a TradingDate: 0 (Sunday) .. 6 (Saturday)
+ * Pure calendar math — the result never depends on the viewer's timezone
+ */
+export function dayOfWeekTradingDate(date: TradingDate): number {
+    const [y, m, d] = date.split('-').map(Number);
+    return new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+}
+
+/**
  * Add calendar days to a TradingDate
  * (Not trading days - just calendar days)
  */

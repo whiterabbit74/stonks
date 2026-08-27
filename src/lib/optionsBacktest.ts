@@ -1,6 +1,6 @@
 import type { Trade, OHLCData, EquityPoint } from '../types';
 import { blackScholes, calculateVolatility, getExpirationDate, getYearsToMaturity } from './optionsMath';
-import { toTradingDate, daysBetweenTradingDates, type TradingDate } from './date-utils';
+import { daysBetweenTradingDates, type TradingDate } from './date-utils';
 import { getRiskFreeRate } from './riskFreeRates';
 
 export interface OptionsBacktestConfig {
@@ -99,8 +99,7 @@ export function runOptionsBacktest(
     for (let i = 0; i < marketData.length; i++) {
         const bar = marketData[i];
         const dateStr = typeof bar.date === 'string' ? bar.date.slice(0, 10) : new Date(bar.date).toISOString().slice(0, 10);
-        const [y, m, d] = dateStr.split('-').map(Number);
-        const currentDate = new Date(y, m - 1, d, 12, 0, 0);
+        const currentDate = dateStr as TradingDate;
         const r = getRiskFreeRate(currentDate) ?? riskFreeRate;
 
         // Try to Enter
@@ -135,7 +134,7 @@ export function runOptionsBacktest(
                                ...matchingStockTrade,
                                optionType: 'call',
                                strike,
-                               expirationDate: toTradingDate(expiration),
+                               expirationDate: expiration,
                                impliedVolAtEntry: state.vol,
                                impliedVolAtExit: 0,
                                optionEntryPrice: optionContractPrice,
@@ -158,7 +157,7 @@ export function runOptionsBacktest(
              const state = getMarketState(dateStr);
              if (state) {
                  const spot = state.price;
-                 const expiration = new Date(activeTrade.expirationDate);
+                 const expiration = activeTrade.expirationDate as TradingDate;
                  const T = getYearsToMaturity(currentDate, expiration);
                  const vol = state.vol;
 
@@ -221,7 +220,7 @@ export function runOptionsBacktest(
         }
 
         equity.push({
-            date: toTradingDate(currentDate),
+            date: currentDate,
             value: portfolioValue,
             drawdown: 0
         });
@@ -277,8 +276,7 @@ export function runMultiTickerOptionsBacktest(
     const activeTrades: OptionTrade[] = [];
 
     for (const dateStr of sortedDates) {
-        const [y, m, d] = dateStr.split('-').map(Number);
-        const currentDate = new Date(y, m - 1, d, 12, 0, 0);
+        const currentDate = dateStr as TradingDate;
         const r = getRiskFreeRate(currentDate) ?? riskFreeRate;
 
         // A. Mark to Market & Check Exits
@@ -290,7 +288,7 @@ export function runMultiTickerOptionsBacktest(
 
             if (marketData) {
                 const spot = marketData.close;
-                const expiration = new Date(trade.expirationDate);
+                const expiration = trade.expirationDate as TradingDate;
                 const T = getYearsToMaturity(currentDate, expiration);
                 const vol = marketData.vol;
 
@@ -376,7 +374,7 @@ export function runMultiTickerOptionsBacktest(
                                ...stockTrade,
                                optionType: 'call',
                                strike,
-                               expirationDate: toTradingDate(expiration),
+                               expirationDate: expiration,
                                impliedVolAtEntry: marketData.vol,
                                impliedVolAtExit: 0,
                                optionEntryPrice: optionContractPrice,
@@ -400,7 +398,7 @@ export function runMultiTickerOptionsBacktest(
              const marketMap = tickerMaps.get(ticker);
              const marketData = marketMap?.get(dateStr);
              if (marketData) {
-                 const T = getYearsToMaturity(currentDate, new Date(trade.expirationDate));
+                 const T = getYearsToMaturity(currentDate, trade.expirationDate as TradingDate);
                  const theoreticalPrice = blackScholes('call', marketData.close, trade.strike, T, r, marketData.vol);
                  const contractPrice = getExecutionPrice(theoreticalPrice);
                  openPositionsValue += trade.contracts * contractPrice;
