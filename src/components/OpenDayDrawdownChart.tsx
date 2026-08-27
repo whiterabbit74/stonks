@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { HistogramSeries, createChart, type IChartApi, type ISeriesApi } from 'lightweight-charts';
 import type { OHLCData, Trade } from '../types';
 import { toChartTimestamp, toTradingDate } from '../lib/date-utils';
@@ -15,29 +15,36 @@ export function OpenDayDrawdownChart({ trades, data }: OpenDayDrawdownChartProps
   const chartRef = useRef<IChartApi | null>(null);
   const isDark = useIsDark();
 
-  // Map OHLC by YYYY-MM-DD for fast lookup
-  const dateKey = (d: Date | string) => {
-    try { return toTradingDate(d); } catch { return String(d).slice(0, 10); }
-  };
-  const ohlcByDay = new Map<string, OHLCData>();
-  for (const bar of data) {
-    ohlcByDay.set(dateKey(bar.date), bar);
-  }
-
-  const rows = trades.map((t) => {
-    const bar = ohlcByDay.get(dateKey(t.entryDate));
-    if (!bar) return { time: toChartTimestamp(t.entryDate), value: 0, open: 0, low: 0 };
-    const dropPct = bar.open > 0 ? ((bar.open - bar.low) / bar.open) * 100 : 0; // % drop from open to low
-    return {
-      time: toChartTimestamp(t.entryDate),
-      value: -dropPct, // negative to show drawdown below zero
-      open: bar.open,
-      low: bar.low,
+  const rows = useMemo(() => {
+    const dateKey = (d: Date | string) => {
+      try { return toTradingDate(d); } catch { return String(d).slice(0, 10); }
     };
-  });
+    const ohlcByDay = new Map<string, OHLCData>();
+    for (const bar of data) {
+      ohlcByDay.set(dateKey(bar.date), bar);
+    }
 
-  const avgDrop = rows.reduce((s, r) => s + Math.abs(r.value), 0) / Math.max(1, rows.length);
-  const maxDrop = rows.reduce((m, r) => Math.max(m, Math.abs(r.value)), 0);
+    return trades.map((t) => {
+      const bar = ohlcByDay.get(dateKey(t.entryDate));
+      if (!bar) return { time: toChartTimestamp(t.entryDate), value: 0, open: 0, low: 0 };
+      const dropPct = bar.open > 0 ? ((bar.open - bar.low) / bar.open) * 100 : 0; // % drop from open to low
+      return {
+        time: toChartTimestamp(t.entryDate),
+        value: -dropPct, // negative to show drawdown below zero
+        open: bar.open,
+        low: bar.low,
+      };
+    });
+  }, [trades, data]);
+
+  const avgDrop = useMemo(
+    () => rows.reduce((s, r) => s + Math.abs(r.value), 0) / Math.max(1, rows.length),
+    [rows]
+  );
+  const maxDrop = useMemo(
+    () => rows.reduce((m, r) => Math.max(m, Math.abs(r.value)), 0),
+    [rows]
+  );
 
   useEffect(() => {
     if (!containerRef.current || rows.length === 0) return;
