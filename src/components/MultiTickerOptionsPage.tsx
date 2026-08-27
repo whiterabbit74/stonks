@@ -17,6 +17,7 @@ import { DatasetAPI } from '../lib/api';
 import { isSameDay } from '../lib/date-utils';
 import { useMarketOpen } from '../hooks/useMarketOpen';
 import { lsGet, lsSet } from '../lib/storage';
+import { getDefaultTickers } from '../lib/tickers';
 import { LS } from '../constants';
 
 
@@ -63,15 +64,10 @@ export function MultiTickerOptionsPage() {
   const defaultMultiTickerSymbols = useAppStore(s => s.defaultMultiTickerSymbols);
   const resultsQuoteProvider = useAppStore(s => s.resultsQuoteProvider);
 
-  const getDefaultTickers = () => {
-    const symbolsStr = defaultMultiTickerSymbols || 'AAPL,MSFT,AMZN,MAGS';
-    return symbolsStr.split(',').map(s => s.trim().toUpperCase()).filter(Boolean);
-  };
-
   const getInitialTickers = () => {
     const saved = lsGet<string[] | null>(LS.TICKERS, null);
     if (saved && saved.length > 0) return saved;
-    return getDefaultTickers();
+    return getDefaultTickers(defaultMultiTickerSymbols);
   };
 
   const getInitialTickersInput = () => {
@@ -80,7 +76,7 @@ export function MultiTickerOptionsPage() {
     return defaultMultiTickerSymbols || 'AAPL, MSFT, AMZN, MAGS';
   };
 
-  const getInitialSelectedTicker = () => lsGet<string>(LS.OPTIONS_SELECTED_TICKER, getDefaultTickers()[0] ?? '');
+  const getInitialSelectedTicker = () => lsGet<string>(LS.OPTIONS_SELECTED_TICKER, getDefaultTickers(defaultMultiTickerSymbols)[0] ?? '');
 
   const [tickers, setTickers] = useState<string[]>(getInitialTickers);
   const [tickersInput, setTickersInput] = useState<string>(getInitialTickersInput);
@@ -426,14 +422,14 @@ export function MultiTickerOptionsPage() {
                 showBadges={false}
               />
               {(() => {
-                const defaults = getDefaultTickers();
+                const defaults = getDefaultTickers(defaultMultiTickerSymbols);
                 const isAlreadyDefault = defaults.length === tickers.length && defaults.every((t, i) => t === tickers[i]);
                 if (isAlreadyDefault) return null;
                 return (
                   <button
                     type="button"
                     onClick={() => {
-                      const defaultList = getDefaultTickers();
+                      const defaultList = getDefaultTickers(defaultMultiTickerSymbols);
                       setTickers(defaultList);
                       setTickersInput(defaultList.join(', '));
                       void runBacktest(defaultList);
@@ -441,7 +437,7 @@ export function MultiTickerOptionsPage() {
                     className="mt-1.5 w-full rounded-lg border border-dashed border-gray-300 px-2 py-1 text-left text-[11px] text-gray-500 transition-colors hover:border-indigo-400 hover:bg-indigo-50 hover:text-indigo-600 dark:border-gray-600 dark:text-gray-400 dark:hover:border-indigo-500 dark:hover:bg-indigo-950/20 dark:hover:text-indigo-300"
                     title="Вернуться к дефолтным тикерам"
                   >
-                    ↩ {getDefaultTickers().join(', ')}
+                    ↩ {getDefaultTickers(defaultMultiTickerSymbols).join(', ')}
                   </button>
                 );
               })()}

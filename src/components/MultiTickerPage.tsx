@@ -18,6 +18,7 @@ import { DatasetAPI } from '../lib/api';
 import { isSameDay } from '../lib/date-utils';
 import { useMarketOpen } from '../hooks/useMarketOpen';
 import { lsGet, lsSet } from '../lib/storage';
+import { getDefaultTickers } from '../lib/tickers';
 
 
 import { CompactMetrics } from './CompactMetrics';
@@ -68,12 +69,6 @@ export function MultiTickerPage() {
   const resultsQuoteProvider = useAppStore(s => s.resultsQuoteProvider);
   const [searchParams] = useSearchParams();
 
-  const getDefaultTickers = () => {
-    const symbolsStr = defaultMultiTickerSymbols || 'AAPL,MSFT,AMZN,MAGS';
-    return symbolsStr.split(',').map(s => s.trim().toUpperCase()).filter(Boolean);
-  };
-
-
   const getInitialTickers = () => {
     const urlTickers = searchParams.get('tickers');
     if (urlTickers) {
@@ -81,7 +76,7 @@ export function MultiTickerPage() {
     }
     const saved = lsGet<string[] | null>(LS.TICKERS, null);
     if (saved && saved.length > 0) return saved;
-    return getDefaultTickers();
+    return getDefaultTickers(defaultMultiTickerSymbols);
   };
 
   const getInitialTickersInput = () => {
@@ -100,7 +95,7 @@ export function MultiTickerPage() {
       const first = urlTickers.split(',').map(s => s.trim().toUpperCase()).filter(Boolean)[0];
       if (first) return first;
     }
-    return lsGet<string>(LS.STOCKS_SELECTED_TICKER, getDefaultTickers()[0] ?? '');
+    return lsGet<string>(LS.STOCKS_SELECTED_TICKER, getDefaultTickers(defaultMultiTickerSymbols)[0] ?? '');
   };
 
   const [tickers, setTickers] = useState<string[]>(getInitialTickers);
@@ -119,7 +114,7 @@ export function MultiTickerPage() {
 
   type TabId = 'summary' | 'price' | 'tickerCharts' | 'equity' | 'exposure' | 'trades' | 'profit' | 'monthlyContribution' | 'splits' | 'drawdown' | 'duration' | 'buyhold' | 'openDayDrawdown' | 'buyAtClose' | 'buyAtClose4' | 'noStopLoss' | 'options';
   const [activeTab, setActiveTab] = useState<TabId>('summary');
-  const [selectedPriceTicker, setSelectedPriceTicker] = useState<string>(() => getDefaultTickers()[0] ?? '');
+  const [selectedPriceTicker, setSelectedPriceTicker] = useState<string>(() => getDefaultTickers(defaultMultiTickerSymbols)[0] ?? '');
   const [selectedTradeTicker, setSelectedTradeTicker] = useState<'all' | string>('all');
 
   // Сводка tab state
@@ -536,14 +531,14 @@ export function MultiTickerPage() {
                 showBadges={false}
               />
               {(() => {
-                const defaults = getDefaultTickers();
+                const defaults = getDefaultTickers(defaultMultiTickerSymbols);
                 const isAlreadyDefault = defaults.length === tickers.length && defaults.every((t, i) => t === tickers[i]);
                 if (isAlreadyDefault) return null;
                 return (
                   <button
                     type="button"
                     onClick={() => {
-                      const defaultList = getDefaultTickers();
+                      const defaultList = getDefaultTickers(defaultMultiTickerSymbols);
                       setTickers(defaultList);
                       setTickersInput(defaultList.join(', '));
                       void runBacktest(defaultList);
@@ -551,7 +546,7 @@ export function MultiTickerPage() {
                     className="mt-1.5 w-full rounded-lg border border-dashed border-gray-300 px-2 py-1 text-left text-[11px] text-gray-500 transition-colors hover:border-indigo-400 hover:bg-indigo-50 hover:text-indigo-600 dark:border-gray-600 dark:text-gray-400 dark:hover:border-indigo-500 dark:hover:bg-indigo-950/20 dark:hover:text-indigo-300"
                     title="Вернуться к дефолтным тикерам"
                   >
-                    ↩ {getDefaultTickers().join(', ')}
+                    ↩ {getDefaultTickers(defaultMultiTickerSymbols).join(', ')}
                   </button>
                 );
               })()}
