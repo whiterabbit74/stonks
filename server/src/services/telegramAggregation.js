@@ -11,6 +11,7 @@ const { getApiConfig, DATASETS_DIR } = require('../config');
 const { readSettings } = require('./settings');
 const { getDataset } = require('./datasets');
 const { toSafeTicker } = require('../utils/helpers');
+const { isIbsEntrySignal, isIbsExitSignal } = require('../utils/ibsSignals');
 const { fetchTodayRangeAndQuote } = require('../providers/quote');
 const { telegramWatches, sendTelegramMessage, aggregateSendState, getAggregateState } = require('./telegram');
 const {
@@ -442,8 +443,8 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
                     // Calculate signals
                     const closeEnoughToExit = ibs >= (w.highIBS - delta);
                     const closeEnoughToEntry = ibs <= ((w.lowIBS ?? 0.1) + delta);
-                    const confirmExit = ibs >= w.highIBS;
-                    const confirmEntry = ibs <= (w.lowIBS ?? 0.1);
+                    const confirmExit = isIbsExitSignal(ibs, w.highIBS);
+                    const confirmEntry = isIbsEntrySignal(ibs, w.lowIBS);
 
                     rec.ibs = ibs;
                     rec.quote = { ...quote, current: currentPrice };

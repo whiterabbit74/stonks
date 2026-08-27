@@ -7,6 +7,7 @@ const { readSettings, writeSettings } = require('./settings');
 const { telegramWatches, sendTelegramMessage } = require('./telegram');
 const { fetchTodayRangeAndQuote } = require('../providers/finnhub');
 const { toFiniteNumber, toSafeTicker } = require('../utils/helpers');
+const { isIbsEntrySignal, isIbsExitSignal } = require('../utils/ibsSignals');
 const { AUTOTRADE_LOG_FILE, AUTOTRADE_STATE_FILE, MONITOR_LOG_FILE, WEBULL_RAW_LOG_FILE, getApiConfig } = require('../config');
 const { getETParts, etKeyYMD, getCachedTradingCalendar, isTradingDayByCalendarET, getTradingSessionForDateET } = require('./dates');
 const {
@@ -1881,7 +1882,7 @@ async function evaluateAutoTradeCycle(options = {}) {
     if (openTrade && autoTrading.allowExits) {
         const row = quotes.find((item) => item.symbol === openTrade.symbol && item.ok);
         const highIBS = getThresholdsForSymbol(openTrade.symbol, autoTrading).highIBS;
-        if (row && typeof row.ibs === 'number' && row.ibs >= highIBS) {
+        if (row && isIbsExitSignal(row.ibs, highIBS)) {
             decision = {
                 action: 'exit',
                 reason: 'ibs_exit',
@@ -1898,7 +1899,7 @@ async function evaluateAutoTradeCycle(options = {}) {
         }
     } else if (!openTrade && autoTrading.allowNewEntries) {
         const eligible = quotes
-            .filter((item) => item.ok && typeof item.ibs === 'number' && item.ibs <= item.thresholds.lowIBS)
+            .filter((item) => item.ok && isIbsEntrySignal(item.ibs, item.thresholds.lowIBS))
             .sort((a, b) => a.ibs - b.ibs);
         if (eligible.length > 0) {
             decision = {
