@@ -11,7 +11,7 @@ import { MonthlyContributionAnalysis } from './MonthlyContributionAnalysis';
 import { createStrategyFromTemplate, STRATEGY_TEMPLATES } from '../lib/strategy';
 import { useMultiTickerData } from '../hooks/useMultiTickerData';
 import { BacktestPageShell } from './BacktestPageShell';
-import { scheduleIdleTask } from '../lib/prefetch';
+import { prefetchAnalysisTab as prefetchTab, scheduleIdleTask } from '../lib/prefetch';
 import { HeroLineChart } from './HeroLineChart';
 import { AnimatedPrice } from './AnimatedPrice';
 import { DatasetAPI } from '../lib/api';
@@ -135,16 +135,20 @@ export function MultiTickerPage() {
   }, [takeProfitPercent]);
 
   const prefetchAnalysisTab = (tabId: string) => {
-    if (tabId === 'summary' || tabId === 'monthlyContribution') return;
-    if (tabId === 'price') { void importTradingChart(); return; }
-    if (tabId === 'openDayDrawdown') { void importOpenDayDrawdownChart(); return; }
-    if (tabId === 'buyAtClose') { void importBuyAtCloseSimulator(); return; }
-    if (tabId === 'buyAtClose4') { void importBuyAtClose4Simulator(); return; }
-    if (tabId === 'noStopLoss') { void importNoStopLossSimulator(); return; }
-    if (tabId === 'options') { void importOptionsAnalysis(); return; }
-    if (tabId === 'buyhold') { void importBuyHoldAnalysis(); return; }
-    void importBacktestResultsView().then((module) => {
-      module.prefetchBacktestTab(tabId, 'multi');
+    prefetchTab(tabId, {
+      summary: null,
+      monthlyContribution: null,
+      price: () => { void importTradingChart(); },
+      openDayDrawdown: () => { void importOpenDayDrawdownChart(); },
+      buyAtClose: () => { void importBuyAtCloseSimulator(); },
+      buyAtClose4: () => { void importBuyAtClose4Simulator(); },
+      noStopLoss: () => { void importNoStopLossSimulator(); },
+      options: () => { void importOptionsAnalysis(); },
+      buyhold: () => { void importBuyHoldAnalysis(); },
+    }, () => {
+      void importBacktestResultsView().then((module) => {
+        module.prefetchBacktestTab(tabId, 'multi');
+      });
     });
   };
 

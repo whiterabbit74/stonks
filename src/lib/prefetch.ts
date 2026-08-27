@@ -1,5 +1,20 @@
 type IdleCallback = () => void;
 
+export type AnalysisTabLoader = (() => void) | null;
+
+/** Mapped `null` skips the tab; missing keys use `fallback`. */
+export function prefetchAnalysisTab(
+  tabId: string,
+  tabLoaders: Record<string, AnalysisTabLoader>,
+  fallback?: () => void
+): void {
+  if (Object.hasOwn(tabLoaders, tabId)) {
+    tabLoaders[tabId]?.();
+    return;
+  }
+  fallback?.();
+}
+
 export function scheduleIdleTask(task: IdleCallback, timeout = 1500): () => void {
   if (typeof window === 'undefined') {
     return () => {};

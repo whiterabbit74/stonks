@@ -9,6 +9,7 @@ import { useMultiTickerData } from '../hooks/useMultiTickerData';
 import { useMarketOpen } from '../hooks/useMarketOpen';
 import { runEmaZoneBacktest, type EmaZoneBacktestResult } from '../lib/ema-zone-strategy';
 import { BacktestPageShell } from './BacktestPageShell';
+import { prefetchAnalysisTab as prefetchTab } from '../lib/prefetch';
 import { TabContentLoader } from './ui/TabContentLoader';
 import { TradingChart } from './TradingChart';
 import { EmaDeviationChart } from './EmaDeviationChart';
@@ -284,8 +285,14 @@ export function EmaStrategyPage() {
   const displayLeveragePercent = runParams?.leveragePercent ?? settings.leveragePercent;
 
   const prefetchAnalysisTab = (tabId: string) => {
-    if (['summary', 'price', 'emaDeviation', 'spreads'].includes(tabId)) return;
-    void importBacktestResultsView();
+    prefetchTab(tabId, {
+      summary: null,
+      price: null,
+      emaDeviation: null,
+      spreads: null,
+    }, () => {
+      void importBacktestResultsView();
+    });
   };
 
   const runBacktest = async (overrideTickers?: string[]) => {

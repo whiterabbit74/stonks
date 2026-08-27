@@ -13,7 +13,7 @@ import { AnimatedPrice } from './AnimatedPrice';
 import { HeroLineChart } from './HeroLineChart';
 import { useSingleTickerData } from '../hooks/useSingleTickerData';
 import { BacktestPageShell } from './BacktestPageShell';
-import { scheduleIdleTask } from '../lib/prefetch';
+import { prefetchAnalysisTab as prefetchTab, scheduleIdleTask } from '../lib/prefetch';
 import { MetricsCalculator } from '../lib/metrics';
 import { formatCurrencyUSD } from '../lib/formatters';
 import { simulateMarginByTrades } from '../lib/margin-simulation';
@@ -155,34 +155,18 @@ export function SingleTickerPage() {
   }, [visibleAnalysisTabs, activeChart, firstVisibleTab]);
 
   const prefetchAnalysisTab = (tabId: string) => {
-    if (tabId === 'summary') return;
-    if (tabId === 'openDayDrawdown') {
-      void importOpenDayDrawdownChart();
-      return;
-    }
-    if (tabId === 'buyAtClose') {
-      void importBuyAtCloseSimulator();
-      return;
-    }
-    if (tabId === 'buyAtClose4') {
-      void importBuyAtClose4Simulator();
-      return;
-    }
-    if (tabId === 'noStopLoss') {
-      void importNoStopLossSimulator();
-      return;
-    }
-    if (tabId === 'options') {
-      void importOptionsAnalysis();
-      return;
-    }
-    if (tabId === 'buyhold') {
-      void importBuyHoldAnalysis();
-      return;
-    }
-
-    void importBacktestResultsView().then((module) => {
-      module.prefetchBacktestTab(tabId, 'single');
+    prefetchTab(tabId, {
+      summary: null,
+      openDayDrawdown: () => { void importOpenDayDrawdownChart(); },
+      buyAtClose: () => { void importBuyAtCloseSimulator(); },
+      buyAtClose4: () => { void importBuyAtClose4Simulator(); },
+      noStopLoss: () => { void importNoStopLossSimulator(); },
+      options: () => { void importOptionsAnalysis(); },
+      buyhold: () => { void importBuyHoldAnalysis(); },
+    }, () => {
+      void importBacktestResultsView().then((module) => {
+        module.prefetchBacktestTab(tabId, 'single');
+      });
     });
   };
 

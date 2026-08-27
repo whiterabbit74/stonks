@@ -10,7 +10,7 @@ import { calculateBacktestMetrics } from '../lib/backtest-statistics';
 import { createStrategyFromTemplate, STRATEGY_TEMPLATES } from '../lib/strategy';
 import { useMultiTickerData } from '../hooks/useMultiTickerData';
 import { BacktestPageShell } from './BacktestPageShell';
-import { scheduleIdleTask } from '../lib/prefetch';
+import { prefetchAnalysisTab as prefetchTab, scheduleIdleTask } from '../lib/prefetch';
 import { HeroLineChart } from './HeroLineChart';
 import { AnimatedPrice } from './AnimatedPrice';
 import { DatasetAPI } from '../lib/api';
@@ -117,8 +117,10 @@ export function MultiTickerOptionsPage() {
   const lazyFallback = <TabContentLoader />;
 
   const prefetchAnalysisTab = (tabId: string) => {
-    void importBacktestResultsView().then((module) => {
-      module.prefetchBacktestTab(tabId, 'options');
+    prefetchTab(tabId, {}, () => {
+      void importBacktestResultsView().then((module) => {
+        module.prefetchBacktestTab(tabId, 'options');
+      });
     });
   };
 
