@@ -63,16 +63,35 @@ function formatMoney(n) {
     return (typeof n === 'number' && isFinite(n)) ? `$${n.toFixed(2)}` : '-';
 }
 
-function formatEmaAlertLine(alert, detailed = false) {
-    const action = alert.action === 'sell' ? 'продажа' : 'покупка';
+function formatEmaAlertLine(alert) {
     const actionText = alert.action === 'sell' ? 'продавай' : 'покупай';
     const comparator = alert.action === 'sell' ? '≥' : '≤';
     const current = Number.isFinite(alert.deviationPct) ? `${alert.deviationPct.toFixed(2)}%` : '—';
-    const range = `${alert.buyLevelPct}%–${alert.sellLevelPct}%`;
-    if (detailed) {
-        return `${alert.symbol} EMA${alert.emaPeriod} ${range} • ждём: ${action} (${comparator} ${alert.activeLevelPct}%) • сейчас ${current} • ${alert.near ? 'близко ✅' : 'далеко'}`;
-    }
     return `${alert.symbol} EMA${alert.emaPeriod}: ${actionText} при ${comparator} ${alert.activeLevelPct}% (сейчас ${current})`;
+}
+
+function bold(value) {
+    return `<b>${value}</b>`;
+}
+
+function formatIbsDot(ibs, digits = 2) {
+    if (!Number.isFinite(ibs)) return '—';
+    return `.${ibs.toFixed(digits).slice(2)}`;
+}
+
+function formatFreshMark(ok) {
+    return ok ? '✓' : '✗';
+}
+
+function formatEmaInlineLine(alert) {
+    if (!alert.dataOk) {
+        return `EMA: ${bold(alert.symbol)} —`;
+    }
+    const action = alert.action === 'sell' ? 'sell' : 'buy';
+    const comparator = alert.action === 'sell' ? '≥' : '≤';
+    const current = Number.isFinite(alert.deviationPct) ? `${alert.deviationPct.toFixed(2)}%` : '—';
+    const proximity = alert.near ? 'near' : 'far';
+    return `EMA: ${bold(alert.symbol)} ${bold(current)} → ${action} ${comparator}${alert.activeLevelPct}% · ${proximity}`;
 }
 
 function formatEmaInfoCrossingLine(alert) {
@@ -84,35 +103,100 @@ function formatEmaInfoCrossingLine(alert) {
     return `${alert.symbol} вернулся выше ${levelStr} от EMA${alert.emaPeriod} (отклонение ${dev})`;
 }
 
-/**
- * Builds the standalone T-11 "EMA сигналы" message body: near buy/sell signals, the full
- * configured-alert detail listing (same content the old inline "📈 EMA" block had), plus
- * any info-level (-20% default) crossing notices. Returns null when there is nothing to report.
- */
-function buildEmaOverviewMessageText(emaAlerts) {
-    if (!Array.isArray(emaAlerts) || emaAlerts.length === 0) return null;
+function buildEmaInlineBlock(emaAlerts) {
+    if (!Array.isArray(emaAlerts) || emaAlerts.length === 0) return '';
+    const lines = [];
+    for (const alert of emaAlerts) {
+        lines.push(formatEmaInlineLine(alert));
+        if (alert.dataOk && alert.infoCrossing) {
+            lines.push(formatEmaInfoCrossingLine(alert));
+        }
+    }
+    return lines.join('\n');
+}
 
-    const nearSignals = emaAlerts.filter((alert) => alert.dataOk && alert.near);
-    const crossingAlerts = emaAlerts.filter((alert) => alert.dataOk && alert.infoCrossing);
+function formatSignalItems(items) {
+    return items.map((item) => `${bold(item.symbol)} · IBS ${bold(formatIbsDot(item.ibs, 3))}`).join(', ');
+}
 
-    const lines = ['📐 EMA сигналы', ''];
-    lines.push(nearSignals.length > 0
-        ? `Близко: ${nearSignals.map((alert) => formatEmaAlertLine(alert)).join(', ')}`
-        : 'Близко: нет');
+function formatConsistencyIssueLine(issue, snapshot) {
+    const symbol = issue.symbol
+        || (snapshot.openMonitorTrade && snapshot.openMonitorTrade.symbol)
+        || (snapshot.openBrokerTrade && snapshot.openBrokerTrade.symbol)
+        || '?';
+    const monitor = snapshot.openMonitorTrade ? 'OPEN' : 'FLAT';
+    const broker = snapshot.openBrokerTrade ? 'OPEN' : 'FLAT';
+    const reconcile = issue.autoFixable ? 'auto-reconcile available' : 'auto-reconcile unsafe';
+    return `⚠️ ${bold(symbol)}: monitor ${monitor} · broker ${broker} · ${reconcile}`;
+}
 
-    lines.push('');
-    lines.push(...emaAlerts.map((alert) => {
-        const range = `${alert.buyLevelPct ?? alert.levelPct}%–${alert.sellLevelPct ?? alert.levelPct}%`;
-        if (!alert.dataOk) return `${alert.symbol} EMA${alert.emaPeriod} ${range} • нет данных (${alert.reason || 'ошибка'})`;
-        return formatEmaAlertLine(alert, true);
-    }));
+function buildT11OverviewText({
+    minutesUntilClose,
+    session,
+    todayKey,
+    providerAbbrev,
+    sorted,
+    emaAlerts,
+    consistencySnapshot,
+    integritySummary,
+    openTrade,
+}) {
+    const closeH = String(Math.floor(session.closeMin / 60)).padStart(2, '0');
+    const closeM = String(session.closeMin % 60).padStart(2, '0');
+    const header = `🕓 ${bold(`${minutesUntilClose}m`)} → close · ${bold(`${closeH}:${closeM}`)} ET (${bold(todayKey)})${session.short ? ' short' : ''}`;
 
-    if (crossingAlerts.length > 0) {
-        lines.push('');
-        lines.push('Инфо-уровень:');
-        lines.push(...crossingAlerts.map((alert) => formatEmaInfoCrossingLine(alert)));
+    const entries = [];
+    const exits = [];
+    const rows = [];
+    const logLines = [];
+
+    for (const rec of sorted) {
+        const { w } = rec;
+        const positionOpen = !!openTrade && openTrade.symbol === w.symbol;
+        const near = positionOpen ? rec.closeEnoughToExit : rec.closeEnoughToEntry;
+        const priceStr = rec.quote ? formatMoney(rec.quote.current) : '—';
+        const ibsShort = rec.dataOk && Number.isFinite(rec.ibs) ? formatIbsDot(rec.ibs, 2) : '—';
+
+        if (rec.dataOk && near) {
+            (positionOpen ? exits : entries).push({ symbol: w.symbol, ibs: rec.ibs });
+        }
+
+        const fillCount = rec.dataOk && Number.isFinite(rec.ibs)
+            ? Math.max(0, Math.min(10, Math.ceil(rec.ibs * 11)))
+            : 0;
+        const bar = '█'.repeat(fillCount) + '░'.repeat(10 - fillCount);
+        const fresh = `${providerAbbrev}${formatFreshMark(!!rec.histFresh)} RT${formatFreshMark(!!rec.rtFresh)}`;
+        const actionTag = rec.integrityWarning ? '⚠️' : (rec.dataOk && near ? (positionOpen ? 'EXIT' : 'ENTRY') : '');
+        const line1 = `${bold(w.symbol)} ${bold(priceStr)} · ${positionOpen ? 'OPEN' : 'FLAT'} · IBS ${bold(ibsShort)}`;
+        const line2 = actionTag ? `[${bar}] · ${fresh} · ${actionTag}` : `[${bar}] · ${fresh}`;
+        rows.push(`${line1}\n${line2}`);
+
+        logLines.push(rec.dataOk
+            ? `${w.symbol} pos=${positionOpen ? 'open' : 'none'} IBS=${ibsShort} near=${near ? 'да' : 'нет'}`
+            : `${w.symbol} pos=${positionOpen ? 'open' : 'none'} data=NA err=${rec.fetchError}`);
     }
 
+    const entryLine = entries.length ? `🔔 ENTRY: ${formatSignalItems(entries)}` : 'ENTRY: —';
+    const exitLine = exits.length ? `🔔 EXIT: ${formatSignalItems(exits)}` : 'EXIT: —';
+    const consistencyLines = (consistencySnapshot.issues || []).map((issue) => formatConsistencyIssueLine(issue, consistencySnapshot));
+
+    const parts = [header, entryLine, exitLine];
+    if (integritySummary) parts.push('', integritySummary);
+    if (consistencyLines.length) parts.push('', ...consistencyLines);
+    if (rows.length) parts.push('', ...rows);
+    const emaInline = buildEmaInlineBlock(emaAlerts);
+    if (emaInline) parts.push(emaInline);
+    return { text: parts.join('\n'), logLines };
+}
+
+/** Standalone T-11 ping: only when a buy/sell level is near. */
+function buildEmaOverviewMessageText(emaAlerts) {
+    if (!Array.isArray(emaAlerts) || emaAlerts.length === 0) return null;
+    const nearSignals = emaAlerts.filter((alert) => alert.dataOk && alert.near);
+    if (nearSignals.length === 0) return null;
+
+    const lines = ['📐 EMA сигналы', ''];
+    lines.push(`Близко: ${nearSignals.map((alert) => formatEmaAlertLine(alert)).join(', ')}`);
     return `<pre>${lines.join('\n')}</pre>`;
 }
 
@@ -383,100 +467,40 @@ async function runTelegramAggregation(minutesOverride = null, options = {}) {
 
             // T-11 overview message
             if (minutesUntilClose === 11 && (!state.t11Sent || (options && options.forceSend))) {
-                const closeH = String(Math.floor(session.closeMin / 60)).padStart(2, '0');
-                const closeM = String(session.closeMin % 60).padStart(2, '0');
-                const header = `⏱ До закрытия: ${String(Math.floor(minutesUntilClose / 60)).padStart(2, '0')}:${String(minutesUntilClose % 60).padStart(2, '0')} • ${closeH}:${closeM} ET${session.short ? ' (сокр.)' : ''} • ${todayKey}`;
                 const sorted = list.slice().sort((a, b) => a.w.symbol.localeCompare(b.w.symbol));
-
-                // Collect signals
-                const entrySignals = [];
-                const exitSignals = [];
                 const integrityWarnings = collectIntegrityWarnings(sorted, emaAlerts);
                 const integritySummary = formatIntegrityWarningBlock(integrityWarnings);
-                const blocks = [];
-                const logLines = [`T-11 overview → chat ${chatId}`];
-                const openTradeForOverview = getCurrentOpenTrade();
-
-                for (const rec of sorted) {
-                    const { w } = rec;
-                    const positionOpen = !!openTradeForOverview && openTradeForOverview.symbol === w.symbol;
-                    const type = positionOpen ? 'выход' : 'вход';
-                    const near = positionOpen ? rec.closeEnoughToExit : rec.closeEnoughToEntry;
-                    const nearStr = rec.dataOk ? (near ? 'да' : 'нет') : '—';
-                    const priceStr = rec.quote ? formatMoney(rec.quote.current) : '-';
-                    const ibsStr = rec.dataOk && Number.isFinite(rec.ibs) ? rec.ibs.toFixed(3) : '-';
-                    const thresholdStr = positionOpen
-                        ? `≥ ${(w.highIBS - delta).toFixed(2)} (цель ${w.highIBS})`
-                        : `≤ ${((w.lowIBS ?? 0.1) + delta).toFixed(2)} (цель ${w.lowIBS ?? 0.1})`;
-                    const statusLabel = positionOpen ? 'Открыта' : 'Нет позиции';
-
-                    // Collect signals for summary
-                    if (rec.dataOk && near) {
-                        if (positionOpen) {
-                            exitSignals.push(`${w.symbol} (IBS ${(rec.ibs * 100).toFixed(1)}%)`);
-                        } else {
-                            entrySignals.push(`${w.symbol} (IBS ${(rec.ibs * 100).toFixed(1)}%)`);
-                        }
-                    }
-
-                    // Progress bar for IBS
-                    const fillCount = rec.dataOk && Number.isFinite(rec.ibs)
-                        ? Math.max(0, Math.min(10, Math.ceil(rec.ibs * 11)))
-                        : 0;
-                    const bar = '█'.repeat(fillCount) + '░'.repeat(10 - fillCount);
-
-                    const line1 = `${w.symbol} • ${statusLabel} • ${priceStr}`;
-                    const line2 = `IBS ${ibsStr}  [${bar}]`;
-                    // ИСПРАВЛЕНО: Показываем реальный провайдер вместо "AV"
-                    const line3 = `${providerAbbrev}${rec.histFresh ? '✅' : '❌'}  RT${rec.rtFresh ? '✅' : '❌'}`;
-                    const line4 = rec.integrityWarning
-                        ? 'Сигнал: заблокирован проверкой данных'
-                        : `Сигнал (${type}): ${nearStr}`;
-                    blocks.push([line1, line2, line3, line4].join('\n'));
-
-                    logLines.push(rec.dataOk
-                        ? `${w.symbol} pos=${positionOpen ? 'open' : 'none'} IBS=${ibsStr} near=${nearStr}`
-                        : `${w.symbol} pos=${positionOpen ? 'open' : 'none'} data=NA err=${rec.fetchError}`);
-                }
-
-                // Build signals summary (EMA content lives in a separate message now — see below)
-                let signalsSummary = '🔔 СИГНАЛЫ:\n';
-                signalsSummary += entrySignals.length > 0
-                    ? `• На вход: ${entrySignals.join(', ')}\n`
-                    : '• На вход: нет\n';
-                signalsSummary += exitSignals.length > 0
-                    ? `• На выход: ${exitSignals.join(', ')}`
-                    : '• На выход: нет';
-
-                const consistencySummary = consistencySnapshot.issues.length > 0
-                    ? `\n\n⚠️ СОСТОЯНИЕ:\n${consistencySnapshot.issues.map((issue) => `• ${issue.message}`).join('\n')}`
-                    : '';
-                const integrityBlock = integritySummary ? `\n\n${integritySummary}` : '';
-                const text = `<pre>${header}\n\n${signalsSummary}${integrityBlock}${consistencySummary}\n\n📊 ПОДРОБНО:\n\n${blocks.join('\n\n')}</pre>`;
+                const { text, logLines } = buildT11OverviewText({
+                    minutesUntilClose,
+                    session,
+                    todayKey,
+                    providerAbbrev,
+                    sorted,
+                    emaAlerts,
+                    consistencySnapshot,
+                    integritySummary,
+                    openTrade: getCurrentOpenTrade(),
+                });
+                logLines.unshift(`T-11 overview → chat ${chatId}`);
                 const resp = await sendTelegramMessage(chatId, text);
 
                 if (resp.ok) {
                     if (!options || options.updateState !== false) {
                         state.t11Sent = true;
                         aggregateSendState.set(chatId, state);
+                        try {
+                            recordEmaInfoSides(emaAlerts, new Date().toISOString());
+                        } catch { /* non-fatal */ }
                     }
                     await appendMonitorLog([...logLines, options && options.test ? '→ sent ok [TEST]' : '→ sent ok']);
 
-                    // Separate EMA message (buy/sell near info + info-level -20% crossing), sent
-                    // only after the standard overview lands successfully, and only if there's content.
                     const emaText = buildEmaOverviewMessageText(emaAlerts);
                     if (emaText) {
                         const emaResp = await sendTelegramMessage(chatId, emaText);
                         if (emaResp.ok) {
-                            const shouldPersistEma = !options || options.updateState !== false;
-                            if (shouldPersistEma) {
-                                try {
-                                    recordEmaInfoSides(emaAlerts, new Date().toISOString());
-                                } catch { /* non-fatal */ }
-                            }
-                            await appendMonitorLog([`T-11 EMA message → chat ${chatId}`, '→ sent ok']);
+                            await appendMonitorLog([`T-11 EMA near → chat ${chatId}`, '→ sent ok']);
                         } else {
-                            await appendMonitorLog([`T-11 EMA message → chat ${chatId}`, '→ send failed']);
+                            await appendMonitorLog([`T-11 EMA near → chat ${chatId}`, '→ send failed']);
                         }
                     }
                 } else {
@@ -849,4 +873,7 @@ module.exports = {
     normalizeIntradayRange,
     formatMoney,
     getProviderAbbrev,
+    buildEmaInlineBlock,
+    buildEmaOverviewMessageText,
+    buildT11OverviewText,
 };
