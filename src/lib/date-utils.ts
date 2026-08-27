@@ -1,9 +1,17 @@
 /**
  * TradingDate utilities for NYSE trading dates
- * 
+ *
  * TradingDate is a string in 'YYYY-MM-DD' format representing a NYSE trading day.
- * This is NOT a moment in time, but an identifier for a trading session.
- * It should never be converted between timezones.
+ * This is NOT a moment in time, but an identifier for a trading session — the app
+ * lives in a single calendar (the exchange's), so there is nothing to convert.
+ *
+ * Turning such a date into a Date invents the missing time (midnight) and a zone:
+ * 'YYYY-MM-DD' parses as UTC midnight, while new Date(y, m, d) and 'M/D/YYYY'
+ * parse as the machine's local midnight. Reading it back adds a second zone, and
+ * the day shifts by the difference — differently for every user. Keep dates as
+ * strings and use the helpers below.
+ *
+ * Full rules: see "Даты: почему в проекте нет таймзон" in CLAUDE.md.
  */
 
 import type { UTCTimestamp } from 'lightweight-charts';

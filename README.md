@@ -101,6 +101,7 @@ Frontend поднимется на `http://localhost:5173`. В dev-режиме 
 
 ```bash
 npm run test:run
+npm run test:tz    # тот же набор в UTC+13 и UTC-8: даты не должны зависеть от таймзоны машины
 npm run test:e2e
 ```
 

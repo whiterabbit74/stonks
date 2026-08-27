@@ -21,18 +21,73 @@ This is a React 19 + TypeScript trading strategy backtester with an Express.js b
 
 - Execute trades **only at the official session close**.
 - **Two minutes before the close** capture the latest IBS readings for all monitored tickers and base entry decisions on these values.
-- At the close select the instrument with the **lowest IBS strictly below 10** from the monitoring list; if no ticker meets the threshold, skip the trade.
+- At the close select the instrument with the **lowest IBS strictly below the entry threshold** (`lowIBS`, default `0.10` = 10%) from the monitoring list; if no ticker meets the threshold, skip the trade.
 - **Hold the position until it is fully closed**, then you may re-enter later the same day provided the above conditions are met again.
+- **Thresholds are strict on both sides:** entry `ibs < lowIBS`, exit `ibs > highIBS`, exactly as the backtest does it. An IBS of exactly `0.10` is not an entry. Monitor and autotrader must go through `isIbsEntrySignal` / `isIbsExitSignal` in `server/src/utils/ibsSignals.js` so the live thresholds cannot drift away from the backtest again.
 
 ### Core Invariants (do not violate)
 
-- **Dates only — no time, no timezones.** The whole app operates in a single implicit timezone (the exchange's), so time-of-day and timezone offsets must never appear in logic or display. All trading dates are plain `YYYY-MM-DD` strings (`TradingDate`).
-  - **Never** do `new Date("2024-11-17").toLocaleDateString(...)` to render a trading date: `new Date("YYYY-MM-DD")` parses as **UTC midnight**, and `toLocaleString*` renders in the viewer's local zone, so in any negative-offset zone the day shifts back by one (e.g. 17 Nov → 16 Nov). This exact bug hit the splits list.
-  - To **display** a `YYYY-MM-DD` date, use `formatTradingDateDisplay(date)` from `src/lib/date-utils.ts` (pure string split, no `Date`). To **compare / diff** dates, use `compareTradingDates` / `daysBetweenTradingDates`. To convert for lightweight-charts, use `toChartTimestamp` (midday-UTC).
-  - Do **not** use `new Date(...).getTime()`, `.toISOString()`, or `.toLocaleDateString()` on a trading-date string. The only legitimate `Date`/timezone use is an **explicit** `timeZone: 'America/New_York'` on genuine wall-clock timestamps (e.g. `getNYSECurrentDate`, "last modified at", monitor decision times) — never on bare calendar dates.
-  - Server-side date math must pin UTC explicitly (`new Date(\`${d}T00:00:00.000Z\`)`) or compare `YYYY-MM-DD` strings directly.
+- **Даты без времени и без таймзон.** Полное объяснение и правила — раздел [«Даты: почему в проекте нет таймзон»](#даты-почему-в-проекте-нет-таймзон). Коротко: торговая дата — строка `YYYY-MM-DD` (`TradingDate`), `Date` в этих путях не появляется вообще.
 
 - **Commit changes.** Every completed change is committed locally (do not push/deploy unless explicitly asked). Commit messages end with the `Co-Authored-By` trailer used across the history.
+
+## Даты: почему в проекте нет таймзон
+
+Это не стилистическое предпочтение и не «мы ленимся возиться с зонами». Это следствие того, чем оперирует приложение.
+
+### Суть
+
+Мы работаем с **дневными барами одной биржи**. Дневной бар — это не отрезок времени и не момент, а **идентификатор торговой сессии**: «17 ноября 2024 на NYSE». Такой же ярлык, как номер рейса. У него нет часа, минуты и смещения — он либо есть в календаре биржи, либо нет. Всё остальное в системе (сделки, equity, просадки, сплиты, календарь торговых дней, стейт монитора) навешено на этот же ярлык.
+
+Календарь у нас ровно один — биржевой. Провайдеры данных отдают бары уже помеченными датой сессии. То есть **вся система изначально живёт в одном календаре, и никакого перевода между календарями в ней не требуется**: переводить дату сессии куда-то — это как переводить номер рейса в другую таймзону.
+
+Как только календарный день превращают в момент времени, происходит следующее:
+
+1. `new Date('2024-11-17')` **домысливает время** — полночь. Времени в исходных данных не было, оно взялось из воздуха.
+2. Домысливает и зону: строка вида `YYYY-MM-DD` парсится как **полночь UTC**, а `new Date(2024, 10, 17)` и `'11/17/2024'` — как **локальная полночь машины**.
+3. Любое последующее чтение (`.toLocaleDateString()`, `.getDate()`, `.getFullYear()`) добавляет **вторую** зону — зону браузера или сервера.
+
+Дата сдвигается на день ровно на разнице этих двух выдуманных зон. Полночь — худшая из возможных точек привязки: она стоит на самой границе суток, поэтому **любое** ненулевое смещение её перебрасывает. И заметьте: сдвиг зависит от машины, где открыт браузер. Один и тот же датасет у пользователя в Москве и в Нью-Йорке даёт разные даты баров, разные сделки и разные метрики. Информации такое преобразование не добавляет ни на бит — только теряет.
+
+Отсюда правило: **между «дата пришла» и «дата показана пользователю» она не должна ни разу становиться `Date`**. Строка `'2024-11-17'` уже полна и однозначна. Сравнение, разница в днях, сортировка, отображение, ключ в `Map` — всё это делается на строках, без потери информации и без зависимости от машины.
+
+Это уже стоило нам нескольких одинаковых багов: съехавший на день список сплитов; импорт CSV в формате `M/D/YYYY`, который в московской зоне записывал каждый бар на предыдущий день; экспирация опционов, уезжавшая на день в UTC+13, и вместе с ней цена по Black–Scholes; проверка «данные не актуальны», искавшая в Токио бар за вчера. Каждый раз причина была одна и та же.
+
+### Жёсткие правила
+
+1. **Тип.** Торговая дата — `TradingDate` из `src/lib/date-utils.ts`, то есть строка `'YYYY-MM-DD'`. Это касается баров, сделок, equity, сплитов, календаря, стейта монитора и всех API-контрактов между фронтом и сервером.
+2. **Никакого времени суток** в данных, в логике и в UI. Если в значении появились часы — это либо не торговая дата, либо ошибка.
+3. **Все операции — через `src/lib/date-utils.ts`:**
+   - показать: `formatTradingDateDisplay`
+   - сравнить: `compareTradingDates`, `isBefore` / `isAfter` / `isSameDay` / `isOnOrBefore` / `isOnOrAfter` (или напрямую `<`, `>`, `===` — лексикографический порядок строк `YYYY-MM-DD` совпадает с хронологическим)
+   - разница и арифметика: `daysBetweenTradingDates`, `addDaysToTradingDate`, `dayOfWeekTradingDate`
+   - сегодняшняя дата биржи: `getTodayNYSE()`
+   - для lightweight-charts: `toChartTimestamp`
+   Нужной функции нет — добавь её туда, а не пиши `Date` по месту.
+4. **Запрещено на торговой дате:** `new Date(d)`, `Date.parse`, `.getTime()`, `.toISOString()`, `.toLocaleDateString()`, `.toLocaleString()`, `.getFullYear()` / `.getMonth()` / `.getDate()` / `.getDay()`, `setHours` / `setDate`, `getTimezoneOffset`, локальные конструкторы `new Date(y, m, d)`.
+5. **Парсинг входных данных** (CSV, ответы провайдеров) сразу даёт строку `YYYY-MM-DD`, минуя `Date`. Образец — `parseDate` в `src/lib/validation.ts`: разбирает формат регуляркой и собирает строку. Дата правильного вида с невозможным днём (`2024-02-30`) **отвергается**, а не переезжает молча в следующий месяц.
+6. **Сервер — те же правила.** Если `Date` всё же неизбежен (внешний API требует объект), зона фиксируется явно: `new Date(\`${d}T00:00:00.000Z\`)` или `Date.UTC(...)`, и обратно читается только через `getUTC*`. Сравнивать даты предпочтительно строками.
+7. **«Просто зафиксировать UTC» — не решение, а костыль.** UTC-полдень допустим ровно в одном месте: как формат обмена с lightweight-charts (`toChartTimestamp`), потому что библиотека требует таймстемп. Полдень выбран потому, что до границы суток от него далеко в обе стороны. Внутри нашей логики дата остаётся строкой.
+
+### Единственное исключение: настоящее wall-clock время
+
+Время суток нужно ровно там, где вопрос по своей природе про часы:
+
+- сколько минут осталось до закрытия сессии (T-11, T-1 в мониторе);
+- во сколько было принято решение о входе/выходе;
+- «обновлено в» для котировки или датасета.
+
+Правила для этих мест:
+
+- Зона указывается **явно**: `timeZone: 'America/New_York'`. Никогда не полагаемся на зону машины и не подставляем UTC «потому что сервер в UTC».
+- «Какой сейчас торговый день» — это `getTodayNYSE()`, а **не** UTC-день от `new Date()`. Разница вылезает вечером по нью-йоркскому времени, когда в UTC уже наступил следующий день: именно так живая свеча в мини-графике уезжала на день вперёд.
+- Результат такого вычисления — либо строка-дата (и дальше живёт по правилам выше), либо значение, явно помеченное как timestamp. Календарную дату из wall-clock timestamp получаем только через `getTodayNYSE` / явный `America/New_York`-форматтер.
+
+### Как проверять
+
+- Прогоняй тесты минимум в двух крайних зонах: `TZ=Pacific/Auckland npx vitest run` (UTC+13) и `TZ=America/Los_Angeles npx vitest run` (UTC−8). Любая разница в результатах между зонами — баг, даже если в UTC всё зелено.
+- Тесты не должны утверждать локальные части `Date` (`getFullYear`, `getMonth`, `getDate`). Проверяй строку-дату или `getUTC*`.
+- Быстрый grep при ревью: `rg "new Date\(|toISOString|toLocaleDateString|getTime\(\)" src server --glob '!*__tests__*'`. Каждое найденное место должно быть либо настоящим wall-clock с явной биржевой зоной, либо явно зафиксированным UTC на границе с внешним API.
 
 ## Architecture
 
@@ -210,6 +265,7 @@ npm run start        # Production start
 # Unit tests (Vitest)
 npm run test         # Interactive watch mode
 npm run test:run     # Single run with coverage
+npm run test:tz      # Same suite in UTC+13 and UTC-8 (date invariant check)
 
 # E2E tests (Playwright)
 npm run test:e2e            # Run all E2E tests
