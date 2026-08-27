@@ -7,12 +7,19 @@ interface Props {
 }
 
 export function CompactMetrics({ metrics, trades }: Props) {
-  const m = metrics as BacktestMetrics & { sharpeRatio?: number };
+  const m = metrics;
+  // cagr / maxDrawdown / winRate приходят из calculateBacktestMetrics уже в процентах (0..100),
+  // как их печатает MetricsGrid — дополнительное умножение на 100 давало расхождение с герой-гридом.
   const rows = [
     { label: 'CAGR', value: m?.cagr != null ? `${Number(m.cagr).toFixed(1)}%` : '—' },
-    { label: 'Макс. просадка', value: m?.maxDrawdown != null ? `${(Number(m.maxDrawdown) * 100).toFixed(1)}%` : '—' },
-    { label: 'Win rate', value: m?.winRate != null ? `${(Number(m.winRate) * 100).toFixed(1)}%` : '—' },
-    { label: 'Sharpe', value: m?.sharpeRatio != null ? Number(m.sharpeRatio).toFixed(2) : '—' },
+    { label: 'Макс. просадка', value: m?.maxDrawdown != null ? `${Number(m.maxDrawdown).toFixed(1)}%` : '—' },
+    { label: 'Win rate', value: m?.winRate != null ? `${Number(m.winRate).toFixed(1)}%` : '—' },
+    {
+      label: 'Profit Factor',
+      value: m?.profitFactor != null
+        ? (Number.isFinite(m.profitFactor) ? Number(m.profitFactor).toFixed(2) : '∞')
+        : '—',
+    },
     { label: 'Сделок', value: String(trades.length) },
   ];
   return (
