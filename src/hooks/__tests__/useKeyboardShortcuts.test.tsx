@@ -70,11 +70,7 @@ describe('useKeyboardShortcuts', () => {
     removeSpy.mockRestore();
   });
 
-  // KeyboardShortcut.meta is on the public type but handleKeyDown never reads it.
-  // Cmd is folded into the ctrl flag via `e.ctrlKey || e.metaKey`, so
-  // `{ key: 'k', meta: true }` does not match Cmd+K.
-  // See src/hooks/useKeyboardShortcuts.ts:26-32.
-  it.skip('fires a shortcut declared with meta: true when the meta key is held', () => {
+  it('fires a shortcut declared with meta: true when the meta key is held', () => {
     const action = vi.fn();
     function MetaHarness() {
       useKeyboardShortcuts([{ key: 'k', meta: true, action }]);

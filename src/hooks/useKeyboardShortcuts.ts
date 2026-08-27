@@ -25,7 +25,9 @@ export function useKeyboardShortcuts(shortcuts: KeyboardShortcut[], enabled = tr
 
             for (const shortcut of shortcuts) {
                 const keyMatch = e.key.toLowerCase() === shortcut.key.toLowerCase();
-                const ctrlMatch = (shortcut.ctrl ?? false) === (e.ctrlKey || e.metaKey);
+                // Ctrl и Cmd взаимозаменяемы, поэтому meta объявляет тот же модификатор
+                const wantsMod = (shortcut.ctrl ?? false) || (shortcut.meta ?? false);
+                const ctrlMatch = wantsMod === (e.ctrlKey || e.metaKey);
                 const shiftMatch = (shortcut.shift ?? false) === e.shiftKey;
                 const altMatch = (shortcut.alt ?? false) === e.altKey;
 
