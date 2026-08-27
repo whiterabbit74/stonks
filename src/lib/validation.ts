@@ -120,38 +120,45 @@ export function parseDate(dateStr: string | null | undefined): DateParseResult {
   }
 
   try {
-    // Стабильный парсинг YYYY-MM-DD в полдень UTC
-    const tryStable = (s: string) => {
-      if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
-        const [y, m, d] = s.split('-').map(n => parseInt(n, 10));
-        return new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
-      }
-      return null;
+    // Полдень UTC для календарной даты: локальная полночь (то, что даёт new Date(...)
+    // для 'M/D/YYYY' и для ISO без зоны) в UTC+ уезжает на предыдущий день,
+    // потому что дальше из Date читаются UTC-части.
+    const utcMidday = (y: number, m: number, d: number) => {
+      const date = new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
+      // Date.UTC переполняет (13-й месяц, 32-е число) вместо Invalid Date
+      const exact = date.getUTCFullYear() === y && date.getUTCMonth() + 1 === m && date.getUTCDate() === d;
+      return exact ? date : null;
     };
-    const stable = tryStable(dateStr);
-    if (stable && !isNaN(stable.getTime())) {
-      return { isValid: true, date: stable, format: 'YYYY-MM-DD' };
-    }
-    // Try ISO format first (YYYY-MM-DD)
-    if (/^\d{4}-\d{2}-\d{2}/.test(dateStr)) {
-      const date = new Date(dateStr);
-      if (!isNaN(date.getTime())) {
-        return { isValid: true, date, format: 'YYYY-MM-DD' };
-      }
+
+    // Try ISO format first (YYYY-MM-DD, возможно с временем)
+    // Дата нужного вида, но с нереальным днём (2024-02-30) — ошибка данных,
+    // а не повод молча перевести её в 1 марта
+    const isoMatch = /^(\d{4})-(\d{2})-(\d{2})/.exec(dateStr);
+    if (isoMatch) {
+      const date = utcMidday(Number(isoMatch[1]), Number(isoMatch[2]), Number(isoMatch[3]));
+      return date
+        ? { isValid: true, date, format: 'YYYY-MM-DD' }
+        : { isValid: false, date: null, error: `Impossible date: ${dateStr}` };
     }
 
     // Try US format (M/D/YYYY or MM/DD/YYYY)
-    if (/^\d{1,2}\/\d{1,2}\/\d{4}/.test(dateStr)) {
-      const date = new Date(dateStr);
-      if (!isNaN(date.getTime())) {
-        return { isValid: true, date, format: 'M/D/YYYY' };
-      }
+    const usMatch = /^(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(dateStr);
+    if (usMatch) {
+      const date = utcMidday(Number(usMatch[3]), Number(usMatch[1]), Number(usMatch[2]));
+      return date
+        ? { isValid: true, date, format: 'M/D/YYYY' }
+        : { isValid: false, date: null, error: `Impossible date: ${dateStr}` };
     }
 
     // Try general parsing
-    const date = new Date(dateStr);
-    if (!isNaN(date.getTime())) {
-      return { isValid: true, date, format: 'AUTO' };
+    const parsed = new Date(dateStr);
+    if (!isNaN(parsed.getTime())) {
+      // Календарный день берём из локальных частей: такие строки ('Nov 17 2024')
+      // движок парсит как локальную полночь
+      const date = utcMidday(parsed.getFullYear(), parsed.getMonth() + 1, parsed.getDate());
+      if (date) {
+        return { isValid: true, date, format: 'AUTO' };
+      }
     }
 
     return { isValid: false, date: null, error: 'Invalid date format' };
