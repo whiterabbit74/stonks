@@ -6,8 +6,9 @@ import { isSameDay, formatTradingDateDisplay } from '../lib/date-utils';
 import type { TradingDate } from '../lib/date-utils';
 import { useAppStore } from '../stores';
 import { LS } from '../constants';
-import { ChartContainer, AnalysisTabs, MetricsGrid, Button, IconButton, Panel, Select, TabContentLoader } from './ui';
+import { ChartContainer, AnalysisTabs, MetricsGrid, Button, IconButton, Panel, Select, TabContentLoader, HelpTooltip } from './ui';
 import { InfoModal } from './InfoModal';
+import { StrategyInfoCard } from './StrategyInfoCard';
 import { AnimatedPrice } from './AnimatedPrice';
 import { HeroLineChart } from './HeroLineChart';
 import { useSingleTickerData } from '../hooks/useSingleTickerData';
@@ -376,6 +377,13 @@ export function SingleTickerPage() {
 
   const comparisonResults = leverageMultiplier > 1 ? baselineResults : null;
   const trades = selectedResults.trades;
+  const lowIBS = Number(currentStrategy?.parameters?.lowIBS ?? 0.1);
+  const highIBS = Number(currentStrategy?.parameters?.highIBS ?? 0.75);
+  const maxHoldDays = Number(
+    typeof currentStrategy?.parameters?.maxHoldDays === 'number'
+      ? currentStrategy.parameters.maxHoldDays
+      : currentStrategy?.riskManagement?.maxHoldDays ?? 30
+  );
 
   const renderSpecificTab = () => {
     if (activeChart === 'openDayDrawdown') {
@@ -646,6 +654,22 @@ export function SingleTickerPage() {
           </Panel>
 
           <Panel as="aside" tone="soft" padding="sm" className="space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">Параметры</span>
+              <HelpTooltip
+                size="max"
+                title="Описание стратегии"
+                content={
+                  <StrategyInfoCard
+                    strategy={currentStrategy}
+                    lowIBS={lowIBS}
+                    highIBS={highIBS}
+                    maxHoldDays={maxHoldDays}
+                  />
+                }
+              />
+            </div>
+
             <div>
               <div className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-gray-100">
                 Маржинальность стратегии

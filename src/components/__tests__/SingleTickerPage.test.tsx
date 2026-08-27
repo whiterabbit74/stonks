@@ -472,6 +472,15 @@ describe('SingleTickerPage - Position Monitoring Logic', () => {
   });
 
   describe('UI Rendering', () => {
+    it('should show strategy help in the parameters panel', async () => {
+      await act(async () => {
+        renderWithRouter(<SingleTickerPage />);
+      });
+
+      expect(screen.getByRole('button', { name: 'Описание стратегии' })).toBeInTheDocument();
+      expect(screen.getByText('Параметры')).toBeInTheDocument();
+    });
+
     it('should render all result metrics', async () => {
       await act(async () => {
         renderWithRouter(<SingleTickerPage />);
