@@ -360,7 +360,7 @@ export function MonitorTradeHistoryPanel({
                 <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
                   Текущая позиция:{' '}
                   <Link
-                    to={`/results?ticker=${encodeURIComponent(openTrade.symbol)}`}
+                    to={`/stocks?tickers=${encodeURIComponent(openTrade.symbol)}`}
                     className="inline-flex items-center gap-1 hover:text-blue-600 dark:hover:text-blue-400 transition-colors underline decoration-dotted underline-offset-2"
                   >
                     {openTrade.symbol}
