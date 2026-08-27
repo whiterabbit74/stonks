@@ -4,6 +4,7 @@ import { useAppStore } from '../stores';
 import { DatasetAPI } from '../lib/api';
 import { useToastActions } from '../components/ui';
 import { getIsMarketOpen, hasCalendarDateEntry, type TradingCalendarData } from '../lib/market-utils';
+import { formatTradingDateDisplay } from '../lib/date-utils';
 
 // Intl formatters
 const ET_TIME_FMT = new Intl.DateTimeFormat('en-US', {
@@ -248,17 +249,13 @@ export function useSingleTickerData() {
       ? todayET
       : previousTradingDayET(now);
 
-    const etDate = new Date();
-    etDate.setFullYear(expectedParts.y, expectedParts.m - 1, expectedParts.d);
-    etDate.setHours(12, 0, 0, 0);
-
-    const expectedKeyUTC = etDate.toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const expectedKey = `${expectedParts.y}-${pad(expectedParts.m)}-${pad(expectedParts.d)}`;
     const dataKeys = new Set(marketData.map(b => b.date));
-    const stale = !dataKeys.has(expectedKeyUTC);
+    const stale = !dataKeys.has(expectedKey);
     setIsStale(stale);
     if (stale) {
-      const displayDate = new Date(Date.UTC(expectedParts.y, expectedParts.m - 1, expectedParts.d, 12, 0, 0));
-      setStaleInfo(`Отсутствует бар за ${displayDate.toLocaleDateString('ru-RU', { timeZone: 'America/New_York' })}`);
+      setStaleInfo(`Отсутствует бар за ${formatTradingDateDisplay(expectedKey)}`);
     } else {
       setStaleInfo(null);
     }
