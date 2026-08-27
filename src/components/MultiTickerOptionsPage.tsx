@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
-import { HelpCircle, RefreshCw, ArrowUpRight } from 'lucide-react';
+import { RefreshCw, ArrowUpRight } from 'lucide-react';
 import { MetricsGrid, AnalysisTabs, PageHeader, Select, Input, Button, TickerInput, IconButton, Panel, HelpTooltip } from './ui';
 import { useAppStore } from '../stores';
 import type { Strategy, MultiTickerBacktestResults, ChartQuote } from '../types';

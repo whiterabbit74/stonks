@@ -197,7 +197,8 @@ export async function apiCall<T>(
   url: string,
   options?: FetchOptions & { waitForOnline?: boolean }
 ): Promise<T> {
-  const { waitForOnline: _waitForOnline, ...fetchOptions } = options || {};
+  const fetchOptions: FetchOptions & { waitForOnline?: boolean } = { ...(options || {}) };
+  delete fetchOptions.waitForOnline;
 
   // navigator.onLine is only a browser hint, not a reachability check. Waiting
   // for its "online" event can leave a request pending forever even when this

@@ -1,4 +1,5 @@
-import { useRef, useState, ReactNode } from 'react';
+import { useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import { HelpCircle } from 'lucide-react';
 import { IconButton } from './IconButton';
 import { Panel } from './Panel';

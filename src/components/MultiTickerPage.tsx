@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { HelpCircle, RefreshCw, ArrowUpRight } from 'lucide-react';
+import { RefreshCw, ArrowUpRight } from 'lucide-react';
 import { MetricsGrid, AnalysisTabs, PageHeader, Select, Input, Button, TickerInput, ChartContainer, IconButton, Panel, HelpTooltip } from './ui';
 import { useAppStore } from '../stores';
 import { LS } from '../constants';
