@@ -9,6 +9,7 @@ import { Button } from './ui/Button';
 import { DropdownMenu, DropdownMenuDivider, DropdownMenuItem } from './ui/DropdownMenu';
 import { useNavigate, Link } from 'react-router-dom';
 import { getTickerInfo } from '../lib/ticker-data';
+import { formatDateET } from '../lib/formatters';
 
 // Utility function to get consistent dataset ID
 function getDatasetId(dataset: Omit<SavedDataset, 'data'>): string {
@@ -28,7 +29,6 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
   const [serverStatus, setServerStatus] = useState<'checking' | 'online' | 'offline'>('checking');
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmTarget, setConfirmTarget] = useState<string | null>(null);
-  const [loadingId, setLoadingId] = useState<string | null>(null);
 
   // Состояние для вида отображения (list = полный, compact = сетка)
   const [viewMode, setViewMode] = useState<'list' | 'compact'>('compact');
@@ -119,14 +119,12 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
 
   // локальное форматирование дат находится в компоненте DatasetCard
 
-  const handleLoadDataset = async (datasetId: string) => {
+  const handleLoadDataset = () => {
+    // Сам переход делает <Link> в карточке, здесь только уведомляем родителя
     try {
-      setLoadingId(datasetId);
       if (onAfterLoad) onAfterLoad();
-      setLoadingId(null);
     } catch (e) {
       console.warn('Failed to handle dataset load', e);
-      setLoadingId(null);
     }
   };
 
@@ -361,10 +359,9 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
             key={dataset.name}
             dataset={dataset}
             isActive={currentDataset?.ticker === dataset.ticker}
-            onLoad={() => handleLoadDataset(getDatasetId(dataset))}
+            onLoad={() => handleLoadDataset()}
             onDelete={(e) => handleDeleteDataset(getDatasetId(dataset), e)}
             onExport={(e) => handleExportDataset(getDatasetId(dataset), e)}
-            loading={loadingId === dataset.name}
             onEdit={(e) => handleEditDataset(dataset, e)}
             onRefresh={async (e) => {
               e.preventDefault();
@@ -396,7 +393,7 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
                 key={dataset.name}
                 dataset={dataset}
                 isActive={currentDataset?.ticker === dataset.ticker}
-                onLoad={() => handleLoadDataset(getDatasetId(dataset))}
+                onLoad={() => handleLoadDataset()}
                 onDelete={(e) => handleDeleteDataset(getDatasetId(dataset), e)}
                 onExport={(e) => handleExportDataset(getDatasetId(dataset), e)}
                 onEdit={(e) => handleEditDataset(dataset, e)}
@@ -418,8 +415,7 @@ export function DatasetLibrary({ onAfterLoad }: { onAfterLoad?: () => void } = {
                   }
                 }}
                 refreshing={refreshingId === getDatasetId(dataset).toUpperCase()}
-                loading={loadingId === dataset.name}
-              />
+                  />
             ))}
           </div>
         )}
@@ -520,20 +516,11 @@ interface DatasetCardProps {
   onDelete: (event: React.MouseEvent) => void;
   onExport: (event: React.MouseEvent) => void;
   onEdit?: (event: React.MouseEvent) => void;
-  loading?: boolean;
   onRefresh?: (event: React.MouseEvent) => void;
   refreshing?: boolean;
 }
 
-function DatasetCard({ dataset, isActive, onLoad, onDelete, onExport, onEdit, onRefresh, loading, refreshing }: DatasetCardProps) {
-  const formatDate = (dateString: string) => {
-    if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
-      const [y, m, d] = dateString.split('-');
-      return `${d}.${m}.${y}`;
-    }
-    return new Date(dateString).toISOString().slice(0, 10).split('-').reverse().join('.');
-  };
-
+function DatasetCard({ dataset, isActive, onLoad, onDelete, onExport, onEdit, onRefresh, refreshing }: DatasetCardProps) {
   // Get company name from dataset or look up from ticker-data
   const tickerInfo = dataset.ticker ? getTickerInfo(dataset.ticker) : undefined;
   const companyName = dataset.companyName || tickerInfo?.name;
@@ -542,13 +529,7 @@ function DatasetCard({ dataset, isActive, onLoad, onDelete, onExport, onEdit, on
   return (
     <Link
       to={`/stocks?tickers=${dataset.ticker}`}
-      onClick={(e) => {
-         if (loading) {
-            e.preventDefault();
-         } else {
-            onLoad();
-         }
-      }}
+      onClick={() => onLoad()}
       className={`block p-3 rounded-lg border cursor-pointer transition-colors ${isActive
         ? 'border-blue-500 bg-blue-50 dark:border-blue-400 dark:bg-blue-950/30'
         : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50 dark:border-gray-700 dark:hover:border-gray-600 dark:bg-gray-900 dark:hover:bg-gray-800'
@@ -577,9 +558,6 @@ function DatasetCard({ dataset, isActive, onLoad, onDelete, onExport, onEdit, on
                 })}
               </div>
             )}
-            {loading && (
-              <span className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded dark:bg-gray-800 dark:text-gray-200 dark:border dark:border-gray-700">Загрузка…</span>
-            )}
             {isActive && (
               <span className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded dark:bg-emerald-950/30 dark:text-emerald-200 dark:border dark:border-emerald-900/40">
                 Выбран
@@ -590,12 +568,12 @@ function DatasetCard({ dataset, isActive, onLoad, onDelete, onExport, onEdit, on
           <div className="flex items-center gap-4 text-sm text-gray-600 dark:text-gray-300">
             <div className="flex items-center gap-1">
               <Calendar className="w-4 h-4" />
-              {formatDate(dataset.dateRange.from)} - {formatDate(dataset.dateRange.to)}
+              {formatDateET(dataset.dateRange.from)} - {formatDateET(dataset.dateRange.to)}
             </div>
           </div>
 
           <div className="text-xs text-gray-500 mt-1 dark:text-gray-400">
-            Сохранён: {formatDate(dataset.uploadDate)}
+            Сохранён: {formatDateET(dataset.uploadDate)}
           </div>
         </div>
 
@@ -655,10 +633,9 @@ interface CompactDatasetCardProps {
   onEdit: (event: React.MouseEvent) => void;
   onRefresh: (event: React.MouseEvent) => void;
   refreshing?: boolean;
-  loading?: boolean;
 }
 
-function CompactDatasetCard({ dataset, isActive, onLoad, onDelete, onExport, onEdit, onRefresh, refreshing, loading }: CompactDatasetCardProps) {
+function CompactDatasetCard({ dataset, isActive, onLoad, onDelete, onExport, onEdit, onRefresh, refreshing }: CompactDatasetCardProps) {
   const [menuOpen, setMenuOpen] = useState(false);
 
   // Get company name from dataset or look up from ticker-data
@@ -680,17 +657,11 @@ function CompactDatasetCard({ dataset, isActive, onLoad, onDelete, onExport, onE
     <div className="relative">
       <Link
         to={`/stocks?tickers=${dataset.ticker}`}
-        onClick={(e) => {
-           if (loading) {
-              e.preventDefault();
-           } else {
-              onLoad();
-           }
-        }}
+        onClick={() => onLoad()}
         className={`block relative w-full p-3 rounded-lg border text-left transition-all duration-200 ${isActive
           ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200 dark:border-blue-400 dark:bg-blue-950/30 dark:ring-blue-900/50'
           : 'border-gray-200 hover:border-blue-300 hover:bg-blue-50/50 dark:border-gray-700 dark:hover:border-blue-800 dark:bg-gray-900 dark:hover:bg-blue-950/20'
-          } ${loading ? 'opacity-50 cursor-wait' : 'cursor-pointer'}`}
+          } cursor-pointer`}
       >
         {/* Active indicator */}
         {isActive && (
@@ -707,7 +678,7 @@ function CompactDatasetCard({ dataset, isActive, onLoad, onDelete, onExport, onE
         </button>
 
         {/* Loading indicator */}
-        {(loading || refreshing) && (
+        {refreshing && (
           <div className="absolute inset-0 flex items-center justify-center bg-white/50 dark:bg-gray-900/50 rounded-lg">
             <RefreshCw className="w-4 h-4 animate-spin text-blue-600" />
           </div>
