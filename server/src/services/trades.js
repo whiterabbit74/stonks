@@ -301,6 +301,20 @@ function recordTradeExit({ symbol, price, ibs, decisionTime, dateKey, clientOrde
     return rowToTrade(db.prepare('SELECT * FROM trades WHERE id = ?').get(openTrade.id));
 }
 
+function canAdoptOpenMonitor(openTrade, brokerTrade) {
+    if (!openTrade || !brokerTrade || openTrade.linkedBrokerTradeId) return false;
+    if (openTrade.symbol !== String(brokerTrade.symbol || '').toUpperCase()) return false;
+
+    if (openTrade.clientOrderId && brokerTrade.clientOrderId) {
+        return openTrade.clientOrderId === brokerTrade.clientOrderId;
+    }
+
+    return openTrade.entryDate === (brokerTrade.entryDate ?? null)
+        && (openTrade.source === 'auto'
+            || openTrade.source === 'telegram_t1_entry'
+            || openTrade.source === 'telegram_t1_entry_monitor_only');
+}
+
 function upsertMonitorTradeFromBrokerTrade(brokerTrade) {
     if (!brokerTrade || brokerTrade.status !== 'open' || !brokerTrade.id || !brokerTrade.symbol) {
         return null;
@@ -315,12 +329,7 @@ function upsertMonitorTradeFromBrokerTrade(brokerTrade) {
 
     if (openTrade) {
         const isSameLinkedTrade = openTrade.linkedBrokerTradeId === brokerTrade.id;
-        const canAdoptLegacyOpenTrade = (
-            openTrade.symbol === normalizedSymbol
-            && openTrade.entryDate === (brokerTrade.entryDate ?? null)
-            && !openTrade.linkedBrokerTradeId
-            && openTrade.source === 'auto'
-        );
+        const canAdoptLegacyOpenTrade = canAdoptOpenMonitor(openTrade, brokerTrade);
 
         if (!isSameLinkedTrade && !canAdoptLegacyOpenTrade) {
             console.warn(`Cannot link broker trade ${brokerTrade.id} to monitor trade: monitor trade ${openTrade.id} is still open for ${openTrade.symbol}`);
@@ -456,10 +465,7 @@ function closeMonitorTradeFromBrokerTrade(brokerTrade, options = {}) {
     const isLinkedTrade = openTrade.linkedBrokerTradeId === brokerTrade.id;
     const isLegacyAutoMatch = (
         options.allowLegacyMatch !== false
-        && !openTrade.linkedBrokerTradeId
-        && openTrade.source === 'auto'
-        && openTrade.symbol === brokerTrade.symbol
-        && openTrade.entryDate === (brokerTrade.entryDate ?? null)
+        && canAdoptOpenMonitor(openTrade, brokerTrade)
     );
 
     if (!isLinkedTrade && !isLegacyAutoMatch) {
@@ -823,6 +829,7 @@ module.exports = {
     getTradeById,
     recordTradeEntry,
     recordTradeExit,
+    canAdoptOpenMonitor,
     upsertMonitorTradeFromBrokerTrade,
     closeMonitorTradeById,
     closeMonitorTradeFromBrokerTrade,

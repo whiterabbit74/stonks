@@ -338,6 +338,97 @@ describe('monitor / broker state integration', () => {
       entryPrice: 371.86,
     });
   });
+
+  it('adopts a telegram_t1_entry monitor when the broker fill arrives', () => {
+    cleanupEnv = createTempEnv();
+    const context = loadTestContext();
+    cleanupDb = context.dbModule;
+    createWatch(context.telegram, 'AAPL');
+
+    const monitorOpen = context.trades.recordTradeEntry({
+      symbol: 'AAPL',
+      price: 198.4,
+      ibs: 0.08,
+      decisionTime: '2026-08-27T19:58:00.000Z',
+      dateKey: '2026-08-27',
+      source: 'telegram_t1_entry',
+      clientOrderId: 't1-buy-aapl',
+    });
+
+    const brokerOpen = context.brokerTrades.recordBrokerEntry({
+      symbol: 'AAPL',
+      price: 198.42,
+      ibs: 0.08,
+      decisionTime: '2026-08-27T20:01:00.000Z',
+      dateKey: '2026-08-27',
+      source: 'auto',
+      clientOrderId: 't1-buy-aapl',
+      brokerOrderId: 'broker-fill',
+      filledQty: 1,
+      quantity: 1,
+    });
+
+    const adopted = context.trades.upsertMonitorTradeFromBrokerTrade(brokerOpen);
+    expect(adopted).toMatchObject({
+      id: monitorOpen.id,
+      symbol: 'AAPL',
+      status: 'open',
+      linkedBrokerTradeId: brokerOpen.id,
+    });
+  });
+
+  it('reconcile auto-links same-day T-1 monitor to the open broker trade', () => {
+    cleanupEnv = createTempEnv();
+    const context = loadTestContext();
+    cleanupDb = context.dbModule;
+    createWatch(context.telegram, 'AAPL');
+
+    const monitorOpen = context.trades.recordTradeEntry({
+      symbol: 'AAPL',
+      price: 198.4,
+      ibs: 0.08,
+      decisionTime: '2026-08-27T19:58:00.000Z',
+      dateKey: '2026-08-27',
+      source: 'telegram_t1_entry',
+    });
+    const brokerOpen = context.brokerTrades.recordBrokerEntry({
+      symbol: 'AAPL',
+      price: 198.42,
+      ibs: 0.08,
+      decisionTime: '2026-08-27T20:01:00.000Z',
+      dateKey: '2026-08-27',
+      source: 'auto',
+      clientOrderId: 't1-buy-aapl',
+      brokerOrderId: 'broker-fill',
+      filledQty: 1,
+      quantity: 1,
+    });
+
+    const preview = context.monitorConsistency.reconcileMonitorState();
+    expect(preview.issues.map((issue) => issue.code)).toContain('legacy_monitor_trade_missing_link');
+    expect(preview.issues.map((issue) => issue.code)).not.toContain('monitor_broker_symbol_mismatch');
+    expect(preview.proposedActions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'link_legacy_monitor_trade',
+          autoApplicable: true,
+          monitorTradeId: monitorOpen.id,
+          brokerTradeId: brokerOpen.id,
+        }),
+      ]),
+    );
+    expect(preview.issues.find((issue) => issue.code === 'legacy_monitor_trade_missing_link')).toMatchObject({
+      autoFixable: true,
+    });
+
+    const applied = context.monitorConsistency.reconcileMonitorState({ apply: true });
+    expect(applied.appliedActions).toHaveLength(1);
+    expect(context.trades.getTradeById(monitorOpen.id)).toMatchObject({
+      status: 'open',
+      linkedBrokerTradeId: brokerOpen.id,
+    });
+    expect(context.monitorConsistency.getBlockingMonitorMismatch(applied)).toBeNull();
+  });
 });
 
 describe('monitor routes', () => {

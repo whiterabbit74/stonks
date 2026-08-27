@@ -4,6 +4,7 @@ const {
     closeMonitorTradeFromBrokerTrade,
     upsertMonitorTradeFromBrokerTrade,
     syncWatchesWithTradeState,
+    canAdoptOpenMonitor,
 } = require('./trades');
 const {
     getCurrentOpenBrokerTrade,
@@ -119,7 +120,7 @@ function getMonitorConsistencySnapshot() {
                     && openBrokerTrade.entryDate === openMonitorTrade.entryDate
                 );
 
-                if (sameDayOpenBrokerMatch && openMonitorTrade.source === 'auto') {
+                if (canAdoptOpenMonitor(openMonitorTrade, openBrokerTrade)) {
                     issues.push(buildIssue({
                         code: 'legacy_monitor_trade_missing_link',
                         message: `Monitor trade ${openMonitorTrade.symbol} is open and matches the broker's open trade, but it is missing an explicit broker link.`,
@@ -147,7 +148,7 @@ function getMonitorConsistencySnapshot() {
                         autoFixable: false,
                     }));
                 }
-            } else if (openMonitorTrade.source === 'auto' && sameDayClosedBrokerMatches.length === 1) {
+            } else if (sameDayClosedBrokerMatches.length === 1 && canAdoptOpenMonitor(openMonitorTrade, sameDayClosedBrokerMatches[0])) {
                 issues.push(buildIssue({
                     code: 'legacy_monitor_trade_can_close_from_broker_history',
                     message: `Legacy monitor trade ${openMonitorTrade.symbol} is still open even though the matching broker trade is closed.`,
@@ -164,7 +165,7 @@ function getMonitorConsistencySnapshot() {
                     monitorTradeId: openMonitorTrade.id,
                     brokerTradeId: sameDayClosedBrokerMatches[0].id,
                 }));
-            } else if (openMonitorTrade.source === 'auto' && sameDayClosedBrokerMatches.length > 1) {
+            } else if (sameDayClosedBrokerMatches.length > 1 && canAdoptOpenMonitor(openMonitorTrade, sameDayClosedBrokerMatches[0])) {
                 issues.push(buildIssue({
                     code: 'legacy_monitor_trade_ambiguous_broker_match',
                     severity: 'error',
