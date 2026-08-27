@@ -1,4 +1,5 @@
 import { ChartContainer } from './ui';
+import { TabContentLoader } from './ui/TabContentLoader';
 import { ErrorBoundary } from './ErrorBoundary';
 import type { OHLCData, Trade, EquityPoint, SplitEvent, Strategy, TickerData, ExposurePoint } from '../types';
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
@@ -143,15 +144,6 @@ function getLoaderClass(tabId: TabId, mode: BacktestViewMode): string {
   return 'min-h-[360px] flex items-center justify-center';
 }
 
-function TabContentLoader({ tabId, mode }: { tabId: TabId; mode: BacktestViewMode }) {
-  return (
-    <div
-      className={`rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600 dark:border-gray-700 dark:bg-gray-900/40 dark:text-gray-300 ${getLoaderClass(tabId, mode)}`}
-    >
-      Загрузка аналитики...
-    </div>
-  );
-}
 
 interface BacktestResultsViewProps {
   mode: BacktestViewMode;
@@ -354,7 +346,7 @@ export function BacktestResultsView({
   };
 
   const renderTabContent = (tabId: TabId): ReactNode => {
-    const lazyFallback = <TabContentLoader tabId={tabId} mode={mode} />;
+    const lazyFallback = <TabContentLoader className={getLoaderClass(tabId, mode)} />;
 
     // Price Tab
     if (tabId === 'price') {

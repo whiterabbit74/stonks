@@ -19,4 +19,6 @@ export * from './PageHeader';
 export * from './TickerInput';
 export * from './Textarea';
 export * from './HelpTooltip';
+export * from './TabContentLoader';
+
 

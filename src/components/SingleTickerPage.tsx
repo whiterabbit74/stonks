@@ -6,7 +6,7 @@ import { isSameDay, formatTradingDateDisplay } from '../lib/date-utils';
 import type { TradingDate } from '../lib/date-utils';
 import { useAppStore } from '../stores';
 import { LS } from '../constants';
-import { ChartContainer, AnalysisTabs, MetricsGrid, Button, IconButton, Panel, Select } from './ui';
+import { ChartContainer, AnalysisTabs, MetricsGrid, Button, IconButton, Panel, Select, TabContentLoader } from './ui';
 import { InfoModal } from './InfoModal';
 import { AnimatedPrice } from './AnimatedPrice';
 import { HeroLineChart } from './HeroLineChart';
@@ -45,18 +45,6 @@ const MARGIN_PERCENT_OPTIONS = [100, 125, 150, 175, 200] as const;
 const MAINTENANCE_MARGIN_OPTIONS = [20, 25, 30, 35, 40] as const;
 const DEFAULT_MARGIN_PERCENT = 100;
 const DEFAULT_MAINTENANCE_MARGIN_PERCENT = 25;
-
-function ResultsSectionLoader() {
-  return (
-    <div className="rounded-lg border border-gray-200 bg-gray-50/90 p-4 dark:border-gray-700 dark:bg-gray-900/40">
-      <div className="animate-pulse space-y-3">
-        <div className="h-4 w-40 rounded bg-gray-200 dark:bg-gray-700" />
-        <div className="h-3 w-1/3 rounded bg-gray-200 dark:bg-gray-700" />
-        <div className="h-48 rounded bg-gray-200/80 dark:bg-gray-800" />
-      </div>
-    </div>
-  );
-}
 
 function normalizeMarginPercent(value: number): number {
   return MARGIN_PERCENT_OPTIONS.includes(value as (typeof MARGIN_PERCENT_OPTIONS)[number])
@@ -245,7 +233,7 @@ export function SingleTickerPage() {
         return { marginPercent: opt, dropPct: drop };
       });
   }, [maintenanceMarginPct]);
-  const lazyFallback = <ResultsSectionLoader />;
+  const lazyFallback = <TabContentLoader variant="skeleton" />;
 
   // If not data ready, show Shell with loading or selection
   if (!isDataReady) {
