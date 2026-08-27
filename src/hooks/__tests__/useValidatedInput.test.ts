@@ -167,11 +167,7 @@ describe('useFormValidation', () => {
     expect(result.current.isValid).toBe(true);
   });
 
-  // setValue always writes errors[field] = '' when the validator returns a
-  // boolean (true or false). isValid is Object.keys(errors).length === 0, so
-  // a successful setValue still leaves a key and reports the form invalid.
-  // See src/hooks/useValidatedInput.ts:102-105 and :149.
-  it.skip('keeps isValid true after setValue when the validator returns true', () => {
+  it('keeps isValid true after setValue when the validator returns true', () => {
     const { result } = renderHook(() =>
       useFormValidation({ name: '', qty: 1 }, validators)
     );

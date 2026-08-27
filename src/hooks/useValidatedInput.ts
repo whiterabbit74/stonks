@@ -99,10 +99,19 @@ export function useFormValidation<T extends Record<string, unknown>>(
     const validator = validators[field];
     if (validator) {
       const result = validator(value);
-      setErrors(prev => ({
-        ...prev,
-        [field]: typeof result === 'string' ? result : ''
-      }));
+      const message = typeof result === 'string' && result.length > 0
+        ? result
+        : (result === false ? 'Invalid value' : null);
+      setErrors(prev => {
+        if (message === null) {
+          // Ключ нужно убрать, а не занулить: isValid смотрит на число ключей
+          if (!(field in prev)) return prev;
+          const next = { ...prev };
+          delete next[field];
+          return next;
+        }
+        return { ...prev, [field]: message };
+      });
     }
   }, [validators]);
 
