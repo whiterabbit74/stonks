@@ -25,6 +25,7 @@ node_modules/
 coverage/
 .vitest/
 playwright-report/
+test-results/
 e2e/
 **/*.spec.*
 **/*.test.*
