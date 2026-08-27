@@ -5,12 +5,12 @@ import type {
   OHLCData,
   ValidationResult
 } from '../types';
-import { toTradingDate } from './date-utils';
+import type { TradingDate } from './date-utils';
 
 // Date parsing result interface
 interface DateParseResult {
   isValid: boolean;
-  date: Date | null;
+  date: TradingDate | null;
   format?: string;
   error?: string;
 }
@@ -120,22 +120,20 @@ export function parseDate(dateStr: string | null | undefined): DateParseResult {
   }
 
   try {
-    // Полдень UTC для календарной даты: локальная полночь (то, что даёт new Date(...)
-    // для 'M/D/YYYY' и для ISO без зоны) в UTC+ уезжает на предыдущий день,
-    // потому что дальше из Date читаются UTC-части.
-    const utcMidday = (y: number, m: number, d: number) => {
-      const date = new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
-      // Date.UTC переполняет (13-й месяц, 32-е число) вместо Invalid Date
-      const exact = date.getUTCFullYear() === y && date.getUTCMonth() + 1 === m && date.getUTCDate() === d;
-      return exact ? date : null;
+    // Дата бара — это календарный день биржи, а не момент времени: собираем
+    // 'YYYY-MM-DD' строкой, без Date, чтобы день не зависел от машины.
+    const toKey = (y: number, m: number, d: number): TradingDate | null => {
+      if (m < 1 || m > 12 || d < 1) return null;
+      const daysInMonth = [31, isLeapYear(y) ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][m - 1];
+      if (d > daysInMonth) return null;
+      return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
     };
 
-    // Try ISO format first (YYYY-MM-DD, возможно с временем)
     // Дата нужного вида, но с нереальным днём (2024-02-30) — ошибка данных,
     // а не повод молча перевести её в 1 марта
-    const isoMatch = /^(\d{4})-(\d{2})-(\d{2})/.exec(dateStr);
+    const isoMatch = /^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(dateStr);
     if (isoMatch) {
-      const date = utcMidday(Number(isoMatch[1]), Number(isoMatch[2]), Number(isoMatch[3]));
+      const date = toKey(Number(isoMatch[1]), Number(isoMatch[2]), Number(isoMatch[3]));
       return date
         ? { isValid: true, date, format: 'YYYY-MM-DD' }
         : { isValid: false, date: null, error: `Impossible date: ${dateStr}` };
@@ -144,27 +142,29 @@ export function parseDate(dateStr: string | null | undefined): DateParseResult {
     // Try US format (M/D/YYYY or MM/DD/YYYY)
     const usMatch = /^(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(dateStr);
     if (usMatch) {
-      const date = utcMidday(Number(usMatch[3]), Number(usMatch[1]), Number(usMatch[2]));
+      const date = toKey(Number(usMatch[3]), Number(usMatch[1]), Number(usMatch[2]));
       return date
         ? { isValid: true, date, format: 'M/D/YYYY' }
         : { isValid: false, date: null, error: `Impossible date: ${dateStr}` };
     }
 
-    // Try general parsing
-    const parsed = new Date(dateStr);
-    if (!isNaN(parsed.getTime())) {
-      // Календарный день берём из локальных частей: такие строки ('Nov 17 2024')
-      // движок парсит как локальную полночь
-      const date = utcMidday(parsed.getFullYear(), parsed.getMonth() + 1, parsed.getDate());
-      if (date) {
-        return { isValid: true, date, format: 'AUTO' };
-      }
+    // D.M.YYYY / D-M-YYYY — европейская запись из выгрузок и Excel
+    const euMatch = /^(\d{1,2})[.](\d{1,2})[.](\d{4})/.exec(dateStr);
+    if (euMatch) {
+      const date = toKey(Number(euMatch[3]), Number(euMatch[2]), Number(euMatch[1]));
+      return date
+        ? { isValid: true, date, format: 'D.M.YYYY' }
+        : { isValid: false, date: null, error: `Impossible date: ${dateStr}` };
     }
 
     return { isValid: false, date: null, error: 'Invalid date format' };
   } catch {
     return { isValid: false, date: null, error: 'Date parsing failed' };
   }
+}
+
+function isLeapYear(year: number): boolean {
+  return (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
 }
 
 // Detect date format from array of dates
@@ -244,7 +244,7 @@ export async function parseCSV(file: File): Promise<OHLCData[]> {
           
           // Basic CSV structure validation using existing validator on a sample
           const preview: Partial<OHLCData>[] = data.slice(0, 50).map((row) => ({
-            date: toTradingDate(new Date(String(row.date || row.Date || row.DATE || ''))),
+            date: parseDate(String(row.date || row.Date || row.DATE || '')).date ?? '',
             open: Number(row.open ?? row.Open ?? row.OPEN ?? NaN),
             high: Number(row.high ?? row.High ?? row.HIGH ?? NaN),
             low: Number(row.low ?? row.Low ?? row.LOW ?? NaN),
@@ -286,7 +286,7 @@ export async function parseCSV(file: File): Promise<OHLCData[]> {
             if (typeof adjClose === 'number' && isFinite(adjClose) && adjClose > 0 && close > 0) {
               const factor = adjClose / close;
               return {
-                date: toTradingDate(dateResult.date!),
+                date: dateResult.date,
                 open: open * factor,
                 high: high * factor,
                 low: low * factor,
@@ -298,7 +298,7 @@ export async function parseCSV(file: File): Promise<OHLCData[]> {
             }
 
             return {
-              date: toTradingDate(dateResult.date!),
+              date: dateResult.date,
               open,
               high,
               low,
