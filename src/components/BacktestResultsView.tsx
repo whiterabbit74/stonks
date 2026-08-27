@@ -6,6 +6,7 @@ import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { formatCurrencyCompact } from '../lib/singlePositionBacktest';
 import { calculateTradeStats } from '../lib/trade-utils';
+import type { TradingDate } from '../lib/date-utils';
 
 const EMPTY_TRADES: Trade[] = [];
 const EMPTY_EQUITY: EquityPoint[] = [];
@@ -158,7 +159,7 @@ interface BacktestResultsViewProps {
 
   // Handlers
   handlers?: {
-    isDataOutdated?: (date: any) => boolean;
+    isDataOutdated?: (date: TradingDate | undefined) => boolean;
     handleRefreshTicker?: (ticker: string) => void;
     refreshingTickers?: Set<string>;
     setSelectedTradeTicker?: (ticker: string) => void;

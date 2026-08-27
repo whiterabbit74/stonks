@@ -1,5 +1,6 @@
 import { TickerCard } from './TickerCard';
 import type { OHLCData, Trade, SplitEvent } from '../types';
+import type { TradingDate } from '../lib/date-utils';
 
 export interface TickerData {
   ticker: string;
@@ -12,7 +13,7 @@ interface TickerCardsGridProps {
   tickersData: TickerData[];
   tradesByTicker: Record<string, Trade[]>;
   highIBS: number;
-  isDataOutdated: (date: string | Date | undefined) => boolean;
+  isDataOutdated: (date: TradingDate | undefined) => boolean;
   handleRefreshTicker: (ticker: string) => void;
   refreshingTickers: Set<string>;
 }

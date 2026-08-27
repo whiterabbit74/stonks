@@ -3,22 +3,19 @@ import { DatasetAPI } from '../lib/api';
 import { prepareTickerDataFromDataset } from '../lib/ticker-data-processing';
 import { useToastActions } from '../components/ui';
 import type { TickerData, SplitEvent } from '../types';
+import { daysBetweenTradingDates, getTodayNYSE, toTradingDate, type TradingDate } from '../lib/date-utils';
 
 export function useMultiTickerData() {
   const [tickersData, setTickersData] = useState<TickerData[]>([]);
   const [refreshingTickers, setRefreshingTickers] = useState<Set<string>>(new Set());
   const toast = useToastActions();
 
-  // Check if data is outdated (last bar is more than 2 days old)
-  const isDataOutdated = useCallback((lastDate: string | Date | undefined): boolean => {
+  // Устарело, если последний бар старше двух календарных дней от текущего
+  // биржевого дня (запас на выходные). Считаем по датам, а не по моментам
+  // времени, иначе порог зависел бы от таймзоны машины.
+  const isDataOutdated = useCallback((lastDate: TradingDate | undefined): boolean => {
     if (!lastDate) return true;
-    const now = new Date();
-    const lastDateNormalized = new Date(lastDate);
-    // Get difference in days
-    const diffMs = now.getTime() - lastDateNormalized.getTime();
-    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-    // Data is outdated if it's more than 2 days old (accounts for weekends)
-    return diffDays > 2;
+    return daysBetweenTradingDates(toTradingDate(lastDate), getTodayNYSE()) > 2;
   }, []);
 
   // Function to load data for a single ticker
