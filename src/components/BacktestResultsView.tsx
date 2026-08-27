@@ -1,7 +1,7 @@
 import { ChartContainer } from './ui';
 import { TabContentLoader } from './ui/TabContentLoader';
 import { ErrorBoundary } from './ErrorBoundary';
-import type { OHLCData, Trade, EquityPoint, SplitEvent, Strategy, TickerData, ExposurePoint } from '../types';
+import type { OHLCData, Trade, EquityPoint, SplitEvent, Strategy, TickerData, BacktestResultsViewData } from '../types';
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { formatCurrencyCompact } from '../lib/singlePositionBacktest';
@@ -23,14 +23,6 @@ type TabId =
   | 'splits'
   | string;
 
-type BacktestResultsData = {
-  equity: EquityPoint[];
-  exposure?: ExposurePoint[];
-  finalValue: number;
-  maxDrawdown: number;
-  trades: Trade[];
-  metrics: any;
-};
 
 const importTradingChart = () => import('./TradingChart');
 const importEquityChart = () => import('./EquityChart');
@@ -150,8 +142,8 @@ interface BacktestResultsViewProps {
   activeTab: string;
 
   // Data
-  backtestResults: BacktestResultsData | null;
-  comparisonBacktestResults?: BacktestResultsData | null;
+  backtestResults: BacktestResultsViewData | null;
+  comparisonBacktestResults?: BacktestResultsViewData | null;
   primarySeriesLabel?: string;
   comparisonSeriesLabel?: string;
 

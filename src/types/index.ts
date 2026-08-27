@@ -4,6 +4,7 @@
 // Re-exported from date-utils for convenience
 export type { TradingDate } from '../lib/date-utils';
 import type { TradingDate } from '../lib/date-utils';
+import type { BacktestMetrics } from '../lib/backtest-statistics';
 
 export interface OHLCData {
   date: TradingDate;
@@ -550,14 +551,20 @@ export interface ValidationResult {
   errors: string[] | Array<{ code: string; message: string; row?: number }>;
 }
 
-// Shared backtest result type used by multi-ticker pages
-export interface MultiTickerBacktestResults {
+/** Single-ticker views use PerformanceMetrics; multi/options/EMA use BacktestMetrics. */
+export type BacktestResultsMetrics = PerformanceMetrics | BacktestMetrics;
+
+export interface BacktestResultsViewData {
   equity: EquityPoint[];
   exposure?: ExposurePoint[];
   finalValue: number;
   maxDrawdown: number;
   trades: Trade[];
-  metrics: import('../lib/backtest-statistics').BacktestMetrics;
+  metrics: BacktestResultsMetrics;
+}
+
+export interface MultiTickerBacktestResults extends BacktestResultsViewData {
+  metrics: BacktestMetrics;
 }
 
 // Real-time quote snapshot for the hero chart
