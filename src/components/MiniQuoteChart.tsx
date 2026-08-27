@@ -13,7 +13,7 @@ import {
   type UTCTimestamp,
 } from 'lightweight-charts';
 import type { OHLCData, Trade } from '../types';
-import { toChartTimestamp } from '../lib/date-utils';
+import { getTodayNYSE, toChartTimestamp } from '../lib/date-utils';
 
 interface MiniQuoteChartProps {
   history: OHLCData[];
@@ -58,7 +58,7 @@ export function MiniQuoteChart({ history, today, trades, highIBS, isOpenPosition
 
     if (hasToday && today) {
       data.push({
-        time: toChartTimestamp(new Date()),
+        time: toChartTimestamp(getTodayNYSE()),
         open: today.open as number,
         high: today.high as number,
         low: today.low as number,

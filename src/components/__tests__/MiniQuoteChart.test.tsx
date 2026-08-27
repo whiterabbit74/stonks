@@ -1,7 +1,8 @@
 import { render } from '@testing-library/react';
 import { MiniQuoteChart } from '../MiniQuoteChart';
-import { vi, describe, it, expect, beforeEach } from 'vitest';
+import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { CandlestickSeries, createChart } from 'lightweight-charts';
+import { toChartTimestamp } from '../../lib/date-utils';
 
 // Mock lightweight-charts
 const mockSeries = {
@@ -75,5 +76,30 @@ describe('MiniQuoteChart Optimization', () => {
     // DESIRED BEHAVIOR: It should be 1.
     // I assert 1 to demonstrate failure.
     expect(createChart).toHaveBeenCalledTimes(1);
+  });
+
+  describe("today's candle", () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('is stamped with the NYSE date, not the UTC one', () => {
+      // 02:00 UTC on 20 March is still 19 March in New York
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-03-20T02:00:00.000Z'));
+
+      render(
+        <MiniQuoteChart
+          history={sampleData}
+          today={{ open: 110, high: 120, low: 108, current: 118 }}
+          trades={[]}
+          highIBS={0.8}
+          isOpenPosition={false}
+        />
+      );
+
+      const candles = mockSeries.setData.mock.calls[0][0] as Array<{ time: number }>;
+      expect(candles[candles.length - 1].time).toBe(toChartTimestamp('2026-03-19'));
+    });
   });
 });
