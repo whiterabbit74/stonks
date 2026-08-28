@@ -213,18 +213,6 @@ function previousTradingDayET(fromParts) {
     return getETParts(fallbackDate);
 }
 
-function buildFreshnessLine(ohlc, nowEtParts) {
-    try {
-        if (!Array.isArray(ohlc) || ohlc.length === 0) return 'Data: unknown';
-        const prev = previousTradingDayET(nowEtParts);
-        const expected = `${prev.y}-${String(prev.m).padStart(2, '0')}-${String(prev.d).padStart(2, '0')}`;
-        const hasPrev = ohlc.some(r => r && r.date === expected);
-        return hasPrev ? 'Data: fresh' : `Data: STALE (missing ${expected})`;
-    } catch {
-        return 'Data: unknown';
-    }
-}
-
 module.exports = {
     getETParts,
     etKeyYMD,
@@ -245,5 +233,4 @@ module.exports = {
     isTradingDayByCalendarET,
     getTradingSessionForDateET,
     previousTradingDayET,
-    buildFreshnessLine,
 };

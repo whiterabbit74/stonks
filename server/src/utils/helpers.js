@@ -16,10 +16,6 @@ function toSafeTicker(raw) {
     return cleaned.length > 10 ? cleaned.slice(0, 10) : cleaned;
 }
 
-function formatMoney(n) {
-    return (typeof n === 'number' && isFinite(n)) ? `$${n.toFixed(2)}` : '-';
-}
-
 function toFiniteNumber(value) {
     if (typeof value === 'number') return Number.isFinite(value) ? value : null;
     if (typeof value === 'string' && value.trim() !== '') {
@@ -29,14 +25,8 @@ function toFiniteNumber(value) {
     return null;
 }
 
-function sleep(ms) {
-    return new Promise(r => setTimeout(r, ms));
-}
-
 module.exports = {
     parseNonNegativeNumber,
     toSafeTicker,
-    formatMoney,
     toFiniteNumber,
-    sleep,
 };

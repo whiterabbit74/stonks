@@ -14,16 +14,6 @@ const apiLimiter = rateLimit({
     }
 });
 
-const uploadLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 10,
-    message: 'Too many uploads from this IP, please try again later.',
-    keyGenerator: (req) => {
-        return req.ip || req.socket.remoteAddress || 'unknown';
-    }
-});
-
 module.exports = {
     apiLimiter,
-    uploadLimiter,
 };

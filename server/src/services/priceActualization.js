@@ -400,13 +400,8 @@ async function updateAllPositions() {
     };
 }
 
-function getPriceActualizationState() {
-    return { ...priceActualizationState };
-}
-
 module.exports = {
     priceActualizationState,
-    getPriceActualizationState,
     appendMonitorLog,
     refreshTickerAndCheckFreshness,
     collectActualizationSymbols,
