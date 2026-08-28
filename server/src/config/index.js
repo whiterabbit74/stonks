@@ -89,7 +89,6 @@ function getApiConfig() {
         FINNHUB_API_KEY: process.env.FINNHUB_API_KEY || '',
         TWELVE_DATA_API_KEY: process.env.TWELVE_DATA_API_KEY || '',
         POLYGON_API_KEY: process.env.POLYGON_API_KEY || '',
-        PREFERRED_API_PROVIDER: process.env.PREFERRED_API_PROVIDER || 'alpha_vantage',
         TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN || '',
         TELEGRAM_CHAT_ID: process.env.TELEGRAM_CHAT_ID || '',
         WEBULL_APP_KEY: process.env.WEBULL_APP_KEY || '',

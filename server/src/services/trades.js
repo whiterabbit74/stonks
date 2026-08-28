@@ -803,26 +803,12 @@ async function loadTradeHistory() {
     }
 }
 
-function scheduleSaveTradeHistory() { /* no-op: DB writes are immediate */ }
 function ensureTradeHistoryLoaded() { migrateJsonToDb(); }
 function isTradeHistoryLoaded() { return true; }
 
-// Kept for any code that does `tradeHistory.length` etc.
-const tradeHistory = new Proxy([], {
-    get(_, prop) {
-        const arr = getTradeHistory();
-        if (prop === 'length') return arr.length;
-        if (typeof prop === 'string' && !isNaN(Number(prop))) return arr[Number(prop)];
-        if (typeof arr[prop] === 'function') return arr[prop].bind(arr);
-        return arr[prop];
-    }
-});
-
 module.exports = {
-    tradeHistory,
     setTelegramWatches,
     normalizeTradeRecord,
-    scheduleSaveTradeHistory,
     loadTradeHistory,
     ensureTradeHistoryLoaded,
     getCurrentOpenTrade,

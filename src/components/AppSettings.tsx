@@ -8,9 +8,6 @@ import type { AutoTradingConfig } from '../types';
 import { PageHeader } from './ui/PageHeader';
 import { Modal } from './ui/Modal';
 import { Panel } from './ui/Panel';
-// import { StrategySettings } from './StrategySettings';
-
-// SettingsData interface removed - not actively used
 
 interface AutotradeTabProps {
   autotradeConfig: AutoTradingConfig | null;

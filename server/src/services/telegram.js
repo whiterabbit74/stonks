@@ -247,10 +247,6 @@ async function sendTelegramMessage(chatId, text, parseMode = 'HTML') {
     });
 }
 
-function getTelegramWatches() {
-    return telegramWatches;
-}
-
 module.exports = {
     telegramWatches,
     aggregateSendState,
@@ -259,5 +255,4 @@ module.exports = {
     deleteWatchFromDb,
     loadWatches,
     sendTelegramMessage,
-    getTelegramWatches,
 };

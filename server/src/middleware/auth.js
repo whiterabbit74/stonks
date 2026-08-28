@@ -41,13 +41,6 @@ function dbSessionPurgeExpired() {
 // Purge expired sessions periodically (every hour)
 setInterval(dbSessionPurgeExpired, 60 * 60 * 1000).unref();
 
-// Legacy export shim — keeps `sessions` export working if anything imports it
-const sessions = {
-    get: dbSessionGet,
-    set: (token, obj) => dbSessionSet(token, obj.createdAt, obj.expiresAt),
-    delete: dbSessionDelete,
-};
-
 // Telegram message sender (will be set by telegram service)
 let sendTelegramMessageFn = null;
 let getApiConfigFn = null;
@@ -293,7 +286,6 @@ async function handleHashPassword(req, res) {
 }
 
 module.exports = {
-    sessions,
     parseCookies,
     getAuthTokenFromHeader,
     createToken,

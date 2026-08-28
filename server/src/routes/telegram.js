@@ -164,19 +164,6 @@ router.delete('/telegram/ema-alerts/:id', (req, res) => {
     }
 });
 
-router.post('/telegram/send', async (req, res) => {
-    try {
-        const { message, chatId } = req.body || {};
-        const useChatId = chatId || getApiConfig().TELEGRAM_CHAT_ID;
-        if (!useChatId) return res.status(400).json({ error: 'No chat id configured' });
-        if (!message || typeof message !== 'string') return res.status(400).json({ error: 'Message is required' });
-        const result = await sendTelegramMessage(useChatId, message);
-        res.json(result);
-    } catch (e) {
-        res.status(500).json({ error: e.message || 'Failed to send message' });
-    }
-});
-
 router.post('/telegram/test', async (req, res) => {
     try {
         const chatId = getApiConfig().TELEGRAM_CHAT_ID;
@@ -185,15 +172,6 @@ router.post('/telegram/test', async (req, res) => {
         res.json(result);
     } catch (e) {
         res.status(500).json({ error: e.message || 'Failed to send test message' });
-    }
-});
-
-router.get('/telegram/trades', async (req, res) => {
-    try {
-        const message = buildTradeHistoryMessage(10);
-        res.json({ message, html: message });
-    } catch (e) {
-        res.status(500).json({ error: e.message || 'Failed to build trade history message' });
     }
 });
 

@@ -7,7 +7,7 @@ const { getApiConfig } = require('../config');
 const { readSettings } = require('../services/settings');
 const { toSafeTicker, toFiniteNumber } = require('../utils/helpers');
 const { fetchFromAlphaVantage } = require('../providers/alphaVantage');
-const { fetchFromFinnhub, fetchTodayRangeAndQuote: fetchFinnhubTodayRangeAndQuote } = require('../providers/finnhub');
+const { fetchTodayRangeAndQuote: fetchFinnhubTodayRangeAndQuote } = require('../providers/finnhub');
 const { fetchFromTwelveData } = require('../providers/twelveData');
 const { fetchFromPolygon } = require('../providers/polygon');
 const { fetchTodayRangeAndQuote: fetchWebullTodayRangeAndQuote, fetchBatchTodayRangeAndQuote: fetchWebullBatch } = require('../providers/webull');
@@ -240,93 +240,6 @@ router.get('/yahoo-finance/:symbol', async (req, res) => {
     } catch (e) {
         const status = e.status || 500;
         return res.status(status).json({ error: e.message || 'Failed to fetch data' });
-    }
-});
-
-router.get('/fetch/:provider/:symbol', async (req, res) => {
-    try {
-        const provider = req.params.provider;
-        const symbol = toSafeTicker(req.params.symbol);
-        if (!symbol) return res.status(400).json({ error: 'Invalid symbol' });
-
-        const endTs = Math.floor(Date.now() / 1000);
-        const startTs = endTs - 365 * 24 * 60 * 60; // 1 year
-
-        let data;
-        let splits = [];
-        switch (provider) {
-            case 'alpha_vantage':
-            case 'finnhub':
-            case 'twelve_data':
-            case 'polygon': {
-                const fetched = await fetchHistoricalMarketData(symbol, startTs, endTs, provider, {
-                    adjustment: 'none',
-                    polygonApiKey: await getPolygonApiKey() || null,
-                });
-                data = fetched.rows;
-                splits = fetched.splits;
-                break;
-            }
-            case 'webull': {
-                const snapshot = await fetchWebullTodayRangeAndQuote(symbol);
-                data = [{
-                    date: snapshot.dateKey,
-                    open: snapshot.quote.open,
-                    high: snapshot.quote.high,
-                    low: snapshot.quote.low,
-                    close: snapshot.quote.current,
-                    adjClose: snapshot.quote.current,
-                    volume: null,
-                }];
-                break;
-            }
-            default:
-                return res.status(400).json({ error: 'Unknown provider' });
-        }
-
-        res.json({ symbol, provider, dataPoints: data.length, data, splits });
-    } catch (e) {
-        const status = e.status || 500;
-        res.status(status).json({ error: e.message || 'Failed to fetch data' });
-    }
-});
-
-router.get('/test/alpha-vantage', async (req, res) => {
-    try {
-        const key = getApiConfig().ALPHA_VANTAGE_API_KEY;
-        if (!key) return res.json({ success: false, error: 'API key not configured' });
-        const endTs = Math.floor(Date.now() / 1000);
-        const startTs = endTs - 7 * 24 * 60 * 60;
-        const result = await fetchFromAlphaVantage('AAPL', startTs, endTs);
-        res.json({ success: true, dataPoints: result.data.length });
-    } catch (e) {
-        res.json({ success: false, error: e.message });
-    }
-});
-
-router.get('/test/finnhub', async (req, res) => {
-    try {
-        const key = getApiConfig().FINNHUB_API_KEY;
-        if (!key) return res.json({ success: false, error: 'API key not configured' });
-        const endTs = Math.floor(Date.now() / 1000);
-        const startTs = endTs - 7 * 24 * 60 * 60;
-        const result = await fetchFromFinnhub('AAPL', startTs, endTs);
-        res.json({ success: true, dataPoints: result.length });
-    } catch (e) {
-        res.json({ success: false, error: e.message });
-    }
-});
-
-router.get('/test/twelve-data', async (req, res) => {
-    try {
-        const key = getApiConfig().TWELVE_DATA_API_KEY;
-        if (!key) return res.json({ success: false, error: 'API key not configured' });
-        const endTs = Math.floor(Date.now() / 1000);
-        const startTs = endTs - 7 * 24 * 60 * 60;
-        const result = await fetchFromTwelveData('AAPL', startTs, endTs);
-        res.json({ success: true, dataPoints: result.length });
-    } catch (e) {
-        res.json({ success: false, error: e.message });
     }
 });
 

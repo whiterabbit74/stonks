@@ -15,7 +15,6 @@ vi.mock('../../lib/api', () => ({
     closeMonitorTrade: vi.fn(),
     deleteTelegramWatch: vi.fn(),
     simulateTelegram: vi.fn(),
-    updateTelegramWatch: vi.fn(),
   }
 }));
 

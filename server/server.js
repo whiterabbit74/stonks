@@ -5,7 +5,7 @@
 
 // Load configuration first (handles dotenv)
 const config = require('./src/config');
-const { PORT, DATASETS_DIR, FRONTEND_ORIGIN, IS_PROD, TRUST_PROXY, getApiConfig } = config;
+const { PORT, DATASETS_DIR, FRONTEND_ORIGIN, TRUST_PROXY, getApiConfig } = config;
 
 const express = require('express');
 const cors = require('cors');
@@ -14,7 +14,7 @@ const path = require('path');
 const fs = require('fs-extra');
 
 // Import middleware
-const { apiLimiter, uploadLimiter } = require('./src/middleware/rateLimiter');
+const { apiLimiter } = require('./src/middleware/rateLimiter');
 const auth = require('./src/middleware/auth');
 
 // Import services
@@ -73,7 +73,6 @@ app.use((req, res, next) => {
 
 app.use(express.json({ limit: '5mb' }));
 app.use('/api/', apiLimiter);
-app.use('/upload', uploadLimiter);
 app.set('etag', false);
 
 // Set up cross-service dependencies

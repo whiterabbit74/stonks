@@ -12,7 +12,6 @@ import type {
   CloseWebullPositionResponse,
   AutoTradingConfig,
   AutotradeConfigResponse,
-  AutotradeStatusResponse,
   WebullTestBuyResponse,
 } from '../types';
 import { logError, logWarn } from './error-logger';
@@ -331,18 +330,6 @@ export class DatasetAPI {
     return response.json();
   }
 
-  static async deleteSplit(symbol: string, date: string): Promise<{ success: boolean; symbol: string; events: Array<{ date: string; factor: number }> }> {
-    const response = await fetchWithCreds(`${API_BASE_URL}/splits/${encodeURIComponent(symbol)}/${encodeURIComponent(date.slice(0, 10))}`, {
-      method: 'DELETE',
-    });
-    if (!response.ok) {
-      const e = await response.json().catch(() => null);
-      const msg = (e && e.error) || response.statusText;
-      throw new Error(`Failed to delete split: ${msg}`);
-    }
-    return response.json();
-  }
-
   static async deleteAllSplits(symbol: string): Promise<{ success: boolean; symbol: string }> {
     const response = await fetchWithCreds(`${API_BASE_URL}/splits/${encodeURIComponent(symbol)}`, { method: 'DELETE' });
     if (!response.ok) {
@@ -533,17 +520,6 @@ export class DatasetAPI {
   }
 
   /**
-   * Получить предыдущий торговый день в ET (America/New_York) в формате YYYY-MM-DD
-   */
-  static async getExpectedPrevTradingDayET(): Promise<string> {
-    const response = await fetchWithCreds(`${API_BASE_URL}/trading/expected-prev-day`);
-    if (!response.ok) throw new Error('Failed to get expected previous trading day');
-    const data = await response.json();
-    if (!data || typeof data.date !== 'string') throw new Error('Invalid response from server');
-    return data.date;
-  }
-
-  /**
    * Сохранить датасет на сервере
    */
   static async saveDataset(dataset: SavedDataset): Promise<{ success: boolean; id: string; message: string }> {
@@ -671,22 +647,6 @@ export class DatasetAPI {
   }): Promise<{ success: boolean }> {
     const response = await fetchWithCreds(`${API_BASE_URL}/telegram/watch`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(params),
-    });
-    if (!response.ok) {
-      let msg = `${response.status} ${response.statusText}`;
-      const e = await response.json().catch(() => null);
-      if (e && typeof e.error === 'string') msg = e.error;
-      throw new Error(msg);
-    }
-    const json = await response.json().catch(() => null);
-    return json ?? { success: true };
-  }
-
-  static async updateTelegramWatch(symbol: string, params: { isOpenPosition?: boolean; entryPrice?: number | null }): Promise<{ success: boolean }> {
-    const response = await fetchWithCreds(`${API_BASE_URL}/telegram/watch/${encodeURIComponent(symbol)}`, {
-      method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(params),
     });
@@ -893,13 +853,6 @@ export class DatasetAPI {
     });
   }
 
-  static async getAutotradeStatus(): Promise<AutotradeStatusResponse> {
-    return apiCall<AutotradeStatusResponse>(`${API_BASE_URL}/autotrade/status`, {
-      timeout: 30000,
-      retries: 1,
-    });
-  }
-
   static async getAutotradeLogs(limit = 200): Promise<AutotradeLogsResponse> {
     return apiCall<AutotradeLogsResponse>(`${API_BASE_URL}/autotrade/logs?limit=${encodeURIComponent(String(limit))}`, {
       timeout: 30000,
@@ -1004,15 +957,6 @@ export class DatasetAPI {
     }
   }
 
-  static async actualizePrices(): Promise<{ success: boolean; count: number; tickers: string[] }> {
-    const response = await fetchWithCreds(`${API_BASE_URL}/telegram/actualize-prices`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' }
-    });
-    if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
-    return await response.json();
-  }
-
   // App settings
   static async getAppSettings(): Promise<{ watchThresholdPct: number; resultsQuoteProvider: 'alpha_vantage' | 'finnhub' | 'twelve_data' | 'webull'; enhancerProvider: 'alpha_vantage' | 'finnhub' | 'twelve_data' | 'webull'; resultsRefreshProvider?: 'alpha_vantage' | 'finnhub' | 'twelve_data' | 'webull'; enablePostClosePriceActualization?: boolean; indicatorPanePercent?: number; defaultMultiTickerSymbols?: string; commissionType?: string; commissionFixed?: number; commissionPercentage?: number }> {
     try {
@@ -1069,17 +1013,6 @@ export class DatasetAPI {
     return data;
   }
 
-  static async fetchWebullCalendarRaw(years?: number[], market?: string): Promise<{ ok: boolean; market: string; years: number[]; raw: Record<number, unknown> }> {
-    const response = await fetchWithCreds(`${API_BASE_URL}/trading-calendar/sync-webull`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...(years ? { years } : {}), ...(market ? { market } : {}) }),
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data?.error || `${response.status} ${response.statusText}`);
-    return data;
-  }
-
   static async saveAppSettings(settings: { watchThresholdPct: number; resultsQuoteProvider: 'alpha_vantage' | 'finnhub' | 'twelve_data' | 'webull' | 'polygon'; enhancerProvider: 'alpha_vantage' | 'finnhub' | 'twelve_data' | 'webull' | 'polygon'; resultsRefreshProvider?: 'alpha_vantage' | 'finnhub' | 'twelve_data' | 'webull' | 'polygon'; enablePostClosePriceActualization?: boolean; indicatorPanePercent?: number; defaultMultiTickerSymbols?: string; commissionType?: string; commissionFixed?: number; commissionPercentage?: number }): Promise<void> {
     const response = await fetchWithCreds(`${API_BASE_URL}/settings`, {
       method: 'PUT',
@@ -1091,208 +1024,6 @@ export class DatasetAPI {
       const e = await response.json().catch(() => null);
       if (e && typeof e.error === 'string') msg = e.error;
       throw new Error(msg);
-    }
-  }
-
-
-
-  // Settings API methods
-  static async getSettings(): Promise<any> {
-    const response = await fetchWithCreds(`${API_BASE_URL}/settings`);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch settings: ${response.status} ${response.statusText}`);
-    }
-    return response.json();
-  }
-
-  static async updateSettings(updates: any): Promise<{ success: boolean; message: string }> {
-    const response = await fetchWithCreds(`${API_BASE_URL}/settings`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(updates),
-    });
-    if (!response.ok) {
-      let msg = `${response.status} ${response.statusText}`;
-      const e = await response.json().catch(() => null);
-      if (e && typeof e.error === 'string') msg = e.error;
-      throw new Error(msg);
-    }
-    return response.json();
-  }
-}
-
-/**
- * Network health monitoring utilities
- */
-export class NetworkMonitor {
-  private static healthCheckInterval: number | null = null;
-  private static isHealthy = true;
-  private static callbacks = new Set<(healthy: boolean) => void>();
-
-  /**
-   * Starts monitoring network health
-   */
-  static startMonitoring(intervalMs: number = 30000): void {
-    if (this.healthCheckInterval !== null) {
-      this.stopMonitoring();
-    }
-
-    this.healthCheckInterval = window.setInterval(async () => {
-      try {
-        await DatasetAPI.getStatus();
-        this.setHealthy(true);
-      } catch (error) {
-        logWarn('network', 'Network health check failed', {
-          error: (error as Error).message
-        });
-        this.setHealthy(false);
-      }
-    }, intervalMs);
-
-    // Initial health check
-    this.checkHealth();
-  }
-
-  /**
-   * Stops network health monitoring
-   */
-  static stopMonitoring(): void {
-    if (this.healthCheckInterval !== null) {
-      clearInterval(this.healthCheckInterval);
-      this.healthCheckInterval = null;
-    }
-  }
-
-  /**
-   * Performs an immediate health check
-   */
-  static async checkHealth(): Promise<boolean> {
-    try {
-      await DatasetAPI.getStatus();
-      this.setHealthy(true);
-      return true;
-    } catch {
-      this.setHealthy(false);
-      return false;
-    }
-  }
-
-  /**
-   * Returns current network health status
-   */
-  static getHealthStatus(): boolean {
-    return this.isHealthy;
-  }
-
-  /**
-   * Subscribes to network health changes
-   */
-  static onHealthChange(callback: (healthy: boolean) => void): () => void {
-    this.callbacks.add(callback);
-    // Immediately call with current status
-    callback(this.isHealthy);
-
-    return () => {
-      this.callbacks.delete(callback);
-    };
-  }
-
-  private static setHealthy(healthy: boolean): void {
-    if (this.isHealthy !== healthy) {
-      this.isHealthy = healthy;
-      logWarn('network', `Network health changed: ${healthy ? 'healthy' : 'unhealthy'}`);
-
-      // Notify all callbacks
-      this.callbacks.forEach(callback => {
-        try {
-          callback(healthy);
-        } catch (error) {
-          logError('network', 'Error in network health callback', {
-            error: (error as Error).message
-          });
-        }
-      });
-    }
-  }
-}
-
-/**
- * Browser storage utilities for API caching and offline support
- */
-export class APICache {
-  private static readonly CACHE_PREFIX = 'trading_api_cache_';
-  private static readonly DEFAULT_TTL = 5 * 60 * 1000; // 5 minutes
-
-  /**
-   * Stores data in localStorage with expiration
-   */
-  static set(key: string, data: any, ttlMs: number = this.DEFAULT_TTL): void {
-    try {
-      const item = {
-        data,
-        expires: Date.now() + ttlMs
-      };
-      localStorage.setItem(this.CACHE_PREFIX + key, JSON.stringify(item));
-    } catch (error) {
-      logWarn('network', 'Failed to cache API data', {
-        key,
-        error: (error as Error).message
-      });
-    }
-  }
-
-  /**
-   * Retrieves data from localStorage if not expired
-   */
-  static get<T>(key: string): T | null {
-    try {
-      const stored = localStorage.getItem(this.CACHE_PREFIX + key);
-      if (!stored) return null;
-
-      const item = JSON.parse(stored);
-      if (Date.now() > item.expires) {
-        this.delete(key);
-        return null;
-      }
-
-      return item.data as T;
-    } catch (error) {
-      logWarn('network', 'Failed to retrieve cached API data', {
-        key,
-        error: (error as Error).message
-      });
-      return null;
-    }
-  }
-
-  /**
-   * Deletes cached data
-   */
-  static delete(key: string): void {
-    try {
-      localStorage.removeItem(this.CACHE_PREFIX + key);
-    } catch (error) {
-      logWarn('network', 'Failed to delete cached data', {
-        key,
-        error: (error as Error).message
-      });
-    }
-  }
-
-  /**
-   * Clears all cached API data
-   */
-  static clear(): void {
-    try {
-      const keys = Object.keys(localStorage).filter(key =>
-        key.startsWith(this.CACHE_PREFIX)
-      );
-      keys.forEach(key => localStorage.removeItem(key));
-      logWarn('network', `Cleared ${keys.length} cached API entries`);
-    } catch (error) {
-      logWarn('network', 'Failed to clear API cache', {
-        error: (error as Error).message
-      });
     }
   }
 }
