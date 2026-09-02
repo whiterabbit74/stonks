@@ -90,7 +90,9 @@ func Detect(ohlc []types.OHLC) []types.SplitEvent {
 		}
 		ratio := prev.Close / curr.Open
 		for _, candidate := range factors {
-			if math.Abs(ratio-candidate) < 0.05 {
+			// Relative tolerance: a 20:1 split of 2235 → 112 is ~19.85, which
+			// misses an absolute 0.05 band around 20.
+			if math.Abs(ratio-candidate)/candidate < 0.03 {
 				out = append(out, types.SplitEvent{Date: curr.Date, Factor: candidate})
 				break
 			}
