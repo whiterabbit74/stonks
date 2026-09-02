@@ -162,7 +162,7 @@ function updatePortfolioState(
  * 3. Математическая корректность: каждый доллар учитывается точно один раз
  * 4. Прозрачность всех операций
  */
-function runMultiTickerBacktest(
+export function runMultiTickerBacktest(
   tickersData: TickerData[],
   strategy: Strategy,
   leverage: number = 1

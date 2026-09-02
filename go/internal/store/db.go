@@ -727,3 +727,99 @@ func (d *DB) DeleteEMAAlert(id string) error {
 	_, err := d.SQL.Exec(`DELETE FROM telegram_ema_alerts WHERE id = ?`, id)
 	return err
 }
+
+func (d *DB) DatasetExists(id string) bool {
+	ticker := SafeTicker(id)
+	var n int
+	err := d.SQL.QueryRow(`SELECT COUNT(*) FROM dataset_meta WHERE ticker = ?`, ticker).Scan(&n)
+	return err == nil && n > 0
+}
+
+func (d *DB) GetOHLC(id string) ([]types.OHLC, bool, error) {
+	ds, err := d.GetDataset(id)
+	if err != nil || ds == nil {
+		return nil, false, err
+	}
+	data, _ := ds["data"].([]types.OHLC)
+	adj, _ := ds["adjustedForSplits"].(bool)
+	return data, adj, nil
+}
+
+func (d *DB) UpdateDatasetMetadata(id string, tag, company *string) error {
+	ticker := SafeTicker(id)
+	if ticker == "" {
+		return fmt.Errorf("Invalid ticker")
+	}
+	var curTag, curCompany sql.NullString
+	err := d.SQL.QueryRow(`SELECT tag, company_name FROM dataset_meta WHERE ticker = ?`, ticker).Scan(&curTag, &curCompany)
+	if err == sql.ErrNoRows {
+		return sql.ErrNoRows
+	}
+	if err != nil {
+		return err
+	}
+	newTag := curTag
+	newCompany := curCompany
+	if tag != nil {
+		if *tag == "" {
+			newTag = sql.NullString{}
+		} else {
+			newTag = sql.NullString{String: *tag, Valid: true}
+		}
+	}
+	if company != nil {
+		if *company == "" {
+			newCompany = sql.NullString{}
+		} else {
+			newCompany = sql.NullString{String: *company, Valid: true}
+		}
+	}
+	_, err = d.SQL.Exec(`UPDATE dataset_meta SET tag = ?, company_name = ?, updated_at = datetime('now') WHERE ticker = ?`, newTag, newCompany, ticker)
+	return err
+}
+
+func (d *DB) ListTickers() ([]string, error) {
+	rows, err := d.SQL.Query(`SELECT ticker FROM dataset_meta ORDER BY ticker`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var t string
+		if err := rows.Scan(&t); err != nil {
+			return nil, err
+		}
+		out = append(out, t)
+	}
+	return out, nil
+}
+
+type WebullTokenRow struct {
+	Token              string
+	LastCheckStatus    string
+	LastHealthCheckDate string
+	LastAttemptAt      string
+}
+
+func (d *DB) GetWebullToken() WebullTokenRow {
+	var row WebullTokenRow
+	_ = d.SQL.QueryRow(`SELECT COALESCE(token,''), COALESCE(last_check_status,''), COALESCE(last_health_check_date,''), COALESCE(last_health_check_attempt_at,'') FROM webull_token WHERE id='current'`).
+		Scan(&row.Token, &row.LastCheckStatus, &row.LastHealthCheckDate, &row.LastAttemptAt)
+	return row
+}
+
+func (d *DB) UpsertWebullHealth(todayET, status, attemptAt string) error {
+	_, err := d.SQL.Exec(`INSERT INTO webull_token (id, last_check_status, last_health_check_date, last_health_check_attempt_at, updated_at)
+        VALUES ('current', ?, ?, ?, datetime('now'))
+        ON CONFLICT(id) DO UPDATE SET last_check_status=excluded.last_check_status,
+            last_health_check_date=excluded.last_health_check_date,
+            last_health_check_attempt_at=excluded.last_health_check_attempt_at,
+            updated_at=datetime('now')`, status, todayET, attemptAt)
+	return err
+}
+
+func (d *DB) RecordSchedulerRun(name, dateKey, detail string) error {
+	_, err := d.SQL.Exec(`INSERT INTO autotrade_logs (ts, message) VALUES (?, ?)`, time.Now().UTC().Format(time.RFC3339Nano), name+" "+dateKey+" "+detail)
+	return err
+}

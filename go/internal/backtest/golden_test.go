@@ -130,6 +130,44 @@ func TestGOOGLOptionsGolden(t *testing.T) {
 	}
 }
 
+func TestGOOGLBuyAtClose4Golden(t *testing.T) {
+	bars := goldens.Bars("googl-bars.json")
+	ibs := indicators.IBS(bars)
+	got := RunBuyAtClose4([]TickerIndexed{{Ticker: "GOOGL", Data: bars, IBSValues: ibs}}, types.DefaultIBSStrategy(), 1)
+	var wantFinal struct {
+		FinalValue  float64 `json:"finalValue"`
+		TradeCount  int     `json:"tradeCount"`
+		MaxDrawdown float64 `json:"maxDrawdown"`
+	}
+	goldens.Load("googl-bac4-final.json", &wantFinal)
+	if len(got.Trades) != wantFinal.TradeCount {
+		t.Fatalf("bac4 trades %d want %d", len(got.Trades), wantFinal.TradeCount)
+	}
+	if !goldens.MustAlmost(got.FinalValue, wantFinal.FinalValue, 1e-9) {
+		t.Fatalf("bac4 final %v want %v", got.FinalValue, wantFinal.FinalValue)
+	}
+	assertTrades(t, "bac4", got.Trades, goldens.CompactTrades("googl-bac4-trades.json"))
+}
+
+func TestGOOGLOptionsMultiGolden(t *testing.T) {
+	bars := goldens.Bars("googl-bars.json")
+	ibs := indicators.IBS(bars)
+	_, _, _, stockTrades, _, _ := RunSinglePosition([]TickerIndexed{{Ticker: "GOOGL", Data: bars, IBSValues: ibs}}, types.DefaultIBSStrategy(), 1, SingleOptions{})
+	_, trades, final := RunMultiOptions(stockTrades, []TickerIndexed{{Ticker: "GOOGL", Data: bars, IBSValues: ibs}}, OptionsConfig{StrikePct: 10, VolAdjPct: 20, CapitalPct: 10, RiskFreeRate: 0.05, ExpirationWeeks: 4, MaxHoldingDays: 30})
+	var wantFinal struct {
+		FinalValue float64 `json:"finalValue"`
+		TradeCount int     `json:"tradeCount"`
+	}
+	goldens.Load("googl-options-multi-final.json", &wantFinal)
+	if len(trades) != wantFinal.TradeCount {
+		t.Fatalf("options-multi trades %d want %d", len(trades), wantFinal.TradeCount)
+	}
+	if !goldens.MustAlmost(final, wantFinal.FinalValue, 1e-9) {
+		t.Fatalf("options-multi final %v want %v", final, wantFinal.FinalValue)
+	}
+	assertTrades(t, "options-multi", trades, goldens.CompactTrades("googl-options-multi-trades.json"))
+}
+
 func TestGOOGLEMAGolden(t *testing.T) {
 	bars := goldens.Bars("googl-bars.json")
 	got := RunEmaZone([]TickerIndexed{{Ticker: "GOOGL", Data: bars}}, EmaParams{

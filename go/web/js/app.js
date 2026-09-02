@@ -17,10 +17,13 @@
     { to: '/broker', label: 'Брокер' },
   ];
   const STOCK_TABS = [
+    { id: 'summary', label: 'Сводка' },
     { id: 'price', label: 'Цены' },
+    { id: 'tickerCharts', label: 'Графики тикеров' },
     { id: 'equity', label: 'Капитал' },
     { id: 'exposure', label: 'Экспозиция' },
     { id: 'drawdown', label: 'Просадка' },
+    { id: 'openDayDrawdown', label: 'Просадка дня' },
     { id: 'trades', label: 'Сделки' },
     { id: 'profit', label: 'Профит Фактор' },
     { id: 'duration', label: 'Длительность' },
@@ -32,6 +35,8 @@
     { id: 'noStopLoss', label: 'Без стоп-лосса' },
     { id: 'options', label: 'Опционы' },
   ];
+  const SINGLE_ONLY = new Set(['buyhold', 'openDayDrawdown', 'buyAtClose', 'buyAtClose4', 'noStopLoss', 'options']);
+  const MULTI_ONLY = new Set(['tickerCharts']);
 
   const state = {
     dark: localStorage.getItem('theme') === 'dark' || (!localStorage.getItem('theme') && matchMedia('(prefers-color-scheme: dark)').matches),
@@ -41,9 +46,12 @@
     datasets: [],
     result: null,
     ticker: 'GOOGL',
-    stockTab: 'price',
+    selected: [],
+    tickersData: [],
+    stockTab: 'summary',
     bars: [],
     error: null,
+    cal: { year: new Date().getFullYear(), month: new Date().getMonth(), data: null },
   };
 
   function logo(size) {
@@ -202,15 +210,30 @@
     `);
   }
 
+  function isSingle() { return (state.selected || []).length === 1; }
+
+  function visibleStockTabs() {
+    const single = isSingle();
+    return STOCK_TABS.filter((t) => {
+      if (SINGLE_ONLY.has(t.id) && !single) return false;
+      if (MULTI_ONLY.has(t.id) && single) return false;
+      return true;
+    });
+  }
+
   function pageStocks() {
-    const tabs = STOCK_TABS.map((t) => `<button data-stab="${t.id}" class="tab-btn px-3 py-1 rounded text-sm border ${state.stockTab === t.id ? 'active' : 'bg-white dark:bg-gray-900 dark:border-gray-800'}">${t.label}</button>`).join('');
+    const tabs = visibleStockTabs().map((t) => `<button data-stab="${t.id}" class="tab-btn px-3 py-1 rounded text-sm border ${state.stockTab === t.id ? 'active' : 'bg-white dark:bg-gray-900 dark:border-gray-800'}">${t.label}</button>`).join('');
+    const checks = state.datasets.map((d) => `<label class="inline-flex items-center gap-1 text-sm mr-3"><input type="checkbox" data-ticker="${d.ticker}" ${state.selected.includes(d.ticker) ? 'checked' : ''} /> ${d.ticker}</label>`).join('');
     const r = state.result;
-    let body = '<p class="text-sm text-gray-500">Запустите бэктест.</p>';
+    let body = '<p class="text-sm text-gray-500">Выберите тикеры и запустите портфельный IBS (одна позиция).</p>';
     if (r) {
-      if (state.stockTab === 'price') body = `<div id="chart-price" class="chart-box-lg rounded border dark:border-gray-800"></div>`;
+      if (state.stockTab === 'summary') body = metricsGrid(r.metrics) + `<p class="text-sm mt-3">Тикеры: ${(state.selected || []).join(', ')}. Сделок: ${r.trades?.length || 0}. Итог: ${fmt(r.finalValue ?? r.metrics?.finalValue)}</p>`;
+      else if (state.stockTab === 'price') body = `<div id="chart-price" class="chart-box-lg rounded border dark:border-gray-800"></div>`;
+      else if (state.stockTab === 'tickerCharts') body = `<div id="ticker-charts" class="grid md:grid-cols-2 gap-3"></div>`;
       else if (state.stockTab === 'equity') body = `${metricsGrid(r.metrics)}<div id="chart-eq" class="chart-box mt-4 rounded border dark:border-gray-800"></div>`;
-      else if (state.stockTab === 'exposure') body = `<div id="chart-exp" class="chart-box rounded border dark:border-gray-800"></div><p class="text-sm text-gray-500 mt-2">Экспозиция считается на сервере вместе с капиталом.</p>`;
+      else if (state.stockTab === 'exposure') body = `<div id="chart-exp" class="chart-box rounded border dark:border-gray-800"></div>`;
       else if (state.stockTab === 'drawdown') body = `<div id="chart-dd" class="chart-box rounded border dark:border-gray-800"></div>`;
+      else if (state.stockTab === 'openDayDrawdown') body = `<div id="odd-out"></div>`;
       else if (state.stockTab === 'trades') body = tradesTable(r.trades);
       else if (state.stockTab === 'profit') body = `<p class="mb-2">Profit factor: <b>${fmt(r.metrics?.profitFactor)}</b></p>` + tradesTable(r.trades);
       else if (state.stockTab === 'duration') {
@@ -219,17 +242,17 @@
       } else if (state.stockTab === 'monthlyContribution') body = `<form id="mc-form" class="flex gap-2 mb-3"><input name="amount" type="number" value="500" class="rounded border px-2 py-1 w-28 dark:bg-gray-800" /><input name="day" type="number" value="1" class="rounded border px-2 py-1 w-20 dark:bg-gray-800" /><button class="px-3 py-1 rounded bg-indigo-600 text-white text-sm">Посчитать</button></form><div id="mc-out"></div>`;
       else if (state.stockTab === 'splits') body = `<div id="splits-box" class="text-sm">Загрузка сплитов…</div>`;
       else if (state.stockTab === 'buyhold') body = `<div id="bh-out">Считаем Buy & Hold…</div>`;
-      else if (state.stockTab === 'buyAtClose') body = `<div id="bac-out">Buy at close (вход по nextOpen)…</div>`;
+      else if (state.stockTab === 'buyAtClose') body = `<div id="bac-out">Buy at close…</div>`;
       else if (state.stockTab === 'buyAtClose4') body = `<div id="bac4-out">Buy at close 4…</div>`;
       else if (state.stockTab === 'noStopLoss') body = `<div id="nsl-out">Без стоп-лосса…</div>`;
-      else if (state.stockTab === 'options') body = `<div id="opt-out">Опционы (Black–Scholes на сервере)…</div>`;
+      else if (state.stockTab === 'options') body = `<div id="opt-out">Опционы…</div>`;
     }
     return layout(`
-      <div class="flex flex-wrap items-end gap-3 mb-4">
-        <div><label class="block text-sm mb-1">Тикер</label>
-          <select id="ticker-sel" class="rounded border px-3 py-2 dark:bg-gray-800 dark:border-gray-700">${state.datasets.map((d) => `<option ${d.ticker === state.ticker ? 'selected' : ''}>${d.ticker}</option>`).join('')}</select>
-        </div>
-        <button id="run-bt" class="px-3 py-2 rounded bg-indigo-600 text-white text-sm">Запустить IBS бэктест</button>
+      <h1 class="text-xl font-semibold mb-2">Акции</h1>
+      <p class="text-sm text-gray-600 dark:text-gray-400 mb-3">Несколько тикеров — одна открытая позиция, вход в инструмент с наименьшим IBS. Расчёт: <span class="mono">POST /api/calc/single-position</span>.</p>
+      <div class="mb-3">${checks || '<span class="text-sm text-gray-500">Нет датасетов</span>'}</div>
+      <div class="flex gap-2 mb-4">
+        <button id="run-bt" class="px-3 py-2 rounded bg-indigo-600 text-white text-sm">Запустить портфель</button>
       </div>
       <div class="flex flex-wrap gap-2 mb-4">${tabs}</div>
       <div id="stock-body">${body}</div>
@@ -251,22 +274,62 @@
   }
 
   function pageOptions() {
+    const checks = state.datasets.map((d) => `<label class="inline-flex items-center gap-1 text-sm mr-3"><input type="checkbox" data-oticker="${d.ticker}" ${state.selected.includes(d.ticker) ? 'checked' : ''} /> ${d.ticker}</label>`).join('');
     return layout(`
       <h1 class="text-xl font-semibold mb-4">Опционы</h1>
-      <p class="text-sm text-gray-600 mb-3">Сначала IBS-сделки, затем опционный бэктест на тех же входах. Формула Black–Scholes с коэффициентами Абрамовица–Стегана — на сервере.</p>
-      <form id="opt-form" class="flex flex-wrap gap-3 mb-4">
-        <select name="ticker" class="rounded border px-2 py-1 dark:bg-gray-800">${state.datasets.map((d) => `<option>${d.ticker}</option>`).join('')}</select>
-        <button class="px-3 py-2 rounded bg-indigo-600 text-white text-sm">Посчитать</button>
-      </form>
+      <p class="text-sm text-gray-600 mb-3">Портфельные IBS-сделки, затем <span class="mono">POST /api/calc/options-multi</span>. Black–Scholes на сервере.</p>
+      <div class="mb-3">${checks}</div>
+      <button id="opt-run" class="px-3 py-2 rounded bg-indigo-600 text-white text-sm mb-4">Посчитать опционы</button>
       <div id="optm-out"></div>
     `);
   }
 
   function pageCalendar() {
-    return layout(`<h1 class="text-xl font-semibold mb-4">Календарь</h1><pre id="cal-out" class="text-xs bg-white dark:bg-gray-900 border rounded p-3 overflow-auto dark:border-gray-800"></pre>`);
+    const months = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+    const y = state.cal.year, m = state.cal.month;
+    const first = new Date(Date.UTC(y, m, 1));
+    const startDow = (first.getUTCDay() + 6) % 7;
+    const daysIn = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+    const holidays = state.cal.data?.holidays?.[String(y)] || {};
+    const shorts = state.cal.data?.shortDays?.[String(y)] || {};
+    let cells = '';
+    for (let i = 0; i < startDow; i++) cells += '<div></div>';
+    for (let d = 1; d <= daysIn; d++) {
+      const mmdd = String(m + 1).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+      const hol = holidays[mmdd];
+      const sh = shorts[mmdd];
+      const cls = hol ? 'bg-red-100 dark:bg-red-950/40' : sh ? 'bg-amber-100 dark:bg-amber-950/40' : 'bg-white dark:bg-gray-900';
+      cells += `<button data-cday="${mmdd}" class="border rounded p-2 text-sm ${cls} dark:border-gray-800">${d}${hol ? '<div class="text-[10px] text-red-700">выходной</div>' : ''}${sh ? '<div class="text-[10px] text-amber-700">короткий</div>' : ''}</button>`;
+    }
+    return layout(`
+      <h1 class="text-xl font-semibold mb-4">Календарь</h1>
+      <div class="flex items-center gap-3 mb-4">
+        <button id="cal-prev" class="px-2 py-1 border rounded">‹</button>
+        <div class="font-semibold">${months[m]} ${y}</div>
+        <button id="cal-next" class="px-2 py-1 border rounded">›</button>
+      </div>
+      <div class="grid grid-cols-7 gap-1 text-xs text-gray-500 mb-1">${['Пн','Вт','Ср','Чт','Пт','Сб','Вс'].map((x)=>`<div>${x}</div>`).join('')}</div>
+      <div class="grid grid-cols-7 gap-1">${cells}</div>
+      <form id="cal-edit" class="mt-4 flex flex-wrap gap-2 items-end">
+        <input name="mmdd" placeholder="MM-DD" class="rounded border px-2 py-1 w-28 dark:bg-gray-800" />
+        <select name="type" class="rounded border px-2 py-1 dark:bg-gray-800"><option value="normal">обычный</option><option value="holiday">выходной</option><option value="short">короткий</option></select>
+        <input name="name" placeholder="Название" class="rounded border px-2 py-1 dark:bg-gray-800" />
+        <button class="px-3 py-1.5 rounded bg-indigo-600 text-white text-sm">Сохранить день</button>
+      </form>
+      <p class="text-xs text-gray-500 mt-2">Клик по дню подставляет дату. Сохранение — PATCH /api/trading-calendar/day.</p>
+    `);
   }
   function pageSplits() {
-    return layout(`<h1 class="text-xl font-semibold mb-4">Сплиты</h1><pre id="spl-out" class="text-xs bg-white dark:bg-gray-900 border rounded p-3 overflow-auto dark:border-gray-800"></pre>`);
+    return layout(`
+      <h1 class="text-xl font-semibold mb-4">Сплиты</h1>
+      <form id="split-form" class="flex flex-wrap gap-2 mb-4">
+        <input name="ticker" placeholder="AAPL" class="rounded border px-2 py-1 w-24 dark:bg-gray-800" />
+        <input name="date" type="date" class="rounded border px-2 py-1 dark:bg-gray-800" />
+        <input name="factor" type="number" step="0.01" placeholder="2" class="rounded border px-2 py-1 w-20 dark:bg-gray-800" />
+        <button class="px-3 py-1.5 rounded bg-indigo-600 text-white text-sm">Добавить</button>
+      </form>
+      <div id="spl-list"></div>
+    `);
   }
   function pageWatches() {
     return layout(`
@@ -279,10 +342,42 @@
     `);
   }
   function pageBroker() {
-    return layout(`<h1 class="text-xl font-semibold mb-4">Брокер</h1><p class="text-sm text-gray-600 mb-3">Сделки брокера и статус Webull. Живые ордера в локальной Go-версии не отправляются.</p><pre id="broker-out" class="text-xs bg-white dark:bg-gray-900 border rounded p-3 dark:border-gray-800"></pre>`);
+    return layout(`
+      <h1 class="text-xl font-semibold mb-4">Брокер</h1>
+      <p class="text-sm text-gray-600 mb-3">Журнал брокерских сделок. Живые ордера без ключей не отправляются.</p>
+      <form id="broker-form" class="flex flex-wrap gap-2 mb-4">
+        <input name="symbol" placeholder="AAPL" class="rounded border px-2 py-1 w-24 dark:bg-gray-800" />
+        <input name="entryDate" type="date" class="rounded border px-2 py-1 dark:bg-gray-800" />
+        <input name="entryPrice" type="number" step="0.01" placeholder="цена" class="rounded border px-2 py-1 w-24 dark:bg-gray-800" />
+        <button class="px-3 py-1.5 rounded bg-indigo-600 text-white text-sm">Добавить</button>
+      </form>
+      <div id="broker-list"></div>
+      <div id="broker-token" class="text-sm text-gray-500 mt-3"></div>
+    `);
   }
   function pageSettings() {
-    return layout(`<h1 class="text-xl font-semibold mb-4">Настройки</h1><pre id="set-out" class="text-xs bg-white dark:bg-gray-900 border rounded p-3 dark:border-gray-800"></pre>`);
+    return layout(`
+      <h1 class="text-xl font-semibold mb-4">Настройки</h1>
+      <form id="set-form" class="space-y-3 max-w-lg">
+        <label class="block text-sm">Порог уведомления IBS %<input name="watchThresholdPct" type="number" step="0.1" class="block w-full rounded border px-2 py-1 dark:bg-gray-800" /></label>
+        <label class="block text-sm">Провайдер котировок
+          <select name="resultsQuoteProvider" class="block w-full rounded border px-2 py-1 dark:bg-gray-800">
+            <option value="finnhub">finnhub</option><option value="alpha_vantage">alpha_vantage</option>
+            <option value="twelve_data">twelve_data</option><option value="polygon">polygon</option><option value="webull">webull</option>
+          </select>
+        </label>
+        <label class="block text-sm">Провайдер загрузки
+          <select name="enhancerProvider" class="block w-full rounded border px-2 py-1 dark:bg-gray-800">
+            <option value="finnhub">finnhub</option><option value="alpha_vantage">alpha_vantage</option>
+            <option value="twelve_data">twelve_data</option><option value="polygon">polygon</option>
+          </select>
+        </label>
+        <label class="block text-sm">Тикеры по умолчанию<input name="defaultMultiTickerSymbols" class="block w-full rounded border px-2 py-1 dark:bg-gray-800" /></label>
+        <label class="inline-flex items-center gap-2 text-sm"><input type="checkbox" name="enablePostClosePriceActualization" /> актуализация после закрытия</label>
+        <button class="px-3 py-2 rounded bg-indigo-600 text-white text-sm">Сохранить</button>
+        <div id="set-msg" class="text-sm"></div>
+      </form>
+    `);
   }
 
   async function render() {
@@ -364,7 +459,10 @@
       });
     }
     if (p === '/stocks') {
-      document.getElementById('ticker-sel')?.addEventListener('change', (e) => { state.ticker = e.target.value; });
+      document.querySelectorAll('[data-ticker]').forEach((el) => el.addEventListener('change', () => {
+        state.selected = [...document.querySelectorAll('[data-ticker]:checked')].map((x) => x.dataset.ticker);
+        state.ticker = state.selected[0] || state.ticker;
+      }));
       document.getElementById('run-bt')?.addEventListener('click', runStocks);
       document.querySelectorAll('[data-stab]').forEach((b) => b.addEventListener('click', () => { state.stockTab = b.dataset.stab; render(); }));
       paintStockCharts();
@@ -390,22 +488,55 @@
       });
     }
     if (p === '/multi-ticker-options') {
-      document.getElementById('opt-form')?.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const t = e.target.ticker.value;
-        const ds = await API.dataset(t);
-        const clean = await API.calc('clean-backtest', { data: ds.data, strategy: defaultStrategy() });
-        const r = await API.calc('options', { data: ds.data, trades: clean.trades, config: { strikePct: 10, volAdjPct: 20, capitalPct: 10 } });
-        document.getElementById('optm-out').innerHTML = `<p>Сделок: ${r.trades?.length || 0}, итог: ${fmt(r.finalValue)}</p>` + tradesTable(r.trades);
-      });
+      document.querySelectorAll('[data-oticker]').forEach((el) => el.addEventListener('change', () => {
+        state.selected = [...document.querySelectorAll('[data-oticker]:checked')].map((x) => x.dataset.oticker);
+      }));
+      document.getElementById('opt-run')?.addEventListener('click', runOptionsMulti);
     }
     if (p === '/calendar') {
-      const c = await API.calendar();
-      document.getElementById('cal-out').textContent = JSON.stringify(c, null, 2);
+      if (!state.cal.data) {
+        state.cal.data = await API.calendar();
+        render();
+        return;
+      }
+      document.getElementById('cal-prev')?.addEventListener('click', () => {
+        if (state.cal.month === 0) { state.cal.month = 11; state.cal.year--; } else state.cal.month--;
+        render();
+      });
+      document.getElementById('cal-next')?.addEventListener('click', () => {
+        if (state.cal.month === 11) { state.cal.month = 0; state.cal.year++; } else state.cal.month++;
+        render();
+      });
+      document.querySelectorAll('[data-cday]').forEach((b) => b.addEventListener('click', () => {
+        const form = document.getElementById('cal-edit');
+        if (form) form.mmdd.value = b.dataset.cday;
+      }));
+      document.getElementById('cal-edit')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const fd = new FormData(e.target);
+        await API.patch('/api/trading-calendar/day', { year: String(state.cal.year), mmdd: fd.get('mmdd'), type: fd.get('type'), name: fd.get('name') });
+        state.cal.data = await API.calendar();
+        render();
+      });
     }
     if (p === '/split') {
-      const c = await API.splits();
-      document.getElementById('spl-out').textContent = JSON.stringify(c, null, 2);
+      const map = await API.splits();
+      const el = document.getElementById('spl-list');
+      const rows = Object.entries(map || {}).map(([ticker, evs]) => `<div class="mb-3"><div class="font-semibold">${ticker}</div>${(evs || []).map((e) => `<div class="flex justify-between text-sm"><span>${e.date} × ${e.factor}</span><button data-ds="${ticker}" data-dd="${e.date}" class="text-red-600">удалить</button></div>`).join('')}</div>`).join('') || '<p class="text-sm text-gray-500">Нет сплитов</p>';
+      if (el) el.innerHTML = rows;
+      document.querySelectorAll('[data-ds]').forEach((b) => b.addEventListener('click', async () => {
+        await API.del(`/api/splits/${b.dataset.ds}/${b.dataset.dd}`);
+        render();
+      }));
+      document.getElementById('split-form')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const fd = new FormData(e.target);
+        const ticker = fd.get('ticker');
+        const existing = (map && map[ticker]) || [];
+        existing.push({ date: fd.get('date'), factor: Number(fd.get('factor')) });
+        await API.putSplits(ticker, existing);
+        render();
+      });
     }
     if (p === '/watches') {
       const list = await API.watches();
@@ -418,12 +549,41 @@
       });
     }
     if (p === '/broker') {
-      const [bt, st] = await Promise.all([API.brokerTrades().catch(() => []), API.get('/api/autotrade/webull/account').catch((e) => e.data)]);
-      document.getElementById('broker-out').textContent = JSON.stringify({ brokerTrades: bt, account: st }, null, 2);
+      const [bt, tok] = await Promise.all([API.brokerTrades().catch(() => []), API.get('/api/autotrade/webull/token/status').catch((e) => e.data)]);
+      const el = document.getElementById('broker-list');
+      if (el) el.innerHTML = (bt || []).map((t) => `<div class="flex justify-between border rounded p-2 mb-1 text-sm dark:border-gray-800"><span>${t.symbol} ${t.entryDate || ''} @ ${t.entryPrice ?? '—'}</span><button data-bd="${t.id}" class="text-red-600">удалить</button></div>`).join('') || '<p class="text-sm text-gray-500">Нет сделок</p>';
+      document.querySelectorAll('[data-bd]').forEach((b) => b.addEventListener('click', async () => { await API.del('/api/broker-trades/' + b.dataset.bd); render(); }));
+      const tokEl = document.getElementById('broker-token');
+      if (tokEl) tokEl.textContent = 'Токен Webull: ' + JSON.stringify(tok);
+      document.getElementById('broker-form')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const fd = new FormData(e.target);
+        await API.post('/api/broker-trades', { symbol: fd.get('symbol'), entryDate: fd.get('entryDate'), entryPrice: Number(fd.get('entryPrice')), status: 'open', source: 'manual' });
+        render();
+      });
     }
     if (p === '/settings') {
       const st = await API.settings();
-      document.getElementById('set-out').textContent = JSON.stringify(st, null, 2);
+      const form = document.getElementById('set-form');
+      if (form && st) {
+        form.watchThresholdPct.value = st.watchThresholdPct ?? 0.3;
+        form.resultsQuoteProvider.value = st.resultsQuoteProvider || 'finnhub';
+        form.enhancerProvider.value = st.enhancerProvider || 'finnhub';
+        form.defaultMultiTickerSymbols.value = st.defaultMultiTickerSymbols || '';
+        form.enablePostClosePriceActualization.checked = !!st.enablePostClosePriceActualization;
+      }
+      form?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const fd = new FormData(form);
+        await API.saveSettings({
+          watchThresholdPct: Number(fd.get('watchThresholdPct')),
+          resultsQuoteProvider: fd.get('resultsQuoteProvider'),
+          enhancerProvider: fd.get('enhancerProvider'),
+          defaultMultiTickerSymbols: fd.get('defaultMultiTickerSymbols'),
+          enablePostClosePriceActualization: form.enablePostClosePriceActualization.checked,
+        });
+        document.getElementById('set-msg').textContent = 'Сохранено';
+      });
     }
   }
 
@@ -435,11 +595,31 @@
     };
   }
 
+  async function loadSelected() {
+    const sel = state.selected.length ? state.selected : (state.datasets[0] ? [state.datasets[0].ticker] : []);
+    state.selected = sel;
+    const loaded = [];
+    for (const t of sel) {
+      const ds = await API.dataset(t);
+      loaded.push({ ticker: t, data: ds.data || [] });
+    }
+    state.tickersData = loaded;
+    state.ticker = sel[0];
+    state.bars = loaded[0]?.data || [];
+    return loaded;
+  }
+
   async function runStocks() {
-    const ds = await API.dataset(state.ticker);
-    state.bars = ds.data || [];
-    state.result = await API.calc('clean-backtest', { data: state.bars, strategy: defaultStrategy() });
+    const loaded = await loadSelected();
+    state.result = await API.calc('single-position', { tickers: loaded, strategy: defaultStrategy(), leverage: 1 });
     render();
+  }
+
+  async function runOptionsMulti() {
+    const loaded = await loadSelected();
+    const stock = await API.calc('single-position', { tickers: loaded, strategy: defaultStrategy(), leverage: 1 });
+    const r = await API.calc('options-multi', { tickers: loaded, trades: stock.trades, config: { strikePct: 10, volAdjPct: 20, capitalPct: 10 } });
+    document.getElementById('optm-out').innerHTML = `<p>Сделок: ${r.trades?.length || 0}, итог: ${fmt(r.finalValue)}</p>` + tradesTable(r.trades);
   }
 
   function paintStockCharts() {
@@ -447,12 +627,33 @@
     if (!r) return;
     const dark = state.dark;
     if (state.stockTab === 'price' && document.getElementById('chart-price')) Charts.candles(document.getElementById('chart-price'), state.bars, dark);
+    if (state.stockTab === 'tickerCharts' && document.getElementById('ticker-charts')) {
+      const host = document.getElementById('ticker-charts');
+      host.innerHTML = (state.tickersData || []).map((t) => `<div><div class="text-sm font-semibold mb-1">${t.ticker}</div><div id="tc-${t.ticker}" class="chart-box rounded border dark:border-gray-800"></div></div>`).join('');
+      (state.tickersData || []).forEach((t) => {
+        const el = document.getElementById('tc-' + t.ticker);
+        if (el) Charts.candles(el, t.data, dark);
+      });
+    }
     if (state.stockTab === 'equity' && document.getElementById('chart-eq')) Charts.line(document.getElementById('chart-eq'), r.equity, dark);
     if (state.stockTab === 'drawdown' && document.getElementById('chart-dd')) {
       Charts.line(document.getElementById('chart-dd'), (r.equity || []).map((p) => ({ date: p.date, value: p.drawdown })), dark, '#dc2626');
     }
     if (state.stockTab === 'exposure' && document.getElementById('chart-exp') && r.exposure) {
       Charts.line(document.getElementById('chart-exp'), r.exposure.map((p) => ({ date: p.date, value: p.exposurePct })), dark, '#0ea5e9');
+    }
+    if (state.stockTab === 'openDayDrawdown') {
+      const el = document.getElementById('odd-out');
+      if (el && state.bars.length) {
+        const rows = (r.trades || []).map((tr) => {
+          const bar = state.bars.find((b) => b.date === tr.entryDate);
+          if (!bar) return null;
+          const dd = bar.low != null && tr.entryPrice ? ((tr.entryPrice - bar.low) / tr.entryPrice) * 100 : 0;
+          return { date: tr.entryDate, value: dd };
+        }).filter(Boolean);
+        el.innerHTML = '<div id="chart-odd" class="chart-box rounded border dark:border-gray-800"></div>';
+        Charts.line(document.getElementById('chart-odd'), rows, dark, '#f59e0b');
+      }
     }
   }
 
@@ -463,7 +664,7 @@
       const el = document.getElementById(id);
       if (!el) return;
       try {
-        const r = await API.calc(name, { data: state.bars, strategy: st, trades: state.result.trades, ticker: state.ticker, ...extra });
+        const r = await API.calc(name, { data: state.bars, strategy: st, trades: state.result.trades, ticker: state.ticker, tickers: state.tickersData, ...extra });
         el.innerHTML = metricsGrid(r.metrics) + `<p class="text-sm my-2">Сделок: ${r.trades?.length || r.tradesList?.length || 0}${r.finalValue != null ? ', итог ' + fmt(r.finalValue) : ''}</p>` + tradesTable(r.trades || r.tradesList);
       } catch (e) { el.textContent = e.message; }
     };
@@ -471,7 +672,7 @@
     if (state.stockTab === 'buyAtClose') fill('bac-out', 'buy-at-close');
     if (state.stockTab === 'buyAtClose4') fill('bac4-out', 'buy-at-close-4', { leverage: 1 });
     if (state.stockTab === 'noStopLoss') fill('nsl-out', 'no-stop-loss', { noStop: { exitMode: 'ibs-only', requireProfitableExit: false } });
-    if (state.stockTab === 'options') fill('opt-out', 'options', { config: { strikePct: 10, volAdjPct: 20, capitalPct: 10 } });
+    if (state.stockTab === 'options') fill('opt-out', isSingle() ? 'options' : 'options-multi', { config: { strikePct: 10, volAdjPct: 20, capitalPct: 10 } });
     if (state.stockTab === 'splits') {
       const el = document.getElementById('splits-box');
       if (el) {
@@ -493,6 +694,7 @@
     try { const st = await API.status(); state.apiBuildId = st.timestamp || st.buildId; } catch {}
     try { state.datasets = await API.datasets(); } catch { state.datasets = []; }
     if (state.datasets[0] && !state.ticker) state.ticker = state.datasets[0].ticker;
+    if (!state.selected.length && state.datasets[0]) state.selected = [state.datasets[0].ticker];
   }
 
   async function start() {

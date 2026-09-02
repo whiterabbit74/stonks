@@ -52,4 +52,12 @@ func TestVanillaUIAssets(t *testing.T) {
 	if strings.Contains(a, "from 'react'") || strings.Contains(a, "ReactDOM") {
 		t.Fatal("UI must be vanilla JS, not React")
 	}
+	for _, tab := range []string{"summary", "tickerCharts", "openDayDrawdown", "single-position", "options-multi"} {
+		if !strings.Contains(a, tab) {
+			t.Errorf("app.js missing %s", tab)
+		}
+	}
+	if !strings.Contains(a, "cal-edit") || !strings.Contains(a, "set-form") || !strings.Contains(a, "split-form") || !strings.Contains(a, "broker-form") {
+		t.Fatal("interactive calendar/settings/splits/broker forms missing")
+	}
 }

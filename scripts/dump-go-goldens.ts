@@ -24,6 +24,7 @@ import { adjustOHLCForSplits, detectSplitsFromOHLC, applyOHLCForHolderValue } fr
 import { simulateMarginByTrades } from '../src/lib/margin-simulation';
 import { calculateBacktestMetrics } from '../src/lib/backtest-statistics';
 import { parseDate } from '../src/lib/validation';
+import { runMultiTickerBacktest } from '../src/components/BuyAtClose4Simulator';
 import type { OHLCData, Strategy, Trade } from '../src/types';
 
 const require = createRequire(import.meta.url);
@@ -182,6 +183,14 @@ const single = runSinglePositionBacktest(
 write('googl-single-position-trades.json', compactTrades(single.trades));
 write('googl-single-position-metrics.json', single.metrics);
 write('googl-single-position-equity.json', compactEquity(single.equity));
+
+const bac4 = runMultiTickerBacktest([{ ticker: 'GOOGL', data: googl, ibsValues }], strategy, 1);
+write('googl-bac4-trades.json', compactTrades(bac4.trades));
+write('googl-bac4-final.json', {
+  finalValue: bac4.finalValue,
+  tradeCount: bac4.trades.length,
+  maxDrawdown: bac4.maxDrawdown,
+});
 
 const options = runOptionsBacktest(clean.trades, googl, {
   strikePct: 10,
