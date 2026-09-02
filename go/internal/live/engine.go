@@ -40,6 +40,7 @@ type Broker interface {
 	CheckToken(token string) (map[string]any, error)
 	Calendar() (jsonRaw []byte, err error)
 	RawSplits(symbol string) ([]map[string]any, error)
+	OrderDetail(clientOrderID string) (map[string]any, error)
 }
 
 type Engine struct {

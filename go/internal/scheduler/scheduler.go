@@ -149,6 +149,9 @@ func RunTick(db *store.DB, deps Deps, now time.Time, onEvent func(JobLog)) {
 	p := tradingdate.CurrentTimeNYSE(now)
 	today := tradingdate.TodayNYSE(now)
 
+	nTrack := engine(db, deps).PollTrackers()
+	onEvent(JobLog{At: now, Name: "order-trackers", Detail: fmt.Sprintf("pending=%d", nTrack)})
+
 	detail, skipped := RunTokenHealth(db, today, now)
 	onEvent(JobLog{At: now, Name: "webull-token-health", Skipped: skipped, Detail: detail})
 

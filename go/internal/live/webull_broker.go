@@ -197,6 +197,22 @@ func (b *LiveBroker) RawSplits(symbol string) ([]map[string]any, error) {
 	return out, nil
 }
 
+func (b *LiveBroker) OrderDetail(clientOrderID string) (map[string]any, error) {
+	c := b.client()
+	resp, err := c.OrderDetail(c.AccountID, clientOrderID)
+	if err != nil {
+		return nil, err
+	}
+	m, _ := resp.Data.(map[string]any)
+	if m == nil {
+		m = map[string]any{}
+	}
+	if len(resp.Raw) > 0 {
+		m["raw"] = string(resp.Raw)
+	}
+	return m, nil
+}
+
 func flattenAny(v any) []any {
 	if a, ok := v.([]any); ok {
 		return a

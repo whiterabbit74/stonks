@@ -756,7 +756,9 @@ func (d *DB) DeleteTrade(table, id string) error {
 }
 
 func (d *DB) ListEMAAlerts() ([]map[string]any, error) {
-	rows, err := d.SQL.Query(`SELECT id, symbol, ema_period, level_pct, direction, enabled FROM telegram_ema_alerts ORDER BY symbol`)
+	rows, err := d.SQL.Query(`SELECT id, symbol, ema_period, level_pct, direction, enabled,
+        buy_level_pct, sell_level_pct, next_action, threshold_pct, info_level_pct, info_last_side
+        FROM telegram_ema_alerts ORDER BY symbol`)
 	if err != nil {
 		return nil, err
 	}
@@ -766,10 +768,31 @@ func (d *DB) ListEMAAlerts() ([]map[string]any, error) {
 		var id, symbol, dir string
 		var period, enabled int
 		var level float64
-		if err := rows.Scan(&id, &symbol, &period, &level, &dir, &enabled); err != nil {
+		var buy, sell, thr, info sql.NullFloat64
+		var next, infoSide sql.NullString
+		if err := rows.Scan(&id, &symbol, &period, &level, &dir, &enabled, &buy, &sell, &next, &thr, &info, &infoSide); err != nil {
 			return nil, err
 		}
-		out = append(out, map[string]any{"id": id, "symbol": symbol, "emaPeriod": period, "levelPct": level, "direction": dir, "enabled": enabled == 1})
+		row := map[string]any{"id": id, "symbol": symbol, "emaPeriod": period, "levelPct": level, "direction": dir, "enabled": enabled == 1}
+		if buy.Valid {
+			row["buyLevelPct"] = buy.Float64
+		}
+		if sell.Valid {
+			row["sellLevelPct"] = sell.Float64
+		}
+		if next.Valid && next.String != "" {
+			row["nextAction"] = next.String
+		}
+		if thr.Valid {
+			row["thresholdPct"] = thr.Float64
+		}
+		if info.Valid {
+			row["infoLevelPct"] = info.Float64
+		}
+		if infoSide.Valid {
+			row["infoLastSide"] = infoSide.String
+		}
+		out = append(out, row)
 	}
 	if out == nil {
 		out = []map[string]any{}
@@ -783,9 +806,32 @@ func (d *DB) UpsertEMAAlert(rec map[string]any) error {
 		id = fmt.Sprintf("ema-%d", time.Now().UnixNano())
 	}
 	symbol := SafeTicker(fmt.Sprint(rec["symbol"]))
-	_, err := d.SQL.Exec(`INSERT INTO telegram_ema_alerts (id, symbol, ema_period, level_pct, direction, enabled) VALUES (?, ?, ?, ?, ?, 1)
-        ON CONFLICT(id) DO UPDATE SET symbol=excluded.symbol, ema_period=excluded.ema_period, level_pct=excluded.level_pct, direction=excluded.direction, updated_at=datetime('now')`,
-		id, symbol, rec["emaPeriod"], rec["levelPct"], rec["direction"])
+	next := rec["nextAction"]
+	if next == nil || fmt.Sprint(next) == "" {
+		next = "buy"
+	}
+	_, err := d.SQL.Exec(`INSERT INTO telegram_ema_alerts (id, symbol, ema_period, level_pct, direction, enabled, buy_level_pct, sell_level_pct, next_action, threshold_pct, info_level_pct)
+        VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET symbol=excluded.symbol, ema_period=excluded.ema_period, level_pct=excluded.level_pct, direction=excluded.direction,
+            buy_level_pct=excluded.buy_level_pct, sell_level_pct=excluded.sell_level_pct, next_action=excluded.next_action, threshold_pct=excluded.threshold_pct,
+            info_level_pct=excluded.info_level_pct, updated_at=datetime('now')`,
+		id, symbol, rec["emaPeriod"], rec["levelPct"], rec["direction"], rec["buyLevelPct"], rec["sellLevelPct"], next, rec["thresholdPct"], rec["infoLevelPct"])
+	return err
+}
+
+func (d *DB) MarkEMATriggered(id, action string, deviationPct float64, at string) error {
+	next := "sell"
+	if action == "sell" {
+		next = "buy"
+	}
+	_, err := d.SQL.Exec(`UPDATE telegram_ema_alerts SET next_action=?, last_triggered_action=?, last_triggered_at=?, last_triggered_deviation_pct=?, updated_at=datetime('now') WHERE id=?`,
+		next, action, at, deviationPct, id)
+	return err
+}
+
+func (d *DB) RecordEMAInfoSide(id, side, at string) error {
+	_, err := d.SQL.Exec(`UPDATE telegram_ema_alerts SET info_last_side=?, info_last_notified_at=COALESCE(?, info_last_notified_at), updated_at=datetime('now') WHERE id=?`,
+		side, at, id)
 	return err
 }
 

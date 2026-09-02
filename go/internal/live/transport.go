@@ -64,6 +64,7 @@ type MemoryBroker struct {
 	Pos        []any
 	FailPlace  string
 	FillStatus string
+	Details    map[string]map[string]any
 }
 
 func (m *MemoryBroker) PlaceMarket(symbol, side string, qty float64) (OrderResult, error) {
@@ -126,6 +127,17 @@ func (m *MemoryBroker) Calendar() ([]byte, error) {
 
 func (m *MemoryBroker) RawSplits(symbol string) ([]map[string]any, error) {
 	return m.Splits, nil
+}
+
+func (m *MemoryBroker) OrderDetail(clientOrderID string) (map[string]any, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.Details != nil {
+		if d, ok := m.Details[clientOrderID]; ok {
+			return d, nil
+		}
+	}
+	return map[string]any{"status": "SUBMITTED", "client_order_id": clientOrderID}, nil
 }
 
 type MemoryQuotes struct {

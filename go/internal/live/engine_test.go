@@ -2,6 +2,7 @@ package live
 
 import (
 	"errors"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -54,7 +55,7 @@ func TestExecuteBalanceSizing(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { db.Close() })
-	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
+	bars := []types.OHLC{{Date: "2026-09-01", Open: 248, High: 255, Low: 247, Close: 250.0, Volume: 1}}
 	_ = db.SaveDataset("AAPL", "AAPL", "", "", bars, false)
 	_ = db.UpsertWatch(map[string]any{"symbol": "AAPL", "lowIBS": 0.9})
 	br := &MemoryBroker{Acct: map[string]any{
@@ -209,6 +210,123 @@ func TestPendingTrackerGuardsSecondSubmit(t *testing.T) {
 	// pending entry tracker + open position: Evaluate should not re-enter; force-check FindPending
 	if db.FindPendingTracker("AAPL", "entry") == nil {
 		t.Fatal("tracker not persisted")
+	}
+}
+
+func TestSplitJumpBlocksSignals(t *testing.T) {
+	dir := t.TempDir()
+	db, err := store.Open(filepath.Join(dir, "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	bars := []types.OHLC{
+		{Date: "2026-09-01", Open: 91, High: 94, Low: 90, Close: 92.7, Volume: 1},
+	}
+	_ = db.SaveDataset("TQQQ", "TQQQ", "", "", bars, false)
+	_ = db.UpsertWatch(map[string]any{"symbol": "TQQQ", "lowIBS": 0.9, "highIBS": 0.75})
+	q := &MemoryQuotes{Q: map[string]providers.QuotePayload{
+		"TQQQ": {Quote: map[string]any{"current": 44.68}, Range: map[string]any{"low": 44.0, "high": 50.0}},
+	}}
+	tg := &MemoryTelegram{}
+	br := &MemoryBroker{}
+	e := New(db, q)
+	e.Telegram = tg
+	e.Broker = br
+	e.ChatID = "c"
+	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true, "entrySizingMode": "quantity", "fixedQuantity": 1})
+	res, err := e.Aggregate(11, AggregateOpts{ForceSend: true, DryRun: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(res.Text, "ПРОВЕРКА ДАННЫХ") || !strings.Contains(res.Text, "EMA/IBS сигналы заблокированы") {
+		t.Fatalf("integrity block missing: %s", res.Text)
+	}
+	if strings.Contains(res.Text, "ENTRY") {
+		t.Fatalf("blocked ticker still ENTRY: %s", res.Text)
+	}
+	live, err := e.Aggregate(1, AggregateOpts{ForceSend: true, DryRun: false})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(br.Orders) != 0 {
+		t.Fatalf("split jump must not place: %+v text=%s", br.Orders, live.Text)
+	}
+}
+
+func TestEmaNearSendsSecondTelegram(t *testing.T) {
+	dir := t.TempDir()
+	db, err := store.Open(filepath.Join(dir, "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	var bars []types.OHLC
+	for i := 1; i <= 20; i++ {
+		bars = append(bars, types.OHLC{Date: fmt.Sprintf("2026-08-%02d", i), Open: 100, High: 100, Low: 100, Close: 100, Volume: 1})
+	}
+	_ = db.SaveDataset("TQQQ", "TQQQ", "", "", bars, true)
+	_ = db.UpsertWatch(map[string]any{"symbol": "AAPL", "lowIBS": 0.1})
+	_ = db.SaveDataset("AAPL", "AAPL", "", "", []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 10, Volume: 1}}, false)
+	_ = db.UpsertEMAAlert(map[string]any{
+		"id": "ema-1", "symbol": "TQQQ", "emaPeriod": 20, "buyLevelPct": 0, "sellLevelPct": 40,
+		"nextAction": "buy", "thresholdPct": 1, "levelPct": 0, "direction": "below",
+	})
+	q := &MemoryQuotes{
+		Bars: map[string][]types.OHLC{"AAPL": {{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 10, Volume: 1}}},
+		Q:    map[string]providers.QuotePayload{"TQQQ": {Quote: map[string]any{"current": 100.0}, Range: map[string]any{"low": 99.0, "high": 101.0}}},
+	}
+	tg := &MemoryTelegram{}
+	e := New(db, q)
+	e.Telegram = tg
+	e.ChatID = "c"
+	res, err := e.Aggregate(11, AggregateOpts{ForceSend: true, DryRun: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(func() []string {
+		var s []string
+		for _, m := range tg.Messages {
+			s = append(s, m[1])
+		}
+		return s
+	}(), "\n")
+	if !strings.Contains(joined, "📐 EMA сигналы") && !strings.Contains(res.Text, "📐 EMA сигналы") {
+		t.Fatalf("EMA overview missing messages=%+v text=%s", tg.Messages, res.Text)
+	}
+}
+
+func TestPollTrackersMarksFilled(t *testing.T) {
+	dir := t.TempDir()
+	db, err := store.Open(filepath.Join(dir, "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
+	_ = db.SaveDataset("AAPL", "AAPL", "", "", bars, false)
+	_ = db.UpsertWatch(map[string]any{"symbol": "AAPL", "lowIBS": 0.9})
+	br := &MemoryBroker{Details: map[string]map[string]any{}}
+	e := New(db, &MemoryQuotes{Bars: map[string][]types.OHLC{"AAPL": bars}})
+	e.Broker = br
+	e.Telegram = &MemoryTelegram{}
+	e.ChatID = "c"
+	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true, "entrySizingMode": "quantity", "fixedQuantity": 1})
+	res := e.Execute("test")
+	if !res.Executed || len(br.Orders) != 1 {
+		t.Fatalf("execute %+v orders %+v", res, br.Orders)
+	}
+	oid := br.Orders[0].ClientOrderID
+	if db.FindPendingTracker("AAPL", "entry") == nil {
+		t.Fatal("expected pending tracker")
+	}
+	br.Details[oid] = map[string]any{"status": "FILLED", "filled_qty": 1.0, "avg_price": 8.2}
+	n := e.PollTrackers()
+	if n != 1 {
+		t.Fatalf("polled %d", n)
+	}
+	if db.FindPendingTracker("AAPL", "entry") != nil {
+		t.Fatal("tracker should be filled")
 	}
 }
 

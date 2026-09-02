@@ -3,12 +3,14 @@ package httpapi
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
 
 	"mktorder.com/go/internal/live"
+	"mktorder.com/go/internal/providers"
 	"mktorder.com/go/internal/types"
 )
 
@@ -166,6 +168,77 @@ func TestTestBuyDisabledByDefault(t *testing.T) {
 	rec := postJSON(s, "/api/autotrade/webull/test-buy", map[string]any{"symbol": "AAPL", "quantity": 1})
 	if rec.Code != 403 {
 		t.Fatalf("want 403 got %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestSimulateSplitJumpAndEmaAndFillPoll(t *testing.T) {
+	s, tg, br := liveServer(t)
+	bars := []types.OHLC{{Date: "2026-09-01", Open: 91, High: 94, Low: 90, Close: 92.7, Volume: 1}}
+	if err := s.DB.SaveDataset("TQQQ", "TQQQ", "", "", bars, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.DB.UpsertWatch(map[string]any{"symbol": "TQQQ", "lowIBS": 0.9, "highIBS": 0.75}); err != nil {
+		t.Fatal(err)
+	}
+	s.Live.Quotes = &live.MemoryQuotes{Q: map[string]providers.QuotePayload{
+		"TQQQ": {Quote: map[string]any{"current": 44.68}, Range: map[string]any{"low": 44.0, "high": 50.0}},
+		"AAPL": {Quote: map[string]any{"current": 8.2}, Range: map[string]any{"low": 8.0, "high": 12.0}},
+	}}
+	tg.Messages = nil
+	rec := postJSON(s, "/api/telegram/simulate", map[string]any{"stage": "overview"})
+	if rec.Code != 200 {
+		t.Fatalf("simulate %d %s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	joined := body
+	for _, m := range tg.Messages {
+		joined += m[1]
+	}
+	if !strings.Contains(joined, "ПРОВЕРКА ДАННЫХ") || !strings.Contains(joined, "EMA/IBS сигналы заблокированы") {
+		t.Fatalf("http simulate missing integrity: %s msgs=%+v", body, tg.Messages)
+	}
+
+	var hist []types.OHLC
+	for i := 1; i <= 20; i++ {
+		hist = append(hist, types.OHLC{Date: fmt.Sprintf("2026-08-%02d", i), Open: 100, High: 100, Low: 100, Close: 100, Volume: 1})
+	}
+	_ = s.DB.SaveDataset("MSFT", "MSFT", "", "", hist, true)
+	_ = s.DB.UpsertEMAAlert(map[string]any{
+		"id": "ema-msft", "symbol": "MSFT", "emaPeriod": 20, "buyLevelPct": 0, "sellLevelPct": 40,
+		"nextAction": "buy", "thresholdPct": 1, "levelPct": 0, "direction": "below",
+	})
+	s.Live.Quotes = &live.MemoryQuotes{Q: map[string]providers.QuotePayload{
+		"MSFT": {Quote: map[string]any{"current": 100.0}, Range: map[string]any{"low": 99.0, "high": 101.0}},
+		"AAPL": {Quote: map[string]any{"current": 8.2}, Range: map[string]any{"low": 8.0, "high": 12.0}},
+	}}
+	tg.Messages = nil
+	rec = postJSON(s, "/api/telegram/simulate", map[string]any{"stage": "overview"})
+	joined = rec.Body.String()
+	for _, m := range tg.Messages {
+		joined += m[1]
+	}
+	if !strings.Contains(joined, "📐 EMA сигналы") {
+		t.Fatalf("http simulate missing EMA message: %s %+v", rec.Body.String(), tg.Messages)
+	}
+
+	req := httptest.NewRequest("PATCH", "/api/autotrade/config", bytes.NewReader(mustJSON(map[string]any{
+		"enabled": true, "lowIBS": 0.9, "allowNewEntries": true, "entrySizingMode": "quantity", "fixedQuantity": 1,
+	})))
+	req.Header.Set("Content-Type", "application/json")
+	rec = httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	rec = postJSON(s, "/api/autotrade/execute", map[string]any{})
+	if rec.Code != 200 {
+		t.Fatalf("execute %d %s", rec.Code, rec.Body.String())
+	}
+	if len(br.Orders) == 0 {
+		t.Fatal("expected order to poll")
+	}
+	oid := br.Orders[len(br.Orders)-1].ClientOrderID
+	br.Details = map[string]map[string]any{oid: {"status": "FILLED"}}
+	n := s.Live.PollTrackers()
+	if n == 0 {
+		t.Fatal("poll did not see tracker")
 	}
 }
 

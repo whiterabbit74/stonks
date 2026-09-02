@@ -90,7 +90,8 @@ func (e *Engine) Aggregate(minutesUntilClose int, opts AggregateOpts) (SimulateR
 	}
 	out := SimulateResult{Stage: stage, DryRun: opts.DryRun}
 	watches, _ := e.DB.ListWatches()
-	if len(watches) == 0 {
+	emaAlerts := e.EvaluateEMAAlerts()
+	if len(watches) == 0 && len(emaAlerts) == 0 {
 		out.Reason = "no_watches"
 		return out, nil
 	}
@@ -101,17 +102,32 @@ func (e *Engine) Aggregate(minutesUntilClose int, opts AggregateOpts) (SimulateR
 		provider = "finnhub"
 	}
 	var rows []t1Watch
+	var integ []IntegrityResult
 	for _, w := range watches {
 		sym := fmt.Sprint(w["symbol"])
 		ev := e.evalWatch(sym, w, provider)
 		rows = append(rows, t1Watch{sym: sym, eval: ev})
 		out.Tickers = append(out.Tickers, sym)
+		if ev.blocked {
+			integ = append(integ, ev.warning)
+		}
 	}
+	for _, a := range emaAlerts {
+		if a.Warning.BlockSignals {
+			integ = append(integ, a.Warning)
+		}
+	}
+	integBlock := FormatIntegrityWarningBlock(integ)
 	if stage != "confirmations" {
 		lines := []string{fmt.Sprintf("T-11 overview %s", today)}
+		if integBlock != "" {
+			lines = append(lines, "", integBlock)
+		}
 		for _, r := range rows {
 			flag := "—"
-			if r.eval.entry {
+			if r.eval.blocked {
+				flag = "BLOCKED"
+			} else if r.eval.entry {
 				flag = "ENTRY"
 			} else if r.eval.exit {
 				flag = "EXIT"
@@ -122,7 +138,18 @@ func (e *Engine) Aggregate(minutesUntilClose int, opts AggregateOpts) (SimulateR
 			}
 			lines = append(lines, fmt.Sprintf("%s IBS=%s %s", r.sym, ibsStr, flag))
 		}
-		return e.finishSend(&out, strings.Join(lines, "\n"), opts)
+		res, err := e.finishSend(&out, strings.Join(lines, "\n"), opts)
+		if res.Sent {
+			if ema := buildEmaOverviewMessage(emaAlerts); ema != "" {
+				if e.Send(e.chat(), ema) == nil {
+					res.Text += "\n" + ema
+				}
+			}
+			if !opts.DryRun {
+				e.persistEmaAfterSend(emaAlerts, stage)
+			}
+		}
+		return res, err
 	}
 
 	snap := e.Consistency()
@@ -157,8 +184,19 @@ func (e *Engine) Aggregate(minutesUntilClose int, opts AggregateOpts) (SimulateR
 		}
 	}
 
-	text := e.buildT1Text(today, rows, blocking, opts.DryRun, waitFill, exitRes, entryRes)
-	return e.finishSend(&out, text, opts)
+	text := e.buildT1Text(today, rows, blocking, opts.DryRun, waitFill, exitRes, entryRes, integ)
+	res, err := e.finishSend(&out, text, opts)
+	if res.Sent {
+		if ema := buildEmaDecisionMessage(emaAlerts); ema != "" {
+			if e.Send(e.chat(), ema) == nil {
+				res.Text += "\n" + ema
+			}
+		}
+		if !opts.DryRun {
+			e.persistEmaAfterSend(emaAlerts, stage)
+		}
+	}
+	return res, err
 }
 
 func (e *Engine) finishSend(out *SimulateResult, text string, opts AggregateOpts) (SimulateResult, error) {
@@ -180,9 +218,18 @@ type t1Watch struct {
 	eval watchEval
 }
 
-func (e *Engine) buildT1Text(today string, rows []t1Watch, blocking map[string]any, dryRun, waitFill bool, exitRes, entryRes EvalResult) string {
+func (e *Engine) buildT1Text(today string, rows []t1Watch, blocking map[string]any, dryRun, waitFill bool, exitRes, entryRes EvalResult, integ []IntegrityResult) string {
 	_ = today
 	var decision []string
+	if block := FormatIntegrityWarningBlock(integ); block != "" {
+		var syms []string
+		for _, w := range integ {
+			if w.BlockSignals {
+				syms = append(syms, w.Symbol)
+			}
+		}
+		decision = append(decision, "• Проверка данных: сигналы заблокированы по "+strings.Join(syms, ", "))
+	}
 	if blocking != nil {
 		decision = append(decision, "• Состояние брокера: "+fmt.Sprint(blocking["message"]))
 		decision = append(decision, "• Monitor продолжает считать позиции независимо от брокера")
@@ -275,8 +322,9 @@ func (e *Engine) buildT1Text(today string, rows []t1Watch, blocking map[string]a
 }
 
 type watchEval struct {
-	ok, entry, exit bool
-	ibs, price      float64
+	ok, entry, exit, blocked bool
+	ibs, price               float64
+	warning                  IntegrityResult
 }
 
 func (e *Engine) evalWatch(sym string, w map[string]any, provider string) watchEval {
@@ -294,9 +342,9 @@ func (e *Engine) evalWatch(sym string, w map[string]any, provider string) watchE
 			}
 		}
 	}
+	bars, adj, _ := e.DB.GetOHLC(sym)
 	if !ok || price <= 0 {
-		bars, _, err := e.DB.GetOHLC(sym)
-		if err == nil && len(bars) > 0 {
+		if len(bars) > 0 {
 			last := bars[len(bars)-1]
 			if !ok {
 				vals := indicators.IBS(bars)
@@ -306,6 +354,14 @@ func (e *Engine) evalWatch(sym string, w map[string]any, provider string) watchE
 			if price <= 0 {
 				price = last.Close
 			}
+		}
+	}
+	if price > 0 && len(bars) > 0 {
+		splits, _ := e.DB.ListSplits(sym)
+		today := tradingdate.TodayNYSE(e.now())
+		integ := EvaluatePriceIntegrity(sym, bars, price, today, splits, adj)
+		if integ.BlockSignals {
+			return watchEval{blocked: true, price: price, warning: integ}
 		}
 	}
 	if !ok {
