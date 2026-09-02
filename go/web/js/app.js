@@ -78,12 +78,6 @@
     { id: 'monitor', label: 'Мониторинг' },
     { id: 'logs', label: 'Логи' },
   ];
-  const BADGE = [
-    'bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300',
-    'bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-300',
-    'bg-orange-100 text-orange-700 dark:bg-orange-900/50 dark:text-orange-300',
-    'bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300',
-  ];
   const POPULAR = [
     { symbol: 'AAPL', name: 'Apple Inc.' },
     { symbol: 'MSFT', name: 'Microsoft Corporation' },
@@ -166,10 +160,8 @@
     search: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
     list: '<path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/>',
     grid: '<rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/>',
-    edit: '<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
     trash: '<path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>',
     download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/>',
-    check: '<path d="M20 6 9 17l-5-5"/>',
     more: '<circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/>',
     help: '<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>',
     sliders: '<path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/>',
@@ -188,7 +180,6 @@
     datasets: [],
     result: null,
     ticker: 'GOOGL',
-    selected: [],
     tickerInput: localStorage.getItem('tickersInput') || 'AAPL, MSFT, AMZN, MAGS',
     emaTickers: localStorage.getItem('ema.tickers') || 'TQQQ',
     optTickers: localStorage.getItem('options.tickers') || localStorage.getItem('tickersInput') || 'AAPL, MSFT, AMZN, MAGS',
@@ -591,11 +582,6 @@
     if (!m || typeof m !== 'object') return undefined;
     return m[k] ?? m[k.charAt(0).toUpperCase() + k.slice(1)];
   }
-  function analysisBody(r) {
-    const x = resultOf(r);
-    if (!x) return '<p class="text-sm text-gray-500">Нет данных</p>';
-    return metricsGrid(x.metrics, x.finalValue, x.maxDrawdown) + tradesTable(x.trades);
-  }
   function profitBody(r) {
     const x = resultOf(r);
     if (!x) return '<p class="text-sm text-gray-500">Нет сделок</p>';
@@ -736,11 +722,9 @@
       </div>
     </div>`;
   }
-  function tickerInput(id, value, tickers, showBadges) {
-    const badges = tickers.map((t, i) => `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${BADGE[i % 4]}">${esc(t)}</span>`).join('');
+  function tickerInput(id, value) {
     return `<div>
-      <input id="${id}" type="text" value="${esc(value)}" placeholder="AAPL, MSFT, AMZN, MAGS" class="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 focus:border-transparent" />
-      ${showBadges !== false && tickers.length ? `<div class="flex flex-wrap gap-1.5 mt-2">${badges}</div>` : ''}
+      <input id="${id}" type="text" value="${esc(value)}" placeholder="AAPL, MSFT, AMZN, MAGS" class="${inputCls()} text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 focus:border-transparent" />
     </div>`;
   }
   function metricsGrid(m, finalValue, maxDrawdown) {
@@ -797,7 +781,6 @@
     const q = new URL(location.href).searchParams.get('tickers');
     if (q) {
       state.tickerInput = q.split(',').map((s) => s.trim().toUpperCase()).filter(Boolean).join(', ');
-      state.selected = parseTickers(state.tickerInput);
     }
     state.menuTicker = null;
     state.heroSettingsOpen = false;
@@ -1057,11 +1040,9 @@
       else if (state.stockTab === 'drawdown') body = `<div id="chart-dd" class="chart-box rounded border dark:border-gray-800"></div>`;
       else if (state.stockTab === 'openDayDrawdown') body = `<div id="odd-out"></div>`;
       else if (state.stockTab === 'trades') body = tradesTable(r.trades);
-      else if (state.stockTab === 'profit') body = `<p class="mb-2">Профит-фактор: <b>${fmt(r.metrics?.profitFactor)}</b></p>`;
-      else if (state.stockTab === 'duration') {
-        const avg = r.trades?.length ? r.trades.reduce((s, t) => s + (t.duration || 0), 0) / r.trades.length : 0;
-        body = `<p>Средняя длительность: <b>${fmt(avg, 1)}</b> дн.</p>`;
-      } else if (state.stockTab === 'monthlyContribution') body = `<form id="mc-form" class="flex flex-wrap items-end gap-2 mb-3"><label class="text-xs">Сумма<input name="amount" type="number" value="500" class="field mt-1 w-28" /></label><label class="text-xs">День<input name="day" type="number" value="1" class="field mt-1 w-20" /></label><button class="btn-primary">Посчитать</button></form><div id="mc-out"></div>`;
+      else if (state.stockTab === 'profit') body = profitBody(r);
+      else if (state.stockTab === 'duration') body = durationBody(r);
+      else if (state.stockTab === 'monthlyContribution') body = `<form id="mc-form" class="flex flex-wrap items-end gap-2 mb-3"><label class="text-xs">Сумма<input name="amount" type="number" value="500" class="field mt-1 w-28" /></label><label class="text-xs">День<input name="day" type="number" value="1" class="field mt-1 w-20" /></label><button class="btn-primary">Посчитать</button></form><div id="mc-out"></div>`;
       else if (state.stockTab === 'splits') body = `<div id="splits-box" class="text-sm"></div>`;
       else if (state.stockTab === 'buyhold') body = `<div id="bh-out">
         <form id="bh-lev-form" class="flex flex-wrap items-end gap-3 mb-3">
@@ -1090,7 +1071,7 @@
   function stocksParams(tickers, isDefault, defaults) {
     return `
       <div><label class="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300" for="ticker-input">Тикеры</label>
-        ${tickerInput('ticker-input', state.tickerInput, tickers, false)}
+        ${tickerInput('ticker-input', state.tickerInput)}
         ${isDefault ? '' : `<button type="button" id="reset-tickers" class="mt-1.5 w-full rounded-lg border border-dashed border-gray-300 px-2 py-1 text-left text-[11px] text-gray-500 hover:border-indigo-400 hover:bg-indigo-50 hover:text-indigo-600 dark:border-gray-600">↩ ${esc(defaults.join(', '))}</button>`}
       </div>
       <div><label class="mb-1 block text-xs font-medium" for="leverage-sel">Маржинальность</label>
@@ -1116,7 +1097,7 @@
           <button type="button" id="ema-preset-del" class="icon-btn icon-btn-md icon-btn-glass" title="Удалить пресет" aria-label="Удалить пресет">${icon('trash', 'w-3.5 h-3.5')}</button></div>
           <div class="mt-2 flex gap-2"><input id="ema-preset-name" class="${inputCls()}" placeholder="Название пресета" /><button type="button" id="ema-preset-save" class="btn-secondary min-h-0 py-2">Сохранить</button></div>
         </div>
-        <div><label class="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">Тикеры</label>${tickerInput('ema-tickers', state.emaTickers, tickers, false)}</div>
+        <div><label class="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">Тикеры</label>${tickerInput('ema-tickers', state.emaTickers)}</div>
         <div class="grid grid-cols-2 gap-3">
           <div><label class="mb-1 block text-xs font-medium">EMA</label>
             <select name="period" class="${inputCls()}"><option value="20" ${f.period === 20 ? 'selected' : ''}>EMA 20</option><option value="200" ${f.period !== 20 ? 'selected' : ''}>EMA 200</option></select>
@@ -1181,7 +1162,7 @@
     return `
       <div class="text-sm font-semibold">Параметры</div>
       <form id="opt-form" class="space-y-3">
-        <div><label class="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">Тикеры</label>${tickerInput('opt-tickers', state.optTickers, tickers, false)}</div>
+        <div><label class="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">Тикеры</label>${tickerInput('opt-tickers', state.optTickers)}</div>
         <div class="grid grid-cols-2 gap-2">
           <div><label class="mb-1 block text-xs font-medium">Страйк (+%)</label><select name="strike" class="${inputCls()}">${sel([5, 10, 15, 20], f.strike, (v) => '+' + v + '%')}</select></div>
           <div><label class="mb-1 block text-xs font-medium">Корр. IV (+%)</label><select name="vol" class="${inputCls()}">${sel([0, 5, 10, 15, 20, 25, 30, 40, 50], f.vol, (v) => '+' + v + '%')}</select></div>
@@ -1716,11 +1697,9 @@
     applyTheme();
     const app = document.getElementById('app');
     if (state.page === '/login' || !state.user) {
-      if (state.page === '/login' || !state.user) {
-        app.innerHTML = loginPage();
-        bindLogin();
-        return;
-      }
+      app.innerHTML = loginPage();
+      bindLogin();
+      return;
     }
     if (!document.getElementById('page-root')) {
       app.innerHTML = shellHTML();
@@ -1769,7 +1748,6 @@
     if (!el) return;
     el.addEventListener('input', () => {
       const v = el.value;
-      state.selected = parseTickers(v);
       if (id === 'ema-tickers') {
         state.emaTickers = v;
         try { localStorage.setItem('ema.tickers', v); } catch (_) {}
@@ -1796,7 +1774,6 @@
         e.preventDefault();
         state.ticker = b.dataset.load;
         state.tickerInput = b.dataset.load;
-        state.selected = [b.dataset.load];
         navigate('/stocks?tickers=' + encodeURIComponent(b.dataset.load));
       }));
       root.querySelectorAll('[data-menu]').forEach((b) => b.addEventListener('click', (e) => {
@@ -1908,7 +1885,6 @@
       document.getElementById('reset-tickers')?.addEventListener('click', () => {
         const d = defaultTickers();
         state.tickerInput = d.join(', ');
-        state.selected = d;
         renderPage();
       });
       document.getElementById('run-bt')?.addEventListener('click', runStocks);
@@ -1942,7 +1918,7 @@
         if (!pset) return;
         state.emaForm = normalizeEmaForm(pset.form);
         persistEmaForm();
-        if (pset.tickers) { state.emaTickers = pset.tickers; state.selected = parseTickers(pset.tickers); try { localStorage.setItem('ema.tickers', state.emaTickers); } catch (_) {} }
+        if (pset.tickers) { state.emaTickers = pset.tickers; try { localStorage.setItem('ema.tickers', state.emaTickers); } catch (_) {} }
         renderPage();
       });
       bindEmaZones(root);
@@ -2248,7 +2224,6 @@
 
   async function loadSelected() {
     const sel = parseTickers(pageTickerText());
-    state.selected = sel;
     if (!sel.length) throw new Error('Укажите тикеры');
     const loaded = [];
     const missing = [];
@@ -2498,6 +2473,15 @@
     }
   }
 
+  function paintLine(id, pts, dark, color) {
+    const el = document.getElementById(id);
+    if (el && pts) Charts.line(el, pts, dark, color);
+  }
+  function paintCandles(id, bars, dark) {
+    const el = document.getElementById(id);
+    if (el && bars) Charts.candles(el, bars, dark);
+  }
+
   function paintStockCharts() {
     const r = state.result;
     if (!r) return;
@@ -2506,7 +2490,7 @@
       paintCurrentHero();
       return;
     }
-    if (state.stockTab === 'price' && document.getElementById('chart-price')) Charts.candles(document.getElementById('chart-price'), barsForTicker(selectedHeroTicker()), dark);
+    if (state.stockTab === 'price') paintCandles('chart-price', barsForTicker(selectedHeroTicker()), dark);
     if (state.stockTab === 'tickerCharts' && document.getElementById('ticker-charts')) {
       const host = document.getElementById('ticker-charts');
       host.innerHTML = (state.tickersData || []).map((t) => `<div><div class="text-sm font-semibold mb-1">${esc(t.ticker)}</div><div id="tc-${esc(t.ticker)}" class="chart-box rounded border dark:border-gray-800"></div></div>`).join('');
@@ -2515,12 +2499,10 @@
         if (el) Charts.candles(el, t.data, dark);
       });
     }
-    if (state.stockTab === 'equity' && document.getElementById('chart-eq')) Charts.line(document.getElementById('chart-eq'), r.equity, dark);
-    if (state.stockTab === 'drawdown' && document.getElementById('chart-dd')) {
-      Charts.line(document.getElementById('chart-dd'), (r.equity || []).map((p) => ({ date: p.date, value: p.drawdown })), dark, '#dc2626');
-    }
-    if (state.stockTab === 'exposure' && document.getElementById('chart-exp') && r.exposure) {
-      Charts.line(document.getElementById('chart-exp'), r.exposure.map((p) => ({ date: p.date, value: p.exposurePct })), dark, '#0ea5e9');
+    if (state.stockTab === 'equity') paintLine('chart-eq', r.equity, dark);
+    if (state.stockTab === 'drawdown') paintLine('chart-dd', (r.equity || []).map((p) => ({ date: p.date, value: p.drawdown })), dark, '#dc2626');
+    if (state.stockTab === 'exposure' && r.exposure) {
+      paintLine('chart-exp', r.exposure.map((p) => ({ date: p.date, value: p.exposurePct })), dark, '#0ea5e9');
     }
     if (state.stockTab === 'openDayDrawdown') {
       const el = document.getElementById('odd-out');
@@ -2551,18 +2533,16 @@
       paintCurrentHero();
       return;
     }
-    if (tab === 'price' && document.getElementById('chart-ema-price')) Charts.candles(document.getElementById('chart-ema-price'), barsForTicker(selectedHeroTicker()), dark);
-    if (tab === 'emaDeviation' && document.getElementById('chart-ema-dev')) {
+    if (tab === 'price') paintCandles('chart-ema-price', barsForTicker(selectedHeroTicker()), dark);
+    if (tab === 'emaDeviation') {
       const t = selectedHeroTicker();
       const dev = (r.deviation || []).filter((p) => !p.ticker || p.ticker === t);
-      Charts.line(document.getElementById('chart-ema-dev'), dev.map((p) => ({ date: p.date, value: p.deviationPct })), dark, '#7c3aed');
+      paintLine('chart-ema-dev', dev.map((p) => ({ date: p.date, value: p.deviationPct })), dark, '#7c3aed');
     }
-    if (tab === 'equity' && document.getElementById('chart-ema-eq')) Charts.line(document.getElementById('chart-ema-eq'), r.equity, dark);
-    if (tab === 'drawdown' && document.getElementById('chart-ema-dd')) {
-      Charts.line(document.getElementById('chart-ema-dd'), (r.equity || []).map((p) => ({ date: p.date, value: p.drawdown })), dark, '#dc2626');
-    }
-    if (tab === 'exposure' && document.getElementById('chart-ema-exp') && r.exposure?.length) {
-      Charts.line(document.getElementById('chart-ema-exp'), r.exposure.map((p) => ({ date: p.date, value: p.exposurePct })), dark, '#0ea5e9');
+    if (tab === 'equity') paintLine('chart-ema-eq', r.equity, dark);
+    if (tab === 'drawdown') paintLine('chart-ema-dd', (r.equity || []).map((p) => ({ date: p.date, value: p.drawdown })), dark, '#dc2626');
+    if (tab === 'exposure' && r.exposure?.length) {
+      paintLine('chart-ema-exp', r.exposure.map((p) => ({ date: p.date, value: p.exposurePct })), dark, '#0ea5e9');
     }
   }
 
@@ -2575,11 +2555,9 @@
       paintCurrentHero();
       return;
     }
-    if (tab === 'equity' && document.getElementById('chart-opt-eq')) Charts.line(document.getElementById('chart-opt-eq'), r.equity, dark);
-    if (tab === 'price' && document.getElementById('chart-opt-price')) Charts.candles(document.getElementById('chart-opt-price'), barsForTicker(selectedHeroTicker()), dark);
-    if (tab === 'drawdown' && document.getElementById('chart-opt-dd')) {
-      Charts.line(document.getElementById('chart-opt-dd'), (r.equity || []).map((p) => ({ date: p.date, value: p.drawdown })), dark, '#dc2626');
-    }
+    if (tab === 'equity') paintLine('chart-opt-eq', r.equity, dark);
+    if (tab === 'price') paintCandles('chart-opt-price', barsForTicker(selectedHeroTicker()), dark);
+    if (tab === 'drawdown') paintLine('chart-opt-dd', (r.equity || []).map((p) => ({ date: p.date, value: p.drawdown })), dark, '#dc2626');
     if (tab === 'tickerCharts' && document.getElementById('opt-ticker-charts')) {
       const host = document.getElementById('opt-ticker-charts');
       host.innerHTML = (state.tickersData || []).map((t) => `<div><div class="text-sm font-semibold mb-1">${esc(t.ticker)}</div><div id="otc-${esc(t.ticker)}" class="chart-box rounded border dark:border-gray-800"></div></div>`).join('');
@@ -2683,7 +2661,6 @@
     if (q) {
       state.tickerInput = q.split(',').map((s) => s.trim().toUpperCase()).filter(Boolean).join(', ');
     }
-    state.selected = parseTickers(state.tickerInput);
     if (state.datasets[0] && !state.ticker) state.ticker = state.datasets[0].ticker;
   }
 
@@ -2694,7 +2671,6 @@
     const q = new URL(location.href).searchParams.get('tickers');
     if (q) {
       state.tickerInput = q.split(',').map((s) => s.trim().toUpperCase()).filter(Boolean).join(', ');
-      state.selected = parseTickers(state.tickerInput);
     }
     if (state.page === '/login') {
       document.getElementById('app').innerHTML = loginPage();
