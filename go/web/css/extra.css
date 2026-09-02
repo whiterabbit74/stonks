@@ -65,6 +65,7 @@ html.dark table.trades th, html.dark table.trades td { border-color: #1f2937; }
   .desktop-nav { display: none !important; }
   #menu-btn { display: inline-flex !important; }
   #settings-btn, #logout-btn { display: none !important; }
+  footer { padding-bottom: 5.5rem; }
 }
 @media (min-width: 1024px) {
   .lg-cols-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
