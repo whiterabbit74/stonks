@@ -103,12 +103,17 @@ func TestVanillaUIAssets(t *testing.T) {
 		"Экспирация",
 		"Сигнал входа/выхода",
 		"применяется ко всем отслеживаемым акциям",
+		"Отклонение", "Спреды", "Баланс",
+		"Импорт из Webull", "Запросить",
+		"data-testprov", "Отправить тест",
+		"EMA-оповещений пока нет",
+		"Всего активов",
 	} {
 		if !strings.Contains(a, copy) {
 			t.Errorf("missing page copy %s", copy)
 		}
 	}
-	for _, tab := range []string{"summary", "tickerCharts", "openDayDrawdown", "single-position", "options-multi"} {
+	for _, tab := range []string{"summary", "tickerCharts", "openDayDrawdown", "single-position", "options-multi", "emaDeviation", "spreads"} {
 		if !strings.Contains(a, tab) {
 			t.Errorf("app.js missing %s", tab)
 		}

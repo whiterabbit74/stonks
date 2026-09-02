@@ -86,7 +86,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/datasets", wrap(s.handleCreateDataset))
 	s.mux.HandleFunc("PUT /api/datasets/{id}", wrap(s.handlePutDataset))
 	s.mux.HandleFunc("DELETE /api/datasets/{id}", wrap(s.handleDeleteDataset))
-	s.mux.HandleFunc("POST /api/datasets/{id}/refresh", wrap(s.notImplemented("refresh")))
+	s.mux.HandleFunc("POST /api/datasets/{id}/refresh", wrap(s.handleRefreshDataset))
 	s.mux.HandleFunc("POST /api/datasets/{id}/apply-splits", wrap(s.handleApplySplits))
 	s.mux.HandleFunc("PATCH /api/datasets/{id}/metadata", wrap(s.handlePatchDatasetMeta))
 	// Splits
@@ -434,6 +434,44 @@ func (s *Server) savePayload(w http.ResponseWriter, payload map[string]any) {
 		return
 	}
 	writeJSON(w, 200, map[string]any{"ok": true, "ticker": ticker, "dataPoints": len(bars)})
+}
+
+func (s *Server) handleRefreshDataset(w http.ResponseWriter, r *http.Request) {
+	id := store.SafeTicker(r.PathValue("id"))
+	if id == "" {
+		writeJSON(w, 400, map[string]any{"error": "Invalid symbol"})
+		return
+	}
+	ds, err := s.DB.GetDataset(id)
+	if err != nil || ds == nil {
+		writeJSON(w, 404, map[string]any{"error": "Dataset not found"})
+		return
+	}
+	st := s.DB.Settings()
+	provider := str(st["enhancerProvider"])
+	if provider == "" {
+		provider = "finnhub"
+	}
+	if provider == "webull" {
+		writeJSON(w, 400, map[string]any{"error": "Webull не поддерживает загрузку исторических данных"})
+		return
+	}
+	endTs := time.Now().Unix()
+	startTs := endTs - 40*365*24*60*60
+	hist, err := s.Providers.Historical(id, provider, startTs, endTs, "none")
+	if err != nil {
+		writeProviderError(w, err)
+		return
+	}
+	name := str(ds["name"])
+	if name == "" {
+		name = id
+	}
+	if err := s.DB.SaveDataset(id, name, str(ds["companyName"]), str(ds["tag"]), hist.Rows, false); err != nil {
+		writeJSON(w, 500, map[string]any{"error": err.Error()})
+		return
+	}
+	writeJSON(w, 200, map[string]any{"ok": true, "ticker": id, "dataPoints": len(hist.Rows), "provider": provider})
 }
 
 func (s *Server) handleDeleteDataset(w http.ResponseWriter, r *http.Request) {

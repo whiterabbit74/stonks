@@ -38,13 +38,13 @@ type EmaDeviationPoint struct {
 }
 
 type EmaResult struct {
-	Equity      []types.EquityPoint
-	Exposure    []types.ExposurePoint
-	FinalValue  float64
-	MaxDrawdown float64
-	Trades      []types.Trade
-	Metrics     types.BacktestMetrics
-	Deviation   []EmaDeviationPoint
+	Equity      []types.EquityPoint     `json:"equity"`
+	Exposure    []types.ExposurePoint   `json:"exposure"`
+	FinalValue  float64                 `json:"finalValue"`
+	MaxDrawdown float64                 `json:"maxDrawdown"`
+	Trades      []types.Trade           `json:"trades"`
+	Metrics     types.BacktestMetrics   `json:"metrics"`
+	Deviation   []EmaDeviationPoint     `json:"deviation"`
 }
 
 type emaLot struct {

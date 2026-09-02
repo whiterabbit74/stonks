@@ -86,14 +86,16 @@ func (s *Server) calcOptions(w http.ResponseWriter, r *http.Request) {
 	var req calcReq
 	_ = readJSON(r, &req)
 	eq, trades, final := backtest.RunOptions(decodeTrades(req.Trades), s.barsOrDataset(req), req.Config)
-	writeJSON(w, 200, map[string]any{"equity": eq, "trades": trades, "finalValue": final})
+	m := metrics.New(trades, eq, 10000, nil).All()
+	writeJSON(w, 200, map[string]any{"equity": eq, "trades": trades, "finalValue": final, "metrics": m, "maxDrawdown": m.MaxDrawdown})
 }
 
 func (s *Server) calcOptionsMulti(w http.ResponseWriter, r *http.Request) {
 	var req calcReq
 	_ = readJSON(r, &req)
 	eq, trades, final := backtest.RunMultiOptions(decodeTrades(req.Trades), s.tickersOrOne(req), req.Config)
-	writeJSON(w, 200, map[string]any{"equity": eq, "trades": trades, "finalValue": final})
+	m := metrics.New(trades, eq, 10000, nil).All()
+	writeJSON(w, 200, map[string]any{"equity": eq, "trades": trades, "finalValue": final, "metrics": m, "maxDrawdown": m.MaxDrawdown})
 }
 
 func (s *Server) calcEMA(w http.ResponseWriter, r *http.Request) {

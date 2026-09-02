@@ -108,6 +108,42 @@
   ];
   const LEV_PCT = [100, 125, 150, 175, 200, 225, 250, 275, 300];
   const DEFAULT_LEVERAGE_LABEL = '200%';
+  const EMA_TABS = [
+    { id: 'summary', label: 'Сводка' },
+    { id: 'price', label: 'Цены' },
+    { id: 'emaDeviation', label: 'Отклонение' },
+    { id: 'equity', label: 'Капитал' },
+    { id: 'exposure', label: 'Экспозиция' },
+    { id: 'drawdown', label: 'Просадка' },
+    { id: 'trades', label: 'Сделки' },
+    { id: 'profit', label: 'Профит-фактор' },
+    { id: 'duration', label: 'Длительность' },
+    { id: 'spreads', label: 'Спреды' },
+  ];
+  const OPTIONS_TABS = [
+    { id: 'summary', label: 'Сводка' },
+    { id: 'equity', label: 'Баланс' },
+    { id: 'price', label: 'Цены' },
+    { id: 'tickerCharts', label: 'Графики тикеров' },
+    { id: 'drawdown', label: 'Просадка' },
+    { id: 'trades', label: 'Сделки' },
+    { id: 'profit', label: 'Профит Фактор' },
+    { id: 'duration', label: 'Длительность' },
+    { id: 'splits', label: 'Сплиты' },
+  ];
+  const ENHANCE_CATS = [
+    { id: 'all', label: 'Все', icon: '📊' },
+    { id: 'popular', label: 'Популярные', icon: '⭐' },
+    { id: 'nasdaq100', label: 'NASDAQ 100', icon: '📈' },
+    { id: 'sp500', label: 'S&P 500', icon: '🏛️' },
+    { id: 'tech', label: 'Технологии', icon: '💻' },
+    { id: 'finance', label: 'Финансы', icon: '🏦' },
+    { id: 'health', label: 'Здравоохранение', icon: '🏥' },
+    { id: 'energy', label: 'Энергетика', icon: '⚡' },
+    { id: 'consumer', label: 'Потребительские', icon: '🛒' },
+    { id: 'etf', label: 'ETF', icon: '📦' },
+    { id: 'leveraged', label: 'С плечом', icon: '🚀' },
+  ];
   const PATHS = {
     database: '<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/>',
     linechart: '<path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/>',
@@ -174,6 +210,20 @@
     token: null,
     menuTicker: null,
     loaded: {},
+    emaResult: null,
+    emaTab: 'summary',
+    emaForm: { period: 200, leverage: 200, signal: 'close', start: 'full_history', takeProfit: '', noSellAtLoss: false, buy: -20, sell: 40 },
+    emaPresets: JSON.parse(localStorage.getItem('emaPresets') || '[]'),
+    optResult: null,
+    optTab: 'summary',
+    optForm: { strike: 10, vol: 20, cap: 10, expiration: 4, maxHold: 30, leverage: 200 },
+    monitorTrades: [],
+    emaAlerts: [],
+    autoConfig: {},
+    tickerCatalog: [],
+    enhanceCat: 'popular',
+    enhanceQuery: '',
+    analysisTabsConfig: JSON.parse(localStorage.getItem('analysisTabsConfig') || 'null') || STOCK_TABS.filter((t) => t.id !== 'summary').map((t) => ({ ...t, visible: true })),
   };
 
   function icon(name, cls) {
@@ -234,6 +284,82 @@
   }
   function inputCls() {
     return 'w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-800';
+  }
+  function resultOf(r) {
+    if (!r) return null;
+    return {
+      equity: r.equity || r.Equity || [],
+      trades: r.trades || r.Trades || r.tradesList || [],
+      metrics: r.metrics || r.Metrics || {},
+      finalValue: r.finalValue ?? r.FinalValue,
+      maxDrawdown: r.maxDrawdown ?? r.MaxDrawdown,
+      exposure: r.exposure || r.Exposure || [],
+      deviation: r.deviation || r.Deviation || [],
+    };
+  }
+  function pick(m, k) {
+    if (!m || typeof m !== 'object') return undefined;
+    return m[k] ?? m[k.charAt(0).toUpperCase() + k.slice(1)];
+  }
+  function analysisBody(r) {
+    const x = resultOf(r);
+    if (!x) return '<p class="text-sm text-gray-500">Нет данных</p>';
+    return metricsGrid(x.metrics, x.finalValue, x.maxDrawdown) + tradesTable(x.trades);
+  }
+  function profitBody(r) {
+    const x = resultOf(r);
+    if (!x) return '<p class="text-sm text-gray-500">Нет сделок</p>';
+    const pf = pick(x.metrics, 'profitFactor');
+    const wins = x.trades.filter((t) => (t.pnl || 0) > 0);
+    const losses = x.trades.filter((t) => (t.pnl || 0) < 0);
+    return `<p class="mb-3">Profit factor: <b>${fmt(pf)}</b> · прибыльных ${wins.length} · убыточных ${losses.length}</p>` + tradesTable(x.trades);
+  }
+  function durationBody(r) {
+    const x = resultOf(r);
+    if (!x || !x.trades.length) return '<p class="text-sm text-gray-500">Нет сделок</p>';
+    const avg = x.trades.reduce((s, t) => s + (t.duration || 0), 0) / x.trades.length;
+    return `<p class="mb-3">Средняя длительность: <b>${fmt(avg, 1)}</b> дн.</p>` + tradesTable(x.trades);
+  }
+  function spreadsTable(buy, sell) {
+    const rows = [].concat(buy || []).flatMap((b) => (sell || []).map((s) => `<tr><td>${fmt(b)}</td><td>${fmt(s)}</td><td>${fmt(s - b, 1)} п.п.</td></tr>`)).join('');
+    return `<table class="trades"><thead><tr><th>Покупка</th><th>Продажа</th><th>Расстояние</th></tr></thead><tbody>${rows || '<tr><td colspan="3" class="text-center text-gray-500">Нет зон</td></tr>'}</tbody></table>`;
+  }
+  function catalogFiltered() {
+    const cat = state.enhanceCat || 'popular';
+    const q = String(state.enhanceQuery || '').toLowerCase().trim();
+    let list = state.tickerCatalog.length ? state.tickerCatalog : POPULAR;
+    if (cat !== 'all') list = list.filter((t) => (t.categories || []).includes(cat) || (cat === 'popular' && !t.categories));
+    if (q) list = list.filter((t) => t.symbol.toLowerCase().includes(q) || String(t.name || '').toLowerCase().includes(q));
+    return list;
+  }
+  function monitorStats(trades) {
+    const closed = (trades || []).filter((t) => t.status === 'closed' && Number.isFinite(Number(t.pnlPercent)));
+    const initial = 10000;
+    let bal = initial, peak = initial;
+    const equity = [];
+    let wins = 0, hold = 0, net = 0;
+    closed.slice().sort((a, b) => String(a.exitDate || '').localeCompare(String(b.exitDate || ''))).forEach((t) => {
+      const pct = Number(t.pnlPercent) || 0;
+      bal *= 1 + pct / 100;
+      if (bal > peak) peak = bal;
+      equity.push({ date: t.exitDate || t.entryDate, value: bal, drawdown: peak > 0 ? ((peak - bal) / peak) * 100 : 0 });
+      if (pct > 0) wins++;
+      hold += Number(t.duration) || 0;
+      net += Number(t.pnlAbsolute) || 0;
+    });
+    const dd = equity.reduce((m, p) => Math.max(m, p.drawdown || 0), 0);
+    const avg = closed.length ? closed.reduce((s, t) => s + (Number(t.pnlPercent) || 0), 0) / closed.length : 0;
+    return { closed, initial, bal, equity, wins, hold, net, dd, avg, ret: (bal / initial - 1) * 100 };
+  }
+  async function loadCatalog() {
+    if (state.tickerCatalog.length) return;
+    try {
+      const r = await fetch('/tickers.json');
+      const json = await r.json();
+      if (Array.isArray(json) && json.length) state.tickerCatalog = json;
+    } catch (_) {
+      state.tickerCatalog = POPULAR.map((t) => ({ ...t, categories: ['popular'] }));
+    }
   }
   function formatDuration(seconds) {
     const s = Math.max(0, Math.floor(seconds));
@@ -509,6 +635,7 @@
           <button data-menu="${esc(d.ticker)}" class="absolute top-2 right-2 inline-flex h-6 w-6 items-center justify-center rounded-md text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700" aria-label="Открыть меню действий">${icon('more', 'w-4 h-4')}</button>
           ${state.menuTicker === d.ticker ? `<div class="absolute right-2 top-8 z-10 w-40 rounded-lg border bg-white shadow dark:bg-gray-800 dark:border-gray-700 text-sm">
             <button data-edit="${esc(d.ticker)}" class="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700">Изменить</button>
+            <button data-refresh="${esc(d.ticker)}" class="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700">Обновить датасет</button>
             <button data-export="${esc(d.ticker)}" class="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700">Экспорт JSON</button>
             <button data-del="${esc(d.ticker)}" class="w-full text-left px-3 py-2 text-red-600 hover:bg-red-50">Удалить</button>
           </div>` : ''}
@@ -547,13 +674,21 @@
   function pageEnhance() {
     const prov = providerId();
     const loaded = new Set((state.datasets || []).map((d) => String(d.ticker || '').toUpperCase()));
-    const cards = POPULAR.map((t) => {
+    const all = state.tickerCatalog.length ? state.tickerCatalog : POPULAR;
+    const list = catalogFiltered();
+    const catLabel = (ENHANCE_CATS.find((c) => c.id === state.enhanceCat) || ENHANCE_CATS[1]).label;
+    const chips = ENHANCE_CATS.map((c) => {
+      const n = c.id === 'all' ? all.length : all.filter((t) => (t.categories || []).includes(c.id)).length;
+      const on = state.enhanceCat === c.id;
+      return `<button type="button" data-ecat="${c.id}" class="${on ? 'cat-chip' : 'cat-chip-off'}">${c.icon} ${esc(c.label)} <span class="text-xs ${on ? 'text-blue-500' : 'text-gray-400'}">(${n})</span></button>`;
+    }).join('');
+    const cards = list.map((t) => {
       const on = loaded.has(t.symbol);
       return `<button type="button" data-esym="${esc(t.symbol)}" class="ticker-card${on ? ' loaded' : ''}" title="${on ? esc(t.symbol) + ' уже загружен. Нажмите для обновления' : 'Нажмите для загрузки ' + t.symbol}">
         <div class="text-sm font-medium truncate ${on ? 'text-green-800 dark:text-green-200' : 'text-gray-900 dark:text-gray-100'}">${esc(t.name)}</div>
         <div class="text-xs font-mono mt-0.5 ${on ? 'text-green-600' : 'text-gray-500'}">${esc(t.symbol)}</div>
       </button>`;
-    }).join('');
+    }).join('') || '<p class="text-sm text-gray-500 col-span-full text-center py-8">Ничего не найдено</p>';
     return `
       ${pageHeader('Новые данные', 'Загрузка исторических данных из API', `<div class="rounded-lg border px-3 py-2 text-xs bg-white dark:bg-gray-800 dark:border-gray-700"><div class="text-gray-500">Провайдер данных</div><div class="font-semibold">${esc(providerLabel(prov))}</div></div>`)}
       <div class="bg-white border border-gray-200 rounded-lg p-4 dark:bg-gray-900 dark:border-gray-800">
@@ -564,10 +699,10 @@
               <input type="hidden" name="provider" value="${esc(prov)}" />
               <div class="enhance-search">
                 ${icon('search', 'search-glyph')}
-                <input name="symbol" value="" class="enhance-input" placeholder="AAPL, MSFT, TSLA..." />
+                <input name="symbol" id="enhance-q" value="${esc(state.enhanceQuery)}" class="enhance-input" placeholder="AAPL, MSFT, TSLA..." />
               </div>
               <div class="enhance-actions">
-                <button type="submit" class="enhance-load" disabled title="Загрузить данные">${icon('download', 'w-4 h-4')}<span class="enhance-load-label">Загрузить</span></button>
+                <button type="submit" class="enhance-load" ${state.enhanceQuery.trim() ? '' : 'disabled'} title="Загрузить данные">${icon('download', 'w-4 h-4')}<span class="enhance-load-label">Загрузить</span></button>
               </div>
             </form>
           </div>
@@ -575,13 +710,11 @@
         </div>
         <div id="enhance-out" class="mt-3 text-sm text-gray-600 dark:text-gray-400"></div>
       </div>
-      <div class="flex gap-2 overflow-x-auto pb-2 mt-4">
-        <span class="cat-chip">⭐ Популярные <span class="text-xs text-blue-500">(${POPULAR.length})</span></span>
-      </div>
+      <div class="flex gap-2 overflow-x-auto pb-2 mt-4">${chips}</div>
       <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg p-3">
         <div class="flex items-center justify-between mb-3">
-          <h3 class="font-semibold text-gray-900 dark:text-gray-100">Популярные</h3>
-          <span class="text-sm text-gray-500">${POPULAR.length} тикеров</span>
+          <h3 class="font-semibold text-gray-900 dark:text-gray-100">${esc(state.enhanceQuery ? 'Результаты поиска' : catLabel)}</h3>
+          <span class="text-sm text-gray-500">${list.length} тикеров</span>
         </div>
         <div class="ticker-card-grid">${cards}</div>
       </div>
@@ -591,11 +724,14 @@
   function isSingle() { return parseTickers(state.tickerInput).length === 1; }
   function visibleStockTabs() {
     const single = isSingle();
+    const cfg = new Map((state.analysisTabsConfig || []).map((t) => [t.id, t]));
     const tabs = STOCK_TABS.filter((t) => {
       if (t.id === 'summary') return true;
       if (!state.result) return false;
       if (SINGLE_ONLY.has(t.id) && !single) return false;
       if (MULTI_ONLY.has(t.id) && single) return false;
+      const c = cfg.get(t.id);
+      if (c && c.visible === false) return false;
       return true;
     });
     return tabs;
@@ -674,82 +810,137 @@
       <button id="run-bt" class="btn-primary w-full" ${state.running ? 'disabled' : ''}>${state.running ? 'Считаем…' : 'Запустить бэктест'}</button>`;
   }
 
-  function pageEMA() {
+  function emaFormHTML() {
+    const f = state.emaForm;
     const tickers = parseTickers(state.tickerInput);
+    const presets = (state.emaPresets || []).map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('');
+    return `
+      <form id="ema-form" class="space-y-3">
+        <div>
+          <label class="mb-1 block text-xs font-medium">Пресеты</label>
+          <div class="flex gap-2"><select id="ema-preset" class="${inputCls()}"><option value="">— Выбрать пресет —</option>${presets}</select>
+          <button type="button" id="ema-preset-del" class="icon-btn icon-btn-md icon-btn-glass" title="Удалить пресет">${icon('trash', 'w-3.5 h-3.5')}</button></div>
+          <div class="mt-2 flex gap-2"><input id="ema-preset-name" class="${inputCls()}" placeholder="Название пресета" /><button type="button" id="ema-preset-save" class="btn-secondary min-h-0 py-2">Сохранить</button></div>
+        </div>
+        <div><label class="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">Тикеры</label>${tickerInput('ema-tickers', state.tickerInput, tickers, false)}</div>
+        <div class="grid grid-cols-2 gap-3">
+          <div><label class="mb-1 block text-xs font-medium">EMA</label>
+            <select name="period" class="${inputCls()}"><option value="20" ${f.period === 20 ? 'selected' : ''}>EMA 20</option><option value="200" ${f.period !== 20 ? 'selected' : ''}>EMA 200</option></select>
+          </div>
+          <div><label class="mb-1 block text-xs font-medium">Маржинальность</label>
+            <select name="leverage" class="${inputCls()}">${levOptions(f.leverage)}</select>
+          </div>
+        </div>
+        <div><label class="mb-1 block text-xs font-medium">Сигнал входа/выхода</label>
+          <select name="signal" class="${inputCls()}"><option value="close" ${f.signal === 'close' ? 'selected' : ''}>По закрытию свечи</option><option value="intraday" ${f.signal === 'intraday' ? 'selected' : ''}>Касание внутри дня (вход по закрытию)</option></select>
+        </div>
+        <div><label class="mb-1 block text-xs font-medium">Старт EMA</label>
+          <select name="start" class="${inputCls()}"><option value="full_history" ${f.start !== 'from_start' ? 'selected' : ''}>После полной истории (${f.period || 200} дней)</option><option value="from_start" ${f.start === 'from_start' ? 'selected' : ''}>С самого начала графика</option></select>
+        </div>
+        <div>
+          <label class="mb-1 block text-xs font-medium" for="ema-take-profit">Тейк-профит</label>
+          <input id="ema-take-profit" name="takeProfit" type="number" min="0" step="0.1" inputmode="decimal" value="${esc(f.takeProfit)}" placeholder="Пусто выключает" class="${inputCls()}" />
+        </div>
+        <label class="flex items-center gap-2 text-sm"><input type="checkbox" name="noSellAtLoss" class="h-4 w-4" ${f.noSellAtLoss ? 'checked' : ''} /> Не продавать в минус</label>
+        <div><label class="mb-1 block text-xs font-medium">Зоны покупки, % от EMA</label><input name="buy" type="number" value="${esc(f.buy)}" class="${inputCls()}" /></div>
+        <div><label class="mb-1 block text-xs font-medium">Зоны продажи, % от EMA</label><input name="sell" type="number" value="${esc(f.sell)}" class="${inputCls()}" /></div>
+        <button class="btn-primary w-full">Запустить EMA-бэктест</button>
+      </form>`;
+  }
+  function pageEMA() {
+    const r = resultOf(state.emaResult);
+    const tabs = r ? EMA_TABS : [{ id: 'summary', label: 'Сводка' }];
+    const tab = r && EMA_TABS.some((t) => t.id === state.emaTab) ? state.emaTab : 'summary';
+    let main = '';
+    if (tab === 'summary') {
+      main = `<div class="p-4 grid lg-cols-3 lg:grid-cols-3 gap-4">
+        <div id="ema-out" class="lg-span-2 lg:col-span-2 min-h-[420px] ${r ? '' : 'flex items-center justify-center text-sm text-gray-500'} rounded-lg border border-gray-200 dark:border-gray-700">${r ? '<div id="chart-ema-hero" class="chart-box-lg"></div>' : 'Запустите расчет EMA-стратегии'}</div>
+        <aside class="rounded-lg border border-gray-200 bg-gray-50 p-3 space-y-3 dark:bg-gray-800/50 dark:border-gray-700">${emaFormHTML()}</aside>
+      </div>`;
+    } else {
+      const bodies = {
+        price: '<div id="chart-ema-price" class="chart-box-lg rounded border dark:border-gray-800"></div>',
+        emaDeviation: '<div id="chart-ema-dev" class="chart-box-lg rounded border dark:border-gray-800"></div>',
+        equity: '<div id="chart-ema-eq" class="chart-box-lg rounded border dark:border-gray-800"></div>',
+        exposure: '<div id="chart-ema-exp" class="chart-box-lg rounded border dark:border-gray-800"></div>',
+        drawdown: '<div id="chart-ema-dd" class="chart-box-lg rounded border dark:border-gray-800"></div>',
+        trades: tradesTable(r.trades),
+        profit: profitBody(r),
+        duration: durationBody(r),
+        spreads: spreadsTable([Number(state.emaForm.buy)], [Number(state.emaForm.sell)]),
+      };
+      main = `<div class="p-4">${bodies[tab] || ''}</div>`;
+    }
     return `
       ${pageHeader('EMA', 'Симулятор торговли по отклонению цены от EMA')}
+      ${r ? metricsGrid(r.metrics, r.finalValue, r.maxDrawdown) : ''}
       <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
-        ${analysisTabs([{ id: 'summary', label: 'Сводка' }], 'summary', 'data-etab')}
-        <div class="p-4 grid lg-cols-3 lg:grid-cols-3 gap-4">
-          <div id="ema-out" class="lg-span-2 lg:col-span-2 min-h-[420px] flex items-center justify-center text-sm text-gray-500 rounded-lg border border-gray-200 dark:border-gray-700">Запустите расчет EMA-стратегии</div>
-          <aside class="rounded-lg border border-gray-200 bg-gray-50 p-3 space-y-3 dark:bg-gray-800/50 dark:border-gray-700">
-            <form id="ema-form" class="space-y-3">
-              <div><label class="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">Тикеры</label>${tickerInput('ema-tickers', state.tickerInput, tickers, false)}</div>
-              <div class="grid grid-cols-2 gap-3">
-                <div><label class="mb-1 block text-xs font-medium">EMA</label>
-                  <select name="period" class="${inputCls()}"><option value="20">EMA 20</option><option value="200" selected>EMA 200</option></select>
-                </div>
-                <div><label class="mb-1 block text-xs font-medium">Маржинальность</label>
-                  <select name="leverage" class="${inputCls()}">${levOptions(200)}</select>
-                </div>
-              </div>
-              <div><label class="mb-1 block text-xs font-medium">Сигнал входа/выхода</label>
-                <select name="signal" class="${inputCls()}"><option value="close">По закрытию свечи</option><option value="intraday">Касание внутри дня (вход по закрытию)</option></select>
-              </div>
-              <div><label class="mb-1 block text-xs font-medium">Старт EMA</label>
-                <select name="start" class="${inputCls()}"><option value="full_history">После полной истории (200 дней)</option><option value="from_start">С самого начала графика</option></select>
-              </div>
-              <div>
-                <label class="mb-1 block text-xs font-medium" for="ema-take-profit">Тейк-профит</label>
-                <input id="ema-take-profit" name="takeProfit" type="number" min="0" step="0.1" inputmode="decimal" placeholder="Пусто выключает" class="${inputCls()}" />
-              </div>
-              <label class="flex items-center gap-2 text-sm"><input type="checkbox" name="noSellAtLoss" class="h-4 w-4" /> Не продавать в минус</label>
-              <div><label class="mb-1 block text-xs font-medium">Зоны покупки, % от EMA</label><input name="buy" type="number" value="-20" class="${inputCls()}" /></div>
-              <div><label class="mb-1 block text-xs font-medium">Зоны продажи, % от EMA</label><input name="sell" type="number" value="40" class="${inputCls()}" /></div>
-              <button class="btn-primary w-full">Запустить EMA-бэктест</button>
-            </form>
-          </aside>
-        </div>
+        ${analysisTabs(tabs, tab, 'data-etab')}
+        ${main}
       </div>`;
   }
 
-  function pageOptions() {
+  function optFormHTML() {
+    const f = state.optForm;
     const tickers = parseTickers(state.tickerInput);
-    const strikeOpts = [5, 10, 15, 20].map((v) => `<option value="${v}" ${v === 10 ? 'selected' : ''}>+${v}%</option>`).join('');
-    const ivOpts = [0, 5, 10, 15, 20, 25, 30, 40, 50].map((v) => `<option value="${v}" ${v === 20 ? 'selected' : ''}>+${v}%</option>`).join('');
-    const capOpts = [5, 10, 15, 20, 25, 30, 50].map((v) => `<option value="${v}" ${v === 10 ? 'selected' : ''}>${v}%</option>`).join('');
+    const sel = (opts, cur, fmt) => opts.map((v) => `<option value="${v}" ${Number(cur) === v ? 'selected' : ''}>${fmt(v)}</option>`).join('');
+    return `
+      <div class="text-sm font-semibold">Параметры</div>
+      <form id="opt-form" class="space-y-3">
+        <div><label class="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">Тикеры</label>${tickerInput('opt-tickers', state.tickerInput, tickers, false)}</div>
+        <div class="grid grid-cols-2 gap-2">
+          <div><label class="mb-1 block text-xs font-medium">Страйк (+%)</label><select name="strike" class="${inputCls()}">${sel([5, 10, 15, 20], f.strike, (v) => '+' + v + '%')}</select></div>
+          <div><label class="mb-1 block text-xs font-medium">IV Adj (+%)</label><select name="vol" class="${inputCls()}">${sel([0, 5, 10, 15, 20, 25, 30, 40, 50], f.vol, (v) => '+' + v + '%')}</select></div>
+          <div><label class="mb-1 block text-xs font-medium">Капитал на сделку</label><select name="cap" class="${inputCls()}">${sel([5, 10, 15, 20, 25, 30, 50], f.cap, (v) => v + '%')}</select></div>
+          <div><label class="mb-1 block text-xs font-medium">Экспирация</label>
+            <select name="expiration" class="${inputCls()}">
+              <option value="1" ${f.expiration === 1 ? 'selected' : ''}>1 неделя</option>
+              <option value="2" ${f.expiration === 2 ? 'selected' : ''}>2 недели</option>
+              <option value="4" ${f.expiration === 4 ? 'selected' : ''}>1 месяц</option>
+              <option value="8" ${f.expiration === 8 ? 'selected' : ''}>2 месяца</option>
+              <option value="12" ${f.expiration === 12 ? 'selected' : ''}>3 месяца</option>
+              <option value="24" ${f.expiration === 24 ? 'selected' : ''}>6 месяцев</option>
+            </select>
+          </div>
+          <div class="col-span-2"><label class="mb-1 block text-xs font-medium">Макс. удержание (дней)</label>
+            <input name="maxHold" type="number" min="1" max="365" value="${esc(f.maxHold)}" class="${inputCls()}" />
+          </div>
+          <div class="col-span-2"><label class="mb-1 block text-xs font-medium">Маржинальность</label>
+            <select name="leverage" class="${inputCls()}">${levOptions(f.leverage)}</select>
+          </div>
+        </div>
+        <button id="opt-run" class="btn-primary w-full">Запустить бэктест</button>
+      </form>`;
+  }
+  function pageOptions() {
+    const r = resultOf(state.optResult);
+    const tabs = r ? OPTIONS_TABS : [{ id: 'summary', label: 'Сводка' }];
+    const tab = r && OPTIONS_TABS.some((t) => t.id === state.optTab) ? state.optTab : 'summary';
+    let main = '';
+    if (tab === 'summary') {
+      main = `<div class="p-4 grid lg-cols-3 lg:grid-cols-3 gap-4">
+        <div id="optm-out" class="lg-span-2 lg:col-span-2 min-h-[420px] ${r ? '' : 'flex items-center justify-center text-sm text-gray-500'} rounded-lg border border-gray-200 dark:border-gray-700">${r ? '<div id="chart-opt-hero" class="chart-box-lg"></div>' : 'Запустите бэктест, чтобы увидеть результат'}</div>
+        <aside class="rounded-lg border border-gray-200 bg-gray-50 p-3 space-y-3 dark:bg-gray-800/50 dark:border-gray-700">${optFormHTML()}</aside>
+      </div>`;
+    } else {
+      const bodies = {
+        equity: '<div id="chart-opt-eq" class="chart-box-lg rounded border dark:border-gray-800"></div>',
+        price: '<div id="chart-opt-price" class="chart-box-lg rounded border dark:border-gray-800"></div>',
+        tickerCharts: '<div id="opt-ticker-charts" class="grid md:grid-cols-2 gap-3"></div>',
+        drawdown: '<div id="chart-opt-dd" class="chart-box-lg rounded border dark:border-gray-800"></div>',
+        trades: tradesTable(r.trades),
+        profit: profitBody(r),
+        duration: durationBody(r),
+        splits: '<div id="opt-splits-box" class="text-sm"></div>',
+      };
+      main = `<div class="p-4">${bodies[tab] || ''}</div>`;
+    }
     return `
       ${pageHeader('Опционы', 'Бэктест опционных стратегий на нескольких активах')}
+      ${r ? metricsGrid(r.metrics, r.finalValue, r.maxDrawdown) : ''}
       <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
-        ${analysisTabs([{ id: 'summary', label: 'Сводка' }], 'summary', 'data-otab')}
-        <div class="p-4 grid lg-cols-3 lg:grid-cols-3 gap-4">
-          <div id="optm-out" class="lg-span-2 lg:col-span-2 min-h-[420px] flex items-center justify-center text-sm text-gray-500 rounded-lg border border-gray-200 dark:border-gray-700">Запустите бэктест, чтобы увидеть результат</div>
-          <aside class="rounded-lg border border-gray-200 bg-gray-50 p-3 space-y-3 dark:bg-gray-800/50 dark:border-gray-700">
-            <div class="text-sm font-semibold">Параметры</div>
-            <form id="opt-form" class="space-y-3">
-              <div><label class="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">Тикеры</label>${tickerInput('opt-tickers', state.tickerInput, tickers, false)}</div>
-              <div class="grid grid-cols-2 gap-2">
-                <div><label class="mb-1 block text-xs font-medium">Страйк (+%)</label><select name="strike" class="${inputCls()}">${strikeOpts}</select></div>
-                <div><label class="mb-1 block text-xs font-medium">IV Adj (+%)</label><select name="vol" class="${inputCls()}">${ivOpts}</select></div>
-                <div><label class="mb-1 block text-xs font-medium">Капитал на сделку</label><select name="cap" class="${inputCls()}">${capOpts}</select></div>
-                <div><label class="mb-1 block text-xs font-medium">Экспирация</label>
-                  <select name="expiration" class="${inputCls()}">
-                    <option value="1">1 неделя</option><option value="2">2 недели</option>
-                    <option value="4" selected>1 месяц</option><option value="8">2 месяца</option>
-                    <option value="12">3 месяца</option><option value="24">6 месяцев</option>
-                  </select>
-                </div>
-                <div class="col-span-2"><label class="mb-1 block text-xs font-medium">Макс. удержание (дней)</label>
-                  <input name="maxHold" type="number" min="1" max="365" value="30" class="${inputCls()}" />
-                </div>
-                <div class="col-span-2"><label class="mb-1 block text-xs font-medium">Маржинальность</label>
-                  <select name="leverage" class="${inputCls()}">${levOptions(200)}</select>
-                </div>
-              </div>
-              <button id="opt-run" class="btn-primary w-full">Запустить бэктест</button>
-            </form>
-          </aside>
-        </div>
+        ${analysisTabs(tabs, tab, 'data-otab')}
+        ${main}
       </div>`;
   }
 
@@ -776,7 +967,7 @@
       cells += `<button data-cday="${mmdd}" class="rounded p-2 text-sm text-center ${cls}">${d}</button>`;
     }
     return `
-      ${pageHeader('Календарь торгов', 'NYSE · Американский рынок акций')}
+      ${pageHeader('Календарь торгов', 'NYSE · Американский рынок акций', `<button id="cal-webull" class="btn-secondary min-h-0 py-2 px-4">Импорт из Webull</button>`)}
       <div class="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-gray-600 dark:text-gray-400 mb-4">
         <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-green-500"></span>Торговый · ${esc(hours.start)}–${esc(hours.end)}</span>
         <span class="flex items-center gap-1.5">${icon('calendar', 'w-3.5 h-3.5')} Выходной (Сб, Вс)</span>
@@ -829,18 +1020,41 @@
         body = `<div id="spl-list" class="overflow-auto"><table class="trades"><thead><tr><th>Тикер</th><th>События</th><th class="text-right">Действия</th></tr></thead><tbody>${rows}</tbody></table></div>`;
       }
     } else if (state.splitsTab === 'create') {
-      body = `<form id="split-form" class="flex flex-wrap gap-2 mb-4">
-        <input name="ticker" placeholder="AAPL" class="field w-24" />
-        <input name="date" placeholder="YYYY-MM-DD" class="field w-36" />
-        <input name="factor" type="number" step="0.01" placeholder="2" class="field w-20" />
-        <button class="btn-primary min-h-0 py-2">Добавить</button>
-      </form>`;
+      body = `<div>
+        <h3 class="text-lg font-medium mb-1">Добавить новый тикер</h3>
+        <p class="text-sm text-gray-500 mb-3">Создайте новый тикер с первым событием сплита</p>
+        <form id="split-form" class="flex flex-wrap gap-3 items-end p-4 bg-white border rounded-xl dark:bg-gray-900 dark:border-gray-700">
+          <label class="text-xs">Тикер<input name="ticker" placeholder="AAPL" class="field mt-1 w-28" /></label>
+          <label class="text-xs">Дата сплита<input name="date" placeholder="YYYY-MM-DD" class="field mt-1 w-40" /></label>
+          <label class="text-xs">Коэффициент<input name="factor" type="number" step="0.01" value="2" class="field mt-1 w-24" /></label>
+          <button class="btn-primary min-h-0 py-2">Создать тикер</button>
+        </form>
+        <p class="text-xs text-gray-500 mt-2">Коэффициент: 2 = сплит 2:1, 0.5 = обратный сплит 1:2</p>
+      </div>`;
     } else if (state.splitsTab === 'import') {
-      body = `<p class="text-sm text-gray-600 mb-2">Импорт JSON массива сплитов для тикера.</p><textarea id="split-import" class="field h-40 font-mono text-xs" placeholder='[{"date":"2020-08-31","factor":4}]'></textarea><div class="flex gap-2 mt-2"><input id="split-import-ticker" placeholder="AAPL" class="field w-24" /><button id="split-import-btn" class="btn-primary min-h-0 py-2">Импортировать</button></div>`;
+      body = `<div>
+        <h3 class="text-lg font-medium mb-1">Импорт сплитов</h3>
+        <p class="text-sm text-gray-500 mb-3">Загрузите JSON файл или вставьте данные</p>
+        <label class="btn-secondary min-h-0 py-2 inline-flex mb-3">Выбрать JSON файл<input id="split-file" type="file" accept="application/json" class="hidden" /></label>
+        <textarea id="split-import" class="field h-40 font-mono text-xs" placeholder='[{"date":"2020-08-31","factor":4}]'></textarea>
+        <div class="flex gap-2 mt-2"><input id="split-import-ticker" placeholder="AAPL" class="field w-24" /><button id="split-import-btn" class="btn-primary min-h-0 py-2">Применить JSON</button></div>
+      </div>`;
     } else if (state.splitsTab === 'export') {
-      body = `<pre class="text-xs bg-gray-100 dark:bg-gray-800 p-3 rounded overflow-auto">${esc(JSON.stringify(map, null, 2))}</pre>`;
+      body = `<div><h3 class="text-lg font-medium mb-2">Экспорт всех сплитов</h3>
+        <button id="split-download" class="btn-primary min-h-0 py-2 mb-3">Скачать JSON</button>
+        <pre class="text-xs bg-gray-100 dark:bg-gray-800 p-3 rounded overflow-auto">${esc(JSON.stringify(map, null, 2))}</pre></div>`;
     } else {
-      body = `<p class="text-sm text-gray-500">Webull API для сплитов недоступен без токена. Сырой ответ: пустой список.</p>`;
+      body = `<div>
+        <h3 class="text-lg font-medium mb-1">Сырые данные Webull</h3>
+        <p class="text-sm text-gray-500 mb-4">Запрос corp-action (события по акциям) из Webull API — для анализа</p>
+        <form id="split-webull-form" class="flex flex-wrap gap-3 items-end p-4 bg-white border rounded-xl dark:bg-gray-900 dark:border-gray-700">
+          <label class="text-xs">Тикер<input name="symbol" value="AAPL" class="field mt-1 w-28 uppercase" /></label>
+          <label class="text-xs">С даты<input name="start" type="date" value="2000-01-01" class="field mt-1" /></label>
+          <label class="text-xs">По дату<input name="end" type="date" value="${esc(nyseParts().iso)}" class="field mt-1" /></label>
+          <button class="btn-primary min-h-0 py-2">Запросить</button>
+        </form>
+        <pre id="split-webull-out" class="mt-3 text-xs bg-gray-50 dark:bg-gray-800 p-3 rounded overflow-auto max-h-[400px]"></pre>
+      </div>`;
     }
     return `
       ${pageHeader('Сплиты', 'Управление дроблениями акций', `<button id="splits-refresh" class="icon-btn icon-btn-md icon-btn-glass" title="Обновить список сплитов">${icon('refresh', 'w-4 h-4')}</button>`)}
@@ -850,12 +1064,36 @@
   }
 
   function pageWatches() {
-    const list = (state.watches || []).map((w) => `<div class="flex justify-between items-center border rounded-lg p-3 mb-2 dark:border-gray-800 bg-white dark:bg-gray-900">
-      <div><div class="font-mono font-semibold">${esc(w.symbol)}</div><div class="text-xs text-gray-500">low ${esc(w.lowIBS)} / high ${esc(w.highIBS)}</div></div>
-      <button data-dw="${esc(w.symbol)}" class="text-sm text-red-600">Удалить</button>
-    </div>`).join('') || '<p class="text-sm text-gray-500">Нет активных наблюдений. Включите мониторинг на вкладке «Тикеры».</p>';
+    const stats = monitorStats(state.monitorTrades);
+    const rows = (state.watches || []).map((w) => `<tr>
+      <td class="font-mono"><a href="/stocks?tickers=${encodeURIComponent(w.symbol)}" data-nav class="text-blue-600">${esc(w.symbol)}</a></td>
+      <td>≤ ${(w.lowIBS ?? 0.1).toFixed(2)}</td>
+      <td>≥ ${Number(w.highIBS ?? 0.75).toFixed(2)}</td>
+      <td>${w.entryPrice != null ? '$' + Number(w.entryPrice).toFixed(2) : '—'}</td>
+      <td>${w.isOpenPosition ? 'Открыта' : 'Нет'}</td>
+      <td><button data-dw="${esc(w.symbol)}" class="text-sm text-red-600">Удалить</button></td>
+    </tr>`).join('');
+    const alerts = (state.emaAlerts || []).map((a) => `<tr>
+      <td class="font-mono">${esc(a.symbol)}</td><td>EMA ${esc(a.emaPeriod || 200)}</td>
+      <td>${esc(a.buyLevelPct)} / ${esc(a.sellLevelPct)}</td>
+      <td>${esc(a.nextAction || 'buy')}</td>
+      <td><button data-dea="${esc(a.id)}" class="text-red-600 text-sm">Удалить</button></td>
+    </tr>`).join('');
     const thr = state.settings.watchThresholdPct ?? 0.3;
-    const overview = `
+    const metrics = stats.closed.length ? `<div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div class="rounded-lg border p-3 text-center"><div class="text-2xl font-bold text-green-600">${fmtUsd(stats.bal)}</div><div class="text-xs text-gray-500">Итоговый капитал</div></div>
+        <div class="rounded-lg border p-3 text-center"><div class="text-2xl font-bold">${fmtPct(stats.ret)}</div><div class="text-xs text-gray-500">Общая доходность</div></div>
+        <div class="rounded-lg border p-3 text-center"><div class="text-xl font-bold text-red-600">${stats.dd.toFixed(2)}%</div><div class="text-xs text-gray-500">Макс. просадка</div></div>
+        <div class="rounded-lg border p-3 text-center"><div class="text-xl font-bold text-blue-600">${(stats.closed.length ? 100 * stats.wins / stats.closed.length : 0).toFixed(1)}%</div><div class="text-xs text-gray-500">Win Rate</div></div>
+        <div class="rounded-lg border p-3 text-center"><div class="text-xl font-bold text-indigo-600">${stats.closed.length}</div><div class="text-xs text-gray-500">Закрытых сделок</div></div>
+        <div class="rounded-lg border p-3 text-center"><div class="text-xl font-bold">${fmtPct(stats.avg)}</div><div class="text-xs text-gray-500">Средняя сделка</div></div>
+        <div class="rounded-lg border p-3 text-center"><div class="text-xl font-bold text-violet-600">${fmt(stats.closed.length ? stats.hold / stats.closed.length : 0, 1)} дн.</div><div class="text-xs text-gray-500">Средняя длительность</div></div>
+        <div class="rounded-lg border p-3 text-center"><div class="text-xl font-bold">${fmtUsd(stats.net)}</div><div class="text-xs text-gray-500">Чистая прибыль</div></div>
+      </div>` : `<div class="rounded-lg border border-dashed border-gray-300 bg-gray-50 px-4 py-6 text-center text-sm text-gray-600 dark:border-gray-700 dark:bg-gray-800/50">Пока нет закрытых сделок. Метрики появятся после первого завершенного трейда.</div>`;
+    return `
+      ${pageHeader('Мониторинг', 'Отслеживание позиций и уведомления в Telegram', `<button id="watch-refresh" class="icon-btn icon-btn-md icon-btn-glass" title="Обновить список">${icon('refresh', 'w-4 h-4')}</button>`)}
+      <p class="text-sm text-gray-600 dark:text-gray-300">Глобальный порог уведомлений: ${esc(thr)}% <span class="ml-2 text-xs text-gray-500">(применяется ко всем отслеживаемым акциям)</span></p>
+      <p class="text-sm text-gray-600 dark:text-gray-300 mb-3">До следующего подсчёта сигналов: ${formatDuration(secondsToNextSignal())}</p>
       <div class="rounded-lg border border-gray-200 bg-white p-4 dark:bg-gray-800 dark:border-gray-700 mb-4">
         <div class="flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -871,26 +1109,40 @@
           <h3 class="text-lg font-semibold">Результат по совершенным сделкам</h3>
           <span class="text-xs text-gray-500">База расчета: $10,000.00</span>
         </div>
-        <div class="rounded-lg border border-dashed border-gray-300 bg-gray-50 px-4 py-6 text-center text-sm text-gray-600 dark:border-gray-700 dark:bg-gray-800/50">Пока нет закрытых сделок. Метрики появятся после первого завершенного трейда.</div>
-      </div>`;
-    return `
-      ${pageHeader('Мониторинг', 'Отслеживание позиций и уведомления в Telegram', `<button id="watch-refresh" class="icon-btn icon-btn-md icon-btn-glass" title="Обновить список">${icon('refresh', 'w-4 h-4')}</button>`)}
-      <p class="text-sm text-gray-600 dark:text-gray-300">Глобальный порог уведомлений: ${esc(thr)}% <span class="ml-2 text-xs text-gray-500">(применяется ко всем отслеживаемым акциям)</span></p>
-      <p class="text-sm text-gray-600 dark:text-gray-300 mb-3">До следующего подсчёта сигналов: ${formatDuration(secondsToNextSignal())}</p>
-      ${overview}
+        ${metrics}
+      </div>
       ${analysisTabs(WATCH_TABS, state.watchTab, 'data-wtab')}
       <div class="mt-4">
-        ${state.watchTab === 'summary' ? `<div class="rounded-lg border border-gray-200 bg-white p-4 dark:bg-gray-800 dark:border-gray-700"><h3 class="text-lg font-semibold mb-2">Капитал мониторинга (старт $10,000.00)</h3><p class="text-sm text-gray-500">Нет закрытых сделок для построения кривой капитала.</p></div>` : ''}
-        ${state.watchTab === 'watches' ? `<form id="watch-form" class="flex gap-2 mb-4"><input name="symbol" placeholder="AAPL" class="field" /><button class="btn-primary min-h-0 py-2">Добавить</button></form><div id="watch-list">${list}</div>` : ''}
-        ${state.watchTab === 'trades' ? '<div id="watch-trades" class="text-sm text-gray-500">Загрузка сделок…</div>' : ''}
-        ${state.watchTab === 'ema' ? '<p class="text-sm text-gray-500">EMA-алерты появятся после сигналов мониторинга.</p>' : ''}
+        ${state.watchTab === 'summary' ? `<div class="rounded-lg border border-gray-200 bg-white p-4 dark:bg-gray-800 dark:border-gray-700"><h3 class="text-lg font-semibold mb-2">Капитал мониторинга (старт $10,000.00)</h3>${stats.equity.length ? '<div id="watch-eq" class="chart-box"></div>' : '<p class="text-sm text-gray-500">Нет закрытых сделок для построения кривой капитала.</p>'}</div>` : ''}
+        ${state.watchTab === 'watches' ? `<form id="watch-form" class="flex gap-2 mb-4"><input name="symbol" placeholder="AAPL" class="field" /><button class="btn-primary min-h-0 py-2">Добавить</button>
+          <button type="button" id="watch-t11" class="btn-secondary min-h-0 py-2">Тест T-11</button>
+          <button type="button" id="watch-t2" class="btn-secondary min-h-0 py-2">Тест T-2</button>
+          <button type="button" id="watch-prices" class="btn-secondary min-h-0 py-2">Обновить цены и позиции</button></form>
+          <div class="overflow-auto"><table class="trades"><thead><tr><th>Тикер</th><th>IBS вход</th><th>IBS выход</th><th>Цена входа</th><th>Позиция</th><th>Действия</th></tr></thead><tbody>${rows || '<tr><td colspan="6" class="text-center text-gray-500">Нет активных наблюдений. Включите мониторинг на вкладке «Тикеры».</td></tr>'}</tbody></table></div>` : ''}
+        ${state.watchTab === 'trades' ? `<div class="rounded-lg border p-4 mb-3 bg-white dark:bg-gray-800"><h3 class="font-semibold mb-1">Ручная корректировка monitor-сделки</h3>
+          <p class="text-sm text-gray-600 mb-3">Если сайт пропустил вход, можно добавить сделку вручную.</p>
+          <form id="watch-manual" class="flex flex-wrap gap-2"><input name="symbol" placeholder="AAPL" class="field w-24" /><input name="entryDate" placeholder="YYYY-MM-DD" class="field w-36" /><input name="entryPrice" type="number" step="0.01" placeholder="цена" class="field w-24" /><button class="btn-primary min-h-0 py-2">Добавить ручную сделку</button></form></div>
+          <div id="watch-trades">${tradesTable(state.monitorTrades)}</div>` : ''}
+        ${state.watchTab === 'ema' ? `<form id="ema-alert-form" class="grid grid-cols-2 md:grid-cols-6 gap-2 mb-4">
+            <label class="text-xs">Тикер<input name="symbol" value="TQQQ" class="field mt-1" /></label>
+            <label class="text-xs">EMA<select name="emaPeriod" class="field mt-1"><option value="20">EMA 20</option><option value="200" selected>EMA 200</option></select></label>
+            <label class="text-xs">Покупка ≤ %<input name="buyLevelPct" type="number" value="15" class="field mt-1" /></label>
+            <label class="text-xs">Продажа ≥ %<input name="sellLevelPct" type="number" value="40" class="field mt-1" /></label>
+            <label class="text-xs">Сейчас ждём<select name="nextAction" class="field mt-1"><option value="buy">Покупка</option><option value="sell">Продажа</option></select></label>
+            <button class="btn-primary min-h-0 py-2 self-end">Добавить</button>
+          </form>
+          <table class="trades"><thead><tr><th>Тикер</th><th>EMA</th><th>Диапазон</th><th>Ждём</th><th>Действия</th></tr></thead><tbody>${alerts || '<tr><td colspan="5" class="text-center text-gray-500">EMA-оповещений пока нет</td></tr>'}</tbody></table>` : ''}
       </div>`;
   }
 
+  function emptyBrokerTable(cols, empty) {
+    return `<div class="overflow-auto"><table class="trades"><thead><tr>${cols.map((c) => `<th>${c}</th>`).join('')}</tr></thead><tbody><tr><td colspan="${cols.length}" class="text-center text-gray-500">${empty}</td></tr></tbody></table></div>`;
+  }
   function pageBroker() {
     const list = (state.broker || []).map((t) => `<div class="flex justify-between border rounded-lg p-3 mb-1 text-sm dark:border-gray-800 bg-white dark:bg-gray-900"><span class="font-mono">${esc(t.symbol)} ${esc(t.entryDate || '')} @ ${esc(t.entryPrice ?? '—')}</span><button data-bd="${esc(t.id)}" class="text-red-600">удалить</button></div>`).join('') || '<p class="text-sm text-gray-500">Нет сделок</p>';
-    const live = state.settings?.autoTrading?.enabled;
+    const live = state.settings?.autoTrading?.enabled || state.autoConfig?.enabled;
     const tab = state.brokerTab || 'overview';
+    const banner = `<div class="rounded-lg border border-red-200 bg-red-50 text-red-700 dark:bg-red-950/30 dark:border-red-900/40 px-4 py-3 text-sm mb-4">Webull credentials are not configured</div>`;
     let body = '';
     if (tab === 'journal') {
       body = `<form id="broker-form" class="flex flex-wrap gap-2 mb-4">
@@ -901,10 +1153,21 @@
       </form>
       <div id="broker-list">${list}</div>`;
     } else if (tab === 'overview') {
-      body = `<div class="rounded-lg border border-red-200 bg-red-50 text-red-700 dark:bg-red-950/30 dark:border-red-900/40 px-4 py-3 text-sm">Webull credentials are not configured</div>
-        <form id="broker-form" class="hidden"></form><div id="broker-list" class="hidden">${list}</div>`;
+      body = `${banner}<div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        ${[['Всего активов', '—'], ['Свободные деньги', '—'], ['Buying Power', '—'], ['Нереализованный PnL', '—']].map(([t, v]) => `<div class="rounded-lg border p-4"><div class="text-xs text-gray-500">${t}</div><div class="text-xl font-semibold mt-1">${v}</div></div>`).join('')}
+      </div><form id="broker-form" class="hidden"></form>`;
+    } else if (tab === 'positions') {
+      body = `${banner}${emptyBrokerTable(['Тикер', 'Тип', 'Валюта', 'Кол-во', 'Средняя', 'Рыночная цена', 'Нереализ. PnL'], 'Открытых позиций нет')}<form id="broker-form" class="hidden"></form>`;
+    } else if (tab === 'orders') {
+      body = `${banner}${emptyBrokerTable(['Тикер', 'Сторона', 'Тип', 'Кол-во', 'Цена', 'Статус'], 'Активных ордеров нет')}<form id="broker-form" class="hidden"></form>`;
+    } else if (tab === 'fills') {
+      body = `${banner}${emptyBrokerTable(['Тикер', 'Сторона', 'Кол-во', 'Цена', 'Время'], 'Исполненных сделок нет')}<form id="broker-form" class="hidden"></form>`;
+    } else if (tab === 'autotrade') {
+      body = `${banner}<div class="rounded-lg border p-4 text-sm">Статус: ${(live ? 'включена' : 'выключена')}. Last run: — · Entries/Exits: —</div><form id="broker-form" class="hidden"></form>`;
+    } else if (tab === 'monitor') {
+      body = `${banner}${emptyBrokerTable(['Тикер', 'IBS', 'Цена', 'Позиция'], 'Нет наблюдений')}<form id="broker-form" class="hidden"></form>`;
     } else {
-      body = `<p class="text-sm text-gray-500">Раздел недоступен без ключей Webull.</p><form id="broker-form" class="hidden"></form><div id="broker-list" class="hidden">${list}</div>`;
+      body = `${banner}<pre id="broker-logs" class="text-xs bg-gray-50 dark:bg-gray-800 p-3 rounded overflow-auto max-h-80">Логи появятся после исполнения автоторговли.</pre><form id="broker-form" class="hidden"></form>`;
     }
     return `
       ${pageHeader('Кабинет Webull', 'Баланс счёта, позиции, ордера, история и логи исполнения по Webull', `<div class="flex items-center gap-2"><span class="rounded-full px-3 py-1 text-xs font-semibold ${live ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-200'}">${live ? '[LIVE]' : '[OFF]'}</span><button id="broker-refresh" class="icon-btn icon-btn-md icon-btn-glass" title="Обновить">${icon('refresh', 'w-4 h-4')}</button></div>`)}
@@ -914,6 +1177,10 @@
       </div>`;
   }
 
+  function provSelect(name, cur, extra) {
+    const opts = ['finnhub', 'alpha_vantage', 'twelve_data', 'polygon'].concat(extra || []);
+    return `<select name="${name}" class="field mt-1">${opts.map((v) => `<option value="${v}" ${cur === v ? 'selected' : ''}>${v}</option>`).join('')}</select>`;
+  }
   function pageSettings() {
     const st = state.settings || {};
     const tab = state.settingsTab;
@@ -921,23 +1188,73 @@
     if (tab === 'general') {
       body = `<div class="rounded-xl border border-gray-200 dark:border-gray-700 p-4 mb-3">
           <div class="font-medium mb-1">Уведомления</div>
-          <label class="block text-sm">Порог близости к IBS, %<input name="watchThresholdPct" type="number" step="0.1" class="field mt-1" value="${esc(st.watchThresholdPct ?? 0.3)}" /></label>
+          <label class="block text-sm">Порог близости к IBS, %<input name="watchThresholdPct" type="number" step="0.1" min="0" max="20" class="field mt-1" value="${esc(st.watchThresholdPct ?? 0.3)}" /></label>
+          <p class="text-xs text-gray-500 mt-1">Диапазон 0–20%. По умолчанию 5%.</p>
+        </div>
+        <div class="rounded-xl border border-gray-200 dark:border-gray-700 p-4 mb-3">
+          <div class="font-medium mb-1">График</div>
+          <label class="block text-sm">Высота панели индикаторов (IBS/Объём), %<input name="indicatorPanePercent" type="number" min="0" max="40" class="field mt-1" value="${esc(st.indicatorPanePercent ?? 7)}" /></label>
         </div>
         <div class="rounded-xl border border-gray-200 dark:border-gray-700 p-4 mb-3">
           <div class="font-medium mb-1">Страница «Несколько тикеров»</div>
           <label class="block text-sm">Тикеры по умолчанию<input name="defaultMultiTickerSymbols" class="field mt-1" value="${esc(st.defaultMultiTickerSymbols || 'AAPL, MSFT, AMZN, MAGS')}" /></label>
           <p class="text-xs text-gray-500 mt-1">Пример: AAPL, MSFT, AMZN, MAGS</p>
         </div>
-        <label class="inline-flex items-center gap-2 text-sm"><input type="checkbox" name="enablePostClosePriceActualization" ${st.enablePostClosePriceActualization ? 'checked' : ''} /> актуализация после закрытия</label>`;
+        <div class="rounded-xl border border-gray-200 dark:border-gray-700 p-4 mb-3">
+          <div class="font-medium mb-2">Комиссии торговли</div>
+          <label class="inline-flex items-center gap-2 text-sm mr-3"><input type="radio" name="commissionType" value="fixed" ${st.commissionType === 'fixed' ? 'checked' : ''} /> Фиксированная</label>
+          <label class="inline-flex items-center gap-2 text-sm mr-3"><input type="radio" name="commissionType" value="percentage" ${(st.commissionType || 'percentage') === 'percentage' ? 'checked' : ''} /> Процентная</label>
+          <label class="inline-flex items-center gap-2 text-sm"><input type="radio" name="commissionType" value="combined" ${st.commissionType === 'combined' ? 'checked' : ''} /> Комбинированная</label>
+          <div class="grid grid-cols-2 gap-3 mt-3">
+            <label class="text-sm">Фиксированная, $<input name="commissionFixed" type="number" step="0.01" class="field mt-1" value="${esc(st.commissionFixed ?? 1)}" /></label>
+            <label class="text-sm">Процентная, %<input name="commissionPercentage" type="number" step="0.01" class="field mt-1" value="${esc(st.commissionPercentage ?? 0.1)}" /></label>
+          </div>
+        </div>
+        <label class="inline-flex items-center gap-2 text-sm"><input type="checkbox" name="enablePostClosePriceActualization" ${st.enablePostClosePriceActualization ? 'checked' : ''} /> Автоактуализация цен после закрытия рынка</label>`;
     } else if (tab === 'api') {
-      body = `<label class="block text-sm mb-3">Провайдер котировок<select name="resultsQuoteProvider" class="field mt-1"><option ${st.resultsQuoteProvider === 'finnhub' ? 'selected' : ''} value="finnhub">finnhub</option><option ${st.resultsQuoteProvider === 'alpha_vantage' ? 'selected' : ''} value="alpha_vantage">alpha_vantage</option><option ${st.resultsQuoteProvider === 'twelve_data' ? 'selected' : ''} value="twelve_data">twelve_data</option><option ${st.resultsQuoteProvider === 'polygon' ? 'selected' : ''} value="polygon">polygon</option><option ${st.resultsQuoteProvider === 'webull' ? 'selected' : ''} value="webull">webull</option></select></label>
-        <label class="block text-sm">Провайдер загрузки<select name="enhancerProvider" class="field mt-1"><option ${st.enhancerProvider === 'finnhub' ? 'selected' : ''} value="finnhub">finnhub</option><option ${st.enhancerProvider === 'alpha_vantage' ? 'selected' : ''} value="alpha_vantage">alpha_vantage</option><option ${st.enhancerProvider === 'twelve_data' ? 'selected' : ''} value="twelve_data">twelve_data</option><option ${st.enhancerProvider === 'polygon' ? 'selected' : ''} value="polygon">polygon</option></select></label>`;
+      body = `<div class="rounded-xl border p-4 mb-3">
+          <div class="font-medium mb-2">Тестирование API</div>
+          <p class="text-xs text-gray-500 mb-3">Проверьте подключение к API провайдерам (используется тестовый символ AAPL)</p>
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-2">${['alpha_vantage', 'finnhub', 'twelve_data', 'polygon'].map((p) => `<button type="button" data-testprov="${p}" class="btn-primary min-h-0 py-2 text-sm">Тест ${esc(p)}</button>`).join('')}</div>
+          <div id="api-test-out" class="text-sm mt-2"></div>
+        </div>
+        <div class="rounded-xl border p-4 mb-3">
+          <div class="font-medium mb-2">Провайдеры данных</div>
+          <label class="block text-sm mb-3">Котировки — страница «Результаты»${provSelect('resultsQuoteProvider', st.resultsQuoteProvider, ['webull'])}</label>
+          <label class="block text-sm mb-3">Обновление датасета${provSelect('resultsRefreshProvider', st.resultsRefreshProvider || st.enhancerProvider)}</label>
+          <label class="block text-sm">Новые данные — загрузка полной истории${provSelect('enhancerProvider', st.enhancerProvider)}</label>
+        </div>`;
     } else if (tab === 'telegram') {
-      body = `<p class="text-sm text-gray-600">Порог уведомлений IBS задаётся во вкладке «Общие». Telegram-бот использует те же чат и токен, что на сервере.</p>`;
+      body = `<div class="rounded-xl border border-purple-200 bg-purple-50 p-4 mb-3 dark:bg-purple-900/20">
+          <div class="font-medium mb-1">Telegram настройки</div>
+          <p class="text-sm text-gray-600 dark:text-gray-300">Telegram Bot Token и Chat ID настраиваются в файле <code>.env</code> на сервере.</p>
+        </div>
+        <div class="rounded-xl border p-4">
+          <div class="font-medium mb-2">Тестовое сообщение в Telegram</div>
+          <div class="flex gap-2"><input id="tg-test-msg" class="field flex-1" value="Тестовое сообщение" /><button type="button" id="tg-test-send" class="btn-primary min-h-0 py-2">Отправить тест</button></div>
+          <div id="tg-test-out" class="text-sm mt-2"></div>
+        </div>`;
     } else if (tab === 'interface') {
-      body = `<p class="text-sm text-gray-600 dark:text-gray-400">Тема переключается иконкой в шапке: Авто → Тёмная → Светлая.</p>`;
+      const chips = (state.analysisTabsConfig || []).map((t) => `<button type="button" data-vis="${esc(t.id)}" class="px-3 py-2 text-sm border-b-2 ${t.visible ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-400 line-through'}">${esc(t.label)}</button>`).join('');
+      body = `<p class="text-sm text-gray-600 dark:text-gray-400 mb-3">Тема переключается иконкой в шапке: Авто → Тёмная → Светлая.</p>
+        <div class="rounded-xl border overflow-hidden">
+          <div class="px-4 pt-4 pb-2"><div class="text-sm font-semibold">Вкладки страницы «Акции»</div>
+          <div class="text-xs text-gray-500">Нажмите, чтобы скрыть или показать</div></div>
+          <div class="flex overflow-x-auto border-t">${chips}</div>
+        </div>`;
     } else {
-      body = `<p class="text-sm text-gray-600">Автоторговля настраивается отдельно. Сейчас: ${(st.autoTrading && st.autoTrading.enabled) ? 'включена' : 'выключена'}.</p>`;
+      const ac = state.autoConfig || {};
+      body = `<div class="rounded-xl border p-4 mb-3">
+          <div class="font-medium mb-2">Статус автоторговли</div>
+          <label class="inline-flex items-center gap-2 text-sm"><input type="checkbox" name="autoEnabled" ${ac.enabled ? 'checked' : ''} /> Включена</label>
+          <p class="text-xs text-gray-500 mt-1">Включает автоматическое исполнение ордеров через Webull по сигналам T-1 мониторинга.</p>
+        </div>
+        <div class="rounded-xl border p-4 mb-3">
+          <div class="font-medium mb-2">Провайдер котировок для автоторговли</div>
+          <label class="inline-flex items-center gap-2 text-sm mr-4"><input type="radio" name="autoQuote" value="finnhub" ${(ac.quoteProvider || 'finnhub') === 'finnhub' ? 'checked' : ''} /> Finnhub</label>
+          <label class="inline-flex items-center gap-2 text-sm"><input type="radio" name="autoQuote" value="webull" ${ac.quoteProvider === 'webull' ? 'checked' : ''} /> Webull</label>
+        </div>
+        <p class="text-sm text-gray-600">На странице /broker → Автоторговля видно, какой профиль реально активен.</p>`;
     }
     return `
       ${pageHeader('Настройки', 'Конфигурация приложения и параметры стратегии', `<button form="set-form" class="btn-secondary min-h-0 py-2 px-4">Сохранить</button>`)}
@@ -1172,14 +1489,31 @@
           renderPage();
         });
       }));
+      root.querySelectorAll('[data-refresh]').forEach((b) => b.addEventListener('click', async (e) => {
+        e.preventDefault(); e.stopPropagation();
+        try {
+          await API.refreshDataset(b.dataset.refresh);
+          state.datasets = await API.datasets();
+          toast('Датасет обновлён');
+          renderPage();
+        } catch (err) { toast(err.message); }
+      }));
     }
 
     if (p === '/enhance') {
+      const had = state.tickerCatalog.length;
+      await loadCatalog();
+      if (!had && state.tickerCatalog.length) { renderPage(); return; }
       const form = document.getElementById('enhance-form');
       const btn = form?.querySelector('.enhance-load');
       const syncLoad = () => { if (btn && form) btn.disabled = !String(form.symbol.value || '').trim(); };
-      form?.symbol.addEventListener('input', syncLoad);
+      form?.symbol.addEventListener('input', () => { state.enhanceQuery = form.symbol.value; syncLoad(); });
       syncLoad();
+      root.querySelectorAll('[data-ecat]').forEach((b) => b.addEventListener('click', () => {
+        state.enhanceCat = b.dataset.ecat;
+        state.enhanceQuery = form?.symbol?.value || '';
+        renderPage();
+      }));
       async function enhanceFetch(symbol) {
         const out = document.getElementById('enhance-out');
         const provider = providerId();
@@ -1224,9 +1558,40 @@
 
     if (p === '/ema') {
       syncTickerField('ema-tickers');
+      root.querySelectorAll('[data-etab]').forEach((b) => b.addEventListener('click', () => { state.emaTab = b.dataset.etab; renderPage(); }));
+      document.getElementById('ema-preset-save')?.addEventListener('click', () => {
+        const name = document.getElementById('ema-preset-name')?.value.trim();
+        if (!name) return;
+        const form = document.getElementById('ema-form');
+        const fd = form ? new FormData(form) : new FormData();
+        state.emaPresets.push({ id: String(Date.now()), name, form: Object.fromEntries(fd.entries()), tickers: state.tickerInput });
+        try { localStorage.setItem('emaPresets', JSON.stringify(state.emaPresets)); } catch (_) {}
+        toast('Пресет сохранён');
+        renderPage();
+      });
+      document.getElementById('ema-preset-del')?.addEventListener('click', () => {
+        const id = document.getElementById('ema-preset')?.value;
+        if (!id) return;
+        state.emaPresets = state.emaPresets.filter((p) => p.id !== id);
+        try { localStorage.setItem('emaPresets', JSON.stringify(state.emaPresets)); } catch (_) {}
+        renderPage();
+      });
+      document.getElementById('ema-preset')?.addEventListener('change', (e) => {
+        const pset = state.emaPresets.find((x) => x.id === e.target.value);
+        if (!pset) return;
+        state.emaForm = { ...state.emaForm, ...Object.fromEntries(Object.entries(pset.form || {}).map(([k, v]) => [k, isNaN(Number(v)) ? v : Number(v)])) };
+        if (pset.tickers) { state.tickerInput = pset.tickers; state.selected = parseTickers(pset.tickers); }
+        renderPage();
+      });
       document.getElementById('ema-form')?.addEventListener('submit', async (e) => {
         e.preventDefault();
         const fd = new FormData(e.target);
+        state.emaForm = {
+          period: Number(fd.get('period') || 200), leverage: Number(fd.get('leverage') || 200),
+          signal: fd.get('signal') || 'close', start: fd.get('start') || 'full_history',
+          takeProfit: fd.get('takeProfit') || '', noSellAtLoss: !!e.target.noSellAtLoss?.checked,
+          buy: Number(fd.get('buy')), sell: Number(fd.get('sell')),
+        };
         try {
           const loaded = await loadSelected();
           const tp = Number(String(fd.get('takeProfit') || '').replace(',', '.'));
@@ -1241,26 +1606,22 @@
             noSellAtLoss: !!e.target.noSellAtLoss?.checked,
           };
           if (Number.isFinite(tp) && tp > 0) ema.takeProfitPercent = tp;
-          const r = await API.calc('ema-zone', {
-            tickers: loaded,
-            ema,
-          });
-          const el = document.getElementById('ema-out');
-          el.className = 'lg-span-2 lg:col-span-2 min-h-[420px]';
-          el.innerHTML = metricsGrid(r.metrics, r.finalValue, r.maxDrawdown) + tradesTable(r.trades) + '<div id="ema-eq" class="chart-box mt-4"></div>';
-          Charts.line(document.getElementById('ema-eq'), r.equity, isDark());
+          state.emaResult = resultOf(await API.calc('ema-zone', { tickers: loaded, ema }));
+          state.emaTab = 'summary';
+          renderPage();
         } catch (err) { toast(err.message); }
       });
+      paintEmaCharts();
     }
 
     if (p === '/multi-ticker-options') {
       syncTickerField('opt-tickers');
+      root.querySelectorAll('[data-otab]').forEach((b) => b.addEventListener('click', () => { state.optTab = b.dataset.otab; renderPage(); }));
       document.getElementById('opt-form')?.addEventListener('submit', async (e) => {
         e.preventDefault();
-        const out = document.getElementById('optm-out');
-        if (out) { out.className = 'lg-span-2 lg:col-span-2 min-h-[420px]'; out.textContent = 'Считаем…'; }
         await runOptionsMulti(new FormData(e.target));
       });
+      paintOptCharts();
     }
 
     if (p === '/calendar') {
@@ -1302,6 +1663,14 @@
         state.cal.data = await API.calendar();
         renderPage();
       });
+      document.getElementById('cal-webull')?.addEventListener('click', async () => {
+        try {
+          await API.syncCalendar();
+          state.cal.data = await API.calendar();
+          toast('Календарь обновлён');
+          renderPage();
+        } catch (err) { toast(err.message); }
+      });
     }
 
     if (p === '/split') {
@@ -1340,17 +1709,45 @@
         state.splitsTab = 'list';
         renderPage();
       });
+      document.getElementById('split-file')?.addEventListener('change', async (e) => {
+        const f = e.target.files[0];
+        if (!f) return;
+        document.getElementById('split-import').value = await f.text();
+      });
+      document.getElementById('split-download')?.addEventListener('click', () => {
+        const blob = new Blob([JSON.stringify(state.splitsMap || {}, null, 2)], { type: 'application/json' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'splits.json';
+        a.click();
+      });
+      document.getElementById('split-webull-form')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const fd = new FormData(e.target);
+        const q = new URLSearchParams({ symbol: fd.get('symbol'), start: fd.get('start'), end: fd.get('end') });
+        try {
+          const r = await API.webullSplits(q.toString());
+          document.getElementById('split-webull-out').textContent = JSON.stringify(r, null, 2);
+        } catch (err) { document.getElementById('split-webull-out').textContent = err.message; }
+      });
     }
 
     if (p === '/watches') {
       if (!state.loaded.watches) {
-        try { state.watches = await API.watches() || []; } catch (_) { state.watches = []; }
+        const [w, t, a] = await Promise.all([
+          API.watches().catch(() => []),
+          API.monitorTrades().catch(() => API.trades().catch(() => [])),
+          API.emaAlerts().catch(() => []),
+        ]);
+        state.watches = w || [];
+        state.monitorTrades = Array.isArray(t) ? t : (t.trades || []);
+        state.emaAlerts = Array.isArray(a) ? a : (a.alerts || []);
         state.loaded.watches = true;
         renderPage();
         return;
       }
       root.querySelectorAll('[data-wtab]').forEach((b) => b.addEventListener('click', () => { state.watchTab = b.dataset.wtab; renderPage(); }));
-      document.getElementById('watch-refresh')?.addEventListener('click', async () => { state.watches = await API.watches(); renderPage(); });
+      document.getElementById('watch-refresh')?.addEventListener('click', async () => { state.loaded.watches = false; renderPage(); });
       root.querySelectorAll('[data-dw]').forEach((b) => b.addEventListener('click', () => {
         askDelete('Удалить ' + b.dataset.dw + ' из мониторинга?', async () => {
           await API.deleteWatch(b.dataset.dw);
@@ -1364,13 +1761,30 @@
         state.watches = await API.watches();
         renderPage();
       });
-      if (state.watchTab === 'trades') {
-        try {
-          const t = await API.trades();
-          const list = Array.isArray(t) ? t : (t.trades || []);
-          document.getElementById('watch-trades').innerHTML = tradesTable(list);
-        } catch (err) { document.getElementById('watch-trades').textContent = err.message; }
-      }
+      document.getElementById('watch-t11')?.addEventListener('click', async () => { try { await API.post('/api/telegram/simulate', { kind: 't11' }); toast('Симуляция T-11'); } catch (err) { toast(err.message); } });
+      document.getElementById('watch-t2')?.addEventListener('click', async () => { try { await API.post('/api/telegram/simulate', { kind: 't1' }); toast('Симуляция T-1'); } catch (err) { toast(err.message); } });
+      document.getElementById('watch-prices')?.addEventListener('click', async () => { try { await API.post('/api/telegram/actualize-prices', {}); toast('Цены обновлены'); } catch (err) { toast(err.message); } });
+      document.getElementById('watch-manual')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const fd = new FormData(e.target);
+        await API.post('/api/trades', { symbol: fd.get('symbol'), entryDate: fd.get('entryDate'), entryPrice: Number(fd.get('entryPrice')), status: 'open', source: 'manual' });
+        state.loaded.watches = false;
+        renderPage();
+      });
+      document.getElementById('ema-alert-form')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const fd = new FormData(e.target);
+        await API.addEmaAlert({ symbol: fd.get('symbol'), emaPeriod: Number(fd.get('emaPeriod')), buyLevelPct: Number(fd.get('buyLevelPct')), sellLevelPct: Number(fd.get('sellLevelPct')), nextAction: fd.get('nextAction') });
+        state.emaAlerts = await API.emaAlerts().catch(() => []);
+        renderPage();
+      });
+      root.querySelectorAll('[data-dea]').forEach((b) => b.addEventListener('click', async () => {
+        await API.deleteEmaAlert(b.dataset.dea);
+        state.emaAlerts = await API.emaAlerts().catch(() => []);
+        renderPage();
+      }));
+      const eq = document.getElementById('watch-eq');
+      if (eq) Charts.line(eq, monitorStats(state.monitorTrades).equity, isDark());
     }
 
     if (p === '/broker') {
@@ -1408,11 +1822,32 @@
     if (p === '/settings') {
       if (!state.loaded.settings) {
         try { state.settings = await API.settings() || {}; } catch (_) { state.settings = {}; }
+        try { state.autoConfig = await API.autoConfig() || {}; } catch (_) { state.autoConfig = {}; }
         state.loaded.settings = true;
         renderPage();
         return;
       }
       root.querySelectorAll('[data-setab]').forEach((b) => b.addEventListener('click', () => { state.settingsTab = b.dataset.setab; renderPage(); }));
+      root.querySelectorAll('[data-testprov]').forEach((b) => b.addEventListener('click', async () => {
+        const out = document.getElementById('api-test-out');
+        if (out) out.textContent = 'Тест ' + b.dataset.testprov + '…';
+        try {
+          const r = await API.testProvider(b.dataset.testprov);
+          if (out) out.textContent = r.success || r.price ? `✅ ${r.symbol || 'AAPL'}: $${r.price || ''}` : `❌ ${r.error || JSON.stringify(r)}`;
+        } catch (err) { if (out) out.textContent = err.message; }
+      }));
+      document.getElementById('tg-test-send')?.addEventListener('click', async () => {
+        const out = document.getElementById('tg-test-out');
+        try {
+          await API.telegramTest(document.getElementById('tg-test-msg')?.value || 'Тестовое сообщение');
+          if (out) out.textContent = 'Отправлено';
+        } catch (err) { if (out) out.textContent = err.message; }
+      });
+      root.querySelectorAll('[data-vis]').forEach((b) => b.addEventListener('click', () => {
+        state.analysisTabsConfig = (state.analysisTabsConfig || []).map((t) => t.id === b.dataset.vis ? { ...t, visible: !t.visible } : t);
+        try { localStorage.setItem('analysisTabsConfig', JSON.stringify(state.analysisTabsConfig)); } catch (_) {}
+        renderPage();
+      }));
       document.getElementById('set-form')?.addEventListener('submit', async (e) => {
         e.preventDefault();
         const form = e.target;
@@ -1421,6 +1856,15 @@
         for (const [k, v] of fd.entries()) body[k] = v;
         if (form.enablePostClosePriceActualization) body.enablePostClosePriceActualization = form.enablePostClosePriceActualization.checked;
         if (body.watchThresholdPct != null) body.watchThresholdPct = Number(body.watchThresholdPct);
+        if (body.indicatorPanePercent != null) body.indicatorPanePercent = Number(body.indicatorPanePercent);
+        if (body.commissionFixed != null) body.commissionFixed = Number(body.commissionFixed);
+        if (body.commissionPercentage != null) body.commissionPercentage = Number(body.commissionPercentage);
+        if (form.autoEnabled) {
+          state.autoConfig = { ...state.autoConfig, enabled: form.autoEnabled.checked, quoteProvider: fd.get('autoQuote') || 'finnhub' };
+          try { await API.saveAutoConfig(state.autoConfig); } catch (_) {}
+        }
+        delete body.autoEnabled;
+        delete body.autoQuote;
         await API.saveSettings(body);
         state.settings = { ...state.settings, ...body };
         const msg = document.getElementById('set-msg');
@@ -1484,6 +1928,10 @@
 
   async function runOptionsMulti(fd) {
     try {
+      state.optForm = {
+        strike: Number(fd.get('strike') || 10), vol: Number(fd.get('vol') || 20), cap: Number(fd.get('cap') || 10),
+        expiration: Number(fd.get('expiration') || 4), maxHold: Number(fd.get('maxHold') || 30), leverage: Number(fd.get('leverage') || 200),
+      };
       const loaded = await loadSelected();
       const stock = await API.calc('single-position', { tickers: loaded, strategy: defaultStrategy(), leverage: Number(fd.get('leverage') || 200) / 100 });
       const r = await API.calc('options-multi', {
@@ -1496,7 +1944,16 @@
           maxHoldingDays: Number(fd.get('maxHold') || 30),
         },
       });
-      document.getElementById('optm-out').innerHTML = metricsGrid(r.metrics, r.finalValue, r.maxDrawdown) + tradesTable(r.trades);
+      state.optResult = resultOf(r);
+      if (!state.optResult.metrics || !Object.keys(state.optResult.metrics).length) {
+        try {
+          const m = await API.calc('metrics', { trades: state.optResult.trades, equity: state.optResult.equity, initialCapital: 10000 });
+          state.optResult.metrics = m;
+          state.optResult.maxDrawdown = m.maxDrawdown ?? state.optResult.maxDrawdown;
+        } catch (_) {}
+      }
+      state.optTab = 'summary';
+      renderPage();
     } catch (e) { toast(e.message); }
   }
 
@@ -1538,6 +1995,58 @@
     }
   }
 
+  function paintEmaCharts() {
+    const r = resultOf(state.emaResult);
+    if (!r) return;
+    const dark = isDark();
+    const tab = state.emaTab;
+    if (tab === 'summary' && document.getElementById('chart-ema-hero')) {
+      Charts.line(document.getElementById('chart-ema-hero'), (state.bars || []).map((b) => ({ date: b.date, value: b.close })), dark, '#4f46e5');
+    }
+    if (tab === 'price' && document.getElementById('chart-ema-price')) Charts.candles(document.getElementById('chart-ema-price'), state.bars, dark);
+    if (tab === 'emaDeviation' && document.getElementById('chart-ema-dev')) {
+      Charts.line(document.getElementById('chart-ema-dev'), (r.deviation || []).map((p) => ({ date: p.date, value: p.deviationPct })), dark, '#7c3aed');
+    }
+    if (tab === 'equity' && document.getElementById('chart-ema-eq')) Charts.line(document.getElementById('chart-ema-eq'), r.equity, dark);
+    if (tab === 'drawdown' && document.getElementById('chart-ema-dd')) {
+      Charts.line(document.getElementById('chart-ema-dd'), (r.equity || []).map((p) => ({ date: p.date, value: p.drawdown })), dark, '#dc2626');
+    }
+    if (tab === 'exposure' && document.getElementById('chart-ema-exp') && r.exposure?.length) {
+      Charts.line(document.getElementById('chart-ema-exp'), r.exposure.map((p) => ({ date: p.date, value: p.exposurePct })), dark, '#0ea5e9');
+    }
+  }
+
+  function paintOptCharts() {
+    const r = resultOf(state.optResult);
+    if (!r) return;
+    const dark = isDark();
+    const tab = state.optTab;
+    if (tab === 'summary' && document.getElementById('chart-opt-hero')) {
+      Charts.line(document.getElementById('chart-opt-hero'), r.equity, dark);
+    }
+    if (tab === 'equity' && document.getElementById('chart-opt-eq')) Charts.line(document.getElementById('chart-opt-eq'), r.equity, dark);
+    if (tab === 'price' && document.getElementById('chart-opt-price')) Charts.candles(document.getElementById('chart-opt-price'), state.bars, dark);
+    if (tab === 'drawdown' && document.getElementById('chart-opt-dd')) {
+      Charts.line(document.getElementById('chart-opt-dd'), (r.equity || []).map((p) => ({ date: p.date, value: p.drawdown })), dark, '#dc2626');
+    }
+    if (tab === 'tickerCharts' && document.getElementById('opt-ticker-charts')) {
+      const host = document.getElementById('opt-ticker-charts');
+      host.innerHTML = (state.tickersData || []).map((t) => `<div><div class="text-sm font-semibold mb-1">${esc(t.ticker)}</div><div id="otc-${esc(t.ticker)}" class="chart-box rounded border dark:border-gray-800"></div></div>`).join('');
+      (state.tickersData || []).forEach((t) => {
+        const el = document.getElementById('otc-' + t.ticker);
+        if (el) Charts.candles(el, t.data, dark);
+      });
+    }
+    if (tab === 'splits') {
+      const el = document.getElementById('opt-splits-box');
+      if (el) {
+        API.tickerSplits(state.ticker).then((evs) => {
+          el.innerHTML = (evs || []).map((e) => `<div class="text-sm">${esc(e.date)} × ${esc(e.factor)}</div>`).join('') || '<p class="text-sm text-gray-500">Нет сплитов</p>';
+        }).catch((e) => { el.textContent = e.message; });
+      }
+    }
+  }
+
   async function runNested() {
     if (!state.result || !state.bars?.length) return;
     const st = defaultStrategy();
@@ -1545,8 +2054,17 @@
       const el = document.getElementById(id);
       if (!el) return;
       try {
-        const r = await API.calc(name, { data: state.bars, strategy: st, trades: state.result.trades, ticker: state.ticker, tickers: state.tickersData, ...extra });
-        el.innerHTML = metricsGrid(r.metrics, r.finalValue, r.maxDrawdown) + `<p class="text-sm my-2">Сделок: ${r.trades?.length || r.tradesList?.length || 0}${r.finalValue != null ? ', итог ' + fmt(r.finalValue) : ''}</p>` + tradesTable(r.trades || r.tradesList);
+        const raw = await API.calc(name, { data: state.bars, strategy: st, trades: state.result.trades, ticker: state.ticker, tickers: state.tickersData, ...extra });
+        const r = resultOf(raw);
+        if (!r) { el.textContent = 'Нет результата'; return; }
+        if (!r.metrics || typeof r.metrics !== 'object' || (r.metrics.profitFactor == null && r.metrics.totalReturn == null && !Object.keys(r.metrics).length)) {
+          try {
+            const m = await API.calc('metrics', { trades: r.trades, equity: r.equity, initialCapital: 10000 });
+            r.metrics = m;
+            r.maxDrawdown = m.maxDrawdown ?? r.maxDrawdown;
+          } catch (_) {}
+        }
+        el.innerHTML = metricsGrid(r.metrics, r.finalValue, r.maxDrawdown) + `<p class="text-sm my-2">Сделок: ${r.trades?.length || 0}${r.finalValue != null ? ', итог ' + fmt(r.finalValue) : ''}</p>` + tradesTable(r.trades);
       } catch (e) { el.textContent = e.message; }
     };
     if (state.stockTab === 'buyhold') fill('bh-out', 'buy-hold');
