@@ -1,9 +1,11 @@
 package httpapi
 
 import (
+	"errors"
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 
 	"mktorder.com/go/internal/live"
 )
@@ -65,7 +67,14 @@ func (s *Server) handleTelegramSimulate(w http.ResponseWriter, r *http.Request) 
 		writeJSON(w, 500, map[string]any{"error": err.Error(), "success": false, "stage": res.Stage})
 		return
 	}
-	writeJSON(w, 200, map[string]any{"success": res.Success, "sent": res.Sent, "stage": res.Stage, "tickers": res.Tickers, "text": res.Text})
+	out := map[string]any{
+		"success": res.Success, "sent": res.Sent, "stage": res.Stage,
+		"tickers": res.Tickers, "text": res.Text, "dryRun": res.DryRun, "executed": res.Executed,
+	}
+	if res.Reason != "" {
+		out["reason"] = res.Reason
+	}
+	writeJSON(w, 200, out)
 }
 
 func (s *Server) handleActualizePrices(w http.ResponseWriter, r *http.Request) {
@@ -160,6 +169,10 @@ func (s *Server) handleWebullClose(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleWebullTestBuy(w http.ResponseWriter, r *http.Request) {
+	if os.Getenv("WEBULL_ENABLE_LIVE_TEST_BUY") != "true" {
+		writeJSON(w, 403, map[string]any{"error": "Live Webull test buy is disabled", "success": false, "submitted": false})
+		return
+	}
 	var body struct {
 		Symbol   string  `json:"symbol"`
 		Quantity float64 `json:"quantity"`
@@ -171,7 +184,13 @@ func (s *Server) handleWebullTestBuy(w http.ResponseWriter, r *http.Request) {
 		if reason == "" && err != nil {
 			reason = err.Error()
 		}
-		writeJSON(w, 422, map[string]any{"success": false, "submitted": false, "error": reason, "result": res})
+		code := 422
+		if errors.Is(err, live.ErrTestBuyDisabled) {
+			code = 403
+		} else if strings.Contains(reason, "Test buy quantity") {
+			code = 400
+		}
+		writeJSON(w, code, map[string]any{"success": false, "submitted": false, "error": reason, "result": res})
 		return
 	}
 	writeJSON(w, 200, map[string]any{"success": true, "submitted": true, "clientOrderId": res.ClientOrderID, "result": res})

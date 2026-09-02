@@ -97,7 +97,16 @@ func (b *LiveBroker) PlaceMarket(symbol, side string, qty float64) (OrderResult,
 }
 
 func (b *LiveBroker) CloseMarket(symbol string) (OrderResult, error) {
-	return b.PlaceMarket(symbol, "SELL", 1)
+	pos, err := b.Positions()
+	if err != nil {
+		return OrderResult{Error: err.Error(), Symbol: symbol, Side: "SELL"}, err
+	}
+	qty := PositionQuantity(pos, symbol, false)
+	if !(qty > 0) {
+		err := fmt.Errorf("No broker position found for %s", symbol)
+		return OrderResult{Error: err.Error(), Symbol: symbol, Side: "SELL"}, err
+	}
+	return b.PlaceMarket(symbol, "SELL", qty)
 }
 
 func (b *LiveBroker) Account() (map[string]any, error) {

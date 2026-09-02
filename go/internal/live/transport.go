@@ -78,7 +78,15 @@ func (m *MemoryBroker) PlaceMarket(symbol, side string, qty float64) (OrderResul
 }
 
 func (m *MemoryBroker) CloseMarket(symbol string) (OrderResult, error) {
-	return m.PlaceMarket(symbol, "SELL", 1)
+	m.mu.Lock()
+	pos := m.Pos
+	m.mu.Unlock()
+	qty := PositionQuantity(pos, symbol, false)
+	if !(qty > 0) {
+		err := fmt.Errorf("No broker position found for %s", symbol)
+		return OrderResult{Error: err.Error(), Symbol: symbol, Side: "SELL"}, err
+	}
+	return m.PlaceMarket(symbol, "SELL", qty)
 }
 
 func (m *MemoryBroker) Account() (map[string]any, error) {

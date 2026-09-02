@@ -158,6 +158,40 @@ func TestTickT11RunsAggregation(t *testing.T) {
 	}
 }
 
+func TestTickT1Executes(t *testing.T) {
+	dir := t.TempDir()
+	db, err := store.Open(filepath.Join(dir, "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
+	_ = db.SaveDataset("AAPL", "AAPL", "", "", bars, false)
+	_ = db.UpsertWatch(map[string]any{"symbol": "AAPL", "lowIBS": 0.9})
+	tg := &live.MemoryTelegram{}
+	br := &live.MemoryBroker{}
+	eng := live.New(db, &live.MemoryQuotes{Bars: map[string][]types.OHLC{"AAPL": bars}})
+	eng.Telegram = tg
+	eng.Broker = br
+	eng.ChatID = "c"
+	eng.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true, "entrySizingMode": "quantity", "fixedQuantity": 1})
+	now := time.Date(2026, 9, 1, 19, 59, 0, 0, time.UTC) // 15:59 ET
+	var logs []JobLog
+	RunTick(db, Deps{Live: eng}, now, func(j JobLog) { logs = append(logs, j) })
+	saw := false
+	for _, j := range logs {
+		if j.Name == "telegram-aggregation" && !j.Skipped {
+			saw = true
+		}
+	}
+	if !saw {
+		t.Fatalf("expected T-1 aggregation, logs=%+v", logs)
+	}
+	if len(br.Orders) != 1 {
+		t.Fatalf("T-1 must place, orders=%+v logs=%+v", br.Orders, logs)
+	}
+}
+
 func TestTickAfterCloseWritesOHLC(t *testing.T) {
 	dir := t.TempDir()
 	db, err := store.Open(filepath.Join(dir, "t.db"))

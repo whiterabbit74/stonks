@@ -249,6 +249,23 @@
     if (n == null || !Number.isFinite(n)) return '—';
     return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
   }
+  function flattenNums(obj, acc) {
+    acc = acc || {};
+    if (!obj || typeof obj !== 'object') return acc;
+    if (Array.isArray(obj)) { obj.forEach((x) => flattenNums(x, acc)); return acc; }
+    Object.keys(obj).forEach((k) => {
+      const v = obj[k];
+      if (typeof v === 'number' && Number.isFinite(v) && acc[k] == null) acc[k] = v;
+      else if (v && typeof v === 'object') flattenNums(v, acc);
+    });
+    return acc;
+  }
+  function asRows(v) {
+    if (Array.isArray(v)) return v;
+    if (v && Array.isArray(v.holdings)) return v.holdings;
+    if (v && Array.isArray(v.positions)) return v.positions;
+    return [];
+  }
   function fmtPct(n) { return (n == null ? 0 : n).toFixed(1) + '%'; }
   function pnlClass(n) { return n > 0 ? 'pos' : n < 0 ? 'neg' : ''; }
   function isDark() {
@@ -1340,6 +1357,14 @@
   }
 
   function pageWatches() {
+    const cons = state.consistency || {};
+    const issues = Array.isArray(cons.issues) ? cons.issues : [];
+    const consOk = !!state.consistency && issues.length === 0;
+    const consLabel = !state.consistency ? '…' : (consOk ? 'OK' : (issues[0] && issues[0].code) || 'mismatch');
+    const consText = !state.consistency
+      ? 'Проверка согласованности…'
+      : (consOk ? 'Monitor и broker журналы сейчас согласованы.' : issues.map((i) => i.message || i.code).filter(Boolean).join(' ') || 'Monitor и broker журналы расходятся.');
+
     const stats = monitorStats(state.monitorTrades);
     const rows = (state.watches || []).map((w) => `<tr>
       <td class="font-mono"><a href="/stocks?tickers=${encodeURIComponent(w.symbol)}" data-nav class="text-blue-600">${esc(w.symbol)}</a></td>
@@ -1376,9 +1401,9 @@
             <h3 class="text-lg font-semibold">Согласованность monitor / broker</h3>
             <p class="text-sm text-gray-600 dark:text-gray-300">Статус синхронизации виртуальной monitor-позиции и реального брокерского журнала.</p>
           </div>
-          <span class="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">OK</span>
+          <span class="inline-flex items-center rounded-full border ${consOk ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-amber-200 bg-amber-50 text-amber-800'} px-3 py-1 text-xs font-semibold">${esc(consLabel)}</span>
         </div>
-        <p class="mt-3 text-sm text-gray-600 dark:text-gray-300">Monitor и broker журналы сейчас согласованы.</p>
+        <p class="mt-3 text-sm text-gray-600 dark:text-gray-300">${esc(consText)}</p>
       </div>
       <div class="rounded-lg border border-gray-200 bg-white p-4 dark:bg-gray-800 dark:border-gray-700 mb-4">
         <div class="mb-3 flex items-center justify-between gap-2">
@@ -1433,16 +1458,23 @@
       </form>
       <div id="broker-list">${list}</div>`;
     } else if (tab === 'overview') {
+      const nums = flattenNums(state.dashboard);
+      const err = state.dashboard && state.dashboard.error;
       body = `<div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        ${[['Всего активов', '—'], ['Свободные деньги', '—'], ['Покупательная способность', '—'], ['Нереализованный PnL', '—']].map(([t, v]) => `<div class="rounded-lg border p-4"><div class="text-xs text-gray-500">${t}</div><div class="text-xl font-semibold mt-1">${v}</div></div>`).join('')}
-      </div>`;
+        ${[['Всего активов', fmtUsd(nums.total_net_liquidation_value ?? nums.net_liquidation_value)], ['Свободные деньги', fmtUsd(nums.total_cash_balance ?? nums.cash_balance)], ['Покупательная способность', fmtUsd(nums.day_buying_power ?? nums.buying_power)], ['Нереализованный PnL', fmtUsd(nums.unrealized_profit_loss ?? nums.unrealizedPnl)]].map(([t, v]) => `<div class="rounded-lg border p-4"><div class="text-xs text-gray-500">${t}</div><div class="text-xl font-semibold mt-1">${v}</div></div>`).join('')}
+      </div>${err ? `<p class="mt-3 text-sm text-amber-700">${esc(err)}</p>` : ''}`;
     } else if (tab === 'positions') {
-      body = `${emptyBrokerTable(['Тикер', 'Тип', 'Валюта', 'Кол-во', 'Средняя', 'Рыночная цена', 'Нереализ. PnL'], 'Открытых позиций нет')}`;
+      const pos = asRows(state.dashboard && (state.dashboard.positions || (state.dashboard.account && state.dashboard.account.positions)));
+      const posRows = pos.map((p) => `<tr><td>${esc(p.symbol || p.ticker || '')}</td><td>${esc(p.instrument_type || p.type || '')}</td><td>${esc(p.currency || '')}</td><td>${esc(p.quantity ?? p.qty ?? '')}</td><td>${esc(p.average_price ?? p.avgPrice ?? '')}</td><td>${esc(p.market_price ?? p.lastPrice ?? '')}</td><td>${esc(p.unrealized_profit_loss ?? p.unrealizedPnl ?? '')}</td></tr>`).join('');
+      body = `${posRows ? `<div class="overflow-auto"><table class="trades"><thead><tr><th>Тикер</th><th>Тип</th><th>Валюта</th><th>Кол-во</th><th>Средняя</th><th>Рыночная цена</th><th>Нереализ. PnL</th></tr></thead><tbody>${posRows}</tbody></table></div>` : emptyBrokerTable(['Тикер', 'Тип', 'Валюта', 'Кол-во', 'Средняя', 'Рыночная цена', 'Нереализ. PnL'], 'Открытых позиций нет')}`;
     } else if (tab === 'orders') {
       body = `${emptyBrokerTable(['Тикер', 'Сторона', 'Тип', 'Кол-во', 'Цена', 'Статус'], 'Активных ордеров нет')}`;
     } else if (tab === 'fills') {
       body = `${emptyBrokerTable(['Тикер', 'Сторона', 'Кол-во', 'Цена', 'Время'], 'История ордеров пока не пришла')}`;
     } else if (tab === 'autotrade') {
+      const st = state.autoStatus || {};
+      const last = (st.state && st.state.lastRunAt) || '—';
+      const dec = st.evaluation && st.evaluation.decision ? st.evaluation.decision : {};
       body = `<div class="rounded-lg border border-gray-200 p-4 dark:border-gray-700">
         <h2 class="text-lg font-semibold mb-3">Состояние автоторговли</h2>
         <div class="grid gap-3 md:grid-cols-2">
@@ -1456,20 +1488,22 @@
           </div>
           <div class="rounded-xl bg-gray-50 p-3 dark:bg-gray-950/40">
             <div class="text-xs uppercase tracking-wide text-gray-500">Последний запуск</div>
-            <div class="mt-1 text-sm">—</div>
+            <div class="mt-1 text-sm">${esc(last)}</div>
           </div>
           <div class="rounded-xl bg-gray-50 p-3 dark:bg-gray-950/40">
             <div class="text-xs uppercase tracking-wide text-gray-500">Entries/Exits</div>
-            <div class="mt-1 text-sm">—</div>
+            <div class="mt-1 text-sm">${esc(dec.action || '—')} ${esc(dec.symbol || '')}</div>
           </div>
         </div>
       </div>`;
     } else if (tab === 'monitor') {
-      body = `${emptyBrokerTable(['Тикер', 'IBS', 'Цена', 'Позиция'], 'Нет отслеживаемых акций')}`;
+      const wrows = (state.watches || []).map((w) => `<tr><td>${esc(w.symbol)}</td><td>${esc(w.lastIbs ?? w.ibs ?? '—')}</td><td>${esc(w.entryPrice ?? '—')}</td><td>${w.isOpenPosition ? 'открыта' : '—'}</td></tr>`).join('');
+      body = `${wrows ? `<div class="overflow-auto"><table class="trades"><thead><tr><th>Тикер</th><th>IBS</th><th>Цена</th><th>Позиция</th></tr></thead><tbody>${wrows}</tbody></table></div>` : emptyBrokerTable(['Тикер', 'IBS', 'Цена', 'Позиция'], 'Нет отслеживаемых акций')}`;
     } else {
+      const logs = ((state.autoLogs && state.autoLogs.logs) || []).map((l) => `${l.ts || ''} ${l.message || JSON.stringify(l)}`).join('\n') || 'Логи автоторговли пока пусты';
       body = `<div class="space-y-3">
         <div><h2 class="text-sm font-semibold mb-1">Логи мониторинга</h2><pre class="text-xs bg-gray-50 dark:bg-gray-800 p-3 rounded overflow-auto max-h-40">Логи мониторинга пока пусты</pre></div>
-        <div><h2 class="text-sm font-semibold mb-1">Webull / autotrade логи</h2><pre id="broker-logs" class="text-xs bg-gray-50 dark:bg-gray-800 p-3 rounded overflow-auto max-h-40">Логи автоторговли пока пусты</pre></div>
+        <div><h2 class="text-sm font-semibold mb-1">Webull / autotrade логи</h2><pre id="broker-logs" class="text-xs bg-gray-50 dark:bg-gray-800 p-3 rounded overflow-auto max-h-40">${esc(logs)}</pre></div>
       </div>`;
     }
     return `
@@ -2076,14 +2110,16 @@
 
     if (p === '/watches') {
       if (!state.loaded.watches) {
-        const [w, t, a] = await Promise.all([
+        const [w, t, a, c] = await Promise.all([
           API.watches().catch(() => []),
           API.trades().catch(() => API.monitorTrades().catch(() => [])),
           API.emaAlerts().catch(() => []),
+          API.consistency().catch((e) => ({ issues: [{ code: 'fetch_failed', message: (e && e.message) || 'Не удалось получить согласованность' }] })),
         ]);
         state.watches = w || [];
         state.monitorTrades = Array.isArray(t) ? t : (t.trades || []);
         state.emaAlerts = Array.isArray(a) ? a : (a.alerts || []);
+        state.consistency = c || { issues: [] };
         state.loaded.watches = true;
         renderPage();
         return;
@@ -2103,9 +2139,9 @@
         state.watches = await API.watches();
         renderPage();
       });
-      document.getElementById('watch-t11')?.addEventListener('click', async () => { try { await API.post('/api/telegram/simulate', { stage: 'overview' }); toast('Симуляция T-11'); } catch (err) { toast(err.message); } });
-      document.getElementById('watch-t2')?.addEventListener('click', async () => { try { await API.post('/api/telegram/simulate', { stage: 'confirmations' }); toast('Симуляция T-2'); } catch (err) { toast(err.message); } });
-      document.getElementById('watch-prices')?.addEventListener('click', async () => { try { await API.post('/api/telegram/update-all', {}); toast('Цены и позиции обновлены'); } catch (err) { toast(err.message); } });
+      document.getElementById('watch-t11')?.addEventListener('click', async () => { try { const r = await API.simulate('overview'); if (r && r.success && r.sent) toast('Симуляция T-11'); else toast((r && (r.reason || r.error)) || 'Симуляция T-11 не отправлена'); } catch (err) { toast(err.message); } });
+      document.getElementById('watch-t2')?.addEventListener('click', async () => { try { const r = await API.simulate('confirmations'); if (r && r.success && r.sent) toast('Симуляция T-2'); else toast((r && (r.reason || r.error)) || 'Симуляция T-2 не отправлена'); } catch (err) { toast(err.message); } });
+      document.getElementById('watch-prices')?.addEventListener('click', async () => { try { const r = await API.updateAll(); const prices = (r && r.prices) || r || {}; if (prices.success || prices.updated) toast('Цены и позиции обновлены'); else toast(prices.reason || (r && r.reason) || 'Цены не обновлены'); } catch (err) { toast(err.message); } });
       document.getElementById('watch-manual')?.addEventListener('submit', async (e) => {
         e.preventDefault();
         const fd = new FormData(e.target);
@@ -2131,14 +2167,22 @@
 
     if (p === '/broker') {
       if (!state.loaded.broker) {
-        const [bt, tok, ac] = await Promise.all([
+        const [bt, tok, ac, dash, logs, st, w] = await Promise.all([
           API.brokerTrades().catch(() => []),
           API.tokenStatus().catch((e) => e.data || { present: false, hasToken: false }),
           API.autoConfig().catch(() => ({})),
+          API.dashboard().catch((e) => (e && e.data) || { error: (e && e.message) || 'dashboard', positions: [] }),
+          API.logs(50).catch(() => ({ logs: [] })),
+          API.autoStatus().catch(() => null),
+          API.watches().catch(() => []),
         ]);
         state.broker = Array.isArray(bt) ? bt : (bt.trades || []);
         state.token = tok;
         state.autoConfig = ac && ac.config ? ac.config : (ac || {});
+        state.dashboard = dash || {};
+        state.autoLogs = logs || { logs: [] };
+        state.autoStatus = st;
+        if (Array.isArray(w)) state.watches = w;
         state.loaded.broker = true;
         renderPage();
         return;

@@ -131,7 +131,7 @@ func (e *Engine) UpdateAll(force bool) map[string]any {
 	prices := e.Actualize(force)
 	pos := e.UpdatePositions()
 	return map[string]any{
-		"success":   true,
+		"success":   prices.Success,
 		"prices":    prices,
 		"positions": pos,
 	}

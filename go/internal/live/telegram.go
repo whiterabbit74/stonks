@@ -11,12 +11,15 @@ import (
 )
 
 type SimulateResult struct {
-	Success bool     `json:"success"`
-	Sent    bool     `json:"sent"`
-	Stage   string   `json:"stage"`
-	Text    string   `json:"text,omitempty"`
-	Tickers []string `json:"tickers,omitempty"`
-	Reason  string   `json:"reason,omitempty"`
+	Success  bool     `json:"success"`
+	Sent     bool     `json:"sent"`
+	Stage    string   `json:"stage"`
+	Text     string   `json:"text,omitempty"`
+	Tickers  []string `json:"tickers,omitempty"`
+	Reason   string   `json:"reason,omitempty"`
+	DryRun   bool     `json:"dryRun,omitempty"`
+	Executed bool     `json:"executed,omitempty"`
+	Broker   any      `json:"broker,omitempty"`
 }
 
 func StageMinutes(stage string) int {
@@ -67,20 +70,25 @@ func (e *Engine) Command(command string, limit int) (map[string]any, error) {
 	return map[string]any{"success": true, "command": normalized, "sent": true}, nil
 }
 
+type AggregateOpts struct {
+	ForceSend bool
+	DryRun    bool
+}
+
 func (e *Engine) Simulate(stage string) (SimulateResult, error) {
 	if stage == "" {
 		stage = "overview"
 	}
 	minutes := StageMinutes(stage)
-	return e.Aggregate(minutes, true)
+	return e.Aggregate(minutes, AggregateOpts{ForceSend: true, DryRun: true})
 }
 
-func (e *Engine) Aggregate(minutesUntilClose int, forceSend bool) (SimulateResult, error) {
+func (e *Engine) Aggregate(minutesUntilClose int, opts AggregateOpts) (SimulateResult, error) {
 	stage := "overview"
 	if minutesUntilClose <= 2 {
 		stage = "confirmations"
 	}
-	out := SimulateResult{Stage: stage}
+	out := SimulateResult{Stage: stage, DryRun: opts.DryRun}
 	watches, _ := e.DB.ListWatches()
 	if len(watches) == 0 {
 		out.Reason = "no_watches"
@@ -117,41 +125,66 @@ func (e *Engine) Aggregate(minutesUntilClose int, forceSend bool) (SimulateResul
 	text := strings.Join(lines, "\n")
 	out.Text = text
 	if err := e.Send(e.chat(), text); err != nil {
-		if !forceSend {
-			out.Reason = err.Error()
+		out.Reason = err.Error()
+		if !opts.ForceSend {
 			return out, err
 		}
-		out.Reason = err.Error()
-		return out, err
+	} else {
+		out.Sent = true
+		out.Success = true
 	}
-	out.Sent = true
-	out.Success = true
+	if minutesUntilClose <= 2 {
+		if opts.DryRun {
+			_ = e.DB.AppendAutotradeLog("t1_dry_run")
+		} else {
+			first := e.Execute("telegram_t1")
+			out.Executed = first.Executed
+			out.Broker = first.Broker
+			action, _ := first.Decision["action"].(string)
+			if first.Executed && action == "exit" {
+				second := e.Execute("telegram_t1")
+				if second.Executed {
+					out.Executed = true
+					out.Broker = second.Broker
+				}
+			}
+		}
+	}
 	return out, nil
 }
 
 type watchEval struct {
 	ok, entry, exit bool
-	ibs             float64
+	ibs, price      float64
 }
 
 func (e *Engine) evalWatch(sym string, w map[string]any, provider string) watchEval {
-	low, _ := w["lowIBS"].(float64)
-	high, _ := w["highIBS"].(float64)
-	var ibsVal float64
+	low := asFloat(w["lowIBS"])
+	high := asFloat(w["highIBS"])
+	var ibsVal, price float64
 	ok := false
 	if qs := e.quotes(); qs != nil {
 		if q, err := qs.Quote(sym, provider); err == nil {
 			if v, good := ibsFromQuote(q); good {
 				ibsVal, ok = v, true
 			}
+			if cur := asFloat(q.Quote["current"]); cur > 0 {
+				price = cur
+			}
 		}
 	}
-	if !ok {
+	if !ok || price <= 0 {
 		bars, _, err := e.DB.GetOHLC(sym)
 		if err == nil && len(bars) > 0 {
-			vals := indicators.IBS(bars)
-			ibsVal = vals[len(vals)-1]
-			ok = true
+			last := bars[len(bars)-1]
+			if !ok {
+				vals := indicators.IBS(bars)
+				ibsVal = vals[len(vals)-1]
+				ok = true
+			}
+			if price <= 0 {
+				price = last.Close
+			}
 		}
 	}
 	if !ok {
@@ -160,6 +193,7 @@ func (e *Engine) evalWatch(sym string, w map[string]any, provider string) watchE
 	return watchEval{
 		ok:    true,
 		ibs:   ibsVal,
+		price: price,
 		entry: ibs.IsEntrySignal(ibsVal, low),
 		exit:  ibs.IsExitSignal(ibsVal, high),
 	}

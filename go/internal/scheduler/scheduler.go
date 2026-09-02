@@ -199,7 +199,7 @@ func RunTokenHealth(db *store.DB, todayET string, now time.Time) (detail string,
 }
 
 func RunTelegramAggregation(db *store.DB, deps Deps, until int) int {
-	res, _ := engine(db, deps).Aggregate(until, true)
+	res, _ := engine(db, deps).Aggregate(until, live.AggregateOpts{ForceSend: true, DryRun: until > 2})
 	return len(res.Tickers)
 }
 

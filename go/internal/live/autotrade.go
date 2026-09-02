@@ -1,8 +1,11 @@
 package live
 
 import (
+	"errors"
 	"fmt"
+	"math"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -10,6 +13,8 @@ import (
 	"mktorder.com/go/internal/store"
 	"mktorder.com/go/internal/tradingdate"
 )
+
+var ErrTestBuyDisabled = errors.New("Live Webull test buy is disabled")
 
 func (e *Engine) AutoConfig() map[string]any {
 	settings := e.DB.Settings()
@@ -172,7 +177,7 @@ func (e *Engine) Evaluate() EvalResult {
 		w := map[string]any{"symbol": sym, "lowIBS": low, "highIBS": high}
 		ev := e.evalWatch(sym, w, provider)
 		quotes = append(quotes, map[string]any{
-			"symbol": sym, "ok": ev.ok, "ibs": ev.ibs,
+			"symbol": sym, "ok": ev.ok, "ibs": ev.ibs, "currentPrice": ev.price,
 			"thresholds": map[string]any{"lowIBS": low, "highIBS": high},
 		})
 	}
@@ -268,9 +273,11 @@ func (e *Engine) Execute(trigger string) EvalResult {
 		_ = e.DB.AppendAutotradeLog("execution_blocked missing_webull_credentials " + symbol)
 		return ev
 	}
-	qty := 1.0
-	if v, ok := ev.AutoTrading["fixedQuantity"].(float64); ok && v > 0 {
-		qty = v
+	qty, qerr := e.sizeOrder(action, symbol, ev.AutoTrading, quotePrice(ev, symbol))
+	if qerr != nil {
+		ev.Broker = map[string]any{"submitted": false, "error": qerr.Error()}
+		_ = e.DB.AppendAutotradeLog("execution_blocked " + qerr.Error() + " " + symbol)
+		return ev
 	}
 	side := "BUY"
 	if action == "exit" {
@@ -354,11 +361,30 @@ func (e *Engine) ClosePosition(symbol string) (OrderResult, error) {
 }
 
 func (e *Engine) TestBuy(symbol string, qty float64) (OrderResult, error) {
+	if os.Getenv("WEBULL_ENABLE_LIVE_TEST_BUY") != "true" {
+		return OrderResult{Error: ErrTestBuyDisabled.Error()}, ErrTestBuyDisabled
+	}
 	if symbol == "" {
 		symbol = "AAL"
 	}
 	if qty <= 0 {
 		qty = 1
+	}
+	if qty != math.Trunc(qty) {
+		return OrderResult{Error: "Test buy quantity must be a positive integer"}, fmt.Errorf("Test buy quantity must be a positive integer")
+	}
+	maxQty := 1.0
+	if raw := strings.TrimSpace(os.Getenv("WEBULL_LIVE_TEST_BUY_MAX_QUANTITY")); raw != "" {
+		if n, err := strconv.Atoi(raw); err == nil && n > 0 {
+			if n > 100 {
+				n = 100
+			}
+			maxQty = float64(n)
+		}
+	}
+	if qty > maxQty {
+		msg := fmt.Sprintf("Test buy quantity must be between 1 and %.0f", maxQty)
+		return OrderResult{Error: msg}, fmt.Errorf("%s", msg)
 	}
 	if e.Broker == nil {
 		return OrderResult{Error: "Webull credentials are missing"}, fmt.Errorf("Webull credentials are missing")

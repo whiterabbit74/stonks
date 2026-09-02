@@ -85,7 +85,7 @@ func TestLivePathsAreNotJsonOKStubs(t *testing.T) {
 	}
 
 	req := httptest.NewRequest("PATCH", "/api/autotrade/config", bytes.NewReader(mustJSON(map[string]any{
-		"enabled": true, "lowIBS": 0.9, "allowNewEntries": true, "fixedQuantity": 1,
+		"enabled": true, "lowIBS": 0.9, "allowNewEntries": true, "entrySizingMode": "quantity", "fixedQuantity": 1,
 	})))
 	req.Header.Set("Content-Type", "application/json")
 	rec = httptest.NewRecorder()
@@ -128,6 +128,67 @@ func TestLivePathsAreNotJsonOKStubs(t *testing.T) {
 	}
 	if len(br.Orders) == 0 {
 		t.Fatal("broker PlaceMarket not called")
+	}
+}
+
+func TestSimulateConfirmationsDoesNotPlace(t *testing.T) {
+	s, _, br := liveServer(t)
+	req := httptest.NewRequest("PATCH", "/api/autotrade/config", bytes.NewReader(mustJSON(map[string]any{
+		"enabled": true, "lowIBS": 0.9, "allowNewEntries": true, "entrySizingMode": "quantity", "fixedQuantity": 1,
+	})))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	rec = postJSON(s, "/api/telegram/simulate", map[string]any{"stage": "confirmations"})
+	if rec.Code != 200 {
+		t.Fatalf("simulate %d %s", rec.Code, rec.Body.String())
+	}
+	var sim map[string]any
+	_ = json.Unmarshal(rec.Body.Bytes(), &sim)
+	if sim["dryRun"] != true {
+		t.Fatalf("http simulate must dry-run: %s", rec.Body.String())
+	}
+	if len(br.Orders) != 0 {
+		t.Fatalf("http simulate placed %+v", br.Orders)
+	}
+}
+
+func TestTestBuyDisabledByDefault(t *testing.T) {
+	s, _, _ := liveServer(t)
+	t.Setenv("WEBULL_ENABLE_LIVE_TEST_BUY", "")
+	rec := postJSON(s, "/api/autotrade/webull/test-buy", map[string]any{"symbol": "AAPL", "quantity": 1})
+	if rec.Code != 403 {
+		t.Fatalf("want 403 got %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestPagesDriveLiveAPIs(t *testing.T) {
+	app, err := os.ReadFile("../web/js/app.js")
+	if err != nil {
+		app, err = os.ReadFile("../../web/js/app.js")
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	api, err := os.ReadFile("../web/js/api.js")
+	if err != nil {
+		api, err = os.ReadFile("../../web/js/api.js")
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, j := string(app), string(api)
+	need := []string{"/api/monitor/consistency", "/api/autotrade/webull/dashboard", "/api/autotrade/logs", "/api/autotrade/status"}
+	for _, s := range need {
+		if !strings.Contains(a, s) && !strings.Contains(j, s) {
+			t.Errorf("UI missing %s", s)
+		}
+	}
+	if !strings.Contains(a, "r.sent") {
+		t.Error("watches simulate toast must inspect r.sent")
+	}
+	if strings.Contains(a, "Monitor и broker журналы сейчас согласованы.") && !strings.Contains(a, "consistency") {
+		t.Error("consistency copy is hardcoded")
 	}
 }
 
