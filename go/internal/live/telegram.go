@@ -95,62 +95,183 @@ func (e *Engine) Aggregate(minutesUntilClose int, opts AggregateOpts) (SimulateR
 		return out, nil
 	}
 	today := tradingdate.TodayNYSE(e.now())
-	var lines []string
-	label := "T-11 overview"
-	if stage == "confirmations" {
-		label = "T-1 confirmations"
-	}
-	lines = append(lines, fmt.Sprintf("%s %s", label, today))
 	settings := e.DB.Settings()
 	provider, _ := settings["resultsQuoteProvider"].(string)
 	if provider == "" {
 		provider = "finnhub"
 	}
+	var rows []t1Watch
 	for _, w := range watches {
 		sym := fmt.Sprint(w["symbol"])
-		row := e.evalWatch(sym, w, provider)
+		ev := e.evalWatch(sym, w, provider)
+		rows = append(rows, t1Watch{sym: sym, eval: ev})
 		out.Tickers = append(out.Tickers, sym)
-		flag := "—"
-		if row.entry {
-			flag = "ENTRY"
-		} else if row.exit {
-			flag = "EXIT"
-		}
-		ibsStr := "n/a"
-		if row.ok {
-			ibsStr = fmt.Sprintf("%.2f", row.ibs)
-		}
-		lines = append(lines, fmt.Sprintf("%s IBS=%s %s", sym, ibsStr, flag))
 	}
-	text := strings.Join(lines, "\n")
+	if stage != "confirmations" {
+		lines := []string{fmt.Sprintf("T-11 overview %s", today)}
+		for _, r := range rows {
+			flag := "—"
+			if r.eval.entry {
+				flag = "ENTRY"
+			} else if r.eval.exit {
+				flag = "EXIT"
+			}
+			ibsStr := "n/a"
+			if r.eval.ok {
+				ibsStr = fmt.Sprintf("%.2f", r.eval.ibs)
+			}
+			lines = append(lines, fmt.Sprintf("%s IBS=%s %s", r.sym, ibsStr, flag))
+		}
+		return e.finishSend(&out, strings.Join(lines, "\n"), opts)
+	}
+
+	snap := e.Consistency()
+	blocking := BlockingMismatch(snap)
+	if blocking != nil {
+		_ = e.DB.AppendAutotradeLog("t1_monitor_mismatch " + fmt.Sprint(blocking["code"]) + " " + fmt.Sprint(blocking["message"]))
+	}
+	_ = e.DB.AppendAutotradeLog("t1_execution_started")
+
+	var exitRes, entryRes EvalResult
+	waitFill := false
+	if blocking == nil {
+		if opts.DryRun {
+			_ = e.DB.AppendAutotradeLog("t1_dry_run")
+			exitRes = e.Evaluate()
+		} else {
+			exitRes = e.Execute("telegram_t1")
+			out.Executed = exitRes.Executed
+			out.Broker = exitRes.Broker
+			action, _ := exitRes.Decision["action"].(string)
+			if action == "exit" && e.DB.FindPendingTracker("", "exit") != nil {
+				waitFill = true
+				_ = e.DB.AppendAutotradeLog("t1_entry_blocked_waiting_exit_fill")
+			}
+			if !waitFill && action == "exit" && exitRes.Executed {
+				entryRes = e.Execute("telegram_t1")
+				if entryRes.Executed {
+					out.Executed = true
+					out.Broker = entryRes.Broker
+				}
+			}
+		}
+	}
+
+	text := e.buildT1Text(today, rows, blocking, opts.DryRun, waitFill, exitRes, entryRes)
+	return e.finishSend(&out, text, opts)
+}
+
+func (e *Engine) finishSend(out *SimulateResult, text string, opts AggregateOpts) (SimulateResult, error) {
 	out.Text = text
 	if err := e.Send(e.chat(), text); err != nil {
 		out.Reason = err.Error()
 		if !opts.ForceSend {
-			return out, err
+			return *out, err
 		}
 	} else {
 		out.Sent = true
 		out.Success = true
 	}
-	if minutesUntilClose <= 2 {
-		if opts.DryRun {
-			_ = e.DB.AppendAutotradeLog("t1_dry_run")
-		} else {
-			first := e.Execute("telegram_t1")
-			out.Executed = first.Executed
-			out.Broker = first.Broker
-			action, _ := first.Decision["action"].(string)
-			if first.Executed && action == "exit" {
-				second := e.Execute("telegram_t1")
-				if second.Executed {
-					out.Executed = true
-					out.Broker = second.Broker
-				}
+	return *out, nil
+}
+
+type t1Watch struct {
+	sym  string
+	eval watchEval
+}
+
+func (e *Engine) buildT1Text(today string, rows []t1Watch, blocking map[string]any, dryRun, waitFill bool, exitRes, entryRes EvalResult) string {
+	_ = today
+	var decision []string
+	if blocking != nil {
+		decision = append(decision, "• Состояние брокера: "+fmt.Sprint(blocking["message"]))
+		decision = append(decision, "• Monitor продолжает считать позиции независимо от брокера")
+	}
+	if waitFill {
+		decision = append(decision, "• Вход заблокирован: ждём подтверждение fill по выходу")
+	}
+	appendExec := func(res EvalResult, dry bool) {
+		action, _ := res.Decision["action"].(string)
+		if action == "" || action == "none" {
+			return
+		}
+		sym := fmt.Sprint(res.Decision["symbol"])
+		price := quotePrice(res, sym)
+		ibsVal := 0.0
+		if cand, ok := res.Decision["candidate"].(map[string]any); ok {
+			ibsVal = asFloat(cand["ibs"])
+		}
+		priceS := "—"
+		if price > 0 {
+			priceS = fmt.Sprintf("$%.2f", price)
+		}
+		ibsS := fmt.Sprintf("%.1f%%", ibsVal*100)
+		verb := "Открываем"
+		side := "BUY"
+		if action == "exit" {
+			verb = "Закрываем"
+			side = "SELL"
+		}
+		decision = append(decision, fmt.Sprintf("• %s %s по %s (IBS %s)", verb, sym, priceS, ibsS))
+		if dry {
+			decision = append(decision, "• Webull: dry run (ордер не отправлен)")
+			return
+		}
+		submitted := false
+		qty := any("—")
+		errS := ""
+		switch br := res.Broker.(type) {
+		case OrderResult:
+			submitted = br.Submitted
+			if br.Quantity > 0 {
+				qty = br.Quantity
+			}
+			errS = br.Error
+		case map[string]any:
+			submitted, _ = br["submitted"].(bool)
+			if br["quantity"] != nil {
+				qty = br["quantity"]
+			}
+			if br["error"] != nil {
+				errS = fmt.Sprint(br["error"])
 			}
 		}
+		if submitted {
+			decision = append(decision, fmt.Sprintf("• Webull: %s MARKET отправлен (%v шт.)", side, qty))
+		} else if errS != "" {
+			decision = append(decision, "• Webull ошибка: "+errS)
+		}
 	}
-	return out, nil
+	if dryRun {
+		appendExec(exitRes, true)
+	} else {
+		appendExec(exitRes, false)
+		appendExec(entryRes, false)
+	}
+	if len(decision) == 0 {
+		decision = append(decision, "• Действий нет")
+	}
+	lines := []string{
+		"<b>⏱️ 1 минута до закрытия</b>",
+		"",
+		"<b>🎯 РЕШЕНИЕ:</b>",
+	}
+	lines = append(lines, decision...)
+	lines = append(lines, "")
+	for _, r := range rows {
+		flag := "—"
+		if r.eval.entry {
+			flag = "ENTRY"
+		} else if r.eval.exit {
+			flag = "EXIT"
+		}
+		ibsStr := "n/a"
+		if r.eval.ok {
+			ibsStr = fmt.Sprintf("%.2f", r.eval.ibs)
+		}
+		lines = append(lines, fmt.Sprintf("%s IBS=%s %s", r.sym, ibsStr, flag))
+	}
+	return strings.Join(lines, "\n")
 }
 
 type watchEval struct {

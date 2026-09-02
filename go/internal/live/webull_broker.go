@@ -85,15 +85,22 @@ func (b *LiveBroker) PlaceMarket(symbol, side string, qty float64) (OrderResult,
 	if err != nil {
 		return OrderResult{ClientOrderID: cid, Symbol: symbol, Side: side, Quantity: qty, Error: err.Error()}, err
 	}
-	if _, terr := c.OrderDetail(c.AccountID, cid); terr != nil {
+	status := "submitted"
+	if detail, terr := c.OrderDetail(c.AccountID, cid); terr != nil {
 		if b.DB != nil {
 			_ = b.DB.AppendAutotradeLog("order_tracking_start_failed " + cid + " " + terr.Error())
 		}
-	} else if b.DB != nil {
-		_ = b.DB.AppendAutotradeLog("order_track " + cid)
+	} else {
+		if b.DB != nil {
+			_ = b.DB.AppendAutotradeLog("order_track " + cid)
+		}
+		raw := strings.ToUpper(string(detail.Raw))
+		if strings.Contains(raw, "FILLED") || strings.Contains(raw, "EXECUTED") {
+			status = "filled"
+		}
 	}
 	_ = placed
-	return OrderResult{Submitted: true, ClientOrderID: cid, Quantity: qty, Symbol: symbol, Side: side}, nil
+	return OrderResult{Submitted: true, ClientOrderID: cid, Quantity: qty, Symbol: symbol, Side: side, Status: status}, nil
 }
 
 func (b *LiveBroker) CloseMarket(symbol string) (OrderResult, error) {

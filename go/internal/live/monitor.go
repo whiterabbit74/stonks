@@ -7,6 +7,12 @@ import (
 	"mktorder.com/go/internal/store"
 )
 
+var blockingMismatchCodes = map[string]struct{}{
+	"monitor_broker_symbol_mismatch":              {},
+	"linked_monitor_trade_missing_broker_match":   {},
+	"legacy_monitor_trade_ambiguous_broker_match": {},
+}
+
 func (e *Engine) Consistency() map[string]any {
 	monitor, _ := e.DB.ListTrades("trades")
 	broker, _ := e.DB.ListTrades("broker_trades")
@@ -15,23 +21,23 @@ func (e *Engine) Consistency() map[string]any {
 	var issues []map[string]any
 	if openM != nil && openB == nil {
 		issues = append(issues, map[string]any{
-			"code": "monitor_open_without_broker", "severity": "warn",
-			"message": "Open monitor trade has no open broker trade",
-			"symbol":  openM["symbol"], "monitorTradeId": openM["id"], "autoFixable": true,
+			"code": "monitor_trade_without_broker_position", "severity": "warn",
+			"message": fmt.Sprintf("Monitor trade %s is open while broker is flat. Monitor state remains active independently from broker execution.", openM["symbol"]),
+			"symbol":  openM["symbol"], "monitorTradeId": openM["id"], "autoFixable": false,
 		})
 	}
 	if openM == nil && openB != nil {
 		issues = append(issues, map[string]any{
-			"code": "broker_open_without_monitor", "severity": "warn",
-			"message": "Open broker trade has no open monitor trade",
-			"symbol":  openB["symbol"], "brokerTradeId": openB["id"], "autoFixable": true,
+			"code": "broker_trade_without_monitor_projection", "severity": "warn",
+			"message": fmt.Sprintf("Broker trade %s is open, but monitor state is flat.", openB["symbol"]),
+			"symbol":  openB["symbol"], "brokerTradeId": openB["id"], "autoFixable": false,
 		})
 	}
 	if openM != nil && openB != nil && store.SafeTicker(fmt.Sprint(openM["symbol"])) != store.SafeTicker(fmt.Sprint(openB["symbol"])) {
 		issues = append(issues, map[string]any{
-			"code": "symbol_mismatch", "severity": "error",
-			"message": "Monitor and broker open trades are different symbols",
-			"symbol":  openM["symbol"], "autoFixable": false,
+			"code": "monitor_broker_symbol_mismatch", "severity": "error",
+			"message": fmt.Sprintf("Monitor trade %s is open while broker trade %s is open. Automatic reconcile is unsafe.", openM["symbol"], openB["symbol"]),
+			"symbol":  openM["symbol"], "monitorTradeId": openM["id"], "brokerTradeId": openB["id"], "autoFixable": false,
 		})
 	}
 	if issues == nil {
@@ -44,6 +50,35 @@ func (e *Engine) Consistency() map[string]any {
 		"issues":           issues,
 		"proposedActions":  []any{},
 	}
+}
+
+func BlockingMismatch(snap map[string]any) map[string]any {
+	if snap == nil {
+		return nil
+	}
+	raw, ok := snap["issues"]
+	if !ok {
+		return nil
+	}
+	switch issues := raw.(type) {
+	case []map[string]any:
+		for _, iss := range issues {
+			if _, hit := blockingMismatchCodes[fmt.Sprint(iss["code"])]; hit {
+				return iss
+			}
+		}
+	case []any:
+		for _, row := range issues {
+			iss, _ := row.(map[string]any)
+			if iss == nil {
+				continue
+			}
+			if _, hit := blockingMismatchCodes[fmt.Sprint(iss["code"])]; hit {
+				return iss
+			}
+		}
+	}
+	return nil
 }
 
 func (e *Engine) Reconcile(apply bool) map[string]any {

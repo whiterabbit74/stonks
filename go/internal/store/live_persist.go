@@ -1,6 +1,7 @@
 package store
 
 import (
+	"database/sql"
 	"fmt"
 	"sort"
 	"time"
@@ -86,6 +87,75 @@ func (d *DB) ListAutotradeLogs(limit int) ([]map[string]any, error) {
 			return nil, err
 		}
 		out = append(out, map[string]any{"ts": ts, "message": msg})
+	}
+	if out == nil {
+		out = []map[string]any{}
+	}
+	return out, nil
+}
+
+func (d *DB) SaveOrderTracker(rec map[string]any) error {
+	id := fmt.Sprint(rec["clientOrderId"])
+	if id == "" || id == "<nil>" {
+		return fmt.Errorf("clientOrderId required")
+	}
+	status := fmt.Sprint(rec["status"])
+	if status == "" || status == "<nil>" {
+		status = "submitted"
+	}
+	started := fmt.Sprint(rec["startedAt"])
+	if started == "" || started == "<nil>" {
+		started = time.Now().UTC().Format(time.RFC3339Nano)
+	}
+	_, err := d.SQL.Exec(`INSERT INTO order_trackers (client_order_id, symbol, action, status, quantity, source, date_key, started_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(client_order_id) DO UPDATE SET status=excluded.status, quantity=excluded.quantity`,
+		id, SafeTicker(fmt.Sprint(rec["symbol"])), fmt.Sprint(rec["action"]), status, rec["quantity"], rec["source"], rec["dateKey"], started)
+	return err
+}
+
+func (d *DB) SetOrderTrackerStatus(clientOrderID, status string) error {
+	_, err := d.SQL.Exec(`UPDATE order_trackers SET status=? WHERE client_order_id=?`, status, clientOrderID)
+	return err
+}
+
+func (d *DB) FindPendingTracker(symbol, action string) map[string]any {
+	rows, err := d.ListPendingTrackers()
+	if err != nil {
+		return nil
+	}
+	wantSym := SafeTicker(symbol)
+	for _, row := range rows {
+		if action != "" && fmt.Sprint(row["action"]) != action {
+			continue
+		}
+		if wantSym != "" && SafeTicker(fmt.Sprint(row["symbol"])) != wantSym {
+			continue
+		}
+		return row
+	}
+	return nil
+}
+
+func (d *DB) ListPendingTrackers() ([]map[string]any, error) {
+	rows, err := d.SQL.Query(`SELECT client_order_id, symbol, action, status, quantity, source, date_key, started_at
+        FROM order_trackers WHERE status NOT IN ('filled','cancelled','canceled','rejected','expired') ORDER BY started_at DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []map[string]any
+	for rows.Next() {
+		var id, symbol, action, status string
+		var source, dateKey, started sql.NullString
+		var qty sql.NullFloat64
+		if err := rows.Scan(&id, &symbol, &action, &status, &qty, &source, &dateKey, &started); err != nil {
+			return nil, err
+		}
+		out = append(out, map[string]any{
+			"clientOrderId": id, "symbol": symbol, "action": action, "status": status,
+			"quantity": nullF(qty), "source": nullS(source), "dateKey": nullS(dateKey), "startedAt": nullS(started),
+		})
 	}
 	if out == nil {
 		out = []map[string]any{}

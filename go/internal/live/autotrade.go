@@ -244,6 +244,11 @@ func (e *Engine) Execute(trigger string) EvalResult {
 	}
 	symbol := store.SafeTicker(fmt.Sprint(ev.Decision["symbol"]))
 	key := symbol + ":" + action
+	if pending := e.DB.FindPendingTracker(symbol, action); pending != nil {
+		ev.Broker = map[string]any{"submitted": false, "error": "pending_" + action + "_tracker_exists", "clientOrderId": pending["clientOrderId"]}
+		_ = e.DB.AppendAutotradeLog("order_guarded " + key)
+		return ev
+	}
 	e.mu.Lock()
 	if e.reservations == nil {
 		e.reservations = map[string]string{}
@@ -292,15 +297,33 @@ func (e *Engine) Execute(trigger string) EvalResult {
 	ev.Executed = res.Submitted
 	_ = e.DB.AppendAutotradeLog(fmt.Sprintf("order_%s %s %s submitted=%v id=%s", action, symbol, side, res.Submitted, res.ClientOrderID))
 	if res.Submitted {
+		st := res.Status
+		if st == "" {
+			st = "submitted"
+		}
+		_ = e.DB.SaveOrderTracker(map[string]any{
+			"clientOrderId": res.ClientOrderID, "symbol": symbol, "action": action,
+			"status": st, "quantity": qty, "source": trigger, "dateKey": ev.TodayKey,
+		})
 		if action == "entry" {
 			_ = e.DB.InsertTrade("broker_trades", map[string]any{
 				"id": res.ClientOrderID, "symbol": symbol, "status": "open",
-				"entryDate": ev.TodayKey, "entryPrice": 0, "source": trigger, "quantity": qty,
+				"entryDate": ev.TodayKey, "entryPrice": quotePrice(ev, symbol), "source": trigger, "quantity": qty,
+			})
+			_ = e.DB.InsertTrade("trades", map[string]any{
+				"id": "m-" + res.ClientOrderID, "symbol": symbol, "status": "open",
+				"entryDate": ev.TodayKey, "entryPrice": quotePrice(ev, symbol), "source": trigger, "quantity": qty,
 			})
 		} else if ev.OpenTrade != nil {
 			_ = e.DB.PatchTrade("broker_trades", fmt.Sprint(ev.OpenTrade["id"]), map[string]any{
 				"status": "closed", "exitDate": ev.TodayKey,
 			})
+			mon, _ := e.DB.ListTrades("trades")
+			if openM := store.OpenBrokerTrade(mon); openM != nil {
+				_ = e.DB.PatchTrade("trades", fmt.Sprint(openM["id"]), map[string]any{
+					"status": "closed", "exitDate": ev.TodayKey,
+				})
+			}
 		}
 	}
 	e.mu.Lock()

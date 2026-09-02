@@ -193,6 +193,17 @@ func (d *DB) initSchema() error {
             ts TEXT NOT NULL,
             message TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS order_trackers (
+            client_order_id TEXT PRIMARY KEY,
+            symbol          TEXT NOT NULL,
+            action          TEXT NOT NULL,
+            status          TEXT NOT NULL,
+            quantity        REAL,
+            source          TEXT,
+            date_key        TEXT,
+            started_at      TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_order_trackers_pending ON order_trackers(symbol, action, status);
     `)
 	return err
 }

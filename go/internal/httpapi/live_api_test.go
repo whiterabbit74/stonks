@@ -64,6 +64,13 @@ func TestLivePathsAreNotJsonOKStubs(t *testing.T) {
 	if sim["stage"] != "confirmations" {
 		t.Fatalf("confirmations %v", sim)
 	}
+	text, _ := sim["text"].(string)
+	if !strings.Contains(text, "РЕШЕНИЕ") || !strings.Contains(text, "AAPL") {
+		t.Fatalf("T-1 decision text missing: %s", rec.Body.String())
+	}
+	if sim["dryRun"] != true {
+		t.Fatalf("http confirmations must dry-run: %v", sim)
+	}
 
 	more := []types.OHLC{
 		{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1},

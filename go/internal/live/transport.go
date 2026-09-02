@@ -55,14 +55,15 @@ func (h *HTTPTelegram) Send(chatID, text string) error {
 }
 
 type MemoryBroker struct {
-	mu        sync.Mutex
-	Orders    []OrderResult
-	Token     string
-	Cal       []byte
-	Splits    []map[string]any
-	Acct      map[string]any
-	Pos       []any
-	FailPlace string
+	mu         sync.Mutex
+	Orders     []OrderResult
+	Token      string
+	Cal        []byte
+	Splits     []map[string]any
+	Acct       map[string]any
+	Pos        []any
+	FailPlace  string
+	FillStatus string
 }
 
 func (m *MemoryBroker) PlaceMarket(symbol, side string, qty float64) (OrderResult, error) {
@@ -72,7 +73,11 @@ func (m *MemoryBroker) PlaceMarket(symbol, side string, qty float64) (OrderResul
 		return OrderResult{Error: m.FailPlace}, fmt.Errorf("%s", m.FailPlace)
 	}
 	id := fmt.Sprintf("oid-%s-%d", symbol, len(m.Orders)+1)
-	res := OrderResult{Submitted: true, ClientOrderID: id, Quantity: qty, Symbol: symbol, Side: side}
+	status := m.FillStatus
+	if status == "" {
+		status = "submitted"
+	}
+	res := OrderResult{Submitted: true, ClientOrderID: id, Quantity: qty, Symbol: symbol, Side: side, Status: status}
 	m.Orders = append(m.Orders, res)
 	return res, nil
 }

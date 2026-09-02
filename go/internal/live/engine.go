@@ -28,6 +28,7 @@ type OrderResult struct {
 	Quantity      float64 `json:"quantity,omitempty"`
 	Symbol        string  `json:"symbol,omitempty"`
 	Side          string  `json:"side,omitempty"`
+	Status        string  `json:"status,omitempty"`
 }
 
 type Broker interface {
