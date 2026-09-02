@@ -1,4 +1,5 @@
 const Charts = {
+  live: [],
   colors(isDark) {
     return {
       bg: isDark ? '#0b1220' : '#ffffff',
@@ -11,15 +12,24 @@ const Charts = {
     const [y, m, d] = String(date).slice(0, 10).split('-').map(Number);
     return { year: y, month: m, day: d };
   },
+  destroy() {
+    this.live.splice(0).forEach((chart) => {
+      try { chart.remove(); } catch (_) { /* already gone */ }
+    });
+  },
+  track(chart) {
+    this.live.push(chart);
+    return chart;
+  },
   create(container, isDark) {
     const c = this.colors(isDark);
-    return LightweightCharts.createChart(container, {
+    return this.track(LightweightCharts.createChart(container, {
       autoSize: true,
       layout: { background: { color: c.bg }, textColor: c.text, fontFamily: 'Inter, system-ui, sans-serif' },
       grid: { vertLines: { color: c.grid }, horzLines: { color: c.grid } },
       rightPriceScale: { borderColor: c.border },
       timeScale: { borderColor: c.border },
-    });
+    }));
   },
   candles(container, bars, isDark) {
     const chart = this.create(container, isDark);
