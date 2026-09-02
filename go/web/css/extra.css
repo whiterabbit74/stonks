@@ -198,3 +198,74 @@ html.dark .btn-secondary { background: #1f2937; color: #e5e7eb; border-color: #3
 html.dark .cal-weekend { background: #0b1220; color: #6b7280; }
 .cal-today { outline: 2px solid #4f46e5; outline-offset: -2px; }
 html.theme-changing, html.theme-changing * { transition: none !important; }
+.chart-hero { width: 100%; height: 375px; }
+.hero-grid { display: grid; grid-template-columns: 1fr; gap: 0.75rem; }
+@media (min-width: 768px) { .hero-grid { grid-template-columns: minmax(0, 1fr) 240px; } }
+@media (min-width: 1024px) { .hero-grid { grid-template-columns: minmax(0, 1fr) 280px; } }
+.hero-pill {
+  border-radius: 9999px; padding: 0.125rem 0.625rem;
+  font-size: 11px; font-weight: 600; transition: background-color 150ms, color 150ms;
+}
+.hero-pill-on { background: #4f46e5; color: #fff; }
+.hero-pill-off { background: #e5e7eb; color: #374151; }
+.hero-pill-off:hover { background: #d1d5db; }
+html.dark .hero-pill-off { background: #1f2937; color: #e5e7eb; }
+html.dark .hero-pill-off:hover { background: #374151; }
+.hero-range {
+  border-radius: 9999px; padding: 0.125rem 0.625rem;
+  font-size: 11px; font-weight: 500; transition: background-color 150ms, color 150ms;
+}
+.hero-range-on { background: #4f46e5; color: #fff; }
+.hero-range-off { background: #f3f4f6; color: #374151; }
+.hero-range-off:hover { background: #e5e7eb; }
+html.dark .hero-range-off { background: #1f2937; color: #e5e7eb; }
+html.dark .hero-range-off:hover { background: #374151; }
+.hero-tf {
+  display: inline-flex; border-radius: 0.5rem; border: 1px solid #e5e7eb;
+  background: #f3f4f6; padding: 0.125rem;
+}
+html.dark .hero-tf { border-color: #374151; background: #1f2937; }
+.hero-tf button {
+  border-radius: 0.375rem; padding: 0.25rem 0.5rem; font-size: 11px; font-weight: 600;
+}
+.hero-tf-on { background: #fff; color: #4338ca; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+html.dark .hero-tf-on { background: #111827; color: #a5b4fc; }
+.hero-tf-off { color: #4b5563; }
+html.dark .hero-tf-off { color: #d1d5db; }
+.hero-mkt {
+  display: inline-flex; align-items: center; gap: 0.375rem;
+  border-radius: 9999px; border: 1px solid; padding: 0.125rem 0.5rem; font-size: 11px;
+}
+.hero-mkt-open { background: #ecfdf5; border-color: #a7f3d0; color: #047857; }
+html.dark .hero-mkt-open { background: rgba(6,78,59,0.3); border-color: rgba(6,78,59,0.4); color: #a7f3d0; }
+.hero-mkt-closed { background: #fef3c7; border-color: #fde68a; color: #92400e; }
+html.dark .hero-mkt-closed { background: rgba(69,26,3,0.3); border-color: rgba(120,53,15,0.4); color: #fde68a; }
+.hero-dot { height: 0.5rem; width: 0.5rem; border-radius: 9999px; display: inline-block; }
+.hero-pro {
+  display: inline-flex; align-items: center; gap: 0.25rem;
+  height: 1.75rem; border-radius: 9999px; padding: 0 0.625rem; font-size: 11px;
+  border: 1px solid #e5e7eb; background: #fff; color: #374151;
+}
+html.dark .hero-pro { background: #1f2937; border-color: #374151; color: #e5e7eb; }
+.hero-pop {
+  position: absolute; right: 0; top: 100%; z-index: 20; margin-top: 0.375rem;
+  width: 12rem; padding: 0.625rem; border-radius: 0.5rem;
+  border: 1px solid #e5e7eb; background: #fff; box-shadow: 0 10px 15px rgba(0,0,0,0.1);
+}
+html.dark .hero-pop { background: #111827; border-color: #374151; color: #e5e7eb; }
+.hero-kind {
+  border-radius: 0.25rem; padding: 0.25rem 0.5rem; font-size: 11px;
+}
+.hero-kind-on { background: #4f46e5; color: #fff; }
+.hero-kind-off { background: #f3f4f6; color: #374151; }
+html.dark .hero-kind-off { background: #1f2937; color: #e5e7eb; }
+.zone-pct { position: relative; }
+.zone-pct input { padding-right: 1.75rem; }
+.zone-pct-suffix {
+  pointer-events: none; position: absolute; inset: 0 0.75rem 0 auto;
+  display: flex; align-items: center; font-size: 12px; color: #9ca3af;
+}
+.zone-row { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 0.5rem; }
+.hero-footer-row { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 0.5rem; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.animate-spin { animation: spin 1s linear infinite; }

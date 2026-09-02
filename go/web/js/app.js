@@ -108,6 +108,7 @@
   ];
   const LEV_PCT = [100, 125, 150, 175, 200, 225, 250, 275, 300];
   const DEFAULT_LEVERAGE_LABEL = '200%';
+  const HERO_RANGES = ['1M', '3M', '6M', '1Y', '3Y', '5Y', 'MAX'];
   const EMA_TABS = [
     { id: 'summary', label: 'Сводка' },
     { id: 'price', label: 'Цены' },
@@ -170,6 +171,9 @@
     download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/>',
     check: '<path d="M20 6 9 17l-5-5"/>',
     more: '<circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/>',
+    help: '<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>',
+    sliders: '<path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/>',
+    arrowne: '<path d="M7 7h10v10"/><path d="M7 17 17 7"/>',
     logo: '<path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>',
   };
 
@@ -212,7 +216,14 @@
     loaded: {},
     emaResult: null,
     emaTab: 'summary',
-    emaForm: { period: 200, leverage: 200, signal: 'close', start: 'full_history', takeProfit: '', noSellAtLoss: false, buy: -20, sell: 40 },
+    emaForm: { period: 200, leverage: 200, signal: 'close', start: 'full_history', takeProfit: '', noSellAtLoss: false, buyZones: [{ id: 'buy-20', levelPct: -20, enabled: true }], sellZones: [{ id: 'sell-40', levelPct: 40, enabled: true }] },
+    heroByPage: {},
+    heroTf: (() => { try { return JSON.parse(localStorage.getItem('chart-prefs') || '{}').timeframe === 'weekly' ? 'weekly' : 'daily'; } catch { return 'daily'; } })(),
+    heroSettingsOpen: false,
+    quoteOpen: false,
+    quote: null,
+    quoteLoading: false,
+    refreshingTicker: null,
     emaPresets: JSON.parse(localStorage.getItem('emaPresets') || '[]'),
     optResult: null,
     optTab: 'summary',
@@ -296,6 +307,282 @@
       exposure: r.exposure || r.Exposure || [],
       deviation: r.deviation || r.Deviation || [],
     };
+  }
+  function normalizeEmaForm(f) {
+    f = f || {};
+    const buyZones = Array.isArray(f.buyZones) && f.buyZones.length
+      ? f.buyZones.map((z, i) => ({ id: z.id || ('buy-' + i), levelPct: Number(z.levelPct), enabled: z.enabled !== false }))
+      : [{ id: 'buy-20', levelPct: Number(f.buy ?? -20), enabled: true }];
+    const sellZones = Array.isArray(f.sellZones) && f.sellZones.length
+      ? f.sellZones.map((z, i) => ({ id: z.id || ('sell-' + i), levelPct: Number(z.levelPct), enabled: z.enabled !== false }))
+      : [{ id: 'sell-40', levelPct: Number(f.sell ?? 40), enabled: true }];
+    return {
+      period: Number(f.period) === 20 ? 20 : 200,
+      leverage: Number.isFinite(Number(f.leverage)) ? Number(f.leverage) : 200,
+      signal: f.signal === 'intraday' ? 'intraday' : 'close',
+      start: f.start === 'from_start' ? 'from_start' : 'full_history',
+      takeProfit: f.takeProfit == null ? '' : String(f.takeProfit),
+      noSellAtLoss: !!f.noSellAtLoss,
+      buyZones,
+      sellZones,
+    };
+  }
+  function persistEmaForm() {
+    try { localStorage.setItem('ema.settings', JSON.stringify(state.emaForm)); } catch (_) {}
+  }
+  function makeZone(side, level) {
+    return { id: side + '-' + Date.now() + '-' + Math.random().toString(16).slice(2), levelPct: level, enabled: true };
+  }
+  function heroPageKey() {
+    if (state.page === '/ema') return 'ema';
+    if (state.page === '/multi-ticker-options') return 'opt';
+    return 'stocks';
+  }
+  function hp() {
+    const k = heroPageKey();
+    if (!state.heroByPage[k]) {
+      const prefix = k === 'opt' ? 'options' : k;
+      state.heroByPage[k] = {
+        range: localStorage.getItem(prefix + '.heroRange') || '3M',
+        kind: localStorage.getItem(prefix + '.heroChartKind') === 'candles' ? 'candles' : 'line',
+        showTrades: localStorage.getItem(prefix + '.heroShowTrades') !== '0',
+        ticker: null,
+      };
+    }
+    return state.heroByPage[k];
+  }
+  function persistHero() {
+    try {
+      const k = heroPageKey();
+      const prefix = k === 'opt' ? 'options' : k;
+      const p = hp();
+      localStorage.setItem(prefix + '.heroRange', p.range);
+      localStorage.setItem(prefix + '.heroChartKind', p.kind);
+      localStorage.setItem(prefix + '.heroShowTrades', p.showTrades ? '1' : '0');
+      const raw = JSON.parse(localStorage.getItem('chart-prefs') || '{}');
+      raw.timeframe = state.heroTf;
+      localStorage.setItem('chart-prefs', JSON.stringify(raw));
+    } catch (_) {}
+  }
+  function selectedHeroTicker() {
+    const tickers = parseTickers(state.tickerInput);
+    const sel = hp().ticker;
+    if (sel && tickers.includes(sel)) return sel;
+    return tickers[0] || state.ticker || '';
+  }
+  function barsForTicker(t) {
+    const entry = (state.tickersData || []).find((x) => x.ticker === t);
+    return (entry && entry.data) || state.bars || [];
+  }
+  function lastBarDate(t) {
+    const bars = barsForTicker(t);
+    return bars.length ? bars[bars.length - 1].date : null;
+  }
+  function tradesForTicker(t, result) {
+    const trades = (result && result.trades) || [];
+    if (!t || !trades.some((tr) => tr.ticker || tr.symbol)) return trades;
+    return trades.filter((tr) => (tr.ticker || tr.symbol) === t);
+  }
+  function numOrNull(v) {
+    const n = typeof v === 'number' ? v : Number(v);
+    return Number.isFinite(n) ? n : null;
+  }
+  function normalizeQuote(payload) {
+    const q = payload && payload.quote && typeof payload.quote === 'object' ? payload.quote : (payload || {});
+    const range = payload && payload.range && typeof payload.range === 'object' ? payload.range : {};
+    return {
+      open: numOrNull(q.open ?? q.o),
+      high: numOrNull(q.high ?? q.h ?? range.high),
+      low: numOrNull(q.low ?? q.l ?? range.low),
+      current: numOrNull(q.current ?? q.c),
+      prevClose: numOrNull(q.prevClose ?? q.pc),
+    };
+  }
+  function isMarketOpen() {
+    const fmt = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/New_York', hour12: false,
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', weekday: 'short',
+    });
+    const o = {};
+    fmt.formatToParts(new Date()).forEach((p) => { if (p.type !== 'literal') o[p.type] = p.value; });
+    const wd = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 }[o.weekday];
+    if (wd === 0 || wd === 6) return false;
+    const minutes = (parseInt(o.hour, 10) % 24) * 60 + parseInt(o.minute || '0', 10);
+    const cal = state.cal.data;
+    const y = +o.year, mo = +o.month, d = +o.day;
+    const mmdd = String(mo).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+    const ymd = y + '-' + mmdd;
+    function has(map) {
+      if (!map || typeof map !== 'object') return false;
+      if (map[ymd]) return true;
+      const by = map[String(y)];
+      return !!(by && typeof by === 'object' && by[mmdd]);
+    }
+    if (has(cal && cal.holidays)) return false;
+    const short = has(cal && cal.shortDays);
+    return minutes >= (9 * 60 + 30) && minutes < (short ? 13 * 60 : 16 * 60);
+  }
+  function isDataOutdated(lastDate) {
+    if (!lastDate) return true;
+    const today = nyseParts().iso;
+    const [ay, am, ad] = String(lastDate).slice(0, 10).split('-').map(Number);
+    const [by, bm, bd] = today.split('-').map(Number);
+    const days = Math.round((Date.UTC(by, bm - 1, bd) - Date.UTC(ay, am - 1, ad)) / 86400000);
+    return days > 2;
+  }
+  function heroQuoteInner() {
+    const q = state.quote;
+    const t = selectedHeroTicker();
+    if (!q || q.ticker !== t || q.current == null) return '';
+    const delta = q.prevClose != null ? q.current - q.prevClose : null;
+    const pct = delta != null && q.prevClose ? (delta / q.prevClose) * 100 : null;
+    const pos = delta == null || delta >= 0;
+    const color = pos ? 'text-green-600 dark:text-emerald-300' : 'text-orange-600 dark:text-orange-300';
+    const dlt = delta == null ? '' : `<span class="text-xs font-semibold ${color}">${delta >= 0 ? '+' : ''}${delta.toFixed(2)}${pct == null ? '' : ' (' + (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%)'}</span>`;
+    return `<span class="text-base font-bold text-gray-900 dark:text-gray-100">${fmt(q.current)}</span>${dlt}`;
+  }
+  function quotePopBody() {
+    const q = state.quote || {};
+    const prov = providerLabel(state.settings.resultsQuoteProvider || providerId() || 'finnhub');
+    const cell = (label, v) => `<div class="rounded border border-gray-200 px-2 py-1 dark:border-gray-700"><div class="text-[10px] uppercase tracking-wide text-gray-500">${label}</div><div class="font-mono text-xs">${v == null ? '—' : fmt(v)}</div></div>`;
+    return `<div class="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Детали котировки</div>
+      <div class="mt-2 space-y-1.5 text-xs">
+        <div class="flex items-center justify-between gap-2"><span class="text-gray-500">Источник</span><span>${esc(prov)}</span></div>
+        <div class="mt-1.5 grid grid-cols-2 gap-1.5">${cell('Откр', q.open)}${cell('Макс', q.high)}${cell('Мин', q.low)}${cell('Текущ', q.current)}</div>
+      </div>`;
+  }
+  function compactMetricsHTML(metrics, trades) {
+    const m = metrics || {};
+    const pf = m.profitFactor == null ? '—' : (Number.isFinite(Number(m.profitFactor)) ? Number(m.profitFactor).toFixed(2) : '∞');
+    const row = (label, value) => `<div class="flex items-center justify-between text-xs"><span class="text-gray-500 dark:text-gray-400">${label}</span><span class="font-mono font-semibold">${value}</span></div>`;
+    return `<div class="space-y-1.5 border-t border-gray-200 pt-3 dark:border-gray-700">
+      <div class="text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Результаты</div>
+      ${row('CAGR', m.cagr != null ? fmtPct(m.cagr) : '—')}
+      ${row('Макс. просадка', m.maxDrawdown != null ? fmtPct(m.maxDrawdown) : '—')}
+      ${row('Win rate', m.winRate != null ? fmtPct(m.winRate) : '—')}
+      ${row('Profit Factor', pf)}
+      ${row('Сделок', String((trades || []).length))}
+    </div>`;
+  }
+  function staleWarningHTML(ticker, bars) {
+    const last = bars && bars.length ? bars[bars.length - 1].date : null;
+    if (!ticker || !isDataOutdated(last)) return '';
+    const spin = state.refreshingTicker === ticker ? ' animate-spin' : '';
+    return `<div class="rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/20 dark:text-amber-200">
+      <div class="flex items-start justify-between gap-2">
+        <div>Данные ${esc(ticker)} не актуальны</div>
+        <button type="button" id="stale-refresh" class="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-amber-300 bg-amber-100" title="Обновить данные">${icon('refresh', 'h-3.5 w-3.5' + spin)}</button>
+      </div>
+    </div>`;
+  }
+  function openPositionHTML(trades, lastDate) {
+    const list = trades || [];
+    const last = list[list.length - 1] || null;
+    const isOpen = !!(last && lastDate && last.exitDate === lastDate);
+    const entry = isOpen ? last.entryPrice : null;
+    return `<div class="rounded-lg border border-gray-200 bg-gray-50 p-3 text-xs text-gray-700 dark:border-gray-700 dark:bg-gray-800/40 dark:text-gray-200">
+      <span>Открытая сделка: <span class="${isOpen ? 'text-emerald-600 dark:text-emerald-300' : 'text-gray-500'}">${isOpen ? 'да' : 'нет'}</span>
+      ${isOpen && entry != null ? `<span class="ml-1 text-gray-600">вход: $${Number(entry).toFixed(2)}</span>` : ''}</span>
+    </div>`;
+  }
+  function zoneEditorHTML(title, zones, side) {
+    const rows = (zones || []).map((z) => `<div class="zone-row">
+      <input type="checkbox" data-zone-on="${esc(z.id)}" ${z.enabled ? 'checked' : ''} class="h-4 w-4 accent-blue-600" aria-label="Включить зону" />
+      <div class="zone-pct">
+        <input type="number" step="1" data-zone-pct="${esc(z.id)}" value="${esc(z.levelPct)}" class="${inputCls()}" aria-label="Уровень зоны, %" />
+        <span class="zone-pct-suffix">%</span>
+      </div>
+      <button type="button" data-zone-del="${esc(z.id)}" class="icon-btn icon-btn-md icon-btn-glass" title="Удалить зону" aria-label="Удалить зону">${icon('trash', 'h-3.5 w-3.5')}</button>
+    </div>`).join('');
+    return `<div class="space-y-2">
+      <div class="flex items-center justify-between gap-2">
+        <div class="text-xs font-semibold text-gray-700 dark:text-gray-300">${esc(title)}</div>
+        <button type="button" data-zone-add="${side}" class="icon-btn icon-btn-md icon-btn-glass" title="Добавить зону" aria-label="Добавить зону">${icon('plus', 'h-3.5 w-3.5')}</button>
+      </div>
+      <div class="space-y-1.5">${rows}</div>
+    </div>`;
+  }
+  function heroToolbarHTML(tickers, selected, opts) {
+    opts = opts || {};
+    const pills = (tickers || []).map((t) => `<button type="button" data-hero-ticker="${esc(t)}" class="hero-pill ${t === selected ? 'hero-pill-on' : 'hero-pill-off'}">${esc(t)}</button>`).join('');
+    const quoteBlock = opts.showQuote ? `<div id="hero-quote" class="flex items-baseline gap-1.5 ml-1">${heroQuoteInner()}</div>` : '';
+    const pro = opts.proLabel
+      ? `<button type="button" id="hero-pro" class="hero-pro" title="${esc(opts.proTitle || 'Открыть профессиональный график')}">${esc(opts.proLabel)} ${icon('arrowne', 'w-3 h-3')}</button>`
+      : '';
+    const quoteBtns = opts.showQuote ? `
+      <button type="button" id="hero-refresh" class="icon-btn icon-btn-md icon-btn-glass" title="Обновить котировку" ${state.quoteLoading ? 'disabled' : ''}>${icon('refresh', 'h-3.5 w-3.5' + (state.quoteLoading ? ' animate-spin' : ''))}</button>
+      <div class="relative" id="quote-pop-wrap">
+        <button type="button" id="quote-pop-btn" class="icon-btn icon-btn-md icon-btn-glass" title="Детали котировки" aria-label="Детали котировки">${icon('help', 'h-3.5 w-3.5')}</button>
+        <div id="quote-pop" class="hero-pop ${state.quoteOpen ? '' : 'hidden'}" style="width:14rem">${quotePopBody()}</div>
+      </div>` : '';
+    return `<div class="flex flex-wrap items-center gap-1.5">
+      <div class="flex flex-wrap gap-1">${pills}</div>
+      ${quoteBlock}
+      <div class="ml-auto flex items-center gap-1.5">
+        ${pro}
+        ${quoteBtns}
+        <div class="relative" id="hero-settings-wrap">
+          <button type="button" id="hero-settings-btn" class="icon-btn icon-btn-md icon-btn-glass" title="Настройки графика" aria-label="Настройки графика">${icon('sliders', 'h-3.5 w-3.5')}</button>
+          <div id="hero-settings-pop" class="hero-pop ${state.heroSettingsOpen ? '' : 'hidden'}">
+            <div class="text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Тип графика</div>
+            <div class="mt-1.5 grid grid-cols-2 gap-1">
+              <button type="button" data-hero-kind="line" class="hero-kind ${hp().kind === 'line' ? 'hero-kind-on' : 'hero-kind-off'}">Линия</button>
+              <button type="button" data-hero-kind="candles" class="hero-kind ${hp().kind === 'candles' ? 'hero-kind-on' : 'hero-kind-off'}">Свечи</button>
+            </div>
+            <button type="button" id="hero-trades-toggle" class="mt-2 flex w-full items-center justify-between rounded bg-gray-100 px-2 py-1.5 text-[11px] text-gray-700 dark:bg-gray-800 dark:text-gray-200">
+              <span>Показывать сделки</span>
+              <span class="${hp().showTrades ? 'text-green-600 dark:text-green-300' : 'text-gray-500'}">${hp().showTrades ? 'Вкл' : 'Выкл'}</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  }
+  function heroChartHTML(chartId) {
+    const open = isMarketOpen();
+    const t = selectedHeroTicker();
+    const last = lastBarDate(t);
+    const stale = isDataOutdated(last);
+    const ranges = HERO_RANGES.map((r) => `<button type="button" data-hero-range="${r}" class="hero-range ${hp().range === r ? 'hero-range-on' : 'hero-range-off'}">${r}</button>`).join('');
+    const legend = `<div class="flex flex-wrap items-center gap-4 text-xs text-gray-500 dark:text-gray-400 mt-2">
+      <div class="flex items-center gap-2"><span class="h-2.5 w-2.5 rounded-full" style="background:${hp().kind === 'line' ? '#16a34a' : '#10B981'}"></span><span>${hp().kind === 'line' ? 'Цена закрытия' : 'Свечи'}</span></div>
+      ${hp().showTrades ? '<div class="flex items-center gap-2"><span class="h-2.5 w-2.5 rounded-full" style="background:#16a34a"></span><span>Покупка</span></div><div class="flex items-center gap-2"><span class="h-2.5 w-2.5 rounded-full" style="background:#dc2626"></span><span>Продажа</span></div>' : ''}
+    </div>`;
+    return `<div class="rounded-xl border border-gray-200 bg-white p-2.5 dark:border-gray-700 dark:bg-gray-900">
+      <div class="relative overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700">
+        <div id="${chartId}" class="chart-hero"></div>
+      </div>
+      <div class="mt-2 border-t border-gray-200 pt-2 dark:border-gray-700">
+        <div class="hero-footer-row">
+          <div class="min-w-0 overflow-x-auto"><div class="flex min-w-max items-center gap-1.5">${ranges}</div></div>
+          <div class="flex shrink-0 items-center gap-1.5">
+            <div class="hero-tf">
+              <button type="button" data-hero-tf="daily" class="${state.heroTf === 'daily' ? 'hero-tf-on' : 'hero-tf-off'}">День</button>
+              <button type="button" data-hero-tf="weekly" class="${state.heroTf === 'weekly' ? 'hero-tf-on' : 'hero-tf-off'}">Неделя</button>
+            </div>
+            <div class="hero-mkt ${open ? 'hero-mkt-open' : 'hero-mkt-closed'}">
+              <span class="hero-dot ${stale && !state.quoteLoading ? 'bg-red-500' : 'bg-green-500'}" title="${stale && !state.quoteLoading ? 'Нет актуального обновления' : 'Данные актуальны'}"></span>
+              ${open ? 'Рынок открыт' : 'Рынок закрыт'}
+            </div>
+          </div>
+        </div>
+        ${legend}
+      </div>
+    </div>`;
+  }
+  function heroPanelHTML(opts) {
+    const tickers = parseTickers(state.tickerInput);
+    const selected = selectedHeroTicker();
+    return `<div class="space-y-3">
+      ${heroToolbarHTML(tickers, selected, opts)}
+      ${heroChartHTML(opts.chartId || 'chart-hero')}
+    </div>`;
+  }
+  function asideExtrasHTML(result) {
+    if (!result) return '';
+    const t = selectedHeroTicker();
+    return compactMetricsHTML(result.metrics, result.trades) + staleWarningHTML(t, barsForTicker(t)) + openPositionHTML(result.trades, lastBarDate(t));
   }
   function pick(m, k) {
     if (!m || typeof m !== 'object') return undefined;
@@ -744,8 +1031,8 @@
     const defaults = defaultTickers();
     const isDefault = defaults.length === tickers.length && defaults.every((t, i) => t === tickers[i]);
     const err = state.error ? `<div class="p-4 mb-4 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 dark:bg-red-950/30">${esc(state.error)}</div>` : '';
-    let body = `<div class="grid lg-cols-3 lg:grid-cols-3 gap-4">
-          <div class="lg-span-2 lg:col-span-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3 min-h-[375px] flex items-center justify-center text-sm text-gray-500">Запустите бэктест, чтобы увидеть график</div>
+    let body = `<div class="hero-grid">
+          <div class="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3 min-h-[375px] flex items-center justify-center text-sm text-gray-500">Запустите бэктест, чтобы увидеть график</div>
           <aside class="rounded-lg border border-gray-200 bg-gray-50 p-3 space-y-3 dark:bg-gray-800/50 dark:border-gray-700">
             <div class="text-sm font-semibold">Параметры</div>
             ${stocksParams(tickers, isDefault, defaults)}
@@ -753,14 +1040,14 @@
         </div>`;
     if (r) {
       if (state.stockTab === 'summary') {
-        body = `<div class="grid lg-cols-3 lg:grid-cols-3 gap-4">
-          <div class="lg-span-2 lg:col-span-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3">
-            <div class="text-sm font-semibold mb-2">${esc(tickers[0] || '')}</div>
-            <div id="chart-hero" class="chart-box-lg"></div>
+        body = `<div class="hero-grid">
+          <div class="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3 space-y-3">
+            ${heroPanelHTML({ showQuote: true, proLabel: 'Pro', proTitle: 'Открыть профессиональный график', chartId: 'chart-hero' })}
           </div>
           <aside class="rounded-lg border border-gray-200 bg-gray-50 p-3 space-y-3 dark:bg-gray-800/50 dark:border-gray-700">
             <div class="text-sm font-semibold">Параметры</div>
             ${stocksParams(tickers, isDefault, defaults)}
+            ${asideExtrasHTML(r)}
           </aside>
         </div>`;
       } else if (state.stockTab === 'price') body = `<div id="chart-price" class="chart-box-lg rounded border dark:border-gray-800"></div>`;
@@ -842,8 +1129,8 @@
           <input id="ema-take-profit" name="takeProfit" type="number" min="0" step="0.1" inputmode="decimal" value="${esc(f.takeProfit)}" placeholder="Пусто выключает" class="${inputCls()}" />
         </div>
         <label class="flex items-center gap-2 text-sm"><input type="checkbox" name="noSellAtLoss" class="h-4 w-4" ${f.noSellAtLoss ? 'checked' : ''} /> Не продавать в минус</label>
-        <div><label class="mb-1 block text-xs font-medium">Зоны покупки, % от EMA</label><input name="buy" type="number" value="${esc(f.buy)}" class="${inputCls()}" /></div>
-        <div><label class="mb-1 block text-xs font-medium">Зоны продажи, % от EMA</label><input name="sell" type="number" value="${esc(f.sell)}" class="${inputCls()}" /></div>
+        ${zoneEditorHTML('Зоны покупки, % от EMA', f.buyZones, 'buy')}
+        ${zoneEditorHTML('Зоны продажи, % от EMA', f.sellZones, 'sell')}
         <button class="btn-primary w-full">Запустить EMA-бэктест</button>
       </form>`;
   }
@@ -853,8 +1140,8 @@
     const tab = r && EMA_TABS.some((t) => t.id === state.emaTab) ? state.emaTab : 'summary';
     let main = '';
     if (tab === 'summary') {
-      main = `<div class="p-4 grid lg-cols-3 lg:grid-cols-3 gap-4">
-        <div id="ema-out" class="lg-span-2 lg:col-span-2 min-h-[420px] ${r ? '' : 'flex items-center justify-center text-sm text-gray-500'} rounded-lg border border-gray-200 dark:border-gray-700">${r ? '<div id="chart-ema-hero" class="chart-box-lg"></div>' : 'Запустите расчет EMA-стратегии'}</div>
+      main = `<div class="p-4 hero-grid">
+        <div id="ema-out" class="min-h-[420px] ${r ? '' : 'flex items-center justify-center text-sm text-gray-500'} rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 ${r ? 'p-3 space-y-3' : ''}">${r ? heroPanelHTML({ showQuote: false, chartId: 'chart-hero' }) : 'Запустите расчет EMA-стратегии'}</div>
         <aside class="rounded-lg border border-gray-200 bg-gray-50 p-3 space-y-3 dark:bg-gray-800/50 dark:border-gray-700">${emaFormHTML()}</aside>
       </div>`;
     } else {
@@ -867,7 +1154,7 @@
         trades: tradesTable(r.trades),
         profit: profitBody(r),
         duration: durationBody(r),
-        spreads: spreadsTable([Number(state.emaForm.buy)], [Number(state.emaForm.sell)]),
+        spreads: spreadsTable((state.emaForm.buyZones || []).filter((z) => z.enabled).map((z) => z.levelPct), (state.emaForm.sellZones || []).filter((z) => z.enabled).map((z) => z.levelPct)),
       };
       main = `<div class="p-4">${bodies[tab] || ''}</div>`;
     }
@@ -918,9 +1205,9 @@
     const tab = r && OPTIONS_TABS.some((t) => t.id === state.optTab) ? state.optTab : 'summary';
     let main = '';
     if (tab === 'summary') {
-      main = `<div class="p-4 grid lg-cols-3 lg:grid-cols-3 gap-4">
-        <div id="optm-out" class="lg-span-2 lg:col-span-2 min-h-[420px] ${r ? '' : 'flex items-center justify-center text-sm text-gray-500'} rounded-lg border border-gray-200 dark:border-gray-700">${r ? '<div id="chart-opt-hero" class="chart-box-lg"></div>' : 'Запустите бэктест, чтобы увидеть результат'}</div>
-        <aside class="rounded-lg border border-gray-200 bg-gray-50 p-3 space-y-3 dark:bg-gray-800/50 dark:border-gray-700">${optFormHTML()}</aside>
+      main = `<div class="p-4 hero-grid">
+        <div id="optm-out" class="min-h-[420px] ${r ? '' : 'flex items-center justify-center text-sm text-gray-500'} rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 ${r ? 'p-3 space-y-3' : ''}">${r ? heroPanelHTML({ showQuote: true, proLabel: 'Equity', proTitle: 'Открыть баланс', chartId: 'chart-hero' }) : 'Запустите бэктест, чтобы увидеть результат'}</div>
+        <aside class="rounded-lg border border-gray-200 bg-gray-50 p-3 space-y-3 dark:bg-gray-800/50 dark:border-gray-700">${optFormHTML()}${asideExtrasHTML(r)}</aside>
       </div>`;
     } else {
       const bodies = {
@@ -1315,6 +1602,14 @@
         logout();
         return;
       }
+      if (!e.target.closest('#hero-settings-wrap')) {
+        state.heroSettingsOpen = false;
+        document.getElementById('hero-settings-pop')?.classList.add('hidden');
+      }
+      if (!e.target.closest('#quote-pop-wrap')) {
+        state.quoteOpen = false;
+        document.getElementById('quote-pop')?.classList.add('hidden');
+      }
       if (e.target.closest('#confirm-no')) { state.confirm = null; document.getElementById('overlay-root').innerHTML = overlay(); return; }
       if (e.target.closest('#confirm-yes')) {
         const fn = state.confirm && state.confirm.onYes;
@@ -1553,6 +1848,7 @@
       document.getElementById('run-bt')?.addEventListener('click', runStocks);
       root.querySelectorAll('[data-stab]').forEach((b) => b.addEventListener('click', () => { state.stockTab = b.dataset.stab; renderPage(); }));
       paintStockCharts();
+      if (state.result && state.stockTab === 'summary') bindHero(root, { quote: true, pro: 'price' });
       runNested();
     }
 
@@ -1562,9 +1858,8 @@
       document.getElementById('ema-preset-save')?.addEventListener('click', () => {
         const name = document.getElementById('ema-preset-name')?.value.trim();
         if (!name) return;
-        const form = document.getElementById('ema-form');
-        const fd = form ? new FormData(form) : new FormData();
-        state.emaPresets.push({ id: String(Date.now()), name, form: Object.fromEntries(fd.entries()), tickers: state.tickerInput });
+        syncEmaFormFromDom();
+        state.emaPresets.push({ id: String(Date.now()), name, form: { ...state.emaForm, buyZones: state.emaForm.buyZones.map((z) => ({ ...z })), sellZones: state.emaForm.sellZones.map((z) => ({ ...z })) }, tickers: state.tickerInput });
         try { localStorage.setItem('emaPresets', JSON.stringify(state.emaPresets)); } catch (_) {}
         toast('Пресет сохранён');
         renderPage();
@@ -1579,31 +1874,29 @@
       document.getElementById('ema-preset')?.addEventListener('change', (e) => {
         const pset = state.emaPresets.find((x) => x.id === e.target.value);
         if (!pset) return;
-        state.emaForm = { ...state.emaForm, ...Object.fromEntries(Object.entries(pset.form || {}).map(([k, v]) => [k, isNaN(Number(v)) ? v : Number(v)])) };
+        state.emaForm = normalizeEmaForm(pset.form);
+        persistEmaForm();
         if (pset.tickers) { state.tickerInput = pset.tickers; state.selected = parseTickers(pset.tickers); }
         renderPage();
       });
+      bindEmaZones(root);
       document.getElementById('ema-form')?.addEventListener('submit', async (e) => {
         e.preventDefault();
-        const fd = new FormData(e.target);
-        state.emaForm = {
-          period: Number(fd.get('period') || 200), leverage: Number(fd.get('leverage') || 200),
-          signal: fd.get('signal') || 'close', start: fd.get('start') || 'full_history',
-          takeProfit: fd.get('takeProfit') || '', noSellAtLoss: !!e.target.noSellAtLoss?.checked,
-          buy: Number(fd.get('buy')), sell: Number(fd.get('sell')),
-        };
+        syncEmaFormFromDom();
+        persistEmaForm();
+        const f = state.emaForm;
         try {
           const loaded = await loadSelected();
-          const tp = Number(String(fd.get('takeProfit') || '').replace(',', '.'));
+          const tp = Number(String(f.takeProfit || '').replace(',', '.'));
           const ema = {
             initialCapital: 10000,
-            leverage: Number(fd.get('leverage') || 200) / 100,
-            emaPeriod: Number(fd.get('period') || 200),
-            buyZones: [{ id: 'buy', levelPct: Number(fd.get('buy')), enabled: true }],
-            sellZones: [{ id: 'sell', levelPct: Number(fd.get('sell')), enabled: true }],
-            signalSource: fd.get('signal') || 'close',
-            emaStartMode: fd.get('start') || 'full_history',
-            noSellAtLoss: !!e.target.noSellAtLoss?.checked,
+            leverage: Number(f.leverage || 200) / 100,
+            emaPeriod: Number(f.period || 200),
+            buyZones: (f.buyZones || []).map((z) => ({ id: z.id, levelPct: Number(z.levelPct), enabled: !!z.enabled })),
+            sellZones: (f.sellZones || []).map((z) => ({ id: z.id, levelPct: Number(z.levelPct), enabled: !!z.enabled })),
+            signalSource: f.signal || 'close',
+            emaStartMode: f.start || 'full_history',
+            noSellAtLoss: !!f.noSellAtLoss,
           };
           if (Number.isFinite(tp) && tp > 0) ema.takeProfitPercent = tp;
           state.emaResult = resultOf(await API.calc('ema-zone', { tickers: loaded, ema }));
@@ -1612,6 +1905,7 @@
         } catch (err) { toast(err.message); }
       });
       paintEmaCharts();
+      if (state.emaResult && state.emaTab === 'summary') bindHero(root, { quote: false });
     }
 
     if (p === '/multi-ticker-options') {
@@ -1622,6 +1916,7 @@
         await runOptionsMulti(new FormData(e.target));
       });
       paintOptCharts();
+      if (state.optResult && state.optTab === 'summary') bindHero(root, { quote: true, pro: 'equity' });
     }
 
     if (p === '/calendar') {
@@ -1957,12 +2252,189 @@
     } catch (e) { toast(e.message); }
   }
 
+  function syncEmaFormFromDom() {
+    const form = document.getElementById('ema-form');
+    if (!form) return;
+    const fd = new FormData(form);
+    state.emaForm = {
+      ...state.emaForm,
+      period: Number(fd.get('period') || 200),
+      leverage: Number(fd.get('leverage') || 200),
+      signal: fd.get('signal') || 'close',
+      start: fd.get('start') || 'full_history',
+      takeProfit: fd.get('takeProfit') || '',
+      noSellAtLoss: !!form.noSellAtLoss?.checked,
+    };
+  }
+  function bindEmaZones(root) {
+    root.querySelectorAll('[data-zone-pct]').forEach((inp) => {
+      inp.addEventListener('input', () => {
+        const id = inp.dataset.zonePct;
+        const parsed = Number(inp.value);
+        if (inp.value.trim() === '' || !Number.isFinite(parsed)) return;
+        ['buyZones', 'sellZones'].forEach((k) => {
+          state.emaForm[k] = (state.emaForm[k] || []).map((z) => (z.id === id ? { ...z, levelPct: parsed } : z));
+        });
+        persistEmaForm();
+      });
+    });
+    root.querySelectorAll('[data-zone-on]').forEach((inp) => {
+      inp.addEventListener('change', () => {
+        const id = inp.dataset.zoneOn;
+        ['buyZones', 'sellZones'].forEach((k) => {
+          state.emaForm[k] = (state.emaForm[k] || []).map((z) => (z.id === id ? { ...z, enabled: inp.checked } : z));
+        });
+        persistEmaForm();
+      });
+    });
+    root.querySelectorAll('[data-zone-add]').forEach((b) => {
+      b.addEventListener('click', () => {
+        syncEmaFormFromDom();
+        const side = b.dataset.zoneAdd;
+        const key = side === 'buy' ? 'buyZones' : 'sellZones';
+        const def = side === 'buy' ? -20 : 40;
+        state.emaForm[key] = (state.emaForm[key] || []).concat([makeZone(side, def)]);
+        persistEmaForm();
+        renderPage();
+      });
+    });
+    root.querySelectorAll('[data-zone-del]').forEach((b) => {
+      b.addEventListener('click', () => {
+        const id = b.dataset.zoneDel;
+        ['buyZones', 'sellZones'].forEach((k) => {
+          const next = (state.emaForm[k] || []).filter((z) => z.id !== id);
+          if (next.length) state.emaForm[k] = next;
+        });
+        persistEmaForm();
+        renderPage();
+      });
+    });
+  }
+  function paintCurrentHero() {
+    const el = document.getElementById('chart-hero');
+    if (!el) return;
+    const t = selectedHeroTicker();
+    const result = state.page === '/ema' ? resultOf(state.emaResult)
+      : state.page === '/multi-ticker-options' ? resultOf(state.optResult)
+      : resultOf(state.result);
+    const q = state.quote && state.quote.ticker === t ? state.quote : null;
+    Charts.destroy();
+    Charts.hero(el, barsForTicker(t), {
+      dark: isDark(),
+      kind: hp().kind,
+      range: hp().range,
+      timeframe: state.heroTf,
+      trades: tradesForTicker(t, result),
+      showTrades: hp().showTrades,
+      currentPrice: q && q.current,
+      todayQuote: q,
+      isTrading: isMarketOpen(),
+    });
+  }
+  async function loadQuote(ticker) {
+    if (!ticker) return;
+    const want = ticker;
+    state.quoteLoading = true;
+    const iconEl = document.querySelector('#hero-refresh svg');
+    if (iconEl) iconEl.classList.add('animate-spin');
+    try {
+      const raw = await API.quote(ticker, state.settings.resultsQuoteProvider || providerId() || 'finnhub');
+      if (selectedHeroTicker() !== want) return;
+      state.quote = { ticker: want, ...normalizeQuote(raw) };
+    } catch (_) {
+      if (selectedHeroTicker() === want && (!state.quote || state.quote.ticker !== want)) {
+        state.quote = { ticker: want, open: null, high: null, low: null, current: null, prevClose: null };
+      }
+    } finally {
+      state.quoteLoading = false;
+      if (iconEl) iconEl.classList.remove('animate-spin');
+      const host = document.getElementById('hero-quote');
+      if (host) host.innerHTML = heroQuoteInner();
+      const pop = document.getElementById('quote-pop');
+      if (pop) pop.innerHTML = quotePopBody();
+      if (document.getElementById('chart-hero')) paintCurrentHero();
+    }
+  }
+  function bindHero(root, opts) {
+    opts = opts || {};
+    root.querySelectorAll('[data-hero-ticker]').forEach((b) => b.addEventListener('click', () => {
+      hp().ticker = b.dataset.heroTicker;
+      state.quote = null;
+      renderPage();
+    }));
+    root.querySelectorAll('[data-hero-range]').forEach((b) => b.addEventListener('click', () => {
+      hp().range = b.dataset.heroRange;
+      persistHero();
+      root.querySelectorAll('[data-hero-range]').forEach((x) => {
+        x.className = 'hero-range ' + (x.dataset.heroRange === hp().range ? 'hero-range-on' : 'hero-range-off');
+      });
+      paintCurrentHero();
+    }));
+    root.querySelectorAll('[data-hero-tf]').forEach((b) => b.addEventListener('click', () => {
+      state.heroTf = b.dataset.heroTf;
+      persistHero();
+      root.querySelectorAll('[data-hero-tf]').forEach((x) => {
+        x.className = x.dataset.heroTf === state.heroTf ? 'hero-tf-on' : 'hero-tf-off';
+      });
+      paintCurrentHero();
+    }));
+    root.querySelectorAll('[data-hero-kind]').forEach((b) => b.addEventListener('click', () => {
+      hp().kind = b.dataset.heroKind;
+      persistHero();
+      renderPage();
+    }));
+    document.getElementById('hero-trades-toggle')?.addEventListener('click', () => {
+      hp().showTrades = !hp().showTrades;
+      persistHero();
+      renderPage();
+    });
+    document.getElementById('hero-settings-btn')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      state.heroSettingsOpen = !state.heroSettingsOpen;
+      state.quoteOpen = false;
+      document.getElementById('hero-settings-pop')?.classList.toggle('hidden', !state.heroSettingsOpen);
+      document.getElementById('quote-pop')?.classList.add('hidden');
+    });
+    document.getElementById('quote-pop-btn')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      state.quoteOpen = !state.quoteOpen;
+      state.heroSettingsOpen = false;
+      document.getElementById('quote-pop')?.classList.toggle('hidden', !state.quoteOpen);
+      document.getElementById('hero-settings-pop')?.classList.add('hidden');
+    });
+    document.getElementById('hero-refresh')?.addEventListener('click', () => loadQuote(selectedHeroTicker()));
+    document.getElementById('hero-pro')?.addEventListener('click', () => {
+      if (opts.pro === 'price') { state.stockTab = 'price'; renderPage(); }
+      else if (opts.pro === 'equity') { state.optTab = 'equity'; renderPage(); }
+    });
+    document.getElementById('stale-refresh')?.addEventListener('click', async () => {
+      const t = selectedHeroTicker();
+      if (!t) return;
+      state.refreshingTicker = t;
+      try {
+        await API.refreshDataset(t);
+        const ds = await API.dataset(t);
+        const entry = (state.tickersData || []).find((x) => x.ticker === t);
+        if (entry) entry.data = ds.data || [];
+        if (state.ticker === t) state.bars = ds.data || [];
+        toast('Датасет обновлён');
+        renderPage();
+      } catch (err) { toast(err.message); }
+      finally { state.refreshingTicker = null; }
+    });
+    if (opts.quote) {
+      const t = selectedHeroTicker();
+      if (t && (!state.quote || state.quote.ticker !== t)) loadQuote(t);
+    }
+  }
+
   function paintStockCharts() {
     const r = state.result;
     if (!r) return;
     const dark = isDark();
     if (state.stockTab === 'summary' && document.getElementById('chart-hero')) {
-      Charts.line(document.getElementById('chart-hero'), (state.bars || []).map((b) => ({ date: b.date, value: b.close })), dark, '#4f46e5');
+      paintCurrentHero();
+      return;
     }
     if (state.stockTab === 'price' && document.getElementById('chart-price')) Charts.candles(document.getElementById('chart-price'), state.bars, dark);
     if (state.stockTab === 'tickerCharts' && document.getElementById('ticker-charts')) {
@@ -2000,8 +2472,9 @@
     if (!r) return;
     const dark = isDark();
     const tab = state.emaTab;
-    if (tab === 'summary' && document.getElementById('chart-ema-hero')) {
-      Charts.line(document.getElementById('chart-ema-hero'), (state.bars || []).map((b) => ({ date: b.date, value: b.close })), dark, '#4f46e5');
+    if (tab === 'summary' && document.getElementById('chart-hero')) {
+      paintCurrentHero();
+      return;
     }
     if (tab === 'price' && document.getElementById('chart-ema-price')) Charts.candles(document.getElementById('chart-ema-price'), state.bars, dark);
     if (tab === 'emaDeviation' && document.getElementById('chart-ema-dev')) {
@@ -2021,8 +2494,9 @@
     if (!r) return;
     const dark = isDark();
     const tab = state.optTab;
-    if (tab === 'summary' && document.getElementById('chart-opt-hero')) {
-      Charts.line(document.getElementById('chart-opt-hero'), r.equity, dark);
+    if (tab === 'summary' && document.getElementById('chart-hero')) {
+      paintCurrentHero();
+      return;
     }
     if (tab === 'equity' && document.getElementById('chart-opt-eq')) Charts.line(document.getElementById('chart-opt-eq'), r.equity, dark);
     if (tab === 'price' && document.getElementById('chart-opt-price')) Charts.candles(document.getElementById('chart-opt-price'), state.bars, dark);
@@ -2098,6 +2572,10 @@
     try { const st = await API.status(); state.apiBuildId = st.timestamp || st.buildId; } catch (_) {}
     try { state.datasets = await API.datasets(); } catch (_) { state.datasets = []; }
     try { state.settings = await API.settings() || {}; } catch (_) { state.settings = {}; }
+    try {
+      const savedEma = JSON.parse(localStorage.getItem('ema.settings') || 'null');
+      if (savedEma) state.emaForm = normalizeEmaForm(savedEma);
+    } catch (_) {}
     if (state.settings.defaultMultiTickerSymbols && !localStorage.getItem('tickersInput')) {
       state.tickerInput = state.settings.defaultMultiTickerSymbols;
     }

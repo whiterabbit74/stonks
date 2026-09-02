@@ -58,4 +58,5 @@ const API = {
   dashboard: () => API.get('/api/autotrade/webull/dashboard'),
   autoLogs: () => API.get('/api/autotrade/logs'),
   calc: (name, body) => API.post('/api/calc/' + name, body),
+  quote: (symbol, provider) => API.get('/api/quote/' + encodeURIComponent(symbol) + '?provider=' + encodeURIComponent(provider || 'finnhub')),
 };
