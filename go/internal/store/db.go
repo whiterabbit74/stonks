@@ -188,6 +188,11 @@ func (d *DB) initSchema() error {
             id INTEGER PRIMARY KEY CHECK (id = 1),
             data TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS autotrade_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ts TEXT NOT NULL,
+            message TEXT NOT NULL
+        );
     `)
 	return err
 }
@@ -650,9 +655,18 @@ func (d *DB) UpsertWatch(w map[string]any) error {
 	if thr == 0 {
 		thr = 0.3
 	}
-	_, err := d.SQL.Exec(`INSERT INTO telegram_watches (symbol, high_ibs, low_ibs, threshold_pct) VALUES (?, ?, ?, ?)
-        ON CONFLICT(symbol) DO UPDATE SET high_ibs=excluded.high_ibs, low_ibs=excluded.low_ibs, threshold_pct=excluded.threshold_pct`,
-		symbol, high, low, thr)
+	open := 0
+	if v, ok := w["isOpenPosition"].(bool); ok && v {
+		open = 1
+	}
+	chat := fmt.Sprint(w["chatId"])
+	if chat == "<nil>" {
+		chat = ""
+	}
+	_, err := d.SQL.Exec(`INSERT INTO telegram_watches (symbol, high_ibs, low_ibs, threshold_pct, chat_id, is_open_position, entry_price, entry_date, current_trade_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(symbol) DO UPDATE SET high_ibs=excluded.high_ibs, low_ibs=excluded.low_ibs, threshold_pct=excluded.threshold_pct,
+            chat_id=excluded.chat_id, is_open_position=excluded.is_open_position, entry_price=excluded.entry_price, entry_date=excluded.entry_date, current_trade_id=excluded.current_trade_id`,
+		symbol, high, low, thr, chat, open, w["entryPrice"], w["entryDate"], w["currentTradeId"])
 	return err
 }
 

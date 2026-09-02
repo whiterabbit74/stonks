@@ -7,6 +7,7 @@ import (
 	"os"
 	"time"
 
+	"mktorder.com/go/internal/live"
 	"mktorder.com/go/internal/providers"
 	"mktorder.com/go/internal/store"
 	"mktorder.com/go/internal/tradingdate"
@@ -111,6 +112,7 @@ func TradingSession(p tradingdate.NYSEParts, cal Calendar) Session {
 
 type Deps struct {
 	Providers *providers.Client
+	Live      *live.Engine
 }
 
 func Start(db *store.DB, onEvent func(JobLog)) (stop func()) {
@@ -160,7 +162,7 @@ func RunTick(db *store.DB, deps Deps, now time.Time, onEvent func(JobLog)) {
 	nowMin := p.Hour*60 + p.Minute
 	until := sess.CloseMin - nowMin
 	if (until >= 10 && until <= 12) || (until >= 0 && until <= 2) {
-		n := RunTelegramAggregation(db)
+		n := RunTelegramAggregation(db, deps, until)
 		onEvent(JobLog{At: now, Name: "telegram-aggregation", Detail: fmt.Sprintf("window until=%d watches=%d", until, n)})
 		log.Printf("scheduler: telegram aggregation minutesUntilClose=%d short=%v", until, sess.Short)
 	}
@@ -170,6 +172,13 @@ func RunTick(db *store.DB, deps Deps, now time.Time, onEvent func(JobLog)) {
 		onEvent(JobLog{At: now, Name: "price-actualization", Detail: fmt.Sprintf("after=%d tickers=%d errors=%d", after, n, errN)})
 		log.Printf("scheduler: price actualization minutesAfterClose=%d", after)
 	}
+}
+
+func engine(db *store.DB, deps Deps) *live.Engine {
+	if deps.Live != nil {
+		return deps.Live
+	}
+	return live.New(db, deps.Providers)
 }
 
 func RunTokenHealth(db *store.DB, todayET string, now time.Time) (detail string, skipped bool) {
@@ -189,35 +198,12 @@ func RunTokenHealth(db *store.DB, todayET string, now time.Time) (detail string,
 	return status, false
 }
 
-func RunTelegramAggregation(db *store.DB) int {
-	watches, _ := db.ListWatches()
-	count := 0
-	for _, w := range watches {
-		sym := fmt.Sprint(w["symbol"])
-		bars, _, err := db.GetOHLC(sym)
-		if err != nil || len(bars) == 0 {
-			continue
-		}
-		count++
-	}
-	return count
+func RunTelegramAggregation(db *store.DB, deps Deps, until int) int {
+	res, _ := engine(db, deps).Aggregate(until, true)
+	return len(res.Tickers)
 }
 
 func RunPriceActualization(db *store.DB, deps Deps) (ok, fail int) {
-	if deps.Providers == nil {
-		return 0, 0
-	}
-	tickers, _ := db.ListTickers()
-	end := time.Now().Unix()
-	start := end - 14*24*60*60
-	client := deps.Providers
-	for _, t := range tickers {
-		_, err := client.Historical(t, "finnhub", start, end, "none")
-		if err != nil {
-			fail++
-			continue
-		}
-		ok++
-	}
-	return
+	res := engine(db, deps).Actualize(true)
+	return res.Count, len(res.Failed)
 }

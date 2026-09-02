@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"mktorder.com/go/internal/live"
 	"mktorder.com/go/internal/store"
 	"mktorder.com/go/internal/tradingdate"
 	"mktorder.com/go/internal/types"
@@ -106,7 +107,7 @@ func TestTelegramAggregationUsesLocalIBS(t *testing.T) {
 	if err := db.UpsertWatch(map[string]any{"symbol": "AAPL", "lowIBS": 0.1, "highIBS": 0.75}); err != nil {
 		t.Fatal(err)
 	}
-	n := RunTelegramAggregation(db)
+	n := RunTelegramAggregation(db, Deps{}, 11)
 	if n != 1 {
 		t.Fatalf("watches processed %d", n)
 	}
@@ -123,5 +124,71 @@ func TestTickDoesNotPanic(t *testing.T) {
 	RunTick(db, Deps{}, time.Date(2026, 9, 1, 20, 0, 0, 0, time.UTC), func(j JobLog) { logs = append(logs, j) })
 	if len(logs) == 0 {
 		t.Fatal("expected at least token-health event")
+	}
+}
+
+func TestTickT11RunsAggregation(t *testing.T) {
+	dir := t.TempDir()
+	db, err := store.Open(filepath.Join(dir, "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
+	_ = db.SaveDataset("AAPL", "AAPL", "", "", bars, false)
+	_ = db.UpsertWatch(map[string]any{"symbol": "AAPL", "lowIBS": 0.1, "highIBS": 0.75})
+	tg := &live.MemoryTelegram{}
+	eng := live.New(db, &live.MemoryQuotes{Bars: map[string][]types.OHLC{"AAPL": bars}})
+	eng.Telegram = tg
+	eng.ChatID = "c"
+	now := time.Date(2026, 9, 1, 19, 49, 0, 0, time.UTC) // 15:49 ET
+	var logs []JobLog
+	RunTick(db, Deps{Live: eng}, now, func(j JobLog) { logs = append(logs, j) })
+	saw := false
+	for _, j := range logs {
+		if j.Name == "telegram-aggregation" && !j.Skipped {
+			saw = true
+		}
+	}
+	if !saw {
+		t.Fatalf("expected T-11 aggregation, logs=%+v", logs)
+	}
+	if len(tg.Messages) == 0 {
+		t.Fatal("expected telegram send")
+	}
+}
+
+func TestTickAfterCloseWritesOHLC(t *testing.T) {
+	dir := t.TempDir()
+	db, err := store.Open(filepath.Join(dir, "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	old := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
+	fresh := []types.OHLC{
+		{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1},
+		{Date: "2026-09-02", Open: 8, High: 9, Low: 7, Close: 8.5, Volume: 1},
+	}
+	_ = db.SaveDataset("AAPL", "AAPL", "", "", old, false)
+	_ = db.UpsertWatch(map[string]any{"symbol": "AAPL"})
+	q := &live.MemoryQuotes{Bars: map[string][]types.OHLC{"AAPL": fresh}}
+	eng := live.New(db, q)
+	eng.Telegram = &live.MemoryTelegram{}
+	now := time.Date(2026, 9, 1, 20, 20, 0, 0, time.UTC) // 16:20 ET, 20 min after close
+	var logs []JobLog
+	RunTick(db, Deps{Live: eng}, now, func(j JobLog) { logs = append(logs, j) })
+	saw := false
+	for _, j := range logs {
+		if j.Name == "price-actualization" && !j.Skipped {
+			saw = true
+		}
+	}
+	if !saw {
+		t.Fatalf("expected actualization, logs=%+v", logs)
+	}
+	bars, _, _ := db.GetOHLC("AAPL")
+	if len(bars) < 2 {
+		t.Fatalf("expected merged OHLC, got %d", len(bars))
 	}
 }

@@ -31,7 +31,7 @@ func main() {
 	webDir := filepath.Join(root, "web")
 	p := providers.FromEnv()
 	srv := httpapi.NewWithProviders(db, webDir, p)
-	stop := scheduler.StartWith(db, scheduler.Deps{Providers: p}, nil)
+	stop := scheduler.StartWith(db, scheduler.Deps{Providers: p, Live: srv.Live}, nil)
 	defer stop()
 
 	addr := ":" + port

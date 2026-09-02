@@ -125,6 +125,9 @@ func TestVanillaUIAssets(t *testing.T) {
 	if !strings.Contains(extra, "#menu-btn") {
 		t.Fatal("extra.css missing hamburger #menu-btn")
 	}
+	if !strings.Contains(a, "function autotradeLive()") {
+		t.Fatal("broker [LIVE] must go through autotradeLive (enabled AND token)")
+	}
 
 	for _, copy := range []string{
 		"Запустить бэктест",

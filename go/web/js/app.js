@@ -1411,12 +1411,17 @@
       </div>`;
   }
 
+  function autotradeLive() {
+    const cfg = state.autoConfig && state.autoConfig.config ? state.autoConfig.config : (state.autoConfig || {});
+    const tok = state.token || {};
+    return !!(cfg.enabled && (tok.hasToken || tok.present));
+  }
   function emptyBrokerTable(cols, empty) {
     return `<div class="overflow-auto"><table class="trades"><thead><tr>${cols.map((c) => `<th>${c}</th>`).join('')}</tr></thead><tbody><tr><td colspan="${cols.length}" class="text-center text-gray-500">${empty}</td></tr></tbody></table></div>`;
   }
   function pageBroker() {
     const list = (state.broker || []).map((t) => `<div class="flex justify-between border rounded-lg p-3 mb-1 text-sm dark:border-gray-800 bg-white dark:bg-gray-900"><span class="font-mono">${esc(t.symbol)} ${esc(t.entryDate || '')} @ ${esc(t.entryPrice ?? '—')}</span><button data-bd="${esc(t.id)}" class="text-red-600">Удалить</button></div>`).join('') || '<p class="text-sm text-gray-500">Сделок нет</p>';
-    const live = state.settings?.autoTrading?.enabled || state.autoConfig?.enabled;
+    const live = autotradeLive();
     const tab = state.brokerTab || 'overview';
     let body = '';
     if (tab === 'journal') {
@@ -1541,7 +1546,7 @@
           <div class="flex overflow-x-auto border-t">${chips}</div>
         </div>`;
     } else {
-      const ac = state.autoConfig || {};
+      const ac = state.autoConfig?.config || state.autoConfig || {};
       body = `<div class="rounded-xl border p-4 mb-3">
           <div class="font-medium mb-2">Статус автоторговли</div>
           <label class="inline-flex items-center gap-2 text-sm"><input type="checkbox" name="autoEnabled" ${ac.enabled ? 'checked' : ''} /> Включена</label>
@@ -2126,9 +2131,14 @@
 
     if (p === '/broker') {
       if (!state.loaded.broker) {
-        const [bt, tok] = await Promise.all([API.brokerTrades().catch(() => []), API.tokenStatus().catch((e) => e.data || { present: false })]);
+        const [bt, tok, ac] = await Promise.all([
+          API.brokerTrades().catch(() => []),
+          API.tokenStatus().catch((e) => e.data || { present: false, hasToken: false }),
+          API.autoConfig().catch(() => ({})),
+        ]);
         state.broker = Array.isArray(bt) ? bt : (bt.trades || []);
         state.token = tok;
+        state.autoConfig = ac && ac.config ? ac.config : (ac || {});
         state.loaded.broker = true;
         renderPage();
         return;
@@ -2159,7 +2169,10 @@
     if (p === '/settings') {
       if (!state.loaded.settings) {
         try { state.settings = await API.settings() || {}; } catch (_) { state.settings = {}; }
-        try { state.autoConfig = await API.autoConfig() || {}; } catch (_) { state.autoConfig = {}; }
+        try {
+          const ac = await API.autoConfig() || {};
+          state.autoConfig = ac.config || ac;
+        } catch (_) { state.autoConfig = {}; }
         state.loaded.settings = true;
         renderPage();
         return;
