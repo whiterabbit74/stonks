@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -133,6 +134,46 @@ func TestVanillaUIAssets(t *testing.T) {
 	if !strings.Contains(a, "cal-edit") || !strings.Contains(a, "set-form") || !strings.Contains(a, "split-form") || !strings.Contains(a, "broker-form") {
 		t.Fatal("interactive calendar/settings/splits/broker forms missing")
 	}
+
+	hero := []string{
+		"data-hero-ticker",
+		"['1M', '3M', '6M', '1Y', '3Y', '5Y', 'MAX']",
+		"BuyAtClose4", "Просадка дня", "Пополнения", "Без стоп-лосса",
+		"Профит-фактор",
+		"Добавить ручную сделку",
+		"ema-alert-form",
+		"Капитал мониторинга",
+		"NASDAQ 100", "S&P 500", "Технологии", "Финансы", "Здравоохранение",
+		"Энергетика", "Потребительские", "ETF", "С плечом",
+	}
+	for _, copy := range hero {
+		if !strings.Contains(a, copy) {
+			t.Errorf("missing hero/catalog/watches copy %s", copy)
+		}
+	}
+	start := strings.Index(a, "const ENHANCE_CATS")
+	if start < 0 {
+		t.Fatal("missing ENHANCE_CATS")
+	}
+	endRel := strings.Index(a[start:], "const PATHS")
+	if endRel < 0 {
+		t.Fatal("ENHANCE_CATS block not closed before PATHS")
+	}
+	if catCount := strings.Count(a[start:start+endRel], "{ id:"); catCount != 11 {
+		t.Errorf("ENHANCE_CATS has %d entries, want 11", catCount)
+	}
+
+	raw, err := os.ReadFile(filepath.Join(web, "tickers.json"))
+	if err != nil {
+		t.Fatalf("tickers.json: %v", err)
+	}
+	var catalog []map[string]any
+	if err := json.Unmarshal(raw, &catalog); err != nil {
+		t.Fatalf("tickers.json parse: %v", err)
+	}
+	if len(catalog) != 192 {
+		t.Errorf("tickers.json has %d tickers, want 192", len(catalog))
+	}
 }
 
 func TestVanillaUIPagesHTTP(t *testing.T) {
@@ -160,5 +201,18 @@ func TestVanillaUIPagesHTTP(t *testing.T) {
 		if !strings.Contains(body, "/js/app.js") || !strings.Contains(body, "lightweight-charts.standalone.production.js") {
 			t.Errorf("GET %s did not serve the vanilla SPA shell", p)
 		}
+	}
+	req := httptest.NewRequest(http.MethodGet, "/tickers.json", nil)
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /tickers.json -> %d, want 200", rec.Code)
+	}
+	var catalog []map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &catalog); err != nil {
+		t.Fatalf("GET /tickers.json: %v", err)
+	}
+	if len(catalog) != 192 {
+		t.Errorf("GET /tickers.json returned %d tickers, want 192", len(catalog))
 	}
 }
