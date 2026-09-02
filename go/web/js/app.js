@@ -396,7 +396,7 @@
               <div class="flex items-center justify-between text-sm"><span class="text-gray-600 dark:text-gray-400">Статус:</span><span class="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs bg-green-100 text-green-800"><span class="w-1.5 h-1.5 bg-green-500 rounded-full"></span>Online</span></div>
             </div>
           </div>
-          <div class="border-t border-gray-200 dark:border-gray-800 mt-8 pt-6 text-sm text-gray-600 dark:text-gray-400">© ${new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', year: 'numeric' }).format(new Date())} IBS Trading Strategy. Все права защищены.</div>
+          <div class="max-w-7xl mx-auto px-6 border-t border-gray-200 dark:border-gray-800 mt-2 pt-6 pb-6 text-sm text-gray-600 dark:text-gray-400">© ${new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', year: 'numeric' }).format(new Date())} IBS Trading Strategy. Все права защищены.</div>
         </footer>
       </div>`;
   }
@@ -460,7 +460,7 @@
           </div>
         </div>
         <div class="mb-3"><div class="text-xs font-medium text-gray-600 uppercase tracking-wide mb-2">Фильтр</div><div class="flex flex-wrap gap-2">${filters}</div></div>
-        <div class="mb-3 text-xs text-gray-500">Или <label class="text-indigo-600 cursor-pointer">импортируйте JSON<input id="file-json" type="file" accept=".json,application/json" class="hidden" /></label></div>
+        <input id="file-json" type="file" accept=".json,application/json" class="hidden" />
         ${cards}
       </div>`;
   }
@@ -470,12 +470,12 @@
       ${pageHeader('Новые данные', 'Загрузка исторических данных из API', `<div class="rounded-lg border px-3 py-2 text-xs bg-white dark:bg-gray-800 dark:border-gray-700"><div class="text-gray-500">Провайдер данных</div><div class="font-semibold">Finnhub</div></div>`)}
       <div class="bg-white border border-gray-200 rounded-lg p-4 dark:bg-gray-900 dark:border-gray-800">
         <div class="mb-2 text-sm font-medium text-gray-700 dark:text-gray-200">Тикер</div>
-        <form id="enhance-form" class="space-y-2">
-          <div class="relative w-full">
+        <form id="enhance-form" class="enhance-form">
+          <div class="enhance-search">
             ${icon('search', 'search-glyph')}
-            <input name="symbol" value="" class="w-full pl-9 pr-3 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 dark:bg-gray-800" placeholder="AAPL, MSFT, TSLA…" />
+            <input name="symbol" value="" class="enhance-input" placeholder="AAPL, MSFT, TSLA…" />
           </div>
-          <div class="flex flex-wrap gap-2">
+          <div class="enhance-actions">
             <select name="provider" class="rounded-lg border px-3 py-2.5 dark:bg-gray-800 dark:border-gray-700">
               <option value="finnhub">finnhub</option><option value="alpha_vantage">alpha_vantage</option>
               <option value="twelve_data">twelve_data</option><option value="polygon">polygon</option>

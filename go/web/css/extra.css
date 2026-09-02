@@ -122,6 +122,21 @@ html.dark .modal-card { background: #111827; border-color: #1f2937; color: #f3f4
   position: absolute; left: 0.75rem; top: 50%; transform: translateY(-50%);
   width: 1rem; height: 1rem; color: #9ca3af; pointer-events: none;
 }
+.enhance-form { display: flex; flex-direction: column; gap: 0.5rem; }
+.enhance-search { position: relative; width: 100%; }
+.enhance-input {
+  width: 100%; box-sizing: border-box;
+  padding: 0.625rem 0.75rem 0.625rem 2.5rem;
+  border-radius: 0.5rem; border: 1px solid #d1d5db;
+  background: #fff;
+}
+html.dark .enhance-input { background: #1f2937; border-color: #4b5563; color: #f3f4f6; }
+.enhance-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+@media (min-width: 768px) {
+  .enhance-form { flex-direction: row; align-items: stretch; }
+  .enhance-search { flex: 1; min-width: 16rem; }
+  .enhance-actions { flex-shrink: 0; }
+}
 html.dark .field { background: #1f2937; border-color: #374151; color: #f3f4f6; }
 .btn-primary {
   display: inline-flex; align-items: center; justify-content: center;
