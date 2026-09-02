@@ -4,9 +4,8 @@ import (
 	"fmt"
 	"math"
 	"sort"
-	"strconv"
-	"strings"
 
+	ibssig "mktorder.com/go/internal/ibs"
 	"mktorder.com/go/internal/metrics"
 	"mktorder.com/go/internal/tradingdate"
 	"mktorder.com/go/internal/types"
@@ -30,6 +29,53 @@ func IndexTickers(in []TickerIndexed) []TickerIndexed {
 		out[i].DateIndexMap = m
 	}
 	return out
+}
+
+func unionDates(tickers []TickerIndexed) []string {
+	dateSet := map[string]struct{}{}
+	for _, t := range tickers {
+		for _, bar := range t.Data {
+			dateSet[bar.Date] = struct{}{}
+		}
+	}
+	sorted := make([]string, 0, len(dateSet))
+	for d := range dateSet {
+		sorted = append(sorted, d)
+	}
+	sort.Strings(sorted)
+	return sorted
+}
+
+func ibsParams(strategy types.Strategy) (low, high, maxHold, initial float64) {
+	low = strategy.Parameters.LowIBS
+	if low == 0 {
+		low = 0.1
+	}
+	high = strategy.Parameters.HighIBS
+	if high == 0 {
+		high = 0.75
+	}
+	maxHold = strategy.Parameters.MaxHoldDays
+	if maxHold == 0 {
+		maxHold = 30
+	}
+	initial = strategy.RiskManagement.InitialCapital
+	if initial == 0 {
+		initial = 10000
+	}
+	return
+}
+
+func applyDrawdown(equity []types.EquityPoint, initial float64) {
+	peak := initial
+	for i := range equity {
+		if equity[i].Value > peak {
+			peak = equity[i].Value
+		}
+		if peak > 0 {
+			equity[i].Drawdown = ((peak - equity[i].Value) / peak) * 100
+		}
+	}
 }
 
 func commission(tradeValue float64, strategy types.Strategy) float64 {
@@ -73,22 +119,7 @@ func RunSinglePosition(tickers []TickerIndexed, strategy types.Strategy, leverag
 	if len(tickers) == 0 {
 		return nil, 0, 0, nil, types.BacktestMetrics{}, nil
 	}
-	initial := strategy.RiskManagement.InitialCapital
-	if initial == 0 {
-		initial = 10000
-	}
-	lowIBS := strategy.Parameters.LowIBS
-	if lowIBS == 0 {
-		lowIBS = 0.1
-	}
-	highIBS := strategy.Parameters.HighIBS
-	if highIBS == 0 {
-		highIBS = 0.75
-	}
-	maxHoldDays := strategy.Parameters.MaxHoldDays
-	if maxHoldDays == 0 {
-		maxHoldDays = 30
-	}
+	lowIBS, highIBS, maxHoldDays, initial := ibsParams(strategy)
 	var tp *float64
 	if opt.TakeProfitPercent != nil {
 		tp = metrics.NormalizeTakeProfitPercent(opt.TakeProfitPercent)
@@ -104,17 +135,7 @@ func RunSinglePosition(tickers []TickerIndexed, strategy types.Strategy, leverag
 	totalMonthly := 0.0
 	contribCount := 0
 
-	dateSet := map[string]struct{}{}
-	for _, t := range tickers {
-		for _, bar := range t.Data {
-			dateSet[bar.Date] = struct{}{}
-		}
-	}
-	sorted := make([]string, 0, len(dateSet))
-	for d := range dateSet {
-		sorted = append(sorted, d)
-	}
-	sort.Strings(sorted)
+	sorted := unionDates(tickers)
 
 	dayOfMonth := opt.MonthlyDayOfMonth
 	if dayOfMonth == 0 {
@@ -189,10 +210,14 @@ func RunSinglePosition(tickers []TickerIndexed, strategy types.Strategy, leverag
 		exitedThisBar := false
 
 		if opt.MonthlyAmount > 0 && contribStart != "" && date >= contribStart {
-			y, mo, d := ymd(date)
+			y, mo, d := tradingdate.YMD(date)
 			monthKey := fmt.Sprintf("%d-%d", y, mo-1)
 			if monthKey != lastMonthKey {
-				isLast := nextDate == "" || monthOf(nextDate) != mo || yearOf(nextDate) != y
+				var ny, nm int
+				if nextDate != "" {
+					ny, nm, _ = tradingdate.YMD(nextDate)
+				}
+				isLast := nextDate == "" || nm != mo || ny != y
 				if d >= dayOfMonth || isLast {
 					freeCapital += opt.MonthlyAmount
 					totalMonthly += opt.MonthlyAmount
@@ -221,7 +246,7 @@ func RunSinglePosition(tickers []TickerIndexed, strategy types.Strategy, leverag
 						if tpPrice != nil {
 							exitPrice = *tpPrice
 						}
-					} else if ibs > highIBS {
+					} else if ibssig.IsExitSignal(ibs, highIBS) {
 						shouldExit = true
 						exitReason = "ibs_signal"
 					} else if float64(daysSinceEntry) >= maxHoldDays {
@@ -247,7 +272,7 @@ func RunSinglePosition(tickers []TickerIndexed, strategy types.Strategy, leverag
 						updatePortfolio(nil, date)
 						ticker := current.ticker
 						trade := types.Trade{
-							ID: fmt.Sprintf("trade-%d", len(trades)),
+							ID:        fmt.Sprintf("trade-%d", len(trades)),
 							EntryDate: current.entryDate, ExitDate: bar.Date,
 							EntryPrice: current.entryPrice, ExitPrice: exitPrice,
 							Quantity: current.quantity, PnL: totalPnL, PnLPercent: pnlPercent,
@@ -255,13 +280,13 @@ func RunSinglePosition(tickers []TickerIndexed, strategy types.Strategy, leverag
 							Context: &types.TradeContext{
 								Ticker: ticker, MarketConditions: "normal",
 								IndicatorValues: map[string]float64{"IBS": current.entryIBS, "exitIBS": ibs},
-								Trend: "sideways", InitialInvestment: totalCashInvested,
+								Trend:           "sideways", InitialInvestment: totalCashInvested,
 								GrossInvestment: current.quantity * current.entryPrice,
-								Leverage: leverage, LeverageDebt: stockValueAtEntry - current.totalCost,
+								Leverage:        leverage, LeverageDebt: stockValueAtEntry - current.totalCost,
 								CommissionPaid: totalCommissions, NetProceeds: netProceeds,
-								CapitalBeforeExit: capitalBeforeExit,
+								CapitalBeforeExit:       capitalBeforeExit,
 								CurrentCapitalAfterExit: totalPortfolio,
-								MarginUsed: current.totalCost,
+								MarginUsed:              current.totalCost,
 							},
 						}
 						if tp != nil {
@@ -287,7 +312,7 @@ func RunSinglePosition(tickers []TickerIndexed, strategy types.Strategy, leverag
 				}
 				bar := td.Data[barIndex]
 				ibs := td.IBSValues[barIndex]
-				if ibs < lowIBS {
+				if ibssig.IsEntrySignal(ibs, lowIBS) {
 					if bestIdx < 0 || ibs < bestIBS {
 						bestIdx = ti
 						bestIBS = ibs
@@ -338,7 +363,7 @@ func RunSinglePosition(tickers []TickerIndexed, strategy types.Strategy, leverag
 		}
 		exposure = append(exposure, types.ExposurePoint{
 			Date: date, Equity: totalPortfolio, PositionValue: posVal,
-			ExposurePct: metrics.ExposurePct(posVal, totalPortfolio),
+			ExposurePct:     metrics.ExposurePct(posVal, totalPortfolio),
 			ActivePositions: boolToInt(current != nil),
 		})
 	}
@@ -368,7 +393,7 @@ func RunSinglePosition(tickers []TickerIndexed, strategy types.Strategy, leverag
 				exitIBS = td.IBSValues[len(td.Data)-1]
 			}
 			trades = append(trades, types.Trade{
-				ID: fmt.Sprintf("trade-%d", len(trades)),
+				ID:        fmt.Sprintf("trade-%d", len(trades)),
 				EntryDate: current.entryDate, ExitDate: lastBar.Date,
 				EntryPrice: current.entryPrice, ExitPrice: exitPrice,
 				Quantity: current.quantity, PnL: totalPnL, PnLPercent: pnlPercent,
@@ -376,11 +401,11 @@ func RunSinglePosition(tickers []TickerIndexed, strategy types.Strategy, leverag
 				Context: &types.TradeContext{
 					Ticker: current.ticker, MarketConditions: "normal",
 					IndicatorValues: map[string]float64{"IBS": current.entryIBS, "exitIBS": exitIBS},
-					Trend: "sideways", InitialInvestment: totalCashInvested,
+					Trend:           "sideways", InitialInvestment: totalCashInvested,
 					GrossInvestment: current.quantity * current.entryPrice,
-					Leverage: leverage, LeverageDebt: stockValueAtEntry - current.totalCost,
+					Leverage:        leverage, LeverageDebt: stockValueAtEntry - current.totalCost,
 					CommissionPaid: totalCommissions, NetProceeds: stockProceeds - exitCommission,
-					CapitalBeforeExit: freeCapital - totalCashInvested - totalPnL,
+					CapitalBeforeExit:       freeCapital - totalCashInvested - totalPnL,
 					CurrentCapitalAfterExit: totalPortfolio, MarginUsed: current.totalCost,
 				},
 			})
@@ -399,14 +424,3 @@ func boolToInt(v bool) int {
 	}
 	return 0
 }
-
-func ymd(date string) (int, int, int) {
-	parts := strings.Split(date, "-")
-	y, _ := strconv.Atoi(parts[0])
-	m, _ := strconv.Atoi(parts[1])
-	d, _ := strconv.Atoi(parts[2])
-	return y, m, d
-}
-
-func yearOf(date string) int  { y, _, _ := ymd(date); return y }
-func monthOf(date string) int { _, m, _ := ymd(date); return m }

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 
+	ibssig "mktorder.com/go/internal/ibs"
 	"mktorder.com/go/internal/indicators"
 	"mktorder.com/go/internal/metrics"
 	"mktorder.com/go/internal/splits"
@@ -37,9 +38,9 @@ func RunClean(data []types.OHLC, strategy types.Strategy, options *CleanOptions)
 	if len(opt.Splits) > 0 {
 		data = splits.AdjustOHLC(data, opt.Splits)
 	}
-	initial := strategy.RiskManagement.InitialCapital
-	if initial == 0 {
-		initial = 10000
+	lowIBS, highIBS, maxHoldDays, initial := ibsParams(strategy)
+	if strategy.Parameters.MaxHoldDays == 0 && strategy.RiskManagement.MaxHoldDays != 0 {
+		maxHoldDays = strategy.RiskManagement.MaxHoldDays
 	}
 	if len(data) == 0 {
 		m := metrics.New(nil, nil, initial, nil).All()
@@ -53,22 +54,6 @@ func RunClean(data []types.OHLC, strategy types.Strategy, options *CleanOptions)
 	var position *cleanPosition
 	peakValue := 0.0
 
-	lowIBS := strategy.Parameters.LowIBS
-	if lowIBS == 0 {
-		lowIBS = 0.1
-	}
-	highIBS := strategy.Parameters.HighIBS
-	if highIBS == 0 {
-		highIBS = 0.75
-	}
-	maxHoldDays := strategy.Parameters.MaxHoldDays
-	if maxHoldDays == 0 {
-		if strategy.RiskManagement.MaxHoldDays != 0 {
-			maxHoldDays = strategy.RiskManagement.MaxHoldDays
-		} else {
-			maxHoldDays = 30
-		}
-	}
 	capitalUsage := strategy.RiskManagement.CapitalUsage
 	if capitalUsage == 0 {
 		capitalUsage = 100
@@ -83,7 +68,7 @@ func RunClean(data []types.OHLC, strategy types.Strategy, options *CleanOptions)
 		ibs := ibsValues[i]
 
 		if position == nil {
-			if ibs < lowIBS && nextBar != nil {
+			if ibssig.IsEntrySignal(ibs, lowIBS) && nextBar != nil {
 				investmentAmount := (currentCapital * capitalUsage) / 100
 				if opt.EntryExecution == "nextOpen" {
 					quantity := math.Floor(investmentAmount / nextBar.Open)
@@ -113,7 +98,7 @@ func RunClean(data []types.OHLC, strategy types.Strategy, options *CleanOptions)
 			if canCheckToday {
 				shouldExit := false
 				exitReason := ""
-				if !math.IsNaN(ibs) && ibs > highIBS {
+				if ibssig.IsExitSignal(ibs, highIBS) {
 					if !opt.IBSExitRequireAboveEntry || bar.Close > position.entryPrice {
 						shouldExit = true
 						exitReason = "ibs_signal"
@@ -134,15 +119,15 @@ func RunClean(data []types.OHLC, strategy types.Strategy, options *CleanOptions)
 					pnlPercent := (pnl / grossCost) * 100
 					duration := tradingdate.DaysBetween(position.entryDate, bar.Date)
 					trade := types.Trade{
-						ID: fmt.Sprintf("trade-%d", len(trades)),
+						ID:        fmt.Sprintf("trade-%d", len(trades)),
 						EntryDate: position.entryDate, ExitDate: bar.Date,
 						EntryPrice: position.entryPrice, ExitPrice: exitPrice,
 						Quantity: position.quantity, PnL: pnl, PnLPercent: pnlPercent,
 						Duration: duration, ExitReason: exitReason,
 						Context: &types.TradeContext{
-							MarketConditions: "normal",
-							IndicatorValues:  map[string]float64{"IBS": position.entryIBS, "exitIBS": ibs},
-							Trend:            "sideways",
+							MarketConditions:  "normal",
+							IndicatorValues:   map[string]float64{"IBS": position.entryIBS, "exitIBS": ibs},
+							Trend:             "sideways",
 							InitialInvestment: grossCost,
 						},
 					}
@@ -195,15 +180,15 @@ func RunClean(data []types.OHLC, strategy types.Strategy, options *CleanOptions)
 			pnlPercent := (pnl / grossCost) * 100
 			duration := tradingdate.DaysBetween(position.entryDate, lastBar.Date)
 			trade := types.Trade{
-				ID: fmt.Sprintf("trade-%d", len(trades)),
+				ID:        fmt.Sprintf("trade-%d", len(trades)),
 				EntryDate: position.entryDate, ExitDate: lastBar.Date,
 				EntryPrice: position.entryPrice, ExitPrice: exitPrice,
 				Quantity: position.quantity, PnL: pnl, PnLPercent: pnlPercent,
 				Duration: duration, ExitReason: exitReason,
 				Context: &types.TradeContext{
-					MarketConditions: "normal",
-					IndicatorValues:  map[string]float64{"IBS": position.entryIBS, "exitIBS": lastIBS},
-					Trend:            "sideways",
+					MarketConditions:  "normal",
+					IndicatorValues:   map[string]float64{"IBS": position.entryIBS, "exitIBS": lastIBS},
+					Trend:             "sideways",
 					InitialInvestment: grossCost,
 				},
 			}
@@ -256,11 +241,11 @@ func RunBuyAtClose(data []types.OHLC, strategy types.Strategy) types.BacktestRes
 }
 
 type NoStopLossConfig struct {
-	ExitMode               string  `json:"exitMode"` // never | ibs-only | time-limit | profit-target
-	MaxHoldDays            float64 `json:"maxHoldDays"`
-	ProfitTarget           float64 `json:"profitTarget"`
-	RequireProfitableExit  bool    `json:"requireProfitableExit"`
-	Leverage               float64 `json:"leverage"`
+	ExitMode              string  `json:"exitMode"` // never | ibs-only | time-limit | profit-target
+	MaxHoldDays           float64 `json:"maxHoldDays"`
+	ProfitTarget          float64 `json:"profitTarget"`
+	RequireProfitableExit bool    `json:"requireProfitableExit"`
+	Leverage              float64 `json:"leverage"`
 }
 
 func RunNoStopLoss(data []types.OHLC, strategy types.Strategy, cfg NoStopLossConfig) types.BacktestResult {
@@ -283,5 +268,3 @@ func RunNoStopLoss(data []types.OHLC, strategy types.Strategy, cfg NoStopLossCon
 		IBSExitRequireAboveEntry: cfg.RequireProfitableExit,
 	})
 }
-
-

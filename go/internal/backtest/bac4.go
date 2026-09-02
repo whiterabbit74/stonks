@@ -3,8 +3,8 @@ package backtest
 import (
 	"fmt"
 	"math"
-	"sort"
 
+	ibssig "mktorder.com/go/internal/ibs"
 	"mktorder.com/go/internal/metrics"
 	"mktorder.com/go/internal/tradingdate"
 	"mktorder.com/go/internal/types"
@@ -22,37 +22,23 @@ type bac4Pos struct {
 }
 
 type BAC4Result struct {
-	Equity      []types.EquityPoint      `json:"equity"`
-	FinalValue  float64                  `json:"finalValue"`
-	MaxDrawdown float64                  `json:"maxDrawdown"`
-	Trades      []types.Trade            `json:"trades"`
-	Metrics     map[string]float64       `json:"metrics"`
+	Equity      []types.EquityPoint `json:"equity"`
+	FinalValue  float64             `json:"finalValue"`
+	MaxDrawdown float64             `json:"maxDrawdown"`
+	Trades      []types.Trade       `json:"trades"`
+	Metrics     map[string]float64  `json:"metrics"`
 }
 
 func RunBuyAtClose4(tickers []TickerIndexed, strategy types.Strategy, leverage float64) BAC4Result {
 	if leverage == 0 {
 		leverage = 1
 	}
+	tickers = IndexTickers(tickers)
 	if len(tickers) == 0 {
 		return BAC4Result{Metrics: map[string]float64{}}
 	}
-	initial := strategy.RiskManagement.InitialCapital
-	if initial == 0 {
-		initial = 10000
-	}
+	lowIBS, highIBS, maxHoldDays, initial := ibsParams(strategy)
 	capitalUsagePerTicker := 100.0 / float64(len(tickers))
-	lowIBS := strategy.Parameters.LowIBS
-	if lowIBS == 0 {
-		lowIBS = 0.1
-	}
-	highIBS := strategy.Parameters.HighIBS
-	if highIBS == 0 {
-		highIBS = 0.75
-	}
-	maxHoldDays := strategy.Parameters.MaxHoldDays
-	if maxHoldDays == 0 {
-		maxHoldDays = 30
-	}
 
 	freeCapital := initial
 	totalInvested := 0.0
@@ -61,26 +47,7 @@ func RunBuyAtClose4(tickers []TickerIndexed, strategy types.Strategy, leverage f
 	var trades []types.Trade
 	var equity []types.EquityPoint
 
-	dateSet := map[string]struct{}{}
-	for _, t := range tickers {
-		for _, bar := range t.Data {
-			dateSet[bar.Date] = struct{}{}
-		}
-	}
-	sorted := make([]string, 0, len(dateSet))
-	for d := range dateSet {
-		sorted = append(sorted, d)
-	}
-	sort.Strings(sorted)
-
-	barIndex := func(td TickerIndexed, date string) int {
-		for i, bar := range td.Data {
-			if bar.Date == date {
-				return i
-			}
-		}
-		return -1
-	}
+	sorted := unionDates(tickers)
 
 	getNet := func(pos *bac4Pos, price float64) float64 {
 		mv := pos.quantity * price
@@ -96,8 +63,8 @@ func RunBuyAtClose4(tickers []TickerIndexed, strategy types.Strategy, leverage f
 			if pos == nil {
 				continue
 			}
-			idx := barIndex(tickers[i], date)
-			if idx != -1 {
+			idx, ok := tickers[i].DateIndexMap[date]
+			if ok {
 				totalPos += getNet(pos, tickers[i].Data[idx].Close)
 			}
 		}
@@ -109,14 +76,14 @@ func RunBuyAtClose4(tickers []TickerIndexed, strategy types.Strategy, leverage f
 		for tickerIndex := 0; tickerIndex < len(tickers); tickerIndex++ {
 			td := tickers[tickerIndex]
 			pos := positions[tickerIndex]
-			idx := barIndex(td, currentDate)
-			if idx == -1 {
+			idx, ok := td.DateIndexMap[currentDate]
+			if !ok {
 				continue
 			}
 			bar := td.Data[idx]
 			ibs := td.IBSValues[idx]
 			if pos == nil {
-				if ibs < lowIBS {
+				if ibssig.IsEntrySignal(ibs, lowIBS) {
 					baseTarget := totalPortfolio * (capitalUsagePerTicker / 100)
 					target := baseTarget * leverage
 					entryPrice := bar.Close
@@ -141,7 +108,7 @@ func RunBuyAtClose4(tickers []TickerIndexed, strategy types.Strategy, leverage f
 				daysSince := tradingdate.DaysBetween(pos.entryDate, bar.Date)
 				shouldExit := false
 				exitReason := ""
-				if ibs > highIBS {
+				if ibssig.IsExitSignal(ibs, highIBS) {
 					shouldExit = true
 					exitReason = "ibs_signal"
 				} else if float64(daysSince) >= maxHoldDays {
@@ -168,7 +135,7 @@ func RunBuyAtClose4(tickers []TickerIndexed, strategy types.Strategy, leverage f
 					positions[tickerIndex] = nil
 					updatePortfolio(currentDate)
 					trades = append(trades, types.Trade{
-						ID: fmt.Sprintf("trade-%d", len(trades)),
+						ID:        fmt.Sprintf("trade-%d", len(trades)),
 						EntryDate: pos.entryDate, ExitDate: bar.Date,
 						EntryPrice: pos.entryPrice, ExitPrice: exitPrice,
 						Quantity: pos.quantity, PnL: totalPnL, PnLPercent: pnlPercent,
@@ -176,7 +143,7 @@ func RunBuyAtClose4(tickers []TickerIndexed, strategy types.Strategy, leverage f
 						Context: &types.TradeContext{
 							Ticker: pos.ticker, MarketConditions: "normal",
 							IndicatorValues: map[string]float64{"IBS": pos.entryIBS, "exitIBS": ibs},
-							Trend: "sideways", InitialInvestment: totalCashInvested,
+							Trend:           "sideways", InitialInvestment: totalCashInvested,
 							GrossInvestment: pos.quantity * pos.entryPrice, Leverage: leverage,
 							LeverageDebt: stockValueAtEntry - pos.totalCost, CommissionPaid: totalC,
 							NetProceeds: netProceeds, CapitalBeforeExit: capitalBefore,
@@ -235,7 +202,7 @@ func RunBuyAtClose4(tickers []TickerIndexed, strategy types.Strategy, leverage f
 			exitIBS = td.IBSValues[len(td.Data)-1]
 		}
 		trades = append(trades, types.Trade{
-			ID: fmt.Sprintf("trade-%d", len(trades)),
+			ID:        fmt.Sprintf("trade-%d", len(trades)),
 			EntryDate: pos.entryDate, ExitDate: lastBar.Date,
 			EntryPrice: pos.entryPrice, ExitPrice: exitPrice,
 			Quantity: pos.quantity, PnL: totalPnL, PnLPercent: pnlPercent,
@@ -243,9 +210,9 @@ func RunBuyAtClose4(tickers []TickerIndexed, strategy types.Strategy, leverage f
 			Context: &types.TradeContext{
 				Ticker: pos.ticker, MarketConditions: "normal",
 				IndicatorValues: map[string]float64{"IBS": pos.entryIBS, "exitIBS": exitIBS},
-				Trend: "sideways", InitialInvestment: totalCashInvested,
+				Trend:           "sideways", InitialInvestment: totalCashInvested,
 				GrossInvestment: pos.quantity * pos.entryPrice, Leverage: leverage,
-				LeverageDebt: stockValueAtEntry - pos.totalCost + pos.entryCommission,
+				LeverageDebt:   stockValueAtEntry - pos.totalCost + pos.entryCommission,
 				CommissionPaid: pos.entryCommission + exitC, NetProceeds: netProceeds,
 				CapitalBeforeExit: capitalBefore, CurrentCapitalAfterExit: totalPortfolio,
 				MarginUsed: pos.totalCost,

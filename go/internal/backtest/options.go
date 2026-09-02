@@ -19,13 +19,6 @@ type OptionsConfig struct {
 	MaxHoldingDays  int     `json:"maxHoldingDays"`
 }
 
-func dateKey(s string) string {
-	if len(s) >= 10 {
-		return s[:10]
-	}
-	return s
-}
-
 func executionPrice(theoretical float64) float64 {
 	if theoretical < 0.005 {
 		return 0
@@ -68,7 +61,7 @@ func RunOptions(stockTrades []types.Trade, market []types.OHLC, cfg OptionsConfi
 	initial := 10000.0
 	datePrice := map[string]marketState{}
 	for idx, bar := range market {
-		datePrice[dateKey(bar.Date)] = marketState{close: bar.Close, index: idx}
+		datePrice[tradingdate.DateKey(bar.Date)] = marketState{close: bar.Close, index: idx}
 	}
 	getState := func(dateStr string) (marketState, bool) {
 		entry, ok := datePrice[dateStr]
@@ -96,13 +89,13 @@ func RunOptions(stockTrades []types.Trade, market []types.OHLC, cfg OptionsConfi
 
 	for i := 0; i < len(market); i++ {
 		bar := market[i]
-		dateStr := dateKey(bar.Date)
+		dateStr := tradingdate.DateKey(bar.Date)
 		r := rf(dateStr, cfg.RiskFreeRate)
 
 		if active == nil {
 			var matching *types.Trade
 			for j := range stockTrades {
-				if dateKey(stockTrades[j].EntryDate) == dateStr {
+				if tradingdate.DateKey(stockTrades[j].EntryDate) == dateStr {
 					matching = &stockTrades[j]
 					break
 				}
@@ -145,8 +138,8 @@ func RunOptions(stockTrades []types.Trade, market []types.OHLC, cfg OptionsConfi
 				theoretical := optionsmath.BlackScholes("call", spot, active.Strike, T, r, vol)
 				optPrice := executionPrice(theoretical)
 				portfolioValue = currentCapital + (active.Contracts * optPrice)
-				tExit := dateKey(active.ExitDate)
-				entryStr := dateKey(active.EntryDate)
+				tExit := tradingdate.DateKey(active.ExitDate)
+				entryStr := tradingdate.DateKey(active.EntryDate)
 				daysHeld := tradingdate.DaysBetween(entryStr, dateStr)
 				isMaxHold := daysHeld >= cfg.MaxHoldingDays
 				isExpired := T <= 0
@@ -188,15 +181,7 @@ func RunOptions(stockTrades []types.Trade, market []types.OHLC, cfg OptionsConfi
 		equity = append(equity, types.EquityPoint{Date: dateStr, Value: portfolioValue, Drawdown: 0})
 	}
 
-	peak := initial
-	for i := range equity {
-		if equity[i].Value > peak {
-			peak = equity[i].Value
-		}
-		if peak > 0 {
-			equity[i].Drawdown = ((peak - equity[i].Value) / peak) * 100
-		}
-	}
+	applyDrawdown(equity, initial)
 	finalValue = portfolioValue
 	return
 }
@@ -215,7 +200,7 @@ func RunMultiOptions(stockTrades []types.Trade, tickers []TickerIndexed, cfg Opt
 		dateMap := map[string]daily{}
 		ticker := strings.ToUpper(td.Ticker)
 		for idx, bar := range td.Data {
-			ds := dateKey(bar.Date)
+			ds := tradingdate.DateKey(bar.Date)
 			allDates[ds] = struct{}{}
 			start := idx - 30
 			if start < 0 {
@@ -258,8 +243,8 @@ func RunMultiOptions(stockTrades []types.Trade, tickers []TickerIndexed, cfg Opt
 			vol := md.vol
 			theoretical := optionsmath.BlackScholes("call", spot, trade.Strike, T, r, vol)
 			optPrice := executionPrice(theoretical)
-			tExit := dateKey(trade.ExitDate)
-			entryStr := dateKey(trade.EntryDate)
+			tExit := tradingdate.DateKey(trade.ExitDate)
+			entryStr := tradingdate.DateKey(trade.EntryDate)
 			daysHeld := tradingdate.DaysBetween(entryStr, dateStr)
 			isMaxHold := daysHeld >= cfg.MaxHoldingDays
 			isExpired := T <= 0
@@ -297,7 +282,7 @@ func RunMultiOptions(stockTrades []types.Trade, tickers []TickerIndexed, cfg Opt
 		}
 
 		for _, stockTrade := range stockTrades {
-			if dateKey(stockTrade.EntryDate) != dateStr {
+			if tradingdate.DateKey(stockTrade.EntryDate) != dateStr {
 				continue
 			}
 			ticker := ""
@@ -350,17 +335,7 @@ func RunMultiOptions(stockTrades []types.Trade, tickers []TickerIndexed, cfg Opt
 		portfolioValue = currentCapital + openVal
 		equity = append(equity, types.EquityPoint{Date: dateStr, Value: portfolioValue, Drawdown: 0})
 	}
-	peak := initial
-	for i := range equity {
-		if equity[i].Value > peak {
-			peak = equity[i].Value
-		}
-		if peak > 0 {
-			equity[i].Drawdown = ((peak - equity[i].Value) / peak) * 100
-		}
-	}
+	applyDrawdown(equity, initial)
 	finalValue = portfolioValue
 	return
 }
-
-
