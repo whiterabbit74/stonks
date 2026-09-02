@@ -242,7 +242,7 @@
   }
   function logo(size) {
     const cls = size === 'lg' ? 'w-8 h-8' : 'w-5 h-5';
-    return `<svg class="${cls} text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">${PATHS.logo}</svg>`;
+    return `<svg class="${cls} text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">${PATHS.logo}</svg>`;
   }
   function esc(s) {
     return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -692,7 +692,7 @@
     html.dataset.theme = state.theme;
     try { localStorage.setItem('theme', state.theme); } catch (_) {}
     const meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute('content', isDark() ? '#14120f' : '#f2eee4');
+    if (meta) meta.setAttribute('content', isDark() ? '#0b1220' : '#ffffff');
     setTimeout(() => html.classList.remove('theme-changing'), 80);
   }
   function themeLabel() {
@@ -711,13 +711,13 @@
         </div>
         ${actions ? `<div class="flex flex-wrap items-center gap-2 sm:flex-shrink-0">${actions}</div>` : ''}
       </div>
-      <div class="page-rule mt-3"></div>
+      <div class="mt-3 h-px bg-gradient-to-r from-indigo-500/50 via-sky-500/40 to-transparent"></div>
     </div>`;
   }
   function analysisTabs(tabs, active, attr) {
     return `<div class="border-b border-gray-200 dark:border-gray-700 overflow-x-auto">
       <div class="flex items-center gap-2 flex-nowrap min-w-max px-1" role="tablist">
-        ${tabs.map((t) => `<button ${attr}="${esc(t.id)}" role="tab" aria-selected="${t.id === active}" tabindex="${t.id === active ? 0 : -1}" class="px-4 py-3 text-sm font-medium border-b-2 whitespace-nowrap sm:px-6 ${t.id === active ? 'tab-on' : 'tab-off'}">${esc(t.label)}</button>`).join('')}
+        ${tabs.map((t) => `<button ${attr}="${esc(t.id)}" role="tab" aria-selected="${t.id === active}" tabindex="${t.id === active ? 0 : -1}" class="px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap sm:px-6 ${t.id === active ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'}">${esc(t.label)}</button>`).join('')}
       </div>
     </div>`;
   }
@@ -734,13 +734,13 @@
     const dd = maxDrawdown ?? m.maxDrawdown;
     const pf = Number.isFinite(m.profitFactor) ? fmt(m.profitFactor) : '∞';
     return `<div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-9 gap-4">
-      <div class="col-span-2 metric-card"><div class="metric-val pos">${fmtUsd(fv)}</div><div class="metric-lab">Итоговый баланс</div></div>
-      <div class="col-span-2 metric-card"><div class="metric-val">${fmtPct(m.totalReturn)}</div><div class="metric-lab">Общая доходность</div></div>
-      <div class="metric-card"><div class="metric-val">${fmtPct(m.cagr)}</div><div class="metric-lab">CAGR</div></div>
-      <div class="metric-card"><div class="metric-val">${fmtPct(m.winRate)}</div><div class="metric-lab">Win Rate</div></div>
-      <div class="metric-card"><div class="metric-val neg">${fmtPct(dd)}</div><div class="metric-lab">Макс. просадка</div></div>
-      <div class="metric-card"><div class="metric-val">${m.totalTrades ?? 0}</div><div class="metric-lab">Всего сделок</div></div>
-      <div class="metric-card"><div class="metric-val">${pf}</div><div class="metric-lab">Profit Factor</div></div>
+      <div class="col-span-2 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 text-center"><div class="text-2xl font-bold text-green-600">${fmtUsd(fv)}</div><div class="text-sm text-gray-600 dark:text-gray-400">Итоговый баланс</div></div>
+      <div class="col-span-2 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 text-center"><div class="text-2xl font-bold text-blue-600">${fmtPct(m.totalReturn)}</div><div class="text-sm text-gray-600 dark:text-gray-400">Общая доходность</div></div>
+      <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 text-center"><div class="text-2xl font-bold text-orange-600">${fmtPct(m.cagr)}</div><div class="text-sm text-gray-600 dark:text-gray-400">CAGR</div></div>
+      <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 text-center"><div class="text-2xl font-bold text-purple-600">${fmtPct(m.winRate)}</div><div class="text-sm text-gray-600 dark:text-gray-400">Win Rate</div></div>
+      <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 text-center"><div class="text-2xl font-bold text-red-600">${fmtPct(dd)}</div><div class="text-sm text-gray-600 dark:text-gray-400">Макс. просадка</div></div>
+      <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 text-center"><div class="text-2xl font-bold text-indigo-600">${m.totalTrades ?? 0}</div><div class="text-sm text-gray-600 dark:text-gray-400">Всего сделок</div></div>
+      <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 text-center"><div class="text-2xl font-bold text-teal-600">${pf}</div><div class="text-sm text-gray-600 dark:text-gray-400">Profit Factor</div></div>
     </div>`;
   }
   function tradesTable(trades) {
@@ -818,10 +818,10 @@
     </footer>`;
   }
   function shellHTML() {
-    const nav = TABS.map((t) => `<a href="${t.to}" data-nav class="desk-link ${state.page === t.to ? 'nav-active' : ''}">${t.label}</a>`).join('');
+    const nav = TABS.map((t) => `<a href="${t.to}" data-nav class="px-3 py-1 rounded text-sm border ${state.page === t.to ? 'nav-active' : 'bg-white hover:bg-gray-50 text-gray-700 border-gray-200 dark:bg-gray-900 dark:text-gray-200 dark:border-gray-800'}">${t.label}</a>`).join('');
     const bottom = BOTTOM.map((t) => {
       const on = state.page === t.to;
-      return `<a href="${t.to}" data-nav class="bn-link ${on ? 'on' : ''}" aria-label="${t.label}">
+      return `<a href="${t.to}" data-nav class="flex flex-col items-center justify-center gap-1 py-2 text-xs ${on ? 'text-indigo-600 dark:text-indigo-400' : 'text-gray-500 dark:text-gray-400'}" aria-label="${t.label}">
         <div class="bn-icon ${on ? 'active' : ''}">${icon(t.icon, 'w-6 h-6')}</div>
         <span class="font-medium">${t.label}</span>
       </a>`;
@@ -829,7 +829,7 @@
     return `
       <a href="#main-content" class="sr-only">Перейти к основному содержимому</a>
       <div class="min-h-screen flex flex-col bg-gray-50 text-gray-800 dark:text-gray-100">
-        <header class="site-head">
+        <header class="border-b bg-white/60 backdrop-blur dark:bg-slate-900/60 dark:border-slate-800">
           <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between gap-3">
             <a href="/data" data-nav class="flex min-w-0 items-center gap-3 hover:opacity-80">
               ${logo('sm')}
@@ -842,13 +842,13 @@
               <button id="logout-btn" class="hidden md:inline-flex items-center gap-2 text-sm px-3 py-1.5 rounded border bg-white text-gray-700 border-gray-200 hover:bg-gray-50 dark:bg-gray-900 dark:text-gray-200 dark:border-gray-800">Выйти</button>
             </div>
           </div>
-          <div id="mobile-drawer" class="${state.mobileOpen ? '' : 'hidden'} md:hidden site-drawer"></div>
+          <div id="mobile-drawer" class="${state.mobileOpen ? '' : 'hidden'} md:hidden border-t border-gray-200 dark:border-gray-700 bg-white/95 backdrop-blur-sm dark:bg-slate-900/95"></div>
         </header>
         <main id="main-content" class="flex-1 w-full px-4 sm:px-6 lg:px-8 pt-6 pb-32 md:pb-24 safe-area-pb">
           <nav class="hidden md:flex gap-2 flex-wrap mb-4 desktop-nav">${nav}</nav>
           <div id="page-root"></div>
         </main>
-        <nav class="bottom-nav md:hidden" role="navigation" aria-label="Основная навигация">${bottom}</nav>
+        <nav class="bottom-nav md:hidden fixed bottom-0 left-0 right-0 bg-white/95 dark:bg-gray-900/95 backdrop-blur-lg border-t border-gray-200 dark:border-gray-800 z-40 grid grid-cols-5 items-center h-16" role="navigation" aria-label="Основная навигация">${bottom}</nav>
         ${footerHTML(state.apiBuildId)}
       </div>
       <div id="overlay-root">${overlay()}</div>`;
@@ -856,7 +856,7 @@
   function mobileDrawerHTML() {
     return `<div class="px-3 py-3 space-y-0.5">${MOBILE_MENU.map((t) => {
       const on = state.page === t.to;
-      return `<a href="${t.to}" data-nav class="drawer-link ${on ? 'on' : ''}">${icon(t.icon, 'w-5 h-5')}<span>${t.label}</span></a>`;
+      return `<a href="${t.to}" data-nav class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium ${on ? 'bg-indigo-600 text-white' : 'text-gray-700 hover:bg-gray-100 dark:text-gray-200'}">${icon(t.icon, 'w-5 h-5 ' + (on ? 'text-white' : 'text-gray-400'))}<span>${t.label}</span></a>`;
     }).join('')}<div class="my-1.5 border-t border-gray-200 dark:border-gray-700"></div>
       <button id="logout-mobile" class="flex w-full items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100 dark:text-gray-200">${icon('logout', 'w-5 h-5 text-gray-400')}Выйти</button>
     </div>`;
@@ -865,21 +865,21 @@
   function loginPage() {
     return `
       <div class="min-h-screen bg-gray-50 text-gray-800 dark:text-gray-100 flex flex-col">
-        <header class="site-head">
+        <header class="border-b bg-white/60 backdrop-blur dark:bg-slate-900/60 dark:border-slate-800">
           <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between gap-3">
             <div class="flex min-w-0 items-center gap-3">${logo('sm')}<span class="hidden truncate text-lg font-semibold sm:inline">IBS Trading Strategy</span></div>
             <button id="theme-btn" class="icon-btn icon-btn-lg icon-btn-glass" title="Тема: ${themeLabel()}" aria-label="Тема: ${themeLabel()}">${icon(themeIcon())}</button>
           </div>
         </header>
         <main class="flex-1 flex items-center justify-center px-4 pb-24">
-          <div class="w-full max-w-sm login-card">
+          <div class="w-full max-w-sm rounded-lg bg-white p-4 shadow-lg border dark:bg-gray-900 dark:border-gray-800">
             <h2 class="text-lg font-semibold mb-3">Вход</h2>
             <div id="login-error" class="mb-2 text-sm text-red-600 hidden"></div>
             <form id="login-form" class="space-y-3">
               <div><label class="block text-sm mb-1">Эл. почта</label><input name="username" type="email" class="w-full rounded border px-3 py-2 bg-white dark:bg-gray-800 dark:border-gray-700" placeholder="ivan@example.com" autofocus /></div>
               <div><label class="block text-sm mb-1">Пароль</label><input name="password" type="password" class="w-full rounded border px-3 py-2 bg-white dark:bg-gray-800 dark:border-gray-700" placeholder="••••••••" /></div>
               <label class="inline-flex items-center gap-2 text-sm"><input type="checkbox" name="remember" /> Запомнить меня</label>
-              <div class="flex justify-end"><button type="submit" class="px-3 py-1.5 rounded-lg text-sm bg-indigo-600 text-white hover:bg-indigo-700">Войти</button></div>
+              <div class="flex justify-end"><button type="submit" class="btn-primary min-h-0 py-1.5">Войти</button></div>
             </form>
           </div>
         </main>
@@ -1660,11 +1660,11 @@
     document.querySelectorAll('nav.desktop-nav [data-nav], .bottom-nav [data-nav]').forEach((a) => {
       const on = a.getAttribute('href') === state.page;
       if (a.closest('.bottom-nav')) {
-        a.className = `bn-link ${on ? 'on' : ''}`;
+        a.className = `flex flex-col items-center justify-center gap-1 py-2 text-xs ${on ? 'text-indigo-600 dark:text-indigo-400' : 'text-gray-500 dark:text-gray-400'}`;
         const well = a.querySelector('.bn-icon');
         if (well) well.classList.toggle('active', on);
       } else {
-        a.className = `desk-link ${on ? 'nav-active' : ''}`;
+        a.className = `px-3 py-1 rounded text-sm border ${on ? 'nav-active' : 'bg-white hover:bg-gray-50 text-gray-700 border-gray-200 dark:bg-gray-900 dark:text-gray-200 dark:border-gray-800'}`;
       }
     });
     const gear = document.getElementById('settings-btn');

@@ -72,9 +72,10 @@ func TestVanillaUIAssets(t *testing.T) {
 
 	chrome := []string{
 		"text-2xl",
-		"page-rule",
+		"from-indigo-500/50",
+		"via-sky-500/40",
 		"border-b-2",
-		"tab-on",
+		"border-indigo-500",
 		"icon-btn-glass",
 		"#menu-btn",
 		"#settings-btn",
@@ -96,9 +97,6 @@ func TestVanillaUIAssets(t *testing.T) {
 	}
 	if !strings.Contains(extra, "#menu-btn") {
 		t.Fatal("extra.css missing hamburger #menu-btn")
-	}
-	if !strings.Contains(extra, "--accent") || !strings.Contains(extra, ".page-rule") {
-		t.Fatal("extra.css missing copper ledger tokens")
 	}
 
 	for _, copy := range []string{
