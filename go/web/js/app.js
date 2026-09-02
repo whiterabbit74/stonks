@@ -190,6 +190,8 @@
     ticker: 'GOOGL',
     selected: [],
     tickerInput: localStorage.getItem('tickersInput') || 'AAPL, MSFT, AMZN, MAGS',
+    emaTickers: localStorage.getItem('ema.tickers') || 'TQQQ',
+    optTickers: localStorage.getItem('options.tickers') || localStorage.getItem('tickersInput') || 'AAPL, MSFT, AMZN, MAGS',
     leverage: 200,
     takeProfit: localStorage.getItem('stocksTakeProfit') || '',
     tickersData: [],
@@ -364,8 +366,13 @@
       localStorage.setItem('chart-prefs', JSON.stringify(raw));
     } catch (_) {}
   }
+  function pageTickerText() {
+    if (state.page === '/ema') return state.emaTickers;
+    if (state.page === '/multi-ticker-options') return state.optTickers;
+    return state.tickerInput;
+  }
   function selectedHeroTicker() {
-    const tickers = parseTickers(state.tickerInput);
+    const tickers = parseTickers(pageTickerText());
     const sel = hp().ticker;
     if (sel && tickers.includes(sel)) return sel;
     return tickers[0] || state.ticker || '';
@@ -572,7 +579,7 @@
     </div>`;
   }
   function heroPanelHTML(opts) {
-    const tickers = parseTickers(state.tickerInput);
+    const tickers = parseTickers(pageTickerText());
     const selected = selectedHeroTicker();
     return `<div class="space-y-3">
       ${heroToolbarHTML(tickers, selected, opts)}
@@ -1093,7 +1100,7 @@
 
   function emaFormHTML() {
     const f = state.emaForm;
-    const tickers = parseTickers(state.tickerInput);
+    const tickers = parseTickers(state.emaTickers);
     const presets = (state.emaPresets || []).map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('');
     return `
       <form id="ema-form" class="space-y-3">
@@ -1103,7 +1110,7 @@
           <button type="button" id="ema-preset-del" class="icon-btn icon-btn-md icon-btn-glass" title="Удалить пресет">${icon('trash', 'w-3.5 h-3.5')}</button></div>
           <div class="mt-2 flex gap-2"><input id="ema-preset-name" class="${inputCls()}" placeholder="Название пресета" /><button type="button" id="ema-preset-save" class="btn-secondary min-h-0 py-2">Сохранить</button></div>
         </div>
-        <div><label class="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">Тикеры</label>${tickerInput('ema-tickers', state.tickerInput, tickers, false)}</div>
+        <div><label class="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">Тикеры</label>${tickerInput('ema-tickers', state.emaTickers, tickers, false)}</div>
         <div class="grid grid-cols-2 gap-3">
           <div><label class="mb-1 block text-xs font-medium">EMA</label>
             <select name="period" class="${inputCls()}"><option value="20" ${f.period === 20 ? 'selected' : ''}>EMA 20</option><option value="200" ${f.period !== 20 ? 'selected' : ''}>EMA 200</option></select>
@@ -1163,12 +1170,12 @@
 
   function optFormHTML() {
     const f = state.optForm;
-    const tickers = parseTickers(state.tickerInput);
+    const tickers = parseTickers(state.optTickers);
     const sel = (opts, cur, fmt) => opts.map((v) => `<option value="${v}" ${Number(cur) === v ? 'selected' : ''}>${fmt(v)}</option>`).join('');
     return `
       <div class="text-sm font-semibold">Параметры</div>
       <form id="opt-form" class="space-y-3">
-        <div><label class="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">Тикеры</label>${tickerInput('opt-tickers', state.tickerInput, tickers, false)}</div>
+        <div><label class="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">Тикеры</label>${tickerInput('opt-tickers', state.optTickers, tickers, false)}</div>
         <div class="grid grid-cols-2 gap-2">
           <div><label class="mb-1 block text-xs font-medium">Страйк (+%)</label><select name="strike" class="${inputCls()}">${sel([5, 10, 15, 20], f.strike, (v) => '+' + v + '%')}</select></div>
           <div><label class="mb-1 block text-xs font-medium">IV Adj (+%)</label><select name="vol" class="${inputCls()}">${sel([0, 5, 10, 15, 20, 25, 30, 40, 50], f.vol, (v) => '+' + v + '%')}</select></div>
@@ -1727,9 +1734,18 @@
     const el = document.getElementById(id);
     if (!el) return;
     el.addEventListener('input', () => {
-      state.tickerInput = el.value;
-      state.selected = parseTickers(el.value);
-      try { localStorage.setItem('tickersInput', state.tickerInput); } catch (_) {}
+      const v = el.value;
+      state.selected = parseTickers(v);
+      if (id === 'ema-tickers') {
+        state.emaTickers = v;
+        try { localStorage.setItem('ema.tickers', v); } catch (_) {}
+      } else if (id === 'opt-tickers') {
+        state.optTickers = v;
+        try { localStorage.setItem('options.tickers', v); } catch (_) {}
+      } else {
+        state.tickerInput = v;
+        try { localStorage.setItem('tickersInput', v); } catch (_) {}
+      }
     });
   }
 
@@ -1875,7 +1891,7 @@
         const name = document.getElementById('ema-preset-name')?.value.trim();
         if (!name) return;
         syncEmaFormFromDom();
-        state.emaPresets.push({ id: String(Date.now()), name, form: { ...state.emaForm, buyZones: state.emaForm.buyZones.map((z) => ({ ...z })), sellZones: state.emaForm.sellZones.map((z) => ({ ...z })) }, tickers: state.tickerInput });
+        state.emaPresets.push({ id: String(Date.now()), name, form: { ...state.emaForm, buyZones: state.emaForm.buyZones.map((z) => ({ ...z })), sellZones: state.emaForm.sellZones.map((z) => ({ ...z })) }, tickers: state.emaTickers });
         try { localStorage.setItem('emaPresets', JSON.stringify(state.emaPresets)); } catch (_) {}
         toast('Пресет сохранён');
         renderPage();
@@ -1892,7 +1908,7 @@
         if (!pset) return;
         state.emaForm = normalizeEmaForm(pset.form);
         persistEmaForm();
-        if (pset.tickers) { state.tickerInput = pset.tickers; state.selected = parseTickers(pset.tickers); }
+        if (pset.tickers) { state.emaTickers = pset.tickers; state.selected = parseTickers(pset.tickers); try { localStorage.setItem('ema.tickers', state.emaTickers); } catch (_) {} }
         renderPage();
       });
       bindEmaZones(root);
@@ -2194,7 +2210,7 @@
   }
 
   async function loadSelected() {
-    const sel = parseTickers(state.tickerInput);
+    const sel = parseTickers(pageTickerText());
     state.selected = sel;
     if (!sel.length) throw new Error('Укажите тикеры');
     const loaded = [];
