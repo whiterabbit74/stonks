@@ -21,6 +21,17 @@ func IsValid(value string) bool {
 	return ymd.MatchString(value)
 }
 
+func DateKey(s string) string {
+	if len(s) >= 10 {
+		return s[:10]
+	}
+	return s
+}
+
+func YMD(date string) (int, int, int) {
+	return split(date)
+}
+
 func FormatDisplay(date, locale string) string {
 	if !IsValid(date) {
 		return date
@@ -70,6 +81,9 @@ func AddDays(date string, days int) string {
 
 func split(date string) (int, int, int) {
 	parts := strings.Split(date, "-")
+	if len(parts) < 3 {
+		return 0, 0, 0
+	}
 	y, _ := strconv.Atoi(parts[0])
 	m, _ := strconv.Atoi(parts[1])
 	d, _ := strconv.Atoi(parts[2])
