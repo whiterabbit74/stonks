@@ -63,6 +63,9 @@ func TestVanillaUIAssets(t *testing.T) {
 	if strings.Contains(a, "from 'react'") || strings.Contains(a, "ReactDOM") {
 		t.Fatal("UI must be vanilla JS, not React")
 	}
+	if strings.Contains(a, "Webull credentials are not configured") {
+		t.Fatal("English Webull credentials banner must be replaced with Russian oracle copy")
+	}
 
 	chrome := []string{
 		"text-2xl",
@@ -121,6 +124,15 @@ func TestVanillaUIAssets(t *testing.T) {
 		"Настройки графика",
 		"Детали котировки",
 		"Цена закрытия",
+		"Webull не настроен",
+		"Открытых позиций нет",
+		"Активных ордеров нет",
+		"История ордеров пока не пришла",
+		"Нет отслеживаемых акций",
+		"Сделок нет",
+		"Логи автоторговли пока пусты",
+		"Логи мониторинга пока пусты",
+		"Состояние автоторговли",
 	} {
 		if !strings.Contains(a, copy) {
 			t.Errorf("missing page copy %s", copy)

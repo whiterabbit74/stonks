@@ -1426,10 +1426,9 @@
     return `<div class="overflow-auto"><table class="trades"><thead><tr>${cols.map((c) => `<th>${c}</th>`).join('')}</tr></thead><tbody><tr><td colspan="${cols.length}" class="text-center text-gray-500">${empty}</td></tr></tbody></table></div>`;
   }
   function pageBroker() {
-    const list = (state.broker || []).map((t) => `<div class="flex justify-between border rounded-lg p-3 mb-1 text-sm dark:border-gray-800 bg-white dark:bg-gray-900"><span class="font-mono">${esc(t.symbol)} ${esc(t.entryDate || '')} @ ${esc(t.entryPrice ?? '—')}</span><button data-bd="${esc(t.id)}" class="text-red-600">удалить</button></div>`).join('') || '<p class="text-sm text-gray-500">Нет сделок</p>';
+    const list = (state.broker || []).map((t) => `<div class="flex justify-between border rounded-lg p-3 mb-1 text-sm dark:border-gray-800 bg-white dark:bg-gray-900"><span class="font-mono">${esc(t.symbol)} ${esc(t.entryDate || '')} @ ${esc(t.entryPrice ?? '—')}</span><button data-bd="${esc(t.id)}" class="text-red-600">удалить</button></div>`).join('') || '<p class="text-sm text-gray-500">Сделок нет</p>';
     const live = state.settings?.autoTrading?.enabled || state.autoConfig?.enabled;
     const tab = state.brokerTab || 'overview';
-    const banner = `<div class="rounded-lg border border-red-200 bg-red-50 text-red-700 dark:bg-red-950/30 dark:border-red-900/40 px-4 py-3 text-sm mb-4">Webull credentials are not configured</div>`;
     let body = '';
     if (tab === 'journal') {
       body = `<form id="broker-form" class="flex flex-wrap gap-2 mb-4">
@@ -1440,21 +1439,44 @@
       </form>
       <div id="broker-list">${list}</div>`;
     } else if (tab === 'overview') {
-      body = `${banner}<div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      body = `<div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         ${[['Всего активов', '—'], ['Свободные деньги', '—'], ['Buying Power', '—'], ['Нереализованный PnL', '—']].map(([t, v]) => `<div class="rounded-lg border p-4"><div class="text-xs text-gray-500">${t}</div><div class="text-xl font-semibold mt-1">${v}</div></div>`).join('')}
       </div><form id="broker-form" class="hidden"></form>`;
     } else if (tab === 'positions') {
-      body = `${banner}${emptyBrokerTable(['Тикер', 'Тип', 'Валюта', 'Кол-во', 'Средняя', 'Рыночная цена', 'Нереализ. PnL'], 'Открытых позиций нет')}<form id="broker-form" class="hidden"></form>`;
+      body = `${emptyBrokerTable(['Тикер', 'Тип', 'Валюта', 'Кол-во', 'Средняя', 'Рыночная цена', 'Нереализ. PnL'], 'Открытых позиций нет')}<form id="broker-form" class="hidden"></form>`;
     } else if (tab === 'orders') {
-      body = `${banner}${emptyBrokerTable(['Тикер', 'Сторона', 'Тип', 'Кол-во', 'Цена', 'Статус'], 'Активных ордеров нет')}<form id="broker-form" class="hidden"></form>`;
+      body = `${emptyBrokerTable(['Тикер', 'Сторона', 'Тип', 'Кол-во', 'Цена', 'Статус'], 'Активных ордеров нет')}<form id="broker-form" class="hidden"></form>`;
     } else if (tab === 'fills') {
-      body = `${banner}${emptyBrokerTable(['Тикер', 'Сторона', 'Кол-во', 'Цена', 'Время'], 'Исполненных сделок нет')}<form id="broker-form" class="hidden"></form>`;
+      body = `${emptyBrokerTable(['Тикер', 'Сторона', 'Кол-во', 'Цена', 'Время'], 'История ордеров пока не пришла')}<form id="broker-form" class="hidden"></form>`;
     } else if (tab === 'autotrade') {
-      body = `${banner}<div class="rounded-lg border p-4 text-sm">Статус: ${(live ? 'включена' : 'выключена')}. Last run: — · Entries/Exits: —</div><form id="broker-form" class="hidden"></form>`;
+      body = `<div class="rounded-lg border border-gray-200 p-4 dark:border-gray-700">
+        <h2 class="text-lg font-semibold mb-3">Состояние автоторговли</h2>
+        <div class="grid gap-3 md:grid-cols-2">
+          <div class="rounded-xl bg-gray-50 p-3 dark:bg-gray-950/40">
+            <div class="text-xs uppercase tracking-wide text-gray-500">Подключение</div>
+            <div class="mt-1 text-sm">${live ? 'Webull подключен' : 'Webull не настроен'}</div>
+          </div>
+          <div class="rounded-xl bg-gray-50 p-3 dark:bg-gray-950/40">
+            <div class="text-xs uppercase tracking-wide text-gray-500">Статус</div>
+            <div class="mt-1 text-sm">${live ? 'включена' : 'выключена'}</div>
+          </div>
+          <div class="rounded-xl bg-gray-50 p-3 dark:bg-gray-950/40">
+            <div class="text-xs uppercase tracking-wide text-gray-500">Last run</div>
+            <div class="mt-1 text-sm">—</div>
+          </div>
+          <div class="rounded-xl bg-gray-50 p-3 dark:bg-gray-950/40">
+            <div class="text-xs uppercase tracking-wide text-gray-500">Entries/Exits</div>
+            <div class="mt-1 text-sm">—</div>
+          </div>
+        </div>
+      </div><form id="broker-form" class="hidden"></form>`;
     } else if (tab === 'monitor') {
-      body = `${banner}${emptyBrokerTable(['Тикер', 'IBS', 'Цена', 'Позиция'], 'Нет наблюдений')}<form id="broker-form" class="hidden"></form>`;
+      body = `${emptyBrokerTable(['Тикер', 'IBS', 'Цена', 'Позиция'], 'Нет отслеживаемых акций')}<form id="broker-form" class="hidden"></form>`;
     } else {
-      body = `${banner}<pre id="broker-logs" class="text-xs bg-gray-50 dark:bg-gray-800 p-3 rounded overflow-auto max-h-80">Логи появятся после исполнения автоторговли.</pre><form id="broker-form" class="hidden"></form>`;
+      body = `<div class="space-y-3">
+        <div><h2 class="text-sm font-semibold mb-1">Логи мониторинга</h2><pre class="text-xs bg-gray-50 dark:bg-gray-800 p-3 rounded overflow-auto max-h-40">Логи мониторинга пока пусты</pre></div>
+        <div><h2 class="text-sm font-semibold mb-1">Webull / autotrade логи</h2><pre id="broker-logs" class="text-xs bg-gray-50 dark:bg-gray-800 p-3 rounded overflow-auto max-h-40">Логи автоторговли пока пусты</pre></div>
+      </div><form id="broker-form" class="hidden"></form>`;
     }
     return `
       ${pageHeader('Кабинет Webull', 'Баланс счёта, позиции, ордера, история и логи исполнения по Webull', `<div class="flex items-center gap-2"><span class="rounded-full px-3 py-1 text-xs font-semibold ${live ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-200'}">${live ? '[LIVE]' : '[OFF]'}</span><button id="broker-refresh" class="icon-btn icon-btn-md icon-btn-glass" title="Обновить">${icon('refresh', 'w-4 h-4')}</button></div>`)}
