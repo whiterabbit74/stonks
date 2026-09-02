@@ -17,6 +17,88 @@ const Charts = {
     const [y, m, d] = String(date).slice(0, 10).split('-').map(Number);
     return Math.floor(Date.UTC(y, m - 1, d, 12, 0, 0) / 1000);
   },
+  isoDate(date) {
+    return String(date || '').slice(0, 10);
+  },
+  mapOHLC(bars) {
+    return (bars || []).filter((b) => b && b.date).slice().sort((a, b) => String(a.date).localeCompare(String(b.date))).map((b) => ({
+      time: this.toBusinessDay(b.date),
+      open: Number(b.open),
+      high: Number(b.high),
+      low: Number(b.low),
+      close: Number(b.close),
+    }));
+  },
+  mapLinePoints(points) {
+    return (points || []).filter((p) => p && p.date && p.value != null).slice().sort((a, b) => String(a.date).localeCompare(String(b.date))).map((p) => ({
+      time: this.toBusinessDay(p.date),
+      value: Number(p.value),
+    }));
+  },
+  snapTime(date, data, tf) {
+    const iso = this.isoDate(date);
+    if (tf !== 'weekly') return this.toUtcTs(iso);
+    const wk = this.weekKey(iso);
+    let found = null;
+    for (const b of data || []) {
+      if (this.weekKey(b.date) === wk) found = b;
+    }
+    return this.toUtcTs(this.isoDate((found && found.date) || iso));
+  },
+  mapHeroSeries(bars, opts) {
+    opts = opts || {};
+    const kind = opts.kind === 'candles' ? 'candles' : 'line';
+    const tf = opts.timeframe === 'weekly' ? 'weekly' : 'daily';
+    let data = (bars || []).filter((b) => b && b.date).slice().sort((a, b) => String(a.date).localeCompare(String(b.date)));
+    const price = opts.currentPrice;
+    if (typeof price === 'number' && Number.isFinite(price) && data.length) {
+      const last = data[data.length - 1];
+      const today = this.isoDate(opts.todayISO);
+      data = data.slice();
+      if (opts.isTrading && today && this.isoDate(last.date) < today) {
+        const q = opts.todayQuote || {};
+        data.push({
+          date: today,
+          open: Number(q.open != null ? q.open : last.close),
+          high: Math.max(Number(q.high != null ? q.high : price), price),
+          low: Math.min(Number(q.low != null ? q.low : price), price),
+          close: price,
+          volume: 0,
+        });
+      } else {
+        data[data.length - 1] = {
+          ...last,
+          close: price,
+          high: Math.max(Number(last.high), price),
+          low: Math.min(Number(last.low), price),
+        };
+      }
+    }
+    if (tf === 'weekly') data = this.aggregateWeekly(data);
+    const candles = data.map((b) => ({
+      time: this.toUtcTs(b.date),
+      open: Number(b.open),
+      high: Number(b.high),
+      low: Number(b.low),
+      close: Number(b.close),
+    }));
+    const line = candles.map((c) => ({ time: c.time, value: c.close }));
+    const trades = opts.showTrades ? (opts.trades || []) : [];
+    const lineMarks = [];
+    const candleMarks = [];
+    trades.forEach((t) => {
+      if (!t || !t.entryDate) return;
+      const entry = this.snapTime(t.entryDate, data, tf);
+      const exit = t.exitDate ? this.snapTime(t.exitDate, data, tf) : null;
+      lineMarks.push({ time: entry, position: 'inBar', color: '#16a34a', shape: 'circle', text: '' });
+      candleMarks.push({ time: entry, position: 'belowBar', color: '#16a34a', shape: 'arrowUp', text: '' });
+      if (exit && t.exitReason !== 'end_of_data') {
+        lineMarks.push({ time: exit, position: 'inBar', color: '#dc2626', shape: 'circle', text: '' });
+        candleMarks.push({ time: exit, position: 'aboveBar', color: '#dc2626', shape: 'arrowDown', text: '' });
+      }
+    });
+    return { kind, candles, line, lineMarks, candleMarks, data };
+  },
   weekKey(date) {
     const [y, m, d] = String(date).slice(0, 10).split('-').map(Number);
     const parsed = new Date(Date.UTC(y, m - 1, d));
@@ -105,30 +187,10 @@ const Charts = {
   },
   hero(container, bars, opts) {
     opts = opts || {};
-    const kind = opts.kind === 'candles' ? 'candles' : 'line';
-    const range = opts.range || '3M';
-    const tf = opts.timeframe === 'weekly' ? 'weekly' : 'daily';
-    let data = (bars || []).filter((b) => b && b.date).slice().sort((a, b) => String(a.date).localeCompare(String(b.date)));
-    const price = opts.currentPrice;
-    if (typeof price === 'number' && Number.isFinite(price) && data.length) {
-      const last = data[data.length - 1];
-      data = data.slice();
-      data[data.length - 1] = {
-        ...last,
-        close: price,
-        high: Math.max(Number(last.high), price),
-        low: Math.min(Number(last.low), price),
-      };
-    }
-    if (tf === 'weekly') data = this.aggregateWeekly(data);
-    const candles = data.map((b) => ({
-      time: this.toUtcTs(b.date),
-      open: Number(b.open),
-      high: Number(b.high),
-      low: Number(b.low),
-      close: Number(b.close),
-    }));
-    const line = candles.map((c) => ({ time: c.time, value: c.close }));
+    const mapped = this.mapHeroSeries(bars, opts);
+    const kind = mapped.kind;
+    const candles = mapped.candles;
+    const line = mapped.line;
     const trendUp = line.length < 2 || line[line.length - 1].value >= line[0].value;
     const lineColor = trendUp ? '#16a34a' : '#ea580c';
     const chart = this.create(container, opts.dark, {
@@ -149,23 +211,9 @@ const Charts = {
     });
     lineSeries.setData(line);
     candleSeries.setData(candles);
-    const trades = opts.showTrades ? (opts.trades || []) : [];
-    const lineMarks = [];
-    const candleMarks = [];
-    trades.forEach((t) => {
-      if (!t || !t.entryDate) return;
-      const entry = this.toUtcTs(t.entryDate);
-      const exit = t.exitDate ? this.toUtcTs(t.exitDate) : null;
-      lineMarks.push({ time: entry, position: 'inBar', color: '#16a34a', shape: 'circle', text: '' });
-      candleMarks.push({ time: entry, position: 'belowBar', color: '#16a34a', shape: 'arrowUp', text: '' });
-      if (exit && t.exitReason !== 'end_of_data') {
-        lineMarks.push({ time: exit, position: 'inBar', color: '#dc2626', shape: 'circle', text: '' });
-        candleMarks.push({ time: exit, position: 'aboveBar', color: '#dc2626', shape: 'arrowDown', text: '' });
-      }
-    });
-    this.mark(lineSeries, lineMarks);
-    this.mark(candleSeries, candleMarks);
-    this.applyRange(chart, candles, range);
+    this.mark(lineSeries, mapped.lineMarks);
+    this.mark(candleSeries, mapped.candleMarks);
+    this.applyRange(chart, candles, opts.range || '3M');
     return { chart, lineColor };
   },
   candles(container, bars, isDark) {
@@ -173,17 +221,19 @@ const Charts = {
     const series = chart.addSeries(LightweightCharts.CandlestickSeries, {
       upColor: '#16a34a', downColor: '#dc2626', borderVisible: false, wickUpColor: '#16a34a', wickDownColor: '#dc2626',
     });
-    series.setData((bars || []).map((b) => ({
-      time: this.toBusinessDay(b.date), open: b.open, high: b.high, low: b.low, close: b.close,
-    })));
+    series.setData(this.mapOHLC(bars));
     chart.timeScale().fitContent();
     return chart;
   },
   line(container, points, isDark, color) {
     const chart = this.create(container, isDark);
     const series = chart.addSeries(LightweightCharts.LineSeries, { color: color || '#4f46e5', lineWidth: 2 });
-    series.setData((points || []).map((p) => ({ time: this.toBusinessDay(p.date), value: p.value })));
+    series.setData(this.mapLinePoints(points));
     chart.timeScale().fitContent();
     return chart;
   },
 };
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = Charts;
+}

@@ -189,9 +189,20 @@ func (s *Server) calcBuyHold(w http.ResponseWriter, r *http.Request) {
 	_ = readJSON(r, &req)
 	cap := req.InitialCapital
 	if cap == 0 {
+		cap = decodeStrategy(req.Strategy).RiskManagement.InitialCapital
+	}
+	if cap == 0 {
 		cap = 10000
 	}
-	writeJSON(w, 200, backtest.RunBuyHold(s.barsOrDataset(req), cap))
+	res := backtest.RunBuyHold(s.barsOrDataset(req), cap)
+	final := 0.0
+	if len(res.Equity) > 0 {
+		final = res.Equity[len(res.Equity)-1].Value
+	}
+	writeJSON(w, 200, map[string]any{
+		"trades": res.Trades, "equity": res.Equity, "metrics": res.Metrics,
+		"finalValue": final, "maxDrawdown": res.Metrics.MaxDrawdown,
+	})
 }
 
 func (s *Server) barsOrDataset(req calcReq) []types.OHLC {

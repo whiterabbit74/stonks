@@ -298,11 +298,19 @@
   function inputCls() {
     return 'w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-800';
   }
+  function tradeTicker(tr) {
+    if (!tr) return '';
+    return tr.ticker || tr.symbol || (tr.context && (tr.context.ticker || tr.context.Ticker)) || '';
+  }
   function resultOf(r) {
     if (!r) return null;
+    const trades = (r.trades || r.Trades || r.tradesList || []).map((tr) => {
+      const ticker = tradeTicker(tr);
+      return ticker && !tr.ticker ? { ...tr, ticker } : tr;
+    });
     return {
       equity: r.equity || r.Equity || [],
-      trades: r.trades || r.Trades || r.tradesList || [],
+      trades,
       metrics: r.metrics || r.Metrics || {},
       finalValue: r.finalValue ?? r.FinalValue,
       maxDrawdown: r.maxDrawdown ?? r.MaxDrawdown,
@@ -387,8 +395,8 @@
   }
   function tradesForTicker(t, result) {
     const trades = (result && result.trades) || [];
-    if (!t || !trades.some((tr) => tr.ticker || tr.symbol)) return trades;
-    return trades.filter((tr) => (tr.ticker || tr.symbol) === t);
+    if (!t || !trades.some((tr) => tradeTicker(tr))) return trades;
+    return trades.filter((tr) => tradeTicker(tr) === t);
   }
   function numOrNull(v) {
     const n = typeof v === 'number' ? v : Number(v);
@@ -819,8 +827,6 @@
         <div class="border-t border-gray-200 dark:border-gray-800 mt-8 pt-6 flex flex-col md:flex-row items-center justify-between gap-4">
           <div class="text-sm text-gray-600 dark:text-gray-400">© ${year} IBS Trading Strategy. Все права защищены.</div>
           <div class="flex items-center gap-4 text-xs text-gray-500">
-            <span>Go API · Lightweight Charts v5</span>
-            <span>•</span>
             <span>Built with ❤️ for traders</span>
           </div>
         </div>
@@ -2084,7 +2090,7 @@
       if (!state.loaded.watches) {
         const [w, t, a] = await Promise.all([
           API.watches().catch(() => []),
-          API.monitorTrades().catch(() => API.trades().catch(() => [])),
+          API.trades().catch(() => API.monitorTrades().catch(() => [])),
           API.emaAlerts().catch(() => []),
         ]);
         state.watches = w || [];
@@ -2109,9 +2115,9 @@
         state.watches = await API.watches();
         renderPage();
       });
-      document.getElementById('watch-t11')?.addEventListener('click', async () => { try { await API.post('/api/telegram/simulate', { kind: 't11' }); toast('Симуляция T-11'); } catch (err) { toast(err.message); } });
-      document.getElementById('watch-t2')?.addEventListener('click', async () => { try { await API.post('/api/telegram/simulate', { kind: 't2' }); toast('Симуляция T-2'); } catch (err) { toast(err.message); } });
-      document.getElementById('watch-prices')?.addEventListener('click', async () => { try { await API.post('/api/telegram/actualize-prices', {}); toast('Цены обновлены'); } catch (err) { toast(err.message); } });
+      document.getElementById('watch-t11')?.addEventListener('click', async () => { try { await API.post('/api/telegram/simulate', { stage: 'overview' }); toast('Симуляция T-11'); } catch (err) { toast(err.message); } });
+      document.getElementById('watch-t2')?.addEventListener('click', async () => { try { await API.post('/api/telegram/simulate', { stage: 'confirmations' }); toast('Симуляция T-2'); } catch (err) { toast(err.message); } });
+      document.getElementById('watch-prices')?.addEventListener('click', async () => { try { await API.post('/api/telegram/update-all', {}); toast('Цены и позиции обновлены'); } catch (err) { toast(err.message); } });
       document.getElementById('watch-manual')?.addEventListener('submit', async (e) => {
         e.preventDefault();
         const fd = new FormData(e.target);
@@ -2223,10 +2229,18 @@
   }
 
   function defaultStrategy() {
+    const st = state.settings || {};
     return {
       id: 'ibs-mean-reversion', type: 'ibs-mean-reversion', name: 'IBS',
       parameters: { lowIBS: 0.1, highIBS: 0.75, maxHoldDays: 30 },
-      riskManagement: { initialCapital: 10000, capitalUsage: 100, commission: { type: 'percentage', percentage: 0 }, slippage: 0, maxHoldDays: 30 },
+      riskManagement: {
+        initialCapital: 10000, capitalUsage: 100, slippage: 0, maxHoldDays: 30,
+        commission: {
+          type: st.commissionType || 'percentage',
+          percentage: Number(st.commissionPercentage ?? 0),
+          fixed: Number(st.commissionFixed ?? 0),
+        },
+      },
     };
   }
 
@@ -2257,7 +2271,7 @@
     try {
       const loaded = await loadSelected();
       const tp = Number(String(state.takeProfit).replace(',', '.'));
-      const single = {};
+      const single = { allowSameDayReentry: true };
       if (Number.isFinite(tp) && tp > 0) single.takeProfitPercent = tp;
       state.result = await API.calc('single-position', {
         tickers: loaded,
@@ -2281,7 +2295,7 @@
         expiration: Number(fd.get('expiration') || 4), maxHold: Number(fd.get('maxHold') || 30), leverage: Number(fd.get('leverage') || 200),
       };
       const loaded = await loadSelected();
-      const stock = await API.calc('single-position', { tickers: loaded, strategy: defaultStrategy(), leverage: Number(fd.get('leverage') || 200) / 100 });
+      const stock = await API.calc('single-position', { tickers: loaded, strategy: defaultStrategy(), leverage: Number(fd.get('leverage') || 200) / 100, single: { allowSameDayReentry: true } });
       const r = await API.calc('options-multi', {
         tickers: loaded, trades: stock.trades,
         config: {
@@ -2382,6 +2396,7 @@
       currentPrice: q && q.current,
       todayQuote: q,
       isTrading: isMarketOpen(),
+      todayISO: nyseParts().iso,
     });
   }
   async function loadQuote(ticker) {
@@ -2489,7 +2504,7 @@
       paintCurrentHero();
       return;
     }
-    if (state.stockTab === 'price' && document.getElementById('chart-price')) Charts.candles(document.getElementById('chart-price'), state.bars, dark);
+    if (state.stockTab === 'price' && document.getElementById('chart-price')) Charts.candles(document.getElementById('chart-price'), barsForTicker(selectedHeroTicker()), dark);
     if (state.stockTab === 'tickerCharts' && document.getElementById('ticker-charts')) {
       const host = document.getElementById('ticker-charts');
       host.innerHTML = (state.tickersData || []).map((t) => `<div><div class="text-sm font-semibold mb-1">${esc(t.ticker)}</div><div id="tc-${esc(t.ticker)}" class="chart-box rounded border dark:border-gray-800"></div></div>`).join('');
@@ -2509,7 +2524,8 @@
       const el = document.getElementById('odd-out');
       if (el && state.bars.length) {
         const rows = (r.trades || []).map((tr) => {
-          const bar = state.bars.find((b) => b.date === tr.entryDate);
+          const bars = barsForTicker(tradeTicker(tr) || selectedHeroTicker()) || state.bars;
+          const bar = (bars || []).find((b) => b.date === tr.entryDate);
           if (!bar) return null;
           const dd = bar.low != null && tr.entryPrice ? ((tr.entryPrice - bar.low) / tr.entryPrice) * 100 : 0;
           return { date: tr.entryDate, value: dd };
@@ -2529,9 +2545,11 @@
       paintCurrentHero();
       return;
     }
-    if (tab === 'price' && document.getElementById('chart-ema-price')) Charts.candles(document.getElementById('chart-ema-price'), state.bars, dark);
+    if (tab === 'price' && document.getElementById('chart-ema-price')) Charts.candles(document.getElementById('chart-ema-price'), barsForTicker(selectedHeroTicker()), dark);
     if (tab === 'emaDeviation' && document.getElementById('chart-ema-dev')) {
-      Charts.line(document.getElementById('chart-ema-dev'), (r.deviation || []).map((p) => ({ date: p.date, value: p.deviationPct })), dark, '#7c3aed');
+      const t = selectedHeroTicker();
+      const dev = (r.deviation || []).filter((p) => !p.ticker || p.ticker === t);
+      Charts.line(document.getElementById('chart-ema-dev'), dev.map((p) => ({ date: p.date, value: p.deviationPct })), dark, '#7c3aed');
     }
     if (tab === 'equity' && document.getElementById('chart-ema-eq')) Charts.line(document.getElementById('chart-ema-eq'), r.equity, dark);
     if (tab === 'drawdown' && document.getElementById('chart-ema-dd')) {
@@ -2552,7 +2570,7 @@
       return;
     }
     if (tab === 'equity' && document.getElementById('chart-opt-eq')) Charts.line(document.getElementById('chart-opt-eq'), r.equity, dark);
-    if (tab === 'price' && document.getElementById('chart-opt-price')) Charts.candles(document.getElementById('chart-opt-price'), state.bars, dark);
+    if (tab === 'price' && document.getElementById('chart-opt-price')) Charts.candles(document.getElementById('chart-opt-price'), barsForTicker(selectedHeroTicker()), dark);
     if (tab === 'drawdown' && document.getElementById('chart-opt-dd')) {
       Charts.line(document.getElementById('chart-opt-dd'), (r.equity || []).map((p) => ({ date: p.date, value: p.drawdown })), dark, '#dc2626');
     }
@@ -2598,7 +2616,7 @@
     if (state.stockTab === 'buyAtClose') fill('bac-out', 'buy-at-close');
     if (state.stockTab === 'buyAtClose4') fill('bac4-out', 'buy-at-close-4', { leverage: (state.leverage || 200) / 100 });
     if (state.stockTab === 'noStopLoss') fill('nsl-out', 'no-stop-loss', { noStop: { exitMode: 'ibs-only', requireProfitableExit: false } });
-    if (state.stockTab === 'options') fill('opt-out', isSingle() ? 'options' : 'options-multi', { config: { strikePct: 10, volAdjPct: 20, capitalPct: 10 } });
+    if (state.stockTab === 'options') fill('opt-out', isSingle() ? 'options' : 'options-multi', { config: { strikePct: 10, volAdjPct: 20, capitalPct: 10, expirationWeeks: 4, maxHoldingDays: 30 } });
     if (state.stockTab === 'splits') {
       const el = document.getElementById('splits-box');
       if (el) {
@@ -2614,7 +2632,7 @@
         const fd = new FormData(e.target);
         const r = await API.calc('single-position', {
           tickers: state.tickersData, strategy: st, leverage: (state.leverage || 200) / 100,
-          single: { monthlyAmount: Number(fd.get('amount')), monthlyDayOfMonth: Number(fd.get('day')) },
+          single: { allowSameDayReentry: true, monthlyAmount: Number(fd.get('amount')), monthlyDayOfMonth: Number(fd.get('day')) },
         });
         document.getElementById('mc-out').innerHTML = metricsGrid(r.metrics, r.finalValue, r.maxDrawdown) + tradesTable(r.trades);
       });

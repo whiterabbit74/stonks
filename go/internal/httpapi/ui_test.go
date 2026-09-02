@@ -87,6 +87,15 @@ func TestVanillaUIAssets(t *testing.T) {
 		"Built with ❤️ for traders",
 		"footerHTML",
 	}
+	for _, banned := range []string{
+		"Go API · Lightweight Charts",
+		"Go API · Lightweight Charts v5",
+		"GoAPI Lightweight Charts",
+	} {
+		if strings.Contains(a, banned) || strings.Contains(extra, banned) {
+			t.Errorf("footer must not contain %q", banned)
+		}
+	}
 	for _, m := range chrome {
 		if !strings.Contains(a, m) && !strings.Contains(extra, m) {
 			t.Errorf("missing chrome marker %s", m)

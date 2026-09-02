@@ -992,7 +992,7 @@ func (s *Server) handleFetchProvider(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	endTs := time.Now().Unix()
-	startTs := endTs - 365*24*60*60
+	startTs := endTs - 40*365*24*60*60
 	if provider == "webull" {
 		payload, err := s.Providers.Quote(sym, "webull")
 		if err != nil {

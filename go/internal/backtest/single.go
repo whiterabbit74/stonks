@@ -58,11 +58,11 @@ type singlePos struct {
 }
 
 type SingleOptions struct {
-	AllowSameDayReentry bool
-	MonthlyAmount       float64
-	MonthlyDayOfMonth   int
-	MonthlyStartDate    string
-	TakeProfitPercent   *float64
+	AllowSameDayReentry bool     `json:"allowSameDayReentry"`
+	MonthlyAmount       float64  `json:"monthlyAmount"`
+	MonthlyDayOfMonth   int      `json:"monthlyDayOfMonth"`
+	MonthlyStartDate    string   `json:"monthlyStartDate"`
+	TakeProfitPercent   *float64 `json:"takeProfitPercent"`
 }
 
 func RunSinglePosition(tickers []TickerIndexed, strategy types.Strategy, leverage float64, opt SingleOptions) (equity []types.EquityPoint, finalValue, maxDrawdown float64, trades []types.Trade, m types.BacktestMetrics, exposure []types.ExposurePoint) {

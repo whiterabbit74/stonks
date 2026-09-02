@@ -227,6 +227,13 @@ func SimulateMargin(p MarginParams) MarginResult {
 	}
 }
 
+func holdPrice(b types.OHLC) float64 {
+	if b.AdjClose != nil && *b.AdjClose > 0 {
+		return *b.AdjClose
+	}
+	return b.Close
+}
+
 func RunBuyHold(data []types.OHLC, initialCapital float64) types.BacktestResult {
 	if initialCapital <= 0 {
 		initialCapital = 10000
@@ -236,20 +243,18 @@ func RunBuyHold(data []types.OHLC, initialCapital float64) types.BacktestResult 
 	}
 	entry := data[0]
 	exit := data[len(data)-1]
-	qty := math.Floor(initialCapital / entry.Close)
-	if qty <= 0 {
+	firstPrice := holdPrice(entry)
+	if firstPrice <= 0 {
 		eq := make([]types.EquityPoint, len(data))
 		for i, b := range data {
 			eq[i] = types.EquityPoint{Date: b.Date, Value: initialCapital}
 		}
 		return types.BacktestResult{Trades: []types.Trade{}, Equity: eq, Metrics: metrics.New(nil, eq, initialCapital, nil).All()}
 	}
-	cost := qty * entry.Close
-	cash := initialCapital - cost
 	peak := initialCapital
 	equity := make([]types.EquityPoint, len(data))
 	for i, b := range data {
-		v := cash + qty*b.Close
+		v := initialCapital * (holdPrice(b) / firstPrice)
 		if v > peak {
 			peak = v
 		}
@@ -259,12 +264,13 @@ func RunBuyHold(data []types.OHLC, initialCapital float64) types.BacktestResult 
 		}
 		equity[i] = types.EquityPoint{Date: b.Date, Value: v, Drawdown: dd}
 	}
-	proceeds := qty * exit.Close
-	pnl := proceeds - cost
+	lastPrice := holdPrice(exit)
+	qty := initialCapital / firstPrice
+	pnl := initialCapital*(lastPrice/firstPrice) - initialCapital
 	trade := types.Trade{
 		ID: "buyhold-0", EntryDate: entry.Date, ExitDate: exit.Date,
-		EntryPrice: entry.Close, ExitPrice: exit.Close, Quantity: qty,
-		PnL: pnl, PnLPercent: (pnl / cost) * 100,
+		EntryPrice: firstPrice, ExitPrice: lastPrice, Quantity: qty,
+		PnL: pnl, PnLPercent: (lastPrice/firstPrice - 1) * 100,
 		Duration: tradingdate.DaysBetween(entry.Date, exit.Date),
 		ExitReason: "end_of_data",
 	}
