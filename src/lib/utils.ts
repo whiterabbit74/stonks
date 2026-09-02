@@ -169,7 +169,7 @@ export function detectSplitsFromOHLC(ohlc: OHLCData[]): SplitEvent[] {
     if (!prev || !curr || !Number.isFinite(prev.close) || !Number.isFinite(curr.open) || curr.open === 0) continue;
 
     const ratio = prev.close / curr.open;
-    const factor = factors.find((candidate) => Math.abs(ratio - candidate) < 0.05);
+    const factor = factors.find((candidate) => Math.abs(ratio - candidate) / candidate < 0.03);
     if (factor != null) {
       splits.push({ date: curr.date, factor });
     }

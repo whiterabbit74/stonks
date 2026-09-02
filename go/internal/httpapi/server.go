@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"io"
-	"math"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -377,8 +376,21 @@ func (s *Server) handleGetDataset(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 404, map[string]any{"error": "Dataset not found"})
 		return
 	}
-	splits, _ := s.DB.ListSplits(id)
-	ds["splits"] = splits
+	events, _ := s.DB.ListSplits(id)
+	ds["splits"] = events
+	adj, _ := ds["adjustedForSplits"].(bool)
+	bars := decodeBars(ds["data"])
+	out, applied := s.adjustBarsIfNeeded(id, bars, adj)
+	if applied && !adj {
+		if err := s.persistDataset(id, ds, out, true); err != nil {
+			writeJSON(w, 500, map[string]any{"error": err.Error()})
+			return
+		}
+		ds["data"] = out
+		ds["adjustedForSplits"] = true
+		events, _ = s.DB.ListSplits(id)
+		ds["splits"] = events
+	}
 	writeJSON(w, 200, ds)
 }
 
@@ -429,11 +441,12 @@ func (s *Server) savePayload(w http.ResponseWriter, payload map[string]any) {
 	}
 	name := str(payload["name"])
 	bars := decodeBars(payload["data"])
-	if err := s.DB.SaveDataset(ticker, name, str(payload["companyName"]), str(payload["tag"]), bars, false); err != nil {
+	out, applied := s.adjustBarsIfNeeded(ticker, bars, false)
+	if err := s.DB.SaveDataset(ticker, name, str(payload["companyName"]), str(payload["tag"]), out, applied); err != nil {
 		writeJSON(w, 500, map[string]any{"error": err.Error()})
 		return
 	}
-	writeJSON(w, 200, map[string]any{"ok": true, "ticker": ticker, "dataPoints": len(bars)})
+	writeJSON(w, 200, map[string]any{"ok": true, "ticker": ticker, "dataPoints": len(out), "adjustedForSplits": applied})
 }
 
 func (s *Server) handleRefreshDataset(w http.ResponseWriter, r *http.Request) {
@@ -467,11 +480,12 @@ func (s *Server) handleRefreshDataset(w http.ResponseWriter, r *http.Request) {
 	if name == "" {
 		name = id
 	}
-	if err := s.DB.SaveDataset(id, name, str(ds["companyName"]), str(ds["tag"]), hist.Rows, false); err != nil {
+	out, applied := s.adjustBarsIfNeeded(id, hist.Rows, false)
+	if err := s.DB.SaveDataset(id, name, str(ds["companyName"]), str(ds["tag"]), out, applied); err != nil {
 		writeJSON(w, 500, map[string]any{"error": err.Error()})
 		return
 	}
-	writeJSON(w, 200, map[string]any{"ok": true, "ticker": id, "dataPoints": len(hist.Rows), "provider": provider})
+	writeJSON(w, 200, map[string]any{"ok": true, "ticker": id, "dataPoints": len(out), "provider": provider, "adjustedForSplits": applied})
 }
 
 func (s *Server) handleDeleteDataset(w http.ResponseWriter, r *http.Request) {
@@ -502,59 +516,28 @@ func (s *Server) handleApplySplits(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	bars := decodeBars(ds["data"])
-	events, _ := s.DB.ListSplits(id)
-	normalized := make([]types.OHLC, 0, len(bars))
-	for _, b := range bars {
-		date := b.Date
-		if len(date) >= 10 {
-			date = date[:10]
-		}
-		if date == "" {
-			continue
-		}
-		adj := b.Close
-		if b.AdjClose != nil {
-			adj = *b.AdjClose
-		}
-		normalized = append(normalized, types.OHLC{
-			Date: date, Open: b.Open, High: b.High, Low: b.Low, Close: b.Close, AdjClose: &adj, Volume: b.Volume,
-		})
-	}
-	applied := false
-	var splits []types.SplitEvent
-	for _, e := range events {
-		if e.Date != "" && e.Factor > 0 && e.Factor != 1 && !math.IsInf(e.Factor, 0) {
-			splits = append(splits, e)
-		}
-	}
-	if len(splits) > 0 {
-		applied = true
-		for i := range normalized {
-			cum := 1.0
-			for _, sp := range splits {
-				if normalized[i].Date < sp.Date {
-					cum *= sp.Factor
-				}
-			}
-			if cum != 1 {
-				normalized[i].Open /= cum
-				normalized[i].High /= cum
-				normalized[i].Low /= cum
-				normalized[i].Close /= cum
-				if normalized[i].AdjClose != nil {
-					v := *normalized[i].AdjClose / cum
-					normalized[i].AdjClose = &v
-				}
-				normalized[i].Volume = math.Round(normalized[i].Volume * cum)
-			}
-		}
-	}
-	name := str(ds["name"])
-	if err := s.DB.SaveDataset(id, name, strPtr(ds["companyName"]), strPtr(ds["tag"]), normalized, applied); err != nil {
+	out, applied := s.adjustBarsIfNeeded(id, bars, false)
+	if err := s.persistDataset(id, ds, out, applied); err != nil {
 		writeJSON(w, 500, map[string]any{"error": err.Error()})
 		return
 	}
+	if !applied || pricesUnchanged(bars, out) {
+		writeJSON(w, 200, map[string]any{"success": true, "id": id, "alreadyApplied": true, "message": "Датасет уже пересчитан с учётом сплитов"})
+		return
+	}
 	writeJSON(w, 200, map[string]any{"success": true, "id": id, "message": "Датасет пересчитан с учётом сплитов"})
+}
+
+func pricesUnchanged(a, b []types.OHLC) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i].Close != b[i].Close {
+			return false
+		}
+	}
+	return true
 }
 
 func strPtr(v any) string {

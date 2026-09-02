@@ -131,7 +131,7 @@ function detectSplitsFromOHLC(ohlc) {
         if (!prev || !curr || !prev.close || !curr.open) continue;
         const ratio = prev.close / curr.open;
         for (const f of factors) {
-            if (Math.abs(ratio - f) < 0.05) {
+            if (Math.abs(ratio - f) / f < 0.03) {
                 splits.push({ date: curr.date, factor: f });
                 break;
             }

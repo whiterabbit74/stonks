@@ -138,6 +138,14 @@ describe('Utils', () => {
 
       expect(detectSplitsFromOHLC(data)).toEqual([{ date: '2024-01-02', factor: 2 }]);
     });
+
+    it('detects a 20:1 jump with relative tolerance (Alphabet 2022)', () => {
+      const data = [
+        { date: '2022-07-15', open: 2240.01, high: 2262.81, low: 2218, close: 2235.55, volume: 1 },
+        { date: '2022-07-18', open: 112.64, high: 113.68, low: 108.37, close: 109.03, volume: 1 },
+      ];
+      expect(detectSplitsFromOHLC(data)).toEqual([{ date: '2022-07-18', factor: 20 }]);
+    });
   });
 
   describe('applyOHLCForHolderValue', () => {

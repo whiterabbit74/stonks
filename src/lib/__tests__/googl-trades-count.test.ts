@@ -6,13 +6,13 @@ import GOOGLData from '../../data/GOOGL.json';
 import type { OHLCData } from '../../types';
 
 describe('GOOGL Trades Count Verification', () => {
-  it('should generate 402 trades for GOOGL data', () => {
+  it('should generate 405 trades for GOOGL data', () => {
     // Load GOOGL data
     const rawData = GOOGLData.data as any[];
 
     // Convert to OHLCData format
     const data: OHLCData[] = rawData.map(item => ({
-      date: toTradingDate(new Date(item.date)),
+      date: toTradingDate(item.date),
       open: item.open,
       high: item.high,
       low: item.low,
@@ -38,7 +38,7 @@ describe('GOOGL Trades Count Verification', () => {
     console.log(`   Total data points: ${data.length}`);
     console.log(`   Date range: ${data[0].date} to ${data[data.length - 1].date}`);
     console.log(`   Generated trades: ${result.trades.length}`);
-    console.log(`   Expected trades: 402`);
+    console.log(`   Expected trades: 405`);
 
     if (result.trades.length > 0) {
       console.log(`   First trade: ${result.trades[0].entryDate} - ${result.trades[0].exitDate}`);
@@ -46,7 +46,7 @@ describe('GOOGL Trades Count Verification', () => {
     }
 
     // Check if we get exactly 402 trades with our specific parameters
-    expect(result.trades.length).toBe(402); // Exact result with IBS < 0.1, IBS > 0.75, 30 days
+    expect(result.trades.length).toBe(405); // Split-adjusted GOOGL, IBS < 0.1, IBS > 0.75, 30 days
   });
 
   it('should analyze GOOGL data structure', () => {
@@ -66,7 +66,7 @@ describe('GOOGL Trades Count Verification', () => {
   it('should test different strategy parameters for GOOGL', () => {
     const rawData = GOOGLData.data as any[];
     const data: OHLCData[] = rawData.map(item => ({
-      date: toTradingDate(new Date(item.date)),
+      date: toTradingDate(item.date),
       open: item.open,
       high: item.high,
       low: item.low,

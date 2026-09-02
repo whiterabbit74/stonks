@@ -94,9 +94,9 @@ describe('BuyAtClose4Simulator with Real GOOGL Data', () => {
       const minPrice = Math.min(...prices);
       const maxPrice = Math.max(...prices);
 
-      // GOOGL prices should be reasonable (not too low, not too high)
-      expect(minPrice).toBeGreaterThan(10); // Should be above $10
-      expect(maxPrice).toBeLessThan(10000); // Should be below $10,000
+      // Split-adjusted GOOGL: IPO-era lows sit near $2.50 after the 2014 2:1 and 2022 20:1.
+      expect(minPrice).toBeGreaterThan(1);
+      expect(maxPrice).toBeLessThan(400);
     });
   });
 
