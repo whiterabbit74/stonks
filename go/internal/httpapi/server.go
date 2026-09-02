@@ -35,17 +35,20 @@ type Server struct {
 	prod      bool
 	adminUser string
 	adminPass string
-	loginRate sync.Map
 	autoCfg   map[string]any
 	autoMu    sync.Mutex
 }
 
 func New(db *store.DB, webDir string) *Server {
+	return NewWithProviders(db, webDir, providers.FromEnv())
+}
+
+func NewWithProviders(db *store.DB, webDir string, p *providers.Client) *Server {
 	s := &Server{
 		DB:        db,
 		WebDir:    webDir,
 		BuildID:   os.Getenv("BUILD_ID"),
-		Providers: providers.FromEnv(),
+		Providers: p,
 		prod:      os.Getenv("NODE_ENV") == "production" || os.Getenv("GO_ENV") == "production",
 		adminUser: strings.ToLower(envDefault("ADMIN_USERNAME", "admin@example.com")),
 		adminPass: os.Getenv("ADMIN_PASSWORD"),
@@ -89,7 +92,6 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/datasets/{id}/apply-splits", wrap(s.handleApplySplits))
 	s.mux.HandleFunc("PATCH /api/datasets/{id}/metadata", wrap(s.handlePatchDatasetMeta))
 	// Splits
-	s.mux.HandleFunc("GET /api/splits/webull-raw", wrap(s.jsonOK(map[string]any{"splits": []any{}})))
 	s.mux.HandleFunc("GET /api/splits", wrap(s.handleAllSplits))
 	s.mux.HandleFunc("GET /api/splits/{symbol}", wrap(s.handleGetSplits))
 	s.mux.HandleFunc("PUT /api/splits/{symbol}", wrap(s.handlePutSplits))
@@ -99,7 +101,6 @@ func (s *Server) routes() {
 	// Calendar
 	s.mux.HandleFunc("GET /api/trading-calendar", wrap(s.handleGetCalendar))
 	s.mux.HandleFunc("GET /api/trading/expected-prev-day", wrap(s.handlePrevDay))
-	s.mux.HandleFunc("POST /api/trading-calendar/sync-webull", wrap(s.jsonOK(map[string]any{"ok": true, "note": "webull sync requires credentials"})))
 	s.mux.HandleFunc("POST /api/trading-calendar/import-webull", wrap(s.handleImportCalendar))
 	s.mux.HandleFunc("PATCH /api/trading-calendar/day", wrap(s.handlePatchCalendarDay))
 	// Telegram
@@ -111,14 +112,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/telegram/ema-alerts", wrap(s.handleEMAAlertPost))
 	s.mux.HandleFunc("PATCH /api/telegram/ema-alerts/{id}", wrap(s.handleEMAAlertPatch))
 	s.mux.HandleFunc("DELETE /api/telegram/ema-alerts/{id}", wrap(s.handleEMAAlertDelete))
-	s.mux.HandleFunc("POST /api/telegram/send", wrap(s.jsonOK(map[string]any{"ok": true})))
-	s.mux.HandleFunc("POST /api/telegram/test", wrap(s.jsonOK(map[string]any{"ok": true})))
 	s.mux.HandleFunc("GET /api/telegram/trades", wrap(s.handleMonitorTrades))
-	s.mux.HandleFunc("POST /api/telegram/simulate", wrap(s.jsonOK(map[string]any{"ok": true, "simulated": true})))
-	s.mux.HandleFunc("POST /api/telegram/actualize-prices", wrap(s.jsonOK(map[string]any{"ok": true})))
-	s.mux.HandleFunc("POST /api/telegram/update-positions", wrap(s.jsonOK(map[string]any{"ok": true})))
-	s.mux.HandleFunc("POST /api/telegram/update-all", wrap(s.jsonOK(map[string]any{"ok": true})))
-	s.mux.HandleFunc("POST /api/telegram/command", wrap(s.jsonOK(map[string]any{"ok": true})))
 	// Trades
 	s.mux.HandleFunc("GET /api/trades", wrap(s.handleListTrades))
 	s.mux.HandleFunc("POST /api/trades", wrap(s.handlePostTrade))
@@ -130,9 +124,6 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/broker-trades", wrap(s.handlePostBroker))
 	s.mux.HandleFunc("PATCH /api/broker-trades/{id}", wrap(s.handlePatchBroker))
 	s.mux.HandleFunc("DELETE /api/broker-trades/{id}", wrap(s.handleDeleteBroker))
-	// Monitor
-	s.mux.HandleFunc("GET /api/monitor/consistency", wrap(s.jsonOK(map[string]any{"ok": true, "issues": []any{}})))
-	s.mux.HandleFunc("POST /api/monitor/reconcile", wrap(s.jsonOK(map[string]any{"ok": true, "applied": true})))
 	// Quotes
 	s.mux.HandleFunc("GET /api/quote/{symbol}", wrap(s.handleQuote))
 	s.mux.HandleFunc("GET /api/quotes/webull-batch", wrap(s.handleWebullBatch))
@@ -147,32 +138,40 @@ func (s *Server) routes() {
 	// Autotrade
 	s.mux.HandleFunc("GET /api/autotrade/config", wrap(s.handleAutoConfig))
 	s.mux.HandleFunc("PATCH /api/autotrade/config", wrap(s.handleAutoConfigPatch))
-	s.mux.HandleFunc("GET /api/autotrade/status", wrap(s.jsonOK(map[string]any{"running": false})))
 	s.mux.HandleFunc("POST /api/autotrade/evaluate", wrap(s.handleAutoEvaluate))
-	s.mux.HandleFunc("POST /api/autotrade/execute", wrap(s.jsonOK(map[string]any{"ok": false, "error": "live orders disabled in local Go rewrite"})))
-	s.mux.HandleFunc("GET /api/autotrade/webull/account", wrap(s.jsonOK(map[string]any{"configured": os.Getenv("WEBULL_ACCESS_TOKEN") != ""})))
-	s.mux.HandleFunc("GET /api/autotrade/webull/dashboard", wrap(s.jsonOK(map[string]any{"positions": []any{}})))
-	s.mux.HandleFunc("GET /api/autotrade/logs", wrap(s.jsonOK(map[string]any{"logs": []any{}})))
-	s.mux.HandleFunc("POST /api/autotrade/webull/close-position", wrap(s.jsonOK(map[string]any{"ok": false, "error": "live orders disabled"})))
-	s.mux.HandleFunc("POST /api/autotrade/webull/test-buy", wrap(s.jsonOK(map[string]any{"ok": false, "error": "live orders disabled"})))
-	s.mux.HandleFunc("POST /api/autotrade/webull/token/create", wrap(s.jsonOK(map[string]any{"ok": false})))
-	s.mux.HandleFunc("POST /api/autotrade/webull/token/check", wrap(s.jsonOK(map[string]any{"ok": false})))
 	s.mux.HandleFunc("PUT /api/autotrade/webull/token", wrap(s.handlePutWebullToken))
-	s.mux.HandleFunc("GET /api/autotrade/webull/token/status", wrap(s.jsonOK(map[string]any{"present": false})))
-	// Calc
+	ok := map[string]any{"ok": true}
+	for path, v := range map[string]any{
+		"GET /api/splits/webull-raw":                map[string]any{"splits": []any{}},
+		"POST /api/trading-calendar/sync-webull":    map[string]any{"ok": true, "note": "webull sync requires credentials"},
+		"POST /api/telegram/send":                   ok,
+		"POST /api/telegram/test":                   ok,
+		"POST /api/telegram/simulate":               map[string]any{"ok": true, "simulated": true},
+		"POST /api/telegram/actualize-prices":       ok,
+		"POST /api/telegram/update-positions":       ok,
+		"POST /api/telegram/update-all":             ok,
+		"POST /api/telegram/command":                ok,
+		"GET /api/monitor/consistency":              map[string]any{"ok": true, "issues": []any{}},
+		"POST /api/monitor/reconcile":               map[string]any{"ok": true, "applied": true},
+		"GET /api/autotrade/status":                 map[string]any{"running": false},
+		"POST /api/autotrade/execute":               map[string]any{"ok": false, "error": "live orders disabled in local Go rewrite"},
+		"GET /api/autotrade/webull/account":         map[string]any{"configured": os.Getenv("WEBULL_ACCESS_TOKEN") != ""},
+		"GET /api/autotrade/webull/dashboard":       map[string]any{"positions": []any{}},
+		"GET /api/autotrade/logs":                   map[string]any{"logs": []any{}},
+		"POST /api/autotrade/webull/close-position": map[string]any{"ok": false, "error": "live orders disabled"},
+		"POST /api/autotrade/webull/test-buy":       map[string]any{"ok": false, "error": "live orders disabled"},
+		"POST /api/autotrade/webull/token/create":   map[string]any{"ok": false},
+		"POST /api/autotrade/webull/token/check":    map[string]any{"ok": false},
+		"GET /api/autotrade/webull/token/status":    map[string]any{"present": false},
+	} {
+		s.mux.HandleFunc(path, wrap(s.jsonOK(v)))
+	}
 	s.registerCalc()
-	// UI
 	s.mux.HandleFunc("GET /", s.serveWeb)
 }
 
 func (s *Server) jsonOK(v any) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) { writeJSON(w, 200, v) }
-}
-
-func (s *Server) notImplemented(name string) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, 501, map[string]any{"error": name + " requires live provider credentials"})
-	}
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {
@@ -312,7 +311,9 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleHashPassword(w http.ResponseWriter, r *http.Request) {
-	var body struct{ Password string `json:"password"` }
+	var body struct {
+		Password string `json:"password"`
+	}
 	_ = readJSON(r, &body)
 	hash, err := bcrypt.GenerateFromPassword([]byte(body.Password), 10)
 	if err != nil {
@@ -654,32 +655,17 @@ func (s *Server) handleGetCalendar(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handlePrevDay(w http.ResponseWriter, r *http.Request) {
 	raw, _ := s.DB.GetCalendar()
 	cal := scheduler.ParseCalendar(raw)
-	p := tradingdate.CurrentTimeNYSE(time.Now())
 	d := tradingdate.AddDays(tradingdate.TodayNYSE(time.Now()), -1)
 	for i := 0; i < 30; i++ {
-		parts := tradingdate.NYSEParts{Year: yearOfDate(d), Month: monthOfDate(d), Day: dayOfDate(d), DayOfWeek: tradingdate.DayOfWeek(d)}
+		y, m, day := tradingdate.YMD(d)
+		parts := tradingdate.NYSEParts{Year: y, Month: m, Day: day, DayOfWeek: tradingdate.DayOfWeek(d)}
 		if scheduler.IsTradingDay(parts, cal) {
 			writeJSON(w, 200, map[string]any{"date": d})
 			return
 		}
 		d = tradingdate.AddDays(d, -1)
 	}
-	_ = p
 	writeJSON(w, 200, map[string]any{"date": d})
-}
-
-func yearOfDate(d string) int  { y, _, _ := splitYMD(d); return y }
-func monthOfDate(d string) int { _, m, _ := splitYMD(d); return m }
-func dayOfDate(d string) int   { _, _, dd := splitYMD(d); return dd }
-func splitYMD(d string) (int, int, int) {
-	p := strings.Split(d, "-")
-	if len(p) < 3 {
-		return 0, 0, 0
-	}
-	y, _ := strconv.Atoi(p[0])
-	m, _ := strconv.Atoi(p[1])
-	dd, _ := strconv.Atoi(p[2])
-	return y, m, dd
 }
 
 func (s *Server) handleImportCalendar(w http.ResponseWriter, r *http.Request) {
@@ -1210,5 +1196,3 @@ func str(v any) string {
 	s, _ := v.(string)
 	return s
 }
-
-

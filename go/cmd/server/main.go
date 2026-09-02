@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"mktorder.com/go/internal/httpapi"
+	"mktorder.com/go/internal/providers"
 	"mktorder.com/go/internal/scheduler"
 	"mktorder.com/go/internal/store"
 )
@@ -28,8 +29,9 @@ func main() {
 	}
 	defer db.Close()
 	webDir := filepath.Join(root, "web")
-	srv := httpapi.New(db, webDir)
-	stop := scheduler.Start(db, nil)
+	p := providers.FromEnv()
+	srv := httpapi.NewWithProviders(db, webDir, p)
+	stop := scheduler.StartWith(db, scheduler.Deps{Providers: p}, nil)
 	defer stop()
 
 	addr := ":" + port

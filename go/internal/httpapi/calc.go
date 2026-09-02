@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"encoding/json"
 	"net/http"
 
 	"mktorder.com/go/internal/backtest"
@@ -14,41 +15,51 @@ import (
 
 func (s *Server) registerCalc() {
 	wrap := func(fn http.HandlerFunc) http.HandlerFunc { return s.auth(fn) }
-	s.mux.HandleFunc("POST /api/calc/clean-backtest", wrap(s.calcClean))
-	s.mux.HandleFunc("POST /api/calc/backtest", wrap(s.calcClean))
-	s.mux.HandleFunc("POST /api/calc/single-position", wrap(s.calcSingle))
-	s.mux.HandleFunc("POST /api/calc/options", wrap(s.calcOptions))
-	s.mux.HandleFunc("POST /api/calc/options-multi", wrap(s.calcOptionsMulti))
-	s.mux.HandleFunc("POST /api/calc/ema-zone", wrap(s.calcEMA))
-	s.mux.HandleFunc("POST /api/calc/buy-at-close", wrap(s.calcBuyAtClose))
-	s.mux.HandleFunc("POST /api/calc/buy-at-close-4", wrap(s.calcBAC4))
-	s.mux.HandleFunc("POST /api/calc/no-stop-loss", wrap(s.calcNoStop))
-	s.mux.HandleFunc("POST /api/calc/metrics", wrap(s.calcMetrics))
-	s.mux.HandleFunc("POST /api/calc/indicators", wrap(s.calcIndicators))
-	s.mux.HandleFunc("POST /api/calc/black-scholes", wrap(s.calcBS))
-	s.mux.HandleFunc("POST /api/calc/split-adjust", wrap(s.calcSplits))
-	s.mux.HandleFunc("POST /api/calc/margin", wrap(s.calcMargin))
-	s.mux.HandleFunc("POST /api/calc/ibs-signals", wrap(s.calcIBS))
-	s.mux.HandleFunc("POST /api/calc/buy-hold", wrap(s.calcBuyHold))
+	for path, fn := range map[string]http.HandlerFunc{
+		"POST /api/calc/clean-backtest":  s.calcClean,
+		"POST /api/calc/backtest":        s.calcClean,
+		"POST /api/calc/single-position": s.calcSingle,
+		"POST /api/calc/options":         s.calcOptions,
+		"POST /api/calc/options-multi":   s.calcOptionsMulti,
+		"POST /api/calc/ema-zone":        s.calcEMA,
+		"POST /api/calc/buy-at-close":    s.calcBuyAtClose,
+		"POST /api/calc/buy-at-close-4":  s.calcBAC4,
+		"POST /api/calc/no-stop-loss":    s.calcNoStop,
+		"POST /api/calc/metrics":         s.calcMetrics,
+		"POST /api/calc/indicators":      s.calcIndicators,
+		"POST /api/calc/black-scholes":   s.calcBS,
+		"POST /api/calc/split-adjust":    s.calcSplits,
+		"POST /api/calc/margin":          s.calcMargin,
+		"POST /api/calc/ibs-signals":     s.calcIBS,
+		"POST /api/calc/buy-hold":        s.calcBuyHold,
+	} {
+		s.mux.HandleFunc(path, wrap(fn))
+	}
 }
 
 type calcReq struct {
-	Data     any    `json:"data"`
-	Strategy any    `json:"strategy"`
-	Ticker   string `json:"ticker"`
+	Data     json.RawMessage `json:"data"`
+	Strategy json.RawMessage `json:"strategy"`
+	Ticker   string          `json:"ticker"`
 	Tickers  []struct {
-		Ticker string `json:"ticker"`
-		Data   any    `json:"data"`
+		Ticker string          `json:"ticker"`
+		Data   json.RawMessage `json:"data"`
 	} `json:"tickers"`
 	Options        *backtest.CleanOptions    `json:"options"`
 	Leverage       float64                   `json:"leverage"`
 	Config         backtest.OptionsConfig    `json:"config"`
-	Trades         any                       `json:"trades"`
+	Trades         json.RawMessage           `json:"trades"`
 	Ema            backtest.EmaParams        `json:"ema"`
 	NoStop         backtest.NoStopLossConfig `json:"noStop"`
 	Single         backtest.SingleOptions    `json:"single"`
 	Splits         []types.SplitEvent        `json:"splits"`
 	InitialCapital float64                   `json:"initialCapital"`
+}
+
+func (s *Server) readCalc(r *http.Request) calcReq {
+	var req calcReq
+	_ = readJSON(r, &req)
+	return req
 }
 
 func (s *Server) calcClean(w http.ResponseWriter, r *http.Request) {
@@ -57,56 +68,46 @@ func (s *Server) calcClean(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 400, map[string]any{"error": err.Error()})
 		return
 	}
-	bars := s.barsOrDataset(req)
-	st := decodeStrategy(req.Strategy)
-	writeJSON(w, 200, backtest.RunClean(bars, st, req.Options))
+	writeJSON(w, 200, backtest.RunClean(s.barsOrDataset(req), decodeStrategy(req.Strategy), req.Options))
 }
 
 func (s *Server) calcBuyAtClose(w http.ResponseWriter, r *http.Request) {
-	var req calcReq
-	_ = readJSON(r, &req)
+	req := s.readCalc(r)
 	writeJSON(w, 200, backtest.RunBuyAtClose(s.barsOrDataset(req), decodeStrategy(req.Strategy)))
 }
 
 func (s *Server) calcNoStop(w http.ResponseWriter, r *http.Request) {
-	var req calcReq
-	_ = readJSON(r, &req)
+	req := s.readCalc(r)
 	writeJSON(w, 200, backtest.RunNoStopLoss(s.barsOrDataset(req), decodeStrategy(req.Strategy), req.NoStop))
 }
 
 func (s *Server) calcSingle(w http.ResponseWriter, r *http.Request) {
-	var req calcReq
-	_ = readJSON(r, &req)
-	tickers := s.tickersOrOne(req)
-	eq, final, maxDD, trades, m, exp := backtest.RunSinglePosition(tickers, decodeStrategy(req.Strategy), req.Leverage, req.Single)
+	req := s.readCalc(r)
+	eq, final, maxDD, trades, m, exp := backtest.RunSinglePosition(s.tickersOrOne(req), decodeStrategy(req.Strategy), req.Leverage, req.Single)
 	writeJSON(w, 200, map[string]any{"equity": eq, "finalValue": final, "maxDrawdown": maxDD, "trades": trades, "metrics": m, "exposure": exp})
 }
 
 func (s *Server) calcOptions(w http.ResponseWriter, r *http.Request) {
-	var req calcReq
-	_ = readJSON(r, &req)
+	req := s.readCalc(r)
 	eq, trades, final := backtest.RunOptions(decodeTrades(req.Trades), s.barsOrDataset(req), req.Config)
 	m := metrics.New(trades, eq, 10000, nil).All()
 	writeJSON(w, 200, map[string]any{"equity": eq, "trades": trades, "finalValue": final, "metrics": m, "maxDrawdown": m.MaxDrawdown})
 }
 
 func (s *Server) calcOptionsMulti(w http.ResponseWriter, r *http.Request) {
-	var req calcReq
-	_ = readJSON(r, &req)
+	req := s.readCalc(r)
 	eq, trades, final := backtest.RunMultiOptions(decodeTrades(req.Trades), s.tickersOrOne(req), req.Config)
 	m := metrics.New(trades, eq, 10000, nil).All()
 	writeJSON(w, 200, map[string]any{"equity": eq, "trades": trades, "finalValue": final, "metrics": m, "maxDrawdown": m.MaxDrawdown})
 }
 
 func (s *Server) calcEMA(w http.ResponseWriter, r *http.Request) {
-	var req calcReq
-	_ = readJSON(r, &req)
+	req := s.readCalc(r)
 	writeJSON(w, 200, backtest.RunEmaZone(s.tickersOrOne(req), req.Ema))
 }
 
 func (s *Server) calcBAC4(w http.ResponseWriter, r *http.Request) {
-	var req calcReq
-	_ = readJSON(r, &req)
+	req := s.readCalc(r)
 	writeJSON(w, 200, backtest.RunBuyAtClose4(s.tickersOrOne(req), decodeStrategy(req.Strategy), req.Leverage))
 }
 
@@ -124,8 +125,7 @@ func (s *Server) calcMetrics(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) calcIndicators(w http.ResponseWriter, r *http.Request) {
-	var req calcReq
-	_ = readJSON(r, &req)
+	req := s.readCalc(r)
 	bars := s.barsOrDataset(req)
 	closes := make([]float64, len(bars))
 	for i, b := range bars {
@@ -155,8 +155,7 @@ func (s *Server) calcBS(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) calcSplits(w http.ResponseWriter, r *http.Request) {
-	var req calcReq
-	_ = readJSON(r, &req)
+	req := s.readCalc(r)
 	bars := s.barsOrDataset(req)
 	writeJSON(w, 200, map[string]any{
 		"adjusted": splits.AdjustOHLC(bars, req.Splits),
@@ -173,8 +172,8 @@ func (s *Server) calcMargin(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) calcIBS(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		IBS    any `json:"ibs"`
-		LowIBS any `json:"lowIBS"`
+		IBS     any `json:"ibs"`
+		LowIBS  any `json:"lowIBS"`
 		HighIBS any `json:"highIBS"`
 	}
 	_ = readJSON(r, &req)
@@ -185,8 +184,7 @@ func (s *Server) calcIBS(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) calcBuyHold(w http.ResponseWriter, r *http.Request) {
-	var req calcReq
-	_ = readJSON(r, &req)
+	req := s.readCalc(r)
 	cap := req.InitialCapital
 	if cap == 0 {
 		cap = decodeStrategy(req.Strategy).RiskManagement.InitialCapital
@@ -206,7 +204,7 @@ func (s *Server) calcBuyHold(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) barsOrDataset(req calcReq) []types.OHLC {
-	if req.Data != nil {
+	if len(req.Data) > 0 {
 		return decodeBars(req.Data)
 	}
 	if req.Ticker != "" {

@@ -3,39 +3,52 @@ package httpapi
 import (
 	"encoding/json"
 
+	"mktorder.com/go/internal/tradingdate"
 	"mktorder.com/go/internal/types"
 )
 
-func decodeBars(v any) []types.OHLC {
-	if v == nil {
-		return nil
+func jsonBytes(v any) ([]byte, error) {
+	switch t := v.(type) {
+	case nil:
+		return nil, nil
+	case json.RawMessage:
+		return t, nil
+	case []byte:
+		return t, nil
+	default:
+		return json.Marshal(v)
 	}
-	b, err := json.Marshal(v)
-	if err != nil {
+}
+
+func decodeBars(v any) []types.OHLC {
+	if bars, ok := v.([]types.OHLC); ok {
+		return normalizeBarDates(bars)
+	}
+	raw, err := jsonBytes(v)
+	if err != nil || len(raw) == 0 {
 		return nil
 	}
 	var bars []types.OHLC
-	if err := json.Unmarshal(b, &bars); err != nil {
+	if json.Unmarshal(raw, &bars) != nil {
 		return nil
 	}
+	return normalizeBarDates(bars)
+}
+
+func normalizeBarDates(bars []types.OHLC) []types.OHLC {
 	for i := range bars {
-		if len(bars[i].Date) >= 10 {
-			bars[i].Date = bars[i].Date[:10]
-		}
+		bars[i].Date = tradingdate.DateKey(bars[i].Date)
 	}
 	return bars
 }
 
 func decodeStrategy(v any) types.Strategy {
 	s := types.DefaultIBSStrategy()
-	if v == nil {
+	raw, err := jsonBytes(v)
+	if err != nil || len(raw) == 0 {
 		return s
 	}
-	b, err := json.Marshal(v)
-	if err != nil {
-		return s
-	}
-	_ = json.Unmarshal(b, &s)
+	_ = json.Unmarshal(raw, &s)
 	if s.Parameters.LowIBS == 0 {
 		s.Parameters.LowIBS = 0.1
 	}
@@ -52,12 +65,12 @@ func decodeStrategy(v any) types.Strategy {
 }
 
 func decodeTrades(v any) []types.Trade {
-	b, err := json.Marshal(v)
-	if err != nil {
+	raw, err := jsonBytes(v)
+	if err != nil || len(raw) == 0 {
 		return nil
 	}
 	var t []types.Trade
-	_ = json.Unmarshal(b, &t)
+	_ = json.Unmarshal(raw, &t)
 	return t
 }
 
