@@ -69,6 +69,24 @@ func TestVanillaUIAssets(t *testing.T) {
 	if strings.Contains(a, ">удалить</button>") {
 		t.Fatal("lowercase удалить row action must be Удалить")
 	}
+	ds := strings.Index(a, "function defaultStrategy()")
+	if ds < 0 {
+		t.Fatal("missing defaultStrategy")
+	}
+	dsEndRel := strings.Index(a[ds:], "async function loadSelected")
+	if dsEndRel < 0 {
+		t.Fatal("defaultStrategy not closed before loadSelected")
+	}
+	dsBlock := a[ds : ds+dsEndRel]
+	if strings.Contains(dsBlock, "commissionPercentage") || strings.Contains(dsBlock, "st.commission") {
+		t.Fatal("defaultStrategy must not inject settings commission")
+	}
+	if !strings.Contains(dsBlock, "percentage: 0") {
+		t.Fatal("defaultStrategy must post commission percentage: 0 like React createDefaultRiskSettings")
+	}
+	if !strings.Contains(a, "allowSameDayReentry: true") {
+		t.Fatal("UI must post allowSameDayReentry: true")
+	}
 
 	chrome := []string{
 		"text-2xl",

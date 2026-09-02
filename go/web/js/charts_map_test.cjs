@@ -117,3 +117,25 @@ test('mapHeroSeries weekly markers snap onto the weekly bar time', () => {
     assert.ok(times.has(m.time), 'weekly marker ' + m.time + ' must match a candle');
   });
 });
+
+test('mapOpenDayDrawdown is (open-low)/open as a negative percent', () => {
+  const trades = [{ entryDate: '2024-11-15', entryPrice: 50 }];
+  const rows = Charts.mapOpenDayDrawdown(trades, bars);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].date, '2024-11-15');
+  const want = -((10 - 9) / 10) * 100;
+  assert.ok(Math.abs(rows[0].value - want) < 1e-9, 'got ' + rows[0].value + ' want ' + want);
+  assert.ok(rows[0].value < 0);
+});
+
+test('simulateLeverage amplifies bar-to-bar returns', () => {
+  const eq = [
+    { date: '2024-11-15', value: 10000 },
+    { date: '2024-11-19', value: 11000 },
+  ];
+  const got = Charts.simulateLeverage(eq, 2);
+  assert.equal(got.equity.length, 2);
+  assert.equal(got.equity[0].value, 10000);
+  assert.equal(got.equity[1].value, 12000);
+  assert.equal(got.finalValue, 12000);
+});

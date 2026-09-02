@@ -1063,7 +1063,14 @@
         body = `<p>Средняя длительность: <b>${fmt(avg, 1)}</b> дн.</p>`;
       } else if (state.stockTab === 'monthlyContribution') body = `<form id="mc-form" class="flex flex-wrap items-end gap-2 mb-3"><label class="text-xs">Сумма<input name="amount" type="number" value="500" class="field mt-1 w-28" /></label><label class="text-xs">День<input name="day" type="number" value="1" class="field mt-1 w-20" /></label><button class="btn-primary">Посчитать</button></form><div id="mc-out"></div>`;
       else if (state.stockTab === 'splits') body = `<div id="splits-box" class="text-sm"></div>`;
-      else if (state.stockTab === 'buyhold') body = `<div id="bh-out">Считаем Buy & Hold…</div>`;
+      else if (state.stockTab === 'buyhold') body = `<div id="bh-out">
+        <form id="bh-lev-form" class="flex flex-wrap items-end gap-3 mb-3">
+          <label class="text-xs">Маржинальность, %<input name="pct" type="number" min="1" step="1" value="100" class="field mt-1 w-40" /></label>
+          <button class="btn-primary">Посчитать</button>
+          <span id="bh-lev-now" class="text-xs text-gray-500 pb-2">Текущее плечо: ×1.00</span>
+        </form>
+        <div id="chart-bh" class="chart-box-lg rounded border dark:border-gray-800"></div>
+      </div>`;
       else if (state.stockTab === 'buyAtClose') body = `<div id="bac-out">Buy at close…</div>`;
       else if (state.stockTab === 'buyAtClose4') body = `<div id="bac4-out">Buy at close 4…</div>`;
       else if (state.stockTab === 'noStopLoss') body = `<div id="nsl-out">Без стоп-лосса…</div>`;
@@ -2229,17 +2236,12 @@
   }
 
   function defaultStrategy() {
-    const st = state.settings || {};
     return {
       id: 'ibs-mean-reversion', type: 'ibs-mean-reversion', name: 'IBS',
       parameters: { lowIBS: 0.1, highIBS: 0.75, maxHoldDays: 30 },
       riskManagement: {
         initialCapital: 10000, capitalUsage: 100, slippage: 0, maxHoldDays: 30,
-        commission: {
-          type: st.commissionType || 'percentage',
-          percentage: Number(st.commissionPercentage ?? 0),
-          fixed: Number(st.commissionFixed ?? 0),
-        },
+        commission: { type: 'percentage', percentage: 0, fixed: 0 },
       },
     };
   }
@@ -2522,16 +2524,20 @@
     }
     if (state.stockTab === 'openDayDrawdown') {
       const el = document.getElementById('odd-out');
-      if (el && state.bars.length) {
-        const rows = (r.trades || []).map((tr) => {
-          const bars = barsForTicker(tradeTicker(tr) || selectedHeroTicker()) || state.bars;
-          const bar = (bars || []).find((b) => b.date === tr.entryDate);
-          if (!bar) return null;
-          const dd = bar.low != null && tr.entryPrice ? ((tr.entryPrice - bar.low) / tr.entryPrice) * 100 : 0;
-          return { date: tr.entryDate, value: dd };
-        }).filter(Boolean);
-        el.innerHTML = '<div id="chart-odd" class="chart-box rounded border dark:border-gray-800"></div>';
-        Charts.line(document.getElementById('chart-odd'), rows, dark, '#f59e0b');
+      if (el) {
+        const bars = barsForTicker(selectedHeroTicker()) || state.bars;
+        const rows = Charts.mapOpenDayDrawdown(r.trades, bars);
+        if (!rows.length) {
+          el.innerHTML = '<p class="text-sm text-gray-500">Нет данных для графика просадки в день открытия</p>';
+        } else {
+          const avg = rows.reduce((s, x) => s + Math.abs(x.value), 0) / rows.length;
+          const max = rows.reduce((m, x) => Math.max(m, Math.abs(x.value)), 0);
+          el.innerHTML = `<div class="flex flex-wrap gap-4 mb-4 text-sm">
+            <div class="bg-red-50 px-3 py-2 rounded border border-red-200 text-red-700 dark:bg-red-950/30">Средняя просадка в день открытия: ${avg.toFixed(2)}%</div>
+            <div class="bg-gray-50 px-3 py-2 rounded border dark:bg-gray-800">Максимальная просадка: ${max.toFixed(2)}%</div>
+          </div><div id="chart-odd" class="chart-box rounded border dark:border-gray-800"></div>`;
+          Charts.line(document.getElementById('chart-odd'), rows, dark, '#dc2626');
+        }
       }
     }
   }
@@ -2612,7 +2618,30 @@
         el.innerHTML = metricsGrid(r.metrics, r.finalValue, r.maxDrawdown) + `<p class="text-sm my-2">Сделок: ${r.trades?.length || 0}${r.finalValue != null ? ', итог ' + fmt(r.finalValue) : ''}</p>` + tradesTable(r.trades);
       } catch (e) { el.textContent = e.message; }
     };
-    if (state.stockTab === 'buyhold') fill('bh-out', 'buy-hold');
+    if (state.stockTab === 'buyhold') {
+      const el = document.getElementById('bh-out');
+      const chartEl = document.getElementById('chart-bh');
+      if (el && chartEl) {
+        try {
+          const raw = await API.calc('buy-hold', { data: state.bars, strategy: st, ticker: state.ticker });
+          const r = resultOf(raw);
+          const base = (r && r.equity) || [];
+          const paint = (lev) => {
+            const scaled = lev === 1 ? { equity: base } : Charts.simulateLeverage(base, lev);
+            Charts.destroy();
+            Charts.line(document.getElementById('chart-bh'), scaled.equity, isDark());
+            const lab = document.getElementById('bh-lev-now');
+            if (lab) lab.textContent = 'Текущее плечо: ×' + lev.toFixed(2);
+          };
+          paint(1);
+          document.getElementById('bh-lev-form')?.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const pct = Number(new FormData(e.target).get('pct'));
+            paint(Number.isFinite(pct) && pct > 0 ? pct / 100 : 1);
+          });
+        } catch (e) { el.textContent = e.message; }
+      }
+    }
     if (state.stockTab === 'buyAtClose') fill('bac-out', 'buy-at-close');
     if (state.stockTab === 'buyAtClose4') fill('bac4-out', 'buy-at-close-4', { leverage: (state.leverage || 200) / 100 });
     if (state.stockTab === 'noStopLoss') fill('nsl-out', 'no-stop-loss', { noStop: { exitMode: 'ibs-only', requireProfitableExit: false } });

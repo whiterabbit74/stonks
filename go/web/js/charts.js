@@ -35,6 +35,38 @@ const Charts = {
       value: Number(p.value),
     }));
   },
+  mapOpenDayDrawdown(trades, bars) {
+    const byDate = {};
+    (bars || []).forEach((b) => {
+      if (b && b.date) byDate[this.isoDate(b.date)] = b;
+    });
+    return (trades || []).map((t) => {
+      const bar = byDate[this.isoDate(t.entryDate)];
+      if (!bar || !(Number(bar.open) > 0)) return { date: t.entryDate, value: 0 };
+      const dropPct = ((Number(bar.open) - Number(bar.low)) / Number(bar.open)) * 100;
+      return { date: t.entryDate, value: -dropPct };
+    });
+  },
+  simulateLeverage(equity, leverage) {
+    if (!equity || !equity.length || !(leverage > 0)) return { equity: [], finalValue: 0, maxDrawdown: 0 };
+    const result = [];
+    let currentValue = Number(equity[0].value);
+    let peakValue = currentValue;
+    let maxDD = 0;
+    result.push({ date: equity[0].date, value: currentValue, drawdown: 0 });
+    for (let i = 1; i < equity.length; i++) {
+      const basePrev = Number(equity[i - 1].value);
+      const baseCurr = Number(equity[i].value);
+      if (basePrev <= 0) continue;
+      currentValue = currentValue * (1 + ((baseCurr - basePrev) / basePrev) * leverage);
+      if (currentValue < 0) currentValue = 0;
+      if (currentValue > peakValue) peakValue = currentValue;
+      const dd = peakValue > 0 ? ((peakValue - currentValue) / peakValue) * 100 : 0;
+      if (dd > maxDD) maxDD = dd;
+      result.push({ date: equity[i].date, value: currentValue, drawdown: dd });
+    }
+    return { equity: result, finalValue: result[result.length - 1]?.value ?? currentValue, maxDrawdown: maxDD };
+  },
   snapTime(date, data, tf) {
     const iso = this.isoDate(date);
     if (tf !== 'weekly') return this.toUtcTs(iso);

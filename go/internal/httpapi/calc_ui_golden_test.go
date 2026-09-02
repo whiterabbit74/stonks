@@ -218,6 +218,17 @@ func TestUICalcKindsMatchGoldens(t *testing.T) {
 	})
 }
 
+func uiStrategyPayload() map[string]any {
+	return map[string]any{
+		"id": "ibs-mean-reversion", "type": "ibs-mean-reversion", "name": "IBS",
+		"parameters": map[string]any{"lowIBS": 0.1, "highIBS": 0.75, "maxHoldDays": 30},
+		"riskManagement": map[string]any{
+			"initialCapital": 10000, "capitalUsage": 100, "slippage": 0, "maxHoldDays": 30,
+			"commission": map[string]any{"type": "percentage", "percentage": 0, "fixed": 0},
+		},
+	}
+}
+
 func TestSingleTakeProfitJSONFromUI(t *testing.T) {
 	s := testServer(t, "")
 	data := []types.OHLC{
@@ -227,7 +238,7 @@ func TestSingleTakeProfitJSONFromUI(t *testing.T) {
 	}
 	rec := postCalc(t, s, "single-position", map[string]any{
 		"tickers":  []map[string]any{{"ticker": "AAPL", "data": data}},
-		"strategy": types.DefaultIBSStrategy(),
+		"strategy": uiStrategyPayload(),
 		"leverage": 1,
 		"single":   map[string]any{"allowSameDayReentry": true, "takeProfitPercent": 2},
 	})
