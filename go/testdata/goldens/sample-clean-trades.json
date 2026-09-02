@@ -1,0 +1,62 @@
+[
+  {
+    "id": "trade-0",
+    "entryDate": "2004-08-23",
+    "exitDate": "2004-08-26",
+    "entryPrice": 109.4,
+    "exitPrice": 107.91,
+    "quantity": 91,
+    "pnl": -135.59000000000015,
+    "pnlPercent": -1.3619744058500929,
+    "duration": 3,
+    "exitReason": "ibs_signal",
+    "ticker": null,
+    "entryIBS": 0.07900677200903115,
+    "exitIBS": 0.9878419452887519
+  },
+  {
+    "id": "trade-1",
+    "entryDate": "2004-08-30",
+    "exitDate": "2004-09-07",
+    "entryPrice": 102.01,
+    "exitPrice": 101.58,
+    "quantity": 96,
+    "pnl": -41.280000000000655,
+    "pnlPercent": -0.4215273012449826,
+    "duration": 8,
+    "exitReason": "ibs_signal",
+    "ticker": null,
+    "entryIBS": 0,
+    "exitIBS": 0.8242677824267776
+  },
+  {
+    "id": "trade-2",
+    "entryDate": "2024-01-21",
+    "exitDate": "2024-01-25",
+    "entryPrice": 149,
+    "exitPrice": 155,
+    "quantity": 65,
+    "pnl": 390,
+    "pnlPercent": 4.026845637583892,
+    "duration": 4,
+    "exitReason": "ibs_signal",
+    "ticker": null,
+    "entryIBS": 0,
+    "exitIBS": 1
+  },
+  {
+    "id": "trade-3",
+    "entryDate": "2004-09-24",
+    "exitDate": "2004-09-28",
+    "entryPrice": 119.83,
+    "exitPrice": 126.86,
+    "quantity": 85,
+    "pnl": 597.5500000000011,
+    "pnlPercent": 5.866644412918312,
+    "duration": 4,
+    "exitReason": "ibs_signal",
+    "ticker": null,
+    "entryIBS": 0.016129032258062986,
+    "exitIBS": 0.9248956884561884
+  }
+]

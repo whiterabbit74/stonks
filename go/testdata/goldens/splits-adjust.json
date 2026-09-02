@@ -1,0 +1,112 @@
+{
+  "input": [
+    {
+      "date": "2024-01-01",
+      "open": 100,
+      "high": 110,
+      "low": 90,
+      "close": 100,
+      "volume": 1000
+    },
+    {
+      "date": "2024-01-02",
+      "open": 100,
+      "high": 110,
+      "low": 90,
+      "close": 100,
+      "volume": 1000
+    },
+    {
+      "date": "2024-01-03",
+      "open": 50,
+      "high": 55,
+      "low": 45,
+      "close": 50,
+      "volume": 2000
+    }
+  ],
+  "splits": [
+    {
+      "date": "2024-01-03",
+      "factor": 2
+    }
+  ],
+  "adjusted": [
+    {
+      "date": "2024-01-01",
+      "open": 50,
+      "high": 55,
+      "low": 45,
+      "close": 50,
+      "volume": 2000,
+      "adjClose": 50
+    },
+    {
+      "date": "2024-01-02",
+      "open": 50,
+      "high": 55,
+      "low": 45,
+      "close": 50,
+      "volume": 2000,
+      "adjClose": 50
+    },
+    {
+      "date": "2024-01-03",
+      "open": 50,
+      "high": 55,
+      "low": 45,
+      "close": 50,
+      "volume": 2000
+    }
+  ],
+  "detected": [
+    {
+      "date": "2024-01-03",
+      "factor": 2
+    }
+  ],
+  "holder": [
+    {
+      "date": "2024-01-01",
+      "open": 100,
+      "high": 110,
+      "low": 90,
+      "close": 100,
+      "volume": 1000,
+      "rawOpen": 100,
+      "rawHigh": 110,
+      "rawLow": 90,
+      "rawClose": 100,
+      "splitFactor": 1,
+      "priceBasis": "holder_value"
+    },
+    {
+      "date": "2024-01-02",
+      "open": 100,
+      "high": 110,
+      "low": 90,
+      "close": 100,
+      "volume": 1000,
+      "rawOpen": 100,
+      "rawHigh": 110,
+      "rawLow": 90,
+      "rawClose": 100,
+      "splitFactor": 1,
+      "priceBasis": "holder_value"
+    },
+    {
+      "date": "2024-01-03",
+      "open": 100,
+      "high": 110,
+      "low": 90,
+      "close": 100,
+      "volume": 2000,
+      "rawOpen": 50,
+      "rawHigh": 55,
+      "rawLow": 45,
+      "rawClose": 50,
+      "splitFactor": 2,
+      "priceBasis": "holder_value"
+    }
+  ]
+}

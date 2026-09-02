@@ -1,0 +1,68 @@
+{
+  "defaults": {
+    "DEFAULT_LOW_IBS": 0.1,
+    "DEFAULT_HIGH_IBS": 0.75
+  },
+  "cases": [
+    {
+      "fn": "entry",
+      "ibs": 0.1,
+      "threshold": 0.1,
+      "result": false
+    },
+    {
+      "fn": "entry",
+      "ibs": 0.0999,
+      "threshold": 0.1,
+      "result": true
+    },
+    {
+      "fn": "entry",
+      "ibs": 0.05,
+      "result": true
+    },
+    {
+      "fn": "entry",
+      "ibs": 0.15,
+      "threshold": null,
+      "result": false
+    },
+    {
+      "fn": "exit",
+      "ibs": 0.75,
+      "threshold": 0.75,
+      "result": false
+    },
+    {
+      "fn": "exit",
+      "ibs": 0.7501,
+      "threshold": 0.75,
+      "result": true
+    },
+    {
+      "fn": "exit",
+      "ibs": 0.8,
+      "result": true
+    },
+    {
+      "fn": "entry",
+      "ibs": null,
+      "threshold": 0.1,
+      "result": false
+    },
+    {
+      "fn": "entry",
+      "ibs": {
+        "$num": "NaN"
+      },
+      "threshold": 0.1,
+      "result": false
+    },
+    {
+      "fn": "exit",
+      "ibs": "0.9",
+      "threshold": 0.75,
+      "result": false
+    }
+  ]
+}

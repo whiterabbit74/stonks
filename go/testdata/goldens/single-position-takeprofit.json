@@ -1,0 +1,32 @@
+[
+  {
+    "id": "trade-0",
+    "entryDate": "2024-01-01",
+    "exitDate": "2024-01-02",
+    "entryPrice": 100,
+    "exitPrice": 102,
+    "quantity": 100,
+    "pnl": 200,
+    "pnlPercent": 2,
+    "duration": 1,
+    "exitReason": "take_profit",
+    "ticker": "AAPL",
+    "entryIBS": 0.07692307692307693,
+    "exitIBS": 0.04000000000000057
+  },
+  {
+    "id": "trade-1",
+    "entryDate": "2024-01-02",
+    "exitDate": "2024-01-03",
+    "entryPrice": 98.2,
+    "exitPrice": 100.164,
+    "quantity": 103,
+    "pnl": 202.29199999999986,
+    "pnlPercent": 1.9999999999999987,
+    "duration": 1,
+    "exitReason": "take_profit",
+    "ticker": "AAPL",
+    "entryIBS": 0.04000000000000057,
+    "exitIBS": 0.3333333333333333
+  }
+]

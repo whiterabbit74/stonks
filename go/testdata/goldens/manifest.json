@@ -1,0 +1,12 @@
+{
+  "generatedAt": "2026-09-02T02:54:07.730Z",
+  "source": "scripts/dump-go-goldens.ts — shipped TS/JS engines",
+  "googlBars": 5296,
+  "googlCleanTrades": 402,
+  "googlRunBacktestTrades": 402,
+  "googlBuyAtCloseTrades": 402,
+  "googlSingleTrades": 402,
+  "googlOptionsTrades": 386,
+  "googlEmaTrades": 1,
+  "tz": "(unset)"
+}

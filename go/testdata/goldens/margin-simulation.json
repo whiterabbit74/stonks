@@ -1,0 +1,48 @@
+{
+  "trades": [
+    {
+      "id": "t1",
+      "entryDate": "2024-01-01",
+      "exitDate": "2024-01-02",
+      "entryPrice": 100,
+      "exitPrice": 66.66666666666667,
+      "quantity": 200,
+      "pnl": -6666.666666666666,
+      "pnlPercent": -66.66666666666666,
+      "duration": 1,
+      "exitReason": "margin_liquidation",
+      "ticker": null,
+      "entryIBS": null,
+      "exitIBS": null
+    },
+    {
+      "id": "t2",
+      "entryDate": "2024-01-03",
+      "exitDate": "2024-01-04",
+      "entryPrice": 60,
+      "exitPrice": 61,
+      "quantity": 111,
+      "pnl": 111,
+      "pnlPercent": 3.3333333333333335,
+      "duration": 1,
+      "exitReason": "ibs_signal",
+      "ticker": null,
+      "entryIBS": null,
+      "exitIBS": null
+    }
+  ],
+  "finalValue": 3444.333333333334,
+  "maxDrawdown": 66.66666666666666,
+  "liquidationEvent": {
+    "type": "maintenance_margin",
+    "date": "2024-01-02",
+    "tradeId": "t1",
+    "triggerPrice": 66.66666666666667,
+    "barLow": 60,
+    "remainingCapital": 3333.333333333334,
+    "thresholdPct": 25,
+    "positionDropPct": 33.33333333333333,
+    "marginRatioAtTrigger": 0.25000000000000006
+  },
+  "maintenanceCount": 1
+}

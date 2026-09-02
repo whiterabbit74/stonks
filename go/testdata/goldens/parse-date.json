@@ -1,0 +1,27 @@
+{
+  "iso": {
+    "isValid": true,
+    "date": "2024-11-17",
+    "format": "YYYY-MM-DD"
+  },
+  "isoImpossible": {
+    "isValid": false,
+    "date": null,
+    "error": "Impossible date: 2024-02-30"
+  },
+  "us": {
+    "isValid": true,
+    "date": "2024-11-17",
+    "format": "M/D/YYYY"
+  },
+  "eu": {
+    "isValid": true,
+    "date": "2024-11-17",
+    "format": "D.M.YYYY"
+  },
+  "empty": {
+    "isValid": false,
+    "date": null,
+    "error": "Empty date string"
+  }
+}

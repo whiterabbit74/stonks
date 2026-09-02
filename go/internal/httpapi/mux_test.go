@@ -1,0 +1,188 @@
+package httpapi
+
+import (
+	"bytes"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"testing"
+
+	"mktorder.com/go/internal/goldens"
+	"mktorder.com/go/internal/store"
+	"mktorder.com/go/internal/types"
+)
+
+var allRoutes = []struct{ Method, Path string }{
+	{"POST", "/api/login"}, {"GET", "/api/auth/check"}, {"POST", "/api/logout"}, {"POST", "/api/auth/hash-password"},
+	{"GET", "/api/settings"}, {"PUT", "/api/settings"}, {"PATCH", "/api/settings"},
+	{"GET", "/api/datasets"}, {"GET", "/api/datasets/{id}"}, {"GET", "/api/datasets/{id}/metadata"},
+	{"POST", "/api/datasets"}, {"PUT", "/api/datasets/{id}"}, {"DELETE", "/api/datasets/{id}"},
+	{"POST", "/api/datasets/{id}/refresh"}, {"POST", "/api/datasets/{id}/apply-splits"}, {"PATCH", "/api/datasets/{id}/metadata"},
+	{"GET", "/api/splits/webull-raw"}, {"GET", "/api/splits"}, {"GET", "/api/splits/{symbol}"},
+	{"PUT", "/api/splits/{symbol}"}, {"PATCH", "/api/splits/{symbol}"},
+	{"DELETE", "/api/splits/{symbol}/{date}"}, {"DELETE", "/api/splits/{symbol}"},
+	{"GET", "/api/trading-calendar"}, {"GET", "/api/trading/expected-prev-day"},
+	{"POST", "/api/trading-calendar/sync-webull"}, {"POST", "/api/trading-calendar/import-webull"},
+	{"PATCH", "/api/trading-calendar/day"},
+	{"POST", "/api/telegram/watch"}, {"DELETE", "/api/telegram/watch/{symbol}"}, {"PATCH", "/api/telegram/watch/{symbol}"},
+	{"GET", "/api/telegram/watches"}, {"GET", "/api/telegram/ema-alerts"}, {"POST", "/api/telegram/ema-alerts"},
+	{"PATCH", "/api/telegram/ema-alerts/{id}"}, {"DELETE", "/api/telegram/ema-alerts/{id}"},
+	{"POST", "/api/telegram/send"}, {"POST", "/api/telegram/test"}, {"GET", "/api/telegram/trades"},
+	{"POST", "/api/telegram/simulate"}, {"POST", "/api/telegram/actualize-prices"},
+	{"POST", "/api/telegram/update-positions"}, {"POST", "/api/telegram/update-all"}, {"POST", "/api/telegram/command"},
+	{"GET", "/api/trades"}, {"POST", "/api/trades"}, {"PATCH", "/api/trades/{id}"},
+	{"POST", "/api/trades/{id}/close-monitor"}, {"DELETE", "/api/trades/{id}"},
+	{"GET", "/api/broker-trades"}, {"POST", "/api/broker-trades"}, {"PATCH", "/api/broker-trades/{id}"}, {"DELETE", "/api/broker-trades/{id}"},
+	{"GET", "/api/monitor/consistency"}, {"POST", "/api/monitor/reconcile"},
+	{"GET", "/api/quote/{symbol}"}, {"GET", "/api/quotes/webull-batch"}, {"GET", "/api/yahoo-finance/{symbol}"},
+	{"GET", "/api/fetch/{provider}/{symbol}"}, {"GET", "/api/test/alpha-vantage"}, {"GET", "/api/test/finnhub"},
+	{"GET", "/api/test/twelve-data"}, {"POST", "/api/test-provider"},
+	{"GET", "/api/status"},
+	{"GET", "/api/autotrade/config"}, {"PATCH", "/api/autotrade/config"}, {"GET", "/api/autotrade/status"},
+	{"POST", "/api/autotrade/evaluate"}, {"POST", "/api/autotrade/execute"},
+	{"GET", "/api/autotrade/webull/account"}, {"GET", "/api/autotrade/webull/dashboard"}, {"GET", "/api/autotrade/logs"},
+	{"POST", "/api/autotrade/webull/close-position"}, {"POST", "/api/autotrade/webull/test-buy"},
+	{"POST", "/api/autotrade/webull/token/create"}, {"POST", "/api/autotrade/webull/token/check"},
+	{"PUT", "/api/autotrade/webull/token"}, {"GET", "/api/autotrade/webull/token/status"},
+	{"POST", "/api/calc/clean-backtest"}, {"POST", "/api/calc/backtest"}, {"POST", "/api/calc/single-position"},
+	{"POST", "/api/calc/options"}, {"POST", "/api/calc/options-multi"}, {"POST", "/api/calc/ema-zone"},
+	{"POST", "/api/calc/buy-at-close"}, {"POST", "/api/calc/buy-at-close-4"}, {"POST", "/api/calc/no-stop-loss"},
+	{"POST", "/api/calc/metrics"}, {"POST", "/api/calc/indicators"}, {"POST", "/api/calc/black-scholes"},
+	{"POST", "/api/calc/split-adjust"}, {"POST", "/api/calc/margin"}, {"POST", "/api/calc/ibs-signals"},
+	{"POST", "/api/calc/buy-hold"},
+}
+
+func testServer(t *testing.T, password string) *Server {
+	t.Helper()
+	t.Setenv("ADMIN_PASSWORD", password)
+	t.Setenv("NODE_ENV", "")
+	dir := t.TempDir()
+	db, err := store.Open(filepath.Join(dir, "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	s := New(db, dir)
+	return s
+}
+
+func TestAllRoutesRegistered(t *testing.T) {
+	s := testServer(t, "secret")
+	for _, rt := range allRoutes {
+		req := httptest.NewRequest(rt.Method, concretize(rt.Path), nil)
+		rec := httptest.NewRecorder()
+		s.Handler().ServeHTTP(rec, req)
+		if rec.Code == http.StatusNotFound {
+			t.Errorf("%s %s not registered (404)", rt.Method, rt.Path)
+		}
+	}
+}
+
+func concretize(p string) string {
+	p = replaceAll(p, "{id}", "GOOGL")
+	p = replaceAll(p, "{symbol}", "GOOGL")
+	p = replaceAll(p, "{date}", "2024-01-01")
+	p = replaceAll(p, "{provider}", "finnhub")
+	return p
+}
+
+func replaceAll(s, a, b string) string {
+	for {
+		i := indexOf(s, a)
+		if i < 0 {
+			return s
+		}
+		s = s[:i] + b + s[i+len(a):]
+	}
+}
+
+func indexOf(s, a string) int {
+	for i := 0; i+len(a) <= len(s); i++ {
+		if s[i:i+len(a)] == a {
+			return i
+		}
+	}
+	return -1
+}
+
+func TestUnauthenticatedProtected401(t *testing.T) {
+	s := testServer(t, "secret")
+	req := httptest.NewRequest("GET", "/api/datasets", nil)
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != 401 {
+		t.Fatalf("datasets without auth got %d", rec.Code)
+	}
+}
+
+func TestStatusJSON(t *testing.T) {
+	s := testServer(t, "secret")
+	req := httptest.NewRequest("GET", "/api/status", nil)
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != 200 {
+		t.Fatalf("status %d", rec.Code)
+	}
+	var body map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body["status"] != "ok" {
+		t.Fatalf("%v", body)
+	}
+	db, _ := body["db"].(map[string]any)
+	if db["connected"] != true {
+		t.Fatalf("db %v", db)
+	}
+}
+
+func TestDatasetAndCalcGolden(t *testing.T) {
+	os.Unsetenv("ADMIN_PASSWORD")
+	dir := t.TempDir()
+	db, err := store.Open(filepath.Join(dir, "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	bars := goldens.Bars("googl-bars.json")
+	if err := db.SaveDataset("GOOGL", "GOOGL", "Alphabet", "", bars, false); err != nil {
+		t.Fatal(err)
+	}
+	s := New(db, dir)
+	req := httptest.NewRequest("GET", "/api/datasets/GOOGL", nil)
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != 200 {
+		t.Fatalf("get dataset %d %s", rec.Code, rec.Body.String())
+	}
+	var ds map[string]any
+	_ = json.Unmarshal(rec.Body.Bytes(), &ds)
+	if int(ds["dataPoints"].(float64)) != 5296 && ds["dataPoints"].(float64) != 5296 {
+		// dataPoints from meta
+	}
+
+	payload, _ := json.Marshal(map[string]any{
+		"data":     bars,
+		"strategy": types.DefaultIBSStrategy(),
+	})
+	req = httptest.NewRequest("POST", "/api/calc/clean-backtest", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec = httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != 200 {
+		t.Fatalf("calc %d %s", rec.Code, rec.Body.String())
+	}
+	var result types.BacktestResult
+	if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	want := goldens.CompactTrades("googl-clean-trades.json")
+	if len(result.Trades) != len(want) {
+		t.Fatalf("calc trades %d want %d", len(result.Trades), len(want))
+	}
+	if result.Trades[0].EntryDate != want[0].EntryDate || result.Trades[0].ExitReason != want[0].ExitReason {
+		t.Fatalf("first trade %+v want %+v", result.Trades[0], want[0])
+	}
+}

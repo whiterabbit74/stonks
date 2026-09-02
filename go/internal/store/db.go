@@ -1,0 +1,729 @@
+package store
+
+import (
+	"database/sql"
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"regexp"
+	"strings"
+	"sync"
+	"time"
+
+	_ "modernc.org/sqlite"
+
+	"mktorder.com/go/internal/types"
+)
+
+type DB struct {
+	SQL      *sql.DB
+	mu       sync.Mutex
+	settings map[string]any
+}
+
+func Open(path string) (*DB, error) {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return nil, err
+	}
+	sqlDB, err := sql.Open("sqlite", path+"?_pragma=journal_mode(WAL)&_pragma=foreign_keys(ON)")
+	if err != nil {
+		return nil, err
+	}
+	sqlDB.SetMaxOpenConns(1)
+	d := &DB{SQL: sqlDB, settings: map[string]any{}}
+	if err := d.initSchema(); err != nil {
+		sqlDB.Close()
+		return nil, err
+	}
+	return d, nil
+}
+
+func (d *DB) Close() error { return d.SQL.Close() }
+
+func (d *DB) initSchema() error {
+	_, err := d.SQL.Exec(`
+        CREATE TABLE IF NOT EXISTS dataset_meta (
+            ticker              TEXT PRIMARY KEY,
+            name                TEXT,
+            company_name        TEXT,
+            upload_date         TEXT,
+            tag                 TEXT,
+            data_points         INTEGER DEFAULT 0,
+            date_from           TEXT,
+            date_to             TEXT,
+            adjusted_for_splits INTEGER DEFAULT 0,
+            updated_at          TEXT DEFAULT (datetime('now'))
+        );
+        CREATE TABLE IF NOT EXISTS ohlc (
+            ticker      TEXT NOT NULL,
+            date        TEXT NOT NULL,
+            open        REAL,
+            high        REAL,
+            low         REAL,
+            close       REAL,
+            adj_close   REAL,
+            volume      INTEGER,
+            PRIMARY KEY (ticker, date)
+        );
+        CREATE INDEX IF NOT EXISTS idx_ohlc_ticker_date ON ohlc(ticker, date);
+        CREATE TABLE IF NOT EXISTS splits (
+            ticker  TEXT NOT NULL,
+            date    TEXT NOT NULL,
+            factor  REAL NOT NULL,
+            PRIMARY KEY (ticker, date)
+        );
+        CREATE INDEX IF NOT EXISTS idx_splits_ticker ON splits(ticker);
+        CREATE TABLE IF NOT EXISTS trades (
+            id                  TEXT PRIMARY KEY,
+            symbol              TEXT NOT NULL,
+            status              TEXT NOT NULL DEFAULT 'open',
+            entry_date          TEXT,
+            exit_date           TEXT,
+            entry_price         REAL,
+            exit_price          REAL,
+            entry_ibs           REAL,
+            exit_ibs            REAL,
+            entry_decision_time TEXT,
+            exit_decision_time  TEXT,
+            pnl_percent         REAL,
+            pnl_absolute        REAL,
+            holding_days        INTEGER,
+            notes               TEXT,
+            linked_broker_trade_id TEXT,
+            source TEXT DEFAULT 'auto',
+            is_hidden INTEGER NOT NULL DEFAULT 0,
+            is_test INTEGER NOT NULL DEFAULT 0,
+            broker_order_id TEXT,
+            client_order_id TEXT,
+            filled_qty REAL,
+            quantity REAL
+        );
+        CREATE INDEX IF NOT EXISTS idx_trades_status ON trades(status);
+        CREATE INDEX IF NOT EXISTS idx_trades_entry_date ON trades(entry_date);
+        CREATE TABLE IF NOT EXISTS calendar (
+            id      INTEGER PRIMARY KEY CHECK (id = 1),
+            data    TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS sessions (
+            token      TEXT PRIMARY KEY,
+            created_at INTEGER NOT NULL,
+            expires_at INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at);
+        CREATE TABLE IF NOT EXISTS broker_trades (
+            id                  TEXT PRIMARY KEY,
+            symbol              TEXT NOT NULL,
+            status              TEXT NOT NULL DEFAULT 'open',
+            entry_date          TEXT,
+            exit_date           TEXT,
+            entry_price         REAL,
+            exit_price          REAL,
+            entry_ibs           REAL,
+            exit_ibs            REAL,
+            entry_decision_time TEXT,
+            exit_decision_time  TEXT,
+            pnl_percent         REAL,
+            pnl_absolute        REAL,
+            holding_days        INTEGER,
+            notes               TEXT,
+            source              TEXT DEFAULT 'auto',
+            is_hidden           INTEGER NOT NULL DEFAULT 0,
+            is_test             INTEGER NOT NULL DEFAULT 0,
+            broker_order_id     TEXT,
+            client_order_id     TEXT,
+            filled_qty          REAL,
+            quantity            REAL
+        );
+        CREATE TABLE IF NOT EXISTS telegram_watches (
+            symbol               TEXT PRIMARY KEY,
+            high_ibs             REAL NOT NULL DEFAULT 0.75,
+            low_ibs              REAL NOT NULL DEFAULT 0.1,
+            threshold_pct        REAL NOT NULL DEFAULT 0.3,
+            chat_id              TEXT,
+            entry_price          REAL,
+            entry_date           TEXT,
+            entry_ibs            REAL,
+            entry_decision_time  TEXT,
+            current_trade_id     TEXT,
+            is_open_position     INTEGER NOT NULL DEFAULT 0,
+            sent_date_key        TEXT,
+            sent_warn10          INTEGER NOT NULL DEFAULT 0,
+            sent_confirm1        INTEGER NOT NULL DEFAULT 0,
+            sent_entry_warn10    INTEGER NOT NULL DEFAULT 0,
+            sent_entry_confirm1  INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE TABLE IF NOT EXISTS telegram_ema_alerts (
+            id             TEXT PRIMARY KEY,
+            symbol         TEXT NOT NULL,
+            ema_period     INTEGER NOT NULL DEFAULT 200,
+            level_pct      REAL NOT NULL DEFAULT 0,
+            direction      TEXT NOT NULL DEFAULT 'above',
+            buy_level_pct  REAL,
+            sell_level_pct REAL,
+            next_action    TEXT NOT NULL DEFAULT 'buy',
+            last_triggered_action TEXT,
+            last_triggered_at TEXT,
+            last_triggered_deviation_pct REAL,
+            threshold_pct  REAL NOT NULL DEFAULT 0.5,
+            enabled        INTEGER NOT NULL DEFAULT 1,
+            created_at     TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at     TEXT NOT NULL DEFAULT (datetime('now')),
+            info_level_pct REAL,
+            info_last_side TEXT,
+            info_last_notified_at TEXT
+        );
+        CREATE TABLE IF NOT EXISTS webull_token (
+            id                    TEXT PRIMARY KEY CHECK (id = 'current'),
+            token                 TEXT,
+            created_at            TEXT,
+            expires_at            TEXT,
+            last_check_status     TEXT,
+            last_check_at         TEXT,
+            last_health_check_date TEXT,
+            last_health_check_attempt_at TEXT,
+            updated_at            TEXT
+        );
+        CREATE TABLE IF NOT EXISTS settings (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            data TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS autotrade_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ts TEXT NOT NULL,
+            message TEXT NOT NULL
+        );
+    `)
+	return err
+}
+
+var tickerRe = regexp.MustCompile(`[^A-Za-z0-9.-]`)
+
+func SafeTicker(raw string) string {
+	cleaned := strings.ToUpper(tickerRe.ReplaceAllString(raw, ""))
+	if len(cleaned) > 10 {
+		cleaned = cleaned[:10]
+	}
+	return cleaned
+}
+
+type DatasetMeta struct {
+	ID                string            `json:"id"`
+	Name              string            `json:"name"`
+	Ticker            string            `json:"ticker"`
+	CompanyName       *string           `json:"companyName"`
+	DataPoints        int               `json:"dataPoints"`
+	DateRange         map[string]*string `json:"dateRange"`
+	UploadDate        *string           `json:"uploadDate"`
+	Tag               *string           `json:"tag"`
+	AdjustedForSplits bool              `json:"adjustedForSplits"`
+}
+
+func (d *DB) ListDatasets() ([]DatasetMeta, error) {
+	rows, err := d.SQL.Query(`SELECT ticker, name, company_name, upload_date, tag, data_points, date_from, date_to, adjusted_for_splits FROM dataset_meta ORDER BY ticker`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []DatasetMeta
+	for rows.Next() {
+		m, err := scanMeta(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	if out == nil {
+		out = []DatasetMeta{}
+	}
+	return out, nil
+}
+
+type rowScanner interface {
+	Scan(dest ...any) error
+}
+
+func scanMeta(s rowScanner) (DatasetMeta, error) {
+	var ticker, name string
+	var company, upload, tag, from, to sql.NullString
+	var points, adj int
+	if err := s.Scan(&ticker, &name, &company, &upload, &tag, &points, &from, &to, &adj); err != nil {
+		return DatasetMeta{}, err
+	}
+	if name == "" {
+		name = ticker
+	}
+	m := DatasetMeta{
+		ID: ticker, Name: name, Ticker: ticker, DataPoints: points,
+		DateRange: map[string]*string{"from": nullStr(from), "to": nullStr(to)},
+		UploadDate: nullStr(upload), Tag: nullStr(tag), AdjustedForSplits: adj == 1,
+	}
+	m.CompanyName = nullStr(company)
+	return m, nil
+}
+
+func nullStr(s sql.NullString) *string {
+	if !s.Valid {
+		return nil
+	}
+	v := s.String
+	return &v
+}
+
+func (d *DB) GetDataset(id string) (map[string]any, error) {
+	ticker := SafeTicker(id)
+	row := d.SQL.QueryRow(`SELECT ticker, name, company_name, upload_date, tag, data_points, date_from, date_to, adjusted_for_splits FROM dataset_meta WHERE ticker = ?`, ticker)
+	meta, err := scanMeta(row)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	rows, err := d.SQL.Query(`SELECT date, open, high, low, close, adj_close, volume FROM ohlc WHERE ticker = ? ORDER BY date`, ticker)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var data []types.OHLC
+	for rows.Next() {
+		var b types.OHLC
+		var adj sql.NullFloat64
+		var vol sql.NullInt64
+		if err := rows.Scan(&b.Date, &b.Open, &b.High, &b.Low, &b.Close, &adj, &vol); err != nil {
+			return nil, err
+		}
+		if adj.Valid {
+			v := adj.Float64
+			b.AdjClose = &v
+		}
+		if vol.Valid {
+			b.Volume = float64(vol.Int64)
+		}
+		data = append(data, b)
+	}
+	if data == nil {
+		data = []types.OHLC{}
+	}
+	out := map[string]any{
+		"id": meta.ID, "name": meta.Name, "ticker": meta.Ticker,
+		"companyName": meta.CompanyName, "dataPoints": meta.DataPoints,
+		"dateRange": meta.DateRange, "uploadDate": meta.UploadDate, "tag": meta.Tag,
+		"adjustedForSplits": meta.AdjustedForSplits, "data": data,
+	}
+	return out, nil
+}
+
+func (d *DB) SaveDataset(ticker, name, company, tag string, bars []types.OHLC, adjusted bool) error {
+	ticker = SafeTicker(ticker)
+	if ticker == "" {
+		return fmt.Errorf("Invalid ticker")
+	}
+	if name == "" {
+		name = ticker
+	}
+	var from, to *string
+	if len(bars) > 0 {
+		f, t := bars[0].Date, bars[len(bars)-1].Date
+		if len(f) >= 10 {
+			f = f[:10]
+		}
+		if len(t) >= 10 {
+			t = t[:10]
+		}
+		from, to = &f, &t
+	}
+	upload := time.Now().UTC().Format("2006-01-02")
+	tx, err := d.SQL.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	adj := 0
+	if adjusted {
+		adj = 1
+	}
+	_, err = tx.Exec(`INSERT INTO dataset_meta (ticker, name, company_name, upload_date, tag, data_points, date_from, date_to, adjusted_for_splits, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+        ON CONFLICT(ticker) DO UPDATE SET name=excluded.name, company_name=excluded.company_name, upload_date=excluded.upload_date,
+            tag=excluded.tag, data_points=excluded.data_points, date_from=excluded.date_from, date_to=excluded.date_to,
+            adjusted_for_splits=excluded.adjusted_for_splits, updated_at=datetime('now')`,
+		ticker, name, company, upload, tag, len(bars), from, to, adj)
+	if err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM ohlc WHERE ticker = ?`, ticker); err != nil {
+		return err
+	}
+	stmt, err := tx.Prepare(`INSERT INTO ohlc (ticker, date, open, high, low, close, adj_close, volume) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+	for _, b := range bars {
+		date := b.Date
+		if len(date) >= 10 {
+			date = date[:10]
+		}
+		var adjC any
+		if b.AdjClose != nil {
+			adjC = *b.AdjClose
+		}
+		if _, err := stmt.Exec(ticker, date, b.Open, b.High, b.Low, b.Close, adjC, int64(b.Volume)); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+func (d *DB) DeleteDataset(id string) error {
+	ticker := SafeTicker(id)
+	tx, err := d.SQL.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`DELETE FROM ohlc WHERE ticker = ?`, ticker); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM dataset_meta WHERE ticker = ?`, ticker); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (d *DB) Counts() (datasets, ohlc int) {
+	_ = d.SQL.QueryRow(`SELECT COUNT(*) FROM dataset_meta`).Scan(&datasets)
+	_ = d.SQL.QueryRow(`SELECT COUNT(*) FROM ohlc`).Scan(&ohlc)
+	return
+}
+
+func (d *DB) SessionGet(token string) (created, expires int64, ok bool) {
+	err := d.SQL.QueryRow(`SELECT created_at, expires_at FROM sessions WHERE token = ?`, token).Scan(&created, &expires)
+	return created, expires, err == nil
+}
+
+func (d *DB) SessionSet(token string, created, expires int64) error {
+	_, err := d.SQL.Exec(`INSERT OR REPLACE INTO sessions (token, created_at, expires_at) VALUES (?, ?, ?)`, token, created, expires)
+	return err
+}
+
+func (d *DB) SessionDelete(token string) {
+	_, _ = d.SQL.Exec(`DELETE FROM sessions WHERE token = ?`, token)
+}
+
+func (d *DB) ListSplits(symbol string) ([]types.SplitEvent, error) {
+	q := `SELECT date, factor FROM splits`
+	var args []any
+	if symbol != "" {
+		q += ` WHERE ticker = ?`
+		args = append(args, SafeTicker(symbol))
+	}
+	q += ` ORDER BY ticker, date`
+	rows, err := d.SQL.Query(q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []types.SplitEvent
+	for rows.Next() {
+		var e types.SplitEvent
+		if err := rows.Scan(&e.Date, &e.Factor); err != nil {
+			return nil, err
+		}
+		out = append(out, e)
+	}
+	if out == nil {
+		out = []types.SplitEvent{}
+	}
+	return out, nil
+}
+
+func (d *DB) AllSplits() (map[string][]types.SplitEvent, error) {
+	rows, err := d.SQL.Query(`SELECT ticker, date, factor FROM splits ORDER BY ticker, date`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string][]types.SplitEvent{}
+	for rows.Next() {
+		var t string
+		var e types.SplitEvent
+		if err := rows.Scan(&t, &e.Date, &e.Factor); err != nil {
+			return nil, err
+		}
+		out[t] = append(out[t], e)
+	}
+	return out, nil
+}
+
+func (d *DB) ReplaceSplits(symbol string, events []types.SplitEvent) error {
+	ticker := SafeTicker(symbol)
+	tx, err := d.SQL.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`DELETE FROM splits WHERE ticker = ?`, ticker); err != nil {
+		return err
+	}
+	for _, e := range events {
+		if _, err := tx.Exec(`INSERT INTO splits (ticker, date, factor) VALUES (?, ?, ?)`, ticker, e.Date, e.Factor); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+func (d *DB) UpsertSplits(symbol string, events []types.SplitEvent) error {
+	ticker := SafeTicker(symbol)
+	for _, e := range events {
+		if _, err := d.SQL.Exec(`INSERT INTO splits (ticker, date, factor) VALUES (?, ?, ?)
+            ON CONFLICT(ticker, date) DO UPDATE SET factor=excluded.factor`, ticker, e.Date, e.Factor); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (d *DB) DeleteSplit(symbol, date string) error {
+	_, err := d.SQL.Exec(`DELETE FROM splits WHERE ticker = ? AND date = ?`, SafeTicker(symbol), date)
+	return err
+}
+
+func (d *DB) DeleteSplits(symbol string) error {
+	_, err := d.SQL.Exec(`DELETE FROM splits WHERE ticker = ?`, SafeTicker(symbol))
+	return err
+}
+
+func (d *DB) GetCalendar() (json.RawMessage, error) {
+	var data string
+	err := d.SQL.QueryRow(`SELECT data FROM calendar WHERE id = 1`).Scan(&data)
+	if err == sql.ErrNoRows {
+		def := `{"metadata":{"version":"1.0","years":[2024,2025]},"holidays":{},"shortDays":{},"weekends":{"description":"Выходные дни автоматически определяются"},"tradingHours":{"normal":{"start":"09:30","end":"16:00"},"short":{"start":"09:30","end":"13:00"}}}`
+		return json.RawMessage(def), nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return json.RawMessage(data), nil
+}
+
+func (d *DB) SaveCalendar(raw json.RawMessage) error {
+	_, err := d.SQL.Exec(`INSERT INTO calendar (id, data) VALUES (1, ?) ON CONFLICT(id) DO UPDATE SET data=excluded.data`, string(raw))
+	return err
+}
+
+func defaultSettings() map[string]any {
+	return map[string]any{
+		"watchThresholdPct": 0.3,
+		"resultsQuoteProvider": "alpha_vantage",
+		"enhancerProvider": "finnhub",
+		"resultsRefreshProvider": "finnhub",
+		"enablePostClosePriceActualization": false,
+		"indicatorPanePercent": 30,
+		"defaultMultiTickerSymbols": "SPY,QQQ,IWM",
+		"autoTrading": map[string]any{
+			"enabled": false, "provider": "finnhub", "lowIBS": 0.1, "highIBS": 0.75,
+			"executionWindowSeconds": 90, "allowNewEntries": true, "allowExits": true,
+			"onlyFromTelegramWatches": true, "symbols": "", "entrySizingMode": "balance",
+			"entryCapitalMode": "standard_safe", "sizingMode": "notional", "fixedQuantity": 1,
+			"fixedNotionalUsd": 1000, "maxPositionUsd": 0, "allowFractionalShares": false,
+			"orderType": "MARKET", "timeInForce": "DAY", "supportTradingSession": "CORE",
+			"maxSlippageBps": 25, "previewBeforeSend": true, "cancelOpenOrdersBeforeEntry": false,
+			"notes": "", "lastModifiedAt": nil,
+		},
+	}
+}
+
+func (d *DB) Settings() map[string]any {
+	var data string
+	err := d.SQL.QueryRow(`SELECT data FROM settings WHERE id = 1`).Scan(&data)
+	if err != nil {
+		return defaultSettings()
+	}
+	out := defaultSettings()
+	_ = json.Unmarshal([]byte(data), &out)
+	return out
+}
+
+func (d *DB) SaveSettings(s map[string]any) error {
+	b, _ := json.Marshal(s)
+	_, err := d.SQL.Exec(`INSERT INTO settings (id, data) VALUES (1, ?) ON CONFLICT(id) DO UPDATE SET data=excluded.data`, string(b))
+	return err
+}
+
+func (d *DB) ListWatches() ([]map[string]any, error) {
+	rows, err := d.SQL.Query(`SELECT symbol, high_ibs, low_ibs, threshold_pct, chat_id, entry_price, entry_date, entry_ibs, entry_decision_time, current_trade_id, is_open_position FROM telegram_watches ORDER BY symbol`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []map[string]any
+	for rows.Next() {
+		var symbol string
+		var high, low, thr float64
+		var chat, entryDate, entryDec, tradeID sql.NullString
+		var entryPrice, entryIBS sql.NullFloat64
+		var open int
+		if err := rows.Scan(&symbol, &high, &low, &thr, &chat, &entryPrice, &entryDate, &entryIBS, &entryDec, &tradeID, &open); err != nil {
+			return nil, err
+		}
+		out = append(out, map[string]any{
+			"symbol": symbol, "highIBS": high, "lowIBS": low, "thresholdPct": thr,
+			"chatId": chat.String, "entryPrice": nullF(entryPrice), "entryDate": nullS(entryDate),
+			"entryIBS": nullF(entryIBS), "entryDecisionTime": nullS(entryDec),
+			"currentTradeId": nullS(tradeID), "isOpenPosition": open == 1,
+		})
+	}
+	if out == nil {
+		out = []map[string]any{}
+	}
+	return out, nil
+}
+
+func nullF(v sql.NullFloat64) any {
+	if !v.Valid {
+		return nil
+	}
+	return v.Float64
+}
+func nullS(v sql.NullString) any {
+	if !v.Valid {
+		return nil
+	}
+	return v.String
+}
+
+func (d *DB) UpsertWatch(w map[string]any) error {
+	symbol := SafeTicker(fmt.Sprint(w["symbol"]))
+	high, _ := w["highIBS"].(float64)
+	if high == 0 {
+		high = 0.75
+	}
+	low, _ := w["lowIBS"].(float64)
+	if low == 0 {
+		low = 0.1
+	}
+	thr, _ := w["thresholdPct"].(float64)
+	if thr == 0 {
+		thr = 0.3
+	}
+	_, err := d.SQL.Exec(`INSERT INTO telegram_watches (symbol, high_ibs, low_ibs, threshold_pct) VALUES (?, ?, ?, ?)
+        ON CONFLICT(symbol) DO UPDATE SET high_ibs=excluded.high_ibs, low_ibs=excluded.low_ibs, threshold_pct=excluded.threshold_pct`,
+		symbol, high, low, thr)
+	return err
+}
+
+func (d *DB) DeleteWatch(symbol string) error {
+	_, err := d.SQL.Exec(`DELETE FROM telegram_watches WHERE symbol = ?`, SafeTicker(symbol))
+	return err
+}
+
+func (d *DB) ListTrades(table string) ([]map[string]any, error) {
+	if table != "trades" && table != "broker_trades" {
+		table = "trades"
+	}
+	rows, err := d.SQL.Query(`SELECT id, symbol, status, entry_date, exit_date, entry_price, exit_price, entry_ibs, exit_ibs, pnl_percent, pnl_absolute, holding_days, notes, source, is_hidden, is_test, quantity FROM ` + table + ` ORDER BY entry_date DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []map[string]any
+	for rows.Next() {
+		var id, symbol, status string
+		var entryDate, exitDate, notes, source sql.NullString
+		var entryP, exitP, entryI, exitI, pnlP, pnlA, qty sql.NullFloat64
+		var hold, hidden, test sql.NullInt64
+		if err := rows.Scan(&id, &symbol, &status, &entryDate, &exitDate, &entryP, &exitP, &entryI, &exitI, &pnlP, &pnlA, &hold, &notes, &source, &hidden, &test, &qty); err != nil {
+			return nil, err
+		}
+		out = append(out, map[string]any{
+			"id": id, "symbol": symbol, "status": status,
+			"entryDate": nullS(entryDate), "exitDate": nullS(exitDate),
+			"entryPrice": nullF(entryP), "exitPrice": nullF(exitP),
+			"entryIBS": nullF(entryI), "exitIBS": nullF(exitI),
+			"pnlPercent": nullF(pnlP), "pnlAbsolute": nullF(pnlA),
+			"holdingDays": hold.Int64, "notes": nullS(notes), "source": nullS(source),
+			"isHidden": hidden.Int64 == 1, "isTest": test.Int64 == 1, "quantity": nullF(qty),
+		})
+	}
+	if out == nil {
+		out = []map[string]any{}
+	}
+	return out, nil
+}
+
+func (d *DB) InsertTrade(table string, rec map[string]any) error {
+	if table != "trades" && table != "broker_trades" {
+		table = "trades"
+	}
+	id := fmt.Sprint(rec["id"])
+	if id == "" || id == "<nil>" {
+		id = fmt.Sprintf("t-%d", time.Now().UnixNano())
+	}
+	symbol := SafeTicker(fmt.Sprint(rec["symbol"]))
+	status := fmt.Sprint(rec["status"])
+	if status == "" || status == "<nil>" {
+		status = "open"
+	}
+	_, err := d.SQL.Exec(`INSERT INTO `+table+` (id, symbol, status, entry_date, entry_price, notes, source, quantity) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		id, symbol, status, rec["entryDate"], rec["entryPrice"], rec["notes"], rec["source"], rec["quantity"])
+	return err
+}
+
+func (d *DB) PatchTrade(table, id string, rec map[string]any) error {
+	if table != "trades" && table != "broker_trades" {
+		table = "trades"
+	}
+	_, err := d.SQL.Exec(`UPDATE `+table+` SET status=COALESCE(?, status), exit_date=COALESCE(?, exit_date), exit_price=COALESCE(?, exit_price), notes=COALESCE(?, notes) WHERE id=?`,
+		rec["status"], rec["exitDate"], rec["exitPrice"], rec["notes"], id)
+	return err
+}
+
+func (d *DB) DeleteTrade(table, id string) error {
+	if table != "trades" && table != "broker_trades" {
+		table = "trades"
+	}
+	_, err := d.SQL.Exec(`DELETE FROM `+table+` WHERE id = ?`, id)
+	return err
+}
+
+func (d *DB) ListEMAAlerts() ([]map[string]any, error) {
+	rows, err := d.SQL.Query(`SELECT id, symbol, ema_period, level_pct, direction, enabled FROM telegram_ema_alerts ORDER BY symbol`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []map[string]any
+	for rows.Next() {
+		var id, symbol, dir string
+		var period, enabled int
+		var level float64
+		if err := rows.Scan(&id, &symbol, &period, &level, &dir, &enabled); err != nil {
+			return nil, err
+		}
+		out = append(out, map[string]any{"id": id, "symbol": symbol, "emaPeriod": period, "levelPct": level, "direction": dir, "enabled": enabled == 1})
+	}
+	if out == nil {
+		out = []map[string]any{}
+	}
+	return out, nil
+}
+
+func (d *DB) UpsertEMAAlert(rec map[string]any) error {
+	id := fmt.Sprint(rec["id"])
+	if id == "" || id == "<nil>" {
+		id = fmt.Sprintf("ema-%d", time.Now().UnixNano())
+	}
+	symbol := SafeTicker(fmt.Sprint(rec["symbol"]))
+	_, err := d.SQL.Exec(`INSERT INTO telegram_ema_alerts (id, symbol, ema_period, level_pct, direction, enabled) VALUES (?, ?, ?, ?, ?, 1)
+        ON CONFLICT(id) DO UPDATE SET symbol=excluded.symbol, ema_period=excluded.ema_period, level_pct=excluded.level_pct, direction=excluded.direction, updated_at=datetime('now')`,
+		id, symbol, rec["emaPeriod"], rec["levelPct"], rec["direction"])
+	return err
+}
+
+func (d *DB) DeleteEMAAlert(id string) error {
+	_, err := d.SQL.Exec(`DELETE FROM telegram_ema_alerts WHERE id = ?`, id)
+	return err
+}
