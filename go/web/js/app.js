@@ -390,6 +390,7 @@
               <div class="flex items-center justify-between text-sm"><span class="text-gray-600 dark:text-gray-400">Статус:</span><span class="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs bg-green-100 text-green-800"><span class="w-1.5 h-1.5 bg-green-500 rounded-full"></span>Online</span></div>
             </div>
           </div>
+          <div class="border-t border-gray-200 dark:border-gray-800 mt-8 pt-6 text-sm text-gray-600 dark:text-gray-400">© ${new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', year: 'numeric' }).format(new Date())} IBS Trading Strategy. Все права защищены.</div>
         </footer>
       </div>`;
   }
@@ -463,16 +464,18 @@
       ${pageHeader('Новые данные', 'Загрузка исторических данных из API', `<div class="rounded-lg border px-3 py-2 text-xs bg-white dark:bg-gray-800 dark:border-gray-700"><div class="text-gray-500">Провайдер данных</div><div class="font-semibold">Finnhub</div></div>`)}
       <div class="bg-white border border-gray-200 rounded-lg p-4 dark:bg-gray-900 dark:border-gray-800">
         <div class="mb-2 text-sm font-medium text-gray-700 dark:text-gray-200">Тикер</div>
-        <form id="enhance-form" class="flex flex-wrap gap-2 items-end">
-          <div class="relative flex-1 min-w-[220px]">
-            ${icon('search', 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400')}
+        <form id="enhance-form" class="space-y-2">
+          <div class="relative w-full">
+            ${icon('search', 'search-glyph')}
             <input name="symbol" value="" class="w-full pl-9 pr-3 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 dark:bg-gray-800" placeholder="AAPL, MSFT, TSLA…" />
           </div>
-          <select name="provider" class="rounded-lg border px-3 py-2.5 dark:bg-gray-800 dark:border-gray-700">
-            <option value="finnhub">finnhub</option><option value="alpha_vantage">alpha_vantage</option>
-            <option value="twelve_data">twelve_data</option><option value="polygon">polygon</option>
-          </select>
-          <button class="btn-primary">${icon('download', 'w-4 h-4 mr-1')} Загрузить</button>
+          <div class="flex flex-wrap gap-2">
+            <select name="provider" class="rounded-lg border px-3 py-2.5 dark:bg-gray-800 dark:border-gray-700">
+              <option value="finnhub">finnhub</option><option value="alpha_vantage">alpha_vantage</option>
+              <option value="twelve_data">twelve_data</option><option value="polygon">polygon</option>
+            </select>
+            <button class="btn-primary">${icon('download', 'w-4 h-4 mr-1')} Загрузить</button>
+          </div>
         </form>
         <div class="flex flex-wrap gap-2 mt-4">${['AAPL','MSFT','AMZN','GOOGL','TSLA','META','NVDA','BRK.B'].map((t) => `<button type="button" data-esym="${t}" class="rounded-lg border px-3 py-2 text-left text-sm bg-gray-50 hover:bg-indigo-50 dark:bg-gray-800 dark:border-gray-700"><div class="font-medium">${t}</div></button>`).join('')}</div>
         <div id="enhance-out" class="mt-4 text-sm text-gray-600 dark:text-gray-400"></div>
@@ -578,11 +581,11 @@
             <div><label class="mb-1 block text-xs font-medium">Тикеры</label>${tickerInput('ema-tickers', state.tickerInput, tickers)}</div>
             <form id="ema-form" class="space-y-3">
               <div class="grid grid-cols-2 gap-2">
-                <label class="text-xs">EMA<input name="period" type="number" value="200" class="field mt-1" /></label>
-                <label class="text-xs">Маржинальность<select name="leverage" class="field mt-1"><option value="1" selected>100%</option><option value="2">200%</option><option value="3">300%</option></select></label>
+                <label class="text-xs block">EMA<input name="period" type="number" value="200" class="field field-full mt-1" /></label>
+                <label class="text-xs block">Маржинальность<select name="leverage" class="field field-full mt-1"><option value="1">100%</option><option value="2" selected>200%</option><option value="3">300%</option></select></label>
               </div>
-              <label class="text-xs">Зоны покупки, % от EMA<input name="buy" type="number" value="-20" class="field mt-1" /></label>
-              <label class="text-xs">Зоны продажи, % от EMA<input name="sell" type="number" value="40" class="field mt-1" /></label>
+              <label class="text-xs block">Зоны покупки, % от EMA<input name="buy" type="number" value="-20" class="field field-full mt-1" /></label>
+              <label class="text-xs block">Зоны продажи, % от EMA<input name="sell" type="number" value="40" class="field field-full mt-1" /></label>
               <button class="btn-primary w-full">Запустить EMA-бэктест</button>
             </form>
           </aside>
@@ -601,11 +604,12 @@
           <aside class="rounded-lg border border-gray-200 bg-gray-50 p-3 space-y-3 dark:bg-gray-800/50 dark:border-gray-700">
             <div><label class="mb-1 block text-xs font-medium">Тикеры</label>${tickerInput('opt-tickers', state.tickerInput, tickers)}</div>
             <form id="opt-form" class="space-y-3">
+              <div class="text-sm font-semibold">Параметры</div>
               <div class="grid grid-cols-2 gap-2">
-                <label class="text-xs">Strike %<input name="strike" type="number" value="10" class="field mt-1 w-full" /></label>
-                <label class="text-xs">Vol adj %<input name="vol" type="number" value="20" class="field mt-1 w-full" /></label>
-                <label class="text-xs">Capital %<input name="cap" type="number" value="10" class="field mt-1 w-full" /></label>
-                <label class="text-xs">Маржинальность<select name="leverage" class="field mt-1 w-full"><option value="1">100%</option><option value="2" selected>200%</option></select></label>
+                <label class="text-xs block">Страйк (+%)<input name="strike" type="number" value="10" class="field field-full mt-1" /></label>
+                <label class="text-xs block">IV Adj (+%)<input name="vol" type="number" value="20" class="field field-full mt-1" /></label>
+                <label class="text-xs block">Капитал на сделку<input name="cap" type="number" value="10" class="field field-full mt-1" /></label>
+                <label class="text-xs block">Маржинальность<select name="leverage" class="field field-full mt-1"><option value="1">100%</option><option value="2" selected>200%</option></select></label>
               </div>
               <button id="opt-run" class="btn-primary w-full">Запустить бэктест</button>
             </form>

@@ -117,7 +117,11 @@ html.dark .modal-card { background: #111827; border-color: #1f2937; color: #f3f4
   border-radius: 0.5rem; border: 1px solid #e5e7eb;
   padding: 0.5rem 0.75rem; background: #fff;
 }
-.field-full, form#set-form .field { width: 100%; }
+.field-full, form#set-form .field { width: 100%; display: block; box-sizing: border-box; }
+.search-glyph {
+  position: absolute; left: 0.75rem; top: 50%; transform: translateY(-50%);
+  width: 1rem; height: 1rem; color: #9ca3af; pointer-events: none;
+}
 html.dark .field { background: #1f2937; border-color: #374151; color: #f3f4f6; }
 .btn-primary {
   display: inline-flex; align-items: center; justify-content: center;
