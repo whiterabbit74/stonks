@@ -7,7 +7,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"strings"
 	"sync"
 	"time"
 
@@ -114,50 +113,6 @@ func (m *MemoryBroker) Calendar() ([]byte, error) {
 
 func (m *MemoryBroker) RawSplits(symbol string) ([]map[string]any, error) {
 	return m.Splits, nil
-}
-
-type EnvWebull struct {
-	HTTP *http.Client
-}
-
-func EnvBroker() Broker {
-	if os.Getenv("WEBULL_ACCESS_TOKEN") == "" && os.Getenv("WEBULL_APP_KEY") == "" {
-		return nil
-	}
-	return &EnvWebull{HTTP: &http.Client{Timeout: 20 * time.Second}}
-}
-
-func (w *EnvWebull) PlaceMarket(symbol, side string, qty float64) (OrderResult, error) {
-	return OrderResult{Error: "live Webull order placement requires app key/secret wiring"}, fmt.Errorf("webull place not fully wired")
-}
-
-func (w *EnvWebull) CloseMarket(symbol string) (OrderResult, error) {
-	return w.PlaceMarket(symbol, "SELL", 1)
-}
-
-func (w *EnvWebull) Account() (map[string]any, error) {
-	return map[string]any{"configured": true, "token_present": os.Getenv("WEBULL_ACCESS_TOKEN") != ""}, nil
-}
-
-func (w *EnvWebull) Positions() ([]any, error) { return []any{}, nil }
-
-func (w *EnvWebull) CreateToken() (map[string]any, error) {
-	return nil, fmt.Errorf("webull token create requires app credentials")
-}
-
-func (w *EnvWebull) CheckToken(token string) (map[string]any, error) {
-	if strings.TrimSpace(token) == "" && os.Getenv("WEBULL_ACCESS_TOKEN") == "" {
-		return map[string]any{"status": "MISSING"}, nil
-	}
-	return map[string]any{"status": "PRESENT"}, nil
-}
-
-func (w *EnvWebull) Calendar() ([]byte, error) {
-	return nil, fmt.Errorf("webull calendar sync requires credentials")
-}
-
-func (w *EnvWebull) RawSplits(symbol string) ([]map[string]any, error) {
-	return []map[string]any{}, nil
 }
 
 type MemoryQuotes struct {

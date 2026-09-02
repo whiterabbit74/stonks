@@ -234,6 +234,7 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	ds, ohlc := s.DB.Counts()
 	writeJSON(w, 200, map[string]any{
 		"status": "ok", "message": "Trading Backtester API is running",
+		"engine":    "go",
 		"timestamp": time.Now().UTC().Format(time.RFC3339Nano),
 		"buildId":   s.BuildID,
 		"db":        map[string]any{"connected": true, "datasets": ds, "ohlcRows": ohlc},

@@ -60,7 +60,7 @@ func New(db *store.DB, quotes QuoteSource) *Engine {
 		DB:           db,
 		Quotes:       quotes,
 		Telegram:     EnvTelegram(),
-		Broker:       EnvBroker(),
+		Broker:       EnvBrokerDB(db),
 		ChatID:       os.Getenv("TELEGRAM_CHAT_ID"),
 		reservations: map[string]string{},
 	}

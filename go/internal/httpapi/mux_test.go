@@ -132,6 +132,9 @@ func TestStatusJSON(t *testing.T) {
 	if body["status"] != "ok" {
 		t.Fatalf("%v", body)
 	}
+	if body["engine"] != "go" {
+		t.Fatalf("status engine %v", body["engine"])
+	}
 	db, _ := body["db"].(map[string]any)
 	if db["connected"] != true {
 		t.Fatalf("db %v", db)

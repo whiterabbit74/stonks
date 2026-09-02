@@ -3,13 +3,15 @@ services:
   server:
     build:
       context: .
-      dockerfile: docker/server.Dockerfile
+      dockerfile: docker/go.Dockerfile
       args:
         BUILD_ID: "${BUILD_ID:-dev}"
     env_file:
       - /home/ubuntu/stonks-config/.env
     environment:
       - PORT=3001
+      - GOAPP_ROOT=/app
+      - DB_FILE=/data/db/trading.db
       - DATASETS_DIR=/data/datasets
       - DB_DIR=/data/db
       - SETTINGS_FILE=/data/state/settings.json
@@ -24,7 +26,7 @@ services:
       - "3001:3001"
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://localhost:3001/api/status').then(r=>r.ok?process.exit(0):process.exit(1)).catch(()=>process.exit(1))"]
+      test: ["CMD", "curl", "-fsS", "http://localhost:3001/api/status"]
       interval: 30s
       timeout: 5s
       retries: 3

@@ -34,9 +34,9 @@
     reverse_proxy musicplay:3001
   }
 
-  # Frontend SPA
+  # Go SPA + API (same process as /api)
   handle {
-    reverse_proxy frontend:80
+    reverse_proxy server:3001
   }
 }
 
