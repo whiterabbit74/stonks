@@ -66,7 +66,6 @@ func (d *DB) initSchema() error {
             volume      INTEGER,
             PRIMARY KEY (ticker, date)
         );
-        CREATE INDEX IF NOT EXISTS idx_ohlc_ticker_date ON ohlc(ticker, date);
         CREATE TABLE IF NOT EXISTS splits (
             ticker  TEXT NOT NULL,
             date    TEXT NOT NULL,
@@ -188,11 +187,6 @@ func (d *DB) initSchema() error {
             id INTEGER PRIMARY KEY CHECK (id = 1),
             data TEXT NOT NULL
         );
-        CREATE TABLE IF NOT EXISTS autotrade_logs (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            ts TEXT NOT NULL,
-            message TEXT NOT NULL
-        );
     `)
 	return err
 }
@@ -208,15 +202,15 @@ func SafeTicker(raw string) string {
 }
 
 type DatasetMeta struct {
-	ID                string            `json:"id"`
-	Name              string            `json:"name"`
-	Ticker            string            `json:"ticker"`
-	CompanyName       *string           `json:"companyName"`
-	DataPoints        int               `json:"dataPoints"`
+	ID                string             `json:"id"`
+	Name              string             `json:"name"`
+	Ticker            string             `json:"ticker"`
+	CompanyName       *string            `json:"companyName"`
+	DataPoints        int                `json:"dataPoints"`
 	DateRange         map[string]*string `json:"dateRange"`
-	UploadDate        *string           `json:"uploadDate"`
-	Tag               *string           `json:"tag"`
-	AdjustedForSplits bool              `json:"adjustedForSplits"`
+	UploadDate        *string            `json:"uploadDate"`
+	Tag               *string            `json:"tag"`
+	AdjustedForSplits bool               `json:"adjustedForSplits"`
 }
 
 func (d *DB) ListDatasets() ([]DatasetMeta, error) {
@@ -255,7 +249,7 @@ func scanMeta(s rowScanner) (DatasetMeta, error) {
 	}
 	m := DatasetMeta{
 		ID: ticker, Name: name, Ticker: ticker, DataPoints: points,
-		DateRange: map[string]*string{"from": nullStr(from), "to": nullStr(to)},
+		DateRange:  map[string]*string{"from": nullStr(from), "to": nullStr(to)},
 		UploadDate: nullStr(upload), Tag: nullStr(tag), AdjustedForSplits: adj == 1,
 	}
 	m.CompanyName = nullStr(company)
@@ -571,13 +565,13 @@ func (d *DB) SaveCalendar(raw json.RawMessage) error {
 
 func defaultSettings() map[string]any {
 	return map[string]any{
-		"watchThresholdPct": 0.3,
-		"resultsQuoteProvider": "alpha_vantage",
-		"enhancerProvider": "finnhub",
-		"resultsRefreshProvider": "finnhub",
+		"watchThresholdPct":                 0.3,
+		"resultsQuoteProvider":              "alpha_vantage",
+		"enhancerProvider":                  "finnhub",
+		"resultsRefreshProvider":            "finnhub",
 		"enablePostClosePriceActualization": false,
-		"indicatorPanePercent": 30,
-		"defaultMultiTickerSymbols": "SPY,QQQ,IWM",
+		"indicatorPanePercent":              30,
+		"defaultMultiTickerSymbols":         "SPY,QQQ,IWM",
 		"autoTrading": map[string]any{
 			"enabled": false, "provider": "finnhub", "lowIBS": 0.1, "highIBS": 0.75,
 			"executionWindowSeconds": 90, "allowNewEntries": true, "allowExits": true,
@@ -851,10 +845,10 @@ func (d *DB) ListTickers() ([]string, error) {
 }
 
 type WebullTokenRow struct {
-	Token              string
-	LastCheckStatus    string
+	Token               string
+	LastCheckStatus     string
 	LastHealthCheckDate string
-	LastAttemptAt      string
+	LastAttemptAt       string
 }
 
 func (d *DB) GetWebullToken() WebullTokenRow {
@@ -871,10 +865,5 @@ func (d *DB) UpsertWebullHealth(todayET, status, attemptAt string) error {
             last_health_check_date=excluded.last_health_check_date,
             last_health_check_attempt_at=excluded.last_health_check_attempt_at,
             updated_at=datetime('now')`, status, todayET, attemptAt)
-	return err
-}
-
-func (d *DB) RecordSchedulerRun(name, dateKey, detail string) error {
-	_, err := d.SQL.Exec(`INSERT INTO autotrade_logs (ts, message) VALUES (?, ?)`, time.Now().UTC().Format(time.RFC3339Nano), name+" "+dateKey+" "+detail)
 	return err
 }

@@ -113,7 +113,6 @@ func TradingSession(p tradingdate.NYSEParts, cal Calendar) Session {
 
 type Deps struct {
 	Providers *providers.Client
-	Now       func() time.Time
 }
 
 func Start(db *store.DB, onEvent func(JobLog)) (stop func()) {
@@ -123,9 +122,6 @@ func Start(db *store.DB, onEvent func(JobLog)) (stop func()) {
 func StartWith(db *store.DB, deps Deps, onEvent func(JobLog)) (stop func()) {
 	if onEvent == nil {
 		onEvent = func(JobLog) {}
-	}
-	if deps.Now == nil {
-		deps.Now = time.Now
 	}
 	if deps.Providers == nil {
 		deps.Providers = providers.FromEnv()
@@ -149,9 +145,6 @@ func StartWith(db *store.DB, deps Deps, onEvent func(JobLog)) (stop func()) {
 func RunTick(db *store.DB, deps Deps, now time.Time, onEvent func(JobLog)) {
 	if onEvent == nil {
 		onEvent = func(JobLog) {}
-	}
-	if deps.Now == nil {
-		deps.Now = func() time.Time { return now }
 	}
 	p := tradingdate.CurrentTimeNYSE(now)
 	today := tradingdate.TodayNYSE(now)
@@ -195,7 +188,6 @@ func RunTokenHealth(db *store.DB, todayET string, now time.Time) (detail string,
 		status = "PRESENT"
 	}
 	_ = db.UpsertWebullHealth(todayET, status, now.UTC().Format(time.RFC3339Nano))
-	_ = db.RecordSchedulerRun("webull-token-health", todayET, status)
 	return status, false
 }
 
@@ -212,33 +204,28 @@ func RunTelegramAggregation(db *store.DB, todayET string) int {
 		last := vals[len(vals)-1]
 		low, _ := w["lowIBS"].(float64)
 		high, _ := w["highIBS"].(float64)
-		entry := ibs.IsEntrySignal(last, low)
-		exit := ibs.IsExitSignal(last, high)
-		_ = db.RecordSchedulerRun("telegram-aggregation", todayET, fmt.Sprintf("%s ibs=%g entry=%v exit=%v", sym, last, entry, exit))
+		_ = ibs.IsEntrySignal(last, low)
+		_ = ibs.IsExitSignal(last, high)
 		count++
 	}
 	return count
 }
 
 func RunPriceActualization(db *store.DB, deps Deps, todayET string) (ok, fail int) {
+	if deps.Providers == nil {
+		return 0, 0
+	}
 	tickers, _ := db.ListTickers()
 	end := time.Now().Unix()
 	start := end - 14*24*60*60
 	client := deps.Providers
-	if client == nil {
-		client = providers.FromEnv()
-	}
 	for _, t := range tickers {
 		_, err := client.Historical(t, "finnhub", start, end, "none")
 		if err != nil {
 			fail++
-			_ = db.RecordSchedulerRun("price-actualization", todayET, t+" skip: "+err.Error())
 			continue
 		}
 		ok++
-		_ = db.RecordSchedulerRun("price-actualization", todayET, t+" fetched")
 	}
 	return
 }
-
-

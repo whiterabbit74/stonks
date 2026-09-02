@@ -46,7 +46,7 @@ func TestTickSkipsHolidayMarketJobs(t *testing.T) {
 	}
 	t.Cleanup(func() { db.Close() })
 	cal := map[string]any{
-		"holidays": map[string]any{"2026": map[string]any{"07-03": map[string]any{"name": "X"}}},
+		"holidays":     map[string]any{"2026": map[string]any{"07-03": map[string]any{"name": "X"}}},
 		"tradingHours": map[string]any{"normal": map[string]any{"start": "09:30", "end": "16:00"}, "short": map[string]any{"start": "09:30", "end": "13:00"}},
 	}
 	raw, _ := json.Marshal(cal)
@@ -56,7 +56,7 @@ func TestTickSkipsHolidayMarketJobs(t *testing.T) {
 	// 2026-07-03 20:00 UTC = 16:00 ET on a Friday holiday
 	now := time.Date(2026, 7, 3, 20, 0, 0, 0, time.UTC)
 	var logs []JobLog
-	RunTick(db, Deps{Now: func() time.Time { return now }}, now, func(j JobLog) { logs = append(logs, j) })
+	RunTick(db, Deps{}, now, func(j JobLog) { logs = append(logs, j) })
 	sawSkip := false
 	for _, j := range logs {
 		if j.Name == "market-jobs" && j.Skipped {
