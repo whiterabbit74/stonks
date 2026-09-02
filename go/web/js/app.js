@@ -175,6 +175,12 @@
   function isDark() {
     return state.theme === 'dark' || (state.theme === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches);
   }
+  function mmddLabel(k) {
+    const [mm, dd] = String(k).split('-');
+    const names = ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн', 'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек'];
+    const i = Number(mm) - 1;
+    return `${Number(dd)} ${names[i] || k}`;
+  }
   function nyseParts(d) {
     const fmt = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', year: 'numeric', month: 'numeric', day: 'numeric', weekday: 'short' });
     const o = {};
@@ -223,11 +229,11 @@
       </div>
     </div>`;
   }
-  function tickerInput(id, value, tickers) {
+  function tickerInput(id, value, tickers, showBadges) {
     const badges = tickers.map((t, i) => `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${BADGE[i % 4]}">${esc(t)}</span>`).join('');
     return `<div>
       <input id="${id}" type="text" value="${esc(value)}" placeholder="AAPL, MSFT, AMZN, MAGS" class="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 focus:border-transparent" />
-      ${tickers.length ? `<div class="flex flex-wrap gap-1.5 mt-2">${badges}</div>` : ''}
+      ${showBadges !== false && tickers.length ? `<div class="flex flex-wrap gap-1.5 mt-2">${badges}</div>` : ''}
     </div>`;
   }
   function metricsGrid(m, finalValue, maxDrawdown) {
@@ -555,7 +561,7 @@
     const levOpts = [100, 125, 150, 175, 200, 225, 250, 275, 300].map((n) => `<option value="${n}" ${state.leverage === n ? 'selected' : ''}>${n}%</option>`).join('');
     return `
       <div><label class="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">Тикеры</label>
-        ${tickerInput('ticker-input', state.tickerInput, tickers)}
+        ${tickerInput('ticker-input', state.tickerInput, tickers, false)}
         ${isDefault ? '' : `<button type="button" id="reset-tickers" class="mt-1.5 w-full rounded-lg border border-dashed border-gray-300 px-2 py-1 text-left text-[11px] text-gray-500 hover:border-indigo-400 hover:bg-indigo-50 hover:text-indigo-600 dark:border-gray-600">↩ ${esc(defaults.join(', '))}</button>`}
       </div>
       <div><label class="mb-1 block text-xs font-medium">Маржинальность</label>
@@ -644,16 +650,18 @@
       ${pageHeader('Календарь торгов', 'NYSE · Американский рынок акций')}
       <div class="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-gray-600 dark:text-gray-400 mb-4">
         <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-green-500"></span>Торговый · ${esc(hours.start)}–${esc(hours.end)}</span>
-        <span class="flex items-center gap-1.5">Выходной (Сб, Вс)</span>
+        <span class="flex items-center gap-1.5">${icon('calendar', 'w-3.5 h-3.5')} Выходной (Сб, Вс)</span>
         <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-amber-400"></span>Раннее закрытие · до 13:00</span>
         <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-red-500"></span>Праздник · биржа закрыта</span>
       </div>
       <div class="grid lg:grid-cols-2 gap-4">
         <div class="rounded-lg border bg-white dark:bg-gray-800 dark:border-gray-700 p-3">
-          <div class="flex items-center gap-3 mb-3">
+          <div class="flex flex-wrap items-center gap-2 mb-3">
             <button id="cal-prev" class="icon-btn icon-btn-md icon-btn-glass">‹</button>
             <div class="font-semibold">${months[m]} ${y}</div>
             <button id="cal-next" class="icon-btn icon-btn-md icon-btn-glass">›</button>
+            <select id="cal-year" class="field">${[y - 1, y, y + 1].map((yy) => `<option ${yy === y ? 'selected' : ''}>${yy}</option>`).join('')}</select>
+            <select id="cal-month" class="field">${months.map((name, i) => `<option value="${i}" ${i === m ? 'selected' : ''}>${name}</option>`).join('')}</select>
             <button id="cal-today" class="text-sm text-indigo-600">Сегодня</button>
           </div>
           <div class="grid grid-cols-7 gap-1 text-xs text-gray-500 mb-1">${['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map((x) => `<div class="text-center">${x}</div>`).join('')}</div>
@@ -661,12 +669,12 @@
         </div>
         <div class="space-y-3">
           <div class="rounded-lg border border-red-100 bg-red-50 dark:bg-red-950/20 dark:border-red-900/40 p-3">
-            <div class="font-medium text-red-800 dark:text-red-200 mb-2">Праздники ${y}</div>
-            ${Object.keys(holidays).length ? Object.entries(holidays).sort().map(([k, v]) => `<div class="flex justify-between text-sm py-1"><span>${esc(typeof v === 'string' ? v : (v && v.name) || 'Holiday')}</span><span class="text-red-600">${esc(k)}</span></div>`).join('') : '<p class="text-sm text-gray-500">Нет данных</p>'}
+            <div class="flex justify-between font-medium text-red-800 dark:text-red-200 mb-2"><span>Праздники ${y}</span><span>${Object.keys(holidays).length}</span></div>
+            ${Object.keys(holidays).length ? Object.entries(holidays).sort().map(([k, v]) => `<div class="flex justify-between text-sm py-1"><span>${esc(typeof v === 'string' ? v : (v && v.name) || 'Holiday')}</span><span class="text-red-600">${esc(mmddLabel(k))}</span></div>`).join('') : '<p class="text-sm text-gray-500">Нет данных</p>'}
           </div>
           <div class="rounded-lg border border-amber-100 bg-amber-50 dark:bg-amber-950/20 p-3">
-            <div class="font-medium text-amber-800 mb-2">Раннее закрытие ${y}</div>
-            ${Object.keys(shorts).length ? Object.entries(shorts).sort().map(([k, v]) => `<div class="flex justify-between text-sm py-1"><span>${esc(typeof v === 'string' ? v : (v && v.name) || 'Early Close')}</span><span>${esc(k)}</span></div>`).join('') : '<p class="text-sm text-gray-500">Нет</p>'}
+            <div class="flex justify-between font-medium text-amber-800 mb-2"><span>Раннее закрытие ${y}</span><span>${Object.keys(shorts).length}</span></div>
+            ${Object.keys(shorts).length ? Object.entries(shorts).sort().map(([k, v]) => `<div class="flex justify-between text-sm py-1"><span>${esc(typeof v === 'string' ? v : (v && v.name) || 'Early Close')}</span><span>${esc(mmddLabel(k))}</span></div>`).join('') : '<p class="text-sm text-gray-500">Нет</p>'}
           </div>
         </div>
       </div>
@@ -741,7 +749,7 @@
       body = `<p class="text-sm text-gray-500">Раздел недоступен без ключей Webull.</p><form id="broker-form" class="hidden"></form><div id="broker-list" class="hidden">${list}</div>`;
     }
     return `
-      ${pageHeader('Кабинет Webull', 'Баланс счёта, позиции, ордера, история и логи исполнения по Webull', `<span class="rounded-full px-3 py-1 text-xs font-semibold ${live ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-200'}">${live ? '[LIVE]' : '[OFF]'}</span>`)}
+      ${pageHeader('Кабинет Webull', 'Баланс счёта, позиции, ордера, история и логи исполнения по Webull', `<div class="flex items-center gap-2"><span class="rounded-full px-3 py-1 text-xs font-semibold ${live ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-200'}">${live ? '[LIVE]' : '[OFF]'}</span><button id="broker-refresh" class="icon-btn icon-btn-md icon-btn-glass" title="Обновить">${icon('refresh', 'w-4 h-4')}</button></div>`)}
       <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
         ${analysisTabs(BROKER_TABS, tab, 'data-btab')}
         <div class="p-4">${body}<div id="broker-token" class="text-sm text-gray-500 mt-3">${state.token && state.token.present ? 'Токен Webull задан' : ''}</div></div>
@@ -778,7 +786,6 @@
       ${analysisTabs(SETTINGS_TABS, tab, 'data-setab')}
       <form id="set-form" class="mt-4 space-y-3 max-w-3xl">
         ${body}
-        <button class="btn-primary">Сохранить</button>
         <div id="set-msg" class="text-sm"></div>
       </form>`;
   }
@@ -1100,6 +1107,14 @@
         state.cal.year = n.y; state.cal.month = n.m;
         renderPage();
       });
+      document.getElementById('cal-year')?.addEventListener('change', (e) => {
+        state.cal.year = Number(e.target.value);
+        renderPage();
+      });
+      document.getElementById('cal-month')?.addEventListener('change', (e) => {
+        state.cal.month = Number(e.target.value);
+        renderPage();
+      });
       root.querySelectorAll('[data-cday]').forEach((b) => b.addEventListener('click', () => {
         const form = document.getElementById('cal-edit');
         if (form) form.mmdd.value = b.dataset.cday;
@@ -1192,6 +1207,10 @@
         return;
       }
       root.querySelectorAll('[data-btab]').forEach((b) => b.addEventListener('click', () => { state.brokerTab = b.dataset.btab; renderPage(); }));
+      document.getElementById('broker-refresh')?.addEventListener('click', async () => {
+        state.loaded.broker = false;
+        renderPage();
+      });
       root.querySelectorAll('[data-bd]').forEach((b) => b.addEventListener('click', () => {
         askDelete('Удалить брокерскую сделку?', async () => {
           await API.del('/api/broker-trades/' + b.dataset.bd);

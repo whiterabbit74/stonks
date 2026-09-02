@@ -496,12 +496,67 @@ func (d *DB) DeleteSplits(symbol string) error {
 	return err
 }
 
+// DefaultCalendarJSON is the NYSE holiday calendar used when the store is empty.
+const DefaultCalendarJSON = `{
+  "metadata": {"version": "1.0", "description": "US Stock Market Holiday Calendar - NYSE Trading Days", "years": ["2025", "2026"]},
+  "holidays": {
+    "2025": {
+      "01-01": {"name": "New Year's Day", "type": "holiday"},
+      "01-20": {"name": "Martin Luther King Jr. Day", "type": "holiday"},
+      "02-17": {"name": "Presidents' Day", "type": "holiday"},
+      "04-18": {"name": "Good Friday", "type": "holiday"},
+      "05-26": {"name": "Memorial Day", "type": "holiday"},
+      "06-19": {"name": "Juneteenth", "type": "holiday"},
+      "07-04": {"name": "Independence Day", "type": "holiday"},
+      "09-01": {"name": "Labor Day", "type": "holiday"},
+      "11-27": {"name": "Thanksgiving Day", "type": "holiday"},
+      "12-25": {"name": "Christmas Day", "type": "holiday"}
+    },
+    "2026": {
+      "01-01": {"name": "New Year's Day", "type": "holiday"},
+      "01-19": {"name": "Martin Luther King Jr. Day", "type": "holiday"},
+      "02-16": {"name": "Presidents' Day", "type": "holiday"},
+      "04-03": {"name": "Good Friday", "type": "holiday"},
+      "05-25": {"name": "Memorial Day", "type": "holiday"},
+      "06-19": {"name": "Juneteenth", "type": "holiday"},
+      "07-04": {"name": "Independence Day", "type": "holiday"},
+      "09-07": {"name": "Labor Day", "type": "holiday"},
+      "11-26": {"name": "Thanksgiving Day", "type": "holiday"},
+      "12-25": {"name": "Christmas Day", "type": "holiday"}
+    }
+  },
+  "shortDays": {
+    "2025": {"12-24": {"name": "Christmas Eve", "type": "short"}},
+    "2026": {"12-24": {"name": "Christmas Eve", "type": "short"}}
+  },
+  "weekends": {"description": "Выходные дни автоматически определяются"},
+  "tradingHours": {"normal": {"start": "09:30", "end": "16:00"}, "short": {"start": "09:30", "end": "13:00"}}
+}`
+
+func CalendarHolidaysEmpty(raw json.RawMessage) bool {
+	var cal struct {
+		Holidays map[string]json.RawMessage `json:"holidays"`
+	}
+	if err := json.Unmarshal(raw, &cal); err != nil {
+		return true
+	}
+	if len(cal.Holidays) == 0 {
+		return true
+	}
+	for _, year := range cal.Holidays {
+		var days map[string]json.RawMessage
+		if json.Unmarshal(year, &days) == nil && len(days) > 0 {
+			return false
+		}
+	}
+	return true
+}
+
 func (d *DB) GetCalendar() (json.RawMessage, error) {
 	var data string
 	err := d.SQL.QueryRow(`SELECT data FROM calendar WHERE id = 1`).Scan(&data)
 	if err == sql.ErrNoRows {
-		def := `{"metadata":{"version":"1.0","years":[2024,2025]},"holidays":{},"shortDays":{},"weekends":{"description":"Выходные дни автоматически определяются"},"tradingHours":{"normal":{"start":"09:30","end":"16:00"},"short":{"start":"09:30","end":"13:00"}}}`
-		return json.RawMessage(def), nil
+		return json.RawMessage(DefaultCalendarJSON), nil
 	}
 	if err != nil {
 		return nil, err

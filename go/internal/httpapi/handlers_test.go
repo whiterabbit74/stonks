@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"mktorder.com/go/internal/providers"
@@ -172,6 +173,23 @@ func TestQuoteMissingKeyIsClientError(t *testing.T) {
 	_ = json.Unmarshal(rec.Body.Bytes(), &body)
 	if body["error"] == nil {
 		t.Fatalf("missing error field %v", body)
+	}
+}
+
+func TestGetCalendarSeedsNYSEHolidays(t *testing.T) {
+	s := testServer(t, "")
+	req := httptest.NewRequest("GET", "/api/trading-calendar", nil)
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != 200 {
+		t.Fatalf("got %d %s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "Labor Day") || !strings.Contains(body, `"09-07"`) {
+		t.Fatalf("calendar missing 2026 Labor Day: %s", body)
+	}
+	if !strings.Contains(body, "Christmas Eve") {
+		t.Fatalf("calendar missing short day: %s", body)
 	}
 }
 

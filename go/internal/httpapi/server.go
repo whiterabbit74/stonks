@@ -621,6 +621,10 @@ func (s *Server) handleDeleteSplits(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleGetCalendar(w http.ResponseWriter, r *http.Request) {
 	raw, _ := s.DB.GetCalendar()
+	if store.CalendarHolidaysEmpty(raw) {
+		raw = json.RawMessage(store.DefaultCalendarJSON)
+		_ = s.DB.SaveCalendar(raw)
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
 	_, _ = w.Write(raw)
