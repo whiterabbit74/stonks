@@ -73,8 +73,8 @@ html.dark table.trades th, html.dark table.trades td { border-color: #1f2937; }
 }
 .icon-btn {
   display: inline-flex; align-items: center; justify-content: center;
-  border-radius: 9999px; transition: colors, background-color 150ms;
-  focus: outline-none;
+  border-radius: 9999px; transition: color 150ms, background-color 150ms;
+  outline: none;
 }
 .icon-btn:focus-visible { box-shadow: 0 0 0 2px #fff, 0 0 0 4px #6366f1; }
 html.dark .icon-btn:focus-visible { box-shadow: 0 0 0 2px #111827, 0 0 0 4px #6366f1; }

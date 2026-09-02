@@ -459,19 +459,7 @@
         <div class="mt-1.5 grid grid-cols-2 gap-1.5">${cell('Откр', q.open)}${cell('Макс', q.high)}${cell('Мин', q.low)}${cell('Текущ', q.current)}</div>
       </div>`;
   }
-  function compactMetricsHTML(metrics, trades) {
-    const m = metrics || {};
-    const pf = m.profitFactor == null ? '—' : (Number.isFinite(Number(m.profitFactor)) ? Number(m.profitFactor).toFixed(2) : '∞');
-    const row = (label, value) => `<div class="flex items-center justify-between text-xs"><span class="text-gray-500 dark:text-gray-400">${label}</span><span class="font-mono font-semibold">${value}</span></div>`;
-    return `<div class="space-y-1.5 border-t border-gray-200 pt-3 dark:border-gray-700">
-      <div class="text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Результаты</div>
-      ${row('CAGR', m.cagr != null ? fmtPct(m.cagr) : '—')}
-      ${row('Макс. просадка', m.maxDrawdown != null ? fmtPct(m.maxDrawdown) : '—')}
-      ${row('Win rate', m.winRate != null ? fmtPct(m.winRate) : '—')}
-      ${row('Profit Factor', pf)}
-      ${row('Сделок', String((trades || []).length))}
-    </div>`;
-  }
+
   function staleWarningHTML(ticker, bars) {
     const last = bars && bars.length ? bars[bars.length - 1].date : null;
     if (!ticker || !isDataOutdated(last)) return '';
@@ -518,7 +506,7 @@
       ? `<button type="button" id="hero-pro" class="hero-pro" title="${esc(opts.proTitle || 'Открыть профессиональный график')}">${esc(opts.proLabel)} ${icon('arrowne', 'w-3 h-3')}</button>`
       : '';
     const quoteBtns = opts.showQuote ? `
-      <button type="button" id="hero-refresh" class="icon-btn icon-btn-md icon-btn-glass" title="Обновить котировку" ${state.quoteLoading ? 'disabled' : ''}>${icon('refresh', 'h-3.5 w-3.5' + (state.quoteLoading ? ' animate-spin' : ''))}</button>
+      <button type="button" id="hero-refresh" class="icon-btn icon-btn-md icon-btn-glass" title="Обновить котировку" aria-label="Обновить котировку" ${state.quoteLoading ? 'disabled' : ''}>${icon('refresh', 'h-3.5 w-3.5' + (state.quoteLoading ? ' animate-spin' : ''))}</button>
       <div class="relative" id="quote-pop-wrap">
         <button type="button" id="quote-pop-btn" class="icon-btn icon-btn-md icon-btn-glass" title="Детали котировки" aria-label="Детали котировки">${icon('help', 'h-3.5 w-3.5')}</button>
         <div id="quote-pop" class="hero-pop ${state.quoteOpen ? '' : 'hidden'}" style="width:14rem">${quotePopBody()}</div>
@@ -589,7 +577,7 @@
   function asideExtrasHTML(result) {
     if (!result) return '';
     const t = selectedHeroTicker();
-    return compactMetricsHTML(result.metrics, result.trades) + staleWarningHTML(t, barsForTicker(t)) + openPositionHTML(result.trades, lastBarDate(t));
+    return staleWarningHTML(t, barsForTicker(t)) + openPositionHTML(result.trades, lastBarDate(t));
   }
   function pick(m, k) {
     if (!m || typeof m !== 'object') return undefined;
@@ -606,13 +594,13 @@
     const pf = pick(x.metrics, 'profitFactor');
     const wins = x.trades.filter((t) => (t.pnl || 0) > 0);
     const losses = x.trades.filter((t) => (t.pnl || 0) < 0);
-    return `<p class="mb-3">Profit factor: <b>${fmt(pf)}</b> · прибыльных ${wins.length} · убыточных ${losses.length}</p>` + tradesTable(x.trades);
+    return `<p class="mb-3">Профит-фактор: <b>${fmt(pf)}</b> · прибыльных ${wins.length} · убыточных ${losses.length}</p>`;
   }
   function durationBody(r) {
     const x = resultOf(r);
     if (!x || !x.trades.length) return '<p class="text-sm text-gray-500">Нет сделок</p>';
     const avg = x.trades.reduce((s, t) => s + (t.duration || 0), 0) / x.trades.length;
-    return `<p class="mb-3">Средняя длительность: <b>${fmt(avg, 1)}</b> дн.</p>` + tradesTable(x.trades);
+    return `<p class="mb-3">Средняя длительность: <b>${fmt(avg, 1)}</b> дн.</p>`;
   }
   function spreadsTable(buy, sell) {
     const rows = [].concat(buy || []).flatMap((b) => (sell || []).map((s) => `<tr><td>${fmt(b)}</td><td>${fmt(s)}</td><td>${fmt(s - b, 1)} п.п.</td></tr>`)).join('');
@@ -625,6 +613,18 @@
     if (cat !== 'all') list = list.filter((t) => (t.categories || []).includes(cat) || (cat === 'popular' && !t.categories));
     if (q) list = list.filter((t) => t.symbol.toLowerCase().includes(q) || String(t.name || '').toLowerCase().includes(q));
     return list;
+  }
+  function enhanceCatalogCards() {
+    const loaded = new Set((state.datasets || []).map((d) => String(d.ticker || '').toUpperCase()));
+    const list = catalogFiltered();
+    const cards = list.map((t) => {
+      const on = loaded.has(t.symbol);
+      return `<button type="button" data-esym="${esc(t.symbol)}" class="ticker-card${on ? ' loaded' : ''}" title="${on ? esc(t.symbol) + ' уже загружен. Нажмите для обновления' : 'Нажмите для загрузки ' + t.symbol}">
+        <div class="text-sm font-medium truncate ${on ? 'text-green-800 dark:text-green-200' : 'text-gray-900 dark:text-gray-100'}">${esc(t.name)}</div>
+        <div class="text-xs font-mono mt-0.5 ${on ? 'text-green-600' : 'text-gray-500'}">${esc(t.symbol)}</div>
+      </button>`;
+    }).join('') || '<p class="text-sm text-gray-500 col-span-full text-center py-8">Ничего не найдено</p>';
+    return { list, cards };
   }
   function monitorStats(trades) {
     const closed = (trades || []).filter((t) => t.status === 'closed' && Number.isFinite(Number(t.pnlPercent)));
@@ -744,10 +744,10 @@
       <div class="col-span-2 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 text-center"><div class="text-2xl font-bold text-green-600">${fmtUsd(fv)}</div><div class="text-sm text-gray-600 dark:text-gray-400">Итоговый баланс</div></div>
       <div class="col-span-2 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 text-center"><div class="text-2xl font-bold text-blue-600">${fmtPct(m.totalReturn)}</div><div class="text-sm text-gray-600 dark:text-gray-400">Общая доходность</div></div>
       <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 text-center"><div class="text-2xl font-bold text-orange-600">${fmtPct(m.cagr)}</div><div class="text-sm text-gray-600 dark:text-gray-400">CAGR</div></div>
-      <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 text-center"><div class="text-2xl font-bold text-purple-600">${fmtPct(m.winRate)}</div><div class="text-sm text-gray-600 dark:text-gray-400">Win Rate</div></div>
+      <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 text-center"><div class="text-2xl font-bold text-purple-600">${fmtPct(m.winRate)}</div><div class="text-sm text-gray-600 dark:text-gray-400">Доля прибыльных</div></div>
       <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 text-center"><div class="text-2xl font-bold text-red-600">${fmtPct(dd)}</div><div class="text-sm text-gray-600 dark:text-gray-400">Макс. просадка</div></div>
       <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 text-center"><div class="text-2xl font-bold text-indigo-600">${m.totalTrades ?? 0}</div><div class="text-sm text-gray-600 dark:text-gray-400">Всего сделок</div></div>
-      <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 text-center"><div class="text-2xl font-bold text-teal-600">${pf}</div><div class="text-sm text-gray-600 dark:text-gray-400">Profit Factor</div></div>
+      <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 text-center"><div class="text-2xl font-bold text-teal-600">${pf}</div><div class="text-sm text-gray-600 dark:text-gray-400">Профит-фактор</div></div>
     </div>`;
   }
   function tradesTable(trades) {
@@ -791,6 +791,9 @@
       state.tickerInput = q.split(',').map((s) => s.trim().toUpperCase()).filter(Boolean).join(', ');
       state.selected = parseTickers(state.tickerInput);
     }
+    state.menuTicker = null;
+    state.heroSettingsOpen = false;
+    state.quoteOpen = false;
     renderPage();
   }
   window.addEventListener('popstate', () => {
@@ -845,7 +848,7 @@
             <div class="flex items-center gap-2">
               <button id="theme-btn" class="icon-btn icon-btn-lg icon-btn-glass" title="Тема: ${themeLabel()}" aria-label="Тема: ${themeLabel()}">${icon(themeIcon())}</button>
               <a href="/settings" data-nav id="settings-btn" title="Настройки" aria-label="Настройки" class="hidden md:inline-flex icon-btn icon-btn-lg icon-btn-glass ${state.page === '/settings' ? 'icon-btn-active' : ''}">${icon('settings')}</a>
-              <button id="menu-btn" class="md:hidden icon-btn icon-btn-lg icon-btn-glass" title="Меню" aria-label="Открыть меню">${icon(state.mobileOpen ? 'x' : 'menu')}</button>
+              <button id="menu-btn" class="md:hidden icon-btn icon-btn-lg icon-btn-glass" title="${state.mobileOpen ? 'Закрыть меню' : 'Открыть меню'}" aria-label="${state.mobileOpen ? 'Закрыть меню' : 'Открыть меню'}" aria-expanded="${state.mobileOpen}">${icon(state.mobileOpen ? 'x' : 'menu')}</button>
               <button id="logout-btn" class="hidden md:inline-flex items-center gap-2 text-sm px-3 py-1.5 rounded border bg-white text-gray-700 border-gray-200 hover:bg-gray-50 dark:bg-gray-900 dark:text-gray-200 dark:border-gray-800">Выйти</button>
             </div>
           </div>
@@ -883,8 +886,8 @@
             <h2 class="text-lg font-semibold mb-3">Вход</h2>
             <div id="login-error" class="mb-2 text-sm text-red-600 hidden"></div>
             <form id="login-form" class="space-y-3">
-              <div><label class="block text-sm mb-1">Эл. почта</label><input name="username" type="email" class="w-full rounded border px-3 py-2 bg-white dark:bg-gray-800 dark:border-gray-700" placeholder="ivan@example.com" autofocus /></div>
-              <div><label class="block text-sm mb-1">Пароль</label><input name="password" type="password" class="w-full rounded border px-3 py-2 bg-white dark:bg-gray-800 dark:border-gray-700" placeholder="••••••••" /></div>
+              <div><label class="block text-sm mb-1" for="login-user">Эл. почта</label><input id="login-user" name="username" type="email" class="w-full rounded border px-3 py-2 bg-white dark:bg-gray-800 dark:border-gray-700" placeholder="ivan@example.com" autofocus /></div>
+              <div><label class="block text-sm mb-1" for="login-pass">Пароль</label><input id="login-pass" name="password" type="password" class="w-full rounded border px-3 py-2 bg-white dark:bg-gray-800 dark:border-gray-700" placeholder="••••••••" /></div>
               <label class="inline-flex items-center gap-2 text-sm"><input type="checkbox" name="remember" /> Запомнить меня</label>
               <div class="flex justify-end"><button type="submit" class="btn-primary min-h-0 py-1.5">Войти</button></div>
             </form>
@@ -944,7 +947,7 @@
         <div class="flex items-center gap-3 mb-3">
           <div class="flex items-center justify-center w-8 h-8 bg-blue-50 rounded-lg dark:bg-blue-950/20">${icon('database', 'w-4 h-4 text-blue-600')}</div>
           <div class="flex-1"><h3 class="font-semibold text-base">Библиотека датасетов</h3><p class="text-xs text-gray-500">${filtered.length}${state.dataTag !== 'all' ? ' из ' + state.datasets.length : ''} датасетов</p></div>
-          <a href="/enhance" data-nav title="Загрузить новые данные из API" class="inline-flex items-center justify-center w-8 h-8 rounded-lg border border-gray-200 bg-white text-gray-500 hover:bg-indigo-50 hover:text-indigo-600 dark:border-gray-700 dark:bg-gray-800">${icon('plus', 'w-4 h-4')}</a>
+          ${state.datasets.length ? `<a href="/enhance" data-nav title="Загрузить новые данные из API" class="inline-flex items-center justify-center w-8 h-8 rounded-lg border border-gray-200 bg-white text-gray-500 hover:bg-indigo-50 hover:text-indigo-600 dark:border-gray-700 dark:bg-gray-800">${icon('plus', 'w-4 h-4')}</a>` : ''}
         </div>
         <div class="flex items-center justify-between mb-3">
           <div class="flex items-center gap-1.5"><div class="w-2 h-2 bg-green-500 rounded-full"></div><span class="text-xs text-green-600 font-medium">Online</span></div>
@@ -954,47 +957,37 @@
           </div>
         </div>
         <div class="mb-3"><div class="text-xs font-medium text-gray-600 uppercase tracking-wide mb-2">Фильтр</div><div class="flex flex-wrap gap-2">${filters}</div></div>
-        <input id="file-json" type="file" accept=".json,application/json" class="hidden" />
         ${cards}
       </div>`;
   }
 
   function pageEnhance() {
     const prov = providerId();
-    const loaded = new Set((state.datasets || []).map((d) => String(d.ticker || '').toUpperCase()));
     const all = state.tickerCatalog.length ? state.tickerCatalog : POPULAR;
-    const list = catalogFiltered();
+    const { list, cards } = enhanceCatalogCards();
     const catLabel = (ENHANCE_CATS.find((c) => c.id === state.enhanceCat) || ENHANCE_CATS[1]).label;
     const chips = ENHANCE_CATS.map((c) => {
       const n = c.id === 'all' ? all.length : all.filter((t) => (t.categories || []).includes(c.id)).length;
       const on = state.enhanceCat === c.id;
       return `<button type="button" data-ecat="${c.id}" class="${on ? 'cat-chip' : 'cat-chip-off'}">${c.icon} ${esc(c.label)} <span class="text-xs ${on ? 'text-blue-500' : 'text-gray-400'}">(${n})</span></button>`;
     }).join('');
-    const cards = list.map((t) => {
-      const on = loaded.has(t.symbol);
-      return `<button type="button" data-esym="${esc(t.symbol)}" class="ticker-card${on ? ' loaded' : ''}" title="${on ? esc(t.symbol) + ' уже загружен. Нажмите для обновления' : 'Нажмите для загрузки ' + t.symbol}">
-        <div class="text-sm font-medium truncate ${on ? 'text-green-800 dark:text-green-200' : 'text-gray-900 dark:text-gray-100'}">${esc(t.name)}</div>
-        <div class="text-xs font-mono mt-0.5 ${on ? 'text-green-600' : 'text-gray-500'}">${esc(t.symbol)}</div>
-      </button>`;
-    }).join('') || '<p class="text-sm text-gray-500 col-span-full text-center py-8">Ничего не найдено</p>';
     return `
       ${pageHeader('Новые данные', 'Загрузка исторических данных из API', `<div class="rounded-lg border px-3 py-2 text-xs bg-white dark:bg-gray-800 dark:border-gray-700"><div class="text-gray-500">Провайдер данных</div><div class="font-semibold">${esc(providerLabel(prov))}</div></div>`)}
       <div class="bg-white border border-gray-200 rounded-lg p-4 dark:bg-gray-900 dark:border-gray-800">
         <div class="enhance-toolbar">
           <div class="enhance-toolbar-main">
-            <div class="mb-2 text-sm font-medium text-gray-700 dark:text-gray-200">Тикер</div>
+            <label for="enhance-q" class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-200">Тикер</label>
             <form id="enhance-form" class="enhance-form">
               <input type="hidden" name="provider" value="${esc(prov)}" />
               <div class="enhance-search">
                 ${icon('search', 'search-glyph')}
-                <input name="symbol" id="enhance-q" value="${esc(state.enhanceQuery)}" class="enhance-input" placeholder="AAPL, MSFT, TSLA..." />
+                <input name="symbol" id="enhance-q" value="${esc(state.enhanceQuery)}" class="enhance-input" placeholder="AAPL" autocomplete="off" />
               </div>
               <div class="enhance-actions">
                 <button type="submit" class="enhance-load" ${state.enhanceQuery.trim() ? '' : 'disabled'} title="Загрузить данные">${icon('download', 'w-4 h-4')}<span class="enhance-load-label">Загрузить</span></button>
               </div>
             </form>
           </div>
-          <a href="/settings" data-nav data-settings-tab="api" class="enhance-gear" title="Настройки провайдера" aria-label="Настройки провайдера">${icon('settings', 'w-4 h-4')}</a>
         </div>
         <div id="enhance-out" class="mt-3 text-sm text-gray-600 dark:text-gray-400"></div>
       </div>
@@ -1006,7 +999,7 @@
         </div>
         <div class="ticker-card-grid">${cards}</div>
       </div>
-      <p class="text-xs text-gray-500 dark:text-gray-400 mt-3">Источник данных: ${esc(prov.replace('_', ' '))} через локальный сервер</p>`;
+      <p class="text-xs text-gray-500 dark:text-gray-400 mt-3">Источник данных: ${esc(providerLabel(prov))} через локальный сервер</p>`;
   }
 
   function isSingle() { return parseTickers(state.tickerInput).length === 1; }
@@ -1042,8 +1035,8 @@
     if (r) {
       if (state.stockTab === 'summary') {
         body = `<div class="hero-grid">
-          <div class="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3 space-y-3">
-            ${heroPanelHTML({ showQuote: true, proLabel: 'Pro', proTitle: 'Открыть профессиональный график', chartId: 'chart-hero' })}
+          <div class="min-h-[375px]">
+            ${heroPanelHTML({ showQuote: true, proLabel: 'Профи', proTitle: 'Открыть профессиональный график', chartId: 'chart-hero' })}
           </div>
           <aside class="rounded-lg border border-gray-200 bg-gray-50 p-3 space-y-3 dark:bg-gray-800/50 dark:border-gray-700">
             <div class="text-sm font-semibold">Параметры</div>
@@ -1058,11 +1051,11 @@
       else if (state.stockTab === 'drawdown') body = `<div id="chart-dd" class="chart-box rounded border dark:border-gray-800"></div>`;
       else if (state.stockTab === 'openDayDrawdown') body = `<div id="odd-out"></div>`;
       else if (state.stockTab === 'trades') body = tradesTable(r.trades);
-      else if (state.stockTab === 'profit') body = `<p class="mb-2">Profit factor: <b>${fmt(r.metrics?.profitFactor)}</b></p>` + tradesTable(r.trades);
+      else if (state.stockTab === 'profit') body = `<p class="mb-2">Профит-фактор: <b>${fmt(r.metrics?.profitFactor)}</b></p>`;
       else if (state.stockTab === 'duration') {
         const avg = r.trades?.length ? r.trades.reduce((s, t) => s + (t.duration || 0), 0) / r.trades.length : 0;
-        body = `<p>Средняя длительность: <b>${fmt(avg, 1)}</b> дн.</p>` + tradesTable(r.trades);
-      } else if (state.stockTab === 'monthlyContribution') body = `<form id="mc-form" class="flex gap-2 mb-3"><input name="amount" type="number" value="500" class="field w-28" /><input name="day" type="number" value="1" class="field w-20" /><button class="btn-primary">Посчитать</button></form><div id="mc-out"></div>`;
+        body = `<p>Средняя длительность: <b>${fmt(avg, 1)}</b> дн.</p>`;
+      } else if (state.stockTab === 'monthlyContribution') body = `<form id="mc-form" class="flex flex-wrap items-end gap-2 mb-3"><label class="text-xs">Сумма<input name="amount" type="number" value="500" class="field mt-1 w-28" /></label><label class="text-xs">День<input name="day" type="number" value="1" class="field mt-1 w-20" /></label><button class="btn-primary">Посчитать</button></form><div id="mc-out"></div>`;
       else if (state.stockTab === 'splits') body = `<div id="splits-box" class="text-sm"></div>`;
       else if (state.stockTab === 'buyhold') body = `<div id="bh-out">Считаем Buy & Hold…</div>`;
       else if (state.stockTab === 'buyAtClose') body = `<div id="bac-out">Buy at close…</div>`;
@@ -1070,11 +1063,11 @@
       else if (state.stockTab === 'noStopLoss') body = `<div id="nsl-out">Без стоп-лосса…</div>`;
       else if (state.stockTab === 'options') body = `<div id="opt-out">Опционы…</div>`;
     }
-    const params = (state.stockTab === 'summary') ? '' : `<div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 mb-4 space-y-3 max-w-xl">${stocksParams(tickers, isDefault, defaults)}</div>`;
+    const params = (r && state.stockTab !== 'summary') ? `<div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 mb-4 space-y-3 max-w-xl">${stocksParams(tickers, isDefault, defaults)}</div>` : '';
     return `
       ${pageHeader('Акции', 'Бэктест стратегии на нескольких активах')}
       ${err}
-      ${r ? metricsGrid(r.metrics, r.finalValue, r.maxDrawdown) : ''}
+      ${r && state.stockTab === 'summary' ? metricsGrid(r.metrics, r.finalValue, r.maxDrawdown) : ''}
       ${params}
       <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 mt-4">
         ${analysisTabs(tabs, state.stockTab, 'data-stab')}
@@ -1083,11 +1076,11 @@
   }
   function stocksParams(tickers, isDefault, defaults) {
     return `
-      <div><label class="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">Тикеры</label>
+      <div><label class="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300" for="ticker-input">Тикеры</label>
         ${tickerInput('ticker-input', state.tickerInput, tickers, false)}
         ${isDefault ? '' : `<button type="button" id="reset-tickers" class="mt-1.5 w-full rounded-lg border border-dashed border-gray-300 px-2 py-1 text-left text-[11px] text-gray-500 hover:border-indigo-400 hover:bg-indigo-50 hover:text-indigo-600 dark:border-gray-600">↩ ${esc(defaults.join(', '))}</button>`}
       </div>
-      <div><label class="mb-1 block text-xs font-medium">Маржинальность</label>
+      <div><label class="mb-1 block text-xs font-medium" for="leverage-sel">Маржинальность</label>
         <select id="leverage-sel" class="${inputCls()}">${levOptions(state.leverage)}</select>
       </div>
       <div>
@@ -1107,7 +1100,7 @@
         <div>
           <label class="mb-1 block text-xs font-medium">Пресеты</label>
           <div class="flex gap-2"><select id="ema-preset" class="${inputCls()}"><option value="">— Выбрать пресет —</option>${presets}</select>
-          <button type="button" id="ema-preset-del" class="icon-btn icon-btn-md icon-btn-glass" title="Удалить пресет">${icon('trash', 'w-3.5 h-3.5')}</button></div>
+          <button type="button" id="ema-preset-del" class="icon-btn icon-btn-md icon-btn-glass" title="Удалить пресет" aria-label="Удалить пресет">${icon('trash', 'w-3.5 h-3.5')}</button></div>
           <div class="mt-2 flex gap-2"><input id="ema-preset-name" class="${inputCls()}" placeholder="Название пресета" /><button type="button" id="ema-preset-save" class="btn-secondary min-h-0 py-2">Сохранить</button></div>
         </div>
         <div><label class="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">Тикеры</label>${tickerInput('ema-tickers', state.emaTickers, tickers, false)}</div>
@@ -1142,7 +1135,7 @@
     let main = '';
     if (tab === 'summary') {
       main = `<div class="p-4 hero-grid">
-        <div id="ema-out" class="min-h-[420px] ${r ? '' : 'flex items-center justify-center text-sm text-gray-500'} rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 ${r ? 'p-3 space-y-3' : ''}">${r ? heroPanelHTML({ showQuote: false, chartId: 'chart-hero' }) : 'Запустите расчет EMA-стратегии'}</div>
+        <div id="ema-out" class="min-h-[420px] ${r ? '' : 'flex items-center justify-center text-sm text-gray-500 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800'}">${r ? heroPanelHTML({ showQuote: false, chartId: 'chart-hero' }) : 'Запустите расчет EMA-стратегии'}</div>
         <aside class="rounded-lg border border-gray-200 bg-gray-50 p-3 space-y-3 dark:bg-gray-800/50 dark:border-gray-700">${emaFormHTML()}</aside>
       </div>`;
     } else {
@@ -1161,7 +1154,7 @@
     }
     return `
       ${pageHeader('EMA', 'Симулятор торговли по отклонению цены от EMA')}
-      ${r ? metricsGrid(r.metrics, r.finalValue, r.maxDrawdown) : ''}
+      ${r && tab === 'summary' ? metricsGrid(r.metrics, r.finalValue, r.maxDrawdown) : ''}
       <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
         ${analysisTabs(tabs, tab, 'data-etab')}
         ${main}
@@ -1178,7 +1171,7 @@
         <div><label class="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">Тикеры</label>${tickerInput('opt-tickers', state.optTickers, tickers, false)}</div>
         <div class="grid grid-cols-2 gap-2">
           <div><label class="mb-1 block text-xs font-medium">Страйк (+%)</label><select name="strike" class="${inputCls()}">${sel([5, 10, 15, 20], f.strike, (v) => '+' + v + '%')}</select></div>
-          <div><label class="mb-1 block text-xs font-medium">IV Adj (+%)</label><select name="vol" class="${inputCls()}">${sel([0, 5, 10, 15, 20, 25, 30, 40, 50], f.vol, (v) => '+' + v + '%')}</select></div>
+          <div><label class="mb-1 block text-xs font-medium">Корр. IV (+%)</label><select name="vol" class="${inputCls()}">${sel([0, 5, 10, 15, 20, 25, 30, 40, 50], f.vol, (v) => '+' + v + '%')}</select></div>
           <div><label class="mb-1 block text-xs font-medium">Капитал на сделку</label><select name="cap" class="${inputCls()}">${sel([5, 10, 15, 20, 25, 30, 50], f.cap, (v) => v + '%')}</select></div>
           <div><label class="mb-1 block text-xs font-medium">Экспирация</label>
             <select name="expiration" class="${inputCls()}">
@@ -1202,12 +1195,13 @@
   }
   function pageOptions() {
     const r = resultOf(state.optResult);
-    const tabs = r ? OPTIONS_TABS : [{ id: 'summary', label: 'Сводка' }];
-    const tab = r && OPTIONS_TABS.some((t) => t.id === state.optTab) ? state.optTab : 'summary';
+    const single = parseTickers(state.optTickers).length === 1;
+    const tabs = r ? OPTIONS_TABS.filter((t) => !(MULTI_ONLY.has(t.id) && single)) : [{ id: 'summary', label: 'Сводка' }];
+    const tab = r && tabs.some((t) => t.id === state.optTab) ? state.optTab : 'summary';
     let main = '';
     if (tab === 'summary') {
       main = `<div class="p-4 hero-grid">
-        <div id="optm-out" class="min-h-[420px] ${r ? '' : 'flex items-center justify-center text-sm text-gray-500'} rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 ${r ? 'p-3 space-y-3' : ''}">${r ? heroPanelHTML({ showQuote: true, proLabel: 'Equity', proTitle: 'Открыть баланс', chartId: 'chart-hero' }) : 'Запустите бэктест, чтобы увидеть результат'}</div>
+        <div id="optm-out" class="min-h-[420px] ${r ? '' : 'flex items-center justify-center text-sm text-gray-500 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800'}">${r ? heroPanelHTML({ showQuote: true, proLabel: 'Баланс', proTitle: 'Открыть баланс', chartId: 'chart-hero' }) : 'Запустите бэктест, чтобы увидеть результат'}</div>
         <aside class="rounded-lg border border-gray-200 bg-gray-50 p-3 space-y-3 dark:bg-gray-800/50 dark:border-gray-700">${optFormHTML()}${asideExtrasHTML(r)}</aside>
       </div>`;
     } else {
@@ -1225,7 +1219,7 @@
     }
     return `
       ${pageHeader('Опционы', 'Бэктест опционных стратегий на нескольких активах')}
-      ${r ? metricsGrid(r.metrics, r.finalValue, r.maxDrawdown) : ''}
+      ${r && tab === 'summary' ? metricsGrid(r.metrics, r.finalValue, r.maxDrawdown) : ''}
       <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
         ${analysisTabs(tabs, tab, 'data-otab')}
         ${main}
@@ -1265,9 +1259,9 @@
       <div class="grid lg:grid-cols-2 gap-4">
         <div class="rounded-lg border bg-white dark:bg-gray-800 dark:border-gray-700 p-3">
           <div class="flex flex-wrap items-center gap-2 mb-3">
-            <button id="cal-prev" class="icon-btn icon-btn-md icon-btn-glass">‹</button>
+            <button id="cal-prev" class="icon-btn icon-btn-md icon-btn-glass" title="Предыдущий месяц" aria-label="Предыдущий месяц">‹</button>
             <div class="font-semibold">${months[m]} ${y}</div>
-            <button id="cal-next" class="icon-btn icon-btn-md icon-btn-glass">›</button>
+            <button id="cal-next" class="icon-btn icon-btn-md icon-btn-glass" title="Следующий месяц" aria-label="Следующий месяц">›</button>
             <select id="cal-year" class="field">${[y - 1, y, y + 1].map((yy) => `<option ${yy === y ? 'selected' : ''}>${yy}</option>`).join('')}</select>
             <select id="cal-month" class="field">${months.map((name, i) => `<option value="${i}" ${i === m ? 'selected' : ''}>${name}</option>`).join('')}</select>
             <button id="cal-today" class="text-sm text-indigo-600">Сегодня</button>
@@ -1278,11 +1272,11 @@
         <div class="space-y-3">
           <div class="rounded-lg border border-red-100 bg-red-50 dark:bg-red-950/20 dark:border-red-900/40 p-3">
             <div class="flex justify-between font-medium text-red-800 dark:text-red-200 mb-2"><span>Праздники ${y}</span><span>${Object.keys(holidays).length}</span></div>
-            ${Object.keys(holidays).length ? Object.entries(holidays).sort().map(([k, v]) => `<div class="flex justify-between text-sm py-1"><span>${esc(typeof v === 'string' ? v : (v && v.name) || 'Holiday')}</span><span class="text-red-600">${esc(mmddLabel(k))}</span></div>`).join('') : '<p class="text-sm text-gray-500">Нет данных</p>'}
+            ${Object.keys(holidays).length ? Object.entries(holidays).sort().map(([k, v]) => `<div class="flex justify-between text-sm py-1"><span>${esc(typeof v === 'string' ? v : (v && v.name) || 'Праздник')}</span><span class="text-red-600">${esc(mmddLabel(k))}</span></div>`).join('') : '<p class="text-sm text-gray-500">Нет данных</p>'}
           </div>
           <div class="rounded-lg border border-amber-100 bg-amber-50 dark:bg-amber-950/20 p-3">
             <div class="flex justify-between font-medium text-amber-800 mb-2"><span>Раннее закрытие ${y}</span><span>${Object.keys(shorts).length}</span></div>
-            ${Object.keys(shorts).length ? Object.entries(shorts).sort().map(([k, v]) => `<div class="flex justify-between text-sm py-1"><span>${esc(typeof v === 'string' ? v : (v && v.name) || 'Early Close')}</span><span>${esc(mmddLabel(k))}</span></div>`).join('') : '<p class="text-sm text-gray-500">Нет</p>'}
+            ${Object.keys(shorts).length ? Object.entries(shorts).sort().map(([k, v]) => `<div class="flex justify-between text-sm py-1"><span>${esc(typeof v === 'string' ? v : (v && v.name) || 'Раннее закрытие')}</span><span>${esc(mmddLabel(k))}</span></div>`).join('') : '<p class="text-sm text-gray-500">Нет</p>'}
           </div>
         </div>
       </div>
@@ -1337,17 +1331,17 @@
         <p class="text-sm text-gray-500 mb-4">Запрос corp-action (события по акциям) из Webull API — для анализа</p>
         <form id="split-webull-form" class="flex flex-wrap gap-3 items-end p-4 bg-white border rounded-xl dark:bg-gray-900 dark:border-gray-700">
           <label class="text-xs">Тикер<input name="symbol" value="AAPL" class="field mt-1 w-28 uppercase" /></label>
-          <label class="text-xs">С даты<input name="start" type="date" value="2000-01-01" class="field mt-1" /></label>
-          <label class="text-xs">По дату<input name="end" type="date" value="${esc(nyseParts().iso)}" class="field mt-1" /></label>
+          <label class="text-xs">С даты<input name="start" type="text" inputmode="numeric" placeholder="YYYY-MM-DD" value="2000-01-01" class="field mt-1 w-40" /></label>
+          <label class="text-xs">По дату<input name="end" type="text" inputmode="numeric" placeholder="YYYY-MM-DD" value="${esc(nyseParts().iso)}" class="field mt-1 w-40" /></label>
           <button class="btn-primary min-h-0 py-2">Запросить</button>
         </form>
         <pre id="split-webull-out" class="mt-3 text-xs bg-gray-50 dark:bg-gray-800 p-3 rounded overflow-auto max-h-[400px]"></pre>
       </div>`;
     }
     return `
-      ${pageHeader('Сплиты', 'Управление дроблениями акций', `<button id="splits-refresh" class="icon-btn icon-btn-md icon-btn-glass" title="Обновить список сплитов">${icon('refresh', 'w-4 h-4')}</button>`)}
+      ${pageHeader('Сплиты', 'Управление дроблениями акций', `<button id="splits-refresh" class="icon-btn icon-btn-md icon-btn-glass" title="Обновить список сплитов" aria-label="Обновить список сплитов">${icon('refresh', 'w-4 h-4')}</button>`)}
       ${analysisTabs(SPLITS_TABS, state.splitsTab, 'data-sptab')}
-      <div class="mt-6">${state.splitsTab !== 'create' ? '<form id="split-form" class="hidden"></form>' : ''}${body}</div>
+      <div class="mt-6">${body}</div>
       <div class="text-xs text-gray-500 dark:text-gray-400 border-t pt-4 mt-6">Изменения сохраняются в базе данных</div>`;
   }
 
@@ -1372,14 +1366,14 @@
         <div class="rounded-lg border p-3 text-center"><div class="text-2xl font-bold text-green-600">${fmtUsd(stats.bal)}</div><div class="text-xs text-gray-500">Итоговый капитал</div></div>
         <div class="rounded-lg border p-3 text-center"><div class="text-2xl font-bold">${fmtPct(stats.ret)}</div><div class="text-xs text-gray-500">Общая доходность</div></div>
         <div class="rounded-lg border p-3 text-center"><div class="text-xl font-bold text-red-600">${stats.dd.toFixed(2)}%</div><div class="text-xs text-gray-500">Макс. просадка</div></div>
-        <div class="rounded-lg border p-3 text-center"><div class="text-xl font-bold text-blue-600">${(stats.closed.length ? 100 * stats.wins / stats.closed.length : 0).toFixed(1)}%</div><div class="text-xs text-gray-500">Win Rate</div></div>
+        <div class="rounded-lg border p-3 text-center"><div class="text-xl font-bold text-blue-600">${(stats.closed.length ? 100 * stats.wins / stats.closed.length : 0).toFixed(1)}%</div><div class="text-xs text-gray-500">Доля прибыльных</div></div>
         <div class="rounded-lg border p-3 text-center"><div class="text-xl font-bold text-indigo-600">${stats.closed.length}</div><div class="text-xs text-gray-500">Закрытых сделок</div></div>
         <div class="rounded-lg border p-3 text-center"><div class="text-xl font-bold">${fmtPct(stats.avg)}</div><div class="text-xs text-gray-500">Средняя сделка</div></div>
         <div class="rounded-lg border p-3 text-center"><div class="text-xl font-bold text-violet-600">${fmt(stats.closed.length ? stats.hold / stats.closed.length : 0, 1)} дн.</div><div class="text-xs text-gray-500">Средняя длительность</div></div>
         <div class="rounded-lg border p-3 text-center"><div class="text-xl font-bold">${fmtUsd(stats.net)}</div><div class="text-xs text-gray-500">Чистая прибыль</div></div>
       </div>` : `<div class="rounded-lg border border-dashed border-gray-300 bg-gray-50 px-4 py-6 text-center text-sm text-gray-600 dark:border-gray-700 dark:bg-gray-800/50">Пока нет закрытых сделок. Метрики появятся после первого завершенного трейда.</div>`;
     return `
-      ${pageHeader('Мониторинг', 'Отслеживание позиций и уведомления в Telegram', `<button id="watch-refresh" class="icon-btn icon-btn-md icon-btn-glass" title="Обновить список">${icon('refresh', 'w-4 h-4')}</button>`)}
+      ${pageHeader('Мониторинг', 'Отслеживание позиций и уведомления в Telegram', `<button id="watch-refresh" class="icon-btn icon-btn-md icon-btn-glass" title="Обновить список" aria-label="Обновить список">${icon('refresh', 'w-4 h-4')}</button>`)}
       <p class="text-sm text-gray-600 dark:text-gray-300">Глобальный порог уведомлений: ${esc(thr)}% <span class="ml-2 text-xs text-gray-500">(применяется ко всем отслеживаемым акциям)</span></p>
       <p class="text-sm text-gray-600 dark:text-gray-300 mb-3">До следующего подсчёта сигналов: ${formatDuration(secondsToNextSignal())}</p>
       <div class="rounded-lg border border-gray-200 bg-white p-4 dark:bg-gray-800 dark:border-gray-700 mb-4">
@@ -1406,7 +1400,7 @@
           <button type="button" id="watch-t11" class="btn-secondary min-h-0 py-2">Тест T-11</button>
           <button type="button" id="watch-t2" class="btn-secondary min-h-0 py-2">Тест T-2</button>
           <button type="button" id="watch-prices" class="btn-secondary min-h-0 py-2">Обновить цены и позиции</button></form>
-          <div class="overflow-auto"><table class="trades"><thead><tr><th>Тикер</th><th>IBS вход</th><th>IBS выход</th><th>Цена входа</th><th>Позиция</th><th>Действия</th></tr></thead><tbody>${rows || '<tr><td colspan="6" class="text-center text-gray-500">Нет активных наблюдений. Включите мониторинг на вкладке «Тикеры».</td></tr>'}</tbody></table></div>` : ''}
+          <div class="overflow-auto"><table class="trades"><thead><tr><th>Тикер</th><th>IBS вход</th><th>IBS выход</th><th>Цена входа</th><th>Позиция</th><th>Действия</th></tr></thead><tbody>${rows || '<tr><td colspan="6" class="text-center text-gray-500">Нет активных наблюдений. Добавьте тикер в форму выше.</td></tr>'}</tbody></table></div>` : ''}
         ${state.watchTab === 'trades' ? `<div class="rounded-lg border p-4 mb-3 bg-white dark:bg-gray-800"><h3 class="font-semibold mb-1">Ручная корректировка monitor-сделки</h3>
           <p class="text-sm text-gray-600 mb-3">Если сайт пропустил вход, можно добавить сделку вручную.</p>
           <form id="watch-manual" class="flex flex-wrap gap-2"><input name="symbol" placeholder="AAPL" class="field w-24" /><input name="entryDate" placeholder="YYYY-MM-DD" class="field w-36" /><input name="entryPrice" type="number" step="0.01" placeholder="цена" class="field w-24" /><button class="btn-primary min-h-0 py-2">Добавить ручную сделку</button></form></div>
@@ -1441,14 +1435,14 @@
       <div id="broker-list">${list}</div>`;
     } else if (tab === 'overview') {
       body = `<div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        ${[['Всего активов', '—'], ['Свободные деньги', '—'], ['Buying Power', '—'], ['Нереализованный PnL', '—']].map(([t, v]) => `<div class="rounded-lg border p-4"><div class="text-xs text-gray-500">${t}</div><div class="text-xl font-semibold mt-1">${v}</div></div>`).join('')}
-      </div><form id="broker-form" class="hidden"></form>`;
+        ${[['Всего активов', '—'], ['Свободные деньги', '—'], ['Покупательная способность', '—'], ['Нереализованный PnL', '—']].map(([t, v]) => `<div class="rounded-lg border p-4"><div class="text-xs text-gray-500">${t}</div><div class="text-xl font-semibold mt-1">${v}</div></div>`).join('')}
+      </div>`;
     } else if (tab === 'positions') {
-      body = `${emptyBrokerTable(['Тикер', 'Тип', 'Валюта', 'Кол-во', 'Средняя', 'Рыночная цена', 'Нереализ. PnL'], 'Открытых позиций нет')}<form id="broker-form" class="hidden"></form>`;
+      body = `${emptyBrokerTable(['Тикер', 'Тип', 'Валюта', 'Кол-во', 'Средняя', 'Рыночная цена', 'Нереализ. PnL'], 'Открытых позиций нет')}`;
     } else if (tab === 'orders') {
-      body = `${emptyBrokerTable(['Тикер', 'Сторона', 'Тип', 'Кол-во', 'Цена', 'Статус'], 'Активных ордеров нет')}<form id="broker-form" class="hidden"></form>`;
+      body = `${emptyBrokerTable(['Тикер', 'Сторона', 'Тип', 'Кол-во', 'Цена', 'Статус'], 'Активных ордеров нет')}`;
     } else if (tab === 'fills') {
-      body = `${emptyBrokerTable(['Тикер', 'Сторона', 'Кол-во', 'Цена', 'Время'], 'История ордеров пока не пришла')}<form id="broker-form" class="hidden"></form>`;
+      body = `${emptyBrokerTable(['Тикер', 'Сторона', 'Кол-во', 'Цена', 'Время'], 'История ордеров пока не пришла')}`;
     } else if (tab === 'autotrade') {
       body = `<div class="rounded-lg border border-gray-200 p-4 dark:border-gray-700">
         <h2 class="text-lg font-semibold mb-3">Состояние автоторговли</h2>
@@ -1462,7 +1456,7 @@
             <div class="mt-1 text-sm">${live ? 'включена' : 'выключена'}</div>
           </div>
           <div class="rounded-xl bg-gray-50 p-3 dark:bg-gray-950/40">
-            <div class="text-xs uppercase tracking-wide text-gray-500">Last run</div>
+            <div class="text-xs uppercase tracking-wide text-gray-500">Последний запуск</div>
             <div class="mt-1 text-sm">—</div>
           </div>
           <div class="rounded-xl bg-gray-50 p-3 dark:bg-gray-950/40">
@@ -1470,17 +1464,17 @@
             <div class="mt-1 text-sm">—</div>
           </div>
         </div>
-      </div><form id="broker-form" class="hidden"></form>`;
+      </div>`;
     } else if (tab === 'monitor') {
-      body = `${emptyBrokerTable(['Тикер', 'IBS', 'Цена', 'Позиция'], 'Нет отслеживаемых акций')}<form id="broker-form" class="hidden"></form>`;
+      body = `${emptyBrokerTable(['Тикер', 'IBS', 'Цена', 'Позиция'], 'Нет отслеживаемых акций')}`;
     } else {
       body = `<div class="space-y-3">
         <div><h2 class="text-sm font-semibold mb-1">Логи мониторинга</h2><pre class="text-xs bg-gray-50 dark:bg-gray-800 p-3 rounded overflow-auto max-h-40">Логи мониторинга пока пусты</pre></div>
         <div><h2 class="text-sm font-semibold mb-1">Webull / autotrade логи</h2><pre id="broker-logs" class="text-xs bg-gray-50 dark:bg-gray-800 p-3 rounded overflow-auto max-h-40">Логи автоторговли пока пусты</pre></div>
-      </div><form id="broker-form" class="hidden"></form>`;
+      </div>`;
     }
     return `
-      ${pageHeader('Кабинет Webull', 'Баланс счёта, позиции, ордера, история и логи исполнения по Webull', `<div class="flex items-center gap-2"><span class="rounded-full px-3 py-1 text-xs font-semibold ${live ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-200'}">${live ? '[LIVE]' : '[OFF]'}</span><button id="broker-refresh" class="icon-btn icon-btn-md icon-btn-glass" title="Обновить">${icon('refresh', 'w-4 h-4')}</button></div>`)}
+      ${pageHeader('Кабинет Webull', 'Баланс счёта, позиции, ордера, история и логи исполнения по Webull', `<div class="flex items-center gap-2"><span class="rounded-full px-3 py-1 text-xs font-semibold ${live ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-200'}">${live ? '[LIVE]' : '[OFF]'}</span><button id="broker-refresh" class="icon-btn icon-btn-md icon-btn-glass" title="Обновить" aria-label="Обновить">${icon('refresh', 'w-4 h-4')}</button></div>`)}
       <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
         ${analysisTabs(BROKER_TABS, tab, 'data-btab')}
         <div class="p-4">${body}<div id="broker-token" class="text-sm text-gray-500 mt-3">${state.token && state.token.present ? 'Токен Webull задан' : ''}</div></div>
@@ -1489,7 +1483,7 @@
 
   function provSelect(name, cur, extra) {
     const opts = ['finnhub', 'alpha_vantage', 'twelve_data', 'polygon'].concat(extra || []);
-    return `<select name="${name}" class="field mt-1">${opts.map((v) => `<option value="${v}" ${cur === v ? 'selected' : ''}>${v}</option>`).join('')}</select>`;
+    return `<select name="${name}" class="field mt-1">${opts.map((v) => `<option value="${v}" ${cur === v ? 'selected' : ''}>${esc(providerLabel(v))}</option>`).join('')}</select>`;
   }
   function pageSettings() {
     const st = state.settings || {};
@@ -1499,14 +1493,14 @@
       body = `<div class="rounded-xl border border-gray-200 dark:border-gray-700 p-4 mb-3">
           <div class="font-medium mb-1">Уведомления</div>
           <label class="block text-sm">Порог близости к IBS, %<input name="watchThresholdPct" type="number" step="0.1" min="0" max="20" class="field mt-1" value="${esc(st.watchThresholdPct ?? 0.3)}" /></label>
-          <p class="text-xs text-gray-500 mt-1">Диапазон 0–20%. По умолчанию 5%.</p>
+          <p class="text-xs text-gray-500 mt-1">Диапазон 0–20%. По умолчанию 0.3%.</p>
         </div>
         <div class="rounded-xl border border-gray-200 dark:border-gray-700 p-4 mb-3">
           <div class="font-medium mb-1">График</div>
           <label class="block text-sm">Высота панели индикаторов (IBS/Объём), %<input name="indicatorPanePercent" type="number" min="0" max="40" class="field mt-1" value="${esc(st.indicatorPanePercent ?? 7)}" /></label>
         </div>
         <div class="rounded-xl border border-gray-200 dark:border-gray-700 p-4 mb-3">
-          <div class="font-medium mb-1">Страница «Несколько тикеров»</div>
+          <div class="font-medium mb-1">Страница «Акции»</div>
           <label class="block text-sm">Тикеры по умолчанию<input name="defaultMultiTickerSymbols" class="field mt-1" value="${esc(st.defaultMultiTickerSymbols || 'AAPL, MSFT, AMZN, MAGS')}" /></label>
           <p class="text-xs text-gray-500 mt-1">Пример: AAPL, MSFT, AMZN, MAGS</p>
         </div>
@@ -1525,12 +1519,12 @@
       body = `<div class="rounded-xl border p-4 mb-3">
           <div class="font-medium mb-2">Тестирование API</div>
           <p class="text-xs text-gray-500 mb-3">Проверьте подключение к API провайдерам (используется тестовый символ AAPL)</p>
-          <div class="grid grid-cols-2 md:grid-cols-4 gap-2">${['alpha_vantage', 'finnhub', 'twelve_data', 'polygon'].map((p) => `<button type="button" data-testprov="${p}" class="btn-primary min-h-0 py-2 text-sm">Тест ${esc(p)}</button>`).join('')}</div>
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-2">${['alpha_vantage', 'finnhub', 'twelve_data', 'polygon'].map((p) => `<button type="button" data-testprov="${p}" class="btn-primary min-h-0 py-2 text-sm">Тест ${esc(providerLabel(p))}</button>`).join('')}</div>
           <div id="api-test-out" class="text-sm mt-2"></div>
         </div>
         <div class="rounded-xl border p-4 mb-3">
           <div class="font-medium mb-2">Провайдеры данных</div>
-          <label class="block text-sm mb-3">Котировки — страница «Результаты»${provSelect('resultsQuoteProvider', st.resultsQuoteProvider, ['webull'])}</label>
+          <label class="block text-sm mb-3">Котировки — страница «Акции»${provSelect('resultsQuoteProvider', st.resultsQuoteProvider, ['webull'])}</label>
           <label class="block text-sm mb-3">Обновление датасета${provSelect('resultsRefreshProvider', st.resultsRefreshProvider || st.enhancerProvider)}</label>
           <label class="block text-sm">Новые данные — загрузка полной истории${provSelect('enhancerProvider', st.enhancerProvider)}</label>
         </div>`;
@@ -1633,6 +1627,15 @@
         state.quoteOpen = false;
         document.getElementById('quote-pop')?.classList.add('hidden');
       }
+      if (state.menuTicker && !e.target.closest('[data-menu]') && !e.target.closest('[data-edit]') && !e.target.closest('[data-refresh]') && !e.target.closest('[data-export]') && !e.target.closest('[data-del]')) {
+        state.menuTicker = null;
+        renderPage();
+        return;
+      }
+      if (state.mobileOpen && !e.target.closest('#menu-btn') && !e.target.closest('#mobile-drawer')) {
+        state.mobileOpen = false;
+        updateChrome();
+      }
       if (e.target.closest('#confirm-no')) { state.confirm = null; document.getElementById('overlay-root').innerHTML = overlay(); return; }
       if (e.target.closest('#confirm-yes')) {
         const fn = state.confirm && state.confirm.onYes;
@@ -1640,6 +1643,18 @@
         document.getElementById('overlay-root').innerHTML = overlay();
         if (fn) fn();
       }
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape') return;
+      const closeMenu = !!state.menuTicker;
+      if (state.mobileOpen) state.mobileOpen = false;
+      if (state.menuTicker) state.menuTicker = null;
+      state.heroSettingsOpen = false;
+      state.quoteOpen = false;
+      document.getElementById('hero-settings-pop')?.classList.add('hidden');
+      document.getElementById('quote-pop')?.classList.add('hidden');
+      if (closeMenu) renderPage();
+      else updateChrome();
     });
   }
 
@@ -1658,7 +1673,13 @@
       themeBtn.title = 'Тема: ' + themeLabel();
     }
     const menuBtn = document.getElementById('menu-btn');
-    if (menuBtn) menuBtn.innerHTML = icon(state.mobileOpen ? 'x' : 'menu');
+    if (menuBtn) {
+      menuBtn.innerHTML = icon(state.mobileOpen ? 'x' : 'menu');
+      const lab = state.mobileOpen ? 'Закрыть меню' : 'Открыть меню';
+      menuBtn.setAttribute('aria-label', lab);
+      menuBtn.setAttribute('title', lab);
+      menuBtn.setAttribute('aria-expanded', state.mobileOpen ? 'true' : 'false');
+    }
     const drawer = document.getElementById('mobile-drawer');
     if (drawer) {
       drawer.classList.toggle('hidden', !state.mobileOpen);
@@ -1755,17 +1776,6 @@
     if (!root) return;
 
     if (p === '/data' || p === '/') {
-      document.getElementById('file-json')?.addEventListener('change', async (e) => {
-        const f = e.target.files[0];
-        if (!f) return;
-        try {
-          const json = JSON.parse(await f.text());
-          await API.saveDataset(json);
-          state.datasets = await API.datasets();
-          toast('Датасет сохранён');
-          renderPage();
-        } catch (err) { toast(err.message); }
-      });
       document.getElementById('view-list')?.addEventListener('click', () => { state.dataView = 'list'; localStorage.setItem('dataView', 'list'); renderPage(); });
       document.getElementById('view-grid')?.addEventListener('click', () => { state.dataView = 'compact'; localStorage.setItem('dataView', 'compact'); renderPage(); });
       root.querySelectorAll('[data-tag]').forEach((b) => b.addEventListener('click', () => { state.dataTag = b.dataset.tag; renderPage(); }));
@@ -1834,7 +1844,18 @@
       const form = document.getElementById('enhance-form');
       const btn = form?.querySelector('.enhance-load');
       const syncLoad = () => { if (btn && form) btn.disabled = !String(form.symbol.value || '').trim(); };
-      form?.symbol.addEventListener('input', () => { state.enhanceQuery = form.symbol.value; syncLoad(); });
+      function paintEnhanceGrid() {
+        const { list, cards } = enhanceCatalogCards();
+        const grid = root.querySelector('.ticker-card-grid');
+        if (grid) grid.innerHTML = cards;
+        const count = root.querySelector('.ticker-card-grid')?.parentElement?.querySelector('.text-sm.text-gray-500');
+        if (count) count.textContent = list.length + ' тикеров';
+        const heading = root.querySelector('.ticker-card-grid')?.parentElement?.querySelector('h3');
+        const catLabel = (ENHANCE_CATS.find((c) => c.id === state.enhanceCat) || ENHANCE_CATS[1]).label;
+        if (heading) heading.textContent = state.enhanceQuery ? 'Результаты поиска' : catLabel;
+        root.querySelectorAll('[data-esym]').forEach((b) => b.addEventListener('click', () => enhanceFetch(b.dataset.esym)));
+      }
+      form?.symbol.addEventListener('input', () => { state.enhanceQuery = form.symbol.value; syncLoad(); paintEnhanceGrid(); });
       syncLoad();
       root.querySelectorAll('[data-ecat]').forEach((b) => b.addEventListener('click', () => {
         state.enhanceCat = b.dataset.ecat;
@@ -2089,7 +2110,7 @@
         renderPage();
       });
       document.getElementById('watch-t11')?.addEventListener('click', async () => { try { await API.post('/api/telegram/simulate', { kind: 't11' }); toast('Симуляция T-11'); } catch (err) { toast(err.message); } });
-      document.getElementById('watch-t2')?.addEventListener('click', async () => { try { await API.post('/api/telegram/simulate', { kind: 't1' }); toast('Симуляция T-1'); } catch (err) { toast(err.message); } });
+      document.getElementById('watch-t2')?.addEventListener('click', async () => { try { await API.post('/api/telegram/simulate', { kind: 't2' }); toast('Симуляция T-2'); } catch (err) { toast(err.message); } });
       document.getElementById('watch-prices')?.addEventListener('click', async () => { try { await API.post('/api/telegram/actualize-prices', {}); toast('Цены обновлены'); } catch (err) { toast(err.message); } });
       document.getElementById('watch-manual')?.addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -2610,6 +2631,10 @@
     } catch (_) {}
     if (state.settings.defaultMultiTickerSymbols && !localStorage.getItem('tickersInput')) {
       state.tickerInput = state.settings.defaultMultiTickerSymbols;
+    }
+    const q = new URL(location.href).searchParams.get('tickers');
+    if (q) {
+      state.tickerInput = q.split(',').map((s) => s.trim().toUpperCase()).filter(Boolean).join(', ');
     }
     state.selected = parseTickers(state.tickerInput);
     if (state.datasets[0] && !state.ticker) state.ticker = state.datasets[0].ticker;
