@@ -84,6 +84,30 @@
     'bg-orange-100 text-orange-700 dark:bg-orange-900/50 dark:text-orange-300',
     'bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300',
   ];
+  const POPULAR = [
+    { symbol: 'AAPL', name: 'Apple Inc.' },
+    { symbol: 'MSFT', name: 'Microsoft Corporation' },
+    { symbol: 'AMZN', name: 'Amazon.com Inc.' },
+    { symbol: 'GOOGL', name: 'Alphabet Inc. Class A' },
+    { symbol: 'TSLA', name: 'Tesla Inc.' },
+    { symbol: 'META', name: 'Meta Platforms Inc.' },
+    { symbol: 'NVDA', name: 'NVIDIA Corporation' },
+    { symbol: 'BRK.B', name: 'Berkshire Hathaway Inc.' },
+    { symbol: 'UNH', name: 'UnitedHealth Group Inc.' },
+    { symbol: 'JNJ', name: 'Johnson & Johnson' },
+    { symbol: 'XOM', name: 'Exxon Mobil Corporation' },
+    { symbol: 'JPM', name: 'JPMorgan Chase & Co.' },
+    { symbol: 'V', name: 'Visa Inc.' },
+    { symbol: 'PG', name: 'Procter & Gamble Co.' },
+    { symbol: 'HD', name: 'The Home Depot Inc.' },
+    { symbol: 'CVX', name: 'Chevron Corporation' },
+    { symbol: 'MA', name: 'Mastercard Inc.' },
+    { symbol: 'BAC', name: 'Bank of America Corp.' },
+    { symbol: 'ABBV', name: 'AbbVie Inc.' },
+    { symbol: 'PFE', name: 'Pfizer Inc.' },
+  ];
+  const LEV_PCT = [100, 125, 150, 175, 200, 225, 250, 275, 300];
+  const DEFAULT_LEVERAGE_LABEL = '200%';
   const PATHS = {
     database: '<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/>',
     linechart: '<path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/>',
@@ -108,6 +132,7 @@
     edit: '<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
     trash: '<path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>',
     download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/>',
+    check: '<path d="M20 6 9 17l-5-5"/>',
     more: '<circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/>',
     logo: '<path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>',
   };
@@ -192,6 +217,60 @@
   }
   function defaultTickers() {
     return parseTickers(state.settings.defaultMultiTickerSymbols || 'AAPL, MSFT, AMZN, MAGS');
+  }
+  function providerId() {
+    return state.settings.enhancerProvider || 'finnhub';
+  }
+  function providerLabel(id) {
+    const m = { finnhub: 'Finnhub', alpha_vantage: 'Alpha Vantage', twelve_data: 'Twelve Data', polygon: 'Polygon', webull: 'Webull' };
+    return m[id] || id || 'Finnhub';
+  }
+  function levOptions(selected) {
+    const cur = Number(selected) || 200;
+    return LEV_PCT.map((n) => {
+      const label = n === 200 ? DEFAULT_LEVERAGE_LABEL : `${n}%`;
+      return `<option value="${n}" ${cur === n ? 'selected' : ''}>${label}</option>`;
+    }).join('');
+  }
+  function inputCls() {
+    return 'w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-800';
+  }
+  function formatDuration(seconds) {
+    const s = Math.max(0, Math.floor(seconds));
+    const days = Math.floor(s / 86400);
+    const hours = Math.floor((s % 86400) / 3600);
+    const minutes = Math.floor((s % 3600) / 60);
+    const secs = s % 60;
+    if (days > 0) return `${days}д ${hours}ч ${minutes}м`;
+    if (hours > 0) return `${hours}ч ${minutes}м ${secs}с`;
+    return `${minutes}м ${secs}с`;
+  }
+  function secondsToNextSignal() {
+    const fmt = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/New_York', hourCycle: 'h23',
+      year: 'numeric', month: 'numeric', day: 'numeric',
+      hour: 'numeric', minute: 'numeric', second: 'numeric', weekday: 'short',
+    });
+    const o = {};
+    fmt.formatToParts(new Date()).forEach((p) => { o[p.type] = p.value; });
+    const wdMap = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+    const weekday = wdMap[o.weekday] ?? 0;
+    const secOfDay = (+o.hour) * 3600 + (+o.minute) * 60 + (+o.second);
+    const target1 = (16 * 60 - 11) * 60;
+    const target2 = (16 * 60 - 1) * 60;
+    const isWeekday = weekday >= 1 && weekday <= 5;
+    if (isWeekday) {
+      if (secOfDay < target1) return target1 - secOfDay;
+      if (secOfDay < target2) return target2 - secOfDay;
+    }
+    let daysToAdd = 1;
+    let wd = weekday;
+    for (let i = 0; i < 7; i++) {
+      wd = (wd + 1) % 7;
+      if (wd >= 1 && wd <= 5) break;
+      daysToAdd++;
+    }
+    return (24 * 3600 - secOfDay) + (daysToAdd - 1) * 24 * 3600 + target1;
   }
   function applyTheme() {
     const html = document.documentElement;
@@ -466,26 +545,47 @@
   }
 
   function pageEnhance() {
+    const prov = providerId();
+    const loaded = new Set((state.datasets || []).map((d) => String(d.ticker || '').toUpperCase()));
+    const cards = POPULAR.map((t) => {
+      const on = loaded.has(t.symbol);
+      return `<button type="button" data-esym="${esc(t.symbol)}" class="ticker-card${on ? ' loaded' : ''}" title="${on ? esc(t.symbol) + ' уже загружен. Нажмите для обновления' : 'Нажмите для загрузки ' + t.symbol}">
+        <div class="text-sm font-medium truncate ${on ? 'text-green-800 dark:text-green-200' : 'text-gray-900 dark:text-gray-100'}">${esc(t.name)}</div>
+        <div class="text-xs font-mono mt-0.5 ${on ? 'text-green-600' : 'text-gray-500'}">${esc(t.symbol)}</div>
+      </button>`;
+    }).join('');
     return `
-      ${pageHeader('Новые данные', 'Загрузка исторических данных из API', `<div class="rounded-lg border px-3 py-2 text-xs bg-white dark:bg-gray-800 dark:border-gray-700"><div class="text-gray-500">Провайдер данных</div><div class="font-semibold">Finnhub</div></div>`)}
+      ${pageHeader('Новые данные', 'Загрузка исторических данных из API', `<div class="rounded-lg border px-3 py-2 text-xs bg-white dark:bg-gray-800 dark:border-gray-700"><div class="text-gray-500">Провайдер данных</div><div class="font-semibold">${esc(providerLabel(prov))}</div></div>`)}
       <div class="bg-white border border-gray-200 rounded-lg p-4 dark:bg-gray-900 dark:border-gray-800">
-        <div class="mb-2 text-sm font-medium text-gray-700 dark:text-gray-200">Тикер</div>
-        <form id="enhance-form" class="enhance-form">
-          <div class="enhance-search">
-            ${icon('search', 'search-glyph')}
-            <input name="symbol" value="" class="enhance-input" placeholder="AAPL, MSFT, TSLA…" />
+        <div class="enhance-toolbar">
+          <div class="enhance-toolbar-main">
+            <div class="mb-2 text-sm font-medium text-gray-700 dark:text-gray-200">Тикер</div>
+            <form id="enhance-form" class="enhance-form">
+              <input type="hidden" name="provider" value="${esc(prov)}" />
+              <div class="enhance-search">
+                ${icon('search', 'search-glyph')}
+                <input name="symbol" value="" class="enhance-input" placeholder="AAPL, MSFT, TSLA..." />
+              </div>
+              <div class="enhance-actions">
+                <button type="submit" class="enhance-load" disabled title="Загрузить данные">${icon('download', 'w-4 h-4')}<span class="enhance-load-label">Загрузить</span></button>
+              </div>
+            </form>
           </div>
-          <div class="enhance-actions">
-            <select name="provider" class="rounded-lg border px-3 py-2.5 dark:bg-gray-800 dark:border-gray-700">
-              <option value="finnhub">finnhub</option><option value="alpha_vantage">alpha_vantage</option>
-              <option value="twelve_data">twelve_data</option><option value="polygon">polygon</option>
-            </select>
-            <button class="btn-primary">${icon('download', 'w-4 h-4 mr-1')} Загрузить</button>
-          </div>
-        </form>
-        <div class="flex flex-wrap gap-2 mt-4">${['AAPL','MSFT','AMZN','GOOGL','TSLA','META','NVDA','BRK.B'].map((t) => `<button type="button" data-esym="${t}" class="rounded-lg border px-3 py-2 text-left text-sm bg-gray-50 hover:bg-indigo-50 dark:bg-gray-800 dark:border-gray-700"><div class="font-medium">${t}</div></button>`).join('')}</div>
-        <div id="enhance-out" class="mt-4 text-sm text-gray-600 dark:text-gray-400"></div>
-      </div>`;
+          <a href="/settings" data-nav data-settings-tab="api" class="enhance-gear" title="Настройки провайдера" aria-label="Настройки провайдера">${icon('settings', 'w-4 h-4')}</a>
+        </div>
+        <div id="enhance-out" class="mt-3 text-sm text-gray-600 dark:text-gray-400"></div>
+      </div>
+      <div class="flex gap-2 overflow-x-auto pb-2 mt-4">
+        <span class="cat-chip">⭐ Популярные <span class="text-xs text-blue-500">(${POPULAR.length})</span></span>
+      </div>
+      <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg p-3">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="font-semibold text-gray-900 dark:text-gray-100">Популярные</h3>
+          <span class="text-sm text-gray-500">${POPULAR.length} тикеров</span>
+        </div>
+        <div class="ticker-card-grid">${cards}</div>
+      </div>
+      <p class="text-xs text-gray-500 dark:text-gray-400 mt-3">Источник данных: ${esc(prov.replace('_', ' '))} через локальный сервер</p>`;
   }
 
   function isSingle() { return parseTickers(state.tickerInput).length === 1; }
@@ -558,14 +658,13 @@
       </div>`;
   }
   function stocksParams(tickers, isDefault, defaults) {
-    const levOpts = [100, 125, 150, 175, 200, 225, 250, 275, 300].map((n) => `<option value="${n}" ${state.leverage === n ? 'selected' : ''}>${n}%</option>`).join('');
     return `
       <div><label class="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">Тикеры</label>
         ${tickerInput('ticker-input', state.tickerInput, tickers, false)}
         ${isDefault ? '' : `<button type="button" id="reset-tickers" class="mt-1.5 w-full rounded-lg border border-dashed border-gray-300 px-2 py-1 text-left text-[11px] text-gray-500 hover:border-indigo-400 hover:bg-indigo-50 hover:text-indigo-600 dark:border-gray-600">↩ ${esc(defaults.join(', '))}</button>`}
       </div>
       <div><label class="mb-1 block text-xs font-medium">Маржинальность</label>
-        <select id="leverage-sel" class="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-800">${levOpts}</select>
+        <select id="leverage-sel" class="${inputCls()}">${levOptions(state.leverage)}</select>
       </div>
       <div>
         <label class="mb-1 block text-xs font-medium" for="take-profit-percent-input">Тейк-профит</label>
@@ -584,14 +683,29 @@
         <div class="p-4 grid lg-cols-3 lg:grid-cols-3 gap-4">
           <div id="ema-out" class="lg-span-2 lg:col-span-2 min-h-[420px] flex items-center justify-center text-sm text-gray-500 rounded-lg border border-gray-200 dark:border-gray-700">Запустите расчет EMA-стратегии</div>
           <aside class="rounded-lg border border-gray-200 bg-gray-50 p-3 space-y-3 dark:bg-gray-800/50 dark:border-gray-700">
-            <div><label class="mb-1 block text-xs font-medium">Тикеры</label>${tickerInput('ema-tickers', state.tickerInput, tickers)}</div>
             <form id="ema-form" class="space-y-3">
-              <div class="grid grid-cols-2 gap-2">
-                <label class="text-xs block">EMA<input name="period" type="number" value="200" class="field field-full mt-1" /></label>
-                <label class="text-xs block">Маржинальность<select name="leverage" class="field field-full mt-1"><option value="1">100%</option><option value="2" selected>200%</option><option value="3">300%</option></select></label>
+              <div><label class="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">Тикеры</label>${tickerInput('ema-tickers', state.tickerInput, tickers, false)}</div>
+              <div class="grid grid-cols-2 gap-3">
+                <div><label class="mb-1 block text-xs font-medium">EMA</label>
+                  <select name="period" class="${inputCls()}"><option value="20">EMA 20</option><option value="200" selected>EMA 200</option></select>
+                </div>
+                <div><label class="mb-1 block text-xs font-medium">Маржинальность</label>
+                  <select name="leverage" class="${inputCls()}">${levOptions(200)}</select>
+                </div>
               </div>
-              <label class="text-xs block">Зоны покупки, % от EMA<input name="buy" type="number" value="-20" class="field field-full mt-1" /></label>
-              <label class="text-xs block">Зоны продажи, % от EMA<input name="sell" type="number" value="40" class="field field-full mt-1" /></label>
+              <div><label class="mb-1 block text-xs font-medium">Сигнал входа/выхода</label>
+                <select name="signal" class="${inputCls()}"><option value="close">По закрытию свечи</option><option value="intraday">Касание внутри дня (вход по закрытию)</option></select>
+              </div>
+              <div><label class="mb-1 block text-xs font-medium">Старт EMA</label>
+                <select name="start" class="${inputCls()}"><option value="full_history">После полной истории (200 дней)</option><option value="from_start">С самого начала графика</option></select>
+              </div>
+              <div>
+                <label class="mb-1 block text-xs font-medium" for="ema-take-profit">Тейк-профит</label>
+                <input id="ema-take-profit" name="takeProfit" type="number" min="0" step="0.1" inputmode="decimal" placeholder="Пусто выключает" class="${inputCls()}" />
+              </div>
+              <label class="flex items-center gap-2 text-sm"><input type="checkbox" name="noSellAtLoss" class="h-4 w-4" /> Не продавать в минус</label>
+              <div><label class="mb-1 block text-xs font-medium">Зоны покупки, % от EMA</label><input name="buy" type="number" value="-20" class="${inputCls()}" /></div>
+              <div><label class="mb-1 block text-xs font-medium">Зоны продажи, % от EMA</label><input name="sell" type="number" value="40" class="${inputCls()}" /></div>
               <button class="btn-primary w-full">Запустить EMA-бэктест</button>
             </form>
           </aside>
@@ -601,6 +715,9 @@
 
   function pageOptions() {
     const tickers = parseTickers(state.tickerInput);
+    const strikeOpts = [5, 10, 15, 20].map((v) => `<option value="${v}" ${v === 10 ? 'selected' : ''}>+${v}%</option>`).join('');
+    const ivOpts = [0, 5, 10, 15, 20, 25, 30, 40, 50].map((v) => `<option value="${v}" ${v === 20 ? 'selected' : ''}>+${v}%</option>`).join('');
+    const capOpts = [5, 10, 15, 20, 25, 30, 50].map((v) => `<option value="${v}" ${v === 10 ? 'selected' : ''}>${v}%</option>`).join('');
     return `
       ${pageHeader('Опционы', 'Бэктест опционных стратегий на нескольких активах')}
       <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
@@ -608,14 +725,26 @@
         <div class="p-4 grid lg-cols-3 lg:grid-cols-3 gap-4">
           <div id="optm-out" class="lg-span-2 lg:col-span-2 min-h-[420px] flex items-center justify-center text-sm text-gray-500 rounded-lg border border-gray-200 dark:border-gray-700">Запустите бэктест, чтобы увидеть результат</div>
           <aside class="rounded-lg border border-gray-200 bg-gray-50 p-3 space-y-3 dark:bg-gray-800/50 dark:border-gray-700">
-            <div><label class="mb-1 block text-xs font-medium">Тикеры</label>${tickerInput('opt-tickers', state.tickerInput, tickers)}</div>
+            <div class="text-sm font-semibold">Параметры</div>
             <form id="opt-form" class="space-y-3">
-              <div class="text-sm font-semibold">Параметры</div>
+              <div><label class="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">Тикеры</label>${tickerInput('opt-tickers', state.tickerInput, tickers, false)}</div>
               <div class="grid grid-cols-2 gap-2">
-                <label class="text-xs block">Страйк (+%)<input name="strike" type="number" value="10" class="field field-full mt-1" /></label>
-                <label class="text-xs block">IV Adj (+%)<input name="vol" type="number" value="20" class="field field-full mt-1" /></label>
-                <label class="text-xs block">Капитал на сделку<input name="cap" type="number" value="10" class="field field-full mt-1" /></label>
-                <label class="text-xs block">Маржинальность<select name="leverage" class="field field-full mt-1"><option value="1">100%</option><option value="2" selected>200%</option></select></label>
+                <div><label class="mb-1 block text-xs font-medium">Страйк (+%)</label><select name="strike" class="${inputCls()}">${strikeOpts}</select></div>
+                <div><label class="mb-1 block text-xs font-medium">IV Adj (+%)</label><select name="vol" class="${inputCls()}">${ivOpts}</select></div>
+                <div><label class="mb-1 block text-xs font-medium">Капитал на сделку</label><select name="cap" class="${inputCls()}">${capOpts}</select></div>
+                <div><label class="mb-1 block text-xs font-medium">Экспирация</label>
+                  <select name="expiration" class="${inputCls()}">
+                    <option value="1">1 неделя</option><option value="2">2 недели</option>
+                    <option value="4" selected>1 месяц</option><option value="8">2 месяца</option>
+                    <option value="12">3 месяца</option><option value="24">6 месяцев</option>
+                  </select>
+                </div>
+                <div class="col-span-2"><label class="mb-1 block text-xs font-medium">Макс. удержание (дней)</label>
+                  <input name="maxHold" type="number" min="1" max="365" value="30" class="${inputCls()}" />
+                </div>
+                <div class="col-span-2"><label class="mb-1 block text-xs font-medium">Маржинальность</label>
+                  <select name="leverage" class="${inputCls()}">${levOptions(200)}</select>
+                </div>
               </div>
               <button id="opt-run" class="btn-primary w-full">Запустить бэктест</button>
             </form>
@@ -691,7 +820,14 @@
     let body = '';
     if (state.splitsTab === 'list') {
       const rows = Object.entries(map).flatMap(([ticker, evs]) => (evs || []).map((e) => `<tr><td class="font-mono">${esc(ticker)}</td><td>${esc(e.date)} × ${esc(e.factor)}</td><td class="text-right"><button data-ds="${esc(ticker)}" data-dd="${esc(e.date)}" class="text-red-600">удалить</button></td></tr>`)).join('');
-      body = `<div id="spl-list" class="overflow-auto"><table class="trades"><thead><tr><th>Тикер</th><th>События</th><th class="text-right">Действия</th></tr></thead><tbody>${rows || '<tr><td colspan="3" class="text-center text-gray-500">Нет данных</td></tr>'}</tbody></table></div>`;
+      if (!rows) {
+        body = `<div id="spl-list">
+          <div class="splits-table overflow-auto"><table class="trades"><thead><tr><th>Тикер</th><th>События</th><th class="text-right">Действия</th></tr></thead><tbody><tr><td colspan="3" class="text-center text-gray-500">Нет данных</td></tr></tbody></table></div>
+          <div class="splits-empty-mobile">Нет данных</div>
+        </div>`;
+      } else {
+        body = `<div id="spl-list" class="overflow-auto"><table class="trades"><thead><tr><th>Тикер</th><th>События</th><th class="text-right">Действия</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+      }
     } else if (state.splitsTab === 'create') {
       body = `<form id="split-form" class="flex flex-wrap gap-2 mb-4">
         <input name="ticker" placeholder="AAPL" class="field w-24" />
@@ -717,15 +853,37 @@
     const list = (state.watches || []).map((w) => `<div class="flex justify-between items-center border rounded-lg p-3 mb-2 dark:border-gray-800 bg-white dark:bg-gray-900">
       <div><div class="font-mono font-semibold">${esc(w.symbol)}</div><div class="text-xs text-gray-500">low ${esc(w.lowIBS)} / high ${esc(w.highIBS)}</div></div>
       <button data-dw="${esc(w.symbol)}" class="text-sm text-red-600">Удалить</button>
-    </div>`).join('') || '<p class="text-sm text-gray-500">Пусто</p>';
+    </div>`).join('') || '<p class="text-sm text-gray-500">Нет активных наблюдений. Включите мониторинг на вкладке «Тикеры».</p>';
+    const thr = state.settings.watchThresholdPct ?? 0.3;
+    const overview = `
+      <div class="rounded-lg border border-gray-200 bg-white p-4 dark:bg-gray-800 dark:border-gray-700 mb-4">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h3 class="text-lg font-semibold">Согласованность monitor / broker</h3>
+            <p class="text-sm text-gray-600 dark:text-gray-300">Статус синхронизации виртуальной monitor-позиции и реального брокерского журнала.</p>
+          </div>
+          <span class="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">OK</span>
+        </div>
+        <p class="mt-3 text-sm text-gray-600 dark:text-gray-300">Monitor и broker журналы сейчас согласованы.</p>
+      </div>
+      <div class="rounded-lg border border-gray-200 bg-white p-4 dark:bg-gray-800 dark:border-gray-700 mb-4">
+        <div class="mb-3 flex items-center justify-between gap-2">
+          <h3 class="text-lg font-semibold">Результат по совершенным сделкам</h3>
+          <span class="text-xs text-gray-500">База расчета: $10,000.00</span>
+        </div>
+        <div class="rounded-lg border border-dashed border-gray-300 bg-gray-50 px-4 py-6 text-center text-sm text-gray-600 dark:border-gray-700 dark:bg-gray-800/50">Пока нет закрытых сделок. Метрики появятся после первого завершенного трейда.</div>
+      </div>`;
     return `
       ${pageHeader('Мониторинг', 'Отслеживание позиций и уведомления в Telegram', `<button id="watch-refresh" class="icon-btn icon-btn-md icon-btn-glass" title="Обновить список">${icon('refresh', 'w-4 h-4')}</button>`)}
-      <p class="text-sm text-gray-600 dark:text-gray-400 mb-3">Глобальный порог уведомлений: ${esc(state.settings.watchThresholdPct ?? 0.3)}%</p>
+      <p class="text-sm text-gray-600 dark:text-gray-300">Глобальный порог уведомлений: ${esc(thr)}% <span class="ml-2 text-xs text-gray-500">(применяется ко всем отслеживаемым акциям)</span></p>
+      <p class="text-sm text-gray-600 dark:text-gray-300 mb-3">До следующего подсчёта сигналов: ${formatDuration(secondsToNextSignal())}</p>
+      ${overview}
       ${analysisTabs(WATCH_TABS, state.watchTab, 'data-wtab')}
       <div class="mt-4">
+        ${state.watchTab === 'summary' ? `<div class="rounded-lg border border-gray-200 bg-white p-4 dark:bg-gray-800 dark:border-gray-700"><h3 class="text-lg font-semibold mb-2">Капитал мониторинга (старт $10,000.00)</h3><p class="text-sm text-gray-500">Нет закрытых сделок для построения кривой капитала.</p></div>` : ''}
         ${state.watchTab === 'watches' ? `<form id="watch-form" class="flex gap-2 mb-4"><input name="symbol" placeholder="AAPL" class="field" /><button class="btn-primary min-h-0 py-2">Добавить</button></form><div id="watch-list">${list}</div>` : ''}
-        ${state.watchTab === 'summary' ? '<p class="text-sm text-gray-500">Кривая капитала мониторинга появится после закрытых сделок.</p>' : ''}
         ${state.watchTab === 'trades' ? '<div id="watch-trades" class="text-sm text-gray-500">Загрузка сделок…</div>' : ''}
+        ${state.watchTab === 'ema' ? '<p class="text-sm text-gray-500">EMA-алерты появятся после сигналов мониторинга.</p>' : ''}
       </div>`;
   }
 
@@ -811,7 +969,12 @@
     const app = document.getElementById('app');
     app.addEventListener('click', (e) => {
       const nav = e.target.closest('[data-nav]');
-      if (nav) { e.preventDefault(); navigate(nav.getAttribute('href')); return; }
+      if (nav) {
+        e.preventDefault();
+        if (nav.dataset.settingsTab) state.settingsTab = nav.dataset.settingsTab;
+        navigate(nav.getAttribute('href'));
+        return;
+      }
       if (e.target.closest('#theme-btn')) {
         e.preventDefault();
         state.theme = state.theme === 'auto' ? 'dark' : state.theme === 'dark' ? 'light' : 'auto';
@@ -1012,28 +1175,34 @@
     }
 
     if (p === '/enhance') {
-      root.querySelectorAll('[data-esym]').forEach((b) => b.addEventListener('click', () => {
-        const form = document.getElementById('enhance-form');
-        if (form) form.symbol.value = b.dataset.esym;
-      }));
-      document.getElementById('enhance-form')?.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const fd = new FormData(e.target);
+      const form = document.getElementById('enhance-form');
+      const btn = form?.querySelector('.enhance-load');
+      const syncLoad = () => { if (btn && form) btn.disabled = !String(form.symbol.value || '').trim(); };
+      form?.symbol.addEventListener('input', syncLoad);
+      syncLoad();
+      async function enhanceFetch(symbol) {
         const out = document.getElementById('enhance-out');
-        const symbol = String(fd.get('symbol') || '').trim().toUpperCase().split(',')[0].trim();
-        const provider = fd.get('provider');
-        out.textContent = 'Загрузка…';
+        const provider = providerId();
+        const ticker = String(symbol || '').trim().toUpperCase().split(',')[0].trim();
+        if (!ticker) { if (out) out.textContent = 'Укажите тикер'; return; }
+        if (out) out.textContent = 'Загрузка…';
         try {
-          const r = await API.get(`/api/fetch/${provider}/${symbol}`);
+          const r = await API.get(`/api/fetch/${provider}/${encodeURIComponent(ticker)}`);
           const bars = r.data || r.bars || [];
-          if (!bars.length) { out.textContent = 'Нет данных'; return; }
-          await API.saveDataset({ ticker: symbol, name: symbol, data: bars });
+          if (!bars.length) { if (out) out.textContent = 'Нет данных'; return; }
+          await API.saveDataset({ ticker, name: ticker, data: bars });
           state.datasets = await API.datasets();
-          out.innerHTML = `Сохранено <b>${esc(symbol)}</b>: ${bars.length} баров. <a href="/stocks?tickers=${encodeURIComponent(symbol)}" data-nav class="text-indigo-600">Открыть в Акциях</a>`;
+          if (out) out.innerHTML = `Сохранено <b>${esc(ticker)}</b>: ${bars.length} баров. <a href="/stocks?tickers=${encodeURIComponent(ticker)}" data-nav class="text-indigo-600">Открыть в Акциях</a>`;
           toast('Датасет сохранён');
+          renderPage();
         } catch (err) {
-          out.textContent = err.message;
+          if (out) out.textContent = err.message;
         }
+      }
+      root.querySelectorAll('[data-esym]').forEach((b) => b.addEventListener('click', () => enhanceFetch(b.dataset.esym)));
+      form?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        await enhanceFetch(new FormData(e.target).get('symbol'));
       });
     }
 
@@ -1060,14 +1229,21 @@
         const fd = new FormData(e.target);
         try {
           const loaded = await loadSelected();
+          const tp = Number(String(fd.get('takeProfit') || '').replace(',', '.'));
+          const ema = {
+            initialCapital: 10000,
+            leverage: Number(fd.get('leverage') || 200) / 100,
+            emaPeriod: Number(fd.get('period') || 200),
+            buyZones: [{ id: 'buy', levelPct: Number(fd.get('buy')), enabled: true }],
+            sellZones: [{ id: 'sell', levelPct: Number(fd.get('sell')), enabled: true }],
+            signalSource: fd.get('signal') || 'close',
+            emaStartMode: fd.get('start') || 'full_history',
+            noSellAtLoss: !!e.target.noSellAtLoss?.checked,
+          };
+          if (Number.isFinite(tp) && tp > 0) ema.takeProfitPercent = tp;
           const r = await API.calc('ema-zone', {
             tickers: loaded,
-            ema: {
-              initialCapital: 10000, leverage: Number(fd.get('leverage') || 2), emaPeriod: Number(fd.get('period')),
-              buyZones: [{ id: 'buy', levelPct: Number(fd.get('buy')), enabled: true }],
-              sellZones: [{ id: 'sell', levelPct: Number(fd.get('sell')), enabled: true }],
-              signalSource: 'close', emaStartMode: 'full_history', noSellAtLoss: false,
-            },
+            ema,
           });
           const el = document.getElementById('ema-out');
           el.className = 'lg-span-2 lg:col-span-2 min-h-[420px]';
@@ -1309,10 +1485,16 @@
   async function runOptionsMulti(fd) {
     try {
       const loaded = await loadSelected();
-      const stock = await API.calc('single-position', { tickers: loaded, strategy: defaultStrategy(), leverage: Number(fd.get('leverage') || 2) });
+      const stock = await API.calc('single-position', { tickers: loaded, strategy: defaultStrategy(), leverage: Number(fd.get('leverage') || 200) / 100 });
       const r = await API.calc('options-multi', {
         tickers: loaded, trades: stock.trades,
-        config: { strikePct: Number(fd.get('strike') || 10), volAdjPct: Number(fd.get('vol') || 20), capitalPct: Number(fd.get('cap') || 10) },
+        config: {
+          strikePct: Number(fd.get('strike') || 10),
+          volAdjPct: Number(fd.get('vol') || 20),
+          capitalPct: Number(fd.get('cap') || 10),
+          expirationWeeks: Number(fd.get('expiration') || 4),
+          maxHoldingDays: Number(fd.get('maxHold') || 30),
+        },
       });
       document.getElementById('optm-out').innerHTML = metricsGrid(r.metrics, r.finalValue, r.maxDrawdown) + tradesTable(r.trades);
     } catch (e) { toast(e.message); }

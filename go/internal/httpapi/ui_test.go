@@ -99,6 +99,10 @@ func TestVanillaUIAssets(t *testing.T) {
 		"take-profit-percent-input",
 		"200%",
 		"NYSE",
+		"Популярные",
+		"Экспирация",
+		"Сигнал входа/выхода",
+		"применяется ко всем отслеживаемым акциям",
 	} {
 		if !strings.Contains(a, copy) {
 			t.Errorf("missing page copy %s", copy)
