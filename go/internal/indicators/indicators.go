@@ -146,19 +146,3 @@ func IBS(ohlc []types.OHLC) []float64 {
 	}
 	return result
 }
-
-func DetectCrossover(series1, series2 []float64) []bool {
-	out := make([]bool, len(series1))
-	for i := 1; i < len(series1); i++ {
-		out[i] = series1[i-1] <= series2[i-1] && series1[i] > series2[i]
-	}
-	return out
-}
-
-func DetectCrossunder(series1, series2 []float64) []bool {
-	out := make([]bool, len(series1))
-	for i := 1; i < len(series1); i++ {
-		out[i] = series1[i-1] > series2[i-1] && series1[i] <= series2[i]
-	}
-	return out
-}

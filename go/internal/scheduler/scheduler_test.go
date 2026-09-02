@@ -106,7 +106,7 @@ func TestTelegramAggregationUsesLocalIBS(t *testing.T) {
 	if err := db.UpsertWatch(map[string]any{"symbol": "AAPL", "lowIBS": 0.1, "highIBS": 0.75}); err != nil {
 		t.Fatal(err)
 	}
-	n := RunTelegramAggregation(db, "2024-01-02")
+	n := RunTelegramAggregation(db)
 	if n != 1 {
 		t.Fatalf("watches processed %d", n)
 	}

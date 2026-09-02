@@ -2,15 +2,9 @@ package httpapi
 
 import (
 	"mktorder.com/go/internal/splits"
+	"mktorder.com/go/internal/tradingdate"
 	"mktorder.com/go/internal/types"
 )
-
-func splitDate(d string) string {
-	if len(d) >= 10 {
-		return d[:10]
-	}
-	return d
-}
 
 func mergeSplitEvents(stored, detected []types.SplitEvent) []types.SplitEvent {
 	byDate := make(map[string]types.SplitEvent, len(stored)+len(detected))
@@ -19,7 +13,7 @@ func mergeSplitEvents(stored, detected []types.SplitEvent) []types.SplitEvent {
 			if e.Date == "" || e.Factor <= 0 || e.Factor == 1 {
 				continue
 			}
-			date := splitDate(e.Date)
+			date := tradingdate.DateKey(e.Date)
 			if !overwrite {
 				if _, ok := byDate[date]; ok {
 					continue
@@ -40,11 +34,11 @@ func mergeSplitEvents(stored, detected []types.SplitEvent) []types.SplitEvent {
 func detectedNotStored(stored, detected []types.SplitEvent) []types.SplitEvent {
 	have := make(map[string]bool, len(stored))
 	for _, e := range stored {
-		have[splitDate(e.Date)] = true
+		have[tradingdate.DateKey(e.Date)] = true
 	}
 	var out []types.SplitEvent
 	for _, e := range detected {
-		date := splitDate(e.Date)
+		date := tradingdate.DateKey(e.Date)
 		if date == "" || have[date] {
 			continue
 		}

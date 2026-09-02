@@ -55,8 +55,6 @@ const API = {
   testProvider: (provider) => API.post('/api/test-provider', { provider }),
   syncCalendar: () => API.post('/api/trading-calendar/sync-webull'),
   webullSplits: (q) => API.get('/api/splits/webull-raw?' + q),
-  dashboard: () => API.get('/api/autotrade/webull/dashboard'),
-  autoLogs: () => API.get('/api/autotrade/logs'),
   calc: (name, body) => API.post('/api/calc/' + name, body),
   quote: (symbol, provider) => API.get('/api/quote/' + encodeURIComponent(symbol) + '?provider=' + encodeURIComponent(provider || 'finnhub')),
 };

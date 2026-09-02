@@ -13,6 +13,7 @@ import (
 
 	_ "modernc.org/sqlite"
 
+	"mktorder.com/go/internal/tradingdate"
 	"mktorder.com/go/internal/types"
 )
 
@@ -318,13 +319,7 @@ func (d *DB) SaveDataset(ticker, name, company, tag string, bars []types.OHLC, a
 	}
 	var from, to *string
 	if len(bars) > 0 {
-		f, t := bars[0].Date, bars[len(bars)-1].Date
-		if len(f) >= 10 {
-			f = f[:10]
-		}
-		if len(t) >= 10 {
-			t = t[:10]
-		}
+		f, t := tradingdate.DateKey(bars[0].Date), tradingdate.DateKey(bars[len(bars)-1].Date)
 		from, to = &f, &t
 	}
 	upload := time.Now().UTC().Format("2006-01-02")
@@ -355,10 +350,7 @@ func (d *DB) SaveDataset(ticker, name, company, tag string, bars []types.OHLC, a
 	}
 	defer stmt.Close()
 	for _, b := range bars {
-		date := b.Date
-		if len(date) >= 10 {
-			date = date[:10]
-		}
+		date := tradingdate.DateKey(b.Date)
 		var adjC any
 		if b.AdjClose != nil {
 			adjC = *b.AdjClose

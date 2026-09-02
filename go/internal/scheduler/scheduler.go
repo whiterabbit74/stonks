@@ -7,8 +7,6 @@ import (
 	"os"
 	"time"
 
-	"mktorder.com/go/internal/ibs"
-	"mktorder.com/go/internal/indicators"
 	"mktorder.com/go/internal/providers"
 	"mktorder.com/go/internal/store"
 	"mktorder.com/go/internal/tradingdate"
@@ -162,13 +160,13 @@ func RunTick(db *store.DB, deps Deps, now time.Time, onEvent func(JobLog)) {
 	nowMin := p.Hour*60 + p.Minute
 	until := sess.CloseMin - nowMin
 	if (until >= 10 && until <= 12) || (until >= 0 && until <= 2) {
-		n := RunTelegramAggregation(db, today)
+		n := RunTelegramAggregation(db)
 		onEvent(JobLog{At: now, Name: "telegram-aggregation", Detail: fmt.Sprintf("window until=%d watches=%d", until, n)})
 		log.Printf("scheduler: telegram aggregation minutesUntilClose=%d short=%v", until, sess.Short)
 	}
 	after := nowMin - sess.CloseMin
 	if after >= 15 && after <= 31 {
-		n, errN := RunPriceActualization(db, deps, today)
+		n, errN := RunPriceActualization(db, deps)
 		onEvent(JobLog{At: now, Name: "price-actualization", Detail: fmt.Sprintf("after=%d tickers=%d errors=%d", after, n, errN)})
 		log.Printf("scheduler: price actualization minutesAfterClose=%d", after)
 	}
@@ -191,7 +189,7 @@ func RunTokenHealth(db *store.DB, todayET string, now time.Time) (detail string,
 	return status, false
 }
 
-func RunTelegramAggregation(db *store.DB, todayET string) int {
+func RunTelegramAggregation(db *store.DB) int {
 	watches, _ := db.ListWatches()
 	count := 0
 	for _, w := range watches {
@@ -200,18 +198,12 @@ func RunTelegramAggregation(db *store.DB, todayET string) int {
 		if err != nil || len(bars) == 0 {
 			continue
 		}
-		vals := indicators.IBS(bars)
-		last := vals[len(vals)-1]
-		low, _ := w["lowIBS"].(float64)
-		high, _ := w["highIBS"].(float64)
-		_ = ibs.IsEntrySignal(last, low)
-		_ = ibs.IsExitSignal(last, high)
 		count++
 	}
 	return count
 }
 
-func RunPriceActualization(db *store.DB, deps Deps, todayET string) (ok, fail int) {
+func RunPriceActualization(db *store.DB, deps Deps) (ok, fail int) {
 	if deps.Providers == nil {
 		return 0, 0
 	}

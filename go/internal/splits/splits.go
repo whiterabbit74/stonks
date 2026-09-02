@@ -18,10 +18,7 @@ func normalize(splits []types.SplitEvent) []types.SplitEvent {
 		if s.Date == "" || !isFinite(s.Factor) || s.Factor <= 0 || s.Factor == 1 {
 			continue
 		}
-		date := s.Date
-		if len(date) >= 10 {
-			date = date[:10]
-		}
+		date := tradingdate.DateKey(s.Date)
 		byDate[date] = types.SplitEvent{Date: date, Factor: s.Factor}
 	}
 	out := make([]types.SplitEvent, 0, len(byDate))
