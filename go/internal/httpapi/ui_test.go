@@ -66,13 +66,15 @@ func TestVanillaUIAssets(t *testing.T) {
 	if strings.Contains(a, "Webull credentials are not configured") {
 		t.Fatal("English Webull credentials banner must be replaced with Russian oracle copy")
 	}
+	if strings.Contains(a, ">удалить</button>") {
+		t.Fatal("lowercase удалить row action must be Удалить")
+	}
 
 	chrome := []string{
 		"text-2xl",
-		"from-indigo-500/50",
-		"via-sky-500/40",
+		"page-rule",
 		"border-b-2",
-		"border-indigo-500",
+		"tab-on",
 		"icon-btn-glass",
 		"#menu-btn",
 		"#settings-btn",
@@ -81,6 +83,8 @@ func TestVanillaUIAssets(t *testing.T) {
 		"Авто", "Тёмная", "Светлая",
 		"'auto'", "'dark'", "'light'",
 		"laptop", "moon", "sun",
+		"Built with ❤️ for traders",
+		"footerHTML",
 	}
 	for _, m := range chrome {
 		if !strings.Contains(a, m) && !strings.Contains(extra, m) {
@@ -92,6 +96,9 @@ func TestVanillaUIAssets(t *testing.T) {
 	}
 	if !strings.Contains(extra, "#menu-btn") {
 		t.Fatal("extra.css missing hamburger #menu-btn")
+	}
+	if !strings.Contains(extra, "--accent") || !strings.Contains(extra, ".page-rule") {
+		t.Fatal("extra.css missing copper ledger tokens")
 	}
 
 	for _, copy := range []string{

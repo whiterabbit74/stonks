@@ -242,7 +242,7 @@
   }
   function logo(size) {
     const cls = size === 'lg' ? 'w-8 h-8' : 'w-5 h-5';
-    return `<svg class="${cls} text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">${PATHS.logo}</svg>`;
+    return `<svg class="${cls} text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">${PATHS.logo}</svg>`;
   }
   function esc(s) {
     return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -692,7 +692,7 @@
     html.dataset.theme = state.theme;
     try { localStorage.setItem('theme', state.theme); } catch (_) {}
     const meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute('content', isDark() ? '#0b1220' : '#ffffff');
+    if (meta) meta.setAttribute('content', isDark() ? '#14120f' : '#f2eee4');
     setTimeout(() => html.classList.remove('theme-changing'), 80);
   }
   function themeLabel() {
@@ -711,13 +711,13 @@
         </div>
         ${actions ? `<div class="flex flex-wrap items-center gap-2 sm:flex-shrink-0">${actions}</div>` : ''}
       </div>
-      <div class="mt-3 h-px bg-gradient-to-r from-indigo-500/50 via-sky-500/40 to-transparent"></div>
+      <div class="page-rule mt-3"></div>
     </div>`;
   }
   function analysisTabs(tabs, active, attr) {
     return `<div class="border-b border-gray-200 dark:border-gray-700 overflow-x-auto">
       <div class="flex items-center gap-2 flex-nowrap min-w-max px-1" role="tablist">
-        ${tabs.map((t) => `<button ${attr}="${esc(t.id)}" role="tab" aria-selected="${t.id === active}" tabindex="${t.id === active ? 0 : -1}" class="px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap sm:px-6 ${t.id === active ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'}">${esc(t.label)}</button>`).join('')}
+        ${tabs.map((t) => `<button ${attr}="${esc(t.id)}" role="tab" aria-selected="${t.id === active}" tabindex="${t.id === active ? 0 : -1}" class="px-4 py-3 text-sm font-medium border-b-2 whitespace-nowrap sm:px-6 ${t.id === active ? 'tab-on' : 'tab-off'}">${esc(t.label)}</button>`).join('')}
       </div>
     </div>`;
   }
@@ -734,13 +734,13 @@
     const dd = maxDrawdown ?? m.maxDrawdown;
     const pf = Number.isFinite(m.profitFactor) ? fmt(m.profitFactor) : '∞';
     return `<div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-9 gap-4">
-      <div class="col-span-2 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 text-center"><div class="text-2xl font-bold text-green-600">${fmtUsd(fv)}</div><div class="text-sm text-gray-600 dark:text-gray-400">Итоговый баланс</div></div>
-      <div class="col-span-2 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 text-center"><div class="text-2xl font-bold text-blue-600">${fmtPct(m.totalReturn)}</div><div class="text-sm text-gray-600 dark:text-gray-400">Общая доходность</div></div>
-      <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 text-center"><div class="text-2xl font-bold text-orange-600">${fmtPct(m.cagr)}</div><div class="text-sm text-gray-600 dark:text-gray-400">CAGR</div></div>
-      <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 text-center"><div class="text-2xl font-bold text-purple-600">${fmtPct(m.winRate)}</div><div class="text-sm text-gray-600 dark:text-gray-400">Win Rate</div></div>
-      <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 text-center"><div class="text-2xl font-bold text-red-600">${fmtPct(dd)}</div><div class="text-sm text-gray-600 dark:text-gray-400">Макс. просадка</div></div>
-      <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 text-center"><div class="text-2xl font-bold text-indigo-600">${m.totalTrades ?? 0}</div><div class="text-sm text-gray-600 dark:text-gray-400">Всего сделок</div></div>
-      <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 text-center"><div class="text-2xl font-bold text-teal-600">${pf}</div><div class="text-sm text-gray-600 dark:text-gray-400">Profit Factor</div></div>
+      <div class="col-span-2 metric-card"><div class="metric-val pos">${fmtUsd(fv)}</div><div class="metric-lab">Итоговый баланс</div></div>
+      <div class="col-span-2 metric-card"><div class="metric-val">${fmtPct(m.totalReturn)}</div><div class="metric-lab">Общая доходность</div></div>
+      <div class="metric-card"><div class="metric-val">${fmtPct(m.cagr)}</div><div class="metric-lab">CAGR</div></div>
+      <div class="metric-card"><div class="metric-val">${fmtPct(m.winRate)}</div><div class="metric-lab">Win Rate</div></div>
+      <div class="metric-card"><div class="metric-val neg">${fmtPct(dd)}</div><div class="metric-lab">Макс. просадка</div></div>
+      <div class="metric-card"><div class="metric-val">${m.totalTrades ?? 0}</div><div class="metric-lab">Всего сделок</div></div>
+      <div class="metric-card"><div class="metric-val">${pf}</div><div class="metric-lab">Profit Factor</div></div>
     </div>`;
   }
   function tradesTable(trades) {
@@ -791,12 +791,37 @@
     renderPage();
   });
 
-  function shellHTML() {
-    const nav = TABS.map((t) => `<a href="${t.to}" data-nav class="px-3 py-1 rounded text-sm border ${state.page === t.to ? 'nav-active' : 'bg-white hover:bg-gray-50 text-gray-700 border-gray-200 dark:bg-gray-900 dark:text-gray-200 dark:border-gray-800'}">${t.label}</a>`).join('');
+  function footerHTML(apiVer) {
     const year = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', year: 'numeric' }).format(new Date());
+    return `<footer class="bg-white border-t border-gray-200 dark:bg-gray-900 dark:border-gray-800 mt-[50px]">
+      <div class="max-w-7xl mx-auto px-6 py-8">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+          <div class="space-y-4">
+            <div class="flex items-center gap-3">${logo('md')}<div><h3 class="font-bold text-gray-900 dark:text-gray-100">IBS Trading Strategy</h3><p class="text-sm text-gray-600 dark:text-gray-400">Профессиональный тестировщик стратегий</p></div></div>
+            <p class="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">Анализ и тестирование торговых стратегий на исторических данных. Специализация на стратегиях mean reversion и техническом анализе.</p>
+          </div>
+          <div class="space-y-2">
+            <h4 class="text-sm font-semibold uppercase tracking-wider">Система</h4>
+            <div class="flex items-center justify-between text-sm"><span class="text-gray-600 dark:text-gray-400">Версия API:</span><span id="api-ver" class="font-mono text-xs bg-gray-100 px-2 py-1 rounded dark:bg-gray-800">${esc(apiVer || 'dev')}</span></div>
+            <div class="flex items-center justify-between text-sm"><span class="text-gray-600 dark:text-gray-400">Статус:</span><span class="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs bg-green-100 text-green-800 dark:bg-green-950/30 dark:text-green-200"><span class="w-1.5 h-1.5 bg-green-500 rounded-full"></span>Online</span></div>
+          </div>
+        </div>
+        <div class="border-t border-gray-200 dark:border-gray-800 mt-8 pt-6 flex flex-col md:flex-row items-center justify-between gap-4">
+          <div class="text-sm text-gray-600 dark:text-gray-400">© ${year} IBS Trading Strategy. Все права защищены.</div>
+          <div class="flex items-center gap-4 text-xs text-gray-500">
+            <span>Go API · Lightweight Charts v5</span>
+            <span>•</span>
+            <span>Built with ❤️ for traders</span>
+          </div>
+        </div>
+      </div>
+    </footer>`;
+  }
+  function shellHTML() {
+    const nav = TABS.map((t) => `<a href="${t.to}" data-nav class="desk-link ${state.page === t.to ? 'nav-active' : ''}">${t.label}</a>`).join('');
     const bottom = BOTTOM.map((t) => {
       const on = state.page === t.to;
-      return `<a href="${t.to}" data-nav class="flex flex-col items-center justify-center gap-1 py-2 text-xs ${on ? 'text-indigo-600 dark:text-indigo-400' : 'text-gray-500 dark:text-gray-400'}" aria-label="${t.label}">
+      return `<a href="${t.to}" data-nav class="bn-link ${on ? 'on' : ''}" aria-label="${t.label}">
         <div class="bn-icon ${on ? 'active' : ''}">${icon(t.icon, 'w-6 h-6')}</div>
         <span class="font-medium">${t.label}</span>
       </a>`;
@@ -804,7 +829,7 @@
     return `
       <a href="#main-content" class="sr-only">Перейти к основному содержимому</a>
       <div class="min-h-screen flex flex-col bg-gray-50 text-gray-800 dark:text-gray-100">
-        <header class="border-b bg-white/60 backdrop-blur dark:bg-slate-900/60 dark:border-slate-800">
+        <header class="site-head">
           <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between gap-3">
             <a href="/data" data-nav class="flex min-w-0 items-center gap-3 hover:opacity-80">
               ${logo('sm')}
@@ -817,39 +842,21 @@
               <button id="logout-btn" class="hidden md:inline-flex items-center gap-2 text-sm px-3 py-1.5 rounded border bg-white text-gray-700 border-gray-200 hover:bg-gray-50 dark:bg-gray-900 dark:text-gray-200 dark:border-gray-800">Выйти</button>
             </div>
           </div>
-          <div id="mobile-drawer" class="${state.mobileOpen ? '' : 'hidden'} md:hidden border-t border-gray-200 dark:border-gray-700 bg-white/95 backdrop-blur-sm dark:bg-slate-900/95"></div>
+          <div id="mobile-drawer" class="${state.mobileOpen ? '' : 'hidden'} md:hidden site-drawer"></div>
         </header>
         <main id="main-content" class="flex-1 w-full px-4 sm:px-6 lg:px-8 pt-6 pb-32 md:pb-24 safe-area-pb">
           <nav class="hidden md:flex gap-2 flex-wrap mb-4 desktop-nav">${nav}</nav>
           <div id="page-root"></div>
         </main>
-        <nav class="bottom-nav md:hidden fixed bottom-0 left-0 right-0 bg-white/95 dark:bg-gray-900/95 backdrop-blur-lg border-t border-gray-200 dark:border-gray-800 z-40 grid grid-cols-5 items-center h-16" role="navigation" aria-label="Основная навигация">${bottom}</nav>
-        <footer class="bg-white border-t border-gray-200 dark:bg-gray-900 dark:border-gray-800 mt-[50px]">
-          <div class="max-w-7xl mx-auto px-6 py-8">
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-              <div class="space-y-4">
-                <div class="flex items-center gap-3">${logo('md')}<div><h3 class="font-bold text-gray-900 dark:text-gray-100">IBS Trading Strategy</h3><p class="text-sm text-gray-600 dark:text-gray-400">Профессиональный тестировщик стратегий</p></div></div>
-                <p class="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">Анализ и тестирование торговых стратегий на исторических данных. Специализация на стратегиях mean reversion и техническом анализе.</p>
-              </div>
-              <div class="space-y-2">
-                <h4 class="text-sm font-semibold uppercase tracking-wider">Система</h4>
-                <div class="flex items-center justify-between text-sm"><span class="text-gray-600 dark:text-gray-400">Версия API:</span><span id="api-ver" class="font-mono text-xs bg-gray-100 px-2 py-1 rounded dark:bg-gray-800">${esc(state.apiBuildId || 'dev')}</span></div>
-                <div class="flex items-center justify-between text-sm"><span class="text-gray-600 dark:text-gray-400">Статус:</span><span class="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs bg-green-100 text-green-800 dark:bg-green-950/30 dark:text-green-200"><span class="w-1.5 h-1.5 bg-green-500 rounded-full"></span>Online</span></div>
-              </div>
-            </div>
-            <div class="border-t border-gray-200 dark:border-gray-800 mt-8 pt-6 flex flex-col md:flex-row items-center justify-between gap-4">
-              <div class="text-sm text-gray-600 dark:text-gray-400">© ${year} IBS Trading Strategy. Все права защищены.</div>
-              <div class="text-xs text-gray-500">Go API · Lightweight Charts v5</div>
-            </div>
-          </div>
-        </footer>
+        <nav class="bottom-nav md:hidden" role="navigation" aria-label="Основная навигация">${bottom}</nav>
+        ${footerHTML(state.apiBuildId)}
       </div>
       <div id="overlay-root">${overlay()}</div>`;
   }
   function mobileDrawerHTML() {
     return `<div class="px-3 py-3 space-y-0.5">${MOBILE_MENU.map((t) => {
       const on = state.page === t.to;
-      return `<a href="${t.to}" data-nav class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium ${on ? 'bg-indigo-600 text-white' : 'text-gray-700 hover:bg-gray-100 dark:text-gray-200'}">${icon(t.icon, 'w-5 h-5 ' + (on ? 'text-white' : 'text-gray-400'))}<span>${t.label}</span></a>`;
+      return `<a href="${t.to}" data-nav class="drawer-link ${on ? 'on' : ''}">${icon(t.icon, 'w-5 h-5')}<span>${t.label}</span></a>`;
     }).join('')}<div class="my-1.5 border-t border-gray-200 dark:border-gray-700"></div>
       <button id="logout-mobile" class="flex w-full items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100 dark:text-gray-200">${icon('logout', 'w-5 h-5 text-gray-400')}Выйти</button>
     </div>`;
@@ -858,14 +865,14 @@
   function loginPage() {
     return `
       <div class="min-h-screen bg-gray-50 text-gray-800 dark:text-gray-100 flex flex-col">
-        <header class="border-b bg-white/60 backdrop-blur dark:bg-slate-900/60 dark:border-slate-800">
+        <header class="site-head">
           <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between gap-3">
             <div class="flex min-w-0 items-center gap-3">${logo('sm')}<span class="hidden truncate text-lg font-semibold sm:inline">IBS Trading Strategy</span></div>
             <button id="theme-btn" class="icon-btn icon-btn-lg icon-btn-glass" title="Тема: ${themeLabel()}" aria-label="Тема: ${themeLabel()}">${icon(themeIcon())}</button>
           </div>
         </header>
         <main class="flex-1 flex items-center justify-center px-4 pb-24">
-          <div class="w-full max-w-sm rounded-lg bg-white p-4 shadow-lg border dark:bg-gray-900 dark:border-gray-800">
+          <div class="w-full max-w-sm login-card">
             <h2 class="text-lg font-semibold mb-3">Вход</h2>
             <div id="login-error" class="mb-2 text-sm text-red-600 hidden"></div>
             <form id="login-form" class="space-y-3">
@@ -876,20 +883,7 @@
             </form>
           </div>
         </main>
-        <footer class="bg-white border-t border-gray-200 dark:bg-gray-900 dark:border-gray-800 mt-[50px]">
-          <div class="max-w-7xl mx-auto px-6 py-8 grid grid-cols-1 md:grid-cols-2 gap-8">
-            <div class="space-y-4">
-              <div class="flex items-center gap-3">${logo('md')}<div><h3 class="font-bold">IBS Trading Strategy</h3><p class="text-sm text-gray-600 dark:text-gray-400">Профессиональный тестировщик стратегий</p></div></div>
-              <p class="text-sm text-gray-600 dark:text-gray-400">Анализ и тестирование торговых стратегий на исторических данных. Специализация на стратегиях mean reversion и техническом анализе.</p>
-            </div>
-            <div class="space-y-2">
-              <h4 class="text-sm font-semibold uppercase tracking-wider">Система</h4>
-              <div class="flex items-center justify-between text-sm"><span class="text-gray-600 dark:text-gray-400">Версия API:</span><span class="font-mono text-xs bg-gray-100 px-2 py-1 rounded dark:bg-gray-800">dev</span></div>
-              <div class="flex items-center justify-between text-sm"><span class="text-gray-600 dark:text-gray-400">Статус:</span><span class="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs bg-green-100 text-green-800"><span class="w-1.5 h-1.5 bg-green-500 rounded-full"></span>Online</span></div>
-            </div>
-          </div>
-          <div class="max-w-7xl mx-auto px-6 border-t border-gray-200 dark:border-gray-800 mt-2 pt-6 pb-6 text-sm text-gray-600 dark:text-gray-400">© ${new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', year: 'numeric' }).format(new Date())} IBS Trading Strategy. Все права защищены.</div>
-        </footer>
+        ${footerHTML('dev')}
       </div>`;
   }
 
@@ -1297,7 +1291,7 @@
     const map = state.splitsMap || {};
     let body = '';
     if (state.splitsTab === 'list') {
-      const rows = Object.entries(map).flatMap(([ticker, evs]) => (evs || []).map((e) => `<tr><td class="font-mono">${esc(ticker)}</td><td>${esc(e.date)} × ${esc(e.factor)}</td><td class="text-right"><button data-ds="${esc(ticker)}" data-dd="${esc(e.date)}" class="text-red-600">удалить</button></td></tr>`)).join('');
+      const rows = Object.entries(map).flatMap(([ticker, evs]) => (evs || []).map((e) => `<tr><td class="font-mono">${esc(ticker)}</td><td>${esc(e.date)} × ${esc(e.factor)}</td><td class="text-right"><button data-ds="${esc(ticker)}" data-dd="${esc(e.date)}" class="text-red-600">Удалить</button></td></tr>`)).join('');
       if (!rows) {
         body = `<div id="spl-list">
           <div class="splits-table overflow-auto"><table class="trades"><thead><tr><th>Тикер</th><th>События</th><th class="text-right">Действия</th></tr></thead><tbody><tr><td colspan="3" class="text-center text-gray-500">Нет данных</td></tr></tbody></table></div>
@@ -1426,7 +1420,7 @@
     return `<div class="overflow-auto"><table class="trades"><thead><tr>${cols.map((c) => `<th>${c}</th>`).join('')}</tr></thead><tbody><tr><td colspan="${cols.length}" class="text-center text-gray-500">${empty}</td></tr></tbody></table></div>`;
   }
   function pageBroker() {
-    const list = (state.broker || []).map((t) => `<div class="flex justify-between border rounded-lg p-3 mb-1 text-sm dark:border-gray-800 bg-white dark:bg-gray-900"><span class="font-mono">${esc(t.symbol)} ${esc(t.entryDate || '')} @ ${esc(t.entryPrice ?? '—')}</span><button data-bd="${esc(t.id)}" class="text-red-600">удалить</button></div>`).join('') || '<p class="text-sm text-gray-500">Сделок нет</p>';
+    const list = (state.broker || []).map((t) => `<div class="flex justify-between border rounded-lg p-3 mb-1 text-sm dark:border-gray-800 bg-white dark:bg-gray-900"><span class="font-mono">${esc(t.symbol)} ${esc(t.entryDate || '')} @ ${esc(t.entryPrice ?? '—')}</span><button data-bd="${esc(t.id)}" class="text-red-600">Удалить</button></div>`).join('') || '<p class="text-sm text-gray-500">Сделок нет</p>';
     const live = state.settings?.autoTrading?.enabled || state.autoConfig?.enabled;
     const tab = state.brokerTab || 'overview';
     let body = '';
@@ -1666,11 +1660,11 @@
     document.querySelectorAll('nav.desktop-nav [data-nav], .bottom-nav [data-nav]').forEach((a) => {
       const on = a.getAttribute('href') === state.page;
       if (a.closest('.bottom-nav')) {
-        a.className = `flex flex-col items-center justify-center gap-1 py-2 text-xs ${on ? 'text-indigo-600 dark:text-indigo-400' : 'text-gray-500 dark:text-gray-400'}`;
+        a.className = `bn-link ${on ? 'on' : ''}`;
         const well = a.querySelector('.bn-icon');
         if (well) well.classList.toggle('active', on);
       } else {
-        a.className = `px-3 py-1 rounded text-sm border ${on ? 'nav-active' : 'bg-white hover:bg-gray-50 text-gray-700 border-gray-200 dark:bg-gray-900 dark:text-gray-200 dark:border-gray-800'}`;
+        a.className = `desk-link ${on ? 'nav-active' : ''}`;
       }
     });
     const gear = document.getElementById('settings-btn');
@@ -2613,6 +2607,11 @@
     if (q) {
       state.tickerInput = q.split(',').map((s) => s.trim().toUpperCase()).filter(Boolean).join(', ');
       state.selected = parseTickers(state.tickerInput);
+    }
+    if (state.page === '/login') {
+      document.getElementById('app').innerHTML = loginPage();
+      bindLogin();
+      return;
     }
     try {
       await API.authCheck();

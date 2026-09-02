@@ -3,10 +3,10 @@ const Charts = {
   RANGE_DAYS: { '1M': 30, '3M': 90, '6M': 180, '1Y': 365, '3Y': 365 * 3, '5Y': 365 * 5 },
   colors(isDark) {
     return {
-      bg: isDark ? '#0b1220' : '#ffffff',
-      text: isDark ? '#e5e7eb' : '#1f2937',
-      grid: isDark ? '#1f2937' : '#eef2ff',
-      border: isDark ? '#374151' : '#e5e7eb',
+      bg: isDark ? '#1c1914' : '#faf7f0',
+      text: isDark ? '#eee8dc' : '#1b1712',
+      grid: isDark ? '#2a251e' : '#e4ddd0',
+      border: isDark ? '#3d362c' : '#d7cfc0',
     };
   },
   toBusinessDay(date) {
