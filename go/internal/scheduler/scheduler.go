@@ -138,7 +138,15 @@ func StartWith(db *store.DB, deps Deps, onEvent func(JobLog)) (stop func()) {
 				tick.Stop()
 				return
 			case now := <-tick.C:
-				RunTick(db, deps, now, onEvent)
+				func() {
+					defer func() {
+						if rec := recover(); rec != nil {
+							log.Printf("scheduler: RunTick panic: %v", rec)
+							onEvent(JobLog{At: now, Name: "tick-panic", Detail: fmt.Sprint(rec)})
+						}
+					}()
+					RunTick(db, deps, now, onEvent)
+				}()
 			}
 		}
 	}()
@@ -149,6 +157,12 @@ func RunTick(db *store.DB, deps Deps, now time.Time, onEvent func(JobLog)) {
 	if onEvent == nil {
 		onEvent = func(JobLog) {}
 	}
+	defer func() {
+		if rec := recover(); rec != nil {
+			log.Printf("scheduler: RunTick panic: %v", rec)
+			onEvent(JobLog{At: now, Name: "tick-panic", Detail: fmt.Sprint(rec)})
+		}
+	}()
 	p := tradingdate.CurrentTimeNYSE(now)
 	today := tradingdate.TodayNYSE(now)
 
