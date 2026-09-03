@@ -275,7 +275,7 @@ func (e *Engine) sizeOrder(action, symbol string, cfg map[string]any, price floa
 		if e.Broker == nil {
 			return 0, fmt.Errorf("Webull credentials are missing")
 		}
-		pos, err := e.Broker.Positions()
+		pos, err := retryBrokerRead(e, "positions", e.Broker.Positions)
 		if err != nil {
 			return 0, err
 		}
@@ -294,7 +294,7 @@ func (e *Engine) sizeOrder(action, symbol string, cfg map[string]any, price floa
 		if e.Broker == nil {
 			return 0, fmt.Errorf("Unable to read available funds for balance sizing")
 		}
-		acct, err := e.Broker.Account()
+		acct, err := retryBrokerRead(e, "account", e.Broker.Account)
 		if err != nil {
 			return 0, err
 		}

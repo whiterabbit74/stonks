@@ -69,7 +69,10 @@ func (b *LiveBroker) PlaceMarketCfg(symbol, side string, qty float64, cfg PlaceM
 	if err != nil {
 		return OrderResult{Error: err.Error()}, err
 	}
-	cid := webull.NewClientOrderID()
+	cid := strings.TrimSpace(cfg.ClientOrderID)
+	if cid == "" {
+		cid = webull.NewClientOrderID()
+	}
 	tif := strOr(cfg.TimeInForce, "DAY")
 	session := strOr(cfg.SupportTradingSession, "CORE")
 	// Live path always sends MARKET (Node executeWebullSignal forces MARKET).

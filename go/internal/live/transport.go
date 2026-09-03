@@ -70,9 +70,25 @@ type MemoryBroker struct {
 	Days       []map[string]any
 	Cancelled  []string
 	DetailN    int
-	FillQty    float64
-	FillPrice  float64
-	LastCfg    PlaceMarketCfg
+	NextID     string
+	// FailPlaceN is how many placements FailPlace applies to; 0 means "all"
+	// via the -1 sentinel set in SetFailPlace.
+	FailPlaceN       int
+	FailPlaceRecords bool
+	FillQty          float64
+	FillPrice        float64
+	LastCfg          PlaceMarketCfg
+}
+
+// SetFailPlace makes the next n placements fail; n <= 0 fails every placement.
+// records = true means the order still reached the broker and only the reply
+// was lost, the ambiguous case an idempotent retry has to detect.
+func (m *MemoryBroker) SetFailPlace(msg string, n int, records bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.FailPlace = msg
+	m.FailPlaceN = n
+	m.FailPlaceRecords = records
 }
 
 func (m *MemoryBroker) SetDetail(id string, d map[string]any) {
@@ -87,6 +103,7 @@ func (m *MemoryBroker) SetDetail(id string, d map[string]any) {
 func (m *MemoryBroker) PlaceMarketCfg(symbol, side string, qty float64, cfg PlaceMarketCfg) (OrderResult, error) {
 	m.mu.Lock()
 	m.LastCfg = cfg
+	m.NextID = cfg.ClientOrderID
 	m.mu.Unlock()
 	return m.PlaceMarket(symbol, side, qty)
 }
@@ -94,10 +111,33 @@ func (m *MemoryBroker) PlaceMarketCfg(symbol, side string, qty float64, cfg Plac
 func (m *MemoryBroker) PlaceMarket(symbol, side string, qty float64) (OrderResult, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if m.FailPlace != "" {
+	// FailPlaceN == 0 means "fail every placement" so that setting FailPlace
+	// alone keeps working; a positive count fails exactly that many.
+	if m.FailPlace != "" && m.FailPlaceN >= 0 {
+		if m.FailPlaceN > 0 {
+			m.FailPlaceN--
+			if m.FailPlaceN == 0 {
+				m.FailPlaceN = -1
+			}
+		}
+		if m.FailPlaceRecords {
+			// The order reached the broker; only the response was lost.
+			id := m.NextID
+			m.NextID = ""
+			if id == "" {
+				id = fmt.Sprintf("oid-%s-%d", symbol, len(m.Orders)+1)
+			}
+			m.Orders = append(m.Orders, OrderResult{
+				Submitted: true, ClientOrderID: id, Quantity: qty, Symbol: symbol, Side: side,
+			})
+		}
 		return OrderResult{Error: m.FailPlace}, fmt.Errorf("%s", m.FailPlace)
 	}
-	id := fmt.Sprintf("oid-%s-%d", symbol, len(m.Orders)+1)
+	id := m.NextID
+	m.NextID = ""
+	if id == "" {
+		id = fmt.Sprintf("oid-%s-%d", symbol, len(m.Orders)+1)
+	}
 	status := m.FillStatus
 	if status == "" {
 		status = "submitted"
@@ -189,6 +229,18 @@ func (m *MemoryBroker) OrderDetail(clientOrderID string) (map[string]any, error)
 		if d, ok := m.Details[clientOrderID]; ok {
 			return d, nil
 		}
+	}
+	// Only ids this broker actually accepted are known, so a caller can use a
+	// lookup to tell "the submission landed" from "it never arrived".
+	known := false
+	for _, o := range m.Orders {
+		if o.ClientOrderID == clientOrderID {
+			known = true
+			break
+		}
+	}
+	if !known {
+		return nil, fmt.Errorf("unknown client order id %s", clientOrderID)
 	}
 	if m.FillStatus != "" {
 		// A broker configured to fill also reports the fill when polled.

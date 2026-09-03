@@ -578,3 +578,66 @@ func TestT1SellsThenBuysInTheSameCycle(t *testing.T) {
 		t.Fatalf("exit filled but no re-entry in the same T-1: %+v", br.Orders)
 	}
 }
+
+// A transient failure before the order reaches the broker must not cost the
+// day: the submission is retried inside the same run, not on the next tick.
+func TestSubmitRetriesAfterTransientFailure(t *testing.T) {
+	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
+	_, e, br := testEngine(t, bars)
+	e.Sleep = func(time.Duration) {}
+	e.PatchAutoConfig(map[string]any{
+		"enabled": true, "lowIBS": 0.9, "allowNewEntries": true,
+		"entrySizingMode": "quantity", "fixedQuantity": 1,
+	})
+	br.SetFailPlace("connection reset", 2, false)
+
+	res := e.Execute("test")
+	if !res.Executed {
+		t.Fatalf("third attempt should have submitted: %+v", res.Broker)
+	}
+	if len(br.Orders) != 1 {
+		t.Fatalf("want exactly one order on the books, got %+v", br.Orders)
+	}
+}
+
+// The dangerous case: the order reached the broker but the reply was lost.
+// Resending would open a second position, so the retry must first ask the
+// broker whether that client order id landed.
+func TestSubmitDoesNotDuplicateWhenTheReplyIsLost(t *testing.T) {
+	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
+	_, e, br := testEngine(t, bars)
+	e.Sleep = func(time.Duration) {}
+	e.PatchAutoConfig(map[string]any{
+		"enabled": true, "lowIBS": 0.9, "allowNewEntries": true,
+		"entrySizingMode": "quantity", "fixedQuantity": 1,
+	})
+	br.SetFailPlace("i/o timeout", 1, true)
+
+	res := e.Execute("test")
+	if len(br.Orders) != 1 {
+		t.Fatalf("resent an order that had already landed: %+v", br.Orders)
+	}
+	if !res.Executed {
+		t.Fatalf("the landed order should be reported as submitted: %+v", res.Broker)
+	}
+}
+
+// Every attempt genuinely failing must leave nothing behind.
+func TestSubmitGivesUpWithoutPlacingAnything(t *testing.T) {
+	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
+	_, e, br := testEngine(t, bars)
+	e.Sleep = func(time.Duration) {}
+	e.PatchAutoConfig(map[string]any{
+		"enabled": true, "lowIBS": 0.9, "allowNewEntries": true,
+		"entrySizingMode": "quantity", "fixedQuantity": 1,
+	})
+	br.SetFailPlace("service unavailable", 0, false)
+
+	res := e.Execute("test")
+	if res.Executed {
+		t.Fatal("nothing was placed; must not report an execution")
+	}
+	if len(br.Orders) != 0 {
+		t.Fatalf("no order should exist: %+v", br.Orders)
+	}
+}

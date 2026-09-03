@@ -38,6 +38,10 @@ type PlaceMarketCfg struct {
 	Fractional            bool
 	TimeInForce           string
 	SupportTradingSession string
+	// ClientOrderID lets the caller pick the id before the request goes out,
+	// so a submission that fails ambiguously can be probed by that id instead
+	// of blindly resent. Empty means the broker generates one.
+	ClientOrderID string
 }
 
 type marketCfgPlacer interface {

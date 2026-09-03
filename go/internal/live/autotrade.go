@@ -12,6 +12,7 @@ import (
 	"mktorder.com/go/internal/ibs"
 	"mktorder.com/go/internal/store"
 	"mktorder.com/go/internal/tradingdate"
+	"mktorder.com/go/internal/webull"
 )
 
 var ErrTestBuyDisabled = errors.New("Live Webull test buy is disabled")
@@ -419,11 +420,109 @@ func (e *Engine) Execute(trigger string) EvalResult {
 	return ev
 }
 
-func (e *Engine) placeMarket(symbol, side string, qty float64, cfg PlaceMarketCfg) (OrderResult, error) {
+func (e *Engine) placeMarketOnce(symbol, side string, qty float64, cfg PlaceMarketCfg) (OrderResult, error) {
 	if p, ok := e.Broker.(marketCfgPlacer); ok {
 		return p.PlaceMarketCfg(symbol, side, qty, cfg)
 	}
 	return e.Broker.PlaceMarket(symbol, side, qty)
+}
+
+// submitAttempts bounds retries of a single order submission. The decision was
+// taken at T-1 and must land before the close, so the budget is small and the
+// pauses short.
+const submitAttempts = 3
+
+var submitRetryStep = 750 * time.Millisecond
+
+// placeMarket submits one order, retrying a failed submission without ever
+// risking a duplicate. The client order id is chosen here, so after a failure
+// we can ask the broker whether that exact order landed anyway — the case a
+// blind resend would turn into two positions. Only when the broker does not
+// know the id do we try again, with a fresh one.
+func (e *Engine) placeMarket(symbol, side string, qty float64, cfg PlaceMarketCfg) (OrderResult, error) {
+	var res OrderResult
+	var err error
+	for attempt := 1; attempt <= submitAttempts; attempt++ {
+		try := cfg
+		try.ClientOrderID = webull.NewClientOrderID()
+		res, err = e.placeMarketOnce(symbol, side, qty, try)
+		if err == nil && res.Submitted {
+			return res, nil
+		}
+		if landed, detail := e.orderLanded(try.ClientOrderID); landed {
+			e.logAuto("order_submit_landed_despite_error", "", map[string]any{
+				"symbol": symbol, "side": side, "clientOrderId": try.ClientOrderID,
+				"attempt": attempt, "error": errText(err, res.Error),
+			})
+			res.Submitted = true
+			res.ClientOrderID = try.ClientOrderID
+			res.Symbol, res.Side, res.Quantity = symbol, side, qty
+			res.Error = ""
+			if st := NormalizeOrderStatus(orderStatusField(detail)); st != "" && st != "unknown" {
+				res.Status = st
+			}
+			return res, nil
+		}
+		if attempt == submitAttempts {
+			break
+		}
+		e.logAuto("order_submit_retry", "", map[string]any{
+			"symbol": symbol, "side": side, "attempt": attempt,
+			"error": errText(err, res.Error),
+		})
+		e.sleep(submitRetryStep)
+	}
+	return res, err
+}
+
+// orderLanded reports whether the broker knows this client order id. A broker
+// that cannot answer is treated as "not landed" only after the id is absent,
+// never after a lookup error — an error there leaves the question open, so we
+// stop retrying rather than risk a second order.
+func (e *Engine) orderLanded(clientOrderID string) (bool, map[string]any) {
+	if e.Broker == nil || clientOrderID == "" {
+		return false, nil
+	}
+	detail, err := e.Broker.OrderDetail(clientOrderID)
+	if err != nil || detail == nil {
+		return false, nil
+	}
+	if clientOrderIDOf(detail) == clientOrderID {
+		return true, detail
+	}
+	if orderStatusField(detail) != "" {
+		return true, detail
+	}
+	return false, nil
+}
+
+// retryBrokerRead retries a read-only broker call. These run before any order
+// is sent, so a repeat is free — and a single timed-out balance or position
+// lookup would otherwise cancel the whole decision.
+func retryBrokerRead[T any](e *Engine, what string, fn func() (T, error)) (T, error) {
+	var out T
+	var err error
+	for attempt := 1; attempt <= submitAttempts; attempt++ {
+		out, err = fn()
+		if err == nil {
+			return out, nil
+		}
+		if attempt == submitAttempts {
+			break
+		}
+		e.logAuto("broker_read_retry", "", map[string]any{
+			"call": what, "attempt": attempt, "error": err.Error(),
+		})
+		e.sleep(submitRetryStep)
+	}
+	return out, err
+}
+
+func errText(err error, fallback string) string {
+	if err != nil {
+		return err.Error()
+	}
+	return fallback
 }
 
 func (e *Engine) logBalanceSnapshot(corr, symbol, action string) {
