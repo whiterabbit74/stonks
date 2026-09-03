@@ -362,9 +362,30 @@ func (e *Engine) Account() (map[string]any, error) {
 
 func (e *Engine) Dashboard() (map[string]any, error) {
 	acc, err := e.Account()
-	if err != nil {
-		return map[string]any{"positions": []any{}, "connection": e.WebullSummary(), "error": err.Error()}, nil
+	if acc == nil {
+		acc = map[string]any{"positions": []any{}, "connection": e.WebullSummary()}
 	}
+	if err != nil {
+		acc["error"] = err.Error()
+	}
+	open := []any{}
+	hist := []any{}
+	if e.Broker != nil {
+		if rows, oerr := e.Broker.OpenOrders(); oerr == nil && rows != nil {
+			open = rows
+		} else if oerr != nil {
+			acc["openOrdersError"] = oerr.Error()
+		}
+		today := tradingdate.TodayNYSE(e.now())
+		start := tradingdate.AddDays(today, -30)
+		if rows, herr := e.Broker.OrderHistory(start, today); herr == nil && rows != nil {
+			hist = rows
+		} else if herr != nil {
+			acc["orderHistoryError"] = herr.Error()
+		}
+	}
+	acc["openOrders"] = open
+	acc["orderHistory"] = hist
 	return acc, nil
 }
 

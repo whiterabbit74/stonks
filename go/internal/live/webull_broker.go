@@ -213,6 +213,32 @@ func (b *LiveBroker) OrderDetail(clientOrderID string) (map[string]any, error) {
 	return m, nil
 }
 
+func (b *LiveBroker) OpenOrders() ([]any, error) {
+	c := b.client()
+	resp, err := c.ListOpenOrders(c.AccountID, 50)
+	if err != nil {
+		return nil, err
+	}
+	rows := flattenAny(resp.Data)
+	if rows == nil {
+		rows = []any{}
+	}
+	return rows, nil
+}
+
+func (b *LiveBroker) OrderHistory(start, end string) ([]any, error) {
+	c := b.client()
+	resp, err := c.OrderHistory(c.AccountID, start, end, 100)
+	if err != nil {
+		return nil, err
+	}
+	rows := flattenAny(resp.Data)
+	if rows == nil {
+		rows = []any{}
+	}
+	return rows, nil
+}
+
 func flattenAny(v any) []any {
 	if a, ok := v.([]any); ok {
 		return a
@@ -221,7 +247,7 @@ func flattenAny(v any) []any {
 	if !ok {
 		return nil
 	}
-	for _, k := range []string{"data", "holdings", "positions", "result", "items"} {
+	for _, k := range []string{"data", "holdings", "positions", "result", "items", "orders", "list"} {
 		if a, ok := m[k].([]any); ok {
 			return a
 		}

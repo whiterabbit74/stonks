@@ -41,6 +41,8 @@ type Broker interface {
 	Calendar() (jsonRaw []byte, err error)
 	RawSplits(symbol string) ([]map[string]any, error)
 	OrderDetail(clientOrderID string) (map[string]any, error)
+	OpenOrders() ([]any, error)
+	OrderHistory(start, end string) ([]any, error)
 }
 
 type Engine struct {

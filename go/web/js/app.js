@@ -264,7 +264,16 @@
     if (Array.isArray(v)) return v;
     if (v && Array.isArray(v.holdings)) return v.holdings;
     if (v && Array.isArray(v.positions)) return v.positions;
+    if (v && Array.isArray(v.orders)) return v.orders;
+    if (v && Array.isArray(v.items)) return v.items;
+    if (v && Array.isArray(v.list)) return v.list;
     return [];
+  }
+  function pickField(row, keys) {
+    for (const k of keys) {
+      if (row && row[k] != null && row[k] !== '') return row[k];
+    }
+    return '—';
   }
   function fmtPct(n) { return (n == null ? 0 : n).toFixed(1) + '%'; }
   function pnlClass(n) { return n > 0 ? 'pos' : n < 0 ? 'neg' : ''; }
@@ -1468,9 +1477,13 @@
       const posRows = pos.map((p) => `<tr><td>${esc(p.symbol || p.ticker || '')}</td><td>${esc(p.instrument_type || p.type || '')}</td><td>${esc(p.currency || '')}</td><td>${esc(p.quantity ?? p.qty ?? '')}</td><td>${esc(p.average_price ?? p.avgPrice ?? '')}</td><td>${esc(p.market_price ?? p.lastPrice ?? '')}</td><td>${esc(p.unrealized_profit_loss ?? p.unrealizedPnl ?? '')}</td></tr>`).join('');
       body = `${posRows ? `<div class="overflow-auto"><table class="trades"><thead><tr><th>Тикер</th><th>Тип</th><th>Валюта</th><th>Кол-во</th><th>Средняя</th><th>Рыночная цена</th><th>Нереализ. PnL</th></tr></thead><tbody>${posRows}</tbody></table></div>` : emptyBrokerTable(['Тикер', 'Тип', 'Валюта', 'Кол-во', 'Средняя', 'Рыночная цена', 'Нереализ. PnL'], 'Открытых позиций нет')}`;
     } else if (tab === 'orders') {
-      body = `${emptyBrokerTable(['Тикер', 'Сторона', 'Тип', 'Кол-во', 'Цена', 'Статус'], 'Активных ордеров нет')}`;
+      const orders = asRows(state.dashboard && state.dashboard.openOrders);
+      const orderRows = orders.map((o) => `<tr><td>${esc(pickField(o, ['symbol', 'ticker']))}</td><td>${esc(pickField(o, ['side', 'action']))}</td><td>${esc(pickField(o, ['order_type', 'type']))}</td><td>${esc(pickField(o, ['quantity', 'qty', 'total_quantity']))}</td><td>${esc(pickField(o, ['limit_price', 'price', 'avg_price']))}</td><td>${esc(pickField(o, ['status', 'order_status']))}</td></tr>`).join('');
+      body = `${orderRows ? `<div class="overflow-auto"><table class="trades"><thead><tr><th>Тикер</th><th>Сторона</th><th>Тип</th><th>Кол-во</th><th>Цена</th><th>Статус</th></tr></thead><tbody>${orderRows}</tbody></table></div>` : emptyBrokerTable(['Тикер', 'Сторона', 'Тип', 'Кол-во', 'Цена', 'Статус'], 'Активных ордеров нет')}`;
     } else if (tab === 'fills') {
-      body = `${emptyBrokerTable(['Тикер', 'Сторона', 'Кол-во', 'Цена', 'Время'], 'История ордеров пока не пришла')}`;
+      const fills = asRows(state.dashboard && state.dashboard.orderHistory);
+      const fillRows = fills.map((o) => `<tr><td>${esc(pickField(o, ['symbol', 'ticker']))}</td><td>${esc(pickField(o, ['side', 'action']))}</td><td>${esc(pickField(o, ['filled_qty', 'filled_quantity', 'quantity', 'qty']))}</td><td>${esc(pickField(o, ['filled_price', 'avg_price', 'average_price', 'deal_price']))}</td><td>${esc(pickField(o, ['filled_time', 'filled_time_at', 'place_time', 'create_time', 'created_at']))}</td></tr>`).join('');
+      body = `${fillRows ? `<div class="overflow-auto"><table class="trades"><thead><tr><th>Тикер</th><th>Сторона</th><th>Кол-во</th><th>Цена</th><th>Время</th></tr></thead><tbody>${fillRows}</tbody></table></div>` : emptyBrokerTable(['Тикер', 'Сторона', 'Кол-во', 'Цена', 'Время'], 'История ордеров пока не пришла')}`;
     } else if (tab === 'autotrade') {
       const st = state.autoStatus || {};
       const last = (st.state && st.state.lastRunAt) || '—';

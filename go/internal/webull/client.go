@@ -176,6 +176,39 @@ func (c *Client) PlaceOrder(accountID string, order map[string]any) (*Response, 
 	return c.Request(http.MethodPost, "/openapi/trade/stock/order/place", nil, body, true, map[string]string{"category": "US_STOCK"})
 }
 
+func (c *Client) ListOpenOrders(accountID string, pageSize int) (*Response, error) {
+	if accountID == "" {
+		accountID = c.AccountID
+	}
+	if pageSize <= 0 {
+		pageSize = 50
+	}
+	return c.Request(http.MethodGet, "/trade/orders/list-open", map[string]string{
+		"account_id": accountID,
+		"page_size":  fmt.Sprintf("%d", pageSize),
+	}, nil, true, nil)
+}
+
+func (c *Client) OrderHistory(accountID, startDate, endDate string, pageSize int) (*Response, error) {
+	if accountID == "" {
+		accountID = c.AccountID
+	}
+	if pageSize <= 0 {
+		pageSize = 100
+	}
+	q := map[string]string{
+		"account_id": accountID,
+		"page_size":  fmt.Sprintf("%d", pageSize),
+	}
+	if startDate != "" {
+		q["start_date"] = startDate
+	}
+	if endDate != "" {
+		q["end_date"] = endDate
+	}
+	return c.Request(http.MethodGet, "/openapi/trade/order/history", q, nil, true, nil)
+}
+
 func (c *Client) OrderDetail(accountID, clientOrderID string) (*Response, error) {
 	if accountID == "" {
 		accountID = c.AccountID

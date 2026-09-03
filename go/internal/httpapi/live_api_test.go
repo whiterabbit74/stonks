@@ -242,6 +242,38 @@ func TestSimulateSplitJumpAndEmaAndFillPoll(t *testing.T) {
 	}
 }
 
+func TestDashboardIncludesBrokerOrders(t *testing.T) {
+	s, _, br := liveServer(t)
+	br.Open = []any{map[string]any{"symbol": "AAPL", "side": "BUY", "status": "WORKING", "quantity": 2, "order_type": "MARKET"}}
+	br.Hist = []any{map[string]any{"symbol": "MSFT", "side": "SELL", "status": "FILLED", "filled_qty": 1, "filled_price": 8.2, "filled_time": "2026-09-01"}}
+	req := httptest.NewRequest("GET", "/api/autotrade/webull/dashboard", nil)
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != 200 {
+		t.Fatalf("dashboard %d %s", rec.Code, rec.Body.String())
+	}
+	var dash map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &dash); err != nil {
+		t.Fatal(err)
+	}
+	open, _ := dash["openOrders"].([]any)
+	hist, _ := dash["orderHistory"].([]any)
+	if len(open) != 1 {
+		t.Fatalf("openOrders %v body=%s", dash["openOrders"], rec.Body.String())
+	}
+	om, _ := open[0].(map[string]any)
+	if fmt.Sprint(om["symbol"]) != "AAPL" || fmt.Sprint(om["status"]) != "WORKING" {
+		t.Fatalf("open order %+v", om)
+	}
+	if len(hist) != 1 {
+		t.Fatalf("orderHistory %v", dash["orderHistory"])
+	}
+	hm, _ := hist[0].(map[string]any)
+	if fmt.Sprint(hm["symbol"]) != "MSFT" || fmt.Sprint(hm["status"]) != "FILLED" {
+		t.Fatalf("history %+v", hm)
+	}
+}
+
 func TestPagesDriveLiveAPIs(t *testing.T) {
 	app, err := os.ReadFile("../web/js/app.js")
 	if err != nil {
@@ -263,6 +295,9 @@ func TestPagesDriveLiveAPIs(t *testing.T) {
 		if !strings.Contains(a, s) && !strings.Contains(j, s) {
 			t.Errorf("UI missing %s", s)
 		}
+	}
+	if !strings.Contains(a, "openOrders") || !strings.Contains(a, "orderHistory") {
+		t.Error("broker tabs must render dashboard openOrders/orderHistory")
 	}
 	if !strings.Contains(a, "r.sent") {
 		t.Error("watches simulate toast must inspect r.sent")
