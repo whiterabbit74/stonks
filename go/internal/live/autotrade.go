@@ -246,6 +246,12 @@ func (e *Engine) Evaluate() EvalResult {
 			if q["ok"] != true {
 				continue
 			}
+			// An invalid highIBS makes the exit path refuse to act
+			// ("invalid_high_ibs"), so entering here would open a position
+			// autotrading can never close on its own.
+			if asBool(q["highIBSInvalid"]) {
+				continue
+			}
 			v, _ := q["ibs"].(float64)
 			low := liveLowOrDefault(q)
 			if ibs.IsEntrySignal(v, low) && v < bestIBS {
