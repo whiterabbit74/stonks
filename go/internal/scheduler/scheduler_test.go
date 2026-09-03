@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -11,6 +12,11 @@ import (
 	"mktorder.com/go/internal/tradingdate"
 	"mktorder.com/go/internal/types"
 )
+
+func TestMain(m *testing.M) {
+	live.FastTrackers = true
+	os.Exit(m.Run())
+}
 
 func TestHolidayIsNotTradingDay(t *testing.T) {
 	cal := Calendar{Holidays: map[string]map[string]any{

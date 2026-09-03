@@ -44,6 +44,7 @@ type Broker interface {
 	OrderDetail(clientOrderID string) (map[string]any, error)
 	OpenOrders() ([]any, error)
 	OrderHistory(start, end string) ([]any, error)
+	CancelOrder(clientOrderID string) error
 }
 
 type Engine struct {
@@ -53,9 +54,11 @@ type Engine struct {
 	Broker   Broker
 	ChatID   string
 	Now      func() time.Time
+	Sleep    func(time.Duration)
 
 	mu           sync.Mutex
 	reservations map[string]string
+	wheels       map[string]bool
 	lastRunAt    string
 	lastResult   any
 }

@@ -861,9 +861,19 @@ func (s *Server) handlePatchTrade(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleCloseMonitor(w http.ResponseWriter, r *http.Request) {
 	var body map[string]any
 	_ = readJSON(r, &body)
-	body["status"] = "closed"
-	_ = s.DB.PatchTrade("trades", r.PathValue("id"), body)
-	writeJSON(w, 200, map[string]any{"ok": true})
+	updated, err := s.DB.CloseMonitorTrade(r.PathValue("id"), body)
+	if err != nil {
+		code := 400
+		switch err.Error() {
+		case "Trade not found":
+			code = 404
+		case "Trade is already closed", "Linked broker-backed monitor trades must be reconciled automatically":
+			code = 409
+		}
+		writeJSON(w, code, map[string]any{"error": err.Error()})
+		return
+	}
+	writeJSON(w, 200, updated)
 }
 
 func (s *Server) handleDeleteTrade(w http.ResponseWriter, r *http.Request) {

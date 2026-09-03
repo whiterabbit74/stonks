@@ -68,6 +68,8 @@ type MemoryBroker struct {
 	Open       []any
 	Hist       []any
 	Days       []map[string]any
+	Cancelled  []string
+	DetailN    int
 }
 
 func (m *MemoryBroker) PlaceMarket(symbol, side string, qty float64) (OrderResult, error) {
@@ -163,12 +165,20 @@ func (m *MemoryBroker) OrderHistory(start, end string) ([]any, error) {
 func (m *MemoryBroker) OrderDetail(clientOrderID string) (map[string]any, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	m.DetailN++
 	if m.Details != nil {
 		if d, ok := m.Details[clientOrderID]; ok {
 			return d, nil
 		}
 	}
 	return map[string]any{"status": "SUBMITTED", "client_order_id": clientOrderID}, nil
+}
+
+func (m *MemoryBroker) CancelOrder(clientOrderID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.Cancelled = append(m.Cancelled, clientOrderID)
+	return nil
 }
 
 type MemoryQuotes struct {

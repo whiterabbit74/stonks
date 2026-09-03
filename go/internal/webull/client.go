@@ -209,6 +209,16 @@ func (c *Client) OrderHistory(accountID, startDate, endDate string, pageSize int
 	return c.Request(http.MethodGet, "/openapi/trade/order/history", q, nil, true, nil)
 }
 
+func (c *Client) CancelOrder(accountID, clientOrderID string) (*Response, error) {
+	if accountID == "" {
+		accountID = c.AccountID
+	}
+	return c.Request(http.MethodPost, "/trade/order/cancel", nil, map[string]any{
+		"account_id":      accountID,
+		"client_order_id": clientOrderID,
+	}, true, nil)
+}
+
 func (c *Client) OrderDetail(accountID, clientOrderID string) (*Response, error) {
 	if accountID == "" {
 		accountID = c.AccountID

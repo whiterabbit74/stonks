@@ -3,8 +3,10 @@ package live
 import (
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -12,6 +14,11 @@ import (
 	"mktorder.com/go/internal/store"
 	"mktorder.com/go/internal/types"
 )
+
+func TestMain(m *testing.M) {
+	FastTrackers = true
+	os.Exit(m.Run())
+}
 
 func TestExecuteReserveSubmitTrack(t *testing.T) {
 	dir := t.TempDir()
@@ -469,5 +476,93 @@ func TestT1DryRunSameWatchesAsNode(t *testing.T) {
 	qty, qerr := e.sizeOrder("entry", "AAPL", e.AutoConfig(), 8.2)
 	if qerr != nil || qty != 1 {
 		t.Fatalf("qty %v %v (Node quantity mode = 1)", qty, qerr)
+	}
+}
+
+func TestTrackerWheelUsesNodeBackoff(t *testing.T) {
+	dir := t.TempDir()
+	db, err := store.Open(filepath.Join(dir, "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
+	_ = db.SaveDataset("AAPL", "AAPL", "", "", bars, false)
+	_ = db.UpsertWatch(map[string]any{"symbol": "AAPL", "lowIBS": 0.9})
+	br := &MemoryBroker{}
+	e := New(db, &MemoryQuotes{Bars: map[string][]types.OHLC{"AAPL": bars}})
+	e.Broker = br
+	e.Telegram = &MemoryTelegram{}
+	e.ChatID = "c"
+	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true, "entrySizingMode": "quantity", "fixedQuantity": 1})
+	gate := make(chan struct{})
+	var mu sync.Mutex
+	var delays []time.Duration
+	e.Sleep = func(d time.Duration) {
+		mu.Lock()
+		delays = append(delays, d)
+		mu.Unlock()
+		<-gate
+	}
+	res := e.Execute("test")
+	if !res.Executed || len(br.Orders) != 1 {
+		t.Fatalf("execute %+v orders %+v", res, br.Orders)
+	}
+	oid := br.Orders[0].ClientOrderID
+	br.mu.Lock()
+	if br.Details == nil {
+		br.Details = map[string]map[string]any{}
+	}
+	br.Details[oid] = map[string]any{"status": "FILLED", "filled_qty": 1.0, "avg_price": 8.2}
+	br.mu.Unlock()
+	close(gate)
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if db.FindPendingTracker("AAPL", "entry") == nil {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if db.FindPendingTracker("AAPL", "entry") != nil {
+		t.Fatal("wheel must mark tracker filled without waiting for the 20s scheduler tick")
+	}
+	mu.Lock()
+	got := append([]time.Duration(nil), delays...)
+	mu.Unlock()
+	if len(got) == 0 || got[0] != 1500*time.Millisecond {
+		t.Fatalf("first poll delay want 1.5s (Node TRACKING_DELAYS_MS[0]), got %v", got)
+	}
+	if br.DetailN < 1 {
+		t.Fatalf("OrderDetail never called, n=%d", br.DetailN)
+	}
+}
+
+func TestCancelOpenOrdersBeforeEntry(t *testing.T) {
+	dir := t.TempDir()
+	db, err := store.Open(filepath.Join(dir, "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
+	_ = db.SaveDataset("AAPL", "AAPL", "", "", bars, false)
+	_ = db.UpsertWatch(map[string]any{"symbol": "AAPL", "lowIBS": 0.9})
+	br := &MemoryBroker{Open: []any{
+		map[string]any{"symbol": "AAPL", "client_order_id": "old-1", "status": "WORKING"},
+		map[string]any{"symbol": "MSFT", "client_order_id": "msft-1", "status": "WORKING"},
+	}}
+	e := New(db, &MemoryQuotes{Bars: map[string][]types.OHLC{"AAPL": bars}})
+	e.Broker = br
+	e.Telegram = &MemoryTelegram{}
+	e.PatchAutoConfig(map[string]any{
+		"enabled": true, "lowIBS": 0.9, "allowNewEntries": true,
+		"entrySizingMode": "quantity", "fixedQuantity": 1, "cancelOpenOrdersBeforeEntry": true,
+	})
+	res := e.Execute("test")
+	if !res.Executed {
+		t.Fatalf("execute %+v", res)
+	}
+	if len(br.Cancelled) != 1 || br.Cancelled[0] != "old-1" {
+		t.Fatalf("cancelled %+v", br.Cancelled)
 	}
 }

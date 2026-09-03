@@ -125,6 +125,7 @@ func StartWith(db *store.DB, deps Deps, onEvent func(JobLog)) (stop func()) {
 	if deps.Providers == nil {
 		deps.Providers = providers.FromEnv()
 	}
+	engine(db, deps).ResumeTrackers()
 	tick := time.NewTicker(20 * time.Second)
 	done := make(chan struct{})
 	go func() {

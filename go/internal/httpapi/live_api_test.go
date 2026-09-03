@@ -15,6 +15,11 @@ import (
 	"mktorder.com/go/internal/types"
 )
 
+func TestMain(m *testing.M) {
+	live.FastTrackers = true
+	os.Exit(m.Run())
+}
+
 func liveServer(t *testing.T) (*Server, *live.MemoryTelegram, *live.MemoryBroker) {
 	t.Helper()
 	s := testServer(t, "")
@@ -415,6 +420,51 @@ func TestNoJsonOKCannedMap(t *testing.T) {
 	}
 	if strings.Contains(txt, `"simulated": true`) {
 		t.Fatal("canned simulate stub still in server.go")
+	}
+}
+
+func TestCloseMonitorRequiresExitPrice(t *testing.T) {
+	s, _, _ := liveServer(t)
+	_ = s.DB.InsertTrade("trades", map[string]any{"id": "m1", "symbol": "AAPL", "status": "open", "entryDate": "2026-08-20", "entryPrice": 10.0})
+	rec := postJSON(s, "/api/trades/m1/close-monitor", map[string]any{})
+	if rec.Code != 400 {
+		t.Fatalf("want 400 missing exitPrice, got %d %s", rec.Code, rec.Body.String())
+	}
+	rec = postJSON(s, "/api/trades/missing/close-monitor", map[string]any{"exitPrice": 12.0})
+	if rec.Code != 404 {
+		t.Fatalf("want 404, got %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestCloseMonitor409AndPnL(t *testing.T) {
+	s, _, _ := liveServer(t)
+	_ = s.DB.InsertTrade("trades", map[string]any{"id": "m1", "symbol": "AAPL", "status": "open", "entryDate": "2026-08-20", "entryPrice": 10.0})
+	rec := postJSON(s, "/api/trades/m1/close-monitor", map[string]any{"exitPrice": 12.0, "exitDate": "2026-09-01"})
+	if rec.Code != 200 {
+		t.Fatalf("close %d %s", rec.Code, rec.Body.String())
+	}
+	var out map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if fmt.Sprint(out["status"]) != "closed" {
+		t.Fatalf("status %v", out["status"])
+	}
+	if pnl, _ := out["pnlAbsolute"].(float64); pnl != 2 {
+		t.Fatalf("pnlAbsolute %v body=%s", out["pnlAbsolute"], rec.Body.String())
+	}
+	if pct, _ := out["pnlPercent"].(float64); pct != 20 {
+		t.Fatalf("pnlPercent %v", out["pnlPercent"])
+	}
+	rec = postJSON(s, "/api/trades/m1/close-monitor", map[string]any{"exitPrice": 12.0})
+	if rec.Code != 409 {
+		t.Fatalf("already closed want 409, got %d %s", rec.Code, rec.Body.String())
+	}
+	_ = s.DB.InsertTrade("trades", map[string]any{"id": "m2", "symbol": "MSFT", "status": "open", "entryDate": "2026-08-20", "entryPrice": 10.0})
+	_, _ = s.DB.SQL.Exec(`UPDATE trades SET linked_broker_trade_id='b1' WHERE id='m2'`)
+	rec = postJSON(s, "/api/trades/m2/close-monitor", map[string]any{"exitPrice": 11.0})
+	if rec.Code != 409 {
+		t.Fatalf("linked trade want 409, got %d %s", rec.Code, rec.Body.String())
 	}
 }
 

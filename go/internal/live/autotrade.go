@@ -320,6 +320,9 @@ func (e *Engine) Execute(trigger string) EvalResult {
 	if action == "exit" {
 		side = "SELL"
 	}
+	if action == "entry" && asBool(ev.AutoTrading["cancelOpenOrdersBeforeEntry"]) {
+		e.cancelOpenOrdersBeforeEntry(symbol)
+	}
 	res, err := e.Broker.PlaceMarket(symbol, side, qty)
 	if err != nil {
 		res.Error = err.Error()
@@ -337,6 +340,7 @@ func (e *Engine) Execute(trigger string) EvalResult {
 			"clientOrderId": res.ClientOrderID, "symbol": symbol, "action": action,
 			"status": st, "quantity": qty, "source": trigger, "dateKey": ev.TodayKey,
 		})
+		e.TrackSubmitted(res.ClientOrderID)
 		if action == "entry" {
 			_ = e.DB.InsertTrade("broker_trades", map[string]any{
 				"id": res.ClientOrderID, "symbol": symbol, "status": "open",
@@ -507,6 +511,43 @@ func envOr(k, d string) string {
 		return v
 	}
 	return d
+}
+
+func (e *Engine) cancelOpenOrdersBeforeEntry(symbol string) []string {
+	if e.Broker == nil {
+		return nil
+	}
+	rows, err := e.Broker.OpenOrders()
+	if err != nil || len(rows) == 0 {
+		return nil
+	}
+	want := store.SafeTicker(symbol)
+	var cancelled []string
+	for _, row := range rows {
+		m, _ := row.(map[string]any)
+		if m == nil {
+			continue
+		}
+		sym := store.SafeTicker(fmt.Sprint(firstNonEmpty(m["symbol"], m["ticker"], m["display_symbol"])))
+		if sym != want {
+			continue
+		}
+		st := NormalizeOrderStatus(fmt.Sprint(firstNonEmpty(m["status"], m["order_status"], m["orderStatus"])))
+		if IsFinalOrderStatus(st) {
+			continue
+		}
+		id := strings.TrimSpace(fmt.Sprint(firstNonEmpty(m["client_order_id"], m["clientOrderId"])))
+		if id == "" || id == "<nil>" {
+			continue
+		}
+		if err := e.Broker.CancelOrder(id); err != nil {
+			_ = e.DB.AppendAutotradeLog("open_order_cancel_failed " + id + " " + err.Error())
+			continue
+		}
+		cancelled = append(cancelled, id)
+		_ = e.DB.AppendAutotradeLog("open_orders_cancelled " + id + " " + want)
+	}
+	return cancelled
 }
 
 func (e *Engine) LastRun() (string, any) {

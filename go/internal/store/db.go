@@ -693,6 +693,96 @@ func (d *DB) DeleteWatch(symbol string) error {
 	return err
 }
 
+func (d *DB) GetTrade(table, id string) map[string]any {
+	if table != "trades" && table != "broker_trades" {
+		table = "trades"
+	}
+	row := d.SQL.QueryRow(`SELECT id, symbol, status, entry_date, exit_date, entry_price, exit_price, entry_ibs, exit_ibs, pnl_percent, pnl_absolute, holding_days, notes, source, is_hidden, is_test, quantity, linked_broker_trade_id FROM `+table+` WHERE id=?`, id)
+	var tid, symbol, status string
+	var entryDate, exitDate, notes, source, linked sql.NullString
+	var entryP, exitP, entryI, exitI, pnlP, pnlA, qty sql.NullFloat64
+	var hold, hidden, test sql.NullInt64
+	if err := row.Scan(&tid, &symbol, &status, &entryDate, &exitDate, &entryP, &exitP, &entryI, &exitI, &pnlP, &pnlA, &hold, &notes, &source, &hidden, &test, &qty, &linked); err != nil {
+		return nil
+	}
+	return map[string]any{
+		"id": tid, "symbol": symbol, "status": status,
+		"entryDate": nullS(entryDate), "exitDate": nullS(exitDate),
+		"entryPrice": nullF(entryP), "exitPrice": nullF(exitP),
+		"entryIBS": nullF(entryI), "exitIBS": nullF(exitI),
+		"pnlPercent": nullF(pnlP), "pnlAbsolute": nullF(pnlA),
+		"holdingDays": hold.Int64, "notes": nullS(notes), "source": nullS(source),
+		"isHidden": hidden.Int64 == 1, "isTest": test.Int64 == 1, "quantity": nullF(qty),
+		"linkedBrokerTradeId": nullS(linked),
+	}
+}
+
+func (d *DB) CloseMonitorTrade(id string, rec map[string]any) (map[string]any, error) {
+	existing := d.GetTrade("trades", id)
+	if existing == nil {
+		return nil, fmt.Errorf("Trade not found")
+	}
+	if fmt.Sprint(existing["status"]) != "open" {
+		return existing, fmt.Errorf("Trade is already closed")
+	}
+	if linked := fmt.Sprint(existing["linkedBrokerTradeId"]); linked != "" && linked != "<nil>" {
+		return existing, fmt.Errorf("Linked broker-backed monitor trades must be reconciled automatically")
+	}
+	exitPrice := 0.0
+	switch v := rec["exitPrice"].(type) {
+	case float64:
+		exitPrice = v
+	case int:
+		exitPrice = float64(v)
+	case json.Number:
+		exitPrice, _ = v.Float64()
+	case string:
+		fmt.Sscanf(v, "%f", &exitPrice)
+	}
+	if !(exitPrice > 0) {
+		return nil, fmt.Errorf("exitPrice must be a positive number")
+	}
+	exitDate := strings.TrimSpace(fmt.Sprint(rec["exitDate"]))
+	if exitDate == "" || exitDate == "<nil>" {
+		exitDate = tradingdate.TodayNYSE(time.Now())
+	}
+	entryPrice := 0.0
+	if p, ok := existing["entryPrice"].(float64); ok {
+		entryPrice = p
+	}
+	var pnlAbs, pnlPct any
+	if entryPrice > 0 {
+		diff := exitPrice - entryPrice
+		pnlAbs = float64(int(diff*1e6+0.5)) / 1e6
+		pnlPct = float64(int((diff/entryPrice)*100*1e6+0.5)) / 1e6
+	}
+	hold := 0
+	if ed := fmt.Sprint(existing["entryDate"]); ed != "" && ed != "<nil>" {
+		n := tradingdate.DaysBetween(ed, exitDate)
+		if n < 1 {
+			n = 1
+		}
+		hold = n
+	}
+	note := strings.TrimSpace(fmt.Sprint(rec["note"]))
+	if note == "" || note == "<nil>" {
+		note = "manual_monitor_close_from_ui"
+	}
+	if prev := fmt.Sprint(existing["notes"]); prev != "" && prev != "<nil>" {
+		note = prev + "\n" + note
+	}
+	var exitIBS any
+	if rec["exitIBS"] != nil {
+		exitIBS = rec["exitIBS"]
+	}
+	_, err := d.SQL.Exec(`UPDATE trades SET status='closed', exit_date=?, exit_price=?, exit_ibs=?, pnl_absolute=?, pnl_percent=?, holding_days=?, notes=? WHERE id=?`,
+		exitDate, exitPrice, exitIBS, pnlAbs, pnlPct, hold, note, id)
+	if err != nil {
+		return nil, err
+	}
+	return d.GetTrade("trades", id), nil
+}
+
 func (d *DB) ListTrades(table string) ([]map[string]any, error) {
 	if table != "trades" && table != "broker_trades" {
 		table = "trades"

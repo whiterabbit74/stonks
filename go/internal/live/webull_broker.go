@@ -248,6 +248,12 @@ func (b *LiveBroker) OpenOrders() ([]any, error) {
 	return rows, nil
 }
 
+func (b *LiveBroker) CancelOrder(clientOrderID string) error {
+	c := b.client()
+	_, err := c.CancelOrder(c.AccountID, clientOrderID)
+	return err
+}
+
 func (b *LiveBroker) OrderHistory(start, end string) ([]any, error) {
 	c := b.client()
 	resp, err := c.OrderHistory(c.AccountID, start, end, 100)
