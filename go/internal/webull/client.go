@@ -298,6 +298,16 @@ func (c *Client) TradeCalendar(start, end string) (*Response, error) {
 	return c.Request(http.MethodGet, "/trade/calendar", q, nil, true, nil)
 }
 
+// Snapshot is GET /openapi/market-data/stock/snapshot. Node autotrade calls
+// getStockSnapshot with includeAccessToken: false — market data is signed with
+// app key/secret only, not the trading access token.
+func (c *Client) Snapshot(symbols string) (*Response, error) {
+	return c.Request(http.MethodGet, "/openapi/market-data/stock/snapshot", map[string]string{
+		"symbols":  symbols,
+		"category": "US_STOCK",
+	}, nil, false, nil)
+}
+
 func (c *Client) CorpActions(instrumentID string) (*Response, error) {
 	return c.Request(http.MethodGet, "/instrument/corp-action", map[string]string{
 		"instrument_ids": instrumentID,

@@ -15,6 +15,7 @@ import (
 
 	"mktorder.com/go/internal/providers"
 	"mktorder.com/go/internal/types"
+	"mktorder.com/go/internal/webull"
 )
 
 func TestApplySplitsAdjustsOHLC(t *testing.T) {
@@ -584,6 +585,43 @@ func TestTestProviderUnknownAndNoKeyLeak(t *testing.T) {
 	got := publicErr(err)
 	if strings.Contains(got, "SUPERSECRET") {
 		t.Fatalf("leaked key: %s", got)
+	}
+}
+
+func TestTestProviderWebullSnapshot(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/openapi/market-data/stock/snapshot" {
+			http.NotFound(w, r)
+			return
+		}
+		if r.Header.Get("x-access-token") != "" {
+			t.Errorf("snapshot sent access token")
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": []any{map[string]any{
+				"symbol": "AAPL", "price": 230.5, "pre_close": 229.0,
+				"open": 228.0, "high": 231.0, "low": 227.0,
+			}},
+		})
+	}))
+	t.Cleanup(ts.Close)
+	s := testServer(t, "")
+	s.Providers = &providers.Client{Webull: &webull.Client{
+		HTTP: ts.Client(), Base: ts.URL, Host: "api.webull.com",
+		AppKey: "appkey", AppSecret: "secret", AccessToken: "tok",
+	}}
+	body, _ := json.Marshal(map[string]any{"provider": "webull"})
+	req := httptest.NewRequest("POST", "/api/test-provider", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != 200 {
+		t.Fatalf("code %d %s", rec.Code, rec.Body.String())
+	}
+	var out map[string]any
+	_ = json.Unmarshal(rec.Body.Bytes(), &out)
+	if out["success"] != true || out["symbol"] != "AAPL" || out["price"] != "230.50" {
+		t.Fatalf("body %v", out)
 	}
 }
 

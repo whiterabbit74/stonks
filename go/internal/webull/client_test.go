@@ -70,3 +70,44 @@ func TestPlaceOrderSignsAndPostsNodePath(t *testing.T) {
 	}
 	_ = resp
 }
+
+func TestSnapshotSignsWithoutAccessToken(t *testing.T) {
+	var got *http.Request
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = r
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": []any{map[string]any{"symbol": "AAPL", "price": 230.5, "open": 228, "high": 231, "low": 227, "pre_close": 229}},
+		})
+	}))
+	t.Cleanup(ts.Close)
+	c := &Client{
+		HTTP: ts.Client(), Base: ts.URL, Host: "api.webull.com",
+		AppKey: "appkey", AppSecret: "secret", AccessToken: "tok-must-not-be-sent",
+	}
+	resp, err := c.Snapshot("AAPL")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got == nil {
+		t.Fatal("no request")
+	}
+	if got.URL.Path != "/openapi/market-data/stock/snapshot" {
+		t.Fatalf("path %s", got.URL.Path)
+	}
+	q := got.URL.Query()
+	if q.Get("symbols") != "AAPL" || q.Get("category") != "US_STOCK" {
+		t.Fatalf("query %s", got.URL.RawQuery)
+	}
+	if got.Header.Get("x-signature") == "" {
+		t.Fatal("missing x-signature")
+	}
+	if got.Header.Get("x-version") != "v2" {
+		t.Fatalf("x-version %s", got.Header.Get("x-version"))
+	}
+	if got.Header.Get("x-access-token") != "" {
+		t.Fatalf("snapshot must not send access token, got %s", got.Header.Get("x-access-token"))
+	}
+	if resp == nil || resp.Status != 200 {
+		t.Fatalf("resp %+v", resp)
+	}
+}

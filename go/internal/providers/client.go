@@ -17,6 +17,7 @@ import (
 	"mktorder.com/go/internal/store"
 	"mktorder.com/go/internal/tradingdate"
 	"mktorder.com/go/internal/types"
+	"mktorder.com/go/internal/webull"
 )
 
 type HTTPError struct {
@@ -32,7 +33,7 @@ type Client struct {
 	FinnhubKey  string
 	TwelveKey   string
 	PolygonKey  string
-	WebullToken string
+	Webull      *webull.Client
 	AlphaBase   string
 	FinnhubBase string
 	TwelveBase  string
@@ -46,7 +47,7 @@ func FromEnv() *Client {
 		FinnhubKey:  os.Getenv("FINNHUB_API_KEY"),
 		TwelveKey:   os.Getenv("TWELVE_DATA_API_KEY"),
 		PolygonKey:  os.Getenv("POLYGON_API_KEY"),
-		WebullToken: os.Getenv("WEBULL_ACCESS_TOKEN"),
+		Webull:      webull.FromEnv(),
 		AlphaBase:   envOr("ALPHA_VANTAGE_BASE", "https://www.alphavantage.co"),
 		FinnhubBase: envOr("FINNHUB_BASE", "https://finnhub.io"),
 		TwelveBase:  envOr("TWELVE_DATA_BASE", "https://api.twelvedata.com"),
@@ -453,10 +454,112 @@ func (c *Client) polygonHistory(symbol string, startTs, endTs int64) (Historical
 }
 
 func (c *Client) webullQuote(symbol string) (QuotePayload, error) {
-	if c.WebullToken == "" {
-		return QuotePayload{}, &HTTPError{400, "Webull access token not configured"}
+	if c.Webull == nil {
+		return QuotePayload{}, &HTTPError{400, "Webull credentials are not configured"}
 	}
-	return QuotePayload{}, &HTTPError{501, "Webull snapshot requires signed client"}
+	resp, err := c.Webull.Snapshot(symbol)
+	if err != nil {
+		status := 502
+		if resp != nil && resp.Status >= 400 {
+			status = resp.Status
+		} else if strings.Contains(err.Error(), "credentials") {
+			status = 400
+		}
+		return QuotePayload{}, &HTTPError{status, err.Error()}
+	}
+	row := pickSnapshotRow(resp.Data, symbol)
+	if row == nil {
+		return QuotePayload{}, &HTTPError{404, "Webull snapshot: no data for " + symbol}
+	}
+	open := pickNum(row, "open", "openPrice", "open_price", "o")
+	high := pickNum(row, "high", "highPrice", "high_price", "day_high", "h")
+	low := pickNum(row, "low", "lowPrice", "low_price", "day_low", "l")
+	// price = live last; close during RTH is typically yesterday's close.
+	current := pickNum(row, "price", "lastPrice", "last_price", "tradePrice", "trade_price", "current", "c", "close")
+	prevClose := pickNum(row, "pre_close", "preClose", "prev_close", "prevClose", "previousClose", "pc")
+	today := tradingdate.TodayNYSE(time.Now())
+	return QuotePayload{
+		Range:   map[string]any{"open": open, "high": high, "low": low},
+		Quote:   map[string]any{"open": open, "high": high, "low": low, "current": current, "prevClose": prevClose},
+		DateKey: today,
+	}, nil
+}
+
+func pickSnapshotRow(data any, symbol string) map[string]any {
+	rows := snapshotRows(data)
+	want := strings.ToUpper(symbol)
+	var first map[string]any
+	for _, row := range rows {
+		m, ok := row.(map[string]any)
+		if !ok {
+			continue
+		}
+		if first == nil {
+			first = m
+		}
+		got := ""
+		if s, ok := m["symbol"].(string); ok && s != "" {
+			got = s
+		} else if s, ok := m["ticker"].(string); ok && s != "" {
+			got = s
+		}
+		if strings.ToUpper(got) == want {
+			return m
+		}
+	}
+	return first
+}
+
+func snapshotRows(v any) []any {
+	if v == nil {
+		return nil
+	}
+	if a, ok := v.([]any); ok {
+		return a
+	}
+	m, ok := v.(map[string]any)
+	if !ok {
+		return nil
+	}
+	for _, k := range []string{"data", "result", "items", "list", "rows", "instruments"} {
+		if a, ok := m[k].([]any); ok {
+			return a
+		}
+	}
+	return []any{m}
+}
+
+func pickNum(row map[string]any, keys ...string) any {
+	for _, k := range keys {
+		v, ok := row[k]
+		if !ok || v == nil {
+			continue
+		}
+		switch n := v.(type) {
+		case float64:
+			if n == n {
+				return n
+			}
+		case json.Number:
+			f, err := n.Float64()
+			if err == nil && f == f {
+				return f
+			}
+		case string:
+			if strings.TrimSpace(n) == "" {
+				continue
+			}
+			f, err := strconv.ParseFloat(n, 64)
+			if err == nil && f == f {
+				return f
+			}
+		case int:
+			return float64(n)
+		case int64:
+			return float64(n)
+		}
+	}
+	return nil
 }
 
 func BuildQuoteFromRows(rows []types.OHLC) (QuotePayload, error) {

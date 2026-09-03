@@ -2475,7 +2475,7 @@
       body = `<div class="rounded-xl border p-4 mb-3">
           <div class="font-medium mb-2">Тестирование API</div>
           <p class="text-xs text-gray-500 mb-3">Проверьте подключение к API провайдерам (используется тестовый символ AAPL)</p>
-          <div class="grid grid-cols-2 md:grid-cols-4 gap-2">${['alpha_vantage', 'finnhub', 'twelve_data', 'polygon'].map((p) => `<button type="button" data-testprov="${p}" class="btn-primary min-h-0 py-2 text-sm">Тест ${esc(providerLabel(p))}</button>`).join('')}</div>
+          <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2">${['alpha_vantage', 'finnhub', 'twelve_data', 'polygon', 'webull'].map((p) => `<button type="button" data-testprov="${p}" class="btn-primary min-h-0 py-2 text-sm">Тест ${esc(providerLabel(p))}</button>`).join('')}</div>
           <div id="api-test-out" class="text-sm mt-2"></div>
         </div>
         <div class="rounded-xl border p-4 mb-3">

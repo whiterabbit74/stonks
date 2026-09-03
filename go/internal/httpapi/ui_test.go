@@ -145,6 +145,7 @@ func TestVanillaUIAssets(t *testing.T) {
 		"Отклонение", "Спреды", "Баланс",
 		"Импорт из Webull", "Запросить",
 		"data-testprov", "Отправить тест",
+		"['alpha_vantage', 'finnhub', 'twelve_data', 'polygon', 'webull']",
 		"EMA-оповещений пока нет",
 		"Всего активов",
 		"data-hero-range",

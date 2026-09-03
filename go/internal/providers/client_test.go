@@ -1,6 +1,7 @@
 package providers
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -8,8 +9,11 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
+	"mktorder.com/go/internal/tradingdate"
 	"mktorder.com/go/internal/types"
+	"mktorder.com/go/internal/webull"
 )
 
 type errTransport struct{ err error }
@@ -144,6 +148,114 @@ func TestBuildQuoteFromRows(t *testing.T) {
 	}
 	if p.Quote["prevClose"] != 1.5 {
 		t.Fatalf("prev %v", p.Quote["prevClose"])
+	}
+}
+
+func testWebullQuoteClient(t *testing.T, body any) *Client {
+	t.Helper()
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/openapi/market-data/stock/snapshot" {
+			http.NotFound(w, r)
+			return
+		}
+		if r.Header.Get("x-access-token") != "" {
+			t.Errorf("snapshot sent access token")
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(body)
+	}))
+	t.Cleanup(ts.Close)
+	return &Client{Webull: &webull.Client{
+		HTTP: ts.Client(), Base: ts.URL, Host: "api.webull.com",
+		AppKey: "appkey", AppSecret: "secret", AccessToken: "must-not-send",
+	}}
+}
+
+func TestWebullQuoteParsesSnapshot(t *testing.T) {
+	c := testWebullQuoteClient(t, map[string]any{
+		"data": []any{map[string]any{
+			"symbol": "AAPL", "open": 228.0, "high": 231.0, "low": 227.0,
+			"price": 230.5, "pre_close": 229.0,
+		}},
+	})
+	q, err := c.Quote("AAPL", "webull")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if q.DateKey != tradingdate.TodayNYSE(time.Now()) {
+		t.Fatalf("dateKey %s want NYSE today", q.DateKey)
+	}
+	if q.Quote["current"] != 230.5 {
+		t.Fatalf("current %v", q.Quote["current"])
+	}
+	if q.Quote["prevClose"] != 229.0 {
+		t.Fatalf("prevClose %v", q.Quote["prevClose"])
+	}
+	if q.Range["high"] != 231.0 || q.Range["low"] != 227.0 {
+		t.Fatalf("range %+v", q.Range)
+	}
+}
+
+func TestWebullQuotePrefersPriceOverClose(t *testing.T) {
+	c := testWebullQuoteClient(t, map[string]any{
+		"data": []any{map[string]any{
+			"symbol": "MSFT", "price": 410.0, "close": 400.0, "lastPrice": 409.0,
+			"pre_close": 400.0, "open": 401.0, "high": 412.0, "low": 399.0,
+		}},
+	})
+	q, err := c.Quote("MSFT", "webull")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if q.Quote["current"] != 410.0 {
+		t.Fatalf("price must win over close/lastPrice, got %v", q.Quote["current"])
+	}
+}
+
+func TestWebullQuoteFieldAliases(t *testing.T) {
+	c := testWebullQuoteClient(t, []any{map[string]any{
+		"ticker": "AAPL", "o": 10.0, "h": 12.0, "l": 9.0, "c": 11.0, "pc": 10.5,
+	}})
+	q, err := c.Quote("AAPL", "webull")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if q.Quote["current"] != 11.0 || q.Quote["prevClose"] != 10.5 {
+		t.Fatalf("aliases %+v", q.Quote)
+	}
+	if q.Range["open"] != 10.0 {
+		t.Fatalf("open %v", q.Range["open"])
+	}
+}
+
+func TestWebullQuoteZeroCurrentIsValid(t *testing.T) {
+	c := testWebullQuoteClient(t, map[string]any{
+		"data": []any{map[string]any{"symbol": "AAPL", "price": 0.0, "pre_close": 1.0, "open": 1.0, "high": 2.0, "low": 0.0}},
+	})
+	q, err := c.Quote("AAPL", "webull")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if q.Quote["current"] != 0.0 {
+		t.Fatalf("zero current must not be treated as missing: %v", q.Quote["current"])
+	}
+}
+
+func TestWebullQuoteMissingCredentials(t *testing.T) {
+	c := &Client{}
+	_, err := c.Quote("AAPL", "webull")
+	he, ok := err.(*HTTPError)
+	if !ok || he.Status != 400 || !strings.Contains(he.Message, "credentials") {
+		t.Fatalf("want 400 credentials, got %v", err)
+	}
+}
+
+func TestWebullQuoteEmptySnapshot(t *testing.T) {
+	c := testWebullQuoteClient(t, map[string]any{"data": []any{}})
+	_, err := c.Quote("AAPL", "webull")
+	he, ok := err.(*HTTPError)
+	if !ok || he.Status != 404 {
+		t.Fatalf("want 404, got %v", err)
 	}
 }
 
