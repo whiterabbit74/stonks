@@ -70,6 +70,8 @@ type MemoryBroker struct {
 	Days       []map[string]any
 	Cancelled  []string
 	DetailN    int
+	FillQty    float64
+	FillPrice  float64
 	LastCfg    PlaceMarketCfg
 }
 
@@ -187,6 +189,13 @@ func (m *MemoryBroker) OrderDetail(clientOrderID string) (map[string]any, error)
 		if d, ok := m.Details[clientOrderID]; ok {
 			return d, nil
 		}
+	}
+	if m.FillStatus != "" {
+		// A broker configured to fill also reports the fill when polled.
+		return map[string]any{
+			"status": m.FillStatus, "client_order_id": clientOrderID,
+			"filled_qty": m.FillQty, "filled_price": m.FillPrice,
+		}, nil
 	}
 	return map[string]any{"status": "SUBMITTED", "client_order_id": clientOrderID}, nil
 }

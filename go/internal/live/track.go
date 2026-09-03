@@ -350,3 +350,34 @@ func firstNonEmpty(vals ...any) any {
 	}
 	return ""
 }
+
+// exitFillWaitAttempts bounds the wait for a market exit to fill before the
+// same T-1 cycle is allowed to open the next position. A market order on a
+// liquid ticker fills in well under a second; the budget only has to cover a
+// slow round trip, and it must stay far inside the closing minute.
+const exitFillWaitAttempts = 10
+
+var exitFillWaitStep = 500 * time.Millisecond
+
+// awaitFlatAfterExit polls the pending exit until the broker journal reports
+// no open trade. "Flat" is the same condition Evaluate uses to allow an entry,
+// so a true return means the re-entry decision sees the position as gone.
+func (e *Engine) awaitFlatAfterExit() bool {
+	for attempt := 0; attempt < exitFillWaitAttempts; attempt++ {
+		rows, _ := e.DB.ListTrades("broker_trades")
+		if store.OpenBrokerTrade(rows) == nil {
+			return true
+		}
+		t := e.DB.FindPendingTracker("", "exit")
+		if t == nil {
+			// Nothing left to wait on: the tracker reached a terminal status
+			// that did not close the trade (rejected, cancelled, expired).
+			return false
+		}
+		// Poll here rather than waiting on trackerWheel's own backoff.
+		e.pollOneTracker(t)
+		e.sleep(exitFillWaitStep)
+	}
+	rows, _ := e.DB.ListTrades("broker_trades")
+	return store.OpenBrokerTrade(rows) == nil
+}

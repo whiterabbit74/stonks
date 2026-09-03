@@ -180,15 +180,19 @@ func (e *Engine) Aggregate(minutesUntilClose int, opts AggregateOpts) (SimulateR
 			out.Executed = exitRes.Executed
 			out.Broker = exitRes.Broker
 			action, _ := exitRes.Decision["action"].(string)
-			if action == "exit" && e.DB.FindPendingTracker("", "exit") != nil {
-				waitFill = true
-				_ = e.DB.AppendAutotradeLog("t1_entry_blocked_waiting_exit_fill")
-			}
-			if !waitFill && action == "exit" && exitRes.Executed {
-				entryRes = e.Execute("telegram_t1")
-				if entryRes.Executed {
-					out.Executed = true
-					out.Broker = entryRes.Broker
+			// Sell, then buy in the same T-1. The re-entry must not open a
+			// second position while the first is still live, so wait for the
+			// exit to actually fill rather than for it to be merely submitted.
+			if action == "exit" && exitRes.Executed {
+				if !e.awaitFlatAfterExit() {
+					waitFill = true
+					_ = e.DB.AppendAutotradeLog("t1_entry_blocked_waiting_exit_fill")
+				} else {
+					entryRes = e.Execute("telegram_t1")
+					if entryRes.Executed {
+						out.Executed = true
+						out.Broker = entryRes.Broker
+					}
 				}
 			}
 		}

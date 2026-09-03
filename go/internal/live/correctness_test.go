@@ -517,3 +517,64 @@ func TestExecutionWindowFollowsShortDayClose(t *testing.T) {
 		t.Error("15:59 is two hours after a short-day close; must be outside")
 	}
 }
+
+// Node runs sell-then-buy inside one T-1 (telegramAggregation.js: waitingForExitFill
+// is hardcoded false). Go must do the same, but only once the exit actually filled.
+func TestT1SellsThenBuysInTheSameCycle(t *testing.T) {
+	dir := t.TempDir()
+	db, err := store.Open(filepath.Join(dir, "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+
+	held := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 11.9, Volume: 1}}  // ibs 0.975 -> exit
+	target := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.1, Volume: 1}} // ibs 0.025 -> entry
+	_ = db.SaveDataset("HELD", "HELD", "", "", held, false)
+	_ = db.SaveDataset("BUYME", "BUYME", "", "", target, false)
+	_ = db.UpsertWatch(map[string]any{"symbol": "HELD", "lowIBS": 0.1, "highIBS": 0.75})
+	_ = db.UpsertWatch(map[string]any{"symbol": "BUYME", "lowIBS": 0.1, "highIBS": 0.75})
+	_ = db.InsertTrade("broker_trades", map[string]any{
+		"id": "held-1", "symbol": "HELD", "status": "open",
+		"entryDate": "2026-09-01", "entryPrice": 9.0, "quantity": 1,
+	})
+
+	br := &MemoryBroker{
+		Pos: []any{map[string]any{"symbol": "HELD", "quantity": 1.0}},
+	}
+	e := New(db, &MemoryQuotes{Bars: map[string][]types.OHLC{"HELD": held, "BUYME": target}})
+	e.Broker = br
+	e.Telegram = &MemoryTelegram{}
+	e.ChatID = "c"
+	e.Sleep = func(time.Duration) {}
+	e.PatchAutoConfig(map[string]any{
+		"enabled": true, "allowExits": true, "allowNewEntries": true,
+		"onlyFromTelegramWatches": true, "lowIBS": 0.1, "highIBS": 0.75,
+		"entrySizingMode": "quantity", "fixedQuantity": 1,
+	})
+	// Every order the memory broker takes reports as filled on the first poll.
+	br.FillStatus = "FILLED"
+	br.FillQty = 1
+	br.FillPrice = 11.9
+
+	if _, err := e.Aggregate(1, AggregateOpts{ForceSend: true, UpdateState: true}); err != nil {
+		t.Fatal(err)
+	}
+	// awaitFlatAfterExit polls the exit tracker; the detail map answers FILLED
+	// for any id, so the exit closes and the entry is free to run.
+	var sold, bought bool
+	for _, o := range br.Orders {
+		if o.Symbol == "HELD" && o.Side == "SELL" {
+			sold = true
+		}
+		if o.Symbol == "BUYME" && o.Side == "BUY" {
+			bought = true
+		}
+	}
+	if !sold {
+		t.Fatalf("no exit order placed: %+v", br.Orders)
+	}
+	if !bought {
+		t.Fatalf("exit filled but no re-entry in the same T-1: %+v", br.Orders)
+	}
+}
