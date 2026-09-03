@@ -179,6 +179,23 @@ const Charts = {
     this.live.push(chart);
     return chart;
   },
+  setWatermark(container, text, opts) {
+    opts = opts || {};
+    const prev = container && container.querySelector(':scope > .chart-watermark');
+    if (prev) prev.remove();
+    const label = String(text || '').trim();
+    if (!container || !label) return null;
+    const el = document.createElement('div');
+    el.className = 'chart-watermark';
+    el.textContent = label;
+    el.setAttribute('aria-hidden', 'true');
+    const extraPanes = Number(opts.extraPanes) || 0;
+    const panePct = Math.max(8, Math.min(40, Number(opts.indicatorPanePercent) || 18)) / 100;
+    const main = extraPanes > 0 ? Math.max(0.5, 1 - extraPanes * panePct) : 1;
+    el.style.top = (main * 50) + '%';
+    container.appendChild(el);
+    return el;
+  },
   create(container, isDark, extra) {
     const c = this.colors(isDark);
     const x = extra || {};
@@ -496,6 +513,7 @@ const Charts = {
     this.mark(candleSeries, markers);
     this.applyRange(chart, candles.map((c) => ({ time: this.toUtcTs(`${c.time.year}-${String(c.time.month).padStart(2, '0')}-${String(c.time.day).padStart(2, '0')}`) })), opts.range || 'MAX');
     if (!opts.range || opts.range === 'MAX' || opts.range === 'ALL') chart.timeScale().fitContent();
+    this.setWatermark(container, opts.ticker, { extraPanes, indicatorPanePercent: opts.indicatorPanePercent });
     return { chart, candles: sorted };
   },
   deviationChart(container, points, isDark, opts) {

@@ -4497,6 +4497,7 @@
     Charts.destroy();
     Charts.priceChart(el, barsForTicker(t), {
       dark: isDark(),
+      ticker: t,
       ema20: p.ema20 !== false,
       ema200: p.ema200 !== false,
       ema20Color: p.ema20Color,

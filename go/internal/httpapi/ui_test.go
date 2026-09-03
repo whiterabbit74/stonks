@@ -104,6 +104,7 @@ func TestVanillaUIAssets(t *testing.T) {
 		"laptop", "moon", "sun",
 		"Built with ❤️ for traders",
 		"footerHTML",
+		"chart-watermark",
 	}
 	for _, banned := range []string{
 		"Go API · Lightweight Charts",
