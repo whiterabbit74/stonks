@@ -6,31 +6,6 @@ import (
 	"mktorder.com/go/internal/types"
 )
 
-func mergeSplitEvents(stored, detected []types.SplitEvent) []types.SplitEvent {
-	byDate := make(map[string]types.SplitEvent, len(stored)+len(detected))
-	add := func(list []types.SplitEvent, overwrite bool) {
-		for _, e := range list {
-			if e.Date == "" || e.Factor <= 0 || e.Factor == 1 {
-				continue
-			}
-			date := tradingdate.DateKey(e.Date)
-			if !overwrite {
-				if _, ok := byDate[date]; ok {
-					continue
-				}
-			}
-			byDate[date] = types.SplitEvent{Date: date, Factor: e.Factor}
-		}
-	}
-	add(detected, true)
-	add(stored, true)
-	out := make([]types.SplitEvent, 0, len(byDate))
-	for _, e := range byDate {
-		out = append(out, e)
-	}
-	return out
-}
-
 func detectedNotStored(stored, detected []types.SplitEvent) []types.SplitEvent {
 	have := make(map[string]bool, len(stored))
 	for _, e := range stored {
