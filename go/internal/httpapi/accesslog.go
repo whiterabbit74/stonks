@@ -116,9 +116,6 @@ func peekAPIBody(r *http.Request) (any, int64) {
 	if r.ContentLength > n {
 		n = r.ContentLength
 	}
-	if skipSensitiveBody(path) {
-		return map[string]any{"_redacted": true}, n
-	}
 	if len(raw) > accessBodyPeek {
 		return map[string]any{"_truncated": true}, n
 	}
@@ -127,17 +124,6 @@ func peekAPIBody(r *http.Request) (any, int64) {
 		return nil, n
 	}
 	return redactJSON(v), n
-}
-
-func skipSensitiveBody(path string) bool {
-	switch {
-	case path == "/api/login", path == "/api/auth/hash-password":
-		return true
-	case strings.Contains(path, "/token"):
-		return true
-	default:
-		return false
-	}
 }
 
 func redactQuery(raw string) string {

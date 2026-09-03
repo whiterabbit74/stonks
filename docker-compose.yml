@@ -27,6 +27,7 @@ services:
       - WATCHES_FILE=/data/state/telegram-watches.json
       - SPLITS_FILE=/data/state/splits.json
       - TRADE_HISTORY_FILE=/data/state/trade-history.json
+      - HTTP_LOG_PATH=/data/state/http-access.jsonl
     volumes:
       - stonks_datasets:/data/datasets
       - stonks_db:/data/db
@@ -138,6 +139,7 @@ services:
       - WATCHES_FILE=/data/state/telegram-watches.json
       - SPLITS_FILE=/data/state/splits.json
       - TRADE_HISTORY_FILE=/data/state/trade-history.json
+      - HTTP_LOG_PATH=/data/state/http-access.jsonl
     volumes:
       - ./server/datasets:/data/datasets
       - ./server/db:/data/db
