@@ -1,13 +1,13 @@
 (() => {
   const TABS = [
-    { to: '/data', label: 'Данные' },
-    { to: '/stocks', label: 'Акции' },
-    { to: '/ema', label: 'EMA' },
-    { to: '/multi-ticker-options', label: 'Опционы' },
-    { to: '/calendar', label: 'Календарь' },
-    { to: '/split', label: 'Сплиты' },
-    { to: '/watches', label: 'Мониторинг' },
-    { to: '/broker', label: 'Брокер' },
+    { to: '/data', label: 'Данные', icon: 'database' },
+    { to: '/stocks', label: 'Акции', icon: 'linechart' },
+    { to: '/ema', label: 'EMA', icon: 'activity' },
+    { to: '/multi-ticker-options', label: 'Опционы', icon: 'layers' },
+    { to: '/calendar', label: 'Календарь', icon: 'calendar' },
+    { to: '/split', label: 'Сплиты', icon: 'scissors' },
+    { to: '/watches', label: 'Мониторинг', icon: 'bell' },
+    { to: '/broker', label: 'Брокер', icon: 'briefcase' },
   ];
   const BOTTOM = [
     { to: '/data', label: 'Данные', icon: 'database' },
@@ -151,6 +151,7 @@
   const PATHS = {
     database: '<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/>',
     linechart: '<path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/>',
+    activity: '<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>',
     layers: '<path d="M12 2 2 7l10 5 10-5-10-5z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/>',
     wallet: '<path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/>',
     calendar: '<path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/>',
@@ -2462,38 +2463,21 @@
             <div class="rounded-lg border p-3"><div class="text-xs text-gray-500">Entries / Exits</div><div class="mt-1 text-sm">${ac.allowNewEntries !== false ? 'да' : 'нет'} / ${ac.allowExits !== false ? 'да' : 'нет'}</div></div>
             <div class="rounded-lg border p-3"><div class="text-xs text-gray-500">Последнее решение</div><div class="mt-1 text-sm">${esc(lastRes.action || dec.action || '—')} ${esc(lastRes.symbol || dec.symbol || '')}</div><div class="text-xs text-gray-500">${esc(lastRes.reason || dec.reason || '')}</div></div>
           </div>
-          <form id="auto-config-form" class="mt-4 rounded-xl bg-gray-50 p-3 text-sm dark:bg-gray-950/40 space-y-3">
-            <div class="font-medium">Конфигурация автоторговли</div>
-            <div class="auto-fields">
-              <label class="text-xs">Провайдер<select name="provider" class="field mt-1"><option value="finnhub" ${(ac.provider || 'finnhub') === 'finnhub' ? 'selected' : ''}>Finnhub</option><option value="webull" ${ac.provider === 'webull' ? 'selected' : ''}>Webull</option></select></label>
-              <label class="text-xs">Резерв провайдеров<select name="providerFallback" class="field mt-1">${[['', 'Авто (все реальные)'], ['finnhub', 'Finnhub'], ['webull', 'Webull'], ['finnhub,webull', 'Finnhub → Webull'], ['webull,finnhub', 'Webull → Finnhub']].map(([v, l]) => `<option value="${esc(v)}" ${(ac.providerFallback || '') === v ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>
-              <label class="text-xs">lowIBS<input name="lowIBS" type="number" step="0.01" min="0" max="1" value="${esc(ac.lowIBS ?? 0.1)}" class="field mt-1" /></label>
-              <label class="text-xs">highIBS<input name="highIBS" type="number" step="0.01" min="0" max="1" value="${esc(ac.highIBS ?? 0.75)}" class="field mt-1" /></label>
-              <label class="text-xs">Окно исполнения, сек<input name="executionWindowSeconds" type="number" value="${esc(ac.executionWindowSeconds ?? 90)}" class="field mt-1" /></label>
-              <label class="text-xs">Режим входа<select name="entrySizingMode" class="field mt-1">${['balance', 'quantity', 'notional'].map((v) => `<option value="${v}" ${(ac.entrySizingMode || 'balance') === v ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
-              <label class="text-xs">Профиль капитала<select name="entryCapitalMode" class="field mt-1">${CAPITAL_MODES.map((m) => `<option value="${esc(m.value)}" ${(ac.entryCapitalMode || 'standard_safe') === m.value ? 'selected' : ''}>${esc(m.label)}</option>`).join('')}</select></label>
-              <label class="text-xs">Sizing<select name="sizingMode" class="field mt-1">${['notional', 'quantity', 'balance'].map((v) => `<option value="${v}" ${(ac.sizingMode || 'notional') === v ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
-              <label class="text-xs">Fixed quantity<input name="fixedQuantity" type="number" step="0.0001" value="${esc(ac.fixedQuantity ?? 1)}" class="field mt-1" /></label>
-              <label class="text-xs">Fixed notional USD<input name="fixedNotionalUsd" type="number" step="1" value="${esc(ac.fixedNotionalUsd ?? 1000)}" class="field mt-1" /></label>
-              <label class="text-xs">Max position USD<input name="maxPositionUsd" type="number" step="1" value="${esc(ac.maxPositionUsd ?? 0)}" class="field mt-1" /></label>
-              <label class="text-xs">Order type<select name="orderType" class="field mt-1"><option ${ac.orderType === 'LIMIT' ? '' : 'selected'}>MARKET</option><option ${ac.orderType === 'LIMIT' ? 'selected' : ''}>LIMIT</option></select></label>
-              <label class="text-xs">TIF<select name="timeInForce" class="field mt-1"><option ${ (ac.timeInForce || 'DAY') === 'DAY' ? 'selected' : ''}>DAY</option><option ${ac.timeInForce === 'GTC' ? 'selected' : ''}>GTC</option></select></label>
-              <label class="text-xs">Сессия<select name="supportTradingSession" class="field mt-1"><option ${ (ac.supportTradingSession || 'CORE') === 'CORE' ? 'selected' : ''}>CORE</option><option ${ac.supportTradingSession === 'ALL' ? 'selected' : ''}>ALL</option></select></label>
-              <label class="text-xs">Max slippage, bps<input name="maxSlippageBps" type="number" value="${esc(ac.maxSlippageBps ?? 25)}" class="field mt-1" /></label>
-              <label class="text-xs">Symbols<input name="symbols" value="${esc(ac.symbols || '')}" class="field mt-1" /></label>
-              <label class="text-xs">Заметки<input name="notes" value="${esc(ac.notes || '')}" class="field mt-1" /></label>
+          <div class="mt-4 rounded-xl bg-gray-50 p-3 text-sm dark:bg-gray-950/40">
+            <div class="flex items-center justify-between gap-3 mb-2">
+              <div class="font-medium">Настройки автоторговли</div>
+              <a href="/settings" data-nav data-settings-tab="autotrade" class="btn-secondary min-h-0 py-2">Изменить</a>
             </div>
-            <div class="flex flex-wrap gap-3 text-xs">
-              <label class="inline-flex items-center gap-1"><input type="checkbox" name="allowNewEntries" ${ac.allowNewEntries !== false ? 'checked' : ''} /> Entries</label>
-              <label class="inline-flex items-center gap-1"><input type="checkbox" name="allowExits" ${ac.allowExits !== false ? 'checked' : ''} /> Exits</label>
-              <label class="inline-flex items-center gap-1"><input type="checkbox" name="onlyFromTelegramWatches" ${ac.onlyFromTelegramWatches !== false ? 'checked' : ''} /> Только из мониторинга</label>
-              <label class="inline-flex items-center gap-1"><input type="checkbox" name="allowFractionalShares" ${ac.allowFractionalShares ? 'checked' : ''} /> Дробные акции</label>
-              <label class="inline-flex items-center gap-1"><input type="checkbox" name="previewBeforeSend" ${ac.previewBeforeSend === true ? 'checked' : ''} /> Preview</label>
-              <label class="inline-flex items-center gap-1"><input type="checkbox" name="cancelOpenOrdersBeforeEntry" ${ac.cancelOpenOrdersBeforeEntry ? 'checked' : ''} /> Cancel open orders</label>
-            </div>
-            <p class="text-xs text-gray-500">Профиль: ${esc(mode.label)} — ${esc(mode.hint)}. Account: ${esc(tok.accountId || conn.hasAccountId ? 'задан' : 'не задан')}. ${ac.lastModifiedAt ? ('Обновлено: ' + esc(formatDateTimeET(ac.lastModifiedAt)) + ' ET') : ''}</p>
-            <button class="btn-primary min-h-0 py-2">Сохранить конфиг</button>
-          </form>
+            <dl class="grid gap-x-6 gap-y-1 sm:grid-cols-2">
+              <div class="flex justify-between gap-3"><dt class="text-gray-500">Размер входа</dt><dd>${esc(mode.label)}${ac.allowFractionalShares ? ' + дробные' : ''}</dd></div>
+              <div class="flex justify-between gap-3"><dt class="text-gray-500">Пороги IBS</dt><dd>вход &lt; ${esc(ac.lowIBS ?? 0.1)} · выход &gt; ${esc(ac.highIBS ?? 0.75)}</dd></div>
+              <div class="flex justify-between gap-3"><dt class="text-gray-500">Котировки</dt><dd>${esc(ac.provider || 'finnhub')} → резерв автоматически</dd></div>
+              <div class="flex justify-between gap-3"><dt class="text-gray-500">Заявки</dt><dd>рыночные, DAY, основная сессия</dd></div>
+              <div class="flex justify-between gap-3"><dt class="text-gray-500">Окно исполнения</dt><dd>${esc(ac.executionWindowSeconds ?? 90)} сек до закрытия</dd></div>
+              <div class="flex justify-between gap-3"><dt class="text-gray-500">Порог проскальзывания</dt><dd>${esc(ac.maxSlippageBps ?? 25)} bps</dd></div>
+            </dl>
+            <p class="text-xs text-gray-500 mt-2">${esc(mode.hint)}. Торгуются тикеры со страницы «Мониторинг». Account: ${esc(tok.accountId || conn.hasAccountId ? 'задан' : 'не задан')}.${ac.lastModifiedAt ? (' Обновлено: ' + esc(formatDateTimeET(ac.lastModifiedAt)) + ' ET') : ''}</p>
+          </div>
           ${rawJsonBlock('Raw connection payload', conn)}
           ${rawJsonBlock('Raw autotrade config payload', ac)}
           ${rawJsonBlock('Raw tracked orders payload', tracked)}
@@ -2655,22 +2639,57 @@
       const ac = state.autoConfig?.config || state.autoConfig || {};
       const cap = ac.entryCapitalMode || 'standard_safe';
       const quote = ac.provider || ac.quoteProvider || 'finnhub';
+      const watched = (state.watches || []).map((w) => w.symbol).join(', ');
       body = `<div class="rounded-xl border p-4 mb-3">
-          <div class="font-medium mb-2">Статус автоторговли</div>
-          <label class="inline-flex items-center gap-2 text-sm"><input type="checkbox" name="autoEnabled" ${ac.enabled ? 'checked' : ''} /> Включена</label>
-          <p class="text-xs text-gray-500 mt-1">Включает автоматическое исполнение ордеров через Webull по сигналам T-1 мониторинга.</p>
+          <div class="font-medium mb-1">Как это работает</div>
+          <p class="text-sm text-gray-600 dark:text-gray-400">За минуту до закрытия биржи система берёт котировки всех тикеров мониторинга, считает IBS = (close − low) / (high − low) и выбирает тот, у которого IBS ниже порога входа и ниже, чем у остальных. Покупает его рыночной заявкой на весь доступный счёт. Держит, пока IBS не поднимется выше порога выхода, — тогда так же рыночной заявкой продаёт. Все заявки только рыночные и только в основную сессию: цена закрытия должна быть получена наверняка.</p>
         </div>
         <div class="rounded-xl border p-4 mb-3">
-          <div class="font-medium mb-2">Провайдер котировок для автоторговли</div>
+          <div class="font-medium mb-2">Включение</div>
+          <label class="inline-flex items-center gap-2 text-sm"><input type="checkbox" name="autoEnabled" ${ac.enabled ? 'checked' : ''} /> Автоторговля включена</label>
+          <p class="text-xs text-gray-500 mt-1 mb-3">Выключено — система по-прежнему считает и присылает решение в Telegram, но заявки брокеру не отправляет.</p>
+          <div class="flex flex-wrap gap-4">
+            <label class="inline-flex items-center gap-2 text-sm"><input type="checkbox" name="autoAllowEntries" ${ac.allowNewEntries !== false ? 'checked' : ''} /> Разрешить входы</label>
+            <label class="inline-flex items-center gap-2 text-sm"><input type="checkbox" name="autoAllowExits" ${ac.allowExits !== false ? 'checked' : ''} /> Разрешить выходы</label>
+          </div>
+          <p class="text-xs text-gray-500 mt-1">Тормоз на случай, когда нужно свернуть торговлю: снимите «входы», и открытая позиция будет доторгована до выхода, но новых сделок не появится. Снимать «выходы» стоит только осознанно — позиция останется висеть.</p>
+        </div>
+        <div class="rounded-xl border p-4 mb-3">
+          <div class="font-medium mb-2">Сколько покупать</div>
+          <p class="text-xs text-gray-500 mb-2">Всегда покупается на весь счёт — вопрос только в том, сколько это «весь счёт». Размер в любом случае ограничен реальной покупательной способностью у брокера.</p>
+          ${CAPITAL_MODES.map((m) => `<label class="flex items-start gap-2 text-sm mb-2"><input type="radio" name="entryCapitalMode" value="${esc(m.value)}" ${cap === m.value ? 'checked' : ''} class="mt-1" /><span><strong>${esc(m.label)}</strong><br /><span class="text-xs text-gray-500">${esc(m.hint)}</span></span></label>`).join('')}
+          <label class="inline-flex items-center gap-2 text-sm mt-2"><input type="checkbox" name="autoFractional" ${ac.allowFractionalShares ? 'checked' : ''} /> Дробные акции</label>
+          <p class="text-xs text-gray-500 mt-1">Без дробных остаток денег меньше цены одной акции остаётся неиспользованным. Дробные заявки Webull поддерживает не по всем тикерам.</p>
+        </div>
+        <div class="rounded-xl border p-4 mb-3">
+          <div class="font-medium mb-2">Пороги IBS по умолчанию</div>
+          <div class="grid gap-3 sm:grid-cols-2">
+            <label class="text-sm">Вход, IBS ниже<input name="autoLowIBS" type="number" step="0.01" min="0" max="1" value="${esc(ac.lowIBS ?? 0.1)}" class="field mt-1" /></label>
+            <label class="text-sm">Выход, IBS выше<input name="autoHighIBS" type="number" step="0.01" min="0" max="1" value="${esc(ac.highIBS ?? 0.75)}" class="field mt-1" /></label>
+          </div>
+          <p class="text-xs text-gray-500 mt-1">Сравнение строгое с обеих сторон: ровно 0.10 — это не вход. У каждого тикера на странице «Мониторинг» есть собственные пороги, и они важнее этих: здесь задаётся только значение по умолчанию.</p>
+        </div>
+        <div class="rounded-xl border p-4 mb-3">
+          <div class="font-medium mb-2">Откуда берутся цены</div>
           <label class="inline-flex items-center gap-2 text-sm mr-4"><input type="radio" name="autoQuote" value="finnhub" ${quote === 'finnhub' ? 'checked' : ''} /> Finnhub</label>
           <label class="inline-flex items-center gap-2 text-sm"><input type="radio" name="autoQuote" value="webull" ${quote === 'webull' ? 'checked' : ''} /> Webull</label>
+          <p class="text-xs text-gray-500 mt-1">Это тот, кого спрашивают первым. Если он не ответил или прислал негодную котировку, второй спрашивается автоматически — настраивать порядок не нужно. Провайдеры с дневными барами (Alpha Vantage, Twelve Data, Polygon) для живого решения не используются: они ответят вчерашней свечой.</p>
         </div>
         <div class="rounded-xl border p-4 mb-3">
-          <div class="font-medium mb-2">Профиль использования капитала для входа</div>
-          <p class="text-xs text-gray-500 mb-2">Для режима sizing <strong>balance</strong>. Итоговый размер всё равно ограничен buying power брокера.</p>
-          ${CAPITAL_MODES.map((m) => `<label class="flex items-start gap-2 text-sm mb-2"><input type="radio" name="entryCapitalMode" value="${esc(m.value)}" ${cap === m.value ? 'checked' : ''} class="mt-1" /><span><strong>${esc(m.label)}</strong><br /><span class="text-xs text-gray-500">${esc(m.hint)}</span></span></label>`).join('')}
+          <div class="font-medium mb-2">Что торгуем</div>
+          <p class="text-sm">${watched ? esc(watched) : 'Список пуст'}</p>
+          <p class="text-xs text-gray-500 mt-1">Ровно то, что стоит на странице «Мониторинг», — отдельного списка здесь нет специально, чтобы тикер не мог отслеживаться и молча не торговаться. <a href="/watches" data-nav class="text-indigo-600">Изменить список</a></p>
         </div>
-        <p class="text-sm text-gray-600">На странице /broker → Автоторговля видно, какой профиль реально активен, токен и тестовый ордер.</p>`;
+        <div class="rounded-xl border p-4 mb-3">
+          <div class="font-medium mb-2">Защита</div>
+          <div class="grid gap-3 sm:grid-cols-2">
+            <label class="text-sm">Окно исполнения, сек<input name="autoWindow" type="number" min="15" step="1" value="${esc(ac.executionWindowSeconds ?? 90)}" class="field mt-1" /></label>
+            <label class="text-sm">Порог проскальзывания, bps<input name="autoSlippage" type="number" min="0" max="1000" step="1" value="${esc(ac.maxSlippageBps ?? 25)}" class="field mt-1" /></label>
+          </div>
+          <p class="text-xs text-gray-500 mt-1">Окно: планировщик и кнопка «Исполнить» отправят заявку, только если до закрытия осталось не больше этого времени, — страховка от случайной сделки среди дня. Регулярный запуск в T-1 через это окно не проходит: он и так привязан к закрытию.</p>
+          <p class="text-xs text-gray-500 mt-1">Проскальзывание: заявку не ограничивает (она рыночная и должна исполниться), но если цена исполнения ушла от цены решения дальше порога, в Telegram придёт предупреждение. 25 bps = 0.25%.</p>
+        </div>
+        <p class="text-sm text-gray-600">Состояние, токен Webull, журнал заявок и ручное закрытие позиции — на странице <a href="/broker" data-nav class="text-indigo-600">Брокер</a>.</p>`;
     }
     return `
       ${pageHeader('Настройки', 'Конфигурация приложения и параметры стратегии', `<button form="set-form" class="btn-secondary min-h-0 py-2 px-4">Сохранить</button>`)}
@@ -3738,42 +3757,6 @@
           } catch (err) { errEl.textContent = errText(err); errEl.classList.remove('hidden'); }
         });
       }));
-      document.getElementById('auto-config-form')?.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const form = e.target;
-        const fd = new FormData(form);
-        const num = (k) => Number(fd.get(k));
-        const body = {
-          provider: fd.get('provider'),
-          providerFallback: fd.get('providerFallback') || '',
-          lowIBS: num('lowIBS'), highIBS: num('highIBS'),
-          executionWindowSeconds: num('executionWindowSeconds'),
-          entrySizingMode: fd.get('entrySizingMode'),
-          entryCapitalMode: fd.get('entryCapitalMode'),
-          sizingMode: fd.get('sizingMode'),
-          fixedQuantity: num('fixedQuantity'),
-          fixedNotionalUsd: num('fixedNotionalUsd'),
-          maxPositionUsd: num('maxPositionUsd'),
-          orderType: fd.get('orderType'),
-          timeInForce: fd.get('timeInForce'),
-          supportTradingSession: fd.get('supportTradingSession'),
-          maxSlippageBps: num('maxSlippageBps'),
-          symbols: fd.get('symbols') || '',
-          notes: fd.get('notes') || '',
-          allowNewEntries: !!form.allowNewEntries?.checked,
-          allowExits: !!form.allowExits?.checked,
-          onlyFromTelegramWatches: !!form.onlyFromTelegramWatches?.checked,
-          allowFractionalShares: !!form.allowFractionalShares?.checked,
-          previewBeforeSend: !!form.previewBeforeSend?.checked,
-          cancelOpenOrdersBeforeEntry: !!form.cancelOpenOrdersBeforeEntry?.checked,
-        };
-        try {
-          const saved = await API.saveAutoConfig(body);
-          state.autoConfig = saved && saved.config ? saved.config : { ...(state.autoConfig || {}), ...body };
-          toast('Конфиг автоторговли сохранён');
-          renderPage();
-        } catch (err) { toast(errText(err)); }
-      });
       root.querySelectorAll('[data-bq]').forEach((b) => b.addEventListener('click', async () => {
         try {
           const row = await API.quote(b.dataset.bq, 'webull').catch(() => API.quote(b.dataset.bq));
@@ -3851,6 +3834,9 @@
           const ac = await API.autoConfig() || {};
           state.autoConfig = ac.config || ac;
         } catch (_) { state.autoConfig = {}; }
+        // The autotrade tab names the tickers it will actually trade, and that
+        // list is the monitoring one.
+        try { state.watches = await API.watches() || []; } catch (_) { state.watches = state.watches || []; }
         state.loaded.settings = true;
         renderPage();
         return;
@@ -3890,17 +3876,23 @@
         if (form.autoEnabled) {
           const updates = {
             enabled: form.autoEnabled.checked,
+            allowNewEntries: !!form.autoAllowEntries?.checked,
+            allowExits: !!form.autoAllowExits?.checked,
+            allowFractionalShares: !!form.autoFractional?.checked,
             provider: fd.get('autoQuote') || 'finnhub',
             entryCapitalMode: fd.get('entryCapitalMode') || 'standard_safe',
+            lowIBS: Number(fd.get('autoLowIBS')),
+            highIBS: Number(fd.get('autoHighIBS')),
+            executionWindowSeconds: Number(fd.get('autoWindow')),
+            maxSlippageBps: Number(fd.get('autoSlippage')),
           };
           try {
             const saved = await API.saveAutoConfig(updates);
             state.autoConfig = { ...(state.autoConfig || {}), ...(saved && saved.config ? saved.config : updates) };
           } catch (err) { toast(err.message); }
         }
-        delete body.autoEnabled;
-        delete body.autoQuote;
-        delete body.entryCapitalMode;
+        for (const k of ['autoEnabled', 'autoQuote', 'entryCapitalMode', 'autoAllowEntries', 'autoAllowExits',
+          'autoFractional', 'autoLowIBS', 'autoHighIBS', 'autoWindow', 'autoSlippage']) delete body[k];
         try {
           await API.saveSettings(body);
           state.settings = { ...state.settings, ...body };
