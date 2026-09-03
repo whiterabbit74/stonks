@@ -117,8 +117,12 @@ type Deps struct {
 	Live      *live.Engine
 }
 
+// Start builds the one Engine the whole scheduler shares. A fresh Engine per
+// call would drop the in-memory order metadata and the tracker de-duplication
+// that in-flight orders depend on.
 func Start(db *store.DB, onEvent func(JobLog)) (stop func()) {
-	panic("scheduler.Start without Deps.Live drops in-flight trackers; use StartWith")
+	p := providers.FromEnv()
+	return StartWith(db, Deps{Providers: p, Live: live.New(db, p)}, onEvent)
 }
 
 func StartWith(db *store.DB, deps Deps, onEvent func(JobLog)) (stop func()) {
@@ -163,11 +167,6 @@ func RunTick(db *store.DB, deps Deps, now time.Time, onEvent func(JobLog)) {
 			onEvent(JobLog{At: now, Name: "tick-panic", Detail: fmt.Sprint(rec)})
 		}
 	}()
-	eng := engine(db, deps)
-	if eng.Now == nil {
-		eng.Now = func() time.Time { return now }
-		defer func() { eng.Now = nil }()
-	}
 	p := tradingdate.CurrentTimeNYSE(now)
 	today := tradingdate.TodayNYSE(now)
 

@@ -537,10 +537,13 @@ func (e *Engine) liveQuote(symbol string, chain []string) (providers.QuotePayloa
 		chain = realtimeQuoteProviders
 	}
 	key := quoteCacheKey(symbol, chain)
+	// Cache age is wall-clock freshness of network data, so it is measured on
+	// the real clock — never on e.now(), which a caller may pin to a fixed
+	// instant and would then make every entry look eternally fresh.
 	if e != nil {
 		e.mu.Lock()
 		if e.quoteCache != nil {
-			if c, ok := e.quoteCache[key]; ok && e.now().Sub(c.at) < quoteCacheTTL {
+			if c, ok := e.quoteCache[key]; ok && time.Since(c.at) < quoteCacheTTL {
 				e.mu.Unlock()
 				return c.payload, c.provider, c.err
 			}
@@ -553,7 +556,7 @@ func (e *Engine) liveQuote(symbol string, chain []string) (providers.QuotePayloa
 		if e.quoteCache == nil {
 			e.quoteCache = map[string]quoteCacheEntry{}
 		}
-		e.quoteCache[key] = quoteCacheEntry{payload: payload, provider: provider, err: err, at: e.now()}
+		e.quoteCache[key] = quoteCacheEntry{payload: payload, provider: provider, err: err, at: time.Now()}
 		e.mu.Unlock()
 	}
 	return payload, provider, err
