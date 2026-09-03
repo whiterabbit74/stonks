@@ -26,6 +26,21 @@ func (m *MemoryTelegram) Send(chatID, text string) error {
 	return nil
 }
 
+// Sent returns a snapshot of the messages. The tracker wheel sends from its
+// own goroutine, so reading Messages directly races with it.
+func (m *MemoryTelegram) Sent() [][2]string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return append([][2]string(nil), m.Messages...)
+}
+
+// Reset drops the recorded messages under the lock.
+func (m *MemoryTelegram) Reset() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.Messages = nil
+}
+
 type HTTPTelegram struct {
 	Token  string
 	Client *http.Client

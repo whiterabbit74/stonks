@@ -66,10 +66,10 @@ func TestLivePathsAreNotJsonOKStubs(t *testing.T) {
 	if sim["success"] != true || sim["stage"] != "overview" {
 		t.Fatalf("overview %v", sim)
 	}
-	if len(tg.Messages) == 0 || !strings.Contains(tg.Messages[0][1], "AAPL") {
-		t.Fatalf("telegram payload missing AAPL: %+v", tg.Messages)
+	if len(tg.Sent()) == 0 || !strings.Contains(tg.Sent()[0][1], "AAPL") {
+		t.Fatalf("telegram payload missing AAPL: %+v", tg.Sent())
 	}
-	overview := tg.Messages[0][1]
+	overview := tg.Sent()[0][1]
 	for _, need := range []string{"11m", "ET", "ENTRY", "FLAT", "IBS", "RT"} {
 		if !strings.Contains(overview, need) {
 			t.Fatalf("T-11 overview missing %q: %s", need, overview)
@@ -270,18 +270,18 @@ func TestSimulateSplitJumpAndEmaAndFillPoll(t *testing.T) {
 		"TQQQ": {Quote: map[string]any{"current": 44.68}, Range: map[string]any{"low": 44.0, "high": 50.0}},
 		"AAPL": {Quote: map[string]any{"current": 8.2}, Range: map[string]any{"low": 8.0, "high": 12.0}},
 	}}
-	tg.Messages = nil
+	tg.Reset()
 	rec := postJSON(s, "/api/telegram/simulate", map[string]any{"stage": "overview"})
 	if rec.Code != 200 {
 		t.Fatalf("simulate %d %s", rec.Code, rec.Body.String())
 	}
 	body := rec.Body.String()
 	joined := body
-	for _, m := range tg.Messages {
+	for _, m := range tg.Sent() {
 		joined += m[1]
 	}
 	if !strings.Contains(joined, "ПРОВЕРКА ДАННЫХ") || !strings.Contains(joined, "EMA/IBS сигналы заблокированы") {
-		t.Fatalf("http simulate missing integrity: %s msgs=%+v", body, tg.Messages)
+		t.Fatalf("http simulate missing integrity: %s msgs=%+v", body, tg.Sent())
 	}
 
 	var hist []types.OHLC
@@ -297,14 +297,14 @@ func TestSimulateSplitJumpAndEmaAndFillPoll(t *testing.T) {
 		"MSFT": {Quote: map[string]any{"current": 100.0}, Range: map[string]any{"low": 99.0, "high": 101.0}},
 		"AAPL": {Quote: map[string]any{"current": 8.2}, Range: map[string]any{"low": 8.0, "high": 12.0}},
 	}}
-	tg.Messages = nil
+	tg.Reset()
 	rec = postJSON(s, "/api/telegram/simulate", map[string]any{"stage": "overview"})
 	joined = rec.Body.String()
-	for _, m := range tg.Messages {
+	for _, m := range tg.Sent() {
 		joined += m[1]
 	}
 	if !strings.Contains(joined, "📐 EMA сигналы") {
-		t.Fatalf("http simulate missing EMA message: %s %+v", rec.Body.String(), tg.Messages)
+		t.Fatalf("http simulate missing EMA message: %s %+v", rec.Body.String(), tg.Sent())
 	}
 
 	req := httptest.NewRequest("PATCH", "/api/autotrade/config", bytes.NewReader(mustJSON(map[string]any{

@@ -726,13 +726,13 @@ func TestPartialFillIsRecordedAndWarned(t *testing.T) {
 		t.Fatalf("journalled quantity %v, want the executed 4", q)
 	}
 	var warned bool
-	for _, m := range tg.Messages {
+	for _, m := range tg.Sent() {
 		if strings.Contains(m[1], "частичное исполнение") {
 			warned = true
 		}
 	}
 	if !warned {
-		t.Fatalf("no partial-fill warning sent: %+v", tg.Messages)
+		t.Fatalf("no partial-fill warning sent: %+v", tg.Sent())
 	}
 }
 

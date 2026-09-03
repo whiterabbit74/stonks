@@ -249,7 +249,7 @@ func TestTickT11RunsAggregation(t *testing.T) {
 	if !saw {
 		t.Fatalf("expected T-11 aggregation, logs=%+v", logs)
 	}
-	if len(tg.Messages) == 0 {
+	if len(tg.Sent()) == 0 {
 		t.Fatal("expected telegram send")
 	}
 }
@@ -346,15 +346,15 @@ func t1Engine(t *testing.T) (*store.DB, *live.Engine, *live.MemoryBroker, *live.
 
 func TestTickT1SecondTickDoesNotPlace(t *testing.T) {
 	db, eng, br, tg := t1Engine(t)
-	now1 := time.Date(2026, 9, 1, 19, 59, 0, 0, time.UTC)  // 15:59 ET, until=1
+	now1 := time.Date(2026, 9, 1, 19, 59, 0, 0, time.UTC) // 15:59 ET, until=1
 	now2 := time.Date(2026, 9, 1, 19, 59, 20, 0, time.UTC)
 	RunTick(db, Deps{Live: eng}, now1, func(JobLog) {})
 	RunTick(db, Deps{Live: eng}, now2, func(JobLog) {})
 	if len(br.Orders) != 1 {
 		t.Fatalf("second T-1 tick must not place, orders=%+v", br.Orders)
 	}
-	if len(tg.Messages) != 1 {
-		t.Fatalf("T-1 telegram must send once, got %d %+v", len(tg.Messages), tg.Messages)
+	if len(tg.Sent()) != 1 {
+		t.Fatalf("T-1 telegram must send once, got %d %+v", len(tg.Sent()), tg.Sent())
 	}
 	eng2 := live.New(db, eng.Quotes)
 	eng2.Telegram = tg
@@ -394,7 +394,7 @@ func TestTickT11SecondTickDoesNotResend(t *testing.T) {
 	now2 := time.Date(2026, 9, 1, 19, 49, 20, 0, time.UTC)
 	RunTick(db, Deps{Live: eng}, now1, func(JobLog) {})
 	RunTick(db, Deps{Live: eng}, now2, func(JobLog) {})
-	if len(tg.Messages) != 1 {
-		t.Fatalf("T-11 must send once, got %d %+v", len(tg.Messages), tg.Messages)
+	if len(tg.Sent()) != 1 {
+		t.Fatalf("T-11 must send once, got %d %+v", len(tg.Sent()), tg.Sent())
 	}
 }
