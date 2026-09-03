@@ -63,10 +63,10 @@
     { id: 'webull', label: 'Webull API' },
   ];
   const WATCH_TABS = [
-    { id: 'summary', label: 'Сводка' },
-    { id: 'trades', label: 'Сделки' },
-    { id: 'watches', label: 'Тикеры' },
-    { id: 'ema', label: 'EMA' },
+    { id: 'summary', label: 'Сводка', icon: 'layout' },
+    { id: 'trades', label: 'Сделки', icon: 'list' },
+    { id: 'watches', label: 'Тикеры', icon: 'bell' },
+    { id: 'ema', label: 'EMA', icon: 'linechart' },
   ];
   const CAPITAL_MODES = [
     { value: 'standard_safe', label: 'Стандартный', hint: '100% капитала с запасом 2.2% под market buy Webull' },
@@ -176,6 +176,9 @@
     help: '<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>',
     sliders: '<path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/>',
     chevrondown: '<path d="m6 9 6 6 6-6"/>',
+    chevronleft: '<path d="m15 18-6-6 6-6"/>',
+    chevronright: '<path d="m9 18 6-6-6-6"/>',
+    layout: '<rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/>',
     maximize: '<path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/>',
     minimize: '<path d="M8 3v3a2 2 0 0 1-2 2H3"/><path d="M21 8h-3a2 2 0 0 1-2-2V3"/><path d="M3 16h3a2 2 0 0 1 2 2v3"/><path d="M16 21v-3a2 2 0 0 1 2-2h3"/>',
     arrowne: '<path d="M7 7h10v10"/><path d="M7 17 17 7"/>',
@@ -294,6 +297,7 @@
     settingsTab: 'general',
     splitsTab: 'list',
     watchTab: 'summary',
+    navCollapsed: localStorage.getItem('nav.collapsed') === '1',
     brokerTab: 'overview',
     cal: { year: nyseNow.y, month: nyseNow.m, data: null },
     settings: {},
@@ -1294,6 +1298,35 @@
       <div class="mt-3 h-px bg-gradient-to-r from-indigo-500/50 via-sky-500/40 to-transparent"></div>
     </div>`;
   }
+  function sideItemInner(ico, lab) {
+    return `${icon(ico, 'w-5 h-5')}<span class="app-side-lab">${esc(lab)}</span>`;
+  }
+  function sideNavHTML() {
+    return TABS.map((t) => `<a href="${t.to}" data-nav class="app-side-item ${state.page === t.to ? 'app-side-item-on' : ''}" title="${esc(t.label)}">${sideItemInner(t.icon, t.label)}</a>${t.to === '/watches' ? '<div id="app-side-watch" class="app-side-watch"></div>' : ''}`).join('');
+  }
+  function watchNavItemsHTML() {
+    return WATCH_TABS.map((t) => {
+      const on = t.id === state.watchTab;
+      return `<button type="button" data-wtab="${esc(t.id)}" class="app-side-item app-side-sub ${on ? 'app-side-item-on' : ''}" title="${esc(t.label)}" aria-current="${on ? 'page' : 'false'}">${sideItemInner(t.icon, t.label)}</button>`;
+    }).join('');
+  }
+  function watchMobileTabsHTML() {
+    return `<div class="watch-mobile-tabs" role="tablist" aria-label="Разделы мониторинга">${WATCH_TABS.map((t) => {
+      const on = t.id === state.watchTab;
+      return `<button type="button" data-wtab="${esc(t.id)}" role="tab" aria-selected="${on}" class="watch-mobile-tab ${on ? 'watch-mobile-tab-on' : ''}" title="${esc(t.label)}">${icon(t.icon, 'w-4 h-4')}<span>${esc(t.label)}</span></button>`;
+    }).join('')}</div>`;
+  }
+  function applyNavCollapsed() {
+    const slim = !!state.navCollapsed;
+    document.querySelector('.app-frame')?.classList.toggle('app-frame-slim', slim);
+    const btn = document.getElementById('app-side-toggle');
+    if (!btn) return;
+    const title = slim ? 'Показать меню' : 'Скрыть меню';
+    btn.title = title;
+    btn.setAttribute('aria-label', title);
+    btn.setAttribute('aria-expanded', slim ? 'false' : 'true');
+    btn.innerHTML = `${icon(slim ? 'chevronright' : 'chevronleft', 'w-5 h-5')}<span class="app-side-lab">${slim ? 'Показать' : 'Скрыть'}</span>`;
+  }
   function analysisTabs(tabs, active, attr) {
     return `<div class="border-b border-gray-200 dark:border-gray-700 overflow-x-auto">
       <div class="flex items-center gap-2 flex-nowrap min-w-max px-1" role="tablist">
@@ -1516,7 +1549,8 @@
     </footer>`;
   }
   function shellHTML() {
-    const nav = TABS.map((t) => `<a href="${t.to}" data-nav class="px-3 py-1 rounded text-sm border ${state.page === t.to ? 'nav-active' : 'bg-white hover:bg-gray-50 text-gray-700 border-gray-200 dark:bg-gray-900 dark:text-gray-200 dark:border-gray-800'}">${t.label}</a>`).join('');
+    const slim = !!state.navCollapsed;
+    const toggleTitle = slim ? 'Показать меню' : 'Скрыть меню';
     const bottom = BOTTOM.map((t) => {
       const on = state.page === t.to;
       return `<a href="${t.to}" data-nav class="flex flex-col items-center justify-center gap-1 py-2 text-xs ${on ? 'text-indigo-600 dark:text-indigo-400' : 'text-gray-500 dark:text-gray-400'}" aria-label="${t.label}">
@@ -1526,29 +1560,38 @@
     }).join('');
     return `
       <a href="#main-content" class="sr-only">Перейти к основному содержимому</a>
-      <div class="min-h-screen flex flex-col bg-gray-50 text-gray-800 dark:text-gray-100">
-        <header class="border-b bg-white/60 backdrop-blur dark:bg-slate-900/60 dark:border-slate-800">
-          <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between gap-3">
-            <a href="/data" data-nav class="flex min-w-0 items-center gap-3 hover:opacity-80">
-              ${logo('sm')}
-              <span class="hidden truncate text-lg font-semibold tracking-tight text-gray-900 dark:text-gray-100 sm:inline">IBS Trading Strategy</span>
-            </a>
-            <div class="flex items-center gap-2">
-              <button id="theme-btn" class="icon-btn icon-btn-lg icon-btn-glass" title="Тема: ${themeLabel()}" aria-label="Тема: ${themeLabel()}">${icon(themeIcon())}</button>
-              <a href="/settings" data-nav id="settings-btn" title="Настройки" aria-label="Настройки" class="hidden md:inline-flex icon-btn icon-btn-lg icon-btn-glass ${state.page === '/settings' ? 'icon-btn-active' : ''}">${icon('settings')}</a>
-              <button id="menu-btn" class="md:hidden icon-btn icon-btn-lg icon-btn-glass" title="${state.mobileOpen ? 'Закрыть меню' : 'Открыть меню'}" aria-label="${state.mobileOpen ? 'Закрыть меню' : 'Открыть меню'}" aria-expanded="${state.mobileOpen}">${icon(state.mobileOpen ? 'x' : 'menu')}</button>
-              <button id="logout-btn" class="hidden md:inline-flex items-center gap-2 text-sm px-3 py-1.5 rounded border bg-white text-gray-700 border-gray-200 hover:bg-gray-50 dark:bg-gray-900 dark:text-gray-200 dark:border-gray-800">Выйти</button>
-            </div>
+      <div class="app-frame ${slim ? 'app-frame-slim' : ''} min-h-screen bg-gray-50 text-gray-800 dark:text-gray-100">
+        <aside class="app-side" aria-label="Основная навигация">
+          <a href="/data" data-nav class="app-side-brand" title="IBS Trading Strategy">${logo('sm')}<span class="app-side-lab">IBS Trading</span></a>
+          <nav class="app-side-nav desktop-nav">${sideNavHTML()}</nav>
+          <div class="app-side-tools">
+            <button type="button" id="theme-btn" class="app-side-item" title="Тема: ${themeLabel()}" aria-label="Тема: ${themeLabel()}">${sideItemInner(themeIcon(), 'Тема')}</button>
+            <a href="/settings" data-nav id="settings-btn" class="app-side-item ${state.page === '/settings' ? 'app-side-item-on' : ''}" title="Настройки" aria-label="Настройки">${sideItemInner('settings', 'Настройки')}</a>
+            <button type="button" id="logout-btn" class="app-side-item" title="Выйти" aria-label="Выйти">${sideItemInner('logout', 'Выйти')}</button>
           </div>
-          <div id="mobile-drawer" class="${state.mobileOpen ? '' : 'hidden'} md:hidden border-t border-gray-200 dark:border-gray-700 bg-white/95 backdrop-blur-sm dark:bg-slate-900/95"></div>
-        </header>
-        <main id="main-content" class="flex-1 w-full px-4 sm:px-6 lg:px-8 pt-6 pb-32 md:pb-24 safe-area-pb">
-          <nav class="hidden md:flex gap-2 flex-wrap mb-4 desktop-nav">${nav}</nav>
-          <div id="error-banner" class="error-banner ${state.errorBanner ? '' : 'hidden'}"><div class="flex items-start justify-between gap-2"><span data-err-text>${esc(state.errorBanner || '')}</span><button type="button" id="err-banner-close" class="text-sm">✕</button></div></div>
-          <div id="page-root"></div>
-        </main>
-        <nav class="bottom-nav md:hidden fixed bottom-0 left-0 right-0 bg-white/95 dark:bg-gray-900/95 backdrop-blur-lg border-t border-gray-200 dark:border-gray-800 z-40 grid grid-cols-5 items-center h-16" role="navigation" aria-label="Основная навигация">${bottom}</nav>
-        ${footerHTML(state.apiBuildId)}
+          <button type="button" id="app-side-toggle" class="app-side-toggle" title="${toggleTitle}" aria-label="${toggleTitle}" aria-expanded="${slim ? 'false' : 'true'}">${icon(slim ? 'chevronright' : 'chevronleft', 'w-5 h-5')}<span class="app-side-lab">${slim ? 'Показать' : 'Скрыть'}</span></button>
+        </aside>
+        <div class="app-main">
+          <header class="app-top border-b bg-white/60 backdrop-blur dark:bg-slate-900/60 dark:border-slate-800">
+            <div class="px-4 py-3 flex items-center justify-between gap-3">
+              <a href="/data" data-nav class="flex min-w-0 items-center gap-3 hover:opacity-80">
+                ${logo('sm')}
+                <span class="truncate text-lg font-semibold tracking-tight text-gray-900 dark:text-gray-100">IBS Trading Strategy</span>
+              </a>
+              <div class="flex items-center gap-2">
+                <button type="button" id="theme-btn-top" class="icon-btn icon-btn-lg icon-btn-glass" title="Тема: ${themeLabel()}" aria-label="Тема: ${themeLabel()}">${icon(themeIcon())}</button>
+                <button id="menu-btn" class="icon-btn icon-btn-lg icon-btn-glass" title="${state.mobileOpen ? 'Закрыть меню' : 'Открыть меню'}" aria-label="${state.mobileOpen ? 'Закрыть меню' : 'Открыть меню'}" aria-expanded="${state.mobileOpen}">${icon(state.mobileOpen ? 'x' : 'menu')}</button>
+              </div>
+            </div>
+            <div id="mobile-drawer" class="${state.mobileOpen ? '' : 'hidden'} border-t border-gray-200 dark:border-gray-700 bg-white/95 backdrop-blur-sm dark:bg-slate-900/95"></div>
+          </header>
+          <main id="main-content" class="flex-1 w-full px-4 sm:px-6 lg:px-8 pt-6 pb-32 md:pb-24 safe-area-pb">
+            <div id="error-banner" class="error-banner ${state.errorBanner ? '' : 'hidden'}"><div class="flex items-start justify-between gap-2"><span data-err-text>${esc(state.errorBanner || '')}</span><button type="button" id="err-banner-close" class="text-sm">✕</button></div></div>
+            <div id="page-root"></div>
+          </main>
+          <nav class="bottom-nav md:hidden fixed bottom-0 left-0 right-0 bg-white/95 dark:bg-gray-900/95 backdrop-blur-lg border-t border-gray-200 dark:border-gray-800 z-40 grid grid-cols-5 items-center h-16" role="navigation" aria-label="Основная навигация">${bottom}</nav>
+          ${footerHTML(state.apiBuildId)}
+        </div>
       </div>
       <div id="overlay-root">${overlay()}</div>`;
   }
@@ -2254,6 +2297,7 @@
         </div>`;
     return `
       ${pageHeader('Мониторинг', 'Отслеживание позиций и уведомления в Telegram', `<button id="watch-refresh" class="icon-btn icon-btn-md icon-btn-glass" title="Обновить список" aria-label="Обновить список">${icon('refresh', 'w-4 h-4')}</button>`)}
+      ${watchMobileTabsHTML()}
       <p class="text-sm text-gray-600 dark:text-gray-300">Глобальный порог уведомлений: ${esc(thr)}% <span class="ml-2 text-xs text-gray-500">(применяется ко всем отслеживаемым акциям)</span></p>
       <p class="text-sm text-gray-600 dark:text-gray-300 mb-3">До следующего подсчёта сигналов: <span id="watch-countdown">${formatDuration(secondsToNextSignal())}</span></p>
       <div class="rounded-lg border border-gray-200 bg-white p-4 dark:bg-gray-800 dark:border-gray-700 mb-4">
@@ -2273,8 +2317,7 @@
         </div>
         ${metrics}
       </div>
-      ${analysisTabs(WATCH_TABS, state.watchTab, 'data-wtab')}
-      <div class="mt-4">
+      <div>
         ${state.watchTab === 'summary' ? `<div class="rounded-lg border border-gray-200 bg-white p-4 dark:bg-gray-800 dark:border-gray-700"><h3 class="text-lg font-semibold mb-2">Капитал мониторинга (старт ${fmtUsd(stats.initial)}, маржа ${state.monitorMarginPercent}%)</h3>${stats.equity.length ? '<div id="watch-eq" class="chart-box"></div>' : '<p class="text-sm text-gray-500">Нет закрытых сделок для построения кривой капитала.</p>'}</div>` : ''}
         ${state.watchTab === 'watches' ? `<form id="watch-form" class="flex gap-2 mb-4"><input name="symbol" placeholder="AAPL" class="field" /><button class="btn-primary min-h-0 py-2">Добавить</button>
           <button type="button" id="watch-t11" class="btn-secondary min-h-0 py-2">Тест T-11</button>
@@ -2727,7 +2770,7 @@
         navigate(nav.getAttribute('href'));
         return;
       }
-      if (e.target.closest('#theme-btn')) {
+      if (e.target.closest('#theme-btn') || e.target.closest('#theme-btn-top')) {
         e.preventDefault();
         state.theme = state.theme === 'auto' ? 'dark' : state.theme === 'dark' ? 'light' : 'auto';
         applyTheme();
@@ -2739,6 +2782,21 @@
         updateChrome();
         Charts.destroy();
         afterRender();
+        return;
+      }
+      if (e.target.closest('#app-side-toggle')) {
+        e.preventDefault();
+        state.navCollapsed = !state.navCollapsed;
+        try { localStorage.setItem('nav.collapsed', state.navCollapsed ? '1' : '0'); } catch (_) {}
+        applyNavCollapsed();
+        return;
+      }
+      const wtab = e.target.closest('[data-wtab]');
+      if (wtab) {
+        e.preventDefault();
+        state.watchTab = wtab.dataset.wtab;
+        if (state.page !== '/watches') navigate('/watches');
+        else renderPage();
         return;
       }
       if (e.target.closest('#menu-btn')) {
@@ -2817,11 +2875,18 @@
   }
 
   function updateChrome() {
+    const themeLab = 'Тема: ' + themeLabel();
     const themeBtn = document.getElementById('theme-btn');
     if (themeBtn) {
-      themeBtn.innerHTML = icon(themeIcon());
-      themeBtn.setAttribute('aria-label', 'Тема: ' + themeLabel());
-      themeBtn.title = 'Тема: ' + themeLabel();
+      themeBtn.innerHTML = sideItemInner(themeIcon(), 'Тема');
+      themeBtn.setAttribute('aria-label', themeLab);
+      themeBtn.title = themeLab;
+    }
+    const themeTop = document.getElementById('theme-btn-top');
+    if (themeTop) {
+      themeTop.innerHTML = icon(themeIcon());
+      themeTop.setAttribute('aria-label', themeLab);
+      themeTop.title = themeLab;
     }
     const menuBtn = document.getElementById('menu-btn');
     if (menuBtn) {
@@ -2836,18 +2901,20 @@
       drawer.classList.toggle('hidden', !state.mobileOpen);
       if (state.mobileOpen) drawer.innerHTML = mobileDrawerHTML();
     }
-    document.querySelectorAll('nav.desktop-nav [data-nav], .bottom-nav [data-nav]').forEach((a) => {
+    document.querySelectorAll('.app-side-nav > [data-nav]').forEach((a) => {
+      a.classList.toggle('app-side-item-on', a.getAttribute('href') === state.page);
+    });
+    document.querySelectorAll('.bottom-nav [data-nav]').forEach((a) => {
       const on = a.getAttribute('href') === state.page;
-      if (a.closest('.bottom-nav')) {
-        a.className = `flex flex-col items-center justify-center gap-1 py-2 text-xs ${on ? 'text-indigo-600 dark:text-indigo-400' : 'text-gray-500 dark:text-gray-400'}`;
-        const well = a.querySelector('.bn-icon');
-        if (well) well.classList.toggle('active', on);
-      } else {
-        a.className = `px-3 py-1 rounded text-sm border ${on ? 'nav-active' : 'bg-white hover:bg-gray-50 text-gray-700 border-gray-200 dark:bg-gray-900 dark:text-gray-200 dark:border-gray-800'}`;
-      }
+      a.className = `flex flex-col items-center justify-center gap-1 py-2 text-xs ${on ? 'text-indigo-600 dark:text-indigo-400' : 'text-gray-500 dark:text-gray-400'}`;
+      const well = a.querySelector('.bn-icon');
+      if (well) well.classList.toggle('active', on);
     });
     const gear = document.getElementById('settings-btn');
-    if (gear) gear.className = `hidden md:inline-flex icon-btn icon-btn-lg icon-btn-glass ${state.page === '/settings' ? 'icon-btn-active' : ''}`;
+    if (gear) gear.classList.toggle('app-side-item-on', state.page === '/settings');
+    const watchHost = document.getElementById('app-side-watch');
+    if (watchHost) watchHost.innerHTML = state.page === '/watches' ? watchNavItemsHTML() : '';
+    applyNavCollapsed();
   }
 
   async function renderPage(opts) {
@@ -3461,7 +3528,6 @@
         renderPage();
         return;
       }
-      root.querySelectorAll('[data-wtab]').forEach((b) => b.addEventListener('click', () => { state.watchTab = b.dataset.wtab; renderPage(); }));
       document.getElementById('watch-refresh')?.addEventListener('click', async () => { state.loaded.watches = false; renderPage(); });
       root.querySelectorAll('[data-dw]').forEach((b) => b.addEventListener('click', () => {
         askDelete('Удалить ' + b.dataset.dw + ' из мониторинга?', async () => {

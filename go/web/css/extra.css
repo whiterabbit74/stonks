@@ -331,3 +331,70 @@ html.dark .pc-seg-on { background: #4f46e5; border-color: #4f46e5; color: #fff; 
 html.dark .pc-shell.pc-fs { background: #0b1220; }
 .pc-shell.pc-fs .chart-box-lg { flex: 1 1 auto; height: auto; min-height: 0; }
 body.pc-fs-lock { overflow: hidden; }
+.app-frame { display: flex; min-height: 100vh; align-items: stretch; }
+.app-side {
+  display: none; flex-direction: column; width: 15.5rem; flex-shrink: 0;
+  height: 100vh; position: sticky; top: 0;
+  border-right: 1px solid #e5e7eb; background: #fff; padding: 0.75rem 0.5rem 0.5rem;
+}
+html.dark .app-side { background: #0b1220; border-color: #1f2937; }
+.app-frame-slim .app-side { width: 3.75rem; }
+.app-side-brand {
+  display: flex; align-items: center; gap: 0.5rem;
+  padding: 0.25rem 0.5rem 0.75rem; font-size: 0.9375rem; font-weight: 700; color: #111827;
+}
+html.dark .app-side-brand { color: #f3f4f6; }
+.app-frame-slim .app-side-brand { justify-content: center; padding-left: 0; padding-right: 0; }
+.app-side-nav { display: flex; flex-direction: column; gap: 0.15rem; flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+.app-side-item {
+  display: flex; align-items: center; gap: 0.625rem; width: 100%;
+  border-radius: 0.5rem; padding: 0.5rem 0.625rem;
+  font-size: 0.8125rem; font-weight: 600; color: #4b5563; text-align: left;
+}
+.app-side-item:hover { background: #f3f4f6; color: #111827; }
+html.dark .app-side-item { color: #d1d5db; }
+html.dark .app-side-item:hover { background: #1f2937; color: #f3f4f6; }
+.app-side-item svg { flex-shrink: 0; }
+.app-side-item-on, .app-side-item-on:hover { background: #eef2ff; color: #4338ca; }
+html.dark .app-side-item-on, html.dark .app-side-item-on:hover { background: #1e1b4b; color: #a5b4fc; }
+.app-side-lab { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.app-frame-slim .app-side-item { justify-content: center; padding: 0.5rem; }
+.app-frame-slim .app-side-lab { display: none; }
+.app-side-sub { padding-left: 1.75rem; font-size: 0.75rem; font-weight: 500; }
+.app-frame-slim .app-side-watch { display: none; }
+.app-side-tools {
+  display: flex; flex-direction: column; gap: 0.15rem;
+  margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid #e5e7eb;
+}
+html.dark .app-side-tools { border-top-color: #1f2937; }
+.app-side-toggle {
+  display: flex; align-items: center; gap: 0.5rem; width: 100%;
+  margin-top: 0.25rem; padding: 0.5rem 0.625rem;
+  font-size: 0.75rem; font-weight: 600; color: #6b7280; text-align: left;
+}
+.app-side-toggle:hover { color: #111827; }
+html.dark .app-side-toggle { color: #9ca3af; }
+html.dark .app-side-toggle:hover { color: #f3f4f6; }
+.app-frame-slim .app-side-toggle { justify-content: center; padding: 0.5rem; }
+.app-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+.app-top { display: none; }
+.watch-mobile-tabs {
+  display: flex; gap: 0.35rem; overflow-x: auto; margin-bottom: 1rem;
+}
+.watch-mobile-tab {
+  display: inline-flex; align-items: center; gap: 0.35rem; flex-shrink: 0;
+  border-radius: 9999px; border: 1px solid #e5e7eb; background: #fff;
+  padding: 0.35rem 0.7rem; font-size: 0.75rem; font-weight: 600; color: #4b5563;
+}
+html.dark .watch-mobile-tab { background: #111827; border-color: #374151; color: #e5e7eb; }
+.watch-mobile-tab-on { background: #4f46e5; border-color: #4f46e5; color: #fff; }
+html.dark .watch-mobile-tab-on { background: #4f46e5; border-color: #4f46e5; color: #fff; }
+@media (min-width: 769px) {
+  .app-side { display: flex; }
+  .app-top { display: none !important; }
+  .watch-mobile-tabs { display: none; }
+}
+@media (max-width: 768px) {
+  .app-side { display: none; }
+  .app-top { display: block; }
+}
