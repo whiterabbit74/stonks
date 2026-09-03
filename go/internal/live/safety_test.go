@@ -260,3 +260,24 @@ func TestFailedT1SubmitDoesNotResendTheMessage(t *testing.T) {
 		t.Fatalf("a failed submission must not re-open the day: reason=%q sent=%v", res.Reason, res.Sent)
 	}
 }
+
+func TestTokenStatusReportsTheSourceRequestsUse(t *testing.T) {
+	db, eng, _ := testEngine(t, nil)
+	t.Setenv("WEBULL_ACCESS_TOKEN", "env-token")
+
+	if err := db.SaveWebullToken("pending-token", "", "PENDING"); err != nil {
+		t.Fatal(err)
+	}
+	// The stored token is not usable until a check confirms it, so requests go
+	// out with the environment one — the page must say so.
+	if src := eng.TokenStatus()["source"]; src != "env" {
+		t.Fatalf("source = %v, want env", src)
+	}
+
+	if err := db.SaveWebullToken("live-token", "", "NORMAL"); err != nil {
+		t.Fatal(err)
+	}
+	if src := eng.TokenStatus()["source"]; src != "db" {
+		t.Fatalf("source = %v, want db", src)
+	}
+}

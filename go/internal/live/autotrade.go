@@ -53,11 +53,19 @@ func (e *Engine) WebullSummary() map[string]any {
 func (e *Engine) TokenStatus() map[string]any {
 	row := e.DB.GetWebullToken()
 	envTok := os.Getenv("WEBULL_ACCESS_TOKEN")
+	// Report the token requests actually carry. Saying "db" while a pending
+	// stored token is being passed over for the environment one would send the
+	// operator hunting the wrong token when calls start failing.
+	effective := e.DB.WebullAccessToken()
 	source := "none"
-	if row.Token != "" {
+	switch {
+	case effective == "":
+	case effective == row.Token:
 		source = "db"
-	} else if envTok != "" {
+	case effective == envTok:
 		source = "env"
+	default:
+		source = "db"
 	}
 	exp := row.ExpiresAt
 	if exp == "" {
