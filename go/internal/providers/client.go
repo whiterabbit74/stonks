@@ -2,11 +2,13 @@ package providers
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"os"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -73,17 +75,87 @@ type Historical struct {
 func (c *Client) get(rawURL string) (int, []byte, error) {
 	req, err := http.NewRequest(http.MethodGet, rawURL, nil)
 	if err != nil {
-		return 0, nil, err
+		return 0, nil, sanitizeTransportError(err)
 	}
 	req.Header.Set("User-Agent", "stonks-bot/1.0")
 	req.Header.Set("Cache-Control", "no-cache")
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
-		return 0, nil, err
+		return 0, nil, sanitizeTransportError(err)
 	}
 	defer resp.Body.Close()
 	b, err := io.ReadAll(resp.Body)
-	return resp.StatusCode, b, err
+	if err != nil {
+		return resp.StatusCode, b, sanitizeTransportError(err)
+	}
+	return resp.StatusCode, b, nil
+}
+
+// transportError is an outbound HTTP failure whose Error() never includes the
+// request URL. Provider URLs carry apikey/token in the query string; *url.Error
+// from Client.Do embeds that URL verbatim (stripPassword only redacts userinfo).
+type transportError struct {
+	msg string
+}
+
+func (e *transportError) Error() string { return e.msg }
+
+var (
+	secretQueryRe = regexp.MustCompile(`(?i)((?:api_?key|token)=)([^&\s"'\\]+)`)
+	httpURLRe     = regexp.MustCompile(`(?i)https?://[^\s"']+`)
+)
+
+func redactSecrets(s string) string {
+	return secretQueryRe.ReplaceAllString(s, "${1}REDACTED")
+}
+
+func stripURLs(s string) string {
+	return strings.TrimSpace(httpURLRe.ReplaceAllString(s, "[url]"))
+}
+
+func hostOf(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" {
+		return ""
+	}
+	return u.Host
+}
+
+func unwrapURLErrors(err error) error {
+	for err != nil {
+		var uerr *url.Error
+		if errors.As(err, &uerr) {
+			err = uerr.Err
+			continue
+		}
+		return err
+	}
+	return nil
+}
+
+func sanitizeTransportError(err error) error {
+	if err == nil {
+		return nil
+	}
+	root := err
+	op := "GET"
+	host := ""
+	var uerr *url.Error
+	if errors.As(err, &uerr) {
+		if uerr.Op != "" {
+			op = uerr.Op
+		}
+		host = hostOf(uerr.URL)
+		root = unwrapURLErrors(uerr.Err)
+	}
+	msg := op + " request failed"
+	if host != "" {
+		msg += " host=" + host
+	}
+	if root != nil {
+		msg += ": " + redactSecrets(stripURLs(root.Error()))
+	}
+	return &transportError{msg: redactSecrets(msg)}
 }
 
 func (c *Client) Historical(symbol, provider string, startTs, endTs int64, adjustment string) (Historical, error) {
