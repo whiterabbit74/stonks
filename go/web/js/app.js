@@ -2317,6 +2317,7 @@
             <div class="font-medium">Конфигурация автоторговли</div>
             <div class="auto-fields">
               <label class="text-xs">Провайдер<select name="provider" class="field mt-1"><option value="finnhub" ${(ac.provider || 'finnhub') === 'finnhub' ? 'selected' : ''}>Finnhub</option><option value="webull" ${ac.provider === 'webull' ? 'selected' : ''}>Webull</option></select></label>
+              <label class="text-xs">Резерв провайдеров<select name="providerFallback" class="field mt-1">${[['', 'Авто (все реальные)'], ['finnhub', 'Finnhub'], ['webull', 'Webull'], ['finnhub,webull', 'Finnhub → Webull'], ['webull,finnhub', 'Webull → Finnhub']].map(([v, l]) => `<option value="${esc(v)}" ${(ac.providerFallback || '') === v ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>
               <label class="text-xs">lowIBS<input name="lowIBS" type="number" step="0.01" min="0" max="1" value="${esc(ac.lowIBS ?? 0.1)}" class="field mt-1" /></label>
               <label class="text-xs">highIBS<input name="highIBS" type="number" step="0.01" min="0" max="1" value="${esc(ac.highIBS ?? 0.75)}" class="field mt-1" /></label>
               <label class="text-xs">Окно исполнения, сек<input name="executionWindowSeconds" type="number" value="${esc(ac.executionWindowSeconds ?? 90)}" class="field mt-1" /></label>
@@ -3595,6 +3596,7 @@
         const num = (k) => Number(fd.get(k));
         const body = {
           provider: fd.get('provider'),
+          providerFallback: fd.get('providerFallback') || '',
           lowIBS: num('lowIBS'), highIBS: num('highIBS'),
           executionWindowSeconds: num('executionWindowSeconds'),
           entrySizingMode: fd.get('entrySizingMode'),
