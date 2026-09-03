@@ -41,6 +41,11 @@ func testEngine(t *testing.T, bars []types.OHLC) (*store.DB, *Engine, *MemoryBro
 	e.Broker = br
 	e.Telegram = &MemoryTelegram{}
 	e.ChatID = "c"
+	ny, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.Now = func() time.Time { return time.Date(2026, 9, 1, 15, 59, 0, 0, ny) }
 	return db, e, br
 }
 
@@ -364,7 +369,7 @@ func TestPlaceMarketCfgPassedFromExecute(t *testing.T) {
 	}
 }
 
-func TestPreviewBeforeSendStillSubmits(t *testing.T) {
+func TestPreviewBeforeSendDoesNotSubmit(t *testing.T) {
 	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
 	db, e, br := testEngine(t, bars)
 	e.PatchAutoConfig(map[string]any{
@@ -372,8 +377,8 @@ func TestPreviewBeforeSendStillSubmits(t *testing.T) {
 		"previewBeforeSend": true,
 	})
 	res := e.Execute("test")
-	if !res.Executed || len(br.Orders) != 1 {
-		t.Fatalf("still send %+v orders %+v", res, br.Orders)
+	if res.Executed || len(br.Orders) != 0 {
+		t.Fatalf("preview must block send %+v orders %+v", res, br.Orders)
 	}
 	logs, _ := db.ListAutotradeLogs(50)
 	found := false
@@ -547,6 +552,10 @@ func TestT1SellsThenBuysInTheSameCycle(t *testing.T) {
 	e.Telegram = &MemoryTelegram{}
 	e.ChatID = "c"
 	e.Sleep = func(time.Duration) {}
+	e.Now = func() time.Time {
+		ny, _ := time.LoadLocation("America/New_York")
+		return time.Date(2026, 9, 1, 15, 59, 0, 0, ny)
+	}
 	e.PatchAutoConfig(map[string]any{
 		"enabled": true, "allowExits": true, "allowNewEntries": true,
 		"onlyFromTelegramWatches": true, "lowIBS": 0.1, "highIBS": 0.75,

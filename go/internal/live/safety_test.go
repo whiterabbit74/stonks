@@ -1,0 +1,198 @@
+package live
+
+import (
+	"errors"
+	"fmt"
+	"path/filepath"
+	"testing"
+	"time"
+
+	"mktorder.com/go/internal/providers"
+	"mktorder.com/go/internal/store"
+	"mktorder.com/go/internal/types"
+)
+
+func TestIncompleteQuoteIsNotAnEntrySignal(t *testing.T) {
+	q := providers.QuotePayload{
+		Quote: map[string]any{"current": 10.0, "prevClose": 12.0},
+	}
+	if v, ok := ibsFromQuote(q); ok {
+		t.Fatalf("fabricated range must not be ok, ibs=%v", v)
+	}
+	if v, ok := ibsFromQuote(providers.QuotePayload{
+		Range: map[string]any{"low": 90.0, "high": 90.0},
+		Quote: map[string]any{"current": 90.0, "low": 90.0, "high": 90.0},
+	}); ok {
+		t.Fatalf("high<=low must not be ok, ibs=%v", v)
+	}
+	if v, ok := ibsFromQuote(providers.QuotePayload{
+		Range: map[string]any{"low": 90.0, "high": 100.0},
+		Quote: map[string]any{"current": 0.0, "low": 90.0, "high": 100.0},
+	}); ok {
+		t.Fatalf("current<=0 must not be ok, ibs=%v", v)
+	}
+}
+
+func TestLiveQuoteSkipsProviderWithNoRange(t *testing.T) {
+	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
+	_, e, _ := testEngine(t, bars)
+	e.Quotes = &MemoryQuotes{Q: map[string]providers.QuotePayload{
+		"AAPL": {Quote: map[string]any{"current": 8.2, "prevClose": 10.0}},
+	}}
+	ev := e.evalWatch("AAPL", map[string]any{"symbol": "AAPL", "lowIBS": 0.9}, []string{"finnhub"})
+	if ev.ok {
+		t.Fatalf("incomplete quote must not be ok: %+v", ev)
+	}
+}
+
+func TestBrokerPositionBlocksEntry(t *testing.T) {
+	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
+	_, e, br := testEngine(t, bars)
+	br.Pos = []any{map[string]any{"symbol": "MSFT", "quantity": 2.0}}
+	e.PatchAutoConfig(map[string]any{
+		"enabled": true, "lowIBS": 0.9, "allowNewEntries": true, "allowExits": true,
+		"entrySizingMode": "quantity", "fixedQuantity": 1,
+	})
+	ev := e.Evaluate()
+	if fmt.Sprint(ev.Decision["action"]) == "entry" {
+		t.Fatalf("must not enter over a live broker position: %+v", ev.Decision)
+	}
+}
+
+func TestBrokerPositionLookupErrorBlocksEntry(t *testing.T) {
+	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
+	_, e, br := testEngine(t, bars)
+	br.FailPositions = errors.New("timeout")
+	e.PatchAutoConfig(map[string]any{
+		"enabled": true, "lowIBS": 0.9, "allowNewEntries": true,
+		"entrySizingMode": "quantity", "fixedQuantity": 1,
+	})
+	ev := e.Evaluate()
+	if fmt.Sprint(ev.Decision["action"]) != "none" || fmt.Sprint(ev.Decision["reason"]) != "broker_positions_unavailable" {
+		t.Fatalf("lookup failure must fail closed: %+v", ev.Decision)
+	}
+}
+
+func TestPendingEntryBlocksOtherSymbol(t *testing.T) {
+	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
+	db, e, _ := testEngine(t, bars)
+	_ = db.SaveDataset("MSFT", "MSFT", "", "", bars, false)
+	_ = db.UpsertWatch(map[string]any{"symbol": "MSFT", "lowIBS": 0.9, "highIBS": 0.75})
+	_ = db.SaveOrderTracker(map[string]any{
+		"clientOrderId": "pend-aapl", "symbol": "AAPL", "action": "entry",
+		"status": "submitted", "quantity": 1, "dateKey": "2026-09-01",
+	})
+	e.PatchAutoConfig(map[string]any{
+		"enabled": true, "lowIBS": 0.9, "allowNewEntries": true,
+		"entrySizingMode": "quantity", "fixedQuantity": 1, "onlyFromTelegramWatches": false, "symbols": "MSFT",
+	})
+	res := e.Execute("test")
+	if res.Executed {
+		t.Fatal("must not enter MSFT while an AAPL entry tracker is pending")
+	}
+}
+
+func TestLookupErrorDoesNotResend(t *testing.T) {
+	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
+	_, e, br := testEngine(t, bars)
+	e.Sleep = func(time.Duration) {}
+	e.PatchAutoConfig(map[string]any{
+		"enabled": true, "lowIBS": 0.9, "allowNewEntries": true,
+		"entrySizingMode": "quantity", "fixedQuantity": 1,
+	})
+	br.SetFailPlace("i/o timeout", 1, false)
+	br.FailDetail = errors.New("dial tcp timeout")
+	res := e.Execute("test")
+	if !res.Executed {
+		t.Fatalf("lookup failure must assume the first id landed: %+v", res.Broker)
+	}
+	if len(br.Orders) != 0 {
+		t.Fatalf("must not send a second order: %+v", br.Orders)
+	}
+}
+
+func TestClosePositionStartsTracker(t *testing.T) {
+	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
+	db, e, br := testEngine(t, bars)
+	br.Pos = []any{map[string]any{"symbol": "AAPL", "quantity": 2.0}}
+	res, err := e.ClosePosition("AAPL")
+	if err != nil || !res.Submitted {
+		t.Fatalf("close %+v %v", res, err)
+	}
+	if db.FindPendingTracker("AAPL", "exit") == nil && db.AnyPendingTracker() == nil {
+		t.Fatal("manual close must start a tracker")
+	}
+}
+
+func TestResumePollsBeforeExpiringYesterday(t *testing.T) {
+	dir := t.TempDir()
+	db, err := store.Open(filepath.Join(dir, "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	bars := []types.OHLC{{Date: "2026-09-02", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
+	_ = db.SaveDataset("AAPL", "AAPL", "", "", bars, false)
+	_ = db.SaveOrderTracker(map[string]any{
+		"clientOrderId": "old-fill", "symbol": "AAPL", "action": "entry",
+		"status": "submitted", "quantity": 1, "dateKey": "2026-09-01",
+	})
+	br := &MemoryBroker{FillStatus: "FILLED", FillQty: 1, FillPrice: 8.2}
+	br.Orders = []OrderResult{{ClientOrderID: "old-fill", Symbol: "AAPL", Side: "BUY", Quantity: 1, Submitted: true}}
+	e := New(db, &MemoryQuotes{Bars: map[string][]types.OHLC{"AAPL": bars}})
+	e.Broker = br
+	e.Telegram = &MemoryTelegram{}
+	e.Now = func() time.Time { return time.Date(2026, 9, 2, 16, 0, 0, 0, time.UTC) }
+	e.ResumeTrackers()
+	if db.FindPendingTracker("AAPL", "entry") != nil {
+		t.Fatal("filled yesterday must not stay pending")
+	}
+	trades, _ := db.ListTrades("broker_trades")
+	if len(trades) != 1 || fmt.Sprint(trades[0]["status"]) != "open" {
+		t.Fatalf("fill must be journalled, got %+v", trades)
+	}
+}
+
+func TestPartialExitKeepsRemainderOpen(t *testing.T) {
+	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 11.9, Volume: 1}}
+	db, e, br := testEngine(t, bars)
+	e.Sleep = func(time.Duration) {}
+	_ = db.InsertTrade("broker_trades", map[string]any{
+		"id": "b1", "symbol": "AAPL", "status": "open",
+		"entryDate": "2026-09-01", "entryPrice": 10.0, "quantity": 5,
+	})
+	br.Pos = []any{map[string]any{"symbol": "AAPL", "quantity": 5.0}}
+	e.PatchAutoConfig(map[string]any{"enabled": true, "highIBS": 0.5, "allowExits": true})
+	res := e.Execute("test")
+	if !res.Executed {
+		t.Fatalf("exit submit %+v", res)
+	}
+	oid := br.Orders[0].ClientOrderID
+	br.SetDetail(oid, map[string]any{
+		"status": "FILLED", "filled_qty": 2.0, "filled_price": 11.5, "client_order_id": oid,
+	})
+	waitTrackerFinal(t, e, db, "AAPL", "exit")
+	trades, _ := db.ListTrades("broker_trades")
+	if len(trades) != 1 || fmt.Sprint(trades[0]["status"]) != "open" {
+		t.Fatalf("remainder must stay open: %+v", trades)
+	}
+	if asFloat(trades[0]["quantity"]) != 3 {
+		t.Fatalf("remaining qty %+v", trades[0]["quantity"])
+	}
+}
+
+func TestLowHighThresholdsRejected(t *testing.T) {
+	out := sanitizeAutoTradingConfig(map[string]any{"lowIBS": 0.9, "highIBS": 0.1}, map[string]any{"lowIBS": 0.1, "highIBS": 0.75})
+	if asFloat(out["lowIBS"]) != 0.1 || asFloat(out["highIBS"]) != 0.75 {
+		t.Fatalf("inverted thresholds must not stick: %+v", out)
+	}
+}
+
+func TestProviderAbbrevWebull(t *testing.T) {
+	if providerAbbrev("webull") != "WB" {
+		t.Fatalf("webull abbrev %q", providerAbbrev("webull"))
+	}
+	if providerAbbrev("finnhub+webull") != "FH+WB" {
+		t.Fatalf("chain abbrev %q", providerAbbrev("finnhub+webull"))
+	}
+}

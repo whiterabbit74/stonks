@@ -488,28 +488,15 @@ func NormalizeIntradayRange(rng, quote map[string]any) map[string]any {
 	if low != nil && high != nil && *high > *low {
 		return map[string]any{"low": *low, "high": *high}
 	}
-	var cands []float64
-	for _, v := range []any{rng["low"], rng["high"], quote["current"], quote["high"], quote["low"], quote["open"], quote["prevClose"]} {
-		if n := finite(v); n != nil {
-			cands = append(cands, *n)
-		}
+	// Fall back only to the quote's own session high/low. Never synthesise a
+	// range from current/prevClose: that pins current to an edge and produces
+	// IBS 0 or 1, which then wins the entry ranking.
+	qLow := finite(quote["low"])
+	qHigh := finite(quote["high"])
+	if qLow != nil && qHigh != nil && *qHigh > *qLow {
+		return map[string]any{"low": *qLow, "high": *qHigh}
 	}
-	if len(cands) < 2 {
-		return nil
-	}
-	min, max := cands[0], cands[0]
-	for _, x := range cands {
-		if x < min {
-			min = x
-		}
-		if x > max {
-			max = x
-		}
-	}
-	if max <= min {
-		return nil
-	}
-	return map[string]any{"low": min, "high": max}
+	return nil
 }
 
 func finite(v any) *float64 {

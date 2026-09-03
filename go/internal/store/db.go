@@ -647,7 +647,7 @@ func defaultSettings() map[string]any {
 			"entryCapitalMode": "standard_safe", "sizingMode": "notional", "fixedQuantity": 1,
 			"fixedNotionalUsd": 1000, "maxPositionUsd": 0, "allowFractionalShares": false,
 			"orderType": "MARKET", "timeInForce": "DAY", "supportTradingSession": "CORE",
-			"maxSlippageBps": 25, "previewBeforeSend": true, "cancelOpenOrdersBeforeEntry": false,
+			"maxSlippageBps": 25, "previewBeforeSend": false, "cancelOpenOrdersBeforeEntry": false,
 			"notes": "", "lastModifiedAt": nil,
 		},
 	}

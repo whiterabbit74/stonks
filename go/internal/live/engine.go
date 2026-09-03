@@ -1,6 +1,7 @@
 package live
 
 import (
+	"errors"
 	"os"
 	"sync"
 	"time"
@@ -8,6 +9,10 @@ import (
 	"mktorder.com/go/internal/providers"
 	"mktorder.com/go/internal/store"
 )
+
+// ErrOrderNotFound means the broker answered and does not know this client id.
+// A lookup error that is not this sentinel must not be retried as a new order.
+var ErrOrderNotFound = errors.New("order not found")
 
 // providers import used by quotes() nil-client guard.
 
@@ -42,6 +47,7 @@ type PlaceMarketCfg struct {
 	// so a submission that fails ambiguously can be probed by that id instead
 	// of blindly resent. Empty means the broker generates one.
 	ClientOrderID string
+	LimitPrice    float64
 }
 
 type marketCfgPlacer interface {
@@ -78,8 +84,16 @@ type Engine struct {
 	wheels       map[string]bool
 	inFlight     map[string]bool
 	orderMeta    map[string]orderMeta
+	quoteCache   map[string]quoteCacheEntry
 	lastRunAt    string
 	lastResult   any
+}
+
+type quoteCacheEntry struct {
+	payload  providers.QuotePayload
+	provider string
+	err      error
+	at       time.Time
 }
 
 type orderMeta struct {
@@ -101,6 +115,7 @@ func New(db *store.DB, quotes QuoteSource) *Engine {
 		Broker:       EnvBrokerDB(db),
 		ChatID:       os.Getenv("TELEGRAM_CHAT_ID"),
 		reservations: map[string]string{},
+		quoteCache:   map[string]quoteCacheEntry{},
 	}
 }
 

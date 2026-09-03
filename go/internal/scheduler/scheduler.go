@@ -118,7 +118,7 @@ type Deps struct {
 }
 
 func Start(db *store.DB, onEvent func(JobLog)) (stop func()) {
-	return StartWith(db, Deps{}, onEvent)
+	panic("scheduler.Start without Deps.Live drops in-flight trackers; use StartWith")
 }
 
 func StartWith(db *store.DB, deps Deps, onEvent func(JobLog)) (stop func()) {
@@ -163,6 +163,11 @@ func RunTick(db *store.DB, deps Deps, now time.Time, onEvent func(JobLog)) {
 			onEvent(JobLog{At: now, Name: "tick-panic", Detail: fmt.Sprint(rec)})
 		}
 	}()
+	eng := engine(db, deps)
+	if eng.Now == nil {
+		eng.Now = func() time.Time { return now }
+		defer func() { eng.Now = nil }()
+	}
 	p := tradingdate.CurrentTimeNYSE(now)
 	today := tradingdate.TodayNYSE(now)
 
@@ -213,7 +218,10 @@ func RunTokenHealth(db *store.DB, deps Deps, todayET string, now time.Time) (det
 
 func RunTelegramAggregation(db *store.DB, deps Deps, until int) int {
 	// Node runTelegramAggregation returns wrong_time unless the clock minute is exactly 11 or 1.
-	if until != 11 && until != 1 {
+	if until != 11 && until > 1 {
+		return 0
+	}
+	if until < 0 {
 		return 0
 	}
 	res, _ := engine(db, deps).Aggregate(until, live.AggregateOpts{ForceSend: true, DryRun: until > 2, UpdateState: true})

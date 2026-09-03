@@ -7,10 +7,12 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
 	"mktorder.com/go/internal/providers"
+	"mktorder.com/go/internal/store"
 	"mktorder.com/go/internal/types"
 )
 
@@ -93,6 +95,8 @@ type MemoryBroker struct {
 	FillQty          float64
 	FillPrice        float64
 	LastCfg          PlaceMarketCfg
+	FailPositions    error
+	FailDetail       error
 }
 
 // SetFailPlace makes the next n placements fail; n <= 0 fails every placement.
@@ -159,7 +163,42 @@ func (m *MemoryBroker) PlaceMarket(symbol, side string, qty float64) (OrderResul
 	}
 	res := OrderResult{Submitted: true, ClientOrderID: id, Quantity: qty, Symbol: symbol, Side: side, Status: status}
 	m.Orders = append(m.Orders, res)
+	if strings.EqualFold(side, "SELL") || strings.EqualFold(status, "FILLED") || strings.EqualFold(status, "filled") {
+		m.applyPosition(symbol, side, qty)
+	}
 	return res, nil
+}
+
+func (m *MemoryBroker) applyPosition(symbol, side string, qty float64) {
+	want := store.SafeTicker(symbol)
+	sell := strings.EqualFold(side, "SELL")
+	var next []any
+	found := false
+	for _, row := range m.Pos {
+		mp := mapOf(row)
+		if mp == nil {
+			continue
+		}
+		if store.SafeTicker(firstString(mp, "symbol", "ticker", "display_symbol")) != want {
+			next = append(next, row)
+			continue
+		}
+		found = true
+		cur := firstPositive(mp["quantity"], mp["qty"])
+		if sell {
+			cur -= qty
+		} else {
+			cur += qty
+		}
+		if cur > 1e-9 {
+			mp["quantity"] = cur
+			next = append(next, mp)
+		}
+	}
+	if !sell && !found && qty > 0 {
+		next = append(next, map[string]any{"symbol": want, "quantity": qty})
+	}
+	m.Pos = next
 }
 
 func (m *MemoryBroker) CloseMarket(symbol string) (OrderResult, error) {
@@ -182,6 +221,9 @@ func (m *MemoryBroker) Account() (map[string]any, error) {
 }
 
 func (m *MemoryBroker) Positions() ([]any, error) {
+	if m.FailPositions != nil {
+		return nil, m.FailPositions
+	}
 	if m.Pos != nil {
 		return m.Pos, nil
 	}
@@ -240,6 +282,9 @@ func (m *MemoryBroker) OrderDetail(clientOrderID string) (map[string]any, error)
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.DetailN++
+	if m.FailDetail != nil {
+		return nil, m.FailDetail
+	}
 	if m.Details != nil {
 		if d, ok := m.Details[clientOrderID]; ok {
 			return d, nil
@@ -255,7 +300,7 @@ func (m *MemoryBroker) OrderDetail(clientOrderID string) (map[string]any, error)
 		}
 	}
 	if !known {
-		return nil, fmt.Errorf("unknown client order id %s", clientOrderID)
+		return nil, fmt.Errorf("%w: %s", ErrOrderNotFound, clientOrderID)
 	}
 	if m.FillStatus != "" {
 		// A broker configured to fill also reports the fill when polled.

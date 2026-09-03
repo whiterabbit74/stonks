@@ -2339,7 +2339,7 @@
               <label class="inline-flex items-center gap-1"><input type="checkbox" name="allowExits" ${ac.allowExits !== false ? 'checked' : ''} /> Exits</label>
               <label class="inline-flex items-center gap-1"><input type="checkbox" name="onlyFromTelegramWatches" ${ac.onlyFromTelegramWatches !== false ? 'checked' : ''} /> Только из мониторинга</label>
               <label class="inline-flex items-center gap-1"><input type="checkbox" name="allowFractionalShares" ${ac.allowFractionalShares ? 'checked' : ''} /> Дробные акции</label>
-              <label class="inline-flex items-center gap-1"><input type="checkbox" name="previewBeforeSend" ${ac.previewBeforeSend !== false ? 'checked' : ''} /> Preview</label>
+              <label class="inline-flex items-center gap-1"><input type="checkbox" name="previewBeforeSend" ${ac.previewBeforeSend === true ? 'checked' : ''} /> Preview</label>
               <label class="inline-flex items-center gap-1"><input type="checkbox" name="cancelOpenOrdersBeforeEntry" ${ac.cancelOpenOrdersBeforeEntry ? 'checked' : ''} /> Cancel open orders</label>
             </div>
             <p class="text-xs text-gray-500">Профиль: ${esc(mode.label)} — ${esc(mode.hint)}. Account: ${esc(tok.accountId || conn.hasAccountId ? 'задан' : 'не задан')}. ${ac.lastModifiedAt ? ('Обновлено: ' + esc(formatDateTimeET(ac.lastModifiedAt)) + ' ET') : ''}</p>

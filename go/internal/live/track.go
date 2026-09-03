@@ -1,6 +1,7 @@
 package live
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"strings"
@@ -82,7 +83,6 @@ func (e *Engine) PollTrackers() int {
 	if e.Broker == nil {
 		return 0
 	}
-	e.expireStaleTrackers()
 	pending, err := e.DB.ListPendingTrackers()
 	if err != nil || len(pending) == 0 {
 		return 0
@@ -92,12 +92,20 @@ func (e *Engine) PollTrackers() int {
 		n++
 		e.pollOneTracker(t)
 	}
+	e.expireStaleTrackers()
 	return n
 }
 
 func (e *Engine) ResumeTrackers() {
-	e.expireStaleTrackers()
 	pending, err := e.DB.ListPendingTrackers()
+	if err != nil {
+		return
+	}
+	for _, t := range pending {
+		e.pollOneTracker(t)
+	}
+	e.expireStaleTrackers()
+	pending, err = e.DB.ListPendingTrackers()
 	if err != nil {
 		return
 	}
@@ -111,10 +119,29 @@ func (e *Engine) expireStaleTrackers() {
 		return
 	}
 	today := tradingdate.TodayNYSE(e.now())
-	n, err := e.DB.ExpireStaleTrackers(today, 64)
+	pending, err := e.DB.ListPendingTrackers()
 	if err != nil {
 		e.logAuto("expire_trackers_failed", "", map[string]any{"error": err.Error()})
 		return
+	}
+	n := 0
+	for _, t := range pending {
+		attempts := int(asFloat(t["attempts"]))
+		dk := fmt.Sprint(t["dateKey"])
+		staleDay := dk != "" && dk != "<nil>" && today != "" && dk < today
+		maxed := attempts >= 64
+		if !staleDay && !maxed {
+			continue
+		}
+		done, lookupErr := e.pollTracker(t)
+		if done {
+			continue
+		}
+		if lookupErr != nil && !maxed {
+			continue
+		}
+		e.finalizeTracker(t, "expired")
+		n++
 	}
 	if n > 0 {
 		e.logAuto("order_tracking_finished", "", map[string]any{"status": "expired", "count": n, "reason": "stale_or_max_attempts"})
@@ -198,9 +225,14 @@ func (e *Engine) trackerWheel(clientOrderID string) {
 }
 
 func (e *Engine) pollOneTracker(t map[string]any) bool {
+	done, _ := e.pollTracker(t)
+	return done
+}
+
+func (e *Engine) pollTracker(t map[string]any) (bool, error) {
 	id := fmt.Sprint(t["clientOrderId"])
 	if id == "" || e.Broker == nil {
-		return true
+		return true, nil
 	}
 	e.mu.Lock()
 	if e.inFlight == nil {
@@ -208,7 +240,7 @@ func (e *Engine) pollOneTracker(t map[string]any) bool {
 	}
 	if e.inFlight[id] {
 		e.mu.Unlock()
-		return false
+		return false, nil
 	}
 	e.inFlight[id] = true
 	e.mu.Unlock()
@@ -224,11 +256,15 @@ func (e *Engine) pollOneTracker(t map[string]any) bool {
 		e.logAuto("order_poll_failed", e.metaCorr(id), map[string]any{
 			"clientOrderId": id, "error": derr.Error(),
 		})
+		if errors.Is(derr, ErrOrderNotFound) {
+			e.finalizeTracker(t, "expired")
+			return true, nil
+		}
 		if n, _ := e.DB.BumpOrderTrackerAttempts(id); n >= 64 {
 			e.finalizeTracker(t, "expired")
-			return true
+			return true, derr
 		}
-		return false
+		return false, derr
 	}
 	if detail != nil {
 		status = NormalizeOrderStatus(orderStatusField(detail))
@@ -254,12 +290,12 @@ func (e *Engine) pollOneTracker(t map[string]any) bool {
 		})
 		if n, _ := e.DB.BumpOrderTrackerAttempts(id); n >= 64 {
 			e.finalizeTracker(t, "expired")
-			return true
+			return true, nil
 		}
-		return false
+		return false, nil
 	}
 	e.finalizeTrackerStatus(t, detail, status)
-	return true
+	return true, nil
 }
 
 func (e *Engine) finalizeTracker(t map[string]any, status string) {

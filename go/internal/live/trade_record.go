@@ -120,17 +120,19 @@ func (e *Engine) recordFill(t map[string]any, detail map[string]any, status stri
 		e.deletePhantom(clientOrderID, symbol)
 		return
 	}
-	if reportedQty > 0 && orderedQty > 0 && reportedQty < orderedQty-1e-9 {
-		// Should not happen: market orders on the monitored tickers fill whole.
-		// If it ever does, the journal follows the executed quantity and the
-		// operator is told, because the remainder is an untracked exposure.
+	partial := reportedQty > 0 && orderedQty > 0 && reportedQty < orderedQty-1e-9
+	if partial {
 		e.logAuto("order_partially_filled", meta.CorrelationID, map[string]any{
 			"symbol": symbol, "action": action, "clientOrderId": clientOrderID,
 			"status": status, "orderedQty": orderedQty, "filledQty": reportedQty,
 		})
 		_ = e.Send(e.chat(), fmt.Sprintf(
-			"<b>Webull: частичное исполнение</b>\n%s • %s\nзаказано: %v\nисполнено: %v\nstatus: %s\nОстаток не отражён в журнале — проверьте позицию у брокера.",
+			"<b>Webull: частичное исполнение</b>\n%s • %s\nзаказано: %v\nисполнено: %v\nstatus: %s",
 			symbol, action, orderedQty, reportedQty, status))
+		if action == "exit" {
+			e.reduceOpenQuantity(symbol, clientOrderID, reportedQty, fillPrice)
+			return
+		}
 	} else if status != "filled" {
 		e.logAuto("order_filled_under_unknown_status", meta.CorrelationID, map[string]any{
 			"symbol": symbol, "action": action, "clientOrderId": clientOrderID,
@@ -183,6 +185,25 @@ func (e *Engine) recordFill(t map[string]any, detail map[string]any, status stri
 		if mon != nil && store.SafeTicker(fmt.Sprint(mon["symbol"])) == symbol {
 			e.closeTradeWithPnL("trades", fmt.Sprint(mon["id"]), fillPrice, dateKey, exitIBS, "closed_from_broker_fill")
 		}
+	}
+}
+
+func (e *Engine) reduceOpenQuantity(symbol, preferID string, sold, exitPrice float64) {
+	if !(sold > 0) {
+		return
+	}
+	for _, table := range []string{"broker_trades", "trades"} {
+		t := e.openTradeBySymbol(table, symbol, preferID)
+		if t == nil {
+			continue
+		}
+		cur := asFloat(t["quantity"])
+		left := cur - sold
+		if left <= 1e-9 {
+			e.closeTradeWithPnL(table, fmt.Sprint(t["id"]), exitPrice, tradingdate.TodayNYSE(e.now()), nil, "partial_exit_flat")
+			continue
+		}
+		_, _ = e.DB.SQL.Exec(`UPDATE `+table+` SET quantity=? WHERE id=?`, left, t["id"])
 	}
 }
 

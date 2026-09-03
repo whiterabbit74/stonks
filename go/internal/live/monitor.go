@@ -11,6 +11,8 @@ var blockingMismatchCodes = map[string]struct{}{
 	"monitor_broker_symbol_mismatch":              {},
 	"linked_monitor_trade_missing_broker_match":   {},
 	"legacy_monitor_trade_ambiguous_broker_match": {},
+	"live_broker_position_without_journal":        {},
+	"broker_positions_unavailable":                {},
 }
 
 func (e *Engine) Consistency() map[string]any {
@@ -101,6 +103,25 @@ func (e *Engine) Consistency() map[string]any {
 			"code": "monitor_broker_symbol_mismatch", "severity": "error",
 			"message": fmt.Sprintf("Monitor trade %s is open while broker trade %s is open. Automatic reconcile is unsafe.", openM["symbol"], openB["symbol"]),
 			"symbol":  openM["symbol"], "monitorTradeId": openM["id"], "brokerTradeId": openB["id"], "autoFixable": false,
+		})
+	}
+	held, heldErr := e.liveHeldSymbols()
+	if heldErr != nil {
+		issues = append(issues, map[string]any{
+			"code": "broker_positions_unavailable", "severity": "error",
+			"message": "Live broker positions could not be read; new entries are blocked.",
+			"autoFixable": false,
+		})
+	} else if len(held) > 0 && openB == nil {
+		var sym string
+		for s := range held {
+			sym = s
+			break
+		}
+		issues = append(issues, map[string]any{
+			"code": "live_broker_position_without_journal", "severity": "error",
+			"message": fmt.Sprintf("Broker holds %s but the local journal is flat.", sym),
+			"symbol":  sym, "autoFixable": false,
 		})
 	}
 	if issues == nil {

@@ -132,6 +132,20 @@ func sanitizeAutoTradingConfig(input, current map[string]any) map[string]any {
 	if f, ok := finiteNumber(next["maxSlippageBps"]); ok {
 		next["maxSlippageBps"] = clamp(f, 0, 1000)
 	}
+	low, lok := finiteNumber(next["lowIBS"])
+	high, hok := finiteNumber(next["highIBS"])
+	if lok && hok && high > 0 && low >= high {
+		if f, ok := finiteNumber(current["lowIBS"]); ok {
+			next["lowIBS"] = f
+		} else {
+			next["lowIBS"] = ibs.DefaultLowIBS
+		}
+		if f, ok := finiteNumber(current["highIBS"]); ok {
+			next["highIBS"] = f
+		} else {
+			next["highIBS"] = ibs.DefaultHighIBS
+		}
+	}
 
 	if s, ok := input["provider"].(string); ok && enumIn(s, "finnhub", "webull") {
 		next["provider"] = s

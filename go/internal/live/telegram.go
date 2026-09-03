@@ -25,6 +25,42 @@ type SimulateResult struct {
 	Broker   any      `json:"broker,omitempty"`
 }
 
+func (e *Engine) runT1Orders(today string) (exitRes, entryRes EvalResult, waitFill bool) {
+	exitRes = e.Execute("telegram_t1")
+	action, _ := exitRes.Decision["action"].(string)
+	if action != "none" && !exitRes.Executed {
+		_ = e.DB.ReleaseAggregateT1(e.chat(), today)
+		_ = e.DB.AppendAutotradeLog("t1_claim_released_submit_failed")
+		return exitRes, entryRes, false
+	}
+	if action != "exit" || !exitRes.Executed {
+		return exitRes, entryRes, false
+	}
+	if e.awaitFlatAfterExit() {
+		entryRes = e.Execute("telegram_t1")
+		return exitRes, entryRes, false
+	}
+	if e.DB.FindPendingTracker("", "exit") != nil {
+		_ = e.DB.AppendAutotradeLog("t1_entry_blocked_waiting_exit_fill")
+		return exitRes, entryRes, true
+	}
+	_ = e.DB.AppendAutotradeLog("t1_exit_rejected_retry")
+	exitRes = e.Execute("telegram_t1")
+	action, _ = exitRes.Decision["action"].(string)
+	if action == "exit" && exitRes.Executed {
+		if e.awaitFlatAfterExit() {
+			entryRes = e.Execute("telegram_t1")
+			return exitRes, entryRes, false
+		}
+		if e.DB.FindPendingTracker("", "exit") != nil {
+			return exitRes, entryRes, true
+		}
+	}
+	_ = e.DB.ReleaseAggregateT1(e.chat(), today)
+	_ = e.DB.AppendAutotradeLog("t1_claim_released_exit_failed")
+	return exitRes, entryRes, false
+}
+
 func StageMinutes(stage string) int {
 	if stage == "confirmations" || stage == "t1" || stage == "T-1" {
 		return 1
@@ -93,18 +129,37 @@ func (e *Engine) Aggregate(minutesUntilClose int, opts AggregateOpts) (SimulateR
 		stage = "confirmations"
 	}
 	out := SimulateResult{Stage: stage, DryRun: opts.DryRun}
+	today := tradingdate.TodayNYSE(e.now())
+	if opts.UpdateState {
+		t11Sent, t1Sent := e.DB.AggregateState(e.chat(), today)
+		if stage != "confirmations" && t11Sent {
+			out.Reason = "already_sent"
+			return out, nil
+		}
+		if stage == "confirmations" && t1Sent {
+			out.Reason = "already_sent"
+			return out, nil
+		}
+	}
 	watches, _ := e.DB.ListWatches()
+	if len(watches) == 0 {
+		emaAlerts := e.EvaluateEMAAlerts()
+		if len(emaAlerts) == 0 {
+			out.Reason = "no_watches"
+			return out, nil
+		}
+	}
+	providerChain := quoteProviderChain(e.AutoConfig())
+	var watchSyms []string
+	for _, w := range watches {
+		watchSyms = append(watchSyms, fmt.Sprint(w["symbol"]))
+	}
+	e.prefetchQuotes(watchSyms, providerChain)
 	emaAlerts := e.EvaluateEMAAlerts()
 	if len(watches) == 0 && len(emaAlerts) == 0 {
 		out.Reason = "no_watches"
 		return out, nil
 	}
-	today := tradingdate.TodayNYSE(e.now())
-	// Node's T-1 path always uses the real-time chain (finnhub -> webull,
-	// providers/quote.js), never resultsQuoteProvider — that setting drives the
-	// Results page and defaults to alpha_vantage, whose "quote" is synthesised
-	// from daily history. Using it here would decide on yesterday's bar.
-	providerChain := quoteProviderChain(e.AutoConfig())
 	var rows []t1Watch
 	var integ []IntegrityResult
 	for _, w := range watches {
@@ -119,17 +174,6 @@ func (e *Engine) Aggregate(minutesUntilClose int, opts AggregateOpts) (SimulateR
 	for _, a := range emaAlerts {
 		if a.Warning.BlockSignals {
 			integ = append(integ, a.Warning)
-		}
-	}
-	if opts.UpdateState {
-		t11Sent, t1Sent := e.DB.AggregateState(e.chat(), today)
-		if stage != "confirmations" && t11Sent {
-			out.Reason = "already_sent"
-			return out, nil
-		}
-		if stage == "confirmations" && t1Sent {
-			out.Reason = "already_sent"
-			return out, nil
 		}
 	}
 	if stage != "confirmations" {
@@ -177,24 +221,12 @@ func (e *Engine) Aggregate(minutesUntilClose int, opts AggregateOpts) (SimulateR
 			_ = e.DB.AppendAutotradeLog("t1_dry_run")
 			exitRes = e.Evaluate()
 		} else {
-			exitRes = e.Execute("telegram_t1")
-			out.Executed = exitRes.Executed
-			out.Broker = exitRes.Broker
-			action, _ := exitRes.Decision["action"].(string)
-			// Sell, then buy in the same T-1. The re-entry must not open a
-			// second position while the first is still live, so wait for the
-			// exit to actually fill rather than for it to be merely submitted.
-			if action == "exit" && exitRes.Executed {
-				if !e.awaitFlatAfterExit() {
-					waitFill = true
-					_ = e.DB.AppendAutotradeLog("t1_entry_blocked_waiting_exit_fill")
-				} else {
-					entryRes = e.Execute("telegram_t1")
-					if entryRes.Executed {
-						out.Executed = true
-						out.Broker = entryRes.Broker
-					}
-				}
+			exitRes, entryRes, waitFill = e.runT1Orders(today)
+			out.Executed = exitRes.Executed || entryRes.Executed
+			if entryRes.Executed {
+				out.Broker = entryRes.Broker
+			} else {
+				out.Broker = exitRes.Broker
 			}
 		}
 	}
@@ -438,15 +470,18 @@ func (e *Engine) openMonitorTrade() map[string]any {
 }
 
 func ibsFromQuote(q providers.QuotePayload) (float64, bool) {
+	cur := asFloat(q.Quote["current"])
+	if !(cur > 0) {
+		return 0, false
+	}
 	rng := providers.NormalizeIntradayRange(q.Range, q.Quote)
 	if rng == nil {
 		return 0, false
 	}
-	low, _ := rng["low"].(float64)
-	high, _ := rng["high"].(float64)
-	cur, _ := q.Quote["current"].(float64)
-	if high <= low {
-		return 0.5, true
+	low := asFloat(rng["low"])
+	high := asFloat(rng["high"])
+	if !(high > low) {
+		return 0, false
 	}
 	// Node clamps to [0,1] (autotrade.js:575). An extended-hours `current`
 	// outside the regular-session range must not skew candidate ranking.
@@ -482,13 +517,59 @@ var quoteRetryStep = 350 * time.Millisecond
 // which no live decision is possible, so a single provider outage must not
 // cancel the day. High, low and current always come from the SAME provider:
 // mixing them across sources would produce a meaningless IBS.
+const quoteCacheTTL = 20 * time.Second
+
+func quoteCacheKey(symbol string, chain []string) string {
+	return store.SafeTicker(symbol) + "|" + strings.Join(chain, ",")
+}
+
 func (e *Engine) liveQuote(symbol string, chain []string) (providers.QuotePayload, string, error) {
+	if len(chain) == 0 {
+		chain = realtimeQuoteProviders
+	}
+	key := quoteCacheKey(symbol, chain)
+	if e != nil {
+		e.mu.Lock()
+		if e.quoteCache != nil {
+			if c, ok := e.quoteCache[key]; ok && e.now().Sub(c.at) < quoteCacheTTL {
+				e.mu.Unlock()
+				return c.payload, c.provider, c.err
+			}
+		}
+		e.mu.Unlock()
+	}
+	payload, provider, err := e.fetchLiveQuote(symbol, chain)
+	if e != nil {
+		e.mu.Lock()
+		if e.quoteCache == nil {
+			e.quoteCache = map[string]quoteCacheEntry{}
+		}
+		e.quoteCache[key] = quoteCacheEntry{payload: payload, provider: provider, err: err, at: e.now()}
+		e.mu.Unlock()
+	}
+	return payload, provider, err
+}
+
+func (e *Engine) prefetchQuotes(symbols []string, chain []string) {
+	if len(symbols) == 0 {
+		return
+	}
+	done := make(chan struct{}, len(symbols))
+	for _, sym := range symbols {
+		go func(s string) {
+			defer func() { _ = recover(); done <- struct{}{} }()
+			_, _, _ = e.liveQuote(s, chain)
+		}(sym)
+	}
+	for range symbols {
+		<-done
+	}
+}
+
+func (e *Engine) fetchLiveQuote(symbol string, chain []string) (providers.QuotePayload, string, error) {
 	qs := e.quotes()
 	if qs == nil {
 		return providers.QuotePayload{}, "", fmt.Errorf("no quote source configured")
-	}
-	if len(chain) == 0 {
-		chain = realtimeQuoteProviders
 	}
 	var lastErr error
 	for i, p := range chain {

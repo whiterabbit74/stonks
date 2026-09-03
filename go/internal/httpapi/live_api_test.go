@@ -36,6 +36,11 @@ func liveServer(t *testing.T) (*Server, *live.MemoryTelegram, *live.MemoryBroker
 	s.Live.Broker = br
 	s.Live.Quotes = q
 	s.Live.ChatID = "test-chat"
+	ny, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Live.Now = func() time.Time { return time.Date(2026, 9, 1, 15, 59, 0, 0, ny) }
 	if err := s.DB.UpsertWatch(map[string]any{"symbol": "AAPL", "lowIBS": 0.1, "highIBS": 0.75, "chatId": "test-chat"}); err != nil {
 		t.Fatal(err)
 	}

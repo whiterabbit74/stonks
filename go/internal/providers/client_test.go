@@ -74,6 +74,23 @@ func TestGetDoErrorRedactsURLErrorFromTransport(t *testing.T) {
 	}
 }
 
+func TestNormalizeIntradayRangeRejectsCurrentPrevCloseFabrication(t *testing.T) {
+	if got := NormalizeIntradayRange(nil, map[string]any{"current": 10.0, "prevClose": 12.0}); got != nil {
+		t.Fatalf("current/prevClose must not become a range: %+v", got)
+	}
+	if got := NormalizeIntradayRange(map[string]any{}, map[string]any{"current": 8.0, "open": 8.0}); got != nil {
+		t.Fatalf("current==open must not become a range: %+v", got)
+	}
+	got := NormalizeIntradayRange(map[string]any{"low": 90.0, "high": 100.0}, map[string]any{"current": 95.0})
+	if got == nil || got["low"] != 90.0 || got["high"] != 100.0 {
+		t.Fatalf("real session range: %+v", got)
+	}
+	got = NormalizeIntradayRange(nil, map[string]any{"low": 90.0, "high": 100.0, "current": 95.0})
+	if got == nil || got["low"] != 90.0 {
+		t.Fatalf("quote high/low fallback: %+v", got)
+	}
+}
+
 func TestGetNewRequestErrorRedactsAPIKey(t *testing.T) {
 	c := &Client{HTTP: http.DefaultClient}
 	_, _, err := c.get("http://a b.com/?apikey=SECRET")

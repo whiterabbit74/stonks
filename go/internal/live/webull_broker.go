@@ -75,7 +75,7 @@ func (b *LiveBroker) PlaceMarketCfg(symbol, side string, qty float64, cfg PlaceM
 	}
 	tif := strOr(cfg.TimeInForce, "DAY")
 	session := strOr(cfg.SupportTradingSession, "CORE")
-	// Live path always sends MARKET (Node executeWebullSignal forces MARKET).
+	orderType := "MARKET"
 	order := map[string]any{
 		"combo_type":              "NORMAL",
 		"client_order_id":         cid,
@@ -84,12 +84,16 @@ func (b *LiveBroker) PlaceMarketCfg(symbol, side string, qty float64, cfg PlaceM
 		"instrument_type":         "EQUITY",
 		"market":                  "US",
 		"side":                    strings.ToUpper(side),
-		"order_type":              "MARKET",
+		"order_type":              orderType,
 		"quantity":                formatOrderQuantity(qty, cfg.Fractional),
 		"time_in_force":           tif,
 		"support_trading_session": session,
 		"entrust_type":            "QTY",
 		"extended_hours_trading":  false,
+	}
+	if cfg.LimitPrice > 0 {
+		order["order_type"] = "LIMIT"
+		order["limit_price"] = fmt.Sprintf("%.2f", cfg.LimitPrice)
 	}
 	placed, err := c.PlaceOrder(c.AccountID, order)
 	if err != nil {
@@ -276,6 +280,9 @@ func (b *LiveBroker) OrderDetail(clientOrderID string) (map[string]any, error) {
 				out["filled_qty"] = q
 			}
 		}
+	}
+	if NormalizeOrderStatus(orderStatusField(out)) == "unknown" && clientOrderIDOf(out) == "" {
+		return nil, fmt.Errorf("%w: %s", ErrOrderNotFound, clientOrderID)
 	}
 	return out, nil
 }

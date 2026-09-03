@@ -203,16 +203,28 @@ func parseClock(hm string) int {
 }
 
 func providerAbbrev(p string) string {
-	switch p {
-	case "finnhub":
-		return "FH"
-	case "twelve_data":
-		return "TD"
-	case "alpha_vantage":
-		return "AV"
-	default:
-		return "Hist"
+	var parts []string
+	for _, raw := range strings.Split(p, "+") {
+		switch strings.ToLower(strings.TrimSpace(raw)) {
+		case "finnhub":
+			parts = append(parts, "FH")
+		case "twelve_data":
+			parts = append(parts, "TD")
+		case "alpha_vantage":
+			parts = append(parts, "AV")
+		case "webull":
+			parts = append(parts, "WB")
+		case "polygon":
+			parts = append(parts, "PG")
+		case "":
+		default:
+			parts = append(parts, "RT")
+		}
 	}
+	if len(parts) == 0 {
+		return "RT"
+	}
+	return strings.Join(parts, "+")
 }
 
 func tgBold(s string) string { return "<b>" + s + "</b>" }

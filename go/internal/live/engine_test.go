@@ -21,6 +21,14 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
+func nearCloseNow() func() time.Time {
+	ny, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		return func() time.Time { return time.Date(2026, 9, 1, 19, 59, 0, 0, time.UTC) }
+	}
+	return func() time.Time { return time.Date(2026, 9, 1, 15, 59, 0, 0, ny) }
+}
+
 func TestExecuteReserveSubmitTrack(t *testing.T) {
 	dir := t.TempDir()
 	db, err := store.Open(filepath.Join(dir, "t.db"))
@@ -106,6 +114,7 @@ func TestSimulateDoesNotPlace(t *testing.T) {
 	e.Broker = br
 	e.Telegram = &MemoryTelegram{}
 	e.ChatID = "c"
+	e.Now = nearCloseNow()
 	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true, "entrySizingMode": "quantity", "fixedQuantity": 1})
 	sim, err := e.Simulate("confirmations")
 	if err != nil {
@@ -146,6 +155,7 @@ func TestT1MismatchBlocksExecute(t *testing.T) {
 	e.Broker = br
 	e.Telegram = tg
 	e.ChatID = "c"
+	e.Now = nearCloseNow()
 	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true, "entrySizingMode": "quantity", "fixedQuantity": 1})
 	res, err := e.Aggregate(1, AggregateOpts{ForceSend: true, DryRun: false})
 	if err != nil {
@@ -182,6 +192,7 @@ func TestT1WaitForFillBlocksEntry(t *testing.T) {
 	e.Broker = br
 	e.Telegram = &MemoryTelegram{}
 	e.ChatID = "c"
+	e.Now = nearCloseNow()
 	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "highIBS": 0.75, "allowNewEntries": true, "allowExits": true, "entrySizingMode": "quantity", "fixedQuantity": 1})
 	res, err := e.Aggregate(1, AggregateOpts{ForceSend: true, DryRun: false})
 	if err != nil {
@@ -246,6 +257,7 @@ func TestSplitJumpBlocksSignals(t *testing.T) {
 	e.Telegram = tg
 	e.Broker = br
 	e.ChatID = "c"
+	e.Now = nearCloseNow()
 	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true, "entrySizingMode": "quantity", "fixedQuantity": 1})
 	res, err := e.Aggregate(11, AggregateOpts{ForceSend: true, DryRun: true})
 	if err != nil {

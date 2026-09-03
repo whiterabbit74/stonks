@@ -195,6 +195,13 @@ func (e *Engine) Evaluate() EvalResult {
 	}
 	brokerTrades, _ := e.DB.ListTrades("broker_trades")
 	open := store.OpenBrokerTrade(brokerTrades)
+	held, heldErr := e.liveHeldSymbols()
+	if open == nil && heldErr == nil && len(held) == 1 {
+		for sym, qty := range held {
+			open = map[string]any{"symbol": sym, "quantity": qty, "status": "open", "source": "live_broker"}
+		}
+	}
+	e.prefetchQuotes(symbols, providerChain)
 	var quotes []map[string]any
 	for _, sym := range symbols {
 		w := watchBy[sym]
@@ -216,8 +223,17 @@ func (e *Engine) Evaluate() EvalResult {
 		})
 	}
 	decision := map[string]any{"action": "none", "reason": "no_signal", "symbol": nil, "candidate": nil}
-	if open != nil && allowExits {
+	if len(symbols) == 0 {
+		decision["reason"] = "empty_symbol_universe"
+		e.logAuto("execution_skipped", "", map[string]any{"reason": "empty_symbol_universe"})
+	} else if open != nil && allowExits {
 		sym := store.SafeTicker(fmt.Sprint(open["symbol"]))
+		if heldErr == nil && len(held) > 0 {
+			if _, ok := held[sym]; !ok {
+				decision = map[string]any{"action": "none", "reason": "broker_position_mismatch", "symbol": sym, "candidate": nil}
+				goto done
+			}
+		}
 		var row map[string]any
 		for _, q := range quotes {
 			if q["symbol"] == sym && q["ok"] == true {
@@ -238,29 +254,33 @@ func (e *Engine) Evaluate() EvalResult {
 			decision = map[string]any{"action": "none", "reason": reason, "symbol": sym, "candidate": row}
 		}
 	} else if open == nil && allowEntries {
-		var best map[string]any
-		bestIBS := 2.0
-		for _, q := range quotes {
-			if q["ok"] != true {
-				continue
+		if heldErr != nil {
+			decision = map[string]any{"action": "none", "reason": "broker_positions_unavailable", "symbol": nil, "candidate": nil}
+		} else if len(held) > 0 {
+			decision = map[string]any{"action": "none", "reason": "broker_position_exists", "symbol": nil, "candidate": nil}
+		} else {
+			var best map[string]any
+			bestIBS := 2.0
+			for _, q := range quotes {
+				if q["ok"] != true {
+					continue
+				}
+				if asBool(q["highIBSInvalid"]) {
+					continue
+				}
+				v, _ := q["ibs"].(float64)
+				low := liveLowOrDefault(q)
+				if ibs.IsEntrySignal(v, low) && v < bestIBS {
+					bestIBS = v
+					best = q
+				}
 			}
-			// An invalid highIBS makes the exit path refuse to act
-			// ("invalid_high_ibs"), so entering here would open a position
-			// autotrading can never close on its own.
-			if asBool(q["highIBSInvalid"]) {
-				continue
+			if best != nil {
+				decision = map[string]any{"action": "entry", "reason": "lowest_ibs_signal", "symbol": best["symbol"], "candidate": best}
 			}
-			v, _ := q["ibs"].(float64)
-			low := liveLowOrDefault(q)
-			if ibs.IsEntrySignal(v, low) && v < bestIBS {
-				bestIBS = v
-				best = q
-			}
-		}
-		if best != nil {
-			decision = map[string]any{"action": "entry", "reason": "lowest_ibs_signal", "symbol": best["symbol"], "candidate": best}
 		}
 	}
+done:
 	enabled, _ := cfg["enabled"].(bool)
 	return EvalResult{
 		EvaluatedAt: e.now().UTC().Format(time.RFC3339Nano),
@@ -272,6 +292,32 @@ func (e *Engine) Evaluate() EvalResult {
 		Decision:    decision,
 		Live:        enabled,
 	}
+}
+
+func (e *Engine) liveHeldSymbols() (map[string]float64, error) {
+	if e == nil || e.Broker == nil {
+		return map[string]float64{}, nil
+	}
+	pos, err := e.Broker.Positions()
+	if err != nil {
+		return nil, err
+	}
+	held := map[string]float64{}
+	for _, row := range pos {
+		m := mapOf(row)
+		if m == nil {
+			continue
+		}
+		sym := store.SafeTicker(firstString(m, "symbol", "ticker", "display_symbol"))
+		if sym == "" {
+			continue
+		}
+		q := firstPositive(m["quantity"], m["qty"], m["position"], m["holding"], m["total_qty"], m["totalQuantity"])
+		if q > 0 {
+			held[sym] = q
+		}
+	}
+	return held, nil
 }
 
 func liveLowOrDefault(row map[string]any) float64 {
@@ -312,8 +358,17 @@ func (e *Engine) Execute(trigger string) EvalResult {
 		return ev
 	}
 	symbol := store.SafeTicker(fmt.Sprint(ev.Decision["symbol"]))
-	key := symbol + ":" + action
-	if pending := e.DB.FindPendingTracker(symbol, action); pending != nil {
+	key := action
+	if action != "entry" {
+		key = symbol + ":" + action
+	}
+	if action == "entry" {
+		if pending := e.DB.AnyPendingTracker(); pending != nil {
+			ev.Broker = map[string]any{"submitted": false, "error": "pending_tracker_exists", "clientOrderId": pending["clientOrderId"]}
+			e.logAuto("order_guarded", corr, map[string]any{"symbol": symbol, "action": action, "reason": "pending_tracker"})
+			return ev
+		}
+	} else if pending := e.DB.FindPendingTracker(symbol, action); pending != nil {
 		ev.Broker = map[string]any{"submitted": false, "error": "pending_" + action + "_tracker_exists", "clientOrderId": pending["clientOrderId"]}
 		e.logAuto("order_guarded", corr, map[string]any{"symbol": symbol, "action": action, "reason": "pending_tracker"})
 		return ev
@@ -327,6 +382,14 @@ func (e *Engine) Execute(trigger string) EvalResult {
 		ev.Broker = map[string]any{"submitted": false, "error": "pending_" + action + "_submission_exists"}
 		e.logAuto("order_guarded", corr, map[string]any{"symbol": symbol, "action": action, "reason": "pending_submission"})
 		return ev
+	}
+	if action == "entry" {
+		if _, taken := e.reservations["entry"]; taken {
+			e.mu.Unlock()
+			ev.Broker = map[string]any{"submitted": false, "error": "pending_entry_submission_exists"}
+			e.logAuto("order_guarded", corr, map[string]any{"symbol": symbol, "action": action, "reason": "pending_submission"})
+			return ev
+		}
 	}
 	e.reservations[key] = "submitting"
 	e.mu.Unlock()
@@ -347,9 +410,9 @@ func (e *Engine) Execute(trigger string) EvalResult {
 		e.logAuto("execution_blocked", corr, map[string]any{"symbol": symbol, "reason": "missing_webull_credentials"})
 		return ev
 	}
-	if trigger == "scheduler" && e.outsideExecutionWindow(ev.AutoTrading) {
+	if liveTrigger(trigger) && e.outsideExecutionWindow(ev.AutoTrading) {
 		ev.Broker = map[string]any{"submitted": false, "error": "outside_execution_window"}
-		e.logAuto("execution_skipped", corr, map[string]any{"symbol": symbol, "reason": "outside_execution_window"})
+		e.logAuto("execution_skipped", corr, map[string]any{"symbol": symbol, "reason": "outside_execution_window", "trigger": trigger})
 		return ev
 	}
 	price := quotePrice(ev, symbol)
@@ -373,13 +436,17 @@ func (e *Engine) Execute(trigger string) EvalResult {
 	if asBool(ev.AutoTrading["previewBeforeSend"]) {
 		e.logAuto("order_preview_skipped", corr, map[string]any{
 			"symbol": symbol, "action": action, "side": side, "order_type": "MARKET",
-			"quantity": qty, "broker_summary": "preview_unsupported_for_webull_us",
+			"quantity": qty, "broker_summary": "preview_blocks_live_send",
 		})
+		ev.Broker = map[string]any{"submitted": false, "simulated": true, "error": "previewBeforeSend"}
+		ev.Executed = false
+		return ev
 	}
 	placeCfg := PlaceMarketCfg{
 		Fractional:            asBool(ev.AutoTrading["allowFractionalShares"]),
 		TimeInForce:           strOr(ev.AutoTrading["timeInForce"], "DAY"),
 		SupportTradingSession: strOr(ev.AutoTrading["supportTradingSession"], "CORE"),
+		LimitPrice:            limitPriceForSide(side, price, asFloat(ev.AutoTrading["maxSlippageBps"])),
 	}
 	res, err := e.placeMarket(symbol, side, qty, placeCfg)
 	if err != nil {
@@ -389,23 +456,22 @@ func (e *Engine) Execute(trigger string) EvalResult {
 	ev.Broker = res
 	ev.Executed = res.Submitted
 	if res.Submitted {
-		e.logAuto("order_submit_ok", corr, map[string]any{
-			"symbol": symbol, "action": action, "side": side, "quantity": qty,
-			"clientOrderId": res.ClientOrderID, "order_type": "MARKET",
-		})
-		_ = e.DB.SaveOrderTracker(map[string]any{
-			"clientOrderId": res.ClientOrderID, "symbol": symbol, "action": action,
-			"status": "submitted", "quantity": qty, "source": trigger, "dateKey": ev.TodayKey,
-		})
 		ibsVal := 0.0
 		if cand, ok := ev.Decision["candidate"].(map[string]any); ok {
 			ibsVal = asFloat(cand["ibs"])
 		}
-		e.rememberOrder(res.ClientOrderID, orderMeta{
+		e.startTracking(res, orderMeta{
 			CorrelationID: corr, IBS: ibsVal, DateKey: ev.TodayKey,
 			QuotePrice: price, Action: action, Symbol: symbol, Quantity: qty, Source: trigger,
 		})
-		e.TrackSubmitted(res.ClientOrderID)
+		orderType := "MARKET"
+		if placeCfg.LimitPrice > 0 {
+			orderType = "LIMIT"
+		}
+		e.logAuto("order_submit_ok", corr, map[string]any{
+			"symbol": symbol, "action": action, "side": side, "quantity": qty,
+			"clientOrderId": res.ClientOrderID, "order_type": orderType, "limit_price": placeCfg.LimitPrice,
+		})
 	} else {
 		e.logAuto("order_submit_failed", corr, map[string]any{
 			"symbol": symbol, "action": action, "error": res.Error,
@@ -446,7 +512,19 @@ func (e *Engine) placeMarket(symbol, side string, qty float64, cfg PlaceMarketCf
 		if err == nil && res.Submitted {
 			return res, nil
 		}
-		if landed, detail := e.orderLanded(try.ClientOrderID); landed {
+		landed, queryFailed, detail := e.orderLanded(try.ClientOrderID)
+		if queryFailed {
+			e.logAuto("order_submit_lookup_failed_assume_landed", "", map[string]any{
+				"symbol": symbol, "side": side, "clientOrderId": try.ClientOrderID,
+				"attempt": attempt, "error": errText(err, res.Error),
+			})
+			res.Submitted = true
+			res.ClientOrderID = try.ClientOrderID
+			res.Symbol, res.Side, res.Quantity = symbol, side, qty
+			res.Error = ""
+			return res, nil
+		}
+		if landed {
 			e.logAuto("order_submit_landed_despite_error", "", map[string]any{
 				"symbol": symbol, "side": side, "clientOrderId": try.ClientOrderID,
 				"attempt": attempt, "error": errText(err, res.Error),
@@ -472,25 +550,65 @@ func (e *Engine) placeMarket(symbol, side string, qty float64, cfg PlaceMarketCf
 	return res, err
 }
 
-// orderLanded reports whether the broker knows this client order id. A broker
-// that cannot answer is treated as "not landed" only after the id is absent,
-// never after a lookup error — an error there leaves the question open, so we
-// stop retrying rather than risk a second order.
-func (e *Engine) orderLanded(clientOrderID string) (bool, map[string]any) {
+// orderLanded reports whether the broker knows this client order id.
+// queryFailed means the lookup itself failed: the caller must NOT send a
+// second order. not-found (ErrOrderNotFound or empty) is safe to retry.
+func (e *Engine) orderLanded(clientOrderID string) (landed, queryFailed bool, detail map[string]any) {
 	if e.Broker == nil || clientOrderID == "" {
-		return false, nil
+		return false, false, nil
 	}
 	detail, err := e.Broker.OrderDetail(clientOrderID)
-	if err != nil || detail == nil {
-		return false, nil
+	if err != nil {
+		if errors.Is(err, ErrOrderNotFound) {
+			return false, false, nil
+		}
+		return false, true, nil
+	}
+	if detail == nil {
+		return false, false, nil
 	}
 	if clientOrderIDOf(detail) == clientOrderID {
-		return true, detail
+		return true, false, detail
 	}
 	if orderStatusField(detail) != "" {
-		return true, detail
+		return true, false, detail
 	}
-	return false, nil
+	return false, false, nil
+}
+
+func liveTrigger(trigger string) bool {
+	switch trigger {
+	case "telegram_t1", "manual_execute", "scheduler":
+		return true
+	}
+	return false
+}
+
+func limitPriceForSide(side string, quote, bps float64) float64 {
+	if !(quote > 0) || !(bps > 0) {
+		return 0
+	}
+	frac := bps / 10000
+	if strings.ToUpper(side) == "SELL" {
+		p := quote * (1 - frac)
+		if p <= 0 {
+			return 0
+		}
+		return p
+	}
+	return quote * (1 + frac)
+}
+
+func (e *Engine) startTracking(res OrderResult, meta orderMeta) {
+	if !res.Submitted || res.ClientOrderID == "" {
+		return
+	}
+	_ = e.DB.SaveOrderTracker(map[string]any{
+		"clientOrderId": res.ClientOrderID, "symbol": meta.Symbol, "action": meta.Action,
+		"status": "submitted", "quantity": meta.Quantity, "source": meta.Source, "dateKey": meta.DateKey,
+	})
+	e.rememberOrder(res.ClientOrderID, meta)
+	e.TrackSubmitted(res.ClientOrderID)
 }
 
 // retryBrokerRead retries a read-only broker call. These run before any order
@@ -728,8 +846,15 @@ func (e *Engine) ClosePosition(symbol string) (OrderResult, error) {
 		Fractional:            frac,
 		TimeInForce:           strOr(cfg["timeInForce"], "DAY"),
 		SupportTradingSession: strOr(cfg["supportTradingSession"], "CORE"),
+		LimitPrice:            limitPriceForSide("SELL", 0, 0),
 	})
-	e.logAuto("close_position", "", map[string]any{"symbol": symbol, "submitted": res.Submitted})
+	e.logAuto("close_position", "", map[string]any{"symbol": symbol, "submitted": res.Submitted, "clientOrderId": res.ClientOrderID})
+	if res.Submitted {
+		e.startTracking(res, orderMeta{
+			DateKey: tradingdate.TodayNYSE(e.now()), Action: "exit", Symbol: symbol,
+			Quantity: qty, Source: "manual_close",
+		})
+	}
 	return res, err
 }
 
