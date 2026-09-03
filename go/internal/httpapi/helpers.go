@@ -43,23 +43,38 @@ func normalizeBarDates(bars []types.OHLC) []types.OHLC {
 }
 
 func decodeStrategy(v any) types.Strategy {
-	s := types.DefaultIBSStrategy()
+	def := types.DefaultIBSStrategy()
 	raw, err := jsonBytes(v)
 	if err != nil || len(raw) == 0 {
-		return s
+		return def
 	}
-	_ = json.Unmarshal(raw, &s)
-	if s.Parameters.LowIBS == 0 {
-		s.Parameters.LowIBS = 0.1
+	var s types.Strategy
+	if json.Unmarshal(raw, &s) != nil {
+		return def
 	}
-	if s.Parameters.HighIBS == 0 {
-		s.Parameters.HighIBS = 0.75
+	if s.ID == "" {
+		s.ID = def.ID
 	}
-	if s.RiskManagement.InitialCapital == 0 {
-		s.RiskManagement.InitialCapital = 10000
+	if s.Name == "" {
+		s.Name = def.Name
 	}
-	if s.RiskManagement.CapitalUsage == 0 {
-		s.RiskManagement.CapitalUsage = 100
+	if s.Type == "" {
+		s.Type = def.Type
+	}
+	if s.Description == "" {
+		s.Description = def.Description
+	}
+	if s.EntryConditions == nil {
+		s.EntryConditions = def.EntryConditions
+	}
+	if s.ExitConditions == nil {
+		s.ExitConditions = def.ExitConditions
+	}
+	if s.PositionSizing.Type == "" {
+		s.PositionSizing = def.PositionSizing
+	}
+	if s.RiskManagement.Commission.Type == "" {
+		s.RiskManagement.Commission = def.RiskManagement.Commission
 	}
 	return s
 }

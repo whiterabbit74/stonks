@@ -46,14 +46,14 @@ type calcReq struct {
 		Data   json.RawMessage `json:"data"`
 	} `json:"tickers"`
 	Options        *backtest.CleanOptions    `json:"options"`
-	Leverage       float64                   `json:"leverage"`
+	Leverage       *float64                  `json:"leverage"`
 	Config         backtest.OptionsConfig    `json:"config"`
 	Trades         json.RawMessage           `json:"trades"`
 	Ema            backtest.EmaParams        `json:"ema"`
 	NoStop         backtest.NoStopLossConfig `json:"noStop"`
 	Single         backtest.SingleOptions    `json:"single"`
 	Splits         []types.SplitEvent        `json:"splits"`
-	InitialCapital float64                   `json:"initialCapital"`
+	InitialCapital *float64                  `json:"initialCapital"`
 }
 
 func (s *Server) readCalc(r *http.Request) calcReq {
@@ -83,7 +83,7 @@ func (s *Server) calcNoStop(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) calcSingle(w http.ResponseWriter, r *http.Request) {
 	req := s.readCalc(r)
-	eq, final, maxDD, trades, m, exp := backtest.RunSinglePosition(s.tickersOrOne(req), decodeStrategy(req.Strategy), req.Leverage, req.Single)
+	eq, final, maxDD, trades, m, exp := backtest.RunSinglePosition(s.tickersOrOne(req), decodeStrategy(req.Strategy), types.F64Or(req.Leverage, 1), req.Single)
 	writeJSON(w, 200, map[string]any{"equity": eq, "finalValue": final, "maxDrawdown": maxDD, "trades": trades, "metrics": m, "exposure": exp})
 }
 
@@ -108,20 +108,17 @@ func (s *Server) calcEMA(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) calcBAC4(w http.ResponseWriter, r *http.Request) {
 	req := s.readCalc(r)
-	writeJSON(w, 200, backtest.RunBuyAtClose4(s.tickersOrOne(req), decodeStrategy(req.Strategy), req.Leverage))
+	writeJSON(w, 200, backtest.RunBuyAtClose4(s.tickersOrOne(req), decodeStrategy(req.Strategy), types.F64Or(req.Leverage, 1)))
 }
 
 func (s *Server) calcMetrics(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Trades         []types.Trade       `json:"trades"`
 		Equity         []types.EquityPoint `json:"equity"`
-		InitialCapital float64             `json:"initialCapital"`
+		InitialCapital *float64            `json:"initialCapital"`
 	}
 	_ = readJSON(r, &req)
-	if req.InitialCapital == 0 {
-		req.InitialCapital = 10000
-	}
-	writeJSON(w, 200, metrics.New(req.Trades, req.Equity, req.InitialCapital, nil).All())
+	writeJSON(w, 200, metrics.New(req.Trades, req.Equity, types.F64Or(req.InitialCapital, 10000), nil).All())
 }
 
 func (s *Server) calcIndicators(w http.ResponseWriter, r *http.Request) {
@@ -185,12 +182,11 @@ func (s *Server) calcIBS(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) calcBuyHold(w http.ResponseWriter, r *http.Request) {
 	req := s.readCalc(r)
-	cap := req.InitialCapital
-	if cap == 0 {
-		cap = decodeStrategy(req.Strategy).RiskManagement.InitialCapital
-	}
-	if cap == 0 {
-		cap = 10000
+	var cap float64
+	if req.InitialCapital != nil {
+		cap = *req.InitialCapital
+	} else {
+		cap = types.F64Or(decodeStrategy(req.Strategy).RiskManagement.InitialCapital, 10000)
 	}
 	res := backtest.RunBuyHold(s.barsOrDataset(req), cap)
 	final := 0.0

@@ -27,6 +27,13 @@ type cleanPosition struct {
 	entryIBS   float64
 }
 
+func cleanMaxHoldDays(strategy types.Strategy) float64 {
+	if strategy.Parameters.MaxHoldDays != nil {
+		return *strategy.Parameters.MaxHoldDays
+	}
+	return types.F64Or(strategy.RiskManagement.MaxHoldDays, 30)
+}
+
 func RunClean(data []types.OHLC, strategy types.Strategy, options *CleanOptions) types.BacktestResult {
 	opt := CleanOptions{EntryExecution: "close"}
 	if options != nil {
@@ -38,10 +45,8 @@ func RunClean(data []types.OHLC, strategy types.Strategy, options *CleanOptions)
 	if len(opt.Splits) > 0 {
 		data = splits.AdjustOHLC(data, opt.Splits)
 	}
-	lowIBS, highIBS, maxHoldDays, initial := ibsParams(strategy)
-	if strategy.Parameters.MaxHoldDays == 0 && strategy.RiskManagement.MaxHoldDays != 0 {
-		maxHoldDays = strategy.RiskManagement.MaxHoldDays
-	}
+	lowIBS, highIBS, _, initial := ibsParams(strategy)
+	maxHoldDays := cleanMaxHoldDays(strategy)
 	if len(data) == 0 {
 		m := metrics.New(nil, nil, initial, nil).All()
 		return types.BacktestResult{Trades: []types.Trade{}, Metrics: m, Equity: []types.EquityPoint{}, ChartData: []types.ChartCandle{}, Insights: []interface{}{}}
@@ -54,10 +59,7 @@ func RunClean(data []types.OHLC, strategy types.Strategy, options *CleanOptions)
 	var position *cleanPosition
 	peakValue := 0.0
 
-	capitalUsage := strategy.RiskManagement.CapitalUsage
-	if capitalUsage == 0 {
-		capitalUsage = 100
-	}
+	capitalUsage := types.F64Or(strategy.RiskManagement.CapitalUsage, 100)
 
 	for i := 0; i < len(data); i++ {
 		bar := data[i]
@@ -257,9 +259,11 @@ func RunNoStopLoss(data []types.OHLC, strategy types.Strategy, cfg NoStopLossCon
 		modified.RiskManagement.Leverage = cfg.Leverage
 	}
 	if cfg.ExitMode == "time-limit" {
-		modified.Parameters.MaxHoldDays = cfg.MaxHoldDays
+		v := cfg.MaxHoldDays
+		modified.Parameters.MaxHoldDays = &v
 	} else {
-		modified.Parameters.MaxHoldDays = 9999
+		v := 9999.0
+		modified.Parameters.MaxHoldDays = &v
 	}
 	ignoreMax := cfg.ExitMode == "never" || cfg.ExitMode == "ibs-only"
 	return RunClean(data, modified, &CleanOptions{

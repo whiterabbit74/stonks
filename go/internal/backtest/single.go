@@ -47,22 +47,10 @@ func unionDates(tickers []TickerIndexed) []string {
 }
 
 func ibsParams(strategy types.Strategy) (low, high, maxHold, initial float64) {
-	low = strategy.Parameters.LowIBS
-	if low == 0 {
-		low = 0.1
-	}
-	high = strategy.Parameters.HighIBS
-	if high == 0 {
-		high = 0.75
-	}
-	maxHold = strategy.Parameters.MaxHoldDays
-	if maxHold == 0 {
-		maxHold = 30
-	}
-	initial = strategy.RiskManagement.InitialCapital
-	if initial == 0 {
-		initial = 10000
-	}
+	low = types.F64Or(strategy.Parameters.LowIBS, 0.1)
+	high = types.F64Or(strategy.Parameters.HighIBS, 0.75)
+	maxHold = types.F64Or(strategy.Parameters.MaxHoldDays, 30)
+	initial = types.F64Or(strategy.RiskManagement.InitialCapital, 10000)
 	return
 }
 
@@ -112,9 +100,6 @@ type SingleOptions struct {
 }
 
 func RunSinglePosition(tickers []TickerIndexed, strategy types.Strategy, leverage float64, opt SingleOptions) (equity []types.EquityPoint, finalValue, maxDrawdown float64, trades []types.Trade, m types.BacktestMetrics, exposure []types.ExposurePoint) {
-	if leverage == 0 {
-		leverage = 1
-	}
 	tickers = IndexTickers(tickers)
 	if len(tickers) == 0 {
 		return nil, 0, 0, nil, types.BacktestMetrics{}, nil
@@ -138,9 +123,6 @@ func RunSinglePosition(tickers []TickerIndexed, strategy types.Strategy, leverag
 	sorted := unionDates(tickers)
 
 	dayOfMonth := opt.MonthlyDayOfMonth
-	if dayOfMonth == 0 {
-		dayOfMonth = 1
-	}
 	if dayOfMonth < 1 {
 		dayOfMonth = 1
 	}

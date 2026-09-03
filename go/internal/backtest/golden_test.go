@@ -107,7 +107,7 @@ func TestSingleTakeProfitGolden(t *testing.T) {
 func TestGOOGLOptionsGolden(t *testing.T) {
 	bars := goldens.Bars("googl-bars.json")
 	clean := RunClean(bars, types.DefaultIBSStrategy(), nil)
-	_, trades, final := RunOptions(clean.Trades, bars, OptionsConfig{StrikePct: 10, VolAdjPct: 20, CapitalPct: 10, RiskFreeRate: 0.05, ExpirationWeeks: 4, MaxHoldingDays: 30})
+	_, trades, final := RunOptions(clean.Trades, bars, OptionsConfig{StrikePct: 10, VolAdjPct: 20, CapitalPct: 10, RiskFreeRate: types.F64(0.05), ExpirationWeeks: types.Int(4), MaxHoldingDays: types.Int(30)})
 	var wantFinal struct {
 		FinalValue float64 `json:"finalValue"`
 		TradeCount int     `json:"tradeCount"`
@@ -153,7 +153,7 @@ func TestGOOGLOptionsMultiGolden(t *testing.T) {
 	bars := goldens.Bars("googl-bars.json")
 	ibs := indicators.IBS(bars)
 	_, _, _, stockTrades, _, _ := RunSinglePosition([]TickerIndexed{{Ticker: "GOOGL", Data: bars, IBSValues: ibs}}, types.DefaultIBSStrategy(), 1, SingleOptions{})
-	_, trades, final := RunMultiOptions(stockTrades, []TickerIndexed{{Ticker: "GOOGL", Data: bars, IBSValues: ibs}}, OptionsConfig{StrikePct: 10, VolAdjPct: 20, CapitalPct: 10, RiskFreeRate: 0.05, ExpirationWeeks: 4, MaxHoldingDays: 30})
+	_, trades, final := RunMultiOptions(stockTrades, []TickerIndexed{{Ticker: "GOOGL", Data: bars, IBSValues: ibs}}, OptionsConfig{StrikePct: 10, VolAdjPct: 20, CapitalPct: 10, RiskFreeRate: types.F64(0.05), ExpirationWeeks: types.Int(4), MaxHoldingDays: types.Int(30)})
 	var wantFinal struct {
 		FinalValue float64 `json:"finalValue"`
 		TradeCount int     `json:"tradeCount"`
@@ -172,8 +172,8 @@ func TestGOOGLEMAGolden(t *testing.T) {
 	bars := goldens.Bars("googl-bars.json")
 	got := RunEmaZone([]TickerIndexed{{Ticker: "GOOGL", Data: bars}}, EmaParams{
 		InitialCapital: 10000, Leverage: 1, EmaPeriod: 200,
-		BuyZones: []EmaZone{{ID: "buy-20", LevelPct: -20, Enabled: true}},
-		SellZones: []EmaZone{{ID: "sell-40", LevelPct: 40, Enabled: true}},
+		BuyZones:     []EmaZone{{ID: "buy-20", LevelPct: -20, Enabled: true}},
+		SellZones:    []EmaZone{{ID: "sell-40", LevelPct: 40, Enabled: true}},
 		SignalSource: "close", EmaStartMode: "full_history",
 	})
 	var want struct {
@@ -202,7 +202,7 @@ func TestMarginGolden(t *testing.T) {
 		{ID: "t1", EntryDate: "2024-01-01", ExitDate: "2024-01-03", EntryPrice: 100, ExitPrice: 110, Quantity: 1, ExitReason: "ibs_signal"},
 		{ID: "t2", EntryDate: "2024-01-03", ExitDate: "2024-01-04", EntryPrice: 60, ExitPrice: 61, Quantity: 1, ExitReason: "ibs_signal"},
 	}
-	got := SimulateMargin(MarginParams{Market: market, Trades: trades, InitialCapital: 10000, Leverage: 2, MaintenanceMarginPct: 25, CapitalUsagePct: 100})
+	got := SimulateMargin(MarginParams{Market: market, Trades: trades, InitialCapital: 10000, Leverage: 2, MaintenanceMarginPct: types.F64(25), CapitalUsagePct: types.F64(100)})
 	if got.LiquidationEvent == nil {
 		t.Fatal("expected liquidation")
 	}

@@ -311,3 +311,33 @@ func TestIBSSignalsHTTPMatchesOracle(t *testing.T) {
 		}
 	}
 }
+
+func TestDecodeStrategyKeepsExplicitZeros(t *testing.T) {
+	raw := json.RawMessage(`{"parameters":{"lowIBS":0,"highIBS":0,"maxHoldDays":0},"riskManagement":{"capitalUsage":0,"initialCapital":0}}`)
+	s := decodeStrategy(raw)
+	if s.Parameters.LowIBS == nil || *s.Parameters.LowIBS != 0 {
+		t.Fatalf("lowIBS %v", s.Parameters.LowIBS)
+	}
+	if s.Parameters.HighIBS == nil || *s.Parameters.HighIBS != 0 {
+		t.Fatalf("highIBS %v", s.Parameters.HighIBS)
+	}
+	if s.Parameters.MaxHoldDays == nil || *s.Parameters.MaxHoldDays != 0 {
+		t.Fatalf("maxHoldDays %v", s.Parameters.MaxHoldDays)
+	}
+	if s.RiskManagement.CapitalUsage == nil || *s.RiskManagement.CapitalUsage != 0 {
+		t.Fatalf("capitalUsage %v", s.RiskManagement.CapitalUsage)
+	}
+	if s.RiskManagement.InitialCapital == nil || *s.RiskManagement.InitialCapital != 0 {
+		t.Fatalf("initialCapital %v", s.RiskManagement.InitialCapital)
+	}
+}
+
+func TestDecodeStrategyOmitsStayUnset(t *testing.T) {
+	s := decodeStrategy(json.RawMessage(`{}`))
+	if s.Parameters.LowIBS != nil || s.Parameters.HighIBS != nil || s.Parameters.MaxHoldDays != nil {
+		t.Fatalf("omitted parameters should be nil: %+v", s.Parameters)
+	}
+	if s.RiskManagement.CapitalUsage != nil || s.RiskManagement.InitialCapital != nil {
+		t.Fatalf("omitted risk fields should be nil: %+v", s.RiskManagement)
+	}
+}

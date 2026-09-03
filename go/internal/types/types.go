@@ -34,9 +34,9 @@ type Strategy struct {
 }
 
 type StrategyParameters struct {
-	LowIBS      float64 `json:"lowIBS"`
-	HighIBS     float64 `json:"highIBS"`
-	MaxHoldDays float64 `json:"maxHoldDays"`
+	LowIBS      *float64 `json:"lowIBS"`
+	HighIBS     *float64 `json:"highIBS"`
+	MaxHoldDays *float64 `json:"maxHoldDays"`
 }
 
 type Condition struct {
@@ -49,18 +49,18 @@ type Condition struct {
 }
 
 type RiskManagement struct {
-	InitialCapital float64    `json:"initialCapital"`
-	CapitalUsage   float64    `json:"capitalUsage"`
-	Leverage       float64    `json:"leverage"`
-	MaxPositionSize float64   `json:"maxPositionSize"`
-	StopLoss       float64    `json:"stopLoss"`
-	TakeProfit     float64    `json:"takeProfit"`
-	UseStopLoss    bool       `json:"useStopLoss"`
-	UseTakeProfit  bool       `json:"useTakeProfit"`
-	MaxPositions   float64    `json:"maxPositions"`
-	MaxHoldDays    float64    `json:"maxHoldDays"`
-	Commission     Commission `json:"commission"`
-	Slippage       float64    `json:"slippage"`
+	InitialCapital  *float64   `json:"initialCapital"`
+	CapitalUsage    *float64   `json:"capitalUsage"`
+	Leverage        float64    `json:"leverage"`
+	MaxPositionSize float64    `json:"maxPositionSize"`
+	StopLoss        float64    `json:"stopLoss"`
+	TakeProfit      float64    `json:"takeProfit"`
+	UseStopLoss     bool       `json:"useStopLoss"`
+	UseTakeProfit   bool       `json:"useTakeProfit"`
+	MaxPositions    float64    `json:"maxPositions"`
+	MaxHoldDays     *float64   `json:"maxHoldDays"`
+	Commission      Commission `json:"commission"`
+	Slippage        float64    `json:"slippage"`
 }
 
 type Commission struct {
@@ -238,25 +238,47 @@ func Compact(t Trade) CompactTrade {
 	return c
 }
 
+// F64 returns a heap pointer so JSON 0 is distinct from a missing field.
+func F64(v float64) *float64 { return &v }
+
+// Int returns a heap pointer so JSON 0 is distinct from a missing field.
+func Int(v int) *int { return &v }
+
+// F64Or returns *p, or def when p is nil. A pointer to 0 is kept.
+func F64Or(p *float64, def float64) float64 {
+	if p != nil {
+		return *p
+	}
+	return def
+}
+
+// IntOr returns *p, or def when p is nil. A pointer to 0 is kept.
+func IntOr(p *int, def int) int {
+	if p != nil {
+		return *p
+	}
+	return def
+}
+
 func DefaultIBSStrategy() Strategy {
 	return Strategy{
 		ID:          "ibs-mean-reversion",
 		Name:        "IBS Mean Reversion",
 		Description: "IBS",
 		Type:        "ibs-mean-reversion",
-		Parameters:  StrategyParameters{LowIBS: 0.1, HighIBS: 0.75, MaxHoldDays: 30},
+		Parameters:  StrategyParameters{LowIBS: F64(0.1), HighIBS: F64(0.75), MaxHoldDays: F64(30)},
 		EntryConditions: []Condition{{Type: "indicator", Indicator: "IBS", Operator: "<", Value: 0.1}},
 		ExitConditions:  []Condition{{Type: "indicator", Indicator: "IBS", Operator: ">", Value: 0.75}},
 		RiskManagement: RiskManagement{
-			InitialCapital: 10000,
-			CapitalUsage:   100,
-			Leverage:       1,
+			InitialCapital:  F64(10000),
+			CapitalUsage:    F64(100),
+			Leverage:        1,
 			MaxPositionSize: 1,
-			StopLoss:       2,
-			TakeProfit:     4,
-			MaxPositions:   1,
-			MaxHoldDays:    30,
-			Commission:     Commission{Type: "percentage", Percentage: 0},
+			StopLoss:        2,
+			TakeProfit:      4,
+			MaxPositions:    1,
+			MaxHoldDays:     F64(30),
+			Commission:      Commission{Type: "percentage", Percentage: 0},
 		},
 		PositionSizing: PositionSizing{Type: "percentage", Value: 100},
 	}

@@ -11,12 +11,21 @@ import (
 )
 
 type OptionsConfig struct {
-	StrikePct       float64 `json:"strikePct"`
-	VolAdjPct       float64 `json:"volAdjPct"`
-	CapitalPct      float64 `json:"capitalPct"`
-	RiskFreeRate    float64 `json:"riskFreeRate"`
-	ExpirationWeeks int     `json:"expirationWeeks"`
-	MaxHoldingDays  int     `json:"maxHoldingDays"`
+	StrikePct       float64  `json:"strikePct"`
+	VolAdjPct       float64  `json:"volAdjPct"`
+	CapitalPct      float64  `json:"capitalPct"`
+	RiskFreeRate    *float64 `json:"riskFreeRate"`
+	ExpirationWeeks *int     `json:"expirationWeeks"`
+	MaxHoldingDays  *int     `json:"maxHoldingDays"`
+}
+
+type optionsResolved struct {
+	StrikePct       float64
+	VolAdjPct       float64
+	CapitalPct      float64
+	RiskFreeRate    float64
+	ExpirationWeeks int
+	MaxHoldingDays  int
 }
 
 func executionPrice(theoretical float64) float64 {
@@ -30,17 +39,15 @@ func executionPrice(theoretical float64) float64 {
 	return math.Round(raw/5) * 5
 }
 
-func (c OptionsConfig) defaults() OptionsConfig {
-	if c.RiskFreeRate == 0 {
-		c.RiskFreeRate = 0.05
+func (c OptionsConfig) resolve() optionsResolved {
+	return optionsResolved{
+		StrikePct:       c.StrikePct,
+		VolAdjPct:       c.VolAdjPct,
+		CapitalPct:      c.CapitalPct,
+		RiskFreeRate:    types.F64Or(c.RiskFreeRate, 0.05),
+		ExpirationWeeks: types.IntOr(c.ExpirationWeeks, 4),
+		MaxHoldingDays:  types.IntOr(c.MaxHoldingDays, 30),
 	}
-	if c.ExpirationWeeks == 0 {
-		c.ExpirationWeeks = 4
-	}
-	if c.MaxHoldingDays == 0 {
-		c.MaxHoldingDays = 30
-	}
-	return c
 }
 
 func rf(date string, fallback float64) float64 {
@@ -56,8 +63,8 @@ type marketState struct {
 	vol   float64
 }
 
-func RunOptions(stockTrades []types.Trade, market []types.OHLC, cfg OptionsConfig) (equity []types.EquityPoint, trades []types.Trade, finalValue float64) {
-	cfg = cfg.defaults()
+func RunOptions(stockTrades []types.Trade, market []types.OHLC, raw OptionsConfig) (equity []types.EquityPoint, trades []types.Trade, finalValue float64) {
+	cfg := raw.resolve()
 	initial := 10000.0
 	datePrice := map[string]marketState{}
 	for idx, bar := range market {
@@ -186,8 +193,8 @@ func RunOptions(stockTrades []types.Trade, market []types.OHLC, cfg OptionsConfi
 	return
 }
 
-func RunMultiOptions(stockTrades []types.Trade, tickers []TickerIndexed, cfg OptionsConfig) (equity []types.EquityPoint, trades []types.Trade, finalValue float64) {
-	cfg = cfg.defaults()
+func RunMultiOptions(stockTrades []types.Trade, tickers []TickerIndexed, raw OptionsConfig) (equity []types.EquityPoint, trades []types.Trade, finalValue float64) {
+	cfg := raw.resolve()
 	initial := 10000.0
 	type daily struct {
 		close float64

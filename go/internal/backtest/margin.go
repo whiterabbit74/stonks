@@ -22,21 +22,21 @@ type PositionRiskEvent struct {
 }
 
 type MarginResult struct {
-	Equity                       []types.EquityPoint  `json:"equity"`
-	Trades                       []types.Trade        `json:"trades"`
-	MaxDrawdown                  float64              `json:"maxDrawdown"`
-	FinalValue                   float64              `json:"finalValue"`
-	MaintenanceLiquidationEvents []PositionRiskEvent  `json:"maintenanceLiquidationEvents"`
-	LiquidationEvent             *PositionRiskEvent   `json:"liquidationEvent"`
+	Equity                       []types.EquityPoint `json:"equity"`
+	Trades                       []types.Trade       `json:"trades"`
+	MaxDrawdown                  float64             `json:"maxDrawdown"`
+	FinalValue                   float64             `json:"finalValue"`
+	MaintenanceLiquidationEvents []PositionRiskEvent `json:"maintenanceLiquidationEvents"`
+	LiquidationEvent             *PositionRiskEvent  `json:"liquidationEvent"`
 }
 
 type MarginParams struct {
-	Market              []types.OHLC
-	Trades              []types.Trade
-	InitialCapital      float64
-	Leverage            float64
-	MaintenanceMarginPct float64
-	CapitalUsagePct     float64
+	Market               []types.OHLC
+	Trades               []types.Trade
+	InitialCapital       float64
+	Leverage             float64
+	MaintenanceMarginPct *float64
+	CapitalUsagePct      *float64
 }
 
 func clamp(v, lo, hi float64) float64 {
@@ -62,15 +62,8 @@ func SimulateMargin(p MarginParams) MarginResult {
 		}
 		return trades[i].ExitDate < trades[j].ExitDate
 	})
-	usage := clamp(p.CapitalUsagePct, 0, 100) / 100
-	if p.CapitalUsagePct == 0 {
-		usage = 1
-	}
-	maint := p.MaintenanceMarginPct
-	if maint == 0 {
-		maint = 25
-	}
-	maint = clamp(maint, 1, 95)
+	usage := clamp(types.F64Or(p.CapitalUsagePct, 100), 0, 100) / 100
+	maint := clamp(types.F64Or(p.MaintenanceMarginPct, 25), 1, 95)
 	maintFrac := maint / 100
 
 	cash := math.Max(0, p.InitialCapital)
@@ -271,7 +264,7 @@ func RunBuyHold(data []types.OHLC, initialCapital float64) types.BacktestResult 
 		ID: "buyhold-0", EntryDate: entry.Date, ExitDate: exit.Date,
 		EntryPrice: firstPrice, ExitPrice: lastPrice, Quantity: qty,
 		PnL: pnl, PnLPercent: (lastPrice/firstPrice - 1) * 100,
-		Duration: tradingdate.DaysBetween(entry.Date, exit.Date),
+		Duration:   tradingdate.DaysBetween(entry.Date, exit.Date),
 		ExitReason: "end_of_data",
 	}
 	m := metrics.New([]types.Trade{trade}, equity, initialCapital, nil).All()

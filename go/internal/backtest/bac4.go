@@ -30,9 +30,6 @@ type BAC4Result struct {
 }
 
 func RunBuyAtClose4(tickers []TickerIndexed, strategy types.Strategy, leverage float64) BAC4Result {
-	if leverage == 0 {
-		leverage = 1
-	}
 	tickers = IndexTickers(tickers)
 	if len(tickers) == 0 {
 		return BAC4Result{Metrics: map[string]float64{}}
