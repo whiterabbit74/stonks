@@ -523,10 +523,16 @@ func TestUIOracleBlocks(t *testing.T) {
 		"Себестоимость", "Рыночная стоимость", "PnL %",
 		"monitorTradesTable", "Reconcile Candidate",
 		"broker-reconcile", "Показать скрытые",
+		`data-edit="`, `data-refresh="`, `data-export="`, "companyName", "Сохранён:",
+		"Настройки провайдера", "compactMetricsHTML", "reset-opt-tickers",
+		"webullCoverageThrough", `data-edit-split="`, `data-del-ticker="`,
 	} {
 		if !strings.Contains(a, need) {
 			t.Errorf("UI missing %s", need)
 		}
+	}
+	if !strings.Contains(a, "Изменить</button>") || !strings.Contains(a, "Обновить</button>") || !strings.Contains(a, "Экспорт</button>") {
+		t.Error("data list-row actions missing")
 	}
 }
 

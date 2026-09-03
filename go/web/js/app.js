@@ -1116,8 +1116,9 @@
     const tags = new Set();
     state.datasets.forEach((d) => (d.tag || '').split(',').forEach((t) => { const x = t.trim(); if (x) tags.add(x); }));
     const filtered = state.dataTag === 'all' ? state.datasets : state.datasets.filter((d) => (d.tag || '').split(',').map((t) => t.trim()).includes(state.dataTag));
+    const tagCount = (name) => state.datasets.filter((d) => (d.tag || '').split(',').map((x) => x.trim()).includes(name)).length;
     const filters = [`<button data-tag="all" class="px-3 py-1.5 rounded-lg text-xs font-medium ${state.dataTag === 'all' ? 'bg-blue-100 text-blue-800 border-2 border-blue-200 dark:bg-blue-950/30 dark:text-blue-200' : 'bg-gray-50 text-gray-700 border border-gray-200 dark:bg-gray-800 dark:text-gray-200'}">Все (${state.datasets.length})</button>`]
-      .concat([...tags].sort().map((t) => `<button data-tag="${esc(t)}" class="px-3 py-1.5 rounded-lg text-xs font-medium ${state.dataTag === t ? 'bg-blue-100 text-blue-800 border-2 border-blue-200' : 'bg-gray-50 text-gray-700 border border-gray-200 dark:bg-gray-800 dark:text-gray-200'}">${esc(t)}</button>`)).join('');
+      .concat([...tags].sort().map((t) => `<button data-tag="${esc(t)}" class="px-3 py-1.5 rounded-lg text-xs font-medium ${state.dataTag === t ? 'bg-blue-100 text-blue-800 border-2 border-blue-200' : 'bg-gray-50 text-gray-700 border border-gray-200 dark:bg-gray-800 dark:text-gray-200'}">${esc(t)} (${tagCount(t)})</button>`)).join('');
     let cards = '';
     if (!state.datasets.length) {
       cards = `<div class="rounded-lg border border-dashed border-gray-300 bg-white p-8 text-center dark:border-gray-700 dark:bg-gray-900">
@@ -1179,6 +1180,7 @@
           </div>
         </div>
         <div class="mb-3"><div class="text-xs font-medium text-gray-600 uppercase tracking-wide mb-2">Фильтр</div><div class="flex flex-wrap gap-2">${filters}</div></div>
+        ${state.dataTag !== 'all' && !filtered.length ? `<div class="rounded-lg border border-dashed p-4 text-sm text-gray-500 mb-3">Нет датасетов с тегом «${esc(state.dataTag)}»</div>` : ''}
         ${cards}
       </div>`;
   }
