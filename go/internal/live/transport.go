@@ -292,3 +292,30 @@ func (m *MemoryQuotes) Historical(symbol, provider string, startTs, endTs int64,
 	}
 	return providers.Historical{}, fmt.Errorf("no history for %s", symbol)
 }
+
+// ProviderAwareQuotes answers per provider so a test can fail one and count
+// how many times each was tried.
+type ProviderAwareQuotes struct {
+	mu    sync.Mutex
+	Fail  map[string]error
+	Bars  []types.OHLC
+	Calls map[string]int
+}
+
+func (p *ProviderAwareQuotes) Quote(symbol, provider string) (providers.QuotePayload, error) {
+	p.mu.Lock()
+	if p.Calls == nil {
+		p.Calls = map[string]int{}
+	}
+	p.Calls[provider]++
+	err := p.Fail[provider]
+	p.mu.Unlock()
+	if err != nil {
+		return providers.QuotePayload{}, err
+	}
+	return providers.BuildQuoteFromRows(p.Bars)
+}
+
+func (p *ProviderAwareQuotes) Historical(symbol, provider string, startTs, endTs int64, adjustment string) (providers.Historical, error) {
+	return providers.Historical{Rows: p.Bars}, nil
+}

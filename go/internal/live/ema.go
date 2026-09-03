@@ -25,23 +25,21 @@ type EmaEval struct {
 func (e *Engine) EvaluateEMAAlerts() []EmaEval {
 	alerts, _ := e.DB.ListEMAAlerts()
 	var out []EmaEval
-	provider := "finnhub"
-	if s := e.DB.Settings(); s != nil {
-		if p, _ := s["resultsQuoteProvider"].(string); p != "" {
-			provider = p
-		}
-	}
+	// Node uses the real-time chain here too (emaAlerts.js ->
+	// fetchTodayRangeAndQuote), not resultsQuoteProvider, whose default
+	// alpha_vantage would answer with a daily bar.
+	providerChain := quoteProviderChain(e.AutoConfig())
 	today := tradingdate.TodayNYSE(e.now())
 	for _, a := range alerts {
 		if enabled, ok := a["enabled"].(bool); ok && !enabled {
 			continue
 		}
-		out = append(out, e.evalEMAAlert(a, provider, today))
+		out = append(out, e.evalEMAAlert(a, providerChain, today))
 	}
 	return out
 }
 
-func (e *Engine) evalEMAAlert(a map[string]any, provider, today string) EmaEval {
+func (e *Engine) evalEMAAlert(a map[string]any, providerChain []string, today string) EmaEval {
 	ev := EmaEval{
 		ID:           fmt.Sprint(a["id"]),
 		Symbol:       store.SafeTicker(fmt.Sprint(a["symbol"])),
@@ -81,10 +79,8 @@ func (e *Engine) evalEMAAlert(a map[string]any, provider, today string) EmaEval 
 		return ev
 	}
 	price := 0.0
-	if qs := e.quotes(); qs != nil {
-		if q, qerr := qs.Quote(ev.Symbol, provider); qerr == nil {
-			price = asFloat(q.Quote["current"])
-		}
+	if q, _, qerr := e.liveQuote(ev.Symbol, providerChain); qerr == nil {
+		price = asFloat(q.Quote["current"])
 	}
 	if price <= 0 {
 		price = bars[len(bars)-1].Close

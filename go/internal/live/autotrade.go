@@ -184,10 +184,7 @@ func (e *Engine) Evaluate() EvalResult {
 	cfg := e.AutoConfig()
 	today := tradingdate.TodayNYSE(e.now())
 	symbols := configuredSymbols(cfg, e)
-	provider, _ := cfg["provider"].(string)
-	if provider == "" {
-		provider = "finnhub"
-	}
+	providerChain := quoteProviderChain(cfg)
 	allowExits := allowFlag(cfg, "allowExits")
 	allowEntries := allowFlag(cfg, "allowNewEntries")
 	watchBy := map[string]map[string]any{}
@@ -210,7 +207,7 @@ func (e *Engine) Evaluate() EvalResult {
 				w["highIBS"] = cfg["highIBS"]
 			}
 		}
-		ev := e.evalWatch(sym, w, provider)
+		ev := e.evalWatch(sym, w, providerChain)
 		low, high, highInvalid := watchThresholds(w, cfg)
 		quotes = append(quotes, map[string]any{
 			"symbol": sym, "ok": ev.ok, "ibs": ev.ibs, "currentPrice": ev.price,

@@ -466,7 +466,7 @@ func TestQuoteRangeMissingIsNotOk(t *testing.T) {
 		Q:    map[string]providers.QuotePayload{"AAPL": {Quote: map[string]any{"current": 8.2}}},
 	}
 	e := New(db, q)
-	ev := e.evalWatch("AAPL", map[string]any{"symbol": "AAPL"}, "finnhub")
+	ev := e.evalWatch("AAPL", map[string]any{"symbol": "AAPL"}, []string{"finnhub"})
 	if ev.ok {
 		t.Fatalf("missing range must not be ok %+v", ev)
 	}
@@ -639,5 +639,58 @@ func TestSubmitGivesUpWithoutPlacingAnything(t *testing.T) {
 	}
 	if len(br.Orders) != 0 {
 		t.Fatalf("no order should exist: %+v", br.Orders)
+	}
+}
+
+// A single provider outage must not cancel the day: the chain falls through to
+// the next real-time source, and the eval records who actually answered.
+func TestQuoteFallsBackToTheNextProvider(t *testing.T) {
+	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
+	dir := t.TempDir()
+	db, err := store.Open(filepath.Join(dir, "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	_ = db.SaveDataset("AAPL", "AAPL", "", "", bars, false)
+
+	q := &ProviderAwareQuotes{
+		Fail: map[string]error{"finnhub": fmt.Errorf("503 service unavailable")},
+		Bars: bars,
+	}
+	e := New(db, q)
+	e.Telegram = &MemoryTelegram{}
+	e.Sleep = func(time.Duration) {}
+
+	got, used, err := e.liveQuote("AAPL", []string{"finnhub", "webull"})
+	if err != nil {
+		t.Fatalf("chain should have recovered: %v", err)
+	}
+	if used != "webull" {
+		t.Fatalf("served by %q, want webull", used)
+	}
+	if asFloat(got.Quote["current"]) != 8.2 {
+		t.Fatalf("unexpected quote %+v", got.Quote)
+	}
+	// Node retries the primary before falling through (1 try + 2 retries).
+	if q.Calls["finnhub"] != quoteAttempts {
+		t.Fatalf("primary tried %d times, want %d", q.Calls["finnhub"], quoteAttempts)
+	}
+}
+
+// Providers whose quote is synthesised from daily history must never serve a
+// live decision — they would answer with yesterday's bar.
+func TestChainOnlyContainsRealtimeProviders(t *testing.T) {
+	chain := quoteProviderChain(map[string]any{
+		"provider":         "alpha_vantage",
+		"providerFallback": "polygon,twelve_data,webull",
+	})
+	if chain[0] != "finnhub" {
+		t.Fatalf("a non-real-time primary must fall back to finnhub, got %v", chain)
+	}
+	for _, p := range chain {
+		if !isRealtimeQuoteProvider(p) {
+			t.Fatalf("%q is not a real-time provider: %v", p, chain)
+		}
 	}
 }

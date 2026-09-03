@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"time"
 
 	"mktorder.com/go/internal/ibs"
 	"mktorder.com/go/internal/providers"
@@ -99,16 +100,16 @@ func (e *Engine) Aggregate(minutesUntilClose int, opts AggregateOpts) (SimulateR
 		return out, nil
 	}
 	today := tradingdate.TodayNYSE(e.now())
-	settings := e.DB.Settings()
-	provider, _ := settings["resultsQuoteProvider"].(string)
-	if provider == "" {
-		provider = "finnhub"
-	}
+	// Node's T-1 path always uses the real-time chain (finnhub -> webull,
+	// providers/quote.js), never resultsQuoteProvider — that setting drives the
+	// Results page and defaults to alpha_vantage, whose "quote" is synthesised
+	// from daily history. Using it here would decide on yesterday's bar.
+	providerChain := quoteProviderChain(e.AutoConfig())
 	var rows []t1Watch
 	var integ []IntegrityResult
 	for _, w := range watches {
 		sym := fmt.Sprint(w["symbol"])
-		ev := e.evalWatch(sym, w, provider)
+		ev := e.evalWatch(sym, w, providerChain)
 		rows = append(rows, t1Watch{sym: sym, eval: ev})
 		out.Tickers = append(out.Tickers, sym)
 		if ev.blocked {
@@ -132,7 +133,7 @@ func (e *Engine) Aggregate(minutesUntilClose int, opts AggregateOpts) (SimulateR
 		}
 	}
 	if stage != "confirmations" {
-		text := e.buildT11Text(minutesUntilClose, today, provider, rows, emaAlerts, integ)
+		text := e.buildT11Text(minutesUntilClose, today, providersUsed(rows, providerChain), rows, emaAlerts, integ)
 		res, err := e.finishSend(&out, text, opts)
 		if res.Sent {
 			if ema := buildEmaOverviewMessage(emaAlerts); ema != "" {
@@ -351,12 +352,13 @@ type watchEval struct {
 	rtFresh, histFresh       bool
 	nearEntry, nearExit      bool
 	ibs, price, low, high    float64
+	provider                 string
 	warning                  IntegrityResult
 }
 
 const nearDelta = 0.02
 
-func (e *Engine) evalWatch(sym string, w map[string]any, provider string) watchEval {
+func (e *Engine) evalWatch(sym string, w map[string]any, providerChain []string) watchEval {
 	low := asFloat(w["lowIBS"])
 	if w["lowIBS"] == nil {
 		low = ibs.DefaultLowIBS
@@ -372,16 +374,15 @@ func (e *Engine) evalWatch(sym string, w map[string]any, provider string) watchE
 	ev := watchEval{low: low, high: high}
 	var ibsVal, price float64
 	ok := false
-	if qs := e.quotes(); qs != nil {
-		if q, err := qs.Quote(sym, provider); err == nil {
-			if v, good := ibsFromQuote(q); good {
-				ibsVal, ok = v, true
-			}
-			if cur := asFloat(q.Quote["current"]); cur > 0 {
-				price = cur
-			}
-			ev.rtFresh = ok && price > 0
+	if q, used, err := e.liveQuote(sym, providerChain); err == nil {
+		if v, good := ibsFromQuote(q); good {
+			ibsVal, ok = v, true
 		}
+		if cur := asFloat(q.Quote["current"]); cur > 0 {
+			price = cur
+		}
+		ev.provider = used
+		ev.rtFresh = ok && price > 0
 	}
 	bars, adj, _ := e.DB.GetOHLCLast(sym, 8)
 	ev.histFresh = barsHavePrevSession(bars, tradingdate.TodayNYSE(e.now()))
@@ -468,4 +469,89 @@ func (e *Engine) tradeHistoryMessage(limit int) string {
 		n++
 	}
 	return b.String()
+}
+
+// quoteAttempts is the number of tries per provider before moving to the next,
+// matching Node fetchTodayRangeAndQuote (1 try + 2 retries).
+const quoteAttempts = 3
+
+var quoteRetryStep = 350 * time.Millisecond
+
+// liveQuote walks the provider chain and returns the first usable intraday
+// quote plus the provider that served it. A quote is the one input without
+// which no live decision is possible, so a single provider outage must not
+// cancel the day. High, low and current always come from the SAME provider:
+// mixing them across sources would produce a meaningless IBS.
+func (e *Engine) liveQuote(symbol string, chain []string) (providers.QuotePayload, string, error) {
+	qs := e.quotes()
+	if qs == nil {
+		return providers.QuotePayload{}, "", fmt.Errorf("no quote source configured")
+	}
+	if len(chain) == 0 {
+		chain = realtimeQuoteProviders
+	}
+	var lastErr error
+	for i, p := range chain {
+		for attempt := 1; attempt <= quoteAttempts; attempt++ {
+			q, err := qs.Quote(symbol, p)
+			if err == nil {
+				if _, good := ibsFromQuote(q); !good {
+					lastErr = fmt.Errorf("%s: no usable intraday range", p)
+					e.logQuoteProblem(symbol, p, i, lastErr.Error())
+					break
+				}
+				if i > 0 {
+					e.logAuto("quote_provider_fallback_used", "", map[string]any{
+						"symbol": symbol, "provider": p, "position": i,
+					})
+				}
+				return q, p, nil
+			}
+			lastErr = err
+			e.logQuoteProblem(symbol, p, i, err.Error())
+			if attempt < quoteAttempts {
+				e.sleep(time.Duration(attempt) * quoteRetryStep)
+			}
+		}
+	}
+	if lastErr == nil {
+		lastErr = fmt.Errorf("quote unavailable for %s", symbol)
+	}
+	return providers.QuotePayload{}, "", lastErr
+}
+
+// logQuoteProblem records why a provider was skipped. Without it, the reason a
+// decision diverged from the backtest is unrecoverable after the fact.
+func (e *Engine) logQuoteProblem(symbol, provider string, position int, reason string) {
+	e.logAuto("quote_provider_failed", "", map[string]any{
+		"symbol": symbol, "provider": provider, "position": position, "reason": reason,
+	})
+}
+
+// providersUsed names the provider(s) that actually served this cycle, so the
+// T-11 message does not claim the configured one after a fallback.
+func providersUsed(rows []t1Watch, chain []string) string {
+	var seen []string
+	for _, r := range rows {
+		if r.eval.provider == "" {
+			continue
+		}
+		dup := false
+		for _, s := range seen {
+			if s == r.eval.provider {
+				dup = true
+				break
+			}
+		}
+		if !dup {
+			seen = append(seen, r.eval.provider)
+		}
+	}
+	if len(seen) == 0 {
+		if len(chain) > 0 {
+			return chain[0]
+		}
+		return "finnhub"
+	}
+	return strings.Join(seen, "+")
 }

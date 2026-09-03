@@ -156,6 +156,16 @@ func sanitizeAutoTradingConfig(input, current map[string]any) map[string]any {
 	if s, ok := input["supportTradingSession"].(string); ok && enumIn(s, "CORE", "ALL", "N") {
 		next["supportTradingSession"] = s
 	}
+	if s, ok := input["providerFallback"].(string); ok {
+		var keep []string
+		for _, p := range strings.Split(s, ",") {
+			p = strings.ToLower(strings.TrimSpace(p))
+			if isRealtimeQuoteProvider(p) {
+				keep = append(keep, p)
+			}
+		}
+		next["providerFallback"] = strings.Join(keep, ",")
+	}
 	if s, ok := input["symbols"].(string); ok {
 		next["symbols"] = s
 	}
@@ -295,4 +305,50 @@ func watchThresholds(watch, cfg map[string]any) (low, high float64, highInvalid 
 		}
 	}
 	return low, high, highInvalid
+}
+
+// realtimeQuoteProviders are the providers whose Quote() returns an intraday
+// snapshot. alpha_vantage, twelve_data and polygon are deliberately absent:
+// their Quote() is synthesised from daily history, so it would answer a live
+// IBS question with yesterday's bar. Add "robinhood" here once the provider
+// client implements a real-time quote.
+var realtimeQuoteProviders = []string{"finnhub", "webull"}
+
+func isRealtimeQuoteProvider(p string) bool {
+	for _, r := range realtimeQuoteProviders {
+		if r == p {
+			return true
+		}
+	}
+	return false
+}
+
+// quoteProviderChain is the order in which providers are tried for one symbol.
+// A live decision is impossible without a quote, so a single provider outage
+// must not cancel the day; the configured provider stays first so behaviour is
+// unchanged whenever it answers.
+func quoteProviderChain(cfg map[string]any) []string {
+	primary, _ := cfg["provider"].(string)
+	primary = strings.ToLower(strings.TrimSpace(primary))
+	if !isRealtimeQuoteProvider(primary) {
+		primary = "finnhub"
+	}
+	chain := []string{primary}
+	seen := map[string]bool{primary: true}
+	add := func(p string) {
+		if isRealtimeQuoteProvider(p) && !seen[p] {
+			seen[p] = true
+			chain = append(chain, p)
+		}
+	}
+	if raw, ok := cfg["providerFallback"].(string); ok && strings.TrimSpace(raw) != "" {
+		for _, p := range strings.Split(raw, ",") {
+			add(strings.ToLower(strings.TrimSpace(p)))
+		}
+		return chain
+	}
+	for _, p := range realtimeQuoteProviders {
+		add(p)
+	}
+	return chain
 }
