@@ -2,6 +2,7 @@ package live
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -54,5 +55,27 @@ func TestLiveBrokerPlaceMarketHitsPlaceAndTrack(t *testing.T) {
 	}
 	if !sawPlace || !sawTrack {
 		t.Fatalf("place=%v track=%v", sawPlace, sawTrack)
+	}
+}
+
+func TestFlattenAnyNestedHoldings(t *testing.T) {
+	rows := flattenAny(map[string]any{
+		"data": map[string]any{
+			"has_next": false,
+			"holdings": []any{map[string]any{"symbol": "AAPL", "quantity": "10"}},
+		},
+	})
+	if len(rows) != 1 {
+		t.Fatalf("holdings %v", rows)
+	}
+	m, _ := rows[0].(map[string]any)
+	if fmt.Sprint(m["symbol"]) != "AAPL" {
+		t.Fatalf("row %+v", m)
+	}
+	orders := flattenAny(map[string]any{
+		"data": map[string]any{"orders": []any{map[string]any{"symbol": "MSFT"}}},
+	})
+	if len(orders) != 1 {
+		t.Fatalf("orders %v", orders)
 	}
 }

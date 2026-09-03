@@ -163,6 +163,35 @@ func (d *DB) ListPendingTrackers() ([]map[string]any, error) {
 	return out, nil
 }
 
+func (d *DB) ListRecentTrackers(limit int) ([]map[string]any, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	rows, err := d.SQL.Query(`SELECT client_order_id, symbol, action, status, quantity, source, date_key, started_at
+        FROM order_trackers ORDER BY started_at DESC LIMIT ?`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []map[string]any
+	for rows.Next() {
+		var id, symbol, action, status string
+		var source, dateKey, started sql.NullString
+		var qty sql.NullFloat64
+		if err := rows.Scan(&id, &symbol, &action, &status, &qty, &source, &dateKey, &started); err != nil {
+			return nil, err
+		}
+		out = append(out, map[string]any{
+			"clientOrderId": id, "symbol": symbol, "action": action, "status": status,
+			"quantity": nullF(qty), "source": nullS(source), "dateKey": nullS(dateKey), "startedAt": nullS(started),
+		})
+	}
+	if out == nil {
+		out = []map[string]any{}
+	}
+	return out, nil
+}
+
 func (d *DB) AggregateState(chatID, dateKey string) (t11Sent, t1Sent bool) {
 	var t11, t1 int
 	err := d.SQL.QueryRow(`SELECT t11_sent, t1_sent FROM aggregate_send_state WHERE date_key=? AND chat_id=?`, dateKey, chatID).Scan(&t11, &t1)

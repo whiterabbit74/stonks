@@ -268,6 +268,13 @@ func (b *LiveBroker) OrderHistory(start, end string) ([]any, error) {
 }
 
 func flattenAny(v any) []any {
+	return flattenAnyDepth(v, 0)
+}
+
+func flattenAnyDepth(v any, depth int) []any {
+	if depth > 4 {
+		return nil
+	}
 	if a, ok := v.([]any); ok {
 		return a
 	}
@@ -276,8 +283,15 @@ func flattenAny(v any) []any {
 		return nil
 	}
 	for _, k := range []string{"data", "holdings", "positions", "result", "items", "orders", "list"} {
-		if a, ok := m[k].([]any); ok {
+		child, ok := m[k]
+		if !ok {
+			continue
+		}
+		if a, ok := child.([]any); ok {
 			return a
+		}
+		if nested := flattenAnyDepth(child, depth+1); nested != nil {
+			return nested
 		}
 	}
 	return nil

@@ -413,6 +413,92 @@ func TestImportWebullCalendarDerivesHolidays(t *testing.T) {
 	}
 }
 
+func TestDashboardNestedWebullBalance(t *testing.T) {
+	s, _, br := liveServer(t)
+	br.Acct = map[string]any{
+		"account_id": "ACCT-1",
+		"balance": map[string]any{
+			"data": map[string]any{
+				"account_type":                 "MARGIN",
+				"total_asset_currency":         "USD",
+				"total_net_liquidation_value":  "12345.67",
+				"total_cash_balance":           "1000.00",
+				"total_unrealized_profit_loss": "200.00",
+				"account_currency_assets": []any{
+					map[string]any{
+						"currency":               "USD",
+						"net_liquidation_value":  "12345.67",
+						"cash_balance":           "1000.00",
+						"overnight_buying_power": "2000.00",
+						"day_buying_power":      "4000.00",
+						"unrealized_profit_loss": "200.00",
+					},
+				},
+			},
+		},
+	}
+	br.Pos = []any{map[string]any{
+		"symbol": "AAPL", "quantity": "10", "unit_cost": "180.00",
+		"total_cost": "1800.00", "last_price": "190.00", "market_value": "1900.00",
+		"unrealized_profit_loss": "100.00", "unrealized_profit_loss_rate": "0.0556",
+	}}
+	req := httptest.NewRequest("GET", "/api/autotrade/webull/dashboard", nil)
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != 200 {
+		t.Fatalf("dashboard %d %s", rec.Code, rec.Body.String())
+	}
+	var dash map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &dash); err != nil {
+		t.Fatal(err)
+	}
+	if dash["balance"] == nil {
+		t.Fatalf("top-level balance missing: %s", rec.Body.String())
+	}
+	if fmt.Sprint(dash["fetchedAt"]) == "" || dash["fetchedAt"] == nil {
+		t.Fatalf("fetchedAt missing: %s", rec.Body.String())
+	}
+	accounts, _ := dash["accounts"].([]any)
+	if len(accounts) < 1 {
+		t.Fatalf("accounts missing: %s", rec.Body.String())
+	}
+	raw := rec.Body.String()
+	for _, need := range []string{"12345.67", "1000.00", "2000.00", "AAPL", "1800.00"} {
+		if !strings.Contains(raw, need) {
+			t.Fatalf("dashboard missing %q: %s", need, raw)
+		}
+	}
+}
+
+func TestUIOracleBlocks(t *testing.T) {
+	app, err := os.ReadFile("../web/js/app.js")
+	if err != nil {
+		app, err = os.ReadFile("../../web/js/app.js")
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := string(app)
+	if strings.Contains(a, "state.stockTab !== 'summary'") {
+		t.Fatal("stocks params must not be injected on non-summary tabs")
+	}
+	if strings.Count(a, "${stocksParams(") != 2 {
+		t.Fatalf("stocksParams should render only in summary asides, got %d", strings.Count(a, "${stocksParams("))
+	}
+	for _, need := range []string{
+		"<th>Тикер</th>", "Дата входа-выхода", "Цена входа", "Цена выхода",
+		"applyMonitorMarginSimulation", "watch-margin", "Маржинальность",
+		"extractBalanceSummary", "total_net_liquidation_value", "overnight_buying_power",
+		"Себестоимость", "Рыночная стоимость", "PnL %",
+		"monitorTradesTable", "Reconcile Candidate",
+		"broker-reconcile", "Показать скрытые",
+	} {
+		if !strings.Contains(a, need) {
+			t.Errorf("UI missing %s", need)
+		}
+	}
+}
+
 func TestDashboardIncludesBrokerOrders(t *testing.T) {
 	s, _, br := liveServer(t)
 	br.Open = []any{map[string]any{"symbol": "AAPL", "side": "BUY", "status": "WORKING", "quantity": 2, "order_type": "MARKET"}}

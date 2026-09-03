@@ -839,8 +839,36 @@ func (d *DB) PatchTrade(table, id string, rec map[string]any) error {
 	if table != "trades" && table != "broker_trades" {
 		table = "trades"
 	}
-	_, err := d.SQL.Exec(`UPDATE `+table+` SET status=COALESCE(?, status), exit_date=COALESCE(?, exit_date), exit_price=COALESCE(?, exit_price), notes=COALESCE(?, notes) WHERE id=?`,
-		rec["status"], rec["exitDate"], rec["exitPrice"], rec["notes"], id)
+	_, err := d.SQL.Exec(`UPDATE `+table+` SET
+        status=COALESCE(?, status),
+        entry_date=COALESCE(?, entry_date),
+        exit_date=COALESCE(?, exit_date),
+        entry_price=COALESCE(?, entry_price),
+        exit_price=COALESCE(?, exit_price),
+        notes=COALESCE(?, notes)
+        WHERE id=?`,
+		rec["status"], rec["entryDate"], rec["exitDate"], rec["entryPrice"], rec["exitPrice"], rec["notes"], id)
+	if err != nil {
+		return err
+	}
+	if v, ok := rec["isHidden"]; ok && v != nil {
+		n := 0
+		switch t := v.(type) {
+		case bool:
+			if t {
+				n = 1
+			}
+		case float64:
+			if t != 0 {
+				n = 1
+			}
+		case string:
+			if t == "true" || t == "1" {
+				n = 1
+			}
+		}
+		_, err = d.SQL.Exec(`UPDATE `+table+` SET is_hidden=? WHERE id=?`, n, id)
+	}
 	return err
 }
 

@@ -401,8 +401,38 @@ func (e *Engine) Dashboard() (map[string]any, error) {
 	if acc == nil {
 		acc = map[string]any{"positions": []any{}, "connection": e.WebullSummary()}
 	}
+	var errs []any
 	if err != nil {
 		acc["error"] = err.Error()
+		errs = append(errs, err.Error())
+	}
+	if account, ok := acc["account"].(map[string]any); ok && account != nil {
+		if _, has := acc["balance"]; !has {
+			if bal, ok := account["balance"]; ok {
+				acc["balance"] = bal
+			}
+		}
+		id := account["account_id"]
+		if id == nil {
+			id = account["accountId"]
+		}
+		if id != nil && acc["accounts"] == nil {
+			acc["accounts"] = []any{map[string]any{
+				"account_id":     id,
+				"account_number": id,
+				"account_label":  "Configured Webull US account",
+				"account_class":  "WEBULL_US",
+			}}
+		}
+	}
+	if acc["fetchedAt"] == nil {
+		acc["fetchedAt"] = e.now().UTC().Format(time.RFC3339)
+	}
+	if acc["errors"] == nil {
+		if errs == nil {
+			errs = []any{}
+		}
+		acc["errors"] = errs
 	}
 	open := []any{}
 	hist := []any{}
@@ -428,10 +458,24 @@ func (e *Engine) Dashboard() (map[string]any, error) {
 func (e *Engine) Logs(limit int) map[string]any {
 	logs, _ := e.DB.ListAutotradeLogs(limit)
 	pending, _ := e.DB.ListPendingTrackers()
+	recent, _ := e.DB.ListRecentTrackers(20)
+	if logs == nil {
+		logs = []map[string]any{}
+	}
 	if pending == nil {
 		pending = []map[string]any{}
 	}
-	return map[string]any{"logs": logs, "pending": pending}
+	if recent == nil {
+		recent = []map[string]any{}
+	}
+	return map[string]any{
+		"logs":      logs,
+		"autotrade": logs,
+		"monitor":   logs,
+		"brokerRaw": logs,
+		"pending":   pending,
+		"recent":    recent,
+	}
 }
 
 func (e *Engine) ClosePosition(symbol string) (OrderResult, error) {

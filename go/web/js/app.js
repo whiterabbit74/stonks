@@ -109,6 +109,7 @@
     { symbol: 'PFE', name: 'Pfizer Inc.' },
   ];
   const LEV_PCT = [100, 125, 150, 175, 200, 225, 250, 275, 300];
+  const MONITOR_MARGIN_OPTIONS = [100, 125, 150, 175, 200];
   const DEFAULT_LEVERAGE_LABEL = '200%';
   const HERO_RANGES = ['1M', '3M', '6M', '1Y', '3Y', '5Y', 'MAX'];
   const EMA_TABS = [
@@ -230,6 +231,13 @@
     optTab: 'summary',
     optForm: { strike: 10, vol: 20, cap: 10, expiration: 4, maxHold: 30, leverage: 200 },
     monitorTrades: [],
+    monitorMarginPercent: (() => {
+      const n = Math.round(Number(localStorage.getItem('monitor.marginPercent') || 100));
+      return [100, 125, 150, 175, 200].includes(n) ? n : 100;
+    })(),
+    watchTradeFilter: 'all',
+    brokerShowHidden: false,
+    brokerQuotes: {},
     emaAlerts: [],
     autoConfig: {},
     tickerCatalog: [],
@@ -253,35 +261,119 @@
     if (!Number.isFinite(n)) return '∞';
     return Number(n).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
   }
-  function fmtUsd(n) {
-    if (n == null || !Number.isFinite(n)) return '—';
-    return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
+  function toNum(v) {
+    if (v == null || v === '') return null;
+    if (typeof v === 'number') return Number.isFinite(v) ? v : null;
+    const n = Number(String(v).replace(/,/g, '').trim());
+    return Number.isFinite(n) ? n : null;
   }
-  function flattenNums(obj, acc) {
-    acc = acc || {};
-    if (!obj || typeof obj !== 'object') return acc;
-    if (Array.isArray(obj)) { obj.forEach((x) => flattenNums(x, acc)); return acc; }
-    Object.keys(obj).forEach((k) => {
-      const v = obj[k];
-      if (typeof v === 'number' && Number.isFinite(v) && acc[k] == null) acc[k] = v;
-      else if (v && typeof v === 'object') flattenNums(v, acc);
-    });
-    return acc;
+  function fmtUsd(n, d) {
+    n = toNum(n);
+    if (n == null) return '—';
+    const digits = d == null ? 2 : d;
+    return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: digits, maximumFractionDigits: digits });
+  }
+  function asObject(v) {
+    return v && typeof v === 'object' && !Array.isArray(v) ? v : null;
+  }
+  function firstDefined(row, keys) {
+    if (!row || typeof row !== 'object') return null;
+    for (const k of keys) {
+      const value = row[k];
+      if (value !== undefined && value !== null && value !== '') return value;
+    }
+    return null;
   }
   function asRows(v) {
     if (Array.isArray(v)) return v;
-    if (v && Array.isArray(v.holdings)) return v.holdings;
-    if (v && Array.isArray(v.positions)) return v.positions;
-    if (v && Array.isArray(v.orders)) return v.orders;
-    if (v && Array.isArray(v.items)) return v.items;
-    if (v && Array.isArray(v.list)) return v.list;
+    if (!v || typeof v !== 'object') return [];
+    for (const k of ['holdings', 'positions', 'orders', 'items', 'list', 'data', 'rows', 'accounts']) {
+      if (Array.isArray(v[k])) return v[k];
+    }
     return [];
   }
   function pickField(row, keys) {
-    for (const k of keys) {
-      if (row && row[k] != null && row[k] !== '') return row[k];
-    }
-    return '—';
+    const v = firstDefined(row, keys);
+    return v == null ? '—' : v;
+  }
+  function formatRatioPercent(v) {
+    const n = toNum(v);
+    if (n == null) return '—';
+    const pct = Math.abs(n) <= 1.5 ? n * 100 : n;
+    return fmt(pct, 2) + '%';
+  }
+  function extractBalanceSummary(dashboard) {
+    const root = asObject(dashboard) || {};
+    let balance = root.balance != null ? root.balance : (asObject(root.account) && root.account.balance);
+    const wrapped = asObject(balance);
+    const candidate = wrapped && wrapped.data && typeof wrapped.data === 'object' && !Array.isArray(wrapped.data)
+      ? wrapped.data
+      : wrapped;
+    const currencyAssets = Array.isArray(candidate && candidate.account_currency_assets)
+      ? candidate.account_currency_assets.filter((item) => item && typeof item === 'object')
+      : [];
+    const usd = currencyAssets.find((item) => String(item.currency || '').toUpperCase() === 'USD') || currencyAssets[0] || null;
+    const currency = firstDefined(usd, ['currency'])
+      || firstDefined(candidate, ['total_asset_currency', 'currency', 'base_currency', 'baseCurrency'])
+      || 'USD';
+    return {
+      totalAssets: toNum(firstDefined(candidate, ['total_net_liquidation_value', 'net_liquidation_value', 'netLiquidationValue', 'total_assets', 'totalAssets', 'total_market_value', 'market_value', 'marketValue']))
+        ?? toNum(firstDefined(usd, ['net_liquidation_value', 'netLiquidationValue'])),
+      cashBalance: toNum(firstDefined(candidate, ['total_cash_balance', 'cash_balance', 'cashBalance', 'settled_cash', 'settledCash', 'cash']))
+        ?? toNum(firstDefined(usd, ['cash_balance', 'cashBalance'])),
+      buyingPower: toNum(firstDefined(usd, ['overnight_buying_power', 'overnightBuyingPower', 'day_buying_power', 'dayBuyingPower', 'option_buying_power', 'optionBuyingPower', 'night_trading_buying_power', 'nightTradingBuyingPower', 'buying_power', 'buyingPower', 'margin_power', 'cash_power']))
+        ?? toNum(firstDefined(candidate, ['buying_power', 'buyingPower', 'day_trading_buying_power', 'dayTradingBuyingPower'])),
+      unrealizedPnl: toNum(firstDefined(candidate, ['total_unrealized_profit_loss', 'unrealized_profit_loss', 'unrealizedProfitLoss', 'unrealized_pnl', 'unrealizedPnl']))
+        ?? toNum(firstDefined(usd, ['unrealized_profit_loss', 'unrealizedProfitLoss'])),
+      accountType: firstDefined(candidate, ['account_type', 'accountType']),
+      currency,
+      fetchedAt: root.fetchedAt || root.fetched_at || '',
+    };
+  }
+  function normalizePositions(positions) {
+    return asRows(positions).map((item, index) => ({
+      id: String(firstDefined(item, ['position_id', 'id', 'symbol']) ?? index),
+      symbol: String(firstDefined(item, ['symbol', 'ticker', 'display_symbol', 'short_name']) ?? '—'),
+      quantity: firstDefined(item, ['quantity', 'qty', 'position', 'holding']),
+      avgPrice: firstDefined(item, ['avg_price', 'average_price', 'avgPrice', 'cost_price', 'unit_cost']),
+      totalCost: firstDefined(item, ['total_cost', 'totalCost', 'cost']),
+      marketPrice: firstDefined(item, ['last_price', 'market_price', 'marketPrice', 'current_price']),
+      marketValue: firstDefined(item, ['market_value', 'marketValue', 'value']),
+      unrealizedPnl: firstDefined(item, ['unrealized_profit_loss', 'unrealizedPnl', 'unrealized_pnl']),
+      unrealizedPnlRate: firstDefined(item, ['unrealized_profit_loss_rate', 'unrealizedProfitLossRate', 'unrealized_pnl_rate']),
+      holdingProportion: firstDefined(item, ['holding_proportion', 'holdingProportion', 'weight']),
+      instrumentType: firstDefined(item, ['instrument_type', 'instrumentType', 'security_type']),
+      currency: firstDefined(item, ['currency']),
+    }));
+  }
+  function normalizeOrders(payload) {
+    return asRows(payload).flatMap((item, index) => {
+      const nested = asRows(item.orders).length ? asRows(item.orders) : asRows(item.items);
+      const rows = nested.length ? nested : [item];
+      return rows.map((row, rowIndex) => {
+        const merged = { ...item, ...row };
+        return {
+          id: String(firstDefined(merged, ['client_order_id', 'order_id', 'combo_order_id', 'id']) ?? `${index}-${rowIndex}`),
+          clientOrderId: String(firstDefined(merged, ['client_order_id']) ?? '—'),
+          orderId: String(firstDefined(merged, ['order_id', 'combo_order_id']) ?? '—'),
+          comboType: String(firstDefined(merged, ['combo_type']) ?? '—'),
+          symbol: String(firstDefined(merged, ['symbol', 'ticker']) ?? '—'),
+          side: String(firstDefined(merged, ['side', 'action']) ?? '—'),
+          status: String(firstDefined(merged, ['status', 'order_status']) ?? '—'),
+          quantity: firstDefined(merged, ['total_quantity', 'quantity', 'qty', 'filled_quantity', 'filled_qty']),
+          filledQuantity: firstDefined(merged, ['filled_quantity', 'filled_qty', 'deal_quantity']),
+          orderType: String(firstDefined(merged, ['order_type', 'type']) ?? '—'),
+          instrumentType: String(firstDefined(merged, ['instrument_type']) ?? '—'),
+          entrustType: String(firstDefined(merged, ['entrust_type']) ?? '—'),
+          timeInForce: String(firstDefined(merged, ['time_in_force', 'tif']) ?? '—'),
+          tradingSession: String(firstDefined(merged, ['support_trading_session', 'trading_session', 'session']) ?? '—'),
+          avgPrice: firstDefined(merged, ['filled_price', 'avg_price', 'average_price', 'filled_avg_price', 'deal_price']),
+          limitPrice: firstDefined(merged, ['limit_price', 'limitPrice', 'price']),
+          createdAt: firstDefined(merged, ['place_time_at', 'create_time_at', 'update_time_at', 'create_time', 'created_at', 'createdAt', 'update_time', 'place_time']),
+          filledAt: firstDefined(merged, ['filled_time_at', 'filled_time', 'place_time_at', 'create_time_at', 'filledTime']),
+        };
+      });
+    });
   }
   function fmtPct(n) { return (n == null ? 0 : n).toFixed(1) + '%'; }
   function pnlClass(n) { return n > 0 ? 'pos' : n < 0 ? 'neg' : ''; }
@@ -607,10 +699,22 @@
       ${heroChartHTML(opts.chartId || 'chart-hero')}
     </div>`;
   }
+  function compactMetricsHTML(result) {
+    if (!result || !result.metrics) return '';
+    const m = result.metrics;
+    const pf = Number.isFinite(m.profitFactor) ? fmt(m.profitFactor) : '∞';
+    return `<div class="grid grid-cols-2 gap-2 pt-2 border-t border-gray-200 dark:border-gray-700 text-xs">
+      <div>CAGR<div class="font-semibold">${fmtPct(m.cagr)}</div></div>
+      <div>Макс. DD<div class="font-semibold">${fmtPct(result.maxDrawdown ?? m.maxDrawdown)}</div></div>
+      <div>Win rate<div class="font-semibold">${fmtPct(m.winRate)}</div></div>
+      <div>Профит-фактор<div class="font-semibold">${pf}</div></div>
+      <div class="col-span-2">Сделок <b>${m.totalTrades ?? (result.trades || []).length}</b></div>
+    </div>`;
+  }
   function asideExtrasHTML(result) {
     if (!result) return '';
     const t = selectedHeroTicker();
-    return staleWarningHTML(t, barsForTicker(t)) + openPositionHTML(result.trades, lastBarDate(t));
+    return compactMetricsHTML(result) + staleWarningHTML(t, barsForTicker(t)) + openPositionHTML(result.trades, lastBarDate(t));
   }
   function pick(m, k) {
     if (!m || typeof m !== 'object') return undefined;
@@ -622,13 +726,35 @@
     const pf = pick(x.metrics, 'profitFactor');
     const wins = x.trades.filter((t) => (t.pnl || 0) > 0);
     const losses = x.trades.filter((t) => (t.pnl || 0) < 0);
-    return `<p class="mb-3">Профит-фактор: <b>${fmt(pf)}</b> · прибыльных ${wins.length} · убыточных ${losses.length}</p>`;
+    const avgWin = wins.length ? wins.reduce((s, t) => s + (Number(t.pnlPercent) || 0), 0) / wins.length : 0;
+    const avgLoss = losses.length ? losses.reduce((s, t) => s + (Number(t.pnlPercent) || 0), 0) / losses.length : 0;
+    const gp = wins.reduce((s, t) => s + (Number(t.pnl) || 0), 0);
+    const gl = losses.reduce((s, t) => s + (Number(t.pnl) || 0), 0);
+    return `<div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-3">
+      <div class="rounded-lg border p-3 text-center"><div class="text-xl font-bold">${Number.isFinite(pf) ? fmt(pf) : '∞'}</div><div class="text-xs text-gray-500">Профит-фактор</div></div>
+      <div class="rounded-lg border p-3 text-center"><div class="text-xl font-bold">${fmtPct(x.metrics.winRate)}</div><div class="text-xs text-gray-500">Win rate</div></div>
+      <div class="rounded-lg border p-3 text-center"><div class="text-xl font-bold">${fmt(avgWin, 2)}%</div><div class="text-xs text-gray-500">Средний PnL% +</div></div>
+      <div class="rounded-lg border p-3 text-center"><div class="text-xl font-bold pos">${fmtUsd(gp)}</div><div class="text-xs text-gray-500">Валовая прибыль</div></div>
+      <div class="rounded-lg border p-3 text-center"><div class="text-xl font-bold neg">${fmtUsd(gl)}</div><div class="text-xs text-gray-500">Валовый убыток</div></div>
+    </div>
+    <p class="text-sm text-gray-500">Прибыльных ${wins.length} · убыточных ${losses.length} · средний убыток ${fmt(avgLoss, 2)}%</p>`;
   }
   function durationBody(r) {
     const x = resultOf(r);
     if (!x || !x.trades.length) return '<p class="text-sm text-gray-500">Нет сделок</p>';
-    const avg = x.trades.reduce((s, t) => s + (t.duration || 0), 0) / x.trades.length;
-    return `<p class="mb-3">Средняя длительность: <b>${fmt(avg, 1)}</b> дн.</p>`;
+    const days = x.trades.map((t) => Number(t.duration) || 0).sort((a, b) => a - b);
+    const avg = days.reduce((s, n) => s + n, 0) / days.length;
+    const med = days[Math.floor(days.length / 2)];
+    const max = days[days.length - 1];
+    const reasons = {};
+    x.trades.forEach((t) => { const k = t.exitReason || '—'; reasons[k] = (reasons[k] || 0) + 1; });
+    const reasonRows = Object.entries(reasons).sort((a, b) => b[1] - a[1]).map(([k, n]) => `<tr><td>${esc(k)}</td><td>${n}</td></tr>`).join('');
+    return `<div class="grid grid-cols-3 gap-3 mb-3">
+      <div class="rounded-lg border p-3 text-center"><div class="text-xl font-bold">${fmt(avg, 1)}</div><div class="text-xs text-gray-500">Средняя, дн.</div></div>
+      <div class="rounded-lg border p-3 text-center"><div class="text-xl font-bold">${fmt(med, 1)}</div><div class="text-xs text-gray-500">Медиана, дн.</div></div>
+      <div class="rounded-lg border p-3 text-center"><div class="text-xl font-bold">${fmt(max, 1)}</div><div class="text-xs text-gray-500">Макс., дн.</div></div>
+    </div>
+    <table class="trades"><thead><tr><th>Причина выхода</th><th>Сделок</th></tr></thead><tbody>${reasonRows}</tbody></table>`;
   }
   function spreadsTable(buy, sell) {
     const rows = [].concat(buy || []).flatMap((b) => (sell || []).map((s) => `<tr><td>${fmt(b)}</td><td>${fmt(s)}</td><td>${fmt(s - b, 1)} п.п.</td></tr>`)).join('');
@@ -654,24 +780,47 @@
     }).join('') || '<p class="text-sm text-gray-500 col-span-full text-center py-8">Ничего не найдено</p>';
     return { list, cards };
   }
+  function normalizeMonitorMarginPercent(value) {
+    const n = Math.round(Number(value));
+    return MONITOR_MARGIN_OPTIONS.includes(n) ? n : 100;
+  }
+  function applyMonitorMarginSimulation(trades, marginPercent) {
+    const leverage = Math.max(1, normalizeMonitorMarginPercent(marginPercent) / 100);
+    if (leverage === 1) return trades || [];
+    return (trades || []).map((trade) => {
+      if (trade.status !== 'closed') return trade;
+      if (!Number.isFinite(Number(trade.pnlPercent))) return trade;
+      const simulatedPnlPct = Math.max(-100, Number(trade.pnlPercent) * leverage);
+      const abs = Number(trade.pnlAbsolute);
+      return {
+        ...trade,
+        pnlPercent: simulatedPnlPct,
+        pnlAbsolute: Number.isFinite(abs) ? abs * leverage : trade.pnlAbsolute,
+      };
+    });
+  }
   function monitorStats(trades) {
     const closed = (trades || []).filter((t) => t.status === 'closed' && Number.isFinite(Number(t.pnlPercent)));
-    const initial = 10000;
+    const initial = Number(state.settings && state.settings.initialCapital) > 0 ? Number(state.settings.initialCapital) : 10000;
     let bal = initial, peak = initial;
     const equity = [];
-    let wins = 0, hold = 0, net = 0;
-    closed.slice().sort((a, b) => String(a.exitDate || '').localeCompare(String(b.exitDate || ''))).forEach((t) => {
+    let wins = 0, hold = 0, net = 0, grossWin = 0, grossLoss = 0;
+    closed.slice().sort((a, b) => String(a.exitDate || a.exitDecisionTime || '').localeCompare(String(b.exitDate || b.exitDecisionTime || ''))).forEach((t) => {
       const pct = Number(t.pnlPercent) || 0;
       bal *= 1 + pct / 100;
       if (bal > peak) peak = bal;
-      equity.push({ date: t.exitDate || t.entryDate, value: bal, drawdown: peak > 0 ? ((peak - bal) / peak) * 100 : 0 });
+      equity.push({ date: t.exitDate || t.exitDecisionTime || t.entryDate, value: bal, drawdown: peak > 0 ? ((peak - bal) / peak) * 100 : 0 });
       if (pct > 0) wins++;
-      hold += Number(t.duration) || 0;
-      net += Number(t.pnlAbsolute) || 0;
+      hold += Number(t.holdingDays != null ? t.holdingDays : t.duration) || 0;
+      const abs = Number(t.pnlAbsolute) || 0;
+      net += abs;
+      if (abs > 0) grossWin += abs;
+      else grossLoss += abs;
     });
     const dd = equity.reduce((m, p) => Math.max(m, p.drawdown || 0), 0);
     const avg = closed.length ? closed.reduce((s, t) => s + (Number(t.pnlPercent) || 0), 0) / closed.length : 0;
-    return { closed, initial, bal, equity, wins, hold, net, dd, avg, ret: (bal / initial - 1) * 100 };
+    const pf = grossLoss < 0 ? grossWin / Math.abs(grossLoss) : (grossWin > 0 ? Infinity : 0);
+    return { closed, initial, bal, equity, wins, hold, net, dd, avg, pf, ret: (bal / initial - 1) * 100 };
   }
   async function loadCatalog() {
     if (state.tickerCatalog.length) return;
@@ -777,14 +926,56 @@
     </div>`;
   }
   function tradesTable(trades) {
-    const rows = (trades || []).slice(0, 200).map((t) => `<tr>
-      <td>${esc(t.entryDate)}</td><td>${esc(t.exitDate)}</td>
+    const list = (trades || []).slice().reverse().slice(0, 200);
+    const showTicker = list.some((t) => tradeTicker(t));
+    const rows = list.map((t, i) => {
+      const invested = toNum(t.context && t.context.initialInvestment) ?? ((toNum(t.quantity) || 0) * (toNum(t.entryPrice) || 0) || null);
+      const reason = t.exitReason === 'ibs_signal' && t.context && t.context.exitIBS != null
+        ? ('IBS ' + fmt((Number(t.context.exitIBS) || 0) * 100, 1) + '%')
+        : (t.exitReason || '');
+      return `<tr>
+      <td>${i + 1}</td>
+      ${showTicker ? `<td class="font-mono">${esc(tradeTicker(t) || '—')}</td>` : ''}
+      <td>${esc(t.entryDate || '—')} – ${esc(t.exitDate || '—')}</td>
       <td>${fmt(t.entryPrice)}</td><td>${fmt(t.exitPrice)}</td>
       <td>${fmt(t.quantity, 4)}</td>
-      <td class="${pnlClass(t.pnl)}">${fmt(t.pnl)}</td>
-      <td>${esc(t.duration)}</td><td>${esc(t.exitReason || '')}</td>
-    </tr>`).join('');
-    return `<div class="table-wrap rounded border dark:border-gray-800"><table class="trades"><thead><tr><th>Вход</th><th>Выход</th><th>Цена входа</th><th>Цена выхода</th><th>Кол-во</th><th>P&L</th><th>Дней</th><th>Причина</th></tr></thead><tbody>${rows || '<tr><td colspan="8">Нет сделок</td></tr>'}</tbody></table></div>`;
+      <td>${invested == null ? '—' : fmtUsd(invested)}</td>
+      <td class="${pnlClass(t.pnl)}">${fmtUsd(t.pnl)}</td>
+      <td class="${pnlClass(t.pnlPercent)}">${t.pnlPercent == null ? '—' : fmt(t.pnlPercent, 2) + '%'}</td>
+      <td>${esc(t.duration ?? '')}</td><td>${esc(reason)}</td>
+    </tr>`;
+    }).join('');
+    const cols = 9 + (showTicker ? 1 : 0);
+    return `<div class="table-wrap rounded border dark:border-gray-800"><table class="trades"><thead><tr><th>#</th>${showTicker ? '<th>Тикер</th>' : ''}<th>Дата входа-выхода</th><th>Цена входа</th><th>Цена выхода</th><th>Кол-во</th><th>Вложено</th><th>PnL, $</th><th>PnL, %</th><th>Дней</th><th>Причина</th></tr></thead><tbody>${rows || `<tr><td colspan="${cols}">Нет сделок</td></tr>`}</tbody></table></div>`;
+  }
+  function monitorTradesTable(trades) {
+    const filter = state.watchTradeFilter || 'all';
+    const list = (trades || []).filter((t) => {
+      if (filter === 'open') return t.status === 'open';
+      if (filter === 'closed') return t.status === 'closed';
+      if (filter === 'win') return t.status === 'closed' && Number(t.pnlPercent) > 0;
+      if (filter === 'loss') return t.status === 'closed' && Number(t.pnlPercent) < 0;
+      return true;
+    });
+    const rows = list.map((t) => {
+      const pnl = t.status === 'closed' ? (toNum(t.pnlAbsolute) ?? toNum(t.pnl)) : null;
+      const pct = t.status === 'closed' ? toNum(t.pnlPercent) : null;
+      const ibs = [t.entryIBS, t.exitIBS].map((v) => v == null ? '—' : fmt((Number(v) <= 1.5 ? Number(v) * 100 : Number(v)), 1) + '%').join(' → ');
+      return `<tr>
+        <td class="font-mono">${esc(t.symbol || t.ticker || '—')}</td>
+        <td>${esc(t.status === 'open' ? 'открыта' : 'закрыта')}</td>
+        <td>${esc(t.entryDate || '—')} – ${esc(t.exitDate || '—')}</td>
+        <td>${t.entryPrice == null ? '—' : fmtUsd(t.entryPrice)}</td>
+        <td>${t.exitPrice == null ? '—' : fmtUsd(t.exitPrice)}</td>
+        <td>${esc(ibs)}</td>
+        <td class="${pnlClass(pct)}">${pct == null ? '—' : fmt(pct, 2) + '%'} ${pnl == null ? '' : '(' + fmtUsd(pnl) + ')'}</td>
+        <td>${t.status === 'open' && t.id && !t.linkedBrokerTradeId ? `<button type="button" data-close-mon="${esc(t.id)}" data-close-sym="${esc(t.symbol || '')}" class="text-sm text-red-600 mr-2">Закрыть</button>` : ''}${t.id ? `<button type="button" data-edit-mon="${esc(t.id)}" class="text-sm text-indigo-600">Изменить</button>` : ''}</td>
+      </tr>`;
+    }).join('');
+    return `<div class="flex flex-wrap gap-2 mb-2 text-sm">
+      ${[['all', 'Все'], ['open', 'Открытые'], ['closed', 'Закрытые'], ['win', 'Прибыль'], ['loss', 'Убыток']].map(([id, lab]) => `<button type="button" data-wfilter="${id}" class="px-2 py-1 rounded border ${filter === id ? 'border-indigo-500 text-indigo-600' : 'border-gray-200 text-gray-600'}">${lab}</button>`).join('')}
+    </div>
+    <div class="table-wrap rounded border dark:border-gray-800"><table class="trades"><thead><tr><th>Тикер</th><th>Статус</th><th>Период</th><th>Вход</th><th>Выход</th><th>IBS</th><th>PnL</th><th>Действия</th></tr></thead><tbody>${rows || '<tr><td colspan="8" class="text-center text-gray-500">Нет сделок</td></tr>'}</tbody></table></div>`;
   }
   function overlay() {
     let html = '';
@@ -957,9 +1148,16 @@
       }).join('')}</div>`;
     } else {
       cards = filtered.map((d) => `<div class="flex items-center justify-between rounded-lg border p-3 bg-white dark:bg-gray-900 dark:border-gray-800">
-        <div><div class="font-semibold font-mono">${esc(d.ticker)}</div><div class="text-xs text-gray-500">${d.dataPoints || 0} баров · ${esc(d.dateRange?.from || '')} — ${esc(d.dateRange?.to || '')}</div></div>
-        <div class="flex gap-2">
+        <div>
+          <div class="flex items-center gap-2"><div class="font-semibold font-mono">${esc(d.ticker)}</div>${d.companyName ? `<span class="text-xs text-gray-500">${esc(d.companyName)}</span>` : ''}${state.ticker === d.ticker ? '<span class="text-[10px] px-1.5 py-0.5 rounded bg-green-100 text-green-800">Выбран</span>' : ''}</div>
+          <div class="text-xs text-gray-500">${d.dataPoints || 0} баров · ${esc(d.dateRange?.from || '')} — ${esc(d.dateRange?.to || '')}${d.uploadDate ? ' · Сохранён: ' + esc(d.uploadDate) : ''}</div>
+          ${(d.tag || '').split(',').map((t) => t.trim()).filter(Boolean).map((t) => `<span class="inline-block mr-1 mt-1 px-1.5 py-0.5 bg-gray-100 text-gray-600 text-[10px] rounded dark:bg-gray-800">${esc(t)}</span>`).join('')}
+        </div>
+        <div class="flex flex-wrap gap-2">
           <a href="/stocks?tickers=${encodeURIComponent(d.ticker)}" data-load="${esc(d.ticker)}" class="px-3 py-1.5 rounded text-sm bg-indigo-600 text-white">Открыть</a>
+          <button data-edit="${esc(d.ticker)}" class="px-3 py-1.5 rounded text-sm border">Изменить</button>
+          <button data-refresh="${esc(d.ticker)}" class="px-3 py-1.5 rounded text-sm border">Обновить</button>
+          <button data-export="${esc(d.ticker)}" class="px-3 py-1.5 rounded text-sm border">Экспорт</button>
           <button data-del="${esc(d.ticker)}" class="px-3 py-1.5 rounded text-sm border">Удалить</button>
         </div>
       </div>`).join('');
@@ -995,7 +1193,7 @@
       return `<button type="button" data-ecat="${c.id}" class="${on ? 'cat-chip' : 'cat-chip-off'}">${c.icon} ${esc(c.label)} <span class="text-xs ${on ? 'text-blue-500' : 'text-gray-400'}">(${n})</span></button>`;
     }).join('');
     return `
-      ${pageHeader('Новые данные', 'Загрузка исторических данных из API', `<div class="rounded-lg border px-3 py-2 text-xs bg-white dark:bg-gray-800 dark:border-gray-700"><div class="text-gray-500">Провайдер данных</div><div class="font-semibold">${esc(providerLabel(prov))}</div></div>`)}
+      ${pageHeader('Новые данные', 'Загрузка исторических данных из API', `<div class="flex items-center gap-2"><a href="/settings" data-nav data-settings-tab="api" class="icon-btn icon-btn-md icon-btn-glass" title="Настройки провайдера" aria-label="Настройки провайдера">${icon('settings', 'w-4 h-4')}</a><div class="rounded-lg border px-3 py-2 text-xs bg-white dark:bg-gray-800 dark:border-gray-700"><div class="text-gray-500">Провайдер данных</div><div class="font-semibold">${esc(providerLabel(prov))}</div></div></div>`)}
       <div class="bg-white border border-gray-200 rounded-lg p-4 dark:bg-gray-900 dark:border-gray-800">
         <div class="enhance-toolbar">
           <div class="enhance-toolbar-main">
@@ -1091,12 +1289,10 @@
       else if (state.stockTab === 'noStopLoss') body = `<div id="nsl-out">Без стоп-лосса…</div>`;
       else if (state.stockTab === 'options') body = `<div id="opt-out">Опционы…</div>`;
     }
-    const params = (r && state.stockTab !== 'summary') ? `<div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 mb-4 space-y-3 max-w-xl">${stocksParams(tickers, isDefault, defaults)}</div>` : '';
     return `
       ${pageHeader('Акции', 'Бэктест стратегии на нескольких активах')}
       ${err}
-      ${r && state.stockTab === 'summary' ? metricsGrid(r.metrics, r.finalValue, r.maxDrawdown) : ''}
-      ${params}
+      ${r ? metricsGrid(r.metrics, r.finalValue, r.maxDrawdown) : ''}
       <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 mt-4">
         ${analysisTabs(tabs, state.stockTab, 'data-stab')}
         <div id="stock-body" class="p-4 min-h-[420px]">${body}</div>
@@ -1164,7 +1360,7 @@
     if (tab === 'summary') {
       main = `<div class="p-4 hero-grid">
         <div id="ema-out" class="min-h-[420px] ${r ? '' : 'flex items-center justify-center text-sm text-gray-500 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800'}">${r ? heroPanelHTML({ showQuote: false, chartId: 'chart-hero' }) : 'Запустите расчет EMA-стратегии'}</div>
-        <aside class="rounded-lg border border-gray-200 bg-gray-50 p-3 space-y-3 dark:bg-gray-800/50 dark:border-gray-700">${emaFormHTML()}</aside>
+        <aside class="rounded-lg border border-gray-200 bg-gray-50 p-3 space-y-3 dark:bg-gray-800/50 dark:border-gray-700">${emaFormHTML()}${compactMetricsHTML(r)}</aside>
       </div>`;
     } else {
       const bodies = {
@@ -1182,7 +1378,7 @@
     }
     return `
       ${pageHeader('EMA', 'Симулятор торговли по отклонению цены от EMA')}
-      ${r && tab === 'summary' ? metricsGrid(r.metrics, r.finalValue, r.maxDrawdown) : ''}
+      ${r ? metricsGrid(r.metrics, r.finalValue, r.maxDrawdown) : ''}
       <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
         ${analysisTabs(tabs, tab, 'data-etab')}
         ${main}
@@ -1196,7 +1392,9 @@
     return `
       <div class="text-sm font-semibold">Параметры</div>
       <form id="opt-form" class="space-y-3">
-        <div><label class="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">Тикеры</label>${tickerInput('opt-tickers', state.optTickers)}</div>
+        <div><label class="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">Тикеры</label>${tickerInput('opt-tickers', state.optTickers)}
+          <button type="button" id="reset-opt-tickers" class="mt-1.5 w-full rounded-lg border border-dashed border-gray-300 px-2 py-1 text-left text-[11px] text-gray-500 hover:border-indigo-400">↩ AAPL, MSFT, AMZN, MAGS</button>
+        </div>
         <div class="grid grid-cols-2 gap-2">
           <div><label class="mb-1 block text-xs font-medium">Страйк (+%)</label><select name="strike" class="${inputCls()}">${sel([5, 10, 15, 20], f.strike, (v) => '+' + v + '%')}</select></div>
           <div><label class="mb-1 block text-xs font-medium">Корр. IV (+%)</label><select name="vol" class="${inputCls()}">${sel([0, 5, 10, 15, 20, 25, 30, 40, 50], f.vol, (v) => '+' + v + '%')}</select></div>
@@ -1247,7 +1445,7 @@
     }
     return `
       ${pageHeader('Опционы', 'Бэктест опционных стратегий на нескольких активах')}
-      ${r && tab === 'summary' ? metricsGrid(r.metrics, r.finalValue, r.maxDrawdown) : ''}
+      ${r ? metricsGrid(r.metrics, r.finalValue, r.maxDrawdown) : ''}
       <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
         ${analysisTabs(tabs, tab, 'data-otab')}
         ${main}
@@ -1277,7 +1475,7 @@
       cells += `<button data-cday="${mmdd}" class="rounded p-2 text-sm text-center ${cls}">${d}</button>`;
     }
     return `
-      ${pageHeader('Календарь торгов', 'NYSE · Американский рынок акций', `<button id="cal-webull" class="btn-secondary min-h-0 py-2 px-4">Импорт из Webull</button>`)}
+      ${pageHeader('Календарь торгов', state.cal.data?.metadata?.webullCoverageThrough ? ('NYSE · данные по ' + state.cal.data.metadata.webullCoverageThrough) : 'NYSE · Американский рынок акций', `<button id="cal-webull" class="btn-secondary min-h-0 py-2 px-4">Импорт из Webull</button>`)}
       <div class="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-gray-600 dark:text-gray-400 mb-4">
         <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-green-500"></span>Торговый · ${esc(hours.start)}–${esc(hours.end)}</span>
         <span class="flex items-center gap-1.5">${icon('calendar', 'w-3.5 h-3.5')} Выходной (Сб, Вс)</span>
@@ -1290,7 +1488,7 @@
             <button id="cal-prev" class="icon-btn icon-btn-md icon-btn-glass" title="Предыдущий месяц" aria-label="Предыдущий месяц">‹</button>
             <div class="font-semibold">${months[m]} ${y}</div>
             <button id="cal-next" class="icon-btn icon-btn-md icon-btn-glass" title="Следующий месяц" aria-label="Следующий месяц">›</button>
-            <select id="cal-year" class="field">${[y - 1, y, y + 1].map((yy) => `<option ${yy === y ? 'selected' : ''}>${yy}</option>`).join('')}</select>
+            <select id="cal-year" class="field">${(Array.isArray(state.cal.data?.metadata?.years) && state.cal.data.metadata.years.length ? state.cal.data.metadata.years : [y - 1, y, y + 1]).map((yy) => `<option ${Number(yy) === y ? 'selected' : ''}>${yy}</option>`).join('')}</select>
             <select id="cal-month" class="field">${months.map((name, i) => `<option value="${i}" ${i === m ? 'selected' : ''}>${name}</option>`).join('')}</select>
             <button id="cal-today" class="text-sm text-indigo-600">Сегодня</button>
           </div>
@@ -1320,7 +1518,14 @@
     const map = state.splitsMap || {};
     let body = '';
     if (state.splitsTab === 'list') {
-      const rows = Object.entries(map).flatMap(([ticker, evs]) => (evs || []).map((e) => `<tr><td class="font-mono">${esc(ticker)}</td><td>${esc(e.date)} × ${esc(e.factor)}</td><td class="text-right"><button data-ds="${esc(ticker)}" data-dd="${esc(e.date)}" class="text-red-600">Удалить</button></td></tr>`)).join('');
+      const rows = Object.entries(map).map(([ticker, evs]) => `<tr>
+        <td class="font-mono align-top">${esc(ticker)}</td>
+        <td>${(evs || []).map((e) => `${esc(e.date)} × ${esc(e.factor)}`).join('<br>') || '—'}</td>
+        <td class="text-right whitespace-nowrap">
+          <button data-edit-split="${esc(ticker)}" class="text-indigo-600 text-sm mr-2">Изменить</button>
+          <button data-del-ticker="${esc(ticker)}" class="text-red-600 text-sm">Удалить тикер</button>
+        </td>
+      </tr>`).join('');
       if (!rows) {
         body = `<div id="spl-list">
           <div class="splits-table overflow-auto"><table class="trades"><thead><tr><th>Тикер</th><th>События</th><th class="text-right">Действия</th></tr></thead><tbody><tr><td colspan="3" class="text-center text-gray-500">Нет данных</td></tr></tbody></table></div>
@@ -1376,13 +1581,16 @@
   function pageWatches() {
     const cons = state.consistency || {};
     const issues = Array.isArray(cons.issues) ? cons.issues : [];
+    const actions = Array.isArray(cons.proposedActions) ? cons.proposedActions : [];
     const consOk = !!state.consistency && issues.length === 0;
-    const consLabel = !state.consistency ? '…' : (consOk ? 'OK' : (issues[0] && issues[0].code) || 'mismatch');
+    const consKind = !state.consistency ? '…' : (actions.some((a) => a && a.autoApplicable) ? 'Reconcile Candidate' : (issues.length ? 'Mismatch' : 'OK'));
+    const consLabel = consKind;
     const consText = !state.consistency
       ? 'Проверка согласованности…'
       : (consOk ? 'Monitor и broker журналы сейчас согласованы.' : issues.map((i) => i.message || i.code).filter(Boolean).join(' ') || 'Monitor и broker журналы расходятся.');
 
-    const stats = monitorStats(state.monitorTrades);
+    const simulated = applyMonitorMarginSimulation(state.monitorTrades, state.monitorMarginPercent);
+    const stats = monitorStats(simulated);
     const rows = (state.watches || []).map((w) => `<tr>
       <td class="font-mono"><a href="/stocks?tickers=${encodeURIComponent(w.symbol)}" data-nav class="text-blue-600">${esc(w.symbol)}</a></td>
       <td>≤ ${(w.lowIBS ?? 0.1).toFixed(2)}</td>
@@ -1398,6 +1606,7 @@
       <td><button data-dea="${esc(a.id)}" class="text-red-600 text-sm">Удалить</button></td>
     </tr>`).join('');
     const thr = state.settings.watchThresholdPct ?? 0.3;
+    const pfLabel = !Number.isFinite(stats.pf) ? '∞' : fmt(stats.pf);
     const metrics = stats.closed.length ? `<div class="grid grid-cols-2 md:grid-cols-4 gap-3">
         <div class="rounded-lg border p-3 text-center"><div class="text-2xl font-bold text-green-600">${fmtUsd(stats.bal)}</div><div class="text-xs text-gray-500">Итоговый капитал</div></div>
         <div class="rounded-lg border p-3 text-center"><div class="text-2xl font-bold">${fmtPct(stats.ret)}</div><div class="text-xs text-gray-500">Общая доходность</div></div>
@@ -1407,11 +1616,20 @@
         <div class="rounded-lg border p-3 text-center"><div class="text-xl font-bold">${fmtPct(stats.avg)}</div><div class="text-xs text-gray-500">Средняя сделка</div></div>
         <div class="rounded-lg border p-3 text-center"><div class="text-xl font-bold text-violet-600">${fmt(stats.closed.length ? stats.hold / stats.closed.length : 0, 1)} дн.</div><div class="text-xs text-gray-500">Средняя длительность</div></div>
         <div class="rounded-lg border p-3 text-center"><div class="text-xl font-bold">${fmtUsd(stats.net)}</div><div class="text-xs text-gray-500">Чистая прибыль</div></div>
-      </div>` : `<div class="rounded-lg border border-dashed border-gray-300 bg-gray-50 px-4 py-6 text-center text-sm text-gray-600 dark:border-gray-700 dark:bg-gray-800/50">Пока нет закрытых сделок. Метрики появятся после первого завершенного трейда.</div>`;
+        <div class="rounded-lg border p-3 text-center"><div class="text-xl font-bold text-teal-600">${pfLabel}</div><div class="text-xs text-gray-500">Профит-фактор</div></div>
+        <div class="rounded-lg border p-3 text-center col-span-2 md:col-span-1">
+          <label class="text-xs text-gray-500" for="watch-margin">Маржинальность</label>
+          <select id="watch-margin" class="field mt-1 w-full">${MONITOR_MARGIN_OPTIONS.map((n) => `<option value="${n}" ${state.monitorMarginPercent === n ? 'selected' : ''}>${n}%${n === 100 ? ' = без маржи' : n === 200 ? ' = 2x' : ''}</option>`).join('')}</select>
+        </div>
+      </div>` : `<div class="rounded-lg border border-dashed border-gray-300 bg-gray-50 px-4 py-6 text-center text-sm text-gray-600 dark:border-gray-700 dark:bg-gray-800/50">Пока нет закрытых сделок. Метрики появятся после первого завершенного трейда.</div>
+        <div class="mt-3 max-w-xs"><label class="text-xs text-gray-500" for="watch-margin">Маржинальность</label>
+          <select id="watch-margin" class="field mt-1 w-full">${MONITOR_MARGIN_OPTIONS.map((n) => `<option value="${n}" ${state.monitorMarginPercent === n ? 'selected' : ''}>${n}%</option>`).join('')}</select>
+          <p class="text-[11px] text-gray-500 mt-1">100% = без маржи, 200% = 2x. Пересчитывает PnL закрытых сделок.</p>
+        </div>`;
     return `
       ${pageHeader('Мониторинг', 'Отслеживание позиций и уведомления в Telegram', `<button id="watch-refresh" class="icon-btn icon-btn-md icon-btn-glass" title="Обновить список" aria-label="Обновить список">${icon('refresh', 'w-4 h-4')}</button>`)}
       <p class="text-sm text-gray-600 dark:text-gray-300">Глобальный порог уведомлений: ${esc(thr)}% <span class="ml-2 text-xs text-gray-500">(применяется ко всем отслеживаемым акциям)</span></p>
-      <p class="text-sm text-gray-600 dark:text-gray-300 mb-3">До следующего подсчёта сигналов: ${formatDuration(secondsToNextSignal())}</p>
+      <p class="text-sm text-gray-600 dark:text-gray-300 mb-3">До следующего подсчёта сигналов: <span id="watch-countdown">${formatDuration(secondsToNextSignal())}</span></p>
       <div class="rounded-lg border border-gray-200 bg-white p-4 dark:bg-gray-800 dark:border-gray-700 mb-4">
         <div class="flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -1425,13 +1643,13 @@
       <div class="rounded-lg border border-gray-200 bg-white p-4 dark:bg-gray-800 dark:border-gray-700 mb-4">
         <div class="mb-3 flex items-center justify-between gap-2">
           <h3 class="text-lg font-semibold">Результат по совершенным сделкам</h3>
-          <span class="text-xs text-gray-500">База расчета: $10,000.00</span>
+          <span class="text-xs text-gray-500">База расчета: ${fmtUsd(stats.initial)} · маржа ${state.monitorMarginPercent}%</span>
         </div>
         ${metrics}
       </div>
       ${analysisTabs(WATCH_TABS, state.watchTab, 'data-wtab')}
       <div class="mt-4">
-        ${state.watchTab === 'summary' ? `<div class="rounded-lg border border-gray-200 bg-white p-4 dark:bg-gray-800 dark:border-gray-700"><h3 class="text-lg font-semibold mb-2">Капитал мониторинга (старт $10,000.00)</h3>${stats.equity.length ? '<div id="watch-eq" class="chart-box"></div>' : '<p class="text-sm text-gray-500">Нет закрытых сделок для построения кривой капитала.</p>'}</div>` : ''}
+        ${state.watchTab === 'summary' ? `<div class="rounded-lg border border-gray-200 bg-white p-4 dark:bg-gray-800 dark:border-gray-700"><h3 class="text-lg font-semibold mb-2">Капитал мониторинга (старт ${fmtUsd(stats.initial)}, маржа ${state.monitorMarginPercent}%)</h3>${stats.equity.length ? '<div id="watch-eq" class="chart-box"></div>' : '<p class="text-sm text-gray-500">Нет закрытых сделок для построения кривой капитала.</p>'}</div>` : ''}
         ${state.watchTab === 'watches' ? `<form id="watch-form" class="flex gap-2 mb-4"><input name="symbol" placeholder="AAPL" class="field" /><button class="btn-primary min-h-0 py-2">Добавить</button>
           <button type="button" id="watch-t11" class="btn-secondary min-h-0 py-2">Тест T-11</button>
           <button type="button" id="watch-t2" class="btn-secondary min-h-0 py-2">Тест T-2</button>
@@ -1440,7 +1658,7 @@
         ${state.watchTab === 'trades' ? `<div class="rounded-lg border p-4 mb-3 bg-white dark:bg-gray-800"><h3 class="font-semibold mb-1">Ручная корректировка monitor-сделки</h3>
           <p class="text-sm text-gray-600 mb-3">Если сайт пропустил вход, можно добавить сделку вручную.</p>
           <form id="watch-manual" class="flex flex-wrap gap-2"><input name="symbol" placeholder="AAPL" class="field w-24" /><input name="entryDate" placeholder="YYYY-MM-DD" class="field w-36" /><input name="entryPrice" type="number" step="0.01" placeholder="цена" class="field w-24" /><button class="btn-primary min-h-0 py-2">Добавить ручную сделку</button></form></div>
-          <div id="watch-trades">${tradesTable(state.monitorTrades)}</div>` : ''}
+          <div id="watch-trades">${monitorTradesTable(simulated)}</div>` : ''}
         ${state.watchTab === 'ema' ? `<form id="ema-alert-form" class="grid grid-cols-2 md:grid-cols-6 gap-2 mb-4">
             <label class="text-xs">Тикер<input name="symbol" value="TQQQ" class="field mt-1" /></label>
             <label class="text-xs">EMA<select name="emaPeriod" class="field mt-1"><option value="20">EMA 20</option><option value="200" selected>EMA 200</option></select></label>
@@ -1462,39 +1680,94 @@
     return `<div class="overflow-auto"><table class="trades"><thead><tr>${cols.map((c) => `<th>${c}</th>`).join('')}</tr></thead><tbody><tr><td colspan="${cols.length}" class="text-center text-gray-500">${empty}</td></tr></tbody></table></div>`;
   }
   function pageBroker() {
-    const list = (state.broker || []).map((t) => `<div class="flex justify-between border rounded-lg p-3 mb-1 text-sm dark:border-gray-800 bg-white dark:bg-gray-900"><span class="font-mono">${esc(t.symbol)} ${esc(t.entryDate || '')} @ ${esc(t.entryPrice ?? '—')}</span><button data-bd="${esc(t.id)}" class="text-red-600">Удалить</button></div>`).join('') || '<p class="text-sm text-gray-500">Сделок нет</p>';
     const live = autotradeLive();
     const tab = state.brokerTab || 'overview';
     let body = '';
     if (tab === 'journal') {
-      body = `<form id="broker-form" class="flex flex-wrap gap-2 mb-4">
+      const shown = (state.broker || []).filter((t) => state.brokerShowHidden || !t.isHidden);
+      const jrows = shown.map((t) => `<tr class="${t.isHidden ? 'opacity-50' : ''}">
+        <td class="font-mono">${esc(t.symbol || '—')}</td>
+        <td>${esc(t.source || '—')}${t.isTest ? ' · test' : ''}</td>
+        <td>${esc(t.status === 'open' ? 'открыта' : 'закрыта')}</td>
+        <td>${esc(t.entryDate || '—')}</td>
+        <td>${esc(t.exitDate || '—')}</td>
+        <td>${t.entryPrice == null ? '—' : fmt(t.entryPrice)}</td>
+        <td>${t.exitPrice == null ? '—' : fmt(t.exitPrice)}</td>
+        <td>${t.quantity == null ? '—' : fmt(t.quantity, 4)}</td>
+        <td class="${pnlClass(t.pnlAbsolute)}">${t.pnlAbsolute == null ? '—' : fmtUsd(t.pnlAbsolute)}</td>
+        <td class="${pnlClass(t.pnlPercent)}">${t.pnlPercent == null ? '—' : fmt(t.pnlPercent, 2) + '%'}</td>
+        <td>${t.entryIBS == null ? '—' : fmt(Number(t.entryIBS) <= 1.5 ? Number(t.entryIBS) * 100 : Number(t.entryIBS), 1) + '%'}</td>
+        <td>${t.exitIBS == null ? '—' : fmt(Number(t.exitIBS) <= 1.5 ? Number(t.exitIBS) * 100 : Number(t.exitIBS), 1) + '%'}</td>
+        <td>${esc(t.holdingDays ?? '')}</td>
+        <td class="text-xs">${esc(t.notes || '')}</td>
+        <td><button type="button" data-hide-bt="${esc(t.id)}" class="text-sm text-indigo-600 mr-2">${t.isHidden ? 'Показать' : 'Скрыть'}</button><button type="button" data-bd="${esc(t.id)}" class="text-sm text-red-600">Удалить</button></td>
+      </tr>`).join('');
+      body = `<div class="flex flex-wrap gap-2 mb-3">
+        <button type="button" id="broker-journal-refresh" class="btn-secondary min-h-0 py-2">Обновить</button>
+        <button type="button" id="broker-show-hidden" class="btn-secondary min-h-0 py-2">${state.brokerShowHidden ? 'Скрыть скрытые' : 'Показать скрытые'}</button>
+      </div>
+      <form id="broker-form" class="flex flex-wrap gap-2 mb-4">
         <input name="symbol" placeholder="AAPL" class="field w-24" />
-        <input name="entryDate" placeholder="YYYY-MM-DD" class="field w-36" />
-        <input name="entryPrice" type="number" step="0.01" placeholder="цена" class="field w-24" />
+        <input name="entryDate" placeholder="YYYY-MM-DD вход" class="field w-36" />
+        <input name="exitDate" placeholder="YYYY-MM-DD выход" class="field w-36" />
+        <input name="entryPrice" type="number" step="0.01" placeholder="цена входа" class="field w-28" />
+        <input name="exitPrice" type="number" step="0.01" placeholder="цена выхода" class="field w-28" />
+        <input name="quantity" type="number" step="0.0001" placeholder="кол-во" class="field w-24" />
+        <input name="notes" placeholder="заметки" class="field w-40" />
         <button class="btn-primary min-h-0 py-2">Добавить</button>
       </form>
-      <div id="broker-list">${list}</div>`;
+      ${jrows ? `<div class="overflow-auto"><table class="trades"><thead><tr><th>Тикер</th><th>Источник</th><th>Статус</th><th>Дата входа</th><th>Дата выхода</th><th>Цена входа</th><th>Цена выхода</th><th>Кол-во</th><th>PnL, $</th><th>PnL, %</th><th>IBS вход</th><th>IBS выход</th><th>Дней</th><th>Заметки</th><th>Действие</th></tr></thead><tbody>${jrows}</tbody></table></div>` : '<p class="text-sm text-gray-500">Сделок нет</p>'}`;
     } else if (tab === 'overview') {
-      const nums = flattenNums(state.dashboard);
-      const err = state.dashboard && state.dashboard.error;
+      const bal = extractBalanceSummary(state.dashboard);
+      const err = state.dashboard && (state.dashboard.error || (Array.isArray(state.dashboard.errors) && state.dashboard.errors[0]));
       body = `<div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        ${[['Всего активов', fmtUsd(nums.total_net_liquidation_value ?? nums.net_liquidation_value)], ['Свободные деньги', fmtUsd(nums.total_cash_balance ?? nums.cash_balance)], ['Покупательная способность', fmtUsd(nums.day_buying_power ?? nums.buying_power)], ['Нереализованный PnL', fmtUsd(nums.unrealized_profit_loss ?? nums.unrealizedPnl)]].map(([t, v]) => `<div class="rounded-lg border p-4"><div class="text-xs text-gray-500">${t}</div><div class="text-xl font-semibold mt-1">${v}</div></div>`).join('')}
-      </div>${err ? `<p class="mt-3 text-sm text-amber-700">${esc(err)}</p>` : ''}`;
+        <div class="rounded-lg border p-4"><div class="text-xs text-gray-500">Всего активов</div><div class="text-xl font-semibold mt-1">${fmtUsd(bal.totalAssets)}</div><div class="text-xs text-gray-400 mt-1">Валюта: ${esc(bal.currency || 'USD')}</div></div>
+        <div class="rounded-lg border p-4"><div class="text-xs text-gray-500">Свободные деньги</div><div class="text-xl font-semibold mt-1">${fmtUsd(bal.cashBalance)}</div><div class="text-xs text-gray-400 mt-1">Cash / settled cash</div></div>
+        <div class="rounded-lg border p-4"><div class="text-xs text-gray-500">Покупательная способность</div><div class="text-xl font-semibold mt-1">${fmtUsd(bal.buyingPower)}</div><div class="text-xs text-gray-400 mt-1">${esc(bal.accountType ? ('Тип счёта: ' + bal.accountType) : 'Buying power')}</div></div>
+        <div class="rounded-lg border p-4"><div class="text-xs text-gray-500">Нереализованный PnL</div><div class="text-xl font-semibold mt-1 ${pnlClass(bal.unrealizedPnl)}">${fmtUsd(bal.unrealizedPnl)}</div><div class="text-xs text-gray-400 mt-1">${bal.fetchedAt ? ('Обновлено ' + esc(bal.fetchedAt)) : ''}</div></div>
+      </div>${err ? `<p class="mt-3 text-sm text-amber-700">${esc(typeof err === 'string' ? err : (err.message || JSON.stringify(err)))}</p>` : ''}`;
     } else if (tab === 'positions') {
-      const pos = asRows(state.dashboard && (state.dashboard.positions || (state.dashboard.account && state.dashboard.account.positions)));
-      const posRows = pos.map((p) => {
-        const sym = p.symbol || p.ticker || '';
-        return `<tr><td>${esc(sym)}</td><td>${esc(p.instrument_type || p.type || '')}</td><td>${esc(p.currency || '')}</td><td>${esc(p.quantity ?? p.qty ?? '')}</td><td>${esc(p.average_price ?? p.avgPrice ?? '')}</td><td>${esc(p.market_price ?? p.lastPrice ?? '')}</td><td>${esc(p.unrealized_profit_loss ?? p.unrealizedPnl ?? '')}</td><td>${sym ? `<button type="button" data-close-pos="${esc(sym)}" class="text-sm text-red-600">Закрыть</button>` : ''}</td></tr>`;
-      }).join('');
-      body = `${posRows ? `<div class="overflow-auto"><table class="trades"><thead><tr><th>Тикер</th><th>Тип</th><th>Валюта</th><th>Кол-во</th><th>Средняя</th><th>Рыночная цена</th><th>Нереализ. PnL</th><th></th></tr></thead><tbody>${posRows}</tbody></table></div>` : emptyBrokerTable(['Тикер', 'Тип', 'Валюта', 'Кол-во', 'Средняя', 'Рыночная цена', 'Нереализ. PnL', ''], 'Открытых позиций нет')}`;
+      const pos = normalizePositions(state.dashboard && (state.dashboard.positions || (state.dashboard.account && state.dashboard.account.positions)));
+      const posRows = pos.map((p) => `<tr>
+        <td class="font-mono">${esc(p.symbol)}</td>
+        <td>${esc(p.instrumentType || '')}</td>
+        <td>${esc(p.currency || '')}</td>
+        <td>${p.quantity == null ? '—' : esc(p.quantity)}</td>
+        <td>${p.avgPrice == null ? '—' : fmt(toNum(p.avgPrice))}</td>
+        <td>${p.totalCost == null ? '—' : fmtUsd(p.totalCost)}</td>
+        <td>${p.marketPrice == null ? '—' : fmt(toNum(p.marketPrice))}</td>
+        <td>${p.marketValue == null ? '—' : fmtUsd(p.marketValue)}</td>
+        <td class="${pnlClass(toNum(p.unrealizedPnl))}">${p.unrealizedPnl == null ? '—' : fmtUsd(p.unrealizedPnl)}</td>
+        <td class="${pnlClass(toNum(p.unrealizedPnlRate))}">${formatRatioPercent(p.unrealizedPnlRate)}</td>
+        <td>${formatRatioPercent(p.holdingProportion)}</td>
+        <td>${p.symbol && p.symbol !== '—' ? `<button type="button" data-close-pos="${esc(p.symbol)}" class="text-sm text-red-600">Закрыть</button>` : ''}</td>
+      </tr>`).join('');
+      body = `${posRows ? `<div class="overflow-auto"><table class="trades"><thead><tr><th>Тикер</th><th>Тип</th><th>Валюта</th><th>Кол-во</th><th>Средняя</th><th>Себестоимость</th><th>Рыночная цена</th><th>Рыночная стоимость</th><th>Нереализ. PnL</th><th>PnL %</th><th>Доля</th><th>Действие</th></tr></thead><tbody>${posRows}</tbody></table></div>` : emptyBrokerTable(['Тикер', 'Тип', 'Валюта', 'Кол-во', 'Средняя', 'Себестоимость', 'Рыночная цена', 'Рыночная стоимость', 'Нереализ. PnL', 'PnL %', 'Доля', 'Действие'], 'Открытых позиций нет')}`;
     } else if (tab === 'orders') {
-      const orders = asRows(state.dashboard && state.dashboard.openOrders);
-      const orderRows = orders.map((o) => `<tr><td>${esc(pickField(o, ['symbol', 'ticker']))}</td><td>${esc(pickField(o, ['side', 'action']))}</td><td>${esc(pickField(o, ['order_type', 'type']))}</td><td>${esc(pickField(o, ['quantity', 'qty', 'total_quantity']))}</td><td>${esc(pickField(o, ['limit_price', 'price', 'avg_price']))}</td><td>${esc(pickField(o, ['status', 'order_status']))}</td></tr>`).join('');
-      body = `${orderRows ? `<div class="overflow-auto"><table class="trades"><thead><tr><th>Тикер</th><th>Сторона</th><th>Тип</th><th>Кол-во</th><th>Цена</th><th>Статус</th></tr></thead><tbody>${orderRows}</tbody></table></div>` : emptyBrokerTable(['Тикер', 'Сторона', 'Тип', 'Кол-во', 'Цена', 'Статус'], 'Активных ордеров нет')}`;
+      const orders = normalizeOrders(state.dashboard && state.dashboard.openOrders);
+      const orderRows = orders.map((o) => `<tr>
+        <td class="font-mono">${esc(o.symbol)}</td><td>${esc(o.side)}</td><td>${esc(o.status)}</td>
+        <td>${o.quantity == null ? '—' : esc(o.quantity)}</td><td>${o.filledQuantity == null ? '—' : esc(o.filledQuantity)}</td>
+        <td>${esc(o.orderType)}</td><td>${esc(o.instrumentType)}</td><td>${esc(o.comboType)}</td>
+        <td>${esc(o.entrustType)}</td><td>${esc(o.timeInForce)}</td><td>${esc(o.tradingSession)}</td>
+        <td>${o.limitPrice == null ? (o.avgPrice == null ? '—' : fmt(toNum(o.avgPrice))) : fmt(toNum(o.limitPrice))}</td>
+        <td class="text-xs">${esc(o.orderId)}</td><td class="text-xs">${esc(o.clientOrderId)}</td>
+        <td class="text-xs">${esc(o.createdAt)}</td>
+      </tr>`).join('');
+      body = `${orderRows ? `<div class="overflow-auto"><table class="trades"><thead><tr><th>Тикер</th><th>Side</th><th>Статус</th><th>Qty</th><th>Filled Qty</th><th>Type</th><th>Instrument</th><th>Combo</th><th>Entrust</th><th>TIF</th><th>Session</th><th>Цена</th><th>Order ID</th><th>Client ID</th><th>Создан</th></tr></thead><tbody>${orderRows}</tbody></table></div>` : emptyBrokerTable(['Тикер', 'Side', 'Статус', 'Qty', 'Filled Qty', 'Type', 'Instrument', 'Combo', 'Entrust', 'TIF', 'Session', 'Цена', 'Order ID', 'Client ID', 'Создан'], 'Активных ордеров нет')}`;
     } else if (tab === 'fills') {
-      const fills = asRows(state.dashboard && state.dashboard.orderHistory);
-      const fillRows = fills.map((o) => `<tr><td>${esc(pickField(o, ['symbol', 'ticker']))}</td><td>${esc(pickField(o, ['side', 'action']))}</td><td>${esc(pickField(o, ['filled_qty', 'filled_quantity', 'quantity', 'qty']))}</td><td>${esc(pickField(o, ['filled_price', 'avg_price', 'average_price', 'deal_price']))}</td><td>${esc(pickField(o, ['filled_time', 'filled_time_at', 'place_time', 'create_time', 'created_at']))}</td></tr>`).join('');
-      body = `${fillRows ? `<div class="overflow-auto"><table class="trades"><thead><tr><th>Тикер</th><th>Сторона</th><th>Кол-во</th><th>Цена</th><th>Время</th></tr></thead><tbody>${fillRows}</tbody></table></div>` : emptyBrokerTable(['Тикер', 'Сторона', 'Кол-во', 'Цена', 'Время'], 'История ордеров пока не пришла')}`;
+      const fills = normalizeOrders(state.dashboard && state.dashboard.orderHistory);
+      const fillRows = fills.map((o) => `<tr>
+        <td class="text-xs">${esc(o.filledAt || o.createdAt)}</td>
+        <td class="font-mono">${esc(o.symbol)}</td><td>${esc(o.side)}</td><td>${esc(o.status)}</td>
+        <td>${o.filledQuantity == null ? '—' : esc(o.filledQuantity)}</td>
+        <td>${o.quantity == null ? '—' : esc(o.quantity)}</td>
+        <td>${esc(o.orderType)}</td><td>${esc(o.instrumentType)}</td><td>${esc(o.comboType)}</td>
+        <td>${esc(o.entrustType)}</td><td>${esc(o.timeInForce)}</td><td>${esc(o.tradingSession)}</td>
+        <td>${o.avgPrice == null ? '—' : fmt(toNum(o.avgPrice))}</td>
+        <td class="text-xs">${esc(o.orderId)}</td><td class="text-xs">${esc(o.clientOrderId)}</td>
+      </tr>`).join('');
+      body = `${fillRows ? `<div class="overflow-auto"><table class="trades"><thead><tr><th>Исполнено</th><th>Тикер</th><th>Side</th><th>Статус</th><th>Qty</th><th>Order Qty</th><th>Type</th><th>Instrument</th><th>Combo</th><th>Entrust</th><th>TIF</th><th>Session</th><th>Avg Price</th><th>Order ID</th><th>Client ID</th></tr></thead><tbody>${fillRows}</tbody></table></div>` : emptyBrokerTable(['Исполнено', 'Тикер', 'Side', 'Статус', 'Qty', 'Order Qty', 'Type', 'Instrument', 'Combo', 'Entrust', 'TIF', 'Session', 'Avg Price', 'Order ID', 'Client ID'], 'История ордеров пока не пришла')}`;
     } else if (tab === 'autotrade') {
       const st = state.autoStatus || {};
       const last = (st.state && st.state.lastRunAt) || '—';
@@ -1503,8 +1776,17 @@
       const tok = state.token || {};
       const conn = (state.dashboard && state.dashboard.connection) || {};
       const pending = asRows(state.autoLogs && state.autoLogs.pending);
-      const pendingRows = pending.map((o) => `<tr><td>${esc(o.symbol || '')}</td><td>${esc(o.action || '')}</td><td>${esc(o.status || '')}</td><td>${esc(o.quantity ?? '')}</td><td>${esc(o.startedAt || o.started_at || '')}</td></tr>`).join('');
+      const recent = asRows(state.autoLogs && state.autoLogs.recent);
+      const seen = new Set();
+      const tracked = pending.concat(recent).filter((o) => {
+        const id = o.clientOrderId || o.startedAt || o.symbol;
+        if (seen.has(id)) return false;
+        seen.add(id);
+        return true;
+      }).slice(0, 20);
+      const pendingRows = tracked.map((o) => `<tr><td>${esc(o.symbol || '')}</td><td>${esc(o.action || '')}</td><td>${esc(o.status || '')}</td><td>${esc(o.quantity ?? '')}</td><td>${esc(o.startedAt || o.started_at || '')}</td></tr>`).join('');
       const mode = CAPITAL_MODES.find((m) => m.value === (ac.entryCapitalMode || 'standard_safe')) || CAPITAL_MODES[0];
+      const lastRes = (st.state && st.state.lastResult && st.state.lastResult.decision) || dec;
       body = `<div class="space-y-4">
         <div class="rounded-lg border border-gray-200 p-4 dark:border-gray-700">
           <h2 class="text-lg font-semibold mb-3">Состояние автоторговли</h2>
@@ -1530,11 +1812,13 @@
             <div class="rounded-lg border p-3"><div class="text-xs text-gray-500">Статус</div><div class="mt-1 font-semibold">${ac.enabled ? 'LIVE' : 'OFF'}</div></div>
             <div class="rounded-lg border p-3"><div class="text-xs text-gray-500">Последний запуск</div><div class="mt-1 text-sm">${esc(last)}</div></div>
             <div class="rounded-lg border p-3"><div class="text-xs text-gray-500">Entries / Exits</div><div class="mt-1 text-sm">${ac.allowNewEntries !== false ? 'да' : 'нет'} / ${ac.allowExits !== false ? 'да' : 'нет'}</div></div>
-            <div class="rounded-lg border p-3"><div class="text-xs text-gray-500">Последнее решение</div><div class="mt-1 text-sm">${esc(dec.action || '—')} ${esc(dec.symbol || '')}</div><div class="text-xs text-gray-500">${esc(dec.reason || '')}</div></div>
+            <div class="rounded-lg border p-3"><div class="text-xs text-gray-500">Последнее решение</div><div class="mt-1 text-sm">${esc(lastRes.action || dec.action || '—')} ${esc(lastRes.symbol || dec.symbol || '')}</div><div class="text-xs text-gray-500">${esc(lastRes.reason || dec.reason || '')}</div></div>
           </div>
           <div class="mt-4 rounded-xl bg-gray-50 p-3 text-sm dark:bg-gray-950/40">
             <div>Профиль капитала: <strong>${esc(mode.label)}</strong> — ${esc(mode.hint)}</div>
             <div class="mt-1">Sizing: ${esc(ac.entrySizingMode || 'balance')} · IBS ${(Number(ac.lowIBS ?? 0.1) * 100).toFixed(0)}% / ${(Number(ac.highIBS ?? 0.75) * 100).toFixed(0)}%</div>
+            <div class="mt-1">Провайдер: ${esc(ac.provider || ac.quoteProvider || 'finnhub')} · тикеры: ${esc(ac.onlyFromTelegramWatches !== false ? 'из мониторинга' : (ac.symbols || '—'))}</div>
+            <div class="mt-1">Account: ${esc(tok.accountId || conn.hasAccountId ? 'задан' : 'не задан')} · token expires: ${esc(tok.expiresAt || tok.daysLeft || '—')}</div>
             <div class="mt-1 text-xs text-gray-500">Включение и профиль капитала — Настройки → Автоторговля. Исполнение идёт по T-1 мониторинга.</div>
           </div>
           <div class="mt-4 flex flex-wrap gap-2">
@@ -1550,13 +1834,57 @@
         </div>
       </div>`;
     } else if (tab === 'monitor') {
-      const wrows = (state.watches || []).map((w) => `<tr><td>${esc(w.symbol)}</td><td>${esc(w.lastIbs ?? w.ibs ?? '—')}</td><td>${esc(w.entryPrice ?? '—')}</td><td>${w.isOpenPosition ? 'открыта' : '—'}</td></tr>`).join('');
-      body = `${wrows ? `<div class="overflow-auto"><table class="trades"><thead><tr><th>Тикер</th><th>IBS</th><th>Цена</th><th>Позиция</th></tr></thead><tbody>${wrows}</tbody></table></div>` : emptyBrokerTable(['Тикер', 'IBS', 'Цена', 'Позиция'], 'Нет отслеживаемых акций')}`;
+      const cons = state.consistency || {};
+      const issues = Array.isArray(cons.issues) ? cons.issues : [];
+      const actions = Array.isArray(cons.proposedActions) ? cons.proposedActions : [];
+      const consLabel = actions.some((a) => a && a.autoApplicable) ? 'Reconcile' : (issues.length ? 'Mismatch' : 'OK');
+      const wrows = (state.watches || []).map((w) => {
+        const q = (state.brokerQuotes || {})[w.symbol] || {};
+        const quote = q.quote || q;
+        const rng = q.range || quote || {};
+        const last = toNum(quote.current ?? quote.close ?? quote.last ?? rng.close);
+        const high = toNum(rng.high ?? quote.high);
+        const low = toNum(rng.low ?? quote.low);
+        const prev = toNum(quote.prevClose ?? quote.previousClose ?? rng.prevClose);
+        const ibs = (high != null && low != null && last != null && high !== low) ? (last - low) / (high - low) : toNum(w.lastIbs ?? w.ibs);
+        const delta = (last != null && prev != null && prev !== 0) ? ((last - prev) / prev) * 100 : null;
+        const ibsCls = ibs == null ? '' : (ibs < 0.10 ? 'text-emerald-600' : (ibs > 0.75 ? 'text-red-600' : ''));
+        return `<tr>
+          <td class="font-mono">${esc(w.symbol)}</td>
+          <td>${high == null ? '—' : fmt(high)}</td><td>${low == null ? '—' : fmt(low)}</td>
+          <td>${last == null ? '—' : fmt(last)}</td>
+          <td class="${ibsCls}">${ibs == null ? '—' : fmt(ibs, 3)}</td>
+          <td>${prev == null ? '—' : fmt(prev)}</td>
+          <td class="${pnlClass(delta)}">${delta == null ? '—' : fmt(delta, 2) + '%'}</td>
+          <td>${w.entryPrice == null ? '—' : fmtUsd(w.entryPrice)}</td>
+          <td>≤ ${Number(w.lowIBS ?? 0.1).toFixed(2)}</td>
+          <td>${w.isOpenPosition ? 'Открыта' : 'В мониторинге'}</td>
+          <td class="text-xs">${esc(q.dateKey || quote.updatedAt || '')}</td>
+          <td class="text-xs">${esc(q.provider || q.error || '')}</td>
+        </tr>`;
+      }).join('');
+      body = `<div class="flex flex-wrap gap-2 mb-3">
+          <button type="button" id="broker-reconcile" class="btn-primary min-h-0 py-2">Reconcile</button>
+          <button type="button" id="broker-quotes-refresh" class="btn-secondary min-h-0 py-2">Обновить котировки</button>
+        </div>
+        <div class="grid gap-3 md:grid-cols-4 mb-3">
+          <div class="rounded-lg border p-3"><div class="text-xs text-gray-500">Отслеживаемые</div><div class="text-lg font-semibold">${(state.watches || []).length}</div></div>
+          <div class="rounded-lg border p-3"><div class="text-xs text-gray-500">Открытые позиции</div><div class="text-lg font-semibold">${(state.watches || []).filter((w) => w.isOpenPosition).length}</div></div>
+          <div class="rounded-lg border p-3"><div class="text-xs text-gray-500">Consistency</div><div class="text-lg font-semibold">${esc(consLabel)}</div></div>
+          <div class="rounded-lg border p-3"><div class="text-xs text-gray-500">Обновлено</div><div class="text-sm">${esc((state.dashboard && state.dashboard.fetchedAt) || '—')}</div></div>
+        </div>
+        ${issues.length ? `<p class="text-sm text-amber-700 mb-3">${esc(issues.map((i) => i.message || i.code).join(' '))}</p>` : ''}
+        ${wrows ? `<div class="overflow-auto"><table class="trades"><thead><tr><th>Тикер</th><th>High</th><th>Low</th><th>Цена</th><th>Current IBS</th><th>Prev Close</th><th>Δ</th><th>Entry</th><th>Threshold</th><th>Позиция</th><th>Обновлено</th><th>Источник</th></tr></thead><tbody>${wrows}</tbody></table></div>` : emptyBrokerTable(['Тикер', 'High', 'Low', 'Цена', 'Current IBS', 'Prev Close', 'Δ', 'Entry', 'Threshold', 'Позиция', 'Обновлено', 'Источник'], 'Нет отслеживаемых акций')}`;
     } else {
-      const logs = ((state.autoLogs && state.autoLogs.logs) || []).map((l) => `${l.ts || ''} ${l.message || JSON.stringify(l)}`).join('\n') || 'Логи автоторговли пока пусты';
+      const pack = state.autoLogs || {};
+      const lines = (rows) => (rows || []).map((l) => typeof l === 'string' ? l : `${l.ts || ''} ${l.message || l.level || JSON.stringify(l)}`).join('\n');
+      const monitor = lines(pack.monitor) || 'Логи мониторинга пока пусты';
+      const auto = lines(pack.autotrade || pack.logs) || 'Логи автоторговли пока пусты';
+      const raw = lines(pack.brokerRaw) || auto;
       body = `<div class="space-y-3">
-        <div><h2 class="text-sm font-semibold mb-1">Логи мониторинга</h2><pre class="text-xs bg-gray-50 dark:bg-gray-800 p-3 rounded overflow-auto max-h-40">Логи мониторинга пока пусты</pre></div>
-        <div><h2 class="text-sm font-semibold mb-1">Webull / autotrade логи</h2><pre id="broker-logs" class="text-xs bg-gray-50 dark:bg-gray-800 p-3 rounded overflow-auto max-h-40">${esc(logs)}</pre></div>
+        <div><h2 class="text-sm font-semibold mb-1">Логи мониторинга (${(pack.monitor || pack.logs || []).length})</h2><pre class="text-xs bg-gray-50 dark:bg-gray-800 p-3 rounded overflow-auto max-h-52">${esc(monitor)}</pre></div>
+        <div><h2 class="text-sm font-semibold mb-1">Webull / autotrade логи (${(pack.autotrade || pack.logs || []).length})</h2><pre id="broker-logs" class="text-xs bg-gray-50 dark:bg-gray-800 p-3 rounded overflow-auto max-h-52">${esc(auto)}</pre></div>
+        <div><h2 class="text-sm font-semibold mb-1">Raw broker log</h2><pre class="text-xs bg-gray-50 dark:bg-gray-800 p-3 rounded overflow-auto max-h-52">${esc(raw)}</pre></div>
       </div>`;
     }
     return `
@@ -1984,7 +2312,8 @@
       document.getElementById('reset-tickers')?.addEventListener('click', () => {
         const d = defaultTickers();
         state.tickerInput = d.join(', ');
-        renderPage();
+        if (state.result) runStocks();
+        else renderPage();
       });
       document.getElementById('run-bt')?.addEventListener('click', runStocks);
       root.querySelectorAll('[data-stab]').forEach((b) => b.addEventListener('click', () => { state.stockTab = b.dataset.stab; renderPage(); }));
@@ -2052,6 +2381,11 @@
     if (p === '/multi-ticker-options') {
       syncTickerField('opt-tickers');
       root.querySelectorAll('[data-otab]').forEach((b) => b.addEventListener('click', () => { state.optTab = b.dataset.otab; renderPage(); }));
+      document.getElementById('reset-opt-tickers')?.addEventListener('click', () => {
+        state.optTickers = 'AAPL, MSFT, AMZN, MAGS';
+        try { localStorage.setItem('options.tickers', state.optTickers); } catch (_) {}
+        renderPage();
+      });
       document.getElementById('opt-form')?.addEventListener('submit', async (e) => {
         e.preventDefault();
         await runOptionsMulti(new FormData(e.target));
@@ -2129,6 +2463,37 @@
           renderPage();
         });
       }));
+      root.querySelectorAll('[data-del-ticker]').forEach((b) => b.addEventListener('click', () => {
+        askDelete('Удалить все сплиты ' + b.dataset.delTicker + '?', async () => {
+          await API.del('/api/splits/' + encodeURIComponent(b.dataset.delTicker));
+          state.splitsMap = await API.splits();
+          renderPage();
+        });
+      }));
+      root.querySelectorAll('[data-edit-split]').forEach((b) => b.addEventListener('click', () => {
+        const ticker = b.dataset.editSplit;
+        const evs = ((state.splitsMap && state.splitsMap[ticker]) || []).map((e) => ({ date: e.date, factor: e.factor }));
+        const rows = (list) => list.map((e, i) => `<div class="flex gap-2 mb-1" data-split-row="${i}"><input data-sd class="field w-40" value="${esc(e.date || '')}" /><input data-sf type="number" step="0.01" class="field w-24" value="${esc(e.factor ?? '')}" /><button type="button" data-rm-row="${i}" class="text-red-600 text-sm">×</button></div>`).join('');
+        state.modal = `<div class="modal-backdrop" id="split-edit-modal"><div class="modal-card max-w-lg">
+          <h3 class="text-lg font-semibold mb-3">Сплиты ${esc(ticker)}</h3>
+          <div id="split-edit-rows">${rows(evs)}</div>
+          <button type="button" id="split-add-row" class="btn-secondary min-h-0 py-1 mb-3">+ событие</button>
+          <div class="flex justify-end gap-2"><button id="split-edit-cancel" class="btn-secondary">Отмена</button><button id="split-edit-save" class="btn-primary min-h-0 py-2">Сохранить</button></div>
+        </div></div>`;
+        document.getElementById('overlay-root').innerHTML = overlay();
+        const host = document.getElementById('split-edit-rows');
+        const readRows = () => Array.from(host.querySelectorAll('[data-split-row]')).map((row) => ({ date: row.querySelector('[data-sd]').value, factor: Number(row.querySelector('[data-sf]').value) })).filter((e) => e.date);
+        const paint = (list) => { host.innerHTML = rows(list); host.querySelectorAll('[data-rm-row]').forEach((btn) => btn.addEventListener('click', () => { const next = readRows().filter((_, i) => i !== Number(btn.dataset.rmRow)); paint(next); })); };
+        paint(evs);
+        document.getElementById('split-add-row')?.addEventListener('click', () => paint(readRows().concat([{ date: '', factor: 2 }])));
+        document.getElementById('split-edit-cancel')?.addEventListener('click', () => { state.modal = null; document.getElementById('overlay-root').innerHTML = overlay(); });
+        document.getElementById('split-edit-save')?.addEventListener('click', async () => {
+          await API.putSplits(ticker, readRows());
+          state.modal = null;
+          state.splitsMap = await API.splits();
+          renderPage();
+        });
+      }));
       document.getElementById('split-form')?.addEventListener('submit', async (e) => {
         e.preventDefault();
         const fd = new FormData(e.target);
@@ -2142,9 +2507,14 @@
         renderPage();
       });
       document.getElementById('split-import-btn')?.addEventListener('click', async () => {
+        const raw = JSON.parse(document.getElementById('split-import').value);
         const ticker = document.getElementById('split-import-ticker').value.toUpperCase();
-        const evs = JSON.parse(document.getElementById('split-import').value);
-        await API.putSplits(ticker, evs);
+        if (raw && !Array.isArray(raw) && typeof raw === 'object') {
+          for (const [sym, evs] of Object.entries(raw)) await API.putSplits(String(sym).toUpperCase(), evs);
+        } else {
+          if (!ticker) { toast('Укажите тикер или вставьте map {AAPL:[...]}'); return; }
+          await API.putSplits(ticker, raw);
+        }
         state.splitsMap = await API.splits();
         state.splitsTab = 'list';
         renderPage();
@@ -2235,20 +2605,62 @@
         state.emaAlerts = await API.emaAlerts().catch(() => []);
         renderPage();
       }));
+      document.getElementById('watch-margin')?.addEventListener('change', (e) => {
+        state.monitorMarginPercent = normalizeMonitorMarginPercent(e.target.value);
+        try { localStorage.setItem('monitor.marginPercent', String(state.monitorMarginPercent)); } catch (_) {}
+        renderPage();
+      });
+      root.querySelectorAll('[data-wfilter]').forEach((b) => b.addEventListener('click', () => { state.watchTradeFilter = b.dataset.wfilter; renderPage(); }));
+      root.querySelectorAll('[data-edit-mon]').forEach((b) => b.addEventListener('click', () => {
+        const t = (state.monitorTrades || []).find((x) => String(x.id) === String(b.dataset.editMon));
+        if (!t) return;
+        state.modal = `<div class="modal-backdrop"><div class="modal-card">
+          <h3 class="text-lg font-semibold mb-3">Изменить ${esc(t.symbol || '')}</h3>
+          <label class="block text-sm mb-2">Дата входа<input id="em-ed" class="field mt-1" value="${esc(t.entryDate || '')}" /></label>
+          <label class="block text-sm mb-2">Дата выхода<input id="em-xd" class="field mt-1" value="${esc(t.exitDate || '')}" /></label>
+          <label class="block text-sm mb-2">Цена входа<input id="em-ep" type="number" step="0.01" class="field mt-1" value="${esc(t.entryPrice ?? '')}" /></label>
+          <label class="block text-sm mb-2">Цена выхода<input id="em-xp" type="number" step="0.01" class="field mt-1" value="${esc(t.exitPrice ?? '')}" /></label>
+          <label class="block text-sm mb-3">Заметки<input id="em-notes" class="field mt-1" value="${esc(t.notes || '')}" /></label>
+          <div class="flex justify-end gap-2"><button id="em-cancel" class="btn-secondary">Отмена</button><button id="em-save" class="btn-primary min-h-0 py-2">Сохранить</button></div>
+        </div></div>`;
+        document.getElementById('overlay-root').innerHTML = overlay();
+        document.getElementById('em-cancel')?.addEventListener('click', () => { state.modal = null; document.getElementById('overlay-root').innerHTML = overlay(); });
+        document.getElementById('em-save')?.addEventListener('click', async () => {
+          await API.patchTrade(t.id, {
+            entryDate: document.getElementById('em-ed').value,
+            exitDate: document.getElementById('em-xd').value,
+            entryPrice: Number(document.getElementById('em-ep').value),
+            exitPrice: Number(document.getElementById('em-xp').value),
+            notes: document.getElementById('em-notes').value,
+          });
+          state.modal = null;
+          state.loaded.watches = false;
+          renderPage();
+        });
+      }));
+      if (window.__watchTick) { clearInterval(window.__watchTick); window.__watchTick = null; }
+      if (document.getElementById('watch-countdown')) {
+        window.__watchTick = setInterval(() => {
+          const n = document.getElementById('watch-countdown');
+          if (n) n.textContent = formatDuration(secondsToNextSignal());
+          else { clearInterval(window.__watchTick); window.__watchTick = null; }
+        }, 1000);
+      }
       const eq = document.getElementById('watch-eq');
-      if (eq) Charts.line(eq, monitorStats(state.monitorTrades).equity, isDark());
+      if (eq) Charts.line(eq, monitorStats(applyMonitorMarginSimulation(state.monitorTrades, state.monitorMarginPercent)).equity, isDark());
     }
 
     if (p === '/broker') {
       if (!state.loaded.broker) {
-        const [bt, tok, ac, dash, logs, st, w] = await Promise.all([
+        const [bt, tok, ac, dash, logs, st, w, cons] = await Promise.all([
           API.brokerTrades().catch(() => []),
           API.tokenStatus().catch((e) => e.data || { present: false, hasToken: false }),
           API.autoConfig().catch(() => ({})),
-          API.dashboard().catch((e) => (e && e.data) || { error: (e && e.message) || 'dashboard', positions: [] }),
-          API.logs(50).catch(() => ({ logs: [] })),
+          API.dashboard(true).catch((e) => (e && e.data) || { error: (e && e.message) || 'dashboard', positions: [] }),
+          API.logs(300).catch(() => ({ logs: [] })),
           API.autoStatus().catch(() => null),
           API.watches().catch(() => []),
+          API.consistency().catch(() => ({ issues: [] })),
         ]);
         state.broker = Array.isArray(bt) ? bt : (bt.trades || []);
         state.token = tok;
@@ -2257,6 +2669,16 @@
         state.autoLogs = logs || { logs: [] };
         state.autoStatus = st;
         if (Array.isArray(w)) state.watches = w;
+        state.consistency = cons || state.consistency || { issues: [] };
+        const symbols = (state.watches || []).map((x) => x.symbol).filter(Boolean);
+        if (symbols.length) {
+          try {
+            const batch = await API.webullBatch(symbols);
+            const map = {};
+            (batch.results || []).forEach((row) => { if (row && row.symbol) map[row.symbol] = row; });
+            state.brokerQuotes = map;
+          } catch (_) { state.brokerQuotes = state.brokerQuotes || {}; }
+        }
         state.loaded.broker = true;
         renderPage();
         return;
@@ -2277,9 +2699,44 @@
       document.getElementById('broker-form')?.addEventListener('submit', async (e) => {
         e.preventDefault();
         const fd = new FormData(e.target);
-        await API.post('/api/broker-trades', { symbol: fd.get('symbol'), entryDate: fd.get('entryDate'), entryPrice: Number(fd.get('entryPrice')), status: 'open', source: 'manual' });
+        const exitDate = fd.get('exitDate');
+        const exitPrice = Number(fd.get('exitPrice'));
+        const rec = {
+          symbol: fd.get('symbol'),
+          entryDate: fd.get('entryDate'),
+          entryPrice: Number(fd.get('entryPrice')),
+          quantity: fd.get('quantity') ? Number(fd.get('quantity')) : undefined,
+          notes: fd.get('notes') || '',
+          source: 'manual',
+          status: (exitDate && exitPrice > 0) ? 'closed' : 'open',
+        };
+        if (exitDate) rec.exitDate = exitDate;
+        if (exitPrice > 0) rec.exitPrice = exitPrice;
+        await API.post('/api/broker-trades', rec);
         const bt = await API.brokerTrades().catch(() => []);
         state.broker = Array.isArray(bt) ? bt : (bt.trades || []);
+        renderPage();
+      });
+      document.getElementById('broker-show-hidden')?.addEventListener('click', () => { state.brokerShowHidden = !state.brokerShowHidden; renderPage(); });
+      document.getElementById('broker-journal-refresh')?.addEventListener('click', () => { state.loaded.broker = false; renderPage(); });
+      root.querySelectorAll('[data-hide-bt]').forEach((b) => b.addEventListener('click', async () => {
+        const t = (state.broker || []).find((x) => String(x.id) === String(b.dataset.hideBt));
+        if (!t) return;
+        await API.patchBrokerTrade(t.id, { isHidden: !t.isHidden });
+        const bt = await API.brokerTrades().catch(() => []);
+        state.broker = Array.isArray(bt) ? bt : (bt.trades || []);
+        renderPage();
+      }));
+      document.getElementById('broker-reconcile')?.addEventListener('click', async () => {
+        try {
+          const r = await API.reconcile('apply');
+          toast((r && r.status) || 'Reconcile');
+          state.loaded.broker = false;
+          renderPage();
+        } catch (err) { toast(err.message); }
+      });
+      document.getElementById('broker-quotes-refresh')?.addEventListener('click', async () => {
+        state.loaded.broker = false;
         renderPage();
       });
       async function reloadBroker() {
