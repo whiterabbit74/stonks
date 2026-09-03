@@ -44,29 +44,31 @@ func detectedNotStored(stored, detected []types.SplitEvent) []types.SplitEvent {
 		}
 		out = append(out, types.SplitEvent{Date: date, Factor: e.Factor})
 	}
+	if out == nil {
+		out = []types.SplitEvent{}
+	}
 	return out
 }
 
-// adjustBarsIfNeeded back-adjusts raw OHLC when Detect finds split cliffs.
-// Already-adjusted series (flag set, or no cliffs left) are left untouched so
-// a second pass cannot divide prices again.
-func (s *Server) adjustBarsIfNeeded(id string, bars []types.OHLC, alreadyAdjusted bool) ([]types.OHLC, bool) {
+// detectSplitHints returns Detect results not already stored.
+// GET/save/refresh must not persist guessed splits or mutate history.
+func (s *Server) detectSplitHints(id string, bars []types.OHLC) []types.SplitEvent {
 	if len(bars) == 0 {
-		return bars, alreadyAdjusted
+		return []types.SplitEvent{}
 	}
 	detected := splits.Detect(bars)
 	stored, _ := s.DB.ListSplits(id)
-	if alreadyAdjusted {
-		return bars, true
+	return detectedNotStored(stored, detected)
+}
+
+// applyStoredSplits back-adjusts using confirmed stored events only.
+func (s *Server) applyStoredSplits(id string, bars []types.OHLC) ([]types.OHLC, bool) {
+	events, _ := s.DB.ListSplits(id)
+	if len(events) == 0 || len(bars) == 0 {
+		return bars, false
 	}
-	if len(detected) == 0 {
-		return bars, len(stored) > 0
-	}
-	events := mergeSplitEvents(stored, detected)
-	if missing := detectedNotStored(stored, detected); len(missing) > 0 {
-		_ = s.DB.UpsertSplits(id, missing)
-	}
-	return splits.AdjustOHLC(bars, events), true
+	out := splits.AdjustOHLC(bars, events)
+	return out, !pricesUnchanged(bars, out)
 }
 
 func (s *Server) persistDataset(id string, ds map[string]any, bars []types.OHLC, adjusted bool) error {

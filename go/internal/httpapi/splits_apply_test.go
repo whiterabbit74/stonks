@@ -9,7 +9,7 @@ import (
 	"mktorder.com/go/internal/types"
 )
 
-func TestSavePayloadDetectsAndAdjustsSplits(t *testing.T) {
+func TestSavePayloadDoesNotAutoApplySplits(t *testing.T) {
 	s := testServer(t, "")
 	payload, _ := json.Marshal(map[string]any{
 		"ticker": "GOOGL",
@@ -28,20 +28,53 @@ func TestSavePayloadDetectsAndAdjustsSplits(t *testing.T) {
 	}
 	var body map[string]any
 	_ = json.Unmarshal(rec.Body.Bytes(), &body)
-	if body["adjustedForSplits"] != true {
-		t.Fatalf("expected auto-adjust, got %v", body)
+	if body["success"] != true {
+		t.Fatalf("expected success, got %v", body)
+	}
+	if body["adjustedForSplits"] == true {
+		t.Fatalf("POST must not auto-adjust, got %v", body)
+	}
+	hints, _ := body["detectedSplits"].([]any)
+	if len(hints) == 0 {
+		t.Fatalf("expected detectedSplits hints, got %v", body)
 	}
 	ds, _ := s.DB.GetDataset("GOOGL")
 	bars := decodeBars(ds["data"])
-	if bars[0].Close > 600 {
-		t.Fatalf("2014 pre-split still raw: %v", bars[0].Close)
-	}
-	if ds["adjustedForSplits"] != true {
-		t.Fatalf("flag %v", ds["adjustedForSplits"])
+	if bars[0].Close < 600 {
+		t.Fatalf("2014 pre-split was mutated on save: %v", bars[0].Close)
 	}
 	evs, _ := s.DB.ListSplits("GOOGL")
-	if len(evs) != 1 || evs[0].Date != "2014-04-03" || evs[0].Factor != 2 {
-		t.Fatalf("persisted splits %v", evs)
+	if len(evs) != 0 {
+		t.Fatalf("guessed splits must not be persisted: %v", evs)
+	}
+}
+
+func TestSavePayloadUpsertsExplicitSplits(t *testing.T) {
+	s := testServer(t, "")
+	payload, _ := json.Marshal(map[string]any{
+		"ticker": "MSFT",
+		"name":   "MSFT",
+		"data": []types.OHLC{
+			{Date: "2024-01-01", Open: 10, High: 11, Low: 9, Close: 10, Volume: 1},
+			{Date: "2024-01-02", Open: 10, High: 11, Low: 9, Close: 10, Volume: 1},
+		},
+		"splits": []map[string]any{{"date": "2024-01-02", "factor": 2}},
+	})
+	req := httptest.NewRequest("POST", "/api/datasets", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != 200 {
+		t.Fatalf("save %d %s", rec.Code, rec.Body.String())
+	}
+	evs, _ := s.DB.ListSplits("MSFT")
+	if len(evs) != 1 || evs[0].Date != "2024-01-02" || evs[0].Factor != 2 {
+		t.Fatalf("explicit splits %v", evs)
+	}
+	ds, _ := s.DB.GetDataset("MSFT")
+	bars := decodeBars(ds["data"])
+	if bars[0].Close != 10 {
+		t.Fatalf("save must not adjust prices, close=%v", bars[0].Close)
 	}
 }
 
@@ -72,7 +105,7 @@ func TestSavePayloadDoesNotDoubleAdjust(t *testing.T) {
 	}
 }
 
-func TestGetDatasetHealsRawGOOGLCliffs(t *testing.T) {
+func TestGetDatasetDoesNotHealOrPersistSplits(t *testing.T) {
 	s := testServer(t, "")
 	raw := []types.OHLC{
 		{Date: "2022-07-15", Open: 2240.01, High: 2262.81, Low: 2218, Close: 2235.55, Volume: 1},
@@ -89,15 +122,23 @@ func TestGetDatasetHealsRawGOOGLCliffs(t *testing.T) {
 	}
 	var ds map[string]any
 	_ = json.Unmarshal(rec.Body.Bytes(), &ds)
-	if ds["adjustedForSplits"] != true {
-		t.Fatalf("flag %v", ds["adjustedForSplits"])
+	if ds["adjustedForSplits"] == true {
+		t.Fatalf("GET must not set adjusted flag: %v", ds["adjustedForSplits"])
 	}
 	bars := decodeBars(ds["data"])
-	if bars[0].Close > 200 {
-		t.Fatalf("2022 pre-split still raw: %v", bars[0].Close)
+	if bars[0].Close < 200 {
+		t.Fatalf("GET mutated pre-split close: %v", bars[0].Close)
+	}
+	hints, _ := ds["detectedSplits"].([]any)
+	if len(hints) == 0 {
+		t.Fatalf("expected detectedSplits hints: %v", ds)
 	}
 	stored, _ := s.DB.GetDataset("GOOGL")
-	if stored["adjustedForSplits"] != true {
-		t.Fatalf("not persisted")
+	if stored["adjustedForSplits"] == true {
+		t.Fatal("GET persisted guessed adjustment")
+	}
+	evs, _ := s.DB.ListSplits("GOOGL")
+	if len(evs) != 0 {
+		t.Fatalf("GET persisted guessed splits: %v", evs)
 	}
 }

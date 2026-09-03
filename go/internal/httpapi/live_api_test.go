@@ -119,6 +119,7 @@ func TestLivePathsAreNotJsonOKStubs(t *testing.T) {
 	}
 
 	s2 := New(s.DB, s.WebDir)
+	s2.testAuthToken = s.testAuthToken
 	req = httptest.NewRequest("GET", "/api/autotrade/config", nil)
 	rec = httptest.NewRecorder()
 	s2.Handler().ServeHTTP(rec, req)

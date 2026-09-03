@@ -151,8 +151,19 @@ func (s *Server) handleWebullDashboard(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleAutoLogs(w http.ResponseWriter, r *http.Request) {
-	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	limit := clampQueryLimit(r.URL.Query().Get("limit"), 200, autoLogsMaxLimit)
 	writeJSON(w, 200, s.liveEng().Logs(limit))
+}
+
+func clampQueryLimit(raw string, def, max int) int {
+	n, err := strconv.Atoi(raw)
+	if err != nil || n <= 0 {
+		return def
+	}
+	if n > max {
+		return max
+	}
+	return n
 }
 
 func (s *Server) handleWebullClose(w http.ResponseWriter, r *http.Request) {

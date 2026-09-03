@@ -2,11 +2,14 @@ package httpapi
 
 import (
 	"crypto/rand"
+	"crypto/subtle"
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -24,16 +27,25 @@ import (
 	"mktorder.com/go/internal/types"
 )
 
+const (
+	jsonBodyLimit    = 5 << 20
+	sessionShortTTL  = 12 * time.Hour
+	sessionRemember  = 30 * 24 * time.Hour
+	autoLogsMaxLimit = 500
+)
+
 type Server struct {
-	DB        *store.DB
-	WebDir    string
-	BuildID   string
-	Providers *providers.Client
-	Live      *live.Engine
-	mux       *http.ServeMux
-	prod      bool
-	adminUser string
-	adminPass string
+	DB            *store.DB
+	WebDir        string
+	BuildID       string
+	Providers     *providers.Client
+	Live          *live.Engine
+	mux           *http.ServeMux
+	prod          bool
+	adminUser     string
+	adminPass     string
+	limiter       *ipLimiter
+	testAuthToken string
 }
 
 func New(db *store.DB, webDir string) *Server {
@@ -46,14 +58,24 @@ func NewWithProviders(db *store.DB, webDir string, p *providers.Client) *Server 
 		WebDir:    webDir,
 		BuildID:   os.Getenv("BUILD_ID"),
 		Providers: p,
-		prod:      os.Getenv("NODE_ENV") == "production" || os.Getenv("GO_ENV") == "production",
+		prod:      envIsProd(),
 		adminUser: strings.ToLower(envDefault("ADMIN_USERNAME", "admin@example.com")),
 		adminPass: os.Getenv("ADMIN_PASSWORD"),
+		limiter:   newIPLimiter(),
 	}
 	s.Live = live.New(db, p)
 	s.mux = http.NewServeMux()
 	s.routes()
 	return s
+}
+
+func envIsProd() bool {
+	// Fail closed: production unless GO_ENV is explicitly development.
+	goEnv := strings.ToLower(strings.TrimSpace(os.Getenv("GO_ENV")))
+	if goEnv == "development" {
+		return false
+	}
+	return true
 }
 
 func envDefault(k, d string) string {
@@ -63,7 +85,20 @@ func envDefault(k, d string) string {
 	return d
 }
 
-func (s *Server) Handler() http.Handler { return s.mux }
+func (s *Server) Handler() http.Handler {
+	h := recoverMiddleware(s.checkOrigin(s.rateLimit(s.mux)))
+	if s.testAuthToken == "" {
+		return h
+	}
+	tok := s.testAuthToken
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if cookieToken(r) == "" {
+			r = r.Clone(r.Context())
+			r.AddCookie(&http.Cookie{Name: "auth_token", Value: tok})
+		}
+		h.ServeHTTP(w, r)
+	})
+}
 
 func (s *Server) routes() {
 	wrap := func(fn http.HandlerFunc) http.HandlerFunc {
@@ -170,6 +205,10 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 }
 
 func readJSON(r *http.Request, dest any) error {
+	if r.Body == nil {
+		return io.EOF
+	}
+	r.Body = http.MaxBytesReader(nil, r.Body, jsonBodyLimit)
 	dec := json.NewDecoder(r.Body)
 	return dec.Decode(dest)
 }
@@ -191,17 +230,14 @@ func (s *Server) public(r *http.Request) bool {
 func (s *Server) auth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if s.adminPass == "" {
-			if s.prod {
-				writeJSON(w, 503, map[string]any{"error": "Auth not configured"})
-				return
-			}
-			next(w, r)
+			writeJSON(w, 503, map[string]any{"error": "Auth not configured"})
 			return
 		}
 		if s.public(r) {
 			next(w, r)
 			return
 		}
+		s.purgeExpiredSessions()
 		token := cookieToken(r)
 		if token == "" {
 			writeJSON(w, 401, map[string]any{"error": "Unauthorized"})
@@ -209,11 +245,21 @@ func (s *Server) auth(next http.HandlerFunc) http.HandlerFunc {
 		}
 		_, exp, ok := s.DB.SessionGet(token)
 		if !ok || exp < time.Now().UnixMilli() {
+			if ok {
+				s.DB.SessionDelete(token)
+			}
 			writeJSON(w, 401, map[string]any{"error": "Unauthorized"})
 			return
 		}
 		next(w, r)
 	}
+}
+
+func (s *Server) purgeExpiredSessions() {
+	if s.DB == nil || s.DB.SQL == nil {
+		return
+	}
+	_, _ = s.DB.SQL.Exec(`DELETE FROM sessions WHERE expires_at < ?`, time.Now().UnixMilli())
 }
 
 func cookieToken(r *http.Request) string {
@@ -243,15 +289,19 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	if s.adminPass == "" {
-		writeJSON(w, 200, map[string]any{"success": true, "disabled": true})
+		writeJSON(w, 503, map[string]any{"error": "Auth not configured"})
 		return
 	}
 	var body struct {
-		Username string `json:"username"`
-		Password string `json:"password"`
-		Remember bool   `json:"remember"`
+		Username   string `json:"username"`
+		Password   string `json:"password"`
+		Remember   bool   `json:"remember"`
+		RememberMe bool   `json:"rememberMe"`
 	}
-	_ = readJSON(r, &body)
+	if err := readJSON(r, &body); err != nil && !errors.Is(err, io.EOF) {
+		writeJSON(w, 400, map[string]any{"error": "invalid json"})
+		return
+	}
 	if body.Username == "" || len(body.Username) > 254 || body.Password == "" || len(body.Password) > 1024 {
 		writeJSON(w, 400, map[string]any{"error": "Invalid username format"})
 		return
@@ -264,24 +314,61 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	if strings.HasPrefix(s.adminPass, "$2") {
 		ok = bcrypt.CompareHashAndPassword([]byte(s.adminPass), []byte(body.Password)) == nil
 	} else {
-		ok = body.Password == s.adminPass
+		ok = constantTimePassword(body.Password, s.adminPass)
 	}
 	if !ok {
 		writeJSON(w, 401, map[string]any{"error": "Invalid credentials"})
 		return
 	}
-	tok := randomToken()
-	now := time.Now().UnixMilli()
-	_ = s.DB.SessionSet(tok, now, now+30*24*60*60*1000)
-	http.SetCookie(w, &http.Cookie{Name: "auth_token", Value: tok, Path: "/", HttpOnly: true, SameSite: http.SameSiteLaxMode})
+	tok, err := randomToken()
+	if err != nil {
+		writeJSON(w, 500, map[string]any{"error": "Failed to create session"})
+		return
+	}
+	remember := body.Remember || body.RememberMe
+	ttl := sessionShortTTL
+	if remember {
+		ttl = sessionRemember
+	}
+	now := time.Now()
+	s.purgeExpiredSessions()
+	_ = s.DB.SessionSet(tok, now.UnixMilli(), now.Add(ttl).UnixMilli())
+	cookie := &http.Cookie{
+		Name:     "auth_token",
+		Value:    tok,
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		Secure:   s.cookieSecure(r),
+	}
+	if remember {
+		cookie.MaxAge = int(sessionRemember.Seconds())
+	}
+	http.SetCookie(w, cookie)
 	writeJSON(w, 200, map[string]any{"success": true})
+}
+
+func (s *Server) cookieSecure(r *http.Request) bool {
+	if s.prod {
+		return true
+	}
+	return strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")
+}
+
+func constantTimePassword(got, want string) bool {
+	gb, wb := []byte(got), []byte(want)
+	if len(gb) != len(wb) {
+		return false
+	}
+	return subtle.ConstantTimeCompare(gb, wb) == 1
 }
 
 func (s *Server) handleAuthCheck(w http.ResponseWriter, r *http.Request) {
 	if s.adminPass == "" {
-		writeJSON(w, 200, map[string]any{"ok": true, "disabled": true})
+		writeJSON(w, 503, map[string]any{"error": "Auth not configured"})
 		return
 	}
+	s.purgeExpiredSessions()
 	tok := cookieToken(r)
 	_, exp, ok := s.DB.SessionGet(tok)
 	if !ok || exp < time.Now().UnixMilli() {
@@ -295,7 +382,10 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	if tok := cookieToken(r); tok != "" {
 		s.DB.SessionDelete(tok)
 	}
-	http.SetCookie(w, &http.Cookie{Name: "auth_token", Value: "", Path: "/", HttpOnly: true, MaxAge: -1})
+	http.SetCookie(w, &http.Cookie{
+		Name: "auth_token", Value: "", Path: "/", HttpOnly: true, MaxAge: -1,
+		SameSite: http.SameSiteLaxMode, Secure: s.cookieSecure(r),
+	})
 	writeJSON(w, 200, map[string]any{"success": true})
 }
 
@@ -312,10 +402,12 @@ func (s *Server) handleHashPassword(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{"hash": string(hash)})
 }
 
-func randomToken() string {
+func randomToken() (string, error) {
 	var b [16]byte
-	_, _ = rand.Read(b[:])
-	return hex.EncodeToString(b[:])
+	if _, err := rand.Read(b[:]); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b[:]), nil
 }
 
 func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
@@ -331,19 +423,65 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 400, map[string]any{"error": "invalid json"})
 		return
 	}
-	_ = s.DB.SaveSettings(body)
-	writeJSON(w, 200, body)
+	if _, ok := body["autoTrading"]; ok {
+		writeJSON(w, 400, map[string]any{"error": "autoTrading must be updated through /api/autotrade/config"})
+		return
+	}
+	cur := s.DB.Settings()
+	preservedAuto := cur["autoTrading"]
+	preservedKey := cur["polygonApiKey"]
+	for k, v := range body {
+		if k == "autoTrading" {
+			continue
+		}
+		cur[k] = v
+	}
+	cur["autoTrading"] = preservedAuto
+	if _, ok := body["polygonApiKey"]; !ok {
+		cur["polygonApiKey"] = preservedKey
+	}
+	if err := s.DB.SaveSettings(cur); err != nil {
+		writeJSON(w, 500, map[string]any{"error": err.Error()})
+		return
+	}
+	writeJSON(w, 200, map[string]any{"success": true, "settings": clientSettings(cur)})
 }
 
 func (s *Server) handlePatchSettings(w http.ResponseWriter, r *http.Request) {
-	cur := s.DB.Settings()
 	var body map[string]any
-	_ = readJSON(r, &body)
+	if err := readJSON(r, &body); err != nil {
+		writeJSON(w, 400, map[string]any{"error": "invalid json"})
+		return
+	}
+	if _, ok := body["autoTrading"]; ok {
+		writeJSON(w, 400, map[string]any{"error": "autoTrading must be updated through /api/autotrade/config"})
+		return
+	}
+	cur := s.DB.Settings()
 	for k, v := range body {
+		if k == "autoTrading" || k == "api" || k == "telegram" {
+			continue
+		}
 		cur[k] = v
 	}
-	_ = s.DB.SaveSettings(cur)
-	writeJSON(w, 200, cur)
+	if err := s.DB.SaveSettings(cur); err != nil {
+		writeJSON(w, 500, map[string]any{"error": err.Error()})
+		return
+	}
+	writeJSON(w, 200, map[string]any{"success": true, "message": "Settings updated successfully"})
+}
+
+func clientSettings(st map[string]any) map[string]any {
+	out := map[string]any{}
+	for k, v := range st {
+		if k == "polygonApiKey" {
+			continue
+		}
+		out[k] = v
+	}
+	key, _ := st["polygonApiKey"].(string)
+	out["polygonApiKeyConfigured"] = key != "" || os.Getenv("POLYGON_API_KEY") != ""
+	return out
 }
 
 func (s *Server) handleListDatasets(w http.ResponseWriter, r *http.Request) {
@@ -368,24 +506,43 @@ func (s *Server) handleGetDataset(w http.ResponseWriter, r *http.Request) {
 	}
 	events, _ := s.DB.ListSplits(id)
 	ds["splits"] = events
-	adj, _ := ds["adjustedForSplits"].(bool)
 	bars := decodeBars(ds["data"])
-	out, applied := s.adjustBarsIfNeeded(id, bars, adj)
-	if applied && !adj {
-		if err := s.persistDataset(id, ds, out, true); err != nil {
-			writeJSON(w, 500, map[string]any{"error": err.Error()})
-			return
-		}
-		ds["data"] = out
-		ds["adjustedForSplits"] = true
-		events, _ = s.DB.ListSplits(id)
-		ds["splits"] = events
-	}
+	ds["detectedSplits"] = s.detectSplitHints(id, bars)
 	writeJSON(w, 200, ds)
 }
 
 func (s *Server) handleDatasetMeta(w http.ResponseWriter, r *http.Request) {
-	s.handleGetDataset(w, r)
+	id := r.PathValue("id")
+	ds, err := s.DB.GetDataset(id)
+	if err != nil {
+		writeJSON(w, 500, map[string]any{"error": "Failed to get dataset metadata"})
+		return
+	}
+	if ds == nil {
+		writeJSON(w, 404, map[string]any{"error": "Dataset not found"})
+		return
+	}
+	events, _ := s.DB.ListSplits(id)
+	meta := map[string]any{
+		"id": ds["id"], "name": ds["name"], "ticker": ds["ticker"],
+		"companyName": ds["companyName"], "dataPoints": ds["dataPoints"],
+		"dateRange": ds["dateRange"], "uploadDate": ds["uploadDate"], "tag": ds["tag"],
+		"adjustedForSplits": ds["adjustedForSplits"],
+		"lastDate":          lastDateFromDataset(ds),
+		"splits":            events,
+	}
+	writeJSON(w, 200, meta)
+}
+
+func lastDateFromDataset(ds map[string]any) string {
+	if dr, ok := ds["dateRange"].(map[string]*string); ok && dr != nil && dr["to"] != nil && *dr["to"] != "" {
+		return *dr["to"]
+	}
+	bars := decodeBars(ds["data"])
+	if len(bars) == 0 {
+		return ""
+	}
+	return tradingdate.DateKey(bars[len(bars)-1].Date)
 }
 
 func (s *Server) handleCreateDataset(w http.ResponseWriter, r *http.Request) {
@@ -420,8 +577,35 @@ func (s *Server) handlePutDataset(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 400, map[string]any{"error": "invalid json"})
 		return
 	}
-	payload["ticker"] = r.PathValue("id")
+	id := r.PathValue("id")
+	if existing, _ := s.DB.GetDataset(id); existing != nil {
+		payload = mergeDatasetPayload(existing, payload)
+	}
+	payload["ticker"] = id
 	s.savePayload(w, payload)
+}
+
+func mergeDatasetPayload(existing, payload map[string]any) map[string]any {
+	out := map[string]any{}
+	for k, v := range existing {
+		if k == "data" || k == "splits" {
+			continue
+		}
+		out[k] = v
+	}
+	for k, v := range payload {
+		out[k] = v
+	}
+	if _, ok := payload["data"]; !ok {
+		out["data"] = existing["data"]
+	}
+	if _, ok := payload["companyName"]; !ok {
+		out["companyName"] = existing["companyName"]
+	}
+	if _, ok := payload["tag"]; !ok {
+		out["tag"] = existing["tag"]
+	}
+	return out
 }
 
 func (s *Server) savePayload(w http.ResponseWriter, payload map[string]any) {
@@ -429,14 +613,51 @@ func (s *Server) savePayload(w http.ResponseWriter, payload map[string]any) {
 	if ticker == "" {
 		ticker = store.SafeTicker(str(payload["name"]))
 	}
+	if ticker == "" {
+		writeJSON(w, 400, map[string]any{"error": "Invalid ticker"})
+		return
+	}
 	name := str(payload["name"])
+	if name == "" {
+		name = ticker
+	}
 	bars := decodeBars(payload["data"])
-	out, applied := s.adjustBarsIfNeeded(ticker, bars, false)
-	if err := s.DB.SaveDataset(ticker, name, str(payload["companyName"]), str(payload["tag"]), out, applied); err != nil {
+	if reasons := validateBars(bars); len(reasons) > 0 {
+		writeJSON(w, 400, map[string]any{"error": "invalid dataset payload", "reasons": reasons})
+		return
+	}
+	adj, _ := payload["adjustedForSplits"].(bool)
+	if err := s.DB.SaveDataset(ticker, name, strPtr(payload["companyName"]), strPtr(payload["tag"]), bars, adj); err != nil {
 		writeJSON(w, 500, map[string]any{"error": err.Error()})
 		return
 	}
-	writeJSON(w, 200, map[string]any{"ok": true, "ticker": ticker, "dataPoints": len(out), "adjustedForSplits": applied})
+	if raw, ok := payload["splits"]; ok {
+		if events := decodeSplitEvents(raw); events != nil {
+			_ = s.DB.UpsertSplits(ticker, events)
+		}
+	}
+	writeJSON(w, 200, map[string]any{
+		"success": true, "id": ticker, "ticker": ticker, "dataPoints": len(bars),
+		"adjustedForSplits": adj, "detectedSplits": s.detectSplitHints(ticker, bars),
+	})
+}
+
+func decodeSplitEvents(v any) []types.SplitEvent {
+	if v == nil {
+		return nil
+	}
+	if events, ok := v.([]types.SplitEvent); ok {
+		return events
+	}
+	raw, err := json.Marshal(v)
+	if err != nil {
+		return nil
+	}
+	var maps []map[string]any
+	if json.Unmarshal(raw, &maps) != nil {
+		return nil
+	}
+	return toSplits(maps)
 }
 
 func (s *Server) handleRefreshDataset(w http.ResponseWriter, r *http.Request) {
@@ -450,32 +671,76 @@ func (s *Server) handleRefreshDataset(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 404, map[string]any{"error": "Dataset not found"})
 		return
 	}
-	st := s.DB.Settings()
-	provider := str(st["enhancerProvider"])
-	if provider == "" {
-		provider = "finnhub"
-	}
+	provider := refreshProvider(s.DB.Settings(), r.URL.Query().Get("provider"))
 	if provider == "webull" {
 		writeJSON(w, 400, map[string]any{"error": "Webull не поддерживает загрузку исторических данных"})
 		return
 	}
+	lastDate := lastDateFromDataset(ds)
+	if lastDate == "" {
+		writeJSON(w, 400, map[string]any{"error": "Dataset has no last date"})
+		return
+	}
+	startDate := tradingdate.AddDays(lastDate, -7)
+	startTs := tradingDateUnix(startDate)
 	endTs := time.Now().Unix()
-	startTs := endTs - 40*365*24*60*60
 	hist, err := s.Providers.Historical(id, provider, startTs, endTs, "none")
 	if err != nil {
 		writeProviderError(w, err)
 		return
 	}
-	name := str(ds["name"])
-	if name == "" {
-		name = id
+	if reasons := validateBars(hist.Rows); len(reasons) > 0 && len(hist.Rows) > 0 {
+		writeJSON(w, 400, map[string]any{"error": "invalid refresh payload", "reasons": reasons})
+		return
 	}
-	out, applied := s.adjustBarsIfNeeded(id, hist.Rows, false)
-	if err := s.DB.SaveDataset(id, name, str(ds["companyName"]), str(ds["tag"]), out, applied); err != nil {
+	existing := decodeBars(ds["data"])
+	have := make(map[string]bool, len(existing))
+	for _, b := range existing {
+		have[tradingdate.DateKey(b.Date)] = true
+	}
+	added := 0
+	for _, b := range hist.Rows {
+		if !have[tradingdate.DateKey(b.Date)] {
+			added++
+		}
+	}
+	if len(hist.Splits) > 0 {
+		_ = s.DB.UpsertSplits(id, hist.Splits)
+	}
+	company := strPtr(ds["companyName"])
+	tag := strPtr(ds["tag"])
+	if err := s.DB.MergeOHLC(id, hist.Rows); err != nil {
 		writeJSON(w, 500, map[string]any{"error": err.Error()})
 		return
 	}
-	writeJSON(w, 200, map[string]any{"ok": true, "ticker": id, "dataPoints": len(out), "provider": provider, "adjustedForSplits": applied})
+	if company != "" || tag != "" {
+		_ = s.DB.UpdateDatasetMetadata(id, &tag, &company)
+	}
+	updated, _ := s.DB.GetDataset(id)
+	writeJSON(w, 200, map[string]any{
+		"success": true, "id": id, "added": added, "to": lastDateFromDataset(updated),
+		"provider": provider,
+	})
+}
+
+func refreshProvider(st map[string]any, query string) string {
+	allowed := map[string]bool{"alpha_vantage": true, "finnhub": true, "twelve_data": true, "polygon": true}
+	if allowed[query] {
+		return query
+	}
+	fromSettings := str(st["resultsRefreshProvider"])
+	if allowed[fromSettings] {
+		return fromSettings
+	}
+	return "finnhub"
+}
+
+func tradingDateUnix(date string) int64 {
+	t, err := time.ParseInLocation("2006-01-02", date, time.UTC)
+	if err != nil {
+		return time.Now().Add(-7 * 24 * time.Hour).Unix()
+	}
+	return t.Unix()
 }
 
 func (s *Server) handleDeleteDataset(w http.ResponseWriter, r *http.Request) {
@@ -483,7 +748,7 @@ func (s *Server) handleDeleteDataset(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 500, map[string]any{"error": err.Error()})
 		return
 	}
-	writeJSON(w, 200, map[string]any{"ok": true})
+	writeJSON(w, 200, map[string]any{"success": true, "id": r.PathValue("id")})
 }
 
 func (s *Server) handleApplySplits(w http.ResponseWriter, r *http.Request) {
@@ -506,7 +771,7 @@ func (s *Server) handleApplySplits(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	bars := decodeBars(ds["data"])
-	out, applied := s.adjustBarsIfNeeded(id, bars, false)
+	out, applied := s.applyStoredSplits(id, bars)
 	if err := s.persistDataset(id, ds, out, applied); err != nil {
 		writeJSON(w, 500, map[string]any{"error": err.Error()})
 		return
@@ -557,7 +822,10 @@ func (s *Server) handlePatchDatasetMeta(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	var body map[string]any
-	_ = readJSON(r, &body)
+	if err := readJSON(r, &body); err != nil {
+		writeJSON(w, 400, map[string]any{"error": "invalid json"})
+		return
+	}
 	var tag, company *string
 	if v, ok := body["tag"]; ok {
 		s := fmtString(v)
@@ -607,27 +875,72 @@ func (s *Server) handleGetSplits(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handlePutSplits(w http.ResponseWriter, r *http.Request) {
-	var events []map[string]any
-	_ = readJSON(r, &events)
-	_ = s.DB.ReplaceSplits(r.PathValue("symbol"), toSplits(events))
-	writeJSON(w, 200, map[string]any{"ok": true})
+	symbol := store.SafeTicker(r.PathValue("symbol"))
+	if symbol == "" {
+		writeJSON(w, 400, map[string]any{"error": "Invalid symbol"})
+		return
+	}
+	events, err := parseSplitBody(r)
+	if err != nil {
+		writeJSON(w, 400, map[string]any{"error": err.Error()})
+		return
+	}
+	if err := s.DB.ReplaceSplits(symbol, events); err != nil {
+		writeJSON(w, 500, map[string]any{"error": "Failed to save splits"})
+		return
+	}
+	updated, _ := s.DB.ListSplits(symbol)
+	writeJSON(w, 200, map[string]any{"success": true, "symbol": symbol, "events": updated})
 }
 
 func (s *Server) handlePatchSplits(w http.ResponseWriter, r *http.Request) {
+	symbol := store.SafeTicker(r.PathValue("symbol"))
+	if symbol == "" {
+		writeJSON(w, 400, map[string]any{"error": "Invalid symbol"})
+		return
+	}
+	events, err := parseSplitBody(r)
+	if err != nil {
+		writeJSON(w, 400, map[string]any{"error": err.Error()})
+		return
+	}
+	if err := s.DB.UpsertSplits(symbol, events); err != nil {
+		writeJSON(w, 500, map[string]any{"error": "Failed to update splits"})
+		return
+	}
+	updated, _ := s.DB.ListSplits(symbol)
+	writeJSON(w, 200, map[string]any{"success": true, "symbol": symbol, "events": updated})
+}
+
+func parseSplitBody(r *http.Request) ([]types.SplitEvent, error) {
+	var raw json.RawMessage
+	if err := readJSON(r, &raw); err != nil {
+		return nil, errors.New("invalid json")
+	}
 	var events []map[string]any
-	_ = readJSON(r, &events)
-	_ = s.DB.UpsertSplits(r.PathValue("symbol"), toSplits(events))
-	writeJSON(w, 200, map[string]any{"ok": true})
+	if err := json.Unmarshal(raw, &events); err == nil {
+		return toSplits(events), nil
+	}
+	var wrap struct {
+		Events []map[string]any `json:"events"`
+	}
+	if err := json.Unmarshal(raw, &wrap); err == nil && wrap.Events != nil {
+		return toSplits(wrap.Events), nil
+	}
+	return nil, errors.New("Body must be array of {date,factor}")
 }
 
 func (s *Server) handleDeleteSplitDate(w http.ResponseWriter, r *http.Request) {
-	_ = s.DB.DeleteSplit(r.PathValue("symbol"), r.PathValue("date"))
-	writeJSON(w, 200, map[string]any{"ok": true})
+	symbol := store.SafeTicker(r.PathValue("symbol"))
+	_ = s.DB.DeleteSplit(symbol, r.PathValue("date"))
+	updated, _ := s.DB.ListSplits(symbol)
+	writeJSON(w, 200, map[string]any{"success": true, "symbol": symbol, "events": updated})
 }
 
 func (s *Server) handleDeleteSplits(w http.ResponseWriter, r *http.Request) {
-	_ = s.DB.DeleteSplits(r.PathValue("symbol"))
-	writeJSON(w, 200, map[string]any{"ok": true})
+	symbol := store.SafeTicker(r.PathValue("symbol"))
+	_ = s.DB.DeleteSplits(symbol)
+	writeJSON(w, 200, map[string]any{"success": true, "symbol": symbol})
 }
 
 func (s *Server) handleGetCalendar(w http.ResponseWriter, r *http.Request) {
@@ -1035,7 +1348,7 @@ func (s *Server) handleTestAlpha(w http.ResponseWriter, r *http.Request) {
 	end := time.Now().Unix()
 	hist, err := s.Providers.Historical("AAPL", "alpha_vantage", end-7*24*60*60, end, "none")
 	if err != nil {
-		writeJSON(w, 200, map[string]any{"success": false, "error": err.Error()})
+		writeJSON(w, 200, map[string]any{"success": false, "error": publicErr(err)})
 		return
 	}
 	writeJSON(w, 200, map[string]any{"success": true, "dataPoints": len(hist.Rows)})
@@ -1049,7 +1362,7 @@ func (s *Server) handleTestFinnhub(w http.ResponseWriter, r *http.Request) {
 	end := time.Now().Unix()
 	hist, err := s.Providers.Historical("AAPL", "finnhub", end-7*24*60*60, end, "none")
 	if err != nil {
-		writeJSON(w, 200, map[string]any{"success": false, "error": err.Error()})
+		writeJSON(w, 200, map[string]any{"success": false, "error": publicErr(err)})
 		return
 	}
 	writeJSON(w, 200, map[string]any{"success": true, "dataPoints": len(hist.Rows)})
@@ -1063,7 +1376,7 @@ func (s *Server) handleTestTwelve(w http.ResponseWriter, r *http.Request) {
 	end := time.Now().Unix()
 	hist, err := s.Providers.Historical("AAPL", "twelve_data", end-7*24*60*60, end, "none")
 	if err != nil {
-		writeJSON(w, 200, map[string]any{"success": false, "error": err.Error()})
+		writeJSON(w, 200, map[string]any{"success": false, "error": publicErr(err)})
 		return
 	}
 	writeJSON(w, 200, map[string]any{"success": true, "dataPoints": len(hist.Rows)})
@@ -1071,9 +1384,14 @@ func (s *Server) handleTestTwelve(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleTestProvider(w http.ResponseWriter, r *http.Request) {
 	var body map[string]any
-	_ = readJSON(r, &body)
+	if err := readJSON(r, &body); err != nil && !errors.Is(err, io.EOF) {
+		writeJSON(w, 400, map[string]any{"success": false, "error": "invalid json"})
+		return
+	}
 	provider, _ := body["provider"].(string)
 	symbol := "AAPL"
+	endTs := time.Now().Unix()
+	startTs := endTs - 7*24*60*60
 	switch provider {
 	case "alpha_vantage":
 		if s.Providers.AlphaKey == "" {
@@ -1082,7 +1400,7 @@ func (s *Server) handleTestProvider(w http.ResponseWriter, r *http.Request) {
 		}
 		price, err := s.Providers.GlobalQuotePrice(symbol)
 		if err != nil {
-			writeJSON(w, 200, map[string]any{"success": false, "error": err.Error()})
+			writeJSON(w, 200, map[string]any{"success": false, "error": publicErr(err)})
 			return
 		}
 		writeJSON(w, 200, map[string]any{"success": true, "symbol": symbol, "price": strconv.FormatFloat(price, 'f', 2, 64)})
@@ -1093,10 +1411,17 @@ func (s *Server) handleTestProvider(w http.ResponseWriter, r *http.Request) {
 		}
 		q, err := s.Providers.Quote(symbol, "finnhub")
 		if err != nil {
-			writeJSON(w, 200, map[string]any{"success": false, "error": err.Error()})
+			writeJSON(w, 200, map[string]any{"success": false, "error": publicErr(err)})
 			return
 		}
 		price := q.Quote["current"]
+		if price == nil {
+			price = q.Quote["prevClose"]
+		}
+		if price == nil {
+			writeJSON(w, 200, map[string]any{"success": false, "error": "No data returned from provider"})
+			return
+		}
 		writeJSON(w, 200, map[string]any{"success": true, "symbol": symbol, "price": fmtFloat(price)})
 	case "twelve_data":
 		if s.Providers.TwelveKey == "" {
@@ -1105,12 +1430,43 @@ func (s *Server) handleTestProvider(w http.ResponseWriter, r *http.Request) {
 		}
 		price, err := s.Providers.TwelvePrice(symbol)
 		if err != nil {
-			writeJSON(w, 200, map[string]any{"success": false, "error": err.Error()})
+			writeJSON(w, 200, map[string]any{"success": false, "error": publicErr(err)})
 			return
 		}
 		writeJSON(w, 200, map[string]any{"success": true, "symbol": symbol, "price": strconv.FormatFloat(price, 'f', 2, 64)})
+	case "polygon":
+		if s.Providers.PolygonKey == "" {
+			writeJSON(w, 200, map[string]any{"success": false, "error": "API key not configured"})
+			return
+		}
+		hist, err := s.Providers.Historical(symbol, "polygon", startTs, endTs, "none")
+		if err != nil {
+			writeJSON(w, 200, map[string]any{"success": false, "error": publicErr(err)})
+			return
+		}
+		if len(hist.Rows) == 0 {
+			writeJSON(w, 200, map[string]any{"success": false, "error": "No data returned from provider"})
+			return
+		}
+		price := hist.Rows[len(hist.Rows)-1].Close
+		writeJSON(w, 200, map[string]any{"success": true, "symbol": symbol, "price": strconv.FormatFloat(price, 'f', 2, 64)})
+	case "webull":
+		q, err := s.Providers.Quote(symbol, "webull")
+		if err != nil {
+			writeJSON(w, 200, map[string]any{"success": false, "error": publicErr(err)})
+			return
+		}
+		price := q.Quote["current"]
+		if price == nil {
+			price = q.Quote["prevClose"]
+		}
+		if price == nil {
+			writeJSON(w, 200, map[string]any{"success": false, "error": "No data returned from provider"})
+			return
+		}
+		writeJSON(w, 200, map[string]any{"success": true, "symbol": symbol, "price": fmtFloat(price)})
 	default:
-		writeJSON(w, 200, map[string]any{"success": false, "error": "Unknown provider"})
+		writeJSON(w, 400, map[string]any{"success": false, "error": "Unknown provider"})
 	}
 }
 
@@ -1123,7 +1479,30 @@ func writeProviderError(w http.ResponseWriter, err error) {
 		writeJSON(w, code, map[string]any{"error": he.Message})
 		return
 	}
-	writeJSON(w, 500, map[string]any{"error": err.Error()})
+	writeJSON(w, 500, map[string]any{"error": publicErr(err)})
+}
+
+var secretQueryRe = regexp.MustCompile(`(?i)(apikey|api_key|access_token|token|password)=[^&\s]+`)
+
+func publicErr(err error) string {
+	if err == nil {
+		return ""
+	}
+	if he, ok := err.(*providers.HTTPError); ok {
+		return he.Message
+	}
+	var ue *url.Error
+	if errors.As(err, &ue) {
+		msg := ue.Op
+		if ue.Err != nil {
+			if msg != "" {
+				msg += ": "
+			}
+			msg += ue.Err.Error()
+		}
+		return secretQueryRe.ReplaceAllString(msg, "$1=[redacted]")
+	}
+	return secretQueryRe.ReplaceAllString(err.Error(), "$1=[redacted]")
 }
 
 func parseUnix(raw string, fallback int64) int64 {

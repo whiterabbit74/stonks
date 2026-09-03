@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"mktorder.com/go/internal/goldens"
 	"mktorder.com/go/internal/store"
@@ -56,7 +56,12 @@ var allRoutes = []struct{ Method, Path string }{
 
 func testServer(t *testing.T, password string) *Server {
 	t.Helper()
+	injectAuth := password == ""
+	if injectAuth {
+		password = "test-secret"
+	}
 	t.Setenv("ADMIN_PASSWORD", password)
+	t.Setenv("GO_ENV", "development")
 	t.Setenv("NODE_ENV", "")
 	dir := t.TempDir()
 	db, err := store.Open(filepath.Join(dir, "t.db"))
@@ -65,6 +70,14 @@ func testServer(t *testing.T, password string) *Server {
 	}
 	t.Cleanup(func() { db.Close() })
 	s := New(db, dir)
+	if injectAuth {
+		tok := "0123456789abcdef0123456789abcdef"
+		now := time.Now().UnixMilli()
+		if err := s.DB.SessionSet(tok, now, now+24*60*60*1000); err != nil {
+			t.Fatal(err)
+		}
+		s.testAuthToken = tok
+	}
 	return s
 }
 
@@ -142,18 +155,11 @@ func TestStatusJSON(t *testing.T) {
 }
 
 func TestDatasetAndCalcGolden(t *testing.T) {
-	os.Unsetenv("ADMIN_PASSWORD")
-	dir := t.TempDir()
-	db, err := store.Open(filepath.Join(dir, "t.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { db.Close() })
+	s := testServer(t, "")
 	bars := goldens.Bars("googl-bars.json")
-	if err := db.SaveDataset("GOOGL", "GOOGL", "Alphabet", "", bars, false); err != nil {
+	if err := s.DB.SaveDataset("GOOGL", "GOOGL", "Alphabet", "", bars, false); err != nil {
 		t.Fatal(err)
 	}
-	s := New(db, dir)
 	req := httptest.NewRequest("GET", "/api/datasets/GOOGL", nil)
 	rec := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rec, req)
