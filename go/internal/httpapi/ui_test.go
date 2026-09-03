@@ -169,6 +169,8 @@ func TestVanillaUIAssets(t *testing.T) {
 		"Логи автоторговли пока пусты",
 		"Логи мониторинга пока пусты",
 		"Состояние автоторговли",
+		"fmtUsd(fv, 0)",
+		"Итоговый баланс",
 	} {
 		if !strings.Contains(a, copy) {
 			t.Errorf("missing page copy %s", copy)

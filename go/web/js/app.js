@@ -1224,7 +1224,7 @@
     const dd = maxDrawdown ?? m.maxDrawdown;
     const pf = Number.isFinite(m.profitFactor) ? fmt(m.profitFactor) : '∞';
     return `<div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-9 gap-4">
-      <div class="col-span-2 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 text-center"><div class="text-2xl font-bold text-green-600">${fmtUsd(fv)}</div><div class="text-sm text-gray-600 dark:text-gray-400">Итоговый баланс</div></div>
+      <div class="col-span-2 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 text-center"><div class="text-2xl font-bold text-green-600">${fmtUsd(fv, 0)}</div><div class="text-sm text-gray-600 dark:text-gray-400">Итоговый баланс</div></div>
       <div class="col-span-2 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 text-center"><div class="text-2xl font-bold text-blue-600">${fmtPct(m.totalReturn)}</div><div class="text-sm text-gray-600 dark:text-gray-400">Общая доходность</div></div>
       <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 text-center"><div class="text-2xl font-bold text-orange-600">${fmtPct(m.cagr)}</div><div class="text-sm text-gray-600 dark:text-gray-400">CAGR</div></div>
       <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 text-center"><div class="text-2xl font-bold text-purple-600">${fmtPct(m.winRate)}</div><div class="text-sm text-gray-600 dark:text-gray-400">Доля прибыльных</div></div>
