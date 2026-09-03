@@ -727,11 +727,20 @@ func (d *DB) DeleteWatch(symbol string) error {
 	return err
 }
 
-func (d *DB) GetTrade(table, id string) map[string]any {
+func tradeTable(table string) string {
 	if table != "trades" && table != "broker_trades" {
-		table = "trades"
+		return "trades"
 	}
-	row := d.SQL.QueryRow(`SELECT id, symbol, status, entry_date, exit_date, entry_price, exit_price, entry_ibs, exit_ibs, pnl_percent, pnl_absolute, holding_days, notes, source, is_hidden, is_test, quantity, linked_broker_trade_id FROM `+table+` WHERE id=?`, id)
+	return table
+}
+
+func (d *DB) GetTrade(table, id string) map[string]any {
+	table = tradeTable(table)
+	linkedCol := "NULL"
+	if table == "trades" {
+		linkedCol = "linked_broker_trade_id"
+	}
+	row := d.SQL.QueryRow(`SELECT id, symbol, status, entry_date, exit_date, entry_price, exit_price, entry_ibs, exit_ibs, pnl_percent, pnl_absolute, holding_days, notes, source, is_hidden, is_test, quantity, `+linkedCol+` FROM `+table+` WHERE id=?`, id)
 	var tid, symbol, status string
 	var entryDate, exitDate, notes, source, linked sql.NullString
 	var entryP, exitP, entryI, exitI, pnlP, pnlA, qty sql.NullFloat64
@@ -751,6 +760,63 @@ func (d *DB) GetTrade(table, id string) map[string]any {
 	}
 }
 
+func asFloat(v any) float64 {
+	switch t := v.(type) {
+	case float64:
+		return t
+	case float32:
+		return float64(t)
+	case int:
+		return float64(t)
+	case int32:
+		return float64(t)
+	case int64:
+		return float64(t)
+	case json.Number:
+		f, _ := t.Float64()
+		return f
+	case string:
+		var f float64
+		fmt.Sscanf(t, "%f", &f)
+		return f
+	default:
+		return 0
+	}
+}
+
+func round6(v float64) float64 {
+	return float64(int(v*1e6+0.5)) / 1e6
+}
+
+// TradeCloseFields computes status, exit, P&L and holdingDays for a close.
+// extra is copied on top (notes, exitIBS, ...). Dates are YYYY-MM-DD strings.
+func TradeCloseFields(existing map[string]any, exitPrice float64, exitDate string, extra map[string]any) map[string]any {
+	out := map[string]any{
+		"status":    "closed",
+		"exitPrice": exitPrice,
+		"exitDate":  exitDate,
+	}
+	entryPrice := asFloat(existing["entryPrice"])
+	if entryPrice > 0 {
+		diff := exitPrice - entryPrice
+		out["pnlAbsolute"] = round6(diff)
+		out["pnlPercent"] = round6((diff / entryPrice) * 100)
+	}
+	hold := 0
+	if ed := fmt.Sprint(existing["entryDate"]); ed != "" && ed != "<nil>" {
+		n := tradingdate.DaysBetween(ed, exitDate)
+		if n < 1 {
+			n = 1
+		}
+		hold = n
+	}
+	out["holdingDays"] = hold
+	for k, v := range extra {
+		out[k] = v
+	}
+	return out
+}
+
 func (d *DB) CloseMonitorTrade(id string, rec map[string]any) (map[string]any, error) {
 	existing := d.GetTrade("trades", id)
 	if existing == nil {
@@ -762,42 +828,6 @@ func (d *DB) CloseMonitorTrade(id string, rec map[string]any) (map[string]any, e
 	if linked := fmt.Sprint(existing["linkedBrokerTradeId"]); linked != "" && linked != "<nil>" {
 		return existing, fmt.Errorf("Linked broker-backed monitor trades must be reconciled automatically")
 	}
-	exitPrice := 0.0
-	switch v := rec["exitPrice"].(type) {
-	case float64:
-		exitPrice = v
-	case int:
-		exitPrice = float64(v)
-	case json.Number:
-		exitPrice, _ = v.Float64()
-	case string:
-		fmt.Sscanf(v, "%f", &exitPrice)
-	}
-	if !(exitPrice > 0) {
-		return nil, fmt.Errorf("exitPrice must be a positive number")
-	}
-	exitDate := strings.TrimSpace(fmt.Sprint(rec["exitDate"]))
-	if exitDate == "" || exitDate == "<nil>" {
-		exitDate = tradingdate.TodayNYSE(time.Now())
-	}
-	entryPrice := 0.0
-	if p, ok := existing["entryPrice"].(float64); ok {
-		entryPrice = p
-	}
-	var pnlAbs, pnlPct any
-	if entryPrice > 0 {
-		diff := exitPrice - entryPrice
-		pnlAbs = float64(int(diff*1e6+0.5)) / 1e6
-		pnlPct = float64(int((diff/entryPrice)*100*1e6+0.5)) / 1e6
-	}
-	hold := 0
-	if ed := fmt.Sprint(existing["entryDate"]); ed != "" && ed != "<nil>" {
-		n := tradingdate.DaysBetween(ed, exitDate)
-		if n < 1 {
-			n = 1
-		}
-		hold = n
-	}
 	note := strings.TrimSpace(fmt.Sprint(rec["note"]))
 	if note == "" || note == "<nil>" {
 		note = "manual_monitor_close_from_ui"
@@ -805,16 +835,42 @@ func (d *DB) CloseMonitorTrade(id string, rec map[string]any) (map[string]any, e
 	if prev := fmt.Sprint(existing["notes"]); prev != "" && prev != "<nil>" {
 		note = prev + "\n" + note
 	}
-	var exitIBS any
+	extra := map[string]any{"notes": note}
 	if rec["exitIBS"] != nil {
-		exitIBS = rec["exitIBS"]
+		extra["exitIBS"] = rec["exitIBS"]
 	}
-	_, err := d.SQL.Exec(`UPDATE trades SET status='closed', exit_date=?, exit_price=?, exit_ibs=?, pnl_absolute=?, pnl_percent=?, holding_days=?, notes=? WHERE id=?`,
-		exitDate, exitPrice, exitIBS, pnlAbs, pnlPct, hold, note, id)
+	exitDate := ""
+	if rec != nil {
+		exitDate = strings.TrimSpace(fmt.Sprint(rec["exitDate"]))
+	}
+	return d.CloseTradeByID("trades", id, asFloat(rec["exitPrice"]), exitDate, extra)
+}
+
+// CloseTradeByID closes a row in trades or broker_trades by id.
+// Unlike CloseMonitorTrade it does not reject linked broker-backed trades.
+func (d *DB) CloseTradeByID(table, id string, exitPrice float64, exitDate string, extra map[string]any) (map[string]any, error) {
+	table = tradeTable(table)
+	existing := d.GetTrade(table, id)
+	if existing == nil {
+		return nil, fmt.Errorf("Trade not found")
+	}
+	if fmt.Sprint(existing["status"]) != "open" {
+		return existing, fmt.Errorf("Trade is already closed")
+	}
+	if !(exitPrice > 0) {
+		return nil, fmt.Errorf("exitPrice must be a positive number")
+	}
+	exitDate = strings.TrimSpace(exitDate)
+	if exitDate == "" || exitDate == "<nil>" {
+		exitDate = tradingdate.TodayNYSE(time.Now())
+	}
+	fields := TradeCloseFields(existing, exitPrice, exitDate, extra)
+	_, err := d.SQL.Exec(`UPDATE `+table+` SET status='closed', exit_date=?, exit_price=?, exit_ibs=COALESCE(?, exit_ibs), pnl_absolute=?, pnl_percent=?, holding_days=?, notes=COALESCE(?, notes) WHERE id=?`,
+		fields["exitDate"], fields["exitPrice"], fields["exitIBS"], fields["pnlAbsolute"], fields["pnlPercent"], fields["holdingDays"], fields["notes"], id)
 	if err != nil {
 		return nil, err
 	}
-	return d.GetTrade("trades", id), nil
+	return d.GetTrade(table, id), nil
 }
 
 func (d *DB) ListTrades(table string) ([]map[string]any, error) {
