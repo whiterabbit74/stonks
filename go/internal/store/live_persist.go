@@ -186,11 +186,6 @@ func (d *DB) AnyPendingTracker() map[string]any {
 	return rows[0]
 }
 
-func (d *DB) ReleaseAggregateT1(chatID, dateKey string) error {
-	_, err := d.SQL.Exec(`UPDATE aggregate_send_state SET t1_sent=0 WHERE date_key=? AND chat_id=?`, dateKey, chatID)
-	return err
-}
-
 func (d *DB) FindPendingTracker(symbol, action string) map[string]any {
 	rows, err := d.ListPendingTrackers()
 	if err != nil {

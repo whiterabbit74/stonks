@@ -25,12 +25,17 @@ type SimulateResult struct {
 	Broker   any      `json:"broker,omitempty"`
 }
 
+// runT1Orders performs the day's exit and, when it fills, the re-entry.
+// Everything retried here is retried inside this one run: the T-1 claim also
+// marks the message as sent, and releasing it for a later tick would send the
+// decision to Telegram twice. A later tick would in any case re-evaluate on
+// newer quotes and decide something different, which is not a retry.
 func (e *Engine) runT1Orders(today string) (exitRes, entryRes EvalResult, waitFill bool) {
+	_ = today
 	exitRes = e.Execute("telegram_t1")
 	action, _ := exitRes.Decision["action"].(string)
 	if action != "none" && !exitRes.Executed {
-		_ = e.DB.ReleaseAggregateT1(e.chat(), today)
-		_ = e.DB.AppendAutotradeLog("t1_claim_released_submit_failed")
+		_ = e.DB.AppendAutotradeLog("t1_submit_failed")
 		return exitRes, entryRes, false
 	}
 	if action != "exit" || !exitRes.Executed {
@@ -56,8 +61,7 @@ func (e *Engine) runT1Orders(today string) (exitRes, entryRes EvalResult, waitFi
 			return exitRes, entryRes, true
 		}
 	}
-	_ = e.DB.ReleaseAggregateT1(e.chat(), today)
-	_ = e.DB.AppendAutotradeLog("t1_claim_released_exit_failed")
+	_ = e.DB.AppendAutotradeLog("t1_exit_failed")
 	return exitRes, entryRes, false
 }
 

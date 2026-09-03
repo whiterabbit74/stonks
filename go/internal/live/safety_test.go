@@ -237,3 +237,26 @@ func TestBrokerOnlyPositionIsNeverSold(t *testing.T) {
 		t.Fatalf("manual execute must not liquidate it: %+v", br.Orders)
 	}
 }
+
+func TestFailedT1SubmitDoesNotResendTheMessage(t *testing.T) {
+	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
+	db, e, br := testEngine(t, bars)
+	e.Sleep = func(time.Duration) {}
+	_ = db.UpsertWatch(map[string]any{"symbol": "AAPL", "lowIBS": 0.9, "highIBS": 0.75})
+	e.PatchAutoConfig(map[string]any{
+		"enabled": true, "lowIBS": 0.9, "allowNewEntries": true,
+		"entrySizingMode": "quantity", "fixedQuantity": 1, "onlyFromTelegramWatches": true,
+	})
+	br.SetFailPlace("rejected by broker", 0, false)
+	opts := AggregateOpts{ForceSend: true, UpdateState: true}
+	if _, err := e.Aggregate(1, opts); err != nil {
+		t.Fatal(err)
+	}
+	res, err := e.Aggregate(1, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Reason != "already_sent" {
+		t.Fatalf("a failed submission must not re-open the day: reason=%q sent=%v", res.Reason, res.Sent)
+	}
+}
