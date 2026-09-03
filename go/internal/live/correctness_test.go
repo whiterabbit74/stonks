@@ -471,3 +471,23 @@ func TestQuoteRangeMissingIsNotOk(t *testing.T) {
 		t.Fatalf("missing range must not be ok %+v", ev)
 	}
 }
+
+// Node clamps live IBS to [0,1] (autotrade.js:575); an extended-hours quote
+// outside the session range must not produce an out-of-range IBS.
+func TestIBSFromQuoteClampsToUnitRange(t *testing.T) {
+	mk := func(low, high, cur float64) providers.QuotePayload {
+		return providers.QuotePayload{
+			Range: map[string]any{"low": low, "high": high},
+			Quote: map[string]any{"current": cur, "low": low, "high": high},
+		}
+	}
+	if v, ok := ibsFromQuote(mk(90, 100, 85)); !ok || v != 0 {
+		t.Fatalf("below-range quote: got %v ok=%v, want 0", v, ok)
+	}
+	if v, ok := ibsFromQuote(mk(90, 100, 110)); !ok || v != 1 {
+		t.Fatalf("above-range quote: got %v ok=%v, want 1", v, ok)
+	}
+	if v, ok := ibsFromQuote(mk(90, 100, 95)); !ok || v != 0.5 {
+		t.Fatalf("in-range quote: got %v ok=%v, want 0.5", v, ok)
+	}
+}

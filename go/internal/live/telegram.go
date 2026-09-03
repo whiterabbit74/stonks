@@ -2,6 +2,7 @@ package live
 
 import (
 	"fmt"
+	"math"
 	"strings"
 
 	"mktorder.com/go/internal/ibs"
@@ -442,7 +443,9 @@ func ibsFromQuote(q providers.QuotePayload) (float64, bool) {
 	if high <= low {
 		return 0.5, true
 	}
-	return (cur - low) / (high - low), true
+	// Node clamps to [0,1] (autotrade.js:575). An extended-hours `current`
+	// outside the regular-session range must not skew candidate ranking.
+	return math.Max(0, math.Min(1, (cur-low)/(high-low))), true
 }
 
 func (e *Engine) tradeHistoryMessage(limit int) string {
