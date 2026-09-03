@@ -57,6 +57,38 @@ func rf(date string, fallback float64) float64 {
 	return fallback
 }
 
+func cloneContext(ctx *types.TradeContext) *types.TradeContext {
+	if ctx == nil {
+		return nil
+	}
+	c := *ctx
+	if ctx.IndicatorValues != nil {
+		m := make(map[string]float64, len(ctx.IndicatorValues))
+		for k, v := range ctx.IndicatorValues {
+			m[k] = v
+		}
+		c.IndicatorValues = m
+	}
+	if ctx.EntryRawClose != nil {
+		v := *ctx.EntryRawClose
+		c.EntryRawClose = &v
+	}
+	if ctx.ExitRawClose != nil {
+		v := *ctx.ExitRawClose
+		c.ExitRawClose = &v
+	}
+	return &c
+}
+
+func cloneTrades(in []types.Trade) []types.Trade {
+	out := make([]types.Trade, len(in))
+	for i, t := range in {
+		t.Context = cloneContext(t.Context)
+		out[i] = t
+	}
+	return out
+}
+
 type marketState struct {
 	close float64
 	index int
@@ -64,6 +96,7 @@ type marketState struct {
 }
 
 func RunOptions(stockTrades []types.Trade, market []types.OHLC, raw OptionsConfig) (equity []types.EquityPoint, trades []types.Trade, finalValue float64) {
+	stockTrades = cloneTrades(stockTrades)
 	cfg := raw.resolve()
 	initial := 10000.0
 	datePrice := map[string]marketState{}
@@ -194,6 +227,7 @@ func RunOptions(stockTrades []types.Trade, market []types.OHLC, raw OptionsConfi
 }
 
 func RunMultiOptions(stockTrades []types.Trade, tickers []TickerIndexed, raw OptionsConfig) (equity []types.EquityPoint, trades []types.Trade, finalValue float64) {
+	stockTrades = cloneTrades(stockTrades)
 	cfg := raw.resolve()
 	initial := 10000.0
 	type daily struct {
