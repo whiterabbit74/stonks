@@ -1,6 +1,7 @@
 services:
   # Production (default) — data in named volumes, secrets via env_file or Docker secrets
   server:
+    image: ${SERVER_IMAGE:-stonks-server:latest}
     build:
       context: .
       dockerfile: docker/go.Dockerfile
@@ -12,6 +13,7 @@ services:
       - PORT=3001
       - GOAPP_ROOT=/app
       - GO_ENV=production
+      - BUILD_ID=${BUILD_ID:-dev}
       # Caddy is the only hop in front of this service, so the rightmost
       # X-Forwarded-For entry is trustworthy and rate limiting keys on the
       # real client IP. Leave unset anywhere the server is directly exposed.

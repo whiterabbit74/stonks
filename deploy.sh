@@ -1,402 +1,159 @@
 #!/bin/bash
-# 🚀 DEPLOY
-# Гарантирует использование ТОЛЬКО самого свежего кода из GitHub
-# Использование: ./deploy.sh
+# Deploy a pre-built linux/amd64 Go image. The VPS never compiles.
+# Usage: ./deploy.sh
+set -euo pipefail
 
-set -e
+HOST="${DEPLOY_HOST:-ubuntu@146.235.212.239}"
+REMOTE_DIR="${DEPLOY_REMOTE_DIR:-~/stonks}"
+ROOT="$(cd "$(dirname "$0")" && pwd)"
+cd "$ROOT"
 
-echo "🚀 DEPLOY"
-echo "========="
+echo "DEPLOY"
+echo "======"
 
-# 1. ПРОВЕРКА И ОТПРАВКА ЛОКАЛЬНОГО КОДА НА GITHUB
-echo "🔍 Проверка синхронизации с GitHub..."
-git fetch origin
-
-# СНАЧАЛА проверяем есть ли незакоммиченные изменения
 if ! git diff-index --quiet HEAD --; then
-    echo "❌ ОШИБКА: Есть незакоммиченные изменения!"
-    echo "Сначала сделайте commit:"
-    git status
-    exit 1
+  echo "Uncommitted changes — commit first:"
+  git status --short
+  exit 1
 fi
 
-# ПОТОМ проверяем есть ли неотправленные коммиты
-LOCAL_COMMITS_AHEAD=$(git rev-list --count origin/main..HEAD 2>/dev/null || echo "0")
-if [ "$LOCAL_COMMITS_AHEAD" -gt 0 ]; then
-    echo "⚠️  ВНИМАНИЕ: У вас есть $LOCAL_COMMITS_AHEAD неотправленных коммитов!"
-    echo "Неотправленные коммиты:"
-    git log --oneline origin/main..HEAD
-    echo ""
-    read -p "Отправить их на GitHub автоматически? (y/n): " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        echo "📤 Отправляем коммиты на GitHub..."
-        git push origin main
-        echo "✅ Коммиты отправлены!"
-    else
-        echo "❌ Развертывание остановлено. Сначала отправьте коммиты: git push origin main"
-        exit 1
-    fi
+echo "Sync GitHub..."
+git fetch origin
+if ! git merge-base --is-ancestor origin/main HEAD; then
+  echo "Local main has diverged from origin/main. Run: git pull --rebase origin main"
+  exit 1
+fi
+if [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]; then
+  git push origin main
+  git fetch origin
+fi
+if [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]; then
+  echo "GitHub did not receive HEAD"
+  exit 1
 fi
 
-# Проверяем синхронизацию с GitHub
-LOCAL_COMMIT=$(git rev-parse HEAD)
-REMOTE_COMMIT=$(git rev-parse origin/main)
+GIT_COMMIT="$(git rev-parse --short HEAD)"
+GIT_FULL="$(git rev-parse HEAD)"
+GIT_DATE="$(git log -1 --format=%cd --date=format:'%Y-%m-%d %H:%M:%S')"
+IMAGE="stonks-server:${GIT_COMMIT}"
+echo "Version ${GIT_COMMIT}  ${GIT_DATE}"
 
-if [ "$LOCAL_COMMIT" != "$REMOTE_COMMIT" ]; then
-    echo "⚠️  Локальный код не синхронизирован с GitHub"
-    echo "Локальный:  $(git rev-parse --short HEAD) - $(git log -1 --format=%s)"
-    echo "GitHub:     $(git rev-parse --short origin/main) - $(git log -1 --format=%s origin/main)"
-    
-    # Проверяем можно ли автоматически отправить
-    if git merge-base --is-ancestor origin/main HEAD; then
-        echo "✅ Локальный код новее - отправляем на GitHub..."
-        git push origin main
-        echo "📤 Код успешно отправлен на GitHub"
-        # КРИТИЧЕСКИ ВАЖНО: Обновляем remote HEAD после push
-        git fetch origin
-        echo "🔄 Обновлен remote HEAD после push"
-    else
-        echo "❌ ОШИБКА: Конфликт с GitHub! Нужно вручную разрешить"
-        echo "Выполните: git pull --rebase origin main"
-        exit 1
-    fi
-else
-    echo "✅ Код синхронизирован с GitHub"
+if ! command -v docker >/dev/null; then
+  echo "docker is required on this machine to build the amd64 image"
+  exit 1
+fi
+if ! command -v go >/dev/null; then
+  echo "go is required to cross-compile linux/amd64"
+  exit 1
 fi
 
-# ДОПОЛНИТЕЛЬНАЯ ПРОВЕРКА: Убеждаемся что GitHub получил наши изменения
-echo "🔍 Финальная проверка синхронизации..."
-FINAL_LOCAL=$(git rev-parse HEAD)
-FINAL_REMOTE=$(git rev-parse origin/main)
+STAGE="$(mktemp -d "${TMPDIR:-/tmp}/stonks-deploy.XXXXXX")"
+cleanup() { rm -rf "$STAGE"; }
+trap cleanup EXIT
 
-if [ "$FINAL_LOCAL" != "$FINAL_REMOTE" ]; then
-    echo "❌ КРИТИЧЕСКАЯ ОШИБКА: GitHub не получил изменения!"
-    echo "Локальный: $FINAL_LOCAL"
-    echo "GitHub:    $FINAL_REMOTE" 
-    echo "Развертывание остановлено для предотвращения деплоя старого кода"
-    exit 1
-else
-    echo "✅ Финальная проверка пройдена - GitHub синхронизирован"
+echo "Cross-compile linux/amd64..."
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -C go -trimpath -ldflags="-s -w" -o "${STAGE}/mktorder" ./cmd/server
+chmod 0755 "${STAGE}/mktorder"
+cp -a go/web "${STAGE}/web"
+cp docker/go.runtime.Dockerfile "${STAGE}/Dockerfile"
+
+echo "Build runtime image ${IMAGE}..."
+docker build --platform linux/amd64 -t "${IMAGE}" -t stonks-server:latest "$STAGE"
+
+echo "Send image to ${HOST}..."
+docker save "${IMAGE}" | gzip -1 | ssh -o BatchMode=yes "$HOST" "gunzip | docker load && docker tag ${IMAGE} stonks-server:latest"
+
+echo "Activate on server..."
+ssh -o BatchMode=yes "$HOST" "set -euo pipefail
+cd ${REMOTE_DIR}
+git fetch origin
+git reset --hard origin/main
+echo server_git=\$(git rev-parse --short HEAD)
+if [ \"\$(git rev-parse HEAD)\" != \"${GIT_FULL}\" ]; then
+  echo 'server git SHA does not match local HEAD'
+  exit 1
 fi
 
-# 2. ПРОВЕРКА ВЕРСИИ КОДА
-echo "🔍 Проверка версии кода..."
-GIT_COMMIT=$(git rev-parse --short HEAD)
-GIT_DATE=$(git log -1 --format=%cd --date=format:'%Y-%m-%d %H:%M:%S')
-echo "📋 Версия: ${GIT_COMMIT} от ${GIT_DATE}"
-
-# 3. СБОРКА С ОЧИСТКОЙ
-echo "📦 Сборка с полной очисткой..."
-rm -rf dist/
-npm run build
-
-# 4. ПРОВЕРКА СБОРКИ
-if [ ! -f "dist/index.html" ]; then
-    echo "❌ ОШИБКА: Сборка не удалась!"
-    exit 1
-fi
-
-# 5. СОЗДАНИЕ АРХИВА С МЕТАДАННЫМИ
-TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-ARCHIVE_NAME="super-fresh-${GIT_COMMIT}-${TIMESTAMP}.tgz"
-echo "📦 Создание архива: ${ARCHIVE_NAME}"
-
-# Создание метаданных
-echo "{
-  \"commit\": \"${GIT_COMMIT}\",
-  \"date\": \"${GIT_DATE}\",
-  \"timestamp\": \"${TIMESTAMP}\",
-  \"build_time\": \"$(date)\"
-}" > build-info.json
-
-COPYFILE_DISABLE=1 tar --no-xattrs --no-mac-metadata \
-    --exclude='server/node_modules' \
-    --exclude='server/db' \
-    -czf "${ARCHIVE_NAME}" dist/ server/ build-info.json
-
-# 6. ОТПРАВКА НА СЕРВЕР
-echo "📤 Отправка на сервер..."
-scp "${ARCHIVE_NAME}" ubuntu@146.235.212.239:~
-
-# 7. РАЗВЕРТЫВАНИЕ С МАКСИМАЛЬНОЙ НАДЕЖНОСТЬЮ
-echo "🚀 Развертывание с максимальной надежностью..."
-ssh ubuntu@146.235.212.239 "
-cd ~ &&
-
-echo '📦 Распаковка...' &&
-tar -xzf ${ARCHIVE_NAME} 2>/dev/null &&
-
-echo '📥 Синхронизация git репозитория на сервере...' &&
-cd ~/stonks &&
-git fetch origin &&
-git reset --hard origin/main &&
-echo 'Актуальный коммит на сервере:' &&
-git log --oneline -1 &&
-echo SERVER_GIT_SHA_BEFORE_DEPLOY=\$(git rev-parse HEAD) &&
-
-echo '💾 БЕКАП DOCKER DATA VOLUMES...' &&
-BACKUP_DIR=~/stonks-backups &&
-BACKUP_NAME=backup_\$(date +%Y%m%d_%H%M%S) &&
-mkdir -p \$BACKUP_DIR/\$BACKUP_NAME &&
-
-mkdir -p \$BACKUP_DIR/\$BACKUP_NAME/state \$BACKUP_DIR/\$BACKUP_NAME/db \$BACKUP_DIR/\$BACKUP_NAME/datasets &&
-resolve_volume_name() {
-    local container_name=\"\$1\"
-    local destination=\"\$2\"
-    local fallback_suffix=\"\$3\"
-    local resolved=\"\"
-
-    resolved=\$(docker inspect \"\$container_name\" --format '{{range .Mounts}}{{println .Destination "\t" .Name "\t" .Type}}{{end}}' 2>/dev/null | awk -v dest=\"\$destination\" '\$1 == dest && \$3 == \"volume\" { print \$2; exit }')
-
-    if [ -z \"\$resolved\" ]; then
-        resolved=\$(docker volume ls --format '{{.Name}}' | grep -E \"(^|_)\${fallback_suffix}\$\" | head -n 1 || true)
-    fi
-
-    printf '%s' \"\$resolved\"
-} &&
-backup_volume() {
-    local actual_volume=\"\$1\"
-    local target_dir=\"\$2\"
-    local label=\"\$3\"
-
-    if [ -n \"\$actual_volume\" ] && docker volume inspect \"\$actual_volume\" >/dev/null 2>&1; then
-        echo \"📦 backup \$label volume: \$actual_volume\"
-        docker run --rm -v \"\$actual_volume:/source\" -v \"\$target_dir:/backup\" alpine sh -lc 'cp -a /source/. /backup/ 2>/dev/null || true'
-    else
-        echo \"⚠️ volume для \$label не найден\"
-    fi
-} &&
-STATE_VOLUME=\$(resolve_volume_name stonks-server /data/state stonks_state) &&
-DB_VOLUME=\$(resolve_volume_name stonks-server /data/db stonks_db) &&
-DATASETS_VOLUME=\$(resolve_volume_name stonks-server /data/datasets stonks_datasets) &&
-echo \"🔎 Найдены volumes: state=\${STATE_VOLUME:-missing} db=\${DB_VOLUME:-missing} datasets=\${DATASETS_VOLUME:-missing}\" &&
-backup_volume \"\$STATE_VOLUME\" \"\$BACKUP_DIR/\$BACKUP_NAME/state\" state &&
-backup_volume \"\$DB_VOLUME\" \"\$BACKUP_DIR/\$BACKUP_NAME/db\" db &&
-backup_volume \"\$DATASETS_VOLUME\" \"\$BACKUP_DIR/\$BACKUP_NAME/datasets\" datasets
-
-echo "✅ Бекап создан: \$BACKUP_NAME" &&
-
-# Удаляем старые бекапы, оставляем только 5 последних
-echo 'Очистка старых бекапов (оставляем 5 последних)...' &&
-cd \$BACKUP_DIR && ls -dt backup_* 2>/dev/null | tail -n +6 | xargs rm -rf 2>/dev/null || true
-echo "📦 Текущие бекапы:" && ls -dt backup_* 2>/dev/null | head -5 || echo 'Нет бекапов'
-cd ~ &&
-
-echo '🧹 ПОЛНАЯ ОЧИСТКА СЕРВЕРА...' &&
-# Остановка всех сервисов
-docker compose down || true
-
-# Очистка dangling образов (build cache НЕ трогаем — иначе каждый раз переустанавливаем пакеты)
-echo 'Удаление dangling образов...' &&
-docker image prune -f || true
-
-# Очистка директорий
-echo 'Очистка директорий...' &&
-rm -rf ~/stonks/dist/* &&
-
-echo '🔄 Копирование свежих файлов...' &&
-if [ ! -d ~/dist ]; then
-    echo '❌ ОШИБКА: Директория ~/dist не существует!'
-    ls -la ~/ | grep -E '(dist|server|build-info)'
-    exit 1
-fi &&
-if [ ! -f ~/dist/index.html ]; then
-    echo '❌ ОШИБКА: Файл ~/dist/index.html не найден!'
-    ls -la ~/dist/
-    exit 1
-fi &&
-if [ ! -d ~/server ]; then
-    echo '❌ ОШИБКА: Директория ~/server не существует!'
-    ls -la ~/ | grep -E '(dist|server|build-info)'
-    exit 1
-fi &&
-if [ ! -f ~/server/server.js ]; then
-    echo '❌ ОШИБКА: Файл ~/server/server.js не найден!'
-    ls -la ~/server/
-    exit 1
-fi &&
-echo 'Копируем frontend файлы...' &&
-cp -r ~/dist/* ~/stonks/dist/ &&
-echo 'Копируем server файлы...' &&
-cp -r ~/server/* ~/stonks/server/ &&
-
-echo '📋 Сохранение информации о сборке...' &&
-cp ~/build-info.json ~/stonks/build-info.json &&
-
-echo '🔍 Проверка конфигурации окружения...' &&
 if [ ! -f /home/ubuntu/stonks-config/.env ]; then
-    echo '❌ КРИТИЧЕСКАЯ ОШИБКА: /home/ubuntu/stonks-config/.env не найден!' &&
-    echo 'Файл с секретами должен быть создан вручную.' &&
-    echo 'Инструкция: см. ENVIRONMENT.md в репозитории' &&
-    exit 1
-fi &&
-echo '✅ Файл конфигурации найден' &&
+  echo 'missing /home/ubuntu/stonks-config/.env'
+  exit 1
+fi
 
-ensure_mcp_tokens() {
-    local env_file=\"/home/ubuntu/stonks-config/.env\"
-    local current=\"\"
-
-    current=\$(grep '^MCP_BEARER_TOKENS=' \"\$env_file\" 2>/dev/null | tail -n 1 | cut -d'=' -f2- || true)
-
-    make_mcp_token() {
-        if command -v openssl >/dev/null 2>&1; then
-            openssl rand -hex 32
-        else
-            head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n'
-        fi
-    }
-
-    if [ -z \"\$current\" ]; then
-        local token_one token_two token_three
-        token_one=\$(make_mcp_token)
-        token_two=\$(make_mcp_token)
-        token_three=\$(make_mcp_token)
-        printf '\nMCP_BEARER_TOKENS=%s,%s,%s\n' \"\$token_one\" \"\$token_two\" \"\$token_three\" >> \"\$env_file\"
-        echo '✅ MCP_BEARER_TOKENS создан (3 токена, значения не выводятся)'
-    else
-        echo '✅ MCP_BEARER_TOKENS уже задан, существующие токены сохранены'
-    fi
-
-    # Domain migration: tradingibs.site → mktorder.com
-    if grep -q 'tradingibs\.site' \"\$env_file\" 2>/dev/null; then
-        sed -i 's|https://tradingibs\\.site|https://mktorder.com|g' \"\$env_file\"
-        sed -i 's|=tradingibs\\.site|=mktorder.com|g' \"\$env_file\"
-        echo '✅ DOMAIN/origins обновлены: tradingibs.site → mktorder.com'
-    fi
-
-    if ! grep -q '^MCP_ALLOWED_ORIGINS=' \"\$env_file\"; then
-        printf 'MCP_ALLOWED_ORIGINS=https://chatgpt.com,https://chat.openai.com,https://mktorder.com\n' >> \"\$env_file\"
-        echo '✅ MCP_ALLOWED_ORIGINS добавлен'
-    fi
-
-    if ! grep -q '^FRONTEND_ORIGIN=' \"\$env_file\"; then
-        printf 'FRONTEND_ORIGIN=https://mktorder.com\n' >> \"\$env_file\"
-        echo '✅ FRONTEND_ORIGIN=https://mktorder.com добавлен'
-    else
-        # Production should not keep localhost CORS origin
-        if grep -q '^FRONTEND_ORIGIN=http://localhost' \"\$env_file\"; then
-            sed -i 's|^FRONTEND_ORIGIN=http://localhost[^[:space:]]*|FRONTEND_ORIGIN=https://mktorder.com|' \"\$env_file\"
-            echo '✅ FRONTEND_ORIGIN переведён с localhost на https://mktorder.com'
-        fi
-    fi
-
-    chmod 600 \"\$env_file\" || true
-} &&
-ensure_mcp_tokens &&
-
-# Compose env for Caddy DOMAIN / TLS
-if [ -f ~/stonks/.env ]; then
-    if grep -q '^DOMAIN=' ~/stonks/.env; then
-        sed -i 's|^DOMAIN=.*|DOMAIN=mktorder.com|' ~/stonks/.env
-    else
-        printf '\\nDOMAIN=mktorder.com\\n' >> ~/stonks/.env
-    fi
-    if ! grep -q '^TLS_CA=' ~/stonks/.env; then
-        printf 'TLS_CA=https://acme-v02.api.letsencrypt.org/directory\\n' >> ~/stonks/.env
-    fi
-    echo '✅ ~/stonks/.env DOMAIN=mktorder.com'
-fi &&
-
-echo '🔨 Пересборка контейнеров...' &&
-cd ~/stonks &&
-docker compose build &&
-if [ $? -ne 0 ]; then
-    echo '❌ ОШИБКА: Сборка контейнеров не удалась!'
-    exit 1
-fi &&
-echo '🚀 Запуск контейнеров...' &&
-docker compose up -d &&
-if [ $? -ne 0 ]; then
-    echo '❌ ОШИБКА: Запуск контейнеров не удался!'
-    echo 'Статус контейнеров:' && docker compose ps -a
-    echo '🔍 ПОСЛЕДНИЕ ЛОГИ СЕРВЕРА:'
-    docker compose logs --tail=50 server
-    exit 1
-fi &&
-
-echo '⏳ Ожидание готовности API (макс 60 сек)...' &&
-for i in \$(seq 1 12); do
-  STATUS=\$(timeout 5 curl -s https://mktorder.com/api/status 2>/dev/null | head -1 || echo '')
-  if [ -n \"\$STATUS\" ]; then
-    echo "✅ API ответил: \$STATUS"
-    break
+BACKUP_DIR=~/stonks-backups
+BACKUP_NAME=backup_\$(date +%Y%m%d_%H%M%S)
+mkdir -p \"\$BACKUP_DIR/\$BACKUP_NAME/state\" \"\$BACKUP_DIR/\$BACKUP_NAME/db\"
+resolve_volume_name() {
+  local container_name=\"\$1\" destination=\"\$2\" fallback_suffix=\"\$3\" resolved=\"\"
+  resolved=\$(docker inspect \"\$container_name\" --format '{{range .Mounts}}{{println .Destination \"\\t\" .Name \"\\t\" .Type}}{{end}}' 2>/dev/null | awk -v dest=\"\$destination\" '\$1 == dest && \$3 == \"volume\" { print \$2; exit }')
+  if [ -z \"\$resolved\" ]; then
+    resolved=\$(docker volume ls --format '{{.Name}}' | grep -E \"(^|_)\${fallback_suffix}\$\" | head -n 1 || true)
   fi
-  echo "  [\${i}/12] Ещё не готов, ждём 5 сек..."
-  sleep 5
-done &&
+  printf '%s' \"\$resolved\"
+}
+backup_volume() {
+  local actual_volume=\"\$1\" target_dir=\"\$2\" label=\"\$3\"
+  if [ -n \"\$actual_volume\" ] && docker volume inspect \"\$actual_volume\" >/dev/null 2>&1; then
+    echo \"backup \$label volume: \$actual_volume\"
+    docker run --rm -v \"\$actual_volume:/source\" -v \"\$target_dir:/backup\" alpine sh -lc 'cp -a /source/. /backup/'
+  else
+    echo \"skip backup \$label: volume not found\"
+  fi
+}
+STATE_VOLUME=\$(resolve_volume_name stonks-server /data/state stonks_state)
+DB_VOLUME=\$(resolve_volume_name stonks-server /data/db stonks_db)
+backup_volume \"\$STATE_VOLUME\" \"\$BACKUP_DIR/\$BACKUP_NAME/state\" state
+backup_volume \"\$DB_VOLUME\" \"\$BACKUP_DIR/\$BACKUP_NAME/db\" db
+cd \"\$BACKUP_DIR\" && ls -dt backup_* 2>/dev/null | tail -n +6 | xargs rm -rf 2>/dev/null || true
+echo \"backup \$BACKUP_NAME (db+state only)\"
 
-echo '✅ ПРОВЕРКА РАЗВЕРТЫВАНИЯ:' &&
-echo 'Контейнеры:' &&
-docker ps --format 'table {{.Names}}\t{{.Status}}' &&
-
-echo -e '\nИнформация о сборке:' &&
-cat ~/stonks/build-info.json &&
-
-echo -e '\nServer git SHA после деплоя:' &&
-cd ~/stonks &&
-git rev-parse HEAD &&
-cd ~ &&
-
-echo -e '\nСвежие файлы:' &&
-docker exec stonks-frontend find /usr/share/nginx/html/assets -name 'index-*.js' -exec ls -la {} \\; 2>/dev/null || echo 'Контейнер не запущен' &&
-
-# Очистка
-rm ~/${ARCHIVE_NAME} ~/build-info.json ~/server/ ~/dist/ -rf
+cd ${REMOTE_DIR}
+if [ -f .env ]; then
+  grep -q '^DOMAIN=' .env && sed -i 's|^DOMAIN=.*|DOMAIN=mktorder.com|' .env || printf '\\nDOMAIN=mktorder.com\\n' >> .env
+fi
+export SERVER_IMAGE=${IMAGE}
+export BUILD_ID=${GIT_COMMIT}
+docker compose up -d --no-build --force-recreate server
+docker compose ps
 "
 
-# 8. ФИНАЛЬНАЯ ПРОВЕРКА
-echo "🎯 ФИНАЛЬНАЯ ПРОВЕРКА..."
+echo "Wait for API..."
+ok=0
+for i in $(seq 1 15); do
+  body="$(curl -fsS -m 8 https://mktorder.com/api/status 2>/dev/null || true)"
+  if echo "$body" | grep -q '"status":"ok"'; then
+    echo "$body"
+    ok=1
+    break
+  fi
+  echo "  [$i/15] not ready"
+  sleep 2
+done
+if [ "$ok" != 1 ]; then
+  echo "API did not become ready"
+  exit 1
+fi
 
-# Проверка доступности сайта
 if curl -s -I https://mktorder.com/ | grep -q "200"; then
-    echo "✅ САЙТ ДОСТУПЕН!"
+  echo "site 200"
 else
-    echo "⚠️  САЙТ НЕДОСТУПЕН (возможно, еще запускается или Cloudflare SSL не готов)"
+  echo "site not 200 yet"
 fi
 
-# Проверка редиректа со старого домена
-REDIR_LOC=$(curl -sI https://tradingibs.site/ 2>/dev/null | tr -d '\r' | awk 'tolower($1)=="location:" {print $2; exit}')
-if echo "$REDIR_LOC" | grep -q "mktorder.com"; then
-    echo "✅ Редирект tradingibs.site → mktorder.com работает"
+echo "Telegram notify..."
+BOT_TOKEN="$(ssh -o BatchMode=yes "$HOST" "grep '^TELEGRAM_BOT_TOKEN=' /home/ubuntu/stonks-config/.env 2>/dev/null | cut -d= -f2-" || true)"
+CHAT_ID="$(ssh -o BatchMode=yes "$HOST" "grep '^TELEGRAM_CHAT_ID=' /home/ubuntu/stonks-config/.env 2>/dev/null | cut -d= -f2-" || true)"
+if [ -n "${BOT_TOKEN:-}" ] && [ -n "${CHAT_ID:-}" ]; then
+  curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+    -d "chat_id=${CHAT_ID}" \
+    --data-urlencode "text=🚀 Сервер обновлен!
+
+💻 Версия: ${GIT_COMMIT}
+🕰 Дата: ${GIT_DATE}
+🌐 Сайт: https://mktorder.com" >/dev/null || echo "telegram send failed"
 else
-    echo "⚠️  Редирект со старого домена: ожидался mktorder.com, получено: ${REDIR_LOC:-none}"
+  echo "telegram env missing"
 fi
 
-# Очистка локальных файлов
-rm "${ARCHIVE_NAME}" build-info.json
-
-echo ""
-# 10. ОТПРАВКА УВЕДОМЛЕНИЯ В TELEGRAM
-echo "📨 Отправка уведомления в Telegram..."
-
-# Читаем токен и chat_id прямо из .env на сервере
-BOT_TOKEN=$(ssh ubuntu@146.235.212.239 "grep '^TELEGRAM_BOT_TOKEN=' /home/ubuntu/stonks-config/.env 2>/dev/null | cut -d'=' -f2-" 2>/dev/null || echo "")
-CHAT_ID=$(ssh ubuntu@146.235.212.239 "grep '^TELEGRAM_CHAT_ID=' /home/ubuntu/stonks-config/.env 2>/dev/null | cut -d'=' -f2-" 2>/dev/null || echo "")
-
-if [ -n "$BOT_TOKEN" ] && [ -n "$CHAT_ID" ]; then
-    MESSAGE="🚀 Сервер обновлен!%0A%0A💻 Версия: ${GIT_COMMIT}%0A🕰 Дата: ${GIT_DATE}%0A🌐 Сайт: https://mktorder.com%0A%0A✅ Развертывание завершено!"
-    TELEGRAM_RESPONSE=$(curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
-        -d "chat_id=${CHAT_ID}" \
-        -d "text=${MESSAGE}" 2>&1)
-    if echo "$TELEGRAM_RESPONSE" | grep -q '"ok":true'; then
-        echo "✅ Уведомление отправлено в Telegram!"
-    else
-        echo "⚠️  Ошибка отправки в Telegram: $TELEGRAM_RESPONSE"
-    fi
-else
-    echo "⚠️  TELEGRAM_BOT_TOKEN или TELEGRAM_CHAT_ID не найдены в /home/ubuntu/stonks-config/.env"
-fi
-
-echo ""
-echo "🎉 РАЗВЕРТЫВАНИЕ ЗАВЕРШЕНО!"
-echo "📋 Версия: ${GIT_COMMIT} от ${GIT_DATE}"
-echo "🌐 Сайт: https://mktorder.com"
-echo ""
-echo "💡 ГАРАНТИИ НАДЕЖНОСТИ:"
-echo "   ✅ Код только из GitHub (последний коммит)"
-echo "   ✅ Полная очистка старых файлов"
-echo "   ✅ Пересборка контейнеров без кэша"
-echo "   ✅ Проверка целостности сборки"
-echo "   ✅ Метаданные о версии сохранены"
-echo "   ✅ Уведомление отправлено в Telegram"
+echo
+echo "DONE ${GIT_COMMIT}  https://mktorder.com"
+echo "VPS pulled a ready image — no compile on the server."
