@@ -264,6 +264,222 @@ const Charts = {
     chart.timeScale().fitContent();
     return chart;
   },
+  emaValues(bars, period, startMode) {
+    const data = (bars || []).filter((b) => b && b.date && Number.isFinite(Number(b.close)));
+    const n = Number(period) || 20;
+    const out = new Array(data.length);
+    if (!data.length || n < 1) return { bars: data, values: out };
+    const k = 2 / (n + 1);
+    if (startMode === 'from_start') {
+      out[0] = Number(data[0].close);
+      for (let i = 1; i < data.length; i++) out[i] = (Number(data[i].close) - out[i - 1]) * k + out[i - 1];
+      return { bars: data, values: out };
+    }
+    if (data.length < n) return { bars: data, values: out };
+    let sum = 0;
+    for (let i = 0; i < n; i++) sum += Number(data[i].close);
+    out[n - 1] = sum / n;
+    for (let i = n; i < data.length; i++) out[i] = (Number(data[i].close) - out[i - 1]) * k + out[i - 1];
+    return { bars: data, values: out };
+  },
+  ibsValues(bars) {
+    return (bars || []).filter((b) => b && b.date).map((b) => {
+      const high = Number(b.high), low = Number(b.low), close = Number(b.close);
+      const range = high - low;
+      const ibs = range > 0 ? (close - low) / range : 0.5;
+      return { date: b.date, value: ibs };
+    });
+  },
+  csvFromBars(bars, extras) {
+    const extraKeys = Object.keys(extras || {});
+    const head = ['date', 'open', 'high', 'low', 'close', 'volume'].concat(extraKeys);
+    const rows = [head.join(',')];
+    (bars || []).forEach((b, i) => {
+      if (!b || !b.date) return;
+      const cells = [
+        this.isoDate(b.date),
+        b.open, b.high, b.low, b.close, b.volume == null ? '' : b.volume,
+      ].concat(extraKeys.map((k) => {
+        const arr = extras[k];
+        const v = Array.isArray(arr) ? arr[i] : (arr && arr[this.isoDate(b.date)]);
+        return v == null ? '' : v;
+      }));
+      rows.push(cells.join(','));
+    });
+    return rows.join('\n');
+  },
+  downloadCsv(filename, text) {
+    const blob = new Blob([text], { type: 'text/csv;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename || 'chart.csv';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 500);
+  },
+  area(container, points, isDark, color, opts) {
+    opts = opts || {};
+    const chart = this.create(container, isDark);
+    const col = color || '#4f46e5';
+    const series = chart.addSeries(LightweightCharts.AreaSeries, {
+      lineColor: col,
+      topColor: opts.topColor || (col + '55'),
+      bottomColor: opts.bottomColor || (col + '08'),
+      lineWidth: 2,
+      priceLineVisible: !!opts.priceLine,
+    });
+    series.setData(this.mapLinePoints(points));
+    if (opts.refValue != null && typeof series.createPriceLine === 'function') {
+      series.createPriceLine({ price: Number(opts.refValue), color: opts.refColor || '#94a3b8', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: opts.refTitle || '' });
+    }
+    this.applyRange(chart, this.mapLinePoints(points).map((p) => ({ time: this.toUtcTs(p.time && p.time.year ? `${p.time.year}-${String(p.time.month).padStart(2, '0')}-${String(p.time.day).padStart(2, '0')}` : p.time), })), opts.range);
+    if (!opts.range || opts.range === 'MAX') chart.timeScale().fitContent();
+    return chart;
+  },
+  histogram(container, points, isDark, opts) {
+    opts = opts || {};
+    const chart = this.create(container, isDark);
+    const series = chart.addSeries(LightweightCharts.HistogramSeries, {
+      priceFormat: { type: 'price', precision: 2, minMove: 0.01 },
+    });
+    const data = (points || []).filter((p) => p && p.date != null).map((p) => ({
+      time: this.toBusinessDay(p.date),
+      value: Number(p.value) || 0,
+      color: p.color || ((Number(p.value) || 0) >= 0 ? '#16a34a' : '#dc2626'),
+    }));
+    series.setData(data);
+    if (opts.refValue != null && typeof series.createPriceLine === 'function') {
+      series.createPriceLine({ price: Number(opts.refValue), color: '#94a3b8', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: opts.refTitle || '' });
+    }
+    chart.timeScale().fitContent();
+    return chart;
+  },
+  richLine(container, points, isDark, opts) {
+    opts = opts || {};
+    const mapped = this.mapLinePoints(points);
+    const chart = this.create(container, isDark, { timeVisible: true });
+    const col = opts.color || '#4f46e5';
+    const series = opts.area
+      ? chart.addSeries(LightweightCharts.AreaSeries, {
+        lineColor: col, topColor: (opts.topColor || col + '44'), bottomColor: (opts.bottomColor || col + '0A'), lineWidth: 2,
+      })
+      : chart.addSeries(LightweightCharts.LineSeries, { color: col, lineWidth: 2 });
+    series.setData(mapped);
+    if (opts.compare && opts.compare.length) {
+      const cmp = chart.addSeries(LightweightCharts.LineSeries, { color: opts.compareColor || '#94a3b8', lineWidth: 2, lineStyle: 2 });
+      cmp.setData(this.mapLinePoints(opts.compare));
+    }
+    if (opts.refValue != null && typeof series.createPriceLine === 'function') {
+      series.createPriceLine({ price: Number(opts.refValue), color: opts.refColor || '#94a3b8', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: opts.refTitle || '' });
+    }
+    const asTs = mapped.map((p) => ({ time: this.toUtcTs(`${p.time.year}-${String(p.time.month).padStart(2, '0')}-${String(p.time.day).padStart(2, '0')}`) }));
+    this.applyRange(chart, asTs, opts.range || 'MAX');
+    if (!opts.range || opts.range === 'MAX') chart.timeScale().fitContent();
+    return chart;
+  },
+  priceChart(container, bars, opts) {
+    opts = opts || {};
+    const dark = !!opts.dark;
+    const sorted = (bars || []).filter((b) => b && b.date).slice().sort((a, b) => String(a.date).localeCompare(String(b.date)));
+    const candles = this.mapOHLC(sorted);
+    const panePct = Math.max(8, Math.min(40, Number(opts.indicatorPanePercent) || 18)) / 100;
+    const showVol = opts.volume !== false;
+    const showIbs = opts.ibs !== false;
+    const extraPanes = (showVol ? 1 : 0) + (showIbs ? 1 : 0);
+    const chart = this.create(container, dark, { timeVisible: true, rightOffset: 4 });
+    const candleSeries = chart.addSeries(LightweightCharts.CandlestickSeries, {
+      upColor: '#16a34a', downColor: '#dc2626', borderVisible: false, wickUpColor: '#16a34a', wickDownColor: '#dc2626',
+    });
+    candleSeries.setData(candles);
+    if (opts.ema20 !== false) {
+      const ema20 = this.emaValues(sorted, 20, opts.emaStartMode || 'full_history');
+      const s20 = chart.addSeries(LightweightCharts.LineSeries, { color: opts.ema20Color || '#2563EB', lineWidth: 2, priceLineVisible: false, lastValueVisible: false });
+      s20.setData(ema20.values.map((v, i) => (v == null ? null : { time: this.toBusinessDay(ema20.bars[i].date), value: v })).filter(Boolean));
+    }
+    if (opts.ema200 !== false) {
+      const ema200 = this.emaValues(sorted, Number(opts.emaPeriod) || 200, opts.emaStartMode || 'full_history');
+      const s200 = chart.addSeries(LightweightCharts.LineSeries, { color: opts.ema200Color || '#F59E0B', lineWidth: 2, priceLineVisible: false, lastValueVisible: false });
+      s200.setData(ema200.values.map((v, i) => (v == null ? null : { time: this.toBusinessDay(ema200.bars[i].date), value: v })).filter(Boolean));
+      (opts.buyZones || []).filter((z) => z && z.enabled !== false).forEach((z) => {
+        const lvl = Number(z.levelPct);
+        if (!Number.isFinite(lvl)) return;
+        const line = chart.addSeries(LightweightCharts.LineSeries, { color: '#10B981', lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false });
+        line.setData(ema200.values.map((v, i) => (v == null ? null : { time: this.toBusinessDay(ema200.bars[i].date), value: v * (1 + lvl / 100) })).filter(Boolean));
+      });
+      (opts.sellZones || []).filter((z) => z && z.enabled !== false).forEach((z) => {
+        const lvl = Number(z.levelPct);
+        if (!Number.isFinite(lvl)) return;
+        const line = chart.addSeries(LightweightCharts.LineSeries, { color: '#EF4444', lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false });
+        line.setData(ema200.values.map((v, i) => (v == null ? null : { time: this.toBusinessDay(ema200.bars[i].date), value: v * (1 + lvl / 100) })).filter(Boolean));
+      });
+    }
+    let pane = 1;
+    if (showVol && LightweightCharts.HistogramSeries) {
+      const vol = chart.addSeries(LightweightCharts.HistogramSeries, {
+        priceFormat: { type: 'volume' },
+        priceScaleId: 'vol',
+      }, extraPanes ? pane : undefined);
+      vol.setData(sorted.map((b, i) => ({
+        time: this.toBusinessDay(b.date),
+        value: Number(b.volume) || 0,
+        color: i > 0 && Number(b.close) < Number(sorted[i - 1].close) ? '#fca5a5' : '#86efac',
+      })));
+      try { chart.priceScale('vol').applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } }); } catch (_) {}
+      pane += 1;
+    }
+    if (showIbs) {
+      const ibs = this.ibsValues(sorted);
+      const ibsSeries = chart.addSeries(LightweightCharts.LineSeries, {
+        color: '#7c3aed', lineWidth: 1, priceScaleId: 'ibs', lastValueVisible: false, priceLineVisible: false,
+      }, extraPanes ? pane : undefined);
+      ibsSeries.setData(ibs.map((p) => ({ time: this.toBusinessDay(p.date), value: p.value })));
+      try { chart.priceScale('ibs').applyOptions({ scaleMargins: { top: extraPanes > 1 ? 0.05 : (1 - panePct), bottom: 0 } }); } catch (_) {}
+    }
+    const markers = [];
+    if (opts.showTrades !== false) {
+      (opts.trades || []).forEach((t) => {
+        if (!t || !t.entryDate) return;
+        markers.push({ time: this.toBusinessDay(t.entryDate), position: 'belowBar', color: '#16a34a', shape: 'arrowUp', text: '' });
+        if (t.exitDate && t.exitReason !== 'end_of_data') {
+          markers.push({ time: this.toBusinessDay(t.exitDate), position: 'aboveBar', color: '#dc2626', shape: 'arrowDown', text: '' });
+        }
+      });
+    }
+    (opts.splits || []).forEach((ev) => {
+      if (!ev || !ev.date) return;
+      markers.push({ time: this.toBusinessDay(ev.date), position: 'inBar', color: '#f59e0b', shape: 'square', text: '×' + (ev.factor == null ? '' : ev.factor) });
+    });
+    this.mark(candleSeries, markers);
+    this.applyRange(chart, candles.map((c) => ({ time: this.toUtcTs(`${c.time.year}-${String(c.time.month).padStart(2, '0')}-${String(c.time.day).padStart(2, '0')}`) })), opts.range || 'MAX');
+    if (!opts.range || opts.range === 'MAX' || opts.range === 'ALL') chart.timeScale().fitContent();
+    return { chart, candles: sorted };
+  },
+  deviationChart(container, points, isDark, opts) {
+    opts = opts || {};
+    const chart = this.create(container, isDark, { timeVisible: true });
+    const series = chart.addSeries(LightweightCharts.LineSeries, { color: opts.color || '#7c3aed', lineWidth: 2 });
+    const mapped = this.mapLinePoints(points);
+    series.setData(mapped);
+    if (typeof series.createPriceLine === 'function') {
+      series.createPriceLine({ price: 0, color: '#94a3b8', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: '0' });
+      (opts.buyZones || []).filter((z) => z && z.enabled !== false).forEach((z) => {
+        series.createPriceLine({ price: Number(z.levelPct), color: '#10B981', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: String(z.levelPct) });
+      });
+      (opts.sellZones || []).filter((z) => z && z.enabled !== false).forEach((z) => {
+        series.createPriceLine({ price: Number(z.levelPct), color: '#EF4444', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: String(z.levelPct) });
+      });
+    }
+    const markers = [];
+    (opts.trades || []).forEach((t) => {
+      if (!t || !t.entryDate) return;
+      markers.push({ time: this.toBusinessDay(t.entryDate), position: 'belowBar', color: '#16a34a', shape: 'arrowUp', text: '' });
+      if (t.exitDate && t.exitReason !== 'end_of_data') {
+        markers.push({ time: this.toBusinessDay(t.exitDate), position: 'aboveBar', color: '#dc2626', shape: 'arrowDown', text: '' });
+      }
+    });
+    this.mark(series, markers);
+    chart.timeScale().fitContent();
+    return chart;
+  },
 };
 
 if (typeof module !== 'undefined' && module.exports) {
