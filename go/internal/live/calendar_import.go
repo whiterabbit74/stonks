@@ -87,7 +87,7 @@ func (e *Engine) ImportWebullCalendar() (map[string]any, error) {
 			if yearMap == nil {
 				yearMap = map[string]any{}
 			}
-			yearMap[mmdd] = map[string]any{"name": holidayName(mmdd), "type": "holiday", "description": "Market Closed"}
+			yearMap[mmdd] = map[string]any{"name": tradingdate.HolidayName(d), "type": "holiday", "description": "Market Closed"}
 			holidays[year] = yearMap
 			newH++
 			continue
@@ -102,7 +102,7 @@ func (e *Engine) ImportWebullCalendar() (map[string]any, error) {
 			if yearMap == nil {
 				yearMap = map[string]any{}
 			}
-			yearMap[mmdd] = map[string]any{"name": shortName(mmdd), "type": "short", "description": "Early close at 1:00 PM", "hours": 3.5}
+			yearMap[mmdd] = map[string]any{"name": tradingdate.ShortDayName(d), "type": "short", "description": "Early close at 1:00 PM", "hours": 3.5}
 			shortDays[year] = yearMap
 			newS++
 		}
@@ -125,26 +125,4 @@ func (e *Engine) ImportWebullCalendar() (map[string]any, error) {
 	}, nil
 }
 
-func holidayName(mmdd string) string {
-	switch mmdd {
-	case "01-01":
-		return "New Year's Day"
-	case "07-04":
-		return "Independence Day"
-	case "12-25":
-		return "Christmas Day"
-	default:
-		return "Market Holiday"
-	}
-}
 
-func shortName(mmdd string) string {
-	switch mmdd {
-	case "12-24":
-		return "Christmas Eve"
-	case "07-03":
-		return "Independence Day Eve"
-	default:
-		return "Early Close"
-	}
-}

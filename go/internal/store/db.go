@@ -528,7 +528,7 @@ const DefaultCalendarJSON = `{
       "04-03": {"name": "Good Friday", "type": "holiday"},
       "05-25": {"name": "Memorial Day", "type": "holiday"},
       "06-19": {"name": "Juneteenth", "type": "holiday"},
-      "07-04": {"name": "Independence Day", "type": "holiday"},
+      "07-03": {"name": "Independence Day", "type": "holiday"},
       "09-07": {"name": "Labor Day", "type": "holiday"},
       "11-26": {"name": "Thanksgiving Day", "type": "holiday"},
       "12-25": {"name": "Christmas Day", "type": "holiday"}

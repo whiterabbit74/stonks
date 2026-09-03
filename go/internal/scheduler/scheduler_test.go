@@ -18,6 +18,38 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
+func TestComputedFloatingHolidaysAreNotTradingDays(t *testing.T) {
+	// tradingHours present used to skip the computed NYSE calendar entirely.
+	cal := Calendar{}
+	cal.TradingHours.Normal.End = "16:00"
+	cases := []struct {
+		y, m, d, dow int
+		name         string
+	}{
+		{2026, 1, 19, 1, "MLK"},
+		{2026, 2, 16, 1, "Presidents"},
+		{2026, 4, 3, 5, "Good Friday"},
+		{2026, 5, 25, 1, "Memorial"},
+		{2026, 7, 3, 5, "Independence observed"},
+		{2026, 9, 7, 1, "Labor"},
+		{2026, 11, 26, 4, "Thanksgiving"},
+		{2025, 1, 20, 1, "MLK 2025"},
+		{2025, 11, 27, 4, "Thanksgiving 2025"},
+		{2024, 1, 15, 1, "MLK 2024"},
+		{2024, 11, 28, 4, "Thanksgiving 2024"},
+	}
+	for _, c := range cases {
+		p := tradingdate.NYSEParts{Year: c.y, Month: c.m, Day: c.d, DayOfWeek: c.dow}
+		if IsTradingDay(p, cal) {
+			t.Errorf("%s %04d-%02d-%02d must not be a trading day", c.name, c.y, c.m, c.d)
+		}
+	}
+	tue := tradingdate.NYSEParts{Year: 2026, Month: 1, Day: 20, DayOfWeek: 2}
+	if !IsTradingDay(tue, cal) {
+		t.Fatal("2026-01-20 should trade")
+	}
+}
+
 func TestHolidayIsNotTradingDay(t *testing.T) {
 	cal := Calendar{Holidays: map[string]map[string]any{
 		"2026": {"07-03": map[string]any{"name": "Independence Day"}},
@@ -42,6 +74,39 @@ func TestShortSessionClose(t *testing.T) {
 	sess := TradingSession(p, cal)
 	if !sess.Short || sess.CloseMin != 13*60 {
 		t.Fatalf("short session %+v", sess)
+	}
+}
+
+func TestTickSkipsComputedMLKEvenWithEmptyHolidayMap(t *testing.T) {
+	dir := t.TempDir()
+	db, err := store.Open(filepath.Join(dir, "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	cal := map[string]any{
+		"holidays":     map[string]any{},
+		"tradingHours": map[string]any{"normal": map[string]any{"start": "09:30", "end": "16:00"}},
+	}
+	raw, _ := json.Marshal(cal)
+	if err := db.SaveCalendar(raw); err != nil {
+		t.Fatal(err)
+	}
+	// 2026-01-19 20:00 UTC = 15:00 ET, MLK Monday
+	now := time.Date(2026, 1, 19, 20, 0, 0, 0, time.UTC)
+	var logs []JobLog
+	RunTick(db, Deps{}, now, func(j JobLog) { logs = append(logs, j) })
+	sawSkip := false
+	for _, j := range logs {
+		if j.Name == "market-jobs" && j.Skipped {
+			sawSkip = true
+		}
+		if j.Name == "telegram-aggregation" || j.Name == "price-actualization" {
+			t.Fatalf("market job ran on computed MLK: %+v", j)
+		}
+	}
+	if !sawSkip {
+		t.Fatalf("expected skip on MLK, logs=%+v", logs)
 	}
 }
 

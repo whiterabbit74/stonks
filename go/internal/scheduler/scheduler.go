@@ -74,10 +74,13 @@ func IsTradingDay(p tradingdate.NYSEParts, cal Calendar) bool {
 	if p.DayOfWeek == 0 || p.DayOfWeek == 6 {
 		return false
 	}
-	if len(cal.Holidays) > 0 || len(cal.ShortDays) > 0 || cal.TradingHours.Normal.End != "" {
-		return !IsHoliday(p, cal)
+	if IsHoliday(p, cal) {
+		return false
 	}
-	return p.DayOfWeek >= 1 && p.DayOfWeek <= 5
+	if tradingdate.IsNYSEHoliday(tradingdate.NYSEPartsDate(p)) {
+		return false
+	}
+	return true
 }
 
 func parseHM(hm string, fallback int) int {
