@@ -111,22 +111,13 @@ func (e *Engine) expireStaleTrackers() {
 		return
 	}
 	today := tradingdate.TodayNYSE(e.now())
-	pending, err := e.DB.ListPendingTrackers()
+	n, err := e.DB.ExpireStaleTrackers(today, 64)
 	if err != nil {
+		e.logAuto("expire_trackers_failed", "", map[string]any{"error": err.Error()})
 		return
 	}
-	for _, t := range pending {
-		id := fmt.Sprint(t["clientOrderId"])
-		dateKey := fmt.Sprint(t["dateKey"])
-		if dateKey == "" || dateKey == "<nil>" {
-			continue
-		}
-		if dateKey < today {
-			e.finalizeTracker(t, "expired")
-			e.logAuto("order_tracking_finished", e.metaCorr(id), map[string]any{
-				"clientOrderId": id, "status": "expired", "reason": "stale_date_key", "dateKey": dateKey,
-			})
-		}
+	if n > 0 {
+		e.logAuto("order_tracking_finished", "", map[string]any{"status": "expired", "count": n, "reason": "stale_or_max_attempts"})
 	}
 }
 

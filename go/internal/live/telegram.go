@@ -378,7 +378,7 @@ func (e *Engine) evalWatch(sym string, w map[string]any, provider string) watchE
 			ev.rtFresh = ok && price > 0
 		}
 	}
-	bars, adj, _ := e.DB.GetOHLC(sym)
+	bars, adj, _ := e.DB.GetOHLCLast(sym, 8)
 	ev.histFresh = barsHavePrevSession(bars, tradingdate.TodayNYSE(e.now()))
 	if price <= 0 && len(bars) > 0 {
 		// Historical bars may fill price for display but MUST NOT set ok=true for live decisions.

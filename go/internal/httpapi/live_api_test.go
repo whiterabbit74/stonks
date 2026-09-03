@@ -91,7 +91,8 @@ func TestLivePathsAreNotJsonOKStubs(t *testing.T) {
 
 	more := []types.OHLC{
 		{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1},
-		{Date: "2026-09-02", Open: 8, High: 9, Low: 7, Close: 8.5, Volume: 1},
+		// Close near the low so IBS < watch lowIBS 0.1 (A5 uses the watch, not global 0.9).
+		{Date: "2026-09-02", Open: 8, High: 9, Low: 7, Close: 7.1, Volume: 1},
 	}
 	s.Live.Quotes = &live.MemoryQuotes{Bars: map[string][]types.OHLC{"AAPL": more}}
 	rec = postJSON(s, "/api/telegram/actualize-prices", map[string]any{})

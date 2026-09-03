@@ -565,10 +565,22 @@ func (e *Engine) Dashboard() (map[string]any, error) {
 
 func (e *Engine) Logs(limit int) map[string]any {
 	logs, _ := e.DB.ListAutotradeLogs(limit)
+	autotrade, _ := e.DB.ListAutotradeLogsKind("autotrade", limit)
+	monitor, _ := e.DB.ListAutotradeLogsKind("monitor", limit)
+	brokerRaw, _ := e.DB.ListAutotradeLogsKind("brokerRaw", limit)
 	pending, _ := e.DB.ListPendingTrackers()
 	recent, _ := e.DB.ListRecentTrackers(20)
 	if logs == nil {
 		logs = []map[string]any{}
+	}
+	if autotrade == nil {
+		autotrade = []map[string]any{}
+	}
+	if monitor == nil {
+		monitor = []map[string]any{}
+	}
+	if brokerRaw == nil {
+		brokerRaw = []map[string]any{}
 	}
 	if pending == nil {
 		pending = []map[string]any{}
@@ -576,16 +588,17 @@ func (e *Engine) Logs(limit int) map[string]any {
 	if recent == nil {
 		recent = []map[string]any{}
 	}
-	autotrade, monitor, brokerRaw := []map[string]any{}, []map[string]any{}, []map[string]any{}
-	for _, row := range logs {
-		msg := fmt.Sprint(row["message"])
-		switch splitLogChannel(msg) {
-		case "monitor":
-			monitor = append(monitor, row)
-		case "brokerRaw":
-			brokerRaw = append(brokerRaw, row)
-		default:
-			autotrade = append(autotrade, row)
+	if len(autotrade) == 0 && len(monitor) == 0 && len(brokerRaw) == 0 {
+		for _, row := range logs {
+			msg := fmt.Sprint(row["message"])
+			switch splitLogChannel(msg) {
+			case "monitor":
+				monitor = append(monitor, row)
+			case "brokerRaw":
+				brokerRaw = append(brokerRaw, row)
+			default:
+				autotrade = append(autotrade, row)
+			}
 		}
 	}
 	return map[string]any{

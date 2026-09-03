@@ -168,16 +168,33 @@ func TestSanitizeAutoTradingConfig(t *testing.T) {
 	}
 }
 
-func TestMissingAllowFlagsFailClosed(t *testing.T) {
+func TestOmittedAllowFlagsFilledBySettingsDefaults(t *testing.T) {
 	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
 	_, e, _ := testEngine(t, bars)
-	// wipe allow flags
 	settings := e.DB.Settings()
 	settings["autoTrading"] = map[string]any{"enabled": true, "lowIBS": 0.9, "highIBS": 0.75}
 	_ = e.DB.SaveSettings(settings)
 	ev := e.Evaluate()
+	if ev.AutoTrading["allowNewEntries"] != true || ev.AutoTrading["allowExits"] != true {
+		t.Fatalf("A7 must fill Node defaults true, got %+v", ev.AutoTrading)
+	}
+	if fmt.Sprint(ev.Decision["action"]) != "entry" {
+		t.Fatalf("default allowNewEntries true should enter %+v", ev.Decision)
+	}
+}
+
+func TestExplicitAllowNewEntriesFalseBlocksEntry(t *testing.T) {
+	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
+	_, e, _ := testEngine(t, bars)
+	settings := e.DB.Settings()
+	settings["autoTrading"] = map[string]any{
+		"enabled": true, "lowIBS": 0.9, "highIBS": 0.75,
+		"allowNewEntries": false, "allowExits": false,
+	}
+	_ = e.DB.SaveSettings(settings)
+	ev := e.Evaluate()
 	if fmt.Sprint(ev.Decision["action"]) != "none" {
-		t.Fatalf("missing allowNewEntries must not enter %+v", ev.Decision)
+		t.Fatalf("explicit allowNewEntries=false must not enter %+v", ev.Decision)
 	}
 }
 

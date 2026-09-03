@@ -8,39 +8,8 @@ import (
 	"mktorder.com/go/internal/tradingdate"
 )
 
-func tradePnl(entryPrice, exitPrice float64) (pnlAbs, pnlPct any) {
-	if !(entryPrice > 0) {
-		return nil, nil
-	}
-	diff := exitPrice - entryPrice
-	pnlAbs = float64(int(diff*1e6+0.5)) / 1e6
-	pnlPct = float64(int((diff/entryPrice)*100*1e6+0.5)) / 1e6
-	return pnlAbs, pnlPct
-}
-
-func holdingDays(entryDate, exitDate string) int {
-	if entryDate == "" || entryDate == "<nil>" || exitDate == "" || exitDate == "<nil>" {
-		return 0
-	}
-	n := tradingdate.DaysBetween(entryDate, exitDate)
-	if n < 1 {
-		n = 1
-	}
-	return n
-}
-
-// getTrade avoids store.GetTrade on broker_trades (that query selects linked_broker_trade_id, which the table lacks).
 func (e *Engine) getTrade(table, id string) map[string]any {
-	if table == "trades" {
-		return e.DB.GetTrade("trades", id)
-	}
-	rows, _ := e.DB.ListTrades(table)
-	for _, t := range rows {
-		if fmt.Sprint(t["id"]) == id {
-			return t
-		}
-	}
-	return nil
+	return e.DB.GetTrade(table, id)
 }
 
 func (e *Engine) openTradeBySymbol(table, symbol, preferID string) map[string]any {
@@ -91,32 +60,16 @@ func (e *Engine) closeTradeWithPnL(table, id string, exitPrice float64, exitDate
 	if id == "" || id == "<nil>" {
 		return
 	}
-	existing := e.getTrade(table, id)
-	if existing == nil {
-		return
-	}
-	entryPrice := asFloat(existing["entryPrice"])
-	pnlAbs, pnlPct := tradePnl(entryPrice, exitPrice)
-	hold := holdingDays(fmt.Sprint(existing["entryDate"]), exitDate)
-	prevNote := fmt.Sprint(existing["notes"])
-	if prevNote == "<nil>" {
-		prevNote = ""
-	}
+	extra := map[string]any{}
 	if note != "" {
-		if prevNote != "" {
-			note = prevNote + "\n" + note
-		}
-	} else {
-		note = prevNote
+		extra["notes"] = note
 	}
-	_ = e.DB.PatchTrade(table, id, map[string]any{
-		"status": "closed", "exitDate": exitDate, "exitPrice": exitPrice, "notes": note,
-	})
-	if table != "trades" && table != "broker_trades" {
-		return
+	if exitIBS != nil {
+		extra["exitIBS"] = exitIBS
 	}
-	_, _ = e.DB.SQL.Exec(`UPDATE `+table+` SET exit_ibs=?, pnl_absolute=?, pnl_percent=?, holding_days=? WHERE id=?`,
-		exitIBS, pnlAbs, pnlPct, hold, id)
+	if _, err := e.DB.CloseTradeByID(table, id, exitPrice, exitDate, extra); err != nil {
+		e.logAuto("local_trade_close_failed", "", map[string]any{"table": table, "id": id, "error": err.Error()})
+	}
 }
 
 func (e *Engine) recordFill(t map[string]any, detail map[string]any, status string) {
