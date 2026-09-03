@@ -1102,6 +1102,57 @@ func (d *DB) GetOHLC(id string) ([]types.OHLC, bool, error) {
 	return data, adj, nil
 }
 
+// GetOHLCLast returns the last n bars in chronological order without loading
+// the full history. Missing ticker yields nil, false, nil like GetOHLC.
+func (d *DB) GetOHLCLast(ticker string, n int) ([]types.OHLC, bool, error) {
+	ticker = SafeTicker(ticker)
+	var adj int
+	err := d.SQL.QueryRow(`SELECT adjusted_for_splits FROM dataset_meta WHERE ticker = ?`, ticker).Scan(&adj)
+	if err == sql.ErrNoRows {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	if n <= 0 {
+		return []types.OHLC{}, adj == 1, nil
+	}
+	rows, err := d.SQL.Query(`SELECT date, open, high, low, close, adj_close, volume FROM ohlc WHERE ticker = ? ORDER BY date DESC LIMIT ?`, ticker, n)
+	if err != nil {
+		return nil, false, err
+	}
+	defer rows.Close()
+	var data []types.OHLC
+	for rows.Next() {
+		var b types.OHLC
+		var adjC sql.NullFloat64
+		var vol sql.NullInt64
+		if err := rows.Scan(&b.Date, &b.Open, &b.High, &b.Low, &b.Close, &adjC, &vol); err != nil {
+			return nil, false, err
+		}
+		if adjC.Valid {
+			v := adjC.Float64
+			b.AdjClose = &v
+		}
+		if vol.Valid {
+			b.Volume = float64(vol.Int64)
+		}
+		data = append(data, b)
+	}
+	for i, j := 0, len(data)-1; i < j; i, j = i+1, j-1 {
+		data[i], data[j] = data[j], data[i]
+	}
+	if data == nil {
+		data = []types.OHLC{}
+	}
+	return data, adj == 1, nil
+}
+
+// GetLastOHLC is an alias for GetOHLCLast.
+func (d *DB) GetLastOHLC(ticker string, n int) ([]types.OHLC, bool, error) {
+	return d.GetOHLCLast(ticker, n)
+}
+
 func (d *DB) UpdateDatasetMetadata(id string, tag, company *string) error {
 	ticker := SafeTicker(id)
 	if ticker == "" {
