@@ -194,7 +194,11 @@ func RunTokenHealth(db *store.DB, deps Deps, todayET string, now time.Time) (det
 }
 
 func RunTelegramAggregation(db *store.DB, deps Deps, until int) int {
-	res, _ := engine(db, deps).Aggregate(until, live.AggregateOpts{ForceSend: true, DryRun: until > 2})
+	// Node runTelegramAggregation returns wrong_time unless the clock minute is exactly 11 or 1.
+	if until != 11 && until != 1 {
+		return 0
+	}
+	res, _ := engine(db, deps).Aggregate(until, live.AggregateOpts{ForceSend: true, DryRun: until > 2, UpdateState: true})
 	return len(res.Tickers)
 }
 

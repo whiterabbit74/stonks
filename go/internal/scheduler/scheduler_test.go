@@ -251,3 +251,79 @@ func TestTickAfterCloseWritesOHLC(t *testing.T) {
 		t.Fatalf("expected merged OHLC, got %d", len(bars))
 	}
 }
+
+func t1Engine(t *testing.T) (*store.DB, *live.Engine, *live.MemoryBroker, *live.MemoryTelegram) {
+	t.Helper()
+	dir := t.TempDir()
+	db, err := store.Open(filepath.Join(dir, "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
+	_ = db.SaveDataset("AAPL", "AAPL", "", "", bars, false)
+	_ = db.UpsertWatch(map[string]any{"symbol": "AAPL", "lowIBS": 0.9})
+	tg := &live.MemoryTelegram{}
+	br := &live.MemoryBroker{}
+	eng := live.New(db, &live.MemoryQuotes{Bars: map[string][]types.OHLC{"AAPL": bars}})
+	eng.Telegram = tg
+	eng.Broker = br
+	eng.ChatID = "c"
+	eng.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true, "entrySizingMode": "quantity", "fixedQuantity": 1})
+	return db, eng, br, tg
+}
+
+func TestTickT1SecondTickDoesNotPlace(t *testing.T) {
+	db, eng, br, tg := t1Engine(t)
+	now1 := time.Date(2026, 9, 1, 19, 59, 0, 0, time.UTC)  // 15:59 ET, until=1
+	now2 := time.Date(2026, 9, 1, 19, 59, 20, 0, time.UTC)
+	RunTick(db, Deps{Live: eng}, now1, func(JobLog) {})
+	RunTick(db, Deps{Live: eng}, now2, func(JobLog) {})
+	if len(br.Orders) != 1 {
+		t.Fatalf("second T-1 tick must not place, orders=%+v", br.Orders)
+	}
+	if len(tg.Messages) != 1 {
+		t.Fatalf("T-1 telegram must send once, got %d %+v", len(tg.Messages), tg.Messages)
+	}
+	eng2 := live.New(db, eng.Quotes)
+	eng2.Telegram = tg
+	eng2.Broker = br
+	eng2.ChatID = "c"
+	now3 := time.Date(2026, 9, 1, 19, 59, 40, 0, time.UTC)
+	RunTick(db, Deps{Live: eng2}, now3, func(JobLog) {})
+	if len(br.Orders) != 1 {
+		t.Fatalf("lock must survive new engine, orders=%+v", br.Orders)
+	}
+}
+
+func TestTickT1Until2DoesNotPlace(t *testing.T) {
+	db, eng, br, _ := t1Engine(t)
+	now := time.Date(2026, 9, 1, 19, 58, 0, 0, time.UTC) // 15:58 ET, until=2 → Node wrong_time
+	RunTick(db, Deps{Live: eng}, now, func(JobLog) {})
+	if len(br.Orders) != 0 {
+		t.Fatalf("until=2 must not place, orders=%+v", br.Orders)
+	}
+}
+
+func TestTickT11SecondTickDoesNotResend(t *testing.T) {
+	dir := t.TempDir()
+	db, err := store.Open(filepath.Join(dir, "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
+	_ = db.SaveDataset("AAPL", "AAPL", "", "", bars, false)
+	_ = db.UpsertWatch(map[string]any{"symbol": "AAPL", "lowIBS": 0.1, "highIBS": 0.75})
+	tg := &live.MemoryTelegram{}
+	eng := live.New(db, &live.MemoryQuotes{Bars: map[string][]types.OHLC{"AAPL": bars}})
+	eng.Telegram = tg
+	eng.ChatID = "c"
+	now1 := time.Date(2026, 9, 1, 19, 49, 0, 0, time.UTC) // 15:49 ET, until=11
+	now2 := time.Date(2026, 9, 1, 19, 49, 20, 0, time.UTC)
+	RunTick(db, Deps{Live: eng}, now1, func(JobLog) {})
+	RunTick(db, Deps{Live: eng}, now2, func(JobLog) {})
+	if len(tg.Messages) != 1 {
+		t.Fatalf("T-11 must send once, got %d %+v", len(tg.Messages), tg.Messages)
+	}
+}

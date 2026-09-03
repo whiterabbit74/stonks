@@ -71,8 +71,9 @@ func (e *Engine) Command(command string, limit int) (map[string]any, error) {
 }
 
 type AggregateOpts struct {
-	ForceSend bool
-	DryRun    bool
+	ForceSend   bool // keep going if Telegram send fails (scheduler)
+	DryRun      bool
+	UpdateState bool // honor/persist t11Sent/t1Sent; HTTP simulate leaves this false
 }
 
 func (e *Engine) Simulate(stage string) (SimulateResult, error) {
@@ -118,6 +119,17 @@ func (e *Engine) Aggregate(minutesUntilClose int, opts AggregateOpts) (SimulateR
 		}
 	}
 	integBlock := FormatIntegrityWarningBlock(integ)
+	if opts.UpdateState {
+		t11Sent, t1Sent := e.DB.AggregateState(e.chat(), today)
+		if stage != "confirmations" && t11Sent {
+			out.Reason = "already_sent"
+			return out, nil
+		}
+		if stage == "confirmations" && t1Sent {
+			out.Reason = "already_sent"
+			return out, nil
+		}
+	}
 	if stage != "confirmations" {
 		lines := []string{fmt.Sprintf("T-11 overview %s", today)}
 		if integBlock != "" {
@@ -145,11 +157,26 @@ func (e *Engine) Aggregate(minutesUntilClose int, opts AggregateOpts) (SimulateR
 					res.Text += "\n" + ema
 				}
 			}
+			if opts.UpdateState {
+				_ = e.DB.MarkAggregateT11(e.chat(), today)
+			}
 			if !opts.DryRun {
 				e.persistEmaAfterSend(emaAlerts, stage)
 			}
 		}
 		return res, err
+	}
+
+	if opts.UpdateState && !opts.DryRun {
+		claimed, err := e.DB.ClaimAggregateT1(e.chat(), today)
+		if err != nil {
+			out.Reason = err.Error()
+			return out, err
+		}
+		if !claimed {
+			out.Reason = "already_sent"
+			return out, nil
+		}
 	}
 
 	snap := e.Consistency()

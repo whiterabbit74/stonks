@@ -163,6 +163,35 @@ func (d *DB) ListPendingTrackers() ([]map[string]any, error) {
 	return out, nil
 }
 
+func (d *DB) AggregateState(chatID, dateKey string) (t11Sent, t1Sent bool) {
+	var t11, t1 int
+	err := d.SQL.QueryRow(`SELECT t11_sent, t1_sent FROM aggregate_send_state WHERE date_key=? AND chat_id=?`, dateKey, chatID).Scan(&t11, &t1)
+	if err != nil {
+		return false, false
+	}
+	return t11 != 0, t1 != 0
+}
+
+func (d *DB) MarkAggregateT11(chatID, dateKey string) error {
+	_, err := d.SQL.Exec(`INSERT INTO aggregate_send_state (date_key, chat_id, t11_sent, t1_sent) VALUES (?, ?, 1, 0)
+        ON CONFLICT(date_key, chat_id) DO UPDATE SET t11_sent=1`, dateKey, chatID)
+	return err
+}
+
+// ClaimAggregateT1 sets t1_sent for this chat/date if it is still 0.
+// The caller that gets true is the only one allowed to Execute for that day.
+func (d *DB) ClaimAggregateT1(chatID, dateKey string) (bool, error) {
+	if _, err := d.SQL.Exec(`INSERT OR IGNORE INTO aggregate_send_state (date_key, chat_id, t11_sent, t1_sent) VALUES (?, ?, 0, 0)`, dateKey, chatID); err != nil {
+		return false, err
+	}
+	res, err := d.SQL.Exec(`UPDATE aggregate_send_state SET t1_sent=1 WHERE date_key=? AND chat_id=? AND t1_sent=0`, dateKey, chatID)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n == 1, err
+}
+
 func OpenBrokerTrade(trades []map[string]any) map[string]any {
 	for _, t := range trades {
 		if fmt.Sprint(t["status"]) == "open" && t["isHidden"] != true {

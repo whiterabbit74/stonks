@@ -204,6 +204,13 @@ func (d *DB) initSchema() error {
             started_at      TEXT NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_order_trackers_pending ON order_trackers(symbol, action, status);
+        CREATE TABLE IF NOT EXISTS aggregate_send_state (
+            date_key TEXT NOT NULL,
+            chat_id  TEXT NOT NULL DEFAULT '',
+            t11_sent INTEGER NOT NULL DEFAULT 0,
+            t1_sent  INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (date_key, chat_id)
+        );
     `)
 	return err
 }
