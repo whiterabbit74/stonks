@@ -36,7 +36,16 @@ func main() {
 
 	addr := ":" + port
 	log.Printf("Go trading API+UI on http://localhost%s (db=%s web=%s)", addr, dbPath, webDir)
-	s := &http.Server{Addr: addr, Handler: srv.Handler(), ReadHeaderTimeout: 10 * time.Second}
+	s := &http.Server{
+		Addr:              addr,
+		Handler:           srv.Handler(),
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		// WriteTimeout is longer than ReadTimeout because in-process backtests
+		// and upstream provider fetches routinely run past 30s.
+		WriteTimeout: 120 * time.Second,
+		IdleTimeout:  60 * time.Second,
+	}
 	if err := s.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatal(err)
 	}
