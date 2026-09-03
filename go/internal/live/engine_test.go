@@ -268,7 +268,7 @@ func TestEmaNearSendsSecondTelegram(t *testing.T) {
 	_ = db.SaveDataset("TQQQ", "TQQQ", "", "", bars, true)
 	_ = db.UpsertWatch(map[string]any{"symbol": "AAPL", "lowIBS": 0.1})
 	_ = db.SaveDataset("AAPL", "AAPL", "", "", []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 10, Volume: 1}}, false)
-	_ = db.UpsertEMAAlert(map[string]any{
+	_, _ = db.UpsertEMAAlert(map[string]any{
 		"id": "ema-1", "symbol": "TQQQ", "emaPeriod": 20, "buyLevelPct": 0, "sellLevelPct": 40,
 		"nextAction": "buy", "thresholdPct": 1, "levelPct": 0, "direction": "below",
 	})

@@ -104,6 +104,38 @@ func (e *Engine) CreateToken() (map[string]any, error) {
 	return data, nil
 }
 
+func (e *Engine) TokenHealth() string {
+	row := e.DB.GetWebullToken()
+	token := row.Token
+	if token == "" {
+		token = os.Getenv("WEBULL_ACCESS_TOKEN")
+	}
+	if token == "" {
+		return "MISSING"
+	}
+	if e.Broker == nil {
+		return "PRESENT"
+	}
+	data, err := e.Broker.CheckToken(token)
+	if err != nil {
+		_ = e.DB.AppendAutotradeLog("token_health_failed " + err.Error())
+		return "UNKNOWN"
+	}
+	status, _ := data["status"].(string)
+	if status == "" {
+		status = "NORMAL"
+	}
+	exp, _ := data["expiresAt"].(string)
+	if exp == "" {
+		exp, _ = data["expires_at"].(string)
+	}
+	_ = e.DB.SaveWebullToken(token, exp, status)
+	if status == "NORMAL" {
+		_, _ = e.Broker.Account()
+	}
+	return status
+}
+
 func (e *Engine) CheckToken(token string) (map[string]any, error) {
 	if token == "" {
 		token = e.DB.GetWebullToken().Token

@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"os"
 	"time"
 
 	"mktorder.com/go/internal/live"
@@ -152,7 +151,7 @@ func RunTick(db *store.DB, deps Deps, now time.Time, onEvent func(JobLog)) {
 	nTrack := engine(db, deps).PollTrackers()
 	onEvent(JobLog{At: now, Name: "order-trackers", Detail: fmt.Sprintf("pending=%d", nTrack)})
 
-	detail, skipped := RunTokenHealth(db, today, now)
+	detail, skipped := RunTokenHealth(db, deps, today, now)
 	onEvent(JobLog{At: now, Name: "webull-token-health", Skipped: skipped, Detail: detail})
 
 	raw, _ := db.GetCalendar()
@@ -184,19 +183,12 @@ func engine(db *store.DB, deps Deps) *live.Engine {
 	return live.New(db, deps.Providers)
 }
 
-func RunTokenHealth(db *store.DB, todayET string, now time.Time) (detail string, skipped bool) {
+func RunTokenHealth(db *store.DB, deps Deps, todayET string, now time.Time) (detail string, skipped bool) {
 	row := db.GetWebullToken()
 	if row.LastHealthCheckDate == todayET {
 		return "already-ran", true
 	}
-	status := "MISSING"
-	token := row.Token
-	if token == "" {
-		token = os.Getenv("WEBULL_ACCESS_TOKEN")
-	}
-	if token != "" {
-		status = "PRESENT"
-	}
+	status := engine(db, deps).TokenHealth()
 	_ = db.UpsertWebullHealth(todayET, status, now.UTC().Format(time.RFC3339Nano))
 	return status, false
 }

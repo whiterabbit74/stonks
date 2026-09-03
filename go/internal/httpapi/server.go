@@ -754,6 +754,7 @@ func deleteNested(root map[string]any, year, mmdd string) {
 }
 
 func (s *Server) handleWatches(w http.ResponseWriter, r *http.Request) {
+	s.liveEng().UpdatePositions()
 	list, _ := s.DB.ListWatches()
 	writeJSON(w, 200, list)
 }
@@ -789,16 +790,32 @@ func (s *Server) handleEMAAlerts(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleEMAAlertPost(w http.ResponseWriter, r *http.Request) {
 	var body map[string]any
 	_ = readJSON(r, &body)
-	_ = s.DB.UpsertEMAAlert(body)
-	writeJSON(w, 200, map[string]any{"ok": true})
+	id, err := s.DB.UpsertEMAAlert(body)
+	if err != nil {
+		writeJSON(w, 400, map[string]any{"error": err.Error()})
+		return
+	}
+	if row := s.DB.GetEMAAlert(id); row != nil {
+		writeJSON(w, 200, row)
+		return
+	}
+	writeJSON(w, 200, map[string]any{"id": id, "symbol": body["symbol"]})
 }
 
 func (s *Server) handleEMAAlertPatch(w http.ResponseWriter, r *http.Request) {
 	var body map[string]any
 	_ = readJSON(r, &body)
 	body["id"] = r.PathValue("id")
-	_ = s.DB.UpsertEMAAlert(body)
-	writeJSON(w, 200, map[string]any{"ok": true})
+	id, err := s.DB.UpsertEMAAlert(body)
+	if err != nil {
+		writeJSON(w, 400, map[string]any{"error": err.Error()})
+		return
+	}
+	if row := s.DB.GetEMAAlert(id); row != nil {
+		writeJSON(w, 200, row)
+		return
+	}
+	writeJSON(w, 404, map[string]any{"error": "EMA alert not found"})
 }
 
 func (s *Server) handleEMAAlertDelete(w http.ResponseWriter, r *http.Request) {

@@ -81,13 +81,38 @@ func TestTokenHealthDedupesPerETDay(t *testing.T) {
 	t.Cleanup(func() { db.Close() })
 	now := time.Date(2026, 9, 1, 15, 0, 0, 0, time.UTC)
 	today := tradingdate.TodayNYSE(now)
-	d1, skip1 := RunTokenHealth(db, today, now)
-	d2, skip2 := RunTokenHealth(db, today, now)
+	d1, skip1 := RunTokenHealth(db, Deps{}, today, now)
+	d2, skip2 := RunTokenHealth(db, Deps{}, today, now)
 	if skip1 || d1 == "already-ran" {
 		t.Fatalf("first run should execute, got skip=%v %s", skip1, d1)
 	}
 	if !skip2 || d2 != "already-ran" {
 		t.Fatalf("second run should skip, got skip=%v %s", skip2, d2)
+	}
+}
+
+func TestTokenHealthCallsCheckToken(t *testing.T) {
+	dir := t.TempDir()
+	db, err := store.Open(filepath.Join(dir, "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	if err := db.SaveWebullToken("live-token", "", "PENDING"); err != nil {
+		t.Fatal(err)
+	}
+	br := &live.MemoryBroker{}
+	eng := live.New(db, nil)
+	eng.Broker = br
+	now := time.Date(2026, 9, 1, 15, 0, 0, 0, time.UTC)
+	today := tradingdate.TodayNYSE(now)
+	status, skip := RunTokenHealth(db, Deps{Live: eng}, today, now)
+	if skip || status != "NORMAL" {
+		t.Fatalf("want NORMAL check, got skip=%v status=%s", skip, status)
+	}
+	row := db.GetWebullToken()
+	if row.LastCheckStatus != "NORMAL" {
+		t.Fatalf("stored status %q", row.LastCheckStatus)
 	}
 }
 

@@ -800,7 +800,7 @@ func (d *DB) ListEMAAlerts() ([]map[string]any, error) {
 	return out, nil
 }
 
-func (d *DB) UpsertEMAAlert(rec map[string]any) error {
+func (d *DB) UpsertEMAAlert(rec map[string]any) (string, error) {
 	id := fmt.Sprint(rec["id"])
 	if id == "" || id == "<nil>" {
 		id = fmt.Sprintf("ema-%d", time.Now().UnixNano())
@@ -810,13 +810,43 @@ func (d *DB) UpsertEMAAlert(rec map[string]any) error {
 	if next == nil || fmt.Sprint(next) == "" {
 		next = "buy"
 	}
+	if rec["levelPct"] == nil {
+		if fmt.Sprint(next) == "sell" {
+			rec["levelPct"] = rec["sellLevelPct"]
+		} else {
+			rec["levelPct"] = rec["buyLevelPct"]
+		}
+	}
+	if rec["levelPct"] == nil {
+		rec["levelPct"] = 0.0
+	}
+	if rec["thresholdPct"] == nil {
+		rec["thresholdPct"] = 0.5
+	}
+	if rec["direction"] == nil || fmt.Sprint(rec["direction"]) == "" {
+		if fmt.Sprint(next) == "sell" {
+			rec["direction"] = "above"
+		} else {
+			rec["direction"] = "below"
+		}
+	}
 	_, err := d.SQL.Exec(`INSERT INTO telegram_ema_alerts (id, symbol, ema_period, level_pct, direction, enabled, buy_level_pct, sell_level_pct, next_action, threshold_pct, info_level_pct)
         VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET symbol=excluded.symbol, ema_period=excluded.ema_period, level_pct=excluded.level_pct, direction=excluded.direction,
             buy_level_pct=excluded.buy_level_pct, sell_level_pct=excluded.sell_level_pct, next_action=excluded.next_action, threshold_pct=excluded.threshold_pct,
             info_level_pct=excluded.info_level_pct, updated_at=datetime('now')`,
 		id, symbol, rec["emaPeriod"], rec["levelPct"], rec["direction"], rec["buyLevelPct"], rec["sellLevelPct"], next, rec["thresholdPct"], rec["infoLevelPct"])
-	return err
+	return id, err
+}
+
+func (d *DB) GetEMAAlert(id string) map[string]any {
+	list, _ := d.ListEMAAlerts()
+	for _, a := range list {
+		if fmt.Sprint(a["id"]) == id {
+			return a
+		}
+	}
+	return nil
 }
 
 func (d *DB) MarkEMATriggered(id, action string, deviationPct float64, at string) error {

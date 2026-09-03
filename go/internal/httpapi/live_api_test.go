@@ -203,7 +203,7 @@ func TestSimulateSplitJumpAndEmaAndFillPoll(t *testing.T) {
 		hist = append(hist, types.OHLC{Date: fmt.Sprintf("2026-08-%02d", i), Open: 100, High: 100, Low: 100, Close: 100, Volume: 1})
 	}
 	_ = s.DB.SaveDataset("MSFT", "MSFT", "", "", hist, true)
-	_ = s.DB.UpsertEMAAlert(map[string]any{
+	_, _ = s.DB.UpsertEMAAlert(map[string]any{
 		"id": "ema-msft", "symbol": "MSFT", "emaPeriod": 20, "buyLevelPct": 0, "sellLevelPct": 40,
 		"nextAction": "buy", "thresholdPct": 1, "levelPct": 0, "direction": "below",
 	})
@@ -239,6 +239,54 @@ func TestSimulateSplitJumpAndEmaAndFillPoll(t *testing.T) {
 	n := s.Live.PollTrackers()
 	if n == 0 {
 		t.Fatal("poll did not see tracker")
+	}
+}
+
+func TestWatchesGETSyncsOpenMonitorTrade(t *testing.T) {
+	s, _, _ := liveServer(t)
+	if err := s.DB.InsertTrade("trades", map[string]any{
+		"id": "m-aapl", "symbol": "AAPL", "status": "open", "entryDate": "2026-09-01", "entryPrice": 10.5,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest("GET", "/api/telegram/watches", nil)
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != 200 {
+		t.Fatalf("watches %d %s", rec.Code, rec.Body.String())
+	}
+	var list []map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &list); err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, w := range list {
+		if fmt.Sprint(w["symbol"]) == "AAPL" {
+			found = true
+			if w["isOpenPosition"] != true {
+				t.Fatalf("expected open position projection: %+v", w)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("AAPL missing: %s", rec.Body.String())
+	}
+}
+
+func TestEMAAlertPostReturnsAlert(t *testing.T) {
+	s, _, _ := liveServer(t)
+	rec := postJSON(s, "/api/telegram/ema-alerts", map[string]any{
+		"symbol": "TQQQ", "emaPeriod": 20, "buyLevelPct": 15, "sellLevelPct": 40, "nextAction": "buy",
+	})
+	if rec.Code != 200 {
+		t.Fatalf("ema post %d %s", rec.Code, rec.Body.String())
+	}
+	var row map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &row); err != nil {
+		t.Fatal(err)
+	}
+	if fmt.Sprint(row["symbol"]) != "TQQQ" || row["id"] == nil || row["ok"] == true {
+		t.Fatalf("expected created alert, got %s", rec.Body.String())
 	}
 }
 
