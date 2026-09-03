@@ -282,6 +282,26 @@ const Charts = {
     for (let i = n; i < data.length; i++) out[i] = (Number(data[i].close) - out[i - 1]) * k + out[i - 1];
     return { bars: data, values: out };
   },
+  emaLineData(ema, scale) {
+    const k = scale == null ? 1 : Number(scale);
+    if (!Number.isFinite(k) || !ema || !Array.isArray(ema.values)) return [];
+    const out = [];
+    for (let i = 0; i < ema.values.length; i++) {
+      const v = ema.values[i];
+      const bar = ema.bars && ema.bars[i];
+      if (v == null || !Number.isFinite(Number(v)) || !bar || !bar.date) continue;
+      out.push({ time: this.toBusinessDay(bar.date), value: Number(v) * k });
+    }
+    return out;
+  },
+  lineWidth(v, fallback) {
+    const n = Number(v);
+    return n === 1 || n === 2 || n === 3 || n === 4 ? n : (fallback || 2);
+  },
+  lineStyle(v, fallback) {
+    const n = Number(v);
+    return n === 0 || n === 1 || n === 2 || n === 3 || n === 4 ? n : (fallback == null ? 0 : fallback);
+  },
   ibsValues(bars) {
     return (bars || []).filter((b) => b && b.date).map((b) => {
       const high = Number(b.high), low = Number(b.low), close = Number(b.close);
@@ -390,26 +410,51 @@ const Charts = {
       upColor: '#16a34a', downColor: '#dc2626', borderVisible: false, wickUpColor: '#16a34a', wickDownColor: '#dc2626',
     });
     candleSeries.setData(candles);
+    const emaStart = opts.emaStartMode || 'full_history';
     if (opts.ema20 !== false) {
-      const ema20 = this.emaValues(sorted, 20, opts.emaStartMode || 'full_history');
-      const s20 = chart.addSeries(LightweightCharts.LineSeries, { color: opts.ema20Color || '#2563EB', lineWidth: 2, priceLineVisible: false, lastValueVisible: false });
-      s20.setData(ema20.values.map((v, i) => (v == null ? null : { time: this.toBusinessDay(ema20.bars[i].date), value: v })).filter(Boolean));
+      const ema20 = this.emaValues(sorted, 20, emaStart);
+      const s20 = chart.addSeries(LightweightCharts.LineSeries, {
+        color: opts.ema20Color || '#2563EB',
+        lineWidth: this.lineWidth(opts.ema20Width, 2),
+        lineStyle: this.lineStyle(opts.ema20Style, 0),
+        priceLineVisible: false, lastValueVisible: false,
+      });
+      s20.setData(this.emaLineData(ema20, 1));
     }
-    if (opts.ema200 !== false) {
-      const ema200 = this.emaValues(sorted, Number(opts.emaPeriod) || 200, opts.emaStartMode || 'full_history');
-      const s200 = chart.addSeries(LightweightCharts.LineSeries, { color: opts.ema200Color || '#F59E0B', lineWidth: 2, priceLineVisible: false, lastValueVisible: false });
-      s200.setData(ema200.values.map((v, i) => (v == null ? null : { time: this.toBusinessDay(ema200.bars[i].date), value: v })).filter(Boolean));
+    const bands = (opts.emaBands || []).filter((b) => b && b.enabled && Number.isFinite(Number(b.pct)));
+    const zoneOn = (zs) => (zs || []).some((z) => z && z.enabled !== false && Number.isFinite(Number(z.levelPct)));
+    const needEma200 = opts.ema200 !== false || bands.length > 0 || zoneOn(opts.buyZones) || zoneOn(opts.sellZones);
+    if (needEma200) {
+      const ema200 = this.emaValues(sorted, Number(opts.emaPeriod) || 200, emaStart);
+      if (opts.ema200 !== false) {
+        const s200 = chart.addSeries(LightweightCharts.LineSeries, {
+          color: opts.ema200Color || '#F59E0B',
+          lineWidth: this.lineWidth(opts.ema200Width, 2),
+          lineStyle: this.lineStyle(opts.ema200Style, 0),
+          priceLineVisible: false, lastValueVisible: false,
+        });
+        s200.setData(this.emaLineData(ema200, 1));
+      }
+      bands.forEach((b) => {
+        const line = chart.addSeries(LightweightCharts.LineSeries, {
+          color: b.color || '#64748B',
+          lineWidth: this.lineWidth(b.width, 1),
+          lineStyle: this.lineStyle(b.style, 2),
+          priceLineVisible: false, lastValueVisible: false,
+        });
+        line.setData(this.emaLineData(ema200, 1 + Number(b.pct) / 100));
+      });
       (opts.buyZones || []).filter((z) => z && z.enabled !== false).forEach((z) => {
         const lvl = Number(z.levelPct);
         if (!Number.isFinite(lvl)) return;
         const line = chart.addSeries(LightweightCharts.LineSeries, { color: '#10B981', lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false });
-        line.setData(ema200.values.map((v, i) => (v == null ? null : { time: this.toBusinessDay(ema200.bars[i].date), value: v * (1 + lvl / 100) })).filter(Boolean));
+        line.setData(this.emaLineData(ema200, 1 + lvl / 100));
       });
       (opts.sellZones || []).filter((z) => z && z.enabled !== false).forEach((z) => {
         const lvl = Number(z.levelPct);
         if (!Number.isFinite(lvl)) return;
         const line = chart.addSeries(LightweightCharts.LineSeries, { color: '#EF4444', lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false });
-        line.setData(ema200.values.map((v, i) => (v == null ? null : { time: this.toBusinessDay(ema200.bars[i].date), value: v * (1 + lvl / 100) })).filter(Boolean));
+        line.setData(this.emaLineData(ema200, 1 + lvl / 100));
       });
     }
     let pane = 1;

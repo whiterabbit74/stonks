@@ -128,6 +128,20 @@ test('mapOpenDayDrawdown is (open-low)/open as a negative percent', () => {
   assert.ok(rows[0].value < 0);
 });
 
+test('emaLineData scales EMA values for deviation bands', () => {
+  const ema = Charts.emaValues(bars, 2, 'from_start');
+  const base = Charts.emaLineData(ema, 1);
+  const up = Charts.emaLineData(ema, 1.15);
+  const down = Charts.emaLineData(ema, 0.8);
+  assert.equal(base.length, bars.length);
+  assert.equal(up.length, base.length);
+  assert.ok(Math.abs(up[0].value - base[0].value * 1.15) < 1e-9);
+  assert.ok(Math.abs(down[0].value - base[0].value * 0.8) < 1e-9);
+  assert.equal(up[0].time.year, 2024);
+  assert.equal(up[0].time.month, 11);
+  assert.equal(up[0].time.day, 15);
+});
+
 test('simulateLeverage amplifies bar-to-bar returns', () => {
   const eq = [
     { date: '2024-11-15', value: 10000 },

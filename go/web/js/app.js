@@ -174,9 +174,95 @@
     more: '<circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/>',
     help: '<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>',
     sliders: '<path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/>',
+    chevrondown: '<path d="m6 9 6 6 6-6"/>',
+    maximize: '<path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/>',
+    minimize: '<path d="M8 3v3a2 2 0 0 1-2 2H3"/><path d="M21 8h-3a2 2 0 0 1-2-2V3"/><path d="M3 16h3a2 2 0 0 1 2 2v3"/><path d="M16 21v-3a2 2 0 0 1 2-2h3"/>',
     arrowne: '<path d="M7 7h10v10"/><path d="M7 17 17 7"/>',
     logo: '<path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>',
   };
+
+  const PC_COLORS = ['#2563EB', '#0EA5E9', '#14B8A6', '#10B981', '#84CC16', '#F59E0B', '#F97316', '#EF4444', '#F43F5E', '#A855F7', '#8B5CF6', '#64748B'];
+  const PC_LINE_STYLES = [{ v: 0, l: 'Сплошная' }, { v: 2, l: 'Пунктир' }, { v: 3, l: 'Штрих-пунктир' }];
+  const PC_CORE_BANDS = ['ema-p15', 'ema-p40', 'ema-m20'];
+  function readChartPrefs() {
+    try { return JSON.parse(localStorage.getItem('chart-prefs') || '{}'); } catch { return {}; }
+  }
+  function pcWidth(v, fb) { const n = Number(v); return n === 1 || n === 2 || n === 3 || n === 4 ? n : fb; }
+  function pcStyle(v, fb) { const n = Number(v); return n === 0 || n === 1 || n === 2 || n === 3 ? n : fb; }
+  function pcColor(v, fb) { return /^#[0-9a-fA-F]{6}$/.test(String(v || '')) ? String(v) : fb; }
+  function pcBool(prefs, key, fallback) {
+    if (prefs[key] === false) return false;
+    if (prefs[key] === true) return true;
+    return fallback;
+  }
+  function defaultPcBands() {
+    return [
+      { id: 'ema-p15', pct: 15, enabled: false, color: '#10B981', width: 1, style: 2 },
+      { id: 'ema-p40', pct: 40, enabled: false, color: '#EF4444', width: 1, style: 2 },
+      { id: 'ema-m20', pct: -20, enabled: false, color: '#A855F7', width: 1, style: 3 },
+    ];
+  }
+  function normalizePcBands(raw) {
+    if (!Array.isArray(raw) || !raw.length) return defaultPcBands();
+    return raw.map((b, i) => ({
+      id: String(b && b.id ? b.id : 'band-' + i),
+      pct: Number(b && b.pct),
+      enabled: !!(b && b.enabled),
+      color: pcColor(b && b.color, '#64748B'),
+      width: pcWidth(b && b.width, 1),
+      style: pcStyle(b && b.style, 2),
+    })).filter((b) => Number.isFinite(b.pct));
+  }
+  function initPriceChart() {
+    const prefs = readChartPrefs();
+    let range = prefs.range === 'ALL' ? 'MAX' : (prefs.range || 'MAX');
+    if (HERO_RANGES.indexOf(range) < 0) range = 'MAX';
+    const tradesOff = prefs.trades === false || prefs.showTradeMarkers === false;
+    return {
+      ema20: pcBool(prefs, 'ema20', true),
+      ema200: pcBool(prefs, 'ema200', true),
+      ibs: pcBool(prefs, 'ibs', true),
+      volume: pcBool(prefs, 'volume', true),
+      splits: pcBool(prefs, 'splits', true),
+      trades: tradesOff ? false : true,
+      range,
+      ema20Color: pcColor(prefs.ema20Color, '#2563EB'),
+      ema20Width: pcWidth(prefs.ema20Width, 2),
+      ema20Style: pcStyle(prefs.ema20Style, 0),
+      ema200Color: pcColor(prefs.ema200Color, '#F59E0B'),
+      ema200Width: pcWidth(prefs.ema200Width, 2),
+      ema200Style: pcStyle(prefs.ema200Style, 0),
+      bands: normalizePcBands(prefs.emaBands),
+    };
+  }
+  function persistPriceChart() {
+    try {
+      const p = state.priceChart;
+      const raw = readChartPrefs();
+      raw.range = p.range;
+      raw.ema20 = !!p.ema20;
+      raw.ema200 = !!p.ema200;
+      raw.ibs = !!p.ibs;
+      raw.volume = !!p.volume;
+      raw.splits = !!p.splits;
+      raw.trades = !!p.trades;
+      raw.showTradeMarkers = !!p.trades;
+      raw.ema20Color = p.ema20Color;
+      raw.ema20Width = p.ema20Width;
+      raw.ema20Style = p.ema20Style;
+      raw.ema200Color = p.ema200Color;
+      raw.ema200Width = p.ema200Width;
+      raw.ema200Style = p.ema200Style;
+      raw.emaBands = (p.bands || []).map((b) => ({ id: b.id, pct: b.pct, enabled: !!b.enabled, color: b.color, width: b.width, style: b.style }));
+      raw.timeframe = state.heroTf;
+      localStorage.setItem('chart-prefs', JSON.stringify(raw));
+    } catch (_) {}
+  }
+  function formatBandLabel(pct) {
+    const n = Number(pct);
+    if (!Number.isFinite(n)) return 'EMA 200';
+    return 'EMA 200 ' + (n > 0 ? '+' : '') + n + '%';
+  }
 
   const storedTheme = localStorage.getItem('theme');
   const nyseNow = nyseParts();
@@ -263,7 +349,8 @@
     baselineResult: null,
     emaBaseline: null,
     emaRunParams: null,
-    priceChart: { ema20: true, ema200: true, ibs: true, volume: true, splits: true, trades: true, range: 'MAX' },
+    priceChart: initPriceChart(),
+    priceChartUi: { indOpen: false, styleFor: null, tickerOpen: false, fullscreen: false, chartId: 'chart-price' },
     clientErrors: [],
     errorConsoleOpen: false,
     errorBanner: null,
@@ -758,7 +845,7 @@
       localStorage.setItem(prefix + '.heroRange', p.range);
       localStorage.setItem(prefix + '.heroChartKind', p.kind);
       localStorage.setItem(prefix + '.heroShowTrades', p.showTrades ? '1' : '0');
-      const raw = JSON.parse(localStorage.getItem('chart-prefs') || '{}');
+      const raw = readChartPrefs();
       raw.timeframe = state.heroTf;
       localStorage.setItem('chart-prefs', JSON.stringify(raw));
     } catch (_) {}
@@ -1636,18 +1723,80 @@
 
   function priceChartPanelHTML(chartId) {
     const p = state.priceChart || {};
-    const chk = (id, lab, on) => `<label class="inline-flex items-center gap-1 text-xs mr-3"><input type="checkbox" data-pc="${id}" ${on ? 'checked' : ''} /> ${lab}</label>`;
-    return `<div class="flex flex-wrap items-center gap-2 mb-2 text-xs">
-      ${chk('ema20', 'EMA20', p.ema20 !== false)}
-      ${chk('ema200', 'EMA200', p.ema200 !== false)}
-      ${chk('ibs', 'IBS', p.ibs !== false)}
-      ${chk('volume', 'Объём', p.volume !== false)}
-      ${chk('splits', 'Сплиты', p.splits !== false)}
-      ${chk('trades', 'Сделки', p.trades !== false)}
-      <select data-pc-range class="field py-1">${['1M', '3M', '6M', '1Y', '3Y', '5Y', 'MAX'].map((r) => `<option ${ (p.range || 'MAX') === r ? 'selected' : '' }>${r}</option>`).join('')}</select>
-      <button type="button" data-pc-csv class="btn-secondary min-h-0 py-1 px-2">CSV</button>
-    </div>
-    <div id="${esc(chartId)}" class="chart-box-lg rounded border dark:border-gray-800"></div>`;
+    const ui = state.priceChartUi || {};
+    const tickers = parseTickers(pageTickerText());
+    const selected = selectedHeroTicker();
+    const styleOf = (target) => {
+      if (target === 'ema20') return { color: p.ema20Color || '#2563EB', width: p.ema20Width || 2, style: p.ema20Style || 0 };
+      if (target === 'ema200') return { color: p.ema200Color || '#F59E0B', width: p.ema200Width || 2, style: p.ema200Style || 0 };
+      const b = (p.bands || []).find((x) => x.id === target);
+      return { color: (b && b.color) || '#64748B', width: (b && b.width) || 1, style: (b && b.style) != null ? b.style : 2 };
+    };
+    const styleStrip = (target) => {
+      const o = styleOf(target);
+      const open = ui.styleFor === target;
+      return `<div class="pc-style ${open ? 'is-open' : ''}" data-pc-style-panel="${esc(target)}">
+        <div class="pc-swatches">${PC_COLORS.map((c) => `<button type="button" data-pc-color="${esc(target)}" data-color="${c}" class="pc-swatch ${o.color === c ? 'pc-swatch-on' : ''}" style="background:${c}" title="${c}" aria-label="Цвет ${c}"></button>`).join('')}</div>
+        <div class="pc-seg" role="group" aria-label="Толщина">${[1, 2, 3, 4].map((w) => `<button type="button" data-pc-width="${esc(target)}" data-w="${w}" class="${Number(o.width) === w ? 'pc-seg-on' : 'pc-seg-off'}">${w}</button>`).join('')}</div>
+        <div class="pc-seg" role="group" aria-label="Тип линии">${PC_LINE_STYLES.map((s) => `<button type="button" data-pc-ls="${esc(target)}" data-s="${s.v}" class="${Number(o.style) === s.v ? 'pc-seg-on' : 'pc-seg-off'}">${s.l}</button>`).join('')}</div>
+      </div>`;
+    };
+    const styleBtn = (target) => `<button type="button" data-pc-style="${esc(target)}" class="icon-btn icon-btn-md ${ui.styleFor === target ? 'icon-btn-active' : ''}" title="Оформление линии" aria-label="Оформление линии">${icon('sliders', 'h-3.5 w-3.5')}</button>`;
+    const lineRow = (id, lab, on, target, extra) => {
+      const o = styleOf(target);
+      return `<div>
+        <div class="pc-row">
+          <label><input type="checkbox" data-pc="${id}" ${on ? 'checked' : ''} /> <span class="pc-dot" data-pc-dot="${esc(target)}" style="background:${esc(o.color)}"></span> ${lab}</label>
+          ${styleBtn(target)}
+        </div>
+        ${styleStrip(target)}
+        ${extra || ''}
+      </div>`;
+    };
+    const bandRows = (p.bands || []).map((b) => {
+      const o = styleOf(b.id);
+      const core = PC_CORE_BANDS.indexOf(b.id) >= 0;
+      return `<div>
+        <div class="pc-row pc-row-indent">
+          <label><input type="checkbox" data-pc-band-on="${esc(b.id)}" ${b.enabled ? 'checked' : ''} /> <span class="pc-dot" data-pc-dot="${esc(b.id)}" style="background:${esc(o.color)}"></span> <span data-pc-band-lab="${esc(b.id)}">${esc(formatBandLabel(b.pct))}</span></label>
+          <input type="number" step="1" class="pc-pct" data-pc-band-pct="${esc(b.id)}" value="${esc(b.pct)}" aria-label="Отклонение, %" />
+          ${styleBtn(b.id)}
+          ${core ? '' : `<button type="button" data-pc-band-del="${esc(b.id)}" class="icon-btn icon-btn-md" title="Удалить отклонение" aria-label="Удалить отклонение">${icon('trash', 'h-3.5 w-3.5')}</button>`}
+        </div>
+        ${styleStrip(b.id)}
+      </div>`;
+    }).join('');
+    const tickerMenu = tickers.length > 1
+      ? `<div class="pc-drop ${ui.tickerOpen ? '' : 'hidden'}" data-pc-ticker-menu>${tickers.map((t) => `<button type="button" data-pc-ticker="${esc(t)}" class="${t === selected ? 'on' : ''}">${esc(t)}</button>`).join('')}</div>`
+      : '';
+    const ranges = HERO_RANGES.map((r) => {
+      const on = (p.range || 'MAX') === r;
+      return `<button type="button" data-pc-range="${r}" class="hero-range ${on ? 'hero-range-on' : 'hero-range-off'}">${r === 'MAX' ? 'Всё' : r}</button>`;
+    }).join('');
+    const fsOn = !!ui.fullscreen;
+    return `<div class="pc-shell ${fsOn ? 'pc-fs' : ''}" data-pc-shell>
+      <div class="pc-toolbar">
+        <div class="pc-ticker">
+          <button type="button" class="pc-ticker-btn" ${tickers.length > 1 ? 'data-pc-ticker-toggle' : ''} aria-haspopup="${tickers.length > 1 ? 'listbox' : 'false'}" aria-label="Тикер">${esc(selected || '—')}${tickers.length > 1 ? icon('chevrondown', 'w-3.5 h-3.5') : ''}</button>
+          ${tickerMenu}
+        </div>
+        <div class="pc-toolbar-right">
+          <div class="flex items-center gap-1" role="group" aria-label="Период">${ranges}</div>
+          <button type="button" data-pc-ind class="pc-ind-btn ${ui.indOpen ? 'pc-ind-btn-on' : ''}" aria-expanded="${ui.indOpen ? 'true' : 'false'}" aria-controls="pc-ind-panel">Индикаторы ${icon('chevrondown', 'w-3.5 h-3.5')}</button>
+          <button type="button" data-pc-fs class="icon-btn icon-btn-md icon-btn-glass" title="${fsOn ? 'Свернуть' : 'Во весь экран'}" aria-label="${fsOn ? 'Свернуть' : 'Во весь экран'}">${icon(fsOn ? 'minimize' : 'maximize', 'h-4 w-4')}</button>
+        </div>
+      </div>
+      <div id="pc-ind-panel" class="pc-ind-panel ${ui.indOpen ? '' : 'hidden'}" data-pc-ind-panel>
+        ${lineRow('ema20', 'EMA 20', p.ema20 !== false, 'ema20')}
+        ${lineRow('ema200', 'EMA 200', p.ema200 !== false, 'ema200', bandRows + `<button type="button" data-pc-band-add class="pc-add">+ Добавить отклонение</button>`)}
+        <div class="pc-row"><label><input type="checkbox" data-pc="ibs" ${p.ibs !== false ? 'checked' : ''} /> IBS</label></div>
+        <div class="pc-row"><label><input type="checkbox" data-pc="volume" ${p.volume !== false ? 'checked' : ''} /> Объём</label></div>
+        <div class="pc-row"><label><input type="checkbox" data-pc="splits" ${p.splits !== false ? 'checked' : ''} /> Сплиты</label></div>
+        <div class="pc-row"><label><input type="checkbox" data-pc="trades" ${p.trades !== false ? 'checked' : ''} /> Сделки</label></div>
+        <div class="pc-ind-foot"><button type="button" data-pc-csv class="btn-secondary min-h-0 py-1 px-2 text-xs">CSV</button></div>
+      </div>
+      <div id="${esc(chartId)}" class="chart-box-lg rounded border dark:border-gray-800"></div>
+    </div>`;
   }
   function nestedBacHTML() {
     const f = state.nested.bac;
@@ -2970,9 +3119,9 @@
       });
       document.getElementById('run-bt')?.addEventListener('click', runStocks);
       root.querySelectorAll('[data-stab]').forEach((b) => b.addEventListener('click', () => { state.stockTab = b.dataset.stab; state.tradesPage = 1; renderPage(); }));
+      bindPriceChartControls('chart-price');
       paintStockCharts();
       bindTradesPager(root);
-      bindPriceChartControls('chart-price');
       paintHistograms();
       if (state.result && state.stockTab === 'summary') bindHero(root, { quote: true, pro: 'price' });
       runNested();
@@ -3041,9 +3190,9 @@
           renderPage();
         } catch (err) { toast(err.message); }
       });
+      bindPriceChartControls('chart-ema-price');
       paintEmaCharts();
       bindTradesPager(root);
-      bindPriceChartControls('chart-ema-price');
       paintHistograms();
       if (state.emaResult && state.emaTab === 'summary') bindHero(root, { quote: false });
     }
@@ -3060,9 +3209,9 @@
         e.preventDefault();
         await runOptionsMulti(new FormData(e.target));
       });
+      bindPriceChartControls('chart-opt-price');
       paintOptCharts();
       bindTradesPager(root);
-      bindPriceChartControls('chart-opt-price');
       paintHistograms();
       if (state.optResult && state.optTab === 'summary') bindHero(root, { quote: true, pro: 'equity' });
     }
@@ -4065,18 +4214,217 @@
       downloadJson('trades-' + nyseParts().iso + '.json', currentTradesForTable());
     }));
   }
+  function setPriceChartFsClass(shell) {
+    const on = !!state.priceChartUi.fullscreen;
+    if (shell) shell.classList.toggle('pc-fs', on);
+    document.body.classList.toggle('pc-fs-lock', on);
+    const btn = shell && shell.querySelector('[data-pc-fs]');
+    if (btn) {
+      const title = on ? 'Свернуть' : 'Во весь экран';
+      btn.title = title;
+      btn.setAttribute('aria-label', title);
+      btn.innerHTML = icon(on ? 'minimize' : 'maximize', 'h-4 w-4');
+    }
+  }
+  function ensurePcEsc() {
+    if (state.priceChartUi._esc) return;
+    state.priceChartUi._esc = true;
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape') return;
+      if (state.priceChartUi.fullscreen) {
+        state.priceChartUi.fullscreen = false;
+        const shell = document.querySelector('[data-pc-shell]');
+        setPriceChartFsClass(shell);
+        if (shell && state.priceChartUi.chartId) requestAnimationFrame(() => paintPriceChart(state.priceChartUi.chartId));
+        return;
+      }
+      if (state.priceChartUi.tickerOpen) {
+        state.priceChartUi.tickerOpen = false;
+        document.querySelector('[data-pc-ticker-menu]')?.classList.add('hidden');
+      }
+      if (state.priceChartUi.indOpen) {
+        state.priceChartUi.indOpen = false;
+        state.priceChartUi.styleFor = null;
+        const shell = document.querySelector('[data-pc-shell]');
+        shell?.querySelector('[data-pc-ind-panel]')?.classList.add('hidden');
+        const ind = shell?.querySelector('[data-pc-ind]');
+        if (ind) {
+          ind.classList.remove('pc-ind-btn-on');
+          ind.setAttribute('aria-expanded', 'false');
+        }
+        shell?.querySelectorAll('[data-pc-style-panel]').forEach((el) => el.classList.remove('is-open'));
+      }
+    });
+    document.addEventListener('click', () => {
+      if (!state.priceChartUi.tickerOpen) return;
+      state.priceChartUi.tickerOpen = false;
+      document.querySelector('[data-pc-ticker-menu]')?.classList.add('hidden');
+    });
+  }
+  function applyPcLine(target, patch) {
+    const p = state.priceChart;
+    if (target === 'ema20' || target === 'ema200') {
+      if (patch.color) p[target + 'Color'] = patch.color;
+      if (patch.width) p[target + 'Width'] = patch.width;
+      if (patch.style != null) p[target + 'Style'] = patch.style;
+      return;
+    }
+    const b = (p.bands || []).find((x) => x.id === target);
+    if (!b) return;
+    if (patch.color) b.color = patch.color;
+    if (patch.width) b.width = patch.width;
+    if (patch.style != null) b.style = patch.style;
+  }
+  function syncPcStyleUi(shell, target) {
+    const p = state.priceChart;
+    let color; let width; let ls;
+    if (target === 'ema20') { color = p.ema20Color; width = p.ema20Width; ls = p.ema20Style; }
+    else if (target === 'ema200') { color = p.ema200Color; width = p.ema200Width; ls = p.ema200Style; }
+    else {
+      const b = (p.bands || []).find((x) => x.id === target);
+      if (!b) return;
+      color = b.color; width = b.width; ls = b.style;
+    }
+    shell.querySelectorAll('[data-pc-color="' + target + '"]').forEach((btn) => {
+      btn.classList.toggle('pc-swatch-on', btn.dataset.color === color);
+    });
+    shell.querySelectorAll('[data-pc-width="' + target + '"]').forEach((btn) => {
+      btn.className = Number(btn.dataset.w) === Number(width) ? 'pc-seg-on' : 'pc-seg-off';
+    });
+    shell.querySelectorAll('[data-pc-ls="' + target + '"]').forEach((btn) => {
+      btn.className = Number(btn.dataset.s) === Number(ls) ? 'pc-seg-on' : 'pc-seg-off';
+    });
+    const dot = shell.querySelector('[data-pc-dot="' + target + '"]');
+    if (dot) dot.style.background = color;
+  }
   function bindPriceChartControls(chartId) {
-    document.querySelectorAll('[data-pc]').forEach((inp) => {
+    const shell = document.querySelector('[data-pc-shell]');
+    if (!shell) {
+      document.body.classList.remove('pc-fs-lock');
+      state.priceChartUi.fullscreen = false;
+      return;
+    }
+    state.priceChartUi.chartId = chartId;
+    ensurePcEsc();
+    setPriceChartFsClass(shell);
+    shell.querySelector('[data-pc-ticker-toggle]')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      state.priceChartUi.tickerOpen = !state.priceChartUi.tickerOpen;
+      shell.querySelector('[data-pc-ticker-menu]')?.classList.toggle('hidden', !state.priceChartUi.tickerOpen);
+    });
+    shell.querySelector('[data-pc-ticker-menu]')?.addEventListener('click', (e) => e.stopPropagation());
+    shell.querySelectorAll('[data-pc-ticker]').forEach((b) => b.addEventListener('click', () => {
+      hp().ticker = b.dataset.pcTicker;
+      state.priceChartUi.tickerOpen = false;
+      renderPage();
+    }));
+    shell.querySelectorAll('[data-pc-range]').forEach((b) => b.addEventListener('click', () => {
+      state.priceChart.range = b.dataset.pcRange;
+      persistPriceChart();
+      shell.querySelectorAll('[data-pc-range]').forEach((x) => {
+        x.className = 'hero-range ' + (x.dataset.pcRange === state.priceChart.range ? 'hero-range-on' : 'hero-range-off');
+      });
+      paintPriceChart(chartId);
+    }));
+    shell.querySelector('[data-pc-ind]')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      state.priceChartUi.indOpen = !state.priceChartUi.indOpen;
+      if (!state.priceChartUi.indOpen) state.priceChartUi.styleFor = null;
+      const panel = shell.querySelector('[data-pc-ind-panel]');
+      panel?.classList.toggle('hidden', !state.priceChartUi.indOpen);
+      const btn = shell.querySelector('[data-pc-ind]');
+      if (btn) {
+        btn.classList.toggle('pc-ind-btn-on', state.priceChartUi.indOpen);
+        btn.setAttribute('aria-expanded', state.priceChartUi.indOpen ? 'true' : 'false');
+      }
+      if (!state.priceChartUi.indOpen) {
+        shell.querySelectorAll('[data-pc-style-panel]').forEach((el) => el.classList.remove('is-open'));
+      }
+    });
+    shell.querySelector('[data-pc-fs]')?.addEventListener('click', () => {
+      state.priceChartUi.fullscreen = !state.priceChartUi.fullscreen;
+      setPriceChartFsClass(shell);
+      requestAnimationFrame(() => paintPriceChart(chartId));
+    });
+    shell.querySelectorAll('[data-pc]').forEach((inp) => {
       inp.addEventListener('change', () => {
         state.priceChart[inp.dataset.pc] = inp.checked;
+        persistPriceChart();
         paintPriceChart(chartId);
       });
     });
-    document.querySelector('[data-pc-range]')?.addEventListener('change', (e) => {
-      state.priceChart.range = e.target.value;
-      paintPriceChart(chartId);
+    shell.querySelectorAll('[data-pc-band-on]').forEach((inp) => {
+      inp.addEventListener('change', () => {
+        const b = (state.priceChart.bands || []).find((x) => x.id === inp.dataset.pcBandOn);
+        if (b) b.enabled = inp.checked;
+        persistPriceChart();
+        paintPriceChart(chartId);
+      });
     });
-    document.querySelector('[data-pc-csv]')?.addEventListener('click', () => {
+    shell.querySelectorAll('[data-pc-band-pct]').forEach((inp) => {
+      inp.addEventListener('change', () => {
+        const n = Number(inp.value);
+        const b = (state.priceChart.bands || []).find((x) => x.id === inp.dataset.pcBandPct);
+        if (!b || !Number.isFinite(n)) return;
+        b.pct = n;
+        const lab = shell.querySelector('[data-pc-band-lab="' + b.id + '"]');
+        if (lab) lab.textContent = formatBandLabel(n);
+        persistPriceChart();
+        paintPriceChart(chartId);
+      });
+    });
+    shell.querySelectorAll('[data-pc-style]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const id = btn.dataset.pcStyle;
+        state.priceChartUi.styleFor = state.priceChartUi.styleFor === id ? null : id;
+        shell.querySelectorAll('[data-pc-style-panel]').forEach((el) => {
+          el.classList.toggle('is-open', el.dataset.pcStylePanel === state.priceChartUi.styleFor);
+        });
+        shell.querySelectorAll('[data-pc-style]').forEach((b) => {
+          b.classList.toggle('icon-btn-active', b.dataset.pcStyle === state.priceChartUi.styleFor);
+        });
+      });
+    });
+    shell.querySelectorAll('[data-pc-color]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        applyPcLine(btn.dataset.pcColor, { color: btn.dataset.color });
+        persistPriceChart();
+        syncPcStyleUi(shell, btn.dataset.pcColor);
+        paintPriceChart(chartId);
+      });
+    });
+    shell.querySelectorAll('[data-pc-width]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        applyPcLine(btn.dataset.pcWidth, { width: Number(btn.dataset.w) });
+        persistPriceChart();
+        syncPcStyleUi(shell, btn.dataset.pcWidth);
+        paintPriceChart(chartId);
+      });
+    });
+    shell.querySelectorAll('[data-pc-ls]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        applyPcLine(btn.dataset.pcLs, { style: Number(btn.dataset.s) });
+        persistPriceChart();
+        syncPcStyleUi(shell, btn.dataset.pcLs);
+        paintPriceChart(chartId);
+      });
+    });
+    shell.querySelector('[data-pc-band-add]')?.addEventListener('click', () => {
+      state.priceChart.bands = state.priceChart.bands || [];
+      state.priceChart.bands.push({ id: 'band-' + Date.now(), pct: 10, enabled: true, color: '#64748B', width: 1, style: 2 });
+      state.priceChartUi.indOpen = true;
+      persistPriceChart();
+      renderPage();
+    });
+    shell.querySelectorAll('[data-pc-band-del]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        state.priceChart.bands = (state.priceChart.bands || []).filter((x) => x.id !== btn.dataset.pcBandDel);
+        persistPriceChart();
+        renderPage();
+      });
+    });
+    shell.querySelector('[data-pc-csv]')?.addEventListener('click', () => {
       const bars = barsForTicker(selectedHeroTicker());
       Charts.downloadCsv((selectedHeroTicker() || 'chart') + '.csv', Charts.csvFromBars(bars));
     });
@@ -4093,6 +4441,13 @@
       dark: isDark(),
       ema20: p.ema20 !== false,
       ema200: p.ema200 !== false,
+      ema20Color: p.ema20Color,
+      ema20Width: p.ema20Width,
+      ema20Style: p.ema20Style,
+      ema200Color: p.ema200Color,
+      ema200Width: p.ema200Width,
+      ema200Style: p.ema200Style,
+      emaBands: p.bands,
       ibs: p.ibs !== false,
       volume: p.volume !== false,
       showTrades: p.trades !== false,
