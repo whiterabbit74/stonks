@@ -2054,10 +2054,14 @@
       });
       document.getElementById('cal-webull')?.addEventListener('click', async () => {
         try {
-          await API.syncCalendar();
-          state.cal.data = await API.calendar();
-          toast('Календарь обновлён');
-          renderPage();
+          const r = await API.syncCalendar();
+          if (r && r.ok) {
+            state.cal.data = await API.calendar();
+            toast('Календарь обновлён');
+            renderPage();
+          } else {
+            toast((r && r.error) || 'Календарь не обновлён');
+          }
         } catch (err) { toast(err.message); }
       });
     }

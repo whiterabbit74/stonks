@@ -67,6 +67,7 @@ type MemoryBroker struct {
 	Details    map[string]map[string]any
 	Open       []any
 	Hist       []any
+	Days       []map[string]any
 }
 
 func (m *MemoryBroker) PlaceMarket(symbol, side string, qty float64) (OrderResult, error) {
@@ -118,6 +119,20 @@ func (m *MemoryBroker) CreateToken() (map[string]any, error) {
 
 func (m *MemoryBroker) CheckToken(token string) (map[string]any, error) {
 	return map[string]any{"status": "NORMAL", "token": token}, nil
+}
+
+func (m *MemoryBroker) CalendarDays(start, end string) ([]map[string]any, error) {
+	var out []map[string]any
+	for _, d := range m.Days {
+		day := fmt.Sprint(d["trade_day"])
+		if day >= start && day <= end {
+			out = append(out, d)
+		}
+	}
+	if out == nil {
+		out = []map[string]any{}
+	}
+	return out, nil
 }
 
 func (m *MemoryBroker) Calendar() ([]byte, error) {

@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"mktorder.com/go/internal/live"
 	"mktorder.com/go/internal/providers"
@@ -287,6 +288,48 @@ func TestEMAAlertPostReturnsAlert(t *testing.T) {
 	}
 	if fmt.Sprint(row["symbol"]) != "TQQQ" || row["id"] == nil || row["ok"] == true {
 		t.Fatalf("expected created alert, got %s", rec.Body.String())
+	}
+}
+
+func TestImportWebullCalendarDerivesHolidays(t *testing.T) {
+	s, _, br := liveServer(t)
+	s.Live.Now = func() time.Time { return time.Date(2026, 9, 1, 16, 0, 0, 0, time.UTC) }
+	var days []map[string]any
+	for i := 0; i < 30; i++ {
+		tm := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC).AddDate(0, 0, i)
+		ymd := tm.Format("2006-01-02")
+		w := tm.Weekday()
+		if w == time.Saturday || w == time.Sunday {
+			continue
+		}
+		if ymd == "2026-09-08" {
+			continue
+		}
+		typ := "FULL_DAY"
+		if ymd == "2026-09-02" {
+			typ = "HALF_DAY"
+		}
+		days = append(days, map[string]any{"trade_day": ymd, "trade_date_type": typ})
+	}
+	br.Days = days
+	rec := postJSON(s, "/api/trading-calendar/import-webull", map[string]any{})
+	if rec.Code != 200 {
+		t.Fatalf("import %d %s", rec.Code, rec.Body.String())
+	}
+	var out map[string]any
+	_ = json.Unmarshal(rec.Body.Bytes(), &out)
+	if out["ok"] != true {
+		t.Fatalf("import body %s", rec.Body.String())
+	}
+	if n, _ := out["newHolidays"].(float64); n < 1 {
+		t.Fatalf("expected new holiday, got %s", rec.Body.String())
+	}
+	if n, _ := out["newShortDays"].(float64); n < 1 {
+		t.Fatalf("expected short day, got %s", rec.Body.String())
+	}
+	raw, _ := s.DB.GetCalendar()
+	if !strings.Contains(string(raw), `"09-08"`) || !strings.Contains(string(raw), `"09-02"`) {
+		t.Fatalf("calendar missing derived days: %s", raw)
 	}
 }
 

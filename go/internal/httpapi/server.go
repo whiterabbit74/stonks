@@ -658,12 +658,20 @@ func (s *Server) handlePrevDay(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleImportCalendar(w http.ResponseWriter, r *http.Request) {
-	var body json.RawMessage
-	_ = readJSON(r, &body)
-	if len(body) > 0 {
-		_ = s.DB.SaveCalendar(body)
+	out, err := s.liveEng().ImportWebullCalendar()
+	if err != nil {
+		code := 502
+		if out != nil {
+			if _, ok := out["unknownTypes"]; ok {
+				code = 422
+			}
+			writeJSON(w, code, out)
+			return
+		}
+		writeJSON(w, code, map[string]any{"ok": false, "error": err.Error()})
+		return
 	}
-	writeJSON(w, 200, map[string]any{"ok": true})
+	writeJSON(w, 200, out)
 }
 
 func (s *Server) handlePatchCalendarDay(w http.ResponseWriter, r *http.Request) {

@@ -102,10 +102,7 @@ func (e *Engine) SyncCalendar() (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	if len(raw) > 0 {
-		_ = e.DB.SaveCalendar(raw)
-	}
-	return map[string]any{"ok": true, "saved": len(raw) > 0}, nil
+	return map[string]any{"ok": true, "saved": false, "bytes": len(raw)}, nil
 }
 
 func (e *Engine) WebullRawSplits(symbol string) (map[string]any, error) {

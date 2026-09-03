@@ -39,6 +39,7 @@ type Broker interface {
 	CreateToken() (map[string]any, error)
 	CheckToken(token string) (map[string]any, error)
 	Calendar() (jsonRaw []byte, err error)
+	CalendarDays(start, end string) ([]map[string]any, error)
 	RawSplits(symbol string) ([]map[string]any, error)
 	OrderDetail(clientOrderID string) (map[string]any, error)
 	OpenOrders() ([]any, error)

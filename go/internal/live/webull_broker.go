@@ -164,6 +164,28 @@ func (b *LiveBroker) CheckToken(token string) (map[string]any, error) {
 	return m, nil
 }
 
+func (b *LiveBroker) CalendarDays(start, end string) ([]map[string]any, error) {
+	c := b.client()
+	resp, err := c.TradeCalendar(start, end)
+	if err != nil {
+		return nil, err
+	}
+	rows := flattenAny(resp.Data)
+	if a, ok := resp.Data.([]any); ok {
+		rows = a
+	}
+	var out []map[string]any
+	for _, r := range rows {
+		if m, ok := r.(map[string]any); ok {
+			out = append(out, m)
+		}
+	}
+	if out == nil {
+		out = []map[string]any{}
+	}
+	return out, nil
+}
+
 func (b *LiveBroker) Calendar() ([]byte, error) {
 	resp, err := b.client().TradeCalendar("", "")
 	if err != nil {
