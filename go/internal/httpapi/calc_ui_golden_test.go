@@ -341,3 +341,28 @@ func TestDecodeStrategyOmitsStayUnset(t *testing.T) {
 		t.Fatalf("omitted risk fields should be nil: %+v", s.RiskManagement)
 	}
 }
+
+func TestCalcEmptyDataReturns400(t *testing.T) {
+	s := testServer(t, "")
+	kinds := []string{"indicators", "single-position", "ema-zone", "buy-at-close-4", "options-multi"}
+	for _, kind := range kinds {
+		body, _ := json.Marshal(map[string]any{})
+		req := httptest.NewRequest("POST", "/api/calc/"+kind, bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		s.Handler().ServeHTTP(rec, req)
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("%s got %d %s", kind, rec.Code, rec.Body.String())
+		}
+	}
+	body, _ := json.Marshal(map[string]any{
+		"tickers": []map[string]any{{"ticker": "AAPL", "data": []any{}}},
+	})
+	req := httptest.NewRequest("POST", "/api/calc/single-position", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("empty ticker bars got %d %s", rec.Code, rec.Body.String())
+	}
+}

@@ -83,3 +83,12 @@ func TestIBSInvalidBarNeutral(t *testing.T) {
 		t.Fatalf("%v", v)
 	}
 }
+
+func TestIBSEmptyReturnsEmpty(t *testing.T) {
+	if got := IBS(nil); len(got) != 0 {
+		t.Fatalf("nil: %v", got)
+	}
+	if got := IBS([]types.OHLC{}); len(got) != 0 {
+		t.Fatalf("empty: %v", got)
+	}
+}

@@ -83,7 +83,12 @@ func (s *Server) calcNoStop(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) calcSingle(w http.ResponseWriter, r *http.Request) {
 	req := s.readCalc(r)
-	eq, final, maxDD, trades, m, exp := backtest.RunSinglePosition(s.tickersOrOne(req), decodeStrategy(req.Strategy), types.F64Or(req.Leverage, 1), req.Single)
+	tickers := s.tickersOrOne(req)
+	if !tickerDataPresent(tickers) {
+		writeJSON(w, 400, map[string]any{"error": "data is required"})
+		return
+	}
+	eq, final, maxDD, trades, m, exp := backtest.RunSinglePosition(tickers, decodeStrategy(req.Strategy), types.F64Or(req.Leverage, 1), req.Single)
 	writeJSON(w, 200, map[string]any{"equity": eq, "finalValue": final, "maxDrawdown": maxDD, "trades": trades, "metrics": m, "exposure": exp})
 }
 
@@ -96,19 +101,34 @@ func (s *Server) calcOptions(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) calcOptionsMulti(w http.ResponseWriter, r *http.Request) {
 	req := s.readCalc(r)
-	eq, trades, final := backtest.RunMultiOptions(decodeTrades(req.Trades), s.tickersOrOne(req), req.Config)
+	tickers := s.tickersOrOne(req)
+	if !tickerDataPresent(tickers) {
+		writeJSON(w, 400, map[string]any{"error": "data is required"})
+		return
+	}
+	eq, trades, final := backtest.RunMultiOptions(decodeTrades(req.Trades), tickers, req.Config)
 	m := metrics.New(trades, eq, 10000, nil).All()
 	writeJSON(w, 200, map[string]any{"equity": eq, "trades": trades, "finalValue": final, "metrics": m, "maxDrawdown": m.MaxDrawdown})
 }
 
 func (s *Server) calcEMA(w http.ResponseWriter, r *http.Request) {
 	req := s.readCalc(r)
-	writeJSON(w, 200, backtest.RunEmaZone(s.tickersOrOne(req), req.Ema))
+	tickers := s.tickersOrOne(req)
+	if !tickerDataPresent(tickers) {
+		writeJSON(w, 400, map[string]any{"error": "data is required"})
+		return
+	}
+	writeJSON(w, 200, backtest.RunEmaZone(tickers, req.Ema))
 }
 
 func (s *Server) calcBAC4(w http.ResponseWriter, r *http.Request) {
 	req := s.readCalc(r)
-	writeJSON(w, 200, backtest.RunBuyAtClose4(s.tickersOrOne(req), decodeStrategy(req.Strategy), types.F64Or(req.Leverage, 1)))
+	tickers := s.tickersOrOne(req)
+	if !tickerDataPresent(tickers) {
+		writeJSON(w, 400, map[string]any{"error": "data is required"})
+		return
+	}
+	writeJSON(w, 200, backtest.RunBuyAtClose4(tickers, decodeStrategy(req.Strategy), types.F64Or(req.Leverage, 1)))
 }
 
 func (s *Server) calcMetrics(w http.ResponseWriter, r *http.Request) {
@@ -124,6 +144,10 @@ func (s *Server) calcMetrics(w http.ResponseWriter, r *http.Request) {
 func (s *Server) calcIndicators(w http.ResponseWriter, r *http.Request) {
 	req := s.readCalc(r)
 	bars := s.barsOrDataset(req)
+	if len(bars) == 0 {
+		writeJSON(w, 400, map[string]any{"error": "data is required"})
+		return
+	}
 	closes := make([]float64, len(bars))
 	for i, b := range bars {
 		closes[i] = b.Close
@@ -212,11 +236,26 @@ func (s *Server) barsOrDataset(req calcReq) []types.OHLC {
 	return nil
 }
 
+func tickerDataPresent(tickers []backtest.TickerIndexed) bool {
+	if len(tickers) == 0 {
+		return false
+	}
+	for _, t := range tickers {
+		if len(t.Data) == 0 {
+			return false
+		}
+	}
+	return true
+}
+
 func (s *Server) tickersOrOne(req calcReq) []backtest.TickerIndexed {
 	var out []backtest.TickerIndexed
 	if len(req.Tickers) > 0 {
 		for _, t := range req.Tickers {
 			bars := decodeBars(t.Data)
+			if len(bars) == 0 {
+				continue
+			}
 			out = append(out, backtest.TickerIndexed{Ticker: t.Ticker, Data: bars, IBSValues: indicators.IBS(bars)})
 		}
 		return out

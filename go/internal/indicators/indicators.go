@@ -129,7 +129,7 @@ func RSI(data []float64, period int) []float64 {
 
 func IBS(ohlc []types.OHLC) []float64 {
 	if len(ohlc) == 0 {
-		panic("OHLC data is required for IBS calculation")
+		return []float64{}
 	}
 	result := make([]float64, len(ohlc))
 	for i, bar := range ohlc {
