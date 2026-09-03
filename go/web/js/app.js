@@ -317,8 +317,9 @@
       || firstDefined(candidate, ['total_asset_currency', 'currency', 'base_currency', 'baseCurrency'])
       || 'USD';
     return {
-      totalAssets: toNum(firstDefined(candidate, ['total_net_liquidation_value', 'net_liquidation_value', 'netLiquidationValue', 'total_assets', 'totalAssets', 'total_market_value', 'market_value', 'marketValue']))
-        ?? toNum(firstDefined(usd, ['net_liquidation_value', 'netLiquidationValue'])),
+      totalAssets: toNum(firstDefined(candidate, ['total_net_liquidation_value', 'net_liquidation_value', 'netLiquidationValue', 'total_assets', 'totalAssets']))
+        ?? toNum(firstDefined(usd, ['net_liquidation_value', 'netLiquidationValue']))
+        ?? toNum(firstDefined(candidate, ['total_market_value', 'market_value', 'marketValue'])),
       cashBalance: toNum(firstDefined(candidate, ['total_cash_balance', 'cash_balance', 'cashBalance', 'settled_cash', 'settledCash', 'cash']))
         ?? toNum(firstDefined(usd, ['cash_balance', 'cashBalance'])),
       buyingPower: toNum(firstDefined(usd, ['overnight_buying_power', 'overnightBuyingPower', 'day_buying_power', 'dayBuyingPower', 'option_buying_power', 'optionBuyingPower', 'night_trading_buying_power', 'nightTradingBuyingPower', 'buying_power', 'buyingPower', 'margin_power', 'cash_power']))

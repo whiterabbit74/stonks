@@ -1192,11 +1192,39 @@ func (s *Server) serveWeb(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+	if strings.HasSuffix(p, ".js") || strings.HasSuffix(p, ".css") {
+		w.Header().Set("Cache-Control", "no-cache, must-revalidate")
+	}
 	if _, err := os.Stat(full); err == nil && !strings.HasSuffix(full, "/") {
+		if strings.HasSuffix(p, "index.html") || p == "/index.html" {
+			s.serveIndex(w, r, full)
+			return
+		}
 		http.ServeFile(w, r, full)
 		return
 	}
-	http.ServeFile(w, r, filepath.Join(s.WebDir, "index.html"))
+	s.serveIndex(w, r, filepath.Join(s.WebDir, "index.html"))
+}
+
+func (s *Server) serveIndex(w http.ResponseWriter, r *http.Request, path string) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	v := s.BuildID
+	if v == "" {
+		v = "dev"
+	}
+	html := string(b)
+	html = strings.ReplaceAll(html, `src="/js/api.js"`, `src="/js/api.js?v=`+v+`"`)
+	html = strings.ReplaceAll(html, `src="/js/charts.js"`, `src="/js/charts.js?v=`+v+`"`)
+	html = strings.ReplaceAll(html, `src="/js/app.js"`, `src="/js/app.js?v=`+v+`"`)
+	html = strings.ReplaceAll(html, `href="/css/app.css"`, `href="/css/app.css?v=`+v+`"`)
+	html = strings.ReplaceAll(html, `href="/css/extra.css"`, `href="/css/extra.css?v=`+v+`"`)
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	_, _ = w.Write([]byte(html))
 }
 
 func str(v any) string {
