@@ -59,14 +59,29 @@ func (l *ipLimiter) allow(key string, max int) bool {
 	return true
 }
 
+// trustProxy mirrors Node's `app.set('trust proxy', TRUST_PROXY)`, which
+// defaults to false. X-Forwarded-For is caller-controlled, so honouring it
+// unconditionally lets one client mint a fresh rate-limit bucket per request
+// and walk straight past the login limiter.
+func trustProxy() bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("TRUST_PROXY"))) {
+	case "", "false", "0", "off", "no":
+		return false
+	default:
+		return true
+	}
+}
+
 func clientIP(r *http.Request) string {
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		first := xff
-		if i := strings.Index(xff, ","); i >= 0 {
-			first = xff[:i]
-		}
-		if ip := strings.TrimSpace(first); ip != "" {
-			return ip
+	if trustProxy() {
+		// Caddy appends the peer address to any X-Forwarded-For the client
+		// sent, so only the RIGHTMOST entry is written by the trusted hop.
+		// Reading the leftmost would hand the attacker the bucket key.
+		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+			parts := strings.Split(xff, ",")
+			if ip := strings.TrimSpace(parts[len(parts)-1]); ip != "" {
+				return ip
+			}
 		}
 	}
 	host, _, err := net.SplitHostPort(r.RemoteAddr)

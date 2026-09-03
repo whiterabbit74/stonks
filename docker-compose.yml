@@ -12,6 +12,10 @@ services:
       - PORT=3001
       - GOAPP_ROOT=/app
       - GO_ENV=production
+      # Caddy is the only hop in front of this service, so the rightmost
+      # X-Forwarded-For entry is trustworthy and rate limiting keys on the
+      # real client IP. Leave unset anywhere the server is directly exposed.
+      - TRUST_PROXY=true
       # ADMIN_PASSWORD must be set in env_file. An empty password must not open
       # the API; fail-closed is enforced in the HTTP layer. This compose marks
       # the process as production so a missing password cannot disable auth.
