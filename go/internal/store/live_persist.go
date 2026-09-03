@@ -66,27 +66,43 @@ func (d *DB) SaveWebullToken(token, expiresAt, status string) error {
 	return err
 }
 
+const autotradeLogCap = 500
+
 func (d *DB) AppendAutotradeLog(message string) error {
-	_, err := d.SQL.Exec(`INSERT INTO autotrade_logs (ts, message) VALUES (?, ?)`, time.Now().UTC().Format(time.RFC3339Nano), message)
+	return d.AppendAutotradeLogKind("", message)
+}
+
+func (d *DB) AppendAutotradeLogKind(kind, message string) error {
+	_, err := d.SQL.Exec(`INSERT INTO autotrade_logs (ts, message, kind) VALUES (?, ?, ?)`, time.Now().UTC().Format(time.RFC3339Nano), message, kind)
 	return err
 }
 
 func (d *DB) ListAutotradeLogs(limit int) ([]map[string]any, error) {
-	if limit <= 0 {
-		limit = 200
+	return d.ListAutotradeLogsKind("", limit)
+}
+
+func (d *DB) ListAutotradeLogsKind(kind string, limit int) ([]map[string]any, error) {
+	if limit <= 0 || limit > autotradeLogCap {
+		limit = autotradeLogCap
 	}
-	rows, err := d.SQL.Query(`SELECT ts, message FROM autotrade_logs ORDER BY id DESC LIMIT ?`, limit)
+	var rows *sql.Rows
+	var err error
+	if kind == "" {
+		rows, err = d.SQL.Query(`SELECT ts, message, kind FROM autotrade_logs ORDER BY id DESC LIMIT ?`, limit)
+	} else {
+		rows, err = d.SQL.Query(`SELECT ts, message, kind FROM autotrade_logs WHERE kind = ? ORDER BY id DESC LIMIT ?`, kind, limit)
+	}
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	var out []map[string]any
 	for rows.Next() {
-		var ts, msg string
-		if err := rows.Scan(&ts, &msg); err != nil {
+		var ts, msg, k string
+		if err := rows.Scan(&ts, &msg, &k); err != nil {
 			return nil, err
 		}
-		out = append(out, map[string]any{"ts": ts, "message": msg})
+		out = append(out, map[string]any{"ts": ts, "message": msg, "kind": k})
 	}
 	if out == nil {
 		out = []map[string]any{}
