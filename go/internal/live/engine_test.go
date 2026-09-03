@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"mktorder.com/go/internal/providers"
 	"mktorder.com/go/internal/store"
@@ -242,7 +243,7 @@ func TestSplitJumpBlocksSignals(t *testing.T) {
 	if !strings.Contains(res.Text, "ПРОВЕРКА ДАННЫХ") || !strings.Contains(res.Text, "EMA/IBS сигналы заблокированы") {
 		t.Fatalf("integrity block missing: %s", res.Text)
 	}
-	if strings.Contains(res.Text, "ENTRY") {
+	if strings.Contains(res.Text, "🔔 ENTRY") || strings.Contains(res.Text, "· ENTRY") {
 		t.Fatalf("blocked ticker still ENTRY: %s", res.Text)
 	}
 	live, err := e.Aggregate(1, AggregateOpts{ForceSend: true, DryRun: false})
@@ -348,5 +349,125 @@ func TestTestBuyKillSwitch(t *testing.T) {
 	res, err := e.TestBuy("AAPL", 1)
 	if err != nil || !res.Submitted {
 		t.Fatalf("enabled test buy %v %+v", err, res)
+	}
+}
+
+func TestT11OverviewMatchesNodeLayout(t *testing.T) {
+	dir := t.TempDir()
+	db, err := store.Open(filepath.Join(dir, "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	entryBars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}} // IBS 0.05
+	flatBars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 10, Volume: 1}}
+	_ = db.SaveDataset("AAPL", "AAPL", "", "", entryBars, false)
+	_ = db.SaveDataset("MSFT", "MSFT", "", "", flatBars, false)
+	_ = db.UpsertWatch(map[string]any{"symbol": "AAPL", "lowIBS": 0.1, "highIBS": 0.75})
+	_ = db.UpsertWatch(map[string]any{"symbol": "MSFT", "lowIBS": 0.1, "highIBS": 0.75})
+	_ = db.InsertTrade("trades", map[string]any{"id": "m1", "symbol": "MSFT", "status": "open", "entryDate": "2026-08-20", "entryPrice": 10.0})
+	e := New(db, &MemoryQuotes{Bars: map[string][]types.OHLC{"AAPL": entryBars, "MSFT": flatBars}})
+	e.Telegram = &MemoryTelegram{}
+	e.ChatID = "c"
+	e.Now = func() time.Time { return time.Date(2026, 9, 1, 19, 49, 0, 0, time.UTC) }
+	res, err := e.Aggregate(11, AggregateOpts{ForceSend: true, DryRun: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	txt := res.Text
+	for _, need := range []string{
+		"11m", "ET", "2026-09-01",
+		"🔔 ENTRY:", "AAPL",
+		"EXIT: —",
+		"FLAT", "OPEN",
+		"IBS", "$",
+		"RT",
+		"█", "░",
+	} {
+		if !strings.Contains(txt, need) {
+			t.Fatalf("T-11 missing %q in:\n%s", need, txt)
+		}
+	}
+	if !strings.Contains(txt, "· ENTRY") {
+		t.Fatalf("AAPL row should tag ENTRY:\n%s", txt)
+	}
+	if strings.Contains(txt, "T-11 overview") {
+		t.Fatalf("old stub header still present:\n%s", txt)
+	}
+}
+
+func TestT1TextHasFreshnessAndPosition(t *testing.T) {
+	dir := t.TempDir()
+	db, err := store.Open(filepath.Join(dir, "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
+	_ = db.SaveDataset("AAPL", "AAPL", "", "", bars, false)
+	_ = db.UpsertWatch(map[string]any{"symbol": "AAPL", "lowIBS": 0.1, "highIBS": 0.75})
+	_ = db.InsertTrade("trades", map[string]any{"id": "m1", "symbol": "AAPL", "status": "open", "entryDate": "2026-08-20", "entryPrice": 8.0})
+	e := New(db, &MemoryQuotes{Bars: map[string][]types.OHLC{"AAPL": bars}})
+	e.Telegram = &MemoryTelegram{}
+	e.ChatID = "c"
+	e.Now = func() time.Time { return time.Date(2026, 9, 1, 19, 59, 0, 0, time.UTC) }
+	res, err := e.Simulate("confirmations")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(res.Text, "Котировки:") || !strings.Contains(res.Text, "Позиция: AAPL") {
+		t.Fatalf("T-1 missing freshness/position:\n%s", res.Text)
+	}
+}
+
+func TestT1DryRunSameWatchesAsNode(t *testing.T) {
+	dir := t.TempDir()
+	db, err := store.Open(filepath.Join(dir, "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	entry := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}} // IBS 0.05
+	flat := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 10, Volume: 1}}   // IBS 0.50
+	bars := map[string][]types.OHLC{"AAPL": entry, "AMZN": flat, "MSFT": flat, "V": flat}
+	for sym, b := range bars {
+		_ = db.SaveDataset(sym, sym, "", "", b, false)
+		_ = db.UpsertWatch(map[string]any{"symbol": sym, "lowIBS": 0.1, "highIBS": 0.75})
+	}
+	br := &MemoryBroker{}
+	e := New(db, &MemoryQuotes{Bars: bars})
+	e.Telegram = &MemoryTelegram{}
+	e.Broker = br
+	e.ChatID = "c"
+	e.Now = func() time.Time { return time.Date(2026, 9, 1, 19, 59, 0, 0, time.UTC) }
+	e.PatchAutoConfig(map[string]any{
+		"enabled": true, "lowIBS": 0.1, "highIBS": 0.75, "allowNewEntries": true,
+		"entrySizingMode": "quantity", "fixedQuantity": 1, "onlyFromTelegramWatches": true,
+	})
+	sim, err := e.Simulate("confirmations")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sim.Executed || !sim.DryRun {
+		t.Fatalf("dry-run must not execute: %+v", sim)
+	}
+	if len(br.Orders) != 0 {
+		t.Fatalf("dry-run placed %+v", br.Orders)
+	}
+	if !strings.Contains(sim.Text, "Открываем AAPL") {
+		t.Fatalf("Node-equivalent T-1 should enter AAPL:\n%s", sim.Text)
+	}
+	if strings.Contains(sim.Text, "Открываем AMZN") || strings.Contains(sim.Text, "Открываем MSFT") || strings.Contains(sim.Text, "Открываем V") {
+		t.Fatalf("should only enter lowest IBS:\n%s", sim.Text)
+	}
+	ev := e.Evaluate()
+	action, _ := ev.Decision["action"].(string)
+	symbol := fmt.Sprint(ev.Decision["symbol"])
+	if action != "entry" || symbol != "AAPL" {
+		t.Fatalf("decision %+v", ev.Decision)
+	}
+	qty, qerr := e.sizeOrder("entry", "AAPL", e.AutoConfig(), 8.2)
+	if qerr != nil || qty != 1 {
+		t.Fatalf("qty %v %v (Node quantity mode = 1)", qty, qerr)
 	}
 }

@@ -61,6 +61,12 @@ func TestLivePathsAreNotJsonOKStubs(t *testing.T) {
 	if len(tg.Messages) == 0 || !strings.Contains(tg.Messages[0][1], "AAPL") {
 		t.Fatalf("telegram payload missing AAPL: %+v", tg.Messages)
 	}
+	overview := tg.Messages[0][1]
+	for _, need := range []string{"11m", "ET", "ENTRY", "FLAT", "IBS", "RT"} {
+		if !strings.Contains(overview, need) {
+			t.Fatalf("T-11 overview missing %q: %s", need, overview)
+		}
+	}
 
 	rec = postJSON(s, "/api/telegram/simulate", map[string]any{"stage": "confirmations"})
 	_ = json.Unmarshal(rec.Body.Bytes(), &sim)

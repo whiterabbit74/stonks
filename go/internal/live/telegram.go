@@ -7,7 +7,9 @@ import (
 	"mktorder.com/go/internal/ibs"
 	"mktorder.com/go/internal/indicators"
 	"mktorder.com/go/internal/providers"
+	"mktorder.com/go/internal/store"
 	"mktorder.com/go/internal/tradingdate"
+	"mktorder.com/go/internal/types"
 )
 
 type SimulateResult struct {
@@ -118,7 +120,6 @@ func (e *Engine) Aggregate(minutesUntilClose int, opts AggregateOpts) (SimulateR
 			integ = append(integ, a.Warning)
 		}
 	}
-	integBlock := FormatIntegrityWarningBlock(integ)
 	if opts.UpdateState {
 		t11Sent, t1Sent := e.DB.AggregateState(e.chat(), today)
 		if stage != "confirmations" && t11Sent {
@@ -131,26 +132,8 @@ func (e *Engine) Aggregate(minutesUntilClose int, opts AggregateOpts) (SimulateR
 		}
 	}
 	if stage != "confirmations" {
-		lines := []string{fmt.Sprintf("T-11 overview %s", today)}
-		if integBlock != "" {
-			lines = append(lines, "", integBlock)
-		}
-		for _, r := range rows {
-			flag := "—"
-			if r.eval.blocked {
-				flag = "BLOCKED"
-			} else if r.eval.entry {
-				flag = "ENTRY"
-			} else if r.eval.exit {
-				flag = "EXIT"
-			}
-			ibsStr := "n/a"
-			if r.eval.ok {
-				ibsStr = fmt.Sprintf("%.2f", r.eval.ibs)
-			}
-			lines = append(lines, fmt.Sprintf("%s IBS=%s %s", r.sym, ibsStr, flag))
-		}
-		res, err := e.finishSend(&out, strings.Join(lines, "\n"), opts)
+		text := e.buildT11Text(minutesUntilClose, today, provider, rows, emaAlerts, integ)
+		res, err := e.finishSend(&out, text, opts)
 		if res.Sent {
 			if ema := buildEmaOverviewMessage(emaAlerts); ema != "" {
 				if e.Send(e.chat(), ema) == nil {
@@ -325,38 +308,60 @@ func (e *Engine) buildT1Text(today string, rows []t1Watch, blocking map[string]a
 	if len(decision) == 0 {
 		decision = append(decision, "• Действий нет")
 	}
-	lines := []string{
-		"<b>⏱️ 1 минута до закрытия</b>",
-		"",
-		"<b>🎯 РЕШЕНИЕ:</b>",
-	}
-	lines = append(lines, decision...)
-	lines = append(lines, "")
+	freshN := 0
 	for _, r := range rows {
-		flag := "—"
-		if r.eval.entry {
-			flag = "ENTRY"
-		} else if r.eval.exit {
-			flag = "EXIT"
+		if r.eval.rtFresh {
+			freshN++
 		}
-		ibsStr := "n/a"
-		if r.eval.ok {
-			ibsStr = fmt.Sprintf("%.2f", r.eval.ibs)
-		}
-		lines = append(lines, fmt.Sprintf("%s IBS=%s %s", r.sym, ibsStr, flag))
 	}
+	freshness := "Котировки: тикеры не отслеживаются"
+	if n := len(rows); n > 0 {
+		if freshN == n {
+			freshness = "Котировки: получены ✅"
+		} else if freshN == 0 {
+			freshness = "Котировки: нет данных ❌"
+		} else {
+			freshness = fmt.Sprintf("Котировки: %d/%d ⚠️", freshN, n)
+		}
+	}
+	position := "Позиция: нет"
+	if open := e.openMonitorTrade(); open != nil {
+		price := "—"
+		if p := asFloat(open["entryPrice"]); p > 0 {
+			price = fmt.Sprintf("$%.2f", p)
+		}
+		position = fmt.Sprintf("Позиция: %s (вход %s по %s)", open["symbol"], nz(fmt.Sprint(open["entryDate"])), price)
+	}
+	lines := []string{"<b>⏱️ 1 минута до закрытия</b>", ""}
+	if block := FormatIntegrityWarningBlock(integ); block != "" {
+		lines = append(lines, block, "")
+	}
+	lines = append(lines, "<b>🎯 РЕШЕНИЕ:</b>")
+	lines = append(lines, decision...)
+	lines = append(lines, "", freshness, position)
 	return strings.Join(lines, "\n")
 }
 
 type watchEval struct {
 	ok, entry, exit, blocked bool
-	ibs, price               float64
+	rtFresh, histFresh       bool
+	nearEntry, nearExit      bool
+	ibs, price, low, high    float64
 	warning                  IntegrityResult
 }
 
+const nearDelta = 0.02
+
 func (e *Engine) evalWatch(sym string, w map[string]any, provider string) watchEval {
 	low := asFloat(w["lowIBS"])
+	if low == 0 && w["lowIBS"] == nil {
+		low = ibs.DefaultLowIBS
+	}
 	high := asFloat(w["highIBS"])
+	if high == 0 && w["highIBS"] == nil {
+		high = ibs.DefaultHighIBS
+	}
+	ev := watchEval{low: low, high: high}
 	var ibsVal, price float64
 	ok := false
 	if qs := e.quotes(); qs != nil {
@@ -367,9 +372,11 @@ func (e *Engine) evalWatch(sym string, w map[string]any, provider string) watchE
 			if cur := asFloat(q.Quote["current"]); cur > 0 {
 				price = cur
 			}
+			ev.rtFresh = ok && price > 0
 		}
 	}
 	bars, adj, _ := e.DB.GetOHLC(sym)
+	ev.histFresh = barsHavePrevSession(bars, tradingdate.TodayNYSE(e.now()))
 	if !ok || price <= 0 {
 		if len(bars) > 0 {
 			last := bars[len(bars)-1]
@@ -388,19 +395,45 @@ func (e *Engine) evalWatch(sym string, w map[string]any, provider string) watchE
 		today := tradingdate.TodayNYSE(e.now())
 		integ := EvaluatePriceIntegrity(sym, bars, price, today, splits, adj)
 		if integ.BlockSignals {
-			return watchEval{blocked: true, price: price, warning: integ}
+			ev.blocked = true
+			ev.price = price
+			ev.warning = integ
+			return ev
 		}
 	}
 	if !ok {
-		return watchEval{}
+		return ev
 	}
-	return watchEval{
-		ok:    true,
-		ibs:   ibsVal,
-		price: price,
-		entry: ibs.IsEntrySignal(ibsVal, low),
-		exit:  ibs.IsExitSignal(ibsVal, high),
+	ev.ok = true
+	ev.ibs = ibsVal
+	ev.price = price
+	ev.entry = ibs.IsEntrySignal(ibsVal, low)
+	ev.exit = ibs.IsExitSignal(ibsVal, high)
+	ev.nearEntry = ibsVal <= low+nearDelta
+	ev.nearExit = ibsVal >= high-nearDelta
+	return ev
+}
+
+func barsHavePrevSession(bars []types.OHLC, today string) bool {
+	if len(bars) == 0 {
+		return false
 	}
+	last := tradingdate.DateKey(bars[len(bars)-1].Date)
+	prev := today
+	for i := 0; i < 5; i++ {
+		cand := tradingdate.AddDays(today, -1-i)
+		if tradingdate.DayOfWeek(cand) == 0 || tradingdate.DayOfWeek(cand) == 6 {
+			continue
+		}
+		prev = cand
+		break
+	}
+	return last >= prev
+}
+
+func (e *Engine) openMonitorTrade() map[string]any {
+	trades, _ := e.DB.ListTrades("trades")
+	return store.OpenBrokerTrade(trades)
 }
 
 func ibsFromQuote(q providers.QuotePayload) (float64, bool) {
