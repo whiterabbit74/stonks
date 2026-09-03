@@ -54,7 +54,6 @@ func TestTelegramT1IgnoresExecutionWindow(t *testing.T) {
 	_, e, br := testEngine(t, bars)
 	e.PatchAutoConfig(map[string]any{
 		"enabled": true, "lowIBS": 0.9, "allowNewEntries": true,
-		"entrySizingMode": "quantity", "fixedQuantity": 1,
 		"executionWindowSeconds": 15,
 	})
 	// 15:59 ET is 60s to close, outside a 15s window. Node T-1 still sends the order.
@@ -71,7 +70,7 @@ func TestTelegramT1IgnoresExecutionWindow(t *testing.T) {
 func TestRejectedOrderDoesNotOpenTrade(t *testing.T) {
 	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
 	db, e, br := testEngine(t, bars)
-	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true, "entrySizingMode": "quantity", "fixedQuantity": 1})
+	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true})
 	res := e.Execute("test")
 	if !res.Executed {
 		t.Fatalf("submit %+v", res)
@@ -96,7 +95,7 @@ func TestRejectedOrderDoesNotOpenTrade(t *testing.T) {
 func TestFillRecordsBrokerPriceAndQty(t *testing.T) {
 	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
 	db, e, br := testEngine(t, bars)
-	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true, "entrySizingMode": "quantity", "fixedQuantity": 2})
+	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true})
 	res := e.Execute("test")
 	oid := br.Orders[0].ClientOrderID
 	br.SetDetail(oid, map[string]any{
@@ -166,8 +165,7 @@ func TestSanitizeAutoTradingConfig(t *testing.T) {
 	out := sanitizeAutoTradingConfig(map[string]any{
 		"enabled": true, "lowIBS": 5.0, "highIBS": -1.0, "dryRun": true,
 		"executionWindowSeconds": 3, "maxSlippageBps": 5000,
-		"provider": "nope", "entrySizingMode": "balance", "orderType": "LIMIT",
-		"timeInForce": "GTC", "supportTradingSession": "N", "unknown": "x",
+		"provider": "nope", "unknown": "x",
 	}, map[string]any{"provider": "finnhub", "lowIBS": 0.1})
 	if asFloat(out["lowIBS"]) != 1 || asFloat(out["highIBS"]) != 0 {
 		t.Fatalf("clamp %+v", out)
@@ -187,8 +185,12 @@ func TestSanitizeAutoTradingConfig(t *testing.T) {
 	if fmt.Sprint(out["provider"]) != "finnhub" {
 		t.Fatalf("bad provider kept %+v", out["provider"])
 	}
-	if fmt.Sprint(out["orderType"]) != "LIMIT" || fmt.Sprint(out["timeInForce"]) != "GTC" {
-		t.Fatalf("enums %+v", out)
+	// Keys that described a different strategy are dropped, not stored: the
+	// engine always sends MARKET/DAY/CORE sized from the whole account.
+	for _, gone := range autoTradingRemovedFields {
+		if _, ok := out[gone]; ok {
+			t.Fatalf("%s must not survive a save: %+v", gone, out)
+		}
 	}
 }
 
@@ -238,7 +240,7 @@ func TestHighIBSZeroDoesNotLiquidate(t *testing.T) {
 	settings := e.DB.Settings()
 	settings["autoTrading"] = map[string]any{
 		"enabled": true, "allowExits": true, "highIBS": 0.0, "lowIBS": 0.1,
-		"onlyFromTelegramWatches": false, "symbols": "MSFT",
+		"symbols": "MSFT",
 	}
 	_ = e.DB.SaveSettings(settings)
 	ev := e.Evaluate()
@@ -258,14 +260,17 @@ func TestPerTickerThresholds(t *testing.T) {
 	_ = db.SaveDataset("AAPL", "AAPL", "", "", bars, false)
 	_ = db.UpsertWatch(map[string]any{"symbol": "AAPL", "lowIBS": 0.02, "highIBS": 0.75})
 	e := New(db, &MemoryQuotes{Bars: map[string][]types.OHLC{"AAPL": bars}})
-	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "highIBS": 0.75, "allowNewEntries": true, "onlyFromTelegramWatches": true})
+	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "highIBS": 0.75, "allowNewEntries": true})
 	ev := e.Evaluate()
 	if fmt.Sprint(ev.Decision["action"]) != "none" {
 		t.Fatalf("watch lowIBS 0.02 should block entry at 0.05: %+v", ev.Decision)
 	}
 }
 
-func TestConfiguredSymbolsIntersection(t *testing.T) {
+// The tradeable universe is the monitoring list, full stop. A second list in
+// the autotrade config used to narrow it, so a ticker could be monitored,
+// signal an entry and be skipped without saying why.
+func TestUniverseIsTheMonitoringList(t *testing.T) {
 	dir := t.TempDir()
 	db, err := store.Open(filepath.Join(dir, "t.db"))
 	if err != nil {
@@ -275,17 +280,9 @@ func TestConfiguredSymbolsIntersection(t *testing.T) {
 	_ = db.UpsertWatch(map[string]any{"symbol": "MSFT"})
 	_ = db.UpsertWatch(map[string]any{"symbol": "AMZN"})
 	e := New(db, nil)
-	got := configuredSymbols(map[string]any{"onlyFromTelegramWatches": true, "symbols": "AAPL"}, e)
-	if len(got) != 0 {
-		t.Fatalf("intersection empty, got %v", got)
-	}
-	got = configuredSymbols(map[string]any{"onlyFromTelegramWatches": true, "symbols": "MSFT"}, e)
-	if len(got) != 1 || got[0] != "MSFT" {
-		t.Fatalf("intersection %v", got)
-	}
-	got = configuredSymbols(map[string]any{"onlyFromTelegramWatches": false, "symbols": "AAPL"}, e)
-	if len(got) != 1 || got[0] != "AAPL" {
-		t.Fatalf("explicit only %v", got)
+	got := configuredSymbols(map[string]any{"symbols": "AAPL"}, e)
+	if len(got) != 2 || got[0] != "AMZN" || got[1] != "MSFT" {
+		t.Fatalf("universe %v", got)
 	}
 }
 
@@ -379,35 +376,12 @@ func TestPlaceMarketCfgPassedFromExecute(t *testing.T) {
 	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
 	_, e, br := testEngine(t, bars)
 	e.PatchAutoConfig(map[string]any{
-		"enabled": true, "lowIBS": 0.9, "allowNewEntries": true, "entrySizingMode": "quantity", "fixedQuantity": 1,
-		"allowFractionalShares": true, "timeInForce": "GTC", "supportTradingSession": "N",
-	})
+		"enabled": true, "lowIBS": 0.9, "allowNewEntries": true, "allowFractionalShares": true})
 	e.Execute("test")
-	if !br.LastCfg.Fractional || br.LastCfg.TimeInForce != "GTC" || br.LastCfg.SupportTradingSession != "N" {
+	// Fractional shares are the only order option left; time in force and
+	// session are fixed at DAY/CORE because the strategy trades at the close.
+	if !br.LastCfg.Fractional {
 		t.Fatalf("cfg %+v", br.LastCfg)
-	}
-}
-
-func TestPreviewBeforeSendDoesNotSubmit(t *testing.T) {
-	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
-	db, e, br := testEngine(t, bars)
-	e.PatchAutoConfig(map[string]any{
-		"enabled": true, "lowIBS": 0.9, "allowNewEntries": true, "entrySizingMode": "quantity", "fixedQuantity": 1,
-		"previewBeforeSend": true,
-	})
-	res := e.Execute("test")
-	if res.Executed || len(br.Orders) != 0 {
-		t.Fatalf("preview must block send %+v orders %+v", res, br.Orders)
-	}
-	logs, _ := db.ListAutotradeLogs(50)
-	found := false
-	for _, row := range logs {
-		if strings.Contains(fmt.Sprint(row["message"]), "event=order_preview_skipped") {
-			found = true
-		}
-	}
-	if !found {
-		t.Fatalf("missing preview log %+v", logs)
 	}
 }
 
@@ -450,7 +424,7 @@ func TestActualizeUsesLastBarWindow(t *testing.T) {
 func TestInFlightPreventsDoubleRecord(t *testing.T) {
 	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
 	db, e, br := testEngine(t, bars)
-	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true, "entrySizingMode": "quantity", "fixedQuantity": 1})
+	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true})
 	res := e.Execute("test")
 	oid := br.Orders[0].ClientOrderID
 	br.SetDetail(oid, map[string]any{"status": "FILLED", "avg_price": 8.2, "filled_qty": 1})
@@ -577,8 +551,7 @@ func TestT1SellsThenBuysInTheSameCycle(t *testing.T) {
 	}
 	e.PatchAutoConfig(map[string]any{
 		"enabled": true, "allowExits": true, "allowNewEntries": true,
-		"onlyFromTelegramWatches": true, "lowIBS": 0.1, "highIBS": 0.75,
-		"entrySizingMode": "quantity", "fixedQuantity": 1,
+		"lowIBS": 0.1, "highIBS": 0.75,
 	})
 	// Every order the memory broker takes reports as filled on the first poll.
 	br.FillStatus = "FILLED"
@@ -615,7 +588,6 @@ func TestSubmitRetriesAfterTransientFailure(t *testing.T) {
 	e.Sleep = func(time.Duration) {}
 	e.PatchAutoConfig(map[string]any{
 		"enabled": true, "lowIBS": 0.9, "allowNewEntries": true,
-		"entrySizingMode": "quantity", "fixedQuantity": 1,
 	})
 	br.SetFailPlace("connection reset", 2, false)
 
@@ -637,7 +609,6 @@ func TestSubmitDoesNotDuplicateWhenTheReplyIsLost(t *testing.T) {
 	e.Sleep = func(time.Duration) {}
 	e.PatchAutoConfig(map[string]any{
 		"enabled": true, "lowIBS": 0.9, "allowNewEntries": true,
-		"entrySizingMode": "quantity", "fixedQuantity": 1,
 	})
 	br.SetFailPlace("i/o timeout", 1, true)
 
@@ -657,7 +628,6 @@ func TestSubmitGivesUpWithoutPlacingAnything(t *testing.T) {
 	e.Sleep = func(time.Duration) {}
 	e.PatchAutoConfig(map[string]any{
 		"enabled": true, "lowIBS": 0.9, "allowNewEntries": true,
-		"entrySizingMode": "quantity", "fixedQuantity": 1,
 	})
 	br.SetFailPlace("service unavailable", 0, false)
 
@@ -710,8 +680,7 @@ func TestQuoteFallsBackToTheNextProvider(t *testing.T) {
 // live decision — they would answer with yesterday's bar.
 func TestChainOnlyContainsRealtimeProviders(t *testing.T) {
 	chain := quoteProviderChain(map[string]any{
-		"provider":         "alpha_vantage",
-		"providerFallback": "polygon,twelve_data,webull",
+		"provider": "alpha_vantage",
 	})
 	if chain[0] != "finnhub" {
 		t.Fatalf("a non-real-time primary must fall back to finnhub, got %v", chain)
@@ -733,7 +702,6 @@ func TestPartialFillIsRecordedAndWarned(t *testing.T) {
 	e.Sleep = func(time.Duration) {}
 	e.PatchAutoConfig(map[string]any{
 		"enabled": true, "lowIBS": 0.9, "allowNewEntries": true,
-		"entrySizingMode": "quantity", "fixedQuantity": 10,
 	})
 	res := e.Execute("test")
 	if !res.Executed {
@@ -771,14 +739,13 @@ func TestFullFillUnderUnknownStatusIsRecorded(t *testing.T) {
 	e.Sleep = func(time.Duration) {}
 	e.PatchAutoConfig(map[string]any{
 		"enabled": true, "lowIBS": 0.9, "allowNewEntries": true,
-		"entrySizingMode": "quantity", "fixedQuantity": 3,
 	})
 	if res := e.Execute("test"); !res.Executed {
 		t.Fatalf("submit %+v", res.Broker)
 	}
 	oid := br.Orders[0].ClientOrderID
 	br.SetDetail(oid, map[string]any{
-		"status": "TRADE_COMPLETE_NEW_WORD", "filled_qty": 3.0, "filled_price": 8.25,
+		"status": "TRADE_COMPLETE_NEW_WORD", "filled_qty": br.Orders[0].Quantity, "filled_price": 8.25,
 		"client_order_id": oid,
 	})
 	waitTrackerFinal(t, e, db, "AAPL", "entry")

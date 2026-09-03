@@ -119,22 +119,17 @@ func capitalModeConfig(autoTrading map[string]any) (multiplier, reservePct float
 	return cfg.multiplier, cfg.reservePct
 }
 
-func extractEntryFundsFromBalance(root map[string]any, autoTrading map[string]any) float64 {
+// extractEntryFundsFromBalance reports the buying power an entry may use.
+// Orders go out in the regular session, so day buying power leads and the
+// overnight figures are only fallbacks for accounts that do not report it.
+func extractEntryFundsFromBalance(root map[string]any) float64 {
 	if root == nil {
 		return 0
 	}
 	asset := preferredAsset(root)
-	session := ""
-	if autoTrading != nil {
-		session = strings.ToUpper(fmt.Sprint(autoTrading["supportTradingSession"]))
-	}
 	var cands []any
 	if asset != nil {
-		if session == "N" {
-			cands = []any{asset["night_trading_buying_power"], asset["overnight_buying_power"], asset["day_buying_power"], asset["option_buying_power"], asset["cash_balance"], asset["net_liquidation_value"]}
-		} else {
-			cands = []any{asset["day_buying_power"], asset["overnight_buying_power"], asset["night_trading_buying_power"], asset["option_buying_power"], asset["cash_balance"], asset["net_liquidation_value"]}
-		}
+		cands = []any{asset["day_buying_power"], asset["overnight_buying_power"], asset["night_trading_buying_power"], asset["option_buying_power"], asset["cash_balance"], asset["net_liquidation_value"]}
 	}
 	cands = append(cands, root["total_cash_balance"], root["cash_balance"], root["total_net_liquidation_value"], root["net_liquidation_value"])
 	return firstPositive(cands...)
@@ -156,7 +151,7 @@ func extractEntryBaseCapital(root map[string]any) float64 {
 
 func resolveEntryBalanceSizing(balancePayload any, autoTrading map[string]any) (entryFunds, buyingPower, baseCapital float64) {
 	root := unwrapBalance(balancePayload)
-	buyingPower = extractEntryFundsFromBalance(root, autoTrading)
+	buyingPower = extractEntryFundsFromBalance(root)
 	baseCapital = extractEntryBaseCapital(root)
 	multiplier, _ := capitalModeConfig(autoTrading)
 	multiplierBase := baseCapital
@@ -186,33 +181,14 @@ func ComputeOrderQuantity(currentPrice float64, autoTrading map[string]any, avai
 	if autoTrading == nil {
 		autoTrading = map[string]any{}
 	}
-	mode := strings.ToLower(fmt.Sprint(autoTrading["entrySizingMode"]))
-	if mode == "" || mode == "<nil>" {
-		mode = strings.ToLower(fmt.Sprint(autoTrading["sizingMode"]))
-	}
-	if mode == "" || mode == "<nil>" {
-		mode = "balance"
+	// One sizing rule: spend the entry funds the capital profile allows. Fixed
+	// share counts and fixed notionals used to be selectable here and had
+	// nothing to do with the strategy being traded.
+	if !(availableFunds > 0) {
+		return 0, fmt.Errorf("Unable to read available funds for balance sizing")
 	}
 	_, reservePct := capitalModeConfig(autoTrading)
-	headroom := 1 + reservePct
-	var quantity float64
-	switch mode {
-	case "quantity":
-		quantity = asFloat(autoTrading["fixedQuantity"])
-	case "notional":
-		quantity = asFloat(autoTrading["fixedNotionalUsd"]) / currentPrice
-		if capUSD := asFloat(autoTrading["maxPositionUsd"]); capUSD > 0 {
-			capQty := capUSD / currentPrice
-			if capQty < quantity {
-				quantity = capQty
-			}
-		}
-	default:
-		if !(availableFunds > 0) {
-			return 0, fmt.Errorf("Unable to read available funds for balance sizing")
-		}
-		quantity = (availableFunds / headroom) / currentPrice
-	}
+	quantity := (availableFunds / (1 + reservePct)) / currentPrice
 	if !asBool(autoTrading["allowFractionalShares"]) {
 		quantity = math.Floor(quantity)
 	} else {
@@ -285,20 +261,12 @@ func (e *Engine) sizeOrder(action, symbol string, cfg map[string]any, price floa
 		}
 		return q, nil
 	}
-	mode := strings.ToLower(fmt.Sprint(cfg["entrySizingMode"]))
-	if mode == "" || mode == "<nil>" {
-		mode = "balance"
+	if e.Broker == nil {
+		return 0, fmt.Errorf("Unable to read available funds for balance sizing")
 	}
-	funds := 0.0
-	if mode == "balance" {
-		if e.Broker == nil {
-			return 0, fmt.Errorf("Unable to read available funds for balance sizing")
-		}
-		acct, err := retryBrokerRead(e, "account", e.Broker.Account)
-		if err != nil {
-			return 0, err
-		}
-		funds = EntryFunds(acct, cfg)
+	acct, err := retryBrokerRead(e, "account", e.Broker.Account)
+	if err != nil {
+		return 0, err
 	}
-	return ComputeOrderQuantity(price, cfg, funds)
+	return ComputeOrderQuantity(price, cfg, EntryFunds(acct, cfg))
 }

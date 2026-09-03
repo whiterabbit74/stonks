@@ -12,13 +12,22 @@ import (
 )
 
 var autoTradingBoolFields = []string{
-	"enabled", "allowNewEntries", "allowExits", "onlyFromTelegramWatches",
-	"allowFractionalShares", "previewBeforeSend", "cancelOpenOrdersBeforeEntry",
+	"enabled", "allowNewEntries", "allowExits", "allowFractionalShares",
 }
 
 var autoTradingNumberFields = []string{
-	"lowIBS", "highIBS", "executionWindowSeconds", "fixedQuantity",
-	"fixedNotionalUsd", "maxPositionUsd", "maxSlippageBps",
+	"lowIBS", "highIBS", "executionWindowSeconds", "maxSlippageBps",
+}
+
+// autoTradingRemovedFields are keys older builds accepted. They are dropped on
+// every save so a value left in the database cannot describe a strategy the
+// engine no longer runs: sizing is always the full account, orders are always
+// MARKET/DAY/CORE, and the universe is always the monitoring list.
+var autoTradingRemovedFields = []string{
+	"entrySizingMode", "sizingMode", "fixedQuantity", "fixedNotionalUsd",
+	"maxPositionUsd", "orderType", "timeInForce", "supportTradingSession",
+	"providerFallback", "symbols", "onlyFromTelegramWatches", "notes",
+	"previewBeforeSend", "cancelOpenOrdersBeforeEntry", "dryRun",
 }
 
 var entryCapitalModes = map[string]struct{}{
@@ -104,7 +113,9 @@ func sanitizeAutoTradingConfig(input, current map[string]any) map[string]any {
 			next[field] = b
 		}
 	}
-	delete(next, "dryRun")
+	for _, field := range autoTradingRemovedFields {
+		delete(next, field)
+	}
 
 	for _, field := range autoTradingNumberFields {
 		if f, ok := finiteNumber(input[field]); ok {
@@ -119,15 +130,6 @@ func sanitizeAutoTradingConfig(input, current map[string]any) map[string]any {
 	}
 	if f, ok := finiteNumber(next["executionWindowSeconds"]); ok {
 		next["executionWindowSeconds"] = math.Max(15, math.Round(f))
-	}
-	if f, ok := finiteNumber(next["fixedQuantity"]); ok {
-		next["fixedQuantity"] = math.Max(0.00001, f)
-	}
-	if f, ok := finiteNumber(next["fixedNotionalUsd"]); ok {
-		next["fixedNotionalUsd"] = math.Max(1, f)
-	}
-	if f, ok := finiteNumber(next["maxPositionUsd"]); ok {
-		next["maxPositionUsd"] = math.Max(1, f)
 	}
 	if f, ok := finiteNumber(next["maxSlippageBps"]); ok {
 		next["maxSlippageBps"] = clamp(f, 0, 1000)
@@ -150,51 +152,29 @@ func sanitizeAutoTradingConfig(input, current map[string]any) map[string]any {
 	if s, ok := input["provider"].(string); ok && enumIn(s, "finnhub", "webull") {
 		next["provider"] = s
 	}
-	if s, ok := input["entrySizingMode"].(string); ok && enumIn(s, "balance", "quantity", "notional") {
-		next["entrySizingMode"] = s
-	}
 	if s, ok := input["entryCapitalMode"].(string); ok {
 		if _, ok := entryCapitalModes[s]; ok {
 			next["entryCapitalMode"] = s
 		}
 	}
-	if s, ok := input["sizingMode"].(string); ok && enumIn(s, "quantity", "notional") {
-		next["sizingMode"] = s
-	}
-	if s, ok := input["orderType"].(string); ok && enumIn(s, "MARKET", "LIMIT") {
-		next["orderType"] = s
-	}
-	if s, ok := input["timeInForce"].(string); ok && enumIn(s, "DAY", "GTC") {
-		next["timeInForce"] = s
-	}
-	if s, ok := input["supportTradingSession"].(string); ok && enumIn(s, "CORE", "ALL", "N") {
-		next["supportTradingSession"] = s
-	}
-	if s, ok := input["providerFallback"].(string); ok {
-		var keep []string
-		for _, p := range strings.Split(s, ",") {
-			p = strings.ToLower(strings.TrimSpace(p))
-			if isRealtimeQuoteProvider(p) {
-				keep = append(keep, p)
-			}
-		}
-		next["providerFallback"] = strings.Join(keep, ",")
-	}
-	if s, ok := input["symbols"].(string); ok {
-		next["symbols"] = s
-	}
-	if s, ok := input["notes"].(string); ok {
-		next["notes"] = s
-	}
 	next["lastModifiedAt"] = time.Now().UTC().Format(time.RFC3339Nano)
 	return next
 }
 
-func splitSymbols(raw string) []string {
-	var out []string
+// configuredSymbols is the universe the engine may trade: exactly the tickers
+// on the monitoring page. A second list in the autotrade config used to narrow
+// it by intersection, which meant a ticker could be monitored, signal an entry,
+// and be silently skipped - two lists to keep in sync for no gain.
+func configuredSymbols(cfg map[string]any, e *Engine) []string {
+	_ = cfg
+	if e == nil || e.DB == nil {
+		return nil
+	}
+	rows, _ := e.DB.ListWatches()
 	seen := map[string]struct{}{}
-	for _, p := range strings.Split(raw, ",") {
-		s := store.SafeTicker(p)
+	var out []string
+	for _, w := range rows {
+		s := store.SafeTicker(fmt.Sprint(w["symbol"]))
 		if s == "" {
 			continue
 		}
@@ -205,54 +185,6 @@ func splitSymbols(raw string) []string {
 		out = append(out, s)
 	}
 	return out
-}
-
-// configuredSymbols ports autotrade.js getConfiguredSymbols (intersection, not union).
-func configuredSymbols(cfg map[string]any, e *Engine) []string {
-	if cfg == nil {
-		cfg = map[string]any{}
-	}
-	explicit := []string{}
-	if raw, ok := cfg["symbols"].(string); ok && raw != "" {
-		explicit = splitSymbols(raw)
-	}
-	onlyWatches := asBool(cfg["onlyFromTelegramWatches"])
-	if !onlyWatches && len(explicit) > 0 {
-		return explicit
-	}
-	var watches []string
-	if e != nil && e.DB != nil {
-		rows, _ := e.DB.ListWatches()
-		seen := map[string]struct{}{}
-		for _, w := range rows {
-			s := store.SafeTicker(fmt.Sprint(w["symbol"]))
-			if s == "" {
-				continue
-			}
-			if _, ok := seen[s]; ok {
-				continue
-			}
-			seen[s] = struct{}{}
-			watches = append(watches, s)
-		}
-	}
-	if len(watches) > 0 {
-		if len(explicit) == 0 {
-			return watches
-		}
-		allow := map[string]struct{}{}
-		for _, s := range explicit {
-			allow[s] = struct{}{}
-		}
-		var inter []string
-		for _, s := range watches {
-			if _, ok := allow[s]; ok {
-				inter = append(inter, s)
-			}
-		}
-		return inter
-	}
-	return explicit
 }
 
 func cfgHas(cfg map[string]any, key string) bool {
@@ -337,10 +269,12 @@ func isRealtimeQuoteProvider(p string) bool {
 	return false
 }
 
-// quoteProviderChain is the order in which providers are tried for one symbol.
-// A live decision is impossible without a quote, so a single provider outage
-// must not cancel the day; the configured provider stays first so behaviour is
-// unchanged whenever it answers.
+// quoteProviderChain is the order in which providers are tried for one symbol:
+// the configured one first, then every other real-time provider. A live
+// decision is impossible without a quote, so a single provider outage must not
+// cancel the day - and the order needs no configuring, since there are only
+// ever two of them and asking the second one costs nothing when the first
+// already answered.
 func quoteProviderChain(cfg map[string]any) []string {
 	primary, _ := cfg["provider"].(string)
 	primary = strings.ToLower(strings.TrimSpace(primary))
@@ -348,21 +282,10 @@ func quoteProviderChain(cfg map[string]any) []string {
 		primary = "finnhub"
 	}
 	chain := []string{primary}
-	seen := map[string]bool{primary: true}
-	add := func(p string) {
-		if isRealtimeQuoteProvider(p) && !seen[p] {
-			seen[p] = true
+	for _, p := range realtimeQuoteProviders {
+		if p != primary {
 			chain = append(chain, p)
 		}
-	}
-	if raw, ok := cfg["providerFallback"].(string); ok && strings.TrimSpace(raw) != "" {
-		for _, p := range strings.Split(raw, ",") {
-			add(strings.ToLower(strings.TrimSpace(p)))
-		}
-		return chain
-	}
-	for _, p := range realtimeQuoteProviders {
-		add(p)
 	}
 	return chain
 }

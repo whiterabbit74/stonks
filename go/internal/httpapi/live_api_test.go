@@ -115,8 +115,7 @@ func TestLivePathsAreNotJsonOKStubs(t *testing.T) {
 	}
 
 	req := httptest.NewRequest("PATCH", "/api/autotrade/config", bytes.NewReader(mustJSON(map[string]any{
-		"enabled": true, "lowIBS": 0.9, "allowNewEntries": true, "entrySizingMode": "quantity", "fixedQuantity": 1,
-	})))
+		"enabled": true, "lowIBS": 0.9, "allowNewEntries": true})))
 	req.Header.Set("Content-Type", "application/json")
 	rec = httptest.NewRecorder()
 	s.Handler().ServeHTTP(rec, req)
@@ -166,8 +165,7 @@ func TestHTTPSimulateDoesNotConsumeT1Lock(t *testing.T) {
 	s, _, br := liveServer(t)
 	s.Live.Now = func() time.Time { return time.Date(2026, 9, 1, 19, 59, 0, 0, time.UTC) }
 	req := httptest.NewRequest("PATCH", "/api/autotrade/config", bytes.NewReader(mustJSON(map[string]any{
-		"enabled": true, "lowIBS": 0.9, "allowNewEntries": true, "entrySizingMode": "quantity", "fixedQuantity": 1,
-	})))
+		"enabled": true, "lowIBS": 0.9, "allowNewEntries": true})))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rec, req)
@@ -220,8 +218,7 @@ func TestHTTPSimulateDoesNotConsumeT1Lock(t *testing.T) {
 func TestSimulateConfirmationsDoesNotPlace(t *testing.T) {
 	s, _, br := liveServer(t)
 	req := httptest.NewRequest("PATCH", "/api/autotrade/config", bytes.NewReader(mustJSON(map[string]any{
-		"enabled": true, "lowIBS": 0.9, "allowNewEntries": true, "entrySizingMode": "quantity", "fixedQuantity": 1,
-	})))
+		"enabled": true, "lowIBS": 0.9, "allowNewEntries": true})))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rec, req)
@@ -313,8 +310,7 @@ func TestSimulateSplitJumpAndEmaAndFillPoll(t *testing.T) {
 	}
 
 	req := httptest.NewRequest("PATCH", "/api/autotrade/config", bytes.NewReader(mustJSON(map[string]any{
-		"enabled": true, "lowIBS": 0.9, "allowNewEntries": true, "entrySizingMode": "quantity", "fixedQuantity": 1,
-	})))
+		"enabled": true, "lowIBS": 0.9, "allowNewEntries": true})))
 	req.Header.Set("Content-Type", "application/json")
 	rec = httptest.NewRecorder()
 	s.Handler().ServeHTTP(rec, req)

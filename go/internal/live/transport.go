@@ -229,7 +229,15 @@ func (m *MemoryBroker) Account() (map[string]any, error) {
 	if m.Acct != nil {
 		return m.Acct, nil
 	}
-	return map[string]any{"account_id": "test"}, nil
+	// Entries are always sized from the account, so a broker with no balance
+	// could never place one. $1000 keeps the arithmetic in the tests simple.
+	return map[string]any{
+		"account_id": "test",
+		"data": map[string]any{"account_currency_assets": []any{map[string]any{
+			"currency": "USD", "day_buying_power": 1000.0, "cash_balance": 1000.0,
+			"net_liquidation_value": 1000.0,
+		}}},
+	}, nil
 }
 
 func (m *MemoryBroker) Positions() ([]any, error) {

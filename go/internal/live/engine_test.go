@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -44,7 +45,7 @@ func TestExecuteReserveSubmitTrack(t *testing.T) {
 	e.Broker = br
 	e.Telegram = &MemoryTelegram{}
 	e.ChatID = "c"
-	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true, "entrySizingMode": "quantity", "fixedQuantity": 2})
+	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true})
 	res := e.Execute("test")
 	if !res.Executed {
 		t.Fatalf("not executed: %+v", res)
@@ -63,7 +64,8 @@ func TestExecuteReserveSubmitTrack(t *testing.T) {
 	if db.FindPendingTracker("AAPL", "entry") == nil {
 		t.Fatal("expected pending tracker after submit")
 	}
-	if br.Orders[0].Quantity != 2 {
+	// $1000 of buying power, 2.2% held back for a market buy, $8.20 a share.
+	if br.Orders[0].Quantity != 119 {
 		t.Fatalf("qty %+v", br.Orders[0])
 	}
 }
@@ -89,7 +91,7 @@ func TestExecuteBalanceSizing(t *testing.T) {
 		"AAPL": {Quote: map[string]any{"current": 250.23}, Range: map[string]any{"low": 250.0, "high": 300.0}},
 	}})
 	e.Broker = br
-	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true, "entrySizingMode": "balance", "entryCapitalMode": "standard_safe"})
+	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true, "entryCapitalMode": "standard_safe"})
 	res := e.Execute("test")
 	if !res.Executed {
 		t.Fatalf("not executed: %+v", res)
@@ -115,7 +117,7 @@ func TestSimulateDoesNotPlace(t *testing.T) {
 	e.Telegram = &MemoryTelegram{}
 	e.ChatID = "c"
 	e.Now = nearCloseNow()
-	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true, "entrySizingMode": "quantity", "fixedQuantity": 1})
+	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true})
 	sim, err := e.Simulate("confirmations")
 	if err != nil {
 		t.Fatal(err)
@@ -156,7 +158,7 @@ func TestT1MismatchBlocksExecute(t *testing.T) {
 	e.Telegram = tg
 	e.ChatID = "c"
 	e.Now = nearCloseNow()
-	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true, "entrySizingMode": "quantity", "fixedQuantity": 1})
+	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true})
 	res, err := e.Aggregate(1, AggregateOpts{ForceSend: true, DryRun: false})
 	if err != nil {
 		t.Fatal(err)
@@ -193,7 +195,7 @@ func TestT1WaitForFillBlocksEntry(t *testing.T) {
 	e.Telegram = &MemoryTelegram{}
 	e.ChatID = "c"
 	e.Now = nearCloseNow()
-	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "highIBS": 0.75, "allowNewEntries": true, "allowExits": true, "entrySizingMode": "quantity", "fixedQuantity": 1})
+	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "highIBS": 0.75, "allowNewEntries": true, "allowExits": true})
 	res, err := e.Aggregate(1, AggregateOpts{ForceSend: true, DryRun: false})
 	if err != nil {
 		t.Fatal(err)
@@ -222,14 +224,14 @@ func TestPendingTrackerGuardsSecondSubmit(t *testing.T) {
 	br := &MemoryBroker{}
 	e := New(db, &MemoryQuotes{Bars: map[string][]types.OHLC{"AAPL": bars}})
 	e.Broker = br
-	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true, "entrySizingMode": "quantity", "fixedQuantity": 1})
+	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true})
 	first := e.Execute("test")
 	if !first.Executed {
 		t.Fatalf("first %+v", first)
 	}
 	e2 := New(db, &MemoryQuotes{Bars: map[string][]types.OHLC{"AAPL": bars}})
 	e2.Broker = br
-	e2.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true, "entrySizingMode": "quantity", "fixedQuantity": 1})
+	e2.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true})
 	// pending entry tracker + open position: Evaluate should not re-enter; force-check FindPending
 	if db.FindPendingTracker("AAPL", "entry") == nil {
 		t.Fatal("tracker not persisted")
@@ -258,7 +260,7 @@ func TestSplitJumpBlocksSignals(t *testing.T) {
 	e.Broker = br
 	e.ChatID = "c"
 	e.Now = nearCloseNow()
-	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true, "entrySizingMode": "quantity", "fixedQuantity": 1})
+	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true})
 	res, err := e.Aggregate(11, AggregateOpts{ForceSend: true, DryRun: true})
 	if err != nil {
 		t.Fatal(err)
@@ -335,7 +337,7 @@ func TestPollTrackersMarksFilled(t *testing.T) {
 	e.Broker = br
 	e.Telegram = &MemoryTelegram{}
 	e.ChatID = "c"
-	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true, "entrySizingMode": "quantity", "fixedQuantity": 1})
+	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true})
 	res := e.Execute("test")
 	if !res.Executed || len(br.Orders) != 1 {
 		t.Fatalf("execute %+v orders %+v", res, br.Orders)
@@ -534,7 +536,6 @@ func TestT1DryRunSameQuotesAsNode(t *testing.T) {
 	e.Now = func() time.Time { return time.Date(2026, 9, 1, 19, 59, 0, 0, time.UTC) }
 	e.PatchAutoConfig(map[string]any{
 		"enabled": true, "lowIBS": fix.LowIBS, "highIBS": fix.HighIBS, "allowNewEntries": true,
-		"entrySizingMode": fix.EntrySizingMode, "fixedQuantity": fix.FixedQuantity, "onlyFromTelegramWatches": true,
 	})
 	sim, err := e.Simulate("confirmations")
 	if err != nil {
@@ -561,9 +562,11 @@ func TestT1DryRunSameQuotesAsNode(t *testing.T) {
 			price = q.Current
 		}
 	}
+	// Sizing is the whole account: $1000 of buying power less the 2.2% reserve.
+	wantQty := math.Floor((1000 / 1.022) / price)
 	qty, qerr := e.sizeOrder("entry", "AAPL", e.AutoConfig(), price)
-	if qerr != nil || qty != fix.FixedQuantity {
-		t.Fatalf("qty %v %v want %.0f", qty, qerr, fix.FixedQuantity)
+	if qerr != nil || qty != wantQty {
+		t.Fatalf("qty %v %v want %.0f", qty, qerr, wantQty)
 	}
 	_, t1 := db.AggregateState(e.ChatID, "2026-09-01")
 	if t1 {
@@ -593,7 +596,6 @@ func TestT1DryRunSameWatchesAsNode(t *testing.T) {
 	e.Now = func() time.Time { return time.Date(2026, 9, 1, 19, 59, 0, 0, time.UTC) }
 	e.PatchAutoConfig(map[string]any{
 		"enabled": true, "lowIBS": 0.1, "highIBS": 0.75, "allowNewEntries": true,
-		"entrySizingMode": "quantity", "fixedQuantity": 1, "onlyFromTelegramWatches": true,
 	})
 	sim, err := e.Simulate("confirmations")
 	if err != nil {
@@ -618,8 +620,8 @@ func TestT1DryRunSameWatchesAsNode(t *testing.T) {
 		t.Fatalf("decision %+v", ev.Decision)
 	}
 	qty, qerr := e.sizeOrder("entry", "AAPL", e.AutoConfig(), 8.2)
-	if qerr != nil || qty != 1 {
-		t.Fatalf("qty %v %v (Node quantity mode = 1)", qty, qerr)
+	if qerr != nil || qty != 119 {
+		t.Fatalf("qty %v %v (whole account at $8.20)", qty, qerr)
 	}
 }
 
@@ -638,7 +640,7 @@ func TestTrackerWheelUsesNodeBackoff(t *testing.T) {
 	e.Broker = br
 	e.Telegram = &MemoryTelegram{}
 	e.ChatID = "c"
-	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true, "entrySizingMode": "quantity", "fixedQuantity": 1})
+	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true})
 	gate := make(chan struct{})
 	var mu sync.Mutex
 	var delays []time.Duration
@@ -700,7 +702,14 @@ func TestCancelOpenOrdersBeforeEntry(t *testing.T) {
 	e.Telegram = &MemoryTelegram{}
 	e.PatchAutoConfig(map[string]any{
 		"enabled": true, "lowIBS": 0.9, "allowNewEntries": true,
-		"entrySizingMode": "quantity", "fixedQuantity": 1, "cancelOpenOrdersBeforeEntry": true,
+	})
+	// The case this guard exists for: a tracker we gave up on (expired after its
+	// last poll) whose order is still working at the broker. Only orders this
+	// engine placed may be cancelled, so "old-1" is registered as ours and the
+	// MSFT order - someone trading the account by hand - is not.
+	_ = db.SaveOrderTracker(map[string]any{
+		"clientOrderId": "old-1", "symbol": "AAPL", "action": "entry",
+		"status": "expired", "quantity": 1.0, "source": "test", "dateKey": "2026-09-01",
 	})
 	res := e.Execute("test")
 	if !res.Executed {

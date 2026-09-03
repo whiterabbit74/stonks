@@ -640,15 +640,17 @@ func defaultSettings() map[string]any {
 		"enablePostClosePriceActualization": false,
 		"indicatorPanePercent":              30,
 		"defaultMultiTickerSymbols":         "SPY,QQQ,IWM",
+		// The strategy has exactly one shape: at the close, buy the weakest
+		// monitored ticker with the whole account, sell it when IBS recovers.
+		// Everything the operator can still choose is here; anything that used
+		// to describe a different strategy (fixed share counts, notional caps,
+		// limit orders, GTC, extended sessions) was removed rather than left as
+		// a knob that quietly contradicts the backtest.
 		"autoTrading": map[string]any{
 			"enabled": false, "provider": "finnhub", "lowIBS": 0.1, "highIBS": 0.75,
 			"executionWindowSeconds": 90, "allowNewEntries": true, "allowExits": true,
-			"onlyFromTelegramWatches": true, "symbols": "", "entrySizingMode": "balance",
-			"entryCapitalMode": "standard_safe", "sizingMode": "notional", "fixedQuantity": 1,
-			"fixedNotionalUsd": 1000, "maxPositionUsd": 0, "allowFractionalShares": false,
-			"orderType": "MARKET", "timeInForce": "DAY", "supportTradingSession": "CORE",
-			"maxSlippageBps": 25, "previewBeforeSend": false, "cancelOpenOrdersBeforeEntry": false,
-			"notes": "", "lastModifiedAt": nil,
+			"entryCapitalMode": "standard_safe", "allowFractionalShares": false,
+			"maxSlippageBps": 25, "lastModifiedAt": nil,
 		},
 	}
 }

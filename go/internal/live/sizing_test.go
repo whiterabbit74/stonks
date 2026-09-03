@@ -15,7 +15,7 @@ func TestComputeOrderQuantityMatchesNode(t *testing.T) {
 			},
 		},
 	}
-	safe := map[string]any{"entrySizingMode": "balance", "allowFractionalShares": false, "entryCapitalMode": "standard_safe"}
+	safe := map[string]any{"allowFractionalShares": false, "entryCapitalMode": "standard_safe"}
 	funds, _, _ := resolveEntryBalanceSizing(payload, safe)
 	q, err := ComputeOrderQuantity(250.23, safe, funds)
 	if err != nil {
@@ -25,7 +25,7 @@ func TestComputeOrderQuantityMatchesNode(t *testing.T) {
 		t.Fatalf("standard_safe qty=%v want 1", q)
 	}
 
-	cash := map[string]any{"entrySizingMode": "balance", "allowFractionalShares": false, "entryCapitalMode": "cash_100"}
+	cash := map[string]any{"allowFractionalShares": false, "entryCapitalMode": "cash_100"}
 	funds, _, _ = resolveEntryBalanceSizing(payload, cash)
 	q, err = ComputeOrderQuantity(250.23, cash, funds)
 	if err != nil {
@@ -47,7 +47,7 @@ func TestComputeOrderQuantityMatchesNode(t *testing.T) {
 			},
 		},
 	}
-	margin := map[string]any{"entrySizingMode": "balance", "allowFractionalShares": false, "entryCapitalMode": "margin_200"}
+	margin := map[string]any{"allowFractionalShares": false, "entryCapitalMode": "margin_200"}
 	funds, _, _ = resolveEntryBalanceSizing(marginPayload, margin)
 	if funds != 1000 {
 		t.Fatalf("margin funds=%v want 1000", funds)
@@ -60,17 +60,6 @@ func TestComputeOrderQuantityMatchesNode(t *testing.T) {
 		t.Fatalf("margin_200 qty=%v want 4", q)
 	}
 
-	qtyMode := map[string]any{"entrySizingMode": "quantity", "fixedQuantity": 3.0}
-	q, err = ComputeOrderQuantity(10, qtyMode, 0)
-	if err != nil || q != 3 {
-		t.Fatalf("quantity mode %v %v", q, err)
-	}
-
-	notional := map[string]any{"entrySizingMode": "notional", "fixedNotionalUsd": 1000.0, "maxPositionUsd": 400.0}
-	q, err = ComputeOrderQuantity(100, notional, 0)
-	if err != nil || q != 4 {
-		t.Fatalf("notional cap %v %v", q, err)
-	}
 }
 
 func TestPositionQuantity(t *testing.T) {

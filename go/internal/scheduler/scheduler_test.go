@@ -271,7 +271,7 @@ func TestTickT1Executes(t *testing.T) {
 	eng.Telegram = tg
 	eng.Broker = br
 	eng.ChatID = "c"
-	eng.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true, "entrySizingMode": "quantity", "fixedQuantity": 1})
+	eng.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true})
 	now := time.Date(2026, 9, 1, 19, 59, 0, 0, time.UTC) // 15:59 ET
 	var logs []JobLog
 	RunTick(db, Deps{Live: eng}, now, func(j JobLog) { logs = append(logs, j) })
@@ -351,7 +351,7 @@ func t1Engine(t *testing.T) (*store.DB, *live.Engine, *live.MemoryBroker, *live.
 	eng.Telegram = tg
 	eng.Broker = br
 	eng.ChatID = "c"
-	eng.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true, "entrySizingMode": "quantity", "fixedQuantity": 1})
+	eng.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true})
 	return db, eng, br, tg
 }
 

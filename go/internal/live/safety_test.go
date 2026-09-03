@@ -52,7 +52,6 @@ func TestBrokerPositionBlocksEntry(t *testing.T) {
 	br.Pos = []any{map[string]any{"symbol": "MSFT", "quantity": 2.0}}
 	e.PatchAutoConfig(map[string]any{
 		"enabled": true, "lowIBS": 0.9, "allowNewEntries": true, "allowExits": true,
-		"entrySizingMode": "quantity", "fixedQuantity": 1,
 	})
 	ev := e.Evaluate()
 	if fmt.Sprint(ev.Decision["action"]) == "entry" {
@@ -66,7 +65,6 @@ func TestBrokerPositionLookupErrorBlocksEntry(t *testing.T) {
 	br.FailPositions = errors.New("timeout")
 	e.PatchAutoConfig(map[string]any{
 		"enabled": true, "lowIBS": 0.9, "allowNewEntries": true,
-		"entrySizingMode": "quantity", "fixedQuantity": 1,
 	})
 	ev := e.Evaluate()
 	if fmt.Sprint(ev.Decision["action"]) != "none" || fmt.Sprint(ev.Decision["reason"]) != "broker_positions_unavailable" {
@@ -85,7 +83,7 @@ func TestPendingEntryBlocksOtherSymbol(t *testing.T) {
 	})
 	e.PatchAutoConfig(map[string]any{
 		"enabled": true, "lowIBS": 0.9, "allowNewEntries": true,
-		"entrySizingMode": "quantity", "fixedQuantity": 1, "onlyFromTelegramWatches": false, "symbols": "MSFT",
+		"symbols": "MSFT",
 	})
 	res := e.Execute("test")
 	if res.Executed {
@@ -99,7 +97,6 @@ func TestLookupErrorDoesNotResend(t *testing.T) {
 	e.Sleep = func(time.Duration) {}
 	e.PatchAutoConfig(map[string]any{
 		"enabled": true, "lowIBS": 0.9, "allowNewEntries": true,
-		"entrySizingMode": "quantity", "fixedQuantity": 1,
 	})
 	br.SetFailPlace("i/o timeout", 1, false)
 	br.FailDetail = errors.New("dial tcp timeout")
@@ -223,7 +220,7 @@ func TestBrokerOnlyPositionIsNeverSold(t *testing.T) {
 	br.Pos = []any{map[string]any{"symbol": "AAPL", "quantity": 500.0}}
 	e.PatchAutoConfig(map[string]any{
 		"enabled": true, "highIBS": 0.75, "allowExits": true, "allowNewEntries": true,
-		"onlyFromTelegramWatches": false, "symbols": "AAPL",
+		"symbols": "AAPL",
 	})
 	ev := e.Evaluate()
 	if got := fmt.Sprint(ev.Decision["action"]); got != "none" {
@@ -245,7 +242,6 @@ func TestFailedT1SubmitDoesNotResendTheMessage(t *testing.T) {
 	_ = db.UpsertWatch(map[string]any{"symbol": "AAPL", "lowIBS": 0.9, "highIBS": 0.75})
 	e.PatchAutoConfig(map[string]any{
 		"enabled": true, "lowIBS": 0.9, "allowNewEntries": true,
-		"entrySizingMode": "quantity", "fixedQuantity": 1, "onlyFromTelegramWatches": true,
 	})
 	br.SetFailPlace("rejected by broker", 0, false)
 	opts := AggregateOpts{ForceSend: true, UpdateState: true}
@@ -279,5 +275,31 @@ func TestTokenStatusReportsTheSourceRequestsUse(t *testing.T) {
 	}
 	if src := eng.TokenStatus()["source"]; src != "db" {
 		t.Fatalf("source = %v, want db", src)
+	}
+}
+
+func TestForeignOpenOrderIsNotCancelled(t *testing.T) {
+	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
+	db, e, br := testEngine(t, bars)
+	// An order on the traded symbol that this engine never placed: the user's
+	// own, sitting in the same account. Cancelling it would be interference.
+	br.Open = []any{map[string]any{"symbol": "AAPL", "client_order_id": "human-1", "status": "WORKING"}}
+	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true})
+
+	if res := e.Execute("test"); !res.Executed {
+		t.Fatalf("execute %+v", res)
+	}
+	if len(br.Cancelled) != 0 {
+		t.Fatalf("a foreign order was cancelled: %+v", br.Cancelled)
+	}
+	logs, _ := db.ListAutotradeLogs(50)
+	found := false
+	for _, row := range logs {
+		if strings.Contains(fmt.Sprint(row["message"]), "event=foreign_order_left_open") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("leaving a foreign order alone must be logged: %+v", logs)
 	}
 }

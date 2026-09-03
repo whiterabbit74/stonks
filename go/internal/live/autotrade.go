@@ -451,26 +451,15 @@ func (e *Engine) Execute(trigger string) EvalResult {
 	if action == "exit" {
 		side = "SELL"
 	}
-	if action == "entry" && asBool(ev.AutoTrading["cancelOpenOrdersBeforeEntry"]) {
-		cancelled := e.cancelOpenOrdersBeforeEntry(symbol)
-		if len(cancelled) > 0 {
+	if action == "entry" {
+		// Always, not on a switch: a leftover order of ours on this symbol can
+		// still fill and turn one intended position into two. Only orders this
+		// engine placed are touched - a manual order of the user's is theirs.
+		if cancelled := e.cancelOpenOrdersBeforeEntry(symbol); len(cancelled) > 0 {
 			e.logAuto("open_orders_cancelled", corr, map[string]any{"symbol": symbol, "cancelled_count": len(cancelled)})
 		}
 	}
-	if asBool(ev.AutoTrading["previewBeforeSend"]) {
-		e.logAuto("order_preview_skipped", corr, map[string]any{
-			"symbol": symbol, "action": action, "side": side, "order_type": "MARKET",
-			"quantity": qty, "broker_summary": "preview_blocks_live_send",
-		})
-		ev.Broker = map[string]any{"submitted": false, "simulated": true, "error": "previewBeforeSend"}
-		ev.Executed = false
-		return ev
-	}
-	placeCfg := PlaceMarketCfg{
-		Fractional:            asBool(ev.AutoTrading["allowFractionalShares"]),
-		TimeInForce:           strOr(ev.AutoTrading["timeInForce"], "DAY"),
-		SupportTradingSession: strOr(ev.AutoTrading["supportTradingSession"], "CORE"),
-	}
+	placeCfg := PlaceMarketCfg{Fractional: asBool(ev.AutoTrading["allowFractionalShares"])}
 	res, err := e.placeMarket(symbol, side, qty, placeCfg)
 	if err != nil {
 		res.Error = err.Error()
@@ -869,11 +858,7 @@ func (e *Engine) ClosePosition(symbol string) (OrderResult, error) {
 		err := fmt.Errorf("No broker position found for %s", symbol)
 		return OrderResult{Error: err.Error(), Symbol: symbol, Side: "SELL"}, err
 	}
-	res, err := e.placeMarket(symbol, "SELL", qty, PlaceMarketCfg{
-		Fractional:            frac,
-		TimeInForce:           strOr(cfg["timeInForce"], "DAY"),
-		SupportTradingSession: strOr(cfg["supportTradingSession"], "CORE"),
-	})
+	res, err := e.placeMarket(symbol, "SELL", qty, PlaceMarketCfg{Fractional: frac})
 	e.logAuto("close_position", "", map[string]any{"symbol": symbol, "submitted": res.Submitted, "clientOrderId": res.ClientOrderID})
 	if res.Submitted {
 		e.startTracking(res, orderMeta{
@@ -913,12 +898,7 @@ func (e *Engine) TestBuy(symbol string, qty float64) (OrderResult, error) {
 	if e.Broker == nil {
 		return OrderResult{Error: "Webull credentials are missing"}, fmt.Errorf("Webull credentials are missing")
 	}
-	cfg := e.AutoConfig()
-	res, err := e.placeMarket(store.SafeTicker(symbol), "BUY", qty, PlaceMarketCfg{
-		Fractional:            false,
-		TimeInForce:           strOr(cfg["timeInForce"], "DAY"),
-		SupportTradingSession: strOr(cfg["supportTradingSession"], "CORE"),
-	})
+	res, err := e.placeMarket(store.SafeTicker(symbol), "BUY", qty, PlaceMarketCfg{})
 	e.logAuto("test_buy", "", map[string]any{"symbol": symbol, "submitted": res.Submitted})
 	return res, err
 }
@@ -930,8 +910,10 @@ func envOr(k, d string) string {
 	return d
 }
 
+// cancelOpenOrdersBeforeEntry clears this engine's own unfilled orders on the
+// symbol it is about to buy. Orders it did not place are left alone.
 func (e *Engine) cancelOpenOrdersBeforeEntry(symbol string) []string {
-	if e.Broker == nil {
+	if e.Broker == nil || e.DB == nil {
 		return nil
 	}
 	rows, err := e.Broker.OpenOrders()
@@ -955,6 +937,10 @@ func (e *Engine) cancelOpenOrdersBeforeEntry(symbol string) []string {
 		}
 		id := strings.TrimSpace(fmt.Sprint(firstNonEmpty(m["client_order_id"], m["clientOrderId"])))
 		if id == "" || id == "<nil>" {
+			continue
+		}
+		if !e.DB.IsOwnOrder(id) {
+			e.logAuto("foreign_order_left_open", "", map[string]any{"symbol": sym, "clientOrderId": id})
 			continue
 		}
 		if err := e.Broker.CancelOrder(id); err != nil {

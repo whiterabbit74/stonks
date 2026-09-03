@@ -207,6 +207,21 @@ func (d *DB) FindPendingTracker(symbol, action string) map[string]any {
 	return nil
 }
 
+// IsOwnOrder reports whether this engine placed the order. Every order it
+// sends is recorded as a tracker first, so an id absent from the table belongs
+// to somebody else - the user trading the same account by hand, most likely -
+// and must never be cancelled on their behalf.
+func (d *DB) IsOwnOrder(clientOrderID string) bool {
+	if strings.TrimSpace(clientOrderID) == "" {
+		return false
+	}
+	var n int
+	if err := d.SQL.QueryRow(`SELECT COUNT(1) FROM order_trackers WHERE client_order_id=?`, clientOrderID).Scan(&n); err != nil {
+		return false
+	}
+	return n > 0
+}
+
 func (d *DB) ListPendingTrackers() ([]map[string]any, error) {
 	rows, err := d.SQL.Query(`SELECT client_order_id, symbol, action, status, quantity, source, date_key, started_at, attempts
         FROM order_trackers WHERE status NOT IN ('filled','cancelled','canceled','rejected','expired') ORDER BY started_at DESC`)
