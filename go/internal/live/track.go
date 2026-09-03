@@ -2,10 +2,12 @@ package live
 
 import (
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
 	"mktorder.com/go/internal/store"
+	"mktorder.com/go/internal/tradingdate"
 )
 
 // Same backoff as Node TRACKING_DELAYS_MS in autotrade.js.
@@ -80,6 +82,7 @@ func (e *Engine) PollTrackers() int {
 	if e.Broker == nil {
 		return 0
 	}
+	e.expireStaleTrackers()
 	pending, err := e.DB.ListPendingTrackers()
 	if err != nil || len(pending) == 0 {
 		return 0
@@ -93,12 +96,37 @@ func (e *Engine) PollTrackers() int {
 }
 
 func (e *Engine) ResumeTrackers() {
+	e.expireStaleTrackers()
 	pending, err := e.DB.ListPendingTrackers()
 	if err != nil {
 		return
 	}
 	for _, t := range pending {
 		e.TrackSubmitted(fmt.Sprint(t["clientOrderId"]))
+	}
+}
+
+func (e *Engine) expireStaleTrackers() {
+	if e.DB == nil {
+		return
+	}
+	today := tradingdate.TodayNYSE(e.now())
+	pending, err := e.DB.ListPendingTrackers()
+	if err != nil {
+		return
+	}
+	for _, t := range pending {
+		id := fmt.Sprint(t["clientOrderId"])
+		dateKey := fmt.Sprint(t["dateKey"])
+		if dateKey == "" || dateKey == "<nil>" {
+			continue
+		}
+		if dateKey < today {
+			e.finalizeTracker(t, "expired")
+			e.logAuto("order_tracking_finished", e.metaCorr(id), map[string]any{
+				"clientOrderId": id, "status": "expired", "reason": "stale_date_key", "dateKey": dateKey,
+			})
+		}
 	}
 }
 
@@ -121,27 +149,58 @@ func (e *Engine) TrackSubmitted(clientOrderID string) {
 
 func (e *Engine) trackerWheel(clientOrderID string) {
 	defer func() {
+		if rec := recover(); rec != nil {
+			log.Printf("live: trackerWheel panic clientOrderId=%s: %v", clientOrderID, rec)
+			e.logAuto("tracker_wheel_panic", e.metaCorr(clientOrderID), map[string]any{
+				"clientOrderId": clientOrderID, "error": fmt.Sprint(rec),
+			})
+		}
 		e.mu.Lock()
 		delete(e.wheels, clientOrderID)
 		e.mu.Unlock()
 	}()
 	for attempt := 0; attempt < 64; attempt++ {
 		e.sleep(trackingDelay(attempt))
-		var rec map[string]any
-		pending, _ := e.DB.ListPendingTrackers()
-		for _, t := range pending {
-			if fmt.Sprint(t["clientOrderId"]) == clientOrderID {
-				rec = t
-				break
+		done := false
+		func() {
+			defer func() {
+				if rec := recover(); rec != nil {
+					log.Printf("live: trackerWheel attempt panic clientOrderId=%s: %v", clientOrderID, rec)
+					e.logAuto("tracker_wheel_panic", e.metaCorr(clientOrderID), map[string]any{
+						"clientOrderId": clientOrderID, "attempt": attempt, "error": fmt.Sprint(rec),
+					})
+				}
+			}()
+			var rec map[string]any
+			pending, _ := e.DB.ListPendingTrackers()
+			for _, t := range pending {
+				if fmt.Sprint(t["clientOrderId"]) == clientOrderID {
+					rec = t
+					break
+				}
 			}
-		}
-		if rec == nil {
-			return
-		}
-		if e.pollOneTracker(rec) {
+			if rec == nil {
+				done = true
+				return
+			}
+			if e.pollOneTracker(rec) {
+				done = true
+			}
+		}()
+		if done {
 			return
 		}
 		if FastTrackers && e.Sleep == nil {
+			return
+		}
+	}
+	pending, _ := e.DB.ListPendingTrackers()
+	for _, t := range pending {
+		if fmt.Sprint(t["clientOrderId"]) == clientOrderID {
+			e.finalizeTracker(t, "expired")
+			e.logAuto("order_tracking_finished", e.metaCorr(clientOrderID), map[string]any{
+				"clientOrderId": clientOrderID, "status": "expired", "reason": "max_attempts",
+			})
 			return
 		}
 	}
@@ -152,34 +211,130 @@ func (e *Engine) pollOneTracker(t map[string]any) bool {
 	if id == "" || e.Broker == nil {
 		return true
 	}
+	e.mu.Lock()
+	if e.inFlight == nil {
+		e.inFlight = map[string]bool{}
+	}
+	if e.inFlight[id] {
+		e.mu.Unlock()
+		return false
+	}
+	e.inFlight[id] = true
+	e.mu.Unlock()
+	defer func() {
+		e.mu.Lock()
+		delete(e.inFlight, id)
+		e.mu.Unlock()
+	}()
+
 	detail, derr := e.Broker.OrderDetail(id)
 	status := "unknown"
 	if derr != nil {
-		_ = e.DB.AppendAutotradeLog("order_poll_failed " + id + " " + derr.Error())
+		e.logAuto("order_poll_failed", e.metaCorr(id), map[string]any{
+			"clientOrderId": id, "error": derr.Error(),
+		})
 		return false
 	}
 	if detail != nil {
-		status = NormalizeOrderStatus(fmt.Sprint(firstNonEmpty(detail["status"], detail["order_status"], detail["orderStatus"])))
+		status = NormalizeOrderStatus(orderStatusField(detail))
 		if status == "unknown" {
-			status = NormalizeOrderStatus(fmt.Sprint(detail["raw"]))
+			if snap := e.findOrderSnapshot(id); snap != nil {
+				detail = snap
+				status = NormalizeOrderStatus(orderStatusField(snap))
+			}
 		}
 	}
 	if !IsFinalOrderStatus(status) {
 		_ = e.DB.SetOrderTrackerStatus(id, status)
-		_ = e.DB.AppendAutotradeLog("order_poll " + id + " " + status)
+		e.logAuto("order_poll", e.metaCorr(id), map[string]any{
+			"clientOrderId": id, "status": status, "symbol": t["symbol"],
+		})
 		return false
 	}
+	e.finalizeTrackerStatus(t, detail, status)
+	return true
+}
+
+func (e *Engine) finalizeTracker(t map[string]any, status string) {
+	e.finalizeTrackerStatus(t, nil, status)
+}
+
+func (e *Engine) finalizeTrackerStatus(t map[string]any, detail map[string]any, status string) {
+	id := fmt.Sprint(t["clientOrderId"])
+	// Record the trade before marking the tracker final so a waiter that
+	// keys off pending status cannot observe a filled tracker with no row.
+	e.recordFill(t, detail, status)
 	_ = e.DB.SetOrderTrackerStatus(id, status)
-	_ = e.DB.AppendAutotradeLog("order_tracking_finished " + id + " " + status)
+	e.logAuto("order_tracking_finished", e.metaCorr(id), map[string]any{
+		"clientOrderId": id, "status": status, "symbol": t["symbol"], "action": t["action"],
+	})
 	if status == "filled" {
 		sym := store.SafeTicker(fmt.Sprint(t["symbol"]))
 		side := "BUY"
 		if fmt.Sprint(t["action"]) == "exit" {
 			side = "SELL"
 		}
-		_ = e.Send(e.chat(), fmt.Sprintf("<b>Webull исполнено</b>\n%s • %s\nqty: %v\nsource: %v", sym, side, t["quantity"], t["source"]))
+		fillPrice := fillPriceFrom(detail)
+		qty := fillQtyFrom(detail)
+		if !(qty > 0) {
+			qty = asFloat(t["quantity"])
+		}
+		priceS := "—"
+		if fillPrice > 0 {
+			priceS = fmt.Sprintf("$%.2f", fillPrice)
+		}
+		_ = e.Send(e.chat(), fmt.Sprintf("<b>Webull исполнено</b>\n%s • %s • %s\nqty: %v\nsource: %v", sym, side, priceS, qty, t["source"]))
 	}
-	return true
+	e.mu.Lock()
+	delete(e.orderMeta, id)
+	e.mu.Unlock()
+}
+
+func (e *Engine) findOrderSnapshot(clientOrderID string) map[string]any {
+	if e.Broker == nil {
+		return nil
+	}
+	match := func(rows []any) map[string]any {
+		for _, row := range rows {
+			m := extractOrderDetailPayload(row)
+			if m == nil {
+				m = mapOf(row)
+			}
+			if clientOrderIDOf(m) == clientOrderID {
+				return m
+			}
+		}
+		return nil
+	}
+	if open, err := e.Broker.OpenOrders(); err == nil {
+		if m := match(open); m != nil {
+			return m
+		}
+	}
+	today := tradingdate.TodayNYSE(e.now())
+	start := tradingdate.AddDays(today, -7)
+	if hist, err := e.Broker.OrderHistory(start, today); err == nil {
+		return match(hist)
+	}
+	return nil
+}
+
+func (e *Engine) metaCorr(clientOrderID string) string {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.orderMeta == nil {
+		return ""
+	}
+	return e.orderMeta[clientOrderID].CorrelationID
+}
+
+func (e *Engine) rememberOrder(clientOrderID string, meta orderMeta) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.orderMeta == nil {
+		e.orderMeta = map[string]orderMeta{}
+	}
+	e.orderMeta[clientOrderID] = meta
 }
 
 func firstNonEmpty(vals ...any) any {

@@ -31,18 +31,7 @@ func (e *Engine) PatchAutoConfig(updates map[string]any) map[string]any {
 	if cur == nil {
 		cur = map[string]any{}
 	}
-	for k, v := range updates {
-		if k == "config" {
-			if inner, ok := v.(map[string]any); ok {
-				for ik, iv := range inner {
-					cur[ik] = iv
-				}
-				continue
-			}
-		}
-		cur[k] = v
-	}
-	cur["lastModifiedAt"] = e.now().UTC().Format(time.RFC3339Nano)
+	cur = sanitizeAutoTradingConfig(updates, cur)
 	settings["autoTrading"] = cur
 	_ = e.DB.SaveSettings(settings)
 	return cur
@@ -198,25 +187,34 @@ func (e *Engine) Evaluate() EvalResult {
 	if provider == "" {
 		provider = "finnhub"
 	}
-	low, _ := cfg["lowIBS"].(float64)
-	high, _ := cfg["highIBS"].(float64)
-	allowExits, _ := cfg["allowExits"].(bool)
-	if _, ok := cfg["allowExits"]; !ok {
-		allowExits = true
-	}
-	allowEntries, _ := cfg["allowNewEntries"].(bool)
-	if _, ok := cfg["allowNewEntries"]; !ok {
-		allowEntries = true
+	allowExits := allowFlag(cfg, "allowExits")
+	allowEntries := allowFlag(cfg, "allowNewEntries")
+	watchBy := map[string]map[string]any{}
+	if watches, err := e.DB.ListWatches(); err == nil {
+		for _, w := range watches {
+			watchBy[store.SafeTicker(fmt.Sprint(w["symbol"]))] = w
+		}
 	}
 	brokerTrades, _ := e.DB.ListTrades("broker_trades")
 	open := store.OpenBrokerTrade(brokerTrades)
 	var quotes []map[string]any
 	for _, sym := range symbols {
-		w := map[string]any{"symbol": sym, "lowIBS": low, "highIBS": high}
+		w := watchBy[sym]
+		if w == nil {
+			w = map[string]any{"symbol": sym}
+			if cfgHas(cfg, "lowIBS") {
+				w["lowIBS"] = cfg["lowIBS"]
+			}
+			if cfgHas(cfg, "highIBS") {
+				w["highIBS"] = cfg["highIBS"]
+			}
+		}
 		ev := e.evalWatch(sym, w, provider)
+		low, high, highInvalid := watchThresholds(w, cfg)
 		quotes = append(quotes, map[string]any{
 			"symbol": sym, "ok": ev.ok, "ibs": ev.ibs, "currentPrice": ev.price,
-			"thresholds": map[string]any{"lowIBS": low, "highIBS": high},
+			"thresholds":     map[string]any{"lowIBS": low, "highIBS": high},
+			"highIBSInvalid": highInvalid,
 		})
 	}
 	decision := map[string]any{"action": "none", "reason": "no_signal", "symbol": nil, "candidate": nil}
@@ -229,7 +227,10 @@ func (e *Engine) Evaluate() EvalResult {
 				break
 			}
 		}
-		if row != nil && ibs.IsExitSignal(row["ibs"], high) {
+		high := liveHighOrDefault(row)
+		if row != nil && asBool(row["highIBSInvalid"]) {
+			decision = map[string]any{"action": "none", "reason": "invalid_high_ibs", "symbol": sym, "candidate": row}
+		} else if row != nil && ibs.IsExitSignal(row["ibs"], high) {
 			decision = map[string]any{"action": "exit", "reason": "ibs_exit", "symbol": sym, "candidate": row}
 		} else {
 			reason := "open_position_quote_unavailable"
@@ -246,6 +247,7 @@ func (e *Engine) Evaluate() EvalResult {
 				continue
 			}
 			v, _ := q["ibs"].(float64)
+			low := liveLowOrDefault(q)
 			if ibs.IsEntrySignal(v, low) && v < bestIBS {
 				bestIBS = v
 				best = q
@@ -268,7 +270,32 @@ func (e *Engine) Evaluate() EvalResult {
 	}
 }
 
+func liveLowOrDefault(row map[string]any) float64 {
+	if row == nil {
+		return ibs.DefaultLowIBS
+	}
+	if th, ok := row["thresholds"].(map[string]any); ok && th["lowIBS"] != nil {
+		return asFloat(th["lowIBS"])
+	}
+	return ibs.DefaultLowIBS
+}
+
+func liveHighOrDefault(row map[string]any) float64 {
+	if row == nil {
+		return ibs.DefaultHighIBS
+	}
+	if th, ok := row["thresholds"].(map[string]any); ok && th["highIBS"] != nil {
+		h := asFloat(th["highIBS"])
+		if h == 0 {
+			return ibs.DefaultHighIBS
+		}
+		return h
+	}
+	return ibs.DefaultHighIBS
+}
+
 func (e *Engine) Execute(trigger string) EvalResult {
+	corr := newCorrelationID()
 	ev := e.Evaluate()
 	e.mu.Lock()
 	e.lastRunAt = ev.EvaluatedAt
@@ -277,14 +304,14 @@ func (e *Engine) Execute(trigger string) EvalResult {
 	action, _ := ev.Decision["action"].(string)
 	if action == "none" {
 		ev.Executed = false
-		_ = e.DB.AppendAutotradeLog("execution_skipped " + trigger + " no_signal")
+		e.logAuto("execution_skipped", corr, map[string]any{"trigger": trigger, "reason": "no_signal"})
 		return ev
 	}
 	symbol := store.SafeTicker(fmt.Sprint(ev.Decision["symbol"]))
 	key := symbol + ":" + action
 	if pending := e.DB.FindPendingTracker(symbol, action); pending != nil {
 		ev.Broker = map[string]any{"submitted": false, "error": "pending_" + action + "_tracker_exists", "clientOrderId": pending["clientOrderId"]}
-		_ = e.DB.AppendAutotradeLog("order_guarded " + key)
+		e.logAuto("order_guarded", corr, map[string]any{"symbol": symbol, "action": action, "reason": "pending_tracker"})
 		return ev
 	}
 	e.mu.Lock()
@@ -294,7 +321,7 @@ func (e *Engine) Execute(trigger string) EvalResult {
 	if _, taken := e.reservations[key]; taken {
 		e.mu.Unlock()
 		ev.Broker = map[string]any{"submitted": false, "error": "pending_" + action + "_submission_exists"}
-		_ = e.DB.AppendAutotradeLog("order_guarded " + key)
+		e.logAuto("order_guarded", corr, map[string]any{"symbol": symbol, "action": action, "reason": "pending_submission"})
 		return ev
 	}
 	e.reservations[key] = "submitting"
@@ -308,70 +335,129 @@ func (e *Engine) Execute(trigger string) EvalResult {
 	enabled, _ := ev.AutoTrading["enabled"].(bool)
 	if !enabled {
 		ev.Broker = map[string]any{"submitted": false, "simulated": false, "error": "Autotrading is disabled", "mode": "off"}
-		_ = e.DB.AppendAutotradeLog("execution_skipped autotrading_disabled " + symbol)
+		e.logAuto("execution_skipped", corr, map[string]any{"symbol": symbol, "reason": "autotrading_disabled"})
 		return ev
 	}
 	if e.Broker == nil {
 		ev.Broker = map[string]any{"submitted": false, "error": "Webull credentials are missing", "mode": "off"}
-		_ = e.DB.AppendAutotradeLog("execution_blocked missing_webull_credentials " + symbol)
+		e.logAuto("execution_blocked", corr, map[string]any{"symbol": symbol, "reason": "missing_webull_credentials"})
 		return ev
 	}
-	qty, qerr := e.sizeOrder(action, symbol, ev.AutoTrading, quotePrice(ev, symbol))
+	if trigger == "scheduler" && e.outsideExecutionWindow(ev.AutoTrading) {
+		ev.Broker = map[string]any{"submitted": false, "error": "outside_execution_window"}
+		e.logAuto("execution_skipped", corr, map[string]any{"symbol": symbol, "reason": "outside_execution_window"})
+		return ev
+	}
+	price := quotePrice(ev, symbol)
+	qty, qerr := e.sizeOrder(action, symbol, ev.AutoTrading, price)
 	if qerr != nil {
 		ev.Broker = map[string]any{"submitted": false, "error": qerr.Error()}
-		_ = e.DB.AppendAutotradeLog("execution_blocked " + qerr.Error() + " " + symbol)
+		e.logAuto("execution_blocked", corr, map[string]any{"symbol": symbol, "reason": qerr.Error()})
 		return ev
 	}
+	e.logBalanceSnapshot(corr, symbol, action)
 	side := "BUY"
 	if action == "exit" {
 		side = "SELL"
 	}
 	if action == "entry" && asBool(ev.AutoTrading["cancelOpenOrdersBeforeEntry"]) {
-		e.cancelOpenOrdersBeforeEntry(symbol)
+		cancelled := e.cancelOpenOrdersBeforeEntry(symbol)
+		if len(cancelled) > 0 {
+			e.logAuto("open_orders_cancelled", corr, map[string]any{"symbol": symbol, "cancelled_count": len(cancelled)})
+		}
 	}
-	res, err := e.Broker.PlaceMarket(symbol, side, qty)
+	if asBool(ev.AutoTrading["previewBeforeSend"]) {
+		e.logAuto("order_preview_skipped", corr, map[string]any{
+			"symbol": symbol, "action": action, "side": side, "order_type": "MARKET",
+			"quantity": qty, "broker_summary": "preview_unsupported_for_webull_us",
+		})
+	}
+	placeCfg := PlaceMarketCfg{
+		Fractional:            asBool(ev.AutoTrading["allowFractionalShares"]),
+		TimeInForce:           strOr(ev.AutoTrading["timeInForce"], "DAY"),
+		SupportTradingSession: strOr(ev.AutoTrading["supportTradingSession"], "CORE"),
+	}
+	res, err := e.placeMarket(symbol, side, qty, placeCfg)
 	if err != nil {
 		res.Error = err.Error()
 		res.Submitted = false
 	}
 	ev.Broker = res
 	ev.Executed = res.Submitted
-	_ = e.DB.AppendAutotradeLog(fmt.Sprintf("order_%s %s %s submitted=%v id=%s", action, symbol, side, res.Submitted, res.ClientOrderID))
 	if res.Submitted {
-		st := res.Status
-		if st == "" {
-			st = "submitted"
-		}
+		e.logAuto("order_submit_ok", corr, map[string]any{
+			"symbol": symbol, "action": action, "side": side, "quantity": qty,
+			"clientOrderId": res.ClientOrderID, "order_type": "MARKET",
+		})
 		_ = e.DB.SaveOrderTracker(map[string]any{
 			"clientOrderId": res.ClientOrderID, "symbol": symbol, "action": action,
-			"status": st, "quantity": qty, "source": trigger, "dateKey": ev.TodayKey,
+			"status": "submitted", "quantity": qty, "source": trigger, "dateKey": ev.TodayKey,
+		})
+		ibsVal := 0.0
+		if cand, ok := ev.Decision["candidate"].(map[string]any); ok {
+			ibsVal = asFloat(cand["ibs"])
+		}
+		e.rememberOrder(res.ClientOrderID, orderMeta{
+			CorrelationID: corr, IBS: ibsVal, DateKey: ev.TodayKey,
+			QuotePrice: price, Action: action, Symbol: symbol, Quantity: qty, Source: trigger,
 		})
 		e.TrackSubmitted(res.ClientOrderID)
-		if action == "entry" {
-			_ = e.DB.InsertTrade("broker_trades", map[string]any{
-				"id": res.ClientOrderID, "symbol": symbol, "status": "open",
-				"entryDate": ev.TodayKey, "entryPrice": quotePrice(ev, symbol), "source": trigger, "quantity": qty,
-			})
-			_ = e.DB.InsertTrade("trades", map[string]any{
-				"id": "m-" + res.ClientOrderID, "symbol": symbol, "status": "open",
-				"entryDate": ev.TodayKey, "entryPrice": quotePrice(ev, symbol), "source": trigger, "quantity": qty,
-			})
-		} else if ev.OpenTrade != nil {
-			_ = e.DB.PatchTrade("broker_trades", fmt.Sprint(ev.OpenTrade["id"]), map[string]any{
-				"status": "closed", "exitDate": ev.TodayKey,
-			})
-			mon, _ := e.DB.ListTrades("trades")
-			if openM := store.OpenBrokerTrade(mon); openM != nil {
-				_ = e.DB.PatchTrade("trades", fmt.Sprint(openM["id"]), map[string]any{
-					"status": "closed", "exitDate": ev.TodayKey,
-				})
-			}
-		}
+	} else {
+		e.logAuto("order_submit_failed", corr, map[string]any{
+			"symbol": symbol, "action": action, "error": res.Error,
+		})
 	}
 	e.mu.Lock()
 	e.lastResult = ev
 	e.mu.Unlock()
 	return ev
+}
+
+func (e *Engine) placeMarket(symbol, side string, qty float64, cfg PlaceMarketCfg) (OrderResult, error) {
+	if p, ok := e.Broker.(marketCfgPlacer); ok {
+		return p.PlaceMarketCfg(symbol, side, qty, cfg)
+	}
+	return e.Broker.PlaceMarket(symbol, side, qty)
+}
+
+func (e *Engine) logBalanceSnapshot(corr, symbol, action string) {
+	if e.Broker == nil {
+		return
+	}
+	acct, err := e.Broker.Account()
+	if err != nil || acct == nil {
+		return
+	}
+	root := unwrapBalance(acct)
+	asset := preferredAsset(root)
+	kv := map[string]any{"symbol": symbol, "action": action}
+	if asset != nil {
+		kv["day_buying_power"] = asset["day_buying_power"]
+		kv["overnight_buying_power"] = firstNonEmpty(asset["overnight_buying_power"], asset["night_trading_buying_power"])
+		kv["cash_balance"] = asset["cash_balance"]
+		kv["net_liquidation_value"] = asset["net_liquidation_value"]
+	}
+	e.logAuto("balance_snapshot", corr, kv)
+}
+
+func (e *Engine) outsideExecutionWindow(cfg map[string]any) bool {
+	win := asFloat(cfg["executionWindowSeconds"])
+	if win <= 0 {
+		return false
+	}
+	closeMin := 16 * 60
+	raw, _ := e.DB.GetCalendar()
+	if len(raw) > 0 {
+		// calendar parse lives in scheduler; 16:00 ET is the regular close.
+		_ = raw
+	}
+	p := tradingdate.CurrentTimeNYSE(e.now())
+	nowSec := p.Hour*3600 + p.Minute*60
+	if loc, err := time.LoadLocation("America/New_York"); err == nil {
+		nowSec = e.now().In(loc).Hour()*3600 + e.now().In(loc).Minute()*60 + e.now().In(loc).Second()
+	}
+	secondsUntilClose := closeMin*60 - nowSec
+	return secondsUntilClose < 0 || float64(secondsUntilClose) > win
 }
 
 func (e *Engine) Status() map[string]any {
@@ -490,11 +576,23 @@ func (e *Engine) Logs(limit int) map[string]any {
 	if recent == nil {
 		recent = []map[string]any{}
 	}
+	autotrade, monitor, brokerRaw := []map[string]any{}, []map[string]any{}, []map[string]any{}
+	for _, row := range logs {
+		msg := fmt.Sprint(row["message"])
+		switch splitLogChannel(msg) {
+		case "monitor":
+			monitor = append(monitor, row)
+		case "brokerRaw":
+			brokerRaw = append(brokerRaw, row)
+		default:
+			autotrade = append(autotrade, row)
+		}
+	}
 	return map[string]any{
 		"logs":      logs,
-		"autotrade": logs,
-		"monitor":   logs,
-		"brokerRaw": logs,
+		"autotrade": autotrade,
+		"monitor":   monitor,
+		"brokerRaw": brokerRaw,
 		"pending":   pending,
 		"recent":    recent,
 	}
@@ -505,8 +603,23 @@ func (e *Engine) ClosePosition(symbol string) (OrderResult, error) {
 	if e.Broker == nil {
 		return OrderResult{Error: "Webull credentials are missing"}, fmt.Errorf("Webull credentials are missing")
 	}
-	res, err := e.Broker.CloseMarket(symbol)
-	_ = e.DB.AppendAutotradeLog("close_position " + symbol + " submitted=" + fmt.Sprint(res.Submitted))
+	cfg := e.AutoConfig()
+	frac := asBool(cfg["allowFractionalShares"])
+	pos, err := e.Broker.Positions()
+	if err != nil {
+		return OrderResult{Error: err.Error(), Symbol: symbol, Side: "SELL"}, err
+	}
+	qty := PositionQuantity(pos, symbol, frac)
+	if !(qty > 0) {
+		err := fmt.Errorf("No broker position found for %s", symbol)
+		return OrderResult{Error: err.Error(), Symbol: symbol, Side: "SELL"}, err
+	}
+	res, err := e.placeMarket(symbol, "SELL", qty, PlaceMarketCfg{
+		Fractional:            frac,
+		TimeInForce:           strOr(cfg["timeInForce"], "DAY"),
+		SupportTradingSession: strOr(cfg["supportTradingSession"], "CORE"),
+	})
+	e.logAuto("close_position", "", map[string]any{"symbol": symbol, "submitted": res.Submitted})
 	return res, err
 }
 
@@ -539,41 +652,14 @@ func (e *Engine) TestBuy(symbol string, qty float64) (OrderResult, error) {
 	if e.Broker == nil {
 		return OrderResult{Error: "Webull credentials are missing"}, fmt.Errorf("Webull credentials are missing")
 	}
-	res, err := e.Broker.PlaceMarket(store.SafeTicker(symbol), "BUY", qty)
-	_ = e.DB.AppendAutotradeLog("test_buy " + symbol + " submitted=" + fmt.Sprint(res.Submitted))
+	cfg := e.AutoConfig()
+	res, err := e.placeMarket(store.SafeTicker(symbol), "BUY", qty, PlaceMarketCfg{
+		Fractional:            false,
+		TimeInForce:           strOr(cfg["timeInForce"], "DAY"),
+		SupportTradingSession: strOr(cfg["supportTradingSession"], "CORE"),
+	})
+	e.logAuto("test_buy", "", map[string]any{"symbol": symbol, "submitted": res.Submitted})
 	return res, err
-}
-
-func configuredSymbols(cfg map[string]any, e *Engine) []string {
-	onlyWatches := true
-	if v, ok := cfg["onlyFromTelegramWatches"].(bool); ok {
-		onlyWatches = v
-	}
-	var out []string
-	seen := map[string]struct{}{}
-	add := func(s string) {
-		s = store.SafeTicker(s)
-		if s == "" {
-			return
-		}
-		if _, ok := seen[s]; ok {
-			return
-		}
-		seen[s] = struct{}{}
-		out = append(out, s)
-	}
-	if raw, ok := cfg["symbols"].(string); ok && raw != "" {
-		for _, p := range strings.Split(raw, ",") {
-			add(p)
-		}
-	}
-	if onlyWatches || len(out) == 0 {
-		watches, _ := e.DB.ListWatches()
-		for _, w := range watches {
-			add(fmt.Sprint(w["symbol"]))
-		}
-	}
-	return out
 }
 
 func envOr(k, d string) string {

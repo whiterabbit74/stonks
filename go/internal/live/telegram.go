@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"mktorder.com/go/internal/ibs"
-	"mktorder.com/go/internal/indicators"
 	"mktorder.com/go/internal/providers"
 	"mktorder.com/go/internal/store"
 	"mktorder.com/go/internal/tradingdate"
@@ -354,11 +353,15 @@ const nearDelta = 0.02
 
 func (e *Engine) evalWatch(sym string, w map[string]any, provider string) watchEval {
 	low := asFloat(w["lowIBS"])
-	if low == 0 && w["lowIBS"] == nil {
+	if w["lowIBS"] == nil {
 		low = ibs.DefaultLowIBS
 	}
 	high := asFloat(w["highIBS"])
-	if high == 0 && w["highIBS"] == nil {
+	highInvalid := false
+	if w["highIBS"] == nil {
+		high = ibs.DefaultHighIBS
+	} else if high == 0 {
+		highInvalid = true
 		high = ibs.DefaultHighIBS
 	}
 	ev := watchEval{low: low, high: high}
@@ -377,18 +380,9 @@ func (e *Engine) evalWatch(sym string, w map[string]any, provider string) watchE
 	}
 	bars, adj, _ := e.DB.GetOHLC(sym)
 	ev.histFresh = barsHavePrevSession(bars, tradingdate.TodayNYSE(e.now()))
-	if !ok || price <= 0 {
-		if len(bars) > 0 {
-			last := bars[len(bars)-1]
-			if !ok {
-				vals := indicators.IBS(bars)
-				ibsVal = vals[len(vals)-1]
-				ok = true
-			}
-			if price <= 0 {
-				price = last.Close
-			}
-		}
+	if price <= 0 && len(bars) > 0 {
+		// Historical bars may fill price for display but MUST NOT set ok=true for live decisions.
+		price = bars[len(bars)-1].Close
 	}
 	if price > 0 && len(bars) > 0 {
 		splits, _ := e.DB.ListSplits(sym)
@@ -402,13 +396,14 @@ func (e *Engine) evalWatch(sym string, w map[string]any, provider string) watchE
 		}
 	}
 	if !ok {
+		ev.price = price
 		return ev
 	}
 	ev.ok = true
 	ev.ibs = ibsVal
 	ev.price = price
 	ev.entry = ibs.IsEntrySignal(ibsVal, low)
-	ev.exit = ibs.IsExitSignal(ibsVal, high)
+	ev.exit = !highInvalid && ibs.IsExitSignal(ibsVal, high)
 	ev.nearEntry = ibsVal <= low+nearDelta
 	ev.nearExit = ibsVal >= high-nearDelta
 	return ev

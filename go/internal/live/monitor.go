@@ -18,19 +18,82 @@ func (e *Engine) Consistency() map[string]any {
 	broker, _ := e.DB.ListTrades("broker_trades")
 	openM := store.OpenBrokerTrade(monitor)
 	openB := store.OpenBrokerTrade(broker)
+	if openM != nil {
+		if full := e.DB.GetTrade("trades", fmt.Sprint(openM["id"])); full != nil {
+			openM = full
+		}
+	}
+	if openB != nil {
+		if full := e.getTrade("broker_trades", fmt.Sprint(openB["id"])); full != nil {
+			openB = full
+		}
+	}
 	var issues []map[string]any
+	var proposed []map[string]any
+
 	if openM != nil && openB == nil {
-		issues = append(issues, map[string]any{
-			"code": "monitor_trade_without_broker_position", "severity": "warn",
-			"message": fmt.Sprintf("Monitor trade %s is open while broker is flat. Monitor state remains active independently from broker execution.", openM["symbol"]),
-			"symbol":  openM["symbol"], "monitorTradeId": openM["id"], "autoFixable": false,
-		})
+		linked := fmt.Sprint(openM["linkedBrokerTradeId"])
+		closedLinked := map[string]any(nil)
+		if linked != "" && linked != "<nil>" {
+			if t := e.getTrade("broker_trades", linked); t != nil && fmt.Sprint(t["status"]) == "closed" {
+				closedLinked = t
+			}
+		}
+		if closedLinked != nil {
+			issues = append(issues, map[string]any{
+				"code": "linked_monitor_trade_closed_in_broker", "severity": "warn",
+				"message": fmt.Sprintf("Monitor trade %s is still open while linked broker trade is already closed.", openM["symbol"]),
+				"symbol":  openM["symbol"], "monitorTradeId": openM["id"], "brokerTradeId": closedLinked["id"], "autoFixable": true,
+			})
+			proposed = append(proposed, map[string]any{
+				"type": "close_linked_monitor_trade", "autoApplicable": true,
+				"symbol": openM["symbol"], "monitorTradeId": openM["id"], "brokerTradeId": closedLinked["id"],
+				"description": fmt.Sprintf("Close monitor trade %s using linked broker exit.", openM["symbol"]),
+			})
+		} else if linked != "" && linked != "<nil>" {
+			issues = append(issues, map[string]any{
+				"code": "linked_monitor_trade_missing_broker_match", "severity": "error",
+				"message": fmt.Sprintf("Monitor trade %s references broker trade %s, but the broker journal has no matching open/closed trade.", openM["symbol"], linked),
+				"symbol":  openM["symbol"], "monitorTradeId": openM["id"], "brokerTradeId": linked, "autoFixable": false,
+			})
+		} else {
+			sameDayClosed := sameSymbolClosedBroker(broker, openM)
+			if len(sameDayClosed) == 1 {
+				issues = append(issues, map[string]any{
+					"code": "legacy_monitor_trade_can_close_from_broker_history", "severity": "warn",
+					"message": fmt.Sprintf("Legacy monitor trade %s is still open even though the matching broker trade is closed.", openM["symbol"]),
+					"symbol":  openM["symbol"], "monitorTradeId": openM["id"], "brokerTradeId": sameDayClosed[0]["id"], "autoFixable": true,
+				})
+				proposed = append(proposed, map[string]any{
+					"type": "close_legacy_monitor_trade", "autoApplicable": true,
+					"symbol": openM["symbol"], "monitorTradeId": openM["id"], "brokerTradeId": sameDayClosed[0]["id"],
+					"description": fmt.Sprintf("Close monitor trade %s using the broker journal's closed trade.", openM["symbol"]),
+				})
+			} else if len(sameDayClosed) > 1 {
+				issues = append(issues, map[string]any{
+					"code": "legacy_monitor_trade_ambiguous_broker_match", "severity": "error",
+					"message": fmt.Sprintf("Monitor trade %s has multiple matching closed broker trades for %s. Automatic reconcile is unsafe.", openM["symbol"], openM["entryDate"]),
+					"symbol":  openM["symbol"], "monitorTradeId": openM["id"], "autoFixable": false,
+				})
+			} else {
+				issues = append(issues, map[string]any{
+					"code": "monitor_trade_without_broker_position", "severity": "warn",
+					"message": fmt.Sprintf("Monitor trade %s is open while broker is flat. Monitor state remains active independently from broker execution.", openM["symbol"]),
+					"symbol":  openM["symbol"], "monitorTradeId": openM["id"], "autoFixable": false,
+				})
+			}
+		}
 	}
 	if openM == nil && openB != nil {
 		issues = append(issues, map[string]any{
 			"code": "broker_trade_without_monitor_projection", "severity": "warn",
 			"message": fmt.Sprintf("Broker trade %s is open, but monitor state is flat.", openB["symbol"]),
-			"symbol":  openB["symbol"], "brokerTradeId": openB["id"], "autoFixable": false,
+			"symbol":  openB["symbol"], "brokerTradeId": openB["id"], "autoFixable": true,
+		})
+		proposed = append(proposed, map[string]any{
+			"type": "project_monitor_from_broker", "autoApplicable": true,
+			"symbol": openB["symbol"], "brokerTradeId": openB["id"],
+			"description": fmt.Sprintf("Create monitor projection for open broker trade %s.", openB["symbol"]),
 		})
 	}
 	if openM != nil && openB != nil && store.SafeTicker(fmt.Sprint(openM["symbol"])) != store.SafeTicker(fmt.Sprint(openB["symbol"])) {
@@ -43,13 +106,35 @@ func (e *Engine) Consistency() map[string]any {
 	if issues == nil {
 		issues = []map[string]any{}
 	}
+	if proposed == nil {
+		proposed = []map[string]any{}
+	}
 	return map[string]any{
 		"fetchedAt":        time.Now().UTC().Format(time.RFC3339Nano),
 		"openMonitorTrade": openM,
 		"openBrokerTrade":  openB,
 		"issues":           issues,
-		"proposedActions":  []any{},
+		"proposedActions":  proposed,
 	}
+}
+
+func sameSymbolClosedBroker(broker []map[string]any, openM map[string]any) []map[string]any {
+	want := store.SafeTicker(fmt.Sprint(openM["symbol"]))
+	entry := fmt.Sprint(openM["entryDate"])
+	var out []map[string]any
+	for _, t := range broker {
+		if fmt.Sprint(t["status"]) != "closed" {
+			continue
+		}
+		if store.SafeTicker(fmt.Sprint(t["symbol"])) != want {
+			continue
+		}
+		if entry != "" && entry != "<nil>" && fmt.Sprint(t["entryDate"]) != entry {
+			continue
+		}
+		out = append(out, t)
+	}
+	return out
 }
 
 func BlockingMismatch(snap map[string]any) map[string]any {
@@ -83,15 +168,83 @@ func BlockingMismatch(snap map[string]any) map[string]any {
 
 func (e *Engine) Reconcile(apply bool) map[string]any {
 	snap := e.Consistency()
-	applied := false
+	var appliedActions []map[string]any
 	if apply {
+		raw, _ := snap["proposedActions"].([]map[string]any)
+		for _, action := range raw {
+			if !asBool(action["autoApplicable"]) {
+				continue
+			}
+			if e.applyConsistencyAction(action) {
+				row := copyStringAnyMap(action)
+				row["appliedAt"] = time.Now().UTC().Format(time.RFC3339Nano)
+				appliedActions = append(appliedActions, row)
+			}
+		}
 		pos := e.UpdatePositions()
 		snap["positions"] = pos
-		applied = true
+		if n := asFloat(pos["updated"]); n > 0 {
+			appliedActions = append(appliedActions, map[string]any{
+				"type": "sync_watch_open_flags", "appliedAt": time.Now().UTC().Format(time.RFC3339Nano),
+			})
+		}
 	}
-	snap["applied"] = applied
-	snap["ok"] = true
-	return snap
+	if appliedActions == nil {
+		appliedActions = []map[string]any{}
+	}
+	after := e.Consistency()
+	after["positions"] = snap["positions"]
+	after["appliedActions"] = appliedActions
+	after["applied"] = len(appliedActions) > 0
+	after["ok"] = true
+	after["mode"] = "preview"
+	if apply {
+		after["mode"] = "apply"
+	}
+	after["preview"] = !apply
+	return after
+}
+
+func (e *Engine) applyConsistencyAction(action map[string]any) bool {
+	typ := fmt.Sprint(action["type"])
+	switch typ {
+	case "close_linked_monitor_trade", "close_legacy_monitor_trade":
+		brokerID := fmt.Sprint(action["brokerTradeId"])
+		monID := fmt.Sprint(action["monitorTradeId"])
+		broker := e.getTrade("broker_trades", brokerID)
+		mon := e.DB.GetTrade("trades", monID)
+		if broker == nil || mon == nil {
+			return false
+		}
+		if store.SafeTicker(fmt.Sprint(mon["symbol"])) != store.SafeTicker(fmt.Sprint(broker["symbol"])) {
+			return false
+		}
+		exitPrice := asFloat(broker["exitPrice"])
+		exitDate := fmt.Sprint(broker["exitDate"])
+		if !(exitPrice > 0) {
+			return false
+		}
+		e.closeTradeWithPnL("trades", monID, exitPrice, exitDate, broker["exitIBS"], "reconciled_from_broker_history")
+		return true
+	case "project_monitor_from_broker":
+		brokerID := fmt.Sprint(action["brokerTradeId"])
+		broker := e.getTrade("broker_trades", brokerID)
+		if broker == nil || fmt.Sprint(broker["status"]) != "open" {
+			return false
+		}
+		monID := "m-" + brokerID
+		if e.DB.GetTrade("trades", monID) != nil {
+			return false
+		}
+		_ = e.DB.InsertTrade("trades", map[string]any{
+			"id": monID, "symbol": broker["symbol"], "status": "open",
+			"entryDate": broker["entryDate"], "entryPrice": broker["entryPrice"],
+			"source": broker["source"], "quantity": broker["quantity"],
+		})
+		_, _ = e.DB.SQL.Exec(`UPDATE trades SET linked_broker_trade_id=? WHERE id=?`, brokerID, monID)
+		return true
+	}
+	return false
 }
 
 func (e *Engine) SyncCalendar() (map[string]any, error) {

@@ -49,8 +49,11 @@ func TestExecuteReserveSubmitTrack(t *testing.T) {
 		t.Fatal("expected log")
 	}
 	trades, _ := db.ListTrades("broker_trades")
-	if len(trades) == 0 || trades[0]["status"] != "open" {
-		t.Fatalf("broker trade %+v", trades)
+	if len(trades) != 0 {
+		t.Fatalf("must not record trade on submit: %+v", trades)
+	}
+	if db.FindPendingTracker("AAPL", "entry") == nil {
+		t.Fatal("expected pending tracker after submit")
 	}
 	if br.Orders[0].Quantity != 2 {
 		t.Fatalf("qty %+v", br.Orders[0])
@@ -329,13 +332,17 @@ func TestPollTrackersMarksFilled(t *testing.T) {
 	if db.FindPendingTracker("AAPL", "entry") == nil {
 		t.Fatal("expected pending tracker")
 	}
-	br.Details[oid] = map[string]any{"status": "FILLED", "filled_qty": 1.0, "avg_price": 8.2}
-	n := e.PollTrackers()
-	if n != 1 {
-		t.Fatalf("polled %d", n)
-	}
+	br.SetDetail(oid, map[string]any{"status": "FILLED", "filled_qty": 1.0, "avg_price": 8.2})
+	waitTrackerFinal(t, e, db, "AAPL", "entry")
 	if db.FindPendingTracker("AAPL", "entry") != nil {
 		t.Fatal("tracker should be filled")
+	}
+	trades, _ := db.ListTrades("broker_trades")
+	if len(trades) != 1 || trades[0]["status"] != "open" {
+		t.Fatalf("fill should record broker trade %+v", trades)
+	}
+	if asFloat(trades[0]["entryPrice"]) != 8.2 {
+		t.Fatalf("fill price %+v", trades[0])
 	}
 }
 
@@ -429,11 +436,11 @@ func TestT1TextHasFreshnessAndPosition(t *testing.T) {
 }
 
 type t1ParityFix struct {
-	LowIBS           float64 `json:"lowIBS"`
-	HighIBS          float64 `json:"highIBS"`
-	EntrySizingMode  string  `json:"entrySizingMode"`
-	FixedQuantity    float64 `json:"fixedQuantity"`
-	Quotes           []struct {
+	LowIBS          float64 `json:"lowIBS"`
+	HighIBS         float64 `json:"highIBS"`
+	EntrySizingMode string  `json:"entrySizingMode"`
+	FixedQuantity   float64 `json:"fixedQuantity"`
+	Quotes          []struct {
 		Symbol  string  `json:"symbol"`
 		Current float64 `json:"current"`
 		Low     float64 `json:"low"`

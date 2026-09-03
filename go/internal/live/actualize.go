@@ -2,6 +2,11 @@ package live
 
 import (
 	"fmt"
+	"math/rand"
+	"os"
+	"strconv"
+	"strings"
+	"time"
 
 	"mktorder.com/go/internal/store"
 	"mktorder.com/go/internal/tradingdate"
@@ -16,6 +21,52 @@ type ActualizeResult struct {
 	TodayKey string   `json:"todayKey"`
 	Provider string   `json:"provider"`
 	Reason   string   `json:"reason,omitempty"`
+}
+
+func envInt(key string, fallback int) int {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return fallback
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil || n < 0 {
+		return fallback
+	}
+	return n
+}
+
+func actualizeDelay() time.Duration {
+	base := envInt("PRICE_ACTUALIZATION_REQUEST_DELAY_MS", 15000)
+	jitterMax := envInt("PRICE_ACTUALIZATION_DELAY_JITTER_MS", 2000)
+	if base <= 0 && jitterMax <= 0 {
+		return 0
+	}
+	extra := 0
+	if jitterMax > 0 {
+		extra = rand.Intn(jitterMax + 1)
+	}
+	return time.Duration(base+extra) * time.Millisecond
+}
+
+func unixMidnightUTC(date string) int64 {
+	t, err := time.Parse("2006-01-02", date)
+	if err != nil {
+		return 0
+	}
+	return t.UTC().Unix()
+}
+
+func (e *Engine) historicalWindow(sym string) (startTs, endTs int64) {
+	endTs = e.now().Unix()
+	bars, _, _ := e.DB.GetOHLC(sym)
+	if len(bars) > 0 {
+		last := string(bars[len(bars)-1].Date)
+		start := tradingdate.AddDays(last, -7)
+		if ts := unixMidnightUTC(start); ts > 0 {
+			return ts, endTs
+		}
+	}
+	return endTs - 120*24*60*60, endTs
 }
 
 func (e *Engine) Actualize(force bool) ActualizeResult {
@@ -67,9 +118,13 @@ func (e *Engine) Actualize(force bool) ActualizeResult {
 		out.Reason = "no_tickers"
 		return out
 	}
-	end := e.now().Unix()
-	start := end - 40*365*24*60*60
-	for _, sym := range symbols {
+	for i, sym := range symbols {
+		if i > 0 {
+			if d := actualizeDelay(); d > 0 {
+				e.sleep(d)
+			}
+		}
+		start, end := e.historicalWindow(sym)
 		hist, err := qs.Historical(sym, provider, start, end, "none")
 		if err != nil || len(hist.Rows) == 0 {
 			out.Failed = append(out.Failed, sym)
