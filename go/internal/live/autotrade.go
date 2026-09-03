@@ -451,17 +451,12 @@ func (e *Engine) outsideExecutionWindow(cfg map[string]any) bool {
 	if win <= 0 {
 		return false
 	}
-	closeMin := 16 * 60
-	raw, _ := e.DB.GetCalendar()
-	if len(raw) > 0 {
-		// calendar parse lives in scheduler; 16:00 ET is the regular close.
-		_ = raw
-	}
+	// Node reads the close from the trading calendar (autotrade.js:2140-2146),
+	// so a short day closes at 13:00 and the window moves with it.
+	closeMin, _ := e.sessionCloseMin()
 	p := tradingdate.CurrentTimeNYSE(e.now())
-	nowSec := p.Hour*3600 + p.Minute*60
-	if loc, err := time.LoadLocation("America/New_York"); err == nil {
-		nowSec = e.now().In(loc).Hour()*3600 + e.now().In(loc).Minute()*60 + e.now().In(loc).Second()
-	}
+	// Seconds do not vary by zone, matching Node's nowEt.hh/mm + getUTCSeconds().
+	nowSec := p.Hour*3600 + p.Minute*60 + e.now().Second()
 	secondsUntilClose := closeMin*60 - nowSec
 	return secondsUntilClose < 0 || float64(secondsUntilClose) > win
 }

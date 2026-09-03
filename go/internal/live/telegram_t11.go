@@ -148,6 +148,13 @@ func buildEmaInlineBlock(alerts []EmaEval) string {
 }
 
 func (e *Engine) sessionCloseLabel() (string, bool) {
+	closeMin, short := e.sessionCloseMin()
+	return fmt.Sprintf("%02d:%02d", closeMin/60, closeMin%60), short
+}
+
+// sessionCloseMin returns today's NYSE close as minutes past midnight ET,
+// honouring the calendar's short days the way scheduler.TradingSession does.
+func (e *Engine) sessionCloseMin() (int, bool) {
 	closeMin := 16 * 60
 	short := false
 	raw, _ := e.DB.GetCalendar()
@@ -181,7 +188,7 @@ func (e *Engine) sessionCloseLabel() (string, bool) {
 			}
 		}
 	}
-	return fmt.Sprintf("%02d:%02d", closeMin/60, closeMin%60), short
+	return closeMin, short
 }
 
 func parseClock(hm string) int {

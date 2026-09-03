@@ -491,3 +491,29 @@ func TestIBSFromQuoteClampsToUnitRange(t *testing.T) {
 		t.Fatalf("in-range quote: got %v ok=%v, want 0.5", v, ok)
 	}
 }
+
+// Node derives the execution window from the trading calendar
+// (autotrade.js:2140-2146), so a short day closes at 13:00 ET.
+func TestExecutionWindowFollowsShortDayClose(t *testing.T) {
+	db, e, _ := testEngine(t, []types.OHLC{{Date: "2024-11-29", Open: 10, High: 12, Low: 8, Close: 9, Volume: 1}})
+	if err := db.SaveCalendar([]byte(`{"holidays":{},"shortDays":{"2024":{"11-29":{"name":"Day After Thanksgiving","type":"short"}}},"tradingHours":{"normal":{"start":"09:30","end":"16:00"},"short":{"start":"09:30","end":"13:00"}}}`)); err != nil {
+		t.Fatal(err)
+	}
+	ny, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		t.Skip("no tzdata")
+	}
+	cfg := map[string]any{"executionWindowSeconds": 90.0}
+
+	at := func(hh, mm int) {
+		e.Now = func() time.Time { return time.Date(2024, 11, 29, hh, mm, 0, 0, ny) }
+	}
+	at(12, 59)
+	if e.outsideExecutionWindow(cfg) {
+		t.Error("12:59 on a 13:00 close must be inside the window")
+	}
+	at(15, 59)
+	if !e.outsideExecutionWindow(cfg) {
+		t.Error("15:59 is two hours after a short-day close; must be outside")
+	}
+}
