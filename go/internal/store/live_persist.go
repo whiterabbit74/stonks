@@ -107,16 +107,59 @@ func (d *DB) SaveOrderTracker(rec map[string]any) error {
 	if started == "" || started == "<nil>" {
 		started = time.Now().UTC().Format(time.RFC3339Nano)
 	}
-	_, err := d.SQL.Exec(`INSERT INTO order_trackers (client_order_id, symbol, action, status, quantity, source, date_key, started_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(client_order_id) DO UPDATE SET status=excluded.status, quantity=excluded.quantity`,
-		id, SafeTicker(fmt.Sprint(rec["symbol"])), fmt.Sprint(rec["action"]), status, rec["quantity"], rec["source"], rec["dateKey"], started)
+	attempts := 0
+	if rec["attempts"] != nil {
+		attempts = int(asFloat(rec["attempts"]))
+	}
+	_, err := d.SQL.Exec(`INSERT INTO order_trackers (client_order_id, symbol, action, status, quantity, source, date_key, started_at, attempts, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+        ON CONFLICT(client_order_id) DO UPDATE SET status=excluded.status, quantity=excluded.quantity, updated_at=datetime('now')`,
+		id, SafeTicker(fmt.Sprint(rec["symbol"])), fmt.Sprint(rec["action"]), status, rec["quantity"], rec["source"], rec["dateKey"], started, attempts)
 	return err
 }
 
 func (d *DB) SetOrderTrackerStatus(clientOrderID, status string) error {
-	_, err := d.SQL.Exec(`UPDATE order_trackers SET status=? WHERE client_order_id=?`, status, clientOrderID)
+	_, err := d.SQL.Exec(`UPDATE order_trackers SET status=?, updated_at=datetime('now') WHERE client_order_id=?`, status, clientOrderID)
 	return err
+}
+
+func (d *DB) BumpOrderTrackerAttempts(clientOrderID string) (int, error) {
+	if _, err := d.SQL.Exec(`UPDATE order_trackers SET attempts=attempts+1, updated_at=datetime('now') WHERE client_order_id=?`, clientOrderID); err != nil {
+		return 0, err
+	}
+	var n int
+	err := d.SQL.QueryRow(`SELECT attempts FROM order_trackers WHERE client_order_id=?`, clientOrderID).Scan(&n)
+	if err == sql.ErrNoRows {
+		return 0, fmt.Errorf("tracker not found")
+	}
+	return n, err
+}
+
+// ExpireStaleTrackers marks non-final trackers expired when date_key is before
+// todayYYYYMMDD, or attempts >= maxAttempts (when maxAttempts > 0).
+func (d *DB) ExpireStaleTrackers(todayYYYYMMDD string, maxAttempts int) (int, error) {
+	q := `UPDATE order_trackers SET status='expired', updated_at=datetime('now')
+        WHERE status NOT IN ('filled','cancelled','canceled','rejected','expired')`
+	var args []any
+	switch {
+	case todayYYYYMMDD != "" && maxAttempts > 0:
+		q += ` AND ((date_key IS NOT NULL AND date_key != '' AND date_key < ?) OR attempts >= ?)`
+		args = append(args, todayYYYYMMDD, maxAttempts)
+	case todayYYYYMMDD != "":
+		q += ` AND date_key IS NOT NULL AND date_key != '' AND date_key < ?`
+		args = append(args, todayYYYYMMDD)
+	case maxAttempts > 0:
+		q += ` AND attempts >= ?`
+		args = append(args, maxAttempts)
+	default:
+		return 0, nil
+	}
+	res, err := d.SQL.Exec(q, args...)
+	if err != nil {
+		return 0, err
+	}
+	n, err := res.RowsAffected()
+	return int(n), err
 }
 
 func (d *DB) FindPendingTracker(symbol, action string) map[string]any {
@@ -138,7 +181,7 @@ func (d *DB) FindPendingTracker(symbol, action string) map[string]any {
 }
 
 func (d *DB) ListPendingTrackers() ([]map[string]any, error) {
-	rows, err := d.SQL.Query(`SELECT client_order_id, symbol, action, status, quantity, source, date_key, started_at
+	rows, err := d.SQL.Query(`SELECT client_order_id, symbol, action, status, quantity, source, date_key, started_at, attempts
         FROM order_trackers WHERE status NOT IN ('filled','cancelled','canceled','rejected','expired') ORDER BY started_at DESC`)
 	if err != nil {
 		return nil, err
@@ -146,16 +189,11 @@ func (d *DB) ListPendingTrackers() ([]map[string]any, error) {
 	defer rows.Close()
 	var out []map[string]any
 	for rows.Next() {
-		var id, symbol, action, status string
-		var source, dateKey, started sql.NullString
-		var qty sql.NullFloat64
-		if err := rows.Scan(&id, &symbol, &action, &status, &qty, &source, &dateKey, &started); err != nil {
+		row, err := scanTracker(rows, true)
+		if err != nil {
 			return nil, err
 		}
-		out = append(out, map[string]any{
-			"clientOrderId": id, "symbol": symbol, "action": action, "status": status,
-			"quantity": nullF(qty), "source": nullS(source), "dateKey": nullS(dateKey), "startedAt": nullS(started),
-		})
+		out = append(out, row)
 	}
 	if out == nil {
 		out = []map[string]any{}
@@ -167,7 +205,7 @@ func (d *DB) ListRecentTrackers(limit int) ([]map[string]any, error) {
 	if limit <= 0 {
 		limit = 20
 	}
-	rows, err := d.SQL.Query(`SELECT client_order_id, symbol, action, status, quantity, source, date_key, started_at
+	rows, err := d.SQL.Query(`SELECT client_order_id, symbol, action, status, quantity, source, date_key, started_at, attempts
         FROM order_trackers ORDER BY started_at DESC LIMIT ?`, limit)
 	if err != nil {
 		return nil, err
@@ -175,21 +213,41 @@ func (d *DB) ListRecentTrackers(limit int) ([]map[string]any, error) {
 	defer rows.Close()
 	var out []map[string]any
 	for rows.Next() {
-		var id, symbol, action, status string
-		var source, dateKey, started sql.NullString
-		var qty sql.NullFloat64
-		if err := rows.Scan(&id, &symbol, &action, &status, &qty, &source, &dateKey, &started); err != nil {
+		row, err := scanTracker(rows, true)
+		if err != nil {
 			return nil, err
 		}
-		out = append(out, map[string]any{
-			"clientOrderId": id, "symbol": symbol, "action": action, "status": status,
-			"quantity": nullF(qty), "source": nullS(source), "dateKey": nullS(dateKey), "startedAt": nullS(started),
-		})
+		out = append(out, row)
 	}
 	if out == nil {
 		out = []map[string]any{}
 	}
 	return out, nil
+}
+
+func scanTracker(s rowScanner, withAttempts bool) (map[string]any, error) {
+	var id, symbol, action, status string
+	var source, dateKey, started sql.NullString
+	var qty sql.NullFloat64
+	var attempts sql.NullInt64
+	var err error
+	if withAttempts {
+		err = s.Scan(&id, &symbol, &action, &status, &qty, &source, &dateKey, &started, &attempts)
+	} else {
+		err = s.Scan(&id, &symbol, &action, &status, &qty, &source, &dateKey, &started)
+	}
+	if err != nil {
+		return nil, err
+	}
+	n := 0
+	if attempts.Valid {
+		n = int(attempts.Int64)
+	}
+	return map[string]any{
+		"clientOrderId": id, "symbol": symbol, "action": action, "status": status,
+		"quantity": nullF(qty), "source": nullS(source), "dateKey": nullS(dateKey), "startedAt": nullS(started),
+		"attempts": n,
+	}, nil
 }
 
 func (d *DB) AggregateState(chatID, dateKey string) (t11Sent, t1Sent bool) {
