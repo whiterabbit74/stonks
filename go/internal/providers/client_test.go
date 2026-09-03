@@ -158,8 +158,8 @@ func testWebullQuoteClient(t *testing.T, body any) *Client {
 			http.NotFound(w, r)
 			return
 		}
-		if r.Header.Get("x-access-token") != "" {
-			t.Errorf("snapshot sent access token")
+		if r.Header.Get("x-access-token") != "snapshot-token" {
+			t.Errorf("snapshot must carry the access token, got %q", r.Header.Get("x-access-token"))
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(body)
@@ -167,7 +167,7 @@ func testWebullQuoteClient(t *testing.T, body any) *Client {
 	t.Cleanup(ts.Close)
 	return &Client{Webull: &webull.Client{
 		HTTP: ts.Client(), Base: ts.URL, Host: "api.webull.com",
-		AppKey: "appkey", AppSecret: "secret", AccessToken: "must-not-send",
+		AppKey: "appkey", AppSecret: "secret", AccessToken: "snapshot-token",
 	}}
 }
 

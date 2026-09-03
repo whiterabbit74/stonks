@@ -63,6 +63,9 @@ func NewWithProviders(db *store.DB, webDir string, p *providers.Client) *Server 
 		adminPass: os.Getenv("ADMIN_PASSWORD"),
 		limiter:   newIPLimiter(),
 	}
+	if p != nil {
+		p.UseWebullToken(db.WebullAccessToken)
+	}
 	s.Live = live.New(db, p)
 	s.mux = http.NewServeMux()
 	s.routes()

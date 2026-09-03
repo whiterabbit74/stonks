@@ -25,16 +25,16 @@ func EnvBrokerDB(db *store.DB) Broker {
 	}
 	c := webull.FromEnv()
 	if db != nil {
-		if tok := db.GetWebullToken().Token; tok != "" {
-			c.AccessToken = tok
-		}
+		c.Token = db.WebullAccessToken
 	}
 	return &LiveBroker{DB: db, Client: c}
 }
 
+// token reports the token the next request will carry. It resolves through the
+// client so the answer cannot disagree with what actually goes on the wire.
 func (b *LiveBroker) token() string {
 	if b.DB != nil {
-		if t := b.DB.GetWebullToken().Token; t != "" {
+		if t := b.DB.WebullAccessToken(); t != "" {
 			return t
 		}
 	}
@@ -48,10 +48,10 @@ func (b *LiveBroker) client() *webull.Client {
 	c := b.Client
 	if c == nil {
 		c = webull.FromEnv()
+		if b.DB != nil {
+			c.Token = b.DB.WebullAccessToken
+		}
 		b.Client = c
-	}
-	if tok := b.token(); tok != "" {
-		c.AccessToken = tok
 	}
 	return c
 }

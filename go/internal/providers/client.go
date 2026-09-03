@@ -55,6 +55,17 @@ func FromEnv() *Client {
 	}
 }
 
+// UseWebullToken points the shared Webull client at the live token store.
+// Quotes go through the same authenticated OpenAPI as trading, so a client
+// built from the environment alone sends no token once the operator keeps the
+// token in SQLite — which is what turned every Webull quote into INVALID_TOKEN.
+func (c *Client) UseWebullToken(fn func() string) {
+	if c == nil || c.Webull == nil || fn == nil {
+		return
+	}
+	c.Webull.Token = fn
+}
+
 func envOr(k, d string) string {
 	if v := os.Getenv(k); v != "" {
 		return v

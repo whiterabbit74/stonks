@@ -132,6 +132,10 @@ func (e *Engine) TokenHealth() string {
 	return status
 }
 
+// CheckToken confirms a token with Webull and records the verdict. A token the
+// user has just created is PENDING until they approve the SMS, and only this
+// check can promote it to NORMAL — which is what makes it eligible for the
+// authenticated calls, quotes included.
 func (e *Engine) CheckToken(token string) (map[string]any, error) {
 	if token == "" {
 		token = e.DB.GetWebullToken().Token
@@ -147,8 +151,12 @@ func (e *Engine) CheckToken(token string) (map[string]any, error) {
 	if status == "" {
 		status = "NORMAL"
 	}
+	exp, _ := data["expiresAt"].(string)
+	if exp == "" {
+		exp, _ = data["expires_at"].(string)
+	}
 	if token != "" {
-		_ = e.DB.SaveWebullToken(token, "", status)
+		_ = e.DB.SaveWebullToken(token, exp, status)
 	}
 	return data, nil
 }

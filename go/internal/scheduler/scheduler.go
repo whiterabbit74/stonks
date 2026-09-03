@@ -132,6 +132,7 @@ func StartWith(db *store.DB, deps Deps, onEvent func(JobLog)) (stop func()) {
 	if deps.Providers == nil {
 		deps.Providers = providers.FromEnv()
 	}
+	deps.Providers.UseWebullToken(db.WebullAccessToken)
 	engine(db, deps).ResumeTrackers()
 	tick := time.NewTicker(20 * time.Second)
 	done := make(chan struct{})
@@ -211,7 +212,14 @@ func RunTokenHealth(db *store.DB, deps Deps, todayET string, now time.Time) (det
 		return "already-ran", true
 	}
 	status := engine(db, deps).TokenHealth()
-	_ = db.UpsertWebullHealth(todayET, status, now.UTC().Format(time.RFC3339Nano))
+	recorded := status
+	if status == "UNKNOWN" && row.LastCheckStatus != "" {
+		// The check could not reach Webull, which says nothing about the token.
+		// Recording UNKNOWN would demote a confirmed token on a network blip and
+		// send the next order out with whatever the fallback happens to be.
+		recorded = row.LastCheckStatus
+	}
+	_ = db.UpsertWebullHealth(todayET, recorded, now.UTC().Format(time.RFC3339Nano))
 	return status, false
 }
 

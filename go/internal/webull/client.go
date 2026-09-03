@@ -22,6 +22,21 @@ type Client struct {
 	AppSecret   string
 	AccessToken string
 	AccountID   string
+	// Token, when set, is consulted on every request instead of AccessToken.
+	// The live token lives in SQLite and is replaced whenever the user renews
+	// it, so a client shared between the HTTP handlers and the scheduler must
+	// read it per request: copying it into AccessToken would both go stale and
+	// race with the goroutine doing the copying.
+	Token func() string
+}
+
+func (c *Client) accessToken() string {
+	if c.Token != nil {
+		if t := c.Token(); t != "" {
+			return t
+		}
+	}
+	return c.AccessToken
 }
 
 func FromEnv() *Client {
@@ -121,8 +136,8 @@ func (c *Client) Request(method, path string, query map[string]string, body any,
 	if len(bodyBytes) > 0 {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	if includeToken && c.AccessToken != "" {
-		req.Header.Set("x-access-token", c.AccessToken)
+	if tok := c.accessToken(); includeToken && tok != "" {
+		req.Header.Set("x-access-token", tok)
 	}
 	for k, v := range extraHeaders {
 		req.Header.Set(k, v)
@@ -298,14 +313,16 @@ func (c *Client) TradeCalendar(start, end string) (*Response, error) {
 	return c.Request(http.MethodGet, "/trade/calendar", q, nil, true, nil)
 }
 
-// Snapshot is GET /openapi/market-data/stock/snapshot. Node autotrade calls
-// getStockSnapshot with includeAccessToken: false — market data is signed with
-// app key/secret only, not the trading access token.
+// Snapshot is GET /openapi/market-data/stock/snapshot. Market data is part of
+// the same authenticated OpenAPI surface as trading: without x-access-token the
+// endpoint answers INVALID_TOKEN ("Header x-access-token is missing or
+// invalid"), so the token goes on this request too. Only token/create and
+// token/check are exempt — they are what mints the token in the first place.
 func (c *Client) Snapshot(symbols string) (*Response, error) {
 	return c.Request(http.MethodGet, "/openapi/market-data/stock/snapshot", map[string]string{
 		"symbols":  symbols,
 		"category": "US_STOCK",
-	}, nil, false, nil)
+	}, nil, true, nil)
 }
 
 func (c *Client) CorpActions(instrumentID string) (*Response, error) {

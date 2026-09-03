@@ -594,8 +594,8 @@ func TestTestProviderWebullSnapshot(t *testing.T) {
 			http.NotFound(w, r)
 			return
 		}
-		if r.Header.Get("x-access-token") != "" {
-			t.Errorf("snapshot sent access token")
+		if r.Header.Get("x-access-token") != "tok" {
+			t.Errorf("snapshot must carry the access token, got %q", r.Header.Get("x-access-token"))
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"data": []any{map[string]any{

@@ -212,3 +212,51 @@ func fmtSprint(v any) string {
 	}
 	return v.(string)
 }
+
+func TestWebullAccessTokenPrefersConfirmedToken(t *testing.T) {
+	d := openTestDB(t)
+	t.Setenv("WEBULL_ACCESS_TOKEN", "env-token")
+
+	// Nothing stored yet: the environment token is all there is.
+	if got := d.WebullAccessToken(); got != "env-token" {
+		t.Fatalf("empty store = %q, want env-token", got)
+	}
+
+	// A freshly created token is PENDING until the user approves the SMS.
+	// Sending it would fail every call while a usable env token sits unused.
+	if err := d.SaveWebullToken("pending-token", "", "PENDING"); err != nil {
+		t.Fatal(err)
+	}
+	if got := d.WebullAccessToken(); got != "env-token" {
+		t.Fatalf("pending token = %q, want env-token", got)
+	}
+
+	if err := d.SaveWebullToken("live-token", "2026-12-01T00:00:00Z", "NORMAL"); err != nil {
+		t.Fatal(err)
+	}
+	if got := d.WebullAccessToken(); got != "live-token" {
+		t.Fatalf("confirmed token = %q, want live-token", got)
+	}
+
+	// A status-only save must not erase the expiry the check reported earlier.
+	if err := d.SaveWebullToken("live-token", "", "NORMAL"); err != nil {
+		t.Fatal(err)
+	}
+	if exp := d.GetWebullToken().ExpiresAt; exp != "2026-12-01T00:00:00Z" {
+		t.Fatalf("expires_at = %q, want it preserved", exp)
+	}
+}
+
+func TestWebullAccessTokenFallsBackToUnconfirmedToken(t *testing.T) {
+	d := openTestDB(t)
+	t.Setenv("WEBULL_ACCESS_TOKEN", "")
+	if err := d.SaveWebullToken("only-token", "", "UNKNOWN"); err != nil {
+		t.Fatal(err)
+	}
+	// With no environment token, an unverified token still beats sending no
+	// header at all — a daily health check that could not reach Webull must not
+	// take the account offline.
+	if got := d.WebullAccessToken(); got != "only-token" {
+		t.Fatalf("fallback = %q, want only-token", got)
+	}
+}

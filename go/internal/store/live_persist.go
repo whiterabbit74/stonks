@@ -3,7 +3,9 @@ package store
 import (
 	"database/sql"
 	"fmt"
+	"os"
 	"sort"
+	"strings"
 	"time"
 
 	"mktorder.com/go/internal/tradingdate"
@@ -60,7 +62,8 @@ func (d *DB) SaveWebullToken(token, expiresAt, status string) error {
 	}
 	_, err := d.SQL.Exec(`INSERT INTO webull_token (id, token, expires_at, last_check_status, last_check_at, updated_at)
         VALUES ('current', ?, ?, ?, datetime('now'), datetime('now'))
-        ON CONFLICT(id) DO UPDATE SET token=excluded.token, expires_at=excluded.expires_at,
+        ON CONFLICT(id) DO UPDATE SET token=excluded.token,
+            expires_at=COALESCE(NULLIF(excluded.expires_at,''), webull_token.expires_at),
             last_check_status=excluded.last_check_status, last_check_at=excluded.last_check_at, updated_at=datetime('now')`,
 		token, expiresAt, status)
 	return err
@@ -326,4 +329,22 @@ func OpenTradeForSymbol(rows []map[string]any, symbol string) map[string]any {
 		}
 	}
 	return nil
+}
+
+// WebullAccessToken resolves the token every Webull request must carry.
+// Precedence follows the Node client: a SQLite token is only trusted for API
+// calls once a status check confirmed it NORMAL — a freshly created token is
+// PENDING until the user approves the SMS in the Webull app, and sending it
+// would fail every request while a perfectly good environment token sits
+// unused. The unconfirmed token is still better than no header at all, so it
+// is the last resort rather than being dropped.
+func (d *DB) WebullAccessToken() string {
+	row := d.GetWebullToken()
+	if row.Token != "" && strings.EqualFold(row.LastCheckStatus, "NORMAL") {
+		return row.Token
+	}
+	if env := os.Getenv("WEBULL_ACCESS_TOKEN"); env != "" {
+		return env
+	}
+	return row.Token
 }
