@@ -229,3 +229,19 @@ func OpenBrokerTrade(trades []map[string]any) map[string]any {
 	}
 	return nil
 }
+
+func OpenTradeForSymbol(rows []map[string]any, symbol string) map[string]any {
+	want := SafeTicker(symbol)
+	if want == "" {
+		return nil
+	}
+	for _, t := range rows {
+		if fmt.Sprint(t["status"]) != "open" || t["isHidden"] == true {
+			continue
+		}
+		if SafeTicker(fmt.Sprint(t["symbol"])) == want {
+			return t
+		}
+	}
+	return nil
+}
