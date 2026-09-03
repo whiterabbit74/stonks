@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { createRequire } from 'node:module';
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -60,13 +60,13 @@ function createTempEnv() {
 
 const { isIbsEntrySignal, isIbsExitSignal } = require(path.join(serverRoot, 'src/utils/ibsSignals.js'));
 
-// Same watches/quotes as go/internal/live.TestT1DryRunSameWatchesAsNode.
-const quotes = [
-  { symbol: 'AAPL', ibs: 0.05, price: 8.2 },
-  { symbol: 'AMZN', ibs: 0.5, price: 10 },
-  { symbol: 'MSFT', ibs: 0.5, price: 10 },
-  { symbol: 'V', ibs: 0.5, price: 10 },
-];
+const fixture = JSON.parse(
+  readFileSync(path.join(repoRoot, 'go/internal/live/testdata/t1-parity-quotes.json'), 'utf8'),
+);
+
+function ibsOf(q) {
+  return (q.current - q.low) / (q.high - q.low);
+}
 
 let cleanupEnv = null;
 afterEach(() => {
@@ -77,31 +77,38 @@ afterEach(() => {
   }
 });
 
-describe('T-1 dry-run oracle vs Go same watches', () => {
-  it('picks the lowest IBS strictly below 0.10 as the entry', () => {
-    const low = 0.1;
-    const high = 0.75;
+describe('T-1 dry-run oracle vs Go same watches/quotes', () => {
+  it('picks the lowest IBS strictly below lowIBS as the entry', () => {
+    const low = fixture.lowIBS;
+    const high = fixture.highIBS;
     let best = null;
-    for (const q of quotes) {
-      expect(isIbsExitSignal(q.ibs, high)).toBe(false);
-      if (isIbsEntrySignal(q.ibs, low) && (!best || q.ibs < best.ibs)) {
-        best = q;
+    for (const q of fixture.quotes) {
+      const ibs = ibsOf(q);
+      expect(isIbsExitSignal(ibs, high)).toBe(false);
+      if (isIbsEntrySignal(ibs, low) && (!best || ibs < best.ibs)) {
+        best = { symbol: q.symbol, ibs, price: q.current };
       }
     }
     expect(best?.symbol).toBe('AAPL');
-    expect(best?.ibs).toBe(0.05);
+    expect(best?.ibs).toBeCloseTo((250.23 - 247.5) / (297.5 - 247.5), 6);
   });
 
-  it('sizes the AAPL entry to 1 share in quantity mode', () => {
+  it('sizes the AAPL entry to fixedQuantity shares', () => {
     cleanupEnv = createTempEnv();
     purgeServerCache();
     const autotrade = require(path.join(serverRoot, 'src/services/autotrade.js'));
+    const aapl = fixture.quotes.find((q) => q.symbol === 'AAPL');
     const quantity = autotrade.__testables.computeOrderQuantity(
-      8.2,
-      { entrySizingMode: 'quantity', fixedQuantity: 1, allowFractionalShares: false },
+      aapl.current,
+      {
+        entrySizingMode: fixture.entrySizingMode,
+        fixedQuantity: fixture.fixedQuantity,
+        allowFractionalShares: false,
+      },
       null,
       {},
     );
-    expect(quantity).toBe(1);
+    expect(quantity).toBe(fixture.fixedQuantity);
   });
 });
+

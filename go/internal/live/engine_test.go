@@ -1,6 +1,7 @@
 package live
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -424,6 +425,97 @@ func TestT1TextHasFreshnessAndPosition(t *testing.T) {
 	}
 	if !strings.Contains(res.Text, "Котировки:") || !strings.Contains(res.Text, "Позиция: AAPL") {
 		t.Fatalf("T-1 missing freshness/position:\n%s", res.Text)
+	}
+}
+
+type t1ParityFix struct {
+	LowIBS           float64 `json:"lowIBS"`
+	HighIBS          float64 `json:"highIBS"`
+	EntrySizingMode  string  `json:"entrySizingMode"`
+	FixedQuantity    float64 `json:"fixedQuantity"`
+	Quotes           []struct {
+		Symbol  string  `json:"symbol"`
+		Current float64 `json:"current"`
+		Low     float64 `json:"low"`
+		High    float64 `json:"high"`
+	} `json:"quotes"`
+}
+
+func loadT1ParityFix(t *testing.T) t1ParityFix {
+	t.Helper()
+	raw, err := os.ReadFile("testdata/t1-parity-quotes.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fix t1ParityFix
+	if err := json.Unmarshal(raw, &fix); err != nil {
+		t.Fatal(err)
+	}
+	return fix
+}
+
+func TestT1DryRunSameQuotesAsNode(t *testing.T) {
+	fix := loadT1ParityFix(t)
+	dir := t.TempDir()
+	db, err := store.Open(filepath.Join(dir, "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	qmap := map[string]providers.QuotePayload{}
+	bmap := map[string][]types.OHLC{}
+	for _, q := range fix.Quotes {
+		bars := []types.OHLC{{Date: "2026-09-01", Open: q.Current, High: q.High, Low: q.Low, Close: q.Current, Volume: 1}}
+		_ = db.SaveDataset(q.Symbol, q.Symbol, "", "", bars, false)
+		_ = db.UpsertWatch(map[string]any{"symbol": q.Symbol, "lowIBS": fix.LowIBS, "highIBS": fix.HighIBS})
+		qmap[q.Symbol] = providers.QuotePayload{
+			Quote: map[string]any{"current": q.Current},
+			Range: map[string]any{"low": q.Low, "high": q.High},
+		}
+		bmap[q.Symbol] = bars
+	}
+	br := &MemoryBroker{}
+	e := New(db, &MemoryQuotes{Bars: bmap, Q: qmap})
+	e.Telegram = &MemoryTelegram{}
+	e.Broker = br
+	e.ChatID = "c"
+	e.Now = func() time.Time { return time.Date(2026, 9, 1, 19, 59, 0, 0, time.UTC) }
+	e.PatchAutoConfig(map[string]any{
+		"enabled": true, "lowIBS": fix.LowIBS, "highIBS": fix.HighIBS, "allowNewEntries": true,
+		"entrySizingMode": fix.EntrySizingMode, "fixedQuantity": fix.FixedQuantity, "onlyFromTelegramWatches": true,
+	})
+	sim, err := e.Simulate("confirmations")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sim.Executed || !sim.DryRun {
+		t.Fatalf("dry-run must not execute: %+v", sim)
+	}
+	if len(br.Orders) != 0 {
+		t.Fatalf("dry-run placed %+v", br.Orders)
+	}
+	ev := e.Evaluate()
+	action, _ := ev.Decision["action"].(string)
+	symbol := fmt.Sprint(ev.Decision["symbol"])
+	if action != "entry" || symbol != "AAPL" {
+		t.Fatalf("decision %+v (Node oracle: entry AAPL)", ev.Decision)
+	}
+	if !strings.Contains(sim.Text, "Открываем AAPL") {
+		t.Fatalf("T-1 dry-run text should enter AAPL:\n%s", sim.Text)
+	}
+	price := 0.0
+	for _, q := range fix.Quotes {
+		if q.Symbol == "AAPL" {
+			price = q.Current
+		}
+	}
+	qty, qerr := e.sizeOrder("entry", "AAPL", e.AutoConfig(), price)
+	if qerr != nil || qty != fix.FixedQuantity {
+		t.Fatalf("qty %v %v want %.0f", qty, qerr, fix.FixedQuantity)
+	}
+	_, t1 := db.AggregateState(e.ChatID, "2026-09-01")
+	if t1 {
+		t.Fatal("Simulate must not set t1Sent")
 	}
 }
 

@@ -152,6 +152,61 @@ func TestLivePathsAreNotJsonOKStubs(t *testing.T) {
 	}
 }
 
+func TestHTTPSimulateDoesNotConsumeT1Lock(t *testing.T) {
+	s, _, br := liveServer(t)
+	s.Live.Now = func() time.Time { return time.Date(2026, 9, 1, 19, 59, 0, 0, time.UTC) }
+	req := httptest.NewRequest("PATCH", "/api/autotrade/config", bytes.NewReader(mustJSON(map[string]any{
+		"enabled": true, "lowIBS": 0.9, "allowNewEntries": true, "entrySizingMode": "quantity", "fixedQuantity": 1,
+	})))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != 200 {
+		t.Fatalf("config %d %s", rec.Code, rec.Body.String())
+	}
+
+	overview := postJSON(s, "/api/telegram/simulate", map[string]any{"stage": "overview"})
+	if overview.Code != 200 {
+		t.Fatalf("overview %d %s", overview.Code, overview.Body.String())
+	}
+	confirm := postJSON(s, "/api/telegram/simulate", map[string]any{"stage": "confirmations"})
+	if confirm.Code != 200 {
+		t.Fatalf("confirmations %d %s", confirm.Code, confirm.Body.String())
+	}
+	var sim map[string]any
+	_ = json.Unmarshal(confirm.Body.Bytes(), &sim)
+	if sim["dryRun"] != true || sim["executed"] == true {
+		t.Fatalf("HTTP simulate must stay dry-run: %s", confirm.Body.String())
+	}
+	if strings.Contains(confirm.Body.String(), "live orders disabled") {
+		t.Fatalf("stub: %s", confirm.Body.String())
+	}
+	if len(br.Orders) != 0 {
+		t.Fatalf("simulate placed %+v", br.Orders)
+	}
+	t11, t1 := s.DB.AggregateState("test-chat", "2026-09-01")
+	if t11 || t1 {
+		t.Fatalf("simulate must not consume t11Sent/t1Sent, got t11=%v t1=%v", t11, t1)
+	}
+	again := postJSON(s, "/api/telegram/simulate", map[string]any{"stage": "confirmations"})
+	_ = json.Unmarshal(again.Body.Bytes(), &sim)
+	if fmt.Sprint(sim["reason"]) == "already_sent" {
+		t.Fatalf("second simulate blocked by lock: %s", again.Body.String())
+	}
+
+	liveRes, err := s.Live.Aggregate(1, live.AggregateOpts{ForceSend: true, DryRun: false, UpdateState: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !liveRes.Executed || len(br.Orders) != 1 {
+		t.Fatalf("live T-1 after simulate must still place, executed=%v orders=%+v reason=%s", liveRes.Executed, br.Orders, liveRes.Reason)
+	}
+	_, t1 = s.DB.AggregateState("test-chat", "2026-09-01")
+	if !t1 {
+		t.Fatal("live T-1 should claim t1Sent")
+	}
+}
+
 func TestSimulateConfirmationsDoesNotPlace(t *testing.T) {
 	s, _, br := liveServer(t)
 	req := httptest.NewRequest("PATCH", "/api/autotrade/config", bytes.NewReader(mustJSON(map[string]any{

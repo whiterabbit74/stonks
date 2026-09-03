@@ -1,0 +1,12 @@
+{
+  "lowIBS": 0.1,
+  "highIBS": 0.75,
+  "entrySizingMode": "quantity",
+  "fixedQuantity": 1,
+  "quotes": [
+    {"symbol": "AAPL", "current": 250.23, "low": 247.5, "high": 297.5},
+    {"symbol": "AMZN", "current": 180.0, "low": 170.0, "high": 190.0},
+    {"symbol": "MSFT", "current": 410.0, "low": 400.0, "high": 420.0},
+    {"symbol": "V", "current": 290.0, "low": 280.0, "high": 300.0}
+  ]
+}
