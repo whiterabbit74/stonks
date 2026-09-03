@@ -228,6 +228,14 @@ func (e *Engine) Evaluate() EvalResult {
 		e.logAuto("execution_skipped", "", map[string]any{"reason": "empty_symbol_universe"})
 	} else if open != nil && allowExits {
 		sym := store.SafeTicker(fmt.Sprint(open["symbol"]))
+		if fmt.Sprint(open["source"]) == "live_broker" {
+			// The broker holds this but nothing opened it here. Selling it would
+			// liquidate a position we have no record of — it may be the user's
+			// own holding. Block instead, and let reconcile decide.
+			decision = map[string]any{"action": "none", "reason": "broker_position_not_in_journal", "symbol": sym, "candidate": nil}
+			e.logAuto("execution_skipped", "", map[string]any{"symbol": sym, "reason": "broker_position_not_in_journal"})
+			goto done
+		}
 		if heldErr == nil && len(held) > 0 {
 			if _, ok := held[sym]; !ok {
 				decision = map[string]any{"action": "none", "reason": "broker_position_mismatch", "symbol": sym, "candidate": nil}

@@ -86,7 +86,7 @@ func envDefault(k, d string) string {
 }
 
 func (s *Server) Handler() http.Handler {
-	h := recoverMiddleware(s.checkOrigin(s.rateLimit(s.mux)))
+	h := s.accessLog(recoverMiddleware(s.checkOrigin(s.rateLimit(s.mux))))
 	if s.testAuthToken == "" {
 		return h
 	}

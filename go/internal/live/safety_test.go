@@ -214,3 +214,26 @@ func TestProviderAbbrevWebull(t *testing.T) {
 		t.Fatalf("chain abbrev %q", providerAbbrev("finnhub+webull"))
 	}
 }
+
+func TestBrokerOnlyPositionIsNeverSold(t *testing.T) {
+	// IBS 1.0 is far above highIBS, so an exit would fire if the engine
+	// considered this position its own.
+	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 12, Volume: 1}}
+	_, e, br := testEngine(t, bars)
+	br.Pos = []any{map[string]any{"symbol": "AAPL", "quantity": 500.0}}
+	e.PatchAutoConfig(map[string]any{
+		"enabled": true, "highIBS": 0.75, "allowExits": true, "allowNewEntries": true,
+		"onlyFromTelegramWatches": false, "symbols": "AAPL",
+	})
+	ev := e.Evaluate()
+	if got := fmt.Sprint(ev.Decision["action"]); got != "none" {
+		t.Fatalf("must not act on a position it never opened, got %q", got)
+	}
+	if got := fmt.Sprint(ev.Decision["reason"]); got != "broker_position_not_in_journal" {
+		t.Fatalf("reason = %q", got)
+	}
+	res := e.Execute("manual_execute")
+	if res.Executed || len(br.Orders) != 0 {
+		t.Fatalf("manual execute must not liquidate it: %+v", br.Orders)
+	}
+}
