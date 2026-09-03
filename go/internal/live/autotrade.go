@@ -427,7 +427,11 @@ func (e *Engine) Dashboard() (map[string]any, error) {
 
 func (e *Engine) Logs(limit int) map[string]any {
 	logs, _ := e.DB.ListAutotradeLogs(limit)
-	return map[string]any{"logs": logs}
+	pending, _ := e.DB.ListPendingTrackers()
+	if pending == nil {
+		pending = []map[string]any{}
+	}
+	return map[string]any{"logs": logs, "pending": pending}
 }
 
 func (e *Engine) ClosePosition(symbol string) (OrderResult, error) {

@@ -68,6 +68,14 @@
     { id: 'watches', label: 'Тикеры' },
     { id: 'ema', label: 'EMA' },
   ];
+  const CAPITAL_MODES = [
+    { value: 'standard_safe', label: 'Стандартный', hint: '100% капитала с запасом 2.2% под market buy Webull' },
+    { value: 'cash_100', label: '100% без коррекции', hint: 'Ровно 100% без резерва' },
+    { value: 'margin_125', label: 'Маржа 125%', hint: '125% базового капитала' },
+    { value: 'margin_150', label: 'Маржа 150%', hint: '150% базового капитала' },
+    { value: 'margin_175', label: 'Маржа 175%', hint: '175% базового капитала' },
+    { value: 'margin_200', label: 'Маржа 200%', hint: '200% базового капитала' },
+  ];
   const BROKER_TABS = [
     { id: 'overview', label: 'Обзор' },
     { id: 'positions', label: 'Позиции' },
@@ -1381,7 +1389,7 @@
       <td>≥ ${Number(w.highIBS ?? 0.75).toFixed(2)}</td>
       <td>${w.entryPrice != null ? '$' + Number(w.entryPrice).toFixed(2) : '—'}</td>
       <td>${w.isOpenPosition ? 'Открыта' : 'Нет'}</td>
-      <td><button data-dw="${esc(w.symbol)}" class="text-sm text-red-600">Удалить</button></td>
+      <td>${w.isOpenPosition && w.currentTradeId ? `<button type="button" data-close-mon="${esc(w.currentTradeId)}" data-close-sym="${esc(w.symbol)}" class="text-sm text-red-600 mr-2">Закрыть</button>` : ''}<button data-dw="${esc(w.symbol)}" class="text-sm text-red-600">Удалить</button></td>
     </tr>`).join('');
     const alerts = (state.emaAlerts || []).map((a) => `<tr>
       <td class="font-mono">${esc(a.symbol)}</td><td>EMA ${esc(a.emaPeriod || 200)}</td>
@@ -1474,8 +1482,11 @@
       </div>${err ? `<p class="mt-3 text-sm text-amber-700">${esc(err)}</p>` : ''}`;
     } else if (tab === 'positions') {
       const pos = asRows(state.dashboard && (state.dashboard.positions || (state.dashboard.account && state.dashboard.account.positions)));
-      const posRows = pos.map((p) => `<tr><td>${esc(p.symbol || p.ticker || '')}</td><td>${esc(p.instrument_type || p.type || '')}</td><td>${esc(p.currency || '')}</td><td>${esc(p.quantity ?? p.qty ?? '')}</td><td>${esc(p.average_price ?? p.avgPrice ?? '')}</td><td>${esc(p.market_price ?? p.lastPrice ?? '')}</td><td>${esc(p.unrealized_profit_loss ?? p.unrealizedPnl ?? '')}</td></tr>`).join('');
-      body = `${posRows ? `<div class="overflow-auto"><table class="trades"><thead><tr><th>Тикер</th><th>Тип</th><th>Валюта</th><th>Кол-во</th><th>Средняя</th><th>Рыночная цена</th><th>Нереализ. PnL</th></tr></thead><tbody>${posRows}</tbody></table></div>` : emptyBrokerTable(['Тикер', 'Тип', 'Валюта', 'Кол-во', 'Средняя', 'Рыночная цена', 'Нереализ. PnL'], 'Открытых позиций нет')}`;
+      const posRows = pos.map((p) => {
+        const sym = p.symbol || p.ticker || '';
+        return `<tr><td>${esc(sym)}</td><td>${esc(p.instrument_type || p.type || '')}</td><td>${esc(p.currency || '')}</td><td>${esc(p.quantity ?? p.qty ?? '')}</td><td>${esc(p.average_price ?? p.avgPrice ?? '')}</td><td>${esc(p.market_price ?? p.lastPrice ?? '')}</td><td>${esc(p.unrealized_profit_loss ?? p.unrealizedPnl ?? '')}</td><td>${sym ? `<button type="button" data-close-pos="${esc(sym)}" class="text-sm text-red-600">Закрыть</button>` : ''}</td></tr>`;
+      }).join('');
+      body = `${posRows ? `<div class="overflow-auto"><table class="trades"><thead><tr><th>Тикер</th><th>Тип</th><th>Валюта</th><th>Кол-во</th><th>Средняя</th><th>Рыночная цена</th><th>Нереализ. PnL</th><th></th></tr></thead><tbody>${posRows}</tbody></table></div>` : emptyBrokerTable(['Тикер', 'Тип', 'Валюта', 'Кол-во', 'Средняя', 'Рыночная цена', 'Нереализ. PnL', ''], 'Открытых позиций нет')}`;
     } else if (tab === 'orders') {
       const orders = asRows(state.dashboard && state.dashboard.openOrders);
       const orderRows = orders.map((o) => `<tr><td>${esc(pickField(o, ['symbol', 'ticker']))}</td><td>${esc(pickField(o, ['side', 'action']))}</td><td>${esc(pickField(o, ['order_type', 'type']))}</td><td>${esc(pickField(o, ['quantity', 'qty', 'total_quantity']))}</td><td>${esc(pickField(o, ['limit_price', 'price', 'avg_price']))}</td><td>${esc(pickField(o, ['status', 'order_status']))}</td></tr>`).join('');
@@ -1488,25 +1499,54 @@
       const st = state.autoStatus || {};
       const last = (st.state && st.state.lastRunAt) || '—';
       const dec = st.evaluation && st.evaluation.decision ? st.evaluation.decision : {};
-      body = `<div class="rounded-lg border border-gray-200 p-4 dark:border-gray-700">
-        <h2 class="text-lg font-semibold mb-3">Состояние автоторговли</h2>
-        <div class="grid gap-3 md:grid-cols-2">
-          <div class="rounded-xl bg-gray-50 p-3 dark:bg-gray-950/40">
-            <div class="text-xs uppercase tracking-wide text-gray-500">Подключение</div>
-            <div class="mt-1 text-sm">${live ? 'Webull подключен' : 'Webull не настроен'}</div>
+      const ac = state.autoConfig || {};
+      const tok = state.token || {};
+      const conn = (state.dashboard && state.dashboard.connection) || {};
+      const pending = asRows(state.autoLogs && state.autoLogs.pending);
+      const pendingRows = pending.map((o) => `<tr><td>${esc(o.symbol || '')}</td><td>${esc(o.action || '')}</td><td>${esc(o.status || '')}</td><td>${esc(o.quantity ?? '')}</td><td>${esc(o.startedAt || o.started_at || '')}</td></tr>`).join('');
+      const mode = CAPITAL_MODES.find((m) => m.value === (ac.entryCapitalMode || 'standard_safe')) || CAPITAL_MODES[0];
+      body = `<div class="space-y-4">
+        <div class="rounded-lg border border-gray-200 p-4 dark:border-gray-700">
+          <h2 class="text-lg font-semibold mb-3">Состояние автоторговли</h2>
+          <div class="grid gap-3 md:grid-cols-2">
+            <div class="rounded-xl bg-gray-50 p-3 dark:bg-gray-950/40">
+              <div class="text-xs uppercase tracking-wide text-gray-500">Подключение</div>
+              <div class="mt-1 text-sm">${conn.configured || tok.hasToken || tok.present ? 'Webull подключен' : 'Webull не настроен'}</div>
+            </div>
+            <div class="rounded-xl bg-gray-50 p-3 dark:bg-gray-950/40">
+              <div class="text-xs uppercase tracking-wide text-gray-500">Token / Account</div>
+              <div class="mt-1 text-sm">token ${tok.hasToken || tok.present ? 'есть' : 'не задан'} • проверка: ${esc(tok.lastCheckStatus || '—')}</div>
+              <div class="mt-2 flex flex-wrap gap-2">
+                <button type="button" id="auto-token-check" class="btn-secondary min-h-0 py-2">Проверить токен</button>
+                <button type="button" id="auto-token-create" class="btn-secondary min-h-0 py-2">Создать токен</button>
+              </div>
+              <div class="mt-2 flex gap-2">
+                <input id="auto-token-input" type="password" autocomplete="off" placeholder="Вставьте Webull token" class="field flex-1" />
+                <button type="button" id="auto-token-save" class="btn-secondary min-h-0 py-2">Сохранить токен</button>
+              </div>
+            </div>
           </div>
-          <div class="rounded-xl bg-gray-50 p-3 dark:bg-gray-950/40">
-            <div class="text-xs uppercase tracking-wide text-gray-500">Статус</div>
-            <div class="mt-1 text-sm">${live ? 'включена' : 'выключена'}</div>
+          <div class="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <div class="rounded-lg border p-3"><div class="text-xs text-gray-500">Статус</div><div class="mt-1 font-semibold">${ac.enabled ? 'LIVE' : 'OFF'}</div></div>
+            <div class="rounded-lg border p-3"><div class="text-xs text-gray-500">Последний запуск</div><div class="mt-1 text-sm">${esc(last)}</div></div>
+            <div class="rounded-lg border p-3"><div class="text-xs text-gray-500">Entries / Exits</div><div class="mt-1 text-sm">${ac.allowNewEntries !== false ? 'да' : 'нет'} / ${ac.allowExits !== false ? 'да' : 'нет'}</div></div>
+            <div class="rounded-lg border p-3"><div class="text-xs text-gray-500">Последнее решение</div><div class="mt-1 text-sm">${esc(dec.action || '—')} ${esc(dec.symbol || '')}</div><div class="text-xs text-gray-500">${esc(dec.reason || '')}</div></div>
           </div>
-          <div class="rounded-xl bg-gray-50 p-3 dark:bg-gray-950/40">
-            <div class="text-xs uppercase tracking-wide text-gray-500">Последний запуск</div>
-            <div class="mt-1 text-sm">${esc(last)}</div>
+          <div class="mt-4 rounded-xl bg-gray-50 p-3 text-sm dark:bg-gray-950/40">
+            <div>Профиль капитала: <strong>${esc(mode.label)}</strong> — ${esc(mode.hint)}</div>
+            <div class="mt-1">Sizing: ${esc(ac.entrySizingMode || 'balance')} · IBS ${(Number(ac.lowIBS ?? 0.1) * 100).toFixed(0)}% / ${(Number(ac.highIBS ?? 0.75) * 100).toFixed(0)}%</div>
+            <div class="mt-1 text-xs text-gray-500">Включение и профиль капитала — Настройки → Автоторговля. Исполнение идёт по T-1 мониторинга.</div>
           </div>
-          <div class="rounded-xl bg-gray-50 p-3 dark:bg-gray-950/40">
-            <div class="text-xs uppercase tracking-wide text-gray-500">Entries/Exits</div>
-            <div class="mt-1 text-sm">${esc(dec.action || '—')} ${esc(dec.symbol || '')}</div>
+          <div class="mt-4 flex flex-wrap gap-2">
+            <button type="button" id="auto-enable" class="btn-primary min-h-0 py-2">${ac.enabled ? 'Выключить автоторговлю' : 'Включить автоторговлю'}</button>
+            <button type="button" id="auto-test-buy" class="btn-secondary min-h-0 py-2">BUY AAL 1 шт по рынку</button>
+            <button type="button" id="auto-refresh" class="btn-secondary min-h-0 py-2">Обновить статус</button>
           </div>
+          <p class="mt-3 text-xs text-gray-500">Тестовая кнопка отправляет реальный ордер, если на сервере включён WEBULL_ENABLE_LIVE_TEST_BUY.</p>
+        </div>
+        <div class="rounded-lg border border-gray-200 p-4 dark:border-gray-700">
+          <h3 class="font-semibold mb-2">Pending / last tracked orders</h3>
+          ${pendingRows ? `<div class="overflow-auto"><table class="trades"><thead><tr><th>Тикер</th><th>Action</th><th>Статус</th><th>Qty</th><th>Старт</th></tr></thead><tbody>${pendingRows}</tbody></table></div>` : '<p class="text-sm text-gray-500">Tracked orders пока нет</p>'}
         </div>
       </div>`;
     } else if (tab === 'monitor') {
@@ -1594,6 +1634,8 @@
         </div>`;
     } else {
       const ac = state.autoConfig?.config || state.autoConfig || {};
+      const cap = ac.entryCapitalMode || 'standard_safe';
+      const quote = ac.provider || ac.quoteProvider || 'finnhub';
       body = `<div class="rounded-xl border p-4 mb-3">
           <div class="font-medium mb-2">Статус автоторговли</div>
           <label class="inline-flex items-center gap-2 text-sm"><input type="checkbox" name="autoEnabled" ${ac.enabled ? 'checked' : ''} /> Включена</label>
@@ -1601,10 +1643,15 @@
         </div>
         <div class="rounded-xl border p-4 mb-3">
           <div class="font-medium mb-2">Провайдер котировок для автоторговли</div>
-          <label class="inline-flex items-center gap-2 text-sm mr-4"><input type="radio" name="autoQuote" value="finnhub" ${(ac.quoteProvider || 'finnhub') === 'finnhub' ? 'checked' : ''} /> Finnhub</label>
-          <label class="inline-flex items-center gap-2 text-sm"><input type="radio" name="autoQuote" value="webull" ${ac.quoteProvider === 'webull' ? 'checked' : ''} /> Webull</label>
+          <label class="inline-flex items-center gap-2 text-sm mr-4"><input type="radio" name="autoQuote" value="finnhub" ${quote === 'finnhub' ? 'checked' : ''} /> Finnhub</label>
+          <label class="inline-flex items-center gap-2 text-sm"><input type="radio" name="autoQuote" value="webull" ${quote === 'webull' ? 'checked' : ''} /> Webull</label>
         </div>
-        <p class="text-sm text-gray-600">На странице /broker → Автоторговля видно, какой профиль реально активен.</p>`;
+        <div class="rounded-xl border p-4 mb-3">
+          <div class="font-medium mb-2">Профиль использования капитала для входа</div>
+          <p class="text-xs text-gray-500 mb-2">Для режима sizing <strong>balance</strong>. Итоговый размер всё равно ограничен buying power брокера.</p>
+          ${CAPITAL_MODES.map((m) => `<label class="flex items-start gap-2 text-sm mb-2"><input type="radio" name="entryCapitalMode" value="${esc(m.value)}" ${cap === m.value ? 'checked' : ''} class="mt-1" /><span><strong>${esc(m.label)}</strong><br /><span class="text-xs text-gray-500">${esc(m.hint)}</span></span></label>`).join('')}
+        </div>
+        <p class="text-sm text-gray-600">На странице /broker → Автоторговля видно, какой профиль реально активен, токен и тестовый ордер.</p>`;
     }
     return `
       ${pageHeader('Настройки', 'Конфигурация приложения и параметры стратегии', `<button form="set-form" class="btn-secondary min-h-0 py-2 px-4">Сохранить</button>`)}
@@ -2150,6 +2197,16 @@
           renderPage();
         });
       }));
+      root.querySelectorAll('[data-close-mon]').forEach((b) => b.addEventListener('click', async () => {
+        const price = Number(window.prompt('Цена выхода для ' + (b.dataset.closeSym || '') + ':', '') || '');
+        if (!(price > 0)) return;
+        try {
+          await API.closeMonitor(b.dataset.closeMon, { exitPrice: price });
+          state.loaded.watches = false;
+          toast('Monitor-сделка закрыта');
+          renderPage();
+        } catch (err) { toast(err.message); }
+      }));
       document.getElementById('watch-form')?.addEventListener('submit', async (e) => {
         e.preventDefault();
         await API.addWatch({ symbol: e.target.symbol.value, lowIBS: 0.1, highIBS: 0.75 });
@@ -2225,6 +2282,42 @@
         state.broker = Array.isArray(bt) ? bt : (bt.trades || []);
         renderPage();
       });
+      async function reloadBroker() {
+        state.loaded.broker = false;
+        renderPage();
+      }
+      document.getElementById('auto-token-check')?.addEventListener('click', async () => {
+        try { const r = await API.tokenCheck(); toast(r.status || r.lastCheckStatus || 'Проверено'); await reloadBroker(); } catch (err) { toast(err.message); }
+      });
+      document.getElementById('auto-token-create')?.addEventListener('click', async () => {
+        try { const r = await API.tokenCreate(); toast(r.persisted ? 'Токен создан' : (r.error || 'Создан')); await reloadBroker(); } catch (err) { toast(err.message); }
+      });
+      document.getElementById('auto-token-save')?.addEventListener('click', async () => {
+        const tok = document.getElementById('auto-token-input')?.value.trim();
+        if (!tok) { toast('Вставьте токен'); return; }
+        try { await API.saveToken(tok); toast('Токен сохранён'); await reloadBroker(); } catch (err) { toast(err.message); }
+      });
+      document.getElementById('auto-enable')?.addEventListener('click', async () => {
+        const on = !(state.autoConfig && state.autoConfig.enabled);
+        try {
+          const saved = await API.saveAutoConfig({ enabled: on });
+          state.autoConfig = saved && saved.config ? saved.config : { ...(state.autoConfig || {}), enabled: on };
+          toast(on ? 'Автоторговля включена' : 'Автоторговля выключена');
+          renderPage();
+        } catch (err) { toast(err.message); }
+      });
+      document.getElementById('auto-test-buy')?.addEventListener('click', async () => {
+        if (!window.confirm('Отправить BUY AAL 1 шт по рынку?')) return;
+        try {
+          const r = await API.testBuy('AAL', 1);
+          toast(r.submitted ? ('Ордер ' + (r.clientOrderId || 'отправлен')) : (r.error || 'не отправлен'));
+        } catch (err) { toast(err.message); }
+      });
+      document.getElementById('auto-refresh')?.addEventListener('click', () => { reloadBroker(); });
+      root.querySelectorAll('[data-close-pos]').forEach((b) => b.addEventListener('click', async () => {
+        if (!window.confirm('Закрыть позицию ' + b.dataset.closePos + ' рыночным ордером в Webull?')) return;
+        try { const r = await API.closePosition(b.dataset.closePos); toast(r.submitted || r.success ? 'Ордер на закрытие отправлен' : (r.error || 'не отправлен')); await reloadBroker(); } catch (err) { toast(err.message); }
+      }));
     }
 
     if (p === '/settings') {
@@ -2271,11 +2364,19 @@
         if (body.commissionFixed != null) body.commissionFixed = Number(body.commissionFixed);
         if (body.commissionPercentage != null) body.commissionPercentage = Number(body.commissionPercentage);
         if (form.autoEnabled) {
-          state.autoConfig = { ...state.autoConfig, enabled: form.autoEnabled.checked, quoteProvider: fd.get('autoQuote') || 'finnhub' };
-          try { await API.saveAutoConfig(state.autoConfig); } catch (_) {}
+          const updates = {
+            enabled: form.autoEnabled.checked,
+            provider: fd.get('autoQuote') || 'finnhub',
+            entryCapitalMode: fd.get('entryCapitalMode') || 'standard_safe',
+          };
+          try {
+            const saved = await API.saveAutoConfig(updates);
+            state.autoConfig = { ...(state.autoConfig || {}), ...(saved && saved.config ? saved.config : updates) };
+          } catch (err) { toast(err.message); }
         }
         delete body.autoEnabled;
         delete body.autoQuote;
+        delete body.entryCapitalMode;
         await API.saveSettings(body);
         state.settings = { ...state.settings, ...body };
         const msg = document.getElementById('set-msg');

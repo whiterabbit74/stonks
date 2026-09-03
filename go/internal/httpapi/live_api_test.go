@@ -229,6 +229,20 @@ func TestSimulateConfirmationsDoesNotPlace(t *testing.T) {
 	}
 }
 
+func TestAutoLogsIncludePending(t *testing.T) {
+	s, _, _ := liveServer(t)
+	_ = s.DB.SaveOrderTracker(map[string]any{"clientOrderId": "oid-1", "symbol": "AAPL", "action": "entry", "status": "submitted", "quantity": 1})
+	req := httptest.NewRequest("GET", "/api/autotrade/logs?limit=10", nil)
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != 200 {
+		t.Fatalf("logs %d %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"pending"`) || !strings.Contains(rec.Body.String(), "oid-1") {
+		t.Fatalf("logs missing pending tracker: %s", rec.Body.String())
+	}
+}
+
 func TestTestBuyDisabledByDefault(t *testing.T) {
 	s, _, _ := liveServer(t)
 	t.Setenv("WEBULL_ENABLE_LIVE_TEST_BUY", "")
@@ -455,6 +469,14 @@ func TestPagesDriveLiveAPIs(t *testing.T) {
 	}
 	if !strings.Contains(a, "openOrders") || !strings.Contains(a, "orderHistory") {
 		t.Error("broker tabs must render dashboard openOrders/orderHistory")
+	}
+	for _, need := range []string{"auto-enable", "auto-test-buy", "auto-token-check", "auto-token-save", "name=\"autoEnabled\"", "entryCapitalMode", "data-close-pos", "BUY AAL"} {
+		if !strings.Contains(a, need) {
+			t.Errorf("UI missing autotrade control %s", need)
+		}
+	}
+	if !strings.Contains(j, "token/create") || !strings.Contains(j, "test-buy") || !strings.Contains(j, "close-position") {
+		t.Error("api.js missing token/test-buy/close-position")
 	}
 	if !strings.Contains(a, "r.sent") {
 		t.Error("watches simulate toast must inspect r.sent")
