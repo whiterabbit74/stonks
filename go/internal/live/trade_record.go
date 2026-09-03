@@ -87,15 +87,19 @@ func (e *Engine) recordFill(t map[string]any, detail map[string]any, status stri
 	e.mu.Unlock()
 
 	fillPrice := fillPriceFrom(detail)
-	fillQty := fillQtyFrom(detail)
+	// reportedQty is what the broker says actually executed. Keep it separate
+	// from the fallbacks below: it is the only evidence of a partial fill.
+	reportedQty := fillQtyFrom(detail)
+	orderedQty := asFloat(t["quantity"])
+	if !(orderedQty > 0) {
+		orderedQty = meta.Quantity
+	}
+	fillQty := reportedQty
 	if !(fillPrice > 0) {
 		fillPrice = meta.QuotePrice
 	}
 	if !(fillQty > 0) {
-		fillQty = asFloat(t["quantity"])
-		if !(fillQty > 0) {
-			fillQty = meta.Quantity
-		}
+		fillQty = orderedQty
 	}
 	exitIBS := any(nil)
 	if meta.IBS > 0 || meta.IBS == 0 && meta.CorrelationID != "" {
@@ -108,9 +112,30 @@ func (e *Engine) recordFill(t map[string]any, detail map[string]any, status stri
 		"source": source, "dateKey": dateKey,
 	})
 
-	if status != "filled" {
+	// The executed quantity is the fact; the status string is only the broker's
+	// vocabulary. Record the trade whenever shares actually changed hands, even
+	// under a status word we do not recognise — otherwise a real position would
+	// exist with nothing in the journal and the next cycle would buy again.
+	if status != "filled" && !(reportedQty > 0) {
 		e.deletePhantom(clientOrderID, symbol)
 		return
+	}
+	if reportedQty > 0 && orderedQty > 0 && reportedQty < orderedQty-1e-9 {
+		// Should not happen: market orders on the monitored tickers fill whole.
+		// If it ever does, the journal follows the executed quantity and the
+		// operator is told, because the remainder is an untracked exposure.
+		e.logAuto("order_partially_filled", meta.CorrelationID, map[string]any{
+			"symbol": symbol, "action": action, "clientOrderId": clientOrderID,
+			"status": status, "orderedQty": orderedQty, "filledQty": reportedQty,
+		})
+		_ = e.Send(e.chat(), fmt.Sprintf(
+			"<b>Webull: частичное исполнение</b>\n%s • %s\nзаказано: %v\nисполнено: %v\nstatus: %s\nОстаток не отражён в журнале — проверьте позицию у брокера.",
+			symbol, action, orderedQty, reportedQty, status))
+	} else if status != "filled" {
+		e.logAuto("order_filled_under_unknown_status", meta.CorrelationID, map[string]any{
+			"symbol": symbol, "action": action, "clientOrderId": clientOrderID,
+			"status": status, "filledQty": reportedQty,
+		})
 	}
 
 	if action == "entry" {

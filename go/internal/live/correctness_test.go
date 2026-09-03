@@ -694,3 +694,69 @@ func TestChainOnlyContainsRealtimeProviders(t *testing.T) {
 		}
 	}
 }
+
+// Should not happen on a market order in a liquid name, but if it ever does the
+// journal must follow the executed quantity and the operator must be told.
+func TestPartialFillIsRecordedAndWarned(t *testing.T) {
+	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
+	db, e, br := testEngine(t, bars)
+	tg := &MemoryTelegram{}
+	e.Telegram = tg
+	e.Sleep = func(time.Duration) {}
+	e.PatchAutoConfig(map[string]any{
+		"enabled": true, "lowIBS": 0.9, "allowNewEntries": true,
+		"entrySizingMode": "quantity", "fixedQuantity": 10,
+	})
+	res := e.Execute("test")
+	if !res.Executed {
+		t.Fatalf("submit %+v", res.Broker)
+	}
+	oid := br.Orders[0].ClientOrderID
+	br.SetDetail(oid, map[string]any{
+		"status": "CANCELLED", "filled_qty": 4.0, "filled_price": 8.25,
+		"client_order_id": oid,
+	})
+	waitTrackerFinal(t, e, db, "AAPL", "entry")
+
+	trades, _ := db.ListTrades("broker_trades")
+	if len(trades) != 1 {
+		t.Fatalf("the executed 4 shares must be journalled, got %+v", trades)
+	}
+	if q := asFloat(trades[0]["quantity"]); q != 4 {
+		t.Fatalf("journalled quantity %v, want the executed 4", q)
+	}
+	var warned bool
+	for _, m := range tg.Messages {
+		if strings.Contains(m[1], "частичное исполнение") {
+			warned = true
+		}
+	}
+	if !warned {
+		t.Fatalf("no partial-fill warning sent: %+v", tg.Messages)
+	}
+}
+
+// A fill reported under a status word we do not know must still be recorded.
+func TestFullFillUnderUnknownStatusIsRecorded(t *testing.T) {
+	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
+	db, e, br := testEngine(t, bars)
+	e.Sleep = func(time.Duration) {}
+	e.PatchAutoConfig(map[string]any{
+		"enabled": true, "lowIBS": 0.9, "allowNewEntries": true,
+		"entrySizingMode": "quantity", "fixedQuantity": 3,
+	})
+	if res := e.Execute("test"); !res.Executed {
+		t.Fatalf("submit %+v", res.Broker)
+	}
+	oid := br.Orders[0].ClientOrderID
+	br.SetDetail(oid, map[string]any{
+		"status": "TRADE_COMPLETE_NEW_WORD", "filled_qty": 3.0, "filled_price": 8.25,
+		"client_order_id": oid,
+	})
+	waitTrackerFinal(t, e, db, "AAPL", "entry")
+
+	trades, _ := db.ListTrades("broker_trades")
+	if len(trades) != 1 {
+		t.Fatalf("a fully executed order must be journalled whatever it is called, got %+v", trades)
+	}
+}

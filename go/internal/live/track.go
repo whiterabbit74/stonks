@@ -239,6 +239,14 @@ func (e *Engine) pollOneTracker(t map[string]any) bool {
 			}
 		}
 	}
+	if !IsFinalOrderStatus(status) && detail != nil {
+		// A fully executed quantity is proof of a fill regardless of what the
+		// broker calls the state, so an unrecognised status word cannot leave a
+		// real position polling until it "expires".
+		if ordered := asFloat(t["quantity"]); ordered > 0 && fillQtyFrom(detail) >= ordered-1e-9 {
+			status = "filled"
+		}
+	}
 	if !IsFinalOrderStatus(status) {
 		_ = e.DB.SetOrderTrackerStatus(id, status)
 		e.logAuto("order_poll", e.metaCorr(id), map[string]any{
