@@ -549,7 +549,11 @@ func (s *Server) handleCreateDataset(w http.ResponseWriter, r *http.Request) {
 	ct := r.Header.Get("Content-Type")
 	var payload map[string]any
 	if strings.Contains(ct, "multipart") {
-		if err := r.ParseMultipartForm(8 << 20); err != nil {
+		// Node caps uploads at 5MB (routes/datasets.js:31). ParseMultipartForm's
+		// argument is only the in-memory budget — without this the rest spills
+		// to disk unbounded.
+		r.Body = http.MaxBytesReader(w, r.Body, jsonBodyLimit)
+		if err := r.ParseMultipartForm(jsonBodyLimit); err != nil {
 			writeJSON(w, 400, map[string]any{"error": err.Error()})
 			return
 		}
