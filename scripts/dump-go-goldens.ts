@@ -259,6 +259,39 @@ write('googl-ema-trades.json', compactTrades(ema.trades));
 write('googl-ema-equity.json', compactEquity(ema.equity));
 write('googl-ema-final.json', { finalValue: ema.finalValue, tradeCount: ema.trades.length, maxDrawdown: ema.maxDrawdown });
 
+const emaBar = (date: string, close: number): OHLCData => ({
+  date, open: close, high: close, low: close, close, volume: 1000,
+});
+const emaMulti = runEmaZoneBacktest(
+  [{ ticker: 'TQQQ', data: [
+    emaBar('2024-01-01', 100),
+    emaBar('2024-01-02', 100),
+    emaBar('2024-01-03', 100),
+    emaBar('2024-01-04', 80),
+    emaBar('2024-01-05', 130),
+  ] }],
+  {
+    initialCapital: 10000,
+    leverage: 1,
+    emaPeriod: 3,
+    buyZones: [
+      { id: 'buy-5', levelPct: -5, enabled: true },
+      { id: 'buy-10', levelPct: -10, enabled: true },
+    ],
+    sellZones: [{ id: 'sell-15', levelPct: 15, enabled: true }],
+    takeProfitPercent: null,
+    noSellAtLoss: false,
+    signalSource: 'close',
+    emaStartMode: 'full_history',
+  }
+);
+write('ema-multi-lot-trades.json', compactTrades(emaMulti.trades));
+write('ema-multi-lot-final.json', {
+  finalValue: emaMulti.finalValue,
+  tradeCount: emaMulti.trades.length,
+  maxDrawdown: emaMulti.maxDrawdown,
+});
+
 const sampleCloses = sample.map((b) => b.close);
 write('indicators-sample.json', {
   sma5: IndicatorEngine.calculateSMA(sampleCloses, 5),

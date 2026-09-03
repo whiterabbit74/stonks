@@ -38,13 +38,13 @@ type EmaDeviationPoint struct {
 }
 
 type EmaResult struct {
-	Equity      []types.EquityPoint     `json:"equity"`
-	Exposure    []types.ExposurePoint   `json:"exposure"`
-	FinalValue  float64                 `json:"finalValue"`
-	MaxDrawdown float64                 `json:"maxDrawdown"`
-	Trades      []types.Trade           `json:"trades"`
-	Metrics     types.BacktestMetrics   `json:"metrics"`
-	Deviation   []EmaDeviationPoint     `json:"deviation"`
+	Equity      []types.EquityPoint   `json:"equity"`
+	Exposure    []types.ExposurePoint `json:"exposure"`
+	FinalValue  float64               `json:"finalValue"`
+	MaxDrawdown float64               `json:"maxDrawdown"`
+	Trades      []types.Trade         `json:"trades"`
+	Metrics     types.BacktestMetrics `json:"metrics"`
+	Deviation   []EmaDeviationPoint   `json:"deviation"`
 }
 
 type emaLot struct {
@@ -64,10 +64,10 @@ type emaLot struct {
 }
 
 type preparedTicker struct {
-	ticker   string
-	data     []types.OHLC
-	ema      []float64
-	byDate   map[string]int
+	ticker    string
+	data      []types.OHLC
+	ema       []float64
+	byDate    map[string]int
 	rawByDate map[string]types.OHLC
 }
 
@@ -200,10 +200,10 @@ func stringsUpper(s string) string {
 }
 
 type emaSignal struct {
-	reached            bool
-	executionPrice     float64
-	deviationPct       float64
-	rawExecutionPrice  *float64
+	reached           bool
+	executionPrice    float64
+	deviationPct      float64
+	rawExecutionPrice *float64
 }
 
 func getSignalPrice(bar types.OHLC, ema, levelPct float64, side, source string) emaSignal {
@@ -219,7 +219,7 @@ func getSignalPrice(bar types.OHLC, ema, levelPct float64, side, source string) 
 		}
 		return emaSignal{
 			reached: reached, executionPrice: bar.Close,
-			deviationPct: calculateDeviation(bar.Close, ema),
+			deviationPct:      calculateDeviation(bar.Close, ema),
 			rawExecutionPrice: rawPriceForExecution(bar, bar.Close),
 		}
 	}
@@ -241,6 +241,15 @@ func containsStr(ss []string, s string) bool {
 		}
 	}
 	return false
+}
+
+func lotIndexByID(lots []emaLot, id string) int {
+	for i := range lots {
+		if lots[i].id == id {
+			return i
+		}
+	}
+	return -1
 }
 
 func closeLot(lot emaLot, quantity float64, exitDate string, exitPrice float64, exitRaw *float64, exitReason string, exitDev float64, zoneID string, tradeIndex int) types.Trade {
@@ -274,7 +283,7 @@ func closeLot(lot emaLot, quantity float64, exitDate string, exitPrice float64, 
 		ctx.TakeProfit = exitPrice
 	}
 	return types.Trade{
-		ID: fmt.Sprintf("ema-trade-%d", tradeIndex),
+		ID:        fmt.Sprintf("ema-trade-%d", tradeIndex),
 		EntryDate: lot.entryDate, ExitDate: exitDate,
 		EntryPrice: lot.entryPrice, ExitPrice: exitPrice, Quantity: quantity,
 		PnL: pnl, PnLPercent: pnlPercent, Duration: duration, ExitReason: exitReason, Context: ctx,
@@ -409,13 +418,7 @@ func RunEmaZone(tickers []TickerIndexed, params EmaParams) EmaResult {
 					exitP = *tpPrice
 				}
 				capitalBefore := currentEquityValue(date)
-				lotIdx := -1
-				for i := range lots {
-					if lots[i].id == lot.id {
-						lotIdx = i
-						break
-					}
-				}
+				lotIdx := lotIndexByID(lots, lot.id)
 				if lotIdx < 0 {
 					continue
 				}
@@ -435,14 +438,15 @@ func RunEmaZone(tickers []TickerIndexed, params EmaParams) EmaResult {
 					continue
 				}
 				isLast := zi == len(sellZones)-1
-				var tickerLots []int
-				for i, lot := range lots {
+				var tickerLotIDs []string
+				for _, lot := range lots {
 					if lot.ticker == td.ticker && !containsStr(lot.closedSellZoneIDs, sellZone.ID) {
-						tickerLots = append(tickerLots, i)
+						tickerLotIDs = append(tickerLotIDs, lot.id)
 					}
 				}
-				for _, li := range append([]int(nil), tickerLots...) {
-					if li >= len(lots) {
+				for _, lotID := range tickerLotIDs {
+					li := lotIndexByID(lots, lotID)
+					if li < 0 {
 						continue
 					}
 					lot := lots[li]
@@ -514,7 +518,7 @@ func RunEmaZone(tickers []TickerIndexed, params EmaParams) EmaResult {
 					basis = "raw"
 				}
 				lots = append(lots, emaLot{
-					id: fmt.Sprintf("ema-lot-%s-%s-%s", date, td.ticker, buyZone.ID),
+					id:     fmt.Sprintf("ema-lot-%s-%s-%s", date, td.ticker, buyZone.ID),
 					ticker: td.ticker, zoneID: buyZone.ID, entryDate: bar.Date,
 					entryPrice: signal.executionPrice, entryRawPrice: signal.rawExecutionPrice,
 					entryEma: ema, entryDeviationPct: signal.deviationPct,
@@ -559,11 +563,8 @@ func RunEmaZone(tickers []TickerIndexed, params EmaParams) EmaResult {
 			trade := closeLot(lot, lot.quantity, lastBar.Date, lastBar.Close, rawPriceForExecution(lastBar, lastBar.Close), "end_of_data", calculateDeviation(lastBar.Close, emaLast), "", len(trades))
 			trades = append(trades, trade)
 			cash += lot.marginUsed + trade.PnL
-			for i := range lots {
-				if lots[i].id == lot.id {
-					lots = append(lots[:i], lots[i+1:]...)
-					break
-				}
+			if i := lotIndexByID(lots, lot.id); i >= 0 {
+				lots = append(lots[:i], lots[i+1:]...)
 			}
 			trade.Context.CapitalBeforeExit = capitalBefore
 			trade.Context.CurrentCapitalAfterExit = currentEquityValue(lastBar.Date)
