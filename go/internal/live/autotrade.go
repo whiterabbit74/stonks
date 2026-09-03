@@ -446,7 +446,6 @@ func (e *Engine) Execute(trigger string) EvalResult {
 		Fractional:            asBool(ev.AutoTrading["allowFractionalShares"]),
 		TimeInForce:           strOr(ev.AutoTrading["timeInForce"], "DAY"),
 		SupportTradingSession: strOr(ev.AutoTrading["supportTradingSession"], "CORE"),
-		LimitPrice:            limitPriceForSide(side, price, asFloat(ev.AutoTrading["maxSlippageBps"])),
 	}
 	res, err := e.placeMarket(symbol, side, qty, placeCfg)
 	if err != nil {
@@ -464,13 +463,9 @@ func (e *Engine) Execute(trigger string) EvalResult {
 			CorrelationID: corr, IBS: ibsVal, DateKey: ev.TodayKey,
 			QuotePrice: price, Action: action, Symbol: symbol, Quantity: qty, Source: trigger,
 		})
-		orderType := "MARKET"
-		if placeCfg.LimitPrice > 0 {
-			orderType = "LIMIT"
-		}
 		e.logAuto("order_submit_ok", corr, map[string]any{
 			"symbol": symbol, "action": action, "side": side, "quantity": qty,
-			"clientOrderId": res.ClientOrderID, "order_type": orderType, "limit_price": placeCfg.LimitPrice,
+			"clientOrderId": res.ClientOrderID, "order_type": "MARKET",
 		})
 	} else {
 		e.logAuto("order_submit_failed", corr, map[string]any{
@@ -586,21 +581,6 @@ func executionWindowApplies(trigger string) bool {
 		return true
 	}
 	return false
-}
-
-func limitPriceForSide(side string, quote, bps float64) float64 {
-	if !(quote > 0) || !(bps > 0) {
-		return 0
-	}
-	frac := bps / 10000
-	if strings.ToUpper(side) == "SELL" {
-		p := quote * (1 - frac)
-		if p <= 0 {
-			return 0
-		}
-		return p
-	}
-	return quote * (1 + frac)
 }
 
 func (e *Engine) startTracking(res OrderResult, meta orderMeta) {
@@ -850,7 +830,6 @@ func (e *Engine) ClosePosition(symbol string) (OrderResult, error) {
 		Fractional:            frac,
 		TimeInForce:           strOr(cfg["timeInForce"], "DAY"),
 		SupportTradingSession: strOr(cfg["supportTradingSession"], "CORE"),
-		LimitPrice:            limitPriceForSide("SELL", 0, 0),
 	})
 	e.logAuto("close_position", "", map[string]any{"symbol": symbol, "submitted": res.Submitted, "clientOrderId": res.ClientOrderID})
 	if res.Submitted {

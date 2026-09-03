@@ -47,7 +47,6 @@ type PlaceMarketCfg struct {
 	// so a submission that fails ambiguously can be probed by that id instead
 	// of blindly resent. Empty means the broker generates one.
 	ClientOrderID string
-	LimitPrice    float64
 }
 
 type marketCfgPlacer interface {

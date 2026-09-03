@@ -75,7 +75,9 @@ func (b *LiveBroker) PlaceMarketCfg(symbol, side string, qty float64, cfg PlaceM
 	}
 	tif := strOr(cfg.TimeInForce, "DAY")
 	session := strOr(cfg.SupportTradingSession, "CORE")
-	orderType := "MARKET"
+	// Live path always sends MARKET. The strategy trades at the official close
+	// and the fill must be certain: a limit that misses leaves the position on
+	// the wrong side of the day with no second chance before the bell.
 	order := map[string]any{
 		"combo_type":              "NORMAL",
 		"client_order_id":         cid,
@@ -84,16 +86,12 @@ func (b *LiveBroker) PlaceMarketCfg(symbol, side string, qty float64, cfg PlaceM
 		"instrument_type":         "EQUITY",
 		"market":                  "US",
 		"side":                    strings.ToUpper(side),
-		"order_type":              orderType,
+		"order_type":              "MARKET",
 		"quantity":                formatOrderQuantity(qty, cfg.Fractional),
 		"time_in_force":           tif,
 		"support_trading_session": session,
 		"entrust_type":            "QTY",
 		"extended_hours_trading":  false,
-	}
-	if cfg.LimitPrice > 0 {
-		order["order_type"] = "LIMIT"
-		order["limit_price"] = fmt.Sprintf("%.2f", cfg.LimitPrice)
 	}
 	placed, err := c.PlaceOrder(c.AccountID, order)
 	if err != nil {

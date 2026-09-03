@@ -2,6 +2,7 @@ package live
 
 import (
 	"fmt"
+	"math"
 	"strings"
 
 	"mktorder.com/go/internal/store"
@@ -140,6 +141,8 @@ func (e *Engine) recordFill(t map[string]any, detail map[string]any, status stri
 		})
 	}
 
+	e.warnOnSlippage(symbol, action, clientOrderID, meta, fillPrice)
+
 	if action == "entry" {
 		if existing := e.getTrade("broker_trades", clientOrderID); existing != nil {
 			return
@@ -186,6 +189,31 @@ func (e *Engine) recordFill(t map[string]any, detail map[string]any, status stri
 			e.closeTradeWithPnL("trades", fmt.Sprint(mon["id"]), fillPrice, dateKey, exitIBS, "closed_from_broker_fill")
 		}
 	}
+}
+
+// warnOnSlippage compares the executed price with the quote the decision was
+// taken on. maxSlippageBps cannot gate the order itself — these are market
+// orders and the fill must be certain — so the setting is a reporting
+// threshold: it tells the operator when a fill landed further from the
+// decision price than they consider normal.
+func (e *Engine) warnOnSlippage(symbol, action, clientOrderID string, meta orderMeta, fillPrice float64) {
+	bps := asFloat(e.AutoConfig()["maxSlippageBps"])
+	if !(bps > 0) || !(fillPrice > 0) || !(meta.QuotePrice > 0) {
+		return
+	}
+	dev := (fillPrice - meta.QuotePrice) / meta.QuotePrice
+	devBps := math.Abs(dev) * 10000
+	if devBps <= bps {
+		return
+	}
+	e.logAuto("order_slippage_exceeded", meta.CorrelationID, map[string]any{
+		"symbol": symbol, "action": action, "clientOrderId": clientOrderID,
+		"quotePrice": meta.QuotePrice, "fillPrice": fillPrice,
+		"slippageBps": devBps, "limitBps": bps,
+	})
+	_ = e.Send(e.chat(), fmt.Sprintf(
+		"<b>Webull: проскальзывание %.0f bps</b>\n%s • %s\nрешение: $%.2f\nисполнено: $%.2f\nпорог: %.0f bps",
+		devBps, symbol, action, meta.QuotePrice, fillPrice, bps))
 }
 
 func (e *Engine) reduceOpenQuantity(symbol, preferID string, sold, exitPrice float64) {
