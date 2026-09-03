@@ -195,7 +195,8 @@ func (d *DB) initSchema() error {
         CREATE TABLE IF NOT EXISTS autotrade_logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             ts TEXT NOT NULL,
-            message TEXT NOT NULL
+            message TEXT NOT NULL,
+            kind TEXT NOT NULL DEFAULT ''
         );
         CREATE TABLE IF NOT EXISTS order_trackers (
             client_order_id TEXT PRIMARY KEY,
@@ -205,7 +206,9 @@ func (d *DB) initSchema() error {
             quantity        REAL,
             source          TEXT,
             date_key        TEXT,
-            started_at      TEXT NOT NULL
+            started_at      TEXT NOT NULL,
+            attempts        INTEGER NOT NULL DEFAULT 0,
+            updated_at      TEXT
         );
         CREATE INDEX IF NOT EXISTS idx_order_trackers_pending ON order_trackers(symbol, action, status);
         CREATE TABLE IF NOT EXISTS aggregate_send_state (
@@ -216,7 +219,45 @@ func (d *DB) initSchema() error {
             PRIMARY KEY (date_key, chat_id)
         );
     `)
-	return err
+	if err != nil {
+		return err
+	}
+	return d.migrateSchema()
+}
+
+func (d *DB) migrateSchema() error {
+	d.ensureColumn("order_trackers", "attempts", "INTEGER NOT NULL DEFAULT 0")
+	d.ensureColumn("order_trackers", "updated_at", "TEXT")
+	d.ensureColumn("autotrade_logs", "kind", "TEXT NOT NULL DEFAULT ''")
+	return nil
+}
+
+func (d *DB) hasColumn(table, col string) bool {
+	rows, err := d.SQL.Query(`PRAGMA table_info(` + table + `)`)
+	if err != nil {
+		return false
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cid int
+		var name, ctype string
+		var notnull, pk int
+		var dflt sql.NullString
+		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err != nil {
+			return false
+		}
+		if strings.EqualFold(name, col) {
+			return true
+		}
+	}
+	return false
+}
+
+func (d *DB) ensureColumn(table, col, typ string) {
+	if d.hasColumn(table, col) {
+		return
+	}
+	_, _ = d.SQL.Exec(`ALTER TABLE ` + table + ` ADD COLUMN ` + col + ` ` + typ)
 }
 
 var tickerRe = regexp.MustCompile(`[^A-Za-z0-9.-]`)
@@ -423,6 +464,14 @@ func (d *DB) SessionSet(token string, created, expires int64) error {
 
 func (d *DB) SessionDelete(token string) {
 	_, _ = d.SQL.Exec(`DELETE FROM sessions WHERE token = ?`, token)
+}
+
+func (d *DB) SessionDeleteExpired(nowMillis int64) (int64, error) {
+	res, err := d.SQL.Exec(`DELETE FROM sessions WHERE expires_at < ?`, nowMillis)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
 }
 
 func (d *DB) ListSplits(symbol string) ([]types.SplitEvent, error) {
