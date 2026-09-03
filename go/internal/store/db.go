@@ -601,14 +601,48 @@ func defaultSettings() map[string]any {
 }
 
 func (d *DB) Settings() map[string]any {
+	defs := defaultSettings()
 	var data string
 	err := d.SQL.QueryRow(`SELECT data FROM settings WHERE id = 1`).Scan(&data)
 	if err != nil {
-		return defaultSettings()
+		return defs
 	}
-	out := defaultSettings()
-	_ = json.Unmarshal([]byte(data), &out)
+	stored := map[string]any{}
+	if json.Unmarshal([]byte(data), &stored) != nil {
+		return defs
+	}
+	out := mergeMaps(defs, stored)
+	if at, ok := out["autoTrading"].(map[string]any); ok {
+		delete(at, "dryRun")
+	}
 	return out
+}
+
+// mergeMaps overlays src onto dst. Nested maps are merged key-by-key so a
+// partial stored object (e.g. autoTrading) cannot wipe default nested keys.
+// A stored null does not replace an existing nested map. Other top-level
+// keys from src still override.
+func mergeMaps(dst, src map[string]any) map[string]any {
+	if dst == nil {
+		dst = map[string]any{}
+	}
+	for k, sv := range src {
+		if sv == nil {
+			if _, isMap := dst[k].(map[string]any); isMap {
+				continue
+			}
+			dst[k] = nil
+			continue
+		}
+		sm, srcMap := sv.(map[string]any)
+		dm, dstMap := dst[k].(map[string]any)
+		if srcMap && dstMap {
+			dst[k] = mergeMaps(dm, sm)
+			continue
+		}
+		dst[k] = sv
+	}
+	return dst
 }
 
 func (d *DB) SaveSettings(s map[string]any) error {
