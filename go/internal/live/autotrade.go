@@ -410,7 +410,7 @@ func (e *Engine) Execute(trigger string) EvalResult {
 		e.logAuto("execution_blocked", corr, map[string]any{"symbol": symbol, "reason": "missing_webull_credentials"})
 		return ev
 	}
-	if liveTrigger(trigger) && e.outsideExecutionWindow(ev.AutoTrading) {
+	if executionWindowApplies(trigger) && e.outsideExecutionWindow(ev.AutoTrading) {
 		ev.Broker = map[string]any{"submitted": false, "error": "outside_execution_window"}
 		e.logAuto("execution_skipped", corr, map[string]any{"symbol": symbol, "reason": "outside_execution_window", "trigger": trigger})
 		return ev
@@ -576,9 +576,13 @@ func (e *Engine) orderLanded(clientOrderID string) (landed, queryFailed bool, de
 	return false, false, nil
 }
 
-func liveTrigger(trigger string) bool {
+func executionWindowApplies(trigger string) bool {
+	// Node T-1 (executeWebullSignal from telegramAggregation) does not consult
+	// executionWindowSeconds — that gate is only on the separate autotrade
+	// scheduler tick. Gating telegram_t1 here skipped the day's only live
+	// orders and left T-1 with nothing to report.
 	switch trigger {
-	case "telegram_t1", "manual_execute", "scheduler":
+	case "manual_execute", "scheduler":
 		return true
 	}
 	return false

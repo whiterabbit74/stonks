@@ -21,9 +21,6 @@ func (e *Engine) buildT11Text(minutes int, today, provider string, rows []t1Watc
 	}
 	abbrev := providerAbbrev(provider)
 	closeHM, short := e.sessionCloseLabel()
-	if minutes <= 0 {
-		minutes = 11
-	}
 	header := fmt.Sprintf("🕓 %s → close · %s ET (%s)%s", tgBold(fmt.Sprintf("%dm", minutes)), tgBold(closeHM), tgBold(today), shortSuffix(short))
 
 	var entries, exits []string

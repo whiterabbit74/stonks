@@ -6,7 +6,7 @@ COPY go/ ./
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /out/mktorder ./cmd/server
 
 FROM debian:bookworm-slim
-RUN apt-get update -qq && apt-get install -y --no-install-recommends ca-certificates curl \
+RUN apt-get update -qq && apt-get install -y --no-install-recommends ca-certificates curl tzdata \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --system --gid 10001 app \
     && useradd --system --uid 10001 --gid app --home-dir /app --no-create-home --shell /usr/sbin/nologin app

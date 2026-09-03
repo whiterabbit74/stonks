@@ -49,6 +49,25 @@ func testEngine(t *testing.T, bars []types.OHLC) (*store.DB, *Engine, *MemoryBro
 	return db, e, br
 }
 
+func TestTelegramT1IgnoresExecutionWindow(t *testing.T) {
+	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
+	_, e, br := testEngine(t, bars)
+	e.PatchAutoConfig(map[string]any{
+		"enabled": true, "lowIBS": 0.9, "allowNewEntries": true,
+		"entrySizingMode": "quantity", "fixedQuantity": 1,
+		"executionWindowSeconds": 15,
+	})
+	// 15:59 ET is 60s to close, outside a 15s window. Node T-1 still sends the order.
+	manual := e.Execute("manual_execute")
+	if manual.Executed {
+		t.Fatal("manual_execute must still honor the window")
+	}
+	res := e.Execute("telegram_t1")
+	if !res.Executed || len(br.Orders) != 1 {
+		t.Fatalf("telegram_t1 must not use executionWindowSeconds: executed=%v orders=%d %+v", res.Executed, len(br.Orders), res.Broker)
+	}
+}
+
 func TestRejectedOrderDoesNotOpenTrade(t *testing.T) {
 	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
 	db, e, br := testEngine(t, bars)

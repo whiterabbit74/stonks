@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -285,6 +286,16 @@ func TestTickT1Executes(t *testing.T) {
 	}
 	if len(br.Orders) != 1 {
 		t.Fatalf("T-1 must place, orders=%+v logs=%+v", br.Orders, logs)
+	}
+	if len(tg.Sent()) == 0 {
+		t.Fatal("T-1 must send a telegram")
+	}
+	text := tg.Sent()[0][1]
+	if strings.Contains(text, "11m") || strings.Contains(text, "ENTRY:") {
+		t.Fatalf("T-1 sent T-11 overview:\n%s", text)
+	}
+	if !strings.Contains(text, "1 минута до закрытия") {
+		t.Fatalf("T-1 must send the decision message:\n%s", text)
 	}
 }
 

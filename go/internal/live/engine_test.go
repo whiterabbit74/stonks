@@ -445,6 +445,39 @@ func TestT1TextHasFreshnessAndPosition(t *testing.T) {
 	if !strings.Contains(res.Text, "Котировки:") || !strings.Contains(res.Text, "Позиция: AAPL") {
 		t.Fatalf("T-1 missing freshness/position:\n%s", res.Text)
 	}
+	if !strings.Contains(res.Text, "1 минута до закрытия") || !strings.Contains(res.Text, "РЕШЕНИЕ") {
+		t.Fatalf("T-1 must be the decision message, not T-11 overview:\n%s", res.Text)
+	}
+	if strings.Contains(res.Text, "11m") || strings.Contains(res.Text, "ENTRY:") {
+		t.Fatalf("T-1 reused T-11 overview:\n%s", res.Text)
+	}
+}
+
+func TestAggregateWrongMinuteDoesNotSendT11(t *testing.T) {
+	dir := t.TempDir()
+	db, err := store.Open(filepath.Join(dir, "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
+	_ = db.SaveDataset("AAPL", "AAPL", "", "", bars, false)
+	_ = db.UpsertWatch(map[string]any{"symbol": "AAPL", "lowIBS": 0.1, "highIBS": 0.75})
+	tg := &MemoryTelegram{}
+	e := New(db, &MemoryQuotes{Bars: map[string][]types.OHLC{"AAPL": bars}})
+	e.Telegram = tg
+	e.ChatID = "c"
+	e.Now = func() time.Time { return time.Date(2026, 9, 1, 20, 0, 0, 0, time.UTC) } // 16:00 ET, until=0
+	res, err := e.Aggregate(0, AggregateOpts{ForceSend: true, DryRun: false})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Reason != "wrong_time" {
+		t.Fatalf("until=0 must be wrong_time like Node, got %+v", res)
+	}
+	if len(tg.Sent()) != 0 {
+		t.Fatalf("until=0 must not send T-11 overview: %+v", tg.Sent())
+	}
 }
 
 type t1ParityFix struct {

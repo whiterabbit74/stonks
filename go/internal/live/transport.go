@@ -65,8 +65,20 @@ func (h *HTTPTelegram) Send(chatID, text string) error {
 	}
 	defer resp.Body.Close()
 	b, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode >= 300 {
-		return fmt.Errorf("telegram HTTP %d: %s", resp.StatusCode, string(b))
+	var parsed struct {
+		OK          bool   `json:"ok"`
+		Description string `json:"description"`
+	}
+	_ = json.Unmarshal(b, &parsed)
+	if resp.StatusCode >= 300 || !parsed.OK {
+		msg := parsed.Description
+		if msg == "" {
+			msg = strings.TrimSpace(string(b))
+		}
+		if msg == "" {
+			msg = fmt.Sprintf("status %d", resp.StatusCode)
+		}
+		return fmt.Errorf("telegram HTTP %d: %s", resp.StatusCode, msg)
 	}
 	return nil
 }

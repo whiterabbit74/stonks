@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	_ "time/tzdata"
 )
 
 const Layout = "2006-01-02"
