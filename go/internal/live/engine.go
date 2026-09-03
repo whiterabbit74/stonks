@@ -29,6 +29,19 @@ type OrderResult struct {
 	Symbol        string  `json:"symbol,omitempty"`
 	Side          string  `json:"side,omitempty"`
 	Status        string  `json:"status,omitempty"`
+	FilledPrice   float64 `json:"filledPrice,omitempty"`
+	FilledQty     float64 `json:"filledQty,omitempty"`
+}
+
+// PlaceMarketCfg is passed to PlaceMarketCfg without changing PlaceMarket(symbol,side,qty).
+type PlaceMarketCfg struct {
+	Fractional            bool
+	TimeInForce           string
+	SupportTradingSession string
+}
+
+type marketCfgPlacer interface {
+	PlaceMarketCfg(symbol, side string, qty float64, cfg PlaceMarketCfg) (OrderResult, error)
 }
 
 type Broker interface {
@@ -59,8 +72,21 @@ type Engine struct {
 	mu           sync.Mutex
 	reservations map[string]string
 	wheels       map[string]bool
+	inFlight     map[string]bool
+	orderMeta    map[string]orderMeta
 	lastRunAt    string
 	lastResult   any
+}
+
+type orderMeta struct {
+	CorrelationID string
+	IBS           float64
+	DateKey       string
+	QuotePrice    float64
+	Action        string
+	Symbol        string
+	Quantity      float64
+	Source        string
 }
 
 func New(db *store.DB, quotes QuoteSource) *Engine {

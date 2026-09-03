@@ -70,6 +70,23 @@ type MemoryBroker struct {
 	Days       []map[string]any
 	Cancelled  []string
 	DetailN    int
+	LastCfg    PlaceMarketCfg
+}
+
+func (m *MemoryBroker) SetDetail(id string, d map[string]any) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.Details == nil {
+		m.Details = map[string]map[string]any{}
+	}
+	m.Details[id] = d
+}
+
+func (m *MemoryBroker) PlaceMarketCfg(symbol, side string, qty float64, cfg PlaceMarketCfg) (OrderResult, error) {
+	m.mu.Lock()
+	m.LastCfg = cfg
+	m.mu.Unlock()
+	return m.PlaceMarket(symbol, side, qty)
 }
 
 func (m *MemoryBroker) PlaceMarket(symbol, side string, qty float64) (OrderResult, error) {
@@ -182,11 +199,17 @@ func (m *MemoryBroker) CancelOrder(clientOrderID string) error {
 }
 
 type MemoryQuotes struct {
-	Bars map[string][]types.OHLC
-	Q    map[string]providers.QuotePayload
+	Bars     map[string][]types.OHLC
+	Q        map[string]providers.QuotePayload
+	QuoteErr map[string]error
 }
 
 func (m *MemoryQuotes) Quote(symbol, provider string) (providers.QuotePayload, error) {
+	if m.QuoteErr != nil {
+		if err, ok := m.QuoteErr[symbol]; ok && err != nil {
+			return providers.QuotePayload{}, err
+		}
+	}
 	if m.Q != nil {
 		if q, ok := m.Q[symbol]; ok {
 			return q, nil

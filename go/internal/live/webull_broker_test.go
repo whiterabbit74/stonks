@@ -79,3 +79,124 @@ func TestFlattenAnyNestedHoldings(t *testing.T) {
 		t.Fatalf("orders %v", orders)
 	}
 }
+
+func TestExtractOrderDetailPayloadNested(t *testing.T) {
+	got := extractOrderDetailPayload(map[string]any{
+		"data": map[string]any{
+			"orders": []any{map[string]any{"status": "SUBMITTED", "filled_quantity": "0", "filled_price": "0"}},
+		},
+	})
+	if fmt.Sprint(got["status"]) != "SUBMITTED" {
+		t.Fatalf("nested %+v", got)
+	}
+	if NormalizeOrderStatus(orderStatusField(got)) != "working" {
+		t.Fatalf("status field %q", orderStatusField(got))
+	}
+}
+
+func TestFilledSubstringInFieldNamesIsNotFill(t *testing.T) {
+	var statusInBody string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.Contains(r.URL.Path, "/instrument/list"):
+			_ = json.NewEncoder(w).Encode(map[string]any{"data": []any{map[string]any{"instrument_id": "i1"}}})
+		case strings.Contains(r.URL.Path, "/openapi/trade/stock/order/place"):
+			b, _ := io.ReadAll(r.Body)
+			statusInBody = string(b)
+			w.WriteHeader(200)
+			_, _ = w.Write([]byte(`{"code":0}`))
+		case strings.Contains(r.URL.Path, "/trade/order/detail"):
+			_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{
+				"status": "SUBMITTED", "filled_quantity": "0", "filled_price": "0", "avg_filled_price": "0",
+			}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(ts.Close)
+	br := &LiveBroker{Client: &webull.Client{
+		HTTP: ts.Client(), Base: ts.URL, Host: "api.webull.com",
+		AppKey: "k", AppSecret: "s", AccessToken: "t", AccountID: "acc",
+	}}
+	res, err := br.PlaceMarket("AAPL", "BUY", 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Status == "filled" {
+		t.Fatalf("SUBMITTED with filled_* fields must not be filled: %+v body=%s", res, statusInBody)
+	}
+	detail, err := br.OrderDetail(res.ClientOrderID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if NormalizeOrderStatus(orderStatusField(detail)) != "working" {
+		t.Fatalf("detail status %+v", detail)
+	}
+}
+
+func TestPlaceMarketCfgFractionalAndSession(t *testing.T) {
+	var body string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.Contains(r.URL.Path, "/instrument/list"):
+			_ = json.NewEncoder(w).Encode(map[string]any{"data": []any{map[string]any{"instrument_id": "i1"}}})
+		case strings.Contains(r.URL.Path, "/openapi/trade/stock/order/place"):
+			b, _ := io.ReadAll(r.Body)
+			body = string(b)
+			w.WriteHeader(200)
+			_, _ = w.Write([]byte(`{"code":0}`))
+		case strings.Contains(r.URL.Path, "/trade/order/detail"):
+			_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"status": "SUBMITTED"}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(ts.Close)
+	br := &LiveBroker{Client: &webull.Client{
+		HTTP: ts.Client(), Base: ts.URL, Host: "api.webull.com",
+		AppKey: "k", AppSecret: "s", AccessToken: "t", AccountID: "acc",
+	}}
+	_, err := br.PlaceMarketCfg("AAPL", "SELL", 1.73, PlaceMarketCfg{
+		Fractional: true, TimeInForce: "GTC", SupportTradingSession: "N",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(body, `"quantity":"1.73"`) {
+		t.Fatalf("fractional qty body %s", body)
+	}
+	if !strings.Contains(body, `"time_in_force":"GTC"`) || !strings.Contains(body, `"support_trading_session":"N"`) {
+		t.Fatalf("tif/session body %s", body)
+	}
+	if !strings.Contains(body, `"order_type":"MARKET"`) {
+		t.Fatalf("live path must stay MARKET: %s", body)
+	}
+	_, err = br.PlaceMarketCfg("AAPL", "SELL", 1.73, PlaceMarketCfg{Fractional: false})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(body, `"quantity":"1"`) {
+		t.Fatalf("integer qty should floor, body %s", body)
+	}
+}
+
+func TestPartialFilledIsNotFinal(t *testing.T) {
+	if NormalizeOrderStatus("PARTIAL_FILLED") != "partially_filled" {
+		t.Fatal(NormalizeOrderStatus("PARTIAL_FILLED"))
+	}
+	if IsFinalOrderStatus("partially_filled") {
+		t.Fatal("partially_filled must not be final")
+	}
+}
+
+func TestFormatOrderQuantity(t *testing.T) {
+	if formatOrderQuantity(1.73000, true) != "1.73" {
+		t.Fatalf("got %q", formatOrderQuantity(1.73000, true))
+	}
+	if formatOrderQuantity(2, false) != "2" {
+		t.Fatalf("got %q", formatOrderQuantity(2, false))
+	}
+	if formatOrderQuantity(1.9, false) != "1" {
+		t.Fatalf("floor got %q", formatOrderQuantity(1.9, false))
+	}
+}

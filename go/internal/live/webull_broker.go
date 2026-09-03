@@ -57,6 +57,10 @@ func (b *LiveBroker) client() *webull.Client {
 }
 
 func (b *LiveBroker) PlaceMarket(symbol, side string, qty float64) (OrderResult, error) {
+	return b.PlaceMarketCfg(symbol, side, qty, PlaceMarketCfg{})
+}
+
+func (b *LiveBroker) PlaceMarketCfg(symbol, side string, qty float64, cfg PlaceMarketCfg) (OrderResult, error) {
 	c := b.client()
 	if qty <= 0 {
 		qty = 1
@@ -66,6 +70,9 @@ func (b *LiveBroker) PlaceMarket(symbol, side string, qty float64) (OrderResult,
 		return OrderResult{Error: err.Error()}, err
 	}
 	cid := webull.NewClientOrderID()
+	tif := strOr(cfg.TimeInForce, "DAY")
+	session := strOr(cfg.SupportTradingSession, "CORE")
+	// Live path always sends MARKET (Node executeWebullSignal forces MARKET).
 	order := map[string]any{
 		"combo_type":              "NORMAL",
 		"client_order_id":         cid,
@@ -75,9 +82,9 @@ func (b *LiveBroker) PlaceMarket(symbol, side string, qty float64) (OrderResult,
 		"market":                  "US",
 		"side":                    strings.ToUpper(side),
 		"order_type":              "MARKET",
-		"quantity":                fmt.Sprintf("%.0f", qty),
-		"time_in_force":           "DAY",
-		"support_trading_session": "CORE",
+		"quantity":                formatOrderQuantity(qty, cfg.Fractional),
+		"time_in_force":           tif,
+		"support_trading_session": session,
 		"entrust_type":            "QTY",
 		"extended_hours_trading":  false,
 	}
@@ -86,21 +93,28 @@ func (b *LiveBroker) PlaceMarket(symbol, side string, qty float64) (OrderResult,
 		return OrderResult{ClientOrderID: cid, Symbol: symbol, Side: side, Quantity: qty, Error: err.Error()}, err
 	}
 	status := "submitted"
+	var filledPrice, filledQty float64
 	if detail, terr := c.OrderDetail(c.AccountID, cid); terr != nil {
 		if b.DB != nil {
-			_ = b.DB.AppendAutotradeLog("order_tracking_start_failed " + cid + " " + terr.Error())
+			_ = b.DB.AppendAutotradeLog("brokerRaw event=order_tracking_start_failed clientOrderId=" + cid + " error=" + terr.Error())
 		}
 	} else {
-		if b.DB != nil {
-			_ = b.DB.AppendAutotradeLog("order_track " + cid)
+		parsed := extractOrderDetailPayload(detail.Data)
+		if parsed == nil {
+			parsed = extractOrderDetailPayload(map[string]any{"raw": string(detail.Raw)})
 		}
-		raw := strings.ToUpper(string(detail.Raw))
-		if strings.Contains(raw, "FILLED") || strings.Contains(raw, "EXECUTED") {
-			status = "filled"
+		st := NormalizeOrderStatus(orderStatusField(parsed))
+		if st != "" && st != "unknown" {
+			status = st
+		}
+		filledPrice = fillPriceFrom(parsed)
+		filledQty = fillQtyFrom(parsed)
+		if b.DB != nil {
+			_ = b.DB.AppendAutotradeLog("brokerRaw event=order_track clientOrderId=" + cid + " status=" + status)
 		}
 	}
 	_ = placed
-	return OrderResult{Submitted: true, ClientOrderID: cid, Quantity: qty, Symbol: symbol, Side: side, Status: status}, nil
+	return OrderResult{Submitted: true, ClientOrderID: cid, Quantity: qty, Symbol: symbol, Side: side, Status: status, FilledPrice: filledPrice, FilledQty: filledQty}, nil
 }
 
 func (b *LiveBroker) CloseMarket(symbol string) (OrderResult, error) {
@@ -225,14 +239,66 @@ func (b *LiveBroker) OrderDetail(clientOrderID string) (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	m, _ := resp.Data.(map[string]any)
-	if m == nil {
-		m = map[string]any{}
+	parsed := extractOrderDetailPayload(resp.Data)
+	if parsed == nil {
+		parsed = map[string]any{}
+	}
+	out := copyStringAnyMap(parsed)
+	if st := orderStatusField(parsed); st != "" {
+		out["status"] = st
+	}
+	if p := fillPriceFrom(parsed); p > 0 {
+		out["filled_price"] = p
+	}
+	if q := fillQtyFrom(parsed); q > 0 {
+		out["filled_qty"] = q
 	}
 	if len(resp.Raw) > 0 {
-		m["raw"] = string(resp.Raw)
+		out["raw"] = string(resp.Raw)
 	}
-	return m, nil
+	if NormalizeOrderStatus(orderStatusField(out)) == "unknown" {
+		if snap := b.findOrderSnapshotByClientOrderID(clientOrderID); snap != nil {
+			for k, v := range snap {
+				if _, exists := out[k]; !exists || out[k] == nil || fmt.Sprint(out[k]) == "" {
+					out[k] = v
+				}
+			}
+			if st := orderStatusField(snap); st != "" {
+				out["status"] = st
+			}
+			if p := fillPriceFrom(snap); p > 0 {
+				out["filled_price"] = p
+			}
+			if q := fillQtyFrom(snap); q > 0 {
+				out["filled_qty"] = q
+			}
+		}
+	}
+	return out, nil
+}
+
+func (b *LiveBroker) findOrderSnapshotByClientOrderID(clientOrderID string) map[string]any {
+	match := func(rows []any) map[string]any {
+		for _, row := range rows {
+			m := extractOrderDetailPayload(row)
+			if m == nil {
+				m = mapOf(row)
+			}
+			if clientOrderIDOf(m) == clientOrderID {
+				return m
+			}
+		}
+		return nil
+	}
+	if open, err := b.OpenOrders(); err == nil {
+		if m := match(open); m != nil {
+			return m
+		}
+	}
+	if hist, err := b.OrderHistory("", ""); err == nil {
+		return match(hist)
+	}
+	return nil
 }
 
 func (b *LiveBroker) OpenOrders() ([]any, error) {
