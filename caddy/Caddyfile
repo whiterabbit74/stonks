@@ -10,12 +10,22 @@
     output file /var/log/caddy/access.log
   }
 
+  request_body {
+    max_size 5MB
+  }
+
   header {
     Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
     X-Content-Type-Options nosniff
     Referrer-Policy strict-origin-when-cross-origin
+    X-Frame-Options DENY
+    Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; frame-src 'none'; frame-ancestors 'none'; base-uri 'self'"
     -Server
   }
+
+  # Stock caddy:2 has no rate_limit module (that needs github.com/mholt/caddy-ratelimit,
+  # which we will not vendor into prod). Login brute-force and API abuse are limited
+  # in-process by the Go server.
 
   # Trading API
   handle /api/** {
