@@ -82,8 +82,8 @@ const Charts = {
     const kind = opts.kind === 'candles' ? 'candles' : 'line';
     const tf = opts.timeframe === 'weekly' ? 'weekly' : 'daily';
     let data = (bars || []).filter((b) => b && b.date).slice().sort((a, b) => String(a.date).localeCompare(String(b.date)));
-    const price = opts.currentPrice;
-    if (typeof price === 'number' && Number.isFinite(price) && data.length) {
+    const price = Number(opts.currentPrice);
+    if (Number.isFinite(price) && data.length) {
       const last = data[data.length - 1];
       const today = this.isoDate(opts.todayISO);
       data = data.slice();

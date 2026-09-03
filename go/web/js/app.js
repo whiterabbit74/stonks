@@ -284,11 +284,18 @@
     }
     return null;
   }
-  function asRows(v) {
+  function asRows(v, depth) {
     if (Array.isArray(v)) return v;
-    if (!v || typeof v !== 'object') return [];
-    for (const k of ['holdings', 'positions', 'orders', 'items', 'list', 'data', 'rows', 'accounts']) {
+    if (!v || typeof v !== 'object' || depth > 4) return [];
+    const keys = ['holdings', 'positions', 'orders', 'items', 'list', 'data', 'rows', 'accounts'];
+    for (const k of keys) {
       if (Array.isArray(v[k])) return v[k];
+    }
+    for (const k of keys) {
+      if (v[k] && typeof v[k] === 'object') {
+        const nested = asRows(v[k], (depth || 0) + 1);
+        if (nested.length) return nested;
+      }
     }
     return [];
   }

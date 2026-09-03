@@ -11,6 +11,7 @@ services:
     environment:
       - PORT=3001
       - GOAPP_ROOT=/app
+      - WEBULL_ENABLE_LIVE_TEST_BUY=true
       - DB_FILE=/data/db/trading.db
       - DATASETS_DIR=/data/datasets
       - DB_DIR=/data/db

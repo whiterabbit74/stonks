@@ -416,6 +416,46 @@ func TestImportWebullCalendarDerivesHolidays(t *testing.T) {
 	}
 }
 
+func TestAccountEndpointLiftsBalance(t *testing.T) {
+	s, _, br := liveServer(t)
+	br.Acct = map[string]any{
+		"account_id": "ACCT-9",
+		"balance":    map[string]any{"total_cash_balance": "50.00", "total_net_liquidation_value": "50.00"},
+	}
+	req := httptest.NewRequest("GET", "/api/autotrade/webull/account", nil)
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != 200 {
+		t.Fatalf("account %d %s", rec.Code, rec.Body.String())
+	}
+	var acc map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &acc); err != nil {
+		t.Fatal(err)
+	}
+	if acc["balance"] == nil {
+		t.Fatalf("account endpoint missing top-level balance: %s", rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "50.00") {
+		t.Fatalf("cash missing: %s", rec.Body.String())
+	}
+}
+
+func TestTokenStatusReadsExpiresAt(t *testing.T) {
+	s, _, _ := liveServer(t)
+	if err := s.DB.SaveWebullToken("tok-live", "2026-12-01T00:00:00Z", "NORMAL"); err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest("GET", "/api/autotrade/webull/token/status", nil)
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != 200 {
+		t.Fatalf("status %d %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "2026-12-01T00:00:00Z") {
+		t.Fatalf("expiresAt not read from db: %s", rec.Body.String())
+	}
+}
+
 func TestShippedAppJsMappers(t *testing.T) {
 	_, thisFile, _, ok := runtime.Caller(0)
 	if !ok {

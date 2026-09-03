@@ -69,12 +69,18 @@ func (e *Engine) TokenStatus() map[string]any {
 	} else if envTok != "" {
 		source = "env"
 	}
+	exp := row.ExpiresAt
+	if exp == "" {
+		exp = os.Getenv("WEBULL_TOKEN_EXPIRES_AT")
+	}
 	return map[string]any{
 		"hasToken":        source != "none",
 		"present":         source != "none",
 		"source":          source,
-		"expiresAt":       nil,
+		"expiresAt":       exp,
+		"lastCheckAt":     row.LastCheckAt,
 		"lastCheckStatus": row.LastCheckStatus,
+		"accountId":       os.Getenv("WEBULL_ACCOUNT_ID"),
 	}
 }
 
@@ -393,7 +399,23 @@ func (e *Engine) Account() (map[string]any, error) {
 	if pos == nil {
 		pos = []any{}
 	}
-	return map[string]any{"connection": e.WebullSummary(), "account": snap, "positions": pos}, nil
+	out := map[string]any{"connection": e.WebullSummary(), "account": snap, "positions": pos}
+	if bal, ok := snap["balance"]; ok {
+		out["balance"] = bal
+	}
+	id := snap["account_id"]
+	if id == nil {
+		id = snap["accountId"]
+	}
+	if id != nil {
+		out["accounts"] = []any{map[string]any{
+			"account_id":     id,
+			"account_number": id,
+			"account_label":  "Configured Webull US account",
+			"account_class":  "WEBULL_US",
+		}}
+	}
+	return out, nil
 }
 
 func (e *Engine) Dashboard() (map[string]any, error) {

@@ -1067,12 +1067,14 @@ type WebullTokenRow struct {
 	LastCheckStatus     string
 	LastHealthCheckDate string
 	LastAttemptAt       string
+	ExpiresAt           string
+	LastCheckAt         string
 }
 
 func (d *DB) GetWebullToken() WebullTokenRow {
 	var row WebullTokenRow
-	_ = d.SQL.QueryRow(`SELECT COALESCE(token,''), COALESCE(last_check_status,''), COALESCE(last_health_check_date,''), COALESCE(last_health_check_attempt_at,'') FROM webull_token WHERE id='current'`).
-		Scan(&row.Token, &row.LastCheckStatus, &row.LastHealthCheckDate, &row.LastAttemptAt)
+	_ = d.SQL.QueryRow(`SELECT COALESCE(token,''), COALESCE(last_check_status,''), COALESCE(last_health_check_date,''), COALESCE(last_health_check_attempt_at,''), COALESCE(expires_at,''), COALESCE(last_check_at,'') FROM webull_token WHERE id='current'`).
+		Scan(&row.Token, &row.LastCheckStatus, &row.LastHealthCheckDate, &row.LastAttemptAt, &row.ExpiresAt, &row.LastCheckAt)
 	return row
 }
 

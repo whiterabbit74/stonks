@@ -59,6 +59,9 @@ const liveZeroMarket = fns.extractBalanceSummary({
   },
 });
 const pos = fns.normalizePositions(fixture.positions);
+const nestedHoldings = fns.normalizePositions({
+  data: { has_next: false, holdings: [{ symbol: 'MSFT', total_cost: '9.00', market_value: '11.00' }] },
+});
 const scaled = fns.applyMonitorMarginSimulation(
   [{ status: 'closed', pnlPercent: 10, pnlAbsolute: 50 }, { status: 'open', pnlPercent: 10, pnlAbsolute: 50 }],
   200,
@@ -92,6 +95,7 @@ expectEq('liveZeroMarket.cashBalance', liveZeroMarket.cashBalance, 2110.05);
 expectEq('liveZeroMarket.buyingPower', liveZeroMarket.buyingPower, 2110.05);
 if (!pos.length || pos[0].symbol !== 'AAPL') fail.push('position symbol ' + JSON.stringify(pos[0]));
 if (String(pos[0].totalCost) !== '1800.00') fail.push('totalCost ' + pos[0].totalCost);
+if (!nestedHoldings.length || nestedHoldings[0].symbol !== 'MSFT') fail.push('asRows nested data.holdings ' + JSON.stringify(nestedHoldings[0]));
 if (String(pos[0].marketValue) !== '1900.00') fail.push('marketValue ' + pos[0].marketValue);
 if (scaled[0].pnlPercent !== 20) fail.push('margin pnlPercent ' + scaled[0].pnlPercent);
 if (scaled[0].pnlAbsolute !== 100) fail.push('margin pnlAbsolute ' + scaled[0].pnlAbsolute);
