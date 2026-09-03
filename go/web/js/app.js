@@ -3250,11 +3250,12 @@
         persistEmaForm();
         const f = state.emaForm;
         try {
-          const loaded = await loadSelected();
+          const names = parseTickers(state.emaTickers);
           const tp = Number(String(f.takeProfit || '').replace(',', '.'));
+          const lev = Number(f.leverage || 200) / 100;
           const ema = {
             initialCapital: 10000,
-            leverage: Number(f.leverage || 200) / 100,
+            leverage: lev,
             emaPeriod: Number(f.period || 200),
             buyZones: (f.buyZones || []).map((z) => ({ id: z.id, levelPct: Number(z.levelPct), enabled: !!z.enabled })),
             sellZones: (f.sellZones || []).map((z) => ({ id: z.id, levelPct: Number(z.levelPct), enabled: !!z.enabled })),
@@ -3263,14 +3264,15 @@
             noSellAtLoss: !!f.noSellAtLoss,
           };
           if (Number.isFinite(tp) && tp > 0) ema.takeProfitPercent = tp;
-          state.emaResult = resultOf(await API.calc('ema-zone', { tickers: loaded, ema }));
+          const payload = { tickers: calcTickerRefs(names), ema };
+          if (lev > 1) payload.includeBaseline = true;
+          const [raw] = await Promise.all([
+            API.calc('ema-zone', payload),
+            loadSelected(),
+          ]);
+          state.emaResult = resultOf(raw);
           state.emaRunParams = { buyZones: ema.buyZones, sellZones: ema.sellZones, snap: JSON.parse(JSON.stringify({ form: state.emaForm, tickers: state.emaTickers })) };
-          state.emaBaseline = null;
-          if ((Number(f.leverage) || 200) > 100) {
-            try {
-              state.emaBaseline = resultOf(await API.calc('ema-zone', { tickers: loaded, ema: { ...ema, leverage: 1 } }));
-            } catch (_) {}
-          }
+          state.emaBaseline = lev > 1 ? resultOf(raw && raw.baseline) : null;
           state.emaTab = 'summary';
           state.tradesPage = 1;
           renderPage();
@@ -3981,17 +3983,33 @@
     };
   }
 
+  function calcTickerRefs(names) {
+    return (names || []).map((t) => ({ ticker: t }));
+  }
   async function loadSelected() {
     const sel = parseTickers(pageTickerText());
     if (!sel.length) throw new Error('Укажите тикеры');
-    const loaded = [];
-    const missing = [];
-    for (const t of sel) {
+    const have = {};
+    (state.tickersData || []).forEach((x) => {
+      if (x && x.ticker && (x.data || []).length) have[x.ticker] = x;
+    });
+    if (sel.every((t) => have[t])) {
+      const loaded = sel.map((t) => have[t]);
+      state.tickersData = loaded;
+      state.ticker = loaded[0].ticker;
+      state.bars = loaded[0].data || [];
+      return loaded;
+    }
+    const rows = await Promise.all(sel.map(async (t) => {
       try {
         const ds = await API.dataset(t);
-        loaded.push({ ticker: t, data: ds.data || [] });
-      } catch (_) { missing.push(t); }
-    }
+        return { ticker: t, data: ds.data || [] };
+      } catch (_) {
+        return { ticker: t, data: [] };
+      }
+    }));
+    const loaded = rows.filter((x) => (x.data || []).length);
+    const missing = rows.filter((x) => !(x.data || []).length).map((x) => x.ticker);
     if (!loaded.length) throw new Error('Нет датасетов: ' + (missing.join(', ') || sel.join(', ')));
     if (missing.length) state.error = 'Нет данных: ' + missing.join(', ');
     else state.error = null;
@@ -4002,28 +4020,29 @@
   }
 
   async function runStocks() {
+    const names = parseTickers(state.tickerInput);
+    if (!names.length) { state.error = 'Укажите тикеры'; renderPage(); return; }
     state.running = true;
-    renderPage();
+    const btn = document.getElementById('run-bt');
+    if (btn) { btn.disabled = true; btn.textContent = 'Считаем…'; }
     try {
-      const loaded = await loadSelected();
       const tp = Number(String(state.takeProfit).replace(',', '.'));
       const single = { allowSameDayReentry: true };
       if (Number.isFinite(tp) && tp > 0) single.takeProfitPercent = tp;
       const lev = (state.leverage || 200) / 100;
-      state.result = await API.calc('single-position', {
-        tickers: loaded,
+      const payload = {
+        tickers: calcTickerRefs(names),
         strategy: defaultStrategy(),
         leverage: lev,
         single,
-      });
-      state.baselineResult = null;
-      if (lev > 1) {
-        try {
-          state.baselineResult = resultOf(await API.calc('single-position', {
-            tickers: loaded, strategy: defaultStrategy(), leverage: 1, single,
-          }));
-        } catch (_) { state.baselineResult = null; }
-      }
+      };
+      if (lev > 1) payload.includeBaseline = true;
+      const [raw] = await Promise.all([
+        API.calc('single-position', payload),
+        loadSelected(),
+      ]);
+      state.result = resultOf(raw);
+      state.baselineResult = lev > 1 ? resultOf(raw && raw.baseline) : null;
       state.stockTab = 'summary';
       state.tradesPage = 1;
     } catch (e) {
@@ -4040,10 +4059,13 @@
         strike: Number(fd.get('strike') || 10), vol: Number(fd.get('vol') || 20), cap: Number(fd.get('cap') || 10),
         expiration: Number(fd.get('expiration') || 4), maxHold: Number(fd.get('maxHold') || 30), leverage: Number(fd.get('leverage') || 200),
       };
-      const loaded = await loadSelected();
-      const stock = await API.calc('single-position', { tickers: loaded, strategy: defaultStrategy(), leverage: Number(fd.get('leverage') || 200) / 100, single: { allowSameDayReentry: true } });
+      const names = parseTickers(state.optTickers);
+      const [stock] = await Promise.all([
+        API.calc('single-position', { tickers: calcTickerRefs(names), strategy: defaultStrategy(), leverage: Number(fd.get('leverage') || 200) / 100, single: { allowSameDayReentry: true } }),
+        loadSelected(),
+      ]);
       const r = await API.calc('options-multi', {
-        tickers: loaded, trades: stock.trades,
+        tickers: calcTickerRefs(names), trades: stock.trades,
         config: {
           strikePct: Number(fd.get('strike') || 10),
           volAdjPct: Number(fd.get('vol') || 20),
@@ -4819,7 +4841,7 @@
         const out = document.getElementById('mc-out');
         try {
           const withC = resultOf(await API.calc('single-position', {
-            tickers: state.tickersData, strategy: st, leverage: (state.leverage || 200) / 100,
+            tickers: calcTickerRefs((state.tickersData || []).map((x) => x.ticker)), strategy: st, leverage: (state.leverage || 200) / 100,
             single: { allowSameDayReentry: true, monthlyAmount: Number(fd.get('amount')), monthlyDayOfMonth: Number(fd.get('day')) },
           }));
           const base = state.baselineResult || resultOf(state.result);

@@ -45,15 +45,16 @@ type calcReq struct {
 		Ticker string          `json:"ticker"`
 		Data   json.RawMessage `json:"data"`
 	} `json:"tickers"`
-	Options        *backtest.CleanOptions    `json:"options"`
-	Leverage       *float64                  `json:"leverage"`
-	Config         backtest.OptionsConfig    `json:"config"`
-	Trades         json.RawMessage           `json:"trades"`
-	Ema            backtest.EmaParams        `json:"ema"`
-	NoStop         backtest.NoStopLossConfig `json:"noStop"`
-	Single         backtest.SingleOptions    `json:"single"`
-	Splits         []types.SplitEvent        `json:"splits"`
-	InitialCapital *float64                  `json:"initialCapital"`
+	Options         *backtest.CleanOptions    `json:"options"`
+	Leverage        *float64                  `json:"leverage"`
+	Config          backtest.OptionsConfig    `json:"config"`
+	Trades          json.RawMessage           `json:"trades"`
+	Ema             backtest.EmaParams        `json:"ema"`
+	NoStop          backtest.NoStopLossConfig `json:"noStop"`
+	Single          backtest.SingleOptions    `json:"single"`
+	Splits          []types.SplitEvent        `json:"splits"`
+	InitialCapital  *float64                  `json:"initialCapital"`
+	IncludeBaseline bool                      `json:"includeBaseline"`
 }
 
 func (s *Server) readCalc(r *http.Request) calcReq {
@@ -88,8 +89,15 @@ func (s *Server) calcSingle(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 400, map[string]any{"error": "data is required"})
 		return
 	}
-	eq, final, maxDD, trades, m, exp := backtest.RunSinglePosition(tickers, decodeStrategy(req.Strategy), types.F64Or(req.Leverage, 1), req.Single)
-	writeJSON(w, 200, map[string]any{"equity": eq, "finalValue": final, "maxDrawdown": maxDD, "trades": trades, "metrics": m, "exposure": exp})
+	st := decodeStrategy(req.Strategy)
+	lev := types.F64Or(req.Leverage, 1)
+	eq, final, maxDD, trades, m, exp := backtest.RunSinglePosition(tickers, st, lev, req.Single)
+	out := map[string]any{"equity": eq, "finalValue": final, "maxDrawdown": maxDD, "trades": trades, "metrics": m, "exposure": exp}
+	if req.IncludeBaseline && lev != 1 {
+		beq, bfinal, bmaxDD, btrades, bm, bexp := backtest.RunSinglePosition(tickers, st, 1, req.Single)
+		out["baseline"] = map[string]any{"equity": beq, "finalValue": bfinal, "maxDrawdown": bmaxDD, "trades": btrades, "metrics": bm, "exposure": bexp}
+	}
+	writeJSON(w, 200, out)
 }
 
 func (s *Server) calcOptions(w http.ResponseWriter, r *http.Request) {
@@ -118,7 +126,19 @@ func (s *Server) calcEMA(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 400, map[string]any{"error": "data is required"})
 		return
 	}
-	writeJSON(w, 200, backtest.RunEmaZone(tickers, req.Ema))
+	res := backtest.RunEmaZone(tickers, req.Ema)
+	if !req.IncludeBaseline || req.Ema.Leverage == 0 || req.Ema.Leverage == 1 {
+		writeJSON(w, 200, res)
+		return
+	}
+	baseP := req.Ema
+	baseP.Leverage = 1
+	base := backtest.RunEmaZone(tickers, baseP)
+	writeJSON(w, 200, map[string]any{
+		"equity": res.Equity, "exposure": res.Exposure, "finalValue": res.FinalValue,
+		"maxDrawdown": res.MaxDrawdown, "trades": res.Trades, "metrics": res.Metrics,
+		"deviation": res.Deviation, "baseline": base,
+	})
 }
 
 func (s *Server) calcBAC4(w http.ResponseWriter, r *http.Request) {
@@ -248,11 +268,25 @@ func tickerDataPresent(tickers []backtest.TickerIndexed) bool {
 	return true
 }
 
+func (s *Server) barsForSymbol(symbol string) []types.OHLC {
+	if symbol == "" || s.DB == nil {
+		return nil
+	}
+	bars, _, err := s.DB.GetOHLC(symbol)
+	if err != nil || len(bars) == 0 {
+		return nil
+	}
+	return normalizeBarDates(bars)
+}
+
 func (s *Server) tickersOrOne(req calcReq) []backtest.TickerIndexed {
 	var out []backtest.TickerIndexed
 	if len(req.Tickers) > 0 {
 		for _, t := range req.Tickers {
 			bars := decodeBars(t.Data)
+			if len(bars) == 0 {
+				bars = s.barsForSymbol(t.Ticker)
+			}
 			if len(bars) == 0 {
 				continue
 			}

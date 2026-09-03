@@ -342,6 +342,36 @@ func TestDecodeStrategyOmitsStayUnset(t *testing.T) {
 	}
 }
 
+func TestCalcSingleLoadsBarsFromDB(t *testing.T) {
+	s := testServer(t, "")
+	bars := goldens.Bars("googl-bars.json")
+	if err := s.DB.SaveDataset("GOOGL", "GOOGL", "", "", bars, false); err != nil {
+		t.Fatal(err)
+	}
+	st := types.DefaultIBSStrategy()
+	rec := postCalc(t, s, "single-position", map[string]any{
+		"tickers":         []map[string]any{{"ticker": "GOOGL"}},
+		"strategy":        st,
+		"leverage":        2,
+		"includeBaseline": true,
+	})
+	inline := postCalc(t, s, "single-position", map[string]any{
+		"tickers":  []map[string]any{{"ticker": "GOOGL", "data": bars}},
+		"strategy": st,
+		"leverage": 2,
+	})
+	got := tradeSlice(t, rec)
+	want := tradeSlice(t, inline)
+	if len(got) != len(want) {
+		t.Fatalf("db trades %d want %d", len(got), len(want))
+	}
+	body := decodeCalc(t, rec)
+	base, _ := body["baseline"].(map[string]any)
+	if base == nil || base["equity"] == nil {
+		t.Fatal("missing baseline from includeBaseline")
+	}
+}
+
 func TestCalcEmptyDataReturns400(t *testing.T) {
 	s := testServer(t, "")
 	kinds := []string{"indicators", "single-position", "ema-zone", "buy-at-close-4", "options-multi"}

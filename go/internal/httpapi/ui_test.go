@@ -132,6 +132,8 @@ func TestVanillaUIAssets(t *testing.T) {
 
 	for _, copy := range []string{
 		"Запустить бэктест",
+		"includeBaseline",
+		"calcTickerRefs",
 		"Библиотека датасетов",
 		"Общие", "API", "Telegram", "Интерфейс", "Автоторговля",
 		"Список", "Добавить", "Импорт", "Экспорт", "Webull API",
