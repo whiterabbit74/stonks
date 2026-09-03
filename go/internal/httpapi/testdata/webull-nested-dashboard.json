@@ -1,0 +1,65 @@
+{
+  "connection": { "configured": true, "hasAccessToken": true, "hasAccountId": true, "host": "api.webull.com" },
+  "account": {
+    "account_id": "ACCT-1",
+    "balance": {
+      "data": {
+        "account_type": "MARGIN",
+        "total_asset_currency": "USD",
+        "total_net_liquidation_value": "12345.67",
+        "total_cash_balance": "1000.00",
+        "total_unrealized_profit_loss": "200.00",
+        "account_currency_assets": [
+          {
+            "currency": "USD",
+            "net_liquidation_value": "12345.67",
+            "cash_balance": "1000.00",
+            "overnight_buying_power": "2000.00",
+            "day_buying_power": "4000.00",
+            "unrealized_profit_loss": "200.00"
+          }
+        ]
+      }
+    }
+  },
+  "balance": {
+    "data": {
+      "account_type": "MARGIN",
+      "total_asset_currency": "USD",
+      "total_net_liquidation_value": "12345.67",
+      "total_cash_balance": "1000.00",
+      "total_unrealized_profit_loss": "200.00",
+      "account_currency_assets": [
+        {
+          "currency": "USD",
+          "net_liquidation_value": "12345.67",
+          "cash_balance": "1000.00",
+          "overnight_buying_power": "2000.00",
+          "day_buying_power": "4000.00",
+          "unrealized_profit_loss": "200.00"
+        }
+      ]
+    }
+  },
+  "positions": {
+    "has_next": false,
+    "holdings": [
+      {
+        "symbol": "AAPL",
+        "instrument_type": "EQUITY",
+        "currency": "USD",
+        "quantity": "10",
+        "unit_cost": "180.00",
+        "avg_price": "180.00",
+        "total_cost": "1800.00",
+        "last_price": "190.00",
+        "market_value": "1900.00",
+        "unrealized_profit_loss": "100.00",
+        "unrealized_profit_loss_rate": "0.0556",
+        "holding_proportion": "0.15"
+      }
+    ]
+  },
+  "openOrders": [],
+  "orderHistory": []
+}

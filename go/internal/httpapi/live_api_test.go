@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"net/http/httptest"
 	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -413,35 +416,63 @@ func TestImportWebullCalendarDerivesHolidays(t *testing.T) {
 	}
 }
 
+func TestShippedAppJsMappers(t *testing.T) {
+	_, thisFile, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("caller")
+	}
+	dir := filepath.Dir(thisFile)
+	script := filepath.Join(dir, "testdata", "run-app-mappers.mjs")
+	if _, err := os.Stat(script); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("node", script)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("shipped app.js mapper: %v\n%s", err, out)
+	}
+	var got struct {
+		OK      bool           `json:"ok"`
+		Fail    []string       `json:"fail"`
+		Nested  map[string]any `json:"nested"`
+		AppPath string         `json:"appPath"`
+	}
+	if err := json.Unmarshal(out, &got); err != nil {
+		t.Fatalf("mapper json: %v\n%s", err, out)
+	}
+	if !strings.Contains(got.AppPath, filepath.Join("web", "js", "app.js")) {
+		t.Fatalf("mapper did not load shipped app.js: %s", got.AppPath)
+	}
+	if !got.OK {
+		t.Fatalf("mapper assertions: %v", got.Fail)
+	}
+	if fmt.Sprint(got.Nested["totalAssets"]) != "12345.67" {
+		t.Fatalf("totalAssets %v", got.Nested["totalAssets"])
+	}
+	if fmt.Sprint(got.Nested["buyingPower"]) != "2000" {
+		t.Fatalf("buyingPower %v", got.Nested["buyingPower"])
+	}
+}
+
 func TestDashboardNestedWebullBalance(t *testing.T) {
 	s, _, br := liveServer(t)
-	br.Acct = map[string]any{
-		"account_id": "ACCT-1",
-		"balance": map[string]any{
-			"data": map[string]any{
-				"account_type":                 "MARGIN",
-				"total_asset_currency":         "USD",
-				"total_net_liquidation_value":  "12345.67",
-				"total_cash_balance":           "1000.00",
-				"total_unrealized_profit_loss": "200.00",
-				"account_currency_assets": []any{
-					map[string]any{
-						"currency":               "USD",
-						"net_liquidation_value":  "12345.67",
-						"cash_balance":           "1000.00",
-						"overnight_buying_power": "2000.00",
-						"day_buying_power":      "4000.00",
-						"unrealized_profit_loss": "200.00",
-					},
-				},
-			},
-		},
+	_, thisFile, _, _ := runtime.Caller(0)
+	rawFix, err := os.ReadFile(filepath.Join(filepath.Dir(thisFile), "testdata", "webull-nested-dashboard.json"))
+	if err != nil {
+		t.Fatal(err)
 	}
-	br.Pos = []any{map[string]any{
-		"symbol": "AAPL", "quantity": "10", "unit_cost": "180.00",
-		"total_cost": "1800.00", "last_price": "190.00", "market_value": "1900.00",
-		"unrealized_profit_loss": "100.00", "unrealized_profit_loss_rate": "0.0556",
-	}}
+	var fix map[string]any
+	if err := json.Unmarshal(rawFix, &fix); err != nil {
+		t.Fatal(err)
+	}
+	acct, _ := fix["account"].(map[string]any)
+	br.Acct = acct
+	if holdings, ok := fix["positions"].(map[string]any); ok {
+		if rows, ok := holdings["holdings"].([]any); ok {
+			br.Pos = rows
+		}
+	}
 	req := httptest.NewRequest("GET", "/api/autotrade/webull/dashboard", nil)
 	rec := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rec, req)
