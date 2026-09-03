@@ -1,35 +1,58 @@
 const API = {
+  _onUnauthorized: null,
+  _unauthorizedFired: false,
+  onUnauthorized(fn) { API._onUnauthorized = fn; },
   async req(path, opts = {}) {
-    const r = await fetch(path, {
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) },
-      ...opts,
-    });
+    const { skipAuth, headers, ...rest } = opts;
+    let r;
+    try {
+      r = await fetch(path, {
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json', ...(headers || {}) },
+        ...rest,
+      });
+    } catch (netErr) {
+      const err = new Error((netErr && netErr.message) || 'Сеть недоступна');
+      err.status = 0;
+      err.data = null;
+      throw err;
+    }
     const text = await r.text();
     let data = null;
     try { data = text ? JSON.parse(text) : null; } catch { data = { raw: text }; }
+    if (r.status === 401 && !skipAuth) {
+      if (typeof API._onUnauthorized === 'function' && !API._unauthorizedFired) {
+        API._unauthorizedFired = true;
+        try { API._onUnauthorized(); } catch (_) { /* ignore */ }
+        setTimeout(() => { API._unauthorizedFired = false; }, 800);
+      }
+    }
     if (!r.ok) {
-      const err = new Error((data && data.error) || r.statusText);
+      const err = new Error((data && (data.error || data.message)) || r.statusText || ('HTTP ' + r.status));
       err.status = r.status;
       err.data = data;
       throw err;
     }
     return data;
   },
-  get: (p) => API.req(p),
-  post: (p, body) => API.req(p, { method: 'POST', body: JSON.stringify(body || {}) }),
-  put: (p, body) => API.req(p, { method: 'PUT', body: JSON.stringify(body || {}) }),
-  patch: (p, body) => API.req(p, { method: 'PATCH', body: JSON.stringify(body || {}) }),
-  del: (p) => API.req(p, { method: 'DELETE' }),
+  get: (p, opts) => API.req(p, opts),
+  post: (p, body, opts) => API.req(p, { method: 'POST', body: JSON.stringify(body || {}), ...(opts || {}) }),
+  put: (p, body, opts) => API.req(p, { method: 'PUT', body: JSON.stringify(body || {}), ...(opts || {}) }),
+  patch: (p, body, opts) => API.req(p, { method: 'PATCH', body: JSON.stringify(body || {}), ...(opts || {}) }),
+  del: (p, opts) => API.req(p, { method: 'DELETE', ...(opts || {}) }),
   status: () => API.get('/api/status'),
-  authCheck: () => API.get('/api/auth/check'),
-  login: (username, password, remember) => API.post('/api/login', { username, password, remember }),
-  logout: () => API.post('/api/logout'),
+  authCheck: () => API.get('/api/auth/check', { skipAuth: true }),
+  login: (username, password, remember) => API.post('/api/login', { username, password, remember }, { skipAuth: true }),
+  logout: () => API.post('/api/logout', {}, { skipAuth: true }),
   datasets: () => API.get('/api/datasets'),
   dataset: (id) => API.get('/api/datasets/' + encodeURIComponent(id)),
   saveDataset: (payload) => API.post('/api/datasets', payload),
   deleteDataset: (id) => API.del('/api/datasets/' + encodeURIComponent(id)),
-  refreshDataset: (id) => API.post('/api/datasets/' + encodeURIComponent(id) + '/refresh'),
+  refreshDataset: (id, provider) => {
+    const q = provider ? ('?provider=' + encodeURIComponent(provider)) : '';
+    return API.post('/api/datasets/' + encodeURIComponent(id) + '/refresh' + q);
+  },
+  applyDatasetSplits: (id) => API.post('/api/datasets/' + encodeURIComponent(id) + '/apply-splits'),
   patchDatasetMeta: (id, body) => API.patch('/api/datasets/' + encodeURIComponent(id) + '/metadata', body),
   settings: () => API.get('/api/settings'),
   saveSettings: (body) => API.patch('/api/settings', body),
@@ -68,6 +91,7 @@ const API = {
   logs: (limit) => API.get('/api/autotrade/logs' + (limit ? ('?limit=' + limit) : '')),
   emaAlerts: () => API.get('/api/telegram/ema-alerts'),
   addEmaAlert: (body) => API.post('/api/telegram/ema-alerts', body),
+  updateEmaAlert: (id, body) => API.patch('/api/telegram/ema-alerts/' + encodeURIComponent(id), body),
   deleteEmaAlert: (id) => API.del('/api/telegram/ema-alerts/' + encodeURIComponent(id)),
   telegramTest: (message) => API.post('/api/telegram/test', { message }),
   testProvider: (provider) => API.post('/api/test-provider', { provider }),
