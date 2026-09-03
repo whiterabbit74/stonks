@@ -36,6 +36,10 @@ type OrderResult struct {
 	Status        string  `json:"status,omitempty"`
 	FilledPrice   float64 `json:"filledPrice,omitempty"`
 	FilledQty     float64 `json:"filledQty,omitempty"`
+	// Ambiguous means the submission failed AND the follow-up lookup could not
+	// say whether the order reached the broker. Never report this as submitted:
+	// the order may or may not exist, so it is tracked but not counted as done.
+	Ambiguous bool `json:"ambiguous,omitempty"`
 }
 
 // PlaceMarketCfg is passed to PlaceMarketCfg without changing PlaceMarket(symbol,side,qty).

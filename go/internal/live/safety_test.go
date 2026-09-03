@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -103,11 +104,28 @@ func TestLookupErrorDoesNotResend(t *testing.T) {
 	br.SetFailPlace("i/o timeout", 1, false)
 	br.FailDetail = errors.New("dial tcp timeout")
 	res := e.Execute("test")
-	if !res.Executed {
-		t.Fatalf("lookup failure must assume the first id landed: %+v", res.Broker)
-	}
 	if len(br.Orders) != 0 {
 		t.Fatalf("must not send a second order: %+v", br.Orders)
+	}
+	if res.Executed {
+		t.Fatalf("an unknown submission must not be reported as executed: %+v", res.Broker)
+	}
+	br2, _ := res.Broker.(OrderResult)
+	if !br2.Ambiguous || br2.ClientOrderID == "" {
+		t.Fatalf("want an ambiguous result carrying the id, got %+v", res.Broker)
+	}
+	// The order may still exist at the broker, so it has to be tracked.
+	if pending := e.DB.FindPendingTracker("AAPL", "entry"); pending == nil {
+		t.Fatal("an unknown submission must still be tracked")
+	}
+	var warned bool
+	for _, m := range e.Telegram.(*MemoryTelegram).Sent() {
+		if strings.Contains(m[1], "статус отправки неизвестен") {
+			warned = true
+		}
+	}
+	if !warned {
+		t.Fatal("operator must be told the submission status is unknown")
 	}
 }
 

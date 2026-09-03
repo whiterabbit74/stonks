@@ -467,6 +467,20 @@ func (e *Engine) Execute(trigger string) EvalResult {
 			"symbol": symbol, "action": action, "side": side, "quantity": qty,
 			"clientOrderId": res.ClientOrderID, "order_type": "MARKET",
 		})
+	} else if res.Ambiguous {
+		// Track it: if the order did reach the broker, this is the only way the
+		// fill ever lands in the journal. Executed stays false so nothing
+		// downstream — the T-1 re-entry above all — treats it as done.
+		e.startTracking(OrderResult{Submitted: true, ClientOrderID: res.ClientOrderID}, orderMeta{
+			CorrelationID: corr, DateKey: ev.TodayKey, QuotePrice: price,
+			Action: action, Symbol: symbol, Quantity: qty, Source: trigger,
+		})
+		e.logAuto("order_submit_unknown", corr, map[string]any{
+			"symbol": symbol, "action": action, "clientOrderId": res.ClientOrderID, "error": res.Error,
+		})
+		_ = e.Send(e.chat(), fmt.Sprintf(
+			"<b>Webull: статус отправки неизвестен</b>\n%s • %s • %v шт.\nclientOrderId: %s\nОшибка: %s\nПовтор не отправлен — проверьте заявки у брокера.",
+			symbol, side, qty, res.ClientOrderID, res.Error))
 	} else {
 		e.logAuto("order_submit_failed", corr, map[string]any{
 			"symbol": symbol, "action": action, "error": res.Error,
@@ -509,14 +523,19 @@ func (e *Engine) placeMarket(symbol, side string, qty float64, cfg PlaceMarketCf
 		}
 		landed, queryFailed, detail := e.orderLanded(try.ClientOrderID)
 		if queryFailed {
-			e.logAuto("order_submit_lookup_failed_assume_landed", "", map[string]any{
+			// The submission failed and the broker cannot say whether the order
+			// arrived. Resending risks a second position, so stop here — but do
+			// not claim success either: the caller tracks the id in case a fill
+			// appears, and reports the outcome as unknown.
+			e.logAuto("order_submit_status_unknown", "", map[string]any{
 				"symbol": symbol, "side": side, "clientOrderId": try.ClientOrderID,
 				"attempt": attempt, "error": errText(err, res.Error),
 			})
-			res.Submitted = true
+			res.Submitted = false
+			res.Ambiguous = true
 			res.ClientOrderID = try.ClientOrderID
 			res.Symbol, res.Side, res.Quantity = symbol, side, qty
-			res.Error = ""
+			res.Error = errText(err, res.Error)
 			return res, nil
 		}
 		if landed {
