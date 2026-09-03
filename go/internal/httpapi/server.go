@@ -256,10 +256,10 @@ func (s *Server) auth(next http.HandlerFunc) http.HandlerFunc {
 }
 
 func (s *Server) purgeExpiredSessions() {
-	if s.DB == nil || s.DB.SQL == nil {
+	if s.DB == nil {
 		return
 	}
-	_, _ = s.DB.SQL.Exec(`DELETE FROM sessions WHERE expires_at < ?`, time.Now().UnixMilli())
+	_, _ = s.DB.SessionDeleteExpired(time.Now().UnixMilli())
 }
 
 func cookieToken(r *http.Request) string {
@@ -1144,14 +1144,35 @@ func (s *Server) handleEMAAlertDelete(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{"ok": true})
 }
 
+func includeHiddenTrades(r *http.Request) bool {
+	v := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("includeHidden")))
+	return v == "1" || v == "true" || v == "yes"
+}
+
+func filterHiddenTrades(list []map[string]any, includeHidden bool) []map[string]any {
+	if includeHidden || list == nil {
+		return list
+	}
+	out := make([]map[string]any, 0, len(list))
+	for _, t := range list {
+		hidden, _ := t["isHidden"].(bool)
+		if hidden {
+			continue
+		}
+		out = append(out, t)
+	}
+	return out
+}
+
 func (s *Server) handleMonitorTrades(w http.ResponseWriter, r *http.Request) {
 	list, _ := s.DB.ListTrades("trades")
+	list = filterHiddenTrades(list, includeHiddenTrades(r))
 	writeJSON(w, 200, map[string]any{"trades": list, "total": len(list)})
 }
 
 func (s *Server) handleListTrades(w http.ResponseWriter, r *http.Request) {
 	list, _ := s.DB.ListTrades("trades")
-	writeJSON(w, 200, list)
+	writeJSON(w, 200, filterHiddenTrades(list, includeHiddenTrades(r)))
 }
 
 func (s *Server) handlePostTrade(w http.ResponseWriter, r *http.Request) {

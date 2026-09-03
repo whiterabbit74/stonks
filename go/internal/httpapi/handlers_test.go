@@ -603,6 +603,41 @@ func TestAutotradeLogsLimitCap(t *testing.T) {
 	}
 }
 
+func TestHiddenTradesOmittedUnlessRequested(t *testing.T) {
+	s := testServer(t, "")
+	if err := s.DB.InsertTrade("trades", map[string]any{
+		"id": "vis", "symbol": "AAPL", "status": "closed", "entryDate": "2024-01-02", "entryPrice": 10,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.DB.InsertTrade("trades", map[string]any{
+		"id": "hid", "symbol": "MSFT", "status": "closed", "entryDate": "2024-01-03", "entryPrice": 20,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.DB.PatchTrade("trades", "hid", map[string]any{"isHidden": true}); err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest("GET", "/api/trades", nil)
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != 200 {
+		t.Fatalf("trades %d %s", rec.Code, rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), `"hid"`) {
+		t.Fatalf("hidden trade leaked: %s", rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"vis"`) {
+		t.Fatalf("visible trade missing: %s", rec.Body.String())
+	}
+	req = httptest.NewRequest("GET", "/api/trades?includeHidden=1", nil)
+	rec = httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if !strings.Contains(rec.Body.String(), `"hid"`) {
+		t.Fatalf("includeHidden should return hid: %s", rec.Body.String())
+	}
+}
+
 func TestReadJSONRejectsHugeBody(t *testing.T) {
 	s := testServer(t, "")
 	big := bytes.Repeat([]byte("a"), 6<<20)

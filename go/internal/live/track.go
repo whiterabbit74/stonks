@@ -224,6 +224,10 @@ func (e *Engine) pollOneTracker(t map[string]any) bool {
 		e.logAuto("order_poll_failed", e.metaCorr(id), map[string]any{
 			"clientOrderId": id, "error": derr.Error(),
 		})
+		if n, _ := e.DB.BumpOrderTrackerAttempts(id); n >= 64 {
+			e.finalizeTracker(t, "expired")
+			return true
+		}
 		return false
 	}
 	if detail != nil {
@@ -240,6 +244,10 @@ func (e *Engine) pollOneTracker(t map[string]any) bool {
 		e.logAuto("order_poll", e.metaCorr(id), map[string]any{
 			"clientOrderId": id, "status": status, "symbol": t["symbol"],
 		})
+		if n, _ := e.DB.BumpOrderTrackerAttempts(id); n >= 64 {
+			e.finalizeTracker(t, "expired")
+			return true
+		}
 		return false
 	}
 	e.finalizeTrackerStatus(t, detail, status)

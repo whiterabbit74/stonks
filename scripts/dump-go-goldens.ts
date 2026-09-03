@@ -444,7 +444,7 @@ write('manifest.json', {
   googlSingleTrades: single.trades.length,
   googlOptionsTrades: options.trades.length,
   googlEmaTrades: ema.trades.length,
-  tz: process.env.TZ || '(unset)',
+  tz: process.env.TZ || 'America/New_York',
 });
 
 console.log('goldens complete');
