@@ -267,12 +267,12 @@ func (e *Engine) finalizeTrackerStatus(t map[string]any, detail map[string]any, 
 	e.logAuto("order_tracking_finished", e.metaCorr(id), map[string]any{
 		"clientOrderId": id, "status": status, "symbol": t["symbol"], "action": t["action"],
 	})
+	sym := store.SafeTicker(fmt.Sprint(t["symbol"]))
+	side := "BUY"
+	if fmt.Sprint(t["action"]) == "exit" {
+		side = "SELL"
+	}
 	if status == "filled" {
-		sym := store.SafeTicker(fmt.Sprint(t["symbol"]))
-		side := "BUY"
-		if fmt.Sprint(t["action"]) == "exit" {
-			side = "SELL"
-		}
 		fillPrice := fillPriceFrom(detail)
 		qty := fillQtyFrom(detail)
 		if !(qty > 0) {
@@ -283,6 +283,11 @@ func (e *Engine) finalizeTrackerStatus(t map[string]any, detail map[string]any, 
 			priceS = fmt.Sprintf("$%.2f", fillPrice)
 		}
 		_ = e.Send(e.chat(), fmt.Sprintf("<b>Webull исполнено</b>\n%s • %s • %s\nqty: %v\nsource: %v", sym, side, priceS, qty, t["source"]))
+	} else {
+		// Node notifies on every terminal status (autotrade.js finalizeTracker),
+		// not just fills: a rejected or expired order is the case an operator
+		// most needs to see.
+		_ = e.Send(e.chat(), fmt.Sprintf("<b>Webull статус заявки</b>\n%s • %s\nstatus: %s\nsource: %v", sym, side, status, t["source"]))
 	}
 	e.mu.Lock()
 	delete(e.orderMeta, id)
