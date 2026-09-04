@@ -72,6 +72,9 @@ func TestVanillaUIAssets(t *testing.T) {
 	if strings.Contains(a, "from 'react'") || strings.Contains(a, "ReactDOM") {
 		t.Fatal("UI must be vanilla JS, not React")
 	}
+	if !strings.Contains(a, "Сервис недоступен") || !strings.Contains(a, "state.authUnknown = true") {
+		t.Fatal("non-401 auth errors must show an unavailable screen, not boot as authed")
+	}
 	if strings.Contains(a, "IBS Trading Strategy") || strings.Contains(a, ">IBS Trading<") {
 		t.Fatal("old IBS Trading Strategy brand must be replaced")
 	}

@@ -93,6 +93,11 @@ func (e *Engine) submitEvaluated(ev EvalResult, trigger, corr, brokerName string
 			e.logAuto("order_guarded", corr, map[string]any{"symbol": symbol, "action": action, "reason": "pending_tracker", "broker": brokerName})
 			return ev
 		}
+		if e.trackerPersistBlocked(brokerName) {
+			ev.Broker = map[string]any{"submitted": false, "error": "execution_unknown"}
+			e.logAuto("order_guarded", corr, map[string]any{"symbol": symbol, "action": action, "reason": "tracker_persist_failed", "broker": brokerName})
+			return ev
+		}
 	} else {
 		var pending map[string]any
 		if brokerName != "" {
@@ -153,7 +158,13 @@ func (e *Engine) submitEvaluated(ev EvalResult, trigger, corr, brokerName string
 		side = "SELL"
 	}
 	if action == "entry" {
-		if cancelled := e.cancelOpenOrdersBeforeEntry(symbol, br); len(cancelled) > 0 {
+		cancelled, err := e.cancelOpenOrdersBeforeEntry(symbol, br)
+		if err != nil {
+			ev.Broker = map[string]any{"submitted": false, "error": "open_orders_unavailable"}
+			e.logAuto("execution_blocked", corr, map[string]any{"symbol": symbol, "reason": "open_orders_unavailable", "error": err.Error()})
+			return ev
+		}
+		if len(cancelled) > 0 {
 			e.logAuto("open_orders_cancelled", corr, map[string]any{"symbol": symbol, "cancelled_count": len(cancelled)})
 		}
 	}

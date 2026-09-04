@@ -4900,9 +4900,13 @@
         document.getElementById('app').innerHTML = loginPage();
         bindLogin();
       } else {
-        state.user = true;
-        await bootAuthed();
-        renderPage();
+        state.user = false;
+        state.authUnknown = true;
+        document.getElementById('app').innerHTML = `<div class="p-8 max-w-lg mx-auto text-center space-y-3">
+          <h1 class="text-xl font-semibold">Сервис недоступен</h1>
+          <p class="text-sm text-gray-500">Не удалось подтвердить вход. Обновите страницу.</p>
+          <button type="button" class="px-4 py-2 rounded bg-black text-white" onclick="location.reload()">Повторить</button>
+        </div>`;
       }
     }
   }

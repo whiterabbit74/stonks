@@ -273,3 +273,18 @@ func TestAlphaHistoryParsesTimeSeries(t *testing.T) {
 		t.Fatalf("%+v", hist.Rows)
 	}
 }
+
+func TestFinnhubMismatchedCandleArrays(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"s":"ok","t":[1,2],"o":[1],"h":[1,2],"l":[1,2],"c":[1,2],"v":[1,2]}`))
+	}))
+	t.Cleanup(srv.Close)
+	c := &Client{HTTP: srv.Client(), FinnhubKey: "k", FinnhubBase: srv.URL}
+	_, err := c.Historical("AAPL", "finnhub", 0, 2000000000, "none")
+	if err == nil {
+		t.Fatal("mismatched arrays must not panic or succeed")
+	}
+	if !strings.Contains(err.Error(), "mismatched") {
+		t.Fatalf("got %v", err)
+	}
+}

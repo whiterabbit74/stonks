@@ -212,7 +212,18 @@ func (e *Engine) Evaluate() EvalResult {
 			watchBy[store.SafeTicker(fmt.Sprint(w["symbol"]))] = w
 		}
 	}
-	brokerTrades, _ := e.DB.ListTrades("broker_trades")
+	brokerTrades, journalErr := e.DB.ListTrades("broker_trades")
+	if journalErr != nil {
+		enabled, _ := cfg["enabled"].(bool)
+		return EvalResult{
+			EvaluatedAt: e.now().UTC().Format(time.RFC3339Nano),
+			TodayKey:    today,
+			AutoTrading: cfg,
+			Symbols:     symbols,
+			Decision:    map[string]any{"action": "none", "reason": "journal_unavailable", "symbol": nil, "candidate": nil},
+			Live:        enabled,
+		}
+	}
 	open, held, heldErr := e.booksFor("webull", e.defaultBroker(), brokerTrades)
 	e.prefetchQuotes(symbols, providerChain)
 	var quotes []map[string]any
@@ -507,9 +518,6 @@ func (e *Engine) orderLanded(clientOrderID string, br Broker) (landed, queryFail
 	if clientOrderIDOf(detail) == clientOrderID {
 		return true, false, detail
 	}
-	if orderStatusField(detail) != "" {
-		return true, false, detail
-	}
 	return false, false, nil
 }
 
@@ -533,13 +541,42 @@ func (e *Engine) startTracking(res OrderResult, meta orderMeta) {
 	if broker == "" {
 		broker = "webull"
 	}
-	_ = e.DB.SaveOrderTracker(map[string]any{
+	if err := e.DB.SaveOrderTracker(map[string]any{
 		"clientOrderId": res.ClientOrderID, "symbol": meta.Symbol, "action": meta.Action,
 		"status": "submitted", "quantity": meta.Quantity, "source": meta.Source, "dateKey": meta.DateKey,
 		"broker": broker, "startedAt": e.now().UTC().Format(time.RFC3339Nano),
-	})
+	}); err != nil {
+		e.logAuto("tracker_persist_failed", meta.CorrelationID, map[string]any{
+			"clientOrderId": res.ClientOrderID, "broker": broker, "error": err.Error(),
+		})
+		_ = e.Send(e.chat(), fmt.Sprintf(
+			"<b>Трекер не сохранён</b>\n%s • %s\nclientOrderId: %s\nВход заблокирован, заявку проверьте у брокера.",
+			meta.Symbol, meta.Action, res.ClientOrderID))
+		e.mu.Lock()
+		if e.trackerPersistFail == nil {
+			e.trackerPersistFail = map[string]bool{}
+		}
+		e.trackerPersistFail[broker] = true
+		e.mu.Unlock()
+		return
+	}
 	e.rememberOrder(res.ClientOrderID, meta)
 	e.TrackSubmitted(res.ClientOrderID)
+}
+
+func (e *Engine) trackerPersistBlocked(broker string) bool {
+	if e == nil {
+		return false
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.trackerPersistFail == nil {
+		return false
+	}
+	if broker != "" && e.trackerPersistFail[broker] {
+		return true
+	}
+	return e.trackerPersistFail["webull"] && broker == ""
 }
 
 // retryBrokerRead retries a read-only broker call. These run before any order
@@ -827,13 +864,16 @@ func envOr(k, d string) string {
 
 // cancelOpenOrdersBeforeEntry clears this engine's own unfilled orders on the
 // symbol it is about to buy. Orders it did not place are left alone.
-func (e *Engine) cancelOpenOrdersBeforeEntry(symbol string, br Broker) []string {
+func (e *Engine) cancelOpenOrdersBeforeEntry(symbol string, br Broker) ([]string, error) {
 	if br == nil || e.DB == nil {
-		return nil
+		return nil, nil
 	}
-	rows, err := br.OpenOrders()
-	if err != nil || len(rows) == 0 {
-		return nil
+	rows, err := retryBrokerRead(e, "open_orders", br.OpenOrders)
+	if err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
+		return nil, nil
 	}
 	want := store.SafeTicker(symbol)
 	var cancelled []string
@@ -865,7 +905,7 @@ func (e *Engine) cancelOpenOrdersBeforeEntry(symbol string, br Broker) []string 
 		cancelled = append(cancelled, id)
 		_ = e.DB.AppendAutotradeLog("open_orders_cancelled " + id + " " + want)
 	}
-	return cancelled
+	return cancelled, nil
 }
 
 func (e *Engine) LastRun() (string, any) {

@@ -354,6 +354,9 @@ func (c *Client) finnhubHistory(symbol string, startTs, endTs int64) (Historical
 	}
 	ts := floatArr(jsonData["t"])
 	o, h, l, cl, v := floatArr(jsonData["o"]), floatArr(jsonData["h"]), floatArr(jsonData["l"]), floatArr(jsonData["c"]), floatArr(jsonData["v"])
+	if len(o) != len(ts) || len(h) != len(ts) || len(l) != len(ts) || len(cl) != len(ts) || len(v) != len(ts) {
+		return Historical{}, &HTTPError{502, "Finnhub: mismatched candle arrays"}
+	}
 	var rows []types.OHLC
 	for i := range ts {
 		date := time.Unix(int64(ts[i]), 0).UTC().Format("2006-01-02")

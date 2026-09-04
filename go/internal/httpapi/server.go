@@ -191,6 +191,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/test-provider", wrap(s.handleTestProvider))
 	// Status
 	s.mux.HandleFunc("GET /api/status", wrap(s.handleStatus))
+	s.mux.HandleFunc("GET /healthz", s.handleHealthz)
+	s.mux.HandleFunc("GET /readyz", s.handleReadyz)
 	// Autotrade
 	s.mux.HandleFunc("GET /api/autotrade/config", wrap(s.handleAutoConfig))
 	s.mux.HandleFunc("PATCH /api/autotrade/config", wrap(s.handleAutoConfigPatch))
@@ -238,7 +240,7 @@ func readJSON(r *http.Request, dest any) error {
 
 func (s *Server) public(r *http.Request) bool {
 	p := r.URL.Path
-	if r.Method == http.MethodGet && (p == "/api/status" || p == "/api/auth/check" || p == "/api/trading-calendar" || p == "/api/trading/expected-prev-day") {
+	if r.Method == http.MethodGet && (p == "/api/status" || p == "/healthz" || p == "/readyz" || p == "/api/auth/check" || p == "/api/trading-calendar" || p == "/api/trading/expected-prev-day") {
 		return true
 	}
 	if r.Method == http.MethodPost && (p == "/api/login" || p == "/api/logout") {
@@ -308,6 +310,26 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		"buildId":   s.BuildID,
 		"db":        map[string]any{"connected": true, "datasets": ds, "ohlcRows": ohlc},
 	})
+}
+
+func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, 200, map[string]any{"status": "ok"})
+}
+
+func (s *Server) handleReadyz(w http.ResponseWriter, r *http.Request) {
+	if s.DB == nil || s.DB.SQL == nil {
+		writeJSON(w, 503, map[string]any{"status": "not_ready", "error": "db missing"})
+		return
+	}
+	if err := s.DB.SQL.Ping(); err != nil {
+		writeJSON(w, 503, map[string]any{"status": "not_ready", "error": err.Error()})
+		return
+	}
+	if !s.DB.HasColumn("broker_trades", "broker") {
+		writeJSON(w, 503, map[string]any{"status": "not_ready", "error": "schema incomplete"})
+		return
+	}
+	writeJSON(w, 200, map[string]any{"status": "ready"})
 }
 
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {

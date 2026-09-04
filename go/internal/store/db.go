@@ -267,6 +267,10 @@ func (d *DB) migrateSchema() error {
 	return nil
 }
 
+func (d *DB) HasColumn(table, col string) bool {
+	return d.hasColumn(table, col)
+}
+
 func (d *DB) hasColumn(table, col string) bool {
 	rows, err := d.SQL.Query(`PRAGMA table_info(` + table + `)`)
 	if err != nil {

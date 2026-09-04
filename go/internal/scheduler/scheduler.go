@@ -172,33 +172,50 @@ func RunTick(db *store.DB, deps Deps, now time.Time, onEvent func(JobLog)) {
 	}()
 	p := tradingdate.CurrentTimeNYSE(now)
 	today := tradingdate.TodayNYSE(now)
+	eng := engine(db, deps)
 
-	nTrack := engine(db, deps).PollTrackers()
+	raw, _ := db.GetCalendar()
+	cal := ParseCalendar(raw)
+	trading := IsTradingDay(p, cal)
+	if trading {
+		if cov := calendarCoverageThrough(raw); cov != "" && cov < today {
+			onEvent(JobLog{At: now, Name: "market-jobs", Skipped: true, Detail: "calendar-coverage-expired"})
+			trading = false
+		}
+	}
+	if trading {
+		sess := TradingSession(p, cal)
+		nowMin := p.Hour*60 + p.Minute
+		until := sess.CloseMin - nowMin
+		if (until >= 10 && until <= 12) || (until >= 0 && until <= 2) {
+			n := RunTelegramAggregation(db, deps, until)
+			onEvent(JobLog{At: now, Name: "telegram-aggregation", Detail: fmt.Sprintf("window until=%d watches=%d", until, n)})
+			log.Printf("scheduler: telegram aggregation minutesUntilClose=%d short=%v", until, sess.Short)
+		}
+	}
+
+	nTrack := eng.PollTrackers()
 	onEvent(JobLog{At: now, Name: "order-trackers", Detail: fmt.Sprintf("pending=%d", nTrack)})
 
 	detail, skipped := RunTokenHealth(db, deps, today, now)
 	onEvent(JobLog{At: now, Name: "webull-token-health", Skipped: skipped, Detail: detail})
 
-	raw, _ := db.GetCalendar()
-	cal := ParseCalendar(raw)
 	if !IsTradingDay(p, cal) {
 		onEvent(JobLog{At: now, Name: "market-jobs", Skipped: true, Detail: "non-trading-day"})
 		return
 	}
+	if !trading {
+		return
+	}
 	sess := TradingSession(p, cal)
 	nowMin := p.Hour*60 + p.Minute
-	until := sess.CloseMin - nowMin
-	if (until >= 10 && until <= 12) || (until >= 0 && until <= 2) {
-		n := RunTelegramAggregation(db, deps, until)
-		onEvent(JobLog{At: now, Name: "telegram-aggregation", Detail: fmt.Sprintf("window until=%d watches=%d", until, n)})
-		log.Printf("scheduler: telegram aggregation minutesUntilClose=%d short=%v", until, sess.Short)
-	}
 	after := nowMin - sess.CloseMin
 	if after >= 15 && after <= 31 {
 		n, errN := RunPriceActualization(db, deps)
 		onEvent(JobLog{At: now, Name: "price-actualization", Detail: fmt.Sprintf("after=%d tickers=%d errors=%d", after, n, errN)})
 		log.Printf("scheduler: price actualization minutesAfterClose=%d", after)
 	}
+	RunCalendarExtend(db, deps, today, now, onEvent)
 }
 
 func engine(db *store.DB, deps Deps) *live.Engine {
@@ -329,6 +346,53 @@ func RunTelegramAggregation(db *store.DB, deps Deps, until int) int {
 }
 
 func RunPriceActualization(db *store.DB, deps Deps) (ok, fail int) {
-	res := engine(db, deps).Actualize(true)
+	res := engine(db, deps).Actualize(false)
 	return res.Count, len(res.Failed)
+}
+
+func calendarCoverageThrough(raw []byte) string {
+	var cal map[string]any
+	if json.Unmarshal(raw, &cal) != nil {
+		return ""
+	}
+	meta, _ := cal["metadata"].(map[string]any)
+	if meta == nil {
+		return ""
+	}
+	cov, _ := meta["webullCoverageThrough"].(string)
+	return cov
+}
+
+func RunCalendarExtend(db *store.DB, deps Deps, today string, now time.Time, onEvent func(JobLog)) {
+	settings := db.Settings()
+	if fmt.Sprint(settings["lastCalendarImportDate"]) == today {
+		onEvent(JobLog{At: now, Name: "calendar-extend", Skipped: true, Detail: "already-ran"})
+		return
+	}
+	raw, _ := db.GetCalendar()
+	cov := calendarCoverageThrough(raw)
+	need := cov == "" || tradingdate.AddDays(today, 45) > cov
+	if !need {
+		settings["lastCalendarImportDate"] = today
+		_ = db.SaveSettings(settings)
+		onEvent(JobLog{At: now, Name: "calendar-extend", Skipped: true, Detail: "coverage-ok"})
+		return
+	}
+	_, err := engine(db, deps).ImportWebullCalendar()
+	settings = db.Settings()
+	settings["lastCalendarImportDate"] = today
+	_ = db.SaveSettings(settings)
+	if err != nil {
+		onEvent(JobLog{At: now, Name: "calendar-extend", Detail: err.Error()})
+		raw, _ = db.GetCalendar()
+		cov = calendarCoverageThrough(raw)
+		if cov != "" && tradingdate.AddDays(today, 14) > cov {
+			eng := engine(db, deps)
+			if eng.ChatID != "" {
+				_ = eng.Send(eng.ChatID, "<b>Календарь истекает</b>\nПокрытие Webull меньше 14 дней, продление не удалось.")
+			}
+		}
+		return
+	}
+	onEvent(JobLog{At: now, Name: "calendar-extend", Detail: "extended"})
 }

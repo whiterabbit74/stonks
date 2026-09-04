@@ -141,6 +141,18 @@ func (d *DB) SaveOrderTracker(rec map[string]any) error {
 	return err
 }
 
+func (d *DB) GetOrderTracker(clientOrderID string) map[string]any {
+	if strings.TrimSpace(clientOrderID) == "" {
+		return nil
+	}
+	row := d.SQL.QueryRow(`SELECT client_order_id, symbol, action, status, quantity, source, date_key, started_at, attempts, COALESCE(broker,'webull') FROM order_trackers WHERE client_order_id=?`, clientOrderID)
+	m, err := scanTracker(row, true)
+	if err != nil {
+		return nil
+	}
+	return m
+}
+
 func (d *DB) SetOrderTrackerStatus(clientOrderID, status string) error {
 	_, err := d.SQL.Exec(`UPDATE order_trackers SET status=?, updated_at=datetime('now') WHERE client_order_id=?`, status, clientOrderID)
 	return err

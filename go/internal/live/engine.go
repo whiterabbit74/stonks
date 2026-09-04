@@ -91,8 +91,9 @@ type Engine struct {
 	wheels       map[string]bool
 	inFlight     map[string]bool
 	orderMeta    map[string]orderMeta
-	quoteCache   map[string]quoteCacheEntry
-	activeBroker string
+	quoteCache         map[string]quoteCacheEntry
+	trackerPersistFail map[string]bool
+	activeBroker       string
 	lastRunAt    string
 	lastResult   any
 }

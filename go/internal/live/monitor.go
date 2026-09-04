@@ -13,11 +13,22 @@ var blockingMismatchCodes = map[string]struct{}{
 	"legacy_monitor_trade_ambiguous_broker_match": {},
 	"live_broker_position_without_journal":        {},
 	"broker_positions_unavailable":                {},
+	"journal_unavailable":                         {},
 }
 
 func (e *Engine) Consistency() map[string]any {
-	monitor, _ := e.DB.ListTrades("trades")
-	broker, _ := e.DB.ListTrades("broker_trades")
+	monitor, merr := e.DB.ListTrades("trades")
+	broker, berr := e.DB.ListTrades("broker_trades")
+	if merr != nil || berr != nil {
+		msg := "journal unavailable"
+		if merr != nil {
+			msg = merr.Error()
+		} else {
+			msg = berr.Error()
+		}
+		iss := map[string]any{"code": "journal_unavailable", "message": msg}
+		return map[string]any{"issues": []map[string]any{iss}, "ok": false}
+	}
 	openM := store.OpenBrokerTrade(monitor)
 	openB := store.OpenBrokerTrade(broker)
 	if openM != nil {

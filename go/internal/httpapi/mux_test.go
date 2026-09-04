@@ -39,7 +39,7 @@ var allRoutes = []struct{ Method, Path string }{
 	{"GET", "/api/quote/{symbol}"}, {"GET", "/api/quotes/webull-batch"}, {"GET", "/api/yahoo-finance/{symbol}"},
 	{"GET", "/api/fetch/{provider}/{symbol}"}, {"GET", "/api/test/alpha-vantage"}, {"GET", "/api/test/finnhub"},
 	{"GET", "/api/test/twelve-data"}, {"POST", "/api/test-provider"},
-	{"GET", "/api/status"},
+	{"GET", "/api/status"}, {"GET", "/healthz"}, {"GET", "/readyz"},
 	{"GET", "/api/autotrade/config"}, {"PATCH", "/api/autotrade/config"}, {"GET", "/api/autotrade/status"},
 	{"POST", "/api/autotrade/evaluate"}, {"POST", "/api/autotrade/execute"},
 	{"GET", "/api/autotrade/webull/account"}, {"GET", "/api/autotrade/webull/dashboard"}, {"GET", "/api/autotrade/logs"},
@@ -156,6 +156,31 @@ func TestStatusJSON(t *testing.T) {
 	db, _ := body["db"].(map[string]any)
 	if db["connected"] != true {
 		t.Fatalf("db %v", db)
+	}
+}
+
+func TestReadyzAndHealthz(t *testing.T) {
+	s := testServer(t, "secret")
+	for _, path := range []string{"/healthz", "/readyz"} {
+		req := httptest.NewRequest("GET", path, nil)
+		rec := httptest.NewRecorder()
+		s.Handler().ServeHTTP(rec, req)
+		if rec.Code != 200 {
+			t.Fatalf("%s %d %s", path, rec.Code, rec.Body.String())
+		}
+	}
+	s.DB.Close()
+	req := httptest.NewRequest("GET", "/readyz", nil)
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code == 200 {
+		t.Fatal("readyz must not be 200 after the db is closed")
+	}
+	req = httptest.NewRequest("GET", "/healthz", nil)
+	rec = httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != 200 {
+		t.Fatalf("healthz is liveness, got %d", rec.Code)
 	}
 }
 

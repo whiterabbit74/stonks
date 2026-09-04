@@ -228,7 +228,6 @@ func (e *Engine) Aggregate(minutesUntilClose int, opts AggregateOpts) (SimulateR
 	if execDone {
 		exitRes = e.Evaluate()
 	} else {
-		e.PollTrackers()
 		snap := e.Consistency()
 		blocking = BlockingMismatch(snap)
 		if blocking != nil {
@@ -239,8 +238,6 @@ func (e *Engine) Aggregate(minutesUntilClose int, opts AggregateOpts) (SimulateR
 			if opts.DryRun {
 				_ = e.DB.AppendAutotradeLog("t1_dry_run")
 				exitRes = e.Evaluate()
-			} else if e.DB.AnyPendingTracker() != nil {
-				waitFill = true
 			} else {
 				exitRes, entryRes, waitFill = e.runT1Orders(today)
 				out.Executed = exitRes.Executed || entryRes.Executed

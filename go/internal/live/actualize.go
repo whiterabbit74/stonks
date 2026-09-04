@@ -88,6 +88,10 @@ func (e *Engine) Actualize(force bool) ActualizeResult {
 			out.Reason = "disabled_by_settings"
 			return out
 		}
+		if fmt.Sprint(settings["lastActualizationDate"]) == today {
+			out.Reason = "already_ran_today"
+			return out
+		}
 	}
 	seen := map[string]struct{}{}
 	var symbols []string
@@ -109,10 +113,6 @@ func (e *Engine) Actualize(force bool) ActualizeResult {
 	alerts, _ := e.DB.ListEMAAlerts()
 	for _, a := range alerts {
 		add(fmt.Sprint(a["symbol"]))
-	}
-	tickers, _ := e.DB.ListTickers()
-	for _, t := range tickers {
-		add(t)
 	}
 	if len(symbols) == 0 {
 		out.Reason = "no_tickers"
@@ -141,6 +141,9 @@ func (e *Engine) Actualize(force bool) ActualizeResult {
 	out.Success = out.Updated
 	if out.Count == 0 {
 		out.Reason = "none_updated"
+	} else if !force {
+		settings["lastActualizationDate"] = today
+		_ = e.DB.SaveSettings(settings)
 	}
 	return out
 }

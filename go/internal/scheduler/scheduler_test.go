@@ -299,6 +299,60 @@ func TestTickT1Executes(t *testing.T) {
 	}
 }
 
+func TestTickT1RunsBeforePollTrackers(t *testing.T) {
+	dir := t.TempDir()
+	db, err := store.Open(filepath.Join(dir, "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
+	_ = db.SaveDataset("AAPL", "AAPL", "", "", bars, false)
+	_ = db.UpsertWatch(map[string]any{"symbol": "AAPL", "lowIBS": 0.9})
+	tg := &live.MemoryTelegram{}
+	br := &live.MemoryBroker{}
+	eng := live.New(db, &live.MemoryQuotes{Bars: map[string][]types.OHLC{"AAPL": bars}})
+	eng.Telegram = tg
+	eng.Broker = br
+	eng.ChatID = "c"
+	eng.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true})
+	live.PollTrackersHook = func() {
+		if len(br.Orders) == 0 {
+			t.Error("PollTrackers ran before T-1 placed the order")
+		}
+	}
+	t.Cleanup(func() { live.PollTrackersHook = nil })
+	now := time.Date(2026, 9, 1, 19, 59, 0, 0, time.UTC)
+	var logs []JobLog
+	RunTick(db, Deps{Live: eng}, now, func(j JobLog) { logs = append(logs, j) })
+	if len(br.Orders) != 1 {
+		t.Fatalf("T-1 must still place, orders=%d logs=%+v", len(br.Orders), logs)
+	}
+}
+
+func TestTickActualizeDisabledBySetting(t *testing.T) {
+	dir := t.TempDir()
+	db, err := store.Open(filepath.Join(dir, "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	_ = db.UpsertWatch(map[string]any{"symbol": "AAPL"})
+	st := db.Settings()
+	st["enablePostClosePriceActualization"] = false
+	_ = db.SaveSettings(st)
+	eng := live.New(db, &live.MemoryQuotes{Bars: map[string][]types.OHLC{"AAPL": {{Date: "2026-09-01", Open: 1, High: 2, Low: 1, Close: 1, Volume: 1}}}})
+	now := time.Date(2026, 9, 1, 20, 20, 0, 0, time.UTC)
+	var logs []JobLog
+	RunTick(db, Deps{Live: eng}, now, func(j JobLog) { logs = append(logs, j) })
+	for _, j := range logs {
+		if j.Name == "price-actualization" && strings.Contains(j.Detail, "tickers=0") {
+			return
+		}
+	}
+	t.Fatalf("disabled actualization should request nothing: %+v", logs)
+}
+
 func TestTickAfterCloseWritesOHLC(t *testing.T) {
 	dir := t.TempDir()
 	db, err := store.Open(filepath.Join(dir, "t.db"))
@@ -313,6 +367,9 @@ func TestTickAfterCloseWritesOHLC(t *testing.T) {
 	}
 	_ = db.SaveDataset("AAPL", "AAPL", "", "", old, false)
 	_ = db.UpsertWatch(map[string]any{"symbol": "AAPL"})
+	st := db.Settings()
+	st["enablePostClosePriceActualization"] = true
+	_ = db.SaveSettings(st)
 	q := &live.MemoryQuotes{Bars: map[string][]types.OHLC{"AAPL": fresh}}
 	eng := live.New(db, q)
 	eng.Telegram = &live.MemoryTelegram{}

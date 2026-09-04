@@ -121,9 +121,11 @@ type MemoryBroker struct {
 	LastCfg          PlaceMarketCfg
 	FailPositions    error
 	FailDetail       error
+	FailOpenOrders   error
 	// ListingLag makes OrderDetail return ErrOrderUnavailable unless SetDetail
 	// has an explicit row for that id. Models Robinhood list-based lookup.
-	ListingLag bool
+	ListingLag   bool
+	BeforeDetail func()
 }
 
 // SetFailPlace makes the next n placements fail; n <= 0 fails every placement.
@@ -300,6 +302,9 @@ func (m *MemoryBroker) RawSplits(symbol string) ([]map[string]any, error) {
 }
 
 func (m *MemoryBroker) OpenOrders() ([]any, error) {
+	if m.FailOpenOrders != nil {
+		return nil, m.FailOpenOrders
+	}
 	if m.Open != nil {
 		return m.Open, nil
 	}
@@ -314,6 +319,9 @@ func (m *MemoryBroker) OrderHistory(start, end string) ([]any, error) {
 }
 
 func (m *MemoryBroker) OrderDetail(clientOrderID string) (map[string]any, error) {
+	if m.BeforeDetail != nil {
+		m.BeforeDetail()
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.DetailN++

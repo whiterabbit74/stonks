@@ -165,6 +165,10 @@ func (e *Engine) recordFill(t map[string]any, detail map[string]any, status stri
 
 	if action == "entry" {
 		if existing := e.getTrade("broker_trades", clientOrderID); existing != nil {
+			if fillQty > asFloat(existing["quantity"]) {
+				_, _ = e.DB.SQL.Exec(`UPDATE broker_trades SET quantity=?, filled_qty=? WHERE id=?`, fillQty, fillQty, clientOrderID)
+				_, _ = e.DB.SQL.Exec(`UPDATE trades SET quantity=?, filled_qty=? WHERE id=?`, fillQty, fillQty, "m-"+clientOrderID)
+			}
 			return
 		}
 		brokerName := meta.Broker

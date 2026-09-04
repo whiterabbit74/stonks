@@ -79,7 +79,13 @@ func IsFinalOrderStatus(status string) bool {
 	return false
 }
 
+// PollTrackersHook is an optional test hook invoked at the start of PollTrackers.
+var PollTrackersHook func()
+
 func (e *Engine) PollTrackers() int {
+	if PollTrackersHook != nil {
+		PollTrackersHook()
+	}
 	if len(e.brokerMap()) == 0 {
 		return 0
 	}
@@ -198,6 +204,10 @@ func (e *Engine) trackerWheel(clientOrderID string) {
 				}
 			}
 			if rec == nil {
+				row := e.DB.GetOrderTracker(clientOrderID)
+				if row == nil {
+					e.logAuto("tracker_missing", e.metaCorr(clientOrderID), map[string]any{"clientOrderId": clientOrderID})
+				}
 				done = true
 				return
 			}

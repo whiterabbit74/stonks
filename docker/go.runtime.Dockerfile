@@ -18,5 +18,5 @@ ENV PORT=3001 \
 EXPOSE 3001
 USER app
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 --start-period=20s \
-  CMD curl -fsS http://127.0.0.1:3001/api/status >/dev/null || exit 1
+  CMD curl -fsS http://127.0.0.1:3001/readyz >/dev/null || exit 1
 CMD ["/app/mktorder"]
