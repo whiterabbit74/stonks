@@ -14,7 +14,6 @@ type RobinhoodBroker struct {
 	Svc     *robinhood.Service
 	Call    func(name string, args map[string]any) (json.RawMessage, error)
 	account string
-	lastRef string
 }
 
 func (b *RobinhoodBroker) tool(name string, args map[string]any) (json.RawMessage, error) {
@@ -38,13 +37,10 @@ func (b *RobinhoodBroker) PlaceMarket(symbol, side string, qty float64) (OrderRe
 func (b *RobinhoodBroker) PlaceMarketCfg(symbol, side string, qty float64, cfg PlaceMarketCfg) (OrderResult, error) {
 	ref := strings.TrimSpace(cfg.ClientOrderID)
 	if ref == "" {
-		ref = b.lastRef
-	}
-	if ref == "" {
 		ref = newRefID()
+	} else {
+		ref = asUUID(ref)
 	}
-	b.lastRef = ref
-	ref = asUUID(ref)
 	acct, err := b.agenticAccount()
 	if err != nil {
 		return OrderResult{ClientOrderID: ref, Symbol: symbol, Side: side, Quantity: qty, Error: err.Error()}, err

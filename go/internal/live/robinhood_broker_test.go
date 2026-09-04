@@ -76,7 +76,7 @@ func TestNewRobinhoodBrokerUsesServiceCallTool(t *testing.T) {
 	}
 }
 
-func TestPlaceMarketEmptyCfgSendsUUIDReusedOnRetry(t *testing.T) {
+func TestPlaceMarketEmptyCfgNewUUIDEachOrder(t *testing.T) {
 	var refs []string
 	b := &RobinhoodBroker{Call: func(name string, args map[string]any) (json.RawMessage, error) {
 		if name == "place_equity_order" {
@@ -85,6 +85,8 @@ func TestPlaceMarketEmptyCfgSendsUUIDReusedOnRetry(t *testing.T) {
 		switch name {
 		case "get_accounts":
 			return json.Marshal(map[string]any{"content": []any{map[string]any{"type": "text", "text": `{"accounts":[{"account_number":"RH1","agentic_allowed":true}]}`}}})
+		case "get_equity_positions":
+			return json.Marshal(map[string]any{"results": []any{map[string]any{"symbol": "AAPL", "quantity": 1.0, "market_value": 10.0}}})
 		case "get_equity_tradability", "review_equity_order":
 			return json.Marshal(map[string]any{"ok": true})
 		case "place_equity_order":
@@ -96,17 +98,33 @@ func TestPlaceMarketEmptyCfgSendsUUIDReusedOnRetry(t *testing.T) {
 	if _, err := b.PlaceMarket("AAPL", "BUY", 1); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := b.PlaceMarket("AAPL", "BUY", 1); err != nil {
+	if _, err := b.PlaceMarket("AAPL", "SELL", 1); err != nil {
 		t.Fatal(err)
 	}
-	if len(refs) != 2 {
+	if _, err := b.CloseMarket("AAPL"); err != nil {
+		t.Fatal(err)
+	}
+	if len(refs) != 3 {
 		t.Fatalf("places %v", refs)
 	}
-	if !uuidRE.MatchString(refs[0]) {
-		t.Fatalf("ref_id is not a UUID: %q", refs[0])
+	for i, id := range refs {
+		if !uuidRE.MatchString(id) {
+			t.Fatalf("ref[%d] is not a UUID: %q", i, id)
+		}
 	}
-	if refs[0] != refs[1] {
-		t.Fatalf("retry must reuse ref_id: %q vs %q", refs[0], refs[1])
+	if refs[0] == refs[1] || refs[0] == refs[2] || refs[1] == refs[2] {
+		t.Fatalf("distinct PlaceMarket/CloseMarket must not share ref_id: %v", refs)
+	}
+	same := "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+	refs = nil
+	if _, err := b.PlaceMarketCfg("AAPL", "BUY", 1, PlaceMarketCfg{ClientOrderID: same}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.PlaceMarketCfg("AAPL", "BUY", 1, PlaceMarketCfg{ClientOrderID: same}); err != nil {
+		t.Fatal(err)
+	}
+	if len(refs) != 2 || refs[0] != refs[1] || refs[0] != asUUID(same) {
+		t.Fatalf("retry with the same ClientOrderID must reuse ref_id: %v", refs)
 	}
 }
 
