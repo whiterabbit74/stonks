@@ -125,6 +125,10 @@ func TestVanillaUIAssets(t *testing.T) {
 		"Go API · Lightweight Charts",
 		"Go API · Lightweight Charts v5",
 		"GoAPI Lightweight Charts",
+		"Журнал ошибок",
+		"Показать ошибки",
+		"errorConsoleOpen",
+		"err-log-btn",
 	} {
 		if strings.Contains(a, banned) || strings.Contains(extra, banned) {
 			t.Errorf("footer must not contain %q", banned)

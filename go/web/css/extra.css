@@ -251,17 +251,6 @@ html.dark .enhance-opt:hover, html.dark .enhance-opt-on { background: #1e1b4b; }
   white-space: pre-wrap; word-break: break-word;
 }
 html.dark .raw-json pre { background: #0b1220; }
-.error-banner {
-  margin-bottom: 0.75rem; border-radius: 0.5rem; padding: 0.75rem 1rem;
-  border: 1px solid #fecaca; background: #fef2f2; color: #991b1b; font-size: 0.875rem;
-}
-html.dark .error-banner { background: rgba(127, 29, 29, 0.25); border-color: #7f1d1d; color: #fecaca; }
-.error-console {
-  position: fixed; inset: auto 1rem 5.5rem auto; z-index: 70; width: min(36rem, calc(100vw - 2rem));
-  max-height: 22rem; overflow: auto; border-radius: 0.75rem; padding: 0.75rem;
-  border: 1px solid #e5e7eb; background: #fff; box-shadow: 0 20px 40px rgba(0,0,0,0.18);
-}
-html.dark .error-console { background: #111827; border-color: #374151; }
 .hist-css { display: flex; align-items: flex-end; gap: 2px; height: 120px; }
 .hist-css span { display: block; min-width: 3px; flex: 1; border-radius: 2px 2px 0 0; }
 .cmp-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem; }

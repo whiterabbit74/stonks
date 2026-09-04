@@ -1,5 +1,4 @@
 import { Logo } from './Logo';
-import { ErrorLogButton } from './ErrorLogButton';
 
 interface FooterProps {
   apiBuildId?: string | null;
@@ -47,11 +46,8 @@ export function Footer({ apiBuildId }: FooterProps) {
         {/* Нижняя часть футера */}
         <div className="border-t border-gray-200 dark:border-gray-800 mt-8 pt-6">
           <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-            <div className="flex items-center gap-4">
-              <div className="text-sm text-gray-600 dark:text-gray-400">
-                © {currentYear} Trading strategies. Все права защищены.
-              </div>
-              <ErrorLogButton />
+            <div className="text-sm text-gray-600 dark:text-gray-400">
+              © {currentYear} Trading strategies. Все права защищены.
             </div>
             <div className="flex items-center gap-4 text-xs text-gray-500 dark:text-gray-500">
               <span>Powered by React & TypeScript</span>

@@ -356,9 +356,6 @@
     emaRunParams: null,
     priceChart: initPriceChart(),
     priceChartUi: { indOpen: false, styleFor: null, tickerOpen: false, fullscreen: false, chartId: 'chart-price' },
-    clientErrors: [],
-    errorConsoleOpen: false,
-    errorBanner: null,
     returnTo: null,
     splitApplyTicker: '',
     calImportStats: null,
@@ -558,40 +555,6 @@
       } catch (_) {}
     }
     return msg;
-  }
-  function logClientError(level, message, extra) {
-    const evt = {
-      id: Date.now() + '-' + Math.random().toString(16).slice(2),
-      ts: Date.now(),
-      level: level || 'error',
-      message: String(message || 'Ошибка'),
-      extra: extra || '',
-    };
-    state.clientErrors.push(evt);
-    if (state.clientErrors.length > 200) state.clientErrors.splice(0, state.clientErrors.length - 200);
-    state.errorBanner = evt.message;
-    const badge = document.getElementById('err-log-count');
-    if (badge) {
-      badge.textContent = state.clientErrors.length > 99 ? '99+' : String(state.clientErrors.length);
-      badge.classList.toggle('hidden', !state.clientErrors.length);
-    }
-    const banner = document.getElementById('error-banner');
-    if (banner) {
-      banner.classList.remove('hidden');
-      banner.querySelector('[data-err-text]') && (banner.querySelector('[data-err-text]').textContent = evt.message);
-    }
-    return evt;
-  }
-  function bindErrorLogging() {
-    if (window.__errLogBound) return;
-    window.__errLogBound = true;
-    window.addEventListener('error', (e) => {
-      logClientError('error', (e && e.message) || 'window.onerror', (e && e.error && e.error.stack) || '');
-    });
-    window.addEventListener('unhandledrejection', (e) => {
-      const r = e && e.reason;
-      logClientError('error', (r && r.message) || String(r || 'unhandledrejection'), r && r.stack);
-    });
   }
   function rememberReturnPath(path) {
     const p = path || state.page || location.pathname || '/data';
@@ -1472,20 +1435,6 @@
     }
     if (state.modal) html += state.modal;
     if (state.toast) html += `<div class="toast">${esc(state.toast)}</div>`;
-    if (state.errorConsoleOpen) {
-      const rows = (state.clientErrors || []).slice().reverse().map((e) => `<div class="border-b border-gray-100 dark:border-gray-800 py-1"><div class="text-[10px] text-gray-500">${esc(formatDateTimeET(e.ts))}</div><div class="text-xs">${esc(e.message)}</div>${e.extra ? `<pre class="text-[10px] whitespace-pre-wrap">${esc(e.extra)}</pre>` : ''}</div>`).join('') || '<p class="text-sm text-gray-500">Ошибок нет</p>';
-      html += `<div class="error-console" id="error-console">
-        <div class="flex items-center justify-between gap-2 mb-2">
-          <div class="text-sm font-semibold">Журнал ошибок</div>
-          <div class="flex gap-2">
-            <button type="button" id="err-copy" class="btn-secondary min-h-0 py-1 px-2 text-xs">Копировать</button>
-            <button type="button" id="err-clear" class="btn-secondary min-h-0 py-1 px-2 text-xs">Очистить</button>
-            <button type="button" id="err-close" class="btn-secondary min-h-0 py-1 px-2 text-xs">Закрыть</button>
-          </div>
-        </div>
-        ${rows}
-      </div>`;
-    }
     return html;
   }
   function toast(msg) {
@@ -1533,10 +1482,6 @@
             <h4 class="text-sm font-semibold uppercase tracking-wider">Система</h4>
             <div class="flex items-center justify-between text-sm"><span class="text-gray-600 dark:text-gray-400">Версия API:</span><span id="api-ver" class="font-mono text-xs bg-gray-100 px-2 py-1 rounded dark:bg-gray-800">${esc(apiVer || 'dev')}</span></div>
             <div class="flex items-center justify-between text-sm"><span class="text-gray-600 dark:text-gray-400">Статус:</span><span class="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs bg-green-100 text-green-800 dark:bg-green-950/30 dark:text-green-200"><span class="w-1.5 h-1.5 bg-green-500 rounded-full"></span>Online</span></div>
-            <button type="button" id="err-log-btn" class="mt-2 inline-flex items-center gap-2 text-xs px-2 py-1 rounded border border-gray-200 dark:border-gray-700">
-              Показать ошибки
-              <span id="err-log-count" class="rounded-full bg-red-600 text-white px-1.5 ${state.clientErrors.length ? '' : 'hidden'}">${state.clientErrors.length > 99 ? '99+' : state.clientErrors.length}</span>
-            </button>
           </div>
         </div>
         <div class="border-t border-gray-200 dark:border-gray-800 mt-8 pt-6 flex flex-col md:flex-row items-center justify-between gap-4">
@@ -1586,7 +1531,6 @@
             <div id="mobile-drawer" class="${state.mobileOpen ? '' : 'hidden'} border-t border-gray-200 dark:border-gray-700 bg-white/95 backdrop-blur-sm dark:bg-slate-900/95"></div>
           </header>
           <main id="main-content" class="flex-1 w-full px-4 sm:px-6 lg:px-8 pt-6 pb-32 md:pb-24 safe-area-pb">
-            <div id="error-banner" class="error-banner ${state.errorBanner ? '' : 'hidden'}"><div class="flex items-start justify-between gap-2"><span data-err-text>${esc(state.errorBanner || '')}</span><button type="button" id="err-banner-close" class="text-sm">✕</button></div></div>
             <div id="page-root"></div>
           </main>
           <nav class="bottom-nav md:hidden fixed bottom-0 left-0 right-0 bg-white/95 dark:bg-gray-900/95 backdrop-blur-lg border-t border-gray-200 dark:border-gray-800 z-40 grid grid-cols-5 items-center h-16" role="navigation" aria-label="Основная навигация">${bottom}</nav>
@@ -2834,25 +2778,6 @@
         if (fn) Promise.resolve().then(fn).catch((err) => toast(errText(err)));
         return;
       }
-      if (e.target.closest('#err-log-btn')) {
-        e.preventDefault();
-        state.errorConsoleOpen = !state.errorConsoleOpen;
-        document.getElementById('overlay-root').innerHTML = overlay();
-        return;
-      }
-      if (e.target.closest('#err-close')) { state.errorConsoleOpen = false; document.getElementById('overlay-root').innerHTML = overlay(); return; }
-      if (e.target.closest('#err-clear')) { state.clientErrors = []; state.errorBanner = null; document.getElementById('overlay-root').innerHTML = overlay(); return; }
-      if (e.target.closest('#err-copy')) {
-        const text = (state.clientErrors || []).map((x) => `[${x.level}] ${x.message}\n${x.extra || ''}`).join('\n---\n');
-        if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(() => toast('Скопировано')).catch(() => toast('Не удалось скопировать'));
-        else toast('Буфер обмена недоступен');
-        return;
-      }
-      if (e.target.closest('#err-banner-close')) {
-        state.errorBanner = null;
-        document.getElementById('error-banner')?.classList.add('hidden');
-        return;
-      }
     });
     document.addEventListener('keydown', (e) => {
       if (e.key !== 'Escape') return;
@@ -2936,12 +2861,6 @@
     document.getElementById('page-root').innerHTML = pageHTML();
     const ov = document.getElementById('overlay-root');
     if (ov) ov.innerHTML = overlay();
-    const banner = document.getElementById('error-banner');
-    if (banner) {
-      banner.classList.toggle('hidden', !state.errorBanner);
-      const t = banner.querySelector('[data-err-text]');
-      if (t) t.textContent = state.errorBanner || '';
-    }
     await afterRender();
   }
 
@@ -4898,7 +4817,6 @@
   }
 
   async function start() {
-    bindErrorLogging();
     if (typeof API.onUnauthorized === 'function') API.onUnauthorized(handleUnauthorized);
     try {
       const mq = matchMedia('(prefers-color-scheme: dark)');
