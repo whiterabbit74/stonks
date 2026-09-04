@@ -1356,12 +1356,19 @@ func (s *Server) handleWebullBatch(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 400, map[string]any{"error": "Too many symbols (max 50)"})
 		return
 	}
+	// One snapshot request for the whole list; anything it does not answer for
+	// falls back to a single-symbol call below.
+	batch, _ := s.Providers.QuoteBatch(symbols, "webull")
 	var results []map[string]any
 	for _, symbol := range symbols {
-		payload, err := s.Providers.Quote(symbol, "webull")
-		if err != nil {
-			results = append(results, map[string]any{"symbol": symbol, "error": err.Error()})
-			continue
+		payload, ok := batch[symbol]
+		if !ok {
+			var err error
+			payload, err = s.Providers.Quote(symbol, "webull")
+			if err != nil {
+				results = append(results, map[string]any{"symbol": symbol, "error": err.Error()})
+				continue
+			}
 		}
 		norm := providers.NormalizeIntradayRange(payload.Range, payload.Quote)
 		results = append(results, map[string]any{

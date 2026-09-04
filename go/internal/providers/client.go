@@ -491,6 +491,76 @@ func (c *Client) webullQuote(symbol string) (QuotePayload, error) {
 	if row == nil {
 		return QuotePayload{}, &HTTPError{404, "Webull snapshot: no data for " + symbol}
 	}
+	return snapshotPayload(row), nil
+}
+
+// WebullBatchMax caps the symbols put in one snapshot request.
+const WebullBatchMax = 50
+
+// QuoteBatch fetches several symbols in a single provider call where the
+// provider has an endpoint for it. Webull's snapshot takes `symbols` plural
+// and answers with a row per symbol, so a whole watch list costs one signed
+// request instead of one per ticker — fewer calls, fewer chances for a single
+// flaky reply to decide the day.
+//
+// A provider without a batch endpoint returns (nil, nil): callers keep their
+// per-symbol path, which also owns the provider fallback chain. The same is
+// true for any symbol missing from the reply, so an endpoint that turns out to
+// answer for one symbol only still works, just without the saving.
+func (c *Client) QuoteBatch(symbols []string, provider string) (map[string]QuotePayload, error) {
+	if provider != "webull" {
+		return nil, nil
+	}
+	if c.Webull == nil {
+		return nil, &HTTPError{400, "Webull credentials are not configured"}
+	}
+	want := map[string]bool{}
+	var clean []string
+	for _, s := range symbols {
+		sym := store.SafeTicker(s)
+		if sym == "" || want[sym] {
+			continue
+		}
+		want[sym] = true
+		clean = append(clean, sym)
+	}
+	if len(clean) == 0 {
+		return nil, nil
+	}
+	out := map[string]QuotePayload{}
+	for start := 0; start < len(clean); start += WebullBatchMax {
+		end := start + WebullBatchMax
+		if end > len(clean) {
+			end = len(clean)
+		}
+		chunk := clean[start:end]
+		resp, err := c.Webull.Snapshot(strings.Join(chunk, ","))
+		if err != nil {
+			status := 502
+			if resp != nil && resp.Status >= 400 {
+				status = resp.Status
+			}
+			return out, &HTTPError{status, err.Error()}
+		}
+		for _, raw := range snapshotRows(resp.Data) {
+			row, ok := raw.(map[string]any)
+			if !ok {
+				continue
+			}
+			// Strict symbol match: unlike the single-symbol path there is no
+			// "first row wins" fallback here — a mislabelled row would hand one
+			// ticker's IBS to another.
+			sym := store.SafeTicker(rowSymbol(row))
+			if sym == "" || !want[sym] {
+				continue
+			}
+			out[sym] = snapshotPayload(row)
+		}
+	}
+	return out, nil
+}
+
+func snapshotPayload(row map[string]any) QuotePayload {
 	open := pickNum(row, "open", "openPrice", "open_price", "o")
 	high := pickNum(row, "high", "highPrice", "high_price", "day_high", "h")
 	low := pickNum(row, "low", "lowPrice", "low_price", "day_low", "l")
@@ -502,7 +572,16 @@ func (c *Client) webullQuote(symbol string) (QuotePayload, error) {
 		Range:   map[string]any{"open": open, "high": high, "low": low},
 		Quote:   map[string]any{"open": open, "high": high, "low": low, "current": current, "prevClose": prevClose},
 		DateKey: today,
-	}, nil
+	}
+}
+
+func rowSymbol(row map[string]any) string {
+	for _, k := range []string{"symbol", "ticker", "disSymbol", "display_symbol"} {
+		if s, ok := row[k].(string); ok && s != "" {
+			return s
+		}
+	}
+	return ""
 }
 
 func pickSnapshotRow(data any, symbol string) map[string]any {
@@ -517,13 +596,7 @@ func pickSnapshotRow(data any, symbol string) map[string]any {
 		if first == nil {
 			first = m
 		}
-		got := ""
-		if s, ok := m["symbol"].(string); ok && s != "" {
-			got = s
-		} else if s, ok := m["ticker"].(string); ok && s != "" {
-			got = s
-		}
-		if strings.ToUpper(got) == want {
+		if strings.ToUpper(rowSymbol(m)) == want {
 			return m
 		}
 	}

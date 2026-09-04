@@ -734,10 +734,18 @@ func (e *Engine) liveQuote(symbol string, chain []string) (providers.QuotePayloa
 	return payload, provider, err
 }
 
+// quoteBatcher is the optional batch side of a QuoteSource: one provider call
+// for many symbols. Kept a type assertion so a QuoteSource (tests included)
+// that has no batch endpoint needs no changes.
+type quoteBatcher interface {
+	QuoteBatch(symbols []string, provider string) (map[string]providers.QuotePayload, error)
+}
+
 func (e *Engine) prefetchQuotes(symbols []string, chain []string) {
 	if len(symbols) == 0 {
 		return
 	}
+	e.prefetchBatch(symbols, chain)
 	done := make(chan struct{}, len(symbols))
 	for _, sym := range symbols {
 		go func(s string) {
@@ -750,6 +758,78 @@ func (e *Engine) prefetchQuotes(symbols []string, chain []string) {
 	}
 }
 
+// prefetchBatch asks every provider in the chain that has a batch endpoint for
+// all symbols still missing a fresh quote from it, and files each answer under
+// that provider's own cache key. fetchLiveQuote reads those keys before it
+// calls out, so the chain is still walked in order, per symbol, with the same
+// logging — the calls are simply already paid for. Whatever a batch does not
+// answer (an unsupported provider, a failed call, an unusable range) is left to
+// the per-symbol path, so this can only save requests, never lose a quote.
+func (e *Engine) prefetchBatch(symbols []string, chain []string) {
+	if e == nil {
+		return
+	}
+	if len(chain) == 0 {
+		chain = realtimeQuoteProviders
+	}
+	b, ok := e.quotes().(quoteBatcher)
+	if !ok {
+		return
+	}
+	for _, p := range chain {
+		var missing []string
+		for _, sym := range symbols {
+			if _, cached := e.cachedProviderQuote(sym, p); !cached {
+				missing = append(missing, sym)
+			}
+		}
+		if len(missing) < 2 {
+			continue
+		}
+		res, err := b.QuoteBatch(missing, p)
+		if err != nil {
+			e.logAuto("quote_batch_failed", "", map[string]any{
+				"provider": p, "symbols": len(missing), "error": err.Error(),
+			})
+		}
+		for sym, payload := range res {
+			if _, good := ibsFromQuote(payload); !good {
+				// An unusable range must not be cached: the per-symbol path still
+				// has to try this provider properly, then the rest of the chain.
+				continue
+			}
+			e.putProviderQuote(sym, p, payload)
+		}
+	}
+}
+
+// cachedProviderQuote reads a quote already fetched from one specific provider
+// (as opposed to "whatever the chain served"), which is what a batch produces.
+func (e *Engine) cachedProviderQuote(symbol, provider string) (providers.QuotePayload, bool) {
+	if e == nil {
+		return providers.QuotePayload{}, false
+	}
+	key := quoteCacheKey(symbol, []string{provider})
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	c, ok := e.quoteCache[key]
+	if !ok || time.Since(c.at) >= quoteCacheTTL {
+		return providers.QuotePayload{}, false
+	}
+	return c.payload, true
+}
+
+func (e *Engine) putProviderQuote(symbol, provider string, payload providers.QuotePayload) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.quoteCache == nil {
+		e.quoteCache = map[string]quoteCacheEntry{}
+	}
+	e.quoteCache[quoteCacheKey(symbol, []string{provider})] = quoteCacheEntry{
+		payload: payload, provider: provider, at: time.Now(),
+	}
+}
+
 func (e *Engine) fetchLiveQuote(symbol string, chain []string) (providers.QuotePayload, string, error) {
 	qs := e.quotes()
 	if qs == nil {
@@ -758,7 +838,11 @@ func (e *Engine) fetchLiveQuote(symbol string, chain []string) (providers.QuoteP
 	var lastErr error
 	for i, p := range chain {
 		for attempt := 1; attempt <= quoteAttempts; attempt++ {
-			q, err := qs.Quote(symbol, p)
+			q, batched := e.cachedProviderQuote(symbol, p)
+			var err error
+			if !batched {
+				q, err = qs.Quote(symbol, p)
+			}
 			if err == nil {
 				if _, good := ibsFromQuote(q); !good {
 					lastErr = fmt.Errorf("%s: no usable intraday range", p)
