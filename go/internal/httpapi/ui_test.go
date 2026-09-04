@@ -75,6 +75,12 @@ func TestVanillaUIAssets(t *testing.T) {
 	if strings.Contains(a, "IBS Trading Strategy") || strings.Contains(a, ">IBS Trading<") {
 		t.Fatal("old IBS Trading Strategy brand must be replaced")
 	}
+	if strings.Contains(a, "watch-mobile-tabs") || strings.Contains(extra, "watch-mobile-tabs") {
+		t.Fatal("monitoring tabs must not be a mobile-only strip")
+	}
+	if !strings.Contains(a, "analysisTabs(WATCH_TABS") {
+		t.Fatal("monitoring page must keep Сводка/Сделки/Тикеры/EMA tabs on the page")
+	}
 	if !strings.Contains(a, "Trading strategies") {
 		t.Fatal("missing brand Trading strategies")
 	}

@@ -1265,19 +1265,7 @@
     return `${icon(ico, 'w-5 h-5')}<span class="app-side-lab">${esc(lab)}</span>`;
   }
   function sideNavHTML() {
-    return TABS.map((t) => `<a href="${t.to}" data-nav class="app-side-item ${state.page === t.to ? 'app-side-item-on' : ''}" title="${esc(t.label)}">${sideItemInner(t.icon, t.label)}</a>${t.to === '/watches' ? '<div id="app-side-watch" class="app-side-watch"></div>' : ''}`).join('');
-  }
-  function watchNavItemsHTML() {
-    return WATCH_TABS.map((t) => {
-      const on = t.id === state.watchTab;
-      return `<button type="button" data-wtab="${esc(t.id)}" class="app-side-item app-side-sub ${on ? 'app-side-item-on' : ''}" title="${esc(t.label)}" aria-current="${on ? 'page' : 'false'}">${sideItemInner(t.icon, t.label)}</button>`;
-    }).join('');
-  }
-  function watchMobileTabsHTML() {
-    return `<div class="watch-mobile-tabs" role="tablist" aria-label="Разделы мониторинга">${WATCH_TABS.map((t) => {
-      const on = t.id === state.watchTab;
-      return `<button type="button" data-wtab="${esc(t.id)}" role="tab" aria-selected="${on}" class="watch-mobile-tab ${on ? 'watch-mobile-tab-on' : ''}" title="${esc(t.label)}">${icon(t.icon, 'w-4 h-4')}<span>${esc(t.label)}</span></button>`;
-    }).join('')}</div>`;
+    return TABS.map((t) => `<a href="${t.to}" data-nav class="app-side-item ${state.page === t.to ? 'app-side-item-on' : ''}" title="${esc(t.label)}">${sideItemInner(t.icon, t.label)}</a>`).join('');
   }
   function applyNavCollapsed() {
     const slim = !!state.navCollapsed;
@@ -1290,9 +1278,9 @@
     btn.setAttribute('aria-expanded', slim ? 'false' : 'true');
     btn.innerHTML = `${icon(slim ? 'chevronright' : 'chevronleft', 'w-5 h-5')}<span class="app-side-lab">${slim ? 'Показать' : 'Скрыть'}</span>`;
   }
-  function analysisTabs(tabs, active, attr) {
+  function analysisTabs(tabs, active, attr, label) {
     return `<div class="border-b border-gray-200 dark:border-gray-700 overflow-x-auto">
-      <div class="flex items-center gap-2 flex-nowrap min-w-max px-1" role="tablist">
+      <div class="flex items-center gap-2 flex-nowrap min-w-max px-1" role="tablist"${label ? ` aria-label="${esc(label)}"` : ''}>
         ${tabs.map((t) => `<button ${attr}="${esc(t.id)}" role="tab" aria-selected="${t.id === active}" tabindex="${t.id === active ? 0 : -1}" class="px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap sm:px-6 ${t.id === active ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'}">${esc(t.label)}</button>`).join('')}
       </div>
     </div>`;
@@ -2243,8 +2231,8 @@
         </div>`;
     return `
       ${pageHeader('Мониторинг', 'Отслеживание позиций и уведомления в Telegram', `<button id="watch-refresh" class="icon-btn icon-btn-md icon-btn-glass" title="Обновить список" aria-label="Обновить список">${icon('refresh', 'w-4 h-4')}</button>`)}
-      ${watchMobileTabsHTML()}
-      <p class="text-sm text-gray-600 dark:text-gray-300">Глобальный порог уведомлений: ${esc(thr)}% <span class="ml-2 text-xs text-gray-500">(применяется ко всем отслеживаемым акциям)</span></p>
+      ${analysisTabs(WATCH_TABS, state.watchTab, 'data-wtab', 'Разделы мониторинга')}
+      <p class="mt-4 text-sm text-gray-600 dark:text-gray-300">Глобальный порог уведомлений: ${esc(thr)}% <span class="ml-2 text-xs text-gray-500">(применяется ко всем отслеживаемым акциям)</span></p>
       <p class="text-sm text-gray-600 dark:text-gray-300 mb-3">До следующего подсчёта сигналов: <span id="watch-countdown">${formatDuration(secondsToNextSignal())}</span></p>
       <div class="rounded-lg border border-gray-200 bg-white p-4 dark:bg-gray-800 dark:border-gray-700 mb-4">
         <div class="flex flex-wrap items-center justify-between gap-3">
@@ -2838,8 +2826,6 @@
     });
     const gear = document.getElementById('settings-btn');
     if (gear) gear.classList.toggle('app-side-item-on', state.page === '/settings');
-    const watchHost = document.getElementById('app-side-watch');
-    if (watchHost) watchHost.innerHTML = state.page === '/watches' ? watchNavItemsHTML() : '';
     applyNavCollapsed();
   }
 
