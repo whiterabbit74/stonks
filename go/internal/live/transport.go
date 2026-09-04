@@ -120,8 +120,11 @@ type MemoryBroker struct {
 	FillPrice        float64
 	LastCfg          PlaceMarketCfg
 	FailPositions    error
-	FailDetail       error
-	FailOpenOrders   error
+	// FailPositionsN, when > 0, limits FailPositions to that many calls: the
+	// transient read a retry is expected to absorb. 0 keeps failing forever.
+	FailPositionsN int
+	FailDetail     error
+	FailOpenOrders error
 	// ListingLag makes OrderDetail return ErrOrderUnavailable unless SetDetail
 	// has an explicit row for that id. Models Robinhood list-based lookup.
 	ListingLag   bool
@@ -258,9 +261,19 @@ func (m *MemoryBroker) Account() (map[string]any, error) {
 }
 
 func (m *MemoryBroker) Positions() ([]any, error) {
+	m.mu.Lock()
 	if m.FailPositions != nil {
-		return nil, m.FailPositions
+		err := m.FailPositions
+		if m.FailPositionsN > 0 {
+			m.FailPositionsN--
+			if m.FailPositionsN == 0 {
+				m.FailPositions = nil
+			}
+		}
+		m.mu.Unlock()
+		return nil, err
 	}
+	m.mu.Unlock()
 	if m.Pos != nil {
 		return m.Pos, nil
 	}

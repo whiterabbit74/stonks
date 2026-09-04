@@ -57,13 +57,20 @@ func (e *Engine) executeAll(w execWindow, ev EvalResult, trigger, corr string, s
 			e.logAuto("execution_skipped", corr, map[string]any{"broker": name, "reason": "journal_unavailable"})
 			continue
 		}
-		open, held, heldErr := e.booksFor(name, br, rows)
+		open, held, heldErr := e.booksFor(name, br, rows, w)
 		one.OpenTrade = open
 		one.Decision = decideLiveAction(ev.Quotes, ev.Symbols, held, heldErr, open, allowE, allowX)
 		decisions[name] = one.Decision
 		action, _ := one.Decision["action"].(string)
 		if action == "none" {
-			e.logAuto("execution_skipped", corr, map[string]any{"broker": name, "reason": one.Decision["reason"]})
+			kv := map[string]any{"broker": name, "reason": one.Decision["reason"]}
+			if heldErr != nil {
+				// Without the error text a broker_positions_unavailable skip is
+				// unexplainable after the fact — the day's entry is gone and the
+				// log says only that positions could not be read.
+				kv["error"] = heldErr.Error()
+			}
+			e.logAuto("execution_skipped", corr, kv)
 			continue
 		}
 		if action == "entry" && !allowE {

@@ -253,7 +253,7 @@ func (e *Engine) Evaluate() EvalResult {
 			Live:        enabled,
 		}
 	}
-	open, held, heldErr := e.booksFor("webull", e.defaultBroker(), brokerTrades)
+	open, held, heldErr := e.booksFor("webull", e.defaultBroker(), brokerTrades, backgroundWindow())
 	quoteSymbols := symbols
 	if open != nil {
 		openSym := store.SafeTicker(fmt.Sprint(open["symbol"]))
@@ -377,8 +377,8 @@ func decideLiveAction(quotes []map[string]any, symbols []string, held map[string
 	return none("no_signal", nil, nil)
 }
 
-func (e *Engine) booksFor(name string, br Broker, rows []map[string]any) (open map[string]any, held map[string]float64, heldErr error) {
-	held, heldErr = e.heldSymbolsOn(br)
+func (e *Engine) booksFor(name string, br Broker, rows []map[string]any, w execWindow) (open map[string]any, held map[string]float64, heldErr error) {
+	held, heldErr = e.heldSymbolsOn(br, w)
 	open = store.OpenBrokerTradeFor(rows, name)
 	if open == nil && heldErr == nil && len(held) == 1 {
 		for sym, qty := range held {
@@ -389,14 +389,22 @@ func (e *Engine) booksFor(name string, br Broker, rows []map[string]any) (open m
 }
 
 func (e *Engine) liveHeldSymbols() (map[string]float64, error) {
-	return e.heldSymbolsOn(e.defaultBroker())
+	return e.heldSymbolsOn(e.defaultBroker(), backgroundWindow())
 }
 
-func (e *Engine) heldSymbolsOn(br Broker) (map[string]float64, error) {
+// heldSymbolsOn reads the broker's live positions. The read is retried like
+// every other broker read on the T-1 path: a single transient failure here
+// turns the day's decision into broker_positions_unavailable and drops the
+// entry, even though the same call succeeded seconds earlier in
+// t1BrokerReconcile. w bounds the retries by the close-of-session budget when
+// the caller has one.
+func (e *Engine) heldSymbolsOn(br Broker, w execWindow) (map[string]float64, error) {
 	if br == nil {
 		return map[string]float64{}, nil
 	}
-	pos, err := br.Positions()
+	pos, err := retryBrokerReadWindow(e, w, "positions", func(context.Context) ([]any, error) {
+		return br.Positions()
+	})
 	if err != nil {
 		return nil, err
 	}
