@@ -261,8 +261,10 @@ func watchThresholds(watch, cfg map[string]any) (low, high float64, highInvalid 
 // realtimeQuoteProviders are the providers whose Quote() returns an intraday
 // snapshot. alpha_vantage, twelve_data and polygon are deliberately absent:
 // their Quote() is synthesised from daily history, so it would answer a live
-// IBS question with yesterday's bar. Add "robinhood" here once the provider
-// client implements a real-time quote.
+// IBS question with yesterday's bar. Robinhood is here too (its Quote() is a
+// real-time equity quote, providers/robinhood.go robinhoodQuote) and is also
+// selectable as the primary provider on the autotrade settings page (P2-6) -
+// it is not a silent fallback the operator never chose.
 var realtimeQuoteProviders = []string{"finnhub", "webull", "robinhood"}
 
 func isRealtimeQuoteProvider(p string) bool {

@@ -340,3 +340,100 @@ func TestBrokerCloseHandlerDispatchesByKind(t *testing.T) {
 		t.Fatal("data-close-pos handler must branch on the same `kind` pageBroker used to render the tab")
 	}
 }
+
+// TestAutotradeEntriesExitsReadsEngineTruth is the P2-1 regression: the SPA
+// used to show "Entries / Exits: да" whenever the flag was merely not
+// `false` (`!== false`), while the engine (go/internal/live/config.go
+// allowFlag) treats a missing key as false. A saved config with no
+// allowNewEntries/allowExits key at all would show "да" in the UI while the
+// engine reads "нет". The fix must read `=== true` and use the per-broker
+// value from ac.brokers, not one flag shared across brokers.
+func TestAutotradeEntriesExitsReadsEngineTruth(t *testing.T) {
+	app, err := os.ReadFile(filepath.Join("..", "..", "web", "js", "app.js"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := string(app)
+	if strings.Contains(a, "ac.allowNewEntries !== false") || strings.Contains(a, "ac.allowExits !== false") {
+		t.Fatal("Entries/Exits must not treat a missing flag as true (`!== false`); the engine defaults missing keys to false")
+	}
+	if !strings.Contains(a, "brokerAllowFlag(ac, kind, 'allowNewEntries')") || !strings.Contains(a, "brokerAllowFlag(ac, kind, 'allowExits')") {
+		t.Fatal("Entries/Exits must be read per broker (ac.brokers[kind]), not one flag shared across brokers")
+	}
+}
+
+// TestAutotradeTestBuyDispatchesByKind is part of P2-3: the test-buy button
+// on the shared autotrade tab used to always call the Webull endpoint
+// (API.testBuy), including on the Robinhood page.
+func TestAutotradeTestBuyDispatchesByKind(t *testing.T) {
+	app, err := os.ReadFile(filepath.Join("..", "..", "web", "js", "app.js"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := string(app)
+	start := strings.Index(a, "getElementById('auto-test-buy')")
+	if start < 0 {
+		t.Fatal("auto-test-buy handler not found")
+	}
+	end := strings.Index(a[start:], "});")
+	if end < 0 {
+		t.Fatal("auto-test-buy handler not closed")
+	}
+	handler := a[start : start+end]
+	if !strings.Contains(handler, "API.rhTestBuy(") {
+		t.Fatal("auto-test-buy handler never calls API.rhTestBuy - test buys on the Robinhood page still hit Webull")
+	}
+	if !strings.Contains(handler, "kind === 'robinhood'") {
+		t.Fatal("auto-test-buy handler must branch on the same `kind` pageBroker used to render the tab")
+	}
+}
+
+// TestAutotradeTabSplitsSharedAndBrokerParts is P2-3: the autotrade tab used
+// to render the Webull token panel and the Webull-only "BUY AAL" test button
+// unconditionally, even on /robinhood. It must branch by `kind`.
+func TestAutotradeTabSplitsSharedAndBrokerParts(t *testing.T) {
+	app, err := os.ReadFile(filepath.Join("..", "..", "web", "js", "app.js"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := string(app)
+	start := strings.Index(a, "tab === 'autotrade'")
+	if start < 0 {
+		t.Fatal("autotrade tab not found")
+	}
+	end := strings.Index(a[start:], "tab === 'monitor'")
+	if end < 0 {
+		t.Fatal("autotrade tab body not bounded")
+	}
+	section := a[start : start+end]
+	if !strings.Contains(section, "kind === 'robinhood'") {
+		t.Fatal("autotrade tab must branch its connection card on `kind`")
+	}
+	if !strings.Contains(section, "rhStatus") {
+		t.Fatal("autotrade tab must show a Robinhood OAuth status card, not just the Webull token panel")
+	}
+}
+
+// TestAutotradeCardDisclaimsExecutionWindowAndSlippage covers P2-4: the
+// "Окно исполнения" / "Порог проскальзывания" card on the autotrade tab must
+// carry the same caveat as the settings page - neither is a real safety
+// guard for the regular T-1 run.
+func TestAutotradeCardDisclaimsExecutionWindowAndSlippage(t *testing.T) {
+	app, err := os.ReadFile(filepath.Join("..", "..", "web", "js", "app.js"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := string(app)
+	start := strings.Index(a, "tab === 'autotrade'")
+	if start < 0 {
+		t.Fatal("autotrade tab not found")
+	}
+	end := strings.Index(a[start:], "tab === 'monitor'")
+	if end < 0 {
+		t.Fatal("autotrade tab body not bounded")
+	}
+	section := a[start : start+end]
+	if !strings.Contains(section, "не являются предохранителями сделки") {
+		t.Fatal("autotrade tab card must disclaim that the execution window and slippage threshold are not real trade safeguards")
+	}
+}

@@ -50,7 +50,12 @@ func (c *Client) robinhoodQuote(symbol string) (QuotePayload, error) {
 	open := robinhoodFloat(q, "open", "open_price")
 	high := robinhoodFloat(q, "high", "high_price")
 	low := robinhoodFloat(q, "low", "low_price")
-	cur := robinhoodFloat(q, "last_trade_price", "last_extended_hours_trade_price", "price", "close")
+	// last_extended_hours_trade_price is deliberately excluded (P2-6): it is a
+	// postmarket print, and ibsFromQuote clamps IBS to [0,1], so an
+	// after-hours price outside the regular session's [low, high] range would
+	// silently read as a "perfect" 0 or 1 entry/exit signal instead of the
+	// garbage it is.
+	cur := robinhoodFloat(q, "last_trade_price", "price", "close")
 	prev := robinhoodFloat(q, "previous_close", "adjusted_previous_close")
 	return QuotePayload{
 		Range:   map[string]any{"open": open, "high": high, "low": low},

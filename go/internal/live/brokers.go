@@ -12,7 +12,20 @@ type WebullExtras interface {
 
 var brokerBoolFields = []string{"enabled", "allowNewEntries", "allowExits"}
 
+// sanitizeBrokers only ever changes per-broker flags from an explicit
+// "brokers" object in the request (P2-2, variant (a) of the roadmap). The
+// flat top-level fields (`enabled`/`allowNewEntries`/`allowExits`) used to be
+// migrated into brokers.webull whenever the request omitted "brokers" -
+// which meant the master "Включить автоторговлю" toggle on the Webull page
+// silently overwrote Webull's individual permissions, while Robinhood was
+// never touched. The master toggle already has its own effect
+// (autoTrading.enabled gates submitEvaluated for every broker at once), so
+// there is nothing for the flat-to-broker migration to add - it only ever
+// caused a surprise. Per-broker settings now change exclusively through an
+// explicit "brokers" payload; the nextFlat parameter is kept for signature
+// compatibility with callers but is intentionally unused here.
 func sanitizeBrokers(input, current, nextFlat map[string]any) map[string]any {
+	_ = nextFlat
 	out := map[string]any{}
 	if cur, ok := current["brokers"].(map[string]any); ok {
 		for k, v := range cur {
@@ -22,41 +35,27 @@ func sanitizeBrokers(input, current, nextFlat map[string]any) map[string]any {
 		}
 	}
 	raw, hasNested := input["brokers"].(map[string]any)
-	if hasNested {
-		for name, v := range raw {
-			if name != "webull" && name != "robinhood" {
-				continue
-			}
-			patch, ok := v.(map[string]any)
-			if !ok {
-				continue
-			}
-			cur, _ := out[name].(map[string]any)
-			if cur == nil {
-				cur = map[string]any{}
-			}
-			for _, f := range brokerBoolFields {
-				if b, ok := patch[f].(bool); ok {
-					cur[f] = b
-				}
-			}
-			out[name] = cur
-		}
+	if !hasNested {
 		return out
 	}
-	wmap, _ := out["webull"].(map[string]any)
-	if wmap == nil {
-		wmap = map[string]any{}
-	}
-	for _, f := range brokerBoolFields {
-		if b, ok := input[f].(bool); ok {
-			wmap[f] = b
-		} else if b, ok := nextFlat[f].(bool); ok {
-			wmap[f] = b
+	for name, v := range raw {
+		if name != "webull" && name != "robinhood" {
+			continue
 		}
-	}
-	if len(wmap) > 0 {
-		out["webull"] = wmap
+		patch, ok := v.(map[string]any)
+		if !ok {
+			continue
+		}
+		cur, _ := out[name].(map[string]any)
+		if cur == nil {
+			cur = map[string]any{}
+		}
+		for _, f := range brokerBoolFields {
+			if b, ok := patch[f].(bool); ok {
+				cur[f] = b
+			}
+		}
+		out[name] = cur
 	}
 	return out
 }

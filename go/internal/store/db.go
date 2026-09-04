@@ -742,9 +742,14 @@ func defaultSettings() map[string]any {
 			"enabled": false, "provider": "finnhub", "lowIBS": 0.1, "highIBS": 0.75,
 			"executionWindowSeconds": 90,
 			"entryCapitalMode":       "standard_safe",
+			// No preset "enabled" here: an explicit false would make
+			// brokerFlags() treat webull as configured (cfgHas) and stop
+			// falling back to the top-level enabled/allowNewEntries/allowExits
+			// flags, which is exactly the fallback P2-2 relies on for a
+			// database that has never saved a per-broker object yet.
 			"brokers": map[string]any{
-				"webull":    map[string]any{"enabled": false},
-				"robinhood": map[string]any{"enabled": false},
+				"webull":    map[string]any{},
+				"robinhood": map[string]any{},
 			},
 			"maxSlippageBps": 25, "lastModifiedAt": nil,
 		},

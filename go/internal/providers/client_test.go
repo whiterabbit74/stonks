@@ -288,3 +288,39 @@ func TestFinnhubMismatchedCandleArrays(t *testing.T) {
 		t.Fatalf("got %v", err)
 	}
 }
+
+// TestRobinhoodQuoteIgnoresExtendedHoursPrice is P2-6: last_extended_hours_trade_price
+// is a postmarket print. ibsFromQuote clamps IBS into [0,1], so a postmarket
+// price sitting outside the regular session's [low, high] range used to
+// silently become a "perfect" 0 or 1 entry/exit signal instead of being
+// rejected as unusable. robinhoodQuote's current-price candidate list must
+// no longer include that field.
+func TestRobinhoodQuoteIgnoresExtendedHoursPrice(t *testing.T) {
+	raw := []byte(`{"results":[{"symbol":"AAPL","open":100,"high":105,"low":98,
+		"last_extended_hours_trade_price":150,"previous_close":99}]}`)
+	q := mapFromJSON(raw)
+	if q["symbol"] != "AAPL" {
+		t.Fatalf("quote parsing failed: %+v", q)
+	}
+	low := robinhoodFloat(q, "low", "low_price")
+	high := robinhoodFloat(q, "high", "high_price")
+	cur := robinhoodFloat(q, "last_trade_price", "price", "close")
+	if cur == 150 {
+		t.Fatal("current must never be sourced from last_extended_hours_trade_price")
+	}
+	// With no regular-session trade/price/close field present, current must
+	// come back unset (0) rather than the postmarket print - 0 correctly
+	// falls outside [low, high] and gets rejected downstream instead of
+	// silently becoming a "perfect" IBS 0/1 signal.
+	if cur != 0 {
+		t.Fatalf("expected no usable current price, got %v", cur)
+	}
+	if cur >= low && cur <= high {
+		t.Fatalf("unexpected: unset current accidentally landed inside [low, high]=[%v, %v]", low, high)
+	}
+	// The extended-hours field is still readable in the raw payload (in case
+	// something else wants it) - it is only excluded from the IBS candidate list.
+	if robinhoodFloat(q, "last_extended_hours_trade_price") != 150 {
+		t.Fatal("last_extended_hours_trade_price should still parse from the payload")
+	}
+}

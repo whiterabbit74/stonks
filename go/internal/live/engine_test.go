@@ -719,3 +719,43 @@ func TestCancelOpenOrdersBeforeEntry(t *testing.T) {
 		t.Fatalf("cancelled %+v", br.Cancelled)
 	}
 }
+
+// TestPatchAutoConfigMasterToggleDoesNotTouchBrokerFlags is the P2-2 regression:
+// the flat "enabled" field on the master switch used to migrate into
+// brokers.webull, silently overwriting Webull's own allowNewEntries/allowExits.
+// Variant (a) from the roadmap: only an explicit "brokers" object changes
+// per-broker flags.
+func TestPatchAutoConfigMasterToggleDoesNotTouchBrokerFlags(t *testing.T) {
+	dir := t.TempDir()
+	db, err := store.Open(filepath.Join(dir, "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	e := New(db, &MemoryQuotes{})
+
+	saved := e.PatchAutoConfig(map[string]any{
+		"brokers": map[string]any{
+			"webull": map[string]any{"enabled": true, "allowNewEntries": false, "allowExits": true},
+		},
+	})
+	brokers, _ := saved["brokers"].(map[string]any)
+	webull, _ := brokers["webull"].(map[string]any)
+	if webull["allowNewEntries"] != false {
+		t.Fatalf("expected allowNewEntries=false to persist, got %+v", webull)
+	}
+
+	// The master toggle only ever sends {"enabled": true|false}.
+	saved = e.PatchAutoConfig(map[string]any{"enabled": true})
+	if saved["enabled"] != true {
+		t.Fatalf("expected top-level enabled=true, got %+v", saved["enabled"])
+	}
+	brokers, _ = saved["brokers"].(map[string]any)
+	webull, _ = brokers["webull"].(map[string]any)
+	if webull["allowNewEntries"] != false {
+		t.Fatalf("master toggle must not touch brokers.webull.allowNewEntries, got %+v", webull)
+	}
+	if webull["allowExits"] != true {
+		t.Fatalf("master toggle must not touch brokers.webull.allowExits, got %+v", webull)
+	}
+}

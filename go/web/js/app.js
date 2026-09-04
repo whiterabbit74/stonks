@@ -739,6 +739,18 @@
   function brokerLabel(id) {
     return id === 'robinhood' ? 'Robinhood' : (id === 'webull' ? 'Webull' : (id || '—'));
   }
+  // Mirrors go/internal/live/brokers.go brokerFlags(): a per-broker key is
+  // used only when it is explicitly present; a missing key means false
+  // (Node: undefined is falsy), except webull, which still falls back to the
+  // matching top-level field when brokers.webull has no explicit key of its
+  // own (that fallback is the only thing left for a plain "enabled" save to
+  // reach, see P2-2). No key anywhere is treated as "да" by default.
+  function brokerAllowFlag(ac, name, key) {
+    const b = ac && ac.brokers && ac.brokers[name];
+    if (b && Object.prototype.hasOwnProperty.call(b, key)) return b[key] === true;
+    if (name === 'webull') return ac && ac[key] === true;
+    return false;
+  }
   function levOptions(selected) {
     const cur = Number(selected) || 200;
     return LEV_PCT.map((n) => {
@@ -2451,16 +2463,19 @@
         </div>`).join('')}</div>` : '';
       const mode = CAPITAL_MODES.find((m) => m.value === (ac.entryCapitalMode || 'standard_safe')) || CAPITAL_MODES[0];
       const lastRes = (st.state && st.state.lastResult && st.state.lastResult.decision) || dec;
-      body = `<div class="space-y-4">
-        <div class="rounded-lg border border-gray-200 p-4 dark:border-gray-700">
-          <h2 class="text-lg font-semibold mb-3">Состояние автоторговли</h2>
-          <div class="grid gap-3 md:grid-cols-2">
-            <div class="rounded-xl bg-gray-50 p-3 dark:bg-gray-950/40">
-              <div class="text-xs uppercase tracking-wide text-gray-500">Подключение</div>
+      // Broker-specific connection card: Webull uses a pasted API token,
+      // Robinhood uses the copy-paste OAuth flow on the "Подключение" tab -
+      // rendering the Webull token panel here on /robinhood was P2-3.
+      const rhStatus = state.rhStatus || {};
+      const connectionCard = kind === 'robinhood'
+        ? `<div class="rounded-xl bg-gray-50 p-3 dark:bg-gray-950/40">
+              <div class="text-xs uppercase tracking-wide text-gray-500">Подключение (Robinhood)</div>
+              <div class="mt-1 text-sm">${esc(rhStatus.status || (rhStatus.connected ? 'OK' : 'не подключено'))}${rhStatus.expiresAt ? ' · истекает ' + esc(rhStatus.expiresAt) : ''}</div>
+              <p class="text-xs text-gray-500 mt-1">OAuth настраивается на вкладке «Подключение».</p>
+            </div>`
+        : `<div class="rounded-xl bg-gray-50 p-3 dark:bg-gray-950/40">
+              <div class="text-xs uppercase tracking-wide text-gray-500">Подключение (Webull)</div>
               <div class="mt-1 text-sm">${conn.configured || tok.hasToken || tok.present ? 'Webull подключен' : 'Webull не настроен'}</div>
-            </div>
-            <div class="rounded-xl bg-gray-50 p-3 dark:bg-gray-950/40">
-              <div class="text-xs uppercase tracking-wide text-gray-500">Token / Account</div>
               <div class="mt-1 text-sm">token ${tok.hasToken || tok.present ? 'есть' : 'не задан'} • источник: ${esc(tok.source || '—')} • проверка: ${esc(tok.lastCheckStatus || '—')}</div>
               <div class="text-xs text-gray-500 mt-1">истекает ${esc(formatDateTimeET(tok.expiresAt) || tok.expiresAt || '—')} · осталось: ${esc(tok.daysLeft != null ? tok.daysLeft + ' дн.' : '—')} · lastCheckAt ${esc(formatDateTimeET(tok.lastCheckAt))}</div>
               <div class="mt-2 flex flex-wrap gap-2">
@@ -2471,12 +2486,14 @@
                 <input id="auto-token-input" type="password" autocomplete="off" placeholder="Вставьте Webull token" class="field flex-1" />
                 <button type="button" id="auto-token-save" class="btn-secondary min-h-0 py-2">Сохранить токен</button>
               </div>
-            </div>
-          </div>
-          <div class="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            </div>`;
+      body = `<div class="space-y-4">
+        <div class="rounded-lg border border-gray-200 p-4 dark:border-gray-700">
+          <h2 class="text-lg font-semibold mb-3">Состояние автоторговли — общее</h2>
+          <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             <div class="rounded-lg border p-3"><div class="text-xs text-gray-500">Статус</div><div class="mt-1 font-semibold">${ac.enabled ? 'LIVE' : 'OFF'}</div></div>
             <div class="rounded-lg border p-3"><div class="text-xs text-gray-500">Последний запуск</div><div class="mt-1 text-sm">${esc(formatDateTimeET(last) === '—' ? last : formatDateTimeET(last))}</div></div>
-            <div class="rounded-lg border p-3"><div class="text-xs text-gray-500">Entries / Exits</div><div class="mt-1 text-sm">${ac.allowNewEntries !== false ? 'да' : 'нет'} / ${ac.allowExits !== false ? 'да' : 'нет'}</div></div>
+            <div class="rounded-lg border p-3"><div class="text-xs text-gray-500">Entries / Exits (${esc(brokerLabel(kind))})</div><div class="mt-1 text-sm">${brokerAllowFlag(ac, kind, 'allowNewEntries') ? 'да' : 'нет'} / ${brokerAllowFlag(ac, kind, 'allowExits') ? 'да' : 'нет'}</div></div>
             <div class="rounded-lg border p-3"><div class="text-xs text-gray-500">Последнее решение</div><div class="mt-1 text-sm">${esc(lastRes.action || dec.action || '—')} ${esc(lastRes.symbol || dec.symbol || '')}</div><div class="text-xs text-gray-500">${esc(lastRes.reason || dec.reason || '')}</div></div>
           </div>
           <div class="mt-4 rounded-xl bg-gray-50 p-3 text-sm dark:bg-gray-950/40">
@@ -2492,18 +2509,27 @@
               <div class="flex justify-between gap-3"><dt class="text-gray-500">Окно исполнения</dt><dd>${esc(ac.executionWindowSeconds ?? 90)} сек до закрытия</dd></div>
               <div class="flex justify-between gap-3"><dt class="text-gray-500">Порог проскальзывания</dt><dd>${esc(ac.maxSlippageBps ?? 25)} bps</dd></div>
             </dl>
-            <p class="text-xs text-gray-500 mt-2">${esc(mode.hint)}. Торгуются тикеры со страницы «Мониторинг». Account: ${esc(tok.accountId || conn.hasAccountId ? 'задан' : 'не задан')}.${ac.lastModifiedAt ? (' Обновлено: ' + esc(formatDateTimeET(ac.lastModifiedAt)) + ' ET') : ''}</p>
+            <p class="text-xs text-gray-500 mt-2">${esc(mode.hint)}. Торгуются тикеры со страницы «Мониторинг».${ac.lastModifiedAt ? (' Обновлено: ' + esc(formatDateTimeET(ac.lastModifiedAt)) + ' ET') : ''}</p>
+            <p class="text-xs text-gray-500 mt-2">Ни окно исполнения, ни порог проскальзывания не являются предохранителями сделки: окно не применяется к регулярному T-1 (см. вкладку «Настройки» → «Автоторговля»), а проскальзывание лишь присылает предупреждение в Telegram постфактум — заявка рыночная и отправляется в любом случае.</p>
           </div>
-          ${rawJsonBlock('Raw connection payload', conn)}
-          ${rawJsonBlock('Raw autotrade config payload', ac)}
-          ${rawJsonBlock('Raw tracked orders payload', tracked)}
-          ${rawJsonBlock('Raw dashboard payload', state.dashboard)}
           <div class="mt-4 flex flex-wrap gap-2">
             <button type="button" id="auto-enable" class="btn-primary min-h-0 py-2">${ac.enabled ? 'Выключить автоторговлю' : 'Включить автоторговлю'}</button>
-            <button type="button" id="auto-test-buy" class="btn-secondary min-h-0 py-2">BUY AAL 1 шт по рынку</button>
             <button type="button" id="auto-refresh" class="btn-secondary min-h-0 py-2">Обновить статус</button>
           </div>
-          <p class="mt-3 text-xs text-gray-500">Тестовая кнопка отправляет реальный ордер, если на сервере включён WEBULL_ENABLE_LIVE_TEST_BUY.</p>
+          ${rawJsonBlock('Raw autotrade config payload', ac)}
+          ${rawJsonBlock('Raw tracked orders payload', tracked)}
+        </div>
+        <div class="rounded-lg border border-gray-200 p-4 dark:border-gray-700">
+          <h2 class="text-lg font-semibold mb-3">${esc(brokerLabel(kind))} — подключение и тестовая заявка</h2>
+          <div class="grid gap-3 md:grid-cols-2">
+            ${connectionCard}
+          </div>
+          <div class="mt-4 flex flex-wrap gap-2">
+            <button type="button" id="auto-test-buy" class="btn-secondary min-h-0 py-2">BUY AAL 1 шт по рынку (${esc(brokerLabel(kind))})</button>
+          </div>
+          <p class="mt-3 text-xs text-gray-500">Тестовая кнопка отправляет реальный ордер, если на сервере включён ${kind === 'robinhood' ? 'ROBINHOOD_ENABLE_LIVE_TEST_BUY' : 'WEBULL_ENABLE_LIVE_TEST_BUY'}.</p>
+          ${rawJsonBlock('Raw connection payload', kind === 'robinhood' ? rhStatus : conn)}
+          ${rawJsonBlock('Raw dashboard payload', state.dashboard)}
         </div>
         <div class="rounded-lg border border-gray-200 p-4 dark:border-gray-700">
           <h3 class="font-semibold mb-2">Pending / last tracked orders</h3>
@@ -2696,8 +2722,9 @@
         <div class="rounded-xl border p-4 mb-3">
           <div class="font-medium mb-2">Откуда берутся цены</div>
           <label class="inline-flex items-center gap-2 text-sm mr-4"><input type="radio" name="autoQuote" value="finnhub" ${quote === 'finnhub' ? 'checked' : ''} /> Finnhub</label>
-          <label class="inline-flex items-center gap-2 text-sm"><input type="radio" name="autoQuote" value="webull" ${quote === 'webull' ? 'checked' : ''} /> Webull</label>
-          <p class="text-xs text-gray-500 mt-1">Это тот, кого спрашивают первым. Если он не ответил или прислал негодную котировку, второй спрашивается автоматически — настраивать порядок не нужно. Провайдеры с дневными барами (Alpha Vantage, Twelve Data, Polygon) для живого решения не используются: они ответят вчерашней свечой.</p>
+          <label class="inline-flex items-center gap-2 text-sm mr-4"><input type="radio" name="autoQuote" value="webull" ${quote === 'webull' ? 'checked' : ''} /> Webull</label>
+          <label class="inline-flex items-center gap-2 text-sm"><input type="radio" name="autoQuote" value="robinhood" ${quote === 'robinhood' ? 'checked' : ''} /> Robinhood</label>
+          <p class="text-xs text-gray-500 mt-1">Это тот, кого спрашивают первым. Если он не ответил или прислал негодную котировку, следующий в цепочке (Finnhub → Webull → Robinhood) спрашивается автоматически — настраивать порядок не нужно. Провайдеры с дневными барами (Alpha Vantage, Twelve Data, Polygon) для живого решения не используются: они ответят вчерашней свечой.</p>
         </div>
         <div class="rounded-xl border p-4 mb-3">
           <div class="font-medium mb-2">Что торгуем</div>
@@ -3879,9 +3906,9 @@
         } catch (err) { toast(errText(err)); }
       });
       document.getElementById('auto-test-buy')?.addEventListener('click', async () => {
-        if (!window.confirm('Отправить BUY AAL 1 шт по рынку?')) return;
+        if (!window.confirm('Отправить BUY AAL 1 шт по рынку в ' + brokerLabel(kind) + '?')) return;
         try {
-          const r = await API.testBuy('AAL', 1);
+          const r = kind === 'robinhood' ? await API.rhTestBuy('AAL', 1) : await API.testBuy('AAL', 1);
           toast(r.submitted ? ('Ордер ' + (r.clientOrderId || 'отправлен')) : (r.error || 'не отправлен'));
         } catch (err) { toast(errText(err)); }
       });
