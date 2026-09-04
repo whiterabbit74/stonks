@@ -58,4 +58,16 @@ func TestGoDeployShipsBinaryAndWeb(t *testing.T) {
 	if !strings.Contains(sh, "--no-build") {
 		t.Fatal("VPS must not compile")
 	}
+	if strings.Contains(sh, "git push") {
+		t.Fatal("deploy.sh must not push")
+	}
+	if strings.Contains(sh, "git reset --hard") {
+		t.Fatal("deploy.sh must not hard-reset the VPS tree")
+	}
+	if !strings.Contains(sh, "git status --porcelain") {
+		t.Fatal("deploy.sh must refuse untracked files")
+	}
+	if !strings.Contains(sh, "datasets") {
+		t.Fatal("deploy backup must include datasets")
+	}
 }

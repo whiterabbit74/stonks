@@ -254,16 +254,45 @@ func (d *DB) initSchema() error {
 }
 
 func (d *DB) migrateSchema() error {
-	d.ensureColumn("order_trackers", "attempts", "INTEGER NOT NULL DEFAULT 0")
-	d.ensureColumn("order_trackers", "updated_at", "TEXT")
-	d.ensureColumn("autotrade_logs", "kind", "TEXT NOT NULL DEFAULT ''")
-	d.ensureColumn("order_trackers", "broker", "TEXT NOT NULL DEFAULT 'webull'")
-	d.ensureColumn("broker_trades", "broker", "TEXT NOT NULL DEFAULT 'webull'")
-	d.ensureColumn("webull_token", "last_alerted_status", "TEXT")
-	d.ensureColumn("webull_token", "last_alerted_at", "TEXT")
-	d.ensureColumn("aggregate_send_state", "t1_lease_until", "TEXT")
-	d.ensureColumn("aggregate_send_state", "t1_execution_finished", "INTEGER NOT NULL DEFAULT 0")
-	_, _ = d.SQL.Exec(`CREATE INDEX IF NOT EXISTS idx_broker_trades_broker_status ON broker_trades(broker, status)`)
+	if err := d.ensureColumn("order_trackers", "attempts", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
+	if err := d.ensureColumn("order_trackers", "updated_at", "TEXT"); err != nil {
+		return err
+	}
+	if err := d.ensureColumn("autotrade_logs", "kind", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+	if err := d.ensureColumn("order_trackers", "broker", "TEXT NOT NULL DEFAULT 'webull'"); err != nil {
+		return err
+	}
+	if err := d.ensureColumn("broker_trades", "broker", "TEXT NOT NULL DEFAULT 'webull'"); err != nil {
+		return err
+	}
+	if err := d.ensureColumn("webull_token", "last_alerted_status", "TEXT"); err != nil {
+		return err
+	}
+	if err := d.ensureColumn("webull_token", "last_alerted_at", "TEXT"); err != nil {
+		return err
+	}
+	if err := d.ensureColumn("aggregate_send_state", "t1_lease_until", "TEXT"); err != nil {
+		return err
+	}
+	if err := d.ensureColumn("aggregate_send_state", "t1_execution_finished", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
+	if _, err := d.SQL.Exec(`CREATE INDEX IF NOT EXISTS idx_broker_trades_broker_status ON broker_trades(broker, status)`); err != nil {
+		return err
+	}
+	if _, err := d.SQL.Exec(`CREATE TABLE IF NOT EXISTS schema_meta (id INTEGER PRIMARY KEY CHECK (id = 1), version INTEGER NOT NULL)`); err != nil {
+		return err
+	}
+	if _, err := d.SQL.Exec(`INSERT OR IGNORE INTO schema_meta (id, version) VALUES (1, 1)`); err != nil {
+		return err
+	}
+	if _, err := d.SQL.Exec(`UPDATE schema_meta SET version=1`); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -292,11 +321,12 @@ func (d *DB) hasColumn(table, col string) bool {
 	return false
 }
 
-func (d *DB) ensureColumn(table, col, typ string) {
+func (d *DB) ensureColumn(table, col, typ string) error {
 	if d.hasColumn(table, col) {
-		return
+		return nil
 	}
-	_, _ = d.SQL.Exec(`ALTER TABLE ` + table + ` ADD COLUMN ` + col + ` ` + typ)
+	_, err := d.SQL.Exec(`ALTER TABLE ` + table + ` ADD COLUMN ` + col + ` ` + typ)
+	return err
 }
 
 var tickerRe = regexp.MustCompile(`[^A-Za-z0-9.-]`)

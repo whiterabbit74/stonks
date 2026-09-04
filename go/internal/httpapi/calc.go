@@ -157,7 +157,9 @@ func (s *Server) calcMetrics(w http.ResponseWriter, r *http.Request) {
 		Equity         []types.EquityPoint `json:"equity"`
 		InitialCapital *float64            `json:"initialCapital"`
 	}
-	_ = readJSON(r, &req)
+	if !s.requireJSON(w, r, &req) {
+		return
+	}
 	writeJSON(w, 200, metrics.New(req.Trades, req.Equity, types.F64Or(req.InitialCapital, 10000), nil).All())
 }
 
@@ -188,7 +190,9 @@ func (s *Server) calcBS(w http.ResponseWriter, r *http.Request) {
 		R     float64 `json:"r"`
 		Sigma float64 `json:"sigma"`
 	}
-	_ = readJSON(r, &req)
+	if !s.requireJSON(w, r, &req) {
+		return
+	}
 	if req.Type == "" {
 		req.Type = "call"
 	}
@@ -207,7 +211,9 @@ func (s *Server) calcSplits(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) calcMargin(w http.ResponseWriter, r *http.Request) {
 	var req backtest.MarginParams
-	_ = readJSON(r, &req)
+	if !s.requireJSON(w, r, &req) {
+		return
+	}
 	writeJSON(w, 200, backtest.SimulateMargin(req))
 }
 
@@ -217,7 +223,9 @@ func (s *Server) calcIBS(w http.ResponseWriter, r *http.Request) {
 		LowIBS  any `json:"lowIBS"`
 		HighIBS any `json:"highIBS"`
 	}
-	_ = readJSON(r, &req)
+	if !s.requireJSON(w, r, &req) {
+		return
+	}
 	writeJSON(w, 200, map[string]any{
 		"entry": ibs.IsEntrySignal(req.IBS, req.LowIBS),
 		"exit":  ibs.IsExitSignal(req.IBS, req.HighIBS),

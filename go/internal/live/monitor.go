@@ -201,16 +201,21 @@ func BlockingMismatch(snap map[string]any) map[string]any {
 func (e *Engine) Reconcile(apply bool) map[string]any {
 	snap := e.Consistency()
 	var appliedActions []map[string]any
+	var failedActions []map[string]any
 	if apply {
 		raw, _ := snap["proposedActions"].([]map[string]any)
 		for _, action := range raw {
 			if !asBool(action["autoApplicable"]) {
 				continue
 			}
+			row := copyStringAnyMap(action)
+			row["appliedAt"] = time.Now().UTC().Format(time.RFC3339Nano)
 			if e.applyConsistencyAction(action) {
-				row := copyStringAnyMap(action)
-				row["appliedAt"] = time.Now().UTC().Format(time.RFC3339Nano)
+				row["result"] = "applied"
 				appliedActions = append(appliedActions, row)
+			} else {
+				row["result"] = "failed"
+				failedActions = append(failedActions, row)
 			}
 		}
 		pos := e.UpdatePositions()
@@ -226,9 +231,13 @@ func (e *Engine) Reconcile(apply bool) map[string]any {
 	}
 	after := e.Consistency()
 	after["positions"] = snap["positions"]
+	if failedActions == nil {
+		failedActions = []map[string]any{}
+	}
 	after["appliedActions"] = appliedActions
+	after["failedActions"] = failedActions
 	after["applied"] = len(appliedActions) > 0
-	after["ok"] = true
+	after["ok"] = len(failedActions) == 0
 	after["mode"] = "preview"
 	if apply {
 		after["mode"] = "apply"
@@ -268,13 +277,17 @@ func (e *Engine) applyConsistencyAction(action map[string]any) bool {
 		if e.DB.GetTrade("trades", monID) != nil {
 			return false
 		}
-		_ = e.DB.InsertTrade("trades", map[string]any{
+		if err := e.DB.InsertTrade("trades", map[string]any{
 			"id": monID, "symbol": broker["symbol"], "status": "open",
 			"entryDate": broker["entryDate"], "entryPrice": broker["entryPrice"],
 			"source": broker["source"], "quantity": broker["quantity"],
-		})
-		_, _ = e.DB.SQL.Exec(`UPDATE trades SET linked_broker_trade_id=? WHERE id=?`, brokerID, monID)
-		return true
+		}); err != nil {
+			return false
+		}
+		if _, err := e.DB.SQL.Exec(`UPDATE trades SET linked_broker_trade_id=? WHERE id=?`, brokerID, monID); err != nil {
+			return false
+		}
+		return e.DB.GetTrade("trades", monID) != nil
 	}
 	return false
 }

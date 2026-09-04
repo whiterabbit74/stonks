@@ -144,7 +144,7 @@ func (c *MCP) post(payload map[string]any, notification bool) (json.RawMessage, 
 		c.session = sid
 		c.mu.Unlock()
 	}
-	b, _ := io.ReadAll(resp.Body)
+	b, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
 	if resp.StatusCode == 401 {
 		c.mu.Lock()
 		c.ready = false

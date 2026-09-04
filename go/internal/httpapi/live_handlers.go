@@ -22,7 +22,9 @@ func (s *Server) handleTelegramSend(w http.ResponseWriter, r *http.Request) {
 		Message string `json:"message"`
 		ChatID  string `json:"chatId"`
 	}
-	_ = readJSON(r, &body)
+	if !s.requireJSON(w, r, &body) {
+		return
+	}
 	if body.ChatID == "" {
 		body.ChatID = os.Getenv("TELEGRAM_CHAT_ID")
 	}
@@ -45,7 +47,9 @@ func (s *Server) handleTelegramTest(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Message string `json:"message"`
 	}
-	_ = readJSON(r, &body)
+	if !s.requireJSON(w, r, &body) {
+		return
+	}
 	msg := body.Message
 	if msg == "" {
 		msg = "🧪 Test message from Trading Backtester"
@@ -61,7 +65,9 @@ func (s *Server) handleTelegramSimulate(w http.ResponseWriter, r *http.Request) 
 	var body struct {
 		Stage string `json:"stage"`
 	}
-	_ = readJSON(r, &body)
+	if !s.requireJSON(w, r, &body) {
+		return
+	}
 	res, err := s.liveEng().Simulate(body.Stage)
 	if err != nil {
 		writeJSON(w, 500, map[string]any{"error": err.Error(), "success": false, "stage": res.Stage})
@@ -95,7 +101,9 @@ func (s *Server) handleTelegramCommand(w http.ResponseWriter, r *http.Request) {
 		Command string `json:"command"`
 		Limit   int    `json:"limit"`
 	}
-	_ = readJSON(r, &body)
+	if !s.requireJSON(w, r, &body) {
+		return
+	}
 	out, err := s.liveEng().Command(body.Command, body.Limit)
 	if err != nil && out == nil {
 		code := 400
@@ -124,7 +132,9 @@ func (s *Server) handleMonitorReconcile(w http.ResponseWriter, r *http.Request) 
 	var body struct {
 		Mode string `json:"mode"`
 	}
-	_ = readJSON(r, &body)
+	if !s.requireJSON(w, r, &body) {
+		return
+	}
 	writeJSON(w, 200, s.liveEng().Reconcile(body.Mode == "apply"))
 }
 
@@ -170,7 +180,9 @@ func (s *Server) handleWebullClose(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Symbol string `json:"symbol"`
 	}
-	_ = readJSON(r, &body)
+	if !s.requireJSON(w, r, &body) {
+		return
+	}
 	res, err := s.liveEng().ClosePosition(body.Symbol)
 	if err != nil {
 		writeJSON(w, 502, map[string]any{"error": err.Error(), "result": res})
@@ -188,7 +200,9 @@ func (s *Server) handleWebullTestBuy(w http.ResponseWriter, r *http.Request) {
 		Symbol   string  `json:"symbol"`
 		Quantity float64 `json:"quantity"`
 	}
-	_ = readJSON(r, &body)
+	if !s.requireJSON(w, r, &body) {
+		return
+	}
 	res, err := s.liveEng().TestBuy(body.Symbol, body.Quantity)
 	if err != nil || !res.Submitted {
 		reason := res.Error
@@ -220,7 +234,9 @@ func (s *Server) handleTokenCheck(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Token string `json:"token"`
 	}
-	_ = readJSON(r, &body)
+	if !s.requireJSON(w, r, &body) {
+		return
+	}
 	data, err := s.liveEng().CheckToken(body.Token)
 	if err != nil {
 		writeJSON(w, 500, map[string]any{"error": err.Error()})

@@ -92,6 +92,43 @@ func TestJournalReadErrorBlocksEvaluate(t *testing.T) {
 	}
 }
 
+func TestCanSubmitFalseWhenNeedsReauth(t *testing.T) {
+	_, e, _ := testEngine(t, nil)
+	e.PatchAutoConfig(map[string]any{"enabled": true})
+	_ = e.DB.SaveWebullToken("tok", "2099-01-01", HealthNeedsReauth)
+	if e.CanSubmit() {
+		t.Fatal("NEEDS_REAUTH must not report running")
+	}
+}
+
+func TestExecuteReportsSubmittedPhase(t *testing.T) {
+	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
+	_, e, _ := testEngine(t, bars)
+	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true})
+	res := e.Execute("t1")
+	if !res.Submitted || res.Phase != "submitted" {
+		t.Fatalf("phase %+v submitted=%v", res.Phase, res.Submitted)
+	}
+}
+
+func TestUnconfirmedFillPriceDoesNotUseQuote(t *testing.T) {
+	_, e, _ := testEngine(t, nil)
+	id := "oid-noprice"
+	e.mu.Lock()
+	if e.orderMeta == nil {
+		e.orderMeta = map[string]orderMeta{}
+	}
+	e.orderMeta[id] = orderMeta{Action: "entry", Symbol: "AAPL", Quantity: 1, QuotePrice: 8.2, DateKey: "2026-09-01", Broker: "webull"}
+	e.mu.Unlock()
+	e.recordFill(map[string]any{
+		"clientOrderId": id, "symbol": "AAPL", "action": "entry", "quantity": 1.0, "dateKey": "2026-09-01",
+	}, map[string]any{"status": "filled", "filled_qty": 1.0}, "filled")
+	row := e.DB.GetTrade("broker_trades", id)
+	if asFloat(row["entryPrice"]) == 8.2 {
+		t.Fatalf("must not invent fill price from quote: %+v", row)
+	}
+}
+
 func TestPartialEntryUpsertsQuantity(t *testing.T) {
 	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
 	db, e, _ := testEngine(t, bars)

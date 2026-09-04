@@ -98,7 +98,7 @@ func (c *Client) get(rawURL string) (int, []byte, error) {
 		return 0, nil, sanitizeTransportError(err)
 	}
 	defer resp.Body.Close()
-	b, err := io.ReadAll(resp.Body)
+	b, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
 	if err != nil {
 		return resp.StatusCode, b, sanitizeTransportError(err)
 	}

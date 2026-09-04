@@ -26,7 +26,9 @@ func (s *Server) handleRobinhoodOAuthComplete(w http.ResponseWriter, r *http.Req
 	var body struct {
 		CallbackURL string `json:"callbackUrl"`
 	}
-	_ = readJSON(r, &body)
+	if !s.requireJSON(w, r, &body) {
+		return
+	}
 	if err := s.rh().CompleteFromCallbackURL(body.CallbackURL); err != nil {
 		writeJSON(w, 400, map[string]any{"error": err.Error()})
 		return
@@ -108,7 +110,9 @@ func (s *Server) handleRobinhoodClose(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Symbol string `json:"symbol"`
 	}
-	_ = readJSON(r, &body)
+	if !s.requireJSON(w, r, &body) {
+		return
+	}
 	br := s.rhBroker()
 	if br == nil {
 		writeJSON(w, 400, map[string]any{"error": "robinhood not connected"})
@@ -131,7 +135,9 @@ func (s *Server) handleRobinhoodTestBuy(w http.ResponseWriter, r *http.Request) 
 		Symbol   string  `json:"symbol"`
 		Quantity float64 `json:"quantity"`
 	}
-	_ = readJSON(r, &body)
+	if !s.requireJSON(w, r, &body) {
+		return
+	}
 	br := s.rhBroker()
 	if br == nil {
 		writeJSON(w, 400, map[string]any{"error": "robinhood not connected", "success": false})

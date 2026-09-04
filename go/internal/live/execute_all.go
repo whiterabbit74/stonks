@@ -65,6 +65,12 @@ func (e *Engine) executeAll(ev EvalResult, trigger, corr string, snaps []namedBr
 	}
 	ev.Broker = results
 	ev.Executed = anyOK
+	ev.Submitted = anyOK
+	if anyOK {
+		ev.Phase = "submitted"
+	} else {
+		ev.Phase = "decision"
+	}
 	e.mu.Lock()
 	e.lastResult = ev
 	e.mu.Unlock()
@@ -175,6 +181,12 @@ func (e *Engine) submitEvaluated(ev EvalResult, trigger, corr, brokerName string
 	}
 	ev.Broker = res
 	ev.Executed = res.Submitted
+	ev.Submitted = res.Submitted
+	if res.Submitted {
+		ev.Phase = "submitted"
+	} else {
+		ev.Phase = "decision"
+	}
 	if res.Submitted {
 		ibsVal := 0.0
 		if cand, ok := ev.Decision["candidate"].(map[string]any); ok {

@@ -235,7 +235,21 @@ func readJSON(r *http.Request, dest any) error {
 	}
 	r.Body = http.MaxBytesReader(nil, r.Body, jsonBodyLimit)
 	dec := json.NewDecoder(r.Body)
-	return dec.Decode(dest)
+	if err := dec.Decode(dest); err != nil {
+		return err
+	}
+	if dec.More() {
+		return errors.New("extra json")
+	}
+	return nil
+}
+
+func (s *Server) requireJSON(w http.ResponseWriter, r *http.Request, dest any) bool {
+	if err := readJSON(r, dest); err != nil {
+		writeJSON(w, 400, map[string]any{"error": "invalid json"})
+		return false
+	}
+	return true
 }
 
 func (s *Server) public(r *http.Request) bool {
@@ -438,7 +452,9 @@ func (s *Server) handleHashPassword(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Password string `json:"password"`
 	}
-	_ = readJSON(r, &body)
+	if !s.requireJSON(w, r, &body) {
+		return
+	}
 	hash, err := bcrypt.GenerateFromPassword([]byte(body.Password), 10)
 	if err != nil {
 		writeJSON(w, 500, map[string]any{"error": err.Error()})
@@ -996,7 +1012,6 @@ func (s *Server) handleGetCalendar(w http.ResponseWriter, r *http.Request) {
 	raw, _ := s.DB.GetCalendar()
 	if store.CalendarHolidaysEmpty(raw) {
 		raw = json.RawMessage(store.DefaultCalendarJSON)
-		_ = s.DB.SaveCalendar(raw)
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
@@ -1131,7 +1146,9 @@ func (s *Server) handleWatches(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleWatchPost(w http.ResponseWriter, r *http.Request) {
 	var body map[string]any
-	_ = readJSON(r, &body)
+	if !s.requireJSON(w, r, &body) {
+		return
+	}
 	if err := s.DB.UpsertWatch(body); err != nil {
 		writeJSON(w, 500, map[string]any{"error": err.Error()})
 		return
@@ -1146,7 +1163,9 @@ func (s *Server) handleWatchDelete(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleWatchPatch(w http.ResponseWriter, r *http.Request) {
 	var body map[string]any
-	_ = readJSON(r, &body)
+	if !s.requireJSON(w, r, &body) {
+		return
+	}
 	body["symbol"] = r.PathValue("symbol")
 	_ = s.DB.UpsertWatch(body)
 	writeJSON(w, 200, map[string]any{"ok": true})
@@ -1159,7 +1178,9 @@ func (s *Server) handleEMAAlerts(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleEMAAlertPost(w http.ResponseWriter, r *http.Request) {
 	var body map[string]any
-	_ = readJSON(r, &body)
+	if !s.requireJSON(w, r, &body) {
+		return
+	}
 	id, err := s.DB.UpsertEMAAlert(body)
 	if err != nil {
 		writeJSON(w, 400, map[string]any{"error": err.Error()})
@@ -1174,7 +1195,9 @@ func (s *Server) handleEMAAlertPost(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleEMAAlertPatch(w http.ResponseWriter, r *http.Request) {
 	var body map[string]any
-	_ = readJSON(r, &body)
+	if !s.requireJSON(w, r, &body) {
+		return
+	}
 	body["id"] = r.PathValue("id")
 	id, err := s.DB.UpsertEMAAlert(body)
 	if err != nil {
@@ -1220,13 +1243,19 @@ func (s *Server) handleMonitorTrades(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleListTrades(w http.ResponseWriter, r *http.Request) {
-	list, _ := s.DB.ListTrades("trades")
+	list, err := s.DB.ListTrades("trades")
+	if err != nil {
+		writeJSON(w, 500, map[string]any{"error": err.Error()})
+		return
+	}
 	writeJSON(w, 200, filterHiddenTrades(list, includeHiddenTrades(r)))
 }
 
 func (s *Server) handlePostTrade(w http.ResponseWriter, r *http.Request) {
 	var body map[string]any
-	_ = readJSON(r, &body)
+	if !s.requireJSON(w, r, &body) {
+		return
+	}
 	if err := s.DB.InsertTrade("trades", body); err != nil {
 		writeJSON(w, 500, map[string]any{"error": err.Error()})
 		return
@@ -1236,14 +1265,18 @@ func (s *Server) handlePostTrade(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handlePatchTrade(w http.ResponseWriter, r *http.Request) {
 	var body map[string]any
-	_ = readJSON(r, &body)
+	if !s.requireJSON(w, r, &body) {
+		return
+	}
 	_ = s.DB.PatchTrade("trades", r.PathValue("id"), body)
 	writeJSON(w, 200, map[string]any{"ok": true})
 }
 
 func (s *Server) handleCloseMonitor(w http.ResponseWriter, r *http.Request) {
 	var body map[string]any
-	_ = readJSON(r, &body)
+	if !s.requireJSON(w, r, &body) {
+		return
+	}
 	updated, err := s.DB.CloseMonitorTrade(r.PathValue("id"), body)
 	if err != nil {
 		code := 400
@@ -1265,18 +1298,29 @@ func (s *Server) handleDeleteTrade(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleListBroker(w http.ResponseWriter, r *http.Request) {
-	list, _ := s.DB.ListTrades("broker_trades")
+	list, err := s.DB.ListTrades("broker_trades")
+	if err != nil {
+		writeJSON(w, 500, map[string]any{"error": err.Error()})
+		return
+	}
 	writeJSON(w, 200, list)
 }
 func (s *Server) handlePostBroker(w http.ResponseWriter, r *http.Request) {
 	var body map[string]any
-	_ = readJSON(r, &body)
-	_ = s.DB.InsertTrade("broker_trades", body)
+	if !s.requireJSON(w, r, &body) {
+		return
+	}
+	if err := s.DB.InsertTrade("broker_trades", body); err != nil {
+		writeJSON(w, 500, map[string]any{"error": err.Error()})
+		return
+	}
 	writeJSON(w, 200, map[string]any{"ok": true})
 }
 func (s *Server) handlePatchBroker(w http.ResponseWriter, r *http.Request) {
 	var body map[string]any
-	_ = readJSON(r, &body)
+	if !s.requireJSON(w, r, &body) {
+		return
+	}
 	_ = s.DB.PatchTrade("broker_trades", r.PathValue("id"), body)
 	writeJSON(w, 200, map[string]any{"ok": true})
 }
@@ -1605,7 +1649,9 @@ func (s *Server) handleAutoConfig(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleAutoConfigPatch(w http.ResponseWriter, r *http.Request) {
 	var body map[string]any
-	_ = readJSON(r, &body)
+	if !s.requireJSON(w, r, &body) {
+		return
+	}
 	cfg := s.liveEng().PatchAutoConfig(body)
 	writeJSON(w, 200, map[string]any{"success": true, "config": cfg})
 }
@@ -1619,7 +1665,9 @@ func (s *Server) handlePutWebullToken(w http.ResponseWriter, r *http.Request) {
 		Token     string `json:"token"`
 		ExpiresAt string `json:"expiresAt"`
 	}
-	_ = readJSON(r, &body)
+	if !s.requireJSON(w, r, &body) {
+		return
+	}
 	if body.Token == "" {
 		writeJSON(w, 400, map[string]any{"error": "token is required"})
 		return

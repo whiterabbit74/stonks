@@ -147,7 +147,7 @@ func (c *Client) Request(method, path string, query map[string]string, body any,
 		return nil, err
 	}
 	defer resp.Body.Close()
-	raw, _ := io.ReadAll(resp.Body)
+	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
 	var parsed any
 	if len(raw) > 0 {
 		_ = json.Unmarshal(raw, &parsed)

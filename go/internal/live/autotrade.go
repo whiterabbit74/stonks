@@ -178,11 +178,15 @@ func (e *Engine) CanSubmit() bool {
 	if !enabled {
 		return false
 	}
-	if e.Broker == nil {
+	if e.defaultBroker() == nil {
 		return false
 	}
-	st := e.TokenStatus()
-	has, _ := st["hasToken"].(bool)
+	st := e.storedHealthStatus("webull")
+	if st == HealthNeedsReauth || st == HealthMissing {
+		return false
+	}
+	tok := e.TokenStatus()
+	has, _ := tok["hasToken"].(bool)
 	return has
 }
 
@@ -195,6 +199,8 @@ type EvalResult struct {
 	OpenTrade   map[string]any   `json:"openTrade"`
 	Decision    map[string]any   `json:"decision"`
 	Executed    bool             `json:"executed"`
+	Submitted   bool             `json:"submitted,omitempty"`
+	Phase       string           `json:"phase,omitempty"`
 	Live        bool             `json:"live"`
 	Broker      any              `json:"broker,omitempty"`
 }

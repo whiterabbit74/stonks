@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -156,6 +157,44 @@ func TestStatusJSON(t *testing.T) {
 	db, _ := body["db"].(map[string]any)
 	if db["connected"] != true {
 		t.Fatalf("db %v", db)
+	}
+}
+
+func TestMutationRejectsExtraJSON(t *testing.T) {
+	s := testServer(t, "")
+	req := httptest.NewRequest("PATCH", "/api/autotrade/config", strings.NewReader(`{"enabled":true}{"x":1}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != 400 {
+		t.Fatalf("extra json got %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestGetCalendarDoesNotWrite(t *testing.T) {
+	s := testServer(t, "secret")
+	before, _ := s.DB.GetCalendar()
+	req := httptest.NewRequest("GET", "/api/trading-calendar", nil)
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != 200 {
+		t.Fatalf("calendar %d", rec.Code)
+	}
+	after, _ := s.DB.GetCalendar()
+	if string(before) != string(after) {
+		t.Fatal("GET calendar must not persist")
+	}
+}
+
+func TestCrossSiteMutationWithoutOriginForbidden(t *testing.T) {
+	s := testServer(t, "secret")
+	req := httptest.NewRequest("POST", "/api/telegram/test", strings.NewReader(`{"message":"x"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Sec-Fetch-Site", "cross-site")
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != 403 {
+		t.Fatalf("got %d %s", rec.Code, rec.Body.String())
 	}
 }
 

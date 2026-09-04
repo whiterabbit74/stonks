@@ -11,7 +11,7 @@ cd "$ROOT"
 echo "DEPLOY"
 echo "======"
 
-if ! git diff-index --quiet HEAD --; then
+if [ -n "$(git status --porcelain)" ]; then
   echo "Uncommitted changes — commit first:"
   git status --short
   exit 1
@@ -24,11 +24,7 @@ if ! git merge-base --is-ancestor origin/main HEAD; then
   exit 1
 fi
 if [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]; then
-  git push origin main
-  git fetch origin
-fi
-if [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]; then
-  echo "GitHub did not receive HEAD"
+  echo "HEAD is not on origin/main. Push first, then re-run. deploy.sh does not push."
   exit 1
 fi
 
@@ -67,7 +63,7 @@ echo "Activate on server..."
 ssh -o BatchMode=yes "$HOST" "set -euo pipefail
 cd ${REMOTE_DIR}
 git fetch origin
-git reset --hard origin/main
+git checkout -f ${GIT_FULL}
 echo server_git=\$(git rev-parse --short HEAD)
 if [ \"\$(git rev-parse HEAD)\" != \"${GIT_FULL}\" ]; then
   echo 'server git SHA does not match local HEAD'
@@ -81,7 +77,7 @@ fi
 
 BACKUP_DIR=~/stonks-backups
 BACKUP_NAME=backup_\$(date +%Y%m%d_%H%M%S)
-mkdir -p \"\$BACKUP_DIR/\$BACKUP_NAME/state\" \"\$BACKUP_DIR/\$BACKUP_NAME/db\"
+mkdir -p \"\$BACKUP_DIR/\$BACKUP_NAME/state\" \"\$BACKUP_DIR/\$BACKUP_NAME/db\" \"\$BACKUP_DIR/\$BACKUP_NAME/datasets\"
 resolve_volume_name() {
   local container_name=\"\$1\" destination=\"\$2\" fallback_suffix=\"\$3\" resolved=\"\"
   resolved=\$(docker inspect \"\$container_name\" --format '{{range .Mounts}}{{println .Destination \"\\t\" .Name \"\\t\" .Type}}{{end}}' 2>/dev/null | awk -v dest=\"\$destination\" '\$1 == dest && \$3 == \"volume\" { print \$2; exit }')
@@ -104,8 +100,9 @@ DB_VOLUME=\$(resolve_volume_name stonks-server /data/db stonks_db)
 DATASETS_VOLUME=\$(resolve_volume_name stonks-server /data/datasets stonks_datasets)
 backup_volume \"\$STATE_VOLUME\" \"\$BACKUP_DIR/\$BACKUP_NAME/state\" state
 backup_volume \"\$DB_VOLUME\" \"\$BACKUP_DIR/\$BACKUP_NAME/db\" db
+backup_volume \"\$DATASETS_VOLUME\" \"\$BACKUP_DIR/\$BACKUP_NAME/datasets\" datasets
 cd \"\$BACKUP_DIR\" && ls -dt backup_* 2>/dev/null | tail -n +6 | xargs rm -rf 2>/dev/null || true
-echo \"backup \$BACKUP_NAME (db+state only)\"
+echo \"backup \$BACKUP_NAME (db+state+datasets)\"
 
 # Runtime image runs as uid 10001. Named volumes created by older root
 # containers stay root:root, so SQLite then fails with 'readonly database'.

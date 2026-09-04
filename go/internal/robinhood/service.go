@@ -62,7 +62,7 @@ func (s *Service) RegisterClient() (string, error) {
 		return "", err
 	}
 	defer resp.Body.Close()
-	raw, _ := io.ReadAll(resp.Body)
+	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
 	if resp.StatusCode >= 300 {
 		return "", fmt.Errorf("dcr http %d: %s", resp.StatusCode, redactSecrets(string(raw)))
 	}
@@ -215,7 +215,7 @@ func (s *Service) exchange(form url.Values) (TokenResponse, error) {
 		return TokenResponse{}, err
 	}
 	defer resp.Body.Close()
-	raw, _ := io.ReadAll(resp.Body)
+	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
 	if resp.StatusCode == 400 || resp.StatusCode == 401 {
 		return TokenResponse{}, fmt.Errorf("NEEDS_REAUTH")
 	}

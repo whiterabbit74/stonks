@@ -40,11 +40,9 @@ func (l *ipLimiter) allow(key string, max int) bool {
 	now := time.Now()
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if len(l.buckets) > 20000 {
-		for k, b := range l.buckets {
-			if now.After(b.reset) {
-				delete(l.buckets, k)
-			}
+	for k, b := range l.buckets {
+		if now.After(b.reset) {
+			delete(l.buckets, k)
 		}
 	}
 	b := l.buckets[key]
@@ -149,6 +147,10 @@ func (s *Server) checkOrigin(next http.Handler) http.Handler {
 		}
 		origin := strings.TrimSpace(r.Header.Get("Origin"))
 		if origin == "" {
+			if strings.EqualFold(r.Header.Get("Sec-Fetch-Site"), "cross-site") {
+				writeJSON(w, http.StatusForbidden, map[string]any{"error": "origin not allowed"})
+				return
+			}
 			next.ServeHTTP(w, r)
 			return
 		}

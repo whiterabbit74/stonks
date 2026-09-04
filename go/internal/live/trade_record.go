@@ -110,8 +110,9 @@ func (e *Engine) recordFill(t map[string]any, detail map[string]any, status stri
 		orderedQty = meta.Quantity
 	}
 	fillQty := reportedQty
+	unconfirmedPrice := false
 	if !(fillPrice > 0) {
-		fillPrice = meta.QuotePrice
+		unconfirmedPrice = true
 	}
 	if !(fillQty > 0) {
 		fillQty = orderedQty
@@ -161,7 +162,13 @@ func (e *Engine) recordFill(t map[string]any, detail map[string]any, status stri
 		})
 	}
 
-	e.warnOnSlippage(symbol, action, clientOrderID, meta, fillPrice)
+	if !unconfirmedPrice {
+		e.warnOnSlippage(symbol, action, clientOrderID, meta, fillPrice)
+	} else {
+		e.logAuto("fill_price_unconfirmed", meta.CorrelationID, map[string]any{
+			"symbol": symbol, "action": action, "clientOrderId": clientOrderID,
+		})
+	}
 
 	if action == "entry" {
 		if existing := e.getTrade("broker_trades", clientOrderID); existing != nil {

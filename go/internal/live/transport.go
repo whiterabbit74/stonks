@@ -75,7 +75,7 @@ func (h *HTTPTelegram) Send(chatID, text string) error {
 		return err
 	}
 	defer resp.Body.Close()
-	b, _ := io.ReadAll(resp.Body)
+	b, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
 	var parsed struct {
 		OK          bool   `json:"ok"`
 		Description string `json:"description"`
