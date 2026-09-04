@@ -203,6 +203,12 @@ type EvalResult struct {
 	Phase       string           `json:"phase,omitempty"`
 	Live        bool             `json:"live"`
 	Broker      any              `json:"broker,omitempty"`
+	// BrokerDecisions holds the per-broker decision (action/reason/candidate),
+	// keyed by broker name. Decision (above) stays the single-book showcase
+	// value Evaluate() computes for UI/Telegram; this is the real per-broker
+	// picture executeAll acted on, so the UI does not show one broker's
+	// decision as if it applied to all of them.
+	BrokerDecisions map[string]map[string]any `json:"brokerDecisions,omitempty"`
 }
 
 func (e *Engine) Evaluate() EvalResult {
@@ -409,23 +415,10 @@ func (e *Engine) Execute(trigger string) EvalResult {
 	e.lastResult = ev
 	e.mu.Unlock()
 	snaps := e.brokerSnapshot()
-	if len(snaps) > 1 {
-		return e.executeAll(ev, trigger, corr, snaps)
-	}
-	action, _ := ev.Decision["action"].(string)
-	if action == "none" {
-		ev.Executed = false
-		e.logAuto("execution_skipped", corr, map[string]any{"trigger": trigger, "reason": "no_signal"})
-		return ev
-	}
-	var br Broker
-	name := ""
-	if len(snaps) == 1 {
-		br, name = snaps[0].br, snaps[0].name
-	} else {
-		br = e.defaultBroker()
-	}
-	return e.submitEvaluated(ev, trigger, corr, name, br)
+	// Always go through executeAll, including zero and one broker: every broker
+	// has its own flags, health status, and book, and only executeAll checks
+	// them. See P0-1 in AUTOTRADE_ROADMAP.md.
+	return e.executeAll(ev, trigger, corr, snaps)
 }
 
 func (e *Engine) placeMarketOnce(symbol, side string, qty float64, cfg PlaceMarketCfg, br Broker) (OrderResult, error) {

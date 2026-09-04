@@ -18,7 +18,19 @@ func (e *Engine) storedHealthStatus(name string) string {
 }
 
 func (e *Engine) executeAll(ev EvalResult, trigger, corr string, snaps []namedBroker) EvalResult {
+	if len(snaps) == 0 {
+		ev.Decision = map[string]any{"action": "none", "reason": "no_broker_configured", "symbol": nil, "candidate": nil}
+		ev.Executed = false
+		ev.Submitted = false
+		ev.Phase = "decision"
+		e.logAuto("execution_skipped", corr, map[string]any{"reason": "no_broker_configured"})
+		e.mu.Lock()
+		e.lastResult = ev
+		e.mu.Unlock()
+		return ev
+	}
 	results := map[string]any{}
+	decisions := map[string]map[string]any{}
 	anyOK := false
 	rows, journalErr := e.DB.ListTrades("broker_trades")
 	for _, nb := range snaps {
@@ -28,22 +40,27 @@ func (e *Engine) executeAll(ev EvalResult, trigger, corr string, snaps []namedBr
 		}
 		enabled, allowE, allowX := brokerFlags(ev.AutoTrading, name)
 		if !enabled {
+			decisions[name] = map[string]any{"action": "none", "reason": "broker_disabled", "symbol": nil, "candidate": nil}
+			e.logAuto("execution_skipped", corr, map[string]any{"broker": name, "reason": "broker_disabled"})
 			continue
 		}
 		st := e.storedHealthStatus(name)
 		if st == HealthNeedsReauth || st == HealthMissing {
+			decisions[name] = map[string]any{"action": "none", "reason": st, "symbol": nil, "candidate": nil}
 			e.logAuto("execution_skipped", corr, map[string]any{"broker": name, "reason": st})
 			continue
 		}
 		one := ev
 		if journalErr != nil {
 			one.Decision = map[string]any{"action": "none", "reason": "journal_unavailable", "symbol": nil, "candidate": nil}
+			decisions[name] = one.Decision
 			e.logAuto("execution_skipped", corr, map[string]any{"broker": name, "reason": "journal_unavailable"})
 			continue
 		}
 		open, held, heldErr := e.booksFor(name, br, rows)
 		one.OpenTrade = open
 		one.Decision = decideLiveAction(ev.Quotes, ev.Symbols, held, heldErr, open, allowE, allowX)
+		decisions[name] = one.Decision
 		action, _ := one.Decision["action"].(string)
 		if action == "none" {
 			e.logAuto("execution_skipped", corr, map[string]any{"broker": name, "reason": one.Decision["reason"]})
@@ -63,7 +80,18 @@ func (e *Engine) executeAll(ev EvalResult, trigger, corr string, snaps []namedBr
 			anyOK = true
 		}
 	}
-	ev.Broker = results
+	// ev.Broker keeps carrying the submission outcome, in the shape callers already
+	// depend on: a single result unwrapped for a single broker, a name-keyed map
+	// once more than one broker actually attempted submission.
+	switch len(results) {
+	case 1:
+		for _, v := range results {
+			ev.Broker = v
+		}
+	default:
+		ev.Broker = results
+	}
+	ev.BrokerDecisions = decisions
 	ev.Executed = anyOK
 	ev.Submitted = anyOK
 	if anyOK {
