@@ -88,6 +88,21 @@ test('mapHeroSeries daily markers sit on entry/exit session timestamps', () => {
   assert.equal(mapped.candleMarks[0].time, mapped.lineMarks[0].time);
 });
 
+test('mapHeroSeries ignores a missing or zero live quote so the last bar does not drop to 0', () => {
+  const lastClose = bars[bars.length - 1].close;
+  for (const currentPrice of [null, undefined, 0, Number.NaN, '']) {
+    const mapped = Charts.mapHeroSeries(bars, {
+      currentPrice,
+      isTrading: false,
+      todayISO: '2024-11-19',
+      todayQuote: { open: null, high: null, low: null, current: null },
+      showTrades: false,
+    });
+    assert.equal(mapped.candles.length, 3, 'price=' + currentPrice);
+    assert.equal(mapped.line[mapped.line.length - 1].value, lastClose);
+  }
+});
+
 test('mapHeroSeries adds a today bar when the tape is stale and the market is open', () => {
   const mapped = Charts.mapHeroSeries(bars, {
     currentPrice: 12.5,

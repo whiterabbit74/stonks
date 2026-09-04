@@ -4161,7 +4161,7 @@
       timeframe: state.heroTf,
       trades: tradesForTicker(t, result),
       showTrades: hp().showTrades,
-      currentPrice: q && q.current,
+      currentPrice: Charts.livePrice(q && q.current),
       todayQuote: q,
       isTrading: isMarketOpen(),
       todayISO: nyseParts().iso,

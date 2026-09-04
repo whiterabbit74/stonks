@@ -20,6 +20,11 @@ const Charts = {
   isoDate(date) {
     return String(date || '').slice(0, 10);
   },
+  livePrice(v) {
+    if (typeof v !== 'number' && (v == null || v === '')) return null;
+    const n = typeof v === 'number' ? v : Number(v);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  },
   mapOHLC(bars) {
     return (bars || []).filter((b) => b && b.date).slice().sort((a, b) => String(a.date).localeCompare(String(b.date))).map((b) => ({
       time: this.toBusinessDay(b.date),
@@ -82,27 +87,30 @@ const Charts = {
     const kind = opts.kind === 'candles' ? 'candles' : 'line';
     const tf = opts.timeframe === 'weekly' ? 'weekly' : 'daily';
     let data = (bars || []).filter((b) => b && b.date).slice().sort((a, b) => String(a.date).localeCompare(String(b.date)));
-    const price = Number(opts.currentPrice);
-    if (Number.isFinite(price) && data.length) {
+    const live = this.livePrice(opts.currentPrice);
+    if (live != null && data.length) {
       const last = data[data.length - 1];
       const today = this.isoDate(opts.todayISO);
       data = data.slice();
       if (opts.isTrading && today && this.isoDate(last.date) < today) {
         const q = opts.todayQuote || {};
+        const open = this.livePrice(q.open);
+        const high = this.livePrice(q.high);
+        const low = this.livePrice(q.low);
         data.push({
           date: today,
-          open: Number(q.open != null ? q.open : last.close),
-          high: Math.max(Number(q.high != null ? q.high : price), price),
-          low: Math.min(Number(q.low != null ? q.low : price), price),
-          close: price,
+          open: open != null ? open : last.close,
+          high: high != null ? Math.max(high, live) : live,
+          low: low != null ? Math.min(low, live) : live,
+          close: live,
           volume: 0,
         });
       } else {
         data[data.length - 1] = {
           ...last,
-          close: price,
-          high: Math.max(Number(last.high), price),
-          low: Math.min(Number(last.low), price),
+          close: live,
+          high: Math.max(Number(last.high), live),
+          low: Math.min(Number(last.low), live),
         };
       }
     }
