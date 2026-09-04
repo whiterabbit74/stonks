@@ -101,10 +101,24 @@ backup_volume() {
 }
 STATE_VOLUME=\$(resolve_volume_name stonks-server /data/state stonks_state)
 DB_VOLUME=\$(resolve_volume_name stonks-server /data/db stonks_db)
+DATASETS_VOLUME=\$(resolve_volume_name stonks-server /data/datasets stonks_datasets)
 backup_volume \"\$STATE_VOLUME\" \"\$BACKUP_DIR/\$BACKUP_NAME/state\" state
 backup_volume \"\$DB_VOLUME\" \"\$BACKUP_DIR/\$BACKUP_NAME/db\" db
 cd \"\$BACKUP_DIR\" && ls -dt backup_* 2>/dev/null | tail -n +6 | xargs rm -rf 2>/dev/null || true
 echo \"backup \$BACKUP_NAME (db+state only)\"
+
+# Runtime image runs as uid 10001. Named volumes created by older root
+# containers stay root:root, so SQLite then fails with 'readonly database'.
+fix_volume_owner() {
+  local vol=\"\$1\"
+  if [ -n \"\$vol\" ] && docker volume inspect \"\$vol\" >/dev/null 2>&1; then
+    docker run --rm -v \"\$vol:/data\" alpine chown -R 10001:10001 /data
+    echo \"chown 10001:10001 \$vol\"
+  fi
+}
+fix_volume_owner \"\$STATE_VOLUME\"
+fix_volume_owner \"\$DB_VOLUME\"
+fix_volume_owner \"\$DATASETS_VOLUME\"
 
 cd ${REMOTE_DIR}
 if [ -f .env ]; then
