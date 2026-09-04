@@ -179,12 +179,19 @@ func TestTokenHealthCallsCheckToken(t *testing.T) {
 	now := time.Date(2026, 9, 1, 15, 0, 0, 0, time.UTC)
 	today := tradingdate.TodayNYSE(now)
 	status, skip := RunTokenHealth(db, Deps{Live: eng}, today, now)
+	// RunTokenHealth surfaces the raw word Webull's CheckToken returned.
 	if skip || status != "NORMAL" {
 		t.Fatalf("want NORMAL check, got skip=%v status=%s", skip, status)
 	}
 	row := db.GetWebullToken()
-	if row.LastCheckStatus != "NORMAL" {
-		t.Fatalf("stored status %q", row.LastCheckStatus)
+	// P0-4: last_check_status holds the classified verdict CanSubmit gates
+	// on (OK/NEEDS_REAUTH/...), never the raw Webull word — that is
+	// last_check_raw instead.
+	if row.LastCheckStatus != live.HealthOK {
+		t.Fatalf("stored status %q, want %q", row.LastCheckStatus, live.HealthOK)
+	}
+	if row.LastCheckRaw != "NORMAL" {
+		t.Fatalf("stored raw %q, want NORMAL", row.LastCheckRaw)
 	}
 }
 

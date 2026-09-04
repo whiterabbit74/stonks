@@ -32,7 +32,7 @@ func (e *Engine) PatchAutoConfig(updates map[string]any) map[string]any {
 	if cur == nil {
 		cur = map[string]any{}
 	}
-	cur = sanitizeAutoTradingConfig(updates, cur)
+	cur = sanitizeAutoTradingConfig(updates, cur, e.now())
 	settings["autoTrading"] = cur
 	_ = e.DB.SaveSettings(settings)
 	return cur
@@ -83,7 +83,11 @@ func (e *Engine) TokenStatus() map[string]any {
 }
 
 func (e *Engine) PutToken(token, expiresAt string) map[string]any {
-	_ = e.DB.SaveWebullToken(token, expiresAt, "NORMAL")
+	// The column holds the classified vocabulary now, so a hand-entered token
+	// must be classified too - otherwise the raw word lands in last_check_status
+	// and both the submit gate and the SPA read it as an unknown status.
+	classified, _ := ClassifyWebullHealth(token, "NORMAL", expiresAt, e.now())
+	_ = e.DB.SaveWebullTokenChecked(token, expiresAt, classified, "NORMAL")
 	return map[string]any{"success": true, "expiresAt": expiresAt, "hasToken": token != ""}
 }
 
@@ -103,7 +107,8 @@ func (e *Engine) CreateToken() (map[string]any, error) {
 	exp, _ := data["expiresAt"].(string)
 	persisted := tok != ""
 	if persisted {
-		_ = e.DB.SaveWebullToken(tok, exp, "PENDING")
+		classified, _ := ClassifyWebullHealth(tok, "PENDING", exp, e.now())
+		_ = e.DB.SaveWebullTokenChecked(tok, exp, classified, "PENDING")
 	}
 	data["persisted"] = persisted
 	return data, nil
@@ -135,7 +140,12 @@ func (e *Engine) TokenHealth() string {
 	if exp == "" {
 		exp, _ = data["expires_at"].(string)
 	}
-	_ = e.DB.SaveWebullToken(token, exp, status)
+	// P0-4: last_check_status must carry the classified verdict
+	// (OK/NEEDS_REAUTH/...) that CanSubmit/executeAll gate on, not the raw
+	// Webull word — that goes to last_check_raw instead, symmetric with how
+	// Robinhood's health job already stores a classified status.
+	classified, _ := ClassifyWebullHealth(token, status, exp, e.now())
+	_ = e.DB.SaveWebullTokenChecked(token, exp, classified, status)
 	if status == "NORMAL" && e.Broker != nil {
 		_, _ = e.Broker.Account()
 	}
@@ -167,7 +177,8 @@ func (e *Engine) CheckToken(token string) (map[string]any, error) {
 		exp, _ = data["expires_at"].(string)
 	}
 	if token != "" {
-		_ = e.DB.SaveWebullToken(token, exp, status)
+		classified, _ := ClassifyWebullHealth(token, status, exp, e.now())
+		_ = e.DB.SaveWebullTokenChecked(token, exp, classified, status)
 	}
 	return data, nil
 }

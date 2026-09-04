@@ -167,7 +167,7 @@ func TestSanitizeAutoTradingConfig(t *testing.T) {
 		"enabled": true, "lowIBS": 5.0, "highIBS": -1.0, "dryRun": true,
 		"executionWindowSeconds": 3, "maxSlippageBps": 5000,
 		"provider": "nope", "unknown": "x",
-	}, map[string]any{"provider": "finnhub", "lowIBS": 0.1})
+	}, map[string]any{"provider": "finnhub", "lowIBS": 0.1}, time.Now())
 	if asFloat(out["lowIBS"]) != 1 || asFloat(out["highIBS"]) != 0 {
 		t.Fatalf("clamp %+v", out)
 	}

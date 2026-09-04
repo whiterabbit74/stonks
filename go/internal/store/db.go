@@ -184,6 +184,7 @@ func (d *DB) initSchema() error {
             created_at            TEXT,
             expires_at            TEXT,
             last_check_status     TEXT,
+            last_check_raw        TEXT,
             last_check_at         TEXT,
             last_health_check_date TEXT,
             last_health_check_attempt_at TEXT,
@@ -273,6 +274,9 @@ func (d *DB) migrateSchema() error {
 		return err
 	}
 	if err := d.ensureColumn("webull_token", "last_alerted_at", "TEXT"); err != nil {
+		return err
+	}
+	if err := d.ensureColumn("webull_token", "last_check_raw", "TEXT"); err != nil {
 		return err
 	}
 	if err := d.ensureColumn("aggregate_send_state", "t1_lease_until", "TEXT"); err != nil {
@@ -1353,6 +1357,7 @@ func (d *DB) ListTickers() ([]string, error) {
 type WebullTokenRow struct {
 	Token               string
 	LastCheckStatus     string
+	LastCheckRaw        string
 	LastHealthCheckDate string
 	LastAttemptAt       string
 	ExpiresAt           string
@@ -1363,17 +1368,22 @@ type WebullTokenRow struct {
 
 func (d *DB) GetWebullToken() WebullTokenRow {
 	var row WebullTokenRow
-	_ = d.SQL.QueryRow(`SELECT COALESCE(token,''), COALESCE(last_check_status,''), COALESCE(last_health_check_date,''), COALESCE(last_health_check_attempt_at,''), COALESCE(expires_at,''), COALESCE(last_check_at,''), COALESCE(last_alerted_status,''), COALESCE(last_alerted_at,'') FROM webull_token WHERE id='current'`).
-		Scan(&row.Token, &row.LastCheckStatus, &row.LastHealthCheckDate, &row.LastAttemptAt, &row.ExpiresAt, &row.LastCheckAt, &row.LastAlertedStatus, &row.LastAlertedAt)
+	_ = d.SQL.QueryRow(`SELECT COALESCE(token,''), COALESCE(last_check_status,''), COALESCE(last_check_raw,''), COALESCE(last_health_check_date,''), COALESCE(last_health_check_attempt_at,''), COALESCE(expires_at,''), COALESCE(last_check_at,''), COALESCE(last_alerted_status,''), COALESCE(last_alerted_at,'') FROM webull_token WHERE id='current'`).
+		Scan(&row.Token, &row.LastCheckStatus, &row.LastCheckRaw, &row.LastHealthCheckDate, &row.LastAttemptAt, &row.ExpiresAt, &row.LastCheckAt, &row.LastAlertedStatus, &row.LastAlertedAt)
 	return row
 }
 
-func (d *DB) UpsertWebullHealth(todayET, status, attemptAt string) error {
-	_, err := d.SQL.Exec(`INSERT INTO webull_token (id, last_check_status, last_health_check_date, last_health_check_attempt_at, updated_at)
-        VALUES ('current', ?, ?, ?, datetime('now'))
+// UpsertWebullHealth records the classified health status (OK/NEEDS_REAUTH/
+// MISSING/UNREACHABLE/EXPIRING_SOON — the vocabulary CanSubmit/executeAll gate
+// on) plus the raw word Webull's check actually returned, and marks today's
+// scheduled health check as done. See SaveWebullTokenChecked.
+func (d *DB) UpsertWebullHealth(todayET, status, raw, attemptAt string) error {
+	_, err := d.SQL.Exec(`INSERT INTO webull_token (id, last_check_status, last_check_raw, last_health_check_date, last_health_check_attempt_at, updated_at)
+        VALUES ('current', ?, ?, ?, ?, datetime('now'))
         ON CONFLICT(id) DO UPDATE SET last_check_status=excluded.last_check_status,
+            last_check_raw=excluded.last_check_raw,
             last_health_check_date=excluded.last_health_check_date,
             last_health_check_attempt_at=excluded.last_health_check_attempt_at,
-            updated_at=datetime('now')`, status, todayET, attemptAt)
+            updated_at=datetime('now')`, status, raw, todayET, attemptAt)
 	return err
 }

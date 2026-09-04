@@ -56,16 +56,41 @@ func (d *DB) MergeOHLC(ticker string, incoming []types.OHLC) error {
 	return d.SaveDataset(ticker, name, company, tag, out, adj)
 }
 
+// SaveWebullToken persists the token, expiry, and check status as a single
+// word (mirrored into both last_check_status and last_check_raw). It is the
+// low-level primitive for callers that only have one status word to record
+// (a freshly created/pasted token, or a test fixture). A caller that has run
+// an actual Webull check and holds both a classified verdict (OK/NEEDS_REAUTH/
+// ...) and the raw response word Webull returned should use
+// SaveWebullTokenChecked instead, so the two do not collapse into one column
+// again (see P0-4 in AUTOTRADE_ROADMAP.md).
 func (d *DB) SaveWebullToken(token, expiresAt, status string) error {
 	if status == "" {
 		status = "NORMAL"
 	}
-	_, err := d.SQL.Exec(`INSERT INTO webull_token (id, token, expires_at, last_check_status, last_check_at, updated_at)
-        VALUES ('current', ?, ?, ?, datetime('now'), datetime('now'))
+	return d.SaveWebullTokenChecked(token, expiresAt, status, status)
+}
+
+// SaveWebullTokenChecked persists the token/expiry along with a classified
+// health status (last_check_status — the vocabulary CanSubmit/executeAll gate
+// on: OK, NEEDS_REAUTH, MISSING, UNREACHABLE, EXPIRING_SOON) separately from
+// the raw word Webull's CheckToken response actually carried (last_check_raw,
+// e.g. "NORMAL", "PENDING"). Symmetric with how Robinhood already stores a
+// classified status in robinhood_oauth.last_check_status.
+func (d *DB) SaveWebullTokenChecked(token, expiresAt, status, raw string) error {
+	if status == "" {
+		status = "NORMAL"
+	}
+	if raw == "" {
+		raw = status
+	}
+	_, err := d.SQL.Exec(`INSERT INTO webull_token (id, token, expires_at, last_check_status, last_check_raw, last_check_at, updated_at)
+        VALUES ('current', ?, ?, ?, ?, datetime('now'), datetime('now'))
         ON CONFLICT(id) DO UPDATE SET token=excluded.token,
             expires_at=COALESCE(NULLIF(excluded.expires_at,''), webull_token.expires_at),
-            last_check_status=excluded.last_check_status, last_check_at=excluded.last_check_at, updated_at=datetime('now')`,
-		token, expiresAt, status)
+            last_check_status=excluded.last_check_status, last_check_raw=excluded.last_check_raw,
+            last_check_at=excluded.last_check_at, updated_at=datetime('now')`,
+		token, expiresAt, status, raw)
 	return err
 }
 
@@ -463,7 +488,10 @@ func OpenTradeForSymbol(rows []map[string]any, symbol string) map[string]any {
 // is the last resort rather than being dropped.
 func (d *DB) WebullAccessToken() string {
 	row := d.GetWebullToken()
-	if row.Token != "" && strings.EqualFold(row.LastCheckStatus, "NORMAL") {
+	// last_check_raw carries Webull's own vocabulary ("NORMAL") even after
+	// P0-4 started classifying last_check_status into OK/NEEDS_REAUTH/...; the
+	// raw column is what this check is actually about.
+	if row.Token != "" && strings.EqualFold(row.LastCheckRaw, "NORMAL") {
 		return row.Token
 	}
 	if env := os.Getenv("WEBULL_ACCESS_TOKEN"); env != "" {

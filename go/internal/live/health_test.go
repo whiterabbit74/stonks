@@ -62,3 +62,32 @@ func TestShouldHealthAlert(t *testing.T) {
 		t.Fatal("unreachable alert")
 	}
 }
+
+// TestBrokersHealthReportsClassifiedStatusNotRawNormal is the P2-8
+// regression: BrokersHealth's "status" field is what the SPA compares
+// against the literal string 'OK' to decide whether to paint the token
+// green. Before P0-4(b), a healthy Webull token's last_check_status held the
+// raw Webull word "NORMAL", so RecordedHealth's unreachable-fallback branch
+// could hand that raw word straight back out as "status" and the SPA would
+// paint a perfectly healthy token red. With last_check_status classified,
+// BrokersHealth must always report "OK", never "NORMAL".
+func TestBrokersHealthReportsClassifiedStatusNotRawNormal(t *testing.T) {
+	_, e, _ := testEngine(t, nil)
+	exp := e.now().Add(90 * 24 * time.Hour).Format(time.RFC3339)
+	if err := e.DB.SaveWebullTokenChecked("tok", exp, HealthOK, "NORMAL"); err != nil {
+		t.Fatal(err)
+	}
+	hs := e.BrokersHealth()
+	var webull *BrokerHealth
+	for i := range hs {
+		if hs[i].Broker == "webull" {
+			webull = &hs[i]
+		}
+	}
+	if webull == nil {
+		t.Fatal("no webull entry")
+	}
+	if webull.Status != HealthOK {
+		t.Fatalf("status = %q, want %q (SPA compares against the literal 'OK')", webull.Status, HealthOK)
+	}
+}

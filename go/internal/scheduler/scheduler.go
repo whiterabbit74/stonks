@@ -254,24 +254,44 @@ func RunBrokerHealth(db *store.DB, deps Deps, todayET string, now time.Time) []l
 	return out
 }
 
+// webullHealthJob runs the daily Webull token check and records the result.
+// P0-4: last_check_status must end up holding the classified verdict
+// (OK/NEEDS_REAUTH/MISSING/UNREACHABLE/EXPIRING_SOON) that CanSubmit and
+// executeAll gate on — the same vocabulary robinhoodHealthJob already writes
+// — never the raw word Webull's CheckToken response carried ("NORMAL",
+// "PENDING", ...). The raw word is preserved separately in last_check_raw for
+// diagnostics.
 func webullHealthJob(db *store.DB, eng *live.Engine, todayET string, now time.Time) []live.BrokerHealth {
 	row := db.GetWebullToken()
 	if row.LastHealthCheckDate == todayET {
 		return []live.BrokerHealth{{Broker: "webull", Status: row.LastCheckStatus, Detail: "skipped"}}
 	}
+	// eng.TokenHealth() returns Webull's own raw word ("NORMAL", "PENDING",
+	// "MISSING", "PRESENT") or "UNKNOWN" when the check itself could not
+	// reach Webull; on the reachable paths it has already persisted a
+	// classified status + the raw word via SaveWebullTokenChecked.
 	raw := eng.TokenHealth()
-	recorded := raw
-	if raw == "UNKNOWN" && row.LastCheckStatus != "" {
-		recorded = row.LastCheckStatus
-	}
-	_ = db.UpsertWebullHealth(todayET, recorded, now.UTC().Format(time.RFC3339Nano))
 	row = db.GetWebullToken()
-	st, dl := live.ClassifyWebullHealth(row.Token, recorded, row.ExpiresAt, now)
-	if raw == "UNKNOWN" {
-		st = live.RecordedHealth(row.LastCheckStatus, live.HealthUnreachable)
+	recordedRaw := raw
+	if raw == "UNKNOWN" && row.LastCheckRaw != "" {
+		recordedRaw = row.LastCheckRaw
 	}
+	var st string
+	var dl *int
+	if raw == "UNKNOWN" {
+		// Unreachable: do not overwrite a previously known-good classified
+		// status with UNREACHABLE outright — same fallback Robinhood's job
+		// already applies. daysLeft is still derived from the last known raw
+		// word so an expiry warning near the deadline is not lost.
+		st = live.RecordedHealth(row.LastCheckStatus, live.HealthUnreachable)
+		_, dl = live.ClassifyWebullHealth(row.Token, recordedRaw, row.ExpiresAt, now)
+	} else {
+		st, dl = live.ClassifyWebullHealth(row.Token, raw, row.ExpiresAt, now)
+	}
+	_ = db.UpsertWebullHealth(todayET, st, recordedRaw, now.UTC().Format(time.RFC3339Nano))
+	row = db.GetWebullToken()
 	maybeHealthAlert(db, eng, "webull", row.LastAlertedStatus, row.LastAlertedAt, st, now)
-	return []live.BrokerHealth{{Broker: "webull", Status: st, CheckedAt: now.UTC().Format(time.RFC3339), ExpiresAt: row.ExpiresAt, DaysLeft: dl, Detail: recorded}}
+	return []live.BrokerHealth{{Broker: "webull", Status: st, CheckedAt: now.UTC().Format(time.RFC3339), ExpiresAt: row.ExpiresAt, DaysLeft: dl, Detail: recordedRaw}}
 }
 
 func robinhoodHealthJob(db *store.DB, eng *live.Engine, todayET string, now time.Time) []live.BrokerHealth {

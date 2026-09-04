@@ -85,8 +85,11 @@ func enumIn(v string, allowed ...string) bool {
 	return false
 }
 
-// sanitizeAutoTradingConfig ports autotrade.js:493-526.
-func sanitizeAutoTradingConfig(input, current map[string]any) map[string]any {
+// sanitizeAutoTradingConfig ports autotrade.js:493-526. now is the engine's
+// clock (e.now()), not time.Now() directly, so saving the config obeys test
+// clocks the same way every other timestamped write in this package does
+// (P2-8).
+func sanitizeAutoTradingConfig(input, current map[string]any, now time.Time) map[string]any {
 	next := map[string]any{}
 	if current != nil {
 		for k, v := range current {
@@ -159,7 +162,7 @@ func sanitizeAutoTradingConfig(input, current map[string]any) map[string]any {
 		}
 	}
 	next["brokers"] = sanitizeBrokers(input, current, next)
-	next["lastModifiedAt"] = time.Now().UTC().Format(time.RFC3339Nano)
+	next["lastModifiedAt"] = now.UTC().Format(time.RFC3339Nano)
 	return next
 }
 

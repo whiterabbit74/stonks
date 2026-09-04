@@ -197,7 +197,7 @@ func TestPartialExitKeepsRemainderOpen(t *testing.T) {
 }
 
 func TestLowHighThresholdsRejected(t *testing.T) {
-	out := sanitizeAutoTradingConfig(map[string]any{"lowIBS": 0.9, "highIBS": 0.1}, map[string]any{"lowIBS": 0.1, "highIBS": 0.75})
+	out := sanitizeAutoTradingConfig(map[string]any{"lowIBS": 0.9, "highIBS": 0.1}, map[string]any{"lowIBS": 0.1, "highIBS": 0.75}, time.Now())
 	if asFloat(out["lowIBS"]) != 0.1 || asFloat(out["highIBS"]) != 0.75 {
 		t.Fatalf("inverted thresholds must not stick: %+v", out)
 	}
