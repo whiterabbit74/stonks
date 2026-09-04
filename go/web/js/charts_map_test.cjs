@@ -168,3 +168,127 @@ test('simulateLeverage amplifies bar-to-bar returns', () => {
   assert.equal(got.equity[1].value, 12000);
   assert.equal(got.finalValue, 12000);
 });
+
+test('house rule is eight empty bars on the right', () => {
+  assert.equal(Charts.RIGHT_OFFSET, 8);
+  assert.equal(Charts.rightOffsetOf({}), 8);
+  assert.equal(Charts.rightOffsetOf(null), 8);
+  assert.equal(Charts.rightOffsetOf({ rightOffset: 0 }), 0);
+  assert.equal(Charts.rightOffsetOf({ rightOffset: 12 }), 12);
+});
+
+test('ibsThresholds default to entry 0.10 and exit 0.75', () => {
+  const def = Charts.ibsThresholds();
+  assert.equal(def.low, 0.1);
+  assert.equal(def.high, 0.75);
+  const custom = Charts.ibsThresholds({ lowIBS: 0.05, highIBS: 0.8 });
+  assert.equal(custom.low, 0.05);
+  assert.equal(custom.high, 0.8);
+  const bad = Charts.ibsThresholds({ lowIBS: 0.9, highIBS: 0.1 });
+  assert.equal(bad.low, 0.1);
+  assert.equal(bad.high, 0.75);
+});
+
+test('ibsColoredLineData paints below 10 green and above 75 red', () => {
+  const points = [
+    { date: '2024-11-15', value: 0.05 },
+    { date: '2024-11-18', value: 0.50 },
+    { date: '2024-11-19', value: 0.90 },
+  ];
+  const { mid, lo, hi } = Charts.ibsColoredLineData(points, 0.1, 0.75);
+  assert.equal(lo.find((p) => p.value != null).value, 0.05);
+  assert.equal(mid.find((p) => p.value != null).value, 0.50);
+  assert.equal(hi.find((p) => p.value != null).value, 0.90);
+  assert.equal(lo.filter((p) => p.value != null).length, 1);
+  assert.equal(hi.filter((p) => p.value != null).length, 1);
+  assert.equal(mid.filter((p) => p.value != null).length, 1);
+});
+
+test('applyRange keeps eight bars of room on the right', () => {
+  const captured = { logical: null, opts: null, fit: false };
+  const chart = {
+    timeScale() {
+      return {
+        applyOptions(o) { captured.opts = o; },
+        fitContent() { captured.fit = true; },
+        setVisibleLogicalRange(r) { captured.logical = r; },
+        setVisibleRange() { throw new Error('range should not be used when logical works'); },
+      };
+    },
+  };
+  const candles = [];
+  for (let i = 0; i < 20; i++) {
+    candles.push({ time: Charts.toUtcTs('2024-11-01') + i * 86400 });
+  }
+  Charts.applyRange(chart, candles, 'MAX');
+  assert.equal(captured.opts.rightOffset, 8);
+  assert.equal(captured.fit, true);
+  Charts.applyRange(chart, candles, '1M');
+  assert.equal(captured.logical.to, 19 + 8);
+  assert.ok(captured.logical.from >= 0);
+});
+
+test('priceChart IBS pane draws dotted 10/75 lines and zone fills', () => {
+  const captured = { create: null, series: [], lines: [] };
+  sandbox.document = {
+    createElement() {
+      return { className: '', textContent: '', style: {}, setAttribute() {} };
+    },
+  };
+  sandbox.LightweightCharts = {
+    LineSeries: 'Line',
+    AreaSeries: 'Area',
+    CandlestickSeries: 'Candle',
+    HistogramSeries: 'Hist',
+    createSeriesMarkers() {},
+    createChart(_el, opts) {
+      captured.create = opts;
+      return {
+        addSeries(type, seriesOpts) {
+          const rec = { type, seriesOpts, data: null };
+          captured.series.push(rec);
+          return {
+            setData(d) { rec.data = d; },
+            createPriceLine(o) { captured.lines.push(o); },
+          };
+        },
+        timeScale() {
+          return {
+            applyOptions() {},
+            fitContent() {},
+            setVisibleLogicalRange() {},
+            setVisibleRange() {},
+            options() { return { rightOffset: opts.timeScale.rightOffset }; },
+          };
+        },
+        priceScale() { return { applyOptions() {} }; },
+        remove() {},
+      };
+    },
+  };
+  const el = { querySelector() { return null; }, appendChild() {} };
+  const ibsBars = [
+    { date: '2024-11-15', open: 10, high: 20, low: 0, close: 1, volume: 1 },
+    { date: '2024-11-18', open: 10, high: 20, low: 0, close: 10, volume: 1 },
+    { date: '2024-11-19', open: 10, high: 20, low: 0, close: 19, volume: 1 },
+  ];
+  Charts.priceChart(el, ibsBars, { ibs: true, volume: false, showTrades: false, range: 'MAX', ticker: 'AAPL' });
+  assert.equal(captured.create.timeScale.rightOffset, 8);
+  const areas = captured.series.filter((s) => s.type === 'Area');
+  assert.equal(areas.length, 2);
+  assert.equal(areas[0].seriesOpts.baseValue.price, 0);
+  assert.equal(areas[1].seriesOpts.baseValue.price, 75);
+  assert.equal(areas[0].seriesOpts.lineVisible, false);
+  assert.equal(areas[1].seriesOpts.lineVisible, false);
+  assert.equal(captured.lines.length, 2);
+  assert.equal(captured.lines[0].price, 10);
+  assert.equal(captured.lines[0].lineStyle, 1);
+  assert.equal(captured.lines[0].lineWidth, 1);
+  assert.equal(captured.lines[1].price, 75);
+  assert.equal(captured.lines[1].lineStyle, 1);
+  const lines = captured.series.filter((s) => s.type === 'Line');
+  assert.ok(lines.some((s) => s.seriesOpts.color === '#10B981'));
+  assert.ok(lines.some((s) => s.seriesOpts.color === '#EF4444'));
+  assert.ok(lines.some((s) => s.seriesOpts.color === '#7c3aed'));
+});
+

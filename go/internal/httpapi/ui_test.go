@@ -42,6 +42,12 @@ func TestVanillaUIAssets(t *testing.T) {
 	if !strings.Contains(cj, "CandlestickSeries") {
 		t.Fatal("missing CandlestickSeries")
 	}
+	if !strings.Contains(cj, "RIGHT_OFFSET: 8") {
+		t.Fatal("all charts must default to an 8-bar rightOffset")
+	}
+	if !strings.Contains(cj, "addIbsPane") || !strings.Contains(cj, "lineStyle: 1") {
+		t.Fatal("IBS pane must draw dotted 10/75 threshold lines")
+	}
 	app, _ := os.ReadFile(filepath.Join(web, "js/app.js"))
 	a := string(app)
 	css, _ := os.ReadFile(filepath.Join(web, "css/extra.css"))

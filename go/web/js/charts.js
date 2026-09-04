@@ -1,5 +1,8 @@
 const Charts = {
   live: [],
+  RIGHT_OFFSET: 8,
+  IBS_LOW: 0.1,
+  IBS_HIGH: 0.75,
   RANGE_DAYS: { '1M': 30, '3M': 90, '6M': 180, '1Y': 365, '3Y': 365 * 3, '5Y': 365 * 5 },
   colors(isDark) {
     return {
@@ -212,26 +215,49 @@ const Charts = {
       layout: { background: { color: c.bg }, textColor: c.text, fontFamily: 'Inter, system-ui, sans-serif' },
       grid: { vertLines: { color: c.grid }, horzLines: { color: c.grid } },
       rightPriceScale: { borderColor: c.border },
-      timeScale: { borderColor: c.border, timeVisible: !!x.timeVisible, secondsVisible: false, rightOffset: x.rightOffset || 0 },
+      timeScale: { borderColor: c.border, timeVisible: !!x.timeVisible, secondsVisible: false, rightOffset: this.rightOffsetOf(x) },
       crosshair: x.crosshair || {},
       handleScroll: x.handleScroll,
       handleScale: x.handleScale,
     }));
   },
+  rightOffsetOf(extra) {
+    const n = extra && extra.rightOffset != null ? Number(extra.rightOffset) : this.RIGHT_OFFSET;
+    return Number.isFinite(n) && n >= 0 ? n : this.RIGHT_OFFSET;
+  },
+  timeOf(t) {
+    if (t == null) return 0;
+    if (typeof t === 'number' && Number.isFinite(t)) return t;
+    if (typeof t === 'object' && t.year) {
+      return this.toUtcTs(`${t.year}-${String(t.month).padStart(2, '0')}-${String(t.day).padStart(2, '0')}`);
+    }
+    return 0;
+  },
   applyRange(chart, candles, range) {
     if (!chart || !candles || !candles.length) return;
-    if (!range || range === 'MAX') {
-      chart.timeScale().fitContent();
+    const ts = chart.timeScale();
+    const offset = this.RIGHT_OFFSET;
+    try { ts.applyOptions({ rightOffset: offset }); } catch (_) { /* older builds */ }
+    if (!range || range === 'MAX' || range === 'ALL') {
+      ts.fitContent();
       return;
     }
     const days = this.RANGE_DAYS[range] || 90;
-    const right = candles[candles.length - 1].time;
-    const left = candles[0].time;
-    const from = Math.max(left, right - days * 24 * 60 * 60);
+    const lastIdx = candles.length - 1;
+    const right = this.timeOf(candles[lastIdx].time);
+    const cutoff = right - days * 24 * 60 * 60;
+    let fromIdx = 0;
+    for (let i = 0; i < candles.length; i++) {
+      if (this.timeOf(candles[i].time) >= cutoff) { fromIdx = i; break; }
+    }
     try {
-      chart.timeScale().setVisibleRange({ from, to: right });
+      ts.setVisibleLogicalRange({ from: fromIdx, to: lastIdx + offset });
     } catch (_) {
-      chart.timeScale().fitContent();
+      try {
+        ts.setVisibleRange({ from: Math.max(this.timeOf(candles[0].time), cutoff), to: right });
+      } catch (__) {
+        ts.fitContent();
+      }
     }
   },
   mark(series, markers) {
@@ -252,7 +278,6 @@ const Charts = {
     const lineColor = trendUp ? '#16a34a' : '#ea580c';
     const chart = this.create(container, opts.dark, {
       timeVisible: true,
-      rightOffset: 2,
       crosshair: { mode: 0 },
       handleScroll: { mouseWheel: false, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false },
       handleScale: { axisPressedMouseMove: false, pinch: true, mouseWheel: false },
@@ -334,6 +359,106 @@ const Charts = {
       const ibs = range > 0 ? (close - low) / range : 0.5;
       return { date: b.date, value: ibs };
     });
+  },
+  ibsThresholds(opts) {
+    opts = opts || {};
+    let low = Number(opts.lowIBS);
+    let high = Number(opts.highIBS);
+    if (!Number.isFinite(low) || low <= 0 || low >= 1) low = this.IBS_LOW;
+    if (!Number.isFinite(high) || high <= 0 || high >= 1) high = this.IBS_HIGH;
+    if (low >= high) {
+      low = this.IBS_LOW;
+      high = this.IBS_HIGH;
+    }
+    return { low, high };
+  },
+  ibsColoredLineData(points, low, high) {
+    const mid = [], lo = [], hi = [];
+    (points || []).forEach((p) => {
+      if (!p || p.date == null || !Number.isFinite(Number(p.value))) return;
+      const time = this.toBusinessDay(p.date);
+      const v = Number(p.value);
+      const gap = { time };
+      if (v < low) {
+        lo.push({ time, value: v });
+        mid.push(gap);
+        hi.push(gap);
+      } else if (v > high) {
+        hi.push({ time, value: v });
+        mid.push(gap);
+        lo.push(gap);
+      } else {
+        mid.push({ time, value: v });
+        lo.push(gap);
+        hi.push(gap);
+      }
+    });
+    return { mid, lo, hi };
+  },
+  ibsBandData(times, value) {
+    if (!times || !times.length) return [];
+    const t0 = times[0];
+    const t1 = times[times.length - 1];
+    if (t0.year === t1.year && t0.month === t1.month && t0.day === t1.day) {
+      return [{ time: t0, value }];
+    }
+    return [{ time: t0, value }, { time: t1, value }];
+  },
+  addIbsPane(chart, points, paneIdx, opts) {
+    const { low, high } = this.ibsThresholds(opts);
+    const lowPct = low * 100;
+    const highPct = high * 100;
+    const scaled = [];
+    const times = [];
+    (points || []).forEach((p) => {
+      if (!p || p.date == null || !Number.isFinite(Number(p.value))) return;
+      scaled.push({ date: p.date, value: Number(p.value) * 100 });
+      times.push(this.toBusinessDay(p.date));
+    });
+    if (!times.length) return { low, high };
+    const colored = this.ibsColoredLineData(scaled, lowPct, highPct);
+    const shared = {
+      priceScaleId: 'ibs',
+      lastValueVisible: false,
+      priceLineVisible: false,
+      crosshairMarkerVisible: false,
+      priceFormat: { type: 'price', precision: 0, minMove: 1 },
+    };
+    const lowFill = chart.addSeries(LightweightCharts.AreaSeries, {
+      ...shared,
+      lineVisible: false,
+      lineWidth: 0,
+      lineColor: 'rgba(16,185,129,0)',
+      topColor: 'rgba(16,185,129,0.20)',
+      bottomColor: 'rgba(16,185,129,0.06)',
+      baseValue: { type: 'price', price: 0 },
+    }, paneIdx);
+    lowFill.setData(this.ibsBandData(times, lowPct));
+    const highFill = chart.addSeries(LightweightCharts.AreaSeries, {
+      ...shared,
+      lineVisible: false,
+      lineWidth: 0,
+      lineColor: 'rgba(239,68,68,0)',
+      topColor: 'rgba(239,68,68,0.20)',
+      bottomColor: 'rgba(239,68,68,0.06)',
+      baseValue: { type: 'price', price: highPct },
+    }, paneIdx);
+    highFill.setData(this.ibsBandData(times, 100));
+    if (typeof lowFill.createPriceLine === 'function') {
+      lowFill.createPriceLine({ price: lowPct, color: '#10B981', lineWidth: 1, lineStyle: 1, axisLabelVisible: true, title: '' });
+      lowFill.createPriceLine({ price: highPct, color: '#EF4444', lineWidth: 1, lineStyle: 1, axisLabelVisible: true, title: '' });
+    }
+    const lineOpts = (color) => Object.assign({
+      color, lineWidth: 1,
+      autoscaleInfoProvider: () => ({ priceRange: { minValue: 0, maxValue: 100 } }),
+    }, shared);
+    const mid = chart.addSeries(LightweightCharts.LineSeries, lineOpts('#7c3aed'), paneIdx);
+    mid.setData(colored.mid);
+    const lo = chart.addSeries(LightweightCharts.LineSeries, lineOpts('#10B981'), paneIdx);
+    lo.setData(colored.lo);
+    const hi = chart.addSeries(LightweightCharts.LineSeries, lineOpts('#EF4444'), paneIdx);
+    hi.setData(colored.hi);
+    return { low, high };
   },
   csvFromBars(bars, extras) {
     const extraKeys = Object.keys(extras || {});
@@ -430,7 +555,7 @@ const Charts = {
     const showVol = opts.volume !== false;
     const showIbs = opts.ibs !== false;
     const extraPanes = (showVol ? 1 : 0) + (showIbs ? 1 : 0);
-    const chart = this.create(container, dark, { timeVisible: true, rightOffset: 4 });
+    const chart = this.create(container, dark, { timeVisible: true });
     const candleSeries = chart.addSeries(LightweightCharts.CandlestickSeries, {
       upColor: '#16a34a', downColor: '#dc2626', borderVisible: false, wickUpColor: '#16a34a', wickDownColor: '#dc2626',
     });
@@ -498,10 +623,7 @@ const Charts = {
     }
     if (showIbs) {
       const ibs = this.ibsValues(sorted);
-      const ibsSeries = chart.addSeries(LightweightCharts.LineSeries, {
-        color: '#7c3aed', lineWidth: 1, priceScaleId: 'ibs', lastValueVisible: false, priceLineVisible: false,
-      }, extraPanes ? pane : undefined);
-      ibsSeries.setData(ibs.map((p) => ({ time: this.toBusinessDay(p.date), value: p.value })));
+      if (ibs.length) this.addIbsPane(chart, ibs, extraPanes ? pane : undefined, opts);
       try { chart.priceScale('ibs').applyOptions({ scaleMargins: { top: extraPanes > 1 ? 0.05 : (1 - panePct), bottom: 0 } }); } catch (_) {}
     }
     const markers = [];

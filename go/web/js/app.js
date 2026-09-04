@@ -4528,6 +4528,8 @@
       ema200Style: p.ema200Style,
       emaBands: p.bands,
       ibs: p.ibs !== false,
+      lowIBS: state.nested && state.nested.bac && state.nested.bac.lowIBS,
+      highIBS: state.nested && state.nested.bac && state.nested.bac.highIBS,
       volume: p.volume !== false,
       showTrades: p.trades !== false,
       trades: tradesForTicker(t, result),
