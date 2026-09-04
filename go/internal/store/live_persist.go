@@ -105,6 +105,34 @@ func (d *DB) AppendAutotradeLogKind(kind, message string) error {
 	return err
 }
 
+// PruneAutotradeLogs drops rows older than maxAgeDays and, whatever their age,
+// everything beyond the newest maxRows. The table only ever grows otherwise:
+// logQuoteProblem writes a row per failed provider attempt per ticker, so a bad
+// data day alone adds thousands. A non-positive bound disables that half of the
+// rule; both non-positive means nothing is deleted.
+func (d *DB) PruneAutotradeLogs(maxAgeDays, maxRows int) (int, error) {
+	total := 0
+	if maxAgeDays > 0 {
+		cutoff := time.Now().UTC().AddDate(0, 0, -maxAgeDays).Format(time.RFC3339Nano)
+		res, err := d.SQL.Exec(`DELETE FROM autotrade_logs WHERE ts < ?`, cutoff)
+		if err != nil {
+			return total, err
+		}
+		n, _ := res.RowsAffected()
+		total += int(n)
+	}
+	if maxRows > 0 {
+		res, err := d.SQL.Exec(`DELETE FROM autotrade_logs WHERE id NOT IN (
+                        SELECT id FROM autotrade_logs ORDER BY id DESC LIMIT ?)`, maxRows)
+		if err != nil {
+			return total, err
+		}
+		n, _ := res.RowsAffected()
+		total += int(n)
+	}
+	return total, nil
+}
+
 func (d *DB) ListAutotradeLogs(limit int) ([]map[string]any, error) {
 	return d.ListAutotradeLogsKind("", limit)
 }
@@ -377,9 +405,9 @@ func (d *DB) ClaimAggregateT1(chatID, dateKey string) (bool, error) {
 }
 
 type T1Attempt struct {
-	Skip           bool
-	Reason         string
-	ExecutionDone  bool
+	Skip          bool
+	Reason        string
+	ExecutionDone bool
 }
 
 // BeginT1Attempt takes a time-bounded lease for today's T-1 run.

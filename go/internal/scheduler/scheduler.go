@@ -216,8 +216,58 @@ func RunTick(db *store.DB, deps Deps, now time.Time, onEvent func(JobLog)) {
 		n, errN := RunPriceActualization(db, deps)
 		onEvent(JobLog{At: now, Name: "price-actualization", Detail: fmt.Sprintf("after=%d tickers=%d errors=%d", after, n, errN)})
 		log.Printf("scheduler: price actualization minutesAfterClose=%d", after)
+		RunAutotradeLogRotation(db, today, now, onEvent)
 	}
 	RunCalendarExtend(db, deps, today, now, onEvent)
+}
+
+// autotradeLogRetentionDays / autotradeLogMaxRows are the defaults for the
+// rotation below; both are overridable through the settings keys of the same
+// name. 30 days keeps a full month of post-mortem material, 20000 rows is the
+// ceiling for a stretch of bad quote days inside that month.
+const (
+	autotradeLogRetentionDays = 30
+	autotradeLogMaxRows       = 20000
+)
+
+// RunAutotradeLogRotation trims autotrade_logs once per trading day, after the
+// close, so the table does not grow without bound.
+func RunAutotradeLogRotation(db *store.DB, today string, now time.Time, onEvent func(JobLog)) {
+	settings := db.Settings()
+	if fmt.Sprint(settings["lastAutotradeLogPruneDate"]) == today {
+		return
+	}
+	days := settingsInt(settings, "autotradeLogRetentionDays", autotradeLogRetentionDays)
+	rows := settingsInt(settings, "autotradeLogMaxRows", autotradeLogMaxRows)
+	n, err := db.PruneAutotradeLogs(days, rows)
+	settings = db.Settings()
+	settings["lastAutotradeLogPruneDate"] = today
+	_ = db.SaveSettings(settings)
+	if err != nil {
+		onEvent(JobLog{At: now, Name: "autotrade-log-rotation", Detail: err.Error()})
+		return
+	}
+	onEvent(JobLog{At: now, Name: "autotrade-log-rotation", Detail: fmt.Sprintf("deleted=%d days=%d maxRows=%d", n, days, rows)})
+}
+
+// settingsInt reads a setting that JSON round-trips as float64. A negative
+// value disables that bound; a missing or unusable one falls back to def.
+func settingsInt(settings map[string]any, key string, def int) int {
+	v, ok := settings[key]
+	if !ok || v == nil {
+		return def
+	}
+	switch n := v.(type) {
+	case float64:
+		return int(n)
+	case int:
+		return n
+	case json.Number:
+		if i, err := n.Int64(); err == nil {
+			return int(i)
+		}
+	}
+	return def
 }
 
 func engine(db *store.DB, deps Deps) *live.Engine {
