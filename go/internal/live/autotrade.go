@@ -201,8 +201,8 @@ func (e *Engine) Evaluate() EvalResult {
 	today := tradingdate.TodayNYSE(e.now())
 	symbols := configuredSymbols(cfg, e)
 	providerChain := quoteProviderChain(cfg)
-	allowExits := allowFlag(cfg, "allowExits")
-	allowEntries := allowFlag(cfg, "allowNewEntries")
+	allowExits := anyAllow(cfg, "allowExits")
+	allowEntries := anyAllow(cfg, "allowNewEntries")
 	watchBy := map[string]map[string]any{}
 	if watches, err := e.DB.ListWatches(); err == nil {
 		for _, w := range watches {
@@ -619,9 +619,14 @@ func (e *Engine) startTracking(res OrderResult, meta orderMeta) {
 	if !res.Submitted || res.ClientOrderID == "" {
 		return
 	}
+	broker := e.activeBroker
+	if broker == "" {
+		broker = "webull"
+	}
 	_ = e.DB.SaveOrderTracker(map[string]any{
 		"clientOrderId": res.ClientOrderID, "symbol": meta.Symbol, "action": meta.Action,
 		"status": "submitted", "quantity": meta.Quantity, "source": meta.Source, "dateKey": meta.DateKey,
+		"broker": broker,
 	})
 	e.rememberOrder(res.ClientOrderID, meta)
 	e.TrackSubmitted(res.ClientOrderID)

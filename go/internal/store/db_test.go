@@ -72,8 +72,8 @@ func TestSettingsPartialAutoTradingKeepsThresholds(t *testing.T) {
 	if at["highIBS"] != 0.75 {
 		t.Fatalf("highIBS=%v want default 0.75", at["highIBS"])
 	}
-	if at["allowExits"] != true {
-		t.Fatalf("allowExits=%v want default true", at["allowExits"])
+	if at["allowExits"] == true {
+		t.Fatalf("allowExits=%v want missing/false (fail-closed)", at["allowExits"])
 	}
 	if _, ok := at["dryRun"]; ok {
 		t.Fatal("dryRun should be stripped")
