@@ -266,8 +266,19 @@ func (e *Engine) pollTracker(t map[string]any) (bool, error) {
 			"clientOrderId": id, "error": derr.Error(),
 		})
 		if errors.Is(derr, ErrOrderNotFound) {
-			e.finalizeTracker(t, "expired")
+			e.finalizeTracker(t, "terminal_absent")
 			return true, nil
+		}
+		if errors.Is(derr, ErrOrderUnavailable) {
+			if e.listingLagExpired(t) {
+				e.markExecutionUnknown(t, derr)
+				return true, nil
+			}
+			if n, _ := e.DB.BumpOrderTrackerAttempts(id); n >= 64 {
+				e.markExecutionUnknown(t, derr)
+				return true, derr
+			}
+			return false, derr
 		}
 		if n, _ := e.DB.BumpOrderTrackerAttempts(id); n >= 64 {
 			e.finalizeTracker(t, "expired")
@@ -305,6 +316,44 @@ func (e *Engine) pollTracker(t map[string]any) (bool, error) {
 	}
 	e.finalizeTrackerStatus(t, detail, status)
 	return true, nil
+}
+
+func listingLagExpired(t map[string]any, now time.Time) bool {
+	started := strings.TrimSpace(fmt.Sprint(t["startedAt"]))
+	if started == "" || started == "<nil>" {
+		return false
+	}
+	ts, err := time.Parse(time.RFC3339Nano, started)
+	if err != nil {
+		ts, err = time.Parse(time.RFC3339, started)
+	}
+	if err != nil {
+		return false
+	}
+	return !ts.IsZero() && now.Sub(ts) >= ListingLagWait
+}
+
+func (e *Engine) listingLagExpired(t map[string]any) bool {
+	now := time.Now()
+	if e != nil {
+		now = e.now()
+	}
+	return listingLagExpired(t, now)
+}
+
+func (e *Engine) markExecutionUnknown(t map[string]any, cause error) {
+	id := fmt.Sprint(t["clientOrderId"])
+	_ = e.DB.SetOrderTrackerStatus(id, "execution_unknown")
+	msg := ""
+	if cause != nil {
+		msg = cause.Error()
+	}
+	e.logAuto("order_execution_unknown", e.metaCorr(id), map[string]any{
+		"clientOrderId": id, "symbol": t["symbol"], "action": t["action"], "error": msg,
+	})
+	_ = e.Send(e.chat(), fmt.Sprintf(
+		"<b>Статус заявки неизвестен</b>\n%s • %s\nclientOrderId: %s\nЛистинг брокера не подтвердил заявку. Повтор не отправлен, вход заблокирован.",
+		t["symbol"], t["action"], id))
 }
 
 func (e *Engine) finalizeTracker(t map[string]any, status string) {

@@ -145,7 +145,7 @@ func (b *RobinhoodBroker) OrderDetail(clientOrderID string) (map[string]any, err
 	want := asUUID(clientOrderID)
 	found := findOrder(root, want)
 	if found == nil {
-		return nil, ErrOrderNotFound
+		return nil, fmt.Errorf("%w: %s", ErrOrderUnavailable, want)
 	}
 	st := robinhoodOrderStatus(found)
 	found["status"] = st

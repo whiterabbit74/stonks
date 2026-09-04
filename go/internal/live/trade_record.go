@@ -132,7 +132,9 @@ func (e *Engine) recordFill(t map[string]any, detail map[string]any, status stri
 	// under a status word we do not recognise — otherwise a real position would
 	// exist with nothing in the journal and the next cycle would buy again.
 	if status != "filled" && !(reportedQty > 0) {
-		e.deletePhantom(clientOrderID, symbol)
+		if status == "terminal_absent" {
+			e.deletePhantom(clientOrderID, symbol)
+		}
 		return
 	}
 	partial := reportedQty > 0 && orderedQty > 0 && reportedQty < orderedQty-1e-9

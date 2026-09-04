@@ -110,6 +110,9 @@ type MemoryBroker struct {
 	LastCfg          PlaceMarketCfg
 	FailPositions    error
 	FailDetail       error
+	// ListingLag makes OrderDetail return ErrOrderUnavailable unless SetDetail
+	// has an explicit row for that id. Models Robinhood list-based lookup.
+	ListingLag bool
 }
 
 // SetFailPlace makes the next n placements fail; n <= 0 fails every placement.
@@ -310,6 +313,9 @@ func (m *MemoryBroker) OrderDetail(clientOrderID string) (map[string]any, error)
 		if d, ok := m.Details[clientOrderID]; ok {
 			return d, nil
 		}
+	}
+	if m.ListingLag {
+		return nil, fmt.Errorf("%w: %s", ErrOrderUnavailable, clientOrderID)
 	}
 	// Only ids this broker actually accepted are known, so a caller can use a
 	// lookup to tell "the submission landed" from "it never arrived".

@@ -105,7 +105,7 @@ func (d *DB) TakeRobinhoodPending(state string) (verifier, redirect string, err 
 }
 
 func (d *DB) AnyPendingTrackerFor(broker string) map[string]any {
-	rows, err := d.ListPendingTrackers()
+	rows, err := d.listBlockingTrackers()
 	if err != nil || len(rows) == 0 {
 		return nil
 	}
@@ -121,7 +121,7 @@ func (d *DB) AnyPendingTrackerFor(broker string) map[string]any {
 }
 
 func (d *DB) FindPendingTrackerBroker(symbol, action, broker string) map[string]any {
-	rows, err := d.ListPendingTrackers()
+	rows, err := d.listBlockingTrackers()
 	if err != nil {
 		return nil
 	}

@@ -162,7 +162,7 @@ func (d *DB) BumpOrderTrackerAttempts(clientOrderID string) (int, error) {
 // todayYYYYMMDD, or attempts >= maxAttempts (when maxAttempts > 0).
 func (d *DB) ExpireStaleTrackers(todayYYYYMMDD string, maxAttempts int) (int, error) {
 	q := `UPDATE order_trackers SET status='expired', updated_at=datetime('now')
-        WHERE status NOT IN ('filled','cancelled','canceled','rejected','expired')`
+        WHERE status NOT IN ('filled','cancelled','canceled','rejected','expired','terminal_absent','execution_unknown')`
 	var args []any
 	switch {
 	case todayYYYYMMDD != "" && maxAttempts > 0:
@@ -186,29 +186,32 @@ func (d *DB) ExpireStaleTrackers(todayYYYYMMDD string, maxAttempts int) (int, er
 }
 
 func (d *DB) AnyPendingTracker() map[string]any {
-	rows, err := d.ListPendingTrackers()
-	if err != nil || len(rows) == 0 {
-		return nil
-	}
-	return rows[0]
+	return d.AnyPendingTrackerFor("")
 }
 
 func (d *DB) FindPendingTracker(symbol, action string) map[string]any {
-	rows, err := d.ListPendingTrackers()
+	return d.FindPendingTrackerBroker(symbol, action, "")
+}
+
+func (d *DB) listBlockingTrackers() ([]map[string]any, error) {
+	rows, err := d.SQL.Query(`SELECT client_order_id, symbol, action, status, quantity, source, date_key, started_at, attempts, COALESCE(broker,'webull')
+        FROM order_trackers WHERE status NOT IN ('filled','cancelled','canceled','rejected','expired','terminal_absent') ORDER BY started_at DESC`)
 	if err != nil {
-		return nil
+		return nil, err
 	}
-	wantSym := SafeTicker(symbol)
-	for _, row := range rows {
-		if action != "" && fmt.Sprint(row["action"]) != action {
-			continue
+	defer rows.Close()
+	var out []map[string]any
+	for rows.Next() {
+		row, err := scanTracker(rows, true)
+		if err != nil {
+			return nil, err
 		}
-		if wantSym != "" && SafeTicker(fmt.Sprint(row["symbol"])) != wantSym {
-			continue
-		}
-		return row
+		out = append(out, row)
 	}
-	return nil
+	if out == nil {
+		out = []map[string]any{}
+	}
+	return out, nil
 }
 
 // IsOwnOrder reports whether this engine placed the order. Every order it
@@ -228,7 +231,7 @@ func (d *DB) IsOwnOrder(clientOrderID string) bool {
 
 func (d *DB) ListPendingTrackers() ([]map[string]any, error) {
 	rows, err := d.SQL.Query(`SELECT client_order_id, symbol, action, status, quantity, source, date_key, started_at, attempts, COALESCE(broker,'webull')
-        FROM order_trackers WHERE status NOT IN ('filled','cancelled','canceled','rejected','expired') ORDER BY started_at DESC`)
+        FROM order_trackers WHERE status NOT IN ('filled','cancelled','canceled','rejected','expired','terminal_absent','execution_unknown') ORDER BY started_at DESC`)
 	if err != nil {
 		return nil, err
 	}

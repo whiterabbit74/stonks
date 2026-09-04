@@ -488,7 +488,8 @@ func (e *Engine) placeMarket(symbol, side string, qty float64, cfg PlaceMarketCf
 
 // orderLanded reports whether the broker knows this client order id.
 // queryFailed means the lookup itself failed: the caller must NOT send a
-// second order. not-found (ErrOrderNotFound or empty) is safe to retry.
+// second order. terminal-absent (ErrOrderNotFound) is safe to retry.
+// listing-unavailable is treated as queryFailed — a new id would duplicate.
 func (e *Engine) orderLanded(clientOrderID string, br Broker) (landed, queryFailed bool, detail map[string]any) {
 	if br == nil || clientOrderID == "" {
 		return false, false, nil
@@ -535,7 +536,7 @@ func (e *Engine) startTracking(res OrderResult, meta orderMeta) {
 	_ = e.DB.SaveOrderTracker(map[string]any{
 		"clientOrderId": res.ClientOrderID, "symbol": meta.Symbol, "action": meta.Action,
 		"status": "submitted", "quantity": meta.Quantity, "source": meta.Source, "dateKey": meta.DateKey,
-		"broker": broker,
+		"broker": broker, "startedAt": e.now().UTC().Format(time.RFC3339Nano),
 	})
 	e.rememberOrder(res.ClientOrderID, meta)
 	e.TrackSubmitted(res.ClientOrderID)

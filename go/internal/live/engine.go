@@ -14,6 +14,15 @@ import (
 // A lookup error that is not this sentinel must not be retried as a new order.
 var ErrOrderNotFound = errors.New("order not found")
 
+// ErrOrderUnavailable means the broker could not confirm the id (listing lag,
+// truncated page, transport). It is not proof the order is absent: do not
+// resubmit with a new id and do not delete the journal row.
+var ErrOrderUnavailable = errors.New("order listing unavailable")
+
+// ListingLagWait is how long a listing-based OrderDetail may miss an id
+// before the tracker is marked execution_unknown. Tests may shorten it.
+var ListingLagWait = 60 * time.Second
+
 // providers import used by quotes() nil-client guard.
 
 type TelegramSender interface {
