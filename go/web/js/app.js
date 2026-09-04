@@ -7,14 +7,16 @@
     { to: '/calendar', label: 'Календарь', icon: 'calendar' },
     { to: '/split', label: 'Сплиты', icon: 'scissors' },
     { to: '/watches', label: 'Мониторинг', icon: 'bell' },
-    { to: '/broker', label: 'Брокер', icon: 'briefcase' },
+    { to: '/webull', label: 'Webull', icon: 'briefcase' },
+    { to: '/robinhood', label: 'Robinhood', icon: 'briefcase' },
   ];
   const BOTTOM = [
     { to: '/data', label: 'Данные', icon: 'database' },
     { to: '/stocks', label: 'Акции', icon: 'linechart' },
     { to: '/ema', label: 'EMA', icon: 'linechart' },
     { to: '/multi-ticker-options', label: 'Опционы', icon: 'layers' },
-    { to: '/broker', label: 'Брокер', icon: 'wallet' },
+    { to: '/webull', label: 'Webull', icon: 'wallet' },
+    { to: '/robinhood', label: 'Robinhood', icon: 'wallet' },
   ];
   const MOBILE_MENU = [
     { to: '/data', label: 'Данные', icon: 'database' },
@@ -24,7 +26,8 @@
     { to: '/calendar', label: 'Календарь', icon: 'calendar' },
     { to: '/split', label: 'Сплиты', icon: 'scissors' },
     { to: '/watches', label: 'Мониторинг', icon: 'bell' },
-    { to: '/broker', label: 'Брокер', icon: 'briefcase' },
+    { to: '/webull', label: 'Webull', icon: 'briefcase' },
+    { to: '/robinhood', label: 'Robinhood', icon: 'briefcase' },
     { to: '/settings', label: 'Настройки', icon: 'settings' },
   ];
   const STOCK_TABS = [
@@ -77,6 +80,7 @@
     { value: 'margin_200', label: 'Маржа 200%', hint: '200% базового капитала' },
   ];
   const BROKER_TABS = [
+    { id: 'connect', label: 'Подключение' },
     { id: 'overview', label: 'Обзор' },
     { id: 'positions', label: 'Позиции' },
     { id: 'orders', label: 'Ордера' },
@@ -729,7 +733,7 @@
     return state.settings.enhancerProvider || 'finnhub';
   }
   function providerLabel(id) {
-    const m = { finnhub: 'Finnhub', alpha_vantage: 'Alpha Vantage', twelve_data: 'Twelve Data', polygon: 'Polygon', webull: 'Webull' };
+    const m = { finnhub: 'Finnhub', alpha_vantage: 'Alpha Vantage', twelve_data: 'Twelve Data', polygon: 'Polygon', webull: 'Webull', robinhood: 'Robinhood' };
     return m[id] || id || 'Finnhub';
   }
   function levOptions(selected) {
@@ -2299,9 +2303,22 @@
   }
   function pageBroker() {
     const live = autotradeLive();
-    const tab = state.brokerTab || 'overview';
+    const kind = state.page === '/robinhood' ? 'robinhood' : 'webull';
+    const tabs = kind === 'robinhood' ? BROKER_TABS : BROKER_TABS.filter((t) => t.id !== 'connect');
+    const tab = state.brokerTab || (kind === 'robinhood' ? 'connect' : 'overview');
+    const health = (state.brokerHealth || []).find((h) => h.broker === kind) || {};
+    const healthCls = health.status === 'OK' ? 'bg-emerald-100 text-emerald-800' : (health.status === 'EXPIRING_SOON' ? 'bg-amber-100 text-amber-800' : (health.status ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-700'));
     let body = '';
-    if (tab === 'journal') {
+    if (tab === 'connect') {
+      const st = state.rhStatus || {};
+      body = `<div class="space-y-3 max-w-xl">
+        <p class="text-sm text-gray-600 dark:text-gray-300">Откройте ссылку в десктопном браузере, войдите в Robinhood, разрешите доступ. Браузер попробует открыть 127.0.0.1 и покажет ошибку — это нормально. Скопируйте адрес из адресной строки целиком и вставьте ниже.</p>
+        <div class="flex gap-2"><input id="rh-auth-url" readonly class="field flex-1" value="${esc(st.authorizationUrl || state.rhAuthUrl || '')}" /><button type="button" id="rh-get-link" class="btn-primary min-h-0 py-2">Получить ссылку</button><button type="button" id="rh-copy-link" class="btn-secondary min-h-0 py-2">Копировать</button></div>
+        <label class="block text-sm">Вставьте адрес после разрешения<input id="rh-callback" class="field mt-1" placeholder="http://127.0.0.1:53682/callback?code=..." /></label>
+        <div class="flex gap-2"><button type="button" id="rh-connect" class="btn-primary min-h-0 py-2">Подключить</button><button type="button" id="rh-disconnect" class="btn-secondary min-h-0 py-2">Отключить</button></div>
+        <p class="text-sm text-gray-500">Статус: ${esc(st.status || (st.connected ? 'OK' : 'не подключено'))}${st.expiresAt ? ' · истекает ' + esc(st.expiresAt) : ''}</p>
+      </div>`;
+    } else if (tab === 'journal') {
       const shown = (state.broker || []).filter((t) => state.brokerShowHidden || !t.isHidden);
       const jrows = shown.map((t) => `<tr class="${t.isHidden ? 'opacity-50' : ''}">
         <td class="font-mono">${esc(t.symbol || '—')}</td>
@@ -2540,9 +2557,9 @@
       </div>`;
     }
     return `
-      ${pageHeader('Кабинет Webull', 'Баланс счёта, позиции, ордера, история и логи исполнения по Webull', `<div class="flex items-center gap-2"><span class="rounded-full px-3 py-1 text-xs font-semibold ${live ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-200'}">${live ? '[LIVE]' : '[OFF]'}</span><button id="broker-refresh" class="icon-btn icon-btn-md icon-btn-glass" title="Обновить" aria-label="Обновить">${icon('refresh', 'w-4 h-4')}</button></div>`)}
+      ${pageHeader(kind === 'robinhood' ? 'Кабинет Robinhood' : 'Кабинет Webull', kind === 'robinhood' ? 'Баланс счёта, позиции, ордера и копи-паст авторизация Robinhood' : 'Баланс счёта, позиции, ордера, история и логи исполнения по Webull', `<div class="flex items-center gap-2"><span class="rounded-full px-3 py-1 text-xs font-semibold ${healthCls}">${esc(health.status || '—')}</span><span class="rounded-full px-3 py-1 text-xs font-semibold ${live ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-200'}">${live ? '[LIVE]' : '[OFF]'}</span><button id="broker-refresh" class="icon-btn icon-btn-md icon-btn-glass" title="Обновить" aria-label="Обновить">${icon('refresh', 'w-4 h-4')}</button></div>`)}
       <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
-        ${analysisTabs(BROKER_TABS, tab, 'data-btab')}
+        ${analysisTabs(tabs, tab, 'data-btab')}
         <div class="p-4">${body}<div id="broker-token" class="text-sm text-gray-500 mt-3">${state.token && state.token.present ? 'Токен Webull задан' : ''}</div></div>
       </div>`;
   }
@@ -2625,10 +2642,17 @@
           <div class="font-medium mb-2">Включение</div>
           <label class="inline-flex items-center gap-2 text-sm"><input type="checkbox" name="autoEnabled" ${ac.enabled ? 'checked' : ''} /> Автоторговля включена</label>
           <p class="text-xs text-gray-500 mt-1 mb-3">Выключено — система по-прежнему считает и присылает решение в Telegram, но заявки брокеру не отправляет.</p>
-          <div class="flex flex-wrap gap-4">
-            <label class="inline-flex items-center gap-2 text-sm"><input type="checkbox" name="autoAllowEntries" ${ac.allowNewEntries !== false ? 'checked' : ''} /> Разрешить входы</label>
-            <label class="inline-flex items-center gap-2 text-sm"><input type="checkbox" name="autoAllowExits" ${ac.allowExits !== false ? 'checked' : ''} /> Разрешить выходы</label>
-          </div>
+          ${[['webull','Webull'],['robinhood','Robinhood']].map(([id, label]) => {
+            const b = (ac.brokers && ac.brokers[id]) || {};
+            const h = (state.brokerHealth || []).find((x) => x.broker === id) || {};
+            return `<div class="rounded-lg border p-3 mb-2">
+              <div class="font-medium mb-2">${label} <span class="text-xs font-normal text-gray-500">${esc(h.status || '')}${h.status && h.status !== 'OK' && h.status !== 'EXPIRING_SOON' ? ' — торговля остановлена' : ''}</span></div>
+              <label class="inline-flex items-center gap-2 text-sm mr-3"><input type="checkbox" name="${id}Enabled" ${b.enabled ? 'checked' : ''} /> Включено</label>
+              <label class="inline-flex items-center gap-2 text-sm mr-3"><input type="checkbox" name="${id}AllowEntries" ${b.allowNewEntries === true || (b.allowNewEntries == null && ac.allowNewEntries === true) ? 'checked' : ''} /> Разрешить входы</label>
+              <label class="inline-flex items-center gap-2 text-sm"><input type="checkbox" name="${id}AllowExits" ${b.allowExits === true || (b.allowExits == null && ac.allowExits === true) ? 'checked' : ''} /> Разрешить выходы</label>
+              ${id === 'robinhood' ? '<p class="text-xs text-gray-500 mt-1">На Agentic-счёте нет маржинального плеча: режимы 125–200% срежутся покупательской способностью.</p>' : ''}
+            </div>`;
+          }).join('')}
           <p class="text-xs text-gray-500 mt-1">Тормоз на случай, когда нужно свернуть торговлю: снимите «входы», и открытая позиция будет доторгована до выхода, но новых сделок не появится. Снимать «выходы» стоит только осознанно — позиция останется висеть.</p>
         </div>
         <div class="rounded-xl border p-4 mb-3">
@@ -2665,7 +2689,7 @@
           <p class="text-xs text-gray-500 mt-1">Окно: планировщик и кнопка «Исполнить» отправят заявку, только если до закрытия осталось не больше этого времени, — страховка от случайной сделки среди дня. Регулярный запуск в T-1 через это окно не проходит: он и так привязан к закрытию.</p>
           <p class="text-xs text-gray-500 mt-1">Проскальзывание: заявку не ограничивает (она рыночная и должна исполниться), но если цена исполнения ушла от цены решения дальше порога, в Telegram придёт предупреждение. 25 bps = 0.25%.</p>
         </div>
-        <p class="text-sm text-gray-600">Состояние, токен Webull, журнал заявок и ручное закрытие позиции — на странице <a href="/broker" data-nav class="text-indigo-600">Брокер</a>.</p>`;
+        <p class="text-sm text-gray-600">Состояние брокеров — на страницах <a href="/webull" data-nav class="text-indigo-600">Webull</a> и <a href="/robinhood" data-nav class="text-indigo-600">Robinhood</a>.</p>`;
     }
     return `
       ${pageHeader('Настройки', 'Конфигурация приложения и параметры стратегии', `<button form="set-form" class="btn-secondary min-h-0 py-2 px-4">Сохранить</button>`)}
@@ -2685,7 +2709,7 @@
     if (p === '/calendar') return pageCalendar();
     if (p === '/split') return pageSplits();
     if (p === '/watches') return pageWatches();
-    if (p === '/broker') return pageBroker();
+    if (p === '/broker' || p === '/webull' || p === '/robinhood') return pageBroker();
     if (p === '/settings') return pageSettings();
     return pageData();
   }
@@ -3600,17 +3624,26 @@
     }
 
     if (p === '/broker') {
+      navigate('/webull');
+      return;
+    }
+    if (p === '/webull' || p === '/robinhood') {
       if (!state.loaded.broker) {
-        const [bt, tok, ac, dash, logs, st, w, cons] = await Promise.all([
+        const rh = p === '/robinhood';
+        const [bt, tok, ac, dash, logs, st, w, cons, health, rhst] = await Promise.all([
           API.brokerTrades().catch(() => []),
-          API.tokenStatus().catch((e) => e.data || { present: false, hasToken: false }),
+          rh ? API.rhStatus().catch((e) => e.data || {}) : API.tokenStatus().catch((e) => e.data || { present: false, hasToken: false }),
           API.autoConfig().catch(() => ({})),
-          API.dashboard(true).catch((e) => (e && e.data) || { error: (e && e.message) || 'dashboard', positions: [] }),
+          rh ? API.rhDashboard(true).catch((e) => (e && e.data) || { error: (e && e.message) || 'dashboard', positions: [] }) : API.dashboard(true).catch((e) => (e && e.data) || { error: (e && e.message) || 'dashboard', positions: [] }),
           API.logs(300).catch(() => ({ logs: [] })),
           API.autoStatus().catch(() => null),
           API.watches().catch(() => []),
           API.consistency().catch(() => ({ issues: [] })),
+          API.brokersHealth().catch(() => []),
+          rh ? API.rhStatus().catch(() => ({})) : Promise.resolve({}),
         ]);
+        state.brokerHealth = Array.isArray(health) ? health : [];
+        state.rhStatus = rhst || tok || {};
         state.broker = Array.isArray(bt) ? bt : (bt.trades || []);
         state.token = tok;
         state.autoConfig = ac && ac.config ? ac.config : (ac || {});
@@ -3636,6 +3669,29 @@
       document.getElementById('broker-refresh')?.addEventListener('click', async () => {
         state.loaded.broker = false;
         renderPage();
+      });
+      document.getElementById('rh-get-link')?.addEventListener('click', async () => {
+        try {
+          const r = await API.rhStart();
+          state.rhAuthUrl = r.authorizationUrl || '';
+          state.rhStatus = { ...(state.rhStatus || {}), authorizationUrl: state.rhAuthUrl };
+          renderPage();
+        } catch (err) { toast(errText(err)); }
+      });
+      document.getElementById('rh-copy-link')?.addEventListener('click', async () => {
+        const v = document.getElementById('rh-auth-url')?.value || '';
+        try { await navigator.clipboard.writeText(v); toast('Скопировано'); } catch (_) { toast(v); }
+      });
+      document.getElementById('rh-connect')?.addEventListener('click', async () => {
+        try {
+          await API.rhComplete(document.getElementById('rh-callback')?.value || '');
+          toast('Подключено');
+          state.loaded.broker = false;
+          renderPage();
+        } catch (err) { toast(errText(err)); }
+      });
+      document.getElementById('rh-disconnect')?.addEventListener('click', async () => {
+        try { await API.rhDisconnect(); toast('Отключено'); state.loaded.broker = false; renderPage(); } catch (err) { toast(errText(err)); }
       });
       root.querySelectorAll('[data-bd]').forEach((b) => b.addEventListener('click', () => {
         askDelete('Удалить брокерскую сделку?', async () => {
@@ -3850,14 +3906,18 @@
         if (form.autoEnabled) {
           const updates = {
             enabled: form.autoEnabled.checked,
-            allowNewEntries: !!form.autoAllowEntries?.checked,
-            allowExits: !!form.autoAllowExits?.checked,
+            allowNewEntries: !!form.webullAllowEntries?.checked || !!form.robinhoodAllowEntries?.checked,
+            allowExits: !!form.webullAllowExits?.checked || !!form.robinhoodAllowExits?.checked,
             provider: fd.get('autoQuote') || 'finnhub',
             entryCapitalMode: fd.get('entryCapitalMode') || 'standard_safe',
             lowIBS: Number(fd.get('autoLowIBS')),
             highIBS: Number(fd.get('autoHighIBS')),
             executionWindowSeconds: Number(fd.get('autoWindow')),
             maxSlippageBps: Number(fd.get('autoSlippage')),
+            brokers: {
+              webull: { enabled: !!form.webullEnabled?.checked, allowNewEntries: !!form.webullAllowEntries?.checked, allowExits: !!form.webullAllowExits?.checked },
+              robinhood: { enabled: !!form.robinhoodEnabled?.checked, allowNewEntries: !!form.robinhoodAllowEntries?.checked, allowExits: !!form.robinhoodAllowExits?.checked },
+            },
           };
           try {
             const saved = await API.saveAutoConfig(updates);

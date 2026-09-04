@@ -21,6 +21,7 @@ import (
 
 	"mktorder.com/go/internal/live"
 	"mktorder.com/go/internal/providers"
+	"mktorder.com/go/internal/robinhood"
 	"mktorder.com/go/internal/scheduler"
 	"mktorder.com/go/internal/store"
 	"mktorder.com/go/internal/tradingdate"
@@ -67,6 +68,18 @@ func NewWithProviders(db *store.DB, webDir string, p *providers.Client) *Server 
 		p.UseWebullToken(db.WebullAccessToken)
 	}
 	s.Live = live.New(db, p)
+	if s.Live.Brokers == nil {
+		s.Live.Brokers = map[string]live.Broker{}
+	}
+	if s.Live.Broker != nil {
+		s.Live.Brokers["webull"] = s.Live.Broker
+	}
+	if row := db.GetRobinhoodOAuth(); row.AccessToken != "" {
+		s.Live.Brokers["robinhood"] = live.NewRobinhoodBroker(robinhood.New(db))
+	}
+	if p != nil {
+		p.Robinhood = robinhood.New(db)
+	}
 	s.mux = http.NewServeMux()
 	s.routes()
 	return s
@@ -196,6 +209,16 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/autotrade/webull/token/check", wrap(s.handleTokenCheck))
 	s.mux.HandleFunc("PUT /api/autotrade/webull/token", wrap(s.handlePutWebullToken))
 	s.mux.HandleFunc("GET /api/autotrade/webull/token/status", wrap(s.handleTokenStatus))
+	s.mux.HandleFunc("POST /api/autotrade/robinhood/oauth/start", wrap(s.handleRobinhoodOAuthStart))
+	s.mux.HandleFunc("POST /api/autotrade/robinhood/oauth/complete", wrap(s.handleRobinhoodOAuthComplete))
+	s.mux.HandleFunc("POST /api/autotrade/robinhood/oauth/disconnect", wrap(s.handleRobinhoodOAuthDisconnect))
+	s.mux.HandleFunc("GET /api/autotrade/robinhood/oauth/status", wrap(s.handleRobinhoodOAuthStatus))
+	s.mux.HandleFunc("GET /api/autotrade/robinhood/account", wrap(s.handleRobinhoodAccount))
+	s.mux.HandleFunc("GET /api/autotrade/robinhood/dashboard", wrap(s.handleRobinhoodDashboard))
+	s.mux.HandleFunc("GET /api/autotrade/robinhood/tools", wrap(s.handleRobinhoodTools))
+	s.mux.HandleFunc("POST /api/autotrade/robinhood/close-position", wrap(s.handleRobinhoodClose))
+	s.mux.HandleFunc("POST /api/autotrade/robinhood/test-buy", wrap(s.handleRobinhoodTestBuy))
+	s.mux.HandleFunc("GET /api/brokers/health", wrap(s.handleBrokersHealth))
 	s.registerCalc()
 	s.mux.HandleFunc("GET /", s.serveWeb)
 }
@@ -731,7 +754,7 @@ func (s *Server) handleRefreshDataset(w http.ResponseWriter, r *http.Request) {
 }
 
 func refreshProvider(st map[string]any, query string) string {
-	allowed := map[string]bool{"alpha_vantage": true, "finnhub": true, "twelve_data": true, "polygon": true}
+	allowed := map[string]bool{"alpha_vantage": true, "finnhub": true, "twelve_data": true, "polygon": true, "robinhood": true}
 	if allowed[query] {
 		return query
 	}
@@ -1285,7 +1308,7 @@ func (s *Server) handleQuote(w http.ResponseWriter, r *http.Request) {
 	if provider == "" {
 		provider = "finnhub"
 	}
-	allowed := map[string]bool{"alpha_vantage": true, "finnhub": true, "twelve_data": true, "polygon": true, "webull": true}
+	allowed := map[string]bool{"alpha_vantage": true, "finnhub": true, "twelve_data": true, "polygon": true, "webull": true, "robinhood": true}
 	if !allowed[provider] {
 		provider = "finnhub"
 	}

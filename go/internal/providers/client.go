@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"mktorder.com/go/internal/robinhood"
 	"mktorder.com/go/internal/store"
 	"mktorder.com/go/internal/tradingdate"
 	"mktorder.com/go/internal/types"
@@ -34,6 +35,7 @@ type Client struct {
 	TwelveKey   string
 	PolygonKey  string
 	Webull      *webull.Client
+	Robinhood   *robinhood.Service
 	AlphaBase   string
 	FinnhubBase string
 	TwelveBase  string
@@ -186,6 +188,8 @@ func (c *Client) Historical(symbol, provider string, startTs, endTs int64, adjus
 		return c.polygonHistory(symbol, startTs, endTs)
 	case "webull":
 		return Historical{}, &HTTPError{400, "Webull не поддерживает загрузку исторических данных. Выберите другой провайдер (Alpha Vantage, Finnhub, Twelve Data или Polygon) в настройках."}
+	case "robinhood":
+		return c.robinhoodHistory(symbol, startTs, endTs)
 	default:
 		return Historical{}, &HTTPError{400, "Unknown provider"}
 	}
@@ -204,6 +208,8 @@ func (c *Client) Quote(symbol, provider string) (QuotePayload, error) {
 		return c.finnhubQuote(symbol)
 	case "webull":
 		return c.webullQuote(symbol)
+	case "robinhood":
+		return c.robinhoodQuote(symbol)
 	case "alpha_vantage", "twelve_data", "polygon":
 		end := time.Now().Unix()
 		start := end - 90*24*60*60

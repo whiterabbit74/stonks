@@ -36,6 +36,7 @@ func liveServer(t *testing.T) (*Server, *live.MemoryTelegram, *live.MemoryBroker
 	s.Live.Broker = br
 	s.Live.Quotes = q
 	s.Live.ChatID = "test-chat"
+	s.Live.PatchAutoConfig(map[string]any{"allowNewEntries": true, "allowExits": true})
 	ny, err := time.LoadLocation("America/New_York")
 	if err != nil {
 		t.Fatal(err)

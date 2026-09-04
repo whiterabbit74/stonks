@@ -56,14 +56,14 @@ func TestVanillaUIAssets(t *testing.T) {
 	css, _ := os.ReadFile(filepath.Join(web, "css/extra.css"))
 	extra := string(css)
 
-	for _, route := range []string{"/login", "/data", "/enhance", "/stocks", "/ema", "/multi-ticker-options", "/calendar", "/split", "/watches", "/broker", "/settings", "/results"} {
+	for _, route := range []string{"/login", "/data", "/enhance", "/stocks", "/ema", "/multi-ticker-options", "/calendar", "/split", "/watches", "/broker", "/webull", "/robinhood", "/settings", "/results"} {
 		if !strings.Contains(a, route) {
 			t.Errorf("app.js missing route %s", route)
 		}
 	}
 	for _, label := range []string{
 		"Вход", "Данные", "Новые данные", "Акции", "EMA", "Опционы",
-		"Календарь торгов", "Сплиты", "Мониторинг", "Кабинет Webull", "Настройки",
+		"Календарь торгов", "Сплиты", "Мониторинг", "Кабинет Webull", "Кабинет Robinhood", "Подключение", "Настройки",
 	} {
 		if !strings.Contains(a, label) {
 			t.Errorf("missing page title %s", label)
@@ -275,7 +275,7 @@ func TestVanillaUIPagesHTTP(t *testing.T) {
 	}
 	t.Cleanup(func() { db.Close() })
 	s := New(db, web)
-	paths := []string{"/", "/login", "/data", "/enhance", "/stocks", "/ema", "/multi-ticker-options", "/calendar", "/split", "/watches", "/broker", "/settings", "/results"}
+	paths := []string{"/", "/login", "/data", "/enhance", "/stocks", "/ema", "/multi-ticker-options", "/calendar", "/split", "/watches", "/broker", "/webull", "/robinhood", "/settings", "/results"}
 	for _, p := range paths {
 		req := httptest.NewRequest(http.MethodGet, p, nil)
 		rec := httptest.NewRecorder()
