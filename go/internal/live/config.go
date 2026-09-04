@@ -158,6 +158,7 @@ func sanitizeAutoTradingConfig(input, current map[string]any) map[string]any {
 			next["entryCapitalMode"] = s
 		}
 	}
+	next["brokers"] = sanitizeBrokers(input, current, next)
 	next["lastModifiedAt"] = time.Now().UTC().Format(time.RFC3339Nano)
 	return next
 }

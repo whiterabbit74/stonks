@@ -195,18 +195,18 @@ func TestSanitizeAutoTradingConfig(t *testing.T) {
 	}
 }
 
-func TestOmittedAllowFlagsFilledBySettingsDefaults(t *testing.T) {
+func TestOmittedAllowFlagsAreFailClosed(t *testing.T) {
 	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
 	_, e, _ := testEngine(t, bars)
 	settings := e.DB.Settings()
 	settings["autoTrading"] = map[string]any{"enabled": true, "lowIBS": 0.9, "highIBS": 0.75}
 	_ = e.DB.SaveSettings(settings)
 	ev := e.Evaluate()
-	if ev.AutoTrading["allowNewEntries"] != true || ev.AutoTrading["allowExits"] != true {
-		t.Fatalf("A7 must fill Node defaults true, got %+v", ev.AutoTrading)
+	if asBool(ev.AutoTrading["allowNewEntries"]) || asBool(ev.AutoTrading["allowExits"]) {
+		t.Fatalf("missing allow flags must be false, got %+v", ev.AutoTrading)
 	}
-	if fmt.Sprint(ev.Decision["action"]) != "entry" {
-		t.Fatalf("default allowNewEntries true should enter %+v", ev.Decision)
+	if fmt.Sprint(ev.Decision["action"]) != "none" {
+		t.Fatalf("missing allowNewEntries must not enter %+v", ev.Decision)
 	}
 }
 
