@@ -118,7 +118,6 @@ func (d *DB) initSchema() error {
         CREATE TABLE IF NOT EXISTS broker_trades (
             id                  TEXT PRIMARY KEY,
             symbol              TEXT NOT NULL,
-            broker              TEXT NOT NULL DEFAULT 'webull',
             status              TEXT NOT NULL DEFAULT 'open',
             entry_date          TEXT,
             exit_date           TEXT,
@@ -189,30 +188,6 @@ func (d *DB) initSchema() error {
             last_health_check_attempt_at TEXT,
             updated_at            TEXT
         );
-        CREATE TABLE IF NOT EXISTS robinhood_oauth (
-            id                  TEXT PRIMARY KEY CHECK (id = 'current'),
-            client_id           TEXT,
-            access_token        TEXT,
-            refresh_token       TEXT,
-            token_type          TEXT,
-            scope               TEXT,
-            expires_at          TEXT,
-            account_number      TEXT,
-            last_check_status   TEXT,
-            last_check_at       TEXT,
-            last_alerted_status TEXT,
-            last_alerted_at     TEXT,
-            last_health_check_date       TEXT,
-            last_health_check_attempt_at TEXT,
-            created_at          TEXT,
-            updated_at          TEXT
-        );
-        CREATE TABLE IF NOT EXISTS robinhood_oauth_pending (
-            state         TEXT PRIMARY KEY,
-            code_verifier TEXT NOT NULL,
-            redirect_uri  TEXT NOT NULL,
-            created_at    TEXT NOT NULL
-        );
         CREATE TABLE IF NOT EXISTS settings (
             id INTEGER PRIMARY KEY CHECK (id = 1),
             data TEXT NOT NULL
@@ -227,7 +202,6 @@ func (d *DB) initSchema() error {
             client_order_id TEXT PRIMARY KEY,
             symbol          TEXT NOT NULL,
             action          TEXT NOT NULL,
-            broker          TEXT NOT NULL DEFAULT 'webull',
             status          TEXT NOT NULL,
             quantity        REAL,
             source          TEXT,
@@ -255,11 +229,6 @@ func (d *DB) migrateSchema() error {
 	d.ensureColumn("order_trackers", "attempts", "INTEGER NOT NULL DEFAULT 0")
 	d.ensureColumn("order_trackers", "updated_at", "TEXT")
 	d.ensureColumn("autotrade_logs", "kind", "TEXT NOT NULL DEFAULT ''")
-	d.ensureColumn("order_trackers", "broker", "TEXT NOT NULL DEFAULT 'webull'")
-	d.ensureColumn("broker_trades", "broker", "TEXT NOT NULL DEFAULT 'webull'")
-	d.ensureColumn("webull_token", "last_alerted_status", "TEXT")
-	d.ensureColumn("webull_token", "last_alerted_at", "TEXT")
-	_, _ = d.SQL.Exec(`CREATE INDEX IF NOT EXISTS idx_broker_trades_broker_status ON broker_trades(broker, status)`)
 	return nil
 }
 
@@ -679,12 +648,8 @@ func defaultSettings() map[string]any {
 		// a knob that quietly contradicts the backtest.
 		"autoTrading": map[string]any{
 			"enabled": false, "provider": "finnhub", "lowIBS": 0.1, "highIBS": 0.75,
-			"executionWindowSeconds": 90,
-			"entryCapitalMode":       "standard_safe",
-			"brokers": map[string]any{
-				"webull":    map[string]any{"enabled": false},
-				"robinhood": map[string]any{"enabled": false},
-			},
+			"executionWindowSeconds": 90, "allowNewEntries": true, "allowExits": true,
+			"entryCapitalMode": "standard_safe",
 			"maxSlippageBps":   25, "lastModifiedAt": nil,
 		},
 	}
