@@ -827,15 +827,19 @@ func tradeTable(table string) string {
 func (d *DB) GetTrade(table, id string) map[string]any {
 	table = tradeTable(table)
 	linkedCol := "NULL"
+	brokerCol := "''"
 	if table == "trades" {
 		linkedCol = "linked_broker_trade_id"
 	}
-	row := d.SQL.QueryRow(`SELECT id, symbol, status, entry_date, exit_date, entry_price, exit_price, entry_ibs, exit_ibs, pnl_percent, pnl_absolute, holding_days, notes, source, is_hidden, is_test, quantity, `+linkedCol+` FROM `+table+` WHERE id=?`, id)
+	if table == "broker_trades" {
+		brokerCol = "broker"
+	}
+	row := d.SQL.QueryRow(`SELECT id, symbol, status, entry_date, exit_date, entry_price, exit_price, entry_ibs, exit_ibs, pnl_percent, pnl_absolute, holding_days, notes, source, is_hidden, is_test, quantity, `+linkedCol+`, `+brokerCol+` FROM `+table+` WHERE id=?`, id)
 	var tid, symbol, status string
-	var entryDate, exitDate, notes, source, linked sql.NullString
+	var entryDate, exitDate, notes, source, linked, broker sql.NullString
 	var entryP, exitP, entryI, exitI, pnlP, pnlA, qty sql.NullFloat64
 	var hold, hidden, test sql.NullInt64
-	if err := row.Scan(&tid, &symbol, &status, &entryDate, &exitDate, &entryP, &exitP, &entryI, &exitI, &pnlP, &pnlA, &hold, &notes, &source, &hidden, &test, &qty, &linked); err != nil {
+	if err := row.Scan(&tid, &symbol, &status, &entryDate, &exitDate, &entryP, &exitP, &entryI, &exitI, &pnlP, &pnlA, &hold, &notes, &source, &hidden, &test, &qty, &linked, &broker); err != nil {
 		return nil
 	}
 	return map[string]any{
@@ -847,6 +851,7 @@ func (d *DB) GetTrade(table, id string) map[string]any {
 		"holdingDays": hold.Int64, "notes": nullS(notes), "source": nullS(source),
 		"isHidden": hidden.Int64 == 1, "isTest": test.Int64 == 1, "quantity": nullF(qty),
 		"linkedBrokerTradeId": nullS(linked),
+		"broker":              nullS(broker),
 	}
 }
 
@@ -967,7 +972,11 @@ func (d *DB) ListTrades(table string) ([]map[string]any, error) {
 	if table != "trades" && table != "broker_trades" {
 		table = "trades"
 	}
-	rows, err := d.SQL.Query(`SELECT id, symbol, status, entry_date, exit_date, entry_price, exit_price, entry_ibs, exit_ibs, pnl_percent, pnl_absolute, holding_days, notes, source, is_hidden, is_test, quantity FROM ` + table + ` ORDER BY entry_date DESC`)
+	brokerExpr := "''"
+	if table == "broker_trades" {
+		brokerExpr = "broker"
+	}
+	rows, err := d.SQL.Query(`SELECT id, symbol, status, entry_date, exit_date, entry_price, exit_price, entry_ibs, exit_ibs, pnl_percent, pnl_absolute, holding_days, notes, source, is_hidden, is_test, quantity, ` + brokerExpr + ` FROM ` + table + ` ORDER BY entry_date DESC`)
 	if err != nil {
 		return nil, err
 	}
@@ -975,10 +984,10 @@ func (d *DB) ListTrades(table string) ([]map[string]any, error) {
 	var out []map[string]any
 	for rows.Next() {
 		var id, symbol, status string
-		var entryDate, exitDate, notes, source sql.NullString
+		var entryDate, exitDate, notes, source, broker sql.NullString
 		var entryP, exitP, entryI, exitI, pnlP, pnlA, qty sql.NullFloat64
 		var hold, hidden, test sql.NullInt64
-		if err := rows.Scan(&id, &symbol, &status, &entryDate, &exitDate, &entryP, &exitP, &entryI, &exitI, &pnlP, &pnlA, &hold, &notes, &source, &hidden, &test, &qty); err != nil {
+		if err := rows.Scan(&id, &symbol, &status, &entryDate, &exitDate, &entryP, &exitP, &entryI, &exitI, &pnlP, &pnlA, &hold, &notes, &source, &hidden, &test, &qty, &broker); err != nil {
 			return nil, err
 		}
 		out = append(out, map[string]any{
@@ -989,6 +998,7 @@ func (d *DB) ListTrades(table string) ([]map[string]any, error) {
 			"pnlPercent": nullF(pnlP), "pnlAbsolute": nullF(pnlA),
 			"holdingDays": hold.Int64, "notes": nullS(notes), "source": nullS(source),
 			"isHidden": hidden.Int64 == 1, "isTest": test.Int64 == 1, "quantity": nullF(qty),
+			"broker": nullS(broker),
 		})
 	}
 	if out == nil {

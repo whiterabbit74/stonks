@@ -331,10 +331,28 @@ func (d *DB) ClaimAggregateT1(chatID, dateKey string) (bool, error) {
 }
 
 func OpenBrokerTrade(trades []map[string]any) map[string]any {
+	return OpenBrokerTradeFor(trades, "")
+}
+
+// OpenBrokerTradeFor returns the first open non-hidden journal row for broker.
+// An empty broker matches any row. Legacy rows with a blank broker field count
+// as webull so a pre-column journal still blocks that book.
+func OpenBrokerTradeFor(trades []map[string]any, broker string) map[string]any {
+	want := strings.ToLower(strings.TrimSpace(broker))
 	for _, t := range trades {
-		if fmt.Sprint(t["status"]) == "open" && t["isHidden"] != true {
-			return t
+		if fmt.Sprint(t["status"]) != "open" || t["isHidden"] == true {
+			continue
 		}
+		if want != "" {
+			got := strings.ToLower(strings.TrimSpace(fmt.Sprint(t["broker"])))
+			if got == "<nil>" {
+				got = ""
+			}
+			if got != want && !(want == "webull" && got == "") {
+				continue
+			}
+		}
+		return t
 	}
 	return nil
 }

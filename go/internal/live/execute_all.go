@@ -18,9 +18,9 @@ func (e *Engine) storedHealthStatus(name string) string {
 }
 
 func (e *Engine) executeAll(ev EvalResult, trigger, corr string, snaps []namedBroker) EvalResult {
-	action, _ := ev.Decision["action"].(string)
 	results := map[string]any{}
 	anyOK := false
+	rows, journalErr := e.DB.ListTrades("broker_trades")
 	for _, nb := range snaps {
 		name, br := nb.name, nb.br
 		if br == nil {
@@ -28,6 +28,25 @@ func (e *Engine) executeAll(ev EvalResult, trigger, corr string, snaps []namedBr
 		}
 		enabled, allowE, allowX := brokerFlags(ev.AutoTrading, name)
 		if !enabled {
+			continue
+		}
+		st := e.storedHealthStatus(name)
+		if st == HealthNeedsReauth || st == HealthMissing {
+			e.logAuto("execution_skipped", corr, map[string]any{"broker": name, "reason": st})
+			continue
+		}
+		one := ev
+		if journalErr != nil {
+			one.Decision = map[string]any{"action": "none", "reason": "journal_unavailable", "symbol": nil, "candidate": nil}
+			e.logAuto("execution_skipped", corr, map[string]any{"broker": name, "reason": "journal_unavailable"})
+			continue
+		}
+		open, held, heldErr := e.booksFor(name, br, rows)
+		one.OpenTrade = open
+		one.Decision = decideLiveAction(ev.Quotes, ev.Symbols, held, heldErr, open, allowE, allowX)
+		action, _ := one.Decision["action"].(string)
+		if action == "none" {
+			e.logAuto("execution_skipped", corr, map[string]any{"broker": name, "reason": one.Decision["reason"]})
 			continue
 		}
 		if action == "entry" && !allowE {
@@ -38,14 +57,9 @@ func (e *Engine) executeAll(ev EvalResult, trigger, corr string, snaps []namedBr
 			e.logAuto("execution_skipped", corr, map[string]any{"broker": name, "reason": "allowExits_false"})
 			continue
 		}
-		st := e.storedHealthStatus(name)
-		if st == HealthNeedsReauth || st == HealthMissing {
-			e.logAuto("execution_skipped", corr, map[string]any{"broker": name, "reason": st})
-			continue
-		}
-		one := e.submitEvaluated(ev, trigger, corr, name, br)
-		results[name] = one.Broker
-		if one.Executed {
+		res := e.submitEvaluated(one, trigger, corr, name, br)
+		results[name] = res.Broker
+		if res.Executed {
 			anyOK = true
 		}
 	}

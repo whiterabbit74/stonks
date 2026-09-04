@@ -13,8 +13,19 @@ func (e *Engine) getTrade(table, id string) map[string]any {
 	return e.DB.GetTrade(table, id)
 }
 
-func (e *Engine) openTradeBySymbol(table, symbol, preferID string) map[string]any {
+func (e *Engine) openTradeBySymbol(table, symbol, preferID, broker string) map[string]any {
 	want := store.SafeTicker(symbol)
+	wantBroker := strings.ToLower(strings.TrimSpace(broker))
+	matchesBroker := func(t map[string]any) bool {
+		if table != "broker_trades" || wantBroker == "" {
+			return true
+		}
+		got := strings.ToLower(strings.TrimSpace(fmt.Sprint(t["broker"])))
+		if got == "<nil>" {
+			got = ""
+		}
+		return got == wantBroker || (wantBroker == "webull" && got == "")
+	}
 	if preferID != "" {
 		for _, id := range []string{preferID, "m-" + preferID} {
 			if table == "broker_trades" && strings.HasPrefix(id, "m-") {
@@ -24,7 +35,7 @@ func (e *Engine) openTradeBySymbol(table, symbol, preferID string) map[string]an
 			if t == nil {
 				continue
 			}
-			if fmt.Sprint(t["status"]) == "open" && store.SafeTicker(fmt.Sprint(t["symbol"])) == want {
+			if fmt.Sprint(t["status"]) == "open" && store.SafeTicker(fmt.Sprint(t["symbol"])) == want && matchesBroker(t) {
 				return t
 			}
 		}
@@ -36,6 +47,9 @@ func (e *Engine) openTradeBySymbol(table, symbol, preferID string) map[string]an
 			continue
 		}
 		if store.SafeTicker(fmt.Sprint(t["symbol"])) != want {
+			continue
+		}
+		if !matchesBroker(t) {
 			continue
 		}
 		id := fmt.Sprint(t["id"])
@@ -131,7 +145,11 @@ func (e *Engine) recordFill(t map[string]any, detail map[string]any, status stri
 			"<b>Webull: частичное исполнение</b>\n%s • %s\nзаказано: %v\nисполнено: %v\nstatus: %s",
 			symbol, action, orderedQty, reportedQty, status))
 		if action == "exit" {
-			e.reduceOpenQuantity(symbol, clientOrderID, reportedQty, fillPrice)
+			brokerName := meta.Broker
+			if brokerName == "" {
+				brokerName = "webull"
+			}
+			e.reduceOpenQuantity(symbol, clientOrderID, brokerName, reportedQty, fillPrice)
 			return
 		}
 	} else if status != "filled" {
@@ -179,16 +197,20 @@ func (e *Engine) recordFill(t map[string]any, detail map[string]any, status stri
 	}
 
 	if action == "exit" {
-		broker := e.openTradeBySymbol("broker_trades", symbol, clientOrderID)
-		if broker == nil {
-			broker = e.openTradeBySymbol("broker_trades", symbol, "")
+		brokerName := meta.Broker
+		if brokerName == "" {
+			brokerName = "webull"
 		}
-		if broker != nil {
-			e.closeTradeWithPnL("broker_trades", fmt.Sprint(broker["id"]), fillPrice, dateKey, exitIBS, "closed_from_broker_fill")
+		row := e.openTradeBySymbol("broker_trades", symbol, clientOrderID, brokerName)
+		if row == nil {
+			row = e.openTradeBySymbol("broker_trades", symbol, "", brokerName)
 		}
-		mon := e.openTradeBySymbol("trades", symbol, clientOrderID)
+		if row != nil {
+			e.closeTradeWithPnL("broker_trades", fmt.Sprint(row["id"]), fillPrice, dateKey, exitIBS, "closed_from_broker_fill")
+		}
+		mon := e.openTradeBySymbol("trades", symbol, clientOrderID, "")
 		if mon == nil {
-			mon = e.openTradeBySymbol("trades", symbol, "")
+			mon = e.openTradeBySymbol("trades", symbol, "", "")
 		}
 		if mon != nil && store.SafeTicker(fmt.Sprint(mon["symbol"])) == symbol {
 			e.closeTradeWithPnL("trades", fmt.Sprint(mon["id"]), fillPrice, dateKey, exitIBS, "closed_from_broker_fill")
@@ -221,12 +243,16 @@ func (e *Engine) warnOnSlippage(symbol, action, clientOrderID string, meta order
 		devBps, symbol, action, meta.QuotePrice, fillPrice, bps))
 }
 
-func (e *Engine) reduceOpenQuantity(symbol, preferID string, sold, exitPrice float64) {
+func (e *Engine) reduceOpenQuantity(symbol, preferID, broker string, sold, exitPrice float64) {
 	if !(sold > 0) {
 		return
 	}
 	for _, table := range []string{"broker_trades", "trades"} {
-		t := e.openTradeBySymbol(table, symbol, preferID)
+		name := broker
+		if table == "trades" {
+			name = ""
+		}
+		t := e.openTradeBySymbol(table, symbol, preferID, name)
 		if t == nil {
 			continue
 		}

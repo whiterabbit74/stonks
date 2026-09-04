@@ -213,13 +213,7 @@ func (e *Engine) Evaluate() EvalResult {
 		}
 	}
 	brokerTrades, _ := e.DB.ListTrades("broker_trades")
-	open := store.OpenBrokerTrade(brokerTrades)
-	held, heldErr := e.liveHeldSymbols()
-	if open == nil && heldErr == nil && len(held) == 1 {
-		for sym, qty := range held {
-			open = map[string]any{"symbol": sym, "quantity": qty, "status": "open", "source": "live_broker"}
-		}
-	}
+	open, held, heldErr := e.booksFor("webull", e.defaultBroker(), brokerTrades)
 	e.prefetchQuotes(symbols, providerChain)
 	var quotes []map[string]any
 	for _, sym := range symbols {
@@ -241,73 +235,10 @@ func (e *Engine) Evaluate() EvalResult {
 			"highIBSInvalid": highInvalid,
 		})
 	}
-	decision := map[string]any{"action": "none", "reason": "no_signal", "symbol": nil, "candidate": nil}
-	if len(symbols) == 0 {
-		decision["reason"] = "empty_symbol_universe"
-		e.logAuto("execution_skipped", "", map[string]any{"reason": "empty_symbol_universe"})
-	} else if open != nil && allowExits {
-		sym := store.SafeTicker(fmt.Sprint(open["symbol"]))
-		if fmt.Sprint(open["source"]) == "live_broker" {
-			// The broker holds this but nothing opened it here. Selling it would
-			// liquidate a position we have no record of — it may be the user's
-			// own holding. Block instead, and let reconcile decide.
-			decision = map[string]any{"action": "none", "reason": "broker_position_not_in_journal", "symbol": sym, "candidate": nil}
-			e.logAuto("execution_skipped", "", map[string]any{"symbol": sym, "reason": "broker_position_not_in_journal"})
-			goto done
-		}
-		if heldErr == nil && len(held) > 0 {
-			if _, ok := held[sym]; !ok {
-				decision = map[string]any{"action": "none", "reason": "broker_position_mismatch", "symbol": sym, "candidate": nil}
-				goto done
-			}
-		}
-		var row map[string]any
-		for _, q := range quotes {
-			if q["symbol"] == sym && q["ok"] == true {
-				row = q
-				break
-			}
-		}
-		high := liveHighOrDefault(row)
-		if row != nil && asBool(row["highIBSInvalid"]) {
-			decision = map[string]any{"action": "none", "reason": "invalid_high_ibs", "symbol": sym, "candidate": row}
-		} else if row != nil && ibs.IsExitSignal(row["ibs"], high) {
-			decision = map[string]any{"action": "exit", "reason": "ibs_exit", "symbol": sym, "candidate": row}
-		} else {
-			reason := "open_position_quote_unavailable"
-			if row != nil {
-				reason = "exit_threshold_not_reached"
-			}
-			decision = map[string]any{"action": "none", "reason": reason, "symbol": sym, "candidate": row}
-		}
-	} else if open == nil && allowEntries {
-		if heldErr != nil {
-			decision = map[string]any{"action": "none", "reason": "broker_positions_unavailable", "symbol": nil, "candidate": nil}
-		} else if len(held) > 0 {
-			decision = map[string]any{"action": "none", "reason": "broker_position_exists", "symbol": nil, "candidate": nil}
-		} else {
-			var best map[string]any
-			bestIBS := 2.0
-			for _, q := range quotes {
-				if q["ok"] != true {
-					continue
-				}
-				if asBool(q["highIBSInvalid"]) {
-					continue
-				}
-				v, _ := q["ibs"].(float64)
-				low := liveLowOrDefault(q)
-				if ibs.IsEntrySignal(v, low) && v < bestIBS {
-					bestIBS = v
-					best = q
-				}
-			}
-			if best != nil {
-				decision = map[string]any{"action": "entry", "reason": "lowest_ibs_signal", "symbol": best["symbol"], "candidate": best}
-			}
-		}
+	decision := decideLiveAction(quotes, symbols, held, heldErr, open, allowEntries, allowExits)
+	if reason, _ := decision["reason"].(string); reason == "empty_symbol_universe" || reason == "broker_position_not_in_journal" {
+		e.logAuto("execution_skipped", "", map[string]any{"symbol": decision["symbol"], "reason": reason})
 	}
-done:
 	enabled, _ := cfg["enabled"].(bool)
 	return EvalResult{
 		EvaluatedAt: e.now().UTC().Format(time.RFC3339Nano),
@@ -319,6 +250,84 @@ done:
 		Decision:    decision,
 		Live:        enabled,
 	}
+}
+
+func decideLiveAction(quotes []map[string]any, symbols []string, held map[string]float64, heldErr error, open map[string]any, allowEntries, allowExits bool) map[string]any {
+	none := func(reason string, symbol any, cand any) map[string]any {
+		return map[string]any{"action": "none", "reason": reason, "symbol": symbol, "candidate": cand}
+	}
+	if len(symbols) == 0 {
+		return none("empty_symbol_universe", nil, nil)
+	}
+	if open != nil && allowExits {
+		sym := store.SafeTicker(fmt.Sprint(open["symbol"]))
+		if fmt.Sprint(open["source"]) == "live_broker" {
+			return none("broker_position_not_in_journal", sym, nil)
+		}
+		if heldErr == nil && len(held) > 0 {
+			if _, ok := held[sym]; !ok {
+				return none("broker_position_mismatch", sym, nil)
+			}
+		}
+		var row map[string]any
+		for _, q := range quotes {
+			if q["symbol"] == sym && q["ok"] == true {
+				row = q
+				break
+			}
+		}
+		high := liveHighOrDefault(row)
+		if row != nil && asBool(row["highIBSInvalid"]) {
+			return none("invalid_high_ibs", sym, row)
+		}
+		if row != nil && ibs.IsExitSignal(row["ibs"], high) {
+			return map[string]any{"action": "exit", "reason": "ibs_exit", "symbol": sym, "candidate": row}
+		}
+		reason := "open_position_quote_unavailable"
+		if row != nil {
+			reason = "exit_threshold_not_reached"
+		}
+		return none(reason, sym, row)
+	}
+	if open == nil && allowEntries {
+		if heldErr != nil {
+			return none("broker_positions_unavailable", nil, nil)
+		}
+		if len(held) > 0 {
+			return none("broker_position_exists", nil, nil)
+		}
+		var best map[string]any
+		bestIBS := 2.0
+		for _, q := range quotes {
+			if q["ok"] != true {
+				continue
+			}
+			if asBool(q["highIBSInvalid"]) {
+				continue
+			}
+			v, _ := q["ibs"].(float64)
+			low := liveLowOrDefault(q)
+			if ibs.IsEntrySignal(v, low) && v < bestIBS {
+				bestIBS = v
+				best = q
+			}
+		}
+		if best != nil {
+			return map[string]any{"action": "entry", "reason": "lowest_ibs_signal", "symbol": best["symbol"], "candidate": best}
+		}
+	}
+	return none("no_signal", nil, nil)
+}
+
+func (e *Engine) booksFor(name string, br Broker, rows []map[string]any) (open map[string]any, held map[string]float64, heldErr error) {
+	held, heldErr = e.heldSymbolsOn(br)
+	open = store.OpenBrokerTradeFor(rows, name)
+	if open == nil && heldErr == nil && len(held) == 1 {
+		for sym, qty := range held {
+			open = map[string]any{"symbol": sym, "quantity": qty, "status": "open", "source": "live_broker", "broker": name}
+		}
+	}
+	return open, held, heldErr
 }
 
 func (e *Engine) liveHeldSymbols() (map[string]float64, error) {
@@ -382,15 +391,15 @@ func (e *Engine) Execute(trigger string) EvalResult {
 	e.lastRunAt = ev.EvaluatedAt
 	e.lastResult = ev
 	e.mu.Unlock()
+	snaps := e.brokerSnapshot()
+	if len(snaps) > 1 {
+		return e.executeAll(ev, trigger, corr, snaps)
+	}
 	action, _ := ev.Decision["action"].(string)
 	if action == "none" {
 		ev.Executed = false
 		e.logAuto("execution_skipped", corr, map[string]any{"trigger": trigger, "reason": "no_signal"})
 		return ev
-	}
-	snaps := e.brokerSnapshot()
-	if len(snaps) > 1 {
-		return e.executeAll(ev, trigger, corr, snaps)
 	}
 	var br Broker
 	name := ""

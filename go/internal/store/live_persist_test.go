@@ -28,6 +28,52 @@ func TestOpenTradeForSymbol(t *testing.T) {
 	}
 }
 
+func TestOpenBrokerTradeForFiltersBroker(t *testing.T) {
+	rows := []map[string]any{
+		{"id": "w1", "symbol": "AAPL", "status": "open", "broker": "webull"},
+		{"id": "r1", "symbol": "AAPL", "status": "open", "broker": "robinhood"},
+		{"id": "w-closed", "symbol": "MSFT", "status": "closed", "broker": "webull"},
+		{"id": "legacy", "symbol": "QQQ", "status": "open", "broker": ""},
+	}
+	if got := OpenBrokerTradeFor(rows, "webull"); got == nil || got["id"] != "w1" {
+		t.Fatalf("webull %+v", got)
+	}
+	if got := OpenBrokerTradeFor(rows, "robinhood"); got == nil || got["id"] != "r1" {
+		t.Fatalf("robinhood %+v", got)
+	}
+	legacyOnly := []map[string]any{
+		{"id": "legacy", "symbol": "QQQ", "status": "open", "broker": ""},
+		{"id": "r1", "symbol": "AAPL", "status": "open", "broker": "robinhood"},
+	}
+	if got := OpenBrokerTradeFor(legacyOnly, "webull"); got == nil || got["id"] != "legacy" {
+		t.Fatalf("blank broker counts as webull, got %+v", got)
+	}
+	if OpenBrokerTradeFor(legacyOnly, "robinhood")["id"] != "r1" {
+		t.Fatal("robinhood should skip the blank webull row")
+	}
+}
+
+func TestListTradesSelectsBroker(t *testing.T) {
+	db := openTestDB(t)
+	if err := db.InsertTrade("broker_trades", map[string]any{
+		"id": "r1", "symbol": "AAPL", "status": "open", "entryDate": "2026-09-01",
+		"entryPrice": 10.0, "quantity": 1.0, "broker": "robinhood",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := db.ListTrades("broker_trades")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 || fmtSprint(rows[0]["broker"]) != "robinhood" {
+		t.Fatalf("list %+v", rows)
+	}
+	got := db.GetTrade("broker_trades", "r1")
+	if got == nil || fmtSprint(got["broker"]) != "robinhood" {
+		t.Fatalf("get %+v", got)
+	}
+}
+
 func TestPendingTrackersListAndExpire(t *testing.T) {
 	db := openTestDB(t)
 	mustSaveTracker := func(id, symbol, status, dateKey string, attempts int) {
