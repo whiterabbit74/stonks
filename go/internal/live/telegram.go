@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"sort"
 	"strings"
 	"time"
 
@@ -394,7 +395,7 @@ func (e *Engine) buildT1Text(today string, rows []t1Watch, blocking map[string]a
 		appendExec(entryRes, false)
 	}
 	if len(decision) == 0 {
-		decision = append(decision, "• Действий нет")
+		decision = append(decision, t1NoActionLines(exitRes, entryRes, rows)...)
 	}
 	freshN := 0
 	for _, r := range rows {
@@ -428,6 +429,135 @@ func (e *Engine) buildT1Text(today string, rows []t1Watch, blocking map[string]a
 	lines = append(lines, decision...)
 	lines = append(lines, "", freshness, position)
 	return strings.Join(lines, "\n")
+}
+
+// t1NoActionLines explains a T-1 cycle that placed no order. A bare
+// "Действий нет" right after a T-11 message that announced an ENTRY reads as a
+// broken bot: the engine already computed a reason per broker, and that reason
+// is exactly what the operator needs at the close. The entry signal of the
+// minute is repeated too, so "сигнал был, но не исполнен" is visible without
+// digging through autotrade_logs.
+func t1NoActionLines(exitRes, entryRes EvalResult, rows []t1Watch) []string {
+	seen := map[string]bool{}
+	var out []string
+	add := func(line string) {
+		if line == "" || seen[line] {
+			return
+		}
+		seen[line] = true
+		out = append(out, line)
+	}
+	for _, res := range []EvalResult{exitRes, entryRes} {
+		if len(res.BrokerDecisions) > 0 {
+			names := make([]string, 0, len(res.BrokerDecisions))
+			for name := range res.BrokerDecisions {
+				names = append(names, name)
+			}
+			sort.Strings(names)
+			for _, name := range names {
+				add(noActionLine(brokerLabel(name), res.BrokerDecisions[name]))
+			}
+			continue
+		}
+		add(noActionLine("", res.Decision))
+	}
+	if len(out) == 0 {
+		out = append(out, "• Действий нет")
+	}
+	if sym, ibsVal, ok := bestEntryRow(rows); ok {
+		out = append(out, fmt.Sprintf("• Сигнал входа был: %s (IBS %.1f%%) — заявка не отправлена", sym, ibsVal*100))
+	}
+	return out
+}
+
+func noActionLine(label string, decision map[string]any) string {
+	if decision == nil {
+		return ""
+	}
+	if action, _ := decision["action"].(string); action != "" && action != "none" {
+		return ""
+	}
+	reason, _ := decision["reason"].(string)
+	if reason == "" {
+		return ""
+	}
+	sym := ""
+	if decision["symbol"] != nil {
+		sym = store.SafeTicker(fmt.Sprint(decision["symbol"]))
+	}
+	text := noActionReasonText(reason, sym)
+	if label != "" {
+		return "• " + label + ": " + text
+	}
+	return "• " + text
+}
+
+func noActionReasonText(reason, symbol string) string {
+	sym := symbol
+	if sym == "" {
+		sym = "позиция"
+	}
+	switch reason {
+	case "broker_position_not_in_journal":
+		return "у брокера открыта " + sym + ", которой нет в журнале — вход заблокирован"
+	case "broker_position_exists":
+		return "у брокера уже есть позиция — вход заблокирован"
+	case "broker_position_mismatch":
+		return "журнал держит " + sym + ", а у брокера её нет — вход заблокирован"
+	case "broker_positions_unavailable":
+		return "позиции брокера не читаются — вход заблокирован"
+	case "journal_unavailable":
+		return "журнал сделок недоступен"
+	case "no_broker_configured":
+		return "брокер не настроен"
+	case "broker_disabled":
+		return "брокер выключен в настройках"
+	case HealthNeedsReauth:
+		return "брокер требует повторной авторизации"
+	case HealthMissing:
+		return "у брокера нет токена"
+	case "entries_disabled":
+		return "новые входы выключены в настройках"
+	case "exits_disabled":
+		return "выходы выключены в настройках"
+	case "empty_symbol_universe":
+		return "список тикеров пуст"
+	case "exit_threshold_not_reached":
+		return "держим " + sym + ": IBS ниже порога выхода"
+	case "open_position_quote_unavailable":
+		return "нет котировки по открытой " + sym + " — выход не проверен"
+	case "invalid_high_ibs":
+		return "у " + sym + " не задан порог выхода"
+	case "no_signal":
+		return "нет сигнала на вход"
+	}
+	return reason
+}
+
+func brokerLabel(name string) string {
+	switch name {
+	case "webull":
+		return "Webull"
+	case "robinhood":
+		return "Robinhood"
+	}
+	return name
+}
+
+// bestEntryRow returns the ticker the T-1 readings would have entered: the
+// lowest IBS strictly below its entry threshold, the same pick the engine makes.
+func bestEntryRow(rows []t1Watch) (string, float64, bool) {
+	best := ""
+	bestIBS := 0.0
+	for _, r := range rows {
+		if !r.eval.entry {
+			continue
+		}
+		if best == "" || r.eval.ibs < bestIBS {
+			best, bestIBS = r.sym, r.eval.ibs
+		}
+	}
+	return best, bestIBS, best != ""
 }
 
 type watchEval struct {

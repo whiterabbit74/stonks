@@ -344,8 +344,14 @@ func decideLiveAction(quotes []map[string]any, symbols []string, held map[string
 		}
 		return none(reason, sym, row)
 	}
+	if open != nil && !allowExits {
+		return none("exits_disabled", store.SafeTicker(fmt.Sprint(open["symbol"])), nil)
+	}
 	if len(symbols) == 0 {
 		return none("empty_symbol_universe", nil, nil)
+	}
+	if open == nil && !allowEntries {
+		return none("entries_disabled", nil, nil)
 	}
 	if open == nil && allowEntries {
 		if heldErr != nil {

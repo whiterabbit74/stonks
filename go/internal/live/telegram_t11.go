@@ -102,11 +102,14 @@ func formatConsistencyIssueLine(issue, snap map[string]any) string {
 	if symbol == "" || symbol == "<nil>" {
 		symbol = "?"
 	}
+	// snap holds map[string]any values: a nil map stored in an interface is not
+	// == nil, so a plain nil check reported OPEN/OPEN on every warning, whatever
+	// the books actually said.
 	mon, bro := "FLAT", "FLAT"
-	if snap["openMonitorTrade"] != nil {
+	if len(mapOf(snap["openMonitorTrade"])) > 0 {
 		mon = "OPEN"
 	}
-	if snap["openBrokerTrade"] != nil {
+	if len(mapOf(snap["openBrokerTrade"])) > 0 {
 		bro = "OPEN"
 	}
 	reconcile := "auto-reconcile unsafe"

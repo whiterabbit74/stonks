@@ -142,12 +142,22 @@ func (e *Engine) Consistency() map[string]any {
 		proposed = []map[string]any{}
 	}
 	return map[string]any{
-		"fetchedAt":        time.Now().UTC().Format(time.RFC3339Nano),
-		"openMonitorTrade": openM,
-		"openBrokerTrade":  openB,
+		"fetchedAt": time.Now().UTC().Format(time.RFC3339Nano),
+		// nilMap keeps an absent trade an untyped nil: a nil map[string]any put
+		// into an interface compares non-nil, and readers checking `!= nil` then
+		// see an open trade that does not exist.
+		"openMonitorTrade": nilMap(openM),
+		"openBrokerTrade":  nilMap(openB),
 		"issues":           issues,
 		"proposedActions":  proposed,
 	}
+}
+
+func nilMap(m map[string]any) any {
+	if len(m) == 0 {
+		return nil
+	}
+	return m
 }
 
 func sameSymbolClosedBroker(broker []map[string]any, openM map[string]any) []map[string]any {
