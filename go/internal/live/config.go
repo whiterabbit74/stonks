@@ -150,7 +150,7 @@ func sanitizeAutoTradingConfig(input, current map[string]any) map[string]any {
 		}
 	}
 
-	if s, ok := input["provider"].(string); ok && enumIn(s, "finnhub", "webull") {
+	if s, ok := input["provider"].(string); ok && enumIn(s, "finnhub", "webull", "robinhood") {
 		next["provider"] = s
 	}
 	if s, ok := input["entryCapitalMode"].(string); ok {
@@ -260,7 +260,7 @@ func watchThresholds(watch, cfg map[string]any) (low, high float64, highInvalid 
 // their Quote() is synthesised from daily history, so it would answer a live
 // IBS question with yesterday's bar. Add "robinhood" here once the provider
 // client implements a real-time quote.
-var realtimeQuoteProviders = []string{"finnhub", "webull"}
+var realtimeQuoteProviders = []string{"finnhub", "webull", "robinhood"}
 
 func isRealtimeQuoteProvider(p string) bool {
 	for _, r := range realtimeQuoteProviders {

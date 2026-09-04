@@ -23,6 +23,16 @@ func TestClassifyWebullHealth(t *testing.T) {
 	}
 }
 
+func TestClassifyRobinhoodHealth(t *testing.T) {
+	now := time.Date(2026, 9, 4, 12, 0, 0, 0, time.UTC)
+	if st, _ := ClassifyRobinhoodHealth("", "", "", "", now); st != HealthMissing {
+		t.Fatalf("missing %s", st)
+	}
+	if st, _ := ClassifyRobinhoodHealth("", "r", HealthNeedsReauth, "", now); st != HealthNeedsReauth {
+		t.Fatalf("reauth %s", st)
+	}
+}
+
 func TestRecordedHealthKeepsPreviousOnUnreachable(t *testing.T) {
 	if RecordedHealth(HealthOK, HealthUnreachable) != HealthOK {
 		t.Fatal("keep previous")

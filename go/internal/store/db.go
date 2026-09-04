@@ -1010,6 +1010,15 @@ func (d *DB) InsertTrade(table string, rec map[string]any) error {
 	if status == "" || status == "<nil>" {
 		status = "open"
 	}
+	if table == "broker_trades" {
+		broker := fmt.Sprint(rec["broker"])
+		if broker == "" || broker == "<nil>" {
+			broker = "webull"
+		}
+		_, err := d.SQL.Exec(`INSERT INTO broker_trades (id, symbol, status, entry_date, entry_price, notes, source, quantity, broker) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			id, symbol, status, rec["entryDate"], rec["entryPrice"], rec["notes"], rec["source"], rec["quantity"], broker)
+		return err
+	}
 	_, err := d.SQL.Exec(`INSERT INTO `+table+` (id, symbol, status, entry_date, entry_price, notes, source, quantity) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 		id, symbol, status, rec["entryDate"], rec["entryPrice"], rec["notes"], rec["source"], rec["quantity"])
 	return err
@@ -1300,12 +1309,14 @@ type WebullTokenRow struct {
 	LastAttemptAt       string
 	ExpiresAt           string
 	LastCheckAt         string
+	LastAlertedStatus   string
+	LastAlertedAt       string
 }
 
 func (d *DB) GetWebullToken() WebullTokenRow {
 	var row WebullTokenRow
-	_ = d.SQL.QueryRow(`SELECT COALESCE(token,''), COALESCE(last_check_status,''), COALESCE(last_health_check_date,''), COALESCE(last_health_check_attempt_at,''), COALESCE(expires_at,''), COALESCE(last_check_at,'') FROM webull_token WHERE id='current'`).
-		Scan(&row.Token, &row.LastCheckStatus, &row.LastHealthCheckDate, &row.LastAttemptAt, &row.ExpiresAt, &row.LastCheckAt)
+	_ = d.SQL.QueryRow(`SELECT COALESCE(token,''), COALESCE(last_check_status,''), COALESCE(last_health_check_date,''), COALESCE(last_health_check_attempt_at,''), COALESCE(expires_at,''), COALESCE(last_check_at,''), COALESCE(last_alerted_status,''), COALESCE(last_alerted_at,'') FROM webull_token WHERE id='current'`).
+		Scan(&row.Token, &row.LastCheckStatus, &row.LastHealthCheckDate, &row.LastAttemptAt, &row.ExpiresAt, &row.LastCheckAt, &row.LastAlertedStatus, &row.LastAlertedAt)
 	return row
 }
 

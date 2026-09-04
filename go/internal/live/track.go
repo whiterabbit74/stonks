@@ -80,7 +80,7 @@ func IsFinalOrderStatus(status string) bool {
 }
 
 func (e *Engine) PollTrackers() int {
-	if e.Broker == nil {
+	if len(e.brokerMap()) == 0 {
 		return 0
 	}
 	pending, err := e.DB.ListPendingTrackers()
@@ -149,7 +149,7 @@ func (e *Engine) expireStaleTrackers() {
 }
 
 func (e *Engine) TrackSubmitted(clientOrderID string) {
-	if clientOrderID == "" || clientOrderID == "<nil>" || e.Broker == nil {
+	if clientOrderID == "" || clientOrderID == "<nil>" || len(e.brokerMap()) == 0 {
 		return
 	}
 	e.mu.Lock()
@@ -231,7 +231,7 @@ func (e *Engine) pollOneTracker(t map[string]any) bool {
 
 func (e *Engine) pollTracker(t map[string]any) (bool, error) {
 	id := fmt.Sprint(t["clientOrderId"])
-	if id == "" || e.Broker == nil {
+	if id == "" {
 		return true, nil
 	}
 	e.mu.Lock()
@@ -250,7 +250,16 @@ func (e *Engine) pollTracker(t map[string]any) (bool, error) {
 		e.mu.Unlock()
 	}()
 
-	detail, derr := e.Broker.OrderDetail(id)
+	br := e.Broker
+	if name := fmt.Sprint(t["broker"]); name != "" && name != "<nil>" {
+		if named := e.brokerMap()[name]; named != nil {
+			br = named
+		}
+	}
+	if br == nil {
+		return true, nil
+	}
+	detail, derr := br.OrderDetail(id)
 	status := "unknown"
 	if derr != nil {
 		e.logAuto("order_poll_failed", e.metaCorr(id), map[string]any{

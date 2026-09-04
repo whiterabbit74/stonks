@@ -130,10 +130,14 @@ func (d *DB) SaveOrderTracker(rec map[string]any) error {
 	if rec["attempts"] != nil {
 		attempts = int(asFloat(rec["attempts"]))
 	}
-	_, err := d.SQL.Exec(`INSERT INTO order_trackers (client_order_id, symbol, action, status, quantity, source, date_key, started_at, attempts, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
-        ON CONFLICT(client_order_id) DO UPDATE SET status=excluded.status, quantity=excluded.quantity, updated_at=datetime('now')`,
-		id, SafeTicker(fmt.Sprint(rec["symbol"])), fmt.Sprint(rec["action"]), status, rec["quantity"], rec["source"], rec["dateKey"], started, attempts)
+	broker := fmt.Sprint(rec["broker"])
+	if broker == "" || broker == "<nil>" {
+		broker = "webull"
+	}
+	_, err := d.SQL.Exec(`INSERT INTO order_trackers (client_order_id, symbol, action, broker, status, quantity, source, date_key, started_at, attempts, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+        ON CONFLICT(client_order_id) DO UPDATE SET status=excluded.status, quantity=excluded.quantity, broker=excluded.broker, updated_at=datetime('now')`,
+		id, SafeTicker(fmt.Sprint(rec["symbol"])), fmt.Sprint(rec["action"]), broker, status, rec["quantity"], rec["source"], rec["dateKey"], started, attempts)
 	return err
 }
 
@@ -223,7 +227,7 @@ func (d *DB) IsOwnOrder(clientOrderID string) bool {
 }
 
 func (d *DB) ListPendingTrackers() ([]map[string]any, error) {
-	rows, err := d.SQL.Query(`SELECT client_order_id, symbol, action, status, quantity, source, date_key, started_at, attempts
+	rows, err := d.SQL.Query(`SELECT client_order_id, symbol, action, status, quantity, source, date_key, started_at, attempts, COALESCE(broker,'webull')
         FROM order_trackers WHERE status NOT IN ('filled','cancelled','canceled','rejected','expired') ORDER BY started_at DESC`)
 	if err != nil {
 		return nil, err
@@ -247,7 +251,7 @@ func (d *DB) ListRecentTrackers(limit int) ([]map[string]any, error) {
 	if limit <= 0 {
 		limit = 20
 	}
-	rows, err := d.SQL.Query(`SELECT client_order_id, symbol, action, status, quantity, source, date_key, started_at, attempts
+	rows, err := d.SQL.Query(`SELECT client_order_id, symbol, action, status, quantity, source, date_key, started_at, attempts, COALESCE(broker,'webull')
         FROM order_trackers ORDER BY started_at DESC LIMIT ?`, limit)
 	if err != nil {
 		return nil, err
@@ -273,8 +277,9 @@ func scanTracker(s rowScanner, withAttempts bool) (map[string]any, error) {
 	var qty sql.NullFloat64
 	var attempts sql.NullInt64
 	var err error
+	var broker sql.NullString
 	if withAttempts {
-		err = s.Scan(&id, &symbol, &action, &status, &qty, &source, &dateKey, &started, &attempts)
+		err = s.Scan(&id, &symbol, &action, &status, &qty, &source, &dateKey, &started, &attempts, &broker)
 	} else {
 		err = s.Scan(&id, &symbol, &action, &status, &qty, &source, &dateKey, &started)
 	}
@@ -285,10 +290,14 @@ func scanTracker(s rowScanner, withAttempts bool) (map[string]any, error) {
 	if attempts.Valid {
 		n = int(attempts.Int64)
 	}
+	b := "webull"
+	if broker.Valid && broker.String != "" {
+		b = broker.String
+	}
 	return map[string]any{
 		"clientOrderId": id, "symbol": symbol, "action": action, "status": status,
 		"quantity": nullF(qty), "source": nullS(source), "dateKey": nullS(dateKey), "startedAt": nullS(started),
-		"attempts": n,
+		"attempts": n, "broker": b,
 	}, nil
 }
 

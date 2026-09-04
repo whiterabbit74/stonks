@@ -147,9 +147,14 @@ func (e *Engine) recordFill(t map[string]any, detail map[string]any, status stri
 		if existing := e.getTrade("broker_trades", clientOrderID); existing != nil {
 			return
 		}
+		brokerName := e.activeBroker
+		if brokerName == "" {
+			brokerName = "webull"
+		}
 		if err := e.DB.InsertTrade("broker_trades", map[string]any{
 			"id": clientOrderID, "symbol": symbol, "status": "open",
 			"entryDate": dateKey, "entryPrice": fillPrice, "source": source, "quantity": fillQty,
+			"broker": brokerName,
 		}); err != nil {
 			e.logAuto("local_trade_record_failed", meta.CorrelationID, map[string]any{
 				"table": "broker_trades", "error": err.Error(), "clientOrderId": clientOrderID,

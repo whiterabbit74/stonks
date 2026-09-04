@@ -23,6 +23,27 @@ type BrokerHealth struct {
 	Detail    string `json:"detail,omitempty"`
 }
 
+func ClassifyRobinhoodHealth(access, refresh, checkStatus, expiresAt string, now time.Time) (status string, daysLeft *int) {
+	if strings.TrimSpace(access) == "" && strings.TrimSpace(refresh) == "" {
+		return HealthMissing, nil
+	}
+	st := strings.ToUpper(strings.TrimSpace(checkStatus))
+	if st == "UNKNOWN" || st == "UNREACHABLE" {
+		return HealthUnreachable, daysLeftUntil(expiresAt, now)
+	}
+	if st == HealthNeedsReauth {
+		return HealthNeedsReauth, daysLeftUntil(expiresAt, now)
+	}
+	dl := daysLeftUntil(expiresAt, now)
+	if dl != nil && *dl <= 3 {
+		return HealthExpiringSoon, dl
+	}
+	if strings.TrimSpace(access) == "" {
+		return HealthNeedsReauth, dl
+	}
+	return HealthOK, dl
+}
+
 func ClassifyWebullHealth(token, checkStatus, expiresAt string, now time.Time) (status string, daysLeft *int) {
 	if strings.TrimSpace(token) == "" {
 		return HealthMissing, nil
@@ -104,4 +125,21 @@ func HealthAlertText(broker, status, kind string) string {
 		return "<b>" + name + ": требуется переавторизация</b>\nПройдите копи-паст авторизацию на вкладке Robinhood → Подключение."
 	}
 	return "<b>" + name + ": требуется переавторизация</b>\nПеревыпустите токен на вкладке Webull."
+}
+
+func (e *Engine) BrokersHealth() []BrokerHealth {
+	now := e.now()
+	checked := now.UTC().Format(time.RFC3339)
+	var out []BrokerHealth
+	if e.DB != nil {
+		w := e.DB.GetWebullToken()
+		st, dl := ClassifyWebullHealth(w.Token, w.LastCheckStatus, w.ExpiresAt, now)
+		st = RecordedHealth(w.LastCheckStatus, st)
+		out = append(out, BrokerHealth{Broker: "webull", Status: st, CheckedAt: checked, ExpiresAt: w.ExpiresAt, DaysLeft: dl, Detail: w.LastCheckStatus})
+		r := e.DB.GetRobinhoodOAuth()
+		rst, rdl := ClassifyRobinhoodHealth(r.AccessToken, r.RefreshToken, r.LastCheckStatus, r.ExpiresAt, now)
+		rst = RecordedHealth(r.LastCheckStatus, rst)
+		out = append(out, BrokerHealth{Broker: "robinhood", Status: rst, CheckedAt: checked, ExpiresAt: r.ExpiresAt, DaysLeft: rdl, Detail: r.LastCheckStatus})
+	}
+	return out
 }

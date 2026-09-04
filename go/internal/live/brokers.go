@@ -102,6 +102,13 @@ func anyAllow(cfg map[string]any, key string) bool {
 	return false
 }
 
+func (e *Engine) BrokerNamed(name string) Broker {
+	if e == nil {
+		return nil
+	}
+	return e.brokerMap()[name]
+}
+
 func (e *Engine) brokerMap() map[string]Broker {
 	if e == nil {
 		return nil

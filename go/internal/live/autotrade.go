@@ -88,10 +88,11 @@ func (e *Engine) PutToken(token, expiresAt string) map[string]any {
 }
 
 func (e *Engine) CreateToken() (map[string]any, error) {
-	if e.Broker == nil {
+	x := e.webullExtras()
+	if x == nil {
 		return nil, fmt.Errorf("Webull credentials are missing")
 	}
-	data, err := e.Broker.CreateToken()
+	data, err := x.CreateToken()
 	if err != nil {
 		return nil, err
 	}
@@ -117,10 +118,11 @@ func (e *Engine) TokenHealth() string {
 	if token == "" {
 		return "MISSING"
 	}
-	if e.Broker == nil {
+	x := e.webullExtras()
+	if x == nil {
 		return "PRESENT"
 	}
-	data, err := e.Broker.CheckToken(token)
+	data, err := x.CheckToken(token)
 	if err != nil {
 		_ = e.DB.AppendAutotradeLog("token_health_failed " + err.Error())
 		return "UNKNOWN"
@@ -134,7 +136,7 @@ func (e *Engine) TokenHealth() string {
 		exp, _ = data["expires_at"].(string)
 	}
 	_ = e.DB.SaveWebullToken(token, exp, status)
-	if status == "NORMAL" {
+	if status == "NORMAL" && e.Broker != nil {
 		_, _ = e.Broker.Account()
 	}
 	return status
@@ -148,10 +150,11 @@ func (e *Engine) CheckToken(token string) (map[string]any, error) {
 	if token == "" {
 		token = e.DB.GetWebullToken().Token
 	}
-	if e.Broker == nil {
+	x := e.webullExtras()
+	if x == nil {
 		return map[string]any{"status": "UNKNOWN"}, nil
 	}
-	data, err := e.Broker.CheckToken(token)
+	data, err := x.CheckToken(token)
 	if err != nil {
 		return nil, err
 	}
@@ -381,128 +384,10 @@ func (e *Engine) Execute(trigger string) EvalResult {
 		e.logAuto("execution_skipped", corr, map[string]any{"trigger": trigger, "reason": "no_signal"})
 		return ev
 	}
-	symbol := store.SafeTicker(fmt.Sprint(ev.Decision["symbol"]))
-	key := action
-	if action != "entry" {
-		key = symbol + ":" + action
+	if len(e.brokerMap()) > 1 {
+		return e.executeAll(ev, trigger, corr)
 	}
-	if action == "entry" {
-		if pending := e.DB.AnyPendingTracker(); pending != nil {
-			ev.Broker = map[string]any{"submitted": false, "error": "pending_tracker_exists", "clientOrderId": pending["clientOrderId"]}
-			e.logAuto("order_guarded", corr, map[string]any{"symbol": symbol, "action": action, "reason": "pending_tracker"})
-			return ev
-		}
-	} else if pending := e.DB.FindPendingTracker(symbol, action); pending != nil {
-		ev.Broker = map[string]any{"submitted": false, "error": "pending_" + action + "_tracker_exists", "clientOrderId": pending["clientOrderId"]}
-		e.logAuto("order_guarded", corr, map[string]any{"symbol": symbol, "action": action, "reason": "pending_tracker"})
-		return ev
-	}
-	e.mu.Lock()
-	if e.reservations == nil {
-		e.reservations = map[string]string{}
-	}
-	if _, taken := e.reservations[key]; taken {
-		e.mu.Unlock()
-		ev.Broker = map[string]any{"submitted": false, "error": "pending_" + action + "_submission_exists"}
-		e.logAuto("order_guarded", corr, map[string]any{"symbol": symbol, "action": action, "reason": "pending_submission"})
-		return ev
-	}
-	if action == "entry" {
-		if _, taken := e.reservations["entry"]; taken {
-			e.mu.Unlock()
-			ev.Broker = map[string]any{"submitted": false, "error": "pending_entry_submission_exists"}
-			e.logAuto("order_guarded", corr, map[string]any{"symbol": symbol, "action": action, "reason": "pending_submission"})
-			return ev
-		}
-	}
-	e.reservations[key] = "submitting"
-	e.mu.Unlock()
-	defer func() {
-		e.mu.Lock()
-		delete(e.reservations, key)
-		e.mu.Unlock()
-	}()
-
-	enabled, _ := ev.AutoTrading["enabled"].(bool)
-	if !enabled {
-		ev.Broker = map[string]any{"submitted": false, "simulated": false, "error": "Autotrading is disabled", "mode": "off"}
-		e.logAuto("execution_skipped", corr, map[string]any{"symbol": symbol, "reason": "autotrading_disabled"})
-		return ev
-	}
-	if e.Broker == nil {
-		ev.Broker = map[string]any{"submitted": false, "error": "Webull credentials are missing", "mode": "off"}
-		e.logAuto("execution_blocked", corr, map[string]any{"symbol": symbol, "reason": "missing_webull_credentials"})
-		return ev
-	}
-	if executionWindowApplies(trigger) && e.outsideExecutionWindow(ev.AutoTrading) {
-		ev.Broker = map[string]any{"submitted": false, "error": "outside_execution_window"}
-		e.logAuto("execution_skipped", corr, map[string]any{"symbol": symbol, "reason": "outside_execution_window", "trigger": trigger})
-		return ev
-	}
-	price := quotePrice(ev, symbol)
-	qty, qerr := e.sizeOrder(action, symbol, ev.AutoTrading, price)
-	if qerr != nil {
-		ev.Broker = map[string]any{"submitted": false, "error": qerr.Error()}
-		e.logAuto("execution_blocked", corr, map[string]any{"symbol": symbol, "reason": qerr.Error()})
-		return ev
-	}
-	e.logBalanceSnapshot(corr, symbol, action)
-	side := "BUY"
-	if action == "exit" {
-		side = "SELL"
-	}
-	if action == "entry" {
-		// Always, not on a switch: a leftover order of ours on this symbol can
-		// still fill and turn one intended position into two. Only orders this
-		// engine placed are touched - a manual order of the user's is theirs.
-		if cancelled := e.cancelOpenOrdersBeforeEntry(symbol); len(cancelled) > 0 {
-			e.logAuto("open_orders_cancelled", corr, map[string]any{"symbol": symbol, "cancelled_count": len(cancelled)})
-		}
-	}
-	placeCfg := PlaceMarketCfg{}
-	res, err := e.placeMarket(symbol, side, qty, placeCfg)
-	if err != nil {
-		res.Error = err.Error()
-		res.Submitted = false
-	}
-	ev.Broker = res
-	ev.Executed = res.Submitted
-	if res.Submitted {
-		ibsVal := 0.0
-		if cand, ok := ev.Decision["candidate"].(map[string]any); ok {
-			ibsVal = asFloat(cand["ibs"])
-		}
-		e.startTracking(res, orderMeta{
-			CorrelationID: corr, IBS: ibsVal, DateKey: ev.TodayKey,
-			QuotePrice: price, Action: action, Symbol: symbol, Quantity: qty, Source: trigger,
-		})
-		e.logAuto("order_submit_ok", corr, map[string]any{
-			"symbol": symbol, "action": action, "side": side, "quantity": qty,
-			"clientOrderId": res.ClientOrderID, "order_type": "MARKET",
-		})
-	} else if res.Ambiguous {
-		// Track it: if the order did reach the broker, this is the only way the
-		// fill ever lands in the journal. Executed stays false so nothing
-		// downstream — the T-1 re-entry above all — treats it as done.
-		e.startTracking(OrderResult{Submitted: true, ClientOrderID: res.ClientOrderID}, orderMeta{
-			CorrelationID: corr, DateKey: ev.TodayKey, QuotePrice: price,
-			Action: action, Symbol: symbol, Quantity: qty, Source: trigger,
-		})
-		e.logAuto("order_submit_unknown", corr, map[string]any{
-			"symbol": symbol, "action": action, "clientOrderId": res.ClientOrderID, "error": res.Error,
-		})
-		_ = e.Send(e.chat(), fmt.Sprintf(
-			"<b>Webull: статус отправки неизвестен</b>\n%s • %s • %v шт.\nclientOrderId: %s\nОшибка: %s\nПовтор не отправлен — проверьте заявки у брокера.",
-			symbol, side, qty, res.ClientOrderID, res.Error))
-	} else {
-		e.logAuto("order_submit_failed", corr, map[string]any{
-			"symbol": symbol, "action": action, "error": res.Error,
-		})
-	}
-	e.mu.Lock()
-	e.lastResult = ev
-	e.mu.Unlock()
-	return ev
+	return e.submitEvaluated(ev, trigger, corr, "")
 }
 
 func (e *Engine) placeMarketOnce(symbol, side string, qty float64, cfg PlaceMarketCfg) (OrderResult, error) {

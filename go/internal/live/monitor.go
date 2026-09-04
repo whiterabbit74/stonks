@@ -269,10 +269,11 @@ func (e *Engine) applyConsistencyAction(action map[string]any) bool {
 }
 
 func (e *Engine) SyncCalendar() (map[string]any, error) {
-	if e.Broker == nil {
+	x := e.webullExtras()
+	if x == nil {
 		return nil, fmt.Errorf("webull sync requires credentials")
 	}
-	raw, err := e.Broker.Calendar()
+	raw, err := x.Calendar()
 	if err != nil {
 		return nil, err
 	}
@@ -280,10 +281,11 @@ func (e *Engine) SyncCalendar() (map[string]any, error) {
 }
 
 func (e *Engine) WebullRawSplits(symbol string) (map[string]any, error) {
-	if e.Broker == nil {
+	x := e.webullExtras()
+	if x == nil {
 		return map[string]any{"splits": []any{}}, nil
 	}
-	evs, err := e.Broker.RawSplits(symbol)
+	evs, err := x.RawSplits(symbol)
 	if err != nil {
 		return nil, err
 	}

@@ -31,7 +31,11 @@ func (e *Engine) ImportWebullCalendar() (map[string]any, error) {
 		start = tradingdate.AddDays(cov, 1)
 	}
 	end := tradingdate.AddDays(start, 29)
-	items, err := e.Broker.CalendarDays(start, end)
+	x := e.webullExtras()
+	if x == nil {
+		return nil, fmt.Errorf("Webull credentials are missing")
+	}
+	items, err := x.CalendarDays(start, end)
 	if err != nil {
 		return nil, err
 	}
