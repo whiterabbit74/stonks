@@ -1825,19 +1825,21 @@
           ${tickerMenu}
         </div>
         <div class="pc-toolbar-right">
-          <div class="flex items-center gap-1" role="group" aria-label="Период">${ranges}</div>
-          <button type="button" data-pc-ind class="pc-ind-btn ${ui.indOpen ? 'pc-ind-btn-on' : ''}" aria-expanded="${ui.indOpen ? 'true' : 'false'}" aria-controls="pc-ind-panel">Индикаторы ${icon('chevrondown', 'w-3.5 h-3.5')}</button>
+          <div class="pc-ranges" role="group" aria-label="Период">${ranges}</div>
+          <div class="pc-ind-wrap">
+            <button type="button" data-pc-ind class="pc-ind-btn ${ui.indOpen ? 'pc-ind-btn-on' : ''}" aria-expanded="${ui.indOpen ? 'true' : 'false'}" aria-controls="pc-ind-panel">Индикаторы ${icon('chevrondown', 'w-3.5 h-3.5')}</button>
+            <div id="pc-ind-panel" class="pc-ind-panel ${ui.indOpen ? '' : 'hidden'}" data-pc-ind-panel>
+              ${lineRow('ema20', 'EMA 20', p.ema20 !== false, 'ema20')}
+              ${lineRow('ema200', 'EMA 200', p.ema200 !== false, 'ema200', bandRows + `<button type="button" data-pc-band-add class="pc-add">+ Добавить отклонение</button>`)}
+              <div class="pc-row"><label><input type="checkbox" data-pc="ibs" ${p.ibs !== false ? 'checked' : ''} /> IBS</label></div>
+              <div class="pc-row"><label><input type="checkbox" data-pc="volume" ${p.volume !== false ? 'checked' : ''} /> Объём</label></div>
+              <div class="pc-row"><label><input type="checkbox" data-pc="splits" ${p.splits !== false ? 'checked' : ''} /> Сплиты</label></div>
+              <div class="pc-row"><label><input type="checkbox" data-pc="trades" ${p.trades !== false ? 'checked' : ''} /> Сделки</label></div>
+            </div>
+          </div>
+          <button type="button" data-pc-csv class="icon-btn icon-btn-md icon-btn-glass" title="Экспортировать данные графика в CSV" aria-label="Экспортировать данные графика в CSV">${icon('download', 'h-4 w-4')}</button>
           <button type="button" data-pc-fs class="icon-btn icon-btn-md icon-btn-glass" title="${fsOn ? 'Свернуть' : 'Во весь экран'}" aria-label="${fsOn ? 'Свернуть' : 'Во весь экран'}">${icon(fsOn ? 'minimize' : 'maximize', 'h-4 w-4')}</button>
         </div>
-      </div>
-      <div id="pc-ind-panel" class="pc-ind-panel ${ui.indOpen ? '' : 'hidden'}" data-pc-ind-panel>
-        ${lineRow('ema20', 'EMA 20', p.ema20 !== false, 'ema20')}
-        ${lineRow('ema200', 'EMA 200', p.ema200 !== false, 'ema200', bandRows + `<button type="button" data-pc-band-add class="pc-add">+ Добавить отклонение</button>`)}
-        <div class="pc-row"><label><input type="checkbox" data-pc="ibs" ${p.ibs !== false ? 'checked' : ''} /> IBS</label></div>
-        <div class="pc-row"><label><input type="checkbox" data-pc="volume" ${p.volume !== false ? 'checked' : ''} /> Объём</label></div>
-        <div class="pc-row"><label><input type="checkbox" data-pc="splits" ${p.splits !== false ? 'checked' : ''} /> Сплиты</label></div>
-        <div class="pc-row"><label><input type="checkbox" data-pc="trades" ${p.trades !== false ? 'checked' : ''} /> Сделки</label></div>
-        <div class="pc-ind-foot"><button type="button" data-pc-csv class="btn-secondary min-h-0 py-1 px-2 text-xs">CSV</button></div>
       </div>
       <div id="${esc(chartId)}" class="chart-box-lg rounded border dark:border-gray-800"></div>
     </div>`;
@@ -4333,10 +4335,24 @@
         shell?.querySelectorAll('[data-pc-style-panel]').forEach((el) => el.classList.remove('is-open'));
       }
     });
-    document.addEventListener('click', () => {
-      if (!state.priceChartUi.tickerOpen) return;
-      state.priceChartUi.tickerOpen = false;
-      document.querySelector('[data-pc-ticker-menu]')?.classList.add('hidden');
+    document.addEventListener('click', (e) => {
+      const t = e.target;
+      if (state.priceChartUi.tickerOpen && !(t && t.closest && t.closest('[data-pc-ticker-menu], [data-pc-ticker-toggle]'))) {
+        state.priceChartUi.tickerOpen = false;
+        document.querySelector('[data-pc-ticker-menu]')?.classList.add('hidden');
+      }
+      if (state.priceChartUi.indOpen && !(t && t.closest && t.closest('.pc-ind-wrap'))) {
+        state.priceChartUi.indOpen = false;
+        state.priceChartUi.styleFor = null;
+        const shell = document.querySelector('[data-pc-shell]');
+        shell?.querySelector('[data-pc-ind-panel]')?.classList.add('hidden');
+        const ind = shell?.querySelector('[data-pc-ind]');
+        if (ind) {
+          ind.classList.remove('pc-ind-btn-on');
+          ind.setAttribute('aria-expanded', 'false');
+        }
+        shell?.querySelectorAll('[data-pc-style-panel]').forEach((el) => el.classList.remove('is-open'));
+      }
     });
   }
   function applyPcLine(target, patch) {
@@ -4404,6 +4420,7 @@
       });
       paintPriceChart(chartId);
     }));
+    shell.querySelector('.pc-ind-wrap')?.addEventListener('click', (e) => e.stopPropagation());
     shell.querySelector('[data-pc-ind]')?.addEventListener('click', (e) => {
       e.stopPropagation();
       state.priceChartUi.indOpen = !state.priceChartUi.indOpen;
@@ -4503,8 +4520,11 @@
       });
     });
     shell.querySelector('[data-pc-csv]')?.addEventListener('click', () => {
-      const bars = barsForTicker(selectedHeroTicker());
-      Charts.downloadCsv((selectedHeroTicker() || 'chart') + '.csv', Charts.csvFromBars(bars));
+      const ticker = selectedHeroTicker() || 'chart-data';
+      const bars = barsForTicker(ticker);
+      if (!bars || !bars.length) return;
+      const stamp = new Date().toISOString().replace(/[:]/g, '-').split('.')[0];
+      Charts.downloadCsv(ticker + '-' + stamp + '.csv', Charts.csvFromBars(bars));
     });
   }
   function paintPriceChart(chartId) {

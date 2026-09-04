@@ -271,9 +271,10 @@ html.dark .error-console { background: #111827; border-color: #374151; }
 @media (min-width: 768px) { .auto-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (min-width: 1024px) { .auto-fields { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 .pager { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-top: 0.75rem; font-size: 0.8125rem; }
-.pc-shell { display: flex; flex-direction: column; gap: 0.5rem; }
+.pc-shell { position: relative; display: flex; flex-direction: column; gap: 0.5rem; }
 .pc-toolbar { display: flex; flex-wrap: nowrap; align-items: center; gap: 0.5rem; }
-.pc-toolbar-right { margin-left: auto; display: flex; flex-wrap: nowrap; align-items: center; gap: 0.5rem; min-width: 0; overflow-x: auto; }
+.pc-toolbar-right { margin-left: auto; display: flex; flex-wrap: nowrap; align-items: center; gap: 0.5rem; min-width: 0; }
+.pc-ranges { display: flex; align-items: center; gap: 0.25rem; overflow-x: auto; }
 .pc-ticker { position: relative; flex-shrink: 0; }
 .pc-ticker-btn {
   display: inline-flex; align-items: center; gap: 0.25rem;
@@ -304,11 +305,16 @@ html.dark .pc-ind-btn { background: #111827; border-color: #374151; color: #e5e7
 .pc-ind-btn:hover { background: #f3f4f6; }
 html.dark .pc-ind-btn:hover { background: #1f2937; }
 .pc-ind-btn-on, .pc-ind-btn-on:hover { background: #4f46e5; border-color: #4f46e5; color: #fff; }
+.pc-ind-wrap { position: relative; flex-shrink: 0; }
 .pc-ind-panel {
-  border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 0.5rem 0.625rem;
-  background: #f9fafb;
+  position: absolute; right: 0; top: 100%; z-index: 30;
+  margin-top: 0.35rem; width: 16rem; max-width: min(16rem, calc(100vw - 2rem));
+  max-height: min(70vh, 28rem); overflow: auto;
+  border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 0.4rem 0.5rem;
+  background: #fff; box-shadow: 0 10px 24px rgba(15, 23, 42, 0.14);
 }
-html.dark .pc-ind-panel { background: #0b1220; border-color: #1f2937; }
+.pc-ind-panel.hidden { display: none; }
+html.dark .pc-ind-panel { background: #0b1220; border-color: #1f2937; box-shadow: 0 10px 24px rgba(0, 0, 0, 0.45); }
 .pc-row { display: flex; align-items: center; gap: 0.5rem; min-height: 1.75rem; }
 .pc-row-indent { padding-left: 1.25rem; }
 .pc-row label { display: inline-flex; align-items: center; gap: 0.4rem; font-size: 12px; flex: 1; min-width: 0; }
@@ -339,7 +345,6 @@ html.dark .pc-seg button { background: #111827; border-color: #374151; color: #d
 html.dark .pc-seg-on { background: #4f46e5; border-color: #4f46e5; color: #fff; }
 .pc-add { font-size: 11px; color: #4f46e5; padding: 0.25rem 0 0.15rem 1.25rem; }
 .pc-add:hover { text-decoration: underline; }
-.pc-ind-foot { display: flex; justify-content: flex-end; padding-top: 0.25rem; }
 .pc-shell.pc-fs {
   position: fixed; inset: 0; z-index: 40; padding: 0.75rem;
   background: #fff; gap: 0.5rem;

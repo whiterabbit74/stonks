@@ -48,6 +48,9 @@ func TestVanillaUIAssets(t *testing.T) {
 	if !strings.Contains(cj, "addIbsPane") || !strings.Contains(cj, "lineStyle: 1") {
 		t.Fatal("IBS pane must draw dotted 10/75 threshold lines")
 	}
+	if !strings.Contains(cj, "adj_close") || !strings.Contains(cj, "ema200") {
+		t.Fatal("chart CSV must export price/ibs/ema columns like the old TradingChart")
+	}
 	app, _ := os.ReadFile(filepath.Join(web, "js/app.js"))
 	a := string(app)
 	css, _ := os.ReadFile(filepath.Join(web, "css/extra.css"))
@@ -159,6 +162,7 @@ func TestVanillaUIAssets(t *testing.T) {
 		"Всего активов",
 		"data-hero-range",
 		"Индикаторы",
+		"Экспортировать данные графика в CSV",
 		"Во весь экран",
 		"Штрих-пунктир",
 		"Добавить отклонение",

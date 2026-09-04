@@ -460,30 +460,51 @@ const Charts = {
     hi.setData(colored.hi);
     return { low, high };
   },
-  csvFromBars(bars, extras) {
-    const extraKeys = Object.keys(extras || {});
-    const head = ['date', 'open', 'high', 'low', 'close', 'volume'].concat(extraKeys);
+  csvCell(value) {
+    const s = String(value == null ? '' : value);
+    return /["\n,]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  },
+  csvNum(value, digits) {
+    if (value == null || value === '' || !Number.isFinite(Number(value))) return '';
+    return Number(value).toFixed(digits);
+  },
+  csvFromBars(bars) {
+    const data = (bars || []).filter((b) => b && b.date && Number.isFinite(Number(b.close)));
+    const ema20 = this.emaValues(data, 20);
+    const ema200 = this.emaValues(data, 200);
+    const head = ['date', 'price', 'open', 'high', 'low', 'close', 'adj_close', 'volume', 'ibs', 'ema20', 'ema200'];
     const rows = [head.join(',')];
-    (bars || []).forEach((b, i) => {
-      if (!b || !b.date) return;
-      const cells = [
+    data.forEach((b, i) => {
+      const high = Number(b.high), low = Number(b.low), close = Number(b.close);
+      const range = high - low;
+      const ibs = range > 0 ? (close - low) / range : null;
+      rows.push([
         this.isoDate(b.date),
-        b.open, b.high, b.low, b.close, b.volume == null ? '' : b.volume,
-      ].concat(extraKeys.map((k) => {
-        const arr = extras[k];
-        const v = Array.isArray(arr) ? arr[i] : (arr && arr[this.isoDate(b.date)]);
-        return v == null ? '' : v;
-      }));
-      rows.push(cells.join(','));
+        this.csvNum(close, 4),
+        this.csvNum(b.open, 4),
+        this.csvNum(high, 4),
+        this.csvNum(low, 4),
+        this.csvNum(close, 4),
+        this.csvNum(b.adjClose, 4),
+        this.csvNum(b.volume, 0),
+        this.csvNum(ibs, 6),
+        this.csvNum(ema20.values[i], 6),
+        this.csvNum(ema200.values[i], 6),
+      ].map((c) => this.csvCell(c)).join(','));
     });
     return rows.join('\n');
   },
   downloadCsv(filename, text) {
-    const blob = new Blob([text], { type: 'text/csv;charset=utf-8' });
+    const body = String(text || '');
+    const csv = body.charCodeAt(0) === 0xFEFF ? body : ('\uFEFF' + body);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = filename || 'chart.csv';
+    a.rel = 'noopener';
+    document.body.appendChild(a);
     a.click();
+    a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 500);
   },
   area(container, points, isDark, color, opts) {

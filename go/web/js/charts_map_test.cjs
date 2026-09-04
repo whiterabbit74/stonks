@@ -292,3 +292,27 @@ test('priceChart IBS pane draws dotted 10/75 lines and zone fills', () => {
   assert.ok(lines.some((s) => s.seriesOpts.color === '#7c3aed'));
 });
 
+test('csvFromBars keeps the old chart export columns including IBS and EMA', () => {
+  const csv = Charts.csvFromBars([
+    { date: '2024-11-15', open: 10, high: 12, low: 8, close: 9, volume: 100, adjClose: 9 },
+  ]);
+  const lines = csv.trim().split('\n');
+  assert.equal(lines[0], 'date,price,open,high,low,close,adj_close,volume,ibs,ema20,ema200');
+  const cells = lines[1].split(',');
+  assert.equal(cells[0], '2024-11-15');
+  assert.equal(cells[1], '9.0000');
+  assert.equal(cells[2], '10.0000');
+  assert.equal(cells[5], '9.0000');
+  assert.equal(cells[7], '100');
+  assert.equal(cells[8], '0.250000');
+  assert.equal(cells[9], '');
+  assert.equal(cells[10], '');
+});
+
+test('csvCell quotes commas and doubles inner quotes', () => {
+  assert.equal(Charts.csvCell('a,b'), '"a,b"');
+  assert.equal(Charts.csvCell('say "hi"'), '"say ""hi"""');
+  assert.equal(Charts.csvCell('plain'), 'plain');
+});
+
+
