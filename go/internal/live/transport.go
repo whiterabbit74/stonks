@@ -19,11 +19,22 @@ import (
 type MemoryTelegram struct {
 	mu       sync.Mutex
 	Messages [][2]string
+	Fail     error
+	FailN    int
 }
 
 func (m *MemoryTelegram) Send(chatID, text string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.Fail != nil && m.FailN >= 0 {
+		if m.FailN > 0 {
+			m.FailN--
+			if m.FailN == 0 {
+				m.FailN = -1
+			}
+		}
+		return m.Fail
+	}
 	m.Messages = append(m.Messages, [2]string{chatID, text})
 	return nil
 }

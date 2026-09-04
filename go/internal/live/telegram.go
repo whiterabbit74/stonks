@@ -208,39 +208,51 @@ func (e *Engine) Aggregate(minutesUntilClose int, opts AggregateOpts) (SimulateR
 		return res, err
 	}
 
+	execDone := false
 	if opts.UpdateState && !opts.DryRun {
-		claimed, err := e.DB.ClaimAggregateT1(e.chat(), today)
+		att, err := e.DB.BeginT1Attempt(e.chat(), today, e.now(), T1LeaseTTL)
 		if err != nil {
 			out.Reason = err.Error()
 			return out, err
 		}
-		if !claimed {
-			out.Reason = "already_sent"
+		if att.Skip {
+			out.Reason = att.Reason
 			return out, nil
 		}
+		execDone = att.ExecutionDone
 	}
-
-	snap := e.Consistency()
-	blocking := BlockingMismatch(snap)
-	if blocking != nil {
-		_ = e.DB.AppendAutotradeLog("t1_monitor_mismatch " + fmt.Sprint(blocking["code"]) + " " + fmt.Sprint(blocking["message"]))
-	}
-	_ = e.DB.AppendAutotradeLog("t1_execution_started")
 
 	var exitRes, entryRes EvalResult
 	waitFill := false
-	if blocking == nil {
-		if opts.DryRun {
-			_ = e.DB.AppendAutotradeLog("t1_dry_run")
-			exitRes = e.Evaluate()
-		} else {
-			exitRes, entryRes, waitFill = e.runT1Orders(today)
-			out.Executed = exitRes.Executed || entryRes.Executed
-			if entryRes.Executed {
-				out.Broker = entryRes.Broker
+	var blocking map[string]any
+	if execDone {
+		exitRes = e.Evaluate()
+	} else {
+		e.PollTrackers()
+		snap := e.Consistency()
+		blocking = BlockingMismatch(snap)
+		if blocking != nil {
+			_ = e.DB.AppendAutotradeLog("t1_monitor_mismatch " + fmt.Sprint(blocking["code"]) + " " + fmt.Sprint(blocking["message"]))
+		}
+		_ = e.DB.AppendAutotradeLog("t1_execution_started")
+		if blocking == nil {
+			if opts.DryRun {
+				_ = e.DB.AppendAutotradeLog("t1_dry_run")
+				exitRes = e.Evaluate()
+			} else if e.DB.AnyPendingTracker() != nil {
+				waitFill = true
 			} else {
-				out.Broker = exitRes.Broker
+				exitRes, entryRes, waitFill = e.runT1Orders(today)
+				out.Executed = exitRes.Executed || entryRes.Executed
+				if entryRes.Executed {
+					out.Broker = entryRes.Broker
+				} else {
+					out.Broker = exitRes.Broker
+				}
 			}
+		}
+		if opts.UpdateState && !opts.DryRun {
+			_ = e.DB.MarkT1ExecutionFinished(e.chat(), today)
 		}
 	}
 
@@ -255,9 +267,15 @@ func (e *Engine) Aggregate(minutesUntilClose int, opts AggregateOpts) (SimulateR
 		if !opts.DryRun {
 			e.persistEmaAfterSend(emaAlerts, stage)
 		}
+		if opts.UpdateState && !opts.DryRun {
+			_ = e.DB.MarkT1ReportSent(e.chat(), today)
+		}
 	}
 	return res, err
 }
+
+// T1LeaseTTL is how long a T-1 attempt holds the day against a parallel tick.
+var T1LeaseTTL = 2 * time.Minute
 
 func (e *Engine) finishSend(out *SimulateResult, text string, opts AggregateOpts) (SimulateResult, error) {
 	out.Text = text

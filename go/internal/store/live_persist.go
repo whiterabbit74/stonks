@@ -333,6 +333,66 @@ func (d *DB) ClaimAggregateT1(chatID, dateKey string) (bool, error) {
 	return n == 1, err
 }
 
+type T1Attempt struct {
+	Skip           bool
+	Reason         string
+	ExecutionDone  bool
+}
+
+// BeginT1Attempt takes a time-bounded lease for today's T-1 run.
+// already_sent (t1_sent) skips everything. execution_finished without a
+// report lets the caller retry the Telegram send only. An unexpired lease
+// skips so two ticks cannot Execute at once. An expired lease without
+// execution_finished allows another attempt.
+func (d *DB) BeginT1Attempt(chatID, dateKey string, now time.Time, ttl time.Duration) (T1Attempt, error) {
+	if _, err := d.SQL.Exec(`INSERT OR IGNORE INTO aggregate_send_state (date_key, chat_id, t11_sent, t1_sent) VALUES (?, ?, 0, 0)`, dateKey, chatID); err != nil {
+		return T1Attempt{}, err
+	}
+	var t1Sent, execDone int
+	var lease sql.NullString
+	err := d.SQL.QueryRow(`SELECT t1_sent, t1_execution_finished, t1_lease_until FROM aggregate_send_state WHERE date_key=? AND chat_id=?`, dateKey, chatID).Scan(&t1Sent, &execDone, &lease)
+	if err != nil {
+		return T1Attempt{}, err
+	}
+	if t1Sent != 0 {
+		return T1Attempt{Skip: true, Reason: "already_sent"}, nil
+	}
+	if execDone != 0 {
+		return T1Attempt{ExecutionDone: true}, nil
+	}
+	nowS := now.UTC().Format(time.RFC3339)
+	until := now.UTC().Add(ttl).Format(time.RFC3339)
+	res, err := d.SQL.Exec(`UPDATE aggregate_send_state SET t1_lease_until=? WHERE date_key=? AND chat_id=? AND t1_sent=0 AND t1_execution_finished=0 AND (t1_lease_until IS NULL OR t1_lease_until='' OR t1_lease_until < ?)`,
+		until, dateKey, chatID, nowS)
+	if err != nil {
+		return T1Attempt{}, err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return T1Attempt{}, err
+	}
+	if n != 1 {
+		return T1Attempt{Skip: true, Reason: "lease_held"}, nil
+	}
+	return T1Attempt{}, nil
+}
+
+func (d *DB) MarkT1ExecutionFinished(chatID, dateKey string) error {
+	_, err := d.SQL.Exec(`UPDATE aggregate_send_state SET t1_execution_finished=1 WHERE date_key=? AND chat_id=?`, dateKey, chatID)
+	return err
+}
+
+func (d *DB) MarkT1ReportSent(chatID, dateKey string) error {
+	_, err := d.SQL.Exec(`UPDATE aggregate_send_state SET t1_sent=1, t1_lease_until='' WHERE date_key=? AND chat_id=?`, dateKey, chatID)
+	return err
+}
+
+func (d *DB) T1ExecutionFinished(chatID, dateKey string) bool {
+	var n int
+	_ = d.SQL.QueryRow(`SELECT t1_execution_finished FROM aggregate_send_state WHERE date_key=? AND chat_id=?`, dateKey, chatID).Scan(&n)
+	return n != 0
+}
+
 func OpenBrokerTrade(trades []map[string]any) map[string]any {
 	return OpenBrokerTradeFor(trades, "")
 }

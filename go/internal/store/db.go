@@ -242,6 +242,8 @@ func (d *DB) initSchema() error {
             chat_id  TEXT NOT NULL DEFAULT '',
             t11_sent INTEGER NOT NULL DEFAULT 0,
             t1_sent  INTEGER NOT NULL DEFAULT 0,
+            t1_lease_until TEXT,
+            t1_execution_finished INTEGER NOT NULL DEFAULT 0,
             PRIMARY KEY (date_key, chat_id)
         );
     `)
@@ -259,6 +261,8 @@ func (d *DB) migrateSchema() error {
 	d.ensureColumn("broker_trades", "broker", "TEXT NOT NULL DEFAULT 'webull'")
 	d.ensureColumn("webull_token", "last_alerted_status", "TEXT")
 	d.ensureColumn("webull_token", "last_alerted_at", "TEXT")
+	d.ensureColumn("aggregate_send_state", "t1_lease_until", "TEXT")
+	d.ensureColumn("aggregate_send_state", "t1_execution_finished", "INTEGER NOT NULL DEFAULT 0")
 	_, _ = d.SQL.Exec(`CREATE INDEX IF NOT EXISTS idx_broker_trades_broker_status ON broker_trades(broker, status)`)
 	return nil
 }
