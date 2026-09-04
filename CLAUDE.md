@@ -7,8 +7,21 @@
 - Один логический фикс = один коммит. Не смешивай несвязанные изменения.
 - Сообщение: что сделано, в том же стиле, что история репозитория.
 - Не коммитить, пока изменение не работает (красные тесты, сломанная сборка) или дерево чистое.
-- Не пушить, пока явно не попросили.
 - В ответе пользователю всегда пиши короткий хэш коммита (`git rev-parse --short HEAD`), например: `коммит abc1234`.
+
+## Пуш и деплой — только по прямой просьбе
+
+Не пушить и не выкатывать на прод без **прямой явной просьбы в текущем сообщении**.
+
+Не считаются указанием: зелёные тесты, закрытый пункт roadmap, «готово», прошлые сессии, наличие `./deploy.sh`, формулировки вроде «после этого можно деплоить» в документе.
+
+Без прямой просьбы запрещено:
+
+- `git push` (любая ветка, любой remote)
+- `./deploy.sh` и любой другой выкат
+- `ssh` на VPS ради рестарта, `docker compose up`/`restart`, `git reset` на сервере, правки `/home/ubuntu/stonks-config/.env`
+
+Локальный `git commit` после завершённого изменения — обязателен. Пуш и деплой — нет.
 
 ## Project Overview
 
@@ -30,7 +43,7 @@ Go trading-strategy backtester with a vanilla JS SPA (`go/web`). Historical OHLC
 ### Core Invariants (do not violate)
 
 - **Даты без времени и без таймзон.** Полное объяснение — раздел [«Даты: почему в проекте нет таймзон»](#даты-почему-в-проекте-нет-таймзон). Торговая дата — строка `YYYY-MM-DD`. `time.Time` в этих путях не появляется, кроме явной биржевой зоны на wall-clock.
-- **Commit changes.** Every completed change is committed locally (do not push/deploy unless explicitly asked). Commit messages end with the `Co-Authored-By` trailer used across the history.
+- **Commit changes.** Every completed change is committed locally. Commit messages end with the `Co-Authored-By` trailer used across the history. Push and deploy only on an explicit ask in the current message — see [Пуш и деплой](#пуш-и-деплой--только-по-прямой-просьбе).
 
 ## Даты: почему в проекте нет таймзон
 
@@ -107,7 +120,7 @@ Local: `cd go && go test ./... && go run ./cmd/server` → `:8080` (override `PO
 
 `./deploy.sh` cross-compiles linux/amd64, packs `docker/go.runtime.Dockerfile`, loads the image on the VPS. The VPS never runs `go build` for the trading server. Compose `server` is image-only.
 
-Do not push or deploy unless explicitly asked.
+Do not push, run `./deploy.sh`, SSH to the VPS, or otherwise touch production unless the current message explicitly asks to. Green tests and a finished local change are not that ask.
 
 ## Environment
 
