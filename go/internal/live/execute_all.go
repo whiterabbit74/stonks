@@ -17,7 +17,7 @@ func (e *Engine) storedHealthStatus(name string) string {
 	return strings.ToUpper(strings.TrimSpace(e.DB.GetWebullToken().LastCheckStatus))
 }
 
-func (e *Engine) executeAll(ev EvalResult, trigger, corr string, snaps []namedBroker) EvalResult {
+func (e *Engine) executeAll(w execWindow, ev EvalResult, trigger, corr string, snaps []namedBroker) EvalResult {
 	if len(snaps) == 0 {
 		ev.Decision = map[string]any{"action": "none", "reason": "no_broker_configured", "symbol": nil, "candidate": nil}
 		ev.Executed = false
@@ -74,7 +74,7 @@ func (e *Engine) executeAll(ev EvalResult, trigger, corr string, snaps []namedBr
 			e.logAuto("execution_skipped", corr, map[string]any{"broker": name, "reason": "allowExits_false"})
 			continue
 		}
-		res := e.submitEvaluated(one, trigger, corr, name, br)
+		res := e.submitEvaluated(w, one, trigger, corr, name, br)
 		results[name] = res.Broker
 		if res.Executed {
 			anyOK = true
@@ -105,7 +105,7 @@ func (e *Engine) executeAll(ev EvalResult, trigger, corr string, snaps []namedBr
 	return ev
 }
 
-func (e *Engine) submitEvaluated(ev EvalResult, trigger, corr, brokerName string, br Broker) EvalResult {
+func (e *Engine) submitEvaluated(w execWindow, ev EvalResult, trigger, corr, brokerName string, br Broker) EvalResult {
 	action, _ := ev.Decision["action"].(string)
 	symbol := store.SafeTicker(fmt.Sprint(ev.Decision["symbol"]))
 	key := action
@@ -192,7 +192,7 @@ func (e *Engine) submitEvaluated(ev EvalResult, trigger, corr, brokerName string
 		side = "SELL"
 	}
 	if action == "entry" {
-		cancelled, err := e.cancelOpenOrdersBeforeEntry(symbol, br)
+		cancelled, err := e.cancelOpenOrdersBeforeEntry(w, symbol, br)
 		if err != nil {
 			ev.Broker = map[string]any{"submitted": false, "error": "open_orders_unavailable"}
 			e.logAuto("execution_blocked", corr, map[string]any{"symbol": symbol, "reason": "open_orders_unavailable", "error": err.Error()})
@@ -202,7 +202,7 @@ func (e *Engine) submitEvaluated(ev EvalResult, trigger, corr, brokerName string
 			e.logAuto("open_orders_cancelled", corr, map[string]any{"symbol": symbol, "cancelled_count": len(cancelled)})
 		}
 	}
-	res, err := e.placeMarket(symbol, side, qty, PlaceMarketCfg{}, br)
+	res, err := e.placeMarket(w, symbol, side, qty, PlaceMarketCfg{}, br)
 	if err != nil {
 		res.Error = err.Error()
 		res.Submitted = false

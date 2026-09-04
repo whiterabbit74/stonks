@@ -1,6 +1,7 @@
 package live
 
 import (
+	"context"
 	"errors"
 	"os"
 	"sync"
@@ -59,6 +60,22 @@ type PlaceMarketCfg struct {
 	// so a submission that fails ambiguously can be probed by that id instead
 	// of blindly resent. Empty means the broker generates one.
 	ClientOrderID string
+	// Ctx carries the caller's deadline (the T-1 close-of-session budget, when
+	// there is one) down to the actual broker HTTP/MCP call, so a stuck
+	// request is cancelled instead of eating the whole minute. Left as a cfg
+	// field rather than a positional context.Context parameter so every
+	// existing PlaceMarketCfg implementation and call site keeps compiling —
+	// nil means "no caller deadline", equivalent to context.Background().
+	// See P1-1 in AUTOTRADE_ROADMAP.md.
+	Ctx context.Context
+}
+
+// ctx returns cfg.Ctx, defaulting to context.Background() when unset.
+func (cfg PlaceMarketCfg) ctx() context.Context {
+	if cfg.Ctx != nil {
+		return cfg.Ctx
+	}
+	return context.Background()
 }
 
 type marketCfgPlacer interface {
@@ -74,6 +91,47 @@ type Broker interface {
 	OpenOrders() ([]any, error)
 	OrderHistory(start, end string) ([]any, error)
 	CancelOrder(clientOrderID string) error
+}
+
+// ctxOrderDetailer is an optional Broker extension: a broker that can bound
+// its landed-order lookup (used by placeMarket's idempotency check) by a
+// caller context implements it. Brokers that do not are still called through
+// the plain OrderDetail — the T-1 retry-budget bookkeeping in
+// deadlineExceeded works off the engine's clock regardless, only the actual
+// HTTP/MCP-level cancellation is best-effort for those brokers.
+type ctxOrderDetailer interface {
+	OrderDetailCtx(ctx context.Context, clientOrderID string) (map[string]any, error)
+}
+
+// ctxOpenOrderser is the OpenOrders counterpart of ctxOrderDetailer.
+type ctxOpenOrderser interface {
+	OpenOrdersCtx(ctx context.Context) ([]any, error)
+}
+
+// ctxPositioner is the Positions counterpart of ctxOrderDetailer.
+type ctxPositioner interface {
+	PositionsCtx(ctx context.Context) ([]any, error)
+}
+
+func brokerOrderDetail(ctx context.Context, br Broker, clientOrderID string) (map[string]any, error) {
+	if d, ok := br.(ctxOrderDetailer); ok {
+		return d.OrderDetailCtx(ctx, clientOrderID)
+	}
+	return br.OrderDetail(clientOrderID)
+}
+
+func brokerOpenOrders(ctx context.Context, br Broker) ([]any, error) {
+	if d, ok := br.(ctxOpenOrderser); ok {
+		return d.OpenOrdersCtx(ctx)
+	}
+	return br.OpenOrders()
+}
+
+func brokerPositions(ctx context.Context, br Broker) ([]any, error) {
+	if d, ok := br.(ctxPositioner); ok {
+		return d.PositionsCtx(ctx)
+	}
+	return br.Positions()
 }
 
 type Engine struct {

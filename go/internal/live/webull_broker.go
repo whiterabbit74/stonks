@@ -1,6 +1,7 @@
 package live
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -61,6 +62,7 @@ func (b *LiveBroker) PlaceMarket(symbol, side string, qty float64) (OrderResult,
 }
 
 func (b *LiveBroker) PlaceMarketCfg(symbol, side string, qty float64, cfg PlaceMarketCfg) (OrderResult, error) {
+	ctx := cfg.ctx()
 	c := b.client()
 	if qty <= 0 {
 		qty = 1
@@ -93,7 +95,7 @@ func (b *LiveBroker) PlaceMarketCfg(symbol, side string, qty float64, cfg PlaceM
 		"entrust_type":            "QTY",
 		"extended_hours_trading":  false,
 	}
-	placed, err := c.PlaceOrder(c.AccountID, order)
+	placed, err := c.PlaceOrderCtx(ctx, c.AccountID, order)
 	if err != nil {
 		return OrderResult{ClientOrderID: cid, Symbol: symbol, Side: side, Quantity: qty, Error: err.Error()}, err
 	}
@@ -116,7 +118,7 @@ func (b *LiveBroker) PlaceMarketCfg(symbol, side string, qty float64, cfg PlaceM
 	}
 	status := "submitted"
 	var filledPrice, filledQty float64
-	if detail, terr := c.OrderDetail(c.AccountID, cid); terr != nil {
+	if detail, terr := c.OrderDetailCtx(ctx, c.AccountID, cid); terr != nil {
 		if b.DB != nil {
 			_ = b.DB.AppendAutotradeLog("brokerRaw event=order_tracking_start_failed clientOrderId=" + cid + " error=" + terr.Error())
 		}
@@ -161,8 +163,19 @@ func (b *LiveBroker) Account() (map[string]any, error) {
 }
 
 func (b *LiveBroker) Positions() ([]any, error) {
+	return b.positions(context.Background())
+}
+
+// PositionsCtx implements the optional ctxPositioner extension: the T-1
+// broker-book reconcile (t1BrokerReconcile) bounds this read by the same
+// deadline as the order it precedes. See P1-1 in AUTOTRADE_ROADMAP.md.
+func (b *LiveBroker) PositionsCtx(ctx context.Context) ([]any, error) {
+	return b.positions(ctx)
+}
+
+func (b *LiveBroker) positions(ctx context.Context) ([]any, error) {
 	c := b.client()
-	resp, err := c.AccountPositions(c.AccountID)
+	resp, err := c.AccountPositionsCtx(ctx, c.AccountID)
 	if err != nil {
 		return nil, err
 	}
@@ -255,8 +268,19 @@ func (b *LiveBroker) RawSplits(symbol string) ([]map[string]any, error) {
 }
 
 func (b *LiveBroker) OrderDetail(clientOrderID string) (map[string]any, error) {
+	return b.orderDetail(context.Background(), clientOrderID)
+}
+
+// OrderDetailCtx implements the optional ctxOrderDetailer extension: it lets
+// placeMarket's landed-order check run under the same T-1 deadline as the
+// placement itself. See P1-1 in AUTOTRADE_ROADMAP.md.
+func (b *LiveBroker) OrderDetailCtx(ctx context.Context, clientOrderID string) (map[string]any, error) {
+	return b.orderDetail(ctx, clientOrderID)
+}
+
+func (b *LiveBroker) orderDetail(ctx context.Context, clientOrderID string) (map[string]any, error) {
 	c := b.client()
-	resp, err := c.OrderDetail(c.AccountID, clientOrderID)
+	resp, err := c.OrderDetailCtx(ctx, c.AccountID, clientOrderID)
 	if err != nil {
 		return nil, err
 	}
@@ -326,8 +350,18 @@ func (b *LiveBroker) findOrderSnapshotByClientOrderID(clientOrderID string) map[
 }
 
 func (b *LiveBroker) OpenOrders() ([]any, error) {
+	return b.openOrders(context.Background())
+}
+
+// OpenOrdersCtx implements the optional ctxOpenOrderser extension: see
+// PositionsCtx / OrderDetailCtx above and P1-1 in AUTOTRADE_ROADMAP.md.
+func (b *LiveBroker) OpenOrdersCtx(ctx context.Context) ([]any, error) {
+	return b.openOrders(ctx)
+}
+
+func (b *LiveBroker) openOrders(ctx context.Context) ([]any, error) {
 	c := b.client()
-	resp, err := c.ListOpenOrders(c.AccountID, 50)
+	resp, err := c.ListOpenOrdersCtx(ctx, c.AccountID, 50)
 	if err != nil {
 		return nil, err
 	}

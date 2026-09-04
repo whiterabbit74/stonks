@@ -1,6 +1,7 @@
 package live
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"math"
@@ -16,6 +17,11 @@ import (
 )
 
 var ErrTestBuyDisabled = errors.New("Live Webull test buy is disabled")
+
+// ErrExecutionDeadlineExceeded is returned by placeMarket/retryBrokerReadWindow
+// when the T-1 close-of-session budget ran out before another attempt could
+// be started. See P1-1 in AUTOTRADE_ROADMAP.md.
+var ErrExecutionDeadlineExceeded = errors.New("execution deadline exceeded")
 
 func (e *Engine) AutoConfig() map[string]any {
 	settings := e.DB.Settings()
@@ -436,7 +442,24 @@ func liveHighOrDefault(row map[string]any) float64 {
 	return ibs.DefaultHighIBS
 }
 
+// Execute evaluates the current signal and submits it, with no T-1
+// close-of-session deadline of its own (manual/API triggers use this path).
+// Use ExecuteWindow directly when a deadline applies.
 func (e *Engine) Execute(trigger string) EvalResult {
+	return e.ExecuteCtx(context.Background(), trigger)
+}
+
+// ExecuteCtx is Execute with an externally supplied context (e.g. an HTTP
+// request's) and no additional deadline of its own.
+func (e *Engine) ExecuteCtx(ctx context.Context, trigger string) EvalResult {
+	return e.executeWindow(windowFromCtx(ctx), trigger)
+}
+
+// ExecuteWindow is Execute under a caller-supplied execWindow (ctx + T-1
+// deadline). Only this package builds an execWindow (via t1Window), so it
+// stays unexported; ExecuteCtx/Execute are the public entry points for
+// everyone else.
+func (e *Engine) executeWindow(w execWindow, trigger string) EvalResult {
 	corr := newCorrelationID()
 	ev := e.Evaluate()
 	e.mu.Lock()
@@ -447,13 +470,14 @@ func (e *Engine) Execute(trigger string) EvalResult {
 	// Always go through executeAll, including zero and one broker: every broker
 	// has its own flags, health status, and book, and only executeAll checks
 	// them. See P0-1 in AUTOTRADE_ROADMAP.md.
-	return e.executeAll(ev, trigger, corr, snaps)
+	return e.executeAll(w, ev, trigger, corr, snaps)
 }
 
-func (e *Engine) placeMarketOnce(symbol, side string, qty float64, cfg PlaceMarketCfg, br Broker) (OrderResult, error) {
+func (e *Engine) placeMarketOnce(ctx context.Context, symbol, side string, qty float64, cfg PlaceMarketCfg, br Broker) (OrderResult, error) {
 	if br == nil {
 		return OrderResult{Error: "Webull credentials are missing"}, fmt.Errorf("Webull credentials are missing")
 	}
+	cfg.Ctx = ctx
 	if p, ok := br.(marketCfgPlacer); ok {
 		return p.PlaceMarketCfg(symbol, side, qty, cfg)
 	}
@@ -472,17 +496,31 @@ var submitRetryStep = 750 * time.Millisecond
 // we can ask the broker whether that exact order landed anyway — the case a
 // blind resend would turn into two positions. Only when the broker does not
 // know the id do we try again, with a fresh one.
-func (e *Engine) placeMarket(symbol, side string, qty float64, cfg PlaceMarketCfg, br Broker) (OrderResult, error) {
+//
+// w bounds the whole loop: when w carries a T-1 deadline, an attempt that
+// would not fit in the remaining budget (per deadlineExceeded) is not
+// started — the broker is not left mid-request past the close, and the
+// operator is told why via execution_deadline_exceeded instead of a silent
+// stop. See P1-1 in AUTOTRADE_ROADMAP.md.
+func (e *Engine) placeMarket(w execWindow, symbol, side string, qty float64, cfg PlaceMarketCfg, br Broker) (OrderResult, error) {
 	var res OrderResult
 	var err error
+	var lastDur time.Duration
 	for attempt := 1; attempt <= submitAttempts; attempt++ {
+		if e.deadlineExceeded(w, lastDur) {
+			return e.abortPlaceForDeadline(symbol, side, qty, attempt)
+		}
 		try := cfg
 		try.ClientOrderID = webull.NewClientOrderID()
-		res, err = e.placeMarketOnce(symbol, side, qty, try, br)
+		attemptCtx, cancel := e.attemptContext(w)
+		start := e.now()
+		res, err = e.placeMarketOnce(attemptCtx, symbol, side, qty, try, br)
+		cancel()
+		lastDur = e.now().Sub(start)
 		if err == nil && res.Submitted {
 			return res, nil
 		}
-		landed, queryFailed, detail := e.orderLanded(try.ClientOrderID, br)
+		landed, queryFailed, detail := e.orderLanded(w, try.ClientOrderID, br)
 		if queryFailed {
 			// The submission failed and the broker cannot say whether the order
 			// arrived. Resending risks a second position, so stop here — but do
@@ -546,15 +584,38 @@ func (e *Engine) placeMarket(symbol, side string, qty float64, cfg PlaceMarketCf
 	return res, err
 }
 
+// abortPlaceForDeadline stops placeMarket's retry loop when the T-1 budget
+// ran out before another attempt could safely start. Nothing was sent this
+// attempt (the previous one, if any, already resolved to a terminal outcome
+// via orderLanded), so the result is a plain unsubmitted failure, not
+// Ambiguous — logged and surfaced to the operator rather than swallowed.
+func (e *Engine) abortPlaceForDeadline(symbol, side string, qty float64, attempt int) (OrderResult, error) {
+	e.logAuto("execution_deadline_exceeded", "", map[string]any{
+		"symbol": symbol, "side": side, "quantity": qty, "attempt": attempt, "stage": "place_market",
+	})
+	e.notifyDeadlineExceeded("Заявка не отправлена", symbol, side, qty)
+	return OrderResult{
+		Submitted: false, Symbol: symbol, Side: side, Quantity: qty,
+		Error: ErrExecutionDeadlineExceeded.Error(),
+	}, ErrExecutionDeadlineExceeded
+}
+
 // orderLanded reports whether the broker knows this client order id.
 // queryFailed means the lookup itself failed: the caller must NOT send a
 // second order. terminal-absent (ErrOrderNotFound) is safe to retry.
 // listing-unavailable is treated as queryFailed — a new id would duplicate.
-func (e *Engine) orderLanded(clientOrderID string, br Broker) (landed, queryFailed bool, detail map[string]any) {
+// The query itself runs under w's remaining budget: if the deadline already
+// passed, the lookup fails fast (queryFailed=true), which is the correct,
+// conservative answer — a cancelled-by-deadline submission must resolve
+// Ambiguous, never "safe to retry" and never "confirmed lost". See P1-1 and
+// the "Идемпотентность отправки" note in AUTOTRADE_ROADMAP.md.
+func (e *Engine) orderLanded(w execWindow, clientOrderID string, br Broker) (landed, queryFailed bool, detail map[string]any) {
 	if br == nil || clientOrderID == "" {
 		return false, false, nil
 	}
-	detail, err := br.OrderDetail(clientOrderID)
+	ctx, cancel := e.attemptContext(w)
+	defer cancel()
+	detail, err := brokerOrderDetail(ctx, br, clientOrderID)
 	if err != nil {
 		if errors.Is(err, ErrOrderNotFound) {
 			return false, false, nil
@@ -692,13 +753,17 @@ func (e *Engine) ClearTrackerPersistBlock(broker, note string) error {
 
 // t1BrokerReconcile checks live broker books before a T-1 Execute, including
 // a retry after an expired lease. A working order or a failed read must not
-// mint a second place.
-func (e *Engine) t1BrokerReconcile() (skipPlace, waitFill bool, block map[string]any) {
+// mint a second place. w bounds every read by the same T-1 budget as the
+// order placement that follows it — see P1-1 in AUTOTRADE_ROADMAP.md.
+func (e *Engine) t1BrokerReconcile(w execWindow) (skipPlace, waitFill bool, block map[string]any) {
 	for _, nb := range e.brokerSnapshot() {
 		if nb.br == nil {
 			continue
 		}
-		rows, err := retryBrokerRead(e, "open_orders", nb.br.OpenOrders)
+		br := nb.br
+		rows, err := retryBrokerReadWindow(e, w, "open_orders", func(ctx context.Context) ([]any, error) {
+			return brokerOpenOrders(ctx, br)
+		})
 		if err != nil {
 			return true, false, map[string]any{"code": "open_orders_unavailable", "message": err.Error()}
 		}
@@ -713,21 +778,50 @@ func (e *Engine) t1BrokerReconcile() (skipPlace, waitFill bool, block map[string
 			}
 			return true, true, nil
 		}
-		if _, err := retryBrokerRead(e, "positions", nb.br.Positions); err != nil {
+		if _, err := retryBrokerReadWindow(e, w, "positions", func(ctx context.Context) ([]any, error) {
+			return brokerPositions(ctx, br)
+		}); err != nil {
 			return true, false, map[string]any{"code": "broker_positions_unavailable", "message": err.Error()}
 		}
 	}
 	return false, false, nil
 }
 
-// retryBrokerRead retries a read-only broker call. These run before any order
-// is sent, so a repeat is free — and a single timed-out balance or position
-// lookup would otherwise cancel the whole decision.
+// retryBrokerRead retries a read-only broker call with no T-1 deadline of its
+// own — used outside the close-of-session path (e.g. sizing's account/position
+// reads), where unlimited retries within submitAttempts is the existing,
+// unchanged behavior.
 func retryBrokerRead[T any](e *Engine, what string, fn func() (T, error)) (T, error) {
+	return retryBrokerReadWindow(e, backgroundWindow(), what, func(context.Context) (T, error) {
+		return fn()
+	})
+}
+
+// retryBrokerReadWindow retries a read-only broker call, bounded by w. These
+// reads run before any order is sent, so a repeat is free on its own — but
+// when w carries a T-1 deadline, a retry that would not fit in the remaining
+// budget (per deadlineExceeded) is not started: better to report
+// execution_deadline_exceeded than to still be waiting on a read after the
+// close. See P1-1 in AUTOTRADE_ROADMAP.md.
+func retryBrokerReadWindow[T any](e *Engine, w execWindow, what string, fn func(ctx context.Context) (T, error)) (T, error) {
 	var out T
 	var err error
+	var lastDur time.Duration
 	for attempt := 1; attempt <= submitAttempts; attempt++ {
-		out, err = fn()
+		if e.deadlineExceeded(w, lastDur) {
+			e.logAuto("execution_deadline_exceeded", "", map[string]any{
+				"call": what, "attempt": attempt, "stage": "broker_read",
+			})
+			if err == nil {
+				err = ErrExecutionDeadlineExceeded
+			}
+			return out, err
+		}
+		ctx, cancel := e.attemptContext(w)
+		start := e.now()
+		out, err = fn(ctx)
+		cancel()
+		lastDur = e.now().Sub(start)
 		if err == nil {
 			return out, nil
 		}
@@ -950,7 +1044,7 @@ func (e *Engine) ClosePosition(symbol string) (OrderResult, error) {
 		err := fmt.Errorf("No broker position found for %s", symbol)
 		return OrderResult{Error: err.Error(), Symbol: symbol, Side: "SELL"}, err
 	}
-	res, err := e.placeMarket(symbol, "SELL", qty, PlaceMarketCfg{}, br)
+	res, err := e.placeMarket(backgroundWindow(), symbol, "SELL", qty, PlaceMarketCfg{}, br)
 	e.logAuto("close_position", "", map[string]any{"symbol": symbol, "submitted": res.Submitted, "clientOrderId": res.ClientOrderID})
 	if res.Submitted {
 		e.startTracking(res, orderMeta{
@@ -991,7 +1085,7 @@ func (e *Engine) TestBuy(symbol string, qty float64) (OrderResult, error) {
 	if br == nil {
 		return OrderResult{Error: "Webull credentials are missing"}, fmt.Errorf("Webull credentials are missing")
 	}
-	res, err := e.placeMarket(store.SafeTicker(symbol), "BUY", qty, PlaceMarketCfg{}, br)
+	res, err := e.placeMarket(backgroundWindow(), store.SafeTicker(symbol), "BUY", qty, PlaceMarketCfg{}, br)
 	e.logAuto("test_buy", "", map[string]any{"symbol": symbol, "submitted": res.Submitted})
 	return res, err
 }
@@ -1004,12 +1098,15 @@ func envOr(k, d string) string {
 }
 
 // cancelOpenOrdersBeforeEntry clears this engine's own unfilled orders on the
-// symbol it is about to buy. Orders it did not place are left alone.
-func (e *Engine) cancelOpenOrdersBeforeEntry(symbol string, br Broker) ([]string, error) {
+// symbol it is about to buy. Orders it did not place are left alone. w bounds
+// the read by the same T-1 budget as the entry that follows it.
+func (e *Engine) cancelOpenOrdersBeforeEntry(w execWindow, symbol string, br Broker) ([]string, error) {
 	if br == nil || e.DB == nil {
 		return nil, nil
 	}
-	rows, err := retryBrokerRead(e, "open_orders", br.OpenOrders)
+	rows, err := retryBrokerReadWindow(e, w, "open_orders", func(ctx context.Context) ([]any, error) {
+		return brokerOpenOrders(ctx, br)
+	})
 	if err != nil {
 		return nil, err
 	}

@@ -1,6 +1,7 @@
 package robinhood
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -280,10 +281,18 @@ func (s *Service) KeepAlive() (string, error) {
 }
 
 func (s *Service) CallTool(name string, args map[string]any) (json.RawMessage, error) {
+	return s.CallToolCtx(context.Background(), name, args)
+}
+
+// CallToolCtx is CallTool with an explicit context: the T-1 order-placement
+// path (RobinhoodBroker.PlaceMarketCfg) threads its close-of-session deadline
+// down to here so a stuck MCP call is cancelled instead of eating the whole
+// minute. See P1-1 in AUTOTRADE_ROADMAP.md.
+func (s *Service) CallToolCtx(ctx context.Context, name string, args map[string]any) (json.RawMessage, error) {
 	if s.MCP == nil {
 		s.MCP = &MCP{HTTP: s.http(), Endpoint: MCPEndpoint, Token: s.AccessToken}
 	}
-	raw, err := s.MCP.CallTool(name, args)
+	raw, err := s.MCP.CallToolCtx(ctx, name, args)
 	if err != nil && strings.Contains(err.Error(), "unauthorized") {
 		if rerr := s.Refresh(); rerr != nil {
 			return nil, fmt.Errorf("NEEDS_REAUTH")
@@ -292,7 +301,7 @@ func (s *Service) CallTool(name string, args map[string]any) (json.RawMessage, e
 		s.MCP.ready = false
 		s.MCP.session = ""
 		s.MCP.mu.Unlock()
-		return s.MCP.CallTool(name, args)
+		return s.MCP.CallToolCtx(ctx, name, args)
 	}
 	return raw, err
 }

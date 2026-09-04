@@ -2,6 +2,7 @@ package webull
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -15,8 +16,21 @@ import (
 	"github.com/google/uuid"
 )
 
+// TradeHTTPTimeout bounds a single trading-path HTTP call (order placement,
+// order-detail lookup). It is deliberately smaller than the 15s background
+// timeout: the T-1 order must land before the close, and one hung call must
+// not be able to eat the whole remaining budget. See P1-1 in
+// AUTOTRADE_ROADMAP.md.
+const TradeHTTPTimeout = 5 * time.Second
+
 type Client struct {
-	HTTP        *http.Client
+	// HTTP is used for background calls (quotes, calendar, token checks) that
+	// are not racing the session close.
+	HTTP *http.Client
+	// TradeHTTP is used for the trading-path calls that run inside the T-1
+	// window (order placement, order-detail polling): a shorter, explicit
+	// timeout so a single stuck request cannot consume the whole minute.
+	TradeHTTP   *http.Client
 	Base        string
 	Host        string
 	AppKey      string
@@ -44,6 +58,7 @@ func FromEnv() *Client {
 	host := envOr("WEBULL_API_HOST", "api.webull.com")
 	return &Client{
 		HTTP:        &http.Client{Timeout: 15 * time.Second},
+		TradeHTTP:   &http.Client{Timeout: TradeHTTPTimeout},
 		Base:        "https://" + host,
 		Host:        host,
 		AppKey:      os.Getenv("WEBULL_APP_KEY"),
@@ -113,12 +128,47 @@ func businessCode(v any) (string, bool) {
 	return "", false
 }
 
+// Request issues a background-path call with no caller-supplied deadline
+// (context.Background()) on the 15s HTTP client. Callers on the T-1 trading
+// path use RequestCtx / requestTrade instead, so a slow call can be cancelled
+// by the session-close deadline rather than eating the whole minute.
 func (c *Client) Request(method, path string, query map[string]string, body any, includeToken bool, extraHeaders map[string]string) (*Response, error) {
+	return c.RequestCtx(context.Background(), method, path, query, body, includeToken, extraHeaders)
+}
+
+// RequestCtx is Request with an explicit context, on the background 15s
+// client. Use it for reads that are still worth bounding by a caller's
+// deadline but are not the order-placement/order-detail trading path.
+func (c *Client) RequestCtx(ctx context.Context, method, path string, query map[string]string, body any, includeToken bool, extraHeaders map[string]string) (*Response, error) {
+	return c.doRequest(ctx, c.httpClient(), method, path, query, body, includeToken, extraHeaders)
+}
+
+// requestTrade is RequestCtx on the shorter trading-path HTTP client (see
+// TradeHTTPTimeout).
+func (c *Client) requestTrade(ctx context.Context, method, path string, query map[string]string, body any, includeToken bool, extraHeaders map[string]string) (*Response, error) {
+	return c.doRequest(ctx, c.tradeHTTPClient(), method, path, query, body, includeToken, extraHeaders)
+}
+
+func (c *Client) httpClient() *http.Client {
+	if c.HTTP == nil {
+		c.HTTP = &http.Client{Timeout: 15 * time.Second}
+	}
+	return c.HTTP
+}
+
+func (c *Client) tradeHTTPClient() *http.Client {
+	if c.TradeHTTP == nil {
+		c.TradeHTTP = &http.Client{Timeout: TradeHTTPTimeout}
+	}
+	return c.TradeHTTP
+}
+
+func (c *Client) doRequest(ctx context.Context, httpClient *http.Client, method, path string, query map[string]string, body any, includeToken bool, extraHeaders map[string]string) (*Response, error) {
 	if err := c.configured(); err != nil {
 		return nil, err
 	}
-	if c.HTTP == nil {
-		c.HTTP = &http.Client{Timeout: 15 * time.Second}
+	if ctx == nil {
+		ctx = context.Background()
 	}
 	if c.Base == "" {
 		c.Base = "https://api.webull.com"
@@ -161,7 +211,7 @@ func (c *Client) Request(method, path string, query map[string]string, body any,
 	if len(bodyBytes) > 0 {
 		rdr = bytes.NewReader(bodyBytes)
 	}
-	req, err := http.NewRequest(method, u, rdr)
+	req, err := http.NewRequestWithContext(ctx, method, u, rdr)
 	if err != nil {
 		return nil, err
 	}
@@ -183,7 +233,7 @@ func (c *Client) Request(method, path string, query map[string]string, body any,
 	for k, v := range extraHeaders {
 		req.Header.Set(k, v)
 	}
-	resp, err := c.HTTP.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -233,6 +283,12 @@ func mapString(v any, keys ...string) string {
 }
 
 func (c *Client) PlaceOrder(accountID string, order map[string]any) (*Response, error) {
+	return c.PlaceOrderCtx(context.Background(), accountID, order)
+}
+
+// PlaceOrderCtx is PlaceOrder on the trading-path HTTP client (TradeHTTPTimeout),
+// with ctx carrying the T-1 deadline: see P1-1 in AUTOTRADE_ROADMAP.md.
+func (c *Client) PlaceOrderCtx(ctx context.Context, accountID string, order map[string]any) (*Response, error) {
 	if accountID == "" {
 		accountID = c.AccountID
 	}
@@ -240,17 +296,24 @@ func (c *Client) PlaceOrder(accountID string, order map[string]any) (*Response, 
 		"account_id": accountID,
 		"new_orders": []any{order},
 	}
-	return c.Request(http.MethodPost, "/openapi/trade/stock/order/place", nil, body, true, map[string]string{"category": "US_STOCK"})
+	return c.requestTrade(ctx, http.MethodPost, "/openapi/trade/stock/order/place", nil, body, true, map[string]string{"category": "US_STOCK"})
 }
 
 func (c *Client) ListOpenOrders(accountID string, pageSize int) (*Response, error) {
+	return c.ListOpenOrdersCtx(context.Background(), accountID, pageSize)
+}
+
+// ListOpenOrdersCtx is ListOpenOrders with an explicit context, used from the
+// T-1 path (cancelOpenOrdersBeforeEntry, t1BrokerReconcile) so the deadline
+// can cancel a stuck read.
+func (c *Client) ListOpenOrdersCtx(ctx context.Context, accountID string, pageSize int) (*Response, error) {
 	if accountID == "" {
 		accountID = c.AccountID
 	}
 	if pageSize <= 0 {
 		pageSize = 50
 	}
-	return c.Request(http.MethodGet, "/trade/orders/list-open", map[string]string{
+	return c.RequestCtx(ctx, http.MethodGet, "/trade/orders/list-open", map[string]string{
 		"account_id": accountID,
 		"page_size":  fmt.Sprintf("%d", pageSize),
 	}, nil, true, nil)
@@ -287,10 +350,17 @@ func (c *Client) CancelOrder(accountID, clientOrderID string) (*Response, error)
 }
 
 func (c *Client) OrderDetail(accountID, clientOrderID string) (*Response, error) {
+	return c.OrderDetailCtx(context.Background(), accountID, clientOrderID)
+}
+
+// OrderDetailCtx is OrderDetail on the trading-path HTTP client
+// (TradeHTTPTimeout): placeMarket's landed-order check runs inside the same
+// T-1 budget as the placement itself.
+func (c *Client) OrderDetailCtx(ctx context.Context, accountID, clientOrderID string) (*Response, error) {
 	if accountID == "" {
 		accountID = c.AccountID
 	}
-	return c.Request(http.MethodGet, "/trade/order/detail", map[string]string{
+	return c.requestTrade(ctx, http.MethodGet, "/trade/order/detail", map[string]string{
 		"account_id":      accountID,
 		"client_order_id": clientOrderID,
 	}, nil, true, nil)
@@ -307,10 +377,16 @@ func (c *Client) AccountBalance(accountID string) (*Response, error) {
 }
 
 func (c *Client) AccountPositions(accountID string) (*Response, error) {
+	return c.AccountPositionsCtx(context.Background(), accountID)
+}
+
+// AccountPositionsCtx is AccountPositions with an explicit context, used from
+// the T-1 path so a stuck positions read is bounded by the same deadline.
+func (c *Client) AccountPositionsCtx(ctx context.Context, accountID string) (*Response, error) {
 	if accountID == "" {
 		accountID = c.AccountID
 	}
-	return c.Request(http.MethodGet, "/account/positions", map[string]string{
+	return c.RequestCtx(ctx, http.MethodGet, "/account/positions", map[string]string{
 		"account_id": accountID,
 		"page_size":  "100",
 	}, nil, true, nil)

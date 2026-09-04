@@ -1,6 +1,7 @@
 package live
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -17,13 +18,22 @@ type RobinhoodBroker struct {
 }
 
 func (b *RobinhoodBroker) tool(name string, args map[string]any) (json.RawMessage, error) {
+	return b.toolCtx(context.Background(), name, args)
+}
+
+// toolCtx is tool with an explicit context, threaded down from
+// PlaceMarketCfg's cfg.Ctx so a T-1 order's MCP calls are bounded by the same
+// close-of-session deadline as the placement itself. The test/simulator hook
+// (b.Call) predates context plumbing and stays ctx-less — it never talks to a
+// real network. See P1-1 in AUTOTRADE_ROADMAP.md.
+func (b *RobinhoodBroker) toolCtx(ctx context.Context, name string, args map[string]any) (json.RawMessage, error) {
 	if b != nil && b.Call != nil {
 		return b.Call(name, args)
 	}
 	if b == nil || b.Svc == nil {
 		return nil, fmt.Errorf("robinhood not connected")
 	}
-	return b.Svc.CallTool(name, args)
+	return b.Svc.CallToolCtx(ctx, name, args)
 }
 
 func NewRobinhoodBroker(svc *robinhood.Service) *RobinhoodBroker {
@@ -35,6 +45,7 @@ func (b *RobinhoodBroker) PlaceMarket(symbol, side string, qty float64) (OrderRe
 }
 
 func (b *RobinhoodBroker) PlaceMarketCfg(symbol, side string, qty float64, cfg PlaceMarketCfg) (OrderResult, error) {
+	ctx := cfg.ctx()
 	ref := strings.TrimSpace(cfg.ClientOrderID)
 	if ref == "" {
 		ref = newRefID()
@@ -59,10 +70,10 @@ func (b *RobinhoodBroker) PlaceMarketCfg(symbol, side string, qty float64, cfg P
 		"market_hours":   "regular_hours",
 		"ref_id":         ref,
 	}
-	if _, err := b.tool("get_equity_tradability", map[string]any{"account_number": acct, "symbols": []string{symbol}}); err != nil {
+	if _, err := b.toolCtx(ctx, "get_equity_tradability", map[string]any{"account_number": acct, "symbols": []string{symbol}}); err != nil {
 		return OrderResult{ClientOrderID: ref, Symbol: symbol, Side: side, Quantity: qty, Error: err.Error()}, err
 	}
-	review, err := b.tool("review_equity_order", args)
+	review, err := b.toolCtx(ctx, "review_equity_order", args)
 	if err != nil {
 		return OrderResult{ClientOrderID: ref, Symbol: symbol, Side: side, Quantity: qty, Error: err.Error()}, err
 	}
@@ -70,7 +81,7 @@ func (b *RobinhoodBroker) PlaceMarketCfg(symbol, side string, qty float64, cfg P
 		err = fmt.Errorf("blocking review alert")
 		return OrderResult{ClientOrderID: ref, Symbol: symbol, Side: side, Quantity: qty, Error: err.Error()}, err
 	}
-	raw, err := b.tool("place_equity_order", args)
+	raw, err := b.toolCtx(ctx, "place_equity_order", args)
 	if err != nil {
 		return OrderResult{ClientOrderID: ref, Symbol: symbol, Side: side, Quantity: qty, Error: err.Error()}, err
 	}

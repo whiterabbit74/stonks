@@ -1,6 +1,7 @@
 package live
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"strings"
@@ -30,9 +31,14 @@ type SimulateResult struct {
 // marks the message as sent, and releasing it for a later tick would send the
 // decision to Telegram twice. A later tick would in any case re-evaluate on
 // newer quotes and decide something different, which is not a retry.
-func (e *Engine) runT1Orders(today string) (exitRes, entryRes EvalResult, waitFill bool) {
+//
+// w carries the T-1 close-of-session deadline computed once by Aggregate:
+// every Execute call in this function shares it, so a slow exit does not
+// leave the following re-entry with a budget that assumes it never ran. See
+// P1-1 in AUTOTRADE_ROADMAP.md.
+func (e *Engine) runT1Orders(w execWindow, today string) (exitRes, entryRes EvalResult, waitFill bool) {
 	_ = today
-	exitRes = e.Execute("telegram_t1")
+	exitRes = e.executeWindow(w, "telegram_t1")
 	action, _ := exitRes.Decision["action"].(string)
 	if action != "none" && !exitRes.Executed {
 		_ = e.DB.AppendAutotradeLog("t1_submit_failed")
@@ -42,7 +48,7 @@ func (e *Engine) runT1Orders(today string) (exitRes, entryRes EvalResult, waitFi
 		return exitRes, entryRes, false
 	}
 	if e.awaitFlatAfterExit() {
-		entryRes = e.Execute("telegram_t1")
+		entryRes = e.executeWindow(w, "telegram_t1")
 		return exitRes, entryRes, false
 	}
 	if e.DB.FindPendingTracker("", "exit") != nil {
@@ -50,11 +56,11 @@ func (e *Engine) runT1Orders(today string) (exitRes, entryRes EvalResult, waitFi
 		return exitRes, entryRes, true
 	}
 	_ = e.DB.AppendAutotradeLog("t1_exit_rejected_retry")
-	exitRes = e.Execute("telegram_t1")
+	exitRes = e.executeWindow(w, "telegram_t1")
 	action, _ = exitRes.Decision["action"].(string)
 	if action == "exit" && exitRes.Executed {
 		if e.awaitFlatAfterExit() {
-			entryRes = e.Execute("telegram_t1")
+			entryRes = e.executeWindow(w, "telegram_t1")
 			return exitRes, entryRes, false
 		}
 		if e.DB.FindPendingTracker("", "exit") != nil {
@@ -233,12 +239,16 @@ func (e *Engine) Aggregate(minutesUntilClose int, opts AggregateOpts) (SimulateR
 	if execDone {
 		exitRes = e.Evaluate()
 	} else {
+		// The whole T-1 cycle — reconcile reads, exit, re-entry — shares one
+		// deadline computed here, at the top of the minute: closeTime(ET) minus
+		// T1DeadlineSafetyMargin. See P1-1 in AUTOTRADE_ROADMAP.md.
+		w := e.t1Window(context.Background())
 		snap := e.Consistency()
 		blocking = BlockingMismatch(snap)
 		if blocking != nil {
 			_ = e.DB.AppendAutotradeLog("t1_monitor_mismatch " + fmt.Sprint(blocking["code"]) + " " + fmt.Sprint(blocking["message"]))
 		}
-		skipPlace, wait, recBlock := e.t1BrokerReconcile()
+		skipPlace, wait, recBlock := e.t1BrokerReconcile(w)
 		if recBlock != nil && blocking == nil {
 			blocking = recBlock
 			_ = e.DB.AppendAutotradeLog("t1_monitor_mismatch " + fmt.Sprint(recBlock["code"]) + " " + fmt.Sprint(recBlock["message"]))
@@ -252,7 +262,7 @@ func (e *Engine) Aggregate(minutesUntilClose int, opts AggregateOpts) (SimulateR
 				_ = e.DB.AppendAutotradeLog("t1_dry_run")
 				exitRes = e.Evaluate()
 			} else {
-				exitRes, entryRes, waitFill = e.runT1Orders(today)
+				exitRes, entryRes, waitFill = e.runT1Orders(w, today)
 				out.Executed = exitRes.Executed || entryRes.Executed
 				if entryRes.Executed {
 					out.Broker = entryRes.Broker

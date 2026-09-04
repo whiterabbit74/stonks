@@ -55,7 +55,7 @@ func TestPlaceMarketDoesNotReportRejectedOrderAsSubmitted(t *testing.T) {
 			bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
 			_, e, _ := testEngine(t, bars)
 			br := &rejectingBroker{status: status}
-			res, err := e.placeMarket("AAPL", "BUY", 1, PlaceMarketCfg{}, br)
+			res, err := e.placeMarket(backgroundWindow(), "AAPL", "BUY", 1, PlaceMarketCfg{}, br)
 			if err != nil {
 				t.Fatalf("a broker rejection is not a transport error: %v", err)
 			}

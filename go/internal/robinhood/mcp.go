@@ -2,6 +2,7 @@ package robinhood
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -46,32 +47,43 @@ func (c *MCP) endpoint() string {
 	return MCPEndpoint
 }
 
+// Call issues an MCP JSON-RPC call with no caller deadline (context.Background()).
+// CallCtx is the ctx-aware version — see P1-1 in AUTOTRADE_ROADMAP.md: the T-1
+// order-placement path threads its close-of-session deadline all the way here.
 func (c *MCP) Call(method string, params any) (json.RawMessage, error) {
-	if err := c.ensureSession(); err != nil {
+	return c.CallCtx(context.Background(), method, params)
+}
+
+func (c *MCP) CallCtx(ctx context.Context, method string, params any) (json.RawMessage, error) {
+	if err := c.ensureSession(ctx); err != nil {
 		return nil, err
 	}
-	return c.rpc(method, params)
+	return c.rpc(ctx, method, params)
 }
 
 func (c *MCP) CallTool(name string, args map[string]any) (json.RawMessage, error) {
+	return c.CallToolCtx(context.Background(), name, args)
+}
+
+func (c *MCP) CallToolCtx(ctx context.Context, name string, args map[string]any) (json.RawMessage, error) {
 	if args == nil {
 		args = map[string]any{}
 	}
-	return c.Call("tools/call", map[string]any{"name": name, "arguments": args})
+	return c.CallCtx(ctx, "tools/call", map[string]any{"name": name, "arguments": args})
 }
 
 func (c *MCP) ListTools() (json.RawMessage, error) {
-	return c.Call("tools/list", map[string]any{})
+	return c.CallCtx(context.Background(), "tools/list", map[string]any{})
 }
 
-func (c *MCP) ensureSession() error {
+func (c *MCP) ensureSession(ctx context.Context) error {
 	c.mu.Lock()
 	ready := c.ready
 	c.mu.Unlock()
 	if ready {
 		return nil
 	}
-	_, err := c.rpc("initialize", map[string]any{
+	_, err := c.rpc(ctx, "initialize", map[string]any{
 		"protocolVersion": mcpProtocolVersion,
 		"capabilities":    map[string]any{},
 		"clientInfo":      map[string]any{"name": "mktorder", "version": "1"},
@@ -79,7 +91,7 @@ func (c *MCP) ensureSession() error {
 	if err != nil {
 		return err
 	}
-	if err := c.notify("notifications/initialized", map[string]any{}); err != nil {
+	if err := c.notify(ctx, "notifications/initialized", map[string]any{}); err != nil {
 		return err
 	}
 	c.mu.Lock()
@@ -88,7 +100,7 @@ func (c *MCP) ensureSession() error {
 	return nil
 }
 
-func (c *MCP) rpc(method string, params any) (json.RawMessage, error) {
+func (c *MCP) rpc(ctx context.Context, method string, params any) (json.RawMessage, error) {
 	c.mu.Lock()
 	c.nextID++
 	id := c.nextID
@@ -97,21 +109,24 @@ func (c *MCP) rpc(method string, params any) (json.RawMessage, error) {
 	if params != nil {
 		body["params"] = params
 	}
-	return c.post(body, false)
+	return c.post(ctx, body, false)
 }
 
-func (c *MCP) notify(method string, params any) error {
+func (c *MCP) notify(ctx context.Context, method string, params any) error {
 	body := map[string]any{"jsonrpc": "2.0", "method": method}
 	if params != nil {
 		body["params"] = params
 	}
-	_, err := c.post(body, true)
+	_, err := c.post(ctx, body, true)
 	return err
 }
 
-func (c *MCP) post(payload map[string]any, notification bool) (json.RawMessage, error) {
+func (c *MCP) post(ctx context.Context, payload map[string]any, notification bool) (json.RawMessage, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	raw, _ := json.Marshal(payload)
-	req, err := http.NewRequest(http.MethodPost, c.endpoint(), bytes.NewReader(raw))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.endpoint(), bytes.NewReader(raw))
 	if err != nil {
 		return nil, err
 	}

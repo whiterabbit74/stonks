@@ -12,12 +12,12 @@ import (
 func TestOrderLandedRejectsForeignID(t *testing.T) {
 	_, e, br := testEngine(t, nil)
 	br.SetDetail("ours", map[string]any{"status": "FILLED", "client_order_id": "other"})
-	landed, qf, _ := e.orderLanded("ours", br)
+	landed, qf, _ := e.orderLanded(backgroundWindow(), "ours", br)
 	if landed || qf {
 		t.Fatalf("foreign id must not count as landed: landed=%v queryFailed=%v", landed, qf)
 	}
 	br.SetDetail("ours", map[string]any{"status": "FILLED", "client_order_id": "ours"})
-	landed, qf, _ = e.orderLanded("ours", br)
+	landed, qf, _ = e.orderLanded(backgroundWindow(), "ours", br)
 	if !landed || qf {
 		t.Fatal("matching id must land")
 	}
