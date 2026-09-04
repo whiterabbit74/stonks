@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"mktorder.com/go/internal/live"
@@ -207,20 +208,101 @@ func engine(db *store.DB, deps Deps) *live.Engine {
 }
 
 func RunTokenHealth(db *store.DB, deps Deps, todayET string, now time.Time) (detail string, skipped bool) {
-	row := db.GetWebullToken()
-	if row.LastHealthCheckDate == todayET {
+	hs := RunBrokerHealth(db, deps, todayET, now)
+	if len(hs) == 0 {
 		return "already-ran", true
 	}
-	status := engine(db, deps).TokenHealth()
-	recorded := status
-	if status == "UNKNOWN" && row.LastCheckStatus != "" {
-		// The check could not reach Webull, which says nothing about the token.
-		// Recording UNKNOWN would demote a confirmed token on a network blip and
-		// send the next order out with whatever the fallback happens to be.
+	for _, h := range hs {
+		if h.Broker == "webull" {
+			if h.Detail == "skipped" {
+				return "already-ran", true
+			}
+			if h.Detail != "" {
+				return h.Detail, false
+			}
+			return h.Status, false
+		}
+	}
+	return hs[0].Status, false
+}
+
+func RunBrokerHealth(db *store.DB, deps Deps, todayET string, now time.Time) []live.BrokerHealth {
+	eng := engine(db, deps)
+	var out []live.BrokerHealth
+	out = append(out, webullHealthJob(db, eng, todayET, now)...)
+	out = append(out, robinhoodHealthJob(db, eng, todayET, now)...)
+	return out
+}
+
+func webullHealthJob(db *store.DB, eng *live.Engine, todayET string, now time.Time) []live.BrokerHealth {
+	row := db.GetWebullToken()
+	if row.LastHealthCheckDate == todayET {
+		return []live.BrokerHealth{{Broker: "webull", Status: row.LastCheckStatus, Detail: "skipped"}}
+	}
+	raw := eng.TokenHealth()
+	recorded := raw
+	if raw == "UNKNOWN" && row.LastCheckStatus != "" {
 		recorded = row.LastCheckStatus
 	}
 	_ = db.UpsertWebullHealth(todayET, recorded, now.UTC().Format(time.RFC3339Nano))
-	return status, false
+	row = db.GetWebullToken()
+	st, dl := live.ClassifyWebullHealth(row.Token, recorded, row.ExpiresAt, now)
+	if raw == "UNKNOWN" {
+		st = live.RecordedHealth(row.LastCheckStatus, live.HealthUnreachable)
+	}
+	maybeHealthAlert(db, eng, "webull", row.LastAlertedStatus, row.LastAlertedAt, st, now)
+	return []live.BrokerHealth{{Broker: "webull", Status: st, CheckedAt: now.UTC().Format(time.RFC3339), ExpiresAt: row.ExpiresAt, DaysLeft: dl, Detail: recorded}}
+}
+
+func robinhoodHealthJob(db *store.DB, eng *live.Engine, todayET string, now time.Time) []live.BrokerHealth {
+	row := db.GetRobinhoodOAuth()
+	if row.LastHealthCheckDate == todayET {
+		return []live.BrokerHealth{{Broker: "robinhood", Status: row.LastCheckStatus, Detail: "skipped"}}
+	}
+	st, dl := live.ClassifyRobinhoodHealth(row.AccessToken, row.RefreshToken, row.LastCheckStatus, row.ExpiresAt, now)
+	recorded := live.RecordedHealth(row.LastCheckStatus, st)
+	_ = db.UpsertRobinhoodHealth(todayET, recorded, now.UTC().Format(time.RFC3339Nano))
+	maybeHealthAlert(db, eng, "robinhood", row.LastAlertedStatus, row.LastAlertedAt, recorded, now)
+	return []live.BrokerHealth{{Broker: "robinhood", Status: recorded, CheckedAt: now.UTC().Format(time.RFC3339), ExpiresAt: row.ExpiresAt, DaysLeft: dl, Detail: recorded}}
+}
+
+func liveStatus(raw string) string {
+	switch strings.ToUpper(strings.TrimSpace(raw)) {
+	case "UNKNOWN":
+		return live.HealthUnreachable
+	case "MISSING":
+		return live.HealthMissing
+	case "NORMAL", "OK":
+		return live.HealthOK
+	default:
+		if raw == "" {
+			return live.HealthMissing
+		}
+		return raw
+	}
+}
+
+func maybeHealthAlert(db *store.DB, eng *live.Engine, broker, prev, prevAt, status string, now time.Time) {
+	if status == live.HealthMissing && (prev == "" || prev == live.HealthMissing) {
+		return
+	}
+	t := time.Time{}
+	if prevAt != "" {
+		t, _ = time.Parse(time.RFC3339Nano, prevAt)
+		if t.IsZero() {
+			t, _ = time.Parse(time.RFC3339, prevAt)
+		}
+	}
+	send, kind := live.ShouldHealthAlert(prev, status, t, now)
+	if !send {
+		return
+	}
+	_ = eng.Send("", live.HealthAlertText(broker, status, kind))
+	if broker == "robinhood" {
+		_ = db.SetRobinhoodAlerted(status, now.UTC().Format(time.RFC3339Nano))
+	} else {
+		_ = db.SetWebullAlerted(status, now.UTC().Format(time.RFC3339Nano))
+	}
 }
 
 func RunTelegramAggregation(db *store.DB, deps Deps, until int) int {
