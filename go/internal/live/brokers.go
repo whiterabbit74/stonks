@@ -1,5 +1,7 @@
 package live
 
+import "sort"
+
 type WebullExtras interface {
 	CreateToken() (map[string]any, error)
 	CheckToken(token string) (map[string]any, error)
@@ -102,10 +104,17 @@ func anyAllow(cfg map[string]any, key string) bool {
 	return false
 }
 
+type namedBroker struct {
+	name string
+	br   Broker
+}
+
 func (e *Engine) AttachBroker(name string, b Broker) {
 	if e == nil || name == "" || b == nil {
 		return
 	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
 	if e.Brokers == nil {
 		e.Brokers = map[string]Broker{}
 	}
@@ -118,36 +127,84 @@ func (e *Engine) AttachBroker(name string, b Broker) {
 }
 
 func (e *Engine) DetachBroker(name string) {
-	if e == nil || e.Brokers == nil {
+	if e == nil {
 		return
 	}
-	delete(e.Brokers, name)
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.Brokers != nil {
+		delete(e.Brokers, name)
+	}
 }
 
 func (e *Engine) BrokerNamed(name string) Broker {
+	for _, nb := range e.brokerSnapshot() {
+		if nb.name == name {
+			return nb.br
+		}
+	}
+	return nil
+}
+
+func (e *Engine) defaultBroker() Broker {
 	if e == nil {
 		return nil
 	}
-	return e.brokerMap()[name]
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.Broker
+}
+
+func (e *Engine) brokerSnapshot() []namedBroker {
+	if e == nil {
+		return nil
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.brokerSnapshotLocked()
+}
+
+func (e *Engine) brokerSnapshotLocked() []namedBroker {
+	seen := map[string]Broker{}
+	if len(e.Brokers) > 0 {
+		for k, v := range e.Brokers {
+			if v != nil {
+				seen[k] = v
+			}
+		}
+	} else if e.Broker != nil {
+		seen["webull"] = e.Broker
+	}
+	var out []namedBroker
+	for _, name := range []string{"webull", "robinhood"} {
+		if b, ok := seen[name]; ok {
+			out = append(out, namedBroker{name, b})
+			delete(seen, name)
+		}
+	}
+	extras := make([]string, 0, len(seen))
+	for k := range seen {
+		extras = append(extras, k)
+	}
+	sort.Strings(extras)
+	for _, k := range extras {
+		out = append(out, namedBroker{k, seen[k]})
+	}
+	return out
 }
 
 func (e *Engine) brokerMap() map[string]Broker {
-	if e == nil {
-		return nil
+	out := map[string]Broker{}
+	for _, nb := range e.brokerSnapshot() {
+		out[nb.name] = nb.br
 	}
-	if len(e.Brokers) > 0 {
-		return e.Brokers
-	}
-	if e.Broker != nil {
-		return map[string]Broker{"webull": e.Broker}
-	}
-	return map[string]Broker{}
+	return out
 }
 
 func (e *Engine) webullExtras() WebullExtras {
-	b := e.brokerMap()["webull"]
+	b := e.BrokerNamed("webull")
 	if b == nil {
-		b = e.Broker
+		b = e.defaultBroker()
 	}
 	x, _ := b.(WebullExtras)
 	return x

@@ -85,6 +85,7 @@ func (h *HTTPTelegram) Send(chatID, text string) error {
 
 type MemoryBroker struct {
 	mu         sync.Mutex
+	Name       string
 	Orders     []OrderResult
 	Token      string
 	Cal        []byte

@@ -104,6 +104,7 @@ type orderMeta struct {
 	Symbol        string
 	Quantity      float64
 	Source        string
+	Broker        string
 }
 
 func New(db *store.DB, quotes QuoteSource) *Engine {

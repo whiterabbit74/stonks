@@ -322,10 +322,14 @@ done:
 }
 
 func (e *Engine) liveHeldSymbols() (map[string]float64, error) {
-	if e == nil || e.Broker == nil {
+	return e.heldSymbolsOn(e.defaultBroker())
+}
+
+func (e *Engine) heldSymbolsOn(br Broker) (map[string]float64, error) {
+	if br == nil {
 		return map[string]float64{}, nil
 	}
-	pos, err := e.Broker.Positions()
+	pos, err := br.Positions()
 	if err != nil {
 		return nil, err
 	}
@@ -384,17 +388,28 @@ func (e *Engine) Execute(trigger string) EvalResult {
 		e.logAuto("execution_skipped", corr, map[string]any{"trigger": trigger, "reason": "no_signal"})
 		return ev
 	}
-	if len(e.brokerMap()) > 1 {
-		return e.executeAll(ev, trigger, corr)
+	snaps := e.brokerSnapshot()
+	if len(snaps) > 1 {
+		return e.executeAll(ev, trigger, corr, snaps)
 	}
-	return e.submitEvaluated(ev, trigger, corr, "")
+	var br Broker
+	name := ""
+	if len(snaps) == 1 {
+		br, name = snaps[0].br, snaps[0].name
+	} else {
+		br = e.defaultBroker()
+	}
+	return e.submitEvaluated(ev, trigger, corr, name, br)
 }
 
-func (e *Engine) placeMarketOnce(symbol, side string, qty float64, cfg PlaceMarketCfg) (OrderResult, error) {
-	if p, ok := e.Broker.(marketCfgPlacer); ok {
+func (e *Engine) placeMarketOnce(symbol, side string, qty float64, cfg PlaceMarketCfg, br Broker) (OrderResult, error) {
+	if br == nil {
+		return OrderResult{Error: "Webull credentials are missing"}, fmt.Errorf("Webull credentials are missing")
+	}
+	if p, ok := br.(marketCfgPlacer); ok {
 		return p.PlaceMarketCfg(symbol, side, qty, cfg)
 	}
-	return e.Broker.PlaceMarket(symbol, side, qty)
+	return br.PlaceMarket(symbol, side, qty)
 }
 
 // submitAttempts bounds retries of a single order submission. The decision was
@@ -409,17 +424,17 @@ var submitRetryStep = 750 * time.Millisecond
 // we can ask the broker whether that exact order landed anyway — the case a
 // blind resend would turn into two positions. Only when the broker does not
 // know the id do we try again, with a fresh one.
-func (e *Engine) placeMarket(symbol, side string, qty float64, cfg PlaceMarketCfg) (OrderResult, error) {
+func (e *Engine) placeMarket(symbol, side string, qty float64, cfg PlaceMarketCfg, br Broker) (OrderResult, error) {
 	var res OrderResult
 	var err error
 	for attempt := 1; attempt <= submitAttempts; attempt++ {
 		try := cfg
 		try.ClientOrderID = webull.NewClientOrderID()
-		res, err = e.placeMarketOnce(symbol, side, qty, try)
+		res, err = e.placeMarketOnce(symbol, side, qty, try, br)
 		if err == nil && res.Submitted {
 			return res, nil
 		}
-		landed, queryFailed, detail := e.orderLanded(try.ClientOrderID)
+		landed, queryFailed, detail := e.orderLanded(try.ClientOrderID, br)
 		if queryFailed {
 			// The submission failed and the broker cannot say whether the order
 			// arrived. Resending risks a second position, so stop here — but do
@@ -465,11 +480,11 @@ func (e *Engine) placeMarket(symbol, side string, qty float64, cfg PlaceMarketCf
 // orderLanded reports whether the broker knows this client order id.
 // queryFailed means the lookup itself failed: the caller must NOT send a
 // second order. not-found (ErrOrderNotFound or empty) is safe to retry.
-func (e *Engine) orderLanded(clientOrderID string) (landed, queryFailed bool, detail map[string]any) {
-	if e.Broker == nil || clientOrderID == "" {
+func (e *Engine) orderLanded(clientOrderID string, br Broker) (landed, queryFailed bool, detail map[string]any) {
+	if br == nil || clientOrderID == "" {
 		return false, false, nil
 	}
-	detail, err := e.Broker.OrderDetail(clientOrderID)
+	detail, err := br.OrderDetail(clientOrderID)
 	if err != nil {
 		if errors.Is(err, ErrOrderNotFound) {
 			return false, false, nil
@@ -504,7 +519,7 @@ func (e *Engine) startTracking(res OrderResult, meta orderMeta) {
 	if !res.Submitted || res.ClientOrderID == "" {
 		return
 	}
-	broker := e.activeBroker
+	broker := meta.Broker
 	if broker == "" {
 		broker = "webull"
 	}
@@ -734,10 +749,11 @@ func (e *Engine) Logs(limit int) map[string]any {
 
 func (e *Engine) ClosePosition(symbol string) (OrderResult, error) {
 	symbol = store.SafeTicker(symbol)
-	if e.Broker == nil {
+	br := e.defaultBroker()
+	if br == nil {
 		return OrderResult{Error: "Webull credentials are missing"}, fmt.Errorf("Webull credentials are missing")
 	}
-	pos, err := e.Broker.Positions()
+	pos, err := br.Positions()
 	if err != nil {
 		return OrderResult{Error: err.Error(), Symbol: symbol, Side: "SELL"}, err
 	}
@@ -746,7 +762,7 @@ func (e *Engine) ClosePosition(symbol string) (OrderResult, error) {
 		err := fmt.Errorf("No broker position found for %s", symbol)
 		return OrderResult{Error: err.Error(), Symbol: symbol, Side: "SELL"}, err
 	}
-	res, err := e.placeMarket(symbol, "SELL", qty, PlaceMarketCfg{})
+	res, err := e.placeMarket(symbol, "SELL", qty, PlaceMarketCfg{}, br)
 	e.logAuto("close_position", "", map[string]any{"symbol": symbol, "submitted": res.Submitted, "clientOrderId": res.ClientOrderID})
 	if res.Submitted {
 		e.startTracking(res, orderMeta{
@@ -783,10 +799,11 @@ func (e *Engine) TestBuy(symbol string, qty float64) (OrderResult, error) {
 		msg := fmt.Sprintf("Test buy quantity must be between 1 and %.0f", maxQty)
 		return OrderResult{Error: msg}, fmt.Errorf("%s", msg)
 	}
-	if e.Broker == nil {
+	br := e.defaultBroker()
+	if br == nil {
 		return OrderResult{Error: "Webull credentials are missing"}, fmt.Errorf("Webull credentials are missing")
 	}
-	res, err := e.placeMarket(store.SafeTicker(symbol), "BUY", qty, PlaceMarketCfg{})
+	res, err := e.placeMarket(store.SafeTicker(symbol), "BUY", qty, PlaceMarketCfg{}, br)
 	e.logAuto("test_buy", "", map[string]any{"symbol": symbol, "submitted": res.Submitted})
 	return res, err
 }
@@ -800,11 +817,11 @@ func envOr(k, d string) string {
 
 // cancelOpenOrdersBeforeEntry clears this engine's own unfilled orders on the
 // symbol it is about to buy. Orders it did not place are left alone.
-func (e *Engine) cancelOpenOrdersBeforeEntry(symbol string) []string {
-	if e.Broker == nil || e.DB == nil {
+func (e *Engine) cancelOpenOrdersBeforeEntry(symbol string, br Broker) []string {
+	if br == nil || e.DB == nil {
 		return nil
 	}
-	rows, err := e.Broker.OpenOrders()
+	rows, err := br.OpenOrders()
 	if err != nil || len(rows) == 0 {
 		return nil
 	}
@@ -831,7 +848,7 @@ func (e *Engine) cancelOpenOrdersBeforeEntry(symbol string) []string {
 			e.logAuto("foreign_order_left_open", "", map[string]any{"symbol": sym, "clientOrderId": id})
 			continue
 		}
-		if err := e.Broker.CancelOrder(id); err != nil {
+		if err := br.CancelOrder(id); err != nil {
 			_ = e.DB.AppendAutotradeLog("open_order_cancel_failed " + id + " " + err.Error())
 			continue
 		}

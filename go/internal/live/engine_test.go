@@ -564,7 +564,7 @@ func TestT1DryRunSameQuotesAsNode(t *testing.T) {
 	}
 	// Sizing is the whole account: $1000 of buying power less the 2.2% reserve.
 	wantQty := math.Floor((1000 / 1.022) / price)
-	qty, qerr := e.sizeOrder("entry", "AAPL", e.AutoConfig(), price)
+	qty, qerr := e.sizeOrder("entry", "AAPL", e.AutoConfig(), price, e.Broker)
 	if qerr != nil || qty != wantQty {
 		t.Fatalf("qty %v %v want %.0f", qty, qerr, wantQty)
 	}
@@ -619,7 +619,7 @@ func TestT1DryRunSameWatchesAsNode(t *testing.T) {
 	if action != "entry" || symbol != "AAPL" {
 		t.Fatalf("decision %+v", ev.Decision)
 	}
-	qty, qerr := e.sizeOrder("entry", "AAPL", e.AutoConfig(), 8.2)
+	qty, qerr := e.sizeOrder("entry", "AAPL", e.AutoConfig(), 8.2, e.Broker)
 	if qerr != nil || qty != 119 {
 		t.Fatalf("qty %v %v (whole account at $8.20)", qty, qerr)
 	}

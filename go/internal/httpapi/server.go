@@ -68,14 +68,11 @@ func NewWithProviders(db *store.DB, webDir string, p *providers.Client) *Server 
 		p.UseWebullToken(db.WebullAccessToken)
 	}
 	s.Live = live.New(db, p)
-	if s.Live.Brokers == nil {
-		s.Live.Brokers = map[string]live.Broker{}
-	}
 	if s.Live.Broker != nil {
-		s.Live.Brokers["webull"] = s.Live.Broker
+		s.Live.AttachBroker("webull", s.Live.Broker)
 	}
 	if row := db.GetRobinhoodOAuth(); row.AccessToken != "" {
-		s.Live.Brokers["robinhood"] = live.NewRobinhoodBroker(robinhood.New(db))
+		s.Live.AttachBroker("robinhood", live.NewRobinhoodBroker(robinhood.New(db)))
 	}
 	if p != nil {
 		p.Robinhood = robinhood.New(db)

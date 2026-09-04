@@ -250,9 +250,9 @@ func (e *Engine) pollTracker(t map[string]any) (bool, error) {
 		e.mu.Unlock()
 	}()
 
-	br := e.Broker
+	br := e.defaultBroker()
 	if name := fmt.Sprint(t["broker"]); name != "" && name != "<nil>" {
-		if named := e.brokerMap()[name]; named != nil {
+		if named := e.BrokerNamed(name); named != nil {
 			br = named
 		}
 	}
@@ -348,7 +348,11 @@ func (e *Engine) finalizeTrackerStatus(t map[string]any, detail map[string]any, 
 }
 
 func (e *Engine) findOrderSnapshot(clientOrderID string) map[string]any {
-	if e.Broker == nil {
+	return e.findOrderSnapshotOn(e.defaultBroker(), clientOrderID)
+}
+
+func (e *Engine) findOrderSnapshotOn(br Broker, clientOrderID string) map[string]any {
+	if br == nil {
 		return nil
 	}
 	match := func(rows []any) map[string]any {
@@ -363,14 +367,14 @@ func (e *Engine) findOrderSnapshot(clientOrderID string) map[string]any {
 		}
 		return nil
 	}
-	if open, err := e.Broker.OpenOrders(); err == nil {
+	if open, err := br.OpenOrders(); err == nil {
 		if m := match(open); m != nil {
 			return m
 		}
 	}
 	today := tradingdate.TodayNYSE(e.now())
 	start := tradingdate.AddDays(today, -7)
-	if hist, err := e.Broker.OrderHistory(start, today); err == nil {
+	if hist, err := br.OrderHistory(start, today); err == nil {
 		return match(hist)
 	}
 	return nil

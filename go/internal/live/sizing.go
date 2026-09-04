@@ -300,12 +300,12 @@ func quotePrice(ev EvalResult, symbol string) float64 {
 	return 0
 }
 
-func (e *Engine) sizeOrder(action, symbol string, cfg map[string]any, price float64) (float64, error) {
+func (e *Engine) sizeOrder(action, symbol string, cfg map[string]any, price float64, br Broker) (float64, error) {
 	if action == "exit" {
-		if e.Broker == nil {
+		if br == nil {
 			return 0, fmt.Errorf("Webull credentials are missing")
 		}
-		pos, err := retryBrokerRead(e, "positions", e.Broker.Positions)
+		pos, err := retryBrokerRead(e, "positions", br.Positions)
 		if err != nil {
 			return 0, err
 		}
@@ -315,17 +315,17 @@ func (e *Engine) sizeOrder(action, symbol string, cfg map[string]any, price floa
 		}
 		return q, nil
 	}
-	if e.Broker == nil {
+	if br == nil {
 		return 0, fmt.Errorf("Unable to read available funds for balance sizing")
 	}
-	acct, err := retryBrokerRead(e, "account", e.Broker.Account)
+	acct, err := retryBrokerRead(e, "account", br.Account)
 	if err != nil {
 		return 0, err
 	}
 	var pos []any
 	var posErr error
 	if extractCashBalance(unwrapBalance(acct)) <= 0 {
-		pos, posErr = retryBrokerRead(e, "positions", e.Broker.Positions)
+		pos, posErr = retryBrokerRead(e, "positions", br.Positions)
 	}
 	funds, _, _, serr := resolveEntryBalanceSizing(acct, cfg, pos, posErr)
 	if serr != nil {

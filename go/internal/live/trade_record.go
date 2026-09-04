@@ -147,7 +147,7 @@ func (e *Engine) recordFill(t map[string]any, detail map[string]any, status stri
 		if existing := e.getTrade("broker_trades", clientOrderID); existing != nil {
 			return
 		}
-		brokerName := e.activeBroker
+		brokerName := meta.Broker
 		if brokerName == "" {
 			brokerName = "webull"
 		}

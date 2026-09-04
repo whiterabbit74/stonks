@@ -17,18 +17,12 @@ func (e *Engine) storedHealthStatus(name string) string {
 	return strings.ToUpper(strings.TrimSpace(e.DB.GetWebullToken().LastCheckStatus))
 }
 
-func (e *Engine) executeAll(ev EvalResult, trigger, corr string) EvalResult {
+func (e *Engine) executeAll(ev EvalResult, trigger, corr string, snaps []namedBroker) EvalResult {
 	action, _ := ev.Decision["action"].(string)
 	results := map[string]any{}
 	anyOK := false
-	orig := e.Broker
-	defer func() {
-		e.mu.Lock()
-		e.Broker = orig
-		e.activeBroker = ""
-		e.mu.Unlock()
-	}()
-	for name, br := range e.brokerMap() {
+	for _, nb := range snaps {
+		name, br := nb.name, nb.br
 		if br == nil {
 			continue
 		}
@@ -49,11 +43,7 @@ func (e *Engine) executeAll(ev EvalResult, trigger, corr string) EvalResult {
 			e.logAuto("execution_skipped", corr, map[string]any{"broker": name, "reason": st})
 			continue
 		}
-		e.mu.Lock()
-		e.Broker = br
-		e.activeBroker = name
-		e.mu.Unlock()
-		one := e.submitEvaluated(ev, trigger, corr, name)
+		one := e.submitEvaluated(ev, trigger, corr, name, br)
 		results[name] = one.Broker
 		if one.Executed {
 			anyOK = true
@@ -67,7 +57,7 @@ func (e *Engine) executeAll(ev EvalResult, trigger, corr string) EvalResult {
 	return ev
 }
 
-func (e *Engine) submitEvaluated(ev EvalResult, trigger, corr, brokerName string) EvalResult {
+func (e *Engine) submitEvaluated(ev EvalResult, trigger, corr, brokerName string, br Broker) EvalResult {
 	action, _ := ev.Decision["action"].(string)
 	symbol := store.SafeTicker(fmt.Sprint(ev.Decision["symbol"]))
 	key := action
@@ -126,7 +116,7 @@ func (e *Engine) submitEvaluated(ev EvalResult, trigger, corr, brokerName string
 		e.logAuto("execution_skipped", corr, map[string]any{"symbol": symbol, "reason": "autotrading_disabled"})
 		return ev
 	}
-	if e.Broker == nil {
+	if br == nil {
 		ev.Broker = map[string]any{"submitted": false, "error": "Webull credentials are missing", "mode": "off"}
 		e.logAuto("execution_blocked", corr, map[string]any{"symbol": symbol, "reason": "missing_webull_credentials"})
 		return ev
@@ -137,7 +127,7 @@ func (e *Engine) submitEvaluated(ev EvalResult, trigger, corr, brokerName string
 		return ev
 	}
 	price := quotePrice(ev, symbol)
-	qty, qerr := e.sizeOrder(action, symbol, ev.AutoTrading, price)
+	qty, qerr := e.sizeOrder(action, symbol, ev.AutoTrading, price, br)
 	if qerr != nil {
 		ev.Broker = map[string]any{"submitted": false, "error": qerr.Error()}
 		e.logAuto("execution_blocked", corr, map[string]any{"symbol": symbol, "reason": qerr.Error()})
@@ -149,11 +139,11 @@ func (e *Engine) submitEvaluated(ev EvalResult, trigger, corr, brokerName string
 		side = "SELL"
 	}
 	if action == "entry" {
-		if cancelled := e.cancelOpenOrdersBeforeEntry(symbol); len(cancelled) > 0 {
+		if cancelled := e.cancelOpenOrdersBeforeEntry(symbol, br); len(cancelled) > 0 {
 			e.logAuto("open_orders_cancelled", corr, map[string]any{"symbol": symbol, "cancelled_count": len(cancelled)})
 		}
 	}
-	res, err := e.placeMarket(symbol, side, qty, PlaceMarketCfg{})
+	res, err := e.placeMarket(symbol, side, qty, PlaceMarketCfg{}, br)
 	if err != nil {
 		res.Error = err.Error()
 		res.Submitted = false
@@ -167,7 +157,7 @@ func (e *Engine) submitEvaluated(ev EvalResult, trigger, corr, brokerName string
 		}
 		e.startTracking(res, orderMeta{
 			CorrelationID: corr, IBS: ibsVal, DateKey: ev.TodayKey,
-			QuotePrice: price, Action: action, Symbol: symbol, Quantity: qty, Source: trigger,
+			QuotePrice: price, Action: action, Symbol: symbol, Quantity: qty, Source: trigger, Broker: brokerName,
 		})
 		e.logAuto("order_submit_ok", corr, map[string]any{
 			"symbol": symbol, "action": action, "side": side, "quantity": qty,
@@ -176,7 +166,7 @@ func (e *Engine) submitEvaluated(ev EvalResult, trigger, corr, brokerName string
 	} else if res.Ambiguous {
 		e.startTracking(OrderResult{Submitted: true, ClientOrderID: res.ClientOrderID}, orderMeta{
 			CorrelationID: corr, DateKey: ev.TodayKey, QuotePrice: price,
-			Action: action, Symbol: symbol, Quantity: qty, Source: trigger,
+			Action: action, Symbol: symbol, Quantity: qty, Source: trigger, Broker: brokerName,
 		})
 		e.logAuto("order_submit_unknown", corr, map[string]any{
 			"symbol": symbol, "action": action, "clientOrderId": res.ClientOrderID, "error": res.Error, "broker": brokerName,
