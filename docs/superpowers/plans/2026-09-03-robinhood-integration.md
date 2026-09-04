@@ -1,163 +1,203 @@
-# Роадмап: интеграция Robinhood (Agentic Account) наравне с Webull
+# Роадмап: интеграция Robinhood (Agentic Account) зеркально к Webull
 
-Дата: 2026-09-03. Статус: план, код не менялся.
-Автор задачи: перенести брокерскую интеграцию Robinhood из соседнего проекта
-`/Users/mymac/Work/apps/robinhood` (TradeDeck) в `mktorder_com`.
+Дата: 2026-09-03, переписан 2026-09-04 под Go-стек. Статус: план, код не менялся.
+Источник переноса: соседний проект `/Users/mymac/Work/apps/robinhood` (TradeDeck, Swift).
 
----
-
-## 0. Что именно надо сделать (в одном абзаце)
-
-Сейчас в проекте один брокер — Webull. Вкладка `/broker` называется «Брокер», внутри
-`WebullAccountPage.tsx`, а исполнение сигналов зашито в `executeWebullSignal()` и вызывается
-напрямую из T-1 монитора. Надо: **(1)** переименовать текущую вкладку в «Webull»;
-**(2)** сделать вторую, точно такую же по структуре вкладку «Robinhood»; **(3)** научить сервер
-торговать через официальный **Robinhood Trading MCP** на **Agentic-счёте**; **(4)** добавить
-Robinhood как источник котировок и исторических дневных баров (~5 лет); **(5)** в настройках
-для **каждого** брокера отдельно показать переключатели «Разрешить входы» / «Разрешить выходы».
-Стратегия (IBS) остаётся ровно одна и та же — меняется только исполнитель.
+> **Правка от 2026-09-04.** Первая редакция этого документа была написана против легаси-стека
+> React + Node (`src/`, `server/`). Это ошибка: рабочий стек — **Go (`go/internal/`) + ванильный
+> JS SPA (`go/web/js/app.js`)**. Ниже всё переписано под Go. React не трогаем и не расширяем.
 
 ---
 
-## 1. Проверенные факты о Robinhood (не выдумывать заново)
+## 0. Что надо сделать
 
-### 1.1 Никакого `robin_stocks`, логина и пароля
+1. Вкладку «Брокер» переименовать в **Webull**, рядом сделать **Robinhood** такой же структуры.
+2. Научить Go-сервер торговать через официальный **Robinhood Trading MCP** на **Agentic-счёте**.
+3. Добавить Robinhood как провайдера котировок и дневных баров (~5 лет).
+4. В настройках — по три тумблера на брокера: включено / разрешить входы / разрешить выходы.
+5. Брокеры работают **зеркально**: одно и то же решение стратегии исполняется на обоих счетах.
+6. Только целые акции (в Go это уже так, см. §5.3).
 
-Соседний проект TradeDeck прямо запрещает неофициальный API (`docs/mcp/robinhood-capabilities.md`,
-раздел «Главный принцип», и `docs/architecture.md` §12). Мы придерживаемся того же:
-**только официальный MCP-сервер**, никакого `api.robinhood.com/oauth2/token/` с username/password,
-никакого `device_token`/`challenge`-флоу, никакого scraping.
+### 0.1. Предусловие, которое нельзя обойти
 
-Единственная точка входа:
+`docs/audit-go/ROADMAP.md`, **Блок 0** — 12 находок, ломающих торговлю (сделка пишется по факту
+отправки, а не исполнения; цена сделки — котировка, а не филл; выход не пишет P&L; зависший
+трекер навсегда блокирует тикер; нет `recover()` в фоновых горутинах). Пока Блок 0 не закрыт,
+**второй брокер только удвоит ущерб**: фантомная позиция будет теперь на двух счетах.
 
-```text
-https://agent.robinhood.com/mcp/trading
+**Robinhood начинать после закрытия Блока 0.** Это не пожелание — это порядок работ.
+
+---
+
+## 1. Ответы на заданные вопросы
+
+### 1.1. Тип счёта — limited margin, PDT не применяется
+
+Принято как данность со слов пользователя. Что из этого следует для кода:
+
+* **Плечо на Agentic-счетах Robinhood не включено** («margin borrowing is not yet enabled for
+  Agentic accounts»). Limited margin даёт только торговлю неотстоявшимися средствами, не заём.
+  Значит `entryCapitalMode` со значениями `margin_125…margin_200` на Robinhood **фактически
+  упрётся в потолок buying power** и превратится в `cash_100`. Это не ошибка — просто на
+  Robinhood множитель > 1 не даст эффекта. В UI Robinhood-панели это надо честно написать.
+* PDT не применяем, специальных ограничителей на число входов в неделю **не пишем**.
+* Pre-trade alerts из `review_equity_order` всё равно читаем — там приходит и buying power,
+  и halt инструмента. Отказ по alert логируем и не отправляем ордер.
+
+### 1.2. Чем работаем с Robinhood из Go
+
+**Свой тонкий MCP-клиент на `net/http`, ~200 строк.** Обоснование:
+
+* `go/go.mod` не имеет **ни одной прямой зависимости** — только indirect от sqlite. Дом-стиль:
+  всё пишется руками. `internal/webull/client.go` (356 строк) — ровно такой же ручной HTTP-клиент
+  с подписью, ретраями и логированием. MCP-клиент ляжет рядом как `internal/robinhood/client.go`.
+* MCP поверх Streamable HTTP — это JSON-RPC 2.0 в POST: `initialize` → запомнить заголовок
+  `Mcp-Session-Id` → `notifications/initialized` → `tools/call`. Ответ приходит либо
+  `application/json`, либо `text/event-stream` (строки `data: {...}`) — обработать оба.
+* Альтернатива: официальный `github.com/modelcontextprotocol/go-sdk` (поддерживает Streamable
+  HTTP и экспериментальный клиентский OAuth). Он рабочий, но тянет первую прямую зависимость
+  и свой OAuth-слой, который всё равно придётся подпирать нашим хранилищем токенов в SQLite.
+  **Берём ручной вариант.** SDK — запасной, если ручной упрётся в неожиданности протокола.
+
+Заголовки запроса:
+
+```
+Authorization: Bearer <access_token>
+Content-Type: application/json
+Accept: application/json, text/event-stream
+MCP-Protocol-Version: 2025-06-18
+Mcp-Session-Id: <из ответа initialize, кроме самого initialize>
 ```
 
-Транспорт — **Streamable HTTP MCP** (не SSE-only). Проверено живым запросом: сервер отвечает
-`401` с заголовком
+### 1.3. Авторизация копированием ссылки — да, так и делаем
 
-```text
+Именно этого вы и просили, и это **проще**, чем поднимать локальный listener. Robinhood после
+согласия редиректит браузер на `http://127.0.0.1:<порт>/callback?code=...&state=...`. Страница
+не откроется (слушателя нет) — но **вся нужная информация уже в адресной строке**.
+
+Флоу в UI (вкладка Robinhood, таб «Подключение»):
+
+1. Кнопка **«Получить ссылку»** → `POST /api/autotrade/robinhood/oauth/start`.
+   Сервер генерит `code_verifier`, `code_challenge`, `state`, кладёт их в SQLite и возвращает
+   готовый authorization URL.
+2. UI показывает URL в поле «только чтение» с кнопкой «Копировать» и текстом:
+   *«Откройте в десктопном браузере, войдите в Robinhood, разрешите доступ. Браузер попробует
+   открыть страницу на 127.0.0.1 и покажет ошибку — это нормально. Скопируйте адрес из адресной
+   строки целиком и вставьте ниже.»*
+3. Поле **«Вставьте адрес после разрешения»** + кнопка «Подключить» →
+   `POST /api/autotrade/robinhood/oauth/complete` с телом `{"callbackUrl": "http://127.0.0.1:53682/callback?code=...&state=..."}`.
+4. Сервер парсит URL, сверяет `state`, обменивает `code` на токены, сохраняет, стирает pending.
+
+Никакого listener'а, никакого проброса портов, работает при сервере в докере на удалёнке.
+Ровно то, что вы описали.
+
+> Единственное требование к `redirect_uri`: он должен **побайтово совпадать** с тем, что был
+> зарегистрирован через DCR и передан в authorize. Возьми фиксированный
+> `http://127.0.0.1:53682/callback` и захардкодь константой — менять его нельзя, иначе
+> перерегистрация клиента.
+
+### 1.4. Зеркальный режим
+
+Одно решение стратегии → исполняется на всех включённых брокерах. У каждого брокера свой
+`enabled` / `allowNewEntries` / `allowExits` и **своя строка открытой позиции** в `broker_trades`.
+Ошибка одного брокера не отменяет исполнение на другом.
+
+### 1.5. Только целые акции
+
+В Go это уже так и есть: `ComputeOrderQuantity` (`internal/live/sizing.go:177`) делает
+`math.Floor` **безусловно**, тумблера дробных акций больше нет — он был удалён вместе с
+`sizingMode`/`orderType`/`timeInForce` как «ручка, тихо противоречащая бэктесту».
+Адаптер Robinhood обязан слать `quantity` как **целое число строкой** (`"12"`, не `"12.0"`).
+
+Исключение — выход: `PositionQuantity` (`sizing.go:203`) возвращает **фактическое** количество
+у брокера без округления, потому что сплит может оставить дробь и `Floor` продал бы 7 из 7.5.
+На Robinhood это работает так же — продаём то, что вернул `get_equity_positions`.
+
+---
+
+## 2. ОТВЕТ ПРО МАРЖУ WEBULL: от какой суммы считается процент
+
+Короткий ответ: **от свободных денег (`cash_balance`), а не от buying power.**
+Buying power используется только как **верхний ограничитель**.
+
+Код: `go/internal/live/sizing.go:152-169` (`resolveEntryBalanceSizing`) и `:177` (`ComputeOrderQuantity`).
+
+### 2.1. Три величины
+
+| Величина | Функция | Что берётся, по порядку до первого положительного |
+|---|---|---|
+| `baseCapital` — **база множителя** | `extractEntryBaseCapital` (`sizing.go:138`) | `asset.cash_balance` → `root.total_cash_balance` → `root.cash_balance` → `asset.net_liquidation_value` → `root.total_net_liquidation_value` → `root.net_liquidation_value` |
+| `buyingPower` — **потолок** | `extractEntryFundsFromBalance` (`sizing.go:132`) | для CORE: `day_buying_power` → `overnight_buying_power` → `night_trading_buying_power` → `option_buying_power` → `cash_balance` → `net_liquidation_value`, затем root-поля |
+| `entryFunds` — **что реально тратим** | `resolveEntryBalanceSizing` | см. формулу ниже |
+
+`asset` — это запись из `account_currency_assets` с `currency == "USD"` (или первая, если USD нет).
+
+### 2.2. Формула
+
+```
+multiplierBase = baseCapital > 0 ? baseCapital : buyingPower      // фолбэк!
+entryFunds     = multiplierBase * multiplier                      // 1.0 / 1.25 / 1.5 / 1.75 / 2.0
+entryFunds     = min(entryFunds, buyingPower)                     // жёсткий потолок
+quantity       = floor( (entryFunds / (1 + reservePct)) / price ) // reservePct: 0.022 у standard_safe
+```
+
+### 2.3. Что это значит на числах
+
+Пусть `cash_balance = 10 000`, `day_buying_power = 40 000`, цена = 100, режим `margin_150`
+(multiplier 1.5, reservePct 0).
+
+```
+baseCapital = 10 000
+entryFunds  = 10 000 × 1.5 = 15 000
+min(15 000, 40 000) = 15 000
+quantity = floor(15 000 / 100) = 150 акций
+```
+
+То есть «маржа 150%» = **полтора раза от кэша**, а не полтора раза от покупательской
+способности. Если бы считалось от buying power, вышло бы 600 акций.
+
+Режим `standard_safe` (multiplier 1, reservePct 2.2%): `entryFunds = 10 000`,
+`funds = 10 000 / 1.022 = 9 784`, `quantity = floor(97.84) = 97` акций. Запас 2.2% — это
+поправка на правило Webull для market buy, а не на риск.
+
+### 2.4. Единственная опасная ветка — фолбэк
+
+Если `cash_balance` отсутствует или равен нулю (а такое бывает, когда деньги в неотстоявшемся
+состоянии), `multiplierBase` подставляется **равным buying power**, и множитель начинает
+применяться уже к нему. В примере выше это дало бы `min(40 000 × 1.5, 40 000) = 40 000` —
+то есть **вчетверо больше** ожидаемого размера, молча, без ошибки.
+
+**Рекомендация (обсудить, в план не включено):** при `baseCapital <= 0` не подставлять
+buying power, а отказываться от входа с явной ошибкой. Размер позиции — не то место, где
+уместен молчаливый фолбэк на другую величину. Скажите, если делать — оформлю отдельной задачей.
+
+### 2.5. И про Robinhood
+
+У Robinhood нет `account_currency_assets`. `get_portfolio` даёт свою разбивку и buying power.
+Адаптер обязан вернуть в общий формат две величины:
+`baseCapital` = свободный кэш счёта, `buyingPower` = поле buying power из `get_portfolio`.
+Дальше работает та же самая `resolveEntryBalanceSizing` — **переиспользуем, не дублируем**.
+Поскольку плеча на Agentic-счёте нет, `buyingPower ≈ baseCapital` и множитель > 1 срежется потолком.
+
+---
+
+## 3. Проверенные факты о Robinhood MCP
+
+### 3.1. Только официальный путь
+
+Никакого `robin_stocks`, логина/пароля, `device_token`, SMS-challenge. TradeDeck это прямо
+запрещает (`docs/mcp/robinhood-capabilities.md` §«Главный принцип»), и мы придерживаемся того же.
+
+Единственная точка входа: `https://agent.robinhood.com/mcp/trading`.
+Транспорт — Streamable HTTP. Проверено живым запросом: на неавторизованный POST приходит
+
+```
+HTTP/2 401
 www-authenticate: Bearer resource_metadata="https://agent.robinhood.com/.well-known/oauth-protected-resource/mcp/trading"
 access-control-expose-headers: Mcp-Session-Id
 ```
 
-то есть это стандартный RFC 9728 challenge и сессия живёт в заголовке `Mcp-Session-Id`.
-
-### 1.2 Торговля — только на Agentic Account
-
-`get_accounts` возвращает у каждого счёта поле `agentic_allowed`. Ровно один счёт торгуемый.
-`place_equity_order` / `review_equity_order` / `cancel_equity_order` **отклоняются**, если
-`account_number` не принадлежит agentic-счёту. Все read-инструменты работают по всем счетам:
-Robinhood даёт агенту read-доступ к номерам счетов, позициям, балансам, истории транзакций
-и вотчлистам — по всем счетам пользователя.
-
-Условия (проверено по справке Robinhood 2026-09-04):
-
-* нужен основной individual investing account в хорошем состоянии;
-* всего у пользователя может быть до 10 self-directed individual счетов;
-* продукт **не помечен** как beta и не требует waitlist;
-* открыть Agentic Account и авторизовать агента можно **только с десктопа**: «You can only open
-  an agentic account and authenticate your agent on a desktop device». С мобильного онбординг-URL
-  надо скопировать и открыть в десктопном браузере;
-* ответственность за сделки агента — на пользователе, и агент может торговать без подтверждения,
-  если ему это разрешено.
-
-### 1.3 Живые схемы инструментов
-
-Схемы уже сняты в соседнем проекте: `/Users/mymac/Work/apps/robinhood/docs/mcp/tools.live.json`
-(62 инструмента, снято 2026-08-25). **Скопируй этот файл в `docs/mcp/robinhood-tools.live.json`
-и сверяйся с ним**, а на этапе 2 пересними свежий `tools/list` после подключения.
-
-Нужные нам инструменты и их обязательные аргументы (дословно из `tools.live.json`):
-
-| Tool | required | ключевые optional |
-|---|---|---|
-| `get_accounts` | — | — |
-| `get_portfolio` | `account_number` | — |
-| `get_equity_positions` | `account_number` | `cursor` |
-| `get_equity_quotes` | `symbols[]` | до 20 символов, иначе пропадёт `closes` |
-| `get_equity_historicals` | `symbols[]`, `start_time` | `end_time`, `interval`, `bounds`, `adjustment_type` |
-| `get_equity_tradability` | `account_number`, `symbols[]` (≤10) | — |
-| `get_equity_orders` | `account_number` | `state`, `symbol`, `order_id`, `created_at_gte`, `placed_agent`, `cursor` |
-| `review_equity_order` | `account_number`, `symbol`, `side`, `type` | `quantity`/`dollar_amount`, `limit_price`, `time_in_force`, `market_hours` |
-| `place_equity_order` | `account_number`, `symbol`, `side`, `type` | то же + `ref_id` (идемпотентность!) |
-| `cancel_equity_order` | `account_number`, `order_id` | — |
-| `get_realized_pnl` | `account_number` | `span`/`start_date`+`end_date`, `timezone` |
-| `get_pnl_trade_history` | `account_number` | `span`, `symbol`, `cursor` |
-
-Важные правила ордеров (из описания `place_equity_order`):
-
-* `type`: `market` | `limit` | `stop_market` | `stop_limit`.
-* `time_in_force`: `gfd` | `gtc` (по умолчанию `gfd`). **Аналог Webull `DAY` — это `gfd`.**
-* `market_hours`: `regular_hours` (дефолт) | `extended_hours` | `all_day_hours`.
-  В неосновных сессиях исполняются **только limit**; `market`/`stop_*` там отклоняются.
-  Мы торгуем на закрытии в RTH → всегда `regular_hours`.
-* Ровно одно из `quantity` или `dollar_amount`; `dollar_amount` — только с `type=market`.
-* Дробные акции — только `type=market` + `regular_hours`, до 6 знаков.
-  **В проекте покупка целыми лотами (коммит `17eb4cd`), поэтому `quantity` — целое строкой.**
-* `ref_id` — UUID-ключ идемпотентности. Апстрим дедуплицирует по нему. При ретрае транспорта
-  слать **тот же** `ref_id`. Это прямой аналог `client_order_id` в Webull.
-* `market-on-close` **не поддерживается**. Как и у Webull, мы шлём market-ордер в окне T-1.
-
-Состояния ордера (из `get_equity_orders.state`):
-`new, queued, confirmed, unconfirmed, partially_filled, filled, cancelled, rejected, failed, voided`.
-Финальные: `filled, cancelled, rejected, failed, voided`.
-
-### 1.4 Исторические бары
-
-`get_equity_historicals`:
-
-* `start_time` **обязателен**, RFC3339 UTC (`'2021-09-03T00:00:00Z'`).
-* `interval='day'` для дневных баров (интервалы фиксированные, сервер не агрегирует).
-* `bounds='regular'` (RTH) — то, что нам нужно.
-* `adjustment_type='split'` — **дефолт и правильный выбор для бэктеста** (сплит-скорректированные
-  цены, без дивидендной корректировки). Это ровно наш `adjustment: 'split_only'`.
-* До **10 символов** за вызов.
-* У бара есть флаг `interpolated` — синтетический бар-заглушка. **Такие бары надо отбрасывать**,
-  иначе они испортят IBS (`high == low` → деление на ноль).
-* Глубина: по постановке задачи ~5 лет. Публично Robinhood это **не документирует** —
-  поиск по официальным статьям и сторонним обзорам ничего не дал.
-  **Это надо подтвердить эмпирически на этапе 2**
-  (запросить `start_time` = сегодня минус 10 лет и посмотреть, с какой даты реально приходят бары),
-  и записать фактическое значение в `docs/mcp/robinhood-tools.live.json` рядом.
-
-### 1.5 Тип счёта, PDT и расчёты — это ограничивает саму стратегию
-
-Проверено по официальным справочным статьям Robinhood (2026-09-04):
-
-* Agentic-счёт открывается **либо как cash, либо как limited margin**; существующий cash можно
-  апгрейднуть до limited margin в Investing Settings.
-* **Margin borrowing на Agentic-счетах не включён.** Limited margin даёт только право торговать
-  неотстоявшимися средствами, но не плечо. То есть режимы `margin_125…margin_200` из
-  `src/lib/autotrade-config.ts` на Robinhood **работать не будут** — их надо скрывать или
-  жёстко зажимать по фактическому buying power из `get_portfolio`.
-* **Cash-счёт:** «you must wait 1 business day for funds from closing stock and option positions
-  to settle before trading». Day trades не ограничены, но **денег на следующий вход не будет
-  до T+1**. Для нашей стратегии (вышли — и в тот же/следующий день зашли снова) это блокер.
-* **Limited margin:** торгуем неотстоявшимися деньгами сразу, но **действует PDT** — правило
-  применяется к full и limited margin счетам даже без включённого margin investing, и
-  не применяется к cash-счетам. Под $25 000 это не более 3 day trades за 5 рабочих дней.
-
-**Вывод для реализации:** ни один из двух режимов не даёт «свободно входим и выходим каждый день».
-Поэтому адаптер Robinhood **обязан** уважать pre-trade alerts из `review_equity_order`
-(там приходят и PDT, и buying power) и отказываться от входа, а не отправлять ордер вслепую.
-Вопрос «cash или limited margin» задан пользователю в §10.
-
-## 2. АВТОРИЗАЦИЯ — самая важная часть
-
-### 2.1 Что отдаёт сам Robinhood (проверено живыми запросами 2026-09-04)
-
-`GET https://agent.robinhood.com/.well-known/oauth-protected-resource/mcp/trading`:
-
-```json
-{
-  "authorization_servers": ["https://agent.robinhood.com/mcp/trading"],
-  "bearer_methods_supported": ["header"],
-  "resource": "https://agent.robinhood.com/mcp/trading",
-  "scopes_supported": ["internal"]
-}
-```
+### 3.2. OAuth-метаданные (проверено живыми запросами 2026-09-04)
 
 `GET https://agent.robinhood.com/.well-known/oauth-authorization-server`:
 
@@ -170,38 +210,96 @@ Robinhood даёт агенту read-доступ к номерам счетов
   "grant_types_supported": ["authorization_code", "refresh_token"],
   "response_types_supported": ["code"],
   "code_challenge_methods_supported": ["S256"],
-  "token_endpoint_auth_methods_supported": ["none"],
+  "scopes_supported": ["internal"],
+  "token_endpoint_auth_methods_supported": ["none"]
+}
+```
+
+`GET .../.well-known/oauth-protected-resource/mcp/trading`:
+
+```json
+{
+  "authorization_servers": ["https://agent.robinhood.com/mcp/trading"],
+  "bearer_methods_supported": ["header"],
+  "resource": "https://agent.robinhood.com/mcp/trading",
   "scopes_supported": ["internal"]
 }
 ```
 
-Читается это так:
+Выводы: публичный клиент без секрета, PKCE S256 обязателен, DCR поддержан, scope один — `internal`.
 
-1. **Публичный клиент** (`token_endpoint_auth_methods_supported: ["none"]`) — client_secret нет
-   и не будет. Ровно как в TradeDeck: `OAuthConfiguration(authentication: .none(clientID:))`.
-2. **PKCE S256 обязателен.**
-3. **Dynamic Client Registration поддержан** — `registration_endpoint` есть.
-   `client_id` не хардкодится: его надо один раз получить регистрацией и сохранить.
-4. Единственный scope — `internal`.
-5. Токен обменивается на `https://api.robinhood.com/oauth2/token/`, refresh — тот же endpoint
-   с `grant_type=refresh_token`.
+### 3.3. Условия Agentic-счёта
 
-### 2.2 Как оператор получает код авторизации (пошагово, руками, один раз)
+Проверено по справке Robinhood 2026-09-04:
 
-Это **не** headless-флоу. Никакого SMS/TOTP/challenge-id, как в неофициальном API. Это обычный
-OAuth 2.1 authorization code + PKCE, где `code` прилетает в redirect на **loopback**.
+* нужен основной individual investing account в хорошем состоянии; до 10 self-directed счетов;
+* продукт не beta, waitlist не нужен;
+* **открыть счёт и авторизовать агента можно только с десктопа**: «You can only open an agentic
+  account and authenticate your agent on a desktop device»;
+* агент получает read-доступ ко **всем** счетам (номера, позиции, балансы, история, вотчлисты),
+  но торговать может **только** на Agentic-счёте;
+* ответственность за сделки агента — на пользователе.
 
-TradeDeck делает ровно это (`macOS/Sources/Data/RobinhoodMCPClient.swift`,
-класс `RobinhoodAuthPresenter`): поднимает TCP-listener на `127.0.0.1` на случайном порту
-49152–65535, redirect_uri = `http://127.0.0.1:<port>/callback`, открывает браузер, ловит
-`GET /callback?code=...&state=...`, отвечает «You can close this window».
+### 3.4. Живые схемы инструментов
 
-Наш серверный аналог (этап 4, `robinhoodAuth.js`):
+Уже сняты: `/Users/mymac/Work/apps/robinhood/docs/mcp/tools.live.json` (62 инструмента, 2026-08-25).
+**Скопировать в `docs/mcp/robinhood-tools.live.json`**, на этапе 2 пересиять свежий `tools/list`.
 
-**Шаг 0 (единожды, руками).** Оператор в **десктопном браузере** открывает Agentic Account
-в Robinhood и завершает онбординг. Без этого `agentic_allowed` не появится ни у одного счёта.
+| Tool | required | важные optional |
+|---|---|---|
+| `get_accounts` | — | возвращает `agentic_allowed` у каждого счёта |
+| `get_portfolio` | `account_number` | стоимость по классам + buying power |
+| `get_equity_positions` | `account_number` | `cursor` |
+| `get_equity_quotes` | `symbols[]` | ≤ 20 символов, иначе пропадёт `closes` |
+| `get_equity_historicals` | `symbols[]`, `start_time` | `end_time`, `interval`, `bounds`, `adjustment_type`; ≤ 10 символов |
+| `get_equity_tradability` | `account_number`, `symbols[]` | ≤ 10 символов |
+| `get_equity_orders` | `account_number` | `state`, `symbol`, `order_id`, `created_at_gte`, `cursor` |
+| `review_equity_order` | `account_number`, `symbol`, `side`, `type` | `quantity`, `limit_price`, `time_in_force`, `market_hours` |
+| `place_equity_order` | те же + | `ref_id` — ключ идемпотентности |
+| `cancel_equity_order` | `account_number`, `order_id` | — |
 
-**Шаг 1. Регистрация клиента (DCR).** Сервер один раз делает:
+Правила ордеров (дословно из описаний в `tools.live.json`):
+
+* `type`: `market` \| `limit` \| `stop_market` \| `stop_limit`. Нам нужен `market`.
+* `time_in_force`: `gfd` \| `gtc`, дефолт `gfd`. **Наш `DAY` — это `gfd`.**
+* `market_hours`: `regular_hours` (дефолт) \| `extended_hours` \| `all_day_hours`.
+  В неосновных сессиях исполняются только limit; `market` там отклоняется. Мы всегда
+  `regular_hours` — торгуем в окне T-1 до закрытия.
+* Ровно одно из `quantity` / `dollar_amount`; `dollar_amount` только с `type=market`.
+* `ref_id` — UUID. Апстрим дедуплицирует по нему; при ретрае слать **тот же**.
+  Это прямой аналог `client_order_id` в Webull.
+* **Market-on-close не поддерживается** — как и у Webull, шлём market в окне T-1.
+
+Состояния ордера: `new, queued, confirmed, unconfirmed, partially_filled, filled, cancelled,
+rejected, failed, voided`. Финальные — последние пять.
+
+### 3.5. Исторические бары
+
+`get_equity_historicals`:
+
+* `start_time` обязателен, RFC3339 UTC (`"2021-09-04T00:00:00Z"`);
+* `interval: "day"`, `bounds: "regular"`, `adjustment_type: "split"` (дефолт, и это ровно то,
+  что нужно бэктесту — сплит-скорректировано, без дивидендов);
+* у бара есть флаг `interpolated` — синтетическая заглушка. **Такие бары отбрасывать**, иначе
+  `high == low` и IBS делится на ноль;
+* **глубина публично не документирована** — ни официальные статьи, ни сторонние обзоры цифры
+  не дают. Заявленные ~5 лет проверяются эмпирически на этапе 2.
+
+> 🔴 **ДАТЫ.** `CLAUDE.md`, раздел «Даты: почему в проекте нет таймзон», и `internal/tradingdate`.
+> MCP отдаёт `begins_at` в RFC3339 UTC. Торговая дата получается **срезом первых 10 символов
+> строки**, а не через `time.Parse` + `Format`. На этапе 2 снять живой ответ и записать, какое
+> там время суток для `interval=day, bounds=regular` — если это 00:00Z или 13:30Z, срез
+> безопасен. Тесты обязаны совпадать в `TZ=Pacific/Auckland` и `TZ=America/Los_Angeles`.
+
+---
+
+## 4. АВТОРИЗАЦИЯ: пошагово
+
+### Шаг 0 — руками, единожды
+Оператор в **десктопном** браузере открывает Agentic Account в Robinhood и завершает онбординг.
+Без этого ни у одного счёта не будет `agentic_allowed: true`.
+
+### Шаг 1 — DCR, единожды, сервер
 
 ```http
 POST https://agent.robinhood.com/oauth/trading/register
@@ -209,7 +307,7 @@ Content-Type: application/json
 
 {
   "client_name": "mktorder",
-  "redirect_uris": ["http://127.0.0.1:<port>/api/autotrade/robinhood/oauth/callback"],
+  "redirect_uris": ["http://127.0.0.1:53682/callback"],
   "grant_types": ["authorization_code", "refresh_token"],
   "response_types": ["code"],
   "token_endpoint_auth_method": "none",
@@ -217,24 +315,25 @@ Content-Type: application/json
 }
 ```
 
-Ответ содержит `client_id` (и, возможно, `client_id_issued_at`). **Сохранить `client_id`
-в SQLite** (таблица `robinhood_oauth`, см. §4). При смене `redirect_uris` придётся
-перерегистрироваться — поэтому **порт redirect должен быть фиксированным**, а не случайным,
-как в TradeDeck. Возьми порт из env: `ROBINHOOD_OAUTH_REDIRECT_PORT` (дефолт 53682).
+Ответ содержит `client_id`. Сохранить в `robinhood_oauth.client_id`. Повторно не регистрировать.
 
-**Шаг 2. Формирование ссылки.** Сервер генерит:
+> Известная тонкость: в баг-репорте Cursor у Robinhood был захардкожен allowlist под их
+> **предрегистрированный** client_id (`cursor://...`), и loopback отбивался «Mismatching Redirect
+> URI». Это про чужой предрегистрированный клиент, не про DCR. TradeDeck через собственную DCR
+> ходит на `http://127.0.0.1:<порт>/callback` и работает. Если DCR всё же откажет на loopback —
+> на этапе 2 попробовать HTTPS-домен приложения; если откажет и он — писать в задачу как блокер.
 
-* `code_verifier` — 43–128 символов из `[A-Za-z0-9-._~]` (`crypto.randomBytes(32)` → base64url);
+### Шаг 2 — authorization URL, сервер
+
+* `code_verifier` — 43–128 символов из `[A-Za-z0-9-._~]` (`crypto/rand` 32 байта → base64url);
 * `code_challenge = base64url(sha256(code_verifier))`;
-* `state` — случайный UUID (защита от CSRF).
+* `state` — `crypto/rand`, одноразовый, TTL 15 минут.
 
-и строит URL:
-
-```text
+```
 https://robinhood.com/oauth
   ?response_type=code
   &client_id=<client_id>
-  &redirect_uri=http%3A%2F%2F127.0.0.1%3A53682%2Fapi%2Fautotrade%2Frobinhood%2Foauth%2Fcallback
+  &redirect_uri=http%3A%2F%2F127.0.0.1%3A53682%2Fcallback
   &scope=internal
   &state=<state>
   &code_challenge=<challenge>
@@ -242,35 +341,12 @@ https://robinhood.com/oauth
   &resource=https%3A%2F%2Fagent.robinhood.com%2Fmcp%2Ftrading
 ```
 
-`resource` — RFC 8707, MCP-спека его требует. Если Robinhood его проигнорирует — не страшно.
+### Шаг 3 — человек
+Копирует URL из UI → открывает в десктопном браузере → логинится → жмёт «Разрешить» →
+браузер уходит на `127.0.0.1:53682` и показывает ошибку соединения → **копирует адрес из
+адресной строки целиком** → вставляет в поле в UI → «Подключить».
 
-**Шаг 3. Что делает человек.** Сервер **не открывает браузер сам** (он может быть в докере).
-Вместо этого:
-
-* `POST /api/autotrade/robinhood/oauth/start` возвращает `{ authorizationUrl, state, expiresAt }`;
-* фронт на вкладке Robinhood показывает большую кнопку «Подключить Robinhood» → открывает URL
-  в новой вкладке **того же браузера, где сидит оператор**;
-* оператор логинится в Robinhood (если не залогинен), видит consent-экран агента, жмёт «Разрешить»;
-* Robinhood редиректит на `http://127.0.0.1:53682/...?code=...&state=...`.
-
-> ⚠️ **Ловушка развёртывания — решено в пользу варианта A.** Redirect идёт на loopback
-> **браузера пользователя**, а не сервера. Если сервер в докере/на удалёнке, `127.0.0.1:53682`
-> из браузера оператора никуда не попадёт.
->
-> Публичные источники по поводу нелокальных redirect_uri противоречивы: в баг-репорте Cursor
-> у Robinhood **захардкожен allowlist** под конкретный предрегистрированный клиент
-> (`cursor://anysphere.cursor-mcp/oauth/callback`), а loopback `http://localhost:8787/callback`
-> отбивался с «Mismatching Redirect URI» и 403 на authorize. Это про **чужой предрегистрированный
-> client_id**, а не про DCR. При этом соседний TradeDeck через DCR ходит на
-> `http://127.0.0.1:<случайный порт>/callback` и работает — то есть Robinhood, судя по всему,
-> сверяет loopback-редиректы по RFC 8252 §7.3, игнорируя порт.
->
-> **Решение:** делаем вариант **A** — OAuth проходится на машине оператора (loopback),
-> полученный `refresh_token` + `client_id` переносятся на прод через
-> `PUT /api/autotrade/robinhood/token`, ровно как сейчас переносится токен Webull.
-> HTTPS-redirect на домен приложения **проверить на этапе 2**, но не закладываться на него.
-
-**Шаг 4. Обмен кода на токен.** Callback-роут проверяет `state`, затем:
+### Шаг 4 — обмен, сервер
 
 ```http
 POST https://api.robinhood.com/oauth2/token/
@@ -278,615 +354,313 @@ Content-Type: application/x-www-form-urlencoded
 
 grant_type=authorization_code
 &code=<code>
-&redirect_uri=<тот же самый redirect_uri>
+&redirect_uri=http%3A%2F%2F127.0.0.1%3A53682%2Fcallback
 &client_id=<client_id>
-&code_verifier=<code_verifier>
+&code_verifier=<verifier>
 &resource=https%3A%2F%2Fagent.robinhood.com%2Fmcp%2Ftrading
 ```
 
-Ответ — `{ access_token, refresh_token, expires_in, token_type: "Bearer", scope }`.
-Сохранить всё в SQLite. Ответить в браузер простой HTML-страницей «Готово, окно можно закрыть».
+Ответ: `{ access_token, refresh_token, expires_in, token_type, scope }` → в SQLite.
 
-**Шаг 5. Refresh.** Перед каждым обращением, если `expires_at - now < 120 сек`:
+### Шаг 5 — refresh
+За 120 секунд до `expires_at`:
+`grant_type=refresh_token&refresh_token=<...>&client_id=<...>&scope=internal`.
+Если пришёл новый `refresh_token` — **перезаписать** (ротация). Если 400/401 — токен мёртв:
+статус `NEEDS_REAUTH`, Telegram-предупреждение (по образцу webull-токена), **отправка ордеров
+блокируется**. Обёртка вокруг refresh — `sync.Mutex`, чтобы параллельные вызовы не сожгли токен гонкой.
 
-```http
-POST https://api.robinhood.com/oauth2/token/
-grant_type=refresh_token&refresh_token=<...>&client_id=<...>&scope=internal
-```
-
-Если refresh-токен ротируется (в ответе пришёл новый) — **перезаписать**. Если refresh вернул
-`400/401` — токен мёртв, надо снова шаг 2–4 руками. Тогда: пометить статус `NEEDS_REAUTH`,
-отправить Telegram-предупреждение (по образцу `webullToken.js` → `RENEWAL_INSTRUCTION`)
-и **блокировать** отправку ордеров, не притворяясь, что всё хорошо.
-
-**Шаг 6. Использование.** Каждый MCP-запрос: `Authorization: Bearer <access_token>` +
-`Mcp-Session-Id` от `initialize`. На `401` — один раз рефрешнуть и повторить; на второй `401` —
-`NEEDS_REAUTH`.
-
-### 2.3 Чем ходить в MCP из Node
-
-Сервер — CommonJS (`server/package.json`, `require` везде), а `@modelcontextprotocol/sdk` — ESM.
-Два варианта:
-
-* **Вариант A (рекомендуемый): свой тонкий JSON-RPC клиент на `fetch`.** MCP поверх Streamable
-  HTTP — это ~150 строк: `initialize` → сохранить `Mcp-Session-Id` → `notifications/initialized`
-  → `tools/call`. Никаких зависимостей, полный контроль над retry/логами, ложится в тот же стиль,
-  что `webullClient.js` (`requestWebull`). Заголовки: `Content-Type: application/json`,
-  `Accept: application/json, text/event-stream`, `MCP-Protocol-Version: 2025-06-18`.
-  Ответ может прийти как `text/event-stream` — распарсить строки `data: {...}`.
-* **Вариант B:** `const { Client } = await import('@modelcontextprotocol/sdk/client/index.js')`
-  внутри async-функции. Работает в Node 26, но тянет зависимость и свой OAuth-слой, который
-  всё равно придётся подпирать нашим хранилищем токенов.
-
-**Берём A.** OAuth пишем сами (он у нас уже описан выше поштучно).
+### Шаг 6 — использование
+Каждый вызов: `Authorization: Bearer`. На 401 — один refresh и повтор; на второй 401 — `NEEDS_REAUTH`.
 
 ---
 
-## 3. Архитектурное решение: брокер как плагин
+## 5. Изменения в Go
 
-### 3.1 Проблема
+### 5.1. Схема БД (`internal/store/db.go`)
 
-Сейчас Webull зашит по именам. Точки, где это видно:
-
-* `server/src/services/autotrade.js` — `executeWebullSignal()`, `closeWebullPositionMarket()`,
-  `buyWebullTestMarket()`, `getWebullDashboardSnapshot()`, `buildWebullRuntimeConfig()`;
-* `server/src/services/telegramAggregation.js:576` и `:667` — **прямые вызовы `executeWebullSignal`
-  из T-1**. Это главный шов;
-* `server/src/routes/autotrade.js` — все URL вида `/autotrade/webull/*`;
-* `server/src/db/index.js` — таблица `webull_token`, таблица `broker_trades` **без колонки брокера**;
-* фронт — `/broker` → `WebullAccountPage.tsx`.
-
-### 3.2 Решение
-
-Ввести **интерфейс брокерского адаптера** и реестр. Не переписывать `autotrade.js` целиком:
-вынести из него только то, что реально брокероспецифично.
-
-Новый файл `server/src/brokers/index.js`:
-
-```js
-// Реестр брокеров. Ключ = brokerId ('webull' | 'robinhood').
-const adapters = {
-  webull: require('./webullAdapter'),
-  robinhood: require('./robinhoodAdapter'),
-};
-function getBrokerAdapter(brokerId) { ... }
-function listBrokerIds() { return Object.keys(adapters); }
-```
-
-Контракт адаптера (`server/src/brokers/types.md` — просто документ, JS без типов):
-
-```js
-{
-  id: 'robinhood',
-  label: 'Robinhood',
-
-  // здоровье соединения
-  async getConnectionSummary(),        // { configured, hasAccessToken, hasAccountId, ... }
-  async getAccountSnapshot(),          // { accounts, balance, positions }
-  async getDashboardSnapshot(opts),    // + openOrders, orderHistory, fetchedAt
-
-  // исполнение
-  async submitEntry({ symbol, quantity, currentPrice, clientOrderId }),
-  async submitExit({ symbol, quantity, currentPrice, clientOrderId }),
-  async cancelOpenOrders(symbol),
-  async getOrderStatus(clientOrderId),  // → { status, filledQty, avgPrice, brokerOrderId }
-  async getPositionQuantity(symbol),
-
-  // сайзинг
-  async getBuyingPower(),               // число USD
-
-  // котировки (опционально)
-  async fetchTodayRangeAndQuote(symbol),
-}
-```
-
-`executeWebullSignal` переименовать в **`executeBrokerSignal({ brokerId, action, ... })`** и оставить
-в нём всю общую механику, которая уже написана и работает: трекеры (`pendingOrderTrackers`),
-резервации (`orderSubmissionReservations`), поллинг статуса (`TRACKING_DELAYS_MS`),
-логи (`appendAutotradeEvent`), запись сделки (`finalizeTrackedTrade`), Telegram-уведомления.
-Брокероспецифичными остаются только вызовы `adapter.submitEntry/submitExit/getOrderStatus`.
-
-> **Оставить `executeWebullSignal` как тонкий алиас** `(args) => executeBrokerSignal({ brokerId: 'webull', ...args })`
-> — чтобы не ломать существующие тесты (`server/src/services/__tests__/t1-parity.test.js`,
-> `t1-aggregate-parity.test.js`) одним коммитом.
-
-### 3.3 Ключевое решение по одновременной работе двух брокеров
-
-**Предположение (озвучено пользователю, при возражении — переделать):** брокеры работают
-**независимо и параллельно**. У каждого свой флаг `enabled`, свои `allowNewEntries`/`allowExits`
-и **своя открытая позиция**. Один и тот же сигнал IBS может исполниться и на Webull, и на
-Robinhood одновременно — это «зеркалирование» одной стратегии на два счёта.
-
-Следствия:
-
-* `broker_trades` получает колонку `broker`;
-* `getCurrentOpenBrokerTrade()` → `getCurrentOpenBrokerTrade(brokerId)`;
-* T-1 в `telegramAggregation.js` прогоняет цикл исполнения **по каждому включённому брокеру**,
-  а решение (какой тикер, вход/выход) считается **один раз** и общее.
-
-Альтернатива, если пользователь захочет иначе: один «активный» брокер в настройках. Она проще,
-но тогда «Разрешить входы/выходы для webull и для robinhood» теряет смысл — значит выбран
-параллельный вариант.
-
----
-
-## 4. Изменения схемы БД (`server/src/db/index.js`)
-
-Все — через существующий механизм `ALTER TABLE ... ADD COLUMN` в массиве миграций
-(там уже так делается, ошибки «duplicate column» глотаются).
-
-**4.1 Колонка брокера в сделках.**
+Миграции — рядом с существующими `CREATE TABLE IF NOT EXISTS` / `ALTER TABLE` (проверить, как
+там сделаны добавления колонок, и повторить механизм).
 
 ```sql
 ALTER TABLE broker_trades ADD COLUMN broker TEXT NOT NULL DEFAULT 'webull';
 CREATE INDEX IF NOT EXISTS idx_broker_trades_broker_status ON broker_trades(broker, status);
+
+CREATE TABLE IF NOT EXISTS robinhood_oauth (
+    id                TEXT PRIMARY KEY CHECK (id = 'current'),
+    client_id         TEXT,
+    access_token      TEXT,
+    refresh_token     TEXT,
+    token_type        TEXT,
+    scope             TEXT,
+    expires_at        TEXT,
+    account_number    TEXT,
+    last_check_status TEXT,
+    last_check_at     TEXT,
+    created_at        TEXT,
+    updated_at        TEXT
+);
+
+CREATE TABLE IF NOT EXISTS robinhood_oauth_pending (
+    state         TEXT PRIMARY KEY,
+    code_verifier TEXT NOT NULL,
+    redirect_uri  TEXT NOT NULL,
+    created_at    TEXT NOT NULL
+);
 ```
 
 Дефолт `'webull'` корректно размечает всю существующую историю.
+`store.OpenBrokerTrade(trades)` (`internal/live/telegram.go:482`) → принимает `broker`.
 
-**4.2 Новая таблица OAuth-состояния Robinhood.**
+> **Секреты.** `refresh_token` — полный доступ к счёту. Файл SQLite в `/data`, права 600.
+> В логах — никогда: посмотреть, как `internal/webull/client.go` редактирует чувствительные
+> поля, и переиспользовать тот же механизм.
 
-```sql
-CREATE TABLE IF NOT EXISTS robinhood_oauth (
-    id                  TEXT PRIMARY KEY CHECK (id = 'current'),
-    client_id           TEXT,
-    access_token        TEXT,
-    refresh_token       TEXT,
-    token_type          TEXT,
-    scope               TEXT,
-    expires_at          TEXT,          -- ISO8601 UTC
-    account_number      TEXT,          -- agentic_allowed=true счёт
-    last_check_status   TEXT,          -- OK | NEEDS_REAUTH | ERROR
-    last_check_at       TEXT,
-    last_health_check_date TEXT,
-    created_at          TEXT,
-    updated_at          TEXT
-);
+### 5.2. Интерфейс брокера — он уже есть
+
+`internal/live/engine.go:59` объявляет `type Broker interface` с 14 методами, и `MemoryBroker`
+(`transport.go`) его уже реализует для тестов. **Это готовый шов, изобретать нечего.**
+
+Проблема: пять методов — не про исполнение, а про Webull как источник данных:
+`CreateToken`, `CheckToken`, `Calendar`, `CalendarDays`, `RawSplits`.
+
+**Разделить интерфейс:**
+
+```go
+// Всё, что нужно для торговли. Реализуют оба брокера.
+type Broker interface {
+    PlaceMarket(symbol, side string, qty float64) (OrderResult, error)
+    CloseMarket(symbol string) (OrderResult, error)
+    Account() (map[string]any, error)
+    Positions() ([]any, error)
+    OrderDetail(clientOrderID string) (map[string]any, error)
+    OpenOrders() ([]any, error)
+    OrderHistory(start, end string) ([]any, error)
+    CancelOrder(clientOrderID string) error
+}
+
+// Webull-специфика: токены, календарь, сплиты. Robinhood это не реализует.
+type WebullExtras interface {
+    CreateToken() (map[string]any, error)
+    CheckToken(token string) (map[string]any, error)
+    Calendar() ([]byte, error)
+    CalendarDays(start, end string) ([]map[string]any, error)
+    RawSplits(symbol string) ([]map[string]any, error)
+}
 ```
 
-**4.3 Временное состояние PKCE** (живёт минуты, можно в памяти процесса; в SQLite — только если
-хочется переживать рестарт во время авторизации):
+Места, где сейчас `e.Broker.CreateToken()` и т. п. (`autotrade.go:94,123,154`), переводятся
+на type assertion `if x, ok := e.brokerByID("webull").(WebullExtras); ok`.
+`PlaceMarketCfg` уже сделан через опциональный `marketCfgPlacer` (`autotrade.go:509`) — тот же приём.
 
-```sql
-CREATE TABLE IF NOT EXISTS robinhood_oauth_pending (
-    state          TEXT PRIMARY KEY,
-    code_verifier  TEXT NOT NULL,
-    redirect_uri   TEXT NOT NULL,
-    created_at     TEXT NOT NULL
-);
+### 5.3. Engine: один брокер → карта брокеров
+
+`internal/live/engine.go:79` — `Broker Broker` заменить на:
+
+```go
+Brokers map[string]Broker   // "webull", "robinhood"
 ```
 
-Чистить записи старше 15 минут.
+`EnvBrokerDB(db)` (`engine.go:117`) → `EnvBrokersDB(db)`, собирает карту из того, что настроено.
 
-> **Секреты в БД.** `refresh_token` — это полный доступ к счёту. Файл SQLite обязан лежать
-> в `/data` с правами 600 и **не попадать в бэкапы, которые куда-то уезжают**. Проверить
-> `server/scripts/security-regression-check.js` — добавить туда правило, что `refresh_token`
-> и `access_token` не должны появляться в логах и в ответах API (см. `redactSensitivePayload`
-> в `webullClient.js` — переиспользовать её).
+`Engine.Execute(trigger)` (`autotrade.go:371`) — **главная точка**. Сейчас решение и исполнение
+слиты. Разделить:
 
----
+1. `Evaluate()` считает решение **один раз** — оно общее для всех брокеров;
+2. `Execute()` прогоняет цикл по брокерам, у которых
+   `enabled && (action == "entry" ? allowNewEntries : allowExits)`;
+3. каждый брокер — в своём блоке с восстановлением после ошибки; падение одного **не отменяет**
+   другого; результаты агрегируются в `EvalResult`.
 
-## 5. Изменения настроек (`server/src/services/settings.js`)
+`sizeOrder` (`sizing.go:249`) — принимает брокера аргументом, а не берёт `e.Broker`.
 
-### 5.1 Текущая форма
+Трекеры (`internal/live/track.go`, `store.ListPendingTrackers`) — **ключ обязан включать
+`broker`**, иначе Webull и Robinhood будут блокировать друг друга по одному тикеру.
 
-`settings.autoTrading` — плоский объект с `enabled`, `allowNewEntries`, `allowExits`,
-`lowIBS`, `highIBS`, `provider`, `entryCapitalMode`, ... (см. `getDefaultSettings()`).
+`Execute` вызывается из T-1 в `internal/live/telegram.go:35,45,53,57` — **сигнатуру не меняем**,
+мультиброкерность прячется внутри. Это минимизирует диff в самом опасном месте.
 
-### 5.2 Целевая форма
+### 5.4. Настройки (`internal/store/db.go:649`)
 
-Разделить на **общую стратегию** и **на-брокера**:
+`mergeMaps` уже сливает вложенные карты по ключам, так что вложенный `brokers` безопасен.
 
-```js
-autoTrading: {
-  // ---- общее (стратегия одна на всех) ----
-  lowIBS: 0.1,
-  highIBS: 0.75,
-  executionWindowSeconds: 90,
-  onlyFromTelegramWatches: true,
-  symbols: '',
-  provider: 'finnhub',            // провайдер котировок для IBS
-  entrySizingMode: 'balance',
-  entryCapitalMode: 'standard_safe',
-  sizingMode: 'notional',
-  fixedQuantity: 1,
-  fixedNotionalUsd: 1000,
-  maxPositionUsd: 0,
-  allowFractionalShares: false,
-  maxSlippageBps: 25,
-  notes: '',
-  lastModifiedAt: null,
-
-  // ---- на брокера ----
-  brokers: {
-    webull: {
-      enabled: false,
-      allowNewEntries: true,
-      allowExits: true,
-      orderType: 'MARKET',
-      timeInForce: 'DAY',
-      supportTradingSession: 'CORE',
-      previewBeforeSend: true,
-      cancelOpenOrdersBeforeEntry: false,
+```go
+"autoTrading": map[string]any{
+    "provider": "finnhub", "lowIBS": 0.1, "highIBS": 0.75,
+    "executionWindowSeconds": 90, "entryCapitalMode": "standard_safe",
+    "maxSlippageBps": 25, "lastModifiedAt": nil,
+    "brokers": map[string]any{
+        "webull":    map[string]any{"enabled": false, "allowNewEntries": true, "allowExits": true},
+        "robinhood": map[string]any{"enabled": false, "allowNewEntries": true, "allowExits": true},
     },
-    robinhood: {
-      enabled: false,
-      allowNewEntries: true,
-      allowExits: true,
-      orderType: 'MARKET',          // → type: 'market'
-      timeInForce: 'DAY',           // → 'gfd'
-      marketHours: 'regular_hours',
-      previewBeforeSend: true,      // → review_equity_order перед place
-      cancelOpenOrdersBeforeEntry: false,
-    },
-  },
-}
+},
 ```
 
-### 5.3 Обязательная миграция настроек (backward compat)
+**Миграция:** если `brokers` нет, а плоские `enabled`/`allowNewEntries`/`allowExits` есть —
+перенести их в `brokers.webull`. Плоские ключи оставить на чтение ещё релиз.
 
-В `normalizeAutoTradingSettings()` добавить: если `brokers` отсутствует — собрать
-`brokers.webull` из старых плоских полей (`enabled`, `allowNewEntries`, `allowExits`,
-`orderType`, `timeInForce`, `supportTradingSession`, `previewBeforeSend`,
-`cancelOpenOrdersBeforeEntry`), а `brokers.robinhood` — из дефолтов с `enabled: false`.
-Старые плоские поля **оставить в объекте на чтение** ещё один релиз, чтобы ничего не упало,
-но писать только в `brokers.*`.
+`PATCH /api/autotrade/config` (`httpapi/server.go:186` → `handleAutoConfigPatch`) — **обязательно
+валидировать вложенные поля белым списком**. Напоминание из аудита: находка 0.6 — сейчас патч
+не валидирует ничего, `{"lowIBS": 5}` проходит. Не расширять эту дыру на `brokers`.
 
-`sanitizeAutoTradingConfig()` (`autotrade.js:493`) расширить: принимать
-`{ brokers: { robinhood: { allowNewEntries: false } } }` — точечный merge по брокеру,
-булевы поля валидировать так же, как сейчас.
+Правило из находки 0.10: отсутствующий `allowExits`/`allowNewEntries` трактовать как **false**,
+а не true. Для торгового контура отказ должен быть закрытым.
 
-### 5.4 Провайдеры котировок / данных
+### 5.5. Новые пакеты
 
-Добавить `'robinhood'` в белые списки:
+**`internal/robinhood/oauth.go`:**
+```
+RegisterClient() (clientID string, err error)
+BuildAuthorizationURL() (url, state string, err error)
+CompleteFromCallbackURL(rawURL string) error
+AccessToken() (string, error)     // единственная точка выдачи, с авто-refresh под мьютексом
+Refresh() error
+Status() (Status, error)
+Revoke() error
+```
 
-* `sanitizeAutoTradingConfig`, строка с `['finnhub', 'webull']` → `['finnhub', 'webull', 'robinhood']`;
-* `server/src/routes/quotes.js:152, :220` — массивы разрешённых провайдеров;
-* `src/components/ui/ProviderBadge.tsx` — `PROVIDER_OPTIONS` += `{ value: 'robinhood', label: 'Robinhood' }`;
-* `src/lib/api.ts` — union-типы провайдера (строки 429, 1017, 1083) += `'robinhood'`.
+**`internal/robinhood/client.go`** — MCP по образцу `internal/webull/client.go`:
+```
+ensureSession() error             // initialize → Mcp-Session-Id
+CallTool(name string, args map[string]any) (map[string]any, error)
+ListTools() ([]map[string]any, error)
+```
+Разбор `text/event-stream` и `application/json`. Ретраи и логирование — переиспользовать то,
+что уже есть у Webull-клиента.
 
-**Важно:** в отличие от Webull, Robinhood **умеет** отдавать историю. Поэтому в
-`server/src/routes/quotes.js:225` блок, который возвращает 400 для Webull, **не** копировать
-на Robinhood — вместо этого добавить `case 'robinhood'` в
-`fetchHistoricalMarketData()` (`server/src/services/dataIngestion.js:130`).
+**`internal/live/robinhood_broker.go`** — реализация `Broker`, по образцу `webull_broker.go` (372 строки):
+
+* `accountNumber()` — `get_accounts`, найти `agentic_allowed == true`, закэшировать.
+  **Если такого нет — ошибка «Agentic Account не подключён», а не «взять первый счёт».**
+* `PlaceMarket(symbol, side, qty)`:
+  1. `get_equity_tradability`;
+  2. `review_equity_order` — разобрать alerts, при блокирующем отказать;
+  3. `place_equity_order{account_number, symbol, side, type:"market",
+     quantity: strconv.FormatFloat(qty, 'f', 0, 64), time_in_force:"gfd",
+     market_hours:"regular_hours", ref_id: uuid}`.
+* `OrderDetail(refID)` — `get_equity_orders`, найти по `ref_id`, вернуть статус + `filled_qty` +
+  средняя цена филла. Маппинг статусов — отдельная чистая функция рядом с существующим
+  разбором в `internal/live/order_parse.go`, с unit-тестом.
+* `Account()` — `get_portfolio`, привести к форме, которую понимает `sizing.go`
+  (см. §2.5): дать поля, из которых `extractEntryBaseCapital` возьмёт кэш, а
+  `extractEntryFundsFromBalance` — buying power.
+* `CancelOrder`, `OpenOrders`, `OrderHistory`, `Positions` — прямые обёртки.
+
+**`internal/providers/`** — Robinhood как источник котировок (`get_equity_quotes`) и истории
+(`get_equity_historicals`). Посмотреть, как устроен `providers/client.go`, и добавить туда же.
+В отличие от Webull, Robinhood **умеет** отдавать историю — блокирующую заглушку не копировать.
+
+### 5.6. HTTP-роуты (`internal/httpapi/server.go:185-198`)
+
+Добавить рядом, тем же `wrap(...)`:
+
+```
+POST /api/autotrade/robinhood/oauth/start        → { authorizationUrl }
+POST /api/autotrade/robinhood/oauth/complete     → { callbackUrl } → { ok }
+POST /api/autotrade/robinhood/oauth/disconnect
+GET  /api/autotrade/robinhood/oauth/status
+GET  /api/autotrade/robinhood/account
+GET  /api/autotrade/robinhood/dashboard
+GET  /api/autotrade/robinhood/tools
+POST /api/autotrade/robinhood/close-position
+POST /api/autotrade/robinhood/test-buy
+```
+
+**Все — под общей авторизацией**, никаких публичных исключений: callback-роут нам не нужен,
+код приходит вставкой в форму. Это ещё один плюс копи-паст-флоу.
+
+`internal/httpapi/mux_test.go:43-48` — добавить новые пути в список.
+
+### 5.7. SPA (`go/web/js/app.js`, 3341 строка)
+
+* `app.js:10,17,27` — три места навигации: `{ to: '/broker', label: 'Брокер' }` →
+  `{ to: '/webull', label: 'Webull' }`, рядом добавить `{ to: '/robinhood', label: 'Robinhood' }`.
+* Роутер: `/broker` → редирект на `/webull` (закладки не ломаем).
+* `app.js:2543` — заголовок «Кабинет Webull» уже правильный, не трогать.
+* Страница Robinhood — те же табы (`overview | positions | orders | deals | autotrade |
+  monitoring | trades | logs`) **плюс первый таб «Подключение»** с флоу из §1.3.
+  Рендер-функции табов вынести в общие хелперы и переиспользовать для обоих брокеров —
+  копировать блок на 250 строк второй раз нельзя.
+* `app.js:732` и `:2588` — списки провайдеров: добавить `robinhood: 'Robinhood'`.
+* Настройки: две панели с тремя тумблерами каждая (`brokers.webull.*`, `brokers.robinhood.*`).
+  Если Robinhood не подключён — бейдж «Не подключено», тумблеры `disabled`, ссылка на `/robinhood`.
+* В панели Robinhood подписать, что множители маржи там не работают (§1.1).
 
 ---
 
-## 6. Backend: пофайловый план
+## 6. Тесты
 
-### Фаза 1 — фундамент, без торговли
-
-**Новый `server/src/services/robinhoodOauth.js`:**
-
-```
-getStoredOauth()                 // строка из robinhood_oauth
-saveClientRegistration(clientId)
-buildRedirectUri()               // из env ROBINHOOD_OAUTH_REDIRECT_BASE + путь
-registerClient()                 // POST /oauth/trading/register, идемпотентно
-startAuthorization()             // → { authorizationUrl, state }; кладёт PKCE в pending
-completeAuthorization(code, state) // обмен на токен, чистка pending
-getAccessToken()                 // с авто-refresh, единственная точка выдачи Bearer
-refreshAccessToken()
-revoke()                         // wipe строки
-getStatus()                      // { connected, expiresAt, accountNumber, lastCheckStatus }
-```
-
-Дисциплина: один мьютекс (`async-mutex`, он уже в зависимостях) вокруг refresh, чтобы
-параллельные вызовы не сожгли refresh-токен гонкой.
-
-**Новый `server/src/services/robinhoodMcpClient.js`** — по образцу `webullClient.js`:
-
-```
-ensureSession()                  // initialize → Mcp-Session-Id, кэш в модуле
-callTool(name, args)             // tools/call, парсинг text/event-stream, 401 → 1 refresh + retry
-listTools()                      // tools/list, для диагностики
-```
-
-Плюс сырое логирование в файл — **точная калька** с `appendWebullRawLog` /
-`getCurrentWebullRawLogPath` / `redactSensitivePayload`. Новая константа
-`ROBINHOOD_RAW_LOG_FILE` в `server/src/config/index.js` рядом с `WEBULL_RAW_LOG_FILE`.
-**Обязательно редактировать `Authorization` и токены в логах.**
-
-**Новый `server/src/providers/robinhood.js`** — рыночные данные:
-
-```
-fetchTodayRangeAndQuote(symbol)          // через get_equity_quotes
-fetchBatchTodayRangeAndQuote(symbols)    // батч ≤20
-fetchFromRobinhood(symbol, startTs, endTs) // get_equity_historicals, interval=day
-```
-
-`fetchFromRobinhood` обязан возвращать ровно тот же формат строк, что и остальные провайдеры
-(см. `normalizeFetchedRows` в `dataIngestion.js`), с **датой-строкой `YYYY-MM-DD`**.
-
-> 🔴 **ДАТЫ.** Читай `CLAUDE.md`, раздел «Даты: почему в проекте нет таймзон». MCP отдаёт
-> `begins_at` в RFC3339 UTC. Превращать в торговую дату **только** срезом первых 10 символов
-> ISO-строки (`'2026-09-03T13:30:00Z'.slice(0,10)`) — и то лишь после проверки, что для
-> `interval=day, bounds=regular` время всегда 00:00Z или 13:30Z (то есть срез не переносит день).
-> **Проверить это на живом ответе на этапе 2 и записать вывод в док.** Если время окажется
-> 20:00Z/21:00Z (закрытие сессии в UTC) — срез всё равно даёт правильный день; опасно только
-> если бы время было ≥ 00:00 следующих суток. `new Date()` на торговой дате — запрещён.
-
-**Конфиг `server/src/config/index.js`:**
-
-```js
-ROBINHOOD_MCP_URL: process.env.ROBINHOOD_MCP_URL || 'https://agent.robinhood.com/mcp/trading',
-ROBINHOOD_OAUTH_REDIRECT_BASE: process.env.ROBINHOOD_OAUTH_REDIRECT_BASE || 'http://127.0.0.1:53682',
-ROBINHOOD_ACCOUNT_NUMBER: process.env.ROBINHOOD_ACCOUNT_NUMBER || '',  // опционально, иначе из get_accounts
-```
-
-**Роуты `server/src/routes/robinhood.js`** (подключить в `server/server.js` рядом с `autotradeRoutes`):
-
-```
-POST   /api/autotrade/robinhood/oauth/start      → { authorizationUrl }
-GET    /api/autotrade/robinhood/oauth/callback   → HTML «готово» (публичный? нет — см. ниже)
-POST   /api/autotrade/robinhood/oauth/disconnect
-GET    /api/autotrade/robinhood/oauth/status
-PUT    /api/autotrade/robinhood/token            → ручная заливка refresh_token (вариант A из §2.2)
-GET    /api/autotrade/robinhood/account
-GET    /api/autotrade/robinhood/dashboard
-GET    /api/autotrade/robinhood/tools            → tools/list, диагностика
-POST   /api/autotrade/robinhood/close-position
-POST   /api/autotrade/robinhood/test-buy
-```
-
-> ⚠️ **Callback и аутентификация.** `server/server.js:122` вешает `auth.requireAuth` на всё.
-> Redirect от Robinhood придёт **без** нашей сессионной куки, если оператор открыл ссылку
-> в другом браузере/инкогнито. Варианта два: (а) сказать оператору «открывай ссылку в том же
-> браузере, где залогинен в приложении» — тогда кука есть и ничего менять не надо; (б) вынести
-> callback-роут **до** `requireAuth` и защитить его одноразовым `state`, который и так есть.
-> **Выбрать (б)**: `state` — криптослучайный, одноразовый, с TTL 10 минут, этого достаточно;
-> в белый список исключений `requireAuth` добавить ровно этот один путь. Не забудь про CSP/helmet.
-
-### Фаза 2 — адаптер и исполнение
-
-**`server/src/brokers/webullAdapter.js`** — обёртка над существующим `webullClient.js`.
-Кода почти нет, только переименование аргументов под контракт §3.2.
-
-**`server/src/brokers/robinhoodAdapter.js`:**
-
-* `getAccountNumber()` — `get_accounts`, найти запись с `agentic_allowed === true`,
-  закэшировать в `robinhood_oauth.account_number`. **Если такой записи нет — бросать понятную
-  ошибку «Agentic Account не подключён», а не выбирать первый счёт.**
-* `submitEntry({ symbol, quantity, clientOrderId })`:
-  1. `get_equity_tradability({ account_number, symbols: [symbol] })` — проверить торгуемость;
-  2. если `previewBeforeSend` — `review_equity_order(...)`, разобрать alerts.
-     **PDT-alert и «недостаточно buying power» → отказ, лог `execution_blocked`, Telegram.**
-  3. `place_equity_order({ account_number, symbol, side: 'buy', type: 'market',
-     quantity: String(целое), time_in_force: 'gfd', market_hours: 'regular_hours',
-     ref_id: clientOrderId })`.
-  `clientOrderId` — **UUID** (Robinhood требует UUID в `ref_id`; Webull-овский формат может не
-  подойти — генерить `crypto.randomUUID()` и хранить как есть, без снятия дефисов).
-* `submitExit(...)` — то же с `side: 'sell'`, `quantity` = фактическое количество из
-  `get_equity_positions` (продаём позицию целиком, коммит `17eb4cd`).
-* `getOrderStatus(clientOrderId)` — `get_equity_orders({ account_number, ... })`, найти по
-  `ref_id`/`client_order_id`; вернуть нормализованный статус и `filledQty`/средний филл.
-  **Маппинг статусов Robinhood → внутренние** сделать в отдельной чистой функции
-  `normalizeRobinhoodOrderStatus(raw)` рядом с существующей `normalizeWebullOrderStatus`
-  (`autotrade.js:806`) и покрыть unit-тестом.
-* `cancelOpenOrders(symbol)` — `get_equity_orders({ state: 'queued'|'confirmed', symbol })`
-  → `cancel_equity_order` по каждому.
-* `getBuyingPower()` — `get_portfolio({ account_number })`.
-
-**Рефакторинг `autotrade.js`:**
-
-1. `executeWebullSignal` → `executeBrokerSignal({ brokerId, ... })`, внутри —
-   `const adapter = getBrokerAdapter(brokerId)`; все `placeOrder/previewOrder/getOrderDetail`
-   заменить вызовами адаптера.
-2. Ключи трекеров и резерваций (`trackerKeyFor`, `reservationKeyFor`) — **добавить `brokerId`**,
-   иначе Webull и Robinhood будут блокировать друг друга.
-3. `getCurrentOpenBrokerTrade()` → принимает `brokerId`.
-4. `evaluateAutoTradeCycle()` — считает решение один раз, но открытые позиции проверяет
-   по каждому включённому брокеру; возвращает `decisionsByBroker`.
-5. `runAutoTradingSchedulerTick()` — `autoTrading.enabled` заменить на
-   «есть хотя бы один брокер с `enabled: true`»; `schedulerKey` дополнить `brokerId`.
-6. Экспортировать `executeWebullSignal` как алиас — не ломать тесты.
-
-### Фаза 3 — T-1
-
-`server/src/services/telegramAggregation.js`, строки ~576 (exit) и ~667 (entry):
-заменить одиночный `executeWebullSignal(...)` на цикл по включённым брокерам:
-
-```js
-for (const brokerId of getEnabledBrokerIds(autoTrading, 'exit')) {
-  const res = await executeBrokerSignal({ brokerId, action: 'exit', ... });
-  ...
-}
-```
-
-где `getEnabledBrokerIds(cfg, action)` возвращает брокеров с `enabled &&
-(action === 'entry' ? allowNewEntries : allowExits)`.
-
-Требования:
-
-* **Ошибка одного брокера не должна прерывать другого** — каждый вызов в свой try/catch,
-  результат агрегируется.
-* Событие `t1_signal_confirmed` получает поле `broker`. То же — все `appendAutotradeEvent`.
-* Текст T-1 сообщения в Telegram: показывать строку на брокера,
-  например `• Robinhood: вход AAPL 12 шт — отправлен` / `• Webull: заблокирован (PDT)`.
-* `recordTradeEntry`/`recordTradeExit` (монитор) остаются **одним** набором — монитор ведёт
-  логическую стратегию. А `broker_trades` — по брокеру. Проверить
-  `server/src/services/monitorConsistency.js`: сверка «монитор vs брокер» теперь должна
-  сверять монитор с **каждым** брокером и репортить mismatch на брокера.
-* `getBlockingMonitorMismatch()` — решить, блокирует ли рассинхрон одного брокера торговлю
-  на другом. **Предложение: нет, не блокирует** — блокируется только «свой» брокер.
-
----
-
-## 7. Frontend: пофайловый план
-
-### 7.1 Переименование текущей вкладки в Webull
-
-| Файл | Что |
-|---|---|
-| `src/components/AppRouter.tsx:46` | `'/broker'` → `'/webull'` в `routePreloaders` |
-| `src/components/AppRouter.tsx:177` | `{ to: '/broker', label: 'Брокер' }` → `{ to: '/webull', label: 'Webull' }` |
-| `src/components/AppRouter.tsx:188` | то же во втором списке навигации |
-| `src/components/AppRouter.tsx:443` | `<Route path="/broker" ...>` → `path="/webull"` |
-| `src/components/ui/BottomNav.tsx:9` | `to: '/broker', label: 'Брокер'` → `'/webull', 'Webull'` |
-
-**Обязательно добавить редирект** `<Route path="/broker" element={<Navigate to="/webull" replace />} />`,
-иначе у пользователя сломаются закладки. И проверить `src/components/__tests__/AppRouter.test.tsx` —
-там есть проверки навигации.
-
-Строку `RENEWAL_INSTRUCTION` в `server/src/services/webullToken.js:9` («кнопка на /broker»)
-поправить на `/webull`.
-
-### 7.2 Новая вкладка Robinhood
-
-Новый файл `src/components/RobinhoodAccountPage.tsx`. **Структуру копировать 1-в-1** с
-`WebullAccountPage.tsx` (те же табы: `overview | positions | orders | deals | autotrade |
-monitoring | trades | logs`, те же `InfoCard` / `SectionPanel` / `RawJson`).
-
-Отличия:
-
-* **Новый таб `connection`** (первым, если не подключено): кнопка «Подключить Robinhood»,
-  статус OAuth (`connected / expires at / account_number / NEEDS_REAUTH`), кнопка «Отключить»,
-  и текст-инструкция про десктопный браузер и Agentic Account.
-* На `overview`: `get_portfolio` вместо баланса Webull — маппинг полей другой,
-  писать свою `extractRobinhoodPortfolioSummary()`.
-* На `autotrade`: показывать `allowNewEntries/allowExits` **именно робингудовские**
-  (`autotradeConfig.brokers.robinhood.*`).
-* `deals` — вместо истории ордеров Webull можно взять `get_pnl_trade_history`.
-
-> Прежде чем копипастить 1745 строк: вынести общие куски (`InfoCard`, `SectionPanel`, `RawJson`,
-> `formatMoney`, `formatDateTime`, `formatLogLine`, `normalizeTrackedStatus`) в
-> `src/components/broker/shared.tsx` и импортировать в обе страницы. Иначе через месяц это
-> два расходящихся файла по 1700 строк. **Это не «улучшение сверх задачи», а условие того,
-> что вторая вкладка вообще будет поддерживаемой.**
-
-Маршрут: `/robinhood`, лейбл `Robinhood`, иконка — любая из `lucide-react` (например `Landmark`).
-Добавить во все три места навигации (`AppRouter` ×2 + `BottomNav`) и в `routePreloaders`.
-
-### 7.3 Настройки: «Разрешить входы / Разрешить выходы» по брокерам
-
-`src/components/AppSettings.tsx`, компонент `AutotradeTab` (строка 44). Сейчас там редактируются
-только `enabled`, `provider`, `entryCapitalMode` через локальный pending-state и одну кнопку
-«Сохранить».
-
-Надо: под общими настройками — **две панели**, «Webull» и «Robinhood», в каждой три
-`ToggleSwitch`:
-
-* «Автоторговля включена» → `brokers.<id>.enabled`
-* «Разрешить входы» → `brokers.<id>.allowNewEntries`
-* «Разрешить выходы» → `brokers.<id>.allowExits`
-
-Сохраняются той же кнопкой, тем же `onSaveConfig` (`PATCH /api/autotrade/config`), в теле —
-только изменённые поля, вложенно: `{ brokers: { robinhood: { allowExits: false } } }`.
-
-В панели Robinhood, если OAuth не подключён, показывать бейдж «Не подключено» и ссылку на
-`/robinhood`, а тумблеры делать `disabled`.
-
-### 7.4 Типы
-
-`src/types/index.ts:438` — `AutoTradingConfig`:
-
-```ts
-export interface BrokerAutoTradingConfig {
-  enabled: boolean;
-  allowNewEntries: boolean;
-  allowExits: boolean;
-  orderType: string;
-  timeInForce: string;
-  previewBeforeSend: boolean;
-  cancelOpenOrdersBeforeEntry: boolean;
-  supportTradingSession?: string;   // только webull
-  marketHours?: string;             // только robinhood
-}
-
-export interface AutoTradingConfig {
-  // ... общие поля ...
-  brokers: Record<'webull' | 'robinhood', BrokerAutoTradingConfig>;
-  /** @deprecated читать из brokers.webull */
-  enabled?: boolean;
-  allowNewEntries?: boolean;
-  allowExits?: boolean;
-}
-```
-
-`AutotradeConfigResponse.webull` → добавить `robinhood` того же вида (не удалять `webull`,
-чтобы не сломать `WebullAccountPage`).
-
-`src/lib/api.ts` — новые методы по образцу существующих (строки 873–925):
-`getRobinhoodDashboard`, `startRobinhoodOauth`, `getRobinhoodOauthStatus`,
-`disconnectRobinhood`, `closeRobinhoodPosition`, `robinhoodTestBuy`.
-
----
-
-## 8. Тесты (что обязательно покрыть)
-
-Существующие, которые нельзя сломать:
-`server/src/services/__tests__/t1-parity.test.js`, `t1-aggregate-parity.test.js`,
-`webullToken.test.js`, `src/components/__tests__/AppRouter.test.tsx`,
-`WebullAccountPage.trades.test.tsx`, `ui/__tests__/BottomNav.test.tsx`, `ProviderBadge.test.tsx`.
+Существующие, которые нельзя сломать: `internal/live/correctness_test.go`,
+`safety_test.go`, `engine_test.go`, `sizing_test.go`, `webull_broker_test.go`,
+`internal/httpapi/live_api_test.go`, `mux_test.go`, `handlers_test.go`.
 
 Новые:
 
-1. **`robinhoodOauth.test.js`** — PKCE: `code_challenge` = base64url(sha256(verifier)); `state`
-   одноразовый; refresh при истёкшем токене; ротация refresh-токена; `NEEDS_REAUTH` при 400.
-2. **`robinhoodAdapter.test.js`** — на моках `callTool`: сборка аргументов `place_equity_order`
-   (целое `quantity` строкой, `gfd`, `regular_hours`, `ref_id` = UUID); отказ при
-   `agentic_allowed !== true`; маппинг статусов; отказ по PDT-alert из review.
-3. **`robinhood-historicals.test.js`** — парсинг `get_equity_historicals`: отбрасывание
-   `interpolated: true`, дата = `YYYY-MM-DD`, порядок по возрастанию, отсутствие `new Date()`.
-4. **Таймзонный прогон** — `npm run test:tz` (UTC+13 и UTC−8). Результаты обязаны совпадать.
-   Это главный тест на то, что даты не поехали.
-5. **`t1-multibroker.test.js`** — T-1 с двумя включёнными брокерами: оба получают сигнал;
-   падение одного не мешает другому; при `allowNewEntries: false` у Robinhood вход уходит
-   только на Webull.
-6. **Frontend** — `AppRouter.test.tsx`: `/broker` редиректит на `/webull`, `/robinhood` рендерится;
-   `AppSettings`: тумблеры пишут вложенный patch.
-7. **`security-regression-check.js`** — добавить проверку, что `access_token`/`refresh_token`
-   не утекают в `/api/autotrade/robinhood/*` ответы и в raw-лог.
+1. `internal/robinhood/oauth_test.go` — `code_challenge == base64url(sha256(verifier))`;
+   `state` одноразовый и с TTL; разбор вставленного callback-URL, включая мусор вокруг;
+   отказ при чужом `state`; ротация refresh-токена; `NEEDS_REAUTH` при 400.
+2. `internal/live/robinhood_broker_test.go` — на моке `CallTool`: `quantity` — целое строкой;
+   `gfd` + `regular_hours`; `ref_id` — UUID и **тот же при ретрае**; отказ при
+   `agentic_allowed != true`; отказ по блокирующему alert из review; маппинг всех 10 статусов.
+3. `internal/providers/robinhood_test.go` — `interpolated: true` отбрасывается; дата —
+   `YYYY-MM-DD`; порядок по возрастанию.
+4. **Мультиброкерный T-1** — оба брокера получают одно решение; ошибка одного не мешает другому;
+   при `allowNewEntries: false` у Robinhood вход уходит только на Webull; трекеры не мешают друг другу.
+5. `sizing_test.go` — расширить: `baseCapital` берётся из кэша, а не из buying power;
+   потолок `min(..., buyingPower)`; фолбэк при нулевом кэше (зафиксировать текущее поведение
+   тестом, чтобы решение из §2.4 было осознанным изменением, а не случайным).
+6. Таймзонный прогон: `TZ=Pacific/Auckland go test ./...` и `TZ=America/Los_Angeles go test ./...`
+   — результаты обязаны совпадать. Плюс `go test -race ./...` и `go vet ./...`.
 
 ---
 
-## 9. Порядок работ (по коммиту на пункт)
+## 7. Порядок работ (по коммиту на пункт)
 
 | # | Что | Готово, когда |
 |---|---|---|
-| 1 | Скопировать `tools.live.json` в `docs/mcp/robinhood-tools.live.json`, оформить `docs/robinhood-integration.md` | файл в репо |
-| 2 | **Разведка вживую:** DCR с HTTPS-redirect (проходит или нет?), `tools/list`, `get_accounts`, `get_equity_historicals` на 10 лет назад — записать фактическую глубину и формат `begins_at` | выводы дописаны в док |
-| 3 | Миграции БД (`broker` в `broker_trades`, `robinhood_oauth`) | миграции идемпотентны, старая история размечена как `webull` |
-| 4 | `robinhoodOauth.js` + роуты OAuth + вкладка `/robinhood` с одним табом «Подключение» | оператор нажал кнопку, прошёл consent, статус «connected» |
-| 5 | `robinhoodMcpClient.js` + `GET /autotrade/robinhood/tools` + raw-лог с редактированием секретов | `tools/list` отдаёт 62 инструмента, в логе нет токенов |
-| 6 | `providers/robinhood.js` (котировки + история), в белые списки провайдеров | `/api/history/:symbol?provider=robinhood` отдаёт 5 лет дневных баров |
-| 7 | Настройки: `brokers.*` в `settings.js`, миграция плоских полей, `sanitizeAutoTradingConfig` | старый `settings.json` читается без потери значений |
-| 8 | UI настроек: две панели с тремя тумблерами | тумблеры сохраняются и переживают перезагрузку |
-| 9 | Переименование `/broker` → `/webull` + редирект + вся навигация | старая закладка работает |
-| 10 | Вынос общих компонентов в `components/broker/shared.tsx` | обе страницы собираются, тесты зелёные |
-| 11 | `brokers/index.js` + `webullAdapter.js`, `executeWebullSignal` → `executeBrokerSignal` + алиас | `t1-parity` тесты зелёные без правок |
-| 12 | `robinhoodAdapter.js` + `test-buy` на 1 акцию дешёвого тикера | реальный ордер прошёл, статус дошёл до `filled`, сделка записалась с `broker='robinhood'` |
-| 13 | T-1 мультиброкерный цикл | dry-run T-1 (`forceSend` + `test: true`) показывает обе строки |
-| 14 | Полная вкладка `/robinhood` (все табы) | визуальный паритет с Webull |
-| 15 | Тесты из §8 + `npm run test:tz` + `npm run build:check` + `npm run lint` | всё зелёное |
+| 0 | **Закрыть Блок 0 из `docs/audit-go/ROADMAP.md`** | автоторговля на одном брокере безопасна |
+| 1 | Скопировать `tools.live.json` → `docs/mcp/robinhood-tools.live.json` | файл в репо |
+| 2 | Разведка вживую: DCR, `tools/list`, `get_accounts`, `get_equity_historicals` на 10 лет назад; зафиксировать глубину и формат `begins_at` | выводы дописаны в этот док |
+| 3 | Миграции БД (`broker` в `broker_trades`, две таблицы OAuth) | идемпотентны, история размечена как `webull` |
+| 4 | `internal/robinhood/oauth.go` + роуты + таб «Подключение» с копи-паст-флоу | оператор вставил URL, статус «connected» |
+| 5 | `internal/robinhood/client.go` + `GET /robinhood/tools` + лог с редактированием секретов | `tools/list` отдаёт 62 инструмента, в логе нет токенов |
+| 6 | Robinhood в `internal/providers` (котировки + история) | история за 5 лет приходит, `interpolated` отброшены |
+| 7 | Настройки: `brokers.*` + миграция плоских ключей + валидация патча | старый `settings.json` читается без потери значений |
+| 8 | SPA: настройки с двумя панелями по три тумблера | тумблеры переживают перезагрузку |
+| 9 | SPA: `/broker` → `/webull` + редирект + навигация | старая закладка работает |
+| 10 | Разделение `Broker` / `WebullExtras`, `Engine.Brokers` — **с одним брокером в карте** | все существующие тесты зелёные без правок |
+| 11 | `internal/live/robinhood_broker.go` + `test-buy` на 1 акцию дешёвого тикера | ордер прошёл, дошёл до `filled`, сделка записана с `broker='robinhood'` |
+| 12 | Зеркальный `Execute` по карте брокеров | dry-run T-1 показывает обе строки |
+| 13 | Полная страница `/robinhood` | визуальный паритет с Webull |
+| 14 | Тесты §6 + TZ-прогон + `-race` + `go vet` | всё зелёное |
+
+Пункт 10 отдельным коммитом **до** появления Robinhood — так рефакторинг проверяется
+существующими тестами, а не смешивается с новым брокером.
 
 ---
 
-## 10. Открытые вопросы к пользователю (задать до этапа 3)
+## 8. Чего не делать
 
-1. **Параллельные брокеры или один активный?** План написан под параллельные (см. §3.3).
-2. ~~Где живёт OAuth-redirect~~ — **решено:** loopback на машине оператора, токен переносится
-   на прод руками (§2.2). Подтвердить на этапе 2, что DCR не принимает HTTPS-домен.
-3. **Одинаковый ли размер позиции на обоих счетах?** Сейчас сайзинг общий (`entryCapitalMode`),
-   но buying power у счетов разный. Предложение: сайзинг считать **на брокера**, от его
-   собственного `get_portfolio` / `getAccountBalance` — иначе на меньшем счёте ордер отобьётся.
-4. **Cash или limited margin на Agentic-счёте, и меньше ли на нём $25 000?** См. §1.5 — это
-   решает, упрёмся мы в PDT (3 day trades / 5 дней) или в T+1 расчёты. Третьего варианта нет,
-   плечо на Agentic-счетах отключено.
-5. **Robinhood как источник исторических данных для датасетов** — только новый провайдер в
-   списке, или ещё и автоматический refresh датасетов через него?
-
----
-
-## 11. Чего НЕ делать
-
-* Не использовать `robin_stocks`, `pyrh`, `robinhood-node`, `api.robinhood.com` с логином/паролем,
-  `device_token`, `challenge_type`, MFA-кодами. Только официальный MCP.
-* Не хардкодить `client_id` — он получается через DCR и хранится в БД.
+* Не использовать `robin_stocks`, `pyrh`, `api.robinhood.com` с логином/паролем, `device_token`,
+  `challenge_type`, MFA-кодами. Только официальный MCP.
+* Не хардкодить `client_id` — он из DCR и лежит в БД.
 * Не логировать `Authorization`, `access_token`, `refresh_token`, `code_verifier`, номера счетов.
-* Не звать `place_equity_order` на счёте с `agentic_allowed !== true` — он всё равно отклонит,
-  но лучше не пытаться.
-* Не превращать торговую дату в `Date`. Читай `CLAUDE.md` §«Даты».
-* Не удалять `executeWebullSignal` до того, как T-1 тесты переписаны.
-* Не менять пороги IBS ни для одного брокера — вход `ibs < lowIBS`, выход `ibs > highIBS`,
-  строго через `server/src/utils/ibsSignals.js`.
+* Не менять `redirect_uri` после регистрации.
+* Не звать `place_equity_order` на счёте с `agentic_allowed != true`.
+* Не превращать торговую дату в `time.Time` ради форматирования. `internal/tradingdate` + срез строки.
+* Не трогать `src/` и `server/` — это мёртвый React/Node-стек.
+* Не менять пороги IBS ни для одного брокера: вход `ibs < lowIBS`, выход `ibs > highIBS`,
+  строго через `internal/ibs`.
+* Не добавлять брокеру дробные акции. Только целые (§1.5).
+
+---
+
+## 9. Осталось спросить
+
+1. **§2.4 — фолбэк сайзинга.** Сейчас при нулевом `cash_balance` множитель маржи молча
+   применяется к buying power, что может дать позицию в разы больше ожидаемой. Чинить
+   (отказывать входу) или оставить как есть?
+2. **Robinhood как провайдер данных** — только пункт в списке провайдеров, или ещё и
+   автообновление датасетов через него?
+3. **Размер позиции при зеркалировании.** Счета разные по деньгам. Подтвердите: сайзинг
+   считается **на брокера** от его собственного баланса (иначе на меньшем счёте ордер отобьётся).
+   В плане заложено именно так.
