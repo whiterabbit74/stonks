@@ -2,8 +2,12 @@ package httpapi
 
 import (
 	"encoding/json"
+	"fmt"
+	"math"
 	"net/http"
 	"os"
+	"strconv"
+	"strings"
 
 	"mktorder.com/go/internal/live"
 	"mktorder.com/go/internal/robinhood"
@@ -143,9 +147,10 @@ func (s *Server) handleRobinhoodTestBuy(w http.ResponseWriter, r *http.Request) 
 		writeJSON(w, 400, map[string]any{"error": "robinhood not connected", "success": false})
 		return
 	}
-	qty := body.Quantity
-	if qty <= 0 {
-		qty = 1
+	qty, qtyErr := testBuyQuantity(body.Quantity, "ROBINHOOD_LIVE_TEST_BUY_MAX_QUANTITY")
+	if qtyErr != nil {
+		writeJSON(w, 400, map[string]any{"error": qtyErr.Error(), "success": false, "submitted": false})
+		return
 	}
 	res, err := br.PlaceMarket(body.Symbol, "BUY", qty)
 	if err != nil || !res.Submitted {
@@ -176,4 +181,29 @@ func (s *Server) rhBroker() *live.RobinhoodBroker {
 	return live.NewRobinhoodBroker(s.rh())
 }
 
-
+// testBuyQuantity mirrors live.Engine.TestBuy's ceiling for the Robinhood test
+// buy: a whole number of shares, 1 by default, raised only through the env var
+// and never above the hard limit of 100. This endpoint sends a real market
+// order, so it must not be looser than the Webull one.
+func testBuyQuantity(raw float64, envKey string) (float64, error) {
+	qty := raw
+	if qty <= 0 {
+		qty = 1
+	}
+	if qty != math.Trunc(qty) {
+		return 0, fmt.Errorf("Test buy quantity must be a positive integer")
+	}
+	maxQty := 1.0
+	if v := strings.TrimSpace(os.Getenv(envKey)); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			if n > 100 {
+				n = 100
+			}
+			maxQty = float64(n)
+		}
+	}
+	if qty > maxQty {
+		return 0, fmt.Errorf("Test buy quantity must be between 1 and %.0f", maxQty)
+	}
+	return qty, nil
+}

@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -24,7 +25,7 @@ type DB struct {
 }
 
 func Open(path string) (*DB, error) {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return nil, err
 	}
 	sqlDB, err := sql.Open("sqlite", path+"?_pragma=journal_mode(WAL)&_pragma=foreign_keys(ON)&_pragma=busy_timeout(5000)")
@@ -41,7 +42,25 @@ func Open(path string) (*DB, error) {
 		sqlDB.Close()
 		return nil, err
 	}
+	restrictDBPerms(path)
 	return d, nil
+}
+
+// restrictDBPerms tightens the database files to owner-only. The file holds the
+// Webull token and the Robinhood OAuth pair in the clear, so it must not be
+// looser than the .env that carries the same secrets (0600 on the VPS); umask
+// alone usually leaves it world-readable. Best effort: a permission we cannot
+// set is not a reason to refuse to start. The -wal and -shm siblings are
+// created by SQLite itself and carry the same data.
+func restrictDBPerms(path string) {
+	if err := os.Chmod(filepath.Dir(path), 0o700); err != nil && !os.IsNotExist(err) {
+		log.Printf("store: chmod db dir: %v", err)
+	}
+	for _, p := range []string{path, path + "-wal", path + "-shm"} {
+		if err := os.Chmod(p, 0o600); err != nil && !os.IsNotExist(err) {
+			log.Printf("store: chmod %s: %v", filepath.Base(p), err)
+		}
+	}
 }
 
 func (d *DB) Close() error { return d.SQL.Close() }
@@ -727,7 +746,7 @@ func defaultSettings() map[string]any {
 				"webull":    map[string]any{"enabled": false},
 				"robinhood": map[string]any{"enabled": false},
 			},
-			"maxSlippageBps":   25, "lastModifiedAt": nil,
+			"maxSlippageBps": 25, "lastModifiedAt": nil,
 		},
 	}
 }
