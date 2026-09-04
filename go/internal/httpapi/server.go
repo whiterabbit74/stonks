@@ -202,6 +202,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/autotrade/webull/account", wrap(s.handleWebullAccount))
 	s.mux.HandleFunc("GET /api/autotrade/webull/dashboard", wrap(s.handleWebullDashboard))
 	s.mux.HandleFunc("GET /api/autotrade/logs", wrap(s.handleAutoLogs))
+	s.mux.HandleFunc("POST /api/autotrade/trackers/{clientOrderId}/resolve", wrap(s.handleTrackerResolve))
+	s.mux.HandleFunc("POST /api/autotrade/trackers/persist-block/{broker}/resolve", wrap(s.handleTrackerPersistBlockResolve))
 	s.mux.HandleFunc("POST /api/autotrade/webull/close-position", wrap(s.handleWebullClose))
 	s.mux.HandleFunc("POST /api/autotrade/webull/test-buy", wrap(s.handleWebullTestBuy))
 	s.mux.HandleFunc("POST /api/autotrade/webull/token/create", wrap(s.handleTokenCreate))

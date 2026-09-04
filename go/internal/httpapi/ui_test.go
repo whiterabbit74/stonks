@@ -312,3 +312,31 @@ func TestVanillaUIPagesHTTP(t *testing.T) {
 		t.Errorf("GET /tickers.json returned %d tickers, want 192", len(catalog))
 	}
 }
+
+// TestBrokerCloseHandlerDispatchesByKind guards P0-3: the "Закрыть" button on
+// the Robinhood positions tab must send its SELL to Robinhood, not Webull.
+// pageBroker's [data-close-pos] handler is shared by /webull and /robinhood,
+// so the handler has to branch on the same `kind` the tab render used rather
+// than unconditionally calling the Webull close endpoint.
+func TestBrokerCloseHandlerDispatchesByKind(t *testing.T) {
+	app, err := os.ReadFile(filepath.Join("..", "..", "web", "js", "app.js"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := string(app)
+	start := strings.Index(a, "querySelectorAll('[data-close-pos]')")
+	if start < 0 {
+		t.Fatal("data-close-pos handler not found")
+	}
+	end := strings.Index(a[start:], "}));")
+	if end < 0 {
+		t.Fatal("data-close-pos handler not closed")
+	}
+	handler := a[start : start+end]
+	if !strings.Contains(handler, "API.rhClose(") {
+		t.Fatal("data-close-pos handler never calls API.rhClose - Robinhood positions cannot be closed on Robinhood")
+	}
+	if !strings.Contains(handler, "kind === 'robinhood'") {
+		t.Fatal("data-close-pos handler must branch on the same `kind` pageBroker used to render the tab")
+	}
+}

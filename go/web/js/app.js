@@ -736,6 +736,9 @@
     const m = { finnhub: 'Finnhub', alpha_vantage: 'Alpha Vantage', twelve_data: 'Twelve Data', polygon: 'Polygon', webull: 'Webull', robinhood: 'Robinhood' };
     return m[id] || id || 'Finnhub';
   }
+  function brokerLabel(id) {
+    return id === 'robinhood' ? 'Robinhood' : (id === 'webull' ? 'Webull' : (id || '—'));
+  }
   function levOptions(selected) {
     const cur = Number(selected) || 200;
     return LEV_PCT.map((n) => {
@@ -2430,7 +2433,22 @@
         seen.add(id);
         return true;
       }).slice(0, 20);
-      const pendingRows = tracked.map((o) => `<tr><td>${esc(o.symbol || '')}</td><td>${esc(o.action || '')}</td><td>${esc(o.status || '')}</td><td>${esc(o.quantity ?? '')}</td><td>${esc(o.startedAt || o.started_at || '')}</td></tr>`).join('');
+      const stuckStatuses = ['execution_unknown', 'unresolved'];
+      const pendingRows = tracked.map((o) => {
+        const stuck = stuckStatuses.includes(o.status);
+        const oid = esc(o.clientOrderId || '');
+        const actions = stuck && o.clientOrderId
+          ? `<button type="button" data-resolve-tracker="${oid}" data-resolve-outcome="filled" class="text-xs text-emerald-600 mr-2">Исполнено у брокера</button><button type="button" data-resolve-tracker="${oid}" data-resolve-outcome="absent" class="text-xs text-red-600">Заявки нет</button>`
+          : '';
+        return `<tr class="${stuck ? 'bg-amber-50 dark:bg-amber-950/30' : ''}"><td>${esc(o.symbol || '')}</td><td>${esc(o.action || '')}</td><td class="${stuck ? 'font-semibold text-amber-700 dark:text-amber-400' : ''}">${esc(o.status || '')}</td><td>${esc(o.quantity ?? '')}</td><td>${esc(o.startedAt || o.started_at || '')}</td><td>${actions}</td></tr>`;
+      }).join('');
+      const persistBlocks = (state.settings && state.settings.trackerPersistFail) || {};
+      const persistBlockedBrokers = Object.keys(persistBlocks).filter((b) => persistBlocks[b]);
+      const persistBlockBanner = persistBlockedBrokers.length ? `<div class="mt-3 space-y-2">${persistBlockedBrokers.map((b) => `
+        <div class="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300 flex items-center justify-between gap-3">
+          <span>Входы у брокера <b>${esc(brokerLabel(b))}</b> заблокированы: заявка ушла, но трекер не сохранился. Проверьте у брокера вручную, затем снимите блокировку.</span>
+          <button type="button" data-clear-persist-block="${esc(b)}" class="btn-secondary min-h-0 py-1 whitespace-nowrap">Снять блокировку</button>
+        </div>`).join('')}</div>` : '';
       const mode = CAPITAL_MODES.find((m) => m.value === (ac.entryCapitalMode || 'standard_safe')) || CAPITAL_MODES[0];
       const lastRes = (st.state && st.state.lastResult && st.state.lastResult.decision) || dec;
       body = `<div class="space-y-4">
@@ -2489,7 +2507,9 @@
         </div>
         <div class="rounded-lg border border-gray-200 p-4 dark:border-gray-700">
           <h3 class="font-semibold mb-2">Pending / last tracked orders</h3>
-          ${pendingRows ? `<div class="overflow-auto"><table class="trades"><thead><tr><th>Тикер</th><th>Action</th><th>Статус</th><th>Qty</th><th>Старт</th></tr></thead><tbody>${pendingRows}</tbody></table></div>` : '<p class="text-sm text-gray-500">Tracked orders пока нет</p>'}
+          ${persistBlockBanner}
+          ${pendingRows ? `<div class="overflow-auto mt-2"><table class="trades"><thead><tr><th>Тикер</th><th>Action</th><th>Статус</th><th>Qty</th><th>Старт</th><th>Действие</th></tr></thead><tbody>${pendingRows}</tbody></table></div>` : '<p class="text-sm text-gray-500 mt-2">Tracked orders пока нет</p>'}
+          <p class="mt-2 text-xs text-gray-500">execution_unknown / unresolved блокируют новые входы у брокера и требуют ручного разбора: проверьте заявку у брокера и нажмите «Исполнено у брокера» либо «Заявки нет».</p>
         </div>
       </div>`;
     } else if (tab === 'monitor') {
@@ -3640,9 +3660,10 @@
       return;
     }
     if (p === '/webull' || p === '/robinhood') {
+      const kind = p === '/robinhood' ? 'robinhood' : 'webull';
       if (!state.loaded.broker) {
         const rh = p === '/robinhood';
-        const [bt, tok, ac, dash, logs, st, w, cons, health, rhst] = await Promise.all([
+        const [bt, tok, ac, dash, logs, st, w, cons, health, rhst, settings] = await Promise.all([
           API.brokerTrades().catch(() => []),
           rh ? API.rhStatus().catch((e) => e.data || {}) : API.tokenStatus().catch((e) => e.data || { present: false, hasToken: false }),
           API.autoConfig().catch(() => ({})),
@@ -3653,6 +3674,7 @@
           API.consistency().catch(() => ({ issues: [] })),
           API.brokersHealth().catch(() => []),
           rh ? API.rhStatus().catch(() => ({})) : Promise.resolve({}),
+          API.settings().catch(() => ({})),
         ]);
         state.brokerHealth = Array.isArray(health) ? health : [];
         state.rhStatus = rhst || tok || {};
@@ -3662,6 +3684,7 @@
         state.dashboard = dash || {};
         state.autoLogs = logs || { logs: [] };
         state.autoStatus = st;
+        state.settings = settings || {};
         if (Array.isArray(w)) state.watches = w;
         state.consistency = cons || state.consistency || { issues: [] };
         const symbols = (state.watches || []).map((x) => x.symbol).filter(Boolean);
@@ -3864,8 +3887,34 @@
       });
       document.getElementById('auto-refresh')?.addEventListener('click', () => { reloadBroker(); });
       root.querySelectorAll('[data-close-pos]').forEach((b) => b.addEventListener('click', async () => {
-        if (!window.confirm('Закрыть позицию ' + b.dataset.closePos + ' рыночным ордером в Webull?')) return;
-        try { const r = await API.closePosition(b.dataset.closePos); toast(r.submitted || r.success ? 'Ордер на закрытие отправлен' : errText({ message: r.error || 'не отправлен', data: r })); await reloadBroker(); } catch (err) { toast(errText(err)); }
+        if (!window.confirm('Закрыть позицию ' + b.dataset.closePos + ' рыночным ордером в ' + brokerLabel(kind) + '?')) return;
+        try {
+          const r = kind === 'robinhood' ? await API.rhClose(b.dataset.closePos) : await API.closePosition(b.dataset.closePos);
+          toast(r.submitted || r.success ? 'Ордер на закрытие отправлен' : errText({ message: r.error || 'не отправлен', data: r }));
+          await reloadBroker();
+        } catch (err) { toast(errText(err)); }
+      }));
+      root.querySelectorAll('[data-resolve-tracker]').forEach((b) => b.addEventListener('click', async () => {
+        const clientOrderId = b.dataset.resolveTracker;
+        const outcome = b.dataset.resolveOutcome;
+        const label = outcome === 'filled' ? 'Пометить исполненной у брокера' : 'Пометить как «заявки нет»';
+        if (!window.confirm(label + ' (' + clientOrderId + ')?\nЭто снимет блокировку входов по этому трекеру.')) return;
+        const note = window.prompt('Причина (для журнала autotrade_logs):', outcome === 'filled' ? 'Подтверждено у брокера вручную' : 'У брокера заявки нет') || '';
+        try {
+          await API.resolveTracker(clientOrderId, { outcome, note });
+          toast('Трекер разрешён: ' + outcome);
+          await reloadBroker();
+        } catch (err) { toast(errText(err)); }
+      }));
+      root.querySelectorAll('[data-clear-persist-block]').forEach((b) => b.addEventListener('click', async () => {
+        const broker = b.dataset.clearPersistBlock;
+        if (!window.confirm('Снять блокировку входов у брокера ' + brokerLabel(broker) + '?\nУбедитесь, что заявка проверена вручную.')) return;
+        const note = window.prompt('Причина снятия блокировки (для журнала autotrade_logs):', 'Проверено у брокера вручную') || '';
+        try {
+          await API.clearTrackerPersistBlock(broker, note);
+          toast('Блокировка снята: ' + brokerLabel(broker));
+          await reloadBroker();
+        } catch (err) { toast(errText(err)); }
       }));
     }
 

@@ -221,6 +221,44 @@ func (s *Server) handleWebullTestBuy(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{"success": true, "submitted": true, "clientOrderId": res.ClientOrderID, "result": res})
 }
 
+func (s *Server) handleTrackerResolve(w http.ResponseWriter, r *http.Request) {
+	clientOrderID := r.PathValue("clientOrderId")
+	var body struct {
+		Outcome     string  `json:"outcome"`
+		FilledPrice float64 `json:"filledPrice"`
+		FilledQty   float64 `json:"filledQty"`
+		Note        string  `json:"note"`
+	}
+	if !s.requireJSON(w, r, &body) {
+		return
+	}
+	t, err := s.liveEng().ResolveTracker(clientOrderID, body.Outcome, body.Note, body.FilledPrice, body.FilledQty)
+	if err != nil {
+		code := 400
+		if err.Error() == "tracker not found" {
+			code = 404
+		}
+		writeJSON(w, code, map[string]any{"error": err.Error()})
+		return
+	}
+	writeJSON(w, 200, map[string]any{"ok": true, "tracker": t})
+}
+
+func (s *Server) handleTrackerPersistBlockResolve(w http.ResponseWriter, r *http.Request) {
+	broker := r.PathValue("broker")
+	var body struct {
+		Note string `json:"note"`
+	}
+	if !s.requireJSON(w, r, &body) {
+		return
+	}
+	if err := s.liveEng().ClearTrackerPersistBlock(broker, body.Note); err != nil {
+		writeJSON(w, 400, map[string]any{"error": err.Error()})
+		return
+	}
+	writeJSON(w, 200, map[string]any{"ok": true, "broker": broker})
+}
+
 func (s *Server) handleTokenCreate(w http.ResponseWriter, r *http.Request) {
 	data, err := s.liveEng().CreateToken()
 	if err != nil {

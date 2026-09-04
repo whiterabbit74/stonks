@@ -602,6 +602,44 @@ func (e *Engine) trackerPersistBlocked(broker string) bool {
 	return asBool(blocks[broker])
 }
 
+// ClearTrackerPersistBlock lifts the trackerPersistFail guard startTracking
+// sets for a broker when SaveOrderTracker fails (P1-8): the safeguard itself
+// is correct (an order went out with no local record of it, so entries must
+// not continue blind), but nothing used to be able to undo it short of
+// editing settings in the database by hand. note is mandatory and is
+// recorded in autotrade_logs so the reason for lifting the block survives.
+func (e *Engine) ClearTrackerPersistBlock(broker, note string) error {
+	if e == nil {
+		return fmt.Errorf("engine not configured")
+	}
+	broker = strings.TrimSpace(broker)
+	if broker == "" {
+		broker = "webull"
+	}
+	note = strings.TrimSpace(note)
+	if note == "" {
+		return fmt.Errorf("note is required")
+	}
+	if !e.trackerPersistBlocked(broker) {
+		return fmt.Errorf("tracker persist block is not set for %s", broker)
+	}
+	e.mu.Lock()
+	if e.trackerPersistFail != nil {
+		delete(e.trackerPersistFail, broker)
+	}
+	e.mu.Unlock()
+	if e.DB != nil {
+		settings := e.DB.Settings()
+		if blocks, ok := settings["trackerPersistFail"].(map[string]any); ok {
+			delete(blocks, broker)
+			settings["trackerPersistFail"] = blocks
+			_ = e.DB.SaveSettings(settings)
+		}
+	}
+	e.logAuto("tracker_persist_block_cleared", "", map[string]any{"broker": broker, "note": note, "author": "operator"})
+	return nil
+}
+
 // t1BrokerReconcile checks live broker books before a T-1 Execute, including
 // a retry after an expired lease. A working order or a failed read must not
 // mint a second place.

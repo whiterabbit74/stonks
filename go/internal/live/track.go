@@ -136,6 +136,31 @@ func (e *Engine) expireStaleTrackers() {
 		dk := fmt.Sprint(t["dateKey"])
 		staleDay := dk != "" && dk != "<nil>" && today != "" && dk < today
 		maxed := attempts >= 64
+		if fmt.Sprint(t["status"]) == "execution_unknown" {
+			// execution_unknown must not expire on a timer the way a normal
+			// stuck tracker does: expiring it here would make finalizeTracker
+			// delete a phantom journal row for an order that may well have
+			// filled. It leaves execution_unknown only when the broker gives
+			// an actual (non-error) answer - handled by pollTracker below,
+			// which finalizes the tracker itself when that happens - or, once
+			// the day has gone stale without one, via the operator's explicit
+			// resolve action. staleDay just stops the automatic retries and
+			// hands it to that ground rather than looping forever.
+			if !staleDay {
+				continue
+			}
+			id := fmt.Sprint(t["clientOrderId"])
+			e.pollTracker(t)
+			after := e.DB.GetOrderTracker(id)
+			if after == nil || fmt.Sprint(after["status"]) != "execution_unknown" {
+				// The broker answered and pollTracker already finalized the
+				// tracker (filled / terminal_absent / etc).
+				continue
+			}
+			e.finalizeTracker(t, "unresolved")
+			n++
+			continue
+		}
 		if !staleDay && !maxed {
 			continue
 		}
@@ -364,6 +389,70 @@ func (e *Engine) markExecutionUnknown(t map[string]any, cause error) {
 	_ = e.Send(e.chat(), fmt.Sprintf(
 		"<b>Статус заявки неизвестен</b>\n%s • %s\nclientOrderId: %s\nЛистинг брокера не подтвердил заявку. Повтор не отправлен, вход заблокирован.",
 		t["symbol"], t["action"], id))
+}
+
+// resolvableTrackerStatus reports whether ResolveTracker may act on a
+// tracker in this status: anything that has not already reached a
+// certain, automatically-determined outcome. execution_unknown and
+// unresolved are exactly the states an operator has to be able to close
+// out by hand (P0-2); a merely slow "working"/"submitted" tracker is left
+// resolvable too so a stuck cycle is never a true dead end.
+func resolvableTrackerStatus(status string) bool {
+	switch status {
+	case "filled", "cancelled", "canceled", "rejected", "expired", "terminal_absent":
+		return false
+	}
+	return true
+}
+
+// ResolveTracker lets an operator manually close out a tracker the
+// automatic wheel could not resolve on its own - most commonly
+// execution_unknown (P0-2) or its stale-day dead end, unresolved - after
+// checking the order at the broker by hand. outcome "absent" behaves like a
+// confirmed terminal_absent (finalizeTracker -> recordFill -> deletePhantom);
+// outcome "filled" behaves like a confirmed fill from a synthetic detail
+// payload, so recordFill journals it exactly as a normal fill would. note is
+// mandatory and is recorded in autotrade_logs alongside the outcome.
+func (e *Engine) ResolveTracker(clientOrderID, outcome, note string, filledPrice, filledQty float64) (map[string]any, error) {
+	if e == nil || e.DB == nil {
+		return nil, fmt.Errorf("engine not configured")
+	}
+	clientOrderID = strings.TrimSpace(clientOrderID)
+	if clientOrderID == "" {
+		return nil, fmt.Errorf("clientOrderId required")
+	}
+	note = strings.TrimSpace(note)
+	if note == "" {
+		return nil, fmt.Errorf("note is required")
+	}
+	if outcome != "filled" && outcome != "absent" {
+		return nil, fmt.Errorf(`outcome must be "filled" or "absent"`)
+	}
+	t := e.DB.GetOrderTracker(clientOrderID)
+	if t == nil {
+		return nil, fmt.Errorf("tracker not found")
+	}
+	if !resolvableTrackerStatus(fmt.Sprint(t["status"])) {
+		return nil, fmt.Errorf("tracker already resolved")
+	}
+	corr := e.metaCorr(clientOrderID)
+	if outcome == "absent" {
+		e.finalizeTracker(t, "terminal_absent")
+	} else {
+		detail := map[string]any{}
+		if filledPrice > 0 {
+			detail["filled_price"] = filledPrice
+		}
+		if filledQty > 0 {
+			detail["filled_qty"] = filledQty
+		}
+		e.finalizeTrackerStatus(t, detail, "filled")
+	}
+	e.logAuto("tracker_resolved_manually", corr, map[string]any{
+		"clientOrderId": clientOrderID, "outcome": outcome, "note": note, "author": "operator",
+		"symbol": t["symbol"], "action": t["action"], "broker": t["broker"],
+	})
+	return e.DB.GetOrderTracker(clientOrderID), nil
 }
 
 func (e *Engine) finalizeTracker(t map[string]any, status string) {

@@ -109,4 +109,6 @@ const API = {
   rhTools: () => API.get('/api/autotrade/robinhood/tools'),
   rhClose: (symbol) => API.post('/api/autotrade/robinhood/close-position', { symbol }),
   rhTestBuy: (symbol, quantity) => API.post('/api/autotrade/robinhood/test-buy', { symbol: symbol || 'AAL', quantity: quantity || 1 }),
+  resolveTracker: (clientOrderId, body) => API.post('/api/autotrade/trackers/' + encodeURIComponent(clientOrderId) + '/resolve', body || {}),
+  clearTrackerPersistBlock: (broker, note) => API.post('/api/autotrade/trackers/persist-block/' + encodeURIComponent(broker) + '/resolve', { note: note || '' }),
 };

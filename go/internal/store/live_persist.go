@@ -242,8 +242,14 @@ func (d *DB) IsOwnOrder(clientOrderID string) bool {
 }
 
 func (d *DB) ListPendingTrackers() ([]map[string]any, error) {
+	// execution_unknown stays in this list so PollTrackers/ResumeTrackers/
+	// expireStaleTrackers keep polling it: the broker's listing usually
+	// catches up and the next OrderDetail resolves the status on its own.
+	// 'unresolved' is the terminal dead-end expireStaleTrackers falls back to
+	// when even that never happens - it stops being polled and can only be
+	// cleared through POST /api/autotrade/trackers/{clientOrderId}/resolve.
 	rows, err := d.SQL.Query(`SELECT client_order_id, symbol, action, status, quantity, source, date_key, started_at, attempts, COALESCE(broker,'webull')
-        FROM order_trackers WHERE status NOT IN ('filled','cancelled','canceled','rejected','expired','terminal_absent','execution_unknown') ORDER BY started_at DESC`)
+        FROM order_trackers WHERE status NOT IN ('filled','cancelled','canceled','rejected','expired','terminal_absent','unresolved') ORDER BY started_at DESC`)
 	if err != nil {
 		return nil, err
 	}
