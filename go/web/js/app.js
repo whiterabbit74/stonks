@@ -2508,9 +2508,10 @@
               <div class="flex justify-between gap-3"><dt class="text-gray-500">Заявки</dt><dd>рыночные, DAY, основная сессия</dd></div>
               <div class="flex justify-between gap-3"><dt class="text-gray-500">Окно исполнения</dt><dd>${esc(ac.executionWindowSeconds ?? 90)} сек до закрытия</dd></div>
               <div class="flex justify-between gap-3"><dt class="text-gray-500">Порог проскальзывания</dt><dd>${esc(ac.maxSlippageBps ?? 25)} bps</dd></div>
+              <div class="flex justify-between gap-3"><dt class="text-gray-500">Резерв на вход</dt><dd>не меньше ${esc((Math.max(ac.entryReservePct ?? 0.005, 0.005, (ac.maxSlippageBps ?? 25) / 10000) * 100).toFixed(2))}%</dd></div>
             </dl>
             <p class="text-xs text-gray-500 mt-2">${esc(mode.hint)}. Торгуются тикеры со страницы «Мониторинг».${ac.lastModifiedAt ? (' Обновлено: ' + esc(formatDateTimeET(ac.lastModifiedAt)) + ' ET') : ''}</p>
-            <p class="text-xs text-gray-500 mt-2">Ни окно исполнения, ни порог проскальзывания не являются предохранителями сделки: окно не применяется к регулярному T-1 (см. вкладку «Настройки» → «Автоторговля»), а проскальзывание лишь присылает предупреждение в Telegram постфактум — заявка рыночная и отправляется в любом случае.</p>
+            <p class="text-xs text-gray-500 mt-2">Окно исполнения не является предохранителем сделки: к регулярному T-1 оно не применяется (он и так привязан к закрытию), см. вкладку «Настройки» → «Автоторговля». Порог проскальзывания — уже не только уведомление постфактум: перед расчётом количества акций из доступных средств вычитается резерв, равный максимуму из порога проскальзывания, настроенного резерва на вход и жёсткого минимума 0.5%. Заявка при этом остаётся рыночной и отправляется в любом случае — резерв защищает не саму заявку, а точность её размера.</p>
           </div>
           <div class="mt-4 flex flex-wrap gap-2">
             <button type="button" id="auto-enable" class="btn-primary min-h-0 py-2">${ac.enabled ? 'Выключить автоторговлю' : 'Включить автоторговлю'}</button>
@@ -2736,9 +2737,10 @@
           <div class="grid gap-3 sm:grid-cols-2">
             <label class="text-sm">Окно исполнения, сек<input name="autoWindow" type="number" min="15" step="1" value="${esc(ac.executionWindowSeconds ?? 90)}" class="field mt-1" /></label>
             <label class="text-sm">Порог проскальзывания, bps<input name="autoSlippage" type="number" min="0" max="1000" step="1" value="${esc(ac.maxSlippageBps ?? 25)}" class="field mt-1" /></label>
+            <label class="text-sm">Резерв на вход, %<input name="autoEntryReserve" type="number" min="0.5" max="10" step="0.1" value="${esc(((ac.entryReservePct ?? 0.005) * 100).toFixed(2))}" class="field mt-1" /></label>
           </div>
           <p class="text-xs text-gray-500 mt-1">Окно: планировщик и кнопка «Исполнить» отправят заявку, только если до закрытия осталось не больше этого времени, — страховка от случайной сделки среди дня. Регулярный запуск в T-1 через это окно не проходит: он и так привязан к закрытию.</p>
-          <p class="text-xs text-gray-500 mt-1">Проскальзывание: заявку не ограничивает (она рыночная и должна исполниться), но если цена исполнения ушла от цены решения дальше порога, в Telegram придёт предупреждение. 25 bps = 0.25%.</p>
+          <p class="text-xs text-gray-500 mt-1">Проскальзывание больше не только предупреждает: заявку оно не ограничивает (она рыночная и должна исполниться), но перед расчётом количества акций из доступных средств вычитается резерв — не меньше 0.5%, не меньше выставленного здесь значения и не меньше самого порога проскальзывания (25 bps = 0.25% резерва). Так количество акций считается не впритык к покупательной способности: движение цены между котировкой на T-1 и фактическим исполнением не даст брокеру отклонить заявку по нехватке средств.</p>
         </div>
         <p class="text-sm text-gray-600">Состояние брокеров — на страницах <a href="/webull" data-nav class="text-indigo-600">Webull</a> и <a href="/robinhood" data-nav class="text-indigo-600">Robinhood</a>.</p>`;
     }
@@ -4002,6 +4004,7 @@
             highIBS: Number(fd.get('autoHighIBS')),
             executionWindowSeconds: Number(fd.get('autoWindow')),
             maxSlippageBps: Number(fd.get('autoSlippage')),
+            entryReservePct: Number(fd.get('autoEntryReserve')) / 100,
             brokers: {
               webull: { enabled: !!form.webullEnabled?.checked, allowNewEntries: !!form.webullAllowEntries?.checked, allowExits: !!form.webullAllowExits?.checked },
               robinhood: { enabled: !!form.robinhoodEnabled?.checked, allowNewEntries: !!form.robinhoodAllowEntries?.checked, allowExits: !!form.robinhoodAllowExits?.checked },

@@ -16,7 +16,7 @@ var autoTradingBoolFields = []string{
 }
 
 var autoTradingNumberFields = []string{
-	"lowIBS", "highIBS", "executionWindowSeconds", "maxSlippageBps",
+	"lowIBS", "highIBS", "executionWindowSeconds", "maxSlippageBps", "entryReservePct",
 }
 
 // autoTradingRemovedFields are keys older builds accepted. They are dropped on
@@ -137,6 +137,12 @@ func sanitizeAutoTradingConfig(input, current map[string]any, now time.Time) map
 	}
 	if f, ok := finiteNumber(next["maxSlippageBps"]); ok {
 		next["maxSlippageBps"] = clamp(f, 0, 1000)
+	}
+	// entryReservePct is the operator-configurable floor for the entry sizing
+	// reserve (P1-6): never below the hard 0.5% minimum, capped at 10% so a
+	// typo cannot starve sizing down to a handful of shares.
+	if f, ok := finiteNumber(next["entryReservePct"]); ok {
+		next["entryReservePct"] = clamp(f, minEntryReservePct, 0.1)
 	}
 	low, lok := finiteNumber(next["lowIBS"])
 	high, hok := finiteNumber(next["highIBS"])

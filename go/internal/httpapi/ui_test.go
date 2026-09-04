@@ -416,8 +416,10 @@ func TestAutotradeTabSplitsSharedAndBrokerParts(t *testing.T) {
 
 // TestAutotradeCardDisclaimsExecutionWindowAndSlippage covers P2-4: the
 // "Окно исполнения" / "Порог проскальзывания" card on the autotrade tab must
-// carry the same caveat as the settings page - neither is a real safety
-// guard for the regular T-1 run.
+// say what each setting actually does. The execution window still does not
+// apply to the regular T-1 run; the slippage threshold stopped being a
+// post-hoc notification once P1-6 made it floor the entry sizing reserve, and
+// the roadmap requires the text to follow that change.
 func TestAutotradeCardDisclaimsExecutionWindowAndSlippage(t *testing.T) {
 	app, err := os.ReadFile(filepath.Join("..", "..", "web", "js", "app.js"))
 	if err != nil {
@@ -433,7 +435,13 @@ func TestAutotradeCardDisclaimsExecutionWindowAndSlippage(t *testing.T) {
 		t.Fatal("autotrade tab body not bounded")
 	}
 	section := a[start : start+end]
-	if !strings.Contains(section, "не являются предохранителями сделки") {
-		t.Fatal("autotrade tab card must disclaim that the execution window and slippage threshold are not real trade safeguards")
+	if !strings.Contains(section, "Окно исполнения не является предохранителем сделки") {
+		t.Fatal("autotrade tab card must say the execution window is not a trade safeguard")
+	}
+	if !strings.Contains(section, "к регулярному T-1 оно не применяется") {
+		t.Fatal("autotrade tab card must say the execution window does not apply to the regular T-1 run")
+	}
+	if !strings.Contains(section, "резерв") || !strings.Contains(section, "проскальзывания") {
+		t.Fatal("autotrade tab card must explain that the slippage threshold now floors the entry sizing reserve")
 	}
 }

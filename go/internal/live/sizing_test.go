@@ -25,14 +25,16 @@ func TestComputeOrderQuantityMatchesNode(t *testing.T) {
 		t.Fatalf("standard_safe qty=%v want 1", q)
 	}
 
+	// cash_100 has no reserve of its own, but P1-6 floors every mode's reserve
+	// at minEntryReservePct, which trims one more share off the naive figure.
 	cash := map[string]any{"entryCapitalMode": "cash_100"}
 	funds, _, _, err = resolveEntryBalanceSizing(payload, cash, nil, nil)
 	q, err = ComputeOrderQuantity(250.23, cash, funds)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if q != 2 {
-		t.Fatalf("cash_100 qty=%v want 2", q)
+	if q != 1 {
+		t.Fatalf("cash_100 qty=%v want 1", q)
 	}
 
 	marginPayload := map[string]any{
@@ -56,10 +58,68 @@ func TestComputeOrderQuantityMatchesNode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if q != 4 {
-		t.Fatalf("margin_200 qty=%v want 4", q)
+	if q != 3 {
+		t.Fatalf("margin_200 qty=%v want 3", q)
 	}
 
+}
+
+// TestComputeOrderQuantityReservesFundsInEveryCapitalMode is the P1-6
+// regression: every capital mode must leave at least minEntryReservePct of
+// availableFunds unspent, so a quote-to-fill price move does not bounce the
+// order for insufficient buying power. Before this fix only standard_safe
+// carried a reserve; the margin and cash_100 modes sized to the last cent.
+func TestComputeOrderQuantityReservesFundsInEveryCapitalMode(t *testing.T) {
+	const availableFunds = 10000.0
+	const currentPrice = 37.13 // an odd price so flooring actually bites
+
+	for mode := range capitalModes {
+		cfg := map[string]any{"entryCapitalMode": mode}
+		q, err := ComputeOrderQuantity(currentPrice, cfg, availableFunds)
+		if err != nil {
+			t.Fatalf("%s: %v", mode, err)
+		}
+		limit := availableFunds * (1 - minEntryReservePct)
+		if spend := q * currentPrice; spend > limit {
+			t.Fatalf("%s: qty*price=%v exceeds reserved limit %v (availableFunds=%v)", mode, spend, limit, availableFunds)
+		}
+	}
+}
+
+// TestComputeOrderQuantityHonorsConfiguredReserveAndSlippage covers the two
+// levers P1-6 wires into sizing: an operator-set entryReservePct floor, and
+// maxSlippageBps, which used to be reported only and now also floors the
+// reserve (max(minReserve, maxSlippageBps/10000)).
+func TestComputeOrderQuantityHonorsConfiguredReserveAndSlippage(t *testing.T) {
+	const availableFunds = 10000.0
+	const currentPrice = 37.13
+
+	cfg := map[string]any{"entryCapitalMode": "cash_100", "entryReservePct": 0.05}
+	q, err := ComputeOrderQuantity(currentPrice, cfg, availableFunds)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if limit := availableFunds * (1 - 0.05); q*currentPrice > limit {
+		t.Fatalf("entryReservePct not honored: qty*price=%v > %v", q*currentPrice, limit)
+	}
+
+	cfg = map[string]any{"entryCapitalMode": "cash_100", "maxSlippageBps": 300.0} // 3%
+	q, err = ComputeOrderQuantity(currentPrice, cfg, availableFunds)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if limit := availableFunds * (1 - 0.03); q*currentPrice > limit {
+		t.Fatalf("maxSlippageBps not tied into reserve: qty*price=%v > %v", q*currentPrice, limit)
+	}
+}
+
+// TestStandardSafeReserveNotWeakened locks in that P1-6's floor only ever
+// raises a mode's reserve, never lowers standard_safe's existing 2.2%.
+func TestStandardSafeReserveNotWeakened(t *testing.T) {
+	_, reservePct := capitalModeConfig(map[string]any{"entryCapitalMode": "standard_safe"})
+	if reservePct < 0.022 {
+		t.Fatalf("standard_safe reserve weakened to %v, want >= 0.022", reservePct)
+	}
 }
 
 // An exit sells everything the broker holds. A split can leave a fractional

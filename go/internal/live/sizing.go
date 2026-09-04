@@ -22,6 +22,13 @@ var capitalModes = map[string]struct {
 	"margin_200":    {2, 0},
 }
 
+// minEntryReservePct is the hard floor for the entry sizing reserve, applied
+// to every capital mode (P1-6). A quote read at T-1 and an order filled a
+// moment later rarely trade at the exact same price; without a reserve the
+// margin modes size to the last cent of buying power and the broker rejects
+// the order for insufficient funds right when there is no time left to retry.
+const minEntryReservePct = 0.005
+
 func asFloat(v any) float64 {
 	switch n := v.(type) {
 	case float64:
@@ -107,6 +114,12 @@ func preferredAsset(root map[string]any) map[string]any {
 	return first
 }
 
+// capitalModeConfig resolves the buying-power multiplier and the effective
+// entry reserve for the configured capital mode. The reserve is never below
+// minEntryReservePct, never below the operator-configured entryReservePct,
+// and never below maxSlippageBps expressed as a fraction: the slippage
+// threshold used to be reported only, now it also floors the reserve it
+// warns about (P1-6, ties into P2-4).
 func capitalModeConfig(autoTrading map[string]any) (multiplier, reservePct float64) {
 	mode := ""
 	if autoTrading != nil {
@@ -116,7 +129,19 @@ func capitalModeConfig(autoTrading map[string]any) (multiplier, reservePct float
 	if !ok {
 		cfg = capitalModes["standard_safe"]
 	}
-	return cfg.multiplier, cfg.reservePct
+	reservePct = cfg.reservePct
+	if reservePct < minEntryReservePct {
+		reservePct = minEntryReservePct
+	}
+	if autoTrading != nil {
+		if configured := asFloat(autoTrading["entryReservePct"]); configured > reservePct {
+			reservePct = configured
+		}
+		if slippage := asFloat(autoTrading["maxSlippageBps"]) / 10000; slippage > reservePct {
+			reservePct = slippage
+		}
+	}
+	return cfg.multiplier, reservePct
 }
 
 // extractEntryFundsFromBalance reports the buying power an entry may use.
@@ -242,7 +267,14 @@ func ComputeOrderQuantity(currentPrice float64, autoTrading map[string]any, avai
 		return 0, fmt.Errorf("Unable to read available funds for balance sizing")
 	}
 	_, reservePct := capitalModeConfig(autoTrading)
-	quantity := (availableFunds / (1 + reservePct)) / currentPrice
+	// The reserve is subtracted from availableFunds before sizing, not divided
+	// into it, so the invariant qty*price <= availableFunds*(1-reservePct)
+	// holds exactly once flooring only ever rounds the quantity down further.
+	usableFunds := availableFunds * (1 - reservePct)
+	if usableFunds < 0 {
+		usableFunds = 0
+	}
+	quantity := usableFunds / currentPrice
 	// Whole shares only. Fractional entries were a switch; they are not what
 	// this strategy trades, and a fractional order is a different order type at
 	// the broker with its own fill rules.
