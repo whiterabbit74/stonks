@@ -17,7 +17,12 @@ Go trading-strategy backtester with a vanilla JS SPA (`go/web`). Historical OHLC
 ### Trading Workflow Ground Rules
 
 - Execute trades **only at the official session close**.
-- **Two minutes before the close** capture the latest IBS readings for all monitored tickers and base entry decisions on these values.
+- **Eleven minutes before the close (T-11)** send the overview: the current IBS readings for all
+  monitored tickers and the ticker that would be picked if the session ended now. This stage is
+  informational and places no orders.
+- **One minute before the close (T-1)** capture the IBS readings again and base entry and exit
+  decisions on *these* values — the ones taken at T-1, not the T-11 preview. Orders go out in the
+  same T-1 cycle.
 - At the close select the instrument with the **lowest IBS strictly below the entry threshold** (`lowIBS`, default `0.10` = 10%) from the monitoring list; if no ticker meets the threshold, skip the trade.
 - **Hold the position until it is fully closed**, then you may re-enter later the same day provided the above conditions are met again.
 - **Thresholds are strict on both sides:** entry `ibs < lowIBS`, exit `ibs > highIBS`, exactly as the backtest does it. An IBS of exactly `0.10` is not an entry. Monitor and autotrader must go through `ibs.IsEntrySignal` / `ibs.IsExitSignal` in `go/internal/ibs` so the live thresholds cannot drift away from the backtest.
