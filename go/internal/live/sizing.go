@@ -135,96 +135,42 @@ func extractEntryFundsFromBalance(root map[string]any) float64 {
 	return firstPositive(cands...)
 }
 
-func extractCashBalance(root map[string]any) float64 {
-	if root == nil {
-		return 0
-	}
-	asset := preferredAsset(root)
-	var cands []any
-	if asset != nil {
-		cands = []any{asset["cash_balance"], root["total_cash_balance"], root["cash_balance"]}
-	} else {
-		cands = []any{root["total_cash_balance"], root["cash_balance"]}
-	}
-	return firstPositive(cands...)
-}
-
-func extractNetLiquidation(root map[string]any) float64 {
-	if root == nil {
-		return 0
-	}
-	asset := preferredAsset(root)
-	var cands []any
-	if asset != nil {
-		cands = []any{asset["net_liquidation_value"], root["total_net_liquidation_value"], root["net_liquidation_value"]}
-	} else {
-		cands = []any{root["total_net_liquidation_value"], root["net_liquidation_value"]}
-	}
-	return firstPositive(cands...)
-}
-
 func extractEntryBaseCapital(root map[string]any) float64 {
-	if cash := extractCashBalance(root); cash > 0 {
-		return cash
+	if root == nil {
+		return 0
 	}
-	return extractNetLiquidation(root)
-}
-
-func positionMarketValue(m map[string]any) float64 {
-	return firstPositive(m["market_value"], m["marketValue"], m["market_val"], m["marketValueUsd"], m["last_value"])
-}
-
-func sumPositionMarketValues(positions []any) (sum float64, ok bool) {
-	ok = true
-	for _, row := range positions {
-		m := mapOf(row)
-		if m == nil {
-			continue
-		}
-		qty := firstPositive(m["quantity"], m["qty"], m["position"], m["holding"], m["total_qty"], m["totalQuantity"])
-		if qty <= 0 {
-			continue
-		}
-		v := positionMarketValue(m)
-		if v <= 0 {
-			return 0, false
-		}
-		sum += v
+	asset := preferredAsset(root)
+	var cands []any
+	if asset != nil {
+		cands = []any{asset["cash_balance"], root["total_cash_balance"], root["cash_balance"], asset["net_liquidation_value"], root["total_net_liquidation_value"], root["net_liquidation_value"]}
+	} else {
+		cands = []any{root["total_cash_balance"], root["cash_balance"], root["total_net_liquidation_value"], root["net_liquidation_value"]}
 	}
-	return sum, true
+	return firstPositive(cands...)
 }
 
-var errBuyingPowerNotABase = fmt.Errorf("no residual cash for entry (buying power is not a sizing base)")
-
-func resolveEntryBalanceSizing(balancePayload any, autoTrading map[string]any, positions []any, posErr error) (entryFunds, buyingPower, baseCapital float64, err error) {
+func resolveEntryBalanceSizing(balancePayload any, autoTrading map[string]any) (entryFunds, buyingPower, baseCapital float64) {
 	root := unwrapBalance(balancePayload)
 	buyingPower = extractEntryFundsFromBalance(root)
-	cash := extractCashBalance(root)
-	if cash > 0 {
-		baseCapital = cash
-	} else {
-		if posErr != nil {
-			return 0, buyingPower, 0, fmt.Errorf("positions unavailable: %w", posErr)
-		}
-		mv, ok := sumPositionMarketValues(positions)
-		if !ok {
-			return 0, buyingPower, 0, fmt.Errorf("position market value missing")
-		}
-		baseCapital = extractNetLiquidation(root) - mv
-	}
-	if !(baseCapital > 0) {
-		return 0, buyingPower, baseCapital, errBuyingPowerNotABase
-	}
+	baseCapital = extractEntryBaseCapital(root)
 	multiplier, _ := capitalModeConfig(autoTrading)
-	entryFunds = baseCapital * multiplier
+	multiplierBase := baseCapital
+	if !(multiplierBase > 0) {
+		multiplierBase = buyingPower
+	}
+	if multiplierBase > 0 {
+		entryFunds = multiplierBase * multiplier
+	} else {
+		entryFunds = buyingPower
+	}
 	if buyingPower > 0 && entryFunds > buyingPower {
 		entryFunds = buyingPower
 	}
-	return entryFunds, buyingPower, baseCapital, nil
+	return entryFunds, buyingPower, baseCapital
 }
 
 func EntryFunds(balancePayload any, autoTrading map[string]any) float64 {
-	funds, _, _, _ := resolveEntryBalanceSizing(balancePayload, autoTrading, nil, nil)
+	funds, _, _ := resolveEntryBalanceSizing(balancePayload, autoTrading)
 	return funds
 }
 
@@ -322,14 +268,5 @@ func (e *Engine) sizeOrder(action, symbol string, cfg map[string]any, price floa
 	if err != nil {
 		return 0, err
 	}
-	var pos []any
-	var posErr error
-	if extractCashBalance(unwrapBalance(acct)) <= 0 {
-		pos, posErr = retryBrokerRead(e, "positions", e.Broker.Positions)
-	}
-	funds, _, _, serr := resolveEntryBalanceSizing(acct, cfg, pos, posErr)
-	if serr != nil {
-		return 0, serr
-	}
-	return ComputeOrderQuantity(price, cfg, funds)
+	return ComputeOrderQuantity(price, cfg, EntryFunds(acct, cfg))
 }

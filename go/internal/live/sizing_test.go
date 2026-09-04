@@ -16,7 +16,7 @@ func TestComputeOrderQuantityMatchesNode(t *testing.T) {
 		},
 	}
 	safe := map[string]any{"entryCapitalMode": "standard_safe"}
-	funds, _, _, err := resolveEntryBalanceSizing(payload, safe, nil, nil)
+	funds, _, _ := resolveEntryBalanceSizing(payload, safe)
 	q, err := ComputeOrderQuantity(250.23, safe, funds)
 	if err != nil {
 		t.Fatal(err)
@@ -26,7 +26,7 @@ func TestComputeOrderQuantityMatchesNode(t *testing.T) {
 	}
 
 	cash := map[string]any{"entryCapitalMode": "cash_100"}
-	funds, _, _, err = resolveEntryBalanceSizing(payload, cash, nil, nil)
+	funds, _, _ = resolveEntryBalanceSizing(payload, cash)
 	q, err = ComputeOrderQuantity(250.23, cash, funds)
 	if err != nil {
 		t.Fatal(err)
@@ -48,7 +48,7 @@ func TestComputeOrderQuantityMatchesNode(t *testing.T) {
 		},
 	}
 	margin := map[string]any{"entryCapitalMode": "margin_200"}
-	funds, _, _, err = resolveEntryBalanceSizing(marginPayload, margin, nil, nil)
+	funds, _, _ = resolveEntryBalanceSizing(marginPayload, margin)
 	if funds != 1000 {
 		t.Fatalf("margin funds=%v want 1000", funds)
 	}
