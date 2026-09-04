@@ -75,7 +75,25 @@ func (b *RobinhoodBroker) PlaceMarketCfg(symbol, side string, qty float64, cfg P
 		return OrderResult{ClientOrderID: ref, Symbol: symbol, Side: side, Quantity: qty, Error: err.Error()}, err
 	}
 	detail := mapFromJSON(robinhood.ToolContentJSON(raw))
+	// The MCP call succeeding is not proof the order was accepted: check the
+	// body it returned. No recognizable order in the response (no id/state at
+	// all) means we cannot say what happened — report ambiguous rather than
+	// submitted, and let the caller decide how to resolve it. See P0-6 in
+	// AUTOTRADE_ROADMAP.md.
+	if !recognizableRobinhoodOrder(detail) {
+		return OrderResult{
+			ClientOrderID: ref, Symbol: symbol, Side: side, Quantity: qty,
+			Ambiguous: true,
+			Error:     "place_equity_order response did not contain a recognizable order",
+		}, nil
+	}
 	status := NormalizeOrderStatus(robinhoodOrderStatus(detail))
+	if status == "rejected" || status == "cancelled" {
+		return OrderResult{
+			ClientOrderID: ref, Symbol: symbol, Side: side, Quantity: qty,
+			Status: status, Error: fmt.Sprintf("order %s by Robinhood: %s", status, robinhoodOrderStatus(detail)),
+		}, nil
+	}
 	if status == "unknown" {
 		status = "submitted"
 	}
@@ -83,6 +101,16 @@ func (b *RobinhoodBroker) PlaceMarketCfg(symbol, side string, qty float64, cfg P
 		Submitted: true, ClientOrderID: ref, Symbol: symbol, Side: side, Quantity: qty,
 		Status: status, FilledPrice: fillPriceFrom(detail), FilledQty: fillQtyFrom(detail),
 	}, nil
+}
+
+// recognizableRobinhoodOrder reports whether a place_equity_order response
+// body identifies an order at all (an id or a state/status field). An empty
+// or unrelated body must not be read as a successful submission.
+func recognizableRobinhoodOrder(detail map[string]any) bool {
+	if detail == nil {
+		return false
+	}
+	return first(detail, "ref_id", "id", "order_id", "client_order_id", "state", "status") != nil
 }
 
 func (b *RobinhoodBroker) CloseMarket(symbol string) (OrderResult, error) {

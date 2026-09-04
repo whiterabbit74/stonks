@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -70,6 +71,46 @@ type Response struct {
 	Status int
 	Data   any
 	Raw    []byte
+}
+
+// webullBusinessSuccessCodes lists the values Webull's OpenAPI puts in a
+// response body's "code"/"error_code" field to mean "no error" on an HTTP
+// 200. A 200 with any other non-empty code is a business rejection (an
+// order can be refused with a 200 and a body like {"code":"...","msg":"..."})
+// and must not be read as success. Kept as a constant so the accepted set is
+// explicit and auditable rather than an inline guess.
+var webullBusinessSuccessCodes = map[string]bool{
+	"0":       true,
+	"200":     true,
+	"success": true,
+	"SUCCESS": true,
+	"ok":      true,
+	"OK":      true,
+}
+
+// businessCode extracts a non-empty code/error_code/errorCode field from a
+// parsed JSON body, if present. Webull encodes it as either a string or a
+// bare number depending on endpoint.
+func businessCode(v any) (string, bool) {
+	m, ok := v.(map[string]any)
+	if !ok {
+		return "", false
+	}
+	for _, k := range []string{"code", "error_code", "errorCode"} {
+		raw, exists := m[k]
+		if !exists || raw == nil {
+			continue
+		}
+		switch t := raw.(type) {
+		case string:
+			if s := strings.TrimSpace(t); s != "" {
+				return s, true
+			}
+		case float64:
+			return strconv.FormatFloat(t, 'f', -1, 64), true
+		}
+	}
+	return "", false
 }
 
 func (c *Client) Request(method, path string, query map[string]string, body any, includeToken bool, extraHeaders map[string]string) (*Response, error) {
@@ -161,6 +202,17 @@ func (c *Client) Request(method, path string, query map[string]string, body any,
 			} else {
 				msg = m
 			}
+		}
+		return out, fmt.Errorf("%s", msg)
+	}
+	// HTTP 200 does not mean the request succeeded: Webull can answer 200 with
+	// a body carrying a business error code (an order rejection, for
+	// instance). Treat any code outside the known-success set as a failure so
+	// callers cannot mistake a rejected order for a placed one.
+	if code, present := businessCode(parsed); present && !webullBusinessSuccessCodes[code] {
+		msg := fmt.Sprintf("Webull business error %s", code)
+		if m := mapString(parsed, "message", "msg", "error_msg", "error"); m != "" {
+			msg = code + ": " + m
 		}
 		return out, fmt.Errorf("%s", msg)
 	}

@@ -219,3 +219,69 @@ func TestMapRobinhoodOrderStates(t *testing.T) {
 		}
 	}
 }
+
+// TestRobinhoodPlaceMarketRejectedStateIsNotSubmitted covers P0-6: the MCP
+// call succeeding is not proof the order was accepted — a rejected/cancelled
+// state in the response body must not be reported as submitted.
+func TestRobinhoodPlaceMarketRejectedStateIsNotSubmitted(t *testing.T) {
+	var placeCalls int
+	b := &RobinhoodBroker{Call: func(name string, args map[string]any) (json.RawMessage, error) {
+		switch name {
+		case "get_accounts":
+			return json.Marshal(map[string]any{"content": []any{map[string]any{"type": "text", "text": `{"accounts":[{"account_number":"RH1","agentic_allowed":true}]}`}}})
+		case "get_equity_tradability", "review_equity_order":
+			return json.Marshal(map[string]any{"ok": true})
+		case "place_equity_order":
+			placeCalls++
+			return json.Marshal(map[string]any{"state": "rejected", "ref_id": args["ref_id"]})
+		default:
+			return json.Marshal(map[string]any{})
+		}
+	}}
+	res, err := b.PlaceMarket("AAPL", "BUY", 1)
+	if err != nil {
+		t.Fatalf("a rejected order is not a transport error: %v", err)
+	}
+	if res.Submitted {
+		t.Fatalf("rejected state must not report Submitted: %+v", res)
+	}
+	if res.Ambiguous {
+		t.Fatalf("a recognized rejected order is not ambiguous: %+v", res)
+	}
+	if placeCalls != 1 {
+		t.Fatalf("expected exactly one place call, got %d", placeCalls)
+	}
+}
+
+// TestRobinhoodPlaceMarketUnrecognizedResponseIsAmbiguous covers P0-6: a
+// place_equity_order response with no id and no state at all cannot be read
+// as either success or failure, and the broker must not resend on its own.
+func TestRobinhoodPlaceMarketUnrecognizedResponseIsAmbiguous(t *testing.T) {
+	var placeCalls int
+	b := &RobinhoodBroker{Call: func(name string, args map[string]any) (json.RawMessage, error) {
+		switch name {
+		case "get_accounts":
+			return json.Marshal(map[string]any{"content": []any{map[string]any{"type": "text", "text": `{"accounts":[{"account_number":"RH1","agentic_allowed":true}]}`}}})
+		case "get_equity_tradability", "review_equity_order":
+			return json.Marshal(map[string]any{"ok": true})
+		case "place_equity_order":
+			placeCalls++
+			return json.Marshal(map[string]any{})
+		default:
+			return json.Marshal(map[string]any{})
+		}
+	}}
+	res, err := b.PlaceMarket("AAPL", "BUY", 1)
+	if err != nil {
+		t.Fatalf("an unrecognized body is not itself a transport error: %v", err)
+	}
+	if res.Submitted {
+		t.Fatalf("unrecognized response must not report Submitted: %+v", res)
+	}
+	if !res.Ambiguous {
+		t.Fatalf("unrecognized response must be Ambiguous: %+v", res)
+	}
+	if placeCalls != 1 {
+		t.Fatalf("ambiguous result must not trigger a resend from the broker, place calls=%d", placeCalls)
+	}
+}

@@ -500,6 +500,27 @@ func (e *Engine) placeMarket(symbol, side string, qty float64, cfg PlaceMarketCf
 			return res, nil
 		}
 		if landed {
+			st := NormalizeOrderStatus(orderStatusField(detail))
+			// "Landed" only means the broker knows the id. An order it already
+			// rejected or cancelled did reach it, but nothing was bought or
+			// sold, and reporting Submitted here would tell the operator the
+			// order went out. Do not resend either: the id exists at the
+			// broker and the decision was the day's only one.
+			if st == "rejected" || st == "cancelled" {
+				e.logAuto("order_rejected_by_broker", "", map[string]any{
+					"symbol": symbol, "side": side, "clientOrderId": try.ClientOrderID,
+					"attempt": attempt, "status": st, "error": errText(err, res.Error),
+				})
+				res.Submitted = false
+				res.Ambiguous = false
+				res.ClientOrderID = try.ClientOrderID
+				res.Symbol, res.Side, res.Quantity = symbol, side, qty
+				res.Status = st
+				if res.Error == "" {
+					res.Error = "order " + st + " by broker"
+				}
+				return res, nil
+			}
 			e.logAuto("order_submit_landed_despite_error", "", map[string]any{
 				"symbol": symbol, "side": side, "clientOrderId": try.ClientOrderID,
 				"attempt": attempt, "error": errText(err, res.Error),
@@ -508,7 +529,7 @@ func (e *Engine) placeMarket(symbol, side string, qty float64, cfg PlaceMarketCf
 			res.ClientOrderID = try.ClientOrderID
 			res.Symbol, res.Side, res.Quantity = symbol, side, qty
 			res.Error = ""
-			if st := NormalizeOrderStatus(orderStatusField(detail)); st != "" && st != "unknown" {
+			if st != "" && st != "unknown" {
 				res.Status = st
 			}
 			return res, nil

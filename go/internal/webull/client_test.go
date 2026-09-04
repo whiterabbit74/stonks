@@ -174,3 +174,56 @@ func TestTokenEndpointsStayUnauthenticated(t *testing.T) {
 		t.Fatal("token create/check must not send x-access-token")
 	}
 }
+
+// TestRequestRejectsBusinessErrorCodeOnHTTP200 covers P0-6: Webull can answer
+// HTTP 200 with a body that carries a business rejection. That must surface
+// as an error, not as a submitted order.
+func TestRequestRejectsBusinessErrorCodeOnHTTP200(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+		_, _ = w.Write([]byte(`{"code":"600001","msg":"insufficient buying power"}`))
+	}))
+	t.Cleanup(ts.Close)
+	c := &Client{
+		HTTP: ts.Client(), Base: ts.URL, Host: "api.webull.com",
+		AppKey: "appkey", AppSecret: "secret", AccessToken: "tok", AccountID: "acc1",
+	}
+	order := map[string]any{"client_order_id": "cid1", "symbol": "AAPL"}
+	resp, err := c.PlaceOrder("acc1", order)
+	if err == nil {
+		t.Fatalf("expected a business-error, got success resp=%+v", resp)
+	}
+	if !strings.Contains(err.Error(), "600001") || !strings.Contains(err.Error(), "insufficient buying power") {
+		t.Fatalf("error should carry the business code and message, got %q", err.Error())
+	}
+}
+
+// TestRequestAcceptsKnownSuccessCodesOnHTTP200 checks that the documented
+// success codes (string "0", numeric 0, "success"/"OK", and an absent code)
+// all still pass through as success — the business-code check must not
+// reject ordinary responses.
+func TestRequestAcceptsKnownSuccessCodesOnHTTP200(t *testing.T) {
+	bodies := []string{
+		`{"code":"0","data":{"client_order_id":"cid1"}}`,
+		`{"code":0}`,
+		`{"code":"success"}`,
+		`{"code":"200"}`,
+		`{"data":{"client_order_id":"cid1"}}`,
+	}
+	for _, body := range bodies {
+		body := body
+		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(200)
+			_, _ = w.Write([]byte(body))
+		}))
+		c := &Client{
+			HTTP: ts.Client(), Base: ts.URL, Host: "api.webull.com",
+			AppKey: "appkey", AppSecret: "secret", AccessToken: "tok", AccountID: "acc1",
+		}
+		_, err := c.PlaceOrder("acc1", map[string]any{"client_order_id": "cid1"})
+		ts.Close()
+		if err != nil {
+			t.Fatalf("body %s: unexpected error %v", body, err)
+		}
+	}
+}

@@ -200,3 +200,74 @@ func TestFormatOrderQuantity(t *testing.T) {
 		t.Fatalf("whole must stay whole, got %q", formatOrderQuantity(7))
 	}
 }
+
+// TestPlaceMarketCfgRejectedBodyIsNotSubmitted covers P0-6: an HTTP 200 place
+// response with a business-error body must not be reported as submitted.
+func TestPlaceMarketCfgRejectedBodyIsNotSubmitted(t *testing.T) {
+	var placeCalls int
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.Contains(r.URL.Path, "/instrument/list"):
+			_ = json.NewEncoder(w).Encode(map[string]any{"data": []any{map[string]any{"instrument_id": "i1"}}})
+		case strings.Contains(r.URL.Path, "/openapi/trade/stock/order/place"):
+			placeCalls++
+			w.WriteHeader(200)
+			_, _ = w.Write([]byte(`{"code":"600001","msg":"insufficient buying power"}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(ts.Close)
+	br := &LiveBroker{Client: &webull.Client{
+		HTTP: ts.Client(), Base: ts.URL, Host: "api.webull.com",
+		AppKey: "k", AppSecret: "s", AccessToken: "t", AccountID: "acc",
+	}}
+	res, err := br.PlaceMarket("AAPL", "BUY", 2)
+	if err == nil {
+		t.Fatalf("expected an error, got %+v", res)
+	}
+	if res.Submitted {
+		t.Fatalf("rejected order body must not report Submitted: %+v", res)
+	}
+	if placeCalls != 1 {
+		t.Fatalf("expected exactly one place call, got %d", placeCalls)
+	}
+}
+
+// TestPlaceMarketCfgMismatchedClientOrderIDIsAmbiguous covers P0-6: a 200
+// place response echoing a different client_order_id than what was sent
+// cannot be trusted as either success or failure — it must come back
+// Ambiguous, and the broker must not itself resend the order.
+func TestPlaceMarketCfgMismatchedClientOrderIDIsAmbiguous(t *testing.T) {
+	var placeCalls int
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.Contains(r.URL.Path, "/instrument/list"):
+			_ = json.NewEncoder(w).Encode(map[string]any{"data": []any{map[string]any{"instrument_id": "i1"}}})
+		case strings.Contains(r.URL.Path, "/openapi/trade/stock/order/place"):
+			placeCalls++
+			w.WriteHeader(200)
+			_, _ = w.Write([]byte(`{"code":"0","data":{"client_order_id":"someone-elses-id"}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(ts.Close)
+	br := &LiveBroker{Client: &webull.Client{
+		HTTP: ts.Client(), Base: ts.URL, Host: "api.webull.com",
+		AppKey: "k", AppSecret: "s", AccessToken: "t", AccountID: "acc",
+	}}
+	res, err := br.PlaceMarketCfg("AAPL", "BUY", 2, PlaceMarketCfg{ClientOrderID: "sent-cid"})
+	if err != nil {
+		t.Fatalf("mismatch must not itself be a hard error: %v", err)
+	}
+	if res.Submitted {
+		t.Fatalf("mismatched client_order_id must not report Submitted: %+v", res)
+	}
+	if !res.Ambiguous {
+		t.Fatalf("mismatched client_order_id must be Ambiguous: %+v", res)
+	}
+	if placeCalls != 1 {
+		t.Fatalf("ambiguous result must not trigger a resend from the broker, place calls=%d", placeCalls)
+	}
+}

@@ -97,6 +97,23 @@ func (b *LiveBroker) PlaceMarketCfg(symbol, side string, qty float64, cfg PlaceM
 	if err != nil {
 		return OrderResult{ClientOrderID: cid, Symbol: symbol, Side: side, Quantity: qty, Error: err.Error()}, err
 	}
+	// The place-order body is not just an HTTP-status check: if it echoes back
+	// a client_order_id that is not the one we sent, we cannot be sure which
+	// order (if any) this response describes. Report that as ambiguous rather
+	// than silently trusting the request succeeded as sent — see P0-6 in
+	// AUTOTRADE_ROADMAP.md. The caller (placeMarket) picks the id before the
+	// request and decides how to resolve an ambiguous outcome; it must not be
+	// resubmitted from here.
+	if respCid := placedClientOrderID(placed.Data); respCid != "" && respCid != cid {
+		if b.DB != nil {
+			_ = b.DB.AppendAutotradeLog("brokerRaw event=order_place_id_mismatch sentClientOrderId=" + cid + " gotClientOrderId=" + respCid)
+		}
+		return OrderResult{
+			ClientOrderID: cid, Symbol: symbol, Side: side, Quantity: qty,
+			Ambiguous: true,
+			Error:     "Webull place response returned client_order_id " + respCid + ", sent " + cid,
+		}, nil
+	}
 	status := "submitted"
 	var filledPrice, filledQty float64
 	if detail, terr := c.OrderDetail(c.AccountID, cid); terr != nil {
@@ -118,7 +135,6 @@ func (b *LiveBroker) PlaceMarketCfg(symbol, side string, qty float64, cfg PlaceM
 			_ = b.DB.AppendAutotradeLog("brokerRaw event=order_track clientOrderId=" + cid + " status=" + status)
 		}
 	}
-	_ = placed
 	return OrderResult{Submitted: true, ClientOrderID: cid, Quantity: qty, Symbol: symbol, Side: side, Status: status, FilledPrice: filledPrice, FilledQty: filledQty}, nil
 }
 
@@ -339,6 +355,17 @@ func (b *LiveBroker) OrderHistory(start, end string) ([]any, error) {
 		rows = []any{}
 	}
 	return rows, nil
+}
+
+// placedClientOrderID extracts the client_order_id Webull's place-order
+// response echoes back, if any. Absent (the common case: Webull's place body
+// is typically just {"code":"0"}) is reported as "", not a mismatch.
+func placedClientOrderID(data any) string {
+	parsed := extractOrderDetailPayload(data)
+	if parsed == nil {
+		return ""
+	}
+	return clientOrderIDOf(parsed)
 }
 
 func flattenAny(v any) []any {
