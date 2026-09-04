@@ -77,6 +77,7 @@ type Engine struct {
 	Quotes   QuoteSource
 	Telegram TelegramSender
 	Broker   Broker
+	Brokers  map[string]Broker
 	ChatID   string
 	Now      func() time.Time
 	Sleep    func(time.Duration)
@@ -87,6 +88,7 @@ type Engine struct {
 	inFlight     map[string]bool
 	orderMeta    map[string]orderMeta
 	quoteCache   map[string]quoteCacheEntry
+	activeBroker string
 	lastRunAt    string
 	lastResult   any
 }
