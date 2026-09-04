@@ -761,3 +761,51 @@ func TestFullFillUnderUnknownStatusIsRecorded(t *testing.T) {
 		t.Fatalf("a fully executed order must be journalled whatever it is called, got %+v", trades)
 	}
 }
+
+// An empty monitoring list must not lock an already-open position in place:
+// the exit is decided from the open broker trade, not from the watchlist.
+// See P0-5 in AUTOTRADE_ROADMAP.md.
+func TestEmptyWatchlistStillExitsOpenPosition(t *testing.T) {
+	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 11.9, Volume: 1}} // IBS 0.975
+	dir := t.TempDir()
+	db, err := store.Open(filepath.Join(dir, "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	_ = db.SaveDataset("AAPL", "AAPL", "", "", bars, false)
+	_ = db.InsertTrade("broker_trades", map[string]any{
+		"id": "b-aapl", "symbol": "AAPL", "status": "open", "entryDate": "2026-08-20", "entryPrice": 10.0, "quantity": 2,
+	})
+	br := &MemoryBroker{}
+	e := New(db, &MemoryQuotes{Bars: map[string][]types.OHLC{"AAPL": bars}})
+	e.Broker = br
+	e.Telegram = &MemoryTelegram{}
+	e.ChatID = "c"
+	ny, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.Now = func() time.Time { return time.Date(2026, 9, 1, 15, 59, 0, 0, ny) }
+	br.Pos = []any{map[string]any{"symbol": "AAPL", "quantity": 2.0}}
+	e.PatchAutoConfig(map[string]any{
+		"enabled": true, "highIBS": 0.75, "lowIBS": 0.1, "allowExits": true, "allowNewEntries": false,
+	})
+
+	if watches, _ := db.ListWatches(); len(watches) != 0 {
+		t.Fatalf("test setup must leave the watchlist empty, got %v", watches)
+	}
+
+	ev := e.Evaluate()
+	if fmt.Sprint(ev.Decision["action"]) != "exit" {
+		t.Fatalf("want exit decision with an empty watchlist: %+v", ev.Decision)
+	}
+
+	res := e.Execute("test")
+	if fmt.Sprint(res.Decision["action"]) != "exit" {
+		t.Fatalf("want exit %+v", res.Decision)
+	}
+	if len(br.Orders) != 1 || br.Orders[0].Side != "SELL" {
+		t.Fatalf("want a single SELL order submitted, got %+v", br.Orders)
+	}
+}

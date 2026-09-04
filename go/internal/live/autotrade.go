@@ -248,9 +248,27 @@ func (e *Engine) Evaluate() EvalResult {
 		}
 	}
 	open, held, heldErr := e.booksFor("webull", e.defaultBroker(), brokerTrades)
-	e.prefetchQuotes(symbols, providerChain)
+	quoteSymbols := symbols
+	if open != nil {
+		openSym := store.SafeTicker(fmt.Sprint(open["symbol"]))
+		found := false
+		for _, sym := range quoteSymbols {
+			if sym == openSym {
+				found = true
+				break
+			}
+		}
+		if !found {
+			// The open position's symbol may have dropped out of the watch list
+			// (e.g. an empty monitoring list). We still need a quote for it so
+			// decideLiveAction can evaluate the exit — see P0-5 in
+			// AUTOTRADE_ROADMAP.md.
+			quoteSymbols = append(append([]string{}, quoteSymbols...), openSym)
+		}
+	}
+	e.prefetchQuotes(quoteSymbols, providerChain)
 	var quotes []map[string]any
-	for _, sym := range symbols {
+	for _, sym := range quoteSymbols {
 		w := watchBy[sym]
 		if w == nil {
 			w = map[string]any{"symbol": sym}
@@ -290,9 +308,6 @@ func decideLiveAction(quotes []map[string]any, symbols []string, held map[string
 	none := func(reason string, symbol any, cand any) map[string]any {
 		return map[string]any{"action": "none", "reason": reason, "symbol": symbol, "candidate": cand}
 	}
-	if len(symbols) == 0 {
-		return none("empty_symbol_universe", nil, nil)
-	}
 	if open != nil && allowExits {
 		sym := store.SafeTicker(fmt.Sprint(open["symbol"]))
 		if fmt.Sprint(open["source"]) == "live_broker" {
@@ -322,6 +337,9 @@ func decideLiveAction(quotes []map[string]any, symbols []string, held map[string
 			reason = "exit_threshold_not_reached"
 		}
 		return none(reason, sym, row)
+	}
+	if len(symbols) == 0 {
+		return none("empty_symbol_universe", nil, nil)
 	}
 	if open == nil && allowEntries {
 		if heldErr != nil {

@@ -155,7 +155,12 @@ func (e *Engine) Aggregate(minutesUntilClose int, opts AggregateOpts) (SimulateR
 		}
 	}
 	watches, _ := e.DB.ListWatches()
-	if len(watches) == 0 {
+	// An empty watch list must not swallow a day that already has an open
+	// broker position: that position still needs its exit decided and
+	// reported, watches or not. See P0-5 in AUTOTRADE_ROADMAP.md.
+	brokerTrades, _ := e.DB.ListTrades("broker_trades")
+	hasOpenBrokerTrade := store.OpenBrokerTrade(brokerTrades) != nil
+	if len(watches) == 0 && !hasOpenBrokerTrade {
 		emaAlerts := e.EvaluateEMAAlerts()
 		if len(emaAlerts) == 0 {
 			out.Reason = "no_watches"
@@ -169,7 +174,7 @@ func (e *Engine) Aggregate(minutesUntilClose int, opts AggregateOpts) (SimulateR
 	}
 	e.prefetchQuotes(watchSyms, providerChain)
 	emaAlerts := e.EvaluateEMAAlerts()
-	if len(watches) == 0 && len(emaAlerts) == 0 {
+	if len(watches) == 0 && len(emaAlerts) == 0 && !hasOpenBrokerTrade {
 		out.Reason = "no_watches"
 		return out, nil
 	}
