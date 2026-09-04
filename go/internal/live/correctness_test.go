@@ -688,8 +688,8 @@ func TestChainOnlyContainsRealtimeProviders(t *testing.T) {
 	chain := quoteProviderChain(map[string]any{
 		"provider": "alpha_vantage",
 	})
-	if chain[0] != "finnhub" {
-		t.Fatalf("a non-real-time primary must fall back to finnhub, got %v", chain)
+	if chain[0] != realtimeQuoteProviders[0] {
+		t.Fatalf("a non-real-time primary must fall back to the default, got %v", chain)
 	}
 	for _, p := range chain {
 		if !isRealtimeQuoteProvider(p) {

@@ -271,7 +271,12 @@ func watchThresholds(watch, cfg map[string]any) (low, high float64, highInvalid 
 // real-time equity quote, providers/robinhood.go robinhoodQuote) and is also
 // selectable as the primary provider on the autotrade settings page (P2-6) -
 // it is not a silent fallback the operator never chose.
-var realtimeQuoteProviders = []string{"finnhub", "webull", "robinhood"}
+//
+// Webull leads: it is the paid subscription and the broker that executes the
+// order, it answers a whole watch list in one snapshot request, and Finnhub's
+// free tier serves one symbol per call — so the fallback is the one that costs
+// a request per ticker, not the primary.
+var realtimeQuoteProviders = []string{"webull", "finnhub", "robinhood"}
 
 func isRealtimeQuoteProvider(p string) bool {
 	for _, r := range realtimeQuoteProviders {
@@ -292,7 +297,7 @@ func quoteProviderChain(cfg map[string]any) []string {
 	primary, _ := cfg["provider"].(string)
 	primary = strings.ToLower(strings.TrimSpace(primary))
 	if !isRealtimeQuoteProvider(primary) {
-		primary = "finnhub"
+		primary = realtimeQuoteProviders[0]
 	}
 	chain := []string{primary}
 	for _, p := range realtimeQuoteProviders {
