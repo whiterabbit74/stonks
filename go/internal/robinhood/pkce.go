@@ -24,6 +24,17 @@ func b64url(b []byte) string {
 	return strings.TrimRight(base64.URLEncoding.EncodeToString(b), "=")
 }
 
+func NewRefID() string {
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return ""
+	}
+	b[6] = (b[6] & 0x0f) | 0x40
+	b[8] = (b[8] & 0x3f) | 0x80
+	hex := fmt.Sprintf("%x", b[:])
+	return hex[0:8] + "-" + hex[8:12] + "-" + hex[12:16] + "-" + hex[16:20] + "-" + hex[20:32]
+}
+
 func RandomB64(n int) (string, error) {
 	buf := make([]byte, n)
 	if _, err := rand.Read(buf); err != nil {

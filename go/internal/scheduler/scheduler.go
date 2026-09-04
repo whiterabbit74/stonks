@@ -9,6 +9,7 @@ import (
 
 	"mktorder.com/go/internal/live"
 	"mktorder.com/go/internal/providers"
+	"mktorder.com/go/internal/robinhood"
 	"mktorder.com/go/internal/store"
 	"mktorder.com/go/internal/tradingdate"
 )
@@ -259,9 +260,22 @@ func robinhoodHealthJob(db *store.DB, eng *live.Engine, todayET string, now time
 	if row.LastHealthCheckDate == todayET {
 		return []live.BrokerHealth{{Broker: "robinhood", Status: row.LastCheckStatus, Detail: "skipped"}}
 	}
-	st, dl := live.ClassifyRobinhoodHealth(row.AccessToken, row.RefreshToken, row.LastCheckStatus, row.ExpiresAt, now)
+	svc := robinhood.New(db)
+	st, _ := svc.KeepAlive()
+	if st == "" {
+		st = live.HealthUnreachable
+	}
+	row = db.GetRobinhoodOAuth()
+	if st == live.HealthOK {
+		classified, _ := live.ClassifyRobinhoodHealth(row.AccessToken, row.RefreshToken, st, row.ExpiresAt, now)
+		if classified == live.HealthExpiringSoon {
+			st = classified
+		}
+	}
 	recorded := live.RecordedHealth(row.LastCheckStatus, st)
 	_ = db.UpsertRobinhoodHealth(todayET, recorded, now.UTC().Format(time.RFC3339Nano))
+	row = db.GetRobinhoodOAuth()
+	_, dl := live.ClassifyRobinhoodHealth(row.AccessToken, row.RefreshToken, recorded, row.ExpiresAt, now)
 	maybeHealthAlert(db, eng, "robinhood", row.LastAlertedStatus, row.LastAlertedAt, recorded, now)
 	return []live.BrokerHealth{{Broker: "robinhood", Status: recorded, CheckedAt: now.UTC().Format(time.RFC3339), ExpiresAt: row.ExpiresAt, DaysLeft: dl, Detail: recorded}}
 }

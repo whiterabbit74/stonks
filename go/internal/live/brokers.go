@@ -102,6 +102,28 @@ func anyAllow(cfg map[string]any, key string) bool {
 	return false
 }
 
+func (e *Engine) AttachBroker(name string, b Broker) {
+	if e == nil || name == "" || b == nil {
+		return
+	}
+	if e.Brokers == nil {
+		e.Brokers = map[string]Broker{}
+	}
+	if e.Broker != nil {
+		if _, ok := e.Brokers["webull"]; !ok {
+			e.Brokers["webull"] = e.Broker
+		}
+	}
+	e.Brokers[name] = b
+}
+
+func (e *Engine) DetachBroker(name string) {
+	if e == nil || e.Brokers == nil {
+		return
+	}
+	delete(e.Brokers, name)
+}
+
 func (e *Engine) BrokerNamed(name string) Broker {
 	if e == nil {
 		return nil

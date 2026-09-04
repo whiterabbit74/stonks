@@ -18,10 +18,13 @@ type RobinhoodBroker struct {
 }
 
 func (b *RobinhoodBroker) tool(name string, args map[string]any) (json.RawMessage, error) {
-	if b.Call != nil {
+	if b != nil && b.Call != nil {
 		return b.Call(name, args)
 	}
-	return b.tool(name, args)
+	if b == nil || b.Svc == nil {
+		return nil, fmt.Errorf("robinhood not connected")
+	}
+	return b.Svc.CallTool(name, args)
 }
 
 func NewRobinhoodBroker(svc *robinhood.Service) *RobinhoodBroker {
@@ -252,8 +255,7 @@ func asUUID(s string) string {
 }
 
 func newRefID() string {
-	v, _ := robinhood.RandomB64(16)
-	return asUUID(fmt.Sprintf("%x", []byte(v)))
+	return robinhood.NewRefID()
 }
 
 func blockingReview(raw []byte) bool {

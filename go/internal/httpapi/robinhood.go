@@ -31,12 +31,24 @@ func (s *Server) handleRobinhoodOAuthComplete(w http.ResponseWriter, r *http.Req
 		writeJSON(w, 400, map[string]any{"error": err.Error()})
 		return
 	}
+	s.attachRobinhood()
 	writeJSON(w, 200, map[string]any{"ok": true})
 }
 
 func (s *Server) handleRobinhoodOAuthDisconnect(w http.ResponseWriter, r *http.Request) {
 	_ = s.rh().Revoke()
+	if s.Live != nil {
+		s.Live.DetachBroker("robinhood")
+	}
 	writeJSON(w, 200, map[string]any{"ok": true})
+}
+
+func (s *Server) attachRobinhood() {
+	eng := s.liveEng()
+	eng.AttachBroker("robinhood", live.NewRobinhoodBroker(s.rh()))
+	if s.Providers != nil {
+		s.Providers.Robinhood = s.rh()
+	}
 }
 
 func (s *Server) handleRobinhoodOAuthStatus(w http.ResponseWriter, r *http.Request) {

@@ -2,9 +2,20 @@ package robinhood
 
 import (
 	"encoding/json"
+	"regexp"
 	"strings"
 	"testing"
 )
+
+func TestNewRefIDIsUUID(t *testing.T) {
+	id := NewRefID()
+	if !regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`).MatchString(id) {
+		t.Fatalf("%q", id)
+	}
+	if NewRefID() == id {
+		t.Fatal("ids must differ")
+	}
+}
 
 func TestTradingDateIsFirstTenChars(t *testing.T) {
 	if d := TradingDateFromBeginsAt("2021-09-04T13:30:00Z"); d != "2021-09-04" {

@@ -252,6 +252,33 @@ func expiringSoon(expiresAt string, now time.Time) bool {
 	return t.Sub(now) <= 24*time.Hour
 }
 
+func (s *Service) KeepAlive() (string, error) {
+	if s == nil || s.DB == nil {
+		return "MISSING", fmt.Errorf("oauth store missing")
+	}
+	row := s.DB.GetRobinhoodOAuth()
+	if row.AccessToken == "" && row.RefreshToken == "" {
+		return "MISSING", nil
+	}
+	if row.RefreshToken != "" {
+		if err := s.Refresh(); err != nil {
+			if strings.Contains(err.Error(), "NEEDS_REAUTH") {
+				return "NEEDS_REAUTH", err
+			}
+			return "UNREACHABLE", err
+		}
+	}
+	_, err := s.CallTool("get_accounts", nil)
+	if err != nil {
+		msg := err.Error()
+		if strings.Contains(msg, "NEEDS_REAUTH") || strings.Contains(msg, "unauthorized") {
+			return "NEEDS_REAUTH", err
+		}
+		return "UNREACHABLE", err
+	}
+	return "OK", nil
+}
+
 func (s *Service) CallTool(name string, args map[string]any) (json.RawMessage, error) {
 	if s.MCP == nil {
 		s.MCP = &MCP{HTTP: s.http(), Endpoint: MCPEndpoint, Token: s.AccessToken}
