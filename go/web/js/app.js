@@ -1526,7 +1526,7 @@
       <div class="max-w-7xl mx-auto px-6 py-8">
         <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
           <div class="space-y-4">
-            <div class="flex items-center gap-3">${logo('md')}<div><h3 class="font-bold text-gray-900 dark:text-gray-100">IBS Trading Strategy</h3><p class="text-sm text-gray-600 dark:text-gray-400">Профессиональный тестировщик стратегий</p></div></div>
+            <div class="flex items-center gap-3">${logo('md')}<div><h3 class="font-bold text-gray-900 dark:text-gray-100">Trading strategies</h3><p class="text-sm text-gray-600 dark:text-gray-400">Профессиональный тестировщик стратегий</p></div></div>
             <p class="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">Анализ и тестирование торговых стратегий на исторических данных. Специализация на стратегиях mean reversion и техническом анализе.</p>
           </div>
           <div class="space-y-2">
@@ -1540,7 +1540,7 @@
           </div>
         </div>
         <div class="border-t border-gray-200 dark:border-gray-800 mt-8 pt-6 flex flex-col md:flex-row items-center justify-between gap-4">
-          <div class="text-sm text-gray-600 dark:text-gray-400">© ${year} IBS Trading Strategy. Все права защищены.</div>
+          <div class="text-sm text-gray-600 dark:text-gray-400">© ${year} Trading strategies. Все права защищены.</div>
           <div class="flex items-center gap-4 text-xs text-gray-500">
             <span>Built with ❤️ for traders</span>
           </div>
@@ -1562,7 +1562,7 @@
       <a href="#main-content" class="sr-only">Перейти к основному содержимому</a>
       <div class="app-frame ${slim ? 'app-frame-slim' : ''} min-h-screen bg-gray-50 text-gray-800 dark:text-gray-100">
         <aside class="app-side" aria-label="Основная навигация">
-          <a href="/data" data-nav class="app-side-brand" title="IBS Trading Strategy">${logo('sm')}<span class="app-side-lab">IBS Trading</span></a>
+          <a href="/data" data-nav class="app-side-brand" title="Trading strategies">${logo('sm')}<span class="app-side-lab">Trading strategies</span></a>
           <nav class="app-side-nav desktop-nav">${sideNavHTML()}</nav>
           <div class="app-side-tools">
             <button type="button" id="theme-btn" class="app-side-item" title="Тема: ${themeLabel()}" aria-label="Тема: ${themeLabel()}">${sideItemInner(themeIcon(), 'Тема')}</button>
@@ -1576,7 +1576,7 @@
             <div class="px-4 py-3 flex items-center justify-between gap-3">
               <a href="/data" data-nav class="flex min-w-0 items-center gap-3 hover:opacity-80">
                 ${logo('sm')}
-                <span class="truncate text-lg font-semibold tracking-tight text-gray-900 dark:text-gray-100">IBS Trading Strategy</span>
+                <span class="truncate text-lg font-semibold tracking-tight text-gray-900 dark:text-gray-100">Trading strategies</span>
               </a>
               <div class="flex items-center gap-2">
                 <button type="button" id="theme-btn-top" class="icon-btn icon-btn-lg icon-btn-glass" title="Тема: ${themeLabel()}" aria-label="Тема: ${themeLabel()}">${icon(themeIcon())}</button>
@@ -1609,7 +1609,7 @@
       <div class="min-h-screen bg-gray-50 text-gray-800 dark:text-gray-100 flex flex-col">
         <header class="border-b bg-white/60 backdrop-blur dark:bg-slate-900/60 dark:border-slate-800">
           <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between gap-3">
-            <div class="flex min-w-0 items-center gap-3">${logo('sm')}<span class="hidden truncate text-lg font-semibold sm:inline">IBS Trading Strategy</span></div>
+            <div class="flex min-w-0 items-center gap-3">${logo('sm')}<span class="hidden truncate text-lg font-semibold sm:inline">Trading strategies</span></div>
             <button id="theme-btn" class="icon-btn icon-btn-lg icon-btn-glass" title="Тема: ${themeLabel()}" aria-label="Тема: ${themeLabel()}">${icon(themeIcon())}</button>
           </div>
         </header>

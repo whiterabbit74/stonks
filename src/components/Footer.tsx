@@ -49,7 +49,7 @@ export function Footer({ apiBuildId }: FooterProps) {
           <div className="flex flex-col md:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-4">
               <div className="text-sm text-gray-600 dark:text-gray-400">
-                © {currentYear} IBS Trading Strategy. Все права защищены.
+                © {currentYear} Trading strategies. Все права защищены.
               </div>
               <ErrorLogButton />
             </div>

@@ -72,6 +72,12 @@ func TestVanillaUIAssets(t *testing.T) {
 	if strings.Contains(a, "from 'react'") || strings.Contains(a, "ReactDOM") {
 		t.Fatal("UI must be vanilla JS, not React")
 	}
+	if strings.Contains(a, "IBS Trading Strategy") || strings.Contains(a, ">IBS Trading<") {
+		t.Fatal("old IBS Trading Strategy brand must be replaced")
+	}
+	if !strings.Contains(a, "Trading strategies") {
+		t.Fatal("missing brand Trading strategies")
+	}
 	if strings.Contains(a, "Webull credentials are not configured") {
 		t.Fatal("English Webull credentials banner must be replaced with Russian oracle copy")
 	}

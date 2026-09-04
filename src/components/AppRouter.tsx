@@ -247,7 +247,7 @@ function ProtectedLayout() {
           <NavLink to="/data" className="flex min-w-0 items-center gap-3 hover:opacity-80 transition-opacity">
             <Logo size="sm" showText={false} />
             <span className="hidden truncate text-lg font-semibold tracking-tight text-gray-900 dark:text-gray-100 xs:inline">
-              IBS Trading Strategy
+              Trading strategies
             </span>
           </NavLink>
           <div className="flex items-center gap-2">
@@ -382,7 +382,7 @@ function LoginPage() {
           <div className="flex min-w-0 items-center gap-3">
             <Logo size="sm" showText={false} />
             <span className="hidden truncate text-lg font-semibold tracking-tight text-gray-900 dark:text-gray-100 xs:inline">
-              IBS Trading Strategy
+              Trading strategies
             </span>
           </div>
           <div className="flex items-center gap-2">
