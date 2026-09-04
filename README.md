@@ -39,7 +39,8 @@ http://localhost:8080 — логин `admin@example.com`. Порт: `PORT`. Ба
 
 ## Документация
 
-- [CLAUDE.md](CLAUDE.md) — инварианты (даты, IBS)
+- [CLAUDE.md](CLAUDE.md) — инварианты (даты, IBS); пуш и деплой только по прямой просьбе
+- [AUTOTRADE_ROADMAP.md](AUTOTRADE_ROADMAP.md) — очередь автоторговли
 - [go/INVENTORY.md](go/INVENTORY.md) — страницы, `/api`, пакеты
 - [ENVIRONMENT.md](ENVIRONMENT.md) — переменные
 - [DEPLOYMENT.md](DEPLOYMENT.md) — деплой
