@@ -38,8 +38,8 @@ func TestEmaSellZoneClosesEarlierLotByID(t *testing.T) {
 		if tr.EntryDate != "2024-01-04" || tr.ExitDate != "2024-01-05" {
 			t.Errorf("trade[%d] dates %s->%s", i, tr.EntryDate, tr.ExitDate)
 		}
-		if !goldens.MustAlmost(tr.Quantity, 62.5, 1e-12) {
-			t.Errorf("trade[%d] qty %v want 62.5", i, tr.Quantity)
+		if !goldens.MustAlmost(tr.Quantity, 62, 1e-12) {
+			t.Errorf("trade[%d] qty %v want 62", i, tr.Quantity)
 		}
 		if tr.Context == nil || tr.Context.Ticker != "TQQQ" {
 			t.Errorf("trade[%d] missing ticker context", i)
@@ -49,8 +49,8 @@ func TestEmaSellZoneClosesEarlierLotByID(t *testing.T) {
 	if len(ids) != 2 {
 		t.Fatalf("expected two distinct trade ids, got %v", ids)
 	}
-	if !goldens.MustAlmost(got.FinalValue, 16250, 1e-9) {
-		t.Fatalf("finalValue %v want 16250", got.FinalValue)
+	if !goldens.MustAlmost(got.FinalValue, 16200, 1e-9) {
+		t.Fatalf("finalValue %v want 16200", got.FinalValue)
 	}
 	for _, tr := range got.Trades {
 		if tr.ExitReason == "end_of_data" {

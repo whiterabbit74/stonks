@@ -386,7 +386,7 @@
   function fmtUsd(n, d) {
     n = toNum(n);
     if (n == null) return '—';
-    const digits = d == null ? 2 : d;
+    const digits = d == null ? 0 : d;
     return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: digits, maximumFractionDigits: digits });
   }
   function asObject(v) {
@@ -1346,8 +1346,8 @@
         <div>${esc(fmtDay(t.entryDate))} – ${esc(fmtDay(t.exitDate))}</div>
         <div class="text-xs text-gray-500">${esc(ibsLab(entryIbsNum))} – ${esc(ibsLab(exitIbsNum))}</div>
       </td>
-      <td>${fmt(t.entryPrice)}</td><td>${fmt(t.exitPrice)}</td>
-      <td>${fmt(t.quantity, 4)}</td>
+      <td>${fmtUsd(t.entryPrice)}</td><td>${fmtUsd(t.exitPrice)}</td>
+      <td>${fmt(t.quantity, 0)}</td>
       <td>${invested == null ? '—' : fmtUsd(invested)}${lev != null && lev > 1 ? `<div class="text-xs text-gray-500">${esc(lev)}:1</div>` : ''}</td>
       <td class="${pnlClass(t.pnl)}">${fmtUsd(t.pnl)}</td>
       <td class="${pnlClass(t.pnlPercent)}">${t.pnlPercent == null ? '—' : fmt(t.pnlPercent, 2) + '%'}</td>
@@ -2193,7 +2193,7 @@
       <td class="font-mono"><a href="/stocks?tickers=${encodeURIComponent(w.symbol)}" data-nav class="text-blue-600">${esc(w.symbol)}</a></td>
       <td>≤ ${(w.lowIBS ?? 0.1).toFixed(2)}</td>
       <td>≥ ${Number(w.highIBS ?? 0.75).toFixed(2)}</td>
-      <td>${w.entryPrice != null ? '$' + Number(w.entryPrice).toFixed(2) : '—'}${w.isOpenPosition && w.entryDate ? `<div class="text-[11px] text-gray-500">${esc(fmtTradingDate(w.entryDate))}${w.entryIBS != null ? ' · IBS ' + fmt(ibsPct(w.entryIBS), 1) + '%' : ''}</div>` : ''}</td>
+      <td>${w.entryPrice != null ? fmtUsd(w.entryPrice) : '—'}${w.isOpenPosition && w.entryDate ? `<div class="text-[11px] text-gray-500">${esc(fmtTradingDate(w.entryDate))}${w.entryIBS != null ? ' · IBS ' + fmt(ibsPct(w.entryIBS), 1) + '%' : ''}</div>` : ''}</td>
       <td><span class="rounded-full px-2 py-0.5 text-xs ${w.isOpenPosition ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500'}">${w.isOpenPosition ? 'Открыта' : 'Нет'}</span></td>
       <td>${w.isOpenPosition && w.currentTradeId ? `<button type="button" data-close-mon="${esc(w.currentTradeId)}" data-close-sym="${esc(w.symbol)}" class="text-sm text-red-600 mr-2">Закрыть</button>` : ''}<button data-dw="${esc(w.symbol)}" class="text-sm text-red-600">Удалить</button></td>
     </tr>`).join('');
@@ -2309,9 +2309,9 @@
         <td>${esc(t.status === 'open' ? 'открыта' : 'закрыта')}</td>
         <td>${esc(t.entryDate || '—')}</td>
         <td>${esc(t.exitDate || '—')}</td>
-        <td>${t.entryPrice == null ? '—' : fmt(t.entryPrice)}</td>
-        <td>${t.exitPrice == null ? '—' : fmt(t.exitPrice)}</td>
-        <td>${t.quantity == null ? '—' : fmt(t.quantity, 4)}</td>
+        <td>${t.entryPrice == null ? '—' : fmtUsd(t.entryPrice)}</td>
+        <td>${t.exitPrice == null ? '—' : fmtUsd(t.exitPrice)}</td>
+        <td>${t.quantity == null ? '—' : fmt(t.quantity, 0)}</td>
         <td class="${pnlClass(t.pnlAbsolute)}">${t.pnlAbsolute == null ? '—' : fmtUsd(t.pnlAbsolute)}</td>
         <td class="${pnlClass(t.pnlPercent)}">${t.pnlPercent == null ? '—' : fmt(t.pnlPercent, 2) + '%'}</td>
         <td>${t.entryIBS == null ? '—' : fmt(Number(t.entryIBS) <= 1.5 ? Number(t.entryIBS) * 100 : Number(t.entryIBS), 1) + '%'}</td>

@@ -306,7 +306,7 @@ func RunSinglePosition(tickers []TickerIndexed, strategy types.Strategy, leverag
 				td := tickers[bestIdx]
 				targetInvestment := freeCapital * leverage
 				entryPrice := bestBar.Close
-				quantity := math.Floor(targetInvestment / entryPrice)
+				quantity := wholeShares(targetInvestment / entryPrice)
 				if quantity > 0 {
 					stockCost := quantity * entryPrice
 					entryCommission := commission(stockCost, strategy)

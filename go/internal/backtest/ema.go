@@ -455,7 +455,7 @@ func RunEmaZone(tickers []TickerIndexed, params EmaParams) EmaResult {
 					}
 					baseQty := lot.quantity
 					if len(sellZones) > 1 {
-						baseQty = lot.initialQuantity / float64(len(sellZones))
+						baseQty = wholeShares(lot.initialQuantity / float64(len(sellZones)))
 					}
 					qtyClose := baseQty
 					if isLast {
@@ -508,8 +508,15 @@ func RunEmaZone(tickers []TickerIndexed, params EmaParams) EmaResult {
 					continue
 				}
 				marginUsed := math.Min(targetMargin, cash)
-				quantity := (marginUsed * leverage) / signal.executionPrice
-				if quantity <= 0 || marginUsed <= 0 {
+				if !(signal.executionPrice > 0) || marginUsed <= 0 {
+					continue
+				}
+				quantity := wholeShares((marginUsed * leverage) / signal.executionPrice)
+				if quantity <= 0 {
+					continue
+				}
+				marginUsed = (quantity * signal.executionPrice) / leverage
+				if marginUsed > cash+capitalTolerance(cash) {
 					continue
 				}
 				cash -= marginUsed

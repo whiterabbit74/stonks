@@ -203,6 +203,7 @@ func TestVanillaUIAssets(t *testing.T) {
 		"Логи мониторинга пока пусты",
 		"Состояние автоторговли",
 		"fmtUsd(fv, 0)",
+		"d == null ? 0",
 		"Итоговый баланс",
 	} {
 		if !strings.Contains(a, copy) {

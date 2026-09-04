@@ -84,7 +84,7 @@ func RunBuyAtClose4(tickers []TickerIndexed, strategy types.Strategy, leverage f
 					baseTarget := totalPortfolio * (capitalUsagePerTicker / 100)
 					target := baseTarget * leverage
 					entryPrice := bar.Close
-					quantity := math.Floor(target / entryPrice)
+					quantity := wholeShares(target / entryPrice)
 					if quantity > 0 {
 						stockCost := quantity * entryPrice
 						entryC := commission(stockCost, strategy)

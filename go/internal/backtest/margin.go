@@ -95,7 +95,7 @@ func SimulateMargin(p MarginParams) MarginResult {
 				tradeIndex++
 				marginBudget := cash * usage
 				desired := marginBudget * p.Leverage
-				qty := math.Floor(desired / tpl.EntryPrice)
+				qty := wholeShares(desired / tpl.EntryPrice)
 				if qty > 0 {
 					notional := qty * tpl.EntryPrice
 					marginUsed := notional / p.Leverage
@@ -244,10 +244,12 @@ func RunBuyHold(data []types.OHLC, initialCapital float64) types.BacktestResult 
 		}
 		return types.BacktestResult{Trades: []types.Trade{}, Equity: eq, Metrics: metrics.New(nil, eq, initialCapital, nil).All()}
 	}
+	qty := wholeShares(initialCapital / firstPrice)
+	cash := initialCapital - qty*firstPrice
 	peak := initialCapital
 	equity := make([]types.EquityPoint, len(data))
 	for i, b := range data {
-		v := initialCapital * (holdPrice(b) / firstPrice)
+		v := cash + qty*holdPrice(b)
 		if v > peak {
 			peak = v
 		}
@@ -258,8 +260,11 @@ func RunBuyHold(data []types.OHLC, initialCapital float64) types.BacktestResult 
 		equity[i] = types.EquityPoint{Date: b.Date, Value: v, Drawdown: dd}
 	}
 	lastPrice := holdPrice(exit)
-	qty := initialCapital / firstPrice
-	pnl := initialCapital*(lastPrice/firstPrice) - initialCapital
+	if qty <= 0 {
+		m := metrics.New(nil, equity, initialCapital, nil).All()
+		return types.BacktestResult{Trades: []types.Trade{}, Equity: equity, Metrics: m}
+	}
+	pnl := qty * (lastPrice - firstPrice)
 	trade := types.Trade{
 		ID: "buyhold-0", EntryDate: entry.Date, ExitDate: exit.Date,
 		EntryPrice: firstPrice, ExitPrice: lastPrice, Quantity: qty,

@@ -73,7 +73,7 @@ func RunClean(data []types.OHLC, strategy types.Strategy, options *CleanOptions)
 			if ibssig.IsEntrySignal(ibs, lowIBS) && nextBar != nil {
 				investmentAmount := (currentCapital * capitalUsage) / 100
 				if opt.EntryExecution == "nextOpen" {
-					quantity := math.Floor(investmentAmount / nextBar.Open)
+					quantity := wholeShares(investmentAmount / nextBar.Open)
 					if quantity > 0 {
 						totalCost := quantity * nextBar.Open
 						position = &cleanPosition{
@@ -83,7 +83,7 @@ func RunClean(data []types.OHLC, strategy types.Strategy, options *CleanOptions)
 						currentCapital -= totalCost
 					}
 				} else {
-					quantity := math.Floor(investmentAmount / bar.Close)
+					quantity := wholeShares(investmentAmount / bar.Close)
 					if quantity > 0 {
 						totalCost := quantity * bar.Close
 						position = &cleanPosition{
