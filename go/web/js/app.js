@@ -2512,7 +2512,7 @@
               <a href="/settings" data-nav data-settings-tab="autotrade" class="btn-secondary min-h-0 py-2">Изменить</a>
             </div>
             <dl class="grid gap-x-6 gap-y-1 sm:grid-cols-2">
-              <div class="flex justify-between gap-3"><dt class="text-gray-500">Размер входа</dt><dd>${esc(mode.label)}${ac.allowFractionalShares ? ' + дробные' : ''}</dd></div>
+              <div class="flex justify-between gap-3"><dt class="text-gray-500">Размер входа</dt><dd>${esc(mode.label)}, целые акции</dd></div>
               <div class="flex justify-between gap-3"><dt class="text-gray-500">Пороги IBS</dt><dd>вход &lt; ${esc(ac.lowIBS ?? 0.1)} · выход &gt; ${esc(ac.highIBS ?? 0.75)}</dd></div>
               <div class="flex justify-between gap-3"><dt class="text-gray-500">Котировки</dt><dd>${esc(ac.provider || 'finnhub')} → резерв автоматически</dd></div>
               <div class="flex justify-between gap-3"><dt class="text-gray-500">Заявки</dt><dd>рыночные, DAY, основная сессия</dd></div>
@@ -2701,8 +2701,7 @@
           <div class="font-medium mb-2">Сколько покупать</div>
           <p class="text-xs text-gray-500 mb-2">Всегда покупается на весь счёт — вопрос только в том, сколько это «весь счёт». Размер в любом случае ограничен реальной покупательной способностью у брокера.</p>
           ${CAPITAL_MODES.map((m) => `<label class="flex items-start gap-2 text-sm mb-2"><input type="radio" name="entryCapitalMode" value="${esc(m.value)}" ${cap === m.value ? 'checked' : ''} class="mt-1" /><span><strong>${esc(m.label)}</strong><br /><span class="text-xs text-gray-500">${esc(m.hint)}</span></span></label>`).join('')}
-          <label class="inline-flex items-center gap-2 text-sm mt-2"><input type="checkbox" name="autoFractional" ${ac.allowFractionalShares ? 'checked' : ''} /> Дробные акции</label>
-          <p class="text-xs text-gray-500 mt-1">Без дробных остаток денег меньше цены одной акции остаётся неиспользованным. Дробные заявки Webull поддерживает не по всем тикерам.</p>
+          <p class="text-xs text-gray-500 mt-2">Покупается всегда целое число акций: остаток меньше цены одной акции остаётся на счёте до следующего входа. Продаётся при выходе вся позиция целиком, включая дробный остаток, если его оставил сплит.</p>
         </div>
         <div class="rounded-xl border p-4 mb-3">
           <div class="font-medium mb-2">Пороги IBS по умолчанию</div>
@@ -3946,7 +3945,6 @@
             enabled: form.autoEnabled.checked,
             allowNewEntries: !!form.autoAllowEntries?.checked,
             allowExits: !!form.autoAllowExits?.checked,
-            allowFractionalShares: !!form.autoFractional?.checked,
             provider: fd.get('autoQuote') || 'finnhub',
             entryCapitalMode: fd.get('entryCapitalMode') || 'standard_safe',
             lowIBS: Number(fd.get('autoLowIBS')),
@@ -3960,7 +3958,7 @@
           } catch (err) { toast(err.message); }
         }
         for (const k of ['autoEnabled', 'autoQuote', 'entryCapitalMode', 'autoAllowEntries', 'autoAllowExits',
-          'autoFractional', 'autoLowIBS', 'autoHighIBS', 'autoWindow', 'autoSlippage']) delete body[k];
+          'autoLowIBS', 'autoHighIBS', 'autoWindow', 'autoSlippage']) delete body[k];
         try {
           await API.saveSettings(body);
           state.settings = { ...state.settings, ...body };

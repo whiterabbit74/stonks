@@ -44,7 +44,6 @@ type OrderResult struct {
 
 // PlaceMarketCfg is passed to PlaceMarketCfg without changing PlaceMarket(symbol,side,qty).
 type PlaceMarketCfg struct {
-	Fractional            bool
 	TimeInForce           string
 	SupportTradingSession string
 	// ClientOrderID lets the caller pick the id before the request goes out,

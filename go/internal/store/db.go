@@ -649,8 +649,8 @@ func defaultSettings() map[string]any {
 		"autoTrading": map[string]any{
 			"enabled": false, "provider": "finnhub", "lowIBS": 0.1, "highIBS": 0.75,
 			"executionWindowSeconds": 90, "allowNewEntries": true, "allowExits": true,
-			"entryCapitalMode": "standard_safe", "allowFractionalShares": false,
-			"maxSlippageBps": 25, "lastModifiedAt": nil,
+			"entryCapitalMode": "standard_safe",
+			"maxSlippageBps":   25, "lastModifiedAt": nil,
 		},
 	}
 }

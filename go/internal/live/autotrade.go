@@ -459,7 +459,7 @@ func (e *Engine) Execute(trigger string) EvalResult {
 			e.logAuto("open_orders_cancelled", corr, map[string]any{"symbol": symbol, "cancelled_count": len(cancelled)})
 		}
 	}
-	placeCfg := PlaceMarketCfg{Fractional: asBool(ev.AutoTrading["allowFractionalShares"])}
+	placeCfg := PlaceMarketCfg{}
 	res, err := e.placeMarket(symbol, side, qty, placeCfg)
 	if err != nil {
 		res.Error = err.Error()
@@ -847,18 +847,16 @@ func (e *Engine) ClosePosition(symbol string) (OrderResult, error) {
 	if e.Broker == nil {
 		return OrderResult{Error: "Webull credentials are missing"}, fmt.Errorf("Webull credentials are missing")
 	}
-	cfg := e.AutoConfig()
-	frac := asBool(cfg["allowFractionalShares"])
 	pos, err := e.Broker.Positions()
 	if err != nil {
 		return OrderResult{Error: err.Error(), Symbol: symbol, Side: "SELL"}, err
 	}
-	qty := PositionQuantity(pos, symbol, frac)
+	qty := PositionQuantity(pos, symbol)
 	if !(qty > 0) {
 		err := fmt.Errorf("No broker position found for %s", symbol)
 		return OrderResult{Error: err.Error(), Symbol: symbol, Side: "SELL"}, err
 	}
-	res, err := e.placeMarket(symbol, "SELL", qty, PlaceMarketCfg{Fractional: frac})
+	res, err := e.placeMarket(symbol, "SELL", qty, PlaceMarketCfg{})
 	e.logAuto("close_position", "", map[string]any{"symbol": symbol, "submitted": res.Submitted, "clientOrderId": res.ClientOrderID})
 	if res.Submitted {
 		e.startTracking(res, orderMeta{

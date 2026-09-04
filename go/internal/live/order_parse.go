@@ -67,18 +67,21 @@ func fillQtyFrom(detail map[string]any) float64 {
 	)
 }
 
-// formatOrderQuantity ports autotrade.js buildEquityOrderItem quantity formatting.
-func formatOrderQuantity(qty float64, fractional bool) string {
-	if fractional {
-		s := strconv.FormatFloat(qty, 'f', 5, 64)
-		s = strings.TrimRight(s, "0")
-		s = strings.TrimRight(s, ".")
-		if s == "" || s == "-0" {
-			return "0"
-		}
-		return s
+// formatOrderQuantity renders the quantity Webull is sent. Entries are always
+// whole shares, so this normally prints an integer; a fraction survives only
+// when an exit has to sell a holding a split left fractional, and rounding it
+// there would strand the remainder.
+func formatOrderQuantity(qty float64) string {
+	if whole := math.Floor(qty + 1e-9); math.Abs(qty-whole) < 1e-9 {
+		return strconv.FormatInt(int64(whole), 10)
 	}
-	return strconv.FormatInt(int64(math.Floor(qty+1e-9)), 10)
+	s := strconv.FormatFloat(qty, 'f', 5, 64)
+	s = strings.TrimRight(s, "0")
+	s = strings.TrimRight(s, ".")
+	if s == "" || s == "-0" {
+		return "0"
+	}
+	return s
 }
 
 func copyStringAnyMap(m map[string]any) map[string]any {

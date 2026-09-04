@@ -12,7 +12,7 @@ import (
 )
 
 var autoTradingBoolFields = []string{
-	"enabled", "allowNewEntries", "allowExits", "allowFractionalShares",
+	"enabled", "allowNewEntries", "allowExits",
 }
 
 var autoTradingNumberFields = []string{
@@ -27,6 +27,7 @@ var autoTradingRemovedFields = []string{
 	"entrySizingMode", "sizingMode", "fixedQuantity", "fixedNotionalUsd",
 	"maxPositionUsd", "orderType", "timeInForce", "supportTradingSession",
 	"providerFallback", "symbols", "onlyFromTelegramWatches", "notes",
+	"allowFractionalShares",
 	"previewBeforeSend", "cancelOpenOrdersBeforeEntry", "dryRun",
 }
 

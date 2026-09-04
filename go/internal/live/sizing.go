@@ -189,18 +189,21 @@ func ComputeOrderQuantity(currentPrice float64, autoTrading map[string]any, avai
 	}
 	_, reservePct := capitalModeConfig(autoTrading)
 	quantity := (availableFunds / (1 + reservePct)) / currentPrice
-	if !asBool(autoTrading["allowFractionalShares"]) {
-		quantity = math.Floor(quantity)
-	} else {
-		quantity = math.Floor(quantity*100000) / 100000
-	}
+	// Whole shares only. Fractional entries were a switch; they are not what
+	// this strategy trades, and a fractional order is a different order type at
+	// the broker with its own fill rules.
+	quantity = math.Floor(quantity)
 	if !(quantity > 0) {
 		return 0, fmt.Errorf("Calculated order quantity is zero; increase funds or reduce price")
 	}
 	return quantity, nil
 }
 
-func PositionQuantity(positions []any, symbol string, fractional bool) float64 {
+// PositionQuantity is how much of the symbol the broker actually holds, exactly
+// as reported. An exit sells this whole number: entries are whole shares, but a
+// split can still leave a fraction, and flooring it here would sell 7 of 7.5
+// and call the position closed with the rest still open.
+func PositionQuantity(positions []any, symbol string) float64 {
 	want := store.SafeTicker(symbol)
 	for _, row := range positions {
 		m := mapOf(row)
@@ -215,10 +218,7 @@ func PositionQuantity(positions []any, symbol string, fractional bool) float64 {
 		if q <= 0 {
 			return 0
 		}
-		if fractional {
-			return math.Floor(q*100000) / 100000
-		}
-		return math.Floor(q)
+		return q
 	}
 	return 0
 }
@@ -255,7 +255,7 @@ func (e *Engine) sizeOrder(action, symbol string, cfg map[string]any, price floa
 		if err != nil {
 			return 0, err
 		}
-		q := PositionQuantity(pos, symbol, asBool(cfg["allowFractionalShares"]))
+		q := PositionQuantity(pos, symbol)
 		if !(q > 0) {
 			return 0, fmt.Errorf("No broker position found for %s", symbol)
 		}

@@ -217,7 +217,7 @@ func (m *MemoryBroker) CloseMarket(symbol string) (OrderResult, error) {
 	m.mu.Lock()
 	pos := m.Pos
 	m.mu.Unlock()
-	qty := PositionQuantity(pos, symbol, false)
+	qty := PositionQuantity(pos, symbol)
 	if !(qty > 0) {
 		err := fmt.Errorf("No broker position found for %s", symbol)
 		return OrderResult{Error: err.Error(), Symbol: symbol, Side: "SELL"}, err

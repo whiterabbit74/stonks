@@ -134,7 +134,7 @@ func TestFilledSubstringInFieldNamesIsNotFill(t *testing.T) {
 	}
 }
 
-func TestPlaceMarketCfgFractionalAndSession(t *testing.T) {
+func TestPlaceMarketCfgSendsExactQuantity(t *testing.T) {
 	var body string
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
@@ -156,27 +156,27 @@ func TestPlaceMarketCfgFractionalAndSession(t *testing.T) {
 		HTTP: ts.Client(), Base: ts.URL, Host: "api.webull.com",
 		AppKey: "k", AppSecret: "s", AccessToken: "t", AccountID: "acc",
 	}}
-	_, err := br.PlaceMarketCfg("AAPL", "SELL", 1.73, PlaceMarketCfg{
-		Fractional: true, TimeInForce: "GTC", SupportTradingSession: "N",
-	})
+	// A fractional quantity reaches this path only from an exit selling out a
+	// holding a split left fractional, and it must go over the wire intact.
+	_, err := br.PlaceMarketCfg("AAPL", "SELL", 1.73, PlaceMarketCfg{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(body, `"quantity":"1.73"`) {
-		t.Fatalf("fractional qty body %s", body)
+		t.Fatalf("fractional exit qty body %s", body)
 	}
-	if !strings.Contains(body, `"time_in_force":"GTC"`) || !strings.Contains(body, `"support_trading_session":"N"`) {
+	if !strings.Contains(body, `"time_in_force":"DAY"`) || !strings.Contains(body, `"support_trading_session":"CORE"`) {
 		t.Fatalf("tif/session body %s", body)
 	}
 	if !strings.Contains(body, `"order_type":"MARKET"`) {
 		t.Fatalf("live path must stay MARKET: %s", body)
 	}
-	_, err = br.PlaceMarketCfg("AAPL", "SELL", 1.73, PlaceMarketCfg{Fractional: false})
+	_, err = br.PlaceMarketCfg("AAPL", "BUY", 2, PlaceMarketCfg{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(body, `"quantity":"1"`) {
-		t.Fatalf("integer qty should floor, body %s", body)
+	if !strings.Contains(body, `"quantity":"2"`) {
+		t.Fatalf("whole qty must not gain decimals, body %s", body)
 	}
 }
 
@@ -190,13 +190,13 @@ func TestPartialFilledIsNotFinal(t *testing.T) {
 }
 
 func TestFormatOrderQuantity(t *testing.T) {
-	if formatOrderQuantity(1.73000, true) != "1.73" {
-		t.Fatalf("got %q", formatOrderQuantity(1.73000, true))
+	if formatOrderQuantity(1.73000) != "1.73" {
+		t.Fatalf("got %q", formatOrderQuantity(1.73000))
 	}
-	if formatOrderQuantity(2, false) != "2" {
-		t.Fatalf("got %q", formatOrderQuantity(2, false))
+	if formatOrderQuantity(2) != "2" {
+		t.Fatalf("got %q", formatOrderQuantity(2))
 	}
-	if formatOrderQuantity(1.9, false) != "1" {
-		t.Fatalf("floor got %q", formatOrderQuantity(1.9, false))
+	if formatOrderQuantity(7) != "7" {
+		t.Fatalf("whole must stay whole, got %q", formatOrderQuantity(7))
 	}
 }

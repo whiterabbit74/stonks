@@ -15,7 +15,7 @@ func TestComputeOrderQuantityMatchesNode(t *testing.T) {
 			},
 		},
 	}
-	safe := map[string]any{"allowFractionalShares": false, "entryCapitalMode": "standard_safe"}
+	safe := map[string]any{"entryCapitalMode": "standard_safe"}
 	funds, _, _ := resolveEntryBalanceSizing(payload, safe)
 	q, err := ComputeOrderQuantity(250.23, safe, funds)
 	if err != nil {
@@ -25,7 +25,7 @@ func TestComputeOrderQuantityMatchesNode(t *testing.T) {
 		t.Fatalf("standard_safe qty=%v want 1", q)
 	}
 
-	cash := map[string]any{"allowFractionalShares": false, "entryCapitalMode": "cash_100"}
+	cash := map[string]any{"entryCapitalMode": "cash_100"}
 	funds, _, _ = resolveEntryBalanceSizing(payload, cash)
 	q, err = ComputeOrderQuantity(250.23, cash, funds)
 	if err != nil {
@@ -47,7 +47,7 @@ func TestComputeOrderQuantityMatchesNode(t *testing.T) {
 			},
 		},
 	}
-	margin := map[string]any{"allowFractionalShares": false, "entryCapitalMode": "margin_200"}
+	margin := map[string]any{"entryCapitalMode": "margin_200"}
 	funds, _, _ = resolveEntryBalanceSizing(marginPayload, margin)
 	if funds != 1000 {
 		t.Fatalf("margin funds=%v want 1000", funds)
@@ -62,9 +62,12 @@ func TestComputeOrderQuantityMatchesNode(t *testing.T) {
 
 }
 
-func TestPositionQuantity(t *testing.T) {
-	pos := []any{map[string]any{"symbol": "AAPL", "quantity": 7.9}}
-	if got := PositionQuantity(pos, "aapl", false); got != 7 {
+// An exit sells everything the broker holds. A split can leave a fractional
+// quantity behind an entry that was whole, and rounding it down here would
+// close the journal on a position that is still partly open.
+func TestPositionQuantityIsExact(t *testing.T) {
+	pos := []any{map[string]any{"symbol": "AAPL", "quantity": 7.5}}
+	if got := PositionQuantity(pos, "aapl"); got != 7.5 {
 		t.Fatalf("got %v", got)
 	}
 }

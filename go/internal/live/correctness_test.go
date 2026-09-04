@@ -2,6 +2,7 @@ package live
 
 import (
 	"fmt"
+	"math"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -372,19 +373,24 @@ func TestLogsSplitByPrefix(t *testing.T) {
 	}
 }
 
-func TestPlaceMarketCfgPassedFromExecute(t *testing.T) {
+// Entries are always whole shares: no setting can make the engine send a
+// fractional buy.
+func TestEntryQuantityIsAlwaysWhole(t *testing.T) {
 	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
 	_, e, br := testEngine(t, bars)
 	e.PatchAutoConfig(map[string]any{
 		"enabled": true, "lowIBS": 0.9, "allowNewEntries": true, "allowFractionalShares": true})
+	if _, ok := e.AutoConfig()["allowFractionalShares"]; ok {
+		t.Fatal("allowFractionalShares must not be storable any more")
+	}
 	e.Execute("test")
-	// Fractional shares are the only order option left; time in force and
-	// session are fixed at DAY/CORE because the strategy trades at the close.
-	if !br.LastCfg.Fractional {
-		t.Fatalf("cfg %+v", br.LastCfg)
+	if len(br.Orders) != 1 {
+		t.Fatalf("orders %+v", br.Orders)
+	}
+	if q := br.Orders[0].Quantity; q != math.Trunc(q) {
+		t.Fatalf("fractional entry quantity %v", q)
 	}
 }
-
 func TestStaleTrackerExpires(t *testing.T) {
 	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
 	db, e, _ := testEngine(t, bars)

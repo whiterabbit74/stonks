@@ -87,7 +87,7 @@ func (b *LiveBroker) PlaceMarketCfg(symbol, side string, qty float64, cfg PlaceM
 		"market":                  "US",
 		"side":                    strings.ToUpper(side),
 		"order_type":              "MARKET",
-		"quantity":                formatOrderQuantity(qty, cfg.Fractional),
+		"quantity":                formatOrderQuantity(qty),
 		"time_in_force":           tif,
 		"support_trading_session": session,
 		"entrust_type":            "QTY",
@@ -127,7 +127,7 @@ func (b *LiveBroker) CloseMarket(symbol string) (OrderResult, error) {
 	if err != nil {
 		return OrderResult{Error: err.Error(), Symbol: symbol, Side: "SELL"}, err
 	}
-	qty := PositionQuantity(pos, symbol, false)
+	qty := PositionQuantity(pos, symbol)
 	if !(qty > 0) {
 		err := fmt.Errorf("No broker position found for %s", symbol)
 		return OrderResult{Error: err.Error(), Symbol: symbol, Side: "SELL"}, err
