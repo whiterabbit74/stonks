@@ -287,6 +287,14 @@ func TestTickExpiredCoverageBlocksT1AndExtends(t *testing.T) {
 	eng.Broker = br
 	eng.ChatID = "c"
 	eng.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true})
+	// The tick runs the token-health job before the T-1 aggregation, and
+	// executeAll refuses to submit on a MISSING health status. A test broker
+	// still needs a token behind it for the T-1 stage to be reached at all.
+	eng.PutToken("t", "2027-01-01T00:00:00Z")
+	// T-1 placement is bounded by the session close on the engine's own clock,
+	// so the engine has to share the tick's simulated time — a real clock says
+	// the close is long past and every attempt is skipped as out of budget.
+	eng.Now = func() time.Time { return time.Date(2026, 9, 1, 19, 59, 0, 0, time.UTC) }
 	now := time.Date(2026, 9, 1, 19, 59, 0, 0, time.UTC)
 	var logs []JobLog
 	RunTick(db, Deps{Live: eng}, now, func(j JobLog) { logs = append(logs, j) })
@@ -345,6 +353,14 @@ func TestTickT1Executes(t *testing.T) {
 	eng.Broker = br
 	eng.ChatID = "c"
 	eng.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true})
+	// The tick runs the token-health job before the T-1 aggregation, and
+	// executeAll refuses to submit on a MISSING health status. A test broker
+	// still needs a token behind it for the T-1 stage to be reached at all.
+	eng.PutToken("t", "2027-01-01T00:00:00Z")
+	// T-1 placement is bounded by the session close on the engine's own clock,
+	// so the engine has to share the tick's simulated time — a real clock says
+	// the close is long past and every attempt is skipped as out of budget.
+	eng.Now = func() time.Time { return time.Date(2026, 9, 1, 19, 59, 0, 0, time.UTC) }
 	now := time.Date(2026, 9, 1, 19, 59, 0, 0, time.UTC) // 15:59 ET
 	var logs []JobLog
 	RunTick(db, Deps{Live: eng}, now, func(j JobLog) { logs = append(logs, j) })
@@ -389,6 +405,14 @@ func TestTickT1RunsBeforePollTrackers(t *testing.T) {
 	eng.Broker = br
 	eng.ChatID = "c"
 	eng.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true})
+	// The tick runs the token-health job before the T-1 aggregation, and
+	// executeAll refuses to submit on a MISSING health status. A test broker
+	// still needs a token behind it for the T-1 stage to be reached at all.
+	eng.PutToken("t", "2027-01-01T00:00:00Z")
+	// T-1 placement is bounded by the session close on the engine's own clock,
+	// so the engine has to share the tick's simulated time — a real clock says
+	// the close is long past and every attempt is skipped as out of budget.
+	eng.Now = func() time.Time { return time.Date(2026, 9, 1, 19, 59, 0, 0, time.UTC) }
 	live.PollTrackersHook = func() {
 		if len(br.Orders) == 0 {
 			t.Error("PollTrackers ran before T-1 placed the order")
@@ -482,6 +506,14 @@ func t1Engine(t *testing.T) (*store.DB, *live.Engine, *live.MemoryBroker, *live.
 	eng.Broker = br
 	eng.ChatID = "c"
 	eng.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true})
+	// The tick runs the token-health job before the T-1 aggregation, and
+	// executeAll refuses to submit on a MISSING health status. A test broker
+	// still needs a token behind it for the T-1 stage to be reached at all.
+	eng.PutToken("t", "2027-01-01T00:00:00Z")
+	// T-1 placement is bounded by the session close on the engine's own clock,
+	// so the engine has to share the tick's simulated time — a real clock says
+	// the close is long past and every attempt is skipped as out of budget.
+	eng.Now = func() time.Time { return time.Date(2026, 9, 1, 19, 59, 0, 0, time.UTC) }
 	return db, eng, br, tg
 }
 
