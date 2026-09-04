@@ -305,10 +305,25 @@ func (m *MemoryBroker) OpenOrders() ([]any, error) {
 	if m.FailOpenOrders != nil {
 		return nil, m.FailOpenOrders
 	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if m.Open != nil {
 		return m.Open, nil
 	}
-	return []any{}, nil
+	var out []any
+	for _, o := range m.Orders {
+		st := NormalizeOrderStatus(o.Status)
+		if IsFinalOrderStatus(st) {
+			continue
+		}
+		out = append(out, map[string]any{
+			"symbol": o.Symbol, "client_order_id": o.ClientOrderID, "status": o.Status,
+		})
+	}
+	if out == nil {
+		out = []any{}
+	}
+	return out, nil
 }
 
 func (m *MemoryBroker) OrderHistory(start, end string) ([]any, error) {

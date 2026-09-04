@@ -1237,7 +1237,11 @@ func filterHiddenTrades(list []map[string]any, includeHidden bool) []map[string]
 }
 
 func (s *Server) handleMonitorTrades(w http.ResponseWriter, r *http.Request) {
-	list, _ := s.DB.ListTrades("trades")
+	list, err := s.DB.ListTrades("trades")
+	if err != nil {
+		writeJSON(w, 500, map[string]any{"error": err.Error()})
+		return
+	}
 	list = filterHiddenTrades(list, includeHiddenTrades(r))
 	writeJSON(w, 200, map[string]any{"trades": list, "total": len(list)})
 }

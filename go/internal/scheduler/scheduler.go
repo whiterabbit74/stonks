@@ -202,9 +202,11 @@ func RunTick(db *store.DB, deps Deps, now time.Time, onEvent func(JobLog)) {
 
 	if !IsTradingDay(p, cal) {
 		onEvent(JobLog{At: now, Name: "market-jobs", Skipped: true, Detail: "non-trading-day"})
+		RunCalendarExtend(db, deps, today, now, onEvent)
 		return
 	}
 	if !trading {
+		RunCalendarExtend(db, deps, today, now, onEvent)
 		return
 	}
 	sess := TradingSession(p, cal)

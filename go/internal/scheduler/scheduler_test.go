@@ -255,6 +255,72 @@ func TestTickT11RunsAggregation(t *testing.T) {
 	}
 }
 
+func TestTickExpiredCoverageBlocksT1AndExtends(t *testing.T) {
+	dir := t.TempDir()
+	db, err := store.Open(filepath.Join(dir, "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
+	_ = db.SaveDataset("AAPL", "AAPL", "", "", bars, false)
+	_ = db.UpsertWatch(map[string]any{"symbol": "AAPL", "lowIBS": 0.9})
+	raw, _ := json.Marshal(map[string]any{
+		"holidays":     map[string]any{},
+		"tradingHours": map[string]any{"normal": map[string]any{"start": "09:30", "end": "16:00"}},
+		"metadata":     map[string]any{"webullCoverageThrough": "2026-08-01"},
+	})
+	if err := db.SaveCalendar(raw); err != nil {
+		t.Fatal(err)
+	}
+	tg := &live.MemoryTelegram{}
+	br := &live.MemoryBroker{}
+	eng := live.New(db, &live.MemoryQuotes{Bars: map[string][]types.OHLC{"AAPL": bars}})
+	eng.Telegram = tg
+	eng.Broker = br
+	eng.ChatID = "c"
+	eng.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true})
+	now := time.Date(2026, 9, 1, 19, 59, 0, 0, time.UTC)
+	var logs []JobLog
+	RunTick(db, Deps{Live: eng}, now, func(j JobLog) { logs = append(logs, j) })
+	if len(br.Orders) != 0 {
+		t.Fatalf("expired coverage must not T-1 trade: %+v", br.Orders)
+	}
+	sawExpired, sawExtend, sawAgg := false, false, false
+	for _, j := range logs {
+		if j.Name == "market-jobs" && j.Detail == "calendar-coverage-expired" {
+			sawExpired = true
+		}
+		if j.Name == "calendar-extend" {
+			sawExtend = true
+		}
+		if j.Name == "telegram-aggregation" && !j.Skipped {
+			sawAgg = true
+		}
+		if j.Name == "price-actualization" && !j.Skipped {
+			t.Fatalf("actualize must not run on expired coverage: %+v", j)
+		}
+	}
+	if !sawExpired {
+		t.Fatalf("want calendar-coverage-expired, logs=%+v", logs)
+	}
+	if !sawExtend {
+		t.Fatalf("expired coverage must still call calendar-extend, logs=%+v", logs)
+	}
+	if sawAgg {
+		t.Fatalf("T-1 aggregation must not run, logs=%+v", logs)
+	}
+	alert := false
+	for _, m := range tg.Sent() {
+		if strings.Contains(m[1], "Календарь истекает") {
+			alert = true
+		}
+	}
+	if !alert {
+		t.Fatalf("want coverage alert, messages=%v", tg.Sent())
+	}
+}
+
 func TestTickT1Executes(t *testing.T) {
 	dir := t.TempDir()
 	db, err := store.Open(filepath.Join(dir, "t.db"))

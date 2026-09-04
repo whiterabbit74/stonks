@@ -564,25 +564,79 @@ func (e *Engine) startTracking(res OrderResult, meta orderMeta) {
 		}
 		e.trackerPersistFail[broker] = true
 		e.mu.Unlock()
+		e.persistTrackerBlock(broker)
 		return
 	}
 	e.rememberOrder(res.ClientOrderID, meta)
 	e.TrackSubmitted(res.ClientOrderID)
 }
 
+func (e *Engine) persistTrackerBlock(broker string) {
+	if e == nil || e.DB == nil {
+		return
+	}
+	if broker == "" {
+		broker = "webull"
+	}
+	settings := e.DB.Settings()
+	blocks, _ := settings["trackerPersistFail"].(map[string]any)
+	if blocks == nil {
+		blocks = map[string]any{}
+	}
+	blocks[broker] = true
+	settings["trackerPersistFail"] = blocks
+	_ = e.DB.SaveSettings(settings)
+}
+
 func (e *Engine) trackerPersistBlocked(broker string) bool {
 	if e == nil {
 		return false
 	}
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	if e.trackerPersistFail == nil {
-		return false
+	if broker == "" {
+		broker = "webull"
 	}
-	if broker != "" && e.trackerPersistFail[broker] {
+	e.mu.Lock()
+	mem := e.trackerPersistFail != nil && e.trackerPersistFail[broker]
+	e.mu.Unlock()
+	if mem {
 		return true
 	}
-	return e.trackerPersistFail["webull"] && broker == ""
+	if e.DB == nil {
+		return false
+	}
+	settings := e.DB.Settings()
+	blocks, _ := settings["trackerPersistFail"].(map[string]any)
+	return asBool(blocks[broker])
+}
+
+// t1BrokerReconcile checks live broker books before a T-1 Execute, including
+// a retry after an expired lease. A working order or a failed read must not
+// mint a second place.
+func (e *Engine) t1BrokerReconcile() (skipPlace, waitFill bool, block map[string]any) {
+	for _, nb := range e.brokerSnapshot() {
+		if nb.br == nil {
+			continue
+		}
+		rows, err := retryBrokerRead(e, "open_orders", nb.br.OpenOrders)
+		if err != nil {
+			return true, false, map[string]any{"code": "open_orders_unavailable", "message": err.Error()}
+		}
+		for _, row := range rows {
+			m := mapOf(row)
+			if m == nil {
+				continue
+			}
+			st := NormalizeOrderStatus(fmt.Sprint(firstNonEmpty(m["status"], m["order_status"], m["orderStatus"])))
+			if IsFinalOrderStatus(st) {
+				continue
+			}
+			return true, true, nil
+		}
+		if _, err := retryBrokerRead(e, "positions", nb.br.Positions); err != nil {
+			return true, false, map[string]any{"code": "broker_positions_unavailable", "message": err.Error()}
+		}
+	}
+	return false, false, nil
 }
 
 // retryBrokerRead retries a read-only broker call. These run before any order

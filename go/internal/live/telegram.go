@@ -233,8 +233,16 @@ func (e *Engine) Aggregate(minutesUntilClose int, opts AggregateOpts) (SimulateR
 		if blocking != nil {
 			_ = e.DB.AppendAutotradeLog("t1_monitor_mismatch " + fmt.Sprint(blocking["code"]) + " " + fmt.Sprint(blocking["message"]))
 		}
+		skipPlace, wait, recBlock := e.t1BrokerReconcile()
+		if recBlock != nil && blocking == nil {
+			blocking = recBlock
+			_ = e.DB.AppendAutotradeLog("t1_monitor_mismatch " + fmt.Sprint(recBlock["code"]) + " " + fmt.Sprint(recBlock["message"]))
+		}
+		if wait {
+			waitFill = true
+		}
 		_ = e.DB.AppendAutotradeLog("t1_execution_started")
-		if blocking == nil {
+		if blocking == nil && !skipPlace {
 			if opts.DryRun {
 				_ = e.DB.AppendAutotradeLog("t1_dry_run")
 				exitRes = e.Evaluate()
@@ -248,7 +256,7 @@ func (e *Engine) Aggregate(minutesUntilClose int, opts AggregateOpts) (SimulateR
 				}
 			}
 		}
-		if opts.UpdateState && !opts.DryRun {
+		if opts.UpdateState && !opts.DryRun && recBlock == nil {
 			_ = e.DB.MarkT1ExecutionFinished(e.chat(), today)
 		}
 	}

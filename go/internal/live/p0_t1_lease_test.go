@@ -99,6 +99,58 @@ func TestT1PendingTrackerSkipsSecondExecute(t *testing.T) {
 	}
 }
 
+func TestT1RetryReconcilesOpenOrders(t *testing.T) {
+	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
+	db, e, br := testEngine(t, bars)
+	e.Sleep = func(time.Duration) {}
+	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true})
+	if _, err := e.Aggregate(1, t1Opts()); err != nil {
+		t.Fatal(err)
+	}
+	if len(br.Orders) != 1 {
+		t.Fatalf("first %d", len(br.Orders))
+	}
+	if _, err := db.SQL.Exec(`DELETE FROM order_trackers`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.SQL.Exec(`UPDATE aggregate_send_state SET t1_sent=0, t1_execution_finished=0, t1_lease_until='' WHERE chat_id=?`, e.ChatID); err != nil {
+		t.Fatal(err)
+	}
+	res, err := e.Aggregate(1, t1Opts())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(br.Orders) != 1 {
+		t.Fatalf("OpenOrders reconcile must not place again: %+v reason=%s", br.Orders, res.Reason)
+	}
+}
+
+func TestTrackerSaveFailureSurvivesRestart(t *testing.T) {
+	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
+	db, e, br := testEngine(t, bars)
+	e.Sleep = func(time.Duration) {}
+	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true})
+	if _, err := db.SQL.Exec(`DROP TABLE order_trackers`); err != nil {
+		t.Fatal(err)
+	}
+	res := e.Execute("t1")
+	if !res.Executed || len(br.Orders) != 1 {
+		t.Fatalf("first place %+v orders=%d", res.Broker, len(br.Orders))
+	}
+	br.Open = []any{}
+	e2 := New(db, e.Quotes)
+	e2.Broker = br
+	e2.Telegram = e.Telegram
+	e2.ChatID = e.ChatID
+	e2.Now = e.Now
+	e2.Sleep = func(time.Duration) {}
+	e2.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true})
+	res2 := e2.Execute("t1")
+	if res2.Executed || len(br.Orders) != 1 {
+		t.Fatalf("persisted tracker block must survive restart: executed=%v orders=%d", res2.Executed, len(br.Orders))
+	}
+}
+
 func TestT1ParallelLeaseSingleExecute(t *testing.T) {
 	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
 	db, e, _ := testEngine(t, bars)

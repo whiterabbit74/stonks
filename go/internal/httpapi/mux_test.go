@@ -171,6 +171,19 @@ func TestMutationRejectsExtraJSON(t *testing.T) {
 	}
 }
 
+func TestMonitorTradesFailsOnDBError(t *testing.T) {
+	s := testServer(t, "")
+	if _, err := s.DB.SQL.Exec(`DROP TABLE trades`); err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest("GET", "/api/telegram/trades", nil)
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != 500 {
+		t.Fatalf("monitor trades got %d %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestGetCalendarDoesNotWrite(t *testing.T) {
 	s := testServer(t, "secret")
 	before, _ := s.DB.GetCalendar()

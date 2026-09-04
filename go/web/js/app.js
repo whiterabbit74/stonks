@@ -2179,6 +2179,9 @@
   }
 
   function pageWatches() {
+    const loadErr = state.watchLoadError
+      ? `<div class="rounded-lg border border-red-200 bg-red-50 text-red-800 px-3 py-2 text-sm mb-3">${esc(state.watchLoadError)}</div>`
+      : '';
     const cons = state.consistency || {};
     const issues = Array.isArray(cons.issues) ? cons.issues : [];
     const actions = Array.isArray(cons.proposedActions) ? cons.proposedActions : [];
@@ -2235,6 +2238,7 @@
         </div>`;
     return `
       ${pageHeader('Мониторинг', 'Отслеживание позиций и уведомления в Telegram', `<button id="watch-refresh" class="icon-btn icon-btn-md icon-btn-glass" title="Обновить список" aria-label="Обновить список">${icon('refresh', 'w-4 h-4')}</button>`)}
+      ${loadErr}
       ${analysisTabs(WATCH_TABS, state.watchTab, 'data-wtab', 'Разделы мониторинга')}
       <p class="mt-4 text-sm text-gray-600 dark:text-gray-300">Глобальный порог уведомлений: ${esc(thr)}% <span class="ml-2 text-xs text-gray-500">(применяется ко всем отслеживаемым акциям)</span></p>
       <p class="text-sm text-gray-600 dark:text-gray-300 mb-3">До следующего подсчёта сигналов: <span id="watch-countdown">${formatDuration(secondsToNextSignal())}</span></p>
@@ -3446,16 +3450,24 @@
 
     if (p === '/watches') {
       if (!state.loaded.watches) {
-        const [w, t, a, c] = await Promise.all([
-          API.watches().catch(() => []),
-          API.trades().catch(() => API.monitorTrades().catch(() => [])),
-          API.emaAlerts().catch(() => []),
-          API.consistency().catch((e) => ({ issues: [{ code: 'fetch_failed', message: (e && e.message) || 'Не удалось получить согласованность' }] })),
-        ]);
-        state.watches = w || [];
-        state.monitorTrades = Array.isArray(t) ? t : (t.trades || []);
-        state.emaAlerts = Array.isArray(a) ? a : (a.alerts || []);
-        state.consistency = c || { issues: [] };
+        try {
+          const [w, t, a, c] = await Promise.all([
+            API.watches(),
+            API.trades().catch((e) => { if (e && e.status === 404) return API.monitorTrades(); throw e; }),
+            API.emaAlerts(),
+            API.consistency().catch((e) => ({ issues: [{ code: 'fetch_failed', message: (e && e.message) || 'Не удалось получить согласованность' }] })),
+          ]);
+          state.watchLoadError = '';
+          state.watches = w || [];
+          state.monitorTrades = Array.isArray(t) ? t : (t.trades || []);
+          state.emaAlerts = Array.isArray(a) ? a : (a.alerts || []);
+          state.consistency = c || { issues: [] };
+        } catch (e) {
+          state.watchLoadError = (e && e.message) || 'Не удалось загрузить мониторинг';
+          state.watches = state.watches || [];
+          state.monitorTrades = state.monitorTrades || [];
+          state.emaAlerts = state.emaAlerts || [];
+        }
         state.loaded.watches = true;
         renderPage();
         return;

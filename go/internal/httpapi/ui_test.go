@@ -75,6 +75,12 @@ func TestVanillaUIAssets(t *testing.T) {
 	if !strings.Contains(a, "Сервис недоступен") || !strings.Contains(a, "state.authUnknown = true") {
 		t.Fatal("non-401 auth errors must show an unavailable screen, not boot as authed")
 	}
+	if strings.Contains(a, "API.monitorTrades().catch(() => [])") || strings.Contains(a, "API.trades().catch(() => API.monitorTrades().catch(() => []))") {
+		t.Fatal("watches must not coerce a trades 500 into an empty table")
+	}
+	if !strings.Contains(a, "watchLoadError") {
+		t.Fatal("watches load errors must be shown, not swallowed")
+	}
 	if strings.Contains(a, "IBS Trading Strategy") || strings.Contains(a, ">IBS Trading<") {
 		t.Fatal("old IBS Trading Strategy brand must be replaced")
 	}
