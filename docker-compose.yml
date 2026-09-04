@@ -1,12 +1,6 @@
 services:
-  # Production (default) — data in named volumes, secrets via env_file or Docker secrets
   server:
     image: ${SERVER_IMAGE:-stonks-server:latest}
-    build:
-      context: .
-      dockerfile: docker/go.Dockerfile
-      args:
-        BUILD_ID: "${BUILD_ID:-dev}"
     env_file:
       - /home/ubuntu/stonks-config/.env
     environment:
@@ -45,30 +39,6 @@ services:
       retries: 3
       start_period: 20s
     container_name: stonks-server
-
-  frontend:
-    build:
-      context: .
-      dockerfile: docker/frontend.Dockerfile
-      args:
-        PUBLIC_BASE_PATH: "/"
-        VITE_API_BASE: "/api"
-        VITE_BUILD_ID: "${BUILD_ID:-dev}"
-    depends_on:
-      - server
-    restart: unless-stopped
-    volumes:
-      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost/"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 20s
-    environment:
-      - PUBLIC_BASE_PATH=/
-      - VITE_API_BASE=/api
-    container_name: stonks-frontend
 
   mcp:
     build:
@@ -110,7 +80,6 @@ services:
       # keeps Caddy from grabbing UDP/443 for HTTP/3.
       - "443:443"
     depends_on:
-      - frontend
       - server
       - mcp
     volumes:
@@ -123,64 +92,6 @@ services:
     restart: unless-stopped
     container_name: stonks-caddy
 
-  # Development profile — convenient bind mounts to repo files
-  server-dev:
-    profiles: ["dev"]
-    build:
-      context: .
-      dockerfile: docker/server.Dockerfile
-      args:
-        BUILD_ID: "${BUILD_ID:-dev}"
-    env_file:
-      - ./server/.env
-    environment:
-      - PORT=3001
-      - DATASETS_DIR=/data/datasets
-      - DB_DIR=/data/db
-      - SETTINGS_FILE=/data/state/settings.json
-      - WATCHES_FILE=/data/state/telegram-watches.json
-      - SPLITS_FILE=/data/state/splits.json
-      - TRADE_HISTORY_FILE=/data/state/trade-history.json
-      - HTTP_LOG_PATH=/data/state/http-access.jsonl
-    volumes:
-      - ./server/datasets:/data/datasets
-      - ./server/db:/data/db
-      - ./server/settings.json:/data/state/settings.json
-      - ./server/telegram-watches.json:/data/state/telegram-watches.json
-      - ./server/splits.json:/data/state/splits.json
-      - ./server/trade-history.json:/data/state/trade-history.json
-    ports:
-      - "127.0.0.1:3001:3001"
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://localhost:3001/api/status').then(r=>r.ok?process.exit(0):process.exit(1)).catch(()=>process.exit(1))"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 20s
-
-  frontend-dev:
-    profiles: ["dev"]
-    build:
-      context: .
-      dockerfile: docker/frontend.Dockerfile
-      args:
-        PUBLIC_BASE_PATH: "/"
-        VITE_API_BASE: "/api"
-        VITE_BUILD_ID: "${BUILD_ID:-dev}"
-    depends_on:
-      - server-dev
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost/api/status" ]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 20s
-    environment:
-      - PUBLIC_BASE_PATH=/
-      - VITE_API_BASE=/api
-
 volumes:
   stonks_datasets:
   stonks_db:
@@ -189,4 +100,3 @@ volumes:
     driver: local
   caddy_config:
     driver: local
-

@@ -20,7 +20,7 @@ func repoRoot(t *testing.T) string {
 func nodeSignature(t *testing.T, path, body, queryJSON string) string {
 	t.Helper()
 	root := repoRoot(t)
-	script := `const {buildSignature}=require("./server/src/services/webullClient.js");
+	script := `const {buildSignature}=require("./go/testdata/webull_build_signature.js");
 const path=process.argv[1];
 const body=process.argv[2];
 const query=JSON.parse(process.argv[3]||"{}");

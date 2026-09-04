@@ -7,7 +7,7 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-# Node
+# Node (mcp/local leftovers)
 node_modules/
 **/node_modules/
 
@@ -26,38 +26,18 @@ coverage/
 .vitest/
 playwright-report/
 test-results/
-e2e/
-**/*.spec.*
-**/*.test.*
-
-# Re-include unit tests within the src directory
-!src/**/*.test.ts
-!src/**/*.test.tsx
-!server/**/*.test.js
-!server/**/*.test.ts
 
 # Env/Secrets
 .env
 *.env.local
 *.env.production
 *.local
-server/telegram-watches.json
-server/settings.json
-server/*.log
-
-# Large data not needed in repo, except for specific test data
-server/datasets/*
-!server/datasets/GOOGL.json
-!server/datasets/README.md
-
 .env.remote
 
-# Temporary deployment files (should not be in repo)
+# Temporary deployment files
 *.tgz
 cookies.txt
 config-update.tgz
-frontend-*.tgz
-server-*.tgz
 
 # Local reference clones / scratch space
 .codex_tmp/
@@ -65,10 +45,10 @@ server-*.tgz
 tmp/
 webull-sdk/
 
-# SQLite database
-server/db/*.db
-server/db/*.db-shm
-server/db/*.db-wal
+# Local SQLite
+go/data/*.db
+go/data/*.db-shm
+go/data/*.db-wal
 
 # Token Savior MCP index cache
 .token-savior-cache.json

@@ -44,15 +44,13 @@ cleanup_docker() {
 
     # Сохранить последние версии
     docker tag stonks-server:latest stonks-server:latest-backup 2>/dev/null || true
-    docker tag stonks-frontend:latest stonks-frontend:latest-backup 2>/dev/null || true
 
     # Удалить все образы
     docker rmi $(docker images -q) 2>/dev/null || true
 
     # Восстановить последние версии
     docker tag stonks-server:latest-backup stonks-server:latest 2>/dev/null || true
-    docker tag stonks-frontend:latest-backup stonks-frontend:latest 2>/dev/null || true
-    docker rmi stonks-server:latest-backup stonks-frontend:latest-backup 2>/dev/null || true
+    docker rmi stonks-server:latest-backup 2>/dev/null || true
 
     # Очистить систему
     docker system prune -af
@@ -75,12 +73,6 @@ cleanup_temp_files() {
     # Удалить временные файлы
     find . -name "tmp_*" -type f -mtime +1 -delete 2>/dev/null || true
     find . -name "*.tmp" -type f -mtime +1 -delete 2>/dev/null || true
-
-    # Очистить node_modules от кэша
-    if [[ -d "node_modules" ]]; then
-        rm -rf node_modules/.cache 2>/dev/null || true
-        rm -rf node_modules/.vite 2>/dev/null || true
-    fi
 
     log_success "Временные файлы очищены"
 }

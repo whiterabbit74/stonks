@@ -10,12 +10,9 @@
 - Не пушить, пока явно не попросили.
 - В ответе пользователю всегда пиши короткий хэш коммита (`git rev-parse --short HEAD`), например: `коммит abc1234`.
 
-
-This file provides comprehensive guidance to Claude Code (claude.ai/code) when working with code in this repository.
-
 ## Project Overview
 
-This is a React 19 + TypeScript trading strategy backtester with an Express.js backend. The application allows users to test trading strategies on historical data with real-time data integration from multiple financial APIs. The primary focus is on IBS (Internal Bar Strength) based mean-reversion strategies.
+Go trading-strategy backtester with a vanilla JS SPA (`go/web`). Historical OHLC, IBS mean-reversion, live Telegram monitoring, Webull autotrade. Production is this Go process behind Caddy. There is no React or Express stack.
 
 ### Trading Workflow Ground Rules
 
@@ -23,748 +20,90 @@ This is a React 19 + TypeScript trading strategy backtester with an Express.js b
 - **Two minutes before the close** capture the latest IBS readings for all monitored tickers and base entry decisions on these values.
 - At the close select the instrument with the **lowest IBS strictly below the entry threshold** (`lowIBS`, default `0.10` = 10%) from the monitoring list; if no ticker meets the threshold, skip the trade.
 - **Hold the position until it is fully closed**, then you may re-enter later the same day provided the above conditions are met again.
-- **Thresholds are strict on both sides:** entry `ibs < lowIBS`, exit `ibs > highIBS`, exactly as the backtest does it. An IBS of exactly `0.10` is not an entry. Monitor and autotrader must go through `isIbsEntrySignal` / `isIbsExitSignal` in `server/src/utils/ibsSignals.js` so the live thresholds cannot drift away from the backtest again.
+- **Thresholds are strict on both sides:** entry `ibs < lowIBS`, exit `ibs > highIBS`, exactly as the backtest does it. An IBS of exactly `0.10` is not an entry. Monitor and autotrader must go through `ibs.IsEntrySignal` / `ibs.IsExitSignal` in `go/internal/ibs` so the live thresholds cannot drift away from the backtest.
 
 ### Core Invariants (do not violate)
 
-- **Даты без времени и без таймзон.** Полное объяснение и правила — раздел [«Даты: почему в проекте нет таймзон»](#даты-почему-в-проекте-нет-таймзон). Коротко: торговая дата — строка `YYYY-MM-DD` (`TradingDate`), `Date` в этих путях не появляется вообще.
-
+- **Даты без времени и без таймзон.** Полное объяснение — раздел [«Даты: почему в проекте нет таймзон»](#даты-почему-в-проекте-нет-таймзон). Торговая дата — строка `YYYY-MM-DD`. `time.Time` в этих путях не появляется, кроме явной биржевой зоны на wall-clock.
 - **Commit changes.** Every completed change is committed locally (do not push/deploy unless explicitly asked). Commit messages end with the `Co-Authored-By` trailer used across the history.
 
 ## Даты: почему в проекте нет таймзон
 
-Это не стилистическое предпочтение и не «мы ленимся возиться с зонами». Это следствие того, чем оперирует приложение.
+Мы работаем с **дневными барами одной биржи**. Дневной бар — не отрезок времени и не момент, а **идентификатор торговой сессии**: «17 ноября 2024 на NYSE». Такой же ярлык, как номер рейса. У него нет часа, минуты и смещения — он либо есть в календаре биржи, либо нет. Всё остальное (сделки, equity, просадки, сплиты, календарь, стейт монитора) навешено на этот же ярлык.
 
-### Суть
+Календарь один — биржевой. Провайдеры отдают бары уже помеченными датой сессии. Переводить дату сессии куда-то — как переводить номер рейса в другую таймзону.
 
-Мы работаем с **дневными барами одной биржи**. Дневной бар — это не отрезок времени и не момент, а **идентификатор торговой сессии**: «17 ноября 2024 на NYSE». Такой же ярлык, как номер рейса. У него нет часа, минуты и смещения — он либо есть в календаре биржи, либо нет. Всё остальное в системе (сделки, equity, просадки, сплиты, календарь торговых дней, стейт монитора) навешено на этот же ярлык.
+Как только календарный день превращают в момент времени:
 
-Календарь у нас ровно один — биржевой. Провайдеры данных отдают бары уже помеченными датой сессии. То есть **вся система изначально живёт в одном календаре, и никакого перевода между календарями в ней не требуется**: переводить дату сессии куда-то — это как переводить номер рейса в другую таймзону.
+1. Парсер **домысливает время** — полночь. Времени в исходных данных не было.
+2. Домысливает и зону: `YYYY-MM-DD` как полночь UTC, локальный конструктор — как полночь машины.
+3. Любое последующее чтение локальных частей даты добавляет **вторую** зону.
 
-Как только календарный день превращают в момент времени, происходит следующее:
+Дата сдвигается на день на разнице этих двух выдуманных зон. Полночь стоит на границе суток, поэтому любое ненулевое смещение её перебрасывает. Сдвиг зависит от машины. Информации такое преобразование не добавляет.
 
-1. `new Date('2024-11-17')` **домысливает время** — полночь. Времени в исходных данных не было, оно взялось из воздуха.
-2. Домысливает и зону: строка вида `YYYY-MM-DD` парсится как **полночь UTC**, а `new Date(2024, 10, 17)` и `'11/17/2024'` — как **локальная полночь машины**.
-3. Любое последующее чтение (`.toLocaleDateString()`, `.getDate()`, `.getFullYear()`) добавляет **вторую** зону — зону браузера или сервера.
-
-Дата сдвигается на день ровно на разнице этих двух выдуманных зон. Полночь — худшая из возможных точек привязки: она стоит на самой границе суток, поэтому **любое** ненулевое смещение её перебрасывает. И заметьте: сдвиг зависит от машины, где открыт браузер. Один и тот же датасет у пользователя в Москве и в Нью-Йорке даёт разные даты баров, разные сделки и разные метрики. Информации такое преобразование не добавляет ни на бит — только теряет.
-
-Отсюда правило: **между «дата пришла» и «дата показана пользователю» она не должна ни разу становиться `Date`**. Строка `'2024-11-17'` уже полна и однозначна. Сравнение, разница в днях, сортировка, отображение, ключ в `Map` — всё это делается на строках, без потери информации и без зависимости от машины.
-
-Это уже стоило нам нескольких одинаковых багов: съехавший на день список сплитов; импорт CSV в формате `M/D/YYYY`, который в московской зоне записывал каждый бар на предыдущий день; экспирация опционов, уезжавшая на день в UTC+13, и вместе с ней цена по Black–Scholes; проверка «данные не актуальны», искавшая в Токио бар за вчера. Каждый раз причина была одна и та же.
+**Между «дата пришла» и «дата показана пользователю» она не должна ни разу становиться `time.Time` / JS `Date`.** Строка `'2024-11-17'` уже полна. Сравнение, разница в днях, сортировка, отображение, ключ — всё на строках.
 
 ### Жёсткие правила
 
-1. **Тип.** Торговая дата — `TradingDate` из `src/lib/date-utils.ts`, то есть строка `'YYYY-MM-DD'`. Это касается баров, сделок, equity, сплитов, календаря, стейта монитора и всех API-контрактов между фронтом и сервером.
-2. **Никакого времени суток** в данных, в логике и в UI. Если в значении появились часы — это либо не торговая дата, либо ошибка.
-3. **Все операции — через `src/lib/date-utils.ts`:**
-   - показать: `formatTradingDateDisplay`
-   - сравнить: `compareTradingDates`, `isBefore` / `isAfter` / `isSameDay` / `isOnOrBefore` / `isOnOrAfter` (или напрямую `<`, `>`, `===` — лексикографический порядок строк `YYYY-MM-DD` совпадает с хронологическим)
-   - разница и арифметика: `daysBetweenTradingDates`, `addDaysToTradingDate`, `dayOfWeekTradingDate`
-   - сегодняшняя дата биржи: `getTodayNYSE()`
-   - для lightweight-charts: `toChartTimestamp`
-   Нужной функции нет — добавь её туда, а не пиши `Date` по месту.
-4. **Запрещено на торговой дате:** `new Date(d)`, `Date.parse`, `.getTime()`, `.toISOString()`, `.toLocaleDateString()`, `.toLocaleString()`, `.getFullYear()` / `.getMonth()` / `.getDate()` / `.getDay()`, `setHours` / `setDate`, `getTimezoneOffset`, локальные конструкторы `new Date(y, m, d)`.
-5. **Парсинг входных данных** (CSV, ответы провайдеров) сразу даёт строку `YYYY-MM-DD`, минуя `Date`. Образец — `parseDate` в `src/lib/validation.ts`: разбирает формат регуляркой и собирает строку. Дата правильного вида с невозможным днём (`2024-02-30`) **отвергается**, а не переезжает молча в следующий месяц.
-6. **Сервер — те же правила.** Если `Date` всё же неизбежен (внешний API требует объект), зона фиксируется явно: `new Date(\`${d}T00:00:00.000Z\`)` или `Date.UTC(...)`, и обратно читается только через `getUTC*`. Сравнивать даты предпочтительно строками.
-7. **«Просто зафиксировать UTC» — не решение, а костыль.** UTC-полдень допустим ровно в одном месте: как формат обмена с lightweight-charts (`toChartTimestamp`), потому что библиотека требует таймстемп. Полдень выбран потому, что до границы суток от него далеко в обе стороны. Внутри нашей логики дата остаётся строкой.
+1. **Тип.** Торговая дата — строка `'YYYY-MM-DD'`. Бары, сделки, equity, сплиты, календарь, стейт монитора, API-контракты.
+2. **Никакого времени суток** в данных, в логике и в UI. Если появились часы — это либо не торговая дата, либо ошибка.
+3. **Все операции — через `go/internal/tradingdate`:**
+   - показать: `FormatDisplay`
+   - сравнить: `Compare` (или напрямую `<`, `>`, `==` — лексикографический порядок `YYYY-MM-DD` совпадает с хронологическим)
+   - разница и арифметика: `DaysBetween`, `AddDays`, `DayOfWeek`
+   - сегодняшняя дата биржи: `TodayNYSE`
+   - для lightweight-charts: `ChartTimestamp` (UTC noon)
+   В SPA — те же правила: строка, без `new Date(d)` на торговой дате.
+   Нужной функции нет — добавь её в `tradingdate`, а не пиши `time.Time` по месту.
+4. **Запрещено на торговой дате:** `time.Parse` без явной UTC/NY зоны как способ «получить день», JS `new Date(d)` / `Date.parse` / `.toISOString()` / `.toLocaleDateString()` / локальные `getFullYear`/`getMonth`/`getDate`.
+5. **Парсинг входных данных** (CSV, ответы провайдеров) сразу даёт строку `YYYY-MM-DD`. Дата правильного вида с невозможным днём (`2024-02-30`) **отвергается**. Образец — `tradingdate.Parse`.
+6. Если `time.Time` неизбежен (внешний API), зона фиксируется явно: UTC midnight/`Date.UTC` на границе, обратно только UTC-поля. Сравнивать даты — строками.
+7. UTC-полдень допустим только как формат обмена с lightweight-charts (`ChartTimestamp`). Внутри логики дата остаётся строкой.
 
 ### Единственное исключение: настоящее wall-clock время
 
-Время суток нужно ровно там, где вопрос по своей природе про часы:
+Время суток нужно ровно там, где вопрос про часы:
 
-- сколько минут осталось до закрытия сессии (T-11, T-1 в мониторе);
+- сколько минут осталось до закрытия сессии (T-11, T-1);
 - во сколько было принято решение о входе/выходе;
 - «обновлено в» для котировки или датасета.
 
-Правила для этих мест:
-
-- Зона указывается **явно**: `timeZone: 'America/New_York'`. Никогда не полагаемся на зону машины и не подставляем UTC «потому что сервер в UTC».
-- «Какой сейчас торговый день» — это `getTodayNYSE()`, а **не** UTC-день от `new Date()`. Разница вылезает вечером по нью-йоркскому времени, когда в UTC уже наступил следующий день: именно так живая свеча в мини-графике уезжала на день вперёд.
-- Результат такого вычисления — либо строка-дата (и дальше живёт по правилам выше), либо значение, явно помеченное как timestamp. Календарную дату из wall-clock timestamp получаем только через `getTodayNYSE` / явный `America/New_York`-форматтер.
+- Зона указывается **явно**: `America/New_York` (`tradingdate.NYZone`). Никогда не полагаемся на зону машины и не подставляем UTC «потому что сервер в UTC».
+- «Какой сейчас торговый день» — `TodayNYSE`, а **не** UTC-день от `time.Now()`. Разница вылезает вечером по Нью-Йорку, когда в UTC уже следующий день.
 
 ### Как проверять
 
-- Прогоняй тесты минимум в двух крайних зонах: `TZ=Pacific/Auckland npx vitest run` (UTC+13) и `TZ=America/Los_Angeles npx vitest run` (UTC−8). Любая разница в результатах между зонами — баг, даже если в UTC всё зелено.
-- Тесты не должны утверждать локальные части `Date` (`getFullYear`, `getMonth`, `getDate`). Проверяй строку-дату или `getUTC*`.
-- Быстрый grep при ревью: `rg "new Date\(|toISOString|toLocaleDateString|getTime\(\)" src server --glob '!*__tests__*'`. Каждое найденное место должно быть либо настоящим wall-clock с явной биржевой зоной, либо явно зафиксированным UTC на границе с внешним API.
+- `cd go && TZ=Pacific/Auckland go test ./...` и `TZ=America/Los_Angeles go test ./...`. Разница между зонами — баг.
+- Тесты не должны утверждать локальные части `time.Time`. Проверяй строку-дату или UTC-поля.
+- Быстрый grep: `rg "time.Parse|new Date\(|toISOString|toLocaleDateString" go --glob '!*_test.go'`. Каждое место — либо wall-clock с явной биржевой зоной, либо явно зафиксированный UTC на границе с внешним API.
 
 ## Architecture
 
-### Frontend (React SPA)
-
-**Tech Stack:**
-- React 19 with TypeScript (strict mode)
-- State management: Zustand (`src/stores/index.ts` - single global store)
-- Charts: lightweight-charts library (TradingView)
-- Styling: Tailwind CSS (utility-first, dark mode support)
-- Build tool: Vite 7
-- Testing: Vitest (unit), Playwright (E2E)
-
-**Entry Point Flow:**
 ```
-index.html → main.tsx → AppRouter.tsx → ProtectedLayout → Page Components
-```
-
-**Routing Structure:**
-- `/login` - Authentication (public)
-- `/data` - CSV/JSON dataset upload (protected)
-- `/enhance` - Fetch data from APIs (protected)
-- `/results` - Single ticker analysis (protected)
-- `/multi-ticker` - Portfolio backtesting (protected)
-- `/calendar` - Trading calendar (protected)
-- `/split` - Stock splits management (protected)
-- `/watches` - Telegram monitoring dashboard (protected)
-- `/settings` - App configuration (protected)
-
-**State Management (Zustand):**
-The application uses a single global store in `src/stores/index.ts` (602 lines):
-- `marketData: OHLCData[]` - Current dataset
-- `currentDataset: SavedDataset` - Active dataset metadata
-- `savedDatasets: SavedDataset[]` - Available datasets
-- `currentSplits: SplitEvent[]` - Stock splits
-- `currentStrategy: Strategy` - Active trading strategy
-- `backtestResults: BacktestResult` - Backtest output
-- `backtestStatus: 'idle' | 'running' | 'completed' | 'error'`
-- Commission settings, data provider config, UI preferences
-
-### Backend (Express Server)
-
-**Tech Stack:**
-- Express.js 4
-- Authentication: bcrypt + session tokens
-- Security: Helmet, CORS, rate limiting
-- Data persistence: JSON files (no database)
-- File operations: fs-extra, multer
-
-**Server Structure (Modular):**
-- Entry point: `server/server.js` (~140 lines)
-- Modules: `server/src/` — modular architecture
-  - `config/` — environment configuration
-  - `middleware/` — auth, rate limiting
-  - `providers/` — API data providers (AlphaVantage, Finnhub, TwelveData, Polygon)
-  - `routes/` — HTTP route handlers (9 modules)
-  - `services/` — business logic (6 modules)
-  - `utils/` — helper functions
-- Data storage: `server/datasets/` (individual JSON files)
-- State files: `splits.json`, `settings.json`, `telegram-watches.json`, `trade-history.json`, `trading-calendar.json`
-
-## Directory Structure
-
-```
-/home/user/stonks/
-├── src/                          # Frontend source (67 TS/TSX files)
-│   ├── components/               # React components (40 files, ~13,165 lines)
-│   │   ├── AppRouter.tsx        # Main router with authentication
-│   │   ├── Results.tsx          # Single ticker analysis dashboard
-│   │   ├── MultiTickerPage.tsx  # Portfolio backtesting
-│   │   ├── TelegramWatches.tsx  # Monitoring dashboard
-│   │   ├── DataUpload.tsx       # CSV/JSON import
-│   │   ├── BacktestRunner.tsx   # Backtest execution
-│   │   ├── TradingChart.tsx     # Main price chart (lightweight-charts)
-│   │   ├── EquityChart.tsx      # Equity curve visualization
-│   │   ├── TradesTable.tsx      # Trade history with pagination
-│   │   ├── SplitsTab.tsx        # Stock splits management
-│   │   ├── CalendarPage.tsx     # Trading calendar
-│   │   └── [30+ other components]
-│   ├── lib/                     # Core business logic (~6,149 lines)
-│   │   ├── backtest.ts          # Main backtesting engine
-│   │   ├── indicators.ts        # Technical indicators (IBS, SMA, EMA, RSI)
-│   │   ├── metrics.ts           # Performance metrics (Sharpe, CAGR, etc.)
-│   │   ├── api.ts               # API client with retry/timeout
-│   │   ├── strategy.ts          # Strategy templates
-│   │   ├── utils.ts             # Utility functions
-│   │   ├── date-utils.ts        # TradingDate utilities (YYYY-MM-DD format)
-│   │   ├── error-logger.ts      # Client-side error logging
-│   │   └── [additional utilities]
-│   ├── stores/                  # State management
-│   │   └── index.ts             # Zustand store (602 lines)
-│   ├── types/                   # TypeScript definitions
-│   │   └── index.ts             # Core types (236 lines)
-│   ├── hooks/                   # React hooks
-│   ├── constants/               # Application constants
-│   ├── test/                    # Test setup
-│   │   └── setup.ts             # Vitest mocks (matchMedia, ResizeObserver, etc.)
-│   └── main.tsx                 # Entry point
-├── server/                      # Express backend (modular architecture)
-│   ├── server.js                # Entry point (~140 lines)
-│   ├── src/                     # Backend modules
-│   │   ├── config/              # Environment configuration
-│   │   │   └── index.js         # Config loader with dotenv
-│   │   ├── middleware/          # Express middleware
-│   │   │   ├── auth.js          # Authentication & session handling
-│   │   │   └── rateLimiter.js   # API rate limiting
-│   │   ├── providers/           # External API integrations
-│   │   │   ├── alphaVantage.js  # Alpha Vantage API client
-│   │   │   ├── finnhub.js       # Finnhub API client
-│   │   │   ├── twelveData.js    # Twelve Data API client
-│   │   │   └── polygon.js       # Polygon.io API client
-│   │   ├── routes/              # HTTP route handlers
-│   │   │   ├── auth.js          # Login/logout/session
-│   │   │   ├── calendar.js      # Trading calendar
-│   │   │   ├── datasets.js      # Dataset CRUD
-│   │   │   ├── quotes.js        # Real-time quotes
-│   │   │   ├── settings.js      # App configuration
-│   │   │   ├── splits.js        # Stock splits
-│   │   │   ├── status.js        # Server health
-│   │   │   ├── telegram.js      # Telegram monitoring
-│   │   │   └── trades.js        # Trade history
-│   │   ├── services/            # Business logic
-│   │   │   ├── datasets.js      # Dataset management
-│   │   │   ├── dates.js         # Date calculations
-│   │   │   ├── settings.js      # Settings service
-│   │   │   ├── splits.js        # Splits processing
-│   │   │   ├── telegram.js      # Telegram notifications
-│   │   │   └── trades.js        # Trade tracking
-│   │   └── utils/               # Helper functions
-│   │       ├── files.js         # File operations
-│   │       └── helpers.js       # General utilities
-│   ├── datasets/                # Dataset storage directory
-│   ├── splits.json              # Centralized stock splits
-│   ├── settings.json            # App settings
-│   ├── telegram-watches.json    # Watch list
-│   ├── trade-history.json       # Monitor trades
-│   ├── trading-calendar.json    # Trading calendar data
-│   └── package.json             # Backend dependencies
-├── docker/                      # Docker configuration
-│   ├── frontend.Dockerfile      # Multi-stage build (Vite + nginx)
-│   ├── server.Dockerfile        # Node.js backend
-│   └── nginx.conf              # Nginx configuration
-├── e2e/                         # Playwright E2E tests
-├── deploy.sh                    # Production deployment
-├── health-check.sh              # System monitoring
-├── rollback.sh                  # Deployment rollback
-├── docker-compose.yml           # Container orchestration
-├── vite.config.ts               # Vite build configuration
-├── playwright.config.ts         # E2E test configuration
-├── tailwind.config.js           # Tailwind CSS config
-├── tsconfig.json                # TypeScript config
-└── package.json                 # Frontend dependencies
+go/cmd/server          HTTP process (API + SPA)
+go/internal/httpapi    mux, auth, calc, live handlers
+go/internal/backtest   IBS / EMA / options / simulators
+go/internal/ibs        entry/exit thresholds
+go/internal/live       monitor + autotrade
+go/internal/store      SQLite (modernc.org/sqlite, WAL, MaxOpenConns=1)
+go/internal/providers  AlphaVantage, Finnhub, TwelveData, Polygon
+go/internal/webull     HMAC OpenAPI client
+go/internal/scheduler  T-11 / T-1 / after-close jobs
+go/web                 vanilla SPA (js/app.js, charts.js)
+mcp/                   YouTube transcribe MCP (separate binary)
+caddy/                 TLS reverse proxy
 ```
 
-## Development Commands
+UI language is Russian. Brand: **Trading strategies**. Charts: Lightweight Charts v5, house `RIGHT_OFFSET: 8`, IBS pane 0–100 with dotted 10/75.
 
-### Frontend Development
-```bash
-npm run dev          # Start dev server (http://localhost:5173)
-npm run build        # Production build
-npm run build:check  # Build with TypeScript checking
-npm run preview      # Preview build (http://localhost:4173)
-npm run lint         # ESLint
-```
+Local: `cd go && go test ./... && go run ./cmd/server` → `:8080` (override `PORT`). Auth: `ADMIN_PASSWORD=test` (empty password disables auth only outside production). SQLite default: `go/data/trading.db`.
 
-### Backend Development
-```bash
-cd server
-npm run dev          # Start with nodemon (http://localhost:3001)
-npm run start        # Production start
-```
+## Deploy
 
-### Testing
-```bash
-# Unit tests (Vitest)
-npm run test         # Interactive watch mode
-npm run test:run     # Single run with coverage
-npm run test:tz      # Same suite in UTC+13 and UTC-8 (date invariant check)
+`./deploy.sh` cross-compiles linux/amd64, packs `docker/go.runtime.Dockerfile`, loads the image on the VPS. The VPS never runs `go build` for the trading server. Compose `server` is image-only.
 
-# E2E tests (Playwright)
-npm run test:e2e            # Run all E2E tests
-npm run test:e2e:ui         # Playwright UI mode
-npm run test:e2e:headed     # Headed browser mode
-npm run test:e2e:chromium   # Chromium only
-npm run test:e2e:firefox    # Firefox only
-npm run test:e2e:webkit     # WebKit only
+Do not push or deploy unless explicitly asked.
 
-# All tests
-npm run test:all     # Unit + E2E
-npm run test:ci      # CI mode with GitHub reporter
-```
+## Environment
 
-## API Endpoints Reference
-
-### Authentication & Status
-- `POST /api/login` - User login (email, password, rememberMe)
-- `GET /api/auth/check` - Session validation
-- `POST /api/logout` - Session termination
-- `POST /api/auth/hash-password` - Password hashing utility
-- `GET /api/status` - Server health check
-
-### Settings Management
-- `GET /api/settings` - Get app settings
-- `PUT /api/settings` - Update app settings
-- `PATCH /api/settings` - Partial settings update
-
-### Dataset Management
-- `GET /api/datasets` - List all datasets (metadata only)
-- `GET /api/datasets/:id` - Get full dataset with OHLC data
-- `GET /api/datasets/:id/metadata` - Get dataset metadata only
-- `POST /api/datasets` - Create new dataset
-- `PUT /api/datasets/:id` - Update dataset
-- `DELETE /api/datasets/:id` - Delete dataset
-- `POST /api/datasets/:id/refresh` - Refresh from API
-- `POST /api/datasets/:id/apply-splits` - Apply split adjustments
-- `PATCH /api/datasets/:id/metadata` - Update metadata only
-
-### Stock Splits
-- `GET /api/splits` - Get all splits (all tickers)
-- `GET /api/splits/:symbol` - Get splits for specific ticker
-- `PUT /api/splits/:symbol` - Replace splits for ticker
-- `PATCH /api/splits/:symbol` - Merge/upsert splits
-- `DELETE /api/splits/:symbol/:date` - Delete specific split
-- `DELETE /api/splits/:symbol` - Delete all splits for ticker
-
-### Market Data
-- `GET /api/quote/:symbol` - Real-time quote (multi-provider)
-- `GET /api/yahoo-finance/:symbol` - Yahoo Finance data
-- `GET /api/polygon-finance/:symbol` - Polygon.io data
-- `GET /api/test-yahoo/:symbol` - Yahoo Finance test endpoint
-- `GET /api/sample-data/:symbol` - Sample data for testing
-
-### Trading Calendar
-- `GET /api/trading-calendar` - Get holiday/short day data
-- `GET /api/trading/expected-prev-day` - Calculate previous trading day
-
-### Telegram Monitoring
-- `GET /api/telegram/watches` - Get all watch items
-- `POST /api/telegram/watch` - Add ticker to watch list
-- `DELETE /api/telegram/watch/:symbol` - Remove from watch list
-- `PATCH /api/telegram/watch/:symbol` - Update watch settings
-- `POST /api/telegram/simulate` - Simulate monitoring run
-- `POST /api/telegram/actualize-prices` - Update all prices
-- `POST /api/telegram/update-positions` - Update position tracking
-- `POST /api/telegram/update-all` - Full update cycle
-- `POST /api/telegram/test` - Send test notification
-- `POST /api/telegram/command` - Execute Telegram bot command
-- `GET /api/trades` - Get trade history
-
-## Key Features
-
-### 1. IBS Strategy Backtesting
-**Core Implementation:** `src/lib/backtest.ts`
-
-The Internal Bar Strength (IBS) indicator measures where the close is relative to the day's range:
-```
-IBS = (Close - Low) / (High - Low)
-```
-
-**Default Strategy:**
-- Entry: IBS < 0.1 (oversold)
-- Exit: IBS > 0.75 (overbought) OR max hold days reached
-- Position sizing: % of capital per trade
-- Risk management: stop-loss, take-profit, max hold days
-
-### 2. Performance Metrics
-**Implementation:** `src/lib/metrics.ts`
-
-**Level 1 (Hero Metrics):**
-- Total Return
-- CAGR (Compound Annual Growth Rate)
-- Max Drawdown
-- Win Rate
-- Sharpe Ratio
-
-**Level 2 (Risk-Adjusted):**
-- Sortino Ratio
-- Calmar Ratio
-- Profit Factor
-- Average Win/Loss
-
-**Level 3 (Advanced):**
-- Beta, Alpha
-- Recovery Factor
-- Skewness, Kurtosis
-- Value at Risk (VaR)
-
-### 3. Multi-Ticker Portfolio
-**Component:** `src/components/MultiTickerPage.tsx`
-
-- Test strategies across multiple tickers simultaneously
-- Single position constraint (one open trade at a time)
-- Automatic ticker rotation based on IBS
-- Leverage simulation (1x to 10x)
-- Monthly contribution modeling
-- Aggregated portfolio metrics
-
-### 4. Telegram Monitoring
-**Component:** `src/components/TelegramWatches.tsx`
-
-- Real-time position monitoring
-- Automated entry/exit decisions at market close
-- Position tracking (open/closed status)
-- Trade history with P&L calculation
-- Telegram notifications at scheduled times (11 min and 1 min before close)
-- IBS threshold alerts
-
-**Rate Limiting:**
-- AlphaVantage: 15s delay + 2s jitter between requests
-- Configurable via `PRICE_ACTUALIZATION_REQUEST_DELAY_MS`
-
-### 5. Stock Split Handling
-**Component:** `src/components/SplitsTab.tsx`
-
-- Centralized split database (`server/splits.json`)
-- Back-adjustment of historical prices
-- Split event CRUD operations
-- Per-ticker split management
-- Automatic application to datasets
-
-### 6. Data Management
-- CSV/JSON import (`DataUpload.tsx`)
-- Dataset library with server persistence
-- Real-time quote fetching from multiple providers
-- Data deduplication and validation
-- Split-adjusted price calculation
-
-## Code Conventions
-
-### File Naming
-- Components: PascalCase (`TradingChart.tsx`, `DataUpload.tsx`)
-- Utilities: camelCase (`utils.ts`, `api.ts`)
-- Types: camelCase in types directory
-- Tests: `*.test.ts` suffix
-- Hooks: `use` prefix (`useErrorEvents.ts`)
-
-### Component Structure
-```typescript
-// 1. Imports
-import React, { useState, useEffect } from 'react';
-import { Icon } from 'lucide-react';
-import { useAppStore } from '../stores';
-
-// 2. Types/Interfaces
-interface ComponentProps {
-  // ...
-}
-
-// 3. Helper functions (outside component)
-function helperFunction() {
-  // ...
-}
-
-// 4. Component definition
-export function ComponentName({ prop }: ComponentProps) {
-  // State
-  const [state, setState] = useState();
-
-  // Store access
-  const data = useAppStore(s => s.data);
-
-  // Effects
-  useEffect(() => {
-    // ...
-  }, [deps]);
-
-  // Handlers
-  const handleAction = () => {
-    // ...
-  };
-
-  // Render
-  return <div>{/* JSX */}</div>;
-}
-```
-
-### TypeScript Style
-- Strict mode enabled
-- Explicit types for function parameters
-- Interface over type for objects
-- Const assertions for readonly objects
-- No `any` types (use `unknown` if needed)
-
-### React Patterns
-- Functional components only (no classes)
-- Hooks for state and effects
-- Custom hooks for reusable logic
-- Zustand for global state (not Context API)
-- Memoization with `useMemo`, `useCallback` where needed
-
-### Error Handling
-```typescript
-try {
-  // operation
-} catch (error) {
-  logError('category', 'message', { context }, 'source', error.stack);
-  // fallback or rethrow
-}
-```
-
-### API Client Pattern
-```typescript
-// Always use fetchWithCreds for authenticated requests
-const response = await fetchWithCreds('/api/endpoint', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify(data),
-  timeout: 30000,  // 30 seconds
-  retries: 3       // Auto-retry on network/5xx errors
-});
-```
-
-### Styling with Tailwind
-```tsx
-// Organize classes by category: layout, spacing, colors, effects
-<div className="
-  flex flex-col gap-4
-  p-4 rounded-lg
-  bg-white dark:bg-gray-900
-  border border-gray-200 dark:border-gray-800
-  hover:shadow-lg
-  transition-all duration-200
-">
-```
-
-### State Updates (Zustand)
-```typescript
-// Direct state mutation
-set({ marketData: newData });
-
-// Functional update
-set(state => ({
-  marketData: [...state.marketData, newItem]
-}));
-```
-
-## Data Models
-
-### TradingDate System (`src/lib/date-utils.ts`)
-
-All trading dates use **`TradingDate`** — a branded `string` in `YYYY-MM-DD` format. This eliminates timezone-related bugs that occur with JavaScript `Date` objects.
-
-```typescript
-// TradingDate is a string branded type
-type TradingDate = string & { readonly __brand: 'TradingDate' };
-
-// Key functions in date-utils.ts:
-toTradingDate(input: string | Date): TradingDate  // Convert to TradingDate
-isTradingDate(value: string): boolean              // Validate format
-formatTradingDateDisplay(d: TradingDate): string   // '15 дек 2024'
-toChartTimestamp(d: TradingDate): UTCTimestamp     // For lightweight-charts
-daysBetweenTradingDates(a: TradingDate, b: TradingDate): number
-compareTradingDates(a: TradingDate, b: TradingDate): -1 | 0 | 1
-getNYSECurrentDate(): TradingDate                  // Current NYSE trading date
-```
-
-**Important:** Never use `Date.getTime()`, `.toISOString()`, or `new Date()` for trading date comparisons. Always use `date-utils.ts` functions.
-
-### Core Types (`src/types/index.ts`)
-
-```typescript
-import type { TradingDate } from '../lib/date-utils';
-
-interface OHLCData {
-  date: TradingDate;  // YYYY-MM-DD string
-  open: number;
-  high: number;
-  low: number;
-  close: number;
-  adjClose?: number;
-  volume: number;
-}
-
-interface Strategy {
-  id: string;
-  name: string;
-  description: string;
-  parameters: StrategyParameters;
-  entryConditions: IndicatorCondition[];
-  exitConditions: IndicatorCondition[];
-  riskManagement: RiskManagement;
-}
-
-interface BacktestResult {
-  trades: Trade[];
-  metrics: PerformanceMetrics;
-  equity: EquityPoint[];
-  chartData?: ChartCandle[];
-}
-
-interface Trade {
-  id: string;
-  entryDate: TradingDate;  // YYYY-MM-DD string
-  exitDate: TradingDate;   // YYYY-MM-DD string
-  entryPrice: number;
-  exitPrice: number;
-  quantity: number;
-  pnl: number;
-  pnlPercent: number;
-  duration: number;
-  exitReason: string;
-  context?: TradeContext;
-}
-
-interface EquityPoint {
-  date: TradingDate;  // YYYY-MM-DD string
-  value: number;
-}
-```
-
-## Deployment
-
-### Production Deployment
-
-**Script:** `./deploy.sh`
-```bash
-./deploy.sh  # Full production deployment
-```
-
-**Process:**
-1. Verify GitHub sync (prevents deploying stale code)
-2. Auto-push uncommitted changes
-3. Clean build (`rm -rf dist/`)
-4. Build verification
-5. Archive creation with metadata
-6. SCP upload to server
-7. Server-side extraction and restart
-8. Health check verification
-
-### Docker Deployment
-
-```bash
-# Production
-docker compose up -d
-
-# Development (with bind mounts)
-docker compose --profile dev up --build -d
-```
-
-**Services:**
-- `frontend` - Nginx serving built React app
-- `server` - Express.js backend
-- `caddy` - Reverse proxy with auto-HTTPS
-
-### Deployment Scripts
-
-- `./deploy.sh` - Full production deployment
-- `./check-deployment.sh` - Verify deployment status
-- `./health-check.sh` - System health monitoring
-- `./rollback.sh` - Rollback to previous version
-- `./cleanup-server.sh` - Remove old Docker images/volumes
-
-## Environment Configuration
-
-### Server Environment (`server/.env`)
-
-```bash
-# Server
-PORT=3001
-FRONTEND_ORIGIN=http://localhost:5173
-
-# Data Storage
-DATASETS_DIR=/data/datasets
-SETTINGS_FILE=/data/state/settings.json
-WATCHES_FILE=/data/state/telegram-watches.json
-SPLITS_FILE=/data/state/splits.json
-TRADE_HISTORY_FILE=/data/state/trade-history.json
-
-# Authentication
-ADMIN_USERNAME=admin@example.com
-ADMIN_PASSWORD=<bcrypt-hash>
-
-# Telegram
-TELEGRAM_BOT_TOKEN=<token>
-TELEGRAM_CHAT_ID=<chat-id>
-
-# API Keys
-ALPHA_VANTAGE_API_KEY=<key>
-FINNHUB_API_KEY=<key>
-TWELVE_DATA_API_KEY=<key>
-POLYGON_API_KEY=<key>
-
-# Rate Limiting
-PRICE_ACTUALIZATION_REQUEST_DELAY_MS=15000  # 15 seconds
-PRICE_ACTUALIZATION_DELAY_JITTER_MS=2000    # 2 seconds
-```
-
-### Build Environment
-
-```bash
-VITE_BUILD_ID=<timestamp>  # Build identifier in UI footer
-```
-
-## External Integrations
-
-### Financial Data Providers
-
-1. **Alpha Vantage** (Primary)
-   - Historical OHLC data
-   - Real-time quotes
-   - Rate limit: ~5 calls/minute (free tier)
-   - Throttling: 15s + 2s jitter
-
-2. **Finnhub**
-   - Real-time quotes
-   - Company data
-   - Rate limit: 60 calls/minute (free tier)
-
-3. **Twelve Data**
-   - Alternative market data
-   - Rate limit: Varies by plan
-
-4. **Polygon.io**
-   - Stock aggregates
-   - Split data
-   - Rate limit: Varies by plan
-
-### Telegram Bot
-
-- Real-time notifications
-- Markdown formatting support
-- Scheduled alerts (market close timing)
-- Command interface for monitoring
-
-## Testing Strategy
-
-### Unit Tests (Vitest)
-
-**Files:**
-- `src/lib/utils.test.ts` - Utility functions
-- `src/lib/input-validation.test.ts` - Validation logic
-
-**Setup:** `src/test/setup.ts`
-- Mocks: matchMedia, ResizeObserver, Canvas API
-- Environment: jsdom
-- Coverage: v8 provider
-
-### E2E Tests (Playwright)
-
-**Configuration:** `playwright.config.ts`
-- Browsers: Chromium, Firefox, WebKit, Mobile Chrome/Safari
-- Base URL: `http://localhost:4173` (preview server)
-- Features: Automatic screenshots/videos on failure, trace on retry
-
-**Note:** E2E test directory exists but tests not yet implemented.
-
-## Important Notes
-
-### Backend Architecture
-- **Modular structure**: `server/server.js` is now ~140 lines (entry point only)
-- All logic split into `server/src/` modules:
-  - `config/` — centralized environment configuration
-  - `middleware/` — auth (9KB), rate limiting
-  - `providers/` — 4 external API clients
-  - `routes/` — 9 route modules for all endpoints
-  - `services/` — 6 business logic modules
-  - `utils/` — file operations, helpers
-- No database - all data in JSON files
-
-### Performance
-- Memory requirements: 2GB+ RAM (4GB recommended)
-- Frontend build can be memory-intensive
-- Node.js 18+ required
-
-### Recent Focus Areas
-Based on recent commits:
-- **Server modularization** — broke monolithic server.js into clean modules
-- Telegram monitoring refinements (timing, rate limiting)
-- Trade history pagination and display
-- API throttling for rate limits
-- Default configuration tuning (tickers: AAPL, MSFT, AMZN, MAGS)
-
-### Code Quality
-- E2E tests need implementation
-- Some legacy components retained (`BuyAtClose4Simulator_old.tsx`)
-
-### UI Language
-- Interface is primarily in Russian
-- Documentation in English
-- Consider internationalization if expanding user base
+Secrets live in `/home/ubuntu/stonks-config/.env` on the VPS (`chmod 600`). Template: `.env.example`. See `ENVIRONMENT.md`.
