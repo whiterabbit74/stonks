@@ -1403,6 +1403,13 @@ func TestAPIFetchUsesAbortController(t *testing.T) {
 	}
 }
 
+func TestAutoExecuteUsesWithBusy(t *testing.T) {
+	a := readWeb(t, "js/app.js")
+	if !strings.Contains(a, "getElementById('auto-execute')") {
+		t.Fatal("auto-execute handler missing")
+	}
+}
+
 func TestLongActionsDisableTheirButtons(t *testing.T) {
 	a := readWeb(t, "js/app.js")
 	if !strings.Contains(a, "function withBusy(") {
@@ -1455,6 +1462,36 @@ func TestLongActionsDisableTheirButtons(t *testing.T) {
 	}
 	if !strings.Contains(refChunk, "withBusy") && !strings.Contains(refChunk, "disabled") {
 		t.Fatal("dataset refresh must disable the button")
+	}
+}
+
+func TestKeepChartsSkipsPageRootInnerHTML(t *testing.T) {
+	a := readWeb(t, "js/app.js")
+	start := strings.Index(a, "async function renderPage")
+	if start < 0 {
+		t.Fatal("renderPage not found")
+	}
+	chunk := a[start:]
+	if i := strings.Index(chunk[20:], "\n  function "); i > 0 {
+		chunk = chunk[:20+i]
+	}
+	if !strings.Contains(chunk, "if (!opts.keepCharts)") || !strings.Contains(chunk, "innerHTML = pageHTML()") {
+		t.Fatal("keepCharts must skip innerHTML that would orphan chart instances")
+	}
+}
+
+func TestLoadQuoteIgnoresStaleSequence(t *testing.T) {
+	a := readWeb(t, "js/app.js")
+	start := strings.Index(a, "async function loadQuote")
+	if start < 0 {
+		t.Fatal("loadQuote not found")
+	}
+	chunk := a[start:]
+	if i := strings.Index(chunk[20:], "\n  function "); i > 0 {
+		chunk = chunk[:20+i]
+	}
+	if !strings.Contains(chunk, "quoteSeq") {
+		t.Fatal("loadQuote must drop stale in-flight responses")
 	}
 }
 

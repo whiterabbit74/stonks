@@ -3206,9 +3206,13 @@
       app.innerHTML = shellHTML();
       bindShellOnce();
     }
-    if (!opts.keepCharts) Charts.destroy();
-    updateChrome();
-    document.getElementById('page-root').innerHTML = pageHTML();
+    if (!opts.keepCharts) {
+      Charts.destroy();
+      updateChrome();
+      document.getElementById('page-root').innerHTML = pageHTML();
+    } else {
+      updateChrome();
+    }
     paintOverlay();
     await afterRender(gen);
     if (gen !== pageGen) return;
@@ -4608,12 +4612,13 @@
   async function loadQuote(ticker) {
     if (!ticker) return;
     const want = ticker;
+    const seq = (state.quoteSeq = (state.quoteSeq || 0) + 1);
     state.quoteLoading = true;
     const iconEl = document.querySelector('#hero-refresh svg');
     if (iconEl) iconEl.classList.add('animate-spin');
     try {
       const raw = await API.quote(ticker, state.settings.resultsQuoteProvider || providerId() || 'finnhub');
-      if (selectedHeroTicker() !== want) return;
+      if (selectedHeroTicker() !== want || seq !== state.quoteSeq) return;
       state.quote = { ticker: want, ...normalizeQuote(raw) };
     } catch (_) {
       if (selectedHeroTicker() === want && (!state.quote || state.quote.ticker !== want)) {
@@ -4980,6 +4985,8 @@
     const t = selectedHeroTicker();
     const result = state.page === '/ema' ? resultOf(state.emaResult) : (state.page === '/multi-ticker-options' ? resultOf(state.optResult) : resultOf(state.result));
     const emaForm = state.page === '/ema' ? (state.emaRunParams || state.emaForm) : null;
+    let vis = null;
+    try { vis = Charts.live[0] && Charts.live[0].timeScale().getVisibleLogicalRange(); } catch (_) {}
     Charts.destroy();
     Charts.priceChart(el, barsForTicker(t), {
       dark: isDark(),
@@ -5007,6 +5014,7 @@
       buyZones: emaForm && emaForm.buyZones,
       sellZones: emaForm && emaForm.sellZones,
     });
+    try { if (vis && Charts.live[0]) Charts.live[0].timeScale().setVisibleLogicalRange(vis); } catch (_) {}
   }
   function paintHistograms() {
     const r = state.page === '/ema' ? resultOf(state.emaResult) : (state.page === '/multi-ticker-options' ? resultOf(state.optResult) : resultOf(state.result));
@@ -5211,8 +5219,10 @@
           const base = (r && r.equity) || [];
           const paint = (lev) => {
             const scaled = lev === 1 ? { equity: base } : Charts.simulateLeverage(base, lev);
-            Charts.destroy();
-            Charts.line(document.getElementById('chart-bh'), scaled.equity, isDark());
+            const host = document.getElementById('chart-bh');
+            if (host) host.replaceChildren();
+            Charts.live.splice(0).forEach((chart) => { try { chart.remove(); } catch (_) {} });
+            Charts.line(host, scaled.equity, isDark());
             const lab = document.getElementById('bh-lev-now');
             if (lab) lab.textContent = 'Текущее плечо: ×' + lev.toFixed(2);
           };

@@ -1,6 +1,6 @@
 const Charts = {
   live: [],
-  RIGHT_OFFSET: 14,
+  RIGHT_OFFSET: 8,
   IBS_LOW: 0.1,
   IBS_HIGH: 0.75,
   RANGE_DAYS: { '1M': 30, '3M': 90, '6M': 180, '1Y': 365, '3Y': 365 * 3, '5Y': 365 * 5 },
@@ -143,6 +143,7 @@ const Charts = {
     return { kind, candles, line, lineMarks, candleMarks, data };
   },
   weekKey(date) {
+    // UTC-only ISO week helper for YYYY-MM-DD strings (never local Date parts).
     const [y, m, d] = String(date).slice(0, 10).split('-').map(Number);
     const parsed = new Date(Date.UTC(y, m - 1, d));
     const day = parsed.getUTCDay() || 7;
