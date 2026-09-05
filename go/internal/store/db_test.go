@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"mktorder.com/go/internal/types"
@@ -206,6 +207,39 @@ func TestAllowedSettingsKeysCoverDefaults(t *testing.T) {
 		if AllowedSettingsKey(junk) {
 			t.Errorf("broker/autotrade flag %s must not be a settings key", junk)
 		}
+	}
+}
+
+func TestSetSettingsKeysConcurrentWritersKeepBothKeys(t *testing.T) {
+	db := openTestDB(t)
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Add(2)
+	errs := make(chan error, 2)
+	go func() {
+		defer wg.Done()
+		<-start
+		errs <- db.SetSettingsKeys(map[string]any{"lastCalendarImportDate": "2026-09-01"})
+	}()
+	go func() {
+		defer wg.Done()
+		<-start
+		errs <- db.SetSettingsKeys(map[string]any{"lastMissedT1Date": "2026-09-01"})
+	}()
+	close(start)
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	got := db.Settings()
+	if fmt.Sprint(got["lastCalendarImportDate"]) != "2026-09-01" {
+		t.Fatalf("lastCalendarImportDate=%v", got["lastCalendarImportDate"])
+	}
+	if fmt.Sprint(got["lastMissedT1Date"]) != "2026-09-01" {
+		t.Fatalf("lastMissedT1Date=%v", got["lastMissedT1Date"])
 	}
 }
 

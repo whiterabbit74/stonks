@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -884,6 +885,56 @@ func (d *DB) SaveSettings(s map[string]any) error {
 	b, _ := json.Marshal(sanitizeSettings(s))
 	_, err := d.SQL.Exec(`INSERT INTO settings (id, data) VALUES (1, ?) ON CONFLICT(id) DO UPDATE SET data=excluded.data`, string(b))
 	return err
+}
+
+// SetSettingsKeys overlays the given top-level keys onto the stored settings
+// blob in one BEGIN IMMEDIATE transaction so concurrent writers of different
+// keys cannot clobber each other. Defaults are merged only on read via Settings.
+func (d *DB) SetSettingsKeys(kv map[string]any) error {
+	if d == nil || d.SQL == nil {
+		return fmt.Errorf("settings store not open")
+	}
+	ctx := context.Background()
+	conn, err := d.SQL.Conn(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	if _, err := conn.ExecContext(ctx, `BEGIN IMMEDIATE`); err != nil {
+		return err
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_, _ = conn.ExecContext(ctx, `ROLLBACK`)
+		}
+	}()
+	stored := map[string]any{}
+	var data string
+	err = conn.QueryRowContext(ctx, `SELECT data FROM settings WHERE id = 1`).Scan(&data)
+	if err != nil && err != sql.ErrNoRows {
+		return err
+	}
+	if err == nil && data != "" {
+		if json.Unmarshal([]byte(data), &stored) != nil {
+			stored = map[string]any{}
+		}
+	}
+	for k, v := range kv {
+		stored[k] = v
+	}
+	b, err := json.Marshal(sanitizeSettings(stored))
+	if err != nil {
+		return err
+	}
+	if _, err := conn.ExecContext(ctx, `INSERT INTO settings (id, data) VALUES (1, ?) ON CONFLICT(id) DO UPDATE SET data=excluded.data`, string(b)); err != nil {
+		return err
+	}
+	if _, err := conn.ExecContext(ctx, `COMMIT`); err != nil {
+		return err
+	}
+	committed = true
+	return nil
 }
 
 func (d *DB) ListWatches() ([]map[string]any, error) {
