@@ -201,6 +201,25 @@ func TestClosePositionGuardsPendingSell(t *testing.T) {
 	}
 }
 
+func TestClosePositionRetriesTransientPositionsFailure(t *testing.T) {
+	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
+	_, e, br := testEngine(t, bars)
+	e.Sleep = func(time.Duration) {}
+	br.Pos = []any{map[string]any{"symbol": "AAPL", "quantity": 2.0}}
+	br.FailPositions = fmt.Errorf("webull: 502")
+	br.FailPositionsN = 1
+	res, err := e.ClosePosition("webull", "AAPL")
+	if err != nil || !res.Submitted {
+		t.Fatalf("a transient positions read must still sell: %+v %v", res, err)
+	}
+	if len(br.Orders) != 1 {
+		t.Fatalf("want one SELL, got %+v", br.Orders)
+	}
+	if br.Orders[0].Side != "SELL" || br.Orders[0].Symbol != "AAPL" || br.Orders[0].Quantity != 2 {
+		t.Fatalf("sell %+v", br.Orders[0])
+	}
+}
+
 func TestResumePollsBeforeExpiringYesterday(t *testing.T) {
 	dir := t.TempDir()
 	db, err := store.Open(filepath.Join(dir, "t.db"))

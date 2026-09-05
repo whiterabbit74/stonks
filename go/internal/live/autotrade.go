@@ -1172,7 +1172,9 @@ func (e *Engine) ClosePosition(brokerName, symbol string) (OrderResult, error) {
 	if br == nil {
 		return OrderResult{Error: "Webull credentials are missing"}, fmt.Errorf("Webull credentials are missing")
 	}
-	pos, err := br.Positions()
+	pos, err := retryBrokerReadWindow(e, backgroundWindow(), "positions", func(ctx context.Context) ([]any, error) {
+		return brokerPositions(ctx, br)
+	})
 	if err != nil {
 		return OrderResult{Error: err.Error(), Symbol: symbol, Side: "SELL"}, err
 	}
