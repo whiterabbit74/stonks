@@ -235,15 +235,20 @@ func (e *Engine) recordFill(t map[string]any, detail map[string]any, status stri
 		if row == nil {
 			row = e.openTradeBySymbol("broker_trades", symbol, "", brokerName)
 		}
-		if row != nil {
-			e.closeTradeWithPnL("broker_trades", fmt.Sprint(row["id"]), fillPrice, dateKey, exitIBS, "closed_from_broker_fill")
-		}
 		mon := e.openTradeBySymbol("trades", symbol, clientOrderID, "")
 		if mon == nil {
 			mon = e.openTradeBySymbol("trades", symbol, "", "")
 		}
 		if mon != nil && store.SafeTicker(fmt.Sprint(mon["symbol"])) == symbol {
-			e.closeTradeWithPnL("trades", fmt.Sprint(mon["id"]), fillPrice, dateKey, exitIBS, "closed_from_broker_fill")
+			if row != nil {
+				if err := e.DB.CloseTradePair(fmt.Sprint(mon["id"]), fmt.Sprint(row["id"]), fillPrice, dateKey, map[string]any{"exitIBS": exitIBS, "notes": "closed_from_broker_fill"}); err != nil {
+					e.logAuto("local_trade_pair_close_failed", "", map[string]any{"error": err.Error(), "monitorId": mon["id"], "brokerId": row["id"]})
+				}
+			} else {
+				e.closeTradeWithPnL("trades", fmt.Sprint(mon["id"]), fillPrice, dateKey, exitIBS, "closed_from_broker_fill")
+			}
+		} else if row != nil {
+			e.closeTradeWithPnL("broker_trades", fmt.Sprint(row["id"]), fillPrice, dateKey, exitIBS, "closed_from_broker_fill")
 		}
 	}
 }

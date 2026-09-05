@@ -1363,6 +1363,48 @@ func (d *DB) CloseTradeByID(table, id string, exitPrice float64, exitDate string
 	return d.GetTrade(table, id)
 }
 
+// CloseTradePair closes the linked broker and monitor rows as one transaction.
+func (d *DB) CloseTradePair(monitorID, brokerID string, exitPrice float64, exitDate string, extra map[string]any) error {
+	tx, err := d.SQL.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	closeOne := func(table, id string) error {
+		var entryDate, notes sql.NullString
+		var entryPrice sql.NullFloat64
+		var status string
+		if err := tx.QueryRow(`SELECT status, entry_date, entry_price, notes FROM `+tradeTable(table)+` WHERE id=?`, id).Scan(&status, &entryDate, &entryPrice, &notes); err != nil {
+			return err
+		}
+		if status != "open" {
+			return fmt.Errorf("Trade is already closed")
+		}
+		existing := map[string]any{"status": status, "entryDate": nullS(entryDate), "entryPrice": nullF(entryPrice), "notes": nullS(notes)}
+		fields := TradeCloseFields(existing, exitPrice, exitDate, extra)
+		res, err := tx.Exec(`UPDATE `+tradeTable(table)+` SET status='closed', exit_date=?, exit_price=?, exit_ibs=COALESCE(?, exit_ibs), pnl_absolute=?, pnl_percent=?, holding_days=?, notes=COALESCE(?, notes) WHERE id=? AND status='open'`,
+			fields["exitDate"], fields["exitPrice"], fields["exitIBS"], fields["pnlAbsolute"], fields["pnlPercent"], fields["holdingDays"], fields["notes"], id)
+		if err != nil {
+			return err
+		}
+		n, err := res.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if n != 1 {
+			return fmt.Errorf("Trade is already closed")
+		}
+		return nil
+	}
+	if err := closeOne("broker_trades", brokerID); err != nil {
+		return err
+	}
+	if err := closeOne("trades", monitorID); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
 func (d *DB) ListTrades(table string) ([]map[string]any, error) {
 	if table != "trades" && table != "broker_trades" {
 		table = "trades"
