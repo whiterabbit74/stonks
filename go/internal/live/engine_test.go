@@ -141,6 +141,21 @@ func TestSimulateDoesNotPlace(t *testing.T) {
 	}
 }
 
+func TestBuildT1TextNamesSubmitBroker(t *testing.T) {
+	_, e, _ := testEngine(t, entryBars)
+	exitRes := EvalResult{
+		Decision: map[string]any{"action": "exit", "symbol": "AAPL", "candidate": map[string]any{"ibs": 0.8}},
+		Broker:   map[string]any{"robinhood": OrderResult{Submitted: true, Quantity: 2}},
+	}
+	text := e.buildT1Text("2026-09-01", nil, nil, false, false, exitRes, EvalResult{}, nil)
+	if !strings.Contains(text, "Robinhood") {
+		t.Fatalf("T-1 text must name Robinhood submit, got %s", text)
+	}
+	if strings.Contains(text, "Webull:") {
+		t.Fatalf("must not label RH submit as Webull: %s", text)
+	}
+}
+
 func TestAggregateT11LogsMarkerSaveFailure(t *testing.T) {
 	db, e, _ := testEngine(t, entryBars)
 	e.Telegram = &MemoryTelegram{}

@@ -307,6 +307,40 @@ func (e *Engine) Aggregate(minutesUntilClose int, opts AggregateOpts) (SimulateR
 	return res, err
 }
 
+func execOutcomes(broker any) map[string]OrderResult {
+	out := map[string]OrderResult{}
+	switch br := broker.(type) {
+	case OrderResult:
+		out["webull"] = br
+	case map[string]any:
+		if _, hasSubmitted := br["submitted"]; hasSubmitted && br["robinhood"] == nil && br["webull"] == nil {
+			or := OrderResult{}
+			or.Submitted, _ = br["submitted"].(bool)
+			or.Quantity = asFloat(br["quantity"])
+			if br["error"] != nil {
+				or.Error = fmt.Sprint(br["error"])
+			}
+			out["webull"] = or
+			return out
+		}
+		for name, v := range br {
+			switch one := v.(type) {
+			case OrderResult:
+				out[name] = one
+			case map[string]any:
+				or := OrderResult{}
+				or.Submitted, _ = one["submitted"].(bool)
+				or.Quantity = asFloat(one["quantity"])
+				if one["error"] != nil {
+					or.Error = fmt.Sprint(one["error"])
+				}
+				out[name] = or
+			}
+		}
+	}
+	return out
+}
+
 func (e *Engine) stampSendMarker(op string, err error) {
 	if err == nil {
 		return
@@ -379,32 +413,20 @@ func (e *Engine) buildT1Text(today string, rows []t1Watch, blocking map[string]a
 		}
 		decision = append(decision, fmt.Sprintf("• %s %s по %s (IBS %s)", verb, sym, priceS, ibsS))
 		if dry {
-			decision = append(decision, "• Webull: dry run (ордер не отправлен)")
+			decision = append(decision, "• dry run (ордер не отправлен)")
 			return
 		}
-		submitted := false
-		qty := any("—")
-		errS := ""
-		switch br := res.Broker.(type) {
-		case OrderResult:
-			submitted = br.Submitted
-			if br.Quantity > 0 {
-				qty = br.Quantity
+		for name, one := range execOutcomes(res.Broker) {
+			label := brokerLabel(name)
+			if one.Submitted {
+				qty := any("—")
+				if one.Quantity > 0 {
+					qty = one.Quantity
+				}
+				decision = append(decision, fmt.Sprintf("• %s: %s MARKET отправлен (%v шт.)", label, side, qty))
+			} else if one.Error != "" {
+				decision = append(decision, fmt.Sprintf("• %s ошибка: %s", label, one.Error))
 			}
-			errS = br.Error
-		case map[string]any:
-			submitted, _ = br["submitted"].(bool)
-			if br["quantity"] != nil {
-				qty = br["quantity"]
-			}
-			if br["error"] != nil {
-				errS = fmt.Sprint(br["error"])
-			}
-		}
-		if submitted {
-			decision = append(decision, fmt.Sprintf("• Webull: %s MARKET отправлен (%v шт.)", side, qty))
-		} else if errS != "" {
-			decision = append(decision, "• Webull ошибка: "+errS)
 		}
 	}
 	if dryRun {
