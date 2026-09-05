@@ -2917,7 +2917,7 @@
         </div>
         <div class="rounded-xl border p-4">
           <div class="font-medium mb-2">Тестовое сообщение в Telegram</div>
-          <div class="flex gap-2"><input id="tg-test-msg" class="field flex-1" value="Тестовое сообщение" /><button type="button" id="tg-test-send" class="btn-primary min-h-0 py-2">Отправить тест</button></div>
+          <div class="flex gap-2"><input id="tg-test-msg" class="field min-w-0 flex-1" value="Тестовое сообщение" /><button type="button" id="tg-test-send" class="btn-primary min-h-0 py-2">Отправить тест</button></div>
           <div id="tg-test-out" class="text-sm mt-2"></div>
         </div>`;
     } else if (tab === 'interface') {
