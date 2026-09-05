@@ -23,7 +23,7 @@
     { id: 'drawdown', label: 'Просадка' },
     { id: 'openDayDrawdown', label: 'Просадка дня' },
     { id: 'trades', label: 'Сделки' },
-    { id: 'profit', label: 'Профит Фактор' },
+    { id: 'profit', label: 'Профит-фактор' },
     { id: 'duration', label: 'Длительность' },
     { id: 'monthlyContribution', label: 'Пополнения' },
     { id: 'splits', label: 'Сплиты' },
