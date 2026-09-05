@@ -1228,7 +1228,7 @@
       return `<button type="button" data-esym="${esc(t.symbol)}" class="ticker-card${on ? ' loaded' : ''}${busy ? ' opacity-70' : ''}" ${busy || loading ? 'disabled' : ''} title="${on ? esc(t.symbol) + ' уже загружен. Нажмите для обновления' : 'Нажмите для загрузки ' + t.symbol}">
         <div class="flex items-start justify-between gap-2">
           <div class="min-w-0">
-            <div class="text-sm font-medium truncate ${on ? 'text-green-800 dark:text-green-200' : 'text-gray-900 dark:text-gray-100'}">${esc(t.name)}</div>
+            <div class="text-sm font-medium break-words ${on ? 'text-green-800 dark:text-green-200' : 'text-gray-900 dark:text-gray-100'}">${esc(t.name)}</div>
             <div class="text-xs font-mono mt-0.5 ${on ? 'text-green-600' : 'text-gray-500'}">${esc(t.symbol)}</div>
           </div>
           <span class="shrink-0 text-base">${busy ? '…' : (on ? '✓' : '↓')}</span>
