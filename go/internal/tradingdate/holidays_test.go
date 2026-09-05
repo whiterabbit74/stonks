@@ -1,6 +1,9 @@
 package tradingdate
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestNYSEHolidaysKnownDates(t *testing.T) {
 	cases := map[string]string{
@@ -44,12 +47,26 @@ func TestNYSEHolidaysKnownDates(t *testing.T) {
 	}
 }
 
-func TestThanksgivingEveShortName(t *testing.T) {
-	if got := ShortDayName("2026-11-25"); got != "Thanksgiving Eve" {
-		t.Fatalf("got %q", got)
+func TestDayAfterThanksgivingIsShortName(t *testing.T) {
+	if got := ShortDayName("2025-11-28"); got != "Day After Thanksgiving" {
+		t.Fatalf("2025-11-28 got %q", got)
 	}
-	if got := ShortDayName("2025-11-26"); got != "Thanksgiving Eve" {
-		t.Fatalf("2025 eve got %q", got)
+	if got := ShortDayName("2026-11-27"); got != "Day After Thanksgiving" {
+		t.Fatalf("2026-11-27 got %q", got)
+	}
+	if got := ShortDayName("2027-11-26"); got != "Day After Thanksgiving" {
+		t.Fatalf("2027-11-26 got %q", got)
+	}
+	if got := ShortDayName("2025-11-26"); got == "Day After Thanksgiving" || got == "Thanksgiving Eve" {
+		t.Fatalf("Wednesday before Thanksgiving is a full session, got %q", got)
+	}
+}
+
+func TestNYSEHolidayDatesStayInYear(t *testing.T) {
+	for _, d := range NYSEHolidayDates(2022) {
+		if !strings.HasPrefix(d, "2022-") {
+			t.Fatalf("NYSEHolidayDates(2022) leaked %s", d)
+		}
 	}
 }
 

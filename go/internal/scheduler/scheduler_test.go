@@ -602,9 +602,13 @@ func TestEmptyCalendarUsesComputedShortDay(t *testing.T) {
 	if !sess.Short || sess.CloseMin != 13*60 {
 		t.Fatalf("empty calendar must fall back to computed early close, got %+v", sess)
 	}
-	thanksEve := tradingdate.NYSEParts{Year: 2026, Month: 11, Day: 25, DayOfWeek: 3}
-	if !IsShortDay(thanksEve, cal) {
-		t.Fatal("Thanksgiving Eve must be a computed short day")
+	thanksWed := tradingdate.NYSEParts{Year: 2026, Month: 11, Day: 25, DayOfWeek: 3}
+	if IsShortDay(thanksWed, cal) {
+		t.Fatal("Wednesday before Thanksgiving is a full session")
+	}
+	blackFri := tradingdate.NYSEParts{Year: 2026, Month: 11, Day: 27, DayOfWeek: 5}
+	if !IsShortDay(blackFri, cal) {
+		t.Fatal("Friday after Thanksgiving must be a computed short day")
 	}
 	regular := tradingdate.NYSEParts{Year: 2026, Month: 9, Day: 1, DayOfWeek: 2}
 	reg := TradingSession(regular, cal)
@@ -618,6 +622,37 @@ func TestEmptyCalendarUsesComputedShortDay(t *testing.T) {
 	}
 	if IsShortDay(holiday, cal) {
 		t.Fatal("holiday must not be treated as a short session")
+	}
+}
+
+func TestImportedShortDaysOverrideComputed(t *testing.T) {
+	cal := Calendar{ShortDays: map[string]map[string]any{
+		"2026": {"12-24": map[string]any{"name": "Christmas Eve", "type": "short"}},
+	}}
+	blackFri := tradingdate.NYSEParts{Year: 2026, Month: 11, Day: 27, DayOfWeek: 5}
+	if IsShortDay(blackFri, cal) {
+		t.Fatal("imported year without that key must not resurrect a computed short day")
+	}
+	xmasEve := tradingdate.NYSEParts{Year: 2026, Month: 12, Day: 24, DayOfWeek: 4}
+	if !IsShortDay(xmasEve, cal) {
+		t.Fatal("imported short day must still be short")
+	}
+}
+
+func TestDefaultCalendarSeedsRealShortDays(t *testing.T) {
+	cal := ParseCalendar([]byte(store.DefaultCalendarJSON))
+	want := []tradingdate.NYSEParts{
+		{Year: 2025, Month: 7, Day: 3, DayOfWeek: 4},
+		{Year: 2025, Month: 11, Day: 28, DayOfWeek: 5},
+		{Year: 2025, Month: 12, Day: 24, DayOfWeek: 3},
+		{Year: 2026, Month: 11, Day: 27, DayOfWeek: 5},
+		{Year: 2026, Month: 12, Day: 24, DayOfWeek: 4},
+		{Year: 2027, Month: 11, Day: 26, DayOfWeek: 5},
+	}
+	for _, p := range want {
+		if !IsShortDay(p, cal) {
+			t.Fatalf("%04d-%02d-%02d must be seeded as a short day", p.Year, p.Month, p.Day)
+		}
 	}
 }
 

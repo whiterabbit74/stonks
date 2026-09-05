@@ -65,10 +65,9 @@ func IsHoliday(p tradingdate.NYSEParts, cal Calendar) bool {
 
 func IsShortDay(p tradingdate.NYSEParts, cal Calendar) bool {
 	y := fmt.Sprintf("%d", p.Year)
-	if yearMap := cal.ShortDays[y]; yearMap != nil {
-		if _, ok := yearMap[mmdd(p)]; ok {
-			return true
-		}
+	if yearMap, ok := cal.ShortDays[y]; ok && yearMap != nil {
+		_, marked := yearMap[mmdd(p)]
+		return marked
 	}
 	return computedShortDay(p)
 }

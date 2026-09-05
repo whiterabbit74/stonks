@@ -2,6 +2,7 @@ package tradingdate
 
 import (
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -92,9 +93,12 @@ func nyseHolidays(year int) []namedHoliday {
 
 func NYSEHolidayDates(year int) []string {
 	holidays := nyseHolidays(year)
-	dates := make([]string, len(holidays))
-	for i, h := range holidays {
-		dates[i] = h.date
+	prefix := fmt.Sprintf("%04d-", year)
+	dates := make([]string, 0, len(holidays))
+	for _, h := range holidays {
+		if strings.HasPrefix(h.date, prefix) {
+			dates = append(dates, h.date)
+		}
 	}
 	return dates
 }
@@ -146,8 +150,8 @@ func ShortDayName(ymd string) string {
 	}
 	y, _, _ := split(ymd)
 	thanks := NthWeekdayOfMonth(y, time.November, time.Thursday, 4)
-	if ymd == AddDays(thanks, -1) {
-		return "Thanksgiving Eve"
+	if ymd == AddDays(thanks, 1) {
+		return "Day After Thanksgiving"
 	}
 	return "Early Close"
 }

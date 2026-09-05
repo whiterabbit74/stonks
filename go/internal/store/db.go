@@ -686,7 +686,7 @@ func (d *DB) DeleteSplits(symbol string) error {
 
 // DefaultCalendarJSON is the NYSE holiday calendar used when the store is empty.
 const DefaultCalendarJSON = `{
-  "metadata": {"version": "1.0", "description": "US Stock Market Holiday Calendar - NYSE Trading Days", "years": ["2025", "2026"]},
+  "metadata": {"version": "1.0", "description": "US Stock Market Holiday Calendar - NYSE Trading Days", "years": ["2025", "2026", "2027"]},
   "holidays": {
     "2025": {
       "01-01": {"name": "New Year's Day", "type": "holiday"},
@@ -699,6 +699,18 @@ const DefaultCalendarJSON = `{
       "09-01": {"name": "Labor Day", "type": "holiday"},
       "11-27": {"name": "Thanksgiving Day", "type": "holiday"},
       "12-25": {"name": "Christmas Day", "type": "holiday"}
+    },
+    "2027": {
+      "01-01": {"name": "New Year's Day", "type": "holiday"},
+      "01-18": {"name": "Martin Luther King Jr. Day", "type": "holiday"},
+      "02-15": {"name": "Presidents' Day", "type": "holiday"},
+      "03-26": {"name": "Good Friday", "type": "holiday"},
+      "05-31": {"name": "Memorial Day", "type": "holiday"},
+      "06-18": {"name": "Juneteenth", "type": "holiday"},
+      "07-05": {"name": "Independence Day", "type": "holiday"},
+      "09-06": {"name": "Labor Day", "type": "holiday"},
+      "11-25": {"name": "Thanksgiving Day", "type": "holiday"},
+      "12-24": {"name": "Christmas Day", "type": "holiday"}
     },
     "2026": {
       "01-01": {"name": "New Year's Day", "type": "holiday"},
@@ -714,8 +726,18 @@ const DefaultCalendarJSON = `{
     }
   },
   "shortDays": {
-    "2025": {"12-24": {"name": "Christmas Eve", "type": "short"}},
-    "2026": {"12-24": {"name": "Christmas Eve", "type": "short"}}
+    "2025": {
+      "07-03": {"name": "Independence Day Eve", "type": "short"},
+      "11-28": {"name": "Day After Thanksgiving", "type": "short"},
+      "12-24": {"name": "Christmas Eve", "type": "short"}
+    },
+    "2026": {
+      "11-27": {"name": "Day After Thanksgiving", "type": "short"},
+      "12-24": {"name": "Christmas Eve", "type": "short"}
+    },
+    "2027": {
+      "11-26": {"name": "Day After Thanksgiving", "type": "short"}
+    }
   },
   "weekends": {"description": "Выходные дни автоматически определяются"},
   "tradingHours": {"normal": {"start": "09:30", "end": "16:00"}, "short": {"start": "09:30", "end": "13:00"}}
