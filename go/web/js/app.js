@@ -1138,7 +1138,7 @@
     const pf = Number.isFinite(m.profitFactor) ? fmt(m.profitFactor) : '∞';
     return `<div class="grid grid-cols-2 gap-2 pt-2 border-t border-gray-200 dark:border-gray-700 text-xs">
       <div>CAGR<div class="font-semibold">${fmtPct(m.cagr)}</div></div>
-      <div>Макс. DD<div class="font-semibold">${fmtPct(result.maxDrawdown ?? m.maxDrawdown)}</div></div>
+      <div>Макс. просадка<div class="font-semibold">${fmtPct(result.maxDrawdown ?? m.maxDrawdown)}</div></div>
       <div>Доля прибыльных<div class="font-semibold">${fmtPct(m.winRate)}</div></div>
       <div>Профит-фактор<div class="font-semibold">${pf}</div></div>
       <div class="col-span-2">Сделок <b>${m.totalTrades ?? (result.trades || []).length}</b></div>
@@ -5091,7 +5091,7 @@
           <div class="flex items-center justify-between text-sm mb-1"><div class="font-semibold">${esc(t.ticker)}</div><div>${px == null ? '—' : fmt(px)} <span class="${pnlClass(chg)}">${chg == null ? '' : fmtSignedPct(chg, 2)}</span></div></div>
           <div class="text-[11px] text-gray-500 mb-1">Баров: ${bars.length}</div>
           <div id="tc-${esc(t.ticker)}" class="chart-box rounded border dark:border-gray-800"></div>
-          <div class="ticker-mini-stats mt-1"><div>Сделок ${tt.length}</div><div>Win ${tt.length ? fmt((wins / tt.length) * 100, 0) : '—'}%</div><div>PnL ${fmtUsd(pnl)}</div><div>Ср. дни ${fmt(avgDur, 1)}</div></div>
+          <div class="ticker-mini-stats mt-1"><div>Сделок ${tt.length}</div><div>Прибыльных ${tt.length ? fmt((wins / tt.length) * 100, 0) : '—'}%</div><div>PnL ${fmtUsd(pnl)}</div><div>Ср. дни ${fmt(avgDur, 1)}</div></div>
         </div>`;
       }).join('');
       (state.tickersData || []).forEach((t) => {
