@@ -176,6 +176,8 @@
     layout: '<rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/>',
     maximize: '<path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/>',
     minimize: '<path d="M8 3v3a2 2 0 0 1-2 2H3"/><path d="M21 8h-3a2 2 0 0 1-2-2V3"/><path d="M3 16h3a2 2 0 0 1 2 2v3"/><path d="M16 21v-3a2 2 0 0 1 2-2h3"/>',
+    eye: '<path d="M2.5 12s3.5-5 9.5-5 9.5 5 9.5 5-3.5 5-9.5 5-9.5-5-9.5-5Z"/><circle cx="12" cy="12" r="2.5"/>',
+    eyeoff: '<path d="m3 3 18 18"/><path d="M10.6 6.2A10.5 10.5 0 0 1 12 6c6 0 9.5 6 9.5 6a16.7 16.7 0 0 1-3.2 3.7"/><path d="M6.7 6.7C3.8 8.5 2.5 12 2.5 12s3.5 6 9.5 6a9.7 9.7 0 0 0 3.1-.5"/>',
     arrowne: '<path d="M7 7h10v10"/><path d="M7 17 17 7"/>',
     logo: '<path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>',
   };
@@ -2562,7 +2564,7 @@
         <td>${esc(t.holdingDays ?? '')}</td>
         <td class="text-xs">${esc(t.notes || '')}</td>
         <td class="text-xs">${esc(t.clientOrderId || '')}</td><td class="text-xs">${esc(t.brokerOrderId || t.orderId || '')}</td>
-        <td>${actionIcon('edit', 'Изменить сделку', `data-edit-bt="${esc(t.id)}"`, 'action-icon-edit')}<button type="button" data-hide-bt="${esc(t.id)}" class="text-sm text-indigo-600 mr-2">${t.isHidden ? 'Показать' : 'Скрыть'}</button>${actionIcon('trash', 'Удалить сделку', `data-bd="${esc(t.id)}"`, 'action-icon-danger')}</td>
+        <td>${actionIcon('edit', 'Изменить сделку', `data-edit-bt="${esc(t.id)}"`, 'action-icon-edit')}${actionIcon(t.isHidden ? 'eye' : 'eyeoff', t.isHidden ? 'Показать сделку' : 'Скрыть сделку', `data-hide-bt="${esc(t.id)}"`, 'action-icon-edit')}${actionIcon('trash', 'Удалить сделку', `data-bd="${esc(t.id)}"`, 'action-icon-danger')}</td>
       </tr>`).join('');
       body = `<div class="flex flex-wrap gap-2 mb-3">
         <button type="button" id="broker-journal-refresh" class="btn-secondary min-h-0 py-2">Обновить</button>
