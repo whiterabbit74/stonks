@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"os/exec"
@@ -686,6 +688,79 @@ func TestDashboardHandlersInspectRefreshQuery(t *testing.T) {
 	}
 	if !strings.Contains(api, "?refresh=1") {
 		t.Fatal("api.js must still send ?refresh=1")
+	}
+}
+
+func TestSimulateConfirmationsIsT1NotT2(t *testing.T) {
+	s, _, _ := liveServer(t)
+	rec := postJSON(s, "/api/telegram/simulate", map[string]any{"stage": "confirmations"})
+	if rec.Code != 200 {
+		t.Fatalf("simulate %d %s", rec.Code, rec.Body.String())
+	}
+	var sim map[string]any
+	_ = json.Unmarshal(rec.Body.Bytes(), &sim)
+	if sim["stage"] != "confirmations" {
+		t.Fatalf("stage %v", sim["stage"])
+	}
+	text, _ := sim["text"].(string)
+	if !strings.Contains(text, "1 минута до закрытия") {
+		t.Fatalf("confirmations must be T-1 copy, got %s", text)
+	}
+	if strings.Contains(text, "T-2") || strings.Contains(text, "2 минут") {
+		t.Fatalf("must not label T-1 as T-2: %s", text)
+	}
+}
+
+func TestActualizeHTTPReturnsCountNotUpdatedCount(t *testing.T) {
+	s, _, _ := liveServer(t)
+	rec := postJSON(s, "/api/telegram/actualize-prices", map[string]any{})
+	if rec.Code != 200 {
+		t.Fatalf("actualize %d %s", rec.Code, rec.Body.String())
+	}
+	var body map[string]any
+	_ = json.Unmarshal(rec.Body.Bytes(), &body)
+	if _, ok := body["count"]; !ok {
+		t.Fatalf("ActualizeResult must include count: %s", rec.Body.String())
+	}
+	if _, ok := body["updatedCount"]; ok {
+		t.Fatal("must not emit Node leftover updatedCount")
+	}
+	if _, ok := body["updated"].(bool); !ok {
+		t.Fatalf("updated must be bool, got %T", body["updated"])
+	}
+}
+
+func TestActualizeHTTPClearsWriteDeadline(t *testing.T) {
+	s, _, _ := liveServer(t)
+	if err := s.DB.UpsertWatch(map[string]any{"symbol": "MSFT", "lowIBS": 0.1, "highIBS": 0.75, "chatId": "test-chat"}); err != nil {
+		t.Fatal(err)
+	}
+	msft := []types.OHLC{{Date: "2026-09-01", Open: 1, High: 2, Low: 1, Close: 1, Volume: 1}}
+	if err := s.DB.SaveDataset("MSFT", "MSFT", "", "", msft, false); err != nil {
+		t.Fatal(err)
+	}
+	s.Live.Quotes = &live.MemoryQuotes{Bars: map[string][]types.OHLC{
+		"AAPL": {{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}},
+		"MSFT": msft,
+	}}
+	s.Live.Sleep = func(time.Duration) { time.Sleep(80 * time.Millisecond) }
+	srv := httptest.NewUnstartedServer(s.Handler())
+	srv.Config.WriteTimeout = 40 * time.Millisecond
+	srv.Start()
+	t.Cleanup(srv.Close)
+	req, err := http.NewRequest(http.MethodPost, srv.URL+"/api/telegram/actualize-prices", bytes.NewReader([]byte("{}")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("cleared write deadline must let actualize finish: %v", err)
+	}
+	defer resp.Body.Close()
+	b, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != 200 {
+		t.Fatalf("actualize %d %s", resp.StatusCode, b)
 	}
 }
 
