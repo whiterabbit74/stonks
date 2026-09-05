@@ -1108,7 +1108,7 @@
       </div>
       <div class="mt-2 border-t border-gray-200 pt-2 dark:border-gray-700">
         <div class="hero-footer-row">
-          <div class="scroll-cue min-w-0 overflow-x-auto"><div class="flex min-w-max items-center gap-1.5 pr-8">${ranges}</div></div>
+      <div class="scroll-cue-shell"><div class="scroll-cue min-w-0 overflow-x-auto"><div class="flex min-w-max items-center gap-1.5 pr-8">${ranges}</div></div></div>
           <div class="flex shrink-0 items-center gap-1.5">
             <div class="hero-tf">
               <button type="button" data-hero-tf="daily" class="${state.heroTf === 'daily' ? 'hero-tf-on' : 'hero-tf-off'}">День</button>
@@ -1385,9 +1385,11 @@
     btn.innerHTML = `${icon(slim ? 'chevronright' : 'chevronleft', 'w-5 h-5')}<span class="app-side-lab">${slim ? 'Показать' : 'Скрыть'}</span>`;
   }
   function analysisTabs(tabs, active, attr, label) {
-    return `<div class="scroll-cue border-b border-gray-200 dark:border-gray-700 overflow-x-auto">
-      <div class="flex items-center gap-2 flex-nowrap min-w-max px-1" role="tablist"${label ? ` aria-label="${esc(label)}"` : ''}>
+    return `<div class="scroll-cue-shell border-b border-gray-200 dark:border-gray-700">
+      <div class="scroll-cue overflow-x-auto">
+        <div class="flex items-center gap-2 flex-nowrap min-w-max px-1" role="tablist"${label ? ` aria-label="${esc(label)}"` : ''}>
         ${tabs.map((t) => `<button ${attr}="${esc(t.id)}" role="tab" aria-selected="${t.id === active}" tabindex="${t.id === active ? 0 : -1}" class="px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap sm:px-6 ${t.id === active ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'}">${esc(t.label)}</button>`).join('')}
+        </div>
       </div>
     </div>`;
   }
@@ -1849,7 +1851,7 @@
         </div>
         <div id="enhance-out" class="mt-3 text-sm text-gray-600 dark:text-gray-400"></div>
       </div>
-      <div class="scroll-cue flex gap-2 overflow-x-auto pb-2 mt-4">${chips}</div>
+      <div class="scroll-cue-shell mt-4"><div class="scroll-cue flex gap-2 overflow-x-auto pb-2">${chips}</div></div>
       <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg p-3">
         <div class="flex items-center justify-between mb-3">
           <h3 class="font-semibold text-gray-900 dark:text-gray-100">${esc(state.enhanceQuery ? 'Результаты поиска' : catLabel)}</h3>
@@ -2922,7 +2924,7 @@
         <div class="rounded-xl border overflow-hidden">
           <div class="px-4 pt-4 pb-2"><div class="text-sm font-semibold">Вкладки страницы «Акции»</div>
           <div class="text-xs text-gray-500">Нажмите, чтобы скрыть или показать</div></div>
-          <div class="scroll-cue flex overflow-x-auto border-t">${chips}</div>
+          <div class="scroll-cue-shell border-t"><div class="scroll-cue flex overflow-x-auto">${chips}</div></div>
         </div>`;
     } else {
       const ac = state.autoConfig?.config || state.autoConfig || {};
@@ -3177,7 +3179,9 @@
 
   function updateScrollCues() {
     document.querySelectorAll('.scroll-cue').forEach((el) => {
-      el.classList.toggle('scroll-cue-overflow', el.scrollWidth > el.clientWidth + 1);
+      const overflow = el.scrollWidth > el.clientWidth + 1;
+      el.classList.toggle('scroll-cue-overflow', overflow);
+      el.parentElement?.classList.toggle('scroll-cue-overflow', overflow);
     });
   }
 

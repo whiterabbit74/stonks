@@ -29,11 +29,12 @@ html.dark .chart-watermark { color: rgba(226, 232, 240, 0.34); }
   .md\:pb-8, .safe-area-pb { padding-bottom: 2rem; }
 }
 .table-wrap { overflow: auto; max-width: 100%; max-height: 480px; scrollbar-width: thin; }
+.scroll-cue-shell { position: relative; min-width: 0; }
 .scroll-cue { position: relative; }
 .scroll-cue-overflow [role="tablist"] { padding-inline-end: 2rem; }
 .scroll-cue [role="tab"], .scroll-cue > .cat-chip, .scroll-cue > .cat-chip-off { flex: 0 0 auto; }
 .scroll-cue [role="tab"] { scroll-margin-inline: 2rem; }
-.scroll-cue-overflow::after {
+.scroll-cue-shell.scroll-cue-overflow::after {
   content: ''; position: absolute; inset-block: 0; inset-inline-end: 0; width: 2rem;
   pointer-events: none; background: linear-gradient(to right, transparent, rgba(249,250,251,0.95));
 }
