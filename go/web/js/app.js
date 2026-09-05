@@ -1812,8 +1812,8 @@
               ? '<div class="w-2 h-2 bg-gray-400 rounded-full animate-pulse"></div><span class="text-xs text-gray-500 font-medium">Проверяем…</span>'
               : '<div class="w-2 h-2 bg-green-500 rounded-full"></div><span class="text-xs text-green-600 font-medium">Online</span>')}</div>
           <div class="flex items-center gap-1 bg-gray-100 dark:bg-gray-800 rounded-lg p-1">
-            <button id="view-list" class="p-1.5 rounded ${state.dataView === 'list' ? 'bg-white dark:bg-gray-700 text-indigo-600 shadow-sm' : 'text-gray-500'}" title="Список" aria-label="Переключить на режим списка">${icon('list', 'w-4 h-4')}</button>
-            <button id="view-grid" class="p-1.5 rounded ${state.dataView === 'compact' ? 'bg-white dark:bg-gray-700 text-indigo-600 shadow-sm' : 'text-gray-500'}" title="Компактный вид" aria-label="Переключить на компактный вид">${icon('grid', 'w-4 h-4')}</button>
+            <button id="view-list" class="p-1.5 rounded-lg ${state.dataView === 'list' ? 'bg-white dark:bg-gray-700 text-indigo-600 shadow-sm' : 'text-gray-500'}" title="Список" aria-label="Переключить на режим списка">${icon('list', 'w-4 h-4')}</button>
+            <button id="view-grid" class="p-1.5 rounded-lg ${state.dataView === 'compact' ? 'bg-white dark:bg-gray-700 text-indigo-600 shadow-sm' : 'text-gray-500'}" title="Компактный вид" aria-label="Переключить на компактный вид">${icon('grid', 'w-4 h-4')}</button>
           </div>
         </div>
         <div class="mb-3"><div class="text-xs font-medium text-gray-600 uppercase tracking-wide mb-2">Фильтр</div><div class="flex flex-wrap gap-2">${filters}</div></div>
