@@ -3,42 +3,48 @@
 # Usage: ./backup-from-server.sh
 
 set -e
+umask 077
 
 SERVER="ubuntu@146.235.212.239"
 BACKUP_DIR="$HOME/stonks-local-backups"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 DEST="$BACKUP_DIR/backup-$TIMESTAMP"
+REMOTE_DIR="/tmp/stonks-backup.$TIMESTAMP.$$"
 
 mkdir -p "$DEST"
+
+trap 'ssh "$SERVER" "rm -rf \"$REMOTE_DIR\"" >/dev/null 2>&1 || true' EXIT
 
 echo "📦 Копируем данные из контейнеров на сервере..."
 ssh "$SERVER" "
   set -e
-  rm -rf /tmp/stonks-backup-staging
-  mkdir -p /tmp/stonks-backup-staging/db
-  mkdir -p /tmp/stonks-backup-staging/datasets
-  mkdir -p /tmp/stonks-backup-staging/state
+  umask 077
+  mkdir -m 700 \"$REMOTE_DIR\"
+  mkdir -p \"$REMOTE_DIR\"/staging/db
+  mkdir -p \"$REMOTE_DIR\"/staging/datasets
+  mkdir -p \"$REMOTE_DIR\"/staging/state
 
   echo '  → db...'
-  docker cp stonks-server:/data/db/. /tmp/stonks-backup-staging/db/
+  docker cp stonks-server:/data/db/. \"$REMOTE_DIR\"/staging/db/
 
   echo '  → datasets...'
-  docker cp stonks-server:/data/datasets/. /tmp/stonks-backup-staging/datasets/
+  docker cp stonks-server:/data/datasets/. \"$REMOTE_DIR\"/staging/datasets/
 
   echo '  → state...'
-  docker cp stonks-server:/data/state/. /tmp/stonks-backup-staging/state/ 2>/dev/null || true
+  docker cp stonks-server:/data/state/. \"$REMOTE_DIR\"/staging/state/ 2>/dev/null || true
 
   echo '  → архивируем...'
-  tar -czf /tmp/stonks-backup.tar.gz -C /tmp/stonks-backup-staging .
-  rm -rf /tmp/stonks-backup-staging
-  echo 'Размер архива:' \$(du -sh /tmp/stonks-backup.tar.gz | cut -f1)
+  tar -czf \"$REMOTE_DIR\"/stonks-backup.tar.gz -C \"$REMOTE_DIR\"/staging .
+  rm -rf \"$REMOTE_DIR\"/staging
+  chmod 600 \"$REMOTE_DIR\"/stonks-backup.tar.gz
+  echo 'Размер архива:' \$(du -sh \"$REMOTE_DIR\"/stonks-backup.tar.gz | cut -f1)
 "
 
 echo "⬇️  Скачиваем..."
-scp "$SERVER":/tmp/stonks-backup.tar.gz "$DEST/stonks-backup.tar.gz"
+scp "$SERVER:$REMOTE_DIR/stonks-backup.tar.gz" "$DEST/stonks-backup.tar.gz"
 
 echo "🧹 Удаляем временный файл на сервере..."
-ssh "$SERVER" "rm -f /tmp/stonks-backup.tar.gz"
+ssh "$SERVER" "rm -rf \"$REMOTE_DIR\""
 
 echo ""
 echo "✅ Готово: $DEST/stonks-backup.tar.gz"
