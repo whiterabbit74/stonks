@@ -1171,7 +1171,7 @@
     </div>
     <p class="text-sm text-gray-500 mb-3">Прибыльных ${wins.length} · убыточных ${losses.length} · средний убыток ${fmt(avgLoss, 2)}% · средний плюс ${fmt(avgWin, 2)}%</p>
     <div class="text-xs font-medium text-gray-500 mb-1">Распределение PnL%</div>
-    <div id="chart-pnl-hist" class="chart-box rounded border dark:border-gray-800"></div>
+    <div id="chart-pnl-hist" class="chart-box rounded-lg border dark:border-gray-800"></div>
     <div class="mt-2">${cssHistogram(x.trades.map((t) => Number(t.pnlPercent) || 0), true)}</div>`;
   }
   function durationBody(r) {
@@ -1198,7 +1198,7 @@
       <div class="rounded-lg border p-3 text-center"><div class="text-xl font-bold">${fmt(max, 1)}</div><div class="text-xs text-gray-500">Макс., дн.</div></div>
     </div>
     <div class="text-xs font-medium text-gray-500 mb-1">Длительность сделок</div>
-    <div id="chart-dur-hist" class="chart-box rounded border dark:border-gray-800 mb-3"></div>
+    <div id="chart-dur-hist" class="chart-box rounded-lg border dark:border-gray-800 mb-3"></div>
     <div class="grid md:grid-cols-2 gap-4">
       <div class="overflow-auto"><table class="trades"><thead><tr><th>Дней</th><th>Сделок</th><th>%</th></tr></thead><tbody>${dayRows || '<tr><td colspan="3">—</td></tr>'}</tbody></table></div>
       <div class="overflow-auto"><table class="trades"><thead><tr><th>Причина выхода</th><th>Сделок</th><th>Ср. PnL</th></tr></thead><tbody>${reasonRows}</tbody></table></div>
@@ -1951,7 +1951,7 @@
           <button type="button" data-pc-fs class="icon-btn icon-btn-md icon-btn-glass" title="${fsOn ? 'Свернуть' : 'Во весь экран'}" aria-label="${fsOn ? 'Свернуть' : 'Во весь экран'}">${icon(fsOn ? 'minimize' : 'maximize', 'h-4 w-4')}</button>
         </div>
       </div>
-      <div id="${esc(chartId)}" class="chart-box-lg rounded border dark:border-gray-800"></div>
+      <div id="${esc(chartId)}" class="chart-box-lg rounded-lg border dark:border-gray-800"></div>
     </div>`;
   }
   function nestedNslHTML() {
@@ -2000,9 +2000,9 @@
         </div>`;
       } else if (state.stockTab === 'price') body = priceChartPanelHTML('chart-price');
       else if (state.stockTab === 'tickerCharts') body = `<div id="ticker-charts" class="grid md:grid-cols-2 gap-3"></div>`;
-      else if (state.stockTab === 'equity') body = '<div id="chart-eq" class="chart-box mt-4 rounded border dark:border-gray-800"></div>';
-      else if (state.stockTab === 'exposure') body = `<div class="text-xs text-gray-500 mb-1" id="exp-avg"></div><div id="chart-exp" class="chart-box rounded border dark:border-gray-800"></div>`;
-      else if (state.stockTab === 'drawdown') body = `<div id="dd-stats" class="mb-3"></div><div id="chart-dd" class="chart-box rounded border dark:border-gray-800"></div>`;
+      else if (state.stockTab === 'equity') body = '<div id="chart-eq" class="chart-box mt-4 rounded-lg border dark:border-gray-800"></div>';
+      else if (state.stockTab === 'exposure') body = `<div class="text-xs text-gray-500 mb-1" id="exp-avg"></div><div id="chart-exp" class="chart-box rounded-lg border dark:border-gray-800"></div>`;
+      else if (state.stockTab === 'drawdown') body = `<div id="dd-stats" class="mb-3"></div><div id="chart-dd" class="chart-box rounded-lg border dark:border-gray-800"></div>`;
       else if (state.stockTab === 'openDayDrawdown') body = `<div id="odd-out"></div>`;
       else if (state.stockTab === 'trades') body = tradesTable(r.trades, { page: state.tradesPage });
       else if (state.stockTab === 'profit') body = profitBody(r);
@@ -2015,7 +2015,7 @@
           <button class="btn-primary">Посчитать</button>
           <span id="bh-lev-now" class="text-xs text-gray-500 pb-2">Текущее плечо: ×1.00</span>
         </form>
-        <div id="chart-bh" class="chart-box-lg rounded border dark:border-gray-800"></div>
+        <div id="chart-bh" class="chart-box-lg rounded-lg border dark:border-gray-800"></div>
       </div>`;
       else if (state.stockTab === 'noStopLoss') body = nestedNslHTML();
     }
@@ -2102,10 +2102,10 @@
     } else {
       const bodies = {
         price: priceChartPanelHTML('chart-ema-price'),
-        emaDeviation: '<div id="chart-ema-dev" class="chart-box-lg rounded border dark:border-gray-800"></div><div class="mt-2 text-xs text-gray-500">Зелёные/красные линии — зоны покупки/продажи. Маркеры — сделки.</div>',
-        equity: '<div id="chart-ema-eq" class="chart-box-lg rounded border dark:border-gray-800"></div>',
-        exposure: '<div id="chart-ema-exp" class="chart-box-lg rounded border dark:border-gray-800"></div>',
-        drawdown: '<div id="chart-ema-dd" class="chart-box-lg rounded border dark:border-gray-800"></div>',
+        emaDeviation: '<div id="chart-ema-dev" class="chart-box-lg rounded-lg border dark:border-gray-800"></div><div class="mt-2 text-xs text-gray-500">Зелёные/красные линии — зоны покупки/продажи. Маркеры — сделки.</div>',
+        equity: '<div id="chart-ema-eq" class="chart-box-lg rounded-lg border dark:border-gray-800"></div>',
+        exposure: '<div id="chart-ema-exp" class="chart-box-lg rounded-lg border dark:border-gray-800"></div>',
+        drawdown: '<div id="chart-ema-dd" class="chart-box-lg rounded-lg border dark:border-gray-800"></div>',
         trades: tradesTable(r.trades),
         profit: profitBody(r),
         duration: durationBody(r),
@@ -2172,10 +2172,10 @@
       </div>`;
     } else {
       const bodies = {
-        equity: '<div id="chart-opt-eq" class="chart-box-lg rounded border dark:border-gray-800"></div>',
+        equity: '<div id="chart-opt-eq" class="chart-box-lg rounded-lg border dark:border-gray-800"></div>',
         price: priceChartPanelHTML('chart-opt-price'),
         tickerCharts: '<div id="opt-ticker-charts" class="grid md:grid-cols-2 gap-3"></div>',
-        drawdown: '<div id="chart-opt-dd" class="chart-box-lg rounded border dark:border-gray-800"></div>',
+        drawdown: '<div id="chart-opt-dd" class="chart-box-lg rounded-lg border dark:border-gray-800"></div>',
         trades: tradesTable(r.trades),
         profit: profitBody(r),
         duration: durationBody(r),
@@ -5065,7 +5065,7 @@
         return `<div class="rounded-lg border p-2 dark:border-gray-800">
           <div class="flex items-center justify-between text-sm mb-1"><div class="font-semibold">${esc(t.ticker)}</div><div>${px == null ? '—' : fmt(px)} <span class="${pnlClass(chg)}">${chg == null ? '' : fmtSignedPct(chg, 2)}</span></div></div>
           <div class="text-[11px] text-gray-500 mb-1">Баров: ${bars.length}</div>
-          <div id="tc-${esc(t.ticker)}" class="chart-box rounded border dark:border-gray-800"></div>
+          <div id="tc-${esc(t.ticker)}" class="chart-box rounded-lg border dark:border-gray-800"></div>
           <div class="ticker-mini-stats mt-1"><div>Сделок ${tt.length}</div><div>Прибыльных ${tt.length ? fmt((wins / tt.length) * 100, 0) : '—'}%</div><div>PnL ${fmtUsd(pnl)}</div><div>Ср. дни ${fmt(avgDur, 1)}</div></div>
         </div>`;
       }).join('');
@@ -5104,7 +5104,7 @@
           el.innerHTML = `<div class="flex flex-wrap gap-4 mb-4 text-sm">
             <div class="bg-red-50 px-3 py-2 rounded border border-red-200 text-red-700 dark:bg-red-950/30">Средняя просадка в день открытия: ${avg.toFixed(2)}%</div>
             <div class="bg-gray-50 px-3 py-2 rounded border dark:bg-gray-800">Максимальная просадка: ${max.toFixed(2)}%</div>
-          </div><div id="chart-odd" class="chart-box rounded border dark:border-gray-800"></div>`;
+          </div><div id="chart-odd" class="chart-box rounded-lg border dark:border-gray-800"></div>`;
           Charts.line(document.getElementById('chart-odd'), rows, dark, '#dc2626');
         }
       }
@@ -5158,7 +5158,7 @@
     if (tab === 'drawdown') paintLine('chart-opt-dd', (r.equity || []).map((p) => ({ date: p.date, value: p.drawdown })), dark, '#dc2626');
     if (tab === 'tickerCharts' && document.getElementById('opt-ticker-charts')) {
       const host = document.getElementById('opt-ticker-charts');
-      host.innerHTML = (state.tickersData || []).map((t) => `<div><div class="text-sm font-semibold mb-1">${esc(t.ticker)}</div><div id="otc-${esc(t.ticker)}" class="chart-box rounded border dark:border-gray-800"></div></div>`).join('');
+      host.innerHTML = (state.tickersData || []).map((t) => `<div><div class="text-sm font-semibold mb-1">${esc(t.ticker)}</div><div id="otc-${esc(t.ticker)}" class="chart-box rounded-lg border dark:border-gray-800"></div></div>`).join('');
       (state.tickersData || []).forEach((t) => {
         const el = document.getElementById('otc-' + t.ticker);
         if (el) Charts.candles(el, t.data, dark);
@@ -5203,7 +5203,7 @@
         } catch (_) {}
       }
       const chartId = id + '-eq';
-      el.innerHTML = metricsGrid(r.metrics, r.finalValue, r.maxDrawdown) + `<p class="text-sm my-2">Сделок: ${r.trades?.length || 0}${r.finalValue != null ? ', итог ' + fmt(r.finalValue) : ''}</p>` + `<div id="${chartId}" class="chart-box rounded border dark:border-gray-800 my-3"></div>` + tradesTable(r.trades, { page: 1 });
+      el.innerHTML = metricsGrid(r.metrics, r.finalValue, r.maxDrawdown) + `<p class="text-sm my-2">Сделок: ${r.trades?.length || 0}${r.finalValue != null ? ', итог ' + fmt(r.finalValue) : ''}</p>` + `<div id="${chartId}" class="chart-box rounded-lg border dark:border-gray-800 my-3"></div>` + tradesTable(r.trades, { page: 1 });
       const ch = document.getElementById(chartId);
       if (ch && r.equity && r.equity.length) Charts.richLine(ch, r.equity, isDark(), { area: true, compare: extra && extra.compareEquity, compareColor: '#94a3b8' });
       bindTradesPager(el);
@@ -5272,7 +5272,7 @@
           const contrib = Number(fd.get('amount')) || 0;
           out.innerHTML = metricsGrid(withC.metrics, withC.finalValue, withC.maxDrawdown)
             + (base ? `<div class="rounded-lg border p-3 my-3 text-sm"><div class="font-semibold mb-1">Δ vs без пополнений</div><div>Итог ${fmtUsd((withC.finalValue || 0) - (base.finalValue || 0))} · доходность ${fmtSignedPct((withC.metrics.totalReturn || 0) - (base.metrics.totalReturn || 0), 2)} · CAGR ${fmtSignedPct((withC.metrics.cagr || 0) - (base.metrics.cagr || 0), 2)}</div><div class="text-xs text-gray-500 mt-1">Сумма пополнения ${fmtUsd(contrib)} / день ${esc(fd.get('day'))}</div></div>` : '')
-            + '<div id="mc-eq" class="chart-box rounded border dark:border-gray-800 my-3"></div>'
+            + '<div id="mc-eq" class="chart-box rounded-lg border dark:border-gray-800 my-3"></div>'
             + tradesTable(withC.trades, { page: 1 });
           const ch = document.getElementById('mc-eq');
           if (ch) Charts.richLine(ch, withC.equity, isDark(), { area: true, compare: base && base.equity, compareColor: '#94a3b8' });
