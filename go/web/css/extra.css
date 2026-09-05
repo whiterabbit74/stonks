@@ -35,7 +35,7 @@ html.dark .chart-watermark { color: rgba(226, 232, 240, 0.34); }
   pointer-events: none; background: linear-gradient(to right, transparent, rgba(249,250,251,0.95));
 }
 html.dark .scroll-cue::after { background: linear-gradient(to right, transparent, rgba(17,24,39,0.95)); }
-.action-icon { display: inline-flex; align-items: center; justify-content: center; width: 2.25rem; height: 2.25rem; border-radius: 0.5rem; }
+.action-icon { display: inline-flex; align-items: center; justify-content: center; width: 2.25rem; height: 2.25rem; border-radius: 9999px; }
 .action-icon:focus-visible { outline: 2px solid #6366f1; outline-offset: 2px; }
 .action-icon-edit { color: #4f46e5; }
 .action-icon-edit:hover { background: #eef2ff; }
