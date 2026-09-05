@@ -86,3 +86,36 @@ func TestSizeOrderCancelsPositionsReadViaContext(t *testing.T) {
 		t.Fatal("cancelled sizing positions read must return an error")
 	}
 }
+
+// hangAccountBroker implements ctxAccounter. Account() sleeps (the pre-fix
+// sizeOrder path); AccountCtx waits on the attempt context (the post-fix path).
+type hangAccountBroker struct {
+	MemoryBroker
+}
+
+func (h *hangAccountBroker) Account() (map[string]any, error) {
+	time.Sleep(3 * time.Second)
+	return nil, errors.New("account hung until sleep ended")
+}
+
+func (h *hangAccountBroker) AccountCtx(ctx context.Context) (map[string]any, error) {
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+func TestSizeOrderCancelsAccountReadViaContext(t *testing.T) {
+	_, e, _ := testEngine(t, nil)
+	e.Sleep = func(time.Duration) {}
+	br := &hangAccountBroker{}
+	ctx, cancel := context.WithTimeout(context.Background(), 80*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	_, err := e.sizeOrder("entry", "AAPL", e.AutoConfig(), 10, br, windowFromCtx(ctx))
+	elapsed := time.Since(start)
+	if elapsed > time.Second {
+		t.Fatalf("sizeOrder took %s; must follow the execution window, not the un-cancellable Account()", elapsed)
+	}
+	if err == nil {
+		t.Fatal("cancelled sizing account read must return an error")
+	}
+}

@@ -391,8 +391,8 @@ func (e *Engine) sizeOrder(action, symbol string, cfg map[string]any, price floa
 	if br == nil {
 		return 0, fmt.Errorf("Unable to read available funds for balance sizing")
 	}
-	acct, err := retryBrokerReadWindow(e, w, "account", func(context.Context) (map[string]any, error) {
-		return br.Account()
+	acct, err := retryBrokerReadWindow(e, w, "account", func(ctx context.Context) (map[string]any, error) {
+		return brokerAccount(ctx, br)
 	})
 	if err != nil {
 		return 0, err

@@ -154,8 +154,18 @@ func (b *LiveBroker) CloseMarket(symbol string) (OrderResult, error) {
 }
 
 func (b *LiveBroker) Account() (map[string]any, error) {
+	return b.account(context.Background())
+}
+
+// AccountCtx implements the optional ctxAccounter extension: sizeOrder's
+// account read is bounded by the same T-1 deadline as the order it sizes.
+func (b *LiveBroker) AccountCtx(ctx context.Context) (map[string]any, error) {
+	return b.account(ctx)
+}
+
+func (b *LiveBroker) account(ctx context.Context) (map[string]any, error) {
 	c := b.client()
-	bal, err := c.AccountBalance(c.AccountID)
+	bal, err := c.AccountBalanceCtx(ctx, c.AccountID)
 	if err != nil {
 		return nil, err
 	}

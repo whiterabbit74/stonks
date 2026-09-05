@@ -367,10 +367,16 @@ func (c *Client) OrderDetailCtx(ctx context.Context, accountID, clientOrderID st
 }
 
 func (c *Client) AccountBalance(accountID string) (*Response, error) {
+	return c.AccountBalanceCtx(context.Background(), accountID)
+}
+
+// AccountBalanceCtx is AccountBalance with an explicit context, used from
+// the T-1 sizing path so a stuck account read is bounded by the same deadline.
+func (c *Client) AccountBalanceCtx(ctx context.Context, accountID string) (*Response, error) {
 	if accountID == "" {
 		accountID = c.AccountID
 	}
-	return c.Request(http.MethodGet, "/account/balance", map[string]string{
+	return c.RequestCtx(ctx, http.MethodGet, "/account/balance", map[string]string{
 		"account_id":           accountID,
 		"total_asset_currency": "USD",
 	}, nil, true, nil)

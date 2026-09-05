@@ -113,6 +113,11 @@ type ctxPositioner interface {
 	PositionsCtx(ctx context.Context) ([]any, error)
 }
 
+// ctxAccounter is the Account counterpart of ctxOrderDetailer.
+type ctxAccounter interface {
+	AccountCtx(ctx context.Context) (map[string]any, error)
+}
+
 func brokerOrderDetail(ctx context.Context, br Broker, clientOrderID string) (map[string]any, error) {
 	if d, ok := br.(ctxOrderDetailer); ok {
 		return d.OrderDetailCtx(ctx, clientOrderID)
@@ -132,6 +137,13 @@ func brokerPositions(ctx context.Context, br Broker) ([]any, error) {
 		return d.PositionsCtx(ctx)
 	}
 	return br.Positions()
+}
+
+func brokerAccount(ctx context.Context, br Broker) (map[string]any, error) {
+	if d, ok := br.(ctxAccounter); ok {
+		return d.AccountCtx(ctx)
+	}
+	return br.Account()
 }
 
 type Engine struct {
