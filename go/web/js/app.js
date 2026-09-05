@@ -1502,7 +1502,7 @@
       const ibs = [t.entryIBS, t.exitIBS].map((v) => v == null ? '—' : fmt((Number(v) <= 1.5 ? Number(v) * 100 : Number(v)), 1) + '%').join(' → ');
       return `<tr class="${t.isHidden ? 'opacity-50' : ''}">
         <td class="font-mono">${esc(t.symbol || t.ticker || '—')}</td>
-        <td>${esc(t.status === 'open' ? 'открыта' : 'закрыта')}${t.isTest ? ' · test' : ''}</td>
+        <td>${esc(t.status === 'open' ? 'открыта' : 'закрыта')}${t.isTest ? ' · тест' : ''}</td>
         <td title="${esc(t.entryDate || '')} – ${esc(t.exitDate || '')}">${esc(fmtTradingDate(t.entryDate))} – ${esc(fmtTradingDate(t.exitDate))}</td>
         <td><div class="text-xs text-gray-500">Покупка</div><div>${t.entryPrice == null ? '—' : fmtUsd(t.entryPrice)}</div><div class="text-xs text-gray-500 mt-1">Продажа</div><div>${t.exitPrice == null ? '—' : fmtUsd(t.exitPrice)}</div></td>
         <td><div class="text-xs text-gray-500">Вход</div><div>${esc(ibs.split(' → ')[0] || '—')}</div><div class="text-xs text-gray-500 mt-1">Выход</div><div>${esc(ibs.split(' → ')[1] || '—')}</div></td>
