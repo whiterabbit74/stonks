@@ -358,6 +358,7 @@
     },
     baselineResult: null,
     emaBaseline: null,
+    optBaseline: null,
     emaRunParams: null,
     priceChart: initPriceChart(),
     priceChartUi: { indOpen: false, styleFor: null, tickerOpen: false, fullscreen: false, chartId: 'chart-price' },
@@ -2222,7 +2223,7 @@
     }
     return `
       ${pageHeader('Опционы', 'Бэктест опционных стратегий на нескольких активах')}
-      ${r ? metricsGrid(r.metrics, r.finalValue, r.maxDrawdown) : ''}
+      ${r ? metricsGrid(r.metrics, r.finalValue, r.maxDrawdown, r && state.optBaseline && Number(state.optForm.leverage) > 100 ? state.optBaseline : null) : ''}
       <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 mt-4">
         ${analysisTabs(tabs, tab, 'data-otab')}
         ${main}
@@ -4521,11 +4522,12 @@
         expiration: Number(fd.get('expiration') || 4), maxHold: Number(fd.get('maxHold') || 30), leverage: Number(fd.get('leverage') || 200),
       };
       const names = parseTickers(state.optTickers);
+      const lev = Number(fd.get('leverage') || 200) / 100;
       const [stock] = await Promise.all([
-        API.calc('single-position', { tickers: calcTickerRefs(names), strategy: defaultStrategy(), leverage: Number(fd.get('leverage') || 200) / 100, single: { allowSameDayReentry: true } }),
+        API.calc('single-position', { tickers: calcTickerRefs(names), strategy: defaultStrategy(), leverage: lev, includeBaseline: lev > 1, single: { allowSameDayReentry: true } }),
         loadSelected(),
       ]);
-      const r = await API.calc('options-multi', {
+      const optionPayload = {
         tickers: calcTickerRefs(names), trades: stock.trades,
         config: {
           strikePct: Number(fd.get('strike') || 10),
@@ -4534,8 +4536,13 @@
           expirationWeeks: Number(fd.get('expiration') || 4),
           maxHoldingDays: Number(fd.get('maxHold') || 30),
         },
-      });
+      };
+      const r = await API.calc('options-multi', optionPayload);
+      if (lev > 1 && stock.baseline && stock.baseline.trades) {
+        r.baseline = await API.calc('options-multi', { ...optionPayload, trades: stock.baseline.trades });
+      }
       state.optResult = resultOf(r);
+      state.optBaseline = lev > 1 ? resultOf(r && r.baseline) : null;
       if (!state.optResult.metrics || !Object.keys(state.optResult.metrics).length) {
         try {
           const m = await API.calc('metrics', { trades: state.optResult.trades, equity: state.optResult.equity, initialCapital: initialCapital() });
