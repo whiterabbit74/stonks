@@ -1776,13 +1776,13 @@
         </div>`;
       }).join('')}</div>`;
     } else {
-      cards = filtered.map((d) => `<div class="flex items-center justify-between rounded-lg border p-3 bg-white dark:bg-gray-900 dark:border-gray-800">
-        <div>
+      cards = filtered.map((d) => `<div class="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3 bg-white dark:bg-gray-900 dark:border-gray-800">
+        <div class="min-w-0 flex-1">
           <div class="flex items-center gap-2"><div class="font-semibold font-mono px-1.5 py-0.5 rounded bg-blue-50 text-blue-800 dark:bg-blue-950/40 dark:text-blue-200">${esc(d.ticker)}</div>${datasetCompany(d) ? `<span class="text-xs text-gray-500">${esc(datasetCompany(d))}</span>` : ''}${state.ticker === d.ticker ? '<span class="text-[10px] px-1.5 py-0.5 rounded bg-green-100 text-green-800">Выбран</span>' : ''}</div>
           <div class="text-xs text-gray-500">${d.dataPoints || 0} баров · ${esc(fmtTradingDate(d.dateRange?.from))} — ${esc(fmtTradingDate(d.dateRange?.to))}${d.uploadDate ? ' · Сохранён: ' + esc(fmtTradingDate(d.uploadDate)) : ''}</div>
           ${(d.tag || '').split(',').map((t) => t.trim()).filter(Boolean).map((t) => `<span class="inline-block mr-1 mt-1 px-1.5 py-0.5 bg-gray-100 text-gray-600 text-[10px] rounded dark:bg-gray-800">${esc(t)}</span>`).join('')}
         </div>
-        <div class="flex flex-wrap gap-2">
+        <div class="flex shrink-0 flex-wrap gap-2">
           <a href="/stocks?tickers=${encodeURIComponent(d.ticker)}" data-load="${esc(d.ticker)}" class="btn-primary">Открыть</a>
           ${actionIcon('edit', 'Изменить датасет', `data-edit="${esc(d.ticker)}"`, 'action-icon-edit')}
           <button data-refresh="${esc(d.ticker)}" class="btn-secondary min-h-0 py-1.5 px-3 text-sm">Обновить</button>
