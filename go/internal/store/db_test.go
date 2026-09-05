@@ -136,6 +136,8 @@ func TestSettingsDropsUnknownKeysOnLoadAndSave(t *testing.T) {
 		"trackerPersistFail":            map[string]any{"webull": true},
 		"polygonApiKey":                 "secret",
 		"initialCapital":                25000,
+		"autotradeLogMaxRows":           2,
+		"autotradeLogRetentionDays":     0,
 	})
 	got := db.Settings()
 	for _, junk := range []string{"webullAllowEntries", "robinhoodEnabled", "autoEntryReserve"} {
@@ -161,6 +163,12 @@ func TestSettingsDropsUnknownKeysOnLoadAndSave(t *testing.T) {
 	}
 	if asFloat(got["initialCapital"]) != 25000 {
 		t.Fatalf("initialCapital=%v", got["initialCapital"])
+	}
+	if asFloat(got["autotradeLogMaxRows"]) != 2 {
+		t.Fatalf("autotradeLogMaxRows=%v", got["autotradeLogMaxRows"])
+	}
+	if asFloat(got["autotradeLogRetentionDays"]) != 0 {
+		t.Fatalf("autotradeLogRetentionDays=%v", got["autotradeLogRetentionDays"])
 	}
 	if asFloat(got["watchThresholdPct"]) != 0.4 {
 		t.Fatalf("watchThresholdPct=%v", got["watchThresholdPct"])

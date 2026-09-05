@@ -798,6 +798,8 @@ var extraStoredSettingsKeys = []string{
 	"lastActualizationAttemptCount",
 	"trackerPersistFail",
 	"lastAutotradeLogPruneDate",
+	"autotradeLogRetentionDays",
+	"autotradeLogMaxRows",
 	"lastMissedT1Date",
 	"lastCalendarImportDate",
 }
