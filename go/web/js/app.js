@@ -2992,7 +2992,7 @@
         <p class="text-sm text-gray-600">Состояние брокеров — на страницах <a href="/webull" data-nav class="text-indigo-600">Webull</a> и <a href="/robinhood" data-nav class="text-indigo-600">Robinhood</a>.</p>`;
     }
     return `
-      ${pageHeader('Настройки', 'Конфигурация приложения и параметры стратегии', `<button form="set-form" class="btn-secondary min-h-0 py-2 px-4">Сохранить</button>`)}
+      ${pageHeader('Настройки', 'Конфигурация приложения и параметры стратегии', `<button form="set-form" class="btn-primary min-h-0 py-2 px-4">Сохранить</button>`)}
       ${analysisTabs(SETTINGS_TABS, tab, 'data-setab')}
       <form id="set-form" class="mt-4 space-y-3 max-w-3xl">
         ${body}
