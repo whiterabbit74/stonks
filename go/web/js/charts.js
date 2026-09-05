@@ -412,6 +412,19 @@ const Charts = {
     }
     return { low, high };
   },
+  ibsColoredLineData(points, low, high) {
+    const lo = Number.isFinite(Number(low)) ? Number(low) : this.IBS_LOW;
+    const hi = Number.isFinite(Number(high)) ? Number(high) : this.IBS_HIGH;
+    const out = { lo: [], mid: [], hi: [] };
+    (points || []).forEach((p) => {
+      if (!p || p.date == null || !Number.isFinite(Number(p.value))) return;
+      const point = { date: p.date, value: Number(p.value) };
+      if (point.value < lo) out.lo.push(point);
+      else if (point.value > hi) out.hi.push(point);
+      else out.mid.push(point);
+    });
+    return out;
+  },
   addIbsPane(chart, points, paneIdx, opts) {
     const { low, high } = this.ibsThresholds(opts);
     const lowPct = low * 100;
@@ -422,16 +435,37 @@ const Charts = {
       data.push({ time: this.toBusinessDay(p.date), value: Number(p.value) * 100 });
     });
     if (!data.length) return { low, high };
-    const series = chart.addSeries(LightweightCharts.LineSeries, {
-      color: '#7c3aed',
-      lineWidth: 1,
-      priceScaleId: 'ibs',
-      lastValueVisible: false,
-      priceLineVisible: false,
-      priceFormat: { type: 'price', precision: 0, minMove: 1 },
-      autoscaleInfoProvider: () => ({ priceRange: { minValue: 0, maxValue: 100 } }),
-    }, paneIdx);
-    series.setData(data);
+    const area = (baseValue, value, color) => {
+      const series = chart.addSeries(LightweightCharts.AreaSeries, {
+        baseValue: { type: 'price', price: baseValue },
+        lineVisible: false,
+        topColor: color,
+        bottomColor: color,
+        priceScaleId: 'ibs',
+        lastValueVisible: false,
+        priceLineVisible: false,
+      }, paneIdx);
+      series.setData(data.map((p) => ({ time: p.time, value })));
+    };
+    area(0, lowPct, 'rgba(16,185,129,0.16)');
+    area(highPct, 100, 'rgba(239,68,68,0.16)');
+    const colored = this.ibsColoredLineData(points, low, high);
+    const line = (items, color) => {
+      const series = chart.addSeries(LightweightCharts.LineSeries, {
+        color,
+        lineWidth: 1,
+        priceScaleId: 'ibs',
+        lastValueVisible: false,
+        priceLineVisible: false,
+        priceFormat: { type: 'price', precision: 0, minMove: 1 },
+        autoscaleInfoProvider: () => ({ priceRange: { minValue: 0, maxValue: 100 } }),
+      }, paneIdx);
+      series.setData(items.map((p) => ({ time: this.toBusinessDay(p.date), value: Number(p.value) * 100 })));
+      return series;
+    };
+    line(colored.lo, '#10B981');
+    const series = line(colored.mid, '#7c3aed');
+    line(colored.hi, '#EF4444');
     if (typeof series.createPriceLine === 'function') {
       series.createPriceLine({ price: lowPct, color: '#10B981', lineWidth: 1, lineStyle: 1, axisLabelVisible: true, title: '' });
       series.createPriceLine({ price: highPct, color: '#EF4444', lineWidth: 1, lineStyle: 1, axisLabelVisible: true, title: '' });
