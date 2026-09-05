@@ -229,7 +229,7 @@ test('applyRange keeps eight bars of room on the right', () => {
 });
 
 test('priceChart IBS pane draws dotted 10/75 lines and zone fills', () => {
-  const captured = { create: null, series: [], lines: [] };
+  const captured = { create: null, series: [], lines: [], fits: 0 };
   sandbox.document = {
     createElement() {
       return { className: '', textContent: '', style: {}, setAttribute() {} };
@@ -255,7 +255,7 @@ test('priceChart IBS pane draws dotted 10/75 lines and zone fills', () => {
         timeScale() {
           return {
             applyOptions() {},
-            fitContent() {},
+            fitContent() { captured.fits += 1; },
             setVisibleLogicalRange() {},
             setVisibleRange() {},
             options() { return { rightOffset: opts.timeScale.rightOffset }; },
@@ -274,6 +274,7 @@ test('priceChart IBS pane draws dotted 10/75 lines and zone fills', () => {
   ];
   Charts.priceChart(el, ibsBars, { ibs: true, volume: false, showTrades: false, range: 'MAX', ticker: 'AAPL' });
   assert.equal(captured.create.timeScale.rightOffset, 8);
+  assert.equal(captured.fits, 1);
   const areas = captured.series.filter((s) => s.type === 'Area');
   assert.equal(areas.length, 2);
   assert.equal(areas[0].seriesOpts.baseValue.price, 0);
@@ -314,5 +315,4 @@ test('csvCell quotes commas and doubles inner quotes', () => {
   assert.equal(Charts.csvCell('say "hi"'), '"say ""hi"""');
   assert.equal(Charts.csvCell('plain'), 'plain');
 });
-
 

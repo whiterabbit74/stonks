@@ -498,7 +498,6 @@ const Charts = {
       series.createPriceLine({ price: Number(opts.refValue), color: opts.refColor || '#94a3b8', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: opts.refTitle || '' });
     }
     this.applyRange(chart, this.mapLinePoints(points).map((p) => ({ time: this.toUtcTs(p.time && p.time.year ? `${p.time.year}-${String(p.time.month).padStart(2, '0')}-${String(p.time.day).padStart(2, '0')}` : p.time), })), opts.range);
-    if (!opts.range || opts.range === 'MAX') chart.timeScale().fitContent();
     return chart;
   },
   histogram(container, points, isDark, opts) {
@@ -539,7 +538,6 @@ const Charts = {
     }
     const asTs = mapped.map((p) => ({ time: this.toUtcTs(`${p.time.year}-${String(p.time.month).padStart(2, '0')}-${String(p.time.day).padStart(2, '0')}`) }));
     this.applyRange(chart, asTs, opts.range || 'MAX');
-    if (!opts.range || opts.range === 'MAX') chart.timeScale().fitContent();
     return chart;
   },
   priceChart(container, bars, opts) {
@@ -638,7 +636,6 @@ const Charts = {
     });
     this.mark(candleSeries, markers);
     this.applyRange(chart, candles.map((c) => ({ time: this.toUtcTs(`${c.time.year}-${String(c.time.month).padStart(2, '0')}-${String(c.time.day).padStart(2, '0')}`) })), opts.range || 'MAX');
-    if (!opts.range || opts.range === 'MAX' || opts.range === 'ALL') chart.timeScale().fitContent();
     this.setWatermark(container, opts.ticker);
     return { chart, candles: sorted };
   },
