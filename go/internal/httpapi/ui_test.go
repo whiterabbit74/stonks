@@ -1335,3 +1335,22 @@ func TestWatchesSimulateButtonIsT1(t *testing.T) {
 		t.Fatal("T-1 toasts must not say T-2")
 	}
 }
+
+func TestWatchPricesReadsActualizeResultFields(t *testing.T) {
+	a := readWeb(t, "js/app.js")
+	after := jsFn(a, "afterRender")
+	start := strings.Index(after, "getElementById('watch-prices')")
+	if start < 0 {
+		t.Fatal("watch-prices handler not found")
+	}
+	handler := after[start:]
+	if i := strings.Index(handler, "getElementById('watch-manual')"); i > 0 {
+		handler = handler[:i]
+	}
+	if !strings.Contains(handler, "prices.count") || !strings.Contains(handler, "failedTickers") {
+		t.Fatal("watch-prices must read ActualizeResult count and failedTickers")
+	}
+	if strings.Contains(handler, "updatedCount") {
+		t.Fatal("must not use Node leftover updatedCount")
+	}
+}

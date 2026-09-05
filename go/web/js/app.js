@@ -3837,11 +3837,10 @@
         try {
           const r = await API.updateAll();
           const prices = (r && r.prices) || r || {};
-          const n = prices.updatedCount ?? prices.updated ?? (Array.isArray(prices.updatedTickers) ? prices.updatedTickers.length : null);
-          const missing = (prices.missingToday || prices.noData || []).join(', ');
-          const errs = (prices.errors || []).map((x) => x.symbol || x.message || x).join(', ');
-          const chg = (r && r.positions && r.positions.changes) || prices.changes || [];
-          toast((prices.success || prices.updated ? 'Обновлено' : (prices.reason || 'Цены не обновлены')) + (n != null ? ' · ' + n : '') + (missing ? ' · нет данных: ' + missing : '') + (errs ? ' · ошибки: ' + errs : '') + (chg.length ? ' · позиций: ' + chg.length : ''));
+          const n = prices.count;
+          const failed = (prices.failedTickers || []).join(', ');
+          const chg = (r && r.positions && r.positions.changes) || [];
+          toast((prices.success || prices.updated ? 'Обновлено' : (prices.reason || 'Цены не обновлены')) + (n != null ? ' · ' + n : '') + (failed ? ' · ошибки: ' + failed : '') + (chg.length ? ' · позиций: ' + chg.length : ''));
           state.loaded.watches = false;
           renderPage();
         } catch (err) { toast(errText(err)); }
