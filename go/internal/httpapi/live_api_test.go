@@ -621,14 +621,14 @@ func TestUIOracleBlocks(t *testing.T) {
 		t.Fatalf("stocksParams should render only in summary asides, got %d", strings.Count(a, "${stocksParams("))
 	}
 	for _, need := range []string{
-		"<th>Тикер</th>", "Дата входа-выхода", "Цена входа", "Цена выхода",
+		"<th>Тикер</th>", "Период", "Цена покупки / продажи", "IBS вход / выход",
 		"applyMonitorMarginSimulation", "watch-margin", "Маржинальность",
 		"extractBalanceSummary", "total_net_liquidation_value", "overnight_buying_power",
 		"Себестоимость", "Рыночная стоимость", "PnL %",
 		"monitorTradesTable", "Reconcile Candidate",
 		"broker-reconcile", "Показать скрытые",
 		`data-edit="`, `data-refresh="`, `data-export="`, "companyName", "Сохранён:",
-		"Настройки провайдера", "compactMetricsHTML", "reset-opt-tickers",
+		"Настройки провайдера", "compactMetricsHTML", "opt-preset",
 		"webullCoverageThrough", `data-edit-split="`, `data-del-ticker="`,
 	} {
 		if !strings.Contains(a, need) {

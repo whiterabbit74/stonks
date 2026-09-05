@@ -101,7 +101,7 @@ if (scaled[0].pnlPercent !== 20) fail.push('margin pnlPercent ' + scaled[0].pnlP
 if (scaled[0].pnlAbsolute !== 100) fail.push('margin pnlAbsolute ' + scaled[0].pnlAbsolute);
 if (scaled[1].pnlPercent !== 10) fail.push('open trade must not scale');
 if (!html.includes('AAPL') || !html.includes('2024-01-02') || !html.includes('2024-01-05')) fail.push('tradesTable missing ticker/dates');
-if (!html.includes('Цена входа') || !html.includes('Цена выхода') || !html.includes('Тикер')) fail.push('tradesTable missing headers');
+if (!html.includes('Цена покупки / продажи') || !html.includes('IBS вход / выход') || !html.includes('Тикер')) fail.push('tradesTable missing headers');
 if (src.includes("state.stockTab !== 'summary'")) fail.push('params still injected off summary');
 
 const legacy = {
