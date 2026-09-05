@@ -1,9 +1,9 @@
 (() => {
   const NAV = [
-    { to: '/data', label: 'Данные', icon: 'database', sidebar: true, bottom: true, menu: true },
+    { to: '/data', label: 'Данные', icon: 'database', sidebar: true, menu: true },
     { to: '/stocks', label: 'Акции', icon: 'linechart', sidebar: true, bottom: true, menu: true },
-    { to: '/ema', label: 'EMA', icon: 'linechart', sidebar: true, bottom: true, menu: true },
-    { to: '/multi-ticker-options', label: 'Опционы', icon: 'layers', sidebar: true, bottom: true, menu: true },
+    { to: '/ema', label: 'EMA', icon: 'activity', sidebar: true, bottom: true, menu: true },
+    { to: '/multi-ticker-options', label: 'Опционы', icon: 'layers', sidebar: true, menu: true },
     { to: '/calendar', label: 'Календарь', icon: 'calendar', sidebar: true, menu: true },
     { to: '/split', label: 'Сплиты', icon: 'scissors', sidebar: true, menu: true },
     { to: '/watches', label: 'Мониторинг', icon: 'bell', sidebar: true, bottom: true, menu: true },
@@ -1715,7 +1715,7 @@
           <main id="main-content" class="flex-1 w-full px-4 sm:px-6 lg:px-8 pt-6 pb-32 md:pb-24 safe-area-pb">
             <div id="page-root"></div>
           </main>
-          <nav class="bottom-nav md:hidden fixed bottom-0 left-0 right-0 bg-white/95 dark:bg-gray-900/95 backdrop-blur-lg border-t border-gray-200 dark:border-gray-800 z-40 grid grid-cols-5 items-center h-16" role="navigation" aria-label="Основная навигация">${bottom}</nav>
+          <nav class="bottom-nav md:hidden fixed bottom-0 left-0 right-0 bg-white/95 dark:bg-gray-900/95 backdrop-blur-lg border-t border-gray-200 dark:border-gray-800 z-40 grid grid-cols-3 items-center h-16" role="navigation" aria-label="Основная навигация">${bottom}</nav>
           ${footerHTML(state.apiBuildId)}
         </div>
       </div>
