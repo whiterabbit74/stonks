@@ -126,6 +126,8 @@ type AggregateOpts struct {
 	ForceSend   bool // keep going if Telegram send fails (scheduler)
 	DryRun      bool
 	UpdateState bool // honor/persist t11Sent/t1Sent; HTTP simulate leaves this false
+	// Ctx bounds the T-1 cycle. nil means context.Background.
+	Ctx context.Context
 }
 
 func (e *Engine) Simulate(stage string) (SimulateResult, error) {
@@ -245,8 +247,8 @@ func (e *Engine) Aggregate(minutesUntilClose int, opts AggregateOpts) (SimulateR
 		// The whole T-1 cycle — reconcile reads, exit, re-entry — shares one
 		// deadline computed here, at the top of the minute: closeTime(ET) minus
 		// T1DeadlineSafetyMargin. See P1-1 in AUTOTRADE_ROADMAP.md.
-		w := e.t1Window(context.Background())
-		snap := e.Consistency()
+		w := e.t1Window(opts.Ctx)
+		snap := e.consistencyWindow(w)
 		blocking = BlockingMismatch(snap)
 		if blocking != nil {
 			_ = e.DB.AppendAutotradeLog("t1_monitor_mismatch " + fmt.Sprint(blocking["code"]) + " " + fmt.Sprint(blocking["message"]))

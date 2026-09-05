@@ -18,6 +18,10 @@ var blockingMismatchCodes = map[string]struct{}{
 }
 
 func (e *Engine) Consistency() map[string]any {
+	return e.consistencyWindow(backgroundWindow())
+}
+
+func (e *Engine) consistencyWindow(w execWindow) map[string]any {
 	monitor, merr := e.DB.ListTrades("trades")
 	broker, berr := e.DB.ListTrades("broker_trades")
 	if merr != nil || berr != nil {
@@ -124,7 +128,7 @@ func (e *Engine) Consistency() map[string]any {
 		issues = append(issues, iss)
 		proposed = append(proposed, act)
 	}
-	issues = append(issues, e.liveConsistencyIssues(broker)...)
+	issues = append(issues, e.liveConsistencyIssues(broker, w)...)
 
 	if issues == nil {
 		issues = []map[string]any{}
@@ -296,10 +300,10 @@ func (e *Engine) monitorWithoutOpenBrokerIssues(openM map[string]any, broker []m
 	return issues, proposed
 }
 
-func (e *Engine) liveConsistencyIssues(brokerRows []map[string]any) []map[string]any {
+func (e *Engine) liveConsistencyIssues(brokerRows []map[string]any, w execWindow) []map[string]any {
 	var issues []map[string]any
 	for _, nb := range e.brokerSnapshot() {
-		held, heldErr := e.heldSymbolsOn(nb.br, backgroundWindow())
+		held, heldErr := e.heldSymbolsOn(nb.br, w)
 		if heldErr != nil {
 			issues = append(issues, map[string]any{
 				"code": "broker_positions_unavailable", "severity": "error",

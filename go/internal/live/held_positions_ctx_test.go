@@ -40,3 +40,18 @@ func TestHeldSymbolsOnCancelsPositionsReadViaContext(t *testing.T) {
 		t.Fatal("cancelled positions read must return an error")
 	}
 }
+
+func TestAggregateT1HonoursCallerContextOnPositionsRead(t *testing.T) {
+	_, e, _ := testEngine(t, nil)
+	e.Sleep = func(time.Duration) {}
+	e.Broker = &hangPositionsBroker{}
+	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true})
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	start := time.Now()
+	_, _ = e.Aggregate(1, AggregateOpts{ForceSend: true, Ctx: ctx})
+	elapsed := time.Since(start)
+	if elapsed > time.Second {
+		t.Fatalf("Aggregate T-1 took %s; must honour the caller context, not hang on positions", elapsed)
+	}
+}
