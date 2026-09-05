@@ -925,6 +925,29 @@ func TestBrokerTradesFilterByBroker(t *testing.T) {
 	if rec.Code != 400 {
 		t.Fatalf("unknown broker want 400, got %d %s", rec.Code, rec.Body.String())
 	}
+
+	payload, _ := json.Marshal(map[string]any{
+		"symbol": "TSLA", "entryDate": "2024-02-01", "entryPrice": 30, "broker": "robinhood", "source": "manual",
+	})
+	req = httptest.NewRequest("POST", "/api/broker-trades", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec = httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != 200 {
+		t.Fatalf("POST robinhood %d %s", rec.Code, rec.Body.String())
+	}
+	req = httptest.NewRequest("GET", "/api/broker-trades?broker=robinhood", nil)
+	rec = httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != 200 || !strings.Contains(rec.Body.String(), `"TSLA"`) {
+		t.Fatalf("POST with broker=robinhood must list under ?broker=robinhood: %d %s", rec.Code, rec.Body.String())
+	}
+	req = httptest.NewRequest("GET", "/api/broker-trades?broker=webull", nil)
+	rec = httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if strings.Contains(rec.Body.String(), `"TSLA"`) {
+		t.Fatalf("robinhood POST leaked onto webull: %s", rec.Body.String())
+	}
 }
 
 func TestHiddenTradesOmittedUnlessRequested(t *testing.T) {

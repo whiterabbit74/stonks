@@ -474,6 +474,18 @@ func TestBrokerJournalTrackedAndLogsArePerKind(t *testing.T) {
 	if !strings.Contains(a, "API.brokerTrades(kind)") {
 		t.Fatal("SPA must request broker trades for the page kind")
 	}
+	form := strings.Index(a, "getElementById('broker-form')")
+	if form < 0 {
+		t.Fatal("broker-form submit handler not found")
+	}
+	end := strings.Index(a[form:], "querySelectorAll('[data-edit-bt]')")
+	if end < 0 {
+		t.Fatal("broker-form handler not bounded")
+	}
+	submit := a[form : form+end]
+	if !strings.Contains(submit, "broker: kind") && !strings.Contains(submit, "rec.broker = kind") {
+		t.Fatal("journal POST must stamp rec.broker = kind so a Robinhood add is not stored as webull")
+	}
 }
 
 // TestBrokerPagesIsolateLoadTabAndDashboard is A-1/A-2/A-3: /webull and

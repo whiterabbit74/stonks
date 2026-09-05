@@ -4026,6 +4026,7 @@
             notes: fd.get('notes') || '',
             source: 'manual',
             status: (exitDate && exitPrice > 0) ? 'closed' : 'open',
+            broker: kind,
           };
           if (exitDate) rec.exitDate = exitDate;
           if (exitPrice > 0) rec.exitPrice = exitPrice;
