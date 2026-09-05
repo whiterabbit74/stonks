@@ -29,11 +29,15 @@ type optionsResolved struct {
 	MaxHoldingDays  int
 }
 
+const contractMultiplier = 100
+
+// executionPrice receives dollars per share and returns dollars per contract.
+// The contract multiplier is 100 shares.
 func executionPrice(theoretical float64) float64 {
 	if theoretical < 0.005 {
 		return 0
 	}
-	raw := theoretical * 100
+	raw := theoretical * contractMultiplier
 	if theoretical < 3.00 {
 		return math.Round(raw)
 	}
@@ -151,6 +155,7 @@ func RunOptions(stockTrades []types.Trade, market []types.OHLC, raw OptionsConfi
 			if matching != nil {
 				if state, ok := getState(dateStr); ok && state.vol > 0 {
 					spot := state.close
+					// Упрощение: страйк округляется до $1.
 					strike := math.Round(spot * (1 + cfg.StrikePct/100))
 					expiration := optionsmath.ExpirationDate(dateStr, cfg.ExpirationWeeks)
 					T := optionsmath.YearsToMaturity(dateStr, expiration)
@@ -343,6 +348,7 @@ func RunMultiOptions(stockTrades []types.Trade, tickers []TickerIndexed, raw Opt
 				continue
 			}
 			spot := md.close
+			// Упрощение: страйк округляется до $1.
 			strike := math.Round(spot * (1 + cfg.StrikePct/100))
 			expiration := optionsmath.ExpirationDate(dateStr, cfg.ExpirationWeeks)
 			T := optionsmath.YearsToMaturity(dateStr, expiration)
