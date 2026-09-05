@@ -166,6 +166,33 @@ func TestBuildT1TextNamesSubmitBroker(t *testing.T) {
 	}
 }
 
+func TestAggregateT1NamesRobinhoodSubmit(t *testing.T) {
+	_, e, _ := testEngine(t, entryBars)
+	e.Broker = nil
+	e.Brokers = nil
+	rh := &MemoryBroker{}
+	e.AttachBroker("robinhood", rh)
+	e.PatchAutoConfig(map[string]any{
+		"enabled": true, "lowIBS": 0.9, "allowNewEntries": true, "allowExits": true,
+		"brokers": map[string]any{
+			"robinhood": map[string]any{"enabled": true, "allowNewEntries": true, "allowExits": true},
+		},
+	})
+	res, err := e.Aggregate(1, AggregateOpts{ForceSend: true, DryRun: false, UpdateState: false})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rh.Orders) == 0 {
+		t.Fatalf("T-1 Aggregate must submit on RH, text=%s reason=%s", res.Text, res.Reason)
+	}
+	if !strings.Contains(res.Text, "Robinhood") {
+		t.Fatalf("T-1 telegram must name Robinhood, got %s", res.Text)
+	}
+	if strings.Contains(res.Text, "Webull") {
+		t.Fatalf("RH-only T-1 must not say Webull: %s", res.Text)
+	}
+}
+
 func TestAggregateT11LogsMarkerSaveFailure(t *testing.T) {
 	db, e, _ := testEngine(t, entryBars)
 	e.Telegram = &MemoryTelegram{}
