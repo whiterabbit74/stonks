@@ -862,6 +862,9 @@ func TestLogoutLivesOnSettingsPage(t *testing.T) {
 	if strings.Contains(extra, "#logout-btn") {
 		t.Fatal("mobile CSS must not hide the settings logout button")
 	}
+	if !strings.Contains(a, "window.confirm('Выйти из аккаунта?')") {
+		t.Fatal("logout must confirm with window.confirm('Выйти из аккаунта?')")
+	}
 }
 
 // TestSettingsFormOmitsCommissionFields is P-7: the general settings tab used

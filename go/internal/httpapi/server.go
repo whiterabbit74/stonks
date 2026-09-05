@@ -31,10 +31,11 @@ import (
 )
 
 const (
-	jsonBodyLimit    = 5 << 20
-	sessionShortTTL  = 12 * time.Hour
-	sessionRemember  = 30 * 24 * time.Hour
-	autoLogsMaxLimit = 500
+	jsonBodyLimit     = 5 << 20
+	sessionShortTTL   = 12 * time.Hour
+	sessionRemember   = 30 * 24 * time.Hour
+	sessionTouchEvery = 5 * time.Minute
+	autoLogsMaxLimit  = 500
 )
 
 type Server struct {
@@ -286,14 +287,21 @@ func (s *Server) auth(next http.HandlerFunc) http.HandlerFunc {
 			writeSessionExpired(w)
 			return
 		}
-		_, exp, ok := s.DB.SessionGet(token)
-		if !ok || exp < time.Now().UnixMilli() {
-			if ok {
-				s.DB.SessionDelete(token)
+		created, exp, err := s.DB.SessionGet(token)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				writeSessionExpired(w)
+				return
 			}
+			writeJSON(w, 500, map[string]any{"error": "Session store unavailable"})
+			return
+		}
+		if exp < time.Now().UnixMilli() {
+			s.DB.SessionDelete(token)
 			writeSessionExpired(w)
 			return
 		}
+		s.touchSession(w, r, token, created, exp)
 		next(w, r)
 	}
 }
@@ -400,19 +408,40 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	now := time.Now()
 	s.purgeExpiredSessions()
 	_ = s.DB.SessionSet(tok, now.UnixMilli(), now.Add(ttl).UnixMilli())
-	cookie := &http.Cookie{
+	s.setAuthCookie(w, r, tok, ttl)
+	writeJSON(w, 200, map[string]any{"success": true})
+}
+
+func sessionTTL(created, expires int64) time.Duration {
+	span := time.Duration(expires-created) * time.Millisecond
+	if span > 7*24*time.Hour {
+		return sessionRemember
+	}
+	return sessionShortTTL
+}
+
+func (s *Server) setAuthCookie(w http.ResponseWriter, r *http.Request, tok string, ttl time.Duration) {
+	http.SetCookie(w, &http.Cookie{
 		Name:     "auth_token",
 		Value:    tok,
 		Path:     "/",
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
 		Secure:   s.cookieSecure(r),
+		MaxAge:   int(ttl.Seconds()),
+	})
+}
+
+func (s *Server) touchSession(w http.ResponseWriter, r *http.Request, token string, created, exp int64) {
+	ttl := sessionTTL(created, exp)
+	now := time.Now()
+	if time.UnixMilli(exp).Sub(now) > ttl-sessionTouchEvery {
+		return
 	}
-	if remember {
-		cookie.MaxAge = int(sessionRemember.Seconds())
+	if err := s.DB.SessionSet(token, created, now.Add(ttl).UnixMilli()); err != nil {
+		return
 	}
-	http.SetCookie(w, cookie)
-	writeJSON(w, 200, map[string]any{"success": true})
+	s.setAuthCookie(w, r, token, ttl)
 }
 
 func (s *Server) cookieSecure(r *http.Request) bool {
@@ -437,9 +466,17 @@ func (s *Server) handleAuthCheck(w http.ResponseWriter, r *http.Request) {
 	}
 	s.purgeExpiredSessions()
 	tok := cookieToken(r)
-	_, exp, ok := s.DB.SessionGet(tok)
-	if !ok || exp < time.Now().UnixMilli() {
-		writeJSON(w, 401, map[string]any{"error": "Unauthorized"})
+	_, exp, err := s.DB.SessionGet(tok)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeJSON(w, 401, map[string]any{"error": "Unauthorized", "code": "session_expired"})
+			return
+		}
+		writeJSON(w, 500, map[string]any{"error": "Session store unavailable"})
+		return
+	}
+	if exp < time.Now().UnixMilli() {
+		writeJSON(w, 401, map[string]any{"error": "Unauthorized", "code": "session_expired"})
 		return
 	}
 	writeJSON(w, 200, map[string]any{"ok": true})

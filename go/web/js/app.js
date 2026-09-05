@@ -3029,6 +3029,7 @@
         return;
       }
       if (e.target.closest('#logout-btn')) {
+        if (!window.confirm('Выйти из аккаунта?')) return;
         logout();
         return;
       }

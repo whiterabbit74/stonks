@@ -571,9 +571,9 @@ func (d *DB) Counts() (datasets, ohlc int) {
 	return
 }
 
-func (d *DB) SessionGet(token string) (created, expires int64, ok bool) {
-	err := d.SQL.QueryRow(`SELECT created_at, expires_at FROM sessions WHERE token = ?`, token).Scan(&created, &expires)
-	return created, expires, err == nil
+func (d *DB) SessionGet(token string) (created, expires int64, err error) {
+	err = d.SQL.QueryRow(`SELECT created_at, expires_at FROM sessions WHERE token = ?`, token).Scan(&created, &expires)
+	return created, expires, err
 }
 
 func (d *DB) SessionSet(token string, created, expires int64) error {

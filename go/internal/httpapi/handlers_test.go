@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"mktorder.com/go/internal/store"
 
@@ -302,8 +303,8 @@ func TestLoginRememberAndSecureCookie(t *testing.T) {
 		t.Fatal("missing auth cookie")
 	}
 	c := cookies[0]
-	if c.MaxAge != 0 {
-		t.Fatalf("session cookie MaxAge=%d want 0", c.MaxAge)
+	if c.MaxAge != int(sessionShortTTL.Seconds()) {
+		t.Fatalf("session cookie MaxAge=%d want %d", c.MaxAge, int(sessionShortTTL.Seconds()))
 	}
 	if c.Secure {
 		t.Fatal("Secure should be false without https/prod")
@@ -321,6 +322,84 @@ func TestLoginRememberAndSecureCookie(t *testing.T) {
 	}
 	if !c.HttpOnly {
 		t.Fatal("cookie must be HttpOnly")
+	}
+}
+
+func TestAuthMissingSessionIs401(t *testing.T) {
+	s := testServer(t, "secret")
+	req := httptest.NewRequest("GET", "/api/datasets", nil)
+	req.AddCookie(&http.Cookie{Name: "auth_token", Value: "0123456789abcdef0123456789abcdef"})
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != 401 {
+		t.Fatalf("missing session got %d %s", rec.Code, rec.Body.String())
+	}
+	var body map[string]any
+	_ = json.Unmarshal(rec.Body.Bytes(), &body)
+	if body["code"] != "session_expired" {
+		t.Fatalf("want session_expired, got %v", body)
+	}
+}
+
+func TestAuthSessionStoreErrorIs500(t *testing.T) {
+	s := testServer(t, "secret")
+	tok := "0123456789abcdef0123456789abcdef"
+	now := time.Now().UnixMilli()
+	if err := s.DB.SessionSet(tok, now, now+int64(sessionShortTTL.Milliseconds())); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.DB.Close(); err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest("GET", "/api/datasets", nil)
+	req.AddCookie(&http.Cookie{Name: "auth_token", Value: tok})
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != 500 {
+		t.Fatalf("DB error must be 500 not 401, got %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestAuthExtendsSessionOnActivity(t *testing.T) {
+	s := testServer(t, "secret")
+	tok := "0123456789abcdef0123456789abcdef"
+	now := time.Now()
+	created := now.Add(-sessionShortTTL + time.Minute).UnixMilli()
+	exp := now.Add(time.Minute).UnixMilli()
+	if err := s.DB.SessionSet(tok, created, exp); err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest("GET", "/api/datasets", nil)
+	req.AddCookie(&http.Cookie{Name: "auth_token", Value: tok})
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != 200 {
+		t.Fatalf("first request %d %s", rec.Code, rec.Body.String())
+	}
+	_, newExp, err := s.DB.SessionGet(tok)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if newExp <= exp {
+		t.Fatalf("activity must extend expires_at, got %d want > %d", newExp, exp)
+	}
+	c := rec.Result().Cookies()
+	if len(c) == 0 || c[0].MaxAge != int(sessionShortTTL.Seconds()) {
+		t.Fatalf("extended session must refresh cookie MaxAge, got %+v", c)
+	}
+	req2 := httptest.NewRequest("GET", "/api/datasets", nil)
+	req2.AddCookie(&http.Cookie{Name: "auth_token", Value: tok})
+	rec2 := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec2, req2)
+	if rec2.Code != 200 {
+		t.Fatalf("second request %d %s", rec2.Code, rec2.Body.String())
+	}
+	_, exp2, err := s.DB.SessionGet(tok)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if exp2 != newExp {
+		t.Fatalf("throttled touch must not rewrite expires_at every request: %d -> %d", newExp, exp2)
 	}
 }
 

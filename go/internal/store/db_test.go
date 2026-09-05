@@ -1,7 +1,9 @@
 package store
 
 import (
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -396,11 +398,34 @@ func TestSessionDeleteExpired(t *testing.T) {
 	if n != 1 {
 		t.Fatalf("deleted %d want 1", n)
 	}
-	if _, _, ok := db.SessionGet("old"); ok {
-		t.Fatal("expired session still present")
+	if _, _, err := db.SessionGet("old"); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("expired session still present: %v", err)
 	}
-	if _, exp, ok := db.SessionGet("live"); !ok || exp != 5000 {
-		t.Fatalf("live session missing exp=%d ok=%v", exp, ok)
+	_, exp, err := db.SessionGet("live")
+	if err != nil || exp != 5000 {
+		t.Fatalf("live session missing exp=%d err=%v", exp, err)
+	}
+}
+
+func TestSessionGetMissingIsErrNoRows(t *testing.T) {
+	db := openTestDB(t)
+	_, _, err := db.SessionGet("no-such-token")
+	if !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("missing session want ErrNoRows, got %v", err)
+	}
+}
+
+func TestSessionGetClosedDBIsNotNoRows(t *testing.T) {
+	db := openTestDB(t)
+	if err := db.SessionSet("tok", 1, 5000); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	_, _, err := db.SessionGet("tok")
+	if err == nil || errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("closed DB must not look like a missing session, got %v", err)
 	}
 }
 
