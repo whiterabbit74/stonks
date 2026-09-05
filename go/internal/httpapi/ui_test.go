@@ -764,3 +764,56 @@ func TestLiveIBSThresholdHelpers(t *testing.T) {
 		t.Fatal("defaultStrategy.parameters must stay 0.1/0.75")
 	}
 }
+
+// TestWatchAndBrokerIBSUseStrictInequalityGlyphs is P-3: entry/exit IBS
+// comparisons are strict (`ibs < lowIBS`, `ibs > highIBS`). The watch table
+// and broker monitor must print < / >, not ≤ / ≥. EMA zone labels stay
+// «Покупка ≤ %» / «Продажа ≥ %».
+func TestWatchAndBrokerIBSUseStrictInequalityGlyphs(t *testing.T) {
+	a := readWeb(t, "js/app.js")
+	watches := jsFn(a, "pageWatches")
+	if watches == "" {
+		t.Fatal("pageWatches not found")
+	}
+	rowStart := strings.Index(watches, "const rows = (state.watches")
+	if rowStart < 0 {
+		t.Fatal("watch table rows not found")
+	}
+	rowEnd := strings.Index(watches[rowStart:], "const alerts")
+	if rowEnd < 0 {
+		t.Fatal("watch table rows not bounded")
+	}
+	watchRows := watches[rowStart : rowStart+rowEnd]
+	if strings.Contains(watchRows, "≤") || strings.Contains(watchRows, "≥") {
+		t.Fatal("watch table IBS cells must not use ≤/≥")
+	}
+	if !strings.Contains(watches, "Вход, IBS") || !strings.Contains(watches, "Выход, IBS") {
+		t.Fatal("watch table headers must be «Вход, IBS <» / «Выход, IBS >»")
+	}
+	if !strings.Contains(watches, "Покупка ≤ %") || !strings.Contains(watches, "Продажа ≥ %") {
+		t.Fatal("EMA labels «Покупка ≤ %» / «Продажа ≥ %» must stay")
+	}
+
+	broker := jsFn(a, "pageBroker")
+	monStart := strings.Index(broker, "tab === 'monitor'")
+	if monStart < 0 {
+		t.Fatal("broker monitor tab not found")
+	}
+	monEnd := strings.Index(broker[monStart:], "tab === 'logs'")
+	if monEnd < 0 {
+		monEnd = strings.Index(broker[monStart:], "} else {")
+	}
+	if monEnd < 0 {
+		t.Fatal("broker monitor tab not bounded")
+	}
+	monitor := broker[monStart : monStart+monEnd]
+	if strings.Contains(monitor, "≤") || strings.Contains(monitor, "≥") {
+		t.Fatal("broker monitor IBS cells must not use ≤/≥")
+	}
+	if strings.Contains(monitor, ">Threshold<") || strings.Contains(monitor, "'Threshold'") {
+		t.Fatal("broker monitor must not keep the vague Threshold column")
+	}
+	if !strings.Contains(monitor, "Вход, IBS") || !strings.Contains(monitor, "Выход, IBS") {
+		t.Fatal("broker monitor headers must be «Вход, IBS <» / «Выход, IBS >»")
+	}
+}

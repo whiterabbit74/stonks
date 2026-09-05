@@ -2308,8 +2308,8 @@
     const stats = monitorStats(simulated);
     const rows = (state.watches || []).map((w) => `<tr>
       <td class="font-mono"><a href="/stocks?tickers=${encodeURIComponent(w.symbol)}" data-nav class="text-blue-600">${esc(w.symbol)}</a></td>
-      <td>≤ ${(w.lowIBS ?? liveLowIBS()).toFixed(2)}</td>
-      <td>≥ ${Number(w.highIBS ?? liveHighIBS()).toFixed(2)}</td>
+      <td>${esc('< ' + (w.lowIBS ?? liveLowIBS()).toFixed(2))}</td>
+      <td>${esc('> ' + Number(w.highIBS ?? liveHighIBS()).toFixed(2))}</td>
       <td>${w.entryPrice != null ? fmtUsd(w.entryPrice) : '—'}${w.isOpenPosition && w.entryDate ? `<div class="text-[11px] text-gray-500">${esc(fmtTradingDate(w.entryDate))}${w.entryIBS != null ? ' · IBS ' + fmt(ibsPct(w.entryIBS), 1) + '%' : ''}</div>` : ''}</td>
       <td><span class="rounded-full px-2 py-0.5 text-xs ${w.isOpenPosition ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500'}">${w.isOpenPosition ? 'Открыта' : 'Нет'}</span></td>
       <td>${w.isOpenPosition && w.currentTradeId ? `<button type="button" data-close-mon="${esc(w.currentTradeId)}" data-close-sym="${esc(w.symbol)}" class="text-sm text-red-600 mr-2">Закрыть</button>` : ''}<button data-dw="${esc(w.symbol)}" class="text-sm text-red-600">Удалить</button></td>
@@ -2374,7 +2374,7 @@
           <button type="button" id="watch-t11" class="btn-secondary min-h-0 py-2">Тест T-11</button>
           <button type="button" id="watch-t2" class="btn-secondary min-h-0 py-2">Тест T-2</button>
           <button type="button" id="watch-prices" class="btn-secondary min-h-0 py-2">Обновить цены и позиции</button></form>
-          <div class="overflow-auto"><table class="trades"><thead><tr><th>Тикер</th><th>IBS вход</th><th>IBS выход</th><th>Цена входа</th><th>Позиция</th><th>Действия</th></tr></thead><tbody>${rows || '<tr><td colspan="6" class="text-center text-gray-500">Нет активных наблюдений. Добавьте тикер в форму выше.</td></tr>'}</tbody></table></div>` : ''}
+          <div class="overflow-auto"><table class="trades"><thead><tr><th>Тикер</th><th>Вход, IBS &lt;</th><th>Выход, IBS &gt;</th><th>Цена входа</th><th>Позиция</th><th>Действия</th></tr></thead><tbody>${rows || '<tr><td colspan="6" class="text-center text-gray-500">Нет активных наблюдений. Добавьте тикер в форму выше.</td></tr>'}</tbody></table></div>` : ''}
         ${state.watchTab === 'trades' ? `${(() => {
             const open = visibleMonitorTrades(simulated, false).find((t) => t.status === 'open');
             const watchSyms = (state.watches || []).map((w) => w.symbol);
@@ -2703,7 +2703,8 @@
           <td>${prev == null ? '—' : fmt(prev)}</td>
           <td class="${pnlClass(delta)}">${delta == null ? '—' : fmt(delta, 2) + '%'}</td>
           <td>${w.entryPrice == null ? '—' : fmtUsd(w.entryPrice)}</td>
-          <td>≤ ${Number(w.lowIBS ?? liveLowIBS()).toFixed(2)}</td>
+          <td>${esc('< ' + Number(w.lowIBS ?? liveLowIBS()).toFixed(2))}</td>
+          <td>${esc('> ' + Number(w.highIBS ?? liveHighIBS()).toFixed(2))}</td>
           <td>${w.isOpenPosition ? 'Открыта' : 'В мониторинге'}</td>
           <td class="text-xs">${esc(formatDateTimeET(q.dateKey || quote.updatedAt || ''))}</td>
           <td class="text-xs">${esc(q.provider || q.error || '')}</td>
@@ -2721,7 +2722,7 @@
           <div class="rounded-lg border p-3"><div class="text-xs text-gray-500">Обновлено</div><div class="text-sm">${esc(formatDateTimeET((state.dashboard && state.dashboard.fetchedAt) || ''))}</div></div>
         </div>
         ${issues.length ? issues.map((i) => `<div class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 mb-2">${esc(i.message || i.code)}</div>`).join('') : ''}
-        ${wrows ? `<div class="overflow-auto"><table class="trades"><thead><tr><th>Тикер</th><th>Open</th><th>High</th><th>Low</th><th>Цена</th><th>Current IBS</th><th>Prev Close</th><th>Δ</th><th>Entry</th><th>Threshold</th><th>Позиция</th><th>Обновлено</th><th>Источник</th><th>Действие</th></tr></thead><tbody>${wrows}</tbody></table></div>` : emptyBrokerTable(['Тикер', 'Open', 'High', 'Low', 'Цена', 'Current IBS', 'Prev Close', 'Δ', 'Entry', 'Threshold', 'Позиция', 'Обновлено', 'Источник', 'Действие'], 'Нет отслеживаемых акций')}
+        ${wrows ? `<div class="overflow-auto"><table class="trades"><thead><tr><th>Тикер</th><th>Open</th><th>High</th><th>Low</th><th>Цена</th><th>Current IBS</th><th>Prev Close</th><th>Δ</th><th>Entry</th><th>Вход, IBS &lt;</th><th>Выход, IBS &gt;</th><th>Позиция</th><th>Обновлено</th><th>Источник</th><th>Действие</th></tr></thead><tbody>${wrows}</tbody></table></div>` : emptyBrokerTable(['Тикер', 'Open', 'High', 'Low', 'Цена', 'Current IBS', 'Prev Close', 'Δ', 'Entry', 'Вход, IBS &lt;', 'Выход, IBS &gt;', 'Позиция', 'Обновлено', 'Источник', 'Действие'], 'Нет отслеживаемых акций')}
         ${rawJsonBlock('Raw monitoring payload', { watches: state.watches, quotes: state.brokerQuotes, consistency: state.consistency })}`;
     } else {
       const pack = state.autoLogs || {};
