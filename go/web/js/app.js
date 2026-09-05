@@ -7,8 +7,8 @@
     { to: '/calendar', label: 'Календарь', icon: 'calendar' },
     { to: '/split', label: 'Сплиты', icon: 'scissors' },
     { to: '/watches', label: 'Мониторинг', icon: 'bell' },
-    { to: '/webull', label: 'Webull', icon: 'briefcase' },
-    { to: '/robinhood', label: 'Robinhood', icon: 'briefcase' },
+    { to: '/webull', label: 'Webull', icon: 'webull' },
+    { to: '/robinhood', label: 'Robinhood', icon: 'robinhood' },
   ];
   const BOTTOM = [
     { to: '/data', label: 'Данные', icon: 'database' },
@@ -25,8 +25,8 @@
     { to: '/calendar', label: 'Календарь', icon: 'calendar' },
     { to: '/split', label: 'Сплиты', icon: 'scissors' },
     { to: '/watches', label: 'Мониторинг', icon: 'bell' },
-    { to: '/webull', label: 'Webull', icon: 'briefcase' },
-    { to: '/robinhood', label: 'Robinhood', icon: 'briefcase' },
+    { to: '/webull', label: 'Webull', icon: 'webull' },
+    { to: '/robinhood', label: 'Robinhood', icon: 'robinhood' },
     { to: '/settings', label: 'Настройки', icon: 'settings' },
   ];
   const STOCK_TABS = [
@@ -160,7 +160,8 @@
     calendar: '<path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/>',
     scissors: '<circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4 8.12 15.88"/><path d="M14.47 14.48 20 20"/><path d="M8.12 8.12 12 12"/>',
     bell: '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>',
-    briefcase: '<path d="M16 20V4a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/><rect width="20" height="14" x="2" y="6" rx="2"/>',
+    webull: '<path d="M8 8.5 4.5 3"/><path d="M16 8.5 19.5 3"/><path d="M7 10c1.2-2.4 3-3.5 5-3.5s3.8 1.1 5 3.5"/><path d="M7 10c0 5.5 2 9.5 5 9.5s5-4 5-9.5"/>',
+    robinhood: '<path d="M12.67 19a2 2 0 0 0 1.416-.588l6.154-6.172a6 6 0 0 0-8.49-8.49L5.586 9.913A2 2 0 0 0 5 11.328V18a1 1 0 0 0 1 1z"/><path d="M16 8 2 22"/><path d="M17.5 15H9"/>',
     settings: '<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>',
     menu: '<path d="M4 5h16"/><path d="M4 12h16"/><path d="M4 19h16"/>',
     x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
@@ -1266,11 +1267,11 @@
     return state.theme === 'auto' ? 'laptop' : state.theme === 'dark' ? 'moon' : 'sun';
   }
 
-  function pageHeader(title, subtitle, actions) {
+  function pageHeader(title, subtitle, actions, ico) {
     return `<div class="mb-6">
       <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
         <div class="min-w-0">
-          <h1 class="text-2xl font-bold text-gray-900 dark:text-gray-100">${esc(title)}</h1>
+          <h1 class="text-2xl font-bold text-gray-900 dark:text-gray-100${ico ? ' flex items-center gap-2' : ''}">${ico ? icon(ico, 'w-6 h-6') : ''}${esc(title)}</h1>
           ${subtitle ? `<p class="mt-1 text-sm text-gray-600 dark:text-gray-400">${esc(subtitle)}</p>` : ''}
         </div>
         ${actions ? `<div class="flex flex-wrap items-center gap-2 sm:flex-shrink-0">${actions}</div>` : ''}
@@ -2695,7 +2696,7 @@
       </div>`;
     }
     return `
-      ${pageHeader(kind === 'robinhood' ? 'Кабинет Robinhood' : 'Кабинет Webull', kind === 'robinhood' ? 'Баланс счёта, позиции, ордера и копи-паст авторизация Robinhood' : 'Баланс счёта, позиции, ордера, история и логи исполнения по Webull', `<div class="flex items-center gap-2"><span class="rounded-full px-3 py-1 text-xs font-semibold ${healthCls}">${esc(health.status || '—')}</span><span class="rounded-full px-3 py-1 text-xs font-semibold ${live ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-200'}">${live ? '[LIVE]' : '[OFF]'}</span><button id="broker-refresh" class="icon-btn icon-btn-md icon-btn-glass" title="Обновить" aria-label="Обновить">${icon('refresh', 'w-4 h-4')}</button></div>`)}
+      ${pageHeader(kind === 'robinhood' ? 'Кабинет Robinhood' : 'Кабинет Webull', kind === 'robinhood' ? 'Баланс счёта, позиции, ордера и копи-паст авторизация Robinhood' : 'Баланс счёта, позиции, ордера, история и логи исполнения по Webull', `<div class="flex items-center gap-2"><span class="rounded-full px-3 py-1 text-xs font-semibold ${healthCls}">${esc(health.status || '—')}</span><span class="rounded-full px-3 py-1 text-xs font-semibold ${live ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-200'}">${live ? '[LIVE]' : '[OFF]'}</span><button id="broker-refresh" class="icon-btn icon-btn-md icon-btn-glass" title="Обновить" aria-label="Обновить">${icon('refresh', 'w-4 h-4')}</button></div>`, kind)}
       <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
         ${analysisTabs(tabs, tab, 'data-btab')}
         <div class="p-4">${body}<div id="broker-token" class="text-sm text-gray-500 mt-3">${state.token && state.token.present ? 'Токен Webull задан' : ''}</div></div>
@@ -2784,7 +2785,7 @@
             const b = (ac.brokers && ac.brokers[id]) || {};
             const h = (state.brokerHealth || []).find((x) => x.broker === id) || {};
             return `<div class="rounded-lg border p-3 mb-2">
-              <div class="font-medium mb-2">${label} <span class="text-xs font-normal text-gray-500">${esc(h.status || '')}${h.status && h.status !== 'OK' && h.status !== 'EXPIRING_SOON' ? ' — торговля остановлена' : ''}</span></div>
+              <div class="font-medium mb-2 flex items-center gap-2">${icon(id, 'w-4 h-4')}<span>${label} <span class="text-xs font-normal text-gray-500">${esc(h.status || '')}${h.status && h.status !== 'OK' && h.status !== 'EXPIRING_SOON' ? ' — торговля остановлена' : ''}</span></span></div>
               <label class="inline-flex items-center gap-2 text-sm mr-3"><input type="checkbox" name="${id}Enabled" ${b.enabled ? 'checked' : ''} /> Включено</label>
               <label class="inline-flex items-center gap-2 text-sm mr-3"><input type="checkbox" name="${id}AllowEntries" ${b.allowNewEntries === true || (b.allowNewEntries == null && ac.allowNewEntries === true) ? 'checked' : ''} /> Разрешить входы</label>
               <label class="inline-flex items-center gap-2 text-sm"><input type="checkbox" name="${id}AllowExits" ${b.allowExits === true || (b.allowExits == null && ac.allowExits === true) ? 'checked' : ''} /> Разрешить выходы</label>

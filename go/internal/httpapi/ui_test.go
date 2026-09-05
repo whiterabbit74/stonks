@@ -532,6 +532,71 @@ func TestAutotradeCardDisclaimsExecutionWindowAndSlippage(t *testing.T) {
 	}
 }
 
+// TestBrokerPageIcons keeps Webull (bull head) and Robinhood (feather) as
+// distinct 24px stroke marks in the same Lucide set as the rest of the nav.
+func TestBrokerPageIcons(t *testing.T) {
+	app, err := os.ReadFile(filepath.Join("..", "..", "web", "js", "app.js"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := string(app)
+	for _, row := range []string{
+		"{ to: '/webull', label: 'Webull', icon: 'webull' }",
+		"{ to: '/robinhood', label: 'Robinhood', icon: 'robinhood' }",
+	} {
+		if strings.Count(a, row) < 2 {
+			t.Errorf("nav must use distinct broker icon %q in TABS and MOBILE_MENU", row)
+		}
+	}
+	start := strings.Index(a, "const PATHS")
+	if start < 0 {
+		t.Fatal("missing PATHS")
+	}
+	end := strings.Index(a[start:], "const PC_COLORS")
+	if end < 0 {
+		t.Fatal("PATHS not bounded")
+	}
+	paths := a[start : start+end]
+	webull := pathFor(paths, "webull")
+	hood := pathFor(paths, "robinhood")
+	if webull == "" || hood == "" {
+		t.Fatal("PATHS must define webull and robinhood marks")
+	}
+	if webull == hood {
+		t.Fatal("Webull and Robinhood marks must differ")
+	}
+	if !strings.Contains(webull, "<path") || !strings.Contains(hood, "<path") {
+		t.Fatal("broker marks must be SVG paths")
+	}
+	if strings.Contains(paths, "briefcase") {
+		t.Fatal("shared briefcase icon must not remain now that brokers have their own marks")
+	}
+	page := jsFn(a, "pageBroker")
+	if page == "" {
+		t.Fatal("pageBroker not found")
+	}
+	if !strings.Contains(page, "pageHeader(") || !strings.Contains(page, ", kind)") {
+		t.Fatal("broker page header must take the webull/robinhood mark")
+	}
+}
+
+func pathFor(paths, name string) string {
+	needle := name + ": '"
+	i := strings.Index(paths, needle)
+	if i < 0 {
+		return ""
+	}
+	rest := paths[i+len(needle):]
+	j := strings.Index(rest, "',")
+	if j < 0 {
+		j = strings.Index(rest, "'")
+	}
+	if j < 0 {
+		return ""
+	}
+	return rest[:j]
+}
+
 // TestPhase3UIAudit is AU-P3-12 / UI 5.1.2–5.1.4 / AU-P1-5 / a11y item 23:
 // authCheck must not run on every navigate, toasts cancel the previous timer,
 // overlay dialogs expose role=dialog, and Calendar/Watches show the
