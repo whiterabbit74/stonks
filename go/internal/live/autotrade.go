@@ -563,7 +563,9 @@ func (e *Engine) placeMarket(w execWindow, symbol, side string, qty float64, cfg
 			return e.abortPlaceForDeadline(symbol, side, qty, attempt)
 		}
 		try := cfg
-		try.ClientOrderID = webull.NewClientOrderID()
+		if try.ClientOrderID == "" || attempt > 1 {
+			try.ClientOrderID = webull.NewClientOrderID()
+		}
 		attemptCtx, cancel := e.attemptContext(w)
 		start := e.now()
 		res, err = e.placeMarketOnce(attemptCtx, symbol, side, qty, try, br)
