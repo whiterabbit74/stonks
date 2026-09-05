@@ -2,7 +2,7 @@
 
 Secrets live **outside git**. Production file: `/home/ubuntu/stonks-config/.env` (`chmod 600`, directory `chmod 700`). Compose mounts it via `env_file`. Template: [`.env.example`](.env.example).
 
-Local run uses process env (`ADMIN_PASSWORD`, API keys, Webull). Empty `ADMIN_PASSWORD` disables auth only outside production.
+Local run uses process env (`ADMIN_PASSWORD`, API keys, Webull). Empty `ADMIN_PASSWORD` returns 503 on every path in every environment, including local development.
 
 ## Required in production
 
