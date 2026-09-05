@@ -204,6 +204,10 @@ func (e *Engine) BrokerNamed(name string) Broker {
 	return nil
 }
 
+// defaultBroker is the Webull adapter on e.Broker. Use it only where the
+// caller is already Webull-specific (token/calendar extras, unlabeled
+// legacy trackers). A tracker or order that names a broker must go through
+// BrokerNamed / the broker already in hand — not this fallback.
 func (e *Engine) defaultBroker() Broker {
 	if e == nil {
 		return nil
@@ -262,6 +266,8 @@ func (e *Engine) brokerMap() map[string]Broker {
 func (e *Engine) webullExtras() WebullExtras {
 	b := e.BrokerNamed("webull")
 	if b == nil {
+		// Token/calendar/splits exist only on the Webull adapter. e.Broker
+		// is that adapter when Brokers["webull"] has not been attached yet.
 		b = e.defaultBroker()
 	}
 	x, _ := b.(WebullExtras)

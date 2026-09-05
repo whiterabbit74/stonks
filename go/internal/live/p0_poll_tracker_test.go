@@ -68,6 +68,51 @@ func TestPollTrackerMissingNamedBrokerDoesNotUseDefault(t *testing.T) {
 	}
 }
 
+// TestPollTrackerUnknownRHDetailRecoversFillFromRHHistory is T19 / F04:
+// Robinhood OrderDetail returns an unrecognised status, RH history has FILLED
+// for the same id, and Webull (the default broker) history is empty. Polling
+// that tracker must recover the fill from RH history — not miss it because
+// findOrderSnapshot looked at Webull.
+func TestPollTrackerUnknownRHDetailRecoversFillFromRHHistory(t *testing.T) {
+	e, webull, rh := dualBrokerEngine(t, entryBars)
+	id := "rh-unknown-detail"
+	if err := e.DB.SaveOrderTracker(map[string]any{
+		"clientOrderId": id, "symbol": "AAPL", "action": "entry",
+		"status": "submitted", "quantity": 2.0, "source": "t1", "dateKey": "2026-09-01",
+		"broker": "robinhood", "startedAt": e.now().UTC().Format(time.RFC3339Nano),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	rh.SetDetail(id, map[string]any{"client_order_id": id})
+	rh.Hist = []any{map[string]any{
+		"client_order_id": id,
+		"status":          "FILLED",
+		"avg_price":       8.2,
+		"filled_qty":      2.0,
+	}}
+	webull.Hist = []any{}
+	if e.defaultBroker() != webull {
+		t.Fatal("setup: default broker must stay Webull")
+	}
+
+	e.PollTrackers()
+
+	st := trackerStatus(t, e.DB, id)
+	if st != "filled" {
+		t.Fatalf("status %q want filled (RH history had FILLED; a default-broker lookup would miss it)", st)
+	}
+	row := e.DB.GetTrade("broker_trades", id)
+	if row == nil {
+		t.Fatal("journal must recover the Robinhood fill from RH history")
+	}
+	if fmt.Sprint(row["broker"]) != "robinhood" {
+		t.Fatalf("broker %v want robinhood", row["broker"])
+	}
+	if asFloat(row["quantity"]) != 2 || asFloat(row["entryPrice"]) != 8.2 {
+		t.Fatalf("fill %+v", row)
+	}
+}
+
 // TestFinalizeTrackerStatusUsesBrokerLabel is AU-P0-1 for track.go: fill and
 // terminal-status Telegram copy must name the tracker broker, not hardcode Webull.
 func TestFinalizeTrackerStatusUsesBrokerLabel(t *testing.T) {

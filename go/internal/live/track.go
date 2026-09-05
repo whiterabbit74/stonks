@@ -327,7 +327,7 @@ func (e *Engine) pollTracker(t map[string]any) (bool, error) {
 	if detail != nil {
 		status = NormalizeOrderStatus(orderStatusField(detail))
 		if status == "unknown" {
-			if snap := e.findOrderSnapshot(id); snap != nil {
+			if snap := e.findOrderSnapshotOn(br, id); snap != nil {
 				detail = snap
 				status = NormalizeOrderStatus(orderStatusField(snap))
 			}
@@ -401,6 +401,8 @@ func trackerBrokerLabel(t map[string]any) string {
 // brokerForTracker returns the attached broker named on the tracker. A
 // non-empty t["broker"] whose BrokerNamed lookup is nil is not replaced by
 // defaultBroker — the caller must treat that as disconnected.
+// Unlabeled rows are pre-broker-name Webull trackers; defaultBroker is that
+// Webull adapter (e.Broker), not a stand-in for a named other broker.
 func (e *Engine) brokerForTracker(t map[string]any) Broker {
 	if name := trackerBrokerName(t); name != "" {
 		return e.BrokerNamed(name)
@@ -538,10 +540,6 @@ func (e *Engine) finalizeTrackerStatus(t map[string]any, detail map[string]any, 
 	e.mu.Lock()
 	delete(e.orderMeta, id)
 	e.mu.Unlock()
-}
-
-func (e *Engine) findOrderSnapshot(clientOrderID string) map[string]any {
-	return e.findOrderSnapshotOn(e.defaultBroker(), clientOrderID)
 }
 
 func (e *Engine) findOrderSnapshotOn(br Broker, clientOrderID string) map[string]any {
