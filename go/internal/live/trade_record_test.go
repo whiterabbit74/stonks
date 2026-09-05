@@ -137,3 +137,39 @@ func TestUnconfirmedFillPriceIsNullNotZero(t *testing.T) {
 		t.Fatalf("PnL must not treat a missing fill as 0: %+v", closed)
 	}
 }
+
+// AU-P2-1: journal UPDATE errors must be logged and must block further entries.
+func TestJournalSQLUpdateErrorBlocksEntry(t *testing.T) {
+	_, e, _ := testEngine(t, nil)
+	if _, err := e.DB.SQL.Exec(`CREATE TRIGGER fail_bt_update BEFORE UPDATE ON broker_trades BEGIN SELECT RAISE(ABORT, 'injected update failure'); END`); err != nil {
+		t.Fatalf("inject update failure: %v", err)
+	}
+	id := "oid-sqlfail"
+	seedOrderMeta(e, id, orderMeta{
+		Action: "entry", Symbol: "MSFT", Quantity: 1,
+		Broker: "webull", DateKey: "2026-09-01",
+	})
+	e.recordFill(map[string]any{
+		"clientOrderId": id, "symbol": "MSFT", "action": "entry",
+		"quantity": 1.0, "dateKey": "2026-09-01", "broker": "webull",
+	}, map[string]any{"status": "filled", "filled_qty": 1.0, "avg_price": 8.2}, "filled")
+
+	if !e.trackerPersistBlocked("webull") {
+		t.Fatal("SQL update error on the journal must raise the tracker persist block")
+	}
+	logs, err := e.DB.ListAutotradeLogs(50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, l := range logs {
+		msg := fmt.Sprint(l["message"])
+		if strings.Contains(msg, "injected update failure") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("SQL error must be logged, logs=%v", logs)
+	}
+}

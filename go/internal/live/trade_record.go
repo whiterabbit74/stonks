@@ -177,8 +177,10 @@ func (e *Engine) recordFill(t map[string]any, detail map[string]any, status stri
 	if action == "entry" {
 		if existing := e.getTrade("broker_trades", clientOrderID); existing != nil {
 			if fillQty > asFloat(existing["quantity"]) {
-				_, _ = e.DB.SQL.Exec(`UPDATE broker_trades SET quantity=?, filled_qty=? WHERE id=?`, fillQty, fillQty, clientOrderID)
-				_, _ = e.DB.SQL.Exec(`UPDATE trades SET quantity=?, filled_qty=? WHERE id=?`, fillQty, fillQty, "m-"+clientOrderID)
+				_ = e.execJournalSQL(meta.CorrelationID, brokerName, "upsert_broker_qty",
+					`UPDATE broker_trades SET quantity=?, filled_qty=? WHERE id=?`, fillQty, fillQty, clientOrderID)
+				_ = e.execJournalSQL(meta.CorrelationID, brokerName, "upsert_monitor_qty",
+					`UPDATE trades SET quantity=?, filled_qty=? WHERE id=?`, fillQty, fillQty, "m-"+clientOrderID)
 			}
 			return
 		}
@@ -198,6 +200,7 @@ func (e *Engine) recordFill(t map[string]any, detail map[string]any, status stri
 			e.logAuto("local_trade_record_failed", meta.CorrelationID, map[string]any{
 				"table": "broker_trades", "error": err.Error(), "clientOrderId": clientOrderID,
 			})
+			e.raiseTrackerPersistBlock(brokerName)
 		}
 		monID := "m-" + clientOrderID
 		if e.DB.GetTrade("trades", monID) == nil {
@@ -214,11 +217,14 @@ func (e *Engine) recordFill(t map[string]any, detail map[string]any, status stri
 				e.logAuto("local_trade_record_failed", meta.CorrelationID, map[string]any{
 					"table": "trades", "error": err.Error(), "clientOrderId": clientOrderID,
 				})
+				e.raiseTrackerPersistBlock(brokerName)
 			}
 		}
-		_, _ = e.DB.SQL.Exec(`UPDATE trades SET linked_broker_trade_id=?, client_order_id=?, filled_qty=?, entry_ibs=? WHERE id=?`,
+		_ = e.execJournalSQL(meta.CorrelationID, brokerName, "link_monitor_fill",
+			`UPDATE trades SET linked_broker_trade_id=?, client_order_id=?, filled_qty=?, entry_ibs=? WHERE id=?`,
 			clientOrderID, clientOrderID, fillQty, meta.IBS, monID)
-		_, _ = e.DB.SQL.Exec(`UPDATE broker_trades SET client_order_id=?, filled_qty=?, entry_ibs=? WHERE id=?`,
+		_ = e.execJournalSQL(meta.CorrelationID, brokerName, "link_broker_fill",
+			`UPDATE broker_trades SET client_order_id=?, filled_qty=?, entry_ibs=? WHERE id=?`,
 			clientOrderID, fillQty, meta.IBS, clientOrderID)
 		return
 	}
@@ -296,8 +302,49 @@ func (e *Engine) reduceOpenQuantity(symbol, preferID, broker string, sold, exitP
 			e.closeTradeWithPnL(table, fmt.Sprint(t["id"]), exitPrice, tradingdate.TodayNYSE(e.now()), nil, "partial_exit_flat")
 			continue
 		}
-		_, _ = e.DB.SQL.Exec(`UPDATE `+table+` SET quantity=? WHERE id=?`, left, t["id"])
+		_ = e.execJournalSQL("", broker, "reduce_open_qty",
+			`UPDATE `+table+` SET quantity=? WHERE id=?`, left, t["id"])
 	}
+}
+
+func (e *Engine) execJournalSQL(corr, broker, op, query string, args ...any) error {
+	if e == nil || e.DB == nil || e.DB.SQL == nil {
+		err := fmt.Errorf("journal unavailable")
+		e.logJournalSQLError(corr, broker, op, err)
+		return err
+	}
+	_, err := e.DB.SQL.Exec(query, args...)
+	if err != nil {
+		e.logJournalSQLError(corr, broker, op, err)
+		return err
+	}
+	return nil
+}
+
+func (e *Engine) logJournalSQLError(corr, broker, op string, err error) {
+	if e == nil || err == nil {
+		return
+	}
+	e.logAuto("journal_update_failed", corr, map[string]any{
+		"op": op, "broker": broker, "error": err.Error(),
+	})
+	e.raiseTrackerPersistBlock(broker)
+}
+
+func (e *Engine) raiseTrackerPersistBlock(broker string) {
+	if e == nil {
+		return
+	}
+	if broker == "" {
+		broker = "webull"
+	}
+	e.mu.Lock()
+	if e.trackerPersistFail == nil {
+		e.trackerPersistFail = map[string]bool{}
+	}
+	e.trackerPersistFail[broker] = true
+	e.mu.Unlock()
+	e.persistTrackerBlock(broker)
 }
 
 func (e *Engine) deletePhantom(clientOrderID, symbol string) {
