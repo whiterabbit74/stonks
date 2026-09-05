@@ -2473,7 +2473,7 @@
       </div>
       <div>
         ${state.watchTab === 'summary' ? `<div class="rounded-lg border border-gray-200 bg-white p-4 dark:bg-gray-800 dark:border-gray-700"><h3 class="text-lg font-semibold mb-2">Капитал мониторинга (старт ${fmtUsd(stats.initial)}, маржа ${state.monitorMarginPercent}%)</h3>${stats.equity.length ? '<div id="watch-eq" class="chart-box"></div>' : '<p class="text-sm text-gray-500">Нет закрытых сделок для построения кривой капитала.</p>'}</div>` : ''}
-        ${state.watchTab === 'watches' ? `<form id="watch-form" class="flex flex-wrap items-center gap-2 mb-4"><input name="symbol" placeholder="AAPL" class="field min-w-0 flex-1 basis-40" /><button class="btn-primary min-h-0 py-2">Добавить</button>
+        ${state.watchTab === 'watches' ? `<form id="watch-form" class="flex flex-wrap items-center gap-2 mb-4"><input name="symbol" placeholder="AAPL" class="field min-w-0 flex-1" /><button class="btn-primary min-h-0 py-2">Добавить</button>
           <button type="button" id="watch-t11" class="btn-secondary min-h-0 py-2">Тест T-11</button>
           <button type="button" id="watch-t1" class="btn-secondary min-h-0 py-2">Тест T-1</button>
           <button type="button" id="watch-prices" class="btn-secondary min-h-0 py-2">Обновить цены и позиции</button></form>
