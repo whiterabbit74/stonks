@@ -200,7 +200,7 @@ func (e *Engine) submitEvaluated(w execWindow, ev EvalResult, trigger, corr, bro
 		return ev
 	}
 	price := quotePrice(ev, symbol)
-	qty, qerr := e.sizeOrder(action, symbol, ev.AutoTrading, price, br)
+	qty, qerr := e.sizeOrder(action, symbol, ev.AutoTrading, price, br, w)
 	if qerr != nil {
 		ev.Broker = map[string]any{"submitted": false, "error": qerr.Error()}
 		e.logAuto("execution_blocked", corr, map[string]any{"symbol": symbol, "reason": qerr.Error()})

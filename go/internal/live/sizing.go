@@ -1,6 +1,7 @@
 package live
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -370,12 +371,14 @@ func quotePrice(ev EvalResult, symbol string) float64 {
 	return 0
 }
 
-func (e *Engine) sizeOrder(action, symbol string, cfg map[string]any, price float64, br Broker) (float64, error) {
+func (e *Engine) sizeOrder(action, symbol string, cfg map[string]any, price float64, br Broker, w execWindow) (float64, error) {
 	if action == "exit" {
 		if br == nil {
 			return 0, fmt.Errorf("Webull credentials are missing")
 		}
-		pos, err := retryBrokerRead(e, "positions", br.Positions)
+		pos, err := retryBrokerReadWindow(e, w, "positions", func(ctx context.Context) ([]any, error) {
+			return brokerPositions(ctx, br)
+		})
 		if err != nil {
 			return 0, err
 		}
@@ -388,14 +391,18 @@ func (e *Engine) sizeOrder(action, symbol string, cfg map[string]any, price floa
 	if br == nil {
 		return 0, fmt.Errorf("Unable to read available funds for balance sizing")
 	}
-	acct, err := retryBrokerRead(e, "account", br.Account)
+	acct, err := retryBrokerReadWindow(e, w, "account", func(context.Context) (map[string]any, error) {
+		return br.Account()
+	})
 	if err != nil {
 		return 0, err
 	}
 	var pos []any
 	var posErr error
 	if extractCashBalance(unwrapBalance(acct)) <= 0 {
-		pos, posErr = retryBrokerRead(e, "positions", br.Positions)
+		pos, posErr = retryBrokerReadWindow(e, w, "positions", func(ctx context.Context) ([]any, error) {
+			return brokerPositions(ctx, br)
+		})
 	}
 	funds, _, _, serr := resolveEntryBalanceSizing(acct, cfg, pos, posErr)
 	if serr != nil {

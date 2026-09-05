@@ -69,3 +69,20 @@ func TestExecuteWindowCancelsEvaluatePositionsRead(t *testing.T) {
 		t.Fatalf("executeWindow took %s; Evaluate must use the execution window, not hang on positions", elapsed)
 	}
 }
+
+func TestSizeOrderCancelsPositionsReadViaContext(t *testing.T) {
+	_, e, _ := testEngine(t, nil)
+	e.Sleep = func(time.Duration) {}
+	br := &hangPositionsBroker{}
+	ctx, cancel := context.WithTimeout(context.Background(), 80*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	_, err := e.sizeOrder("exit", "AAPL", e.AutoConfig(), 10, br, windowFromCtx(ctx))
+	elapsed := time.Since(start)
+	if elapsed > time.Second {
+		t.Fatalf("sizeOrder took %s; must follow the execution window, not the un-cancellable Positions()", elapsed)
+	}
+	if err == nil {
+		t.Fatal("cancelled sizing positions read must return an error")
+	}
+}
