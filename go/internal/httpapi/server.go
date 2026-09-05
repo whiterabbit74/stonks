@@ -17,6 +17,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
@@ -36,6 +37,7 @@ const (
 	sessionShortTTL   = 12 * time.Hour
 	sessionRemember   = 30 * 24 * time.Hour
 	sessionTouchEvery = 5 * time.Minute
+	sessionPurgeEvery = 5 * time.Minute
 	autoLogsMaxLimit  = 500
 )
 
@@ -51,6 +53,8 @@ type Server struct {
 	adminPass     string
 	limiter       *ipLimiter
 	testAuthToken string
+	lastPurge     time.Time
+	purgeMu       sync.Mutex
 }
 
 func New(db *store.DB, webDir string) *Server {
@@ -313,6 +317,13 @@ func (s *Server) purgeExpiredSessions() {
 	if s.DB == nil {
 		return
 	}
+	s.purgeMu.Lock()
+	if time.Since(s.lastPurge) < sessionPurgeEvery {
+		s.purgeMu.Unlock()
+		return
+	}
+	s.lastPurge = time.Now()
+	s.purgeMu.Unlock()
 	_, _ = s.DB.SessionDeleteExpired(time.Now().UnixMilli())
 }
 

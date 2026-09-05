@@ -519,6 +519,75 @@ func TestAuthExtendsSessionOnActivity(t *testing.T) {
 	}
 }
 
+func TestPurgeExpiredSessionsThrottled(t *testing.T) {
+	s := testServer(t, "secret")
+	if _, err := s.DB.SQL.Exec(`CREATE TABLE session_deletes (n INTEGER)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.DB.SQL.Exec(`INSERT INTO session_deletes(n) VALUES (0)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.DB.SQL.Exec(`
+		CREATE TRIGGER count_session_deletes AFTER DELETE ON sessions
+		BEGIN
+			UPDATE session_deletes SET n = n + 1;
+		END`); err != nil {
+		t.Fatal(err)
+	}
+	live := "0123456789abcdef0123456789abcdef"
+	dead := "fedcba9876543210fedcba9876543210"
+	now := time.Now()
+	if err := s.DB.SessionSet(live, now.UnixMilli(), now.Add(sessionShortTTL).UnixMilli()); err != nil {
+		t.Fatal(err)
+	}
+	expiredAt := now.Add(-time.Hour).UnixMilli()
+	if err := s.DB.SessionSet(dead, 1, expiredAt); err != nil {
+		t.Fatal(err)
+	}
+
+	get := func(tok string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest("GET", "/api/datasets", nil)
+		req.AddCookie(&http.Cookie{Name: "auth_token", Value: tok})
+		rec := httptest.NewRecorder()
+		s.Handler().ServeHTTP(rec, req)
+		return rec
+	}
+	deleteCount := func() int {
+		t.Helper()
+		var n int
+		if err := s.DB.SQL.QueryRow(`SELECT n FROM session_deletes`).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+
+	if rec := get(live); rec.Code != 200 {
+		t.Fatalf("first %d %s", rec.Code, rec.Body.String())
+	}
+	if n := deleteCount(); n != 1 {
+		t.Fatalf("first purge deleted %d want 1", n)
+	}
+	if err := s.DB.SessionSet(dead, 1, expiredAt); err != nil {
+		t.Fatal(err)
+	}
+	if rec := get(live); rec.Code != 200 {
+		t.Fatalf("second %d %s", rec.Code, rec.Body.String())
+	}
+	if n := deleteCount(); n != 1 {
+		t.Fatalf("throttled purge deleted %d want 1", n)
+	}
+
+	rec := get(dead)
+	if rec.Code != 401 {
+		t.Fatalf("expired session got %d %s", rec.Code, rec.Body.String())
+	}
+	var body map[string]any
+	_ = json.Unmarshal(rec.Body.Bytes(), &body)
+	if body["code"] != "session_expired" {
+		t.Fatalf("want session_expired, got %v", body)
+	}
+}
+
 func TestLoginPlaintextConstantTime(t *testing.T) {
 	s := testServer(t, "secret")
 	body, _ := json.Marshal(map[string]any{"username": "admin@example.com", "password": "wrong-secret"})
