@@ -1107,7 +1107,7 @@
       </div>
       <div class="mt-2 border-t border-gray-200 pt-2 dark:border-gray-700">
         <div class="hero-footer-row">
-          <div class="min-w-0 overflow-x-auto"><div class="flex min-w-max items-center gap-1.5">${ranges}</div></div>
+          <div class="scroll-cue min-w-0 overflow-x-auto"><div class="flex min-w-max items-center gap-1.5 pr-8">${ranges}</div></div>
           <div class="flex shrink-0 items-center gap-1.5">
             <div class="hero-tf">
               <button type="button" data-hero-tf="daily" class="${state.heroTf === 'daily' ? 'hero-tf-on' : 'hero-tf-off'}">День</button>
