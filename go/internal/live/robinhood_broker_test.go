@@ -380,9 +380,33 @@ func TestRobinhoodBrokerImplementsCtxReadExtensions(t *testing.T) {
 	var _ ctxPositioner = b
 	var _ ctxOrderDetailer = b
 	var _ ctxOpenOrderser = b
+	var _ ctxAccounter = b
 }
 
 type rhCtxKey struct{}
+
+func TestRobinhoodAccountCtxPassesContextToTool(t *testing.T) {
+	want := context.WithValue(context.Background(), rhCtxKey{}, "account")
+	var got context.Context
+	var tool string
+	b := &RobinhoodBroker{
+		account: "RH1",
+		CallCtx: func(ctx context.Context, name string, args map[string]any) (json.RawMessage, error) {
+			got = ctx
+			tool = name
+			return json.Marshal(map[string]any{"cash": 1000.0, "buying_power": 1000.0, "equity": 1000.0})
+		},
+	}
+	if _, err := b.AccountCtx(want); err != nil {
+		t.Fatal(err)
+	}
+	if got != want {
+		t.Fatalf("AccountCtx must pass ctx into tool, got %v", got)
+	}
+	if tool != "get_portfolio" {
+		t.Fatalf("tool %q", tool)
+	}
+}
 
 func TestRobinhoodPositionsCtxPassesContextToTool(t *testing.T) {
 	want := context.WithValue(context.Background(), rhCtxKey{}, "positions")

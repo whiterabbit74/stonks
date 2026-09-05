@@ -143,11 +143,15 @@ func (b *RobinhoodBroker) CloseMarket(symbol string) (OrderResult, error) {
 }
 
 func (b *RobinhoodBroker) Account() (map[string]any, error) {
+	return b.AccountCtx(context.Background())
+}
+
+func (b *RobinhoodBroker) AccountCtx(ctx context.Context) (map[string]any, error) {
 	acct, err := b.agenticAccount()
 	if err != nil {
 		return nil, err
 	}
-	raw, err := b.tool("get_portfolio", map[string]any{"account_number": acct})
+	raw, err := b.toolCtx(ctx, "get_portfolio", map[string]any{"account_number": acct})
 	if err != nil {
 		return nil, err
 	}
