@@ -4148,7 +4148,7 @@
           <p class="text-sm text-gray-500 mb-3">Заполните дату и цену выхода, чтобы ручной записью закрыть сделку в журнале брокера сайта.</p>
           <div id="eb-err" class="text-sm text-red-600 mb-2 hidden"></div>
           <div class="grid sm:grid-cols-3 gap-2 rounded-lg bg-gray-50 p-3 text-sm mb-3 dark:bg-gray-950/40">
-            <div><div class="text-xs text-gray-500">Вход</div><div class="font-mono">${esc(t.entryDate || '—')}</div></div>
+            <div><div class="text-xs text-gray-500">Вход</div><div class="font-mono">${esc(fmtTradingDate(t.entryDate))}</div></div>
             <div><div class="text-xs text-gray-500">Цена входа</div><div class="font-mono">${t.entryPrice == null ? '—' : fmt(t.entryPrice)}</div></div>
             <div><div class="text-xs text-gray-500">Статус</div><div>${t.status === 'open' ? 'открыта' : 'закрыта'}</div></div>
           </div>
