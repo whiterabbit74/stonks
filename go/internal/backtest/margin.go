@@ -67,7 +67,7 @@ func SimulateMargin(p MarginParams) MarginResult {
 	maintFrac := maint / 100
 
 	cash := math.Max(0, p.InitialCapital)
-	peak := cash
+	initial := cash
 	tradeIndex := 0
 	type active struct {
 		template        types.Trade
@@ -79,12 +79,16 @@ func SimulateMargin(p MarginParams) MarginResult {
 		plannedExitDate string
 	}
 	var pos *active
-	var equity []types.EquityPoint
 	var sim []types.Trade
 	var events []PositionRiskEvent
 	var liq *PositionRiskEvent
 
-	for _, bar := range bars {
+	dates := make([]string, len(bars))
+	for i := range bars {
+		dates[i] = bars[i].Date
+	}
+	equity := runDailyEngine(dates, initial, func(day dailyDay) float64 {
+		bar := bars[day.Index]
 		date := bar.Date
 		if pos == nil {
 			for tradeIndex < len(trades) && trades[tradeIndex].EntryDate < date {
@@ -195,15 +199,8 @@ func SimulateMargin(p MarginParams) MarginResult {
 				totalValue = cash + posEq
 			}
 		}
-		if totalValue > peak {
-			peak = totalValue
-		}
-		dd := 0.0
-		if peak > 0 {
-			dd = ((peak - totalValue) / peak) * 100
-		}
-		equity = append(equity, types.EquityPoint{Date: date, Value: totalValue, Drawdown: dd})
-	}
+		return totalValue
+	})
 	if pos != nil && len(bars) > 0 {
 		date := bars[len(bars)-1].Date
 		exitPx := bars[len(bars)-1].Close
@@ -232,13 +229,12 @@ func SimulateMargin(p MarginParams) MarginResult {
 		t.Context.GrossInvestment = pos.quantity * pos.entryPrice
 		t.Context.CurrentCapitalAfterExit = cash
 		sim = append(sim, t)
-		if len(equity) > 0 {
-			equity[len(equity)-1].Value = cash
-		}
 		pos = nil
 	}
 	final := cash
 	if len(equity) > 0 {
+		final = equity[len(equity)-1].Value
+		replaceFinalDailyValue(equity, bars[len(bars)-1].Date, cash, initial)
 		final = equity[len(equity)-1].Value
 	}
 	maxDD := 0.0
