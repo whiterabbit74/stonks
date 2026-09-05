@@ -100,6 +100,7 @@ func (e *Engine) recordFill(t map[string]any, detail map[string]any, status stri
 	e.mu.Lock()
 	meta := e.orderMeta[clientOrderID]
 	e.mu.Unlock()
+	brokerName := fillBrokerName(t, meta)
 
 	fillPrice := fillPriceFrom(detail)
 	// reportedQty is what the broker says actually executed. Keep it separate
@@ -143,15 +144,12 @@ func (e *Engine) recordFill(t map[string]any, detail map[string]any, status stri
 		e.logAuto("order_partially_filled", meta.CorrelationID, map[string]any{
 			"symbol": symbol, "action": action, "clientOrderId": clientOrderID,
 			"status": status, "orderedQty": orderedQty, "filledQty": reportedQty,
+			"broker": brokerName,
 		})
 		_ = e.Send(e.chat(), fmt.Sprintf(
-			"<b>Webull: частичное исполнение</b>\n%s • %s\nзаказано: %v\nисполнено: %v\nstatus: %s",
-			symbol, action, orderedQty, reportedQty, status))
+			"<b>%s: частичное исполнение</b>\n%s • %s\nзаказано: %v\nисполнено: %v\nstatus: %s",
+			brokerLabel(brokerName), symbol, action, orderedQty, reportedQty, status))
 		if action == "exit" {
-			brokerName := meta.Broker
-			if brokerName == "" {
-				brokerName = "webull"
-			}
 			e.reduceOpenQuantity(symbol, clientOrderID, brokerName, reportedQty, fillPrice)
 			return
 		}
@@ -163,7 +161,7 @@ func (e *Engine) recordFill(t map[string]any, detail map[string]any, status stri
 	}
 
 	if !unconfirmedPrice {
-		e.warnOnSlippage(symbol, action, clientOrderID, meta, fillPrice)
+		e.warnOnSlippage(symbol, action, clientOrderID, meta, fillPrice, brokerName)
 	} else {
 		e.logAuto("fill_price_unconfirmed", meta.CorrelationID, map[string]any{
 			"symbol": symbol, "action": action, "clientOrderId": clientOrderID,
@@ -177,10 +175,6 @@ func (e *Engine) recordFill(t map[string]any, detail map[string]any, status stri
 				_, _ = e.DB.SQL.Exec(`UPDATE trades SET quantity=?, filled_qty=? WHERE id=?`, fillQty, fillQty, "m-"+clientOrderID)
 			}
 			return
-		}
-		brokerName := meta.Broker
-		if brokerName == "" {
-			brokerName = "webull"
 		}
 		if err := e.DB.InsertTrade("broker_trades", map[string]any{
 			"id": clientOrderID, "symbol": symbol, "status": "open",
@@ -210,10 +204,6 @@ func (e *Engine) recordFill(t map[string]any, detail map[string]any, status stri
 	}
 
 	if action == "exit" {
-		brokerName := meta.Broker
-		if brokerName == "" {
-			brokerName = "webull"
-		}
 		row := e.openTradeBySymbol("broker_trades", symbol, clientOrderID, brokerName)
 		if row == nil {
 			row = e.openTradeBySymbol("broker_trades", symbol, "", brokerName)
@@ -236,7 +226,7 @@ func (e *Engine) recordFill(t map[string]any, detail map[string]any, status stri
 // orders and the fill must be certain — so the setting is a reporting
 // threshold: it tells the operator when a fill landed further from the
 // decision price than they consider normal.
-func (e *Engine) warnOnSlippage(symbol, action, clientOrderID string, meta orderMeta, fillPrice float64) {
+func (e *Engine) warnOnSlippage(symbol, action, clientOrderID string, meta orderMeta, fillPrice float64, broker string) {
 	bps := asFloat(e.AutoConfig()["maxSlippageBps"])
 	if !(bps > 0) || !(fillPrice > 0) || !(meta.QuotePrice > 0) {
 		return
@@ -249,11 +239,22 @@ func (e *Engine) warnOnSlippage(symbol, action, clientOrderID string, meta order
 	e.logAuto("order_slippage_exceeded", meta.CorrelationID, map[string]any{
 		"symbol": symbol, "action": action, "clientOrderId": clientOrderID,
 		"quotePrice": meta.QuotePrice, "fillPrice": fillPrice,
-		"slippageBps": devBps, "limitBps": bps,
+		"slippageBps": devBps, "limitBps": bps, "broker": broker,
 	})
 	_ = e.Send(e.chat(), fmt.Sprintf(
-		"<b>Webull: проскальзывание %.0f bps</b>\n%s • %s\nрешение: $%.2f\nисполнено: $%.2f\nпорог: %.0f bps",
-		devBps, symbol, action, meta.QuotePrice, fillPrice, bps))
+		"<b>%s: проскальзывание %.0f bps</b>\n%s • %s\nрешение: $%.2f\nисполнено: $%.2f\nпорог: %.0f bps",
+		brokerLabel(broker), devBps, symbol, action, meta.QuotePrice, fillPrice, bps))
+}
+
+func fillBrokerName(t map[string]any, meta orderMeta) string {
+	name := strings.ToLower(strings.TrimSpace(meta.Broker))
+	if name == "" && t != nil {
+		name = strings.ToLower(strings.TrimSpace(fmt.Sprint(t["broker"])))
+	}
+	if name == "" || name == "<nil>" {
+		return "webull"
+	}
+	return name
 }
 
 func (e *Engine) reduceOpenQuantity(symbol, preferID, broker string, sold, exitPrice float64) {
