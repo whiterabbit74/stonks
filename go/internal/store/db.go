@@ -759,6 +759,7 @@ func defaultSettings() map[string]any {
 		"enablePostClosePriceActualization": false,
 		"indicatorPanePercent":              30,
 		"defaultMultiTickerSymbols":         "SPY,QQQ,IWM",
+		"initialCapital":                    10000,
 		// The strategy has exactly one shape: at the close, buy the weakest
 		// monitored ticker with the whole account, sell it when IBS recovers.
 		// Everything the operator can still choose is here; anything that used

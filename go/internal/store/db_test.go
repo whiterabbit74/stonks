@@ -57,6 +57,9 @@ func TestSettingsPartialAutoTradingKeepsThresholds(t *testing.T) {
 	if got["defaultMultiTickerSymbols"] != "SPY,QQQ,IWM" {
 		t.Fatalf("defaultMultiTickerSymbols=%v", got["defaultMultiTickerSymbols"])
 	}
+	if got["initialCapital"] != 10000 {
+		t.Fatalf("initialCapital=%v want default 10000", got["initialCapital"])
+	}
 	at, ok := got["autoTrading"].(map[string]any)
 	if !ok {
 		t.Fatalf("autoTrading type %T", got["autoTrading"])

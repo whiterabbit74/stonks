@@ -898,3 +898,31 @@ func TestAutotradeDecisionReadsBrokerDecisions(t *testing.T) {
 		}
 	}
 }
+
+// TestInitialCapitalSettingIsTheSingleDefault is P-10: monitorStats,
+// defaultStrategy, and calc metrics used to hardcode 10000 while pretending
+// to read state.settings.initialCapital. One helper plus the settings field.
+func TestInitialCapitalSettingIsTheSingleDefault(t *testing.T) {
+	a := readWeb(t, "js/app.js")
+	if !strings.Contains(a, "const DEFAULT_INITIAL_CAPITAL = 10000") {
+		t.Fatal("missing DEFAULT_INITIAL_CAPITAL")
+	}
+	if !strings.Contains(a, "function initialCapital()") {
+		t.Fatal("missing initialCapital helper")
+	}
+	if strings.Count(a, "initialCapital: 10000") != 0 {
+		t.Fatal("app.js must not hardcode initialCapital: 10000; use initialCapital()")
+	}
+	page := jsFn(a, "pageSettings")
+	if !strings.Contains(page, `name="initialCapital"`) {
+		t.Fatal("settings general tab must expose initialCapital")
+	}
+	stats := jsFn(a, "monitorStats")
+	if !strings.Contains(stats, "initialCapital()") {
+		t.Fatal("monitorStats must use initialCapital()")
+	}
+	ds := jsFn(a, "defaultStrategy")
+	if !strings.Contains(ds, "initialCapital: initialCapital()") {
+		t.Fatal("defaultStrategy.riskManagement.initialCapital must use the helper")
+	}
+}

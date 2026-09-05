@@ -80,8 +80,10 @@
   };
   const DEFAULT_LOW_IBS = 0.1;
   const DEFAULT_HIGH_IBS = 0.75;
+  const DEFAULT_INITIAL_CAPITAL = 10000;
   function liveLowIBS() { return Number(state.autoConfig?.lowIBS ?? state.autoConfig?.config?.lowIBS ?? DEFAULT_LOW_IBS); }
   function liveHighIBS() { return Number(state.autoConfig?.highIBS ?? state.autoConfig?.config?.highIBS ?? DEFAULT_HIGH_IBS); }
+  function initialCapital() { return Number(state.settings && state.settings.initialCapital) || DEFAULT_INITIAL_CAPITAL; }
   const BROKER_TABS = [
     { id: 'connect', label: 'Подключение' },
     { id: 'overview', label: 'Обзор' },
@@ -1203,7 +1205,7 @@
   }
   function monitorStats(trades) {
     const closed = visibleMonitorTrades(trades || [], false).filter((t) => t.status === 'closed' && Number.isFinite(Number(t.pnlPercent)));
-    const initial = Number(state.settings && state.settings.initialCapital) > 0 ? Number(state.settings.initialCapital) : 10000;
+    const initial = initialCapital();
     let bal = initial, peak = initial;
     const equity = [];
     let wins = 0, hold = 0, holdN = 0, grossWinPct = 0, grossLossPct = 0;
@@ -2794,6 +2796,11 @@
           <label class="block text-sm">Тикеры по умолчанию<input name="defaultMultiTickerSymbols" class="field mt-1" value="${esc(st.defaultMultiTickerSymbols || 'AAPL, MSFT, AMZN, MAGS')}" /></label>
           <p class="text-xs text-gray-500 mt-1">Пример: AAPL, MSFT, AMZN, MAGS</p>
         </div>
+        <div class="rounded-xl border border-gray-200 dark:border-gray-700 p-4 mb-3">
+          <div class="font-medium mb-1">Капитал</div>
+          <label class="block text-sm">Стартовый капитал, $<input name="initialCapital" type="number" min="1" step="1" class="field mt-1" value="${esc(st.initialCapital ?? DEFAULT_INITIAL_CAPITAL)}" /></label>
+          <p class="text-xs text-gray-500 mt-1">База для метрик мониторинга и бэктеста, если стратегия не задаёт своё значение.</p>
+        </div>
         <label class="inline-flex items-center gap-2 text-sm"><input type="checkbox" name="enablePostClosePriceActualization" ${st.enablePostClosePriceActualization ? 'checked' : ''} /> Автоактуализация цен после закрытия рынка</label>`;
     } else if (tab === 'api') {
       body = `<div class="rounded-xl border p-4 mb-3">
@@ -3400,7 +3407,7 @@
           const tp = Number(String(f.takeProfit || '').replace(',', '.'));
           const lev = Number(f.leverage || 200) / 100;
           const ema = {
-            initialCapital: 10000,
+            initialCapital: initialCapital(),
             leverage: lev,
             emaPeriod: Number(f.period || 200),
             buyZones: (f.buyZones || []).map((z) => ({ id: z.id, levelPct: Number(z.levelPct), enabled: !!z.enabled })),
@@ -4161,6 +4168,7 @@
         if (form.enablePostClosePriceActualization) body.enablePostClosePriceActualization = form.enablePostClosePriceActualization.checked;
         if (body.watchThresholdPct != null) body.watchThresholdPct = Number(body.watchThresholdPct);
         if (body.indicatorPanePercent != null) body.indicatorPanePercent = Number(body.indicatorPanePercent);
+        if (body.initialCapital != null) body.initialCapital = Number(body.initialCapital);
         if (form.autoEnabled) {
           const updates = {
             enabled: form.autoEnabled.checked,
@@ -4201,7 +4209,7 @@
       id: 'ibs-mean-reversion', type: 'ibs-mean-reversion', name: 'IBS',
       parameters: { lowIBS: 0.1, highIBS: 0.75, maxHoldDays: 30 },
       riskManagement: {
-        initialCapital: 10000, capitalUsage: 100, slippage: 0, maxHoldDays: 30,
+        initialCapital: initialCapital(), capitalUsage: 100, slippage: 0, maxHoldDays: 30,
         commission: { type: 'percentage', percentage: 0, fixed: 0 },
       },
     };
@@ -4301,7 +4309,7 @@
       state.optResult = resultOf(r);
       if (!state.optResult.metrics || !Object.keys(state.optResult.metrics).length) {
         try {
-          const m = await API.calc('metrics', { trades: state.optResult.trades, equity: state.optResult.equity, initialCapital: 10000 });
+          const m = await API.calc('metrics', { trades: state.optResult.trades, equity: state.optResult.equity, initialCapital: initialCapital() });
           state.optResult.metrics = m;
           state.optResult.maxDrawdown = m.maxDrawdown ?? state.optResult.maxDrawdown;
         } catch (_) {}
@@ -4974,7 +4982,7 @@
       if (!r) { el.textContent = 'Нет результата'; return; }
       if (!r.metrics || typeof r.metrics !== 'object' || (r.metrics.profitFactor == null && r.metrics.totalReturn == null && !Object.keys(r.metrics).length)) {
         try {
-          const m = await API.calc('metrics', { trades: r.trades, equity: r.equity, initialCapital: 10000 });
+          const m = await API.calc('metrics', { trades: r.trades, equity: r.equity, initialCapital: initialCapital() });
           r.metrics = m;
           r.maxDrawdown = m.maxDrawdown ?? r.maxDrawdown;
         } catch (_) {}
