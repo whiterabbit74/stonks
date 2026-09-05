@@ -889,11 +889,6 @@
   function persistStockPresets() {
     try { localStorage.setItem('stockPresets', JSON.stringify(state.stockPresets || [])); } catch (_) {}
   }
-  function ensureStockPresets() {
-    if ((state.stockPresets || []).length || localStorage.getItem('stockPresets') != null) return;
-    const tickers = defaultTickers().join(', ');
-    state.stockPresets = [{ id: 'default', name: tickers, tickers, leverage: state.leverage || 200, takeProfit: state.takeProfit || '' }];
-  }
   function syncStockParamsFromDom() {
     const tickersEl = document.getElementById('ticker-input');
     if (tickersEl) {
@@ -2081,7 +2076,6 @@
       </div>`;
   }
   function stocksParams() {
-    ensureStockPresets();
     const presets = (state.stockPresets || []).map((p) => `<option value="${esc(p.id)}"${p.id === state.stockPresetId ? ' selected' : ''}>${esc(p.name)}</option>`).join('');
     return `
       <div>
