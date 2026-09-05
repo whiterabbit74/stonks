@@ -18,6 +18,10 @@ import (
 	"mktorder.com/go/internal/types"
 )
 
+// SchemaVersion is the schema this binary can open and migrate to.
+// Bump it when adding a migrateSchema step. Open fails if the database is newer.
+const SchemaVersion = 2
+
 type DB struct {
 	SQL      *sql.DB
 	mu       sync.Mutex
@@ -273,48 +277,67 @@ func (d *DB) initSchema() error {
 	return d.migrateSchema()
 }
 
+type schemaExecer interface {
+	Exec(query string, args ...any) (sql.Result, error)
+	Query(query string, args ...any) (*sql.Rows, error)
+}
+
 func (d *DB) migrateSchema() error {
-	if err := d.ensureColumn("order_trackers", "attempts", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+	tx, err := d.SQL.Begin()
+	if err != nil {
 		return err
 	}
-	if err := d.ensureColumn("order_trackers", "updated_at", "TEXT"); err != nil {
+	defer tx.Rollback()
+
+	if _, err := tx.Exec(`CREATE TABLE IF NOT EXISTS schema_meta (id INTEGER PRIMARY KEY CHECK (id = 1), version INTEGER NOT NULL)`); err != nil {
 		return err
 	}
-	if err := d.ensureColumn("autotrade_logs", "kind", "TEXT NOT NULL DEFAULT ''"); err != nil {
+
+	var version int
+	err = tx.QueryRow(`SELECT version FROM schema_meta WHERE id = 1`).Scan(&version)
+	if err == sql.ErrNoRows {
+		version = 0
+	} else if err != nil {
 		return err
 	}
-	if err := d.ensureColumn("order_trackers", "broker", "TEXT NOT NULL DEFAULT 'webull'"); err != nil {
+
+	if version > SchemaVersion {
+		return fmt.Errorf("database schema version %d is newer than code version %d", version, SchemaVersion)
+	}
+	if version == SchemaVersion {
+		return tx.Commit()
+	}
+
+	if err := applyPendingSchema(tx, version); err != nil {
 		return err
 	}
-	if err := d.ensureColumn("broker_trades", "broker", "TEXT NOT NULL DEFAULT 'webull'"); err != nil {
+	if _, err := tx.Exec(`INSERT INTO schema_meta (id, version) VALUES (1, ?) ON CONFLICT(id) DO UPDATE SET version=excluded.version`, SchemaVersion); err != nil {
 		return err
 	}
-	if err := d.ensureColumn("webull_token", "last_alerted_status", "TEXT"); err != nil {
-		return err
-	}
-	if err := d.ensureColumn("webull_token", "last_alerted_at", "TEXT"); err != nil {
-		return err
-	}
-	if err := d.ensureColumn("webull_token", "last_check_raw", "TEXT"); err != nil {
-		return err
-	}
-	if err := d.ensureColumn("aggregate_send_state", "t1_lease_until", "TEXT"); err != nil {
-		return err
-	}
-	if err := d.ensureColumn("aggregate_send_state", "t1_execution_finished", "INTEGER NOT NULL DEFAULT 0"); err != nil {
-		return err
-	}
-	if _, err := d.SQL.Exec(`CREATE INDEX IF NOT EXISTS idx_broker_trades_broker_status ON broker_trades(broker, status)`); err != nil {
-		return err
-	}
-	if _, err := d.SQL.Exec(`CREATE TABLE IF NOT EXISTS schema_meta (id INTEGER PRIMARY KEY CHECK (id = 1), version INTEGER NOT NULL)`); err != nil {
-		return err
-	}
-	if _, err := d.SQL.Exec(`INSERT OR IGNORE INTO schema_meta (id, version) VALUES (1, 1)`); err != nil {
-		return err
-	}
-	if _, err := d.SQL.Exec(`UPDATE schema_meta SET version=1`); err != nil {
-		return err
+	return tx.Commit()
+}
+
+func applyPendingSchema(e schemaExecer, from int) error {
+	if from < 2 {
+		for _, col := range []struct{ table, name, typ string }{
+			{"order_trackers", "attempts", "INTEGER NOT NULL DEFAULT 0"},
+			{"order_trackers", "updated_at", "TEXT"},
+			{"autotrade_logs", "kind", "TEXT NOT NULL DEFAULT ''"},
+			{"order_trackers", "broker", "TEXT NOT NULL DEFAULT 'webull'"},
+			{"broker_trades", "broker", "TEXT NOT NULL DEFAULT 'webull'"},
+			{"webull_token", "last_alerted_status", "TEXT"},
+			{"webull_token", "last_alerted_at", "TEXT"},
+			{"webull_token", "last_check_raw", "TEXT"},
+			{"aggregate_send_state", "t1_lease_until", "TEXT"},
+			{"aggregate_send_state", "t1_execution_finished", "INTEGER NOT NULL DEFAULT 0"},
+		} {
+			if err := ensureColumn(e, col.table, col.name, col.typ); err != nil {
+				return err
+			}
+		}
+		if _, err := e.Exec(`CREATE INDEX IF NOT EXISTS idx_broker_trades_broker_status ON broker_trades(broker, status)`); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -324,7 +347,11 @@ func (d *DB) HasColumn(table, col string) bool {
 }
 
 func (d *DB) hasColumn(table, col string) bool {
-	rows, err := d.SQL.Query(`PRAGMA table_info(` + table + `)`)
+	return hasColumn(d.SQL, table, col)
+}
+
+func hasColumn(q schemaExecer, table, col string) bool {
+	rows, err := q.Query(`PRAGMA table_info(` + table + `)`)
 	if err != nil {
 		return false
 	}
@@ -344,11 +371,11 @@ func (d *DB) hasColumn(table, col string) bool {
 	return false
 }
 
-func (d *DB) ensureColumn(table, col, typ string) error {
-	if d.hasColumn(table, col) {
+func ensureColumn(q schemaExecer, table, col, typ string) error {
+	if hasColumn(q, table, col) {
 		return nil
 	}
-	_, err := d.SQL.Exec(`ALTER TABLE ` + table + ` ADD COLUMN ` + col + ` ` + typ)
+	_, err := q.Exec(`ALTER TABLE ` + table + ` ADD COLUMN ` + col + ` ` + typ)
 	return err
 }
 
