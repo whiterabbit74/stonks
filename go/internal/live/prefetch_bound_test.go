@@ -1,10 +1,36 @@
 package live
 
 import (
+	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"testing"
+	"time"
+
+	"mktorder.com/go/internal/providers"
+	"mktorder.com/go/internal/types"
 )
+
+type concQuotes struct {
+	MemoryQuotes
+	mu       sync.Mutex
+	cur, max int
+}
+
+func (c *concQuotes) Quote(symbol, provider string) (providers.QuotePayload, error) {
+	c.mu.Lock()
+	c.cur++
+	if c.cur > c.max {
+		c.max = c.cur
+	}
+	c.mu.Unlock()
+	time.Sleep(25 * time.Millisecond)
+	c.mu.Lock()
+	c.cur--
+	c.mu.Unlock()
+	return c.MemoryQuotes.Quote(symbol, provider)
+}
 
 func TestPrefetchQuotesCapsConcurrency(t *testing.T) {
 	raw, err := os.ReadFile("telegram.go")
@@ -25,5 +51,24 @@ func TestPrefetchQuotesCapsConcurrency(t *testing.T) {
 	}
 	if strings.Contains(fn, "_ = recover()") {
 		t.Fatal("prefetchQuotes must log a recovered panic")
+	}
+}
+
+func TestPrefetchQuotesCapsConcurrentHTTP(t *testing.T) {
+	q := &concQuotes{MemoryQuotes: MemoryQuotes{Bars: map[string][]types.OHLC{}}}
+	syms := make([]string, 16)
+	bar := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
+	for i := range syms {
+		s := fmt.Sprintf("T%02d", i)
+		syms[i] = s
+		q.Bars[s] = bar
+	}
+	e := &Engine{Quotes: q}
+	e.prefetchQuotes(syms, []string{"finnhub"})
+	if q.max > 8 {
+		t.Fatalf("prefetch concurrency %d, cap 8", q.max)
+	}
+	if q.max < 2 {
+		t.Fatalf("prefetch must run in parallel, max=%d", q.max)
 	}
 }
