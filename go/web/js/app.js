@@ -1760,7 +1760,7 @@
         <a href="/enhance" data-nav class="btn-primary">${icon('plus', 'h-4 w-4')} Загрузить тикеры</a>
       </div>`;
     } else if (state.dataView === 'compact') {
-      cards = `<div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-2">${filtered.map((d) => {
+      cards = `<div class="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-5 gap-2">${filtered.map((d) => {
         const active = state.ticker === d.ticker;
         const tagsHtml = (d.tag || '').split(',').map((t) => t.trim()).filter(Boolean).slice(0, 2).map((t) => `<span class="px-1.5 py-0.5 bg-gray-100 text-gray-600 text-[10px] rounded dark:bg-gray-800 dark:text-gray-400">${esc(t)}</span>`).join('');
         return `<div class="relative">
