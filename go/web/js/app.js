@@ -1481,7 +1481,7 @@
       <td title="${esc(entryIso)} – ${esc(exitIso)}" class="${(hasEntryProblem || hasExitProblem) ? 'bg-orange-50 dark:bg-orange-950/20' : ''}">
         ${esc(fmtTradingDate(t.entryDate))} – ${esc(fmtTradingDate(t.exitDate))}
       </td>
-      <td>${fmtUsd(t.entryPrice)} – ${fmtUsd(t.exitPrice)}</td>
+      <td>${fmtUsd(t.entryPrice, 2)} – ${fmtUsd(t.exitPrice, 2)}</td>
       <td>${esc(ibsLab(entryIbsNum))} – ${esc(ibsLab(exitIbsNum))}</td>
       <td>${fmt(t.quantity, 0)}</td>
       <td>${invested == null ? '—' : fmtUsd(invested)}${lev != null && lev > 1 ? `<div class="text-xs text-gray-500">${esc(lev)}:1</div>` : ''}</td>
