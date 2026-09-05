@@ -268,7 +268,9 @@ func RunAutotradeLogRotation(db *store.DB, today string, now time.Time, onEvent 
 	days := settingsInt(settings, "autotradeLogRetentionDays", autotradeLogRetentionDays)
 	rows := settingsInt(settings, "autotradeLogMaxRows", autotradeLogMaxRows)
 	n, err := db.PruneAutotradeLogs(days, rows)
-	_ = db.SetSettingsKeys(map[string]any{"lastAutotradeLogPruneDate": today})
+	if merr := db.SetSettingsKeys(map[string]any{"lastAutotradeLogPruneDate": today}); merr != nil {
+		onEvent(JobLog{At: now, Name: "autotrade-log-rotation", Detail: "marker-save-failed: " + merr.Error()})
+	}
 	if err != nil {
 		onEvent(JobLog{At: now, Name: "autotrade-log-rotation", Detail: err.Error()})
 		return
@@ -469,7 +471,9 @@ func reportMissedTelegram(db *store.DB, eng *live.Engine, now time.Time, today, 
 		if fmt.Sprint(settings["lastMissedT1Date"]) == today {
 			return
 		}
-		_ = db.SetSettingsKeys(map[string]any{"lastMissedT1Date": today})
+		if err := db.SetSettingsKeys(map[string]any{"lastMissedT1Date": today}); err != nil {
+			onEvent(JobLog{At: now, Name: "telegram-aggregation", Detail: "marker-save-failed: " + err.Error()})
+		}
 		detail := fmt.Sprintf("missed-t1 until=%d", until)
 		onEvent(JobLog{At: now, Name: "telegram-aggregation", Skipped: true, Detail: detail})
 		if eng != nil {
@@ -515,12 +519,16 @@ func RunCalendarExtend(db *store.DB, deps Deps, today string, now time.Time, onE
 	cov := calendarCoverageThrough(raw)
 	need := cov == "" || tradingdate.AddDays(today, 45) > cov
 	if !need {
-		_ = db.SetSettingsKeys(map[string]any{"lastCalendarImportDate": today})
+		if err := db.SetSettingsKeys(map[string]any{"lastCalendarImportDate": today}); err != nil {
+			onEvent(JobLog{At: now, Name: "calendar-extend", Detail: "marker-save-failed: " + err.Error()})
+		}
 		onEvent(JobLog{At: now, Name: "calendar-extend", Skipped: true, Detail: "coverage-ok"})
 		return
 	}
 	_, err := engine(db, deps).ImportWebullCalendar()
-	_ = db.SetSettingsKeys(map[string]any{"lastCalendarImportDate": today})
+	if merr := db.SetSettingsKeys(map[string]any{"lastCalendarImportDate": today}); merr != nil {
+		onEvent(JobLog{At: now, Name: "calendar-extend", Detail: "marker-save-failed: " + merr.Error()})
+	}
 	if err != nil {
 		onEvent(JobLog{At: now, Name: "calendar-extend", Detail: err.Error()})
 		raw, _ = db.GetCalendar()

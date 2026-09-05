@@ -683,3 +683,53 @@ func TestTickT11SecondTickDoesNotResend(t *testing.T) {
 		t.Fatalf("T-11 must send once, got %d %+v", len(tg.Sent()), tg.Sent())
 	}
 }
+
+func TestRunCalendarExtendReportsMarkerSaveFailure(t *testing.T) {
+	dir := t.TempDir()
+	db, err := store.Open(filepath.Join(dir, "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	raw, _ := json.Marshal(map[string]any{
+		"holidays":     map[string]any{},
+		"tradingHours": map[string]any{"normal": map[string]any{"start": "09:30", "end": "16:00"}},
+		"metadata":     map[string]any{"webullCoverageThrough": "2027-12-31"},
+	})
+	if err := db.SaveCalendar(raw); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.SQL.Exec(`
+            CREATE TRIGGER IF NOT EXISTS settings_block_update
+            BEFORE UPDATE ON settings
+            BEGIN
+                SELECT RAISE(ABORT, 'injected settings fail');
+            END;
+        `); err != nil {
+		t.Fatalf("block settings updates: %v", err)
+	}
+	if _, err := db.SQL.Exec(`
+            CREATE TRIGGER IF NOT EXISTS settings_block_insert
+            BEFORE INSERT ON settings
+            BEGIN
+                SELECT RAISE(ABORT, 'injected settings fail');
+            END;
+        `); err != nil {
+		t.Fatalf("block settings inserts: %v", err)
+	}
+	t.Cleanup(func() {
+		_, _ = db.SQL.Exec(`DROP TRIGGER IF EXISTS settings_block_update`)
+		_, _ = db.SQL.Exec(`DROP TRIGGER IF EXISTS settings_block_insert`)
+	})
+
+	today := "2026-09-01"
+	now := time.Date(2026, 9, 1, 20, 0, 0, 0, time.UTC)
+	var logs []JobLog
+	RunCalendarExtend(db, Deps{}, today, now, func(j JobLog) { logs = append(logs, j) })
+	for _, j := range logs {
+		if strings.Contains(j.Detail, "marker-save-failed") {
+			return
+		}
+	}
+	t.Fatalf("want JobLog Detail containing marker-save-failed, got %+v", logs)
+}
