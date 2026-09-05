@@ -189,21 +189,6 @@ test('ibsThresholds default to entry 0.10 and exit 0.75', () => {
   assert.equal(bad.high, 0.75);
 });
 
-test('ibsColoredLineData paints below 10 green and above 75 red', () => {
-  const points = [
-    { date: '2024-11-15', value: 0.05 },
-    { date: '2024-11-18', value: 0.50 },
-    { date: '2024-11-19', value: 0.90 },
-  ];
-  const { mid, lo, hi } = Charts.ibsColoredLineData(points, 0.1, 0.75);
-  assert.equal(lo.find((p) => p.value != null).value, 0.05);
-  assert.equal(mid.find((p) => p.value != null).value, 0.50);
-  assert.equal(hi.find((p) => p.value != null).value, 0.90);
-  assert.equal(lo.filter((p) => p.value != null).length, 1);
-  assert.equal(hi.filter((p) => p.value != null).length, 1);
-  assert.equal(mid.filter((p) => p.value != null).length, 1);
-});
-
 test('applyRange keeps eight bars of room on the right', () => {
   const captured = { logical: null, opts: null, fit: false };
   const chart = {
@@ -228,7 +213,7 @@ test('applyRange keeps eight bars of room on the right', () => {
   assert.ok(captured.logical.from >= 0);
 });
 
-test('priceChart IBS pane draws dotted 10/75 lines and zone fills', () => {
+test('priceChart IBS pane draws one line and dotted 10/75 thresholds', () => {
   const captured = { create: null, series: [], lines: [], fits: 0 };
   sandbox.document = {
     createElement() {
@@ -275,22 +260,16 @@ test('priceChart IBS pane draws dotted 10/75 lines and zone fills', () => {
   Charts.priceChart(el, ibsBars, { ibs: true, volume: false, showTrades: false, range: 'MAX', ticker: 'AAPL' });
   assert.equal(captured.create.timeScale.rightOffset, 8);
   assert.equal(captured.fits, 1);
-  const areas = captured.series.filter((s) => s.type === 'Area');
-  assert.equal(areas.length, 2);
-  assert.equal(areas[0].seriesOpts.baseValue.price, 0);
-  assert.equal(areas[1].seriesOpts.baseValue.price, 75);
-  assert.equal(areas[0].seriesOpts.lineVisible, false);
-  assert.equal(areas[1].seriesOpts.lineVisible, false);
+  assert.equal(captured.series.filter((s) => s.type === 'Area').length, 0);
   assert.equal(captured.lines.length, 2);
   assert.equal(captured.lines[0].price, 10);
   assert.equal(captured.lines[0].lineStyle, 1);
   assert.equal(captured.lines[0].lineWidth, 1);
   assert.equal(captured.lines[1].price, 75);
   assert.equal(captured.lines[1].lineStyle, 1);
-  const lines = captured.series.filter((s) => s.type === 'Line');
-  assert.ok(lines.some((s) => s.seriesOpts.color === '#10B981'));
-  assert.ok(lines.some((s) => s.seriesOpts.color === '#EF4444'));
-  assert.ok(lines.some((s) => s.seriesOpts.color === '#7c3aed'));
+  const lines = captured.series.filter((s) => s.type === 'Line' && s.seriesOpts.priceScaleId === 'ibs');
+  assert.equal(lines.length, 1);
+  assert.equal(lines[0].seriesOpts.color, '#7c3aed');
 });
 
 test('csvFromBars keeps the old chart export columns including IBS and EMA', () => {
@@ -315,4 +294,3 @@ test('csvCell quotes commas and doubles inner quotes', () => {
   assert.equal(Charts.csvCell('say "hi"'), '"say ""hi"""');
   assert.equal(Charts.csvCell('plain'), 'plain');
 });
-
