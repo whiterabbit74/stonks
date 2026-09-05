@@ -754,8 +754,8 @@ func TestAutotradeCardDisclaimsExecutionWindowAndSlippage(t *testing.T) {
 	}
 }
 
-// TestBrokerPageIcons keeps Webull (bull head) and Robinhood (feather) as
-// distinct 24px stroke marks in the same Lucide set as the rest of the nav.
+// TestBrokerPageIcons keeps Webull (U-horn mark) and Robinhood (feather) as
+// distinct 24px marks in the same Lucide set as the rest of the nav.
 func TestBrokerPageIcons(t *testing.T) {
 	app, err := os.ReadFile(filepath.Join("..", "..", "web", "js", "app.js"))
 	if err != nil {
@@ -789,6 +789,12 @@ func TestBrokerPageIcons(t *testing.T) {
 	}
 	if !strings.Contains(webull, "<path") || !strings.Contains(hood, "<path") {
 		t.Fatal("broker marks must be SVG paths")
+	}
+	if strings.Contains(webull, "M8 8.5") || strings.Contains(webull, "19.5 3") {
+		t.Fatal("Webull mark must not be the cartoon bull head")
+	}
+	if !strings.Contains(webull, "A10.2") && !strings.Contains(webull, "A 10.2") {
+		t.Fatal("Webull mark must be the wide U-horn (elliptical arc), not a bull head")
 	}
 	if strings.Contains(paths, "briefcase") {
 		t.Fatal("shared briefcase icon must not remain now that brokers have their own marks")
