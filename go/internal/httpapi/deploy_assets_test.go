@@ -71,3 +71,16 @@ func TestGoDeployShipsBinaryAndWeb(t *testing.T) {
 		t.Fatal("deploy backup must include datasets")
 	}
 }
+
+func TestCleanupServerDoesNotPruneVolumes(t *testing.T) {
+	sh := repoFile(t, "cleanup-server.sh")
+	for _, line := range strings.Split(sh, "\n") {
+		trim := strings.TrimSpace(line)
+		if trim == "" || strings.HasPrefix(trim, "#") {
+			continue
+		}
+		if strings.Contains(trim, "docker volume prune") {
+			t.Fatal("cleanup-server.sh must not prune named volumes")
+		}
+	}
+}

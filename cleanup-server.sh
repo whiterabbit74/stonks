@@ -52,9 +52,9 @@ cleanup_docker() {
     docker tag stonks-server:latest-backup stonks-server:latest 2>/dev/null || true
     docker rmi stonks-server:latest-backup 2>/dev/null || true
 
-    # Очистить систему
+    # Named volumes (stonks_db, datasets, Caddy certs) stay. Do not prune
+    # dangling volumes after the container rm above.
     docker system prune -af
-    docker volume prune -f
     docker network prune -f
 
     log_success "Docker очищен"
