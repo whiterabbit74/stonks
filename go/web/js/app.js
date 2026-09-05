@@ -317,6 +317,8 @@
     emaPresetId: '',
     stockPresets: JSON.parse(localStorage.getItem('stockPresets') || '[]'),
     stockPresetId: '',
+    optPresets: JSON.parse(localStorage.getItem('optPresets') || '[]'),
+    optPresetId: '',
     optResult: null,
     optTab: 'summary',
     optForm: { strike: 10, vol: 20, cap: 10, expiration: 4, maxHold: 30, leverage: 200 },
@@ -857,6 +859,9 @@
   }
   function persistStockPresets() {
     try { localStorage.setItem('stockPresets', JSON.stringify(state.stockPresets || [])); } catch (_) {}
+  }
+  function persistOptPresets() {
+    try { localStorage.setItem('optPresets', JSON.stringify(state.optPresets || [])); } catch (_) {}
   }
   function syncStockParamsFromDom() {
     const tickersEl = document.getElementById('ticker-input');
@@ -2155,14 +2160,17 @@
 
   function optFormHTML() {
     const f = state.optForm;
-    const tickers = parseTickers(state.optTickers);
+    const presets = (state.optPresets || []).map((p) => `<option value="${esc(p.id)}"${p.id === state.optPresetId ? ' selected' : ''}>${esc(p.name)}</option>`).join('');
     const sel = (opts, cur, fmt) => opts.map((v) => `<option value="${v}" ${Number(cur) === v ? 'selected' : ''}>${fmt(v)}</option>`).join('');
     return `
-      <div class="text-sm font-semibold">Параметры</div>
       <form id="opt-form" class="space-y-3">
-        <div><label class="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">Тикеры</label>${tickerInput('opt-tickers', state.optTickers)}
-          <button type="button" id="reset-opt-tickers" class="mt-1.5 w-full rounded-lg border border-dashed border-gray-300 px-2 py-1 text-left text-[11px] text-gray-500 hover:border-indigo-400">↩ AAPL, MSFT, AMZN, MAGS</button>
+        <div>
+          <label class="mb-1 block text-xs font-medium">Пресеты</label>
+          <div class="flex gap-2"><select id="opt-preset" class="${inputCls()}"><option value="">— Выбрать пресет —</option>${presets}</select>
+          <button type="button" id="opt-preset-del" class="icon-btn icon-btn-md icon-btn-glass" title="Удалить пресет" aria-label="Удалить пресет">${icon('trash', 'w-3.5 h-3.5')}</button></div>
+          <div class="mt-2 flex gap-2"><input id="opt-preset-name" class="${inputCls()}" placeholder="Название пресета" /><button type="button" id="opt-preset-save" class="btn-secondary min-h-0 py-2">Сохранить</button></div>
         </div>
+        <div><label class="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">Тикеры</label>${tickerInput('opt-tickers', state.optTickers)}</div>
         <div class="grid grid-cols-2 gap-2">
           <div><label class="mb-1 block text-xs font-medium">Страйк (+%)</label><select name="strike" class="${inputCls()}">${sel([5, 10, 15, 20], f.strike, (v) => '+' + v + '%')}</select></div>
           <div><label class="mb-1 block text-xs font-medium">Корр. IV (+%)</label><select name="vol" class="${inputCls()}">${sel([0, 5, 10, 15, 20, 25, 30, 40, 50], f.vol, (v) => '+' + v + '%')}</select></div>
@@ -3561,8 +3569,46 @@
     if (p === '/multi-ticker-options') {
       syncTickerField('opt-tickers');
       root.querySelectorAll('[data-otab]').forEach((b) => b.addEventListener('click', () => { state.optTab = b.dataset.otab; renderPage(); }));
-      document.getElementById('reset-opt-tickers')?.addEventListener('click', () => {
-        state.optTickers = 'AAPL, MSFT, AMZN, MAGS';
+      document.getElementById('opt-preset-save')?.addEventListener('click', () => {
+        const name = document.getElementById('opt-preset-name')?.value.trim();
+        if (!name) return;
+        const form = document.getElementById('opt-form');
+        const fd = new FormData(form);
+        state.optTickers = document.getElementById('opt-tickers')?.value || state.optTickers;
+        state.optForm = {
+          strike: Number(fd.get('strike') || 10), vol: Number(fd.get('vol') || 20), cap: Number(fd.get('cap') || 10),
+          expiration: Number(fd.get('expiration') || 4), maxHold: Number(fd.get('maxHold') || 30), leverage: Number(fd.get('leverage') || 200),
+        };
+        const payload = { id: String(Date.now()), name, tickers: state.optTickers, form: { ...state.optForm } };
+        const existing = state.optPresets.findIndex((p) => String(p.name || '').toLowerCase() === name.toLowerCase());
+        if (existing >= 0) {
+          state.optPresets[existing] = { ...state.optPresets[existing], ...payload, id: state.optPresets[existing].id };
+          state.optPresetId = state.optPresets[existing].id;
+        } else {
+          state.optPresets.push(payload);
+          state.optPresetId = payload.id;
+        }
+        persistOptPresets();
+        try { localStorage.setItem('options.tickers', state.optTickers); } catch (_) {}
+        toast('Пресет сохранён');
+        renderPage();
+      });
+      document.getElementById('opt-preset-del')?.addEventListener('click', () => {
+        const id = document.getElementById('opt-preset')?.value;
+        if (!id) return;
+        state.optPresets = state.optPresets.filter((p) => p.id !== id);
+        if (state.optPresetId === id) state.optPresetId = '';
+        persistOptPresets();
+        renderPage();
+      });
+      document.getElementById('opt-preset')?.addEventListener('change', async (e) => {
+        const id = e.target.value;
+        if (!id) { state.optPresetId = ''; return; }
+        const pset = state.optPresets.find((x) => x.id === id);
+        if (!pset) return;
+        state.optPresetId = pset.id;
+        state.optForm = { ...state.optForm, ...(pset.form || {}) };
+        if (pset.tickers) state.optTickers = pset.tickers;
         try { localStorage.setItem('options.tickers', state.optTickers); } catch (_) {}
         renderPage();
       });
