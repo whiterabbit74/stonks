@@ -2125,7 +2125,7 @@
       ${pageHeader('EMA', 'Симулятор торговли по отклонению цены от EMA')}
       ${r ? metricsGrid(r.metrics, r.finalValue, r.maxDrawdown) : ''}
       ${r && state.emaBaseline && Number(state.emaForm.leverage) > 100 ? `<div class="mt-3">${comparisonPanel(r, state.emaBaseline)}</div>` : ''}
-      <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+      <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 mt-4">
         ${analysisTabs(tabs, tab, 'data-etab')}
         ${main}
       </div>`;
@@ -2192,7 +2192,7 @@
     return `
       ${pageHeader('Опционы', 'Бэктест опционных стратегий на нескольких активах')}
       ${r ? metricsGrid(r.metrics, r.finalValue, r.maxDrawdown) : ''}
-      <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+      <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 mt-4">
         ${analysisTabs(tabs, tab, 'data-otab')}
         ${main}
       </div>`;

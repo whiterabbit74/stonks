@@ -1229,3 +1229,29 @@ func TestEmaPresetChangeRunsBacktest(t *testing.T) {
 		t.Fatal("empty «Выбрать пресет» must not run the backtest")
 	}
 }
+
+// TestEmaMetricsGridHasGapBeforeTabs: pageStocks puts mt-4 on the analysis-tabs
+// card so the metric tiles (итоговый баланс, доходность, …) do not sit flush
+// against the tab strip. pageEMA omitted that class, so the two blocks collide.
+func TestEmaMetricsGridHasGapBeforeTabs(t *testing.T) {
+	a := readWeb(t, "js/app.js")
+	ema := jsFn(a, "pageEMA")
+	if ema == "" {
+		t.Fatal("pageEMA not found")
+	}
+	if !strings.Contains(ema, "metricsGrid(") {
+		t.Fatal("pageEMA must render metricsGrid")
+	}
+	idx := strings.Index(ema, "analysisTabs(")
+	if idx < 0 {
+		t.Fatal("pageEMA missing analysisTabs")
+	}
+	open := strings.LastIndex(ema[:idx], "<div class=")
+	if open < 0 {
+		t.Fatal("pageEMA analysisTabs has no wrapping div")
+	}
+	wrap := ema[open:idx]
+	if !strings.Contains(wrap, "mt-4") {
+		t.Fatal("EMA tabs card must have mt-4 after metricsGrid, matching stocks")
+	}
+}
