@@ -697,27 +697,6 @@
     try { text = JSON.stringify(value, null, 2); } catch (_) { text = String(value); }
     return `<details class="raw-json"><summary>${esc(title)}</summary><pre>${esc(text)}</pre></details>`;
   }
-  function comparisonPanel(current, baseline) {
-    if (!current || !baseline) return '';
-    const cm = current.metrics || {};
-    const bm = baseline.metrics || {};
-    const cell = (label, a, b, money) => {
-      const av = money ? fmtUsd(a) : (typeof a === 'number' && Math.abs(a) < 1000 && label !== 'Сделок' ? fmtPct(a) : fmt(a, 0));
-      const bv = money ? fmtUsd(b) : (typeof b === 'number' && Math.abs(b) < 1000 && label !== 'Сделок' ? fmtPct(b) : fmt(b, 0));
-      return `<div class="rounded-lg border p-3 text-sm"><div class="text-xs text-gray-500">${esc(label)}</div><div class="font-semibold">${av}</div><div class="text-xs text-gray-500">без маржи: ${bv}</div></div>`;
-    };
-    return `<div class="rounded-lg border border-indigo-200 bg-indigo-50/60 p-3 mb-3 dark:bg-indigo-950/20 dark:border-indigo-900">
-      <div class="text-sm font-semibold mb-2">Сравнение режимов (с маржой vs 100%)</div>
-      <div class="cmp-grid">
-        ${cell('Итог', current.finalValue ?? cm.finalValue, baseline.finalValue ?? bm.finalValue, true)}
-        ${cell('Доходность', cm.totalReturn, bm.totalReturn)}
-        ${cell('CAGR', cm.cagr, bm.cagr)}
-        ${cell('Win rate', cm.winRate, bm.winRate)}
-        ${cell('Профит-фактор', cm.profitFactor, bm.profitFactor)}
-        ${cell('Сделок', cm.totalTrades ?? (current.trades || []).length, bm.totalTrades ?? (baseline.trades || []).length)}
-      </div>
-    </div>`;
-  }
   function cssHistogram(values, positive) {
     const nums = (values || []).map(Number).filter((n) => Number.isFinite(n));
     if (!nums.length) return '<p class="text-sm text-gray-500">Нет данных</p>';
@@ -1410,19 +1389,26 @@
       <input id="${id}" type="text" value="${esc(value)}" placeholder="AAPL, MSFT, AMZN, MAGS" class="${inputCls()} text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 focus:border-transparent" />
     </div>`;
   }
-  function metricsGrid(m, finalValue, maxDrawdown) {
+  function metricsGrid(m, finalValue, maxDrawdown, baseline) {
     if (!m) return '';
     const fv = finalValue ?? m.finalValue;
     const dd = maxDrawdown ?? m.maxDrawdown;
     const pf = Number.isFinite(m.profitFactor) ? fmt(m.profitFactor) : '∞';
+    const bm = baseline?.metrics;
+    const vs = (value, format) => bm ? `<div class="text-xs text-gray-500 mt-1">vs ${format(value)} без маржи</div>` : '';
+    const card = (span, tone, value, label, compare) => `<div class="${span ? span + ' ' : ''}bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 text-center"><div class="text-2xl font-bold ${tone}">${value}</div><div class="text-sm text-gray-600 dark:text-gray-400">${label}</div>${compare || ''}</div>`;
+    const baseValue = baseline?.finalValue ?? bm?.finalValue;
+    const baseDD = baseline?.maxDrawdown ?? bm?.maxDrawdown;
+    const baseTrades = bm?.totalTrades ?? (baseline?.trades || []).length;
+    const compare = (value, format) => bm ? vs(value, format) : '';
     return `<div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-9 gap-4">
-      <div class="col-span-2 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 text-center"><div class="text-2xl font-bold text-green-600">${fmtUsd(fv, 0)}</div><div class="text-sm text-gray-600 dark:text-gray-400">Итоговый баланс</div></div>
-      <div class="col-span-2 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 text-center"><div class="text-2xl font-bold text-blue-600">${fmtPct(m.totalReturn)}</div><div class="text-sm text-gray-600 dark:text-gray-400">Общая доходность</div></div>
-      <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 text-center"><div class="text-2xl font-bold text-orange-600">${fmtPct(m.cagr)}</div><div class="text-sm text-gray-600 dark:text-gray-400">CAGR</div></div>
-      <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 text-center"><div class="text-2xl font-bold text-purple-600">${fmtPct(m.winRate)}</div><div class="text-sm text-gray-600 dark:text-gray-400">Доля прибыльных</div></div>
-      <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 text-center"><div class="text-2xl font-bold text-red-600">${fmtPct(dd)}</div><div class="text-sm text-gray-600 dark:text-gray-400">Макс. просадка</div></div>
-      <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 text-center"><div class="text-2xl font-bold text-indigo-600">${m.totalTrades ?? 0}</div><div class="text-sm text-gray-600 dark:text-gray-400">Всего сделок</div></div>
-      <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 text-center"><div class="text-2xl font-bold text-teal-600">${pf}</div><div class="text-sm text-gray-600 dark:text-gray-400">Профит-фактор</div></div>
+      ${card('col-span-2', 'text-green-600', fmtUsd(fv, 0), 'Итоговый баланс', compare(baseValue, (v) => fmtUsd(v, 0)))}
+      ${card('col-span-2', 'text-blue-600', fmtPct(m.totalReturn), 'Общая доходность', compare(bm?.totalReturn, fmtPct))}
+      ${card('', 'text-orange-600', fmtPct(m.cagr), 'CAGR', compare(bm?.cagr, fmtPct))}
+      ${card('', 'text-purple-600', fmtPct(m.winRate), 'Доля прибыльных', compare(bm?.winRate, fmtPct))}
+      ${card('', 'text-red-600', fmtPct(dd), 'Макс. просадка', compare(baseDD, fmtPct))}
+      ${card('', 'text-indigo-600', m.totalTrades ?? 0, 'Всего сделок', compare(baseTrades, (v) => fmt(v, 0)))}
+      ${card('', 'text-teal-600', pf, 'Профит-фактор', compare(bm?.profitFactor, (v) => Number.isFinite(v) ? fmt(v) : '∞'))}
     </div>`;
   }
   function tradesTable(trades, opts) {
@@ -2042,13 +2028,13 @@
         </div>`;
       } else if (state.stockTab === 'price') body = priceChartPanelHTML('chart-price');
       else if (state.stockTab === 'tickerCharts') body = `<div id="ticker-charts" class="grid md:grid-cols-2 gap-3"></div>`;
-      else if (state.stockTab === 'equity') body = `${(state.leverage || 200) > 100 ? comparisonPanel(r, state.baselineResult) : ''}<div id="chart-eq" class="chart-box mt-4 rounded border dark:border-gray-800"></div>`;
+      else if (state.stockTab === 'equity') body = '<div id="chart-eq" class="chart-box mt-4 rounded border dark:border-gray-800"></div>';
       else if (state.stockTab === 'exposure') body = `<div class="text-xs text-gray-500 mb-1" id="exp-avg"></div><div id="chart-exp" class="chart-box rounded border dark:border-gray-800"></div>`;
       else if (state.stockTab === 'drawdown') body = `<div id="dd-stats" class="mb-3"></div><div id="chart-dd" class="chart-box rounded border dark:border-gray-800"></div>`;
       else if (state.stockTab === 'openDayDrawdown') body = `<div id="odd-out"></div>`;
-      else if (state.stockTab === 'trades') body = `${(state.leverage || 200) > 100 ? comparisonPanel(r, state.baselineResult) : ''}${tradesTable(r.trades, { page: state.tradesPage })}`;
-      else if (state.stockTab === 'profit') body = `${(state.leverage || 200) > 100 ? comparisonPanel(r, state.baselineResult) : ''}${profitBody(r)}`;
-      else if (state.stockTab === 'duration') body = `${(state.leverage || 200) > 100 ? comparisonPanel(r, state.baselineResult) : ''}${durationBody(r)}`;
+      else if (state.stockTab === 'trades') body = tradesTable(r.trades, { page: state.tradesPage });
+      else if (state.stockTab === 'profit') body = profitBody(r);
+      else if (state.stockTab === 'duration') body = durationBody(r);
       else if (state.stockTab === 'monthlyContribution') body = nestedMcHTML();
       else if (state.stockTab === 'splits') body = `<div id="splits-box" class="text-sm"></div>`;
       else if (state.stockTab === 'buyhold') body = `<div id="bh-out">
@@ -2067,8 +2053,7 @@
     return `
       ${pageHeader('Акции', 'Бэктест стратегии на нескольких активах')}
       ${err}
-      ${r ? metricsGrid(r.metrics, r.finalValue, r.maxDrawdown) : ''}
-      ${r && (state.leverage || 200) > 100 && state.stockTab === 'summary' ? `<div class="mt-3">${comparisonPanel(r, state.baselineResult)}</div>` : ''}
+      ${r ? metricsGrid(r.metrics, r.finalValue, r.maxDrawdown, r && (state.leverage || 200) > 100 ? state.baselineResult : null) : ''}
       <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 mt-4">
         ${analysisTabs(tabs, state.stockTab, 'data-stab')}
         <div id="stock-body" class="p-4 min-h-[420px]">${body}</div>
@@ -2161,8 +2146,7 @@
     }
     return `
       ${pageHeader('EMA', 'Симулятор торговли по отклонению цены от EMA')}
-      ${r ? metricsGrid(r.metrics, r.finalValue, r.maxDrawdown) : ''}
-      ${r && state.emaBaseline && Number(state.emaForm.leverage) > 100 ? `<div class="mt-3">${comparisonPanel(r, state.emaBaseline)}</div>` : ''}
+      ${r ? metricsGrid(r.metrics, r.finalValue, r.maxDrawdown, r && state.emaBaseline && Number(state.emaForm.leverage) > 100 ? state.emaBaseline : null) : ''}
       <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 mt-4">
         ${analysisTabs(tabs, tab, 'data-etab')}
         ${main}

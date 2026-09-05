@@ -279,8 +279,6 @@ html.dark .enhance-opt:hover, html.dark .enhance-opt-on { background: #1e1b4b; }
 html.dark .raw-json pre { background: #0b1220; }
 .hist-css { display: flex; align-items: flex-end; gap: 2px; height: 120px; }
 .hist-css span { display: block; min-width: 3px; flex: 1; border-radius: 2px 2px 0 0; }
-.cmp-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem; }
-@media (min-width: 768px) { .cmp-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 .ticker-mini-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.35rem; font-size: 11px; }
 .auto-fields { display: grid; grid-template-columns: 1fr; gap: 0.5rem 0.75rem; }
 @media (min-width: 768px) { .auto-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
