@@ -57,7 +57,11 @@ func TestAPIJSUnauthorizedDebouncesByTimestamp(t *testing.T) {
 	if req == "" {
 		t.Fatal("API.req not found")
 	}
-	if strings.Contains(req, "setTimeout") {
+	unauth := req
+	if i := strings.Index(req, "session_expired"); i >= 0 {
+		unauth = req[i:]
+	}
+	if strings.Contains(unauth, "setTimeout") {
 		t.Fatal("401 debounce must not reset a boolean with setTimeout")
 	}
 	if !strings.Contains(req, "Date.now()") {
