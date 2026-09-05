@@ -3,6 +3,7 @@ package live
 import (
 	"encoding/json"
 	"fmt"
+	"html"
 	"math"
 	"sort"
 	"strings"
@@ -227,7 +228,7 @@ func providerAbbrev(p string) string {
 	return strings.Join(parts, "+")
 }
 
-func tgBold(s string) string { return "<b>" + s + "</b>" }
+func tgBold(s string) string { return "<b>" + html.EscapeString(s) + "</b>" }
 
 func shortSuffix(short bool) string {
 	if short {

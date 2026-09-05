@@ -858,6 +858,7 @@ var extraStoredSettingsKeys = []string{
 	"autotradeLogMaxRows",
 	"lastMissedT1Date",
 	"lastCalendarImportDate",
+	"lastCalendarCoverageAlertDate",
 }
 
 var allowedSettingsKeys = func() map[string]struct{} {

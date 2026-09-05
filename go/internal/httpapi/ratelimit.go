@@ -11,12 +11,13 @@ import (
 )
 
 const (
-	rateWindow  = 15 * time.Minute
-	limitAPI    = 2000
-	limitLogin  = 10
-	limitHash   = 5
-	limitCalc   = 30
-	limitUpload = 10
+	rateWindow     = 15 * time.Minute
+	limitAPI       = 2000
+	limitLogin     = 10
+	limitHash      = 5
+	limitCalc      = 30
+	limitUpload    = 10
+	maxRateBuckets = 256
 )
 
 type rateBucket struct {
@@ -40,11 +41,21 @@ func (l *ipLimiter) allow(key string, max int) bool {
 	now := time.Now()
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if len(l.buckets) > 64 {
+	if len(l.buckets) >= maxRateBuckets {
 		for k, b := range l.buckets {
 			if now.After(b.reset) {
 				delete(l.buckets, k)
 			}
+		}
+		if _, exists := l.buckets[key]; !exists && len(l.buckets) >= maxRateBuckets {
+			var oldestKey string
+			var oldest time.Time
+			for k, b := range l.buckets {
+				if oldestKey == "" || b.reset.Before(oldest) {
+					oldestKey, oldest = k, b.reset
+				}
+			}
+			delete(l.buckets, oldestKey)
 		}
 	}
 	b := l.buckets[key]
