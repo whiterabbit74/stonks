@@ -10,24 +10,65 @@ import (
 	"mktorder.com/go/internal/store"
 )
 
-var capitalModes = map[string]struct {
-	multiplier float64
-	reservePct float64
-}{
-	"standard_safe": {1, 0.022},
-	"cash_100":      {1, 0},
-	"margin_125":    {1.25, 0},
-	"margin_150":    {1.5, 0},
-	"margin_175":    {1.75, 0},
-	"margin_200":    {2, 0},
+// CapitalModeInfo is one entry-sizing profile. The reserve actually subtracted
+// at order time is not ReservePct alone — see EffectiveReservePct.
+type CapitalModeInfo struct {
+	Value      string  `json:"value"`
+	Multiplier float64 `json:"multiplier"`
+	ReservePct float64 `json:"reservePct"`
 }
 
-// minEntryReservePct is the hard floor for the entry sizing reserve, applied
+// capitalModeList is the only list of capital modes: sanitizer, sizing, and
+// GET /api/autotrade/config all read from here. standard_safe is the fallback
+// when the stored value is missing or unknown.
+var capitalModeList = []CapitalModeInfo{
+	{Value: "standard_safe", Multiplier: 1, ReservePct: 0.022},
+	{Value: "cash_100", Multiplier: 1, ReservePct: 0},
+	{Value: "margin_125", Multiplier: 1.25, ReservePct: 0},
+	{Value: "margin_150", Multiplier: 1.5, ReservePct: 0},
+	{Value: "margin_175", Multiplier: 1.75, ReservePct: 0},
+	{Value: "margin_200", Multiplier: 2, ReservePct: 0},
+}
+
+// CapitalModeInfos returns the engine's capital modes in display order.
+func CapitalModeInfos() []CapitalModeInfo {
+	out := make([]CapitalModeInfo, len(capitalModeList))
+	copy(out, capitalModeList)
+	return out
+}
+
+func resolveCapitalMode(autoTrading map[string]any) CapitalModeInfo {
+	mode := ""
+	if autoTrading != nil {
+		mode = fmt.Sprint(autoTrading["entryCapitalMode"])
+	}
+	var fallback CapitalModeInfo
+	for _, m := range capitalModeList {
+		if m.Value == mode {
+			return m
+		}
+		if m.Value == "standard_safe" {
+			fallback = m
+		}
+	}
+	return fallback
+}
+
+func validEntryCapitalMode(s string) bool {
+	for _, m := range capitalModeList {
+		if m.Value == s {
+			return true
+		}
+	}
+	return false
+}
+
+// MinEntryReservePct is the hard floor for the entry sizing reserve, applied
 // to every capital mode (P1-6). A quote read at T-1 and an order filled a
 // moment later rarely trade at the exact same price; without a reserve the
 // margin modes size to the last cent of buying power and the broker rejects
 // the order for insufficient funds right when there is no time left to retry.
-const minEntryReservePct = 0.005
+const MinEntryReservePct = 0.005
 
 func asFloat(v any) float64 {
 	switch n := v.(type) {
@@ -114,24 +155,17 @@ func preferredAsset(root map[string]any) map[string]any {
 	return first
 }
 
-// capitalModeConfig resolves the buying-power multiplier and the effective
-// entry reserve for the configured capital mode. The reserve is never below
-// minEntryReservePct, never below the operator-configured entryReservePct,
-// and never below maxSlippageBps expressed as a fraction: the slippage
-// threshold used to be reported only, now it also floors the reserve it
-// warns about (P1-6, ties into P2-4).
-func capitalModeConfig(autoTrading map[string]any) (multiplier, reservePct float64) {
-	mode := ""
-	if autoTrading != nil {
-		mode = fmt.Sprint(autoTrading["entryCapitalMode"])
-	}
-	cfg, ok := capitalModes[mode]
-	if !ok {
-		cfg = capitalModes["standard_safe"]
-	}
-	reservePct = cfg.reservePct
-	if reservePct < minEntryReservePct {
-		reservePct = minEntryReservePct
+// EffectiveReservePct is the reserve subtracted from available funds when
+// sizing an entry:
+//
+//	max(mode.ReservePct, MinEntryReservePct, entryReservePct, maxSlippageBps/10000)
+//
+// The SPA hint must use this, not the mode's own ReservePct (cash_100 is 0
+// on the mode and 0.50% here at defaults).
+func EffectiveReservePct(autoTrading map[string]any) float64 {
+	reservePct := resolveCapitalMode(autoTrading).ReservePct
+	if reservePct < MinEntryReservePct {
+		reservePct = MinEntryReservePct
 	}
 	if autoTrading != nil {
 		if configured := asFloat(autoTrading["entryReservePct"]); configured > reservePct {
@@ -141,7 +175,11 @@ func capitalModeConfig(autoTrading map[string]any) (multiplier, reservePct float
 			reservePct = slippage
 		}
 	}
-	return cfg.multiplier, reservePct
+	return reservePct
+}
+
+func capitalModeConfig(autoTrading map[string]any) (multiplier, reservePct float64) {
+	return resolveCapitalMode(autoTrading).Multiplier, EffectiveReservePct(autoTrading)
 }
 
 // extractEntryFundsFromBalance reports the buying power an entry may use.

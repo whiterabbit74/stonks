@@ -31,11 +31,6 @@ var autoTradingRemovedFields = []string{
 	"previewBeforeSend", "cancelOpenOrdersBeforeEntry", "dryRun",
 }
 
-var entryCapitalModes = map[string]struct{}{
-	"standard_safe": {}, "cash_100": {}, "margin_125": {},
-	"margin_150": {}, "margin_175": {}, "margin_200": {},
-}
-
 func finiteNumber(v any) (float64, bool) {
 	switch n := v.(type) {
 	case float64:
@@ -142,7 +137,7 @@ func sanitizeAutoTradingConfig(input, current map[string]any, now time.Time) map
 	// reserve (P1-6): never below the hard 0.5% minimum, capped at 10% so a
 	// typo cannot starve sizing down to a handful of shares.
 	if f, ok := finiteNumber(next["entryReservePct"]); ok {
-		next["entryReservePct"] = clamp(f, minEntryReservePct, 0.1)
+		next["entryReservePct"] = clamp(f, MinEntryReservePct, 0.1)
 	}
 	low, lok := finiteNumber(next["lowIBS"])
 	high, hok := finiteNumber(next["highIBS"])
@@ -163,7 +158,7 @@ func sanitizeAutoTradingConfig(input, current map[string]any, now time.Time) map
 		next["provider"] = s
 	}
 	if s, ok := input["entryCapitalMode"].(string); ok {
-		if _, ok := entryCapitalModes[s]; ok {
+		if validEntryCapitalMode(s) {
 			next["entryCapitalMode"] = s
 		}
 	}

@@ -718,6 +718,12 @@ func TestPagesDriveLiveAPIs(t *testing.T) {
 			t.Errorf("UI missing autotrade control %s", need)
 		}
 	}
+	if strings.Contains(a, "без резерва") || strings.Contains(a, "market buy Webull") {
+		t.Error("capital mode hints must be computed from the engine list, not hardcoded")
+	}
+	if !strings.Contains(a, "state.capitalModes") || !strings.Contains(a, "effectiveReservePct") {
+		t.Error("SPA must render capital modes from GET /api/autotrade/config")
+	}
 	if !strings.Contains(j, "token/create") || !strings.Contains(j, "test-buy") || !strings.Contains(j, "close-position") {
 		t.Error("api.js missing token/test-buy/close-position")
 	}
@@ -740,6 +746,49 @@ func TestNoJsonOKCannedMap(t *testing.T) {
 	}
 	if strings.Contains(txt, `"simulated": true`) {
 		t.Fatal("canned simulate stub still in server.go")
+	}
+}
+
+func TestAutoConfigIncludesCapitalModes(t *testing.T) {
+	s, _, _ := liveServer(t)
+	req := httptest.NewRequest("GET", "/api/autotrade/config", nil)
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != 200 {
+		t.Fatalf("GET config %d %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		CapitalModes       []live.CapitalModeInfo `json:"capitalModes"`
+		MinEntryReservePct float64                `json:"minEntryReservePct"`
+		Config             map[string]any         `json:"config"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	want := live.CapitalModeInfos()
+	if len(body.CapitalModes) != len(want) {
+		t.Fatalf("capitalModes len=%d want %d: %s", len(body.CapitalModes), len(want), rec.Body.String())
+	}
+	if body.MinEntryReservePct != live.MinEntryReservePct {
+		t.Fatalf("minEntryReservePct=%v want %v", body.MinEntryReservePct, live.MinEntryReservePct)
+	}
+	got := map[string]struct{}{}
+	for i, m := range body.CapitalModes {
+		if m != want[i] {
+			t.Fatalf("capitalModes[%d]=%+v want %+v", i, m, want[i])
+		}
+		got[m.Value] = struct{}{}
+		patched := s.Live.PatchAutoConfig(map[string]any{"entryCapitalMode": m.Value})
+		if fmt.Sprint(patched["entryCapitalMode"]) != m.Value {
+			t.Fatalf("sanitizer dropped %s", m.Value)
+		}
+	}
+	patched := s.Live.PatchAutoConfig(map[string]any{"entryCapitalMode": "not_a_mode"})
+	if fmt.Sprint(patched["entryCapitalMode"]) == "not_a_mode" {
+		t.Fatal("unknown capital mode accepted by sanitizer")
+	}
+	if _, ok := got[fmt.Sprint(patched["entryCapitalMode"])]; !ok {
+		t.Fatalf("after rejecting unknown mode, current %q is not on the engine list", patched["entryCapitalMode"])
 	}
 }
 

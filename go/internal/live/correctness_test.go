@@ -170,6 +170,44 @@ func TestExitFillWritesPnLBySymbol(t *testing.T) {
 	}
 }
 
+func TestCapitalModeInfosIsWhatSanitizeUses(t *testing.T) {
+	infos := CapitalModeInfos()
+	if len(infos) == 0 {
+		t.Fatal("empty capital mode list")
+	}
+	if infos[0].Value != "standard_safe" {
+		t.Fatalf("standard_safe must lead the list (unknown modes fall back to it), got %s", infos[0].Value)
+	}
+	seen := map[string]struct{}{}
+	for _, m := range infos {
+		if m.Value == "" {
+			t.Fatal("empty capital mode value")
+		}
+		if _, dup := seen[m.Value]; dup {
+			t.Fatalf("duplicate capital mode %s", m.Value)
+		}
+		seen[m.Value] = struct{}{}
+		if !validEntryCapitalMode(m.Value) {
+			t.Fatalf("sanitize helper rejected exported mode %s", m.Value)
+		}
+		out := sanitizeAutoTradingConfig(map[string]any{"entryCapitalMode": m.Value}, map[string]any{}, time.Now())
+		if fmt.Sprint(out["entryCapitalMode"]) != m.Value {
+			t.Fatalf("sanitize dropped %s: %+v", m.Value, out)
+		}
+	}
+	out := sanitizeAutoTradingConfig(
+		map[string]any{"entryCapitalMode": "not_a_mode"},
+		map[string]any{"entryCapitalMode": "cash_100"},
+		time.Now(),
+	)
+	if fmt.Sprint(out["entryCapitalMode"]) != "cash_100" {
+		t.Fatalf("unknown mode must not replace current: %+v", out)
+	}
+	if validEntryCapitalMode("not_a_mode") {
+		t.Fatal("validEntryCapitalMode accepted a value not on CapitalModeInfos")
+	}
+}
+
 func TestSanitizeAutoTradingConfig(t *testing.T) {
 	out := sanitizeAutoTradingConfig(map[string]any{
 		"enabled": true, "lowIBS": 5.0, "highIBS": -1.0, "dryRun": true,

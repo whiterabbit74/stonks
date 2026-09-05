@@ -70,14 +70,14 @@
     { id: 'watches', label: 'Тикеры', icon: 'bell' },
     { id: 'ema', label: 'EMA', icon: 'linechart' },
   ];
-  const CAPITAL_MODES = [
-    { value: 'standard_safe', label: 'Стандартный', hint: '100% капитала с запасом 2.2% под market buy Webull' },
-    { value: 'cash_100', label: '100% без коррекции', hint: 'Ровно 100% без резерва' },
-    { value: 'margin_125', label: 'Маржа 125%', hint: '125% базового капитала' },
-    { value: 'margin_150', label: 'Маржа 150%', hint: '150% базового капитала' },
-    { value: 'margin_175', label: 'Маржа 175%', hint: '175% базового капитала' },
-    { value: 'margin_200', label: 'Маржа 200%', hint: '200% базового капитала' },
-  ];
+  const CAPITAL_MODE_LABELS = {
+    standard_safe: 'Стандартный',
+    cash_100: '100% без коррекции',
+    margin_125: 'Маржа 125%',
+    margin_150: 'Маржа 150%',
+    margin_175: 'Маржа 175%',
+    margin_200: 'Маржа 200%',
+  };
   const BROKER_TABS = [
     { id: 'connect', label: 'Подключение' },
     { id: 'overview', label: 'Обзор' },
@@ -335,6 +335,8 @@
     brokerQuotes: {},
     emaAlerts: [],
     autoConfig: {},
+    capitalModes: [],
+    minEntryReservePct: 0.005,
     tickerCatalog: [],
     enhanceCat: 'popular',
     enhanceQuery: '',
@@ -2405,6 +2407,50 @@
     const tok = state.token || {};
     return !!(cfg.enabled && (tok.hasToken || tok.present));
   }
+  function unwrapAutoConfig(payload) {
+    if (!payload || typeof payload !== 'object') return {};
+    if (Array.isArray(payload.capitalModes) && payload.capitalModes.length) {
+      state.capitalModes = payload.capitalModes;
+    }
+    if (payload.minEntryReservePct != null && Number.isFinite(Number(payload.minEntryReservePct))) {
+      state.minEntryReservePct = Number(payload.minEntryReservePct);
+    }
+    if (payload.config && typeof payload.config === 'object') return payload.config;
+    return payload;
+  }
+  // max(mode.reservePct, minEntryReservePct, entryReservePct, maxSlippageBps/10000)
+  // — same formula as live.EffectiveReservePct.
+  function effectiveReservePct(mode, cfg) {
+    const minReserve = Number(state.minEntryReservePct) || 0.005;
+    const base = Number(mode && mode.reservePct) || 0;
+    const configured = Number(cfg && cfg.entryReservePct) || 0;
+    const slippage = (Number(cfg && cfg.maxSlippageBps) || 0) / 10000;
+    return Math.max(base, minReserve, configured, slippage);
+  }
+  function capitalModeLabel(mode) {
+    if (!mode) return '';
+    if (CAPITAL_MODE_LABELS[mode.value]) return CAPITAL_MODE_LABELS[mode.value];
+    const pct = Math.round((Number(mode.multiplier) || 1) * 100);
+    return pct + '%';
+  }
+  function capitalModeHint(mode, cfg) {
+    if (!mode) return '';
+    const mult = Number(mode.multiplier) || 1;
+    const pct = Math.round(mult * 100);
+    const reserve = (effectiveReservePct(mode, cfg) * 100).toFixed(2);
+    if (mode.value === 'standard_safe') {
+      return pct + '% капитала с запасом ' + reserve + '% под рыночную заявку';
+    }
+    if (mult === 1) {
+      return pct + '% капитала, резерв ' + reserve + '%';
+    }
+    return pct + '% базового капитала, резерв ' + reserve + '%';
+  }
+  function capitalModeByValue(value) {
+    const modes = Array.isArray(state.capitalModes) ? state.capitalModes : [];
+    const want = value || 'standard_safe';
+    return modes.find((m) => m.value === want) || modes[0] || { value: want, multiplier: 1, reservePct: 0 };
+  }
   function emptyBrokerTable(cols, empty) {
     return `<div class="overflow-auto"><table class="trades"><thead><tr>${cols.map((c) => `<th>${c}</th>`).join('')}</tr></thead><tbody><tr><td colspan="${cols.length}" class="text-center text-gray-500">${empty}</td></tr></tbody></table></div>`;
   }
@@ -2549,7 +2595,7 @@
           <span>Входы у брокера <b>${esc(brokerLabel(b))}</b> заблокированы: заявка ушла, но трекер не сохранился. Проверьте у брокера вручную, затем снимите блокировку.</span>
           <button type="button" data-clear-persist-block="${esc(b)}" class="btn-secondary min-h-0 py-1 whitespace-nowrap">Снять блокировку</button>
         </div>`).join('')}</div>` : '';
-      const mode = CAPITAL_MODES.find((m) => m.value === (ac.entryCapitalMode || 'standard_safe')) || CAPITAL_MODES[0];
+      const mode = capitalModeByValue(ac.entryCapitalMode);
       const lastRes = (st.state && st.state.lastResult && st.state.lastResult.decision) || dec;
       // Broker-specific connection card: Webull uses a pasted API token,
       // Robinhood uses the copy-paste OAuth flow on the "Подключение" tab -
@@ -2590,15 +2636,15 @@
               <a href="/settings" data-nav data-settings-tab="autotrade" class="btn-secondary min-h-0 py-2">Изменить</a>
             </div>
             <dl class="grid gap-x-6 gap-y-1 sm:grid-cols-2">
-              <div class="flex justify-between gap-3"><dt class="text-gray-500">Размер входа</dt><dd>${esc(mode.label)}, целые акции</dd></div>
+              <div class="flex justify-between gap-3"><dt class="text-gray-500">Размер входа</dt><dd>${esc(capitalModeLabel(mode))}, целые акции</dd></div>
               <div class="flex justify-between gap-3"><dt class="text-gray-500">Пороги IBS</dt><dd>вход &lt; ${esc(ac.lowIBS ?? 0.1)} · выход &gt; ${esc(ac.highIBS ?? 0.75)}</dd></div>
               <div class="flex justify-between gap-3"><dt class="text-gray-500">Котировки</dt><dd>${esc(ac.provider || 'finnhub')} → резерв автоматически</dd></div>
               <div class="flex justify-between gap-3"><dt class="text-gray-500">Заявки</dt><dd>рыночные, DAY, основная сессия</dd></div>
               <div class="flex justify-between gap-3"><dt class="text-gray-500">Окно исполнения</dt><dd>${esc(ac.executionWindowSeconds ?? 90)} сек до закрытия</dd></div>
               <div class="flex justify-between gap-3"><dt class="text-gray-500">Порог проскальзывания</dt><dd>${esc(ac.maxSlippageBps ?? 25)} bps</dd></div>
-              <div class="flex justify-between gap-3"><dt class="text-gray-500">Резерв на вход</dt><dd>не меньше ${esc((Math.max(ac.entryReservePct ?? 0.005, 0.005, (ac.maxSlippageBps ?? 25) / 10000) * 100).toFixed(2))}%</dd></div>
+              <div class="flex justify-between gap-3"><dt class="text-gray-500">Резерв на вход</dt><dd>не меньше ${esc((effectiveReservePct(mode, ac) * 100).toFixed(2))}%</dd></div>
             </dl>
-            <p class="text-xs text-gray-500 mt-2">${esc(mode.hint)}. Торгуются тикеры со страницы «Мониторинг».${ac.lastModifiedAt ? (' Обновлено: ' + esc(formatDateTimeET(ac.lastModifiedAt)) + ' ET') : ''}</p>
+            <p class="text-xs text-gray-500 mt-2">${esc(capitalModeHint(mode, ac))}. Торгуются тикеры со страницы «Мониторинг».${ac.lastModifiedAt ? (' Обновлено: ' + esc(formatDateTimeET(ac.lastModifiedAt)) + ' ET') : ''}</p>
             <p class="text-xs text-gray-500 mt-2">Окно исполнения не является предохранителем сделки: к регулярному T-1 оно не применяется (он и так привязан к закрытию), см. вкладку «Настройки» → «Автоторговля». Порог проскальзывания — уже не только уведомление постфактум: перед расчётом количества акций из доступных средств вычитается резерв, равный максимуму из порога проскальзывания, настроенного резерва на вход и жёсткого минимума 0.5%. Заявка при этом остаётся рыночной и отправляется в любом случае — резерв защищает не саму заявку, а точность её размера.</p>
           </div>
           <div class="mt-4 flex flex-wrap gap-2">
@@ -2797,7 +2843,7 @@
         <div class="rounded-xl border p-4 mb-3">
           <div class="font-medium mb-2">Сколько покупать</div>
           <p class="text-xs text-gray-500 mb-2">Всегда покупается на весь счёт — вопрос только в том, сколько это «весь счёт». Размер в любом случае ограничен реальной покупательной способностью у брокера.</p>
-          ${CAPITAL_MODES.map((m) => `<label class="flex items-start gap-2 text-sm mb-2"><input type="radio" name="entryCapitalMode" value="${esc(m.value)}" ${cap === m.value ? 'checked' : ''} class="mt-1" /><span><strong>${esc(m.label)}</strong><br /><span class="text-xs text-gray-500">${esc(m.hint)}</span></span></label>`).join('')}
+          ${(state.capitalModes || []).map((m) => `<label class="flex items-start gap-2 text-sm mb-2"><input type="radio" name="entryCapitalMode" value="${esc(m.value)}" ${cap === m.value ? 'checked' : ''} class="mt-1" /><span><strong>${esc(capitalModeLabel(m))}</strong><br /><span class="text-xs text-gray-500">${esc(capitalModeHint(m, ac))}</span></span></label>`).join('')}
           <p class="text-xs text-gray-500 mt-2">Покупается всегда целое число акций: остаток меньше цены одной акции остаётся на счёте до следующего входа. Продаётся при выходе вся позиция целиком, включая дробный остаток, если его оставил сплит.</p>
         </div>
         <div class="rounded-xl border p-4 mb-3">
@@ -3818,7 +3864,7 @@
         state.rhStatus = rhst || tok || {};
         state.broker = Array.isArray(bt) ? bt : (bt.trades || []);
         state.token = tok;
-        state.autoConfig = ac && ac.config ? ac.config : (ac || {});
+        state.autoConfig = unwrapAutoConfig(ac);
         state.dashboard = dash || {};
         state.autoLogs = logs || { logs: [] };
         state.autoStatus = st;
@@ -4061,7 +4107,7 @@
         try { state.settings = await API.settings() || {}; } catch (_) { state.settings = {}; }
         try {
           const ac = await API.autoConfig() || {};
-          state.autoConfig = ac.config || ac;
+          state.autoConfig = unwrapAutoConfig(ac);
         } catch (_) { state.autoConfig = {}; }
         // The autotrade tab names the tickers it will actually trade, and that
         // list is the monitoring one.
