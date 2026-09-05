@@ -428,7 +428,9 @@ func maybeHealthAlert(db *store.DB, eng *live.Engine, broker, prev, prevAt, stat
 	if !send {
 		return
 	}
-	_ = eng.Send("", live.HealthAlertText(broker, status, kind))
+	if err := eng.Send("", live.HealthAlertText(broker, status, kind)); err != nil {
+		return
+	}
 	if broker == "robinhood" {
 		_ = db.SetRobinhoodAlerted(status, now.UTC().Format(time.RFC3339Nano))
 	} else {

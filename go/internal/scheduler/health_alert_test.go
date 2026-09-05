@@ -169,3 +169,26 @@ func TestBrokerHealthAlertsOnNeedsReauthOnce(t *testing.T) {
 		}
 	}
 }
+
+func TestMaybeHealthAlertDoesNotStampWhenSendFails(t *testing.T) {
+	dir := t.TempDir()
+	db, err := store.Open(filepath.Join(dir, "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	tg := &live.MemoryTelegram{Fail: io.EOF}
+	eng := live.New(db, nil)
+	eng.Telegram = tg
+	eng.ChatID = "c"
+	now := time.Date(2026, 9, 4, 15, 0, 0, 0, time.UTC)
+	maybeHealthAlert(db, eng, "robinhood", "", "", live.HealthNeedsReauth, now)
+	row := db.GetRobinhoodOAuth()
+	if row.LastAlertedStatus != "" || row.LastAlertedAt != "" {
+		t.Fatalf("failed send must not stamp last_alerted, got status=%q at=%q", row.LastAlertedStatus, row.LastAlertedAt)
+	}
+	send, _ := live.ShouldHealthAlert(row.LastAlertedStatus, live.HealthNeedsReauth, time.Time{}, now)
+	if !send {
+		t.Fatal("retry must still want to send")
+	}
+}
