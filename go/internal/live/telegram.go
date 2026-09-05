@@ -3,6 +3,7 @@ package live
 import (
 	"context"
 	"fmt"
+	"log"
 	"math"
 	"sort"
 	"strings"
@@ -729,7 +730,10 @@ var quoteRetryStep = 350 * time.Millisecond
 // which no live decision is possible, so a single provider outage must not
 // cancel the day. High, low and current always come from the SAME provider:
 // mixing them across sources would produce a meaningless IBS.
-const quoteCacheTTL = 20 * time.Second
+const (
+	quoteCacheTTL = 20 * time.Second
+	maxQuoteCache = 256
+)
 
 func quoteCacheKey(symbol string, chain []string) string {
 	return store.SafeTicker(symbol) + "|" + strings.Join(chain, ",")
@@ -760,6 +764,7 @@ func (e *Engine) liveQuote(symbol string, chain []string) (providers.QuotePayloa
 			e.quoteCache = map[string]quoteCacheEntry{}
 		}
 		e.quoteCache[key] = quoteCacheEntry{payload: payload, provider: provider, err: err, at: time.Now()}
+		capQuoteCache(e.quoteCache, key)
 		e.mu.Unlock()
 	}
 	return payload, provider, err
@@ -777,10 +782,17 @@ func (e *Engine) prefetchQuotes(symbols []string, chain []string) {
 		return
 	}
 	e.prefetchBatch(symbols, chain)
+	sem := make(chan struct{}, 8)
 	done := make(chan struct{}, len(symbols))
 	for _, sym := range symbols {
+		sem <- struct{}{}
 		go func(s string) {
-			defer func() { _ = recover(); done <- struct{}{} }()
+			defer func() { <-sem; done <- struct{}{} }()
+			defer func() {
+				if rec := recover(); rec != nil {
+					log.Printf("live: prefetchQuotes panic symbol=%s: %v", s, rec)
+				}
+			}()
 			_, _, _ = e.liveQuote(s, chain)
 		}(sym)
 	}
@@ -856,8 +868,22 @@ func (e *Engine) putProviderQuote(symbol, provider string, payload providers.Quo
 	if e.quoteCache == nil {
 		e.quoteCache = map[string]quoteCacheEntry{}
 	}
-	e.quoteCache[quoteCacheKey(symbol, []string{provider})] = quoteCacheEntry{
+	key := quoteCacheKey(symbol, []string{provider})
+	e.quoteCache[key] = quoteCacheEntry{
 		payload: payload, provider: provider, at: time.Now(),
+	}
+	capQuoteCache(e.quoteCache, key)
+}
+
+func capQuoteCache(m map[string]quoteCacheEntry, keep string) {
+	for k := range m {
+		if len(m) <= maxQuoteCache {
+			return
+		}
+		if k == keep {
+			continue
+		}
+		delete(m, k)
 	}
 }
 

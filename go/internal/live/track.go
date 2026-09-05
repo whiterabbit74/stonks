@@ -630,6 +630,8 @@ func (e *Engine) metaCorr(clientOrderID string) string {
 	return e.orderMeta[clientOrderID].CorrelationID
 }
 
+const maxOrderMeta = 256
+
 func (e *Engine) rememberOrder(clientOrderID string, meta orderMeta) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -637,6 +639,15 @@ func (e *Engine) rememberOrder(clientOrderID string, meta orderMeta) {
 		e.orderMeta = map[string]orderMeta{}
 	}
 	e.orderMeta[clientOrderID] = meta
+	for k := range e.orderMeta {
+		if len(e.orderMeta) <= maxOrderMeta {
+			return
+		}
+		if k == clientOrderID {
+			continue
+		}
+		delete(e.orderMeta, k)
+	}
 }
 
 func firstNonEmpty(vals ...any) any {
