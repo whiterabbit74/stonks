@@ -259,6 +259,32 @@ func TestWebullQuoteEmptySnapshot(t *testing.T) {
 	}
 }
 
+func TestWebullQuoteRejectsMismatchedSymbol(t *testing.T) {
+	c := testWebullQuoteClient(t, map[string]any{
+		"data": []any{map[string]any{
+			"symbol": "MSFT", "open": 400.0, "high": 410.0, "low": 390.0, "price": 405.0, "pre_close": 400.0,
+		}},
+	})
+	_, err := c.Quote("AAPL", "webull")
+	he, ok := err.(*HTTPError)
+	if !ok || he.Status != 404 {
+		t.Fatalf("mismatched snapshot row must be a miss, got %v", err)
+	}
+}
+
+func TestWebullQuoteRejectsUnlabelledSnapshotRow(t *testing.T) {
+	c := testWebullQuoteClient(t, map[string]any{
+		"data": []any{map[string]any{
+			"open": 228.0, "high": 231.0, "low": 227.0, "price": 230.5, "pre_close": 229.0,
+		}},
+	})
+	_, err := c.Quote("AAPL", "webull")
+	he, ok := err.(*HTTPError)
+	if !ok || he.Status != 404 {
+		t.Fatalf("unlabelled snapshot row must not become the quote, got %v", err)
+	}
+}
+
 func TestAlphaHistoryParsesTimeSeries(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"Time Series (Daily)":{"2026-08-01":{"1. open":"1","2. high":"2","3. low":"0.5","4. close":"1.5","6. volume":"10"}}}`))

@@ -579,9 +579,8 @@ func (c *Client) QuoteBatch(symbols []string, provider string) (map[string]Quote
 			if !ok {
 				continue
 			}
-			// Strict symbol match: unlike the single-symbol path there is no
-			// "first row wins" fallback here — a mislabelled row would hand one
-			// ticker's IBS to another.
+			// Strict symbol match, same as pickSnapshotRow: a mislabelled
+			// row must not hand one ticker's IBS to another.
 			sym := store.SafeTicker(rowSymbol(row))
 			if sym == "" || !want[sym] {
 				continue
@@ -619,20 +618,19 @@ func rowSymbol(row map[string]any) string {
 func pickSnapshotRow(data any, symbol string) map[string]any {
 	rows := snapshotRows(data)
 	want := strings.ToUpper(symbol)
-	var first map[string]any
+	if want == "" {
+		return nil
+	}
 	for _, row := range rows {
 		m, ok := row.(map[string]any)
 		if !ok {
 			continue
 		}
-		if first == nil {
-			first = m
-		}
 		if strings.ToUpper(rowSymbol(m)) == want {
 			return m
 		}
 	}
-	return first
+	return nil
 }
 
 func snapshotRows(v any) []any {
