@@ -15,17 +15,17 @@
 | Маршрут | Состояния/вкладки | 360 | 768 | 1024 | 1440 | Статус |
 |---|---|---:|---:|---:|---:|---|
 | `/login` | вход, ошибки | ☐ | ☐ | ☐ | ☐ | не проверено |
-| `/data` | библиотека, импорт CSV/JSON | ☐ | ☐ | ☐ | ☐ | не проверено |
-| `/enhance` | провайдер, форма загрузки | ☐ | ☐ | ☐ | ☐ | не проверено |
-| `/stocks` | summary, price, charts, equity, exposure, drawdown, trades, profit, duration, contribution, splits, buy-hold, BAC, BAC4, no-stop-loss, options | ☐ | ☐ | ☐ | ☐ | не проверено |
-| `/ema` | summary, price, deviation, equity, exposure, drawdown | ☐ | ☐ | ☐ | ☐ | не проверено |
-| `/multi-ticker-options` | summary, equity, price, charts, drawdown | ☐ | ☐ | ☐ | ☐ | не проверено |
-| `/calendar` | календарь, импорт, редактирование дня | ☐ | ☐ | ☐ | ☐ | не проверено |
-| `/split` | список, редактирование, удаление | ☐ | ☐ | ☐ | ☐ | не проверено |
-| `/watches` | summary, watches, EMA alerts, trades | ☐ | ☐ | ☐ | ☐ | не проверено |
-| `/webull` | overview, positions, orders, fills, journal, autotrade, monitor | ☐ | ☐ | ☐ | ☐ | не проверено |
-| `/robinhood` | connect/account/dashboard/tools | ☐ | ☐ | ☐ | ☐ | не проверено |
-| `/settings` | general, API, Telegram, interface, autotrade | ☐ | ☐ | ☐ | ☐ | не проверено |
+| `/data` | библиотека, импорт CSV/JSON | ✅ | ✅ | ✅ | ✅ | базовый рендер проверен |
+| `/enhance` | провайдер, форма загрузки | ✅ | ✅ | ✅ | ✅ | базовый рендер проверен |
+| `/stocks` | summary, price, charts, equity, exposure, drawdown, trades, profit, duration, contribution, splits, buy-hold, BAC, BAC4, no-stop-loss, options | ✅ | ✅ | ✅ | ✅ | базовый рендер + 16 вкладок desktop |
+| `/ema` | summary, price, deviation, equity, exposure, drawdown | ✅ | ✅ | ✅ | ✅ | базовый рендер проверен |
+| `/multi-ticker-options` | summary, equity, price, charts, drawdown | ✅ | ✅ | ✅ | ✅ | базовый рендер проверен |
+| `/calendar` | календарь, импорт, редактирование дня | ✅ | ✅ | ✅ | ✅ | базовый рендер проверен |
+| `/split` | список, редактирование, удаление | ✅ | ✅ | ✅ | ✅ | базовый рендер проверен |
+| `/watches` | summary, watches, EMA alerts, trades | ✅ | ✅ | ✅ | ✅ | базовый рендер проверен |
+| `/webull` | overview, positions, orders, fills, journal, autotrade, monitor | ✅ | ✅ | ✅ | ✅ | базовый рендер проверен |
+| `/robinhood` | connect/account/dashboard/tools | ✅ | ✅ | ✅ | ✅ | базовый рендер проверен |
+| `/settings` | general, API, Telegram, interface, autotrade | ✅ | ✅ | ✅ | ✅ | базовый рендер проверен |
 
 ## Подтверждённые находки
 
@@ -99,3 +99,4 @@
 
 - До авторизации и без тестовых данных часть заполненных таблиц и графиков может быть недоступна; такие места будут помечены отдельно, а не объявлены проверенными.
 - Скриншоты текущего обхода сохраняются в `output/playwright/` и используются как доказательство находок.
+- Для `/stocks` после запуска AAPL-бэктеста открыты все 16 вкладок; остальные страницы сняты в базовом состоянии без разрушительных действий и без изменения пользовательских данных.
