@@ -1532,8 +1532,8 @@
         <td class="font-mono">${esc(t.symbol || t.ticker || '—')}</td>
         <td>${esc(t.status === 'open' ? 'открыта' : 'закрыта')}${t.isTest ? ' · тест' : ''}</td>
         <td title="${esc(t.entryDate || '')} – ${esc(t.exitDate || '')}">${esc(fmtTradingDate(t.entryDate))} – ${esc(fmtTradingDate(t.exitDate))}</td>
-        <td><div class="text-xs text-gray-500">Покупка</div><div>${t.entryPrice == null ? '—' : fmtUsd(t.entryPrice)}</div><div class="text-xs text-gray-500 mt-1">Продажа</div><div>${t.exitPrice == null ? '—' : fmtUsd(t.exitPrice)}</div></td>
-        <td><div class="text-xs text-gray-500">Вход</div><div>${esc(ibs.split(' → ')[0] || '—')}</div><div class="text-xs text-gray-500 mt-1">Выход</div><div>${esc(ibs.split(' → ')[1] || '—')}</div></td>
+        <td>${t.entryPrice == null ? '—' : fmtUsd(t.entryPrice, 2)} – ${t.exitPrice == null ? '—' : fmtUsd(t.exitPrice, 2)}</td>
+        <td>${esc(ibs.split(' → ')[0] || '—')} – ${esc(ibs.split(' → ')[1] || '—')}</td>
         <td class="${pnlClass(pct)}">${pct == null ? '—' : fmtSignedPct(pct, 2)} ${pnl == null ? '' : '(' + fmtSignedUsd(pnl) + ')'}</td>
         <td>${t.status === 'open' && t.id && !t.linkedBrokerTradeId ? actionIcon('x', 'Закрыть сделку', `data-close-mon="${esc(t.id)}" data-close-sym="${esc(t.symbol || '')}"`, 'action-icon-danger') : ''}${t.id ? actionIcon('edit', 'Изменить сделку', `data-edit-mon="${esc(t.id)}"`, 'action-icon-edit') : ''}</td>
       </tr>`;
@@ -2405,7 +2405,7 @@
       <td class="font-mono"><a href="/stocks?tickers=${encodeURIComponent(w.symbol)}" data-nav class="text-blue-600">${esc(w.symbol)}</a></td>
       <td>${esc('< ' + (w.lowIBS ?? liveLowIBS()).toFixed(2))}</td>
       <td>${esc('> ' + Number(w.highIBS ?? liveHighIBS()).toFixed(2))}</td>
-      <td>${w.entryPrice != null ? fmtUsd(w.entryPrice) : '—'}${w.isOpenPosition && w.entryDate ? `<div class="text-[11px] text-gray-500">${esc(fmtTradingDate(w.entryDate))}${w.entryIBS != null ? ' · IBS ' + fmt(ibsPct(w.entryIBS), 1) + '%' : ''}</div>` : ''}</td>
+      <td>${w.entryPrice != null ? fmtUsd(w.entryPrice, 2) : '—'}${w.isOpenPosition && w.entryDate ? `<div class="text-[11px] text-gray-500">${esc(fmtTradingDate(w.entryDate))}${w.entryIBS != null ? ' · IBS ' + fmt(ibsPct(w.entryIBS), 1) + '%' : ''}</div>` : ''}</td>
       <td><span class="rounded-full px-2 py-0.5 text-xs ${w.isOpenPosition ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500'}">${w.isOpenPosition ? 'Открыта' : 'Нет'}</span></td>
       <td>${w.isOpenPosition && w.currentTradeId ? actionIcon('x', 'Закрыть мониторинг', `data-close-mon="${esc(w.currentTradeId)}" data-close-sym="${esc(w.symbol)}"`, 'action-icon-danger') : ''}${actionIcon('sliders', 'Изменить пороги', `data-watch-thr="${esc(w.symbol)}"`, 'action-icon-edit')}${actionIcon('trash', 'Удалить тикер из мониторинга', `data-dw="${esc(w.symbol)}"`, 'action-icon-danger')}</td>
     </tr>`).join('');
@@ -2475,7 +2475,7 @@
             const open = visibleMonitorTrades(simulated, false).find((t) => t.status === 'open');
             const watchSyms = (state.watches || []).map((w) => w.symbol);
             const hasOpen = !!open;
-            return `${open ? `<div class="rounded-lg border border-emerald-200 bg-emerald-50 p-3 mb-3 dark:bg-emerald-950/20"><div class="font-semibold">Текущая позиция: ${esc(open.symbol)}</div><div class="text-sm">Вход ${esc(fmtTradingDate(open.entryDate))} по ${open.entryPrice == null ? '—' : fmtUsd(open.entryPrice)}${open.entryIBS != null ? ', IBS ' + fmt(ibsPct(open.entryIBS), 1) + '%' : ''}</div><div class="mt-2 flex gap-1">${actionIcon('edit', 'Изменить сделку', `data-edit-mon="${esc(open.id)}"`, 'action-icon-edit')}${actionIcon('x', 'Закрыть сделку', `data-close-mon="${esc(open.id)}" data-close-sym="${esc(open.symbol)}"`, 'action-icon-danger')}</div></div>` : ''}
+            return `${open ? `<div class="rounded-lg border border-emerald-200 bg-emerald-50 p-3 mb-3 dark:bg-emerald-950/20"><div class="font-semibold">Текущая позиция: ${esc(open.symbol)}</div><div class="text-sm">Вход ${esc(fmtTradingDate(open.entryDate))} по ${open.entryPrice == null ? '—' : fmtUsd(open.entryPrice, 2)}${open.entryIBS != null ? ', IBS ' + fmt(ibsPct(open.entryIBS), 1) + '%' : ''}</div><div class="mt-2 flex gap-1">${actionIcon('edit', 'Изменить сделку', `data-edit-mon="${esc(open.id)}"`, 'action-icon-edit')}${actionIcon('x', 'Закрыть сделку', `data-close-mon="${esc(open.id)}" data-close-sym="${esc(open.symbol)}"`, 'action-icon-danger')}</div></div>` : ''}
           <div class="rounded-lg border p-4 mb-3 bg-white dark:bg-gray-800"><h3 class="font-semibold mb-1">Ручная корректировка сделки мониторинга</h3>
           <p class="text-sm text-gray-600 mb-3">Если сайт пропустил вход, можно добавить сделку вручную.</p>
           <form id="watch-manual" class="flex flex-wrap gap-2">
@@ -2585,11 +2585,11 @@
         <td>${esc(t.status === 'open' ? 'открыта' : 'закрыта')}</td>
         <td>${esc(fmtTradingDate(t.entryDate))}</td>
         <td>${esc(fmtTradingDate(t.exitDate))}</td>
-        <td><div class="text-xs text-gray-500">Покупка</div><div>${t.entryPrice == null ? '—' : fmtUsd(t.entryPrice)}</div><div class="text-xs text-gray-500 mt-1">Продажа</div><div>${t.exitPrice == null ? '—' : fmtUsd(t.exitPrice)}</div></td>
+        <td>${t.entryPrice == null ? '—' : fmtUsd(t.entryPrice, 2)} – ${t.exitPrice == null ? '—' : fmtUsd(t.exitPrice, 2)}</td>
         <td>${t.quantity == null ? '—' : fmt(t.quantity, 0)}</td>
         <td class="${pnlClass(t.pnlAbsolute)}">${t.pnlAbsolute == null ? '—' : fmtUsd(t.pnlAbsolute)}</td>
         <td class="${pnlClass(t.pnlPercent)}">${t.pnlPercent == null ? '—' : fmt(t.pnlPercent, 2) + '%'}</td>
-        <td><div class="text-xs text-gray-500">Вход</div><div>${t.entryIBS == null ? '—' : fmt(Number(t.entryIBS) <= 1.5 ? Number(t.entryIBS) * 100 : Number(t.entryIBS), 1) + '%'}</div><div class="text-xs text-gray-500 mt-1">Выход</div><div>${t.exitIBS == null ? '—' : fmt(Number(t.exitIBS) <= 1.5 ? Number(t.exitIBS) * 100 : Number(t.exitIBS), 1) + '%'}</div></td>
+        <td>${t.entryIBS == null ? '—' : fmt(Number(t.entryIBS) <= 1.5 ? Number(t.entryIBS) * 100 : Number(t.entryIBS), 1) + '%'} – ${t.exitIBS == null ? '—' : fmt(Number(t.exitIBS) <= 1.5 ? Number(t.exitIBS) * 100 : Number(t.exitIBS), 1) + '%'}</td>
         <td>${esc(t.holdingDays ?? '')}</td>
         <td class="text-xs">${esc(t.notes || '')}</td>
         <td class="text-xs">${esc(t.clientOrderId || '')}</td><td class="text-xs">${esc(t.brokerOrderId || t.orderId || '')}</td>
@@ -2806,7 +2806,7 @@
           <td class="${ibsCls}">${ibs == null ? '—' : fmt(ibs, 3)}</td>
           <td>${prev == null ? '—' : fmt(prev)}</td>
           <td class="${pnlClass(delta)}">${delta == null ? '—' : fmt(delta, 2) + '%'}</td>
-          <td>${w.entryPrice == null ? '—' : fmtUsd(w.entryPrice)}</td>
+          <td>${w.entryPrice == null ? '—' : fmtUsd(w.entryPrice, 2)}</td>
           <td>${esc('< ' + Number(w.lowIBS ?? liveLowIBS()).toFixed(2))}</td>
           <td>${esc('> ' + Number(w.highIBS ?? liveHighIBS()).toFixed(2))}</td>
           <td>${w.isOpenPosition ? 'Открыта' : 'В мониторинге'}</td>
