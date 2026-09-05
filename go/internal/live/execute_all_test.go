@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"mktorder.com/go/internal/types"
 )
@@ -186,4 +187,45 @@ func TestExecuteNoBrokerConfigured(t *testing.T) {
 	if !hasAutotradeLog(t, e, "event=execution_skipped") || !hasAutotradeLog(t, e, "reason=no_broker_configured") {
 		t.Fatal("want the no_broker_configured skip logged")
 	}
+}
+
+type slowAccountBroker struct {
+	MemoryBroker
+	entered chan struct{}
+}
+
+func (s *slowAccountBroker) Account() (map[string]any, error) {
+	close(s.entered)
+	time.Sleep(2 * time.Second)
+	return s.MemoryBroker.Account()
+}
+
+func TestLogBalanceSnapshotDoesNotBlockSubmit(t *testing.T) {
+	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 11.9, Volume: 1}}
+	db, e, _ := testEngine(t, bars)
+	br := &slowAccountBroker{entered: make(chan struct{})}
+	br.Pos = []any{map[string]any{"symbol": "AAPL", "quantity": 2.0}}
+	e.Broker = br
+	_ = db.InsertTrade("broker_trades", map[string]any{
+		"id": "b-aapl", "symbol": "AAPL", "status": "open",
+		"entryDate": "2026-08-20", "entryPrice": 10.0, "quantity": 2,
+	})
+	e.PatchAutoConfig(map[string]any{
+		"enabled": true, "highIBS": 0.75, "allowExits": true, "allowNewEntries": false,
+	})
+	start := time.Now()
+	res := e.Execute("test")
+	elapsed := time.Since(start)
+	if elapsed > 500*time.Millisecond {
+		t.Fatalf("submit delayed %s by Account snapshot", elapsed)
+	}
+	if !res.Submitted {
+		t.Fatalf("want submitted exit %+v", res)
+	}
+	select {
+	case <-br.entered:
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("balance snapshot did not start")
+	}
+	time.Sleep(2 * time.Second)
 }

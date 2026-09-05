@@ -206,7 +206,7 @@ func (e *Engine) submitEvaluated(w execWindow, ev EvalResult, trigger, corr, bro
 		e.logAuto("execution_blocked", corr, map[string]any{"symbol": symbol, "reason": qerr.Error()})
 		return ev
 	}
-	e.logBalanceSnapshot(corr, symbol, action)
+	go e.logBalanceSnapshot(corr, symbol, action)
 	side := "BUY"
 	if action == "exit" {
 		side = "SELL"
