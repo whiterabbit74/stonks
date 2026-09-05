@@ -24,11 +24,8 @@ func (s *Server) registerCalc() {
 		"POST /api/calc/clean-backtest":  s.calcClean,
 		"POST /api/calc/backtest":        s.calcClean,
 		"POST /api/calc/single-position": s.calcSingle,
-		"POST /api/calc/options":         s.calcOptions,
 		"POST /api/calc/options-multi":   s.calcOptionsMulti,
 		"POST /api/calc/ema-zone":        s.calcEMA,
-		"POST /api/calc/buy-at-close":    s.calcBuyAtClose,
-		"POST /api/calc/buy-at-close-4":  s.calcBAC4,
 		"POST /api/calc/no-stop-loss":    s.calcNoStop,
 		"POST /api/calc/metrics":         s.calcMetrics,
 		"POST /api/calc/indicators":      s.calcIndicators,
@@ -84,14 +81,6 @@ func (s *Server) calcClean(w http.ResponseWriter, r *http.Request) {
 	}{BacktestResult: res})
 }
 
-func (s *Server) calcBuyAtClose(w http.ResponseWriter, r *http.Request) {
-	req, ok := s.readCalc(w, r)
-	if !ok {
-		return
-	}
-	writeJSON(w, 200, backtest.RunBuyAtClose(s.barsWithSplits(req), decodeStrategy(req.Strategy)))
-}
-
 func (s *Server) calcNoStop(w http.ResponseWriter, r *http.Request) {
 	req, ok := s.readCalc(w, r)
 	if !ok {
@@ -119,20 +108,6 @@ func (s *Server) calcSingle(w http.ResponseWriter, r *http.Request) {
 		out["baseline"] = map[string]any{"equity": beq, "finalValue": bfinal, "maxDrawdown": bmaxDD, "trades": btrades, "metrics": bm, "exposure": bexp}
 	}
 	writeJSON(w, 200, out)
-}
-
-func (s *Server) calcOptions(w http.ResponseWriter, r *http.Request) {
-	req, ok := s.readCalc(w, r)
-	if !ok {
-		return
-	}
-	cfg := req.Config
-	if cfg.InitialCapital <= 0 {
-		cfg.InitialCapital = types.F64Or(decodeStrategy(req.Strategy).RiskManagement.InitialCapital, 10000)
-	}
-	eq, trades, final := backtest.RunOptions(decodeTrades(req.Trades), s.barsWithSplits(req), cfg)
-	m := metrics.New(trades, eq, cfg.InitialCapital, nil).All()
-	writeJSON(w, 200, map[string]any{"equity": eq, "trades": trades, "finalValue": final, "metrics": m, "maxDrawdown": m.MaxDrawdown})
 }
 
 func (s *Server) calcOptionsMulti(w http.ResponseWriter, r *http.Request) {
@@ -177,19 +152,6 @@ func (s *Server) calcEMA(w http.ResponseWriter, r *http.Request) {
 		"maxDrawdown": res.MaxDrawdown, "trades": res.Trades, "metrics": res.Metrics,
 		"deviation": res.Deviation, "baseline": base,
 	})
-}
-
-func (s *Server) calcBAC4(w http.ResponseWriter, r *http.Request) {
-	req, ok := s.readCalc(w, r)
-	if !ok {
-		return
-	}
-	tickers := s.tickersOrOne(req)
-	if !tickerDataPresent(tickers) {
-		writeJSON(w, 400, map[string]any{"error": "data is required"})
-		return
-	}
-	writeJSON(w, 200, backtest.RunBuyAtClose4(tickers, decodeStrategy(req.Strategy), types.F64Or(req.Leverage, 1)))
 }
 
 func (s *Server) calcMetrics(w http.ResponseWriter, r *http.Request) {

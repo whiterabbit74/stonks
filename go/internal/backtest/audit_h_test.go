@@ -54,7 +54,7 @@ func TestBrokenOHLCIsNotNeutralIBS(t *testing.T) {
 
 func TestOptionsUsesCallerInitialCapital(t *testing.T) {
 	market := []types.OHLC{{Date: "2026-01-01", Open: 100, High: 100, Low: 100, Close: 100}}
-	_, _, final := RunOptions(nil, market, OptionsConfig{InitialCapital: 50000})
+	_, _, final := RunMultiOptions(nil, []TickerIndexed{{Ticker: "X", Data: market}}, OptionsConfig{InitialCapital: 50000})
 	if final != 50000 {
 		t.Fatalf("empty options run must keep caller capital, got %v", final)
 	}

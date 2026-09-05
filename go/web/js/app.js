@@ -28,12 +28,9 @@
     { id: 'monthlyContribution', label: 'Пополнения' },
     { id: 'splits', label: 'Сплиты' },
     { id: 'buyhold', label: 'Купить и держать' },
-    { id: 'buyAtClose', label: 'Покупка на закрытии' },
-    { id: 'buyAtClose4', label: 'Покупка на закрытии 4' },
     { id: 'noStopLoss', label: 'Без стоп-лосса' },
-    { id: 'options', label: 'Опционы' },
   ];
-  const SINGLE_ONLY = new Set(['buyhold', 'openDayDrawdown', 'buyAtClose', 'buyAtClose4', 'noStopLoss', 'options']);
+  const SINGLE_ONLY = new Set(['buyhold', 'openDayDrawdown', 'noStopLoss']);
   const MULTI_ONLY = new Set(['tickerCharts']);
   const SETTINGS_TABS = [
     { id: 'general', label: 'Общие' },
@@ -351,10 +348,7 @@
     watchSortKey: 'symbol',
     watchSortDir: 'asc',
     nested: {
-      bac: { lowIBS: 0.1, highIBS: 0.75, maxHoldDays: 30, marginPct: 100 },
-      bac4: { tickers: 'AAPL, MSFT, AMZN, MAGS', leverage: 200 },
       nsl: { exitMode: 'ibs-only', requireProfitableExit: false, maxHoldDays: 60, profitTarget: 10, leverage: 100 },
-      opt: { strikePct: 10, volAdjPct: 20, capitalPct: 10, expirationWeeks: 4, maxHoldingDays: 30 },
       mc: { amount: 500, day: 1 },
     },
     baselineResult: null,
@@ -1958,24 +1952,6 @@
       <div id="${esc(chartId)}" class="chart-box-lg rounded border dark:border-gray-800"></div>
     </div>`;
   }
-  function nestedBacHTML() {
-    const f = state.nested.bac;
-    return `<form id="bac-form" class="flex flex-wrap items-end gap-2 mb-3">
-      <label class="text-xs">Нижний IBS<input name="lowIBS" type="number" step="0.01" min="0" max="1" value="${esc(f.lowIBS)}" class="field mt-1 w-24" /></label>
-      <label class="text-xs">Верхний IBS<input name="highIBS" type="number" step="0.01" min="0" max="1" value="${esc(f.highIBS)}" class="field mt-1 w-24" /></label>
-      <label class="text-xs">Макс. дни<input name="maxHoldDays" type="number" min="1" value="${esc(f.maxHoldDays)}" class="field mt-1 w-24" /></label>
-      <label class="text-xs">Маржа, %<input name="marginPct" type="number" min="1" value="${esc(f.marginPct)}" class="field mt-1 w-24" /></label>
-      <button class="btn-primary min-h-0 py-2">Посчитать</button>
-    </form><div id="bac-out">Покупка на закрытии…</div>`;
-  }
-  function nestedBac4HTML() {
-    const f = state.nested.bac4;
-    return `<form id="bac4-form" class="flex flex-wrap items-end gap-2 mb-3">
-      <label class="text-xs flex-1 min-w-[12rem]">Тикеры<input name="tickers" value="${esc(f.tickers)}" class="field mt-1 w-full" /></label>
-      <label class="text-xs">Плечо, %<input name="leverage" type="range" min="100" max="300" step="25" value="${esc(f.leverage)}" class="mt-2 w-40" /><span id="bac4-lev-lab" class="ml-1">${esc(f.leverage)}%</span></label>
-      <button class="btn-primary min-h-0 py-2">Посчитать</button>
-    </form><div id="bac4-out">Покупка на закрытии 4…</div>`;
-  }
   function nestedNslHTML() {
     const f = state.nested.nsl;
     return `<form id="nsl-form" class="flex flex-wrap items-end gap-2 mb-3">
@@ -1991,17 +1967,6 @@
       <label class="text-xs inline-flex items-center gap-1"><input type="checkbox" name="requireProfitableExit" ${f.requireProfitableExit ? 'checked' : ''} /> выход по IBS только при профите</label>
       <button class="btn-primary min-h-0 py-2">Посчитать</button>
     </form><div id="nsl-out">Без стоп-лосса…</div>`;
-  }
-  function nestedOptHTML() {
-    const f = state.nested.opt;
-    return `<form id="nested-opt-form" class="flex flex-wrap items-end gap-2 mb-3">
-      <label class="text-xs">Страйк, %<input name="strikePct" type="number" value="${esc(f.strikePct)}" class="field mt-1 w-24" /></label>
-      <label class="text-xs">Корр. IV, %<input name="volAdjPct" type="number" value="${esc(f.volAdjPct)}" class="field mt-1 w-24" /></label>
-      <label class="text-xs">Капитал, %<input name="capitalPct" type="number" value="${esc(f.capitalPct)}" class="field mt-1 w-24" /></label>
-      <label class="text-xs">Экспирация, нед.<input name="expirationWeeks" type="number" value="${esc(f.expirationWeeks)}" class="field mt-1 w-24" /></label>
-      <label class="text-xs">Макс. дни<input name="maxHoldingDays" type="number" value="${esc(f.maxHoldingDays)}" class="field mt-1 w-24" /></label>
-      <button class="btn-primary min-h-0 py-2">Посчитать</button>
-    </form><div id="opt-out">Опционы…</div>`;
   }
   function nestedMcHTML() {
     const f = state.nested.mc;
@@ -2050,10 +2015,7 @@
         </form>
         <div id="chart-bh" class="chart-box-lg rounded border dark:border-gray-800"></div>
       </div>`;
-      else if (state.stockTab === 'buyAtClose') body = nestedBacHTML();
-      else if (state.stockTab === 'buyAtClose4') body = nestedBac4HTML();
       else if (state.stockTab === 'noStopLoss') body = nestedNslHTML();
-      else if (state.stockTab === 'options') body = nestedOptHTML();
     }
     return `
       ${pageHeader('Акции', 'Бэктест стратегии на нескольких активах')}
@@ -5043,8 +5005,6 @@
       ema200Style: p.ema200Style,
       emaBands: p.bands,
       ibs: p.ibs !== false,
-      lowIBS: state.nested && state.nested.bac && state.nested.bac.lowIBS,
-      highIBS: state.nested && state.nested.bac && state.nested.bac.highIBS,
       volume: p.volume !== false,
       showTrades: p.trades !== false,
       trades: tradesForTicker(t, result),
@@ -5277,49 +5237,6 @@
         } catch (e) { el.textContent = e.message; }
       }
     }
-    if (state.stockTab === 'buyAtClose') {
-      const run = () => {
-        const f = state.nested.bac;
-        const strat = defaultStrategy();
-        strat.parameters = { ...strat.parameters, lowIBS: Number(f.lowIBS), highIBS: Number(f.highIBS), maxHoldDays: Number(f.maxHoldDays) };
-        fill('bac-out', 'buy-at-close', { strategy: strat, leverage: Number(f.marginPct || 100) / 100 });
-      };
-      document.getElementById('bac-form')?.addEventListener('submit', (e) => {
-        e.preventDefault();
-        const fd = new FormData(e.target);
-        state.nested.bac = { lowIBS: Number(fd.get('lowIBS')), highIBS: Number(fd.get('highIBS')), maxHoldDays: Number(fd.get('maxHoldDays')), marginPct: Number(fd.get('marginPct')) };
-        run();
-      });
-      run();
-    }
-    if (state.stockTab === 'buyAtClose4') {
-      document.getElementById('bac4-form')?.querySelector('[name=leverage]')?.addEventListener('input', (e) => {
-        const lab = document.getElementById('bac4-lev-lab');
-        if (lab) lab.textContent = e.target.value + '%';
-      });
-      const run = async () => {
-        const f = state.nested.bac4;
-        const wanted = parseTickers(f.tickers);
-        let loaded = state.tickersData || [];
-        if (wanted.length) {
-          try {
-            loaded = [];
-            for (const t of wanted) {
-              const ds = await API.dataset(t);
-              loaded.push({ ticker: t, data: ds.data || [] });
-            }
-          } catch (err) { toast(errText(err)); }
-        }
-        fill('bac4-out', 'buy-at-close-4', { leverage: Number(f.leverage || 200) / 100, tickers: loaded, strategy: st });
-      };
-      document.getElementById('bac4-form')?.addEventListener('submit', (e) => {
-        e.preventDefault();
-        const fd = new FormData(e.target);
-        state.nested.bac4 = { tickers: fd.get('tickers'), leverage: Number(fd.get('leverage')) };
-        run();
-      });
-      run();
-    }
     if (state.stockTab === 'noStopLoss') {
       const run = () => {
         const f = state.nested.nsl;
@@ -5330,19 +5247,6 @@
         const form = e.target;
         const fd = new FormData(form);
         state.nested.nsl = { exitMode: fd.get('exitMode'), requireProfitableExit: !!form.requireProfitableExit?.checked, maxHoldDays: Number(fd.get('maxHoldDays')), profitTarget: Number(fd.get('profitTarget')), leverage: Number(fd.get('leverage')) };
-        run();
-      });
-      run();
-    }
-    if (state.stockTab === 'options') {
-      const run = () => {
-        const f = state.nested.opt;
-        fill('opt-out', isSingle() ? 'options' : 'options-multi', { config: { strikePct: Number(f.strikePct), volAdjPct: Number(f.volAdjPct), capitalPct: Number(f.capitalPct), expirationWeeks: Number(f.expirationWeeks), maxHoldingDays: Number(f.maxHoldingDays) } });
-      };
-      document.getElementById('nested-opt-form')?.addEventListener('submit', (e) => {
-        e.preventDefault();
-        const fd = new FormData(e.target);
-        state.nested.opt = { strikePct: Number(fd.get('strikePct')), volAdjPct: Number(fd.get('volAdjPct')), capitalPct: Number(fd.get('capitalPct')), expirationWeeks: Number(fd.get('expirationWeeks')), maxHoldingDays: Number(fd.get('maxHoldingDays')) };
         run();
       });
       run();

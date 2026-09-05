@@ -249,7 +249,7 @@ func TestVanillaUIAssets(t *testing.T) {
 	hero := []string{
 		"data-hero-ticker",
 		"['1M', '3M', '6M', '1Y', '3Y', '5Y', 'MAX']",
-		"Покупка на закрытии 4", "Просадка дня", "Пополнения", "Без стоп-лосса",
+		"Просадка дня", "Пополнения", "Без стоп-лосса",
 		"Профит-фактор",
 		"Добавить ручную сделку",
 		"ema-alert-form",
@@ -985,9 +985,6 @@ func TestLiveIBSThresholdHelpers(t *testing.T) {
 	}
 	if !strings.Contains(addCall, "liveLowIBS()") || !strings.Contains(addCall, "liveHighIBS()") {
 		t.Fatal("addWatch must send liveLowIBS/liveHighIBS")
-	}
-	if !strings.Contains(a, "bac: { lowIBS: 0.1, highIBS: 0.75") {
-		t.Fatal("state.bac backtest params must stay 0.1/0.75")
 	}
 	ds := jsFn(a, "defaultStrategy")
 	if !strings.Contains(ds, "lowIBS: 0.1, highIBS: 0.75") {

@@ -74,37 +74,6 @@ func TestUICalcKindsMatchGoldens(t *testing.T) {
 		}
 	})
 
-	t.Run("buy-at-close", func(t *testing.T) {
-		rec := postCalc(t, s, "buy-at-close", map[string]any{"data": bars, "strategy": st})
-		got := tradeSlice(t, rec)
-		want := goldens.CompactTrades("googl-buy-at-close-trades.json")
-		if len(got) != len(want) {
-			t.Fatalf("trades %d want %d", len(got), len(want))
-		}
-		if got[0].EntryDate != want[0].EntryDate || got[len(got)-1].ExitDate != want[len(want)-1].ExitDate {
-			t.Fatalf("date span mismatch")
-		}
-	})
-
-	t.Run("buy-at-close-4", func(t *testing.T) {
-		rec := postCalc(t, s, "buy-at-close-4", map[string]any{
-			"tickers": tickers, "strategy": st, "leverage": 1,
-		})
-		got := tradeSlice(t, rec)
-		var wantFinal struct {
-			FinalValue float64 `json:"finalValue"`
-			TradeCount int     `json:"tradeCount"`
-		}
-		goldens.Load("googl-bac4-final.json", &wantFinal)
-		if len(got) != wantFinal.TradeCount {
-			t.Fatalf("trades %d want %d", len(got), wantFinal.TradeCount)
-		}
-		body := decodeCalc(t, rec)
-		if !goldens.MustAlmost(body["finalValue"].(float64), wantFinal.FinalValue, 1e-9) {
-			t.Fatalf("final %v want %v", body["finalValue"], wantFinal.FinalValue)
-		}
-	})
-
 	t.Run("no-stop-loss", func(t *testing.T) {
 		rec := postCalc(t, s, "no-stop-loss", map[string]any{
 			"data": bars, "strategy": st,
@@ -374,7 +343,7 @@ func TestCalcSingleLoadsBarsFromDB(t *testing.T) {
 
 func TestCalcEmptyDataReturns400(t *testing.T) {
 	s := testServer(t, "")
-	kinds := []string{"indicators", "single-position", "ema-zone", "buy-at-close-4", "options-multi"}
+	kinds := []string{"indicators", "single-position", "ema-zone", "options-multi"}
 	for _, kind := range kinds {
 		body, _ := json.Marshal(map[string]any{})
 		req := httptest.NewRequest("POST", "/api/calc/"+kind, bytes.NewReader(body))

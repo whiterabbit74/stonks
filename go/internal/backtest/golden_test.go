@@ -60,12 +60,6 @@ func TestGOOGLCleanMatchesGolden(t *testing.T) {
 	}
 }
 
-func TestGOOGLBuyAtCloseGolden(t *testing.T) {
-	bars := goldens.Bars("googl-bars.json")
-	got := RunBuyAtClose(bars, types.DefaultIBSStrategy())
-	assertTrades(t, "buy-at-close", got.Trades, goldens.CompactTrades("googl-buy-at-close-trades.json"))
-}
-
 func TestGOOGLNoStopLossGolden(t *testing.T) {
 	bars := goldens.Bars("googl-bars.json")
 	never := RunNoStopLoss(bars, types.DefaultIBSStrategy(), NoStopLossConfig{ExitMode: "never"})
@@ -102,51 +96,6 @@ func TestSingleTakeProfitGolden(t *testing.T) {
 	}
 	_, _, _, trades, _, _ := RunSinglePosition([]TickerIndexed{{Ticker: "AAPL", Data: data, IBSValues: ibs}}, types.DefaultIBSStrategy(), 1, SingleOptions{AllowSameDayReentry: true, TakeProfitPercent: &tp})
 	assertTrades(t, "tp", trades, goldens.CompactTrades("single-position-takeprofit.json"))
-}
-
-func TestGOOGLOptionsGolden(t *testing.T) {
-	bars := goldens.Bars("googl-bars.json")
-	clean := RunClean(bars, types.DefaultIBSStrategy(), nil)
-	_, trades, final := RunOptions(clean.Trades, bars, OptionsConfig{StrikePct: 10, VolAdjPct: 20, CapitalPct: 10, RiskFreeRate: types.F64(0.05), ExpirationWeeks: types.Int(4), MaxHoldingDays: types.Int(30)})
-	var wantFinal struct {
-		FinalValue float64 `json:"finalValue"`
-		TradeCount int     `json:"tradeCount"`
-	}
-	goldens.Load("googl-options-final.json", &wantFinal)
-	if len(trades) != wantFinal.TradeCount {
-		t.Fatalf("options trades %d want %d", len(trades), wantFinal.TradeCount)
-	}
-	if !goldens.MustAlmost(final, wantFinal.FinalValue, 1e-9) {
-		t.Fatalf("options final %v want %v", final, wantFinal.FinalValue)
-	}
-	want := goldens.CompactTrades("googl-options-trades.json")
-	if len(want) != len(trades) {
-		t.Fatalf("compact mismatch %d %d", len(trades), len(want))
-	}
-	for i := range want {
-		if trades[i].EntryDate != want[i].EntryDate || trades[i].ExitDate != want[i].ExitDate || trades[i].ExitReason != want[i].ExitReason {
-			t.Errorf("options[%d] %s->%s %s want %s->%s %s", i, trades[i].EntryDate, trades[i].ExitDate, trades[i].ExitReason, want[i].EntryDate, want[i].ExitDate, want[i].ExitReason)
-		}
-	}
-}
-
-func TestGOOGLBuyAtClose4Golden(t *testing.T) {
-	bars := goldens.Bars("googl-bars.json")
-	ibs := indicators.IBS(bars)
-	got := RunBuyAtClose4([]TickerIndexed{{Ticker: "GOOGL", Data: bars, IBSValues: ibs}}, types.DefaultIBSStrategy(), 1)
-	var wantFinal struct {
-		FinalValue  float64 `json:"finalValue"`
-		TradeCount  int     `json:"tradeCount"`
-		MaxDrawdown float64 `json:"maxDrawdown"`
-	}
-	goldens.Load("googl-bac4-final.json", &wantFinal)
-	if len(got.Trades) != wantFinal.TradeCount {
-		t.Fatalf("bac4 trades %d want %d", len(got.Trades), wantFinal.TradeCount)
-	}
-	if !goldens.MustAlmost(got.FinalValue, wantFinal.FinalValue, 1e-9) {
-		t.Fatalf("bac4 final %v want %v", got.FinalValue, wantFinal.FinalValue)
-	}
-	assertTrades(t, "bac4", got.Trades, goldens.CompactTrades("googl-bac4-trades.json"))
 }
 
 func TestGOOGLOptionsMultiGolden(t *testing.T) {

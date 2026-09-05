@@ -224,10 +224,6 @@ func RunBacktest(data []types.OHLC, strategy types.Strategy) types.BacktestResul
 	return RunClean(data, strategy, nil)
 }
 
-func RunBuyAtClose(data []types.OHLC, strategy types.Strategy) types.BacktestResult {
-	return RunClean(data, strategy, &CleanOptions{EntryExecution: "nextOpen"})
-}
-
 type NoStopLossConfig struct {
 	ExitMode              string  `json:"exitMode"` // never | ibs-only | time-limit | profit-target
 	MaxHoldDays           float64 `json:"maxHoldDays"`
