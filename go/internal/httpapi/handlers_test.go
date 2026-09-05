@@ -399,6 +399,48 @@ func TestLogoutFailsWhenSessionDeleteIsBlocked(t *testing.T) {
 	}
 }
 
+func TestLoginFailsWhenSessionSetIsBlocked(t *testing.T) {
+	s := testServer(t, "secret")
+	if _, err := s.DB.SQL.Exec(`
+            CREATE TRIGGER IF NOT EXISTS sessions_block_insert
+            BEFORE INSERT ON sessions
+            BEGIN
+                SELECT RAISE(ABORT, 'injected session insert failure');
+            END;
+        `); err != nil {
+		t.Fatalf("block sessions inserts: %v", err)
+	}
+	t.Cleanup(func() {
+		_, _ = s.DB.SQL.Exec(`DROP TRIGGER IF EXISTS sessions_block_insert`)
+	})
+
+	body, _ := json.Marshal(map[string]any{
+		"username": "admin@example.com", "password": "secret",
+	})
+	req := httptest.NewRequest("POST", "/api/login", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != 500 {
+		t.Fatalf("blocked login got %d %s", rec.Code, rec.Body.String())
+	}
+	var out map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if out["success"] == true {
+		t.Fatalf("blocked login must not claim success, got %v", out)
+	}
+	if out["error"] != "Failed to create session" {
+		t.Fatalf("error %v", out)
+	}
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == "auth_token" && c.Value != "" && c.MaxAge >= 0 {
+			t.Fatalf("blocked login must not set auth_token, got %+v", c)
+		}
+	}
+}
+
 func TestAuthMissingSessionIs401(t *testing.T) {
 	s := testServer(t, "secret")
 	req := httptest.NewRequest("GET", "/api/datasets", nil)

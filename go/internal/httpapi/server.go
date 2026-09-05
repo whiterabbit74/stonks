@@ -410,7 +410,10 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	now := time.Now()
 	s.purgeExpiredSessions()
-	_ = s.DB.SessionSet(tok, now.UnixMilli(), now.Add(ttl).UnixMilli())
+	if err := s.DB.SessionSet(tok, now.UnixMilli(), now.Add(ttl).UnixMilli()); err != nil {
+		writeJSON(w, 500, map[string]any{"error": "Failed to create session"})
+		return
+	}
 	s.setAuthCookie(w, r, tok, ttl)
 	writeJSON(w, 200, map[string]any{"success": true})
 }
