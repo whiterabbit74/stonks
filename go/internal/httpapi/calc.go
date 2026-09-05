@@ -72,7 +72,11 @@ func (s *Server) calcClean(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 400, map[string]any{"error": err.Error()})
 		return
 	}
-	writeJSON(w, 200, backtest.RunClean(s.barsOrDataset(req), decodeStrategy(req.Strategy), req.Options))
+	res := backtest.RunClean(s.barsOrDataset(req), decodeStrategy(req.Strategy), req.Options)
+	writeJSON(w, 200, struct {
+		types.BacktestResult
+		CommissionApplied bool `json:"commissionApplied"`
+	}{BacktestResult: res})
 }
 
 func (s *Server) calcBuyAtClose(w http.ResponseWriter, r *http.Request) {
