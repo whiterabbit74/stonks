@@ -228,6 +228,10 @@ type EvalResult struct {
 }
 
 func (e *Engine) Evaluate() EvalResult {
+	return e.EvaluateWindow(backgroundWindow())
+}
+
+func (e *Engine) EvaluateWindow(w execWindow) EvalResult {
 	cfg := e.AutoConfig()
 	today := tradingdate.TodayNYSE(e.now())
 	symbols := configuredSymbols(cfg, e)
@@ -251,7 +255,7 @@ func (e *Engine) Evaluate() EvalResult {
 			Live:        e.evalLive(cfg),
 		}
 	}
-	open, held, heldErr := e.booksFor("webull", e.defaultBroker(), brokerTrades, backgroundWindow())
+	open, held, heldErr := e.booksFor("webull", e.defaultBroker(), brokerTrades, w)
 	quoteSymbols := symbols
 	if open != nil {
 		openSym := store.SafeTicker(fmt.Sprint(open["symbol"]))
@@ -497,7 +501,7 @@ func (e *Engine) ExecuteCtx(ctx context.Context, trigger string) EvalResult {
 // everyone else.
 func (e *Engine) executeWindow(w execWindow, trigger string) EvalResult {
 	corr := newCorrelationID()
-	ev := e.Evaluate()
+	ev := e.EvaluateWindow(w)
 	e.mu.Lock()
 	e.lastRunAt = ev.EvaluatedAt
 	e.lastResult = ev
