@@ -311,6 +311,7 @@ func CalculateEmaDeviation(tickers []TickerIndexed, period int, startMode string
 }
 
 func RunEmaZone(tickers []TickerIndexed, params EmaParams) EmaResult {
+	tickers = IndexTickers(tickers)
 	initial := params.InitialCapital
 	if !isFin(initial) || initial <= 0 {
 		initial = 10000

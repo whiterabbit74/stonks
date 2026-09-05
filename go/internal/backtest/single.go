@@ -6,7 +6,9 @@ import (
 	"sort"
 
 	ibssig "mktorder.com/go/internal/ibs"
+	"mktorder.com/go/internal/indicators"
 	"mktorder.com/go/internal/metrics"
+	"mktorder.com/go/internal/splits"
 	"mktorder.com/go/internal/tradingdate"
 	"mktorder.com/go/internal/types"
 )
@@ -16,11 +18,16 @@ type TickerIndexed struct {
 	Data         []types.OHLC
 	IBSValues    []float64
 	DateIndexMap map[string]int
+	Splits       []types.SplitEvent
 }
 
 func IndexTickers(in []TickerIndexed) []TickerIndexed {
 	out := make([]TickerIndexed, len(in))
 	for i, t := range in {
+		if len(t.Splits) > 0 {
+			t.Data = splits.AdjustOHLC(t.Data, t.Splits)
+			t.IBSValues = indicators.IBS(t.Data)
+		}
 		m := make(map[string]int, len(t.Data))
 		for idx, bar := range t.Data {
 			m[bar.Date] = idx

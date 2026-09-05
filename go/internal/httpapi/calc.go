@@ -351,14 +351,11 @@ func (s *Server) tickersOrOne(req calcReq) []backtest.TickerIndexed {
 			if len(bars) == 0 {
 				continue
 			}
-			if len(req.Splits) > 0 {
-				bars = splits.AdjustOHLC(bars, req.Splits)
-			}
-			out = append(out, backtest.TickerIndexed{Ticker: t.Ticker, Data: bars, IBSValues: indicators.IBS(bars)})
+			out = append(out, backtest.TickerIndexed{Ticker: t.Ticker, Data: bars, IBSValues: indicators.IBS(bars), Splits: req.Splits})
 		}
 		return out
 	}
-	bars := s.barsWithSplits(req)
+	bars := s.barsOrDataset(req)
 	if len(bars) == 0 {
 		return nil
 	}
@@ -366,5 +363,5 @@ func (s *Server) tickersOrOne(req calcReq) []backtest.TickerIndexed {
 	if sym == "" {
 		sym = "TICKER"
 	}
-	return []backtest.TickerIndexed{{Ticker: sym, Data: bars, IBSValues: indicators.IBS(bars)}}
+	return []backtest.TickerIndexed{{Ticker: sym, Data: bars, IBSValues: indicators.IBS(bars), Splits: req.Splits}}
 }
