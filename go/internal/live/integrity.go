@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"mktorder.com/go/internal/store"
+	"mktorder.com/go/internal/tradingdate"
 	"mktorder.com/go/internal/types"
 )
 
@@ -43,6 +44,10 @@ func EvaluatePriceIntegrity(symbol string, bars []types.OHLC, currentPrice float
 		}
 	}
 	if !found || prev.Close <= 0 || currentPrice <= 0 {
+		base.Checked = false
+		return base
+	}
+	if !barsCoverPrevSession(bars, currentDate) {
 		base.Checked = false
 		return base
 	}
@@ -86,6 +91,23 @@ func EvaluatePriceIntegrity(symbol string, bars []types.OHLC, currentPrice float
 	out.Code = code
 	out.TelegramLines = integrityTelegramLines(out)
 	return out
+}
+
+func barsCoverPrevSession(bars []types.OHLC, today string) bool {
+	if len(bars) == 0 {
+		return false
+	}
+	last := tradingdate.DateKey(bars[len(bars)-1].Date)
+	prev := today
+	for i := 0; i < 5; i++ {
+		cand := tradingdate.AddDays(today, -1-i)
+		if tradingdate.DayOfWeek(cand) == 0 || tradingdate.DayOfWeek(cand) == 6 {
+			continue
+		}
+		prev = cand
+		break
+	}
+	return last >= prev
 }
 
 func nearestSplitFactor(ratio float64) float64 {
