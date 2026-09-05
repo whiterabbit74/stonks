@@ -469,6 +469,22 @@ func TestEvalWatchMatchesWatchThresholds(t *testing.T) {
 	}
 }
 
+func TestEvaluateWindowUsesCfgLowIBSWhenWatchIsZero(t *testing.T) {
+	// IBS = 0.15: default 0.10 would skip, cfg 0.20 must enter — the F-05 split.
+	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.6, Volume: 1}}
+	db, e, _ := testEngine(t, bars)
+	if err := db.PatchWatch("AAPL", map[string]any{"lowIBS": 0.0}); err != nil {
+		t.Fatal(err)
+	}
+	e.PatchAutoConfig(map[string]any{
+		"enabled": true, "lowIBS": 0.20, "highIBS": 0.75, "allowNewEntries": true,
+	})
+	ev := e.Evaluate()
+	if fmt.Sprint(ev.Decision["action"]) != "entry" {
+		t.Fatalf("Evaluate must use cfg lowIBS 0.20 after watch 0, got %+v", ev.Decision)
+	}
+}
+
 func TestSanitizeZeroLowIBSNotKept(t *testing.T) {
 	out := sanitizeAutoTradingConfig(map[string]any{"lowIBS": 0.0}, map[string]any{}, time.Now())
 	if asFloat(out["lowIBS"]) == 0 {
