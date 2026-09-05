@@ -328,6 +328,7 @@
     quoteLoading: false,
     refreshingTicker: null,
     emaPresets: JSON.parse(localStorage.getItem('emaPresets') || '[]'),
+    emaPresetId: '',
     optResult: null,
     optTab: 'summary',
     optForm: { strike: 10, vol: 20, cap: 10, expiration: 4, maxHold: 30, leverage: 200 },
@@ -2061,7 +2062,7 @@
   function emaFormHTML() {
     const f = state.emaForm;
     const tickers = parseTickers(state.emaTickers);
-    const presets = (state.emaPresets || []).map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('');
+    const presets = (state.emaPresets || []).map((p) => `<option value="${esc(p.id)}"${p.id === state.emaPresetId ? ' selected' : ''}>${esc(p.name)}</option>`).join('');
     return `
       <form id="ema-form" class="space-y-3">
         <div>
@@ -3438,8 +3439,13 @@
         syncEmaFormFromDom();
         const payload = { id: String(Date.now()), name, form: { ...state.emaForm, buyZones: state.emaForm.buyZones.map((z) => ({ ...z })), sellZones: state.emaForm.sellZones.map((z) => ({ ...z })) }, tickers: state.emaTickers };
         const existing = state.emaPresets.findIndex((p) => String(p.name || '').toLowerCase() === name.toLowerCase());
-        if (existing >= 0) state.emaPresets[existing] = { ...state.emaPresets[existing], ...payload, id: state.emaPresets[existing].id };
-        else state.emaPresets.push(payload);
+        if (existing >= 0) {
+          state.emaPresets[existing] = { ...state.emaPresets[existing], ...payload, id: state.emaPresets[existing].id };
+          state.emaPresetId = state.emaPresets[existing].id;
+        } else {
+          state.emaPresets.push(payload);
+          state.emaPresetId = payload.id;
+        }
         try { localStorage.setItem('emaPresets', JSON.stringify(state.emaPresets)); } catch (_) {}
         toast('Пресет сохранён');
         renderPage();
@@ -3448,51 +3454,28 @@
         const id = document.getElementById('ema-preset')?.value;
         if (!id) return;
         state.emaPresets = state.emaPresets.filter((p) => p.id !== id);
+        if (state.emaPresetId === id) state.emaPresetId = '';
         try { localStorage.setItem('emaPresets', JSON.stringify(state.emaPresets)); } catch (_) {}
         renderPage();
       });
-      document.getElementById('ema-preset')?.addEventListener('change', (e) => {
-        const pset = state.emaPresets.find((x) => x.id === e.target.value);
+      document.getElementById('ema-preset')?.addEventListener('change', async (e) => {
+        const id = e.target.value;
+        if (!id) { state.emaPresetId = ''; return; }
+        const pset = state.emaPresets.find((x) => x.id === id);
         if (!pset) return;
+        state.emaPresetId = pset.id;
         state.emaForm = normalizeEmaForm(pset.form);
         persistEmaForm();
         if (pset.tickers) { state.emaTickers = pset.tickers; try { localStorage.setItem('ema.tickers', state.emaTickers); } catch (_) {} }
-        renderPage();
+        await renderPage();
+        await runEma();
       });
       bindEmaZones(root);
       document.getElementById('ema-form')?.addEventListener('submit', async (e) => {
         e.preventDefault();
         syncEmaFormFromDom();
         persistEmaForm();
-        const f = state.emaForm;
-        try {
-          const names = parseTickers(state.emaTickers);
-          const tp = Number(String(f.takeProfit || '').replace(',', '.'));
-          const lev = Number(f.leverage || 200) / 100;
-          const ema = {
-            initialCapital: initialCapital(),
-            leverage: lev,
-            emaPeriod: Number(f.period || 200),
-            buyZones: (f.buyZones || []).map((z) => ({ id: z.id, levelPct: Number(z.levelPct), enabled: !!z.enabled })),
-            sellZones: (f.sellZones || []).map((z) => ({ id: z.id, levelPct: Number(z.levelPct), enabled: !!z.enabled })),
-            signalSource: f.signal || 'close',
-            emaStartMode: f.start || 'full_history',
-            noSellAtLoss: !!f.noSellAtLoss,
-          };
-          if (Number.isFinite(tp) && tp > 0) ema.takeProfitPercent = tp;
-          const payload = { tickers: calcTickerRefs(names), ema };
-          if (lev > 1) payload.includeBaseline = true;
-          const [raw] = await Promise.all([
-            API.calc('ema-zone', payload),
-            loadSelected(),
-          ]);
-          state.emaResult = resultOf(raw);
-          state.emaRunParams = { buyZones: ema.buyZones, sellZones: ema.sellZones, snap: JSON.parse(JSON.stringify({ form: state.emaForm, tickers: state.emaTickers })) };
-          state.emaBaseline = lev > 1 ? resultOf(raw && raw.baseline) : null;
-          state.emaTab = 'summary';
-          state.tradesPage = 1;
-          renderPage();
-        } catch (err) { toast(err.message); }
+        await runEma();
       });
       bindPriceChartControls('chart-ema-price');
       paintEmaCharts();
@@ -4330,6 +4313,38 @@
     state.ticker = loaded[0].ticker;
     state.bars = loaded[0].data || [];
     return loaded;
+  }
+
+  async function runEma() {
+    const f = state.emaForm;
+    try {
+      const names = parseTickers(state.emaTickers);
+      const tp = Number(String(f.takeProfit || '').replace(',', '.'));
+      const lev = Number(f.leverage || 200) / 100;
+      const ema = {
+        initialCapital: initialCapital(),
+        leverage: lev,
+        emaPeriod: Number(f.period || 200),
+        buyZones: (f.buyZones || []).map((z) => ({ id: z.id, levelPct: Number(z.levelPct), enabled: !!z.enabled })),
+        sellZones: (f.sellZones || []).map((z) => ({ id: z.id, levelPct: Number(z.levelPct), enabled: !!z.enabled })),
+        signalSource: f.signal || 'close',
+        emaStartMode: f.start || 'full_history',
+        noSellAtLoss: !!f.noSellAtLoss,
+      };
+      if (Number.isFinite(tp) && tp > 0) ema.takeProfitPercent = tp;
+      const payload = { tickers: calcTickerRefs(names), ema };
+      if (lev > 1) payload.includeBaseline = true;
+      const [raw] = await Promise.all([
+        API.calc('ema-zone', payload),
+        loadSelected(),
+      ]);
+      state.emaResult = resultOf(raw);
+      state.emaRunParams = { buyZones: ema.buyZones, sellZones: ema.sellZones, snap: JSON.parse(JSON.stringify({ form: state.emaForm, tickers: state.emaTickers })) };
+      state.emaBaseline = lev > 1 ? resultOf(raw && raw.baseline) : null;
+      state.emaTab = 'summary';
+      state.tradesPage = 1;
+      renderPage();
+    } catch (err) { toast(err.message); }
   }
 
   async function runStocks() {

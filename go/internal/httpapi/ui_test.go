@@ -1192,3 +1192,40 @@ func TestWatchThresholdsAreEditable(t *testing.T) {
 		t.Fatal("threshold PATCH must not send isOpenPosition/entry_*")
 	}
 }
+
+// TestEmaPresetChangeRunsBacktest: picking a saved EMA preset must keep that
+// option selected after re-render and immediately run the same calc as the
+// form submit. The empty «Выбрать пресет» row is a no-op.
+func TestEmaPresetChangeRunsBacktest(t *testing.T) {
+	a := readWeb(t, "js/app.js")
+	form := jsFn(a, "emaFormHTML")
+	if form == "" {
+		t.Fatal("emaFormHTML not found")
+	}
+	if !strings.Contains(form, "state.emaPresetId") {
+		t.Fatal("ema preset <option> must mark the selected preset so the dropdown does not snap back")
+	}
+	start := strings.Index(a, "getElementById('ema-preset')?.addEventListener('change'")
+	if start < 0 {
+		t.Fatal("ema-preset change handler not found")
+	}
+	endRel := strings.Index(a[start:], "bindEmaZones")
+	if endRel < 0 {
+		t.Fatal("ema-preset change handler not bounded")
+	}
+	handler := a[start : start+endRel]
+	runAt := strings.Index(handler, "runEma(")
+	if runAt < 0 {
+		runAt = strings.Index(handler, "requestSubmit(")
+	}
+	if runAt < 0 {
+		t.Fatal("selecting an EMA preset must run the backtest, not only fill the form")
+	}
+	guardAt := strings.Index(handler, "if (!pset)")
+	if guardAt < 0 {
+		guardAt = strings.Index(handler, "if (!id)")
+	}
+	if guardAt < 0 || guardAt > runAt {
+		t.Fatal("empty «Выбрать пресет» must not run the backtest")
+	}
+}
