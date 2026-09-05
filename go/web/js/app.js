@@ -2926,7 +2926,7 @@
         <div class="rounded-xl border overflow-hidden">
           <div class="px-4 pt-4 pb-2"><div class="text-sm font-semibold">Вкладки страницы «Акции»</div>
           <div class="text-xs text-gray-500">Нажмите, чтобы скрыть или показать</div></div>
-          <div class="flex overflow-x-auto border-t">${chips}</div>
+          <div class="scroll-cue flex overflow-x-auto border-t">${chips}</div>
         </div>`;
     } else {
       const ac = state.autoConfig?.config || state.autoConfig || {};
