@@ -1802,7 +1802,7 @@
         <div class="flex items-center gap-3 mb-3">
           <div class="flex items-center justify-center w-8 h-8 bg-blue-50 rounded-lg dark:bg-blue-950/20">${icon('database', 'w-4 h-4 text-blue-600')}</div>
           <div class="flex-1"><h3 class="font-semibold text-base">Библиотека датасетов</h3><p class="text-xs text-gray-500">${filtered.length}${state.dataTag !== 'all' ? ' из ' + state.datasets.length : ''} датасетов</p></div>
-          ${state.datasets.length ? `<a href="/enhance" data-nav title="Загрузить новые данные из API" class="inline-flex items-center justify-center w-8 h-8 rounded-lg border border-gray-200 bg-white text-gray-500 hover:bg-indigo-50 hover:text-indigo-600 dark:border-gray-700 dark:bg-gray-800">${icon('plus', 'w-4 h-4')}</a>` : ''}
+          ${state.datasets.length ? `<a href="/enhance" data-nav title="Загрузить новые данные из API" aria-label="Загрузить новые данные из API" class="icon-btn icon-btn-md icon-btn-glass">${icon('plus', 'w-4 h-4')}</a>` : ''}
         </div>
         ${state.datasetsError ? `<div class="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950/30">Ошибка загрузки: ${esc(state.datasetsError)}</div>` : ''}
         <div class="flex items-center justify-between mb-3">
