@@ -1545,14 +1545,14 @@ func (d *DB) ListEMAAlerts() ([]map[string]any, error) {
 	var out []map[string]any
 	for rows.Next() {
 		var id, symbol, dir string
-		var period, enabled int
-		var level float64
+		var period, level float64
+		var enabled int
 		var buy, sell, thr, info sql.NullFloat64
 		var next, infoSide sql.NullString
 		if err := rows.Scan(&id, &symbol, &period, &level, &dir, &enabled, &buy, &sell, &next, &thr, &info, &infoSide); err != nil {
 			return nil, err
 		}
-		row := map[string]any{"id": id, "symbol": symbol, "emaPeriod": period, "levelPct": level, "direction": dir, "enabled": enabled == 1}
+		row := map[string]any{"id": id, "symbol": symbol, "emaPeriod": int(period), "levelPct": level, "direction": dir, "enabled": enabled == 1}
 		if buy.Valid {
 			row["buyLevelPct"] = buy.Float64
 		}
@@ -1605,6 +1605,10 @@ func (d *DB) UpsertEMAAlert(rec map[string]any) (string, error) {
 	if rec["thresholdPct"] == nil {
 		rec["thresholdPct"] = 0.5
 	}
+	period := int(asFloat(rec["emaPeriod"]))
+	if period <= 0 {
+		period = 200
+	}
 	if rec["direction"] == nil || fmt.Sprint(rec["direction"]) == "" {
 		if fmt.Sprint(next) == "sell" {
 			rec["direction"] = "above"
@@ -1617,7 +1621,7 @@ func (d *DB) UpsertEMAAlert(rec map[string]any) (string, error) {
         ON CONFLICT(id) DO UPDATE SET symbol=excluded.symbol, ema_period=excluded.ema_period, level_pct=excluded.level_pct, direction=excluded.direction,
             buy_level_pct=excluded.buy_level_pct, sell_level_pct=excluded.sell_level_pct, next_action=excluded.next_action, threshold_pct=excluded.threshold_pct,
             info_level_pct=excluded.info_level_pct, updated_at=datetime('now')`,
-		id, symbol, rec["emaPeriod"], rec["levelPct"], rec["direction"], rec["buyLevelPct"], rec["sellLevelPct"], next, rec["thresholdPct"], rec["infoLevelPct"])
+		id, symbol, period, rec["levelPct"], rec["direction"], rec["buyLevelPct"], rec["sellLevelPct"], next, rec["thresholdPct"], rec["infoLevelPct"])
 	return id, err
 }
 

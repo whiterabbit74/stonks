@@ -743,3 +743,33 @@ func TestGetDatasetFractionalVolume(t *testing.T) {
 		t.Fatalf("recent %+v", recent)
 	}
 }
+
+func TestEMAAlertPeriodCoercion(t *testing.T) {
+	db := openTestDB(t)
+	if _, err := db.UpsertEMAAlert(map[string]any{
+		"id": "a1", "symbol": "AAPL", "emaPeriod": 200.5, "buyLevelPct": -5.0,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// Missing period falls back to the schema default instead of failing NOT NULL.
+	if _, err := db.UpsertEMAAlert(map[string]any{
+		"id": "a2", "symbol": "MSFT", "buyLevelPct": -5.0,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// A row written by an older build with a fractional period still reads back.
+	if _, err := db.SQL.Exec(`UPDATE telegram_ema_alerts SET ema_period = 50.5 WHERE id = 'a2'`); err != nil {
+		t.Fatal(err)
+	}
+	list, err := db.ListEMAAlerts()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]any{}
+	for _, a := range list {
+		got[a["id"].(string)] = a["emaPeriod"]
+	}
+	if got["a1"] != 200 || got["a2"] != 50 {
+		t.Fatalf("emaPeriod %+v", got)
+	}
+}
