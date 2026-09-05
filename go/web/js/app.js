@@ -2820,7 +2820,7 @@
           <td>${w.isOpenPosition ? 'Открыта' : 'В мониторинге'}</td>
           <td class="text-xs">${esc(formatDateTimeET(q.dateKey || quote.updatedAt || ''))}</td>
           <td class="text-xs">${esc(q.provider || q.error || '')}</td>
-          <td><button type="button" data-bq="${esc(w.symbol)}" class="text-sm text-indigo-600">Обновить</button></td>
+          <td>${actionIcon('refresh', 'Обновить котировку', `data-bq="${esc(w.symbol)}"`, 'action-icon-edit')}</td>
         </tr>`;
       }).join('');
       body = `<div class="flex flex-wrap gap-2 mb-3">
