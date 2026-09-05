@@ -260,6 +260,34 @@ func TestTestBuyDisabledByDefault(t *testing.T) {
 	}
 }
 
+func TestRobinhoodCloseGuardsPendingTracker(t *testing.T) {
+	s, _, webull := liveServer(t)
+	rh := &live.MemoryBroker{Pos: []any{map[string]any{"symbol": "AAPL", "quantity": 2.0}}}
+	s.Live.Brokers = map[string]live.Broker{"webull": webull, "robinhood": rh}
+	if err := s.DB.SaveOrderTracker(map[string]any{
+		"clientOrderId": "pend-rh-exit", "symbol": "AAPL", "action": "exit",
+		"status": "submitted", "quantity": 2, "dateKey": "2026-09-01",
+		"broker": "robinhood",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	rec := postJSON(s, "/api/autotrade/robinhood/close-position", map[string]any{"symbol": "AAPL"})
+	if len(rh.Orders) != 0 {
+		t.Fatalf("must not PlaceMarket while a tracker is pending: %+v", rh.Orders)
+	}
+	if len(webull.Orders) != 0 {
+		t.Fatalf("webull must stay empty, got %+v", webull.Orders)
+	}
+	body := rec.Body.String()
+	if rec.Code == 200 {
+		t.Fatalf("blocked close must not be 200: %s", body)
+	}
+	if !strings.Contains(body, "pending_") || !strings.Contains(body, "tracker_exists") {
+		t.Fatalf("handler must go through ClosePosition/manualOrder, got %d %s", rec.Code, body)
+	}
+}
+
 func TestSimulateSplitJumpAndEmaAndFillPoll(t *testing.T) {
 	s, tg, br := liveServer(t)
 	bars := []types.OHLC{{Date: "2026-09-01", Open: 91, High: 94, Low: 90, Close: 92.7, Volume: 1}}

@@ -122,12 +122,11 @@ func (s *Server) handleRobinhoodClose(w http.ResponseWriter, r *http.Request) {
 	if !s.requireJSON(w, r, &body) {
 		return
 	}
-	br := s.rhBroker()
-	if br == nil {
+	if s.liveEng().BrokerNamed("robinhood") == nil {
 		writeJSON(w, 400, map[string]any{"error": "robinhood not connected"})
 		return
 	}
-	res, err := br.CloseMarket(body.Symbol)
+	res, err := s.liveEng().ClosePosition("robinhood", body.Symbol)
 	if err != nil {
 		writeJSON(w, 502, map[string]any{"error": err.Error(), "result": res})
 		return
