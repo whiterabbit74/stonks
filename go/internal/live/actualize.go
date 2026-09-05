@@ -51,11 +51,12 @@ func actualizeDelay() time.Duration {
 }
 
 func unixMidnightUTC(date string) int64 {
-	t, err := time.Parse("2006-01-02", date)
+	// external API boundary: session date vs UTC unix window for provider history
+	t, err := time.ParseInLocation(tradingdate.Layout, date, time.UTC)
 	if err != nil {
 		return 0
 	}
-	return t.UTC().Unix()
+	return t.Unix()
 }
 
 func (e *Engine) historicalWindow(sym string) (startTs, endTs int64) {

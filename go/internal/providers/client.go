@@ -310,7 +310,8 @@ func (c *Client) alphaHistory(symbol string, startTs, endTs int64, adjustment st
 	end := time.Unix(endTs, 0).UTC()
 	var rows []types.OHLC
 	for date, raw := range series {
-		t, err := time.Parse("2006-01-02", date)
+		// external API boundary: Alpha Vantage session date vs UTC unix window
+		t, err := time.ParseInLocation("2006-01-02", date, time.UTC)
 		if err != nil {
 			continue
 		}
