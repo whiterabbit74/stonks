@@ -182,6 +182,7 @@ const Charts = {
     return weekly;
   },
   destroy() {
+    this._hero = null;
     this.live.splice(0).forEach((chart) => {
       try { chart.remove(); } catch (_) { /* already gone */ }
     });
@@ -256,12 +257,40 @@ const Charts = {
     }
   },
   mark(series, markers) {
-    if (!series || !markers || !markers.length) return;
+    if (!series) return null;
     try {
       if (typeof LightweightCharts.createSeriesMarkers === 'function') {
-        LightweightCharts.createSeriesMarkers(series, markers);
+        return LightweightCharts.createSeriesMarkers(series, markers || []);
       }
     } catch (_) { /* plugin unavailable */ }
+    return null;
+  },
+  setHeroData(container, bars, opts) {
+    const inst = this._hero;
+    if (!inst || inst.container !== container || this.live.indexOf(inst.chart) < 0) return false;
+    opts = opts || {};
+    const mapped = this.mapHeroSeries(bars, opts);
+    const kind = mapped.kind;
+    const candles = mapped.candles;
+    const line = mapped.line;
+    const trendUp = line.length < 2 || line[line.length - 1].value >= line[0].value;
+    const lineColor = trendUp ? '#16a34a' : '#ea580c';
+    try {
+      inst.lineSeries.applyOptions({ color: lineColor, visible: kind === 'line' });
+      inst.candleSeries.applyOptions({ visible: kind === 'candles' });
+      inst.lineSeries.setData(line);
+      inst.candleSeries.setData(candles);
+      if (inst.lineMarks && typeof inst.lineMarks.setMarkers === 'function') {
+        inst.lineMarks.setMarkers(mapped.lineMarks || []);
+      }
+      if (inst.candleMarks && typeof inst.candleMarks.setMarkers === 'function') {
+        inst.candleMarks.setMarkers(mapped.candleMarks || []);
+      }
+      this.applyRange(inst.chart, candles, opts.range || '3M');
+    } catch (_) {
+      return false;
+    }
+    return true;
   },
   hero(container, bars, opts) {
     opts = opts || {};
@@ -288,9 +317,10 @@ const Charts = {
     });
     lineSeries.setData(line);
     candleSeries.setData(candles);
-    this.mark(lineSeries, mapped.lineMarks);
-    this.mark(candleSeries, mapped.candleMarks);
+    const lineMarks = this.mark(lineSeries, mapped.lineMarks);
+    const candleMarks = this.mark(candleSeries, mapped.candleMarks);
     this.applyRange(chart, candles, opts.range || '3M');
+    this._hero = { container, chart, lineSeries, candleSeries, lineMarks, candleMarks };
     return { chart, lineColor };
   },
   candles(container, bars, isDark) {

@@ -513,3 +513,57 @@ func TestAutotradeCardDisclaimsExecutionWindowAndSlippage(t *testing.T) {
 		t.Fatal("autotrade tab card must explain that the slippage threshold now floors the entry sizing reserve")
 	}
 }
+
+// TestPhase3UIAudit is AU-P3-12 / UI 5.1.2–5.1.4 / AU-P1-5 / a11y item 23:
+// authCheck must not run on every navigate, toasts cancel the previous timer,
+// overlay dialogs expose role=dialog, and Calendar/Watches show the
+// not-imported NYSE fallback copy.
+func TestPhase3UIAudit(t *testing.T) {
+	app, err := os.ReadFile(filepath.Join("..", "..", "web", "js", "app.js"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := string(app)
+
+	nav := jsFn(a, "navigate")
+	if nav == "" {
+		t.Fatal("navigate not found")
+	}
+	if strings.Contains(nav, "API.authCheck") {
+		t.Fatal("navigate must not call API.authCheck on every client route change")
+	}
+
+	toastFn := jsFn(a, "toast")
+	if toastFn == "" {
+		t.Fatal("toast not found")
+	}
+	if !strings.Contains(toastFn, "clearTimeout") {
+		t.Fatal("toast must cancel the previous timer with clearTimeout")
+	}
+
+	ov := jsFn(a, "overlay")
+	if ov == "" {
+		t.Fatal("overlay not found")
+	}
+	if !strings.Contains(ov, `role="dialog"`) {
+		t.Fatal(`modal overlay must set role="dialog"`)
+	}
+	if !strings.Contains(ov, `aria-modal="true"`) {
+		t.Fatal(`modal overlay must set aria-modal="true"`)
+	}
+
+	if !strings.Contains(a, "calendar-not-imported") {
+		t.Fatal("Calendar/Watches must mark the not-imported calendar widget")
+	}
+	if !strings.Contains(a, "Календарь не импортирован — используются расчётные праздники NYSE") {
+		t.Fatal("Calendar/Watches must show the calculated-NYSE fallback copy")
+	}
+
+	paint := jsFn(a, "paintCurrentHero")
+	if paint == "" {
+		t.Fatal("paintCurrentHero not found")
+	}
+	if !strings.Contains(paint, "setHeroData") && !strings.Contains(paint, "setData") {
+		t.Fatal("paintCurrentHero must reuse the hero chart via setData instead of always destroy+hero")
+	}
+}

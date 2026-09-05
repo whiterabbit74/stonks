@@ -585,8 +585,7 @@
   }
   function setModal(html) {
     state.modal = html || null;
-    const ov = document.getElementById('overlay-root');
-    if (ov) ov.innerHTML = overlay();
+    paintOverlay();
   }
   function closeModal() { setModal(null); }
   async function openCloseMonitorModal(id, symbol) {
@@ -1433,21 +1432,84 @@
   function overlay() {
     let html = '';
     if (state.confirm) {
-      html += `<div class="modal-backdrop" id="confirm-box"><div class="modal-card">
+      html += `<div class="modal-backdrop" id="confirm-box" role="dialog" aria-modal="true">
+        <div class="modal-card">
         <h3 class="text-lg font-semibold mb-2">${esc(state.confirm.title || 'Подтверждение')}</h3>
         <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">${esc(state.confirm.message || '')}</p>
         <div class="flex justify-end gap-2"><button id="confirm-no" class="btn-secondary">Отмена</button><button id="confirm-yes" class="btn-danger">${esc(state.confirm.okLabel || 'Удалить')}</button></div>
       </div></div>`;
     }
-    if (state.modal) html += state.modal;
+    if (state.modal) {
+      let m = state.modal;
+      if (m.indexOf('role="dialog"') < 0) {
+        m = m.replace('class="modal-backdrop"', 'class="modal-backdrop" role="dialog" aria-modal="true"');
+      }
+      html += m;
+    }
     if (state.toast) html += `<div class="toast">${esc(state.toast)}</div>`;
     return html;
   }
+  const OVERLAY_FOCUSABLE = 'button, [href], input:not([type="hidden"]), select, textarea, [tabindex]:not([tabindex="-1"])';
+  let overlayDialogKey = '';
+  function currentOverlayDialogKey() {
+    if (state.confirm) return 'confirm';
+    if (state.modal) return 'modal';
+    return '';
+  }
+  function paintOverlay() {
+    const ov = document.getElementById('overlay-root');
+    if (!ov) return;
+    const key = currentOverlayDialogKey();
+    const opened = key && key !== overlayDialogKey;
+    ov.innerHTML = overlay();
+    overlayDialogKey = key;
+    if (!opened) return;
+    const dlg = ov.querySelector('[role="dialog"]');
+    const first = dlg && dlg.querySelector(OVERLAY_FOCUSABLE);
+    if (first && typeof first.focus === 'function') first.focus();
+  }
+  function trapOverlayTab(e, dlg) {
+    const nodes = Array.from(dlg.querySelectorAll(OVERLAY_FOCUSABLE)).filter((el) => !el.disabled);
+    if (!nodes.length) { e.preventDefault(); return; }
+    const first = nodes[0];
+    const last = nodes[nodes.length - 1];
+    if (e.shiftKey) {
+      if (document.activeElement === first || !dlg.contains(document.activeElement)) {
+        e.preventDefault();
+        last.focus();
+      }
+    } else if (document.activeElement === last || !dlg.contains(document.activeElement)) {
+      e.preventDefault();
+      first.focus();
+    }
+  }
+  function closeOverlayDialog() {
+    if (state.modal) { closeModal(); return true; }
+    if (state.confirm) { state.confirm = null; paintOverlay(); return true; }
+    return false;
+  }
+  let toastTimer = null;
   function toast(msg) {
     state.toast = msg;
+    if (toastTimer) { clearTimeout(toastTimer); toastTimer = null; }
     const host = document.getElementById('overlay-root');
-    if (host) host.innerHTML = overlay();
-    setTimeout(() => { if (state.toast === msg) { state.toast = null; const h = document.getElementById('overlay-root'); if (h) h.innerHTML = overlay(); } }, 2500);
+    if (host) {
+      let el = host.querySelector('.toast');
+      if (el) el.textContent = msg;
+      else {
+        el = document.createElement('div');
+        el.className = 'toast';
+        el.textContent = msg;
+        host.appendChild(el);
+      }
+    }
+    toastTimer = setTimeout(() => {
+      toastTimer = null;
+      if (state.toast !== msg) return;
+      state.toast = null;
+      const t = document.querySelector('#overlay-root .toast');
+      if (t) t.remove();
+    }, 2500);
   }
 
   function navigate(path, replace) {
@@ -1463,11 +1525,6 @@
     state.menuTicker = null;
     state.heroSettingsOpen = false;
     state.quoteOpen = false;
-    if (state.user) {
-      API.authCheck().then(() => {}).catch((e) => {
-        if (e && e.status === 401) handleUnauthorized();
-      });
-    }
     renderPage();
   }
   window.addEventListener('popstate', () => {
@@ -2067,6 +2124,28 @@
       </div>`;
   }
 
+  function calendarNotImported() {
+    if (!state.loaded.cal && !(state.cal && state.cal.data)) return false;
+    const data = state.cal && state.cal.data;
+    const coverage = data && data.metadata && data.metadata.webullCoverageThrough;
+    const hol = data && data.holidays;
+    let emptyHolidays = !hol || typeof hol !== 'object';
+    if (!emptyHolidays) {
+      emptyHolidays = true;
+      for (const y of Object.keys(hol)) {
+        const days = hol[y];
+        if (days && typeof days === 'object' && Object.keys(days).length) {
+          emptyHolidays = false;
+          break;
+        }
+      }
+    }
+    return !coverage || emptyHolidays;
+  }
+  function calendarFallbackNote() {
+    if (!calendarNotImported()) return '';
+    return `<p data-calendar-not-imported class="rounded-lg border border-amber-100 bg-amber-50 dark:bg-amber-950/20 p-3 text-sm text-amber-800 mb-3">Календарь не импортирован — используются расчётные праздники NYSE</p>`;
+  }
   function pageCalendar() {
     const months = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
     const y = state.cal.year, m = state.cal.month;
@@ -2091,6 +2170,7 @@
     }
     return `
       ${pageHeader('Календарь торгов', state.cal.data?.metadata?.webullCoverageThrough ? ('NYSE · данные по ' + state.cal.data.metadata.webullCoverageThrough) : 'NYSE · Американский рынок акций', `<button id="cal-webull" class="btn-secondary min-h-0 py-2 px-4">Импорт из Webull</button>`)}
+      ${calendarFallbackNote()}
       <div class="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-gray-600 dark:text-gray-400 mb-4">
         <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-green-500"></span>Торговый · ${esc(hours.start)}–${esc(hours.end)}</span>
         <span class="flex items-center gap-1.5">${icon('calendar', 'w-3.5 h-3.5')} Выходной (Сб, Вс)</span>
@@ -2260,6 +2340,7 @@
     return `
       ${pageHeader('Мониторинг', 'Отслеживание позиций и уведомления в Telegram', `<button id="watch-refresh" class="icon-btn icon-btn-md icon-btn-glass" title="Обновить список" aria-label="Обновить список">${icon('refresh', 'w-4 h-4')}</button>`)}
       ${loadErr}
+      ${calendarFallbackNote()}
       ${analysisTabs(WATCH_TABS, state.watchTab, 'data-wtab', 'Разделы мониторинга')}
       <p class="mt-4 text-sm text-gray-600 dark:text-gray-300">Глобальный порог уведомлений: ${esc(thr)}% <span class="ml-2 text-xs text-gray-500">(применяется ко всем отслеживаемым акциям)</span></p>
       <p class="text-sm text-gray-600 dark:text-gray-300 mb-3">До следующего подсчёта сигналов: <span id="watch-countdown">${formatDuration(secondsToNextSignal())}</span></p>
@@ -2841,16 +2922,28 @@
         state.mobileOpen = false;
         updateChrome();
       }
-      if (e.target.closest('#confirm-no')) { state.confirm = null; document.getElementById('overlay-root').innerHTML = overlay(); return; }
+      if (e.target.closest('#confirm-no')) { state.confirm = null; paintOverlay(); return; }
       if (e.target.closest('#confirm-yes')) {
         const fn = state.confirm && state.confirm.onYes;
         state.confirm = null;
-        document.getElementById('overlay-root').innerHTML = overlay();
+        paintOverlay();
         if (fn) Promise.resolve().then(fn).catch((err) => toast(errText(err)));
         return;
       }
     });
     document.addEventListener('keydown', (e) => {
+      const dlg = document.querySelector('#overlay-root [role="dialog"]');
+      if (dlg && (state.modal || state.confirm)) {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          closeOverlayDialog();
+          return;
+        }
+        if (e.key === 'Tab') {
+          trapOverlayTab(e, dlg);
+          return;
+        }
+      }
       if (e.key !== 'Escape') return;
       const closeMenu = !!state.menuTicker;
       if (state.mobileOpen) state.mobileOpen = false;
@@ -2934,8 +3027,7 @@
     if (!opts.keepCharts) Charts.destroy();
     updateChrome();
     document.getElementById('page-root').innerHTML = pageHTML();
-    const ov = document.getElementById('overlay-root');
-    if (ov) ov.innerHTML = overlay();
+    paintOverlay();
     await afterRender();
   }
 
@@ -2965,8 +3057,7 @@
 
   function askDelete(message, onYes) {
     state.confirm = { title: 'Удалить?', message, onYes };
-    const ov = document.getElementById('overlay-root');
-    if (ov) ov.innerHTML = overlay();
+    paintOverlay();
   }
 
   function syncTickerField(id) {
@@ -3042,8 +3133,8 @@
           <label class="block text-sm mb-3">Теги<input id="edit-tag" class="field mt-1" value="${esc(ds?.tag || '')}" /></label>
           <div class="flex justify-end gap-2"><button id="edit-cancel" class="btn-secondary">Отмена</button><button id="edit-save" class="btn-primary min-h-0 py-2">Сохранить</button></div>
         </div></div>`;
-        document.getElementById('overlay-root').innerHTML = overlay();
-        document.getElementById('edit-cancel')?.addEventListener('click', () => { state.modal = null; document.getElementById('overlay-root').innerHTML = overlay(); });
+        paintOverlay();
+        document.getElementById('edit-cancel')?.addEventListener('click', () => { state.modal = null; paintOverlay(); });
         document.getElementById('edit-save')?.addEventListener('click', async () => {
           const saveBtn = document.getElementById('edit-save');
           const cancelBtn = document.getElementById('edit-cancel');
@@ -3420,13 +3511,13 @@
           <button type="button" id="split-add-row" class="btn-secondary min-h-0 py-1 mb-3">+ событие</button>
           <div class="flex justify-end gap-2"><button id="split-edit-cancel" class="btn-secondary">Отмена</button><button id="split-edit-save" class="btn-primary min-h-0 py-2">Сохранить</button></div>
         </div></div>`;
-        document.getElementById('overlay-root').innerHTML = overlay();
+        paintOverlay();
         const host = document.getElementById('split-edit-rows');
         const readRows = () => Array.from(host.querySelectorAll('[data-split-row]')).map((row) => ({ date: row.querySelector('[data-sd]').value, factor: Number(row.querySelector('[data-sf]').value) })).filter((e) => e.date);
         const paint = (list) => { host.innerHTML = rows(list); host.querySelectorAll('[data-rm-row]').forEach((btn) => btn.addEventListener('click', () => { const next = readRows().filter((_, i) => i !== Number(btn.dataset.rmRow)); paint(next); })); };
         paint(evs);
         document.getElementById('split-add-row')?.addEventListener('click', () => paint(readRows().concat([{ date: '', factor: 2 }])));
-        document.getElementById('split-edit-cancel')?.addEventListener('click', () => { state.modal = null; document.getElementById('overlay-root').innerHTML = overlay(); });
+        document.getElementById('split-edit-cancel')?.addEventListener('click', () => { state.modal = null; paintOverlay(); });
         document.getElementById('split-edit-save')?.addEventListener('click', async () => {
           try {
             const cleaned = readRows().filter((e) => e.date && Number.isFinite(e.factor) && e.factor > 0);
@@ -3512,17 +3603,21 @@
     if (p === '/watches') {
       if (!state.loaded.watches) {
         try {
-          const [w, t, a, c] = await Promise.all([
+          const calP = state.loaded.cal ? Promise.resolve(state.cal.data) : API.calendar().catch(() => ({}));
+          const [w, t, a, c, cal] = await Promise.all([
             API.watches(),
             API.trades().catch((e) => { if (e && e.status === 404) return API.monitorTrades(); throw e; }),
             API.emaAlerts(),
             API.consistency().catch((e) => ({ issues: [{ code: 'fetch_failed', message: (e && e.message) || 'Не удалось получить согласованность' }] })),
+            calP,
           ]);
           state.watchLoadError = '';
           state.watches = w || [];
           state.monitorTrades = Array.isArray(t) ? t : (t.trades || []);
           state.emaAlerts = Array.isArray(a) ? a : (a.alerts || []);
           state.consistency = c || { issues: [] };
+          state.cal.data = cal || {};
+          state.loaded.cal = true;
         } catch (e) {
           state.watchLoadError = (e && e.message) || 'Не удалось загрузить мониторинг';
           state.watches = state.watches || [];
@@ -3697,7 +3792,8 @@
     }
 
     if (p === '/broker') {
-      navigate('/webull');
+      toast('Страница /broker перенесена в /webull');
+      navigate('/webull', true);
       return;
     }
     if (p === '/webull' || p === '/robinhood') {
@@ -4221,8 +4317,7 @@
       : state.page === '/multi-ticker-options' ? resultOf(state.optResult)
       : resultOf(state.result);
     const q = state.quote && state.quote.ticker === t ? state.quote : null;
-    Charts.destroy();
-    Charts.hero(el, barsForTicker(t), {
+    const opts = {
       dark: isDark(),
       kind: hp().kind,
       range: hp().range,
@@ -4233,7 +4328,11 @@
       todayQuote: q,
       isTrading: isMarketOpen(),
       todayISO: nyseParts().iso,
-    });
+    };
+    const bars = barsForTicker(t);
+    if (typeof Charts.setHeroData === 'function' && Charts.setHeroData(el, bars, opts)) return;
+    Charts.destroy();
+    Charts.hero(el, bars, opts);
   }
   async function loadQuote(ticker) {
     if (!ticker) return;
@@ -4285,12 +4384,20 @@
     root.querySelectorAll('[data-hero-kind]').forEach((b) => b.addEventListener('click', () => {
       hp().kind = b.dataset.heroKind;
       persistHero();
-      renderPage();
+      root.querySelectorAll('[data-hero-kind]').forEach((x) => {
+        x.className = 'hero-kind ' + (x.dataset.heroKind === hp().kind ? 'hero-kind-on' : 'hero-kind-off');
+      });
+      paintCurrentHero();
     }));
     document.getElementById('hero-trades-toggle')?.addEventListener('click', () => {
       hp().showTrades = !hp().showTrades;
       persistHero();
-      renderPage();
+      const lab = document.querySelector('#hero-trades-toggle span:last-child');
+      if (lab) {
+        lab.textContent = hp().showTrades ? 'Вкл' : 'Выкл';
+        lab.className = hp().showTrades ? 'text-green-600 dark:text-green-300' : 'text-gray-500';
+      }
+      paintCurrentHero();
     });
     document.getElementById('hero-settings-btn')?.addEventListener('click', (e) => {
       e.stopPropagation();
