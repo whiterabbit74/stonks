@@ -1432,6 +1432,19 @@ func TestLongActionsDisableTheirButtons(t *testing.T) {
 	if !strings.Contains(closeChunk, "withBusy") && !strings.Contains(closeChunk, ".disabled") {
 		t.Fatal("close position must disable the button while the order is in flight")
 	}
+	for _, id := range []string{"auto-execute", "auto-test-buy"} {
+		start := strings.Index(a, "getElementById('"+id+"')")
+		if start < 0 {
+			t.Fatalf("%s handler not found", id)
+		}
+		chunk := a[start:]
+		if i := strings.Index(chunk[20:], "document.getElementById"); i > 0 {
+			chunk = chunk[:20+i]
+		}
+		if !strings.Contains(chunk, "withBusy") {
+			t.Fatalf("%s must wrap the in-flight request in withBusy", id)
+		}
+	}
 	refStart := strings.Index(a, "querySelectorAll('[data-refresh]')")
 	if refStart < 0 {
 		t.Fatal("dataset refresh handler not found")

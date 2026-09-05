@@ -4232,23 +4232,28 @@
           renderPage();
         } catch (err) { toast(errText(err)); }
       });
-      document.getElementById('auto-test-buy')?.addEventListener('click', async () => {
+      document.getElementById('auto-test-buy')?.addEventListener('click', async (ev) => {
         if (!window.confirm('Отправить BUY AAL 1 шт по рынку в ' + brokerLabel(kind) + '?')) return;
-        try {
-          const r = kind === 'robinhood' ? await API.rhTestBuy('AAL', 1) : await API.testBuy('AAL', 1);
-          toast(r.submitted ? ('Ордер ' + (r.clientOrderId || 'отправлен')) : (r.error || 'не отправлен'));
-        } catch (err) { toast(errText(err)); }
+        await withBusy(ev.currentTarget, async () => {
+          try {
+            const r = kind === 'robinhood' ? await API.rhTestBuy('AAL', 1) : await API.testBuy('AAL', 1);
+            toast(r.submitted ? ('Ордер ' + (r.clientOrderId || 'отправлен')) : (r.error || 'не отправлен'));
+          } catch (err) { toast(errText(err)); }
+        });
       });
       document.getElementById('auto-refresh')?.addEventListener('click', () => { reloadBroker(); });
-      document.getElementById('auto-execute')?.addEventListener('click', () => {
+      document.getElementById('auto-execute')?.addEventListener('click', (ev) => {
+        const btn = ev.currentTarget;
         askDelete('Это боевой ордер, не симуляция. Отправить реальные заявки брокеру сейчас?', async () => {
-          try {
-            const r = await API.execute();
-            const dec = (r && r.brokerDecisions && r.brokerDecisions[kind]) || (r && r.decision) || {};
-            const skipped = r && r.broker && r.broker.error;
-            toast(r && r.executed ? ('Исполнено: ' + (dec.action || '') + ' ' + (dec.symbol || '')) : (decisionReasonText(skipped || dec.reason) || 'Не исполнено'));
-            await reloadBroker();
-          } catch (err) { toast(errText(err)); }
+          await withBusy(btn, async () => {
+            try {
+              const r = await API.execute();
+              const dec = (r && r.brokerDecisions && r.brokerDecisions[kind]) || (r && r.decision) || {};
+              const skipped = r && r.broker && r.broker.error;
+              toast(r && r.executed ? ('Исполнено: ' + (dec.action || '') + ' ' + (dec.symbol || '')) : (decisionReasonText(skipped || dec.reason) || 'Не исполнено'));
+              await reloadBroker();
+            } catch (err) { toast(errText(err)); }
+          });
         }, { title: 'Исполнить?', okLabel: 'Исполнить' });
       });
       root.querySelectorAll('[data-close-pos]').forEach((b) => b.addEventListener('click', async () => {
