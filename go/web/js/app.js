@@ -1024,7 +1024,7 @@
     return `<div class="rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/20 dark:text-amber-200">
       <div class="flex items-start justify-between gap-2">
         <div>Данные ${esc(ticker)} не актуальны</div>
-        <button type="button" id="stale-refresh" class="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-amber-300 bg-amber-100" title="Обновить данные">${icon('refresh', 'h-3.5 w-3.5' + spin)}</button>
+        <button type="button" id="stale-refresh" class="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-amber-300 bg-amber-100" title="Обновить данные" aria-label="Обновить данные">${icon('refresh', 'h-3.5 w-3.5' + spin)}</button>
       </div>
     </div>`;
   }
