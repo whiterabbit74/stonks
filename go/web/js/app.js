@@ -764,6 +764,9 @@
     };
     return m[st] || '';
   }
+  function trackerStatusText(status) {
+    return ({ execution_unknown: 'исполнение не подтверждено', unresolved: 'требует ручного разбора' })[String(status || '')] || status || '—';
+  }
   // Mirrors go/internal/live/telegram.go noActionReasonText for the reasons
   // the autotrade tile shows. One dictionary for the whole SPA.
   function decisionReasonText(reason) {
@@ -2661,7 +2664,7 @@
         const actions = stuck && o.clientOrderId
           ? `<button type="button" data-resolve-tracker="${oid}" data-resolve-outcome="filled" class="compact inline-flex min-w-0 min-h-0 px-1 py-1 text-xs text-emerald-600 mr-2">Исполнено у брокера</button><button type="button" data-resolve-tracker="${oid}" data-resolve-outcome="absent" class="compact inline-flex min-w-0 min-h-0 px-1 py-1 text-xs text-red-600">Заявки нет</button>`
           : '';
-        return `<tr class="${stuck ? 'bg-amber-50 dark:bg-amber-950/30' : ''}"><td>${esc(o.symbol || '')}</td><td>${esc(o.broker || '')}</td><td>${esc(o.action || '')}</td><td class="${stuck ? 'font-semibold text-amber-700 dark:text-amber-400' : ''}">${esc(o.status || '')}</td><td>${esc(o.quantity ?? '')}</td><td>${esc(o.startedAt || o.started_at || '')}</td><td>${actions}</td></tr>`;
+        return `<tr class="${stuck ? 'bg-amber-50 dark:bg-amber-950/30' : ''}"><td>${esc(o.symbol || '')}</td><td>${esc(o.broker || '')}</td><td>${esc(o.action || '')}</td><td class="${stuck ? 'font-semibold text-amber-700 dark:text-amber-400' : ''}">${esc(trackerStatusText(o.status))}</td><td>${esc(o.quantity ?? '')}</td><td>${esc(o.startedAt || o.started_at || '')}</td><td>${actions}</td></tr>`;
       }).join('');
       const persistBlocks = (state.settings && state.settings.trackerPersistFail) || {};
       const persistBlockedBrokers = Object.keys(persistBlocks).filter((b) => persistBlocks[b]);
@@ -2747,7 +2750,7 @@
         <h3 class="font-semibold mb-2">Ожидающие и последние отслеживаемые ордера</h3>
           ${persistBlockBanner}
           ${pendingRows ? `<div class="overflow-auto mt-2"><table class="trades"><thead><tr><th>Тикер</th><th>Брокер</th><th>Операция</th><th>Статус</th><th>Кол-во</th><th>Старт</th><th>Действия</th></tr></thead><tbody>${pendingRows}</tbody></table></div>` : '<p class="text-sm text-gray-500 mt-2">Отслеживаемых ордеров пока нет</p>'}
-          <p class="mt-2 text-xs text-gray-500">execution_unknown / unresolved блокируют новые входы у брокера и требуют ручного разбора: проверьте заявку у брокера и нажмите «Исполнено у брокера» либо «Заявки нет».</p>
+          <p class="mt-2 text-xs text-gray-500">Заявки с неподтверждённым исполнением блокируют новые входы у брокера и требуют ручного разбора: проверьте заявку у брокера и нажмите «Исполнено у брокера» либо «Заявки нет».</p>
         </div>
       </div>`;
     } else if (tab === 'monitor') {
