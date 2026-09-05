@@ -1,6 +1,6 @@
 const Charts = {
   live: [],
-  RIGHT_OFFSET: 8,
+  RIGHT_OFFSET: 14,
   IBS_LOW: 0.1,
   IBS_HIGH: 0.75,
   RANGE_DAYS: { '1M': 30, '3M': 90, '6M': 180, '1Y': 365, '3Y': 365 * 3, '5Y': 365 * 5 },
