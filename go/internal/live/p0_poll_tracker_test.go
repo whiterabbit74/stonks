@@ -12,6 +12,27 @@ import (
 // defaultBroker (Webull). Webull answering ErrOrderNotFound would otherwise
 // finalize the tracker as terminal_absent and deletePhantom the robinhood
 // journal row.
+func TestPollTrackerOrderedQtyIsNotAFill(t *testing.T) {
+	_, e, br := testEngine(t, entryBars)
+	id := "oid-qty-only"
+	if err := e.DB.SaveOrderTracker(map[string]any{
+		"clientOrderId": id, "symbol": "AAPL", "action": "entry",
+		"status": "submitted", "quantity": 2.0, "source": "t1", "dateKey": "2026-09-01",
+		"broker": "webull", "startedAt": e.now().UTC().Format(time.RFC3339Nano),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	br.SetDetail(id, map[string]any{"client_order_id": id, "status": "NEW", "qty": 2.0})
+	e.PollTrackers()
+	st := trackerStatus(t, e.DB, id)
+	if st == "filled" {
+		t.Fatalf("ordered qty without filled_qty must not finalize as filled, got %q", st)
+	}
+	if e.DB.GetTrade("broker_trades", id) != nil {
+		t.Fatal("qty-only detail must not journal a fill")
+	}
+}
+
 func TestPollTrackerMissingNamedBrokerDoesNotUseDefault(t *testing.T) {
 	e, webull, rh := dualBrokerEngine(t, entryBars)
 	tg, ok := e.Telegram.(*MemoryTelegram)

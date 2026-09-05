@@ -62,8 +62,6 @@ func fillQtyFrom(detail map[string]any) float64 {
 		detail["filled_quantity"],
 		detail["cum_qty"],
 		detail["deal_quantity"],
-		detail["qty"],
-		detail["quantity"],
 	)
 }
 
