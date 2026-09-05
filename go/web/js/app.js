@@ -2396,12 +2396,12 @@
     const actions = Array.isArray(cons.proposedActions) ? cons.proposedActions : [];
     const consOk = !!state.consistency && issues.length === 0;
     const consKind = !state.consistency ? '…' : (actions.some((a) => a && a.autoApplicable) ? 'Кандидат на сверку' : (issues.length ? 'Расхождение' : 'OK'));
-    const consLabel = consKind;
+    const consLabel = consKind === 'OK' ? 'Согласовано' : consKind;
     const consBadgeCls = consKind === 'OK' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : (issues.length ? 'border-red-200 bg-red-50 text-red-700' : 'border-amber-200 bg-amber-50 text-amber-800');
     const consCards = issues.map((i) => `<div class="rounded-lg border px-3 py-2 text-sm mb-1">${esc(i.message || i.code || '')}</div>`).join('');
     const consText = !state.consistency
       ? 'Проверка согласованности…'
-      : (consOk ? 'Monitor и broker журналы сейчас согласованы.' : (consCards || 'Monitor и broker журналы расходятся.'));
+      : (consOk ? 'Журналы мониторинга и брокера сейчас согласованы.' : (consCards || 'Журналы мониторинга и брокера расходятся.'));
 
     const simulated = applyMonitorMarginSimulation(state.monitorTrades, state.monitorMarginPercent);
     const stats = monitorStats(simulated);
@@ -2787,7 +2787,7 @@
       const cons = state.consistency || {};
       const issues = Array.isArray(cons.issues) ? cons.issues : [];
       const actions = Array.isArray(cons.proposedActions) ? cons.proposedActions : [];
-      const consLabel = actions.some((a) => a && a.autoApplicable) ? 'Сверка' : (issues.length ? 'Расхождение' : 'OK');
+      const consLabel = actions.some((a) => a && a.autoApplicable) ? 'Сверка' : (issues.length ? 'Расхождение' : 'Согласовано');
       const wrows = (state.watches || []).map((w) => {
         const q = (state.brokerQuotes || {})[w.symbol] || {};
         const quote = q.quote || q;
