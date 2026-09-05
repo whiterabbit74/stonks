@@ -9,55 +9,29 @@ import (
 	"mktorder.com/go/internal/types"
 )
 
-// dropOrderTrackersTable makes the next SaveOrderTracker call fail with a
-// real database error (rather than simulating the failure), matching what
-// startTracking sees when the write genuinely cannot land. The schema is
-// restored immediately after so the rest of the engine keeps working - only
-// the one insert is meant to fail.
-func dropOrderTrackersTable(t *testing.T, e *Engine) {
+// blockOrderTrackerInserts makes SaveOrderTracker fail while SELECT still
+// works, so the pending-tracker guard can fail closed without treating a
+// missing table as "no pending".
+func blockOrderTrackerInserts(t *testing.T, e *Engine) {
 	t.Helper()
-	if _, err := e.DB.SQL.Exec(`DROP TABLE order_trackers`); err != nil {
-		t.Fatalf("drop order_trackers: %v", err)
+	if _, err := e.DB.SQL.Exec(`
+            CREATE TRIGGER IF NOT EXISTS order_trackers_block_insert
+            BEFORE INSERT ON order_trackers
+            BEGIN
+                SELECT RAISE(ABORT, 'injected tracker persist failure');
+            END;
+        `); err != nil {
+		t.Fatalf("block order_trackers inserts: %v", err)
 	}
 	t.Cleanup(func() {
-		_, _ = e.DB.SQL.Exec(`
-            CREATE TABLE IF NOT EXISTS order_trackers (
-                client_order_id TEXT PRIMARY KEY,
-                symbol          TEXT NOT NULL,
-                action          TEXT NOT NULL,
-                broker          TEXT NOT NULL DEFAULT 'webull',
-                status          TEXT NOT NULL,
-                quantity        REAL,
-                source          TEXT,
-                date_key        TEXT,
-                started_at      TEXT NOT NULL,
-                attempts        INTEGER NOT NULL DEFAULT 0,
-                updated_at      TEXT
-            );
-            CREATE INDEX IF NOT EXISTS idx_order_trackers_pending ON order_trackers(symbol, action, status);
-        `)
+		_, _ = e.DB.SQL.Exec(`DROP TRIGGER IF EXISTS order_trackers_block_insert`)
 	})
 }
 
-func recreateOrderTrackersTable(t *testing.T, e *Engine) {
+func unblockOrderTrackerInserts(t *testing.T, e *Engine) {
 	t.Helper()
-	if _, err := e.DB.SQL.Exec(`
-        CREATE TABLE IF NOT EXISTS order_trackers (
-            client_order_id TEXT PRIMARY KEY,
-            symbol          TEXT NOT NULL,
-            action          TEXT NOT NULL,
-            broker          TEXT NOT NULL DEFAULT 'webull',
-            status          TEXT NOT NULL,
-            quantity        REAL,
-            source          TEXT,
-            date_key        TEXT,
-            started_at      TEXT NOT NULL,
-            attempts        INTEGER NOT NULL DEFAULT 0,
-            updated_at      TEXT
-        );
-        CREATE INDEX IF NOT EXISTS idx_order_trackers_pending ON order_trackers(symbol, action, status);
-    `); err != nil {
-		t.Fatalf("recreate order_trackers: %v", err)
+	if _, err := e.DB.SQL.Exec(`DROP TRIGGER IF EXISTS order_trackers_block_insert`); err != nil {
+		t.Fatalf("unblock order_trackers inserts: %v", err)
 	}
 }
 
@@ -71,9 +45,9 @@ func TestTrackerPersistBlockSurvivesRestartAndOnlyClearsExplicitly(t *testing.T)
 	db, e, br := testEngine(t, bars)
 	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true})
 
-	dropOrderTrackersTable(t, e)
+	blockOrderTrackerInserts(t, e)
 	res := e.Execute("t1")
-	recreateOrderTrackersTable(t, e)
+	unblockOrderTrackerInserts(t, e)
 	if !res.Executed {
 		t.Fatalf("broker placement itself must still succeed: %+v", res.Broker)
 	}

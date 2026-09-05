@@ -13,8 +13,15 @@ type RobinhoodOAuthRow struct {
 }
 
 func (d *DB) GetRobinhoodOAuth() RobinhoodOAuthRow {
+	row, _ := d.GetRobinhoodOAuthErr()
+	return row
+}
+
+// GetRobinhoodOAuthErr is GetRobinhoodOAuth with the scan error. No row is
+// not an error: a zero value and nil, same as "not connected".
+func (d *DB) GetRobinhoodOAuthErr() (RobinhoodOAuthRow, error) {
 	var row RobinhoodOAuthRow
-	_ = d.SQL.QueryRow(`SELECT COALESCE(client_id,''), COALESCE(access_token,''), COALESCE(refresh_token,''),
+	err := d.SQL.QueryRow(`SELECT COALESCE(client_id,''), COALESCE(access_token,''), COALESCE(refresh_token,''),
         COALESCE(token_type,''), COALESCE(scope,''), COALESCE(expires_at,''), COALESCE(account_number,''),
         COALESCE(last_check_status,''), COALESCE(last_check_at,''), COALESCE(last_alerted_status,''),
         COALESCE(last_alerted_at,''), COALESCE(last_health_check_date,''), COALESCE(last_health_check_attempt_at,'')
@@ -22,7 +29,13 @@ func (d *DB) GetRobinhoodOAuth() RobinhoodOAuthRow {
 		Scan(&row.ClientID, &row.AccessToken, &row.RefreshToken, &row.TokenType, &row.Scope, &row.ExpiresAt,
 			&row.AccountNumber, &row.LastCheckStatus, &row.LastCheckAt, &row.LastAlertedStatus, &row.LastAlertedAt,
 			&row.LastHealthCheckDate, &row.LastAttemptAt)
-	return row
+	if err == sql.ErrNoRows {
+		return RobinhoodOAuthRow{}, nil
+	}
+	if err != nil {
+		return RobinhoodOAuthRow{}, err
+	}
+	return row, nil
 }
 
 func (d *DB) SaveRobinhoodClientID(clientID string) error {
@@ -104,26 +117,29 @@ func (d *DB) TakeRobinhoodPending(state string) (verifier, redirect string, err 
 	return verifier, redirect, nil
 }
 
-func (d *DB) AnyPendingTrackerFor(broker string) map[string]any {
+func (d *DB) AnyPendingTrackerFor(broker string) (map[string]any, error) {
 	rows, err := d.listBlockingTrackers()
-	if err != nil || len(rows) == 0 {
-		return nil
+	if err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
+		return nil, nil
 	}
 	if broker == "" {
-		return rows[0]
+		return rows[0], nil
 	}
 	for _, row := range rows {
 		if fmt.Sprint(row["broker"]) == broker {
-			return row
+			return row, nil
 		}
 	}
-	return nil
+	return nil, nil
 }
 
-func (d *DB) FindPendingTrackerBroker(symbol, action, broker string) map[string]any {
+func (d *DB) FindPendingTrackerBroker(symbol, action, broker string) (map[string]any, error) {
 	rows, err := d.listBlockingTrackers()
 	if err != nil {
-		return nil
+		return nil, err
 	}
 	want := SafeTicker(symbol)
 	for _, row := range rows {
@@ -136,7 +152,7 @@ func (d *DB) FindPendingTrackerBroker(symbol, action, broker string) map[string]
 		if broker != "" && fmt.Sprint(row["broker"]) != broker {
 			continue
 		}
-		return row
+		return row, nil
 	}
-	return nil
+	return nil, nil
 }

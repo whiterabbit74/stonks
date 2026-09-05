@@ -25,13 +25,12 @@ func TestOrderLandedRejectsForeignID(t *testing.T) {
 
 func TestTrackerSaveFailureBlocksEntry(t *testing.T) {
 	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
-	db, e, br := testEngine(t, bars)
+	_, e, br := testEngine(t, bars)
 	e.Sleep = func(time.Duration) {}
 	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true})
-	if _, err := db.SQL.Exec(`DROP TABLE order_trackers`); err != nil {
-		t.Fatal(err)
-	}
+	blockOrderTrackerInserts(t, e)
 	res := e.Execute("t1")
+	unblockOrderTrackerInserts(t, e)
 	if !res.Executed {
 		t.Fatalf("order still reaches the broker: %+v", res.Broker)
 	}

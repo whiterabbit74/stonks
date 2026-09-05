@@ -61,7 +61,11 @@ func TestExecuteReserveSubmitTrack(t *testing.T) {
 	if len(trades) != 0 {
 		t.Fatalf("must not record trade on submit: %+v", trades)
 	}
-	if db.FindPendingTracker("AAPL", "entry") == nil {
+	row, err := db.FindPendingTracker("AAPL", "entry")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row == nil {
 		t.Fatal("expected pending tracker after submit")
 	}
 	// $1000 of buying power, 2.2% held back for a market buy, $8.20 a share.
@@ -203,7 +207,11 @@ func TestT1WaitForFillBlocksEntry(t *testing.T) {
 	if len(br.Orders) != 1 || br.Orders[0].Side != "SELL" {
 		t.Fatalf("want only AAPL exit, got %+v text=%s", br.Orders, res.Text)
 	}
-	if db.FindPendingTracker("AAPL", "exit") == nil {
+	row, err := db.FindPendingTracker("AAPL", "exit")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row == nil {
 		t.Fatal("expected pending exit tracker")
 	}
 	if !strings.Contains(res.Text, "ждём подтверждение fill") && !strings.Contains(res.Text, "fill") {
@@ -233,7 +241,11 @@ func TestPendingTrackerGuardsSecondSubmit(t *testing.T) {
 	e2.Broker = br
 	e2.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true})
 	// pending entry tracker + open position: Evaluate should not re-enter; force-check FindPending
-	if db.FindPendingTracker("AAPL", "entry") == nil {
+	row, err := db.FindPendingTracker("AAPL", "entry")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row == nil {
 		t.Fatal("tracker not persisted")
 	}
 }
@@ -343,12 +355,20 @@ func TestPollTrackersMarksFilled(t *testing.T) {
 		t.Fatalf("execute %+v orders %+v", res, br.Orders)
 	}
 	oid := br.Orders[0].ClientOrderID
-	if db.FindPendingTracker("AAPL", "entry") == nil {
+	row, err := db.FindPendingTracker("AAPL", "entry")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row == nil {
 		t.Fatal("expected pending tracker")
 	}
 	br.SetDetail(oid, map[string]any{"status": "FILLED", "filled_qty": 1.0, "avg_price": 8.2})
 	waitTrackerFinal(t, e, db, "AAPL", "entry")
-	if db.FindPendingTracker("AAPL", "entry") != nil {
+	row, err = db.FindPendingTracker("AAPL", "entry")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row != nil {
 		t.Fatal("tracker should be filled")
 	}
 	trades, _ := db.ListTrades("broker_trades")
@@ -664,12 +684,20 @@ func TestTrackerWheelUsesNodeBackoff(t *testing.T) {
 	close(gate)
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
-		if db.FindPendingTracker("AAPL", "entry") == nil {
+		row, err := db.FindPendingTracker("AAPL", "entry")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if row == nil {
 			break
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
-	if db.FindPendingTracker("AAPL", "entry") != nil {
+	row, err := db.FindPendingTracker("AAPL", "entry")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row != nil {
 		t.Fatal("wheel must mark tracker filled without waiting for the 20s scheduler tick")
 	}
 	mu.Lock()

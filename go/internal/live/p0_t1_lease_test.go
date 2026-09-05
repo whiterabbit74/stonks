@@ -50,7 +50,11 @@ func TestT1ExecutionFinishedRetriesReportOnly(t *testing.T) {
 	if len(br.Orders) != 1 {
 		t.Fatalf("first run should place, got %d", len(br.Orders))
 	}
-	if db.T1ExecutionFinished(e.ChatID, "2026-09-01") == false {
+	finished, err := db.T1ExecutionFinished(e.ChatID, "2026-09-01")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !finished {
 		t.Fatal("execution must be marked finished even if the report fails")
 	}
 	t11, t1 := db.AggregateState(e.ChatID, "2026-09-01")
@@ -130,10 +134,9 @@ func TestTrackerSaveFailureSurvivesRestart(t *testing.T) {
 	db, e, br := testEngine(t, bars)
 	e.Sleep = func(time.Duration) {}
 	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true})
-	if _, err := db.SQL.Exec(`DROP TABLE order_trackers`); err != nil {
-		t.Fatal(err)
-	}
+	blockOrderTrackerInserts(t, e)
 	res := e.Execute("t1")
+	unblockOrderTrackerInserts(t, e)
 	if !res.Executed || len(br.Orders) != 1 {
 		t.Fatalf("first place %+v orders=%d", res.Broker, len(br.Orders))
 	}

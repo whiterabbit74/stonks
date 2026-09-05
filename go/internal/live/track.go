@@ -618,10 +618,11 @@ func (e *Engine) awaitFlatAfterExit() bool {
 		if store.OpenBrokerTrade(rows) == nil {
 			return true
 		}
-		t := e.DB.FindPendingTracker("", "exit")
-		if t == nil {
+		t, err := e.DB.FindPendingTracker("", "exit")
+		if err != nil || t == nil {
 			// Nothing left to wait on: the tracker reached a terminal status
 			// that did not close the trade (rejected, cancelled, expired).
+			// A DB error is not a vanished tracker; do not re-enter on it.
 			return false
 		}
 		// Poll here rather than waiting on trackerWheel's own backoff.

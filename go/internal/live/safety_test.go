@@ -112,7 +112,11 @@ func TestLookupErrorDoesNotResend(t *testing.T) {
 		t.Fatalf("want an ambiguous result carrying the id, got %+v", res.Broker)
 	}
 	// The order may still exist at the broker, so it has to be tracked.
-	if pending := e.DB.FindPendingTracker("AAPL", "entry"); pending == nil {
+	pending, err := e.DB.FindPendingTracker("AAPL", "entry")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pending == nil {
 		t.Fatal("an unknown submission must still be tracked")
 	}
 	var warned bool
@@ -134,7 +138,15 @@ func TestClosePositionStartsTracker(t *testing.T) {
 	if err != nil || !res.Submitted {
 		t.Fatalf("close %+v %v", res, err)
 	}
-	if db.FindPendingTracker("AAPL", "exit") == nil && db.AnyPendingTracker() == nil {
+	exitRow, err := db.FindPendingTracker("AAPL", "exit")
+	if err != nil {
+		t.Fatal(err)
+	}
+	anyRow, err := db.AnyPendingTracker()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if exitRow == nil && anyRow == nil {
 		t.Fatal("manual close must start a tracker")
 	}
 }
@@ -159,7 +171,11 @@ func TestResumePollsBeforeExpiringYesterday(t *testing.T) {
 	e.Telegram = &MemoryTelegram{}
 	e.Now = func() time.Time { return time.Date(2026, 9, 2, 16, 0, 0, 0, time.UTC) }
 	e.ResumeTrackers()
-	if db.FindPendingTracker("AAPL", "entry") != nil {
+	row, err := db.FindPendingTracker("AAPL", "entry")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row != nil {
 		t.Fatal("filled yesterday must not stay pending")
 	}
 	trades, _ := db.ListTrades("broker_trades")

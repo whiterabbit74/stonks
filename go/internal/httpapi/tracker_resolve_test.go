@@ -30,7 +30,11 @@ func TestTrackerResolveEndpoint(t *testing.T) {
 	oid := br.Orders[0].ClientOrderID
 	s.Live.PollTrackers()
 
-	if s.DB.AnyPendingTrackerFor("webull") == nil {
+	row, err := s.DB.AnyPendingTrackerFor("webull")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row == nil {
 		t.Fatal("execution_unknown must block entries before resolve")
 	}
 
@@ -63,7 +67,11 @@ func TestTrackerResolveEndpoint(t *testing.T) {
 	if out["ok"] != true {
 		t.Fatalf("resolve response: %v", out)
 	}
-	if s.DB.AnyPendingTrackerFor("webull") != nil {
+	row, err = s.DB.AnyPendingTrackerFor("webull")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row != nil {
 		t.Fatal("resolve(absent) must lift the entry block")
 	}
 

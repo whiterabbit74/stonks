@@ -25,7 +25,11 @@ func TestListingLagDoesNotMintSecondOrder(t *testing.T) {
 	}
 	oid := br.Orders[0].ClientOrderID
 	e.PollTrackers()
-	if db.FindPendingTracker("AAPL", "entry") == nil {
+	row, err := db.FindPendingTracker("AAPL", "entry")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row == nil {
 		t.Fatal("listing lag must keep the tracker pending")
 	}
 	_ = e.Execute("t1")
@@ -88,7 +92,11 @@ func TestListingLagAfterRestartKeepsJournal(t *testing.T) {
 	if row == nil || fmt.Sprint(row["status"]) != "open" {
 		t.Fatalf("restart listing lag deleted journal: %+v", row)
 	}
-	if db.FindPendingTracker("AAPL", "entry") == nil {
+	row, err := db.FindPendingTracker("AAPL", "entry")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row == nil {
 		t.Fatal("tracker should stay pending through listing lag")
 	}
 }
@@ -129,7 +137,11 @@ func TestListingLagBudgetMarksExecutionUnknown(t *testing.T) {
 	if len(trades) != 0 {
 		t.Fatalf("execution_unknown must not delete/create journal %+v", trades)
 	}
-	if db.AnyPendingTrackerFor("webull") == nil {
+	row, err := db.AnyPendingTrackerFor("webull")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row == nil {
 		t.Fatal("execution_unknown must still block a new entry")
 	}
 }
@@ -158,7 +170,11 @@ func TestExecutionUnknownRecoversWhenListingCatchesUp(t *testing.T) {
 	if st := trackerStatus(t, db, oid); st != "execution_unknown" {
 		t.Fatalf("status %q want execution_unknown", st)
 	}
-	if db.AnyPendingTrackerFor("webull") == nil {
+	row, err := db.AnyPendingTrackerFor("webull")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row == nil {
 		t.Fatal("execution_unknown must block a new entry")
 	}
 	// The broker's listing catches up: OrderDetail now answers with a fill.
@@ -171,7 +187,11 @@ func TestExecutionUnknownRecoversWhenListingCatchesUp(t *testing.T) {
 	if len(trades) != 1 {
 		t.Fatalf("want one journal row after recovered fill, got %+v", trades)
 	}
-	if db.AnyPendingTrackerFor("webull") != nil {
+	row, err = db.AnyPendingTrackerFor("webull")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row != nil {
 		t.Fatal("recovered fill must lift the entry block without operator action")
 	}
 }
@@ -208,7 +228,11 @@ func TestExpireStaleTrackersMarksUnresolvedAfterStaleDay(t *testing.T) {
 	if st := trackerStatus(t, db, oid); st != "unresolved" {
 		t.Fatalf("status %q want unresolved once stale", st)
 	}
-	if db.AnyPendingTrackerFor("webull") == nil {
+	row, err := db.AnyPendingTrackerFor("webull")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row == nil {
 		t.Fatal("unresolved must still block a new entry")
 	}
 	trades, _ := db.ListTrades("broker_trades")
@@ -219,7 +243,11 @@ func TestExpireStaleTrackersMarksUnresolvedAfterStaleDay(t *testing.T) {
 	if _, err := e.ResolveTracker(oid, "absent", "checked with broker support", 0, 0); err != nil {
 		t.Fatalf("ResolveTracker: %v", err)
 	}
-	if db.AnyPendingTrackerFor("webull") != nil {
+	row, err = db.AnyPendingTrackerFor("webull")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row != nil {
 		t.Fatal("resolve(absent) must lift the block")
 	}
 }
@@ -263,7 +291,11 @@ func TestResolveTrackerAbsentDeletesPhantomAndUnblocks(t *testing.T) {
 	if db.GetTrade("broker_trades", oid) != nil {
 		t.Fatal("resolve(absent) must delete the phantom journal row")
 	}
-	if db.AnyPendingTrackerFor("webull") != nil {
+	row, err := db.AnyPendingTrackerFor("webull")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row != nil {
 		t.Fatal("resolve(absent) must lift the entry block")
 	}
 	// Resolving twice must fail cleanly rather than double-record anything.
@@ -300,7 +332,11 @@ func TestResolveTrackerFilledRecordsJournal(t *testing.T) {
 	if len(trades) != 1 {
 		t.Fatalf("want one journal row after resolve(filled), got %+v", trades)
 	}
-	if db.AnyPendingTrackerFor("webull") != nil {
+	row, err := db.AnyPendingTrackerFor("webull")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row != nil {
 		t.Fatal("resolve(filled) must lift the entry block")
 	}
 }
@@ -324,7 +360,9 @@ func TestRobinhoodOrderDetailMissingIsUnavailable(t *testing.T) {
 	}
 }
 
-func trackerStatus(t *testing.T, db interface{ ListRecentTrackers(int) ([]map[string]any, error) }, id string) string {
+func trackerStatus(t *testing.T, db interface {
+	ListRecentTrackers(int) ([]map[string]any, error)
+}, id string) string {
 	t.Helper()
 	rows, err := db.ListRecentTrackers(20)
 	if err != nil {

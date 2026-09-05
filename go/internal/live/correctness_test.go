@@ -19,7 +19,11 @@ func waitTrackerFinal(t *testing.T, e *Engine, db *store.DB, symbol, action stri
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
 		e.PollTrackers()
-		if db.FindPendingTracker(symbol, action) == nil {
+		row, err := db.FindPendingTracker(symbol, action)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if row == nil {
 			return
 		}
 		time.Sleep(5 * time.Millisecond)
@@ -83,7 +87,11 @@ func TestRejectedOrderDoesNotOpenTrade(t *testing.T) {
 	if len(trades) != 0 {
 		t.Fatalf("rejected must not create trade %+v", trades)
 	}
-	if db.FindPendingTracker("AAPL", "entry") != nil {
+	row, err := db.FindPendingTracker("AAPL", "entry")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row != nil {
 		t.Fatal("rejected tracker must be final")
 	}
 	// Evaluate can still enter: no phantom open.
@@ -400,7 +408,11 @@ func TestStaleTrackerExpires(t *testing.T) {
 		"status": "submitted", "dateKey": "2026-09-01",
 	})
 	e.expireStaleTrackers()
-	if db.FindPendingTracker("AAPL", "entry") != nil {
+	row, err := db.FindPendingTracker("AAPL", "entry")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row != nil {
 		t.Fatal("stale tracker must expire")
 	}
 }

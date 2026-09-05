@@ -52,7 +52,8 @@ func (e *Engine) runT1Orders(w execWindow, today string) (exitRes, entryRes Eval
 		entryRes = e.executeWindow(w, "telegram_t1")
 		return exitRes, entryRes, false
 	}
-	if e.DB.FindPendingTracker("", "exit") != nil {
+	pending, err := e.DB.FindPendingTracker("", "exit")
+	if err != nil || pending != nil {
 		_ = e.DB.AppendAutotradeLog("t1_entry_blocked_waiting_exit_fill")
 		return exitRes, entryRes, true
 	}
@@ -64,7 +65,8 @@ func (e *Engine) runT1Orders(w execWindow, today string) (exitRes, entryRes Eval
 			entryRes = e.executeWindow(w, "telegram_t1")
 			return exitRes, entryRes, false
 		}
-		if e.DB.FindPendingTracker("", "exit") != nil {
+		pending, err = e.DB.FindPendingTracker("", "exit")
+		if err != nil || pending != nil {
 			return exitRes, entryRes, true
 		}
 	}

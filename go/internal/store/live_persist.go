@@ -250,11 +250,11 @@ func (d *DB) ExpireStaleTrackers(todayYYYYMMDD string, maxAttempts int) (int, er
 	return int(n), err
 }
 
-func (d *DB) AnyPendingTracker() map[string]any {
+func (d *DB) AnyPendingTracker() (map[string]any, error) {
 	return d.AnyPendingTrackerFor("")
 }
 
-func (d *DB) FindPendingTracker(symbol, action string) map[string]any {
+func (d *DB) FindPendingTracker(symbol, action string) (map[string]any, error) {
 	return d.FindPendingTrackerBroker(symbol, action, "")
 }
 
@@ -458,10 +458,18 @@ func (d *DB) MarkT1ReportSent(chatID, dateKey string) error {
 	return err
 }
 
-func (d *DB) T1ExecutionFinished(chatID, dateKey string) bool {
+// T1ExecutionFinished reports whether T-1 execution already finished for this
+// chat/date. A missing row is false, not an error.
+func (d *DB) T1ExecutionFinished(chatID, dateKey string) (bool, error) {
 	var n int
-	_ = d.SQL.QueryRow(`SELECT t1_execution_finished FROM aggregate_send_state WHERE date_key=? AND chat_id=?`, dateKey, chatID).Scan(&n)
-	return n != 0
+	err := d.SQL.QueryRow(`SELECT t1_execution_finished FROM aggregate_send_state WHERE date_key=? AND chat_id=?`, dateKey, chatID).Scan(&n)
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return n != 0, nil
 }
 
 func OpenBrokerTrade(trades []map[string]any) map[string]any {

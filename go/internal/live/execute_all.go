@@ -83,6 +83,9 @@ func (e *Engine) executeAll(w execWindow, ev EvalResult, trigger, corr string, s
 		}
 		res := e.submitEvaluated(w, one, trigger, corr, name, br)
 		results[name] = res.Broker
+		if reason, _ := res.Decision["reason"].(string); reason == "journal_unavailable" {
+			decisions[name] = res.Decision
+		}
 		if res.Executed {
 			anyOK = true
 		}
@@ -122,35 +125,45 @@ func (e *Engine) submitEvaluated(w execWindow, ev EvalResult, trigger, corr, bro
 	if brokerName != "" {
 		key = brokerName + ":" + key
 	}
+	var pending map[string]any
+	var pendErr error
 	if action == "entry" {
-		var pending map[string]any
 		if brokerName != "" {
-			pending = e.DB.AnyPendingTrackerFor(brokerName)
+			pending, pendErr = e.DB.AnyPendingTrackerFor(brokerName)
 		} else {
-			pending = e.DB.AnyPendingTracker()
-		}
-		if pending != nil {
-			ev.Broker = map[string]any{"submitted": false, "error": "pending_tracker_exists", "clientOrderId": pending["clientOrderId"]}
-			e.logAuto("order_guarded", corr, map[string]any{"symbol": symbol, "action": action, "reason": "pending_tracker", "broker": brokerName})
-			return ev
-		}
-		if e.trackerPersistBlocked(brokerName) {
-			ev.Broker = map[string]any{"submitted": false, "error": "execution_unknown"}
-			e.logAuto("order_guarded", corr, map[string]any{"symbol": symbol, "action": action, "reason": "tracker_persist_failed", "broker": brokerName})
-			return ev
+			pending, pendErr = e.DB.AnyPendingTracker()
 		}
 	} else {
-		var pending map[string]any
 		if brokerName != "" {
-			pending = e.DB.FindPendingTrackerBroker(symbol, action, brokerName)
+			pending, pendErr = e.DB.FindPendingTrackerBroker(symbol, action, brokerName)
 		} else {
-			pending = e.DB.FindPendingTracker(symbol, action)
+			pending, pendErr = e.DB.FindPendingTracker(symbol, action)
 		}
-		if pending != nil {
-			ev.Broker = map[string]any{"submitted": false, "error": "pending_" + action + "_tracker_exists", "clientOrderId": pending["clientOrderId"]}
-			e.logAuto("order_guarded", corr, map[string]any{"symbol": symbol, "action": action, "reason": "pending_tracker", "broker": brokerName})
-			return ev
+	}
+	if pendErr != nil {
+		ev.Decision = map[string]any{"action": "none", "reason": "journal_unavailable", "symbol": nil, "candidate": nil}
+		ev.Broker = map[string]any{"submitted": false, "error": "journal_unavailable"}
+		ev.Executed = false
+		ev.Submitted = false
+		e.logAuto("execution_skipped", corr, map[string]any{
+			"symbol": symbol, "action": action, "broker": brokerName,
+			"reason": "journal_unavailable", "error": pendErr.Error(),
+		})
+		return ev
+	}
+	if pending != nil {
+		errKey := "pending_tracker_exists"
+		if action != "entry" {
+			errKey = "pending_" + action + "_tracker_exists"
 		}
+		ev.Broker = map[string]any{"submitted": false, "error": errKey, "clientOrderId": pending["clientOrderId"]}
+		e.logAuto("order_guarded", corr, map[string]any{"symbol": symbol, "action": action, "reason": "pending_tracker", "broker": brokerName})
+		return ev
+	}
+	if action == "entry" && e.trackerPersistBlocked(brokerName) {
+		ev.Broker = map[string]any{"submitted": false, "error": "execution_unknown"}
+		e.logAuto("order_guarded", corr, map[string]any{"symbol": symbol, "action": action, "reason": "tracker_persist_failed", "broker": brokerName})
+		return ev
 	}
 	e.mu.Lock()
 	if e.reservations == nil {

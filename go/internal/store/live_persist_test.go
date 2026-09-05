@@ -127,10 +127,18 @@ func TestPendingTrackersListAndExpire(t *testing.T) {
 	if len(pending) != 1 || fmtSprint(pending[0]["clientOrderId"]) != "today" {
 		t.Fatalf("after expire %+v", pending)
 	}
-	if fmtSprint(db.FindPendingTracker("MSFT", "entry")["clientOrderId"]) != "today" {
+	row, err := db.FindPendingTracker("MSFT", "entry")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fmtSprint(row["clientOrderId"]) != "today" {
 		t.Fatal("today tracker should still be pending")
 	}
-	if db.FindPendingTracker("AAPL", "entry") != nil {
+	row, err = db.FindPendingTracker("AAPL", "entry")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row != nil {
 		t.Fatal("expired AAPL tracker should not be pending")
 	}
 }
@@ -304,5 +312,77 @@ func TestWebullAccessTokenFallsBackToUnconfirmedToken(t *testing.T) {
 	// take the account offline.
 	if got := d.WebullAccessToken(); got != "only-token" {
 		t.Fatalf("fallback = %q, want only-token", got)
+	}
+}
+
+func TestPendingTrackerQueryError(t *testing.T) {
+	db := openTestDB(t)
+	row, err := db.FindPendingTracker("AAPL", "entry")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row != nil {
+		t.Fatal("empty pending is (nil, nil)")
+	}
+	row, err = db.AnyPendingTracker()
+	if err != nil || row != nil {
+		t.Fatalf("empty AnyPendingTracker: %v %+v", err, row)
+	}
+	if _, err := db.SQL.Exec(`DROP TABLE order_trackers`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.FindPendingTracker("AAPL", "entry"); err == nil {
+		t.Fatal("want error when order_trackers is unreadable")
+	}
+	if _, err := db.AnyPendingTrackerFor("webull"); err == nil {
+		t.Fatal("want error from AnyPendingTrackerFor")
+	}
+	if _, err := db.FindPendingTrackerBroker("AAPL", "exit", "webull"); err == nil {
+		t.Fatal("want error from FindPendingTrackerBroker")
+	}
+}
+
+func TestGetRobinhoodOAuthErrEmptyVsScan(t *testing.T) {
+	db := openTestDB(t)
+	row, err := db.GetRobinhoodOAuthErr()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row.AccessToken != "" {
+		t.Fatalf("empty %+v", row)
+	}
+	if db.GetRobinhoodOAuth().AccessToken != "" {
+		t.Fatal("GetRobinhoodOAuth must still return zero on empty")
+	}
+	if _, err := db.SQL.Exec(`DROP TABLE robinhood_oauth`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.GetRobinhoodOAuthErr(); err == nil {
+		t.Fatal("want scan/query error")
+	}
+	_ = db.GetRobinhoodOAuth()
+}
+
+func TestT1ExecutionFinishedEmptyVsError(t *testing.T) {
+	db := openTestDB(t)
+	done, err := db.T1ExecutionFinished("c", "2026-09-01")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if done {
+		t.Fatal("missing row is not finished")
+	}
+	if _, err := db.SQL.Exec(`INSERT INTO aggregate_send_state (date_key, chat_id, t11_sent, t1_sent, t1_execution_finished) VALUES ('2026-09-01', 'c', 0, 0, 1)`); err != nil {
+		t.Fatal(err)
+	}
+	done, err = db.T1ExecutionFinished("c", "2026-09-01")
+	if err != nil || !done {
+		t.Fatalf("finished after insert: %v %v", done, err)
+	}
+	if _, err := db.SQL.Exec(`DROP TABLE aggregate_send_state`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.T1ExecutionFinished("c", "2026-09-01"); err == nil {
+		t.Fatal("want query error")
 	}
 }
