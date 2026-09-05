@@ -150,7 +150,7 @@ func TestVanillaUIAssets(t *testing.T) {
 		"Авто", "Тёмная", "Светлая",
 		"'auto'", "'dark'", "'light'",
 		"laptop", "moon", "sun",
-		"Built with ❤️ for traders",
+		"Создано с ❤️ для трейдеров",
 		"footerHTML",
 		"chart-watermark",
 	}
