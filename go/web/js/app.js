@@ -565,8 +565,14 @@
     let msg = err.message || String(err);
     if (err.data && typeof err.data === 'object') {
       try {
-        const extra = JSON.stringify(err.data);
-        if (extra && extra !== '{}' && extra !== 'null') msg += ' | ' + extra;
+        const rest = {};
+        Object.keys(err.data).forEach((k) => {
+          if (k === 'error' || k === 'message') return;
+          let v = err.data[k];
+          if (k === 'raw' && v != null) v = String(v).slice(0, 200);
+          rest[k] = v;
+        });
+        if (Object.keys(rest).length) msg += ' | ' + JSON.stringify(rest);
       } catch (_) {}
     }
     return msg;
