@@ -285,13 +285,16 @@ func (e *Engine) pollTracker(t map[string]any) (bool, error) {
 		e.mu.Unlock()
 	}()
 
-	br := e.defaultBroker()
-	if name := fmt.Sprint(t["broker"]); name != "" && name != "<nil>" {
-		if named := e.BrokerNamed(name); named != nil {
-			br = named
-		}
-	}
+	br := e.brokerForTracker(t)
 	if br == nil {
+		if name := trackerBrokerName(t); name != "" {
+			// Named broker is set but not attached: never fall through to
+			// defaultBroker. Webull answering ErrOrderNotFound here would
+			// finalize the tracker as terminal_absent and deletePhantom
+			// another broker's journal row (AU-P0-2).
+			e.markBrokerDisconnected(t)
+			return true, nil
+		}
 		return true, nil
 	}
 	detail, derr := br.OrderDetail(id)
@@ -374,6 +377,48 @@ func (e *Engine) listingLagExpired(t map[string]any) bool {
 		now = e.now()
 	}
 	return listingLagExpired(t, now)
+}
+
+func trackerBrokerName(t map[string]any) string {
+	if t == nil {
+		return ""
+	}
+	name := strings.TrimSpace(fmt.Sprint(t["broker"]))
+	if name == "" || name == "<nil>" {
+		return ""
+	}
+	return name
+}
+
+func trackerBrokerLabel(t map[string]any) string {
+	name := trackerBrokerName(t)
+	if name == "" {
+		name = "webull"
+	}
+	return brokerLabel(name)
+}
+
+// brokerForTracker returns the attached broker named on the tracker. A
+// non-empty t["broker"] whose BrokerNamed lookup is nil is not replaced by
+// defaultBroker — the caller must treat that as disconnected.
+func (e *Engine) brokerForTracker(t map[string]any) Broker {
+	if name := trackerBrokerName(t); name != "" {
+		return e.BrokerNamed(name)
+	}
+	return e.defaultBroker()
+}
+
+func (e *Engine) markBrokerDisconnected(t map[string]any) {
+	id := fmt.Sprint(t["clientOrderId"])
+	name := trackerBrokerName(t)
+	_ = e.DB.SetOrderTrackerStatus(id, "execution_unknown")
+	e.logAuto("order_execution_unknown", e.metaCorr(id), map[string]any{
+		"clientOrderId": id, "symbol": t["symbol"], "action": t["action"],
+		"broker": name, "error": "broker_not_connected",
+	})
+	_ = e.Send(e.chat(), fmt.Sprintf(
+		"<b>Статус заявки неизвестен</b>\n%s • %s\nclientOrderId: %s\nБрокер %s не подключён. Заявка не опрашивалась, вход заблокирован.",
+		t["symbol"], t["action"], id, brokerLabel(name)))
 }
 
 func (e *Engine) markExecutionUnknown(t map[string]any, cause error) {
@@ -483,12 +528,12 @@ func (e *Engine) finalizeTrackerStatus(t map[string]any, detail map[string]any, 
 		if fillPrice > 0 {
 			priceS = fmt.Sprintf("$%.2f", fillPrice)
 		}
-		_ = e.Send(e.chat(), fmt.Sprintf("<b>Webull исполнено</b>\n%s • %s • %s\nqty: %v\nsource: %v", sym, side, priceS, qty, t["source"]))
+		_ = e.Send(e.chat(), fmt.Sprintf("<b>%s исполнено</b>\n%s • %s • %s\nqty: %v\nsource: %v", trackerBrokerLabel(t), sym, side, priceS, qty, t["source"]))
 	} else {
 		// Node notifies on every terminal status (autotrade.js finalizeTracker),
 		// not just fills: a rejected or expired order is the case an operator
 		// most needs to see.
-		_ = e.Send(e.chat(), fmt.Sprintf("<b>Webull статус заявки</b>\n%s • %s\nstatus: %s\nsource: %v", sym, side, status, t["source"]))
+		_ = e.Send(e.chat(), fmt.Sprintf("<b>%s статус заявки</b>\n%s • %s\nstatus: %s\nsource: %v", trackerBrokerLabel(t), sym, side, status, t["source"]))
 	}
 	e.mu.Lock()
 	delete(e.orderMeta, id)
