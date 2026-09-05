@@ -2256,7 +2256,7 @@
             <button id="cal-today" class="btn-secondary min-h-0 py-2 px-3 text-sm">Сегодня</button>
           </div>
           <div class="grid grid-cols-7 gap-1 text-xs text-gray-500 mb-1">${['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map((x) => `<div class="text-center">${x}</div>`).join('')}</div>
-          <div class="grid grid-cols-7 gap-1">${cells}</div>
+          <div class="cal-grid grid grid-cols-7 gap-1">${cells}</div>
         </div>
         <div class="space-y-3">
           <div class="rounded-lg border border-red-100 bg-red-50 dark:bg-red-950/20 dark:border-red-900/40 p-3">
