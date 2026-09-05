@@ -117,8 +117,12 @@ func (s *Server) calcOptions(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	eq, trades, final := backtest.RunOptions(decodeTrades(req.Trades), s.barsOrDataset(req), req.Config)
-	m := metrics.New(trades, eq, 10000, nil).All()
+	cfg := req.Config
+	if cfg.InitialCapital <= 0 {
+		cfg.InitialCapital = types.F64Or(decodeStrategy(req.Strategy).RiskManagement.InitialCapital, 10000)
+	}
+	eq, trades, final := backtest.RunOptions(decodeTrades(req.Trades), s.barsOrDataset(req), cfg)
+	m := metrics.New(trades, eq, cfg.InitialCapital, nil).All()
 	writeJSON(w, 200, map[string]any{"equity": eq, "trades": trades, "finalValue": final, "metrics": m, "maxDrawdown": m.MaxDrawdown})
 }
 
@@ -132,8 +136,12 @@ func (s *Server) calcOptionsMulti(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 400, map[string]any{"error": "data is required"})
 		return
 	}
-	eq, trades, final := backtest.RunMultiOptions(decodeTrades(req.Trades), tickers, req.Config)
-	m := metrics.New(trades, eq, 10000, nil).All()
+	cfg := req.Config
+	if cfg.InitialCapital <= 0 {
+		cfg.InitialCapital = types.F64Or(decodeStrategy(req.Strategy).RiskManagement.InitialCapital, 10000)
+	}
+	eq, trades, final := backtest.RunMultiOptions(decodeTrades(req.Trades), tickers, cfg)
+	m := metrics.New(trades, eq, cfg.InitialCapital, nil).All()
 	writeJSON(w, 200, map[string]any{"equity": eq, "trades": trades, "finalValue": final, "metrics": m, "maxDrawdown": m.MaxDrawdown})
 }
 

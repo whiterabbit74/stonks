@@ -107,7 +107,11 @@ func RSI(data []float64, period int) []float64 {
 				avgGain = sumGains / float64(period)
 				avgLoss = sumLosses / float64(period)
 				if avgLoss == 0 {
-					result[i] = 100
+					if avgGain == 0 {
+						result[i] = 50
+					} else {
+						result[i] = 100
+					}
 				} else {
 					rs := avgGain / avgLoss
 					result[i] = 100 - (100 / (1 + rs))
@@ -117,7 +121,11 @@ func RSI(data []float64, period int) []float64 {
 			avgGain = (avgGain*float64(period-1) + gain) / float64(period)
 			avgLoss = (avgLoss*float64(period-1) + loss) / float64(period)
 			if avgLoss == 0 {
-				result[i] = 100
+				if avgGain == 0 {
+					result[i] = 50
+				} else {
+					result[i] = 100
+				}
 			} else {
 				rs := avgGain / avgLoss
 				result[i] = 100 - (100 / (1 + rs))
@@ -135,7 +143,7 @@ func IBS(ohlc []types.OHLC) []float64 {
 	for i, bar := range ohlc {
 		high, low, close := bar.High, bar.Low, bar.Close
 		if high < low || close < low || close > high {
-			result[i] = 0.5
+			result[i] = math.NaN()
 			continue
 		}
 		if high == low {

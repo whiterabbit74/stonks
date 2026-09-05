@@ -3,6 +3,7 @@ package httpapi
 import (
 	"bytes"
 	"encoding/json"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -1311,5 +1312,13 @@ func TestWatchPatchRejectsThresholdsThatInvertPair(t *testing.T) {
 	}
 	if got["lowIBS"] != 0.1 || got["highIBS"] != 0.75 {
 		t.Fatalf("row mutated on 400: %+v", got)
+	}
+}
+
+func TestWriteJSONNaNIsNotHTTP200(t *testing.T) {
+	rec := httptest.NewRecorder()
+	writeJSON(rec, 200, map[string]any{"pnl": math.NaN()})
+	if rec.Code == 200 {
+		t.Fatalf("NaN must not send HTTP 200 with a truncated body, got %d %s", rec.Code, rec.Body.String())
 	}
 }

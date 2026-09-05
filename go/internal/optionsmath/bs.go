@@ -34,6 +34,13 @@ func BlackScholes(typ string, S, K, T, r, sigma float64) float64 {
 		}
 		return math.Max(0, K-S)
 	}
+	if sigma <= 0 {
+		fwd := S * math.Exp(r*T)
+		if typ == "call" {
+			return math.Exp(-r*T) * math.Max(0, fwd-K)
+		}
+		return math.Exp(-r*T) * math.Max(0, K-fwd)
+	}
 	d1 := (math.Log(S/K) + (r+(sigma*sigma)/2.0)*T) / (sigma * math.Sqrt(T))
 	d2 := d1 - sigma*math.Sqrt(T)
 	if typ == "call" {

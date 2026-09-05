@@ -204,6 +204,39 @@ func SimulateMargin(p MarginParams) MarginResult {
 		}
 		equity = append(equity, types.EquityPoint{Date: date, Value: totalValue, Drawdown: dd})
 	}
+	if pos != nil && len(bars) > 0 {
+		date := bars[len(bars)-1].Date
+		exitPx := bars[len(bars)-1].Close
+		proceeds := pos.quantity * exitPx
+		posEq := math.Max(0, proceeds-pos.borrowed)
+		cash += posEq
+		pnl := posEq - pos.marginUsed
+		pnlPct := 0.0
+		if pos.marginUsed > 0 {
+			pnlPct = (pnl / pos.marginUsed) * 100
+		}
+		t := pos.template
+		t.Quantity = pos.quantity
+		t.ExitDate = date
+		t.ExitPrice = exitPx
+		t.PnL = pnl
+		t.PnLPercent = pnlPct
+		t.Duration = tradingdate.DaysBetween(pos.entryDate, date)
+		t.ExitReason = "end_of_data"
+		if t.Context == nil {
+			t.Context = &types.TradeContext{}
+		}
+		t.Context.Leverage = p.Leverage
+		t.Context.MarginUsed = pos.marginUsed
+		t.Context.LeverageDebt = pos.borrowed
+		t.Context.GrossInvestment = pos.quantity * pos.entryPrice
+		t.Context.CurrentCapitalAfterExit = cash
+		sim = append(sim, t)
+		if len(equity) > 0 {
+			equity[len(equity)-1].Value = cash
+		}
+		pos = nil
+	}
 	final := cash
 	if len(equity) > 0 {
 		final = equity[len(equity)-1].Value

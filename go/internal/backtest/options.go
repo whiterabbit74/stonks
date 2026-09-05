@@ -14,6 +14,7 @@ type OptionsConfig struct {
 	StrikePct       float64  `json:"strikePct"`
 	VolAdjPct       float64  `json:"volAdjPct"`
 	CapitalPct      float64  `json:"capitalPct"`
+	InitialCapital  float64  `json:"initialCapital"`
 	RiskFreeRate    *float64 `json:"riskFreeRate"`
 	ExpirationWeeks *int     `json:"expirationWeeks"`
 	MaxHoldingDays  *int     `json:"maxHoldingDays"`
@@ -37,6 +38,13 @@ func executionPrice(theoretical float64) float64 {
 		return math.Round(raw)
 	}
 	return math.Round(raw/5) * 5
+}
+
+func optionsInitial(c OptionsConfig) float64 {
+	if c.InitialCapital > 0 {
+		return c.InitialCapital
+	}
+	return 10000
 }
 
 func (c OptionsConfig) resolve() optionsResolved {
@@ -98,7 +106,7 @@ type marketState struct {
 func RunOptions(stockTrades []types.Trade, market []types.OHLC, raw OptionsConfig) (equity []types.EquityPoint, trades []types.Trade, finalValue float64) {
 	stockTrades = cloneTrades(stockTrades)
 	cfg := raw.resolve()
-	initial := 10000.0
+	initial := optionsInitial(raw)
 	datePrice := map[string]marketState{}
 	for idx, bar := range market {
 		datePrice[tradingdate.DateKey(bar.Date)] = marketState{close: bar.Close, index: idx}
@@ -229,7 +237,7 @@ func RunOptions(stockTrades []types.Trade, market []types.OHLC, raw OptionsConfi
 func RunMultiOptions(stockTrades []types.Trade, tickers []TickerIndexed, raw OptionsConfig) (equity []types.EquityPoint, trades []types.Trade, finalValue float64) {
 	stockTrades = cloneTrades(stockTrades)
 	cfg := raw.resolve()
-	initial := 10000.0
+	initial := optionsInitial(raw)
 	type daily struct {
 		close float64
 		index int

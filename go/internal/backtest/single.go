@@ -249,7 +249,7 @@ func RunSinglePosition(tickers []TickerIndexed, strategy types.Strategy, leverag
 							pnlPercent = (totalPnL / totalCashInvested) * 100
 						}
 						capitalBeforeExit := freeCapital
-						freeCapital += totalCashInvested + totalPnL
+						freeCapital = math.Max(0, freeCapital+totalCashInvested+totalPnL)
 						totalInvested = math.Max(0, totalInvested-totalCashInvested)
 						updatePortfolio(nil, date)
 						ticker := current.ticker
@@ -367,7 +367,7 @@ func RunSinglePosition(tickers []TickerIndexed, strategy types.Strategy, leverag
 				pnlPercent = (totalPnL / totalCashInvested) * 100
 			}
 			duration := tradingdate.DaysBetween(current.entryDate, lastBar.Date)
-			freeCapital += totalCashInvested + totalPnL
+			freeCapital = math.Max(0, freeCapital+totalCashInvested+totalPnL)
 			totalInvested = math.Max(0, totalInvested-totalCashInvested)
 			totalPortfolio = freeCapital + totalInvested
 			exitIBS := 0.0

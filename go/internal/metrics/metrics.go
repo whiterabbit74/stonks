@@ -62,7 +62,7 @@ func (c *Calculator) totalReturn(finalValue float64) float64 {
 }
 
 func (c *Calculator) cagr(finalValue, years float64) float64 {
-	if c.initialCapital <= 0 || years <= 0 {
+	if c.initialCapital <= 0 || years <= 0 || finalValue <= 0 {
 		return 0
 	}
 	if years < 1 {
@@ -98,7 +98,7 @@ func (c *Calculator) sharpe(returns []float64, meanReturn float64) float64 {
 	if len(returns) == 0 {
 		return 0
 	}
-	stdDev := stdPop(returns, meanReturn)
+	stdDev := stdSample(returns, meanReturn) // sample stdev (N-1); population understates vol on short series
 	if stdDev == 0 {
 		return 0
 	}
@@ -221,7 +221,7 @@ func (c *Calculator) skewness(returns []float64, m float64) float64 {
 	if len(returns) < 3 {
 		return 0
 	}
-	sd := stdPop(returns, m)
+	sd := stdSample(returns, m)
 	if sd == 0 {
 		return 0
 	}
@@ -236,7 +236,7 @@ func (c *Calculator) kurtosis(returns []float64, m float64) float64 {
 	if len(returns) < 4 {
 		return 0
 	}
-	sd := stdPop(returns, m)
+	sd := stdSample(returns, m)
 	if sd == 0 {
 		return 0
 	}
@@ -329,6 +329,18 @@ func mean(v []float64) float64 {
 
 func stdPop(v []float64, m float64) float64 {
 	return math.Sqrt(variancePop(v, m))
+}
+
+func stdSample(v []float64, m float64) float64 {
+	if len(v) < 2 {
+		return 0
+	}
+	s := 0.0
+	for _, x := range v {
+		d := x - m
+		s += d * d
+	}
+	return math.Sqrt(s / float64(len(v)-1))
 }
 
 func variancePop(v []float64, m float64) float64 {

@@ -1,6 +1,7 @@
 package optionsmath
 
 import (
+	"math"
 	"testing"
 
 	"mktorder.com/go/internal/goldens"
@@ -35,6 +36,9 @@ func TestBlackScholesGolden(t *testing.T) {
 	}
 	if !goldens.MustAlmost(BlackScholes("call", 150, 100, 0.0001, 0.05, 0.2), g.DeepITMCall, 1e-12) {
 		t.Fatalf("itm")
+	}
+	if v := BlackScholes("call", 100, 100, 1, 0, 0); math.IsNaN(v) || math.IsInf(v, 0) {
+		t.Fatalf("sigma 0 must be finite, got %v", v)
 	}
 	if BlackScholes("call", 110, 100, 0, 0.05, 0.2) != g.ExpiredCall {
 		t.Fatalf("expired call")

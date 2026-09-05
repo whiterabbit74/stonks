@@ -127,7 +127,7 @@ func RunBuyAtClose4(tickers []TickerIndexed, strategy types.Strategy, leverage f
 						pnlPercent = (totalPnL / totalCashInvested) * 100
 					}
 					capitalBefore := freeCapital
-					freeCapital += totalCashInvested + totalPnL
+					freeCapital = math.Max(0, freeCapital+totalCashInvested+totalPnL)
 					totalInvested -= totalCashInvested
 					positions[tickerIndex] = nil
 					updatePortfolio(currentDate)
@@ -191,7 +191,7 @@ func RunBuyAtClose4(tickers []TickerIndexed, strategy types.Strategy, leverage f
 		}
 		duration := tradingdate.DaysBetween(pos.entryDate, lastBar.Date)
 		capitalBefore := freeCapital
-		freeCapital += totalCashInvested + totalPnL
+		freeCapital = math.Max(0, freeCapital+totalCashInvested+totalPnL)
 		totalInvested -= totalCashInvested
 		totalPortfolio = freeCapital + totalInvested
 		exitIBS := 0.0
@@ -209,7 +209,7 @@ func RunBuyAtClose4(tickers []TickerIndexed, strategy types.Strategy, leverage f
 				IndicatorValues: map[string]float64{"IBS": pos.entryIBS, "exitIBS": exitIBS},
 				Trend:           "sideways", InitialInvestment: totalCashInvested,
 				GrossInvestment: pos.quantity * pos.entryPrice, Leverage: leverage,
-				LeverageDebt:   stockValueAtEntry - pos.totalCost + pos.entryCommission,
+				LeverageDebt:   stockValueAtEntry - pos.totalCost,
 				CommissionPaid: pos.entryCommission + exitC, NetProceeds: netProceeds,
 				CapitalBeforeExit: capitalBefore, CurrentCapitalAfterExit: totalPortfolio,
 				MarginUsed: pos.totalCost,
@@ -233,10 +233,10 @@ func RunBuyAtClose4(tickers []TickerIndexed, strategy types.Strategy, leverage f
 	var winSum, lossSum float64
 	wins, losses := 0, 0
 	for _, t := range trades {
-		if t.PnL > 0 {
+		if t.PnL > metrics.TradePnLEpsilon {
 			wins++
 			winSum += t.PnL
-		} else {
+		} else if t.PnL < -metrics.TradePnLEpsilon {
 			losses++
 			lossSum += t.PnL
 		}
