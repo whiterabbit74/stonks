@@ -1042,6 +1042,13 @@ func nullF(v sql.NullFloat64) any {
 	}
 	return v.Float64
 }
+
+func nullI(v sql.NullInt64) any {
+	if !v.Valid {
+		return nil
+	}
+	return v.Int64
+}
 func nullS(v sql.NullString) any {
 	if !v.Valid {
 		return nil
@@ -1232,7 +1239,7 @@ func (d *DB) GetTrade(table, id string) (map[string]any, error) {
 		"entryPrice": nullF(entryP), "exitPrice": nullF(exitP),
 		"entryIBS": nullF(entryI), "exitIBS": nullF(exitI),
 		"pnlPercent": nullF(pnlP), "pnlAbsolute": nullF(pnlA),
-		"holdingDays": hold.Int64, "notes": nullS(notes), "source": nullS(source),
+		"holdingDays": nullI(hold), "notes": nullS(notes), "source": nullS(source),
 		"isHidden": hidden.Int64 == 1, "isTest": test.Int64 == 1, "quantity": nullF(qty),
 		"linkedBrokerTradeId": nullS(linked),
 		"broker":              nullS(broker),
@@ -1433,7 +1440,7 @@ func (d *DB) ListTrades(table string) ([]map[string]any, error) {
 			"entryPrice": nullF(entryP), "exitPrice": nullF(exitP),
 			"entryIBS": nullF(entryI), "exitIBS": nullF(exitI),
 			"pnlPercent": nullF(pnlP), "pnlAbsolute": nullF(pnlA),
-			"holdingDays": hold.Int64, "notes": nullS(notes), "source": nullS(source),
+			"holdingDays": nullI(hold), "notes": nullS(notes), "source": nullS(source),
 			"isHidden": hidden.Int64 == 1, "isTest": test.Int64 == 1, "quantity": nullF(qty),
 			"broker": nullS(broker),
 		})

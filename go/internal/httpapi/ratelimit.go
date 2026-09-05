@@ -84,7 +84,7 @@ func trustProxy() bool {
 }
 
 func clientIP(r *http.Request) string {
-	if trustProxy() {
+	if trustProxy() && trustedProxyPeer(r.RemoteAddr) {
 		// Caddy appends the peer address to any X-Forwarded-For the client
 		// sent, so only the RIGHTMOST entry is written by the trusted hop.
 		// Reading the leftmost would hand the attacker the bucket key.
@@ -100,6 +100,15 @@ func clientIP(r *http.Request) string {
 		return r.RemoteAddr
 	}
 	return host
+}
+
+func trustedProxyPeer(remote string) bool {
+	host, _, err := net.SplitHostPort(remote)
+	if err != nil {
+		host = remote
+	}
+	ip := net.ParseIP(strings.TrimSpace(host))
+	return ip != nil && (ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast())
 }
 
 func (s *Server) rateLimit(next http.Handler) http.Handler {
