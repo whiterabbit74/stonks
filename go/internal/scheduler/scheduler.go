@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"strings"
 	"sync"
 	"time"
 
@@ -404,22 +403,6 @@ func robinhoodHealthJob(db *store.DB, eng *live.Engine, todayET string, now time
 	_, dl := live.ClassifyRobinhoodHealth(row.AccessToken, row.RefreshToken, recorded, row.ExpiresAt, now)
 	maybeHealthAlert(db, eng, "robinhood", row.LastAlertedStatus, row.LastAlertedAt, recorded, now)
 	return []live.BrokerHealth{{Broker: "robinhood", Status: recorded, CheckedAt: now.UTC().Format(time.RFC3339), ExpiresAt: row.ExpiresAt, DaysLeft: dl, Detail: recorded}}
-}
-
-func liveStatus(raw string) string {
-	switch strings.ToUpper(strings.TrimSpace(raw)) {
-	case "UNKNOWN":
-		return live.HealthUnreachable
-	case "MISSING":
-		return live.HealthMissing
-	case "NORMAL", "OK":
-		return live.HealthOK
-	default:
-		if raw == "" {
-			return live.HealthMissing
-		}
-		return raw
-	}
 }
 
 func maybeHealthAlert(db *store.DB, eng *live.Engine, broker, prev, prevAt, status string, now time.Time) {

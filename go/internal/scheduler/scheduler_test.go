@@ -809,3 +809,13 @@ func TestRunTickComputesIsTradingDayOnce(t *testing.T) {
 		t.Fatalf("RunTick calls TradingSession %d times, want 1", n)
 	}
 }
+
+func TestLiveStatusRemoved(t *testing.T) {
+	raw, err := os.ReadFile("scheduler.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "func liveStatus") {
+		t.Fatal("liveStatus is unused and must be deleted")
+	}
+}
