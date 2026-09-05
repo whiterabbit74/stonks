@@ -629,7 +629,7 @@
         await API.closeMonitor(id, body);
         closeModal();
         state.loaded.watches = false;
-        toast('Monitor-сделка закрыта');
+        toast('Сделка мониторинга закрыта');
         renderPage();
       } catch (err) { errEl.textContent = errText(err); errEl.classList.remove('hidden'); }
     });
@@ -2719,14 +2719,14 @@
         : `<div class="rounded-xl bg-gray-50 p-3 dark:bg-gray-950/40">
               <div class="text-xs uppercase tracking-wide text-gray-500">Подключение (Webull)</div>
               <div class="mt-1 text-sm">${conn.configured || tok.hasToken || tok.present ? 'Webull подключен' : 'Webull не настроен'}</div>
-              <div class="mt-1 text-sm">token ${tok.hasToken || tok.present ? 'есть' : 'не задан'} • источник: ${esc(tok.source || '—')} • проверка: ${esc(tok.lastCheckStatus || '—')}</div>
-              <div class="text-xs text-gray-500 mt-1">истекает ${esc(formatDateTimeET(tok.expiresAt) || tok.expiresAt || '—')} · осталось: ${esc(tok.daysLeft != null ? tok.daysLeft + ' дн.' : '—')} · lastCheckAt ${esc(formatDateTimeET(tok.lastCheckAt))}</div>
+              <div class="mt-1 text-sm">Токен: ${tok.hasToken || tok.present ? 'есть' : 'не задан'} • источник: ${esc(tok.source || '—')} • проверка: ${esc(tok.lastCheckStatus || '—')}</div>
+              <div class="text-xs text-gray-500 mt-1">истекает ${esc(formatDateTimeET(tok.expiresAt) || tok.expiresAt || '—')} · осталось: ${esc(tok.daysLeft != null ? tok.daysLeft + ' дн.' : '—')} · последняя проверка: ${esc(formatDateTimeET(tok.lastCheckAt))}</div>
               <div class="mt-2 flex flex-wrap gap-2">
                 <button type="button" id="auto-token-check" class="btn-secondary min-h-0 py-2">Проверить токен</button>
                 <button type="button" id="auto-token-create" class="btn-secondary min-h-0 py-2">Создать токен</button>
               </div>
               <div class="mt-2 flex gap-2">
-                <input id="auto-token-input" type="password" autocomplete="off" placeholder="Вставьте Webull token" class="field min-w-0 flex-1" />
+                <input id="auto-token-input" type="password" autocomplete="off" placeholder="Вставьте токен Webull" class="field min-w-0 flex-1" />
                 <button type="button" id="auto-token-save" class="btn-secondary min-h-0 py-2">Сохранить токен</button>
               </div>
             </div>`;
