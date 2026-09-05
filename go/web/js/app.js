@@ -749,6 +749,9 @@
   function brokerLabel(id) {
     return id === 'robinhood' ? 'Robinhood' : (id === 'webull' ? 'Webull' : (id || '—'));
   }
+  function accountTypeText(type) {
+    return ({ cash: 'Денежный', margin: 'Маржинальный', ira: 'IRA', roth_ira: 'Roth IRA', traditional_ira: 'Traditional IRA' })[String(type || '').toLowerCase()] || type || '—';
+  }
   function tradeSourceText(source) {
     return ({ manual: 'Вручную', import: 'Импорт', webull: 'Webull', robinhood: 'Robinhood', strategy: 'Стратегия' })[String(source || '').toLowerCase()] || source || '—';
   }
@@ -2609,7 +2612,7 @@
       body = `<div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <div class="rounded-lg border p-4"><div class="text-xs text-gray-500">Всего активов</div><div class="text-xl font-semibold mt-1">${fmtUsd(bal.totalAssets)}</div><div class="text-xs text-gray-400 mt-1">Валюта: ${esc(bal.currency || 'USD')}</div></div>
         <div class="rounded-lg border p-4"><div class="text-xs text-gray-500">Свободные деньги</div><div class="text-xl font-semibold mt-1">${fmtUsd(bal.cashBalance)}</div><div class="text-xs text-gray-400 mt-1">Наличные / расчётные средства</div></div>
-        <div class="rounded-lg border p-4"><div class="text-xs text-gray-500">Покупательная способность</div><div class="text-xl font-semibold mt-1">${fmtUsd(bal.buyingPower)}</div><div class="text-xs text-gray-400 mt-1">${esc(bal.accountType ? ('Тип счёта: ' + bal.accountType) : 'Доступно для покупок')}</div></div>
+        <div class="rounded-lg border p-4"><div class="text-xs text-gray-500">Покупательная способность</div><div class="text-xl font-semibold mt-1">${fmtUsd(bal.buyingPower)}</div><div class="text-xs text-gray-400 mt-1">${bal.accountType ? ('Тип счёта: ' + esc(accountTypeText(bal.accountType))) : 'Доступно для покупок'}</div></div>
         <div class="rounded-lg border p-4"><div class="text-xs text-gray-500">Нереализованный PnL</div><div class="text-xl font-semibold mt-1 ${pnlClass(bal.unrealizedPnl)}">${fmtUsd(bal.unrealizedPnl)}</div><div class="text-xs text-gray-400 mt-1">${bal.fetchedAt ? ('Обновлено ' + esc(formatDateTimeET(bal.fetchedAt))) : ''}</div></div>
       </div>${err ? `<p class="mt-3 text-sm text-amber-700">${esc(typeof err === 'string' ? err : (err.message || JSON.stringify(err)))}</p>` : ''}
       ${rawJsonBlock('Исходные данные баланса', state.dashboard && state.dashboard.balance)}
