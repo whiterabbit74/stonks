@@ -1703,7 +1703,7 @@
             </div>
             <div id="mobile-drawer" class="${state.mobileOpen ? '' : 'hidden'} border-t border-gray-200 dark:border-gray-700 bg-white/95 backdrop-blur-sm dark:bg-slate-900/95"></div>
           </header>
-          <main id="main-content" class="flex-1 w-full px-4 sm:px-6 lg:px-8 pt-6 pb-32 md:pb-24 safe-area-pb">
+          <main id="main-content" class="flex-1 w-full px-4 sm:px-6 lg:px-8 pt-6 pb-32 md:pb-8 safe-area-pb">
             <div id="page-root"></div>
           </main>
           <nav class="bottom-nav md:hidden fixed bottom-0 left-0 right-0 bg-white/95 dark:bg-gray-900/95 backdrop-blur-lg border-t border-gray-200 dark:border-gray-800 z-40 grid grid-cols-3 items-center h-16" role="navigation" aria-label="Основная навигация">${bottom}</nav>
