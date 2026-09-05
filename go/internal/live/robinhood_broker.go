@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 
 	"mktorder.com/go/internal/robinhood"
+	"mktorder.com/go/internal/tradingdate"
 )
 
 type RobinhoodBroker struct {
@@ -217,7 +218,23 @@ func (b *RobinhoodBroker) OrderHistory(start, end string) ([]any, error) {
 }
 
 func (b *RobinhoodBroker) OrderHistoryCtx(ctx context.Context, start, end string) ([]any, error) {
-	return b.ordersByState(ctx, true)
+	acct, err := b.agenticAccount()
+	if err != nil {
+		return nil, err
+	}
+	args := map[string]any{"account_number": acct}
+	if start != "" {
+		args["created_at_gte"] = start
+	}
+	raw, err := b.toolCtx(ctx, "get_equity_orders", args)
+	if err != nil {
+		return nil, err
+	}
+	var root any
+	_ = json.Unmarshal(robinhood.ToolContentJSON(raw), &root)
+	var out []any
+	collectOrders(root, &out)
+	return filterOrdersBySessionDate(out, start, end), nil
 }
 
 func (b *RobinhoodBroker) ordersByState(ctx context.Context, all bool) ([]any, error) {
@@ -409,6 +426,42 @@ func collectPositions(v any, out *[]any) {
 			collectPositions(c, out)
 		}
 	}
+}
+
+func orderSessionDate(m map[string]any) string {
+	if m == nil {
+		return ""
+	}
+	v := first(m, "created_at", "createdAt")
+	if v == nil {
+		return ""
+	}
+	d := tradingdate.DateKey(fmt.Sprint(v))
+	if tradingdate.IsValid(d) {
+		return d
+	}
+	return ""
+}
+
+func filterOrdersBySessionDate(orders []any, start, end string) []any {
+	if start == "" && end == "" {
+		return orders
+	}
+	var out []any
+	for _, o := range orders {
+		m, _ := o.(map[string]any)
+		d := orderSessionDate(m)
+		if d != "" {
+			if start != "" && tradingdate.Compare(d, start) < 0 {
+				continue
+			}
+			if end != "" && tradingdate.Compare(d, end) > 0 {
+				continue
+			}
+		}
+		out = append(out, o)
+	}
+	return out
 }
 
 func collectOrders(v any, out *[]any) {

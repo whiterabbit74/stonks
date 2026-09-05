@@ -406,3 +406,42 @@ func TestRobinhoodPositionsCtxPassesContextToTool(t *testing.T) {
 		t.Fatalf("tool %q", tool)
 	}
 }
+
+func TestRobinhoodOrderHistoryFiltersByDateRange(t *testing.T) {
+	var gte any
+	b := &RobinhoodBroker{
+		account: "RH1",
+		Call: func(name string, args map[string]any) (json.RawMessage, error) {
+			if name == "get_equity_orders" {
+				gte = args["created_at_gte"]
+				return json.Marshal(map[string]any{"orders": []any{
+					map[string]any{"id": "july", "created_at": "2026-07-01T16:00:00Z", "state": "filled"},
+					map[string]any{"id": "aug", "created_at": "2026-08-15T16:00:00Z", "state": "filled"},
+					map[string]any{"id": "sep", "created_at": "2026-09-01T16:00:00Z", "state": "filled"},
+				}})
+			}
+			return json.Marshal(map[string]any{})
+		},
+	}
+	got, err := b.OrderHistory("2026-08-01", "2026-08-31")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gte != "2026-08-01" {
+		t.Fatalf("created_at_gte=%v want 2026-08-01", gte)
+	}
+	ids := map[string]bool{}
+	for _, row := range got {
+		m, _ := row.(map[string]any)
+		ids[fmtString(m["id"])] = true
+	}
+	if ids["july"] {
+		t.Fatalf("OrderHistory must drop 2026-07-01: %+v", got)
+	}
+	if !ids["aug"] {
+		t.Fatalf("OrderHistory must keep 2026-08-15: %+v", got)
+	}
+	if ids["sep"] {
+		t.Fatalf("OrderHistory must drop 2026-09-01: %+v", got)
+	}
+}
