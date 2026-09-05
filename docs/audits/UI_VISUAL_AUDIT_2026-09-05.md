@@ -17,7 +17,7 @@
 | `/login` | вход, ошибки | ✅ | ✅ | ✅ | ✅ | базовый рендер проверен; ошибка авторизации проверена в DOM |
 | `/data` | библиотека, импорт CSV/JSON | ✅ | ✅ | ✅ | ✅ | базовый рендер проверен |
 | `/enhance` | провайдер, форма загрузки | ✅ | ✅ | ✅ | ✅ | базовый рендер проверен |
-| `/stocks` | summary, price, charts, equity, exposure, drawdown, trades, profit, duration, contribution, splits, buy-hold, BAC, BAC4, no-stop-loss, options | ✅ | ✅ | ✅ | ✅ | базовый рендер + 16 вкладок desktop |
+| `/stocks` | summary, price, charts, equity, exposure, drawdown, trades, profit, duration, contribution, splits, buy-hold, no-stop-loss | ✅ | ✅ | ✅ | ✅ | базовый рендер + актуальные вкладки desktop |
 | `/ema` | summary, price, deviation, equity, exposure, drawdown | ✅ | ✅ | ✅ | ✅ | базовый рендер проверен |
 | `/multi-ticker-options` | summary, equity, price, charts, drawdown | ✅ | ✅ | ✅ | ✅ | базовый рендер проверен |
 | `/calendar` | календарь, импорт, редактирование дня | ✅ | ✅ | ✅ | ✅ | базовый рендер проверен |
