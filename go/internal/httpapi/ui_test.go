@@ -1465,6 +1465,25 @@ func TestLongActionsDisableTheirButtons(t *testing.T) {
 	}
 }
 
+func TestBuyHoldPaintRemovesOnlyChartBh(t *testing.T) {
+	a := readWeb(t, "js/app.js")
+	paint := strings.Index(a, "Charts.destroyIn(host)")
+	if paint < 0 {
+		t.Fatal("buy-hold paint must call Charts.destroyIn(host)")
+	}
+	chunk := a[max(0, paint-200) : paint+120]
+	if !strings.Contains(chunk, "chart-bh") {
+		t.Fatal("destroyIn must target the chart-bh container")
+	}
+	if strings.Contains(chunk, "Charts.destroy()") || strings.Contains(chunk, "Charts.live.splice(0)") {
+		t.Fatal("buy-hold paint must not destroy every live chart")
+	}
+	c := readWeb(t, "js/charts.js")
+	if !strings.Contains(c, "destroyIn(container)") {
+		t.Fatal("charts.js must expose destroyIn so one container can be removed")
+	}
+}
+
 func TestKeepChartsSkipsPageRootInnerHTML(t *testing.T) {
 	a := readWeb(t, "js/app.js")
 	start := strings.Index(a, "async function renderPage")

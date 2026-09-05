@@ -5220,8 +5220,8 @@
           const paint = (lev) => {
             const scaled = lev === 1 ? { equity: base } : Charts.simulateLeverage(base, lev);
             const host = document.getElementById('chart-bh');
-            if (host) host.replaceChildren();
-            Charts.live.splice(0).forEach((chart) => { try { chart.remove(); } catch (_) {} });
+            if (!host) return;
+            Charts.destroyIn(host);
             Charts.line(host, scaled.equity, isDark());
             const lab = document.getElementById('bh-lev-now');
             if (lab) lab.textContent = 'Текущее плечо: ×' + lev.toFixed(2);

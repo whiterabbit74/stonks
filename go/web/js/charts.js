@@ -188,6 +188,17 @@ const Charts = {
       try { chart.remove(); } catch (_) { /* already gone */ }
     });
   },
+  destroyIn(container) {
+    if (!container) return;
+    this.live = this.live.filter((chart) => {
+      let el = null;
+      try { el = chart.chartElement && chart.chartElement(); } catch (_) { /* missing */ }
+      const mine = el && (el === container || container.contains(el));
+      if (!mine) return true;
+      try { chart.remove(); } catch (_) { /* already gone */ }
+      return false;
+    });
+  },
   track(chart) {
     this.live.push(chart);
     return chart;
