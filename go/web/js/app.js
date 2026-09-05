@@ -27,9 +27,9 @@
     { id: 'duration', label: 'Длительность' },
     { id: 'monthlyContribution', label: 'Пополнения' },
     { id: 'splits', label: 'Сплиты' },
-    { id: 'buyhold', label: 'Buy & Hold' },
-    { id: 'buyAtClose', label: 'BuyAtClose' },
-    { id: 'buyAtClose4', label: 'BuyAtClose4' },
+    { id: 'buyhold', label: 'Купить и держать' },
+    { id: 'buyAtClose', label: 'Покупка на закрытии' },
+    { id: 'buyAtClose4', label: 'Покупка на закрытии 4' },
     { id: 'noStopLoss', label: 'Без стоп-лосса' },
     { id: 'options', label: 'Опционы' },
   ];
