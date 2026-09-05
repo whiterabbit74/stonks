@@ -1192,7 +1192,6 @@
     const avgAll = x.trades.length ? x.trades.reduce((s, t) => s + (Number(t.pnlPercent) || 0), 0) / x.trades.length : 0;
     const gp = wins.reduce((s, t) => s + (Number(t.pnl) || 0), 0);
     const gl = losses.reduce((s, t) => s + (Number(t.pnl) || 0), 0);
-    const histPts = x.trades.map((t, i) => ({ date: t.exitDate || t.entryDate || ('t' + i), value: Number(t.pnlPercent) || 0 }));
     return `<div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-3">
       <div class="rounded-lg border p-3 text-center"><div class="text-xl font-bold">${Number.isFinite(pf) ? fmt(pf) : '∞'}</div><div class="text-xs text-gray-500">Профит-фактор</div></div>
       <div class="rounded-lg border p-3 text-center"><div class="text-xl font-bold">${fmtPct(x.metrics.winRate)}</div><div class="text-xs text-gray-500">Доля прибыльных</div></div>
@@ -1202,8 +1201,7 @@
     </div>
     <p class="text-sm text-gray-500 mb-3">Прибыльных ${wins.length} · убыточных ${losses.length} · средний убыток ${fmt(avgLoss, 2)}% · средний плюс ${fmt(avgWin, 2)}%</p>
     <div class="text-xs font-medium text-gray-500 mb-1">Распределение PnL%</div>
-    <div id="chart-pnl-hist" class="chart-box rounded-lg border dark:border-gray-800"></div>
-    <div class="mt-2">${cssHistogram(x.trades.map((t) => Number(t.pnlPercent) || 0), true)}</div>`;
+    <div id="chart-pnl-hist" class="chart-box rounded-lg border dark:border-gray-800"></div>`;
   }
   function durationBody(r) {
     const x = resultOf(r);
