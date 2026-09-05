@@ -1463,10 +1463,10 @@
       <td>${(page - 1) * PAGE_SIZE + i + 1}</td>
       ${showTicker ? `<td class="font-mono">${esc(tradeTicker(t) || '—')}</td>` : ''}
       <td title="${esc(entryIso)} – ${esc(exitIso)}" class="${(hasEntryProblem || hasExitProblem) ? 'bg-orange-50 dark:bg-orange-950/20' : ''}">
-        <div>${esc(fmtDay(t.entryDate))} – ${esc(fmtDay(t.exitDate))}</div>
-        <div class="text-xs text-gray-500">${esc(ibsLab(entryIbsNum))} – ${esc(ibsLab(exitIbsNum))}</div>
+        ${esc(fmtDay(t.entryDate))} – ${esc(fmtDay(t.exitDate))}
       </td>
-      <td>${fmtUsd(t.entryPrice)}</td><td>${fmtUsd(t.exitPrice)}</td>
+      <td><div class="text-xs text-gray-500">Покупка</div><div>${fmtUsd(t.entryPrice)}</div><div class="text-xs text-gray-500 mt-1">Продажа</div><div>${fmtUsd(t.exitPrice)}</div></td>
+      <td><div class="text-xs text-gray-500">Вход</div><div>${esc(ibsLab(entryIbsNum))}</div><div class="text-xs text-gray-500 mt-1">Выход</div><div>${esc(ibsLab(exitIbsNum))}</div></td>
       <td>${fmt(t.quantity, 0)}</td>
       <td>${invested == null ? '—' : fmtUsd(invested)}${lev != null && lev > 1 ? `<div class="text-xs text-gray-500">${esc(lev)}:1</div>` : ''}</td>
       <td class="${pnlClass(t.pnl)}">${fmtUsd(t.pnl)}</td>
@@ -1475,7 +1475,7 @@
       <td>${esc(t.duration ?? '')}</td><td>${esc(reason)}</td>
     </tr>`;
     }).join('');
-    const cols = 9 + (showTicker ? 1 : 0) + (showDeposit ? 1 : 0);
+    const cols = 10 + (showTicker ? 1 : 0) + (showDeposit ? 1 : 0);
     const start = total ? ((page - 1) * PAGE_SIZE + 1) : 0;
     const end = Math.min(page * PAGE_SIZE, total);
     const pager = total ? `<div class="pager">
@@ -1488,7 +1488,7 @@
     </div>` : '';
     return `<div id="trades-table-host" data-trades-total="${total}">
       <div class="flex flex-wrap items-center justify-between gap-2 mb-2 text-sm text-gray-600 dark:text-gray-300"><div>Всего сделок: ${total}</div></div>
-      <div class="table-wrap rounded border dark:border-gray-800"><table class="trades"><thead><tr><th>#</th>${showTicker ? '<th>Тикер</th>' : ''}<th>Дата входа-выхода</th><th>Цена входа</th><th>Цена выхода</th><th>Кол-во</th><th>Вложено</th><th>PnL, $</th><th>PnL, %</th>${showDeposit ? '<th>Депозит, $</th>' : ''}<th>Дней</th><th>Причина</th></tr></thead><tbody>${rows || `<tr><td colspan="${cols}">Нет сделок</td></tr>`}</tbody></table></div>
+      <div class="table-wrap rounded border dark:border-gray-800"><table class="trades"><thead><tr><th>#</th>${showTicker ? '<th>Тикер</th>' : ''}<th>Период</th><th>Цена покупки / продажи</th><th>IBS вход / выход</th><th>Кол-во</th><th>Вложено</th><th>PnL, $</th><th>PnL, %</th>${showDeposit ? '<th>Депозит, $</th>' : ''}<th>Дней</th><th>Причина</th></tr></thead><tbody>${rows || `<tr><td colspan="${cols}">Нет сделок</td></tr>`}</tbody></table></div>
       ${pager}
     </div>`;
   }
@@ -1516,9 +1516,8 @@
         <td class="font-mono">${esc(t.symbol || t.ticker || '—')}</td>
         <td>${esc(t.status === 'open' ? 'открыта' : 'закрыта')}${t.isTest ? ' · test' : ''}</td>
         <td title="${esc(t.entryDate || '')} – ${esc(t.exitDate || '')}">${esc(fmtTradingDate(t.entryDate))} – ${esc(fmtTradingDate(t.exitDate))}</td>
-        <td>${t.entryPrice == null ? '—' : fmtUsd(t.entryPrice)}</td>
-        <td>${t.exitPrice == null ? '—' : fmtUsd(t.exitPrice)}</td>
-        <td>${esc(ibs)}</td>
+        <td><div class="text-xs text-gray-500">Покупка</div><div>${t.entryPrice == null ? '—' : fmtUsd(t.entryPrice)}</div><div class="text-xs text-gray-500 mt-1">Продажа</div><div>${t.exitPrice == null ? '—' : fmtUsd(t.exitPrice)}</div></td>
+        <td><div class="text-xs text-gray-500">Вход</div><div>${esc(ibs.split(' → ')[0] || '—')}</div><div class="text-xs text-gray-500 mt-1">Выход</div><div>${esc(ibs.split(' → ')[1] || '—')}</div></td>
         <td class="${pnlClass(pct)}">${pct == null ? '—' : fmtSignedPct(pct, 2)} ${pnl == null ? '' : '(' + fmtSignedUsd(pnl) + ')'}</td>
         <td>${t.status === 'open' && t.id && !t.linkedBrokerTradeId ? `<button type="button" data-close-mon="${esc(t.id)}" data-close-sym="${esc(t.symbol || '')}" class="text-sm text-red-600 mr-2">Закрыть</button>` : ''}${t.id ? actionIcon('edit', 'Изменить сделку', `data-edit-mon="${esc(t.id)}"`, 'action-icon-edit') : ''}</td>
       </tr>`;
@@ -1530,7 +1529,7 @@
       <button type="button" id="watch-export-csv" class="px-2 py-1 rounded border">CSV</button>
       <span class="text-xs text-gray-500 self-center">${list.length} сделок</span>
     </div>
-    <div class="table-wrap rounded border dark:border-gray-800"><table class="trades"><thead><tr><th>Тикер</th><th>Статус</th><th>Период</th><th>Вход</th><th>Выход</th><th>IBS</th><th>PnL</th><th>Действия</th></tr></thead><tbody>${rows || '<tr><td colspan="8" class="text-center text-gray-500">Нет сделок</td></tr>'}</tbody></table></div>`;
+    <div class="table-wrap rounded border dark:border-gray-800"><table class="trades"><thead><tr><th>Тикер</th><th>Статус</th><th>Период</th><th>Цена покупки / продажи</th><th>IBS вход / выход</th><th>PnL</th><th>Действия</th></tr></thead><tbody>${rows || '<tr><td colspan="7" class="text-center text-gray-500">Нет сделок</td></tr>'}</tbody></table></div>`;
   }
   function overlay() {
     let html = '';
@@ -2601,13 +2600,11 @@
         <td>${esc(t.status === 'open' ? 'открыта' : 'закрыта')}</td>
         <td>${esc(t.entryDate || '—')}</td>
         <td>${esc(t.exitDate || '—')}</td>
-        <td>${t.entryPrice == null ? '—' : fmtUsd(t.entryPrice)}</td>
-        <td>${t.exitPrice == null ? '—' : fmtUsd(t.exitPrice)}</td>
+        <td><div class="text-xs text-gray-500">Покупка</div><div>${t.entryPrice == null ? '—' : fmtUsd(t.entryPrice)}</div><div class="text-xs text-gray-500 mt-1">Продажа</div><div>${t.exitPrice == null ? '—' : fmtUsd(t.exitPrice)}</div></td>
         <td>${t.quantity == null ? '—' : fmt(t.quantity, 0)}</td>
         <td class="${pnlClass(t.pnlAbsolute)}">${t.pnlAbsolute == null ? '—' : fmtUsd(t.pnlAbsolute)}</td>
         <td class="${pnlClass(t.pnlPercent)}">${t.pnlPercent == null ? '—' : fmt(t.pnlPercent, 2) + '%'}</td>
-        <td>${t.entryIBS == null ? '—' : fmt(Number(t.entryIBS) <= 1.5 ? Number(t.entryIBS) * 100 : Number(t.entryIBS), 1) + '%'}</td>
-        <td>${t.exitIBS == null ? '—' : fmt(Number(t.exitIBS) <= 1.5 ? Number(t.exitIBS) * 100 : Number(t.exitIBS), 1) + '%'}</td>
+        <td><div class="text-xs text-gray-500">Вход</div><div>${t.entryIBS == null ? '—' : fmt(Number(t.entryIBS) <= 1.5 ? Number(t.entryIBS) * 100 : Number(t.entryIBS), 1) + '%'}</div><div class="text-xs text-gray-500 mt-1">Выход</div><div>${t.exitIBS == null ? '—' : fmt(Number(t.exitIBS) <= 1.5 ? Number(t.exitIBS) * 100 : Number(t.exitIBS), 1) + '%'}</div></td>
         <td>${esc(t.holdingDays ?? '')}</td>
         <td class="text-xs">${esc(t.notes || '')}</td>
         <td class="text-xs">${esc(t.clientOrderId || '')}</td><td class="text-xs">${esc(t.brokerOrderId || t.orderId || '')}</td>
@@ -2627,7 +2624,7 @@
         <input name="notes" placeholder="заметки" class="field w-40" />
         <button class="btn-primary min-h-0 py-2">Добавить</button>
       </form>
-      ${jrows ? `<div class="overflow-auto"><table class="trades"><thead><tr><th>Тикер</th><th>Брокер</th><th>Источник</th><th>Статус</th><th>Дата входа</th><th>Дата выхода</th><th>Цена входа</th><th>Цена выхода</th><th>Кол-во</th><th>PnL, $</th><th>PnL, %</th><th>IBS вход</th><th>IBS выход</th><th>Дней</th><th>Заметки</th><th>Client Order ID</th><th>Broker Order ID</th><th>Действие</th></tr></thead><tbody>${jrows}</tbody></table></div>` : '<p class="text-sm text-gray-500">Сделок нет</p>'}`;
+      ${jrows ? `<div class="overflow-auto"><table class="trades"><thead><tr><th>Тикер</th><th>Брокер</th><th>Источник</th><th>Статус</th><th>Дата входа</th><th>Дата выхода</th><th>Цена покупки / продажи</th><th>Кол-во</th><th>PnL, $</th><th>PnL, %</th><th>IBS вход / выход</th><th>Дней</th><th>Заметки</th><th>Client Order ID</th><th>Broker Order ID</th><th>Действие</th></tr></thead><tbody>${jrows}</tbody></table></div>` : '<p class="text-sm text-gray-500">Сделок нет</p>'}`;
     } else if (tab === 'overview') {
       const bal = extractBalanceSummary(state.dashboard);
       const err = state.dashboard && (state.dashboard.error || (Array.isArray(state.dashboard.errors) && state.dashboard.errors[0]));
