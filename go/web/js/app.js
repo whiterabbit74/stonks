@@ -1511,7 +1511,7 @@
         <td><div class="text-xs text-gray-500">Покупка</div><div>${t.entryPrice == null ? '—' : fmtUsd(t.entryPrice)}</div><div class="text-xs text-gray-500 mt-1">Продажа</div><div>${t.exitPrice == null ? '—' : fmtUsd(t.exitPrice)}</div></td>
         <td><div class="text-xs text-gray-500">Вход</div><div>${esc(ibs.split(' → ')[0] || '—')}</div><div class="text-xs text-gray-500 mt-1">Выход</div><div>${esc(ibs.split(' → ')[1] || '—')}</div></td>
         <td class="${pnlClass(pct)}">${pct == null ? '—' : fmtSignedPct(pct, 2)} ${pnl == null ? '' : '(' + fmtSignedUsd(pnl) + ')'}</td>
-        <td>${t.status === 'open' && t.id && !t.linkedBrokerTradeId ? `<button type="button" data-close-mon="${esc(t.id)}" data-close-sym="${esc(t.symbol || '')}" class="text-sm text-red-600 mr-2">Закрыть</button>` : ''}${t.id ? actionIcon('edit', 'Изменить сделку', `data-edit-mon="${esc(t.id)}"`, 'action-icon-edit') : ''}</td>
+        <td>${t.status === 'open' && t.id && !t.linkedBrokerTradeId ? actionIcon('x', 'Закрыть сделку', `data-close-mon="${esc(t.id)}" data-close-sym="${esc(t.symbol || '')}"`, 'action-icon-danger') : ''}${t.id ? actionIcon('edit', 'Изменить сделку', `data-edit-mon="${esc(t.id)}"`, 'action-icon-edit') : ''}</td>
       </tr>`;
     }).join('');
     return `<div class="flex flex-wrap gap-2 mb-2 text-sm">
@@ -2415,7 +2415,7 @@
       <td>${esc('> ' + Number(w.highIBS ?? liveHighIBS()).toFixed(2))}</td>
       <td>${w.entryPrice != null ? fmtUsd(w.entryPrice) : '—'}${w.isOpenPosition && w.entryDate ? `<div class="text-[11px] text-gray-500">${esc(fmtTradingDate(w.entryDate))}${w.entryIBS != null ? ' · IBS ' + fmt(ibsPct(w.entryIBS), 1) + '%' : ''}</div>` : ''}</td>
       <td><span class="rounded-full px-2 py-0.5 text-xs ${w.isOpenPosition ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500'}">${w.isOpenPosition ? 'Открыта' : 'Нет'}</span></td>
-      <td>${w.isOpenPosition && w.currentTradeId ? `<button type="button" data-close-mon="${esc(w.currentTradeId)}" data-close-sym="${esc(w.symbol)}" class="text-sm text-red-600 mr-2">Закрыть</button>` : ''}${actionIcon('sliders', 'Изменить пороги', `data-watch-thr="${esc(w.symbol)}"`, 'action-icon-edit')}${actionIcon('trash', 'Удалить тикер из мониторинга', `data-dw="${esc(w.symbol)}"`, 'action-icon-danger')}</td>
+      <td>${w.isOpenPosition && w.currentTradeId ? actionIcon('x', 'Закрыть мониторинг', `data-close-mon="${esc(w.currentTradeId)}" data-close-sym="${esc(w.symbol)}"`, 'action-icon-danger') : ''}${actionIcon('sliders', 'Изменить пороги', `data-watch-thr="${esc(w.symbol)}"`, 'action-icon-edit')}${actionIcon('trash', 'Удалить тикер из мониторинга', `data-dw="${esc(w.symbol)}"`, 'action-icon-danger')}</td>
     </tr>`).join('');
     const alerts = (state.emaAlerts || []).map((a) => `<tr>
       <td class="font-mono">${esc(a.symbol)}</td><td>EMA ${esc(a.emaPeriod || 200)}</td>
@@ -2425,7 +2425,7 @@
         <button type="button" data-ema-on="${esc(a.id)}" class="text-sm mr-2">${a.enabled === false ? 'Выключено' : 'Включено'}</button>
         <button type="button" data-ema-act="${esc(a.id)}" data-ema-next="buy" class="text-sm mr-1">Ждать покупку</button>
         <button type="button" data-ema-act="${esc(a.id)}" data-ema-next="sell" class="text-sm mr-2">Ждать продажу</button>
-        <button data-dea="${esc(a.id)}" class="text-red-600 text-sm">Удалить</button>
+        ${actionIcon('trash', 'Удалить EMA-оповещение', `data-dea="${esc(a.id)}"`, 'action-icon-danger')}
       </td>
     </tr>`).join('');
     const thr = state.settings.watchThresholdPct ?? 0.3;
@@ -2483,7 +2483,7 @@
             const open = visibleMonitorTrades(simulated, false).find((t) => t.status === 'open');
             const watchSyms = (state.watches || []).map((w) => w.symbol);
             const hasOpen = !!open;
-            return `${open ? `<div class="rounded-lg border border-emerald-200 bg-emerald-50 p-3 mb-3 dark:bg-emerald-950/20"><div class="font-semibold">Текущая позиция: ${esc(open.symbol)}</div><div class="text-sm">Вход ${esc(fmtTradingDate(open.entryDate))} по ${open.entryPrice == null ? '—' : fmtUsd(open.entryPrice)}${open.entryIBS != null ? ', IBS ' + fmt(ibsPct(open.entryIBS), 1) + '%' : ''}</div><div class="mt-2 flex gap-2"><button type="button" data-edit-mon="${esc(open.id)}" class="btn-secondary min-h-0 py-1">Изменить</button><button type="button" data-close-mon="${esc(open.id)}" data-close-sym="${esc(open.symbol)}" class="btn-danger min-h-0 py-1">Закрыть</button></div></div>` : ''}
+            return `${open ? `<div class="rounded-lg border border-emerald-200 bg-emerald-50 p-3 mb-3 dark:bg-emerald-950/20"><div class="font-semibold">Текущая позиция: ${esc(open.symbol)}</div><div class="text-sm">Вход ${esc(fmtTradingDate(open.entryDate))} по ${open.entryPrice == null ? '—' : fmtUsd(open.entryPrice)}${open.entryIBS != null ? ', IBS ' + fmt(ibsPct(open.entryIBS), 1) + '%' : ''}</div><div class="mt-2 flex gap-1">${actionIcon('edit', 'Изменить сделку', `data-edit-mon="${esc(open.id)}"`, 'action-icon-edit')}${actionIcon('x', 'Закрыть сделку', `data-close-mon="${esc(open.id)}" data-close-sym="${esc(open.symbol)}"`, 'action-icon-danger')}</div></div>` : ''}
           <div class="rounded-lg border p-4 mb-3 bg-white dark:bg-gray-800"><h3 class="font-semibold mb-1">Ручная корректировка monitor-сделки</h3>
           <p class="text-sm text-gray-600 mb-3">Если сайт пропустил вход, можно добавить сделку вручную.</p>
           <form id="watch-manual" class="flex flex-wrap gap-2">
