@@ -186,6 +186,7 @@ html.dark .btn-secondary { background: #1f2937; color: #e5e7eb; border-color: #3
   min-height: 44px; background: #dc2626; color: #fff;
   border-radius: 0.5rem; padding: 0.5rem 1rem; font-size: 0.875rem;
 }
+.btn-danger:hover { background: #b91c1c; }
 .cal-weekend { background: #f9fafb; color: #9ca3af; }
 html.dark .cal-weekend { background: #0b1220; color: #6b7280; }
 .cal-today { outline: 2px solid #4f46e5; outline-offset: -2px; }
