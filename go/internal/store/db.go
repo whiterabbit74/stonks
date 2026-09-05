@@ -374,6 +374,9 @@ func hasColumn(q schemaExecer, table, col string) bool {
 			return true
 		}
 	}
+	if err := rows.Err(); err != nil {
+		return false
+	}
 	return false
 }
 
@@ -580,10 +583,14 @@ func (d *DB) DeleteDataset(id string) error {
 	return tx.Commit()
 }
 
-func (d *DB) Counts() (datasets, ohlc int) {
-	_ = d.SQL.QueryRow(`SELECT COUNT(*) FROM dataset_meta`).Scan(&datasets)
-	_ = d.SQL.QueryRow(`SELECT COUNT(*) FROM ohlc`).Scan(&ohlc)
-	return
+func (d *DB) Counts() (datasets, ohlc int, err error) {
+	if err = d.SQL.QueryRow(`SELECT COUNT(*) FROM dataset_meta`).Scan(&datasets); err != nil {
+		return 0, 0, err
+	}
+	if err = d.SQL.QueryRow(`SELECT COUNT(*) FROM ohlc`).Scan(&ohlc); err != nil {
+		return 0, 0, err
+	}
+	return datasets, ohlc, nil
 }
 
 func (d *DB) SessionGet(token string) (created, expires int64, err error) {
@@ -630,6 +637,9 @@ func (d *DB) ListSplits(symbol string) ([]types.SplitEvent, error) {
 		}
 		out = append(out, e)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	if out == nil {
 		out = []types.SplitEvent{}
 	}
@@ -650,6 +660,9 @@ func (d *DB) AllSplits() (map[string][]types.SplitEvent, error) {
 			return nil, err
 		}
 		out[t] = append(out[t], e)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 	return out, nil
 }
@@ -1012,6 +1025,9 @@ func (d *DB) ListWatches() ([]map[string]any, error) {
 			"entryIBS": nullF(entryIBS), "entryDecisionTime": nullS(entryDec),
 			"currentTradeId": nullS(tradeID), "isOpenPosition": open == 1,
 		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 	if out == nil {
 		out = []map[string]any{}
@@ -1507,6 +1523,9 @@ func (d *DB) ListEMAAlerts() ([]map[string]any, error) {
 		}
 		out = append(out, row)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	if out == nil {
 		out = []map[string]any{}
 	}
@@ -1710,6 +1729,9 @@ func (d *DB) ListTickers() ([]string, error) {
 			return nil, err
 		}
 		out = append(out, t)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 	return out, nil
 }

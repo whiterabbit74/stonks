@@ -173,6 +173,9 @@ func (d *DB) ListAutotradeLogsKind(kind string, limit int) ([]map[string]any, er
 		}
 		out = append(out, map[string]any{"ts": ts, "message": msg, "kind": k})
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	if out == nil {
 		out = []map[string]any{}
 	}
@@ -304,6 +307,9 @@ func (d *DB) listBlockingTrackers() ([]map[string]any, error) {
 		}
 		out = append(out, row)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	if out == nil {
 		out = []map[string]any{}
 	}
@@ -346,6 +352,9 @@ func (d *DB) ListPendingTrackers() ([]map[string]any, error) {
 		}
 		out = append(out, row)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	if out == nil {
 		out = []map[string]any{}
 	}
@@ -369,6 +378,9 @@ func (d *DB) ListRecentTrackers(limit int) ([]map[string]any, error) {
 			return nil, err
 		}
 		out = append(out, row)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 	if out == nil {
 		out = []map[string]any{}

@@ -349,7 +349,11 @@ func cookieToken(r *http.Request) string {
 }
 
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
-	ds, ohlc := s.DB.Counts()
+	ds, ohlc, err := s.DB.Counts()
+	if err != nil {
+		writeJSON(w, 503, map[string]any{"status": "not_ready", "error": "database unavailable"})
+		return
+	}
 	writeJSON(w, 200, map[string]any{
 		"status": "ok", "message": "Trading Backtester API is running",
 		"engine":    "go",
