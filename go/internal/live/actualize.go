@@ -12,6 +12,8 @@ import (
 	"mktorder.com/go/internal/tradingdate"
 )
 
+const actualizeMaxAttemptsPerDay = 3
+
 type ActualizeResult struct {
 	Success  bool     `json:"success"`
 	Updated  bool     `json:"updated"`
@@ -92,6 +94,10 @@ func (e *Engine) Actualize(force bool) ActualizeResult {
 			out.Reason = "already_ran_today"
 			return out
 		}
+		if actualizeAttemptsToday(settings, today) >= actualizeAttemptCap(settings) {
+			out.Reason = "attempt_limit"
+			return out
+		}
 	}
 	seen := map[string]struct{}{}
 	var symbols []string
@@ -141,11 +147,61 @@ func (e *Engine) Actualize(force bool) ActualizeResult {
 	out.Success = out.Updated
 	if out.Count == 0 {
 		out.Reason = "none_updated"
-	} else if !force {
-		settings["lastActualizationDate"] = today
-		_ = e.DB.SaveSettings(settings)
+	}
+	if !force {
+		recordActualizeAttempt(e, today, out)
 	}
 	return out
+}
+
+func actualizeAttemptsToday(settings map[string]any, today string) int {
+	if fmt.Sprint(settings["lastActualizationAttemptDate"]) != today {
+		return 0
+	}
+	return settingInt(settings, "lastActualizationAttemptCount", 0)
+}
+
+func actualizeAttemptCap(settings map[string]any) int {
+	n := settingInt(settings, "actualizationMaxAttemptsPerDay", actualizeMaxAttemptsPerDay)
+	if n <= 0 {
+		return actualizeMaxAttemptsPerDay
+	}
+	return n
+}
+
+func settingInt(settings map[string]any, key string, def int) int {
+	v, ok := settings[key]
+	if !ok || v == nil {
+		return def
+	}
+	switch n := v.(type) {
+	case float64:
+		return int(n)
+	case int:
+		return n
+	case int64:
+		return int(n)
+	}
+	return def
+}
+
+func recordActualizeAttempt(e *Engine, today string, out ActualizeResult) {
+	settings := e.DB.Settings()
+	attempts := actualizeAttemptsToday(settings, today) + 1
+	settings["lastActualizationAttemptDate"] = today
+	settings["lastActualizationAttemptCount"] = attempts
+	if out.Count > 0 {
+		settings["lastActualizationDate"] = today
+	}
+	_ = e.DB.SaveSettings(settings)
+	if out.Count > 0 || attempts < actualizeAttemptCap(settings) {
+		return
+	}
+	failed := strings.Join(out.Failed, ", ")
+	if failed == "" {
+		failed = out.Reason
+	}
+	_ = e.Send("", fmt.Sprintf("<b>Актуализация цен не удалась</b>\n%s: исчерпаны %d попыток (%s).", today, attempts, failed))
 }
 
 func (e *Engine) UpdatePositions() map[string]any {
