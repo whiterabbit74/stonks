@@ -1483,8 +1483,8 @@
       <td title="${esc(entryIso)} – ${esc(exitIso)}" class="${(hasEntryProblem || hasExitProblem) ? 'bg-orange-50 dark:bg-orange-950/20' : ''}">
         ${esc(fmtTradingDate(t.entryDate))} – ${esc(fmtTradingDate(t.exitDate))}
       </td>
-      <td><div class="text-xs text-gray-500">Покупка</div><div>${fmtUsd(t.entryPrice)}</div><div class="text-xs text-gray-500 mt-1">Продажа</div><div>${fmtUsd(t.exitPrice)}</div></td>
-      <td><div class="text-xs text-gray-500">Вход</div><div>${esc(ibsLab(entryIbsNum))}</div><div class="text-xs text-gray-500 mt-1">Выход</div><div>${esc(ibsLab(exitIbsNum))}</div></td>
+      <td>${fmtUsd(t.entryPrice)} – ${fmtUsd(t.exitPrice)}</td>
+      <td>${esc(ibsLab(entryIbsNum))} – ${esc(ibsLab(exitIbsNum))}</td>
       <td>${fmt(t.quantity, 0)}</td>
       <td>${invested == null ? '—' : fmtUsd(invested)}${lev != null && lev > 1 ? `<div class="text-xs text-gray-500">${esc(lev)}:1</div>` : ''}</td>
       <td class="${pnlClass(t.pnl)}">${fmtUsd(t.pnl)}</td>
