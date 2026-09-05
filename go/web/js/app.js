@@ -776,6 +776,9 @@
   function orderSideText(side) {
     return ({ BUY: 'Покупка', SELL: 'Продажа', buy: 'Покупка', sell: 'Продажа' })[String(side || '')] || side || '—';
   }
+  function decisionActionText(action) {
+    return ({ BUY: 'Покупка', SELL: 'Продажа', HOLD: 'Ожидание', SKIP: 'Пропуск', buy: 'Покупка', sell: 'Продажа', hold: 'Ожидание', skip: 'Пропуск' })[String(action || '')] || action || '—';
+  }
   function orderStatusText(status) {
     return ({ NEW: 'Новый', OPEN: 'Открыт', PENDING: 'В обработке', PARTIALLY_FILLED: 'Частично исполнен', FILLED: 'Исполнен', CANCELED: 'Отменён', CANCELLED: 'Отменён', REJECTED: 'Отклонён', EXPIRED: 'Истёк' })[String(status || '').toUpperCase()] || status || '—';
   }
@@ -2729,7 +2732,7 @@
             <div class="rounded-lg border p-3"><div class="text-xs text-gray-500">Статус</div><div class="mt-1 font-semibold">${ac.enabled ? 'Включена' : 'Выключена'}</div></div>
             <div class="rounded-lg border p-3"><div class="text-xs text-gray-500">Последний запуск</div><div class="mt-1 text-sm">${esc(formatDateTimeET(last) === '—' ? last : formatDateTimeET(last))}</div></div>
             <div class="rounded-lg border p-3"><div class="text-xs text-gray-500">Входы / выходы (${esc(brokerLabel(kind))})</div><div class="mt-1 text-sm">${brokerFlag(ac, kind, 'allowNewEntries') ? 'да' : 'нет'} / ${brokerFlag(ac, kind, 'allowExits') ? 'да' : 'нет'}</div></div>
-            <div class="rounded-lg border p-3"><div class="text-xs text-gray-500">Последнее решение</div><div class="mt-1 text-sm">${esc(lastRes.action || dec.action || '—')} ${esc(lastRes.symbol || dec.symbol || '')}</div><div class="text-xs text-gray-500">${esc(decisionReasonText(lastRes.reason || dec.reason || ''))}</div></div>
+            <div class="rounded-lg border p-3"><div class="text-xs text-gray-500">Последнее решение</div><div class="mt-1 text-sm">${esc(decisionActionText(lastRes.action || dec.action))} ${esc(lastRes.symbol || dec.symbol || '')}</div><div class="text-xs text-gray-500">${esc(decisionReasonText(lastRes.reason || dec.reason || ''))}</div></div>
           </div>
           <div class="mt-4 rounded-xl bg-gray-50 p-3 text-sm dark:bg-gray-950/40">
             <div class="flex items-center justify-between gap-3 mb-2">
