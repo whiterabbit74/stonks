@@ -44,7 +44,7 @@ SPA must not reimplement engines. Math goes through `/api/calc/*` or the same Go
 
 ## `/api`
 
-Public (no session): `GET /api/status`, `GET /api/auth/check`, `GET /api/trading-calendar`, `GET /api/trading/expected-prev-day`, `POST /api/login`, `POST /api/logout`.
+Public (no session): `GET /api/status`, `GET /healthz`, `GET /readyz`, `GET /api/auth/check`, `GET /api/trading-calendar`, `GET /api/trading/expected-prev-day`, `POST /api/login`, `POST /api/logout`. `/readyz` pings SQLite and checks schema; compose healthcheck uses it.
 
 Everything else 401 without `auth_token` cookie or `Authorization: Bearer <32-hex>` when `ADMIN_PASSWORD` is set.
 
@@ -68,7 +68,11 @@ Monitor reconcile: `GET /api/monitor/consistency`, `POST /api/monitor/reconcile`
 
 Quotes: `GET /api/quote/{symbol}`, `GET /api/quotes/webull-batch`, `GET /api/yahoo-finance/{symbol}`, `GET /api/fetch/{provider}/{symbol}`, `GET /api/test/alpha-vantage`, `GET /api/test/finnhub`, `GET /api/test/twelve-data`, `POST /api/test-provider`.
 
-Autotrade: `GET/PATCH /api/autotrade/config`, `GET /api/autotrade/status`, `POST /api/autotrade/evaluate`, `POST /api/autotrade/execute`, `GET /api/autotrade/webull/account`, `GET /api/autotrade/webull/dashboard`, `GET /api/autotrade/logs`, `POST /api/autotrade/webull/close-position`, `POST /api/autotrade/webull/test-buy`, `POST /api/autotrade/webull/token/create`, `POST /api/autotrade/webull/token/check`, `PUT /api/autotrade/webull/token`, `GET /api/autotrade/webull/token/status`.
+Autotrade: `GET/PATCH /api/autotrade/config`, `GET /api/autotrade/status`, `POST /api/autotrade/evaluate`, `POST /api/autotrade/execute`, `GET /api/autotrade/webull/account`, `GET /api/autotrade/webull/dashboard`, `GET /api/autotrade/logs`, `POST /api/autotrade/trackers/{clientOrderId}/resolve`, `POST /api/autotrade/trackers/persist-block/{broker}/resolve`, `POST /api/autotrade/webull/close-position`, `POST /api/autotrade/webull/test-buy`, `POST /api/autotrade/webull/token/create`, `POST /api/autotrade/webull/token/check`, `PUT /api/autotrade/webull/token`, `GET /api/autotrade/webull/token/status`.
+
+Robinhood: `POST /api/autotrade/robinhood/oauth/start`, `POST /api/autotrade/robinhood/oauth/complete`, `POST /api/autotrade/robinhood/oauth/disconnect`, `GET /api/autotrade/robinhood/oauth/status`, `GET /api/autotrade/robinhood/account`, `GET /api/autotrade/robinhood/dashboard`, `GET /api/autotrade/robinhood/tools`, `POST /api/autotrade/robinhood/close-position`, `POST /api/autotrade/robinhood/test-buy`.
+
+Brokers: `GET /api/brokers/health`.
 
 Calc: `POST /api/calc/clean-backtest`, `backtest`, `single-position`, `options`, `options-multi`, `ema-zone`, `buy-at-close`, `buy-at-close-4`, `no-stop-loss`, `metrics`, `indicators`, `black-scholes`, `split-adjust`, `margin`, `ibs-signals`, `buy-hold`.
 

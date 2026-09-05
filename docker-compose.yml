@@ -15,14 +15,10 @@ services:
       # ADMIN_PASSWORD must be set in env_file. An empty password must not open
       # the API; fail-closed is enforced in the HTTP layer. This compose marks
       # the process as production so a missing password cannot disable auth.
-      # WEBULL_ENABLE_LIVE_TEST_BUY is opt-in via env_file only (unset = disabled).
+      # WEBULL_ENABLE_LIVE_TEST_BUY and ROBINHOOD_ENABLE_LIVE_TEST_BUY are
+      # opt-in via env_file only (unset = disabled).
       - DB_FILE=/data/db/trading.db
       - DATASETS_DIR=/data/datasets
-      - DB_DIR=/data/db
-      - SETTINGS_FILE=/data/state/settings.json
-      - WATCHES_FILE=/data/state/telegram-watches.json
-      - SPLITS_FILE=/data/state/splits.json
-      - TRADE_HISTORY_FILE=/data/state/trade-history.json
       - HTTP_LOG_PATH=/data/state/http-access.jsonl
     volumes:
       - stonks_datasets:/data/datasets
