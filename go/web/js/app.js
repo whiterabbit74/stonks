@@ -1760,14 +1760,14 @@
         <a href="/enhance" data-nav class="btn-primary">${icon('plus', 'h-4 w-4')} Загрузить тикеры</a>
       </div>`;
     } else if (state.dataView === 'compact') {
-      cards = `<div class="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-5 gap-2">${filtered.map((d) => {
+      cards = `<div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 xl:grid-cols-5 gap-2">${filtered.map((d) => {
         const active = state.ticker === d.ticker;
         const tagsHtml = (d.tag || '').split(',').map((t) => t.trim()).filter(Boolean).slice(0, 2).map((t) => `<span class="px-1.5 py-0.5 bg-gray-100 text-gray-600 text-[10px] rounded dark:bg-gray-800 dark:text-gray-400">${esc(t)}</span>`).join('');
         return `<div class="relative">
           <a href="/stocks?tickers=${encodeURIComponent(d.ticker)}" data-load="${esc(d.ticker)}" class="block relative w-full p-3 rounded-lg border text-left ${active ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200 dark:border-blue-400 dark:bg-blue-950/30' : 'border-gray-200 hover:border-blue-300 dark:border-gray-700 dark:bg-gray-900'}">
             ${active ? '<div class="absolute top-1.5 left-1.5 w-2 h-2 bg-green-500 rounded-full"></div>' : ''}
             <div class="font-mono font-semibold text-sm pr-6">${esc(d.ticker)}</div>
-            ${datasetCompany(d) ? `<div class="text-xs text-gray-500 truncate mt-0.5">${esc(datasetCompany(d))}</div>` : ''}
+            ${datasetCompany(d) ? `<div class="text-xs text-gray-500 break-words mt-0.5">${esc(datasetCompany(d))}</div>` : ''}
             <div class="text-[10px] text-gray-400 mt-1">${d.dataPoints || 0} баров</div>
             ${tagsHtml ? `<div class="flex items-center gap-1 mt-1.5">${tagsHtml}</div>` : ''}
           </a>
