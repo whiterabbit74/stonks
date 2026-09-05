@@ -127,6 +127,22 @@ func stripURLs(s string) string {
 	return strings.TrimSpace(httpURLRe.ReplaceAllString(s, "[url]"))
 }
 
+func providerErrText(body []byte) string {
+	var m map[string]any
+	if err := json.Unmarshal(body, &m); err == nil {
+		for _, k := range []string{"error", "message", "s"} {
+			if s, ok := m[k].(string); ok && s != "" {
+				return redactSecrets(stripURLs(s))
+			}
+		}
+	}
+	text := string(body)
+	if len(text) > 200 {
+		text = text[:200]
+	}
+	return redactSecrets(stripURLs(text))
+}
+
 func hostOf(raw string) string {
 	u, err := url.Parse(raw)
 	if err != nil || u.Host == "" {
@@ -342,6 +358,9 @@ func (c *Client) finnhubHistory(symbol string, startTs, endTs int64) (Historical
 	if err != nil {
 		return Historical{}, err
 	}
+	if status != 0 && status != 200 {
+		return Historical{}, &HTTPError{status, fmt.Sprintf("Finnhub: HTTP %d: %s", status, providerErrText(body))}
+	}
 	var jsonData map[string]any
 	if err := json.Unmarshal(body, &jsonData); err != nil {
 		return Historical{}, &HTTPError{502, "Finnhub: invalid JSON"}
@@ -351,7 +370,11 @@ func (c *Client) finnhubHistory(symbol string, startTs, endTs int64) (Historical
 		if s == "no_data" {
 			st = 404
 		}
-		return Historical{}, &HTTPError{st, fmt.Sprintf("Finnhub: %v", jsonData["s"])}
+		msg := "Finnhub: неожиданный ответ провайдера"
+		if s != "" {
+			msg = "Finnhub: " + s
+		}
+		return Historical{}, &HTTPError{st, msg}
 	}
 	ts := floatArr(jsonData["t"])
 	o, h, l, cl, v := floatArr(jsonData["o"]), floatArr(jsonData["h"]), floatArr(jsonData["l"]), floatArr(jsonData["c"]), floatArr(jsonData["v"])
@@ -364,7 +387,6 @@ func (c *Client) finnhubHistory(symbol string, startTs, endTs int64) (Historical
 		adj := cl[i]
 		rows = append(rows, types.OHLC{Date: date, Open: o[i], High: h[i], Low: l[i], Close: cl[i], AdjClose: &adj, Volume: v[i]})
 	}
-	_ = status
 	return Historical{Rows: rows}, nil
 }
 

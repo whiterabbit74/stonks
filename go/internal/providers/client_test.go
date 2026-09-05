@@ -289,6 +289,26 @@ func TestFinnhubMismatchedCandleArrays(t *testing.T) {
 	}
 }
 
+func TestFinnhubHistoryHTTPForbiddenSurfacesProviderError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		w.Write([]byte(`{"error":"You don't have access to this resource."}`))
+	}))
+	t.Cleanup(srv.Close)
+	c := &Client{HTTP: srv.Client(), FinnhubKey: "k", FinnhubBase: srv.URL}
+	_, err := c.Historical("AAPL", "finnhub", 0, 2000000000, "none")
+	he, ok := err.(*HTTPError)
+	if !ok || he.Status != 403 {
+		t.Fatalf("want HTTPError 403, got %v", err)
+	}
+	if !strings.Contains(he.Message, "You don't have access to this resource.") {
+		t.Fatalf("message should contain provider text, got %q", he.Message)
+	}
+	if strings.Contains(he.Message, "<nil>") {
+		t.Fatalf("message must not contain <nil>: %q", he.Message)
+	}
+}
+
 // TestRobinhoodQuoteIgnoresExtendedHoursPrice is P2-6: last_extended_hours_trade_price
 // is a postmarket print. ibsFromQuote clamps IBS into [0,1], so a postmarket
 // price sitting outside the regular session's [low, high] range used to
