@@ -3738,7 +3738,7 @@
       root.querySelectorAll('[data-edit-split]').forEach((b) => b.addEventListener('click', () => {
         const ticker = b.dataset.editSplit;
         const evs = ((state.splitsMap && state.splitsMap[ticker]) || []).map((e) => ({ date: e.date, factor: e.factor }));
-        const rows = (list) => list.map((e, i) => `<div class="flex gap-2 mb-1" data-split-row="${i}"><input data-sd class="field w-40" value="${esc(e.date || '')}" /><input data-sf type="number" step="0.01" class="field w-24" value="${esc(e.factor ?? '')}" /><button type="button" data-rm-row="${i}" class="text-red-600 text-sm">×</button></div>`).join('');
+        const rows = (list) => list.map((e, i) => `<div class="flex gap-2 mb-1" data-split-row="${i}"><input data-sd class="field w-40" value="${esc(e.date || '')}" /><input data-sf type="number" step="0.01" class="field w-24" value="${esc(e.factor ?? '')}" />${actionIcon('trash', 'Удалить событие', `data-rm-row="${i}"`, 'action-icon-danger')}</div>`).join('');
         state.modal = `<div class="modal-backdrop" id="split-edit-modal"><div class="modal-card max-w-lg">
           <h3 class="text-lg font-semibold mb-3">Сплиты ${esc(ticker)}</h3>
           <div id="split-edit-rows">${rows(evs)}</div>
