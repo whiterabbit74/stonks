@@ -2303,14 +2303,14 @@
       const splitEntries = Object.entries(map);
       const rows = splitEntries.map(([ticker, evs]) => `<tr>
         <td class="font-mono align-top">${esc(ticker)}</td>
-        <td>${(evs || []).map((e) => `${esc(e.date)} × ${esc(e.factor)}`).join('<br>') || '—'}</td>
+        <td>${(evs || []).map((e) => `${esc(fmtTradingDate(e.date))} × ${esc(e.factor)}`).join('<br>') || '—'}</td>
         <td class="text-right whitespace-nowrap">
           ${actionIcon('edit', 'Изменить сплиты', `data-edit-split="${esc(ticker)}"`, 'action-icon-edit')}
           ${actionIcon('trash', 'Удалить тикер', `data-del-ticker="${esc(ticker)}"`, 'action-icon-danger')}
         </td>
       </tr>`).join('');
       const mobileCards = splitEntries.map(([ticker, evs]) => `<article class="rounded-lg border border-gray-200 p-3 dark:border-gray-700">
-        <div class="flex items-start justify-between gap-3"><div><div class="font-mono font-semibold">${esc(ticker)}</div><div class="mt-1 text-sm text-gray-600 dark:text-gray-300">${(evs || []).map((e) => `${esc(e.date)} × ${esc(e.factor)}`).join('<br>') || '—'}</div></div>
+        <div class="flex items-start justify-between gap-3"><div><div class="font-mono font-semibold">${esc(ticker)}</div><div class="mt-1 text-sm text-gray-600 dark:text-gray-300">${(evs || []).map((e) => `${esc(fmtTradingDate(e.date))} × ${esc(e.factor)}`).join('<br>') || '—'}</div></div>
         <div class="flex shrink-0 gap-1">${actionIcon('edit', 'Изменить сплиты', `data-edit-split="${esc(ticker)}"`, 'action-icon-edit')}${actionIcon('trash', 'Удалить тикер', `data-del-ticker="${esc(ticker)}"`, 'action-icon-danger')}</div></div>
       </article>`).join('');
       body = `<div id="spl-list"${rows ? ' class="overflow-auto"' : ''}>
