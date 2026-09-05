@@ -1657,7 +1657,7 @@
         <div class="border-t border-gray-200 dark:border-gray-800 mt-8 pt-6 flex flex-col md:flex-row items-center justify-between gap-4">
           <div class="text-sm text-gray-600 dark:text-gray-400">© ${year} Trading strategies. Все права защищены.</div>
           <div class="flex items-center gap-4 text-xs text-gray-500">
-            <span>Built with ❤️ for traders</span>
+            <span>Создано с ❤️ для трейдеров</span>
           </div>
         </div>
       </div>
