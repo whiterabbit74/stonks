@@ -843,22 +843,33 @@ func sanitizeSettings(s map[string]any) map[string]any {
 	return out
 }
 
-func (d *DB) Settings() map[string]any {
+func (d *DB) SettingsErr() (map[string]any, error) {
 	defs := defaultSettings()
 	var data string
 	err := d.SQL.QueryRow(`SELECT data FROM settings WHERE id = 1`).Scan(&data)
+	if err == sql.ErrNoRows {
+		return defs, nil
+	}
 	if err != nil {
-		return defs
+		return nil, err
 	}
 	stored := map[string]any{}
 	if json.Unmarshal([]byte(data), &stored) != nil {
-		return defs
+		return defs, nil
 	}
 	out := mergeMaps(defs, sanitizeSettings(stored))
 	if at, ok := out["autoTrading"].(map[string]any); ok {
 		delete(at, "dryRun")
 	}
-	return out
+	return out, nil
+}
+
+func (d *DB) Settings() map[string]any {
+	s, err := d.SettingsErr()
+	if err != nil {
+		return defaultSettings()
+	}
+	return s
 }
 
 // mergeMaps overlays src onto dst. Nested maps are merged key-by-key so a

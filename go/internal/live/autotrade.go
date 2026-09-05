@@ -726,7 +726,10 @@ func (e *Engine) persistTrackerBlock(broker string) error {
 	if broker == "" {
 		broker = "webull"
 	}
-	settings := e.DB.Settings()
+	settings, err := e.DB.SettingsErr()
+	if err != nil {
+		return err
+	}
 	blocks, _ := settings["trackerPersistFail"].(map[string]any)
 	if blocks == nil {
 		blocks = map[string]any{}
@@ -755,7 +758,10 @@ func (e *Engine) trackerPersistBlocked(broker string) bool {
 	if e.DB == nil {
 		return false
 	}
-	settings := e.DB.Settings()
+	settings, err := e.DB.SettingsErr()
+	if err != nil {
+		return true
+	}
 	blocks, _ := settings["trackerPersistFail"].(map[string]any)
 	return asBool(blocks[broker])
 }
@@ -787,7 +793,16 @@ func (e *Engine) ClearTrackerPersistBlock(broker, note string) error {
 	}
 	e.mu.Unlock()
 	if e.DB != nil {
-		settings := e.DB.Settings()
+		settings, err := e.DB.SettingsErr()
+		if err != nil {
+			e.mu.Lock()
+			if e.trackerPersistFail == nil {
+				e.trackerPersistFail = map[string]bool{}
+			}
+			e.trackerPersistFail[broker] = true
+			e.mu.Unlock()
+			return err
+		}
 		blocks, _ := settings["trackerPersistFail"].(map[string]any)
 		if blocks == nil {
 			blocks = map[string]any{}

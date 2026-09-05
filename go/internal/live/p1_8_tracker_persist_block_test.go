@@ -80,6 +80,16 @@ func autotradeLogsContain(t *testing.T, e *Engine, needle string) bool {
 	return false
 }
 
+func TestTrackerPersistBlockedOnSettingsReadError(t *testing.T) {
+	db, e, _ := testEngine(t, entryBars)
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if !e.trackerPersistBlocked("webull") {
+		t.Fatal("a failed settings read must not lift trackerPersistFail")
+	}
+}
+
 // TestPersistTrackerBlockKeepsMemoryFlagWhenSettingsWriteFails is T6/S04:
 // a failed settings write must not pretend the protective flag was stored.
 func TestPersistTrackerBlockKeepsMemoryFlagWhenSettingsWriteFails(t *testing.T) {
