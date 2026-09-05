@@ -163,9 +163,9 @@ html.dark .cat-chip-off { background: #1f2937; border-color: #374151; color: #e5
   border: 1px solid #e5e7eb; background: #f9fafb;
 }
 .ticker-card:hover { background: #eff6ff; border-color: #93c5fd; }
-.ticker-card.loaded { background: #ecfdf5; border: 2px solid #a7f3d0; }
+.ticker-card.loaded { background: #ecfdf5; border: 1px solid #a7f3d0; box-shadow: 0 0 0 1px #a7f3d0; }
 html.dark .ticker-card { background: #1f2937; border-color: #374151; }
-html.dark .ticker-card.loaded { background: #052e16; border-color: #166534; }
+html.dark .ticker-card.loaded { background: #052e16; border-color: #166534; box-shadow: 0 0 0 1px #166534; }
 table.trades td.text-center { text-align: center; white-space: normal; padding: 1rem 8px; }
 .splits-empty-mobile { display: block; text-align: center; padding: 2rem 1rem; color: #6b7280; }
 .splits-table { display: none; }
