@@ -1733,8 +1733,8 @@
             <h2 class="text-lg font-semibold mb-3">Вход</h2>
             <div id="login-error" class="mb-2 text-sm text-red-600 hidden"></div>
             <form id="login-form" class="space-y-3">
-              <div><label class="block text-sm mb-1" for="login-user">Эл. почта</label><input id="login-user" name="username" type="email" class="field w-full" placeholder="ivan@example.com" autofocus /></div>
-              <div><label class="block text-sm mb-1" for="login-pass">Пароль</label><input id="login-pass" name="password" type="password" class="field w-full" placeholder="••••••••" /></div>
+              <div><label class="block text-sm mb-1" for="login-user">Эл. почта</label><input id="login-user" name="username" type="email" autocomplete="email" class="field w-full" placeholder="ivan@example.com" autofocus /></div>
+              <div><label class="block text-sm mb-1" for="login-pass">Пароль</label><input id="login-pass" name="password" type="password" autocomplete="current-password" class="field w-full" placeholder="••••••••" /></div>
               <label class="inline-flex items-center gap-2 text-sm"><input type="checkbox" name="remember" /> Запомнить меня</label>
               <div class="flex justify-end"><button type="submit" class="btn-primary">Войти</button></div>
             </form>
