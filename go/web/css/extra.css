@@ -321,14 +321,14 @@ html.dark .pc-ind-btn:hover { background: #1f2937; }
 .pc-ind-wrap { position: relative; flex-shrink: 0; }
 .pc-ind-panel {
   position: absolute; right: 0; top: 100%; z-index: 30;
-  margin-top: 0.35rem; width: 16rem; max-width: min(16rem, calc(100vw - 2rem));
+  margin-top: 0.25rem; width: 14rem; max-width: min(14rem, calc(100vw - 1rem));
   max-height: min(70vh, 28rem); overflow: auto;
-  border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 0.4rem 0.5rem;
+  border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 0.3rem 0.4rem;
   background: #fff; box-shadow: 0 10px 24px rgba(15, 23, 42, 0.14);
 }
 .pc-ind-panel.hidden { display: none; }
 html.dark .pc-ind-panel { background: #0b1220; border-color: #1f2937; box-shadow: 0 10px 24px rgba(0, 0, 0, 0.45); }
-.pc-row { display: flex; align-items: center; gap: 0.5rem; min-height: 1.75rem; }
+.pc-row { display: flex; align-items: center; gap: 0.35rem; min-height: 1.5rem; }
 .pc-row-indent { padding-left: 1.25rem; }
 .pc-row label { display: inline-flex; align-items: center; gap: 0.4rem; font-size: 12px; flex: 1; min-width: 0; }
 .pc-dot { width: 0.5rem; height: 0.5rem; border-radius: 9999px; flex-shrink: 0; }
@@ -339,16 +339,16 @@ html.dark .pc-ind-panel { background: #0b1220; border-color: #1f2937; box-shadow
 html.dark .pc-pct { background: #111827; border-color: #374151; color: #e5e7eb; }
 .pc-style {
   display: none; flex-wrap: wrap; align-items: center; gap: 0.5rem;
-  padding: 0.25rem 0 0.45rem 1.25rem;
+  padding: 0.2rem 0 0.3rem 1.25rem;
 }
 .pc-style.is-open { display: flex; }
-.pc-swatches { display: flex; flex-wrap: wrap; gap: 0.25rem; }
-.pc-swatch { width: 0.875rem; height: 0.875rem; border-radius: 9999px; border: 2px solid transparent; }
+.pc-swatches { display: flex; flex-wrap: wrap; gap: 0.2rem; }
+.pc-swatch { width: 0.75rem; height: 0.75rem; border-radius: 9999px; border: 2px solid transparent; }
 .pc-swatch-on { border-color: #111827; }
 html.dark .pc-swatch-on { border-color: #f3f4f6; }
 .pc-seg { display: inline-flex; }
 .pc-seg button {
-  font-size: 11px; padding: 0.15rem 0.45rem; border: 1px solid #e5e7eb; margin-left: -1px;
+  font-size: 10px; padding: 0.1rem 0.3rem; border: 1px solid #e5e7eb; margin-left: -1px;
   background: #fff; color: #4b5563;
 }
 .pc-seg button:first-child { border-radius: 0.375rem 0 0 0.375rem; margin-left: 0; }
