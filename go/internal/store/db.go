@@ -582,8 +582,9 @@ func (d *DB) SessionSet(token string, created, expires int64) error {
 	return err
 }
 
-func (d *DB) SessionDelete(token string) {
-	_, _ = d.SQL.Exec(`DELETE FROM sessions WHERE token = ?`, token)
+func (d *DB) SessionDelete(token string) error {
+	_, err := d.SQL.Exec(`DELETE FROM sessions WHERE token = ?`, token)
+	return err
 }
 
 func (d *DB) SessionDeleteExpired(nowMillis int64) (int64, error) {

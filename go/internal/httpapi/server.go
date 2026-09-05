@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -297,7 +298,9 @@ func (s *Server) auth(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 		if exp < time.Now().UnixMilli() {
-			s.DB.SessionDelete(token)
+			if err := s.DB.SessionDelete(token); err != nil {
+				log.Printf("session delete expired token: %v", err)
+			}
 			writeSessionExpired(w)
 			return
 		}
@@ -483,13 +486,16 @@ func (s *Server) handleAuthCheck(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
-	if tok := cookieToken(r); tok != "" {
-		s.DB.SessionDelete(tok)
-	}
 	http.SetCookie(w, &http.Cookie{
 		Name: "auth_token", Value: "", Path: "/", HttpOnly: true, MaxAge: -1,
 		SameSite: http.SameSiteLaxMode, Secure: s.cookieSecure(r),
 	})
+	if tok := cookieToken(r); tok != "" {
+		if err := s.DB.SessionDelete(tok); err != nil {
+			writeJSON(w, 500, map[string]any{"error": "Failed to delete session"})
+			return
+		}
+	}
 	writeJSON(w, 200, map[string]any{"success": true})
 }
 

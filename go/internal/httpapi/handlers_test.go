@@ -325,6 +325,80 @@ func TestLoginRememberAndSecureCookie(t *testing.T) {
 	}
 }
 
+func TestLogoutFailsWhenSessionDeleteIsBlocked(t *testing.T) {
+	s := testServer(t, "secret")
+	body, _ := json.Marshal(map[string]any{
+		"username": "admin@example.com", "password": "secret",
+	})
+	req := httptest.NewRequest("POST", "/api/login", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != 200 {
+		t.Fatalf("login %d %s", rec.Code, rec.Body.String())
+	}
+	var cookie *http.Cookie
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == "auth_token" && c.Value != "" {
+			cookie = c
+			break
+		}
+	}
+	if cookie == nil {
+		t.Fatal("login did not set auth_token")
+	}
+
+	if _, err := s.DB.SQL.Exec(`
+            CREATE TRIGGER IF NOT EXISTS sessions_block_delete
+            BEFORE DELETE ON sessions
+            BEGIN
+                SELECT RAISE(ABORT, 'injected session delete failure');
+            END;
+        `); err != nil {
+		t.Fatalf("block sessions deletes: %v", err)
+	}
+
+	req = httptest.NewRequest("POST", "/api/logout", nil)
+	req.AddCookie(&http.Cookie{Name: "auth_token", Value: cookie.Value})
+	rec = httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != 500 {
+		t.Fatalf("blocked logout got %d %s", rec.Code, rec.Body.String())
+	}
+	var out map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if out["success"] == true {
+		t.Fatalf("blocked logout must not claim success, got %v", out)
+	}
+	errText, _ := out["error"].(string)
+	if errText == "" {
+		t.Fatalf("blocked logout must return error, got %v", out)
+	}
+	cleared := false
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == "auth_token" && c.MaxAge < 0 {
+			cleared = true
+		}
+	}
+	if !cleared {
+		t.Fatal("logout must still clear the cookie when delete fails")
+	}
+
+	if _, err := s.DB.SQL.Exec(`DROP TRIGGER IF EXISTS sessions_block_delete`); err != nil {
+		t.Fatalf("drop trigger: %v", err)
+	}
+
+	req = httptest.NewRequest("GET", "/api/auth/check", nil)
+	req.AddCookie(&http.Cookie{Name: "auth_token", Value: cookie.Value})
+	rec = httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != 200 {
+		t.Fatalf("session must still be valid after failed logout, got %d %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestAuthMissingSessionIs401(t *testing.T) {
 	s := testServer(t, "secret")
 	req := httptest.NewRequest("GET", "/api/datasets", nil)
