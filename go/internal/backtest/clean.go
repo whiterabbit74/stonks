@@ -2,7 +2,6 @@ package backtest
 
 import (
 	"fmt"
-	"math"
 
 	ibssig "mktorder.com/go/internal/ibs"
 	"mktorder.com/go/internal/indicators"
@@ -161,7 +160,7 @@ func RunClean(data []types.OHLC, strategy types.Strategy, options *CleanOptions)
 	if position != nil {
 		shouldExit := false
 		exitReason := ""
-		if !math.IsNaN(lastIBS) && lastIBS > highIBS && (!opt.IBSExitRequireAboveEntry || lastBar.Close > position.entryPrice) {
+		if ibssig.IsExitSignal(lastIBS, highIBS) && (!opt.IBSExitRequireAboveEntry || lastBar.Close > position.entryPrice) {
 			shouldExit = true
 			exitReason = "ibs_signal"
 		} else {
