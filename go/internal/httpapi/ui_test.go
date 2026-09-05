@@ -552,10 +552,16 @@ func TestAutotradeCardDisclaimsExecutionWindowAndSlippage(t *testing.T) {
 		t.Fatal("autotrade tab body not bounded")
 	}
 	section := a[start : start+end]
-	if !strings.Contains(section, "Окно исполнения не является предохранителем сделки") {
-		t.Fatal("autotrade tab card must say the execution window is not a trade safeguard")
+	if strings.Contains(section, "Окно исполнения не является предохранителем сделки") {
+		t.Fatal("autotrade tab must not keep the old «окно не предохранитель» sentence now that Исполнить is back")
 	}
-	if !strings.Contains(section, "к регулярному T-1 оно не применяется") {
+	if !strings.Contains(section, `id="auto-execute"`) {
+		t.Fatal("autotrade tab must have the Исполнить button")
+	}
+	if !strings.Contains(a, "API.execute(") {
+		t.Fatal("app.js must call API.execute for the Исполнить button")
+	}
+	if !strings.Contains(section, "регулярному T-1 оно не применяется") {
 		t.Fatal("autotrade tab card must say the execution window does not apply to the regular T-1 run")
 	}
 	if !strings.Contains(section, "резерв") || !strings.Contains(section, "проскальзывания") {

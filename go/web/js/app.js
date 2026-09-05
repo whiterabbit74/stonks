@@ -2666,11 +2666,12 @@
               <div class="flex justify-between gap-3"><dt class="text-gray-500">Резерв на вход</dt><dd>не меньше ${esc((effectiveReservePct(mode, ac) * 100).toFixed(2))}%</dd></div>
             </dl>
             <p class="text-xs text-gray-500 mt-2">${esc(capitalModeHint(mode, ac))}. Торгуются тикеры со страницы «Мониторинг».${ac.lastModifiedAt ? (' Обновлено: ' + esc(formatDateTimeET(ac.lastModifiedAt)) + ' ET') : ''}</p>
-            <p class="text-xs text-gray-500 mt-2">Окно исполнения не является предохранителем сделки: к регулярному T-1 оно не применяется (он и так привязан к закрытию), см. вкладку «Настройки» → «Автоторговля». Порог проскальзывания — уже не только уведомление постфактум: перед расчётом количества акций из доступных средств вычитается резерв, равный максимуму из порога проскальзывания, настроенного резерва на вход и жёсткого минимума 0.5%. Заявка при этом остаётся рыночной и отправляется в любом случае — резерв защищает не саму заявку, а точность её размера.</p>
+            <p class="text-xs text-gray-500 mt-2">Окно исполнения — предохранитель кнопки «Исполнить»: заявка уйдёт, только если до закрытия осталось не больше этого времени. К регулярному T-1 оно не применяется (он и так привязан к закрытию), см. вкладку «Настройки» → «Автоторговля». Порог проскальзывания — уже не только уведомление постфактум: перед расчётом количества акций из доступных средств вычитается резерв, равный максимуму из порога проскальзывания, настроенного резерва на вход и жёсткого минимума 0.5%. Заявка при этом остаётся рыночной и отправляется в любом случае — резерв защищает не саму заявку, а точность её размера.</p>
           </div>
           <div class="mt-4 flex flex-wrap gap-2">
             <button type="button" id="auto-enable" class="btn-primary min-h-0 py-2">${ac.enabled ? 'Выключить автоторговлю' : 'Включить автоторговлю'}</button>
             <button type="button" id="auto-refresh" class="btn-secondary min-h-0 py-2">Обновить статус</button>
+            <button type="button" id="auto-execute" class="btn-secondary min-h-0 py-2">Исполнить</button>
           </div>
           ${rawJsonBlock('Raw autotrade config payload', ac)}
           ${rawJsonBlock('Raw tracked orders payload', tracked)}
@@ -2893,7 +2894,7 @@
             <label class="text-sm">Порог проскальзывания, bps<input name="autoSlippage" type="number" min="0" max="1000" step="1" value="${esc(ac.maxSlippageBps ?? 25)}" class="field mt-1" /></label>
             <label class="text-sm">Резерв на вход, %<input name="autoEntryReserve" type="number" min="0.5" max="10" step="0.1" value="${esc(((ac.entryReservePct ?? 0.005) * 100).toFixed(2))}" class="field mt-1" /></label>
           </div>
-          <p class="text-xs text-gray-500 mt-1">Окно: планировщик и кнопка «Исполнить» отправят заявку, только если до закрытия осталось не больше этого времени, — страховка от случайной сделки среди дня. Регулярный запуск в T-1 через это окно не проходит: он и так привязан к закрытию.</p>
+          <p class="text-xs text-gray-500 mt-1">Окно: кнопка «Исполнить» отправит заявку, только если до закрытия осталось не больше этого времени, — страховка от случайной сделки среди дня. Регулярный запуск в T-1 через это окно не проходит: он и так привязан к закрытию.</p>
           <p class="text-xs text-gray-500 mt-1">Проскальзывание больше не только предупреждает: заявку оно не ограничивает (она рыночная и должна исполниться), но перед расчётом количества акций из доступных средств вычитается резерв — не меньше 0.5%, не меньше выставленного здесь значения и не меньше самого порога проскальзывания (25 bps = 0.25% резерва). Так количество акций считается не впритык к покупательной способности: движение цены между котировкой на T-1 и фактическим исполнением не даст брокеру отклонить заявку по нехватке средств.</p>
         </div>
         <p class="text-sm text-gray-600">Состояние брокеров — на страницах <a href="/webull" data-nav class="text-indigo-600">Webull</a> и <a href="/robinhood" data-nav class="text-indigo-600">Robinhood</a>.</p>`;
@@ -3122,8 +3123,9 @@
     });
   }
 
-  function askDelete(message, onYes) {
-    state.confirm = { title: 'Удалить?', message, onYes };
+  function askDelete(message, onYes, opts) {
+    opts = opts || {};
+    state.confirm = { title: opts.title || 'Удалить?', message, onYes, okLabel: opts.okLabel || 'Удалить' };
     paintOverlay();
   }
 
@@ -4092,6 +4094,17 @@
         } catch (err) { toast(errText(err)); }
       });
       document.getElementById('auto-refresh')?.addEventListener('click', () => { reloadBroker(); });
+      document.getElementById('auto-execute')?.addEventListener('click', () => {
+        askDelete('Это боевой ордер, не симуляция. Отправить реальные заявки брокеру сейчас?', async () => {
+          try {
+            const r = await API.execute();
+            const dec = (r && r.brokerDecisions && r.brokerDecisions[kind]) || (r && r.decision) || {};
+            const skipped = r && r.broker && r.broker.error;
+            toast(r && r.executed ? ('Исполнено: ' + (dec.action || '') + ' ' + (dec.symbol || '')) : (decisionReasonText(skipped || dec.reason) || 'Не исполнено'));
+            await reloadBroker();
+          } catch (err) { toast(errText(err)); }
+        }, { title: 'Исполнить?', okLabel: 'Исполнить' });
+      });
       root.querySelectorAll('[data-close-pos]').forEach((b) => b.addEventListener('click', async () => {
         if (!window.confirm('Закрыть позицию ' + b.dataset.closePos + ' рыночным ордером в ' + brokerLabel(kind) + '?')) return;
         try {
