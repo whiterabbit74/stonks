@@ -15,8 +15,7 @@
     { to: '/stocks', label: 'Акции', icon: 'linechart' },
     { to: '/ema', label: 'EMA', icon: 'linechart' },
     { to: '/multi-ticker-options', label: 'Опционы', icon: 'layers' },
-    { to: '/webull', label: 'Webull', icon: 'wallet' },
-    { to: '/robinhood', label: 'Robinhood', icon: 'wallet' },
+    { to: '/watches', label: 'Мониторинг', icon: 'bell' },
   ];
   const MOBILE_MENU = [
     { to: '/data', label: 'Данные', icon: 'database' },
@@ -1476,19 +1475,26 @@
     renderPage();
   });
 
+  function statusBadgeHTML() {
+    const st = state.serverStatus;
+    if (st === 'offline') {
+      return `<span id="footer-status" class="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs bg-red-100 text-red-800 dark:bg-red-950/30 dark:text-red-200"><span class="w-1.5 h-1.5 bg-red-500 rounded-full"></span>Offline</span>`;
+    }
+    if (st === 'checking') {
+      return `<span id="footer-status" class="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300"><span class="w-1.5 h-1.5 bg-gray-400 rounded-full"></span>Проверка</span>`;
+    }
+    return `<span id="footer-status" class="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs bg-green-100 text-green-800 dark:bg-green-950/30 dark:text-green-200"><span class="w-1.5 h-1.5 bg-green-500 rounded-full"></span>Online</span>`;
+  }
   function footerHTML(apiVer) {
     const year = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', year: 'numeric' }).format(new Date());
     return `<footer class="bg-white border-t border-gray-200 dark:bg-gray-900 dark:border-gray-800 mt-[50px]">
       <div class="max-w-7xl mx-auto px-6 py-8">
         <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-          <div class="space-y-4">
-            <div class="flex items-center gap-3">${logo('md')}<div><h3 class="font-bold text-gray-900 dark:text-gray-100">Trading strategies</h3><p class="text-sm text-gray-600 dark:text-gray-400">Профессиональный тестировщик стратегий</p></div></div>
-            <p class="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">Анализ и тестирование торговых стратегий на исторических данных. Специализация на стратегиях mean reversion и техническом анализе.</p>
-          </div>
+          <p class="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">Анализ и тестирование торговых стратегий на исторических данных. Специализация на стратегиях mean reversion и техническом анализе.</p>
           <div class="space-y-2">
             <h4 class="text-sm font-semibold uppercase tracking-wider">Система</h4>
-            <div class="flex items-center justify-between text-sm"><span class="text-gray-600 dark:text-gray-400">Версия API:</span><span id="api-ver" class="font-mono text-xs bg-gray-100 px-2 py-1 rounded dark:bg-gray-800">${esc(apiVer || 'dev')}</span></div>
-            <div class="flex items-center justify-between text-sm"><span class="text-gray-600 dark:text-gray-400">Статус:</span><span class="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs bg-green-100 text-green-800 dark:bg-green-950/30 dark:text-green-200"><span class="w-1.5 h-1.5 bg-green-500 rounded-full"></span>Online</span></div>
+            <div class="flex items-center justify-between text-sm gap-4"><span class="text-gray-600 dark:text-gray-400">Версия API:</span><span id="api-ver" class="font-mono text-xs bg-gray-100 px-2 py-1 rounded dark:bg-gray-800">${esc(apiVer || 'dev')}</span></div>
+            <div class="flex items-center justify-between text-sm gap-4"><span class="text-gray-600 dark:text-gray-400">Статус:</span>${statusBadgeHTML()}</div>
           </div>
         </div>
         <div class="border-t border-gray-200 dark:border-gray-800 mt-8 pt-6 flex flex-col md:flex-row items-center justify-between gap-4">
@@ -1569,10 +1575,10 @@
             <h2 class="text-lg font-semibold mb-3">Вход</h2>
             <div id="login-error" class="mb-2 text-sm text-red-600 hidden"></div>
             <form id="login-form" class="space-y-3">
-              <div><label class="block text-sm mb-1" for="login-user">Эл. почта</label><input id="login-user" name="username" type="email" class="w-full rounded border px-3 py-2 bg-white dark:bg-gray-800 dark:border-gray-700" placeholder="ivan@example.com" autofocus /></div>
-              <div><label class="block text-sm mb-1" for="login-pass">Пароль</label><input id="login-pass" name="password" type="password" class="w-full rounded border px-3 py-2 bg-white dark:bg-gray-800 dark:border-gray-700" placeholder="••••••••" /></div>
+              <div><label class="block text-sm mb-1" for="login-user">Эл. почта</label><input id="login-user" name="username" type="email" class="field w-full" placeholder="ivan@example.com" autofocus /></div>
+              <div><label class="block text-sm mb-1" for="login-pass">Пароль</label><input id="login-pass" name="password" type="password" class="field w-full" placeholder="••••••••" /></div>
               <label class="inline-flex items-center gap-2 text-sm"><input type="checkbox" name="remember" /> Запомнить меня</label>
-              <div class="flex justify-end"><button type="submit" class="btn-primary min-h-0 py-1.5">Войти</button></div>
+              <div class="flex justify-end"><button type="submit" class="btn-primary">Войти</button></div>
             </form>
           </div>
         </main>
@@ -1585,15 +1591,15 @@
     state.datasets.forEach((d) => (d.tag || '').split(',').forEach((t) => { const x = t.trim(); if (x) tags.add(x); }));
     const filtered = state.dataTag === 'all' ? state.datasets : state.datasets.filter((d) => (d.tag || '').split(',').map((t) => t.trim()).includes(state.dataTag));
     const tagCount = (name) => state.datasets.filter((d) => (d.tag || '').split(',').map((x) => x.trim()).includes(name)).length;
-    const filters = [`<button data-tag="all" class="px-3 py-1.5 rounded-lg text-xs font-medium ${state.dataTag === 'all' ? 'bg-blue-100 text-blue-800 border-2 border-blue-200 dark:bg-blue-950/30 dark:text-blue-200' : 'bg-gray-50 text-gray-700 border border-gray-200 dark:bg-gray-800 dark:text-gray-200'}">Все (${state.datasets.length})</button>`]
-      .concat([...tags].sort().map((t) => `<button data-tag="${esc(t)}" class="px-3 py-1.5 rounded-lg text-xs font-medium ${state.dataTag === t ? 'bg-blue-100 text-blue-800 border-2 border-blue-200' : 'bg-gray-50 text-gray-700 border border-gray-200 dark:bg-gray-800 dark:text-gray-200'}">${esc(t)} (${tagCount(t)})</button>`)).join('');
+    const filters = [`<button data-tag="all" class="px-3 py-1.5 rounded-lg text-xs font-medium ${state.dataTag === 'all' ? 'chip-on' : 'chip-off'}">Все (${state.datasets.length})</button>`]
+      .concat([...tags].sort().map((t) => `<button data-tag="${esc(t)}" class="px-3 py-1.5 rounded-lg text-xs font-medium ${state.dataTag === t ? 'chip-on' : 'chip-off'}">${esc(t)} (${tagCount(t)})</button>`)).join('');
     let cards = '';
     if (!state.datasets.length) {
       cards = `<div class="rounded-lg border border-dashed border-gray-300 bg-white p-8 text-center dark:border-gray-700 dark:bg-gray-900">
         ${icon('database', 'mx-auto mb-3 h-10 w-10 text-gray-300 dark:text-gray-600')}
         <h3 class="mb-1 text-base font-semibold text-gray-700 dark:text-gray-300">Датасетов пока нет</h3>
         <p class="mb-4 text-sm text-gray-500">Загрузите данные по тикерам из API, чтобы начать бэктестинг</p>
-        <a href="/enhance" data-nav class="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">${icon('plus', 'h-4 w-4')} Загрузить тикеры</a>
+        <a href="/enhance" data-nav class="btn-primary">${icon('plus', 'h-4 w-4')} Загрузить тикеры</a>
       </div>`;
     } else if (state.dataView === 'compact') {
       cards = `<div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-2">${filtered.map((d) => {
@@ -1624,7 +1630,7 @@
           ${(d.tag || '').split(',').map((t) => t.trim()).filter(Boolean).map((t) => `<span class="inline-block mr-1 mt-1 px-1.5 py-0.5 bg-gray-100 text-gray-600 text-[10px] rounded dark:bg-gray-800">${esc(t)}</span>`).join('')}
         </div>
         <div class="flex flex-wrap gap-2">
-          <a href="/stocks?tickers=${encodeURIComponent(d.ticker)}" data-load="${esc(d.ticker)}" class="px-3 py-1.5 rounded text-sm bg-indigo-600 text-white">Открыть</a>
+          <a href="/stocks?tickers=${encodeURIComponent(d.ticker)}" data-load="${esc(d.ticker)}" class="btn-primary">Открыть</a>
           <button data-edit="${esc(d.ticker)}" class="px-3 py-1.5 rounded text-sm border">Изменить</button>
           <button data-refresh="${esc(d.ticker)}" class="px-3 py-1.5 rounded text-sm border">Обновить</button>
           <button data-export="${esc(d.ticker)}" class="px-3 py-1.5 rounded text-sm border">Экспорт</button>
@@ -1648,8 +1654,8 @@
               ? '<div class="w-2 h-2 bg-gray-400 rounded-full animate-pulse"></div><span class="text-xs text-gray-500 font-medium">Проверяем…</span>'
               : '<div class="w-2 h-2 bg-green-500 rounded-full"></div><span class="text-xs text-green-600 font-medium">Online</span>')}</div>
           <div class="flex items-center gap-1 bg-gray-100 dark:bg-gray-800 rounded-lg p-1">
-            <button id="view-list" class="p-1.5 rounded ${state.dataView === 'list' ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-500'}" title="Список" aria-label="Переключить на режим списка">${icon('list', 'w-4 h-4')}</button>
-            <button id="view-grid" class="p-1.5 rounded ${state.dataView === 'compact' ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-500'}" title="Компактный вид" aria-label="Переключить на компактный вид">${icon('grid', 'w-4 h-4')}</button>
+            <button id="view-list" class="p-1.5 rounded ${state.dataView === 'list' ? 'bg-white dark:bg-gray-700 text-indigo-600 shadow-sm' : 'text-gray-500'}" title="Список" aria-label="Переключить на режим списка">${icon('list', 'w-4 h-4')}</button>
+            <button id="view-grid" class="p-1.5 rounded ${state.dataView === 'compact' ? 'bg-white dark:bg-gray-700 text-indigo-600 shadow-sm' : 'text-gray-500'}" title="Компактный вид" aria-label="Переключить на компактный вид">${icon('grid', 'w-4 h-4')}</button>
           </div>
         </div>
         <div class="mb-3"><div class="text-xs font-medium text-gray-600 uppercase tracking-wide mb-2">Фильтр</div><div class="flex flex-wrap gap-2">${filters}</div></div>
@@ -1666,7 +1672,7 @@
     const chips = ENHANCE_CATS.map((c) => {
       const n = c.id === 'all' ? all.length : all.filter((t) => (t.categories || []).includes(c.id)).length;
       const on = state.enhanceCat === c.id;
-      return `<button type="button" data-ecat="${c.id}" class="${on ? 'cat-chip' : 'cat-chip-off'}">${c.icon} ${esc(c.label)} <span class="text-xs ${on ? 'text-blue-500' : 'text-gray-400'}">(${n})</span></button>`;
+      return `<button type="button" data-ecat="${c.id}" class="${on ? 'cat-chip' : 'cat-chip-off'}">${c.icon} ${esc(c.label)} <span class="text-xs ${on ? '' : 'text-gray-400'}">(${n})</span></button>`;
     }).join('');
     return `
       ${pageHeader('Новые данные', 'Загрузка исторических данных из API', `<div class="flex items-center gap-2"><a href="/settings" data-nav data-settings-tab="api" class="icon-btn icon-btn-md icon-btn-glass" title="Настройки провайдера" aria-label="Настройки провайдера">${icon('settings', 'w-4 h-4')}</a><div class="rounded-lg border px-3 py-2 text-xs bg-white dark:bg-gray-800 dark:border-gray-700"><div class="text-gray-500">Провайдер данных</div><div class="font-semibold">${esc(providerLabel(prov))}</div></div></div>`)}
@@ -2135,14 +2141,12 @@
           <button data-del-ticker="${esc(ticker)}" class="text-red-600 text-sm">Удалить тикер</button>
         </td>
       </tr>`).join('');
-      if (!rows) {
-        body = `<div id="spl-list">
-          <div class="splits-table overflow-auto"><table class="trades"><thead><tr><th>Тикер</th><th>События</th><th class="text-right">Действия</th></tr></thead><tbody><tr><td colspan="3" class="text-center text-gray-500">Нет данных</td></tr></tbody></table></div>
-          <div class="splits-empty-mobile">Нет данных</div>
-        </div>`;
-      } else {
-        body = `<div id="spl-list" class="overflow-auto"><table class="trades"><thead><tr><th>Тикер</th><th>События</th><th class="text-right">Действия</th></tr></thead><tbody>${rows}</tbody></table></div>`;
-      }
+      body = `<div id="spl-list"${rows ? ' class="overflow-auto"' : ''}>
+        ${rows
+          ? `<table class="trades"><thead><tr><th>Тикер</th><th>События</th><th class="text-right">Действия</th></tr></thead><tbody>${rows}</tbody></table>`
+          : `<div class="splits-table overflow-auto"><table class="trades"><thead><tr><th>Тикер</th><th>События</th><th class="text-right">Действия</th></tr></thead><tbody><tr><td colspan="3" class="text-center text-gray-500">Нет данных</td></tr></tbody></table></div>
+             <div class="splits-empty-mobile">Нет данных</div>`}
+      </div>`;
     } else if (state.splitsTab === 'create') {
       body = `<div>
         <h3 class="text-lg font-medium mb-1">Добавить новый тикер</h3>
@@ -2193,6 +2197,10 @@
       <div class="text-xs text-gray-500 dark:text-gray-400 border-t pt-4 mt-6">Изменения сохраняются в базе данных</div>`;
   }
 
+  function watchMarginSelect() {
+    return `<label class="text-xs text-gray-500" for="watch-margin">Маржинальность</label>
+      <select id="watch-margin" class="field mt-1 w-full">${MONITOR_MARGIN_OPTIONS.map((n) => `<option value="${n}" ${state.monitorMarginPercent === n ? 'selected' : ''}>${n}%${n === 100 ? ' = без маржи' : n === 200 ? ' = 2x' : ''}</option>`).join('')}</select>`;
+  }
   function pageWatches() {
     const loadErr = state.watchLoadError
       ? `<div class="rounded-lg border border-red-200 bg-red-50 text-red-800 px-3 py-2 text-sm mb-3">${esc(state.watchLoadError)}</div>`
@@ -2243,12 +2251,10 @@
         <div class="rounded-lg border p-3 text-center"><div class="text-xl font-bold ${pnlClass(stats.net)}">${fmtSignedUsd(stats.net)}</div><div class="text-xs text-gray-500">Чистая прибыль</div></div>
         <div class="rounded-lg border p-3 text-center"><div class="text-xl font-bold text-teal-600">${pfLabel}</div><div class="text-xs text-gray-500">Профит-фактор</div></div>
         <div class="rounded-lg border p-3 text-center col-span-2 md:col-span-1">
-          <label class="text-xs text-gray-500" for="watch-margin">Маржинальность</label>
-          <select id="watch-margin" class="field mt-1 w-full">${MONITOR_MARGIN_OPTIONS.map((n) => `<option value="${n}" ${state.monitorMarginPercent === n ? 'selected' : ''}>${n}%${n === 100 ? ' = без маржи' : n === 200 ? ' = 2x' : ''}</option>`).join('')}</select>
+          ${watchMarginSelect()}
         </div>
       </div>` : `<div class="rounded-lg border border-dashed border-gray-300 bg-gray-50 px-4 py-6 text-center text-sm text-gray-600 dark:border-gray-700 dark:bg-gray-800/50">Пока нет закрытых сделок. Метрики появятся после первого завершенного трейда.</div>
-        <div class="mt-3 max-w-xs"><label class="text-xs text-gray-500" for="watch-margin">Маржинальность</label>
-          <select id="watch-margin" class="field mt-1 w-full">${MONITOR_MARGIN_OPTIONS.map((n) => `<option value="${n}" ${state.monitorMarginPercent === n ? 'selected' : ''}>${n}%</option>`).join('')}</select>
+        <div class="mt-3 max-w-xs">${watchMarginSelect()}
           <p class="text-[11px] text-gray-500 mt-1">100% = без маржи, 200% = 2x. Пересчитывает PnL закрытых сделок.</p>
         </div>`;
     return `
@@ -2904,6 +2910,12 @@
     const gear = document.getElementById('settings-btn');
     if (gear) gear.classList.toggle('app-side-item-on', state.page === '/settings');
     applyNavCollapsed();
+    const badge = document.getElementById('footer-status');
+    if (badge) {
+      const wrap = document.createElement('div');
+      wrap.innerHTML = statusBadgeHTML();
+      badge.replaceWith(wrap.firstElementChild);
+    }
   }
 
   async function renderPage(opts) {

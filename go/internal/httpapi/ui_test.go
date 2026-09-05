@@ -128,7 +128,7 @@ func TestVanillaUIAssets(t *testing.T) {
 		"#menu-btn",
 		"#settings-btn",
 		"bottom-nav",
-		"Online",
+		"footer-status",
 		"Авто", "Тёмная", "Светлая",
 		"'auto'", "'dark'", "'light'",
 		"laptop", "moon", "sun",
