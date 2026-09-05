@@ -681,3 +681,32 @@ func TestPhase3UIAudit(t *testing.T) {
 		t.Fatal("paintCurrentHero must reuse the hero chart via setData instead of always destroy+hero")
 	}
 }
+
+// TestSettingsFormOmitsCommissionFields is P-7: the general settings tab used
+// to persist commissionType/Fixed/Percentage that nothing reads. Backtests
+// still post defaultStrategy.riskManagement.commission {percentage: 0}; the
+// settings form must not grow those field names again.
+func TestSettingsFormOmitsCommissionFields(t *testing.T) {
+	a := readWeb(t, "js/app.js")
+	page := jsFn(a, "pageSettings")
+	if page == "" {
+		t.Fatal("pageSettings not found")
+	}
+	for _, name := range []string{"commissionType", "commissionFixed", "commissionPercentage"} {
+		if strings.Contains(page, `name="`+name+`"`) {
+			t.Errorf("settings form must not render %s", name)
+		}
+	}
+	form := strings.Index(a, "getElementById('set-form')")
+	if form < 0 {
+		t.Fatal("set-form handler not found")
+	}
+	end := strings.Index(a[form:], "function defaultStrategy()")
+	if end < 0 {
+		t.Fatal("set-form handler not bounded")
+	}
+	handler := a[form : form+end]
+	if strings.Contains(handler, "commissionFixed") || strings.Contains(handler, "commissionPercentage") {
+		t.Fatal("set-form must not Number()-coerce settings commission fields")
+	}
+}

@@ -2772,16 +2772,6 @@
           <label class="block text-sm">Тикеры по умолчанию<input name="defaultMultiTickerSymbols" class="field mt-1" value="${esc(st.defaultMultiTickerSymbols || 'AAPL, MSFT, AMZN, MAGS')}" /></label>
           <p class="text-xs text-gray-500 mt-1">Пример: AAPL, MSFT, AMZN, MAGS</p>
         </div>
-        <div class="rounded-xl border border-gray-200 dark:border-gray-700 p-4 mb-3">
-          <div class="font-medium mb-2">Комиссии торговли</div>
-          <label class="inline-flex items-center gap-2 text-sm mr-3"><input type="radio" name="commissionType" value="fixed" ${st.commissionType === 'fixed' ? 'checked' : ''} /> Фиксированная</label>
-          <label class="inline-flex items-center gap-2 text-sm mr-3"><input type="radio" name="commissionType" value="percentage" ${(st.commissionType || 'percentage') === 'percentage' ? 'checked' : ''} /> Процентная</label>
-          <label class="inline-flex items-center gap-2 text-sm"><input type="radio" name="commissionType" value="combined" ${st.commissionType === 'combined' ? 'checked' : ''} /> Комбинированная</label>
-          <div class="grid grid-cols-2 gap-3 mt-3">
-            <label class="text-sm">Фиксированная, $<input name="commissionFixed" type="number" step="0.01" class="field mt-1" value="${esc(st.commissionFixed ?? 1)}" /></label>
-            <label class="text-sm">Процентная, %<input name="commissionPercentage" type="number" step="0.01" class="field mt-1" value="${esc(st.commissionPercentage ?? 0.1)}" /></label>
-          </div>
-        </div>
         <label class="inline-flex items-center gap-2 text-sm"><input type="checkbox" name="enablePostClosePriceActualization" ${st.enablePostClosePriceActualization ? 'checked' : ''} /> Автоактуализация цен после закрытия рынка</label>`;
     } else if (tab === 'api') {
       body = `<div class="rounded-xl border p-4 mb-3">
@@ -4146,8 +4136,6 @@
         if (form.enablePostClosePriceActualization) body.enablePostClosePriceActualization = form.enablePostClosePriceActualization.checked;
         if (body.watchThresholdPct != null) body.watchThresholdPct = Number(body.watchThresholdPct);
         if (body.indicatorPanePercent != null) body.indicatorPanePercent = Number(body.indicatorPanePercent);
-        if (body.commissionFixed != null) body.commissionFixed = Number(body.commissionFixed);
-        if (body.commissionPercentage != null) body.commissionPercentage = Number(body.commissionPercentage);
         if (form.autoEnabled) {
           const updates = {
             enabled: form.autoEnabled.checked,
