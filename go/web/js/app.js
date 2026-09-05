@@ -749,6 +749,9 @@
   function brokerLabel(id) {
     return id === 'robinhood' ? 'Robinhood' : (id === 'webull' ? 'Webull' : (id || '—'));
   }
+  function tradeSourceText(source) {
+    return ({ manual: 'Вручную', import: 'Импорт', webull: 'Webull', robinhood: 'Robinhood', strategy: 'Стратегия' })[String(source || '').toLowerCase()] || source || '—';
+  }
   function brokerHealthText(h) {
     const st = String((h && h.status) || '');
     if (st === 'EXPIRING_SOON') {
@@ -2571,7 +2574,7 @@
       const jrows = shown.map((t) => `<tr class="${t.isHidden ? 'opacity-50' : ''}">
         <td class="font-mono">${esc(t.symbol || '—')}</td>
         <td>${esc(brokerLabel(t.broker))}</td>
-        <td>${esc(t.source || '—')}${t.isTest ? ' · тест' : ''}</td>
+        <td>${esc(tradeSourceText(t.source))}${t.isTest ? ' · тест' : ''}</td>
         <td>${esc(t.status === 'open' ? 'открыта' : 'закрыта')}</td>
         <td>${esc(fmtTradingDate(t.entryDate))}</td>
         <td>${esc(fmtTradingDate(t.exitDate))}</td>
