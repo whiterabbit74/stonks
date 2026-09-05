@@ -1771,7 +1771,7 @@
             <div class="text-[10px] text-gray-400 mt-1">${d.dataPoints || 0} баров</div>
             ${tagsHtml ? `<div class="flex items-center gap-1 mt-1.5">${tagsHtml}</div>` : ''}
           </a>
-          <button data-menu="${esc(d.ticker)}" class="absolute top-2 right-2 inline-flex h-6 w-6 items-center justify-center rounded-md text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700" aria-label="Открыть меню действий">${icon('more', 'w-4 h-4')}</button>
+          <button data-menu="${esc(d.ticker)}" class="icon-btn absolute top-2 right-2 h-8 w-8 text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700" aria-label="Открыть меню действий">${icon('more', 'w-4 h-4')}</button>
           ${state.menuTicker === d.ticker ? `<div class="absolute right-2 top-8 z-10 w-40 rounded-lg border bg-white shadow dark:bg-gray-800 dark:border-gray-700 text-sm">
             ${actionIcon('edit', 'Изменить датасет', `data-edit="${esc(d.ticker)}"`, 'action-icon-edit')}
             <button data-refresh="${esc(d.ticker)}" class="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700">Обновить датасет</button>
