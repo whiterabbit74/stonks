@@ -1692,6 +1692,18 @@ func (s *Server) handlePutWebullToken(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, s.liveEng().PutToken(body.Token, body.ExpiresAt))
 }
 
+func staticCacheControl(p string) string {
+	switch strings.ToLower(filepath.Ext(p)) {
+	case ".js", ".css":
+		return "no-cache, must-revalidate"
+	case ".ttf", ".otf", ".woff", ".woff2", ".eot",
+		".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".ico":
+		return "public, max-age=31536000, immutable"
+	default:
+		return ""
+	}
+}
+
 func (s *Server) serveWeb(w http.ResponseWriter, r *http.Request) {
 	if strings.HasPrefix(r.URL.Path, "/api/") {
 		http.NotFound(w, r)
@@ -1706,13 +1718,13 @@ func (s *Server) serveWeb(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	if strings.HasSuffix(p, ".js") || strings.HasSuffix(p, ".css") {
-		w.Header().Set("Cache-Control", "no-cache, must-revalidate")
-	}
 	if _, err := os.Stat(full); err == nil && !strings.HasSuffix(full, "/") {
 		if strings.HasSuffix(p, "index.html") || p == "/index.html" {
 			s.serveIndex(w, r, full)
 			return
+		}
+		if cc := staticCacheControl(p); cc != "" {
+			w.Header().Set("Cache-Control", cc)
 		}
 		http.ServeFile(w, r, full)
 		return

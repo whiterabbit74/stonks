@@ -313,6 +313,74 @@ func TestVanillaUIPagesHTTP(t *testing.T) {
 	}
 }
 
+func TestStaticCacheHeaders(t *testing.T) {
+	web, err := filepath.Abs(filepath.Join("..", "..", "web"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	db, err := store.Open(filepath.Join(dir, "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	s := New(db, web)
+	s.BuildID = "cachetest"
+
+	get := func(path string) *httptest.ResponseRecorder {
+		t.Helper()
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		rec := httptest.NewRecorder()
+		s.Handler().ServeHTTP(rec, req)
+		return rec
+	}
+
+	rec := get("/css/extra.css")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /css/extra.css -> %d, want 200", rec.Code)
+	}
+	if cc := rec.Header().Get("Cache-Control"); cc == "" || !strings.Contains(cc, "no-cache") {
+		t.Fatalf("GET /css/extra.css Cache-Control = %q, want no-cache", rec.Header().Get("Cache-Control"))
+	}
+	if strings.Contains(rec.Body.String(), "<!DOCTYPE html") {
+		t.Fatal("GET /css/extra.css served index.html instead of the stylesheet")
+	}
+
+	rec = get("/")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET / -> %d, want 200", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "/js/app.js?v=") {
+		t.Fatal("GET / must version app.js with ?v=")
+	}
+
+	rec = get("/fonts/inter/inter-400.ttf")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /fonts/inter/inter-400.ttf -> %d, want 200", rec.Code)
+	}
+	cc := rec.Header().Get("Cache-Control")
+	if !strings.Contains(cc, "max-age=") {
+		t.Errorf("font Cache-Control = %q, want long max-age", cc)
+	}
+	if strings.Contains(cc, "no-cache") || strings.Contains(cc, "no-store") {
+		t.Errorf("font Cache-Control = %q, want a long cache not no-cache", cc)
+	}
+	if strings.Contains(rec.Body.String(), "<!DOCTYPE html") {
+		t.Fatal("GET font served index.html instead of the font file")
+	}
+
+	rec = get("/vendor/lightweight-charts.standalone.production.js")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET vendor js -> %d, want 200", rec.Code)
+	}
+	if rec.Header().Get("Cache-Control") == "" {
+		t.Fatal("GET vendor js missing Cache-Control")
+	}
+	if strings.Contains(rec.Body.String(), "<!DOCTYPE html") {
+		t.Fatal("GET vendor js served index.html")
+	}
+}
+
 // TestBrokerCloseHandlerDispatchesByKind guards P0-3: the "Закрыть" button on
 // the Robinhood positions tab must send its SELL to Robinhood, not Webull.
 // pageBroker's [data-close-pos] handler is shared by /webull and /robinhood,
