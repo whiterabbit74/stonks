@@ -1629,7 +1629,6 @@
           <div class="app-side-tools">
             <button type="button" id="theme-btn" class="app-side-item" title="Тема: ${themeLabel()}" aria-label="Тема: ${themeLabel()}">${sideItemInner(themeIcon(), 'Тема')}</button>
             <a href="/settings" data-nav id="settings-btn" class="app-side-item ${state.page === '/settings' ? 'app-side-item-on' : ''}" title="Настройки" aria-label="Настройки">${sideItemInner('settings', 'Настройки')}</a>
-            <button type="button" id="logout-btn" class="app-side-item" title="Выйти" aria-label="Выйти">${sideItemInner('logout', 'Выйти')}</button>
           </div>
           <button type="button" id="app-side-toggle" class="app-side-toggle" title="${toggleTitle}" aria-label="${toggleTitle}" aria-expanded="${slim ? 'false' : 'true'}">${icon(slim ? 'chevronright' : 'chevronleft', 'w-5 h-5')}<span class="app-side-lab">${slim ? 'Показать' : 'Скрыть'}</span></button>
         </aside>
@@ -1660,9 +1659,7 @@
     return `<div class="px-3 py-3 space-y-0.5">${MOBILE_MENU.map((t) => {
       const on = state.page === t.to;
       return `<a href="${t.to}" data-nav class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium ${on ? 'bg-indigo-600 text-white' : 'text-gray-700 hover:bg-gray-100 dark:text-gray-200'}">${icon(t.icon, 'w-5 h-5 ' + (on ? 'text-white' : 'text-gray-400'))}<span>${t.label}</span></a>`;
-    }).join('')}<div class="my-1.5 border-t border-gray-200 dark:border-gray-700"></div>
-      <button id="logout-mobile" class="flex w-full items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100 dark:text-gray-200">${icon('logout', 'w-5 h-5 text-gray-400')}Выйти</button>
-    </div>`;
+    }).join('')}</div>`;
   }
 
   function loginPage() {
@@ -2930,7 +2927,12 @@
       <form id="set-form" class="mt-4 space-y-3 max-w-3xl">
         ${body}
         <div id="set-msg" class="text-sm"></div>
-      </form>`;
+      </form>
+      <div class="mt-8 max-w-3xl rounded-xl border border-gray-200 p-4 dark:border-gray-700">
+        <div class="font-medium mb-1">Аккаунт</div>
+        <p class="text-xs text-gray-500 mb-3">Выйти из сессии на этом устройстве.</p>
+        <button type="button" id="logout-btn" class="btn-secondary min-h-0 py-2 px-4">Выйти</button>
+      </div>`;
   }
 
   function pageHTML() {
@@ -2994,7 +2996,7 @@
         updateChrome();
         return;
       }
-      if (e.target.closest('#logout-btn') || e.target.closest('#logout-mobile')) {
+      if (e.target.closest('#logout-btn')) {
         logout();
         return;
       }

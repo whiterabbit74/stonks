@@ -37,7 +37,7 @@ html.dark table.trades th, html.dark table.trades td { border-color: #1f2937; }
   .bottom-nav { display: grid; }
   .desktop-nav { display: none !important; }
   #menu-btn { display: inline-flex !important; }
-  #settings-btn, #logout-btn { display: none !important; }
+  #settings-btn { display: none !important; }
   footer { padding-bottom: 5.5rem; }
 }
 .icon-btn {

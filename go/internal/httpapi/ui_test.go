@@ -717,6 +717,36 @@ func TestPhase3UIAudit(t *testing.T) {
 	}
 }
 
+func TestLogoutLivesOnSettingsPage(t *testing.T) {
+	a := readWeb(t, "js/app.js")
+	extra := readWeb(t, "css/extra.css")
+	shell := jsFn(a, "shellHTML")
+	drawer := jsFn(a, "mobileDrawerHTML")
+	page := jsFn(a, "pageSettings")
+	if shell == "" || drawer == "" || page == "" {
+		t.Fatal("shellHTML, mobileDrawerHTML or pageSettings not found")
+	}
+	if strings.Contains(shell, `id="logout-btn"`) {
+		t.Fatal("logout must not sit in the sidebar chrome")
+	}
+	if strings.Contains(drawer, "logout-mobile") || strings.Contains(drawer, "Выйти") {
+		t.Fatal("logout must not sit in the mobile drawer")
+	}
+	formEnd := strings.Index(page, "</form>")
+	if formEnd < 0 {
+		t.Fatal("pageSettings form not found")
+	}
+	if !strings.Contains(page[formEnd:], `id="logout-btn"`) {
+		t.Fatal("logout must be on the settings page, outside the save form")
+	}
+	if !strings.Contains(page[formEnd:], "Выйти") {
+		t.Fatal("settings logout control must be labelled «Выйти»")
+	}
+	if strings.Contains(extra, "#logout-btn") {
+		t.Fatal("mobile CSS must not hide the settings logout button")
+	}
+}
+
 // TestSettingsFormOmitsCommissionFields is P-7: the general settings tab used
 // to persist commissionType/Fixed/Percentage that nothing reads. Backtests
 // still post defaultStrategy.riskManagement.commission {percentage: 0}; the
