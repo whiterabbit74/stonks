@@ -862,3 +862,39 @@ func TestSettingsAPITabShowsPolygonKeyStatus(t *testing.T) {
 		t.Fatal("API tab must not offer a polygonApiKey input")
 	}
 }
+
+// TestAutotradeDecisionReadsBrokerDecisions is P-5: the «Последнее решение»
+// tile must read lastResult.brokerDecisions[kind] and only fall back to the
+// showcase decision when that map entry is missing. Reasons go through the
+// single SPA dictionary (decisionReasonText).
+func TestAutotradeDecisionReadsBrokerDecisions(t *testing.T) {
+	a := readWeb(t, "js/app.js")
+	if !strings.Contains(a, "brokerDecisions") {
+		t.Fatal("app.js must read lastResult.brokerDecisions")
+	}
+	if strings.Count(a, "function decisionReasonText(") != 1 {
+		t.Fatal("SPA must have exactly one decisionReasonText dictionary")
+	}
+	auto := jsFn(a, "pageBroker")
+	start := strings.Index(auto, "tab === 'autotrade'")
+	if start < 0 {
+		t.Fatal("autotrade tab not found")
+	}
+	end := strings.Index(auto[start:], "tab === 'monitor'")
+	if end < 0 {
+		t.Fatal("autotrade tab not bounded")
+	}
+	section := auto[start : start+end]
+	if !strings.Contains(section, "brokerDecisions") || !strings.Contains(section, "[kind]") {
+		t.Fatal("Последнее решение must read brokerDecisions[kind]")
+	}
+	if !strings.Contains(section, "decisionReasonText(") {
+		t.Fatal("decision reason on the tile must go through decisionReasonText")
+	}
+	dict := jsFn(a, "decisionReasonText")
+	for _, key := range []string{"broker_disabled", "NEEDS_REAUTH", "allowNewEntries_false", "entries_disabled", "exits_disabled", "no_signal"} {
+		if !strings.Contains(dict, key) {
+			t.Errorf("decisionReasonText missing %s", key)
+		}
+	}
+}

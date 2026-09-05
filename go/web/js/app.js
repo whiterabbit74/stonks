@@ -744,6 +744,20 @@
   function brokerLabel(id) {
     return id === 'robinhood' ? 'Robinhood' : (id === 'webull' ? 'Webull' : (id || '—'));
   }
+  // Mirrors go/internal/live/telegram.go noActionReasonText for the reasons
+  // the autotrade tile shows. One dictionary for the whole SPA.
+  function decisionReasonText(reason) {
+    const raw = String(reason || '');
+    const m = {
+      broker_disabled: 'брокер выключен в настройках',
+      NEEDS_REAUTH: 'брокер требует повторной авторизации',
+      allowNewEntries_false: 'новые входы выключены в настройках',
+      entries_disabled: 'новые входы выключены в настройках',
+      exits_disabled: 'выходы выключены в настройках',
+      no_signal: 'нет сигнала на вход',
+    };
+    return m[raw] || raw;
+  }
   // Mirrors go/internal/live/brokers.go brokerFlags(): a per-broker key is
   // used only when it is explicitly present; a missing key means false
   // (Node: undefined is falsy), except webull, which still falls back to the
@@ -2600,7 +2614,8 @@
           <button type="button" data-clear-persist-block="${esc(b)}" class="btn-secondary min-h-0 py-1 whitespace-nowrap">Снять блокировку</button>
         </div>`).join('')}</div>` : '';
       const mode = capitalModeByValue(ac.entryCapitalMode);
-      const lastRes = (st.state && st.state.lastResult && st.state.lastResult.decision) || dec;
+      const lastPack = st.state && st.state.lastResult;
+      const lastRes = (lastPack && lastPack.brokerDecisions && lastPack.brokerDecisions[kind]) || (lastPack && lastPack.decision) || dec;
       // Broker-specific connection card: Webull uses a pasted API token,
       // Robinhood uses the copy-paste OAuth flow on the "Подключение" tab -
       // rendering the Webull token panel here on /robinhood was P2-3.
@@ -2632,7 +2647,7 @@
             <div class="rounded-lg border p-3"><div class="text-xs text-gray-500">Статус</div><div class="mt-1 font-semibold">${ac.enabled ? 'LIVE' : 'OFF'}</div></div>
             <div class="rounded-lg border p-3"><div class="text-xs text-gray-500">Последний запуск</div><div class="mt-1 text-sm">${esc(formatDateTimeET(last) === '—' ? last : formatDateTimeET(last))}</div></div>
             <div class="rounded-lg border p-3"><div class="text-xs text-gray-500">Entries / Exits (${esc(brokerLabel(kind))})</div><div class="mt-1 text-sm">${brokerAllowFlag(ac, kind, 'allowNewEntries') ? 'да' : 'нет'} / ${brokerAllowFlag(ac, kind, 'allowExits') ? 'да' : 'нет'}</div></div>
-            <div class="rounded-lg border p-3"><div class="text-xs text-gray-500">Последнее решение</div><div class="mt-1 text-sm">${esc(lastRes.action || dec.action || '—')} ${esc(lastRes.symbol || dec.symbol || '')}</div><div class="text-xs text-gray-500">${esc(lastRes.reason || dec.reason || '')}</div></div>
+            <div class="rounded-lg border p-3"><div class="text-xs text-gray-500">Последнее решение</div><div class="mt-1 text-sm">${esc(lastRes.action || dec.action || '—')} ${esc(lastRes.symbol || dec.symbol || '')}</div><div class="text-xs text-gray-500">${esc(decisionReasonText(lastRes.reason || dec.reason || ''))}</div></div>
           </div>
           <div class="mt-4 rounded-xl bg-gray-50 p-3 text-sm dark:bg-gray-950/40">
             <div class="flex items-center justify-between gap-3 mb-2">
