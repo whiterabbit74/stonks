@@ -2578,7 +2578,7 @@
         <div class="flex flex-col gap-2 sm:flex-row"><input id="rh-auth-url" readonly class="field min-w-0 flex-1" value="${esc(st.authorizationUrl || state.rhAuthUrl || '')}" /><button type="button" id="rh-get-link" class="btn-primary min-h-0 py-2 sm:w-auto">Получить ссылку</button><button type="button" id="rh-copy-link" class="btn-secondary min-h-0 py-2 sm:w-auto">Копировать</button></div>
         <label class="block text-sm">Вставьте адрес после разрешения<input id="rh-callback" class="field mt-1 w-full" placeholder="http://127.0.0.1:53682/callback?code=..." /></label>
         <div class="flex gap-2"><button type="button" id="rh-connect" class="btn-primary min-h-0 py-2">Подключить</button><button type="button" id="rh-disconnect" class="btn-secondary min-h-0 py-2">Отключить</button></div>
-        <p class="text-sm text-gray-500">Статус: ${esc(st.status || (st.connected ? 'OK' : 'не подключено'))}${st.expiresAt ? ' · истекает ' + esc(st.expiresAt) : ''}</p>
+        <p class="text-sm text-gray-500">Статус: ${esc(brokerHealthText(st) || (st.connected ? 'подключено' : 'не подключено'))}${st.expiresAt ? ' · истекает ' + esc(st.expiresAt) : ''}</p>
       </div>`;
     } else if (tab === 'journal') {
       const shown = (state.broker || []).filter((t) => state.brokerShowHidden || !t.isHidden);
@@ -2713,7 +2713,7 @@
       const connectionCard = kind === 'robinhood'
         ? `<div class="rounded-xl bg-gray-50 p-3 dark:bg-gray-950/40">
               <div class="text-xs uppercase tracking-wide text-gray-500">Подключение (Robinhood)</div>
-              <div class="mt-1 text-sm">${esc(rhStatus.status || (rhStatus.connected ? 'OK' : 'не подключено'))}${rhStatus.expiresAt ? ' · истекает ' + esc(rhStatus.expiresAt) : ''}</div>
+              <div class="mt-1 text-sm">${esc(brokerHealthText(rhStatus) || (rhStatus.connected ? 'подключено' : 'не подключено'))}${rhStatus.expiresAt ? ' · истекает ' + esc(rhStatus.expiresAt) : ''}</div>
               <p class="text-xs text-gray-500 mt-1">OAuth настраивается на вкладке «Подключение».</p>
             </div>`
         : `<div class="rounded-xl bg-gray-50 p-3 dark:bg-gray-950/40">
