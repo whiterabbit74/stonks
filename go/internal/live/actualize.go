@@ -189,12 +189,14 @@ func settingInt(settings map[string]any, key string, def int) int {
 func recordActualizeAttempt(e *Engine, today string, out ActualizeResult) {
 	settings := e.DB.Settings()
 	attempts := actualizeAttemptsToday(settings, today) + 1
-	settings["lastActualizationAttemptDate"] = today
-	settings["lastActualizationAttemptCount"] = attempts
-	if out.Count > 0 {
-		settings["lastActualizationDate"] = today
+	kv := map[string]any{
+		"lastActualizationAttemptDate":  today,
+		"lastActualizationAttemptCount": attempts,
 	}
-	_ = e.DB.SaveSettings(settings)
+	if out.Count > 0 {
+		kv["lastActualizationDate"] = today
+	}
+	_ = e.DB.SetSettingsKeys(kv)
 	if out.Count > 0 || attempts < actualizeAttemptCap(settings) {
 		return
 	}

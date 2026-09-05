@@ -39,8 +39,7 @@ func (e *Engine) PatchAutoConfig(updates map[string]any) map[string]any {
 		cur = map[string]any{}
 	}
 	cur = sanitizeAutoTradingConfig(updates, cur, e.now())
-	settings["autoTrading"] = cur
-	_ = e.DB.SaveSettings(settings)
+	_ = e.DB.SetSettingsKeys(map[string]any{"autoTrading": cur})
 	return cur
 }
 
@@ -725,8 +724,7 @@ func (e *Engine) persistTrackerBlock(broker string) {
 		blocks = map[string]any{}
 	}
 	blocks[broker] = true
-	settings["trackerPersistFail"] = blocks
-	_ = e.DB.SaveSettings(settings)
+	_ = e.DB.SetSettingsKeys(map[string]any{"trackerPersistFail": blocks})
 }
 
 func (e *Engine) trackerPersistBlocked(broker string) bool {
@@ -780,8 +778,7 @@ func (e *Engine) ClearTrackerPersistBlock(broker, note string) error {
 		settings := e.DB.Settings()
 		if blocks, ok := settings["trackerPersistFail"].(map[string]any); ok {
 			delete(blocks, broker)
-			settings["trackerPersistFail"] = blocks
-			_ = e.DB.SaveSettings(settings)
+			_ = e.DB.SetSettingsKeys(map[string]any{"trackerPersistFail": blocks})
 		}
 	}
 	e.logAuto("tracker_persist_block_cleared", "", map[string]any{"broker": broker, "note": note, "author": "operator"})

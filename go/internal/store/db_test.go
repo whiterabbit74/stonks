@@ -243,6 +243,40 @@ func TestSetSettingsKeysConcurrentWritersKeepBothKeys(t *testing.T) {
 	}
 }
 
+func TestSetSettingsKeysConcurrentTrackerPersistAndCalendarImport(t *testing.T) {
+	db := openTestDB(t)
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Add(2)
+	errs := make(chan error, 2)
+	go func() {
+		defer wg.Done()
+		<-start
+		errs <- db.SetSettingsKeys(map[string]any{"trackerPersistFail": map[string]any{"webull": true}})
+	}()
+	go func() {
+		defer wg.Done()
+		<-start
+		errs <- db.SetSettingsKeys(map[string]any{"lastCalendarImportDate": "2026-09-01"})
+	}()
+	close(start)
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	got := db.Settings()
+	blocks, _ := got["trackerPersistFail"].(map[string]any)
+	if blocks["webull"] != true {
+		t.Fatalf("trackerPersistFail=%v", got["trackerPersistFail"])
+	}
+	if fmt.Sprint(got["lastCalendarImportDate"]) != "2026-09-01" {
+		t.Fatalf("lastCalendarImportDate=%v", got["lastCalendarImportDate"])
+	}
+}
+
 func TestSettingsExplicitZeroThresholdIsPreserved(t *testing.T) {
 	db := openTestDB(t)
 	if err := db.SaveSettings(map[string]any{

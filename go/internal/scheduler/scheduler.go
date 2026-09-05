@@ -268,9 +268,7 @@ func RunAutotradeLogRotation(db *store.DB, today string, now time.Time, onEvent 
 	days := settingsInt(settings, "autotradeLogRetentionDays", autotradeLogRetentionDays)
 	rows := settingsInt(settings, "autotradeLogMaxRows", autotradeLogMaxRows)
 	n, err := db.PruneAutotradeLogs(days, rows)
-	settings = db.Settings()
-	settings["lastAutotradeLogPruneDate"] = today
-	_ = db.SaveSettings(settings)
+	_ = db.SetSettingsKeys(map[string]any{"lastAutotradeLogPruneDate": today})
 	if err != nil {
 		onEvent(JobLog{At: now, Name: "autotrade-log-rotation", Detail: err.Error()})
 		return
@@ -471,8 +469,7 @@ func reportMissedTelegram(db *store.DB, eng *live.Engine, now time.Time, today, 
 		if fmt.Sprint(settings["lastMissedT1Date"]) == today {
 			return
 		}
-		settings["lastMissedT1Date"] = today
-		_ = db.SaveSettings(settings)
+		_ = db.SetSettingsKeys(map[string]any{"lastMissedT1Date": today})
 		detail := fmt.Sprintf("missed-t1 until=%d", until)
 		onEvent(JobLog{At: now, Name: "telegram-aggregation", Skipped: true, Detail: detail})
 		if eng != nil {
@@ -518,15 +515,12 @@ func RunCalendarExtend(db *store.DB, deps Deps, today string, now time.Time, onE
 	cov := calendarCoverageThrough(raw)
 	need := cov == "" || tradingdate.AddDays(today, 45) > cov
 	if !need {
-		settings["lastCalendarImportDate"] = today
-		_ = db.SaveSettings(settings)
+		_ = db.SetSettingsKeys(map[string]any{"lastCalendarImportDate": today})
 		onEvent(JobLog{At: now, Name: "calendar-extend", Skipped: true, Detail: "coverage-ok"})
 		return
 	}
 	_, err := engine(db, deps).ImportWebullCalendar()
-	settings = db.Settings()
-	settings["lastCalendarImportDate"] = today
-	_ = db.SaveSettings(settings)
+	_ = db.SetSettingsKeys(map[string]any{"lastCalendarImportDate": today})
 	if err != nil {
 		onEvent(JobLog{At: now, Name: "calendar-extend", Detail: err.Error()})
 		raw, _ = db.GetCalendar()
