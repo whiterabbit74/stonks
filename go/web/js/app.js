@@ -4146,7 +4146,7 @@
         if (!t) return;
         const ibsOut = t.exitIBS == null ? '' : (ibsPct(t.exitIBS) ?? '');
         setModal(`<div class="modal-backdrop"><div class="modal-card max-w-lg">
-          <h3 class="text-lg font-semibold mb-2">Редактировать broker-сделку: ${esc(t.symbol)}</h3>
+          <h3 class="text-lg font-semibold mb-2">Редактировать брокерскую сделку: ${esc(t.symbol)}</h3>
           <p class="text-sm text-gray-500 mb-3">Заполните дату и цену выхода, чтобы ручной записью закрыть сделку в broker-журнале сайта.</p>
           <div id="eb-err" class="text-sm text-red-600 mb-2 hidden"></div>
           <div class="grid sm:grid-cols-3 gap-2 rounded-lg bg-gray-50 p-3 text-sm mb-3 dark:bg-gray-950/40">
