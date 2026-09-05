@@ -301,7 +301,18 @@ func (s *Service) CallToolCtx(ctx context.Context, name string, args map[string]
 		s.MCP.ready = false
 		s.MCP.session = ""
 		s.MCP.mu.Unlock()
+		if mcpWrites(name) {
+			return nil, err
+		}
 		return s.MCP.CallToolCtx(ctx, name, args)
 	}
 	return raw, err
+}
+
+func mcpWrites(name string) bool {
+	switch name {
+	case "place_equity_order", "cancel_equity_order":
+		return true
+	}
+	return false
 }

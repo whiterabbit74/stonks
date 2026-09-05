@@ -289,6 +289,82 @@ func TestRobinhoodPlaceMarketUnrecognizedResponseIsAmbiguous(t *testing.T) {
 	}
 }
 
+func TestRobinhoodPlaceUnauthorizedIsAmbiguousWithoutRetry(t *testing.T) {
+	db, err := store.Open(filepath.Join(t.TempDir(), "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	if err := db.SaveRobinhoodClientID("cid"); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.SaveRobinhoodTokens("A1", "R1", "Bearer", "internal", ""); err != nil {
+		t.Fatal(err)
+	}
+
+	var placeCalls int
+	mcp := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		var msg map[string]any
+		_ = json.Unmarshal(b, &msg)
+		method, _ := msg["method"].(string)
+		switch method {
+		case "initialize":
+			w.Header().Set("Mcp-Session-Id", "sess-1")
+			_ = json.NewEncoder(w).Encode(map[string]any{"jsonrpc": "2.0", "id": msg["id"], "result": map[string]any{"protocolVersion": "2025-06-18"}})
+		case "notifications/initialized":
+			w.WriteHeader(204)
+		case "tools/call":
+			params, _ := msg["params"].(map[string]any)
+			name, _ := params["name"].(string)
+			switch name {
+			case "get_accounts":
+				_ = json.NewEncoder(w).Encode(map[string]any{"jsonrpc": "2.0", "id": msg["id"], "result": map[string]any{
+					"content": []any{map[string]any{"type": "text", "text": `{"accounts":[{"account_number":"RH1","agentic_allowed":true}]}`}},
+				}})
+			case "get_equity_tradability", "review_equity_order":
+				_ = json.NewEncoder(w).Encode(map[string]any{"jsonrpc": "2.0", "id": msg["id"], "result": map[string]any{"ok": true}})
+			case "place_equity_order":
+				placeCalls++
+				w.WriteHeader(401)
+			default:
+				_ = json.NewEncoder(w).Encode(map[string]any{"jsonrpc": "2.0", "id": msg["id"], "result": map[string]any{}})
+			}
+		default:
+			w.WriteHeader(400)
+		}
+	}))
+	t.Cleanup(mcp.Close)
+
+	tok := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"access_token": "A2", "refresh_token": "R2", "token_type": "Bearer", "expires_in": 100,
+		})
+	}))
+	t.Cleanup(tok.Close)
+	prev := robinhood.TokenURL
+	t.Cleanup(func() { robinhood.TokenURL = prev })
+	robinhood.TokenURL = tok.URL
+
+	svc := robinhood.New(db)
+	svc.HTTP = mcp.Client()
+	svc.MCP = &robinhood.MCP{HTTP: mcp.Client(), Endpoint: mcp.URL, Token: svc.AccessToken}
+	b := NewRobinhoodBroker(svc)
+	res, err := b.PlaceMarketCfg("AAPL", "BUY", 1, PlaceMarketCfg{ClientOrderID: "11111111-1111-1111-1111-111111111111"})
+	if err != nil {
+		t.Fatalf("unauthorized place must hand off to the tracker, not return a transport error: %v", err)
+	}
+	if res.Submitted {
+		t.Fatalf("unauthorized place must not report Submitted: %+v", res)
+	}
+	if !res.Ambiguous {
+		t.Fatalf("unauthorized place must be Ambiguous: %+v", res)
+	}
+	if placeCalls != 1 {
+		t.Fatalf("must not retry place_equity_order after unauthorized, calls=%d", placeCalls)
+	}
+}
+
 // TestRobinhoodBrokerUsesStoredAccountNumber covers AU-P2-2: a process restart
 // must reuse robinhood_oauth.account_number instead of spending a T-1 round-trip
 // on get_accounts.

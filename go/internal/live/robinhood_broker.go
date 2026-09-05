@@ -89,7 +89,12 @@ func (b *RobinhoodBroker) PlaceMarketCfg(symbol, side string, qty float64, cfg P
 	}
 	raw, err := b.toolCtx(ctx, "place_equity_order", args)
 	if err != nil {
-		return OrderResult{ClientOrderID: ref, Symbol: symbol, Side: side, Quantity: qty, Error: err.Error()}, err
+		res := OrderResult{ClientOrderID: ref, Symbol: symbol, Side: side, Quantity: qty, Error: err.Error()}
+		if strings.Contains(strings.ToLower(err.Error()), "unauthorized") {
+			res.Ambiguous = true
+			return res, nil
+		}
+		return res, err
 	}
 	detail := mapFromJSON(robinhood.ToolContentJSON(raw))
 	// The MCP call succeeding is not proof the order was accepted: check the

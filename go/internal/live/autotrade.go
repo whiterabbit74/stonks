@@ -574,6 +574,9 @@ func (e *Engine) placeMarket(w execWindow, symbol, side string, qty float64, cfg
 		if err == nil && res.Submitted {
 			return res, nil
 		}
+		if res.Ambiguous && strings.Contains(strings.ToLower(res.Error), "unauthorized") {
+			return res, nil
+		}
 		landed, queryFailed, detail := e.orderLanded(w, try.ClientOrderID, br)
 		if queryFailed {
 			// The submission failed and the broker cannot say whether the order
