@@ -414,6 +414,35 @@ func TestSettingsRejectAutoTradingAndInvalidJSON(t *testing.T) {
 	}
 }
 
+// TestGetSettingsPolygonKeyConfiguredMatchesClientSettings is P-9: GET
+// /api/settings used to set polygonApiKeyConfigured from ENV only, while
+// PUT's clientSettings also counts a stored polygonApiKey.
+func TestGetSettingsPolygonKeyConfiguredMatchesClientSettings(t *testing.T) {
+	s := testServer(t, "")
+	t.Setenv("POLYGON_API_KEY", "")
+	cur := s.DB.Settings()
+	cur["polygonApiKey"] = "stored-polygon-key"
+	if err := s.DB.SaveSettings(cur); err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest("GET", "/api/settings", nil)
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != 200 {
+		t.Fatalf("GET /api/settings %d %s", rec.Code, rec.Body.String())
+	}
+	var st map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &st); err != nil {
+		t.Fatal(err)
+	}
+	if st["polygonApiKey"] != nil {
+		t.Fatalf("GET must not leak polygonApiKey: %v", st["polygonApiKey"])
+	}
+	if st["polygonApiKeyConfigured"] != true {
+		t.Fatalf("stored key must set polygonApiKeyConfigured: %v", st["polygonApiKeyConfigured"])
+	}
+}
+
 func TestDatasetIntegrityRejectsInvalidBars(t *testing.T) {
 	s := testServer(t, "")
 	payload, _ := json.Marshal(map[string]any{

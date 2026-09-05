@@ -839,3 +839,26 @@ func TestBrokerMonitorIBSColorUsesRowThresholds(t *testing.T) {
 		t.Fatal("broker monitor IBS color must use strict ibs < lo / ibs > hi")
 	}
 }
+
+// TestSettingsAPITabShowsPolygonKeyStatus is P-9: Polygon is a provider
+// button but the key lives in POLYGON_API_KEY / stored settings, not an
+// input on the API tab. The SPA must surface polygonApiKeyConfigured.
+func TestSettingsAPITabShowsPolygonKeyStatus(t *testing.T) {
+	a := readWeb(t, "js/app.js")
+	page := jsFn(a, "pageSettings")
+	if page == "" {
+		t.Fatal("pageSettings not found")
+	}
+	if !strings.Contains(page, "polygonApiKeyConfigured") {
+		t.Fatal("API tab must read polygonApiKeyConfigured from GET /api/settings")
+	}
+	if !strings.Contains(page, "ключ задан") || !strings.Contains(page, "ключ не задан") {
+		t.Fatal("API tab must show «ключ задан» / «ключ не задан» next to Polygon")
+	}
+	if !strings.Contains(page, "POLYGON_API_KEY") {
+		t.Fatal("API tab must say the Polygon key lives in POLYGON_API_KEY")
+	}
+	if strings.Contains(page, `name="polygonApiKey"`) {
+		t.Fatal("API tab must not offer a polygonApiKey input")
+	}
+}

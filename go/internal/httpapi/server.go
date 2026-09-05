@@ -479,10 +479,7 @@ func randomToken() (string, error) {
 }
 
 func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
-	st := s.DB.Settings()
-	delete(st, "polygonApiKey")
-	st["polygonApiKeyConfigured"] = os.Getenv("POLYGON_API_KEY") != ""
-	writeJSON(w, 200, st)
+	writeJSON(w, 200, clientSettings(s.DB.Settings()))
 }
 
 func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
