@@ -1773,10 +1773,10 @@
           </a>
           <button data-menu="${esc(d.ticker)}" class="absolute top-2 right-2 inline-flex h-6 w-6 items-center justify-center rounded-md text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700" aria-label="Открыть меню действий">${icon('more', 'w-4 h-4')}</button>
           ${state.menuTicker === d.ticker ? `<div class="absolute right-2 top-8 z-10 w-40 rounded-lg border bg-white shadow dark:bg-gray-800 dark:border-gray-700 text-sm">
-            <button data-edit="${esc(d.ticker)}" class="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700">Изменить</button>
+            ${actionIcon('edit', 'Изменить датасет', `data-edit="${esc(d.ticker)}"`, 'action-icon-edit')}
             <button data-refresh="${esc(d.ticker)}" class="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700">Обновить датасет</button>
             <button data-export="${esc(d.ticker)}" class="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700">Экспорт JSON</button>
-            <button data-del="${esc(d.ticker)}" class="w-full text-left px-3 py-2 text-red-600 hover:bg-red-50">Удалить</button>
+            ${actionIcon('trash', 'Удалить датасет', `data-del="${esc(d.ticker)}"`, 'action-icon-danger')}
           </div>` : ''}
         </div>`;
       }).join('')}</div>`;
@@ -1789,10 +1789,10 @@
         </div>
         <div class="flex flex-wrap gap-2">
           <a href="/stocks?tickers=${encodeURIComponent(d.ticker)}" data-load="${esc(d.ticker)}" class="btn-primary">Открыть</a>
-          <button data-edit="${esc(d.ticker)}" class="px-3 py-1.5 rounded text-sm border">Изменить</button>
+          ${actionIcon('edit', 'Изменить датасет', `data-edit="${esc(d.ticker)}"`, 'action-icon-edit')}
           <button data-refresh="${esc(d.ticker)}" class="px-3 py-1.5 rounded text-sm border">Обновить</button>
           <button data-export="${esc(d.ticker)}" class="px-3 py-1.5 rounded text-sm border">Экспорт</button>
-          <button data-del="${esc(d.ticker)}" class="px-3 py-1.5 rounded text-sm border">Удалить</button>
+          ${actionIcon('trash', 'Удалить датасет', `data-del="${esc(d.ticker)}"`, 'action-icon-danger')}
         </div>
       </div>`).join('');
     }

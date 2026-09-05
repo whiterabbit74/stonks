@@ -635,7 +635,7 @@ func TestUIOracleBlocks(t *testing.T) {
 			t.Errorf("UI missing %s", need)
 		}
 	}
-	if !strings.Contains(a, "Изменить</button>") || !strings.Contains(a, "Обновить</button>") || !strings.Contains(a, "Экспорт</button>") {
+	if !strings.Contains(a, `data-edit="`) || !strings.Contains(a, `data-del="`) || !strings.Contains(a, "Обновить</button>") || !strings.Contains(a, "Экспорт</button>") {
 		t.Error("data list-row actions missing")
 	}
 }
