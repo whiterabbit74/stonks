@@ -33,14 +33,19 @@ func (e *Engine) AutoConfig() map[string]any {
 }
 
 func (e *Engine) PatchAutoConfig(updates map[string]any) map[string]any {
+	cur, _ := e.PatchAutoConfigChecked(updates)
+	return cur
+}
+
+func (e *Engine) PatchAutoConfigChecked(updates map[string]any) (map[string]any, error) {
 	settings := e.DB.Settings()
 	cur, _ := settings["autoTrading"].(map[string]any)
 	if cur == nil {
 		cur = map[string]any{}
 	}
 	cur = sanitizeAutoTradingConfig(updates, cur, e.now())
-	_ = e.DB.SetSettingsKeys(map[string]any{"autoTrading": cur})
-	return cur
+	err := e.DB.SetSettingsKeys(map[string]any{"autoTrading": cur})
+	return cur, err
 }
 
 func (e *Engine) WebullSummary() map[string]any {

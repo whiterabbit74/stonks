@@ -16,7 +16,6 @@ var stateWritePrefixes = []string{"Save", "Set", "Mark", "Record", "Claim", "Ups
 // still drop a state-writing *store.DB error. Each value says why the
 // discard is tolerated. A new unlisted discard fails the build.
 var allowedDiscardedDBWrites = map[string]string{
-	"internal/live/autotrade.go:SetSettingsKeys": "PatchAutoConfig still returns the in-memory config when the blob write fails; callers have no error path",
 	"internal/live/autotrade.go:SaveWebullTokenChecked": "health stamp during token poll is diagnostic; a failed write must not abort the check",
 	"internal/live/actualize.go:SetSettingsKeys": "actualize attempt counters are best-effort; the Telegram alert still fires from memory",
 	"internal/live/telegram.go:MarkAggregateT11": "T-11 already went out; a missed sent-flag is retried by ClaimAggregateT11",

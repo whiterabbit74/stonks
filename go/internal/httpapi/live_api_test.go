@@ -895,6 +895,38 @@ func TestCloseMonitor409AndPnL(t *testing.T) {
 	}
 }
 
+func TestAutoConfigPatchFailsWhenSettingsWriteBlocked(t *testing.T) {
+	s, _, _ := liveServer(t)
+	if _, err := s.DB.SQL.Exec(`
+            CREATE TRIGGER IF NOT EXISTS settings_block_update
+            BEFORE UPDATE ON settings
+            BEGIN
+                SELECT RAISE(ABORT, 'injected settings fail');
+            END;
+        `); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.DB.SQL.Exec(`
+            CREATE TRIGGER IF NOT EXISTS settings_block_insert
+            BEFORE INSERT ON settings
+            BEGIN
+                SELECT RAISE(ABORT, 'injected settings fail');
+            END;
+        `); err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest("PATCH", "/api/autotrade/config", bytes.NewReader(mustJSON(map[string]any{"enabled": true})))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != 500 {
+		t.Fatalf("blocked patch got %d %s", rec.Code, rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), `"success":true`) {
+		t.Fatal("must not claim success when autoTrading was not stored")
+	}
+}
+
 func mustJSON(v any) []byte {
 	b, _ := json.Marshal(v)
 	return b

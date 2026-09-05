@@ -1862,7 +1862,11 @@ func (s *Server) handleAutoConfigPatch(w http.ResponseWriter, r *http.Request) {
 	if !s.requireJSON(w, r, &body) {
 		return
 	}
-	cfg := s.liveEng().PatchAutoConfig(body)
+	cfg, err := s.liveEng().PatchAutoConfigChecked(body)
+	if err != nil {
+		writeJSON(w, 500, map[string]any{"error": err.Error()})
+		return
+	}
 	writeJSON(w, 200, map[string]any{"success": true, "config": cfg})
 }
 
