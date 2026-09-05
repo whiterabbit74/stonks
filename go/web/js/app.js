@@ -2285,9 +2285,9 @@
       <div class="grid lg:grid-cols-2 gap-4">
         <div class="rounded-lg border bg-white dark:bg-gray-800 dark:border-gray-700 p-3">
           <div class="flex flex-wrap items-center gap-2 mb-3">
-            <button id="cal-prev" class="icon-btn icon-btn-md icon-btn-glass" title="Предыдущий месяц" aria-label="Предыдущий месяц">‹</button>
+            <button id="cal-prev" class="icon-btn icon-btn-md icon-btn-glass" title="Предыдущий месяц" aria-label="Предыдущий месяц">${icon('chevronleft', 'w-4 h-4')}</button>
             <div class="font-semibold">${months[m]} ${y}</div>
-            <button id="cal-next" class="icon-btn icon-btn-md icon-btn-glass" title="Следующий месяц" aria-label="Следующий месяц">›</button>
+            <button id="cal-next" class="icon-btn icon-btn-md icon-btn-glass" title="Следующий месяц" aria-label="Следующий месяц">${icon('chevronright', 'w-4 h-4')}</button>
             <select id="cal-year" class="field">${(Array.isArray(state.cal.data?.metadata?.years) && state.cal.data.metadata.years.length ? state.cal.data.metadata.years : [y - 1, y, y + 1]).map((yy) => `<option ${Number(yy) === y ? 'selected' : ''}>${yy}</option>`).join('')}</select>
             <select id="cal-month" class="field">${months.map((name, i) => `<option value="${i}" ${i === m ? 'selected' : ''}>${name}</option>`).join('')}</select>
             <button id="cal-today" class="text-sm text-indigo-600">Сегодня</button>
