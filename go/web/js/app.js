@@ -2421,12 +2421,12 @@
       <td class="font-mono">${esc(a.symbol)}</td><td>EMA ${esc(a.emaPeriod || 200)}</td>
       <td>${esc(a.buyLevelPct)} / ${esc(a.sellLevelPct)}</td>
       <td>${esc(a.nextAction === 'sell' ? 'продажу' : 'покупку')}${a.thresholdPct != null ? `<div class="text-[11px] text-gray-500">Близость ${esc(a.thresholdPct)}%</div>` : ''}${a.infoLevelPct != null ? `<div class="text-[11px] text-gray-500">Инфо ${esc(a.infoLevelPct)}%</div>` : ''}</td>
-      <td>
-        <button type="button" data-ema-on="${esc(a.id)}" class="text-sm mr-2">${a.enabled === false ? 'Выключено' : 'Включено'}</button>
-        <button type="button" data-ema-act="${esc(a.id)}" data-ema-next="buy" class="text-sm mr-1">Ждать покупку</button>
-        <button type="button" data-ema-act="${esc(a.id)}" data-ema-next="sell" class="text-sm mr-2">Ждать продажу</button>
+      <td><div class="flex flex-wrap items-center gap-1">
+        <button type="button" data-ema-on="${esc(a.id)}" class="rounded-lg px-2 py-1 text-xs font-medium ${a.enabled === false ? 'chip-off' : 'chip-on'}">${a.enabled === false ? 'Выключено' : 'Включено'}</button>
+        <button type="button" data-ema-act="${esc(a.id)}" data-ema-next="buy" class="rounded-lg px-2 py-1 text-xs font-medium chip-off">Ждать покупку</button>
+        <button type="button" data-ema-act="${esc(a.id)}" data-ema-next="sell" class="rounded-lg px-2 py-1 text-xs font-medium chip-off">Ждать продажу</button>
         ${actionIcon('trash', 'Удалить EMA-оповещение', `data-dea="${esc(a.id)}"`, 'action-icon-danger')}
-      </td>
+      </div></td>
     </tr>`).join('');
     const thr = state.settings.watchThresholdPct ?? 0.3;
     const pfLabel = !Number.isFinite(stats.pf) ? '∞' : fmt(stats.pf);
