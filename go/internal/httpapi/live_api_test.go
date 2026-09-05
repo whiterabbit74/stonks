@@ -390,7 +390,7 @@ func TestSimulateSplitJumpAndEmaAndFillPoll(t *testing.T) {
 	}
 }
 
-func TestWatchesGETSyncsOpenMonitorTrade(t *testing.T) {
+func TestWatchesGETDoesNotSyncOpenMonitorTrade(t *testing.T) {
 	s, _, _ := liveServer(t)
 	if err := s.DB.InsertTrade("trades", map[string]any{
 		"id": "m-aapl", "symbol": "AAPL", "status": "open", "entryDate": "2026-09-01", "entryPrice": 10.5,
@@ -411,8 +411,8 @@ func TestWatchesGETSyncsOpenMonitorTrade(t *testing.T) {
 	for _, w := range list {
 		if fmt.Sprint(w["symbol"]) == "AAPL" {
 			found = true
-			if w["isOpenPosition"] != true {
-				t.Fatalf("expected open position projection: %+v", w)
+			if w["isOpenPosition"] != false {
+				t.Fatalf("GET must not update position projection: %+v", w)
 			}
 		}
 	}

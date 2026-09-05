@@ -1247,7 +1247,6 @@ func deleteNested(root map[string]any, year, mmdd string) {
 }
 
 func (s *Server) handleWatches(w http.ResponseWriter, r *http.Request) {
-	s.liveEng().UpdatePositions()
 	list, err := s.DB.ListWatches()
 	if err != nil {
 		writeJSON(w, 500, map[string]any{"error": err.Error()})
