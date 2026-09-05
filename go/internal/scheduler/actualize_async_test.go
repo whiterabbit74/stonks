@@ -33,8 +33,8 @@ func TestRunTickDoesNotBlockOnPriceActualization(t *testing.T) {
 func TestRunPriceActualizationSkipsWhenInFlight(t *testing.T) {
 	actualizeMu.Lock()
 	defer actualizeMu.Unlock()
-	n, f := RunPriceActualization(nil, Deps{})
-	if n != 0 || f != 0 {
-		t.Fatalf("in-flight actualize must skip, got ok=%d fail=%d", n, f)
+	n, f, skipped := RunPriceActualization(nil, Deps{})
+	if n != 0 || f != 0 || !skipped {
+		t.Fatalf("in-flight actualize must skip, got ok=%d fail=%d skipped=%v", n, f, skipped)
 	}
 }

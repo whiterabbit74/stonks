@@ -250,9 +250,9 @@ func RunTick(db *store.DB, deps Deps, now time.Time, onEvent func(JobLog)) {
 	after := nowMin - sess.CloseMin
 	if after >= 15 && after <= 31 {
 		go func() {
-			n, errN := RunPriceActualization(db, deps)
-			onEvent(JobLog{At: now, Name: "price-actualization", Detail: fmt.Sprintf("after=%d tickers=%d errors=%d", after, n, errN)})
-			log.Printf("scheduler: price actualization minutesAfterClose=%d", after)
+			n, errN, skipped := RunPriceActualization(db, deps)
+			onEvent(JobLog{At: now, Name: "price-actualization", Skipped: skipped, Detail: fmt.Sprintf("after=%d tickers=%d errors=%d", after, n, errN)})
+			log.Printf("scheduler: price actualization minutesAfterClose=%d skipped=%v", after, skipped)
 		}()
 		RunAutotradeLogRotation(db, today, now, onEvent)
 	}
@@ -490,13 +490,13 @@ func RunTelegramAggregation(db *store.DB, deps Deps, until int) int {
 
 var actualizeMu sync.Mutex
 
-func RunPriceActualization(db *store.DB, deps Deps) (ok, fail int) {
+func RunPriceActualization(db *store.DB, deps Deps) (ok, fail int, skipped bool) {
 	if !actualizeMu.TryLock() {
-		return 0, 0
+		return 0, 0, true
 	}
 	defer actualizeMu.Unlock()
 	res := engine(db, deps).Actualize(false)
-	return res.Count, len(res.Failed)
+	return res.Count, len(res.Failed), false
 }
 
 func calendarCoverageThrough(raw []byte) string {

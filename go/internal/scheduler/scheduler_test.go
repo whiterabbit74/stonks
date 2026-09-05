@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"mktorder.com/go/internal/live"
+	"mktorder.com/go/internal/providers"
 	"mktorder.com/go/internal/store"
 	"mktorder.com/go/internal/tradingdate"
 	"mktorder.com/go/internal/types"
@@ -818,4 +819,136 @@ func TestLiveStatusRemoved(t *testing.T) {
 	if strings.Contains(string(raw), "func liveStatus") {
 		t.Fatal("liveStatus is unused and must be deleted")
 	}
+}
+
+type blockingHistQuotes struct {
+	live.MemoryQuotes
+	startOnce sync.Once
+	started   chan struct{}
+	release   chan struct{}
+	inflight  sync.WaitGroup
+}
+
+func (b *blockingHistQuotes) Historical(symbol, provider string, startTs, endTs int64, adjustment string) (providers.Historical, error) {
+	b.inflight.Add(1)
+	defer b.inflight.Done()
+	b.startOnce.Do(func() { close(b.started) })
+	<-b.release
+	return b.MemoryQuotes.Historical(symbol, provider, startTs, endTs, adjustment)
+}
+
+func (b *blockingHistQuotes) finish(t *testing.T) {
+	t.Helper()
+	close(b.release)
+	done := make(chan struct{})
+	go func() {
+		b.inflight.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("actualize Historical still blocked")
+	}
+}
+
+func afterCloseActualize(t *testing.T, q live.QuoteSource) (*store.DB, *live.Engine, time.Time) {
+	t.Helper()
+	db, err := store.Open(filepath.Join(t.TempDir(), "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	bars := []types.OHLC{{Date: "2026-09-01", Open: 1, High: 2, Low: 1, Close: 1, Volume: 1}}
+	_ = db.SaveDataset("AAPL", "AAPL", "", "", bars, false)
+	_ = db.UpsertWatch(map[string]any{"symbol": "AAPL"})
+	st := db.Settings()
+	st["enablePostClosePriceActualization"] = true
+	_ = db.SaveSettings(st)
+	eng := live.New(db, q)
+	eng.Telegram = &live.MemoryTelegram{}
+	eng.Sleep = func(time.Duration) {}
+	return db, eng, time.Date(2026, 9, 1, 20, 20, 0, 0, time.UTC)
+}
+
+func TestTickActualizeDoesNotBlock(t *testing.T) {
+	q := &blockingHistQuotes{
+		MemoryQuotes: live.MemoryQuotes{Bars: map[string][]types.OHLC{
+			"AAPL": {{Date: "2026-09-01", Open: 1, High: 2, Low: 1, Close: 1, Volume: 1}},
+		}},
+		started: make(chan struct{}),
+		release: make(chan struct{}),
+	}
+	db, eng, now := afterCloseActualize(t, q)
+	t.Cleanup(func() { q.finish(t) })
+
+	done := make(chan struct{})
+	go func() {
+		RunTick(db, Deps{Live: eng}, now, func(JobLog) {})
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("RunTick blocked on actualize")
+	}
+	select {
+	case <-q.started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("actualize never started")
+	}
+}
+
+func TestTickActualizeSkipsOverlap(t *testing.T) {
+	q := &blockingHistQuotes{
+		MemoryQuotes: live.MemoryQuotes{Bars: map[string][]types.OHLC{
+			"AAPL": {{Date: "2026-09-01", Open: 1, High: 2, Low: 1, Close: 1, Volume: 1}},
+		}},
+		started: make(chan struct{}),
+		release: make(chan struct{}),
+	}
+	db, eng, now := afterCloseActualize(t, q)
+	t.Cleanup(func() { q.finish(t) })
+
+	go RunTick(db, Deps{Live: eng}, now, func(JobLog) {})
+	select {
+	case <-q.started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("first actualize never started")
+	}
+
+	var mu sync.Mutex
+	var logs []JobLog
+	secondDone := make(chan struct{})
+	go func() {
+		RunTick(db, Deps{Live: eng}, now, func(j JobLog) {
+			mu.Lock()
+			logs = append(logs, j)
+			mu.Unlock()
+		})
+		close(secondDone)
+	}()
+	select {
+	case <-secondDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("second RunTick blocked on actualize")
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		mu.Lock()
+		for _, j := range logs {
+			if j.Name == "price-actualization" && j.Skipped {
+				mu.Unlock()
+				return
+			}
+		}
+		snapshot := append([]JobLog(nil), logs...)
+		mu.Unlock()
+		_ = snapshot
+		time.Sleep(5 * time.Millisecond)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	t.Fatalf("want skipped in-flight actualize, logs=%+v", logs)
 }
