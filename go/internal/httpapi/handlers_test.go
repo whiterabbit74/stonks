@@ -157,6 +157,37 @@ func TestQuoteContractWithMockProvider(t *testing.T) {
 	}
 }
 
+func TestQuoteWebull401Becomes502(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(401)
+		_, _ = w.Write([]byte(`{"message":"Header x-access-token is missing or invalid"}`))
+	}))
+	t.Cleanup(ts.Close)
+	s := testServer(t, "")
+	s.Providers = &providers.Client{Webull: &webull.Client{
+		HTTP: ts.Client(), Base: ts.URL, Host: "api.webull.com",
+		AppKey: "appkey", AppSecret: "secret", AccessToken: "expired",
+	}}
+	req := httptest.NewRequest("GET", "/api/quote/AAPL?provider=webull", nil)
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != 502 {
+		t.Fatalf("provider 401 must surface as 502, got %d %s", rec.Code, rec.Body.String())
+	}
+	var body map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	errText, _ := body["error"].(string)
+	if errText == "" {
+		t.Fatalf("502 must keep the upstream error text, got %v", body)
+	}
+	if _, ok := body["code"]; ok {
+		t.Fatalf("provider 502 must not look like a session 401, got %v", body)
+	}
+}
+
 func TestQuoteMissingKeyIsClientError(t *testing.T) {
 	s := testServer(t, "")
 	s.Providers = providers.FromEnv()

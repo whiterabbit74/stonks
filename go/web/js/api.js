@@ -25,7 +25,7 @@ const API = {
     const text = await r.text();
     let data = null;
     try { data = text ? JSON.parse(text) : null; } catch { data = { raw: text }; }
-    if (r.status === 401 && !skipAuth) {
+    if (r.status === 401 && !skipAuth && data && data.code === 'session_expired') {
       const now = Date.now();
       if (typeof API._onUnauthorized === 'function' && now - API._lastUnauthorizedAt > 800) {
         API._lastUnauthorizedAt = now;

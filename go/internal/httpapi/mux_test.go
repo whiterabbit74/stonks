@@ -135,6 +135,13 @@ func TestUnauthenticatedProtected401(t *testing.T) {
 	if rec.Code != 401 {
 		t.Fatalf("datasets without auth got %d", rec.Code)
 	}
+	var body map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body["error"] != "Unauthorized" || body["code"] != "session_expired" {
+		t.Fatalf("auth 401 must include session_expired, got %v", body)
+	}
 }
 
 func TestStatusJSON(t *testing.T) {

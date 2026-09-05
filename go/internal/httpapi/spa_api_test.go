@@ -1,5 +1,8 @@
 package httpapi
 
+// Named spa_api_test.go rather than api_js_test.go: Go's filename rules treat
+// *_js_test.go as GOOS=js, so that name never compiled on darwin/linux.
+
 import (
 	"strings"
 	"testing"
@@ -68,5 +71,8 @@ func TestAPIJSUnauthorizedDebouncesByTimestamp(t *testing.T) {
 	}
 	if !strings.Contains(src, "_lastUnauthorizedAt") {
 		t.Fatal("401 debounce must store last-fired timestamp")
+	}
+	if !strings.Contains(req, "session_expired") {
+		t.Fatal("bare 401 must not call _onUnauthorized; require code === 'session_expired'")
 	}
 }

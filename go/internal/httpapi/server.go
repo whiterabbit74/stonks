@@ -283,7 +283,7 @@ func (s *Server) auth(next http.HandlerFunc) http.HandlerFunc {
 		s.purgeExpiredSessions()
 		token := cookieToken(r)
 		if token == "" {
-			writeJSON(w, 401, map[string]any{"error": "Unauthorized"})
+			writeSessionExpired(w)
 			return
 		}
 		_, exp, ok := s.DB.SessionGet(token)
@@ -291,7 +291,7 @@ func (s *Server) auth(next http.HandlerFunc) http.HandlerFunc {
 			if ok {
 				s.DB.SessionDelete(token)
 			}
-			writeJSON(w, 401, map[string]any{"error": "Unauthorized"})
+			writeSessionExpired(w)
 			return
 		}
 		next(w, r)
@@ -1724,11 +1724,18 @@ func (s *Server) handleTestProvider(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func writeSessionExpired(w http.ResponseWriter) {
+	writeJSON(w, 401, map[string]any{"error": "Unauthorized", "code": "session_expired"})
+}
+
 func writeProviderError(w http.ResponseWriter, err error) {
 	if he, ok := err.(*providers.HTTPError); ok {
 		code := he.Status
 		if code < 400 {
 			code = 500
+		}
+		if code == 401 || code == 403 {
+			code = 502
 		}
 		writeJSON(w, code, map[string]any{"error": he.Message})
 		return
