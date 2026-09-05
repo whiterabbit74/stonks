@@ -210,13 +210,17 @@ func (e *Engine) persistEmaAfterSend(alerts []EmaEval, stage string) {
 	if stage == "confirmations" {
 		for _, a := range alerts {
 			if a.DataOK && a.Reached && a.ID != "" {
-				_ = e.DB.MarkEMATriggered(a.ID, a.Action, a.DeviationPct, now)
+				if err := e.DB.MarkEMATriggered(a.ID, a.Action, a.DeviationPct, now); err != nil {
+					e.logAuto("ema_persist_failed", "", map[string]any{"id": a.ID, "error": err.Error()})
+				}
 			}
 		}
 	}
 	for _, a := range alerts {
 		if a.DataOK && a.InfoCrossing != "" && a.InfoSide != "" && a.ID != "" {
-			_ = e.DB.RecordEMAInfoSide(a.ID, a.InfoSide, now)
+			if err := e.DB.RecordEMAInfoSide(a.ID, a.InfoSide, now); err != nil {
+				e.logAuto("ema_persist_failed", "", map[string]any{"id": a.ID, "error": err.Error()})
+			}
 		}
 	}
 }
