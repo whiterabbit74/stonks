@@ -200,6 +200,20 @@ func (s *slowAccountBroker) Account() (map[string]any, error) {
 	return s.MemoryBroker.Account()
 }
 
+func TestLogBalanceSnapshotUsesOrderBroker(t *testing.T) {
+	e, webull, rh := dualBrokerEngine(t, entryBars)
+	webull.Acct = map[string]any{"data": map[string]any{"account_currency_assets": []any{map[string]any{
+		"currency": "USD", "cash_balance": 1.0, "day_buying_power": 1.0, "net_liquidation_value": 1.0,
+	}}}}
+	rh.Acct = map[string]any{"data": map[string]any{"account_currency_assets": []any{map[string]any{
+		"currency": "USD", "cash_balance": 999.0, "day_buying_power": 999.0, "net_liquidation_value": 999.0,
+	}}}}
+	e.logBalanceSnapshot("c", "AAPL", "exit", rh)
+	if !autotradeLogsContain(t, e, "999") {
+		t.Fatal("balance_snapshot must use the order broker account, not default Webull")
+	}
+}
+
 func TestLogBalanceSnapshotDoesNotBlockSubmit(t *testing.T) {
 	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 11.9, Volume: 1}}
 	db, e, _ := testEngine(t, bars)

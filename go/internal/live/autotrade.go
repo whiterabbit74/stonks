@@ -919,11 +919,11 @@ func errText(err error, fallback string) string {
 	return fallback
 }
 
-func (e *Engine) logBalanceSnapshot(corr, symbol, action string) {
-	if e.Broker == nil {
+func (e *Engine) logBalanceSnapshot(corr, symbol, action string, br Broker) {
+	if br == nil {
 		return
 	}
-	acct, err := e.Broker.Account()
+	acct, err := br.Account()
 	if err != nil || acct == nil {
 		return
 	}
