@@ -3094,7 +3094,7 @@
       }
       if (state.menuTicker && !e.target.closest('[data-menu]') && !e.target.closest('[data-edit]') && !e.target.closest('[data-refresh]') && !e.target.closest('[data-export]') && !e.target.closest('[data-del]')) {
         state.menuTicker = null;
-        renderPage();
+        renderPage({ keepCharts: true });
         return;
       }
       if (state.mobileOpen && !e.target.closest('#menu-btn') && !e.target.closest('#mobile-drawer')) {
@@ -3131,7 +3131,7 @@
       state.quoteOpen = false;
       document.getElementById('hero-settings-pop')?.classList.add('hidden');
       document.getElementById('quote-pop')?.classList.add('hidden');
-      if (closeMenu) renderPage();
+      if (closeMenu) renderPage({ keepCharts: true });
       else updateChrome();
     });
   }
@@ -3293,7 +3293,7 @@
       root.querySelectorAll('[data-menu]').forEach((b) => b.addEventListener('click', (e) => {
         e.preventDefault(); e.stopPropagation();
         state.menuTicker = state.menuTicker === b.dataset.menu ? null : b.dataset.menu;
-        renderPage();
+        renderPage({ keepCharts: true });
       }));
       root.querySelectorAll('[data-del]').forEach((b) => b.addEventListener('click', (e) => {
         e.preventDefault(); e.stopPropagation();

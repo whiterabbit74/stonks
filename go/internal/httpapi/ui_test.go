@@ -1442,6 +1442,34 @@ func TestLongActionsDisableTheirButtons(t *testing.T) {
 	}
 }
 
+func TestTickerMenuDoesNotDestroyCharts(t *testing.T) {
+	a := readWeb(t, "js/app.js")
+	start := strings.Index(a, "querySelectorAll('[data-menu]')")
+	if start < 0 {
+		t.Fatal("ticker menu handler not found")
+	}
+	chunk := a[start:]
+	if i := strings.Index(chunk, "querySelectorAll('[data-del]')"); i > 0 {
+		chunk = chunk[:i]
+	}
+	if strings.Contains(chunk, "renderPage()") && !strings.Contains(chunk, "keepCharts") {
+		t.Fatal("ticker-menu must not Charts.destroy via a full renderPage")
+	}
+	if !strings.Contains(chunk, "keepCharts") && !strings.Contains(chunk, "updateChrome") {
+		t.Fatal("ticker-menu must keepCharts or update the menu DOM in place")
+	}
+	away := a
+	if i := strings.Index(a, "state.menuTicker && !e.target.closest('[data-menu]')"); i >= 0 {
+		away = a[i:]
+		if j := strings.Index(away, "if (state.mobileOpen"); j > 0 {
+			away = away[:j]
+		}
+	}
+	if strings.Contains(away, "renderPage()") && !strings.Contains(away, "keepCharts") {
+		t.Fatal("closing the ticker menu must not Charts.destroy")
+	}
+}
+
 func TestStatusPingUpdatesChromeNotFullPage(t *testing.T) {
 	a := readWeb(t, "js/app.js")
 	after := jsFn(a, "afterRender")
