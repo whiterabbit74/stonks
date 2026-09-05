@@ -223,7 +223,7 @@ func (e *Engine) Aggregate(minutesUntilClose int, opts AggregateOpts) (SimulateR
 				}
 			}
 			if opts.UpdateState {
-				_ = e.DB.MarkAggregateT11(e.chat(), today)
+				e.stampSendMarker("t11", e.DB.MarkAggregateT11(e.chat(), today))
 			}
 			if !opts.DryRun {
 				e.persistEmaAfterSend(emaAlerts, stage)
@@ -285,7 +285,7 @@ func (e *Engine) Aggregate(minutesUntilClose int, opts AggregateOpts) (SimulateR
 			}
 		}
 		if opts.UpdateState && !opts.DryRun && recBlock == nil {
-			_ = e.DB.MarkT1ExecutionFinished(e.chat(), today)
+			e.stampSendMarker("t1_execution", e.DB.MarkT1ExecutionFinished(e.chat(), today))
 		}
 	}
 
@@ -301,10 +301,17 @@ func (e *Engine) Aggregate(minutesUntilClose int, opts AggregateOpts) (SimulateR
 			e.persistEmaAfterSend(emaAlerts, stage)
 		}
 		if opts.UpdateState && !opts.DryRun {
-			_ = e.DB.MarkT1ReportSent(e.chat(), today)
+			e.stampSendMarker("t1_report", e.DB.MarkT1ReportSent(e.chat(), today))
 		}
 	}
 	return res, err
+}
+
+func (e *Engine) stampSendMarker(op string, err error) {
+	if err == nil {
+		return
+	}
+	e.logAuto("marker_save_failed", "", map[string]any{"op": op, "error": err.Error()})
 }
 
 // T1LeaseTTL is how long a T-1 attempt holds the day against a parallel tick.

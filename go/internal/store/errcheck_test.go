@@ -18,9 +18,7 @@ var stateWritePrefixes = []string{"Save", "Set", "Mark", "Record", "Claim", "Ups
 var allowedDiscardedDBWrites = map[string]string{
 	"internal/live/autotrade.go:SaveWebullTokenChecked": "health stamp during token poll is diagnostic; a failed write must not abort the check",
 	"internal/live/actualize.go:SetSettingsKeys": "actualize attempt counters are best-effort; the Telegram alert still fires from memory",
-	"internal/live/telegram.go:MarkAggregateT11": "T-11 already went out; a missed sent-flag is retried by ClaimAggregateT11",
-	"internal/live/telegram.go:MarkT1ExecutionFinished": "execution already happened; the lease/claim path is the real once-only guard",
-	"internal/live/telegram.go:MarkT1ReportSent": "the T-1 Telegram send already succeeded; a missed flag repeats a report, not an order",
+
 	"internal/live/trade_record.go:DeleteTrade": "fill already journaled; a leftover client-order row is cleaned on the next poll",
 	"internal/live/robinhood_broker.go:SaveRobinhoodAccount": "cached account id is an optimisation; the next RH call can look it up again",
 	"internal/scheduler/scheduler.go:SetRobinhoodAlerted": "alert already sent; a missed stamp may re-notify, which is safer than blocking the tick",

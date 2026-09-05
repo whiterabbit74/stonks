@@ -141,6 +141,29 @@ func TestSimulateDoesNotPlace(t *testing.T) {
 	}
 }
 
+func TestAggregateT11LogsMarkerSaveFailure(t *testing.T) {
+	db, e, _ := testEngine(t, entryBars)
+	e.Telegram = &MemoryTelegram{}
+	if _, err := db.SQL.Exec(`
+            CREATE TRIGGER IF NOT EXISTS agg_block_ins
+            BEFORE INSERT ON aggregate_send_state
+            BEGIN SELECT RAISE(ABORT, 'injected marker fail'); END;
+        `); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.SQL.Exec(`
+            CREATE TRIGGER IF NOT EXISTS agg_block_upd
+            BEFORE UPDATE ON aggregate_send_state
+            BEGIN SELECT RAISE(ABORT, 'injected marker fail'); END;
+        `); err != nil {
+		t.Fatal(err)
+	}
+	_, _ = e.Aggregate(11, AggregateOpts{ForceSend: true, DryRun: true, UpdateState: true})
+	if !autotradeLogsContain(t, e, "marker_save_failed") {
+		t.Fatal("failed T-11 marker write must log marker_save_failed")
+	}
+}
+
 func TestAggregateJournalReadErrorIsNotNoWatches(t *testing.T) {
 	db, e, _ := testEngine(t, entryBars)
 	if err := db.Close(); err != nil {
