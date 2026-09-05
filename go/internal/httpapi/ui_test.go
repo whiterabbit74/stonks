@@ -1255,3 +1255,48 @@ func TestEmaMetricsGridHasGapBeforeTabs(t *testing.T) {
 		t.Fatal("EMA tabs card must have mt-4 after metricsGrid, matching stocks")
 	}
 }
+
+// TestStocksPageHasPresetsNotDefaultHint: the dashed «↩ AAPL, MSFT, AMZN, MAGS»
+// restore control is gone. Stocks keeps ticker lists as named presets, same
+// as EMA — select, save, delete, and picking one runs the backtest.
+func TestStocksPageHasPresetsNotDefaultHint(t *testing.T) {
+	a := readWeb(t, "js/app.js")
+	params := jsFn(a, "stocksParams")
+	if params == "" {
+		t.Fatal("stocksParams not found")
+	}
+	if strings.Contains(params, "reset-tickers") {
+		t.Fatal("stocks must not keep the dashed default-ticker hint; that list is a preset now")
+	}
+	for _, id := range []string{`id="stock-preset"`, `id="stock-preset-save"`, `id="stock-preset-del"`} {
+		if !strings.Contains(params, id) {
+			t.Fatalf("stocks params missing %s (EMA-style presets)", id)
+		}
+	}
+	if !strings.Contains(params, "state.stockPresetId") {
+		t.Fatal("stock preset <option> must mark the selected preset so the dropdown does not snap back")
+	}
+	start := strings.Index(a, "getElementById('stock-preset')?.addEventListener('change'")
+	if start < 0 {
+		t.Fatal("stock-preset change handler not found")
+	}
+	endRel := strings.Index(a[start:], "getElementById('run-bt')")
+	if endRel < 0 {
+		endRel = strings.Index(a[start:], "querySelectorAll('[data-stab]')")
+	}
+	if endRel < 0 {
+		t.Fatal("stock-preset change handler not bounded")
+	}
+	handler := a[start : start+endRel]
+	runAt := strings.Index(handler, "runStocks(")
+	if runAt < 0 {
+		t.Fatal("selecting a stocks preset must run the backtest, not only fill the form")
+	}
+	guardAt := strings.Index(handler, "if (!pset)")
+	if guardAt < 0 {
+		guardAt = strings.Index(handler, "if (!id)")
+	}
+	if guardAt < 0 || guardAt > runAt {
+		t.Fatal("empty «Выбрать пресет» must not run the backtest")
+	}
+}

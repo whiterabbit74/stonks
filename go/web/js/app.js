@@ -329,6 +329,8 @@
     refreshingTicker: null,
     emaPresets: JSON.parse(localStorage.getItem('emaPresets') || '[]'),
     emaPresetId: '',
+    stockPresets: JSON.parse(localStorage.getItem('stockPresets') || '[]'),
+    stockPresetId: '',
     optResult: null,
     optTab: 'summary',
     optForm: { strike: 10, vol: 20, cap: 10, expiration: 4, maxHold: 30, leverage: 200 },
@@ -877,6 +879,39 @@
   }
   function persistEmaForm() {
     try { localStorage.setItem('ema.settings', JSON.stringify(state.emaForm)); } catch (_) {}
+  }
+  function persistStockPresets() {
+    try { localStorage.setItem('stockPresets', JSON.stringify(state.stockPresets || [])); } catch (_) {}
+  }
+  function ensureStockPresets() {
+    if ((state.stockPresets || []).length || localStorage.getItem('stockPresets') != null) return;
+    const tickers = defaultTickers().join(', ');
+    state.stockPresets = [{ id: 'default', name: tickers, tickers, leverage: state.leverage || 200, takeProfit: state.takeProfit || '' }];
+  }
+  function syncStockParamsFromDom() {
+    const tickersEl = document.getElementById('ticker-input');
+    if (tickersEl) {
+      state.tickerInput = tickersEl.value;
+      try { localStorage.setItem('tickersInput', state.tickerInput); } catch (_) {}
+    }
+    const levEl = document.getElementById('leverage-sel');
+    if (levEl) state.leverage = Number(levEl.value);
+    const tpEl = document.getElementById('take-profit-percent-input');
+    if (tpEl) {
+      state.takeProfit = tpEl.value;
+      try { localStorage.setItem('stocksTakeProfit', state.takeProfit); } catch (_) {}
+    }
+  }
+  function applyStockPreset(pset) {
+    if (pset.tickers) {
+      state.tickerInput = pset.tickers;
+      try { localStorage.setItem('tickersInput', state.tickerInput); } catch (_) {}
+    }
+    if (pset.leverage != null) state.leverage = Number(pset.leverage) || 200;
+    if (pset.takeProfit != null) {
+      state.takeProfit = pset.takeProfit;
+      try { localStorage.setItem('stocksTakeProfit', state.takeProfit); } catch (_) {}
+    }
   }
   function makeZone(side, level) {
     return { id: side + '-' + Date.now() + '-' + Math.random().toString(16).slice(2), levelPct: level, enabled: true };
@@ -1983,17 +2018,14 @@
   }
 
   function pageStocks() {
-    const tickers = parseTickers(state.tickerInput);
     const tabs = visibleStockTabs();
     const r = state.result;
-    const defaults = defaultTickers();
-    const isDefault = defaults.length === tickers.length && defaults.every((t, i) => t === tickers[i]);
     const err = state.error ? `<div class="p-4 mb-4 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 dark:bg-red-950/30">${esc(state.error)}</div>` : '';
     let body = `<div class="hero-grid">
           <div class="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3 min-h-[375px] flex items-center justify-center text-sm text-gray-500">Запустите бэктест, чтобы увидеть график</div>
           <aside class="rounded-lg border border-gray-200 bg-gray-50 p-3 space-y-3 dark:bg-gray-800/50 dark:border-gray-700">
             <div class="text-sm font-semibold">Параметры</div>
-            ${stocksParams(tickers, isDefault, defaults)}
+            ${stocksParams()}
           </aside>
         </div>`;
     if (r) {
@@ -2004,7 +2036,7 @@
           </div>
           <aside class="rounded-lg border border-gray-200 bg-gray-50 p-3 space-y-3 dark:bg-gray-800/50 dark:border-gray-700">
             <div class="text-sm font-semibold">Параметры</div>
-            ${stocksParams(tickers, isDefault, defaults)}
+            ${stocksParams()}
             ${asideExtrasHTML(r)}
           </aside>
         </div>`;
@@ -2042,11 +2074,18 @@
         <div id="stock-body" class="p-4 min-h-[420px]">${body}</div>
       </div>`;
   }
-  function stocksParams(tickers, isDefault, defaults) {
+  function stocksParams() {
+    ensureStockPresets();
+    const presets = (state.stockPresets || []).map((p) => `<option value="${esc(p.id)}"${p.id === state.stockPresetId ? ' selected' : ''}>${esc(p.name)}</option>`).join('');
     return `
+      <div>
+        <label class="mb-1 block text-xs font-medium">Пресеты</label>
+        <div class="flex gap-2"><select id="stock-preset" class="${inputCls()}"><option value="">— Выбрать пресет —</option>${presets}</select>
+        <button type="button" id="stock-preset-del" class="icon-btn icon-btn-md icon-btn-glass" title="Удалить пресет" aria-label="Удалить пресет">${icon('trash', 'w-3.5 h-3.5')}</button></div>
+        <div class="mt-2 flex gap-2"><input id="stock-preset-name" class="${inputCls()}" placeholder="Название пресета" /><button type="button" id="stock-preset-save" class="btn-secondary min-h-0 py-2">Сохранить</button></div>
+      </div>
       <div><label class="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300" for="ticker-input">Тикеры</label>
         ${tickerInput('ticker-input', state.tickerInput)}
-        ${isDefault ? '' : `<button type="button" id="reset-tickers" class="mt-1.5 w-full rounded-lg border border-dashed border-gray-300 px-2 py-1 text-left text-[11px] text-gray-500 hover:border-indigo-400 hover:bg-indigo-50 hover:text-indigo-600 dark:border-gray-600">↩ ${esc(defaults.join(', '))}</button>`}
       </div>
       <div><label class="mb-1 block text-xs font-medium" for="leverage-sel">Маржинальность</label>
         <select id="leverage-sel" class="${inputCls()}">${levOptions(state.leverage)}</select>
@@ -3414,11 +3453,40 @@
       syncTickerField('ticker-input');
       document.getElementById('leverage-sel')?.addEventListener('change', (e) => { state.leverage = Number(e.target.value); });
       document.getElementById('take-profit-percent-input')?.addEventListener('input', (e) => { state.takeProfit = e.target.value; try { localStorage.setItem('stocksTakeProfit', state.takeProfit); } catch (_) {} });
-      document.getElementById('reset-tickers')?.addEventListener('click', () => {
-        const d = defaultTickers();
-        state.tickerInput = d.join(', ');
-        if (state.result) runStocks();
-        else renderPage();
+      document.getElementById('stock-preset-save')?.addEventListener('click', () => {
+        const name = document.getElementById('stock-preset-name')?.value.trim();
+        if (!name) return;
+        syncStockParamsFromDom();
+        const payload = { id: String(Date.now()), name, tickers: state.tickerInput, leverage: state.leverage, takeProfit: state.takeProfit };
+        const existing = state.stockPresets.findIndex((p) => String(p.name || '').toLowerCase() === name.toLowerCase());
+        if (existing >= 0) {
+          state.stockPresets[existing] = { ...state.stockPresets[existing], ...payload, id: state.stockPresets[existing].id };
+          state.stockPresetId = state.stockPresets[existing].id;
+        } else {
+          state.stockPresets.push(payload);
+          state.stockPresetId = payload.id;
+        }
+        persistStockPresets();
+        toast('Пресет сохранён');
+        renderPage();
+      });
+      document.getElementById('stock-preset-del')?.addEventListener('click', () => {
+        const id = document.getElementById('stock-preset')?.value;
+        if (!id) return;
+        state.stockPresets = state.stockPresets.filter((p) => p.id !== id);
+        if (state.stockPresetId === id) state.stockPresetId = '';
+        persistStockPresets();
+        renderPage();
+      });
+      document.getElementById('stock-preset')?.addEventListener('change', async (e) => {
+        const id = e.target.value;
+        if (!id) { state.stockPresetId = ''; return; }
+        const pset = state.stockPresets.find((x) => x.id === id);
+        if (!pset) return;
+        state.stockPresetId = pset.id;
+        applyStockPreset(pset);
+        await renderPage();
+        await runStocks();
       });
       document.getElementById('run-bt')?.addEventListener('click', runStocks);
       root.querySelectorAll('[data-stab]').forEach((b) => b.addEventListener('click', () => { state.stockTab = b.dataset.stab; state.tradesPage = 1; renderPage(); }));
