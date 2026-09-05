@@ -166,6 +166,7 @@
     search: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
     list: '<path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/>',
     grid: '<rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/>',
+    indicators: '<path d="M4 19V5"/><path d="M4 19h16"/><path d="m7 15 3-4 3 2 4-6"/><circle cx="10" cy="11" r="1.25"/><circle cx="13" cy="13" r="1.25"/><circle cx="17" cy="7" r="1.25"/>',
     trash: '<path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>',
     edit: '<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L8 18l-4 1 1-4Z"/>',
     download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/>',
@@ -1940,7 +1941,7 @@
         <div class="pc-toolbar-right">
           <div class="pc-ranges" role="group" aria-label="Период">${ranges}</div>
           <div class="pc-ind-wrap">
-            <button type="button" data-pc-ind class="pc-ind-btn ${ui.indOpen ? 'pc-ind-btn-on' : ''}" aria-expanded="${ui.indOpen ? 'true' : 'false'}" aria-controls="pc-ind-panel">Индикаторы ${icon('chevrondown', 'w-3.5 h-3.5')}</button>
+            <button type="button" data-pc-ind class="icon-btn icon-btn-md icon-btn-glass ${ui.indOpen ? 'icon-btn-active' : ''}" title="Индикаторы" aria-label="Индикаторы" aria-expanded="${ui.indOpen ? 'true' : 'false'}" aria-controls="pc-ind-panel">${icon('indicators', 'w-4 h-4')}</button>
             <div id="pc-ind-panel" class="pc-ind-panel ${ui.indOpen ? '' : 'hidden'}" data-pc-ind-panel>
               ${lineRow('ema20', 'EMA 20', p.ema20 !== false, 'ema20')}
               ${lineRow('ema200', 'EMA 200', p.ema200 !== false, 'ema200', bandRows + `<button type="button" data-pc-band-add class="pc-add">+ Добавить отклонение</button>`)}
