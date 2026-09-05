@@ -48,6 +48,24 @@ func TestVanillaUIAssets(t *testing.T) {
 	if !strings.Contains(cj, "addIbsPane") || !strings.Contains(cj, "lineStyle: 1") {
 		t.Fatal("IBS pane must draw dotted 10/75 threshold lines")
 	}
+	ibsStart := strings.Index(cj, "addIbsPane(")
+	if ibsStart < 0 {
+		t.Fatal("missing addIbsPane")
+	}
+	ibsEndRel := strings.Index(cj[ibsStart:], "\n  csvCell")
+	if ibsEndRel < 0 {
+		ibsEndRel = strings.Index(cj[ibsStart:], "\n  csvFromBars")
+	}
+	if ibsEndRel < 0 {
+		t.Fatal("addIbsPane not bounded")
+	}
+	ibsBlock := cj[ibsStart : ibsStart+ibsEndRel]
+	if strings.Contains(ibsBlock, "AreaSeries") || strings.Contains(ibsBlock, "ibsBandData") || strings.Contains(ibsBlock, "ibsColoredLineData") {
+		t.Fatal("IBS pane must be one line plus dotted 10/75 price lines, not area fills or a split-color IBS")
+	}
+	if !strings.Contains(ibsBlock, "createPriceLine") {
+		t.Fatal("IBS pane must createPriceLine at the 10/75 thresholds")
+	}
 	if !strings.Contains(cj, "adj_close") || !strings.Contains(cj, "ema200") {
 		t.Fatal("chart CSV must export price/ibs/ema columns like the old TradingChart")
 	}

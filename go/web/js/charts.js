@@ -397,92 +397,30 @@ const Charts = {
     }
     return { low, high };
   },
-  ibsColoredLineData(points, low, high) {
-    const mid = [], lo = [], hi = [];
-    (points || []).forEach((p) => {
-      if (!p || p.date == null || !Number.isFinite(Number(p.value))) return;
-      const time = this.toBusinessDay(p.date);
-      const v = Number(p.value);
-      const gap = { time };
-      if (v < low) {
-        lo.push({ time, value: v });
-        mid.push(gap);
-        hi.push(gap);
-      } else if (v > high) {
-        hi.push({ time, value: v });
-        mid.push(gap);
-        lo.push(gap);
-      } else {
-        mid.push({ time, value: v });
-        lo.push(gap);
-        hi.push(gap);
-      }
-    });
-    return { mid, lo, hi };
-  },
-  ibsBandData(times, value) {
-    if (!times || !times.length) return [];
-    const t0 = times[0];
-    const t1 = times[times.length - 1];
-    if (t0.year === t1.year && t0.month === t1.month && t0.day === t1.day) {
-      return [{ time: t0, value }];
-    }
-    return [{ time: t0, value }, { time: t1, value }];
-  },
   addIbsPane(chart, points, paneIdx, opts) {
     const { low, high } = this.ibsThresholds(opts);
     const lowPct = low * 100;
     const highPct = high * 100;
-    const scaled = [];
-    const times = [];
+    const data = [];
     (points || []).forEach((p) => {
       if (!p || p.date == null || !Number.isFinite(Number(p.value))) return;
-      scaled.push({ date: p.date, value: Number(p.value) * 100 });
-      times.push(this.toBusinessDay(p.date));
+      data.push({ time: this.toBusinessDay(p.date), value: Number(p.value) * 100 });
     });
-    if (!times.length) return { low, high };
-    const colored = this.ibsColoredLineData(scaled, lowPct, highPct);
-    const shared = {
+    if (!data.length) return { low, high };
+    const series = chart.addSeries(LightweightCharts.LineSeries, {
+      color: '#7c3aed',
+      lineWidth: 1,
       priceScaleId: 'ibs',
       lastValueVisible: false,
       priceLineVisible: false,
-      crosshairMarkerVisible: false,
       priceFormat: { type: 'price', precision: 0, minMove: 1 },
-    };
-    const lowFill = chart.addSeries(LightweightCharts.AreaSeries, {
-      ...shared,
-      lineVisible: false,
-      lineWidth: 0,
-      lineColor: 'rgba(16,185,129,0)',
-      topColor: 'rgba(16,185,129,0.20)',
-      bottomColor: 'rgba(16,185,129,0.06)',
-      baseValue: { type: 'price', price: 0 },
-    }, paneIdx);
-    lowFill.setData(this.ibsBandData(times, lowPct));
-    const highFill = chart.addSeries(LightweightCharts.AreaSeries, {
-      ...shared,
-      lineVisible: false,
-      lineWidth: 0,
-      lineColor: 'rgba(239,68,68,0)',
-      topColor: 'rgba(239,68,68,0.20)',
-      bottomColor: 'rgba(239,68,68,0.06)',
-      baseValue: { type: 'price', price: highPct },
-    }, paneIdx);
-    highFill.setData(this.ibsBandData(times, 100));
-    if (typeof lowFill.createPriceLine === 'function') {
-      lowFill.createPriceLine({ price: lowPct, color: '#10B981', lineWidth: 1, lineStyle: 1, axisLabelVisible: true, title: '' });
-      lowFill.createPriceLine({ price: highPct, color: '#EF4444', lineWidth: 1, lineStyle: 1, axisLabelVisible: true, title: '' });
-    }
-    const lineOpts = (color) => Object.assign({
-      color, lineWidth: 1,
       autoscaleInfoProvider: () => ({ priceRange: { minValue: 0, maxValue: 100 } }),
-    }, shared);
-    const mid = chart.addSeries(LightweightCharts.LineSeries, lineOpts('#7c3aed'), paneIdx);
-    mid.setData(colored.mid);
-    const lo = chart.addSeries(LightweightCharts.LineSeries, lineOpts('#10B981'), paneIdx);
-    lo.setData(colored.lo);
-    const hi = chart.addSeries(LightweightCharts.LineSeries, lineOpts('#EF4444'), paneIdx);
-    hi.setData(colored.hi);
+    }, paneIdx);
+    series.setData(data);
+    if (typeof series.createPriceLine === 'function') {
+      series.createPriceLine({ price: lowPct, color: '#10B981', lineWidth: 1, lineStyle: 1, axisLabelVisible: true, title: '' });
+      series.createPriceLine({ price: highPct, color: '#EF4444', lineWidth: 1, lineStyle: 1, axisLabelVisible: true, title: '' });
+    }
     return { low, high };
   },
   csvCell(value) {
