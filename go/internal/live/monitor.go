@@ -137,7 +137,7 @@ func (e *Engine) consistencyWindow(w execWindow) map[string]any {
 		proposed = []map[string]any{}
 	}
 	return map[string]any{
-		"fetchedAt": time.Now().UTC().Format(time.RFC3339Nano),
+		"fetchedAt": e.now().UTC().Format(time.RFC3339Nano),
 		// nilMap keeps an absent trade an untyped nil: a nil map[string]any put
 		// into an interface compares non-nil, and readers checking `!= nil` then
 		// see an open trade that does not exist.
@@ -368,7 +368,7 @@ func (e *Engine) Reconcile(apply bool) map[string]any {
 				continue
 			}
 			row := copyStringAnyMap(action)
-			row["appliedAt"] = time.Now().UTC().Format(time.RFC3339Nano)
+			row["appliedAt"] = e.now().UTC().Format(time.RFC3339Nano)
 			if e.applyConsistencyAction(action) {
 				row["result"] = "applied"
 				appliedActions = append(appliedActions, row)
@@ -381,17 +381,20 @@ func (e *Engine) Reconcile(apply bool) map[string]any {
 		snap["positions"] = pos
 		if n := asFloat(pos["updated"]); n > 0 {
 			appliedActions = append(appliedActions, map[string]any{
-				"type": "sync_watch_open_flags", "appliedAt": time.Now().UTC().Format(time.RFC3339Nano),
+				"type": "sync_watch_open_flags", "appliedAt": e.now().UTC().Format(time.RFC3339Nano),
 			})
 		}
 	}
 	if appliedActions == nil {
 		appliedActions = []map[string]any{}
 	}
-	after := e.Consistency()
-	after["positions"] = snap["positions"]
 	if failedActions == nil {
 		failedActions = []map[string]any{}
+	}
+	after := snap
+	if apply {
+		after = e.Consistency()
+		after["positions"] = snap["positions"]
 	}
 	after["appliedActions"] = appliedActions
 	after["failedActions"] = failedActions

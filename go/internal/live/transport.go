@@ -120,6 +120,7 @@ type MemoryBroker struct {
 	FillPrice        float64
 	LastCfg          PlaceMarketCfg
 	FailPositions    error
+	PosCalls         int
 	// FailPositionsN, when > 0, limits FailPositions to that many calls: the
 	// transient read a retry is expected to absorb. 0 keeps failing forever.
 	FailPositionsN int
@@ -262,6 +263,7 @@ func (m *MemoryBroker) Account() (map[string]any, error) {
 
 func (m *MemoryBroker) Positions() ([]any, error) {
 	m.mu.Lock()
+	m.PosCalls++
 	if m.FailPositions != nil {
 		err := m.FailPositions
 		if m.FailPositionsN > 0 {
