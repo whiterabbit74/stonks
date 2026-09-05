@@ -47,6 +47,28 @@ func TestDaysBetweenAndAdd(t *testing.T) {
 	}
 }
 
+func TestDateArithmeticRejectsGarbage(t *testing.T) {
+	if got := AddDays("garbage", 1); got != "" {
+		t.Fatalf("AddDays garbage got %q", got)
+	}
+	if got := DaysBetween("garbage", "2024-01-01"); got != 0 {
+		t.Fatalf("DaysBetween garbage got %d", got)
+	}
+	if got := DayOfWeek("garbage"); got != -1 {
+		t.Fatalf("DayOfWeek garbage got %d", got)
+	}
+}
+
+func TestParseRejectsTrailingJunk(t *testing.T) {
+	if Parse("2024-01-15TRAILINGJUNK").IsValid {
+		t.Fatal("trailing junk must be rejected")
+	}
+	got := Parse("2024-01-15T00:00:00Z")
+	if !got.IsValid || got.Date == nil || *got.Date != "2024-01-15" {
+		t.Fatalf("ISO timestamp prefix must still parse, got %+v", got)
+	}
+}
+
 func TestTZStable(t *testing.T) {
 	a := DaysBetween("2004-08-19", "2025-01-15")
 	b := AddDays("2024-02-28", 1)

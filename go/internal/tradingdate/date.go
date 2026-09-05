@@ -55,27 +55,40 @@ func Compare(a, b string) int {
 	return 0
 }
 
-func utcMidnight(date string) time.Time {
+func utcMidnight(date string) (time.Time, bool) {
+	if !IsValid(date) {
+		return time.Time{}, false
+	}
 	t, err := time.ParseInLocation(Layout, date, time.UTC)
 	if err != nil {
-		y, m, d := 1970, 1, 1
-		fmt.Sscanf(date, "%d-%d-%d", &y, &m, &d)
-		t = time.Date(y, time.Month(m), d, 0, 0, 0, 0, time.UTC)
+		return time.Time{}, false
 	}
-	return t
+	return t, true
 }
 
 // DaysBetween matches JS Math.round((utc(to)-utc(from))/86400000).
 func DaysBetween(from, to string) int {
-	ms := float64(utcMidnight(to).UnixMilli() - utcMidnight(from).UnixMilli())
+	a, okA := utcMidnight(from)
+	b, okB := utcMidnight(to)
+	if !okA || !okB {
+		return 0
+	}
+	ms := float64(b.UnixMilli() - a.UnixMilli())
 	return int(math.Round(ms / 86400000))
 }
 
 func DayOfWeek(date string) int {
-	return int(utcMidnight(date).Weekday())
+	t, ok := utcMidnight(date)
+	if !ok {
+		return -1
+	}
+	return int(t.Weekday())
 }
 
 func AddDays(date string, days int) string {
+	if !IsValid(date) {
+		return ""
+	}
 	y, m, d := split(date)
 	t := time.Date(y, time.Month(m), d+days, 12, 0, 0, 0, time.UTC)
 	return t.Format(Layout)
@@ -153,6 +166,10 @@ func Parse(dateStr string) ParseResult {
 		return ParseResult{IsValid: false, Error: "Empty date string"}
 	}
 	if m := isoPrefix.FindStringSubmatch(dateStr); m != nil {
+		rest := dateStr[len(m[0]):]
+		if rest != "" && (rest[0] != 'T' || len(rest) < 2 || rest[1] < '0' || rest[1] > '9') {
+			return ParseResult{IsValid: false, Error: "Invalid date format"}
+		}
 		y, _ := strconv.Atoi(m[1])
 		mo, _ := strconv.Atoi(m[2])
 		d, _ := strconv.Atoi(m[3])
