@@ -57,6 +57,24 @@ func TestDateArithmeticRejectsGarbage(t *testing.T) {
 	if got := DayOfWeek("garbage"); got != -1 {
 		t.Fatalf("DayOfWeek garbage got %d", got)
 	}
+	if got := AddDays("2024-02-30", 1); got != "" {
+		t.Fatalf("impossible date must not be normalized, got %q", got)
+	}
+	if got := ChartTimestamp("abc"); got != 0 {
+		t.Fatalf("garbage timestamp got %d", got)
+	}
+}
+
+func TestIsValidChecksCalendarDate(t *testing.T) {
+	for date, want := range map[string]bool{
+		"2024-02-30": false,
+		"2024-02-29": true,
+		"2023-02-29": false,
+	} {
+		if got := IsValid(date); got != want {
+			t.Errorf("IsValid(%q) = %v, want %v", date, got, want)
+		}
+	}
 }
 
 func TestParseRejectsTrailingJunk(t *testing.T) {

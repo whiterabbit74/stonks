@@ -20,7 +20,12 @@ var usDate = regexp.MustCompile(`^(\d{1,2})/(\d{1,2})/(\d{4})`)
 var euDate = regexp.MustCompile(`^(\d{1,2})[.](\d{1,2})[.](\d{4})`)
 
 func IsValid(value string) bool {
-	return ymd.MatchString(value)
+	if !ymd.MatchString(value) {
+		return false
+	}
+	y, m, d := split(value)
+	_, ok := toKey(y, m, d)
+	return ok
 }
 
 func DateKey(s string) string {
@@ -106,6 +111,9 @@ func split(date string) (int, int, int) {
 }
 
 func ChartTimestamp(date string) int64 {
+	if !IsValid(date) {
+		return 0
+	}
 	y, m, d := split(date)
 	t := time.Date(y, time.Month(m), d, 12, 0, 0, 0, time.UTC)
 	return t.Unix()
