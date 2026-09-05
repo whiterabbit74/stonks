@@ -138,7 +138,6 @@ func RunSinglePosition(tickers []TickerIndexed, strategy types.Strategy, leverag
 		}
 	}
 	lastMonthKey := ""
-	peakValue := totalPortfolio
 
 	findTicker := func(sym string) *TickerIndexed {
 		for i := range tickers {
@@ -184,11 +183,8 @@ func RunSinglePosition(tickers []TickerIndexed, strategy types.Strategy, leverag
 		totalPortfolio = freeCapital + positionValue
 	}
 
-	for index, date := range sorted {
-		var nextDate string
-		if index < len(sorted)-1 {
-			nextDate = sorted[index+1]
-		}
+	equity = runDailyEngine(sorted, initial, func(day dailyDay) float64 {
+		date, nextDate := day.Date, day.NextDate
 		exitedThisBar := false
 
 		if opt.MonthlyAmount > 0 && contribStart != "" && date >= contribStart {
@@ -326,14 +322,6 @@ func RunSinglePosition(tickers []TickerIndexed, strategy types.Strategy, leverag
 		}
 
 		updatePortfolio(current, date)
-		if totalPortfolio > peakValue {
-			peakValue = totalPortfolio
-		}
-		dd := 0.0
-		if peakValue > 0 {
-			dd = ((peakValue - totalPortfolio) / peakValue) * 100
-		}
-		equity = append(equity, types.EquityPoint{Date: date, Value: totalPortfolio, Drawdown: dd})
 		posVal := 0.0
 		if current != nil {
 			td := findTicker(current.ticker)
@@ -348,7 +336,8 @@ func RunSinglePosition(tickers []TickerIndexed, strategy types.Strategy, leverag
 			ExposurePct:     metrics.ExposurePct(posVal, totalPortfolio),
 			ActivePositions: boolToInt(current != nil),
 		})
-	}
+		return totalPortfolio
+	})
 
 	if current != nil {
 		td := findTicker(current.ticker)
