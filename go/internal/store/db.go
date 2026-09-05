@@ -483,7 +483,7 @@ func (d *DB) GetDataset(id string) (map[string]any, error) {
 	for rows.Next() {
 		var b types.OHLC
 		var adj sql.NullFloat64
-		var vol sql.NullInt64
+		var vol sql.NullFloat64
 		if err := rows.Scan(&b.Date, &b.Open, &b.High, &b.Low, &b.Close, &adj, &vol); err != nil {
 			return nil, err
 		}
@@ -492,7 +492,7 @@ func (d *DB) GetDataset(id string) (map[string]any, error) {
 			b.AdjClose = &v
 		}
 		if vol.Valid {
-			b.Volume = float64(vol.Int64)
+			b.Volume = vol.Float64
 		}
 		data = append(data, b)
 	}
@@ -1696,7 +1696,7 @@ func (d *DB) GetOHLCLast(ticker string, n int) ([]types.OHLC, bool, error) {
 	for rows.Next() {
 		var b types.OHLC
 		var adjC sql.NullFloat64
-		var vol sql.NullInt64
+		var vol sql.NullFloat64
 		if err := rows.Scan(&b.Date, &b.Open, &b.High, &b.Low, &b.Close, &adjC, &vol); err != nil {
 			return nil, false, err
 		}
@@ -1705,7 +1705,7 @@ func (d *DB) GetOHLCLast(ticker string, n int) ([]types.OHLC, bool, error) {
 			b.AdjClose = &v
 		}
 		if vol.Valid {
-			b.Volume = float64(vol.Int64)
+			b.Volume = vol.Float64
 		}
 		data = append(data, b)
 	}

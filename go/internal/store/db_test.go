@@ -715,3 +715,31 @@ func TestUpsertWatchKeepsExplicitZeroThreshold(t *testing.T) {
 		t.Fatalf("highIBS=%v", got["highIBS"])
 	}
 }
+
+func TestGetDatasetFractionalVolume(t *testing.T) {
+	db := openTestDB(t)
+	if err := db.SaveDataset("BAC", "BAC", "", "", []types.OHLC{
+		{Date: "2024-01-02", Open: 1, High: 2, Low: 1, Close: 2, Volume: 100},
+	}, false); err != nil {
+		t.Fatal(err)
+	}
+	// Split adjustment writes fractional volumes straight into the column.
+	if _, err := db.SQL.Exec(`UPDATE ohlc SET volume = 50602478.357868 WHERE ticker = 'BAC'`); err != nil {
+		t.Fatal(err)
+	}
+	ds, err := db.GetDataset("BAC")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bars, _ := ds["data"].([]types.OHLC)
+	if len(bars) != 1 || bars[0].Volume != 50602478.357868 {
+		t.Fatalf("bars %+v", bars)
+	}
+	recent, _, err := db.GetOHLCLast("BAC", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(recent) != 1 || recent[0].Volume != 50602478.357868 {
+		t.Fatalf("recent %+v", recent)
+	}
+}
