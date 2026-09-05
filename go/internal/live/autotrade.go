@@ -430,8 +430,8 @@ func (e *Engine) heldSymbolsOn(br Broker, w execWindow) (map[string]float64, err
 	if br == nil {
 		return map[string]float64{}, nil
 	}
-	pos, err := retryBrokerReadWindow(e, w, "positions", func(context.Context) ([]any, error) {
-		return br.Positions()
+	pos, err := retryBrokerReadWindow(e, w, "positions", func(ctx context.Context) ([]any, error) {
+		return brokerPositions(ctx, br)
 	})
 	if err != nil {
 		return nil, err
