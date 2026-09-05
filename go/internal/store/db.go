@@ -876,33 +876,143 @@ func nullS(v sql.NullString) any {
 	return v.String
 }
 
+func watchFloatOrDefault(w map[string]any, key string, def float64) float64 {
+	v, ok := w[key]
+	if !ok || v == nil {
+		return def
+	}
+	return asFloat(v)
+}
+
+func watchChatID(w map[string]any) string {
+	v, ok := w["chatId"]
+	if !ok || v == nil {
+		return ""
+	}
+	s := fmt.Sprint(v)
+	if s == "<nil>" {
+		return ""
+	}
+	return s
+}
+
+func watchOpenFlag(v any) int {
+	switch t := v.(type) {
+	case bool:
+		if t {
+			return 1
+		}
+		return 0
+	default:
+		if asFloat(v) != 0 {
+			return 1
+		}
+		return 0
+	}
+}
+
+// watchPatchColumns is the whitelist of JSON keys PatchWatch may write.
+// Position columns are included so the live engine can update an open
+// position without going through UpsertWatch (which never clobbers them).
+var watchPatchColumns = map[string]string{
+	"highIBS":           "high_ibs",
+	"lowIBS":            "low_ibs",
+	"thresholdPct":      "threshold_pct",
+	"chatId":            "chat_id",
+	"isOpenPosition":    "is_open_position",
+	"entryPrice":        "entry_price",
+	"entryDate":         "entry_date",
+	"entryIBS":          "entry_ibs",
+	"entryDecisionTime": "entry_decision_time",
+	"currentTradeId":    "current_trade_id",
+}
+
+var watchNumericPatch = map[string]bool{
+	"highIBS": true, "lowIBS": true, "thresholdPct": true,
+	"entryPrice": true, "entryIBS": true,
+}
+
+var watchCreatePatchKeys = []string{"highIBS", "lowIBS", "thresholdPct", "chatId"}
+
 func (d *DB) UpsertWatch(w map[string]any) error {
 	symbol := SafeTicker(fmt.Sprint(w["symbol"]))
-	high, _ := w["highIBS"].(float64)
-	if high == 0 {
-		high = 0.75
+	if symbol == "" {
+		return fmt.Errorf("symbol required")
 	}
-	low, _ := w["lowIBS"].(float64)
-	if low == 0 {
-		low = 0.1
+	var n int
+	if err := d.SQL.QueryRow(`SELECT COUNT(1) FROM telegram_watches WHERE symbol = ?`, symbol).Scan(&n); err != nil {
+		return err
 	}
-	thr, _ := w["thresholdPct"].(float64)
-	if thr == 0 {
-		thr = 0.3
+	if n > 0 {
+		patch := map[string]any{}
+		for _, k := range watchCreatePatchKeys {
+			if _, ok := w[k]; ok {
+				patch[k] = w[k]
+			}
+		}
+		if len(patch) == 0 {
+			return nil
+		}
+		return d.PatchWatch(symbol, patch)
 	}
+	high := watchFloatOrDefault(w, "highIBS", 0.75)
+	low := watchFloatOrDefault(w, "lowIBS", 0.1)
+	thr := watchFloatOrDefault(w, "thresholdPct", 0.3)
 	open := 0
-	if v, ok := w["isOpenPosition"].(bool); ok && v {
-		open = 1
+	if v, ok := w["isOpenPosition"]; ok {
+		open = watchOpenFlag(v)
 	}
-	chat := fmt.Sprint(w["chatId"])
-	if chat == "<nil>" {
-		chat = ""
-	}
-	_, err := d.SQL.Exec(`INSERT INTO telegram_watches (symbol, high_ibs, low_ibs, threshold_pct, chat_id, is_open_position, entry_price, entry_date, current_trade_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(symbol) DO UPDATE SET high_ibs=excluded.high_ibs, low_ibs=excluded.low_ibs, threshold_pct=excluded.threshold_pct,
-            chat_id=excluded.chat_id, is_open_position=excluded.is_open_position, entry_price=excluded.entry_price, entry_date=excluded.entry_date, current_trade_id=excluded.current_trade_id`,
-		symbol, high, low, thr, chat, open, w["entryPrice"], w["entryDate"], w["currentTradeId"])
+	_, err := d.SQL.Exec(`INSERT INTO telegram_watches (symbol, high_ibs, low_ibs, threshold_pct, chat_id, is_open_position, entry_price, entry_date, current_trade_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		symbol, high, low, thr, watchChatID(w), open, w["entryPrice"], w["entryDate"], w["currentTradeId"])
 	return err
+}
+
+func (d *DB) PatchWatch(symbol string, fields map[string]any) error {
+	symbol = SafeTicker(symbol)
+	if symbol == "" {
+		return fmt.Errorf("symbol required")
+	}
+	var sets []string
+	var args []any
+	for key, col := range watchPatchColumns {
+		v, ok := fields[key]
+		if !ok {
+			continue
+		}
+		sets = append(sets, col+"=?")
+		switch {
+		case key == "isOpenPosition":
+			args = append(args, watchOpenFlag(v))
+		case key == "chatId":
+			if v == nil {
+				args = append(args, "")
+			} else {
+				args = append(args, watchChatID(map[string]any{"chatId": v}))
+			}
+		case v == nil:
+			args = append(args, nil)
+		case watchNumericPatch[key]:
+			args = append(args, asFloat(v))
+		default:
+			args = append(args, v)
+		}
+	}
+	if len(sets) == 0 {
+		return fmt.Errorf("no patchable fields")
+	}
+	args = append(args, symbol)
+	res, err := d.SQL.Exec(`UPDATE telegram_watches SET `+strings.Join(sets, ", ")+` WHERE symbol = ?`, args...)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return fmt.Errorf("watch %s not found", symbol)
+	}
+	return nil
 }
 
 func (d *DB) DeleteWatch(symbol string) error {

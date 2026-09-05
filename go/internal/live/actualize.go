@@ -218,15 +218,15 @@ func (e *Engine) UpdatePositions() map[string]any {
 		wantOpen := openSym != "" && sym == openSym
 		wasOpen, _ := w["isOpenPosition"].(bool)
 		if wantOpen != wasOpen {
-			w["isOpenPosition"] = wantOpen
+			patch := map[string]any{"isOpenPosition": wantOpen}
 			if wantOpen {
-				w["entryPrice"] = open["entryPrice"]
-				w["entryDate"] = open["entryDate"]
-				w["currentTradeId"] = open["id"]
+				patch["entryPrice"] = open["entryPrice"]
+				patch["entryDate"] = open["entryDate"]
+				patch["currentTradeId"] = open["id"]
 			} else {
-				w["currentTradeId"] = nil
+				patch["currentTradeId"] = nil
 			}
-			_ = e.DB.UpsertWatch(w)
+			_ = e.DB.PatchWatch(sym, patch)
 			changes = append(changes, map[string]any{"symbol": sym, "isOpenPosition": wantOpen})
 		}
 	}

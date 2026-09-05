@@ -1172,8 +1172,7 @@ func (s *Server) handleWatchPatch(w http.ResponseWriter, r *http.Request) {
 	if !s.requireJSON(w, r, &body) {
 		return
 	}
-	body["symbol"] = r.PathValue("symbol")
-	_ = s.DB.UpsertWatch(body)
+	_ = s.DB.PatchWatch(r.PathValue("symbol"), body)
 	writeJSON(w, 200, map[string]any{"ok": true})
 }
 

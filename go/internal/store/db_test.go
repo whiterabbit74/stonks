@@ -2,6 +2,7 @@ package store
 
 import (
 	"encoding/json"
+	"fmt"
 	"path/filepath"
 	"testing"
 
@@ -305,5 +306,107 @@ func TestSettingsRoundTripJSONDoesNotDropNestedDefaults(t *testing.T) {
 	at := got["autoTrading"].(map[string]any)
 	if at["lowIBS"] != 0.1 || at["highIBS"] != 0.75 {
 		t.Fatalf("merged %+v", at)
+	}
+}
+
+func mustWatch(t *testing.T, db *DB, symbol string) map[string]any {
+	t.Helper()
+	list, err := db.ListWatches()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, w := range list {
+		if fmt.Sprint(w["symbol"]) == symbol {
+			return w
+		}
+	}
+	t.Fatalf("watch %s not found", symbol)
+	return nil
+}
+
+func seedOpenWatch(t *testing.T, db *DB) {
+	t.Helper()
+	if err := db.UpsertWatch(map[string]any{
+		"symbol":         "AAPL",
+		"lowIBS":         0.1,
+		"highIBS":        0.8,
+		"thresholdPct":   0.4,
+		"isOpenPosition": true,
+		"entryPrice":     100.0,
+		"entryDate":      "2026-09-01",
+		"currentTradeId": "t1",
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestPatchWatchPreservesOpenPosition(t *testing.T) {
+	db := openTestDB(t)
+	seedOpenWatch(t, db)
+	if err := db.PatchWatch("AAPL", map[string]any{"lowIBS": 0.12}); err != nil {
+		t.Fatal(err)
+	}
+	got := mustWatch(t, db, "AAPL")
+	if asFloat(got["lowIBS"]) != 0.12 {
+		t.Fatalf("lowIBS=%v want 0.12", got["lowIBS"])
+	}
+	if asFloat(got["highIBS"]) != 0.8 {
+		t.Fatalf("highIBS=%v want 0.8", got["highIBS"])
+	}
+	if asFloat(got["thresholdPct"]) != 0.4 {
+		t.Fatalf("thresholdPct=%v want 0.4", got["thresholdPct"])
+	}
+	if got["isOpenPosition"] != true {
+		t.Fatalf("isOpenPosition=%v", got["isOpenPosition"])
+	}
+	if asFloat(got["entryPrice"]) != 100 {
+		t.Fatalf("entryPrice=%v", got["entryPrice"])
+	}
+	if got["entryDate"] != "2026-09-01" {
+		t.Fatalf("entryDate=%v", got["entryDate"])
+	}
+	if got["currentTradeId"] != "t1" {
+		t.Fatalf("currentTradeId=%v", got["currentTradeId"])
+	}
+}
+
+func TestUpsertWatchDoesNotResetOpenPosition(t *testing.T) {
+	db := openTestDB(t)
+	seedOpenWatch(t, db)
+	if err := db.UpsertWatch(map[string]any{"symbol": "AAPL", "lowIBS": 0.11}); err != nil {
+		t.Fatal(err)
+	}
+	got := mustWatch(t, db, "AAPL")
+	if asFloat(got["lowIBS"]) != 0.11 {
+		t.Fatalf("lowIBS=%v want 0.11", got["lowIBS"])
+	}
+	if asFloat(got["highIBS"]) != 0.8 {
+		t.Fatalf("highIBS=%v want preserved 0.8", got["highIBS"])
+	}
+	if got["isOpenPosition"] != true {
+		t.Fatalf("isOpenPosition=%v", got["isOpenPosition"])
+	}
+	if asFloat(got["entryPrice"]) != 100 {
+		t.Fatalf("entryPrice=%v", got["entryPrice"])
+	}
+	if got["entryDate"] != "2026-09-01" {
+		t.Fatalf("entryDate=%v", got["entryDate"])
+	}
+	if got["currentTradeId"] != "t1" {
+		t.Fatalf("currentTradeId=%v", got["currentTradeId"])
+	}
+}
+
+func TestUpsertWatchKeepsExplicitZeroThreshold(t *testing.T) {
+	db := openTestDB(t)
+	if err := db.UpsertWatch(map[string]any{"symbol": "ZERO", "lowIBS": 0.0, "highIBS": 0.75}); err != nil {
+		t.Fatal(err)
+	}
+	got := mustWatch(t, db, "ZERO")
+	if asFloat(got["lowIBS"]) != 0 {
+		t.Fatalf("lowIBS=%v want 0 (explicit zero is not the missing-key default)", got["lowIBS"])
+	}
+	if asFloat(got["highIBS"]) != 0.75 {
+		t.Fatalf("highIBS=%v", got["highIBS"])
 	}
 }
