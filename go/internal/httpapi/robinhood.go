@@ -136,7 +136,7 @@ func (s *Server) handleRobinhoodClose(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleRobinhoodTestBuy(w http.ResponseWriter, r *http.Request) {
 	if os.Getenv("ROBINHOOD_ENABLE_LIVE_TEST_BUY") != "true" {
-		writeJSON(w, 403, map[string]any{"error": "Live Robinhood test buy is disabled", "success": false, "submitted": false})
+		writeJSON(w, 403, map[string]any{"error": "Ð¢ÐµÑÑÐ¾Ð²Ð°Ñ Ð¿Ð¾ÐºÑÐ¿ÐºÐ° ÑÐµÑÐµÐ· Robinhood Ð¾ÑÐºÐ»ÑÑÐµÐ½Ð°", "success": false, "submitted": false})
 		return
 	}
 	var body struct {

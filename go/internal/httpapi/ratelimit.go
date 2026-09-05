@@ -124,13 +124,13 @@ func (s *Server) rateLimit(next http.Handler) http.Handler {
 		}
 		if r.Method == http.MethodPost && r.URL.Path == "/api/login" {
 			if !s.limiter.allow("login:"+ip, limitLogin) {
-				writeJSON(w, http.StatusTooManyRequests, map[string]any{"error": "Too many attempts. Try again later."})
+				writeJSON(w, http.StatusTooManyRequests, map[string]any{"error": "Ð¡Ð»Ð¸ÑÐºÐ¾Ð¼ Ð¼Ð½Ð¾Ð³Ð¾ Ð¿Ð¾Ð¿ÑÑÐ¾Ðº. ÐÐ¾Ð¿ÑÐ¾Ð±ÑÐ¹ÑÐµ Ð¿Ð¾Ð·Ð¶Ðµ."})
 				return
 			}
 		}
 		if r.Method == http.MethodPost && r.URL.Path == "/api/auth/hash-password" {
 			if !s.limiter.allow("hash:"+ip, limitHash) {
-				writeJSON(w, http.StatusTooManyRequests, map[string]any{"error": "Too many requests. Try again later."})
+				writeJSON(w, http.StatusTooManyRequests, map[string]any{"error": "Ð¡Ð»Ð¸ÑÐºÐ¾Ð¼ Ð¼Ð½Ð¾Ð³Ð¾ Ð·Ð°Ð¿ÑÐ¾ÑÐ¾Ð². ÐÐ¾Ð¿ÑÐ¾Ð±ÑÐ¹ÑÐµ Ð¿Ð¾Ð·Ð¶Ðµ."})
 				return
 			}
 		}
@@ -142,7 +142,7 @@ func (s *Server) rateLimit(next http.Handler) http.Handler {
 		}
 		if isUploadPath(r) {
 			if !s.limiter.allow("upload:"+ip, limitUpload) {
-				writeJSON(w, http.StatusTooManyRequests, map[string]any{"error": "Too many uploads from this IP, please try again later."})
+				writeJSON(w, http.StatusTooManyRequests, map[string]any{"error": "Ð¡Ð»Ð¸ÑÐºÐ¾Ð¼ Ð¼Ð½Ð¾Ð³Ð¾ Ð·Ð°Ð³ÑÑÐ·Ð¾Ðº Ñ ÑÑÐ¾Ð³Ð¾ IP, Ð¿Ð¾Ð¿ÑÐ¾Ð±ÑÐ¹ÑÐµ Ð¿Ð¾Ð·Ð¶Ðµ."})
 				return
 			}
 		}

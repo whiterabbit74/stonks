@@ -434,7 +434,7 @@ func TestLoginFailsWhenSessionSetIsBlocked(t *testing.T) {
 	if out["success"] == true {
 		t.Fatalf("blocked login must not claim success, got %v", out)
 	}
-	if out["error"] != "Failed to create session" {
+	if out["error"] != "ÐÐµ ÑÐ´Ð°Ð»Ð¾ÑÑ ÑÐ¾Ð·Ð´Ð°ÑÑ ÑÐµÑÑÐ¸Ñ" {
 		t.Fatalf("error %v", out)
 	}
 	for _, c := range rec.Result().Cookies() {
@@ -649,7 +649,7 @@ func TestLoginUnknownUserDoesPasswordWork(t *testing.T) {
 	if rec.Code != 401 {
 		t.Fatalf("got %d %s", rec.Code, rec.Body.String())
 	}
-	if !bytes.Contains(rec.Body.Bytes(), []byte(`"error":"Invalid credentials"`)) {
+	if !bytes.Contains(rec.Body.Bytes(), []byte(`"error":"ÐÐµÐ²ÐµÑÐ½ÑÐ¹ Ð»Ð¾Ð³Ð¸Ð½ Ð¸Ð»Ð¸ Ð¿Ð°ÑÐ¾Ð»Ñ"`)) {
 		t.Fatalf("401 JSON: %s", rec.Body.String())
 	}
 }
@@ -1065,7 +1065,7 @@ func TestTestProviderUnknownAndNoKeyLeak(t *testing.T) {
 		req.Header.Set("Content-Type", "application/json")
 		rec = httptest.NewRecorder()
 		s.Handler().ServeHTTP(rec, req)
-		if rec.Code == 400 && strings.Contains(rec.Body.String(), "Unknown provider") {
+		if rec.Code == 400 && strings.Contains(rec.Body.String(), "ÐÐµÐ¸Ð·Ð²ÐµÑÑÐ½ÑÐ¹ Ð¿ÑÐ¾Ð²Ð°Ð¹Ð´ÐµÑ") {
 			t.Fatalf("%s treated as unknown: %s", p, rec.Body.String())
 		}
 	}
