@@ -448,14 +448,40 @@ func TestTickActualizeDisabledBySetting(t *testing.T) {
 	_ = db.SaveSettings(st)
 	eng := live.New(db, &live.MemoryQuotes{Bars: map[string][]types.OHLC{"AAPL": {{Date: "2026-09-01", Open: 1, High: 2, Low: 1, Close: 1, Volume: 1}}}})
 	now := time.Date(2026, 9, 1, 20, 20, 0, 0, time.UTC)
+	var mu sync.Mutex
 	var logs []JobLog
-	RunTick(db, Deps{Live: eng}, now, func(j JobLog) { logs = append(logs, j) })
-	for _, j := range logs {
-		if j.Name == "price-actualization" && strings.Contains(j.Detail, "tickers=0") {
-			return
-		}
+	RunTick(db, Deps{Live: eng}, now, func(j JobLog) {
+		mu.Lock()
+		logs = append(logs, j)
+		mu.Unlock()
+	})
+	if waitForJob(t, &mu, &logs, func(j JobLog) bool {
+		return j.Name == "price-actualization" && strings.Contains(j.Detail, "tickers=0")
+	}) {
+		return
 	}
-	t.Fatalf("disabled actualization should request nothing: %+v", logs)
+}
+
+func waitForJob(t *testing.T, mu *sync.Mutex, logs *[]JobLog, match func(JobLog) bool) bool {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		mu.Lock()
+		for _, j := range *logs {
+			if match(j) {
+				mu.Unlock()
+				return true
+			}
+		}
+		snapshot := append([]JobLog(nil), *logs...)
+		mu.Unlock()
+		_ = snapshot
+		time.Sleep(5 * time.Millisecond)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	t.Fatalf("job not seen, logs=%+v", *logs)
+	return false
 }
 
 func TestTickAfterCloseWritesOHLC(t *testing.T) {
@@ -479,21 +505,26 @@ func TestTickAfterCloseWritesOHLC(t *testing.T) {
 	eng := live.New(db, q)
 	eng.Telegram = &live.MemoryTelegram{}
 	now := time.Date(2026, 9, 1, 20, 20, 0, 0, time.UTC) // 16:20 ET, 20 min after close
+	var mu sync.Mutex
 	var logs []JobLog
-	RunTick(db, Deps{Live: eng}, now, func(j JobLog) { logs = append(logs, j) })
-	saw := false
-	for _, j := range logs {
-		if j.Name == "price-actualization" && !j.Skipped {
-			saw = true
+	RunTick(db, Deps{Live: eng}, now, func(j JobLog) {
+		mu.Lock()
+		logs = append(logs, j)
+		mu.Unlock()
+	})
+	waitForJob(t, &mu, &logs, func(j JobLog) bool {
+		return j.Name == "price-actualization" && !j.Skipped
+	})
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		bars, _, _ := db.GetOHLC("AAPL")
+		if len(bars) >= 2 {
+			return
 		}
-	}
-	if !saw {
-		t.Fatalf("expected actualization, logs=%+v", logs)
+		time.Sleep(5 * time.Millisecond)
 	}
 	bars, _, _ := db.GetOHLC("AAPL")
-	if len(bars) < 2 {
-		t.Fatalf("expected merged OHLC, got %d", len(bars))
-	}
+	t.Fatalf("expected merged OHLC, got %d", len(bars))
 }
 
 func t1Engine(t *testing.T) (*store.DB, *live.Engine, *live.MemoryBroker, *live.MemoryTelegram) {
