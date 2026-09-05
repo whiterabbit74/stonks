@@ -1413,7 +1413,12 @@ func (d *DB) PatchTrade(table, id string, rec map[string]any) error {
 	if table != "trades" && table != "broker_trades" {
 		table = "trades"
 	}
-	_, err := d.SQL.Exec(`UPDATE `+table+` SET
+	tx, err := d.SQL.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	_, err = tx.Exec(`UPDATE `+table+` SET
         status=COALESCE(?, status),
         entry_date=COALESCE(?, entry_date),
         exit_date=COALESCE(?, exit_date),
@@ -1441,9 +1446,12 @@ func (d *DB) PatchTrade(table, id string, rec map[string]any) error {
 				n = 1
 			}
 		}
-		_, err = d.SQL.Exec(`UPDATE `+table+` SET is_hidden=? WHERE id=?`, n, id)
+		_, err = tx.Exec(`UPDATE `+table+` SET is_hidden=? WHERE id=?`, n, id)
 	}
-	return err
+	if err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (d *DB) DeleteTrade(table, id string) error {
@@ -1645,8 +1653,13 @@ func (d *DB) UpdateDatasetMetadata(id string, tag, company *string) error {
 	if ticker == "" {
 		return fmt.Errorf("Invalid ticker")
 	}
+	tx, err := d.SQL.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
 	var curTag, curCompany sql.NullString
-	err := d.SQL.QueryRow(`SELECT tag, company_name FROM dataset_meta WHERE ticker = ?`, ticker).Scan(&curTag, &curCompany)
+	err = tx.QueryRow(`SELECT tag, company_name FROM dataset_meta WHERE ticker = ?`, ticker).Scan(&curTag, &curCompany)
 	if err == sql.ErrNoRows {
 		return sql.ErrNoRows
 	}
@@ -1669,8 +1682,10 @@ func (d *DB) UpdateDatasetMetadata(id string, tag, company *string) error {
 			newCompany = sql.NullString{String: *company, Valid: true}
 		}
 	}
-	_, err = d.SQL.Exec(`UPDATE dataset_meta SET tag = ?, company_name = ?, updated_at = datetime('now') WHERE ticker = ?`, newTag, newCompany, ticker)
-	return err
+	if _, err = tx.Exec(`UPDATE dataset_meta SET tag = ?, company_name = ?, updated_at = datetime('now') WHERE ticker = ?`, newTag, newCompany, ticker); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (d *DB) ListTickers() ([]string, error) {

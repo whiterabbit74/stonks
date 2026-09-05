@@ -583,21 +583,11 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 400, map[string]any{"error": msg})
 		return
 	}
-	cur := s.DB.Settings()
-	preservedAuto := cur["autoTrading"]
-	preservedKey := cur["polygonApiKey"]
-	for k, v := range body {
-		cur[k] = v
-	}
-	cur["autoTrading"] = preservedAuto
-	if _, ok := body["polygonApiKey"]; !ok {
-		cur["polygonApiKey"] = preservedKey
-	}
-	if err := s.DB.SaveSettings(cur); err != nil {
+	if err := s.DB.SetSettingsKeys(body); err != nil {
 		writeJSON(w, 500, map[string]any{"error": err.Error()})
 		return
 	}
-	writeJSON(w, 200, map[string]any{"success": true, "settings": clientSettings(cur)})
+	writeJSON(w, 200, map[string]any{"success": true, "settings": clientSettings(s.DB.Settings())})
 }
 
 func (s *Server) handlePatchSettings(w http.ResponseWriter, r *http.Request) {
@@ -610,11 +600,7 @@ func (s *Server) handlePatchSettings(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 400, map[string]any{"error": msg})
 		return
 	}
-	cur := s.DB.Settings()
-	for k, v := range body {
-		cur[k] = v
-	}
-	if err := s.DB.SaveSettings(cur); err != nil {
+	if err := s.DB.SetSettingsKeys(body); err != nil {
 		writeJSON(w, 500, map[string]any{"error": err.Error()})
 		return
 	}
