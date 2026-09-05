@@ -272,9 +272,12 @@ func (c *Client) TwelvePrice(symbol string) (float64, error) {
 		return 0, &HTTPError{400, "API key not configured"}
 	}
 	u := fmt.Sprintf("%s/price?symbol=%s&apikey=%s", c.TwelveBase, url.QueryEscape(symbol), url.QueryEscape(c.TwelveKey))
-	_, body, err := c.get(u)
+	status, body, err := c.get(u)
 	if err != nil {
 		return 0, err
+	}
+	if status != 0 && status != 200 {
+		return 0, &HTTPError{status, fmt.Sprintf("Twelve Data: HTTP %d: %s", status, providerErrText(body))}
 	}
 	var jsonData map[string]any
 	if err := json.Unmarshal(body, &jsonData); err != nil {
@@ -284,6 +287,9 @@ func (c *Client) TwelvePrice(symbol string) (float64, error) {
 		return 0, fmt.Errorf("Twelve Data: %v", jsonData["message"])
 	}
 	p, _ := strconv.ParseFloat(fmt.Sprint(jsonData["price"]), 64)
+	if p == 0 {
+		return 0, &HTTPError{404, "Twelve Data: no price for " + symbol}
+	}
 	return p, nil
 }
 
@@ -427,9 +433,12 @@ func (c *Client) twelveHistory(symbol string, startTs, endTs int64) (Historical,
 	end := time.Unix(endTs, 0).UTC().Format("2006-01-02")
 	u := fmt.Sprintf("%s/time_series?symbol=%s&interval=1day&start_date=%s&end_date=%s&apikey=%s&outputsize=5000",
 		c.TwelveBase, url.QueryEscape(symbol), start, end, url.QueryEscape(c.TwelveKey))
-	_, body, err := c.get(u)
+	status, body, err := c.get(u)
 	if err != nil {
 		return Historical{}, err
+	}
+	if status != 0 && status != 200 {
+		return Historical{}, &HTTPError{status, fmt.Sprintf("Twelve Data: HTTP %d: %s", status, providerErrText(body))}
 	}
 	var jsonData map[string]any
 	if err := json.Unmarshal(body, &jsonData); err != nil {

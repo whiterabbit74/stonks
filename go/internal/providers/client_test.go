@@ -289,6 +289,23 @@ func TestFinnhubMismatchedCandleArrays(t *testing.T) {
 	}
 }
 
+func TestTwelvePriceHTTPTooManyRequestsWithoutStatusError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusTooManyRequests)
+		w.Write([]byte(`{"code":429,"message":"API credits exceeded"}`))
+	}))
+	t.Cleanup(srv.Close)
+	c := &Client{HTTP: srv.Client(), TwelveKey: "k", TwelveBase: srv.URL}
+	p, err := c.TwelvePrice("AAPL")
+	if err == nil {
+		t.Fatalf("want error, got price %v", p)
+	}
+	he, ok := err.(*HTTPError)
+	if !ok || he.Status != 429 {
+		t.Fatalf("want HTTPError 429, got %v", err)
+	}
+}
+
 func TestFinnhubHistoryHTTPForbiddenSurfacesProviderError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusForbidden)
