@@ -817,3 +817,25 @@ func TestWatchAndBrokerIBSUseStrictInequalityGlyphs(t *testing.T) {
 		t.Fatal("broker monitor headers must be «Вход, IBS <» / «Выход, IBS >»")
 	}
 }
+
+// TestBrokerMonitorIBSColorUsesRowThresholds is P-4: IBS cell colour must
+// follow the row's w.lowIBS / w.highIBS (strict < / >), falling back to
+// liveLowIBS/liveHighIBS, not the literals 0.10 / 0.75.
+func TestBrokerMonitorIBSColorUsesRowThresholds(t *testing.T) {
+	a := readWeb(t, "js/app.js")
+	broker := jsFn(a, "pageBroker")
+	monStart := strings.Index(broker, "tab === 'monitor'")
+	if monStart < 0 {
+		t.Fatal("broker monitor tab not found")
+	}
+	monitor := broker[monStart:]
+	if !strings.Contains(monitor, "w.lowIBS") || !strings.Contains(monitor, "w.highIBS") {
+		t.Fatal("broker monitor IBS color must read w.lowIBS / w.highIBS")
+	}
+	if strings.Contains(monitor, "ibs < 0.10") || strings.Contains(monitor, "ibs > 0.75") {
+		t.Fatal("broker monitor IBS color must not use literals 0.10 / 0.75")
+	}
+	if !strings.Contains(monitor, "ibs < lo") || !strings.Contains(monitor, "ibs > hi") {
+		t.Fatal("broker monitor IBS color must use strict ibs < lo / ibs > hi")
+	}
+}

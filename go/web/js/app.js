@@ -2692,7 +2692,9 @@
         const prev = toNum(quote.prevClose ?? quote.previousClose ?? rng.prevClose);
         const ibs = (high != null && low != null && last != null && high !== low) ? (last - low) / (high - low) : toNum(w.lastIbs ?? w.ibs);
         const delta = (last != null && prev != null && prev !== 0) ? ((last - prev) / prev) * 100 : null;
-        const ibsCls = ibs == null ? '' : (ibs < liveLowIBS() ? 'text-emerald-600' : (ibs > liveHighIBS() ? 'text-red-600' : ''));
+        const lo = Number(w.lowIBS ?? liveLowIBS());
+        const hi = Number(w.highIBS ?? liveHighIBS());
+        const ibsCls = ibs == null ? '' : (ibs < lo ? 'text-emerald-600' : (ibs > hi ? 'text-red-600' : ''));
         const openPx = toNum(quote.open ?? quote.o ?? rng.open ?? w.todayOpen);
         return `<tr>
           <td class="font-mono">${esc(w.symbol)}</td>
