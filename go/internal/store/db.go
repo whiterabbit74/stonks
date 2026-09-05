@@ -784,6 +784,55 @@ func defaultSettings() map[string]any {
 	}
 }
 
+// extraStoredSettingsKeys live in the settings blob but are not defaults:
+// secrets and counters the GET/PUT path or the live/scheduler writers persist.
+// Broker allow flags (webullAllowEntries and friends) are not settings keys.
+var extraStoredSettingsKeys = []string{
+	"polygonApiKey",
+	"initialCapital",
+	"commissionType",
+	"commissionFixed",
+	"commissionPercentage",
+	"lastActualizationDate",
+	"lastActualizationAttemptDate",
+	"lastActualizationAttemptCount",
+	"trackerPersistFail",
+	"lastAutotradeLogPruneDate",
+	"lastMissedT1Date",
+	"lastCalendarImportDate",
+}
+
+var allowedSettingsKeys = func() map[string]struct{} {
+	m := make(map[string]struct{}, 24)
+	for k := range defaultSettings() {
+		m[k] = struct{}{}
+	}
+	for _, k := range extraStoredSettingsKeys {
+		m[k] = struct{}{}
+	}
+	return m
+}()
+
+// AllowedSettingsKey reports whether k may live in the settings JSON blob.
+// PATCH/PUT /api/settings reject anything else with 400.
+func AllowedSettingsKey(k string) bool {
+	_, ok := allowedSettingsKeys[k]
+	return ok
+}
+
+func sanitizeSettings(s map[string]any) map[string]any {
+	if s == nil {
+		return map[string]any{}
+	}
+	out := make(map[string]any, len(s))
+	for k, v := range s {
+		if _, ok := allowedSettingsKeys[k]; ok {
+			out[k] = v
+		}
+	}
+	return out
+}
+
 func (d *DB) Settings() map[string]any {
 	defs := defaultSettings()
 	var data string
@@ -795,7 +844,7 @@ func (d *DB) Settings() map[string]any {
 	if json.Unmarshal([]byte(data), &stored) != nil {
 		return defs
 	}
-	out := mergeMaps(defs, stored)
+	out := mergeMaps(defs, sanitizeSettings(stored))
 	if at, ok := out["autoTrading"].(map[string]any); ok {
 		delete(at, "dryRun")
 	}
@@ -830,7 +879,7 @@ func mergeMaps(dst, src map[string]any) map[string]any {
 }
 
 func (d *DB) SaveSettings(s map[string]any) error {
-	b, _ := json.Marshal(s)
+	b, _ := json.Marshal(sanitizeSettings(s))
 	_, err := d.SQL.Exec(`INSERT INTO settings (id, data) VALUES (1, ?) ON CONFLICT(id) DO UPDATE SET data=excluded.data`, string(b))
 	return err
 }

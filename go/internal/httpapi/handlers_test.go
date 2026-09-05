@@ -443,6 +443,116 @@ func TestGetSettingsPolygonKeyConfiguredMatchesClientSettings(t *testing.T) {
 	}
 }
 
+func plantRawSettings(t *testing.T, db *store.DB, s map[string]any) {
+	t.Helper()
+	raw, err := json.Marshal(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.SQL.Exec(`INSERT INTO settings (id, data) VALUES (1, ?) ON CONFLICT(id) DO UPDATE SET data=excluded.data`, string(raw)); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func rawSettingsBlob(t *testing.T, db *store.DB) string {
+	t.Helper()
+	var data string
+	if err := db.SQL.QueryRow(`SELECT data FROM settings WHERE id = 1`).Scan(&data); err != nil {
+		t.Fatal(err)
+	}
+	return data
+}
+
+func TestPatchSettingsRejectsUnknownKey(t *testing.T) {
+	s := testServer(t, "")
+	plantRawSettings(t, s.DB, map[string]any{
+		"watchThresholdPct":  0.4,
+		"webullAllowEntries": "on",
+	})
+	before := rawSettingsBlob(t, s.DB)
+	body, _ := json.Marshal(map[string]any{"webullAllowEntries": "on"})
+	req := httptest.NewRequest("PATCH", "/api/settings", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != 400 {
+		t.Fatalf("patch unknown %d %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "unknown settings key") {
+		t.Fatalf("error body %s", rec.Body.String())
+	}
+	after := rawSettingsBlob(t, s.DB)
+	if after != before {
+		t.Fatalf("blob changed on 400:\n before=%s\n after=%s", before, after)
+	}
+	st := s.DB.Settings()
+	if asFloatSettings(st["watchThresholdPct"]) != 0.4 {
+		t.Fatalf("watchThresholdPct mutated: %v", st["watchThresholdPct"])
+	}
+
+	mixed, _ := json.Marshal(map[string]any{"watchThresholdPct": 0.9, "webullAllowEntries": "on"})
+	req = httptest.NewRequest("PATCH", "/api/settings", bytes.NewReader(mixed))
+	req.Header.Set("Content-Type", "application/json")
+	rec = httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != 400 {
+		t.Fatalf("mixed unknown %d %s", rec.Code, rec.Body.String())
+	}
+	if rawSettingsBlob(t, s.DB) != before {
+		t.Fatal("mixed unknown patch mutated the blob")
+	}
+}
+
+func TestPatchSettingsStripsPlantedJunk(t *testing.T) {
+	s := testServer(t, "")
+	plantRawSettings(t, s.DB, map[string]any{
+		"watchThresholdPct":  0.4,
+		"webullAllowEntries": "on",
+		"autoEntryReserve":   "0.50",
+	})
+	body, _ := json.Marshal(map[string]any{"watchThresholdPct": 0.5})
+	req := httptest.NewRequest("PATCH", "/api/settings", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != 200 {
+		t.Fatalf("patch allowed %d %s", rec.Code, rec.Body.String())
+	}
+	blob := rawSettingsBlob(t, s.DB)
+	for _, junk := range []string{"webullAllowEntries", "autoEntryReserve"} {
+		if strings.Contains(blob, junk) {
+			t.Fatalf("junk %s survived save: %s", junk, blob)
+		}
+	}
+	req = httptest.NewRequest("GET", "/api/settings", nil)
+	rec = httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != 200 {
+		t.Fatalf("get %d %s", rec.Code, rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), "webullAllowEntries") || strings.Contains(rec.Body.String(), "autoEntryReserve") {
+		t.Fatalf("GET leaked junk: %s", rec.Body.String())
+	}
+	st := s.DB.Settings()
+	if asFloatSettings(st["watchThresholdPct"]) != 0.5 {
+		t.Fatalf("watchThresholdPct=%v want 0.5", st["watchThresholdPct"])
+	}
+}
+
+func asFloatSettings(v any) float64 {
+	switch n := v.(type) {
+	case float64:
+		return n
+	case int:
+		return float64(n)
+	case json.Number:
+		f, _ := n.Float64()
+		return f
+	default:
+		return 0
+	}
+}
+
 func TestDatasetIntegrityRejectsInvalidBars(t *testing.T) {
 	s := testServer(t, "")
 	payload, _ := json.Marshal(map[string]any{

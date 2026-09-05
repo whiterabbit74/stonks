@@ -537,6 +537,35 @@ func TestMutationToastsFollowSuccessfulResponse(t *testing.T) {
 	}
 }
 
+func TestSetFormSendsOnlyKnownSettingsAndNestedBrokerFlags(t *testing.T) {
+	app, err := os.ReadFile(filepath.Join("..", "..", "web", "js", "app.js"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := string(app)
+	start := strings.Index(a, "getElementById('set-form')")
+	if start < 0 {
+		t.Fatal("set-form submit handler not found")
+	}
+	end := strings.Index(a[start:], "function defaultStrategy()")
+	if end < 0 {
+		t.Fatal("set-form handler not bounded")
+	}
+	form := a[start : start+end]
+	if strings.Contains(form, "form.webullAllowEntries?.checked ||") || strings.Contains(form, "form.webullAllowExits?.checked ||") {
+		t.Fatal("B-6: set-form must not OR broker checkboxes into flat allowNewEntries/allowExits")
+	}
+	if strings.Contains(form, "for (const [k, v] of fd.entries())") {
+		t.Fatal("P-15: set-form must not dump FormData into PATCH /api/settings")
+	}
+	if !strings.Contains(form, "webull: { enabled: !!form.webullEnabled?.checked, allowNewEntries: !!form.webullAllowEntries?.checked, allowExits: !!form.webullAllowExits?.checked }") {
+		t.Fatal("B-6: set-form must always send enabled/allowNewEntries/allowExits for webull")
+	}
+	if !strings.Contains(form, "robinhood: { enabled: !!form.robinhoodEnabled?.checked, allowNewEntries: !!form.robinhoodAllowEntries?.checked, allowExits: !!form.robinhoodAllowExits?.checked }") {
+		t.Fatal("B-6: set-form must always send enabled/allowNewEntries/allowExits for robinhood")
+	}
+}
+
 func TestAutotradeCardDisclaimsExecutionWindowAndSlippage(t *testing.T) {
 	app, err := os.ReadFile(filepath.Join("..", "..", "web", "js", "app.js"))
 	if err != nil {

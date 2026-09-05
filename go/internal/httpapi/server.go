@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -482,23 +483,37 @@ func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, clientSettings(s.DB.Settings()))
 }
 
+func settingsWriteError(body map[string]any) string {
+	if _, ok := body["autoTrading"]; ok {
+		return "autoTrading must be updated through /api/autotrade/config"
+	}
+	var unknown []string
+	for k := range body {
+		if !store.AllowedSettingsKey(k) {
+			unknown = append(unknown, k)
+		}
+	}
+	if len(unknown) == 0 {
+		return ""
+	}
+	sort.Strings(unknown)
+	return "unknown settings key: " + unknown[0]
+}
+
 func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	var body map[string]any
 	if err := readJSON(r, &body); err != nil {
 		writeJSON(w, 400, map[string]any{"error": "invalid json"})
 		return
 	}
-	if _, ok := body["autoTrading"]; ok {
-		writeJSON(w, 400, map[string]any{"error": "autoTrading must be updated through /api/autotrade/config"})
+	if msg := settingsWriteError(body); msg != "" {
+		writeJSON(w, 400, map[string]any{"error": msg})
 		return
 	}
 	cur := s.DB.Settings()
 	preservedAuto := cur["autoTrading"]
 	preservedKey := cur["polygonApiKey"]
 	for k, v := range body {
-		if k == "autoTrading" {
-			continue
-		}
 		cur[k] = v
 	}
 	cur["autoTrading"] = preservedAuto
@@ -518,15 +533,12 @@ func (s *Server) handlePatchSettings(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 400, map[string]any{"error": "invalid json"})
 		return
 	}
-	if _, ok := body["autoTrading"]; ok {
-		writeJSON(w, 400, map[string]any{"error": "autoTrading must be updated through /api/autotrade/config"})
+	if msg := settingsWriteError(body); msg != "" {
+		writeJSON(w, 400, map[string]any{"error": msg})
 		return
 	}
 	cur := s.DB.Settings()
 	for k, v := range body {
-		if k == "autoTrading" || k == "api" || k == "telegram" {
-			continue
-		}
 		cur[k] = v
 	}
 	if err := s.DB.SaveSettings(cur); err != nil {

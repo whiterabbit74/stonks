@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"mktorder.com/go/internal/types"
@@ -97,8 +98,104 @@ func TestSettingsNullAutoTradingKeepsDefaults(t *testing.T) {
 	if at["lowIBS"] != 0.1 || at["highIBS"] != 0.75 {
 		t.Fatalf("thresholds %+v", at)
 	}
-	if got["foo"] != "bar" {
-		t.Fatalf("top-level stored key missing: %v", got["foo"])
+	if _, ok := got["foo"]; ok {
+		t.Fatalf("unknown key survived sanitizer: %v", got["foo"])
+	}
+}
+
+func plantRawSettings(t *testing.T, db *DB, s map[string]any) {
+	t.Helper()
+	raw, err := json.Marshal(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.SQL.Exec(`INSERT INTO settings (id, data) VALUES (1, ?) ON CONFLICT(id) DO UPDATE SET data=excluded.data`, string(raw)); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func rawSettingsBlob(t *testing.T, db *DB) string {
+	t.Helper()
+	var data string
+	if err := db.SQL.QueryRow(`SELECT data FROM settings WHERE id = 1`).Scan(&data); err != nil {
+		t.Fatal(err)
+	}
+	return data
+}
+
+func TestSettingsDropsUnknownKeysOnLoadAndSave(t *testing.T) {
+	db := openTestDB(t)
+	plantRawSettings(t, db, map[string]any{
+		"watchThresholdPct":             0.4,
+		"webullAllowEntries":            "on",
+		"robinhoodEnabled":              "on",
+		"autoEntryReserve":              "0.50",
+		"lastActualizationDate":         "2026-09-01",
+		"lastActualizationAttemptDate":  "2026-09-01",
+		"lastActualizationAttemptCount": 2,
+		"trackerPersistFail":            map[string]any{"webull": true},
+		"polygonApiKey":                 "secret",
+		"initialCapital":                25000,
+	})
+	got := db.Settings()
+	for _, junk := range []string{"webullAllowEntries", "robinhoodEnabled", "autoEntryReserve"} {
+		if _, ok := got[junk]; ok {
+			t.Fatalf("GET leaked junk key %s: %+v", junk, got[junk])
+		}
+	}
+	if fmt.Sprint(got["lastActualizationDate"]) != "2026-09-01" {
+		t.Fatalf("lastActualizationDate=%v", got["lastActualizationDate"])
+	}
+	if fmt.Sprint(got["lastActualizationAttemptDate"]) != "2026-09-01" {
+		t.Fatalf("lastActualizationAttemptDate=%v", got["lastActualizationAttemptDate"])
+	}
+	if asFloat(got["lastActualizationAttemptCount"]) != 2 {
+		t.Fatalf("lastActualizationAttemptCount=%v", got["lastActualizationAttemptCount"])
+	}
+	blocks, _ := got["trackerPersistFail"].(map[string]any)
+	if blocks["webull"] != true {
+		t.Fatalf("trackerPersistFail=%v", got["trackerPersistFail"])
+	}
+	if got["polygonApiKey"] != "secret" {
+		t.Fatalf("polygonApiKey=%v", got["polygonApiKey"])
+	}
+	if asFloat(got["initialCapital"]) != 25000 {
+		t.Fatalf("initialCapital=%v", got["initialCapital"])
+	}
+	if asFloat(got["watchThresholdPct"]) != 0.4 {
+		t.Fatalf("watchThresholdPct=%v", got["watchThresholdPct"])
+	}
+	if err := db.SaveSettings(got); err != nil {
+		t.Fatal(err)
+	}
+	blob := rawSettingsBlob(t, db)
+	for _, junk := range []string{"webullAllowEntries", "robinhoodEnabled", "autoEntryReserve"} {
+		if strings.Contains(blob, junk) {
+			t.Fatalf("save persisted junk %s: %s", junk, blob)
+		}
+	}
+	if !strings.Contains(blob, "lastActualizationDate") || !strings.Contains(blob, "trackerPersistFail") {
+		t.Fatalf("server keys dropped: %s", blob)
+	}
+}
+
+func TestAllowedSettingsKeysCoverDefaults(t *testing.T) {
+	for k := range defaultSettings() {
+		if !AllowedSettingsKey(k) {
+			t.Errorf("default key %s not on whitelist", k)
+		}
+	}
+	for _, k := range extraStoredSettingsKeys {
+		if !AllowedSettingsKey(k) {
+			t.Errorf("extra key %s not on whitelist", k)
+		}
+	}
+	for _, junk := range []string{"webullAllowEntries", "webullAllowExits", "webullEnabled",
+		"robinhoodAllowEntries", "robinhoodAllowExits", "robinhoodEnabled",
+		"allowNewEntries", "allowExits", "autoEntryReserve", "autoWindow"} {
+		if AllowedSettingsKey(junk) {
+			t.Errorf("broker/autotrade flag %s must not be a settings key", junk)
+		}
 	}
 }
 

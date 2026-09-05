@@ -4202,17 +4202,9 @@
         e.preventDefault();
         const form = e.target;
         const fd = new FormData(form);
-        const body = {};
-        for (const [k, v] of fd.entries()) body[k] = v;
-        if (form.enablePostClosePriceActualization) body.enablePostClosePriceActualization = form.enablePostClosePriceActualization.checked;
-        if (body.watchThresholdPct != null) body.watchThresholdPct = Number(body.watchThresholdPct);
-        if (body.indicatorPanePercent != null) body.indicatorPanePercent = Number(body.indicatorPanePercent);
-        if (body.initialCapital != null) body.initialCapital = Number(body.initialCapital);
         if (form.autoEnabled) {
           const updates = {
             enabled: form.autoEnabled.checked,
-            allowNewEntries: !!form.webullAllowEntries?.checked || !!form.robinhoodAllowEntries?.checked,
-            allowExits: !!form.webullAllowExits?.checked || !!form.robinhoodAllowExits?.checked,
             provider: fd.get('autoQuote') || 'finnhub',
             entryCapitalMode: fd.get('entryCapitalMode') || 'standard_safe',
             lowIBS: Number(fd.get('autoLowIBS')),
@@ -4230,8 +4222,23 @@
             state.autoConfig = { ...(state.autoConfig || {}), ...(saved && saved.config ? saved.config : updates) };
           } catch (err) { toast(err.message); }
         }
-        for (const k of ['autoEnabled', 'autoQuote', 'entryCapitalMode', 'autoAllowEntries', 'autoAllowExits',
-          'autoLowIBS', 'autoHighIBS', 'autoWindow', 'autoSlippage']) delete body[k];
+        const body = {};
+        const settingsKeys = ['watchThresholdPct', 'indicatorPanePercent', 'defaultMultiTickerSymbols',
+          'enablePostClosePriceActualization', 'resultsQuoteProvider', 'resultsRefreshProvider',
+          'enhancerProvider', 'initialCapital'];
+        for (const k of settingsKeys) {
+          if (k === 'enablePostClosePriceActualization') {
+            if (form.enablePostClosePriceActualization) body[k] = !!form.enablePostClosePriceActualization.checked;
+            continue;
+          }
+          if (form[k] == null) continue;
+          const v = fd.get(k);
+          if (v == null) continue;
+          body[k] = v;
+        }
+        if (body.watchThresholdPct != null) body.watchThresholdPct = Number(body.watchThresholdPct);
+        if (body.indicatorPanePercent != null) body.indicatorPanePercent = Number(body.indicatorPanePercent);
+        if (body.initialCapital != null) body.initialCapital = Number(body.initialCapital);
         try {
           await API.saveSettings(body);
           state.settings = { ...state.settings, ...body };
