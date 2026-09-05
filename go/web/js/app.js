@@ -2593,6 +2593,10 @@
     const autoCls = autoOn ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-200';
     const tradeCls = tradeOn ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-200';
     const connCls = health.status === 'OK' ? 'bg-emerald-100 text-emerald-800' : (health.status === 'EXPIRING_SOON' ? 'bg-amber-100 text-amber-800' : (health.status ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-700'));
+    const connectionNotice = health.status && health.status !== 'OK' ? `<div class="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+      <div><div class="font-semibold">${esc(brokerLabel(kind))}: ${esc(brokerHealthText(health) || 'подключение недоступно')}</div><div class="mt-1">Данные брокера сейчас недоступны. Технические детали находятся в раскрывающихся блоках ниже.</div></div>
+      ${kind === 'robinhood' ? '<button type="button" data-btab="connect" class="btn-secondary min-h-0 py-2">Подключить Robinhood</button>' : '<a href="/settings" data-nav data-settings-tab="autotrade" class="btn-secondary min-h-0 py-2">Открыть настройки</a>'}
+    </div>` : '';
     let body = '';
     if ((tab === 'overview' || tab === 'positions' || tab === 'orders' || tab === 'fills') && !dash) {
       body = '<p class="text-sm text-gray-500">Загрузка…</p>';
@@ -2883,6 +2887,7 @@
     }
     return `
       ${pageHeader(kind === 'robinhood' ? 'Кабинет Robinhood' : 'Кабинет Webull', kind === 'robinhood' ? 'Баланс счёта, позиции, ордера и копи-паст авторизация Robinhood' : 'Баланс счёта, позиции, ордера, история и логи исполнения по Webull', `<div class="flex flex-wrap items-center gap-2"><span class="rounded-full px-3 py-1 text-xs font-semibold ${autoCls}">Автоторговля: ${autoOn ? 'включена' : 'выключена'}</span><span class="rounded-full px-3 py-1 text-xs font-semibold ${tradeCls}" title="входы ${entriesOn ? 'да' : 'нет'} · выходы ${exitsOn ? 'да' : 'нет'}">Торговля через ${esc(brokerLabel(kind))}: ${tradeOn ? 'вкл' : 'выкл'}</span><span class="rounded-full px-3 py-1 text-xs font-semibold ${connCls}">Подключение: ${esc(brokerHealthText(health) || '—')}</span><button id="broker-refresh" class="icon-btn icon-btn-md icon-btn-glass" title="Обновить" aria-label="Обновить">${icon('refresh', 'w-4 h-4')}</button></div>`, kind)}
+      ${connectionNotice}
       <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
         ${analysisTabs(tabs, tab, 'data-btab')}
         <div class="p-4">${body}</div>
