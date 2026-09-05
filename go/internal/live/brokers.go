@@ -1,6 +1,9 @@
 package live
 
-import "sort"
+import (
+	"sort"
+	"strings"
+)
 
 type WebullExtras interface {
 	CreateToken() (map[string]any, error)
@@ -12,20 +15,12 @@ type WebullExtras interface {
 
 var brokerBoolFields = []string{"enabled", "allowNewEntries", "allowExits"}
 
-// sanitizeBrokers only ever changes per-broker flags from an explicit
-// "brokers" object in the request (P2-2, variant (a) of the roadmap). The
-// flat top-level fields (`enabled`/`allowNewEntries`/`allowExits`) used to be
-// migrated into brokers.webull whenever the request omitted "brokers" -
-// which meant the master "Включить автоторговлю" toggle on the Webull page
-// silently overwrote Webull's individual permissions, while Robinhood was
-// never touched. The master toggle already has its own effect
-// (autoTrading.enabled gates submitEvaluated for every broker at once), so
-// there is nothing for the flat-to-broker migration to add - it only ever
-// caused a surprise. Per-broker settings now change exclusively through an
-// explicit "brokers" payload; the nextFlat parameter is kept for signature
-// compatibility with callers but is intentionally unused here.
+// sanitizeBrokers merges an explicit "brokers" patch (P2-2) and then fills
+// missing brokers.webull keys from the flat next config (B-1). Nested keys
+// that are already set are never overwritten; robinhood is never filled
+// from flat. An omitted "brokers" object is not treated as "copy everything
+// onto webull".
 func sanitizeBrokers(input, current, nextFlat map[string]any) map[string]any {
-	_ = nextFlat
 	out := map[string]any{}
 	if cur, ok := current["brokers"].(map[string]any); ok {
 		for k, v := range cur {
@@ -34,30 +29,56 @@ func sanitizeBrokers(input, current, nextFlat map[string]any) map[string]any {
 			}
 		}
 	}
-	raw, hasNested := input["brokers"].(map[string]any)
-	if !hasNested {
-		return out
-	}
-	for name, v := range raw {
-		if name != "webull" && name != "robinhood" {
-			continue
-		}
-		patch, ok := v.(map[string]any)
-		if !ok {
-			continue
-		}
-		cur, _ := out[name].(map[string]any)
-		if cur == nil {
-			cur = map[string]any{}
-		}
-		for _, f := range brokerBoolFields {
-			if b, ok := patch[f].(bool); ok {
-				cur[f] = b
+	if raw, hasNested := input["brokers"].(map[string]any); hasNested {
+		for name, v := range raw {
+			if name != "webull" && name != "robinhood" {
+				continue
 			}
+			patch, ok := v.(map[string]any)
+			if !ok {
+				continue
+			}
+			cur, _ := out[name].(map[string]any)
+			if cur == nil {
+				cur = map[string]any{}
+			}
+			for _, f := range brokerBoolFields {
+				if b, ok := patch[f].(bool); ok {
+					cur[f] = b
+				}
+			}
+			out[name] = cur
 		}
-		out[name] = cur
 	}
+	fillMissingWebullFromFlat(out, nextFlat, input)
 	return out
+}
+
+func fillMissingWebullFromFlat(out, flat, input map[string]any) {
+	webull, _ := out["webull"].(map[string]any)
+	if webull == nil {
+		webull = map[string]any{}
+	}
+	filled := false
+	for _, f := range brokerBoolFields {
+		if cfgHas(webull, f) || !cfgHas(flat, f) {
+			continue
+		}
+		val := asBool(flat[f])
+		// Default enabled:false lives in every fresh settings blob. Writing it
+		// into brokers.webull would make cfgHas true and freeze the broker off
+		// through later master-toggle PATCHes (P2-2 must not overwrite a set
+		// nested key). Only persist a missing key when the PATCH named it or
+		// the flat value is true (legacy "this was on").
+		if !val && !cfgHas(input, f) {
+			continue
+		}
+		webull[f] = val
+		filled = true
+	}
+	if filled {
+		out["webull"] = webull
+	}
 }
 
 func brokerFlags(cfg map[string]any, name string) (enabled, allowEntries, allowExits bool) {
@@ -87,6 +108,40 @@ func brokerFlags(cfg map[string]any, name string) (enabled, allowEntries, allowE
 		return asBool(cfg["enabled"]), allowFlag(cfg, "allowNewEntries"), allowFlag(cfg, "allowExits")
 	}
 	return false, false, false
+}
+
+func (e *Engine) anyBrokerLive(cfg map[string]any) bool {
+	if e == nil {
+		return false
+	}
+	for _, name := range []string{"webull", "robinhood"} {
+		enabled, _, _ := brokerFlags(cfg, name)
+		if enabled && e.brokerHasWorkingToken(name) {
+			return true
+		}
+	}
+	return false
+}
+
+func (e *Engine) brokerHasWorkingToken(name string) bool {
+	st := e.storedHealthStatus(name)
+	if st == HealthNeedsReauth || st == HealthMissing {
+		return false
+	}
+	if e.DB == nil {
+		return false
+	}
+	if name == "robinhood" {
+		row := e.DB.GetRobinhoodOAuth()
+		return strings.TrimSpace(row.AccessToken) != "" || strings.TrimSpace(row.RefreshToken) != ""
+	}
+	tok := e.TokenStatus()
+	has, _ := tok["hasToken"].(bool)
+	return has
+}
+
+func (e *Engine) evalLive(cfg map[string]any) bool {
+	return asBool(cfg["enabled"]) && e.anyBrokerLive(cfg)
 }
 
 func anyAllow(cfg map[string]any, key string) bool {

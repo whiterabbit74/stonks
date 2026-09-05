@@ -243,14 +243,13 @@ func (e *Engine) Evaluate() EvalResult {
 	}
 	brokerTrades, journalErr := e.DB.ListTrades("broker_trades")
 	if journalErr != nil {
-		enabled, _ := cfg["enabled"].(bool)
 		return EvalResult{
 			EvaluatedAt: e.now().UTC().Format(time.RFC3339Nano),
 			TodayKey:    today,
 			AutoTrading: cfg,
 			Symbols:     symbols,
 			Decision:    map[string]any{"action": "none", "reason": "journal_unavailable", "symbol": nil, "candidate": nil},
-			Live:        enabled,
+			Live:        e.evalLive(cfg),
 		}
 	}
 	open, held, heldErr := e.booksFor("webull", e.defaultBroker(), brokerTrades, backgroundWindow())
@@ -297,7 +296,6 @@ func (e *Engine) Evaluate() EvalResult {
 	if reason, _ := decision["reason"].(string); reason == "empty_symbol_universe" || reason == "broker_position_not_in_journal" {
 		e.logAuto("execution_skipped", "", map[string]any{"symbol": decision["symbol"], "reason": reason})
 	}
-	enabled, _ := cfg["enabled"].(bool)
 	return EvalResult{
 		EvaluatedAt: e.now().UTC().Format(time.RFC3339Nano),
 		TodayKey:    today,
@@ -306,7 +304,7 @@ func (e *Engine) Evaluate() EvalResult {
 		Quotes:      quotes,
 		OpenTrade:   open,
 		Decision:    decision,
-		Live:        enabled,
+		Live:        e.evalLive(cfg),
 	}
 }
 

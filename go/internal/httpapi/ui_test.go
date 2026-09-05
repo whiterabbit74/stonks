@@ -668,11 +668,18 @@ func TestSetFormSendsOnlyKnownSettingsAndNestedBrokerFlags(t *testing.T) {
 	if strings.Contains(form, "for (const [k, v] of fd.entries())") {
 		t.Fatal("P-15: set-form must not dump FormData into PATCH /api/settings")
 	}
-	if !strings.Contains(form, "webull: { enabled: !!form.webullEnabled?.checked, allowNewEntries: !!form.webullAllowEntries?.checked, allowExits: !!form.webullAllowExits?.checked }") {
-		t.Fatal("B-6: set-form must always send enabled/allowNewEntries/allowExits for webull")
+	if strings.Contains(form, "webull: { enabled: !!form.webullEnabled?.checked") ||
+		strings.Contains(form, "robinhood: { enabled: !!form.robinhoodEnabled?.checked") {
+		t.Fatal("B-2: set-form must not always send all six broker flags")
 	}
-	if !strings.Contains(form, "robinhood: { enabled: !!form.robinhoodEnabled?.checked, allowNewEntries: !!form.robinhoodAllowEntries?.checked, allowExits: !!form.robinhoodAllowExits?.checked }") {
-		t.Fatal("B-6: set-form must always send enabled/allowNewEntries/allowExits for robinhood")
+	if !strings.Contains(a, "function brokerFlagsPatch(") {
+		t.Fatal("missing brokerFlagsPatch — compare checkboxes to brokerFlag and omit unchanged keys")
+	}
+	if !strings.Contains(form, "brokerFlagsPatch(") {
+		t.Fatal("set-form must build brokers via brokerFlagsPatch")
+	}
+	if !strings.Contains(form, "updates.brokers") {
+		t.Fatal("set-form must assign brokers only when the patch is non-empty (only lowIBS changed → no brokers)")
 	}
 }
 

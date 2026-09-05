@@ -29,7 +29,7 @@ const names = [
   'toNum', 'fmt', 'fmtUsd', 'asObject', 'firstDefined', 'asRows',
   'formatRatioPercent', 'extractBalanceSummary', 'normalizePositions',
   'normalizeMonitorMarginPercent', 'applyMonitorMarginSimulation',
-  'esc', 'pnlClass', 'tradeTicker', 'tradesTable', 'brokerFlag',
+  'esc', 'pnlClass', 'tradeTicker', 'tradesTable', 'brokerFlag', 'brokerFlagsPatch',
 ];
 const consts = [];
 if (src.includes('const MONITOR_MARGIN_OPTIONS')) {
@@ -116,6 +116,18 @@ expectEq('brokerFlag.webull.allowExits', fns.brokerFlag(legacy, 'webull', 'allow
 expectEq('brokerFlag.robinhood.enabled', fns.brokerFlag(legacy, 'robinhood', 'enabled'), false);
 expectEq('brokerFlag.robinhood.allowNewEntries', fns.brokerFlag(legacy, 'robinhood', 'allowNewEntries'), false);
 expectEq('brokerFlag.robinhood.allowExits', fns.brokerFlag(legacy, 'robinhood', 'allowExits'), false);
+
+const matchingForm = {
+  webullEnabled: { checked: true }, webullAllowEntries: { checked: true }, webullAllowExits: { checked: true },
+  robinhoodEnabled: { checked: false }, robinhoodAllowEntries: { checked: false }, robinhoodAllowExits: { checked: false },
+};
+const emptyPatch = fns.brokerFlagsPatch(legacy, matchingForm);
+if (Object.keys(emptyPatch).length) fail.push('unchanged brokers must omit patch ' + JSON.stringify(emptyPatch));
+const flipped = { ...matchingForm, webullEnabled: { checked: false } };
+const webullPatch = fns.brokerFlagsPatch(legacy, flipped);
+expectEq('brokerFlagsPatch.webull.enabled', webullPatch.webull && webullPatch.webull.enabled, false);
+if (webullPatch.robinhood) fail.push('unchanged robinhood must be omitted');
+if (webullPatch.webull && 'allowNewEntries' in webullPatch.webull) fail.push('unchanged webull allow must be omitted');
 
 const out = {
   appPath,

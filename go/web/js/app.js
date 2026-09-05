@@ -811,6 +811,20 @@
     if (name === 'webull') return ac && ac[key] === true;
     return false;
   }
+  function brokerFlagsPatch(ac, form) {
+    const brokers = {};
+    ['webull', 'robinhood'].forEach((id) => {
+      const patch = {};
+      [['enabled', id + 'Enabled'], ['allowNewEntries', id + 'AllowEntries'], ['allowExits', id + 'AllowExits']].forEach(([key, name]) => {
+        const el = form[name];
+        if (!el) return;
+        const next = !!el.checked;
+        if (next !== brokerFlag(ac, id, key)) patch[key] = next;
+      });
+      if (Object.keys(patch).length) brokers[id] = patch;
+    });
+    return brokers;
+  }
   function levOptions(selected) {
     const cur = Number(selected) || 200;
     return LEV_PCT.map((n) => {
@@ -4232,11 +4246,9 @@
             executionWindowSeconds: Number(fd.get('autoWindow')),
             maxSlippageBps: Number(fd.get('autoSlippage')),
             entryReservePct: Number(fd.get('autoEntryReserve')) / 100,
-            brokers: {
-              webull: { enabled: !!form.webullEnabled?.checked, allowNewEntries: !!form.webullAllowEntries?.checked, allowExits: !!form.webullAllowExits?.checked },
-              robinhood: { enabled: !!form.robinhoodEnabled?.checked, allowNewEntries: !!form.robinhoodAllowEntries?.checked, allowExits: !!form.robinhoodAllowExits?.checked },
-            },
           };
+          const brokers = brokerFlagsPatch(state.autoConfig || {}, form);
+          if (Object.keys(brokers).length) updates.brokers = brokers;
           try {
             const saved = await API.saveAutoConfig(updates);
             state.autoConfig = { ...(state.autoConfig || {}), ...(saved && saved.config ? saved.config : updates) };
