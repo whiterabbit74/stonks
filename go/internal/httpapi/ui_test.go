@@ -763,11 +763,11 @@ func TestBrokerPageIcons(t *testing.T) {
 	}
 	a := string(app)
 	for _, row := range []string{
-		"{ to: '/webull', label: 'Webull', icon: 'webull' }",
-		"{ to: '/robinhood', label: 'Robinhood', icon: 'robinhood' }",
+		"to: '/webull', label: 'Webull', icon: 'webull'",
+		"to: '/robinhood', label: 'Robinhood', icon: 'robinhood'",
 	} {
-		if strings.Count(a, row) < 2 {
-			t.Errorf("nav must use distinct broker icon %q in TABS and MOBILE_MENU", row)
+		if strings.Count(a, row) != 1 {
+			t.Errorf("NAV must define distinct broker icon once: %q", row)
 		}
 	}
 	start := strings.Index(a, "const PATHS")
