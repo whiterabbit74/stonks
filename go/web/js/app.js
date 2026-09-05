@@ -755,6 +755,9 @@
   function tradeSourceText(source) {
     return ({ manual: 'Вручную', import: 'Импорт', webull: 'Webull', robinhood: 'Robinhood', strategy: 'Стратегия' })[String(source || '').toLowerCase()] || source || '—';
   }
+  function tokenSourceText(source) {
+    return ({ db: 'хранилище', env: 'переменная окружения', none: 'не задан' })[String(source || '').toLowerCase()] || source || '—';
+  }
   function brokerHealthText(h) {
     const st = String((h && h.status) || '');
     if (st === 'EXPIRING_SOON') {
@@ -2714,7 +2717,7 @@
         : `<div class="rounded-xl bg-gray-50 p-3 dark:bg-gray-950/40">
               <div class="text-xs uppercase tracking-wide text-gray-500">Подключение (Webull)</div>
               <div class="mt-1 text-sm">${conn.configured || tok.hasToken || tok.present ? 'Webull подключен' : 'Webull не настроен'}</div>
-              <div class="mt-1 text-sm">Токен: ${tok.hasToken || tok.present ? 'есть' : 'не задан'} • источник: ${esc(tok.source || '—')} • проверка: ${esc(tok.lastCheckStatus || '—')}</div>
+              <div class="mt-1 text-sm">Токен: ${tok.hasToken || tok.present ? 'есть' : 'не задан'} • источник: ${esc(tokenSourceText(tok.source))} • проверка: ${esc(brokerHealthText({ status: tok.lastCheckStatus }) || tok.lastCheckStatus || '—')}</div>
               <div class="text-xs text-gray-500 mt-1">истекает ${esc(formatDateTimeET(tok.expiresAt) || tok.expiresAt || '—')} · осталось: ${esc(tok.daysLeft != null ? tok.daysLeft + ' дн.' : '—')} · последняя проверка: ${esc(formatDateTimeET(tok.lastCheckAt))}</div>
               <div class="mt-2 flex flex-wrap gap-2">
                 <button type="button" id="auto-token-check" class="btn-secondary min-h-0 py-2">Проверить токен</button>
