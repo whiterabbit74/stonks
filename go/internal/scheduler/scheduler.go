@@ -463,7 +463,8 @@ func reportMissedTelegram(db *store.DB, eng *live.Engine, now time.Time, today, 
 			_ = eng.Send("", fmt.Sprintf("<b>Пропущен T-11</b>\nСводка за 11 минут до закрытия не ушла (until=%d).", until))
 		}
 	case "t1":
-		if t1Sent || db.T1ExecutionFinished(chat, today) {
+		finished, _ := db.T1ExecutionFinished(chat, today)
+		if t1Sent || finished {
 			return
 		}
 		settings := db.Settings()
