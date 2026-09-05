@@ -311,33 +311,25 @@ func (e *Engine) Aggregate(minutesUntilClose int, opts AggregateOpts) (SimulateR
 
 func execOutcomes(broker any) map[string]OrderResult {
 	out := map[string]OrderResult{}
-	switch br := broker.(type) {
-	case OrderResult:
-		out["webull"] = br
-	case map[string]any:
-		if _, hasSubmitted := br["submitted"]; hasSubmitted && br["robinhood"] == nil && br["webull"] == nil {
+	br, ok := broker.(map[string]any)
+	if !ok {
+		return out
+	}
+	if _, hasSubmitted := br["submitted"]; hasSubmitted && br["robinhood"] == nil && br["webull"] == nil {
+		return out
+	}
+	for name, v := range br {
+		switch one := v.(type) {
+		case OrderResult:
+			out[name] = one
+		case map[string]any:
 			or := OrderResult{}
-			or.Submitted, _ = br["submitted"].(bool)
-			or.Quantity = asFloat(br["quantity"])
-			if br["error"] != nil {
-				or.Error = fmt.Sprint(br["error"])
+			or.Submitted, _ = one["submitted"].(bool)
+			or.Quantity = asFloat(one["quantity"])
+			if one["error"] != nil {
+				or.Error = fmt.Sprint(one["error"])
 			}
-			out["webull"] = or
-			return out
-		}
-		for name, v := range br {
-			switch one := v.(type) {
-			case OrderResult:
-				out[name] = one
-			case map[string]any:
-				or := OrderResult{}
-				or.Submitted, _ = one["submitted"].(bool)
-				or.Quantity = asFloat(one["quantity"])
-				if one["error"] != nil {
-					or.Error = fmt.Sprint(one["error"])
-				}
-				out[name] = or
-			}
+			out[name] = or
 		}
 	}
 	return out

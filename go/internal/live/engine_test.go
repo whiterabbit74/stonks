@@ -193,6 +193,31 @@ func TestAggregateT1NamesRobinhoodSubmit(t *testing.T) {
 	}
 }
 
+func TestExecOutcomesDoesNotAssumeWebull(t *testing.T) {
+	got := execOutcomes(OrderResult{Submitted: true, Quantity: 2})
+	if _, ok := got["webull"]; ok {
+		t.Fatalf("a bare OrderResult must not be labeled webull: %+v", got)
+	}
+	named := execOutcomes(map[string]any{"robinhood": OrderResult{Submitted: true, Quantity: 2}})
+	if !named["robinhood"].Submitted || named["webull"].Submitted {
+		t.Fatalf("name-keyed map must keep robinhood: %+v", named)
+	}
+}
+
+func TestAggregateT1ReportsBothBrokerSubmits(t *testing.T) {
+	e, webull, rh := dualBrokerEngine(t, entryBars)
+	res, err := e.Aggregate(1, AggregateOpts{ForceSend: true, DryRun: false, UpdateState: false})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(webull.Orders) == 0 || len(rh.Orders) == 0 {
+		t.Fatalf("both brokers must submit: wb=%d rh=%d text=%s", len(webull.Orders), len(rh.Orders), res.Text)
+	}
+	if !strings.Contains(res.Text, "Webull") || !strings.Contains(res.Text, "Robinhood") {
+		t.Fatalf("T-1 report must name both submits, got %s", res.Text)
+	}
+}
+
 func TestAggregateT11LogsMarkerSaveFailure(t *testing.T) {
 	db, e, _ := testEngine(t, entryBars)
 	e.Telegram = &MemoryTelegram{}
