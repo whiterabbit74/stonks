@@ -220,7 +220,10 @@ const Charts = {
     const x = extra || {};
     return this.track(LightweightCharts.createChart(container, {
       autoSize: true,
-      layout: { background: { color: c.bg }, textColor: c.text, fontFamily: 'Inter, system-ui, sans-serif' },
+      layout: {
+        background: { color: c.bg }, textColor: c.text, fontFamily: 'Inter, system-ui, sans-serif',
+        panes: { separatorColor: c.bg, separatorHoverColor: c.bg },
+      },
       grid: { vertLines: { color: c.grid }, horzLines: { color: c.grid } },
       rightPriceScale: { borderColor: c.border },
       timeScale: { borderColor: c.border, timeVisible: !!x.timeVisible, secondsVisible: false, rightOffset: this.rightOffsetOf(x) },
