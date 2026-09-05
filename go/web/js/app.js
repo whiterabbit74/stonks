@@ -767,6 +767,12 @@
   function trackerStatusText(status) {
     return ({ execution_unknown: 'исполнение не подтверждено', unresolved: 'требует ручного разбора' })[String(status || '')] || status || '—';
   }
+  function orderSideText(side) {
+    return ({ BUY: 'Покупка', SELL: 'Продажа', buy: 'Покупка', sell: 'Продажа' })[String(side || '')] || side || '—';
+  }
+  function orderStatusText(status) {
+    return ({ NEW: 'Новый', OPEN: 'Открыт', PENDING: 'В обработке', PARTIALLY_FILLED: 'Частично исполнен', FILLED: 'Исполнен', CANCELED: 'Отменён', CANCELLED: 'Отменён', REJECTED: 'Отклонён', EXPIRED: 'Истёк' })[String(status || '').toUpperCase()] || status || '—';
+  }
   // Mirrors go/internal/live/telegram.go noActionReasonText for the reasons
   // the autotrade tile shows. One dictionary for the whole SPA.
   function decisionReasonText(reason) {
@@ -2617,7 +2623,7 @@
     } else if (tab === 'orders') {
       const orders = normalizeOrders(state.dashboard && state.dashboard.openOrders);
       const orderRows = orders.map((o) => `<tr>
-        <td class="font-mono">${esc(o.symbol)}</td><td>${esc(o.side)}</td><td>${esc(o.status)}</td>
+        <td class="font-mono">${esc(o.symbol)}</td><td>${esc(orderSideText(o.side))}</td><td>${esc(orderStatusText(o.status))}</td>
         <td>${o.quantity == null ? '—' : esc(o.quantity)}</td><td>${o.filledQuantity == null ? '—' : esc(o.filledQuantity)}</td>
         <td>${esc(o.orderType)}</td><td>${esc(o.instrumentType)}</td><td>${esc(o.comboType)}</td>
         <td>${esc(o.entrustType)}</td><td>${esc(o.timeInForce)}</td><td>${esc(o.tradingSession)}</td>
@@ -2631,7 +2637,7 @@
       const fills = normalizeOrders(state.dashboard && state.dashboard.orderHistory);
       const fillRows = fills.map((o) => `<tr>
         <td class="text-xs">${esc(formatDateTimeET(o.filledAt || o.createdAt))}</td>
-        <td class="font-mono">${esc(o.symbol)}</td><td>${esc(o.side)}</td><td>${esc(o.status)}</td>
+        <td class="font-mono">${esc(o.symbol)}</td><td>${esc(orderSideText(o.side))}</td><td>${esc(orderStatusText(o.status))}</td>
         <td>${o.filledQuantity == null ? '—' : esc(o.filledQuantity)}</td>
         <td>${o.quantity == null ? '—' : esc(o.quantity)}</td>
         <td>${esc(o.orderType)}</td><td>${esc(o.instrumentType)}</td><td>${esc(o.comboType)}</td>
@@ -2664,7 +2670,7 @@
         const actions = stuck && o.clientOrderId
           ? `<button type="button" data-resolve-tracker="${oid}" data-resolve-outcome="filled" class="compact inline-flex min-w-0 min-h-0 px-1 py-1 text-xs text-emerald-600 mr-2">Исполнено у брокера</button><button type="button" data-resolve-tracker="${oid}" data-resolve-outcome="absent" class="compact inline-flex min-w-0 min-h-0 px-1 py-1 text-xs text-red-600">Заявки нет</button>`
           : '';
-        return `<tr class="${stuck ? 'bg-amber-50 dark:bg-amber-950/30' : ''}"><td>${esc(o.symbol || '')}</td><td>${esc(o.broker || '')}</td><td>${esc(o.action || '')}</td><td class="${stuck ? 'font-semibold text-amber-700 dark:text-amber-400' : ''}">${esc(trackerStatusText(o.status))}</td><td>${esc(o.quantity ?? '')}</td><td>${esc(o.startedAt || o.started_at || '')}</td><td>${actions}</td></tr>`;
+        return `<tr class="${stuck ? 'bg-amber-50 dark:bg-amber-950/30' : ''}"><td>${esc(o.symbol || '')}</td><td>${esc(o.broker || '')}</td><td>${esc(orderSideText(o.action))}</td><td class="${stuck ? 'font-semibold text-amber-700 dark:text-amber-400' : ''}">${esc(trackerStatusText(o.status))}</td><td>${esc(o.quantity ?? '')}</td><td>${esc(o.startedAt || o.started_at || '')}</td><td>${actions}</td></tr>`;
       }).join('');
       const persistBlocks = (state.settings && state.settings.trackerPersistFail) || {};
       const persistBlockedBrokers = Object.keys(persistBlocks).filter((b) => persistBlocks[b]);
