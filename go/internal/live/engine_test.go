@@ -141,6 +141,20 @@ func TestSimulateDoesNotPlace(t *testing.T) {
 	}
 }
 
+func TestAggregateJournalReadErrorIsNotNoWatches(t *testing.T) {
+	db, e, _ := testEngine(t, entryBars)
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	res, err := e.Aggregate(11, AggregateOpts{ForceSend: true, DryRun: true})
+	if res.Reason == "no_watches" {
+		t.Fatal("a failed journal read must not skip the day as no_watches")
+	}
+	if res.Reason != "journal_unavailable" {
+		t.Fatalf("reason=%q err=%v want journal_unavailable", res.Reason, err)
+	}
+}
+
 func TestT1MismatchBlocksExecute(t *testing.T) {
 	dir := t.TempDir()
 	db, err := store.Open(filepath.Join(dir, "t.db"))

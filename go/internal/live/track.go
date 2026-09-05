@@ -90,7 +90,11 @@ func (e *Engine) PollTrackers() int {
 		return 0
 	}
 	pending, err := e.DB.ListPendingTrackers()
-	if err != nil || len(pending) == 0 {
+	if err != nil {
+		e.logAuto("poll_trackers_failed", "", map[string]any{"error": err.Error()})
+		return 0
+	}
+	if len(pending) == 0 {
 		return 0
 	}
 	n := 0
@@ -105,6 +109,7 @@ func (e *Engine) PollTrackers() int {
 func (e *Engine) ResumeTrackers() {
 	pending, err := e.DB.ListPendingTrackers()
 	if err != nil {
+		e.logAuto("poll_trackers_failed", "", map[string]any{"error": err.Error()})
 		return
 	}
 	for _, t := range pending {

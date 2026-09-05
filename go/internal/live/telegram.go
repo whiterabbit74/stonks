@@ -165,11 +165,19 @@ func (e *Engine) Aggregate(minutesUntilClose int, opts AggregateOpts) (SimulateR
 			return out, nil
 		}
 	}
-	watches, _ := e.DB.ListWatches()
+	watches, err := e.DB.ListWatches()
+	if err != nil {
+		out.Reason = "journal_unavailable"
+		return out, err
+	}
 	// An empty watch list must not swallow a day that already has an open
 	// broker position: that position still needs its exit decided and
 	// reported, watches or not. See P0-5 in AUTOTRADE_ROADMAP.md.
-	brokerTrades, _ := e.DB.ListTrades("broker_trades")
+	brokerTrades, err := e.DB.ListTrades("broker_trades")
+	if err != nil {
+		out.Reason = "journal_unavailable"
+		return out, err
+	}
 	hasOpenBrokerTrade := store.OpenBrokerTrade(brokerTrades) != nil
 	if len(watches) == 0 && !hasOpenBrokerTrade {
 		emaAlerts := e.EvaluateEMAAlerts()
