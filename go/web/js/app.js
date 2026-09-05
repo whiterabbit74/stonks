@@ -604,7 +604,7 @@
     const today = nyseParts().iso;
     setModal(`<div class="modal-backdrop"><div class="modal-card max-w-lg">
       <h3 class="text-lg font-semibold mb-2">Закрыть мониторинг: ${esc(symbol || '')}</h3>
-      <p class="text-sm text-gray-500 mb-3">Это действие закроет только нашу monitor-сделку. Webull-ордер не отправляется.</p>
+      <p class="text-sm text-gray-500 mb-3">Это действие закроет только нашу сделку мониторинга. Ордер Webull не отправляется.</p>
       <div id="cm-err" class="text-sm text-red-600 mb-2 hidden"></div>
       <label class="block text-sm mb-2">Дата выхода (ET)<input id="cm-date" class="field mt-1" value="${esc(today)}" placeholder="YYYY-MM-DD" /></label>
       <label class="block text-sm mb-2">Цена выхода<input id="cm-price" type="number" step="0.01" class="field mt-1" /></label>
