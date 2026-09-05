@@ -1963,12 +1963,12 @@
   function nestedBacHTML() {
     const f = state.nested.bac;
     return `<form id="bac-form" class="flex flex-wrap items-end gap-2 mb-3">
-      <label class="text-xs">lowIBS<input name="lowIBS" type="number" step="0.01" min="0" max="1" value="${esc(f.lowIBS)}" class="field mt-1 w-24" /></label>
-      <label class="text-xs">highIBS<input name="highIBS" type="number" step="0.01" min="0" max="1" value="${esc(f.highIBS)}" class="field mt-1 w-24" /></label>
+      <label class="text-xs">Нижний IBS<input name="lowIBS" type="number" step="0.01" min="0" max="1" value="${esc(f.lowIBS)}" class="field mt-1 w-24" /></label>
+      <label class="text-xs">Верхний IBS<input name="highIBS" type="number" step="0.01" min="0" max="1" value="${esc(f.highIBS)}" class="field mt-1 w-24" /></label>
       <label class="text-xs">Макс. дни<input name="maxHoldDays" type="number" min="1" value="${esc(f.maxHoldDays)}" class="field mt-1 w-24" /></label>
       <label class="text-xs">Маржа, %<input name="marginPct" type="number" min="1" value="${esc(f.marginPct)}" class="field mt-1 w-24" /></label>
       <button class="btn-primary min-h-0 py-2">Посчитать</button>
-    </form><div id="bac-out">Buy at close…</div>`;
+    </form><div id="bac-out">Покупка на закрытии…</div>`;
   }
   function nestedBac4HTML() {
     const f = state.nested.bac4;
@@ -1976,7 +1976,7 @@
       <label class="text-xs flex-1 min-w-[12rem]">Тикеры<input name="tickers" value="${esc(f.tickers)}" class="field mt-1 w-full" /></label>
       <label class="text-xs">Плечо, %<input name="leverage" type="range" min="100" max="300" step="25" value="${esc(f.leverage)}" class="mt-2 w-40" /><span id="bac4-lev-lab" class="ml-1">${esc(f.leverage)}%</span></label>
       <button class="btn-primary min-h-0 py-2">Посчитать</button>
-    </form><div id="bac4-out">Buy at close 4…</div>`;
+    </form><div id="bac4-out">Покупка на закрытии 4…</div>`;
   }
   function nestedNslHTML() {
     const f = state.nested.nsl;
@@ -1998,7 +1998,7 @@
     const f = state.nested.opt;
     return `<form id="nested-opt-form" class="flex flex-wrap items-end gap-2 mb-3">
       <label class="text-xs">Страйк, %<input name="strikePct" type="number" value="${esc(f.strikePct)}" class="field mt-1 w-24" /></label>
-      <label class="text-xs">IV adj, %<input name="volAdjPct" type="number" value="${esc(f.volAdjPct)}" class="field mt-1 w-24" /></label>
+      <label class="text-xs">Корр. IV, %<input name="volAdjPct" type="number" value="${esc(f.volAdjPct)}" class="field mt-1 w-24" /></label>
       <label class="text-xs">Капитал, %<input name="capitalPct" type="number" value="${esc(f.capitalPct)}" class="field mt-1 w-24" /></label>
       <label class="text-xs">Экспирация, нед.<input name="expirationWeeks" type="number" value="${esc(f.expirationWeeks)}" class="field mt-1 w-24" /></label>
       <label class="text-xs">Макс. дни<input name="maxHoldingDays" type="number" value="${esc(f.maxHoldingDays)}" class="field mt-1 w-24" /></label>
@@ -2661,7 +2661,7 @@
         <td class="text-xs">${esc(formatDateTimeET(o.createdAt))}</td>
       </tr>`).join('');
       body = `${orderRows ? `<div class="overflow-auto"><table class="trades"><thead><tr><th>Тикер</th><th>Направление</th><th>Статус</th><th>Кол-во</th><th>Исполнено</th><th>Тип</th><th>Инструмент</th><th>Комбинация</th><th>Поручение</th><th>Срок</th><th>Сессия</th><th>Цена</th><th>ID ордера</th><th>ID клиента</th><th>Создан</th></tr></thead><tbody>${orderRows}</tbody></table></div>` : emptyBrokerTable(['Тикер', 'Направление', 'Статус', 'Кол-во', 'Исполнено', 'Тип', 'Инструмент', 'Комбинация', 'Поручение', 'Срок', 'Сессия', 'Цена', 'ID ордера', 'ID клиента', 'Создан'], 'Активных ордеров нет')}
-      ${rawJsonBlock('Raw open orders payload', state.dashboard && state.dashboard.openOrders)}`;
+      ${rawJsonBlock('Исходные данные открытых ордеров', state.dashboard && state.dashboard.openOrders)}`;
     } else if (tab === 'fills') {
       const fills = normalizeOrders(state.dashboard && state.dashboard.orderHistory);
       const fillRows = fills.map((o) => `<tr>
@@ -2836,7 +2836,7 @@
         </div>
         ${issues.length ? issues.map((i) => `<div class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 mb-2">${esc(i.message || i.code)}</div>`).join('') : ''}
         ${wrows ? `<div class="overflow-auto"><table class="trades"><thead><tr><th>Тикер</th><th>Открытие</th><th>Макс.</th><th>Мин.</th><th>Цена</th><th>Текущий IBS</th><th>Пред. закрытие</th><th>Изменение</th><th>Вход</th><th>Вход, IBS &lt;</th><th>Выход, IBS &gt;</th><th>Позиция</th><th>Обновлено</th><th>Источник</th><th>Действие</th></tr></thead><tbody>${wrows}</tbody></table></div>` : emptyBrokerTable(['Тикер', 'Открытие', 'Макс.', 'Мин.', 'Цена', 'Текущий IBS', 'Пред. закрытие', 'Изменение', 'Вход', 'Вход, IBS &lt;', 'Выход, IBS &gt;', 'Позиция', 'Обновлено', 'Источник', 'Действие'], 'Нет отслеживаемых акций')}
-        ${rawJsonBlock('Raw monitoring payload', { watches: state.watches, quotes: state.brokerQuotes, consistency: state.consistency })}`;
+        ${rawJsonBlock('Исходные данные мониторинга', { watches: state.watches, quotes: state.brokerQuotes, consistency: state.consistency })}`;
     } else {
       const pack = state.autoLogs || {};
       const lines = (rows) => (rows || []).map((l) => {
