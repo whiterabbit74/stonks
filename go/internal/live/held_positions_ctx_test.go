@@ -2,6 +2,7 @@ package live
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
@@ -117,5 +118,31 @@ func TestSizeOrderCancelsAccountReadViaContext(t *testing.T) {
 	}
 	if err == nil {
 		t.Fatal("cancelled sizing account read must return an error")
+	}
+}
+
+func TestSizeOrderCancelsRobinhoodAccountRead(t *testing.T) {
+	_, e, _ := testEngine(t, nil)
+	e.Sleep = func(time.Duration) {}
+	b := &RobinhoodBroker{
+		account: "RH1",
+		CallCtx: func(ctx context.Context, name string, args map[string]any) (json.RawMessage, error) {
+			if name == "get_portfolio" {
+				<-ctx.Done()
+				return nil, ctx.Err()
+			}
+			return json.Marshal(map[string]any{})
+		},
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 80*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	_, err := e.sizeOrder("entry", "AAPL", e.AutoConfig(), 10, b, windowFromCtx(ctx))
+	elapsed := time.Since(start)
+	if elapsed > time.Second {
+		t.Fatalf("sizeOrder took %s; Robinhood AccountCtx must follow the attempt context", elapsed)
+	}
+	if err == nil {
+		t.Fatal("cancelled Robinhood account read must return an error")
 	}
 }
