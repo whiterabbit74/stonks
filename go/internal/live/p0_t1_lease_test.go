@@ -16,7 +16,7 @@ func TestT1LeaseExpiresAllowsRetryExecute(t *testing.T) {
 	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
 	db, e, br := testEngine(t, bars)
 	e.Sleep = func(time.Duration) {}
-	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true})
+	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true})
 	today := "2026-09-01"
 	prev := T1LeaseTTL
 	T1LeaseTTL = time.Second
@@ -42,7 +42,7 @@ func TestT1ExecutionFinishedRetriesReportOnly(t *testing.T) {
 	e.Sleep = func(time.Duration) {}
 	tg := e.Telegram.(*MemoryTelegram)
 	tg.Fail = errors.New("telegram down")
-	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true})
+	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true})
 	_, err := e.Aggregate(1, t1Opts())
 	if err == nil {
 		t.Fatal("want telegram error")
@@ -84,7 +84,7 @@ func TestT1PendingTrackerSkipsSecondExecute(t *testing.T) {
 	db, e, br := testEngine(t, bars)
 	e.Sleep = func(time.Duration) {}
 	br.ListingLag = true
-	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true})
+	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true})
 	if _, err := e.Aggregate(1, t1Opts()); err != nil {
 		t.Fatal(err)
 	}
@@ -107,7 +107,7 @@ func TestT1RetryReconcilesOpenOrders(t *testing.T) {
 	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
 	db, e, br := testEngine(t, bars)
 	e.Sleep = func(time.Duration) {}
-	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true})
+	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true})
 	if _, err := e.Aggregate(1, t1Opts()); err != nil {
 		t.Fatal(err)
 	}
@@ -133,7 +133,7 @@ func TestTrackerSaveFailureSurvivesRestart(t *testing.T) {
 	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
 	db, e, br := testEngine(t, bars)
 	e.Sleep = func(time.Duration) {}
-	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true})
+	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true})
 	blockOrderTrackerInserts(t, e)
 	res := e.Execute("t1")
 	unblockOrderTrackerInserts(t, e)
@@ -147,7 +147,7 @@ func TestTrackerSaveFailureSurvivesRestart(t *testing.T) {
 	e2.ChatID = e.ChatID
 	e2.Now = e.Now
 	e2.Sleep = func(time.Duration) {}
-	e2.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true})
+	e2.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true})
 	res2 := e2.Execute("t1")
 	if res2.Executed || len(br.Orders) != 1 {
 		t.Fatalf("persisted tracker block must survive restart: executed=%v orders=%d", res2.Executed, len(br.Orders))

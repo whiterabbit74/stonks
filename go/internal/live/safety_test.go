@@ -51,7 +51,7 @@ func TestBrokerPositionBlocksEntry(t *testing.T) {
 	_, e, br := testEngine(t, bars)
 	br.Pos = []any{map[string]any{"symbol": "MSFT", "quantity": 2.0}}
 	e.PatchAutoConfig(map[string]any{
-		"enabled": true, "lowIBS": 0.9, "allowNewEntries": true, "allowExits": true,
+		"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true, "allowExits": true,
 	})
 	ev := e.Evaluate()
 	if fmt.Sprint(ev.Decision["action"]) == "entry" {
@@ -64,7 +64,7 @@ func TestBrokerPositionLookupErrorBlocksEntry(t *testing.T) {
 	_, e, br := testEngine(t, bars)
 	br.FailPositions = errors.New("timeout")
 	e.PatchAutoConfig(map[string]any{
-		"enabled": true, "lowIBS": 0.9, "allowNewEntries": true,
+		"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true,
 	})
 	ev := e.Evaluate()
 	if fmt.Sprint(ev.Decision["action"]) != "none" || fmt.Sprint(ev.Decision["reason"]) != "broker_positions_unavailable" {
@@ -82,7 +82,7 @@ func TestPendingEntryBlocksOtherSymbol(t *testing.T) {
 		"status": "submitted", "quantity": 1, "dateKey": "2026-09-01",
 	})
 	e.PatchAutoConfig(map[string]any{
-		"enabled": true, "lowIBS": 0.9, "allowNewEntries": true,
+		"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true,
 		"symbols": "MSFT",
 	})
 	res := e.Execute("test")
@@ -96,7 +96,7 @@ func TestLookupErrorDoesNotResend(t *testing.T) {
 	_, e, br := testEngine(t, bars)
 	e.Sleep = func(time.Duration) {}
 	e.PatchAutoConfig(map[string]any{
-		"enabled": true, "lowIBS": 0.9, "allowNewEntries": true,
+		"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true,
 	})
 	br.SetFailPlace("i/o timeout", 1, false)
 	br.FailDetail = errors.New("dial tcp timeout")
@@ -282,9 +282,9 @@ func TestPartialExitKeepsRemainderOpen(t *testing.T) {
 }
 
 func TestLowHighThresholdsRejected(t *testing.T) {
-	out := sanitizeAutoTradingConfig(map[string]any{"lowIBS": 0.9, "highIBS": 0.1}, map[string]any{"lowIBS": 0.1, "highIBS": 0.75}, time.Now())
-	if asFloat(out["lowIBS"]) != 0.1 || asFloat(out["highIBS"]) != 0.75 {
-		t.Fatalf("inverted thresholds must not stick: %+v", out)
+	_, err := sanitizeAutoTradingConfig(map[string]any{"lowIBS": 0.9, "highIBS": 0.1}, map[string]any{"lowIBS": 0.1, "highIBS": 0.75}, time.Now())
+	if err == nil {
+		t.Fatal("inverted thresholds must error")
 	}
 }
 
@@ -326,7 +326,7 @@ func TestFailedT1SubmitDoesNotResendTheMessage(t *testing.T) {
 	e.Sleep = func(time.Duration) {}
 	_ = db.UpsertWatch(map[string]any{"symbol": "AAPL", "lowIBS": 0.9, "highIBS": 0.75})
 	e.PatchAutoConfig(map[string]any{
-		"enabled": true, "lowIBS": 0.9, "allowNewEntries": true,
+		"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true,
 	})
 	br.SetFailPlace("rejected by broker", 0, false)
 	opts := AggregateOpts{ForceSend: true, UpdateState: true}
@@ -369,7 +369,7 @@ func TestForeignOpenOrderIsNotCancelled(t *testing.T) {
 	// An order on the traded symbol that this engine never placed: the user's
 	// own, sitting in the same account. Cancelling it would be interference.
 	br.Open = []any{map[string]any{"symbol": "AAPL", "client_order_id": "human-1", "status": "WORKING"}}
-	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true})
+	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true})
 
 	if res := e.Execute("test"); !res.Executed {
 		t.Fatalf("execute %+v", res)

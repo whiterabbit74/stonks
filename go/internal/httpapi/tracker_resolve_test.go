@@ -18,7 +18,7 @@ func TestTrackerResolveEndpoint(t *testing.T) {
 	live.ListingLagWait = 0
 	t.Cleanup(func() { live.ListingLagWait = prevLagWait })
 	br.ListingLag = true
-	s.Live.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true})
+	s.Live.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true})
 
 	rec := postJSON(s, "/api/autotrade/execute", map[string]any{})
 	if rec.Code != 200 {

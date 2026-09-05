@@ -1884,7 +1884,11 @@ func (s *Server) handleAutoConfigPatch(w http.ResponseWriter, r *http.Request) {
 	}
 	cfg, err := s.liveEng().PatchAutoConfigChecked(body)
 	if err != nil {
-		writeJSON(w, 500, map[string]any{"error": err.Error()})
+		code := 500
+		if errors.Is(err, live.ErrInvalidAutoConfig) {
+			code = 400
+		}
+		writeJSON(w, code, map[string]any{"error": err.Error()})
 		return
 	}
 	writeJSON(w, 200, map[string]any{"success": true, "config": cfg})

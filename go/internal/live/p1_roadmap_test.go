@@ -27,7 +27,7 @@ func TestTrackerSaveFailureBlocksEntry(t *testing.T) {
 	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
 	_, e, br := testEngine(t, bars)
 	e.Sleep = func(time.Duration) {}
-	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true})
+	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true})
 	blockOrderTrackerInserts(t, e)
 	res := e.Execute("t1")
 	unblockOrderTrackerInserts(t, e)
@@ -69,7 +69,7 @@ func TestOpenOrdersErrorBlocksEntry(t *testing.T) {
 	_, e, br := testEngine(t, bars)
 	e.Sleep = func(time.Duration) {}
 	br.FailOpenOrders = errors.New("timeout")
-	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true})
+	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true})
 	res := e.Execute("t1")
 	if res.Executed || len(br.Orders) != 0 {
 		t.Fatalf("OpenOrders error must block entry: %+v orders=%d", res.Broker, len(br.Orders))
@@ -79,7 +79,7 @@ func TestOpenOrdersErrorBlocksEntry(t *testing.T) {
 func TestJournalReadErrorBlocksEvaluate(t *testing.T) {
 	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
 	db, e, _ := testEngine(t, bars)
-	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true})
+	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true})
 	db.Close()
 	ev := e.Evaluate()
 	if fmt.Sprint(ev.Decision["reason"]) != "journal_unavailable" {
@@ -103,7 +103,7 @@ func TestCanSubmitFalseWhenNeedsReauth(t *testing.T) {
 func TestExecuteReportsSubmittedPhase(t *testing.T) {
 	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
 	_, e, _ := testEngine(t, bars)
-	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true})
+	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true})
 	res := e.Execute("t1")
 	if !res.Submitted || res.Phase != "submitted" {
 		t.Fatalf("phase %+v submitted=%v", res.Phase, res.Submitted)

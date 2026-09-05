@@ -43,7 +43,7 @@ func dualBrokerEngine(t *testing.T, bars []types.OHLC) (*Engine, *MemoryBroker, 
 	e.AttachBroker("webull", webull)
 	e.AttachBroker("robinhood", rh)
 	e.PatchAutoConfig(map[string]any{
-		"enabled": true, "lowIBS": 0.9, "highIBS": 0.75,
+		"enabled": true, "lowIBS": 0.9, "highIBS": 1,
 		"allowNewEntries": true, "allowExits": true,
 		"brokers": map[string]any{
 			"webull":    map[string]any{"enabled": true, "allowNewEntries": true, "allowExits": true},

@@ -13,7 +13,7 @@ func TestBrokerAttachDetachRaceWithPollAndExecute(t *testing.T) {
 	_, e, br := testEngine(t, bars)
 	rh := &MemoryBroker{}
 	e.PatchAutoConfig(map[string]any{
-		"enabled": true, "lowIBS": 0.9, "allowNewEntries": true, "allowExits": true,
+		"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true, "allowExits": true,
 		"brokers": map[string]any{
 			"webull":    map[string]any{"enabled": true, "allowNewEntries": true, "allowExits": true},
 			"robinhood": map[string]any{"enabled": true, "allowNewEntries": true, "allowExits": true},
@@ -54,7 +54,7 @@ func TestExecuteAllKeepsEvaluateOnFixedBroker(t *testing.T) {
 	e.AttachBroker("robinhood", rh)
 	e.Broker = webull
 	e.PatchAutoConfig(map[string]any{
-		"enabled": true, "lowIBS": 0.9, "allowNewEntries": true, "allowExits": true,
+		"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true, "allowExits": true,
 		"brokers": map[string]any{
 			"webull":    map[string]any{"enabled": true, "allowNewEntries": true, "allowExits": true},
 			"robinhood": map[string]any{"enabled": true, "allowNewEntries": true, "allowExits": true},

@@ -58,7 +58,7 @@ func TestTelegramT1IgnoresExecutionWindow(t *testing.T) {
 	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
 	_, e, br := testEngine(t, bars)
 	e.PatchAutoConfig(map[string]any{
-		"enabled": true, "lowIBS": 0.9, "allowNewEntries": true,
+		"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true,
 		"executionWindowSeconds": 15,
 	})
 	// 15:59 ET is 60s to close, outside a 15s window. Node T-1 still sends the order.
@@ -75,7 +75,7 @@ func TestTelegramT1IgnoresExecutionWindow(t *testing.T) {
 func TestRejectedOrderDoesNotOpenTrade(t *testing.T) {
 	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
 	db, e, br := testEngine(t, bars)
-	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true})
+	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true})
 	res := e.Execute("test")
 	if !res.Executed {
 		t.Fatalf("submit %+v", res)
@@ -104,7 +104,7 @@ func TestRejectedOrderDoesNotOpenTrade(t *testing.T) {
 func TestFillRecordsBrokerPriceAndQty(t *testing.T) {
 	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
 	db, e, br := testEngine(t, bars)
-	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true})
+	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true})
 	res := e.Execute("test")
 	oid := br.Orders[0].ClientOrderID
 	br.SetDetail(oid, map[string]any{
@@ -190,15 +190,14 @@ func TestCapitalModeInfosIsWhatSanitizeUses(t *testing.T) {
 		if !validEntryCapitalMode(m.Value) {
 			t.Fatalf("sanitize helper rejected exported mode %s", m.Value)
 		}
-		out := sanitizeAutoTradingConfig(map[string]any{"entryCapitalMode": m.Value}, map[string]any{}, time.Now())
+		out := mustSanitize(t, map[string]any{"entryCapitalMode": m.Value}, map[string]any{})
 		if fmt.Sprint(out["entryCapitalMode"]) != m.Value {
 			t.Fatalf("sanitize dropped %s: %+v", m.Value, out)
 		}
 	}
-	out := sanitizeAutoTradingConfig(
+	out := mustSanitize(t,
 		map[string]any{"entryCapitalMode": "not_a_mode"},
 		map[string]any{"entryCapitalMode": "cash_100"},
-		time.Now(),
 	)
 	if fmt.Sprint(out["entryCapitalMode"]) != "cash_100" {
 		t.Fatalf("unknown mode must not replace current: %+v", out)
@@ -209,20 +208,17 @@ func TestCapitalModeInfosIsWhatSanitizeUses(t *testing.T) {
 }
 
 func TestSanitizeAutoTradingConfig(t *testing.T) {
-	out := sanitizeAutoTradingConfig(map[string]any{
+	_, err := sanitizeAutoTradingConfig(map[string]any{
 		"enabled": true, "lowIBS": 5.0, "highIBS": -1.0, "dryRun": true,
 		"executionWindowSeconds": 3, "maxSlippageBps": 5000,
 		"provider": "nope", "unknown": "x",
 	}, map[string]any{"provider": "finnhub", "lowIBS": 0.1}, time.Now())
-	if asFloat(out["lowIBS"]) != 1 || asFloat(out["highIBS"]) != 0 {
-		t.Fatalf("clamp %+v", out)
+	if err == nil {
+		t.Fatal("out-of-range autotrading input must error, not clamp")
 	}
-	if asFloat(out["executionWindowSeconds"]) < 15 {
-		t.Fatalf("window %+v", out)
-	}
-	if asFloat(out["maxSlippageBps"]) != 1000 {
-		t.Fatalf("slippage %+v", out)
-	}
+	out := mustSanitize(t, map[string]any{
+		"enabled": true, "dryRun": true, "unknown": "x",
+	}, map[string]any{"provider": "finnhub", "lowIBS": 0.1, "highIBS": 0.75})
 	if _, ok := out["dryRun"]; ok {
 		t.Fatal("dryRun must be deleted")
 	}
@@ -307,7 +303,7 @@ func TestPerTickerThresholds(t *testing.T) {
 	_ = db.SaveDataset("AAPL", "AAPL", "", "", bars, false)
 	_ = db.UpsertWatch(map[string]any{"symbol": "AAPL", "lowIBS": 0.02, "highIBS": 0.75})
 	e := New(db, &MemoryQuotes{Bars: map[string][]types.OHLC{"AAPL": bars}})
-	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "highIBS": 0.75, "allowNewEntries": true})
+	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true})
 	ev := e.Evaluate()
 	if fmt.Sprint(ev.Decision["action"]) != "none" {
 		t.Fatalf("watch lowIBS 0.02 should block entry at 0.05: %+v", ev.Decision)
@@ -348,7 +344,7 @@ func TestStaleBarIsNotOk(t *testing.T) {
 		QuoteErr: map[string]error{"AAPL": fmt.Errorf("quote down")},
 	}
 	e := New(db, q)
-	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true})
+	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true})
 	ev := e.Evaluate()
 	if len(ev.Quotes) != 1 || ev.Quotes[0]["ok"] == true {
 		t.Fatalf("stale bar must not be ok %+v", ev.Quotes)
@@ -398,12 +394,12 @@ func TestMissingThresholdsUseDefaults(t *testing.T) {
 	if h != ibs.DefaultHighIBS || inv {
 		t.Fatalf("high default %v %v", h, inv)
 	}
-	_, inv = liveHighIBS(map[string]any{"highIBS": 0.0})
-	if !inv {
-		t.Fatal("explicit 0 is invalid")
+	h, inv = liveHighIBS(map[string]any{"highIBS": 0.0})
+	if inv || h != 0 {
+		t.Fatalf("explicit highIBS 0 must not lock exits as invalid_high_ibs, got %v inv=%v", h, inv)
 	}
-	if liveLowIBS(map[string]any{"lowIBS": 0.0}) != ibs.DefaultLowIBS {
-		t.Fatal("explicit lowIBS 0 is unset")
+	if liveLowIBS(map[string]any{"lowIBS": 0.0}) != 0 {
+		t.Fatal("explicit lowIBS 0 is never-enter")
 	}
 }
 
@@ -452,7 +448,7 @@ func TestEvalWatchMatchesWatchThresholds(t *testing.T) {
 
 	cfg0 := map[string]any{"lowIBS": 0.0, "highIBS": 0.80}
 	low0, _, _ := watchThresholds(watch, cfg0)
-	if low0 != ibs.DefaultLowIBS {
+	if low0 != 0 {
 		t.Fatalf("cfg lowIBS 0 kept as %v", low0)
 	}
 	ev0 := e.evalWatch("AAPL", watch, cfg0, []string{"finnhub"})
@@ -461,8 +457,8 @@ func TestEvalWatchMatchesWatchThresholds(t *testing.T) {
 	}
 	watch0 := map[string]any{"symbol": "AAPL", "lowIBS": 0.0}
 	lowW, _, _ := watchThresholds(watch0, cfg)
-	if lowW != 0.20 {
-		t.Fatalf("watch lowIBS 0 must fall back to cfg, got %v", lowW)
+	if lowW != 0 {
+		t.Fatalf("watch lowIBS 0 must stay 0, got %v", lowW)
 	}
 	if e.evalWatch("AAPL", watch0, cfg, []string{"finnhub"}).low != lowW {
 		t.Fatal("evalWatch must follow watchThresholds for watch lowIBS 0")
@@ -470,7 +466,7 @@ func TestEvalWatchMatchesWatchThresholds(t *testing.T) {
 }
 
 func TestEvaluateWindowUsesCfgLowIBSWhenWatchIsZero(t *testing.T) {
-	// IBS = 0.15: default 0.10 would skip, cfg 0.20 must enter — the F-05 split.
+	// IBS = 0.15: watch lowIBS 0 is never-enter even if cfg is 0.20.
 	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.6, Volume: 1}}
 	db, e, _ := testEngine(t, bars)
 	if err := db.PatchWatch("AAPL", map[string]any{"lowIBS": 0.0}); err != nil {
@@ -480,19 +476,12 @@ func TestEvaluateWindowUsesCfgLowIBSWhenWatchIsZero(t *testing.T) {
 		"enabled": true, "lowIBS": 0.20, "highIBS": 0.75, "allowNewEntries": true,
 	})
 	ev := e.Evaluate()
-	if fmt.Sprint(ev.Decision["action"]) != "entry" {
-		t.Fatalf("Evaluate must use cfg lowIBS 0.20 after watch 0, got %+v", ev.Decision)
-	}
-	res, err := e.Aggregate(11, AggregateOpts{ForceSend: true, DryRun: true})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(res.Text, "ENTRY") || !strings.Contains(res.Text, "AAPL") {
-		t.Fatalf("T-11 must pick AAPL under the same cfg threshold, text=%s", res.Text)
+	if fmt.Sprint(ev.Decision["action"]) != "none" {
+		t.Fatalf("watch lowIBS 0 must not enter at IBS 0.15, got %+v", ev.Decision)
 	}
 }
 
-func TestEvaluateTreatsCfgLowIBSZeroAsUnset(t *testing.T) {
+func TestEvaluateTreatsCfgLowIBSZeroAsNeverEnter(t *testing.T) {
 	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
 	db, e, _ := testEngine(t, bars)
 	if err := db.PatchWatch("AAPL", map[string]any{"lowIBS": 0.0}); err != nil {
@@ -502,22 +491,19 @@ func TestEvaluateTreatsCfgLowIBSZeroAsUnset(t *testing.T) {
 		"enabled": true, "lowIBS": 0.0, "highIBS": 0.75, "allowNewEntries": true,
 	})
 	ev := e.Evaluate()
-	if fmt.Sprint(ev.Decision["action"]) != "entry" {
-		t.Fatalf("lowIBS 0 must not disable entry (IBS 0.05 vs default 0.10), got %+v cfg=%+v", ev.Decision, e.AutoConfig())
+	if fmt.Sprint(ev.Decision["action"]) != "none" {
+		t.Fatalf("lowIBS 0 is never-enter (IBS 0.05), got %+v cfg=%+v", ev.Decision, e.AutoConfig())
 	}
 }
 
-func TestSanitizeZeroLowIBSNotKept(t *testing.T) {
-	out := sanitizeAutoTradingConfig(map[string]any{"lowIBS": 0.0}, map[string]any{}, time.Now())
-	if asFloat(out["lowIBS"]) == 0 {
-		t.Fatal("lowIBS 0 must not be kept")
+func TestSanitizeKeepsZeroLowIBS(t *testing.T) {
+	out := mustSanitize(t, map[string]any{"lowIBS": 0.0, "highIBS": 0.75}, map[string]any{})
+	if asFloat(out["lowIBS"]) != 0 {
+		t.Fatalf("lowIBS 0 must be kept, got %v", out["lowIBS"])
 	}
-	if asFloat(out["lowIBS"]) != ibs.DefaultLowIBS {
-		t.Fatalf("lowIBS 0 must fall back to default, got %v", out["lowIBS"])
-	}
-	out = sanitizeAutoTradingConfig(map[string]any{"enabled": true}, map[string]any{"lowIBS": 0.0}, time.Now())
-	if asFloat(out["lowIBS"]) == 0 {
-		t.Fatal("stored lowIBS 0 must not survive a save")
+	_, err := sanitizeAutoTradingConfig(map[string]any{"highIBS": 0.0}, map[string]any{"lowIBS": 0.1, "highIBS": 0.75}, time.Now())
+	if err == nil {
+		t.Fatal("highIBS 0 is an inverted pair")
 	}
 }
 
@@ -542,7 +528,7 @@ func TestEntryQuantityIsAlwaysWhole(t *testing.T) {
 	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
 	_, e, br := testEngine(t, bars)
 	e.PatchAutoConfig(map[string]any{
-		"enabled": true, "lowIBS": 0.9, "allowNewEntries": true, "allowFractionalShares": true})
+		"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true, "allowFractionalShares": true})
 	if _, ok := e.AutoConfig()["allowFractionalShares"]; ok {
 		t.Fatal("allowFractionalShares must not be storable any more")
 	}
@@ -597,7 +583,7 @@ func TestActualizeUsesLastBarWindow(t *testing.T) {
 func TestInFlightPreventsDoubleRecord(t *testing.T) {
 	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
 	db, e, br := testEngine(t, bars)
-	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true})
+	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true})
 	res := e.Execute("test")
 	oid := br.Orders[0].ClientOrderID
 	br.SetDetail(oid, map[string]any{"status": "FILLED", "avg_price": 8.2, "filled_qty": 1})
@@ -760,7 +746,7 @@ func TestSubmitRetriesAfterTransientFailure(t *testing.T) {
 	_, e, br := testEngine(t, bars)
 	e.Sleep = func(time.Duration) {}
 	e.PatchAutoConfig(map[string]any{
-		"enabled": true, "lowIBS": 0.9, "allowNewEntries": true,
+		"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true,
 	})
 	br.SetFailPlace("connection reset", 2, false)
 
@@ -781,7 +767,7 @@ func TestSubmitDoesNotDuplicateWhenTheReplyIsLost(t *testing.T) {
 	_, e, br := testEngine(t, bars)
 	e.Sleep = func(time.Duration) {}
 	e.PatchAutoConfig(map[string]any{
-		"enabled": true, "lowIBS": 0.9, "allowNewEntries": true,
+		"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true,
 	})
 	br.SetFailPlace("i/o timeout", 1, true)
 
@@ -800,7 +786,7 @@ func TestSubmitGivesUpWithoutPlacingAnything(t *testing.T) {
 	_, e, br := testEngine(t, bars)
 	e.Sleep = func(time.Duration) {}
 	e.PatchAutoConfig(map[string]any{
-		"enabled": true, "lowIBS": 0.9, "allowNewEntries": true,
+		"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true,
 	})
 	br.SetFailPlace("service unavailable", 0, false)
 
@@ -874,7 +860,7 @@ func TestPartialFillIsRecordedAndWarned(t *testing.T) {
 	e.Telegram = tg
 	e.Sleep = func(time.Duration) {}
 	e.PatchAutoConfig(map[string]any{
-		"enabled": true, "lowIBS": 0.9, "allowNewEntries": true,
+		"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true,
 	})
 	res := e.Execute("test")
 	if !res.Executed {
@@ -911,7 +897,7 @@ func TestFullFillUnderUnknownStatusIsRecorded(t *testing.T) {
 	db, e, br := testEngine(t, bars)
 	e.Sleep = func(time.Duration) {}
 	e.PatchAutoConfig(map[string]any{
-		"enabled": true, "lowIBS": 0.9, "allowNewEntries": true,
+		"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true,
 	})
 	if res := e.Execute("test"); !res.Executed {
 		t.Fatalf("submit %+v", res.Broker)

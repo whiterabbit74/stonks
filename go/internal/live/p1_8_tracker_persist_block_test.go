@@ -142,7 +142,7 @@ func TestClearTrackerPersistBlockKeepsMemoryFlagWhenSettingsWriteFails(t *testin
 func TestTrackerPersistBlockSurvivesRestartAndOnlyClearsExplicitly(t *testing.T) {
 	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
 	db, e, br := testEngine(t, bars)
-	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true})
+	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true})
 
 	blockOrderTrackerInserts(t, e)
 	res := e.Execute("t1")

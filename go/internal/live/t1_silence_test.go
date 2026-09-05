@@ -33,7 +33,7 @@ func TestHeldSymbolsRetriesTransientPositionsFailure(t *testing.T) {
 	e.Broker = br
 	e.Now = nearCloseNow()
 	e.Sleep = func(time.Duration) {}
-	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true})
+	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true})
 
 	ev := e.Evaluate()
 	if action, _ := ev.Decision["action"].(string); action != "entry" {

@@ -2,6 +2,7 @@ package live
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"strings"
@@ -10,6 +11,10 @@ import (
 	"mktorder.com/go/internal/ibs"
 	"mktorder.com/go/internal/store"
 )
+
+var ErrInvalidAutoConfig = errors.New("invalid autotrading config")
+
+const maxExecutionWindowSeconds = 3600
 
 var autoTradingBoolFields = []string{
 	"enabled", "allowNewEntries", "allowExits",
@@ -84,7 +89,7 @@ func enumIn(v string, allowed ...string) bool {
 // clock (e.now()), not time.Now() directly, so saving the config obeys test
 // clocks the same way every other timestamped write in this package does
 // (P2-8).
-func sanitizeAutoTradingConfig(input, current map[string]any, now time.Time) map[string]any {
+func sanitizeAutoTradingConfig(input, current map[string]any, now time.Time) (map[string]any, error) {
 	next := map[string]any{}
 	if current != nil {
 		for k, v := range current {
@@ -121,44 +126,40 @@ func sanitizeAutoTradingConfig(input, current map[string]any, now time.Time) map
 			next[field] = f
 		}
 	}
-	if f, ok := finiteNumber(next["lowIBS"]); ok {
-		f = clamp(f, 0, 1)
-		if f == 0 {
-			f = ibs.DefaultLowIBS
-		}
-		next["lowIBS"] = f
-	}
-	if f, ok := finiteNumber(next["highIBS"]); ok {
-		next["highIBS"] = clamp(f, 0, 1)
-	}
-	if f, ok := finiteNumber(next["executionWindowSeconds"]); ok {
-		next["executionWindowSeconds"] = math.Max(15, math.Round(f))
-	}
-	if f, ok := finiteNumber(next["maxSlippageBps"]); ok {
-		next["maxSlippageBps"] = clamp(f, 0, 1000)
-	}
-	// entryReservePct is the operator-configurable floor for the entry sizing
-	// reserve (P1-6): never below the hard 0.5% minimum, capped at 10% so a
-	// typo cannot starve sizing down to a handful of shares.
-	if f, ok := finiteNumber(next["entryReservePct"]); ok {
-		next["entryReservePct"] = clamp(f, MinEntryReservePct, 0.1)
-	}
 	low, lok := finiteNumber(next["lowIBS"])
 	high, hok := finiteNumber(next["highIBS"])
-	if lok && hok && high > 0 && low >= high {
-		if f, ok := finiteNumber(current["lowIBS"]); ok {
-			next["lowIBS"] = f
-		} else {
-			next["lowIBS"] = ibs.DefaultLowIBS
-		}
-		if f, ok := finiteNumber(current["highIBS"]); ok {
-			next["highIBS"] = f
-		} else {
-			next["highIBS"] = ibs.DefaultHighIBS
+	if hok && high == 0 {
+		return nil, fmt.Errorf("%w: highIBS 0 is an inverted pair", ErrInvalidAutoConfig)
+	}
+	if lok && hok {
+		if _, _, err := ibs.SanitizeThresholds(low, high); err != nil {
+			return nil, fmt.Errorf("%w: %s", ErrInvalidAutoConfig, err)
 		}
 	}
+	if f, ok := finiteNumber(next["executionWindowSeconds"]); ok {
+		if f < 15 || f > maxExecutionWindowSeconds {
+			return nil, fmt.Errorf("%w: executionWindowSeconds must be in [15, %d]", ErrInvalidAutoConfig, maxExecutionWindowSeconds)
+		}
+		next["executionWindowSeconds"] = math.Round(f)
+	}
+	if f, ok := finiteNumber(next["maxSlippageBps"]); ok {
+		if f < 0 || f > 1000 {
+			return nil, fmt.Errorf("%w: maxSlippageBps must be in [0, 1000]", ErrInvalidAutoConfig)
+		}
+		next["maxSlippageBps"] = f
+	}
+	if f, ok := finiteNumber(next["entryReservePct"]); ok {
+		if f < MinEntryReservePct || f > 0.1 {
+			return nil, fmt.Errorf("%w: entryReservePct must be in [%g, 0.1]", ErrInvalidAutoConfig, MinEntryReservePct)
+		}
+		next["entryReservePct"] = f
+	}
 
-	if s, ok := input["provider"].(string); ok && enumIn(s, "finnhub", "webull", "robinhood") {
+	if s, ok := input["provider"].(string); ok {
+		s = strings.ToLower(strings.TrimSpace(s))
+		if !enumIn(s, "finnhub", "webull", "robinhood") {
+			return nil, fmt.Errorf("%w: unknown provider", ErrInvalidAutoConfig)
+		}
 		next["provider"] = s
 	}
 	if s, ok := input["entryCapitalMode"].(string); ok {
@@ -168,7 +169,7 @@ func sanitizeAutoTradingConfig(input, current map[string]any, now time.Time) map
 	}
 	next["brokers"] = sanitizeBrokers(input, current, next)
 	next["lastModifiedAt"] = now.UTC().Format(time.RFC3339Nano)
-	return next
+	return next, nil
 }
 
 // configuredSymbols is the universe the engine may trade: exactly the tickers
@@ -216,22 +217,14 @@ func liveLowIBS(cfg map[string]any) float64 {
 	if !cfgHas(cfg, "lowIBS") {
 		return ibs.DefaultLowIBS
 	}
-	low := asFloat(cfg["lowIBS"])
-	if low == 0 {
-		return ibs.DefaultLowIBS
-	}
-	return low
+	return asFloat(cfg["lowIBS"])
 }
 
 func liveHighIBS(cfg map[string]any) (high float64, invalid bool) {
 	if !cfgHas(cfg, "highIBS") {
 		return ibs.DefaultHighIBS, false
 	}
-	high = asFloat(cfg["highIBS"])
-	if high == 0 {
-		return ibs.DefaultHighIBS, true
-	}
-	return high, false
+	return asFloat(cfg["highIBS"]), false
 }
 
 func allowFlag(cfg map[string]any, key string) bool {
@@ -252,18 +245,11 @@ func watchThresholds(watch, cfg map[string]any) (low, high float64, highInvalid 
 	high, highInvalid = liveHighIBS(cfg)
 	if watch != nil {
 		if watch["lowIBS"] != nil {
-			if v := asFloat(watch["lowIBS"]); v != 0 {
-				low = v
-			}
+			low = asFloat(watch["lowIBS"])
 		}
 		if watch["highIBS"] != nil {
-			h := asFloat(watch["highIBS"])
-			if h == 0 {
-				highInvalid = true
-			} else {
-				high = h
-				highInvalid = false
-			}
+			high = asFloat(watch["highIBS"])
+			highInvalid = false
 		}
 	}
 	return low, high, highInvalid

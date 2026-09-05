@@ -50,7 +50,7 @@ func firstNamedOrderResult(v any) OrderResult {
 func TestPendingTrackerDBErrorBlocksDuplicateEntry(t *testing.T) {
 	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
 	db, e, br := testEngine(t, bars)
-	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true})
+	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true})
 
 	res1 := e.Execute("t1")
 	if !res1.Executed || len(br.Orders) != 1 {
@@ -76,7 +76,7 @@ func TestPendingTrackerDBErrorBlocksDuplicateEntry(t *testing.T) {
 func TestPendingTrackerDBErrorBlocksFirstEntry(t *testing.T) {
 	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
 	db, e, br := testEngine(t, bars)
-	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true})
+	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true})
 
 	if _, err := db.SQL.Exec(`DROP TABLE order_trackers`); err != nil {
 		t.Fatal(err)

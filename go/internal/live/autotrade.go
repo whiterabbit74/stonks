@@ -43,8 +43,11 @@ func (e *Engine) PatchAutoConfigChecked(updates map[string]any) (map[string]any,
 	if cur == nil {
 		cur = map[string]any{}
 	}
-	cur = sanitizeAutoTradingConfig(updates, cur, e.now())
-	err := e.DB.SetSettingsKeys(map[string]any{"autoTrading": cur})
+	cur, err := sanitizeAutoTradingConfig(updates, cur, e.now())
+	if err != nil {
+		return cur, err
+	}
+	err = e.DB.SetSettingsKeys(map[string]any{"autoTrading": cur})
 	return cur, err
 }
 
@@ -472,10 +475,7 @@ func liveLowOrDefault(row map[string]any) float64 {
 		return ibs.DefaultLowIBS
 	}
 	if th, ok := row["thresholds"].(map[string]any); ok && th["lowIBS"] != nil {
-		v := asFloat(th["lowIBS"])
-		if v != 0 {
-			return v
-		}
+		return asFloat(th["lowIBS"])
 	}
 	return ibs.DefaultLowIBS
 }
@@ -485,11 +485,7 @@ func liveHighOrDefault(row map[string]any) float64 {
 		return ibs.DefaultHighIBS
 	}
 	if th, ok := row["thresholds"].(map[string]any); ok && th["highIBS"] != nil {
-		h := asFloat(th["highIBS"])
-		if h == 0 {
-			return ibs.DefaultHighIBS
-		}
-		return h
+		return asFloat(th["highIBS"])
 	}
 	return ibs.DefaultHighIBS
 }

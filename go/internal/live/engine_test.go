@@ -45,7 +45,7 @@ func TestExecuteReserveSubmitTrack(t *testing.T) {
 	e.Broker = br
 	e.Telegram = &MemoryTelegram{}
 	e.ChatID = "c"
-	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true})
+	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true})
 	res := e.Execute("test")
 	if !res.Executed {
 		t.Fatalf("not executed: %+v", res)
@@ -95,7 +95,7 @@ func TestExecuteBalanceSizing(t *testing.T) {
 		"AAPL": {Quote: map[string]any{"current": 250.23}, Range: map[string]any{"low": 250.0, "high": 300.0}},
 	}})
 	e.Broker = br
-	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true, "entryCapitalMode": "standard_safe"})
+	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true, "entryCapitalMode": "standard_safe"})
 	res := e.Execute("test")
 	if !res.Executed {
 		t.Fatalf("not executed: %+v", res)
@@ -121,7 +121,7 @@ func TestSimulateDoesNotPlace(t *testing.T) {
 	e.Telegram = &MemoryTelegram{}
 	e.ChatID = "c"
 	e.Now = nearCloseNow()
-	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true})
+	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true})
 	sim, err := e.Simulate("confirmations")
 	if err != nil {
 		t.Fatal(err)
@@ -148,7 +148,7 @@ func TestBuildT1TextNamesSubmitBroker(t *testing.T) {
 	rh := &MemoryBroker{}
 	e.AttachBroker("robinhood", rh)
 	e.PatchAutoConfig(map[string]any{
-		"enabled": true, "lowIBS": 0.9, "allowNewEntries": true, "allowExits": true,
+		"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true, "allowExits": true,
 		"brokers": map[string]any{
 			"robinhood": map[string]any{"enabled": true, "allowNewEntries": true, "allowExits": true},
 		},
@@ -173,7 +173,7 @@ func TestAggregateT1NamesRobinhoodSubmit(t *testing.T) {
 	rh := &MemoryBroker{}
 	e.AttachBroker("robinhood", rh)
 	e.PatchAutoConfig(map[string]any{
-		"enabled": true, "lowIBS": 0.9, "allowNewEntries": true, "allowExits": true,
+		"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true, "allowExits": true,
 		"brokers": map[string]any{
 			"robinhood": map[string]any{"enabled": true, "allowNewEntries": true, "allowExits": true},
 		},
@@ -276,7 +276,7 @@ func TestT1MismatchBlocksExecute(t *testing.T) {
 	e.Telegram = tg
 	e.ChatID = "c"
 	e.Now = nearCloseNow()
-	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true})
+	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true})
 	res, err := e.Aggregate(1, AggregateOpts{ForceSend: true, DryRun: false})
 	if err != nil {
 		t.Fatal(err)
@@ -313,7 +313,7 @@ func TestT1WaitForFillBlocksEntry(t *testing.T) {
 	e.Telegram = &MemoryTelegram{}
 	e.ChatID = "c"
 	e.Now = nearCloseNow()
-	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "highIBS": 0.75, "allowNewEntries": true, "allowExits": true})
+	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true, "allowExits": true})
 	res, err := e.Aggregate(1, AggregateOpts{ForceSend: true, DryRun: false})
 	if err != nil {
 		t.Fatal(err)
@@ -346,14 +346,14 @@ func TestPendingTrackerGuardsSecondSubmit(t *testing.T) {
 	br := &MemoryBroker{}
 	e := New(db, &MemoryQuotes{Bars: map[string][]types.OHLC{"AAPL": bars}})
 	e.Broker = br
-	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true})
+	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true})
 	first := e.Execute("test")
 	if !first.Executed {
 		t.Fatalf("first %+v", first)
 	}
 	e2 := New(db, &MemoryQuotes{Bars: map[string][]types.OHLC{"AAPL": bars}})
 	e2.Broker = br
-	e2.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true})
+	e2.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true})
 	// pending entry tracker + open position: Evaluate should not re-enter; force-check FindPending
 	row, err := db.FindPendingTracker("AAPL", "entry")
 	if err != nil {
@@ -386,7 +386,7 @@ func TestSplitJumpBlocksSignals(t *testing.T) {
 	e.Broker = br
 	e.ChatID = "c"
 	e.Now = nearCloseNow()
-	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true})
+	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true})
 	res, err := e.Aggregate(11, AggregateOpts{ForceSend: true, DryRun: true})
 	if err != nil {
 		t.Fatal(err)
@@ -463,7 +463,7 @@ func TestPollTrackersMarksFilled(t *testing.T) {
 	e.Broker = br
 	e.Telegram = &MemoryTelegram{}
 	e.ChatID = "c"
-	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true})
+	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true})
 	res := e.Execute("test")
 	if !res.Executed || len(br.Orders) != 1 {
 		t.Fatalf("execute %+v orders %+v", res, br.Orders)
@@ -815,7 +815,7 @@ func TestTrackerWheelUsesNodeBackoff(t *testing.T) {
 	e.Broker = br
 	e.Telegram = &MemoryTelegram{}
 	e.ChatID = "c"
-	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true})
+	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true})
 	gate := make(chan struct{})
 	var mu sync.Mutex
 	var delays []time.Duration
@@ -884,7 +884,7 @@ func TestCancelOpenOrdersBeforeEntry(t *testing.T) {
 	e.Broker = br
 	e.Telegram = &MemoryTelegram{}
 	e.PatchAutoConfig(map[string]any{
-		"enabled": true, "lowIBS": 0.9, "allowNewEntries": true,
+		"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true,
 	})
 	// The case this guard exists for: a tracker we gave up on (expired after its
 	// last poll) whose order is still working at the broker. Only orders this

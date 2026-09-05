@@ -288,7 +288,7 @@ func TestTickExpiredCoverageBlocksT1AndExtends(t *testing.T) {
 	eng.Telegram = tg
 	eng.Broker = br
 	eng.ChatID = "c"
-	eng.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true})
+	eng.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true})
 	// The tick runs the token-health job before the T-1 aggregation, and
 	// executeAll refuses to submit on a MISSING health status. A test broker
 	// still needs a token behind it for the T-1 stage to be reached at all.
@@ -354,7 +354,7 @@ func TestTickT1Executes(t *testing.T) {
 	eng.Telegram = tg
 	eng.Broker = br
 	eng.ChatID = "c"
-	eng.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true})
+	eng.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true})
 	// The tick runs the token-health job before the T-1 aggregation, and
 	// executeAll refuses to submit on a MISSING health status. A test broker
 	// still needs a token behind it for the T-1 stage to be reached at all.
@@ -412,7 +412,7 @@ func TestTickT1RunsBeforePollTrackers(t *testing.T) {
 	eng.Telegram = tg
 	eng.Broker = br
 	eng.ChatID = "c"
-	eng.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true})
+	eng.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true})
 	// The tick runs the token-health job before the T-1 aggregation, and
 	// executeAll refuses to submit on a MISSING health status. A test broker
 	// still needs a token behind it for the T-1 stage to be reached at all.
@@ -544,7 +544,7 @@ func t1Engine(t *testing.T) (*store.DB, *live.Engine, *live.MemoryBroker, *live.
 	eng.Telegram = tg
 	eng.Broker = br
 	eng.ChatID = "c"
-	eng.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true})
+	eng.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true})
 	// The tick runs the token-health job before the T-1 aggregation, and
 	// executeAll refuses to submit on a MISSING health status. A test broker
 	// still needs a token behind it for the T-1 stage to be reached at all.

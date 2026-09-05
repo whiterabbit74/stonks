@@ -29,7 +29,7 @@ func TestExecuteAllMirrorsBothBrokers(t *testing.T) {
 	rh := &MemoryBroker{Acct: br.Acct, Pos: br.Pos}
 	e.Brokers = map[string]Broker{"webull": br, "robinhood": rh}
 	e.PatchAutoConfig(map[string]any{
-		"enabled": true, "lowIBS": 0.9, "allowNewEntries": true, "allowExits": true,
+		"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true, "allowExits": true,
 		"brokers": map[string]any{
 			"webull":    map[string]any{"enabled": true, "allowNewEntries": true, "allowExits": true},
 			"robinhood": map[string]any{"enabled": true, "allowNewEntries": true, "allowExits": true},
@@ -54,7 +54,7 @@ func TestExecuteAllSkipsRobinhoodWhenEntriesDisabled(t *testing.T) {
 	rh := &MemoryBroker{Acct: br.Acct, Pos: br.Pos}
 	e.Brokers = map[string]Broker{"webull": br, "robinhood": rh}
 	e.PatchAutoConfig(map[string]any{
-		"enabled": true, "lowIBS": 0.9, "allowNewEntries": true,
+		"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true,
 		"brokers": map[string]any{
 			"webull":    map[string]any{"enabled": true, "allowNewEntries": true, "allowExits": true},
 			"robinhood": map[string]any{"enabled": true, "allowNewEntries": false, "allowExits": true},
@@ -76,7 +76,7 @@ func TestExecuteAllSkipsNeedsReauth(t *testing.T) {
 	e.Brokers = map[string]Broker{"webull": br, "robinhood": rh}
 	_ = e.DB.UpsertRobinhoodHealth("2026-09-01", HealthNeedsReauth, "now")
 	e.PatchAutoConfig(map[string]any{
-		"enabled": true, "lowIBS": 0.9, "allowNewEntries": true,
+		"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true,
 		"brokers": map[string]any{
 			"webull":    map[string]any{"enabled": true, "allowNewEntries": true, "allowExits": true},
 			"robinhood": map[string]any{"enabled": true, "allowNewEntries": true, "allowExits": true},
@@ -98,7 +98,7 @@ func TestExecuteSingleBrokerRespectsDisabledFlag(t *testing.T) {
 	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
 	_, e, br := testEngine(t, bars)
 	e.PatchAutoConfig(map[string]any{
-		"enabled": true, "lowIBS": 0.9, "allowNewEntries": true, "allowExits": true,
+		"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true, "allowExits": true,
 		"brokers": map[string]any{
 			"webull": map[string]any{"enabled": false, "allowNewEntries": true, "allowExits": true},
 		},
@@ -151,7 +151,7 @@ func TestExecuteRobinhoodOnlySeesItsOwnOpenPosition(t *testing.T) {
 		t.Fatal(err)
 	}
 	e.PatchAutoConfig(map[string]any{
-		"enabled": true, "lowIBS": 0.9, "allowNewEntries": true, "allowExits": true,
+		"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true, "allowExits": true,
 		"brokers": map[string]any{
 			"robinhood": map[string]any{"enabled": true, "allowNewEntries": true, "allowExits": true},
 		},
@@ -172,7 +172,7 @@ func TestExecuteNoBrokerConfigured(t *testing.T) {
 	_, e, _ := testEngine(t, bars)
 	e.Broker = nil
 	e.PatchAutoConfig(map[string]any{
-		"enabled": true, "lowIBS": 0.9, "allowNewEntries": true, "allowExits": true,
+		"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true, "allowExits": true,
 	})
 	res := e.Execute("t1")
 	if res.Executed {
@@ -209,7 +209,7 @@ func TestLogBalanceSnapshotUsesOrderBroker(t *testing.T) {
 		"currency": "USD", "cash_balance": 77777.0, "day_buying_power": 77777.0, "net_liquidation_value": 77777.0,
 	}}}}
 	e.PatchAutoConfig(map[string]any{
-		"enabled": true, "lowIBS": 0.9, "allowNewEntries": true, "allowExits": true,
+		"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true, "allowExits": true,
 		"brokers": map[string]any{
 			"webull":    map[string]any{"enabled": false, "allowNewEntries": false, "allowExits": false},
 			"robinhood": map[string]any{"enabled": true, "allowNewEntries": true, "allowExits": true},

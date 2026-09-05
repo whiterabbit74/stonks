@@ -46,7 +46,7 @@ func TestAggregateT1HonoursCallerContextOnPositionsRead(t *testing.T) {
 	_, e, _ := testEngine(t, nil)
 	e.Sleep = func(time.Duration) {}
 	e.Broker = &hangPositionsBroker{}
-	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true})
+	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true})
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	start := time.Now()
@@ -61,7 +61,7 @@ func TestExecuteWindowCancelsEvaluatePositionsRead(t *testing.T) {
 	_, e, _ := testEngine(t, nil)
 	e.Sleep = func(time.Duration) {}
 	e.Broker = &hangPositionsBroker{}
-	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true})
+	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true})
 	w := execWindow{ctx: context.Background(), deadline: e.now().Add(-time.Second)}
 	start := time.Now()
 	_ = e.executeWindow(w, "telegram_t1")

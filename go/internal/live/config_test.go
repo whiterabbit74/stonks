@@ -1,9 +1,19 @@
 package live
 
 import (
+	"fmt"
 	"testing"
 	"time"
 )
+
+func mustSanitize(t *testing.T, input, current map[string]any) map[string]any {
+	t.Helper()
+	out, err := sanitizeAutoTradingConfig(input, current, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
 
 // TestBrokerFlagsLegacyEmptyNested is B-0 engine truth: a post-upgrade
 // config with flat allows and empty nested broker objects. Webull inherits
@@ -43,7 +53,7 @@ func TestSanitizeFillsMissingWebullKeysFromFlat(t *testing.T) {
 			"robinhood": map[string]any{},
 		},
 	}
-	out := sanitizeAutoTradingConfig(map[string]any{}, current, time.Now())
+	out := mustSanitize(t, map[string]any{}, current)
 	brokers, _ := out["brokers"].(map[string]any)
 	webull, _ := brokers["webull"].(map[string]any)
 	if webull["enabled"] != true || webull["allowNewEntries"] != true || webull["allowExits"] != true {
@@ -67,7 +77,7 @@ func TestSanitizeDoesNotOverwriteSetWebullKeys(t *testing.T) {
 			"webull": map[string]any{"enabled": true, "allowNewEntries": false, "allowExits": true},
 		},
 	}
-	out := sanitizeAutoTradingConfig(map[string]any{"enabled": false}, current, time.Now())
+	out := mustSanitize(t, map[string]any{"enabled": false}, current)
 	brokers, _ := out["brokers"].(map[string]any)
 	webull, _ := brokers["webull"].(map[string]any)
 	if webull["allowNewEntries"] != false || webull["allowExits"] != true || webull["enabled"] != true {
@@ -83,12 +93,12 @@ func TestSanitizeFlatEnabledFalseDoesNotSetNestedWebull(t *testing.T) {
 			"robinhood": map[string]any{},
 		},
 	}
-	out := sanitizeAutoTradingConfig(map[string]any{"enabled": false, "lowIBS": 0.2}, current, time.Now())
+	out := mustSanitize(t, map[string]any{"enabled": false, "lowIBS": 0.2}, current)
 	webull, _ := out["brokers"].(map[string]any)["webull"].(map[string]any)
 	if _, ok := webull["enabled"]; ok {
 		t.Fatalf("flat PATCH enabled:false must not persist brokers.webull.enabled, got %+v", webull)
 	}
-	later := sanitizeAutoTradingConfig(map[string]any{"enabled": true}, out, time.Now())
+	later := mustSanitize(t, map[string]any{"enabled": true}, out)
 	webull, _ = later["brokers"].(map[string]any)["webull"].(map[string]any)
 	if webull["enabled"] != true {
 		t.Fatalf("master toggle enabled:true must still fill missing webull.enabled, got %+v", webull)
@@ -103,12 +113,12 @@ func TestSanitizeAllowPatchDoesNotMaterializeDefaultEnabledFalse(t *testing.T) {
 			"robinhood": map[string]any{},
 		},
 	}
-	mid := sanitizeAutoTradingConfig(map[string]any{"allowNewEntries": true, "allowExits": true}, current, time.Now())
+	mid := mustSanitize(t, map[string]any{"allowNewEntries": true, "allowExits": true}, current)
 	webull, _ := mid["brokers"].(map[string]any)["webull"].(map[string]any)
 	if _, ok := webull["enabled"]; ok {
 		t.Fatalf("allow-only patch must not persist default enabled:false onto webull, got %+v", webull)
 	}
-	out := sanitizeAutoTradingConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true}, mid, time.Now())
+	out := mustSanitize(t, map[string]any{"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true}, mid)
 	webull, _ = out["brokers"].(map[string]any)["webull"].(map[string]any)
 	if webull["enabled"] != true {
 		t.Fatalf("later enabled:true must fill missing webull.enabled, got %+v", webull)
@@ -137,11 +147,11 @@ func TestSanitizeRobinhoodAllowDoesNotFlipWebull(t *testing.T) {
 			"robinhood": map[string]any{"enabled": true, "allowNewEntries": false, "allowExits": true},
 		},
 	}
-	out := sanitizeAutoTradingConfig(map[string]any{
+	out := mustSanitize(t, map[string]any{
 		"brokers": map[string]any{
 			"robinhood": map[string]any{"allowNewEntries": true},
 		},
-	}, current, time.Now())
+	}, current)
 	if _, ok := out["allowNewEntries"]; ok {
 		t.Fatalf("must not write a flat allowNewEntries, got %v", out["allowNewEntries"])
 	}
@@ -159,5 +169,18 @@ func TestSanitizeRobinhoodAllowDoesNotFlipWebull(t *testing.T) {
 	rh, _ := brokers["robinhood"].(map[string]any)
 	if rh["allowNewEntries"] != true {
 		t.Fatalf("robinhood allowNewEntries not applied: %+v", rh)
+	}
+}
+
+func TestSanitizeRejectsOutOfRangeWindowAndUnknownProvider(t *testing.T) {
+	if _, err := sanitizeAutoTradingConfig(map[string]any{"executionWindowSeconds": 99999}, map[string]any{"lowIBS": 0.1, "highIBS": 0.75}, time.Now()); err == nil {
+		t.Fatal("executionWindowSeconds above the cap must error")
+	}
+	out := mustSanitize(t, map[string]any{"provider": "Webull"}, map[string]any{"lowIBS": 0.1, "highIBS": 0.75})
+	if fmt.Sprint(out["provider"]) != "webull" {
+		t.Fatalf("provider case got %v", out["provider"])
+	}
+	if _, err := sanitizeAutoTradingConfig(map[string]any{"provider": "nope"}, map[string]any{"lowIBS": 0.1, "highIBS": 0.75}, time.Now()); err == nil {
+		t.Fatal("unknown provider must error")
 	}
 }

@@ -15,7 +15,7 @@ func TestListingLagDoesNotMintSecondOrder(t *testing.T) {
 	db, e, br := testEngine(t, bars)
 	e.Sleep = func(time.Duration) {}
 	br.ListingLag = true
-	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true})
+	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true})
 	res := e.Execute("t1")
 	if !res.Executed {
 		t.Fatalf("first submit %+v", res.Broker)
@@ -49,7 +49,7 @@ func TestListingLagThenRejectedDoesNotDeleteJournal(t *testing.T) {
 	db, e, br := testEngine(t, bars)
 	e.Sleep = func(time.Duration) {}
 	br.ListingLag = true
-	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true, "allowExits": false})
+	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true, "allowExits": false})
 	res := e.Execute("t1")
 	if !res.Executed {
 		t.Fatalf("submit %+v", res.Broker)
@@ -75,7 +75,7 @@ func TestListingLagAfterRestartKeepsJournal(t *testing.T) {
 	db, e, br := testEngine(t, bars)
 	e.Sleep = func(time.Duration) {}
 	br.ListingLag = true
-	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true})
+	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true})
 	_ = db.InsertTrade("broker_trades", map[string]any{
 		"id": "oid-restart", "symbol": "AAPL", "status": "open",
 		"entryDate": "2026-09-01", "entryPrice": 8.2, "quantity": 1.0, "broker": "webull",
@@ -107,7 +107,7 @@ func TestSubmitErrorWithAcceptedOrderDoesNotDuplicate(t *testing.T) {
 	e.Sleep = func(time.Duration) {}
 	br.ListingLag = true
 	br.SetFailPlace("i/o timeout", 1, true)
-	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true})
+	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true})
 	_ = e.Execute("t1")
 	if len(br.Orders) != 1 {
 		t.Fatalf("listing-unavailable after accept minted a second order: %+v", br.Orders)
@@ -122,7 +122,7 @@ func TestListingLagBudgetMarksExecutionUnknown(t *testing.T) {
 	prev := ListingLagWait
 	ListingLagWait = 0
 	t.Cleanup(func() { ListingLagWait = prev })
-	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true})
+	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true})
 	res := e.Execute("t1")
 	if !res.Executed {
 		t.Fatalf("submit %+v", res.Broker)
@@ -160,7 +160,7 @@ func TestExecutionUnknownRecoversWhenListingCatchesUp(t *testing.T) {
 	prev := ListingLagWait
 	ListingLagWait = 0
 	t.Cleanup(func() { ListingLagWait = prev })
-	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true})
+	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true})
 	res := e.Execute("t1")
 	if !res.Executed {
 		t.Fatalf("submit %+v", res.Broker)
@@ -211,7 +211,7 @@ func TestExpireStaleTrackersMarksUnresolvedAfterStaleDay(t *testing.T) {
 	prev := ListingLagWait
 	ListingLagWait = 0
 	t.Cleanup(func() { ListingLagWait = prev })
-	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true})
+	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true})
 	res := e.Execute("t1")
 	if !res.Executed {
 		t.Fatalf("submit %+v", res.Broker)
@@ -265,7 +265,7 @@ func TestResolveTrackerAbsentDeletesPhantomAndUnblocks(t *testing.T) {
 	prev := ListingLagWait
 	ListingLagWait = 0
 	t.Cleanup(func() { ListingLagWait = prev })
-	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true})
+	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true})
 	res := e.Execute("t1")
 	if !res.Executed {
 		t.Fatalf("submit %+v", res.Broker)
@@ -315,7 +315,7 @@ func TestResolveTrackerFilledRecordsJournal(t *testing.T) {
 	prev := ListingLagWait
 	ListingLagWait = 0
 	t.Cleanup(func() { ListingLagWait = prev })
-	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "allowNewEntries": true})
+	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true})
 	res := e.Execute("t1")
 	if !res.Executed {
 		t.Fatalf("submit %+v", res.Broker)
