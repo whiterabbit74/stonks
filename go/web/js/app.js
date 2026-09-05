@@ -2643,7 +2643,7 @@
         <td class="${pnlClass(toNum(p.unrealizedPnl))}">${p.unrealizedPnl == null ? '—' : fmtUsd(p.unrealizedPnl)}</td>
         <td class="${pnlClass(toNum(p.unrealizedPnlRate))}">${formatRatioPercent(p.unrealizedPnlRate)}</td>
         <td>${formatRatioPercent(p.holdingProportion)}</td>
-        <td>${p.symbol && p.symbol !== '—' ? `<button type="button" data-close-pos="${esc(p.symbol)}" class="text-sm text-red-600">Закрыть</button>` : ''}</td>
+        <td>${p.symbol && p.symbol !== '—' ? actionIcon('x', 'Закрыть позицию', `data-close-pos="${esc(p.symbol)}"`, 'action-icon-danger') : ''}</td>
       </tr>`).join('');
       body = `${posRows ? `<div class="overflow-auto"><table class="trades"><thead><tr><th>Тикер</th><th>Тип</th><th>Валюта</th><th>Кол-во</th><th>Средняя</th><th>Себестоимость</th><th>Рыночная цена</th><th>Рыночная стоимость</th><th>Нереализ. PnL</th><th>PnL %</th><th>Доля</th><th>Действие</th></tr></thead><tbody>${posRows}</tbody></table></div>` : emptyBrokerTable(['Тикер', 'Тип', 'Валюта', 'Кол-во', 'Средняя', 'Себестоимость', 'Рыночная цена', 'Рыночная стоимость', 'Нереализ. PnL', 'PnL %', 'Доля', 'Действие'], 'Открытых позиций нет')}
       ${rawJsonBlock('Raw positions payload', state.dashboard && (state.dashboard.positions || (state.dashboard.account && state.dashboard.account.positions)))}
