@@ -25,10 +25,14 @@ html.dark .chart-watermark { color: rgba(226, 232, 240, 0.34); }
 }
 .safe-area-pb { padding-bottom: env(safe-area-inset-bottom); }
 .nav-active { background: #4f46e5; color: #fff; border-color: #4f46e5; }
-.table-wrap { overflow: auto; max-height: 480px; }
-table.trades { width: 100%; border-collapse: collapse; font-size: 13px; }
+.table-wrap { overflow: auto; max-width: 100%; max-height: 480px; scrollbar-width: thin; }
+table.trades { width: 100%; min-width: max-content; border-collapse: collapse; font-size: 13px; }
 table.trades th, table.trades td { padding: 6px 8px; border-bottom: 1px solid #e5e7eb; text-align: left; white-space: nowrap; }
 html.dark table.trades th, html.dark table.trades td { border-color: #1f2937; }
+.overflow-x-auto, .overflow-auto { scrollbar-width: thin; }
+.overflow-x-auto::-webkit-scrollbar, .overflow-auto::-webkit-scrollbar, .table-wrap::-webkit-scrollbar { height: 6px; width: 6px; }
+.overflow-x-auto::-webkit-scrollbar-thumb, .overflow-auto::-webkit-scrollbar-thumb, .table-wrap::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 9999px; }
+html.dark .overflow-x-auto::-webkit-scrollbar-thumb, html.dark .overflow-auto::-webkit-scrollbar-thumb, html.dark .table-wrap::-webkit-scrollbar-thumb { background: #475569; }
 .pos { color: #16a34a; }
 .neg { color: #dc2626; }
 .bottom-nav { display: none; }

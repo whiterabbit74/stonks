@@ -1381,12 +1381,12 @@
 
   function pageHeader(title, subtitle, actions, ico) {
     return `<div class="mb-6">
-      <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+      <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between lg:gap-4">
         <div class="min-w-0">
           <h1 class="text-2xl font-bold text-gray-900 dark:text-gray-100${ico ? ' flex items-center gap-2' : ''}">${ico ? icon(ico, 'w-6 h-6') : ''}${esc(title)}</h1>
           ${subtitle ? `<p class="mt-1 text-sm text-gray-600 dark:text-gray-400">${esc(subtitle)}</p>` : ''}
         </div>
-        ${actions ? `<div class="flex flex-wrap items-center gap-2 sm:flex-shrink-0">${actions}</div>` : ''}
+        ${actions ? `<div class="flex flex-wrap items-center gap-2 lg:flex-shrink-0">${actions}</div>` : ''}
       </div>
       <div class="mt-3 h-px bg-gradient-to-r from-indigo-500/50 via-sky-500/40 to-transparent"></div>
     </div>`;
@@ -2591,7 +2591,7 @@
       const st = state.rhStatus || {};
       body = `<div class="space-y-3 max-w-xl">
         <p class="text-sm text-gray-600 dark:text-gray-300">Откройте ссылку в десктопном браузере, войдите в Robinhood, разрешите доступ. Браузер попробует открыть 127.0.0.1 и покажет ошибку — это нормально. Скопируйте адрес из адресной строки целиком и вставьте ниже.</p>
-        <div class="flex gap-2"><input id="rh-auth-url" readonly class="field flex-1" value="${esc(st.authorizationUrl || state.rhAuthUrl || '')}" /><button type="button" id="rh-get-link" class="btn-primary min-h-0 py-2">Получить ссылку</button><button type="button" id="rh-copy-link" class="btn-secondary min-h-0 py-2">Копировать</button></div>
+        <div class="flex flex-col gap-2 sm:flex-row"><input id="rh-auth-url" readonly class="field min-w-0 flex-1" value="${esc(st.authorizationUrl || state.rhAuthUrl || '')}" /><button type="button" id="rh-get-link" class="btn-primary min-h-0 py-2 sm:w-auto">Получить ссылку</button><button type="button" id="rh-copy-link" class="btn-secondary min-h-0 py-2 sm:w-auto">Копировать</button></div>
         <label class="block text-sm">Вставьте адрес после разрешения<input id="rh-callback" class="field mt-1" placeholder="http://127.0.0.1:53682/callback?code=..." /></label>
         <div class="flex gap-2"><button type="button" id="rh-connect" class="btn-primary min-h-0 py-2">Подключить</button><button type="button" id="rh-disconnect" class="btn-secondary min-h-0 py-2">Отключить</button></div>
         <p class="text-sm text-gray-500">Статус: ${esc(st.status || (st.connected ? 'OK' : 'не подключено'))}${st.expiresAt ? ' · истекает ' + esc(st.expiresAt) : ''}</p>
