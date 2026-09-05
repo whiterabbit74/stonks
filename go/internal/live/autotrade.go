@@ -1183,12 +1183,19 @@ func (e *Engine) TestBuy(symbol string, qty float64) (OrderResult, error) {
 		msg := fmt.Sprintf("Test buy quantity must be between 1 and %.0f", maxQty)
 		return OrderResult{Error: msg}, fmt.Errorf("%s", msg)
 	}
-	br := e.defaultBroker()
+	return e.TestBuyOn("webull", symbol, qty)
+}
+
+func (e *Engine) TestBuyOn(brokerName, symbol string, qty float64) (OrderResult, error) {
+	if strings.TrimSpace(brokerName) == "" {
+		brokerName = "webull"
+	}
+	br := e.BrokerNamed(brokerName)
 	if br == nil {
 		return OrderResult{Error: "Webull credentials are missing"}, fmt.Errorf("Webull credentials are missing")
 	}
-	res, err := e.placeMarket(backgroundWindow(), store.SafeTicker(symbol), "BUY", qty, PlaceMarketCfg{}, br)
-	e.logAuto("test_buy", "", map[string]any{"symbol": symbol, "submitted": res.Submitted})
+	res, err := e.manualOrder(br, brokerName, store.SafeTicker(symbol), "BUY", qty, "test_buy")
+	e.logAuto("test_buy", "", map[string]any{"symbol": symbol, "submitted": res.Submitted, "broker": brokerName})
 	return res, err
 }
 

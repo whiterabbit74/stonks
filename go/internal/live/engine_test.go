@@ -401,6 +401,47 @@ func TestTestBuyKillSwitch(t *testing.T) {
 	}
 }
 
+func TestTestBuyCreatesTracker(t *testing.T) {
+	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
+	db, e, webull := testEngine(t, bars)
+	t.Setenv("WEBULL_ENABLE_LIVE_TEST_BUY", "true")
+
+	res, err := e.TestBuy("AAPL", 1)
+	if err != nil || !res.Submitted {
+		t.Fatalf("webull test buy %+v %v", res, err)
+	}
+	row := db.GetOrderTracker(res.ClientOrderID)
+	if row == nil {
+		t.Fatal("webull test buy must leave an order_trackers row")
+	}
+	if fmt.Sprint(row["source"]) != "test_buy" {
+		t.Fatalf("source=%v want test_buy", row["source"])
+	}
+	if fmt.Sprint(row["broker"]) != "webull" {
+		t.Fatalf("broker=%v want webull", row["broker"])
+	}
+
+	rh := &MemoryBroker{}
+	e.Brokers = map[string]Broker{"webull": webull, "robinhood": rh}
+	res, err = e.TestBuyOn("robinhood", "AAPL", 1)
+	if err != nil || !res.Submitted {
+		t.Fatalf("robinhood test buy %+v %v", res, err)
+	}
+	if len(rh.Orders) != 1 || rh.Orders[0].Side != "BUY" {
+		t.Fatalf("BUY must go to robinhood, got %+v", rh.Orders)
+	}
+	row = db.GetOrderTracker(res.ClientOrderID)
+	if row == nil {
+		t.Fatal("robinhood test buy must leave an order_trackers row")
+	}
+	if fmt.Sprint(row["source"]) != "test_buy" {
+		t.Fatalf("source=%v want test_buy", row["source"])
+	}
+	if fmt.Sprint(row["broker"]) != "robinhood" {
+		t.Fatalf("broker=%v want robinhood", row["broker"])
+	}
+}
+
 func TestT11OverviewMatchesNodeLayout(t *testing.T) {
 	dir := t.TempDir()
 	db, err := store.Open(filepath.Join(dir, "t.db"))

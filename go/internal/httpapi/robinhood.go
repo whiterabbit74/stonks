@@ -146,8 +146,7 @@ func (s *Server) handleRobinhoodTestBuy(w http.ResponseWriter, r *http.Request) 
 	if !s.requireJSON(w, r, &body) {
 		return
 	}
-	br := s.rhBroker()
-	if br == nil {
+	if s.liveEng().BrokerNamed("robinhood") == nil {
 		writeJSON(w, 400, map[string]any{"error": "robinhood not connected", "success": false})
 		return
 	}
@@ -156,7 +155,7 @@ func (s *Server) handleRobinhoodTestBuy(w http.ResponseWriter, r *http.Request) 
 		writeJSON(w, 400, map[string]any{"error": qtyErr.Error(), "success": false, "submitted": false})
 		return
 	}
-	res, err := br.PlaceMarket(body.Symbol, "BUY", qty)
+	res, err := s.liveEng().TestBuyOn("robinhood", body.Symbol, qty)
 	if err != nil || !res.Submitted {
 		reason := res.Error
 		if reason == "" && err != nil {

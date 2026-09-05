@@ -288,6 +288,36 @@ func TestRobinhoodCloseGuardsPendingTracker(t *testing.T) {
 	}
 }
 
+func TestRobinhoodTestBuyCreatesTracker(t *testing.T) {
+	s, _, webull := liveServer(t)
+	t.Setenv("ROBINHOOD_ENABLE_LIVE_TEST_BUY", "true")
+	rh := &live.MemoryBroker{}
+	s.Live.Brokers = map[string]live.Broker{"webull": webull, "robinhood": rh}
+
+	rec := postJSON(s, "/api/autotrade/robinhood/test-buy", map[string]any{"symbol": "AAPL", "quantity": 1})
+	if rec.Code != 200 {
+		t.Fatalf("test-buy %d %s", rec.Code, rec.Body.String())
+	}
+	if len(rh.Orders) != 1 || rh.Orders[0].Side != "BUY" {
+		t.Fatalf("BUY must go to robinhood, got %+v", rh.Orders)
+	}
+	var out map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	id := fmt.Sprint(out["clientOrderId"])
+	row := s.DB.GetOrderTracker(id)
+	if row == nil {
+		t.Fatal("robinhood test buy must leave an order_trackers row")
+	}
+	if fmt.Sprint(row["source"]) != "test_buy" {
+		t.Fatalf("source=%v want test_buy", row["source"])
+	}
+	if fmt.Sprint(row["broker"]) != "robinhood" {
+		t.Fatalf("broker=%v want robinhood", row["broker"])
+	}
+}
+
 func TestSimulateSplitJumpAndEmaAndFillPoll(t *testing.T) {
 	s, tg, br := liveServer(t)
 	bars := []types.OHLC{{Date: "2026-09-01", Open: 91, High: 94, Low: 90, Close: 92.7, Volume: 1}}
