@@ -61,10 +61,11 @@ func (w execWindow) parentCtx() context.Context {
 // the T-11/T-1 messages already use.
 func (e *Engine) t1Deadline(safetyMargin time.Duration) time.Time {
 	closeMin, _ := e.sessionCloseMin()
-	p := tradingdate.CurrentTimeNYSE(e.now())
-	nowSec := p.Hour*3600 + p.Minute*60 + e.now().Second()
+	now := e.now()
+	p := tradingdate.CurrentTimeNYSE(now)
+	nowSec := p.Hour*3600 + p.Minute*60 + now.Second()
 	secondsUntilClose := closeMin*60 - nowSec
-	return e.now().Add(time.Duration(secondsUntilClose)*time.Second - safetyMargin)
+	return now.Add(time.Duration(secondsUntilClose)*time.Second - safetyMargin)
 }
 
 // t1Window builds the execWindow for a T-1 close-of-session execution: ctx
