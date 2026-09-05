@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"os"
 	"strings"
 	"time"
 
@@ -64,12 +65,27 @@ func IsHoliday(p tradingdate.NYSEParts, cal Calendar) bool {
 
 func IsShortDay(p tradingdate.NYSEParts, cal Calendar) bool {
 	y := fmt.Sprintf("%d", p.Year)
-	yearMap := cal.ShortDays[y]
-	if yearMap == nil {
+	if yearMap := cal.ShortDays[y]; yearMap != nil {
+		if _, ok := yearMap[mmdd(p)]; ok {
+			return true
+		}
+	}
+	return computedShortDay(p)
+}
+
+// computedShortDay uses tradingdate.ShortDayName when the imported calendar
+// has no shortDays entry for today. Named sessions are early close; "Early Close"
+// is the function's default for every other date.
+func computedShortDay(p tradingdate.NYSEParts) bool {
+	if p.DayOfWeek == 0 || p.DayOfWeek == 6 {
 		return false
 	}
-	_, ok := yearMap[mmdd(p)]
-	return ok
+	date := tradingdate.NYSEPartsDate(p)
+	if tradingdate.IsNYSEHoliday(date) {
+		return false
+	}
+	name := tradingdate.ShortDayName(date)
+	return name != "" && name != "Early Close"
 }
 
 func IsTradingDay(p tradingdate.NYSEParts, cal Calendar) bool {
@@ -164,6 +180,10 @@ func RunTick(db *store.DB, deps Deps, now time.Time, onEvent func(JobLog)) {
 	if onEvent == nil {
 		onEvent = func(JobLog) {}
 	}
+	started := time.Now()
+	defer func() {
+		onEvent(JobLog{At: now, Name: "tick", Detail: fmt.Sprintf("duration_ms=%d", time.Since(started).Milliseconds())})
+	}()
 	defer func() {
 		if rec := recover(); rec != nil {
 			log.Printf("scheduler: RunTick panic: %v", rec)
@@ -187,7 +207,15 @@ func RunTick(db *store.DB, deps Deps, now time.Time, onEvent func(JobLog)) {
 		sess := TradingSession(p, cal)
 		nowMin := p.Hour*60 + p.Minute
 		until := sess.CloseMin - nowMin
+		chat := telegramChatID(eng)
+		if until < 10 {
+			reportMissedTelegram(db, eng, now, today, chat, "t11", until, onEvent)
+		}
+		if until < 0 {
+			reportMissedTelegram(db, eng, now, today, chat, "t1", until, onEvent)
+		}
 		if (until >= 10 && until <= 12) || (until >= 0 && until <= 2) {
+			_ = db.EnsureAggregateSlot(chat, today)
 			n := RunTelegramAggregation(db, deps, until)
 			onEvent(JobLog{At: now, Name: "telegram-aggregation", Detail: fmt.Sprintf("window until=%d watches=%d", until, n)})
 			log.Printf("scheduler: telegram aggregation minutesUntilClose=%d short=%v", until, sess.Short)
@@ -405,6 +433,50 @@ func maybeHealthAlert(db *store.DB, eng *live.Engine, broker, prev, prevAt, stat
 		_ = db.SetRobinhoodAlerted(status, now.UTC().Format(time.RFC3339Nano))
 	} else {
 		_ = db.SetWebullAlerted(status, now.UTC().Format(time.RFC3339Nano))
+	}
+}
+
+func telegramChatID(eng *live.Engine) string {
+	if eng == nil {
+		return os.Getenv("TELEGRAM_CHAT_ID")
+	}
+	if eng.ChatID != "" {
+		return eng.ChatID
+	}
+	return os.Getenv("TELEGRAM_CHAT_ID")
+}
+
+func reportMissedTelegram(db *store.DB, eng *live.Engine, now time.Time, today, chat, slot string, until int, onEvent func(JobLog)) {
+	t11Sent, t1Sent := db.AggregateState(chat, today)
+	switch slot {
+	case "t11":
+		if t11Sent {
+			return
+		}
+		claimed, err := db.ClaimAggregateT11(chat, today)
+		if err != nil || !claimed {
+			return
+		}
+		detail := fmt.Sprintf("missed-t11 until=%d", until)
+		onEvent(JobLog{At: now, Name: "telegram-aggregation", Skipped: true, Detail: detail})
+		if eng != nil {
+			_ = eng.Send("", fmt.Sprintf("<b>Пропущен T-11</b>\nСводка за 11 минут до закрытия не ушла (until=%d).", until))
+		}
+	case "t1":
+		if t1Sent || db.T1ExecutionFinished(chat, today) {
+			return
+		}
+		settings := db.Settings()
+		if fmt.Sprint(settings["lastMissedT1Date"]) == today {
+			return
+		}
+		settings["lastMissedT1Date"] = today
+		_ = db.SaveSettings(settings)
+		detail := fmt.Sprintf("missed-t1 until=%d", until)
+		onEvent(JobLog{At: now, Name: "telegram-aggregation", Skipped: true, Detail: detail})
+		if eng != nil {
+			_ = eng.Send("", fmt.Sprintf("<b>Пропущен T-1</b>\nРешение за минуту до закрытия не ушло (until=%d).", until))
+		}
 	}
 }
 

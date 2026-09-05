@@ -390,10 +390,33 @@ func (d *DB) MarkAggregateT11(chatID, dateKey string) error {
 	return err
 }
 
+// EnsureAggregateSlot reserves today's T-11/T-1 row without marking either
+// stage sent. The scheduler claims the slot when it first enters the window
+// (until 12 or 2) so a later miss can tell "reserved but not sent" from
+// "never saw the day".
+func (d *DB) EnsureAggregateSlot(chatID, dateKey string) error {
+	_, err := d.SQL.Exec(`INSERT OR IGNORE INTO aggregate_send_state (date_key, chat_id, t11_sent, t1_sent) VALUES (?, ?, 0, 0)`, dateKey, chatID)
+	return err
+}
+
+// ClaimAggregateT11 sets t11_sent if it is still 0. The caller that gets true
+// owns the T-11 slot — either to send, or to record that the minute was missed.
+func (d *DB) ClaimAggregateT11(chatID, dateKey string) (bool, error) {
+	if err := d.EnsureAggregateSlot(chatID, dateKey); err != nil {
+		return false, err
+	}
+	res, err := d.SQL.Exec(`UPDATE aggregate_send_state SET t11_sent=1 WHERE date_key=? AND chat_id=? AND t11_sent=0`, dateKey, chatID)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n == 1, err
+}
+
 // ClaimAggregateT1 sets t1_sent for this chat/date if it is still 0.
 // The caller that gets true is the only one allowed to Execute for that day.
 func (d *DB) ClaimAggregateT1(chatID, dateKey string) (bool, error) {
-	if _, err := d.SQL.Exec(`INSERT OR IGNORE INTO aggregate_send_state (date_key, chat_id, t11_sent, t1_sent) VALUES (?, ?, 0, 0)`, dateKey, chatID); err != nil {
+	if err := d.EnsureAggregateSlot(chatID, dateKey); err != nil {
 		return false, err
 	}
 	res, err := d.SQL.Exec(`UPDATE aggregate_send_state SET t1_sent=1 WHERE date_key=? AND chat_id=? AND t1_sent=0`, dateKey, chatID)

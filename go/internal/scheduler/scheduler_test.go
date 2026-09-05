@@ -376,16 +376,22 @@ func TestTickT1Executes(t *testing.T) {
 	if len(br.Orders) != 1 {
 		t.Fatalf("T-1 must place, orders=%+v logs=%+v", br.Orders, logs)
 	}
-	if len(tg.Sent()) == 0 {
-		t.Fatal("T-1 must send a telegram")
+	text := telegramTextContaining(tg, "1 минута до закрытия")
+	if text == "" {
+		t.Fatalf("T-1 must send the decision message:\n%v", tg.Sent())
 	}
-	text := tg.Sent()[0][1]
 	if strings.Contains(text, "11m") || strings.Contains(text, "ENTRY:") {
 		t.Fatalf("T-1 sent T-11 overview:\n%s", text)
 	}
-	if !strings.Contains(text, "1 минута до закрытия") {
-		t.Fatalf("T-1 must send the decision message:\n%s", text)
+}
+
+func telegramTextContaining(tg *live.MemoryTelegram, needle string) string {
+	for _, m := range tg.Sent() {
+		if strings.Contains(m[1], needle) {
+			return m[1]
+		}
 	}
+	return ""
 }
 
 func TestTickT1RunsBeforePollTrackers(t *testing.T) {
@@ -526,8 +532,14 @@ func TestTickT1SecondTickDoesNotPlace(t *testing.T) {
 	if len(br.Orders) != 1 {
 		t.Fatalf("second T-1 tick must not place, orders=%+v", br.Orders)
 	}
-	if len(tg.Sent()) != 1 {
-		t.Fatalf("T-1 telegram must send once, got %d %+v", len(tg.Sent()), tg.Sent())
+	nT1 := 0
+	for _, m := range tg.Sent() {
+		if strings.Contains(m[1], "1 минута до закрытия") {
+			nT1++
+		}
+	}
+	if nT1 != 1 {
+		t.Fatalf("T-1 telegram must send once, got %d %+v", nT1, tg.Sent())
 	}
 	eng2 := live.New(db, eng.Quotes)
 	eng2.Telegram = tg
@@ -546,6 +558,106 @@ func TestTickT1Until2DoesNotPlace(t *testing.T) {
 	RunTick(db, Deps{Live: eng}, now, func(JobLog) {})
 	if len(br.Orders) != 0 {
 		t.Fatalf("until=2 must not place, orders=%+v", br.Orders)
+	}
+}
+
+func TestEmptyCalendarUsesComputedShortDay(t *testing.T) {
+	cal := Calendar{}
+	// 2026-12-24 is Thursday; tradingdate.ShortDayName names it Christmas Eve.
+	p := tradingdate.NYSEParts{Year: 2026, Month: 12, Day: 24, DayOfWeek: 4}
+	sess := TradingSession(p, cal)
+	if !sess.Short || sess.CloseMin != 13*60 {
+		t.Fatalf("empty calendar must fall back to computed early close, got %+v", sess)
+	}
+	thanksEve := tradingdate.NYSEParts{Year: 2026, Month: 11, Day: 25, DayOfWeek: 3}
+	if !IsShortDay(thanksEve, cal) {
+		t.Fatal("Thanksgiving Eve must be a computed short day")
+	}
+	regular := tradingdate.NYSEParts{Year: 2026, Month: 9, Day: 1, DayOfWeek: 2}
+	reg := TradingSession(regular, cal)
+	if reg.Short || reg.CloseMin != 16*60 {
+		t.Fatalf("regular weekday must stay 16:00, got %+v", reg)
+	}
+	// 2026-07-03 is the observed Independence Day holiday, not an early close.
+	holiday := tradingdate.NYSEParts{Year: 2026, Month: 7, Day: 3, DayOfWeek: 5}
+	if IsTradingDay(holiday, cal) {
+		t.Fatal("computed holiday with empty calendar must not trade")
+	}
+	if IsShortDay(holiday, cal) {
+		t.Fatal("holiday must not be treated as a short session")
+	}
+}
+
+func TestTickMissedT11AtT8Alerts(t *testing.T) {
+	dir := t.TempDir()
+	db, err := store.Open(filepath.Join(dir, "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
+	_ = db.SaveDataset("AAPL", "AAPL", "", "", bars, false)
+	_ = db.UpsertWatch(map[string]any{"symbol": "AAPL", "lowIBS": 0.1, "highIBS": 0.75})
+	tg := &live.MemoryTelegram{}
+	eng := live.New(db, &live.MemoryQuotes{Bars: map[string][]types.OHLC{"AAPL": bars}})
+	eng.Telegram = tg
+	eng.ChatID = "c"
+	now := time.Date(2026, 9, 1, 19, 52, 0, 0, time.UTC) // 15:52 ET, until=8
+	var logs []JobLog
+	RunTick(db, Deps{Live: eng}, now, func(j JobLog) { logs = append(logs, j) })
+	sawMiss := false
+	for _, j := range logs {
+		if j.Name == "telegram-aggregation" && j.Skipped && strings.Contains(j.Detail, "missed-t11") {
+			sawMiss = true
+		}
+		if j.Name == "telegram-aggregation" && !j.Skipped {
+			t.Fatalf("T-8 must not send T-11: %+v", j)
+		}
+	}
+	if !sawMiss {
+		t.Fatalf("T-8 with t11 not sent must JobLog missed-t11, logs=%+v", logs)
+	}
+	if telegramTextContaining(tg, "Пропущен T-11") == "" {
+		t.Fatalf("T-8 must alert missed T-11, messages=%v", tg.Sent())
+	}
+	n := len(tg.Sent())
+	var logs2 []JobLog
+	RunTick(db, Deps{Live: eng}, now.Add(20*time.Second), func(j JobLog) { logs2 = append(logs2, j) })
+	for _, j := range logs2 {
+		if j.Name == "telegram-aggregation" && j.Skipped && strings.Contains(j.Detail, "missed-t11") {
+			t.Fatalf("missed T-11 must alert once, second tick %+v", j)
+		}
+	}
+	if len(tg.Sent()) != n {
+		t.Fatalf("missed T-11 telegram must send once, got %d", len(tg.Sent()))
+	}
+}
+
+func TestTickMissedT1AfterCloseAlerts(t *testing.T) {
+	dir := t.TempDir()
+	db, err := store.Open(filepath.Join(dir, "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	tg := &live.MemoryTelegram{}
+	eng := live.New(db, nil)
+	eng.Telegram = tg
+	eng.ChatID = "c"
+	now := time.Date(2026, 9, 1, 20, 5, 0, 0, time.UTC) // 16:05 ET, after close
+	var logs []JobLog
+	RunTick(db, Deps{Live: eng}, now, func(j JobLog) { logs = append(logs, j) })
+	saw := false
+	for _, j := range logs {
+		if j.Name == "telegram-aggregation" && j.Skipped && strings.Contains(j.Detail, "missed-t1") {
+			saw = true
+		}
+	}
+	if !saw {
+		t.Fatalf("after close with t1 not sent must JobLog missed-t1, logs=%+v", logs)
+	}
+	if telegramTextContaining(tg, "Пропущен T-1") == "" {
+		t.Fatalf("after close must alert missed T-1, messages=%v", tg.Sent())
 	}
 }
 
