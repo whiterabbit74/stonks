@@ -147,7 +147,7 @@ func TestUXAppearanceContract(t *testing.T) {
 		}
 		chrome := jsFn(app, "updateChrome")
 		statusSrc := footer + chrome + jsFn(app, "statusBadgeHTML")
-		for _, needle := range []string{"serverStatus", "checking", "offline", "Online", "Offline"} {
+		for _, needle := range []string{"serverStatus", "checking", "offline", "Онлайн", "Офлайн"} {
 			if !strings.Contains(statusSrc, needle) {
 				t.Errorf("footer/chrome status must branch on %s", needle)
 			}

@@ -1635,12 +1635,12 @@
   function statusBadgeHTML() {
     const st = state.serverStatus;
     if (st === 'offline') {
-      return `<span id="footer-status" title="Offline" class="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs bg-red-100 text-red-800 dark:bg-red-950/30 dark:text-red-200"><span class="w-1.5 h-1.5 bg-red-500 rounded-full"></span>Офлайн</span>`;
+      return `<span id="footer-status" title="Офлайн" class="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs bg-red-100 text-red-800 dark:bg-red-950/30 dark:text-red-200"><span class="w-1.5 h-1.5 bg-red-500 rounded-full"></span>Офлайн</span>`;
     }
     if (st === 'checking') {
-      return `<span id="footer-status" title="Checking" class="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300"><span class="w-1.5 h-1.5 bg-gray-400 rounded-full"></span>Проверка</span>`;
+      return `<span id="footer-status" title="Проверка" class="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300"><span class="w-1.5 h-1.5 bg-gray-400 rounded-full"></span>Проверка</span>`;
     }
-      return `<span id="footer-status" title="Online" class="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs bg-green-100 text-green-800 dark:bg-green-950/30 dark:text-green-200"><span class="w-1.5 h-1.5 bg-green-500 rounded-full"></span>Онлайн</span>`;
+      return `<span id="footer-status" title="Онлайн" class="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs bg-green-100 text-green-800 dark:bg-green-950/30 dark:text-green-200"><span class="w-1.5 h-1.5 bg-green-500 rounded-full"></span>Онлайн</span>`;
   }
   function footerHTML(apiVer) {
     const year = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', year: 'numeric' }).format(new Date());
