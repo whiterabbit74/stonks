@@ -2659,7 +2659,7 @@
         <td class="text-xs">${esc(o.orderId)}</td><td class="text-xs">${esc(o.clientOrderId)}</td>
         <td class="text-xs">${esc(formatDateTimeET(o.createdAt))}</td>
       </tr>`).join('');
-      body = `${orderRows ? `<div class="overflow-auto"><table class="trades"><thead><tr><th>Тикер</th><th>Side</th><th>Статус</th><th>Qty</th><th>Filled Qty</th><th>Type</th><th>Instrument</th><th>Combo</th><th>Entrust</th><th>TIF</th><th>Session</th><th>Цена</th><th>Order ID</th><th>Client ID</th><th>Создан</th></tr></thead><tbody>${orderRows}</tbody></table></div>` : emptyBrokerTable(['Тикер', 'Side', 'Статус', 'Qty', 'Filled Qty', 'Type', 'Instrument', 'Combo', 'Entrust', 'TIF', 'Session', 'Цена', 'Order ID', 'Client ID', 'Создан'], 'Активных ордеров нет')}
+      body = `${orderRows ? `<div class="overflow-auto"><table class="trades"><thead><tr><th>Тикер</th><th>Направление</th><th>Статус</th><th>Кол-во</th><th>Исполнено</th><th>Тип</th><th>Инструмент</th><th>Комбинация</th><th>Поручение</th><th>Срок</th><th>Сессия</th><th>Цена</th><th>ID ордера</th><th>ID клиента</th><th>Создан</th></tr></thead><tbody>${orderRows}</tbody></table></div>` : emptyBrokerTable(['Тикер', 'Направление', 'Статус', 'Кол-во', 'Исполнено', 'Тип', 'Инструмент', 'Комбинация', 'Поручение', 'Срок', 'Сессия', 'Цена', 'ID ордера', 'ID клиента', 'Создан'], 'Активных ордеров нет')}
       ${rawJsonBlock('Raw open orders payload', state.dashboard && state.dashboard.openOrders)}`;
     } else if (tab === 'fills') {
       const fills = normalizeOrders(state.dashboard && state.dashboard.orderHistory);
@@ -2673,7 +2673,7 @@
         <td>${o.avgPrice == null ? '—' : fmt(toNum(o.avgPrice))}</td>
         <td class="text-xs">${esc(o.orderId)}</td><td class="text-xs">${esc(o.clientOrderId)}</td>
       </tr>`).join('');
-      body = `${fillRows ? `<div class="overflow-auto"><table class="trades"><thead><tr><th>Исполнено</th><th>Тикер</th><th>Side</th><th>Статус</th><th>Qty</th><th>Order Qty</th><th>Type</th><th>Instrument</th><th>Combo</th><th>Entrust</th><th>TIF</th><th>Session</th><th>Avg Price</th><th>Order ID</th><th>Client ID</th></tr></thead><tbody>${fillRows}</tbody></table></div>` : emptyBrokerTable(['Исполнено', 'Тикер', 'Side', 'Статус', 'Qty', 'Order Qty', 'Type', 'Instrument', 'Combo', 'Entrust', 'TIF', 'Session', 'Avg Price', 'Order ID', 'Client ID'], 'История ордеров пока не пришла')}
+      body = `${fillRows ? `<div class="overflow-auto"><table class="trades"><thead><tr><th>Исполнено</th><th>Тикер</th><th>Направление</th><th>Статус</th><th>Кол-во</th><th>Кол-во в ордере</th><th>Тип</th><th>Инструмент</th><th>Комбинация</th><th>Поручение</th><th>Срок</th><th>Сессия</th><th>Средняя цена</th><th>ID ордера</th><th>ID клиента</th></tr></thead><tbody>${fillRows}</tbody></table></div>` : emptyBrokerTable(['Исполнено', 'Тикер', 'Направление', 'Статус', 'Кол-во', 'Кол-во в ордере', 'Тип', 'Инструмент', 'Комбинация', 'Поручение', 'Срок', 'Сессия', 'Средняя цена', 'ID ордера', 'ID клиента'], 'История ордеров пока не пришла')}
       ${rawJsonBlock('Raw order history payload', state.dashboard && state.dashboard.orderHistory)}`;
     } else if (tab === 'autotrade') {
       const st = state.autoStatus || {};
@@ -2783,7 +2783,7 @@
         <div class="rounded-lg border border-gray-200 p-4 dark:border-gray-700">
           <h3 class="font-semibold mb-2">Pending / last tracked orders</h3>
           ${persistBlockBanner}
-          ${pendingRows ? `<div class="overflow-auto mt-2"><table class="trades"><thead><tr><th>Тикер</th><th>Брокер</th><th>Action</th><th>Статус</th><th>Qty</th><th>Старт</th><th>Действие</th></tr></thead><tbody>${pendingRows}</tbody></table></div>` : '<p class="text-sm text-gray-500 mt-2">Tracked orders пока нет</p>'}
+          ${pendingRows ? `<div class="overflow-auto mt-2"><table class="trades"><thead><tr><th>Тикер</th><th>Брокер</th><th>Действие</th><th>Статус</th><th>Кол-во</th><th>Старт</th><th>Действие</th></tr></thead><tbody>${pendingRows}</tbody></table></div>` : '<p class="text-sm text-gray-500 mt-2">Отслеживаемых ордеров пока нет</p>'}
           <p class="mt-2 text-xs text-gray-500">execution_unknown / unresolved блокируют новые входы у брокера и требуют ручного разбора: проверьте заявку у брокера и нажмите «Исполнено у брокера» либо «Заявки нет».</p>
         </div>
       </div>`;
@@ -2834,7 +2834,7 @@
           <div class="rounded-lg border p-3"><div class="text-xs text-gray-500">Обновлено</div><div class="text-sm">${esc(formatDateTimeET((state.dashboard && state.dashboard.fetchedAt) || ''))}</div></div>
         </div>
         ${issues.length ? issues.map((i) => `<div class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 mb-2">${esc(i.message || i.code)}</div>`).join('') : ''}
-        ${wrows ? `<div class="overflow-auto"><table class="trades"><thead><tr><th>Тикер</th><th>Open</th><th>High</th><th>Low</th><th>Цена</th><th>Current IBS</th><th>Prev Close</th><th>Δ</th><th>Entry</th><th>Вход, IBS &lt;</th><th>Выход, IBS &gt;</th><th>Позиция</th><th>Обновлено</th><th>Источник</th><th>Действие</th></tr></thead><tbody>${wrows}</tbody></table></div>` : emptyBrokerTable(['Тикер', 'Open', 'High', 'Low', 'Цена', 'Current IBS', 'Prev Close', 'Δ', 'Entry', 'Вход, IBS &lt;', 'Выход, IBS &gt;', 'Позиция', 'Обновлено', 'Источник', 'Действие'], 'Нет отслеживаемых акций')}
+        ${wrows ? `<div class="overflow-auto"><table class="trades"><thead><tr><th>Тикер</th><th>Открытие</th><th>Макс.</th><th>Мин.</th><th>Цена</th><th>Текущий IBS</th><th>Пред. закрытие</th><th>Изменение</th><th>Вход</th><th>Вход, IBS &lt;</th><th>Выход, IBS &gt;</th><th>Позиция</th><th>Обновлено</th><th>Источник</th><th>Действие</th></tr></thead><tbody>${wrows}</tbody></table></div>` : emptyBrokerTable(['Тикер', 'Открытие', 'Макс.', 'Мин.', 'Цена', 'Текущий IBS', 'Пред. закрытие', 'Изменение', 'Вход', 'Вход, IBS &lt;', 'Выход, IBS &gt;', 'Позиция', 'Обновлено', 'Источник', 'Действие'], 'Нет отслеживаемых акций')}
         ${rawJsonBlock('Raw monitoring payload', { watches: state.watches, quotes: state.brokerQuotes, consistency: state.consistency })}`;
     } else {
       const pack = state.autoLogs || {};
