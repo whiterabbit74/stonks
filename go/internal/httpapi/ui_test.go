@@ -506,6 +506,37 @@ func TestAutotradeTabSplitsSharedAndBrokerParts(t *testing.T) {
 // apply to the regular T-1 run; the slippage threshold stopped being a
 // post-hoc notification once P1-6 made it floor the entry sizing reserve, and
 // the roadmap requires the text to follow that change.
+func TestMutationToastsFollowSuccessfulResponse(t *testing.T) {
+	app, err := os.ReadFile(filepath.Join("..", "..", "web", "js", "app.js"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := string(app)
+	save := strings.Index(a, "await API.saveSettings(body)")
+	if save < 0 {
+		t.Fatal("set-form must await API.saveSettings")
+	}
+	toast := strings.Index(a[save:], "toast('Сохранено')")
+	if toast < 0 || toast > 500 {
+		t.Fatal("toast «Сохранено» must follow a successful saveSettings response")
+	}
+	patch := strings.Index(a, "await API.patchBrokerTrade")
+	if patch < 0 {
+		t.Fatal("broker edit must await patchBrokerTrade")
+	}
+	if i := strings.Index(a[patch:], "closeModal()"); i < 0 || i > 400 {
+		t.Fatal("broker edit must close the modal only after a successful patch")
+	}
+	delWatch := strings.Index(a, "await API.deleteWatch")
+	if delWatch < 0 {
+		t.Fatal("watch delete must await API.deleteWatch")
+	}
+	delBroker := strings.Index(a, "await API.del('/api/broker-trades/'")
+	if delBroker < 0 {
+		t.Fatal("broker-trade delete must await the DELETE")
+	}
+}
+
 func TestAutotradeCardDisclaimsExecutionWindowAndSlippage(t *testing.T) {
 	app, err := os.ReadFile(filepath.Join("..", "..", "web", "js", "app.js"))
 	if err != nil {

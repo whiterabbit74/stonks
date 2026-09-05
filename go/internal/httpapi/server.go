@@ -704,7 +704,10 @@ func (s *Server) savePayload(w http.ResponseWriter, payload map[string]any) {
 	}
 	if raw, ok := payload["splits"]; ok {
 		if events := decodeSplitEvents(raw); events != nil {
-			_ = s.DB.UpsertSplits(ticker, events)
+			if err := s.DB.UpsertSplits(ticker, events); err != nil {
+				writeJSON(w, 500, map[string]any{"error": err.Error()})
+				return
+			}
 		}
 	}
 	writeJSON(w, 200, map[string]any{
@@ -776,7 +779,10 @@ func (s *Server) handleRefreshDataset(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if len(hist.Splits) > 0 {
-		_ = s.DB.UpsertSplits(id, hist.Splits)
+		if err := s.DB.UpsertSplits(id, hist.Splits); err != nil {
+			writeJSON(w, 500, map[string]any{"error": err.Error()})
+			return
+		}
 	}
 	company := strPtr(ds["companyName"])
 	tag := strPtr(ds["tag"])
@@ -785,7 +791,10 @@ func (s *Server) handleRefreshDataset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if company != "" || tag != "" {
-		_ = s.DB.UpdateDatasetMetadata(id, &tag, &company)
+		if err := s.DB.UpdateDatasetMetadata(id, &tag, &company); err != nil {
+			writeJSON(w, 500, map[string]any{"error": err.Error()})
+			return
+		}
 	}
 	updated, _ := s.DB.GetDataset(id)
 	writeJSON(w, 200, map[string]any{
@@ -1003,14 +1012,20 @@ func parseSplitBody(r *http.Request) ([]types.SplitEvent, error) {
 
 func (s *Server) handleDeleteSplitDate(w http.ResponseWriter, r *http.Request) {
 	symbol := store.SafeTicker(r.PathValue("symbol"))
-	_ = s.DB.DeleteSplit(symbol, r.PathValue("date"))
+	if err := s.DB.DeleteSplit(symbol, r.PathValue("date")); err != nil {
+		writeJSON(w, 500, map[string]any{"error": err.Error()})
+		return
+	}
 	updated, _ := s.DB.ListSplits(symbol)
 	writeJSON(w, 200, map[string]any{"success": true, "symbol": symbol, "events": updated})
 }
 
 func (s *Server) handleDeleteSplits(w http.ResponseWriter, r *http.Request) {
 	symbol := store.SafeTicker(r.PathValue("symbol"))
-	_ = s.DB.DeleteSplits(symbol)
+	if err := s.DB.DeleteSplits(symbol); err != nil {
+		writeJSON(w, 500, map[string]any{"error": err.Error()})
+		return
+	}
 	writeJSON(w, 200, map[string]any{"success": true, "symbol": symbol})
 }
 
@@ -1163,7 +1178,10 @@ func (s *Server) handleWatchPost(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleWatchDelete(w http.ResponseWriter, r *http.Request) {
-	_ = s.DB.DeleteWatch(r.PathValue("symbol"))
+	if err := s.DB.DeleteWatch(r.PathValue("symbol")); err != nil {
+		writeJSON(w, 500, map[string]any{"error": err.Error()})
+		return
+	}
 	writeJSON(w, 200, map[string]any{"ok": true})
 }
 
@@ -1172,7 +1190,10 @@ func (s *Server) handleWatchPatch(w http.ResponseWriter, r *http.Request) {
 	if !s.requireJSON(w, r, &body) {
 		return
 	}
-	_ = s.DB.PatchWatch(r.PathValue("symbol"), body)
+	if err := s.DB.PatchWatch(r.PathValue("symbol"), body); err != nil {
+		writeJSON(w, 500, map[string]any{"error": err.Error()})
+		return
+	}
 	writeJSON(w, 200, map[string]any{"ok": true})
 }
 
@@ -1217,7 +1238,10 @@ func (s *Server) handleEMAAlertPatch(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleEMAAlertDelete(w http.ResponseWriter, r *http.Request) {
-	_ = s.DB.DeleteEMAAlert(r.PathValue("id"))
+	if err := s.DB.DeleteEMAAlert(r.PathValue("id")); err != nil {
+		writeJSON(w, 500, map[string]any{"error": err.Error()})
+		return
+	}
 	writeJSON(w, 200, map[string]any{"ok": true})
 }
 
@@ -1277,7 +1301,10 @@ func (s *Server) handlePatchTrade(w http.ResponseWriter, r *http.Request) {
 	if !s.requireJSON(w, r, &body) {
 		return
 	}
-	_ = s.DB.PatchTrade("trades", r.PathValue("id"), body)
+	if err := s.DB.PatchTrade("trades", r.PathValue("id"), body); err != nil {
+		writeJSON(w, 500, map[string]any{"error": err.Error()})
+		return
+	}
 	writeJSON(w, 200, map[string]any{"ok": true})
 }
 
@@ -1302,7 +1329,10 @@ func (s *Server) handleCloseMonitor(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleDeleteTrade(w http.ResponseWriter, r *http.Request) {
-	_ = s.DB.DeleteTrade("trades", r.PathValue("id"))
+	if err := s.DB.DeleteTrade("trades", r.PathValue("id")); err != nil {
+		writeJSON(w, 500, map[string]any{"error": err.Error()})
+		return
+	}
 	writeJSON(w, 200, map[string]any{"ok": true})
 }
 
@@ -1330,11 +1360,17 @@ func (s *Server) handlePatchBroker(w http.ResponseWriter, r *http.Request) {
 	if !s.requireJSON(w, r, &body) {
 		return
 	}
-	_ = s.DB.PatchTrade("broker_trades", r.PathValue("id"), body)
+	if err := s.DB.PatchTrade("broker_trades", r.PathValue("id"), body); err != nil {
+		writeJSON(w, 500, map[string]any{"error": err.Error()})
+		return
+	}
 	writeJSON(w, 200, map[string]any{"ok": true})
 }
 func (s *Server) handleDeleteBroker(w http.ResponseWriter, r *http.Request) {
-	_ = s.DB.DeleteTrade("broker_trades", r.PathValue("id"))
+	if err := s.DB.DeleteTrade("broker_trades", r.PathValue("id")); err != nil {
+		writeJSON(w, 500, map[string]any{"error": err.Error()})
+		return
+	}
 	writeJSON(w, 200, map[string]any{"ok": true})
 }
 

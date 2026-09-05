@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"mktorder.com/go/internal/goldens"
+	"mktorder.com/go/internal/providers"
 	"mktorder.com/go/internal/store"
 	"mktorder.com/go/internal/types"
 )
@@ -181,6 +182,122 @@ func TestMonitorTradesFailsOnDBError(t *testing.T) {
 	s.Handler().ServeHTTP(rec, req)
 	if rec.Code != 500 {
 		t.Fatalf("monitor trades got %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestMutatorsFailOnDBError(t *testing.T) {
+	bar := []types.OHLC{{Date: "2024-01-01", Open: 10, High: 11, Low: 9, Close: 10, Volume: 1}}
+	cases := []struct {
+		name   string
+		method string
+		path   string
+		body   string
+		prep   func(*testing.T, *Server)
+	}{
+		{"watch-delete", "DELETE", "/api/telegram/watch/AAPL", "", func(t *testing.T, s *Server) {
+			if _, err := s.DB.SQL.Exec(`DROP TABLE telegram_watches`); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{"watch-patch", "PATCH", "/api/telegram/watch/AAPL", `{"lowIBS":0.12}`, func(t *testing.T, s *Server) {
+			if _, err := s.DB.SQL.Exec(`DROP TABLE telegram_watches`); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{"ema-delete", "DELETE", "/api/telegram/ema-alerts/x", "", func(t *testing.T, s *Server) {
+			if _, err := s.DB.SQL.Exec(`DROP TABLE telegram_ema_alerts`); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{"trade-patch", "PATCH", "/api/trades/t1", `{"notes":"x"}`, func(t *testing.T, s *Server) {
+			if _, err := s.DB.SQL.Exec(`DROP TABLE trades`); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{"trade-delete", "DELETE", "/api/trades/t1", "", func(t *testing.T, s *Server) {
+			if _, err := s.DB.SQL.Exec(`DROP TABLE trades`); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{"broker-patch", "PATCH", "/api/broker-trades/b1", `{"notes":"x"}`, func(t *testing.T, s *Server) {
+			if _, err := s.DB.SQL.Exec(`DROP TABLE broker_trades`); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{"broker-delete", "DELETE", "/api/broker-trades/b1", "", func(t *testing.T, s *Server) {
+			if _, err := s.DB.SQL.Exec(`DROP TABLE broker_trades`); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{"split-delete-date", "DELETE", "/api/splits/AAPL/2024-01-02", "", func(t *testing.T, s *Server) {
+			if _, err := s.DB.SQL.Exec(`DROP TABLE splits`); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{"splits-delete", "DELETE", "/api/splits/AAPL", "", func(t *testing.T, s *Server) {
+			if _, err := s.DB.SQL.Exec(`DROP TABLE splits`); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{"dataset-import-splits", "PUT", "/api/datasets/AAPL", "", func(t *testing.T, s *Server) {
+			if err := s.DB.SaveDataset("AAPL", "AAPL", "", "", bar, false); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := s.DB.SQL.Exec(`DROP TABLE splits`); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{"dataset-refresh-meta", "POST", "/api/datasets/AAPL/refresh", "", func(t *testing.T, s *Server) {
+			if err := s.DB.SaveDataset("AAPL", "AAPL", "Apple", "core", bar, false); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := s.DB.SQL.Exec(`CREATE TRIGGER fail_meta BEFORE UPDATE ON dataset_meta BEGIN SELECT RAISE(ABORT, 'boom'); END`); err != nil {
+				t.Fatal(err)
+			}
+			av := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"Time Series (Daily)":{"2024-01-08":{"1. open":"11","2. high":"13","3. low":"10","4. close":"12","6. volume":"110"}}}`))
+			}))
+			t.Cleanup(av.Close)
+			s.Providers = &providers.Client{HTTP: av.Client(), AlphaKey: "k", AlphaBase: av.URL}
+			st := s.DB.Settings()
+			st["resultsRefreshProvider"] = "alpha_vantage"
+			if err := s.DB.SaveSettings(st); err != nil {
+				t.Fatal(err)
+			}
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			s := testServer(t, "")
+			tc.prep(t, s)
+			body := tc.body
+			if tc.name == "dataset-import-splits" {
+				raw, err := json.Marshal(map[string]any{
+					"data":   bar,
+					"splits": []types.SplitEvent{{Date: "2024-01-02", Factor: 2}},
+				})
+				if err != nil {
+					t.Fatal(err)
+				}
+				body = string(raw)
+			}
+			var req *http.Request
+			if body != "" {
+				req = httptest.NewRequest(tc.method, tc.path, strings.NewReader(body))
+				req.Header.Set("Content-Type", "application/json")
+			} else {
+				req = httptest.NewRequest(tc.method, tc.path, nil)
+			}
+			rec := httptest.NewRecorder()
+			s.Handler().ServeHTTP(rec, req)
+			if rec.Code != 500 {
+				t.Fatalf("%s %s got %d %s", tc.method, tc.path, rec.Code, rec.Body.String())
+			}
+			if strings.Contains(rec.Body.String(), `"ok": true`) || strings.Contains(rec.Body.String(), `"ok":true`) {
+				t.Fatalf("%s answered ok:true on a DB error: %s", tc.name, rec.Body.String())
+			}
+		})
 	}
 }
 
