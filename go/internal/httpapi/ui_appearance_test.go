@@ -212,6 +212,27 @@ func TestUXAppearanceContract(t *testing.T) {
 		if darkBgImportant.MatchString(css) {
 			t.Fatal("shipped CSS must not have .dark .bg-* { !important } overriding dark: utilities")
 		}
+		shell := jsFn(app, "shellHTML")
+		login := jsFn(app, "loginPage")
+		if shell == "" {
+			t.Fatal("missing shellHTML")
+		}
+		if login == "" {
+			t.Fatal("missing loginPage")
+		}
+		for _, pair := range []struct{ name, src string }{
+			{"shellHTML", shell},
+			{"loginPage", login},
+		} {
+			for _, val := range classAttrValues(pair.src) {
+				if !classValueHasToken(val, "bg-gray-50") {
+					continue
+				}
+				if !classValueHasPrefix(val, "dark:bg-") {
+					t.Errorf("%s wrapper class %q has bg-gray-50 without dark:bg-* (dark canvas stays #f9fafb under near-white text after !important removal)", pair.name, val)
+				}
+			}
+		}
 	})
 }
 
@@ -371,6 +392,14 @@ func isClassNameContinue(c byte) bool {
 
 func classTokens(src string) []string {
 	var tokens []string
+	for _, val := range classAttrValues(src) {
+		tokens = append(tokens, tokensFromClassValue(val)...)
+	}
+	return tokens
+}
+
+func classAttrValues(src string) []string {
+	var values []string
 	for i := 0; i < len(src); {
 		idx := strings.Index(src[i:], `class="`)
 		if idx < 0 {
@@ -382,10 +411,28 @@ func classTokens(src string) []string {
 			i = start
 			continue
 		}
-		tokens = append(tokens, tokensFromClassValue(src[start:end])...)
+		values = append(values, src[start:end])
 		i = end + 1
 	}
-	return tokens
+	return values
+}
+
+func classValueHasToken(val, want string) bool {
+	for _, tok := range tokensFromClassValue(val) {
+		if tok == want {
+			return true
+		}
+	}
+	return false
+}
+
+func classValueHasPrefix(val, prefix string) bool {
+	for _, tok := range tokensFromClassValue(val) {
+		if strings.HasPrefix(tok, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 func scanAttrEnd(s string, start int, quote byte) (int, bool) {

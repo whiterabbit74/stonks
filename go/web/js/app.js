@@ -1518,7 +1518,7 @@
     }).join('');
     return `
       <a href="#main-content" class="sr-only">Перейти к основному содержимому</a>
-      <div class="app-frame ${slim ? 'app-frame-slim' : ''} min-h-screen bg-gray-50 text-gray-800 dark:text-gray-100">
+      <div class="app-frame ${slim ? 'app-frame-slim' : ''} min-h-screen bg-gray-50 text-gray-800 dark:bg-gray-900 dark:text-gray-100">
         <aside class="app-side" aria-label="Основная навигация">
           <a href="/data" data-nav class="app-side-brand" title="Trading strategies">${logo('sm')}<span class="app-side-lab">Trading strategies</span></a>
           <nav class="app-side-nav desktop-nav">${sideNavHTML()}</nav>
@@ -1563,7 +1563,7 @@
 
   function loginPage() {
     return `
-      <div class="min-h-screen bg-gray-50 text-gray-800 dark:text-gray-100 flex flex-col">
+      <div class="min-h-screen bg-gray-50 text-gray-800 dark:bg-gray-900 dark:text-gray-100 flex flex-col">
         <header class="border-b bg-white/60 backdrop-blur dark:bg-slate-900/60 dark:border-slate-800">
           <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between gap-3">
             <div class="flex min-w-0 items-center gap-3">${logo('sm')}<span class="hidden truncate text-lg font-semibold sm:inline">Trading strategies</span></div>
