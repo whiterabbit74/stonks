@@ -299,6 +299,7 @@ func (c *Client) alphaHistory(symbol string, startTs, endTs int64, adjustment st
 	}
 	fn := "TIME_SERIES_DAILY"
 	if adjustment == "split_only" {
+		// Alpha Vantage's adjusted endpoint includes dividends as well as splits.
 		fn = "TIME_SERIES_DAILY_ADJUSTED"
 	}
 	u := fmt.Sprintf("%s/query?function=%s&symbol=%s&apikey=%s&outputsize=full&random=%d",
