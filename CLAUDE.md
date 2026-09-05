@@ -118,7 +118,7 @@ caddy/                 TLS reverse proxy
 
 UI language is Russian. Brand: **Trading strategies**. Charts: Lightweight Charts v5, house `RIGHT_OFFSET: 8`, IBS pane 0–100 with dotted 10/75.
 
-Local: `cd go && go test ./... && go run ./cmd/server` → `:8080` (override `PORT`). Auth: `ADMIN_PASSWORD=test` (empty password disables auth only outside production). SQLite default: `go/data/trading.db`.
+Local: `cd go && go test ./... && go run ./cmd/server` → `:8080` (override `PORT`). Auth: `ADMIN_PASSWORD=test` (empty password is fail-closed 503 on every environment, including development). SQLite default: `go/data/trading.db`.
 
 ## Deploy
 

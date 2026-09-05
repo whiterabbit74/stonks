@@ -91,12 +91,13 @@ func (s *Server) accessLog(next http.Handler) http.Handler {
 			IP:     clientIP(r),
 			Auth:   cookieToken(r) != "",
 		}
-		if status != http.StatusTooManyRequests {
-			rec.Query = clip(redactQuery(r.URL.RawQuery), 512)
-			rec.UA = clip(r.Header.Get("User-Agent"), 200)
-			rec.Body = body
-			rec.BodyLen = bodyLen
+		if status == http.StatusTooManyRequests {
+			return
 		}
+		rec.Query = clip(redactQuery(r.URL.RawQuery), 512)
+		rec.UA = clip(r.Header.Get("User-Agent"), 200)
+		rec.Body = body
+		rec.BodyLen = bodyLen
 		writeAPILog(rec)
 	})
 }

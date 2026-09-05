@@ -40,9 +40,11 @@ func (l *ipLimiter) allow(key string, max int) bool {
 	now := time.Now()
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	for k, b := range l.buckets {
-		if now.After(b.reset) {
-			delete(l.buckets, k)
+	if len(l.buckets) > 64 {
+		for k, b := range l.buckets {
+			if now.After(b.reset) {
+				delete(l.buckets, k)
+			}
 		}
 	}
 	b := l.buckets[key]

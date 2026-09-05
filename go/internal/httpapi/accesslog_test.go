@@ -139,7 +139,6 @@ func TestAccessLogOmitsDetailsOn429(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	saw429 := 0
 	for _, line := range bytes.Split(bytes.TrimSpace(raw), []byte("\n")) {
 		if len(line) == 0 {
 			continue
@@ -149,28 +148,9 @@ func TestAccessLogOmitsDetailsOn429(t *testing.T) {
 			t.Fatalf("json: %v %s", err, line)
 		}
 		st, _ := recJSON["status"].(float64)
-		if int(st) != http.StatusTooManyRequests {
-			continue
+		if int(st) == http.StatusTooManyRequests {
+			t.Fatalf("limiter 429 must not write an access-log line: %s", line)
 		}
-		saw429++
-		if recJSON["query"] != nil && recJSON["query"] != "" {
-			t.Fatalf("429 log must omit query, got %v", recJSON["query"])
-		}
-		if recJSON["ua"] != nil && recJSON["ua"] != "" {
-			t.Fatalf("429 log must omit ua, got %v", recJSON["ua"])
-		}
-		if recJSON["body"] != nil {
-			t.Fatalf("429 log must omit body, got %v", recJSON["body"])
-		}
-		if recJSON["method"] != "POST" || recJSON["path"] != "/api/login" {
-			t.Fatalf("429 log must keep method and path: %v", recJSON)
-		}
-		if recJSON["ip"] != "203.0.113.9" {
-			t.Fatalf("429 log must keep ip, got %v", recJSON["ip"])
-		}
-	}
-	if saw429 == 0 {
-		t.Fatal("no 429 access-log lines")
 	}
 }
 
