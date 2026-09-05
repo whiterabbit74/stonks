@@ -3019,6 +3019,7 @@
   function bindShellOnce() {
     if (shellBound) return;
     shellBound = true;
+    window.addEventListener('resize', updateScrollCues);
     const app = document.getElementById('app');
     app.addEventListener('click', (e) => {
       const nav = e.target.closest('[data-nav]');
@@ -3174,6 +3175,12 @@
     }
   }
 
+  function updateScrollCues() {
+    document.querySelectorAll('.scroll-cue').forEach((el) => {
+      el.classList.toggle('scroll-cue-overflow', el.scrollWidth > el.clientWidth + 1);
+    });
+  }
+
   let pageGen = 0;
   async function renderPage(opts) {
     opts = opts || {};
@@ -3195,7 +3202,10 @@
     paintOverlay();
     await afterRender(gen);
     if (gen !== pageGen) return;
-    requestAnimationFrame(() => document.querySelector('[role="tab"][aria-selected="true"]')?.scrollIntoView({ inline: 'center', block: 'nearest' }));
+    requestAnimationFrame(() => {
+      document.querySelector('[role="tab"][aria-selected="true"]')?.scrollIntoView({ inline: 'center', block: 'nearest' });
+      updateScrollCues();
+    });
   }
 
   function bindLogin() {
