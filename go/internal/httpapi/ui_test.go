@@ -932,3 +932,39 @@ func TestInitialCapitalSettingIsTheSingleDefault(t *testing.T) {
 		t.Fatal("defaultStrategy.riskManagement.initialCapital must use the helper")
 	}
 }
+
+// TestWatchThresholdsAreEditable is P-8: adding a ticker must not stamp
+// hardcoded 0.1/0.75, and /watches must expose a «Пороги» control that PATCHes
+// only lowIBS/highIBS.
+func TestWatchThresholdsAreEditable(t *testing.T) {
+	app := readWeb(t, "js/app.js")
+	api := readWeb(t, "js/api.js")
+	addWatch := strings.Index(app, "API.addWatch(")
+	if addWatch < 0 {
+		t.Fatal("API.addWatch not found")
+	}
+	addEnd := strings.Index(app[addWatch:], ");")
+	if addEnd < 0 {
+		t.Fatal("API.addWatch call not closed")
+	}
+	addCall := app[addWatch : addWatch+addEnd]
+	if strings.Contains(addCall, "0.1, highIBS: 0.75") || strings.Contains(addCall, "lowIBS: 0.1") {
+		t.Fatal("addWatch must not contain the literals 0.1, highIBS: 0.75")
+	}
+	if !strings.Contains(app, "data-watch-thr") || !strings.Contains(app, ">Пороги<") {
+		t.Fatal("watches table must have a «Пороги» control")
+	}
+	if !strings.Contains(api, "patchWatch:") || !strings.Contains(api, "API.patch('/api/telegram/watch/'") {
+		t.Fatal("api.js must define API.patchWatch → PATCH /api/telegram/watch/{symbol}")
+	}
+	modal := jsFn(app, "openWatchThresholdsModal")
+	if modal == "" {
+		t.Fatal("openWatchThresholdsModal not found")
+	}
+	if !strings.Contains(modal, "API.patchWatch(") {
+		t.Fatal("Пороги modal must call API.patchWatch")
+	}
+	if strings.Contains(modal, "isOpenPosition") || strings.Contains(modal, "entryPrice") || strings.Contains(modal, "entryDate") || strings.Contains(modal, "currentTradeId") {
+		t.Fatal("threshold PATCH must not send isOpenPosition/entry_*")
+	}
+}

@@ -646,6 +646,30 @@
       if (hint) hint.textContent = 'Котировка недоступна — введите цену вручную';
     }
   }
+  function openWatchThresholdsModal(symbol) {
+    const w = (state.watches || []).find((x) => x.symbol === symbol) || {};
+    const lo = Number(w.lowIBS ?? liveLowIBS());
+    const hi = Number(w.highIBS ?? liveHighIBS());
+    setModal(`<div class="modal-backdrop" id="watch-thr-modal"><div class="modal-card">
+      <h3 class="text-lg font-semibold mb-2">Пороги IBS: ${esc(symbol)}</h3>
+      <p class="text-sm text-gray-500 mb-3">Эти значения задаются для тикера и перекрывают пороги по умолчанию из настроек автоторговли.</p>
+      <label class="block text-sm mb-2">Вход, IBS &lt;<input id="watch-thr-low" type="number" step="0.01" min="0" max="1" class="field mt-1" value="${esc(lo)}" /></label>
+      <label class="block text-sm mb-3">Выход, IBS &gt;<input id="watch-thr-high" type="number" step="0.01" min="0" max="1" class="field mt-1" value="${esc(hi)}" /></label>
+      <div class="flex justify-end gap-2"><button type="button" id="watch-thr-cancel" class="btn-secondary">Отмена</button><button type="button" id="watch-thr-save" class="btn-primary min-h-0 py-2">Сохранить</button></div>
+    </div></div>`);
+    document.getElementById('watch-thr-cancel')?.addEventListener('click', () => closeModal());
+    document.getElementById('watch-thr-save')?.addEventListener('click', async () => {
+      const lowIBS = Number(document.getElementById('watch-thr-low')?.value);
+      const highIBS = Number(document.getElementById('watch-thr-high')?.value);
+      if (!(lowIBS >= 0 && lowIBS <= 1) || !(highIBS >= 0 && highIBS <= 1)) { toast('Пороги IBS — числа от 0 до 1'); return; }
+      try {
+        await API.patchWatch(symbol, { lowIBS, highIBS });
+        closeModal();
+        state.watches = await API.watches();
+        renderPage();
+      } catch (err) { toast(errText(err)); }
+    });
+  }
   function ibsPct(v) {
     const n = toNum(v);
     if (n == null) return null;
@@ -2328,7 +2352,7 @@
       <td>${esc('> ' + Number(w.highIBS ?? liveHighIBS()).toFixed(2))}</td>
       <td>${w.entryPrice != null ? fmtUsd(w.entryPrice) : '—'}${w.isOpenPosition && w.entryDate ? `<div class="text-[11px] text-gray-500">${esc(fmtTradingDate(w.entryDate))}${w.entryIBS != null ? ' · IBS ' + fmt(ibsPct(w.entryIBS), 1) + '%' : ''}</div>` : ''}</td>
       <td><span class="rounded-full px-2 py-0.5 text-xs ${w.isOpenPosition ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500'}">${w.isOpenPosition ? 'Открыта' : 'Нет'}</span></td>
-      <td>${w.isOpenPosition && w.currentTradeId ? `<button type="button" data-close-mon="${esc(w.currentTradeId)}" data-close-sym="${esc(w.symbol)}" class="text-sm text-red-600 mr-2">Закрыть</button>` : ''}<button data-dw="${esc(w.symbol)}" class="text-sm text-red-600">Удалить</button></td>
+      <td>${w.isOpenPosition && w.currentTradeId ? `<button type="button" data-close-mon="${esc(w.currentTradeId)}" data-close-sym="${esc(w.symbol)}" class="text-sm text-red-600 mr-2">Закрыть</button>` : ''}<button type="button" data-watch-thr="${esc(w.symbol)}" class="text-sm text-indigo-600 mr-2">Пороги</button><button data-dw="${esc(w.symbol)}" class="text-sm text-red-600">Удалить</button></td>
     </tr>`).join('');
     const alerts = (state.emaAlerts || []).map((a) => `<tr>
       <td class="font-mono">${esc(a.symbol)}</td><td>EMA ${esc(a.emaPeriod || 200)}</td>
@@ -2390,7 +2414,8 @@
           <button type="button" id="watch-t11" class="btn-secondary min-h-0 py-2">Тест T-11</button>
           <button type="button" id="watch-t2" class="btn-secondary min-h-0 py-2">Тест T-2</button>
           <button type="button" id="watch-prices" class="btn-secondary min-h-0 py-2">Обновить цены и позиции</button></form>
-          <div class="overflow-auto"><table class="trades"><thead><tr><th>Тикер</th><th>Вход, IBS &lt;</th><th>Выход, IBS &gt;</th><th>Цена входа</th><th>Позиция</th><th>Действия</th></tr></thead><tbody>${rows || '<tr><td colspan="6" class="text-center text-gray-500">Нет активных наблюдений. Добавьте тикер в форму выше.</td></tr>'}</tbody></table></div>` : ''}
+          <div class="overflow-auto"><table class="trades"><thead><tr><th>Тикер</th><th>Вход, IBS &lt;</th><th>Выход, IBS &gt;</th><th>Цена входа</th><th>Позиция</th><th>Действия</th></tr></thead><tbody>${rows || '<tr><td colspan="6" class="text-center text-gray-500">Нет активных наблюдений. Добавьте тикер в форму выше.</td></tr>'}</tbody></table></div>
+          <p class="text-xs text-gray-500 mt-2">Пороги в строке задаются для тикера и перекрывают значения по умолчанию из настроек автоторговли.</p>` : ''}
         ${state.watchTab === 'trades' ? `${(() => {
             const open = visibleMonitorTrades(simulated, false).find((t) => t.status === 'open');
             const watchSyms = (state.watches || []).map((w) => w.symbol);
@@ -3710,6 +3735,7 @@
         });
       }));
       root.querySelectorAll('[data-close-mon]').forEach((b) => b.addEventListener('click', () => openCloseMonitorModal(b.dataset.closeMon, b.dataset.closeSym)));
+      root.querySelectorAll('[data-watch-thr]').forEach((b) => b.addEventListener('click', () => openWatchThresholdsModal(b.dataset.watchThr)));
       document.getElementById('watch-form')?.addEventListener('submit', async (e) => {
         e.preventDefault();
         try {

@@ -69,6 +69,7 @@ const API = {
   deleteSplit: (s, date) => API.del('/api/splits/' + encodeURIComponent(s) + '/' + encodeURIComponent(date)),
   watches: () => API.get('/api/telegram/watches'),
   addWatch: (body) => API.post('/api/telegram/watch', body),
+  patchWatch: (s, body) => API.patch('/api/telegram/watch/' + encodeURIComponent(s), body),
   deleteWatch: (s) => API.del('/api/telegram/watch/' + encodeURIComponent(s)),
   trades: () => API.get('/api/trades'),
   monitorTrades: () => API.get('/api/telegram/trades'),
