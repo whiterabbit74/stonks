@@ -5079,7 +5079,7 @@
       const pts = (r.equity || []).map((p) => ({ date: p.date, value: p.drawdown }));
       const withDd = pts.filter((p) => (p.value || 0) > 0);
       const stats = document.getElementById('dd-stats');
-      if (stats) stats.innerHTML = `<div class="grid grid-cols-1 sm:grid-cols-3 gap-2 text-sm"><div class="rounded border p-2">Макс. дневная просадка<div class="font-semibold">${fmt(Math.max.apply(null, pts.map((p) => p.value || 0).concat([0])), 2)}%</div></div><div class="rounded border p-2">Точек с просадкой<div class="font-semibold">${withDd.length}/${pts.length}</div></div><div class="rounded border p-2">Частота<div class="font-semibold">${pts.length ? fmt((withDd.length / pts.length) * 100, 1) : 0}%</div></div></div>`;
+      if (stats) stats.innerHTML = `<div class="grid grid-cols-1 sm:grid-cols-3 gap-2 text-sm"><div class="rounded-lg border p-2">Макс. дневная просадка<div class="font-semibold">${fmt(Math.max.apply(null, pts.map((p) => p.value || 0).concat([0])), 2)}%</div></div><div class="rounded-lg border p-2">Точек с просадкой<div class="font-semibold">${withDd.length}/${pts.length}</div></div><div class="rounded-lg border p-2">Частота<div class="font-semibold">${pts.length ? fmt((withDd.length / pts.length) * 100, 1) : 0}%</div></div></div>`;
       const el = document.getElementById('chart-dd');
       if (el) Charts.richLine(el, pts, dark, { area: true, color: '#dc2626', topColor: '#dc262644', bottomColor: '#dc262608' });
     }
@@ -5102,8 +5102,8 @@
           const avg = rows.reduce((s, x) => s + Math.abs(x.value), 0) / rows.length;
           const max = rows.reduce((m, x) => Math.max(m, Math.abs(x.value)), 0);
           el.innerHTML = `<div class="flex flex-wrap gap-4 mb-4 text-sm">
-            <div class="bg-red-50 px-3 py-2 rounded border border-red-200 text-red-700 dark:bg-red-950/30">Средняя просадка в день открытия: ${avg.toFixed(2)}%</div>
-            <div class="bg-gray-50 px-3 py-2 rounded border dark:bg-gray-800">Максимальная просадка: ${max.toFixed(2)}%</div>
+            <div class="bg-red-50 px-3 py-2 rounded-lg border border-red-200 text-red-700 dark:bg-red-950/30">Средняя просадка в день открытия: ${avg.toFixed(2)}%</div>
+            <div class="bg-gray-50 px-3 py-2 rounded-lg border dark:bg-gray-800">Максимальная просадка: ${max.toFixed(2)}%</div>
           </div><div id="chart-odd" class="chart-box rounded-lg border dark:border-gray-800"></div>`;
           Charts.line(document.getElementById('chart-odd'), rows, dark, '#dc2626');
         }
