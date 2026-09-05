@@ -225,8 +225,12 @@ func RunTick(db *store.DB, deps Deps, now time.Time, onEvent func(JobLog)) {
 		}
 		if (until >= 10 && until <= 12) || (until >= 0 && until <= 2) {
 			_ = db.EnsureAggregateSlot(chat, today)
-			n := RunTelegramAggregation(db, deps, until)
-			onEvent(JobLog{At: now, Name: "telegram-aggregation", Detail: fmt.Sprintf("window until=%d watches=%d", until, n)})
+			n, aggErr := runTelegramAggregation(db, deps, until)
+			detail := fmt.Sprintf("window until=%d watches=%d", until, n)
+			if aggErr != nil {
+				detail += " error=" + aggErr.Error()
+			}
+			onEvent(JobLog{At: now, Name: "telegram-aggregation", Skipped: aggErr != nil, Detail: detail})
 			log.Printf("scheduler: telegram aggregation minutesUntilClose=%d short=%v", until, sess.Short)
 		}
 	}
@@ -480,11 +484,16 @@ func reportMissedTelegram(db *store.DB, eng *live.Engine, now time.Time, today, 
 }
 
 func RunTelegramAggregation(db *store.DB, deps Deps, until int) int {
+	n, _ := runTelegramAggregation(db, deps, until)
+	return n
+}
+
+func runTelegramAggregation(db *store.DB, deps Deps, until int) (int, error) {
 	if !((until >= 10 && until <= 12) || (until >= 0 && until <= 2)) {
-		return 0
+		return 0, nil
 	}
-	res, _ := engine(db, deps).Aggregate(until, live.AggregateOpts{ForceSend: true, DryRun: until >= 10, UpdateState: true})
-	return len(res.Tickers)
+	res, err := engine(db, deps).Aggregate(until, live.AggregateOpts{ForceSend: true, DryRun: until >= 10, UpdateState: true})
+	return len(res.Tickers), err
 }
 
 var actualizeMu sync.Mutex

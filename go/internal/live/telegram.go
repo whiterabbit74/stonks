@@ -344,7 +344,8 @@ var T1LeaseTTL = 2 * time.Minute
 
 func (e *Engine) finishSend(out *SimulateResult, text string, opts AggregateOpts) (SimulateResult, error) {
 	out.Text = text
-	if err := e.Send(e.chat(), text); err != nil {
+	err := e.Send(e.chat(), text)
+	if err != nil {
 		out.Reason = err.Error()
 		if !opts.ForceSend {
 			return *out, err
@@ -352,6 +353,9 @@ func (e *Engine) finishSend(out *SimulateResult, text string, opts AggregateOpts
 	} else {
 		out.Sent = true
 		out.Success = true
+	}
+	if err != nil {
+		return *out, fmt.Errorf("telegram send failed: %w", err)
 	}
 	return *out, nil
 }
