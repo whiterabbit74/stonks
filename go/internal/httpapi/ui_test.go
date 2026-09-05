@@ -1441,3 +1441,55 @@ func TestLongActionsDisableTheirButtons(t *testing.T) {
 		t.Fatal("dataset refresh must disable the button")
 	}
 }
+
+func TestStatusPingUpdatesChromeNotFullPage(t *testing.T) {
+	a := readWeb(t, "js/app.js")
+	after := jsFn(a, "afterRender")
+	start := strings.Index(after, "API.status()")
+	if start < 0 {
+		t.Fatal("status ping not found")
+	}
+	chunk := after[start:]
+	if i := strings.Index(chunk, "document.getElementById('view-list')"); i > 0 {
+		chunk = chunk[:i]
+	}
+	if strings.Contains(chunk, "renderPage(") || strings.Contains(chunk, "renderPage()") {
+		t.Fatal("status ping must not destroy charts via renderPage")
+	}
+	if !strings.Contains(chunk, "updateChrome") {
+		t.Fatal("status ping must update the footer badge only")
+	}
+}
+
+func TestRenderPageIgnoresStaleGeneration(t *testing.T) {
+	a := readWeb(t, "js/app.js")
+	if !strings.Contains(a, "pageGen") {
+		t.Fatal("renderPage must drop stale generations")
+	}
+	rp := jsFn(a, "renderPage")
+	if !strings.Contains(rp, "pageGen") {
+		t.Fatal("renderPage must bump and check pageGen")
+	}
+}
+
+func TestUpdateChromeSkipsNullBadge(t *testing.T) {
+	a := readWeb(t, "js/app.js")
+	fn := jsFn(a, "updateChrome")
+	if strings.Contains(fn, "replaceWith(wrap.firstElementChild)") {
+		t.Fatal("replaceWith(null) inserts the text null; guard firstElementChild")
+	}
+	if !strings.Contains(fn, "firstElementChild") {
+		t.Fatal("updateChrome must replace the badge node")
+	}
+}
+
+func TestNavigateClearsTickersWithoutQuery(t *testing.T) {
+	a := readWeb(t, "js/app.js")
+	fn := jsFn(a, "navigate")
+	if !strings.Contains(fn, "tickerInput") {
+		t.Fatal("navigate must sync tickerInput from the URL")
+	}
+	if !strings.Contains(fn, "tickerInput = ''") && !strings.Contains(fn, `tickerInput = ""`) {
+		t.Fatal("navigate without ?tickers must clear a leftover ticker field")
+	}
+}

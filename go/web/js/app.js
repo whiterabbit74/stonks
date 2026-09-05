@@ -1642,6 +1642,8 @@
     const q = new URL(location.href).searchParams.get('tickers');
     if (q) {
       state.tickerInput = q.split(',').map((s) => s.trim().toUpperCase()).filter(Boolean).join(', ');
+    } else {
+      state.tickerInput = '';
     }
     state.menuTicker = null;
     state.heroSettingsOpen = false;
@@ -3184,12 +3186,15 @@
     if (badge) {
       const wrap = document.createElement('div');
       wrap.innerHTML = statusBadgeHTML();
-      badge.replaceWith(wrap.firstElementChild);
+      const next = wrap.firstElementChild;
+      if (next) badge.replaceWith(next);
     }
   }
 
+  let pageGen = 0;
   async function renderPage(opts) {
     opts = opts || {};
+    const gen = ++pageGen;
     applyTheme();
     const app = document.getElementById('app');
     if (state.page === '/login' || !state.user) {
@@ -3205,7 +3210,8 @@
     updateChrome();
     document.getElementById('page-root').innerHTML = pageHTML();
     paintOverlay();
-    await afterRender();
+    await afterRender(gen);
+    if (gen !== pageGen) return;
   }
 
   function bindLogin() {
@@ -3256,7 +3262,8 @@
     });
   }
 
-  async function afterRender() {
+  async function afterRender(gen) {
+    if (gen == null) gen = pageGen;
     const p = state.page;
     const root = document.getElementById('page-root');
     if (!root) return;
@@ -3265,9 +3272,14 @@
       if (!state.loaded.statusPing) {
         state.loaded.statusPing = true;
         API.status().then(() => {
-          if (state.serverStatus !== 'online') { state.serverStatus = 'online'; renderPage(); }
-          else state.serverStatus = 'online';
-        }).catch(() => { state.serverStatus = 'offline'; renderPage(); });
+          if (gen !== pageGen) return;
+          state.serverStatus = 'online';
+          updateChrome();
+        }).catch(() => {
+          if (gen !== pageGen) return;
+          state.serverStatus = 'offline';
+          updateChrome();
+        });
       }
       document.getElementById('view-list')?.addEventListener('click', () => { state.dataView = 'list'; localStorage.setItem('dataView', 'list'); renderPage(); });
       document.getElementById('view-grid')?.addEventListener('click', () => { state.dataView = 'compact'; localStorage.setItem('dataView', 'compact'); renderPage(); });
