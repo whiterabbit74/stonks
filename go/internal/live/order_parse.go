@@ -97,7 +97,7 @@ func clientOrderIDOf(m map[string]any) string {
 	if m == nil {
 		return ""
 	}
-	s := strings.TrimSpace(fmt.Sprint(firstNonEmpty(m["client_order_id"], m["clientOrderId"])))
+	s := strings.TrimSpace(fmt.Sprint(firstNonEmpty(m["client_order_id"], m["clientOrderId"], m["ref_id"])))
 	if s == "" || s == "<nil>" {
 		return ""
 	}

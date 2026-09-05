@@ -115,7 +115,7 @@ func TestUnconfirmedFillPriceIsNullNotZero(t *testing.T) {
 		"quantity": 2.0, "dateKey": "2026-09-01", "broker": "robinhood",
 	}, map[string]any{"status": "filled", "filled_qty": 2.0}, "filled")
 
-	row := e.DB.GetTrade("broker_trades", id)
+	row, _ := e.DB.GetTrade("broker_trades", id)
 	if row == nil {
 		t.Fatal("unconfirmed fill must still open a journal row")
 	}

@@ -11,6 +11,12 @@ func TestFillQtyFromIgnoresOrderedQty(t *testing.T) {
 	}
 }
 
+func TestClientOrderIDOfReadsRobinhoodRefID(t *testing.T) {
+	if got := clientOrderIDOf(map[string]any{"ref_id": "abc"}); got != "abc" {
+		t.Fatalf("ref_id %q", got)
+	}
+}
+
 func TestOrderStatusFieldIgnoresSceneType(t *testing.T) {
 	if s := orderStatusField(map[string]any{"scene_type": "NORMAL"}); s != "" {
 		t.Fatalf("scene_type is not an order status, got %q", s)

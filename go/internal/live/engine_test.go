@@ -664,11 +664,13 @@ func TestAggregateWrongMinuteDoesNotSendT11(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Reason != "wrong_time" {
-		t.Fatalf("until=0 must be wrong_time like Node, got %+v", res)
+	if res.Stage != "confirmations" {
+		t.Fatalf("until=0 is still the T-1 window, got %+v", res)
 	}
-	if len(tg.Sent()) != 0 {
-		t.Fatalf("until=0 must not send T-11 overview: %+v", tg.Sent())
+	for _, m := range tg.Sent() {
+		if strings.Contains(m[1], "11m") || strings.Contains(m[1], "ENTRY:") {
+			t.Fatalf("until=0 must not send T-11 overview: %+v", tg.Sent())
+		}
 	}
 }
 

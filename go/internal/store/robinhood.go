@@ -109,9 +109,12 @@ func (d *DB) TakeRobinhoodPending(state string) (verifier, redirect string, err 
 	_, _ = d.SQL.Exec(`DELETE FROM robinhood_oauth_pending WHERE state=?`, state)
 	t, perr := time.Parse(time.RFC3339Nano, created)
 	if perr != nil {
-		t, _ = time.Parse(time.RFC3339, created)
+		t, perr = time.Parse(time.RFC3339, created)
 	}
-	if !t.IsZero() && time.Since(t) > 15*time.Minute {
+	if perr != nil || t.IsZero() {
+		return "", "", fmt.Errorf("oauth state expired")
+	}
+	if time.Since(t) > 15*time.Minute {
 		return "", "", fmt.Errorf("oauth state expired")
 	}
 	return verifier, redirect, nil

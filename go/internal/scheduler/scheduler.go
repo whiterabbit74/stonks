@@ -162,7 +162,8 @@ func StartWith(db *store.DB, deps Deps, onEvent func(JobLog)) (stop func()) {
 			case <-done:
 				tick.Stop()
 				return
-			case now := <-tick.C:
+			case <-tick.C:
+				now := time.Now()
 				func() {
 					defer func() {
 						if rec := recover(); rec != nil {
@@ -216,10 +217,10 @@ func RunTick(db *store.DB, deps Deps, now time.Time, onEvent func(JobLog)) {
 		nowMin := p.Hour*60 + p.Minute
 		until := sess.CloseMin - nowMin
 		chat := telegramChatID(eng)
-		if until < 10 {
+		if until < 10 && until >= 0 {
 			reportMissedTelegram(db, eng, now, today, chat, "t11", until, onEvent)
 		}
-		if until < 0 {
+		if until < 0 && until >= -5 {
 			reportMissedTelegram(db, eng, now, today, chat, "t1", until, onEvent)
 		}
 		if (until >= 10 && until <= 12) || (until >= 0 && until <= 2) {
@@ -479,11 +480,10 @@ func reportMissedTelegram(db *store.DB, eng *live.Engine, now time.Time, today, 
 }
 
 func RunTelegramAggregation(db *store.DB, deps Deps, until int) int {
-	// Node runTelegramAggregation returns wrong_time unless the clock minute is exactly 11 or 1.
-	if until != 11 && until != 1 {
+	if !((until >= 10 && until <= 12) || (until >= 0 && until <= 2)) {
 		return 0
 	}
-	res, _ := engine(db, deps).Aggregate(until, live.AggregateOpts{ForceSend: true, DryRun: until == 11, UpdateState: true})
+	res, _ := engine(db, deps).Aggregate(until, live.AggregateOpts{ForceSend: true, DryRun: until >= 10, UpdateState: true})
 	return len(res.Tickers)
 }
 

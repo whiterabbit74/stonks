@@ -10,7 +10,8 @@ import (
 )
 
 func (e *Engine) getTrade(table, id string) map[string]any {
-	return e.DB.GetTrade(table, id)
+	row, _ := e.DB.GetTrade(table, id)
+	return row
 }
 
 func (e *Engine) openTradeBySymbol(table, symbol, preferID, broker string) map[string]any {
@@ -57,7 +58,7 @@ func (e *Engine) openTradeBySymbol(table, symbol, preferID, broker string) map[s
 			return t
 		}
 		if table == "trades" {
-			if full := e.DB.GetTrade("trades", id); full != nil {
+			if full := e.getTrade("trades", id); full != nil {
 				linked := fmt.Sprint(full["linkedBrokerTradeId"])
 				if preferID != "" && linked == preferID {
 					return full
@@ -203,7 +204,7 @@ func (e *Engine) recordFill(t map[string]any, detail map[string]any, status stri
 			e.raiseTrackerPersistBlock(brokerName)
 		}
 		monID := "m-" + clientOrderID
-		if e.DB.GetTrade("trades", monID) == nil {
+		if e.getTrade("trades", monID) == nil {
 			monRec := map[string]any{
 				"id": monID, "symbol": symbol, "status": "open",
 				"entryDate": dateKey, "source": source, "quantity": fillQty,

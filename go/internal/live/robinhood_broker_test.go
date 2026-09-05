@@ -289,6 +289,16 @@ func TestRobinhoodPlaceMarketUnrecognizedResponseIsAmbiguous(t *testing.T) {
 	}
 }
 
+func TestRobinhoodPlaceMarketRejectsNonPositiveQty(t *testing.T) {
+	b := &RobinhoodBroker{Call: func(name string, args map[string]any) (json.RawMessage, error) {
+		t.Fatal("must not call MCP for qty <= 0")
+		return nil, nil
+	}}
+	if _, err := b.PlaceMarket("AAPL", "BUY", 0); err == nil {
+		t.Fatal("qty 0 must be refused")
+	}
+}
+
 func TestRobinhoodPlaceUnauthorizedIsAmbiguousWithoutRetry(t *testing.T) {
 	db, err := store.Open(filepath.Join(t.TempDir(), "t.db"))
 	if err != nil {

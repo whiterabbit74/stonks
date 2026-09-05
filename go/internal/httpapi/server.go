@@ -1373,7 +1373,12 @@ func (s *Server) handleEMAAlertPost(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 400, map[string]any{"error": err.Error()})
 		return
 	}
-	if row := s.DB.GetEMAAlert(id); row != nil {
+	row, gerr := s.DB.GetEMAAlert(id)
+	if gerr != nil {
+		writeJSON(w, 500, map[string]any{"error": gerr.Error()})
+		return
+	}
+	if row != nil {
 		writeJSON(w, 200, row)
 		return
 	}
@@ -1391,7 +1396,12 @@ func (s *Server) handleEMAAlertPatch(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 400, map[string]any{"error": err.Error()})
 		return
 	}
-	if row := s.DB.GetEMAAlert(id); row != nil {
+	row, gerr := s.DB.GetEMAAlert(id)
+	if gerr != nil {
+		writeJSON(w, 500, map[string]any{"error": gerr.Error()})
+		return
+	}
+	if row != nil {
 		writeJSON(w, 200, row)
 		return
 	}

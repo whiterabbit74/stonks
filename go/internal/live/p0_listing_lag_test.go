@@ -60,12 +60,12 @@ func TestListingLagThenRejectedDoesNotDeleteJournal(t *testing.T) {
 		"entryDate": "2026-09-01", "entryPrice": 8.2, "quantity": 1.0, "broker": "webull",
 	})
 	e.PollTrackers()
-	if db.GetTrade("broker_trades", oid) == nil {
+	if row, _ := db.GetTrade("broker_trades", oid); row == nil {
 		t.Fatal("listing lag deleted the live journal row")
 	}
 	br.SetDetail(oid, map[string]any{"status": "REJECTED", "client_order_id": oid})
 	waitTrackerFinal(t, e, db, "AAPL", "entry")
-	if db.GetTrade("broker_trades", oid) == nil {
+	if row, _ := db.GetTrade("broker_trades", oid); row == nil {
 		t.Fatal("rejected-after-lag must not deletePhantom a journal row")
 	}
 }
@@ -88,7 +88,7 @@ func TestListingLagAfterRestartKeepsJournal(t *testing.T) {
 		t.Fatal(err)
 	}
 	e.PollTrackers()
-	row := db.GetTrade("broker_trades", "oid-restart")
+	row, _ := db.GetTrade("broker_trades", "oid-restart")
 	if row == nil || fmt.Sprint(row["status"]) != "open" {
 		t.Fatalf("restart listing lag deleted journal: %+v", row)
 	}
@@ -288,7 +288,7 @@ func TestResolveTrackerAbsentDeletesPhantomAndUnblocks(t *testing.T) {
 	if fmt.Sprint(tracker["status"]) != "terminal_absent" {
 		t.Fatalf("resolved tracker status = %v, want terminal_absent", tracker["status"])
 	}
-	if db.GetTrade("broker_trades", oid) != nil {
+	if row, _ := db.GetTrade("broker_trades", oid); row != nil {
 		t.Fatal("resolve(absent) must delete the phantom journal row")
 	}
 	row, err := db.AnyPendingTrackerFor("webull")

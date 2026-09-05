@@ -65,7 +65,7 @@ func (b *LiveBroker) PlaceMarketCfg(symbol, side string, qty float64, cfg PlaceM
 	ctx := cfg.ctx()
 	c := b.client()
 	if qty <= 0 {
-		qty = 1
+		return OrderResult{Error: "quantity must be positive"}, fmt.Errorf("quantity must be positive")
 	}
 	inst, err := c.ResolveInstrumentID(symbol)
 	if err != nil {

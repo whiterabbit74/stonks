@@ -122,7 +122,7 @@ func TestUnconfirmedFillPriceDoesNotUseQuote(t *testing.T) {
 	e.recordFill(map[string]any{
 		"clientOrderId": id, "symbol": "AAPL", "action": "entry", "quantity": 1.0, "dateKey": "2026-09-01",
 	}, map[string]any{"status": "filled", "filled_qty": 1.0}, "filled")
-	row := e.DB.GetTrade("broker_trades", id)
+	row, _ := e.DB.GetTrade("broker_trades", id)
 	if asFloat(row["entryPrice"]) == 8.2 {
 		t.Fatalf("must not invent fill price from quote: %+v", row)
 	}
@@ -141,14 +141,14 @@ func TestPartialEntryUpsertsQuantity(t *testing.T) {
 	e.recordFill(map[string]any{
 		"clientOrderId": id, "symbol": "AAPL", "action": "entry", "quantity": 10.0, "dateKey": "2026-09-01",
 	}, map[string]any{"status": "filled", "filled_qty": 5.0, "avg_price": 8.2}, "filled")
-	row := db.GetTrade("broker_trades", id)
+	row, _ := db.GetTrade("broker_trades", id)
 	if asFloat(row["quantity"]) != 5 {
 		t.Fatalf("first partial %+v", row)
 	}
 	e.recordFill(map[string]any{
 		"clientOrderId": id, "symbol": "AAPL", "action": "entry", "quantity": 10.0, "dateKey": "2026-09-01",
 	}, map[string]any{"status": "filled", "filled_qty": 10.0, "avg_price": 8.2}, "filled")
-	row = db.GetTrade("broker_trades", id)
+	row, _ = db.GetTrade("broker_trades", id)
 	if asFloat(row["quantity"]) != 10 {
 		t.Fatalf("upsert %+v", row)
 	}

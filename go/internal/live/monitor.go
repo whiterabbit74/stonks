@@ -415,7 +415,7 @@ func (e *Engine) applyConsistencyAction(action map[string]any) bool {
 		brokerID := fmt.Sprint(action["brokerTradeId"])
 		monID := fmt.Sprint(action["monitorTradeId"])
 		broker := e.getTrade("broker_trades", brokerID)
-		mon := e.DB.GetTrade("trades", monID)
+		mon := e.getTrade("trades", monID)
 		if broker == nil || mon == nil {
 			return false
 		}
@@ -436,7 +436,7 @@ func (e *Engine) applyConsistencyAction(action map[string]any) bool {
 			return false
 		}
 		monID := "m-" + brokerID
-		if e.DB.GetTrade("trades", monID) != nil {
+		if e.getTrade("trades", monID) != nil {
 			return false
 		}
 		if err := e.DB.InsertTrade("trades", map[string]any{
@@ -449,7 +449,7 @@ func (e *Engine) applyConsistencyAction(action map[string]any) bool {
 		if err := e.DB.LinkMonitorToBrokerTrade(monID, brokerID); err != nil {
 			return false
 		}
-		return e.DB.GetTrade("trades", monID) != nil
+		return e.getTrade("trades", monID) != nil
 	}
 	return false
 }

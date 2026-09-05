@@ -89,7 +89,7 @@ func TestListTradesSelectsBroker(t *testing.T) {
 	if len(rows) != 1 || fmtSprint(rows[0]["broker"]) != "robinhood" {
 		t.Fatalf("list %+v", rows)
 	}
-	got := db.GetTrade("broker_trades", "r1")
+	got, _ := db.GetTrade("broker_trades", "r1")
 	if got == nil || fmtSprint(got["broker"]) != "robinhood" {
 		t.Fatalf("get %+v", got)
 	}

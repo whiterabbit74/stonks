@@ -566,7 +566,6 @@ func (e *Engine) placeMarket(w execWindow, symbol, side string, qty float64, cfg
 		start := e.now()
 		res, err = e.placeMarketOnce(attemptCtx, symbol, side, qty, try, br)
 		cancel()
-		lastDur = e.now().Sub(start)
 		if err == nil && res.Submitted {
 			return res, nil
 		}
@@ -574,6 +573,7 @@ func (e *Engine) placeMarket(w execWindow, symbol, side string, qty float64, cfg
 			return res, nil
 		}
 		landed, queryFailed, detail := e.orderLanded(w, try.ClientOrderID, br)
+		lastDur = e.now().Sub(start) + submitRetryStep
 		if queryFailed {
 			// The submission failed and the broker cannot say whether the order
 			// arrived. Resending risks a second position, so stop here — but do
@@ -622,6 +622,12 @@ func (e *Engine) placeMarket(w execWindow, symbol, side string, qty float64, cfg
 			res.Error = ""
 			if st != "" && st != "unknown" {
 				res.Status = st
+			}
+			if p := fillPriceFrom(detail); p > 0 {
+				res.FilledPrice = p
+			}
+			if q := fillQtyFrom(detail); q > 0 {
+				res.FilledQty = q
 			}
 			return res, nil
 		}

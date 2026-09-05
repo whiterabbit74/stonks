@@ -59,7 +59,7 @@ func f(e struct{ DB *int }) { _ = e.DB.SaveSettings(nil) }
 
 func TestStateWritingDBCallsMustNotBeDiscarded(t *testing.T) {
 	methods := storeWriteMethods(t)
-	pkgs := []string{"live", "scheduler", "httpapi"}
+	pkgs := []string{"live", "scheduler", "httpapi", "store"}
 	found := map[string]bool{}
 	for _, pkg := range pkgs {
 		dir := filepath.Join("..", pkg)

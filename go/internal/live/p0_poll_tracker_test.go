@@ -39,7 +39,7 @@ func TestFinalizeDoesNotRejournalWhenStatusStampFails(t *testing.T) {
 	if !autotradeLogsContain(t, e, "tracker_finalize_failed") {
 		t.Fatal("want tracker_finalize_failed when SetOrderTrackerStatus fails")
 	}
-	if db.GetTrade("broker_trades", id) == nil {
+	if row, _ := db.GetTrade("broker_trades", id); row == nil {
 		t.Fatal("fill must still be journaled")
 	}
 	if _, err := db.SQL.Exec(`DROP TRIGGER IF EXISTS trackers_block_status`); err != nil {
@@ -80,7 +80,7 @@ func TestPollTrackerOrderedQtyIsNotAFill(t *testing.T) {
 	if st == "filled" {
 		t.Fatalf("ordered qty without filled_qty must not finalize as filled, got %q", st)
 	}
-	if e.DB.GetTrade("broker_trades", id) != nil {
+	if row, _ := e.DB.GetTrade("broker_trades", id); row != nil {
 		t.Fatal("qty-only detail must not journal a fill")
 	}
 }
@@ -117,7 +117,7 @@ func TestPollTrackerMissingNamedBrokerDoesNotUseDefault(t *testing.T) {
 		t.Fatalf("detached robinhood must not be polled, DetailN %d -> %d", beforeR, rh.DetailN)
 	}
 
-	row := e.DB.GetTrade("broker_trades", "rh-oid")
+	row, _ := e.DB.GetTrade("broker_trades", "rh-oid")
 	if row == nil || fmt.Sprint(row["status"]) != "open" {
 		t.Fatalf("must not deletePhantom a robinhood journal row: %+v", row)
 	}
@@ -174,7 +174,7 @@ func TestPollTrackerUnknownRHDetailRecoversFillFromRHHistory(t *testing.T) {
 	if st != "filled" {
 		t.Fatalf("status %q want filled (RH history had FILLED; a default-broker lookup would miss it)", st)
 	}
-	row := e.DB.GetTrade("broker_trades", id)
+	row, _ := e.DB.GetTrade("broker_trades", id)
 	if row == nil {
 		t.Fatal("journal must recover the Robinhood fill from RH history")
 	}

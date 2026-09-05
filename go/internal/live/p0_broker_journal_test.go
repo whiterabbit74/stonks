@@ -173,8 +173,8 @@ func TestRobinhoodFillDoesNotCloseWebullJournal(t *testing.T) {
 		"clientOrderId": "rh-sell", "symbol": "AAPL", "action": "exit",
 		"source": "t1", "dateKey": "2026-09-01", "quantity": 3.0,
 	}, map[string]any{"status": "filled", "avg_price": 11.9, "filled_qty": 3.0}, "filled")
-	w := e.DB.GetTrade("broker_trades", "w-open")
-	r := e.DB.GetTrade("broker_trades", "r-open")
+	w, _ := e.DB.GetTrade("broker_trades", "w-open")
+	r, _ := e.DB.GetTrade("broker_trades", "r-open")
 	if fmt.Sprint(w["status"]) != "open" {
 		t.Fatalf("webull journal closed: %+v", w)
 	}

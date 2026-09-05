@@ -234,6 +234,13 @@ func TestPlaceMarketCfgRejectedBodyIsNotSubmitted(t *testing.T) {
 	}
 }
 
+func TestWebullPlaceMarketRejectsNonPositiveQty(t *testing.T) {
+	b := &LiveBroker{}
+	if _, err := b.PlaceMarket("AAPL", "BUY", 0); err == nil {
+		t.Fatal("qty 0 must be refused")
+	}
+}
+
 // TestPlaceMarketCfgMismatchedClientOrderIDIsAmbiguous covers P0-6: a 200
 // place response echoing a different client_order_id than what was sent
 // cannot be trusted as either success or failure — it must come back

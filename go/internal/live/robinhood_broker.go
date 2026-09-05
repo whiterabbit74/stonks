@@ -58,6 +58,9 @@ func (b *RobinhoodBroker) PlaceMarketCfg(symbol, side string, qty float64, cfg P
 	} else {
 		ref = asUUID(ref)
 	}
+	if qty <= 0 {
+		return OrderResult{ClientOrderID: ref, Symbol: symbol, Side: side, Quantity: qty, Error: "quantity must be positive"}, fmt.Errorf("quantity must be positive")
+	}
 	acct, err := b.agenticAccount()
 	if err != nil {
 		return OrderResult{ClientOrderID: ref, Symbol: symbol, Side: side, Quantity: qty, Error: err.Error()}, err
@@ -344,7 +347,7 @@ func (b *RobinhoodBroker) agenticAccountCtx(ctx context.Context) (string, error)
 func integerQty(qty float64) string {
 	n := int64(math.Floor(qty + 1e-9))
 	if n < 1 {
-		n = 1
+		return ""
 	}
 	return strconv.FormatInt(n, 10)
 }

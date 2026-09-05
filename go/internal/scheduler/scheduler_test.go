@@ -585,12 +585,19 @@ func TestTickT1SecondTickDoesNotPlace(t *testing.T) {
 	}
 }
 
-func TestTickT1Until2DoesNotPlace(t *testing.T) {
+func TestStartTickUsesWallClock(t *testing.T) {
+	fn := sourceFn(t, "func StartWith(")
+	if !strings.Contains(fn, "now := time.Now()") {
+		t.Fatal("StartWith must stamp RunTick with wall-clock now, not the ticker channel time")
+	}
+}
+
+func TestTickT1Until2Places(t *testing.T) {
 	db, eng, br, _ := t1Engine(t)
-	now := time.Date(2026, 9, 1, 19, 58, 0, 0, time.UTC) // 15:58 ET, until=2 → Node wrong_time
+	now := time.Date(2026, 9, 1, 19, 58, 0, 0, time.UTC) // 15:58 ET, until=2 is still inside the T-1 window
 	RunTick(db, Deps{Live: eng}, now, func(JobLog) {})
-	if len(br.Orders) != 0 {
-		t.Fatalf("until=2 must not place, orders=%+v", br.Orders)
+	if len(br.Orders) != 1 {
+		t.Fatalf("until=2 must still place T-1, orders=%+v", br.Orders)
 	}
 }
 

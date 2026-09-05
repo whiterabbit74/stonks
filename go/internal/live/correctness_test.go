@@ -164,7 +164,7 @@ func TestExitFillWritesPnLBySymbol(t *testing.T) {
 	if asFloat(aapl["pnlPercent"]) != 20 {
 		t.Fatalf("pnlPercent %+v", aapl)
 	}
-	mon := db.GetTrade("trades", "m-aapl")
+	mon, _ := db.GetTrade("trades", "m-aapl")
 	if mon == nil || fmt.Sprint(mon["status"]) != "closed" || asFloat(mon["pnlAbsolute"]) != 2 {
 		t.Fatalf("monitor pnl %+v", mon)
 	}
@@ -380,7 +380,7 @@ func TestReconcileClosesMonitorFromBroker(t *testing.T) {
 	if snap["applied"] != true {
 		t.Fatalf("should apply %+v", snap)
 	}
-	mon := db.GetTrade("trades", "m1")
+	mon, _ := db.GetTrade("trades", "m1")
 	if fmt.Sprint(mon["status"]) != "closed" || asFloat(mon["exitPrice"]) != 11 {
 		t.Fatalf("monitor %+v", mon)
 	}

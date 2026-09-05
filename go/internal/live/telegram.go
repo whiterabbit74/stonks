@@ -141,15 +141,11 @@ func (e *Engine) Simulate(stage string) (SimulateResult, error) {
 }
 
 func (e *Engine) Aggregate(minutesUntilClose int, opts AggregateOpts) (SimulateResult, error) {
-	// Node runTelegramAggregation only fires on the exact clock minute:
-	// 11 → T-11 overview, 1 → T-1 confirmations + orders. Anything else is
-	// wrong_time. A wide "<= 2" window here would send the T-11 ticker list
-	// at close (until=0) because buildT11Text rewrites minutes<=0 to "11m".
 	stage := "overview"
-	switch minutesUntilClose {
-	case 11:
+	switch {
+	case minutesUntilClose >= 10 && minutesUntilClose <= 12:
 		stage = "overview"
-	case 1:
+	case minutesUntilClose >= 0 && minutesUntilClose <= 2:
 		stage = "confirmations"
 	default:
 		return SimulateResult{Stage: "wrong_time", DryRun: opts.DryRun, Reason: "wrong_time"}, nil

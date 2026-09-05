@@ -362,7 +362,7 @@ func TestLinkMonitorToBrokerTrade(t *testing.T) {
 	if err := db.LinkMonitorToBrokerTrade("m-b1", "b1"); err != nil {
 		t.Fatal(err)
 	}
-	got := db.GetTrade("trades", "m-b1")
+	got, _ := db.GetTrade("trades", "m-b1")
 	if fmt.Sprint(got["linkedBrokerTradeId"]) != "b1" {
 		t.Fatalf("link not stored: %+v", got)
 	}

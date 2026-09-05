@@ -568,6 +568,9 @@ func (d *DB) DeleteDataset(id string) error {
 	if _, err := tx.Exec(`DELETE FROM dataset_meta WHERE ticker = ?`, ticker); err != nil {
 		return err
 	}
+	if _, err := tx.Exec(`DELETE FROM splits WHERE ticker = ?`, ticker); err != nil {
+		return err
+	}
 	return tx.Commit()
 }
 
@@ -665,13 +668,18 @@ func (d *DB) ReplaceSplits(symbol string, events []types.SplitEvent) error {
 
 func (d *DB) UpsertSplits(symbol string, events []types.SplitEvent) error {
 	ticker := SafeTicker(symbol)
+	tx, err := d.SQL.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
 	for _, e := range events {
-		if _, err := d.SQL.Exec(`INSERT INTO splits (ticker, date, factor) VALUES (?, ?, ?)
+		if _, err := tx.Exec(`INSERT INTO splits (ticker, date, factor) VALUES (?, ?, ?)
             ON CONFLICT(ticker, date) DO UPDATE SET factor=excluded.factor`, ticker, e.Date, e.Factor); err != nil {
 			return err
 		}
 	}
-	return nil
+	return tx.Commit()
 }
 
 func (d *DB) DeleteSplit(symbol, date string) error {
@@ -1174,7 +1182,7 @@ func (d *DB) LinkMonitorToBrokerTrade(monitorID, brokerTradeID string) error {
 	return err
 }
 
-func (d *DB) GetTrade(table, id string) map[string]any {
+func (d *DB) GetTrade(table, id string) (map[string]any, error) {
 	table = tradeTable(table)
 	linkedCol := "NULL"
 	brokerCol := "''"
@@ -1190,7 +1198,10 @@ func (d *DB) GetTrade(table, id string) map[string]any {
 	var entryP, exitP, entryI, exitI, pnlP, pnlA, qty sql.NullFloat64
 	var hold, hidden, test sql.NullInt64
 	if err := row.Scan(&tid, &symbol, &status, &entryDate, &exitDate, &entryP, &exitP, &entryI, &exitI, &pnlP, &pnlA, &hold, &notes, &source, &hidden, &test, &qty, &linked, &broker); err != nil {
-		return nil
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
 	}
 	return map[string]any{
 		"id": tid, "symbol": symbol, "status": status,
@@ -1202,7 +1213,7 @@ func (d *DB) GetTrade(table, id string) map[string]any {
 		"isHidden": hidden.Int64 == 1, "isTest": test.Int64 == 1, "quantity": nullF(qty),
 		"linkedBrokerTradeId": nullS(linked),
 		"broker":              nullS(broker),
-	}
+	}, nil
 }
 
 func asFloat(v any) float64 {
@@ -1263,7 +1274,10 @@ func TradeCloseFields(existing map[string]any, exitPrice float64, exitDate strin
 }
 
 func (d *DB) CloseMonitorTrade(id string, rec map[string]any) (map[string]any, error) {
-	existing := d.GetTrade("trades", id)
+	existing, err := d.GetTrade("trades", id)
+	if err != nil {
+		return nil, err
+	}
 	if existing == nil {
 		return nil, fmt.Errorf("Trade not found")
 	}
@@ -1295,7 +1309,10 @@ func (d *DB) CloseMonitorTrade(id string, rec map[string]any) (map[string]any, e
 // Unlike CloseMonitorTrade it does not reject linked broker-backed trades.
 func (d *DB) CloseTradeByID(table, id string, exitPrice float64, exitDate string, extra map[string]any) (map[string]any, error) {
 	table = tradeTable(table)
-	existing := d.GetTrade(table, id)
+	existing, err := d.GetTrade(table, id)
+	if err != nil {
+		return nil, err
+	}
 	if existing == nil {
 		return nil, fmt.Errorf("Trade not found")
 	}
@@ -1310,12 +1327,12 @@ func (d *DB) CloseTradeByID(table, id string, exitPrice float64, exitDate string
 		exitDate = tradingdate.TodayNYSE(time.Now())
 	}
 	fields := TradeCloseFields(existing, exitPrice, exitDate, extra)
-	_, err := d.SQL.Exec(`UPDATE `+table+` SET status='closed', exit_date=?, exit_price=?, exit_ibs=COALESCE(?, exit_ibs), pnl_absolute=?, pnl_percent=?, holding_days=?, notes=COALESCE(?, notes) WHERE id=?`,
+	_, err = d.SQL.Exec(`UPDATE `+table+` SET status='closed', exit_date=?, exit_price=?, exit_ibs=COALESCE(?, exit_ibs), pnl_absolute=?, pnl_percent=?, holding_days=?, notes=COALESCE(?, notes) WHERE id=?`,
 		fields["exitDate"], fields["exitPrice"], fields["exitIBS"], fields["pnlAbsolute"], fields["pnlPercent"], fields["holdingDays"], fields["notes"], id)
 	if err != nil {
 		return nil, err
 	}
-	return d.GetTrade(table, id), nil
+	return d.GetTrade(table, id)
 }
 
 func (d *DB) ListTrades(table string) ([]map[string]any, error) {
@@ -1513,14 +1530,17 @@ func (d *DB) UpsertEMAAlert(rec map[string]any) (string, error) {
 	return id, err
 }
 
-func (d *DB) GetEMAAlert(id string) map[string]any {
-	list, _ := d.ListEMAAlerts()
+func (d *DB) GetEMAAlert(id string) (map[string]any, error) {
+	list, err := d.ListEMAAlerts()
+	if err != nil {
+		return nil, err
+	}
 	for _, a := range list {
 		if fmt.Sprint(a["id"]) == id {
-			return a
+			return a, nil
 		}
 	}
-	return nil
+	return nil, nil
 }
 
 func (d *DB) MarkEMATriggered(id, action string, deviationPct float64, at string) error {
