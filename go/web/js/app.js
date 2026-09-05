@@ -2689,7 +2689,7 @@
         const actions = stuck && o.clientOrderId
           ? `<button type="button" data-resolve-tracker="${oid}" data-resolve-outcome="filled" class="compact inline-flex min-w-0 min-h-0 px-1 py-1 text-xs text-emerald-600 mr-2">Исполнено у брокера</button><button type="button" data-resolve-tracker="${oid}" data-resolve-outcome="absent" class="compact inline-flex min-w-0 min-h-0 px-1 py-1 text-xs text-red-600">Заявки нет</button>`
           : '';
-        return `<tr class="${stuck ? 'bg-amber-50 dark:bg-amber-950/30' : ''}"><td>${esc(o.symbol || '')}</td><td>${esc(o.broker || '')}</td><td>${esc(orderSideText(o.action))}</td><td class="${stuck ? 'font-semibold text-amber-700 dark:text-amber-400' : ''}">${esc(trackerStatusText(o.status))}</td><td>${esc(o.quantity ?? '')}</td><td>${esc(o.startedAt || o.started_at || '')}</td><td>${actions}</td></tr>`;
+        return `<tr class="${stuck ? 'bg-amber-50 dark:bg-amber-950/30' : ''}"><td>${esc(o.symbol || '')}</td><td>${esc(brokerLabel(o.broker))}</td><td>${esc(orderSideText(o.action))}</td><td class="${stuck ? 'font-semibold text-amber-700 dark:text-amber-400' : ''}">${esc(trackerStatusText(o.status))}</td><td>${esc(o.quantity ?? '')}</td><td>${esc(formatDateTimeET(o.startedAt || o.started_at || ''))}</td><td>${actions}</td></tr>`;
       }).join('');
       const persistBlocks = (state.settings && state.settings.trackerPersistFail) || {};
       const persistBlockedBrokers = Object.keys(persistBlocks).filter((b) => persistBlocks[b]);
