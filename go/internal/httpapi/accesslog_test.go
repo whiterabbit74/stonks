@@ -3,6 +3,7 @@ package httpapi
 import (
 	"bytes"
 	"encoding/json"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -110,6 +111,66 @@ func TestAccessLogClipsPathAndQuery(t *testing.T) {
 	}
 	if !strings.HasPrefix(path, "/api/") {
 		t.Fatalf("path prefix lost: %q", path)
+	}
+}
+
+func TestAccessLogOmitsDetailsOn429(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HTTP_LOG_PATH", filepath.Join(dir, "http-access.jsonl"))
+	t.Cleanup(resetHTTPLogForTest)
+
+	s := testServer(t, "secret")
+	body, _ := json.Marshal(map[string]any{"username": "admin@example.com", "password": "nope"})
+	var last int
+	for i := 0; i < 12; i++ {
+		req := httptest.NewRequest("POST", "/api/login?token=should-not-log", bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("User-Agent", "evil-scanner/1.0")
+		req.RemoteAddr = "203.0.113.9:1234"
+		rec := httptest.NewRecorder()
+		s.Handler().ServeHTTP(rec, req)
+		last = rec.Code
+	}
+	if last != http.StatusTooManyRequests {
+		t.Fatalf("expected 429 after login burst, got %d", last)
+	}
+	resetHTTPLogForTest()
+	raw, err := os.ReadFile(httpLogPathFor(time.Now()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	saw429 := 0
+	for _, line := range bytes.Split(bytes.TrimSpace(raw), []byte("\n")) {
+		if len(line) == 0 {
+			continue
+		}
+		var recJSON map[string]any
+		if err := json.Unmarshal(line, &recJSON); err != nil {
+			t.Fatalf("json: %v %s", err, line)
+		}
+		st, _ := recJSON["status"].(float64)
+		if int(st) != http.StatusTooManyRequests {
+			continue
+		}
+		saw429++
+		if recJSON["query"] != nil && recJSON["query"] != "" {
+			t.Fatalf("429 log must omit query, got %v", recJSON["query"])
+		}
+		if recJSON["ua"] != nil && recJSON["ua"] != "" {
+			t.Fatalf("429 log must omit ua, got %v", recJSON["ua"])
+		}
+		if recJSON["body"] != nil {
+			t.Fatalf("429 log must omit body, got %v", recJSON["body"])
+		}
+		if recJSON["method"] != "POST" || recJSON["path"] != "/api/login" {
+			t.Fatalf("429 log must keep method and path: %v", recJSON)
+		}
+		if recJSON["ip"] != "203.0.113.9" {
+			t.Fatalf("429 log must keep ip, got %v", recJSON["ip"])
+		}
+	}
+	if saw429 == 0 {
+		t.Fatal("no 429 access-log lines")
 	}
 }
 

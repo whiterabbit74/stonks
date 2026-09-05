@@ -77,18 +77,20 @@ func (s *Server) accessLog(next http.Handler) http.Handler {
 			status = http.StatusOK
 		}
 		rec := apiLogRec{
-			TS:      start.UTC().Format(time.RFC3339Nano),
-			Method:  r.Method,
-			Path:    clip(r.URL.Path, 256),
-			Query:   clip(redactQuery(r.URL.RawQuery), 512),
-			Status:  status,
-			Ms:      time.Since(start).Milliseconds(),
-			Bytes:   sw.bytes,
-			IP:      clientIP(r),
-			UA:      clip(r.Header.Get("User-Agent"), 200),
-			Auth:    cookieToken(r) != "",
-			Body:    body,
-			BodyLen: bodyLen,
+			TS:     start.UTC().Format(time.RFC3339Nano),
+			Method: r.Method,
+			Path:   clip(r.URL.Path, 256),
+			Status: status,
+			Ms:     time.Since(start).Milliseconds(),
+			Bytes:  sw.bytes,
+			IP:     clientIP(r),
+			Auth:   cookieToken(r) != "",
+		}
+		if status != http.StatusTooManyRequests {
+			rec.Query = clip(redactQuery(r.URL.RawQuery), 512)
+			rec.UA = clip(r.Header.Get("User-Agent"), 200)
+			rec.Body = body
+			rec.BodyLen = bodyLen
 		}
 		writeAPILog(rec)
 	})
