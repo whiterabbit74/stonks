@@ -2362,7 +2362,7 @@
     } else {
       body = `<div>
         <h3 class="text-lg font-medium mb-1">Сырые данные Webull</h3>
-        <p class="text-sm text-gray-500 mb-4">Запрос corp-action (события по акциям) из Webull API — для анализа</p>
+        <p class="text-sm text-gray-500 mb-4">Запрос корпоративных событий по акциям из Webull API — для анализа</p>
         <form id="split-webull-form" class="flex flex-wrap gap-3 items-end p-4 bg-white border rounded-xl dark:bg-gray-900 dark:border-gray-700">
           <label class="text-xs">Тикер<input name="symbol" value="AAPL" class="field mt-1 w-28 uppercase" /></label>
           <label class="text-xs">С даты<input name="start" type="text" inputmode="numeric" placeholder="YYYY-MM-DD" value="2000-01-01" class="field mt-1 w-40" /></label>
@@ -2453,8 +2453,8 @@
       <div class="rounded-lg border border-gray-200 bg-white p-4 dark:bg-gray-800 dark:border-gray-700 mb-4">
         <div class="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h3 class="text-lg font-semibold">Согласованность monitor / broker</h3>
-            <p class="text-sm text-gray-600 dark:text-gray-300">Статус синхронизации виртуальной monitor-позиции и реального брокерского журнала.</p>
+            <h3 class="text-lg font-semibold">Согласованность мониторинга и брокера</h3>
+            <p class="text-sm text-gray-600 dark:text-gray-300">Статус синхронизации виртуальной позиции мониторинга и реального брокерского журнала.</p>
           </div>
           <span class="inline-flex items-center rounded-full border ${consBadgeCls} px-3 py-1 text-xs font-semibold">${esc(consLabel)}</span>
         </div>
@@ -2480,7 +2480,7 @@
             const watchSyms = (state.watches || []).map((w) => w.symbol);
             const hasOpen = !!open;
             return `${open ? `<div class="rounded-lg border border-emerald-200 bg-emerald-50 p-3 mb-3 dark:bg-emerald-950/20"><div class="font-semibold">Текущая позиция: ${esc(open.symbol)}</div><div class="text-sm">Вход ${esc(fmtTradingDate(open.entryDate))} по ${open.entryPrice == null ? '—' : fmtUsd(open.entryPrice)}${open.entryIBS != null ? ', IBS ' + fmt(ibsPct(open.entryIBS), 1) + '%' : ''}</div><div class="mt-2 flex gap-1">${actionIcon('edit', 'Изменить сделку', `data-edit-mon="${esc(open.id)}"`, 'action-icon-edit')}${actionIcon('x', 'Закрыть сделку', `data-close-mon="${esc(open.id)}" data-close-sym="${esc(open.symbol)}"`, 'action-icon-danger')}</div></div>` : ''}
-          <div class="rounded-lg border p-4 mb-3 bg-white dark:bg-gray-800"><h3 class="font-semibold mb-1">Ручная корректировка monitor-сделки</h3>
+          <div class="rounded-lg border p-4 mb-3 bg-white dark:bg-gray-800"><h3 class="font-semibold mb-1">Ручная корректировка сделки мониторинга</h3>
           <p class="text-sm text-gray-600 mb-3">Если сайт пропустил вход, можно добавить сделку вручную.</p>
           <form id="watch-manual" class="flex flex-wrap gap-2">
             <select name="symbol" class="field w-28">${watchSyms.map((s) => `<option>${esc(s)}</option>`).join('') || '<option value="">нет тикеров</option>'}</select>
@@ -2585,7 +2585,7 @@
       const jrows = shown.map((t) => `<tr class="${t.isHidden ? 'opacity-50' : ''}">
         <td class="font-mono">${esc(t.symbol || '—')}</td>
         <td>${esc(t.broker || '—')}</td>
-        <td>${esc(t.source || '—')}${t.isTest ? ' · test' : ''}</td>
+        <td>${esc(t.source || '—')}${t.isTest ? ' · тест' : ''}</td>
         <td>${esc(t.status === 'open' ? 'открыта' : 'закрыта')}</td>
         <td>${esc(t.entryDate || '—')}</td>
         <td>${esc(t.exitDate || '—')}</td>
@@ -4147,7 +4147,7 @@
         const ibsOut = t.exitIBS == null ? '' : (ibsPct(t.exitIBS) ?? '');
         setModal(`<div class="modal-backdrop"><div class="modal-card max-w-lg">
           <h3 class="text-lg font-semibold mb-2">Редактировать брокерскую сделку: ${esc(t.symbol)}</h3>
-          <p class="text-sm text-gray-500 mb-3">Заполните дату и цену выхода, чтобы ручной записью закрыть сделку в broker-журнале сайта.</p>
+          <p class="text-sm text-gray-500 mb-3">Заполните дату и цену выхода, чтобы ручной записью закрыть сделку в журнале брокера сайта.</p>
           <div id="eb-err" class="text-sm text-red-600 mb-2 hidden"></div>
           <div class="grid sm:grid-cols-3 gap-2 rounded-lg bg-gray-50 p-3 text-sm mb-3 dark:bg-gray-950/40">
             <div><div class="text-xs text-gray-500">Вход</div><div class="font-mono">${esc(t.entryDate || '—')}</div></div>
