@@ -1640,12 +1640,12 @@
   function statusBadgeHTML() {
     const st = state.serverStatus;
     if (st === 'offline') {
-      return `<span id="footer-status" class="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs bg-red-100 text-red-800 dark:bg-red-950/30 dark:text-red-200"><span class="w-1.5 h-1.5 bg-red-500 rounded-full"></span>Offline</span>`;
+      return `<span id="footer-status" title="Offline" class="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs bg-red-100 text-red-800 dark:bg-red-950/30 dark:text-red-200"><span class="w-1.5 h-1.5 bg-red-500 rounded-full"></span>Офлайн</span>`;
     }
     if (st === 'checking') {
       return `<span id="footer-status" class="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300"><span class="w-1.5 h-1.5 bg-gray-400 rounded-full"></span>Проверка</span>`;
     }
-    return `<span id="footer-status" class="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs bg-green-100 text-green-800 dark:bg-green-950/30 dark:text-green-200"><span class="w-1.5 h-1.5 bg-green-500 rounded-full"></span>Online</span>`;
+      return `<span id="footer-status" title="Online" class="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs bg-green-100 text-green-800 dark:bg-green-950/30 dark:text-green-200"><span class="w-1.5 h-1.5 bg-green-500 rounded-full"></span>Онлайн</span>`;
   }
   function footerHTML(apiVer) {
     const year = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', year: 'numeric' }).format(new Date());
@@ -1808,10 +1808,10 @@
         ${state.datasetsError ? `<div class="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950/30">Ошибка загрузки: ${esc(state.datasetsError)}</div>` : ''}
         <div class="flex items-center justify-between mb-3">
           <div class="flex items-center gap-1.5">${state.serverStatus === 'offline'
-            ? '<div class="w-2 h-2 bg-red-500 rounded-full"></div><span class="text-xs text-red-600 font-medium">Offline</span>'
+            ? '<div class="w-2 h-2 bg-red-500 rounded-full"></div><span class="text-xs text-red-600 font-medium">Офлайн</span>'
             : (state.serverStatus === 'checking'
               ? '<div class="w-2 h-2 bg-gray-400 rounded-full animate-pulse"></div><span class="text-xs text-gray-500 font-medium">Проверяем…</span>'
-              : '<div class="w-2 h-2 bg-green-500 rounded-full"></div><span class="text-xs text-green-600 font-medium">Online</span>')}</div>
+              : '<div class="w-2 h-2 bg-green-500 rounded-full"></div><span class="text-xs text-green-600 font-medium">Онлайн</span>')}</div>
           <div class="flex items-center gap-1 bg-gray-100 dark:bg-gray-800 rounded-lg p-1">
             <button id="view-list" class="p-1.5 rounded-lg ${state.dataView === 'list' ? 'bg-white dark:bg-gray-700 text-indigo-600 shadow-sm' : 'text-gray-500'}" title="Список" aria-label="Переключить на режим списка">${icon('list', 'w-4 h-4')}</button>
             <button id="view-grid" class="p-1.5 rounded-lg ${state.dataView === 'compact' ? 'bg-white dark:bg-gray-700 text-indigo-600 shadow-sm' : 'text-gray-500'}" title="Компактный вид" aria-label="Переключить на компактный вид">${icon('grid', 'w-4 h-4')}</button>
