@@ -35,6 +35,95 @@ func unblockOrderTrackerInserts(t *testing.T, e *Engine) {
 	}
 }
 
+// blockSettingsWrites makes SetSettingsKeys fail. That helper uses
+// INSERT ON CONFLICT DO UPDATE, so both INSERT and UPDATE paths must abort.
+func blockSettingsWrites(t *testing.T, e *Engine) {
+	t.Helper()
+	if _, err := e.DB.SQL.Exec(`
+            CREATE TRIGGER IF NOT EXISTS settings_block_update
+            BEFORE UPDATE ON settings
+            BEGIN
+                SELECT RAISE(ABORT, 'injected settings fail');
+            END;
+        `); err != nil {
+		t.Fatalf("block settings updates: %v", err)
+	}
+	if _, err := e.DB.SQL.Exec(`
+            CREATE TRIGGER IF NOT EXISTS settings_block_insert
+            BEFORE INSERT ON settings
+            BEGIN
+                SELECT RAISE(ABORT, 'injected settings fail');
+            END;
+        `); err != nil {
+		t.Fatalf("block settings inserts: %v", err)
+	}
+	t.Cleanup(func() {
+		_, _ = e.DB.SQL.Exec(`DROP TRIGGER IF EXISTS settings_block_update`)
+		_, _ = e.DB.SQL.Exec(`DROP TRIGGER IF EXISTS settings_block_insert`)
+	})
+}
+
+func autotradeLogsContain(t *testing.T, e *Engine, needle string) bool {
+	t.Helper()
+	logs, err := e.DB.ListAutotradeLogs(50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.DB.ListAutotradeLogsKind("autotrade", 50); err != nil {
+		t.Fatal(err)
+	}
+	for _, l := range logs {
+		if strings.Contains(fmt.Sprint(l["message"]), needle) {
+			return true
+		}
+	}
+	return false
+}
+
+// TestPersistTrackerBlockKeepsMemoryFlagWhenSettingsWriteFails is T6/S04:
+// a failed settings write must not pretend the protective flag was stored.
+func TestPersistTrackerBlockKeepsMemoryFlagWhenSettingsWriteFails(t *testing.T) {
+	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
+	_, e, _ := testEngine(t, bars)
+	blockSettingsWrites(t, e)
+
+	e.mu.Lock()
+	e.trackerPersistFail = map[string]bool{"webull": true}
+	e.mu.Unlock()
+
+	if err := e.persistTrackerBlock("webull"); err == nil {
+		t.Fatal("persistTrackerBlock must return the settings write error")
+	}
+	if !e.trackerPersistBlocked("webull") {
+		t.Fatal("trackerPersistBlocked must stay true when persist write fails")
+	}
+	if !autotradeLogsContain(t, e, "tracker_persist_block_save_failed") {
+		t.Fatal("want tracker_persist_block_save_failed in autotrade logs")
+	}
+}
+
+// TestClearTrackerPersistBlockKeepsMemoryFlagWhenSettingsWriteFails is the
+// mirror of T6/S04: a failed settings write must not report the block cleared.
+func TestClearTrackerPersistBlockKeepsMemoryFlagWhenSettingsWriteFails(t *testing.T) {
+	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
+	_, e, _ := testEngine(t, bars)
+
+	e.mu.Lock()
+	e.trackerPersistFail = map[string]bool{"webull": true}
+	e.mu.Unlock()
+	blockSettingsWrites(t, e)
+
+	if err := e.ClearTrackerPersistBlock("webull", "checked Webull orders by hand, none pending"); err == nil {
+		t.Fatal("ClearTrackerPersistBlock must return the settings write error")
+	}
+	if !e.trackerPersistBlocked("webull") {
+		t.Fatal("trackerPersistBlocked must stay true when clear write fails")
+	}
+	if autotradeLogsContain(t, e, "tracker_persist_block_cleared") {
+		t.Fatal("must not log tracker_persist_block_cleared on write fail")
+	}
+}
+
 // TestTrackerPersistBlockSurvivesRestartAndOnlyClearsExplicitly closes P1-8:
 // a failed SaveOrderTracker write must block further entries for that
 // broker, that block must survive an Engine restart (it is persisted in

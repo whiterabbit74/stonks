@@ -704,16 +704,16 @@ func (e *Engine) startTracking(res OrderResult, meta orderMeta) {
 		}
 		e.trackerPersistFail[broker] = true
 		e.mu.Unlock()
-		e.persistTrackerBlock(broker)
+		_ = e.persistTrackerBlock(broker)
 		return
 	}
 	e.rememberOrder(res.ClientOrderID, meta)
 	e.TrackSubmitted(res.ClientOrderID)
 }
 
-func (e *Engine) persistTrackerBlock(broker string) {
+func (e *Engine) persistTrackerBlock(broker string) error {
 	if e == nil || e.DB == nil {
-		return
+		return nil
 	}
 	if broker == "" {
 		broker = "webull"
@@ -724,7 +724,11 @@ func (e *Engine) persistTrackerBlock(broker string) {
 		blocks = map[string]any{}
 	}
 	blocks[broker] = true
-	_ = e.DB.SetSettingsKeys(map[string]any{"trackerPersistFail": blocks})
+	if err := e.DB.SetSettingsKeys(map[string]any{"trackerPersistFail": blocks}); err != nil {
+		e.logAuto("tracker_persist_block_save_failed", "", map[string]any{"broker": broker, "error": err.Error()})
+		return err
+	}
+	return nil
 }
 
 func (e *Engine) trackerPersistBlocked(broker string) bool {
@@ -776,9 +780,19 @@ func (e *Engine) ClearTrackerPersistBlock(broker, note string) error {
 	e.mu.Unlock()
 	if e.DB != nil {
 		settings := e.DB.Settings()
-		if blocks, ok := settings["trackerPersistFail"].(map[string]any); ok {
-			delete(blocks, broker)
-			_ = e.DB.SetSettingsKeys(map[string]any{"trackerPersistFail": blocks})
+		blocks, _ := settings["trackerPersistFail"].(map[string]any)
+		if blocks == nil {
+			blocks = map[string]any{}
+		}
+		delete(blocks, broker)
+		if err := e.DB.SetSettingsKeys(map[string]any{"trackerPersistFail": blocks}); err != nil {
+			e.mu.Lock()
+			if e.trackerPersistFail == nil {
+				e.trackerPersistFail = map[string]bool{}
+			}
+			e.trackerPersistFail[broker] = true
+			e.mu.Unlock()
+			return err
 		}
 	}
 	e.logAuto("tracker_persist_block_cleared", "", map[string]any{"broker": broker, "note": note, "author": "operator"})

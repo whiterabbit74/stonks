@@ -344,7 +344,7 @@ func (e *Engine) raiseTrackerPersistBlock(broker string) {
 	}
 	e.trackerPersistFail[broker] = true
 	e.mu.Unlock()
-	e.persistTrackerBlock(broker)
+	_ = e.persistTrackerBlock(broker)
 }
 
 func (e *Engine) deletePhantom(clientOrderID, symbol string) {
