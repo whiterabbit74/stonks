@@ -3193,13 +3193,9 @@
       app.innerHTML = shellHTML();
       bindShellOnce();
     }
-    if (!opts.keepCharts) {
-      Charts.destroy();
-      updateChrome();
-      document.getElementById('page-root').innerHTML = pageHTML();
-    } else {
-      updateChrome();
-    }
+    if (!opts.keepCharts) Charts.destroy();
+    updateChrome();
+    document.getElementById('page-root').innerHTML = pageHTML();
     paintOverlay();
     await afterRender(gen);
     if (gen !== pageGen) return;
