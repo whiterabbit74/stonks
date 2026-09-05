@@ -29,7 +29,7 @@ const names = [
   'toNum', 'fmt', 'fmtUsd', 'asObject', 'firstDefined', 'asRows',
   'formatRatioPercent', 'extractBalanceSummary', 'normalizePositions',
   'normalizeMonitorMarginPercent', 'applyMonitorMarginSimulation',
-  'esc', 'pnlClass', 'tradeTicker', 'tradesTable', 'brokerFlag', 'brokerFlagsPatch',
+  'esc', 'pnlClass', 'fmtTradingDate', 'tradeTicker', 'tradesTable', 'brokerFlag', 'brokerFlagsPatch',
 ];
 const consts = [];
 if (src.includes('const MONITOR_MARGIN_OPTIONS')) {
