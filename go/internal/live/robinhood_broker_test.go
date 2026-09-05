@@ -5,11 +5,13 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
 
 	"mktorder.com/go/internal/robinhood"
+	"mktorder.com/go/internal/store"
 )
 
 var uuidRE = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
@@ -283,5 +285,57 @@ func TestRobinhoodPlaceMarketUnrecognizedResponseIsAmbiguous(t *testing.T) {
 	}
 	if placeCalls != 1 {
 		t.Fatalf("ambiguous result must not trigger a resend from the broker, place calls=%d", placeCalls)
+	}
+}
+
+// TestRobinhoodBrokerUsesStoredAccountNumber covers AU-P2-2: a process restart
+// must reuse robinhood_oauth.account_number instead of spending a T-1 round-trip
+// on get_accounts.
+func TestRobinhoodBrokerUsesStoredAccountNumber(t *testing.T) {
+	var tools []string
+	srv := mcpAccountsServer(t, &tools)
+	t.Cleanup(srv.Close)
+	dir := t.TempDir()
+	db, err := store.Open(filepath.Join(dir, "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	if err := db.SaveRobinhoodClientID("cid"); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.SaveRobinhoodAccount("RH-STORED"); err != nil {
+		t.Fatal(err)
+	}
+	svc := &robinhood.Service{HTTP: srv.Client(), DB: db}
+	svc.MCP = &robinhood.MCP{HTTP: srv.Client(), Endpoint: srv.URL, Token: func() (string, error) { return "tok", nil }}
+	b := NewRobinhoodBroker(svc)
+	if _, err := b.PlaceMarket("AAPL", "BUY", 1); err != nil {
+		t.Fatal(err)
+	}
+	if b.account != "RH-STORED" {
+		t.Fatalf("stored account_number must be used, account=%q", b.account)
+	}
+	for _, n := range tools {
+		if n == "get_accounts" {
+			t.Fatalf("stored account_number must skip get_accounts, tools=%v", tools)
+		}
+	}
+}
+
+// TestRobinhoodCancelOrderRejectsNonUUID covers AU-P2-3: CancelOrder must not
+// forward a non-UUID (a future ref_id) as MCP order_id.
+func TestRobinhoodCancelOrderRejectsNonUUID(t *testing.T) {
+	var calls int
+	b := &RobinhoodBroker{Call: func(name string, args map[string]any) (json.RawMessage, error) {
+		calls++
+		return json.Marshal(map[string]any{})
+	}}
+	err := b.CancelOrder("not-a-uuid")
+	if err == nil {
+		t.Fatal("expected error for non-UUID order_id")
+	}
+	if calls != 0 {
+		t.Fatalf("CancelOrder must not Call for a non-UUID, calls=%d", calls)
 	}
 }

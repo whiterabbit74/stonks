@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/google/uuid"
+
 	"mktorder.com/go/internal/robinhood"
 )
 
@@ -227,11 +229,15 @@ func (b *RobinhoodBroker) ordersByState(all bool) ([]any, error) {
 }
 
 func (b *RobinhoodBroker) CancelOrder(clientOrderID string) error {
+	id := asUUID(clientOrderID)
+	if _, err := uuid.Parse(id); err != nil {
+		return fmt.Errorf("cancel order_id is not a UUID: %q", clientOrderID)
+	}
 	acct, err := b.agenticAccount()
 	if err != nil {
 		return err
 	}
-	_, err = b.tool("cancel_equity_order", map[string]any{"account_number": acct, "order_id": clientOrderID})
+	_, err = b.tool("cancel_equity_order", map[string]any{"account_number": acct, "order_id": id})
 	return err
 }
 
@@ -252,6 +258,12 @@ func (b *RobinhoodBroker) RawSplits(symbol string) ([]map[string]any, error) {
 func (b *RobinhoodBroker) agenticAccount() (string, error) {
 	if b.account != "" {
 		return b.account, nil
+	}
+	if b.Svc != nil && b.Svc.DB != nil {
+		if acct := strings.TrimSpace(b.Svc.DB.GetRobinhoodOAuth().AccountNumber); acct != "" {
+			b.account = acct
+			return acct, nil
+		}
 	}
 	raw, err := b.tool("get_accounts", nil)
 	if err != nil {
