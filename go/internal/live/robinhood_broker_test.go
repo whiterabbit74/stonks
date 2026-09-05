@@ -431,6 +431,28 @@ func TestRobinhoodPositionsCtxPassesContextToTool(t *testing.T) {
 	}
 }
 
+func TestRobinhoodPositionsCtxPassesContextToGetAccounts(t *testing.T) {
+	want := context.WithValue(context.Background(), rhCtxKey{}, "accounts")
+	var gotAccounts context.Context
+	b := &RobinhoodBroker{
+		CallCtx: func(ctx context.Context, name string, args map[string]any) (json.RawMessage, error) {
+			if name == "get_accounts" {
+				gotAccounts = ctx
+				return json.Marshal(map[string]any{
+					"accounts": []any{map[string]any{"account_number": "RH1", "agentic_allowed": true}},
+				})
+			}
+			return json.Marshal(map[string]any{"results": []any{}})
+		},
+	}
+	if _, err := b.PositionsCtx(want); err != nil {
+		t.Fatal(err)
+	}
+	if gotAccounts != want {
+		t.Fatalf("get_accounts must receive PositionsCtx ctx, got %v", gotAccounts)
+	}
+}
+
 func TestRobinhoodOrderHistoryFiltersByDateRange(t *testing.T) {
 	var gte any
 	b := &RobinhoodBroker{

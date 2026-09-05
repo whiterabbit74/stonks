@@ -147,7 +147,7 @@ func (b *RobinhoodBroker) Account() (map[string]any, error) {
 }
 
 func (b *RobinhoodBroker) AccountCtx(ctx context.Context) (map[string]any, error) {
-	acct, err := b.agenticAccount()
+	acct, err := b.agenticAccountCtx(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -169,7 +169,7 @@ func (b *RobinhoodBroker) Positions() ([]any, error) {
 }
 
 func (b *RobinhoodBroker) PositionsCtx(ctx context.Context) ([]any, error) {
-	acct, err := b.agenticAccount()
+	acct, err := b.agenticAccountCtx(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -189,7 +189,7 @@ func (b *RobinhoodBroker) OrderDetail(clientOrderID string) (map[string]any, err
 }
 
 func (b *RobinhoodBroker) OrderDetailCtx(ctx context.Context, clientOrderID string) (map[string]any, error) {
-	acct, err := b.agenticAccount()
+	acct, err := b.agenticAccountCtx(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -222,7 +222,7 @@ func (b *RobinhoodBroker) OrderHistory(start, end string) ([]any, error) {
 }
 
 func (b *RobinhoodBroker) OrderHistoryCtx(ctx context.Context, start, end string) ([]any, error) {
-	acct, err := b.agenticAccount()
+	acct, err := b.agenticAccountCtx(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -242,7 +242,7 @@ func (b *RobinhoodBroker) OrderHistoryCtx(ctx context.Context, start, end string
 }
 
 func (b *RobinhoodBroker) ordersByState(ctx context.Context, all bool) ([]any, error) {
-	acct, err := b.agenticAccount()
+	acct, err := b.agenticAccountCtx(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -306,6 +306,10 @@ func (b *RobinhoodBroker) ResetAccount() {
 }
 
 func (b *RobinhoodBroker) agenticAccount() (string, error) {
+	return b.agenticAccountCtx(context.Background())
+}
+
+func (b *RobinhoodBroker) agenticAccountCtx(ctx context.Context) (string, error) {
 	if b.account != "" {
 		return b.account, nil
 	}
@@ -315,7 +319,7 @@ func (b *RobinhoodBroker) agenticAccount() (string, error) {
 			return acct, nil
 		}
 	}
-	raw, err := b.tool("get_accounts", nil)
+	raw, err := b.toolCtx(ctx, "get_accounts", nil)
 	if err != nil {
 		return "", err
 	}
