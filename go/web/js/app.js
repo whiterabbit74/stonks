@@ -1386,7 +1386,7 @@
   function analysisTabs(tabs, active, attr, label) {
     return `<div class="scroll-cue border-b border-gray-200 dark:border-gray-700 overflow-x-auto">
       <div class="flex items-center gap-2 flex-nowrap min-w-max px-1" role="tablist"${label ? ` aria-label="${esc(label)}"` : ''}>
-        ${tabs.map((t) => `<button ${attr}="${esc(t.id)}" role="tab" aria-selected="${t.id === active}" tabindex="${t.id === active ? 0 : -1}" class="px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap sm:px-6 ${t.id === active ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'}">${esc(t.label)}</button>`).join('')}
+        ${tabs.map((t) => `<button ${attr}="${esc(t.id)}" role="tab" aria-selected="${t.id === active}" tabindex="${t.id === active ? 0 : -1}" class="flex-none px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap sm:px-6 ${t.id === active ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'}">${esc(t.label)}</button>`).join('')}
       </div>
     </div>`;
   }
@@ -1830,7 +1830,7 @@
     const chips = ENHANCE_CATS.map((c) => {
       const n = c.id === 'all' ? all.length : all.filter((t) => (t.categories || []).includes(c.id)).length;
       const on = state.enhanceCat === c.id;
-      return `<button type="button" data-ecat="${c.id}" class="${on ? 'cat-chip' : 'cat-chip-off'}">${c.icon} ${esc(c.label)} <span class="text-xs ${on ? '' : 'text-gray-400'}">(${n})</span></button>`;
+      return `<button type="button" data-ecat="${c.id}" class="flex-none ${on ? 'cat-chip' : 'cat-chip-off'}">${c.icon} ${esc(c.label)} <span class="text-xs ${on ? '' : 'text-gray-400'}">(${n})</span></button>`;
     }).join('');
     return `
       ${pageHeader('Новые данные', 'Загрузка исторических данных из API', `<div class="flex items-center gap-2"><a href="/settings" data-nav data-settings-tab="api" class="icon-btn icon-btn-md icon-btn-glass" title="Настройки провайдера" aria-label="Настройки провайдера">${icon('settings', 'w-4 h-4')}</a><div class="rounded-lg border px-3 py-2 text-xs bg-white dark:bg-gray-800 dark:border-gray-700"><div class="text-gray-500">Провайдер данных</div><div class="font-semibold">${esc(providerLabel(prov))}</div></div></div>`)}
