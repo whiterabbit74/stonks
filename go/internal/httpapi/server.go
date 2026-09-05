@@ -19,6 +19,7 @@ import (
 
 	"golang.org/x/crypto/bcrypt"
 
+	"mktorder.com/go/internal/ibs"
 	"mktorder.com/go/internal/live"
 	"mktorder.com/go/internal/providers"
 	"mktorder.com/go/internal/robinhood"
@@ -1165,9 +1166,73 @@ func (s *Server) handleWatches(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, list)
 }
 
+func watchHasThresholdKey(body map[string]any) bool {
+	if body == nil {
+		return false
+	}
+	_, hasLow := body["lowIBS"]
+	_, hasHigh := body["highIBS"]
+	return hasLow || hasHigh
+}
+
+func findWatch(list []map[string]any, symbol string) map[string]any {
+	want := store.SafeTicker(symbol)
+	if want == "" {
+		return nil
+	}
+	for _, w := range list {
+		s, _ := w["symbol"].(string)
+		if s == want {
+			return w
+		}
+	}
+	return nil
+}
+
+func (s *Server) existingWatch(symbol string) map[string]any {
+	list, err := s.DB.ListWatches()
+	if err != nil {
+		return nil
+	}
+	return findWatch(list, symbol)
+}
+
+func watchBodySymbol(body map[string]any) string {
+	s, _ := body["symbol"].(string)
+	return s
+}
+
+func validateWatchThresholds(body, existing map[string]any) error {
+	if !watchHasThresholdKey(body) {
+		return nil
+	}
+	low := ibs.DefaultLowIBS
+	high := ibs.DefaultHighIBS
+	if existing != nil {
+		if f, ok := existing["lowIBS"].(float64); ok {
+			low = f
+		}
+		if f, ok := existing["highIBS"].(float64); ok {
+			high = f
+		}
+	}
+	if f, ok := body["lowIBS"].(float64); ok {
+		low = f
+	}
+	if f, ok := body["highIBS"].(float64); ok {
+		high = f
+	}
+	_, _, err := ibs.SanitizeThresholds(low, high)
+	return err
+}
+
 func (s *Server) handleWatchPost(w http.ResponseWriter, r *http.Request) {
 	var body map[string]any
 	if !s.requireJSON(w, r, &body) {
+		return
+	}
+	if err := validateWatchThresholds(body, s.existingWatch(watchBodySymbol(body))); err != nil {
+		writeJSON(w, 400, map[string]any{"error": err.Error()})
 		return
 	}
 	if err := s.DB.UpsertWatch(body); err != nil {
@@ -1190,7 +1255,21 @@ func (s *Server) handleWatchPatch(w http.ResponseWriter, r *http.Request) {
 	if !s.requireJSON(w, r, &body) {
 		return
 	}
-	if err := s.DB.PatchWatch(r.PathValue("symbol"), body); err != nil {
+	symbol := r.PathValue("symbol")
+	if watchHasThresholdKey(body) {
+		list, err := s.DB.ListWatches()
+		if err != nil {
+			writeJSON(w, 500, map[string]any{"error": err.Error()})
+			return
+		}
+		if existing := findWatch(list, symbol); existing != nil {
+			if err := validateWatchThresholds(body, existing); err != nil {
+				writeJSON(w, 400, map[string]any{"error": err.Error()})
+				return
+			}
+		}
+	}
+	if err := s.DB.PatchWatch(symbol, body); err != nil {
 		writeJSON(w, 500, map[string]any{"error": err.Error()})
 		return
 	}

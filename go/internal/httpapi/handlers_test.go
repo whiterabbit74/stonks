@@ -687,3 +687,82 @@ func TestReadJSONRejectsHugeBody(t *testing.T) {
 		t.Fatalf("huge body %d %s", rec.Code, rec.Body.String())
 	}
 }
+
+func patchJSON(s *Server, path string, body any) *httptest.ResponseRecorder {
+	b, _ := json.Marshal(body)
+	req := httptest.NewRequest("PATCH", path, bytes.NewReader(b))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	return rec
+}
+
+func requireWatchError(t *testing.T, rec *httptest.ResponseRecorder) {
+	t.Helper()
+	if rec.Code != 400 {
+		t.Fatalf("got %d %s", rec.Code, rec.Body.String())
+	}
+	var out map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	msg, _ := out["error"].(string)
+	if msg == "" {
+		t.Fatalf("expected {\"error\": ...}, got %s", rec.Body.String())
+	}
+}
+
+func watchBySymbol(t *testing.T, s *Server, symbol string) map[string]any {
+	t.Helper()
+	list, err := s.DB.ListWatches()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, w := range list {
+		if w["symbol"] == symbol {
+			return w
+		}
+	}
+	return nil
+}
+
+func TestWatchPostRejectsInvertedThresholds(t *testing.T) {
+	s := testServer(t, "")
+	rec := postJSON(s, "/api/telegram/watch", map[string]any{
+		"symbol": "ZZZ", "lowIBS": 0.9, "highIBS": 0.5,
+	})
+	requireWatchError(t, rec)
+	if watchBySymbol(t, s, "ZZZ") != nil {
+		t.Fatal("inverted pair must not insert a row")
+	}
+}
+
+func TestWatchPostRejectsOutOfRangeThresholds(t *testing.T) {
+	s := testServer(t, "")
+	rec := postJSON(s, "/api/telegram/watch", map[string]any{
+		"symbol": "ZZZ", "lowIBS": 1.2,
+	})
+	requireWatchError(t, rec)
+	if watchBySymbol(t, s, "ZZZ") != nil {
+		t.Fatal("out-of-range lowIBS must not insert a row")
+	}
+}
+
+func TestWatchPatchRejectsThresholdsThatInvertPair(t *testing.T) {
+	s := testServer(t, "")
+	rec := postJSON(s, "/api/telegram/watch", map[string]any{
+		"symbol": "AAA", "lowIBS": 0.1, "highIBS": 0.75,
+	})
+	if rec.Code != 200 {
+		t.Fatalf("create %d %s", rec.Code, rec.Body.String())
+	}
+	rec = patchJSON(s, "/api/telegram/watch/AAA", map[string]any{"lowIBS": 0.9})
+	requireWatchError(t, rec)
+	got := watchBySymbol(t, s, "AAA")
+	if got == nil {
+		t.Fatal("row disappeared")
+	}
+	if got["lowIBS"] != 0.1 || got["highIBS"] != 0.75 {
+		t.Fatalf("row mutated on 400: %+v", got)
+	}
+}
