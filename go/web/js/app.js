@@ -2550,6 +2550,7 @@
       const shown = (state.broker || []).filter((t) => state.brokerShowHidden || !t.isHidden);
       const jrows = shown.map((t) => `<tr class="${t.isHidden ? 'opacity-50' : ''}">
         <td class="font-mono">${esc(t.symbol || '—')}</td>
+        <td>${esc(t.broker || '—')}</td>
         <td>${esc(t.source || '—')}${t.isTest ? ' · test' : ''}</td>
         <td>${esc(t.status === 'open' ? 'открыта' : 'закрыта')}</td>
         <td>${esc(t.entryDate || '—')}</td>
@@ -2580,7 +2581,7 @@
         <input name="notes" placeholder="заметки" class="field w-40" />
         <button class="btn-primary min-h-0 py-2">Добавить</button>
       </form>
-      ${jrows ? `<div class="overflow-auto"><table class="trades"><thead><tr><th>Тикер</th><th>Источник</th><th>Статус</th><th>Дата входа</th><th>Дата выхода</th><th>Цена входа</th><th>Цена выхода</th><th>Кол-во</th><th>PnL, $</th><th>PnL, %</th><th>IBS вход</th><th>IBS выход</th><th>Дней</th><th>Заметки</th><th>Client Order ID</th><th>Broker Order ID</th><th>Действие</th></tr></thead><tbody>${jrows}</tbody></table></div>` : '<p class="text-sm text-gray-500">Сделок нет</p>'}`;
+      ${jrows ? `<div class="overflow-auto"><table class="trades"><thead><tr><th>Тикер</th><th>Брокер</th><th>Источник</th><th>Статус</th><th>Дата входа</th><th>Дата выхода</th><th>Цена входа</th><th>Цена выхода</th><th>Кол-во</th><th>PnL, $</th><th>PnL, %</th><th>IBS вход</th><th>IBS выход</th><th>Дней</th><th>Заметки</th><th>Client Order ID</th><th>Broker Order ID</th><th>Действие</th></tr></thead><tbody>${jrows}</tbody></table></div>` : '<p class="text-sm text-gray-500">Сделок нет</p>'}`;
     } else if (tab === 'overview') {
       const bal = extractBalanceSummary(state.dashboard);
       const err = state.dashboard && (state.dashboard.error || (Array.isArray(state.dashboard.errors) && state.dashboard.errors[0]));
@@ -2648,7 +2649,7 @@
       const pending = asRows(state.autoLogs && state.autoLogs.pending);
       const recent = asRows(state.autoLogs && state.autoLogs.recent);
       const seen = new Set();
-      const tracked = pending.concat(recent).filter((o) => {
+      const tracked = pending.concat(recent).filter((o) => o.broker === kind).filter((o) => {
         const id = o.clientOrderId || o.startedAt || o.symbol;
         if (seen.has(id)) return false;
         seen.add(id);
@@ -2661,7 +2662,7 @@
         const actions = stuck && o.clientOrderId
           ? `<button type="button" data-resolve-tracker="${oid}" data-resolve-outcome="filled" class="text-xs text-emerald-600 mr-2">Исполнено у брокера</button><button type="button" data-resolve-tracker="${oid}" data-resolve-outcome="absent" class="text-xs text-red-600">Заявки нет</button>`
           : '';
-        return `<tr class="${stuck ? 'bg-amber-50 dark:bg-amber-950/30' : ''}"><td>${esc(o.symbol || '')}</td><td>${esc(o.action || '')}</td><td class="${stuck ? 'font-semibold text-amber-700 dark:text-amber-400' : ''}">${esc(o.status || '')}</td><td>${esc(o.quantity ?? '')}</td><td>${esc(o.startedAt || o.started_at || '')}</td><td>${actions}</td></tr>`;
+        return `<tr class="${stuck ? 'bg-amber-50 dark:bg-amber-950/30' : ''}"><td>${esc(o.symbol || '')}</td><td>${esc(o.broker || '')}</td><td>${esc(o.action || '')}</td><td class="${stuck ? 'font-semibold text-amber-700 dark:text-amber-400' : ''}">${esc(o.status || '')}</td><td>${esc(o.quantity ?? '')}</td><td>${esc(o.startedAt || o.started_at || '')}</td><td>${actions}</td></tr>`;
       }).join('');
       const persistBlocks = (state.settings && state.settings.trackerPersistFail) || {};
       const persistBlockedBrokers = Object.keys(persistBlocks).filter((b) => persistBlocks[b]);
@@ -2746,7 +2747,7 @@
         <div class="rounded-lg border border-gray-200 p-4 dark:border-gray-700">
           <h3 class="font-semibold mb-2">Pending / last tracked orders</h3>
           ${persistBlockBanner}
-          ${pendingRows ? `<div class="overflow-auto mt-2"><table class="trades"><thead><tr><th>Тикер</th><th>Action</th><th>Статус</th><th>Qty</th><th>Старт</th><th>Действие</th></tr></thead><tbody>${pendingRows}</tbody></table></div>` : '<p class="text-sm text-gray-500 mt-2">Tracked orders пока нет</p>'}
+          ${pendingRows ? `<div class="overflow-auto mt-2"><table class="trades"><thead><tr><th>Тикер</th><th>Брокер</th><th>Action</th><th>Статус</th><th>Qty</th><th>Старт</th><th>Действие</th></tr></thead><tbody>${pendingRows}</tbody></table></div>` : '<p class="text-sm text-gray-500 mt-2">Tracked orders пока нет</p>'}
           <p class="mt-2 text-xs text-gray-500">execution_unknown / unresolved блокируют новые входы у брокера и требуют ручного разбора: проверьте заявку у брокера и нажмите «Исполнено у брокера» либо «Заявки нет».</p>
         </div>
       </div>`;
@@ -2809,7 +2810,7 @@
         const ts = formatDateTimeET(l.ts || l.time || l.timestamp);
         const lvl = l.level || l.lvl || '';
         const ev = l.event || l.message || '';
-        const extra = [l.symbol, l.action, l.status, l.client_order_id || l.clientOrderId, l.method, l.path, l.responseStatus, l.error].filter(Boolean).join(' • ');
+        const extra = [l.broker, l.symbol, l.action, l.status, l.client_order_id || l.clientOrderId, l.method, l.path, l.responseStatus, l.error].filter(Boolean).join(' • ');
         return `${ts} ${lvl} ${ev}${extra ? ' • ' + extra : ''}`.trim();
       }).join('\n');
       const monitor = lines(pack.monitor) || 'Логи мониторинга пока пусты';
@@ -2817,7 +2818,7 @@
       const raw = lines(pack.brokerRaw) || auto;
       body = `<div class="space-y-3">
         <div><h2 class="text-sm font-semibold mb-1">Логи мониторинга (${(pack.monitor || pack.logs || []).length})</h2><pre class="text-xs bg-gray-50 dark:bg-gray-800 p-3 rounded overflow-auto max-h-52">${esc(monitor)}</pre></div>
-        <div><h2 class="text-sm font-semibold mb-1">Webull / autotrade логи (${(pack.autotrade || pack.logs || []).length})</h2><pre id="broker-logs" class="text-xs bg-gray-50 dark:bg-gray-800 p-3 rounded overflow-auto max-h-52">${esc(auto)}</pre></div>
+        <div><h2 class="text-sm font-semibold mb-1">Логи автоторговли (все брокеры) (${(pack.autotrade || pack.logs || []).length})</h2><pre id="broker-logs" class="text-xs bg-gray-50 dark:bg-gray-800 p-3 rounded overflow-auto max-h-52">${esc(auto)}</pre></div>
         <div><h2 class="text-sm font-semibold mb-1">Raw broker log</h2><pre class="text-xs bg-gray-50 dark:bg-gray-800 p-3 rounded overflow-auto max-h-52">${esc(raw)}</pre></div>
       </div>`;
     }
@@ -3933,7 +3934,7 @@
       if (state.loaded.broker !== kind) {
         const rh = p === '/robinhood';
         const [bt, tok, ac, dash, logs, st, w, cons, health, rhst, settings] = await Promise.all([
-          API.brokerTrades().catch(() => []),
+          API.brokerTrades(kind).catch(() => []),
           rh ? API.rhStatus().catch((e) => e.data || {}) : API.tokenStatus().catch((e) => e.data || { present: false, hasToken: false }),
           API.autoConfig().catch(() => ({})),
           rh ? API.rhDashboard(true).catch((e) => (e && e.data) || { error: (e && e.message) || 'dashboard', positions: [] }) : API.dashboard(true).catch((e) => (e && e.data) || { error: (e && e.message) || 'dashboard', positions: [] }),
@@ -4001,7 +4002,7 @@
         askDelete('Удалить брокерскую сделку?', async () => {
           try {
             await API.del('/api/broker-trades/' + b.dataset.bd);
-            const bt = await API.brokerTrades().catch(() => []);
+            const bt = await API.brokerTrades(kind).catch(() => []);
             state.broker = Array.isArray(bt) ? bt : (bt.trades || []);
             renderPage();
           } catch (err) { toast(errText(err)); }
@@ -4029,7 +4030,7 @@
           if (exitDate) rec.exitDate = exitDate;
           if (exitPrice > 0) rec.exitPrice = exitPrice;
           await API.post('/api/broker-trades', rec);
-          const bt = await API.brokerTrades().catch(() => []);
+          const bt = await API.brokerTrades(kind).catch(() => []);
           state.broker = Array.isArray(bt) ? bt : (bt.trades || []);
           renderPage();
         } catch (err) { toast(errText(err)); }
@@ -4085,7 +4086,7 @@
             }
             await API.patchBrokerTrade(t.id, payload);
             closeModal();
-            const bt = await API.brokerTrades().catch(() => []);
+            const bt = await API.brokerTrades(kind).catch(() => []);
             state.broker = Array.isArray(bt) ? bt : (bt.trades || []);
             renderPage();
           } catch (err) { errEl.textContent = errText(err); errEl.classList.remove('hidden'); }
@@ -4105,7 +4106,7 @@
         if (!t) return;
         try {
           await API.patchBrokerTrade(t.id, { isHidden: !t.isHidden });
-          const bt = await API.brokerTrades().catch(() => []);
+          const bt = await API.brokerTrades(kind).catch(() => []);
           state.broker = Array.isArray(bt) ? bt : (bt.trades || []);
           renderPage();
         } catch (err) { toast(errText(err)); }

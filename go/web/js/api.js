@@ -73,7 +73,7 @@ const API = {
   deleteWatch: (s) => API.del('/api/telegram/watch/' + encodeURIComponent(s)),
   trades: () => API.get('/api/trades'),
   monitorTrades: () => API.get('/api/telegram/trades'),
-  brokerTrades: () => API.get('/api/broker-trades'),
+  brokerTrades: (kind) => API.get('/api/broker-trades' + (kind ? ('?broker=' + encodeURIComponent(kind)) : '')),
   autoConfig: () => API.get('/api/autotrade/config'),
   saveAutoConfig: (body) => API.patch('/api/autotrade/config', body),
   tokenStatus: () => API.get('/api/autotrade/webull/token/status'),

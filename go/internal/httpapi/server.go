@@ -1462,10 +1462,25 @@ func (s *Server) handleDeleteTrade(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleListBroker(w http.ResponseWriter, r *http.Request) {
+	broker := strings.TrimSpace(r.URL.Query().Get("broker"))
+	if broker != "" && broker != "webull" && broker != "robinhood" {
+		writeJSON(w, 400, map[string]any{"error": "Unknown broker"})
+		return
+	}
 	list, err := s.DB.ListTrades("broker_trades")
 	if err != nil {
 		writeJSON(w, 500, map[string]any{"error": err.Error()})
 		return
+	}
+	if broker != "" {
+		filtered := make([]map[string]any, 0, len(list))
+		for _, t := range list {
+			b, _ := t["broker"].(string)
+			if b == broker {
+				filtered = append(filtered, t)
+			}
+		}
+		list = filtered
 	}
 	writeJSON(w, 200, list)
 }

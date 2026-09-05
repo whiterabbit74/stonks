@@ -890,6 +890,43 @@ func TestAutotradeLogsLimitCap(t *testing.T) {
 	}
 }
 
+func TestBrokerTradesFilterByBroker(t *testing.T) {
+	s := testServer(t, "")
+	if err := s.DB.InsertTrade("broker_trades", map[string]any{
+		"id": "w1", "symbol": "AAPL", "status": "closed", "entryDate": "2024-01-02", "entryPrice": 10, "broker": "webull",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.DB.InsertTrade("broker_trades", map[string]any{
+		"id": "r1", "symbol": "MSFT", "status": "closed", "entryDate": "2024-01-03", "entryPrice": 20, "broker": "robinhood",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest("GET", "/api/broker-trades?broker=webull", nil)
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != 200 {
+		t.Fatalf("webull %d %s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `"w1"`) || strings.Contains(body, `"r1"`) {
+		t.Fatalf("?broker=webull must return only webull: %s", body)
+	}
+	req = httptest.NewRequest("GET", "/api/broker-trades?broker=robinhood", nil)
+	rec = httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	body = rec.Body.String()
+	if !strings.Contains(body, `"r1"`) || strings.Contains(body, `"w1"`) {
+		t.Fatalf("?broker=robinhood must return only robinhood: %s", body)
+	}
+	req = httptest.NewRequest("GET", "/api/broker-trades?broker=unknown", nil)
+	rec = httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != 400 {
+		t.Fatalf("unknown broker want 400, got %d %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestHiddenTradesOmittedUnlessRequested(t *testing.T) {
 	s := testServer(t, "")
 	if err := s.DB.InsertTrade("trades", map[string]any{

@@ -449,6 +449,33 @@ func TestBrokerHeaderLabeledStatuses(t *testing.T) {
 	}
 }
 
+// TestBrokerJournalTrackedAndLogsArePerKind is A-4/A-5/A-6.
+func TestBrokerJournalTrackedAndLogsArePerKind(t *testing.T) {
+	a := readWeb(t, "js/app.js")
+	page := jsFn(a, "pageBroker")
+	if !strings.Contains(page, "t.broker") {
+		t.Fatal("journal table must include t.broker")
+	}
+	if !strings.Contains(page, ">Брокер<") && !strings.Contains(page, ">Брокер</th>") {
+		t.Fatal("journal and tracked tables must have a «Брокер» column")
+	}
+	if !strings.Contains(page, "o.broker === kind") {
+		t.Fatal("tracked pending/recent must filter o.broker === kind")
+	}
+	if !strings.Contains(page, "Логи автоторговли (все брокеры)") {
+		t.Fatal("autotrade log heading must be «Логи автоторговли (все брокеры)»")
+	}
+	if strings.Contains(page, "Webull / autotrade логи") {
+		t.Fatal("log heading must not stay hardcoded as Webull")
+	}
+	if !strings.Contains(page, "l.broker") {
+		t.Fatal("log line must show the broker field when present")
+	}
+	if !strings.Contains(a, "API.brokerTrades(kind)") {
+		t.Fatal("SPA must request broker trades for the page kind")
+	}
+}
+
 // TestBrokerPagesIsolateLoadTabAndDashboard is A-1/A-2/A-3: /webull and
 // /robinhood must not share one load flag, one tab, or one untagged dashboard.
 func TestBrokerPagesIsolateLoadTabAndDashboard(t *testing.T) {

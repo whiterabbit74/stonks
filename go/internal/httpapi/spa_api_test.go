@@ -76,3 +76,19 @@ func TestAPIJSUnauthorizedDebouncesByTimestamp(t *testing.T) {
 		t.Fatal("bare 401 must not call _onUnauthorized; require code === 'session_expired'")
 	}
 }
+
+func TestAPIBrokerTradesPassesKindQuery(t *testing.T) {
+	src := readWeb(t, "js/api.js")
+	if !strings.Contains(src, "brokerTrades:") {
+		t.Fatal("API.brokerTrades missing")
+	}
+	start := strings.Index(src, "brokerTrades:")
+	end := strings.Index(src[start:], "\n  autoConfig")
+	if end < 0 {
+		t.Fatal("API.brokerTrades not bounded")
+	}
+	fn := src[start : start+end]
+	if !strings.Contains(fn, "?broker=") {
+		t.Fatal("API.brokerTrades(kind) must pass ?broker=")
+	}
+}
