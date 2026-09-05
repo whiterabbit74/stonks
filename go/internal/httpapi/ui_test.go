@@ -427,13 +427,9 @@ func TestBrokerCloseHandlerDispatchesByKind(t *testing.T) {
 	}
 }
 
-// TestAutotradeEntriesExitsReadsEngineTruth is the P2-1 regression: the SPA
-// used to show "Entries / Exits: да" whenever the flag was merely not
-// `false` (`!== false`), while the engine (go/internal/live/config.go
-// allowFlag) treats a missing key as false. A saved config with no
-// allowNewEntries/allowExits key at all would show "да" in the UI while the
-// engine reads "нет". The fix must read `=== true` and use the per-broker
-// value from ac.brokers, not one flag shared across brokers.
+// TestAutotradeEntriesExitsReadsEngineTruth is B-0: settings checkboxes and
+// the autotrade tile must go through one helper that matches live.brokerFlags
+// (flat-key fallback only for webull; a missing robinhood key is false).
 func TestAutotradeEntriesExitsReadsEngineTruth(t *testing.T) {
 	app, err := os.ReadFile(filepath.Join("..", "..", "web", "js", "app.js"))
 	if err != nil {
@@ -443,8 +439,35 @@ func TestAutotradeEntriesExitsReadsEngineTruth(t *testing.T) {
 	if strings.Contains(a, "ac.allowNewEntries !== false") || strings.Contains(a, "ac.allowExits !== false") {
 		t.Fatal("Entries/Exits must not treat a missing flag as true (`!== false`); the engine defaults missing keys to false")
 	}
-	if !strings.Contains(a, "brokerAllowFlag(ac, kind, 'allowNewEntries')") || !strings.Contains(a, "brokerAllowFlag(ac, kind, 'allowExits')") {
-		t.Fatal("Entries/Exits must be read per broker (ac.brokers[kind]), not one flag shared across brokers")
+	if strings.Contains(a, "function brokerAllowFlag(") {
+		t.Fatal("brokerAllowFlag must be renamed to brokerFlag and cover enabled as well as allow*")
+	}
+	fn := jsFn(a, "brokerFlag")
+	if fn == "" {
+		t.Fatal("missing brokerFlag helper — must be a straight port of live.brokerFlags")
+	}
+	if !strings.Contains(fn, "name === 'webull'") {
+		t.Fatal("brokerFlag must fall back to flat keys only for webull")
+	}
+	if !strings.Contains(fn, "hasOwnProperty") {
+		t.Fatal("brokerFlag must treat a missing nested key as absent, matching cfgHas")
+	}
+	page := jsFn(a, "pageSettings")
+	if page == "" {
+		t.Fatal("pageSettings not found")
+	}
+	for _, key := range []string{"enabled", "allowNewEntries", "allowExits"} {
+		call := "brokerFlag(ac, id, '" + key + "')"
+		if !strings.Contains(page, call) {
+			t.Errorf("settings %s checkbox must go through %s", key, call)
+		}
+	}
+	if strings.Contains(page, "ac.allowNewEntries") || strings.Contains(page, "ac.allowExits") {
+		t.Fatal("Robinhood settings render must not fall back to ac.allowNewEntries / ac.allowExits")
+	}
+	tile := jsFn(a, "pageBroker")
+	if !strings.Contains(tile, "brokerFlag(ac, kind, 'allowNewEntries')") || !strings.Contains(tile, "brokerFlag(ac, kind, 'allowExits')") {
+		t.Fatal("Entries/Exits tile must be read per broker via brokerFlag, not one flag shared across brokers")
 	}
 }
 

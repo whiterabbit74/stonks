@@ -5,6 +5,29 @@ import (
 	"time"
 )
 
+// TestBrokerFlagsLegacyEmptyNested is B-0 engine truth: a post-upgrade
+// config with flat allows and empty nested broker objects. Webull inherits
+// the flat keys; Robinhood does not.
+func TestBrokerFlagsLegacyEmptyNested(t *testing.T) {
+	cfg := map[string]any{
+		"enabled":         true,
+		"allowNewEntries": true,
+		"allowExits":      true,
+		"brokers": map[string]any{
+			"webull":    map[string]any{},
+			"robinhood": map[string]any{},
+		},
+	}
+	en, entries, exits := brokerFlags(cfg, "webull")
+	if !en || !entries || !exits {
+		t.Fatalf("webull must inherit flat flags, got enabled=%v entries=%v exits=%v", en, entries, exits)
+	}
+	en, entries, exits = brokerFlags(cfg, "robinhood")
+	if en || entries || exits {
+		t.Fatalf("robinhood empty nested must be all false, got enabled=%v entries=%v exits=%v", en, entries, exits)
+	}
+}
+
 // TestSanitizeRobinhoodAllowDoesNotFlipWebull is B-6: a patch that only sets
 // brokers.robinhood.allowNewEntries, with no flat allowNewEntries/allowExits,
 // must not change brokers.webull.allowNewEntries. The SPA used to OR the two

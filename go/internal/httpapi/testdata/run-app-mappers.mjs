@@ -29,7 +29,7 @@ const names = [
   'toNum', 'fmt', 'fmtUsd', 'asObject', 'firstDefined', 'asRows',
   'formatRatioPercent', 'extractBalanceSummary', 'normalizePositions',
   'normalizeMonitorMarginPercent', 'applyMonitorMarginSimulation',
-  'esc', 'pnlClass', 'tradeTicker', 'tradesTable',
+  'esc', 'pnlClass', 'tradeTicker', 'tradesTable', 'brokerFlag',
 ];
 const consts = [];
 if (src.includes('const MONITOR_MARGIN_OPTIONS')) {
@@ -103,6 +103,19 @@ if (scaled[1].pnlPercent !== 10) fail.push('open trade must not scale');
 if (!html.includes('AAPL') || !html.includes('2024-01-02') || !html.includes('2024-01-05')) fail.push('tradesTable missing ticker/dates');
 if (!html.includes('Цена входа') || !html.includes('Цена выхода') || !html.includes('Тикер')) fail.push('tradesTable missing headers');
 if (src.includes("state.stockTab !== 'summary'")) fail.push('params still injected off summary');
+
+const legacy = {
+  enabled: true,
+  allowNewEntries: true,
+  allowExits: true,
+  brokers: { webull: {}, robinhood: {} },
+};
+expectEq('brokerFlag.webull.enabled', fns.brokerFlag(legacy, 'webull', 'enabled'), true);
+expectEq('brokerFlag.webull.allowNewEntries', fns.brokerFlag(legacy, 'webull', 'allowNewEntries'), true);
+expectEq('brokerFlag.webull.allowExits', fns.brokerFlag(legacy, 'webull', 'allowExits'), true);
+expectEq('brokerFlag.robinhood.enabled', fns.brokerFlag(legacy, 'robinhood', 'enabled'), false);
+expectEq('brokerFlag.robinhood.allowNewEntries', fns.brokerFlag(legacy, 'robinhood', 'allowNewEntries'), false);
+expectEq('brokerFlag.robinhood.allowExits', fns.brokerFlag(legacy, 'robinhood', 'allowExits'), false);
 
 const out = {
   appPath,

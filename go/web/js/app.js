@@ -790,7 +790,7 @@
   // matching top-level field when brokers.webull has no explicit key of its
   // own (that fallback is the only thing left for a plain "enabled" save to
   // reach, see P2-2). No key anywhere is treated as "да" by default.
-  function brokerAllowFlag(ac, name, key) {
+  function brokerFlag(ac, name, key) {
     const b = ac && ac.brokers && ac.brokers[name];
     if (b && Object.prototype.hasOwnProperty.call(b, key)) return b[key] === true;
     if (name === 'webull') return ac && ac[key] === true;
@@ -2670,7 +2670,7 @@
           <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             <div class="rounded-lg border p-3"><div class="text-xs text-gray-500">Статус</div><div class="mt-1 font-semibold">${ac.enabled ? 'LIVE' : 'OFF'}</div></div>
             <div class="rounded-lg border p-3"><div class="text-xs text-gray-500">Последний запуск</div><div class="mt-1 text-sm">${esc(formatDateTimeET(last) === '—' ? last : formatDateTimeET(last))}</div></div>
-            <div class="rounded-lg border p-3"><div class="text-xs text-gray-500">Entries / Exits (${esc(brokerLabel(kind))})</div><div class="mt-1 text-sm">${brokerAllowFlag(ac, kind, 'allowNewEntries') ? 'да' : 'нет'} / ${brokerAllowFlag(ac, kind, 'allowExits') ? 'да' : 'нет'}</div></div>
+            <div class="rounded-lg border p-3"><div class="text-xs text-gray-500">Entries / Exits (${esc(brokerLabel(kind))})</div><div class="mt-1 text-sm">${brokerFlag(ac, kind, 'allowNewEntries') ? 'да' : 'нет'} / ${brokerFlag(ac, kind, 'allowExits') ? 'да' : 'нет'}</div></div>
             <div class="rounded-lg border p-3"><div class="text-xs text-gray-500">Последнее решение</div><div class="mt-1 text-sm">${esc(lastRes.action || dec.action || '—')} ${esc(lastRes.symbol || dec.symbol || '')}</div><div class="text-xs text-gray-500">${esc(decisionReasonText(lastRes.reason || dec.reason || ''))}</div></div>
           </div>
           <div class="mt-4 rounded-xl bg-gray-50 p-3 text-sm dark:bg-gray-950/40">
@@ -2871,13 +2871,12 @@
           <label class="inline-flex items-center gap-2 text-sm"><input type="checkbox" name="autoEnabled" ${ac.enabled ? 'checked' : ''} /> Автоторговля включена</label>
           <p class="text-xs text-gray-500 mt-1 mb-3">Выключено — система по-прежнему считает и присылает решение в Telegram, но заявки брокеру не отправляет.</p>
           ${[['webull','Webull'],['robinhood','Robinhood']].map(([id, label]) => {
-            const b = (ac.brokers && ac.brokers[id]) || {};
             const h = (state.brokerHealth || []).find((x) => x.broker === id) || {};
             return `<div class="rounded-lg border p-3 mb-2">
               <div class="font-medium mb-2 flex items-center gap-2">${icon(id, 'w-4 h-4')}<span>${label} <span class="text-xs font-normal text-gray-500">${esc(h.status || '')}${h.status && h.status !== 'OK' && h.status !== 'EXPIRING_SOON' ? ' — торговля остановлена' : ''}</span></span></div>
-              <label class="inline-flex items-center gap-2 text-sm mr-3"><input type="checkbox" name="${id}Enabled" ${b.enabled ? 'checked' : ''} /> Включено</label>
-              <label class="inline-flex items-center gap-2 text-sm mr-3"><input type="checkbox" name="${id}AllowEntries" ${b.allowNewEntries === true || (b.allowNewEntries == null && ac.allowNewEntries === true) ? 'checked' : ''} /> Разрешить входы</label>
-              <label class="inline-flex items-center gap-2 text-sm"><input type="checkbox" name="${id}AllowExits" ${b.allowExits === true || (b.allowExits == null && ac.allowExits === true) ? 'checked' : ''} /> Разрешить выходы</label>
+              <label class="inline-flex items-center gap-2 text-sm mr-3"><input type="checkbox" name="${id}Enabled" ${brokerFlag(ac, id, 'enabled') ? 'checked' : ''} /> Включено</label>
+              <label class="inline-flex items-center gap-2 text-sm mr-3"><input type="checkbox" name="${id}AllowEntries" ${brokerFlag(ac, id, 'allowNewEntries') ? 'checked' : ''} /> Разрешить входы</label>
+              <label class="inline-flex items-center gap-2 text-sm"><input type="checkbox" name="${id}AllowExits" ${brokerFlag(ac, id, 'allowExits') ? 'checked' : ''} /> Разрешить выходы</label>
               ${id === 'robinhood' ? '<p class="text-xs text-gray-500 mt-1">На Agentic-счёте нет маржинального плеча: режимы 125–200% срежутся покупательской способностью.</p>' : ''}
             </div>`;
           }).join('')}
