@@ -799,3 +799,13 @@ func TestStartWithStopWaits(t *testing.T) {
 		t.Fatal("StartWith stop must wait tracker wheels")
 	}
 }
+
+func TestRunTickComputesIsTradingDayOnce(t *testing.T) {
+	fn := sourceFn(t, "func RunTick(")
+	if n := strings.Count(fn, "IsTradingDay("); n != 1 {
+		t.Fatalf("RunTick calls IsTradingDay %d times, want 1", n)
+	}
+	if n := strings.Count(fn, "TradingSession("); n != 1 {
+		t.Fatalf("RunTick calls TradingSession %d times, want 1", n)
+	}
+}

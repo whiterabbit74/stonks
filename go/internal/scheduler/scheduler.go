@@ -204,15 +204,17 @@ func RunTick(db *store.DB, deps Deps, now time.Time, onEvent func(JobLog)) {
 
 	raw, _ := db.GetCalendar()
 	cal := ParseCalendar(raw)
-	trading := IsTradingDay(p, cal)
+	rawTrading := IsTradingDay(p, cal)
+	trading := rawTrading
 	if trading {
 		if cov := calendarCoverageThrough(raw); cov != "" && cov < today {
 			onEvent(JobLog{At: now, Name: "market-jobs", Skipped: true, Detail: "calendar-coverage-expired"})
 			trading = false
 		}
 	}
+	var sess Session
 	if trading {
-		sess := TradingSession(p, cal)
+		sess = TradingSession(p, cal)
 		nowMin := p.Hour*60 + p.Minute
 		until := sess.CloseMin - nowMin
 		chat := telegramChatID(eng)
@@ -236,7 +238,7 @@ func RunTick(db *store.DB, deps Deps, now time.Time, onEvent func(JobLog)) {
 	detail, skipped := RunTokenHealth(db, deps, today, now)
 	onEvent(JobLog{At: now, Name: "webull-token-health", Skipped: skipped, Detail: detail})
 
-	if !IsTradingDay(p, cal) {
+	if !rawTrading {
 		onEvent(JobLog{At: now, Name: "market-jobs", Skipped: true, Detail: "non-trading-day"})
 		RunCalendarExtend(db, deps, today, now, onEvent)
 		return
@@ -245,7 +247,6 @@ func RunTick(db *store.DB, deps Deps, now time.Time, onEvent func(JobLog)) {
 		RunCalendarExtend(db, deps, today, now, onEvent)
 		return
 	}
-	sess := TradingSession(p, cal)
 	nowMin := p.Hour*60 + p.Minute
 	after := nowMin - sess.CloseMin
 	if after >= 15 && after <= 31 {
