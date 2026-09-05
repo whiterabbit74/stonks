@@ -6,6 +6,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"mktorder.com/go/internal/live"
 )
@@ -84,6 +85,7 @@ func (s *Server) handleTelegramSimulate(w http.ResponseWriter, r *http.Request) 
 }
 
 func (s *Server) handleActualizePrices(w http.ResponseWriter, r *http.Request) {
+	_ = http.NewResponseController(w).SetWriteDeadline(time.Time{})
 	res := s.liveEng().Actualize(true)
 	writeJSON(w, 200, res)
 }
@@ -93,6 +95,7 @@ func (s *Server) handleUpdatePositions(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleUpdateAll(w http.ResponseWriter, r *http.Request) {
+	_ = http.NewResponseController(w).SetWriteDeadline(time.Time{})
 	writeJSON(w, 200, s.liveEng().UpdateAll(true))
 }
 

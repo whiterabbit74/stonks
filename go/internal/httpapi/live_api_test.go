@@ -689,6 +689,30 @@ func TestDashboardHandlersInspectRefreshQuery(t *testing.T) {
 	}
 }
 
+func TestActualizeHandlersClearWriteDeadline(t *testing.T) {
+	raw, err := os.ReadFile("live_handlers.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := string(raw)
+	for _, sig := range []string{
+		"func (s *Server) handleActualizePrices",
+		"func (s *Server) handleUpdateAll",
+	} {
+		i := strings.Index(src, sig)
+		if i < 0 {
+			t.Fatalf("%s not found", sig)
+		}
+		fn := src[i:]
+		if j := strings.Index(fn[len(sig):], "\nfunc "); j >= 0 {
+			fn = fn[:len(sig)+j]
+		}
+		if !strings.Contains(fn, "SetWriteDeadline") {
+			t.Errorf("%s missing SetWriteDeadline", sig)
+		}
+	}
+}
+
 func TestWebullDashboardAcceptsRefreshQuery(t *testing.T) {
 	s, _, _ := liveServer(t)
 	req := httptest.NewRequest("GET", "/api/autotrade/webull/dashboard?refresh=1", nil)
