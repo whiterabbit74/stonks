@@ -1,14 +1,19 @@
 const API = {
   _onUnauthorized: null,
-  _unauthorizedFired: false,
+  _lastUnauthorizedAt: 0,
   onUnauthorized(fn) { API._onUnauthorized = fn; },
   async req(path, opts = {}) {
     const { skipAuth, headers, ...rest } = opts;
+    const method = String(rest.method || 'GET').toUpperCase();
+    const hdrs = { ...(headers || {}) };
+    if (method !== 'GET' && method !== 'HEAD' && !hdrs['Content-Type'] && !hdrs['content-type']) {
+      hdrs['Content-Type'] = 'application/json';
+    }
     let r;
     try {
       r = await fetch(path, {
         credentials: 'include',
-        headers: { 'Content-Type': 'application/json', ...(headers || {}) },
+        headers: hdrs,
         ...rest,
       });
     } catch (netErr) {
@@ -21,10 +26,10 @@ const API = {
     let data = null;
     try { data = text ? JSON.parse(text) : null; } catch { data = { raw: text }; }
     if (r.status === 401 && !skipAuth) {
-      if (typeof API._onUnauthorized === 'function' && !API._unauthorizedFired) {
-        API._unauthorizedFired = true;
+      const now = Date.now();
+      if (typeof API._onUnauthorized === 'function' && now - API._lastUnauthorizedAt > 800) {
+        API._lastUnauthorizedAt = now;
         try { API._onUnauthorized(); } catch (_) { /* ignore */ }
-        setTimeout(() => { API._unauthorizedFired = false; }, 800);
       }
     }
     if (!r.ok) {
