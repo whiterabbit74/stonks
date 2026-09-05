@@ -2922,7 +2922,7 @@
           <div id="tg-test-out" class="text-sm mt-2"></div>
         </div>`;
     } else if (tab === 'interface') {
-      const chips = (state.analysisTabsConfig || []).map((t) => `<button type="button" data-vis="${esc(t.id)}" class="shrink-0 whitespace-nowrap px-3 py-2 text-sm border-b-2 ${t.visible ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-400 line-through'}">${esc(t.label)}</button>`).join('');
+      const chips = (state.analysisTabsConfig || []).map((t) => `<button type="button" data-vis="${esc(t.id)}" class="shrink-0 whitespace-nowrap rounded-lg px-3 py-2 text-sm border-b-2 ${t.visible ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-400 line-through'}">${esc(t.label)}</button>`).join('');
       body = `<p class="text-sm text-gray-600 dark:text-gray-400 mb-3">Тема переключается иконкой в шапке: Авто → Тёмная → Светлая.</p>
         <div class="rounded-xl border overflow-hidden">
           <div class="px-4 pt-4 pb-2"><div class="text-sm font-semibold">Вкладки страницы «Акции»</div>
