@@ -24,9 +24,8 @@ import (
 const SchemaVersion = 3
 
 type DB struct {
-	SQL      *sql.DB
-	mu       sync.Mutex
-	settings map[string]any
+	SQL *sql.DB
+	mu  sync.Mutex
 }
 
 func Open(path string) (*DB, error) {
@@ -42,7 +41,7 @@ func Open(path string) (*DB, error) {
 		sqlDB.Close()
 		return nil, err
 	}
-	d := &DB{SQL: sqlDB, settings: map[string]any{}}
+	d := &DB{SQL: sqlDB}
 	if err := d.initSchema(); err != nil {
 		sqlDB.Close()
 		return nil, err
