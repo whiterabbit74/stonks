@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"golang.org/x/crypto/bcrypt"
+
 	"mktorder.com/go/internal/store"
 
 	"mktorder.com/go/internal/providers"
@@ -597,6 +599,57 @@ func TestLoginPlaintextConstantTime(t *testing.T) {
 	s.Handler().ServeHTTP(rec, req)
 	if rec.Code != 401 {
 		t.Fatalf("got %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestLoginUnknownUserDoesPasswordWork(t *testing.T) {
+	hash, err := bcrypt.GenerateFromPassword([]byte("secret"), bcrypt.DefaultCost)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := testServer(t, string(hash))
+
+	if !s.checkPassword("admin@example.com", "secret") {
+		t.Fatal("matching bcrypt password")
+	}
+	if s.checkPassword("admin@example.com", "wrong") {
+		t.Fatal("wrong bcrypt password")
+	}
+	if s.checkPassword("nobody@example.com", "secret") {
+		t.Fatal("unknown user with the admin password")
+	}
+
+	start := time.Now()
+	_ = s.checkPassword("nobody@example.com", "nope")
+	unknown := time.Since(start)
+	start = time.Now()
+	_ = s.checkPassword("admin@example.com", "nope")
+	known := time.Since(start)
+	if unknown < 20*time.Millisecond {
+		t.Fatalf("unknown user finished in %v, expected bcrypt work", unknown)
+	}
+	if unknown*8 < known || known*8 < unknown {
+		t.Fatalf("timing leak unknown=%v known-wrong=%v", unknown, known)
+	}
+
+	plain := testServer(t, "secret")
+	if plain.checkPassword("nobody@example.com", "secret") {
+		t.Fatal("plaintext unknown user with the admin password")
+	}
+	if !plain.checkPassword("admin@example.com", "secret") {
+		t.Fatal("matching plaintext password")
+	}
+
+	body, _ := json.Marshal(map[string]any{"username": "nobody@example.com", "password": "secret"})
+	req := httptest.NewRequest("POST", "/api/login", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != 401 {
+		t.Fatalf("got %d %s", rec.Code, rec.Body.String())
+	}
+	if !bytes.Contains(rec.Body.Bytes(), []byte(`"error":"Invalid credentials"`)) {
+		t.Fatalf("401 JSON: %s", rec.Body.String())
 	}
 }
 

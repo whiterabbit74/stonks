@@ -395,17 +395,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 400, map[string]any{"error": "Invalid username format"})
 		return
 	}
-	if strings.ToLower(body.Username) != s.adminUser {
-		writeJSON(w, 401, map[string]any{"error": "Invalid credentials"})
-		return
-	}
-	ok := false
-	if strings.HasPrefix(s.adminPass, "$2") {
-		ok = bcrypt.CompareHashAndPassword([]byte(s.adminPass), []byte(body.Password)) == nil
-	} else {
-		ok = constantTimePassword(body.Password, s.adminPass)
-	}
-	if !ok {
+	if !s.checkPassword(body.Username, body.Password) {
 		writeJSON(w, 401, map[string]any{"error": "Invalid credentials"})
 		return
 	}
@@ -474,6 +464,25 @@ func constantTimePassword(got, want string) bool {
 		return false
 	}
 	return subtle.ConstantTimeCompare(gb, wb) == 1
+}
+
+// dummyBcryptHash is a cost-10 hash of an unguessable password.
+// Unknown-user logins compare against it so work matches a real bcrypt check.
+const dummyBcryptHash = "$2a$10$oH6blETWrWz4TLnjkVGukOupaLNXSM0eOkxUVtn5DS4ngC5yVNam6"
+
+func (s *Server) checkPassword(username, password string) bool {
+	userOK := strings.ToLower(username) == s.adminUser
+	if strings.HasPrefix(s.adminPass, "$2") {
+		hash := []byte(dummyBcryptHash)
+		if userOK {
+			hash = []byte(s.adminPass)
+		}
+		passOK := bcrypt.CompareHashAndPassword(hash, []byte(password)) == nil
+		return userOK && passOK
+	}
+	_ = bcrypt.CompareHashAndPassword([]byte(dummyBcryptHash), []byte(password))
+	passOK := constantTimePassword(password, s.adminPass)
+	return userOK && passOK
 }
 
 func (s *Server) handleAuthCheck(w http.ResponseWriter, r *http.Request) {
