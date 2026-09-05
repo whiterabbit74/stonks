@@ -2570,7 +2570,7 @@
       const shown = (state.broker || []).filter((t) => state.brokerShowHidden || !t.isHidden);
       const jrows = shown.map((t) => `<tr class="${t.isHidden ? 'opacity-50' : ''}">
         <td class="font-mono">${esc(t.symbol || '—')}</td>
-        <td>${esc(t.broker || '—')}</td>
+        <td>${esc(brokerLabel(t.broker))}</td>
         <td>${esc(t.source || '—')}${t.isTest ? ' · тест' : ''}</td>
         <td>${esc(t.status === 'open' ? 'открыта' : 'закрыта')}</td>
         <td>${esc(fmtTradingDate(t.entryDate))}</td>
