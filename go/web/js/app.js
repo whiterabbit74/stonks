@@ -1082,7 +1082,7 @@
               <button type="button" data-hero-kind="line" class="hero-kind ${hp().kind === 'line' ? 'hero-kind-on' : 'hero-kind-off'}">Линия</button>
               <button type="button" data-hero-kind="candles" class="hero-kind ${hp().kind === 'candles' ? 'hero-kind-on' : 'hero-kind-off'}">Свечи</button>
             </div>
-            <button type="button" id="hero-trades-toggle" class="mt-2 flex w-full items-center justify-between rounded bg-gray-100 px-2 py-1.5 text-[11px] text-gray-700 dark:bg-gray-800 dark:text-gray-200">
+            <button type="button" id="hero-trades-toggle" class="mt-2 flex w-full items-center justify-between rounded-lg bg-gray-100 px-2 py-1.5 text-[11px] text-gray-700 dark:bg-gray-800 dark:text-gray-200">
               <span>Показывать сделки</span>
               <span class="${hp().showTrades ? 'text-green-600 dark:text-green-300' : 'text-gray-500'}">${hp().showTrades ? 'Вкл' : 'Выкл'}</span>
             </button>
@@ -5422,7 +5422,7 @@
         document.getElementById('app').innerHTML = `<div class="p-8 max-w-lg mx-auto text-center space-y-3">
           <h1 class="text-xl font-semibold">Сервис недоступен</h1>
           <p class="text-sm text-gray-500">Не удалось подтвердить вход. Обновите страницу.</p>
-          <button type="button" class="px-4 py-2 rounded bg-black text-white" onclick="location.reload()">Повторить</button>
+          <button type="button" class="btn-primary min-h-0 py-2" onclick="location.reload()">Повторить</button>
         </div>`;
       }
     }
