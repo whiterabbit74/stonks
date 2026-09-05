@@ -32,7 +32,7 @@ func orderStatusField(detail map[string]any) string {
 	if detail == nil {
 		return ""
 	}
-	v := firstNonEmpty(detail["status"], detail["order_status"], detail["orderStatus"], detail["scene_type"])
+	v := firstNonEmpty(detail["status"], detail["order_status"], detail["orderStatus"])
 	s := strings.TrimSpace(fmt.Sprint(v))
 	if s == "" || s == "<nil>" {
 		return ""
