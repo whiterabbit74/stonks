@@ -399,6 +399,43 @@ func TestStaticCacheHeaders(t *testing.T) {
 	}
 }
 
+// TestBrokerPagesIsolateLoadTabAndDashboard is A-1/A-2/A-3: /webull and
+// /robinhood must not share one load flag, one tab, or one untagged dashboard.
+func TestBrokerPagesIsolateLoadTabAndDashboard(t *testing.T) {
+	a := readWeb(t, "js/app.js")
+	if strings.Contains(a, "state.loaded.broker = true") {
+		t.Fatal("loaded.broker must be the broker kind, not a shared true")
+	}
+	if !strings.Contains(a, "state.loaded.broker !== kind") {
+		t.Fatal("must reload when loaded.broker !== kind")
+	}
+	if !strings.Contains(a, "state.loaded.broker = kind") {
+		t.Fatal("after a dashboard fetch, loaded.broker must be set to kind")
+	}
+	page := jsFn(a, "pageBroker")
+	if page == "" {
+		t.Fatal("pageBroker not found")
+	}
+	if strings.Contains(page, "state.brokerTab ||") {
+		t.Fatal("brokerTab must not be one shared string across /webull and /robinhood")
+	}
+	if !strings.Contains(page, "state.brokerTab[kind]") {
+		t.Fatal("tab must be stored per broker as state.brokerTab[kind]")
+	}
+	if !strings.Contains(a, "state.brokerTab[kind] = b.dataset.btab") && !strings.Contains(a, "state.brokerTab[kind]=b.dataset.btab") {
+		t.Fatal("tab clicks must write state.brokerTab[kind]")
+	}
+	if !strings.Contains(a, "broker: kind") {
+		t.Fatal("dashboard must be tagged with broker: kind")
+	}
+	if !strings.Contains(page, "state.dashboard.broker !== kind") && !strings.Contains(page, "state.dashboard.broker === kind") {
+		t.Fatal("pageBroker must refuse tables when state.dashboard.broker mismatches kind")
+	}
+	if !strings.Contains(page, "Загрузка…") {
+		t.Fatal("mismatched dashboard must render «Загрузка…» instead of the other broker's rows")
+	}
+}
+
 // TestBrokerCloseHandlerDispatchesByKind guards P0-3: the "Закрыть" button on
 // the Robinhood positions tab must send its SELL to Robinhood, not Webull.
 // pageBroker's [data-close-pos] handler is shared by /webull and /robinhood,

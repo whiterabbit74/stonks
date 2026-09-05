@@ -308,7 +308,7 @@
     splitsTab: 'list',
     watchTab: 'summary',
     navCollapsed: localStorage.getItem('nav.collapsed') === '1',
-    brokerTab: 'overview',
+    brokerTab: {},
     cal: { year: nyseNow.y, month: nyseNow.m, data: null },
     settings: {},
     splitsMap: {},
@@ -2500,11 +2500,14 @@
     const live = autotradeLive();
     const kind = state.page === '/robinhood' ? 'robinhood' : 'webull';
     const tabs = kind === 'robinhood' ? BROKER_TABS : BROKER_TABS.filter((t) => t.id !== 'connect');
-    const tab = state.brokerTab || (kind === 'robinhood' ? 'connect' : 'overview');
+    const tab = (state.brokerTab && state.brokerTab[kind]) || (kind === 'robinhood' ? 'connect' : 'overview');
+    const dash = (state.dashboard && state.dashboard.broker === kind) ? state.dashboard : null;
     const health = (state.brokerHealth || []).find((h) => h.broker === kind) || {};
     const healthCls = health.status === 'OK' ? 'bg-emerald-100 text-emerald-800' : (health.status === 'EXPIRING_SOON' ? 'bg-amber-100 text-amber-800' : (health.status ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-700'));
     let body = '';
-    if (tab === 'connect') {
+    if ((tab === 'overview' || tab === 'positions' || tab === 'orders' || tab === 'fills') && !dash) {
+      body = '<p class="text-sm text-gray-500">Загрузка…</p>';
+    } else if (tab === 'connect') {
       const st = state.rhStatus || {};
       body = `<div class="space-y-3 max-w-xl">
         <p class="text-sm text-gray-600 dark:text-gray-300">Откройте ссылку в десктопном браузере, войдите в Robinhood, разрешите доступ. Браузер попробует открыть 127.0.0.1 и покажет ошибку — это нормально. Скопируйте адрес из адресной строки целиком и вставьте ниже.</p>
@@ -3896,7 +3899,7 @@
     }
     if (p === '/webull' || p === '/robinhood') {
       const kind = p === '/robinhood' ? 'robinhood' : 'webull';
-      if (!state.loaded.broker) {
+      if (state.loaded.broker !== kind) {
         const rh = p === '/robinhood';
         const [bt, tok, ac, dash, logs, st, w, cons, health, rhst, settings] = await Promise.all([
           API.brokerTrades().catch(() => []),
@@ -3916,7 +3919,7 @@
         state.broker = Array.isArray(bt) ? bt : (bt.trades || []);
         state.token = tok;
         state.autoConfig = unwrapAutoConfig(ac);
-        state.dashboard = dash || {};
+        state.dashboard = { ...(dash || {}), broker: kind };
         state.autoLogs = logs || { logs: [] };
         state.autoStatus = st;
         state.settings = settings || {};
@@ -3931,11 +3934,11 @@
             state.brokerQuotes = map;
           } catch (_) { state.brokerQuotes = state.brokerQuotes || {}; }
         }
-        state.loaded.broker = true;
+        state.loaded.broker = kind;
         renderPage();
         return;
       }
-      root.querySelectorAll('[data-btab]').forEach((b) => b.addEventListener('click', () => { state.brokerTab = b.dataset.btab; renderPage(); }));
+      root.querySelectorAll('[data-btab]').forEach((b) => b.addEventListener('click', () => { state.brokerTab[kind] = b.dataset.btab; renderPage(); }));
       document.getElementById('broker-refresh')?.addEventListener('click', async () => {
         state.loaded.broker = false;
         renderPage();
