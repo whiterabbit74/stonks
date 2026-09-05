@@ -39,6 +39,26 @@ func TestHTTPTelegramTreatsOkFalseAsError(t *testing.T) {
 	}
 }
 
+func TestHTTPTelegramSendsEscapedBrokerError(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		var payload map[string]any
+		_ = json.Unmarshal(body, &payload)
+		text, _ := payload["text"].(string)
+		if !strings.Contains(text, "qty &lt; 1") {
+			t.Errorf("text %q", text)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	t.Cleanup(ts.Close)
+	h := &HTTPTelegram{Token: "tok", Client: ts.Client()}
+	h.Client.Transport = rewriteHost{base: ts.URL, rt: ts.Client().Transport}
+	if err := h.Send("1", "<b>T-1</b>\n• Robinhood ошибка: qty &lt; 1"); err != nil {
+		t.Fatalf("escaped error must send, got %v", err)
+	}
+}
+
 type rewriteHost struct {
 	base string
 	rt   http.RoundTripper

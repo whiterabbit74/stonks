@@ -3,6 +3,7 @@ package live
 import (
 	"context"
 	"fmt"
+	"html"
 	"log"
 	"math"
 	"sort"
@@ -419,7 +420,7 @@ func (e *Engine) buildT1Text(today string, rows []t1Watch, blocking map[string]a
 				}
 				decision = append(decision, fmt.Sprintf("• %s: %s MARKET отправлен (%v шт.)", label, side, qty))
 			} else if one.Error != "" {
-				decision = append(decision, fmt.Sprintf("• %s ошибка: %s", label, one.Error))
+				decision = append(decision, fmt.Sprintf("• %s ошибка: %s", label, html.EscapeString(one.Error)))
 			}
 		}
 	}

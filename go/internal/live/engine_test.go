@@ -141,6 +141,21 @@ func TestSimulateDoesNotPlace(t *testing.T) {
 	}
 }
 
+func TestBuildT1TextEscapesBrokerError(t *testing.T) {
+	_, e, _ := testEngine(t, entryBars)
+	entry := EvalResult{
+		Decision: map[string]any{"action": "entry", "symbol": "AAPL"},
+		Broker:   map[string]any{"robinhood": OrderResult{Error: "qty < 1 & more"}},
+	}
+	text := e.buildT1Text("2026-09-01", nil, nil, false, false, EvalResult{}, entry, nil)
+	if strings.Contains(text, "qty < 1") {
+		t.Fatalf("raw broker error must be HTML-escaped, got %s", text)
+	}
+	if !strings.Contains(text, "qty &lt; 1") || !strings.Contains(text, "&amp;") {
+		t.Fatalf("escaped error missing: %s", text)
+	}
+}
+
 func TestBuildT1TextNamesSubmitBroker(t *testing.T) {
 	_, e, _ := testEngine(t, entryBars)
 	e.Broker = nil
