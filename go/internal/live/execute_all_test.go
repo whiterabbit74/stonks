@@ -203,15 +203,33 @@ func (s *slowAccountBroker) Account() (map[string]any, error) {
 func TestLogBalanceSnapshotUsesOrderBroker(t *testing.T) {
 	e, webull, rh := dualBrokerEngine(t, entryBars)
 	webull.Acct = map[string]any{"data": map[string]any{"account_currency_assets": []any{map[string]any{
-		"currency": "USD", "cash_balance": 1.0, "day_buying_power": 1.0, "net_liquidation_value": 1.0,
+		"currency": "USD", "cash_balance": 11111.0, "day_buying_power": 11111.0, "net_liquidation_value": 11111.0,
 	}}}}
 	rh.Acct = map[string]any{"data": map[string]any{"account_currency_assets": []any{map[string]any{
-		"currency": "USD", "cash_balance": 999.0, "day_buying_power": 999.0, "net_liquidation_value": 999.0,
+		"currency": "USD", "cash_balance": 77777.0, "day_buying_power": 77777.0, "net_liquidation_value": 77777.0,
 	}}}}
-	e.logBalanceSnapshot("c", "AAPL", "exit", rh)
-	if !autotradeLogsContain(t, e, "999") {
-		t.Fatal("balance_snapshot must use the order broker account, not default Webull")
+	e.PatchAutoConfig(map[string]any{
+		"enabled": true, "lowIBS": 0.9, "allowNewEntries": true, "allowExits": true,
+		"brokers": map[string]any{
+			"webull":    map[string]any{"enabled": false, "allowNewEntries": false, "allowExits": false},
+			"robinhood": map[string]any{"enabled": true, "allowNewEntries": true, "allowExits": true},
+		},
+	})
+	res := e.Execute("telegram_t1")
+	if !res.Executed || len(rh.Orders) == 0 {
+		t.Fatalf("RH-only execute must submit: %+v orders=%d", res, len(rh.Orders))
 	}
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if autotradeLogsContain(t, e, "77777") {
+			if autotradeLogsContain(t, e, "11111") {
+				t.Fatal("balance_snapshot must not use the disabled Webull book")
+			}
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("balance_snapshot must use the order broker account, not default Webull")
 }
 
 func TestLogBalanceSnapshotDoesNotBlockSubmit(t *testing.T) {
