@@ -1381,3 +1381,21 @@ func TestToastIsPoliteStatus(t *testing.T) {
 		t.Fatal("toast must be role=status aria-live for screen readers")
 	}
 }
+
+func TestAPIFetchUsesAbortController(t *testing.T) {
+	a := readWeb(t, "js/api.js")
+	start := strings.Index(a, "async req(")
+	if start < 0 {
+		t.Fatal("API.req not found")
+	}
+	fn := a[start:]
+	if i := strings.Index(fn, "\n  get:"); i > 0 {
+		fn = fn[:i]
+	}
+	if !strings.Contains(fn, "AbortController") {
+		t.Fatal("API.req must abort hung fetches")
+	}
+	if !strings.Contains(fn, "timeout") {
+		t.Fatal("API.req must take a timeout")
+	}
+}

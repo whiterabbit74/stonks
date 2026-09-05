@@ -3,24 +3,35 @@ const API = {
   _lastUnauthorizedAt: 0,
   onUnauthorized(fn) { API._onUnauthorized = fn; },
   async req(path, opts = {}) {
-    const { skipAuth, headers, ...rest } = opts;
+    const { skipAuth, headers, timeout, signal, ...rest } = opts;
     const method = String(rest.method || 'GET').toUpperCase();
     const hdrs = { ...(headers || {}) };
     if (method !== 'GET' && method !== 'HEAD' && !hdrs['Content-Type'] && !hdrs['content-type']) {
       hdrs['Content-Type'] = 'application/json';
+    }
+    const ms = timeout === 0 ? 0 : (timeout || 30000);
+    const ctrl = new AbortController();
+    const timer = ms > 0 ? setTimeout(() => ctrl.abort(), ms) : null;
+    if (signal) {
+      if (signal.aborted) ctrl.abort();
+      else signal.addEventListener('abort', () => ctrl.abort(), { once: true });
     }
     let r;
     try {
       r = await fetch(path, {
         credentials: 'include',
         headers: hdrs,
+        signal: ctrl.signal,
         ...rest,
       });
     } catch (netErr) {
-      const err = new Error((netErr && netErr.message) || 'Сеть недоступна');
+      const aborted = netErr && (netErr.name === 'AbortError' || netErr.name === 'TimeoutError');
+      const err = new Error(aborted ? 'Превышено время ожидания' : ((netErr && netErr.message) || 'Сеть недоступна'));
       err.status = 0;
       err.data = null;
       throw err;
+    } finally {
+      if (timer) clearTimeout(timer);
     }
     const text = await r.text();
     let data = null;
@@ -84,7 +95,7 @@ const API = {
   closePosition: (symbol) => API.post('/api/autotrade/webull/close-position', { symbol }),
   closeMonitor: (id, body) => API.post('/api/trades/' + encodeURIComponent(id) + '/close-monitor', body || {}),
   simulate: (stage) => API.post('/api/telegram/simulate', { stage }),
-  updateAll: () => API.post('/api/telegram/update-all', {}),
+  updateAll: () => API.post('/api/telegram/update-all', {}, { timeout: 600000 }),
   consistency: () => API.get('/api/monitor/consistency'),
   dashboard: (refresh) => API.get('/api/autotrade/webull/dashboard' + (refresh ? '?refresh=1' : '')),
   reconcile: (mode) => API.post('/api/monitor/reconcile', { mode: mode || 'apply' }),
