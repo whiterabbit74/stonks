@@ -1759,8 +1759,8 @@
       cards = `<div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 xl:grid-cols-5 gap-2">${filtered.map((d) => {
         const active = state.ticker === d.ticker;
         const tagsHtml = (d.tag || '').split(',').map((t) => t.trim()).filter(Boolean).slice(0, 2).map((t) => `<span class="px-1.5 py-0.5 bg-gray-100 text-gray-600 text-[10px] rounded dark:bg-gray-800 dark:text-gray-400">${esc(t)}</span>`).join('');
-        return `<div class="relative">
-          <a href="/stocks?tickers=${encodeURIComponent(d.ticker)}" data-load="${esc(d.ticker)}" class="block relative w-full p-3 rounded-lg border text-left ${active ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200 dark:border-blue-400 dark:bg-blue-950/30' : 'border-gray-200 hover:border-blue-300 dark:border-gray-700 dark:bg-gray-900'}">
+        return `<div class="relative h-full">
+          <a href="/stocks?tickers=${encodeURIComponent(d.ticker)}" data-load="${esc(d.ticker)}" class="block relative h-full w-full p-3 rounded-lg border text-left ${active ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200 dark:border-blue-400 dark:bg-blue-950/30' : 'border-gray-200 hover:border-blue-300 dark:border-gray-700 dark:bg-gray-900'}">
             ${active ? '<div class="absolute top-1.5 left-1.5 w-2 h-2 bg-green-500 rounded-full"></div>' : ''}
             <div class="font-mono font-semibold text-sm pr-6">${esc(d.ticker)}</div>
             ${datasetCompany(d) ? `<div class="text-xs text-gray-500 break-words mt-0.5">${esc(datasetCompany(d))}</div>` : ''}
@@ -1808,8 +1808,8 @@
               ? '<div class="w-2 h-2 bg-gray-400 rounded-full animate-pulse"></div><span class="text-xs text-gray-500 font-medium">Проверяем…</span>'
               : '<div class="w-2 h-2 bg-green-500 rounded-full"></div><span class="text-xs text-green-600 font-medium">Онлайн</span>')}</div>
           <div class="flex items-center gap-1 bg-gray-100 dark:bg-gray-800 rounded-lg p-1">
-            <button id="view-list" class="p-1.5 rounded-lg ${state.dataView === 'list' ? 'bg-white dark:bg-gray-700 text-indigo-600 shadow-sm' : 'text-gray-500'}" title="Список" aria-label="Переключить на режим списка">${icon('list', 'w-4 h-4')}</button>
-            <button id="view-grid" class="p-1.5 rounded-lg ${state.dataView === 'compact' ? 'bg-white dark:bg-gray-700 text-indigo-600 shadow-sm' : 'text-gray-500'}" title="Компактный вид" aria-label="Переключить на компактный вид">${icon('grid', 'w-4 h-4')}</button>
+            <button id="view-list" class="inline-flex h-11 w-11 items-center justify-center rounded-lg p-0 ${state.dataView === 'list' ? 'bg-white dark:bg-gray-700 text-indigo-600 shadow-sm' : 'text-gray-500'}" title="Список" aria-label="Переключить на режим списка">${icon('list', 'w-4 h-4')}</button>
+            <button id="view-grid" class="inline-flex h-11 w-11 items-center justify-center rounded-lg p-0 ${state.dataView === 'compact' ? 'bg-white dark:bg-gray-700 text-indigo-600 shadow-sm' : 'text-gray-500'}" title="Компактный вид" aria-label="Переключить на компактный вид">${icon('grid', 'w-4 h-4')}</button>
           </div>
         </div>
         <div class="mb-3"><div class="text-xs font-medium text-gray-600 uppercase tracking-wide mb-2">Фильтр</div><div class="flex flex-wrap gap-2">${filters}</div></div>
