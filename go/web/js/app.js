@@ -283,6 +283,7 @@
     takeProfit: localStorage.getItem('stocksTakeProfit') || '',
     tickersData: [],
     stockTab: 'summary',
+    pendingRun: false,
     bars: [],
     error: null,
     running: false,
@@ -568,8 +569,33 @@
     }
     return msg;
   }
+  // The URL owns which tickers the page is about. Every entry point (link,
+  // fresh load, back button, post-login redirect) goes through these two.
+  function urlTickers() {
+    const q = new URL(location.href).searchParams.get('tickers');
+    if (!q) return '';
+    return q.split(',').map((s) => s.trim().toUpperCase()).filter(Boolean).join(', ');
+  }
+  function applyURLTickers() {
+    const q = urlTickers();
+    if (!q) return;
+    if (q !== state.tickerInput) {
+      state.tickerInput = q;
+      try { localStorage.setItem('tickersInput', q); } catch (_) {}
+      // The previous backtest belongs to the previous tickers.
+      state.result = null;
+      state.baselineResult = null;
+      state.tickersData = [];
+      state.bars = [];
+      state.ticker = parseTickers(q)[0] || state.ticker;
+      state.stockTab = 'summary';
+      state.tradesPage = 1;
+    }
+    state.leverage = 100;
+    state.pendingRun = true;
+  }
   function rememberReturnPath(path) {
-    const p = path || state.page || location.pathname || '/data';
+    const p = path || state.page || (location.pathname + location.search) || '/data';
     if (!p || p === '/login') return;
     state.returnTo = p;
     try { sessionStorage.setItem('spa.returnTo', p); } catch (_) {}
@@ -1644,12 +1670,7 @@
     else history.pushState({}, '', path);
     state.page = path.split('?')[0];
     state.mobileOpen = false;
-    const q = new URL(location.href).searchParams.get('tickers');
-    if (q) {
-      state.tickerInput = q.split(',').map((s) => s.trim().toUpperCase()).filter(Boolean).join(', ');
-    } else {
-      state.tickerInput = '';
-    }
+    applyURLTickers();
     state.menuTicker = null;
     state.heroSettingsOpen = false;
     state.quoteOpen = false;
@@ -1657,6 +1678,7 @@
   }
   window.addEventListener('popstate', () => {
     state.page = location.pathname === '/' ? '/data' : location.pathname;
+    applyURLTickers();
     renderPage();
   });
 
@@ -3511,6 +3533,11 @@
       paintHistograms();
       if (state.result && state.stockTab === 'summary') bindHero(root, { quote: true, pro: 'price' });
       runNested();
+      // A ?tickers= link is a request for a backtest, not just for the form.
+      if (state.pendingRun) {
+        state.pendingRun = false;
+        runStocks();
+      }
     }
 
     if (p === '/ema') {
@@ -5323,10 +5350,7 @@
     if (state.settings.defaultMultiTickerSymbols && !localStorage.getItem('tickersInput')) {
       state.tickerInput = state.settings.defaultMultiTickerSymbols;
     }
-    const q = new URL(location.href).searchParams.get('tickers');
-    if (q) {
-      state.tickerInput = q.split(',').map((s) => s.trim().toUpperCase()).filter(Boolean).join(', ');
-    }
+    applyURLTickers();
     if (state.datasets[0] && !state.ticker) state.ticker = state.datasets[0].ticker;
   }
 
@@ -5346,10 +5370,6 @@
     applyTheme();
     const path = location.pathname === '/' ? '/data' : location.pathname;
     state.page = path === '/results' ? '/stocks' : path;
-    const q = new URL(location.href).searchParams.get('tickers');
-    if (q) {
-      state.tickerInput = q.split(',').map((s) => s.trim().toUpperCase()).filter(Boolean).join(', ');
-    }
     if (state.page === '/login') {
       document.getElementById('app').innerHTML = loginPage();
       bindLogin();
@@ -5362,7 +5382,7 @@
       renderPage();
     } catch (e) {
       if (e.status === 401) {
-        rememberReturnPath(path);
+        rememberReturnPath(path + location.search);
         state.user = false;
         state.page = '/login';
         document.getElementById('app').innerHTML = loginPage();
