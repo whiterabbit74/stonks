@@ -148,8 +148,8 @@ func TestBrokerHealthAlertsOnNeedsReauthOnce(t *testing.T) {
 	eng.Telegram = tg
 	eng.ChatID = "c"
 	eng.Broker = &live.MemoryBroker{}
-	_ = db.SaveWebullToken("tok", time.Now().Add(-time.Hour).Format(time.RFC3339), "EXPIRED")
 	now := time.Date(2026, 9, 1, 15, 0, 0, 0, time.UTC)
+	_ = db.SaveWebullToken("tok", now.Add(-time.Hour).Format(time.RFC3339), "EXPIRED")
 	today := tradingdate.TodayNYSE(now)
 	RunBrokerHealth(db, Deps{Live: eng}, today, now)
 	n := 0
