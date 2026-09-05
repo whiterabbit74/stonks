@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"encoding/json"
+	"math"
 	"net/http"
 
 	"mktorder.com/go/internal/backtest"
@@ -12,6 +13,10 @@ import (
 	"mktorder.com/go/internal/splits"
 	"mktorder.com/go/internal/types"
 )
+
+func invalidCalcNumber(v float64) bool {
+	return math.IsNaN(v) || math.IsInf(v, 0)
+}
 
 func (s *Server) registerCalc() {
 	wrap := func(fn http.HandlerFunc) http.HandlerFunc { return s.auth(fn) }
@@ -235,6 +240,10 @@ func (s *Server) calcBS(w http.ResponseWriter, r *http.Request) {
 	if req.Type == "" {
 		req.Type = "call"
 	}
+	if req.S <= 0 || req.K <= 0 || req.T < 0 || req.Sigma < 0 || invalidCalcNumber(req.S) || invalidCalcNumber(req.K) || invalidCalcNumber(req.T) || invalidCalcNumber(req.R) || invalidCalcNumber(req.Sigma) {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid Black-Scholes parameters"})
+		return
+	}
 	writeJSON(w, 200, map[string]any{"price": optionsmath.BlackScholes(req.Type, req.S, req.K, req.T, req.R, req.Sigma)})
 }
 
@@ -254,6 +263,10 @@ func (s *Server) calcSplits(w http.ResponseWriter, r *http.Request) {
 func (s *Server) calcMargin(w http.ResponseWriter, r *http.Request) {
 	var req backtest.MarginParams
 	if !s.requireJSON(w, r, &req) {
+		return
+	}
+	if req.InitialCapital < 0 || req.Leverage <= 0 || invalidCalcNumber(req.InitialCapital) || invalidCalcNumber(req.Leverage) || (req.MaintenanceMarginPct != nil && (*req.MaintenanceMarginPct < 0 || invalidCalcNumber(*req.MaintenanceMarginPct))) || (req.CapitalUsagePct != nil && (*req.CapitalUsagePct < 0 || invalidCalcNumber(*req.CapitalUsagePct))) {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid margin parameters"})
 		return
 	}
 	writeJSON(w, 200, backtest.SimulateMargin(req))
