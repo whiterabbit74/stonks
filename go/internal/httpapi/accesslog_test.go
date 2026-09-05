@@ -174,6 +174,40 @@ func TestAccessLogOmitsDetailsOn429(t *testing.T) {
 	}
 }
 
+func TestHTTPLogRotatesBySize(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HTTP_LOG_PATH", filepath.Join(dir, "http-access.jsonl"))
+	t.Cleanup(resetHTTPLogForTest)
+	oldMax := httpLogMaxBytes
+	httpLogMaxBytes = 400
+	t.Cleanup(func() { httpLogMaxBytes = oldMax })
+
+	line := append(bytes.Repeat([]byte("x"), 120), '\n')
+	for i := 0; i < 20; i++ {
+		appendHTTPLog(line)
+	}
+	resetHTTPLogForTest()
+	ents, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ents) > httpLogKeep+1 {
+		t.Fatalf("log files %d want at most %d", len(ents), httpLogKeep+1)
+	}
+	if len(ents) < 2 {
+		t.Fatal("size rotation must produce more than one file")
+	}
+	for _, e := range ents {
+		fi, err := e.Info()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if fi.Size() > httpLogMaxBytes {
+			t.Fatalf("%s size %d exceeds limit %d", e.Name(), fi.Size(), httpLogMaxBytes)
+		}
+	}
+}
+
 func TestRedactJSONNestedSecrets(t *testing.T) {
 	got := redactJSON(map[string]any{
 		"ok":     true,

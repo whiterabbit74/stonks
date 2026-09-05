@@ -10,12 +10,17 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 )
 
 const accessBodyPeek = 4096
+
+var httpLogMaxBytes int64 = 64 << 20
+
+const httpLogKeep = 3
 
 var secretFieldRe = regexp.MustCompile(`(?i)(password|passwd|secret|token|authorization|cookie|api[_-]?key|app[_-]?(key|secret)|access[_-]?token)`)
 
@@ -240,9 +245,51 @@ func appendHTTPLog(line []byte) {
 		httpLogFile = f
 		httpLogName = path
 	}
+	if err := rotateHTTPLogIfNeeded(path, int64(len(line))); err != nil {
+		log.Printf("http log rotate: %v", err)
+	}
+	if httpLogFile == nil {
+		return
+	}
 	if _, err := httpLogFile.Write(line); err != nil {
 		log.Printf("http log write: %v", err)
 	}
+}
+
+func rotateHTTPLogIfNeeded(path string, add int64) error {
+	if httpLogFile == nil {
+		return nil
+	}
+	fi, err := httpLogFile.Stat()
+	if err != nil {
+		return err
+	}
+	if fi.Size()+add <= httpLogMaxBytes {
+		return nil
+	}
+	_ = httpLogFile.Close()
+	httpLogFile = nil
+	httpLogName = ""
+	for i := httpLogKeep; i >= 1; i-- {
+		src := path
+		if i > 1 {
+			src = path + "." + strconv.Itoa(i-1)
+		}
+		dst := path + "." + strconv.Itoa(i)
+		if err := os.Rename(src, dst); err != nil && !os.IsNotExist(err) {
+			log.Printf("http log rotate rename %s: %v", src, err)
+		}
+	}
+	if err := os.Remove(path + "." + strconv.Itoa(httpLogKeep+1)); err != nil && !os.IsNotExist(err) {
+		log.Printf("http log rotate remove: %v", err)
+	}
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o640)
+	if err != nil {
+		return err
+	}
+	httpLogFile = f
+	httpLogName = path
+	return nil
 }
 
 func resetHTTPLogForTest() {
