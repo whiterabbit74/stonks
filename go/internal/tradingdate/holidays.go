@@ -92,10 +92,9 @@ func nyseHolidays(year int) []namedHoliday {
 }
 
 func NYSEHolidayDates(year int) []string {
-	holidays := nyseHolidays(year)
 	prefix := fmt.Sprintf("%04d-", year)
-	dates := make([]string, 0, len(holidays))
-	for _, h := range holidays {
+	dates := make([]string, 0, len(nyseHolidays(year))+1)
+	for _, h := range append(nyseHolidays(year), nyseHolidays(year+1)...) {
 		if strings.HasPrefix(h.date, prefix) {
 			dates = append(dates, h.date)
 		}
@@ -109,7 +108,7 @@ func IsNYSEHoliday(date string) bool {
 		return false
 	}
 	y, _, _ := split(date)
-	for _, h := range nyseHolidays(y) {
+	for _, h := range append(nyseHolidays(y), nyseHolidays(y+1)...) {
 		if h.date == date {
 			return true
 		}

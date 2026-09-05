@@ -70,6 +70,18 @@ func TestNYSEHolidayDatesStayInYear(t *testing.T) {
 	}
 }
 
+func TestNYSEHolidayDatesIncludeObservedNewYearFromNextYear(t *testing.T) {
+	if !IsNYSEHoliday("2021-12-31") {
+		t.Fatal("observed New Year's Day must be a holiday in the prior year")
+	}
+	for _, date := range NYSEHolidayDates(2021) {
+		if date == "2021-12-31" {
+			return
+		}
+	}
+	t.Fatal("NYSEHolidayDates(2021) must include 2021-12-31")
+}
+
 func TestJuneteenthObservedFrom2022(t *testing.T) {
 	if IsNYSEHoliday("2021-06-19") {
 		t.Error("2021-06-19 is not an NYSE holiday (Juneteenth from 2022)")
