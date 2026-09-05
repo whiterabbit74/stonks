@@ -183,11 +183,16 @@ func clampQueryLimit(raw string, def, max int) int {
 func (s *Server) handleWebullClose(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Symbol string `json:"symbol"`
+		Broker string `json:"broker"`
 	}
 	if !s.requireJSON(w, r, &body) {
 		return
 	}
-	res, err := s.liveEng().ClosePosition(body.Symbol)
+	broker := body.Broker
+	if broker == "" {
+		broker = "webull"
+	}
+	res, err := s.liveEng().ClosePosition(broker, body.Symbol)
 	if err != nil {
 		writeJSON(w, 502, map[string]any{"error": err.Error(), "result": res})
 		return

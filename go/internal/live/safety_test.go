@@ -134,7 +134,7 @@ func TestClosePositionStartsTracker(t *testing.T) {
 	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
 	db, e, br := testEngine(t, bars)
 	br.Pos = []any{map[string]any{"symbol": "AAPL", "quantity": 2.0}}
-	res, err := e.ClosePosition("AAPL")
+	res, err := e.ClosePosition("webull", "AAPL")
 	if err != nil || !res.Submitted {
 		t.Fatalf("close %+v %v", res, err)
 	}
@@ -148,6 +148,56 @@ func TestClosePositionStartsTracker(t *testing.T) {
 	}
 	if exitRow == nil && anyRow == nil {
 		t.Fatal("manual close must start a tracker")
+	}
+}
+
+func TestClosePositionSellsOnNamedBroker(t *testing.T) {
+	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
+	_, e, webull := testEngine(t, bars)
+	rh := &MemoryBroker{Pos: []any{map[string]any{"symbol": "AAPL", "quantity": 3.0}}}
+	e.Brokers = map[string]Broker{"webull": webull, "robinhood": rh}
+
+	res, err := e.ClosePosition("robinhood", "AAPL")
+	if err != nil || !res.Submitted {
+		t.Fatalf("close %+v %v", res, err)
+	}
+	if len(rh.Orders) != 1 {
+		t.Fatalf("SELL must go to robinhood, got %+v", rh.Orders)
+	}
+	if rh.Orders[0].Side != "SELL" || rh.Orders[0].Symbol != "AAPL" || rh.Orders[0].Quantity != 3 {
+		t.Fatalf("robinhood order %+v", rh.Orders[0])
+	}
+	if len(webull.Orders) != 0 {
+		t.Fatalf("webull must stay empty, got %+v", webull.Orders)
+	}
+}
+
+func TestClosePositionGuardsPendingSell(t *testing.T) {
+	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
+	db, e, webull := testEngine(t, bars)
+	rh := &MemoryBroker{Pos: []any{map[string]any{"symbol": "AAPL", "quantity": 2.0}}}
+	e.Brokers = map[string]Broker{"webull": webull, "robinhood": rh}
+	if err := db.SaveOrderTracker(map[string]any{
+		"clientOrderId": "pend-rh-exit", "symbol": "AAPL", "action": "exit",
+		"status": "submitted", "quantity": 2, "dateKey": "2026-09-01",
+		"broker": "robinhood",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := e.ClosePosition("robinhood", "AAPL")
+	if len(rh.Orders) != 0 {
+		t.Fatalf("must not PlaceMarket while a tracker is pending: %+v", rh.Orders)
+	}
+	if len(webull.Orders) != 0 {
+		t.Fatalf("webull must stay empty, got %+v", webull.Orders)
+	}
+	msg := res.Error
+	if err != nil {
+		msg = err.Error()
+	}
+	if !strings.Contains(msg, "pending_") || !strings.Contains(msg, "tracker_exists") {
+		t.Fatalf("want pending_..._tracker_exists, got res=%+v err=%v", res, err)
 	}
 }
 

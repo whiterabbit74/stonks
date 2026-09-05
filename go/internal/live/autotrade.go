@@ -1134,9 +1134,12 @@ func (e *Engine) manualOrder(br Broker, brokerName, symbol, side string, qty flo
 	return res, err
 }
 
-func (e *Engine) ClosePosition(symbol string) (OrderResult, error) {
+func (e *Engine) ClosePosition(brokerName, symbol string) (OrderResult, error) {
 	symbol = store.SafeTicker(symbol)
-	br := e.defaultBroker()
+	if strings.TrimSpace(brokerName) == "" {
+		brokerName = "webull"
+	}
+	br := e.BrokerNamed(brokerName)
 	if br == nil {
 		return OrderResult{Error: "Webull credentials are missing"}, fmt.Errorf("Webull credentials are missing")
 	}
@@ -1149,14 +1152,8 @@ func (e *Engine) ClosePosition(symbol string) (OrderResult, error) {
 		err := fmt.Errorf("No broker position found for %s", symbol)
 		return OrderResult{Error: err.Error(), Symbol: symbol, Side: "SELL"}, err
 	}
-	res, err := e.placeMarket(backgroundWindow(), symbol, "SELL", qty, PlaceMarketCfg{}, br)
-	e.logAuto("close_position", "", map[string]any{"symbol": symbol, "submitted": res.Submitted, "clientOrderId": res.ClientOrderID})
-	if res.Submitted {
-		e.startTracking(res, orderMeta{
-			DateKey: tradingdate.TodayNYSE(e.now()), Action: "exit", Symbol: symbol,
-			Quantity: qty, Source: "manual_close",
-		})
-	}
+	res, err := e.manualOrder(br, brokerName, symbol, "SELL", qty, "manual_close")
+	e.logAuto("close_position", "", map[string]any{"symbol": symbol, "submitted": res.Submitted, "clientOrderId": res.ClientOrderID, "broker": brokerName})
 	return res, err
 }
 
