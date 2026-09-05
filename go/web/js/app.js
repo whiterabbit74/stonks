@@ -609,7 +609,7 @@
       <label class="block text-sm mb-2">Дата выхода (ET)<input id="cm-date" class="field mt-1" value="${esc(today)}" placeholder="YYYY-MM-DD" /></label>
       <label class="block text-sm mb-2">Цена выхода<input id="cm-price" type="number" step="0.01" class="field mt-1" /></label>
       <p id="cm-hint" class="text-xs text-gray-500 mb-2">Загружаем котировку…</p>
-      <label class="block text-sm mb-3">Exit IBS, %<input id="cm-ibs" type="number" step="0.1" min="0" max="100" class="field mt-1" placeholder="Необязательно" /></label>
+      <label class="block text-sm mb-3">IBS выхода, %<input id="cm-ibs" type="number" step="0.1" min="0" max="100" class="field mt-1" placeholder="Необязательно" /></label>
       <div class="flex justify-end gap-2"><button id="cm-cancel" class="btn-secondary">Отмена</button><button id="cm-save" class="btn-danger">Закрыть мониторинг</button></div>
     </div></div>`);
     document.getElementById('cm-cancel')?.addEventListener('click', closeModal);
@@ -1139,7 +1139,7 @@
     return `<div class="grid grid-cols-2 gap-2 pt-2 border-t border-gray-200 dark:border-gray-700 text-xs">
       <div>CAGR<div class="font-semibold">${fmtPct(m.cagr)}</div></div>
       <div>Макс. DD<div class="font-semibold">${fmtPct(result.maxDrawdown ?? m.maxDrawdown)}</div></div>
-      <div>Win rate<div class="font-semibold">${fmtPct(m.winRate)}</div></div>
+      <div>Доля прибыльных<div class="font-semibold">${fmtPct(m.winRate)}</div></div>
       <div>Профит-фактор<div class="font-semibold">${pf}</div></div>
       <div class="col-span-2">Сделок <b>${m.totalTrades ?? (result.trades || []).length}</b></div>
     </div>`;
@@ -1167,7 +1167,7 @@
     const histPts = x.trades.map((t, i) => ({ date: t.exitDate || t.entryDate || ('t' + i), value: Number(t.pnlPercent) || 0 }));
     return `<div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-3">
       <div class="rounded-lg border p-3 text-center"><div class="text-xl font-bold">${Number.isFinite(pf) ? fmt(pf) : '∞'}</div><div class="text-xs text-gray-500">Профит-фактор</div></div>
-      <div class="rounded-lg border p-3 text-center"><div class="text-xl font-bold">${fmtPct(x.metrics.winRate)}</div><div class="text-xs text-gray-500">Win rate</div></div>
+      <div class="rounded-lg border p-3 text-center"><div class="text-xl font-bold">${fmtPct(x.metrics.winRate)}</div><div class="text-xs text-gray-500">Доля прибыльных</div></div>
       <div class="rounded-lg border p-3 text-center"><div class="text-xl font-bold">${fmt(avgAll, 2)}%</div><div class="text-xs text-gray-500">Средний PnL</div></div>
       <div class="rounded-lg border p-3 text-center"><div class="text-xl font-bold pos">${fmtUsd(gp)}</div><div class="text-xs text-gray-500">Валовая прибыль</div></div>
       <div class="rounded-lg border p-3 text-center"><div class="text-xl font-bold neg">${fmtUsd(gl)}</div><div class="text-xs text-gray-500">Валовый убыток</div></div>
@@ -2400,9 +2400,9 @@
     const issues = Array.isArray(cons.issues) ? cons.issues : [];
     const actions = Array.isArray(cons.proposedActions) ? cons.proposedActions : [];
     const consOk = !!state.consistency && issues.length === 0;
-    const consKind = !state.consistency ? '…' : (actions.some((a) => a && a.autoApplicable) ? 'Reconcile Candidate' : (issues.length ? 'Mismatch' : 'OK'));
+    const consKind = !state.consistency ? '…' : (actions.some((a) => a && a.autoApplicable) ? 'Кандидат на сверку' : (issues.length ? 'Расхождение' : 'OK'));
     const consLabel = consKind;
-    const consBadgeCls = consKind === 'OK' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : (consKind === 'Mismatch' ? 'border-red-200 bg-red-50 text-red-700' : 'border-amber-200 bg-amber-50 text-amber-800');
+    const consBadgeCls = consKind === 'OK' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : (issues.length ? 'border-red-200 bg-red-50 text-red-700' : 'border-amber-200 bg-amber-50 text-amber-800');
     const consCards = issues.map((i) => `<div class="rounded-lg border px-3 py-2 text-sm mb-1">${esc(i.message || i.code || '')}</div>`).join('');
     const consText = !state.consistency
       ? 'Проверка согласованности…'
@@ -2624,8 +2624,8 @@
       const err = state.dashboard && (state.dashboard.error || (Array.isArray(state.dashboard.errors) && state.dashboard.errors[0]));
       body = `<div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <div class="rounded-lg border p-4"><div class="text-xs text-gray-500">Всего активов</div><div class="text-xl font-semibold mt-1">${fmtUsd(bal.totalAssets)}</div><div class="text-xs text-gray-400 mt-1">Валюта: ${esc(bal.currency || 'USD')}</div></div>
-        <div class="rounded-lg border p-4"><div class="text-xs text-gray-500">Свободные деньги</div><div class="text-xl font-semibold mt-1">${fmtUsd(bal.cashBalance)}</div><div class="text-xs text-gray-400 mt-1">Cash / settled cash</div></div>
-        <div class="rounded-lg border p-4"><div class="text-xs text-gray-500">Покупательная способность</div><div class="text-xl font-semibold mt-1">${fmtUsd(bal.buyingPower)}</div><div class="text-xs text-gray-400 mt-1">${esc(bal.accountType ? ('Тип счёта: ' + bal.accountType) : 'Buying power')}</div></div>
+        <div class="rounded-lg border p-4"><div class="text-xs text-gray-500">Свободные деньги</div><div class="text-xl font-semibold mt-1">${fmtUsd(bal.cashBalance)}</div><div class="text-xs text-gray-400 mt-1">Наличные / расчётные средства</div></div>
+        <div class="rounded-lg border p-4"><div class="text-xs text-gray-500">Покупательная способность</div><div class="text-xl font-semibold mt-1">${fmtUsd(bal.buyingPower)}</div><div class="text-xs text-gray-400 mt-1">${esc(bal.accountType ? ('Тип счёта: ' + bal.accountType) : 'Доступно для покупок')}</div></div>
         <div class="rounded-lg border p-4"><div class="text-xs text-gray-500">Нереализованный PnL</div><div class="text-xl font-semibold mt-1 ${pnlClass(bal.unrealizedPnl)}">${fmtUsd(bal.unrealizedPnl)}</div><div class="text-xs text-gray-400 mt-1">${bal.fetchedAt ? ('Обновлено ' + esc(formatDateTimeET(bal.fetchedAt))) : ''}</div></div>
       </div>${err ? `<p class="mt-3 text-sm text-amber-700">${esc(typeof err === 'string' ? err : (err.message || JSON.stringify(err)))}</p>` : ''}
       ${rawJsonBlock('Raw balance payload', state.dashboard && state.dashboard.balance)}
@@ -2741,7 +2741,7 @@
           <div class="broker-grid grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             <div class="rounded-lg border p-3"><div class="text-xs text-gray-500">Статус</div><div class="mt-1 font-semibold">${ac.enabled ? 'LIVE' : 'OFF'}</div></div>
             <div class="rounded-lg border p-3"><div class="text-xs text-gray-500">Последний запуск</div><div class="mt-1 text-sm">${esc(formatDateTimeET(last) === '—' ? last : formatDateTimeET(last))}</div></div>
-            <div class="rounded-lg border p-3"><div class="text-xs text-gray-500">Entries / Exits (${esc(brokerLabel(kind))})</div><div class="mt-1 text-sm">${brokerFlag(ac, kind, 'allowNewEntries') ? 'да' : 'нет'} / ${brokerFlag(ac, kind, 'allowExits') ? 'да' : 'нет'}</div></div>
+            <div class="rounded-lg border p-3"><div class="text-xs text-gray-500">Входы / выходы (${esc(brokerLabel(kind))})</div><div class="mt-1 text-sm">${brokerFlag(ac, kind, 'allowNewEntries') ? 'да' : 'нет'} / ${brokerFlag(ac, kind, 'allowExits') ? 'да' : 'нет'}</div></div>
             <div class="rounded-lg border p-3"><div class="text-xs text-gray-500">Последнее решение</div><div class="mt-1 text-sm">${esc(lastRes.action || dec.action || '—')} ${esc(lastRes.symbol || dec.symbol || '')}</div><div class="text-xs text-gray-500">${esc(decisionReasonText(lastRes.reason || dec.reason || ''))}</div></div>
           </div>
           <div class="mt-4 rounded-xl bg-gray-50 p-3 text-sm dark:bg-gray-950/40">
@@ -2792,7 +2792,7 @@
       const cons = state.consistency || {};
       const issues = Array.isArray(cons.issues) ? cons.issues : [];
       const actions = Array.isArray(cons.proposedActions) ? cons.proposedActions : [];
-      const consLabel = actions.some((a) => a && a.autoApplicable) ? 'Reconcile' : (issues.length ? 'Mismatch' : 'OK');
+      const consLabel = actions.some((a) => a && a.autoApplicable) ? 'Сверка' : (issues.length ? 'Расхождение' : 'OK');
       const wrows = (state.watches || []).map((w) => {
         const q = (state.brokerQuotes || {})[w.symbol] || {};
         const quote = q.quote || q;
@@ -2825,13 +2825,13 @@
         </tr>`;
       }).join('');
       body = `<div class="flex flex-wrap gap-2 mb-3">
-          <button type="button" id="broker-reconcile" class="btn-primary min-h-0 py-2">Reconcile</button>
+          <button type="button" id="broker-reconcile" class="btn-primary min-h-0 py-2">Сверить данные</button>
           <button type="button" id="broker-quotes-refresh" class="btn-secondary min-h-0 py-2">Обновить котировки</button>
         </div>
         <div class="grid gap-3 md:grid-cols-4 mb-3">
           <div class="rounded-lg border p-3"><div class="text-xs text-gray-500">Отслеживаемые</div><div class="text-lg font-semibold">${(state.watches || []).length}</div></div>
           <div class="rounded-lg border p-3"><div class="text-xs text-gray-500">Открытые позиции</div><div class="text-lg font-semibold">${(state.watches || []).filter((w) => w.isOpenPosition).length}</div></div>
-          <div class="rounded-lg border p-3"><div class="text-xs text-gray-500">Consistency</div><div class="text-lg font-semibold">${esc(consLabel)}</div></div>
+          <div class="rounded-lg border p-3"><div class="text-xs text-gray-500">Согласованность</div><div class="text-lg font-semibold">${esc(consLabel)}</div></div>
           <div class="rounded-lg border p-3"><div class="text-xs text-gray-500">Обновлено</div><div class="text-sm">${esc(formatDateTimeET((state.dashboard && state.dashboard.fetchedAt) || ''))}</div></div>
         </div>
         ${issues.length ? issues.map((i) => `<div class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 mb-2">${esc(i.message || i.code)}</div>`).join('') : ''}
@@ -2856,7 +2856,7 @@
       body = `<div class="space-y-3">
         <div><h2 class="text-sm font-semibold mb-1">Логи мониторинга (${(pack.monitor || pack.logs || []).length})</h2><pre class="text-xs bg-gray-50 dark:bg-gray-800 p-3 rounded overflow-auto max-h-52">${esc(monitor)}</pre></div>
         <div><h2 class="text-sm font-semibold mb-1">Логи автоторговли (все брокеры) (${(pack.autotrade || pack.logs || []).length})</h2><pre id="broker-logs" class="text-xs bg-gray-50 dark:bg-gray-800 p-3 rounded overflow-auto max-h-52">${esc(auto)}</pre></div>
-        <div><h2 class="text-sm font-semibold mb-1">Raw broker log</h2><pre class="text-xs bg-gray-50 dark:bg-gray-800 p-3 rounded overflow-auto max-h-52">${esc(raw)}</pre></div>
+        <div><h2 class="text-sm font-semibold mb-1">Сырой лог брокера</h2><pre class="text-xs bg-gray-50 dark:bg-gray-800 p-3 rounded overflow-auto max-h-52">${esc(raw)}</pre></div>
       </div>`;
     }
     return `
@@ -4162,7 +4162,7 @@
           <div class="grid sm:grid-cols-2 gap-2">
             <label class="text-sm">Дата выхода<input id="eb-xd" class="field mt-1" value="${esc(t.exitDate || '')}" /></label>
             <label class="text-sm">Цена выхода<input id="eb-xp" type="number" step="0.01" class="field mt-1" value="${esc(t.exitPrice ?? '')}" /></label>
-            <label class="text-sm col-span-2">Exit IBS, %<input id="eb-ibs" type="number" step="0.1" min="0" max="100" class="field mt-1" value="${esc(ibsOut)}" placeholder="Необязательно" /></label>
+            <label class="text-sm col-span-2">IBS выхода, %<input id="eb-ibs" type="number" step="0.1" min="0" max="100" class="field mt-1" value="${esc(ibsOut)}" placeholder="Необязательно" /></label>
           </div>
           <label class="inline-flex items-center gap-2 text-sm mt-2"><input type="checkbox" id="eb-hidden" ${t.isHidden ? 'checked' : ''} /> Скрыть из списка</label>
           <label class="inline-flex items-center gap-2 text-sm mt-2 ml-3"><input type="checkbox" id="eb-test" ${t.isTest ? 'checked' : ''} /> Тестовая сделка</label>
@@ -4182,7 +4182,7 @@
           if (hasExit && !(exitPrice > 0)) { errEl.textContent = 'Укажите корректную цену выхода.'; errEl.classList.remove('hidden'); return; }
           if (ibsRaw !== '') {
             const n = Number(ibsRaw);
-            if (!Number.isFinite(n) || n < 0 || n > 100) { errEl.textContent = 'Exit IBS должен быть в диапазоне 0-100%.'; errEl.classList.remove('hidden'); return; }
+            if (!Number.isFinite(n) || n < 0 || n > 100) { errEl.textContent = 'IBS выхода должен быть в диапазоне 0-100%.'; errEl.classList.remove('hidden'); return; }
           }
           try {
             const payload = {
@@ -4225,7 +4225,7 @@
       document.getElementById('broker-reconcile')?.addEventListener('click', async () => {
         try {
           const r = await API.reconcile('apply');
-          toast((r && r.status) || 'Reconcile');
+          toast((r && r.status) || 'Сверка выполнена');
           state.loaded.broker = false;
           renderPage();
         } catch (err) { toast(err.message); }
