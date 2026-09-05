@@ -2289,7 +2289,7 @@
             <button id="cal-next" class="icon-btn icon-btn-md icon-btn-glass" title="Следующий месяц" aria-label="Следующий месяц">${icon('chevronright', 'w-4 h-4')}</button>
             <select id="cal-year" class="field">${(Array.isArray(state.cal.data?.metadata?.years) && state.cal.data.metadata.years.length ? state.cal.data.metadata.years : [y - 1, y, y + 1]).map((yy) => `<option ${Number(yy) === y ? 'selected' : ''}>${yy}</option>`).join('')}</select>
             <select id="cal-month" class="field">${months.map((name, i) => `<option value="${i}" ${i === m ? 'selected' : ''}>${name}</option>`).join('')}</select>
-            <button id="cal-today" class="text-sm text-indigo-600">Сегодня</button>
+            <button id="cal-today" class="btn-secondary min-h-0 py-2 px-3 text-sm">Сегодня</button>
           </div>
           <div class="grid grid-cols-7 gap-1 text-xs text-gray-500 mb-1">${['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map((x) => `<div class="text-center">${x}</div>`).join('')}</div>
           <div class="grid grid-cols-7 gap-1">${cells}</div>
@@ -4908,7 +4908,7 @@
       shell.querySelectorAll('[data-pc-range]').forEach((x) => {
         x.className = 'hero-range ' + (x.dataset.pcRange === state.priceChart.range ? 'hero-range-on' : 'hero-range-off');
       });
-      paintPriceChart(chartId);
+      paintPriceChart(chartId, { preserveRange: false });
     }));
     shell.querySelector('.pc-ind-wrap')?.addEventListener('click', (e) => e.stopPropagation());
     shell.querySelector('[data-pc-ind]')?.addEventListener('click', (e) => {
@@ -5017,7 +5017,8 @@
       Charts.downloadCsv(ticker + '-' + stamp + '.csv', Charts.csvFromBars(bars));
     });
   }
-  function paintPriceChart(chartId) {
+  function paintPriceChart(chartId, opts) {
+    opts = opts || {};
     const el = document.getElementById(chartId);
     if (!el) return;
     const p = state.priceChart || {};
@@ -5025,7 +5026,9 @@
     const result = state.page === '/ema' ? resultOf(state.emaResult) : (state.page === '/multi-ticker-options' ? resultOf(state.optResult) : resultOf(state.result));
     const emaForm = state.page === '/ema' ? (state.emaRunParams || state.emaForm) : null;
     let vis = null;
-    try { vis = Charts.live[0] && Charts.live[0].timeScale().getVisibleLogicalRange(); } catch (_) {}
+    if (opts.preserveRange !== false) {
+      try { vis = Charts.live[0] && Charts.live[0].timeScale().getVisibleLogicalRange(); } catch (_) {}
+    }
     Charts.destroy();
     Charts.priceChart(el, barsForTicker(t), {
       dark: isDark(),
