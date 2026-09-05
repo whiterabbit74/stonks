@@ -23,6 +23,10 @@
 
 Локальный `git commit` после завершённого изменения — обязателен. Пуш и деплой — нет.
 
+## Кодинг — всегда ponytail
+
+Любая задача, где пишется, правится, рефакторится, чинится или ревьюится код, идёт через скилл **ponytail** (`~/.agents/skills/ponytail/SKILL.md`). Прочитай его перед правками и держи на каждом шаге: YAGNI, stdlib и то, что уже есть в репозитории, самый короткий рабочий diff. Уровень по умолчанию — **full**. Не упрощать проверки на границах доверия, ошибках, которые теряют данные, auth/деньги и атомарность check-then-act. Выключается только явной фразой «stop ponytail» / «normal mode».
+
 ## Project Overview
 
 Go trading-strategy backtester with a vanilla JS SPA (`go/web`). Historical OHLC, IBS mean-reversion, live Telegram monitoring, Webull autotrade. Production is this Go process behind Caddy. There is no React or Express stack.
