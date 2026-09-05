@@ -710,3 +710,57 @@ func TestSettingsFormOmitsCommissionFields(t *testing.T) {
 		t.Fatal("set-form must not Number()-coerce settings commission fields")
 	}
 }
+
+// TestLiveIBSThresholdHelpers is P-13: live monitoring thresholds come from
+// state.autoConfig via liveLowIBS/liveHighIBS, with DEFAULT_* only as the last
+// fallback. Backtest bac / defaultStrategy.parameters stay their own 0.1/0.75.
+func TestLiveIBSThresholdHelpers(t *testing.T) {
+	a := readWeb(t, "js/app.js")
+	if !strings.Contains(a, "const DEFAULT_LOW_IBS = 0.1") || !strings.Contains(a, "const DEFAULT_HIGH_IBS = 0.75") {
+		t.Fatal("missing DEFAULT_LOW_IBS / DEFAULT_HIGH_IBS next to CAPITAL_MODES")
+	}
+	if !strings.Contains(a, "function liveLowIBS()") || !strings.Contains(a, "function liveHighIBS()") {
+		t.Fatal("missing liveLowIBS / liveHighIBS helpers")
+	}
+	for _, fn := range []string{"pageWatches", "pageBroker", "pageSettings"} {
+		block := jsFn(a, fn)
+		if block == "" {
+			t.Fatalf("%s not found", fn)
+		}
+		if strings.Contains(block, "?? 0.1") || strings.Contains(block, "?? 0.75") {
+			t.Errorf("%s still falls back to a live IBS literal instead of liveLowIBS/liveHighIBS", fn)
+		}
+	}
+	if strings.Contains(a, "ibs < 0.10") || strings.Contains(a, "ibs > 0.75") {
+		t.Fatal("broker monitor IBS color must not hardcode 0.10/0.75")
+	}
+	trades := jsFn(a, "tradesTable")
+	if trades == "" {
+		t.Fatal("tradesTable not found")
+	}
+	if !strings.Contains(trades, "liveHighIBS()") {
+		t.Fatal("hasExitProblem must use liveHighIBS()")
+	}
+	addWatch := strings.Index(a, "API.addWatch(")
+	if addWatch < 0 {
+		t.Fatal("API.addWatch not found")
+	}
+	addCallEnd := strings.Index(a[addWatch:], ");")
+	if addCallEnd < 0 {
+		t.Fatal("API.addWatch call not closed")
+	}
+	addCall := a[addWatch : addWatch+addCallEnd]
+	if strings.Contains(addCall, "0.1") || strings.Contains(addCall, "0.75") {
+		t.Fatal("addWatch must not hardcode 0.1/0.75; send liveLowIBS/liveHighIBS")
+	}
+	if !strings.Contains(addCall, "liveLowIBS()") || !strings.Contains(addCall, "liveHighIBS()") {
+		t.Fatal("addWatch must send liveLowIBS/liveHighIBS")
+	}
+	if !strings.Contains(a, "bac: { lowIBS: 0.1, highIBS: 0.75") {
+		t.Fatal("state.bac backtest params must stay 0.1/0.75")
+	}
+	ds := jsFn(a, "defaultStrategy")
+	if !strings.Contains(ds, "lowIBS: 0.1, highIBS: 0.75") {
+		t.Fatal("defaultStrategy.parameters must stay 0.1/0.75")
+	}
+}

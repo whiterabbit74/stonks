@@ -78,6 +78,10 @@
     margin_175: 'Маржа 175%',
     margin_200: 'Маржа 200%',
   };
+  const DEFAULT_LOW_IBS = 0.1;
+  const DEFAULT_HIGH_IBS = 0.75;
+  function liveLowIBS() { return Number(state.autoConfig?.lowIBS ?? state.autoConfig?.config?.lowIBS ?? DEFAULT_LOW_IBS); }
+  function liveHighIBS() { return Number(state.autoConfig?.highIBS ?? state.autoConfig?.config?.highIBS ?? DEFAULT_HIGH_IBS); }
   const BROKER_TABS = [
     { id: 'connect', label: 'Подключение' },
     { id: 'overview', label: 'Обзор' },
@@ -1347,8 +1351,8 @@
       const reason = t.exitReason === 'ibs_signal' && exitIbsNum != null
         ? ('IBS ' + fmt((Math.abs(exitIbsNum) <= 1.5 ? exitIbsNum * 100 : exitIbsNum), 1) + '%')
         : (t.exitReason || '');
-      const hasEntryProblem = entryIbsNum != null && (Math.abs(entryIbsNum) <= 1.5 ? entryIbsNum : entryIbsNum / 100) > 0.1;
-      const hasExitProblem = exitIbsNum != null && (Math.abs(exitIbsNum) <= 1.5 ? exitIbsNum : exitIbsNum / 100) < 0.75;
+      const hasEntryProblem = entryIbsNum != null && (Math.abs(entryIbsNum) <= 1.5 ? entryIbsNum : entryIbsNum / 100) > liveLowIBS();
+      const hasExitProblem = exitIbsNum != null && (Math.abs(exitIbsNum) <= 1.5 ? exitIbsNum : exitIbsNum / 100) < liveHighIBS();
       const lev = toNum(ctx.leverage);
       const deposit = toNum(ctx.currentCapitalAfterExit);
       const entryIso = t.entryDate || '—';
@@ -2304,8 +2308,8 @@
     const stats = monitorStats(simulated);
     const rows = (state.watches || []).map((w) => `<tr>
       <td class="font-mono"><a href="/stocks?tickers=${encodeURIComponent(w.symbol)}" data-nav class="text-blue-600">${esc(w.symbol)}</a></td>
-      <td>≤ ${(w.lowIBS ?? 0.1).toFixed(2)}</td>
-      <td>≥ ${Number(w.highIBS ?? 0.75).toFixed(2)}</td>
+      <td>≤ ${(w.lowIBS ?? liveLowIBS()).toFixed(2)}</td>
+      <td>≥ ${Number(w.highIBS ?? liveHighIBS()).toFixed(2)}</td>
       <td>${w.entryPrice != null ? fmtUsd(w.entryPrice) : '—'}${w.isOpenPosition && w.entryDate ? `<div class="text-[11px] text-gray-500">${esc(fmtTradingDate(w.entryDate))}${w.entryIBS != null ? ' · IBS ' + fmt(ibsPct(w.entryIBS), 1) + '%' : ''}</div>` : ''}</td>
       <td><span class="rounded-full px-2 py-0.5 text-xs ${w.isOpenPosition ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500'}">${w.isOpenPosition ? 'Открыта' : 'Нет'}</span></td>
       <td>${w.isOpenPosition && w.currentTradeId ? `<button type="button" data-close-mon="${esc(w.currentTradeId)}" data-close-sym="${esc(w.symbol)}" class="text-sm text-red-600 mr-2">Закрыть</button>` : ''}<button data-dw="${esc(w.symbol)}" class="text-sm text-red-600">Удалить</button></td>
@@ -2637,7 +2641,7 @@
             </div>
             <dl class="grid gap-x-6 gap-y-1 sm:grid-cols-2">
               <div class="flex justify-between gap-3"><dt class="text-gray-500">Размер входа</dt><dd>${esc(capitalModeLabel(mode))}, целые акции</dd></div>
-              <div class="flex justify-between gap-3"><dt class="text-gray-500">Пороги IBS</dt><dd>вход &lt; ${esc(ac.lowIBS ?? 0.1)} · выход &gt; ${esc(ac.highIBS ?? 0.75)}</dd></div>
+              <div class="flex justify-between gap-3"><dt class="text-gray-500">Пороги IBS</dt><dd>вход &lt; ${esc(liveLowIBS())} · выход &gt; ${esc(liveHighIBS())}</dd></div>
               <div class="flex justify-between gap-3"><dt class="text-gray-500">Котировки</dt><dd>${esc(ac.provider || 'finnhub')} → резерв автоматически</dd></div>
               <div class="flex justify-between gap-3"><dt class="text-gray-500">Заявки</dt><dd>рыночные, DAY, основная сессия</dd></div>
               <div class="flex justify-between gap-3"><dt class="text-gray-500">Окно исполнения</dt><dd>${esc(ac.executionWindowSeconds ?? 90)} сек до закрытия</dd></div>
@@ -2688,7 +2692,7 @@
         const prev = toNum(quote.prevClose ?? quote.previousClose ?? rng.prevClose);
         const ibs = (high != null && low != null && last != null && high !== low) ? (last - low) / (high - low) : toNum(w.lastIbs ?? w.ibs);
         const delta = (last != null && prev != null && prev !== 0) ? ((last - prev) / prev) * 100 : null;
-        const ibsCls = ibs == null ? '' : (ibs < 0.10 ? 'text-emerald-600' : (ibs > 0.75 ? 'text-red-600' : ''));
+        const ibsCls = ibs == null ? '' : (ibs < liveLowIBS() ? 'text-emerald-600' : (ibs > liveHighIBS() ? 'text-red-600' : ''));
         const openPx = toNum(quote.open ?? quote.o ?? rng.open ?? w.todayOpen);
         return `<tr>
           <td class="font-mono">${esc(w.symbol)}</td>
@@ -2699,7 +2703,7 @@
           <td>${prev == null ? '—' : fmt(prev)}</td>
           <td class="${pnlClass(delta)}">${delta == null ? '—' : fmt(delta, 2) + '%'}</td>
           <td>${w.entryPrice == null ? '—' : fmtUsd(w.entryPrice)}</td>
-          <td>≤ ${Number(w.lowIBS ?? 0.1).toFixed(2)}</td>
+          <td>≤ ${Number(w.lowIBS ?? liveLowIBS()).toFixed(2)}</td>
           <td>${w.isOpenPosition ? 'Открыта' : 'В мониторинге'}</td>
           <td class="text-xs">${esc(formatDateTimeET(q.dateKey || quote.updatedAt || ''))}</td>
           <td class="text-xs">${esc(q.provider || q.error || '')}</td>
@@ -2839,8 +2843,8 @@
         <div class="rounded-xl border p-4 mb-3">
           <div class="font-medium mb-2">Пороги IBS по умолчанию</div>
           <div class="grid gap-3 sm:grid-cols-2">
-            <label class="text-sm">Вход, IBS ниже<input name="autoLowIBS" type="number" step="0.01" min="0" max="1" value="${esc(ac.lowIBS ?? 0.1)}" class="field mt-1" /></label>
-            <label class="text-sm">Выход, IBS выше<input name="autoHighIBS" type="number" step="0.01" min="0" max="1" value="${esc(ac.highIBS ?? 0.75)}" class="field mt-1" /></label>
+            <label class="text-sm">Вход, IBS ниже<input name="autoLowIBS" type="number" step="0.01" min="0" max="1" value="${esc(ac.lowIBS ?? liveLowIBS())}" class="field mt-1" /></label>
+            <label class="text-sm">Выход, IBS выше<input name="autoHighIBS" type="number" step="0.01" min="0" max="1" value="${esc(ac.highIBS ?? liveHighIBS())}" class="field mt-1" /></label>
           </div>
           <p class="text-xs text-gray-500 mt-1">Сравнение строгое с обеих сторон: ровно 0.10 — это не вход. У каждого тикера на странице «Мониторинг» есть собственные пороги, и они важнее этих: здесь задаётся только значение по умолчанию.</p>
         </div>
@@ -3641,12 +3645,13 @@
       if (!state.loaded.watches) {
         try {
           const calP = state.loaded.cal ? Promise.resolve(state.cal.data) : API.calendar().catch(() => ({}));
-          const [w, t, a, c, cal] = await Promise.all([
+          const [w, t, a, c, cal, ac] = await Promise.all([
             API.watches(),
             API.trades().catch((e) => { if (e && e.status === 404) return API.monitorTrades(); throw e; }),
             API.emaAlerts(),
             API.consistency().catch((e) => ({ issues: [{ code: 'fetch_failed', message: (e && e.message) || 'Не удалось получить согласованность' }] })),
             calP,
+            API.autoConfig().catch(() => ({})),
           ]);
           state.watchLoadError = '';
           state.watches = w || [];
@@ -3655,6 +3660,7 @@
           state.consistency = c || { issues: [] };
           state.cal.data = cal || {};
           state.loaded.cal = true;
+          state.autoConfig = ac && ac.config ? ac.config : (ac || {});
         } catch (e) {
           state.watchLoadError = (e && e.message) || 'Не удалось загрузить мониторинг';
           state.watches = state.watches || [];
@@ -3679,7 +3685,7 @@
       document.getElementById('watch-form')?.addEventListener('submit', async (e) => {
         e.preventDefault();
         try {
-          await API.addWatch({ symbol: e.target.symbol.value, lowIBS: 0.1, highIBS: 0.75 });
+          await API.addWatch({ symbol: e.target.symbol.value, lowIBS: liveLowIBS(), highIBS: liveHighIBS() });
           state.watches = await API.watches();
           renderPage();
         } catch (err) { toast(errText(err)); }
