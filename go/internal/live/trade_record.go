@@ -123,11 +123,17 @@ func (e *Engine) recordFill(t map[string]any, detail map[string]any, status stri
 		exitIBS = meta.IBS
 	}
 
-	e.logAuto("local_trade_recorded", meta.CorrelationID, map[string]any{
+	recorded := map[string]any{
 		"symbol": symbol, "action": action, "status": status,
-		"clientOrderId": clientOrderID, "price": fillPrice, "quantity": fillQty,
-		"source": source, "dateKey": dateKey,
-	})
+		"clientOrderId": clientOrderID, "quantity": fillQty,
+		"source": source, "dateKey": dateKey, "broker": brokerName,
+	}
+	if unconfirmedPrice {
+		recorded["priceUnconfirmed"] = true
+	} else {
+		recorded["price"] = fillPrice
+	}
+	e.logAuto("local_trade_recorded", meta.CorrelationID, recorded)
 
 	// The executed quantity is the fact; the status string is only the broker's
 	// vocabulary. Record the trade whenever shares actually changed hands, even
@@ -176,21 +182,35 @@ func (e *Engine) recordFill(t map[string]any, detail map[string]any, status stri
 			}
 			return
 		}
-		if err := e.DB.InsertTrade("broker_trades", map[string]any{
+		entryRec := map[string]any{
 			"id": clientOrderID, "symbol": symbol, "status": "open",
-			"entryDate": dateKey, "entryPrice": fillPrice, "source": source, "quantity": fillQty,
+			"entryDate": dateKey, "source": source, "quantity": fillQty,
 			"broker": brokerName,
-		}); err != nil {
+		}
+		if unconfirmedPrice {
+			// 0 is not a fill. Leave entry_price NULL and mark the row so the
+			// journal/UI can badge it until an operator types a real price.
+			entryRec["notes"] = "fill_price_unconfirmed"
+		} else {
+			entryRec["entryPrice"] = fillPrice
+		}
+		if err := e.DB.InsertTrade("broker_trades", entryRec); err != nil {
 			e.logAuto("local_trade_record_failed", meta.CorrelationID, map[string]any{
 				"table": "broker_trades", "error": err.Error(), "clientOrderId": clientOrderID,
 			})
 		}
 		monID := "m-" + clientOrderID
 		if e.DB.GetTrade("trades", monID) == nil {
-			if err := e.DB.InsertTrade("trades", map[string]any{
+			monRec := map[string]any{
 				"id": monID, "symbol": symbol, "status": "open",
-				"entryDate": dateKey, "entryPrice": fillPrice, "source": source, "quantity": fillQty,
-			}); err != nil {
+				"entryDate": dateKey, "source": source, "quantity": fillQty,
+			}
+			if unconfirmedPrice {
+				monRec["notes"] = "fill_price_unconfirmed"
+			} else {
+				monRec["entryPrice"] = fillPrice
+			}
+			if err := e.DB.InsertTrade("trades", monRec); err != nil {
 				e.logAuto("local_trade_record_failed", meta.CorrelationID, map[string]any{
 					"table": "trades", "error": err.Error(), "clientOrderId": clientOrderID,
 				})

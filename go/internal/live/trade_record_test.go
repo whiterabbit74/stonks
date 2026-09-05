@@ -1,6 +1,8 @@
 package live
 
 import (
+	"database/sql"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -87,4 +89,51 @@ func TestFillMessagesUseTrackerBroker(t *testing.T) {
 			t.Fatalf("slippage must not say Webull when broker=robinhood, got %q", body)
 		}
 	})
+}
+
+func assertEntryPriceSQLNull(t *testing.T, e *Engine, table, id string) {
+	t.Helper()
+	var p sql.NullFloat64
+	if err := e.DB.SQL.QueryRow(`SELECT entry_price FROM `+table+` WHERE id=?`, id).Scan(&p); err != nil {
+		t.Fatalf("scan %s.%s entry_price: %v", table, id, err)
+	}
+	if p.Valid {
+		t.Fatalf("%s.%s entry_price must be SQL NULL, got %v", table, id, p.Float64)
+	}
+}
+
+// AU-P1-3: a fill without a price must not journal 0 as if it were real.
+func TestUnconfirmedFillPriceIsNullNotZero(t *testing.T) {
+	_, e, _ := testEngine(t, nil)
+	id := "oid-noprice-null"
+	seedOrderMeta(e, id, orderMeta{
+		Action: "entry", Symbol: "AAPL", Quantity: 2,
+		QuotePrice: 8.2, DateKey: "2026-09-01", Broker: "robinhood",
+	})
+	e.recordFill(map[string]any{
+		"clientOrderId": id, "symbol": "AAPL", "action": "entry",
+		"quantity": 2.0, "dateKey": "2026-09-01", "broker": "robinhood",
+	}, map[string]any{"status": "filled", "filled_qty": 2.0}, "filled")
+
+	row := e.DB.GetTrade("broker_trades", id)
+	if row == nil {
+		t.Fatal("unconfirmed fill must still open a journal row")
+	}
+	if row["entryPrice"] != nil {
+		t.Fatalf("entryPrice must be JSON/SQL null, not 0: %+v", row["entryPrice"])
+	}
+	assertEntryPriceSQLNull(t, e, "broker_trades", id)
+	assertEntryPriceSQLNull(t, e, "trades", "m-"+id)
+	notes := fmt.Sprint(row["notes"])
+	if !strings.Contains(notes, "fill_price_unconfirmed") {
+		t.Fatalf("need a mark so UI can badge an unconfirmed price, notes=%q", notes)
+	}
+
+	closed, err := e.DB.CloseTradeByID("broker_trades", id, 10.0, "2026-09-02", nil)
+	if err != nil {
+		t.Fatalf("close: %v", err)
+	}
+	if closed["pnlAbsolute"] != nil || closed["pnlPercent"] != nil {
+		t.Fatalf("PnL must not treat a missing fill as 0: %+v", closed)
+	}
 }
