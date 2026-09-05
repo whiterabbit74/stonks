@@ -1128,7 +1128,10 @@ func (e *Engine) manualOrder(br Broker, brokerName, symbol, side string, qty flo
 	if side == "BUY" {
 		action = "entry"
 	}
-	key := brokerName + ":" + symbol + ":" + action
+	key := brokerName + ":" + action
+	if action != "entry" {
+		key = brokerName + ":" + symbol + ":" + action
+	}
 
 	var pending map[string]any
 	var pendErr error

@@ -380,7 +380,7 @@ func downwardDev(returns []float64, marDaily float64) float64 {
 }
 
 func CAGR(finalValue, initialValue float64, startDate, endDate string) float64 {
-	if initialValue <= 0 {
+	if initialValue <= 0 || finalValue <= 0 {
 		return 0
 	}
 	years := float64(tradingdate.DaysBetween(startDate, endDate)) / 365.25

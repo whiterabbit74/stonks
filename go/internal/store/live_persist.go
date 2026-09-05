@@ -3,6 +3,7 @@ package store
 import (
 	"database/sql"
 	"fmt"
+	"math"
 	"os"
 	"strings"
 	"time"
@@ -15,6 +16,16 @@ func (d *DB) MergeOHLC(ticker string, incoming []types.OHLC) error {
 	ticker = SafeTicker(ticker)
 	if ticker == "" {
 		return fmt.Errorf("Invalid ticker")
+	}
+	today := tradingdate.TodayNYSE(time.Now())
+	for _, b := range incoming {
+		date := tradingdate.DateKey(b.Date)
+		if date == "" || date > today || !finitePositive(b.Open) || !finitePositive(b.High) || !finitePositive(b.Low) || !finitePositive(b.Close) || b.High < b.Low || b.Close < b.Low || b.Close > b.High {
+			return fmt.Errorf("invalid OHLC bar for %s", date)
+		}
+		if b.AdjClose != nil && (!finitePositive(*b.AdjClose)) {
+			return fmt.Errorf("invalid adjusted close for %s", date)
+		}
 	}
 	tx, err := d.SQL.Begin()
 	if err != nil {
@@ -55,6 +66,8 @@ func (d *DB) MergeOHLC(ticker string, incoming []types.OHLC) error {
 	}
 	return tx.Commit()
 }
+
+func finitePositive(v float64) bool { return v > 0 && !math.IsNaN(v) && !math.IsInf(v, 0) }
 
 // SaveWebullToken persists the token, expiry, and check status as a single
 // word (mirrored into both last_check_status and last_check_raw). It is the

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
 	"os"
@@ -744,10 +745,16 @@ func num(v any) float64 {
 	case float64:
 		return n
 	case json.Number:
-		f, _ := n.Float64()
+		f, err := n.Float64()
+		if err != nil {
+			return math.NaN()
+		}
 		return f
 	case string:
-		f, _ := strconv.ParseFloat(n, 64)
+		f, err := strconv.ParseFloat(n, 64)
+		if err != nil {
+			return math.NaN()
+		}
 		return f
 	case int:
 		return float64(n)

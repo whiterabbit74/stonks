@@ -369,7 +369,7 @@ func (s *Server) handleReadyz(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.DB.SQL.Ping(); err != nil {
-		writeJSON(w, 503, map[string]any{"status": "not_ready", "error": err.Error()})
+		writeJSON(w, 503, map[string]any{"status": "not_ready", "error": "database unavailable"})
 		return
 	}
 	if !s.DB.HasColumn("broker_trades", "broker") {
