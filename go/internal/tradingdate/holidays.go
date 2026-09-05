@@ -61,19 +61,42 @@ func GoodFriday(year int) string {
 	return e.Format(Layout)
 }
 
-func NYSEHolidayDates(year int) []string {
-	return []string{
-		ObservedFixed(year, time.January, 1),
-		NthWeekdayOfMonth(year, time.January, time.Monday, 3),
-		NthWeekdayOfMonth(year, time.February, time.Monday, 3),
-		GoodFriday(year),
-		LastWeekdayOfMonth(year, time.May, time.Monday),
-		ObservedFixed(year, time.June, 19),
-		ObservedFixed(year, time.July, 4),
-		NthWeekdayOfMonth(year, time.September, time.Monday, 1),
-		NthWeekdayOfMonth(year, time.November, time.Thursday, 4),
-		ObservedFixed(year, time.December, 25),
+// juneteenthSince is the first year NYSE observed Juneteenth (June 19).
+const juneteenthSince = 2022
+
+type namedHoliday struct {
+	date string
+	name string
+}
+
+func nyseHolidays(year int) []namedHoliday {
+	h := make([]namedHoliday, 0, 11)
+	h = append(h,
+		namedHoliday{ObservedFixed(year, time.January, 1), "New Year's Day"},
+		namedHoliday{NthWeekdayOfMonth(year, time.January, time.Monday, 3), "Martin Luther King Jr. Day"},
+		namedHoliday{NthWeekdayOfMonth(year, time.February, time.Monday, 3), "Presidents' Day"},
+		namedHoliday{GoodFriday(year), "Good Friday"},
+		namedHoliday{LastWeekdayOfMonth(year, time.May, time.Monday), "Memorial Day"},
+	)
+	if year >= juneteenthSince {
+		h = append(h, namedHoliday{ObservedFixed(year, time.June, 19), "Juneteenth"})
 	}
+	h = append(h,
+		namedHoliday{ObservedFixed(year, time.July, 4), "Independence Day"},
+		namedHoliday{NthWeekdayOfMonth(year, time.September, time.Monday, 1), "Labor Day"},
+		namedHoliday{NthWeekdayOfMonth(year, time.November, time.Thursday, 4), "Thanksgiving Day"},
+		namedHoliday{ObservedFixed(year, time.December, 25), "Christmas Day"},
+	)
+	return h
+}
+
+func NYSEHolidayDates(year int) []string {
+	holidays := nyseHolidays(year)
+	dates := make([]string, len(holidays))
+	for i, h := range holidays {
+		dates[i] = h.date
+	}
+	return dates
 }
 
 func IsNYSEHoliday(date string) bool {
@@ -82,8 +105,8 @@ func IsNYSEHoliday(date string) bool {
 		return false
 	}
 	y, _, _ := split(date)
-	for _, d := range NYSEHolidayDates(y) {
-		if d == date {
+	for _, h := range nyseHolidays(y) {
+		if h.date == date {
 			return true
 		}
 	}
@@ -96,21 +119,10 @@ func HolidayName(ymd string) string {
 		return "Market Holiday"
 	}
 	y, _, _ := split(ymd)
-	mmdd := ymd[5:]
-	names := map[string]string{
-		ObservedFixed(y, time.January, 1)[5:]:                    "New Year's Day",
-		NthWeekdayOfMonth(y, time.January, time.Monday, 3)[5:]:   "Martin Luther King Jr. Day",
-		NthWeekdayOfMonth(y, time.February, time.Monday, 3)[5:]:  "Presidents' Day",
-		GoodFriday(y)[5:]:                                        "Good Friday",
-		LastWeekdayOfMonth(y, time.May, time.Monday)[5:]:         "Memorial Day",
-		ObservedFixed(y, time.June, 19)[5:]:                      "Juneteenth",
-		ObservedFixed(y, time.July, 4)[5:]:                       "Independence Day",
-		NthWeekdayOfMonth(y, time.September, time.Monday, 1)[5:]: "Labor Day",
-		NthWeekdayOfMonth(y, time.November, time.Thursday, 4)[5:]: "Thanksgiving Day",
-		ObservedFixed(y, time.December, 25)[5:]:                  "Christmas Day",
-	}
-	if n := names[mmdd]; n != "" {
-		return n
+	for _, h := range nyseHolidays(y) {
+		if h.date == ymd {
+			return h.name
+		}
 	}
 	return "Market Holiday"
 }
@@ -118,6 +130,11 @@ func HolidayName(ymd string) string {
 func ShortDayName(ymd string) string {
 	ymd = DateKey(ymd)
 	if !IsValid(ymd) {
+		return "Early Close"
+	}
+	// 12-24 / 07-03 are full holidays when Christmas / Independence Day
+	// falls on Saturday (observed Friday), not early-close eves.
+	if IsNYSEHoliday(ymd) {
 		return "Early Close"
 	}
 	mmdd := ymd[5:]

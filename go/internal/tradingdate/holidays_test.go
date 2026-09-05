@@ -52,3 +52,69 @@ func TestThanksgivingEveShortName(t *testing.T) {
 		t.Fatalf("2025 eve got %q", got)
 	}
 }
+
+func TestJuneteenthObservedFrom2022(t *testing.T) {
+	if IsNYSEHoliday("2021-06-19") {
+		t.Error("2021-06-19 is not an NYSE holiday (Juneteenth from 2022)")
+	}
+	if IsNYSEHoliday("2021-06-18") {
+		t.Error("2021-06-18 must not be observed Juneteenth; NYSE traded that Friday")
+	}
+	if HolidayName("2021-06-18") == "Juneteenth" {
+		t.Error("HolidayName must not label 2021-06-18 as Juneteenth")
+	}
+	if !IsNYSEHoliday("2022-06-20") {
+		t.Error("2022-06-20 is observed Juneteenth (Sunday 06-19 → Monday)")
+	}
+	if got := HolidayName("2022-06-20"); got != "Juneteenth" {
+		t.Errorf("2022-06-20 name got %q", got)
+	}
+	if !IsNYSEHoliday("2023-06-19") {
+		t.Error("2023-06-19 is Juneteenth")
+	}
+	if got := HolidayName("2023-06-19"); got != "Juneteenth" {
+		t.Errorf("2023-06-19 name got %q", got)
+	}
+}
+
+func TestChristmasEveVsObservedChristmasFriday(t *testing.T) {
+	if IsNYSEHoliday("2024-12-24") {
+		t.Error("2024-12-25 is a weekday; 12-24 is not a holiday")
+	}
+	if got := ShortDayName("2024-12-24"); got != "Christmas Eve" {
+		t.Errorf("2024-12-24 short name got %q want Christmas Eve", got)
+	}
+
+	if !IsNYSEHoliday("2021-12-24") {
+		t.Error("2021-12-24 is observed Christmas (Saturday 12-25 → Friday)")
+	}
+	if got := HolidayName("2021-12-24"); got != "Christmas Day" {
+		t.Errorf("2021-12-24 name got %q want Christmas Day", got)
+	}
+	if got := ShortDayName("2021-12-24"); got == "Christmas Eve" {
+		t.Error("2021-12-24 is a full holiday, not Christmas Eve early close")
+	}
+
+	if !IsNYSEHoliday("2027-12-24") {
+		t.Error("2027-12-24 is observed Christmas")
+	}
+	if got := ShortDayName("2027-12-24"); got == "Christmas Eve" {
+		t.Error("2027-12-24 is a full holiday, not early close")
+	}
+}
+
+func TestIndependenceEveVsObservedFriday(t *testing.T) {
+	if IsNYSEHoliday("2025-07-03") {
+		t.Error("2025-07-04 is Friday; 07-03 is not a holiday")
+	}
+	if got := ShortDayName("2025-07-03"); got != "Independence Day Eve" {
+		t.Errorf("2025-07-03 short name got %q want Independence Day Eve", got)
+	}
+
+	if !IsNYSEHoliday("2026-07-03") {
+		t.Error("2026-07-03 is observed Independence Day (Saturday 07-04 → Friday)")
+	}
+	if got := ShortDayName("2026-07-03"); got == "Independence Day Eve" {
+		t.Error("2026-07-03 is a full holiday, not Independence Day Eve early close")
+	}
+}
