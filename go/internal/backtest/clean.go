@@ -54,13 +54,16 @@ func RunClean(data []types.OHLC, strategy types.Strategy, options *CleanOptions)
 	ibsValues := indicators.IBS(data)
 	currentCapital := initial
 	var trades []types.Trade
-	var equity []types.EquityPoint
 	var position *cleanPosition
-	peakValue := 0.0
 
 	capitalUsage := types.F64Or(strategy.RiskManagement.CapitalUsage, 100)
 
-	for i := 0; i < len(data); i++ {
+	dates := make([]string, len(data))
+	for i := range data {
+		dates[i] = data[i].Date
+	}
+	equity := runDailyEngine(dates, initial, func(day dailyDay) float64 {
+		i := day.Index
 		bar := data[i]
 		var nextBar *types.OHLC
 		if i+1 < len(data) {
@@ -145,15 +148,8 @@ func RunClean(data []types.OHLC, strategy types.Strategy, options *CleanOptions)
 		if position != nil {
 			totalValue += position.quantity * bar.Close
 		}
-		if totalValue > peakValue {
-			peakValue = totalValue
-		}
-		drawdown := 0.0
-		if peakValue > 0 {
-			drawdown = ((peakValue - totalValue) / peakValue) * 100
-		}
-		equity = append(equity, types.EquityPoint{Date: bar.Date, Value: totalValue, Drawdown: drawdown})
-	}
+		return totalValue
+	})
 
 	lastBar := data[len(data)-1]
 	lastIBS := ibsValues[len(data)-1]
@@ -205,19 +201,7 @@ func RunClean(data []types.OHLC, strategy types.Strategy, options *CleanOptions)
 	if position != nil {
 		finalValue += position.quantity * lastBar.Close
 	}
-	if finalValue > peakValue {
-		peakValue = finalValue
-	}
-	finalDrawdown := 0.0
-	if peakValue > 0 {
-		finalDrawdown = ((peakValue - finalValue) / peakValue) * 100
-	}
-	lastIdx := len(equity) - 1
-	if lastIdx >= 0 && equity[lastIdx].Date == lastBar.Date {
-		equity[lastIdx] = types.EquityPoint{Date: lastBar.Date, Value: finalValue, Drawdown: finalDrawdown}
-	} else {
-		equity = append(equity, types.EquityPoint{Date: lastBar.Date, Value: finalValue, Drawdown: finalDrawdown})
-	}
+	replaceFinalDailyValue(equity, lastBar.Date, finalValue, initial)
 
 	m := metrics.New(trades, equity, initial, nil).All()
 	chart := make([]types.ChartCandle, len(data))
