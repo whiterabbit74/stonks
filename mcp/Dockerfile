@@ -1,4 +1,4 @@
-FROM golang:1.25-alpine AS build
+FROM golang:1.25.14-alpine AS build
 WORKDIR /src
 COPY mcp/go.mod ./go.mod
 COPY mcp/cmd ./cmd
