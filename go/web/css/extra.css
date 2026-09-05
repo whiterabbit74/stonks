@@ -48,6 +48,8 @@ html.dark .scroll-cue-overflow::after { background: linear-gradient(to right, tr
 .action-icon-danger:hover { background: #fef2f2; }
 .splits-mobile { display: block; }
 .broker-grid > * { min-width: 0; }
+.broker-grid dl > div { min-width: 0; }
+.broker-grid dl dd { min-width: 0; overflow-wrap: anywhere; text-align: right; }
 .footer-grid > * { min-width: 0; }
 #api-ver { white-space: nowrap; }
 table.trades { width: 100%; min-width: max-content; border-collapse: collapse; font-size: 13px; }
