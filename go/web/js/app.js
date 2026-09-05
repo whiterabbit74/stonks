@@ -2779,7 +2779,7 @@
         <div class="rounded-lg border border-gray-200 p-4 dark:border-gray-700">
         <h3 class="font-semibold mb-2">Ожидающие и последние отслеживаемые ордера</h3>
           ${persistBlockBanner}
-          ${pendingRows ? `<div class="overflow-auto mt-2"><table class="trades"><thead><tr><th>Тикер</th><th>Брокер</th><th>Действие</th><th>Статус</th><th>Кол-во</th><th>Старт</th><th>Действие</th></tr></thead><tbody>${pendingRows}</tbody></table></div>` : '<p class="text-sm text-gray-500 mt-2">Отслеживаемых ордеров пока нет</p>'}
+          ${pendingRows ? `<div class="overflow-auto mt-2"><table class="trades"><thead><tr><th>Тикер</th><th>Брокер</th><th>Операция</th><th>Статус</th><th>Кол-во</th><th>Старт</th><th>Действие</th></tr></thead><tbody>${pendingRows}</tbody></table></div>` : '<p class="text-sm text-gray-500 mt-2">Отслеживаемых ордеров пока нет</p>'}
           <p class="mt-2 text-xs text-gray-500">execution_unknown / unresolved блокируют новые входы у брокера и требуют ручного разбора: проверьте заявку у брокера и нажмите «Исполнено у брокера» либо «Заявки нет».</p>
         </div>
       </div>`;
