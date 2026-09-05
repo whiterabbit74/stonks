@@ -59,23 +59,56 @@ func ParseHistoricalsSymbol(raw []byte, symbol string) []types.OHLC {
 		return nil
 	}
 	var out []types.OHLC
-	walkHistoricals(root, strings.ToUpper(strings.TrimSpace(symbol)), &out)
+	want := strings.ToUpper(strings.TrimSpace(symbol))
+	walkHistoricals(root, want, "", "", &out)
 	sort.Slice(out, func(i, j int) bool { return out[i].Date < out[j].Date })
 	return out
 }
 
-func walkHistoricals(v any, want string, out *[]types.OHLC) {
+func nodeTicker(m map[string]any) string {
+	return strings.ToUpper(strings.TrimSpace(fmtString(first(m, "symbol", "ticker"))))
+}
+
+func nodeInstrument(m map[string]any) string {
+	return strings.TrimSpace(fmtString(first(m, "instrument", "instrument_id", "instrumentId")))
+}
+
+func historicalIdentityMismatch(want, sym, inst string) bool {
+	if want == "" {
+		return false
+	}
+	if sym != "" {
+		return !strings.EqualFold(sym, want)
+	}
+	if inst == "" {
+		return false
+	}
+	if strings.EqualFold(inst, want) {
+		return false
+	}
+	// A ticker like AAPL cannot be compared to an instrument URL/UUID.
+	if !strings.Contains(inst, "/") && len(inst) <= 8 {
+		return !strings.EqualFold(inst, want)
+	}
+	return false
+}
+
+func walkHistoricals(v any, want, encSym, encInst string, out *[]types.OHLC) {
 	switch t := v.(type) {
 	case map[string]any:
+		sym, inst := nodeTicker(t), nodeInstrument(t)
+		if sym == "" {
+			sym = encSym
+		}
+		if inst == "" {
+			inst = encInst
+		}
 		if begins, ok := t["begins_at"]; ok {
 			if asBool(t["interpolated"]) {
 				return
 			}
-			if want != "" {
-				got := strings.ToUpper(strings.TrimSpace(fmtString(first(t, "symbol", "ticker"))))
-				if got != "" && got != want {
-					return
-				}
+			if historicalIdentityMismatch(want, sym, inst) {
+				return
 			}
 			date := TradingDateFromBeginsAt(fmtString(begins))
 			if date == "" {
@@ -91,12 +124,15 @@ func walkHistoricals(v any, want string, out *[]types.OHLC) {
 			})
 			return
 		}
+		if historicalIdentityMismatch(want, sym, inst) {
+			return
+		}
 		for _, child := range t {
-			walkHistoricals(child, want, out)
+			walkHistoricals(child, want, sym, inst, out)
 		}
 	case []any:
 		for _, child := range t {
-			walkHistoricals(child, want, out)
+			walkHistoricals(child, want, encSym, encInst, out)
 		}
 	}
 }

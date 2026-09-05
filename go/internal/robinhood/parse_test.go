@@ -23,6 +23,23 @@ func TestTradingDateIsFirstTenChars(t *testing.T) {
 	}
 }
 
+func TestParseHistoricalsSymbolDropsUnlabeledBarsUnderOtherTicker(t *testing.T) {
+	raw, _ := json.Marshal(map[string]any{
+		"symbol": "MSFT",
+		"instrument": "https://api.robinhood.com/instruments/msft-uuid/",
+		"historicals": []any{
+			map[string]any{"begins_at": "2024-01-02T00:00:00Z", "open_price": "400", "high_price": "401", "low_price": "399", "close_price": "400.5", "volume": "2"},
+			map[string]any{"begins_at": "2024-01-03T00:00:00Z", "open_price": "402", "high_price": "403", "low_price": "401", "close_price": "402", "volume": "3"},
+		},
+	})
+	if bars := ParseHistoricalsSymbol(raw, "AAPL"); len(bars) != 0 {
+		t.Fatalf("MSFT parent + unlabeled bars must not become AAPL, got %d %+v", len(bars), bars)
+	}
+	if bars := ParseHistoricalsSymbol(raw, "MSFT"); len(bars) != 2 {
+		t.Fatalf("same-ticker parent must keep unlabeled bars, got %d", len(bars))
+	}
+}
+
 func TestParseHistoricalsDropsInterpolatedAndSorts(t *testing.T) {
 	raw, _ := json.Marshal(map[string]any{
 		"historicals": []any{
