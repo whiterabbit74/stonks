@@ -36,6 +36,9 @@ func BuildSignature(path string, query map[string]string, bodyString string, hea
 		if v == "" {
 			continue
 		}
+		if _, clash := headersToSign[k]; clash {
+			continue
+		}
 		merged[k] = v
 	}
 	for k, v := range headersToSign {

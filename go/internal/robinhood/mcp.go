@@ -27,6 +27,7 @@ type MCP struct {
 	Token    func() (string, error)
 
 	mu      sync.Mutex
+	initMu  sync.Mutex
 	session string
 	nextID  int
 	ready   bool
@@ -77,6 +78,8 @@ func (c *MCP) ListTools() (json.RawMessage, error) {
 }
 
 func (c *MCP) ensureSession(ctx context.Context) error {
+	c.initMu.Lock()
+	defer c.initMu.Unlock()
 	c.mu.Lock()
 	ready := c.ready
 	c.mu.Unlock()

@@ -42,6 +42,12 @@ func TestParseCallbackURLWithJunk(t *testing.T) {
 	}
 }
 
+func TestParseCallbackRejectsForeignHost(t *testing.T) {
+	if _, _, err := ParseCallbackURL("https://evil.example/callback?code=abc&state=st1"); err == nil {
+		t.Fatal("foreign callback host must be rejected")
+	}
+}
+
 func TestParseCallbackRejectsMissingCode(t *testing.T) {
 	if _, _, err := ParseCallbackURL("http://127.0.0.1:53682/callback?state=x"); err == nil {
 		t.Fatal("expected error")

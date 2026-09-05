@@ -92,6 +92,10 @@ func ParseCallbackURL(raw string) (code, state string, err error) {
 	if perr != nil {
 		return "", "", fmt.Errorf("invalid callback url")
 	}
+	want, _ := url.Parse(RedirectURI)
+	if want != nil && u.Hostname() != "" && !strings.EqualFold(u.Hostname(), want.Hostname()) {
+		return "", "", fmt.Errorf("callback host mismatch")
+	}
 	q := u.Query()
 	if q.Get("code") == "" && u.Fragment != "" {
 		if fq, ferr := url.ParseQuery(u.Fragment); ferr == nil {

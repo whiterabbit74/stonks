@@ -23,7 +23,7 @@ func (c *Client) robinhoodHistory(symbol string, startTs, endTs int64) (Historic
 	if err != nil {
 		return Historical{}, robinhoodProviderErr(err)
 	}
-	bars := robinhood.ParseHistoricals(robinhood.ToolContentJSON(raw))
+	bars := robinhood.ParseHistoricalsSymbol(robinhood.ToolContentJSON(raw), symbol)
 	end := ""
 	if endTs > 0 {
 		end = time.Unix(endTs, 0).UTC().Format("2006-01-02")

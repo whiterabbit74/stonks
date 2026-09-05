@@ -50,22 +50,32 @@ func asBool(v any) bool {
 }
 
 func ParseHistoricals(raw []byte) []types.OHLC {
+	return ParseHistoricalsSymbol(raw, "")
+}
+
+func ParseHistoricalsSymbol(raw []byte, symbol string) []types.OHLC {
 	var root any
 	if json.Unmarshal(raw, &root) != nil {
 		return nil
 	}
 	var out []types.OHLC
-	walkHistoricals(root, &out)
+	walkHistoricals(root, strings.ToUpper(strings.TrimSpace(symbol)), &out)
 	sort.Slice(out, func(i, j int) bool { return out[i].Date < out[j].Date })
 	return out
 }
 
-func walkHistoricals(v any, out *[]types.OHLC) {
+func walkHistoricals(v any, want string, out *[]types.OHLC) {
 	switch t := v.(type) {
 	case map[string]any:
 		if begins, ok := t["begins_at"]; ok {
 			if asBool(t["interpolated"]) {
 				return
+			}
+			if want != "" {
+				got := strings.ToUpper(strings.TrimSpace(fmtString(first(t, "symbol", "ticker"))))
+				if got != "" && got != want {
+					return
+				}
 			}
 			date := TradingDateFromBeginsAt(fmtString(begins))
 			if date == "" {
@@ -82,11 +92,11 @@ func walkHistoricals(v any, out *[]types.OHLC) {
 			return
 		}
 		for _, child := range t {
-			walkHistoricals(child, out)
+			walkHistoricals(child, want, out)
 		}
 	case []any:
 		for _, child := range t {
-			walkHistoricals(child, out)
+			walkHistoricals(child, want, out)
 		}
 	}
 }
