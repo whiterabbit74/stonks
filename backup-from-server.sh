@@ -2,7 +2,7 @@
 # Download a full backup from the production server
 # Usage: ./backup-from-server.sh
 
-set -e
+set -euo pipefail
 umask 077
 
 SERVER="ubuntu@146.235.212.239"

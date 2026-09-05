@@ -1,6 +1,7 @@
 # Runtime-only image: the linux/amd64 binary is cross-compiled on the
 # developer machine. The VPS must never run `go build`.
 FROM debian:bookworm-slim
+# tzdata is for the image; the binary also embeds time/tzdata for America/New_York.
 RUN apt-get update -qq && apt-get install -y --no-install-recommends ca-certificates curl tzdata \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --system --gid 10001 app \

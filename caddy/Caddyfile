@@ -37,7 +37,8 @@
     reverse_proxy mcp:8080
   }
 
-  # Music server (ytplayer / musicplay) under /music
+  # Music server (ytplayer / musicplay) under /music — not in this compose;
+  # it lives on the VPS in a separate stack. Missing upstream → 502.
   # /music/foo → musicplay:3001/foo
   redir /music /music/ permanent
   handle_path /music/* {
@@ -59,7 +60,7 @@ tradingibs.site {
   redir https://mktorder.com{uri} permanent
 }
 
-# Separate app on the same Caddy instance
+# Separate app on the same Caddy instance (not in this repo's compose).
 macdiff.com {
   encode gzip
 

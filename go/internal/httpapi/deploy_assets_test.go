@@ -32,8 +32,11 @@ func TestGoDeployShipsBinaryAndWeb(t *testing.T) {
 	if strings.Contains(compose, "docker/go") {
 		t.Fatal("compose must not build the trading server")
 	}
-	if !strings.Contains(compose, "image: ${SERVER_IMAGE:-stonks-server:latest}") {
+	if !strings.Contains(compose, "image: ${SERVER_IMAGE:-stonks-server:current}") {
 		t.Fatal("compose server must run the preloaded image")
+	}
+	if !strings.Contains(compose, "cap_drop:") || !strings.Contains(compose, "no-new-privileges") || !strings.Contains(compose, "mem_limit:") {
+		t.Fatal("compose server must drop caps, forbid new privileges, and set mem_limit")
 	}
 	if !strings.Contains(compose, "DB_FILE=/data/db/trading.db") {
 		t.Fatal("compose must point Go at the existing sqlite")

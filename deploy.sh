@@ -54,10 +54,10 @@ cp -a go/web "${STAGE}/web"
 cp docker/go.runtime.Dockerfile "${STAGE}/Dockerfile"
 
 echo "Build runtime image ${IMAGE}..."
-docker build --platform linux/amd64 -t "${IMAGE}" -t stonks-server:latest "$STAGE"
+docker build --platform linux/amd64 -t "${IMAGE}" -t stonks-server:current -t stonks-server:latest "$STAGE"
 
 echo "Send image to ${HOST}..."
-docker save "${IMAGE}" | gzip -1 | ssh -o BatchMode=yes "$HOST" "gunzip | docker load && docker tag ${IMAGE} stonks-server:latest"
+docker save "${IMAGE}" | gzip -1 | ssh -o BatchMode=yes "$HOST" "gunzip | docker load && docker tag ${IMAGE} stonks-server:current && docker tag ${IMAGE} stonks-server:latest"
 
 echo "Activate on server..."
 ssh -o BatchMode=yes "$HOST" "set -euo pipefail

@@ -1,6 +1,6 @@
 services:
   server:
-    image: ${SERVER_IMAGE:-stonks-server:latest}
+    image: ${SERVER_IMAGE:-stonks-server:current}
     env_file:
       - /home/ubuntu/stonks-config/.env
     environment:
@@ -28,6 +28,11 @@ services:
       # Loopback only: Caddy reaches this service on the docker network.
       - "127.0.0.1:3001:3001"
     restart: unless-stopped
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 2g
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:3001/readyz"]
       interval: 30s
@@ -86,6 +91,11 @@ services:
       - DOMAIN=${DOMAIN:-mktorder.com}
       - TLS_CA=${TLS_CA:-https://acme-v02.api.letsencrypt.org/directory}
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "caddy", "version"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
     container_name: stonks-caddy
 
 volumes:
