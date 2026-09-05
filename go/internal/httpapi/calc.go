@@ -57,10 +57,13 @@ type calcReq struct {
 	IncludeBaseline bool                      `json:"includeBaseline"`
 }
 
-func (s *Server) readCalc(r *http.Request) calcReq {
+func (s *Server) readCalc(w http.ResponseWriter, r *http.Request) (calcReq, bool) {
 	var req calcReq
-	_ = readJSON(r, &req)
-	return req
+	if err := readJSON(r, &req); err != nil {
+		writeJSON(w, 400, map[string]any{"error": err.Error()})
+		return req, false
+	}
+	return req, true
 }
 
 func (s *Server) calcClean(w http.ResponseWriter, r *http.Request) {
@@ -73,17 +76,26 @@ func (s *Server) calcClean(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) calcBuyAtClose(w http.ResponseWriter, r *http.Request) {
-	req := s.readCalc(r)
+	req, ok := s.readCalc(w, r)
+	if !ok {
+		return
+	}
 	writeJSON(w, 200, backtest.RunBuyAtClose(s.barsOrDataset(req), decodeStrategy(req.Strategy)))
 }
 
 func (s *Server) calcNoStop(w http.ResponseWriter, r *http.Request) {
-	req := s.readCalc(r)
+	req, ok := s.readCalc(w, r)
+	if !ok {
+		return
+	}
 	writeJSON(w, 200, backtest.RunNoStopLoss(s.barsOrDataset(req), decodeStrategy(req.Strategy), req.NoStop))
 }
 
 func (s *Server) calcSingle(w http.ResponseWriter, r *http.Request) {
-	req := s.readCalc(r)
+	req, ok := s.readCalc(w, r)
+	if !ok {
+		return
+	}
 	tickers := s.tickersOrOne(req)
 	if !tickerDataPresent(tickers) {
 		writeJSON(w, 400, map[string]any{"error": "data is required"})
@@ -101,14 +113,20 @@ func (s *Server) calcSingle(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) calcOptions(w http.ResponseWriter, r *http.Request) {
-	req := s.readCalc(r)
+	req, ok := s.readCalc(w, r)
+	if !ok {
+		return
+	}
 	eq, trades, final := backtest.RunOptions(decodeTrades(req.Trades), s.barsOrDataset(req), req.Config)
 	m := metrics.New(trades, eq, 10000, nil).All()
 	writeJSON(w, 200, map[string]any{"equity": eq, "trades": trades, "finalValue": final, "metrics": m, "maxDrawdown": m.MaxDrawdown})
 }
 
 func (s *Server) calcOptionsMulti(w http.ResponseWriter, r *http.Request) {
-	req := s.readCalc(r)
+	req, ok := s.readCalc(w, r)
+	if !ok {
+		return
+	}
 	tickers := s.tickersOrOne(req)
 	if !tickerDataPresent(tickers) {
 		writeJSON(w, 400, map[string]any{"error": "data is required"})
@@ -120,7 +138,10 @@ func (s *Server) calcOptionsMulti(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) calcEMA(w http.ResponseWriter, r *http.Request) {
-	req := s.readCalc(r)
+	req, ok := s.readCalc(w, r)
+	if !ok {
+		return
+	}
 	tickers := s.tickersOrOne(req)
 	if !tickerDataPresent(tickers) {
 		writeJSON(w, 400, map[string]any{"error": "data is required"})
@@ -142,7 +163,10 @@ func (s *Server) calcEMA(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) calcBAC4(w http.ResponseWriter, r *http.Request) {
-	req := s.readCalc(r)
+	req, ok := s.readCalc(w, r)
+	if !ok {
+		return
+	}
 	tickers := s.tickersOrOne(req)
 	if !tickerDataPresent(tickers) {
 		writeJSON(w, 400, map[string]any{"error": "data is required"})
@@ -164,7 +188,10 @@ func (s *Server) calcMetrics(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) calcIndicators(w http.ResponseWriter, r *http.Request) {
-	req := s.readCalc(r)
+	req, ok := s.readCalc(w, r)
+	if !ok {
+		return
+	}
 	bars := s.barsOrDataset(req)
 	if len(bars) == 0 {
 		writeJSON(w, 400, map[string]any{"error": "data is required"})
@@ -200,7 +227,10 @@ func (s *Server) calcBS(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) calcSplits(w http.ResponseWriter, r *http.Request) {
-	req := s.readCalc(r)
+	req, ok := s.readCalc(w, r)
+	if !ok {
+		return
+	}
 	bars := s.barsOrDataset(req)
 	writeJSON(w, 200, map[string]any{
 		"adjusted": splits.AdjustOHLC(bars, req.Splits),
@@ -233,7 +263,10 @@ func (s *Server) calcIBS(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) calcBuyHold(w http.ResponseWriter, r *http.Request) {
-	req := s.readCalc(r)
+	req, ok := s.readCalc(w, r)
+	if !ok {
+		return
+	}
 	var cap float64
 	if req.InitialCapital != nil {
 		cap = *req.InitialCapital
