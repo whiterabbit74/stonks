@@ -2580,7 +2580,7 @@
         <input name="notes" placeholder="заметки" class="field w-40" />
         <button class="btn-primary min-h-0 py-2">Добавить</button>
       </form>
-      ${jrows ? `<div class="overflow-auto"><table class="trades"><thead><tr><th>Тикер</th><th>Брокер</th><th>Источник</th><th>Статус</th><th>Дата входа</th><th>Дата выхода</th><th>Цена покупки / продажи</th><th>Кол-во</th><th>PnL, $</th><th>PnL, %</th><th>IBS вход / выход</th><th>Дней</th><th>Заметки</th><th>ID заявки клиента</th><th>ID заявки брокера</th><th>Действие</th></tr></thead><tbody>${jrows}</tbody></table></div>` : '<p class="text-sm text-gray-500">Сделок нет</p>'}`;
+      ${jrows ? `<div class="overflow-auto"><table class="trades"><thead><tr><th>Тикер</th><th>Брокер</th><th>Источник</th><th>Статус</th><th>Дата входа</th><th>Дата выхода</th><th>Цена покупки / продажи</th><th>Кол-во</th><th>PnL, $</th><th>PnL, %</th><th>IBS вход / выход</th><th>Дней</th><th>Заметки</th><th>ID заявки клиента</th><th>ID заявки брокера</th><th>Действия</th></tr></thead><tbody>${jrows}</tbody></table></div>` : '<p class="text-sm text-gray-500">Сделок нет</p>'}`;
     } else if (tab === 'overview') {
       const bal = extractBalanceSummary(state.dashboard);
       const err = state.dashboard && (state.dashboard.error || (Array.isArray(state.dashboard.errors) && state.dashboard.errors[0]));
@@ -2608,7 +2608,7 @@
         <td>${formatRatioPercent(p.holdingProportion)}</td>
         <td>${p.symbol && p.symbol !== '—' ? actionIcon('x', 'Закрыть позицию', `data-close-pos="${esc(p.symbol)}"`, 'action-icon-danger') : ''}</td>
       </tr>`).join('');
-      body = `${posRows ? `<div class="overflow-auto"><table class="trades"><thead><tr><th>Тикер</th><th>Тип</th><th>Валюта</th><th>Кол-во</th><th>Средняя цена</th><th>Себестоимость</th><th>Рыночная цена</th><th>Рыночная стоимость</th><th>Нереализ. PnL</th><th>PnL %</th><th>Доля</th><th>Действие</th></tr></thead><tbody>${posRows}</tbody></table></div>` : emptyBrokerTable(['Тикер', 'Тип', 'Валюта', 'Кол-во', 'Средняя цена', 'Себестоимость', 'Рыночная цена', 'Рыночная стоимость', 'Нереализ. PnL', 'PnL %', 'Доля', 'Действие'], 'Открытых позиций нет')}
+      body = `${posRows ? `<div class="overflow-auto"><table class="trades"><thead><tr><th>Тикер</th><th>Тип</th><th>Валюта</th><th>Кол-во</th><th>Средняя цена</th><th>Себестоимость</th><th>Рыночная цена</th><th>Рыночная стоимость</th><th>Нереализ. PnL</th><th>PnL %</th><th>Доля</th><th>Действия</th></tr></thead><tbody>${posRows}</tbody></table></div>` : emptyBrokerTable(['Тикер', 'Тип', 'Валюта', 'Кол-во', 'Средняя цена', 'Себестоимость', 'Рыночная цена', 'Рыночная стоимость', 'Нереализ. PnL', 'PnL %', 'Доля', 'Действия'], 'Открытых позиций нет')}
       ${rawJsonBlock('Исходные данные позиций', state.dashboard && (state.dashboard.positions || (state.dashboard.account && state.dashboard.account.positions)))}
       ${rawJsonBlock('Исходные данные счетов', state.dashboard && state.dashboard.accounts)}`;
     } else if (tab === 'orders') {
@@ -2746,7 +2746,7 @@
         <div class="rounded-lg border border-gray-200 p-4 dark:border-gray-700">
         <h3 class="font-semibold mb-2">Ожидающие и последние отслеживаемые ордера</h3>
           ${persistBlockBanner}
-          ${pendingRows ? `<div class="overflow-auto mt-2"><table class="trades"><thead><tr><th>Тикер</th><th>Брокер</th><th>Операция</th><th>Статус</th><th>Кол-во</th><th>Старт</th><th>Действие</th></tr></thead><tbody>${pendingRows}</tbody></table></div>` : '<p class="text-sm text-gray-500 mt-2">Отслеживаемых ордеров пока нет</p>'}
+          ${pendingRows ? `<div class="overflow-auto mt-2"><table class="trades"><thead><tr><th>Тикер</th><th>Брокер</th><th>Операция</th><th>Статус</th><th>Кол-во</th><th>Старт</th><th>Действия</th></tr></thead><tbody>${pendingRows}</tbody></table></div>` : '<p class="text-sm text-gray-500 mt-2">Отслеживаемых ордеров пока нет</p>'}
           <p class="mt-2 text-xs text-gray-500">execution_unknown / unresolved блокируют новые входы у брокера и требуют ручного разбора: проверьте заявку у брокера и нажмите «Исполнено у брокера» либо «Заявки нет».</p>
         </div>
       </div>`;
@@ -2797,7 +2797,7 @@
           <div class="rounded-lg border p-3"><div class="text-xs text-gray-500">Обновлено</div><div class="text-sm">${esc(formatDateTimeET((state.dashboard && state.dashboard.fetchedAt) || ''))}</div></div>
         </div>
         ${issues.length ? issues.map((i) => `<div class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 mb-2">${esc(i.message || i.code)}</div>`).join('') : ''}
-        ${wrows ? `<div class="overflow-auto"><table class="trades"><thead><tr><th>Тикер</th><th>Открытие</th><th>Макс.</th><th>Мин.</th><th>Цена</th><th>Текущий IBS</th><th>Пред. закрытие</th><th>Изменение</th><th>Вход</th><th>Вход, IBS &lt;</th><th>Выход, IBS &gt;</th><th>Позиция</th><th>Обновлено</th><th>Источник</th><th>Действие</th></tr></thead><tbody>${wrows}</tbody></table></div>` : emptyBrokerTable(['Тикер', 'Открытие', 'Макс.', 'Мин.', 'Цена', 'Текущий IBS', 'Пред. закрытие', 'Изменение', 'Вход', 'Вход, IBS &lt;', 'Выход, IBS &gt;', 'Позиция', 'Обновлено', 'Источник', 'Действие'], 'Нет отслеживаемых акций')}
+        ${wrows ? `<div class="overflow-auto"><table class="trades"><thead><tr><th>Тикер</th><th>Открытие</th><th>Макс.</th><th>Мин.</th><th>Цена</th><th>Текущий IBS</th><th>Пред. закрытие</th><th>Изменение</th><th>Вход</th><th>Вход, IBS &lt;</th><th>Выход, IBS &gt;</th><th>Позиция</th><th>Обновлено</th><th>Источник</th><th>Действия</th></tr></thead><tbody>${wrows}</tbody></table></div>` : emptyBrokerTable(['Тикер', 'Открытие', 'Макс.', 'Мин.', 'Цена', 'Текущий IBS', 'Пред. закрытие', 'Изменение', 'Вход', 'Вход, IBS &lt;', 'Выход, IBS &gt;', 'Позиция', 'Обновлено', 'Источник', 'Действия'], 'Нет отслеживаемых акций')}
         ${rawJsonBlock('Исходные данные мониторинга', { watches: state.watches, quotes: state.brokerQuotes, consistency: state.consistency })}`;
     } else {
       const pack = state.autoLogs || {};
