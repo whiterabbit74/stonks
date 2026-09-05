@@ -1202,13 +1202,13 @@
     <div class="text-xs font-medium text-gray-500 mb-1">Длительность сделок</div>
     <div id="chart-dur-hist" class="chart-box rounded border dark:border-gray-800 mb-3"></div>
     <div class="grid md:grid-cols-2 gap-4">
-      <table class="trades"><thead><tr><th>Дней</th><th>Сделок</th><th>%</th></tr></thead><tbody>${dayRows || '<tr><td colspan="3">—</td></tr>'}</tbody></table>
-      <table class="trades"><thead><tr><th>Причина выхода</th><th>Сделок</th><th>Ср. PnL</th></tr></thead><tbody>${reasonRows}</tbody></table>
+      <div class="overflow-auto"><table class="trades"><thead><tr><th>Дней</th><th>Сделок</th><th>%</th></tr></thead><tbody>${dayRows || '<tr><td colspan="3">—</td></tr>'}</tbody></table></div>
+      <div class="overflow-auto"><table class="trades"><thead><tr><th>Причина выхода</th><th>Сделок</th><th>Ср. PnL</th></tr></thead><tbody>${reasonRows}</tbody></table></div>
     </div>`;
   }
   function spreadsTable(buy, sell) {
     const rows = [].concat(buy || []).flatMap((b) => (sell || []).map((s) => `<tr><td>${fmt(b)}</td><td>${fmt(s)}</td><td>${fmt(s - b, 1)} п.п.</td></tr>`)).join('');
-    return `<table class="trades"><thead><tr><th>Покупка</th><th>Продажа</th><th>Расстояние</th></tr></thead><tbody>${rows || '<tr><td colspan="3" class="text-center text-gray-500">Нет зон</td></tr>'}</tbody></table>`;
+    return `<div class="overflow-auto"><table class="trades"><thead><tr><th>Покупка</th><th>Продажа</th><th>Расстояние</th></tr></thead><tbody>${rows || '<tr><td colspan="3" class="text-center text-gray-500">Нет зон</td></tr>'}</tbody></table></div>`;
   }
   function catalogFiltered() {
     const cat = state.enhanceCat || 'popular';
@@ -2506,7 +2506,7 @@
             <label class="text-xs">Инфо-уровень, %<input name="infoLevelPct" type="number" step="0.1" value="-20" class="field mt-1" /></label>
             <button class="btn-primary min-h-0 py-2 self-end">Добавить</button>
           </form>
-          <table class="trades"><thead><tr><th>Тикер</th><th>EMA</th><th>Диапазон</th><th>Ждём</th><th>Действия</th></tr></thead><tbody>${alerts || '<tr><td colspan="5" class="text-center text-gray-500">EMA-оповещений пока нет</td></tr>'}</tbody></table>` : ''}
+          <div class="overflow-auto"><table class="trades"><thead><tr><th>Тикер</th><th>EMA</th><th>Диапазон</th><th>Ждём</th><th>Действия</th></tr></thead><tbody>${alerts || '<tr><td colspan="5" class="text-center text-gray-500">EMA-оповещений пока нет</td></tr>'}</tbody></table></div>` : ''}
       </div>`;
   }
 
