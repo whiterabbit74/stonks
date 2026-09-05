@@ -451,6 +451,7 @@ html.dark .chip-off:hover { background: #374151; }
 .max-h-52 { max-height: 13rem; }
 .max-w-3xl { max-width: 48rem; }
 .top-8 { top: 2rem; }
+.top-14 { top: 3.5rem; }
 .bg-amber-400 { background-color: #fbbf24; }
 .border-amber-100 { border-color: #fef3c7; }
 .border-red-100 { border-color: #fee2e2; }
