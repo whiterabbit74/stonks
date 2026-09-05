@@ -159,6 +159,8 @@ type Engine struct {
 	mu           sync.Mutex
 	reservations map[string]string
 	wheels       map[string]bool
+	wheelWG      sync.WaitGroup
+	stopWheels   bool
 	inFlight     map[string]bool
 	orderMeta    map[string]orderMeta
 	quoteCache         map[string]quoteCacheEntry

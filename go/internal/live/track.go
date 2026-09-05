@@ -189,6 +189,10 @@ func (e *Engine) TrackSubmitted(clientOrderID string) {
 		return
 	}
 	e.mu.Lock()
+	if e.stopWheels {
+		e.mu.Unlock()
+		return
+	}
 	if e.wheels == nil {
 		e.wheels = map[string]bool{}
 	}
@@ -197,8 +201,28 @@ func (e *Engine) TrackSubmitted(clientOrderID string) {
 		return
 	}
 	e.wheels[clientOrderID] = true
+	e.wheelWG.Add(1)
 	e.mu.Unlock()
 	go e.trackerWheel(clientOrderID)
+}
+
+func (e *Engine) wheelsStopping() bool {
+	if e == nil {
+		return false
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.stopWheels
+}
+
+func (e *Engine) StopTrackers() {
+	if e == nil {
+		return
+	}
+	e.mu.Lock()
+	e.stopWheels = true
+	e.mu.Unlock()
+	e.wheelWG.Wait()
 }
 
 func (e *Engine) trackerWheel(clientOrderID string) {
@@ -212,9 +236,16 @@ func (e *Engine) trackerWheel(clientOrderID string) {
 		e.mu.Lock()
 		delete(e.wheels, clientOrderID)
 		e.mu.Unlock()
+		e.wheelWG.Done()
 	}()
 	for attempt := 0; attempt < 64; attempt++ {
+		if e.wheelsStopping() {
+			return
+		}
 		e.sleep(trackingDelay(attempt))
+		if e.wheelsStopping() {
+			return
+		}
 		done := false
 		func() {
 			defer func() {

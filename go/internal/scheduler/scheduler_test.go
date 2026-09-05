@@ -770,3 +770,32 @@ func TestRunCalendarExtendReportsMarkerSaveFailure(t *testing.T) {
 	}
 	t.Fatalf("want JobLog Detail containing marker-save-failed, got %+v", logs)
 }
+
+func sourceFn(t *testing.T, sig string) string {
+	t.Helper()
+	raw, err := os.ReadFile("scheduler.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(raw)
+	i := strings.Index(s, sig)
+	if i < 0 {
+		t.Fatalf("%s not found", sig)
+	}
+	rest := s[i:]
+	next := strings.Index(rest[len(sig):], "\nfunc ")
+	if next < 0 {
+		return rest
+	}
+	return rest[:len(sig)+next]
+}
+
+func TestStartWithStopWaits(t *testing.T) {
+	fn := sourceFn(t, "func StartWith(")
+	if !strings.Contains(fn, ".Wait()") {
+		t.Fatal("StartWith stop must wait the tick goroutine")
+	}
+	if !strings.Contains(fn, "StopTrackers()") {
+		t.Fatal("StartWith stop must wait tracker wheels")
+	}
+}

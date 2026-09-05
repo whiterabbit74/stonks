@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"mktorder.com/go/internal/live"
@@ -154,7 +155,10 @@ func StartWith(db *store.DB, deps Deps, onEvent func(JobLog)) (stop func()) {
 	engine(db, deps).ResumeTrackers()
 	tick := time.NewTicker(20 * time.Second)
 	done := make(chan struct{})
+	var tickWG sync.WaitGroup
+	tickWG.Add(1)
 	go func() {
+		defer tickWG.Done()
 		for {
 			select {
 			case <-done:
@@ -173,7 +177,11 @@ func StartWith(db *store.DB, deps Deps, onEvent func(JobLog)) (stop func()) {
 			}
 		}
 	}()
-	return func() { close(done) }
+	return func() {
+		close(done)
+		tickWG.Wait()
+		engine(db, deps).StopTrackers()
+	}
 }
 
 func RunTick(db *store.DB, deps Deps, now time.Time, onEvent func(JobLog)) {
