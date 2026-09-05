@@ -210,22 +210,30 @@ func recordActualizeAttempt(e *Engine, today string, out ActualizeResult) {
 func (e *Engine) UpdatePositions() map[string]any {
 	watches, _ := e.DB.ListWatches()
 	monitor, _ := e.DB.ListTrades("trades")
-	open := store.OpenBrokerTrade(monitor)
-	var changes []map[string]any
-	openSym := ""
-	if open != nil {
-		openSym = store.SafeTicker(fmt.Sprint(open["symbol"]))
+	openBySym := map[string]map[string]any{}
+	for _, t := range store.OpenBrokerTrades(monitor) {
+		sym := store.SafeTicker(fmt.Sprint(t["symbol"]))
+		if sym == "" {
+			continue
+		}
+		openBySym[sym] = t
 	}
+	var changes []map[string]any
+	var open map[string]any
 	for _, w := range watches {
 		sym := store.SafeTicker(fmt.Sprint(w["symbol"]))
-		wantOpen := openSym != "" && sym == openSym
+		row := openBySym[sym]
+		wantOpen := row != nil
+		if wantOpen && open == nil {
+			open = row
+		}
 		wasOpen, _ := w["isOpenPosition"].(bool)
 		if wantOpen != wasOpen {
 			patch := map[string]any{"isOpenPosition": wantOpen}
 			if wantOpen {
-				patch["entryPrice"] = open["entryPrice"]
-				patch["entryDate"] = open["entryDate"]
-				patch["currentTradeId"] = open["id"]
+				patch["entryPrice"] = row["entryPrice"]
+				patch["entryDate"] = row["entryDate"]
+				patch["currentTradeId"] = row["id"]
 			} else {
 				patch["currentTradeId"] = nil
 			}
