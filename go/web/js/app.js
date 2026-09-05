@@ -181,6 +181,7 @@
     list: '<path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/>',
     grid: '<rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/>',
     trash: '<path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>',
+    edit: '<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L8 18l-4 1 1-4Z"/>',
     download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/>',
     more: '<circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/>',
     help: '<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>',
@@ -379,6 +380,9 @@
 
   function icon(name, cls) {
     return `<svg class="${cls || 'w-5 h-5'}" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${PATHS[name] || ''}</svg>`;
+  }
+  function actionIcon(name, label, attrs, tone) {
+    return `<button type="button" ${attrs} class="action-icon ${tone || ''}" title="${esc(label)}" aria-label="${esc(label)}">${icon(name, 'w-4 h-4')}</button>`;
   }
   function logo(size) {
     const cls = size === 'lg' ? 'w-8 h-8' : 'w-5 h-5';
@@ -1409,7 +1413,7 @@
     btn.innerHTML = `${icon(slim ? 'chevronright' : 'chevronleft', 'w-5 h-5')}<span class="app-side-lab">${slim ? 'Показать' : 'Скрыть'}</span>`;
   }
   function analysisTabs(tabs, active, attr, label) {
-    return `<div class="border-b border-gray-200 dark:border-gray-700 overflow-x-auto">
+    return `<div class="scroll-cue border-b border-gray-200 dark:border-gray-700 overflow-x-auto">
       <div class="flex items-center gap-2 flex-nowrap min-w-max px-1" role="tablist"${label ? ` aria-label="${esc(label)}"` : ''}>
         ${tabs.map((t) => `<button ${attr}="${esc(t.id)}" role="tab" aria-selected="${t.id === active}" tabindex="${t.id === active ? 0 : -1}" class="px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap sm:px-6 ${t.id === active ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'}">${esc(t.label)}</button>`).join('')}
       </div>
@@ -1530,7 +1534,7 @@
         <td>${t.exitPrice == null ? '—' : fmtUsd(t.exitPrice)}</td>
         <td>${esc(ibs)}</td>
         <td class="${pnlClass(pct)}">${pct == null ? '—' : fmtSignedPct(pct, 2)} ${pnl == null ? '' : '(' + fmtSignedUsd(pnl) + ')'}</td>
-        <td>${t.status === 'open' && t.id && !t.linkedBrokerTradeId ? `<button type="button" data-close-mon="${esc(t.id)}" data-close-sym="${esc(t.symbol || '')}" class="text-sm text-red-600 mr-2">Закрыть</button>` : ''}${t.id ? `<button type="button" data-edit-mon="${esc(t.id)}" class="text-sm text-indigo-600">Изменить</button>` : ''}</td>
+        <td>${t.status === 'open' && t.id && !t.linkedBrokerTradeId ? `<button type="button" data-close-mon="${esc(t.id)}" data-close-sym="${esc(t.symbol || '')}" class="text-sm text-red-600 mr-2">Закрыть</button>` : ''}${t.id ? actionIcon('edit', 'Изменить сделку', `data-edit-mon="${esc(t.id)}"`, 'action-icon-edit') : ''}</td>
       </tr>`;
     }).join('');
     return `<div class="flex flex-wrap gap-2 mb-2 text-sm">
@@ -1669,7 +1673,7 @@
     const year = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', year: 'numeric' }).format(new Date());
     return `<footer class="bg-white border-t border-gray-200 dark:bg-gray-900 dark:border-gray-800 mt-[50px]">
       <div class="max-w-7xl mx-auto px-6 py-8">
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <div class="footer-grid grid grid-cols-1 md:grid-cols-2 gap-8">
           <p class="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">Анализ и тестирование торговых стратегий на исторических данных. Специализация на стратегиях mean reversion и техническом анализе.</p>
           <div class="space-y-2">
             <h4 class="text-sm font-semibold uppercase tracking-wider">Система</h4>
@@ -1872,7 +1876,7 @@
         </div>
         <div id="enhance-out" class="mt-3 text-sm text-gray-600 dark:text-gray-400"></div>
       </div>
-      <div class="flex gap-2 overflow-x-auto pb-2 mt-4">${chips}</div>
+      <div class="scroll-cue flex gap-2 overflow-x-auto pb-2 mt-4">${chips}</div>
       <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg p-3">
         <div class="flex items-center justify-between mb-3">
           <h3 class="font-semibold text-gray-900 dark:text-gray-100">${esc(state.enhanceQuery ? 'Результаты поиска' : catLabel)}</h3>
@@ -2336,17 +2340,22 @@
     const map = state.splitsMap || {};
     let body = '';
     if (state.splitsTab === 'list') {
-      const rows = Object.entries(map).map(([ticker, evs]) => `<tr>
+      const splitEntries = Object.entries(map);
+      const rows = splitEntries.map(([ticker, evs]) => `<tr>
         <td class="font-mono align-top">${esc(ticker)}</td>
         <td>${(evs || []).map((e) => `${esc(e.date)} × ${esc(e.factor)}`).join('<br>') || '—'}</td>
         <td class="text-right whitespace-nowrap">
-          <button data-edit-split="${esc(ticker)}" class="text-indigo-600 text-sm mr-2">Изменить</button>
-          <button data-del-ticker="${esc(ticker)}" class="text-red-600 text-sm">Удалить тикер</button>
+          ${actionIcon('edit', 'Изменить сплиты', `data-edit-split="${esc(ticker)}"`, 'action-icon-edit')}
+          ${actionIcon('trash', 'Удалить тикер', `data-del-ticker="${esc(ticker)}"`, 'action-icon-danger')}
         </td>
       </tr>`).join('');
+      const mobileCards = splitEntries.map(([ticker, evs]) => `<article class="split-card rounded-lg border border-gray-200 p-3 dark:border-gray-700">
+        <div class="flex items-start justify-between gap-3"><div><div class="font-mono font-semibold">${esc(ticker)}</div><div class="mt-1 text-sm text-gray-600 dark:text-gray-300">${(evs || []).map((e) => `${esc(e.date)} × ${esc(e.factor)}`).join('<br>') || '—'}</div></div>
+        <div class="flex shrink-0 gap-1">${actionIcon('edit', 'Изменить сплиты', `data-edit-split="${esc(ticker)}"`, 'action-icon-edit')}${actionIcon('trash', 'Удалить тикер', `data-del-ticker="${esc(ticker)}"`, 'action-icon-danger')}</div></div>
+      </article>`).join('');
       body = `<div id="spl-list"${rows ? ' class="overflow-auto"' : ''}>
         ${rows
-          ? `<table class="trades"><thead><tr><th>Тикер</th><th>События</th><th class="text-right">Действия</th></tr></thead><tbody>${rows}</tbody></table>`
+          ? `<div class="splits-table"><table class="trades"><thead><tr><th>Тикер</th><th>События</th><th class="text-right">Действия</th></tr></thead><tbody>${rows}</tbody></table></div><div class="splits-mobile space-y-2">${mobileCards}</div>`
           : `<div class="splits-table overflow-auto"><table class="trades"><thead><tr><th>Тикер</th><th>События</th><th class="text-right">Действия</th></tr></thead><tbody><tr><td colspan="3" class="text-center text-gray-500">Нет данных</td></tr></tbody></table></div>
              <div class="splits-empty-mobile">Нет данных</div>`}
       </div>`;
@@ -2428,7 +2437,7 @@
       <td>${esc('> ' + Number(w.highIBS ?? liveHighIBS()).toFixed(2))}</td>
       <td>${w.entryPrice != null ? fmtUsd(w.entryPrice) : '—'}${w.isOpenPosition && w.entryDate ? `<div class="text-[11px] text-gray-500">${esc(fmtTradingDate(w.entryDate))}${w.entryIBS != null ? ' · IBS ' + fmt(ibsPct(w.entryIBS), 1) + '%' : ''}</div>` : ''}</td>
       <td><span class="rounded-full px-2 py-0.5 text-xs ${w.isOpenPosition ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500'}">${w.isOpenPosition ? 'Открыта' : 'Нет'}</span></td>
-      <td>${w.isOpenPosition && w.currentTradeId ? `<button type="button" data-close-mon="${esc(w.currentTradeId)}" data-close-sym="${esc(w.symbol)}" class="text-sm text-red-600 mr-2">Закрыть</button>` : ''}<button type="button" data-watch-thr="${esc(w.symbol)}" class="text-sm text-indigo-600 mr-2">Пороги</button><button data-dw="${esc(w.symbol)}" class="text-sm text-red-600">Удалить</button></td>
+      <td>${w.isOpenPosition && w.currentTradeId ? `<button type="button" data-close-mon="${esc(w.currentTradeId)}" data-close-sym="${esc(w.symbol)}" class="text-sm text-red-600 mr-2">Закрыть</button>` : ''}${actionIcon('sliders', 'Изменить пороги', `data-watch-thr="${esc(w.symbol)}"`, 'action-icon-edit')}${actionIcon('trash', 'Удалить тикер из мониторинга', `data-dw="${esc(w.symbol)}"`, 'action-icon-danger')}</td>
     </tr>`).join('');
     const alerts = (state.emaAlerts || []).map((a) => `<tr>
       <td class="font-mono">${esc(a.symbol)}</td><td>EMA ${esc(a.emaPeriod || 200)}</td>
@@ -2615,7 +2624,7 @@
         <td>${esc(t.holdingDays ?? '')}</td>
         <td class="text-xs">${esc(t.notes || '')}</td>
         <td class="text-xs">${esc(t.clientOrderId || '')}</td><td class="text-xs">${esc(t.brokerOrderId || t.orderId || '')}</td>
-        <td><button type="button" data-edit-bt="${esc(t.id)}" class="text-sm text-indigo-600 mr-2">Изменить</button><button type="button" data-hide-bt="${esc(t.id)}" class="text-sm text-indigo-600 mr-2">${t.isHidden ? 'Показать' : 'Скрыть'}</button><button type="button" data-bd="${esc(t.id)}" class="text-sm text-red-600">Удалить</button></td>
+        <td>${actionIcon('edit', 'Изменить сделку', `data-edit-bt="${esc(t.id)}"`, 'action-icon-edit')}<button type="button" data-hide-bt="${esc(t.id)}" class="text-sm text-indigo-600 mr-2">${t.isHidden ? 'Показать' : 'Скрыть'}</button>${actionIcon('trash', 'Удалить сделку', `data-bd="${esc(t.id)}"`, 'action-icon-danger')}</td>
       </tr>`).join('');
       body = `<div class="flex flex-wrap gap-2 mb-3">
         <button type="button" id="broker-journal-refresh" class="btn-secondary min-h-0 py-2">Обновить</button>
@@ -2744,7 +2753,7 @@
                 <button type="button" id="auto-token-create" class="btn-secondary min-h-0 py-2">Создать токен</button>
               </div>
               <div class="mt-2 flex gap-2">
-                <input id="auto-token-input" type="password" autocomplete="off" placeholder="Вставьте Webull token" class="field flex-1" />
+                <input id="auto-token-input" type="password" autocomplete="off" placeholder="Вставьте Webull token" class="field min-w-0 flex-1" />
                 <button type="button" id="auto-token-save" class="btn-secondary min-h-0 py-2">Сохранить токен</button>
               </div>
             </div>`;
@@ -2784,7 +2793,7 @@
         </div>
         <div class="rounded-lg border border-gray-200 p-4 dark:border-gray-700">
           <h2 class="text-lg font-semibold mb-3">${esc(brokerLabel(kind))} — подключение и тестовая заявка</h2>
-          <div class="grid gap-3 md:grid-cols-2">
+          <div class="broker-grid grid gap-3 md:grid-cols-2">
             ${connectionCard}
           </div>
           <div class="mt-4 flex flex-wrap gap-2">
