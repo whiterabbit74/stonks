@@ -1515,10 +1515,10 @@
       </tr>`;
     }).join('');
     return `<div class="flex flex-wrap gap-2 mb-2 text-sm">
-      ${[['all', 'Все'], ['open', 'Открытые'], ['closed', 'Закрытые'], ['win', 'Прибыль'], ['loss', 'Убыток']].map(([id, lab]) => `<button type="button" data-wfilter="${id}" class="px-2 py-1 rounded border ${filter === id ? 'border-indigo-500 text-indigo-600' : 'border-gray-200 text-gray-600'}">${lab}</button>`).join('')}
-      <button type="button" id="watch-hidden-toggle" class="px-2 py-1 rounded border">${includeHidden ? 'Скрыть скрытые' : 'Показать скрытые'}</button>
-      <button type="button" id="watch-export-json" class="px-2 py-1 rounded border">JSON</button>
-      <button type="button" id="watch-export-csv" class="px-2 py-1 rounded border">CSV</button>
+      ${[['all', 'Все'], ['open', 'Открытые'], ['closed', 'Закрытые'], ['win', 'Прибыль'], ['loss', 'Убыток']].map(([id, lab]) => `<button type="button" data-wfilter="${id}" class="px-3 py-1.5 rounded-lg text-xs font-medium ${filter === id ? 'chip-on' : 'chip-off'}">${lab}</button>`).join('')}
+      <button type="button" id="watch-hidden-toggle" class="px-3 py-1.5 rounded-lg text-xs font-medium chip-off">${includeHidden ? 'Скрыть скрытые' : 'Показать скрытые'}</button>
+      <button type="button" id="watch-export-json" class="btn-secondary min-h-0 py-1.5 px-3 text-xs">JSON</button>
+      <button type="button" id="watch-export-csv" class="btn-secondary min-h-0 py-1.5 px-3 text-xs">CSV</button>
       <span class="text-xs text-gray-500 self-center">${list.length} сделок</span>
     </div>
     <div class="table-wrap rounded border dark:border-gray-800"><table class="trades"><thead><tr><th>Тикер</th><th>Статус</th><th>Период</th><th>Цена покупки / продажи</th><th>IBS вход / выход</th><th>PnL</th><th>Действия</th></tr></thead><tbody>${rows || '<tr><td colspan="7" class="text-center text-gray-500">Нет сделок</td></tr>'}</tbody></table></div>`;
@@ -1790,8 +1790,8 @@
         <div class="flex flex-wrap gap-2">
           <a href="/stocks?tickers=${encodeURIComponent(d.ticker)}" data-load="${esc(d.ticker)}" class="btn-primary">Открыть</a>
           ${actionIcon('edit', 'Изменить датасет', `data-edit="${esc(d.ticker)}"`, 'action-icon-edit')}
-          <button data-refresh="${esc(d.ticker)}" class="px-3 py-1.5 rounded text-sm border">Обновить</button>
-          <button data-export="${esc(d.ticker)}" class="px-3 py-1.5 rounded text-sm border">Экспорт</button>
+          <button data-refresh="${esc(d.ticker)}" class="btn-secondary min-h-0 py-1.5 px-3 text-sm">Обновить</button>
+          <button data-export="${esc(d.ticker)}" class="btn-secondary min-h-0 py-1.5 px-3 text-sm">Экспорт</button>
           ${actionIcon('trash', 'Удалить датасет', `data-del="${esc(d.ticker)}"`, 'action-icon-danger')}
         </div>
       </div>`).join('');
