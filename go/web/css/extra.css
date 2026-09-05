@@ -344,12 +344,12 @@ html.dark .pc-pct { background: #111827; border-color: #374151; color: #e5e7eb; 
 }
 .pc-style.is-open { display: flex; }
 .pc-swatches { display: flex; flex-wrap: wrap; gap: 0.2rem; }
-.pc-swatch { width: 0.75rem; height: 0.75rem; border-radius: 9999px; border: 2px solid transparent; }
+.pc-ind-panel button.pc-swatch { width: 0.75rem; height: 0.75rem; min-width: 0; min-height: 0; border-radius: 9999px; border: 2px solid transparent; }
 .pc-swatch-on { border-color: #111827; }
 html.dark .pc-swatch-on { border-color: #f3f4f6; }
 .pc-seg { display: inline-flex; }
-.pc-seg button {
-  font-size: 10px; padding: 0.1rem 0.3rem; border: 1px solid #e5e7eb; margin-left: -1px;
+.pc-ind-panel .pc-seg button {
+  min-width: 0; min-height: 1.5rem; font-size: 10px; padding: 0.1rem 0.3rem; border: 1px solid #e5e7eb; margin-left: -1px;
   background: #fff; color: #4b5563;
 }
 .pc-seg button:first-child { border-radius: 0.375rem 0 0 0.375rem; margin-left: 0; }
