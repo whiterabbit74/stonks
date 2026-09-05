@@ -33,27 +33,9 @@ log_error() {
 cleanup_docker() {
     log_info "Очищаю Docker..."
 
-    # Остановить все контейнеры
-    docker stop $(docker ps -aq) 2>/dev/null || true
-
-    # Удалить все контейнеры
-    docker rm $(docker ps -aq) 2>/dev/null || true
-
-    # Удалить все образы кроме последних версий
-    log_info "Удаляю старые образы..."
-
-    # Сохранить последние версии
-    docker tag stonks-server:latest stonks-server:latest-backup 2>/dev/null || true
-
-    # Удалить все образы
-    docker rmi $(docker images -q) 2>/dev/null || true
-
-    # Восстановить последние версии
-    docker tag stonks-server:latest-backup stonks-server:latest 2>/dev/null || true
-    docker rmi stonks-server:latest-backup 2>/dev/null || true
-
-    # Named volumes (stonks_db, datasets, Caddy certs) stay. Do not prune
-    # dangling volumes after the container rm above.
+    # Keep running services and all named volumes. Docker retains images used
+    # by running containers; only unreferenced images/networks are removed.
+    # This avoids taking down Caddy, MCP, and the API during housekeeping.
     docker system prune -af
     docker network prune -f
 

@@ -154,13 +154,14 @@ echo "Telegram notify..."
 BOT_TOKEN="$(ssh -o BatchMode=yes "$HOST" "grep '^TELEGRAM_BOT_TOKEN=' /home/ubuntu/stonks-config/.env 2>/dev/null | cut -d= -f2-" || true)"
 CHAT_ID="$(ssh -o BatchMode=yes "$HOST" "grep '^TELEGRAM_CHAT_ID=' /home/ubuntu/stonks-config/.env 2>/dev/null | cut -d= -f2-" || true)"
 if [ -n "${BOT_TOKEN:-}" ] && [ -n "${CHAT_ID:-}" ]; then
-  curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
-    -d "chat_id=${CHAT_ID}" \
-    --data-urlencode "text=🚀 Сервер обновлен!
-
-💻 Версия: ${GIT_COMMIT}
-🕰 Дата: ${GIT_DATE}
-🌐 Сайт: https://mktorder.com" >/dev/null || echo "telegram send failed"
+  {
+    printf 'url = "https://api.telegram.org/bot%s/sendMessage"\n' "$BOT_TOKEN"
+    printf 'request = "POST"\n'
+    printf 'data = "chat_id=%s"\n' "$CHAT_ID"
+    printf 'data-urlencode = "text=🚀 Сервер обновлен!\n\n💻 Версия: %s\n🕰 Дата: %s\n🌐 Сайт: https://mktorder.com"\n' "$GIT_COMMIT" "$GIT_DATE"
+  } | curl -s --config - \
+    \
+    >/dev/null || echo "telegram send failed"
 else
   echo "telegram env missing"
 fi
