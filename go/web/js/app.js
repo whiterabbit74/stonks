@@ -2613,7 +2613,7 @@
         <input name="notes" placeholder="заметки" class="field w-40" />
         <button class="btn-primary min-h-0 py-2">Добавить</button>
       </form>
-      ${jrows ? `<div class="overflow-auto"><table class="trades"><thead><tr><th>Тикер</th><th>Брокер</th><th>Источник</th><th>Статус</th><th>Дата входа</th><th>Дата выхода</th><th>Цена покупки / продажи</th><th>Кол-во</th><th>PnL, $</th><th>PnL, %</th><th>IBS вход / выход</th><th>Дней</th><th>Заметки</th><th>Client Order ID</th><th>Broker Order ID</th><th>Действие</th></tr></thead><tbody>${jrows}</tbody></table></div>` : '<p class="text-sm text-gray-500">Сделок нет</p>'}`;
+      ${jrows ? `<div class="overflow-auto"><table class="trades"><thead><tr><th>Тикер</th><th>Брокер</th><th>Источник</th><th>Статус</th><th>Дата входа</th><th>Дата выхода</th><th>Цена покупки / продажи</th><th>Кол-во</th><th>PnL, $</th><th>PnL, %</th><th>IBS вход / выход</th><th>Дней</th><th>Заметки</th><th>ID заявки клиента</th><th>ID заявки брокера</th><th>Действие</th></tr></thead><tbody>${jrows}</tbody></table></div>` : '<p class="text-sm text-gray-500">Сделок нет</p>'}`;
     } else if (tab === 'overview') {
       const bal = extractBalanceSummary(state.dashboard);
       const err = state.dashboard && (state.dashboard.error || (Array.isArray(state.dashboard.errors) && state.dashboard.errors[0]));
@@ -2641,7 +2641,7 @@
         <td>${formatRatioPercent(p.holdingProportion)}</td>
         <td>${p.symbol && p.symbol !== '—' ? actionIcon('x', 'Закрыть позицию', `data-close-pos="${esc(p.symbol)}"`, 'action-icon-danger') : ''}</td>
       </tr>`).join('');
-      body = `${posRows ? `<div class="overflow-auto"><table class="trades"><thead><tr><th>Тикер</th><th>Тип</th><th>Валюта</th><th>Кол-во</th><th>Средняя</th><th>Себестоимость</th><th>Рыночная цена</th><th>Рыночная стоимость</th><th>Нереализ. PnL</th><th>PnL %</th><th>Доля</th><th>Действие</th></tr></thead><tbody>${posRows}</tbody></table></div>` : emptyBrokerTable(['Тикер', 'Тип', 'Валюта', 'Кол-во', 'Средняя', 'Себестоимость', 'Рыночная цена', 'Рыночная стоимость', 'Нереализ. PnL', 'PnL %', 'Доля', 'Действие'], 'Открытых позиций нет')}
+      body = `${posRows ? `<div class="overflow-auto"><table class="trades"><thead><tr><th>Тикер</th><th>Тип</th><th>Валюта</th><th>Кол-во</th><th>Средняя цена</th><th>Себестоимость</th><th>Рыночная цена</th><th>Рыночная стоимость</th><th>Нереализ. PnL</th><th>PnL %</th><th>Доля</th><th>Действие</th></tr></thead><tbody>${posRows}</tbody></table></div>` : emptyBrokerTable(['Тикер', 'Тип', 'Валюта', 'Кол-во', 'Средняя цена', 'Себестоимость', 'Рыночная цена', 'Рыночная стоимость', 'Нереализ. PnL', 'PnL %', 'Доля', 'Действие'], 'Открытых позиций нет')}
       ${rawJsonBlock('Исходные данные позиций', state.dashboard && (state.dashboard.positions || (state.dashboard.account && state.dashboard.account.positions)))}
       ${rawJsonBlock('Исходные данные счетов', state.dashboard && state.dashboard.accounts)}`;
     } else if (tab === 'orders') {
