@@ -122,7 +122,11 @@ func sanitizeAutoTradingConfig(input, current map[string]any, now time.Time) map
 		}
 	}
 	if f, ok := finiteNumber(next["lowIBS"]); ok {
-		next["lowIBS"] = clamp(f, 0, 1)
+		f = clamp(f, 0, 1)
+		if f == 0 {
+			f = ibs.DefaultLowIBS
+		}
+		next["lowIBS"] = f
 	}
 	if f, ok := finiteNumber(next["highIBS"]); ok {
 		next["highIBS"] = clamp(f, 0, 1)
@@ -212,7 +216,11 @@ func liveLowIBS(cfg map[string]any) float64 {
 	if !cfgHas(cfg, "lowIBS") {
 		return ibs.DefaultLowIBS
 	}
-	return asFloat(cfg["lowIBS"])
+	low := asFloat(cfg["lowIBS"])
+	if low == 0 {
+		return ibs.DefaultLowIBS
+	}
+	return low
 }
 
 func liveHighIBS(cfg map[string]any) (high float64, invalid bool) {
@@ -244,7 +252,9 @@ func watchThresholds(watch, cfg map[string]any) (low, high float64, highInvalid 
 	high, highInvalid = liveHighIBS(cfg)
 	if watch != nil {
 		if watch["lowIBS"] != nil {
-			low = asFloat(watch["lowIBS"])
+			if v := asFloat(watch["lowIBS"]); v != 0 {
+				low = v
+			}
 		}
 		if watch["highIBS"] != nil {
 			h := asFloat(watch["highIBS"])

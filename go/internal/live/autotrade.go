@@ -296,7 +296,7 @@ func (e *Engine) EvaluateWindow(w execWindow) EvalResult {
 				w["highIBS"] = cfg["highIBS"]
 			}
 		}
-		ev := e.evalWatch(sym, w, providerChain)
+		ev := e.evalWatch(sym, w, cfg, providerChain)
 		low, high, highInvalid := watchThresholds(w, cfg)
 		quotes = append(quotes, map[string]any{
 			"symbol": sym, "ok": ev.ok, "ibs": ev.ibs, "currentPrice": ev.price,
@@ -472,7 +472,10 @@ func liveLowOrDefault(row map[string]any) float64 {
 		return ibs.DefaultLowIBS
 	}
 	if th, ok := row["thresholds"].(map[string]any); ok && th["lowIBS"] != nil {
-		return asFloat(th["lowIBS"])
+		v := asFloat(th["lowIBS"])
+		if v != 0 {
+			return v
+		}
 	}
 	return ibs.DefaultLowIBS
 }

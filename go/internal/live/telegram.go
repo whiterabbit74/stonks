@@ -186,7 +186,8 @@ func (e *Engine) Aggregate(minutesUntilClose int, opts AggregateOpts) (SimulateR
 			return out, nil
 		}
 	}
-	providerChain := quoteProviderChain(e.AutoConfig())
+	cfg := e.AutoConfig()
+	providerChain := quoteProviderChain(cfg)
 	var watchSyms []string
 	for _, w := range watches {
 		watchSyms = append(watchSyms, fmt.Sprint(w["symbol"]))
@@ -201,7 +202,7 @@ func (e *Engine) Aggregate(minutesUntilClose int, opts AggregateOpts) (SimulateR
 	var integ []IntegrityResult
 	for _, w := range watches {
 		sym := fmt.Sprint(w["symbol"])
-		ev := e.evalWatch(sym, w, providerChain)
+		ev := e.evalWatch(sym, w, cfg, providerChain)
 		rows = append(rows, t1Watch{sym: sym, eval: ev})
 		out.Tickers = append(out.Tickers, sym)
 		if ev.blocked {
@@ -612,19 +613,8 @@ type watchEval struct {
 
 const nearDelta = 0.02
 
-func (e *Engine) evalWatch(sym string, w map[string]any, providerChain []string) watchEval {
-	low := asFloat(w["lowIBS"])
-	if w["lowIBS"] == nil {
-		low = ibs.DefaultLowIBS
-	}
-	high := asFloat(w["highIBS"])
-	highInvalid := false
-	if w["highIBS"] == nil {
-		high = ibs.DefaultHighIBS
-	} else if high == 0 {
-		highInvalid = true
-		high = ibs.DefaultHighIBS
-	}
+func (e *Engine) evalWatch(sym string, w, cfg map[string]any, providerChain []string) watchEval {
+	low, high, highInvalid := watchThresholds(w, cfg)
 	ev := watchEval{low: low, high: high}
 	var ibsVal, price float64
 	ok := false

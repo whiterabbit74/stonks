@@ -402,6 +402,85 @@ func TestMissingThresholdsUseDefaults(t *testing.T) {
 	if !inv {
 		t.Fatal("explicit 0 is invalid")
 	}
+	if liveLowIBS(map[string]any{"lowIBS": 0.0}) != ibs.DefaultLowIBS {
+		t.Fatal("explicit lowIBS 0 is unset")
+	}
+}
+
+func TestEvalWatchMatchesWatchThresholds(t *testing.T) {
+	dir := t.TempDir()
+	db, err := store.Open(filepath.Join(dir, "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	// IBS = (8.6-8)/(12-8) = 0.15, between DefaultLowIBS (0.10) and cfg 0.20.
+	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.6, Volume: 1}}
+	_ = db.SaveDataset("AAPL", "AAPL", "", "", bars, false)
+	e := New(db, &MemoryQuotes{Bars: map[string][]types.OHLC{"AAPL": bars}})
+	watch := map[string]any{"symbol": "AAPL"}
+	cfg := map[string]any{"lowIBS": 0.20, "highIBS": 0.80}
+
+	low, high, inv := watchThresholds(watch, cfg)
+	ev := e.evalWatch("AAPL", watch, cfg, []string{"finnhub"})
+	if !ev.ok {
+		t.Fatalf("quote should be ok %+v", ev)
+	}
+	if ev.low != low || ev.high != high {
+		t.Fatalf("evalWatch %v/%v watchThresholds %v/%v", ev.low, ev.high, low, high)
+	}
+	if low != 0.20 || high != 0.80 || inv {
+		t.Fatalf("watch-less fallback must use cfg, got %v %v inv=%v", low, high, inv)
+	}
+	if ev.entry != ibs.IsEntrySignal(ev.ibs, low) {
+		t.Fatalf("entry %v ibs %v low %v", ev.entry, ev.ibs, low)
+	}
+
+	quotes := []map[string]any{{
+		"symbol": "AAPL", "ok": ev.ok, "ibs": ev.ibs,
+		"thresholds":     map[string]any{"lowIBS": low, "highIBS": high},
+		"highIBSInvalid": inv,
+	}}
+	d := decideLiveAction(quotes, []string{"AAPL"}, map[string]float64{}, nil, nil, true, true)
+	want := "none"
+	if ev.entry {
+		want = "entry"
+	}
+	if fmt.Sprint(d["action"]) != want {
+		t.Fatalf("decideLiveAction %+v want %s (entry=%v ibs=%v low=%v)", d, want, ev.entry, ev.ibs, low)
+	}
+
+	cfg0 := map[string]any{"lowIBS": 0.0, "highIBS": 0.80}
+	low0, _, _ := watchThresholds(watch, cfg0)
+	if low0 != ibs.DefaultLowIBS {
+		t.Fatalf("cfg lowIBS 0 kept as %v", low0)
+	}
+	ev0 := e.evalWatch("AAPL", watch, cfg0, []string{"finnhub"})
+	if ev0.low != low0 {
+		t.Fatalf("evalWatch low %v watchThresholds %v", ev0.low, low0)
+	}
+	watch0 := map[string]any{"symbol": "AAPL", "lowIBS": 0.0}
+	lowW, _, _ := watchThresholds(watch0, cfg)
+	if lowW != 0.20 {
+		t.Fatalf("watch lowIBS 0 must fall back to cfg, got %v", lowW)
+	}
+	if e.evalWatch("AAPL", watch0, cfg, []string{"finnhub"}).low != lowW {
+		t.Fatal("evalWatch must follow watchThresholds for watch lowIBS 0")
+	}
+}
+
+func TestSanitizeZeroLowIBSNotKept(t *testing.T) {
+	out := sanitizeAutoTradingConfig(map[string]any{"lowIBS": 0.0}, map[string]any{}, time.Now())
+	if asFloat(out["lowIBS"]) == 0 {
+		t.Fatal("lowIBS 0 must not be kept")
+	}
+	if asFloat(out["lowIBS"]) != ibs.DefaultLowIBS {
+		t.Fatalf("lowIBS 0 must fall back to default, got %v", out["lowIBS"])
+	}
+	out = sanitizeAutoTradingConfig(map[string]any{"enabled": true}, map[string]any{"lowIBS": 0.0}, time.Now())
+	if asFloat(out["lowIBS"]) == 0 {
+		t.Fatal("stored lowIBS 0 must not survive a save")
+	}
 }
 
 func TestLogsSplitByPrefix(t *testing.T) {
@@ -520,7 +599,7 @@ func TestQuoteRangeMissingIsNotOk(t *testing.T) {
 		Q:    map[string]providers.QuotePayload{"AAPL": {Quote: map[string]any{"current": 8.2}}},
 	}
 	e := New(db, q)
-	ev := e.evalWatch("AAPL", map[string]any{"symbol": "AAPL"}, []string{"finnhub"})
+	ev := e.evalWatch("AAPL", map[string]any{"symbol": "AAPL"}, nil, []string{"finnhub"})
 	if ev.ok {
 		t.Fatalf("missing range must not be ok %+v", ev)
 	}

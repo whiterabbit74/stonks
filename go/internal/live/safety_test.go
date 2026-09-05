@@ -40,7 +40,7 @@ func TestLiveQuoteSkipsProviderWithNoRange(t *testing.T) {
 	e.Quotes = &MemoryQuotes{Q: map[string]providers.QuotePayload{
 		"AAPL": {Quote: map[string]any{"current": 8.2, "prevClose": 10.0}},
 	}}
-	ev := e.evalWatch("AAPL", map[string]any{"symbol": "AAPL", "lowIBS": 0.9}, []string{"finnhub"})
+	ev := e.evalWatch("AAPL", map[string]any{"symbol": "AAPL", "lowIBS": 0.9}, nil, []string{"finnhub"})
 	if ev.ok {
 		t.Fatalf("incomplete quote must not be ok: %+v", ev)
 	}
