@@ -1077,6 +1077,63 @@ func (e *Engine) Logs(limit int) map[string]any {
 	}
 }
 
+// manualOrder is the shared guarded path for operator-initiated submissions
+// (close, test buy). It reuses submitEvaluated's pending-tracker, persist-block,
+// and in-flight reservation checks, then always starts a tracker. Autotrading
+// enablement and the T-1 execution window are automatic-path concerns and are
+// not applied here.
+func (e *Engine) manualOrder(br Broker, brokerName, symbol, side string, qty float64, source string) (OrderResult, error) {
+	symbol = store.SafeTicker(symbol)
+	side = strings.ToUpper(strings.TrimSpace(side))
+	action := "exit"
+	if side == "BUY" {
+		action = "entry"
+	}
+	key := brokerName + ":" + symbol + ":" + action
+
+	var pending map[string]any
+	var pendErr error
+	if action == "entry" {
+		pending, pendErr = e.DB.AnyPendingTrackerFor(brokerName)
+	} else {
+		pending, pendErr = e.DB.FindPendingTrackerBroker(symbol, action, brokerName)
+	}
+	if pendErr != nil {
+		return OrderResult{Error: "journal_unavailable", Symbol: symbol, Side: side}, pendErr
+	}
+	if pending != nil {
+		errKey := "pending_" + action + "_tracker_exists"
+		return OrderResult{Error: errKey, Symbol: symbol, Side: side}, fmt.Errorf("%s", errKey)
+	}
+	if action == "entry" && e.trackerPersistBlocked(brokerName) {
+		return OrderResult{Error: "execution_unknown", Symbol: symbol, Side: side}, fmt.Errorf("execution_unknown")
+	}
+
+	e.mu.Lock()
+	if e.reservations == nil {
+		e.reservations = map[string]string{}
+	}
+	if _, taken := e.reservations[key]; taken {
+		e.mu.Unlock()
+		errKey := "pending_" + action + "_submission_exists"
+		return OrderResult{Error: errKey, Symbol: symbol, Side: side}, fmt.Errorf("%s", errKey)
+	}
+	e.reservations[key] = "submitting"
+	e.mu.Unlock()
+	defer func() {
+		e.mu.Lock()
+		delete(e.reservations, key)
+		e.mu.Unlock()
+	}()
+
+	res, err := e.placeMarket(backgroundWindow(), symbol, side, qty, PlaceMarketCfg{}, br)
+	e.startTracking(res, orderMeta{
+		Source: source, Symbol: symbol, Action: action, Quantity: qty,
+		Broker: brokerName, DateKey: tradingdate.TodayNYSE(e.now()),
+	})
+	return res, err
+}
+
 func (e *Engine) ClosePosition(symbol string) (OrderResult, error) {
 	symbol = store.SafeTicker(symbol)
 	br := e.defaultBroker()
