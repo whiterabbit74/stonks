@@ -1475,7 +1475,7 @@
     </div>` : '';
     return `<div id="trades-table-host" data-trades-total="${total}">
       <div class="flex flex-wrap items-center justify-between gap-2 mb-2 text-sm text-gray-600 dark:text-gray-300"><div>Всего сделок: ${total}</div></div>
-      <div class="table-wrap rounded border dark:border-gray-800"><table class="trades"><thead><tr><th>#</th>${showTicker ? '<th>Тикер</th>' : ''}<th>Период</th><th>Цена покупки / продажи</th><th>IBS вход / выход</th><th>Кол-во</th><th>Вложено</th><th>PnL, $</th><th>PnL, %</th>${showDeposit ? '<th>Депозит, $</th>' : ''}<th>Дней</th><th>Причина</th></tr></thead><tbody>${rows || `<tr><td colspan="${cols}">Нет сделок</td></tr>`}</tbody></table></div>
+      <div class="table-wrap rounded-lg border dark:border-gray-800"><table class="trades"><thead><tr><th>#</th>${showTicker ? '<th>Тикер</th>' : ''}<th>Период</th><th>Цена покупки / продажи</th><th>IBS вход / выход</th><th>Кол-во</th><th>Вложено</th><th>PnL, $</th><th>PnL, %</th>${showDeposit ? '<th>Депозит, $</th>' : ''}<th>Дней</th><th>Причина</th></tr></thead><tbody>${rows || `<tr><td colspan="${cols}">Нет сделок</td></tr>`}</tbody></table></div>
       ${pager}
     </div>`;
   }
@@ -1516,7 +1516,7 @@
       <button type="button" id="watch-export-csv" class="btn-secondary min-h-0 py-1.5 px-3 text-xs">CSV</button>
       <span class="text-xs text-gray-500 self-center">${list.length} сделок</span>
     </div>
-    <div class="table-wrap rounded border dark:border-gray-800"><table class="trades"><thead><tr><th>Тикер</th><th>Статус</th><th>Период</th><th>Цена покупки / продажи</th><th>IBS вход / выход</th><th>PnL</th><th>Действия</th></tr></thead><tbody>${rows || '<tr><td colspan="7" class="text-center text-gray-500">Нет сделок</td></tr>'}</tbody></table></div>`;
+    <div class="table-wrap rounded-lg border dark:border-gray-800"><table class="trades"><thead><tr><th>Тикер</th><th>Статус</th><th>Период</th><th>Цена покупки / продажи</th><th>IBS вход / выход</th><th>PnL</th><th>Действия</th></tr></thead><tbody>${rows || '<tr><td colspan="7" class="text-center text-gray-500">Нет сделок</td></tr>'}</tbody></table></div>`;
   }
   function overlay() {
     let html = '';
