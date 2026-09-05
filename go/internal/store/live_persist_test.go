@@ -384,6 +384,22 @@ func TestGetRobinhoodOAuthErrEmptyVsScan(t *testing.T) {
 	_ = db.GetRobinhoodOAuth()
 }
 
+func TestClaimMissedT1OnceDoesNotSetT1Sent(t *testing.T) {
+	db := openTestDB(t)
+	first, err := db.ClaimMissedT1("c", "2026-09-01")
+	if err != nil || !first {
+		t.Fatalf("first claim: claimed=%v err=%v", first, err)
+	}
+	second, err := db.ClaimMissedT1("c", "2026-09-01")
+	if err != nil || second {
+		t.Fatalf("second claim: claimed=%v err=%v", second, err)
+	}
+	t11, t1 := db.AggregateState("c", "2026-09-01")
+	if t11 || t1 {
+		t.Fatalf("missed-T1 claim must not mark t11/t1 sent, t11=%v t1=%v", t11, t1)
+	}
+}
+
 func TestT1ExecutionFinishedEmptyVsError(t *testing.T) {
 	db := openTestDB(t)
 	done, err := db.T1ExecutionFinished("c", "2026-09-01")

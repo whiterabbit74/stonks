@@ -21,7 +21,7 @@ import (
 
 // SchemaVersion is the schema this binary can open and migrate to.
 // Bump it when adding a migrateSchema step. Open fails if the database is newer.
-const SchemaVersion = 2
+const SchemaVersion = 3
 
 type DB struct {
 	SQL      *sql.DB
@@ -269,6 +269,7 @@ func (d *DB) initSchema() error {
             t1_sent  INTEGER NOT NULL DEFAULT 0,
             t1_lease_until TEXT,
             t1_execution_finished INTEGER NOT NULL DEFAULT 0,
+            missed_t1_reported INTEGER NOT NULL DEFAULT 0,
             PRIMARY KEY (date_key, chat_id)
         );
     `)
@@ -337,6 +338,11 @@ func applyPendingSchema(e schemaExecer, from int) error {
 			}
 		}
 		if _, err := e.Exec(`CREATE INDEX IF NOT EXISTS idx_broker_trades_broker_status ON broker_trades(broker, status)`); err != nil {
+			return err
+		}
+	}
+	if from < 3 {
+		if err := ensureColumn(e, "aggregate_send_state", "missed_t1_reported", "INTEGER NOT NULL DEFAULT 0"); err != nil {
 			return err
 		}
 	}

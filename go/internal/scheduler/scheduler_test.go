@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -630,6 +631,42 @@ func TestTickMissedT11AtT8Alerts(t *testing.T) {
 	}
 	if len(tg.Sent()) != n {
 		t.Fatalf("missed T-11 telegram must send once, got %d", len(tg.Sent()))
+	}
+}
+
+func TestReportMissedT1ParallelSendsOnce(t *testing.T) {
+	dir := t.TempDir()
+	db, err := store.Open(filepath.Join(dir, "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	tg := &live.MemoryTelegram{}
+	eng := live.New(db, nil)
+	eng.Telegram = tg
+	eng.ChatID = "c"
+	now := time.Date(2026, 9, 1, 20, 5, 0, 0, time.UTC)
+	today := "2026-09-01"
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Add(2)
+	for i := 0; i < 2; i++ {
+		go func() {
+			defer wg.Done()
+			<-start
+			reportMissedTelegram(db, eng, now, today, "c", "t1", -5, func(JobLog) {})
+		}()
+	}
+	close(start)
+	wg.Wait()
+	n := 0
+	for _, m := range tg.Sent() {
+		if strings.Contains(m[1], "Пропущен T-1") {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Fatalf("missed T-1 telegram must send once, got %d %+v", n, tg.Sent())
 	}
 }
 

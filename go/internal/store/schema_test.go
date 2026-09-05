@@ -94,3 +94,44 @@ func TestOpenUpgradesLegacySchemaVersion(t *testing.T) {
 		t.Fatalf("schema version=%d want %d", v, SchemaVersion)
 	}
 }
+
+func TestOpenUpgradesSchemaVersion2AddsMissedT1Reported(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "v2.db")
+	raw, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := raw.Exec(`
+        CREATE TABLE aggregate_send_state (
+            date_key TEXT NOT NULL,
+            chat_id  TEXT NOT NULL DEFAULT '',
+            t11_sent INTEGER NOT NULL DEFAULT 0,
+            t1_sent  INTEGER NOT NULL DEFAULT 0,
+            t1_lease_until TEXT,
+            t1_execution_finished INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (date_key, chat_id)
+        );
+        CREATE TABLE schema_meta (id INTEGER PRIMARY KEY CHECK (id = 1), version INTEGER NOT NULL);
+        INSERT INTO schema_meta (id, version) VALUES (1, 2);
+    `); err != nil {
+		raw.Close()
+		t.Fatal(err)
+	}
+	raw.Close()
+
+	db, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if !db.hasColumn("aggregate_send_state", "missed_t1_reported") {
+		t.Fatal("missed_t1_reported column missing after upgrade from version 2")
+	}
+	var v int
+	if err := db.SQL.QueryRow(`SELECT version FROM schema_meta WHERE id=1`).Scan(&v); err != nil {
+		t.Fatal(err)
+	}
+	if v != SchemaVersion {
+		t.Fatalf("schema version=%d want %d", v, SchemaVersion)
+	}
+}

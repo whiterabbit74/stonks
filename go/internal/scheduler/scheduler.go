@@ -467,12 +467,13 @@ func reportMissedTelegram(db *store.DB, eng *live.Engine, now time.Time, today, 
 		if t1Sent || finished {
 			return
 		}
-		settings := db.Settings()
-		if fmt.Sprint(settings["lastMissedT1Date"]) == today {
+		claimed, err := db.ClaimMissedT1(chat, today)
+		if err != nil {
+			onEvent(JobLog{At: now, Name: "telegram-aggregation", Detail: "marker-save-failed: " + err.Error()})
 			return
 		}
-		if err := db.SetSettingsKeys(map[string]any{"lastMissedT1Date": today}); err != nil {
-			onEvent(JobLog{At: now, Name: "telegram-aggregation", Detail: "marker-save-failed: " + err.Error()})
+		if !claimed {
+			return
 		}
 		detail := fmt.Sprintf("missed-t1 until=%d", until)
 		onEvent(JobLog{At: now, Name: "telegram-aggregation", Skipped: true, Detail: detail})

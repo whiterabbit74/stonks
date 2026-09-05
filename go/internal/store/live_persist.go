@@ -413,6 +413,22 @@ func (d *DB) ClaimAggregateT11(chatID, dateKey string) (bool, error) {
 	return n == 1, err
 }
 
+// ClaimMissedT1 sets missed_t1_reported if it is still 0. The caller that
+// gets true owns the missed-T1 Telegram report for that chat/date. This is
+// not ClaimAggregateT1 — t1_sent means the decision was sent, not that the
+// miss was reported.
+func (d *DB) ClaimMissedT1(chatID, dateKey string) (bool, error) {
+	if err := d.EnsureAggregateSlot(chatID, dateKey); err != nil {
+		return false, err
+	}
+	res, err := d.SQL.Exec(`UPDATE aggregate_send_state SET missed_t1_reported=1 WHERE date_key=? AND chat_id=? AND missed_t1_reported=0`, dateKey, chatID)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n == 1, err
+}
+
 // ClaimAggregateT1 sets t1_sent for this chat/date if it is still 0.
 // The caller that gets true is the only one allowed to Execute for that day.
 func (d *DB) ClaimAggregateT1(chatID, dateKey string) (bool, error) {
