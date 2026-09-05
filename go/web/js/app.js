@@ -125,7 +125,7 @@
     { id: 'tickerCharts', label: 'Графики тикеров' },
     { id: 'drawdown', label: 'Просадка' },
     { id: 'trades', label: 'Сделки' },
-    { id: 'profit', label: 'Профит Фактор' },
+    { id: 'profit', label: 'Профит-фактор' },
     { id: 'duration', label: 'Длительность' },
     { id: 'splits', label: 'Сплиты' },
   ];
