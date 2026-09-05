@@ -1175,7 +1175,7 @@ func TestWatchThresholdsAreEditable(t *testing.T) {
 	if strings.Contains(addCall, "0.1, highIBS: 0.75") || strings.Contains(addCall, "lowIBS: 0.1") {
 		t.Fatal("addWatch must not contain the literals 0.1, highIBS: 0.75")
 	}
-	if !strings.Contains(app, "data-watch-thr") || !strings.Contains(app, ">Пороги<") {
+	if !strings.Contains(app, "data-watch-thr") || !strings.Contains(app, "Изменить пороги") {
 		t.Fatal("watches table must have a «Пороги» control")
 	}
 	if !strings.Contains(api, "patchWatch:") || !strings.Contains(api, "API.patch('/api/telegram/watch/'") {
