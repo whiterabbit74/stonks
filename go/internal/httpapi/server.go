@@ -1033,7 +1033,11 @@ func (s *Server) handleAllSplits(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleGetSplits(w http.ResponseWriter, r *http.Request) {
-	list, _ := s.DB.ListSplits(r.PathValue("symbol"))
+	list, err := s.DB.ListSplits(r.PathValue("symbol"))
+	if err != nil {
+		writeJSON(w, 500, map[string]any{"error": err.Error()})
+		return
+	}
 	writeJSON(w, 200, list)
 }
 
@@ -1244,7 +1248,11 @@ func deleteNested(root map[string]any, year, mmdd string) {
 
 func (s *Server) handleWatches(w http.ResponseWriter, r *http.Request) {
 	s.liveEng().UpdatePositions()
-	list, _ := s.DB.ListWatches()
+	list, err := s.DB.ListWatches()
+	if err != nil {
+		writeJSON(w, 500, map[string]any{"error": err.Error()})
+		return
+	}
 	writeJSON(w, 200, list)
 }
 
@@ -1359,7 +1367,11 @@ func (s *Server) handleWatchPatch(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleEMAAlerts(w http.ResponseWriter, r *http.Request) {
-	list, _ := s.DB.ListEMAAlerts()
+	list, err := s.DB.ListEMAAlerts()
+	if err != nil {
+		writeJSON(w, 500, map[string]any{"error": err.Error()})
+		return
+	}
 	writeJSON(w, 200, list)
 }
 
