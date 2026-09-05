@@ -320,7 +320,7 @@ func decideLiveAction(quotes []map[string]any, symbols []string, held map[string
 		if fmt.Sprint(open["source"]) == "live_broker" {
 			return none("broker_position_not_in_journal", sym, nil)
 		}
-		if heldErr == nil && len(held) > 0 {
+		if heldErr == nil {
 			if _, ok := held[sym]; !ok {
 				return none("broker_position_mismatch", sym, nil)
 			}
