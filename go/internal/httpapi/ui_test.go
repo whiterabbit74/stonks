@@ -1398,6 +1398,9 @@ func TestAPIFetchUsesAbortController(t *testing.T) {
 	if !strings.Contains(fn, "timeout") {
 		t.Fatal("API.req must take a timeout")
 	}
+	if !strings.Contains(a, "update-all") || !strings.Contains(a, "timeout: 600000") {
+		t.Fatal("update-all must keep a long timeout past WriteTimeout")
+	}
 }
 
 func TestLongActionsDisableTheirButtons(t *testing.T) {
