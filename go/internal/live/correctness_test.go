@@ -483,6 +483,28 @@ func TestEvaluateWindowUsesCfgLowIBSWhenWatchIsZero(t *testing.T) {
 	if fmt.Sprint(ev.Decision["action"]) != "entry" {
 		t.Fatalf("Evaluate must use cfg lowIBS 0.20 after watch 0, got %+v", ev.Decision)
 	}
+	res, err := e.Aggregate(11, AggregateOpts{ForceSend: true, DryRun: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(res.Text, "ENTRY") || !strings.Contains(res.Text, "AAPL") {
+		t.Fatalf("T-11 must pick AAPL under the same cfg threshold, text=%s", res.Text)
+	}
+}
+
+func TestEvaluateTreatsCfgLowIBSZeroAsUnset(t *testing.T) {
+	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
+	db, e, _ := testEngine(t, bars)
+	if err := db.PatchWatch("AAPL", map[string]any{"lowIBS": 0.0}); err != nil {
+		t.Fatal(err)
+	}
+	e.PatchAutoConfig(map[string]any{
+		"enabled": true, "lowIBS": 0.0, "highIBS": 0.75, "allowNewEntries": true,
+	})
+	ev := e.Evaluate()
+	if fmt.Sprint(ev.Decision["action"]) != "entry" {
+		t.Fatalf("lowIBS 0 must not disable entry (IBS 0.05 vs default 0.10), got %+v cfg=%+v", ev.Decision, e.AutoConfig())
+	}
 }
 
 func TestSanitizeZeroLowIBSNotKept(t *testing.T) {
