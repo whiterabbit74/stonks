@@ -1897,11 +1897,12 @@ func fmtFloat(v any) string {
 func (s *Server) handleAutoConfig(w http.ResponseWriter, r *http.Request) {
 	eng := s.liveEng()
 	writeJSON(w, 200, map[string]any{
-		"config":             eng.AutoConfig(),
-		"webull":             eng.WebullSummary(),
-		"state":              map[string]any{"running": eng.CanSubmit()},
-		"capitalModes":       live.CapitalModeInfos(),
-		"minEntryReservePct": live.MinEntryReservePct,
+		"config":              eng.AutoConfig(),
+		"webull":              eng.WebullSummary(),
+		"state":               map[string]any{"running": eng.CanSubmit()},
+		"capitalModes":        live.CapitalModeInfos(),
+		"minEntryReservePct":  live.MinEntryReservePct,
+		"effectiveReservePct": live.EffectiveReservePct(eng.AutoConfig()),
 	})
 }
 

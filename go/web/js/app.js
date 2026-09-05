@@ -332,6 +332,7 @@
     autoConfig: {},
     capitalModes: [],
     minEntryReservePct: 0.005,
+    effectiveReservePct: 0.005,
     tickerCatalog: [],
     enhanceCat: 'popular',
     enhanceQuery: '',
@@ -2525,17 +2526,14 @@
     if (payload.minEntryReservePct != null && Number.isFinite(Number(payload.minEntryReservePct))) {
       state.minEntryReservePct = Number(payload.minEntryReservePct);
     }
+    if (payload.effectiveReservePct != null && Number.isFinite(Number(payload.effectiveReservePct))) {
+      state.effectiveReservePct = Number(payload.effectiveReservePct);
+    }
     if (payload.config && typeof payload.config === 'object') return payload.config;
     return payload;
   }
-  // max(mode.reservePct, minEntryReservePct, entryReservePct, maxSlippageBps/10000)
-  // — same formula as live.EffectiveReservePct.
-  function effectiveReservePct(mode, cfg) {
-    const minReserve = Number(state.minEntryReservePct) || 0.005;
-    const base = Number(mode && mode.reservePct) || 0;
-    const configured = Number(cfg && cfg.entryReservePct) || 0;
-    const slippage = (Number(cfg && cfg.maxSlippageBps) || 0) / 10000;
-    return Math.max(base, minReserve, configured, slippage);
+  function effectiveReservePct() {
+    return Number(state.effectiveReservePct) || 0.005;
   }
   function capitalModeLabel(mode) {
     if (!mode) return '';
