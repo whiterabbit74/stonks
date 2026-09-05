@@ -1300,3 +1300,38 @@ func TestStocksPageHasPresetsNotDefaultHint(t *testing.T) {
 		t.Fatal("empty «Выбрать пресет» must not run the backtest")
 	}
 }
+
+// TestWatchesSimulateButtonIsT1 is F-30: confirmations is T-1 (1 minute),
+// not T-2. The watches control and toasts must match that stage.
+func TestWatchesSimulateButtonIsT1(t *testing.T) {
+	a := readWeb(t, "js/app.js")
+	watches := jsFn(a, "pageWatches")
+	if watches == "" {
+		t.Fatal("pageWatches not found")
+	}
+	if !strings.Contains(watches, ">Тест T-1<") {
+		t.Fatal("watches page must have «Тест T-1»")
+	}
+	if strings.Contains(watches, ">Тест T-2<") {
+		t.Fatal("watches page must not have «Тест T-2»")
+	}
+	after := jsFn(a, "afterRender")
+	if after == "" {
+		t.Fatal("afterRender not found")
+	}
+	start := strings.Index(after, "getElementById('watch-t1')")
+	if start < 0 {
+		t.Fatal("watch-t1 click handler not found")
+	}
+	endRel := strings.Index(after[start:], "getElementById('watch-prices')")
+	if endRel < 0 {
+		t.Fatal("watch-t1 handler not bounded")
+	}
+	handler := after[start : start+endRel]
+	if !strings.Contains(handler, "simulate('confirmations')") {
+		t.Fatal("T-1 button must still call simulate('confirmations')")
+	}
+	if strings.Contains(handler, "T-2") {
+		t.Fatal("T-1 toasts must not say T-2")
+	}
+}

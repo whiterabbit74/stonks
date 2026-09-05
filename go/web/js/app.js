@@ -2478,7 +2478,7 @@
         ${state.watchTab === 'summary' ? `<div class="rounded-lg border border-gray-200 bg-white p-4 dark:bg-gray-800 dark:border-gray-700"><h3 class="text-lg font-semibold mb-2">Капитал мониторинга (старт ${fmtUsd(stats.initial)}, маржа ${state.monitorMarginPercent}%)</h3>${stats.equity.length ? '<div id="watch-eq" class="chart-box"></div>' : '<p class="text-sm text-gray-500">Нет закрытых сделок для построения кривой капитала.</p>'}</div>` : ''}
         ${state.watchTab === 'watches' ? `<form id="watch-form" class="flex gap-2 mb-4"><input name="symbol" placeholder="AAPL" class="field" /><button class="btn-primary min-h-0 py-2">Добавить</button>
           <button type="button" id="watch-t11" class="btn-secondary min-h-0 py-2">Тест T-11</button>
-          <button type="button" id="watch-t2" class="btn-secondary min-h-0 py-2">Тест T-2</button>
+          <button type="button" id="watch-t1" class="btn-secondary min-h-0 py-2">Тест T-1</button>
           <button type="button" id="watch-prices" class="btn-secondary min-h-0 py-2">Обновить цены и позиции</button></form>
           <div class="overflow-auto"><table class="trades"><thead><tr><th>Тикер</th><th>Вход, IBS &lt;</th><th>Выход, IBS &gt;</th><th>Цена входа</th><th>Позиция</th><th>Действия</th></tr></thead><tbody>${rows || '<tr><td colspan="6" class="text-center text-gray-500">Нет активных наблюдений. Добавьте тикер в форму выше.</td></tr>'}</tbody></table></div>
           <p class="text-xs text-gray-500 mt-2">Пороги в строке задаются для тикера и перекрывают значения по умолчанию из настроек автоторговли.</p>` : ''}
@@ -3832,7 +3832,7 @@
         } catch (err) { toast(errText(err)); }
       });
       document.getElementById('watch-t11')?.addEventListener('click', async () => { try { const r = await API.simulate('overview'); if (r && r.success && r.sent) toast('Симуляция T-11'); else toast((r && (r.reason || r.error)) || 'Симуляция T-11 не отправлена'); } catch (err) { toast(err.message); } });
-      document.getElementById('watch-t2')?.addEventListener('click', async () => { try { const r = await API.simulate('confirmations'); if (r && r.success && r.sent) toast('Симуляция T-2'); else toast((r && (r.reason || r.error)) || 'Симуляция T-2 не отправлена'); } catch (err) { toast(err.message); } });
+      document.getElementById('watch-t1')?.addEventListener('click', async () => { try { const r = await API.simulate('confirmations'); if (r && r.success && r.sent) toast('Симуляция T-1'); else toast((r && (r.reason || r.error)) || 'Симуляция T-1 не отправлена'); } catch (err) { toast(err.message); } });
       document.getElementById('watch-prices')?.addEventListener('click', async () => {
         try {
           const r = await API.updateAll();
