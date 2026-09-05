@@ -77,6 +77,42 @@ func TestAccessLogSkipsStaticAndCapturesStatus(t *testing.T) {
 	}
 }
 
+func TestAccessLogClipsPathAndQuery(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HTTP_LOG_PATH", filepath.Join(dir, "http-access.jsonl"))
+	t.Cleanup(resetHTTPLogForTest)
+
+	s := testServer(t, "")
+	longPath := "/api/" + strings.Repeat("p", 300)
+	longQuery := "q=" + strings.Repeat("x", 600)
+	req := httptest.NewRequest("GET", longPath+"?"+longQuery, nil)
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	resetHTTPLogForTest()
+	raw, err := os.ReadFile(httpLogPathFor(time.Now()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var recJSON map[string]any
+	if err := json.Unmarshal(bytes.TrimSpace(raw), &recJSON); err != nil {
+		t.Fatalf("json: %v %s", err, raw)
+	}
+	path, _ := recJSON["path"].(string)
+	query, _ := recJSON["query"].(string)
+	if len(path) > 256 {
+		t.Fatalf("path not clipped: len=%d", len(path))
+	}
+	if len(query) > 512 {
+		t.Fatalf("query not clipped: len=%d", len(query))
+	}
+	if len(path) < 256 {
+		t.Fatalf("expected a 256-byte clipped path, got %d", len(path))
+	}
+	if !strings.HasPrefix(path, "/api/") {
+		t.Fatalf("path prefix lost: %q", path)
+	}
+}
+
 func TestRedactJSONNestedSecrets(t *testing.T) {
 	got := redactJSON(map[string]any{
 		"ok":     true,

@@ -79,8 +79,8 @@ func (s *Server) accessLog(next http.Handler) http.Handler {
 		rec := apiLogRec{
 			TS:      start.UTC().Format(time.RFC3339Nano),
 			Method:  r.Method,
-			Path:    r.URL.Path,
-			Query:   redactQuery(r.URL.RawQuery),
+			Path:    clip(r.URL.Path, 256),
+			Query:   clip(redactQuery(r.URL.RawQuery), 512),
 			Status:  status,
 			Ms:      time.Since(start).Milliseconds(),
 			Bytes:   sw.bytes,
