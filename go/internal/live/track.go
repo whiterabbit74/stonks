@@ -451,7 +451,9 @@ func (e *Engine) brokerForTracker(t map[string]any) Broker {
 func (e *Engine) markBrokerDisconnected(t map[string]any) {
 	id := fmt.Sprint(t["clientOrderId"])
 	name := trackerBrokerName(t)
-	_ = e.stampTrackerStatus(id, "execution_unknown")
+	if err := e.stampTrackerStatus(id, "execution_unknown"); err != nil {
+		e.logAuto("order_execution_unknown_persist_failed", e.metaCorr(id), map[string]any{"clientOrderId": id, "error": err.Error()})
+	}
 	e.logAuto("order_execution_unknown", e.metaCorr(id), map[string]any{
 		"clientOrderId": id, "symbol": t["symbol"], "action": t["action"],
 		"broker": name, "error": "broker_not_connected",
@@ -463,7 +465,9 @@ func (e *Engine) markBrokerDisconnected(t map[string]any) {
 
 func (e *Engine) markExecutionUnknown(t map[string]any, cause error) {
 	id := fmt.Sprint(t["clientOrderId"])
-	_ = e.stampTrackerStatus(id, "execution_unknown")
+	if err := e.stampTrackerStatus(id, "execution_unknown"); err != nil {
+		e.logAuto("order_execution_unknown_persist_failed", e.metaCorr(id), map[string]any{"clientOrderId": id, "error": err.Error()})
+	}
 	msg := ""
 	if cause != nil {
 		msg = cause.Error()

@@ -207,8 +207,26 @@ func (d *DB) GetOrderTracker(clientOrderID string) map[string]any {
 }
 
 func (d *DB) SetOrderTrackerStatus(clientOrderID, status string) error {
-	_, err := d.SQL.Exec(`UPDATE order_trackers SET status=?, updated_at=datetime('now') WHERE client_order_id=?`, status, clientOrderID)
-	return err
+	res, err := d.SQL.Exec(`UPDATE order_trackers SET status=?, updated_at=datetime('now') WHERE client_order_id=? AND status NOT IN ('filled','cancelled','canceled','rejected','expired','terminal_absent')`, status, clientOrderID)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n != 1 {
+		var current string
+		err := d.SQL.QueryRow(`SELECT status FROM order_trackers WHERE client_order_id=?`, clientOrderID).Scan(&current)
+		if err == sql.ErrNoRows {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		return fmt.Errorf("tracker already resolved")
+	}
+	return nil
 }
 
 func (d *DB) BumpOrderTrackerAttempts(clientOrderID string) (int, error) {

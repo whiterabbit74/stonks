@@ -1327,10 +1327,15 @@ func (d *DB) CloseTradeByID(table, id string, exitPrice float64, exitDate string
 		exitDate = tradingdate.TodayNYSE(time.Now())
 	}
 	fields := TradeCloseFields(existing, exitPrice, exitDate, extra)
-	_, err = d.SQL.Exec(`UPDATE `+table+` SET status='closed', exit_date=?, exit_price=?, exit_ibs=COALESCE(?, exit_ibs), pnl_absolute=?, pnl_percent=?, holding_days=?, notes=COALESCE(?, notes) WHERE id=?`,
+	res, err := d.SQL.Exec(`UPDATE `+table+` SET status='closed', exit_date=?, exit_price=?, exit_ibs=COALESCE(?, exit_ibs), pnl_absolute=?, pnl_percent=?, holding_days=?, notes=COALESCE(?, notes) WHERE id=? AND status='open'`,
 		fields["exitDate"], fields["exitPrice"], fields["exitIBS"], fields["pnlAbsolute"], fields["pnlPercent"], fields["holdingDays"], fields["notes"], id)
 	if err != nil {
 		return nil, err
+	}
+	if n, err := res.RowsAffected(); err != nil {
+		return nil, err
+	} else if n != 1 {
+		return existing, fmt.Errorf("Trade is already closed")
 	}
 	return d.GetTrade(table, id)
 }
@@ -1367,6 +1372,9 @@ func (d *DB) ListTrades(table string) ([]map[string]any, error) {
 			"isHidden": hidden.Int64 == 1, "isTest": test.Int64 == 1, "quantity": nullF(qty),
 			"broker": nullS(broker),
 		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 	if out == nil {
 		out = []map[string]any{}
