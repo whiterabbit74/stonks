@@ -2,7 +2,7 @@
   const NAV = [
     { to: '/data', label: 'Данные', icon: 'database', sidebar: true, menu: true },
     { to: '/stocks', label: 'Акции', icon: 'linechart', sidebar: true, bottom: true, menu: true },
-    { to: '/ema', label: 'EMA', icon: 'activity', sidebar: true, bottom: true, menu: true },
+    { to: '/ema', label: 'EMA', icon: 'ema', sidebar: true, bottom: true, menu: true },
     { to: '/multi-ticker-options', label: 'Опционы', icon: 'layers', sidebar: true, menu: true },
     { to: '/calendar', label: 'Календарь', icon: 'calendar', sidebar: true, menu: true },
     { to: '/split', label: 'Сплиты', icon: 'scissors', sidebar: true, menu: true },
@@ -53,7 +53,7 @@
     { id: 'summary', label: 'Сводка', icon: 'layout' },
     { id: 'trades', label: 'Сделки', icon: 'list' },
     { id: 'watches', label: 'Тикеры', icon: 'bell' },
-    { id: 'ema', label: 'EMA', icon: 'linechart' },
+    { id: 'ema', label: 'EMA', icon: 'ema' },
   ];
   const CAPITAL_MODE_LABELS = {
     standard_safe: 'Стандартный',
@@ -146,6 +146,7 @@
     database: '<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/>',
     linechart: '<path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/>',
     activity: '<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>',
+    ema: '<path d="M5 19V11M9 16V7M13 18V10M17 13V5"/><path d="M3 17c3-2 5-1 7-3s4-1 6-4 3-2 5-3"/>',
     layers: '<path d="M12 2 2 7l10 5 10-5-10-5z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/>',
     wallet: '<path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/>',
     calendar: '<path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/>',
