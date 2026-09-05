@@ -779,6 +779,8 @@
   }
   function orderTypeText(value) { return orderValueText(value, { MARKET: 'Рыночная', LIMIT: 'Лимитная', STOP: 'Стоп-заявка', STOP_LIMIT: 'Стоп-лимитная' }); }
   function instrumentTypeText(value) { return orderValueText(value, { STOCK: 'Акция', EQUITY: 'Акция', ETF: 'ETF', OPTION: 'Опцион' }); }
+  function comboTypeText(value) { return orderValueText(value, { NORMAL: 'Обычная', SINGLE: 'Одиночная', COMBO: 'Комбинированная' }); }
+  function entrustTypeText(value) { return orderValueText(value, { QTY: 'Количество', QUANTITY: 'Количество', AMOUNT: 'Сумма', VALUE: 'Сумма' }); }
   function tifText(value) { return orderValueText(value, { DAY: 'До конца дня', GTC: 'До отмены', IOC: 'Немедленно или отменить', FOK: 'Полностью или отменить' }); }
   function sessionText(value) { return orderValueText(value, { CORE: 'Основная', EXTENDED: 'Расширенная', PRE_MARKET: 'Предторговая', AFTER_HOURS: 'Послеторговая' }); }
   // Mirrors go/internal/live/telegram.go noActionReasonText for the reasons
@@ -2633,8 +2635,8 @@
       const orderRows = orders.map((o) => `<tr>
         <td class="font-mono">${esc(o.symbol)}</td><td>${esc(orderSideText(o.side))}</td><td>${esc(orderStatusText(o.status))}</td>
         <td>${o.quantity == null ? '—' : esc(o.quantity)}</td><td>${o.filledQuantity == null ? '—' : esc(o.filledQuantity)}</td>
-        <td>${esc(orderTypeText(o.orderType))}</td><td>${esc(instrumentTypeText(o.instrumentType))}</td><td>${esc(o.comboType)}</td>
-        <td>${esc(o.entrustType)}</td><td>${esc(tifText(o.timeInForce))}</td><td>${esc(sessionText(o.tradingSession))}</td>
+        <td>${esc(orderTypeText(o.orderType))}</td><td>${esc(instrumentTypeText(o.instrumentType))}</td><td>${esc(comboTypeText(o.comboType))}</td>
+        <td>${esc(entrustTypeText(o.entrustType))}</td><td>${esc(tifText(o.timeInForce))}</td><td>${esc(sessionText(o.tradingSession))}</td>
         <td>${o.limitPrice == null ? (o.avgPrice == null ? '—' : fmt(toNum(o.avgPrice))) : fmt(toNum(o.limitPrice))}</td>
         <td class="text-xs">${esc(o.orderId)}</td><td class="text-xs">${esc(o.clientOrderId)}</td>
         <td class="text-xs">${esc(formatDateTimeET(o.createdAt))}</td>
@@ -2648,8 +2650,8 @@
         <td class="font-mono">${esc(o.symbol)}</td><td>${esc(orderSideText(o.side))}</td><td>${esc(orderStatusText(o.status))}</td>
         <td>${o.filledQuantity == null ? '—' : esc(o.filledQuantity)}</td>
         <td>${o.quantity == null ? '—' : esc(o.quantity)}</td>
-        <td>${esc(orderTypeText(o.orderType))}</td><td>${esc(instrumentTypeText(o.instrumentType))}</td><td>${esc(o.comboType)}</td>
-        <td>${esc(o.entrustType)}</td><td>${esc(tifText(o.timeInForce))}</td><td>${esc(sessionText(o.tradingSession))}</td>
+        <td>${esc(orderTypeText(o.orderType))}</td><td>${esc(instrumentTypeText(o.instrumentType))}</td><td>${esc(comboTypeText(o.comboType))}</td>
+        <td>${esc(entrustTypeText(o.entrustType))}</td><td>${esc(tifText(o.timeInForce))}</td><td>${esc(sessionText(o.tradingSession))}</td>
         <td>${o.avgPrice == null ? '—' : fmt(toNum(o.avgPrice))}</td>
         <td class="text-xs">${esc(o.orderId)}</td><td class="text-xs">${esc(o.clientOrderId)}</td>
       </tr>`).join('');
