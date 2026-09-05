@@ -1354,3 +1354,15 @@ func TestWatchPricesReadsActualizeResultFields(t *testing.T) {
 		t.Fatal("must not use Node leftover updatedCount")
 	}
 }
+
+func TestToastIsPoliteStatus(t *testing.T) {
+	a := readWeb(t, "js/app.js")
+	start := strings.Index(a, "function toast(")
+	if start < 0 {
+		t.Fatal("toast not found")
+	}
+	fn := a[start : start+800]
+	if !strings.Contains(fn, `setAttribute('role', 'status')`) || !strings.Contains(fn, "aria-live") {
+		t.Fatal("toast must be role=status aria-live for screen readers")
+	}
+}

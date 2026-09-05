@@ -1612,6 +1612,8 @@
       else {
         el = document.createElement('div');
         el.className = 'toast';
+        el.setAttribute('role', 'status');
+        el.setAttribute('aria-live', 'polite');
         el.textContent = msg;
         host.appendChild(el);
       }
