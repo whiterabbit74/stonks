@@ -1,6 +1,7 @@
 package live
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -371,5 +372,37 @@ func TestResetAccountClearsCachedAccount(t *testing.T) {
 	}
 	if accounts != 1 {
 		t.Fatalf("get_accounts after reset: %d", accounts)
+	}
+}
+
+func TestRobinhoodBrokerImplementsCtxReadExtensions(t *testing.T) {
+	var b *RobinhoodBroker
+	var _ ctxPositioner = b
+	var _ ctxOrderDetailer = b
+	var _ ctxOpenOrderser = b
+}
+
+type rhCtxKey struct{}
+
+func TestRobinhoodPositionsCtxPassesContextToTool(t *testing.T) {
+	want := context.WithValue(context.Background(), rhCtxKey{}, "positions")
+	var got context.Context
+	var tool string
+	b := &RobinhoodBroker{
+		account: "RH1",
+		CallCtx: func(ctx context.Context, name string, args map[string]any) (json.RawMessage, error) {
+			got = ctx
+			tool = name
+			return json.Marshal(map[string]any{"results": []any{}})
+		},
+	}
+	if _, err := b.PositionsCtx(want); err != nil {
+		t.Fatal(err)
+	}
+	if got != want {
+		t.Fatalf("PositionsCtx must pass ctx into tool, got %v", got)
+	}
+	if tool != "get_equity_positions" {
+		t.Fatalf("tool %q", tool)
 	}
 }

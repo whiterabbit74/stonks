@@ -16,6 +16,7 @@ import (
 type RobinhoodBroker struct {
 	Svc     *robinhood.Service
 	Call    func(name string, args map[string]any) (json.RawMessage, error)
+	CallCtx func(ctx context.Context, name string, args map[string]any) (json.RawMessage, error)
 	account string
 }
 
@@ -23,12 +24,14 @@ func (b *RobinhoodBroker) tool(name string, args map[string]any) (json.RawMessag
 	return b.toolCtx(context.Background(), name, args)
 }
 
-// toolCtx is tool with an explicit context, threaded down from
-// PlaceMarketCfg's cfg.Ctx so a T-1 order's MCP calls are bounded by the same
-// close-of-session deadline as the placement itself. The test/simulator hook
-// (b.Call) predates context plumbing and stays ctx-less — it never talks to a
-// real network. See P1-1 in AUTOTRADE_ROADMAP.md.
+// toolCtx is tool with an explicit context, threaded down from PlaceMarketCfg
+// and the ctx* reads so a T-1 MCP call is bounded by the close-of-session
+// deadline. Call is the ctx-less test hook; CallCtx is the spy that receives
+// the caller context. See P1-1 in AUTOTRADE_ROADMAP.md.
 func (b *RobinhoodBroker) toolCtx(ctx context.Context, name string, args map[string]any) (json.RawMessage, error) {
+	if b != nil && b.CallCtx != nil {
+		return b.CallCtx(ctx, name, args)
+	}
 	if b != nil && b.Call != nil {
 		return b.Call(name, args)
 	}
@@ -157,11 +160,15 @@ func (b *RobinhoodBroker) Account() (map[string]any, error) {
 }
 
 func (b *RobinhoodBroker) Positions() ([]any, error) {
+	return b.PositionsCtx(context.Background())
+}
+
+func (b *RobinhoodBroker) PositionsCtx(ctx context.Context) ([]any, error) {
 	acct, err := b.agenticAccount()
 	if err != nil {
 		return nil, err
 	}
-	raw, err := b.tool("get_equity_positions", map[string]any{"account_number": acct})
+	raw, err := b.toolCtx(ctx, "get_equity_positions", map[string]any{"account_number": acct})
 	if err != nil {
 		return nil, err
 	}
@@ -173,11 +180,15 @@ func (b *RobinhoodBroker) Positions() ([]any, error) {
 }
 
 func (b *RobinhoodBroker) OrderDetail(clientOrderID string) (map[string]any, error) {
+	return b.OrderDetailCtx(context.Background(), clientOrderID)
+}
+
+func (b *RobinhoodBroker) OrderDetailCtx(ctx context.Context, clientOrderID string) (map[string]any, error) {
 	acct, err := b.agenticAccount()
 	if err != nil {
 		return nil, err
 	}
-	raw, err := b.tool("get_equity_orders", map[string]any{"account_number": acct})
+	raw, err := b.toolCtx(ctx, "get_equity_orders", map[string]any{"account_number": acct})
 	if err != nil {
 		return nil, err
 	}
@@ -194,19 +205,27 @@ func (b *RobinhoodBroker) OrderDetail(clientOrderID string) (map[string]any, err
 }
 
 func (b *RobinhoodBroker) OpenOrders() ([]any, error) {
-	return b.ordersByState(false)
+	return b.OpenOrdersCtx(context.Background())
+}
+
+func (b *RobinhoodBroker) OpenOrdersCtx(ctx context.Context) ([]any, error) {
+	return b.ordersByState(ctx, false)
 }
 
 func (b *RobinhoodBroker) OrderHistory(start, end string) ([]any, error) {
-	return b.ordersByState(true)
+	return b.OrderHistoryCtx(context.Background(), start, end)
 }
 
-func (b *RobinhoodBroker) ordersByState(all bool) ([]any, error) {
+func (b *RobinhoodBroker) OrderHistoryCtx(ctx context.Context, start, end string) ([]any, error) {
+	return b.ordersByState(ctx, true)
+}
+
+func (b *RobinhoodBroker) ordersByState(ctx context.Context, all bool) ([]any, error) {
 	acct, err := b.agenticAccount()
 	if err != nil {
 		return nil, err
 	}
-	raw, err := b.tool("get_equity_orders", map[string]any{"account_number": acct})
+	raw, err := b.toolCtx(ctx, "get_equity_orders", map[string]any{"account_number": acct})
 	if err != nil {
 		return nil, err
 	}
