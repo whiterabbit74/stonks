@@ -468,6 +468,93 @@ func TestGetOHLCLastChronoTail(t *testing.T) {
 	}
 }
 
+func TestMergeOHLCUpsertsWithoutRewrite(t *testing.T) {
+	db := openTestDB(t)
+	bars := make([]types.OHLC, 20)
+	for i := range bars {
+		d := fmt.Sprintf("2024-01-%02d", i+1)
+		bars[i] = types.OHLC{Date: d, Open: float64(i + 1), High: float64(i + 1), Low: float64(i + 1), Close: float64(i + 1), Volume: float64((i + 1) * 10)}
+	}
+	if err := db.SaveDataset("QQQ", "Invesco QQQ", "Invesco", "core", bars, true); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.SQL.Exec(`UPDATE dataset_meta SET upload_date = '2020-06-15' WHERE ticker = 'QQQ'`); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := db.MergeOHLC("QQQ", []types.OHLC{
+		{Date: "2024-01-20", Open: 20, High: 21, Low: 19, Close: 20.5, Volume: 200},
+		{Date: "2024-01-21", Open: 21, High: 21, Low: 21, Close: 21, Volume: 210},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	got, adj, err := db.GetOHLC("QQQ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !adj {
+		t.Fatal("adjusted_for_splits flipped")
+	}
+	if len(got) != 21 {
+		t.Fatalf("bars %d want 21", len(got))
+	}
+	if got[0].Date != "2024-01-01" || got[0].Close != 1 {
+		t.Fatalf("first bar %+v", got[0])
+	}
+	if got[18].Date != "2024-01-19" || got[18].Close != 19 {
+		t.Fatalf("untouched bar %+v", got[18])
+	}
+	if got[19].Date != "2024-01-20" || got[19].Close != 20.5 {
+		t.Fatalf("updated bar %+v", got[19])
+	}
+	if got[20].Date != "2024-01-21" || got[20].Close != 21 {
+		t.Fatalf("new bar %+v", got[20])
+	}
+
+	ds, err := db.GetDataset("QQQ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	upload, _ := ds["uploadDate"].(*string)
+	if upload == nil || *upload != "2020-06-15" {
+		gotUpload := ""
+		if upload != nil {
+			gotUpload = *upload
+		}
+		t.Fatalf("uploadDate %q", gotUpload)
+	}
+	if ds["name"] != "Invesco QQQ" {
+		t.Fatalf("name %v", ds["name"])
+	}
+	if ds["dataPoints"] != 21 {
+		t.Fatalf("dataPoints %v", ds["dataPoints"])
+	}
+	dr, _ := ds["dateRange"].(map[string]*string)
+	if dr["from"] == nil || *dr["from"] != "2024-01-01" || dr["to"] == nil || *dr["to"] != "2024-01-21" {
+		t.Fatalf("dateRange %v", ds["dateRange"])
+	}
+
+	if err := db.MergeOHLC("NEW", []types.OHLC{
+		{Date: "2024-02-01", Open: 1, High: 1, Low: 1, Close: 1, Volume: 1},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	fresh, err := db.GetDataset("NEW")
+	if err != nil || fresh == nil {
+		t.Fatalf("first merge meta: %v %v", fresh, err)
+	}
+	if fresh["name"] != "NEW" {
+		t.Fatalf("new name %v", fresh["name"])
+	}
+	if fresh["dataPoints"] != 1 {
+		t.Fatalf("new dataPoints %v", fresh["dataPoints"])
+	}
+	if fresh["adjustedForSplits"] != false {
+		t.Fatalf("new adjusted %v", fresh["adjustedForSplits"])
+	}
+}
+
 func TestSessionDeleteExpired(t *testing.T) {
 	db := openTestDB(t)
 	if err := db.SessionSet("old", 1, 100); err != nil {

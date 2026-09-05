@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"fmt"
 	"os"
-	"sort"
 	"strings"
 	"time"
 
@@ -17,43 +16,44 @@ func (d *DB) MergeOHLC(ticker string, incoming []types.OHLC) error {
 	if ticker == "" {
 		return fmt.Errorf("Invalid ticker")
 	}
-	existing, adj, err := d.GetOHLC(ticker)
+	tx, err := d.SQL.Begin()
 	if err != nil {
 		return err
 	}
-	by := make(map[string]types.OHLC, len(existing)+len(incoming))
-	for _, b := range existing {
-		by[tradingdate.DateKey(b.Date)] = b
+	defer tx.Rollback()
+	stmt, err := tx.Prepare(`INSERT INTO ohlc (ticker, date, open, high, low, close, adj_close, volume) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(ticker, date) DO UPDATE SET open=excluded.open, high=excluded.high, low=excluded.low, close=excluded.close, adj_close=excluded.adj_close, volume=excluded.volume`)
+	if err != nil {
+		return err
 	}
+	defer stmt.Close()
 	for _, b := range incoming {
-		if b.Date == "" {
+		date := tradingdate.DateKey(b.Date)
+		if date == "" {
 			continue
 		}
-		b.Date = tradingdate.DateKey(b.Date)
-		by[b.Date] = b
-	}
-	dates := make([]string, 0, len(by))
-	for date := range by {
-		dates = append(dates, date)
-	}
-	sort.Strings(dates)
-	out := make([]types.OHLC, 0, len(dates))
-	for _, date := range dates {
-		out = append(out, by[date])
-	}
-	name, company, tag := ticker, "", ""
-	if ds, _ := d.GetDataset(ticker); ds != nil {
-		if n, ok := ds["name"].(string); ok && n != "" {
-			name = n
+		var adjC any
+		if b.AdjClose != nil {
+			adjC = *b.AdjClose
 		}
-		if c, ok := ds["companyName"].(string); ok {
-			company = c
-		}
-		if t, ok := ds["tag"].(string); ok {
-			tag = t
+		if _, err := stmt.Exec(ticker, date, b.Open, b.High, b.Low, b.Close, adjC, int64(b.Volume)); err != nil {
+			return err
 		}
 	}
-	return d.SaveDataset(ticker, name, company, tag, out, adj)
+	var n int
+	var from, to sql.NullString
+	if err := tx.QueryRow(`SELECT COUNT(*), MIN(date), MAX(date) FROM ohlc WHERE ticker = ?`, ticker).Scan(&n, &from, &to); err != nil {
+		return err
+	}
+	upload := time.Now().UTC().Format("2006-01-02")
+	_, err = tx.Exec(`INSERT INTO dataset_meta (ticker, name, upload_date, data_points, date_from, date_to, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+        ON CONFLICT(ticker) DO UPDATE SET data_points=excluded.data_points, date_from=excluded.date_from, date_to=excluded.date_to, updated_at=datetime('now')`,
+		ticker, ticker, upload, n, from, to)
+	if err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // SaveWebullToken persists the token, expiry, and check status as a single
