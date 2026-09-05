@@ -76,7 +76,7 @@ func TestUXAppearanceContract(t *testing.T) {
 			t.Fatal("missing const BOTTOM")
 		}
 		block := app[start : start+len("const BOTTOM = NAV.filter((t) => t.bottom);")]
-		nItems := 5
+		nItems := strings.Count(jsBlock(app, "const NAV = [", "];"), "bottom: true")
 		m := bottomNavCols.FindStringSubmatch(app)
 		if m == nil {
 			t.Fatal("bottom-nav grid-cols-N not found")
@@ -86,6 +86,9 @@ func TestUXAppearanceContract(t *testing.T) {
 		}
 		if nItems == 6 && m[1] == "5" {
 			t.Fatal("6 bottom-nav links in grid-cols-5")
+		}
+		if nItems != 3 || m[1] != "3" {
+			t.Fatalf("mobile bottom navigation must contain exactly 3 links, got %d links in grid-cols-%s", nItems, m[1])
 		}
 		menu := jsBlock(app, "const NAV = [", "];")
 		for _, route := range []string{"/webull", "/robinhood", "/calendar", "/split", "/watches", "/settings"} {
