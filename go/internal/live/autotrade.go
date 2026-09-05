@@ -256,23 +256,27 @@ func (e *Engine) EvaluateWindow(w execWindow) EvalResult {
 		}
 	}
 	open, held, heldErr := e.booksFor("webull", e.defaultBroker(), brokerTrades, w)
-	quoteSymbols := symbols
-	if open != nil {
-		openSym := store.SafeTicker(fmt.Sprint(open["symbol"]))
-		found := false
-		for _, sym := range quoteSymbols {
-			if sym == openSym {
-				found = true
-				break
+	quoteSymbols := append([]string{}, symbols...)
+	addQuote := func(sym string) {
+		sym = store.SafeTicker(sym)
+		if sym == "" {
+			return
+		}
+		for _, s := range quoteSymbols {
+			if s == sym {
+				return
 			}
 		}
-		if !found {
-			// The open position's symbol may have dropped out of the watch list
-			// (e.g. an empty monitoring list). We still need a quote for it so
-			// decideLiveAction can evaluate the exit — see P0-5 in
-			// AUTOTRADE_ROADMAP.md.
-			quoteSymbols = append(append([]string{}, quoteSymbols...), openSym)
+		quoteSymbols = append(quoteSymbols, sym)
+	}
+	if open != nil {
+		addQuote(fmt.Sprint(open["symbol"]))
+	}
+	for _, row := range brokerTrades {
+		if fmt.Sprint(row["status"]) != "open" {
+			continue
 		}
+		addQuote(fmt.Sprint(row["symbol"]))
 	}
 	e.prefetchQuotes(quoteSymbols, providerChain)
 	var quotes []map[string]any

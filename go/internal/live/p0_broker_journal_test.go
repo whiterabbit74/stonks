@@ -7,6 +7,34 @@ import (
 	"mktorder.com/go/internal/types"
 )
 
+func TestEvaluateWindowQuotesEveryBrokerOpenSymbol(t *testing.T) {
+	e, webull, rh := dualBrokerEngine(t, entryBars)
+	mq, ok := e.Quotes.(*MemoryQuotes)
+	if !ok {
+		t.Fatal("want MemoryQuotes")
+	}
+	msft := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
+	mq.Bars["MSFT"] = msft
+	if err := e.DB.SaveDataset("MSFT", "MSFT", "", "", msft, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.DB.InsertTrade("broker_trades", map[string]any{
+		"id": "rh-msft", "symbol": "MSFT", "status": "open",
+		"entryDate": "2026-08-01", "entryPrice": 10.0, "quantity": 1.0, "broker": "robinhood",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	rh.Pos = []any{map[string]any{"symbol": "MSFT", "quantity": 1.0}}
+	webull.Pos = nil
+	ev := e.EvaluateWindow(backgroundWindow())
+	for _, q := range ev.Quotes {
+		if q["symbol"] == "MSFT" {
+			return
+		}
+	}
+	t.Fatalf("quotes missing RH-only open MSFT: %+v", ev.Quotes)
+}
+
 func dualBrokerEngine(t *testing.T, bars []types.OHLC) (*Engine, *MemoryBroker, *MemoryBroker) {
 	t.Helper()
 	_, e, webull := testEngine(t, bars)
