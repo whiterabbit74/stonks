@@ -1147,7 +1147,7 @@
   function asideExtrasHTML(result) {
     if (!result) return '';
     const t = selectedHeroTicker();
-    return compactMetricsHTML(result) + staleWarningHTML(t, barsForTicker(t)) + openPositionHTML(result.trades, lastBarDate(t));
+    return staleWarningHTML(t, barsForTicker(t)) + openPositionHTML(result.trades, lastBarDate(t));
   }
   function pick(m, k) {
     if (!m || typeof m !== 'object') return undefined;
