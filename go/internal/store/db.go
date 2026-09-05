@@ -421,6 +421,9 @@ func (d *DB) ListDatasets() ([]DatasetMeta, error) {
 		}
 		out = append(out, m)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	if out == nil {
 		out = []DatasetMeta{}
 	}
@@ -489,6 +492,9 @@ func (d *DB) GetDataset(id string) (map[string]any, error) {
 			b.Volume = float64(vol.Int64)
 		}
 		data = append(data, b)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 	if data == nil {
 		data = []types.OHLC{}
@@ -1633,6 +1639,9 @@ func (d *DB) GetOHLCLast(ticker string, n int) ([]types.OHLC, bool, error) {
 			b.Volume = float64(vol.Int64)
 		}
 		data = append(data, b)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, false, err
 	}
 	for i, j := 0, len(data)-1; i < j; i, j = i+1, j-1 {
 		data[i], data[j] = data[j], data[i]
