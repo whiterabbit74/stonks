@@ -1446,17 +1446,12 @@
       const deposit = toNum(ctx.currentCapitalAfterExit);
       const entryIso = t.entryDate || '—';
       const exitIso = t.exitDate || '—';
-      const fmtDay = (d) => {
-        const s = String(d || '').slice(0, 10);
-        const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
-        return m ? (m[3] + '.' + m[2] + '.' + m[1]) : (s || '—');
-      };
       const ibsLab = (n) => n == null ? '—' : fmt(Math.abs(n) <= 1.5 ? n * 100 : n, 1) + '%';
       return `<tr>
       <td>${(page - 1) * PAGE_SIZE + i + 1}</td>
       ${showTicker ? `<td class="font-mono">${esc(tradeTicker(t) || '—')}</td>` : ''}
       <td title="${esc(entryIso)} – ${esc(exitIso)}" class="${(hasEntryProblem || hasExitProblem) ? 'bg-orange-50 dark:bg-orange-950/20' : ''}">
-        ${esc(fmtDay(t.entryDate))} – ${esc(fmtDay(t.exitDate))}
+        ${esc(fmtTradingDate(t.entryDate))} – ${esc(fmtTradingDate(t.exitDate))}
       </td>
       <td><div class="text-xs text-gray-500">Покупка</div><div>${fmtUsd(t.entryPrice)}</div><div class="text-xs text-gray-500 mt-1">Продажа</div><div>${fmtUsd(t.exitPrice)}</div></td>
       <td><div class="text-xs text-gray-500">Вход</div><div>${esc(ibsLab(entryIbsNum))}</div><div class="text-xs text-gray-500 mt-1">Выход</div><div>${esc(ibsLab(exitIbsNum))}</div></td>
@@ -2628,8 +2623,8 @@
         <div class="rounded-lg border p-4"><div class="text-xs text-gray-500">Покупательная способность</div><div class="text-xl font-semibold mt-1">${fmtUsd(bal.buyingPower)}</div><div class="text-xs text-gray-400 mt-1">${esc(bal.accountType ? ('Тип счёта: ' + bal.accountType) : 'Доступно для покупок')}</div></div>
         <div class="rounded-lg border p-4"><div class="text-xs text-gray-500">Нереализованный PnL</div><div class="text-xl font-semibold mt-1 ${pnlClass(bal.unrealizedPnl)}">${fmtUsd(bal.unrealizedPnl)}</div><div class="text-xs text-gray-400 mt-1">${bal.fetchedAt ? ('Обновлено ' + esc(formatDateTimeET(bal.fetchedAt))) : ''}</div></div>
       </div>${err ? `<p class="mt-3 text-sm text-amber-700">${esc(typeof err === 'string' ? err : (err.message || JSON.stringify(err)))}</p>` : ''}
-      ${rawJsonBlock('Raw balance payload', state.dashboard && state.dashboard.balance)}
-      ${rawJsonBlock('Raw account payload', state.dashboard && state.dashboard.account)}`;
+      ${rawJsonBlock('Исходные данные баланса', state.dashboard && state.dashboard.balance)}
+      ${rawJsonBlock('Исходные данные счёта', state.dashboard && state.dashboard.account)}`;
     } else if (tab === 'positions') {
       const pos = normalizePositions(state.dashboard && (state.dashboard.positions || (state.dashboard.account && state.dashboard.account.positions)));
       const posRows = pos.map((p) => `<tr>
@@ -2647,8 +2642,8 @@
         <td>${p.symbol && p.symbol !== '—' ? actionIcon('x', 'Закрыть позицию', `data-close-pos="${esc(p.symbol)}"`, 'action-icon-danger') : ''}</td>
       </tr>`).join('');
       body = `${posRows ? `<div class="overflow-auto"><table class="trades"><thead><tr><th>Тикер</th><th>Тип</th><th>Валюта</th><th>Кол-во</th><th>Средняя</th><th>Себестоимость</th><th>Рыночная цена</th><th>Рыночная стоимость</th><th>Нереализ. PnL</th><th>PnL %</th><th>Доля</th><th>Действие</th></tr></thead><tbody>${posRows}</tbody></table></div>` : emptyBrokerTable(['Тикер', 'Тип', 'Валюта', 'Кол-во', 'Средняя', 'Себестоимость', 'Рыночная цена', 'Рыночная стоимость', 'Нереализ. PnL', 'PnL %', 'Доля', 'Действие'], 'Открытых позиций нет')}
-      ${rawJsonBlock('Raw positions payload', state.dashboard && (state.dashboard.positions || (state.dashboard.account && state.dashboard.account.positions)))}
-      ${rawJsonBlock('Raw accounts payload', state.dashboard && state.dashboard.accounts)}`;
+      ${rawJsonBlock('Исходные данные позиций', state.dashboard && (state.dashboard.positions || (state.dashboard.account && state.dashboard.account.positions)))}
+      ${rawJsonBlock('Исходные данные счетов', state.dashboard && state.dashboard.accounts)}`;
     } else if (tab === 'orders') {
       const orders = normalizeOrders(state.dashboard && state.dashboard.openOrders);
       const orderRows = orders.map((o) => `<tr>
@@ -2675,7 +2670,7 @@
         <td class="text-xs">${esc(o.orderId)}</td><td class="text-xs">${esc(o.clientOrderId)}</td>
       </tr>`).join('');
       body = `${fillRows ? `<div class="overflow-auto"><table class="trades"><thead><tr><th>Исполнено</th><th>Тикер</th><th>Направление</th><th>Статус</th><th>Кол-во</th><th>Кол-во в ордере</th><th>Тип</th><th>Инструмент</th><th>Комбинация</th><th>Поручение</th><th>Срок</th><th>Сессия</th><th>Средняя цена</th><th>ID ордера</th><th>ID клиента</th></tr></thead><tbody>${fillRows}</tbody></table></div>` : emptyBrokerTable(['Исполнено', 'Тикер', 'Направление', 'Статус', 'Кол-во', 'Кол-во в ордере', 'Тип', 'Инструмент', 'Комбинация', 'Поручение', 'Срок', 'Сессия', 'Средняя цена', 'ID ордера', 'ID клиента'], 'История ордеров пока не пришла')}
-      ${rawJsonBlock('Raw order history payload', state.dashboard && state.dashboard.orderHistory)}`;
+      ${rawJsonBlock('Исходные данные истории ордеров', state.dashboard && state.dashboard.orderHistory)}`;
     } else if (tab === 'autotrade') {
       const st = state.autoStatus || {};
       const last = (st.state && st.state.lastRunAt) || '—';
@@ -2766,8 +2761,8 @@
             <button type="button" id="auto-refresh" class="btn-secondary min-h-0 py-2">Обновить статус</button>
             <button type="button" id="auto-execute" class="btn-secondary min-h-0 py-2">Исполнить</button>
           </div>
-          ${rawJsonBlock('Raw autotrade config payload', ac)}
-          ${rawJsonBlock('Raw tracked orders payload', tracked)}
+          ${rawJsonBlock('Исходные данные настроек автоторговли', ac)}
+          ${rawJsonBlock('Исходные данные отслеживаемых ордеров', tracked)}
         </div>
         <div class="rounded-lg border border-gray-200 p-4 dark:border-gray-700">
           <h2 class="text-lg font-semibold mb-3">${esc(brokerLabel(kind))} — подключение и тестовая заявка</h2>
@@ -2775,14 +2770,14 @@
             ${connectionCard}
           </div>
           <div class="mt-4 flex flex-wrap gap-2">
-            <button type="button" id="auto-test-buy" class="btn-secondary min-h-0 py-2">BUY AAL 1 шт по рынку (${esc(brokerLabel(kind))})</button>
+            <button type="button" id="auto-test-buy" class="btn-secondary min-h-0 py-2">Купить AAL, 1 шт. по рынку (${esc(brokerLabel(kind))})</button>
           </div>
           <p class="mt-3 text-xs text-gray-500">Тестовая кнопка отправляет реальный ордер, если на сервере включён ${kind === 'robinhood' ? 'ROBINHOOD_ENABLE_LIVE_TEST_BUY' : 'WEBULL_ENABLE_LIVE_TEST_BUY'}.</p>
-          ${rawJsonBlock('Raw connection payload', kind === 'robinhood' ? rhStatus : conn)}
-          ${rawJsonBlock('Raw dashboard payload', state.dashboard)}
+          ${rawJsonBlock('Исходные данные подключения', kind === 'robinhood' ? rhStatus : conn)}
+          ${rawJsonBlock('Исходные данные панели', state.dashboard)}
         </div>
         <div class="rounded-lg border border-gray-200 p-4 dark:border-gray-700">
-          <h3 class="font-semibold mb-2">Pending / last tracked orders</h3>
+        <h3 class="font-semibold mb-2">Ожидающие и последние отслеживаемые ордера</h3>
           ${persistBlockBanner}
           ${pendingRows ? `<div class="overflow-auto mt-2"><table class="trades"><thead><tr><th>Тикер</th><th>Брокер</th><th>Действие</th><th>Статус</th><th>Кол-во</th><th>Старт</th><th>Действие</th></tr></thead><tbody>${pendingRows}</tbody></table></div>` : '<p class="text-sm text-gray-500 mt-2">Отслеживаемых ордеров пока нет</p>'}
           <p class="mt-2 text-xs text-gray-500">execution_unknown / unresolved блокируют новые входы у брокера и требуют ручного разбора: проверьте заявку у брокера и нажмите «Исполнено у брокера» либо «Заявки нет».</p>
