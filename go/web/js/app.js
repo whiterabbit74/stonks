@@ -2557,8 +2557,8 @@
         <td>${esc(t.broker || '—')}</td>
         <td>${esc(t.source || '—')}${t.isTest ? ' · тест' : ''}</td>
         <td>${esc(t.status === 'open' ? 'открыта' : 'закрыта')}</td>
-        <td>${esc(t.entryDate || '—')}</td>
-        <td>${esc(t.exitDate || '—')}</td>
+        <td>${esc(fmtTradingDate(t.entryDate))}</td>
+        <td>${esc(fmtTradingDate(t.exitDate))}</td>
         <td><div class="text-xs text-gray-500">Покупка</div><div>${t.entryPrice == null ? '—' : fmtUsd(t.entryPrice)}</div><div class="text-xs text-gray-500 mt-1">Продажа</div><div>${t.exitPrice == null ? '—' : fmtUsd(t.exitPrice)}</div></td>
         <td>${t.quantity == null ? '—' : fmt(t.quantity, 0)}</td>
         <td class="${pnlClass(t.pnlAbsolute)}">${t.pnlAbsolute == null ? '—' : fmtUsd(t.pnlAbsolute)}</td>
