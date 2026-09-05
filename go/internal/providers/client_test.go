@@ -245,7 +245,7 @@ func TestWebullQuoteMissingCredentials(t *testing.T) {
 	c := &Client{}
 	_, err := c.Quote("AAPL", "webull")
 	he, ok := err.(*HTTPError)
-	if !ok || he.Status != 400 || !strings.Contains(he.Message, "credentials") {
+	if !ok || he.Status != 400 || !strings.Contains(he.Message, "Ключи Webull") {
 		t.Fatalf("want 400 credentials, got %v", err)
 	}
 }

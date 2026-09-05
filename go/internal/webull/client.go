@@ -77,7 +77,7 @@ func envOr(k, d string) string {
 
 func (c *Client) configured() error {
 	if c == nil || c.AppKey == "" || c.AppSecret == "" {
-		return fmt.Errorf("Webull credentials are not configured")
+		return fmt.Errorf("Ключи Webull не настроены")
 	}
 	return nil
 }

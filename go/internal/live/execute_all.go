@@ -182,7 +182,7 @@ func (e *Engine) submitEvaluated(w execWindow, ev EvalResult, trigger, corr, bro
 		return ev
 	}
 	if br == nil {
-		ev.Broker = map[string]any{"submitted": false, "error": "Webull credentials are missing", "mode": "off"}
+		ev.Broker = map[string]any{"submitted": false, "error": "Не заданы ключи Webull", "mode": "off"}
 		e.logAuto("execution_blocked", corr, map[string]any{"symbol": symbol, "reason": "missing_webull_credentials"})
 		return ev
 	}

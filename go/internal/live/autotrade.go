@@ -16,7 +16,7 @@ import (
 	"mktorder.com/go/internal/webull"
 )
 
-var ErrTestBuyDisabled = errors.New("Live Webull test buy is disabled")
+var ErrTestBuyDisabled = errors.New("Тестовая покупка через Webull отключена")
 
 // ErrExecutionDeadlineExceeded is returned by placeMarket/retryBrokerReadWindow
 // when the T-1 close-of-session budget ran out before another attempt could
@@ -107,7 +107,7 @@ func (e *Engine) PutToken(token, expiresAt string) map[string]any {
 func (e *Engine) CreateToken() (map[string]any, error) {
 	x := e.webullExtras()
 	if x == nil {
-		return nil, fmt.Errorf("Webull credentials are missing")
+		return nil, fmt.Errorf("Не заданы ключи Webull")
 	}
 	data, err := x.CreateToken()
 	if err != nil {
@@ -523,7 +523,7 @@ func (e *Engine) executeWindow(w execWindow, trigger string) EvalResult {
 
 func (e *Engine) placeMarketOnce(ctx context.Context, symbol, side string, qty float64, cfg PlaceMarketCfg, br Broker) (OrderResult, error) {
 	if br == nil {
-		return OrderResult{Error: "Webull credentials are missing"}, fmt.Errorf("Webull credentials are missing")
+		return OrderResult{Error: "Не заданы ключи Webull"}, fmt.Errorf("Не заданы ключи Webull")
 	}
 	cfg.Ctx = ctx
 	if p, ok := br.(marketCfgPlacer); ok {
@@ -980,7 +980,7 @@ func (e *Engine) Status() map[string]any {
 
 func (e *Engine) Account() (map[string]any, error) {
 	if e.Broker == nil {
-		return nil, fmt.Errorf("Webull credentials are not configured")
+		return nil, fmt.Errorf("Ключи Webull не настроены")
 	}
 	snap, err := e.Broker.Account()
 	if err != nil {
@@ -1183,7 +1183,7 @@ func (e *Engine) ClosePosition(brokerName, symbol string) (OrderResult, error) {
 	}
 	br := e.BrokerNamed(brokerName)
 	if br == nil {
-		return OrderResult{Error: "Webull credentials are missing"}, fmt.Errorf("Webull credentials are missing")
+		return OrderResult{Error: "Не заданы ключи Webull"}, fmt.Errorf("Не заданы ключи Webull")
 	}
 	pos, err := retryBrokerReadWindow(e, backgroundWindow(), "positions", func(ctx context.Context) ([]any, error) {
 		return brokerPositions(ctx, br)
@@ -1212,7 +1212,7 @@ func (e *Engine) TestBuy(symbol string, qty float64) (OrderResult, error) {
 		qty = 1
 	}
 	if qty != math.Trunc(qty) {
-		return OrderResult{Error: "Test buy quantity must be a positive integer"}, fmt.Errorf("Test buy quantity must be a positive integer")
+		return OrderResult{Error: "Количество для тестовой покупки должно быть целым положительным числом"}, fmt.Errorf("Количество для тестовой покупки должно быть целым положительным числом")
 	}
 	maxQty := 1.0
 	if raw := strings.TrimSpace(os.Getenv("WEBULL_LIVE_TEST_BUY_MAX_QUANTITY")); raw != "" {
@@ -1224,7 +1224,7 @@ func (e *Engine) TestBuy(symbol string, qty float64) (OrderResult, error) {
 		}
 	}
 	if qty > maxQty {
-		msg := fmt.Sprintf("Test buy quantity must be between 1 and %.0f", maxQty)
+		msg := fmt.Sprintf("Количество для тестовой покупки должно быть от 1 до %.0f", maxQty)
 		return OrderResult{Error: msg}, fmt.Errorf("%s", msg)
 	}
 	return e.TestBuyOn("webull", symbol, qty)
@@ -1236,7 +1236,7 @@ func (e *Engine) TestBuyOn(brokerName, symbol string, qty float64) (OrderResult,
 	}
 	br := e.BrokerNamed(brokerName)
 	if br == nil {
-		return OrderResult{Error: "Webull credentials are missing"}, fmt.Errorf("Webull credentials are missing")
+		return OrderResult{Error: "Не заданы ключи Webull"}, fmt.Errorf("Не заданы ключи Webull")
 	}
 	res, err := e.manualOrder(br, brokerName, store.SafeTicker(symbol), "BUY", qty, "test_buy")
 	e.logAuto("test_buy", "", map[string]any{"symbol": symbol, "submitted": res.Submitted, "broker": brokerName})

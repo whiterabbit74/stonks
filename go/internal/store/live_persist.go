@@ -15,7 +15,7 @@ import (
 func (d *DB) MergeOHLC(ticker string, incoming []types.OHLC) error {
 	ticker = SafeTicker(ticker)
 	if ticker == "" {
-		return fmt.Errorf("Invalid ticker")
+		return fmt.Errorf("Неверный тикер")
 	}
 	today := tradingdate.TodayNYSE(time.Now())
 	for _, b := range incoming {

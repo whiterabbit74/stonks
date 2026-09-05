@@ -33,7 +33,7 @@ func (e *Engine) ImportWebullCalendar() (map[string]any, error) {
 	end := tradingdate.AddDays(start, 29)
 	x := e.webullExtras()
 	if x == nil {
-		return nil, fmt.Errorf("Webull credentials are missing")
+		return nil, fmt.Errorf("Не заданы ключи Webull")
 	}
 	items, err := x.CalendarDays(start, end)
 	if err != nil {

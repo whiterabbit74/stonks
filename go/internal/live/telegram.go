@@ -91,10 +91,10 @@ func (e *Engine) Send(chatID, text string) error {
 		chatID = e.chat()
 	}
 	if chatID == "" {
-		return fmt.Errorf("No chat id configured")
+		return fmt.Errorf("Не настроен chat id")
 	}
 	if text == "" {
-		return fmt.Errorf("Message is required")
+		return fmt.Errorf("Нужен текст сообщения")
 	}
 	return e.Telegram.Send(chatID, text)
 }

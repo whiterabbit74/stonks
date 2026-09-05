@@ -30,11 +30,11 @@ func (s *Server) handleTelegramSend(w http.ResponseWriter, r *http.Request) {
 		body.ChatID = os.Getenv("TELEGRAM_CHAT_ID")
 	}
 	if body.ChatID == "" {
-		writeJSON(w, 400, map[string]any{"error": "ÐÐµ Ð½Ð°ÑÑÑÐ¾ÐµÐ½ chat id"})
+		writeJSON(w, 400, map[string]any{"error": "Не настроен chat id"})
 		return
 	}
 	if body.Message == "" {
-		writeJSON(w, 400, map[string]any{"error": "ÐÑÐ¶ÐµÐ½ ÑÐµÐºÑÑ ÑÐ¾Ð¾Ð±ÑÐµÐ½Ð¸Ñ"})
+		writeJSON(w, 400, map[string]any{"error": "Нужен текст сообщения"})
 		return
 	}
 	if err := s.liveEng().Send(body.ChatID, body.Message); err != nil {
@@ -205,7 +205,7 @@ func (s *Server) handleWebullClose(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleWebullTestBuy(w http.ResponseWriter, r *http.Request) {
 	if os.Getenv("WEBULL_ENABLE_LIVE_TEST_BUY") != "true" {
-		writeJSON(w, 403, map[string]any{"error": "Ð¢ÐµÑÑÐ¾Ð²Ð°Ñ Ð¿Ð¾ÐºÑÐ¿ÐºÐ° ÑÐµÑÐµÐ· Webull Ð¾ÑÐºÐ»ÑÑÐµÐ½Ð°", "success": false, "submitted": false})
+		writeJSON(w, 403, map[string]any{"error": "Тестовая покупка через Webull отключена", "success": false, "submitted": false})
 		return
 	}
 	var body struct {
@@ -224,7 +224,7 @@ func (s *Server) handleWebullTestBuy(w http.ResponseWriter, r *http.Request) {
 		code := 422
 		if errors.Is(err, live.ErrTestBuyDisabled) {
 			code = 403
-		} else if strings.Contains(reason, "Test buy quantity") {
+		} else if strings.Contains(reason, "Количество для тестовой покупки") {
 			code = 400
 		}
 		writeJSON(w, code, map[string]any{"success": false, "submitted": false, "error": reason, "result": res})

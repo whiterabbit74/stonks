@@ -509,7 +509,7 @@ func (c *Client) polygonHistory(symbol string, startTs, endTs int64) (Historical
 
 func (c *Client) webullQuote(symbol string) (QuotePayload, error) {
 	if c.Webull == nil {
-		return QuotePayload{}, &HTTPError{400, "Webull credentials are not configured"}
+		return QuotePayload{}, &HTTPError{400, "Ключи Webull не настроены"}
 	}
 	resp, err := c.Webull.Snapshot(symbol)
 	if err != nil {
@@ -546,7 +546,7 @@ func (c *Client) QuoteBatch(symbols []string, provider string) (map[string]Quote
 		return nil, nil
 	}
 	if c.Webull == nil {
-		return nil, &HTTPError{400, "Webull credentials are not configured"}
+		return nil, &HTTPError{400, "Ключи Webull не настроены"}
 	}
 	want := map[string]bool{}
 	var clean []string

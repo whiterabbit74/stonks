@@ -136,7 +136,7 @@ func (s *Server) handleRobinhoodClose(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleRobinhoodTestBuy(w http.ResponseWriter, r *http.Request) {
 	if os.Getenv("ROBINHOOD_ENABLE_LIVE_TEST_BUY") != "true" {
-		writeJSON(w, 403, map[string]any{"error": "Ð¢ÐµÑÑÐ¾Ð²Ð°Ñ Ð¿Ð¾ÐºÑÐ¿ÐºÐ° ÑÐµÑÐµÐ· Robinhood Ð¾ÑÐºÐ»ÑÑÐµÐ½Ð°", "success": false, "submitted": false})
+		writeJSON(w, 403, map[string]any{"error": "Тестовая покупка через Robinhood отключена", "success": false, "submitted": false})
 		return
 	}
 	var body struct {
@@ -194,7 +194,7 @@ func testBuyQuantity(raw float64, envKey string) (float64, error) {
 		qty = 1
 	}
 	if qty != math.Trunc(qty) {
-		return 0, fmt.Errorf("Test buy quantity must be a positive integer")
+		return 0, fmt.Errorf("Количество для тестовой покупки должно быть целым положительным числом")
 	}
 	maxQty := 1.0
 	if v := strings.TrimSpace(os.Getenv(envKey)); v != "" {
@@ -206,7 +206,7 @@ func testBuyQuantity(raw float64, envKey string) (float64, error) {
 		}
 	}
 	if qty > maxQty {
-		return 0, fmt.Errorf("Test buy quantity must be between 1 and %.0f", maxQty)
+		return 0, fmt.Errorf("Количество для тестовой покупки должно быть от 1 до %.0f", maxQty)
 	}
 	return qty, nil
 }

@@ -286,7 +286,7 @@ func (s *Server) public(r *http.Request) bool {
 func (s *Server) auth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if s.adminPass == "" {
-			writeJSON(w, 503, map[string]any{"error": "ÐÐ²ÑÐ¾ÑÐ¸Ð·Ð°ÑÐ¸Ñ Ð½Ðµ Ð½Ð°ÑÑÑÐ¾ÐµÐ½Ð°"})
+			writeJSON(w, 503, map[string]any{"error": "Авторизация не настроена"})
 			return
 		}
 		if s.public(r) {
@@ -305,7 +305,7 @@ func (s *Server) auth(next http.HandlerFunc) http.HandlerFunc {
 				writeSessionExpired(w)
 				return
 			}
-			writeJSON(w, 500, map[string]any{"error": "Ð¥ÑÐ°Ð½Ð¸Ð»Ð¸ÑÐµ ÑÐµÑÑÐ¸Ð¹ Ð½ÐµÐ´Ð¾ÑÑÑÐ¿Ð½Ð¾"})
+			writeJSON(w, 500, map[string]any{"error": "Хранилище сессий недоступно"})
 			return
 		}
 		if exp < time.Now().UnixMilli() {
@@ -389,7 +389,7 @@ func (s *Server) handleReadyz(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	if s.adminPass == "" {
-		writeJSON(w, 503, map[string]any{"error": "ÐÐ²ÑÐ¾ÑÐ¸Ð·Ð°ÑÐ¸Ñ Ð½Ðµ Ð½Ð°ÑÑÑÐ¾ÐµÐ½Ð°"})
+		writeJSON(w, 503, map[string]any{"error": "Авторизация не настроена"})
 		return
 	}
 	var body struct {
@@ -403,16 +403,16 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if body.Username == "" || len(body.Username) > 254 || body.Password == "" || len(body.Password) > 1024 {
-		writeJSON(w, 400, map[string]any{"error": "ÐÐµÐ²ÐµÑÐ½ÑÐ¹ ÑÐ¾ÑÐ¼Ð°Ñ Ð¸Ð¼ÐµÐ½Ð¸ Ð¿Ð¾Ð»ÑÐ·Ð¾Ð²Ð°ÑÐµÐ»Ñ"})
+		writeJSON(w, 400, map[string]any{"error": "Неверный формат имени пользователя"})
 		return
 	}
 	if !s.checkPassword(body.Username, body.Password) {
-		writeJSON(w, 401, map[string]any{"error": "ÐÐµÐ²ÐµÑÐ½ÑÐ¹ Ð»Ð¾Ð³Ð¸Ð½ Ð¸Ð»Ð¸ Ð¿Ð°ÑÐ¾Ð»Ñ"})
+		writeJSON(w, 401, map[string]any{"error": "Неверный логин или пароль"})
 		return
 	}
 	tok, err := randomToken()
 	if err != nil {
-		writeJSON(w, 500, map[string]any{"error": "ÐÐµ ÑÐ´Ð°Ð»Ð¾ÑÑ ÑÐ¾Ð·Ð´Ð°ÑÑ ÑÐµÑÑÐ¸Ñ"})
+		writeJSON(w, 500, map[string]any{"error": "Не удалось создать сессию"})
 		return
 	}
 	remember := body.Remember || body.RememberMe
@@ -423,7 +423,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	now := time.Now()
 	s.purgeExpiredSessions()
 	if err := s.DB.SessionSet(tok, now.UnixMilli(), now.Add(ttl).UnixMilli()); err != nil {
-		writeJSON(w, 500, map[string]any{"error": "ÐÐµ ÑÐ´Ð°Ð»Ð¾ÑÑ ÑÐ¾Ð·Ð´Ð°ÑÑ ÑÐµÑÑÐ¸Ñ"})
+		writeJSON(w, 500, map[string]any{"error": "Не удалось создать сессию"})
 		return
 	}
 	s.setAuthCookie(w, r, tok, ttl)
@@ -498,7 +498,7 @@ func (s *Server) checkPassword(username, password string) bool {
 
 func (s *Server) handleAuthCheck(w http.ResponseWriter, r *http.Request) {
 	if s.adminPass == "" {
-		writeJSON(w, 503, map[string]any{"error": "ÐÐ²ÑÐ¾ÑÐ¸Ð·Ð°ÑÐ¸Ñ Ð½Ðµ Ð½Ð°ÑÑÑÐ¾ÐµÐ½Ð°"})
+		writeJSON(w, 503, map[string]any{"error": "Авторизация не настроена"})
 		return
 	}
 	s.purgeExpiredSessions()
@@ -509,7 +509,7 @@ func (s *Server) handleAuthCheck(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, 401, map[string]any{"error": "Unauthorized", "code": "session_expired"})
 			return
 		}
-		writeJSON(w, 500, map[string]any{"error": "Ð¥ÑÐ°Ð½Ð¸Ð»Ð¸ÑÐµ ÑÐµÑÑÐ¸Ð¹ Ð½ÐµÐ´Ð¾ÑÑÑÐ¿Ð½Ð¾"})
+		writeJSON(w, 500, map[string]any{"error": "Хранилище сессий недоступно"})
 		return
 	}
 	if exp < time.Now().UnixMilli() {
@@ -526,7 +526,7 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	})
 	if tok := cookieToken(r); tok != "" {
 		if err := s.DB.SessionDelete(tok); err != nil {
-			writeJSON(w, 500, map[string]any{"error": "ÐÐµ ÑÐ´Ð°Ð»Ð¾ÑÑ ÑÐ´Ð°Ð»Ð¸ÑÑ ÑÐµÑÑÐ¸Ñ"})
+			writeJSON(w, 500, map[string]any{"error": "Не удалось удалить сессию"})
 			return
 		}
 	}
@@ -627,7 +627,7 @@ func clientSettings(st map[string]any) map[string]any {
 func (s *Server) handleListDatasets(w http.ResponseWriter, r *http.Request) {
 	list, err := s.DB.ListDatasets()
 	if err != nil {
-		writeJSON(w, 500, map[string]any{"error": "ÐÐµ ÑÐ´Ð°Ð»Ð¾ÑÑ Ð¿Ð¾Ð»ÑÑÐ¸ÑÑ ÑÐ¿Ð¸ÑÐ¾Ðº Ð´Ð°ÑÐ°ÑÐµÑÐ¾Ð²"})
+		writeJSON(w, 500, map[string]any{"error": "Не удалось получить список датасетов"})
 		return
 	}
 	writeJSON(w, 200, list)
@@ -637,11 +637,11 @@ func (s *Server) handleGetDataset(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	ds, err := s.DB.GetDataset(id)
 	if err != nil {
-		writeJSON(w, 500, map[string]any{"error": "ÐÐµ ÑÐ´Ð°Ð»Ð¾ÑÑ Ð¿Ð¾Ð»ÑÑÐ¸ÑÑ Ð´Ð°ÑÐ°ÑÐµÑ"})
+		writeJSON(w, 500, map[string]any{"error": "Не удалось получить датасет"})
 		return
 	}
 	if ds == nil {
-		writeJSON(w, 404, map[string]any{"error": "ÐÐ°ÑÐ°ÑÐµÑ Ð½Ðµ Ð½Ð°Ð¹Ð´ÐµÐ½"})
+		writeJSON(w, 404, map[string]any{"error": "Датасет не найден"})
 		return
 	}
 	events, _ := s.DB.ListSplits(id)
@@ -655,11 +655,11 @@ func (s *Server) handleDatasetMeta(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	ds, err := s.DB.GetDataset(id)
 	if err != nil {
-		writeJSON(w, 500, map[string]any{"error": "ÐÐµ ÑÐ´Ð°Ð»Ð¾ÑÑ Ð¿Ð¾Ð»ÑÑÐ¸ÑÑ Ð¼ÐµÑÐ°Ð´Ð°Ð½Ð½ÑÐµ Ð´Ð°ÑÐ°ÑÐµÑÐ°"})
+		writeJSON(w, 500, map[string]any{"error": "Не удалось получить метаданные датасета"})
 		return
 	}
 	if ds == nil {
-		writeJSON(w, 404, map[string]any{"error": "ÐÐ°ÑÐ°ÑÐµÑ Ð½Ðµ Ð½Ð°Ð¹Ð´ÐµÐ½"})
+		writeJSON(w, 404, map[string]any{"error": "Датасет не найден"})
 		return
 	}
 	events, _ := s.DB.ListSplits(id)
@@ -758,7 +758,7 @@ func (s *Server) savePayload(w http.ResponseWriter, payload map[string]any) {
 		ticker = store.SafeTicker(str(payload["name"]))
 	}
 	if ticker == "" {
-		writeJSON(w, 400, map[string]any{"error": "ÐÐµÐ²ÐµÑÐ½ÑÐ¹ ÑÐ¸ÐºÐµÑ"})
+		writeJSON(w, 400, map[string]any{"error": "Неверный тикер"})
 		return
 	}
 	name := str(payload["name"])
@@ -810,12 +810,12 @@ func decodeSplitEvents(v any) []types.SplitEvent {
 func (s *Server) handleRefreshDataset(w http.ResponseWriter, r *http.Request) {
 	id := store.SafeTicker(r.PathValue("id"))
 	if id == "" {
-		writeJSON(w, 400, map[string]any{"error": "ÐÐµÐ²ÐµÑÐ½ÑÐ¹ ÑÐ¸ÐºÐµÑ"})
+		writeJSON(w, 400, map[string]any{"error": "Неверный тикер"})
 		return
 	}
 	ds, err := s.DB.GetDataset(id)
 	if err != nil || ds == nil {
-		writeJSON(w, 404, map[string]any{"error": "ÐÐ°ÑÐ°ÑÐµÑ Ð½Ðµ Ð½Ð°Ð¹Ð´ÐµÐ½"})
+		writeJSON(w, 404, map[string]any{"error": "Датасет не найден"})
 		return
 	}
 	provider := refreshProvider(s.DB.Settings(), r.URL.Query().Get("provider"))
@@ -825,7 +825,7 @@ func (s *Server) handleRefreshDataset(w http.ResponseWriter, r *http.Request) {
 	}
 	lastDate := lastDateFromDataset(ds)
 	if lastDate == "" {
-		writeJSON(w, 400, map[string]any{"error": "Ð£ Ð´Ð°ÑÐ°ÑÐµÑÐ° Ð½ÐµÑ Ð¿Ð¾ÑÐ»ÐµÐ´Ð½ÐµÐ¹ Ð´Ð°ÑÑ"})
+		writeJSON(w, 400, map[string]any{"error": "У датасета нет последней даты"})
 		return
 	}
 	startDate := tradingdate.AddDays(lastDate, -7)
@@ -907,7 +907,7 @@ func (s *Server) handleDeleteDataset(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleApplySplits(w http.ResponseWriter, r *http.Request) {
 	id := store.SafeTicker(r.PathValue("id"))
 	if id == "" {
-		writeJSON(w, 400, map[string]any{"error": "ÐÐµÐ²ÐµÑÐ½ÑÐ¹ Ð¸Ð´ÐµÐ½ÑÐ¸ÑÐ¸ÐºÐ°ÑÐ¾Ñ Ð´Ð°ÑÐ°ÑÐµÑÐ°"})
+		writeJSON(w, 400, map[string]any{"error": "Неверный идентификатор датасета"})
 		return
 	}
 	ds, err := s.DB.GetDataset(id)
@@ -916,7 +916,7 @@ func (s *Server) handleApplySplits(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if ds == nil {
-		writeJSON(w, 404, map[string]any{"error": "ÐÐ°ÑÐ°ÑÐµÑ Ð½Ðµ Ð½Ð°Ð¹Ð´ÐµÐ½"})
+		writeJSON(w, 404, map[string]any{"error": "Датасет не найден"})
 		return
 	}
 	if adj, _ := ds["adjustedForSplits"].(bool); adj {
@@ -967,11 +967,11 @@ func strPtr(v any) string {
 func (s *Server) handlePatchDatasetMeta(w http.ResponseWriter, r *http.Request) {
 	id := store.SafeTicker(r.PathValue("id"))
 	if id == "" {
-		writeJSON(w, 400, map[string]any{"error": "ÐÐµÐ²ÐµÑÐ½ÑÐ¹ Ð¸Ð´ÐµÐ½ÑÐ¸ÑÐ¸ÐºÐ°ÑÐ¾Ñ Ð´Ð°ÑÐ°ÑÐµÑÐ°"})
+		writeJSON(w, 400, map[string]any{"error": "Неверный идентификатор датасета"})
 		return
 	}
 	if !s.DB.DatasetExists(id) {
-		writeJSON(w, 404, map[string]any{"error": "ÐÐ°ÑÐ°ÑÐµÑ Ð½Ðµ Ð½Ð°Ð¹Ð´ÐµÐ½"})
+		writeJSON(w, 404, map[string]any{"error": "Датасет не найден"})
 		return
 	}
 	var body map[string]any
@@ -990,7 +990,7 @@ func (s *Server) handlePatchDatasetMeta(w http.ResponseWriter, r *http.Request) 
 	}
 	if err := s.DB.UpdateDatasetMetadata(id, tag, company); err != nil {
 		if err == sql.ErrNoRows {
-			writeJSON(w, 404, map[string]any{"error": "ÐÐ°ÑÐ°ÑÐµÑ Ð½Ðµ Ð½Ð°Ð¹Ð´ÐµÐ½"})
+			writeJSON(w, 404, map[string]any{"error": "Датасет не найден"})
 			return
 		}
 		writeJSON(w, 500, map[string]any{"error": err.Error()})
@@ -1034,7 +1034,7 @@ func (s *Server) handleGetSplits(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handlePutSplits(w http.ResponseWriter, r *http.Request) {
 	symbol := store.SafeTicker(r.PathValue("symbol"))
 	if symbol == "" {
-		writeJSON(w, 400, map[string]any{"error": "ÐÐµÐ²ÐµÑÐ½ÑÐ¹ ÑÐ¸ÐºÐµÑ"})
+		writeJSON(w, 400, map[string]any{"error": "Неверный тикер"})
 		return
 	}
 	events, err := parseSplitBody(r)
@@ -1043,7 +1043,7 @@ func (s *Server) handlePutSplits(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.DB.ReplaceSplits(symbol, events); err != nil {
-		writeJSON(w, 500, map[string]any{"error": "ÐÐµ ÑÐ´Ð°Ð»Ð¾ÑÑ ÑÐ¾ÑÑÐ°Ð½Ð¸ÑÑ ÑÐ¿Ð»Ð¸ÑÑ"})
+		writeJSON(w, 500, map[string]any{"error": "Не удалось сохранить сплиты"})
 		return
 	}
 	updated, _ := s.DB.ListSplits(symbol)
@@ -1053,7 +1053,7 @@ func (s *Server) handlePutSplits(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handlePatchSplits(w http.ResponseWriter, r *http.Request) {
 	symbol := store.SafeTicker(r.PathValue("symbol"))
 	if symbol == "" {
-		writeJSON(w, 400, map[string]any{"error": "ÐÐµÐ²ÐµÑÐ½ÑÐ¹ ÑÐ¸ÐºÐµÑ"})
+		writeJSON(w, 400, map[string]any{"error": "Неверный тикер"})
 		return
 	}
 	events, err := parseSplitBody(r)
@@ -1062,7 +1062,7 @@ func (s *Server) handlePatchSplits(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.DB.UpsertSplits(symbol, events); err != nil {
-		writeJSON(w, 500, map[string]any{"error": "ÐÐµ ÑÐ´Ð°Ð»Ð¾ÑÑ Ð¾Ð±Ð½Ð¾Ð²Ð¸ÑÑ ÑÐ¿Ð»Ð¸ÑÑ"})
+		writeJSON(w, 500, map[string]any{"error": "Не удалось обновить сплиты"})
 		return
 	}
 	updated, _ := s.DB.ListSplits(symbol)
@@ -1489,9 +1489,9 @@ func (s *Server) handleCloseMonitor(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		code := 400
 		switch err.Error() {
-		case "Trade not found":
+		case "Сделка не найдена":
 			code = 404
-		case "Trade is already closed", "Linked broker-backed monitor trades must be reconciled automatically":
+		case "Сделка уже закрыта", "Linked broker-backed monitor trades must be reconciled automatically":
 			code = 409
 		}
 		writeJSON(w, code, map[string]any{"error": err.Error()})
@@ -1511,7 +1511,7 @@ func (s *Server) handleDeleteTrade(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleListBroker(w http.ResponseWriter, r *http.Request) {
 	broker := strings.TrimSpace(r.URL.Query().Get("broker"))
 	if broker != "" && broker != "webull" && broker != "robinhood" {
-		writeJSON(w, 400, map[string]any{"error": "ÐÐµÐ¸Ð·Ð²ÐµÑÑÐ½ÑÐ¹ Ð±ÑÐ¾ÐºÐµÑ"})
+		writeJSON(w, 400, map[string]any{"error": "Неизвестный брокер"})
 		return
 	}
 	list, err := s.DB.ListTrades("broker_trades")
@@ -1571,11 +1571,11 @@ func (s *Server) handleWebullBatch(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if len(symbols) == 0 {
-		writeJSON(w, 400, map[string]any{"error": "ÐÐµÑ ÐºÐ¾ÑÑÐµÐºÑÐ½ÑÑ ÑÐ¸ÐºÐµÑÐ¾Ð²"})
+		writeJSON(w, 400, map[string]any{"error": "Нет корректных тикеров"})
 		return
 	}
 	if len(symbols) > 50 {
-		writeJSON(w, 400, map[string]any{"error": "Ð¡Ð»Ð¸ÑÐºÐ¾Ð¼ Ð¼Ð½Ð¾Ð³Ð¾ ÑÐ¸ÐºÐµÑÐ¾Ð² (Ð¼Ð°ÐºÑÐ¸Ð¼ÑÐ¼ 50)"})
+		writeJSON(w, 400, map[string]any{"error": "Слишком много тикеров (максимум 50)"})
 		return
 	}
 	// One snapshot request for the whole list; anything it does not answer for
@@ -1603,7 +1603,7 @@ func (s *Server) handleWebullBatch(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleQuote(w http.ResponseWriter, r *http.Request) {
 	sym := store.SafeTicker(r.PathValue("symbol"))
 	if sym == "" {
-		writeJSON(w, 400, map[string]any{"error": "ÐÐµÐ²ÐµÑÐ½ÑÐ¹ ÑÐ¸ÐºÐµÑ"})
+		writeJSON(w, 400, map[string]any{"error": "Неверный тикер"})
 		return
 	}
 	provider := r.URL.Query().Get("provider")
@@ -1628,14 +1628,14 @@ func (s *Server) handleQuote(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleYahooFinance(w http.ResponseWriter, r *http.Request) {
 	sym := store.SafeTicker(r.PathValue("symbol"))
 	if sym == "" {
-		writeJSON(w, 400, map[string]any{"error": "ÐÐµÐ²ÐµÑÐ½ÑÐ¹ ÑÐ¸ÐºÐµÑ"})
+		writeJSON(w, 400, map[string]any{"error": "Неверный тикер"})
 		return
 	}
 	nowTs := time.Now().Unix()
 	endTs := parseUnix(r.URL.Query().Get("end"), nowTs)
 	startTs := parseUnix(r.URL.Query().Get("start"), endTs-40*365*24*60*60)
 	if startTs >= endTs {
-		writeJSON(w, 400, map[string]any{"error": "ÐÐµÐ²ÐµÑÐ½ÑÐ¹ Ð´Ð¸Ð°Ð¿Ð°Ð·Ð¾Ð½ Ð´Ð°Ñ"})
+		writeJSON(w, 400, map[string]any{"error": "Неверный диапазон дат"})
 		return
 	}
 	provider := r.URL.Query().Get("provider")
@@ -1664,7 +1664,7 @@ func (s *Server) handleFetchProvider(w http.ResponseWriter, r *http.Request) {
 	provider := r.PathValue("provider")
 	sym := store.SafeTicker(r.PathValue("symbol"))
 	if sym == "" {
-		writeJSON(w, 400, map[string]any{"error": "ÐÐµÐ²ÐµÑÐ½ÑÐ¹ ÑÐ¸ÐºÐµÑ"})
+		writeJSON(w, 400, map[string]any{"error": "Неверный тикер"})
 		return
 	}
 	endTs := time.Now().Unix()
@@ -1772,7 +1772,7 @@ func (s *Server) handleTestProvider(w http.ResponseWriter, r *http.Request) {
 			price = q.Quote["prevClose"]
 		}
 		if price == nil {
-			writeJSON(w, 200, map[string]any{"success": false, "error": "ÐÑÐ¾Ð²Ð°Ð¹Ð´ÐµÑ Ð½Ðµ Ð²ÐµÑÐ½ÑÐ» Ð´Ð°Ð½Ð½ÑÐµ"})
+			writeJSON(w, 200, map[string]any{"success": false, "error": "Провайдер не вернул данные"})
 			return
 		}
 		writeJSON(w, 200, map[string]any{"success": true, "symbol": symbol, "price": fmtFloat(price)})
@@ -1798,7 +1798,7 @@ func (s *Server) handleTestProvider(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if len(hist.Rows) == 0 {
-			writeJSON(w, 200, map[string]any{"success": false, "error": "ÐÑÐ¾Ð²Ð°Ð¹Ð´ÐµÑ Ð½Ðµ Ð²ÐµÑÐ½ÑÐ» Ð´Ð°Ð½Ð½ÑÐµ"})
+			writeJSON(w, 200, map[string]any{"success": false, "error": "Провайдер не вернул данные"})
 			return
 		}
 		price := hist.Rows[len(hist.Rows)-1].Close
@@ -1814,12 +1814,12 @@ func (s *Server) handleTestProvider(w http.ResponseWriter, r *http.Request) {
 			price = q.Quote["prevClose"]
 		}
 		if price == nil {
-			writeJSON(w, 200, map[string]any{"success": false, "error": "ÐÑÐ¾Ð²Ð°Ð¹Ð´ÐµÑ Ð½Ðµ Ð²ÐµÑÐ½ÑÐ» Ð´Ð°Ð½Ð½ÑÐµ"})
+			writeJSON(w, 200, map[string]any{"success": false, "error": "Провайдер не вернул данные"})
 			return
 		}
 		writeJSON(w, 200, map[string]any{"success": true, "symbol": symbol, "price": fmtFloat(price)})
 	default:
-		writeJSON(w, 400, map[string]any{"success": false, "error": "ÐÐµÐ¸Ð·Ð²ÐµÑÑÐ½ÑÐ¹ Ð¿ÑÐ¾Ð²Ð°Ð¹Ð´ÐµÑ"})
+		writeJSON(w, 400, map[string]any{"success": false, "error": "Неизвестный провайдер"})
 	}
 }
 

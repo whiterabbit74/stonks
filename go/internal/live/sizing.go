@@ -294,7 +294,7 @@ func EntryFunds(balancePayload any, autoTrading map[string]any) float64 {
 
 func ComputeOrderQuantity(currentPrice float64, autoTrading map[string]any, availableFunds float64) (float64, error) {
 	if !(currentPrice > 0) {
-		return 0, fmt.Errorf("Invalid market price for quantity calculation")
+		return 0, fmt.Errorf("Неверная рыночная цена для расчёта количества")
 	}
 	if autoTrading == nil {
 		autoTrading = map[string]any{}
@@ -303,7 +303,7 @@ func ComputeOrderQuantity(currentPrice float64, autoTrading map[string]any, avai
 	// share counts and fixed notionals used to be selectable here and had
 	// nothing to do with the strategy being traded.
 	if !(availableFunds > 0) {
-		return 0, fmt.Errorf("Unable to read available funds for balance sizing")
+		return 0, fmt.Errorf("Не удалось получить доступные средства для расчёта размера позиции")
 	}
 	_, reservePct := capitalModeConfig(autoTrading)
 	// The reserve is subtracted from availableFunds before sizing, not divided
@@ -374,7 +374,7 @@ func quotePrice(ev EvalResult, symbol string) float64 {
 func (e *Engine) sizeOrder(action, symbol string, cfg map[string]any, price float64, br Broker, w execWindow) (float64, error) {
 	if action == "exit" {
 		if br == nil {
-			return 0, fmt.Errorf("Webull credentials are missing")
+			return 0, fmt.Errorf("Не заданы ключи Webull")
 		}
 		pos, err := retryBrokerReadWindow(e, w, "positions", func(ctx context.Context) ([]any, error) {
 			return brokerPositions(ctx, br)
@@ -389,7 +389,7 @@ func (e *Engine) sizeOrder(action, symbol string, cfg map[string]any, price floa
 		return q, nil
 	}
 	if br == nil {
-		return 0, fmt.Errorf("Unable to read available funds for balance sizing")
+		return 0, fmt.Errorf("Не удалось получить доступные средства для расчёта размера позиции")
 	}
 	acct, err := retryBrokerReadWindow(e, w, "account", func(ctx context.Context) (map[string]any, error) {
 		return brokerAccount(ctx, br)

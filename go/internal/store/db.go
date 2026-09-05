@@ -514,7 +514,7 @@ func (d *DB) GetDataset(id string) (map[string]any, error) {
 func (d *DB) SaveDataset(ticker, name, company, tag string, bars []types.OHLC, adjusted bool) error {
 	ticker = SafeTicker(ticker)
 	if ticker == "" {
-		return fmt.Errorf("Invalid ticker")
+		return fmt.Errorf("Неверный тикер")
 	}
 	if name == "" {
 		name = ticker
@@ -1309,10 +1309,10 @@ func (d *DB) CloseMonitorTrade(id string, rec map[string]any) (map[string]any, e
 		return nil, err
 	}
 	if existing == nil {
-		return nil, fmt.Errorf("Trade not found")
+		return nil, fmt.Errorf("Сделка не найдена")
 	}
 	if fmt.Sprint(existing["status"]) != "open" {
-		return existing, fmt.Errorf("Trade is already closed")
+		return existing, fmt.Errorf("Сделка уже закрыта")
 	}
 	if linked := fmt.Sprint(existing["linkedBrokerTradeId"]); linked != "" && linked != "<nil>" {
 		return existing, fmt.Errorf("Linked broker-backed monitor trades must be reconciled automatically")
@@ -1344,10 +1344,10 @@ func (d *DB) CloseTradeByID(table, id string, exitPrice float64, exitDate string
 		return nil, err
 	}
 	if existing == nil {
-		return nil, fmt.Errorf("Trade not found")
+		return nil, fmt.Errorf("Сделка не найдена")
 	}
 	if fmt.Sprint(existing["status"]) != "open" {
-		return existing, fmt.Errorf("Trade is already closed")
+		return existing, fmt.Errorf("Сделка уже закрыта")
 	}
 	if !(exitPrice > 0) {
 		return nil, fmt.Errorf("exitPrice must be a positive number")
@@ -1365,7 +1365,7 @@ func (d *DB) CloseTradeByID(table, id string, exitPrice float64, exitDate string
 	if n, err := res.RowsAffected(); err != nil {
 		return nil, err
 	} else if n != 1 {
-		return existing, fmt.Errorf("Trade is already closed")
+		return existing, fmt.Errorf("Сделка уже закрыта")
 	}
 	return d.GetTrade(table, id)
 }
@@ -1385,7 +1385,7 @@ func (d *DB) CloseTradePair(monitorID, brokerID string, exitPrice float64, exitD
 			return err
 		}
 		if status != "open" {
-			return fmt.Errorf("Trade is already closed")
+			return fmt.Errorf("Сделка уже закрыта")
 		}
 		existing := map[string]any{"status": status, "entryDate": nullS(entryDate), "entryPrice": nullF(entryPrice), "notes": nullS(notes)}
 		fields := TradeCloseFields(existing, exitPrice, exitDate, extra)
@@ -1399,7 +1399,7 @@ func (d *DB) CloseTradePair(monitorID, brokerID string, exitPrice float64, exitD
 			return err
 		}
 		if n != 1 {
-			return fmt.Errorf("Trade is already closed")
+			return fmt.Errorf("Сделка уже закрыта")
 		}
 		return nil
 	}
@@ -1729,7 +1729,7 @@ func (d *DB) GetLastOHLC(ticker string, n int) ([]types.OHLC, bool, error) {
 func (d *DB) UpdateDatasetMetadata(id string, tag, company *string) error {
 	ticker := SafeTicker(id)
 	if ticker == "" {
-		return fmt.Errorf("Invalid ticker")
+		return fmt.Errorf("Неверный тикер")
 	}
 	tx, err := d.SQL.Begin()
 	if err != nil {
