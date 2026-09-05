@@ -447,7 +447,8 @@ func (e *Engine) applyConsistencyAction(action map[string]any) bool {
 	return false
 }
 
-func (e *Engine) SyncCalendar() (map[string]any, error) {
+// FetchCalendar returns the Webull calendar payload and does not persist it.
+func (e *Engine) FetchCalendar() (map[string]any, error) {
 	x := e.webullExtras()
 	if x == nil {
 		return nil, fmt.Errorf("webull sync requires credentials")

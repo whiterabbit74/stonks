@@ -147,7 +147,7 @@ func (s *Server) routes() {
 	// Calendar
 	s.mux.HandleFunc("GET /api/trading-calendar", wrap(s.handleGetCalendar))
 	s.mux.HandleFunc("GET /api/trading/expected-prev-day", wrap(s.handlePrevDay))
-	s.mux.HandleFunc("POST /api/trading-calendar/sync-webull", wrap(s.handleCalendarSync))
+	s.mux.HandleFunc("POST /api/trading-calendar/fetch-webull", wrap(s.handleCalendarFetch))
 	s.mux.HandleFunc("POST /api/trading-calendar/import-webull", wrap(s.handleImportCalendar))
 	s.mux.HandleFunc("PATCH /api/trading-calendar/day", wrap(s.handlePatchCalendarDay))
 	// Telegram

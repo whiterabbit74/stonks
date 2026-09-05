@@ -26,7 +26,7 @@ var allRoutes = []struct{ Method, Path string }{
 	{"PUT", "/api/splits/{symbol}"}, {"PATCH", "/api/splits/{symbol}"},
 	{"DELETE", "/api/splits/{symbol}/{date}"}, {"DELETE", "/api/splits/{symbol}"},
 	{"GET", "/api/trading-calendar"}, {"GET", "/api/trading/expected-prev-day"},
-	{"POST", "/api/trading-calendar/sync-webull"}, {"POST", "/api/trading-calendar/import-webull"},
+	{"POST", "/api/trading-calendar/fetch-webull"}, {"POST", "/api/trading-calendar/import-webull"},
 	{"PATCH", "/api/trading-calendar/day"},
 	{"POST", "/api/telegram/watch"}, {"DELETE", "/api/telegram/watch/{symbol}"}, {"PATCH", "/api/telegram/watch/{symbol}"},
 	{"GET", "/api/telegram/watches"}, {"GET", "/api/telegram/ema-alerts"}, {"POST", "/api/telegram/ema-alerts"},

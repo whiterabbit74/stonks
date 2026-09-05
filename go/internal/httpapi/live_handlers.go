@@ -287,8 +287,8 @@ func (s *Server) handleTokenStatus(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, s.liveEng().TokenStatus())
 }
 
-func (s *Server) handleCalendarSync(w http.ResponseWriter, r *http.Request) {
-	out, err := s.liveEng().SyncCalendar()
+func (s *Server) handleCalendarFetch(w http.ResponseWriter, r *http.Request) {
+	out, err := s.liveEng().FetchCalendar()
 	if err != nil {
 		writeJSON(w, 502, map[string]any{"ok": false, "error": err.Error()})
 		return

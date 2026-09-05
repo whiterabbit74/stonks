@@ -100,7 +100,7 @@ const API = {
   deleteEmaAlert: (id) => API.del('/api/telegram/ema-alerts/' + encodeURIComponent(id)),
   telegramTest: (message) => API.post('/api/telegram/test', { message }),
   testProvider: (provider) => API.post('/api/test-provider', { provider }),
-  syncCalendar: () => API.post('/api/trading-calendar/import-webull', {}),
+  syncCalendar: () => API.post('/api/trading-calendar/import-webull', {}), // persist holidays/short days
   webullSplits: (q) => API.get('/api/splits/webull-raw?' + q),
   calc: (name, body) => API.post('/api/calc/' + name, body),
   quote: (symbol, provider) => API.get('/api/quote/' + encodeURIComponent(symbol) + '?provider=' + encodeURIComponent(provider || 'finnhub')),
