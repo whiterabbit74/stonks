@@ -1399,3 +1399,45 @@ func TestAPIFetchUsesAbortController(t *testing.T) {
 		t.Fatal("API.req must take a timeout")
 	}
 }
+
+func TestLongActionsDisableTheirButtons(t *testing.T) {
+	a := readWeb(t, "js/app.js")
+	if !strings.Contains(a, "function withBusy(") {
+		t.Fatal("need withBusy so double-clicks cannot start a second long action")
+	}
+	for _, id := range []string{"watch-prices", "watch-t11", "watch-t1"} {
+		start := strings.Index(a, "getElementById('"+id+"')")
+		if start < 0 {
+			t.Fatalf("%s handler not found", id)
+		}
+		chunk := a[start:]
+		if i := strings.Index(chunk, "getElementById("); i > 0 && id != "watch-prices" {
+			// keep a slice of this listener
+		}
+		if i := strings.Index(chunk[20:], "document.getElementById"); i > 0 {
+			chunk = chunk[:20+i]
+		}
+		if !strings.Contains(chunk, "withBusy") && !strings.Contains(chunk, ".disabled") {
+			t.Fatalf("%s must disable the button while the request runs", id)
+		}
+	}
+	closeStart := strings.Index(a, "[data-close-pos]")
+	if closeStart < 0 {
+		t.Fatal("close-position handler not found")
+	}
+	closeChunk := a[closeStart : closeStart+900]
+	if !strings.Contains(closeChunk, "withBusy") && !strings.Contains(closeChunk, ".disabled") {
+		t.Fatal("close position must disable the button while the order is in flight")
+	}
+	refStart := strings.Index(a, "querySelectorAll('[data-refresh]')")
+	if refStart < 0 {
+		t.Fatal("dataset refresh handler not found")
+	}
+	refChunk := a[refStart:]
+	if i := strings.Index(refChunk, "if (p === '/enhance')"); i > 0 {
+		refChunk = refChunk[:i]
+	}
+	if !strings.Contains(refChunk, "withBusy") && !strings.Contains(refChunk, "disabled") {
+		t.Fatal("dataset refresh must disable the button")
+	}
+}

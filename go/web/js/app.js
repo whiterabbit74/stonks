@@ -1602,6 +1602,12 @@
     return false;
   }
   let toastTimer = null;
+  async function withBusy(el, fn) {
+    if (!el) { await fn(); return; }
+    if (el.disabled) return;
+    el.disabled = true;
+    try { await fn(); } finally { el.disabled = false; }
+  }
   function toast(msg) {
     state.toast = msg;
     if (toastTimer) { clearTimeout(toastTimer); toastTimer = null; }
@@ -3323,16 +3329,18 @@
       }));
       root.querySelectorAll('[data-refresh]').forEach((b) => b.addEventListener('click', async (e) => {
         e.preventDefault(); e.stopPropagation();
-        if (state.refreshingTicker) return;
-        state.refreshingTicker = b.dataset.refresh;
-        b.classList.add('opacity-50');
-        try {
-          await API.refreshDataset(b.dataset.refresh, refreshProvider());
-          state.datasets = await API.datasets();
-          toast('Датасет обновлён');
-          renderPage();
-        } catch (err) { toast(errText(err)); state.datasetsError = errText(err); renderPage(); }
-        finally { state.refreshingTicker = null; }
+        await withBusy(b, async () => {
+          if (state.refreshingTicker) return;
+          state.refreshingTicker = b.dataset.refresh;
+          b.classList.add('opacity-50');
+          try {
+            await API.refreshDataset(b.dataset.refresh, refreshProvider());
+            state.datasets = await API.datasets();
+            toast('Датасет обновлён');
+            renderPage();
+          } catch (err) { toast(errText(err)); state.datasetsError = errText(err); renderPage(); }
+          finally { state.refreshingTicker = null; }
+        });
       }));
     }
 
@@ -3834,19 +3842,29 @@
           renderPage();
         } catch (err) { toast(errText(err)); }
       });
-      document.getElementById('watch-t11')?.addEventListener('click', async () => { try { const r = await API.simulate('overview'); if (r && r.success && r.sent) toast('Симуляция T-11'); else toast((r && (r.reason || r.error)) || 'Симуляция T-11 не отправлена'); } catch (err) { toast(err.message); } });
-      document.getElementById('watch-t1')?.addEventListener('click', async () => { try { const r = await API.simulate('confirmations'); if (r && r.success && r.sent) toast('Симуляция T-1'); else toast((r && (r.reason || r.error)) || 'Симуляция T-1 не отправлена'); } catch (err) { toast(err.message); } });
-      document.getElementById('watch-prices')?.addEventListener('click', async () => {
-        try {
-          const r = await API.updateAll();
-          const prices = (r && r.prices) || r || {};
-          const n = prices.count;
-          const failed = (prices.failedTickers || []).join(', ');
-          const chg = (r && r.positions && r.positions.changes) || [];
-          toast((prices.success || prices.updated ? 'Обновлено' : (prices.reason || 'Цены не обновлены')) + (n != null ? ' · ' + n : '') + (failed ? ' · ошибки: ' + failed : '') + (chg.length ? ' · позиций: ' + chg.length : ''));
-          state.loaded.watches = false;
-          renderPage();
-        } catch (err) { toast(errText(err)); }
+      document.getElementById('watch-t11')?.addEventListener('click', async (e) => {
+        await withBusy(e.currentTarget, async () => {
+          try { const r = await API.simulate('overview'); if (r && r.success && r.sent) toast('Симуляция T-11'); else toast((r && (r.reason || r.error)) || 'Симуляция T-11 не отправлена'); } catch (err) { toast(err.message); }
+        });
+      });
+      document.getElementById('watch-t1')?.addEventListener('click', async (e) => {
+        await withBusy(e.currentTarget, async () => {
+          try { const r = await API.simulate('confirmations'); if (r && r.success && r.sent) toast('Симуляция T-1'); else toast((r && (r.reason || r.error)) || 'Симуляция T-1 не отправлена'); } catch (err) { toast(err.message); }
+        });
+      });
+      document.getElementById('watch-prices')?.addEventListener('click', async (e) => {
+        await withBusy(e.currentTarget, async () => {
+          try {
+            const r = await API.updateAll();
+            const prices = (r && r.prices) || r || {};
+            const n = prices.count;
+            const failed = (prices.failedTickers || []).join(', ');
+            const chg = (r && r.positions && r.positions.changes) || [];
+            toast((prices.success || prices.updated ? 'Обновлено' : (prices.reason || 'Цены не обновлены')) + (n != null ? ' · ' + n : '') + (failed ? ' · ошибки: ' + failed : '') + (chg.length ? ' · позиций: ' + chg.length : ''));
+            state.loaded.watches = false;
+            renderPage();
+          } catch (err) { toast(errText(err)); }
+        });
       });
       document.getElementById('watch-manual')?.addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -4223,11 +4241,13 @@
       });
       root.querySelectorAll('[data-close-pos]').forEach((b) => b.addEventListener('click', async () => {
         if (!window.confirm('Закрыть позицию ' + b.dataset.closePos + ' рыночным ордером в ' + brokerLabel(kind) + '?')) return;
-        try {
-          const r = kind === 'robinhood' ? await API.rhClose(b.dataset.closePos) : await API.closePosition(b.dataset.closePos);
-          toast(r.submitted || r.success ? 'Ордер на закрытие отправлен' : errText({ message: r.error || 'не отправлен', data: r }));
-          await reloadBroker();
-        } catch (err) { toast(errText(err)); }
+        await withBusy(b, async () => {
+          try {
+            const r = kind === 'robinhood' ? await API.rhClose(b.dataset.closePos) : await API.closePosition(b.dataset.closePos);
+            toast(r.submitted || r.success ? 'Ордер на закрытие отправлен' : errText({ message: r.error || 'не отправлен', data: r }));
+            await reloadBroker();
+          } catch (err) { toast(errText(err)); }
+        });
       }));
       root.querySelectorAll('[data-resolve-tracker]').forEach((b) => b.addEventListener('click', async () => {
         const clientOrderId = b.dataset.resolveTracker;
