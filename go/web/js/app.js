@@ -1194,7 +1194,7 @@
       reasons[k].pnl += Number(t.pnlPercent) || 0;
     });
     const reasonRows = Object.entries(reasons).sort((a, b) => b[1].n - a[1].n).map(([k, v]) => `<tr><td>${esc(exitReasonLabel(k))}</td><td>${v.n}</td><td class="${pnlClass(v.pnl / v.n)}">${fmt(v.pnl / v.n, 2)}%</td></tr>`).join('');
-    return `<div class="grid grid-cols-3 gap-3 mb-3">
+    return `<div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
       <div class="rounded-lg border p-3 text-center"><div class="text-xl font-bold">${fmt(avg, 1)}</div><div class="text-xs text-gray-500">Средняя, дн.</div></div>
       <div class="rounded-lg border p-3 text-center"><div class="text-xl font-bold">${fmt(med, 1)}</div><div class="text-xs text-gray-500">Медиана, дн.</div></div>
       <div class="rounded-lg border p-3 text-center"><div class="text-xl font-bold">${fmt(max, 1)}</div><div class="text-xs text-gray-500">Макс., дн.</div></div>
@@ -5101,7 +5101,7 @@
       const pts = (r.equity || []).map((p) => ({ date: p.date, value: p.drawdown }));
       const withDd = pts.filter((p) => (p.value || 0) > 0);
       const stats = document.getElementById('dd-stats');
-      if (stats) stats.innerHTML = `<div class="grid grid-cols-3 gap-2 text-sm"><div class="rounded border p-2">Макс. дневная просадка<div class="font-semibold">${fmt(Math.max.apply(null, pts.map((p) => p.value || 0).concat([0])), 2)}%</div></div><div class="rounded border p-2">Точек с просадкой<div class="font-semibold">${withDd.length}/${pts.length}</div></div><div class="rounded border p-2">Частота<div class="font-semibold">${pts.length ? fmt((withDd.length / pts.length) * 100, 1) : 0}%</div></div></div>`;
+      if (stats) stats.innerHTML = `<div class="grid grid-cols-1 sm:grid-cols-3 gap-2 text-sm"><div class="rounded border p-2">Макс. дневная просадка<div class="font-semibold">${fmt(Math.max.apply(null, pts.map((p) => p.value || 0).concat([0])), 2)}%</div></div><div class="rounded border p-2">Точек с просадкой<div class="font-semibold">${withDd.length}/${pts.length}</div></div><div class="rounded border p-2">Частота<div class="font-semibold">${pts.length ? fmt((withDd.length / pts.length) * 100, 1) : 0}%</div></div></div>`;
       const el = document.getElementById('chart-dd');
       if (el) Charts.richLine(el, pts, dark, { area: true, color: '#dc2626', topColor: '#dc262644', bottomColor: '#dc262608' });
     }
