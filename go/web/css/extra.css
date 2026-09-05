@@ -300,6 +300,7 @@ html.dark .raw-json pre { background: #0b1220; }
 .pc-toolbar { display: flex; flex-wrap: nowrap; align-items: center; gap: 0.5rem; }
 .pc-toolbar-right { margin-left: auto; display: flex; flex-wrap: nowrap; align-items: center; gap: 0.5rem; min-width: 0; }
 .pc-ranges { display: flex; flex: 1 1 auto; min-width: 0; align-items: center; gap: 0.25rem; overflow-x: auto; }
+.pc-ranges .hero-range { min-width: 0; min-height: 0; }
 .pc-ticker { position: relative; flex-shrink: 0; }
 .pc-ticker-btn {
   display: inline-flex; align-items: center; gap: 0.25rem;
