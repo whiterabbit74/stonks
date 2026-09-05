@@ -3295,6 +3295,7 @@
         a.href = URL.createObjectURL(blob);
         a.download = b.dataset.export + '.json';
         a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 500);
       }));
       root.querySelectorAll('[data-edit]').forEach((b) => b.addEventListener('click', (e) => {
         e.preventDefault();

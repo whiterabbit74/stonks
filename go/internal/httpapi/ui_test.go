@@ -1355,6 +1355,21 @@ func TestWatchPricesReadsActualizeResultFields(t *testing.T) {
 	}
 }
 
+func TestDatasetExportRevokesObjectURL(t *testing.T) {
+	a := readWeb(t, "js/app.js")
+	start := strings.Index(a, "querySelectorAll('[data-export]')")
+	if start < 0 {
+		t.Fatal("dataset export handler not found")
+	}
+	chunk := a[start:]
+	if i := strings.Index(chunk, "querySelectorAll('[data-edit]')"); i > 0 {
+		chunk = chunk[:i]
+	}
+	if !strings.Contains(chunk, "revokeObjectURL") {
+		t.Fatal("dataset export must revokeObjectURL like the other exports")
+	}
+}
+
 func TestToastIsPoliteStatus(t *testing.T) {
 	a := readWeb(t, "js/app.js")
 	start := strings.Index(a, "function toast(")
