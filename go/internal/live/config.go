@@ -127,14 +127,18 @@ func sanitizeAutoTradingConfig(input, current map[string]any, now time.Time) (ma
 		}
 	}
 	low, lok := finiteNumber(next["lowIBS"])
+	if !lok {
+		low = ibs.DefaultLowIBS
+	}
 	high, hok := finiteNumber(next["highIBS"])
-	if hok && high == 0 {
+	if !hok {
+		high = ibs.DefaultHighIBS
+	}
+	if high == 0 {
 		return nil, fmt.Errorf("%w: highIBS 0 is an inverted pair", ErrInvalidAutoConfig)
 	}
-	if lok && hok {
-		if _, _, err := ibs.SanitizeThresholds(low, high); err != nil {
-			return nil, fmt.Errorf("%w: %s", ErrInvalidAutoConfig, err)
-		}
+	if _, _, err := ibs.SanitizeThresholds(low, high); err != nil {
+		return nil, fmt.Errorf("%w: %s", ErrInvalidAutoConfig, err)
 	}
 	if f, ok := finiteNumber(next["executionWindowSeconds"]); ok {
 		if f < 15 || f > maxExecutionWindowSeconds {

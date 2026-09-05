@@ -184,3 +184,16 @@ func TestSanitizeRejectsOutOfRangeWindowAndUnknownProvider(t *testing.T) {
 		t.Fatal("unknown provider must error")
 	}
 }
+
+func TestSanitizeValidatesEffectiveThresholdPair(t *testing.T) {
+	if _, err := sanitizeAutoTradingConfig(map[string]any{"lowIBS": 0.95}, nil, time.Now()); err == nil {
+		t.Fatal("lowIBS must be checked against the default highIBS")
+	}
+	out := mustSanitize(t, map[string]any{"lowIBS": 0.05}, nil)
+	if asFloat(out["lowIBS"]) != 0.05 {
+		t.Fatalf("valid lowIBS was not kept: %+v", out)
+	}
+	if _, err := sanitizeAutoTradingConfig(map[string]any{"lowIBS": 0.6}, map[string]any{"highIBS": 0.5}, time.Now()); err == nil {
+		t.Fatal("partial patch must be checked against the existing highIBS")
+	}
+}
