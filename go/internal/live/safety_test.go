@@ -107,7 +107,7 @@ func TestLookupErrorDoesNotResend(t *testing.T) {
 	if res.Executed {
 		t.Fatalf("an unknown submission must not be reported as executed: %+v", res.Broker)
 	}
-	br2, _ := res.Broker.(OrderResult)
+	br2 := firstNamedOrderResult(res.Broker)
 	if !br2.Ambiguous || br2.ClientOrderID == "" {
 		t.Fatalf("want an ambiguous result carrying the id, got %+v", res.Broker)
 	}

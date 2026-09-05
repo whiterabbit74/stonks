@@ -143,15 +143,25 @@ func TestSimulateDoesNotPlace(t *testing.T) {
 
 func TestBuildT1TextNamesSubmitBroker(t *testing.T) {
 	_, e, _ := testEngine(t, entryBars)
-	exitRes := EvalResult{
-		Decision: map[string]any{"action": "exit", "symbol": "AAPL", "candidate": map[string]any{"ibs": 0.8}},
-		Broker:   map[string]any{"robinhood": OrderResult{Submitted: true, Quantity: 2}},
+	e.Broker = nil
+	e.Brokers = nil
+	rh := &MemoryBroker{}
+	e.AttachBroker("robinhood", rh)
+	e.PatchAutoConfig(map[string]any{
+		"enabled": true, "lowIBS": 0.9, "allowNewEntries": true, "allowExits": true,
+		"brokers": map[string]any{
+			"robinhood": map[string]any{"enabled": true, "allowNewEntries": true, "allowExits": true},
+		},
+	})
+	res := e.Execute("telegram_t1")
+	if !res.Executed || len(rh.Orders) == 0 {
+		t.Fatalf("RH-only T-1 must submit: executed=%v orders=%d broker=%+v", res.Executed, len(rh.Orders), res.Broker)
 	}
-	text := e.buildT1Text("2026-09-01", nil, nil, false, false, exitRes, EvalResult{}, nil)
+	text := e.buildT1Text("2026-09-01", nil, nil, false, false, EvalResult{}, res, nil)
 	if !strings.Contains(text, "Robinhood") {
 		t.Fatalf("T-1 text must name Robinhood submit, got %s", text)
 	}
-	if strings.Contains(text, "Webull:") {
+	if strings.Contains(text, "Webull") {
 		t.Fatalf("must not label RH submit as Webull: %s", text)
 	}
 }

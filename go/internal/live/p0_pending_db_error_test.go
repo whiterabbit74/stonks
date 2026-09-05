@@ -9,13 +9,39 @@ import (
 
 func brokerSubmitError(v any) string {
 	switch b := v.(type) {
-	case map[string]any:
-		return fmt.Sprint(b["error"])
 	case OrderResult:
 		return b.Error
+	case map[string]any:
+		if e, ok := b["error"]; ok && e != nil && fmt.Sprint(e) != "" && fmt.Sprint(e) != "<nil>" {
+			return fmt.Sprint(e)
+		}
+		for _, name := range []string{"webull", "robinhood"} {
+			if inner, ok := b[name]; ok {
+				if s := brokerSubmitError(inner); s != "" && s != "<nil>" {
+					return s
+				}
+			}
+		}
+		return ""
 	default:
 		return fmt.Sprint(v)
 	}
+}
+
+func firstNamedOrderResult(v any) OrderResult {
+	if or, ok := v.(OrderResult); ok {
+		return or
+	}
+	m, _ := v.(map[string]any)
+	if m == nil {
+		return OrderResult{}
+	}
+	for _, name := range []string{"webull", "robinhood"} {
+		if or, ok := m[name].(OrderResult); ok {
+			return or
+		}
+	}
+	return OrderResult{}
 }
 
 // AU-P0-3: a failed order_trackers read must not be treated as "no pending".

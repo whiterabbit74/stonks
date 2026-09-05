@@ -90,17 +90,9 @@ func (e *Engine) executeAll(w execWindow, ev EvalResult, trigger, corr string, s
 			anyOK = true
 		}
 	}
-	// ev.Broker keeps carrying the submission outcome, in the shape callers already
-	// depend on: a single result unwrapped for a single broker, a name-keyed map
-	// once more than one broker actually attempted submission.
-	switch len(results) {
-	case 1:
-		for _, v := range results {
-			ev.Broker = v
-		}
-	default:
-		ev.Broker = results
-	}
+	// Always name-keyed so a single-broker submit (Robinhood-only T-1) is not
+	// mistaken for Webull when execOutcomes sees a bare OrderResult.
+	ev.Broker = results
 	ev.BrokerDecisions = decisions
 	ev.Executed = anyOK
 	ev.Submitted = anyOK
