@@ -59,18 +59,22 @@ func fillMissingWebullFromFlat(out, flat, input map[string]any) {
 	if webull == nil {
 		webull = map[string]any{}
 	}
+	var named map[string]any
+	if brokers, _ := input["brokers"].(map[string]any); brokers != nil {
+		named, _ = brokers["webull"].(map[string]any)
+	}
 	filled := false
 	for _, f := range brokerBoolFields {
 		if cfgHas(webull, f) || !cfgHas(flat, f) {
 			continue
 		}
 		val := asBool(flat[f])
-		// Default enabled:false lives in every fresh settings blob. Writing it
-		// into brokers.webull would make cfgHas true and freeze the broker off
-		// through later master-toggle PATCHes (P2-2 must not overwrite a set
-		// nested key). Only persist a missing key when the PATCH named it or
-		// the flat value is true (legacy "this was on").
-		if !val && !cfgHas(input, f) {
+		// A flat PATCH always includes enabled (the master toggle). Treating
+		// that as "named" wrote brokers.webull.enabled=false on the first
+		// settings save and froze the broker off: P2-2 will not overwrite a
+		// set nested key. Persist a missing key only when the flat value is
+		// true (legacy "this was on") or input.brokers.webull names it.
+		if !val && !cfgHas(named, f) {
 			continue
 		}
 		webull[f] = val

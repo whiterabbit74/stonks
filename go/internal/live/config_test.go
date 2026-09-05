@@ -75,6 +75,26 @@ func TestSanitizeDoesNotOverwriteSetWebullKeys(t *testing.T) {
 	}
 }
 
+func TestSanitizeFlatEnabledFalseDoesNotSetNestedWebull(t *testing.T) {
+	current := map[string]any{
+		"enabled": false,
+		"brokers": map[string]any{
+			"webull":    map[string]any{},
+			"robinhood": map[string]any{},
+		},
+	}
+	out := sanitizeAutoTradingConfig(map[string]any{"enabled": false, "lowIBS": 0.2}, current, time.Now())
+	webull, _ := out["brokers"].(map[string]any)["webull"].(map[string]any)
+	if _, ok := webull["enabled"]; ok {
+		t.Fatalf("flat PATCH enabled:false must not persist brokers.webull.enabled, got %+v", webull)
+	}
+	later := sanitizeAutoTradingConfig(map[string]any{"enabled": true}, out, time.Now())
+	webull, _ = later["brokers"].(map[string]any)["webull"].(map[string]any)
+	if webull["enabled"] != true {
+		t.Fatalf("master toggle enabled:true must still fill missing webull.enabled, got %+v", webull)
+	}
+}
+
 func TestSanitizeAllowPatchDoesNotMaterializeDefaultEnabledFalse(t *testing.T) {
 	current := map[string]any{
 		"enabled": false,
