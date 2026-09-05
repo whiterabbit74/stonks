@@ -53,6 +53,27 @@ func TestOpenBrokerTradeForFiltersBroker(t *testing.T) {
 	}
 }
 
+func TestOpenBrokerTradesByBrokerListsEveryOpenRow(t *testing.T) {
+	rows := []map[string]any{
+		{"id": "w1", "symbol": "AAPL", "status": "open", "broker": "webull"},
+		{"id": "r1", "symbol": "MSFT", "status": "open", "broker": "robinhood"},
+		{"id": "w-closed", "symbol": "TSLA", "status": "closed", "broker": "webull"},
+		{"id": "hidden", "symbol": "QQQ", "status": "open", "isHidden": true, "broker": "webull"},
+		{"id": "legacy", "symbol": "IWM", "status": "open", "broker": ""},
+	}
+	all := OpenBrokerTrades(rows)
+	if len(all) != 3 {
+		t.Fatalf("open rows %+v", all)
+	}
+	grouped := OpenBrokerTradesByBroker(rows)
+	if len(grouped["webull"]) != 2 || grouped["webull"][0]["id"] != "w1" || grouped["webull"][1]["id"] != "legacy" {
+		t.Fatalf("webull %+v", grouped["webull"])
+	}
+	if len(grouped["robinhood"]) != 1 || grouped["robinhood"][0]["id"] != "r1" {
+		t.Fatalf("robinhood %+v", grouped["robinhood"])
+	}
+}
+
 func TestListTradesSelectsBroker(t *testing.T) {
 	db := openTestDB(t)
 	if err := db.InsertTrade("broker_trades", map[string]any{
