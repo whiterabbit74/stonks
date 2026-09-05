@@ -12,7 +12,7 @@ import (
 
 const (
 	rateWindow  = 15 * time.Minute
-	limitAPI    = 500
+	limitAPI    = 2000
 	limitLogin  = 10
 	limitHash   = 5
 	limitCalc   = 30
@@ -97,7 +97,7 @@ func (s *Server) rateLimit(next http.Handler) http.Handler {
 		}
 		ip := clientIP(r)
 		if !s.limiter.allow("api:"+ip, limitAPI) {
-			writeJSON(w, http.StatusTooManyRequests, map[string]any{"error": "Too many API requests from this IP, please try again later."})
+			writeJSON(w, http.StatusTooManyRequests, map[string]any{"error": "Слишком много запросов, подождите и обновите страницу."})
 			return
 		}
 		if r.Method == http.MethodPost && r.URL.Path == "/api/login" {

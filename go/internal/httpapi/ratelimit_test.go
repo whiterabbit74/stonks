@@ -32,6 +32,12 @@ func TestClientIPTakesRightmostForwardedEntryWhenTrusted(t *testing.T) {
 	}
 }
 
+func TestLimitAPIAllowsSPABursts(t *testing.T) {
+	if limitAPI < 1500 {
+		t.Fatalf("limitAPI=%d, SPA broker page bursts past 500", limitAPI)
+	}
+}
+
 func TestLoginLimiterIsPerIP(t *testing.T) {
 	l := newIPLimiter()
 	for i := 0; i < limitLogin; i++ {
