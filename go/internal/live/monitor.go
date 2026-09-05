@@ -443,7 +443,7 @@ func (e *Engine) applyConsistencyAction(action map[string]any) bool {
 		}); err != nil {
 			return false
 		}
-		if _, err := e.DB.SQL.Exec(`UPDATE trades SET linked_broker_trade_id=? WHERE id=?`, brokerID, monID); err != nil {
+		if err := e.DB.LinkMonitorToBrokerTrade(monID, brokerID); err != nil {
 			return false
 		}
 		return e.DB.GetTrade("trades", monID) != nil

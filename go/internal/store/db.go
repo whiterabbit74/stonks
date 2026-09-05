@@ -1148,6 +1148,11 @@ func tradeTable(table string) string {
 	return table
 }
 
+func (d *DB) LinkMonitorToBrokerTrade(monitorID, brokerTradeID string) error {
+	_, err := d.SQL.Exec(`UPDATE trades SET linked_broker_trade_id=? WHERE id=?`, brokerTradeID, monitorID)
+	return err
+}
+
 func (d *DB) GetTrade(table, id string) map[string]any {
 	table = tradeTable(table)
 	linkedCol := "NULL"

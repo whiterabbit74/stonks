@@ -351,6 +351,23 @@ func TestCloseMonitorTradePnL(t *testing.T) {
 	}
 }
 
+func TestLinkMonitorToBrokerTrade(t *testing.T) {
+	db := openTestDB(t)
+	if err := db.InsertTrade("trades", map[string]any{
+		"id": "m-b1", "symbol": "AAPL", "status": "open",
+		"entryDate": "2024-01-02", "entryPrice": 100.0,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.LinkMonitorToBrokerTrade("m-b1", "b1"); err != nil {
+		t.Fatal(err)
+	}
+	got := db.GetTrade("trades", "m-b1")
+	if fmt.Sprint(got["linkedBrokerTradeId"]) != "b1" {
+		t.Fatalf("link not stored: %+v", got)
+	}
+}
+
 func TestCloseMonitorTradeRejectsLinked(t *testing.T) {
 	db := openTestDB(t)
 	if _, err := db.SQL.Exec(`INSERT INTO trades (id, symbol, status, entry_date, entry_price, linked_broker_trade_id)
