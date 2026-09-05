@@ -42,8 +42,6 @@ func RunBuyAtClose4(tickers []TickerIndexed, strategy types.Strategy, leverage f
 	totalPortfolio := initial
 	positions := make([]*bac4Pos, len(tickers))
 	var trades []types.Trade
-	var equity []types.EquityPoint
-	peakValue := initial
 
 	sorted := unionDates(tickers)
 
@@ -69,7 +67,8 @@ func RunBuyAtClose4(tickers []TickerIndexed, strategy types.Strategy, leverage f
 		totalPortfolio = freeCapital + totalPos
 	}
 
-	for _, currentDate := range sorted {
+	equity := runDailyEngine(sorted, initial, func(day dailyDay) float64 {
+		currentDate := day.Date
 		updatePortfolio(currentDate)
 		for tickerIndex := 0; tickerIndex < len(tickers); tickerIndex++ {
 			td := tickers[tickerIndex]
@@ -158,15 +157,8 @@ func RunBuyAtClose4(tickers []TickerIndexed, strategy types.Strategy, leverage f
 				trades[i].Context.CurrentCapitalAfterExit = totalPortfolio
 			}
 		}
-		if totalPortfolio > peakValue {
-			peakValue = totalPortfolio
-		}
-		dd := 0.0
-		if peakValue > 0 {
-			dd = ((peakValue - totalPortfolio) / peakValue) * 100
-		}
-		equity = append(equity, types.EquityPoint{Date: currentDate, Value: totalPortfolio, Drawdown: dd})
-	}
+		return totalPortfolio
+	})
 
 	for i, pos := range positions {
 		if pos == nil || len(tickers[i].Data) == 0 {
