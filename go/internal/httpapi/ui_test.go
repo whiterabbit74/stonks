@@ -178,8 +178,8 @@ func TestVanillaUIAssets(t *testing.T) {
 	if !strings.Contains(extra, "#menu-btn") {
 		t.Fatal("extra.css missing hamburger #menu-btn")
 	}
-	if !strings.Contains(a, "function autotradeLive()") {
-		t.Fatal("broker [LIVE] must go through autotradeLive (enabled AND token)")
+	if strings.Contains(a, `id="broker-token"`) || strings.Contains(a, "id='broker-token'") {
+		t.Fatal("#broker-token must be gone; connection status lives in the header badges")
 	}
 
 	for _, copy := range []string{
@@ -189,7 +189,7 @@ func TestVanillaUIAssets(t *testing.T) {
 		"Библиотека датасетов",
 		"Общие", "API", "Telegram", "Интерфейс", "Автоторговля",
 		"Список", "Добавить", "Импорт", "Экспорт", "Webull API",
-		"Кабинет Webull", "[OFF]", "[LIVE]",
+		"Кабинет Webull", "Автоторговля:", "Подключение:", "разрешено торговать",
 		"take-profit-percent-input",
 		"200%",
 		"NYSE",
@@ -396,6 +396,56 @@ func TestStaticCacheHeaders(t *testing.T) {
 	}
 	if strings.Contains(rec.Body.String(), "<!DOCTYPE html") {
 		t.Fatal("GET vendor js served index.html")
+	}
+}
+
+// TestBrokerHeaderLabeledStatuses is C-1/C-2/C-3: three labeled Russian
+// badges for this page's broker, one health dictionary, no raw OK/LIVE.
+func TestBrokerHeaderLabeledStatuses(t *testing.T) {
+	a := readWeb(t, "js/app.js")
+	if strings.Contains(a, `id="broker-token"`) {
+		t.Fatal("#broker-token must be removed")
+	}
+	fn := jsFn(a, "brokerHealthText")
+	if fn == "" {
+		t.Fatal("missing brokerHealthText dictionary next to brokerLabel")
+	}
+	for _, want := range []string{"активно", "истекает через", "нужна переавторизация", "нет токена", "брокер недоступен"} {
+		if !strings.Contains(fn, want) {
+			t.Errorf("brokerHealthText missing %q", want)
+		}
+	}
+	page := jsFn(a, "pageBroker")
+	if strings.Contains(page, "[LIVE]") || strings.Contains(page, "[OFF]") {
+		t.Fatal("broker header must not show raw [LIVE]/[OFF]")
+	}
+	if strings.Contains(page, "health.status ||") {
+		t.Fatal("broker header must not print raw health.status")
+	}
+	if !strings.Contains(page, "Автоторговля:") || !strings.Contains(page, "Подключение:") {
+		t.Fatal("broker header must have labeled Автоторговля and Подключение badges")
+	}
+	if !strings.Contains(page, "Торговля через") {
+		t.Fatal("broker header must have Торговля через Webull|Robinhood badge")
+	}
+	if !strings.Contains(page, "brokerFlag(ac, kind, 'enabled')") {
+		t.Fatal("trade badge must use brokerFlag for this page's broker")
+	}
+	if !strings.Contains(page, "brokerHealthText(") {
+		t.Fatal("connection badge must go through brokerHealthText")
+	}
+	settings := jsFn(a, "pageSettings")
+	if strings.Contains(settings, "торговля остановлена") {
+		t.Fatal("settings health is connection status, not «торговля остановлена»")
+	}
+	if !strings.Contains(settings, "разрешено торговать") {
+		t.Fatal("broker checkbox must be «разрешено торговать»")
+	}
+	if !strings.Contains(settings, "brokerHealthText(") {
+		t.Fatal("settings must use the same health dictionary as the header")
+	}
+	if strings.Contains(settings, "NEEDS_REAUTH") {
+		t.Fatal("settings must not print raw NEEDS_REAUTH")
 	}
 }
 

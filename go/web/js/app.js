@@ -770,6 +770,21 @@
   function brokerLabel(id) {
     return id === 'robinhood' ? 'Robinhood' : (id === 'webull' ? 'Webull' : (id || '—'));
   }
+  function brokerHealthText(h) {
+    const st = String((h && h.status) || '');
+    if (st === 'EXPIRING_SOON') {
+      const n = h && h.daysLeft;
+      if (n != null && n !== '') return 'истекает через ' + n + ' дн.';
+      return 'истекает';
+    }
+    const m = {
+      OK: 'активно',
+      NEEDS_REAUTH: 'нужна переавторизация',
+      MISSING: 'нет токена',
+      UNREACHABLE: 'брокер недоступен',
+    };
+    return m[st] || '';
+  }
   // Mirrors go/internal/live/telegram.go noActionReasonText for the reasons
   // the autotrade tile shows. One dictionary for the whole SPA.
   function decisionReasonText(reason) {
@@ -2444,11 +2459,6 @@
       </div>`;
   }
 
-  function autotradeLive() {
-    const cfg = state.autoConfig && state.autoConfig.config ? state.autoConfig.config : (state.autoConfig || {});
-    const tok = state.token || {};
-    return !!(cfg.enabled && (tok.hasToken || tok.present));
-  }
   function unwrapAutoConfig(payload) {
     if (!payload || typeof payload !== 'object') return {};
     if (Array.isArray(payload.capitalModes) && payload.capitalModes.length) {
@@ -2497,13 +2507,19 @@
     return `<div class="overflow-auto"><table class="trades"><thead><tr>${cols.map((c) => `<th>${c}</th>`).join('')}</tr></thead><tbody><tr><td colspan="${cols.length}" class="text-center text-gray-500">${empty}</td></tr></tbody></table></div>`;
   }
   function pageBroker() {
-    const live = autotradeLive();
     const kind = state.page === '/robinhood' ? 'robinhood' : 'webull';
     const tabs = kind === 'robinhood' ? BROKER_TABS : BROKER_TABS.filter((t) => t.id !== 'connect');
     const tab = (state.brokerTab && state.brokerTab[kind]) || (kind === 'robinhood' ? 'connect' : 'overview');
     const dash = (state.dashboard && state.dashboard.broker === kind) ? state.dashboard : null;
     const health = (state.brokerHealth || []).find((h) => h.broker === kind) || {};
-    const healthCls = health.status === 'OK' ? 'bg-emerald-100 text-emerald-800' : (health.status === 'EXPIRING_SOON' ? 'bg-amber-100 text-amber-800' : (health.status ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-700'));
+    const ac = state.autoConfig || {};
+    const autoOn = !!ac.enabled;
+    const tradeOn = brokerFlag(ac, kind, 'enabled');
+    const entriesOn = brokerFlag(ac, kind, 'allowNewEntries');
+    const exitsOn = brokerFlag(ac, kind, 'allowExits');
+    const autoCls = autoOn ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-200';
+    const tradeCls = tradeOn ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-200';
+    const connCls = health.status === 'OK' ? 'bg-emerald-100 text-emerald-800' : (health.status === 'EXPIRING_SOON' ? 'bg-amber-100 text-amber-800' : (health.status ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-700'));
     let body = '';
     if ((tab === 'overview' || tab === 'positions' || tab === 'orders' || tab === 'fills') && !dash) {
       body = '<p class="text-sm text-gray-500">Загрузка…</p>';
@@ -2792,10 +2808,10 @@
       </div>`;
     }
     return `
-      ${pageHeader(kind === 'robinhood' ? 'Кабинет Robinhood' : 'Кабинет Webull', kind === 'robinhood' ? 'Баланс счёта, позиции, ордера и копи-паст авторизация Robinhood' : 'Баланс счёта, позиции, ордера, история и логи исполнения по Webull', `<div class="flex items-center gap-2"><span class="rounded-full px-3 py-1 text-xs font-semibold ${healthCls}">${esc(health.status || '—')}</span><span class="rounded-full px-3 py-1 text-xs font-semibold ${live ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-200'}">${live ? '[LIVE]' : '[OFF]'}</span><button id="broker-refresh" class="icon-btn icon-btn-md icon-btn-glass" title="Обновить" aria-label="Обновить">${icon('refresh', 'w-4 h-4')}</button></div>`, kind)}
+      ${pageHeader(kind === 'robinhood' ? 'Кабинет Robinhood' : 'Кабинет Webull', kind === 'robinhood' ? 'Баланс счёта, позиции, ордера и копи-паст авторизация Robinhood' : 'Баланс счёта, позиции, ордера, история и логи исполнения по Webull', `<div class="flex flex-wrap items-center gap-2"><span class="rounded-full px-3 py-1 text-xs font-semibold ${autoCls}">Автоторговля: ${autoOn ? 'включена' : 'выключена'}</span><span class="rounded-full px-3 py-1 text-xs font-semibold ${tradeCls}" title="входы ${entriesOn ? 'да' : 'нет'} · выходы ${exitsOn ? 'да' : 'нет'}">Торговля через ${esc(brokerLabel(kind))}: ${tradeOn ? 'вкл' : 'выкл'}</span><span class="rounded-full px-3 py-1 text-xs font-semibold ${connCls}">Подключение: ${esc(brokerHealthText(health) || '—')}</span><button id="broker-refresh" class="icon-btn icon-btn-md icon-btn-glass" title="Обновить" aria-label="Обновить">${icon('refresh', 'w-4 h-4')}</button></div>`, kind)}
       <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
         ${analysisTabs(tabs, tab, 'data-btab')}
-        <div class="p-4">${body}<div id="broker-token" class="text-sm text-gray-500 mt-3">${state.token && state.token.present ? 'Токен Webull задан' : ''}</div></div>
+        <div class="p-4">${body}</div>
       </div>`;
   }
 
@@ -2876,8 +2892,8 @@
           ${[['webull','Webull'],['robinhood','Robinhood']].map(([id, label]) => {
             const h = (state.brokerHealth || []).find((x) => x.broker === id) || {};
             return `<div class="rounded-lg border p-3 mb-2">
-              <div class="font-medium mb-2 flex items-center gap-2">${icon(id, 'w-4 h-4')}<span>${label} <span class="text-xs font-normal text-gray-500">${esc(h.status || '')}${h.status && h.status !== 'OK' && h.status !== 'EXPIRING_SOON' ? ' — торговля остановлена' : ''}</span></span></div>
-              <label class="inline-flex items-center gap-2 text-sm mr-3"><input type="checkbox" name="${id}Enabled" ${brokerFlag(ac, id, 'enabled') ? 'checked' : ''} /> Включено</label>
+              <div class="font-medium mb-2 flex items-center gap-2">${icon(id, 'w-4 h-4')}<span>${label} <span class="text-xs font-normal text-gray-500">${esc(brokerHealthText(h) || '')}</span></span></div>
+              <label class="inline-flex items-center gap-2 text-sm mr-3"><input type="checkbox" name="${id}Enabled" ${brokerFlag(ac, id, 'enabled') ? 'checked' : ''} /> разрешено торговать</label>
               <label class="inline-flex items-center gap-2 text-sm mr-3"><input type="checkbox" name="${id}AllowEntries" ${brokerFlag(ac, id, 'allowNewEntries') ? 'checked' : ''} /> Разрешить входы</label>
               <label class="inline-flex items-center gap-2 text-sm"><input type="checkbox" name="${id}AllowExits" ${brokerFlag(ac, id, 'allowExits') ? 'checked' : ''} /> Разрешить выходы</label>
               ${id === 'robinhood' ? '<p class="text-xs text-gray-500 mt-1">На Agentic-счёте нет маржинального плеча: режимы 125–200% срежутся покупательской способностью.</p>' : ''}
