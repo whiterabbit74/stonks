@@ -84,7 +84,7 @@ func (s *Server) calcBuyAtClose(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	writeJSON(w, 200, backtest.RunBuyAtClose(s.barsOrDataset(req), decodeStrategy(req.Strategy)))
+	writeJSON(w, 200, backtest.RunBuyAtClose(s.barsWithSplits(req), decodeStrategy(req.Strategy)))
 }
 
 func (s *Server) calcNoStop(w http.ResponseWriter, r *http.Request) {
@@ -92,7 +92,7 @@ func (s *Server) calcNoStop(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	writeJSON(w, 200, backtest.RunNoStopLoss(s.barsOrDataset(req), decodeStrategy(req.Strategy), req.NoStop))
+	writeJSON(w, 200, backtest.RunNoStopLoss(s.barsWithSplits(req), decodeStrategy(req.Strategy), req.NoStop))
 }
 
 func (s *Server) calcSingle(w http.ResponseWriter, r *http.Request) {
@@ -125,7 +125,7 @@ func (s *Server) calcOptions(w http.ResponseWriter, r *http.Request) {
 	if cfg.InitialCapital <= 0 {
 		cfg.InitialCapital = types.F64Or(decodeStrategy(req.Strategy).RiskManagement.InitialCapital, 10000)
 	}
-	eq, trades, final := backtest.RunOptions(decodeTrades(req.Trades), s.barsOrDataset(req), cfg)
+	eq, trades, final := backtest.RunOptions(decodeTrades(req.Trades), s.barsWithSplits(req), cfg)
 	m := metrics.New(trades, eq, cfg.InitialCapital, nil).All()
 	writeJSON(w, 200, map[string]any{"equity": eq, "trades": trades, "finalValue": final, "metrics": m, "maxDrawdown": m.MaxDrawdown})
 }
@@ -204,7 +204,7 @@ func (s *Server) calcIndicators(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	bars := s.barsOrDataset(req)
+	bars := s.barsWithSplits(req)
 	if len(bars) == 0 {
 		writeJSON(w, 400, map[string]any{"error": "data is required"})
 		return
@@ -285,7 +285,7 @@ func (s *Server) calcBuyHold(w http.ResponseWriter, r *http.Request) {
 	} else {
 		cap = types.F64Or(decodeStrategy(req.Strategy).RiskManagement.InitialCapital, 10000)
 	}
-	res := backtest.RunBuyHold(s.barsOrDataset(req), cap)
+	res := backtest.RunBuyHold(s.barsWithSplits(req), cap)
 	final := 0.0
 	if len(res.Equity) > 0 {
 		final = res.Equity[len(res.Equity)-1].Value
@@ -307,6 +307,14 @@ func (s *Server) barsOrDataset(req calcReq) []types.OHLC {
 		}
 	}
 	return nil
+}
+
+func (s *Server) barsWithSplits(req calcReq) []types.OHLC {
+	bars := s.barsOrDataset(req)
+	if len(req.Splits) > 0 {
+		return splits.AdjustOHLC(bars, req.Splits)
+	}
+	return bars
 }
 
 func tickerDataPresent(tickers []backtest.TickerIndexed) bool {
@@ -343,11 +351,14 @@ func (s *Server) tickersOrOne(req calcReq) []backtest.TickerIndexed {
 			if len(bars) == 0 {
 				continue
 			}
+			if len(req.Splits) > 0 {
+				bars = splits.AdjustOHLC(bars, req.Splits)
+			}
 			out = append(out, backtest.TickerIndexed{Ticker: t.Ticker, Data: bars, IBSValues: indicators.IBS(bars)})
 		}
 		return out
 	}
-	bars := s.barsOrDataset(req)
+	bars := s.barsWithSplits(req)
 	if len(bars) == 0 {
 		return nil
 	}

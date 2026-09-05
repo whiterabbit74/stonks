@@ -28,6 +28,9 @@ func cnd(x float64) float64 {
 }
 
 func BlackScholes(typ string, S, K, T, r, sigma float64) float64 {
+	if S <= 0 || K <= 0 || math.IsNaN(S) || math.IsNaN(K) || math.IsInf(S, 0) || math.IsInf(K, 0) {
+		return 0
+	}
 	if T <= 0 {
 		if typ == "call" {
 			return math.Max(0, S-K)
@@ -55,6 +58,9 @@ func Volatility(prices []float64, _window int) float64 {
 	}
 	returns := make([]float64, 0, len(prices)-1)
 	for i := 1; i < len(prices); i++ {
+		if prices[i] <= 0 || prices[i-1] <= 0 || math.IsNaN(prices[i]) || math.IsNaN(prices[i-1]) {
+			return 0
+		}
 		returns = append(returns, math.Log(prices[i]/prices[i-1]))
 	}
 	if len(returns) < 2 {

@@ -67,9 +67,6 @@ func (c *Calculator) cagr(finalValue, years float64) float64 {
 	if c.initialCapital <= 0 || years <= 0 || finalValue <= 0 {
 		return 0
 	}
-	if years < 1 {
-		return ((finalValue - c.initialCapital) / c.initialCapital) * 100
-	}
 	return (math.Pow(finalValue/c.initialCapital, 1/years) - 1) * 100
 }
 
@@ -254,10 +251,12 @@ func (c *Calculator) var5(returns []float64) float64 {
 	}
 	sorted := append([]float64(nil), returns...)
 	sort.Float64s(sorted)
-	idx := int(math.Floor(float64(len(returns)) * 0.05))
-	v := 0.0
-	if idx < len(sorted) {
-		v = sorted[idx]
+	pos := float64(len(sorted)-1) * 0.05
+	lo := int(math.Floor(pos))
+	hi := int(math.Ceil(pos))
+	v := sorted[lo]
+	if hi != lo {
+		v += (sorted[hi] - sorted[lo]) * (pos - float64(lo))
 	}
 	return math.Abs(v) * 100
 }
@@ -447,9 +446,6 @@ func BacktestMetrics(trades []types.Trade, equity []types.EquityPoint, initialCa
 	if len(equity) >= 2 {
 		days := float64(tradingdate.DaysBetween(equity[0].Date, equity[len(equity)-1].Date))
 		years := days / 365.25
-		if years < 0.1 {
-			years = 0.1
-		}
 		if finalValue > 0 && initialCapital > 0 {
 			cagr = (math.Pow(finalValue/initialCapital, 1/years) - 1) * 100
 		}

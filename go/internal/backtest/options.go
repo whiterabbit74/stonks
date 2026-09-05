@@ -196,7 +196,7 @@ func RunOptions(stockTrades []types.Trade, market []types.OHLC, raw OptionsConfi
 				daysHeld := tradingdate.DaysBetween(entryStr, dateStr)
 				isMaxHold := daysHeld >= cfg.MaxHoldingDays
 				isExpired := T <= 0
-				isStockExit := dateStr == tExit
+				isStockExit := dateStr == tExit || (tExit != "" && dateStr > tExit)
 				if isStockExit || isExpired || isMaxHold {
 					if isExpired {
 						intrinsic := math.Max(0, spot-active.Strike)
@@ -302,7 +302,7 @@ func RunMultiOptions(stockTrades []types.Trade, tickers []TickerIndexed, raw Opt
 			daysHeld := tradingdate.DaysBetween(entryStr, dateStr)
 			isMaxHold := daysHeld >= cfg.MaxHoldingDays
 			isExpired := T <= 0
-			isStockExit := dateStr == tExit
+			isStockExit := dateStr == tExit || (tExit != "" && dateStr > tExit)
 			if isStockExit || isExpired || isMaxHold {
 				if isExpired {
 					intrinsic := math.Max(0, spot-trade.Strike)
