@@ -2,12 +2,14 @@ package metrics
 
 import (
 	"math"
+	"sort"
 
 	"mktorder.com/go/internal/tradingdate"
 	"mktorder.com/go/internal/types"
 )
 
 const TradePnLEpsilon = 0.01
+const riskFreeAnnual = 0.02 // assumption, not a live market rate
 
 type Calculator struct {
 	trades         []types.Trade
@@ -104,7 +106,7 @@ func (c *Calculator) sharpe(returns []float64, meanReturn float64) float64 {
 	}
 	annualizedReturn := meanReturn * 252
 	annualizedStd := stdDev * math.Sqrt(252)
-	return (annualizedReturn - 0.02) / annualizedStd
+	return (annualizedReturn - riskFreeAnnual) / annualizedStd
 }
 
 func (c *Calculator) sortino(returns []float64, meanReturn float64) float64 {
@@ -112,7 +114,6 @@ func (c *Calculator) sortino(returns []float64, meanReturn float64) float64 {
 		return 0
 	}
 	annualizedReturn := meanReturn * 252
-	riskFreeAnnual := 0.02
 	marDaily := riskFreeAnnual / 252
 	down := downwardDev(returns, marDaily)
 	if down == 0 {
@@ -252,13 +253,7 @@ func (c *Calculator) var5(returns []float64) float64 {
 		return 0
 	}
 	sorted := append([]float64(nil), returns...)
-	for i := 0; i < len(sorted); i++ {
-		for j := i + 1; j < len(sorted); j++ {
-			if sorted[j] < sorted[i] {
-				sorted[i], sorted[j] = sorted[j], sorted[i]
-			}
-		}
-	}
+	sort.Float64s(sorted)
 	idx := int(math.Floor(float64(len(returns)) * 0.05))
 	v := 0.0
 	if idx < len(sorted) {
@@ -396,16 +391,16 @@ func CAGR(finalValue, initialValue float64, startDate, endDate string) float64 {
 }
 
 type TradeStats struct {
-	TotalTrades int
-	Wins        int
-	Losses      int
-	Breakeven   int
-	TotalPnL    float64
-	GrossProfit float64
-	GrossLoss   float64
+	TotalTrades  int
+	Wins         int
+	Losses       int
+	Breakeven    int
+	TotalPnL     float64
+	GrossProfit  float64
+	GrossLoss    float64
 	ProfitFactor float64
-	WinRate     float64
-	AvgDuration float64
+	WinRate      float64
+	AvgDuration  float64
 }
 
 func CalculateTradeStats(trades []types.Trade) TradeStats {
