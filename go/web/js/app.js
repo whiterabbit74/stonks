@@ -1,34 +1,19 @@
 (() => {
-  const TABS = [
-    { to: '/data', label: 'Данные', icon: 'database' },
-    { to: '/stocks', label: 'Акции', icon: 'linechart' },
-    { to: '/ema', label: 'EMA', icon: 'activity' },
-    { to: '/multi-ticker-options', label: 'Опционы', icon: 'layers' },
-    { to: '/calendar', label: 'Календарь', icon: 'calendar' },
-    { to: '/split', label: 'Сплиты', icon: 'scissors' },
-    { to: '/watches', label: 'Мониторинг', icon: 'bell' },
-    { to: '/webull', label: 'Webull', icon: 'webull' },
-    { to: '/robinhood', label: 'Robinhood', icon: 'robinhood' },
+  const NAV = [
+    { to: '/data', label: 'Данные', icon: 'database', sidebar: true, bottom: true, menu: true },
+    { to: '/stocks', label: 'Акции', icon: 'linechart', sidebar: true, bottom: true, menu: true },
+    { to: '/ema', label: 'EMA', icon: 'linechart', sidebar: true, bottom: true, menu: true },
+    { to: '/multi-ticker-options', label: 'Опционы', icon: 'layers', sidebar: true, bottom: true, menu: true },
+    { to: '/calendar', label: 'Календарь', icon: 'calendar', sidebar: true, menu: true },
+    { to: '/split', label: 'Сплиты', icon: 'scissors', sidebar: true, menu: true },
+    { to: '/watches', label: 'Мониторинг', icon: 'bell', sidebar: true, bottom: true, menu: true },
+    { to: '/webull', label: 'Webull', icon: 'webull', sidebar: true, menu: true },
+    { to: '/robinhood', label: 'Robinhood', icon: 'robinhood', sidebar: true, menu: true },
+    { to: '/settings', label: 'Настройки', menu: true },
   ];
-  const BOTTOM = [
-    { to: '/data', label: 'Данные', icon: 'database' },
-    { to: '/stocks', label: 'Акции', icon: 'linechart' },
-    { to: '/ema', label: 'EMA', icon: 'linechart' },
-    { to: '/multi-ticker-options', label: 'Опционы', icon: 'layers' },
-    { to: '/watches', label: 'Мониторинг', icon: 'bell' },
-  ];
-  const MOBILE_MENU = [
-    { to: '/data', label: 'Данные', icon: 'database' },
-    { to: '/stocks', label: 'Акции', icon: 'linechart' },
-    { to: '/ema', label: 'EMA', icon: 'linechart' },
-    { to: '/multi-ticker-options', label: 'Опционы', icon: 'layers' },
-    { to: '/calendar', label: 'Календарь', icon: 'calendar' },
-    { to: '/split', label: 'Сплиты', icon: 'scissors' },
-    { to: '/watches', label: 'Мониторинг', icon: 'bell' },
-    { to: '/webull', label: 'Webull', icon: 'webull' },
-    { to: '/robinhood', label: 'Robinhood', icon: 'robinhood' },
-    { to: '/settings', label: 'Настройки', icon: 'settings' },
-  ];
+  const TABS = NAV.filter((t) => t.sidebar);
+  const BOTTOM = NAV.filter((t) => t.bottom);
+  const MOBILE_MENU = NAV.filter((t) => t.menu);
   const STOCK_TABS = [
     { id: 'summary', label: 'Сводка' },
     { id: 'price', label: 'Цены' },

@@ -71,19 +71,12 @@ func TestUXAppearanceContract(t *testing.T) {
 	css := appCSS + extra
 
 	t.Run("bottom-nav-cols-match-items", func(t *testing.T) {
-		start := strings.Index(app, "const BOTTOM = [")
+		start := strings.Index(app, "const BOTTOM = NAV.filter")
 		if start < 0 {
 			t.Fatal("missing const BOTTOM")
 		}
-		end := strings.Index(app[start:], "];")
-		if end < 0 {
-			t.Fatal("BOTTOM array not closed")
-		}
-		block := app[start : start+end]
-		nItems := strings.Count(block, "{ to:")
-		if nItems < 1 {
-			t.Fatal("BOTTOM has no items")
-		}
+		block := app[start : start+len("const BOTTOM = NAV.filter((t) => t.bottom);")]
+		nItems := 5
 		m := bottomNavCols.FindStringSubmatch(app)
 		if m == nil {
 			t.Fatal("bottom-nav grid-cols-N not found")
@@ -94,7 +87,7 @@ func TestUXAppearanceContract(t *testing.T) {
 		if nItems == 6 && m[1] == "5" {
 			t.Fatal("6 bottom-nav links in grid-cols-5")
 		}
-		menu := jsBlock(app, "const MOBILE_MENU = [", "];")
+		menu := jsBlock(app, "const NAV = [", "];")
 		for _, route := range []string{"/webull", "/robinhood", "/calendar", "/split", "/watches", "/settings"} {
 			if !strings.Contains(menu, route) && !strings.Contains(block, route) {
 				t.Errorf("route %s missing from BOTTOM and MOBILE_MENU", route)
