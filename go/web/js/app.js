@@ -2825,7 +2825,7 @@
         </tr>`;
       }).join('');
       body = `<div class="flex flex-wrap gap-2 mb-3">
-          <button type="button" id="broker-reconcile" class="btn-primary min-h-0 py-2" aria-label="Reconcile Candidate">Сверить данные</button>
+          <button type="button" id="broker-reconcile" class="btn-primary min-h-0 py-2" aria-label="Сверить данные (Reconcile Candidate)">Сверить данные</button>
           <button type="button" id="broker-quotes-refresh" class="btn-secondary min-h-0 py-2">Обновить котировки</button>
         </div>
         <div class="grid gap-3 md:grid-cols-4 mb-3">
