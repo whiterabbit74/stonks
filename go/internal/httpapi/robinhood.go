@@ -88,6 +88,11 @@ func (s *Server) handleRobinhoodDashboard(w http.ResponseWriter, r *http.Request
 		writeJSON(w, 200, map[string]any{"positions": []any{}, "error": "not connected"})
 		return
 	}
+	// SPA sends ?refresh=1 from API.rhDashboard(true); drop the in-memory
+	// Agentic Account so the next agenticAccount() re-resolves.
+	if r.URL.Query().Get("refresh") == "1" {
+		br.ResetAccount()
+	}
 	acct, aerr := br.Account()
 	pos, perr := br.Positions()
 	orders, _ := br.OpenOrders()

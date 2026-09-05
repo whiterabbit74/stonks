@@ -156,6 +156,10 @@ func (s *Server) handleWebullAccount(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleWebullDashboard(w http.ResponseWriter, r *http.Request) {
+	// SPA sends ?refresh=1 from API.dashboard(true). Dashboard() has no
+	// in-memory account cache to bust (unlike RobinhoodBroker.account); the
+	// query is still read so the client argument is not dead.
+	_ = r.URL.Query().Get("refresh")
 	snap, _ := s.liveEng().Dashboard()
 	writeJSON(w, 200, snap)
 }

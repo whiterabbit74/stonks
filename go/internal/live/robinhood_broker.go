@@ -255,6 +255,16 @@ func (b *RobinhoodBroker) RawSplits(symbol string) ([]map[string]any, error) {
 	return nil, fmt.Errorf("not webull")
 }
 
+// ResetAccount drops the in-memory Agentic Account cache so the next
+// agenticAccount() re-resolves from the store or MCP. Dashboard ?refresh=1
+// (P-11 / B-11) is the call site.
+func (b *RobinhoodBroker) ResetAccount() {
+	if b == nil {
+		return
+	}
+	b.account = ""
+}
+
 func (b *RobinhoodBroker) agenticAccount() (string, error) {
 	if b.account != "" {
 		return b.account, nil

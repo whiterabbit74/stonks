@@ -612,6 +612,82 @@ func TestDashboardIncludesBrokerOrders(t *testing.T) {
 	}
 }
 
+func TestDashboardHandlersInspectRefreshQuery(t *testing.T) {
+	for _, file := range []string{"live_handlers.go", "robinhood.go"} {
+		raw, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(raw), `Query().Get("refresh")`) {
+			t.Errorf("%s must inspect r.URL.Query().Get(\"refresh\")", file)
+		}
+	}
+	api := readWeb(t, "js/api.js")
+	if !strings.Contains(api, "dashboard: (refresh)") || !strings.Contains(api, "rhDashboard: (refresh)") {
+		t.Fatal("api.js must keep the refresh argument on both dashboard calls")
+	}
+	if !strings.Contains(api, "?refresh=1") {
+		t.Fatal("api.js must still send ?refresh=1")
+	}
+}
+
+func TestWebullDashboardAcceptsRefreshQuery(t *testing.T) {
+	s, _, _ := liveServer(t)
+	req := httptest.NewRequest("GET", "/api/autotrade/webull/dashboard?refresh=1", nil)
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != 200 {
+		t.Fatalf("webull dashboard refresh %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func rhDashboardMock(accounts *int) *live.RobinhoodBroker {
+	return &live.RobinhoodBroker{Call: func(name string, args map[string]any) (json.RawMessage, error) {
+		switch name {
+		case "get_accounts":
+			*accounts++
+			return json.Marshal(map[string]any{"content": []any{map[string]any{"type": "text", "text": `{"accounts":[{"account_number":"RH1","agentic_allowed":true}]}`}}})
+		case "get_portfolio":
+			return json.Marshal(map[string]any{"content": []any{map[string]any{"type": "text", "text": `{"cash":10,"equity":20,"buying_power":15}`}}})
+		case "get_equity_positions", "get_equity_orders":
+			return json.Marshal(map[string]any{"content": []any{map[string]any{"type": "text", "text": `{"results":[]}`}}})
+		default:
+			return json.Marshal(map[string]any{})
+		}
+	}}
+}
+
+func getDashboard(t *testing.T, s *Server, path string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest("GET", path, nil)
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != 200 {
+		t.Fatalf("%s %d %s", path, rec.Code, rec.Body.String())
+	}
+	return rec
+}
+
+func TestRobinhoodDashboardRefreshBustsAccountCache(t *testing.T) {
+	s := testServer(t, "")
+	var accounts int
+	b := rhDashboardMock(&accounts)
+	s.Live.AttachBroker("robinhood", b)
+
+	getDashboard(t, s, "/api/autotrade/robinhood/dashboard")
+	if accounts != 1 {
+		t.Fatalf("first dashboard must resolve account, get_accounts=%d", accounts)
+	}
+	getDashboard(t, s, "/api/autotrade/robinhood/dashboard")
+	if accounts != 1 {
+		t.Fatalf("without refresh the in-memory account must be reused, get_accounts=%d", accounts)
+	}
+	getDashboard(t, s, "/api/autotrade/robinhood/dashboard?refresh=1")
+	if accounts != 2 {
+		t.Fatalf("?refresh=1 must re-fetch get_accounts, got %d", accounts)
+	}
+}
+
 func TestPagesDriveLiveAPIs(t *testing.T) {
 	app, err := os.ReadFile("../web/js/app.js")
 	if err != nil {

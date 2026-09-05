@@ -339,3 +339,37 @@ func TestRobinhoodCancelOrderRejectsNonUUID(t *testing.T) {
 		t.Fatalf("CancelOrder must not Call for a non-UUID, calls=%d", calls)
 	}
 }
+
+// TestResetAccountClearsCachedAccount is P-11/B-11: ?refresh=1 must drop the
+// in-memory Agentic Account so the next agenticAccount() re-fetches.
+func TestResetAccountClearsCachedAccount(t *testing.T) {
+	var accounts int
+	b := &RobinhoodBroker{
+		account: "OLD",
+		Call: func(name string, args map[string]any) (json.RawMessage, error) {
+			if name == "get_accounts" {
+				accounts++
+				return json.Marshal(map[string]any{"content": []any{map[string]any{"type": "text", "text": `{"accounts":[{"account_number":"NEW","agentic_allowed":true}]}`}}})
+			}
+			return json.Marshal(map[string]any{})
+		},
+	}
+	got, err := b.agenticAccount()
+	if err != nil || got != "OLD" {
+		t.Fatalf("cached account should be used, got %q %v", got, err)
+	}
+	if accounts != 0 {
+		t.Fatalf("cached path must not call get_accounts, calls=%d", accounts)
+	}
+	b.ResetAccount()
+	if b.account != "" {
+		t.Fatalf("ResetAccount must clear cached account, got %q", b.account)
+	}
+	got, err = b.agenticAccount()
+	if err != nil || got != "NEW" {
+		t.Fatalf("after reset want NEW, got %q %v", got, err)
+	}
+	if accounts != 1 {
+		t.Fatalf("get_accounts after reset: %d", accounts)
+	}
+}
