@@ -193,7 +193,7 @@ func extractEntryFundsFromBalance(root map[string]any) float64 {
 	asset := preferredAsset(root)
 	var cands []any
 	if asset != nil {
-		cands = []any{asset["day_buying_power"], asset["overnight_buying_power"], asset["night_trading_buying_power"], asset["option_buying_power"], asset["cash_balance"], asset["net_liquidation_value"]}
+		cands = []any{asset["day_buying_power"], asset["overnight_buying_power"], asset["night_trading_buying_power"], asset["cash_balance"], asset["net_liquidation_value"]}
 	}
 	cands = append(cands, root["total_cash_balance"], root["cash_balance"], root["total_net_liquidation_value"], root["net_liquidation_value"])
 	return firstPositive(cands...)
