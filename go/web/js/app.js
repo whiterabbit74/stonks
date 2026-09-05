@@ -2070,9 +2070,9 @@
     return `
       <div>
         <label class="mb-1 block text-xs font-medium">Пресеты</label>
-        <div class="flex gap-2"><select id="stock-preset" class="${inputCls()}"><option value="">— Выбрать пресет —</option>${presets}</select>
+        <div class="flex gap-2"><select id="stock-preset" class="${inputCls()} min-w-0 flex-1"><option value="">— Выбрать пресет —</option>${presets}</select>
         <button type="button" id="stock-preset-del" class="icon-btn icon-btn-md icon-btn-glass" title="Удалить пресет" aria-label="Удалить пресет">${icon('trash', 'w-3.5 h-3.5')}</button></div>
-        <div class="mt-2 flex gap-2"><input id="stock-preset-name" class="${inputCls()}" placeholder="Название пресета" /><button type="button" id="stock-preset-save" class="btn-secondary min-h-0 py-2">Сохранить</button></div>
+        <div class="mt-2 flex gap-2"><input id="stock-preset-name" class="${inputCls()} min-w-0 flex-1" placeholder="Название пресета" /><button type="button" id="stock-preset-save" class="btn-secondary min-h-0 py-2">Сохранить</button></div>
       </div>
       <div><label class="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300" for="ticker-input">Тикеры</label>
         ${tickerInput('ticker-input', state.tickerInput)}
@@ -2096,9 +2096,9 @@
       <form id="ema-form" class="space-y-3">
         <div>
           <label class="mb-1 block text-xs font-medium">Пресеты</label>
-          <div class="flex gap-2"><select id="ema-preset" class="${inputCls()}"><option value="">— Выбрать пресет —</option>${presets}</select>
+          <div class="flex gap-2"><select id="ema-preset" class="${inputCls()} min-w-0 flex-1"><option value="">— Выбрать пресет —</option>${presets}</select>
           <button type="button" id="ema-preset-del" class="icon-btn icon-btn-md icon-btn-glass" title="Удалить пресет" aria-label="Удалить пресет">${icon('trash', 'w-3.5 h-3.5')}</button></div>
-          <div class="mt-2 flex gap-2"><input id="ema-preset-name" class="${inputCls()}" placeholder="Название пресета" /><button type="button" id="ema-preset-save" class="btn-secondary min-h-0 py-2">Сохранить</button></div>
+          <div class="mt-2 flex gap-2"><input id="ema-preset-name" class="${inputCls()} min-w-0 flex-1" placeholder="Название пресета" /><button type="button" id="ema-preset-save" class="btn-secondary min-h-0 py-2">Сохранить</button></div>
         </div>
         <div><label class="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">Тикеры</label>${tickerInput('ema-tickers', state.emaTickers)}</div>
         <div class="grid grid-cols-2 gap-3">
@@ -2167,9 +2167,9 @@
       <form id="opt-form" class="space-y-3">
         <div>
           <label class="mb-1 block text-xs font-medium">Пресеты</label>
-          <div class="flex gap-2"><select id="opt-preset" class="${inputCls()}"><option value="">— Выбрать пресет —</option>${presets}</select>
+          <div class="flex gap-2"><select id="opt-preset" class="${inputCls()} min-w-0 flex-1"><option value="">— Выбрать пресет —</option>${presets}</select>
           <button type="button" id="opt-preset-del" class="icon-btn icon-btn-md icon-btn-glass" title="Удалить пресет" aria-label="Удалить пресет">${icon('trash', 'w-3.5 h-3.5')}</button></div>
-          <div class="mt-2 flex gap-2"><input id="opt-preset-name" class="${inputCls()}" placeholder="Название пресета" /><button type="button" id="opt-preset-save" class="btn-secondary min-h-0 py-2">Сохранить</button></div>
+          <div class="mt-2 flex gap-2"><input id="opt-preset-name" class="${inputCls()} min-w-0 flex-1" placeholder="Название пресета" /><button type="button" id="opt-preset-save" class="btn-secondary min-h-0 py-2">Сохранить</button></div>
         </div>
         <div><label class="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">Тикеры</label>${tickerInput('opt-tickers', state.optTickers)}</div>
         <div class="grid grid-cols-2 gap-2">
