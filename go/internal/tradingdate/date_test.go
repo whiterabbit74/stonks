@@ -85,6 +85,14 @@ func TestParseRejectsTrailingJunk(t *testing.T) {
 	if !got.IsValid || got.Date == nil || *got.Date != "2024-01-15" {
 		t.Fatalf("ISO timestamp prefix must still parse, got %+v", got)
 	}
+	for _, input := range []string{"01/02/2024xyz", "1.2.2024 "} {
+		if Parse(input).IsValid {
+			t.Fatalf("trailing junk must be rejected for %q", input)
+		}
+	}
+	if !Parse("01/02/2024").IsValid {
+		t.Fatal("valid US date must parse")
+	}
 }
 
 func TestTZStable(t *testing.T) {

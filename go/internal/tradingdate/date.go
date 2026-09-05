@@ -16,8 +16,8 @@ const NYZone = "America/New_York"
 
 var ymd = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
 var isoPrefix = regexp.MustCompile(`^(\d{4})-(\d{1,2})-(\d{1,2})`)
-var usDate = regexp.MustCompile(`^(\d{1,2})/(\d{1,2})/(\d{4})`)
-var euDate = regexp.MustCompile(`^(\d{1,2})[.](\d{1,2})[.](\d{4})`)
+var usDate = regexp.MustCompile(`^(\d{1,2})/(\d{1,2})/(\d{4})$`)
+var euDate = regexp.MustCompile(`^(\d{1,2})[.](\d{1,2})[.](\d{4})$`)
 
 func IsValid(value string) bool {
 	if !ymd.MatchString(value) {
