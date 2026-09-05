@@ -12,6 +12,58 @@ import (
 // defaultBroker (Webull). Webull answering ErrOrderNotFound would otherwise
 // finalize the tracker as terminal_absent and deletePhantom the robinhood
 // journal row.
+func TestFinalizeDoesNotRejournalWhenStatusStampFails(t *testing.T) {
+	db, e, br := testEngine(t, entryBars)
+	id := "oid-stamp-fail"
+	if err := e.DB.SaveOrderTracker(map[string]any{
+		"clientOrderId": id, "symbol": "AAPL", "action": "entry",
+		"status": "submitted", "quantity": 1.0, "source": "t1", "dateKey": "2026-09-01",
+		"broker": "webull", "startedAt": e.now().UTC().Format(time.RFC3339Nano),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	br.SetDetail(id, map[string]any{"client_order_id": id, "status": "FILLED", "avg_price": 8.2, "filled_qty": 1.0})
+	if _, err := db.SQL.Exec(`
+            CREATE TRIGGER IF NOT EXISTS trackers_block_status
+            BEFORE UPDATE ON order_trackers
+            BEGIN
+                SELECT RAISE(ABORT, 'injected tracker stamp failure');
+            END;
+        `); err != nil {
+		t.Fatal(err)
+	}
+	e.PollTrackers()
+	if trackerStatus(t, db, id) == "filled" {
+		t.Fatal("stamp failure must leave tracker pending")
+	}
+	if !autotradeLogsContain(t, e, "tracker_finalize_failed") {
+		t.Fatal("want tracker_finalize_failed when SetOrderTrackerStatus fails")
+	}
+	if db.GetTrade("broker_trades", id) == nil {
+		t.Fatal("fill must still be journaled")
+	}
+	if _, err := db.SQL.Exec(`DROP TRIGGER IF EXISTS trackers_block_status`); err != nil {
+		t.Fatal(err)
+	}
+	e.PollTrackers()
+	if trackerStatus(t, db, id) != "filled" {
+		t.Fatalf("retry stamp got %q", trackerStatus(t, db, id))
+	}
+	rows, err := db.ListTrades("broker_trades")
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := 0
+	for _, r := range rows {
+		if fmt.Sprint(r["id"]) == id {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Fatalf("want 1 journal row, got %d", n)
+	}
+}
+
 func TestPollTrackerOrderedQtyIsNotAFill(t *testing.T) {
 	_, e, br := testEngine(t, entryBars)
 	id := "oid-qty-only"

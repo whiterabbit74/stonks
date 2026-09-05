@@ -347,7 +347,9 @@ func (e *Engine) pollTracker(t map[string]any) (bool, error) {
 		}
 	}
 	if !IsFinalOrderStatus(status) {
-		_ = e.DB.SetOrderTrackerStatus(id, status)
+		if err := e.stampTrackerStatus(id, status); err != nil {
+			return false, err
+		}
 		e.logAuto("order_poll", e.metaCorr(id), map[string]any{
 			"clientOrderId": id, "status": status, "symbol": t["symbol"],
 		})
@@ -418,7 +420,7 @@ func (e *Engine) brokerForTracker(t map[string]any) Broker {
 func (e *Engine) markBrokerDisconnected(t map[string]any) {
 	id := fmt.Sprint(t["clientOrderId"])
 	name := trackerBrokerName(t)
-	_ = e.DB.SetOrderTrackerStatus(id, "execution_unknown")
+	_ = e.stampTrackerStatus(id, "execution_unknown")
 	e.logAuto("order_execution_unknown", e.metaCorr(id), map[string]any{
 		"clientOrderId": id, "symbol": t["symbol"], "action": t["action"],
 		"broker": name, "error": "broker_not_connected",
@@ -430,7 +432,7 @@ func (e *Engine) markBrokerDisconnected(t map[string]any) {
 
 func (e *Engine) markExecutionUnknown(t map[string]any, cause error) {
 	id := fmt.Sprint(t["clientOrderId"])
-	_ = e.DB.SetOrderTrackerStatus(id, "execution_unknown")
+	_ = e.stampTrackerStatus(id, "execution_unknown")
 	msg := ""
 	if cause != nil {
 		msg = cause.Error()
@@ -507,6 +509,16 @@ func (e *Engine) ResolveTracker(clientOrderID, outcome, note string, filledPrice
 	return e.DB.GetOrderTracker(clientOrderID), nil
 }
 
+func (e *Engine) stampTrackerStatus(id, status string) error {
+	err := e.DB.SetOrderTrackerStatus(id, status)
+	if err != nil {
+		e.logAuto("tracker_finalize_failed", e.metaCorr(id), map[string]any{
+			"clientOrderId": id, "status": status, "error": err.Error(),
+		})
+	}
+	return err
+}
+
 func (e *Engine) finalizeTracker(t map[string]any, status string) {
 	e.finalizeTrackerStatus(t, nil, status)
 }
@@ -516,7 +528,9 @@ func (e *Engine) finalizeTrackerStatus(t map[string]any, detail map[string]any, 
 	// Record the trade before marking the tracker final so a waiter that
 	// keys off pending status cannot observe a filled tracker with no row.
 	e.recordFill(t, detail, status)
-	_ = e.DB.SetOrderTrackerStatus(id, status)
+	if err := e.stampTrackerStatus(id, status); err != nil {
+		return
+	}
 	e.logAuto("order_tracking_finished", e.metaCorr(id), map[string]any{
 		"clientOrderId": id, "status": status, "symbol": t["symbol"], "action": t["action"],
 	})
