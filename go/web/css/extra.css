@@ -292,7 +292,7 @@ html.dark .enhance-opt:hover, html.dark .enhance-opt-on { background: #1e1b4b; }
   white-space: pre-wrap; word-break: break-word;
 }
 html.dark .raw-json pre { background: #0b1220; }
-.hist-css { display: flex; align-items: flex-end; gap: 2px; height: 120px; }
+.hist-css { display: flex; align-items: flex-end; gap: 2px; height: 120px; min-width: 0; overflow-x: auto; }
 .hist-css span { display: block; min-width: 3px; flex: 1; border-radius: 2px 2px 0 0; }
 .ticker-mini-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.35rem; font-size: 11px; }
 .pager { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-top: 0.75rem; font-size: 0.8125rem; }
