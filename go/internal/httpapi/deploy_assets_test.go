@@ -75,6 +75,21 @@ func TestGoDeployShipsBinaryAndWeb(t *testing.T) {
 	}
 }
 
+func TestDeployTelegramNotifyDoesNotPutNewlinesInCurlConfig(t *testing.T) {
+	sh := repoFile(t, "deploy.sh")
+	if !strings.Contains(sh, "api.telegram.org") {
+		t.Fatal("deploy.sh must notify Telegram")
+	}
+	if strings.Contains(sh, "bot${BOT_TOKEN}") || strings.Contains(sh, "bot$BOT_TOKEN") {
+		t.Fatal("bot token must stay off the curl argv")
+	}
+	// curl --config is line-oriented; a printf \n inside a quoted option
+	// yields "option --config: error encountered when reading a file".
+	if strings.Contains(sh, `printf 'data-urlencode = "text=`) {
+		t.Fatal("put the Telegram text on --data-urlencode argv, not inside --config")
+	}
+}
+
 func TestCleanupServerDoesNotPruneVolumes(t *testing.T) {
 	sh := repoFile(t, "cleanup-server.sh")
 	for _, line := range strings.Split(sh, "\n") {

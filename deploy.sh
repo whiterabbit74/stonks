@@ -156,12 +156,14 @@ CHAT_ID="$(ssh -o BatchMode=yes "$HOST" "grep '^TELEGRAM_CHAT_ID=' /home/ubuntu/
 if [ -n "${BOT_TOKEN:-}" ] && [ -n "${CHAT_ID:-}" ]; then
   {
     printf 'url = "https://api.telegram.org/bot%s/sendMessage"\n' "$BOT_TOKEN"
-    printf 'request = "POST"\n'
+    printf 'request = POST\n'
     printf 'data = "chat_id=%s"\n' "$CHAT_ID"
-    printf 'data-urlencode = "text=🚀 Сервер обновлен!\n\n💻 Версия: %s\n🕰 Дата: %s\n🌐 Сайт: https://mktorder.com"\n' "$GIT_COMMIT" "$GIT_DATE"
   } | curl -s --config - \
-    \
-    >/dev/null || echo "telegram send failed"
+    --data-urlencode "text=🚀 Сервер обновлен!
+
+💻 Версия: ${GIT_COMMIT}
+🕰 Дата: ${GIT_DATE}
+🌐 Сайт: https://mktorder.com" >/dev/null || echo "telegram send failed"
 else
   echo "telegram env missing"
 fi
