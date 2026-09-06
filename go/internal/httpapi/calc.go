@@ -417,6 +417,13 @@ func (s *Server) barsForSymbol(symbol string) ([]types.OHLC, error) {
 func (s *Server) tickersOrOne(w http.ResponseWriter, req calcReq) ([]backtest.TickerIndexed, bool) {
 	var out []backtest.TickerIndexed
 	if len(req.Tickers) > 0 {
+		// Top-level splits belong to the one symbol they were sent with:
+		// applying them to every ticker of the run corrects prices that never
+		// split. Without that symbol the events cannot be placed at all.
+		if len(req.Splits) > 0 && req.Ticker == "" {
+			writeJSON(w, 400, map[string]any{"error": "splits в многотикерном запросе требуют поля ticker"})
+			return nil, false
+		}
 		for _, t := range req.Tickers {
 			bars := decodeBars(t.Data)
 			if len(bars) == 0 {
@@ -430,7 +437,11 @@ func (s *Server) tickersOrOne(w http.ResponseWriter, req calcReq) ([]backtest.Ti
 			if len(bars) == 0 {
 				continue
 			}
-			events, ok := s.splitsFor(w, t.Ticker, req.Splits)
+			explicit := req.Splits
+			if t.Ticker != req.Ticker {
+				explicit = nil
+			}
+			events, ok := s.splitsFor(w, t.Ticker, explicit)
 			if !ok {
 				return nil, false
 			}

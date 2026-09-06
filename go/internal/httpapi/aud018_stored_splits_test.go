@@ -1,6 +1,9 @@
 package httpapi
 
 import (
+	"bytes"
+	"encoding/json"
+	"net/http/httptest"
 	"testing"
 
 	"mktorder.com/go/internal/types"
@@ -86,5 +89,63 @@ func TestCalcSkipsSplitsOnAdjustedDataset(t *testing.T) {
 	})
 	if got := firstEntryPrice(t, tradeSlice(t, rec)); got != 191 {
 		t.Fatalf("entry price %v: adjusted dataset was adjusted twice", got)
+	}
+}
+
+// flatBars never dip below the entry threshold: IBS is 1 on every bar, so this
+// ticker contributes no trade of its own.
+func flatBars() []types.OHLC {
+	out := make([]types.OHLC, 0, 4)
+	for _, d := range []string{"2024-01-02", "2024-01-03", "2024-01-04", "2024-01-05"} {
+		out = append(out, types.OHLC{Date: d, Open: 100, High: 110, Low: 90, Close: 110, Volume: 1})
+	}
+	return out
+}
+
+// Splits sent in the request body belong to the symbol named by `ticker`.
+// Spreading them over every ticker of a multi-ticker run back-adjusts prices
+// that never split.
+func TestCalcDoesNotApplyOneTickersSplitsToAnother(t *testing.T) {
+	s := testServer(t, "")
+	if err := s.DB.SaveDataset("AAA", "AAA", "", "", flatBars(), false); err != nil {
+		t.Fatalf("save AAA: %v", err)
+	}
+	if err := s.DB.SaveDataset("BBB", "BBB", "", "", rawSplitBars(), false); err != nil {
+		t.Fatalf("save BBB: %v", err)
+	}
+
+	rec := postCalc(t, s, "single-position", map[string]any{
+		"ticker":   "AAA",
+		"tickers":  []map[string]any{{"ticker": "AAA"}, {"ticker": "BBB"}},
+		"splits":   []map[string]any{{"date": "2024-01-04", "factor": 2}},
+		"strategy": map[string]any{"type": "ibs-mean-reversion"},
+	})
+	// BBB has no split of its own, so its raw close stands.
+	if got := firstEntryPrice(t, tradeSlice(t, rec)); got != 191 {
+		t.Fatalf("entry price %v: AAA's split was applied to BBB", got)
+	}
+}
+
+// Splits with no symbol to attach them to are rejected, not silently dropped.
+func TestCalcRejectsSplitsWithoutTickerOnMultiTickerRun(t *testing.T) {
+	s := testServer(t, "")
+	if err := s.DB.SaveDataset("BBB", "BBB", "", "", rawSplitBars(), false); err != nil {
+		t.Fatalf("save BBB: %v", err)
+	}
+
+	body, err := json.Marshal(map[string]any{
+		"tickers":  []map[string]any{{"ticker": "BBB"}},
+		"splits":   []map[string]any{{"date": "2024-01-04", "factor": 2}},
+		"strategy": map[string]any{"type": "ibs-mean-reversion"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest("POST", "/api/calc/single-position", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != 400 {
+		t.Fatalf("status %d, want 400: ambiguous splits accepted", rec.Code)
 	}
 }
