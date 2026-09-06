@@ -80,7 +80,12 @@ func NewWithProviders(db *store.DB, webDir string, p *providers.Client) *Server 
 	if s.Live.Broker != nil {
 		s.Live.AttachBroker("webull", s.Live.Broker)
 	}
-	if row := db.GetRobinhoodOAuth(); row.AccessToken != "" {
+	// A failed read is not "Robinhood is not connected". Leaving the broker
+	// unattached hides its positions and open orders from every later T-1
+	// reconcile for the life of the process, and the entry would be placed as
+	// if nothing were held there. Attach it and let its own calls fail loudly.
+	rhRow, rhErr := db.GetRobinhoodOAuthErr()
+	if rhErr != nil || rhRow.AccessToken != "" {
 		s.Live.AttachBroker("robinhood", live.NewRobinhoodBroker(robinhood.New(db)))
 	}
 	if p != nil {
