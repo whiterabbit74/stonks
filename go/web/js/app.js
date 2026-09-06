@@ -2780,7 +2780,7 @@
       const connectionCard = kind === 'robinhood'
         ? `<div class="rounded-xl bg-gray-50 p-3 dark:bg-gray-950/40">
               <div class="text-xs uppercase tracking-wide text-gray-500">Подключение (Robinhood)</div>
-              <div class="mt-1 text-sm">${esc(brokerHealthText(rhStatus) || (rhStatus.connected ? 'подключено' : 'не подключено'))}${rhStatus.expiresAt ? ' · истекает ' + esc(rhStatus.expiresAt) : ''}</div>
+              <div class="mt-1 text-sm">${esc(brokerHealthText(rhStatus) || (rhStatus.connected ? 'подключено' : 'не подключено'))}${rhStatus.expiresAt ? ' · истекает ' + esc(formatDateTimeET(rhStatus.expiresAt) || rhStatus.expiresAt) : ''}</div>
               <p class="text-xs text-gray-500 mt-1">OAuth настраивается на вкладке «Подключение».</p>
             </div>`
         : `<div class="rounded-xl bg-gray-50 p-3 dark:bg-gray-950/40">
