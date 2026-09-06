@@ -1111,6 +1111,10 @@ func (s *Server) handleGetCalendar(w http.ResponseWriter, r *http.Request) {
 	if store.CalendarHolidaysEmpty(raw) {
 		raw = json.RawMessage(store.DefaultCalendarJSON)
 	}
+	// The SPA reads these maps and has no computed fallback of its own, so
+	// hand it a payload that already covers the years it can show.
+	y, _, _ := tradingdate.YMD(tradingdate.TodayNYSE(time.Now()))
+	raw = scheduler.FillComputedDays(raw, y-1, y+3)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
 	_, _ = w.Write(raw)

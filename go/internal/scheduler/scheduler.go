@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
 	"sync"
 	"time"
 
@@ -563,4 +564,62 @@ func RunCalendarExtend(db *store.DB, deps Deps, today string, now time.Time, onE
 		return
 	}
 	onEvent(JobLog{At: now, Name: "calendar-extend", Detail: "extended"})
+}
+
+// FillComputedDays returns the calendar with the computed NYSE holidays and
+// early closes written into its maps for the given years. Go already falls
+// back to tradingdate when the stored calendar has no entry for a date
+// (IsTradingDay, IsShortDay); the SPA reads the maps and nothing else, so
+// without this it treats every uncovered holiday as a normal session — the
+// seeded calendar runs out at the end of 2027. Filling the payload the
+// server hands out keeps one source of truth instead of a second holiday
+// algorithm in JavaScript. Stored entries win: an operator's override or an
+// imported exchange calendar is never replaced.
+func FillComputedDays(raw []byte, fromYear, toYear int) []byte {
+	var cal map[string]any
+	if json.Unmarshal(raw, &cal) != nil || cal == nil {
+		return raw
+	}
+	section := func(name string) map[string]any {
+		m, _ := cal[name].(map[string]any)
+		if m == nil {
+			m = map[string]any{}
+			cal[name] = m
+		}
+		return m
+	}
+	holidays, shorts := section("holidays"), section("shortDays")
+	year := func(sec map[string]any, y int) map[string]any {
+		key := strconv.Itoa(y)
+		m, _ := sec[key].(map[string]any)
+		if m == nil {
+			m = map[string]any{}
+			sec[key] = m
+		}
+		return m
+	}
+	for y := fromYear; y <= toYear; y++ {
+		hy := year(holidays, y)
+		for _, d := range tradingdate.NYSEHolidayDates(y) {
+			if _, ok := hy[d[5:]]; !ok {
+				hy[d[5:]] = map[string]any{"name": tradingdate.HolidayName(d), "type": "holiday", "computed": true}
+			}
+		}
+		sy := year(shorts, y)
+		for d := fmt.Sprintf("%04d-01-01", y); d[:4] == strconv.Itoa(y); d = tradingdate.AddDays(d, 1) {
+			p := tradingdate.NYSEParts{Year: y, DayOfWeek: tradingdate.DayOfWeek(d)}
+			p.Year, p.Month, p.Day = tradingdate.YMD(d)
+			if !computedShortDay(p) {
+				continue
+			}
+			if _, ok := sy[d[5:]]; !ok {
+				sy[d[5:]] = map[string]any{"name": tradingdate.ShortDayName(d), "type": "short", "computed": true}
+			}
+		}
+	}
+	out, err := json.Marshal(cal)
+	if err != nil {
+		return raw
+	}
+	return out
 }
