@@ -360,6 +360,7 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		"timestamp": time.Now().UTC().Format(time.RFC3339Nano),
 		"buildId":   s.BuildID,
 		"db":        map[string]any{"connected": true, "datasets": ds, "ohlcRows": ohlc},
+		"accessLog": HTTPLogHealth(),
 	})
 }
 

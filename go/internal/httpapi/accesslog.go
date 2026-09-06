@@ -22,6 +22,11 @@ var httpLogMaxBytes int64 = 64 << 20
 
 const httpLogKeep = 3
 
+// httpLogKeepMonths bounds the log across months. Size rotation only ever
+// bounded one month's set, and the file name carries the month, so every
+// past month stayed on the state volume forever.
+const httpLogKeepMonths = 6
+
 var secretFieldRe = regexp.MustCompile(`(?i)(password|passwd|secret|token|authorization|cookie|api[_-]?key|app[_-]?(key|secret)|access[_-]?token)`)
 
 type apiLogRec struct {
@@ -235,16 +240,17 @@ func appendHTTPLog(line []byte) {
 			httpLogFile = nil
 		}
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			log.Printf("http log mkdir: %v", err)
+			noteHTTPLogFailure(err)
 			return
 		}
 		f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o640)
 		if err != nil {
-			log.Printf("http log open: %v", err)
+			noteHTTPLogFailure(err)
 			return
 		}
 		httpLogFile = f
 		httpLogName = path
+		pruneHTTPLogMonths(path)
 	}
 	if err := rotateHTTPLogIfNeeded(path, int64(len(line))); err != nil {
 		log.Printf("http log rotate: %v", err)
@@ -253,7 +259,7 @@ func appendHTTPLog(line []byte) {
 		return
 	}
 	if _, err := httpLogFile.Write(line); err != nil {
-		log.Printf("http log write: %v", err)
+		noteHTTPLogFailure(err)
 	}
 }
 
@@ -281,9 +287,6 @@ func rotateHTTPLogIfNeeded(path string, add int64) error {
 			log.Printf("http log rotate rename %s: %v", src, err)
 		}
 	}
-	if err := os.Remove(path + "." + strconv.Itoa(httpLogKeep+1)); err != nil && !os.IsNotExist(err) {
-		log.Printf("http log rotate remove: %v", err)
-	}
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o640)
 	if err != nil {
 		return err
@@ -300,5 +303,74 @@ func resetHTTPLogForTest() {
 		_ = httpLogFile.Close()
 		httpLogFile = nil
 		httpLogName = ""
+	}
+	httpLogFailN, httpLogFailLast, httpLogFailAt = 0, "", time.Time{}
+}
+
+// pruneHTTPLogMonths drops monthly log sets older than httpLogKeepMonths.
+// Runs when the active file changes, which is once a month in practice.
+// Caller holds httpLogMu.
+func pruneHTTPLogMonths(active string) {
+	base := httpLogPath()
+	if base == "" {
+		return
+	}
+	ext := filepath.Ext(base)
+	stem := strings.TrimSuffix(base, ext)
+	if ext == "" {
+		ext = ".jsonl"
+	}
+	cutoff := time.Now().UTC().AddDate(0, -httpLogKeepMonths, 0).Format("2006-01")
+	matches, err := filepath.Glob(stem + "-*" + ext + "*")
+	if err != nil {
+		return
+	}
+	for _, m := range matches {
+		if m == active {
+			continue
+		}
+		month := strings.TrimPrefix(strings.TrimSuffix(filepath.Base(m), ext), filepath.Base(stem)+"-")
+		if len(month) < 7 {
+			continue
+		}
+		if month[:7] < cutoff {
+			if err := os.Remove(m); err != nil && !os.IsNotExist(err) {
+				log.Printf("http log prune %s: %v", m, err)
+			}
+		}
+	}
+}
+
+var (
+	httpLogFailN    int
+	httpLogFailLast string
+	httpLogFailAt   time.Time
+)
+
+// noteHTTPLogFailure records a lost access-log entry. The request itself is
+// still served — an access log that cannot be written is a lost audit trail,
+// not a reason to refuse traffic — but a silent loss is how a full disk goes
+// unnoticed for weeks, so the count is surfaced on /api/status.
+// Caller holds httpLogMu.
+func noteHTTPLogFailure(err error) {
+	httpLogFailN++
+	httpLogFailLast = err.Error()
+	httpLogFailAt = time.Now().UTC()
+	if httpLogFailN == 1 || httpLogFailN%1000 == 0 {
+		log.Printf("http log write failed (%d lost): %v", httpLogFailN, err)
+	}
+}
+
+// HTTPLogHealth reports lost access-log entries, or nil when nothing was lost.
+func HTTPLogHealth() map[string]any {
+	httpLogMu.Lock()
+	defer httpLogMu.Unlock()
+	if httpLogFailN == 0 {
+		return nil
+	}
+	return map[string]any{
+		"lostEntries": httpLogFailN,
+		"lastError":   httpLogFailLast,
+		"lastAt":      httpLogFailAt.Format(time.RFC3339),
 	}
 }
