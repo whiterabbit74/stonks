@@ -257,7 +257,13 @@ func (e *Engine) trackerWheel(clientOrderID string) {
 				}
 			}()
 			var rec map[string]any
-			pending, _ := e.DB.ListPendingTrackers()
+			pending, err := e.DB.ListPendingTrackers()
+			if err != nil {
+				e.logAuto("tracker_pending_read_failed", e.metaCorr(clientOrderID), map[string]any{
+					"clientOrderId": clientOrderID, "error": err.Error(),
+				})
+				return
+			}
 			for _, t := range pending {
 				if fmt.Sprint(t["clientOrderId"]) == clientOrderID {
 					rec = t
@@ -283,7 +289,13 @@ func (e *Engine) trackerWheel(clientOrderID string) {
 			return
 		}
 	}
-	pending, _ := e.DB.ListPendingTrackers()
+	pending, err := e.DB.ListPendingTrackers()
+	if err != nil {
+		e.logAuto("tracker_pending_read_failed", e.metaCorr(clientOrderID), map[string]any{
+			"clientOrderId": clientOrderID, "error": err.Error(),
+		})
+		return
+	}
 	for _, t := range pending {
 		if fmt.Sprint(t["clientOrderId"]) == clientOrderID {
 			e.finalizeTracker(t, "expired")
