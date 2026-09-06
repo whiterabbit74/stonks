@@ -40,8 +40,8 @@ http://localhost:8080 — логин `admin@example.com`. Порт: `PORT`. Ба
 ## Документация
 
 - [CLAUDE.md](CLAUDE.md) — инварианты (даты, IBS); пуш и деплой только по прямой просьбе
-- [ROADMAP_VERIFIED_2026-09-05.md](ROADMAP_VERIFIED_2026-09-05.md) — текущий проверенный план работ
-- [docs/audits/](docs/audits/) — архив аудитов и исторических роадмапов
+- [docs/ROADMAP.md](docs/ROADMAP.md) — единый текущий план работ
+- [docs/audits/](docs/audits/) — отчёты аудитов и реестр находок
 - [go/INVENTORY.md](go/INVENTORY.md) — страницы, `/api`, пакеты
 - [ENVIRONMENT.md](ENVIRONMENT.md) — переменные
 - [DEPLOYMENT.md](DEPLOYMENT.md) — деплой
