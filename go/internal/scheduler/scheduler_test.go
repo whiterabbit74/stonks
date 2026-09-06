@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -818,6 +819,39 @@ func TestTickT1ExecutedWithoutReportAlerts(t *testing.T) {
 	}
 	if !saw {
 		t.Fatalf("want a t1-report-lost JobLog, logs=%+v", logs)
+	}
+}
+
+// A Telegram blip on the missed-slot alert must not burn the day's only claim.
+func TestMissedAlertRetriesAfterFailedSend(t *testing.T) {
+	dir := t.TempDir()
+	db, err := store.Open(filepath.Join(dir, "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	tg := &live.MemoryTelegram{Fail: fmt.Errorf("telegram: 502"), FailN: 1}
+	eng := live.New(db, nil)
+	eng.Telegram = tg
+	eng.ChatID = "c"
+	now := time.Date(2026, 9, 1, 19, 52, 0, 0, time.UTC) // 15:52 ET, until=8
+	reportMissedTelegram(db, eng, now, "2026-09-01", "c", "t11", 8, func(JobLog) {})
+	if telegramTextContaining(tg, "Пропущен T-11") != "" {
+		t.Fatal("the first send failed, nothing should have landed")
+	}
+	reportMissedTelegram(db, eng, now, "2026-09-01", "c", "t11", 8, func(JobLog) {})
+	if telegramTextContaining(tg, "Пропущен T-11") == "" {
+		t.Fatalf("the next tick must retry the alert, messages=%v", tg.Sent())
+	}
+	reportMissedTelegram(db, eng, now, "2026-09-01", "c", "t11", 8, func(JobLog) {})
+	n := 0
+	for _, m := range tg.Sent() {
+		if strings.Contains(m[1], "Пропущен T-11") {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Fatalf("a delivered alert must not repeat, got %d: %v", n, tg.Sent())
 	}
 }
 

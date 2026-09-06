@@ -477,7 +477,14 @@ func reportMissedTelegram(db *store.DB, eng *live.Engine, now time.Time, today, 
 		detail := fmt.Sprintf("missed-t11 until=%d", until)
 		onEvent(JobLog{At: now, Name: "telegram-aggregation", Skipped: true, Detail: detail})
 		if eng != nil {
-			_ = eng.Send("", fmt.Sprintf("<b>Пропущен T-11</b>\nСводка за 11 минут до закрытия не ушла (until=%d).", until))
+			// The claim is taken before the send so two ticks cannot both
+			// report; a send that then fails must give it back, or a blip in
+			// Telegram loses the alert for the whole day.
+			if err := eng.Send("", fmt.Sprintf("<b>Пропущен T-11</b>\nСводка за 11 минут до закрытия не ушла (until=%d).", until)); err != nil {
+				if rerr := db.ReleaseAggregateT11(chat, today); rerr != nil {
+					onEvent(JobLog{At: now, Name: "telegram-aggregation", Detail: "marker-save-failed: " + rerr.Error()})
+				}
+			}
 		}
 	case "t1":
 		if t1Sent {
@@ -505,7 +512,11 @@ func reportMissedTelegram(db *store.DB, eng *live.Engine, now time.Time, today, 
 		}
 		onEvent(JobLog{At: now, Name: "telegram-aggregation", Skipped: true, Detail: detail})
 		if eng != nil {
-			_ = eng.Send("", text)
+			if err := eng.Send("", text); err != nil {
+				if rerr := db.ReleaseMissedT1(chat, today); rerr != nil {
+					onEvent(JobLog{At: now, Name: "telegram-aggregation", Detail: "marker-save-failed: " + rerr.Error()})
+				}
+			}
 		}
 	}
 }

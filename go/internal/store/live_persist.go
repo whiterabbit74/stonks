@@ -463,6 +463,19 @@ func (d *DB) ClaimAggregateT11(chatID, dateKey string) (bool, error) {
 	return n == 1, err
 }
 
+// ReleaseAggregateT11 undoes a ClaimAggregateT11 whose send then failed, so a
+// later tick inside the window can try again instead of losing the message.
+func (d *DB) ReleaseAggregateT11(chatID, dateKey string) error {
+	_, err := d.SQL.Exec(`UPDATE aggregate_send_state SET t11_sent=0 WHERE date_key=? AND chat_id=?`, dateKey, chatID)
+	return err
+}
+
+// ReleaseMissedT1 is ReleaseAggregateT11 for the missed-T1 report.
+func (d *DB) ReleaseMissedT1(chatID, dateKey string) error {
+	_, err := d.SQL.Exec(`UPDATE aggregate_send_state SET missed_t1_reported=0 WHERE date_key=? AND chat_id=?`, dateKey, chatID)
+	return err
+}
+
 // ClaimMissedT1 sets missed_t1_reported if it is still 0. The caller that
 // gets true owns the missed-T1 Telegram report for that chat/date. t1_sent
 // means the decision was sent, not that the miss was reported.
