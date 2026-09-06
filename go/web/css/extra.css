@@ -500,3 +500,5 @@ html.dark .chip-off:hover { background: #374151; }
   .lg\:justify-between { justify-content: space-between; }
   .lg\:gap-4 { gap: 1rem; }
 }
+
+.hover\:underline:hover { text-decoration: underline; }
