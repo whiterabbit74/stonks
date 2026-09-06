@@ -158,3 +158,24 @@ func ShortDayName(ymd string) string {
 func NYSEPartsDate(p NYSEParts) string {
 	return fmt.Sprintf("%04d-%02d-%02d", p.Year, p.Month, p.Day)
 }
+
+// IsComputedShortDay reports the NYSE early closes the exchange schedules by
+// rule — Christmas Eve, July 3rd, the day after Thanksgiving — for dates no
+// imported calendar covers yet. Weekends and full holidays are not short days.
+// Both the scheduler (session close) and the live engine (T-1 deadline, message
+// header) fall back to this, so a year missing from the stored calendar cannot
+// leave them disagreeing about when the session ends.
+func IsComputedShortDay(ymd string) bool {
+	ymd = DateKey(ymd)
+	if !IsValid(ymd) {
+		return false
+	}
+	if dow := DayOfWeek(ymd); dow == 0 || dow == 6 {
+		return false
+	}
+	if IsNYSEHoliday(ymd) {
+		return false
+	}
+	name := ShortDayName(ymd)
+	return name != "" && name != "Early Close"
+}

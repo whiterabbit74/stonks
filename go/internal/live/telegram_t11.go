@@ -186,14 +186,21 @@ func (e *Engine) sessionCloseMin() (int, bool, error) {
 		p := tradingdate.CurrentTimeNYSE(e.now())
 		y := fmt.Sprintf("%d", p.Year)
 		mmdd := fmt.Sprintf("%02d-%02d", p.Month, p.Day)
-		if yearMap := cal.ShortDays[y]; yearMap != nil {
-			if _, ok := yearMap[mmdd]; ok {
-				short = true
-				if hm := parseClock(cal.TradingHours.Short.End); hm > 0 {
-					closeMin = hm
-				} else {
-					closeMin = 13 * 60
-				}
+		// Same rule as scheduler.IsShortDay: a year present in the map is the
+		// whole truth for that year, a year the calendar never covered falls
+		// back to the computed early closes. Without the fallback the scheduler
+		// ran T-11/T-1 against a 13:00 close while this close said 16:00, which
+		// mislabels the message and hands the T-1 retry budget three extra hours.
+		if yearMap, ok := cal.ShortDays[y]; ok && yearMap != nil {
+			_, short = yearMap[mmdd]
+		} else {
+			short = tradingdate.IsComputedShortDay(tradingdate.NYSEPartsDate(p))
+		}
+		if short {
+			if hm := parseClock(cal.TradingHours.Short.End); hm > 0 {
+				closeMin = hm
+			} else {
+				closeMin = 13 * 60
 			}
 		}
 	}

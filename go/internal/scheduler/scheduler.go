@@ -73,19 +73,11 @@ func IsShortDay(p tradingdate.NYSEParts, cal Calendar) bool {
 	return computedShortDay(p)
 }
 
-// computedShortDay uses tradingdate.ShortDayName when the imported calendar
-// has no shortDays entry for today. Named sessions are early close; "Early Close"
-// is the function's default for every other date.
+// computedShortDay is the fallback for a calendar year with no shortDays
+// entry. It shares tradingdate.IsComputedShortDay with the live engine so the
+// scheduler's session close and the engine's T-1 deadline cannot drift apart.
 func computedShortDay(p tradingdate.NYSEParts) bool {
-	if p.DayOfWeek == 0 || p.DayOfWeek == 6 {
-		return false
-	}
-	date := tradingdate.NYSEPartsDate(p)
-	if tradingdate.IsNYSEHoliday(date) {
-		return false
-	}
-	name := tradingdate.ShortDayName(date)
-	return name != "" && name != "Early Close"
+	return tradingdate.IsComputedShortDay(tradingdate.NYSEPartsDate(p))
 }
 
 func IsTradingDay(p tradingdate.NYSEParts, cal Calendar) bool {
