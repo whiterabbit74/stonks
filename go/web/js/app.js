@@ -2380,24 +2380,17 @@
     let body = '';
     if (state.splitsTab === 'list') {
       const splitEntries = Object.entries(map);
-      const rows = splitEntries.map(([ticker, evs]) => `<tr>
-        <td class="font-mono align-top">${esc(ticker)}</td>
-        <td>${(evs || []).map((e) => `${esc(fmtTradingDate(e.date))} × ${esc(e.factor)}`).join('<br>') || '—'}</td>
-        <td class="text-right whitespace-nowrap">
-          ${actionIcon('edit', 'Изменить сплиты', `data-edit-split="${esc(ticker)}"`, 'action-icon-edit')}
-          ${actionIcon('trash', 'Удалить тикер', `data-del-ticker="${esc(ticker)}"`, 'action-icon-danger')}
-        </td>
-      </tr>`).join('');
-      const mobileCards = splitEntries.map(([ticker, evs]) => `<article class="rounded-lg border border-gray-200 p-3 dark:border-gray-700">
-        <div class="flex items-start justify-between gap-3"><div><div class="font-mono font-semibold">${esc(ticker)}</div><div class="mt-1 text-sm text-gray-600 dark:text-gray-300">${(evs || []).map((e) => `${esc(fmtTradingDate(e.date))} × ${esc(e.factor)}`).join('<br>') || '—'}</div></div>
-        <div class="flex shrink-0 gap-1">${actionIcon('edit', 'Изменить сплиты', `data-edit-split="${esc(ticker)}"`, 'action-icon-edit')}${actionIcon('trash', 'Удалить тикер', `data-del-ticker="${esc(ticker)}"`, 'action-icon-danger')}</div></div>
-      </article>`).join('');
-      body = `<div id="spl-list"${rows ? ' class="overflow-auto"' : ''}>
-        ${rows
-          ? `<div class="splits-table"><table class="trades"><thead><tr><th>Тикер</th><th>События</th><th class="text-right">Действия</th></tr></thead><tbody>${rows}</tbody></table></div><div class="splits-mobile space-y-2">${mobileCards}</div>`
-          : `<div class="splits-table overflow-auto"><table class="trades"><thead><tr><th>Тикер</th><th>События</th><th class="text-right">Действия</th></tr></thead><tbody><tr><td colspan="3" class="text-center text-gray-500">Нет данных</td></tr></tbody></table></div>
-             <div class="splits-empty-mobile">Нет данных</div>`}
-      </div>`;
+      const records = splitEntries.map(([ticker, evs]) => {
+        const events = (evs || []).map((e) => `<li class="split-event"><time datetime="${esc(e.date || '')}">${esc(fmtTradingDate(e.date))}</time><span class="split-event-factor">× ${esc(e.factor)}</span></li>`).join('');
+        return `<article class="split-record">
+          <header class="split-record-header">
+            <div class="min-w-0"><h3 class="font-mono text-lg font-semibold tracking-tight">${esc(ticker)}</h3><p class="text-xs text-gray-500 dark:text-gray-400">${(evs || []).length} ${(evs || []).length === 1 ? 'событие' : 'событий'}</p></div>
+            <div class="split-record-actions">${actionIcon('edit', 'Изменить сплиты', `data-edit-split="${esc(ticker)}"`, 'action-icon-edit')}${actionIcon('trash', 'Удалить тикер', `data-del-ticker="${esc(ticker)}"`, 'action-icon-danger')}</div>
+          </header>
+          ${events ? `<ul class="split-events">${events}</ul>` : '<p class="text-sm text-gray-500">Событий нет</p>'}
+        </article>`;
+      }).join('');
+      body = `<div id="spl-list"><div class="split-records">${records || '<div class="split-empty-state">Нет данных о сплитах</div>'}</div></div>`;
     } else if (state.splitsTab === 'create') {
       body = `<div>
         <h3 class="text-lg font-medium mb-1">Добавить новый тикер</h3>
