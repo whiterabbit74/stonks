@@ -308,7 +308,12 @@ func (e *Engine) trackerWheel(clientOrderID string) {
 }
 
 func (e *Engine) pollOneTracker(t map[string]any) bool {
-	done, _ := e.pollTracker(t)
+	done, err := e.pollTracker(t)
+	if err != nil {
+		e.logAuto("tracker_poll_failed", e.metaCorr(fmt.Sprint(t["clientOrderId"])), map[string]any{
+			"clientOrderId": t["clientOrderId"], "error": err.Error(),
+		})
+	}
 	return done
 }
 
@@ -360,15 +365,23 @@ func (e *Engine) pollTracker(t map[string]any) (bool, error) {
 				e.markExecutionUnknown(t, derr)
 				return true, nil
 			}
-			if n, _ := e.DB.BumpOrderTrackerAttempts(id); n >= 64 {
-				e.markExecutionUnknown(t, derr)
-				return true, derr
+				n, aerr := e.DB.BumpOrderTrackerAttempts(id)
+				if aerr != nil {
+					return false, aerr
+				}
+				if n >= 64 {
+					e.markExecutionUnknown(t, derr)
+					return true, derr
+				}
+				return false, derr
 			}
-			return false, derr
-		}
-		if n, _ := e.DB.BumpOrderTrackerAttempts(id); n >= 64 {
-			e.finalizeTracker(t, "expired")
-			return true, derr
+			n, aerr := e.DB.BumpOrderTrackerAttempts(id)
+			if aerr != nil {
+				return false, aerr
+			}
+			if n >= 64 {
+				e.finalizeTracker(t, "expired")
+				return true, derr
 		}
 		return false, derr
 	}
@@ -396,7 +409,11 @@ func (e *Engine) pollTracker(t map[string]any) (bool, error) {
 		e.logAuto("order_poll", e.metaCorr(id), map[string]any{
 			"clientOrderId": id, "status": status, "symbol": t["symbol"],
 		})
-		if n, _ := e.DB.BumpOrderTrackerAttempts(id); n >= 64 {
+			n, aerr := e.DB.BumpOrderTrackerAttempts(id)
+			if aerr != nil {
+				return false, aerr
+			}
+			if n >= 64 {
 			e.finalizeTracker(t, "expired")
 			return true, nil
 		}
