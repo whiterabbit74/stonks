@@ -427,7 +427,9 @@ func (e *Engine) applyConsistencyAction(action map[string]any) bool {
 		if !(exitPrice > 0) {
 			return false
 		}
-		e.closeTradeWithPnL("trades", monID, exitPrice, exitDate, broker["exitIBS"], "reconciled_from_broker_history")
+		if err := e.closeTradeWithPnL("trades", monID, exitPrice, exitDate, broker["exitIBS"], "reconciled_from_broker_history"); err != nil {
+			return false
+		}
 		return true
 	case "project_monitor_from_broker":
 		brokerID := fmt.Sprint(action["brokerTradeId"])

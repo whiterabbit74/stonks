@@ -90,9 +90,12 @@ func (e *Engine) openTradeBySymbol(table, symbol, preferID, broker string) (map[
 	return fallback, nil
 }
 
-func (e *Engine) closeTradeWithPnL(table, id string, exitPrice float64, exitDate string, exitIBS any, note string) {
+// closeTradeWithPnL writes the exit into the journal. The error is returned,
+// not only logged: a fill the journal did not record leaves the position open
+// there forever, and the caller decides how loud that has to be — see AUD-035.
+func (e *Engine) closeTradeWithPnL(table, id string, exitPrice float64, exitDate string, exitIBS any, note string) error {
 	if id == "" || id == "<nil>" {
-		return
+		return nil
 	}
 	extra := map[string]any{}
 	if note != "" {
@@ -103,7 +106,9 @@ func (e *Engine) closeTradeWithPnL(table, id string, exitPrice float64, exitDate
 	}
 	if _, err := e.DB.CloseTradeByID(table, id, exitPrice, exitDate, extra); err != nil {
 		e.logAuto("local_trade_close_failed", "", map[string]any{"table": table, "id": id, "error": err.Error()})
+		return err
 	}
+	return nil
 }
 
 func (e *Engine) recordFill(t map[string]any, detail map[string]any, status string) {
@@ -289,16 +294,24 @@ func (e *Engine) recordFill(t map[string]any, detail map[string]any, status stri
 			e.raiseTrackerPersistBlock(brokerName)
 			return
 		}
+		var cerr error
 		if mon != nil && store.SafeTicker(fmt.Sprint(mon["symbol"])) == symbol {
 			if row != nil {
-				if err := e.DB.CloseTradePair(fmt.Sprint(mon["id"]), fmt.Sprint(row["id"]), fillPrice, dateKey, map[string]any{"exitIBS": exitIBS, "notes": "closed_from_broker_fill"}); err != nil {
-					e.logAuto("local_trade_pair_close_failed", "", map[string]any{"error": err.Error(), "monitorId": mon["id"], "brokerId": row["id"]})
+				cerr = e.DB.CloseTradePair(fmt.Sprint(mon["id"]), fmt.Sprint(row["id"]), fillPrice, dateKey, map[string]any{"exitIBS": exitIBS, "notes": "closed_from_broker_fill"})
+				if cerr != nil {
+					e.logAuto("local_trade_pair_close_failed", meta.CorrelationID, map[string]any{"error": cerr.Error(), "monitorId": mon["id"], "brokerId": row["id"]})
 				}
 			} else {
-				e.closeTradeWithPnL("trades", fmt.Sprint(mon["id"]), fillPrice, dateKey, exitIBS, "closed_from_broker_fill")
+				cerr = e.closeTradeWithPnL("trades", fmt.Sprint(mon["id"]), fillPrice, dateKey, exitIBS, "closed_from_broker_fill")
 			}
 		} else if row != nil {
-			e.closeTradeWithPnL("broker_trades", fmt.Sprint(row["id"]), fillPrice, dateKey, exitIBS, "closed_from_broker_fill")
+			cerr = e.closeTradeWithPnL("broker_trades", fmt.Sprint(row["id"]), fillPrice, dateKey, exitIBS, "closed_from_broker_fill")
+		}
+		// The write is the last step of the same path whose read failure
+		// already raises the block: an unrecorded exit fill leaves the journal
+		// showing an open position the broker no longer has.
+		if cerr != nil {
+			e.raiseTrackerPersistBlock(brokerName)
 		}
 	}
 }
@@ -363,7 +376,9 @@ func (e *Engine) reduceOpenQuantity(symbol, preferID, broker string, sold, exitP
 		cur := asFloat(t["quantity"])
 		left := cur - sold
 		if left <= 1e-9 {
-			e.closeTradeWithPnL(table, fmt.Sprint(t["id"]), exitPrice, tradingdate.TodayNYSE(e.now()), nil, "partial_exit_flat")
+			if err := e.closeTradeWithPnL(table, fmt.Sprint(t["id"]), exitPrice, tradingdate.TodayNYSE(e.now()), nil, "partial_exit_flat"); err != nil {
+				e.raiseTrackerPersistBlock(broker)
+			}
 			continue
 		}
 		_ = e.execJournalSQL("", broker, "reduce_open_qty",
