@@ -399,15 +399,11 @@ html.dark .app-side { background: #0b1220; border-color: #1f2937; }
 html.dark .app-side-brand { color: #f3f4f6; }
 .app-side-brand-toggle { position: relative; border: 0; width: 100%; min-height: 2rem; text-align: left; cursor: pointer; }
 .app-side-brand-icon, .app-side-brand-label { display: inline-flex; align-items: center; }
-.app-side-brand-label { transition: opacity 160ms cubic-bezier(0.2, 0, 0, 1); }
-.app-side-brand-toggle:hover, .app-side-brand-toggle:focus-visible { color: #4338ca; }
-html.dark .app-side-brand-toggle:hover, html.dark .app-side-brand-toggle:focus-visible { color: #a5b4fc; }
-.app-side-brand-toggle:hover .app-side-brand-label, .app-side-brand-toggle:focus-visible .app-side-brand-label { opacity: 0; }
+.app-side-brand-toggle:hover, .app-side-brand-toggle:focus-visible { color: inherit; }
+.app-side-brand-toggle:hover .app-side-brand-icon, .app-side-brand-toggle:focus-visible .app-side-brand-icon { color: #4338ca; }
+html.dark .app-side-brand-toggle:hover .app-side-brand-icon, html.dark .app-side-brand-toggle:focus-visible .app-side-brand-icon { color: #a5b4fc; }
 .app-frame-slim .app-side-brand { justify-content: center; padding-left: 0; padding-right: 0; }
 .app-frame-slim .app-side-brand-label { display: none; }
-@media (prefers-reduced-motion: reduce) {
-  .app-side-brand-label { transition: none; }
-}
 .app-side-nav { display: flex; flex-direction: column; gap: 0.15rem; flex: 1 1 auto; min-height: 0; overflow-y: auto; }
 .app-side-item {
   display: flex; align-items: center; gap: 0.625rem; width: 100%;

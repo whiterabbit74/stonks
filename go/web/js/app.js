@@ -388,7 +388,7 @@
     const from = fromMode === 'brand' ? BRAND_POINTS : PANEL_POINTS[fromMode];
     const to = toMode === 'brand' ? BRAND_POINTS : PANEL_POINTS[toMode];
     const started = performance.now();
-    const duration = 220;
+    const duration = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 220;
     const frame = (now) => {
       const progress = Math.min(1, (now - started) / duration);
       const eased = 1 - Math.pow(1 - progress, 3);
@@ -3083,12 +3083,14 @@
     const app = document.getElementById('app');
     const morphTarget = (btn) => btn.dataset.collapsed === 'true' ? 'open' : 'close';
     app.addEventListener('pointerover', (e) => {
-      const btn = e.target.closest('#app-side-toggle');
-      if (btn && !btn.contains(e.relatedTarget)) morphBrandIcon(btn, morphTarget(btn));
+      const iconTarget = e.target.closest('.app-side-brand-icon');
+      const btn = iconTarget?.closest('#app-side-toggle');
+      if (btn && !iconTarget.contains(e.relatedTarget)) morphBrandIcon(btn, morphTarget(btn));
     });
     app.addEventListener('pointerout', (e) => {
-      const btn = e.target.closest('#app-side-toggle');
-      if (btn && !btn.contains(e.relatedTarget) && !btn.matches(':focus-visible')) morphBrandIcon(btn, 'brand');
+      const iconTarget = e.target.closest('.app-side-brand-icon');
+      const btn = iconTarget?.closest('#app-side-toggle');
+      if (btn && !iconTarget.contains(e.relatedTarget) && !btn.matches(':focus-visible')) morphBrandIcon(btn, 'brand');
     });
     app.addEventListener('focusin', (e) => {
       const btn = e.target.closest('#app-side-toggle');
