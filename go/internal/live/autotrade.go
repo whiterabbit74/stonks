@@ -101,6 +101,9 @@ func (e *Engine) PutToken(token, expiresAt string) map[string]any {
 	// The column holds the classified vocabulary now, so a hand-entered token
 	// must be classified too - otherwise the raw word lands in last_check_status
 	// and both the submit gate and the SPA read it as an unknown status.
+	if norm := normalizeExpiryString(expiresAt); norm != "" {
+		expiresAt = norm
+	}
 	classified, _ := ClassifyWebullHealth(token, "NORMAL", expiresAt, e.now())
 	_ = e.DB.SaveWebullTokenChecked(token, expiresAt, classified, "NORMAL")
 	return map[string]any{"success": true, "expiresAt": expiresAt, "hasToken": token != ""}
@@ -115,11 +118,8 @@ func (e *Engine) CreateToken() (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	tok, _ := data["token"].(string)
-	if tok == "" {
-		tok, _ = data["access_token"].(string)
-	}
-	exp, _ := data["expiresAt"].(string)
+	tok := webullTokenValue(data)
+	exp := webullTokenExpiry(data)
 	persisted := tok != ""
 	if persisted {
 		classified, _ := ClassifyWebullHealth(tok, "PENDING", exp, e.now())
@@ -147,14 +147,11 @@ func (e *Engine) TokenHealth() string {
 		_ = e.DB.AppendAutotradeLog("token_health_failed " + err.Error())
 		return "UNKNOWN"
 	}
-	status, _ := data["status"].(string)
+	status := webullTokenStatus(data)
 	if status == "" {
 		status = "NORMAL"
 	}
-	exp, _ := data["expiresAt"].(string)
-	if exp == "" {
-		exp, _ = data["expires_at"].(string)
-	}
+	exp := webullTokenExpiry(data)
 	// P0-4: last_check_status must carry the classified verdict
 	// (OK/NEEDS_REAUTH/...) that CanSubmit/executeAll gate on, not the raw
 	// Webull word — that goes to last_check_raw instead, symmetric with how
@@ -183,14 +180,11 @@ func (e *Engine) CheckToken(token string) (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	status, _ := data["status"].(string)
+	status := webullTokenStatus(data)
 	if status == "" {
 		status = "NORMAL"
 	}
-	exp, _ := data["expiresAt"].(string)
-	if exp == "" {
-		exp, _ = data["expires_at"].(string)
-	}
+	exp := webullTokenExpiry(data)
 	if token != "" {
 		classified, _ := ClassifyWebullHealth(token, status, exp, e.now())
 		_ = e.DB.SaveWebullTokenChecked(token, exp, classified, status)
