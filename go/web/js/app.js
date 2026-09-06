@@ -5302,7 +5302,8 @@
         const arr = Array.isArray(evs) ? evs : [];
         total += arr.length;
         const last = arr.slice().sort((a, b) => String(b.date).localeCompare(String(a.date)))[0];
-        cards.push(`<div class="rounded-lg border p-3"><div class="font-mono font-semibold">${esc(sym)}</div><div class="text-xs text-gray-500">Найдено ${arr.length} событий${last ? ' · последний ' + esc(fmtTradingDate(last.date)) : ''}</div><a class="text-xs text-indigo-600" href="https://seekingalpha.com/symbol/${esc(sym)}/splits" target="_blank" rel="noopener">Seeking Alpha</a>${arr.map((e) => `<div class="text-sm">${esc(fmtTradingDate(e.date))} × ${esc(e.factor)}</div>`).join('') || '<div class="text-sm text-gray-500">Нет сплитов</div>'}</div>`);
+        const events = arr.map((e) => `<li class="split-event"><time datetime="${esc(e.date || '')}">${esc(fmtTradingDate(e.date))}</time><span class="split-event-factor">× ${esc(e.factor)}</span></li>`).join('');
+        cards.push(`<article class="split-record"><header class="split-record-header"><div><h3 class="font-mono font-semibold">${esc(sym)}</h3><p class="text-xs text-gray-500">${arr.length ? `Найдено ${arr.length} событий${last ? ' · последний ' + esc(fmtTradingDate(last.date)) : ''}` : 'Сплитов нет'}</p></div><a class="text-xs text-indigo-600 hover:underline" href="https://seekingalpha.com/symbol/${esc(sym)}/splits" target="_blank" rel="noopener">Источник</a></header>${events ? `<ul class="split-events">${events}</ul>` : '<p class="split-empty-state">Нет данных о сплитах</p>'}</article>`);
       }
       el.innerHTML = `<div class="text-sm text-gray-500 mb-2">Всего сплитов: ${total}</div><div class="grid md:grid-cols-2 gap-3">${cards.join('')}</div>`;
     } catch (e) { el.textContent = errText(e); }
