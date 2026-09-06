@@ -85,10 +85,12 @@ func (e *Engine) TokenStatus() map[string]any {
 		exp = os.Getenv("WEBULL_TOKEN_EXPIRES_AT")
 	}
 	return map[string]any{
-		"hasToken":        source != "none",
-		"present":         source != "none",
-		"source":          source,
-		"expiresAt":       exp,
+		"hasToken":  source != "none",
+		"present":   source != "none",
+		"source":    source,
+		"expiresAt": exp,
+		// The SPA token card prints "осталось: N дн." off this field.
+		"daysLeft":        daysLeftUntil(exp, e.now()),
 		"lastCheckAt":     row.LastCheckAt,
 		"lastCheckStatus": row.LastCheckStatus,
 		"accountId":       os.Getenv("WEBULL_ACCOUNT_ID"),

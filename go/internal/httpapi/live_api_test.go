@@ -531,6 +531,10 @@ func TestTokenStatusReadsExpiresAt(t *testing.T) {
 	if !strings.Contains(rec.Body.String(), "2026-12-01T00:00:00Z") {
 		t.Fatalf("expiresAt not read from db: %s", rec.Body.String())
 	}
+	// The SPA token card renders "осталось: N дн." from daysLeft.
+	if !strings.Contains(rec.Body.String(), `"daysLeft":`) {
+		t.Fatalf("daysLeft missing: %s", rec.Body.String())
+	}
 }
 
 func TestShippedAppJsMappers(t *testing.T) {
