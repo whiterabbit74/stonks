@@ -320,6 +320,14 @@ func TestWebullAccessTokenPrefersConfirmedToken(t *testing.T) {
 	if exp := d.GetWebullToken().ExpiresAt; exp != "2026-12-01T00:00:00Z" {
 		t.Fatalf("expires_at = %q, want it preserved", exp)
 	}
+
+	// A different token must not inherit the old token's deadline.
+	if err := d.SaveWebullToken("pasted-token", "", "NORMAL"); err != nil {
+		t.Fatal(err)
+	}
+	if exp := d.GetWebullToken().ExpiresAt; exp != "" {
+		t.Fatalf("expires_at = %q, want it cleared for a new token", exp)
+	}
 }
 
 func TestWebullAccessTokenFallsBackToUnconfirmedToken(t *testing.T) {

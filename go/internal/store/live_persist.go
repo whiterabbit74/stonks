@@ -90,6 +90,11 @@ func (d *DB) SaveWebullToken(token, expiresAt, status string) error {
 // the raw word Webull's CheckToken response actually carried (last_check_raw,
 // e.g. "NORMAL", "PENDING"). Symmetric with how Robinhood already stores a
 // classified status in robinhood_oauth.last_check_status.
+//
+// A blank expiry keeps the stored one only while the token is unchanged (a
+// check that carried no deadline must not erase it). A *different* token
+// starts with no deadline rather than inheriting the previous token's, which
+// would be a date about a token that no longer exists.
 func (d *DB) SaveWebullTokenChecked(token, expiresAt, status, raw string) error {
 	if status == "" {
 		status = "NORMAL"
@@ -100,7 +105,9 @@ func (d *DB) SaveWebullTokenChecked(token, expiresAt, status, raw string) error 
 	_, err := d.SQL.Exec(`INSERT INTO webull_token (id, token, expires_at, last_check_status, last_check_raw, last_check_at, updated_at)
         VALUES ('current', ?, ?, ?, ?, datetime('now'), datetime('now'))
         ON CONFLICT(id) DO UPDATE SET token=excluded.token,
-            expires_at=COALESCE(NULLIF(excluded.expires_at,''), webull_token.expires_at),
+            expires_at=CASE WHEN NULLIF(excluded.expires_at,'') IS NOT NULL THEN excluded.expires_at
+                WHEN excluded.token = webull_token.token THEN webull_token.expires_at
+                ELSE '' END,
             last_check_status=excluded.last_check_status, last_check_raw=excluded.last_check_raw,
             last_check_at=excluded.last_check_at, updated_at=datetime('now')`,
 		token, expiresAt, status, raw)
