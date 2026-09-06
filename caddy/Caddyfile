@@ -32,11 +32,6 @@
     reverse_proxy server:3001
   }
 
-  # MCP (ChatGPT / clients)
-  handle /mcp/transcribe* {
-    reverse_proxy mcp:8080
-  }
-
   # Music server (ytplayer / musicplay) under /music — not in this compose;
   # it lives on the VPS in a separate stack. Missing upstream → 502.
   # /music/foo → musicplay:3001/foo

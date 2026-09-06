@@ -14,7 +14,7 @@ log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 
 check_containers() {
     log_info "Проверяю Docker контейнеры..."
-    local containers=("stonks-server" "stonks-mcp" "stonks-caddy")
+    local containers=("stonks-server" "stonks-caddy")
     local all_healthy=true
     for container in "${containers[@]}"; do
         if docker ps --format "{{.Names}}" | grep -q "^${container}$"; then
@@ -39,7 +39,6 @@ check_api() {
         "http://localhost:3001/api/status"
         "http://localhost:3001/api/splits"
         "https://mktorder.com/api/status"
-        "https://mktorder.com/mcp/transcribe/healthz"
         "https://mktorder.com/music/api/health"
     )
     local all_ok=true
@@ -97,7 +96,7 @@ check_resources() {
 
 check_logs() {
     log_info "Проверяю логи на ошибки..."
-    for name in stonks-server stonks-mcp stonks-caddy; do
+    for name in stonks-server stonks-caddy; do
         errors=$(docker logs --since 1h "$name" 2>&1 | grep -i error | wc -l)
         if [[ $errors -gt 0 ]]; then
             log_warning "$name: $errors ошибок за последний час"

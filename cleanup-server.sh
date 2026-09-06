@@ -35,7 +35,7 @@ cleanup_docker() {
 
     # Keep running services and all named volumes. Docker retains images used
     # by running containers; only unreferenced images/networks are removed.
-    # This avoids taking down Caddy, MCP, and the API during housekeeping.
+    # This avoids taking down Caddy and the API during housekeeping.
     docker system prune -af
     docker network prune -f
 

@@ -43,42 +43,6 @@ services:
       start_period: 20s
     container_name: stonks-server
 
-  mcp:
-    build:
-      context: .
-      dockerfile: mcp/Dockerfile
-    # Own secrets file. The trading env_file above holds ADMIN_PASSWORD, the
-    # Telegram token and the broker keys; this container only needs its bearer
-    # tokens, so it must not see the rest. Create it on the VPS:
-    #   printf 'MCP_BEARER_TOKENS=...\n' > /home/ubuntu/stonks-config/mcp.env
-    #   chmod 600 /home/ubuntu/stonks-config/mcp.env
-    env_file:
-      - /home/ubuntu/stonks-config/mcp.env
-    environment:
-      - MCP_ADDR=:8080
-      - MCP_ENDPOINT_PATH=/mcp/transcribe/
-      - MCP_ALLOWED_ORIGINS=${MCP_ALLOWED_ORIGINS:-https://chatgpt.com,https://chat.openai.com,https://mktorder.com}
-    expose:
-      - "8080"
-    restart: unless-stopped
-    read_only: true
-    tmpfs:
-      - /tmp:size=16m,noexec,nosuid,nodev
-    cap_drop:
-      - ALL
-    security_opt:
-      - no-new-privileges:true
-    pids_limit: 64
-    mem_limit: 128m
-    cpus: "0.35"
-    healthcheck:
-      test: ["CMD", "/mcp-server", "healthcheck"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
-    container_name: stonks-mcp
-
   caddy:
     image: caddy:2
     ports:
@@ -89,7 +53,6 @@ services:
       - "443:443"
     depends_on:
       - server
-      - mcp
     volumes:
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data

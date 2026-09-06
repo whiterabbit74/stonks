@@ -11,7 +11,7 @@
 
 The VPS never runs `go build` for the trading server. Compose `server` is image-only (`SERVER_IMAGE`).
 
-Caddy proxies `/` and `/api` to `server:3001`, `/mcp/transcribe*` to `mcp:8080`.
+Caddy proxies `/` and `/api` to `server:3001`.
 
 ```bash
 ./deploy.sh

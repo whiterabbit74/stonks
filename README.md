@@ -6,7 +6,7 @@
 
 - Go (`go/cmd/server`) + SQLite (`modernc.org/sqlite`)
 - Vanilla JS SPA (`go/web`)
-- Caddy (TLS), отдельный MCP (`mcp/`)
+- Caddy (TLS)
 - Провайдеры: Alpha Vantage, Finnhub, Twelve Data, Polygon, Webull OpenAPI
 
 ## Торговая логика IBS

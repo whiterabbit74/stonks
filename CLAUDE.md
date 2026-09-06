@@ -113,7 +113,6 @@ go/internal/providers  AlphaVantage, Finnhub, TwelveData, Polygon
 go/internal/webull     HMAC OpenAPI client
 go/internal/scheduler  T-11 / T-1 / after-close jobs
 go/web                 vanilla SPA (js/app.js, charts.js)
-mcp/                   YouTube transcribe MCP (separate binary)
 caddy/                 TLS reverse proxy
 ```
 
