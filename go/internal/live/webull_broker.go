@@ -325,8 +325,14 @@ func (b *LiveBroker) orderDetail(ctx context.Context, clientOrderID string) (map
 			}
 		}
 	}
+	// A 2xx body we cannot read is not proof the order is absent: Webull
+	// answers a genuinely missing id with an HTTP or business error, which
+	// doRequest already turns into a plain error above. An empty or
+	// unrecognizable payload only means we could not confirm the id, so it
+	// must not let placeMarket mint a fresh id and duplicate an accepted BUY
+	// (AUD-026).
 	if NormalizeOrderStatus(orderStatusField(out)) == "unknown" && clientOrderIDOf(out) == "" {
-		return nil, fmt.Errorf("%w: %s", ErrOrderNotFound, clientOrderID)
+		return nil, fmt.Errorf("%w: %s", ErrOrderUnavailable, clientOrderID)
 	}
 	return out, nil
 }
