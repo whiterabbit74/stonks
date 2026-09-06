@@ -1418,12 +1418,12 @@
 
   function pageHeader(title, subtitle, actions, ico) {
     return `<div class="mb-6">
-      <div class="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between xl:gap-4">
+      <div class="page-header-layout flex flex-col gap-3">
         <div class="min-w-0">
           <h1 class="text-2xl font-bold text-gray-900 dark:text-gray-100${ico ? ' flex items-center gap-2' : ''}">${ico ? icon(ico, 'w-6 h-6') : ''}${esc(title)}</h1>
           ${subtitle ? `<p class="mt-1 text-sm text-gray-600 dark:text-gray-400">${esc(subtitle)}</p>` : ''}
         </div>
-        ${actions ? `<div class="flex flex-wrap items-center gap-2 xl:flex-shrink-0">${actions}</div>` : ''}
+        ${actions ? `<div class="page-header-actions flex flex-wrap items-center gap-2">${actions}</div>` : ''}
       </div>
       <div class="mt-3 h-px bg-gradient-to-r from-indigo-500/50 via-sky-500/40 to-transparent"></div>
     </div>`;
