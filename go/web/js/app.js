@@ -840,7 +840,7 @@
     return ({ BUY: 'Покупка', SELL: 'Продажа', buy: 'Покупка', sell: 'Продажа' })[String(side || '')] || side || '—';
   }
   function decisionActionText(action) {
-    return ({ BUY: 'Покупка', SELL: 'Продажа', HOLD: 'Ожидание', SKIP: 'Пропуск', buy: 'Покупка', sell: 'Продажа', hold: 'Ожидание', skip: 'Пропуск' })[String(action || '')] || action || '—';
+    return ({ BUY: 'Покупка', SELL: 'Продажа', HOLD: 'Ожидание', SKIP: 'Пропуск', NONE: 'Нет решения', buy: 'Покупка', sell: 'Продажа', hold: 'Ожидание', skip: 'Пропуск', none: 'Нет решения' })[String(action || '')] || action || '—';
   }
   function orderStatusText(status) {
     return ({ NEW: 'Новый', OPEN: 'Открыт', PENDING: 'В обработке', PARTIALLY_FILLED: 'Частично исполнен', FILLED: 'Исполнен', CANCELED: 'Отменён', CANCELLED: 'Отменён', REJECTED: 'Отклонён', EXPIRED: 'Истёк' })[String(status || '').toUpperCase()] || status || '—';
@@ -866,6 +866,7 @@
       entries_disabled: 'новые входы выключены в настройках',
       exits_disabled: 'выходы выключены в настройках',
       no_signal: 'нет сигнала на вход',
+      empty_symbol_universe: 'нет тикеров для мониторинга',
     };
     return m[raw] || raw;
   }
@@ -2919,7 +2920,7 @@
       body = `<div class="space-y-3">
         <div><h2 class="text-sm font-semibold mb-1">Логи мониторинга (${(pack.monitor || pack.logs || []).length})</h2><pre class="text-xs bg-gray-50 dark:bg-gray-800 p-3 rounded overflow-auto max-h-52">${esc(monitor)}</pre></div>
         <div><h2 class="text-sm font-semibold mb-1">Логи автоторговли (все брокеры) (${(pack.autotrade || pack.logs || []).length})</h2><pre id="broker-logs" class="text-xs bg-gray-50 dark:bg-gray-800 p-3 rounded overflow-auto max-h-52">${esc(auto)}</pre></div>
-        <div><h2 class="text-sm font-semibold mb-1">Сырой лог брокера</h2><pre class="text-xs bg-gray-50 dark:bg-gray-800 p-3 rounded overflow-auto max-h-52">${esc(raw)}</pre></div>
+        <details class="raw-json"><summary>Сырые данные брокера</summary><pre>${esc(raw)}</pre></details>
       </div>`;
     }
     return `
