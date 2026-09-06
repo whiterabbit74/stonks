@@ -210,3 +210,25 @@ FAIL на предфиксной логике, PASS на `ec99307`. Оркест
 |---|---|---|---|---|---|
 | AUD-034 | Новый сплит по уже пересчитанному датасету не применяется нигде: `adjusted_for_splits` — один булев флаг, он не говорит, какие события уже вшиты в цены. `handleRefreshDataset` кладёт новое событие через `UpsertSplits` и флаг не снимает, поэтому `pendingSplits` (по контракту «не корректировать дважды») отдаёт пусто, и бэктест считает по смешанным базисам | проход по классу AUD-018 на `35f0c66`; `go/internal/httpapi/server.go:868-871` (refresh), `go/internal/httpapi/calc.go` pendingSplits, `go/internal/store/db.go` dataset_meta.adjusted_for_splits | OPEN | — | Не воспроизводилось прогоном; найдено чтением кода. Живой контур этот случай ловит (`EvaluatePriceIntegrity` → `adjusted_dataset_split_gap`, сигналы блокируются), расчётный — нет. Честного автоматического ответа из одного флага не существует: нужна либо дата последней корректировки в `dataset_meta`, либо отказ считать (как в live), либо снятие флага при появлении нового события в refresh — решение за владельцем |
 
+### Повторная проверка класса AUD-018 (2026-09-06, `5217702`)
+
+AUD-018 закрыт ещё на `35f0c66` и на текущем HEAD держится: `TestCalcAppliesStoredSplitsWithoutRequestSplits`, `TestCalcCleanAppliesStoredSplits`,
+`TestCalcBuyHoldAppliesStoredSplits`, `TestCalcSkipsSplitsOnAdjustedDataset`,
+`TestRunMultiOptionsAppliesSplits` — зелёные. Перепройдены все места, где бары
+попадают в расчёт: `barsOrDataset` (clean-backtest/backtest, split-adjust),
+`barsWithSplits` (no-stop-loss, indicators, buy-hold), `tickersOrOne`
+(single-position, ema-zone, options-multi), `barsForSymbol`. Хранимая таблица
+доезжает везде, где должна; `/api/calc/split-adjust` по-прежнему работает по
+явным событиям запроса — это предпросмотр самой корректировки.
+
+Ничего другого сервер к расчёту не досылает: остальные поля `calcReq`
+(стратегия, плечо, параметры EMA/опционов) — это состояние формы, у них нет
+серверного источника истины, так что класс «хранимое на сервере доезжает только
+если прислал клиент» в расчётном контуре исчерпывается сплитами.
+
+Новая находка того же прохода — AUD-036, дефект внесён самим фиксом AUD-018.
+Осталось прежним: AUD-034.
+
+| ISSUE-ID | Корень проблемы | Источники | Статус | Коммит | Проверка |
+|---|---|---|---|---|---|
+| AUD-036 | `tickersOrOne` отдавал `req.Splits` **каждому** тикеру многотикерного прогона. Сплиты верхнего уровня относятся к одному символу (`req.Ticker`), поэтому событие AAPL 4:1 задним числом делило цены всех остальных тикеров списка: неверные входы, размер позиции и весь PnL. Внесено фиксом AUD-018 (`35f0c66`), до него ветка вообще не применяла сплиты. Из SPA не достижимо (payload прогона не несёт `splits`), достижимо через API | повторный проход по классу AUD-018 на `02988d1`; `go/internal/httpapi/calc.go` tickersOrOne | FIXED | `5217702` | Явные сплиты применяются только к тикеру, названному в `ticker`; остальные тикеры берут свою хранимую таблицу. Сплиты без `ticker` в многотикерном запросе — 400, а не молча выброшенные события. Тесты `TestCalcDoesNotApplyOneTickersSplitsToAnother` (на предфиксном коде вход по BBB шёл по 95.5 вместо сырых 191) и `TestCalcRejectsSplitsWithoutTickerOnMultiTickerRun` (на предфиксном коде 200) доказаны падающими. `go vet ./...`, `go test ./...`, `TZ=Pacific/Auckland`, `TZ=America/Los_Angeles` — зелено на `5217702`. Не задеплоено |
