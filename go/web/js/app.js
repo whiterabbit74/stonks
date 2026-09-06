@@ -740,6 +740,7 @@
       option_expired: 'Экспирация опциона',
       stop_loss: 'Стоп-лосс',
       take_profit: 'Тейк-профит',
+      margin_liquidation: 'Маржин-колл',
       end_of_data: 'Конец данных',
       profit_target: 'Цель по прибыли',
       time_limit: 'Лимит времени',

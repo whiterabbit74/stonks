@@ -169,7 +169,12 @@ func (s *Server) handleWebullDashboard(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleAutoLogs(w http.ResponseWriter, r *http.Request) {
 	limit := clampQueryLimit(r.URL.Query().Get("limit"), 200, autoLogsMaxLimit)
-	writeJSON(w, 200, s.liveEng().Logs(limit))
+	logs, err := s.liveEng().Logs(limit)
+	if err != nil {
+		writeJSON(w, 500, map[string]any{"error": "Не удалось получить журнал автоторговли"})
+		return
+	}
+	writeJSON(w, 200, logs)
 }
 
 func clampQueryLimit(raw string, def, max int) int {

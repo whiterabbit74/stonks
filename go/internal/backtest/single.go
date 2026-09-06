@@ -87,6 +87,27 @@ func commission(tradeValue float64, strategy types.Strategy) float64 {
 	}
 }
 
+// maintenanceMarginRatio — поддерживающая маржа брокера, как в SimulateMargin:
+// капитал счёта должен покрывать эту долю рыночной стоимости позиции.
+const maintenanceMarginRatio = 0.25
+
+// marginLiquidationPrice — цена, ниже которой брокер закрывает позицию:
+// free + залог + (p-entry)*qty = maint * qty * p. Свободные деньги считаются
+// частью капитала счёта, поэтому пополнения отодвигают маржин-колл.
+// Возвращает 0, если позиция без плеча или ликвидация невозможна.
+func marginLiquidationPrice(freeCapital float64, pos *singlePos) float64 {
+	borrowed := pos.quantity*pos.entryPrice - pos.totalCost
+	den := pos.quantity * (1 - maintenanceMarginRatio)
+	if borrowed <= 0 || den <= 0 {
+		return 0
+	}
+	price := (borrowed - freeCapital) / den
+	if price <= 0 {
+		return 0
+	}
+	return math.Min(pos.entryPrice, price)
+}
+
 type singlePos struct {
 	ticker          string
 	entryDate       string
@@ -201,7 +222,12 @@ func RunSinglePosition(tickers []TickerIndexed, strategy types.Strategy, leverag
 					exitReason := ""
 					exitPrice := bar.Close
 					tpPrice := metrics.TakeProfitPrice(current.entryPrice, tp)
-					if metrics.ShouldTakeProfit(bar.High, tpPrice) {
+					liqPrice := marginLiquidationPrice(freeCapital, current)
+					if liqPrice > 0 && bar.Date > current.entryDate && bar.Low <= liqPrice {
+						shouldExit = true
+						exitReason = "margin_liquidation"
+						exitPrice = liqPrice
+					} else if metrics.ShouldTakeProfit(bar.High, tpPrice) {
 						shouldExit = true
 						exitReason = "take_profit"
 						if tpPrice != nil {

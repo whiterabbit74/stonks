@@ -1068,13 +1068,31 @@ func (e *Engine) Dashboard() (map[string]any, error) {
 	return acc, nil
 }
 
-func (e *Engine) Logs(limit int) map[string]any {
-	logs, _ := e.DB.ListAutotradeLogs(limit)
-	autotrade, _ := e.DB.ListAutotradeLogsKind("autotrade", limit)
-	monitor, _ := e.DB.ListAutotradeLogsKind("monitor", limit)
-	brokerRaw, _ := e.DB.ListAutotradeLogsKind("brokerRaw", limit)
-	pending, _ := e.DB.ListPendingTrackers()
-	recent, _ := e.DB.ListRecentTrackers(20)
+func (e *Engine) Logs(limit int) (map[string]any, error) {
+	logs, err := e.DB.ListAutotradeLogs(limit)
+	if err != nil {
+		return nil, err
+	}
+	autotrade, err := e.DB.ListAutotradeLogsKind("autotrade", limit)
+	if err != nil {
+		return nil, err
+	}
+	monitor, err := e.DB.ListAutotradeLogsKind("monitor", limit)
+	if err != nil {
+		return nil, err
+	}
+	brokerRaw, err := e.DB.ListAutotradeLogsKind("brokerRaw", limit)
+	if err != nil {
+		return nil, err
+	}
+	pending, err := e.DB.ListPendingTrackers()
+	if err != nil {
+		return nil, err
+	}
+	recent, err := e.DB.ListRecentTrackers(20)
+	if err != nil {
+		return nil, err
+	}
 	if logs == nil {
 		logs = []map[string]any{}
 	}
@@ -1113,7 +1131,7 @@ func (e *Engine) Logs(limit int) map[string]any {
 		"brokerRaw": brokerRaw,
 		"pending":   pending,
 		"recent":    recent,
-	}
+	}, nil
 }
 
 // manualOrder is the shared guarded path for operator-initiated submissions

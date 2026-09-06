@@ -513,7 +513,10 @@ func TestLogsSplitByPrefix(t *testing.T) {
 	e.logAuto("order_submit_ok", "abc", map[string]any{"symbol": "AAPL"})
 	e.logMonitor("t1_execution_started", "abc", nil)
 	e.logBrokerRaw("order_track", "abc", map[string]any{"clientOrderId": "x"})
-	out := e.Logs(20)
+	out, err := e.Logs(20)
+	if err != nil {
+		t.Fatal(err)
+	}
 	at, _ := out["autotrade"].([]map[string]any)
 	mo, _ := out["monitor"].([]map[string]any)
 	br, _ := out["brokerRaw"].([]map[string]any)

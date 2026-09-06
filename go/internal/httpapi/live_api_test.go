@@ -253,6 +253,19 @@ func TestAutoLogsIncludePending(t *testing.T) {
 	}
 }
 
+func TestAutoLogsDBErrorIsNotEmptySuccess(t *testing.T) {
+	s, _, _ := liveServer(t)
+	if _, err := s.DB.SQL.Exec(`DROP TABLE autotrade_logs`); err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest("GET", "/api/autotrade/logs", nil)
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != 500 {
+		t.Fatalf("DB error must be 500, got %d %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestTestBuyDisabledByDefault(t *testing.T) {
 	s, _, _ := liveServer(t)
 	t.Setenv("WEBULL_ENABLE_LIVE_TEST_BUY", "")

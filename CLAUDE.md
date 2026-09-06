@@ -47,6 +47,7 @@ Go trading-strategy backtester with a vanilla JS SPA (`go/web`). Historical OHLC
 ### Core Invariants (do not violate)
 
 - **Даты без времени и без таймзон.** Полное объяснение — раздел [«Даты: почему в проекте нет таймзон»](#даты-почему-в-проекте-нет-таймзон). Торговая дата — строка `YYYY-MM-DD`. `time.Time` в этих путях не появляется, кроме явной биржевой зоны на wall-clock.
+- **Плечо и маржин-колл.** Бэктест `single-position` считает капитал как залог плюс полный PnL позиции. При плече > 1 брокер закрывает позицию, когда капитал счёта (свободные деньги + позиция) падает ниже поддерживающей маржи 25% от её рыночной стоимости; цена ликвидации считается аналитически и триггерится по `Low` бара, как в `SimulateMargin`. В день входа ликвидации нет. Пополнения — свободные деньги, поэтому отодвигают маржин-колл. Проценты по заёмным средствам не моделируются.
 - **Commit changes.** Every completed change is committed locally. Commit messages end with the `Co-Authored-By` trailer used across the history. Push and deploy only on an explicit ask in the current message — see [Пуш и деплой](#пуш-и-деплой--только-по-прямой-просьбе).
 
 ## Даты: почему в проекте нет таймзон
