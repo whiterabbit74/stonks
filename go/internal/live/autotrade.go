@@ -38,12 +38,19 @@ func (e *Engine) PatchAutoConfig(updates map[string]any) map[string]any {
 }
 
 func (e *Engine) PatchAutoConfigChecked(updates map[string]any) (map[string]any, error) {
-	settings := e.DB.Settings()
+	// This is a read-modify-write of the whole autoTrading object. Settings()
+	// answers a failed read with the defaults, so saving on top of it would
+	// quietly reset thresholds, broker flags and the enabled state to
+	// factory values.
+	settings, err := e.DB.SettingsErr()
+	if err != nil {
+		return map[string]any{}, err
+	}
 	cur, _ := settings["autoTrading"].(map[string]any)
 	if cur == nil {
 		cur = map[string]any{}
 	}
-	cur, err := sanitizeAutoTradingConfig(updates, cur, e.now())
+	cur, err = sanitizeAutoTradingConfig(updates, cur, e.now())
 	if err != nil {
 		return cur, err
 	}
@@ -1028,11 +1035,15 @@ func (e *Engine) Account() (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	pos, _ := e.Broker.Positions()
+	pos, perr := e.Broker.Positions()
 	if pos == nil {
 		pos = []any{}
 	}
 	out := map[string]any{"connection": e.WebullSummary(), "account": snap, "positions": pos}
+	if perr != nil {
+		// An empty list and an unreadable one look the same on the dashboard.
+		out["positionsError"] = perr.Error()
+	}
 	if bal, ok := snap["balance"]; ok {
 		out["balance"] = bal
 	}

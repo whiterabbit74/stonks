@@ -925,7 +925,11 @@ func (s *Server) handleApplySplits(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	bars := decodeBars(ds["data"])
-	out, applied := s.applyStoredSplits(id, bars)
+	out, applied, err := s.applyStoredSplits(id, bars)
+	if err != nil {
+		writeJSON(w, 500, map[string]any{"error": "Не удалось прочитать сплиты"})
+		return
+	}
 	if err := s.persistDataset(id, ds, out, applied); err != nil {
 		writeJSON(w, 500, map[string]any{"error": err.Error()})
 		return
@@ -1177,7 +1181,14 @@ func (s *Server) handlePatchCalendarDay(w http.ResponseWriter, r *http.Request) 
 		writeJSON(w, 400, map[string]any{"error": "type must be normal, holiday or short"})
 		return
 	}
-	raw, _ := s.DB.GetCalendar()
+	// Read-modify-write of the whole calendar blob: a failed read would look
+	// like an empty calendar and save this single day over every stored
+	// holiday and short day.
+	raw, err := s.DB.GetCalendar()
+	if err != nil {
+		writeJSON(w, 500, map[string]any{"error": "Не удалось прочитать календарь"})
+		return
+	}
 	var cal map[string]any
 	if err := json.Unmarshal(raw, &cal); err != nil {
 		cal = map[string]any{}
