@@ -3,6 +3,7 @@ package live
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 )
@@ -98,4 +99,26 @@ func epochToRFC3339(n int64) string {
 		n *= 1000
 	}
 	return time.UnixMilli(n).UTC().Format(time.RFC3339)
+}
+
+// logUnknownExpiry records the field names a check response actually carried
+// when none of the known aliases held a deadline. Without it an empty
+// expires_at is indistinguishable from "Webull sent nothing", and the only way
+// to learn the real name is to read a live response by hand.
+func (e *Engine) logUnknownExpiry(data map[string]any) {
+	if e.DB == nil || len(data) == 0 || e.DB.GetWebullToken().ExpiresAt != "" {
+		return
+	}
+	keys := make([]string, 0, len(data))
+	for k := range data {
+		if inner, ok := data[k].(map[string]any); ok {
+			for ik := range inner {
+				keys = append(keys, k+"."+ik)
+			}
+			continue
+		}
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	_ = e.DB.AppendAutotradeLogKind("webull", "token check carried no known expiry field; response keys: "+strings.Join(keys, ", "))
 }

@@ -2,6 +2,7 @@ package live
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -37,5 +38,33 @@ func TestWebullTokenValueAndStatusAliases(t *testing.T) {
 	// alias would promote an unverified token to healthy.
 	if got := webullTokenStatus(m); got != "PENDING" {
 		t.Fatalf("status = %q", got)
+	}
+}
+
+func TestLogUnknownExpiryNamesResponseKeys(t *testing.T) {
+	_, e, _ := testEngine(t, nil)
+	if err := e.DB.SaveWebullToken("tok", "", "NORMAL"); err != nil {
+		t.Fatal(err)
+	}
+	e.logUnknownExpiry(map[string]any{"status": "NORMAL", "data": map[string]any{"deadline": "x"}})
+	logs, err := e.DB.ListAutotradeLogsKind("webull", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	msg := ""
+	if len(logs) > 0 {
+		msg, _ = logs[0]["message"].(string)
+	}
+	if !strings.Contains(msg, "data.deadline") || !strings.Contains(msg, "status") {
+		t.Fatalf("logs = %v", logs)
+	}
+
+	// Nothing to diagnose once a deadline is known.
+	if err := e.DB.SaveWebullToken("tok", "2026-12-01T00:00:00Z", "NORMAL"); err != nil {
+		t.Fatal(err)
+	}
+	e.logUnknownExpiry(map[string]any{"status": "NORMAL"})
+	if again, _ := e.DB.ListAutotradeLogsKind("webull", 10); len(again) != len(logs) {
+		t.Fatalf("logged with a known expiry: %v", again)
 	}
 }

@@ -152,6 +152,9 @@ func (e *Engine) TokenHealth() string {
 		status = "NORMAL"
 	}
 	exp := webullTokenExpiry(data)
+	if exp == "" {
+		e.logUnknownExpiry(data)
+	}
 	// P0-4: last_check_status must carry the classified verdict
 	// (OK/NEEDS_REAUTH/...) that CanSubmit/executeAll gate on, not the raw
 	// Webull word — that goes to last_check_raw instead, symmetric with how
@@ -185,6 +188,9 @@ func (e *Engine) CheckToken(token string) (map[string]any, error) {
 		status = "NORMAL"
 	}
 	exp := webullTokenExpiry(data)
+	if exp == "" {
+		e.logUnknownExpiry(data)
+	}
 	if token != "" {
 		classified, _ := ClassifyWebullHealth(token, status, exp, e.now())
 		_ = e.DB.SaveWebullTokenChecked(token, exp, classified, status)
