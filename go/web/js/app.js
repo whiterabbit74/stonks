@@ -112,7 +112,6 @@
     { id: 'trades', label: 'Сделки' },
     { id: 'profit', label: 'Профит-фактор' },
     { id: 'duration', label: 'Длительность' },
-    { id: 'spreads', label: 'Спреды' },
   ];
   const OPTIONS_TABS = [
     { id: 'summary', label: 'Сводка' },
@@ -1307,10 +1306,6 @@
       <div class="overflow-auto"><table class="trades"><thead><tr><th>Причина выхода</th><th>Сделок</th><th>Ср. PnL</th></tr></thead><tbody>${reasonRows}</tbody></table></div>
     </div>`;
   }
-  function spreadsTable(buy, sell) {
-    const rows = [].concat(buy || []).flatMap((b) => (sell || []).map((s) => `<tr><td>${fmt(b)}</td><td>${fmt(s)}</td><td>${fmt(s - b, 1)} п.п.</td></tr>`)).join('');
-    return `<div class="overflow-auto"><table class="trades"><thead><tr><th>Покупка</th><th>Продажа</th><th>Расстояние</th></tr></thead><tbody>${rows || '<tr><td colspan="3" class="text-center text-gray-500">Нет зон</td></tr>'}</tbody></table></div>`;
-  }
   function catalogFiltered() {
     const cat = state.enhanceCat || 'popular';
     const q = String(state.enhanceQuery || '').toLowerCase().trim();
@@ -2211,7 +2206,6 @@
         trades: tradesTable(r.trades),
         profit: profitBody(r),
         duration: durationBody(r),
-        spreads: spreadsTable(((state.emaRunParams && state.emaRunParams.buyZones) || state.emaForm.buyZones || []).filter((z) => z.enabled).map((z) => z.levelPct), ((state.emaRunParams && state.emaRunParams.sellZones) || state.emaForm.sellZones || []).filter((z) => z.enabled).map((z) => z.levelPct)),
       };
       main = `<div class="p-4">${bodies[tab] || ''}</div>`;
     }
