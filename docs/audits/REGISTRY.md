@@ -37,10 +37,10 @@
 | AUD-014 | Секреты в открытом виде на проде: устаревший каталог `/home/ubuntu/server.backup.1755401966/` содержит `.env` с правами `-rw-r--r--` (644), в котором лежат `ADMIN_PASSWORD`, `TELEGRAM_BOT_TOKEN`, `ALPHA_VANTAGE_API_KEY`, `FINNHUB_API_KEY` — читаемо любым пользователем хоста и любым контейнером, которому смонтирован домашний каталог. Рядом `/home/ubuntu/backups/stonks_backup_20250826_231026.tar.gz` (52 МБ, полный дамп БД) с правами `-rw-rw-r--` (664) в каталоге `drwxrwxr-x`. Оба созданы до текущего `backup-from-server.sh`, который делает всё правильно (`umask 077`, `mkdir -m 700`, `chmod 600`) | проверка прода 2026-09-06 по прямому разрешению пользователя; `ubuntu@146.235.212.239` | FIXED | — (изменение на сервере, не в репозитории) | Права поправлены на проде 2026-09-06 по прямому указанию пользователя (только `chmod`, ничего не удалялось и не перезапускалось). В 600 переведены 10 файлов `.env`/`.env.server` в stonks-контуре (`server.backup.1755401966/{,_keep/}`, `stonks-old/{,server/}`, `stonks-static/server/{,_keep/}`, `stonks/{.env,.env.server,server/.env,backup_20250829_042616/.env}`) и 2 архива (`backups/stonks_backup_20250826_231026.tar.gz`, `stonks-backups/json-final-backup-20260318_232647.tar.gz`); каталоги `backups`, `stonks-backups`, `server.backup.1755401966` — в 700. Перед правкой проверено, что ни один работающий контейнер эти файлы не читает: секреты живого стека берутся из `stonks-config/.env` (уже был 600), из `stonks/` смонтирован только `caddy/Caddyfile`. После правки: все три контейнера healthy, `https://mktorder.com/readyz` 200, `/api/status` отвечает, `docker compose config` парсится. Ротацию `ADMIN_PASSWORD` и `TELEGRAM_BOT_TOKEN` пользователь счёл ненужной — решение владельца, зафиксировано. **Вне охвата и не трогалось:** такие же 644/664 у `.env` чужих проектов на том же хосте — `ai-news-bot`, `marzban-bot`, `macdiff`, `aurum`, `server_vpn*`, `3x-ui/cert`, `ssl/cert.pem`. |
 | AUD-011 | API `BacktestMetrics` и вызывающие backtest-пути разошлись после добавления пополнений | текущая проверка на рабочем дереве перед `11f58ef` | VERIFIED | `11f58ef` | `go test ./...`, `go test -race ./...`, `go vet ./...` PASS на `11f58ef`; добавлены contribution tests |
 | AUD-015 | Класс `hover:underline` у ссылки «Источник» в карточке сплитов отсутствовал в собранном `web/css/app.css`, поэтому контрактный тест `TestUXAppearanceContract/class-markup-matches-css` был красным на `59c9b00`. Пайплайна сборки Tailwind в репозитории нет: `app.css` — зафиксированный артефакт, рукописные правила живут в `extra.css` | находка этого прохода на `59c9b00`; `go/web/js/app.js:5306`, `go/internal/httpapi/ui_appearance_test.go:113` | FIXED | `fade8f1` | Правило добавлено в `extra.css` рядом с существующим `.pc-add:hover`. `go test ./internal/httpapi/ -run TestUXAppearanceContract` PASS; полный прогон зелёный на `1293315` |
-| AUD-016 | PATCH дня календаря при ошибке `GetCalendar` игнорирует отказ и сохраняет почти пустой документ, затирая праздники, короткие дни и покрытие брокера | `docs/audits/AUDIT_2026-09-06.md` §Находки; `go/internal/httpapi/server.go:1180-1233`; аудит на `0f4f6b9` | OPEN | — | Нет теста отказа чтения с ожиданием HTTP 500 и неизменной строки; текущий checkout `dd65903` не перепроверен |
+| AUD-016 | PATCH дня календаря при ошибке `GetCalendar` игнорирует отказ и сохраняет почти пустой документ, затирая праздники, короткие дни и покрытие брокера | `docs/audits/AUDIT_2026-09-06.md` §Находки; `go/internal/httpapi/server.go:1180-1233`; аудит на `0f4f6b9` | VERIFIED | `c9e445c` (отказ чтения), `157cc4b` (нечитаемый JSON) | Половина с ошибкой `GetCalendar` закрыта раньше в свипе AUD-002 (`c9e445c`, тест `TestAUD002UnreadableCalendarDoesNotOverwriteIt`). Вторая половина оставалась: `json.Unmarshal` не удался → `cal = map[string]any{}` → `SaveCalendar` поверх всех праздников. `157cc4b` отвечает 500 и на ошибку разбора, и на `null`. `TestAUD016CorruptCalendarIsNotOverwrittenByPatch`: битый blob с `Independence Day`, PATCH 25 декабря → 500, строка не изменилась; FAIL на предфиксном коде (200, праздник стёрт), PASS после. `go test ./...` на TZ=Pacific/Auckland и TZ=America/Los_Angeles чисто. Не задеплоено |
 | AUD-017 | T-1 post-exit оркестрация читает showcase-решение Webull из `Decision`, а не фактические решения по брокерам из `BrokerDecisions`; повторный вход может ждать/не ждать fill не того брокера | `docs/audits/AUDIT_2026-09-06.md` §Находки; `go/internal/live/autotrade.go:278`, `execute_all.go:20-107`, `telegram.go:42-56`; аудит на `0f4f6b9` | VERIFIED | `dd65903` (частично), `787c337` | `787c337` вводит `effectiveDecision`: решение, по которому реально действовали, берётся из `BrokerDecisions` (выход приоритетнее входа), а showcase-решение остаётся фолбэком только когда пропущены все брокеры — тогда сохраняется поведение `dd65903`. На него переведены обе точки: `runT1Orders` (обе ветки) и `appendExec` в отчёте T-1. `TestT1WaitsForTheExitOfTheBrokerThatActuallyExited` — двухброкерный сценарий: позиция и выход на Robinhood, Webull пуст; на предфиксном коде `waitFill=false` (showcase `action=none`, fill не ждали), после фикса `waitFill=true` и SELL ровно на Robinhood. `TestT1TextReportsTheBrokerDecisionNotTheShowcase` — на предфиксном коде отчёт вообще не содержал строки об исполненном выходе. Оба FAIL до фикса, PASS после; `go test ./...` на TZ=Pacific/Auckland и TZ=America/Los_Angeles чисто. **Пробел:** `ev.Executed` остаётся агрегатом по всем брокерам — при выходе, который не отправился, и входе, который отправился, признак исполнения завышен; путь при этом деградирует в ветку повтора выхода (`t1_exit_rejected_retry`), а не в повторный вход. Не задеплоено |
 | AUD-018 | Расчёты Stocks/EMA/options не передают таблицу сплитов; EMA/options также не вызывают `splits.AdjustOHLC`, поэтому raw OHLC даёт неверные сделки | `docs/audits/AUDIT_2026-09-06.md` §Находки; `go/web/js/app.js:4530-4646`, `go/internal/httpapi/calc.go:71-142`, `go/internal/backtest/{ema,options}.go`; аудит на `0f4f6b9` | OPEN | — | Нет payload-теста raw OHLC со сплитом против расчёта с `splits`; текущий checkout `dd65903` не перепроверен |
-| AUD-019 | Повреждённый JSON настроек маскируется под дефолты без ошибки, а частичный `SetSettingsKeys` может затереть исходный blob | `docs/audits/AUDIT_2026-09-06.md` §Находки; `go/internal/store/db.go:906-908,985-992`, `go/internal/live/autotrade.go:26-51`; аудит на `0f4f6b9` | OPEN | — | Нет тестов `SettingsErr`/`SetSettingsKeys` на corrupt JSON; текущий checkout `dd65903` не перепроверен |
+| AUD-019 | Повреждённый JSON настроек маскируется под дефолты без ошибки, а частичный `SetSettingsKeys` может затереть исходный blob | `docs/audits/AUDIT_2026-09-06.md` §Находки; `go/internal/store/db.go:906-908,985-992`, `go/internal/live/autotrade.go:26-51`; аудит на `0f4f6b9` | VERIFIED | `157cc4b` | Тот же корень, что AUD-016, на настройках; закрыт в его сквозной проверке. `SettingsErr` возвращает ошибку вместо дефолтов, `SetSettingsKeys` — вместо слияния на пустую карту; `Settings()` для read-only вызывающих ведёт себя как прежде. `TestAUD016CorruptSettingsAreNotOverwritten`: битый blob → `SettingsErr` ошибка, `SetSettingsKeys` ошибка, строка не изменилась; FAIL на предфиксном коде, PASS после. Не задеплоено |
 | AUD-020 | Публичный `GET /api/trading-calendar` скрывает отказ БД, подменяя его `DefaultCalendarJSON` и вычисленными днями; UI не видит источник как недоступный | `docs/audits/AUDIT_2026-09-06.md` §Находки; `go/internal/httpapi/server.go:272-274,1110-1121`, `go/web/js/app.js:1068-1091`; аудит на `0f4f6b9` | OPEN | — | Нет теста ответа при ошибке `GetCalendar`; live-путь при том же отказе пропускает день |
 | AUD-021 | `CanSubmit` и showcase `Evaluate().Decision` завязаны на Webull, хотя `executeAll` исполняет по каждому брокеру; UI может показывать ложный статус | `docs/audits/AUDIT_2026-09-06.md` §Находки; `go/internal/live/autotrade.go:201-216,278`, `go/internal/httpapi/server.go:1897`; аудит на `0f4f6b9` | OPEN | — | Нет сценария «активен только Robinhood» с проверкой статуса и решения UI; текущий checkout `dd65903` не перепроверен |
 | AUD-022 | Контейнер `mcp` получает общий `stonks-config/.env` с торговыми секретами через `env_file`, расширяя последствия компрометации MCP | `docs/audits/AUDIT_2026-09-06.md` §Находки; `docker-compose.yml:46-51`; аудит на `0f4f6b9` | OPEN | — | Подтверждено чтением compose; `docker inspect` на VPS запрещён этим аудитом и не выполнен |
@@ -100,6 +100,44 @@ FAIL на предфиксной логике, PASS на `ec99307`. Оркест
 
 Не покрыто: живой broker API; сценарий «выход не отправился, вход отправился»
 (завышенный `ev.Executed`, см. пробел в AUD-017).
+
+
+### Сквозная проверка класса AUD-016 по проекту (2026-09-06)
+
+Класс: нечитаемый или неразбираемый хранимый blob трактуется как пустой, и
+результат пишется обратно поверх исходных данных. Половину класса — отказ
+чтения — закрыл свип AUD-002 (`c9e445c`, `8887d8f`). Здесь просмотрена вторая
+половина: все не-тестовые `json.Unmarshal` в `go/internal` и `go/cmd`, у
+которых ошибка игнорируется (`!= nil` в условии, `_ =`, `== nil` в else-ветке).
+
+Найдено и исправлено одним коммитом `157cc4b`:
+
+- `httpapi/server.go` `handlePatchCalendarDay` — AUD-016, ответ 500 вместо
+  пустой карты (плюс защита от `null`, который иначе паникует на записи в nil-map).
+- `live/calendar_import.go` `ImportWebullCalendar` и удаление праздника — обе
+  read-modify-write ветки возвращают ошибку разбора вместо `cal = {}`.
+- `store/db.go` `SettingsErr` / `SetSettingsKeys` — AUD-019.
+- `scheduler/scheduler.go` `ParseCalendar` — сигнатура стала
+  `(Calendar, error)`; `RunTick` складывает ошибку разбора в тот же `calErr`
+  (детали `calendar-read-failed`, алерт и правило «один алерт в день» уже
+  были), `handlePrevDay` отвечает 500. До фикса битый календарь читался как
+  ноль праздников и T-11/T-1 шли по вычисленной сессии в потенциально
+  закрытый день — тест `TestAUD016CorruptCalendarSkipsMarketJobs`.
+
+Проверено и признано корректным: `scheduler.FillComputedDays` при ошибке
+разбора возвращает `raw` без изменений; `httpapi/helpers.go`
+`decodeBars`/`decodeStrategy`/`decodeTrades` и `decodeSplitEvents` разбирают
+пришедший в запросе payload, а не хранимое состояние; `accesslog.go` при
+неразбираемом теле пишет `nil` в лог и ничего не перезаписывает; парсеры
+ответов провайдеров и брокеров (`providers/client.go`, `robinhood/*`,
+`webull/client.go`, `live/transport.go`) деградируют в «нет данных» по своему
+контракту и в состояние не пишут; `store/db.go:785` — проверка «календарь
+пуст», без записи. `calendarCoverageThrough` при битом blob даёт `""` и лишний
+раз дёргает импорт — P3 из отчёта, отдельного ID не заведено (после этого
+фикса RunTick до него уже не доходит).
+
+Не покрыто: `ImportWebullCalendar` на битом blob тестом не закрыт (нужен мок
+брокера); проверено чтением кода.
 
 
 ## Правило обновления
