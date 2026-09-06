@@ -398,20 +398,15 @@ html.dark .app-side { background: #0b1220; border-color: #1f2937; }
 }
 html.dark .app-side-brand { color: #f3f4f6; }
 .app-side-brand-toggle { position: relative; border: 0; width: 100%; min-height: 2rem; text-align: left; cursor: pointer; }
-.app-side-brand-default, .app-side-brand-hover { display: inline-flex; align-items: center; gap: 0.5rem; transition: opacity 180ms ease, transform 180ms ease; }
-.app-side-brand-default { transform-origin: left center; }
-.app-side-brand-hover { position: absolute; inset-inline-start: 0.5rem; top: 50%; opacity: 0; pointer-events: none; transform: translateY(-50%) translateX(-0.35rem) scale(0.82) rotate(-8deg); }
+.app-side-brand-icon, .app-side-brand-label { display: inline-flex; align-items: center; }
+.app-side-brand-label { transition: opacity 160ms cubic-bezier(0.2, 0, 0, 1); }
 .app-side-brand-toggle:hover, .app-side-brand-toggle:focus-visible { color: #4338ca; }
 html.dark .app-side-brand-toggle:hover, html.dark .app-side-brand-toggle:focus-visible { color: #a5b4fc; }
-.app-side-brand-toggle:hover .app-side-brand-default, .app-side-brand-toggle:focus-visible .app-side-brand-default { opacity: 0; transform: translateX(-0.35rem) scale(0.96); }
-.app-side-brand-toggle:hover .app-side-brand-hover, .app-side-brand-toggle:focus-visible .app-side-brand-hover { opacity: 1; transform: translateY(-50%) translateX(0) scale(1) rotate(0); }
+.app-side-brand-toggle:hover .app-side-brand-label, .app-side-brand-toggle:focus-visible .app-side-brand-label { opacity: 0; }
 .app-frame-slim .app-side-brand { justify-content: center; padding-left: 0; padding-right: 0; }
-.app-frame-slim .app-side-brand-default .app-side-lab { display: none; }
-.app-frame-slim .app-side-brand-default { transform-origin: center; }
-.app-frame-slim .app-side-brand-hover { inset-inline-start: 50%; transform: translate(-50%, -50%) translateX(-0.35rem) scale(0.82) rotate(-8deg); }
-.app-frame-slim .app-side-brand-toggle:hover .app-side-brand-hover, .app-frame-slim .app-side-brand-toggle:focus-visible .app-side-brand-hover { transform: translate(-50%, -50%) translateX(0) scale(1) rotate(0); }
+.app-frame-slim .app-side-brand-label { display: none; }
 @media (prefers-reduced-motion: reduce) {
-  .app-side-brand-default, .app-side-brand-hover { transition: none; }
+  .app-side-brand-label { transition: none; }
 }
 .app-side-nav { display: flex; flex-direction: column; gap: 0.15rem; flex: 1 1 auto; min-height: 0; overflow-y: auto; }
 .app-side-item {

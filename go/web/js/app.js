@@ -172,15 +172,13 @@
     chevrondown: '<path d="m6 9 6 6 6-6"/>',
     chevronleft: '<path d="m15 18-6-6 6-6"/>',
     chevronright: '<path d="m9 18 6-6-6-6"/>',
-    panelclose: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/><path d="m15 9-3 3 3 3"/>',
-    panelopen: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/><path d="m12 9 3 3-3 3"/>',
     layout: '<rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/>',
     maximize: '<path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/>',
     minimize: '<path d="M8 3v3a2 2 0 0 1-2 2H3"/><path d="M21 8h-3a2 2 0 0 1-2-2V3"/><path d="M3 16h3a2 2 0 0 1 2 2v3"/><path d="M16 21v-3a2 2 0 0 1 2-2h3"/>',
     eye: '<path d="M2.5 12s3.5-5 9.5-5 9.5 5 9.5 5-3.5 5-9.5 5-9.5-5-9.5-5Z"/><circle cx="12" cy="12" r="2.5"/>',
     eyeoff: '<path d="m3 3 18 18"/><path d="M10.6 6.2A10.5 10.5 0 0 1 12 6c6 0 9.5 6 9.5 6a16.7 16.7 0 0 1-3.2 3.7"/><path d="M6.7 6.7C3.8 8.5 2.5 12 2.5 12s3.5 6 9.5 6a9.7 9.7 0 0 0 3.1-.5"/>',
     arrowne: '<path d="M7 7h10v10"/><path d="M7 17 17 7"/>',
-    logo: '<path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>',
+    logo: '<path d="M7 20v-8M9 16l4-4 4 2"/>',
   };
 
   const PC_COLORS = ['#2563EB', '#0EA5E9', '#14B8A6', '#10B981', '#84CC16', '#F59E0B', '#F97316', '#EF4444', '#F43F5E', '#A855F7', '#8B5CF6', '#64748B'];
@@ -369,6 +367,36 @@
 
   function icon(name, cls) {
     return `<svg class="${cls || 'w-5 h-5'}" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${PATHS[name] || ''}</svg>`;
+  }
+  const BRAND_POINTS = [7, 20, 7, 12, 9, 16, 13, 12, 17, 14];
+  const PANEL_POINTS = {
+    close: [7, 4, 7, 20, 16, 8, 12, 12, 16, 16],
+    open: [17, 4, 17, 20, 8, 8, 12, 12, 8, 16],
+  };
+  function panelPath(points) {
+    return `M${points[0]} ${points[1]}v${points[3] - points[1]}M${points[4]} ${points[5]}l${points[6] - points[4]} ${points[7] - points[5]} ${points[8] - points[6]} ${points[9] - points[7]}`;
+  }
+  function brandIcon() {
+    return `<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path data-panel-path data-panel-mode="brand" d="${panelPath(BRAND_POINTS)}"/></svg>`;
+  }
+  function morphBrandIcon(btn, targetMode) {
+    const path = btn.querySelector('[data-panel-path]');
+    if (!path) return;
+    const fromMode = path.dataset.panelMode || 'brand';
+    const toMode = targetMode;
+    if (fromMode === toMode) return;
+    const from = fromMode === 'brand' ? BRAND_POINTS : PANEL_POINTS[fromMode];
+    const to = toMode === 'brand' ? BRAND_POINTS : PANEL_POINTS[toMode];
+    const started = performance.now();
+    const duration = 220;
+    const frame = (now) => {
+      const progress = Math.min(1, (now - started) / duration);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      path.setAttribute('d', panelPath(from.map((v, i) => v + (to[i] - v) * eased)));
+      if (progress < 1) requestAnimationFrame(frame);
+      else path.dataset.panelMode = toMode;
+    };
+    requestAnimationFrame(frame);
   }
   function actionIcon(name, label, attrs, tone) {
     return `<button type="button" ${attrs} class="action-icon ${tone || ''}" title="${esc(label)}" aria-label="${esc(label)}">${icon(name, 'w-4 h-4')}</button>`;
@@ -1445,8 +1473,8 @@
     btn.title = title;
     btn.setAttribute('aria-label', title);
     btn.setAttribute('aria-expanded', slim ? 'false' : 'true');
-    const hoverIcon = btn.querySelector('.app-side-brand-hover');
-    if (hoverIcon) hoverIcon.innerHTML = icon(slim ? 'panelopen' : 'panelclose', 'w-5 h-5');
+    btn.dataset.collapsed = slim ? 'true' : 'false';
+    morphBrandIcon(btn, btn.matches(':hover') ? (slim ? 'open' : 'close') : 'brand');
   }
   function analysisTabs(tabs, active, attr, label) {
     return `<div class="scroll-cue-shell border-b border-gray-200 dark:border-gray-700">
@@ -1741,8 +1769,8 @@
       <div class="app-frame ${slim ? 'app-frame-slim' : ''} min-h-screen bg-gray-50 text-gray-800 dark:bg-gray-900 dark:text-gray-100">
         <aside class="app-side" aria-label="Основная навигация">
           <button type="button" id="app-side-toggle" class="app-side-brand app-side-brand-toggle" title="${toggleTitle}" aria-label="${toggleTitle}" aria-expanded="${slim ? 'false' : 'true'}">
-            <span class="app-side-brand-default">${logo('sm')}<span class="app-side-lab">Trading strategies</span></span>
-            <span class="app-side-brand-hover" aria-hidden="true">${icon(slim ? 'panelopen' : 'panelclose', 'w-5 h-5')}</span>
+            <span class="app-side-brand-icon" aria-hidden="true">${brandIcon()}</span>
+            <span class="app-side-brand-label">Trading strategies</span>
           </button>
           <nav class="app-side-nav desktop-nav">${sideNavHTML()}</nav>
           <div class="app-side-tools">
@@ -3053,6 +3081,23 @@
     shellBound = true;
     window.addEventListener('resize', updateScrollCues);
     const app = document.getElementById('app');
+    const morphTarget = (btn) => btn.dataset.collapsed === 'true' ? 'open' : 'close';
+    app.addEventListener('pointerover', (e) => {
+      const btn = e.target.closest('#app-side-toggle');
+      if (btn && !btn.contains(e.relatedTarget)) morphBrandIcon(btn, morphTarget(btn));
+    });
+    app.addEventListener('pointerout', (e) => {
+      const btn = e.target.closest('#app-side-toggle');
+      if (btn && !btn.contains(e.relatedTarget) && !btn.matches(':focus-visible')) morphBrandIcon(btn, 'brand');
+    });
+    app.addEventListener('focusin', (e) => {
+      const btn = e.target.closest('#app-side-toggle');
+      if (btn) morphBrandIcon(btn, morphTarget(btn));
+    });
+    app.addEventListener('focusout', (e) => {
+      const btn = e.target.closest('#app-side-toggle');
+      if (btn && !btn.matches(':hover')) morphBrandIcon(btn, 'brand');
+    });
     app.addEventListener('click', (e) => {
       const nav = e.target.closest('[data-nav]');
       if (nav) {
