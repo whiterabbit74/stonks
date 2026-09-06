@@ -60,8 +60,14 @@ func (w execWindow) parentCtx() context.Context {
 // actually closed. closeTime comes from e.sessionCloseMin(), the same close
 // the T-11/T-1 messages already use.
 func (e *Engine) t1Deadline(safetyMargin time.Duration) time.Time {
-	closeMin, _ := e.sessionCloseMin()
+	closeMin, _, err := e.sessionCloseMin()
 	now := e.now()
+	if err != nil {
+		// Close unknown: keep the documented "first attempt always goes out"
+		// behaviour but grant no retry budget, instead of the 16:00 default
+		// that would keep retrying for hours past a short-day close.
+		return now
+	}
 	p := tradingdate.CurrentTimeNYSE(now)
 	nowSec := p.Hour*3600 + p.Minute*60 + now.Second()
 	secondsUntilClose := closeMin*60 - nowSec

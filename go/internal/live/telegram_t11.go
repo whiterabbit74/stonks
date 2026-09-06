@@ -149,16 +149,22 @@ func buildEmaInlineBlock(alerts []EmaEval) string {
 }
 
 func (e *Engine) sessionCloseLabel() (string, bool) {
-	closeMin, short := e.sessionCloseMin()
+	closeMin, short, _ := e.sessionCloseMin()
 	return fmt.Sprintf("%02d:%02d", closeMin/60, closeMin%60), short
 }
 
 // sessionCloseMin returns today's NYSE close as minutes past midnight ET,
 // honouring the calendar's short days the way scheduler.TradingSession does.
-func (e *Engine) sessionCloseMin() (int, bool) {
+// A read or parse failure is reported instead of being papered over with the
+// 16:00 default: on a short day that default is three hours late, and the
+// callers that gate orders must refuse rather than guess.
+func (e *Engine) sessionCloseMin() (int, bool, error) {
 	closeMin := 16 * 60
 	short := false
-	raw, _ := e.DB.GetCalendar()
+	raw, err := e.DB.GetCalendar()
+	if err != nil {
+		return closeMin, short, err
+	}
 	if len(raw) > 0 {
 		var cal struct {
 			ShortDays    map[string]map[string]any `json:"shortDays"`
@@ -171,7 +177,9 @@ func (e *Engine) sessionCloseMin() (int, bool) {
 				} `json:"short"`
 			} `json:"tradingHours"`
 		}
-		_ = json.Unmarshal(raw, &cal)
+		if err := json.Unmarshal(raw, &cal); err != nil {
+			return closeMin, short, err
+		}
 		if hm := parseClock(cal.TradingHours.Normal.End); hm > 0 {
 			closeMin = hm
 		}
@@ -189,7 +197,7 @@ func (e *Engine) sessionCloseMin() (int, bool) {
 			}
 		}
 	}
-	return closeMin, short
+	return closeMin, short, nil
 }
 
 func parseClock(hm string) int {

@@ -202,16 +202,26 @@ func RunTick(db *store.DB, deps Deps, now time.Time, onEvent func(JobLog)) {
 	today := tradingdate.TodayNYSE(now)
 	eng := engine(db, deps)
 
-	raw, _ := db.GetCalendar()
+	raw, calErr := db.GetCalendar()
 	cal := ParseCalendar(raw)
 	rawTrading := IsTradingDay(p, cal)
 	trading := rawTrading
 	if trading {
-		if cov := calendarCoverageThrough(raw); cov != "" && cov < today {
-			onEvent(JobLog{At: now, Name: "market-jobs", Skipped: true, Detail: "calendar-coverage-expired"})
+		// An unreadable calendar is not an empty calendar: falling back to the
+		// computed session would run T-11/T-1 on a schedule nobody confirmed.
+		detail, alert := "", ""
+		if calErr != nil {
+			detail = "calendar-read-failed"
+			alert = fmt.Sprintf("<b>Календарь биржи недоступен</b>\nЧтение календаря не удалось (%s), торговый день %s пропущен.", calErr.Error(), today)
+		} else if cov := calendarCoverageThrough(raw); cov != "" && cov < today {
+			detail = "calendar-coverage-expired"
+			alert = fmt.Sprintf("<b>Календарь биржи устарел</b>\nПокрытие заканчивается на %s, торговый день %s пропущен.", cov, today)
+		}
+		if detail != "" {
+			onEvent(JobLog{At: now, Name: "market-jobs", Skipped: true, Detail: detail})
 			settings := db.Settings()
 			if fmt.Sprint(settings["lastCalendarCoverageAlertDate"]) != today {
-				if err := eng.Send(telegramChatID(eng), fmt.Sprintf("<b>Календарь биржи устарел</b>\nПокрытие заканчивается на %s, торговый день %s пропущен.", cov, today)); err == nil {
+				if err := eng.Send(telegramChatID(eng), alert); err == nil {
 					if err := db.SetSettingsKeys(map[string]any{"lastCalendarCoverageAlertDate": today}); err != nil {
 						onEvent(JobLog{At: now, Name: "calendar-coverage-alert", Skipped: true, Detail: "persist failed: " + err.Error()})
 					}

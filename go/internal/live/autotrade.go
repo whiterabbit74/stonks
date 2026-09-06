@@ -978,7 +978,11 @@ func (e *Engine) outsideExecutionWindow(cfg map[string]any) bool {
 	}
 	// Node reads the close from the trading calendar (autotrade.js:2140-2146),
 	// so a short day closes at 13:00 and the window moves with it.
-	closeMin, _ := e.sessionCloseMin()
+	closeMin, _, err := e.sessionCloseMin()
+	if err != nil {
+		// Unknown close means an unknown window: refuse instead of assuming 16:00.
+		return true
+	}
 	now := e.now()
 	p := tradingdate.CurrentTimeNYSE(now)
 	// Seconds do not vary by zone, matching Node's nowEt.hh/mm + getUTCSeconds().
