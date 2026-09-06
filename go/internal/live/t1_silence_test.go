@@ -123,3 +123,27 @@ func TestT1TextSaysWhenNothingWasSubmitted(t *testing.T) {
 		t.Fatalf("a real submission must still report as sent:\n%s", text)
 	}
 }
+
+// T-11 used to tag ENTRY on an IBS merely within 0.02 of the threshold. T-1
+// then, correctly, did not trade it — which reads as a bot that changed its
+// mind. The overview now shows the pick the engine would actually make.
+func TestT11AnnouncesOnlyTheStrictSignal(t *testing.T) {
+	db, err := store.Open(filepath.Join(t.TempDir(), "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	e := New(db, &MemoryQuotes{})
+	rows := []t1Watch{
+		{sym: "NEAR", eval: watchEval{ok: true, ibs: 0.11, low: 0.10, price: 10}},
+		{sym: "PICK", eval: watchEval{ok: true, entry: true, ibs: 0.04, low: 0.10, price: 10}},
+		{sym: "ALSO", eval: watchEval{ok: true, entry: true, ibs: 0.09, low: 0.10, price: 10}},
+	}
+	text := e.buildT11Text(11, "2026-09-01", "finnhub", rows, nil, nil)
+	if !strings.Contains(text, "🔔 ENTRY: <b>PICK</b>") {
+		t.Fatalf("the lowest IBS below the threshold is the pick:\n%s", text)
+	}
+	if strings.Contains(text, "NEAR</b> · IBS") {
+		t.Fatalf("a near miss is not an entry signal:\n%s", text)
+	}
+}

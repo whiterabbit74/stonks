@@ -634,13 +634,10 @@ func bestEntryRow(rows []t1Watch) (string, float64, bool) {
 type watchEval struct {
 	ok, entry, exit, blocked bool
 	rtFresh, histFresh       bool
-	nearEntry, nearExit      bool
 	ibs, price, low, high    float64
 	provider                 string
 	warning                  IntegrityResult
 }
-
-const nearDelta = 0.02
 
 func (e *Engine) evalWatch(sym string, w, cfg map[string]any, providerChain []string) watchEval {
 	low, high, highInvalid := watchThresholds(w, cfg)
@@ -683,8 +680,6 @@ func (e *Engine) evalWatch(sym string, w, cfg map[string]any, providerChain []st
 	ev.price = price
 	ev.entry = ibs.IsEntrySignal(ibsVal, low)
 	ev.exit = !highInvalid && ibs.IsExitSignal(ibsVal, high)
-	ev.nearEntry = ibsVal <= low+nearDelta
-	ev.nearExit = ibsVal >= high-nearDelta
 	return ev
 }
 

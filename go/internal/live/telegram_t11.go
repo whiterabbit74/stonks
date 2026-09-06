@@ -24,26 +24,24 @@ func (e *Engine) buildT11Text(minutes int, today, provider string, rows []t1Watc
 	closeHM, short := e.sessionCloseLabel()
 	header := fmt.Sprintf("🕓 %s → close · %s ET (%s)%s", tgBold(fmt.Sprintf("%dm", minutes)), tgBold(closeHM), tgBold(today), shortSuffix(short))
 
-	var entries, exits []string
+	var exits []string
 	var body []string
 	for _, r := range sorted {
 		posOpen := openSym != "" && store.SafeTicker(r.sym) == openSym
-		near := r.eval.nearEntry
+		// Strictly the same signal the engine acts on: an IBS merely close to
+		// the threshold used to be tagged ENTRY here and then, correctly, not
+		// traded at T-1, which reads as a bot that changed its mind.
+		signal := r.eval.entry
 		if posOpen {
-			near = r.eval.nearExit
+			signal = r.eval.exit
 		}
 		priceStr := formatMoneyDash(r.eval.price)
 		ibsShort := "—"
 		if r.eval.ok {
 			ibsShort = formatIbsDot(r.eval.ibs, 2)
 		}
-		if r.eval.ok && near && !r.eval.blocked {
-			item := fmt.Sprintf("%s · IBS %s", tgBold(r.sym), tgBold(formatIbsDot(r.eval.ibs, 3)))
-			if posOpen {
-				exits = append(exits, item)
-			} else {
-				entries = append(entries, item)
-			}
+		if posOpen && signal && !r.eval.blocked {
+			exits = append(exits, fmt.Sprintf("%s · IBS %s", tgBold(r.sym), tgBold(formatIbsDot(r.eval.ibs, 3))))
 		}
 		posLabel := "FLAT"
 		if posOpen {
@@ -55,7 +53,7 @@ func (e *Engine) buildT11Text(minutes int, today, provider string, rows []t1Watc
 		tag := ""
 		if r.eval.blocked {
 			tag = "⚠️"
-		} else if r.eval.ok && near {
+		} else if signal {
 			if posOpen {
 				tag = "EXIT"
 			} else {
@@ -69,9 +67,13 @@ func (e *Engine) buildT11Text(minutes int, today, provider string, rows []t1Watc
 		body = append(body, line1+"\n"+line2)
 	}
 
+	// "the ticker that would be picked if the session ended now" — the lowest
+	// IBS strictly below its threshold, the same pick decideLiveAction makes.
+	// Still shown while a position is open: T-1 exits and re-enters inside one
+	// cycle, so the candidate is exactly what happens after the exit fills.
 	entryLine := "ENTRY: —"
-	if len(entries) > 0 {
-		entryLine = "🔔 ENTRY: " + strings.Join(entries, ", ")
+	if sym, ibsVal, ok := bestEntryRow(sorted); ok {
+		entryLine = fmt.Sprintf("🔔 ENTRY: %s · IBS %s", tgBold(sym), tgBold(formatIbsDot(ibsVal, 3)))
 	}
 	exitLine := "EXIT: —"
 	if len(exits) > 0 {
