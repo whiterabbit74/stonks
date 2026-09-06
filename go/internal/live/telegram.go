@@ -143,9 +143,9 @@ func (e *Engine) Simulate(stage string) (SimulateResult, error) {
 func (e *Engine) Aggregate(minutesUntilClose int, opts AggregateOpts) (SimulateResult, error) {
 	stage := "overview"
 	switch {
-	case minutesUntilClose >= 10 && minutesUntilClose <= 12:
+	case minutesUntilClose >= 10 && minutesUntilClose <= 11:
 		stage = "overview"
-	case minutesUntilClose >= 0 && minutesUntilClose <= 2:
+	case minutesUntilClose >= 0 && minutesUntilClose <= 1:
 		stage = "confirmations"
 	default:
 		return SimulateResult{Stage: "wrong_time", DryRun: opts.DryRun, Reason: "wrong_time"}, nil
@@ -288,7 +288,7 @@ func (e *Engine) Aggregate(minutesUntilClose int, opts AggregateOpts) (SimulateR
 		}
 	}
 
-	text := e.buildT1Text(today, rows, blocking, opts.DryRun, waitFill, exitRes, entryRes, integ)
+	text := e.buildT1Text(minutesUntilClose, rows, blocking, opts.DryRun, waitFill, exitRes, entryRes, integ)
 	res, err := e.finishSend(&out, text, opts)
 	if res.Sent {
 		if ema := buildEmaDecisionMessage(emaAlerts); ema != "" {
@@ -365,8 +365,7 @@ type t1Watch struct {
 	eval watchEval
 }
 
-func (e *Engine) buildT1Text(today string, rows []t1Watch, blocking map[string]any, dryRun, waitFill bool, exitRes, entryRes EvalResult, integ []IntegrityResult) string {
-	_ = today
+func (e *Engine) buildT1Text(minutes int, rows []t1Watch, blocking map[string]any, dryRun, waitFill bool, exitRes, entryRes EvalResult, integ []IntegrityResult) string {
 	var decision []string
 	if block := FormatIntegrityWarningBlock(integ); block != "" {
 		var syms []string
@@ -470,7 +469,13 @@ func (e *Engine) buildT1Text(today string, rows []t1Watch, blocking map[string]a
 		}
 		position = fmt.Sprintf("Позиция: %s (вход %s по %s)", open["symbol"], nz(fmt.Sprint(open["entryDate"])), price)
 	}
-	lines := []string{"<b>⏱️ 1 минута до закрытия</b>", ""}
+	// The header states the minute the readings were taken on, so a T-1 that
+	// ran late cannot claim a minute it no longer had.
+	head := "<b>⏱️ 1 минута до закрытия</b>"
+	if minutes != 1 {
+		head = fmt.Sprintf("<b>⏱️ %d мин до закрытия</b>", minutes)
+	}
+	lines := []string{head, ""}
 	if block := FormatIntegrityWarningBlock(integ); block != "" {
 		lines = append(lines, block, "")
 	}

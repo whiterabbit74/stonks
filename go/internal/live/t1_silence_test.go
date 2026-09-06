@@ -109,7 +109,7 @@ func TestT1TextSaysWhenNothingWasSubmitted(t *testing.T) {
 			"webull": {"action": "none", "reason": HealthMissing},
 		},
 	}
-	text := e.buildT1Text("2026-09-01", nil, nil, false, false, res, EvalResult{}, nil)
+	text := e.buildT1Text(1, nil, nil, false, false, res, EvalResult{}, nil)
 	if !strings.Contains(text, "заявка не отправлена") {
 		t.Fatalf("an unsubmitted decision must say so:\n%s", text)
 	}
@@ -118,7 +118,7 @@ func TestT1TextSaysWhenNothingWasSubmitted(t *testing.T) {
 	}
 
 	res.Broker = map[string]any{"webull": map[string]any{"submitted": true, "quantity": 3.0}}
-	text = e.buildT1Text("2026-09-01", nil, nil, false, false, res, EvalResult{}, nil)
+	text = e.buildT1Text(1, nil, nil, false, false, res, EvalResult{}, nil)
 	if strings.Contains(text, "заявка не отправлена") || !strings.Contains(text, "BUY MARKET отправлен") {
 		t.Fatalf("a real submission must still report as sent:\n%s", text)
 	}

@@ -592,12 +592,21 @@ func TestStartTickUsesWallClock(t *testing.T) {
 	}
 }
 
-func TestTickT1Until2Places(t *testing.T) {
+// The first tick inside the window owns it, so the upper bound is when the
+// decision is actually taken. until=2 would take it a minute before the
+// documented T-1, on readings a minute staler than the ones the ground rules
+// name.
+func TestTickT1WindowStartsAtOneMinute(t *testing.T) {
 	db, eng, br, _ := t1Engine(t)
-	now := time.Date(2026, 9, 1, 19, 58, 0, 0, time.UTC) // 15:58 ET, until=2 is still inside the T-1 window
-	RunTick(db, Deps{Live: eng}, now, func(JobLog) {})
+	early := time.Date(2026, 9, 1, 19, 58, 0, 0, time.UTC) // 15:58 ET, until=2
+	RunTick(db, Deps{Live: eng}, early, func(JobLog) {})
+	if len(br.Orders) != 0 {
+		t.Fatalf("until=2 is too early for T-1, orders=%+v", br.Orders)
+	}
+	onTime := time.Date(2026, 9, 1, 19, 59, 0, 0, time.UTC) // 15:59 ET, until=1
+	RunTick(db, Deps{Live: eng}, onTime, func(JobLog) {})
 	if len(br.Orders) != 1 {
-		t.Fatalf("until=2 must still place T-1, orders=%+v", br.Orders)
+		t.Fatalf("until=1 must place T-1, orders=%+v", br.Orders)
 	}
 }
 

@@ -236,7 +236,11 @@ func RunTick(db *store.DB, deps Deps, now time.Time, onEvent func(JobLog)) {
 		if until < 0 && until >= -5 {
 			reportMissedTelegram(db, eng, now, today, chat, "t1", until, onEvent)
 		}
-		if (until >= 10 && until <= 12) || (until >= 0 && until <= 2) {
+		// The first tick inside a window owns it, so the upper bound is when
+		// the message actually goes out: 12/2 sent the overview at T-12 and
+		// took the decision at T-2, a minute before the documented time. The
+		// lower bound is what tolerates a late tick, and it is unchanged.
+		if (until >= 10 && until <= 11) || (until >= 0 && until <= 1) {
 			_ = db.EnsureAggregateSlot(chat, today)
 			n, aggErr := runTelegramAggregation(db, deps, until)
 			detail := fmt.Sprintf("window until=%d watches=%d", until, n)
@@ -502,7 +506,7 @@ func RunTelegramAggregation(db *store.DB, deps Deps, until int) int {
 }
 
 func runTelegramAggregation(db *store.DB, deps Deps, until int) (int, error) {
-	if !((until >= 10 && until <= 12) || (until >= 0 && until <= 2)) {
+	if !((until >= 10 && until <= 11) || (until >= 0 && until <= 1)) {
 		return 0, nil
 	}
 	res, err := engine(db, deps).Aggregate(until, live.AggregateOpts{ForceSend: true, DryRun: until >= 10, UpdateState: true})

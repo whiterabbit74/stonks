@@ -147,7 +147,7 @@ func TestBuildT1TextEscapesBrokerError(t *testing.T) {
 		Decision: map[string]any{"action": "entry", "symbol": "AAPL"},
 		Broker:   map[string]any{"robinhood": OrderResult{Error: "qty < 1 & more"}},
 	}
-	text := e.buildT1Text("2026-09-01", nil, nil, false, false, EvalResult{}, entry, nil)
+	text := e.buildT1Text(1, nil, nil, false, false, EvalResult{}, entry, nil)
 	if strings.Contains(text, "qty < 1") {
 		t.Fatalf("raw broker error must be HTML-escaped, got %s", text)
 	}
@@ -172,7 +172,7 @@ func TestBuildT1TextNamesSubmitBroker(t *testing.T) {
 	if !res.Executed || len(rh.Orders) == 0 {
 		t.Fatalf("RH-only T-1 must submit: executed=%v orders=%d broker=%+v", res.Executed, len(rh.Orders), res.Broker)
 	}
-	text := e.buildT1Text("2026-09-01", nil, nil, false, false, EvalResult{}, res, nil)
+	text := e.buildT1Text(1, nil, nil, false, false, EvalResult{}, res, nil)
 	if !strings.Contains(text, "Robinhood") {
 		t.Fatalf("T-1 text must name Robinhood submit, got %s", text)
 	}
