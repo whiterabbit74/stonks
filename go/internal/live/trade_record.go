@@ -197,7 +197,7 @@ func (e *Engine) recordFill(t map[string]any, detail map[string]any, status stri
 		} else {
 			entryRec["entryPrice"] = fillPrice
 		}
-		if err := e.DB.InsertTrade("broker_trades", entryRec); err != nil {
+		if err := e.insertJournalRow("broker_trades", clientOrderID, entryRec); err != nil {
 			e.logAuto("local_trade_record_failed", meta.CorrelationID, map[string]any{
 				"table": "broker_trades", "error": err.Error(), "clientOrderId": clientOrderID,
 			})
@@ -214,7 +214,7 @@ func (e *Engine) recordFill(t map[string]any, detail map[string]any, status stri
 			} else {
 				monRec["entryPrice"] = fillPrice
 			}
-			if err := e.DB.InsertTrade("trades", monRec); err != nil {
+			if err := e.insertJournalRow("trades", monID, monRec); err != nil {
 				e.logAuto("local_trade_record_failed", meta.CorrelationID, map[string]any{
 					"table": "trades", "error": err.Error(), "clientOrderId": clientOrderID,
 				})
@@ -335,6 +335,21 @@ func (e *Engine) logJournalSQLError(corr, broker, op string, err error) {
 		"op": op, "broker": broker, "error": err.Error(),
 	})
 	e.raiseTrackerPersistBlock(broker)
+}
+
+// insertJournalRow writes the fill row, treating "it is already there" as
+// success. recordFill can legitimately run twice for one order — a manual
+// ResolveTracker alongside the automatic poll, or a poll after a restart —
+// and the id is the client order id, so the second insert collides on the
+// primary key. Reporting that as a persistence failure would raise the
+// tracker-persist block and stop the broker's entries until an operator
+// clears it, for an order that is in fact journaled exactly once.
+func (e *Engine) insertJournalRow(table, id string, rec map[string]any) error {
+	err := e.DB.InsertTrade(table, rec)
+	if err != nil && e.getTrade(table, id) != nil {
+		return nil
+	}
+	return err
 }
 
 func (e *Engine) raiseTrackerPersistBlock(broker string) {
