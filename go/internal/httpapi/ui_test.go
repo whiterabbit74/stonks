@@ -1580,13 +1580,30 @@ func TestUpdateChromeSkipsNullBadge(t *testing.T) {
 	}
 }
 
-func TestNavigateClearsTickersWithoutQuery(t *testing.T) {
+// A ?tickers= link owns the page: it fills the field, drops the previous
+// backtest and asks for a new one. A plain navigation without the query keeps
+// whatever the user had typed instead of blanking it.
+func TestURLTickersDriveStocksPage(t *testing.T) {
 	a := readWeb(t, "js/app.js")
-	fn := jsFn(a, "navigate")
-	if !strings.Contains(fn, "tickerInput") {
-		t.Fatal("navigate must sync tickerInput from the URL")
+	if !strings.Contains(jsFn(a, "navigate"), "applyURLTickers()") {
+		t.Fatal("navigate must apply ?tickers= from the URL")
 	}
-	if !strings.Contains(fn, "tickerInput = ''") && !strings.Contains(fn, `tickerInput = ""`) {
-		t.Fatal("navigate without ?tickers must clear a leftover ticker field")
+	fn := jsFn(a, "applyURLTickers")
+	if fn == "" {
+		t.Fatal("applyURLTickers missing")
+	}
+	if !strings.Contains(fn, "if (!q) return;") {
+		t.Fatal("no ?tickers= must leave the ticker field alone")
+	}
+	for _, want := range []string{"state.result = null", "state.stockTab = 'summary'", "state.pendingRun = true", "state.leverage = 100"} {
+		if !strings.Contains(fn, want) {
+			t.Fatalf("applyURLTickers must set %s", want)
+		}
+	}
+	if !strings.Contains(a, "state.pendingRun = false;\n        runStocks();") {
+		t.Fatal("the stocks page must consume pendingRun by running the backtest")
+	}
+	if strings.Contains(a, "tickerInput = ''") {
+		t.Fatal("navigation must not blank the ticker field")
 	}
 }
