@@ -9,12 +9,19 @@ import (
 	"mktorder.com/go/internal/tradingdate"
 )
 
-func (e *Engine) getTrade(table, id string) map[string]any {
-	row, _ := e.DB.GetTrade(table, id)
-	return row
+// getTrade returns the row, or nil with an error. Callers that write on the
+// basis of "there is no such trade" must tell the two apart: a failed read is
+// not an absent trade.
+func (e *Engine) getTrade(table, id string) (map[string]any, error) {
+	row, err := e.DB.GetTrade(table, id)
+	if err != nil {
+		e.logAuto("journal_read_failed", "", map[string]any{"table": table, "op": "get_trade", "id": id, "error": err.Error()})
+		return nil, err
+	}
+	return row, nil
 }
 
-func (e *Engine) openTradeBySymbol(table, symbol, preferID, broker string) map[string]any {
+func (e *Engine) openTradeBySymbol(table, symbol, preferID, broker string) (map[string]any, error) {
 	want := store.SafeTicker(symbol)
 	wantBroker := strings.ToLower(strings.TrimSpace(broker))
 	matchesBroker := func(t map[string]any) bool {
@@ -32,16 +39,23 @@ func (e *Engine) openTradeBySymbol(table, symbol, preferID, broker string) map[s
 			if table == "broker_trades" && strings.HasPrefix(id, "m-") {
 				continue
 			}
-			t := e.getTrade(table, id)
+			t, err := e.getTrade(table, id)
+			if err != nil {
+				return nil, err
+			}
 			if t == nil {
 				continue
 			}
 			if fmt.Sprint(t["status"]) == "open" && store.SafeTicker(fmt.Sprint(t["symbol"])) == want && matchesBroker(t) {
-				return t
+				return t, nil
 			}
 		}
 	}
-	rows, _ := e.DB.ListTrades(table)
+	rows, err := e.DB.ListTrades(table)
+	if err != nil {
+		e.logAuto("journal_read_failed", "", map[string]any{"table": table, "op": "open_trade_by_symbol", "symbol": symbol, "error": err.Error()})
+		return nil, err
+	}
 	var fallback map[string]any
 	for _, t := range rows {
 		if fmt.Sprint(t["status"]) != "open" {
@@ -55,13 +69,17 @@ func (e *Engine) openTradeBySymbol(table, symbol, preferID, broker string) map[s
 		}
 		id := fmt.Sprint(t["id"])
 		if preferID != "" && (id == preferID || id == "m-"+preferID) {
-			return t
+			return t, nil
 		}
 		if table == "trades" {
-			if full := e.getTrade("trades", id); full != nil {
+			full, err := e.getTrade("trades", id)
+			if err != nil {
+				return nil, err
+			}
+			if full != nil {
 				linked := fmt.Sprint(full["linkedBrokerTradeId"])
 				if preferID != "" && linked == preferID {
-					return full
+					return full, nil
 				}
 			}
 		}
@@ -69,7 +87,7 @@ func (e *Engine) openTradeBySymbol(table, symbol, preferID, broker string) map[s
 			fallback = t
 		}
 	}
-	return fallback
+	return fallback, nil
 }
 
 func (e *Engine) closeTradeWithPnL(table, id string, exitPrice float64, exitDate string, exitIBS any, note string) {
@@ -176,7 +194,18 @@ func (e *Engine) recordFill(t map[string]any, detail map[string]any, status stri
 	}
 
 	if action == "entry" {
-		if existing := e.getTrade("broker_trades", clientOrderID); existing != nil {
+		existing, err := e.getTrade("broker_trades", clientOrderID)
+		if err != nil {
+			// The fill is real; we just cannot see whether it is journaled.
+			// Inserting blind would either duplicate the row or raise a false
+			// persistence failure, so block the tracker for an operator.
+			e.logAuto("local_trade_record_failed", meta.CorrelationID, map[string]any{
+				"table": "broker_trades", "error": err.Error(), "clientOrderId": clientOrderID,
+			})
+			e.raiseTrackerPersistBlock(brokerName)
+			return
+		}
+		if existing != nil {
 			if fillQty > asFloat(existing["quantity"]) {
 				_ = e.execJournalSQL(meta.CorrelationID, brokerName, "upsert_broker_qty",
 					`UPDATE broker_trades SET quantity=?, filled_qty=? WHERE id=?`, fillQty, fillQty, clientOrderID)
@@ -204,7 +233,15 @@ func (e *Engine) recordFill(t map[string]any, detail map[string]any, status stri
 			e.raiseTrackerPersistBlock(brokerName)
 		}
 		monID := "m-" + clientOrderID
-		if e.getTrade("trades", monID) == nil {
+		mon, err := e.getTrade("trades", monID)
+		if err != nil {
+			e.logAuto("local_trade_record_failed", meta.CorrelationID, map[string]any{
+				"table": "trades", "error": err.Error(), "clientOrderId": clientOrderID,
+			})
+			e.raiseTrackerPersistBlock(brokerName)
+			return
+		}
+		if mon == nil {
 			monRec := map[string]any{
 				"id": monID, "symbol": symbol, "status": "open",
 				"entryDate": dateKey, "source": source, "quantity": fillQty,
@@ -231,13 +268,26 @@ func (e *Engine) recordFill(t map[string]any, detail map[string]any, status stri
 	}
 
 	if action == "exit" {
-		row := e.openTradeBySymbol("broker_trades", symbol, clientOrderID, brokerName)
-		if row == nil {
-			row = e.openTradeBySymbol("broker_trades", symbol, "", brokerName)
+		// A read failure here would leave the exit fill unjournaled and the
+		// position looking open forever, without a single word to the
+		// operator. Stop and raise the block instead.
+		row, err := e.openTradeBySymbol("broker_trades", symbol, clientOrderID, brokerName)
+		if err == nil && row == nil {
+			row, err = e.openTradeBySymbol("broker_trades", symbol, "", brokerName)
 		}
-		mon := e.openTradeBySymbol("trades", symbol, clientOrderID, "")
-		if mon == nil {
-			mon = e.openTradeBySymbol("trades", symbol, "", "")
+		var mon map[string]any
+		if err == nil {
+			mon, err = e.openTradeBySymbol("trades", symbol, clientOrderID, "")
+			if err == nil && mon == nil {
+				mon, err = e.openTradeBySymbol("trades", symbol, "", "")
+			}
+		}
+		if err != nil {
+			e.logAuto("local_trade_close_failed", meta.CorrelationID, map[string]any{
+				"symbol": symbol, "clientOrderId": clientOrderID, "error": err.Error(),
+			})
+			e.raiseTrackerPersistBlock(brokerName)
+			return
 		}
 		if mon != nil && store.SafeTicker(fmt.Sprint(mon["symbol"])) == symbol {
 			if row != nil {
@@ -298,7 +348,15 @@ func (e *Engine) reduceOpenQuantity(symbol, preferID, broker string, sold, exitP
 		if table == "trades" {
 			name = ""
 		}
-		t := e.openTradeBySymbol(table, symbol, preferID, name)
+		t, err := e.openTradeBySymbol(table, symbol, preferID, name)
+		if err != nil {
+			e.logAuto("local_trade_close_failed", "", map[string]any{
+				"table": table, "symbol": symbol, "clientOrderId": preferID,
+				"op": "partial_exit", "error": err.Error(),
+			})
+			e.raiseTrackerPersistBlock(broker)
+			return
+		}
 		if t == nil {
 			continue
 		}
@@ -346,8 +404,10 @@ func (e *Engine) logJournalSQLError(corr, broker, op string, err error) {
 // clears it, for an order that is in fact journaled exactly once.
 func (e *Engine) insertJournalRow(table, id string, rec map[string]any) error {
 	err := e.DB.InsertTrade(table, rec)
-	if err != nil && e.getTrade(table, id) != nil {
-		return nil
+	if err != nil {
+		if row, gerr := e.getTrade(table, id); gerr == nil && row != nil {
+			return nil
+		}
 	}
 	return err
 }
@@ -373,11 +433,12 @@ func (e *Engine) deletePhantom(clientOrderID, symbol string) {
 		return
 	}
 	for _, table := range []string{"broker_trades", "trades"} {
-		if t := e.getTrade(table, clientOrderID); t != nil && fmt.Sprint(t["status"]) == "open" {
-			_ = e.DB.DeleteTrade(table, clientOrderID)
-		}
-		if t := e.getTrade(table, "m-"+clientOrderID); t != nil && fmt.Sprint(t["status"]) == "open" {
-			_ = e.DB.DeleteTrade(table, "m-"+clientOrderID)
+		for _, id := range []string{clientOrderID, "m-" + clientOrderID} {
+			// A failed read leaves the phantom row in place; getTrade has
+			// already logged it, so the operator sees why it survived.
+			if t, err := e.getTrade(table, id); err == nil && t != nil && fmt.Sprint(t["status"]) == "open" {
+				_ = e.DB.DeleteTrade(table, id)
+			}
 		}
 	}
 }

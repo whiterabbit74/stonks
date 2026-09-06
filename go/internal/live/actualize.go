@@ -208,8 +208,18 @@ func recordActualizeAttempt(e *Engine, today string, out ActualizeResult) {
 }
 
 func (e *Engine) UpdatePositions() map[string]any {
-	watches, _ := e.DB.ListWatches()
-	monitor, _ := e.DB.ListTrades("trades")
+	// Both reads decide writes: an unreadable journal would look like "no open
+	// trades" and clear isOpenPosition/currentTradeId on every watch, and an
+	// unreadable watchlist would silently update nothing while reporting
+	// success. Fail closed instead of patching on invented state.
+	watches, err := e.DB.ListWatches()
+	if err != nil {
+		return updatePositionsFailed("watches", err)
+	}
+	monitor, err := e.DB.ListTrades("trades")
+	if err != nil {
+		return updatePositionsFailed("trades", err)
+	}
 	openBySym := map[string]map[string]any{}
 	for _, t := range store.OpenBrokerTrades(monitor) {
 		sym := store.SafeTicker(fmt.Sprint(t["symbol"]))
@@ -249,6 +259,17 @@ func (e *Engine) UpdatePositions() map[string]any {
 		"updated":   len(changes),
 		"changes":   changes,
 		"openTrade": open,
+	}
+}
+
+func updatePositionsFailed(table string, err error) map[string]any {
+	return map[string]any{
+		"success": false,
+		"error":   "state_read_failed",
+		"table":   table,
+		"message": err.Error(),
+		"updated": 0,
+		"changes": []map[string]any{},
 	}
 }
 

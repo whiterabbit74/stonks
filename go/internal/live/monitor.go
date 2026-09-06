@@ -180,7 +180,7 @@ func (e *Engine) hydrateOpenTrades(table string, rows []map[string]any) []map[st
 	var out []map[string]any
 	for _, t := range store.OpenBrokerTrades(rows) {
 		if id := fmt.Sprint(t["id"]); id != "" && id != "<nil>" {
-			if full := e.getTrade(table, id); full != nil {
+			if full, err := e.getTrade(table, id); err == nil && full != nil {
 				t = full
 			}
 		}
@@ -245,7 +245,7 @@ func (e *Engine) monitorWithoutOpenBrokerIssues(openM map[string]any, broker []m
 	linked := fmt.Sprint(openM["linkedBrokerTradeId"])
 	closedLinked := map[string]any(nil)
 	if linked != "" && linked != "<nil>" {
-		if t := e.getTrade("broker_trades", linked); t != nil && fmt.Sprint(t["status"]) == "closed" {
+		if t, err := e.getTrade("broker_trades", linked); err == nil && t != nil && fmt.Sprint(t["status"]) == "closed" {
 			closedLinked = t
 		}
 	}
@@ -414,9 +414,9 @@ func (e *Engine) applyConsistencyAction(action map[string]any) bool {
 	case "close_linked_monitor_trade", "close_legacy_monitor_trade":
 		brokerID := fmt.Sprint(action["brokerTradeId"])
 		monID := fmt.Sprint(action["monitorTradeId"])
-		broker := e.getTrade("broker_trades", brokerID)
-		mon := e.getTrade("trades", monID)
-		if broker == nil || mon == nil {
+		broker, berr := e.getTrade("broker_trades", brokerID)
+		mon, merr := e.getTrade("trades", monID)
+		if berr != nil || merr != nil || broker == nil || mon == nil {
 			return false
 		}
 		if store.SafeTicker(fmt.Sprint(mon["symbol"])) != store.SafeTicker(fmt.Sprint(broker["symbol"])) {
@@ -431,12 +431,14 @@ func (e *Engine) applyConsistencyAction(action map[string]any) bool {
 		return true
 	case "project_monitor_from_broker":
 		brokerID := fmt.Sprint(action["brokerTradeId"])
-		broker := e.getTrade("broker_trades", brokerID)
-		if broker == nil || fmt.Sprint(broker["status"]) != "open" {
+		broker, err := e.getTrade("broker_trades", brokerID)
+		if err != nil || broker == nil || fmt.Sprint(broker["status"]) != "open" {
 			return false
 		}
 		monID := "m-" + brokerID
-		if e.getTrade("trades", monID) != nil {
+		// A read failure is not "no projection yet": inserting on it would
+		// duplicate the monitor row.
+		if mon, err := e.getTrade("trades", monID); err != nil || mon != nil {
 			return false
 		}
 		if err := e.DB.InsertTrade("trades", map[string]any{
@@ -449,7 +451,8 @@ func (e *Engine) applyConsistencyAction(action map[string]any) bool {
 		if err := e.DB.LinkMonitorToBrokerTrade(monID, brokerID); err != nil {
 			return false
 		}
-		return e.getTrade("trades", monID) != nil
+		mon, err := e.getTrade("trades", monID)
+		return err == nil && mon != nil
 	}
 	return false
 }

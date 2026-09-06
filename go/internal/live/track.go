@@ -706,8 +706,10 @@ var exitFillWaitStep = 500 * time.Millisecond
 // so a true return means the re-entry decision sees the position as gone.
 func (e *Engine) awaitFlatAfterExit() bool {
 	for attempt := 0; attempt < exitFillWaitAttempts; attempt++ {
-		rows, _ := e.DB.ListTrades("broker_trades")
-		if store.OpenBrokerTrade(rows) == nil {
+		// An unreadable journal is not a flat account: treating the read
+		// failure as "no open trade" would let the re-entry fire on top of a
+		// position that may still be open.
+		if flat, err := e.journalFlat(); err == nil && flat {
 			return true
 		}
 		t, err := e.DB.FindPendingTracker("", "exit")
@@ -721,6 +723,17 @@ func (e *Engine) awaitFlatAfterExit() bool {
 		e.pollOneTracker(t)
 		e.sleep(exitFillWaitStep)
 	}
-	rows, _ := e.DB.ListTrades("broker_trades")
-	return store.OpenBrokerTrade(rows) == nil
+	flat, err := e.journalFlat()
+	return err == nil && flat
+}
+
+// journalFlat reports whether the broker journal has no open trade. The error
+// is the point: a failed read must never be read as flat.
+func (e *Engine) journalFlat() (bool, error) {
+	rows, err := e.DB.ListTrades("broker_trades")
+	if err != nil {
+		e.logAuto("journal_read_failed", "", map[string]any{"table": "broker_trades", "op": "await_flat", "error": err.Error()})
+		return false, err
+	}
+	return store.OpenBrokerTrade(rows) == nil, nil
 }
