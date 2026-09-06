@@ -126,6 +126,7 @@ type MemoryBroker struct {
 	FailPositionsN int
 	FailDetail     error
 	FailOpenOrders error
+	FailCancel     error
 	// ListingLag makes OrderDetail return ErrOrderUnavailable unless SetDetail
 	// has an explicit row for that id. Models Robinhood list-based lookup.
 	ListingLag   bool
@@ -391,6 +392,9 @@ func (m *MemoryBroker) OrderDetail(clientOrderID string) (map[string]any, error)
 func (m *MemoryBroker) CancelOrder(clientOrderID string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.FailCancel != nil {
+		return m.FailCancel
+	}
 	m.Cancelled = append(m.Cancelled, clientOrderID)
 	return nil
 }

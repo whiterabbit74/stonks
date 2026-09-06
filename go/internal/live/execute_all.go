@@ -1,6 +1,7 @@
 package live
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -207,8 +208,12 @@ func (e *Engine) submitEvaluated(w execWindow, ev EvalResult, trigger, corr, bro
 	if action == "entry" {
 		cancelled, err := e.cancelOpenOrdersBeforeEntry(w, symbol, br)
 		if err != nil {
-			ev.Broker = map[string]any{"submitted": false, "error": "open_orders_unavailable"}
-			e.logAuto("execution_blocked", corr, map[string]any{"symbol": symbol, "reason": "open_orders_unavailable", "error": err.Error()})
+			reason := "open_orders_unavailable"
+			if errors.Is(err, ErrOpenOrderCancelFailed) {
+				reason = "open_order_cancel_failed"
+			}
+			ev.Broker = map[string]any{"submitted": false, "error": reason}
+			e.logAuto("execution_blocked", corr, map[string]any{"symbol": symbol, "reason": reason, "error": err.Error()})
 			return ev
 		}
 		if len(cancelled) > 0 {

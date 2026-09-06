@@ -23,6 +23,11 @@ var ErrTestBuyDisabled = errors.New("Тестовая покупка через 
 // be started. See P1-1 in AUTOTRADE_ROADMAP.md.
 var ErrExecutionDeadlineExceeded = errors.New("execution deadline exceeded")
 
+// ErrOpenOrderCancelFailed is returned by cancelOpenOrdersBeforeEntry when our
+// own working order on the entry symbol could not be cancelled. The entry must
+// not be sent next to it. See AUD-025.
+var ErrOpenOrderCancelFailed = errors.New("open_order_cancel_failed")
+
 func (e *Engine) AutoConfig() map[string]any {
 	settings := e.DB.Settings()
 	cfg, _ := settings["autoTrading"].(map[string]any)
@@ -1324,6 +1329,10 @@ func envOr(k, d string) string {
 // cancelOpenOrdersBeforeEntry clears this engine's own unfilled orders on the
 // symbol it is about to buy. Orders it did not place are left alone. w bounds
 // the read by the same T-1 budget as the entry that follows it.
+//
+// A failed cancel is an error, not a warning: the caller must not send a new
+// entry while our own working order may still be live on the same symbol —
+// see AUD-025.
 func (e *Engine) cancelOpenOrdersBeforeEntry(w execWindow, symbol string, br Broker) ([]string, error) {
 	if br == nil || e.DB == nil {
 		return nil, nil
@@ -1362,7 +1371,7 @@ func (e *Engine) cancelOpenOrdersBeforeEntry(w execWindow, symbol string, br Bro
 		}
 		if err := br.CancelOrder(id); err != nil {
 			_ = e.DB.AppendAutotradeLog("open_order_cancel_failed " + id + " " + err.Error())
-			continue
+			return cancelled, fmt.Errorf("%w %s: %v", ErrOpenOrderCancelFailed, id, err)
 		}
 		cancelled = append(cancelled, id)
 		_ = e.DB.AppendAutotradeLog("open_orders_cancelled " + id + " " + want)
