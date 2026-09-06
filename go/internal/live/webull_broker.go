@@ -16,10 +16,6 @@ type LiveBroker struct {
 	Client *webull.Client
 }
 
-func EnvBroker() Broker {
-	return EnvBrokerDB(nil)
-}
-
 func EnvBrokerDB(db *store.DB) Broker {
 	if os.Getenv("WEBULL_APP_KEY") == "" || os.Getenv("WEBULL_APP_SECRET") == "" {
 		return nil

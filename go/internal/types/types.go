@@ -64,9 +64,9 @@ type RiskManagement struct {
 }
 
 type Commission struct {
-	Type       string   `json:"type"`
-	Fixed      float64  `json:"fixed,omitempty"`
-	Percentage float64  `json:"percentage,omitempty"`
+	Type       string  `json:"type"`
+	Fixed      float64 `json:"fixed,omitempty"`
+	Percentage float64 `json:"percentage,omitempty"`
 }
 
 type PositionSizing struct {
@@ -75,57 +75,57 @@ type PositionSizing struct {
 }
 
 type TradeContext struct {
-	Ticker                   string             `json:"ticker,omitempty"`
-	MarketConditions         string             `json:"marketConditions,omitempty"`
-	IndicatorValues          map[string]float64 `json:"indicatorValues,omitempty"`
-	Volatility               float64            `json:"volatility,omitempty"`
-	Trend                    string             `json:"trend,omitempty"`
-	GrossProceeds            float64            `json:"grossProceeds,omitempty"`
-	GrossCost                float64            `json:"grossCost,omitempty"`
-	TotalCommissions         float64            `json:"totalCommissions,omitempty"`
-	CommissionPaid           float64            `json:"commissionPaid,omitempty"`
-	CurrentCapitalAfterExit  float64            `json:"currentCapitalAfterExit,omitempty"`
-	CapitalBeforeExit        float64            `json:"capitalBeforeExit,omitempty"`
-	InitialInvestment        float64            `json:"initialInvestment,omitempty"`
-	GrossInvestment          float64            `json:"grossInvestment,omitempty"`
-	Leverage                 float64            `json:"leverage,omitempty"`
-	LeverageDebt             float64            `json:"leverageDebt,omitempty"`
-	NetProceeds              float64            `json:"netProceeds,omitempty"`
-	MarginUsed               float64            `json:"marginUsed,omitempty"`
-	MarginTriggerType        string             `json:"marginTriggerType,omitempty"`
-	MaintenanceMarginPct     float64            `json:"maintenanceMarginPct,omitempty"`
-	MarginRatioAtTrigger     float64            `json:"marginRatioAtTrigger,omitempty"`
-	StopLoss                 float64            `json:"stopLoss,omitempty"`
-	TakeProfit               float64            `json:"takeProfit,omitempty"`
-	PriceBasis               string             `json:"priceBasis,omitempty"`
-	PriceBasisLabel          string             `json:"priceBasisLabel,omitempty"`
-	QuantityBasis            string             `json:"quantityBasis,omitempty"`
-	EntryRawClose            *float64           `json:"entryRawClose,omitempty"`
-	ExitRawClose             *float64           `json:"exitRawClose,omitempty"`
-	EntryIndexPrice          float64            `json:"entryIndexPrice,omitempty"`
-	ExitIndexPrice           float64            `json:"exitIndexPrice,omitempty"`
+	Ticker                  string             `json:"ticker,omitempty"`
+	MarketConditions        string             `json:"marketConditions,omitempty"`
+	IndicatorValues         map[string]float64 `json:"indicatorValues,omitempty"`
+	Volatility              float64            `json:"volatility,omitempty"`
+	Trend                   string             `json:"trend,omitempty"`
+	GrossProceeds           float64            `json:"grossProceeds,omitempty"`
+	GrossCost               float64            `json:"grossCost,omitempty"`
+	TotalCommissions        float64            `json:"totalCommissions,omitempty"`
+	CommissionPaid          float64            `json:"commissionPaid,omitempty"`
+	CurrentCapitalAfterExit float64            `json:"currentCapitalAfterExit,omitempty"`
+	CapitalBeforeExit       float64            `json:"capitalBeforeExit,omitempty"`
+	InitialInvestment       float64            `json:"initialInvestment,omitempty"`
+	GrossInvestment         float64            `json:"grossInvestment,omitempty"`
+	Leverage                float64            `json:"leverage,omitempty"`
+	LeverageDebt            float64            `json:"leverageDebt,omitempty"`
+	NetProceeds             float64            `json:"netProceeds,omitempty"`
+	MarginUsed              float64            `json:"marginUsed,omitempty"`
+	MarginTriggerType       string             `json:"marginTriggerType,omitempty"`
+	MaintenanceMarginPct    float64            `json:"maintenanceMarginPct,omitempty"`
+	MarginRatioAtTrigger    float64            `json:"marginRatioAtTrigger,omitempty"`
+	StopLoss                float64            `json:"stopLoss,omitempty"`
+	TakeProfit              float64            `json:"takeProfit,omitempty"`
+	PriceBasis              string             `json:"priceBasis,omitempty"`
+	PriceBasisLabel         string             `json:"priceBasisLabel,omitempty"`
+	QuantityBasis           string             `json:"quantityBasis,omitempty"`
+	EntryRawClose           *float64           `json:"entryRawClose,omitempty"`
+	ExitRawClose            *float64           `json:"exitRawClose,omitempty"`
+	EntryIndexPrice         float64            `json:"entryIndexPrice,omitempty"`
+	ExitIndexPrice          float64            `json:"exitIndexPrice,omitempty"`
 }
 
 type Trade struct {
-	ID          string        `json:"id"`
-	EntryDate   string        `json:"entryDate"`
-	ExitDate    string        `json:"exitDate"`
-	EntryPrice  float64       `json:"entryPrice"`
-	ExitPrice   float64       `json:"exitPrice"`
-	Quantity    float64       `json:"quantity"`
-	PnL         float64       `json:"pnl"`
-	PnLPercent  float64       `json:"pnlPercent"`
-	Duration    int           `json:"duration"`
-	ExitReason  string        `json:"exitReason"`
-	Context     *TradeContext `json:"context,omitempty"`
-	OptionType  string        `json:"optionType,omitempty"`
-	Strike      float64       `json:"strike,omitempty"`
-	ExpirationDate string     `json:"expirationDate,omitempty"`
-	ImpliedVolAtEntry float64 `json:"impliedVolAtEntry,omitempty"`
-	ImpliedVolAtExit  float64 `json:"impliedVolAtExit,omitempty"`
-	OptionEntryPrice  float64 `json:"optionEntryPrice,omitempty"`
-	OptionExitPrice   float64 `json:"optionExitPrice,omitempty"`
-	Contracts         float64 `json:"contracts,omitempty"`
+	ID                string        `json:"id"`
+	EntryDate         string        `json:"entryDate"`
+	ExitDate          string        `json:"exitDate"`
+	EntryPrice        float64       `json:"entryPrice"`
+	ExitPrice         float64       `json:"exitPrice"`
+	Quantity          float64       `json:"quantity"`
+	PnL               float64       `json:"pnl"`
+	PnLPercent        float64       `json:"pnlPercent"`
+	Duration          int           `json:"duration"`
+	ExitReason        string        `json:"exitReason"`
+	Context           *TradeContext `json:"context,omitempty"`
+	OptionType        string        `json:"optionType,omitempty"`
+	Strike            float64       `json:"strike,omitempty"`
+	ExpirationDate    string        `json:"expirationDate,omitempty"`
+	ImpliedVolAtEntry float64       `json:"impliedVolAtEntry,omitempty"`
+	ImpliedVolAtExit  float64       `json:"impliedVolAtExit,omitempty"`
+	OptionEntryPrice  float64       `json:"optionEntryPrice,omitempty"`
+	OptionExitPrice   float64       `json:"optionExitPrice,omitempty"`
+	Contracts         float64       `json:"contracts,omitempty"`
 }
 
 type EquityPoint struct {
@@ -171,43 +171,43 @@ type PerformanceMetrics struct {
 }
 
 type BacktestMetrics struct {
-	TotalReturn        float64 `json:"totalReturn"`
-	CAGR               float64 `json:"cagr"`
-	WinRate            float64 `json:"winRate"`
-	TotalTrades        int     `json:"totalTrades"`
-	WinningTrades      int     `json:"winningTrades"`
-	LosingTrades       int     `json:"losingTrades"`
-	ProfitFactor       float64 `json:"profitFactor"`
-	NetProfit          float64 `json:"netProfit"`
-	NetReturn          float64 `json:"netReturn"`
-	MaxDrawdown        float64 `json:"maxDrawdown"`
-	TotalContribution  float64 `json:"totalContribution"`
-	ContributionCount  int     `json:"contributionCount"`
+	TotalReturn       float64 `json:"totalReturn"`
+	CAGR              float64 `json:"cagr"`
+	WinRate           float64 `json:"winRate"`
+	TotalTrades       int     `json:"totalTrades"`
+	WinningTrades     int     `json:"winningTrades"`
+	LosingTrades      int     `json:"losingTrades"`
+	ProfitFactor      float64 `json:"profitFactor"`
+	NetProfit         float64 `json:"netProfit"`
+	NetReturn         float64 `json:"netReturn"`
+	MaxDrawdown       float64 `json:"maxDrawdown"`
+	TotalContribution float64 `json:"totalContribution"`
+	ContributionCount int     `json:"contributionCount"`
 }
 
 type BacktestResult struct {
-	Trades    []Trade             `json:"trades"`
-	Metrics   PerformanceMetrics  `json:"metrics"`
-	Equity    []EquityPoint       `json:"equity"`
-	Exposure  []ExposurePoint     `json:"exposure,omitempty"`
-	ChartData []ChartCandle       `json:"chartData,omitempty"`
-	Insights  []interface{}       `json:"insights,omitempty"`
+	Trades    []Trade            `json:"trades"`
+	Metrics   PerformanceMetrics `json:"metrics"`
+	Equity    []EquityPoint      `json:"equity"`
+	Exposure  []ExposurePoint    `json:"exposure,omitempty"`
+	ChartData []ChartCandle      `json:"chartData,omitempty"`
+	Insights  []interface{}      `json:"insights,omitempty"`
 }
 
 type CompactTrade struct {
-	ID          string   `json:"id"`
-	EntryDate   string   `json:"entryDate"`
-	ExitDate    string   `json:"exitDate"`
-	EntryPrice  float64  `json:"entryPrice"`
-	ExitPrice   float64  `json:"exitPrice"`
-	Quantity    float64  `json:"quantity"`
-	PnL         float64  `json:"pnl"`
-	PnLPercent  float64  `json:"pnlPercent"`
-	Duration    int      `json:"duration"`
-	ExitReason  string   `json:"exitReason"`
-	Ticker      *string  `json:"ticker"`
-	EntryIBS    *float64 `json:"entryIBS"`
-	ExitIBS     *float64 `json:"exitIBS"`
+	ID         string   `json:"id"`
+	EntryDate  string   `json:"entryDate"`
+	ExitDate   string   `json:"exitDate"`
+	EntryPrice float64  `json:"entryPrice"`
+	ExitPrice  float64  `json:"exitPrice"`
+	Quantity   float64  `json:"quantity"`
+	PnL        float64  `json:"pnl"`
+	PnLPercent float64  `json:"pnlPercent"`
+	Duration   int      `json:"duration"`
+	ExitReason string   `json:"exitReason"`
+	Ticker     *string  `json:"ticker"`
+	EntryIBS   *float64 `json:"entryIBS"`
+	ExitIBS    *float64 `json:"exitIBS"`
 }
 
 func Compact(t Trade) CompactTrade {
@@ -262,11 +262,11 @@ func IntOr(p *int, def int) int {
 
 func DefaultIBSStrategy() Strategy {
 	return Strategy{
-		ID:          "ibs-mean-reversion",
-		Name:        "IBS Mean Reversion",
-		Description: "IBS",
-		Type:        "ibs-mean-reversion",
-		Parameters:  StrategyParameters{LowIBS: F64(0.1), HighIBS: F64(0.75), MaxHoldDays: F64(30)},
+		ID:              "ibs-mean-reversion",
+		Name:            "IBS Mean Reversion",
+		Description:     "IBS",
+		Type:            "ibs-mean-reversion",
+		Parameters:      StrategyParameters{LowIBS: F64(0.1), HighIBS: F64(0.75), MaxHoldDays: F64(30)},
 		EntryConditions: []Condition{{Type: "indicator", Indicator: "IBS", Operator: "<", Value: 0.1}},
 		ExitConditions:  []Condition{{Type: "indicator", Indicator: "IBS", Operator: ">", Value: 0.75}},
 		RiskManagement: RiskManagement{

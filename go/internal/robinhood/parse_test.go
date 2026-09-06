@@ -25,7 +25,7 @@ func TestTradingDateIsFirstTenChars(t *testing.T) {
 
 func TestParseHistoricalsSymbolDropsUnlabeledBarsUnderOtherTicker(t *testing.T) {
 	raw, _ := json.Marshal(map[string]any{
-		"symbol": "MSFT",
+		"symbol":     "MSFT",
 		"instrument": "https://api.robinhood.com/instruments/msft-uuid/",
 		"historicals": []any{
 			map[string]any{"begins_at": "2024-01-02T00:00:00Z", "open_price": "400", "high_price": "401", "low_price": "399", "close_price": "400.5", "volume": "2"},

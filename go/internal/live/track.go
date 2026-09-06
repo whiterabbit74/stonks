@@ -365,23 +365,23 @@ func (e *Engine) pollTracker(t map[string]any) (bool, error) {
 				e.markExecutionUnknown(t, derr)
 				return true, nil
 			}
-				n, aerr := e.DB.BumpOrderTrackerAttempts(id)
-				if aerr != nil {
-					return false, aerr
-				}
-				if n >= 64 {
-					e.markExecutionUnknown(t, derr)
-					return true, derr
-				}
-				return false, derr
-			}
 			n, aerr := e.DB.BumpOrderTrackerAttempts(id)
 			if aerr != nil {
 				return false, aerr
 			}
 			if n >= 64 {
-				e.finalizeTracker(t, "expired")
+				e.markExecutionUnknown(t, derr)
 				return true, derr
+			}
+			return false, derr
+		}
+		n, aerr := e.DB.BumpOrderTrackerAttempts(id)
+		if aerr != nil {
+			return false, aerr
+		}
+		if n >= 64 {
+			e.finalizeTracker(t, "expired")
+			return true, derr
 		}
 		return false, derr
 	}
@@ -409,11 +409,11 @@ func (e *Engine) pollTracker(t map[string]any) (bool, error) {
 		e.logAuto("order_poll", e.metaCorr(id), map[string]any{
 			"clientOrderId": id, "status": status, "symbol": t["symbol"],
 		})
-			n, aerr := e.DB.BumpOrderTrackerAttempts(id)
-			if aerr != nil {
-				return false, aerr
-			}
-			if n >= 64 {
+		n, aerr := e.DB.BumpOrderTrackerAttempts(id)
+		if aerr != nil {
+			return false, aerr
+		}
+		if n >= 64 {
 			e.finalizeTracker(t, "expired")
 			return true, nil
 		}

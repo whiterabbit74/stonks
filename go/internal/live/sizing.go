@@ -287,11 +287,6 @@ func resolveEntryBalanceSizing(balancePayload any, autoTrading map[string]any, p
 	return entryFunds, buyingPower, baseCapital, nil
 }
 
-func EntryFunds(balancePayload any, autoTrading map[string]any) float64 {
-	funds, _, _, _ := resolveEntryBalanceSizing(balancePayload, autoTrading, nil, nil)
-	return funds
-}
-
 func ComputeOrderQuantity(currentPrice float64, autoTrading map[string]any, availableFunds float64) (float64, error) {
 	if !(currentPrice > 0) {
 		return 0, fmt.Errorf("Неверная рыночная цена для расчёта количества")

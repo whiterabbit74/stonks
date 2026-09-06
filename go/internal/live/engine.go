@@ -156,18 +156,18 @@ type Engine struct {
 	Now      func() time.Time
 	Sleep    func(time.Duration)
 
-	mu           sync.Mutex
-	reservations map[string]string
-	wheels       map[string]bool
-	wheelWG      sync.WaitGroup
-	stopWheels   bool
-	inFlight     map[string]bool
-	orderMeta    map[string]orderMeta
+	mu                 sync.Mutex
+	reservations       map[string]string
+	wheels             map[string]bool
+	wheelWG            sync.WaitGroup
+	stopWheels         bool
+	inFlight           map[string]bool
+	orderMeta          map[string]orderMeta
 	quoteCache         map[string]quoteCacheEntry
 	trackerPersistFail map[string]bool
 	activeBroker       string
-	lastRunAt    string
-	lastResult   any
+	lastRunAt          string
+	lastResult         any
 }
 
 type quoteCacheEntry struct {

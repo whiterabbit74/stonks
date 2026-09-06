@@ -25,4 +25,3 @@ func TestOrderStatusFieldIgnoresSceneType(t *testing.T) {
 		t.Fatalf("got %q", s)
 	}
 }
-

@@ -9,20 +9,20 @@ import (
 
 func TestBlackScholesGolden(t *testing.T) {
 	var g struct {
-		ATMCall           float64 `json:"atmCall"`
-		ATMPut            float64 `json:"atmPut"`
-		DeepOTMCall       float64 `json:"deepOtmCall"`
-		DeepITMCall       float64 `json:"deepItmCall"`
-		ExpiredCall       float64 `json:"expiredCall"`
-		ExpiredPut        float64 `json:"expiredPut"`
-		VolFlat           float64 `json:"volFlat"`
-		VolShort          float64 `json:"volShort"`
-		ExpirationFriday  string  `json:"expirationFriday"`
-		ExpirationOnFriday string `json:"expirationOnFriday"`
-		Expiration2000    string  `json:"expiration2000"`
-		Expiration1w      string  `json:"expiration1w"`
-		YearsToMaturity   float64 `json:"yearsToMaturity"`
-		YearsZero         float64 `json:"yearsZero"`
+		ATMCall            float64 `json:"atmCall"`
+		ATMPut             float64 `json:"atmPut"`
+		DeepOTMCall        float64 `json:"deepOtmCall"`
+		DeepITMCall        float64 `json:"deepItmCall"`
+		ExpiredCall        float64 `json:"expiredCall"`
+		ExpiredPut         float64 `json:"expiredPut"`
+		VolFlat            float64 `json:"volFlat"`
+		VolShort           float64 `json:"volShort"`
+		ExpirationFriday   string  `json:"expirationFriday"`
+		ExpirationOnFriday string  `json:"expirationOnFriday"`
+		Expiration2000     string  `json:"expiration2000"`
+		Expiration1w       string  `json:"expiration1w"`
+		YearsToMaturity    float64 `json:"yearsToMaturity"`
+		YearsZero          float64 `json:"yearsZero"`
 	}
 	goldens.Load("blackscholes-samples.json", &g)
 	if !goldens.MustAlmost(BlackScholes("call", 100, 100, 1, 0.05, 0.2), g.ATMCall, 1e-12) {
