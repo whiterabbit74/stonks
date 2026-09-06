@@ -467,7 +467,7 @@
   }
   function extractBalanceSummary(dashboard) {
     const root = asObject(dashboard) || {};
-    let balance = root.balance != null ? root.balance : (asObject(root.account) && root.account.balance);
+    let balance = root.balance != null ? root.balance : ((asObject(root.account) && root.account.balance) || root.account);
     const wrapped = asObject(balance);
     const candidate = wrapped && wrapped.data && typeof wrapped.data === 'object' && !Array.isArray(wrapped.data)
       ? wrapped.data
@@ -494,14 +494,18 @@
       fetchedAt: root.fetchedAt || root.fetched_at || '',
     };
   }
+  function dashboardPositions(dash) {
+    const d = asObject(dash) || {};
+    return d.positions || (asObject(d.account) && d.account.positions);
+  }
   function normalizePositions(positions) {
     return asRows(positions).map((item, index) => ({
       id: String(firstDefined(item, ['position_id', 'id', 'symbol']) ?? index),
       symbol: String(firstDefined(item, ['symbol', 'ticker', 'display_symbol', 'short_name']) ?? '—'),
       quantity: firstDefined(item, ['quantity', 'qty', 'position', 'holding']),
-      avgPrice: firstDefined(item, ['avg_price', 'average_price', 'avgPrice', 'cost_price', 'unit_cost']),
-      totalCost: firstDefined(item, ['total_cost', 'totalCost', 'cost']),
-      marketPrice: firstDefined(item, ['last_price', 'market_price', 'marketPrice', 'current_price']),
+      avgPrice: firstDefined(item, ['avg_price', 'average_price', 'avgPrice', 'average_buy_price', 'cost_price', 'unit_cost']),
+      totalCost: firstDefined(item, ['total_cost', 'totalCost', 'cost_basis', 'costBasis', 'cost']),
+      marketPrice: firstDefined(item, ['last_price', 'last_trade_price', 'market_price', 'marketPrice', 'current_price']),
       marketValue: firstDefined(item, ['market_value', 'marketValue', 'value']),
       unrealizedPnl: firstDefined(item, ['unrealized_profit_loss', 'unrealizedPnl', 'unrealized_pnl']),
       unrealizedPnlRate: firstDefined(item, ['unrealized_profit_loss_rate', 'unrealizedProfitLossRate', 'unrealized_pnl_rate']),
@@ -2674,6 +2678,11 @@
       ${jrows ? `<div class="overflow-auto"><table class="trades"><thead><tr><th>Тикер</th><th>Брокер</th><th>Источник</th><th>Статус</th><th>Дата входа</th><th>Дата выхода</th><th>Цена покупки / продажи</th><th>Кол-во</th><th>PnL, $</th><th>PnL, %</th><th>IBS вход / выход</th><th>Дней</th><th>Заметки</th><th>ID заявки клиента</th><th>ID заявки брокера</th><th>Действия</th></tr></thead><tbody>${jrows}</tbody></table></div>` : '<p class="text-sm text-gray-500">Сделок нет</p>'}`;
     } else if (tab === 'overview') {
       const bal = extractBalanceSummary(state.dashboard);
+      if (bal.unrealizedPnl == null) {
+        // Robinhood's portfolio snapshot carries no aggregate PnL - sum the positions.
+        const nums = normalizePositions(dashboardPositions(state.dashboard)).map((p) => toNum(p.unrealizedPnl)).filter((n) => n != null);
+        if (nums.length) bal.unrealizedPnl = nums.reduce((a, b) => a + b, 0);
+      }
       const err = state.dashboard && (state.dashboard.error || (Array.isArray(state.dashboard.errors) && state.dashboard.errors[0]));
       body = `<div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <div class="rounded-lg border p-4"><div class="text-xs text-gray-500">Всего активов</div><div class="text-xl font-semibold mt-1">${fmtUsd(bal.totalAssets)}</div><div class="text-xs text-gray-400 mt-1">Валюта: ${esc(bal.currency || 'USD')}</div></div>
@@ -2684,7 +2693,7 @@
       ${rawJsonBlock('Исходные данные баланса', state.dashboard && state.dashboard.balance)}
       ${rawJsonBlock('Исходные данные счёта', state.dashboard && state.dashboard.account)}`;
     } else if (tab === 'positions') {
-      const pos = normalizePositions(state.dashboard && (state.dashboard.positions || (state.dashboard.account && state.dashboard.account.positions)));
+      const pos = normalizePositions(dashboardPositions(state.dashboard));
       const posRows = pos.map((p) => `<tr>
         <td class="font-mono">${esc(p.symbol)}</td>
         <td>${esc(instrumentTypeText(p.instrumentType))}</td>
@@ -2700,7 +2709,7 @@
         <td>${p.symbol && p.symbol !== '—' ? actionIcon('x', 'Закрыть позицию', `data-close-pos="${esc(p.symbol)}"`, 'action-icon-danger') : ''}</td>
       </tr>`).join('');
       body = `${posRows ? `<div class="overflow-auto"><table class="trades"><thead><tr><th>Тикер</th><th>Тип</th><th>Валюта</th><th>Кол-во</th><th>Средняя цена</th><th>Себестоимость</th><th>Рыночная цена</th><th>Рыночная стоимость</th><th>Нереализ. PnL</th><th>PnL %</th><th>Доля</th><th>Действия</th></tr></thead><tbody>${posRows}</tbody></table></div>` : emptyBrokerTable(['Тикер', 'Тип', 'Валюта', 'Кол-во', 'Средняя цена', 'Себестоимость', 'Рыночная цена', 'Рыночная стоимость', 'Нереализ. PnL', 'PnL %', 'Доля', 'Действия'], 'Открытых позиций нет')}
-      ${rawJsonBlock('Исходные данные позиций', state.dashboard && (state.dashboard.positions || (state.dashboard.account && state.dashboard.account.positions)))}
+      ${rawJsonBlock('Исходные данные позиций', dashboardPositions(state.dashboard))}
       ${rawJsonBlock('Исходные данные счетов', state.dashboard && state.dashboard.accounts)}`;
     } else if (tab === 'orders') {
       const orders = normalizeOrders(state.dashboard && state.dashboard.openOrders);

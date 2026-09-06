@@ -448,9 +448,23 @@ func collectPositions(v any, out *[]any) {
 	switch t := v.(type) {
 	case map[string]any:
 		if t["symbol"] != nil && (t["quantity"] != nil || t["qty"] != nil) {
+			// Keep the broker row as it came: the cabinet shows average price,
+			// cost basis, last price and unrealized PnL from these fields.
+			// Only quantity and market value are normalized to numbers.
+			row := make(map[string]any, len(t)+1)
+			for k, v := range t {
+				row[k] = v
+			}
 			qty := asFloat(first(t, "quantity", "qty"))
+			row["quantity"] = qty
 			mv := asFloat(first(t, "market_value", "marketValue", "value"))
-			*out = append(*out, map[string]any{"symbol": t["symbol"], "quantity": qty, "market_value": mv})
+			if mv == 0 {
+				mv = qty * asFloat(first(t, "last_price", "last_trade_price", "mark_price", "price"))
+			}
+			if mv != 0 {
+				row["market_value"] = mv
+			}
+			*out = append(*out, row)
 			return
 		}
 		for _, c := range t {

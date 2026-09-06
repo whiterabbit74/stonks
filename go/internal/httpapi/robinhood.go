@@ -8,9 +8,11 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"mktorder.com/go/internal/live"
 	"mktorder.com/go/internal/robinhood"
+	"mktorder.com/go/internal/tradingdate"
 )
 
 func (s *Server) rh() *robinhood.Service {
@@ -93,16 +95,47 @@ func (s *Server) handleRobinhoodDashboard(w http.ResponseWriter, r *http.Request
 	if r.URL.Query().Get("refresh") == "1" {
 		br.ResetAccount()
 	}
+	// Same contract as the Webull dashboard (Engine.Dashboard): the SPA reads
+	// balance / positions / openOrders / orderHistory off one shape for both
+	// brokers. Empty slices, never null, so the tables render their own empty
+	// state instead of "Загрузка…".
 	acct, aerr := br.Account()
 	pos, perr := br.Positions()
-	orders, _ := br.OpenOrders()
-	out := map[string]any{"account": acct, "positions": pos, "orders": orders}
-	if aerr != nil {
-		out["error"] = aerr.Error()
+	if pos == nil {
+		pos = []any{}
 	}
-	if perr != nil && out["error"] == nil {
-		out["error"] = perr.Error()
+	today := tradingdate.TodayNYSE(time.Now())
+	open, oerr := br.OpenOrders()
+	if open == nil {
+		open = []any{}
 	}
+	hist, herr := br.OrderHistory(tradingdate.AddDays(today, -30), today)
+	if hist == nil {
+		hist = []any{}
+	}
+	out := map[string]any{
+		"account":      acct,
+		"positions":    pos,
+		"openOrders":   open,
+		"orderHistory": hist,
+		"fetchedAt":    time.Now().UTC().Format(time.RFC3339),
+	}
+	errs := []any{}
+	for _, e := range []error{aerr, perr} {
+		if e != nil {
+			errs = append(errs, e.Error())
+			if out["error"] == nil {
+				out["error"] = e.Error()
+			}
+		}
+	}
+	if oerr != nil {
+		out["openOrdersError"] = oerr.Error()
+	}
+	if herr != nil {
+		out["orderHistoryError"] = herr.Error()
+	}
+	out["errors"] = errs
 	writeJSON(w, 200, out)
 }
 

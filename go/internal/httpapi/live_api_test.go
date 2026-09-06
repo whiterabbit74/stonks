@@ -858,6 +858,23 @@ func TestRobinhoodDashboardRefreshBustsAccountCache(t *testing.T) {
 	}
 }
 
+// Кабинет Robinhood читает те же ключи дашборда, что и Webull.
+func TestRobinhoodDashboardMatchesWebullContract(t *testing.T) {
+	s := testServer(t, "")
+	var accounts int
+	s.Live.AttachBroker("robinhood", rhDashboardMock(&accounts))
+	rec := getDashboard(t, s, "/api/autotrade/robinhood/dashboard")
+	var out map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	for _, k := range []string{"account", "positions", "openOrders", "orderHistory", "fetchedAt"} {
+		if out[k] == nil {
+			t.Fatalf("dashboard is missing %q: %s", k, rec.Body.String())
+		}
+	}
+}
+
 func TestPagesDriveLiveAPIs(t *testing.T) {
 	app, err := os.ReadFile("../web/js/app.js")
 	if err != nil {
