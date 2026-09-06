@@ -39,16 +39,19 @@ type Calendar struct {
 	} `json:"tradingHours"`
 }
 
-func ParseCalendar(raw []byte) Calendar {
+// ParseCalendar returns the error too: an unparseable calendar is not an empty
+// one, and callers that decide whether the exchange is open must not read it as
+// "no holidays".
+func ParseCalendar(raw []byte) (Calendar, error) {
 	var c Calendar
-	_ = json.Unmarshal(raw, &c)
+	err := json.Unmarshal(raw, &c)
 	if c.Holidays == nil {
 		c.Holidays = map[string]map[string]any{}
 	}
 	if c.ShortDays == nil {
 		c.ShortDays = map[string]map[string]any{}
 	}
-	return c
+	return c, err
 }
 
 func mmdd(p tradingdate.NYSEParts) string {
@@ -196,7 +199,10 @@ func RunTick(db *store.DB, deps Deps, now time.Time, onEvent func(JobLog)) {
 	eng := engine(db, deps)
 
 	raw, calErr := db.GetCalendar()
-	cal := ParseCalendar(raw)
+	cal, parseErr := ParseCalendar(raw)
+	if calErr == nil && parseErr != nil {
+		calErr = parseErr
+	}
 	rawTrading := IsTradingDay(p, cal)
 	trading := rawTrading
 	if trading {

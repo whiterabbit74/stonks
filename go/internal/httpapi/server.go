@@ -1139,8 +1139,12 @@ func (s *Server) handleGetCalendar(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handlePrevDay(w http.ResponseWriter, r *http.Request) {
-	raw, _ := s.DB.GetCalendar()
-	cal := scheduler.ParseCalendar(raw)
+	raw, err := s.DB.GetCalendar()
+	cal, perr := scheduler.ParseCalendar(raw)
+	if err != nil || perr != nil {
+		writeJSON(w, 500, map[string]any{"error": "Не удалось прочитать календарь"})
+		return
+	}
 	d := tradingdate.AddDays(tradingdate.TodayNYSE(time.Now()), -1)
 	for i := 0; i < 30; i++ {
 		y, m, day := tradingdate.YMD(d)
@@ -1194,17 +1198,18 @@ func (s *Server) handlePatchCalendarDay(w http.ResponseWriter, r *http.Request) 
 		writeJSON(w, 400, map[string]any{"error": "type must be normal, holiday or short"})
 		return
 	}
-	// Read-modify-write of the whole calendar blob: a failed read would look
-	// like an empty calendar and save this single day over every stored
-	// holiday and short day.
+	// Read-modify-write of the whole calendar blob: a failed read or an
+	// unparseable blob would look like an empty calendar and save this single
+	// day over every stored holiday and short day.
 	raw, err := s.DB.GetCalendar()
 	if err != nil {
 		writeJSON(w, 500, map[string]any{"error": "Не удалось прочитать календарь"})
 		return
 	}
 	var cal map[string]any
-	if err := json.Unmarshal(raw, &cal); err != nil {
-		cal = map[string]any{}
+	if err := json.Unmarshal(raw, &cal); err != nil || cal == nil {
+		writeJSON(w, 500, map[string]any{"error": "Не удалось разобрать календарь"})
+		return
 	}
 	holidays, _ := cal["holidays"].(map[string]any)
 	if holidays == nil {

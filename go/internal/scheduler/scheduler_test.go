@@ -661,7 +661,7 @@ func TestImportedShortDaysOverrideComputed(t *testing.T) {
 }
 
 func TestDefaultCalendarSeedsRealShortDays(t *testing.T) {
-	cal := ParseCalendar([]byte(store.DefaultCalendarJSON))
+	cal, _ := ParseCalendar([]byte(store.DefaultCalendarJSON))
 	want := []tradingdate.NYSEParts{
 		{Year: 2025, Month: 7, Day: 3, DayOfWeek: 4},
 		{Year: 2025, Month: 11, Day: 28, DayOfWeek: 5},

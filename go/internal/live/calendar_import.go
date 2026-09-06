@@ -17,9 +17,12 @@ func (e *Engine) ImportWebullCalendar() (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Read-modify-write of the whole calendar blob: treating an unparseable
+	// blob as empty would save the imported window over every stored holiday
+	// and short day.
 	cal := map[string]any{}
-	if json.Unmarshal(raw, &cal) != nil {
-		cal = map[string]any{}
+	if err := json.Unmarshal(raw, &cal); err != nil {
+		return nil, fmt.Errorf("не удалось разобрать календарь: %w", err)
 	}
 	meta, _ := cal["metadata"].(map[string]any)
 	if meta == nil {
@@ -189,8 +192,8 @@ func (e *Engine) DeleteCalendarHoliday(date string) error {
 		return err
 	}
 	cal := map[string]any{}
-	if json.Unmarshal(raw, &cal) != nil {
-		cal = map[string]any{}
+	if err := json.Unmarshal(raw, &cal); err != nil {
+		return fmt.Errorf("не удалось разобрать календарь: %w", err)
 	}
 	holidays, _ := cal["holidays"].(map[string]any)
 	if holidays == nil {

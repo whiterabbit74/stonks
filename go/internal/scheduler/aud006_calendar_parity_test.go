@@ -31,7 +31,7 @@ func TestAUD006ServedCalendarMatchesGoDecision(t *testing.T) {
 	if !json.Valid(served) {
 		t.Fatal("FillComputedDays produced invalid JSON")
 	}
-	cal := ParseCalendar(served)
+	cal, _ := ParseCalendar(served)
 
 	date := fmt.Sprintf("%d-01-01", from)
 	end := fmt.Sprintf("%d-12-31", to)
@@ -62,7 +62,7 @@ func TestAUD006ServedCalendarMatchesGoDecision(t *testing.T) {
 func TestAUD006FillKeepsStoredEntries(t *testing.T) {
 	stored := `{"holidays":{"2028":{"01-17":{"name":"Renamed by operator","type":"holiday"}}},"shortDays":{}}`
 	out := FillComputedDays([]byte(stored), 2028, 2028)
-	cal := ParseCalendar(out)
+	cal, _ := ParseCalendar(out)
 	got := cal.Holidays["2028"]["01-17"]
 	m, _ := got.(map[string]any)
 	if m == nil || m["name"] != "Renamed by operator" {

@@ -903,8 +903,11 @@ func (d *DB) SettingsErr() (map[string]any, error) {
 		return nil, err
 	}
 	stored := map[string]any{}
-	if json.Unmarshal([]byte(data), &stored) != nil {
-		return defs, nil
+	if err := json.Unmarshal([]byte(data), &stored); err != nil {
+		// Callers read-modify-write these settings; answering an unparseable
+		// blob with the defaults would let the next save reset thresholds and
+		// broker flags to factory values.
+		return nil, err
 	}
 	out := mergeMaps(defs, sanitizeSettings(stored))
 	if at, ok := out["autoTrading"].(map[string]any); ok {
@@ -983,8 +986,8 @@ func (d *DB) SetSettingsKeys(kv map[string]any) error {
 		return err
 	}
 	if err == nil && data != "" {
-		if json.Unmarshal([]byte(data), &stored) != nil {
-			stored = map[string]any{}
+		if err := json.Unmarshal([]byte(data), &stored); err != nil {
+			return err
 		}
 	}
 	for k, v := range kv {
