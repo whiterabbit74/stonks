@@ -4325,8 +4325,19 @@
         } catch (err) { toast(err.message); }
       });
       document.getElementById('broker-quotes-refresh')?.addEventListener('click', async () => {
-        state.loaded.broker = false;
-        renderPage();
+        // Quotes only: reloading the whole page fired the dashboard and the
+        // consistency read as well, and their two concurrent Webull positions
+        // calls tripped TOO_MANY_REQUESTS. One snapshot request covers the
+        // whole watch list, exactly like the per-row refresh above.
+        const symbols = (state.watches || []).map((x) => x.symbol).filter(Boolean);
+        if (!symbols.length) return;
+        try {
+          const batch = await API.webullBatch(symbols);
+          const map = {};
+          (batch.results || []).forEach((row) => { if (row && row.symbol) map[row.symbol] = row; });
+          state.brokerQuotes = map;
+          renderPage();
+        } catch (err) { toast(errText(err)); }
       });
       async function reloadBroker() {
         state.loaded.broker = false;
