@@ -180,12 +180,7 @@ func sanitizeAutoTradingConfig(input, current map[string]any, now time.Time) (ma
 // on the monitoring page. A second list in the autotrade config used to narrow
 // it by intersection, which meant a ticker could be monitored, signal an entry,
 // and be silently skipped - two lists to keep in sync for no gain.
-func configuredSymbols(cfg map[string]any, e *Engine) []string {
-	_ = cfg
-	if e == nil || e.DB == nil {
-		return nil
-	}
-	rows, _ := e.DB.ListWatches()
+func configuredSymbols(rows []map[string]any) []string {
 	seen := map[string]struct{}{}
 	var out []string
 	for _, w := range rows {

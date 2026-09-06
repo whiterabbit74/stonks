@@ -80,7 +80,11 @@ func TestJournalReadErrorBlocksEvaluate(t *testing.T) {
 	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
 	db, e, _ := testEngine(t, bars)
 	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true})
-	db.Close()
+	// Only the journal is broken: closing the whole DB would trip the
+	// watchlist guard first and stop testing this path.
+	if _, err := db.SQL.Exec(`DROP TABLE broker_trades`); err != nil {
+		t.Fatal(err)
+	}
 	ev := e.Evaluate()
 	if fmt.Sprint(ev.Decision["reason"]) != "journal_unavailable" {
 		t.Fatalf("Evaluate %+v", ev.Decision)

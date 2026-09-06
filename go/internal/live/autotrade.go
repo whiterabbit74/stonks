@@ -242,26 +242,36 @@ func (e *Engine) Evaluate() EvalResult {
 func (e *Engine) EvaluateWindow(w execWindow) EvalResult {
 	cfg := e.AutoConfig()
 	today := tradingdate.TodayNYSE(e.now())
-	symbols := configuredSymbols(cfg, e)
 	providerChain := quoteProviderChain(cfg)
 	allowExits := anyAllow(cfg, "allowExits")
 	allowEntries := anyAllow(cfg, "allowNewEntries")
-	watchBy := map[string]map[string]any{}
-	if watches, err := e.DB.ListWatches(); err == nil {
-		for _, w := range watches {
-			watchBy[store.SafeTicker(fmt.Sprint(w["symbol"]))] = w
-		}
-	}
-	brokerTrades, journalErr := e.DB.ListTrades("broker_trades")
-	if journalErr != nil {
+	// One read feeds both the universe and the per-symbol thresholds. An
+	// unreadable watchlist is not an empty one: reporting it as
+	// empty_symbol_universe would hide a broken store behind a normal-looking
+	// "no tickers" day, and would silently swap per-watch thresholds for the
+	// global defaults.
+	watches, watchErr := e.DB.ListWatches()
+	blocked := func(reason string, symbols []string) EvalResult {
 		return EvalResult{
 			EvaluatedAt: e.now().UTC().Format(time.RFC3339Nano),
 			TodayKey:    today,
 			AutoTrading: cfg,
 			Symbols:     symbols,
-			Decision:    map[string]any{"action": "none", "reason": "journal_unavailable", "symbol": nil, "candidate": nil},
+			Decision:    map[string]any{"action": "none", "reason": reason, "symbol": nil, "candidate": nil},
 			Live:        e.evalLive(cfg),
 		}
+	}
+	if watchErr != nil {
+		return blocked("watchlist_unavailable", nil)
+	}
+	symbols := configuredSymbols(watches)
+	watchBy := map[string]map[string]any{}
+	for _, w := range watches {
+		watchBy[store.SafeTicker(fmt.Sprint(w["symbol"]))] = w
+	}
+	brokerTrades, journalErr := e.DB.ListTrades("broker_trades")
+	if journalErr != nil {
+		return blocked("journal_unavailable", symbols)
 	}
 	open, held, heldErr := e.booksFor("webull", e.defaultBroker(), brokerTrades, w)
 	quoteSymbols := append([]string{}, symbols...)

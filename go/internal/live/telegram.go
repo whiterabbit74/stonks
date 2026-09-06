@@ -544,6 +544,8 @@ func noActionReasonText(reason, symbol string) string {
 		return "позиции брокера не читаются — вход заблокирован"
 	case "journal_unavailable":
 		return "журнал сделок недоступен"
+	case "watchlist_unavailable":
+		return "список тикеров не читается — вход заблокирован"
 	case "no_broker_configured":
 		return "брокер не настроен"
 	case "broker_disabled":

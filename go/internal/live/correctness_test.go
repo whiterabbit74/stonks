@@ -322,8 +322,11 @@ func TestUniverseIsTheMonitoringList(t *testing.T) {
 	t.Cleanup(func() { db.Close() })
 	_ = db.UpsertWatch(map[string]any{"symbol": "MSFT"})
 	_ = db.UpsertWatch(map[string]any{"symbol": "AMZN"})
-	e := New(db, nil)
-	got := configuredSymbols(map[string]any{"symbols": "AAPL"}, e)
+	watches, err := db.ListWatches()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := configuredSymbols(watches)
 	if len(got) != 2 || got[0] != "AMZN" || got[1] != "MSFT" {
 		t.Fatalf("universe %v", got)
 	}
