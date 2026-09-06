@@ -577,3 +577,29 @@ func TestRobinhoodOrderHistoryFiltersByDateRange(t *testing.T) {
 		t.Fatalf("OrderHistory must drop 2026-09-01: %+v", got)
 	}
 }
+
+// Реальный get_portfolio отвечает конвертом {"data":..., "guide":...},
+// суммы приходят строками, а buying_power — вложенным объектом.
+func TestRobinhoodAccountReadsPortfolioEnvelope(t *testing.T) {
+	b := &RobinhoodBroker{
+		account: "RH1",
+		Call: func(name string, args map[string]any) (json.RawMessage, error) {
+			return json.Marshal(map[string]any{
+				"data": map[string]any{
+					"total_value":  "3494.90",
+					"cash":         "47.98",
+					"buying_power": map[string]any{"buying_power": "3446.92"},
+				},
+				"guide": "buying power is nested",
+			})
+		},
+	}
+	acct, err := b.Account()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := acct["data"].(map[string]any)["account_currency_assets"].([]any)[0].(map[string]any)
+	if got["cash_balance"] != 47.98 || got["day_buying_power"] != 3446.92 || got["net_liquidation_value"] != 3494.90 {
+		t.Fatalf("balance not parsed: %v", got)
+	}
+}

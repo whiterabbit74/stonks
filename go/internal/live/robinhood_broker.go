@@ -163,13 +163,32 @@ func (b *RobinhoodBroker) AccountCtx(ctx context.Context) (map[string]any, error
 	if err != nil {
 		return nil, err
 	}
-	p := mapFromJSON(robinhood.ToolContentJSON(raw))
-	cash := asFloat(first(p, "cash", "cash_balance", "settled_cash"))
-	bp := asFloat(first(p, "buying_power", "cash_buying_power"))
-	nlv := asFloat(first(p, "equity", "market_value", "portfolio_value", "total_value"))
+	p := portfolioBody(mapFromJSON(robinhood.ToolContentJSON(raw)))
+	cash := money(first(p, "cash", "cash_balance", "settled_cash", "uninvested_cash"))
+	bp := money(first(p, "buying_power", "cash_buying_power"))
+	nlv := money(first(p, "total_value", "equity", "market_value", "portfolio_value"))
 	return map[string]any{"data": map[string]any{"account_currency_assets": []any{map[string]any{
 		"currency": "USD", "cash_balance": cash, "day_buying_power": bp, "net_liquidation_value": nlv,
 	}}}}, nil
+}
+
+// portfolioBody unwraps the get_portfolio envelope: the MCP tool answers
+// {"data": {...}, "guide": "..."} and the money fields live one level down.
+func portfolioBody(p map[string]any) map[string]any {
+	if inner, ok := p["data"].(map[string]any); ok {
+		return inner
+	}
+	return p
+}
+
+// money reads a portfolio money field. Robinhood returns them as strings and
+// sometimes as an object wrapping the same name ("buying_power":
+// {"buying_power": "3446.92"}).
+func money(v any) float64 {
+	if m, ok := v.(map[string]any); ok {
+		return asFloat(first(m, "buying_power", "amount", "value", "total", "cash"))
+	}
+	return asFloat(v)
 }
 
 func (b *RobinhoodBroker) Positions() ([]any, error) {
