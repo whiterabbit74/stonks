@@ -10,7 +10,7 @@ Production endpoint:
 https://mktorder.com/mcp/transcribe/
 ```
 
-The server requires `Authorization: Bearer <token>` on MCP requests. Tokens are configured through `MCP_BEARER_TOKENS` as a comma-separated list in `/home/ubuntu/stonks-config/.env`.
+The server requires `Authorization: Bearer <token>` on MCP requests. Tokens are configured through `MCP_BEARER_TOKENS` as a comma-separated list in `/home/ubuntu/stonks-config/mcp.env` (`chmod 600`) — a file separate from the trading `.env`, so this container never sees the trading secrets.
 
 Local default port inside the container is `8080`.
 

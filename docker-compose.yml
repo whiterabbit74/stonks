@@ -47,8 +47,13 @@ services:
     build:
       context: .
       dockerfile: mcp/Dockerfile
+    # Own secrets file. The trading env_file above holds ADMIN_PASSWORD, the
+    # Telegram token and the broker keys; this container only needs its bearer
+    # tokens, so it must not see the rest. Create it on the VPS:
+    #   printf 'MCP_BEARER_TOKENS=...\n' > /home/ubuntu/stonks-config/mcp.env
+    #   chmod 600 /home/ubuntu/stonks-config/mcp.env
     env_file:
-      - /home/ubuntu/stonks-config/.env
+      - /home/ubuntu/stonks-config/mcp.env
     environment:
       - MCP_ADDR=:8080
       - MCP_ENDPOINT_PATH=/mcp/transcribe/

@@ -17,7 +17,7 @@ At least one market-data key: `ALPHA_VANTAGE_API_KEY`, `FINNHUB_API_KEY`, `TWELV
 
 Webull autotrade: `WEBULL_APP_KEY`, `WEBULL_APP_SECRET`, `WEBULL_ACCOUNT_ID`. `WEBULL_ENABLE_LIVE_TEST_BUY` is opt-in (unset = off).
 
-MCP: `MCP_BEARER_TOKENS`, `MCP_ALLOWED_ORIGINS`.
+MCP: `MCP_BEARER_TOKENS` lives in its **own** file `/home/ubuntu/stonks-config/mcp.env` (`chmod 600`), which is the only `env_file` the `mcp` container gets. The trading secrets above are never handed to that container, and the MCP token is not handed to the trading process. `MCP_ALLOWED_ORIGINS` is a compose substitution and comes from the compose project env (`~/stonks/.env`).
 
 After editing the VPS env file recreate containers (`docker compose up -d`), do not `restart` — restart does not reload `env_file`.
 
