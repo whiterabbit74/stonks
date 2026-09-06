@@ -99,7 +99,7 @@ func TestSchedulerLogKeepsFailuresAndDropsChatter(t *testing.T) {
 	for _, j := range []scheduler.JobLog{
 		{Name: "tick", Detail: "duration_ms=3"},
 		{Name: "order-trackers", Detail: "pending=0"},
-		{Name: "webull-token-health", Detail: "already-ran", Skipped: true},
+		{Name: "broker-token-health", Detail: "already-ran", Skipped: true},
 		{Name: "market-jobs", Detail: "non-trading-day", Skipped: true},
 		{Name: "calendar-extend", Detail: "marker-save-failed: disk full"},
 		{Name: "tick-panic", Detail: "runtime error"},

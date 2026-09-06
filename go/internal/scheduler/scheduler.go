@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -256,7 +257,7 @@ func RunTick(db *store.DB, deps Deps, now time.Time, onEvent func(JobLog)) {
 	onEvent(JobLog{At: now, Name: "order-trackers", Detail: fmt.Sprintf("pending=%d", nTrack)})
 
 	detail, skipped := RunTokenHealth(db, deps, today, now)
-	onEvent(JobLog{At: now, Name: "webull-token-health", Skipped: skipped, Detail: detail})
+	onEvent(JobLog{At: now, Name: "broker-token-health", Skipped: skipped, Detail: detail})
 
 	if !rawTrading {
 		onEvent(JobLog{At: now, Name: "market-jobs", Skipped: true, Detail: "non-trading-day"})
@@ -336,23 +337,31 @@ func engine(db *store.DB, deps Deps) *live.Engine {
 	return live.New(db, deps.Providers)
 }
 
+// RunTokenHealth runs the daily health check for every broker and reports one
+// line for all of them. Answering with Webull alone hid a Robinhood
+// reauth in the job log, and called the whole job "already-ran" on a day
+// Robinhood had just been checked.
 func RunTokenHealth(db *store.DB, deps Deps, todayET string, now time.Time) (detail string, skipped bool) {
 	hs := RunBrokerHealth(db, deps, todayET, now)
 	if len(hs) == 0 {
 		return "already-ran", true
 	}
+	parts := make([]string, 0, len(hs))
+	skipped = true
 	for _, h := range hs {
-		if h.Broker == "webull" {
-			if h.Detail == "skipped" {
-				return "already-ran", true
-			}
-			if h.Detail != "" {
-				return h.Detail, false
-			}
-			return h.Status, false
+		if h.Detail != "skipped" {
+			skipped = false
 		}
+		word := h.Detail
+		if word == "" || word == "skipped" {
+			word = h.Status
+		}
+		parts = append(parts, h.Broker+"="+word)
 	}
-	return hs[0].Status, false
+	if skipped {
+		return "already-ran", true
+	}
+	return strings.Join(parts, " "), false
 }
 
 func RunBrokerHealth(db *store.DB, deps Deps, todayET string, now time.Time) []live.BrokerHealth {

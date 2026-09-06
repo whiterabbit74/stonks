@@ -182,9 +182,13 @@ func TestTokenHealthCallsCheckToken(t *testing.T) {
 	now := time.Date(2026, 9, 1, 15, 0, 0, 0, time.UTC)
 	today := tradingdate.TodayNYSE(now)
 	status, skip := RunTokenHealth(db, Deps{Live: eng}, today, now)
-	// RunTokenHealth surfaces the raw word Webull's CheckToken returned.
-	if skip || status != "NORMAL" {
+	// RunTokenHealth surfaces the raw word Webull's CheckToken returned,
+	// keyed by broker alongside the other brokers' verdicts.
+	if skip || !strings.Contains(status, "webull=NORMAL") {
 		t.Fatalf("want NORMAL check, got skip=%v status=%s", skip, status)
+	}
+	if !strings.Contains(status, "robinhood=") {
+		t.Fatalf("every broker belongs in the health line: %s", status)
 	}
 	row := db.GetWebullToken()
 	// P0-4: last_check_status holds the classified verdict CanSubmit gates
