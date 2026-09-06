@@ -1,13 +1,19 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log"
 	"net/http"
+	"os"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"mktorder.com/go/internal/scheduler"
 )
 
 type stubServer struct {
@@ -83,5 +89,28 @@ func TestServeListenError(t *testing.T) {
 	}
 	if shutdown.Load() {
 		t.Fatal("Shutdown must not run on listen failure")
+	}
+}
+
+func TestSchedulerLogKeepsFailuresAndDropsChatter(t *testing.T) {
+	var buf bytes.Buffer
+	log.SetOutput(&buf)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+	for _, j := range []scheduler.JobLog{
+		{Name: "tick", Detail: "duration_ms=3"},
+		{Name: "order-trackers", Detail: "pending=0"},
+		{Name: "webull-token-health", Detail: "already-ran", Skipped: true},
+		{Name: "market-jobs", Detail: "non-trading-day", Skipped: true},
+		{Name: "calendar-extend", Detail: "marker-save-failed: disk full"},
+		{Name: "tick-panic", Detail: "runtime error"},
+	} {
+		schedulerLog(j)
+	}
+	out := buf.String()
+	if strings.Contains(out, "duration_ms") || strings.Contains(out, "already-ran") || strings.Contains(out, "non-trading-day") {
+		t.Fatalf("routine chatter must not reach the log:\n%s", out)
+	}
+	if !strings.Contains(out, "marker-save-failed") || !strings.Contains(out, "tick-panic") {
+		t.Fatalf("failures must reach the log:\n%s", out)
 	}
 }

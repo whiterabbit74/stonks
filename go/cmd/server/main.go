@@ -45,7 +45,7 @@ func run() error {
 	webDir := filepath.Join(root, "web")
 	p := providers.FromEnv()
 	srv := httpapi.NewWithProviders(db, webDir, p)
-	stop := scheduler.StartWith(db, scheduler.Deps{Providers: p, Live: srv.Live}, nil)
+	stop := scheduler.StartWith(db, scheduler.Deps{Providers: p, Live: srv.Live}, schedulerLog)
 	stopOnce := sync.OnceFunc(stop)
 	defer stopOnce()
 
@@ -66,6 +66,23 @@ func run() error {
 	defer stopSignals()
 
 	return serve(ctx, s, shutdownTimeout, stopOnce)
+}
+
+// schedulerLog is the scheduler's only production sink for JobLog. main used
+// to pass nil, so skips, marker-save failures and tick-panic details went
+// nowhere at all. Everything except the chatter that repeats every twenty
+// seconds — the tick itself, the tracker poll, and the "nothing to do today"
+// details — reaches the log.
+func schedulerLog(j scheduler.JobLog) {
+	switch j.Name {
+	case "tick", "order-trackers":
+		return
+	}
+	switch j.Detail {
+	case "already-ran", "coverage-ok", "non-trading-day":
+		return
+	}
+	log.Printf("scheduler: %s skipped=%v %s", j.Name, j.Skipped, j.Detail)
 }
 
 type httpServer interface {
