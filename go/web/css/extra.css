@@ -397,7 +397,19 @@ html.dark .app-side { background: #0b1220; border-color: #1f2937; }
   padding: 0.25rem 0.5rem 0.75rem; font-size: 0.9375rem; font-weight: 700; color: #111827;
 }
 html.dark .app-side-brand { color: #f3f4f6; }
+.app-side-brand-toggle { border: 0; width: 100%; text-align: left; cursor: pointer; }
+.app-side-brand-default, .app-side-brand-hover { display: inline-flex; align-items: center; gap: 0.5rem; }
+.app-side-brand-hover { display: none; }
+.app-side-brand-toggle:hover, .app-side-brand-toggle:focus-visible { color: #4338ca; }
+html.dark .app-side-brand-toggle:hover, html.dark .app-side-brand-toggle:focus-visible { color: #a5b4fc; }
+.app-side-brand-toggle:hover .app-side-brand-default, .app-side-brand-toggle:focus-visible .app-side-brand-default { display: none; }
+.app-side-brand-toggle:hover .app-side-brand-hover, .app-side-brand-toggle:focus-visible .app-side-brand-hover { display: inline-flex; }
 .app-frame-slim .app-side-brand { justify-content: center; padding-left: 0; padding-right: 0; }
+.app-frame-slim .app-side-brand-default { display: inline-flex; }
+.app-frame-slim .app-side-brand-default .app-side-lab { display: none; }
+.app-frame-slim .app-side-brand-hover { display: none; }
+.app-frame-slim .app-side-brand-toggle:hover .app-side-brand-default, .app-frame-slim .app-side-brand-toggle:focus-visible .app-side-brand-default { display: none; }
+.app-frame-slim .app-side-brand-toggle:hover .app-side-brand-hover, .app-frame-slim .app-side-brand-toggle:focus-visible .app-side-brand-hover { display: inline-flex; }
 .app-side-nav { display: flex; flex-direction: column; gap: 0.15rem; flex: 1 1 auto; min-height: 0; overflow-y: auto; }
 .app-side-item {
   display: flex; align-items: center; gap: 0.625rem; width: 100%;
@@ -418,15 +430,6 @@ html.dark .app-side-item-on, html.dark .app-side-item-on:hover { background: #1e
   margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid #e5e7eb;
 }
 html.dark .app-side-tools { border-top-color: #1f2937; }
-.app-side-toggle {
-  display: flex; align-items: center; gap: 0.5rem; width: 100%;
-  margin-top: 0.25rem; padding: 0.5rem 0.625rem;
-  font-size: 0.75rem; font-weight: 600; color: #6b7280; text-align: left;
-}
-.app-side-toggle:hover { color: #111827; }
-html.dark .app-side-toggle { color: #9ca3af; }
-html.dark .app-side-toggle:hover { color: #f3f4f6; }
-.app-frame-slim .app-side-toggle { justify-content: center; padding: 0.5rem; }
 .app-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
 .app-top { display: none; }
 @media (min-width: 768px) {

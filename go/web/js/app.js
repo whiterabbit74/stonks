@@ -172,6 +172,8 @@
     chevrondown: '<path d="m6 9 6 6 6-6"/>',
     chevronleft: '<path d="m15 18-6-6 6-6"/>',
     chevronright: '<path d="m9 18 6-6-6-6"/>',
+    panelclose: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/><path d="m15 9-3 3 3 3"/>',
+    panelopen: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/><path d="m12 9 3 3-3 3"/>',
     layout: '<rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/>',
     maximize: '<path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/>',
     minimize: '<path d="M8 3v3a2 2 0 0 1-2 2H3"/><path d="M21 8h-3a2 2 0 0 1-2-2V3"/><path d="M3 16h3a2 2 0 0 1 2 2v3"/><path d="M16 21v-3a2 2 0 0 1 2-2h3"/>',
@@ -1443,7 +1445,8 @@
     btn.title = title;
     btn.setAttribute('aria-label', title);
     btn.setAttribute('aria-expanded', slim ? 'false' : 'true');
-    btn.innerHTML = `${icon(slim ? 'chevronright' : 'chevronleft', 'w-5 h-5')}<span class="app-side-lab">${slim ? 'Показать' : 'Скрыть'}</span>`;
+    const hoverIcon = btn.querySelector('.app-side-brand-hover');
+    if (hoverIcon) hoverIcon.innerHTML = icon(slim ? 'panelopen' : 'panelclose', 'w-5 h-5');
   }
   function analysisTabs(tabs, active, attr, label) {
     return `<div class="scroll-cue-shell border-b border-gray-200 dark:border-gray-700">
@@ -1743,7 +1746,10 @@
             <button type="button" id="theme-btn" class="app-side-item" title="Тема: ${themeLabel()}" aria-label="Тема: ${themeLabel()}">${sideItemInner(themeIcon(), 'Тема')}</button>
             <a href="/settings" data-nav id="settings-btn" class="app-side-item ${state.page === '/settings' ? 'app-side-item-on' : ''}" title="Настройки" aria-label="Настройки">${sideItemInner('settings', 'Настройки')}</a>
           </div>
-          <button type="button" id="app-side-toggle" class="app-side-toggle" title="${toggleTitle}" aria-label="${toggleTitle}" aria-expanded="${slim ? 'false' : 'true'}">${icon(slim ? 'chevronright' : 'chevronleft', 'w-5 h-5')}<span class="app-side-lab">${slim ? 'Показать' : 'Скрыть'}</span></button>
+          <button type="button" id="app-side-toggle" class="app-side-brand app-side-brand-toggle" title="${toggleTitle}" aria-label="${toggleTitle}" aria-expanded="${slim ? 'false' : 'true'}">
+            <span class="app-side-brand-default">${logo('sm')}<span class="app-side-lab">Trading strategies</span></span>
+            <span class="app-side-brand-hover" aria-hidden="true">${icon(slim ? 'panelopen' : 'panelclose', 'w-5 h-5')}</span>
+          </button>
         </aside>
         <div class="app-main">
           <header class="app-top border-b bg-white/60 backdrop-blur dark:bg-slate-900/60 dark:border-slate-800">
