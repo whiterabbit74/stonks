@@ -480,10 +480,15 @@ func reportMissedTelegram(db *store.DB, eng *live.Engine, now time.Time, today, 
 			_ = eng.Send("", fmt.Sprintf("<b>Пропущен T-11</b>\nСводка за 11 минут до закрытия не ушла (until=%d).", until))
 		}
 	case "t1":
-		finished, _ := db.T1ExecutionFinished(chat, today)
-		if t1Sent || finished {
+		if t1Sent {
 			return
 		}
+		// Execution finished without a report is not a missed T-1 — the orders
+		// went out — but it used to silence this branch entirely, so a Telegram
+		// outage across the whole one-minute window left the day's trade with
+		// no message at all. The report itself can no longer be rebuilt here
+		// (the window is over); say what happened instead of nothing.
+		finished, _ := db.T1ExecutionFinished(chat, today)
 		claimed, err := db.ClaimMissedT1(chat, today)
 		if err != nil {
 			onEvent(JobLog{At: now, Name: "telegram-aggregation", Detail: "marker-save-failed: " + err.Error()})
@@ -493,9 +498,14 @@ func reportMissedTelegram(db *store.DB, eng *live.Engine, now time.Time, today, 
 			return
 		}
 		detail := fmt.Sprintf("missed-t1 until=%d", until)
+		text := fmt.Sprintf("<b>Пропущен T-1</b>\nРешение за минуту до закрытия не ушло (until=%d).", until)
+		if finished {
+			detail = fmt.Sprintf("t1-report-lost until=%d", until)
+			text = fmt.Sprintf("<b>T-1 без отчёта</b>\nОрдера T-1 отработали, отчёт в Telegram не ушёл (until=%d). Смотрите журнал сделок.", until)
+		}
 		onEvent(JobLog{At: now, Name: "telegram-aggregation", Skipped: true, Detail: detail})
 		if eng != nil {
-			_ = eng.Send("", fmt.Sprintf("<b>Пропущен T-1</b>\nРешение за минуту до закрытия не ушло (until=%d).", until))
+			_ = eng.Send("", text)
 		}
 	}
 }

@@ -781,6 +781,46 @@ func TestTickMissedT1AfterCloseAlerts(t *testing.T) {
 	}
 }
 
+// Telegram down for the whole T-1 window: the orders went out and
+// t1_execution_finished is set, but no report was ever delivered. That used to
+// suppress the after-close alert too, leaving the trading day silent.
+func TestTickT1ExecutedWithoutReportAlerts(t *testing.T) {
+	dir := t.TempDir()
+	db, err := store.Open(filepath.Join(dir, "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	tg := &live.MemoryTelegram{}
+	eng := live.New(db, nil)
+	eng.Telegram = tg
+	eng.ChatID = "c"
+	if err := db.EnsureAggregateSlot("c", "2026-09-01"); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.MarkT1ExecutionFinished("c", "2026-09-01"); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 9, 1, 20, 5, 0, 0, time.UTC) // 16:05 ET
+	var logs []JobLog
+	RunTick(db, Deps{Live: eng}, now, func(j JobLog) { logs = append(logs, j) })
+	if telegramTextContaining(tg, "T-1 без отчёта") == "" {
+		t.Fatalf("an executed T-1 with no report must still alert, messages=%v", tg.Sent())
+	}
+	if telegramTextContaining(tg, "Пропущен T-1") != "" {
+		t.Fatalf("the orders did go out, this is not a missed T-1: %v", tg.Sent())
+	}
+	saw := false
+	for _, j := range logs {
+		if strings.Contains(j.Detail, "t1-report-lost") {
+			saw = true
+		}
+	}
+	if !saw {
+		t.Fatalf("want a t1-report-lost JobLog, logs=%+v", logs)
+	}
+}
+
 func TestTickT11SecondTickDoesNotResend(t *testing.T) {
 	dir := t.TempDir()
 	db, err := store.Open(filepath.Join(dir, "t.db"))
