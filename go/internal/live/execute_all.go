@@ -241,7 +241,7 @@ func (e *Engine) submitEvaluated(w execWindow, ev EvalResult, trigger, corr, bro
 			"clientOrderId": res.ClientOrderID, "order_type": "MARKET", "broker": brokerName,
 		})
 	} else if res.Ambiguous {
-		e.startTracking(OrderResult{Submitted: true, ClientOrderID: res.ClientOrderID}, orderMeta{
+		e.startTracking(res, orderMeta{
 			CorrelationID: corr, DateKey: ev.TodayKey, QuotePrice: price,
 			Action: action, Symbol: symbol, Quantity: qty, Source: trigger, Broker: brokerName,
 		})

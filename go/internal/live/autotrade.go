@@ -736,8 +736,12 @@ func executionWindowApplies(trigger string) bool {
 	return false
 }
 
+// startTracking journals the order and starts polling it. Ambiguous counts as
+// submitted here: the id was minted and may well be live at the broker, so it
+// must land in the journal — otherwise the next click finds no pending tracker
+// and sends a second MARKET for the same intent (AUD-024).
 func (e *Engine) startTracking(res OrderResult, meta orderMeta) {
-	if !res.Submitted || res.ClientOrderID == "" {
+	if (!res.Submitted && !res.Ambiguous) || res.ClientOrderID == "" {
 		return
 	}
 	broker := meta.Broker
