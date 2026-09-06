@@ -34,6 +34,7 @@ services:
       - no-new-privileges:true
     mem_limit: 2g
     pids_limit: 512
+    cpus: "1.5"
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:3001/readyz"]
       interval: 30s
@@ -92,6 +93,19 @@ services:
       - DOMAIN=${DOMAIN:-mktorder.com}
       - TLS_CA=${TLS_CA:-https://acme-v02.api.letsencrypt.org/directory}
     restart: unless-stopped
+    # This is the container facing the internet and it had no limits at all,
+    # while the service behind it did. NET_BIND_SERVICE is kept because Caddy
+    # binds 80/443; read_only is deliberately not set, Caddy writes its
+    # certificate and OCSP state outside the mounted volumes.
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 512m
+    pids_limit: 256
+    cpus: "1.0"
     healthcheck:
       test: ["CMD", "caddy", "version"]
       interval: 30s
