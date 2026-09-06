@@ -1740,16 +1740,15 @@
       <a href="#main-content" class="sr-only">Перейти к основному содержимому</a>
       <div class="app-frame ${slim ? 'app-frame-slim' : ''} min-h-screen bg-gray-50 text-gray-800 dark:bg-gray-900 dark:text-gray-100">
         <aside class="app-side" aria-label="Основная навигация">
-          <a href="/data" data-nav class="app-side-brand" title="Trading strategies">${logo('sm')}<span class="app-side-lab">Trading strategies</span></a>
+          <button type="button" id="app-side-toggle" class="app-side-brand app-side-brand-toggle" title="${toggleTitle}" aria-label="${toggleTitle}" aria-expanded="${slim ? 'false' : 'true'}">
+            <span class="app-side-brand-default">${logo('sm')}<span class="app-side-lab">Trading strategies</span></span>
+            <span class="app-side-brand-hover" aria-hidden="true">${icon(slim ? 'panelopen' : 'panelclose', 'w-5 h-5')}</span>
+          </button>
           <nav class="app-side-nav desktop-nav">${sideNavHTML()}</nav>
           <div class="app-side-tools">
             <button type="button" id="theme-btn" class="app-side-item" title="Тема: ${themeLabel()}" aria-label="Тема: ${themeLabel()}">${sideItemInner(themeIcon(), 'Тема')}</button>
             <a href="/settings" data-nav id="settings-btn" class="app-side-item ${state.page === '/settings' ? 'app-side-item-on' : ''}" title="Настройки" aria-label="Настройки">${sideItemInner('settings', 'Настройки')}</a>
           </div>
-          <button type="button" id="app-side-toggle" class="app-side-brand app-side-brand-toggle" title="${toggleTitle}" aria-label="${toggleTitle}" aria-expanded="${slim ? 'false' : 'true'}">
-            <span class="app-side-brand-default">${logo('sm')}<span class="app-side-lab">Trading strategies</span></span>
-            <span class="app-side-brand-hover" aria-hidden="true">${icon(slim ? 'panelopen' : 'panelclose', 'w-5 h-5')}</span>
-          </button>
         </aside>
         <div class="app-main">
           <header class="app-top border-b bg-white/60 backdrop-blur dark:bg-slate-900/60 dark:border-slate-800">
