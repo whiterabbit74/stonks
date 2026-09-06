@@ -406,11 +406,12 @@ func (e *Engine) buildT1Text(today string, rows []t1Watch, blocking map[string]a
 			verb = "Закрываем"
 			side = "SELL"
 		}
-		decision = append(decision, fmt.Sprintf("• %s %s по %s (IBS %s)", verb, sym, priceS, ibsS))
+		head := fmt.Sprintf("• %s %s по %s (IBS %s)", verb, sym, priceS, ibsS)
 		if dry {
-			decision = append(decision, "• dry run (ордер не отправлен)")
+			decision = append(decision, head, "• dry run (ордер не отправлен)")
 			return
 		}
+		var outcomes []string
 		for name, one := range execOutcomes(res.Broker) {
 			label := brokerLabel(name)
 			if one.Submitted {
@@ -418,11 +419,23 @@ func (e *Engine) buildT1Text(today string, rows []t1Watch, blocking map[string]a
 				if one.Quantity > 0 {
 					qty = one.Quantity
 				}
-				decision = append(decision, fmt.Sprintf("• %s: %s MARKET отправлен (%v шт.)", label, side, qty))
+				outcomes = append(outcomes, fmt.Sprintf("• %s: %s MARKET отправлен (%v шт.)", label, side, qty))
 			} else if one.Error != "" {
-				decision = append(decision, fmt.Sprintf("• %s ошибка: %s", label, html.EscapeString(one.Error)))
+				outcomes = append(outcomes, fmt.Sprintf("• %s ошибка: %s", label, html.EscapeString(one.Error)))
 			}
 		}
+		if len(outcomes) == 0 {
+			// res.Decision is the showcase decision EvaluateWindow computes on
+			// the webull book; executeAll then decides per broker and can skip
+			// every one of them (no token, disabled, unreadable journal). Then
+			// nothing was submitted, and the bare "Открываем X" above reads as a
+			// filled order. Say so, and name the per-broker reason.
+			decision = append(decision, head+" — заявка не отправлена")
+			decision = append(decision, brokerReasonLines(res)...)
+			return
+		}
+		decision = append(decision, head)
+		decision = append(decision, outcomes...)
 	}
 	if dryRun {
 		appendExec(exitRes, true)
@@ -484,24 +497,39 @@ func t1NoActionLines(exitRes, entryRes EvalResult, rows []t1Watch) []string {
 		out = append(out, line)
 	}
 	for _, res := range []EvalResult{exitRes, entryRes} {
-		if len(res.BrokerDecisions) > 0 {
-			names := make([]string, 0, len(res.BrokerDecisions))
-			for name := range res.BrokerDecisions {
-				names = append(names, name)
-			}
-			sort.Strings(names)
-			for _, name := range names {
-				add(noActionLine(brokerLabel(name), res.BrokerDecisions[name]))
-			}
-			continue
+		for _, line := range brokerReasonLines(res) {
+			add(line)
 		}
-		add(noActionLine("", res.Decision))
 	}
 	if len(out) == 0 {
 		out = append(out, "• Действий нет")
 	}
 	if sym, ibsVal, ok := bestEntryRow(rows); ok {
 		out = append(out, fmt.Sprintf("• Сигнал входа был: %s (IBS %.1f%%) — заявка не отправлена", sym, ibsVal*100))
+	}
+	return out
+}
+
+// brokerReasonLines explains, one line per broker, why that broker placed no
+// order. It falls back to the showcase Decision only when executeAll never got
+// as far as deciding per broker.
+func brokerReasonLines(res EvalResult) []string {
+	if len(res.BrokerDecisions) == 0 {
+		if line := noActionLine("", res.Decision); line != "" {
+			return []string{line}
+		}
+		return nil
+	}
+	names := make([]string, 0, len(res.BrokerDecisions))
+	for name := range res.BrokerDecisions {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	var out []string
+	for _, name := range names {
+		if line := noActionLine(brokerLabel(name), res.BrokerDecisions[name]); line != "" {
+			out = append(out, line)
+		}
 	}
 	return out
 }

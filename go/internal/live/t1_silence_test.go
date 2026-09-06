@@ -89,3 +89,37 @@ func TestConsistencyIssueLineReportsFlatBooks(t *testing.T) {
 		t.Fatalf("both journals are flat here: %s", line)
 	}
 }
+
+// executeAll can skip every broker (no token, disabled, unreadable journal)
+// while ev.Decision still carries the showcase entry. The T-1 report used to
+// print "Открываем AAPL" with no outcome line under it, which reads as a
+// filled order.
+func TestT1TextSaysWhenNothingWasSubmitted(t *testing.T) {
+	db, err := store.Open(filepath.Join(t.TempDir(), "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	e := New(db, &MemoryQuotes{})
+	res := EvalResult{
+		Decision: map[string]any{"action": "entry", "symbol": "AAPL", "candidate": map[string]any{"ibs": 0.05}},
+		Quotes:   []map[string]any{{"symbol": "AAPL", "currentPrice": 8.2}},
+		Broker:   map[string]any{},
+		BrokerDecisions: map[string]map[string]any{
+			"webull": {"action": "none", "reason": HealthMissing},
+		},
+	}
+	text := e.buildT1Text("2026-09-01", nil, nil, false, false, res, EvalResult{}, nil)
+	if !strings.Contains(text, "заявка не отправлена") {
+		t.Fatalf("an unsubmitted decision must say so:\n%s", text)
+	}
+	if !strings.Contains(text, "Webull: у брокера нет токена") {
+		t.Fatalf("want the per-broker reason:\n%s", text)
+	}
+
+	res.Broker = map[string]any{"webull": map[string]any{"submitted": true, "quantity": 3.0}}
+	text = e.buildT1Text("2026-09-01", nil, nil, false, false, res, EvalResult{}, nil)
+	if strings.Contains(text, "заявка не отправлена") || !strings.Contains(text, "BUY MARKET отправлен") {
+		t.Fatalf("a real submission must still report as sent:\n%s", text)
+	}
+}
