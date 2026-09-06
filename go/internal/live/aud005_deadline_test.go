@@ -175,6 +175,10 @@ func TestAUD005StopDuringT1LeavesNoOrder(t *testing.T) {
 	if len(trades) != 0 {
 		t.Fatalf("cancelled T-1 wrote a journal row: %+v", trades)
 	}
-	// The shutdown is still misreported as a possibly-submitted order — see
-	// AUD-013 in docs/audits/REGISTRY.md. Asserted by the reproducer, not here.
+	// A shutdown is not an ambiguous submission: nothing was sent, so the day
+	// must not be left in execution_unknown, which blocks the next entry until
+	// an operator resolves it by hand (AUD-013).
+	if hasAutotradeLog(t, e, "order_submit_status_unknown") {
+		t.Fatal("a cancelled shutdown reported the order as possibly submitted")
+	}
 }

@@ -558,6 +558,15 @@ func (e *Engine) placeMarket(w execWindow, symbol, side string, qty float64, cfg
 		if e.deadlineExceeded(w, lastDur) {
 			return e.abortPlaceForDeadline(symbol, side, qty, attempt)
 		}
+		// The process is stopping. Nothing has left for this attempt, so this
+		// is "certainly not sent", not the ambiguous case: without this check
+		// the placement fails on the cancelled context, orderLanded fails on
+		// the same context, and queryFailed turns a shutdown into
+		// order_submit_status_unknown, blocking the next entry until an
+		// operator resolves an order that never existed.
+		if err := w.parentCtx().Err(); err != nil {
+			return e.abortPlaceForCancel(symbol, side, qty, attempt, err)
+		}
 		try := cfg
 		if try.ClientOrderID == "" || attempt > 1 {
 			try.ClientOrderID = webull.NewClientOrderID()
@@ -641,6 +650,19 @@ func (e *Engine) placeMarket(w execWindow, symbol, side string, qty float64, cfg
 		e.sleep(submitRetryStep)
 	}
 	return res, err
+}
+
+// abortPlaceForCancel stops placeMarket when the caller's context was already
+// cancelled before an attempt started — a shutdown, not a broker problem.
+func (e *Engine) abortPlaceForCancel(symbol, side string, qty float64, attempt int, cause error) (OrderResult, error) {
+	e.logAuto("order_submit_aborted", "", map[string]any{
+		"symbol": symbol, "side": side, "quantity": qty, "attempt": attempt,
+		"reason": "context_cancelled", "error": cause.Error(),
+	})
+	return OrderResult{
+		Submitted: false, Symbol: symbol, Side: side, Quantity: qty,
+		Error: cause.Error(),
+	}, cause
 }
 
 // abortPlaceForDeadline stops placeMarket's retry loop when the T-1 budget
