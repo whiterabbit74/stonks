@@ -297,7 +297,7 @@
     watchTab: 'summary',
     navCollapsed: localStorage.getItem('nav.collapsed') === '1',
     brokerTab: {},
-    cal: { year: nyseNow.y, month: nyseNow.m, data: null },
+    cal: { year: nyseNow.y, month: nyseNow.m, data: null, error: '' },
     settings: {},
     splitsMap: {},
     watches: [],
@@ -2313,6 +2313,9 @@
     return !coverage || emptyHolidays;
   }
   function calendarFallbackNote() {
+    if (state.cal && state.cal.error) {
+      return `<p data-calendar-error class="rounded-lg border border-red-200 bg-red-50 dark:bg-red-950/20 p-3 text-sm text-red-800 mb-3">Календарь недоступен: ${esc(state.cal.error)}. Показанные дни не подтверждены источником.</p>`;
+    }
     if (!calendarNotImported()) return '';
     return `<p data-calendar-not-imported class="rounded-lg border border-amber-100 bg-amber-50 dark:bg-amber-950/20 p-3 text-sm text-amber-800 mb-3">Календарь не импортирован — используются расчётные праздники NYSE</p>`;
   }
@@ -3726,7 +3729,7 @@
 
     if (p === '/calendar') {
       if (!state.loaded.cal) {
-        try { state.cal.data = await API.calendar(); } catch (_) { state.cal.data = {}; }
+        try { state.cal.data = await API.calendar(); state.cal.error = ''; } catch (e) { state.cal.data = {}; state.cal.error = (e && e.message) || 'не удалось прочитать'; }
         state.loaded.cal = true;
         renderPage();
         return;
@@ -3937,7 +3940,7 @@
     if (p === '/watches') {
       if (!state.loaded.watches) {
         try {
-          const calP = state.loaded.cal ? Promise.resolve(state.cal.data) : API.calendar().catch(() => ({}));
+          const calP = state.loaded.cal ? Promise.resolve(state.cal.data) : API.calendar().then((c) => { state.cal.error = ''; return c; }).catch((e) => { state.cal.error = (e && e.message) || 'не удалось прочитать'; return {}; });
           const [w, t, a, c, cal, ac] = await Promise.all([
             API.watches(),
             API.trades().catch((e) => { if (e && e.status === 404) return API.monitorTrades(); throw e; }),

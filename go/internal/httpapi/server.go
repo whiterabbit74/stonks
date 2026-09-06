@@ -563,7 +563,15 @@ func randomToken() (string, error) {
 }
 
 func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, 200, clientSettings(s.DB.Settings()))
+	// Unreadable settings are not factory settings: answering with the
+	// defaults would show the operator thresholds and provider keys that are
+	// not the ones in force (AUD-020 class).
+	st, err := s.DB.SettingsErr()
+	if err != nil {
+		writeJSON(w, 500, map[string]any{"error": "Не удалось прочитать настройки"})
+		return
+	}
+	writeJSON(w, 200, clientSettings(st))
 }
 
 func settingsWriteError(body map[string]any) string {
@@ -597,7 +605,12 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 500, map[string]any{"error": err.Error()})
 		return
 	}
-	writeJSON(w, 200, map[string]any{"success": true, "settings": clientSettings(s.DB.Settings())})
+	st, err := s.DB.SettingsErr()
+	if err != nil {
+		writeJSON(w, 500, map[string]any{"error": "Настройки сохранены, но не перечитаны"})
+		return
+	}
+	writeJSON(w, 200, map[string]any{"success": true, "settings": clientSettings(st)})
 }
 
 func (s *Server) handlePatchSettings(w http.ResponseWriter, r *http.Request) {
@@ -650,10 +663,19 @@ func (s *Server) handleGetDataset(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 404, map[string]any{"error": "Датасет не найден"})
 		return
 	}
-	events, _ := s.DB.ListSplits(id)
+	events, err := s.DB.ListSplits(id)
+	if err != nil {
+		writeJSON(w, 500, map[string]any{"error": "Не удалось прочитать сплиты"})
+		return
+	}
 	ds["splits"] = events
 	bars := decodeBars(ds["data"])
-	ds["detectedSplits"] = s.detectSplitHints(id, bars)
+	hints, err := s.detectSplitHints(id, bars)
+	if err != nil {
+		writeJSON(w, 500, map[string]any{"error": "Не удалось прочитать сплиты"})
+		return
+	}
+	ds["detectedSplits"] = hints
 	writeJSON(w, 200, ds)
 }
 
@@ -668,7 +690,11 @@ func (s *Server) handleDatasetMeta(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 404, map[string]any{"error": "Датасет не найден"})
 		return
 	}
-	events, _ := s.DB.ListSplits(id)
+	events, err := s.DB.ListSplits(id)
+	if err != nil {
+		writeJSON(w, 500, map[string]any{"error": "Не удалось прочитать сплиты"})
+		return
+	}
 	meta := map[string]any{
 		"id": ds["id"], "name": ds["name"], "ticker": ds["ticker"],
 		"companyName": ds["companyName"], "dataPoints": ds["dataPoints"],
@@ -805,9 +831,14 @@ func (s *Server) savePayload(w http.ResponseWriter, payload map[string]any) {
 			return
 		}
 	}
+	hints, err := s.detectSplitHints(ticker, bars)
+	if err != nil {
+		writeJSON(w, 500, map[string]any{"error": "Данные сохранены, но сплиты не прочитаны"})
+		return
+	}
 	writeJSON(w, 200, map[string]any{
 		"success": true, "id": ticker, "ticker": ticker, "dataPoints": len(bars),
-		"adjustedForSplits": adj, "detectedSplits": s.detectSplitHints(ticker, bars),
+		"adjustedForSplits": adj, "detectedSplits": hints,
 	})
 }
 
@@ -840,7 +871,12 @@ func (s *Server) handleRefreshDataset(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 404, map[string]any{"error": "Датасет не найден"})
 		return
 	}
-	provider := refreshProvider(s.DB.Settings(), r.URL.Query().Get("provider"))
+	st, err := s.DB.SettingsErr()
+	if err != nil {
+		writeJSON(w, 500, map[string]any{"error": "Не удалось прочитать настройки"})
+		return
+	}
+	provider := refreshProvider(st, r.URL.Query().Get("provider"))
 	if provider == "webull" {
 		writeJSON(w, 400, map[string]any{"error": "Webull не поддерживает загрузку исторических данных"})
 		return
@@ -891,7 +927,11 @@ func (s *Server) handleRefreshDataset(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	updated, _ := s.DB.GetDataset(id)
+	updated, err := s.DB.GetDataset(id)
+	if err != nil {
+		writeJSON(w, 500, map[string]any{"error": "Данные сохранены, но датасет не перечитан"})
+		return
+	}
 	writeJSON(w, 200, map[string]any{
 		"success": true, "id": id, "added": added, "to": lastDateFromDataset(updated),
 		"provider": provider,
@@ -1073,8 +1113,7 @@ func (s *Server) handlePutSplits(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 500, map[string]any{"error": "Не удалось сохранить сплиты"})
 		return
 	}
-	updated, _ := s.DB.ListSplits(symbol)
-	writeJSON(w, 200, map[string]any{"success": true, "symbol": symbol, "events": updated})
+	s.writeSplitsEcho(w, symbol)
 }
 
 func (s *Server) handlePatchSplits(w http.ResponseWriter, r *http.Request) {
@@ -1092,7 +1131,18 @@ func (s *Server) handlePatchSplits(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 500, map[string]any{"error": "Не удалось обновить сплиты"})
 		return
 	}
-	updated, _ := s.DB.ListSplits(symbol)
+	s.writeSplitsEcho(w, symbol)
+}
+
+// writeSplitsEcho answers with the split list a write just produced. An
+// unreadable table is not an empty one: echoing nil would tell the UI the
+// symbol has no splits right after a successful save (AUD-020 class).
+func (s *Server) writeSplitsEcho(w http.ResponseWriter, symbol string) {
+	updated, err := s.DB.ListSplits(symbol)
+	if err != nil {
+		writeJSON(w, 500, map[string]any{"error": "Сплиты сохранены, но список не прочитан"})
+		return
+	}
 	writeJSON(w, 200, map[string]any{"success": true, "symbol": symbol, "events": updated})
 }
 
@@ -1120,8 +1170,7 @@ func (s *Server) handleDeleteSplitDate(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 500, map[string]any{"error": err.Error()})
 		return
 	}
-	updated, _ := s.DB.ListSplits(symbol)
-	writeJSON(w, 200, map[string]any{"success": true, "symbol": symbol, "events": updated})
+	s.writeSplitsEcho(w, symbol)
 }
 
 func (s *Server) handleDeleteSplits(w http.ResponseWriter, r *http.Request) {
@@ -1134,7 +1183,14 @@ func (s *Server) handleDeleteSplits(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleGetCalendar(w http.ResponseWriter, r *http.Request) {
-	raw, _ := s.DB.GetCalendar()
+	raw, err := s.DB.GetCalendar()
+	if err != nil {
+		// An unreadable store is not an empty calendar: answering with the
+		// default plus computed days would show the UI a healthy source
+		// while the scheduler is skipping the day (see AUD-020).
+		writeJSON(w, 500, map[string]any{"error": "Не удалось прочитать торговый календарь"})
+		return
+	}
 	if store.CalendarHolidaysEmpty(raw) {
 		raw = json.RawMessage(store.DefaultCalendarJSON)
 	}

@@ -27,13 +27,18 @@ func detectedNotStored(stored, detected []types.SplitEvent) []types.SplitEvent {
 
 // detectSplitHints returns Detect results not already stored.
 // GET/save/refresh must not persist guessed splits or mutate history.
-func (s *Server) detectSplitHints(id string, bars []types.OHLC) []types.SplitEvent {
+// The error matters: an unreadable split table looks exactly like "nothing
+// stored", and every stored event would then be offered again as a new hint.
+func (s *Server) detectSplitHints(id string, bars []types.OHLC) ([]types.SplitEvent, error) {
 	if len(bars) == 0 {
-		return []types.SplitEvent{}
+		return []types.SplitEvent{}, nil
 	}
 	detected := splits.Detect(bars)
-	stored, _ := s.DB.ListSplits(id)
-	return detectedNotStored(stored, detected)
+	stored, err := s.DB.ListSplits(id)
+	if err != nil {
+		return nil, err
+	}
+	return detectedNotStored(stored, detected), nil
 }
 
 // applyStoredSplits back-adjusts using confirmed stored events that the prices
