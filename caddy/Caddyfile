@@ -32,6 +32,11 @@
     reverse_proxy server:3001
   }
 
+  # The standalone YouTube MCP service was removed.
+  handle /mcp/transcribe* {
+    respond 404
+  }
+
   # Music server (ytplayer / musicplay) under /music — not in this compose;
   # it lives on the VPS in a separate stack. Missing upstream → 502.
   # /music/foo → musicplay:3001/foo
