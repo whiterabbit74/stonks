@@ -178,7 +178,7 @@
     eye: '<path d="M2.5 12s3.5-5 9.5-5 9.5 5 9.5 5-3.5 5-9.5 5-9.5-5-9.5-5Z"/><circle cx="12" cy="12" r="2.5"/>',
     eyeoff: '<path d="m3 3 18 18"/><path d="M10.6 6.2A10.5 10.5 0 0 1 12 6c6 0 9.5 6 9.5 6a16.7 16.7 0 0 1-3.2 3.7"/><path d="M6.7 6.7C3.8 8.5 2.5 12 2.5 12s3.5 6 9.5 6a9.7 9.7 0 0 0 3.1-.5"/>',
     arrowne: '<path d="M7 7h10v10"/><path d="M7 17 17 7"/>',
-    logo: '<path d="M7 20v-8M9 16l4-4 4 2"/>',
+    logo: '<path d="M5 20v-9M8 17l4-5 5 2"/>',
   };
 
   const PC_COLORS = ['#2563EB', '#0EA5E9', '#14B8A6', '#10B981', '#84CC16', '#F59E0B', '#F97316', '#EF4444', '#F43F5E', '#A855F7', '#8B5CF6', '#64748B'];
@@ -368,10 +368,10 @@
   function icon(name, cls) {
     return `<svg class="${cls || 'w-5 h-5'}" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${PATHS[name] || ''}</svg>`;
   }
-  const BRAND_POINTS = [7, 20, 7, 12, 9, 16, 13, 12, 17, 14];
+  const BRAND_POINTS = [5, 20, 5, 11, 8, 17, 12, 12, 17, 14];
   const PANEL_POINTS = {
-    close: [7, 4, 7, 20, 16, 8, 12, 12, 16, 16],
-    open: [17, 4, 17, 20, 8, 8, 12, 12, 8, 16],
+    close: [5, 4, 5, 20, 19, 8, 14, 12, 19, 16],
+    open: [19, 4, 19, 20, 5, 8, 10, 12, 5, 16],
   };
   function panelPath(points) {
     return `M${points[0]} ${points[1]}v${points[3] - points[1]}M${points[4]} ${points[5]}l${points[6] - points[4]} ${points[7] - points[5]} ${points[8] - points[6]} ${points[9] - points[7]}`;
