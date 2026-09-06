@@ -39,7 +39,12 @@ html.dark .chart-watermark { color: rgba(226, 232, 240, 0.34); }
   content: ''; position: absolute; inset-block: 0; inset-inline-end: 0; width: 2rem;
   pointer-events: none; background: linear-gradient(to right, transparent, rgba(249,250,251,0.95));
 }
+.scroll-cue-shell.scroll-cue-overflow::before {
+  content: '→'; position: absolute; inset-block: 0; inset-inline-end: 0.35rem; z-index: 1;
+  display: flex; align-items: center; pointer-events: none; color: #64748b; font-size: 0.8rem; font-weight: 700;
+}
 html.dark .scroll-cue-overflow::after { background: linear-gradient(to right, transparent, rgba(17,24,39,0.95)); }
+html.dark .scroll-cue-overflow::before { color: #cbd5e1; }
 .action-icon { display: inline-flex; align-items: center; justify-content: center; width: 2.25rem; height: 2.25rem; border-radius: 9999px; }
 .action-icon:focus-visible { outline: 2px solid #6366f1; outline-offset: 2px; }
 .action-icon-edit { color: #4f46e5; }
