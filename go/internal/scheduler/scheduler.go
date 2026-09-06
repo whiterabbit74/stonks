@@ -495,7 +495,11 @@ func reportMissedTelegram(db *store.DB, eng *live.Engine, now time.Time, today, 
 			// The claim is taken before the send so two ticks cannot both
 			// report; a send that then fails must give it back, or a blip in
 			// Telegram loses the alert for the whole day.
-			if err := eng.Send("", fmt.Sprintf("<b>Пропущен T-11</b>\nСводка за 11 минут до закрытия не ушла (until=%d).", until)); err != nil {
+			text := fmt.Sprintf("<b>Пропущен T-11</b>\nСводка за 11 минут до закрытия не ушла (until=%d).", until)
+			if watches, rerr := db.ListWatches(); rerr == nil && len(watches) == 0 {
+				text = "<b>T-11 не сформирован</b>\nСписок наблюдения пуст, поэтому сводку отправлять не из чего."
+			}
+			if err := eng.Send("", text); err != nil {
 				if rerr := db.ReleaseAggregateT11(chat, today); rerr != nil {
 					onEvent(JobLog{At: now, Name: "telegram-aggregation", Detail: "marker-save-failed: " + rerr.Error()})
 				}

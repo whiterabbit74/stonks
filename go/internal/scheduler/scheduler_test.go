@@ -838,6 +838,9 @@ func TestMissedAlertRetriesAfterFailedSend(t *testing.T) {
 	eng := live.New(db, nil)
 	eng.Telegram = tg
 	eng.ChatID = "c"
+	if err := db.UpsertWatch(map[string]any{"symbol": "AAPL"}); err != nil {
+		t.Fatal(err)
+	}
 	now := time.Date(2026, 9, 1, 19, 52, 0, 0, time.UTC) // 15:52 ET, until=8
 	reportMissedTelegram(db, eng, now, "2026-09-01", "c", "t11", 8, func(JobLog) {})
 	if telegramTextContaining(tg, "Пропущен T-11") != "" {
@@ -856,6 +859,27 @@ func TestMissedAlertRetriesAfterFailedSend(t *testing.T) {
 	}
 	if n != 1 {
 		t.Fatalf("a delivered alert must not repeat, got %d: %v", n, tg.Sent())
+	}
+}
+
+func TestMissedT11WithEmptyWatchlistExplainsWhy(t *testing.T) {
+	db, err := store.Open(filepath.Join(t.TempDir(), "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	tg := &live.MemoryTelegram{}
+	eng := live.New(db, nil)
+	eng.Telegram = tg
+	eng.ChatID = "c"
+
+	reportMissedTelegram(db, eng, time.Date(2026, 9, 1, 19, 52, 0, 0, time.UTC), "2026-09-01", "c", "t11", 8, func(JobLog) {})
+	msg := telegramTextContaining(tg, "T-11 не сформирован")
+	if msg == "" || !strings.Contains(msg, "Список наблюдения пуст") {
+		t.Fatalf("empty watchlist must explain the skipped summary, messages=%v", tg.Sent())
+	}
+	if telegramTextContaining(tg, "Пропущен T-11") != "" {
+		t.Fatalf("empty watchlist must not be reported as a missed summary, messages=%v", tg.Sent())
 	}
 }
 
