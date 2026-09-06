@@ -19,11 +19,12 @@ type CleanOptions struct {
 }
 
 type cleanPosition struct {
-	entryDate  string
-	entryPrice float64
-	quantity   float64
-	entryIndex int
-	entryIBS   float64
+	entryDate       string
+	entryPrice      float64
+	quantity        float64
+	entryIndex      int
+	entryIBS        float64
+	entryCommission float64
 }
 
 func cleanMaxHoldDays(strategy types.Strategy) float64 {
@@ -81,21 +82,29 @@ func RunClean(data []types.OHLC, strategy types.Strategy, options *CleanOptions)
 					quantity := wholeShares(investmentAmount / nextBar.Open)
 					if quantity > 0 {
 						totalCost := quantity * nextBar.Open
-						position = &cleanPosition{
-							entryDate: nextBar.Date, entryPrice: nextBar.Open,
-							quantity: quantity, entryIndex: i + 1, entryIBS: ibs,
+						entryCommission := commission(totalCost, strategy)
+						if currentCapital >= totalCost+entryCommission {
+							position = &cleanPosition{
+								entryDate: nextBar.Date, entryPrice: nextBar.Open,
+								quantity: quantity, entryIndex: i + 1, entryIBS: ibs,
+								entryCommission: entryCommission,
+							}
+							currentCapital -= totalCost + entryCommission
 						}
-						currentCapital -= totalCost
 					}
 				} else {
 					quantity := wholeShares(investmentAmount / bar.Close)
 					if quantity > 0 {
 						totalCost := quantity * bar.Close
-						position = &cleanPosition{
-							entryDate: bar.Date, entryPrice: bar.Close,
-							quantity: quantity, entryIndex: i, entryIBS: ibs,
+						entryCommission := commission(totalCost, strategy)
+						if currentCapital >= totalCost+entryCommission {
+							position = &cleanPosition{
+								entryDate: bar.Date, entryPrice: bar.Close,
+								quantity: quantity, entryIndex: i, entryIBS: ibs,
+								entryCommission: entryCommission,
+							}
+							currentCapital -= totalCost + entryCommission
 						}
-						currentCapital -= totalCost
 					}
 				}
 			}
@@ -122,8 +131,10 @@ func RunClean(data []types.OHLC, strategy types.Strategy, options *CleanOptions)
 					exitPrice := bar.Close
 					grossProceeds := position.quantity * exitPrice
 					grossCost := position.quantity * position.entryPrice
-					pnl := grossProceeds - grossCost
-					pnlPercent := (pnl / grossCost) * 100
+					exitCommission := commission(grossProceeds, strategy)
+					cashInvested := grossCost + position.entryCommission
+					pnl := grossProceeds - grossCost - position.entryCommission - exitCommission
+					pnlPercent := (pnl / cashInvested) * 100
 					duration := tradingdate.DaysBetween(position.entryDate, bar.Date)
 					trade := types.Trade{
 						ID:        fmt.Sprintf("trade-%d", len(trades)),
@@ -135,11 +146,11 @@ func RunClean(data []types.OHLC, strategy types.Strategy, options *CleanOptions)
 							MarketConditions:  "normal",
 							IndicatorValues:   map[string]float64{"IBS": position.entryIBS, "exitIBS": ibs},
 							Trend:             "sideways",
-							InitialInvestment: grossCost,
+							InitialInvestment: cashInvested,
 						},
 					}
 					trades = append(trades, trade)
-					currentCapital += grossProceeds
+					currentCapital += grossProceeds - exitCommission
 					trade.Context.CurrentCapitalAfterExit = currentCapital
 					trades[len(trades)-1] = trade
 					position = nil
@@ -176,8 +187,10 @@ func RunClean(data []types.OHLC, strategy types.Strategy, options *CleanOptions)
 			exitPrice := lastBar.Close
 			grossProceeds := position.quantity * exitPrice
 			grossCost := position.quantity * position.entryPrice
-			pnl := grossProceeds - grossCost
-			pnlPercent := (pnl / grossCost) * 100
+			exitCommission := commission(grossProceeds, strategy)
+			cashInvested := grossCost + position.entryCommission
+			pnl := grossProceeds - grossCost - position.entryCommission - exitCommission
+			pnlPercent := (pnl / cashInvested) * 100
 			duration := tradingdate.DaysBetween(position.entryDate, lastBar.Date)
 			trade := types.Trade{
 				ID:        fmt.Sprintf("trade-%d", len(trades)),
@@ -189,11 +202,11 @@ func RunClean(data []types.OHLC, strategy types.Strategy, options *CleanOptions)
 					MarketConditions:  "normal",
 					IndicatorValues:   map[string]float64{"IBS": position.entryIBS, "exitIBS": lastIBS},
 					Trend:             "sideways",
-					InitialInvestment: grossCost,
+					InitialInvestment: cashInvested,
 				},
 			}
 			trades = append(trades, trade)
-			currentCapital += grossProceeds
+			currentCapital += grossProceeds - exitCommission
 			trade.Context.CurrentCapitalAfterExit = currentCapital
 			trades[len(trades)-1] = trade
 			position = nil
