@@ -25,7 +25,6 @@
     { id: 'trades', label: 'Сделки' },
     { id: 'profit', label: 'Профит-фактор' },
     { id: 'duration', label: 'Длительность' },
-    { id: 'monthlyContribution', label: 'Пополнения' },
     { id: 'splits', label: 'Сплиты' },
     { id: 'buyhold', label: 'Купить и держать' },
     { id: 'noStopLoss', label: 'Без стоп-лосса' },
@@ -281,6 +280,7 @@
     optTickers: localStorage.getItem('options.tickers') || localStorage.getItem('tickersInput') || 'AAPL, MSFT, AMZN, MAGS',
     leverage: 200,
     takeProfit: localStorage.getItem('stocksTakeProfit') || '',
+    monthlyContribution: localStorage.getItem('stocksMonthlyContribution') || '',
     tickersData: [],
     stockTab: 'summary',
     pendingRun: false,
@@ -352,7 +352,6 @@
     watchSortDir: 'asc',
     nested: {
       nsl: { exitMode: 'ibs-only', requireProfitableExit: false, maxHoldDays: 60, profitTarget: 10, leverage: 100 },
-      mc: { amount: 500, day: 1 },
     },
     baselineResult: null,
     emaBaseline: null,
@@ -932,6 +931,11 @@
       state.takeProfit = tpEl.value;
       try { localStorage.setItem('stocksTakeProfit', state.takeProfit); } catch (_) {}
     }
+    const mcEl = document.getElementById('monthly-contribution-input');
+    if (mcEl) {
+      state.monthlyContribution = mcEl.value;
+      try { localStorage.setItem('stocksMonthlyContribution', state.monthlyContribution); } catch (_) {}
+    }
   }
   function applyStockPreset(pset) {
     if (pset.tickers) {
@@ -942,6 +946,10 @@
     if (pset.takeProfit != null) {
       state.takeProfit = pset.takeProfit;
       try { localStorage.setItem('stocksTakeProfit', state.takeProfit); } catch (_) {}
+    }
+    if (pset.monthlyContribution != null) {
+      state.monthlyContribution = pset.monthlyContribution;
+      try { localStorage.setItem('stocksMonthlyContribution', state.monthlyContribution); } catch (_) {}
     }
   }
   function makeZone(side, level) {
@@ -1470,6 +1478,7 @@
       ${card('', 'text-red-600', fmtPct(dd), 'Макс. просадка', compare(baseDD, fmtPct))}
       ${card('', 'text-indigo-600', m.totalTrades ?? 0, 'Всего сделок', compare(baseTrades, (v) => fmt(v, 0)))}
       ${card('', 'text-teal-600', pf, 'Профит-фактор', compare(bm?.profitFactor, (v) => Number.isFinite(v) ? fmt(v) : '∞'))}
+      ${m.contributionCount ? card('col-span-2', 'text-gray-700 dark:text-gray-300', fmtUsd(m.totalContribution, 0), `Пополнения (${m.contributionCount})`) : ''}
     </div>`;
   }
   function tradesTable(trades, opts) {
@@ -2021,11 +2030,6 @@
       <button class="btn-primary min-h-0 py-2">Посчитать</button>
     </form><div id="nsl-out">Без стоп-лосса…</div>`;
   }
-  function nestedMcHTML() {
-    const f = state.nested.mc;
-    return `<form id="mc-form" class="flex flex-wrap items-end gap-2 mb-3"><label class="text-xs">Сумма<input name="amount" type="number" value="${esc(f.amount)}" class="field mt-1 w-28" /></label><label class="text-xs">День<input name="day" type="number" value="${esc(f.day)}" class="field mt-1 w-20" /></label><button class="btn-primary">Посчитать</button></form><div id="mc-out"></div>`;
-  }
-
   function pageStocks() {
     const tabs = visibleStockTabs();
     const r = state.result;
@@ -2058,7 +2062,6 @@
       else if (state.stockTab === 'trades') body = tradesTable(r.trades, { page: state.tradesPage });
       else if (state.stockTab === 'profit') body = profitBody(r);
       else if (state.stockTab === 'duration') body = durationBody(r);
-      else if (state.stockTab === 'monthlyContribution') body = nestedMcHTML();
       else if (state.stockTab === 'splits') body = `<div id="splits-box" class="text-sm"></div>`;
       else if (state.stockTab === 'buyhold') body = `<div id="bh-out">
         <form id="bh-lev-form" class="flex flex-wrap items-end gap-3 mb-3">
@@ -2098,6 +2101,11 @@
         <label class="mb-1 block text-xs font-medium" for="take-profit-percent-input">Тейк-профит</label>
         <input id="take-profit-percent-input" type="number" min="0" step="0.1" inputmode="decimal" value="${esc(state.takeProfit)}" placeholder="Например, 2.5" class="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-800" />
         <p class="mt-1 text-[11px] text-gray-500">Досрочный выход, если максимум дня достиг процента прибыли от цены входа. Пусто или 0 выключает условие.</p>
+      </div>
+      <div>
+        <label class="mb-1 block text-xs font-medium" for="monthly-contribution-input">Пополнение в месяц, $</label>
+        <input id="monthly-contribution-input" type="number" min="0" step="100" inputmode="decimal" value="${esc(state.monthlyContribution)}" placeholder="Например, 500" class="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-800" />
+        <p class="mt-1 text-[11px] text-gray-500">Зачисляется в первый торговый день каждого месяца. Пусто или 0 выключает пополнения.</p>
       </div>
       <button id="run-bt" class="btn-primary w-full" ${state.running ? 'disabled' : ''}>${state.running ? 'Считаем…' : 'Запустить бэктест'}</button>`;
   }
@@ -3490,11 +3498,12 @@
       syncTickerField('ticker-input');
       document.getElementById('leverage-sel')?.addEventListener('change', (e) => { state.leverage = Number(e.target.value); });
       document.getElementById('take-profit-percent-input')?.addEventListener('input', (e) => { state.takeProfit = e.target.value; try { localStorage.setItem('stocksTakeProfit', state.takeProfit); } catch (_) {} });
+      document.getElementById('monthly-contribution-input')?.addEventListener('input', (e) => { state.monthlyContribution = e.target.value; try { localStorage.setItem('stocksMonthlyContribution', state.monthlyContribution); } catch (_) {} });
       document.getElementById('stock-preset-save')?.addEventListener('click', () => {
         const name = document.getElementById('stock-preset-name')?.value.trim();
         if (!name) return;
         syncStockParamsFromDom();
-        const payload = { id: String(Date.now()), name, tickers: state.tickerInput, leverage: state.leverage, takeProfit: state.takeProfit };
+        const payload = { id: String(Date.now()), name, tickers: state.tickerInput, leverage: state.leverage, takeProfit: state.takeProfit, monthlyContribution: state.monthlyContribution };
         const existing = state.stockPresets.findIndex((p) => String(p.name || '').toLowerCase() === name.toLowerCase());
         if (existing >= 0) {
           state.stockPresets[existing] = { ...state.stockPresets[existing], ...payload, id: state.stockPresets[existing].id };
@@ -4521,6 +4530,8 @@
       const tp = Number(String(state.takeProfit).replace(',', '.'));
       const single = { allowSameDayReentry: true };
       if (Number.isFinite(tp) && tp > 0) single.takeProfitPercent = tp;
+      const mc = Number(String(state.monthlyContribution).replace(',', '.'));
+      if (Number.isFinite(mc) && mc > 0) single.monthlyAmount = mc;
       const lev = (state.leverage || 200) / 100;
       const payload = {
         tickers: calcTickerRefs(names),
@@ -5312,29 +5323,6 @@
     if (state.stockTab === 'splits') {
       const el = document.getElementById('splits-box');
       if (el) await paintSplitsForTickers(el, (state.tickersData || []).map((t) => t.ticker));
-    }
-    if (state.stockTab === 'monthlyContribution') {
-      document.getElementById('mc-form')?.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const fd = new FormData(e.target);
-        state.nested.mc = { amount: Number(fd.get('amount')), day: Number(fd.get('day')) };
-        const out = document.getElementById('mc-out');
-        try {
-          const withC = resultOf(await API.calc('single-position', {
-            tickers: calcTickerRefs((state.tickersData || []).map((x) => x.ticker)), strategy: st, leverage: (state.leverage || 200) / 100,
-            single: { allowSameDayReentry: true, monthlyAmount: Number(fd.get('amount')), monthlyDayOfMonth: Number(fd.get('day')) },
-          }));
-          const base = state.baselineResult || resultOf(state.result);
-          const contrib = Number(fd.get('amount')) || 0;
-          out.innerHTML = metricsGrid(withC.metrics, withC.finalValue, withC.maxDrawdown)
-            + (base ? `<div class="rounded-lg border p-3 my-3 text-sm"><div class="font-semibold mb-1">Δ vs без пополнений</div><div>Итог ${fmtUsd((withC.finalValue || 0) - (base.finalValue || 0))} · доходность ${fmtSignedPct((withC.metrics.totalReturn || 0) - (base.metrics.totalReturn || 0), 2)} · CAGR ${fmtSignedPct((withC.metrics.cagr || 0) - (base.metrics.cagr || 0), 2)}</div><div class="text-xs text-gray-500 mt-1">Сумма пополнения ${fmtUsd(contrib)} / день ${esc(fd.get('day'))}</div></div>` : '')
-            + '<div id="mc-eq" class="chart-box rounded-lg border dark:border-gray-800 my-3"></div>'
-            + tradesTable(withC.trades, { page: 1 });
-          const ch = document.getElementById('mc-eq');
-          if (ch) Charts.richLine(ch, withC.equity, isDark(), { area: true, compare: base && base.equity, compareColor: '#94a3b8' });
-          bindTradesPager(out);
-        } catch (err) { out.textContent = errText(err); }
-      });
     }
   }
 

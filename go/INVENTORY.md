@@ -11,7 +11,7 @@ Live app map. Goldens: `testdata/goldens/` — do not hand-edit trade lists.
 | `/data` | CSV/JSON import, dataset library |
 | `/enhance` | fetch from providers |
 | `/results` | → `/stocks` |
-| `/stocks` | multi-ticker + tabs: price, tickerCharts, equity, exposure, drawdown, trades, profit, duration, monthlyContribution, splits, buyhold, openDayDrawdown, buyAtClose, buyAtClose4, noStopLoss, options |
+| `/stocks` | multi-ticker (параметр «Пополнение в месяц») + tabs: price, tickerCharts, equity, exposure, drawdown, trades, profit, duration, splits, buyhold, openDayDrawdown, buyAtClose, buyAtClose4, noStopLoss, options |
 | `/ema` | EMA zone, `POST /api/calc/ema-zone` |
 | `/multi-ticker-options` | `POST /api/calc/options-multi` |
 | `/calendar` | trading calendar |

@@ -101,8 +101,6 @@ type singlePos struct {
 type SingleOptions struct {
 	AllowSameDayReentry bool     `json:"allowSameDayReentry"`
 	MonthlyAmount       float64  `json:"monthlyAmount"`
-	MonthlyDayOfMonth   int      `json:"monthlyDayOfMonth"`
-	MonthlyStartDate    string   `json:"monthlyStartDate"`
 	TakeProfitPercent   *float64 `json:"takeProfitPercent"`
 }
 
@@ -124,26 +122,9 @@ func RunSinglePosition(tickers []TickerIndexed, strategy types.Strategy, leverag
 	totalInvested := 0.0
 	totalPortfolio := initial
 	var current *singlePos
-	totalMonthly := 0.0
-	contribCount := 0
+	contribs := map[string]float64{}
 
 	sorted := unionDates(tickers)
-
-	dayOfMonth := opt.MonthlyDayOfMonth
-	if dayOfMonth < 1 {
-		dayOfMonth = 1
-	}
-	if dayOfMonth > 28 {
-		dayOfMonth = 28
-	}
-	contribStart := ""
-	if opt.MonthlyAmount > 0 {
-		if opt.MonthlyStartDate != "" {
-			contribStart = opt.MonthlyStartDate
-		} else if len(sorted) > 0 {
-			contribStart = sorted[0]
-		}
-	}
 	lastMonthKey := ""
 
 	findTicker := func(sym string) *TickerIndexed {
@@ -191,24 +172,19 @@ func RunSinglePosition(tickers []TickerIndexed, strategy types.Strategy, leverag
 	}
 
 	equity = runDailyEngine(sorted, initial, func(day dailyDay) float64 {
-		date, nextDate := day.Date, day.NextDate
+		date := day.Date
 		exitedThisBar := false
 
-		if opt.MonthlyAmount > 0 && contribStart != "" && date >= contribStart {
-			y, mo, d := tradingdate.YMD(date)
-			monthKey := fmt.Sprintf("%d-%d", y, mo-1)
+		// Пополнение — первый торговый день каждого календарного месяца.
+		if opt.MonthlyAmount > 0 {
+			monthKey := date
+			if len(monthKey) > 7 {
+				monthKey = monthKey[:7]
+			}
 			if monthKey != lastMonthKey {
-				var ny, nm int
-				if nextDate != "" {
-					ny, nm, _ = tradingdate.YMD(nextDate)
-				}
-				isLast := nextDate == "" || nm != mo || ny != y
-				if d >= dayOfMonth || isLast {
-					freeCapital += opt.MonthlyAmount
-					totalMonthly += opt.MonthlyAmount
-					contribCount++
-					lastMonthKey = monthKey
-				}
+				lastMonthKey = monthKey
+				freeCapital += opt.MonthlyAmount
+				contribs[date] += opt.MonthlyAmount
 			}
 		}
 
@@ -390,7 +366,7 @@ func RunSinglePosition(tickers []TickerIndexed, strategy types.Strategy, leverag
 		}
 	}
 
-	m = metrics.BacktestMetrics(trades, equity, initial, totalMonthly, contribCount)
+	m = metrics.BacktestMetrics(trades, equity, initial, contribs)
 	finalValue = totalPortfolio
 	maxDrawdown = m.MaxDrawdown
 	return

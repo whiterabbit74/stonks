@@ -430,12 +430,21 @@ func CalculateTradeStats(trades []types.Trade) TradeStats {
 	return st
 }
 
-func BacktestMetrics(trades []types.Trade, equity []types.EquityPoint, initialCapital float64, contribTotal float64, contribCount int) types.BacktestMetrics {
+// BacktestMetrics считает итоговые метрики. contribs — пополнения по датам
+// (nil, если пополнений нет); их вклад исключается из прибыли, а CAGR считается
+// по взвешенной по времени доходности, чтобы довнесённые деньги не выглядели
+// как результат стратегии.
+func BacktestMetrics(trades []types.Trade, equity []types.EquityPoint, initialCapital float64, contribs map[string]float64) types.BacktestMetrics {
 	st := CalculateTradeStats(trades)
 	finalValue := initialCapital
 	if len(equity) > 0 {
 		finalValue = equity[len(equity)-1].Value
 	}
+	contribTotal := 0.0
+	for _, v := range contribs {
+		contribTotal += v
+	}
+	contribCount := len(contribs)
 	netProfit := finalValue - initialCapital - contribTotal
 	totalInvested := initialCapital + contribTotal
 	netReturn := 0.0
@@ -446,8 +455,15 @@ func BacktestMetrics(trades []types.Trade, equity []types.EquityPoint, initialCa
 	if len(equity) >= 2 {
 		days := float64(tradingdate.DaysBetween(equity[0].Date, equity[len(equity)-1].Date))
 		years := days / 365.25
-		if finalValue > 0 && initialCapital > 0 {
-			cagr = (math.Pow(finalValue/initialCapital, 1/years) - 1) * 100
+		growth := 0.0
+		if initialCapital > 0 {
+			growth = finalValue / initialCapital
+		}
+		if contribCount > 0 {
+			growth = timeWeightedGrowth(equity, initialCapital, contribs)
+		}
+		if growth > 0 && years > 0 {
+			cagr = (math.Pow(growth, 1/years) - 1) * 100
 		}
 	}
 	maxDD := 0.0
@@ -462,6 +478,22 @@ func BacktestMetrics(trades []types.Trade, equity []types.EquityPoint, initialCa
 		ProfitFactor: st.ProfitFactor, NetProfit: netProfit, NetReturn: netReturn,
 		MaxDrawdown: maxDD, TotalContribution: contribTotal, ContributionCount: contribCount,
 	}
+}
+
+// timeWeightedGrowth — цепочка дневных доходностей, где пополнение дня входит
+// в базу, а не в результат: growth = П (V_t / (V_{t-1} + C_t)).
+func timeWeightedGrowth(equity []types.EquityPoint, initialCapital float64, contribs map[string]float64) float64 {
+	growth := 1.0
+	prev := initialCapital
+	for _, p := range equity {
+		base := prev + contribs[p.Date]
+		if base <= 0 {
+			return 0
+		}
+		growth *= p.Value / base
+		prev = p.Value
+	}
+	return growth
 }
 
 func NormalizeTakeProfitPercent(value *float64) *float64 {

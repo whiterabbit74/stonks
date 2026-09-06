@@ -238,7 +238,7 @@ func TestMonthlyContributionJSONFromUI(t *testing.T) {
 		"tickers":  []map[string]any{{"ticker": "AAPL", "data": data}},
 		"strategy": types.DefaultIBSStrategy(),
 		"leverage": 1,
-		"single":   map[string]any{"monthlyAmount": 500, "monthlyDayOfMonth": 1},
+		"single":   map[string]any{"monthlyAmount": 500},
 	})
 	body := decodeCalc(t, rec)
 	metrics, _ := body["metrics"].(map[string]any)

@@ -580,7 +580,7 @@ func RunEmaZone(tickers []TickerIndexed, params EmaParams) EmaResult {
 		}
 	}
 
-	m := metrics.BacktestMetrics(trades, equity, initial, 0, 0)
+	m := metrics.BacktestMetrics(trades, equity, initial, nil)
 	return EmaResult{
 		Equity: equity, Exposure: exposure, FinalValue: cash, MaxDrawdown: m.MaxDrawdown,
 		Trades: trades, Metrics: m, Deviation: deviation,
