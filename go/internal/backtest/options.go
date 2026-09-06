@@ -103,6 +103,7 @@ func cloneTrades(in []types.Trade) []types.Trade {
 
 func RunMultiOptions(stockTrades []types.Trade, tickers []TickerIndexed, raw OptionsConfig) (equity []types.EquityPoint, trades []types.Trade, finalValue float64) {
 	stockTrades = cloneTrades(stockTrades)
+	tickers = IndexTickers(tickers)
 	cfg := raw.resolve()
 	initial := optionsInitial(raw)
 	type daily struct {

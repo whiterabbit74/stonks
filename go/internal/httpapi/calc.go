@@ -78,7 +78,22 @@ func (s *Server) calcClean(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	res := backtest.RunClean(bars, decodeStrategy(req.Strategy), req.Options)
+	opt := req.Options
+	if opt == nil || len(opt.Splits) == 0 {
+		events, ok := s.splitsFor(w, req.Ticker, req.Splits)
+		if !ok {
+			return
+		}
+		if len(events) > 0 {
+			cp := backtest.CleanOptions{}
+			if opt != nil {
+				cp = *opt
+			}
+			cp.Splits = events
+			opt = &cp
+		}
+	}
+	res := backtest.RunClean(bars, decodeStrategy(req.Strategy), opt)
 	writeJSON(w, 200, struct {
 		types.BacktestResult
 		CommissionApplied bool `json:"commissionApplied"`
@@ -333,10 +348,44 @@ func (s *Server) barsWithSplits(w http.ResponseWriter, req calcReq) ([]types.OHL
 	if !ok {
 		return nil, false
 	}
-	if len(req.Splits) > 0 {
-		return splits.AdjustOHLC(bars, req.Splits), true
+	events, ok := s.splitsFor(w, req.Ticker, req.Splits)
+	if !ok {
+		return nil, false
+	}
+	if len(events) > 0 {
+		return splits.AdjustOHLC(bars, events), true
 	}
 	return bars, true
+}
+
+// pendingSplits is the stored split table that still applies to a symbol. A
+// dataset already back-adjusted yields none — adjusting twice is as wrong as
+// not adjusting at all. The error matters: an unreadable table looks exactly
+// like "no splits", and the backtest would then run on raw prices in silence.
+func (s *Server) pendingSplits(symbol string) ([]types.SplitEvent, error) {
+	if symbol == "" || s.DB == nil {
+		return nil, nil
+	}
+	// n=0 reads the adjusted flag without loading the history.
+	_, adjusted, err := s.DB.GetOHLCLast(symbol, 0)
+	if err != nil || adjusted {
+		return nil, err
+	}
+	return s.DB.ListSplits(symbol)
+}
+
+// splitsFor picks the events a calculation must apply: what the request carries
+// wins, otherwise the stored table. ok=false means the response is written.
+func (s *Server) splitsFor(w http.ResponseWriter, symbol string, explicit []types.SplitEvent) ([]types.SplitEvent, bool) {
+	if len(explicit) > 0 {
+		return explicit, true
+	}
+	events, err := s.pendingSplits(symbol)
+	if err != nil {
+		writeJSON(w, 500, map[string]any{"error": "Не удалось прочитать сплиты"})
+		return nil, false
+	}
+	return events, true
 }
 
 func tickerDataPresent(tickers []backtest.TickerIndexed) bool {
@@ -381,7 +430,11 @@ func (s *Server) tickersOrOne(w http.ResponseWriter, req calcReq) ([]backtest.Ti
 			if len(bars) == 0 {
 				continue
 			}
-			out = append(out, backtest.TickerIndexed{Ticker: t.Ticker, Data: bars, IBSValues: indicators.IBS(bars), Splits: req.Splits})
+			events, ok := s.splitsFor(w, t.Ticker, req.Splits)
+			if !ok {
+				return nil, false
+			}
+			out = append(out, backtest.TickerIndexed{Ticker: t.Ticker, Data: bars, IBSValues: indicators.IBS(bars), Splits: events})
 		}
 		return out, true
 	}
@@ -392,9 +445,13 @@ func (s *Server) tickersOrOne(w http.ResponseWriter, req calcReq) ([]backtest.Ti
 	if len(bars) == 0 {
 		return nil, true
 	}
+	events, ok := s.splitsFor(w, req.Ticker, req.Splits)
+	if !ok {
+		return nil, false
+	}
 	sym := req.Ticker
 	if sym == "" {
 		sym = "TICKER"
 	}
-	return []backtest.TickerIndexed{{Ticker: sym, Data: bars, IBSValues: indicators.IBS(bars), Splits: req.Splits}}, true
+	return []backtest.TickerIndexed{{Ticker: sym, Data: bars, IBSValues: indicators.IBS(bars), Splits: events}}, true
 }
