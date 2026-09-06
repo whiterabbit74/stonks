@@ -723,7 +723,15 @@ func (s *Server) handlePutDataset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := r.PathValue("id")
-	if existing, _ := s.DB.GetDataset(id); existing != nil {
+	// The payload is a patch: without the stored dataset to merge into, the
+	// save drops every field the request did not carry. A failed read must not
+	// look like "there is nothing stored yet".
+	existing, err := s.DB.GetDataset(id)
+	if err != nil {
+		writeJSON(w, 500, map[string]any{"error": "Не удалось получить датасет"})
+		return
+	}
+	if existing != nil {
 		payload = mergeDatasetPayload(existing, payload)
 	}
 	payload["ticker"] = id

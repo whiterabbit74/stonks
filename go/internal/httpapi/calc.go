@@ -74,7 +74,11 @@ func (s *Server) calcClean(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 400, map[string]any{"error": err.Error()})
 		return
 	}
-	res := backtest.RunClean(s.barsOrDataset(req), decodeStrategy(req.Strategy), req.Options)
+	bars, ok := s.barsOrDataset(w, req)
+	if !ok {
+		return
+	}
+	res := backtest.RunClean(bars, decodeStrategy(req.Strategy), req.Options)
 	writeJSON(w, 200, struct {
 		types.BacktestResult
 		CommissionApplied bool `json:"commissionApplied"`
@@ -86,7 +90,11 @@ func (s *Server) calcNoStop(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	writeJSON(w, 200, backtest.RunNoStopLoss(s.barsWithSplits(req), decodeStrategy(req.Strategy), req.NoStop))
+	bars, ok := s.barsWithSplits(w, req)
+	if !ok {
+		return
+	}
+	writeJSON(w, 200, backtest.RunNoStopLoss(bars, decodeStrategy(req.Strategy), req.NoStop))
 }
 
 func (s *Server) calcSingle(w http.ResponseWriter, r *http.Request) {
@@ -94,7 +102,10 @@ func (s *Server) calcSingle(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	tickers := s.tickersOrOne(req)
+	tickers, ok := s.tickersOrOne(w, req)
+	if !ok {
+		return
+	}
 	if !tickerDataPresent(tickers) {
 		writeJSON(w, 400, map[string]any{"error": "data is required"})
 		return
@@ -115,7 +126,10 @@ func (s *Server) calcOptionsMulti(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	tickers := s.tickersOrOne(req)
+	tickers, ok := s.tickersOrOne(w, req)
+	if !ok {
+		return
+	}
 	if !tickerDataPresent(tickers) {
 		writeJSON(w, 400, map[string]any{"error": "data is required"})
 		return
@@ -134,7 +148,10 @@ func (s *Server) calcEMA(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	tickers := s.tickersOrOne(req)
+	tickers, ok := s.tickersOrOne(w, req)
+	if !ok {
+		return
+	}
 	if !tickerDataPresent(tickers) {
 		writeJSON(w, 400, map[string]any{"error": "data is required"})
 		return
@@ -171,7 +188,10 @@ func (s *Server) calcIndicators(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	bars := s.barsWithSplits(req)
+	bars, ok := s.barsWithSplits(w, req)
+	if !ok {
+		return
+	}
 	if len(bars) == 0 {
 		writeJSON(w, 400, map[string]any{"error": "data is required"})
 		return
@@ -214,7 +234,10 @@ func (s *Server) calcSplits(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	bars := s.barsOrDataset(req)
+	bars, ok := s.barsOrDataset(w, req)
+	if !ok {
+		return
+	}
 	writeJSON(w, 200, map[string]any{
 		"adjusted": splits.AdjustOHLC(bars, req.Splits),
 		"detected": splits.Detect(bars),
@@ -260,7 +283,11 @@ func (s *Server) calcBuyHold(w http.ResponseWriter, r *http.Request) {
 	} else {
 		cap = types.F64Or(decodeStrategy(req.Strategy).RiskManagement.InitialCapital, 10000)
 	}
-	res := backtest.RunBuyHold(s.barsWithSplits(req), cap)
+	bars, ok := s.barsWithSplits(w, req)
+	if !ok {
+		return
+	}
+	res := backtest.RunBuyHold(bars, cap)
 	final := 0.0
 	if len(res.Equity) > 0 {
 		final = res.Equity[len(res.Equity)-1].Value
@@ -271,25 +298,45 @@ func (s *Server) calcBuyHold(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (s *Server) barsOrDataset(req calcReq) []types.OHLC {
+// datasetBars keeps the read error. A dataset that cannot be read is not a
+// dataset without bars: answering 200 with a zero-trade backtest would present
+// a storage failure as a strategy result.
+func (s *Server) datasetBars(req calcReq) ([]types.OHLC, error) {
 	if len(req.Data) > 0 {
-		return decodeBars(req.Data)
+		return decodeBars(req.Data), nil
 	}
 	if req.Ticker != "" {
-		ds, _ := s.DB.GetDataset(req.Ticker)
+		ds, err := s.DB.GetDataset(req.Ticker)
+		if err != nil {
+			return nil, err
+		}
 		if ds != nil {
-			return decodeBars(ds["data"])
+			return decodeBars(ds["data"]), nil
 		}
 	}
-	return nil
+	return nil, nil
 }
 
-func (s *Server) barsWithSplits(req calcReq) []types.OHLC {
-	bars := s.barsOrDataset(req)
-	if len(req.Splits) > 0 {
-		return splits.AdjustOHLC(bars, req.Splits)
+// barsOrDataset answers the request itself when the dataset cannot be read;
+// ok=false means the response is already written.
+func (s *Server) barsOrDataset(w http.ResponseWriter, req calcReq) ([]types.OHLC, bool) {
+	bars, err := s.datasetBars(req)
+	if err != nil {
+		writeJSON(w, 500, map[string]any{"error": "Не удалось прочитать датасет"})
+		return nil, false
 	}
-	return bars
+	return bars, true
+}
+
+func (s *Server) barsWithSplits(w http.ResponseWriter, req calcReq) ([]types.OHLC, bool) {
+	bars, ok := s.barsOrDataset(w, req)
+	if !ok {
+		return nil, false
+	}
+	if len(req.Splits) > 0 {
+		return splits.AdjustOHLC(bars, req.Splits), true
+	}
+	return bars, true
 }
 
 func tickerDataPresent(tickers []backtest.TickerIndexed) bool {
@@ -304,39 +351,50 @@ func tickerDataPresent(tickers []backtest.TickerIndexed) bool {
 	return true
 }
 
-func (s *Server) barsForSymbol(symbol string) []types.OHLC {
+func (s *Server) barsForSymbol(symbol string) ([]types.OHLC, error) {
 	if symbol == "" || s.DB == nil {
-		return nil
+		return nil, nil
 	}
 	bars, _, err := s.DB.GetOHLC(symbol)
-	if err != nil || len(bars) == 0 {
-		return nil
+	if err != nil {
+		return nil, err
 	}
-	return normalizeBarDates(bars)
+	if len(bars) == 0 {
+		return nil, nil
+	}
+	return normalizeBarDates(bars), nil
 }
 
-func (s *Server) tickersOrOne(req calcReq) []backtest.TickerIndexed {
+func (s *Server) tickersOrOne(w http.ResponseWriter, req calcReq) ([]backtest.TickerIndexed, bool) {
 	var out []backtest.TickerIndexed
 	if len(req.Tickers) > 0 {
 		for _, t := range req.Tickers {
 			bars := decodeBars(t.Data)
 			if len(bars) == 0 {
-				bars = s.barsForSymbol(t.Ticker)
+				stored, err := s.barsForSymbol(t.Ticker)
+				if err != nil {
+					writeJSON(w, 500, map[string]any{"error": "Не удалось прочитать котировки"})
+					return nil, false
+				}
+				bars = stored
 			}
 			if len(bars) == 0 {
 				continue
 			}
 			out = append(out, backtest.TickerIndexed{Ticker: t.Ticker, Data: bars, IBSValues: indicators.IBS(bars), Splits: req.Splits})
 		}
-		return out
+		return out, true
 	}
-	bars := s.barsOrDataset(req)
+	bars, ok := s.barsOrDataset(w, req)
+	if !ok {
+		return nil, false
+	}
 	if len(bars) == 0 {
-		return nil
+		return nil, true
 	}
 	sym := req.Ticker
 	if sym == "" {
 		sym = "TICKER"
 	}
-	return []backtest.TickerIndexed{{Ticker: sym, Data: bars, IBSValues: indicators.IBS(bars), Splits: req.Splits}}
+	return []backtest.TickerIndexed{{Ticker: sym, Data: bars, IBSValues: indicators.IBS(bars), Splits: req.Splits}}, true
 }
