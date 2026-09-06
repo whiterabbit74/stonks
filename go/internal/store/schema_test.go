@@ -135,3 +135,53 @@ func TestOpenUpgradesSchemaVersion2AddsMissedT1Reported(t *testing.T) {
 		t.Fatalf("schema version=%d want %d", v, SchemaVersion)
 	}
 }
+
+// An old database has no per-event mark, only the dataset-wide flag. The
+// upgrade must keep its meaning: events of an adjusted dataset are baked in,
+// events of a raw one are still pending.
+func TestOpenUpgradesSchemaVersion3MarksAppliedSplits(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "v3.db")
+	raw, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := raw.Exec(`
+        CREATE TABLE dataset_meta (
+            ticker              TEXT PRIMARY KEY,
+            adjusted_for_splits INTEGER DEFAULT 0
+        );
+        CREATE TABLE splits (
+            ticker  TEXT NOT NULL,
+            date    TEXT NOT NULL,
+            factor  REAL NOT NULL,
+            PRIMARY KEY (ticker, date)
+        );
+        INSERT INTO dataset_meta (ticker, adjusted_for_splits) VALUES ('ADJ', 1), ('RAW', 0);
+        INSERT INTO splits (ticker, date, factor) VALUES ('ADJ', '2024-01-04', 2), ('RAW', '2024-01-04', 2);
+        CREATE TABLE schema_meta (id INTEGER PRIMARY KEY CHECK (id = 1), version INTEGER NOT NULL);
+        INSERT INTO schema_meta (id, version) VALUES (1, 3);
+    `); err != nil {
+		raw.Close()
+		t.Fatal(err)
+	}
+	raw.Close()
+
+	db, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	pending, err := db.ListPendingSplits("ADJ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pending) != 0 {
+		t.Fatalf("adjusted dataset has %d pending splits, want 0", len(pending))
+	}
+	if pending, err = db.ListPendingSplits("RAW"); err != nil {
+		t.Fatal(err)
+	}
+	if len(pending) != 1 {
+		t.Fatalf("raw dataset has %d pending splits, want 1", len(pending))
+	}
+}

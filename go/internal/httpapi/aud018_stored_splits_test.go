@@ -29,6 +29,13 @@ func seedSplitDataset(t *testing.T, s *Server, ticker string, adjusted bool) {
 	if err := s.DB.ReplaceSplits(ticker, []types.SplitEvent{{Date: "2024-01-04", Factor: 2}}); err != nil {
 		t.Fatalf("save splits: %v", err)
 	}
+	if adjusted {
+		// Adjusted prices already carry the event, exactly as the import path
+		// records it.
+		if err := s.DB.MarkSplitsApplied(ticker); err != nil {
+			t.Fatalf("mark applied: %v", err)
+		}
+	}
 }
 
 func firstEntryPrice(t *testing.T, trades []types.Trade) float64 {
@@ -147,5 +154,64 @@ func TestCalcRejectsSplitsWithoutTickerOnMultiTickerRun(t *testing.T) {
 	s.Handler().ServeHTTP(rec, req)
 	if rec.Code != 400 {
 		t.Fatalf("status %d, want 400: ambiguous splits accepted", rec.Code)
+	}
+}
+
+// AUD-034: a split registered after the dataset was recounted is carried by
+// nothing — neither the stored prices nor the old dataset-wide flag. It must
+// still reach the backtest, and the events already baked in must not be
+// applied a second time.
+func TestCalcAppliesSplitRegisteredAfterTheRecount(t *testing.T) {
+	s := testServer(t, "")
+	// Prices already back-adjusted for the 2024-01-04 2:1 split.
+	adjusted := []types.OHLC{
+		{Date: "2024-01-02", Open: 100, High: 105, Low: 95, Close: 95.5, Volume: 1},
+		{Date: "2024-01-03", Open: 100, High: 106, Low: 98, Close: 105, Volume: 1},
+		{Date: "2024-01-04", Open: 100, High: 106, Low: 95, Close: 96, Volume: 1},
+		{Date: "2024-01-05", Open: 100, High: 106, Low: 98, Close: 105, Volume: 1},
+	}
+	if err := s.DB.SaveDataset("LATE", "LATE", "", "", adjusted, true); err != nil {
+		t.Fatalf("save dataset: %v", err)
+	}
+	if err := s.DB.ReplaceSplits("LATE", []types.SplitEvent{{Date: "2024-01-04", Factor: 2}}); err != nil {
+		t.Fatalf("save splits: %v", err)
+	}
+	if err := s.DB.MarkSplitsApplied("LATE"); err != nil {
+		t.Fatalf("mark applied: %v", err)
+	}
+	// A second split shows up later, after the recount.
+	if err := s.DB.UpsertSplits("LATE", []types.SplitEvent{{Date: "2024-01-05", Factor: 2}}); err != nil {
+		t.Fatalf("upsert late split: %v", err)
+	}
+
+	rec := postCalc(t, s, "single-position", map[string]any{
+		"tickers":  []map[string]any{{"ticker": "LATE"}},
+		"strategy": map[string]any{"type": "ibs-mean-reversion"},
+	})
+	// 2024-01-02 keeps the lowest IBS; halved once more its close is 95.5/2.
+	if got := firstEntryPrice(t, tradeSlice(t, rec)); got != 47.75 {
+		t.Fatalf("entry price %v: the split registered after the recount was not applied (95.5), or the old one was applied twice", got)
+	}
+}
+
+// The recount must not bake an event in twice when it runs again.
+func TestApplySplitsIsIdempotent(t *testing.T) {
+	s := testServer(t, "")
+	seedSplitDataset(t, s, "SPLT", false)
+
+	for i := 0; i < 2; i++ {
+		req := httptest.NewRequest("POST", "/api/datasets/SPLT/apply-splits", nil)
+		rec := httptest.NewRecorder()
+		s.Handler().ServeHTTP(rec, req)
+		if rec.Code != 200 {
+			t.Fatalf("apply %d: status %d %s", i, rec.Code, rec.Body.String())
+		}
+	}
+	bars, _, err := s.DB.GetOHLC("SPLT")
+	if err != nil {
+		t.Fatalf("read bars: %v", err)
+	}
+	if bars[0].Close != 95.5 {
+		t.Fatalf("close %v: the split was applied twice", bars[0].Close)
 	}
 }

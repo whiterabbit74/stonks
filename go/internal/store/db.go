@@ -21,7 +21,7 @@ import (
 
 // SchemaVersion is the schema this binary can open and migrate to.
 // Bump it when adding a migrateSchema step. Open fails if the database is newer.
-const SchemaVersion = 3
+const SchemaVersion = 4
 
 type DB struct {
 	SQL *sql.DB
@@ -98,6 +98,7 @@ func (d *DB) initSchema() error {
             ticker  TEXT NOT NULL,
             date    TEXT NOT NULL,
             factor  REAL NOT NULL,
+            applied INTEGER NOT NULL DEFAULT 0,
             PRIMARY KEY (ticker, date)
         );
         CREATE INDEX IF NOT EXISTS idx_splits_ticker ON splits(ticker);
@@ -342,6 +343,18 @@ func applyPendingSchema(e schemaExecer, from int) error {
 	}
 	if from < 3 {
 		if err := ensureColumn(e, "aggregate_send_state", "missed_t1_reported", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+			return err
+		}
+	}
+	if from < 4 {
+		// Which events are already baked into the prices used to be guessed
+		// from one dataset-wide flag, so a split registered after the recount
+		// was applied nowhere. Carry the old meaning over: everything stored
+		// against an adjusted dataset counts as applied, the rest as pending.
+		if err := ensureColumn(e, "splits", "applied", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+			return err
+		}
+		if _, err := e.Exec(`UPDATE splits SET applied = 1 WHERE ticker IN (SELECT ticker FROM dataset_meta WHERE adjusted_for_splits = 1)`); err != nil {
 			return err
 		}
 	}
@@ -674,15 +687,71 @@ func (d *DB) ReplaceSplits(symbol string, events []types.SplitEvent) error {
 		return err
 	}
 	defer tx.Rollback()
+	// Rewriting the list must not silently unmark events the prices already
+	// carry: an event kept as it was stays applied, a changed one is pending.
+	prev, err := appliedFactors(tx, ticker)
+	if err != nil {
+		return err
+	}
 	if _, err := tx.Exec(`DELETE FROM splits WHERE ticker = ?`, ticker); err != nil {
 		return err
 	}
 	for _, e := range events {
-		if _, err := tx.Exec(`INSERT INTO splits (ticker, date, factor) VALUES (?, ?, ?)`, ticker, e.Date, e.Factor); err != nil {
+		applied := 0
+		if f, ok := prev[e.Date]; ok && f == e.Factor {
+			applied = 1
+		}
+		if _, err := tx.Exec(`INSERT INTO splits (ticker, date, factor, applied) VALUES (?, ?, ?, ?)`, ticker, e.Date, e.Factor, applied); err != nil {
 			return err
 		}
 	}
 	return tx.Commit()
+}
+
+// appliedFactors maps the dates already reflected in the stored prices to the
+// factor they were applied with.
+func appliedFactors(q schemaExecer, ticker string) (map[string]float64, error) {
+	rows, err := q.Query(`SELECT date, factor FROM splits WHERE ticker = ? AND applied = 1`, ticker)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]float64{}
+	for rows.Next() {
+		var date string
+		var factor float64
+		if err := rows.Scan(&date, &factor); err != nil {
+			return nil, err
+		}
+		out[date] = factor
+	}
+	return out, rows.Err()
+}
+
+// ListPendingSplits returns the events whose back-adjustment is not yet baked
+// into the stored prices — the ones a calculation still has to apply itself.
+func (d *DB) ListPendingSplits(symbol string) ([]types.SplitEvent, error) {
+	rows, err := d.SQL.Query(`SELECT date, factor FROM splits WHERE ticker = ? AND applied = 0 ORDER BY date`, SafeTicker(symbol))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []types.SplitEvent{}
+	for rows.Next() {
+		var e types.SplitEvent
+		if err := rows.Scan(&e.Date, &e.Factor); err != nil {
+			return nil, err
+		}
+		out = append(out, e)
+	}
+	return out, rows.Err()
+}
+
+// MarkSplitsApplied records that the stored prices of the symbol now carry
+// every event of its split table.
+func (d *DB) MarkSplitsApplied(symbol string) error {
+	_, err := d.SQL.Exec(`UPDATE splits SET applied = 1 WHERE ticker = ?`, SafeTicker(symbol))
+	return err
 }
 
 func (d *DB) UpsertSplits(symbol string, events []types.SplitEvent) error {
@@ -693,8 +762,10 @@ func (d *DB) UpsertSplits(symbol string, events []types.SplitEvent) error {
 	}
 	defer tx.Rollback()
 	for _, e := range events {
-		if _, err := tx.Exec(`INSERT INTO splits (ticker, date, factor) VALUES (?, ?, ?)
-            ON CONFLICT(ticker, date) DO UPDATE SET factor=excluded.factor`, ticker, e.Date, e.Factor); err != nil {
+		// A re-sent event keeps its mark; a changed factor is a new correction.
+		if _, err := tx.Exec(`INSERT INTO splits (ticker, date, factor, applied) VALUES (?, ?, ?, 0)
+            ON CONFLICT(ticker, date) DO UPDATE SET factor=excluded.factor,
+            applied=CASE WHEN splits.factor = excluded.factor THEN splits.applied ELSE 0 END`, ticker, e.Date, e.Factor); err != nil {
 			return err
 		}
 	}

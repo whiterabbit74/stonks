@@ -797,6 +797,14 @@ func (s *Server) savePayload(w http.ResponseWriter, payload map[string]any) {
 			}
 		}
 	}
+	// The caller states these prices are already back-adjusted, so the events
+	// that come with them are baked in, not pending.
+	if adj {
+		if err := s.DB.MarkSplitsApplied(ticker); err != nil {
+			writeJSON(w, 500, map[string]any{"error": err.Error()})
+			return
+		}
+	}
 	writeJSON(w, 200, map[string]any{
 		"success": true, "id": ticker, "ticker": ticker, "dataPoints": len(bars),
 		"adjustedForSplits": adj, "detectedSplits": s.detectSplitHints(ticker, bars),
@@ -933,22 +941,23 @@ func (s *Server) handleApplySplits(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 404, map[string]any{"error": "Датасет не найден"})
 		return
 	}
-	if adj, _ := ds["adjustedForSplits"].(bool); adj {
-		writeJSON(w, 200, map[string]any{"success": true, "id": id, "alreadyApplied": true, "message": "Датасет уже пересчитан с учётом сплитов"})
-		return
-	}
 	bars := decodeBars(ds["data"])
 	out, applied, err := s.applyStoredSplits(id, bars)
 	if err != nil {
 		writeJSON(w, 500, map[string]any{"error": "Не удалось прочитать сплиты"})
 		return
 	}
-	if err := s.persistDataset(id, ds, out, applied); err != nil {
+	if !applied {
+		// Nothing left to bake in: the flag of the dataset stays as it is.
+		writeJSON(w, 200, map[string]any{"success": true, "id": id, "alreadyApplied": true, "message": "Датасет уже пересчитан с учётом сплитов"})
+		return
+	}
+	if err := s.persistDataset(id, ds, out, true); err != nil {
 		writeJSON(w, 500, map[string]any{"error": err.Error()})
 		return
 	}
-	if !applied || pricesUnchanged(bars, out) {
-		writeJSON(w, 200, map[string]any{"success": true, "id": id, "alreadyApplied": true, "message": "Датасет уже пересчитан с учётом сплитов"})
+	if err := s.DB.MarkSplitsApplied(id); err != nil {
+		writeJSON(w, 500, map[string]any{"error": err.Error()})
 		return
 	}
 	writeJSON(w, 200, map[string]any{"success": true, "id": id, "message": "Датасет пересчитан с учётом сплитов"})

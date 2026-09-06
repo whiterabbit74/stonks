@@ -36,11 +36,12 @@ func (s *Server) detectSplitHints(id string, bars []types.OHLC) []types.SplitEve
 	return detectedNotStored(stored, detected)
 }
 
-// applyStoredSplits back-adjusts using confirmed stored events only. The error
-// matters: an unreadable split table looks exactly like "no splits stored",
-// and the caller would then report the dataset as already adjusted.
+// applyStoredSplits back-adjusts using confirmed stored events that the prices
+// do not carry yet. The error matters: an unreadable split table looks exactly
+// like "no splits stored", and the caller would then report the dataset as
+// already adjusted.
 func (s *Server) applyStoredSplits(id string, bars []types.OHLC) ([]types.OHLC, bool, error) {
-	events, err := s.DB.ListSplits(id)
+	events, err := s.DB.ListPendingSplits(id)
 	if err != nil {
 		return bars, false, err
 	}

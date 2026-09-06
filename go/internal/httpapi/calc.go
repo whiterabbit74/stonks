@@ -358,20 +358,17 @@ func (s *Server) barsWithSplits(w http.ResponseWriter, req calcReq) ([]types.OHL
 	return bars, true
 }
 
-// pendingSplits is the stored split table that still applies to a symbol. A
-// dataset already back-adjusted yields none — adjusting twice is as wrong as
-// not adjusting at all. The error matters: an unreadable table looks exactly
-// like "no splits", and the backtest would then run on raw prices in silence.
+// pendingSplits is the part of the stored split table that the prices do not
+// carry yet. Events already baked in are left out — adjusting twice is as
+// wrong as not adjusting at all — but a split registered after the recount is
+// still pending, so it reaches the calculation. The error matters: an
+// unreadable table looks exactly like "no splits", and the backtest would then
+// run on raw prices in silence.
 func (s *Server) pendingSplits(symbol string) ([]types.SplitEvent, error) {
 	if symbol == "" || s.DB == nil {
 		return nil, nil
 	}
-	// n=0 reads the adjusted flag without loading the history.
-	_, adjusted, err := s.DB.GetOHLCLast(symbol, 0)
-	if err != nil || adjusted {
-		return nil, err
-	}
-	return s.DB.ListSplits(symbol)
+	return s.DB.ListPendingSplits(symbol)
 }
 
 // splitsFor picks the events a calculation must apply: what the request carries
