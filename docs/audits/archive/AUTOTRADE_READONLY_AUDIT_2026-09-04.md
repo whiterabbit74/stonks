@@ -98,7 +98,7 @@
 ```python
 import json, pathlib, re, subprocess, tempfile
 root = pathlib.Path.cwd()
-report = (root / "AUTOTRADE_READONLY_AUDIT_2026-09-04.md").read_text()
+report = (root / "docs/audits/archive/AUTOTRADE_READONLY_AUDIT_2026-09-04.md").read_text()
 blocks = re.findall(r"```go\n(.*?)```", report, re.S)
 assert len(blocks) == 2
 with tempfile.TemporaryDirectory(prefix="mktorder-audit-") as tmp:

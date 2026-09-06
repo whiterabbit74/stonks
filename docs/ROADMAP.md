@@ -39,8 +39,8 @@ roadmap-документы в корне и `docs/audits/`. Аудиты ост�
    отдельной проверки целевого окружения; production-базу не удалять без
    явного режима подтверждения.
 
-Источники: `AUDIT_FULL_2026-09-05.md`,
-`AUTOTRADE_READONLY_AUDIT_2026-09-04.md`,
+Источники: `docs/audits/archive/AUDIT_FULL_2026-09-05.md`,
+`docs/audits/archive/AUTOTRADE_READONLY_AUDIT_2026-09-04.md`,
 `docs/audits/AUDIT_2026-09-05.md`, `docs/audits/REGISTRY.md`.
 
 ### 1. P1 — ложное состояние, планировщик и данные
@@ -85,8 +85,8 @@ roadmap-документы в корне и `docs/audits/`. Аудиты ост�
 скриншот и ссылку на коммит.
 
 Источники: `docs/audits/UI_VISUAL_AUDIT_2026-09-05.md`,
-`docs/audits/visual-audit-2026-09-05.md`,
-`docs/audits/visual-audit-codex-2026-09-05.md`.
+`docs/audits/archive/visual-audit-2026-09-05.md`,
+`docs/audits/archive/visual-audit-codex-2026-09-05.md`.
 
 ### 4. P2 — безопасность и эксплуатация
 
@@ -97,7 +97,7 @@ roadmap-документы в корне и `docs/audits/`. Аудиты ост�
 добавить лимиты контейнеру `server`, а затем повторить сканирование и проверку
 деплой-скриптов. Не менять production и не публиковать секреты в артефактах.
 
-Источник: `SECURITY_AUDIT.md` и бывший
+Источник: `docs/audits/archive/SECURITY_AUDIT.md` и бывший
 `docs/audits/SECURITY_ROADMAP.md`.
 
 ### 5. P2–P3 — качество и упрощение
@@ -127,11 +127,11 @@ go vet ./...
 Удалённые дублирующие roadmap-файлы перечислены в истории Git. Их уникальные
 выводы сведены выше; исходные отчёты аудитов сохранены:
 
-- `AUDIT_FULL_2026-09-05.md`
-- `AUTOTRADE_READONLY_AUDIT_2026-09-04.md`
-- `SECURITY_AUDIT.md`
+- `docs/audits/archive/AUDIT_FULL_2026-09-05.md`
+- `docs/audits/archive/AUTOTRADE_READONLY_AUDIT_2026-09-04.md`
+- `docs/audits/archive/SECURITY_AUDIT.md`
 - `docs/audits/AUDIT_2026-09-05.md`
 - `docs/audits/UI_VISUAL_AUDIT_2026-09-05.md`
-- `docs/audits/visual-audit-2026-09-05.md`
-- `docs/audits/visual-audit-codex-2026-09-05.md`
+- `docs/audits/archive/visual-audit-2026-09-05.md`
+- `docs/audits/archive/visual-audit-codex-2026-09-05.md`
 - `docs/data-quality/tqqq-data-audit-and-runbook.md`
