@@ -205,22 +205,22 @@ func (e *Engine) CheckToken(token string) (map[string]any, error) {
 	return data, nil
 }
 
+// CanSubmit reports whether any attached broker could place an order — the
+// "running" flag the UI shows. Asking only about Webull answered for the whole
+// system with one broker's token: a Robinhood-only setup read as stopped while
+// it was trading (same class as AUD-017).
 func (e *Engine) CanSubmit() bool {
 	cfg := e.AutoConfig()
 	enabled, _ := cfg["enabled"].(bool)
 	if !enabled {
 		return false
 	}
-	if e.defaultBroker() == nil {
-		return false
+	for _, nb := range e.brokerSnapshot() {
+		if on, _, _ := brokerFlags(cfg, nb.name); on && e.brokerHasWorkingToken(nb.name) {
+			return true
+		}
 	}
-	st := e.storedHealthStatus("webull")
-	if st == HealthNeedsReauth || st == HealthMissing {
-		return false
-	}
-	tok := e.TokenStatus()
-	has, _ := tok["hasToken"].(bool)
-	return has
+	return false
 }
 
 type EvalResult struct {
