@@ -15,7 +15,7 @@ import (
 func (e *Engine) buildT11Text(minutes int, today, provider string, rows []t1Watch, ema []EmaEval, integ []IntegrityResult) string {
 	sorted := append([]t1Watch(nil), rows...)
 	sort.Slice(sorted, func(i, j int) bool { return sorted[i].sym < sorted[j].sym })
-	open := e.openMonitorTrade()
+	open, tradesErr := e.openMonitorTrade()
 	openSym := ""
 	if open != nil {
 		openSym = store.SafeTicker(fmt.Sprint(open["symbol"]))
@@ -46,6 +46,8 @@ func (e *Engine) buildT11Text(minutes int, today, provider string, rows []t1Watc
 		posLabel := "FLAT"
 		if posOpen {
 			posLabel = "OPEN"
+		} else if tradesErr != nil {
+			posLabel = "?"
 		}
 		line1 := fmt.Sprintf("%s %s · %s · IBS %s", tgBold(r.sym), tgBold(priceStr), posLabel, tgBold(ibsShort))
 		bar := ibsBar(r.eval.ibs, r.eval.ok)
@@ -81,6 +83,9 @@ func (e *Engine) buildT11Text(minutes int, today, provider string, rows []t1Watc
 	}
 
 	parts := []string{header, entryLine, exitLine}
+	if tradesErr != nil {
+		parts = append(parts, "⚠️ Журнал сделок недоступен — позиции не показаны")
+	}
 	if block := FormatIntegrityWarningBlock(integ); block != "" {
 		parts = append(parts, "", block)
 	}
@@ -105,21 +110,28 @@ func formatConsistencyIssueLine(issue, snap map[string]any) string {
 	if symbol == "" || symbol == "<nil>" {
 		symbol = "?"
 	}
-	// snap holds map[string]any values: a nil map stored in an interface is not
-	// == nil, so a plain nil check reported OPEN/OPEN on every warning, whatever
-	// the books actually said.
-	mon, bro := "FLAT", "FLAT"
-	if len(mapOf(snap["openMonitorTrade"])) > 0 {
-		mon = "OPEN"
-	}
-	if len(mapOf(snap["openBrokerTrade"])) > 0 {
-		bro = "OPEN"
-	}
+	mon := tradeStateLabel(snap, "openMonitorTrade")
+	bro := tradeStateLabel(snap, "openBrokerTrade")
 	reconcile := "auto-reconcile unsafe"
 	if issue["autoFixable"] == true {
 		reconcile = "auto-reconcile available"
 	}
 	return fmt.Sprintf("⚠️ %s: monitor %s · broker %s · %s", tgBold(symbol), mon, bro, reconcile)
+}
+
+// snap holds map[string]any values: a nil map stored in an interface is not
+// == nil, so a plain nil check reported OPEN/OPEN on every warning, whatever
+// the books actually said. An unreadable journal carries no trade keys at all —
+// "FLAT" there would state a fact the read never produced.
+func tradeStateLabel(snap map[string]any, key string) string {
+	v, ok := snap[key]
+	if !ok {
+		return "?"
+	}
+	if len(mapOf(v)) > 0 {
+		return "OPEN"
+	}
+	return "FLAT"
 }
 
 func buildEmaInlineBlock(alerts []EmaEval) string {

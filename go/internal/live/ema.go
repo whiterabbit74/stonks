@@ -22,8 +22,13 @@ type EmaEval struct {
 	Warning                        IntegrityResult
 }
 
-func (e *Engine) EvaluateEMAAlerts() []EmaEval {
-	alerts, _ := e.DB.ListEMAAlerts()
+func (e *Engine) EvaluateEMAAlerts() ([]EmaEval, error) {
+	// An unreadable table must not read as "no alerts": the caller skips the
+	// whole T-11/T-1 send when nothing is watched.
+	alerts, err := e.DB.ListEMAAlerts()
+	if err != nil {
+		return nil, err
+	}
 	var out []EmaEval
 	// Node uses the real-time chain here too (emaAlerts.js ->
 	// fetchTodayRangeAndQuote), not resultsQuoteProvider, whose default
@@ -36,7 +41,7 @@ func (e *Engine) EvaluateEMAAlerts() []EmaEval {
 		}
 		out = append(out, e.evalEMAAlert(a, providerChain, today))
 	}
-	return out
+	return out, nil
 }
 
 func (e *Engine) evalEMAAlert(a map[string]any, providerChain []string, today string) EmaEval {

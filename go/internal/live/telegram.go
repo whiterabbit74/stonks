@@ -178,7 +178,11 @@ func (e *Engine) Aggregate(minutesUntilClose int, opts AggregateOpts) (SimulateR
 	}
 	hasOpenBrokerTrade := store.OpenBrokerTrade(brokerTrades) != nil
 	if len(watches) == 0 && !hasOpenBrokerTrade {
-		emaAlerts := e.EvaluateEMAAlerts()
+		emaAlerts, err := e.EvaluateEMAAlerts()
+		if err != nil {
+			out.Reason = "journal_unavailable"
+			return out, err
+		}
 		if len(emaAlerts) == 0 {
 			out.Reason = "no_watches"
 			return out, nil
@@ -191,7 +195,11 @@ func (e *Engine) Aggregate(minutesUntilClose int, opts AggregateOpts) (SimulateR
 		watchSyms = append(watchSyms, fmt.Sprint(w["symbol"]))
 	}
 	e.prefetchQuotes(watchSyms, providerChain)
-	emaAlerts := e.EvaluateEMAAlerts()
+	emaAlerts, err := e.EvaluateEMAAlerts()
+	if err != nil {
+		out.Reason = "journal_unavailable"
+		return out, err
+	}
 	if len(watches) == 0 && len(emaAlerts) == 0 && !hasOpenBrokerTrade {
 		out.Reason = "no_watches"
 		return out, nil
@@ -463,7 +471,10 @@ func (e *Engine) buildT1Text(minutes int, rows []t1Watch, blocking map[string]an
 		}
 	}
 	position := "Позиция: нет"
-	if open := e.openMonitorTrade(); open != nil {
+	open, tradesErr := e.openMonitorTrade()
+	if tradesErr != nil {
+		position = "Позиция: неизвестна (журнал сделок недоступен)"
+	} else if open != nil {
 		price := "—"
 		if p := asFloat(open["entryPrice"]); p > 0 {
 			price = fmt.Sprintf("$%.2f", p)
@@ -701,9 +712,14 @@ func barsHavePrevSession(bars []types.OHLC, today string) bool {
 	return last >= prev
 }
 
-func (e *Engine) openMonitorTrade() map[string]any {
-	trades, _ := e.DB.ListTrades("trades")
-	return store.OpenBrokerTrade(trades)
+func (e *Engine) openMonitorTrade() (map[string]any, error) {
+	// An unreadable journal must not be reported as "no open position": the
+	// T-11/T-1 messages would label an open ticker FLAT and tag it ENTRY.
+	trades, err := e.DB.ListTrades("trades")
+	if err != nil {
+		return nil, err
+	}
+	return store.OpenBrokerTrade(trades), nil
 }
 
 func ibsFromQuote(q providers.QuotePayload) (float64, bool) {
@@ -726,7 +742,10 @@ func ibsFromQuote(q providers.QuotePayload) (float64, bool) {
 }
 
 func (e *Engine) tradeHistoryMessage(limit int) string {
-	trades, _ := e.DB.ListTrades("trades")
+	trades, err := e.DB.ListTrades("trades")
+	if err != nil {
+		return "Журнал сделок недоступен"
+	}
 	if len(trades) == 0 {
 		return "Нет сделок"
 	}

@@ -113,11 +113,21 @@ func (e *Engine) Actualize(force bool) ActualizeResult {
 		seen[s] = struct{}{}
 		symbols = append(symbols, s)
 	}
-	watches, _ := e.DB.ListWatches()
+	// Both reads decide the ticker list: an unreadable table would look like
+	// "nothing to update" and skip the daily bars instead of retrying.
+	watches, err := e.DB.ListWatches()
+	if err != nil {
+		out.Reason = "watchlist_read_failed"
+		return out
+	}
 	for _, w := range watches {
 		add(fmt.Sprint(w["symbol"]))
 	}
-	alerts, _ := e.DB.ListEMAAlerts()
+	alerts, err := e.DB.ListEMAAlerts()
+	if err != nil {
+		out.Reason = "ema_alerts_read_failed"
+		return out
+	}
 	for _, a := range alerts {
 		add(fmt.Sprint(a["symbol"]))
 	}
