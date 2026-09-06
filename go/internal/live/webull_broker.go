@@ -185,10 +185,16 @@ func (b *LiveBroker) positions(ctx context.Context) ([]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	if rows := flattenAny(resp.Data); rows != nil {
-		return rows, nil
+	// A flat account still answers with a list; a 2xx body holding no list at
+	// all means we did not get the holdings, not that there are none. Reading
+	// it as "flat" would let the next entry open a second position on top of
+	// one we hold (AUD-026 class), so surface it as a failed read and let the
+	// caller fail closed.
+	rows := flattenAny(resp.Data)
+	if rows == nil {
+		return nil, fmt.Errorf("unreadable positions response from Webull")
 	}
-	return []any{}, nil
+	return rows, nil
 }
 
 func (b *LiveBroker) CreateToken() (map[string]any, error) {
@@ -377,9 +383,12 @@ func (b *LiveBroker) openOrders(ctx context.Context) ([]any, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Same as positions: no list in the body is an unread page, not proof
+	// that nothing is working. "No open orders" skips the pre-entry cancel and
+	// clears t1BrokerReconcile, so it must not be guessed (AUD-026 class).
 	rows := flattenAny(resp.Data)
 	if rows == nil {
-		rows = []any{}
+		return nil, fmt.Errorf("%w: unreadable open orders response from Webull", ErrOrderUnavailable)
 	}
 	return rows, nil
 }

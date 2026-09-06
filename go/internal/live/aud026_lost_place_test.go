@@ -1,6 +1,7 @@
 package live
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -79,5 +80,69 @@ func TestAUD026LostPlaceWithEmptyDetailDoesNotResend(t *testing.T) {
 	}
 	if res.Submitted || !res.Ambiguous {
 		t.Fatalf("want ambiguous, unsubmitted: %+v", res)
+	}
+}
+
+// Same root cause on the state reads that gate an entry: a 2xx body with no
+// list in it is an unread page, not an empty account. Reading it as "flat" or
+// "nothing working" is what lets a second position or a second order go out.
+func TestAUD026UnreadableStateReadsAreNotEmpty(t *testing.T) {
+	var places int64
+	for _, tc := range []struct {
+		name string
+		body string
+		ok   bool
+	}{
+		{"empty list is empty", `{"code":0,"data":[]}`, true},
+		{"nested empty list is empty", `{"code":0,"data":{"holdings":[]}}`, true},
+		{"no list at all fails", `{"code":0,"data":{}}`, false},
+		{"empty body fails", ``, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			br := webullBrokerFor(t, `{"code":0,"data":{}}`, 200, &places)
+			ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				_, _ = w.Write([]byte(tc.body))
+			}))
+			t.Cleanup(ts.Close)
+			br.Client.Base = ts.URL
+
+			pos, perr := br.Positions()
+			open, oerr := br.OpenOrders()
+			if tc.ok {
+				if perr != nil || pos == nil {
+					t.Fatalf("positions: %v %v", pos, perr)
+				}
+				if oerr != nil || open == nil {
+					t.Fatalf("open orders: %v %v", open, oerr)
+				}
+				return
+			}
+			if perr == nil {
+				t.Fatalf("unreadable positions body read as flat: %v", pos)
+			}
+			if oerr == nil {
+				t.Fatalf("unreadable open-orders body read as no working orders: %v", open)
+			}
+		})
+	}
+}
+
+// The Robinhood broker reaches the same conclusion through a different path:
+// the tool answer is not JSON, so nothing is collected and the account looks
+// flat with no error.
+func TestAUD026RobinhoodUnreadableToolAnswerIsNotFlat(t *testing.T) {
+	call := func(name string, args map[string]any) (json.RawMessage, error) {
+		if name == "get_accounts" {
+			return json.Marshal(map[string]any{"content": []any{map[string]any{
+				"type": "text", "text": `{"account_number":"RH1","agentic_allowed":true}`}}})
+		}
+		return json.RawMessage(`not json at all`), nil
+	}
+	br := &RobinhoodBroker{Call: call}
+	if pos, err := br.Positions(); err == nil {
+		t.Fatalf("unreadable positions answer read as flat: %v", pos)
+	}
+	if open, err := br.OpenOrders(); err == nil {
+		t.Fatalf("unreadable orders answer read as no working orders: %v", open)
 	}
 }

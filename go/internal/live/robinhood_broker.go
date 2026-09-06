@@ -205,7 +205,12 @@ func (b *RobinhoodBroker) PositionsCtx(ctx context.Context) ([]any, error) {
 		return nil, err
 	}
 	var root any
-	_ = json.Unmarshal(robinhood.ToolContentJSON(raw), &root)
+	// An unreadable answer is not an empty portfolio: collectPositions would
+	// return no rows and the entry path would read that as flat, opening a
+	// second position on top of one we hold (AUD-026 class).
+	if err := json.Unmarshal(robinhood.ToolContentJSON(raw), &root); err != nil {
+		return nil, fmt.Errorf("unreadable positions response from Robinhood: %w", err)
+	}
 	var out []any
 	collectPositions(root, &out)
 	return out, nil
@@ -225,7 +230,9 @@ func (b *RobinhoodBroker) OrderDetailCtx(ctx context.Context, clientOrderID stri
 		return nil, err
 	}
 	var root any
-	_ = json.Unmarshal(robinhood.ToolContentJSON(raw), &root)
+	if err := json.Unmarshal(robinhood.ToolContentJSON(raw), &root); err != nil {
+		return nil, fmt.Errorf("%w: unreadable order detail from Robinhood: %v", ErrOrderUnavailable, err)
+	}
 	want := asUUID(clientOrderID)
 	found := findOrder(root, want)
 	if found == nil {
@@ -262,7 +269,9 @@ func (b *RobinhoodBroker) OrderHistoryCtx(ctx context.Context, start, end string
 		return nil, err
 	}
 	var root any
-	_ = json.Unmarshal(robinhood.ToolContentJSON(raw), &root)
+	if err := json.Unmarshal(robinhood.ToolContentJSON(raw), &root); err != nil {
+		return nil, fmt.Errorf("%w: unreadable order history from Robinhood: %v", ErrOrderUnavailable, err)
+	}
 	var out []any
 	collectOrders(root, &out)
 	return filterOrdersBySessionDate(out, start, end), nil
@@ -278,7 +287,11 @@ func (b *RobinhoodBroker) ordersByState(ctx context.Context, all bool) ([]any, e
 		return nil, err
 	}
 	var root any
-	_ = json.Unmarshal(robinhood.ToolContentJSON(raw), &root)
+	// "No open orders" skips the pre-entry cancel and clears the T-1
+	// reconcile, so it must come from a body we could actually read.
+	if err := json.Unmarshal(robinhood.ToolContentJSON(raw), &root); err != nil {
+		return nil, fmt.Errorf("%w: unreadable orders response from Robinhood: %v", ErrOrderUnavailable, err)
+	}
 	var out []any
 	collectOrders(root, &out)
 	if all {
