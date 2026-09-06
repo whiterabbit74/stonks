@@ -2856,7 +2856,11 @@
         const high = toNum(rng.high ?? quote.high);
         const low = toNum(rng.low ?? quote.low);
         const prev = toNum(quote.prevClose ?? quote.previousClose ?? rng.prevClose);
-        const ibs = (high != null && low != null && last != null && high !== low) ? (last - low) / (high - low) : toNum(w.lastIbs ?? w.ibs);
+        // Same rule as the engine (go/internal/live/telegram.go): require
+        // high > low, then clamp to [0,1]. An extended-hours last price
+        // outside the session range must not show the operator an IBS the
+        // engine would never act on.
+        const ibs = (high != null && low != null && last != null && high > low) ? Math.max(0, Math.min(1, (last - low) / (high - low))) : toNum(w.lastIbs ?? w.ibs);
         const delta = (last != null && prev != null && prev !== 0) ? ((last - prev) / prev) * 100 : null;
         const lo = Number(w.lowIBS ?? liveLowIBS());
         const hi = Number(w.highIBS ?? liveHighIBS());
