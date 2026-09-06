@@ -2,6 +2,7 @@ package live
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"mktorder.com/go/internal/store"
@@ -264,4 +265,39 @@ func (e *Engine) submitEvaluated(w execWindow, ev EvalResult, trigger, corr, bro
 	e.lastResult = ev
 	e.mu.Unlock()
 	return ev
+}
+
+// effectiveDecision returns the decision the run actually acted on. ev.Decision
+// is EvaluateWindow's showcase evaluation, computed on the webull book plus the
+// default broker; executeAll then decides per broker, so the showcase can say
+// "none" while another broker really exited, and can name an exit that this
+// broker skipped (AUD-017). An exit wins over an entry: the post-exit
+// orchestration is what the callers key off.
+func effectiveDecision(res EvalResult) map[string]any {
+	if len(res.BrokerDecisions) == 0 {
+		return res.Decision
+	}
+	names := make([]string, 0, len(res.BrokerDecisions))
+	for name := range res.BrokerDecisions {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	var entry map[string]any
+	for _, name := range names {
+		d := res.BrokerDecisions[name]
+		switch action, _ := d["action"].(string); action {
+		case "exit":
+			return d
+		case "entry":
+			if entry == nil {
+				entry = d
+			}
+		}
+	}
+	if entry != nil {
+		return entry
+	}
+	// Every broker was skipped: the showcase decision is what the report needs
+	// in order to say which order was not sent.
+	return res.Decision
 }

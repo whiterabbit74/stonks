@@ -42,7 +42,7 @@ type SimulateResult struct {
 func (e *Engine) runT1Orders(w execWindow, today string) (exitRes, entryRes EvalResult, waitFill bool) {
 	_ = today
 	exitRes = e.executeWindow(w, "telegram_t1")
-	action, _ := exitRes.Decision["action"].(string)
+	action, _ := effectiveDecision(exitRes)["action"].(string)
 	if action != "none" && !exitRes.Executed {
 		_ = e.DB.AppendAutotradeLog("t1_submit_failed")
 		return exitRes, entryRes, false
@@ -61,7 +61,7 @@ func (e *Engine) runT1Orders(w execWindow, today string) (exitRes, entryRes Eval
 	}
 	_ = e.DB.AppendAutotradeLog("t1_exit_rejected_retry")
 	exitRes = e.executeWindow(w, "telegram_t1")
-	action, _ = exitRes.Decision["action"].(string)
+	action, _ = effectiveDecision(exitRes)["action"].(string)
 	if action == "exit" && exitRes.Executed {
 		if e.awaitFlatAfterExit() {
 			entryRes = e.executeWindow(w, "telegram_t1")
@@ -384,14 +384,15 @@ func (e *Engine) buildT1Text(minutes int, rows []t1Watch, blocking map[string]an
 		decision = append(decision, "• Вход заблокирован: ждём подтверждение fill по выходу")
 	}
 	appendExec := func(res EvalResult, dry bool) {
-		action, _ := res.Decision["action"].(string)
+		dec := effectiveDecision(res)
+		action, _ := dec["action"].(string)
 		if action == "" || action == "none" {
 			return
 		}
-		sym := fmt.Sprint(res.Decision["symbol"])
+		sym := fmt.Sprint(dec["symbol"])
 		price := quotePrice(res, sym)
 		ibsVal := 0.0
-		if cand, ok := res.Decision["candidate"].(map[string]any); ok {
+		if cand, ok := dec["candidate"].(map[string]any); ok {
 			ibsVal = asFloat(cand["ibs"])
 		}
 		priceS := "—"
@@ -424,9 +425,9 @@ func (e *Engine) buildT1Text(minutes int, rows []t1Watch, blocking map[string]an
 			}
 		}
 		if len(outcomes) == 0 {
-			// res.Decision is the showcase decision EvaluateWindow computes on
-			// the webull book; executeAll then decides per broker and can skip
-			// every one of them (no token, disabled, unreadable journal). Then
+			// With every broker skipped effectiveDecision falls back to the
+			// showcase decision EvaluateWindow computes on the webull book;
+			// executeAll then decided per broker and skipped every one of them (no token, disabled, unreadable journal). Then
 			// nothing was submitted, and the bare "Открываем X" above reads as a
 			// filled order. Say so, and name the per-broker reason.
 			decision = append(decision, head+" — заявка не отправлена")
