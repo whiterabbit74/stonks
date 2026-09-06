@@ -178,7 +178,7 @@
     eye: '<path d="M2.5 12s3.5-5 9.5-5 9.5 5 9.5 5-3.5 5-9.5 5-9.5-5-9.5-5Z"/><circle cx="12" cy="12" r="2.5"/>',
     eyeoff: '<path d="m3 3 18 18"/><path d="M10.6 6.2A10.5 10.5 0 0 1 12 6c6 0 9.5 6 9.5 6a16.7 16.7 0 0 1-3.2 3.7"/><path d="M6.7 6.7C3.8 8.5 2.5 12 2.5 12s3.5 6 9.5 6a9.7 9.7 0 0 0 3.1-.5"/>',
     arrowne: '<path d="M7 7h10v10"/><path d="M7 17 17 7"/>',
-    logo: '<path d="M5 20v-9M8 17l4-5 5 2"/>',
+    logo: '<path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>',
   };
 
   const PC_COLORS = ['#2563EB', '#0EA5E9', '#14B8A6', '#10B981', '#84CC16', '#F59E0B', '#F97316', '#EF4444', '#F43F5E', '#A855F7', '#8B5CF6', '#64748B'];
@@ -376,8 +376,12 @@
   function panelPath(points) {
     return `M${points[0]} ${points[1]}v${points[3] - points[1]}M${points[4]} ${points[5]}l${points[6] - points[4]} ${points[7] - points[5]} ${points[8] - points[6]} ${points[9] - points[7]}`;
   }
-  function brandIcon() {
-    return `<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path data-panel-path data-panel-mode="brand" d="${panelPath(BRAND_POINTS)}"/></svg>`;
+  function panelIcon(collapsed) {
+    const mode = collapsed ? 'open' : 'close';
+    return `<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path data-panel-path data-panel-mode="brand" data-panel-target="${mode}" d="${panelPath(BRAND_POINTS)}"/></svg>`;
+  }
+  function brandIcon(collapsed) {
+    return `<span class="app-side-logo-mark">${logo('sm')}</span><span class="app-side-morph-mark" aria-hidden="true">${panelIcon(collapsed)}</span>`;
   }
   function morphBrandIcon(btn, targetMode) {
     const path = btn.querySelector('[data-panel-path]');
@@ -1769,7 +1773,7 @@
       <div class="app-frame ${slim ? 'app-frame-slim' : ''} min-h-screen bg-gray-50 text-gray-800 dark:bg-gray-900 dark:text-gray-100">
         <aside class="app-side" aria-label="Основная навигация">
           <button type="button" id="app-side-toggle" class="app-side-brand app-side-brand-toggle" title="${toggleTitle}" aria-label="${toggleTitle}" aria-expanded="${slim ? 'false' : 'true'}">
-            <span class="app-side-brand-icon" aria-hidden="true">${brandIcon()}</span>
+            <span class="app-side-brand-icon" aria-hidden="true">${brandIcon(slim)}</span>
             <span class="app-side-brand-label">Trading strategies</span>
           </button>
           <nav class="app-side-nav desktop-nav">${sideNavHTML()}</nav>

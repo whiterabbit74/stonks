@@ -399,6 +399,11 @@ html.dark .app-side { background: #0b1220; border-color: #1f2937; }
 html.dark .app-side-brand { color: #f3f4f6; }
 .app-side-brand-toggle { position: relative; border: 0; width: 100%; min-height: 2rem; text-align: left; cursor: pointer; }
 .app-side-brand-icon, .app-side-brand-label { display: inline-flex; align-items: center; }
+.app-side-brand-icon { position: relative; width: 1.25rem; height: 1.25rem; flex: 0 0 1.25rem; }
+.app-side-logo-mark, .app-side-morph-mark { display: inline-flex; align-items: center; transition: opacity 160ms cubic-bezier(0.2, 0, 0, 1); }
+.app-side-morph-mark { position: absolute; inset: 0; opacity: 0; }
+.app-side-brand-toggle:hover .app-side-logo-mark, .app-side-brand-toggle:focus-visible .app-side-logo-mark { opacity: 0; }
+.app-side-brand-toggle:hover .app-side-morph-mark, .app-side-brand-toggle:focus-visible .app-side-morph-mark { opacity: 1; }
 .app-side-brand-toggle:hover, .app-side-brand-toggle:focus-visible { color: inherit; }
 .app-side-brand-toggle:hover .app-side-brand-icon, .app-side-brand-toggle:focus-visible .app-side-brand-icon { color: #4338ca; }
 html.dark .app-side-brand-toggle:hover .app-side-brand-icon, html.dark .app-side-brand-toggle:focus-visible .app-side-brand-icon { color: #a5b4fc; }
