@@ -280,17 +280,22 @@ func (c *Calculator) finalValue() float64 {
 	return c.equity[len(c.equity)-1].Value
 }
 
+// tradingPeriodYears is the span the equity curve actually covers. A curve
+// with fewer than two points, or one whose first and last day are the same,
+// spans no time at all: 0 makes cagr() return 0, the same answer
+// BacktestMetrics gives for that input. Flooring it at a single day instead
+// annualised a one-day move and produced numbers like 1.3e17 percent.
 func (c *Calculator) tradingPeriodYears() float64 {
 	if len(c.equity) < 2 {
-		return 1 / 365.25
+		return 0
 	}
 	start, end := c.equity[0].Date, c.equity[len(c.equity)-1].Date
 	if start == "" || end == "" {
-		return 1 / 365.25
+		return 0
 	}
 	days := tradingdate.DaysBetween(start, end)
 	if days < 1 {
-		days = 1
+		return 0
 	}
 	return float64(days) / 365.25
 }
@@ -376,17 +381,6 @@ func downwardDev(returns []float64, marDaily float64) float64 {
 		s += v
 	}
 	return math.Sqrt(s / float64(len(squares)))
-}
-
-func CAGR(finalValue, initialValue float64, startDate, endDate string) float64 {
-	if initialValue <= 0 || finalValue <= 0 {
-		return 0
-	}
-	years := float64(tradingdate.DaysBetween(startDate, endDate)) / 365.25
-	if years <= 0 {
-		return 0
-	}
-	return (math.Pow(finalValue/initialValue, 1/years) - 1) * 100
 }
 
 type TradeStats struct {
