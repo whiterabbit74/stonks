@@ -1,7 +1,7 @@
 package live
 
 import (
-	"mktorder.com/go/internal/tradingdate"
+	"math"
 	"strings"
 	"time"
 )
@@ -35,8 +35,19 @@ func ClassifyRobinhoodHealth(access, refresh, checkStatus, expiresAt string, now
 		return HealthNeedsReauth, daysLeftUntil(expiresAt, now)
 	}
 	dl := daysLeftUntil(expiresAt, now)
-	if dl != nil && *dl <= 3 {
-		return HealthExpiringSoon, dl
+	// expires_at here is the *access* token's deadline, and it is short: the
+	// daily health job refreshes it long before it matters. As long as a
+	// refresh token is on file the access deadline says nothing about the
+	// connection, so it must not raise EXPIRING_SOON — that alert asks the
+	// operator for a copy-paste reauth they do not need. Only a connection
+	// without a refresh token really expires at expires_at.
+	if strings.TrimSpace(refresh) == "" {
+		if dl != nil && *dl < 0 {
+			return HealthNeedsReauth, dl
+		}
+		if dl != nil && *dl <= 3 {
+			return HealthExpiringSoon, dl
+		}
 	}
 	if strings.TrimSpace(access) == "" {
 		return HealthNeedsReauth, dl
@@ -56,6 +67,11 @@ func ClassifyWebullHealth(token, checkStatus, expiresAt string, now time.Time) (
 		return HealthNeedsReauth, daysLeftUntil(expiresAt, now)
 	}
 	dl := daysLeftUntil(expiresAt, now)
+	// A deadline already in the past is not "expiring soon" - the token is
+	// gone and the operator has to reissue it.
+	if dl != nil && *dl < 0 {
+		return HealthNeedsReauth, dl
+	}
 	if dl != nil && *dl <= 3 {
 		return HealthExpiringSoon, dl
 	}
@@ -74,11 +90,10 @@ func daysLeftUntil(expiresAt string, now time.Time) *int {
 	if err != nil {
 		return nil
 	}
-	loc, err := time.LoadLocation(tradingdate.NYZone)
-	if err != nil {
-		loc = time.UTC
-	}
-	d := int(t.In(loc).Sub(now.In(loc)).Hours() / 24)
+	// Whole days still left. Truncation toward zero would report a token that
+	// died half a day ago as "0 days left" instead of a negative number, so
+	// the past has to round down.
+	d := int(math.Floor(t.Sub(now).Hours() / 24))
 	return &d
 }
 

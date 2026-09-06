@@ -91,3 +91,29 @@ func TestBrokersHealthReportsClassifiedStatusNotRawNormal(t *testing.T) {
 		t.Fatalf("status = %q, want %q (SPA compares against the literal 'OK')", webull.Status, HealthOK)
 	}
 }
+
+func TestExpiredTokenIsNotExpiringSoon(t *testing.T) {
+	now := time.Date(2026, 9, 4, 12, 0, 0, 0, time.UTC)
+	past := now.Add(-12 * time.Hour).Format(time.RFC3339)
+	st, dl := ClassifyWebullHealth("tok", "NORMAL", past, now)
+	if st != HealthNeedsReauth || dl == nil || *dl != -1 {
+		t.Fatalf("webull expired: %s %v", st, dl)
+	}
+	// No refresh token: the Robinhood connection really does end at expires_at.
+	st, dl = ClassifyRobinhoodHealth("a", "", HealthOK, past, now)
+	if st != HealthNeedsReauth || dl == nil || *dl != -1 {
+		t.Fatalf("robinhood expired: %s %v", st, dl)
+	}
+}
+
+func TestRobinhoodAccessExpiryWithRefreshTokenStaysOK(t *testing.T) {
+	now := time.Date(2026, 9, 4, 12, 0, 0, 0, time.UTC)
+	soon := now.Add(2 * time.Hour).Format(time.RFC3339)
+	st, dl := ClassifyRobinhoodHealth("a", "r", HealthOK, soon, now)
+	if st != HealthOK || dl == nil || *dl != 0 {
+		t.Fatalf("refreshable access token: %s %v", st, dl)
+	}
+	if st, _ := ClassifyRobinhoodHealth("a", "", HealthOK, soon, now); st != HealthExpiringSoon {
+		t.Fatalf("no refresh token: %s", st)
+	}
+}
