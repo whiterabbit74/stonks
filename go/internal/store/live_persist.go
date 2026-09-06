@@ -326,16 +326,18 @@ func (d *DB) listBlockingTrackers() ([]map[string]any, error) {
 // IsOwnOrder reports whether this engine placed the order. Every order it
 // sends is recorded as a tracker first, so an id absent from the table belongs
 // to somebody else - the user trading the same account by hand, most likely -
-// and must never be cancelled on their behalf.
-func (d *DB) IsOwnOrder(clientOrderID string) bool {
+// and must never be cancelled on their behalf. A failed read is returned as an
+// error, not as "not ours": the caller must not conclude anything about a
+// working order from a journal it could not read.
+func (d *DB) IsOwnOrder(clientOrderID string) (bool, error) {
 	if strings.TrimSpace(clientOrderID) == "" {
-		return false
+		return false, nil
 	}
 	var n int
 	if err := d.SQL.QueryRow(`SELECT COUNT(1) FROM order_trackers WHERE client_order_id=?`, clientOrderID).Scan(&n); err != nil {
-		return false
+		return false, err
 	}
-	return n > 0
+	return n > 0, nil
 }
 
 func (d *DB) ListPendingTrackers() ([]map[string]any, error) {

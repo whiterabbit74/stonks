@@ -1365,7 +1365,11 @@ func (e *Engine) cancelOpenOrdersBeforeEntry(w execWindow, symbol string, br Bro
 		if id == "" || id == "<nil>" {
 			continue
 		}
-		if !e.DB.IsOwnOrder(id) {
+		own, err := e.DB.IsOwnOrder(id)
+		if err != nil {
+			return cancelled, fmt.Errorf("own_order_lookup_failed %s: %v", id, err)
+		}
+		if !own {
 			e.logAuto("foreign_order_left_open", "", map[string]any{"symbol": sym, "clientOrderId": id})
 			continue
 		}
