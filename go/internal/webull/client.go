@@ -410,29 +410,50 @@ func (c *Client) ResolveInstrumentID(symbol string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	// The list endpoint may answer with more than the requested share (a
+	// warrant, a dual-listed line). Taking the first row would route a live
+	// MARKET order to the wrong instrument (AUD-052), so a row that names a
+	// ticker is used only when that ticker is the one asked for. Rows that
+	// name none stay usable — the id is all this call needs from them.
 	rows := flatten(resp.Data)
 	want := strings.ToUpper(strings.TrimSpace(symbol))
+	unnamed := ""
 	for _, row := range rows {
 		m, ok := row.(map[string]any)
 		if !ok {
 			continue
 		}
-		// The list endpoint may answer with more than the requested share
-		// (a warrant, a dual-listed line). Taking the first row would route a
-		// live MARKET order to the wrong instrument, so the ticker must match.
-		if rowSymbol(m) != want {
+		sym := rowSymbol(m)
+		if sym != "" && sym != want {
 			continue
 		}
-		for _, k := range []string{"instrument_id", "instrumentId", "id", "security_id"} {
-			if s, ok := m[k].(string); ok && s != "" {
-				return s, nil
-			}
-			if n, ok := m[k].(float64); ok {
-				return fmt.Sprintf("%.0f", n), nil
-			}
+		id := instrumentIDOf(m)
+		if id == "" {
+			continue
+		}
+		if sym == want {
+			return id, nil
+		}
+		if unnamed == "" {
+			unnamed = id
 		}
 	}
+	if unnamed != "" {
+		return unnamed, nil
+	}
 	return "", fmt.Errorf("Unable to resolve Webull instrument_id for %s", symbol)
+}
+
+func instrumentIDOf(m map[string]any) string {
+	for _, k := range []string{"instrument_id", "instrumentId", "id", "security_id"} {
+		if s, ok := m[k].(string); ok && s != "" {
+			return s
+		}
+		if n, ok := m[k].(float64); ok {
+			return fmt.Sprintf("%.0f", n)
+		}
+	}
+	return ""
 }
 
 // rowSymbol reads the ticker an instrument row carries, upper-cased. An empty

@@ -309,9 +309,21 @@ func (b *RobinhoodBroker) ordersByState(ctx context.Context, all bool) ([]any, e
 }
 
 func (b *RobinhoodBroker) CancelOrder(clientOrderID string) error {
-	id := asUUID(clientOrderID)
-	if _, err := uuid.Parse(id); err != nil {
+	ref := asUUID(clientOrderID)
+	if _, err := uuid.Parse(ref); err != nil {
 		return fmt.Errorf("cancel order_id is not a UUID: %q", clientOrderID)
+	}
+	// cancel_equity_order takes Robinhood's own order UUID; ref_id is the id we
+	// generated when placing. Sending ours failed with "order not found", and
+	// the T-1 pre-entry cancel treats that as ErrOpenOrderCancelFailed and
+	// skips the entry (AUD-053). Resolve the broker id from the order first.
+	detail, err := b.OrderDetail(ref)
+	if err != nil {
+		return err
+	}
+	id := strings.TrimSpace(fmt.Sprint(first(detail, "id", "order_id")))
+	if _, err := uuid.Parse(id); err != nil {
+		return fmt.Errorf("cancel: no broker order_id for ref %s", ref)
 	}
 	acct, err := b.agenticAccount()
 	if err != nil {

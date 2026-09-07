@@ -603,3 +603,28 @@ func TestRobinhoodAccountReadsPortfolioEnvelope(t *testing.T) {
 		t.Fatalf("balance not parsed: %v", got)
 	}
 }
+
+// AUD-053: cancel_equity_order takes Robinhood's own order UUID. Sending our
+// ref_id there fails with "not found", and the T-1 pre-entry cancel turns that
+// into ErrOpenOrderCancelFailed, blocking the entry.
+func TestRobinhoodCancelUsesBrokerOrderID(t *testing.T) {
+	const ref = "11111111-1111-1111-1111-111111111111"
+	const srv = "22222222-2222-2222-2222-222222222222"
+	var cancelArgs map[string]any
+	b := &RobinhoodBroker{account: "RH1", Call: func(name string, args map[string]any) (json.RawMessage, error) {
+		switch name {
+		case "get_equity_orders":
+			return json.RawMessage(`{"orders":[{"ref_id":"` + ref + `","id":"` + srv + `","state":"queued"}]}`), nil
+		case "cancel_equity_order":
+			cancelArgs = args
+			return json.RawMessage(`{"ok":true}`), nil
+		}
+		return nil, nil
+	}}
+	if err := b.CancelOrder(ref); err != nil {
+		t.Fatal(err)
+	}
+	if cancelArgs["order_id"] != srv {
+		t.Fatalf("order_id %v, want broker id %s", cancelArgs["order_id"], srv)
+	}
+}
