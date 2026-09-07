@@ -13,6 +13,7 @@ var blockingMismatchCodes = map[string]struct{}{
 	"linked_monitor_trade_missing_broker_match":   {},
 	"legacy_monitor_trade_ambiguous_broker_match": {},
 	"live_broker_position_without_journal":        {},
+	"live_broker_position_symbol_mismatch":        {},
 	"broker_positions_unavailable":                {},
 	"journal_unavailable":                         {},
 }
@@ -312,7 +313,8 @@ func (e *Engine) liveConsistencyIssues(brokerRows []map[string]any, w execWindow
 			})
 			continue
 		}
-		if len(held) > 0 && store.OpenBrokerTradeFor(brokerRows, nb.name) == nil {
+		open := store.OpenBrokerTradeFor(brokerRows, nb.name)
+		if len(held) > 0 && open == nil {
 			var sym string
 			for s := range held {
 				sym = s
@@ -323,6 +325,25 @@ func (e *Engine) liveConsistencyIssues(brokerRows []map[string]any, w execWindow
 				"message": fmt.Sprintf("Broker holds %s but the local journal is flat.", sym),
 				"symbol":  sym, "broker": nb.name, "autoFixable": false,
 			})
+			continue
+		}
+		// Открытая сделка сама по себе не значит, что она про тот же тикер:
+		// брокер с SPY при журнальном QQQ раньше проходил проверку молча
+		// (AUD-050).
+		if len(held) > 0 && open != nil {
+			journalSym := store.SafeTicker(fmt.Sprint(open["symbol"]))
+			if _, ok := held[journalSym]; !ok {
+				var sym string
+				for s := range held {
+					sym = s
+					break
+				}
+				issues = append(issues, map[string]any{
+					"code": "live_broker_position_symbol_mismatch", "severity": "error",
+					"message": fmt.Sprintf("Broker holds %s while the journal has %s open.", sym, journalSym),
+					"symbol":  sym, "journalSymbol": journalSym, "broker": nb.name, "autoFixable": false,
+				})
+			}
 		}
 	}
 	return issues

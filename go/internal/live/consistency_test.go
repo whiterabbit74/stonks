@@ -180,3 +180,21 @@ func issuesOf(snap map[string]any) []map[string]any {
 	}
 	return nil
 }
+
+// AUD-050: сверка смотрела только «позиция есть, а журнал пуст». Открытая
+// сделка по другому тикеру проходила молча.
+func TestConsistencyReportsSymbolMismatchAgainstJournal(t *testing.T) {
+	e, webull, _ := dualBrokerEngine(t, entryBars)
+	mustInsertBrokerTrade(t, e, "w-qqq", "QQQ", "webull", "2026-08-02", 1)
+	mustInsertMonitorTrade(t, e, "m-w-qqq", "QQQ", "w-qqq", "2026-08-02")
+	webull.Pos = []any{map[string]any{"symbol": "SPY", "quantity": 1.0}}
+
+	snap := e.Consistency()
+	iss := issueByCode(snap, "live_broker_position_symbol_mismatch")
+	if iss == nil {
+		t.Fatalf("SPY at broker against QQQ in the journal must be reported: %+v", snap["issues"])
+	}
+	if BlockingMismatch(snap) == nil {
+		t.Fatal("ticker mismatch must block")
+	}
+}
