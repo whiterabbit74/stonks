@@ -1587,8 +1587,11 @@ func (d *DB) SplitCloseTrade(table, id string, sold, exitPrice float64, exitDate
 	}
 	part["quantity"] = sold
 	fields := TradeCloseFields(part, exitPrice, exitDate, extra)
-	cols := "id, symbol, status, entry_date, entry_price, entry_ibs, source, quantity, exit_date, exit_price, exit_ibs, pnl_absolute, pnl_percent, holding_days, notes"
-	sel := "?, symbol, 'closed', entry_date, entry_price, entry_ibs, source, ?, ?, ?, ?, ?, ?, ?, ?"
+	// is_test и is_hidden обязаны переехать в закрытую часть: без них частично
+	// закрытая тестовая сделка становилась боевой, а скрытая — видимой в
+	// журнале (AUD-055).
+	cols := "id, symbol, status, entry_date, entry_price, entry_ibs, entry_decision_time, source, is_test, is_hidden, quantity, exit_date, exit_price, exit_ibs, pnl_absolute, pnl_percent, holding_days, notes"
+	sel := "?, symbol, 'closed', entry_date, entry_price, entry_ibs, entry_decision_time, source, is_test, is_hidden, ?, ?, ?, ?, ?, ?, ?, ?"
 	if table == "broker_trades" {
 		cols += ", broker"
 		sel += ", broker"
