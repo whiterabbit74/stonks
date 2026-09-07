@@ -143,5 +143,4 @@ main() {
     log_info "Рекомендации:"
     log_info "1. Перезапустите сервисы: docker compose up -d"
     log_info "2. Проверьте здоровье: ./health-check.sh"
-    log_info "3. Настройте автообновление: ./auto-update.sh daemon"
 }
