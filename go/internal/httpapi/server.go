@@ -1394,11 +1394,24 @@ func validateWatchThresholds(body, existing map[string]any) error {
 			high = f
 		}
 	}
-	if f, ok := body["lowIBS"].(float64); ok {
-		low = f
-	}
-	if f, ok := body["highIBS"].(float64); ok {
-		high = f
+	// The store parses a threshold with asFloat, which also reads strings, so
+	// skipping a non-float64 value here let `"lowIBS": "0.9"` pass validation
+	// and still be saved (AUD-042). A threshold that is present must be a
+	// JSON number.
+	for _, key := range []string{"lowIBS", "highIBS"} {
+		v, ok := body[key]
+		if !ok || v == nil {
+			continue
+		}
+		f, ok := v.(float64)
+		if !ok {
+			return errors.New(key + " must be a number")
+		}
+		if key == "lowIBS" {
+			low = f
+		} else {
+			high = f
+		}
 	}
 	_, _, err := ibs.SanitizeThresholds(low, high)
 	return err
