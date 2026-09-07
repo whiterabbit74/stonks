@@ -160,7 +160,14 @@ func RunClean(data []types.OHLC, strategy types.Strategy, options *CleanOptions)
 
 		totalValue := currentCapital
 		if position != nil {
-			totalValue += position.quantity * bar.Close
+			if i < position.entryIndex {
+				// Вход по nextOpen исполняется завтра: в день сигнала позиции
+				// ещё нет, и переоценка по сегодняшнему закрытию давала бы
+				// скачок эквити на день раньше сделки (AUD-051).
+				totalValue += position.quantity*position.entryPrice + position.entryCommission
+			} else {
+				totalValue += position.quantity * bar.Close
+			}
 		}
 		return totalValue
 	})
