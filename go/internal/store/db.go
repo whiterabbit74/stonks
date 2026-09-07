@@ -1557,6 +1557,66 @@ func (d *DB) ListTrades(table string) ([]map[string]any, error) {
 	return out, nil
 }
 
+// SplitCloseTrade закрывает `sold` акций открытой сделки отдельной строкой и
+// оставляет остаток открытым. Без неё частичное исполнение выхода только
+// уменьшало quantity, и прибыль по проданным акциям исчезала из журнала
+// навсегда (AUD-044). Обе записи идут одной транзакцией: половина операции
+// либо теряет акции, либо считает их дважды.
+func (d *DB) SplitCloseTrade(table, id string, sold, exitPrice float64, exitDate string, extra map[string]any) error {
+	table = tradeTable(table)
+	existing, err := d.GetTrade(table, id)
+	if err != nil {
+		return err
+	}
+	if existing == nil {
+		return fmt.Errorf("Сделка не найдена")
+	}
+	if fmt.Sprint(existing["status"]) != "open" {
+		return fmt.Errorf("Сделка уже закрыта")
+	}
+	if !(exitPrice > 0) {
+		return fmt.Errorf("exitPrice must be a positive number")
+	}
+	left := asFloat(existing["quantity"]) - sold
+	if !(sold > 0) || left <= 0 {
+		return fmt.Errorf("split quantity out of range")
+	}
+	part := map[string]any{}
+	for k, v := range existing {
+		part[k] = v
+	}
+	part["quantity"] = sold
+	fields := TradeCloseFields(part, exitPrice, exitDate, extra)
+	cols := "id, symbol, status, entry_date, entry_price, entry_ibs, source, quantity, exit_date, exit_price, exit_ibs, pnl_absolute, pnl_percent, holding_days, notes"
+	sel := "?, symbol, 'closed', entry_date, entry_price, entry_ibs, source, ?, ?, ?, ?, ?, ?, ?, ?"
+	if table == "broker_trades" {
+		cols += ", broker"
+		sel += ", broker"
+	}
+	tx, err := d.SQL.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	res, err := tx.Exec(`INSERT INTO `+table+` (`+cols+`) SELECT `+sel+` FROM `+table+` WHERE id=? AND status='open'`,
+		fmt.Sprintf("%s-p%d", id, time.Now().UnixNano()), sold, fields["exitDate"], exitPrice,
+		fields["exitIBS"], fields["pnlAbsolute"], fields["pnlPercent"], fields["holdingDays"], fields["notes"], id)
+	if err != nil {
+		return err
+	}
+	if n, err := res.RowsAffected(); err != nil || n != 1 {
+		return fmt.Errorf("partial close wrote %d rows: %v", n, err)
+	}
+	res, err = tx.Exec(`UPDATE `+table+` SET quantity=? WHERE id=? AND status='open'`, left, id)
+	if err != nil {
+		return err
+	}
+	if n, err := res.RowsAffected(); err != nil || n != 1 {
+		return fmt.Errorf("partial close left %d open rows: %v", n, err)
+	}
+	return tx.Commit()
+}
+
 func (d *DB) InsertTrade(table string, rec map[string]any) error {
 	if table != "trades" && table != "broker_trades" {
 		table = "trades"

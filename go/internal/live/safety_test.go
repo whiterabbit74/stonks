@@ -273,11 +273,24 @@ func TestPartialExitKeepsRemainderOpen(t *testing.T) {
 	})
 	waitTrackerFinal(t, e, db, "AAPL", "exit")
 	trades, _ := db.ListTrades("broker_trades")
-	if len(trades) != 1 || fmt.Sprint(trades[0]["status"]) != "open" {
-		t.Fatalf("remainder must stay open: %+v", trades)
+	var open, closed map[string]any
+	for _, row := range trades {
+		if fmt.Sprint(row["status"]) == "open" {
+			open = row
+		} else {
+			closed = row
+		}
 	}
-	if asFloat(trades[0]["quantity"]) != 3 {
-		t.Fatalf("remaining qty %+v", trades[0]["quantity"])
+	if open == nil || asFloat(open["quantity"]) != 3 {
+		t.Fatalf("remainder must stay open with 3 shares: %+v", trades)
+	}
+	// AUD-044: проданная часть — отдельная закрытая сделка с реализованным
+	// PnL, иначе прибыль по этим акциям исчезает из журнала.
+	if closed == nil || asFloat(closed["quantity"]) != 2 {
+		t.Fatalf("sold part must be journalled as a closed trade: %+v", trades)
+	}
+	if got := asFloat(closed["pnlAbsolute"]); got != 3 {
+		t.Fatalf("realised pnl %v, want 3", got)
 	}
 }
 

@@ -381,8 +381,18 @@ func (e *Engine) reduceOpenQuantity(symbol, preferID, broker string, sold, exitP
 			}
 			continue
 		}
-		_ = e.execJournalSQL("", broker, "reduce_open_qty",
-			`UPDATE `+table+` SET quantity=? WHERE id=?`, left, t["id"])
+		// Проданную часть надо закрыть отдельной сделкой: одно лишь
+		// уменьшение quantity стирало реализованный PnL по этим акциям из
+		// журнала навсегда (AUD-044).
+		if err := e.DB.SplitCloseTrade(table, fmt.Sprint(t["id"]), sold, exitPrice,
+			tradingdate.TodayNYSE(e.now()), map[string]any{"notes": "partial_exit"}); err != nil {
+			e.logAuto("local_trade_close_failed", "", map[string]any{
+				"table": table, "symbol": symbol, "clientOrderId": preferID,
+				"op": "partial_exit_split", "error": err.Error(),
+			})
+			e.raiseTrackerPersistBlock(broker)
+			return
+		}
 	}
 }
 
