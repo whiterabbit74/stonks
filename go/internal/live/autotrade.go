@@ -1398,12 +1398,15 @@ func (e *Engine) cancelOpenOrdersBeforeEntry(w execWindow, symbol string, br Bro
 		if sym != want {
 			continue
 		}
-		st := NormalizeOrderStatus(fmt.Sprint(firstNonEmpty(m["status"], m["order_status"], m["orderStatus"])))
+		// Robinhood называет поля ref_id и state: по client_order_id/status
+		// его заявки молча пропускались и оставались висеть на бирже
+		// при отправке нового входа (AUD-045).
+		st := NormalizeOrderStatus(fmt.Sprint(firstNonEmpty(m["status"], m["order_status"], m["orderStatus"], m["state"])))
 		if IsFinalOrderStatus(st) {
 			continue
 		}
-		id := strings.TrimSpace(fmt.Sprint(firstNonEmpty(m["client_order_id"], m["clientOrderId"])))
-		if id == "" || id == "<nil>" {
+		id := clientOrderIDOf(m)
+		if id == "" {
 			continue
 		}
 		own, err := e.DB.IsOwnOrder(id)
