@@ -21,7 +21,7 @@ import (
 
 // SchemaVersion is the schema this binary can open and migrate to.
 // Bump it when adding a migrateSchema step. Open fails if the database is newer.
-const SchemaVersion = 4
+const SchemaVersion = 5
 
 type DB struct {
 	SQL *sql.DB
@@ -356,6 +356,18 @@ func applyPendingSchema(e schemaExecer, from int) error {
 		}
 		if _, err := e.Exec(`UPDATE splits SET applied = 1 WHERE ticker IN (SELECT ticker FROM dataset_meta WHERE adjusted_for_splits = 1)`); err != nil {
 			return err
+		}
+	}
+	if from < 5 {
+		// pnl_absolute used to hold the per-share price difference while the
+		// UI printed it as money next to the quantity column (AUD-041). Rows
+		// closed before the fix carry the old meaning; scale them once so the
+		// journal is not half per-share and half money. Idempotent by schema
+		// version: a database already at 5 never runs this again.
+		for _, table := range []string{"broker_trades", "trades"} {
+			if _, err := e.Exec(`UPDATE ` + table + ` SET pnl_absolute = ROUND(pnl_absolute * quantity, 6) WHERE status = 'closed' AND pnl_absolute IS NOT NULL AND quantity IS NOT NULL AND quantity > 0`); err != nil {
+				return err
+			}
 		}
 	}
 	return nil

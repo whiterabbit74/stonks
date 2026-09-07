@@ -185,3 +185,59 @@ func TestOpenUpgradesSchemaVersion3MarksAppliedSplits(t *testing.T) {
 		t.Fatalf("raw dataset has %d pending splits, want 1", len(pending))
 	}
 }
+
+// AUD-041: rows closed before the fix hold the per-share difference. The
+// version-5 step scales them to money once, and only once.
+func TestOpenUpgradesSchemaVersion4ScalesPnLAbsolute(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "v4.db")
+	db, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows := []struct {
+		id     string
+		status string
+		qty    any
+		pnl    any
+	}{
+		{"closed10", "closed", 10.0, 5.0},
+		{"closed1", "closed", 1.0, 5.0},
+		{"noqty", "closed", nil, 5.0},
+		{"open10", "open", 10.0, nil},
+	}
+	for _, r := range rows {
+		if _, err := db.SQL.Exec(
+			`INSERT INTO broker_trades (id, symbol, status, entry_date, entry_price, quantity, pnl_absolute) VALUES (?,?,?,?,?,?,?)`,
+			r.id, "QQQ", r.status, "2026-09-01", 100.0, r.qty, r.pnl); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := db.SQL.Exec(`UPDATE schema_meta SET version=4 WHERE id=1`); err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+
+	want := map[string]any{"closed10": 50.0, "closed1": 5.0, "noqty": 5.0, "open10": nil}
+	for pass := 1; pass <= 2; pass++ { // second Open must not scale again
+		db, err = Open(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for id, w := range want {
+			var got sql.NullFloat64
+			if err := db.SQL.QueryRow(`SELECT pnl_absolute FROM broker_trades WHERE id=?`, id).Scan(&got); err != nil {
+				t.Fatal(err)
+			}
+			if w == nil {
+				if got.Valid {
+					t.Fatalf("pass %d: %s pnl_absolute=%v want NULL", pass, id, got.Float64)
+				}
+				continue
+			}
+			if !got.Valid || got.Float64 != w.(float64) {
+				t.Fatalf("pass %d: %s pnl_absolute=%v want %v", pass, id, got, w)
+			}
+		}
+		db.Close()
+	}
+}
