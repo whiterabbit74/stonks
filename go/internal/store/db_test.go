@@ -773,3 +773,27 @@ func TestEMAAlertPeriodCoercion(t *testing.T) {
 		t.Fatalf("emaPeriod %+v", got)
 	}
 }
+
+// AUD-040: CloseTradeByID refuses a non-positive exit price; the pair path used
+// to accept one and close both rows at 0 with a -100% P&L.
+func TestCloseTradePairRejectsNonPositiveExitPrice(t *testing.T) {
+	db := openTestDB(t)
+	for _, r := range []struct{ table, id string }{{"broker_trades", "o1"}, {"trades", "m-o1"}} {
+		if err := db.InsertTrade(r.table, map[string]any{
+			"id": r.id, "symbol": "QQQ", "status": "open",
+			"entryDate": "2026-09-01", "entryPrice": 100.0, "quantity": 10.0,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := db.CloseTradePair("m-o1", "o1", 0, "2026-09-02", nil); err == nil {
+		t.Fatal("CloseTradePair accepted exitPrice=0")
+	}
+	row, err := db.GetTrade("broker_trades", "o1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fmt.Sprint(row["status"]) != "open" {
+		t.Fatalf("trade closed at a zero price: %+v", row)
+	}
+}

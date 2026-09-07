@@ -1446,6 +1446,12 @@ func (d *DB) CloseTradeByID(table, id string, exitPrice float64, exitDate string
 
 // CloseTradePair closes the linked broker and monitor rows as one transaction.
 func (d *DB) CloseTradePair(monitorID, brokerID string, exitPrice float64, exitDate string, extra map[string]any) error {
+	// Same guard as CloseTradeByID: 0 is not a fill price. Without it an exit
+	// whose fill price the broker never confirmed closed both rows at 0 and
+	// wrote a -100% P&L (AUD-040).
+	if !(exitPrice > 0) {
+		return fmt.Errorf("exitPrice must be a positive number")
+	}
 	tx, err := d.SQL.Begin()
 	if err != nil {
 		return err
