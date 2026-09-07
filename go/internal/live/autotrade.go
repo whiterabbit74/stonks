@@ -241,6 +241,9 @@ type EvalResult struct {
 	Phase       string           `json:"phase,omitempty"`
 	Live        bool             `json:"live"`
 	Broker      any              `json:"broker,omitempty"`
+	// DecisionBroker names the broker whose book Decision was computed on, so
+	// the UI does not read one broker's showcase decision as another's.
+	DecisionBroker string `json:"decisionBroker,omitempty"`
 	// BrokerDecisions holds the per-broker decision (action/reason/candidate),
 	// keyed by broker name. Decision (above) stays the single-book showcase
 	// value Evaluate() computes for UI/Telegram; this is the real per-broker
@@ -265,6 +268,11 @@ func (e *Engine) EvaluateWindow(w execWindow) EvalResult {
 	// "no tickers" day, and would silently swap per-watch thresholds for the
 	// global defaults.
 	watches, watchErr := e.DB.ListWatches()
+	// The showcase book must belong to a broker that is actually attached and
+	// enabled. Hardcoding webull answered for the whole system with one
+	// broker's book: a Robinhood-only setup saw an empty position and an entry
+	// candidate while Robinhood held the trade (AUD-021, the AUD-017 class).
+	showcase, showcaseBr := e.showcaseBroker(cfg)
 	blocked := func(reason string, symbols []string) EvalResult {
 		return EvalResult{
 			EvaluatedAt: e.now().UTC().Format(time.RFC3339Nano),
@@ -273,6 +281,8 @@ func (e *Engine) EvaluateWindow(w execWindow) EvalResult {
 			Symbols:     symbols,
 			Decision:    map[string]any{"action": "none", "reason": reason, "symbol": nil, "candidate": nil},
 			Live:        e.evalLive(cfg),
+
+			DecisionBroker: showcase,
 		}
 	}
 	if watchErr != nil {
@@ -287,7 +297,7 @@ func (e *Engine) EvaluateWindow(w execWindow) EvalResult {
 	if journalErr != nil {
 		return blocked("journal_unavailable", symbols)
 	}
-	open, held, heldErr := e.booksFor("webull", e.defaultBroker(), brokerTrades, w)
+	open, held, heldErr := e.booksFor(showcase, showcaseBr, brokerTrades, w)
 	quoteSymbols := append([]string{}, symbols...)
 	addQuote := func(sym string) {
 		sym = store.SafeTicker(sym)
@@ -344,7 +354,26 @@ func (e *Engine) EvaluateWindow(w execWindow) EvalResult {
 		OpenTrade:   open,
 		Decision:    decision,
 		Live:        e.evalLive(cfg),
+
+		DecisionBroker: showcase,
 	}
+}
+
+// showcaseBroker picks the broker the single-book Decision speaks for: the
+// first enabled one in snapshot order (webull, robinhood, extras), so a
+// multi-broker setup keeps showing webull and a single-broker setup shows
+// itself.
+func (e *Engine) showcaseBroker(cfg map[string]any) (string, Broker) {
+	snaps := e.brokerSnapshot()
+	for _, nb := range snaps {
+		if on, _, _ := brokerFlags(cfg, nb.name); on {
+			return nb.name, nb.br
+		}
+	}
+	if len(snaps) > 0 {
+		return snaps[0].name, snaps[0].br
+	}
+	return "webull", e.defaultBroker()
 }
 
 func decideLiveAction(quotes []map[string]any, symbols []string, held map[string]float64, heldErr error, open map[string]any, allowEntries, allowExits bool) map[string]any {

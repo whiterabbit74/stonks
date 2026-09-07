@@ -53,6 +53,9 @@ func (e *Engine) executeAll(w execWindow, ev EvalResult, trigger, corr string, s
 			continue
 		}
 		one := ev
+		// one.Decision below is this broker's, so the label must follow it and
+		// not stay on the showcase broker (AUD-021).
+		one.DecisionBroker = name
 		if journalErr != nil {
 			one.Decision = map[string]any{"action": "none", "reason": "journal_unavailable", "symbol": nil, "candidate": nil}
 			decisions[name] = one.Decision

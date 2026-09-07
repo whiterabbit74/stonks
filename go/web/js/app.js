@@ -2738,7 +2738,9 @@
     } else if (tab === 'autotrade') {
       const st = state.autoStatus || {};
       const last = (st.state && st.state.lastRunAt) || '—';
-      const dec = st.evaluation && st.evaluation.decision ? st.evaluation.decision : {};
+      // The fresh evaluation carries one showcase decision computed on one
+      // broker's book; showing it on another broker's tab was AUD-021.
+      const dec = st.evaluation && st.evaluation.decision && st.evaluation.decisionBroker === kind ? st.evaluation.decision : {};
       const ac = state.autoConfig || {};
       const tok = state.token || {};
       const conn = (state.dashboard && state.dashboard.connection) || {};
