@@ -57,6 +57,11 @@ func (c *Client) robinhoodQuote(symbol string) (QuotePayload, error) {
 	// garbage it is.
 	cur := robinhoodFloat(q, "last_trade_price", "price", "close")
 	prev := robinhoodFloat(q, "previous_close", "adjusted_previous_close")
+	// Как и остальные провайдеры: пустой ответ инструмента — это 404, а не
+	// котировка с нулевой ценой. Ноль уезжал в графики и в IBS (AUD-056).
+	if !(cur > 0) {
+		return QuotePayload{}, &HTTPError{404, "Robinhood: no price for " + symbol}
+	}
 	return QuotePayload{
 		Range:   map[string]any{"open": open, "high": high, "low": low},
 		Quote:   map[string]any{"open": open, "high": high, "low": low, "current": cur, "prevClose": prev},
