@@ -60,7 +60,7 @@ check_api() {
 
 check_site() {
     log_info "Проверяю сайт..."
-    local urls=("http://localhost/" "https://mktorder.com/")
+    local urls=("http://localhost:3001/" "https://mktorder.com/")
     local all_ok=true
     for url in "${urls[@]}"; do
         body=$(curl -fsS --max-time 10 "$url" 2>/dev/null || true)
@@ -97,10 +97,12 @@ check_resources() {
 check_logs() {
     log_info "Проверяю логи на ошибки..."
     for name in stonks-server stonks-caddy; do
-        errors=$(docker logs --since 1h "$name" 2>&1 | grep -i error | wc -l)
+        # grep без совпадений возвращает 1, а скрипт идёт под `set -e -o
+        # pipefail`: без `|| true` «ошибок нет» обрывало проверку до вердикта.
+        errors=$(docker logs --since 1h "$name" 2>&1 | grep -ci error || true)
         if [[ $errors -gt 0 ]]; then
             log_warning "$name: $errors ошибок за последний час"
-            docker logs --since 1h "$name" 2>&1 | grep -i error | tail -5
+            docker logs --since 1h "$name" 2>&1 | grep -i error | tail -5 || true
         else
             log_success "$name: ошибок не найдено"
         fi
