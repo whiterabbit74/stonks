@@ -70,3 +70,30 @@ func TestActualizeFailureRecordsAttemptAndCaps(t *testing.T) {
 		t.Fatalf("repeated failure must alert, messages=%v", tg.Sent())
 	}
 }
+
+// A day where one ticker updated and another failed must stay open for the
+// next tick: the EMA-only ticker had no bars merged, so closing the day would
+// leave it stale until a manual "Обновить цены и позиции".
+func TestActualizePartialFailureKeepsRetrying(t *testing.T) {
+	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
+	db, e, _ := testEngine(t, bars)
+	e.Sleep = func(time.Duration) {}
+	if _, err := db.UpsertEMAAlert(map[string]any{"symbol": "TQQQ", "emaPeriod": 20}); err != nil {
+		t.Fatal(err)
+	}
+	st := db.Settings()
+	st["enablePostClosePriceActualization"] = true
+	_ = db.SaveSettings(st)
+
+	first := e.Actualize(false)
+	if first.Count != 1 || len(first.Failed) != 1 || first.Failed[0] != "TQQQ" {
+		t.Fatalf("want AAPL updated and TQQQ failed, got %+v", first)
+	}
+	if fmt.Sprint(db.Settings()["lastActualizationDate"]) == "2026-09-01" {
+		t.Fatal("partial run must not close the day")
+	}
+	second := e.Actualize(false)
+	if second.Reason == "already_ran_today" {
+		t.Fatalf("next tick must retry the failed ticker, got %+v", second)
+	}
+}

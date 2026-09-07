@@ -203,11 +203,15 @@ func recordActualizeAttempt(e *Engine, today string, out ActualizeResult) {
 		"lastActualizationAttemptDate":  today,
 		"lastActualizationAttemptCount": attempts,
 	}
-	if out.Count > 0 {
+	// Only a clean sweep closes the day: marking it done after a partial run
+	// leaves the failed tickers without daily bars until someone updates by
+	// hand, because every later tick answers "already_ran_today".
+	done := out.Count > 0 && len(out.Failed) == 0
+	if done {
 		kv["lastActualizationDate"] = today
 	}
 	_ = e.DB.SetSettingsKeys(kv)
-	if out.Count > 0 || attempts < actualizeAttemptCap(settings) {
+	if done || attempts < actualizeAttemptCap(settings) {
 		return
 	}
 	failed := strings.Join(out.Failed, ", ")
