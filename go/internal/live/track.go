@@ -704,15 +704,15 @@ var exitFillWaitStep = 500 * time.Millisecond
 // awaitFlatAfterExit polls the pending exit until the broker journal reports
 // no open trade. "Flat" is the same condition Evaluate uses to allow an entry,
 // so a true return means the re-entry decision sees the position as gone.
-func (e *Engine) awaitFlatAfterExit() bool {
+func (e *Engine) awaitFlatAfterExit(brokers []string) bool {
 	for attempt := 0; attempt < exitFillWaitAttempts; attempt++ {
 		// An unreadable journal is not a flat account: treating the read
 		// failure as "no open trade" would let the re-entry fire on top of a
 		// position that may still be open.
-		if flat, err := e.journalFlat(); err == nil && flat {
+		if flat, err := e.journalFlat(brokers); err == nil && flat {
 			return true
 		}
-		t, err := e.DB.FindPendingTracker("", "exit")
+		t, err := e.pendingExitFor(brokers)
 		if err != nil || t == nil {
 			// Nothing left to wait on: the tracker reached a terminal status
 			// that did not close the trade (rejected, cancelled, expired).
@@ -723,17 +723,44 @@ func (e *Engine) awaitFlatAfterExit() bool {
 		e.pollOneTracker(t)
 		e.sleep(exitFillWaitStep)
 	}
-	flat, err := e.journalFlat()
+	flat, err := e.journalFlat(brokers)
 	return err == nil && flat
 }
 
-// journalFlat reports whether the broker journal has no open trade. The error
-// is the point: a failed read must never be read as flat.
-func (e *Engine) journalFlat() (bool, error) {
+// journalFlat reports whether the broker journal has no open trade on the
+// brokers that just exited. An empty list means "any broker". Scoping matters
+// in multi-broker mode: a position still held on another broker is not this
+// broker's exit failing to fill (AUD-043). The error is the point: a failed
+// read must never be read as flat.
+func (e *Engine) journalFlat(brokers []string) (bool, error) {
 	rows, err := e.DB.ListTrades("broker_trades")
 	if err != nil {
 		e.logAuto("journal_read_failed", "", map[string]any{"table": "broker_trades", "op": "await_flat", "error": err.Error()})
 		return false, err
 	}
-	return store.OpenBrokerTrade(rows) == nil, nil
+	for _, b := range brokerScope(brokers) {
+		if store.OpenBrokerTradeFor(rows, b) != nil {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
+// pendingExitFor returns the first unfilled exit tracker on the given brokers.
+func (e *Engine) pendingExitFor(brokers []string) (map[string]any, error) {
+	for _, b := range brokerScope(brokers) {
+		t, err := e.DB.FindPendingTrackerBroker("", "exit", b)
+		if err != nil || t != nil {
+			return t, err
+		}
+	}
+	return nil, nil
+}
+
+// brokerScope normalises an empty list to the "any broker" scope.
+func brokerScope(brokers []string) []string {
+	if len(brokers) == 0 {
+		return []string{""}
+	}
+	return brokers
 }

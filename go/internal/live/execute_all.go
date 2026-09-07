@@ -281,6 +281,20 @@ func (e *Engine) submitEvaluated(w execWindow, ev EvalResult, trigger, corr, bro
 // "none" while another broker really exited, and can name an exit that this
 // broker skipped (AUD-017). An exit wins over an entry: the post-exit
 // orchestration is what the callers key off.
+// exitingBrokers lists the brokers whose decision in res was an exit. An empty
+// result means the run had no per-broker decisions at all, and the caller must
+// fall back to the unscoped journal check.
+func exitingBrokers(res EvalResult) []string {
+	var out []string
+	for name, d := range res.BrokerDecisions {
+		if action, _ := d["action"].(string); action == "exit" {
+			out = append(out, name)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
 func effectiveDecision(res EvalResult) map[string]any {
 	if len(res.BrokerDecisions) == 0 {
 		return res.Decision

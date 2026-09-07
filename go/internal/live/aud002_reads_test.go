@@ -12,13 +12,13 @@ import (
 // have been open.
 func TestAUD002UnreadableJournalIsNotFlat(t *testing.T) {
 	_, e, _ := testEngine(t, nil)
-	if !e.awaitFlatAfterExit() {
+	if !e.awaitFlatAfterExit(nil) {
 		t.Fatal("an empty journal is flat")
 	}
 	if _, err := e.DB.SQL.Exec(`DROP TABLE broker_trades`); err != nil {
 		t.Fatal(err)
 	}
-	if e.awaitFlatAfterExit() {
+	if e.awaitFlatAfterExit(nil) {
 		t.Fatal("an unreadable journal must not be reported as flat")
 	}
 }

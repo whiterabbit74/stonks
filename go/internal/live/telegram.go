@@ -50,11 +50,14 @@ func (e *Engine) runT1Orders(w execWindow, today string) (exitRes, entryRes Eval
 	if action != "exit" || !exitRes.Executed {
 		return exitRes, entryRes, false
 	}
-	if e.awaitFlatAfterExit() {
+	// Ждём только тех брокеров, которые действительно выходили: позиция,
+	// открытая у другого брокера, — не сорвавшийся выход этого (AUD-043).
+	brokers := exitingBrokers(exitRes)
+	if e.awaitFlatAfterExit(brokers) {
 		entryRes = e.executeWindow(w, "telegram_t1")
 		return exitRes, entryRes, false
 	}
-	pending, err := e.DB.FindPendingTracker("", "exit")
+	pending, err := e.pendingExitFor(brokers)
 	if err != nil || pending != nil {
 		_ = e.DB.AppendAutotradeLog("t1_entry_blocked_waiting_exit_fill")
 		return exitRes, entryRes, true
@@ -63,11 +66,12 @@ func (e *Engine) runT1Orders(w execWindow, today string) (exitRes, entryRes Eval
 	exitRes = e.executeWindow(w, "telegram_t1")
 	action, _ = effectiveDecision(exitRes)["action"].(string)
 	if action == "exit" && exitRes.Executed {
-		if e.awaitFlatAfterExit() {
+		brokers = exitingBrokers(exitRes)
+		if e.awaitFlatAfterExit(brokers) {
 			entryRes = e.executeWindow(w, "telegram_t1")
 			return exitRes, entryRes, false
 		}
-		pending, err = e.DB.FindPendingTracker("", "exit")
+		pending, err = e.pendingExitFor(brokers)
 		if err != nil || pending != nil {
 			return exitRes, entryRes, true
 		}
