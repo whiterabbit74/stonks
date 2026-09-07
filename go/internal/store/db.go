@@ -1359,7 +1359,14 @@ func TradeCloseFields(existing map[string]any, exitPrice float64, exitDate strin
 	entryPrice := asFloat(existing["entryPrice"])
 	if entryPrice > 0 {
 		diff := exitPrice - entryPrice
-		out["pnlAbsolute"] = round6(diff)
+		// pnl_absolute is money, and the SPA prints it as money next to the
+		// quantity column. The per-share difference understated a 10-share
+		// trade tenfold (AUD-041). An unknown quantity falls back to one share.
+		qty := asFloat(existing["quantity"])
+		if !(qty > 0) {
+			qty = 1
+		}
+		out["pnlAbsolute"] = round6(diff * qty)
 		out["pnlPercent"] = round6((diff / entryPrice) * 100)
 	}
 	hold := 0
@@ -1459,15 +1466,15 @@ func (d *DB) CloseTradePair(monitorID, brokerID string, exitPrice float64, exitD
 	defer tx.Rollback()
 	closeOne := func(table, id string) error {
 		var entryDate, notes sql.NullString
-		var entryPrice sql.NullFloat64
+		var entryPrice, quantity sql.NullFloat64
 		var status string
-		if err := tx.QueryRow(`SELECT status, entry_date, entry_price, notes FROM `+tradeTable(table)+` WHERE id=?`, id).Scan(&status, &entryDate, &entryPrice, &notes); err != nil {
+		if err := tx.QueryRow(`SELECT status, entry_date, entry_price, notes, quantity FROM `+tradeTable(table)+` WHERE id=?`, id).Scan(&status, &entryDate, &entryPrice, &notes, &quantity); err != nil {
 			return err
 		}
 		if status != "open" {
 			return fmt.Errorf("Сделка уже закрыта")
 		}
-		existing := map[string]any{"status": status, "entryDate": nullS(entryDate), "entryPrice": nullF(entryPrice), "notes": nullS(notes)}
+		existing := map[string]any{"status": status, "entryDate": nullS(entryDate), "entryPrice": nullF(entryPrice), "notes": nullS(notes), "quantity": nullF(quantity)}
 		fields := TradeCloseFields(existing, exitPrice, exitDate, extra)
 		res, err := tx.Exec(`UPDATE `+tradeTable(table)+` SET status='closed', exit_date=?, exit_price=?, exit_ibs=COALESCE(?, exit_ibs), pnl_absolute=?, pnl_percent=?, holding_days=?, notes=COALESCE(?, notes) WHERE id=? AND status='open'`,
 			fields["exitDate"], fields["exitPrice"], fields["exitIBS"], fields["pnlAbsolute"], fields["pnlPercent"], fields["holdingDays"], fields["notes"], id)

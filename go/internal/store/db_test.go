@@ -398,7 +398,8 @@ func TestCloseTradeByIDBrokerTable(t *testing.T) {
 	if closed["status"] != "closed" {
 		t.Fatalf("status %v", closed["status"])
 	}
-	if asFloat(closed["pnlAbsolute"]) != 5 {
+	// 2 shares x $5 = $10 of money, not the $5 per-share difference (AUD-041).
+	if asFloat(closed["pnlAbsolute"]) != 10 {
 		t.Fatalf("pnlAbsolute %v", closed["pnlAbsolute"])
 	}
 	if asFloat(closed["pnlPercent"]) != 10 {
@@ -795,5 +796,31 @@ func TestCloseTradePairRejectsNonPositiveExitPrice(t *testing.T) {
 	}
 	if fmt.Sprint(row["status"]) != "open" {
 		t.Fatalf("trade closed at a zero price: %+v", row)
+	}
+}
+
+// AUD-041: the pair path reads quantity from its own SELECT, so it needs its
+// own check that pnl_absolute is money and not the per-share difference.
+func TestCloseTradePairPnLAbsoluteUsesQuantity(t *testing.T) {
+	db := openTestDB(t)
+	for _, r := range []struct{ table, id string }{{"broker_trades", "o2"}, {"trades", "m-o2"}} {
+		if err := db.InsertTrade(r.table, map[string]any{
+			"id": r.id, "symbol": "QQQ", "status": "open",
+			"entryDate": "2026-09-01", "entryPrice": 100.0, "quantity": 10.0,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := db.CloseTradePair("m-o2", "o2", 110, "2026-09-02", nil); err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range []struct{ table, id string }{{"broker_trades", "o2"}, {"trades", "m-o2"}} {
+		row, err := db.GetTrade(r.table, r.id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if asFloat(row["pnlAbsolute"]) != 100 {
+			t.Fatalf("%s pnlAbsolute %v want 100", r.table, row["pnlAbsolute"])
+		}
 	}
 }

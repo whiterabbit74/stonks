@@ -165,7 +165,8 @@ func TestExitFillWritesPnLBySymbol(t *testing.T) {
 		t.Fatalf("pnlPercent %+v", aapl)
 	}
 	mon, _ := db.GetTrade("trades", "m-aapl")
-	if mon == nil || fmt.Sprint(mon["status"]) != "closed" || asFloat(mon["pnlAbsolute"]) != 2 {
+	// 2 shares x $2 = $4 (AUD-041).
+	if mon == nil || fmt.Sprint(mon["status"]) != "closed" || asFloat(mon["pnlAbsolute"]) != 4 {
 		t.Fatalf("monitor pnl %+v", mon)
 	}
 }
