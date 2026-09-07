@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -1356,8 +1357,11 @@ func asFloat(v any) float64 {
 	}
 }
 
+// round6 округляет до шестого знака. math.Round, а не int(v*1e6+0.5):
+// приведение к int в Go усекает к нулю, поэтому -100 давало -99.999999 и все
+// убыточные сделки попадали в журнал искажёнными (AUD-046).
 func round6(v float64) float64 {
-	return float64(int(v*1e6+0.5)) / 1e6
+	return math.Round(v*1e6) / 1e6
 }
 
 // TradeCloseFields computes status, exit, P&L and holdingDays for a close.
