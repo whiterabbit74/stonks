@@ -253,6 +253,47 @@ func RunMultiOptions(stockTrades []types.Trade, tickers []TickerIndexed, raw Opt
 		portfolioValue = currentCapital + openVal
 		equity = append(equity, types.EquityPoint{Date: dateStr, Value: portfolioValue, Drawdown: 0})
 	}
+	// Открытые на конец истории опционы закрываются по теоретической цене
+	// последнего дня, как во всех остальных движках: иначе они выпадали из
+	// trades и портили TotalTrades с WinRate (AUD-049).
+	if len(sorted) > 0 {
+		lastDate := sorted[len(sorted)-1]
+		r := rf(lastDate, cfg.RiskFreeRate)
+		for i := range active {
+			trade := &active[i]
+			ticker := ""
+			if trade.Context != nil {
+				ticker = strings.ToUpper(trade.Context.Ticker)
+			}
+			md, ok := tickerMaps[ticker][lastDate]
+			if !ok {
+				continue
+			}
+			T := optionsmath.YearsToMaturity(lastDate, trade.ExpirationDate)
+			optPrice := executionPrice(optionsmath.BlackScholes("call", md.close, trade.Strike, T, r, md.vol))
+			proceeds := trade.Contracts * optPrice
+			cost := trade.Contracts * trade.OptionEntryPrice
+			pnl := proceeds - cost
+			trade.ExitReason = "end_of_data"
+			trade.ExitDate = lastDate
+			trade.OptionExitPrice = optPrice
+			trade.ImpliedVolAtExit = md.vol
+			trade.ExitPrice = md.close
+			trade.PnL = pnl
+			trade.PnLPercent = (pnl / cost) * 100
+			trade.Duration = tradingdate.DaysBetween(tradingdate.DateKey(trade.EntryDate), lastDate)
+			currentCapital += proceeds
+			if trade.Context == nil {
+				trade.Context = &types.TradeContext{}
+			}
+			trade.Context.CurrentCapitalAfterExit = currentCapital
+			trade.Context.InitialInvestment = cost
+			trade.Context.GrossInvestment = cost
+			trade.Context.MarginUsed = cost
+			trade.Context.NetProceeds = proceeds
+			trades = append(trades, *trade)
+		}
+	}
 	applyDrawdown(equity, initial)
 	finalValue = portfolioValue
 	return
