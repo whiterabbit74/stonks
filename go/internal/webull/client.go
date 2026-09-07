@@ -411,9 +411,16 @@ func (c *Client) ResolveInstrumentID(symbol string) (string, error) {
 		return "", err
 	}
 	rows := flatten(resp.Data)
+	want := strings.ToUpper(strings.TrimSpace(symbol))
 	for _, row := range rows {
 		m, ok := row.(map[string]any)
 		if !ok {
+			continue
+		}
+		// The list endpoint may answer with more than the requested share
+		// (a warrant, a dual-listed line). Taking the first row would route a
+		// live MARKET order to the wrong instrument, so the ticker must match.
+		if rowSymbol(m) != want {
 			continue
 		}
 		for _, k := range []string{"instrument_id", "instrumentId", "id", "security_id"} {
@@ -426,6 +433,17 @@ func (c *Client) ResolveInstrumentID(symbol string) (string, error) {
 		}
 	}
 	return "", fmt.Errorf("Unable to resolve Webull instrument_id for %s", symbol)
+}
+
+// rowSymbol reads the ticker an instrument row carries, upper-cased. An empty
+// result means the row cannot be attributed to a ticker and is not usable.
+func rowSymbol(m map[string]any) string {
+	for _, k := range []string{"symbol", "disSymbol", "display_symbol", "ticker"} {
+		if s, ok := m[k].(string); ok && strings.TrimSpace(s) != "" {
+			return strings.ToUpper(strings.TrimSpace(s))
+		}
+	}
+	return ""
 }
 
 func (c *Client) CreateToken() (*Response, error) {

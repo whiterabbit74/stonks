@@ -227,3 +227,25 @@ func TestRequestAcceptsKnownSuccessCodesOnHTTP200(t *testing.T) {
 		}
 	}
 }
+
+// AUD-052: the instrument list can lead with a different line (a warrant, a
+// dual listing). Resolving to it would send a live MARKET order to the wrong
+// instrument, so a row whose ticker does not match must be skipped.
+func TestResolveInstrumentIDRequiresMatchingSymbol(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"data": []any{
+			map[string]any{"instrument_id": "inst-warrant", "symbol": "AAPLW"},
+			map[string]any{"instrument_id": "inst-aapl", "symbol": "AAPL"},
+		}})
+	}))
+	t.Cleanup(ts.Close)
+	c := &Client{HTTP: ts.Client(), Base: ts.URL, Host: "api.webull.com",
+		AppKey: "appkey", AppSecret: "secret", AccessToken: "tok", AccountID: "acc1"}
+	id, err := c.ResolveInstrumentID("AAPL")
+	if err != nil || id != "inst-aapl" {
+		t.Fatalf("instrument %q %v", id, err)
+	}
+	if _, err := c.ResolveInstrumentID("MSFT"); err == nil {
+		t.Fatal("want error when no row carries the requested ticker")
+	}
+}
