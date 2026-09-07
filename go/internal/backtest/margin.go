@@ -116,7 +116,10 @@ func SimulateMargin(p MarginParams) MarginResult {
 			den := pos.quantity * (1 - maintFrac)
 			maintPriceRaw := math.Inf(1)
 			if den > 0 {
-				maintPriceRaw = pos.borrowed / den
+				// Свободные деньги — часть капитала счёта, как в
+				// marginLiquidationPrice: без них позиция с 20% плеча
+				// ликвидировалась при кратном запасе капитала (AUD-047).
+				maintPriceRaw = (pos.borrowed - cash) / den
 			}
 			maintPrice := math.Min(pos.entryPrice, math.Max(0, maintPriceRaw))
 			hit := canLiq && bar.Low <= maintPrice
