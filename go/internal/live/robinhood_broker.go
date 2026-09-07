@@ -7,6 +7,7 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/google/uuid"
 
@@ -18,7 +19,23 @@ type RobinhoodBroker struct {
 	Svc     *robinhood.Service
 	Call    func(name string, args map[string]any) (json.RawMessage, error)
 	CallCtx func(ctx context.Context, name string, args map[string]any) (json.RawMessage, error)
+
+	// mu guards account: the dashboard handler clears the cache on ?refresh=1
+	// while the scheduler resolves it from its own goroutine (AUD-054).
+	mu      sync.Mutex
 	account string
+}
+
+func (b *RobinhoodBroker) cachedAccount() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.account
+}
+
+func (b *RobinhoodBroker) setAccount(acct string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.account = acct
 }
 
 func (b *RobinhoodBroker) tool(name string, args map[string]any) (json.RawMessage, error) {
@@ -354,7 +371,7 @@ func (b *RobinhoodBroker) ResetAccount() {
 	if b == nil {
 		return
 	}
-	b.account = ""
+	b.setAccount("")
 }
 
 func (b *RobinhoodBroker) agenticAccount() (string, error) {
@@ -362,12 +379,12 @@ func (b *RobinhoodBroker) agenticAccount() (string, error) {
 }
 
 func (b *RobinhoodBroker) agenticAccountCtx(ctx context.Context) (string, error) {
-	if b.account != "" {
-		return b.account, nil
+	if acct := b.cachedAccount(); acct != "" {
+		return acct, nil
 	}
 	if b.Svc != nil && b.Svc.DB != nil {
 		if acct := strings.TrimSpace(b.Svc.DB.GetRobinhoodOAuth().AccountNumber); acct != "" {
-			b.account = acct
+			b.setAccount(acct)
 			return acct, nil
 		}
 	}
@@ -381,7 +398,7 @@ func (b *RobinhoodBroker) agenticAccountCtx(ctx context.Context) (string, error)
 	if acct == "" {
 		return "", fmt.Errorf("Agentic Account не подключён")
 	}
-	b.account = acct
+	b.setAccount(acct)
 	if b.Svc != nil && b.Svc.DB != nil {
 		_ = b.Svc.DB.SaveRobinhoodAccount(acct)
 	}
