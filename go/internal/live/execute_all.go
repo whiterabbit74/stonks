@@ -3,6 +3,7 @@ package live
 import (
 	"errors"
 	"fmt"
+	"html"
 	"sort"
 	"strings"
 
@@ -263,7 +264,7 @@ func (e *Engine) submitEvaluated(w execWindow, ev EvalResult, trigger, corr, bro
 		}
 		_ = e.Send(e.chat(), fmt.Sprintf(
 			"<b>%s: статус отправки неизвестен</b>\n%s • %s • %v шт.\nclientOrderId: %s\nОшибка: %s\nПовтор не отправлен — проверьте заявки у брокера.",
-			label, symbol, side, qty, res.ClientOrderID, res.Error))
+			label, symbol, side, qty, res.ClientOrderID, html.EscapeString(res.Error)))
 	} else {
 		e.logAuto("order_submit_failed", corr, map[string]any{
 			"symbol": symbol, "action": action, "error": res.Error, "broker": brokerName,
