@@ -426,10 +426,22 @@ func decideLiveAction(quotes []map[string]any, symbols []string, held map[string
 		if len(held) > 0 {
 			return none("broker_position_exists", nil, nil)
 		}
+		// quotes carries more than the watchlist: EvaluateWindow adds the
+		// symbol of every open broker trade (another broker's included) and of
+		// a live position without a journal row, so they can be priced and
+		// exited. An entry may only be opened in a monitored ticker, so the
+		// candidate loop is restricted to the configured universe.
+		watched := map[string]bool{}
+		for _, s := range symbols {
+			watched[store.SafeTicker(s)] = true
+		}
 		var best map[string]any
 		bestIBS := 2.0
 		for _, q := range quotes {
 			if q["ok"] != true {
+				continue
+			}
+			if !watched[store.SafeTicker(fmt.Sprint(q["symbol"]))] {
 				continue
 			}
 			if asBool(q["highIBSInvalid"]) {
