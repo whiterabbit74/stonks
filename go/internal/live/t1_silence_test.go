@@ -119,7 +119,7 @@ func TestT1TextSaysWhenNothingWasSubmitted(t *testing.T) {
 
 	res.Broker = map[string]any{"webull": map[string]any{"submitted": true, "quantity": 3.0}}
 	text = e.buildT1Text(1, nil, nil, false, false, res, EvalResult{}, nil)
-	if strings.Contains(text, "заявка не отправлена") || !strings.Contains(text, "BUY MARKET отправлен") {
+	if strings.Contains(text, "заявка не отправлена") || !strings.Contains(text, "BUY AAPL MARKET отправлен") {
 		t.Fatalf("a real submission must still report as sent:\n%s", text)
 	}
 }

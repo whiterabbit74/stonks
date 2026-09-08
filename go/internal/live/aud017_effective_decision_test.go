@@ -58,7 +58,7 @@ func TestT1TextReportsTheBrokerDecisionNotTheShowcase(t *testing.T) {
 	if !strings.Contains(text, "Закрываем AAPL") {
 		t.Fatalf("the executed exit must be in the report:\n%s", text)
 	}
-	if !strings.Contains(text, "SELL MARKET отправлен") {
+	if !strings.Contains(text, "SELL AAPL MARKET отправлен") {
 		t.Fatalf("want the submission line:\n%s", text)
 	}
 }

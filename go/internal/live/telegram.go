@@ -364,11 +364,9 @@ func (e *Engine) Aggregate(minutesUntilClose int, opts AggregateOpts) (SimulateR
 		} else {
 			exitRes, entryRes, waitFill = e.runT1Orders(w, today)
 			out.Executed = exitRes.Executed || entryRes.Executed
-			if entryRes.Executed {
-				out.Broker = entryRes.Broker
-			} else {
-				out.Broker = exitRes.Broker
-			}
+			// Оба прохода отчитываются отдельно: одно поле на обоих теряло
+			// результаты выхода, стоило входу отправиться (AUD-085).
+			out.Broker = map[string]any{"exit": exitRes.Broker, "entry": entryRes.Broker}
 		}
 		if opts.UpdateState && !opts.DryRun {
 			e.stampSendMarker("t1_execution", e.DB.MarkT1ExecutionFinished(e.chat(), today))
@@ -391,6 +389,25 @@ func (e *Engine) Aggregate(minutesUntilClose int, opts AggregateOpts) (SimulateR
 		}
 	}
 	return res, err
+}
+
+// brokerSideSymbol answers what this broker itself did in the run, falling
+// back to the run's headline decision when it has no decision of its own.
+func brokerSideSymbol(res EvalResult, name, side, sym string) (string, string) {
+	d := res.BrokerDecisions[name]
+	if d == nil {
+		return side, sym
+	}
+	switch action, _ := d["action"].(string); action {
+	case "exit":
+		side = "SELL"
+	case "entry":
+		side = "BUY"
+	}
+	if s := fmt.Sprint(d["symbol"]); s != "" && s != "<nil>" {
+		sym = s
+	}
+	return side, sym
 }
 
 func execOutcomes(broker any) map[string]OrderResult {
@@ -508,14 +525,26 @@ func (e *Engine) buildT1Text(minutes int, rows []t1Watch, blocking map[string]an
 			return
 		}
 		var outcomes []string
-		for name, one := range execOutcomes(res.Broker) {
+		results := execOutcomes(res.Broker)
+		names := make([]string, 0, len(results))
+		for name := range results {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		for _, name := range names {
+			one := results[name]
 			label := brokerLabel(name)
 			if one.Submitted {
 				qty := any("—")
 				if one.Quantity > 0 {
 					qty = one.Quantity
 				}
-				outcomes = append(outcomes, fmt.Sprintf("• %s: %s MARKET отправлен (%v шт.)", label, side, qty))
+				// Каждая строка говорит за своего брокера. Прогон, где один
+				// брокер выходит, а другой входит, печатал направление и тикер
+				// общей шапки: покупка NVDA у Robinhood уезжала строкой
+				// «SELL … отправлен» под «Закрываем AAPL» (AUD-085).
+				bside, bsym := brokerSideSymbol(res, name, side, sym)
+				outcomes = append(outcomes, fmt.Sprintf("• %s: %s %s MARKET отправлен (%v шт.)", label, bside, bsym, qty))
 			} else if one.Error != "" {
 				outcomes = append(outcomes, fmt.Sprintf("• %s ошибка: %s", label, html.EscapeString(one.Error)))
 			}
