@@ -149,6 +149,19 @@ func (b *LiveBroker) CloseMarket(symbol string) (OrderResult, error) {
 	return b.PlaceMarket(symbol, "SELL", qty)
 }
 
+// AccountList returns the accounts Webull itself reports for this app key.
+func (b *LiveBroker) AccountList() ([]any, error) {
+	resp, err := b.client().AccountList()
+	if err != nil {
+		return nil, err
+	}
+	rows := flattenAny(resp.Data)
+	if rows == nil {
+		return nil, fmt.Errorf("unreadable account list response from Webull")
+	}
+	return rows, nil
+}
+
 func (b *LiveBroker) Account() (map[string]any, error) {
 	return b.account(context.Background())
 }

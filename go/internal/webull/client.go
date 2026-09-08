@@ -366,6 +366,14 @@ func (c *Client) OrderDetailCtx(ctx context.Context, accountID, clientOrderID st
 	}, nil, true, nil)
 }
 
+// AccountList returns the brokerage accounts the app key can see. The Go
+// server used to synthesise this list from WEBULL_ACCOUNT_ID, which hid the
+// case the config names an account the key does not actually hold — the
+// Node server queried this endpoint (getAccountList) for exactly that reason.
+func (c *Client) AccountList() (*Response, error) {
+	return c.Request(http.MethodGet, "/openapi/account/list", nil, nil, true, nil)
+}
+
 func (c *Client) AccountBalance(accountID string) (*Response, error) {
 	return c.AccountBalanceCtx(context.Background(), accountID)
 }

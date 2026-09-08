@@ -113,6 +113,12 @@ type ctxPositioner interface {
 	PositionsCtx(ctx context.Context) ([]any, error)
 }
 
+// accountLister is the optional extension for brokers that can report the
+// accounts they actually hold, instead of the one named by config.
+type accountLister interface {
+	AccountList() ([]any, error)
+}
+
 // ctxAccounter is the Account counterpart of ctxOrderDetailer.
 type ctxAccounter interface {
 	AccountCtx(ctx context.Context) (map[string]any, error)

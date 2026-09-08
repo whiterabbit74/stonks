@@ -1113,6 +1113,22 @@ func (e *Engine) Account() (map[string]any, error) {
 		id = snap["accountId"]
 	}
 	if id != nil {
+		out["configuredAccountId"] = id
+	}
+	// Ask the broker which accounts it actually has. A fabricated one-row list
+	// looks identical whether or not the configured id is the account holding
+	// the shares — which is exactly how an empty positions table stays
+	// unexplained.
+	if lister, ok := e.Broker.(accountLister); ok {
+		rows, lerr := lister.AccountList()
+		switch {
+		case lerr != nil:
+			out["accountsError"] = lerr.Error()
+		case len(rows) > 0:
+			out["accounts"] = rows
+		}
+	}
+	if out["accounts"] == nil && id != nil {
 		out["accounts"] = []any{map[string]any{
 			"account_id":     id,
 			"account_number": id,

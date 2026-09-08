@@ -2691,6 +2691,15 @@
       ${rawJsonBlock('Исходные данные счёта', state.dashboard && state.dashboard.account)}`;
     } else if (tab === 'positions') {
       const pos = normalizePositions(dashboardPositions(state.dashboard));
+      // Пустая таблица позиций одинаково выглядит и когда позиций правда нет,
+      // и когда в конфиге указан не тот счёт. Счета теперь приходят от брокера,
+      // так что это видно.
+      const dashObj = asObject(state.dashboard) || {};
+      const cfgAccount = dashObj.configuredAccountId == null ? '' : String(dashObj.configuredAccountId);
+      const accountIds = asRows(dashObj.accounts).map((a) => String(firstDefined(a, ['account_id', 'accountId', 'account_number']) ?? ''));
+      const accountNotice = cfgAccount && accountIds.length && !accountIds.includes(cfgAccount)
+        ? `<div class="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">Настроенный счёт <span class="font-mono">${esc(cfgAccount)}</span> не найден среди счетов Webull (${esc(accountIds.join(', '))}). Позиции читаются по настроенному счёту, поэтому таблица пуста. Исправьте <span class="font-mono">WEBULL_ACCOUNT_ID</span>.</div>`
+        : (dashObj.accountsError ? `<div class="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">Список счетов Webull не прочитан: ${esc(String(dashObj.accountsError))}</div>` : '');
       const posRows = pos.map((p) => `<tr>
         <td class="font-mono">${esc(p.symbol)}</td>
         <td>${esc(instrumentTypeText(p.instrumentType))}</td>
@@ -2705,7 +2714,7 @@
         <td>${formatRatioPercent(p.holdingProportion)}</td>
         <td>${p.symbol && p.symbol !== '—' ? actionIcon('x', 'Закрыть позицию', `data-close-pos="${esc(p.symbol)}"`, 'action-icon-danger') : ''}</td>
       </tr>`).join('');
-      body = `${posRows ? `<div class="overflow-auto"><table class="trades"><thead><tr><th>Тикер</th><th>Тип</th><th>Валюта</th><th>Кол-во</th><th>Средняя цена</th><th>Себестоимость</th><th>Рыночная цена</th><th>Рыночная стоимость</th><th>Нереализ. PnL</th><th>PnL %</th><th>Доля</th><th>Действия</th></tr></thead><tbody>${posRows}</tbody></table></div>` : emptyBrokerTable(['Тикер', 'Тип', 'Валюта', 'Кол-во', 'Средняя цена', 'Себестоимость', 'Рыночная цена', 'Рыночная стоимость', 'Нереализ. PnL', 'PnL %', 'Доля', 'Действия'], 'Открытых позиций нет')}
+      body = `${accountNotice}${posRows ? `<div class="overflow-auto"><table class="trades"><thead><tr><th>Тикер</th><th>Тип</th><th>Валюта</th><th>Кол-во</th><th>Средняя цена</th><th>Себестоимость</th><th>Рыночная цена</th><th>Рыночная стоимость</th><th>Нереализ. PnL</th><th>PnL %</th><th>Доля</th><th>Действия</th></tr></thead><tbody>${posRows}</tbody></table></div>` : emptyBrokerTable(['Тикер', 'Тип', 'Валюта', 'Кол-во', 'Средняя цена', 'Себестоимость', 'Рыночная цена', 'Рыночная стоимость', 'Нереализ. PnL', 'PnL %', 'Доля', 'Действия'], 'Открытых позиций нет')}
       ${rawJsonBlock('Исходные данные позиций', dashboardPositions(state.dashboard))}
       ${rawJsonBlock('Исходные данные счетов', state.dashboard && state.dashboard.accounts)}`;
     } else if (tab === 'orders') {
