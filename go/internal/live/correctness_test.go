@@ -969,3 +969,16 @@ func TestEmptyWatchlistStillExitsOpenPosition(t *testing.T) {
 		t.Fatalf("want a single SELL order submitted, got %+v", br.Orders)
 	}
 }
+
+// Один расчёт читает позиции ровно один раз на брокера. Витрина читалась
+// дважды — сначала booksFor, затем общий обход брокеров, — и Webull отвечал на
+// второе чтение 429: его лимит на /account/positions около одного запроса в
+// две секунды.
+func TestEvaluateReadsPositionsOncePerBroker(t *testing.T) {
+	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
+	_, e, br := testEngine(t, bars)
+	e.Evaluate()
+	if br.PosCalls != 1 {
+		t.Fatalf("PosCalls = %d, want 1 per evaluation", br.PosCalls)
+	}
+}

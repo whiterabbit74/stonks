@@ -298,7 +298,18 @@ func (e *Engine) EvaluateWindow(w execWindow) EvalResult {
 	if journalErr != nil {
 		return blocked("journal_unavailable", symbols)
 	}
-	open, held, heldErr := e.booksFor(showcase, showcaseBr, brokerTrades, w)
+	// Одно чтение позиций на брокера за расчёт. Книга витрины и книги всех
+	// брокеров раньше читались двумя отдельными вызовами, то есть у витрины
+	// /account/positions дёргался дважды подряд — а Webull лимитирует этот
+	// эндпоинт примерно одним запросом в две секунды.
+	books := e.heldSymbolsByBrokerBooks(w)
+	bk, ok := books[showcase]
+	if !ok {
+		// Витрины может не быть в снимке брокеров (fallback на defaultBroker) —
+		// тогда её книгу всё-таки нужно прочитать.
+		bk.held, bk.err = e.heldSymbolsOn(showcaseBr, w)
+	}
+	open, held, heldErr := e.booksForHeld(showcase, bk.held, bk.err, brokerTrades)
 	quoteSymbols := append([]string{}, symbols...)
 	addQuote := func(sym string) {
 		sym = store.SafeTicker(sym)
@@ -324,9 +335,8 @@ func (e *Engine) EvaluateWindow(w execWindow) EvalResult {
 	// Котировки нужны каждому брокеру, а не только витрине: позицию, купленную
 	// руками у второго брокера в неотслеживаемом тикере, иначе нечем оценить —
 	// выход упирается в open_position_quote_unavailable навсегда.
-	byBroker, _ := e.heldSymbolsByBrokerWindow(w)
-	for _, one := range byBroker {
-		for sym := range one {
+	for _, one := range books {
+		for sym := range one.held {
 			addQuote(sym)
 		}
 	}
@@ -476,6 +486,15 @@ func decideLiveAction(quotes []map[string]any, symbols []string, held map[string
 
 func (e *Engine) booksFor(name string, br Broker, rows []map[string]any, w execWindow) (open map[string]any, held map[string]float64, heldErr error) {
 	held, heldErr = e.heldSymbolsOn(br, w)
+	return e.booksForHeld(name, held, heldErr, rows)
+}
+
+// booksForHeld is booksFor on an already-read book, so a caller that has just
+// read every broker's positions does not read the same broker a second time.
+func (e *Engine) booksForHeld(name string, held map[string]float64, heldErr error, rows []map[string]any) (open map[string]any, outHeld map[string]float64, outErr error) {
+	if held == nil && heldErr == nil {
+		held = map[string]float64{}
+	}
 	open = store.OpenBrokerTradeFor(rows, name)
 	if open == nil && heldErr == nil && len(held) > 0 {
 		// The journal is flat but the broker is not. Exit that position on its
@@ -503,19 +522,43 @@ func (e *Engine) heldSymbolsByBroker() (map[string]map[string]float64, error) {
 // heldSymbolsByBrokerWindow is heldSymbolsByBroker bounded by w, so the T-1
 // path does not read positions without the close-of-session budget.
 func (e *Engine) heldSymbolsByBrokerWindow(w execWindow) (map[string]map[string]float64, error) {
+	books := e.heldSymbolsByBrokerBooks(w)
 	out := map[string]map[string]float64{}
 	var firstErr error
+	// Snapshot order, not map order: "first error" must be the same one every run.
 	for _, nb := range e.brokerSnapshot() {
-		held, err := e.heldSymbolsOn(nb.br, w)
-		if err != nil {
+		bk, ok := books[nb.name]
+		if !ok {
+			continue
+		}
+		if bk.err != nil {
 			if firstErr == nil {
-				firstErr = err
+				firstErr = bk.err
 			}
 			continue
 		}
-		out[nb.name] = held
+		out[nb.name] = bk.held
 	}
 	return out, firstErr
+}
+
+// brokerBook is one broker's live position read: its book, or why it could not
+// be read.
+type brokerBook struct {
+	held map[string]float64
+	err  error
+}
+
+// heldSymbolsByBrokerBooks reads every attached broker's positions once and
+// keeps each broker's own read error, so one caller can serve both the
+// per-broker books and the showcase book from a single round of reads.
+func (e *Engine) heldSymbolsByBrokerBooks(w execWindow) map[string]brokerBook {
+	out := map[string]brokerBook{}
+	for _, nb := range e.brokerSnapshot() {
+		held, err := e.heldSymbolsOn(nb.br, w)
+		out[nb.name] = brokerBook{held: held, err: err}
+	}
+	return out
 }
 
 // heldSymbolsOn reads the broker's live positions. The read is retried like
