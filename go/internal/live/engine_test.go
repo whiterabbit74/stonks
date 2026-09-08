@@ -15,10 +15,14 @@ import (
 	"mktorder.com/go/internal/providers"
 	"mktorder.com/go/internal/store"
 	"mktorder.com/go/internal/types"
+	"mktorder.com/go/internal/webull"
 )
 
 func TestMain(m *testing.M) {
 	FastTrackers = true
+	// Тесты этого пакета не проверяют паузу между запросами к Webull —
+	// её держит TestWebullRequestsArePaced в internal/webull.
+	webull.MinRequestInterval = 0
 	os.Exit(m.Run())
 }
 

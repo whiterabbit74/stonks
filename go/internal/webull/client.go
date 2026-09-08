@@ -11,6 +11,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -163,6 +164,55 @@ func (c *Client) tradeHTTPClient() *http.Client {
 	return c.TradeHTTP
 }
 
+// MinRequestInterval is the smallest gap Webull tolerates between two calls on
+// one app key: closer than this and the API answers "too many requests"
+// whatever the endpoint. The gate is proactive because the reactive 429 retry
+// below costs a full second each time it fires, and the T-1 cycle has one
+// minute for everything.
+//
+// It is process-global rather than per Client on purpose: the quote provider
+// and the broker adapter hold two separate Client values but share one Webull
+// app key, so only a shared gate can actually pace the account. Robinhood has
+// its own client and is untouched by this.
+//
+// ponytail: one global gate for one app key; make it a keyed limiter only if a
+// second Webull account ever exists.
+var MinRequestInterval = 250 * time.Millisecond
+
+var (
+	rateGateMu sync.Mutex
+	nextSlotAt time.Time
+)
+
+// awaitRequestSlot reserves this call's place in the 250ms queue and waits for
+// it. Reserving before sleeping is what makes concurrent callers (the quote
+// prefetch fans out) queue instead of all firing at once.
+func awaitRequestSlot(ctx context.Context) error {
+	if MinRequestInterval <= 0 {
+		return nil
+	}
+	now := time.Now()
+	rateGateMu.Lock()
+	slot := nextSlotAt
+	if slot.Before(now) {
+		slot = now
+	}
+	nextSlotAt = slot.Add(MinRequestInterval)
+	rateGateMu.Unlock()
+	wait := time.Until(slot)
+	if wait <= 0 {
+		return nil
+	}
+	t := time.NewTimer(wait)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-t.C:
+		return nil
+	}
+}
+
 // rateLimitRetries / rateLimitBackoff bound the retry of a 429. Webull rate
 // limits per endpoint (measured: /account/positions accepts about one call
 // every two seconds) and sends no Retry-After header; a dashboard load fires
@@ -197,6 +247,9 @@ func (c *Client) doOnce(ctx context.Context, httpClient *http.Client, method, pa
 	}
 	if ctx == nil {
 		ctx = context.Background()
+	}
+	if err := awaitRequestSlot(ctx); err != nil {
+		return nil, err
 	}
 	if c.Base == "" {
 		c.Base = "https://api.webull.com"
