@@ -477,9 +477,18 @@ func (e *Engine) brokerForTracker(t map[string]any) Broker {
 	return e.defaultBroker()
 }
 
+// alreadyUnknown reports that this tracker was already in execution_unknown
+// before this poll. The wheel keeps polling such a tracker, so sending the
+// Telegram alert unconditionally repeated the same message every cycle until
+// an operator resolved it by hand.
+func alreadyUnknown(t map[string]any) bool {
+	return strings.TrimSpace(fmt.Sprint(t["status"])) == "execution_unknown"
+}
+
 func (e *Engine) markBrokerDisconnected(t map[string]any) {
 	id := fmt.Sprint(t["clientOrderId"])
 	name := trackerBrokerName(t)
+	repeat := alreadyUnknown(t)
 	if err := e.stampTrackerStatus(id, "execution_unknown"); err != nil {
 		e.logAuto("order_execution_unknown_persist_failed", e.metaCorr(id), map[string]any{"clientOrderId": id, "error": err.Error()})
 	}
@@ -487,6 +496,9 @@ func (e *Engine) markBrokerDisconnected(t map[string]any) {
 		"clientOrderId": id, "symbol": t["symbol"], "action": t["action"],
 		"broker": name, "error": "broker_not_connected",
 	})
+	if repeat {
+		return
+	}
 	_ = e.Send(e.chat(), fmt.Sprintf(
 		"<b>Статус заявки неизвестен</b>\n%s • %s\nclientOrderId: %s\nБрокер %s не подключён. Заявка не опрашивалась, вход заблокирован.",
 		t["symbol"], t["action"], id, brokerLabel(name)))
@@ -494,6 +506,7 @@ func (e *Engine) markBrokerDisconnected(t map[string]any) {
 
 func (e *Engine) markExecutionUnknown(t map[string]any, cause error) {
 	id := fmt.Sprint(t["clientOrderId"])
+	repeat := alreadyUnknown(t)
 	if err := e.stampTrackerStatus(id, "execution_unknown"); err != nil {
 		e.logAuto("order_execution_unknown_persist_failed", e.metaCorr(id), map[string]any{"clientOrderId": id, "error": err.Error()})
 	}
@@ -504,6 +517,9 @@ func (e *Engine) markExecutionUnknown(t map[string]any, cause error) {
 	e.logAuto("order_execution_unknown", e.metaCorr(id), map[string]any{
 		"clientOrderId": id, "symbol": t["symbol"], "action": t["action"], "error": msg,
 	})
+	if repeat {
+		return
+	}
 	_ = e.Send(e.chat(), fmt.Sprintf(
 		"<b>Статус заявки неизвестен</b>\n%s • %s\nclientOrderId: %s\nЛистинг брокера не подтвердил заявку. Повтор не отправлен, вход заблокирован.",
 		t["symbol"], t["action"], id))

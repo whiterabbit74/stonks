@@ -227,3 +227,45 @@ func assertTelegramOmits(t *testing.T, tg *MemoryTelegram, forbid string) {
 		}
 	}
 }
+
+// Трекер в execution_unknown продолжает опрашиваться, поэтому алерт уходил в
+// Telegram на каждом цикле — уведомления шли без остановки, пока оператор не
+// закроет заявку руками. Сообщение должно быть одно на трекер.
+func TestExecutionUnknownAlertsOnlyOnce(t *testing.T) {
+	e, _, _ := dualBrokerEngine(t, entryBars)
+	tg, ok := e.Telegram.(*MemoryTelegram)
+	if !ok {
+		t.Fatal("want MemoryTelegram")
+	}
+	journalAAPL(t, e, "rh-oid", "robinhood", 2)
+	if err := e.DB.SaveOrderTracker(map[string]any{
+		"clientOrderId": "rh-oid", "symbol": "AAPL", "action": "entry",
+		"status": "submitted", "quantity": 2.0, "source": "t1", "dateKey": "2026-09-01",
+		"broker": "robinhood", "startedAt": e.now().UTC().Format(time.RFC3339Nano),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	e.DetachBroker("robinhood")
+
+	count := func() int {
+		n := 0
+		for _, msg := range tg.Sent() {
+			if strings.Contains(msg[1], "Статус заявки неизвестен") {
+				n++
+			}
+		}
+		return n
+	}
+	e.PollTrackers()
+	if got := count(); got != 1 {
+		t.Fatalf("first poll alerts = %d, want 1", got)
+	}
+	e.PollTrackers()
+	e.PollTrackers()
+	if got := count(); got != 1 {
+		t.Fatalf("alerts after three polls = %d, want 1 per tracker", got)
+	}
+	if st := trackerStatus(t, e.DB, "rh-oid"); st != "execution_unknown" {
+		t.Fatalf("status %q want execution_unknown", st)
+	}
+}
