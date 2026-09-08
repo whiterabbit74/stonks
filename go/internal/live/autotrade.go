@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"mktorder.com/go/internal/ibs"
@@ -607,10 +608,21 @@ type brokerBook struct {
 // per-broker books and the showcase book from a single round of reads.
 func (e *Engine) heldSymbolsByBrokerBooks(w execWindow) map[string]brokerBook {
 	out := map[string]brokerBook{}
+	// Параллельно: чтение книги Webull (со своими повторами, таймаутами и
+	// паузой 250 мс) не должно откладывать чтение книги Robinhood (AUD-074).
+	var mu sync.Mutex
+	var wg sync.WaitGroup
 	for _, nb := range e.brokerSnapshot() {
-		held, err := e.heldSymbolsOn(nb.br, w)
-		out[nb.name] = brokerBook{held: held, err: err}
+		wg.Add(1)
+		go func(name string, br Broker) {
+			defer wg.Done()
+			held, err := e.heldSymbolsOn(br, w)
+			mu.Lock()
+			out[name] = brokerBook{held: held, err: err}
+			mu.Unlock()
+		}(nb.name, nb.br)
 	}
+	wg.Wait()
 	return out
 }
 
@@ -1059,50 +1071,61 @@ func (e *Engine) t1BrokerReconcile(w execWindow) (busy map[string]map[string]boo
 	busy = map[string]map[string]bool{}
 	entryOnlyBlocked = map[string]bool{}
 	reasons = map[string]string{}
+	// Параллельно по брокерам: предполётная проверка Webull не должна
+	// откладывать проверку Robinhood (AUD-074).
+	var mu sync.Mutex
+	var wg sync.WaitGroup
 	for _, nb := range e.brokerSnapshot() {
 		if nb.br == nil {
 			continue
 		}
-		br := nb.br
-		rows, err := retryBrokerReadWindow(e, w, "open_orders", func(ctx context.Context) ([]any, error) {
-			return brokerOpenOrders(ctx, br)
-		})
-		if err != nil {
-			entryOnlyBlocked[nb.name] = true
-			reasons[nb.name] = "open_orders_unavailable"
-			e.logAuto("execution_skipped", "", map[string]any{"broker": nb.name, "reason": "open_orders_unavailable", "error": err.Error()})
-			continue
-		}
-		for _, row := range rows {
-			m := mapOf(row)
-			if m == nil {
-				continue
+		wg.Add(1)
+		go func(name string, br Broker) {
+			defer wg.Done()
+			rows, err := retryBrokerReadWindow(e, w, "open_orders", func(ctx context.Context) ([]any, error) {
+				return brokerOpenOrders(ctx, br)
+			})
+			mu.Lock()
+			defer mu.Unlock()
+			if err != nil {
+				entryOnlyBlocked[name] = true
+				reasons[name] = "open_orders_unavailable"
+				e.logAuto("execution_skipped", "", map[string]any{"broker": name, "reason": "open_orders_unavailable", "error": err.Error()})
+				return
 			}
-			st := NormalizeOrderStatus(fmt.Sprint(firstNonEmpty(m["status"], m["order_status"], m["orderStatus"], m["state"])))
-			if IsFinalOrderStatus(st) {
-				continue
-			}
-			// Robinhood answers with state/ref_id rather than status/
-			// client_order_id, so the symbol is read the same forgiving way
-			// cancelOpenOrdersBeforeEntry reads it (AUD-045).
-			sym := store.SafeTicker(fmt.Sprint(firstNonEmpty(m["symbol"], m["ticker"], m["display_symbol"])))
-			if sym == "" {
-				// An order we cannot even attribute to a ticker is the unknown
-				// case: hold back this broker's entries, keep its exits.
-				entryOnlyBlocked[nb.name] = true
-				if reasons[nb.name] == "" {
-					reasons[nb.name] = "open_order_symbol_unknown"
+			for _, row := range rows {
+				m := mapOf(row)
+				if m == nil {
+					continue
 				}
-				continue
+				st := NormalizeOrderStatus(fmt.Sprint(firstNonEmpty(m["status"], m["order_status"], m["orderStatus"], m["state"])))
+				if IsFinalOrderStatus(st) {
+					continue
+				}
+				// Robinhood answers with state/ref_id rather than status/
+				// client_order_id, so the symbol is read the same forgiving way
+				// cancelOpenOrdersBeforeEntry reads it (AUD-045).
+				sym := store.SafeTicker(fmt.Sprint(firstNonEmpty(m["symbol"], m["ticker"], m["display_symbol"])))
+				if sym == "" {
+					// An order we cannot even attribute to a ticker is the
+					// unknown case: hold back this broker's entries, keep its
+					// exits.
+					entryOnlyBlocked[name] = true
+					if reasons[name] == "" {
+						reasons[name] = "open_order_symbol_unknown"
+					}
+					continue
+				}
+				if busy[name] == nil {
+					busy[name] = map[string]bool{}
+				}
+				busy[name][sym] = true
+				reasons[name] = "symbol_order_in_flight"
+				e.logAuto("execution_skipped", "", map[string]any{"broker": name, "symbol": sym, "reason": "symbol_order_in_flight"})
 			}
-			if busy[nb.name] == nil {
-				busy[nb.name] = map[string]bool{}
-			}
-			busy[nb.name][sym] = true
-			reasons[nb.name] = "symbol_order_in_flight"
-			e.logAuto("execution_skipped", "", map[string]any{"broker": nb.name, "symbol": sym, "reason": "symbol_order_in_flight"})
-		}
+		}(nb.name, nb.br)
 	}
+	wg.Wait()
 	return busy, entryOnlyBlocked, reasons
 }
 

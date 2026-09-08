@@ -346,9 +346,18 @@ func singleBrokerOf(rows []map[string]any) string {
 }
 
 func (e *Engine) liveConsistencyIssues(brokerRows []map[string]any, w execWindow) []map[string]any {
+	// Книги читаются параллельно, а порядок находок восстанавливается по
+	// порядку снимка брокеров: отказ Webull не должен задерживать проверку
+	// Robinhood, но отчёт обязан быть детерминированным (AUD-074).
+	snaps := e.brokerSnapshot()
+	books := e.heldSymbolsByBrokerBooks(w)
 	var issues []map[string]any
-	for _, nb := range e.brokerSnapshot() {
-		held, heldErr := e.heldSymbolsOn(nb.br, w)
+	for _, nb := range snaps {
+		bk, ok := books[nb.name]
+		if !ok {
+			continue
+		}
+		held, heldErr := bk.held, bk.err
 		if heldErr != nil {
 			issues = append(issues, map[string]any{
 				"code": "broker_positions_unavailable", "severity": "error",
