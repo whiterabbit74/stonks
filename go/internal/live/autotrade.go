@@ -485,17 +485,6 @@ func (e *Engine) booksFor(name string, br Broker, rows []map[string]any, w execW
 	return open, held, heldErr
 }
 
-func (e *Engine) liveHeldSymbols() (map[string]float64, error) {
-	byBroker, err := e.heldSymbolsByBroker()
-	held := map[string]float64{}
-	for _, one := range byBroker {
-		for sym, qty := range one {
-			held[sym] = qty
-		}
-	}
-	return held, err
-}
-
 // heldSymbolsByBroker reads live positions from every attached broker
 // (BrokerNamed / Brokers), not only defaultBroker.
 func (e *Engine) heldSymbolsByBroker() (map[string]map[string]float64, error) {

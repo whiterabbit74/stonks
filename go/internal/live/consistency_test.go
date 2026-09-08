@@ -58,16 +58,22 @@ func TestConsistencyDoesNotMismatchTwoBrokerBooks(t *testing.T) {
 	}
 }
 
-func TestLiveHeldSymbolsReadsEveryAttachedBroker(t *testing.T) {
+// Позиции читаются у каждого брокера и остаются раздельными: слитая в один
+// map книга — это ровно тот способ, которым состояние Webull начинает решать
+// за Robinhood.
+func TestHeldSymbolsStayPerBroker(t *testing.T) {
 	e, webull, rh := dualBrokerEngine(t, entryBars)
 	webull.Pos = []any{map[string]any{"symbol": "AAPL", "quantity": 1.0}}
 	rh.Pos = []any{map[string]any{"symbol": "MSFT", "quantity": 2.0}}
-	held, err := e.liveHeldSymbols()
+	byBroker, err := e.heldSymbolsByBroker()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if held["AAPL"] != 1 || held["MSFT"] != 2 {
-		t.Fatalf("merged held must include both brokers, got %v", held)
+	if byBroker["webull"]["AAPL"] != 1 || len(byBroker["webull"]) != 1 {
+		t.Fatalf("Webull держит только AAPL, got %v", byBroker["webull"])
+	}
+	if byBroker["robinhood"]["MSFT"] != 2 || len(byBroker["robinhood"]) != 1 {
+		t.Fatalf("Robinhood держит только MSFT, got %v", byBroker["robinhood"])
 	}
 }
 

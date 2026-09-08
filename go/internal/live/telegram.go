@@ -391,8 +391,16 @@ func (e *Engine) buildT1Text(minutes int, rows []t1Watch, blocking map[string]an
 		decision = append(decision, "• Проверка данных: сигналы заблокированы по "+strings.Join(syms, ", "))
 	}
 	if blocking != nil {
-		decision = append(decision, "• Состояние брокера: "+fmt.Sprint(blocking["message"]))
-		decision = append(decision, "• Monitor продолжает считать позиции независимо от брокера")
+		// Это предупреждение, а не остановка: выход по сигналу уходит в любом
+		// случае, придержан только новый вход у названного брокера. Текст
+		// раньше читался как «торговля встала».
+		who := strings.TrimSpace(fmt.Sprint(blocking["broker"]))
+		scope := "новый вход придержан"
+		if who != "" && who != "<nil>" {
+			scope = "новый вход придержан у " + brokerLabel(who)
+		}
+		decision = append(decision, "• Расхождение журналов: "+fmt.Sprint(blocking["message"]))
+		decision = append(decision, "• "+scope+"; выход по сигналу уходит как обычно")
 	}
 	if waitFill {
 		decision = append(decision, "• Вход заблокирован: ждём подтверждение fill по выходу")

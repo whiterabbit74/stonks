@@ -270,7 +270,7 @@ func TestAggregateJournalReadErrorIsNotNoWatches(t *testing.T) {
 	}
 }
 
-func TestT1MismatchBlocksExecute(t *testing.T) {
+func TestT1MismatchHoldsEntryNotExit(t *testing.T) {
 	dir := t.TempDir()
 	db, err := store.Open(filepath.Join(dir, "t.db"))
 	if err != nil {
@@ -299,7 +299,9 @@ func TestT1MismatchBlocksExecute(t *testing.T) {
 	if len(br.Orders) != 0 {
 		t.Fatalf("mismatch must block live orders: %+v", br.Orders)
 	}
-	if !strings.Contains(res.Text, "Состояние брокера") || !strings.Contains(res.Text, "Monitor продолжает считать позиции независимо от брокера") {
+	// Расхождение — предупреждение, а не остановка: текст обязан говорить, что
+	// придержан только вход, иначе оператор читает это как «торговля встала».
+	if !strings.Contains(res.Text, "Расхождение журналов") || !strings.Contains(res.Text, "выход по сигналу уходит как обычно") {
 		t.Fatalf("mismatch telegram %s", res.Text)
 	}
 	if strings.Contains(res.Text, "Действий нет") {

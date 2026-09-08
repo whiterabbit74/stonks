@@ -30,9 +30,26 @@ func TestMonitorOnlyPositionExitsAndClosesMonitorTrade(t *testing.T) {
 		"allowExits": true, "allowNewEntries": true, "symbols": "MSFT",
 	})
 
-	res := e.Execute("telegram_t1")
+	// Обе находки consistency должны быть на месте — и не мешать торговле.
+	issues, _ := e.Consistency()["issues"].([]map[string]any)
+	codes := map[string]bool{}
+	for _, iss := range issues {
+		codes[fmt.Sprint(iss["code"])] = true
+	}
+	if !codes["monitor_trade_without_broker_position"] || !codes["live_broker_position_without_journal"] {
+		t.Fatalf("ждём обе находки боевого состояния: %+v", issues)
+	}
+	if BlockingMismatch(e.Consistency()) == nil {
+		t.Fatal("находка обязана остаться видимой в отчёте")
+	}
+
+	// Через Aggregate, а не Execute: раньше именно тут находка глушила цикл.
+	res, err := e.Aggregate(1, AggregateOpts{ForceSend: true, UpdateState: true})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !res.Executed || len(br.Orders) != 1 {
-		t.Fatalf("выход должен уйти: %+v decision=%+v", br.Orders, res.Decision)
+		t.Fatalf("выход должен уйти несмотря на находки: %+v", br.Orders)
 	}
 	if br.Orders[0].Side != "SELL" || br.Orders[0].Quantity != 3 {
 		t.Fatalf("продать надо всю позицию брокера: %+v", br.Orders[0])
