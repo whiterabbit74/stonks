@@ -496,3 +496,34 @@ func TestCoreAuditPacingActualStarts(t *testing.T) {
 }
 
 ```
+
+Запуск из корня репозитория: выполнить Python-блок ниже. Он создаёт только временные файлы и через Go overlay подставляет дополнительные проверки при компиляции. Продуктовый код не подменяется.
+
+<!-- CORE_RUNNER -->
+```python
+from pathlib import Path
+import json, re, subprocess, tempfile
+root = Path.cwd()
+report = (root / "docs/audits/AUDIT_2026-09-08_CORE_T1.md").read_text()
+def extract(name):
+    return re.search(r"<!-- " + name + r" -->\n```go\n(.*?)\n```", report, re.S).group(1)
+with tempfile.TemporaryDirectory(prefix="mktorder-core-audit-") as tmp:
+    tmp = Path(tmp)
+    live_file = root / "go/internal/live/aud071_reentry_test.go"
+    pace_file = root / "go/internal/webull/pace_test.go"
+    probe = extract("CORE_LIVE_PROBES")
+    body = probe[probe.index("// Defect probes"):]
+    original = live_file.read_text().replace(
+        'import (', 'import (\n "context"\n "mktorder.com/go/internal/providers"', 1)
+    (tmp / "live_test.go").write_text(original + body)
+    (tmp / "pace_test.go").write_text(pace_file.read_text() + extract("CORE_PACE_PROBE"))
+    overlay = {"Replace": {
+        str(live_file): str(tmp / "live_test.go"),
+        str(pace_file): str(tmp / "pace_test.go"),
+    }}
+    (tmp / "overlay.json").write_text(json.dumps(overlay))
+    subprocess.run([
+        "go", "test", "-race", "-overlay", str(tmp / "overlay.json"),
+        "./internal/live", "./internal/webull", "-run", "TestCoreAudit", "-v", "-count=1",
+    ], cwd=root / "go", check=True)
+```
