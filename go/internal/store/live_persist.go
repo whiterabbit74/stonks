@@ -370,6 +370,44 @@ func (d *DB) ListPendingTrackers() ([]map[string]any, error) {
 	return out, nil
 }
 
+// ExitedTodayQty sums, per symbol, the quantity this broker has already sent
+// out as an exit today and has no evidence of having failed: filled orders and
+// orders still in flight. Rejected, cancelled, expired and terminal_absent
+// moved no shares and are excluded.
+//
+// It is what tells a stale position feed from a live position: the broker's
+// /account/positions can keep listing sold shares for a second or two after
+// the fill, and selling out of that stale row sends a second MARKET SELL for
+// shares that are already gone (AUD-071 / CORE-03).
+func (d *DB) ExitedTodayQty(broker, dateKey string) (map[string]float64, error) {
+	out := map[string]float64{}
+	broker = strings.ToLower(strings.TrimSpace(broker))
+	if broker == "" || strings.TrimSpace(dateKey) == "" {
+		return out, nil
+	}
+	rows, err := d.SQL.Query(`SELECT symbol, quantity FROM order_trackers
+        WHERE action='exit' AND date_key=? AND LOWER(COALESCE(broker,'webull'))=?
+          AND status NOT IN ('rejected','cancelled','canceled','expired','terminal_absent')`, dateKey, broker)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var sym string
+		var qty sql.NullFloat64
+		if err := rows.Scan(&sym, &qty); err != nil {
+			return nil, err
+		}
+		if s := SafeTicker(sym); s != "" {
+			out[s] += qty.Float64
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (d *DB) ListRecentTrackers(limit int) ([]map[string]any, error) {
 	if limit <= 0 {
 		limit = 20

@@ -525,12 +525,29 @@ func (e *Engine) booksForHeld(name string, held map[string]float64, heldErr erro
 		}
 		sort.Strings(syms)
 		today := tradingdate.TodayNYSE(e.now())
+		// What this broker has already sent out as an exit today. A manual
+		// position has no journal row to close, so the closed-row check alone
+		// missed exactly the case that has no other guard (CORE-03).
+		sold, soldErr := e.DB.ExitedTodayQty(name, today)
+		if soldErr != nil {
+			// Unknown history is not "nothing sold": synthesising a position
+			// out of a possibly stale feed is what sends the second SELL.
+			e.logAuto("journal_read_failed", "", map[string]any{
+				"table": "order_trackers", "op": "exited_today", "broker": name, "error": soldErr.Error(),
+			})
+			return nil, held, heldErr
+		}
 		for _, sym := range syms {
-			// A ticker this broker already closed today is the position feed
-			// lagging the fill, not a live position: /account/positions keeps
-			// listing sold shares for a second or two. Selling out of that
-			// stale row sent a second MARKET SELL for shares that were already
-			// gone (AUD-071).
+			// A ticker this broker already sold today, in at least the amount
+			// still listed, is the position feed lagging the fill rather than a
+			// live position: /account/positions keeps reporting sold shares for
+			// a second or two. Selling out of that stale row sent a second
+			// MARKET SELL for shares that were already gone (AUD-071).
+			// More shares than we sold means someone really did buy: that is a
+			// live position and it gets its exit.
+			if sold[sym] >= held[sym] && sold[sym] > 0 {
+				continue
+			}
 			if closedTodayFor(rows, name, sym, today) {
 				continue
 			}
