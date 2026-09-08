@@ -73,6 +73,9 @@ func TestGoDeployShipsBinaryAndWeb(t *testing.T) {
 	if !strings.Contains(sh, "datasets") {
 		t.Fatal("deploy backup must include datasets")
 	}
+	if strings.Contains(sh, "docker save") {
+		t.Fatal("deploy.sh must not pipe the full image (debian base) to the VPS")
+	}
 }
 
 func TestDeployTelegramNotifyDoesNotPutNewlinesInCurlConfig(t *testing.T) {

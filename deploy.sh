@@ -34,10 +34,6 @@ GIT_DATE="$(git log -1 --format=%cd --date=format:'%Y-%m-%d %H:%M:%S')"
 IMAGE="stonks-server:${GIT_COMMIT}"
 echo "Version ${GIT_COMMIT}  ${GIT_DATE}"
 
-if ! command -v docker >/dev/null; then
-  echo "docker is required on this machine to build the amd64 image"
-  exit 1
-fi
 if ! command -v go >/dev/null; then
   echo "go is required to cross-compile linux/amd64"
   exit 1
@@ -53,11 +49,15 @@ chmod 0755 "${STAGE}/mktorder"
 cp -a go/web "${STAGE}/web"
 cp docker/go.runtime.Dockerfile "${STAGE}/Dockerfile"
 
-echo "Build runtime image ${IMAGE}..."
-docker build --platform linux/amd64 -t "${IMAGE}" -t stonks-server:current -t stonks-server:latest "$STAGE"
-
-echo "Send image to ${HOST}..."
-docker save "${IMAGE}" | gzip -1 | ssh -o BatchMode=yes "$HOST" "gunzip | docker load && docker tag ${IMAGE} stonks-server:current && docker tag ${IMAGE} stonks-server:latest"
+# Send the binary + web + Dockerfile (~15MB), not the debian base (~47MB gzip).
+# The VPS already has debian:bookworm-slim from previous images; it only COPY-builds.
+echo "Send context to ${HOST} ($(du -sh "$STAGE" | awk '{print $1}'))..."
+tar -C "$STAGE" -cf - . | gzip -1 | ssh -o BatchMode=yes "$HOST" "set -euo pipefail
+DEST=\$(mktemp -d /tmp/stonks-deploy.XXXXXX)
+trap 'rm -rf \"\$DEST\"' EXIT
+gunzip | tar -C \"\$DEST\" -xf -
+docker build --platform linux/amd64 -t ${IMAGE} -t stonks-server:current -t stonks-server:latest \"\$DEST\"
+"
 
 echo "Activate on server..."
 ssh -o BatchMode=yes "$HOST" "set -euo pipefail
