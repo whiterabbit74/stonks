@@ -628,3 +628,59 @@ func TestRobinhoodCancelUsesBrokerOrderID(t *testing.T) {
 		t.Fatalf("order_id %v, want broker id %s", cancelArgs["order_id"], srv)
 	}
 }
+
+// Схема review_equity_order не знает ref_id и запрещает лишние поля, поэтому
+// отправка ей аргументов place ломала любую заявку Robinhood.
+func TestReviewOrderIsCalledWithoutRefID(t *testing.T) {
+	var reviewArgs, placeArgs map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		var msg map[string]any
+		_ = json.Unmarshal(b, &msg)
+		switch method, _ := msg["method"].(string); method {
+		case "initialize":
+			w.Header().Set("Mcp-Session-Id", "sess-1")
+			_ = json.NewEncoder(w).Encode(map[string]any{"jsonrpc": "2.0", "id": msg["id"], "result": map[string]any{"protocolVersion": "2025-06-18"}})
+		case "notifications/initialized":
+			w.WriteHeader(204)
+		case "tools/call":
+			params, _ := msg["params"].(map[string]any)
+			name, _ := params["name"].(string)
+			args, _ := params["arguments"].(map[string]any)
+			switch name {
+			case "get_accounts":
+				_ = json.NewEncoder(w).Encode(map[string]any{"jsonrpc": "2.0", "id": msg["id"], "result": map[string]any{
+					"content": []any{map[string]any{"type": "text", "text": `{"accounts":[{"account_number":"RH1","agentic_allowed":true}]}`}},
+				}})
+			case "review_equity_order":
+				reviewArgs = args
+				_ = json.NewEncoder(w).Encode(map[string]any{"jsonrpc": "2.0", "id": msg["id"], "result": map[string]any{"ok": true}})
+			case "place_equity_order":
+				placeArgs = args
+				_ = json.NewEncoder(w).Encode(map[string]any{"jsonrpc": "2.0", "id": msg["id"], "result": map[string]any{"state": "filled", "ref_id": args["ref_id"]}})
+			default:
+				_ = json.NewEncoder(w).Encode(map[string]any{"jsonrpc": "2.0", "id": msg["id"], "result": map[string]any{}})
+			}
+		default:
+			w.WriteHeader(400)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	svc := &robinhood.Service{HTTP: srv.Client()}
+	svc.MCP = &robinhood.MCP{HTTP: srv.Client(), Endpoint: srv.URL, Token: func() (string, error) { return "tok", nil }}
+	if _, err := NewRobinhoodBroker(svc).PlaceMarket("AAL", "BUY", 1); err != nil {
+		t.Fatal(err)
+	}
+	if reviewArgs == nil || placeArgs == nil {
+		t.Fatal("review and place must both be called")
+	}
+	if _, has := reviewArgs["ref_id"]; has {
+		t.Error("review_equity_order must not carry ref_id")
+	}
+	if placeArgs["ref_id"] == nil {
+		t.Error("place_equity_order must carry ref_id")
+	}
+	if reviewArgs["symbol"] != "AAL" || reviewArgs["quantity"] == nil {
+		t.Errorf("review args = %v", reviewArgs)
+	}
+}

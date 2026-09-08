@@ -99,7 +99,18 @@ func (b *RobinhoodBroker) PlaceMarketCfg(symbol, side string, qty float64, cfg P
 	if _, err := b.toolCtx(ctx, "get_equity_tradability", map[string]any{"account_number": acct, "symbols": []string{symbol}}); err != nil {
 		return OrderResult{ClientOrderID: ref, Symbol: symbol, Side: side, Quantity: qty, Error: err.Error()}, err
 	}
-	review, err := b.toolCtx(ctx, "review_equity_order", args)
+	// review_equity_order's schema is additionalProperties:false and has no
+	// ref_id — that id belongs to place_equity_order alone. Sending the place
+	// arguments verbatim made every review fail with "unexpected additional
+	// properties [ref_id]", so no Robinhood order could ever be placed.
+	reviewArgs := make(map[string]any, len(args))
+	for k, v := range args {
+		if k == "ref_id" {
+			continue
+		}
+		reviewArgs[k] = v
+	}
+	review, err := b.toolCtx(ctx, "review_equity_order", reviewArgs)
 	if err != nil {
 		return OrderResult{ClientOrderID: ref, Symbol: symbol, Side: side, Quantity: qty, Error: err.Error()}, err
 	}
