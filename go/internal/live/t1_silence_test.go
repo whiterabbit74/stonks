@@ -60,7 +60,7 @@ func TestT1NoActionLinesExplainTheReason(t *testing.T) {
 
 func TestT1NoActionLinesNameTheForeignPosition(t *testing.T) {
 	exitRes := EvalResult{Decision: map[string]any{
-		"action": "none", "reason": "broker_position_not_in_journal", "symbol": "AAL",
+		"action": "none", "reason": "broker_position_mismatch", "symbol": "AAL",
 	}}
 	lines := strings.Join(t1NoActionLines(exitRes, EvalResult{}, nil), "\n")
 	if !strings.Contains(lines, "AAL") || !strings.Contains(lines, "вход заблокирован") {

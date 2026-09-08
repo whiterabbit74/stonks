@@ -29,6 +29,14 @@ var T1DeadlineSafetyMargin = 5 * time.Second
 type execWindow struct {
 	ctx      context.Context
 	deadline time.Time
+	// skipBrokers names the brokers this run must not touch at all — the
+	// broker still has an order in flight, so another one could double up.
+	// entryBlocked names the brokers that may still exit but must not open
+	// anything new (a consistency mismatch was found before the run).
+	// Both are per broker on purpose: Webull's state must never decide
+	// whether Robinhood exits, and vice versa.
+	skipBrokers  map[string]bool
+	entryBlocked map[string]bool
 }
 
 // backgroundWindow is the no-deadline execWindow used by callers outside the

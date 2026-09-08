@@ -350,8 +350,23 @@ func (e *Engine) liveConsistencyIssues(brokerRows []map[string]any, w execWindow
 }
 
 func BlockingMismatch(snap map[string]any) map[string]any {
+	return BlockingMismatchFor(snap, "")
+}
+
+// BlockingMismatchFor returns the first blocking issue that applies to the
+// named broker: one that names it, or one that names no broker at all (a
+// monitor-journal issue, which is not any single broker's). An empty broker
+// matches every issue, which is what the unscoped BlockingMismatch reports.
+func BlockingMismatchFor(snap map[string]any, broker string) map[string]any {
 	if snap == nil {
 		return nil
+	}
+	applies := func(iss map[string]any) bool {
+		if broker == "" {
+			return true
+		}
+		name := strings.ToLower(strings.TrimSpace(fmt.Sprint(iss["broker"])))
+		return name == "" || name == "<nil>" || name == strings.ToLower(broker)
 	}
 	raw, ok := snap["issues"]
 	if !ok {
@@ -360,7 +375,7 @@ func BlockingMismatch(snap map[string]any) map[string]any {
 	switch issues := raw.(type) {
 	case []map[string]any:
 		for _, iss := range issues {
-			if _, hit := blockingMismatchCodes[fmt.Sprint(iss["code"])]; hit {
+			if _, hit := blockingMismatchCodes[fmt.Sprint(iss["code"])]; hit && applies(iss) {
 				return iss
 			}
 		}
@@ -370,12 +385,42 @@ func BlockingMismatch(snap map[string]any) map[string]any {
 			if iss == nil {
 				continue
 			}
-			if _, hit := blockingMismatchCodes[fmt.Sprint(iss["code"])]; hit {
+			if _, hit := blockingMismatchCodes[fmt.Sprint(iss["code"])]; hit && applies(iss) {
 				return iss
 			}
 		}
 	}
 	return nil
+}
+
+// entryBlockedBrokers maps each attached broker to whether a blocking
+// consistency issue holds back its new entries. An issue naming a broker
+// blocks only that one; an issue about the monitor journal alone names none
+// and holds back every broker's entries. Exits are never gated by this — an
+// open position is closed on its exit signal regardless.
+func (e *Engine) entryBlockedBrokers(snap map[string]any) map[string]bool {
+	out := map[string]bool{}
+	for _, nb := range e.brokerSnapshot() {
+		if iss := BlockingMismatchFor(snap, nb.name); iss != nil {
+			out[nb.name] = true
+		}
+	}
+	return out
+}
+
+// allBrokersSkipped reports whether every attached broker is in skip, i.e.
+// the run has nothing left to do.
+func (e *Engine) allBrokersSkipped(skip map[string]bool) bool {
+	snaps := e.brokerSnapshot()
+	if len(snaps) == 0 {
+		return false
+	}
+	for _, nb := range snaps {
+		if !skip[nb.name] {
+			return false
+		}
+	}
+	return true
 }
 
 func (e *Engine) Reconcile(apply bool) map[string]any {

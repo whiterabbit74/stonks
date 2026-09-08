@@ -47,6 +47,11 @@ func (e *Engine) executeAll(w execWindow, ev EvalResult, trigger, corr string, s
 			e.logAuto("execution_skipped", corr, map[string]any{"broker": name, "reason": "broker_disabled"})
 			continue
 		}
+		if w.skipBrokers[name] {
+			decisions[name] = map[string]any{"action": "none", "reason": "broker_order_in_flight", "symbol": nil, "candidate": nil}
+			e.logAuto("execution_skipped", corr, map[string]any{"broker": name, "reason": "broker_order_in_flight"})
+			continue
+		}
 		st := e.storedHealthStatus(name)
 		if st == HealthNeedsReauth || st == HealthMissing {
 			decisions[name] = map[string]any{"action": "none", "reason": st, "symbol": nil, "candidate": nil}
@@ -81,6 +86,14 @@ func (e *Engine) executeAll(w execWindow, ev EvalResult, trigger, corr string, s
 		}
 		if action == "entry" && !allowE {
 			e.logAuto("execution_skipped", corr, map[string]any{"broker": name, "reason": "allowNewEntries_false"})
+			continue
+		}
+		// A consistency mismatch holds back this broker's new entries only.
+		// The exit above already went through: an open position is closed on
+		// its signal whatever the journal disagrees about.
+		if action == "entry" && w.entryBlocked[name] {
+			decisions[name] = map[string]any{"action": "none", "reason": "consistency_mismatch", "symbol": nil, "candidate": nil}
+			e.logAuto("execution_skipped", corr, map[string]any{"broker": name, "reason": "consistency_mismatch"})
 			continue
 		}
 		if action == "exit" && !allowX {

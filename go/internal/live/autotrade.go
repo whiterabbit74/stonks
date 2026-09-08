@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -342,7 +343,7 @@ func (e *Engine) EvaluateWindow(w execWindow) EvalResult {
 		})
 	}
 	decision := decideLiveAction(quotes, symbols, held, heldErr, open, allowEntries, allowExits)
-	if reason, _ := decision["reason"].(string); reason == "empty_symbol_universe" || reason == "broker_position_not_in_journal" {
+	if reason, _ := decision["reason"].(string); reason == "empty_symbol_universe" || reason == "broker_position_mismatch" {
 		e.logAuto("execution_skipped", "", map[string]any{"symbol": decision["symbol"], "reason": reason})
 	}
 	return EvalResult{
@@ -382,11 +383,14 @@ func decideLiveAction(quotes []map[string]any, symbols []string, held map[string
 	}
 	if open != nil && allowExits {
 		sym := store.SafeTicker(fmt.Sprint(open["symbol"]))
-		if fmt.Sprint(open["source"]) == "live_broker" {
-			return none("broker_position_not_in_journal", sym, nil)
-		}
+		// A position the broker holds is closed on its exit signal whether or
+		// not the journal knows about it: an unrecorded position is still our
+		// money at risk, and refusing to exit it left it open forever.
 		if heldErr == nil {
 			if _, ok := held[sym]; !ok {
+				// Nothing of this ticker at the broker: there is nothing to
+				// sell, so no order — the journal row stays open for the
+				// operator to reconcile.
 				return none("broker_position_mismatch", sym, nil)
 			}
 		}
@@ -464,10 +468,19 @@ func decideLiveAction(quotes []map[string]any, symbols []string, held map[string
 func (e *Engine) booksFor(name string, br Broker, rows []map[string]any, w execWindow) (open map[string]any, held map[string]float64, heldErr error) {
 	held, heldErr = e.heldSymbolsOn(br, w)
 	open = store.OpenBrokerTradeFor(rows, name)
-	if open == nil && heldErr == nil && len(held) == 1 {
-		for sym, qty := range held {
-			open = map[string]any{"symbol": sym, "quantity": qty, "status": "open", "source": "live_broker", "broker": name}
+	if open == nil && heldErr == nil && len(held) > 0 {
+		// The journal is flat but the broker is not. Exit that position on its
+		// own signal. With several tickers held the pick is the alphabetically
+		// first, so successive runs are deterministic rather than map-random.
+		// ponytail: one position per broker per cycle; a real multi-position
+		// book would need decideLiveAction to return a list.
+		syms := make([]string, 0, len(held))
+		for sym := range held {
+			syms = append(syms, sym)
 		}
+		sort.Strings(syms)
+		sym := syms[0]
+		open = map[string]any{"symbol": sym, "quantity": held[sym], "status": "open", "source": "live_broker", "broker": name}
 	}
 	return open, held, heldErr
 }
@@ -928,11 +941,14 @@ func (e *Engine) ClearTrackerPersistBlock(broker, note string) error {
 	return nil
 }
 
-// t1BrokerReconcile checks live broker books before a T-1 Execute, including
-// a retry after an expired lease. A working order or a failed read must not
-// mint a second place. w bounds every read by the same T-1 budget as the
-// order placement that follows it — see P1-1 in AUTOTRADE_ROADMAP.md.
-func (e *Engine) t1BrokerReconcile(w execWindow) (skipPlace, waitFill bool, block map[string]any) {
+// t1BrokerReconcile checks each broker's own book before the T-1 orders go
+// out and reports which brokers must sit this run out. The result is per
+// broker on purpose: an order still in flight at Webull is no reason for
+// Robinhood to skip its exit (and vice versa). A positions read that fails
+// is not reported here — decideLiveAction already turns it into that
+// broker's own broker_positions_unavailable skip.
+func (e *Engine) t1BrokerReconcile(w execWindow) (skip map[string]bool, waitFill bool) {
+	skip = map[string]bool{}
 	for _, nb := range e.brokerSnapshot() {
 		if nb.br == nil {
 			continue
@@ -942,7 +958,9 @@ func (e *Engine) t1BrokerReconcile(w execWindow) (skipPlace, waitFill bool, bloc
 			return brokerOpenOrders(ctx, br)
 		})
 		if err != nil {
-			return true, false, map[string]any{"code": "open_orders_unavailable", "message": err.Error()}
+			skip[nb.name] = true
+			e.logAuto("execution_skipped", "", map[string]any{"broker": nb.name, "reason": "open_orders_unavailable", "error": err.Error()})
+			continue
 		}
 		for _, row := range rows {
 			m := mapOf(row)
@@ -953,15 +971,12 @@ func (e *Engine) t1BrokerReconcile(w execWindow) (skipPlace, waitFill bool, bloc
 			if IsFinalOrderStatus(st) {
 				continue
 			}
-			return true, true, nil
-		}
-		if _, err := retryBrokerReadWindow(e, w, "positions", func(ctx context.Context) ([]any, error) {
-			return brokerPositions(ctx, br)
-		}); err != nil {
-			return true, false, map[string]any{"code": "broker_positions_unavailable", "message": err.Error()}
+			skip[nb.name] = true
+			waitFill = true
+			break
 		}
 	}
-	return false, false, nil
+	return skip, waitFill
 }
 
 // retryBrokerRead retries a read-only broker call with no T-1 deadline of its

@@ -268,20 +268,22 @@ func (e *Engine) Aggregate(minutesUntilClose int, opts AggregateOpts) (SimulateR
 		// T1DeadlineSafetyMargin. See P1-1 in AUTOTRADE_ROADMAP.md.
 		w := e.t1Window(opts.Ctx)
 		snap := e.consistencyWindow(w)
+		// A mismatch is reported, never a global stop: it holds back new
+		// entries at the broker it names, and an open position is still
+		// closed on its exit signal. Webull's state never decides for
+		// Robinhood.
 		blocking = BlockingMismatch(snap)
 		if blocking != nil {
 			_ = e.DB.AppendAutotradeLog("t1_monitor_mismatch " + fmt.Sprint(blocking["code"]) + " " + fmt.Sprint(blocking["message"]))
 		}
-		skipPlace, wait, recBlock := e.t1BrokerReconcile(w)
-		if recBlock != nil && blocking == nil {
-			blocking = recBlock
-			_ = e.DB.AppendAutotradeLog("t1_monitor_mismatch " + fmt.Sprint(recBlock["code"]) + " " + fmt.Sprint(recBlock["message"]))
-		}
+		w.entryBlocked = e.entryBlockedBrokers(snap)
+		skip, wait := e.t1BrokerReconcile(w)
+		w.skipBrokers = skip
 		if wait {
 			waitFill = true
 		}
 		_ = e.DB.AppendAutotradeLog("t1_execution_started")
-		if blocking == nil && !skipPlace {
+		if !e.allBrokersSkipped(skip) {
 			if opts.DryRun {
 				_ = e.DB.AppendAutotradeLog("t1_dry_run")
 				exitRes = e.Evaluate()
@@ -295,7 +297,7 @@ func (e *Engine) Aggregate(minutesUntilClose int, opts AggregateOpts) (SimulateR
 				}
 			}
 		}
-		if opts.UpdateState && !opts.DryRun && recBlock == nil {
+		if opts.UpdateState && !opts.DryRun && !e.allBrokersSkipped(skip) {
 			e.stampSendMarker("t1_execution", e.DB.MarkT1ExecutionFinished(e.chat(), today))
 		}
 	}
@@ -583,8 +585,10 @@ func noActionReasonText(reason, symbol string) string {
 		sym = "позиция"
 	}
 	switch reason {
-	case "broker_position_not_in_journal":
-		return "у брокера открыта " + sym + ", которой нет в журнале — вход заблокирован"
+	case "broker_order_in_flight":
+		return "у брокера висит незакрытая заявка — этот брокер пропущен"
+	case "consistency_mismatch":
+		return "расхождение журнала и брокера — новый вход заблокирован"
 	case "broker_position_exists":
 		return "у брокера уже есть позиция — вход заблокирован"
 	case "broker_position_mismatch":

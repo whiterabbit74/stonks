@@ -310,9 +310,9 @@ func TestProviderAbbrevWebull(t *testing.T) {
 	}
 }
 
-func TestBrokerOnlyPositionIsNeverSold(t *testing.T) {
-	// IBS 1.0 is far above highIBS, so an exit would fire if the engine
-	// considered this position its own.
+func TestBrokerOnlyPositionIsExitedOnSignal(t *testing.T) {
+	// A position the broker holds without a journal row (bought by hand) is
+	// still our money at risk: it is closed in full on its exit signal.
 	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 12, Volume: 1}}
 	_, e, br := testEngine(t, bars)
 	br.Pos = []any{map[string]any{"symbol": "AAPL", "quantity": 500.0}}
@@ -321,15 +321,15 @@ func TestBrokerOnlyPositionIsNeverSold(t *testing.T) {
 		"symbols": "AAPL",
 	})
 	ev := e.Evaluate()
-	if got := fmt.Sprint(ev.Decision["action"]); got != "none" {
-		t.Fatalf("must not act on a position it never opened, got %q", got)
-	}
-	if got := fmt.Sprint(ev.Decision["reason"]); got != "broker_position_not_in_journal" {
-		t.Fatalf("reason = %q", got)
+	if got := fmt.Sprint(ev.Decision["action"]); got != "exit" {
+		t.Fatalf("broker-only position must be exited on signal, got %q", got)
 	}
 	res := e.Execute("manual_execute")
-	if res.Executed || len(br.Orders) != 0 {
-		t.Fatalf("manual execute must not liquidate it: %+v", br.Orders)
+	if !res.Executed || len(br.Orders) != 1 {
+		t.Fatalf("exit must be placed: %+v", br.Orders)
+	}
+	if got := br.Orders[0].Quantity; got != 500 {
+		t.Fatalf("must sell the whole broker position, sold %v", got)
 	}
 }
 
