@@ -243,6 +243,9 @@ func (e *Engine) submitEvaluated(w execWindow, ev EvalResult, trigger, corr, bro
 		e.logAuto("execution_skipped", corr, map[string]any{"symbol": symbol, "reason": "outside_execution_window", "trigger": trigger})
 		return ev
 	}
+	// Everything from here on belongs to the order: the reads it needs are
+	// bounded by the deadline, not by the pre-flight read budget (CORE-02).
+	w = w.forPlacement()
 	price := quotePrice(ev, symbol)
 	qty, qerr := e.sizeOrder(action, symbol, ev.AutoTrading, price, br, w)
 	if qerr != nil {

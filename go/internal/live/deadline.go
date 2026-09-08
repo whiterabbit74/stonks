@@ -42,6 +42,18 @@ type execWindow struct {
 	// skipReasons carries the pre-flight finding per broker so a run that
 	// submits nothing can still say why in the T-1 message (AUD-069).
 	skipReasons map[string]string
+	// placing marks the stretch where this broker's order is already being
+	// sent. The reads inside it (position size, cancelling our own working
+	// orders) belong to the order, not to the pre-flight survey, so they get
+	// the whole remaining window rather than the read budget (CORE-02).
+	placing bool
+}
+
+// forPlacement is w with the read budget lifted: the caller is past deciding
+// and is submitting this broker's order.
+func (w execWindow) forPlacement() execWindow {
+	w.placing = true
+	return w
 }
 
 // backgroundWindow is the no-deadline execWindow used by callers outside the
@@ -122,6 +134,60 @@ func (e *Engine) deadlineExceeded(w execWindow, lastDur time.Duration) bool {
 		return true
 	}
 	return lastDur > 0 && left < lastDur
+}
+
+// T1ReadAttemptTimeout caps one pre-flight broker read on the T-1 path.
+// Without it a single hung broker held the whole close-of-session budget:
+// the phases before the order (consistency, open orders, position books) are
+// parallel per broker but joined before execution, so the healthy broker sat
+// at the join while the stuck one burned the minute, and its own order was
+// then refused as past the deadline (CORE-02).
+//
+// T1PlacementReserve is the slice of the window reads may never touch — it
+// belongs to the order itself. A read is not started once less than this
+// remains; the broker gets its own broker_positions_unavailable and the other
+// broker still has time to trade.
+var (
+	T1ReadAttemptTimeout = 5 * time.Second
+	T1PlacementReserve   = 10 * time.Second
+)
+
+// readBudget is how long a single pre-flight read may take: the smaller of the
+// per-attempt cap and whatever is left after reserving the placement slice.
+// Zero or less means "do not start another read".
+func (e *Engine) readBudget(w execWindow) time.Duration {
+	if w.deadline.IsZero() {
+		return T1ReadAttemptTimeout
+	}
+	if w.placing {
+		// Part of the order itself: bounded by the deadline like the order.
+		left := e.timeLeft(w)
+		if left < 0 {
+			return 0
+		}
+		return left
+	}
+	usable := e.timeLeft(w) - T1PlacementReserve
+	if usable <= 0 {
+		return 0
+	}
+	if usable > T1ReadAttemptTimeout {
+		return T1ReadAttemptTimeout
+	}
+	return usable
+}
+
+// readContext derives a per-attempt context for a pre-flight broker read,
+// bounded by readBudget rather than by the whole remaining window.
+func (e *Engine) readContext(w execWindow) (context.Context, context.CancelFunc) {
+	parent := w.parentCtx()
+	budget := e.readBudget(w)
+	if budget <= 0 {
+		ctx, cancel := context.WithCancel(parent)
+		cancel()
+		return ctx, func() {}
+	}
+	return context.WithTimeout(parent, budget)
 }
 
 // attemptContext derives a per-attempt context: cancelled at the remaining

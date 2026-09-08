@@ -1189,7 +1189,11 @@ func retryBrokerReadWindow[T any](e *Engine, w execWindow, what string, fn func(
 	var err error
 	var lastDur time.Duration
 	for attempt := 1; attempt <= submitAttempts; attempt++ {
-		if e.deadlineExceeded(w, lastDur) {
+		// Reads stop before the placement reserve, not at the deadline: the
+		// order still has to go out after them (CORE-02).
+		// Reads stop before the placement reserve, not at the deadline: the
+		// order still has to go out after them (CORE-02).
+		if e.deadlineExceeded(w, lastDur) || e.readBudget(w) <= 0 {
 			e.logAuto("execution_deadline_exceeded", "", map[string]any{
 				"call": what, "attempt": attempt, "stage": "broker_read",
 			})
@@ -1198,7 +1202,7 @@ func retryBrokerReadWindow[T any](e *Engine, w execWindow, what string, fn func(
 			}
 			return out, err
 		}
-		ctx, cancel := e.attemptContext(w)
+		ctx, cancel := e.readContext(w)
 		start := e.now()
 		out, err = fn(ctx)
 		cancel()
