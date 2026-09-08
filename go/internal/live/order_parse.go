@@ -61,6 +61,10 @@ func fillQtyFrom(detail map[string]any) float64 {
 		detail["filled_qty"],
 		detail["filled_quantity"],
 		detail["cum_qty"],
+		// Robinhood names the executed quantity cumulative_quantity; without it
+		// a partial fill reads as 0 and the callers fall back to the ordered
+		// quantity, booking more than the broker executed.
+		detail["cumulative_quantity"],
 		detail["deal_quantity"],
 	)
 }
