@@ -163,7 +163,35 @@ func (c *Client) tradeHTTPClient() *http.Client {
 	return c.TradeHTTP
 }
 
+// rateLimitRetries / rateLimitBackoff bound the retry of a 429. Webull rate
+// limits per endpoint (measured: /account/positions accepts about one call
+// every two seconds) and sends no Retry-After header; a dashboard load fires
+// balance, positions, accounts, open orders and history at once, so the losing
+// call used to come back as a read failure — which the positions table showed
+// as "no positions" while the account actually held shares.
+const rateLimitRetries = 2
+
+// var so the test can shorten it; production never changes it.
+var rateLimitBackoff = time.Second
+
+// doRequest retries a 429 on GET only. A write (order placement, cancel) is
+// never resubmitted here: a retried POST could double an order.
 func (c *Client) doRequest(ctx context.Context, httpClient *http.Client, method, path string, query map[string]string, body any, includeToken bool, extraHeaders map[string]string) (*Response, error) {
+	for attempt := 0; ; attempt++ {
+		out, err := c.doOnce(ctx, httpClient, method, path, query, body, includeToken, extraHeaders)
+		if err == nil || method != http.MethodGet || attempt >= rateLimitRetries ||
+			out == nil || out.Status != http.StatusTooManyRequests {
+			return out, err
+		}
+		select {
+		case <-ctx.Done():
+			return out, err
+		case <-time.After(time.Duration(attempt+1) * rateLimitBackoff):
+		}
+	}
+}
+
+func (c *Client) doOnce(ctx context.Context, httpClient *http.Client, method, path string, query map[string]string, body any, includeToken bool, extraHeaders map[string]string) (*Response, error) {
 	if err := c.configured(); err != nil {
 		return nil, err
 	}

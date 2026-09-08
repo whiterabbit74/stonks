@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestPlaceOrderSignsAndPostsNodePath(t *testing.T) {
@@ -247,5 +248,62 @@ func TestResolveInstrumentIDRequiresMatchingSymbol(t *testing.T) {
 	}
 	if _, err := c.ResolveInstrumentID("MSFT"); err == nil {
 		t.Fatal("want error when no row carries the requested ticker")
+	}
+}
+
+// A 429 on a read must not surface as a failed read: the positions table shows
+// a failed read as an empty account. Webull rate limits per endpoint and sends
+// no Retry-After, so the client retries the GET itself.
+func TestGetRetriesRateLimit(t *testing.T) {
+	old := rateLimitBackoff
+	rateLimitBackoff = time.Millisecond
+	defer func() { rateLimitBackoff = old }()
+
+	calls := 0
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if calls < 3 {
+			w.WriteHeader(http.StatusTooManyRequests)
+			_, _ = w.Write([]byte(`{"message":"Too many requests","error_code":"TOO_MANY_REQUESTS"}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"has_next":false,"holdings":[{"symbol":"MSFT","qty":"4"}]}`))
+	}))
+	defer ts.Close()
+
+	c := &Client{HTTP: ts.Client(), Base: ts.URL, Host: "api.webull.com", AppKey: "k", AppSecret: "s", AccessToken: "tok"}
+	resp, err := c.AccountPositions("acc-1")
+	if err != nil {
+		t.Fatalf("positions after retry: %v", err)
+	}
+	if calls != 3 {
+		t.Fatalf("calls = %d, want 3", calls)
+	}
+	if m, _ := resp.Data.(map[string]any); m == nil || m["holdings"] == nil {
+		t.Fatalf("data %v", resp.Data)
+	}
+}
+
+// A rate-limited write must fail instead of being resubmitted: a retried place
+// call could double an order.
+func TestPostDoesNotRetryRateLimit(t *testing.T) {
+	old := rateLimitBackoff
+	rateLimitBackoff = time.Millisecond
+	defer func() { rateLimitBackoff = old }()
+
+	calls := 0
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = w.Write([]byte(`{"message":"Too many requests"}`))
+	}))
+	defer ts.Close()
+
+	c := &Client{HTTP: ts.Client(), TradeHTTP: ts.Client(), Base: ts.URL, Host: "api.webull.com", AppKey: "k", AppSecret: "s", AccessToken: "tok"}
+	if _, err := c.PlaceOrder("acc-1", map[string]any{"symbol": "MSFT"}); err == nil {
+		t.Fatal("expected error")
+	}
+	if calls != 1 {
+		t.Fatalf("calls = %d, want 1", calls)
 	}
 }
