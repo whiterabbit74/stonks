@@ -8,6 +8,7 @@ import (
 	"math"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"mktorder.com/go/internal/ibs"
@@ -42,47 +43,105 @@ type SimulateResult struct {
 func (e *Engine) runT1Orders(w execWindow, today string) (exitRes, entryRes EvalResult, waitFill bool) {
 	_ = today
 	exitRes = e.executeWindow(w, "telegram_t1")
-	action, _ := effectiveDecision(exitRes)["action"].(string)
-	if action != "none" && !exitRes.Executed {
+	if action, _ := effectiveDecision(exitRes)["action"].(string); action != "none" && !exitRes.Executed {
 		_ = e.DB.AppendAutotradeLog("t1_submit_failed")
+	}
+	exited := submittedExitBrokers(exitRes)
+	if len(exited) == 0 {
 		return exitRes, entryRes, false
 	}
-	if action != "exit" || !exitRes.Executed {
-		return exitRes, entryRes, false
+	// Цепочка «выход → подтверждение → повторный вход» идёт для каждого
+	// брокера отдельно и параллельно. Раньше барьер был общим: подтверждённый
+	// и уже плоский Robinhood ждал, пока исполнится заявка Webull, и терял
+	// свой вход на том же закрытии (CORE-01 / AUD-043).
+	ready, waiting := e.settleExitsPerBroker(w, exited)
+	if len(waiting) > 0 {
+		_ = e.DB.AppendAutotradeLog("t1_entry_blocked_waiting_exit_fill " + strings.Join(waiting, ","))
+		waitFill = true
 	}
-	// Ждём только тех брокеров, которые действительно выходили: позиция,
-	// открытая у другого брокера, — не сорвавшийся выход этого (AUD-043).
-	brokers := exitingBrokers(exitRes)
-	if e.awaitFlatAfterExit(brokers) {
+	if len(ready) == 0 {
+		_ = e.DB.AppendAutotradeLog("t1_exit_failed")
+		return exitRes, entryRes, waitFill
+	}
+	entryRes = e.executeWindowFor(w, "telegram_t1", ready)
+	return exitRes, entryRes, waitFill
+}
+
+// submittedExitBrokers names the brokers whose exit this run actually sent.
+// A broker that only decided to exit and then failed to submit has nothing to
+// wait for, and must not hold the re-entry of anyone else.
+func submittedExitBrokers(res EvalResult) []string {
+	outcomes := execOutcomes(res.Broker)
+	var out []string
+	for _, name := range exitingBrokers(res) {
+		if one, ok := outcomes[name]; ok && one.Submitted {
+			out = append(out, name)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// settleExitsPerBroker waits out each broker's own exit and reports which ones
+// are clear to open the next position. A broker whose exit is still unfilled
+// lands in waiting; one whose exit reached a terminal status without closing
+// the trade gets exactly one scoped retry, again only for itself.
+func (e *Engine) settleExitsPerBroker(w execWindow, brokers []string) (ready, waiting []string) {
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	for _, name := range brokers {
+		wg.Add(1)
+		go func(name string) {
+			defer wg.Done()
+			state := e.settleOneExit(w, name, true)
+			mu.Lock()
+			defer mu.Unlock()
+			switch state {
+			case exitSettled:
+				ready = append(ready, name)
+			case exitPending:
+				waiting = append(waiting, name)
+			}
+		}(name)
+	}
+	wg.Wait()
+	sort.Strings(ready)
+	sort.Strings(waiting)
+	return ready, waiting
+}
+
+type exitState int
+
+const (
+	exitSettled exitState = iota
+	exitPending
+	exitFailed
+)
+
+func (e *Engine) settleOneExit(w execWindow, name string, mayRetry bool) exitState {
+	scope := []string{name}
+	if e.awaitFlatAfterExit(scope) {
 		// Журнал закрыт — но лента позиций брокера ещё может отдавать
 		// проданные акции, и тогда второй проход продал бы их снова
 		// вместо входа (AUD-071).
-		e.awaitBrokerBooksFlat(w, brokers)
-		entryRes = e.executeWindow(w, "telegram_t1")
-		return exitRes, entryRes, false
+		e.awaitBrokerBooksFlat(w, scope)
+		return exitSettled
 	}
-	pending, err := e.pendingExitFor(brokers)
+	pending, err := e.pendingExitFor(scope)
 	if err != nil || pending != nil {
-		_ = e.DB.AppendAutotradeLog("t1_entry_blocked_waiting_exit_fill")
-		return exitRes, entryRes, true
+		return exitPending
 	}
-	_ = e.DB.AppendAutotradeLog("t1_exit_rejected_retry")
-	exitRes = e.executeWindow(w, "telegram_t1")
-	action, _ = effectiveDecision(exitRes)["action"].(string)
-	if action == "exit" && exitRes.Executed {
-		brokers = exitingBrokers(exitRes)
-		if e.awaitFlatAfterExit(brokers) {
-			e.awaitBrokerBooksFlat(w, brokers)
-			entryRes = e.executeWindow(w, "telegram_t1")
-			return exitRes, entryRes, false
-		}
-		pending, err = e.pendingExitFor(brokers)
-		if err != nil || pending != nil {
-			return exitRes, entryRes, true
-		}
+	if !mayRetry {
+		return exitFailed
 	}
-	_ = e.DB.AppendAutotradeLog("t1_exit_failed")
-	return exitRes, entryRes, false
+	// Терминальный статус, не закрывший сделку (отклонена, отменена): один
+	// повтор выхода, и только для этого брокера.
+	_ = e.DB.AppendAutotradeLog("t1_exit_rejected_retry " + name)
+	retry := e.executeWindowFor(w, "telegram_t1", scope)
+	if len(submittedExitBrokers(retry)) == 0 {
+		return exitFailed
+	}
+	return e.settleOneExit(w, name, false)
 }
 
 func StageMinutes(stage string) int {

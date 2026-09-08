@@ -715,6 +715,15 @@ func (e *Engine) ExecuteCtx(ctx context.Context, trigger string) EvalResult {
 // stays unexported; ExecuteCtx/Execute are the public entry points for
 // everyone else.
 func (e *Engine) executeWindow(w execWindow, trigger string) EvalResult {
+	return e.executeWindowFor(w, trigger, nil)
+}
+
+// executeWindowFor is executeWindow restricted to the named brokers. The T-1
+// re-entry pass uses it so it touches only the brokers whose own exit has
+// settled: another broker's unfinished order is not this one's business, and
+// re-reading its books would cost the closing minute for nothing (CORE-01).
+// An empty list means every attached broker.
+func (e *Engine) executeWindowFor(w execWindow, trigger string, only []string) EvalResult {
 	corr := newCorrelationID()
 	ev := e.EvaluateWindow(w)
 	e.mu.Lock()
@@ -722,6 +731,19 @@ func (e *Engine) executeWindow(w execWindow, trigger string) EvalResult {
 	e.lastResult = ev
 	e.mu.Unlock()
 	snaps := e.brokerSnapshot()
+	if len(only) > 0 {
+		want := map[string]bool{}
+		for _, name := range only {
+			want[name] = true
+		}
+		picked := make([]namedBroker, 0, len(only))
+		for _, nb := range snaps {
+			if want[nb.name] {
+				picked = append(picked, nb)
+			}
+		}
+		snaps = picked
+	}
 	// Always go through executeAll, including zero and one broker: every broker
 	// has its own flags, health status, and book, and only executeAll checks
 	// them. See P0-1 in AUTOTRADE_ROADMAP.md.
