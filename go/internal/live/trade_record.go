@@ -24,15 +24,37 @@ func (e *Engine) getTrade(table, id string) (map[string]any, error) {
 func (e *Engine) openTradeBySymbol(table, symbol, preferID, broker string) (map[string]any, error) {
 	want := store.SafeTicker(symbol)
 	wantBroker := strings.ToLower(strings.TrimSpace(broker))
-	matchesBroker := func(t map[string]any) bool {
-		if table != "broker_trades" || wantBroker == "" {
-			return true
-		}
-		got := strings.ToLower(strings.TrimSpace(fmt.Sprint(t["broker"])))
+	sameBroker := func(got string) bool {
+		got = strings.ToLower(strings.TrimSpace(got))
 		if got == "<nil>" {
 			got = ""
 		}
 		return got == wantBroker || (wantBroker == "webull" && got == "")
+	}
+	// A broker_trades row carries its broker itself. A monitor row does not:
+	// it belongs to the broker of the trade it links to. Without that hop two
+	// brokers holding the same ticker — the normal case, both pick the lowest
+	// IBS — made one broker's exit close the other's monitor row, swapping the
+	// recorded exit price and PnL between them (AUD-068).
+	matchesBroker := func(t map[string]any) (bool, error) {
+		if wantBroker == "" {
+			return true, nil
+		}
+		if table == "broker_trades" {
+			return sameBroker(fmt.Sprint(t["broker"])), nil
+		}
+		linked := strings.TrimSpace(fmt.Sprint(t["linkedBrokerTradeId"]))
+		if linked == "" || linked == "<nil>" {
+			return true, nil
+		}
+		b, err := e.getTrade("broker_trades", linked)
+		if err != nil {
+			return false, err
+		}
+		if b == nil {
+			return true, nil
+		}
+		return sameBroker(fmt.Sprint(b["broker"])), nil
 	}
 	if preferID != "" {
 		for _, id := range []string{preferID, "m-" + preferID} {
@@ -46,7 +68,14 @@ func (e *Engine) openTradeBySymbol(table, symbol, preferID, broker string) (map[
 			if t == nil {
 				continue
 			}
-			if fmt.Sprint(t["status"]) == "open" && store.SafeTicker(fmt.Sprint(t["symbol"])) == want && matchesBroker(t) {
+			if fmt.Sprint(t["status"]) != "open" || store.SafeTicker(fmt.Sprint(t["symbol"])) != want {
+				continue
+			}
+			ok, err := matchesBroker(t)
+			if err != nil {
+				return nil, err
+			}
+			if ok {
 				return t, nil
 			}
 		}
@@ -64,24 +93,30 @@ func (e *Engine) openTradeBySymbol(table, symbol, preferID, broker string) (map[
 		if store.SafeTicker(fmt.Sprint(t["symbol"])) != want {
 			continue
 		}
-		if !matchesBroker(t) {
-			continue
-		}
 		id := fmt.Sprint(t["id"])
-		if preferID != "" && (id == preferID || id == "m-"+preferID) {
-			return t, nil
-		}
+		// ListTrades does not select linked_broker_trade_id, and both the
+		// broker match and the linked-id match below need it.
 		if table == "trades" {
 			full, err := e.getTrade("trades", id)
 			if err != nil {
 				return nil, err
 			}
 			if full != nil {
-				linked := fmt.Sprint(full["linkedBrokerTradeId"])
-				if preferID != "" && linked == preferID {
-					return full, nil
-				}
+				t = full
 			}
+		}
+		ok, err := matchesBroker(t)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			continue
+		}
+		if preferID != "" && (id == preferID || id == "m-"+preferID) {
+			return t, nil
+		}
+		if preferID != "" && fmt.Sprint(t["linkedBrokerTradeId"]) == preferID {
+			return t, nil
 		}
 		if fallback == nil {
 			fallback = t
@@ -282,9 +317,16 @@ func (e *Engine) recordFill(t map[string]any, detail map[string]any, status stri
 		}
 		var mon map[string]any
 		if err == nil {
-			mon, err = e.openTradeBySymbol("trades", symbol, clientOrderID, "")
+			// The monitor row is keyed off the entry order, not this exit
+			// order: prefer the broker row we just found (its id is the entry
+			// clientOrderId, the monitor row is "m-"+that).
+			monPrefer := clientOrderID
+			if row != nil {
+				monPrefer = fmt.Sprint(row["id"])
+			}
+			mon, err = e.openTradeBySymbol("trades", symbol, monPrefer, brokerName)
 			if err == nil && mon == nil {
-				mon, err = e.openTradeBySymbol("trades", symbol, "", "")
+				mon, err = e.openTradeBySymbol("trades", symbol, "", brokerName)
 			}
 		}
 		if err != nil {
@@ -357,11 +399,7 @@ func (e *Engine) reduceOpenQuantity(symbol, preferID, broker string, sold, exitP
 		return
 	}
 	for _, table := range []string{"broker_trades", "trades"} {
-		name := broker
-		if table == "trades" {
-			name = ""
-		}
-		t, err := e.openTradeBySymbol(table, symbol, preferID, name)
+		t, err := e.openTradeBySymbol(table, symbol, preferID, broker)
 		if err != nil {
 			e.logAuto("local_trade_close_failed", "", map[string]any{
 				"table": table, "symbol": symbol, "clientOrderId": preferID,
