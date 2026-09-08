@@ -9,7 +9,7 @@ import (
 func TestPlaceMarketKeepsCallerClientOrderID(t *testing.T) {
 	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
 	_, e, br := testEngine(t, bars)
-	res, err := e.placeMarket(backgroundWindow(), "AAPL", "BUY", 1, PlaceMarketCfg{ClientOrderID: "keep-me"}, br)
+	res, err := e.placeMarket(backgroundWindow(), "AAPL", "BUY", 1, PlaceMarketCfg{ClientOrderID: "keep-me"}, br, orderMeta{})
 	if err != nil {
 		t.Fatal(err)
 	}

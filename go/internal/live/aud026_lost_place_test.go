@@ -71,7 +71,7 @@ func TestAUD026LostPlaceWithEmptyDetailDoesNotResend(t *testing.T) {
 	var places int64
 	br := webullBrokerFor(t, `{"code":0,"data":{}}`, 500, &places)
 
-	res, err := e.placeMarket(backgroundWindow(), "AAPL", "BUY", 1, PlaceMarketCfg{}, br)
+	res, err := e.placeMarket(backgroundWindow(), "AAPL", "BUY", 1, PlaceMarketCfg{}, br, orderMeta{})
 	if err != nil {
 		t.Fatal(err)
 	}

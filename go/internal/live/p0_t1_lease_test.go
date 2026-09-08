@@ -137,7 +137,9 @@ func TestTrackerSaveFailureSurvivesRestart(t *testing.T) {
 	blockOrderTrackerInserts(t, e)
 	res := e.Execute("t1")
 	unblockOrderTrackerInserts(t, e)
-	if !res.Executed || len(br.Orders) != 1 {
+	// Заявку, которую нечем записать, не отправляем (CORE-08); предохранитель
+	// при этом обязан подняться и пережить перезапуск.
+	if res.Executed || len(br.Orders) != 0 {
 		t.Fatalf("first place %+v orders=%d", res.Broker, len(br.Orders))
 	}
 	br.Open = []any{}
@@ -149,7 +151,7 @@ func TestTrackerSaveFailureSurvivesRestart(t *testing.T) {
 	e2.Sleep = func(time.Duration) {}
 	e2.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true})
 	res2 := e2.Execute("t1")
-	if res2.Executed || len(br.Orders) != 1 {
+	if res2.Executed || len(br.Orders) != 0 {
 		t.Fatalf("persisted tracker block must survive restart: executed=%v orders=%d", res2.Executed, len(br.Orders))
 	}
 }

@@ -64,7 +64,7 @@ func TestAUD005SlowBrokerStopsAtDeadline(t *testing.T) {
 	// Close is 16:00 ET, safety margin 5s: the budget is 55s and one 40s
 	// attempt leaves 15s — less than the attempt just took.
 	w := e.t1Window(context.Background())
-	res, err := e.placeMarket(w, "AAPL", "BUY", 1, PlaceMarketCfg{}, br)
+	res, err := e.placeMarket(w, "AAPL", "BUY", 1, PlaceMarketCfg{}, br, orderMeta{})
 
 	if br.placeCalls() != 1 {
 		t.Fatalf("want exactly one attempt inside the budget, got %d", br.placeCalls())

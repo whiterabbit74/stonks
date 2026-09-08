@@ -273,7 +273,15 @@ func (e *Engine) submitEvaluated(w execWindow, ev EvalResult, trigger, corr, bro
 			e.logAuto("open_orders_cancelled", corr, map[string]any{"symbol": symbol, "cancelled_count": len(cancelled)})
 		}
 	}
-	res, err := e.placeMarket(w, symbol, side, qty, PlaceMarketCfg{}, br)
+	ibsVal := 0.0
+	if cand, ok := ev.Decision["candidate"].(map[string]any); ok {
+		ibsVal = asFloat(cand["ibs"])
+	}
+	meta := orderMeta{
+		CorrelationID: corr, IBS: ibsVal, DateKey: ev.TodayKey,
+		QuotePrice: price, Action: action, Symbol: symbol, Quantity: qty, Source: trigger, Broker: brokerName,
+	}
+	res, err := e.placeMarket(w, symbol, side, qty, PlaceMarketCfg{}, br, meta)
 	if err != nil {
 		res.Error = err.Error()
 		res.Submitted = false
@@ -287,23 +295,15 @@ func (e *Engine) submitEvaluated(w execWindow, ev EvalResult, trigger, corr, bro
 		ev.Phase = "decision"
 	}
 	if res.Submitted {
-		ibsVal := 0.0
-		if cand, ok := ev.Decision["candidate"].(map[string]any); ok {
-			ibsVal = asFloat(cand["ibs"])
-		}
-		e.startTracking(res, orderMeta{
-			CorrelationID: corr, IBS: ibsVal, DateKey: ev.TodayKey,
-			QuotePrice: price, Action: action, Symbol: symbol, Quantity: qty, Source: trigger, Broker: brokerName,
-		})
+		e.startTracking(res, meta)
 		e.logAuto("order_submit_ok", corr, map[string]any{
 			"symbol": symbol, "action": action, "side": side, "quantity": qty,
 			"clientOrderId": res.ClientOrderID, "order_type": "MARKET", "broker": brokerName,
 		})
 	} else if res.Ambiguous {
-		e.startTracking(res, orderMeta{
-			CorrelationID: corr, DateKey: ev.TodayKey, QuotePrice: price,
-			Action: action, Symbol: symbol, Quantity: qty, Source: trigger, Broker: brokerName,
-		})
+		amb := meta
+		amb.IBS = 0
+		e.startTracking(res, amb)
 		e.logAuto("order_submit_unknown", corr, map[string]any{
 			"symbol": symbol, "action": action, "clientOrderId": res.ClientOrderID, "error": res.Error, "broker": brokerName,
 		})

@@ -31,14 +31,19 @@ func TestTrackerSaveFailureBlocksEntry(t *testing.T) {
 	blockOrderTrackerInserts(t, e)
 	res := e.Execute("t1")
 	unblockOrderTrackerInserts(t, e)
-	if !res.Executed {
-		t.Fatalf("order still reaches the broker: %+v", res.Broker)
+	// Намерение сохраняется до сети: заявку, которую нечем записать, не
+	// отправляем вовсе (CORE-08). Раньше она уходила и оставалась без следа.
+	if res.Executed {
+		t.Fatalf("an order that cannot be recorded must not be sent: %+v", res.Broker)
 	}
-	if len(br.Orders) != 1 {
-		t.Fatalf("want 1 order, got %d", len(br.Orders))
+	if len(br.Orders) != 0 {
+		t.Fatalf("want 0 orders, got %d", len(br.Orders))
+	}
+	if !e.trackerPersistBlocked("webull") {
+		t.Fatal("a failed intent write must raise the persist block")
 	}
 	res2 := e.Execute("t1")
-	if res2.Executed || len(br.Orders) != 1 {
+	if res2.Executed || len(br.Orders) != 0 {
 		t.Fatalf("persist failure must block a second entry: executed=%v orders=%d", res2.Executed, len(br.Orders))
 	}
 }

@@ -147,11 +147,12 @@ func TestTrackerPersistBlockSurvivesRestartAndOnlyClearsExplicitly(t *testing.T)
 	blockOrderTrackerInserts(t, e)
 	res := e.Execute("t1")
 	unblockOrderTrackerInserts(t, e)
-	if !res.Executed {
-		t.Fatalf("broker placement itself must still succeed: %+v", res.Broker)
+	// Заявку, которую нечем записать, теперь не отправляем вовсе (CORE-08).
+	if res.Executed {
+		t.Fatalf("an order that cannot be recorded must not be sent: %+v", res.Broker)
 	}
-	if len(br.Orders) != 1 {
-		t.Fatalf("want 1 broker order despite the failed tracker write, got %+v", br.Orders)
+	if len(br.Orders) != 0 {
+		t.Fatalf("want no broker order when the tracker write fails, got %+v", br.Orders)
 	}
 	if !e.trackerPersistBlocked("webull") {
 		t.Fatal("a failed SaveOrderTracker must set the trackerPersistFail block")
@@ -162,7 +163,7 @@ func TestTrackerPersistBlockSurvivesRestartAndOnlyClearsExplicitly(t *testing.T)
 	if res2.Executed {
 		t.Fatal("tracker_persist_failed must block further entries")
 	}
-	if len(br.Orders) != 1 {
+	if len(br.Orders) != 0 {
 		t.Fatalf("blocked entry must not reach the broker, got %+v", br.Orders)
 	}
 

@@ -779,10 +779,11 @@ var submitRetryStep = 750 * time.Millisecond
 // started — the broker is not left mid-request past the close, and the
 // operator is told why via execution_deadline_exceeded instead of a silent
 // stop. See P1-1 in AUTOTRADE_ROADMAP.md.
-func (e *Engine) placeMarket(w execWindow, symbol, side string, qty float64, cfg PlaceMarketCfg, br Broker) (OrderResult, error) {
+func (e *Engine) placeMarket(w execWindow, symbol, side string, qty float64, cfg PlaceMarketCfg, br Broker, meta orderMeta) (OrderResult, error) {
 	var res OrderResult
 	var err error
 	var lastDur time.Duration
+	lastID := ""
 	for attempt := 1; attempt <= submitAttempts; attempt++ {
 		if e.deadlineExceeded(w, lastDur) {
 			return e.abortPlaceForDeadline(symbol, side, qty, attempt)
@@ -800,6 +801,14 @@ func (e *Engine) placeMarket(w execWindow, symbol, side string, qty float64, cfg
 		if try.ClientOrderID == "" || attempt > 1 {
 			try.ClientOrderID = webull.NewClientOrderID()
 		}
+		// Намерение сохраняется ДО сети. Раньше трекер появлялся только
+		// после возврата placeMarket: авария между принятием заявки брокером
+		// и этой записью не оставляла ничего, что ResumeTrackers мог бы
+		// разрешить запросом статуса (CORE-08).
+		if err := e.recordOrderIntent(try.ClientOrderID, symbol, side, qty, meta); err != nil {
+			return e.abortPlaceForLostIntent(symbol, side, qty, meta.Broker, err)
+		}
+		lastID = try.ClientOrderID
 		attemptCtx, cancel := e.attemptContext(w)
 		start := e.now()
 		res, err = e.placeMarketOnce(attemptCtx, symbol, side, qty, try, br)
@@ -848,6 +857,10 @@ func (e *Engine) placeMarket(w execWindow, symbol, side string, qty float64, cfg
 				if res.Error == "" {
 					res.Error = "order " + st + " by broker"
 				}
+				// Заявка дошла до брокера и там завершилась: намерение
+				// становится этим терминальным статусом, а не висит.
+				// stampTrackerStatus сам пишет в журнал, если запись не удалась.
+				e.stampTrackerStatus(try.ClientOrderID, st)
 				return res, nil
 			}
 			e.logAuto("order_submit_landed_despite_error", "", map[string]any{
@@ -872,13 +885,99 @@ func (e *Engine) placeMarket(w execWindow, symbol, side string, qty float64, cfg
 		if attempt == submitAttempts {
 			break
 		}
+		// Эта попытка точно не дошла: снимаем её намерение, чтобы оно не
+		// осталось висеть как незавершённая заявка (CORE-08).
+		e.dropOrderIntent(try.ClientOrderID)
 		e.logAuto("order_submit_retry", "", map[string]any{
 			"symbol": symbol, "side": side, "attempt": attempt,
 			"error": errText(err, res.Error),
 		})
 		e.sleep(submitRetryStep)
 	}
+	if !res.Submitted && !res.Ambiguous {
+		// Последняя попытка тоже не дошла — намерение снимается.
+		e.dropOrderIntent(lastID)
+	}
 	return res, err
+}
+
+// recordOrderIntent writes the order down before it is sent. A crash between
+// the broker accepting the order and startTracking used to leave nothing for
+// ResumeTrackers to resolve, so the position existed with no local trace and
+// the next cycle could buy again (CORE-08). The row starts as "submitting",
+// which ListPendingTrackers treats as in flight: on restart it is polled and
+// the broker's own answer decides what it was.
+//
+// The write failing is a refusal to send: an order with no local record is
+// exactly what this prevents.
+func (e *Engine) recordOrderIntent(clientOrderID, symbol, side string, qty float64, meta orderMeta) error {
+	if e == nil || e.DB == nil || clientOrderID == "" {
+		return nil
+	}
+	action := meta.Action
+	if action == "" {
+		if side == "SELL" {
+			action = "exit"
+		} else {
+			action = "entry"
+		}
+	}
+	broker := meta.Broker
+	if broker == "" {
+		broker = "webull"
+	}
+	dateKey := meta.DateKey
+	if dateKey == "" {
+		dateKey = tradingdate.TodayNYSE(e.now())
+	}
+	rec := map[string]any{
+		"clientOrderId": clientOrderID, "symbol": symbol, "action": action,
+		"status": "submitting", "quantity": qty, "source": meta.Source,
+		"dateKey": dateKey, "broker": broker,
+		"startedAt": e.now().UTC().Format(time.RFC3339Nano),
+	}
+	// SQLite здесь однопоточная и занятая запись — обычное дело; отказ от
+	// заявки из-за мгновенной блокировки был бы дороже самой заявки.
+	var err error
+	for attempt := 0; attempt < 3; attempt++ {
+		if err = e.DB.SaveOrderTracker(rec); err == nil {
+			return nil
+		}
+		e.sleep(intentRetryStep)
+	}
+	return err
+}
+
+// intentRetryStep spaces the retries of the pre-send intent write.
+var intentRetryStep = 50 * time.Millisecond
+
+// dropOrderIntent retires the intent of an attempt the broker demonstrably
+// never received, so it does not linger as an unfinished order and block the
+// next entry.
+func (e *Engine) dropOrderIntent(clientOrderID string) {
+	if e == nil || e.DB == nil || clientOrderID == "" {
+		return
+	}
+	e.stampTrackerStatus(clientOrderID, "terminal_absent")
+}
+
+// abortPlaceForLostIntent refuses to send when the intent could not be
+// persisted: an order the process cannot remember is the case every guard
+// downstream depends on.
+func (e *Engine) abortPlaceForLostIntent(symbol, side string, qty float64, broker string, cause error) (OrderResult, error) {
+	e.logAuto("order_intent_persist_failed", "", map[string]any{
+		"symbol": symbol, "side": side, "quantity": qty, "broker": broker, "error": cause.Error(),
+	})
+	// Тот же предохранитель, что и у сорвавшейся записи трекера: дальнейшие
+	// входы у этого брокера останавливаются до явного разбора оператором.
+	e.raiseTrackerPersistBlock(broker)
+	_ = e.Send(e.chat(), fmt.Sprintf(
+		"<b>Заявка не отправлена</b>\n%s • %s • %v шт.\nНе удалось сохранить намерение в журнал, отправка отменена.",
+		symbol, side, qty))
+	return OrderResult{
+		Submitted: false, Symbol: symbol, Side: side, Quantity: qty,
+		Error: "order_intent_persist_failed",
+	}, cause
 }
 
 // abortPlaceForCancel stops placeMarket when the caller's context was already
@@ -1509,11 +1608,12 @@ func (e *Engine) manualOrder(br Broker, brokerName, symbol, side string, qty flo
 		e.mu.Unlock()
 	}()
 
-	res, err := e.placeMarket(backgroundWindow(), symbol, side, qty, PlaceMarketCfg{}, br)
-	e.startTracking(res, orderMeta{
+	meta := orderMeta{
 		Source: source, Symbol: symbol, Action: action, Quantity: qty,
 		Broker: brokerName, DateKey: tradingdate.TodayNYSE(e.now()),
-	})
+	}
+	res, err := e.placeMarket(backgroundWindow(), symbol, side, qty, PlaceMarketCfg{}, br, meta)
+	e.startTracking(res, meta)
 	return res, err
 }
 

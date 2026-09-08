@@ -55,7 +55,7 @@ func TestPlaceMarketDoesNotReportRejectedOrderAsSubmitted(t *testing.T) {
 			bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
 			_, e, _ := testEngine(t, bars)
 			br := &rejectingBroker{status: status}
-			res, err := e.placeMarket(backgroundWindow(), "AAPL", "BUY", 1, PlaceMarketCfg{}, br)
+			res, err := e.placeMarket(backgroundWindow(), "AAPL", "BUY", 1, PlaceMarketCfg{}, br, orderMeta{})
 			if err != nil {
 				t.Fatalf("a broker rejection is not a transport error: %v", err)
 			}
@@ -77,10 +77,23 @@ func TestPlaceMarketDoesNotReportRejectedOrderAsSubmitted(t *testing.T) {
 			if !hasAutotradeLog(t, e, "order_rejected_by_broker") {
 				t.Fatal("the rejection must be logged as such")
 			}
-			// The order never went out, so nothing may be tracked for it.
+			// Намерение записывается до отправки (CORE-08), поэтому строка
+			// заявки существует — но она обязана быть терминальной: ничего не
+			// опрашивается и следующий вход не блокируется.
 			e.startTracking(res, orderMeta{Symbol: "AAPL", Quantity: 1})
-			if got := e.DB.GetOrderTracker(fmt.Sprint(res.ClientOrderID)); got != nil {
-				t.Fatalf("a rejected order must not start a tracker: %v", got)
+			got := e.DB.GetOrderTracker(fmt.Sprint(res.ClientOrderID))
+			if got == nil {
+				t.Fatal("the pre-send intent must survive as an audit trail")
+			}
+			if st := fmt.Sprint(got["status"]); !IsFinalOrderStatus(st) {
+				t.Fatalf("a rejected order must leave a terminal tracker, got %q", st)
+			}
+			pending, err := e.DB.ListPendingTrackers()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(pending) != 0 {
+				t.Fatalf("a rejected order must not stay pending: %+v", pending)
 			}
 		})
 	}
