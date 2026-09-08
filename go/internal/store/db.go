@@ -263,6 +263,11 @@ func (d *DB) initSchema() error {
             updated_at      TEXT
         );
         CREATE INDEX IF NOT EXISTS idx_order_trackers_pending ON order_trackers(symbol, action, status);
+        CREATE TABLE IF NOT EXISTS robinhood_order_refs (
+            ref_id     TEXT PRIMARY KEY,
+            order_id   TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );
         CREATE TABLE IF NOT EXISTS aggregate_send_state (
             date_key TEXT NOT NULL,
             chat_id  TEXT NOT NULL DEFAULT '',
@@ -622,6 +627,29 @@ func (d *DB) Counts() (datasets, ohlc int, err error) {
 func (d *DB) SessionGet(token string) (created, expires int64, err error) {
 	err = d.SQL.QueryRow(`SELECT created_at, expires_at FROM sessions WHERE token = ?`, token).Scan(&created, &expires)
 	return created, expires, err
+}
+
+// SaveRobinhoodOrderRef remembers which order id Robinhood gave our ref_id.
+// Robinhood's order listing carries no ref_id at all, so without this mapping
+// an order can never be looked up again by the id we generated.
+func (d *DB) SaveRobinhoodOrderRef(refID, orderID, createdAt string) error {
+	if refID == "" || orderID == "" {
+		return nil
+	}
+	_, err := d.SQL.Exec(`INSERT OR REPLACE INTO robinhood_order_refs (ref_id, order_id, created_at) VALUES (?, ?, ?)`, refID, orderID, createdAt)
+	return err
+}
+
+// RobinhoodOrderID returns the broker order id stored for our ref, or "".
+func (d *DB) RobinhoodOrderID(refID string) string {
+	if refID == "" {
+		return ""
+	}
+	var id string
+	if err := d.SQL.QueryRow(`SELECT order_id FROM robinhood_order_refs WHERE ref_id = ?`, refID).Scan(&id); err != nil {
+		return ""
+	}
+	return id
 }
 
 func (d *DB) SessionSet(token string, created, expires int64) error {

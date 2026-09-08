@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -140,6 +141,11 @@ func (b *RobinhoodBroker) PlaceMarketCfg(symbol, side string, qty float64, cfg P
 			Error:     "place_equity_order response did not contain a recognizable order",
 		}, nil
 	}
+	// Robinhood's order listing has no ref_id field, so the id we generated
+	// cannot find the order again: every later poll answered
+	// ErrOrderUnavailable and the tracker sat in execution_unknown alerting on
+	// every cycle. Remember the broker's own order id while we still have it.
+	b.rememberOrderID(ref, detail)
 	status := NormalizeOrderStatus(robinhoodOrderStatus(detail))
 	if status == "rejected" || status == "cancelled" {
 		return OrderResult{
@@ -244,6 +250,30 @@ func (b *RobinhoodBroker) PositionsCtx(ctx context.Context) ([]any, error) {
 	return out, nil
 }
 
+// rememberOrderID stores the order id Robinhood assigned to our ref_id, taken
+// from the place_equity_order response.
+func (b *RobinhoodBroker) rememberOrderID(ref string, detail map[string]any) {
+	if b == nil || b.Svc == nil || b.Svc.DB == nil || detail == nil {
+		return
+	}
+	id := strings.TrimSpace(fmt.Sprint(first(detail, "id", "order_id")))
+	if id == "" || id == "<nil>" || id == ref {
+		return
+	}
+	if err := b.Svc.DB.SaveRobinhoodOrderRef(ref, id, time.Now().UTC().Format(time.RFC3339)); err != nil {
+		// Losing this mapping means the order can never be polled again by our
+		// own id, so it must not disappear silently.
+		_ = b.Svc.DB.AppendAutotradeLog("brokerRaw event=robinhood_order_ref_save_failed refId=" + ref + " orderId=" + id + " error=" + err.Error())
+	}
+}
+
+func (b *RobinhoodBroker) brokerOrderID(ref string) string {
+	if b == nil || b.Svc == nil || b.Svc.DB == nil {
+		return ""
+	}
+	return b.Svc.DB.RobinhoodOrderID(ref)
+}
+
 func (b *RobinhoodBroker) OrderDetail(clientOrderID string) (map[string]any, error) {
 	return b.OrderDetailCtx(context.Background(), clientOrderID)
 }
@@ -263,6 +293,13 @@ func (b *RobinhoodBroker) OrderDetailCtx(ctx context.Context, clientOrderID stri
 	}
 	want := asUUID(clientOrderID)
 	found := findOrder(root, want)
+	if found == nil {
+		// Listing rows are keyed by Robinhood's own order id; ours only exists
+		// in the place response, which is where rememberOrderID stored it.
+		if brokerID := b.brokerOrderID(want); brokerID != "" {
+			found = findOrder(root, brokerID)
+		}
+	}
 	if found == nil {
 		return nil, fmt.Errorf("%w: %s", ErrOrderUnavailable, want)
 	}

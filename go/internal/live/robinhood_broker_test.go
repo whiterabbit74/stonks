@@ -3,6 +3,7 @@ package live
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -682,5 +683,77 @@ func TestReviewOrderIsCalledWithoutRefID(t *testing.T) {
 	}
 	if reviewArgs["symbol"] != "AAL" || reviewArgs["quantity"] == nil {
 		t.Errorf("review args = %v", reviewArgs)
+	}
+}
+
+// Листинг Robinhood не содержит ref_id вообще: строки ключуются собственным id
+// брокера. Поиск по нашему id не находил ничего, трекер навсегда оставался в
+// execution_unknown и слал уведомления на каждом опросе.
+func TestOrderDetailFindsOrderByBrokerOrderID(t *testing.T) {
+	const rhID = "6aa05397-1161-4fd7-97cd-79c138bc9a36"
+	var placedRef string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		var msg map[string]any
+		_ = json.Unmarshal(b, &msg)
+		switch method, _ := msg["method"].(string); method {
+		case "initialize":
+			w.Header().Set("Mcp-Session-Id", "sess-1")
+			_ = json.NewEncoder(w).Encode(map[string]any{"jsonrpc": "2.0", "id": msg["id"], "result": map[string]any{"protocolVersion": "2025-06-18"}})
+		case "notifications/initialized":
+			w.WriteHeader(204)
+		case "tools/call":
+			params, _ := msg["params"].(map[string]any)
+			name, _ := params["name"].(string)
+			args, _ := params["arguments"].(map[string]any)
+			text := "{}"
+			switch name {
+			case "get_accounts":
+				text = `{"accounts":[{"account_number":"RH1","agentic_allowed":true}]}`
+			case "place_equity_order":
+				placedRef, _ = args["ref_id"].(string)
+				// Как отвечает боевой Robinhood: свой id, нашего ref_id нет.
+				text = `{"id":"` + rhID + `","state":"queued","symbol":"AAL","quantity":"1.000000","side":"buy"}`
+			case "get_equity_orders":
+				text = `{"results":[{"id":"` + rhID + `","state":"filled","symbol":"AAL","quantity":"1.000000","cumulative_quantity":"1.000000","side":"buy"}]}`
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"jsonrpc": "2.0", "id": msg["id"], "result": map[string]any{
+				"content": []any{map[string]any{"type": "text", "text": text}},
+			}})
+		default:
+			w.WriteHeader(400)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	dir := t.TempDir()
+	db, err := store.Open(filepath.Join(dir, "rh.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	svc := &robinhood.Service{DB: db, HTTP: srv.Client()}
+	svc.MCP = &robinhood.MCP{HTTP: srv.Client(), Endpoint: srv.URL, Token: func() (string, error) { return "tok", nil }}
+	b := NewRobinhoodBroker(svc)
+
+	res, err := b.PlaceMarket("AAL", "BUY", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.Submitted || res.ClientOrderID == "" {
+		t.Fatalf("place result %+v", res)
+	}
+	if placedRef == "" {
+		t.Fatal("place must send ref_id")
+	}
+	detail, err := b.OrderDetail(res.ClientOrderID)
+	if err != nil {
+		t.Fatalf("order must be findable after placement: %v", err)
+	}
+	if fmt.Sprint(detail["id"]) != rhID {
+		t.Fatalf("detail %+v", detail)
+	}
+	if NormalizeOrderStatus(fmt.Sprint(detail["status"])) != "filled" {
+		t.Fatalf("status %v", detail["status"])
 	}
 }
