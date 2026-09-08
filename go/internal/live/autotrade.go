@@ -321,6 +321,15 @@ func (e *Engine) EvaluateWindow(w execWindow) EvalResult {
 		}
 		addQuote(fmt.Sprint(row["symbol"]))
 	}
+	// Котировки нужны каждому брокеру, а не только витрине: позицию, купленную
+	// руками у второго брокера в неотслеживаемом тикере, иначе нечем оценить —
+	// выход упирается в open_position_quote_unavailable навсегда.
+	byBroker, _ := e.heldSymbolsByBrokerWindow(w)
+	for _, one := range byBroker {
+		for sym := range one {
+			addQuote(sym)
+		}
+	}
 	e.prefetchQuotes(quoteSymbols, providerChain)
 	var quotes []map[string]any
 	for _, sym := range quoteSymbols {
@@ -488,10 +497,16 @@ func (e *Engine) booksFor(name string, br Broker, rows []map[string]any, w execW
 // heldSymbolsByBroker reads live positions from every attached broker
 // (BrokerNamed / Brokers), not only defaultBroker.
 func (e *Engine) heldSymbolsByBroker() (map[string]map[string]float64, error) {
+	return e.heldSymbolsByBrokerWindow(backgroundWindow())
+}
+
+// heldSymbolsByBrokerWindow is heldSymbolsByBroker bounded by w, so the T-1
+// path does not read positions without the close-of-session budget.
+func (e *Engine) heldSymbolsByBrokerWindow(w execWindow) (map[string]map[string]float64, error) {
 	out := map[string]map[string]float64{}
 	var firstErr error
 	for _, nb := range e.brokerSnapshot() {
-		held, err := e.heldSymbolsOn(nb.br, backgroundWindow())
+		held, err := e.heldSymbolsOn(nb.br, w)
 		if err != nil {
 			if firstErr == nil {
 				firstErr = err
