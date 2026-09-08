@@ -80,6 +80,63 @@ type QuotePayload struct {
 	Range   map[string]any `json:"range"`
 	Quote   map[string]any `json:"quote"`
 	DateKey string         `json:"dateKey"`
+	// AsOf is the moment the provider says this quote was traded/updated, not
+	// the moment we asked. DateKey is the latter and every real-time provider
+	// stamps it with today, so it can never tell a live quote from a frozen
+	// one — that is what AsOf is for (CORE-06). Zero means the provider gave
+	// no timestamp; freshness then cannot be judged and the quote is used.
+	AsOf time.Time `json:"asOf,omitempty"`
+}
+
+// quoteAsOf reads the provider's own trade/update timestamp out of a row.
+// Providers spell it differently and in different units, so only values that
+// land in a plausible range are accepted: a wrong unit must degrade to
+// "unknown", never to a false staleness verdict that would stop trading.
+func quoteAsOf(row map[string]any, keys ...string) time.Time {
+	for _, k := range keys {
+		raw, ok := row[k]
+		if !ok || raw == nil {
+			continue
+		}
+		if s, ok := raw.(string); ok {
+			s = strings.TrimSpace(s)
+			if s == "" {
+				continue
+			}
+			for _, layout := range []string{time.RFC3339Nano, time.RFC3339, "2006-01-02T15:04:05Z0700", "2006-01-02 15:04:05"} {
+				if t, err := time.Parse(layout, s); err == nil {
+					return t.UTC()
+				}
+			}
+			if f, err := strconv.ParseFloat(s, 64); err == nil {
+				if t := epochToTime(f); !t.IsZero() {
+					return t
+				}
+			}
+			continue
+		}
+		if t := epochToTime(num(raw)); !t.IsZero() {
+			return t
+		}
+	}
+	return time.Time{}
+}
+
+// epochToTime accepts seconds, milliseconds, microseconds or nanoseconds and
+// returns zero for anything that does not land within a few years of now.
+func epochToTime(v float64) time.Time {
+	if !(v > 0) {
+		return time.Time{}
+	}
+	now := time.Now()
+	for _, div := range []float64{1, 1e3, 1e6, 1e9} {
+		secs := v / div
+		t := time.Unix(int64(secs), int64((secs-float64(int64(secs)))*1e9)).UTC()
+		if d := now.Sub(t); d > -48*time.Hour && d < 365*24*time.Hour {
+			return t
+		}
+	}
+	return time.Time{}
 }
 
 type Historical struct {
@@ -424,6 +481,8 @@ func (c *Client) finnhubQuote(symbol string) (QuotePayload, error) {
 		Range:   map[string]any{"open": open, "high": high, "low": low},
 		Quote:   map[string]any{"open": open, "high": high, "low": low, "current": current, "prevClose": pc},
 		DateKey: today,
+		// Finnhub returns `t`: the unix second of the last trade.
+		AsOf: quoteAsOf(q, "t"),
 	}, nil
 }
 
@@ -605,6 +664,7 @@ func snapshotPayload(row map[string]any) QuotePayload {
 		Range:   map[string]any{"open": open, "high": high, "low": low},
 		Quote:   map[string]any{"open": open, "high": high, "low": low, "current": current, "prevClose": prevClose},
 		DateKey: today,
+		AsOf:    quoteAsOf(row, "tradeStamp", "tradeTime", "timestamp", "ts", "updateTime", "update_time", "quoteTime"),
 	}
 }
 

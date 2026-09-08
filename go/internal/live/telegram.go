@@ -1057,6 +1057,15 @@ func (e *Engine) fetchLiveQuote(symbol string, chain []string) (providers.QuoteP
 					e.logQuoteProblem(symbol, p, i, lastErr.Error())
 					break
 				}
+				if why := e.quoteStaleness(q); why != "" {
+					// Свежесть ответа провайдера — не свежесть котировки:
+					// зависший снимок с правильными числами становился
+					// сегодняшним сигналом (CORE-06). Идём к следующему
+					// провайдеру цепочки.
+					lastErr = fmt.Errorf("%s: %s", p, why)
+					e.logQuoteProblem(symbol, p, i, lastErr.Error())
+					break
+				}
 				if i > 0 {
 					e.logAuto("quote_provider_fallback_used", "", map[string]any{
 						"symbol": symbol, "provider": p, "position": i,
@@ -1075,6 +1084,31 @@ func (e *Engine) fetchLiveQuote(symbol string, chain []string) (providers.QuoteP
 		lastErr = fmt.Errorf("quote unavailable for %s", symbol)
 	}
 	return providers.QuotePayload{}, "", lastErr
+}
+
+// MaxQuoteAge is how old a provider's own trade timestamp may be before the
+// quote stops counting as a live reading. The strategy trades the largest US
+// names in the regular session, where a real quote is seconds old; anything
+// this far behind is a frozen feed, not a slow one.
+var MaxQuoteAge = 10 * time.Minute
+
+// quoteStaleness explains why this quote must not decide a trade, or "" when
+// it may. A provider that gives no timestamp cannot be judged and is used: a
+// wrong staleness verdict would stop trading entirely, which is worse than the
+// gap it would close.
+func (e *Engine) quoteStaleness(q providers.QuotePayload) string {
+	if q.AsOf.IsZero() {
+		return ""
+	}
+	now := e.now()
+	if session := tradingdate.TodayNYSE(q.AsOf); session != tradingdate.TodayNYSE(now) {
+		return "quote is from session " + session
+	}
+	age := now.Sub(q.AsOf)
+	if age > MaxQuoteAge {
+		return fmt.Sprintf("quote is %s old", age.Truncate(time.Second))
+	}
+	return ""
 }
 
 // logQuoteProblem records why a provider was skipped. Without it, the reason a

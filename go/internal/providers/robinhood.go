@@ -66,6 +66,7 @@ func (c *Client) robinhoodQuote(symbol string) (QuotePayload, error) {
 		Range:   map[string]any{"open": open, "high": high, "low": low},
 		Quote:   map[string]any{"open": open, "high": high, "low": low, "current": cur, "prevClose": prev},
 		DateKey: tradingdate.TodayNYSE(time.Now()),
+		AsOf:    quoteAsOf(q, "updated_at", "last_trade_timestamp", "timestamp"),
 	}, nil
 }
 
