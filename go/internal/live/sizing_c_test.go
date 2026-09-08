@@ -50,3 +50,33 @@ func TestSizingVariantCPositionsFailClosed(t *testing.T) {
 		t.Fatal("failed Positions() must refuse")
 	}
 }
+
+// AUD-082: same-day flip — the proceeds of the sale just made sit in unsettled
+// cash, so the leftover settled balance must not collapse the entry.
+func TestSizingVariantCUnsettledProceedsAreOwnCash(t *testing.T) {
+	payload := map[string]any{"data": map[string]any{"account_currency_assets": []any{map[string]any{
+		"currency": "USD", "cash_balance": 5.0, "unsettled_cash": 11995.0, "day_buying_power": 12000.0,
+	}}}}
+	funds, _, base, err := resolveEntryBalanceSizing(payload, map[string]any{"entryCapitalMode": "cash_100"}, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if base != 12000 || funds != 12000 {
+		t.Fatalf("base=%v funds=%v", base, funds)
+	}
+}
+
+// A plain cash account cannot trade unsettled funds yet; buying power says so
+// and clamps the entry.
+func TestSizingVariantCUnsettledClampedByBuyingPower(t *testing.T) {
+	payload := map[string]any{"data": map[string]any{"account_currency_assets": []any{map[string]any{
+		"currency": "USD", "cash_balance": 5.0, "unsettled_cash": 11995.0, "day_buying_power": 5.0,
+	}}}}
+	funds, _, _, err := resolveEntryBalanceSizing(payload, map[string]any{"entryCapitalMode": "cash_100"}, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if funds != 5 {
+		t.Fatalf("funds=%v", funds)
+	}
+}

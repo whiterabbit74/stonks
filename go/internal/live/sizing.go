@@ -199,18 +199,27 @@ func extractEntryFundsFromBalance(root map[string]any) float64 {
 	return firstPositive(cands...)
 }
 
+// extractCashBalance is the account's own money: settled cash plus the
+// unsettled proceeds of its own sales (T+1 clearing). Unsettled cash is not
+// leverage, so a same-day flip sizes from the sale it just made instead of
+// collapsing to whatever small settled remainder was left over; buying power
+// stays out of the base (see errBuyingPowerNotABase). The buying-power clamp
+// in resolveEntryBalanceSizing keeps this honest on a plain cash account,
+// where unsettled funds are not tradeable yet.
 func extractCashBalance(root map[string]any) float64 {
 	if root == nil {
 		return 0
 	}
 	asset := preferredAsset(root)
 	var cands []any
+	unsettled := []any{root["unsettled_cash"], root["unsettled_funds"]}
 	if asset != nil {
 		cands = []any{asset["cash_balance"], root["total_cash_balance"], root["cash_balance"]}
+		unsettled = append([]any{asset["unsettled_cash"], asset["unsettled_funds"]}, unsettled...)
 	} else {
 		cands = []any{root["total_cash_balance"], root["cash_balance"]}
 	}
-	return firstPositive(cands...)
+	return firstPositive(cands...) + firstPositive(unsettled...)
 }
 
 func extractNetLiquidation(root map[string]any) float64 {

@@ -199,10 +199,12 @@ func (b *RobinhoodBroker) AccountCtx(ctx context.Context) (map[string]any, error
 	}
 	p := portfolioBody(mapFromJSON(robinhood.ToolContentJSON(raw)))
 	cash := money(first(p, "cash", "cash_balance", "settled_cash", "uninvested_cash"))
+	unsettled := money(first(p, "unsettled_funds", "unsettled_cash"))
 	bp := money(first(p, "buying_power", "cash_buying_power"))
 	nlv := money(first(p, "total_value", "equity", "market_value", "portfolio_value"))
 	return map[string]any{"data": map[string]any{"account_currency_assets": []any{map[string]any{
-		"currency": "USD", "cash_balance": cash, "day_buying_power": bp, "net_liquidation_value": nlv,
+		"currency": "USD", "cash_balance": cash, "unsettled_cash": unsettled,
+		"day_buying_power": bp, "net_liquidation_value": nlv,
 	}}}}, nil
 }
 
