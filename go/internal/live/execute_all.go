@@ -142,7 +142,7 @@ func (e *Engine) executeOneBroker(w execWindow, ev EvalResult, trigger, corr, na
 	// A consistency mismatch holds back this broker's new entries only. The
 	// exit path is untouched: an open position is closed on its signal whatever
 	// the journal disagrees about.
-	if action == "entry" && w.entryBlocked[name] {
+	if action == "entry" && w.entryBlocked[name] != "" {
 		// The pre-flight check names its own reason (open orders unreadable);
 		// everything else here is a journal/broker mismatch.
 		reason := w.skipReasons[name]

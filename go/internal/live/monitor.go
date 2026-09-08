@@ -451,14 +451,23 @@ func BlockingMismatchFor(snap map[string]any, broker string) map[string]any {
 // blocks only that one; an issue about the monitor journal alone names none
 // and holds back every broker's entries. Exits are never gated by this — an
 // open position is closed on its exit signal regardless.
-func (e *Engine) entryBlockedBrokers(snap map[string]any) map[string]bool {
-	out := map[string]bool{}
+func (e *Engine) entryBlockedBrokers(snap map[string]any) map[string]string {
+	out := map[string]string{}
 	for _, nb := range e.brokerSnapshot() {
 		if iss := BlockingMismatchFor(snap, nb.name); iss != nil {
-			out[nb.name] = true
+			out[nb.name] = fmt.Sprint(iss["code"])
 		}
 	}
 	return out
+}
+
+// clearedByFlatExit lists the block codes a broker's own confirmed exit
+// resolves. Both mean "the broker holds shares the journal does not account
+// for"; once this cycle's exit settled that broker flat — journal closed and
+// its position feed empty — the reason is gone.
+var clearedByFlatExit = map[string]struct{}{
+	"live_broker_position_without_journal": {},
+	"live_broker_position_symbol_mismatch": {},
 }
 
 func (e *Engine) Reconcile(apply bool) map[string]any {

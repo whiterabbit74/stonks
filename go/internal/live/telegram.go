@@ -63,6 +63,16 @@ func (e *Engine) runT1Orders(w execWindow, today string) (exitRes, entryRes Eval
 		_ = e.DB.AppendAutotradeLog("t1_exit_failed")
 		return exitRes, entryRes, waitFill
 	}
+	// Снимок несогласованности снят в начале минуты. Брокер, которому вход
+	// закрыла чужая позиция без журнала, к этому моменту уже подтверждённо
+	// плоский — своим же выходом, — и старый флаг съел бы законный повторный
+	// вход (AUD-084). Пересчёт без новых чтений: причина адресная.
+	for _, name := range ready {
+		if _, gone := clearedByFlatExit[w.entryBlocked[name]]; gone {
+			delete(w.entryBlocked, name)
+			_ = e.DB.AppendAutotradeLog("t1_entry_unblocked_after_exit " + name)
+		}
+	}
 	entryRes = e.executeWindowFor(w, "telegram_t1", ready)
 	return exitRes, entryRes, waitFill
 }
@@ -344,7 +354,7 @@ func (e *Engine) Aggregate(minutesUntilClose int, opts AggregateOpts) (SimulateR
 		busy, entryOnly, skipReasons := e.t1BrokerReconcile(w)
 		w.busySymbols = busy
 		for name := range entryOnly {
-			w.entryBlocked[name] = true
+			w.entryBlocked[name] = "preflight"
 		}
 		w.skipReasons = skipReasons
 		_ = e.DB.AppendAutotradeLog("t1_execution_started")

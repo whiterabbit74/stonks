@@ -30,10 +30,12 @@ type execWindow struct {
 	ctx      context.Context
 	deadline time.Time
 	// entryBlocked names the brokers that may still exit but must not open
-	// anything new (a consistency mismatch, or open orders that could not be
-	// listed). Per broker on purpose: Webull's state must never decide
-	// whether Robinhood exits, and vice versa.
-	entryBlocked map[string]bool
+	// anything new, mapped to the issue code that blocks them (a consistency
+	// mismatch, or open orders that could not be listed). Per broker on
+	// purpose: Webull's state must never decide whether Robinhood exits, and
+	// vice versa. The code is kept so a reason this cycle's own exit resolves
+	// can be dropped before the entry pass (AUD-084).
+	entryBlocked map[string]string
 	// busySymbols names, per broker, the tickers that already have a working
 	// order there. A working order can only double an order in the same
 	// ticker, so it holds back that ticker and nothing else: a stray order on
