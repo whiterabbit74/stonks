@@ -48,6 +48,27 @@ type Client struct {
 	// read it per request: copying it into AccessToken would both go stale and
 	// race with the goroutine doing the copying.
 	Token func() string
+	// instrumentIDs caches resolved instrument ids. A US stock's id is static,
+	// while the lookup burned a rate-limiter slot immediately before every
+	// MARKET order — exit, entry, retry (AUD-086).
+	// ponytail: no TTL; a ticker re-listed under a new id needs a restart.
+	instMu        sync.Mutex
+	instrumentIDs map[string]string
+}
+
+func (c *Client) cachedInstrumentID(symbol string) string {
+	c.instMu.Lock()
+	defer c.instMu.Unlock()
+	return c.instrumentIDs[symbol]
+}
+
+func (c *Client) cacheInstrumentID(symbol, id string) {
+	c.instMu.Lock()
+	defer c.instMu.Unlock()
+	if c.instrumentIDs == nil {
+		c.instrumentIDs = map[string]string{}
+	}
+	c.instrumentIDs[symbol] = id
 }
 
 func (c *Client) accessToken() string {
@@ -516,6 +537,10 @@ func (c *Client) Instruments(symbol string) (*Response, error) {
 }
 
 func (c *Client) ResolveInstrumentID(symbol string) (string, error) {
+	want := strings.ToUpper(strings.TrimSpace(symbol))
+	if id := c.cachedInstrumentID(want); id != "" {
+		return id, nil
+	}
 	resp, err := c.Instruments(symbol)
 	if err != nil {
 		return "", err
@@ -526,7 +551,6 @@ func (c *Client) ResolveInstrumentID(symbol string) (string, error) {
 	// ticker is used only when that ticker is the one asked for. Rows that
 	// name none stay usable — the id is all this call needs from them.
 	rows := flatten(resp.Data)
-	want := strings.ToUpper(strings.TrimSpace(symbol))
 	unnamed := ""
 	for _, row := range rows {
 		m, ok := row.(map[string]any)
@@ -542,6 +566,7 @@ func (c *Client) ResolveInstrumentID(symbol string) (string, error) {
 			continue
 		}
 		if sym == want {
+			c.cacheInstrumentID(want, id)
 			return id, nil
 		}
 		if unnamed == "" {
@@ -549,6 +574,8 @@ func (c *Client) ResolveInstrumentID(symbol string) (string, error) {
 		}
 	}
 	if unnamed != "" {
+		// A row that names no ticker is only as good as the request that asked
+		// for one symbol, so it answers this call but is not cached.
 		return unnamed, nil
 	}
 	return "", fmt.Errorf("Unable to resolve Webull instrument_id for %s", symbol)
