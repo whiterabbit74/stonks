@@ -38,6 +38,10 @@ type Client struct {
 	AppSecret   string
 	AccessToken string
 	AccountID   string
+	// initMu guards the lazy defaults below (Base/Host/HTTP/TradeHTTP). One
+	// Client is shared by concurrent callers — the quote prefetch fans out
+	// across symbols — and filling these in on first use was a data race.
+	initMu sync.Mutex
 	// Token, when set, is consulted on every request instead of AccessToken.
 	// The live token lives in SQLite and is replaced whenever the user renews
 	// it, so a client shared between the HTTP handlers and the scheduler must
@@ -151,6 +155,8 @@ func (c *Client) requestTrade(ctx context.Context, method, path string, query ma
 }
 
 func (c *Client) httpClient() *http.Client {
+	c.initMu.Lock()
+	defer c.initMu.Unlock()
 	if c.HTTP == nil {
 		c.HTTP = &http.Client{Timeout: 15 * time.Second}
 	}
@@ -158,10 +164,26 @@ func (c *Client) httpClient() *http.Client {
 }
 
 func (c *Client) tradeHTTPClient() *http.Client {
+	c.initMu.Lock()
+	defer c.initMu.Unlock()
 	if c.TradeHTTP == nil {
 		c.TradeHTTP = &http.Client{Timeout: TradeHTTPTimeout}
 	}
 	return c.TradeHTTP
+}
+
+// endpoint fills in the API defaults once, under the lock, and returns the
+// base URL and Host header this request must use.
+func (c *Client) endpoint() (base, host string) {
+	c.initMu.Lock()
+	defer c.initMu.Unlock()
+	if c.Base == "" {
+		c.Base = "https://api.webull.com"
+	}
+	if c.Host == "" {
+		c.Host = "api.webull.com"
+	}
+	return c.Base, c.Host
 }
 
 // MinRequestInterval is the smallest gap Webull tolerates between two calls on
@@ -251,12 +273,7 @@ func (c *Client) doOnce(ctx context.Context, httpClient *http.Client, method, pa
 	if err := awaitRequestSlot(ctx); err != nil {
 		return nil, err
 	}
-	if c.Base == "" {
-		c.Base = "https://api.webull.com"
-	}
-	if c.Host == "" {
-		c.Host = "api.webull.com"
-	}
+	base, host := c.endpoint()
 	var bodyString string
 	var bodyBytes []byte
 	if body != nil {
@@ -270,7 +287,7 @@ func (c *Client) doOnce(ctx context.Context, httpClient *http.Client, method, pa
 	ts := time.Now().UTC().Format("2006-01-02T15:04:05Z")
 	nonce := strings.ReplaceAll(uuid.NewString(), "-", "")
 	headersToSign := map[string]string{
-		"host":                  c.Host,
+		"host":                  host,
 		"x-app-key":             c.AppKey,
 		"x-signature-algorithm": "HMAC-SHA1",
 		"x-signature-nonce":     nonce,
@@ -284,7 +301,7 @@ func (c *Client) doOnce(ctx context.Context, httpClient *http.Client, method, pa
 			q.Set(k, v)
 		}
 	}
-	u := c.Base + path
+	u := base + path
 	if enc := q.Encode(); enc != "" {
 		u += "?" + enc
 	}
@@ -297,7 +314,7 @@ func (c *Client) doOnce(ctx context.Context, httpClient *http.Client, method, pa
 		return nil, err
 	}
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Host", c.Host)
+	req.Header.Set("Host", host)
 	req.Header.Set("x-version", "v2")
 	req.Header.Set("x-app-key", c.AppKey)
 	req.Header.Set("x-signature-algorithm", "HMAC-SHA1")

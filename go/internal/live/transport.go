@@ -131,6 +131,16 @@ type MemoryBroker struct {
 	// has an explicit row for that id. Models Robinhood list-based lookup.
 	ListingLag   bool
 	BeforeDetail func()
+	// OnPositions, when set, answers Positions() instead of Pos — a test can
+	// model a position feed that lags behind a fill.
+	OnPositions func() []any
+}
+
+// SetPos replaces the position book under the lock.
+func (m *MemoryBroker) SetPos(pos []any) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.Pos = pos
 }
 
 // SetFailPlace makes the next n placements fail; n <= 0 fails every placement.
@@ -276,9 +286,14 @@ func (m *MemoryBroker) Positions() ([]any, error) {
 		m.mu.Unlock()
 		return nil, err
 	}
+	on := m.OnPositions
+	pos := m.Pos
 	m.mu.Unlock()
-	if m.Pos != nil {
-		return m.Pos, nil
+	if on != nil {
+		return on(), nil
+	}
+	if pos != nil {
+		return pos, nil
 	}
 	return []any{}, nil
 }

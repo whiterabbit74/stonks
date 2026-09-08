@@ -54,6 +54,10 @@ func (e *Engine) runT1Orders(w execWindow, today string) (exitRes, entryRes Eval
 	// открытая у другого брокера, — не сорвавшийся выход этого (AUD-043).
 	brokers := exitingBrokers(exitRes)
 	if e.awaitFlatAfterExit(brokers) {
+		// Журнал закрыт — но лента позиций брокера ещё может отдавать
+		// проданные акции, и тогда второй проход продал бы их снова
+		// вместо входа (AUD-071).
+		e.awaitBrokerBooksFlat(w, brokers)
 		entryRes = e.executeWindow(w, "telegram_t1")
 		return exitRes, entryRes, false
 	}
@@ -68,6 +72,7 @@ func (e *Engine) runT1Orders(w execWindow, today string) (exitRes, entryRes Eval
 	if action == "exit" && exitRes.Executed {
 		brokers = exitingBrokers(exitRes)
 		if e.awaitFlatAfterExit(brokers) {
+			e.awaitBrokerBooksFlat(w, brokers)
 			entryRes = e.executeWindow(w, "telegram_t1")
 			return exitRes, entryRes, false
 		}

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"sync"
 	"time"
 
 	"mktorder.com/go/internal/store"
@@ -716,6 +717,48 @@ func firstNonEmpty(vals ...any) any {
 const exitFillWaitAttempts = 10
 
 var exitFillWaitStep = 500 * time.Millisecond
+
+// exitBookWaitAttempts bounds the wait for the broker's own position feed to
+// catch up with a filled exit. The journal closes the moment the fill is
+// confirmed, but /account/positions can still list the sold shares for a
+// second or two — and a stale book is read as a live position: booksForHeld
+// synthesises an open trade out of it and the re-entry pass sells the same
+// shares a second time, instead of opening the day's next position (AUD-071).
+const exitBookWaitAttempts = 6
+
+// awaitBrokerBooksFlat waits for each named broker's own position feed to stop
+// reporting the shares it just sold. Best effort: when the feed does not catch
+// up in the budget, the caller proceeds and the ordinary guards
+// (broker_position_exists) hold — no order is sent on a guess. Brokers are
+// polled concurrently, so Webull's lag never delays Robinhood.
+func (e *Engine) awaitBrokerBooksFlat(w execWindow, brokers []string) {
+	var wg sync.WaitGroup
+	for _, name := range brokers {
+		br := e.BrokerNamed(name)
+		if br == nil {
+			continue
+		}
+		wg.Add(1)
+		go func(name string, br Broker) {
+			defer wg.Done()
+			for attempt := 0; attempt < exitBookWaitAttempts; attempt++ {
+				held, err := e.heldSymbolsOn(br, w)
+				if err != nil || len(held) == 0 {
+					return
+				}
+				if e.deadlineExceeded(w, exitFillWaitStep) {
+					e.logAuto("exit_book_still_stale", "", map[string]any{
+						"broker": name, "reason": "deadline", "symbols": len(held),
+					})
+					return
+				}
+				e.sleep(exitFillWaitStep)
+			}
+			e.logAuto("exit_book_still_stale", "", map[string]any{"broker": name, "reason": "timeout"})
+		}(name, br)
+	}
+	wg.Wait()
+}
 
 // awaitFlatAfterExit polls the pending exit until the broker journal reports
 // no open trade. "Flat" is the same condition Evaluate uses to allow an entry,

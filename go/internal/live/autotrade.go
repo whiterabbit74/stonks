@@ -523,10 +523,47 @@ func (e *Engine) booksForHeld(name string, held map[string]float64, heldErr erro
 			syms = append(syms, sym)
 		}
 		sort.Strings(syms)
-		sym := syms[0]
-		open = map[string]any{"symbol": sym, "quantity": held[sym], "status": "open", "source": "live_broker", "broker": name}
+		today := tradingdate.TodayNYSE(e.now())
+		for _, sym := range syms {
+			// A ticker this broker already closed today is the position feed
+			// lagging the fill, not a live position: /account/positions keeps
+			// listing sold shares for a second or two. Selling out of that
+			// stale row sent a second MARKET SELL for shares that were already
+			// gone (AUD-071).
+			if closedTodayFor(rows, name, sym, today) {
+				continue
+			}
+			open = map[string]any{"symbol": sym, "quantity": held[sym], "status": "open", "source": "live_broker", "broker": name}
+			break
+		}
 	}
 	return open, held, heldErr
+}
+
+// closedTodayFor reports that this broker's journal already closed this symbol
+// today, which is what makes a still-listed broker position stale rather than
+// live.
+func closedTodayFor(rows []map[string]any, broker, symbol, today string) bool {
+	want := strings.ToLower(strings.TrimSpace(broker))
+	for _, t := range rows {
+		if fmt.Sprint(t["status"]) != "closed" {
+			continue
+		}
+		if store.SafeTicker(fmt.Sprint(t["symbol"])) != symbol {
+			continue
+		}
+		if tradingdate.DateKey(fmt.Sprint(t["exitDate"])) != today {
+			continue
+		}
+		got := strings.ToLower(strings.TrimSpace(fmt.Sprint(t["broker"])))
+		if got == "<nil>" {
+			got = ""
+		}
+		if got == want || (want == "webull" && got == "") {
+			return true
+		}
+	}
+	return false
 }
 
 // heldSymbolsByBroker reads live positions from every attached broker
