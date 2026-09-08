@@ -270,9 +270,6 @@ func (c *Client) doOnce(ctx context.Context, httpClient *http.Client, method, pa
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if err := awaitRequestSlot(ctx); err != nil {
-		return nil, err
-	}
 	base, host := c.endpoint()
 	var bodyString string
 	var bodyBytes []byte
@@ -330,6 +327,13 @@ func (c *Client) doOnce(ctx context.Context, httpClient *http.Client, method, pa
 	}
 	for k, v := range extraHeaders {
 		req.Header.Set(k, v)
+	}
+	// Слот берётся здесь, а не в начале функции: между выдачей слота и
+	// отправкой лежат кодирование тела, подпись и чтение токена, и запрос,
+	// задержавшийся на них, догонял следующий — фактический интервал
+	// оказывался меньше заявленного (CORE-05).
+	if err := awaitRequestSlot(ctx); err != nil {
+		return nil, err
 	}
 	resp, err := httpClient.Do(req)
 	if err != nil {

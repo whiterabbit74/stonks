@@ -59,12 +59,20 @@ type HTTPTelegram struct {
 	Client *http.Client
 }
 
+// TelegramTimeout bounds one notification send.
+var TelegramTimeout = 4 * time.Second
+
 func EnvTelegram() TelegramSender {
 	tok := os.Getenv("TELEGRAM_BOT_TOKEN")
 	if tok == "" {
 		return nil
 	}
-	return &HTTPTelegram{Token: tok, Client: &http.Client{Timeout: 15 * time.Second}}
+	// Уведомления уходят внутри закрывающей минуты — из finalizeTrackerStatus,
+	// который вызывается на пути ожидания исполнения выхода. Пятнадцать секунд
+	// на одно сообщение съедали бюджет самой сделки (CORE-07); Telegram
+	// отвечает за доли секунды, а потерянное уведомление дешевле потерянного
+	// повторного входа.
+	return &HTTPTelegram{Token: tok, Client: &http.Client{Timeout: TelegramTimeout}}
 }
 
 func (h *HTTPTelegram) Send(chatID, text string) error {

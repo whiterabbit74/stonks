@@ -970,12 +970,22 @@ func (e *Engine) prefetchBatch(symbols []string, chain []string) {
 	if !ok {
 		return
 	}
+	// Кэш общий на цепочку: символ, который уже дал первый провайдер, у
+	// следующих не спрашивается. Раньше опрашивался каждый провайдер цепочки
+	// целиком, и медленный резервный Webull задерживал торговлю при полностью
+	// готовых котировках первого (CORE-07).
+	covered := map[string]bool{}
 	for _, p := range chain {
 		var missing []string
 		for _, sym := range symbols {
+			if covered[sym] {
+				continue
+			}
 			if _, cached := e.cachedProviderQuote(sym, p); !cached {
 				missing = append(missing, sym)
+				continue
 			}
+			covered[sym] = true
 		}
 		if len(missing) < 2 {
 			continue
@@ -992,7 +1002,14 @@ func (e *Engine) prefetchBatch(symbols []string, chain []string) {
 				// has to try this provider properly, then the rest of the chain.
 				continue
 			}
+			if why := e.quoteStaleness(payload); why != "" {
+				// Устаревший снимок не кэшируем: пусть символ достанется
+				// следующему провайдеру (CORE-06).
+				e.logQuoteProblem(sym, p, 0, why)
+				continue
+			}
 			e.putProviderQuote(sym, p, payload)
+			covered[sym] = true
 		}
 	}
 }

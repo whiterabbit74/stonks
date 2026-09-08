@@ -79,3 +79,49 @@ func TestQuoteWithoutTimestampStillTrades(t *testing.T) {
 		t.Fatalf("an untimestamped quote must still trade: %+v", br.Orders)
 	}
 }
+
+// CORE-07: символ, который уже дал первый провайдер, у следующих в цепочке не
+// спрашивается — медленный резервный не должен задерживать закрывающую минуту.
+type countingBatcher struct {
+	MemoryQuotes
+	calls map[string]int
+}
+
+func (c *countingBatcher) QuoteBatch(symbols []string, provider string) (map[string]providers.QuotePayload, error) {
+	if c.calls == nil {
+		c.calls = map[string]int{}
+	}
+	c.calls[provider] += len(symbols)
+	out := map[string]providers.QuotePayload{}
+	for _, s := range symbols {
+		if q, ok := c.Q[s]; ok {
+			out[s] = q
+		}
+	}
+	return out, nil
+}
+
+func TestPrefetchDoesNotReaskCoveredSymbols(t *testing.T) {
+	db, err := store.Open(filepath.Join(t.TempDir(), "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	fresh := providers.QuotePayload{
+		Range: map[string]any{"open": 10.0, "high": 12.0, "low": 8.0},
+		Quote: map[string]any{"open": 10.0, "high": 12.0, "low": 8.0, "current": 8.1},
+		AsOf:  nearCloseNow()().Add(-time.Second),
+	}
+	qs := &countingBatcher{MemoryQuotes: MemoryQuotes{Q: map[string]providers.QuotePayload{
+		"AAPL": fresh, "MSFT": fresh, "NVDA": fresh,
+	}}}
+	e := New(db, qs)
+	e.Now = nearCloseNow()
+	e.prefetchBatch([]string{"AAPL", "MSFT", "NVDA"}, []string{"webull", "finnhub", "robinhood"})
+	if qs.calls["webull"] != 3 {
+		t.Fatalf("the primary provider must be asked for all three: %v", qs.calls)
+	}
+	if qs.calls["finnhub"] != 0 || qs.calls["robinhood"] != 0 {
+		t.Fatalf("covered symbols must not be re-asked down the chain: %v", qs.calls)
+	}
+}
