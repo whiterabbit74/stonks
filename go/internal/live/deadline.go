@@ -29,14 +29,19 @@ var T1DeadlineSafetyMargin = 5 * time.Second
 type execWindow struct {
 	ctx      context.Context
 	deadline time.Time
-	// skipBrokers names the brokers this run must not touch at all — the
-	// broker still has an order in flight, so another one could double up.
 	// entryBlocked names the brokers that may still exit but must not open
-	// anything new (a consistency mismatch was found before the run).
-	// Both are per broker on purpose: Webull's state must never decide
+	// anything new (a consistency mismatch, or open orders that could not be
+	// listed). Per broker on purpose: Webull's state must never decide
 	// whether Robinhood exits, and vice versa.
-	skipBrokers  map[string]bool
 	entryBlocked map[string]bool
+	// busySymbols names, per broker, the tickers that already have a working
+	// order there. A working order can only double an order in the same
+	// ticker, so it holds back that ticker and nothing else: a stray order on
+	// TSLA is no reason to leave an SPY position unexited (AUD-072).
+	busySymbols map[string]map[string]bool
+	// skipReasons carries the pre-flight finding per broker so a run that
+	// submits nothing can still say why in the T-1 message (AUD-069).
+	skipReasons map[string]string
 }
 
 // backgroundWindow is the no-deadline execWindow used by callers outside the

@@ -1042,16 +1042,22 @@ func (e *Engine) ClearTrackerPersistBlock(broker, note string) error {
 }
 
 // t1BrokerReconcile checks each broker's own book before the T-1 orders go
-// out and reports which brokers must sit this run out. The result is per
-// broker on purpose: an order still in flight at Webull is no reason for
-// Robinhood to skip its exit (and vice versa). A positions read that fails
-// is not reported here — decideLiveAction already turns it into that
-// broker's own broker_positions_unavailable skip.
-func (e *Engine) t1BrokerReconcile(w execWindow) (skip map[string]bool, reasons map[string]string, waitFill bool) {
-	skip = map[string]bool{}
-	// The reason travels with the skip: when every broker sits the run out,
-	// executeAll never runs and the T-1 message has nothing else to explain
-	// itself with (AUD-069).
+// out. Everything it reports is per broker on purpose: an order still in
+// flight at Webull is no reason for Robinhood to skip its exit, and vice
+// versa.
+//
+// busy names the tickers that already have a working order at that broker.
+// Only those tickers are held back: a working order can only duplicate an
+// order in the same ticker (AUD-072).
+//
+// entryOnlyBlocked names the brokers whose open orders could not be read at
+// all. There the entry is refused — it cannot cancel what it cannot list —
+// but the exit still goes: our own in-flight orders are already guarded
+// locally by the order trackers, which need no broker endpoint, and an
+// unexited position is open market risk that outlives the day.
+func (e *Engine) t1BrokerReconcile(w execWindow) (busy map[string]map[string]bool, entryOnlyBlocked map[string]bool, reasons map[string]string) {
+	busy = map[string]map[string]bool{}
+	entryOnlyBlocked = map[string]bool{}
 	reasons = map[string]string{}
 	for _, nb := range e.brokerSnapshot() {
 		if nb.br == nil {
@@ -1062,7 +1068,7 @@ func (e *Engine) t1BrokerReconcile(w execWindow) (skip map[string]bool, reasons 
 			return brokerOpenOrders(ctx, br)
 		})
 		if err != nil {
-			skip[nb.name] = true
+			entryOnlyBlocked[nb.name] = true
 			reasons[nb.name] = "open_orders_unavailable"
 			e.logAuto("execution_skipped", "", map[string]any{"broker": nb.name, "reason": "open_orders_unavailable", "error": err.Error()})
 			continue
@@ -1072,17 +1078,32 @@ func (e *Engine) t1BrokerReconcile(w execWindow) (skip map[string]bool, reasons 
 			if m == nil {
 				continue
 			}
-			st := NormalizeOrderStatus(fmt.Sprint(firstNonEmpty(m["status"], m["order_status"], m["orderStatus"])))
+			st := NormalizeOrderStatus(fmt.Sprint(firstNonEmpty(m["status"], m["order_status"], m["orderStatus"], m["state"])))
 			if IsFinalOrderStatus(st) {
 				continue
 			}
-			skip[nb.name] = true
-			reasons[nb.name] = "broker_order_in_flight"
-			waitFill = true
-			break
+			// Robinhood answers with state/ref_id rather than status/
+			// client_order_id, so the symbol is read the same forgiving way
+			// cancelOpenOrdersBeforeEntry reads it (AUD-045).
+			sym := store.SafeTicker(fmt.Sprint(firstNonEmpty(m["symbol"], m["ticker"], m["display_symbol"])))
+			if sym == "" {
+				// An order we cannot even attribute to a ticker is the unknown
+				// case: hold back this broker's entries, keep its exits.
+				entryOnlyBlocked[nb.name] = true
+				if reasons[nb.name] == "" {
+					reasons[nb.name] = "open_order_symbol_unknown"
+				}
+				continue
+			}
+			if busy[nb.name] == nil {
+				busy[nb.name] = map[string]bool{}
+			}
+			busy[nb.name][sym] = true
+			reasons[nb.name] = "symbol_order_in_flight"
+			e.logAuto("execution_skipped", "", map[string]any{"broker": nb.name, "symbol": sym, "reason": "symbol_order_in_flight"})
 		}
 	}
-	return skip, reasons, waitFill
+	return busy, entryOnlyBlocked, reasons
 }
 
 // retryBrokerRead retries a read-only broker call with no T-1 deadline of its

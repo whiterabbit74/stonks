@@ -47,11 +47,6 @@ func (e *Engine) executeAll(w execWindow, ev EvalResult, trigger, corr string, s
 			e.logAuto("execution_skipped", corr, map[string]any{"broker": name, "reason": "broker_disabled"})
 			continue
 		}
-		if w.skipBrokers[name] {
-			decisions[name] = map[string]any{"action": "none", "reason": "broker_order_in_flight", "symbol": nil, "candidate": nil}
-			e.logAuto("execution_skipped", corr, map[string]any{"broker": name, "reason": "broker_order_in_flight"})
-			continue
-		}
 		st := e.storedHealthStatus(name)
 		if st == HealthNeedsReauth || st == HealthMissing {
 			decisions[name] = map[string]any{"action": "none", "reason": st, "symbol": nil, "candidate": nil}
@@ -73,6 +68,17 @@ func (e *Engine) executeAll(w execWindow, ev EvalResult, trigger, corr string, s
 		one.Decision = decideLiveAction(ev.Quotes, ev.Symbols, held, heldErr, open, allowE, allowX)
 		decisions[name] = one.Decision
 		action, _ := one.Decision["action"].(string)
+		// A working order at this broker can only duplicate an order in the
+		// same ticker, so it holds back that ticker alone (AUD-072).
+		if action != "none" {
+			sym := store.SafeTicker(fmt.Sprint(one.Decision["symbol"]))
+			if w.busySymbols[name][sym] {
+				one.Decision = map[string]any{"action": "none", "reason": "symbol_order_in_flight", "symbol": sym, "candidate": nil}
+				decisions[name] = one.Decision
+				e.logAuto("execution_skipped", corr, map[string]any{"broker": name, "symbol": sym, "reason": "symbol_order_in_flight"})
+				continue
+			}
+		}
 		if action == "none" {
 			kv := map[string]any{"broker": name, "reason": one.Decision["reason"]}
 			if heldErr != nil {
@@ -92,8 +98,14 @@ func (e *Engine) executeAll(w execWindow, ev EvalResult, trigger, corr string, s
 		// The exit above already went through: an open position is closed on
 		// its signal whatever the journal disagrees about.
 		if action == "entry" && w.entryBlocked[name] {
-			decisions[name] = map[string]any{"action": "none", "reason": "consistency_mismatch", "symbol": nil, "candidate": nil}
-			e.logAuto("execution_skipped", corr, map[string]any{"broker": name, "reason": "consistency_mismatch"})
+			// The pre-flight check names its own reason (open orders
+			// unreadable); everything else here is a journal/broker mismatch.
+			reason := w.skipReasons[name]
+			if reason == "" {
+				reason = "consistency_mismatch"
+			}
+			decisions[name] = map[string]any{"action": "none", "reason": reason, "symbol": nil, "candidate": nil}
+			e.logAuto("execution_skipped", corr, map[string]any{"broker": name, "reason": reason})
 			continue
 		}
 		if action == "exit" && !allowX {

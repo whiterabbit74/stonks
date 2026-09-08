@@ -282,30 +282,26 @@ func (e *Engine) Aggregate(minutesUntilClose int, opts AggregateOpts) (SimulateR
 			_ = e.DB.AppendAutotradeLog("t1_monitor_mismatch " + fmt.Sprint(blocking["code"]) + " " + fmt.Sprint(blocking["message"]))
 		}
 		w.entryBlocked = e.entryBlockedBrokers(snap)
-		skip, skipReasons, wait := e.t1BrokerReconcile(w)
-		w.skipBrokers = skip
-		if wait {
-			waitFill = true
+		busy, entryOnly, skipReasons := e.t1BrokerReconcile(w)
+		w.busySymbols = busy
+		for name := range entryOnly {
+			w.entryBlocked[name] = true
 		}
+		w.skipReasons = skipReasons
 		_ = e.DB.AppendAutotradeLog("t1_execution_started")
-		if e.allBrokersSkipped(skip) {
-			exitRes.BrokerDecisions = skippedBrokerDecisions(skipReasons)
-		}
-		if !e.allBrokersSkipped(skip) {
-			if opts.DryRun {
-				_ = e.DB.AppendAutotradeLog("t1_dry_run")
-				exitRes = e.Evaluate()
+		if opts.DryRun {
+			_ = e.DB.AppendAutotradeLog("t1_dry_run")
+			exitRes = e.Evaluate()
+		} else {
+			exitRes, entryRes, waitFill = e.runT1Orders(w, today)
+			out.Executed = exitRes.Executed || entryRes.Executed
+			if entryRes.Executed {
+				out.Broker = entryRes.Broker
 			} else {
-				exitRes, entryRes, waitFill = e.runT1Orders(w, today)
-				out.Executed = exitRes.Executed || entryRes.Executed
-				if entryRes.Executed {
-					out.Broker = entryRes.Broker
-				} else {
-					out.Broker = exitRes.Broker
-				}
+				out.Broker = exitRes.Broker
 			}
 		}
-		if opts.UpdateState && !opts.DryRun && !e.allBrokersSkipped(skip) {
+		if opts.UpdateState && !opts.DryRun {
 			e.stampSendMarker("t1_execution", e.DB.MarkT1ExecutionFinished(e.chat(), today))
 		}
 	}
@@ -326,20 +322,6 @@ func (e *Engine) Aggregate(minutesUntilClose int, opts AggregateOpts) (SimulateR
 		}
 	}
 	return res, err
-}
-
-// skippedBrokerDecisions turns t1BrokerReconcile's per-broker reasons into the
-// shape brokerReasonLines reads, so a run where every broker sat out still
-// says why in the T-1 message.
-func skippedBrokerDecisions(reasons map[string]string) map[string]map[string]any {
-	if len(reasons) == 0 {
-		return nil
-	}
-	out := map[string]map[string]any{}
-	for name, reason := range reasons {
-		out[name] = map[string]any{"action": "none", "reason": reason, "symbol": nil, "candidate": nil}
-	}
-	return out
 }
 
 func execOutcomes(broker any) map[string]OrderResult {
@@ -483,6 +465,9 @@ func (e *Engine) buildT1Text(minutes int, rows []t1Watch, blocking map[string]an
 		acted = true
 		decision = append(decision, head)
 		decision = append(decision, outcomes...)
+		// Брокеры, которые ничего не отправили, тоже обязаны объяснить себя:
+		// раньше их причина исчезала, стоило другому брокеру сработать.
+		decision = append(decision, brokerReasonLines(res)...)
 	}
 	if dryRun {
 		appendExec(exitRes, true)
@@ -496,6 +481,7 @@ func (e *Engine) buildT1Text(minutes int, rows []t1Watch, blocking map[string]an
 	if !acted {
 		decision = append(decision, t1NoActionLines(exitRes, entryRes, rows)...)
 	}
+	decision = dedupeLines(decision)
 	freshN := 0
 	for _, r := range rows {
 		if r.eval.rtFresh {
@@ -537,6 +523,21 @@ func (e *Engine) buildT1Text(minutes int, rows []t1Watch, blocking map[string]an
 	lines = append(lines, decision...)
 	lines = append(lines, "", freshness, position)
 	return strings.Join(lines, "\n")
+}
+
+// dedupeLines drops repeated lines while keeping order: the exit and the entry
+// pass can name the same broker's skip reason.
+func dedupeLines(lines []string) []string {
+	seen := map[string]bool{}
+	out := lines[:0]
+	for _, l := range lines {
+		if seen[l] {
+			continue
+		}
+		seen[l] = true
+		out = append(out, l)
+	}
+	return out
 }
 
 // t1NoActionLines explains a T-1 cycle that placed no order. A bare
@@ -621,8 +622,12 @@ func noActionReasonText(reason, symbol string) string {
 		sym = "позиция"
 	}
 	switch reason {
-	case "broker_order_in_flight":
-		return "у брокера висит незакрытая заявка — этот брокер пропущен"
+	case "symbol_order_in_flight":
+		return "по " + sym + " уже висит незакрытая заявка — новая не отправлена"
+	case "open_orders_unavailable":
+		return "открытые заявки брокера не читаются — новый вход заблокирован, выход идёт как обычно"
+	case "open_order_symbol_unknown":
+		return "у брокера висит заявка без тикера — новый вход заблокирован"
 	case "consistency_mismatch":
 		return "расхождение журнала и брокера — новый вход заблокирован"
 	case "broker_position_exists":

@@ -408,21 +408,6 @@ func (e *Engine) entryBlockedBrokers(snap map[string]any) map[string]bool {
 	return out
 }
 
-// allBrokersSkipped reports whether every attached broker is in skip, i.e.
-// the run has nothing left to do.
-func (e *Engine) allBrokersSkipped(skip map[string]bool) bool {
-	snaps := e.brokerSnapshot()
-	if len(snaps) == 0 {
-		return false
-	}
-	for _, nb := range snaps {
-		if !skip[nb.name] {
-			return false
-		}
-	}
-	return true
-}
-
 func (e *Engine) Reconcile(apply bool) map[string]any {
 	snap := e.Consistency()
 	var appliedActions []map[string]any
