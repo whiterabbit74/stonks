@@ -264,11 +264,18 @@ func (e *Engine) monitorWithoutOpenBrokerIssues(openM map[string]any, broker []m
 		return issues, proposed
 	}
 	if linked != "" && linked != "<nil>" {
-		issues = append(issues, map[string]any{
+		iss := map[string]any{
 			"code": "linked_monitor_trade_missing_broker_match", "severity": "error",
 			"message": fmt.Sprintf("Monitor trade %s references broker trade %s, but the broker journal has no matching open/closed trade.", openM["symbol"], linked),
 			"symbol":  openM["symbol"], "monitorTradeId": openM["id"], "brokerTradeId": linked, "autoFixable": false,
-		})
+		}
+		// An issue with no broker on it holds back every broker's entries. The
+		// order that created this row names its broker, so the block lands on
+		// the broker it is actually about (AUD-073).
+		if name := e.brokerOfOrder(linked); name != "" {
+			iss["broker"] = name
+		}
+		issues = append(issues, iss)
 		return issues, proposed
 	}
 	sameDayClosed := sameSymbolClosedBroker(broker, openM)
@@ -286,11 +293,18 @@ func (e *Engine) monitorWithoutOpenBrokerIssues(openM map[string]any, broker []m
 		return issues, proposed
 	}
 	if len(sameDayClosed) > 1 {
-		issues = append(issues, map[string]any{
+		iss := map[string]any{
 			"code": "legacy_monitor_trade_ambiguous_broker_match", "severity": "error",
 			"message": fmt.Sprintf("Monitor trade %s has multiple matching closed broker trades for %s. Automatic reconcile is unsafe.", openM["symbol"], openM["entryDate"]),
 			"symbol":  openM["symbol"], "monitorTradeId": openM["id"], "autoFixable": false,
-		})
+		}
+		// Several matches at one broker is a genuine ambiguity there; one match
+		// per broker is just two brokers holding the same ticker on the same
+		// day, and must not block anyone else (AUD-073).
+		if name := singleBrokerOf(sameDayClosed); name != "" {
+			iss["broker"] = name
+		}
+		issues = append(issues, iss)
 		return issues, proposed
 	}
 	issues = append(issues, map[string]any{
@@ -299,6 +313,36 @@ func (e *Engine) monitorWithoutOpenBrokerIssues(openM map[string]any, broker []m
 		"symbol":  openM["symbol"], "monitorTradeId": openM["id"], "autoFixable": false,
 	})
 	return issues, proposed
+}
+
+// brokerOfOrder names the broker that placed clientOrderID, from the order
+// tracker the submission wrote. Empty when nothing is known.
+func (e *Engine) brokerOfOrder(clientOrderID string) string {
+	if e == nil || e.DB == nil {
+		return ""
+	}
+	t := e.DB.GetOrderTracker(clientOrderID)
+	if t == nil {
+		return ""
+	}
+	return trackerBrokerName(t)
+}
+
+// singleBrokerOf returns the broker every row belongs to, or "" when they are
+// spread across brokers.
+func singleBrokerOf(rows []map[string]any) string {
+	name := ""
+	for _, t := range rows {
+		got := brokerNameOf(t)
+		if name == "" {
+			name = got
+			continue
+		}
+		if got != name {
+			return ""
+		}
+	}
+	return name
 }
 
 func (e *Engine) liveConsistencyIssues(brokerRows []map[string]any, w execWindow) []map[string]any {
