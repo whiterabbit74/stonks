@@ -66,7 +66,6 @@
   function liveHighIBS() { return Number(state.autoConfig?.highIBS ?? state.autoConfig?.config?.highIBS ?? DEFAULT_HIGH_IBS); }
   function initialCapital() { return Number(state.settings && state.settings.initialCapital) || DEFAULT_INITIAL_CAPITAL; }
   const BROKER_TABS = [
-    { id: 'connect', label: 'Подключение' },
     { id: 'overview', label: 'Обзор' },
     { id: 'positions', label: 'Позиции' },
     { id: 'orders', label: 'Ордера' },
@@ -75,6 +74,7 @@
     { id: 'autotrade', label: 'Автоторговля' },
     { id: 'monitor', label: 'Мониторинг' },
     { id: 'logs', label: 'Логи' },
+    { id: 'connect', label: 'Подключение' },
   ];
   const POPULAR = [
     { symbol: 'AAPL', name: 'Apple Inc.' },
@@ -2612,7 +2612,7 @@
   function pageBroker() {
     const kind = state.page === '/robinhood' ? 'robinhood' : 'webull';
     const tabs = kind === 'robinhood' ? BROKER_TABS : BROKER_TABS.filter((t) => t.id !== 'connect');
-    const tab = (state.brokerTab && state.brokerTab[kind]) || (kind === 'robinhood' ? 'connect' : 'overview');
+    const tab = (state.brokerTab && state.brokerTab[kind]) || 'overview';
     const dash = (state.dashboard && state.dashboard.broker === kind) ? state.dashboard : null;
     const health = (state.brokerHealth || []).find((h) => h.broker === kind) || {};
     const ac = state.autoConfig || {};
