@@ -332,6 +332,9 @@ func applyPendingSchema(e schemaExecer, from int) error {
 			{"order_trackers", "updated_at", "TEXT"},
 			{"autotrade_logs", "kind", "TEXT NOT NULL DEFAULT ''"},
 			{"order_trackers", "broker", "TEXT NOT NULL DEFAULT 'webull'"},
+			// Сколько исполнения по этой заявке уже разнесено по журналу.
+			// Делает применение fill идемпотентным (CORE-04).
+			{"order_trackers", "recorded_qty", "REAL NOT NULL DEFAULT 0"},
 			{"broker_trades", "broker", "TEXT NOT NULL DEFAULT 'webull'"},
 			{"webull_token", "last_alerted_status", "TEXT"},
 			{"webull_token", "last_alerted_at", "TEXT"},

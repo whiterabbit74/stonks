@@ -215,7 +215,26 @@ func (e *Engine) recordFill(t map[string]any, detail map[string]any, status stri
 			"<b>%s: частичное исполнение</b>\n%s • %s\nзаказано: %v\nисполнено: %v\nstatus: %s",
 			brokerLabel(brokerName), symbol, action, orderedQty, reportedQty, status))
 		if action == "exit" {
-			e.reduceOpenQuantity(symbol, clientOrderID, brokerName, reportedQty, fillPrice)
+			// Одно и то же исполнение может прийти повторно: опрос после
+			// перезапуска между записью сделки и фиксацией статуса трекера.
+			// Списывать разрешено только ту часть, которую журнал ещё не
+			// видел (CORE-04).
+			newly, claimErr := e.DB.ClaimFillQty(clientOrderID, reportedQty)
+			if claimErr != nil {
+				e.logAuto("local_trade_close_failed", meta.CorrelationID, map[string]any{
+					"symbol": symbol, "clientOrderId": clientOrderID,
+					"op": "claim_partial_fill", "error": claimErr.Error(),
+				})
+				e.raiseTrackerPersistBlock(brokerName)
+				return
+			}
+			if !(newly > 0) {
+				e.logAuto("order_fill_already_recorded", meta.CorrelationID, map[string]any{
+					"symbol": symbol, "clientOrderId": clientOrderID, "filledQty": reportedQty,
+				})
+				return
+			}
+			e.reduceOpenQuantity(symbol, clientOrderID, brokerName, newly, fillPrice)
 			return
 		}
 	} else if status != "filled" {
