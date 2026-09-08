@@ -527,3 +527,5 @@ with tempfile.TemporaryDirectory(prefix="mktorder-core-audit-") as tmp:
         "./internal/live", "./internal/webull", "-run", "TestCoreAudit", "-v", "-count=1",
     ], cwd=root / "go", check=True)
 ```
+
+Финальная проверка артефакта: runner извлечён непосредственно из этого Markdown и выполнен успешно, все шесть проб подтвердили описанное поведение (`-race`, код 0). `git diff --check a7d81f3..HEAD` чисто; единственный изменённый отслеживаемый файл — этот отчёт. Во время работы появился чужой неотслеживаемый `gemini-audit-sep-8.md`; он не читался, не изменялся и не включался в коммиты этого аудита.
