@@ -129,6 +129,11 @@ func (s *Server) handleRobinhoodDashboard(w http.ResponseWriter, r *http.Request
 			}
 		}
 	}
+	if perr != nil {
+		// Same key as Engine.Account: an empty list and an unreadable one look
+		// identical in the positions table, so the SPA needs the read error.
+		out["positionsError"] = perr.Error()
+	}
 	if oerr != nil {
 		out["openOrdersError"] = oerr.Error()
 	}

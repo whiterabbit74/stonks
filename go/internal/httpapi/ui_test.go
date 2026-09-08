@@ -1607,3 +1607,18 @@ func TestURLTickersDriveStocksPage(t *testing.T) {
 		t.Fatal("navigation must not blank the ticker field")
 	}
 }
+
+// Провал чтения позиций (Webull отвечает 429 на пачку запросов панели) раньше
+// выглядел на странице как «открытых позиций нет».
+func TestPositionsReadErrorIsShown(t *testing.T) {
+	app, err := os.ReadFile(filepath.Join("..", "..", "web", "js/app.js"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := string(app)
+	for _, want := range []string{"dashObj.positionsError", "Позиции не прочитаны"} {
+		if !strings.Contains(a, want) {
+			t.Errorf("app.js missing %s", want)
+		}
+	}
+}
