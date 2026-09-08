@@ -251,6 +251,12 @@ type EvalResult struct {
 	// picture executeAll acted on, so the UI does not show one broker's
 	// decision as if it applied to all of them.
 	BrokerDecisions map[string]map[string]any `json:"brokerDecisions,omitempty"`
+	// books is the per-broker position read EvaluateWindow already did, handed
+	// to executeAll so it does not read every broker's positions a second time
+	// microseconds later. Webull rate-limits /account/positions to about one
+	// request per two seconds, and the closing minute is where that budget
+	// runs out (AUD-070). Unexported: internal to one execution cycle.
+	books map[string]brokerBook
 }
 
 func (e *Engine) Evaluate() EvalResult {
@@ -376,6 +382,7 @@ func (e *Engine) EvaluateWindow(w execWindow) EvalResult {
 		Live:        e.evalLive(cfg),
 
 		DecisionBroker: showcase,
+		books:          books,
 	}
 }
 
@@ -482,6 +489,15 @@ func decideLiveAction(quotes []map[string]any, symbols []string, held map[string
 		}
 	}
 	return none("no_signal", nil, nil)
+}
+
+// booksForBroker prefers the position read EvaluateWindow already made in this
+// same cycle and only goes to the broker when that read is missing.
+func (e *Engine) booksForBroker(ev EvalResult, name string, br Broker, rows []map[string]any, w execWindow) (open map[string]any, held map[string]float64, heldErr error) {
+	if bk, ok := ev.books[name]; ok {
+		return e.booksForHeld(name, bk.held, bk.err, rows)
+	}
+	return e.booksFor(name, br, rows, w)
 }
 
 func (e *Engine) booksFor(name string, br Broker, rows []map[string]any, w execWindow) (open map[string]any, held map[string]float64, heldErr error) {

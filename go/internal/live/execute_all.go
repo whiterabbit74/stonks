@@ -68,7 +68,7 @@ func (e *Engine) executeAll(w execWindow, ev EvalResult, trigger, corr string, s
 			e.logAuto("execution_skipped", corr, map[string]any{"broker": name, "reason": "journal_unavailable"})
 			continue
 		}
-		open, held, heldErr := e.booksFor(name, br, rows, w)
+		open, held, heldErr := e.booksForBroker(ev, name, br, rows, w)
 		one.OpenTrade = open
 		one.Decision = decideLiveAction(ev.Quotes, ev.Symbols, held, heldErr, open, allowE, allowX)
 		decisions[name] = one.Decision
