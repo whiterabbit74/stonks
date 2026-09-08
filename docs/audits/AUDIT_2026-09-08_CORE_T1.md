@@ -1,6 +1,21 @@
 # Аудит ядра T−1 — 2026-09-08
 
-Статус: IN_PROGRESS. Проверяемая ревизия: `a7d81f3`, исходно чистый checkout.
+Статус аудита: DONE. Вердикт ядра: есть подтверждённые дефекты. Проверяемая ревизия: `a7d81f3`, исходно чистый checkout.
+
+## Краткий результат
+
+**8 находок: 6 воспроизведены локально, 2 подтверждены порядком операций в коде.** Семь P1 (существенный риск исполнения или денежного учёта), одна P2 (отсутствие строгой гарантии интервала при задержке внутри клиента). Это не утверждение о восьми уже произошедших инцидентах на реальном счёте.
+
+| Очерёдность | Находки | Последствие |
+|---|---|---|
+| 1 | CORE-03 | Две продажи одной ручной позиции |
+| 2 | CORE-01, CORE-02 | Проблема одного брокера лишает другой покупки |
+| 3 | CORE-07 | Подготовка/опрос/уведомления съедают минуту |
+| 4 | CORE-04, CORE-08 | Повторный учёт fill / потеря заявки при аварии |
+| 5 | CORE-06 | Устаревшие данные становятся сигналом |
+| 6 | CORE-05 | Номинальные 250 мс не гарантируют фактический интервал |
+
+Штатные проверки ядра проходят, но не покрывают новые воспроизведения. Реальные счета не затрагивались, исправления не выполнялись.
 
 ## Задание и границы
 
@@ -8,7 +23,7 @@
 
 ## Источники и преемственность
 
-Прочитан `docs/audits/REGISTRY.md`, сопоставлены прошлые AUD-003/043/063–072 и аудит `AUDIT_2026-09-07_TRADING_LOGIC.md`. Исторические статусы не считаются доказательствами текущей корректности. После реестра появились `966d3e3`, `37731cb`, `d565873`, `24ae669`, `a7d81f3`: интервал запросов, защита от устаревшей книги позиций, побуквенная блокировка тикера, изоляция монитор-строк, параллельное исполнение. Реестр в рамках запроса на один файл не редактируется; предложения по его обновлению будут здесь.
+Прочитан `docs/audits/REGISTRY.md`, сопоставлены прошлые AUD-003/043/063–072 и аудит `AUDIT_2026-09-07_TRADING_LOGIC.md`. Исторические статусы не считаются доказательствами текущей корректности. После реестра появились `966d3e3`, `37731cb`, `d565873`, `24ae669`, `a7d81f3`: интервал запросов, защита от устаревшей книги позиций, блокировка только затронутого тикера, изоляция монитор-строк, параллельное исполнение. Реестр в рамках запроса на один файл не редактируется; предложения по его обновлению будут здесь.
 
 ## План проверки
 
@@ -63,7 +78,7 @@
 
 `telegram.go:703–749,785–803,828–863,983–1024`, `providers/client.go:596–612`. `evalWatch` принимает положительную цену и диапазон, не проверяя `QuotePayload.DateKey`/время самой сделки. Кэш на 20 секунд измеряет время **получения ответа**. Webull `snapshotPayload` сам ставит сегодняшнюю дату, не сохраняя дату исходной котировки. Зависший/вчерашний snapshot с корректными числами становится сегодняшним сигналом для обоих брокеров; исправность HTTP и ликвидность акции этого не исключают.
 
-Проверка добавлена в отдельный overlay: `TestCoreAuditStaleQuoteStillTrades` передаёт дату 2020-01-02 при движковом 2026-09-01. Итог будет записан после прогона. Требуется хранить/проверять фактическую дату сессии и время котировки; устаревший источник должен уступать следующему доступному провайдеру. Это отличается от штатного кэша длительностью 20 секунд: допустимая задержка данных должна быть явной, а не подменяться возрастом HTTP-ответа.
+Проверка добавлена в отдельный overlay: `TestCoreAuditStaleQuoteStillTrades` передаёт дату 2020-01-02 при движковом 2026-09-01. Результат: BUY отправлен; воспроизведение подтверждено с детектором гонок памяти -race. Требуется хранить/проверять фактическую дату сессии и время котировки; устаревший источник должен уступать следующему доступному провайдеру. Это отличается от штатного кэша длительностью 20 секунд: допустимая задержка данных должна быть явной, а не подменяться возрастом HTTP-ответа.
 
 ### CORE-07 — закрывающая минута не ограничивает весь подготовительный путь (P1, статически подтверждено)
 
@@ -373,3 +388,111 @@ TZ=Pacific/Auckland go test ./internal/live ./internal/scheduler ./internal/stor
 - Коммиты содержат только последовательные дополнения отчёта. Push не выполнялся. Проверенный продуктовый код остаётся a7d81f3.
 - **DONE — аудит завершён; торговое ядро не объявляется исправным или готовым к безусловной эксплуатации.**
 
+
+## Приложение: воспроизведения без изменения checkout
+
+Пробы используют существующие помощники и временную SQLite. PASS подтверждает дефект. После исправления assertions нужно заменить на проверки правильного поведения.
+
+<!-- CORE_LIVE_PROBES -->
+```go
+package live
+import (
+ "testing"
+ "time"
+ "context"
+ "mktorder.com/go/internal/providers"
+)
+
+// Defect probes assert observed broken behavior, not acceptance.
+func TestCoreAuditPendingPeerBlocksReentry(t *testing.T) {
+ e, wb, rh := isolationEngine(t)
+ e.stopWheels = true // deterministic: runT1Orders polls trackers itself
+ wb.FillStatus = "WORKING"; wb.FillQty = 0
+ wb.SetPos([]any{map[string]any{"symbol":"AAPL","quantity":7.0}})
+ rh.SetPos([]any{map[string]any{"symbol":"AAPL","quantity":42.0}})
+ mustInsertBrokerTrade(t,e,"wb-aapl","AAPL","webull","2026-08-20",7)
+ mustInsertBrokerTrade(t,e,"rh-aapl","AAPL","robinhood","2026-08-20",42)
+ rh.OnPositions = func() []any { rh.mu.Lock(); sold:=len(rh.Orders)>0; rh.mu.Unlock(); if sold{return []any{}}; return []any{map[string]any{"symbol":"AAPL","quantity":42.0}} }
+ // Explicitly finish RH on each sleep while WB remains working.
+ e.Sleep = func(time.Duration) { p,_:=e.DB.FindPendingTrackerBroker("AAPL","exit","robinhood"); if p!=nil {e.pollOneTracker(p)} }
+ _,_,wait:=e.runT1Orders(backgroundWindow(),"2026-09-01")
+ s,b,_:=sidesOf(rh)
+ flat,err:=e.journalFlat([]string{"robinhood"})
+ if err!=nil || !flat || s!=1 || b!=0 || !wait {t.Fatalf("unexpected evidence: flat=%v err=%v sell=%d buy=%d wait=%v",flat,err,s,b,wait)}
+ t.Log("REPRO: RH filled and flat, but BUY=0 because WB exit remains pending")
+}
+
+type coreSlowPositions struct { *MemoryBroker }
+func (b *coreSlowPositions) PositionsCtx(ctx context.Context)([]any,error){ <-ctx.Done(); return nil,ctx.Err() }
+func TestCoreAuditSlowPeerConsumesHealthyDeadline(t *testing.T) {
+ e,wb,rh:=isolationEngine(t); e.stopWheels=true
+ e.AttachBroker("webull",&coreSlowPositions{wb})
+ // Advance engine time with wall time so deadline is real.
+ base:=e.now(); start:=time.Now(); e.Now=func()time.Time{return base.Add(time.Since(start))}
+ w:=execWindow{ctx:context.Background(),deadline:e.now().Add(150*time.Millisecond)}
+ res:=e.executeWindow(w,"telegram_t1")
+ if len(rh.Orders)!=0 || e.timeLeft(w)>0 {t.Fatalf("expected healthy peer blocked, orders=%v result=%+v",rh.Orders,res)}
+ t.Logf("REPRO: healthy RH BUY=0 after slow WB positions consumed deadline; decision=%v result=%v",res.BrokerDecisions["robinhood"],res.Broker)
+}
+
+func TestCoreAuditUnjournaledExitCanSellTwice(t *testing.T) {
+ e,wb,_:=isolationEngine(t); e.DetachBroker("robinhood"); e.stopWheels=true
+ wb.SetPos([]any{map[string]any{"symbol":"AAPL","quantity":7.0}})
+ wb.OnPositions=func()[]any{return []any{map[string]any{"symbol":"AAPL","quantity":7.0}}}
+ // No entry journal; broker feed keeps returning sold shares.
+ e.Sleep=func(time.Duration){p,_:=e.DB.FindPendingTrackerBroker("AAPL","exit","webull"); if p!=nil {e.pollOneTracker(p)}}
+ e.runT1Orders(backgroundWindow(),"2026-09-01")
+ s,_,_:=sidesOf(wb)
+ if s!=2 {t.Fatalf("expected double SELL reproduction, got %d %+v",s,wb.Orders)}
+ t.Log("REPRO: unjournaled holding + stale positions = 2 MARKET SELL for same 7 shares")
+}
+
+func TestCoreAuditPartialReplayReducesTwice(t *testing.T) {
+ e,_,_:=isolationEngine(t); e.stopWheels=true
+ mustInsertBrokerTrade(t,e,"wb-aapl","AAPL","webull","2026-08-20",10)
+ tr:=map[string]any{"clientOrderId":"exit-id","symbol":"AAPL","action":"exit","broker":"webull","quantity":10.0,"dateKey":"2026-09-01"}
+ detail:=map[string]any{"filled_qty":4.0,"filled_price":12.0}
+ e.recordFill(tr,detail,"cancelled")
+ // Replay after a crash between recordFill and stampTrackerStatus.
+ e.recordFill(tr,detail,"cancelled")
+ row,_:=e.DB.GetTrade("broker_trades","wb-aapl")
+ if asFloat(row["quantity"])!=2 {t.Fatalf("unexpected remaining quantity: %v",row)}
+ t.Log("REPRO: same confirmed 4-share fill applied twice: remaining=2, should=6")
+}
+
+func TestCoreAuditStaleQuoteStillTrades(t *testing.T) {
+ _,e,br:=testEngine(t,entryBars);e.stopWheels=true;e.Now=nearCloseNow()
+ q,_:=e.Quotes.Quote("AAPL","webull");q.DateKey="2020-01-02"
+ e.Quotes=&MemoryQuotes{Q:map[string]providers.QuotePayload{"AAPL":q}}
+ e.PatchAutoConfig(map[string]any{"enabled":true,"lowIBS":0.9,"highIBS":1.0,"allowNewEntries":true})
+ res:=e.executeWindow(backgroundWindow(),"telegram_t1")
+ if !res.Executed || len(br.Orders)!=1 {t.Fatalf("expected stale quote accepted: %+v",res)}
+ t.Log("REPRO: QuotePayload.DateKey=2020-01-02 accepted for 2026-09-01 BUY")
+}
+
+```
+
+<!-- CORE_PACE_PROBE -->
+```go
+
+type coreAuditBody struct { entered, release chan struct{} }
+func (b coreAuditBody) MarshalJSON()([]byte,error){close(b.entered); <-b.release; return []byte(`{}`),nil}
+func TestCoreAuditPacingActualStarts(t *testing.T) {
+ old:=MinRequestInterval; MinRequestInterval=250*time.Millisecond; defer func(){MinRequestInterval=old}()
+ rateGateMu.Lock(); nextSlotAt=time.Time{}; rateGateMu.Unlock()
+ var mu sync.Mutex; var at []time.Time
+ arrived:=make(chan struct{},2)
+ ts:=httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){mu.Lock(); at=append(at,time.Now());mu.Unlock();arrived<-struct{}{};w.Write([]byte(`{"code":0}`))}));defer ts.Close()
+ c:=&Client{Base:ts.URL,Host:"h",AppKey:"k",AppSecret:"s",AccessToken:"tok"}
+ entered,release:=make(chan struct{}),make(chan struct{})
+ var wg sync.WaitGroup; wg.Add(2)
+ go func(){defer wg.Done();c.Request("POST","/first",nil,coreAuditBody{entered,release},true,nil)}()
+ <-entered
+ go func(){defer wg.Done();c.Request("GET","/second",nil,nil,true,nil)}()
+ <-arrived;close(release);wg.Wait()
+ mu.Lock();defer mu.Unlock()
+ gap:=at[1].Sub(at[0]);if gap>=MinRequestInterval{t.Fatalf("expected violation reproduction, got %v",gap)}
+ t.Logf("REPRO: actual HTTP arrival gap %v, configured interval %v",gap,MinRequestInterval)
+}
+
+```
