@@ -277,12 +277,15 @@ func (e *Engine) Aggregate(minutesUntilClose int, opts AggregateOpts) (SimulateR
 			_ = e.DB.AppendAutotradeLog("t1_monitor_mismatch " + fmt.Sprint(blocking["code"]) + " " + fmt.Sprint(blocking["message"]))
 		}
 		w.entryBlocked = e.entryBlockedBrokers(snap)
-		skip, wait := e.t1BrokerReconcile(w)
+		skip, skipReasons, wait := e.t1BrokerReconcile(w)
 		w.skipBrokers = skip
 		if wait {
 			waitFill = true
 		}
 		_ = e.DB.AppendAutotradeLog("t1_execution_started")
+		if e.allBrokersSkipped(skip) {
+			exitRes.BrokerDecisions = skippedBrokerDecisions(skipReasons)
+		}
 		if !e.allBrokersSkipped(skip) {
 			if opts.DryRun {
 				_ = e.DB.AppendAutotradeLog("t1_dry_run")
@@ -318,6 +321,20 @@ func (e *Engine) Aggregate(minutesUntilClose int, opts AggregateOpts) (SimulateR
 		}
 	}
 	return res, err
+}
+
+// skippedBrokerDecisions turns t1BrokerReconcile's per-broker reasons into the
+// shape brokerReasonLines reads, so a run where every broker sat out still
+// says why in the T-1 message.
+func skippedBrokerDecisions(reasons map[string]string) map[string]map[string]any {
+	if len(reasons) == 0 {
+		return nil
+	}
+	out := map[string]map[string]any{}
+	for name, reason := range reasons {
+		out[name] = map[string]any{"action": "none", "reason": reason, "symbol": nil, "candidate": nil}
+	}
+	return out
 }
 
 func execOutcomes(broker any) map[string]OrderResult {
@@ -405,6 +422,7 @@ func (e *Engine) buildT1Text(minutes int, rows []t1Watch, blocking map[string]an
 	if waitFill {
 		decision = append(decision, "• Вход заблокирован: ждём подтверждение fill по выходу")
 	}
+	acted := false
 	appendExec := func(res EvalResult, dry bool) {
 		dec := effectiveDecision(res)
 		action, _ := dec["action"].(string)
@@ -452,10 +470,12 @@ func (e *Engine) buildT1Text(minutes int, rows []t1Watch, blocking map[string]an
 			// executeAll then decided per broker and skipped every one of them (no token, disabled, unreadable journal). Then
 			// nothing was submitted, and the bare "Открываем X" above reads as a
 			// filled order. Say so, and name the per-broker reason.
+			acted = true
 			decision = append(decision, head+" — заявка не отправлена")
 			decision = append(decision, brokerReasonLines(res)...)
 			return
 		}
+		acted = true
 		decision = append(decision, head)
 		decision = append(decision, outcomes...)
 	}
@@ -465,7 +485,10 @@ func (e *Engine) buildT1Text(minutes int, rows []t1Watch, blocking map[string]an
 		appendExec(exitRes, false)
 		appendExec(entryRes, false)
 	}
-	if len(decision) == 0 {
+	// A warning line (mismatch, waiting for a fill) is not an action: without
+	// this the per-broker reason was dropped whenever any warning had already
+	// been printed, and a run that submitted nothing looked handled (AUD-069).
+	if !acted {
 		decision = append(decision, t1NoActionLines(exitRes, entryRes, rows)...)
 	}
 	freshN := 0

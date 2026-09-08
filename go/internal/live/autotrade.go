@@ -994,8 +994,12 @@ func (e *Engine) ClearTrackerPersistBlock(broker, note string) error {
 // Robinhood to skip its exit (and vice versa). A positions read that fails
 // is not reported here — decideLiveAction already turns it into that
 // broker's own broker_positions_unavailable skip.
-func (e *Engine) t1BrokerReconcile(w execWindow) (skip map[string]bool, waitFill bool) {
+func (e *Engine) t1BrokerReconcile(w execWindow) (skip map[string]bool, reasons map[string]string, waitFill bool) {
 	skip = map[string]bool{}
+	// The reason travels with the skip: when every broker sits the run out,
+	// executeAll never runs and the T-1 message has nothing else to explain
+	// itself with (AUD-069).
+	reasons = map[string]string{}
 	for _, nb := range e.brokerSnapshot() {
 		if nb.br == nil {
 			continue
@@ -1006,6 +1010,7 @@ func (e *Engine) t1BrokerReconcile(w execWindow) (skip map[string]bool, waitFill
 		})
 		if err != nil {
 			skip[nb.name] = true
+			reasons[nb.name] = "open_orders_unavailable"
 			e.logAuto("execution_skipped", "", map[string]any{"broker": nb.name, "reason": "open_orders_unavailable", "error": err.Error()})
 			continue
 		}
@@ -1019,11 +1024,12 @@ func (e *Engine) t1BrokerReconcile(w execWindow) (skip map[string]bool, waitFill
 				continue
 			}
 			skip[nb.name] = true
+			reasons[nb.name] = "broker_order_in_flight"
 			waitFill = true
 			break
 		}
 	}
-	return skip, waitFill
+	return skip, reasons, waitFill
 }
 
 // retryBrokerRead retries a read-only broker call with no T-1 deadline of its
