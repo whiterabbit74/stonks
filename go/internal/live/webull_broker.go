@@ -401,6 +401,14 @@ func (b *LiveBroker) openOrders(ctx context.Context) ([]any, error) {
 	// clears t1BrokerReconcile, so it must not be guessed (AUD-026 class).
 	rows := flattenAny(resp.Data)
 	if rows == nil {
+		// Webull leaves the list out entirely when there is nothing working:
+		// {"hasNext":false,"pageSize":0}. That is a read of zero orders, not an
+		// unread page — calling it unreadable aborted every T-1 entry on the
+		// normal case of no open orders. A body without that pagination marker
+		// stays a failed read (AUD-026 class).
+		if webullEmptyPage(resp.Data) {
+			return []any{}, nil
+		}
 		return nil, fmt.Errorf("%w: unreadable open orders response from Webull", ErrOrderUnavailable)
 	}
 	return rows, nil
@@ -434,6 +442,18 @@ func placedClientOrderID(data any) string {
 		return ""
 	}
 	return clientOrderIDOf(parsed)
+}
+
+// webullEmptyPage reports a well-formed page carrying no list: Webull answers
+// an empty listing with only its pagination fields.
+func webullEmptyPage(v any) bool {
+	m, ok := v.(map[string]any)
+	if !ok {
+		return false
+	}
+	_, snake := m["has_next"]
+	_, camel := m["hasNext"]
+	return snake || camel
 }
 
 func flattenAny(v any) []any {

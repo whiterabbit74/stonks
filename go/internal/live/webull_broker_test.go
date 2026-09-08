@@ -2,6 +2,7 @@ package live
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -276,5 +277,39 @@ func TestPlaceMarketCfgMismatchedClientOrderIDIsAmbiguous(t *testing.T) {
 	}
 	if placeCalls != 1 {
 		t.Fatalf("ambiguous result must not trigger a resend from the broker, place calls=%d", placeCalls)
+	}
+}
+
+// Webull отдаёт пустой список заявок без самого массива. Считать это
+// нечитаемым ответом значило срывать вход в T-1 на самом обычном случае —
+// когда рабочих заявок нет.
+func TestOpenOrdersEmptyPageIsZeroOrders(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.Contains(r.URL.Path, "/trade/orders/list-open") {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = w.Write([]byte(`{"hasNext":false,"pageSize":0}`))
+	}))
+	t.Cleanup(ts.Close)
+	b := &LiveBroker{Client: &webull.Client{HTTP: ts.Client(), Base: ts.URL, Host: "api.webull.com", AppKey: "k", AppSecret: "s", AccessToken: "t", AccountID: "acc"}}
+	rows, err := b.OpenOrders()
+	if err != nil {
+		t.Fatalf("empty page must read as zero orders: %v", err)
+	}
+	if len(rows) != 0 {
+		t.Fatalf("rows = %v", rows)
+	}
+}
+
+// А тело без пагинации остаётся непрочитанным: гадать «заявок нет» нельзя.
+func TestOpenOrdersUnreadableBodyStillFails(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"msg":"who knows"}`))
+	}))
+	t.Cleanup(ts.Close)
+	b := &LiveBroker{Client: &webull.Client{HTTP: ts.Client(), Base: ts.URL, Host: "api.webull.com", AppKey: "k", AppSecret: "s", AccessToken: "t", AccountID: "acc"}}
+	if _, err := b.OpenOrders(); !errors.Is(err, ErrOrderUnavailable) {
+		t.Fatalf("err = %v, want ErrOrderUnavailable", err)
 	}
 }
