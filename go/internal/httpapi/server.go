@@ -1602,12 +1602,14 @@ func (s *Server) handlePostPosition(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{"ok": true})
 }
 
+// handlePatchPosition edits a position. The body is decoded onto the stored row,
+// not into an empty one: the edit forms send the handful of fields they show, so
+// decoding into a zero Position and saving it wiped everything they omit — the
+// ticker, the broker legs with their order ids, the decision times, and the
+// status, which then defaulted back to "open" on a closed row.
 func (s *Server) handlePatchPosition(w http.ResponseWriter, r *http.Request) {
-	var body store.Position
-	if !s.requireJSON(w, r, &body) {
-		return
-	}
-	existing, err := s.DB.GetPosition(r.PathValue("id"))
+	id := r.PathValue("id")
+	existing, err := s.DB.GetPosition(id)
 	if err != nil {
 		writeJSON(w, 500, map[string]any{"error": err.Error()})
 		return
@@ -1616,8 +1618,11 @@ func (s *Server) handlePatchPosition(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 404, map[string]any{"error": "Позиция не найдена"})
 		return
 	}
-	body.ID = existing.ID
-	if err := s.DB.SavePosition(body); err != nil {
+	if !s.requireJSON(w, r, existing) {
+		return
+	}
+	existing.ID = id
+	if err := s.DB.SavePosition(*existing); err != nil {
 		writeJSON(w, 500, map[string]any{"error": err.Error()})
 		return
 	}

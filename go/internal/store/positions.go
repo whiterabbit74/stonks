@@ -229,6 +229,9 @@ func (d *DB) SavePosition(p Position) error {
 	if p.Status == "" {
 		p.Status = "open"
 	}
+	// The P&L is derived from the prices, so a hand-edited price recomputes it
+	// instead of leaving the old number beside the new prices.
+	p.applyPnL()
 	_, err := d.SQL.Exec(`INSERT INTO positions (`+positionColumns+`)
 		VALUES (?,?,?, ?,?,?,?, ?,?,?,?, ?,?,?,?, ?,?,?,?, ?,?,?,?,?, ?,?,?,?,?)
 		ON CONFLICT(id) DO UPDATE SET
