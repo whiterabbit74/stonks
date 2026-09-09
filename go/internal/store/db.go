@@ -23,7 +23,7 @@ import (
 
 // SchemaVersion is the schema this binary can open and migrate to.
 // Bump it when adding a migrateSchema step. Open fails if the database is newer.
-const SchemaVersion = 5
+const SchemaVersion = 6
 
 type DB struct {
 	SQL *sql.DB
@@ -170,6 +170,39 @@ func (d *DB) initSchema() error {
             filled_qty          REAL,
             quantity            REAL
         );
+        CREATE TABLE IF NOT EXISTS positions (
+            id                  TEXT PRIMARY KEY,
+            symbol              TEXT NOT NULL,
+            status              TEXT NOT NULL DEFAULT 'open',
+            entry_date          TEXT,
+            entry_price         REAL,
+            entry_ibs           REAL,
+            entry_decision_time TEXT,
+            exit_date           TEXT,
+            exit_price          REAL,
+            exit_ibs            REAL,
+            exit_decision_time  TEXT,
+            quantity            REAL,
+            pnl_percent         REAL,
+            pnl_absolute        REAL,
+            holding_days        INTEGER,
+            source              TEXT DEFAULT 'auto',
+            notes               TEXT,
+            is_hidden           INTEGER NOT NULL DEFAULT 0,
+            is_test             INTEGER NOT NULL DEFAULT 0,
+            webull_qty              REAL NOT NULL DEFAULT 0,
+            webull_entry_price      REAL,
+            webull_exit_price       REAL,
+            webull_entry_order_id   TEXT,
+            webull_exit_order_id    TEXT,
+            rh_qty              REAL NOT NULL DEFAULT 0,
+            rh_entry_price      REAL,
+            rh_exit_price       REAL,
+            rh_entry_order_id   TEXT,
+            rh_exit_order_id    TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_positions_status ON positions(status);
+        CREATE INDEX IF NOT EXISTS idx_positions_symbol_status ON positions(symbol, status);
         CREATE TABLE IF NOT EXISTS telegram_watches (
             symbol               TEXT PRIMARY KEY,
             high_ibs             REAL NOT NULL DEFAULT 0.75,
@@ -382,6 +415,14 @@ func applyPendingSchema(e schemaExecer, from int) error {
 			if _, err := e.Exec(`UPDATE ` + table + ` SET pnl_absolute = ROUND(pnl_absolute * quantity, 6) WHERE status = 'closed' AND pnl_absolute IS NOT NULL AND quantity IS NOT NULL AND quantity > 0`); err != nil {
 				return err
 			}
+		}
+	}
+	if from < 6 {
+		// One position, one row: `trades` + `broker_trades` fold into
+		// `positions`. See mergeLegacyJournals for the matching rules. The old
+		// tables stay in place and stop being written.
+		if err := mergeLegacyJournals(e); err != nil {
+			return err
 		}
 	}
 	return nil
