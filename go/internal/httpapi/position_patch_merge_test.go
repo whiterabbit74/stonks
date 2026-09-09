@@ -66,3 +66,19 @@ func TestPatchPositionRecomputesPnL(t *testing.T) {
 		t.Fatalf("pnlPercent %v", p.PnLPercent)
 	}
 }
+
+// The ticker is the identity of the row: an edit that clears it is refused, so
+// a position cannot end up nameless and invisible to the reconciliation.
+func TestPatchPositionRejectsEmptyTicker(t *testing.T) {
+	s, _, _ := liveServer(t)
+	if err := s.DB.SavePosition(store.Position{ID: "m1", Symbol: "MSFT", Status: "open", EntryDate: "2026-09-04"}); err != nil {
+		t.Fatal(err)
+	}
+	if rec := patchJSON(s, "/api/positions/m1", map[string]any{"symbol": " "}); rec.Code != 400 {
+		t.Fatalf("want 400, got %d %s", rec.Code, rec.Body.String())
+	}
+	p, _ := s.DB.GetPosition("m1")
+	if p == nil || p.Symbol != "MSFT" {
+		t.Fatalf("ticker changed: %+v", p)
+	}
+}

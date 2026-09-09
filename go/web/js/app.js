@@ -4126,6 +4126,7 @@
           <h3 class="text-lg font-semibold mb-3">Изменить ${esc(t.symbol || '')}</h3>
           <div id="em-err" class="text-sm text-red-600 mb-2 hidden"></div>
           <div class="grid sm:grid-cols-2 gap-2">
+            <label class="block text-sm">Тикер<input id="em-sym" class="field mt-1" value="${esc(t.symbol || '')}" /></label>
             <label class="block text-sm">Дата входа<input id="em-ed" class="field mt-1" value="${esc(t.entryDate || '')}" /></label>
             <label class="block text-sm">Дата выхода<input id="em-xd" class="field mt-1" value="${esc(t.exitDate || '')}" /></label>
             <label class="block text-sm">Цена входа<input id="em-ep" type="number" step="0.01" class="field mt-1" value="${esc(t.entryPrice ?? '')}" /></label>
@@ -4144,6 +4145,7 @@
           const errEl = document.getElementById('em-err');
           try {
             const payload = {
+              symbol: document.getElementById('em-sym').value.toUpperCase().trim(),
               entryDate: document.getElementById('em-ed').value,
               exitDate: document.getElementById('em-xd').value,
               entryPrice: Number(document.getElementById('em-ep').value),

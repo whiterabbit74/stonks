@@ -1622,6 +1622,10 @@ func (s *Server) handlePatchPosition(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	existing.ID = id
+	if store.SafeTicker(existing.Symbol) == "" {
+		writeJSON(w, 400, map[string]any{"error": "Не указан тикер"})
+		return
+	}
 	if err := s.DB.SavePosition(*existing); err != nil {
 		writeJSON(w, 500, map[string]any{"error": err.Error()})
 		return
