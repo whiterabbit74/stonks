@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"math"
@@ -140,6 +141,10 @@ func (d *DB) initSchema() error {
             expires_at INTEGER NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at);
+        CREATE TABLE IF NOT EXISTS auth_credential (
+            id          INTEGER PRIMARY KEY CHECK (id = 1),
+            fingerprint TEXT NOT NULL
+        );
         CREATE TABLE IF NOT EXISTS broker_trades (
             id                  TEXT PRIMARY KEY,
             symbol              TEXT NOT NULL,
@@ -662,6 +667,27 @@ func (d *DB) SessionSet(token string, created, expires int64) error {
 
 func (d *DB) SessionDelete(token string) error {
 	_, err := d.SQL.Exec(`DELETE FROM sessions WHERE token = ?`, token)
+	return err
+}
+
+// SessionsRevokeOnCredentialChange drops every stored session when the admin
+// credentials differ from the ones the sessions were issued under. Without it
+// a rotated password leaves a stolen cookie working: the sessions table knows
+// nothing about the credentials. A read failure is treated as "unknown
+// credentials" and revokes as well — fail closed.
+func (d *DB) SessionsRevokeOnCredentialChange(fingerprint string) error {
+	var stored string
+	err := d.SQL.QueryRow(`SELECT fingerprint FROM auth_credential WHERE id = 1`).Scan(&stored)
+	if err == nil && stored == fingerprint {
+		return nil
+	}
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		log.Printf("store: read auth fingerprint: %v", err)
+	}
+	if _, err := d.SQL.Exec(`DELETE FROM sessions`); err != nil {
+		return err
+	}
+	_, err = d.SQL.Exec(`INSERT INTO auth_credential (id, fingerprint) VALUES (1, ?) ON CONFLICT(id) DO UPDATE SET fingerprint=excluded.fingerprint`, fingerprint)
 	return err
 }
 

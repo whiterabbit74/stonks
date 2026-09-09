@@ -3,6 +3,7 @@ package httpapi
 import (
 	"bytes"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/subtle"
 	"database/sql"
 	"encoding/hex"
@@ -76,6 +77,7 @@ func NewWithProviders(db *store.DB, webDir string, p *providers.Client) *Server 
 	if p != nil {
 		p.UseWebullToken(db.WebullAccessToken)
 	}
+	s.revokeSessionsOnCredentialChange()
 	s.Live = live.New(db, p)
 	if s.Live.Broker != nil {
 		s.Live.AttachBroker("webull", s.Live.Broker)
@@ -322,6 +324,19 @@ func (s *Server) auth(next http.HandlerFunc) http.HandlerFunc {
 		}
 		s.touchSession(w, r, token, created, exp)
 		next(w, r)
+	}
+}
+
+// revokeSessionsOnCredentialChange drops sessions issued under other admin
+// credentials. Session rows carry only token/created_at/expires_at, so without
+// this a password rotation after a leak leaves the old cookie fully valid.
+func (s *Server) revokeSessionsOnCredentialChange() {
+	if s.DB == nil || s.adminPass == "" {
+		return
+	}
+	sum := sha256.Sum256([]byte(s.adminUser + "\x00" + s.adminPass))
+	if err := s.DB.SessionsRevokeOnCredentialChange(hex.EncodeToString(sum[:])); err != nil {
+		log.Printf("session revoke on credential change: %v", err)
 	}
 }
 
