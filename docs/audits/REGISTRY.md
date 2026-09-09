@@ -4,6 +4,12 @@
 
 IN_PROGRESS. No agents; source and operational data unchanged. Synthetic tests run through Go overlay (temporary compiler inputs outside checkout). A reproducer PASS means the defect exists.
 
+### AUD-093 — OPEN, P2: EMA теряет переоценку при отсутствующем баре
+
+`go/internal/backtest/ema.go:357-370`: currentPositionValue при отсутствии даты у тикера подставляет цену входа, вместо последней известной цены. В конце истории позиция закрывается по последнему бару своего тикера, но equity и метрики не пересчитываются. Несовпадающие истории дают ложную просадку и разные итоговые суммы.
+
+Доказательство на a162986: TestFullAuditEMAHistoryGap, X с ценами 100 → 120 и дополнительный день только у Y. Equity: 10000 → 12000 → 10000; FinalValue=12000, NetProfit=0, просадка 16.67%. Ожидается сохранение известной оценки либо явный отказ считать неполную историю. Это не AUD-048: другой движок и реальное расхождение, не гипотеза о комиссии. Исправлений нет, production не проверялся.
+
 | ISSUE-ID | Root cause | Source | Status | Fix commit | Verification |
 |---|---|---|---|---|---|
 | AUD-092 | P2. `/api/calc/indicators` returns HTTP 500 for valid nonempty history. SMA/EMA/RSI use NaN for warmup points; writeJSON rejects these values and discards the entire response. Main SPA does not currently call this endpoint | `go/internal/httpapi/calc.go:211-235`; `go/internal/indicators/indicators.go`; `go/internal/httpapi/server.go:241-252`; a162986 | OPEN | None, read-only | TestFullAuditIndicators: valid OHLC arrays of lengths 1/14/20/30 all return 500 encode failed. Distinct from AUD-060: ordinary missing indicator points, not overflow in finalValue. Reproducer will be recorded with audit evidence |
