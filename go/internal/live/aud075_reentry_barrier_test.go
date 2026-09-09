@@ -65,27 +65,33 @@ func TestReentryDoesNotWaitForPeerExitWait(t *testing.T) {
 		}
 		return true
 	}
-	// Опрос заявки Webull идёт только из его собственного ожидания выхода — а
-	// туда попадают уже после того, как Robinhood разнёс свой выход. Держим
-	// это ожидание, пока Robinhood не купит: с общим барьером он не купит
-	// никогда, и ожидание истечёт по таймауту.
-	var boughtWhileWaiting atomic.Bool
+	// Заявку Webull опрашивает только его собственное ожидание выхода, и
+	// доходит оно туда уже после того, как Robinhood разнёс свой. Держим это
+	// ожидание, пока Robinhood не купит: с общим барьером он не купит, пока
+	// ожидание не кончится, и проверка истечёт по таймауту.
+	var inRun, blocked, boughtWhileWaiting atomic.Bool
 	wb.BeforeDetail = func() {
-		if !rhFlat() || boughtWhileWaiting.Load() {
+		if !inRun.Load() || !rhFlat() || !blocked.CompareAndSwap(false, true) {
 			return
 		}
 		deadline := time.Now().Add(3 * time.Second)
 		for time.Now().Before(deadline) {
 			if rhBought() {
-				boughtWhileWaiting.Store(true)
+				boughtWhileWaiting.Store(inRun.Load())
 				return
 			}
 			time.Sleep(2 * time.Millisecond)
 		}
 	}
-	e.Sleep = func(time.Duration) { e.PollTrackers() }
+	// Ожидание Webull должно занимать настоящее время: иначе его десять
+	// попыток проскакивают раньше, чем Robinhood разнесёт свой выход, и опрос
+	// заявки ни разу не приходится на проверяемый момент.
+	e.Sleep = func(time.Duration) { time.Sleep(20 * time.Millisecond) }
 
-	if _, err := e.Aggregate(1, AggregateOpts{ForceSend: true, UpdateState: true}); err != nil {
+	inRun.Store(true)
+	_, err = e.Aggregate(1, AggregateOpts{ForceSend: true, UpdateState: true})
+	inRun.Store(false)
+	if err != nil {
 		t.Fatal(err)
 	}
 	if !boughtWhileWaiting.Load() {

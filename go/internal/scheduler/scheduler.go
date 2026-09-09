@@ -560,7 +560,12 @@ func RunPriceActualization(db *store.DB, deps Deps) (ok, fail int, skipped bool)
 		return 0, 0, true
 	}
 	defer actualizeMu.Unlock()
-	res := engine(db, deps).Actualize(false)
+	eng := engine(db, deps)
+	res := eng.Actualize(false)
+	// Флаг «в мониторинге» на строке наблюдения — производная от журнала, и
+	// пересчитывался он только руками оператора (AUD-110). Открытая движком
+	// позиция расходилась с наблюдением до следующего нажатия кнопки.
+	_ = eng.UpdatePositions()
 	return res.Count, len(res.Failed), false
 }
 
