@@ -253,7 +253,11 @@ func (e *Engine) UpdatePositions() map[string]any {
 			open = &p
 		}
 		wasOpen, _ := w["isOpenPosition"].(bool)
-		if wantOpen != wasOpen {
+		wasID, _ := w["currentTradeId"].(string)
+		// Не только флаг: повторный вход в тот же день закрывает одну позицию и
+		// открывает другую по тому же тикеру, флаг при этом не меняется, и
+		// карточка показывала цену и id закрытой сделки (AUD-120).
+		if wantOpen != wasOpen || (wantOpen && wasID != row.ID) {
 			patch := map[string]any{"isOpenPosition": wantOpen}
 			if wantOpen {
 				patch["entryPrice"] = legacyEntryPrice(&row)
