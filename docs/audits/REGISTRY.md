@@ -1,5 +1,38 @@
 # Реестр аудитов и находок
 
+## Ревизия последних коммитов 2026-09-08 (8d91571, 359580a, a151f82)
+
+Точечный разбор трёх коммитов типизации боевого пути по запросу пользователя.
+Новых находок: 1 (AUD-099). Дубликатов, повторно открытых — 0.
+
+### AUD-099 — VERIFIED, P1: порог IBS из хранилища разбирался по одному значению, и нечитаемый highIBS становился 0 («выход всегда»)
+
+`ibs.Threshold` возвращает fallback только для значения вне `[0, 1]`, а 0 внутри
+интервала. `asFloat` превращает всё, что не смогла прочитать из SQLite (bool,
+нечисловую строку, вложенный объект), ровно в 0 — поэтому добавленный в
+`8d91571` откат не срабатывал именно в том случае, который назван в его же
+комментарии: highIBS оставался 0, `ibs > 0` — это выход, и решение T-1
+возвращало `action=exit` на любом чтении. Тот же 0 стал достижим ещё раз после
+`359580a`: нулевое значение `QuoteThresholds` — это highIBS 0, который
+`highOrDefault` читал как порог в допустимом диапазоне.
+
+Пути записи такую пару уже запрещают (`validateAutoConfig` отклоняет highIBS 0
+как инвертированную пару, `validateWatchThresholds` требует low < high), то есть
+путь чтения был мягче пути записи.
+
+Источники: `go/internal/ibs/ibs.go`; `go/internal/live/config.go:215-260`;
+`go/internal/live/autotrade.go:465-520,720-735`; ревизия `a151f82`.
+
+Проверка: `TestWatchThresholdsRejectUnreadableHighIBS` и
+`TestDecideLiveActionIgnoresZeroHighIBS` (`go/internal/live`) — FAIL до фикса
+(`highIBS true: got 0.2/0`; решение `action=exit reason=ibs_exit` при IBS 0.5 и
+highIBS 0), PASS после. `TestPairFallsBackAsAPair` (`go/internal/ibs`) закрепляет
+правило пары, включая сохранение lowIBS 0 как «никогда не входить».
+`go test ./...` зелёный, в том числе под `TZ=Pacific/Auckland` и
+`TZ=America/Los_Angeles`. Прод не затрагивался.
+
+Коммит: `0d18bc6`.
+
 ## Full read-only audit 2026-09-08 (source a162986)
 
 CLOSED. Все находки этого прогона исправлены и проверены (2026-09-08). No agents; source and operational data unchanged. Synthetic tests run through Go overlay (temporary compiler inputs outside checkout). A reproducer PASS means the defect exists.
