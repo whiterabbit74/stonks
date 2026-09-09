@@ -4187,7 +4187,7 @@
       const kind = p === '/robinhood' ? 'robinhood' : 'webull';
       if (state.loaded.broker !== kind) {
         const rh = p === '/robinhood';
-        const [bt, tok, ac, dash, logs, st, w, cons, health, rhst, settings] = await Promise.all([
+        const [bt, tok, ac, dash, logs, st, w, cons, health, settings] = await Promise.all([
           API.positions({ includeHidden: true }).catch(() => ({ positions: [] })),
           rh ? API.rhStatus().catch((e) => e.data || {}) : API.tokenStatus().catch((e) => e.data || { present: false, hasToken: false }),
           API.autoConfig().catch(() => ({})),
@@ -4197,11 +4197,12 @@
           API.watches().catch(() => []),
           API.consistency().catch(() => ({ issues: [] })),
           API.brokersHealth().catch(() => []),
-          rh ? API.rhStatus().catch(() => ({})) : Promise.resolve({}),
           API.settings().catch(() => ({})),
         ]);
         state.brokerHealth = Array.isArray(health) ? health : [];
-        state.rhStatus = rhst || tok || {};
+        // На /robinhood статус брокера — это уже загруженный tok: второй такой
+        // же запрос в этом же Promise.all был лишним (AUD-123).
+        state.rhStatus = rh ? (tok || {}) : {};
         state.broker = Array.isArray(bt) ? bt : (bt.positions || []);
         state.token = tok;
         state.autoConfig = unwrapAutoConfig(ac);
