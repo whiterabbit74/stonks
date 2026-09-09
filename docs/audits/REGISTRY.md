@@ -1,5 +1,13 @@
 # Реестр аудитов и находок
 
+## Full read-only audit 2026-09-08 (source a162986)
+
+IN_PROGRESS. No agents; source and operational data unchanged. Synthetic tests run through Go overlay (temporary compiler inputs outside checkout). A reproducer PASS means the defect exists.
+
+| ISSUE-ID | Root cause | Source | Status | Fix commit | Verification |
+|---|---|---|---|---|---|
+| AUD-092 | P2. `/api/calc/indicators` returns HTTP 500 for valid nonempty history. SMA/EMA/RSI use NaN for warmup points; writeJSON rejects these values and discards the entire response. Main SPA does not currently call this endpoint | `go/internal/httpapi/calc.go:211-235`; `go/internal/indicators/indicators.go`; `go/internal/httpapi/server.go:241-252`; a162986 | OPEN | None, read-only | TestFullAuditIndicators: valid OHLC arrays of lengths 1/14/20/30 all return 500 encode failed. Distinct from AUD-060: ordinary missing indicator points, not overflow in finalValue. Reproducer will be recorded with audit evidence |
+
 Единый индекс по текущему checkout `main` на ревизии `171a7cb` (2026-09-08).
 Статусы не наследуются автоматически из старых документов: при конфликте
 используется `NEEDS_RECHECK`.
