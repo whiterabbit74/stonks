@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"mktorder.com/go/internal/tradingdate"
 )
 
 // BrokerLeg is what one broker actually did with a position. Every field is
@@ -270,4 +272,126 @@ func boolInt(b bool) int {
 		return 1
 	}
 	return 0
+}
+
+// PositionExit is the exit of a position: the signal side of it. Price is the
+// price the exit decision was taken on; a broker's actual fill goes into its
+// leg through CloseLeg.
+type PositionExit struct {
+	Date         string
+	Price        float64
+	IBS          *float64
+	DecisionTime string
+	Notes        string
+}
+
+// ClosePosition writes the exit into the journal and computes P&L the same way
+// the two-table journal did: pnl_absolute is money (per-share difference times
+// quantity), pnl_percent is percent, holding days is at least one.
+//
+// It refuses to close a position that is already closed, so a fill delivered
+// twice (a poll after a restart) cannot overwrite a recorded exit — the check
+// and the write are one transaction.
+func (d *DB) ClosePosition(id string, exit PositionExit) (*Position, error) {
+	tx, err := d.SQL.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	p, err := d.scanPosition(tx.QueryRow(`SELECT `+positionColumns+` FROM positions WHERE id=?`, id))
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("позиция не найдена")
+	}
+	if err != nil {
+		return nil, err
+	}
+	if p.Status != "open" {
+		return nil, fmt.Errorf("позиция уже закрыта")
+	}
+
+	p.Status = "closed"
+	p.ExitDate = exit.Date
+	price := exit.Price
+	p.ExitPrice = &price
+	if exit.IBS != nil {
+		p.ExitIBS = exit.IBS
+	}
+	if exit.DecisionTime != "" {
+		p.ExitDecisionTime = exit.DecisionTime
+	}
+	if exit.Notes != "" {
+		p.Notes = exit.Notes
+	}
+	p.applyPnL()
+
+	if _, err := tx.Exec(`UPDATE positions SET status=?, exit_date=?, exit_price=?, exit_ibs=?,
+		exit_decision_time=?, pnl_percent=?, pnl_absolute=?, holding_days=?, notes=?
+		WHERE id=? AND status='open'`,
+		p.Status, nullText(p.ExitDate), p.ExitPrice, p.ExitIBS, nullText(p.ExitDecisionTime),
+		p.PnLPercent, p.PnLAbsolute, p.HoldingDays, nullText(p.Notes), id); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return &p, nil
+}
+
+// applyPnL recomputes the journal P&L from the entry and exit prices. An entry
+// price that was never confirmed leaves P&L NULL rather than claiming a profit
+// measured from zero.
+func (p *Position) applyPnL() {
+	if p.EntryPrice != nil && *p.EntryPrice > 0 && p.ExitPrice != nil {
+		qty := p.Quantity
+		if !(qty > 0) {
+			qty = 1
+		}
+		diff := *p.ExitPrice - *p.EntryPrice
+		abs := round6(diff * qty)
+		pct := round6((diff / *p.EntryPrice) * 100)
+		p.PnLAbsolute, p.PnLPercent = &abs, &pct
+	}
+	if p.EntryDate != "" && p.ExitDate != "" {
+		n := int64(tradingdate.DaysBetween(p.EntryDate, p.ExitDate))
+		if n < 1 {
+			n = 1
+		}
+		p.HoldingDays = &n
+	}
+}
+
+// CloseLeg records what one broker actually got for its exit. It is separate
+// from ClosePosition because the two answer different questions: the journal
+// closes on the signal, a leg closes on a fill, and a position can be closed by
+// signal with no broker leg at all.
+func (d *DB) CloseLeg(id, broker string, exitPrice float64, exitOrderID string) error {
+	col := "webull"
+	if normalizeBroker(broker) == "robinhood" {
+		col = "rh"
+	}
+	_, err := d.SQL.Exec(`UPDATE positions SET `+col+`_exit_price=?, `+col+`_exit_order_id=? WHERE id=?`,
+		exitPrice, nullText(exitOrderID), id)
+	return err
+}
+
+// OpenPositionForBroker returns the open position this broker actually holds,
+// or nil. A position open in the journal with no leg at this broker is not this
+// broker's to exit — and is not a discrepancy either, just a signal nobody
+// executed here.
+func (d *DB) OpenPositionForBroker(broker string) (*Position, error) {
+	col := "webull"
+	if normalizeBroker(broker) == "robinhood" {
+		col = "rh"
+	}
+	p, err := d.scanPosition(d.SQL.QueryRow(`SELECT ` + positionColumns +
+		` FROM positions WHERE status='open' AND is_hidden=0 AND ` + col + `_qty > 0` +
+		` ORDER BY entry_date DESC, id LIMIT 1`))
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &p, nil
 }

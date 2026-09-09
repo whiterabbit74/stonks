@@ -161,3 +161,90 @@ func TestMergeLegacyJournalsRunsOnce(t *testing.T) {
 		t.Fatalf("merge is not idempotent: %d rows", len(all))
 	}
 }
+
+func TestClosePositionComputesPnL(t *testing.T) {
+	db := openTestDB(t)
+	_ = db.SavePosition(Position{ID: "p1", Symbol: "MSFT", Status: "open",
+		EntryDate: "2026-09-01", EntryPrice: pf(100), Quantity: 3,
+		Webull: BrokerLeg{Qty: 3, EntryPrice: pf(100), EntryOrderID: "w-1"}})
+
+	got, err := db.ClosePosition("p1", PositionExit{Date: "2026-09-04", Price: 110, IBS: pf(0.8), Notes: "ibs_exit"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// pnl_absolute is money: the per-share difference times the quantity.
+	if *got.PnLAbsolute != 30 || *got.PnLPercent != 10 {
+		t.Fatalf("pnl %v / %v", *got.PnLAbsolute, *got.PnLPercent)
+	}
+	if *got.HoldingDays != 3 {
+		t.Fatalf("holding days %v", *got.HoldingDays)
+	}
+	if got.Status != "closed" || *got.ExitIBS != 0.8 {
+		t.Fatalf("close lost fields: %+v", got)
+	}
+}
+
+// A fill delivered twice must not reopen or overwrite a recorded exit.
+func TestClosePositionRejectsSecondClose(t *testing.T) {
+	db := openTestDB(t)
+	_ = db.SavePosition(Position{ID: "p1", Symbol: "V", Status: "open", EntryDate: "2026-09-01", EntryPrice: pf(100), Quantity: 1})
+	if _, err := db.ClosePosition("p1", PositionExit{Date: "2026-09-02", Price: 110}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ClosePosition("p1", PositionExit{Date: "2026-09-03", Price: 50}); err == nil {
+		t.Fatal("second close must be refused")
+	}
+	p, _ := db.GetPosition("p1")
+	if *p.ExitPrice != 110 || p.ExitDate != "2026-09-02" {
+		t.Fatalf("recorded exit was overwritten: %+v", p)
+	}
+}
+
+// An entry price nobody confirmed leaves P&L NULL instead of measuring profit
+// from zero.
+func TestClosePositionWithoutEntryPriceLeavesPnLNull(t *testing.T) {
+	db := openTestDB(t)
+	_ = db.SavePosition(Position{ID: "p1", Symbol: "AAL", Status: "open", EntryDate: "2026-09-08", Quantity: 1})
+	got, err := db.ClosePosition("p1", PositionExit{Date: "2026-09-08", Price: 12})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.PnLAbsolute != nil || got.PnLPercent != nil {
+		t.Fatalf("pnl invented from a missing entry price: %v %v", got.PnLAbsolute, got.PnLPercent)
+	}
+}
+
+func TestOpenPositionForBrokerIgnoresOtherBrokersAndSignalOnlyRows(t *testing.T) {
+	db := openTestDB(t)
+	// A signal nobody executed: open in the journal, no leg anywhere. This used
+	// to be reported as broker_position_mismatch.
+	_ = db.SavePosition(Position{ID: "signal-only", Symbol: "MSFT", Status: "open", EntryDate: "2026-09-04"})
+	_ = db.SavePosition(Position{ID: "rh-held", Symbol: "AAPL", Status: "open", EntryDate: "2026-09-05",
+		Robinhood: BrokerLeg{Qty: 2, EntryOrderID: "r-1"}})
+
+	wb, err := db.OpenPositionForBroker("webull")
+	if err != nil || wb != nil {
+		t.Fatalf("webull holds nothing, got %v %v", wb, err)
+	}
+	rh, err := db.OpenPositionForBroker("robinhood")
+	if err != nil || rh == nil || rh.ID != "rh-held" {
+		t.Fatalf("robinhood leg not found: %v %v", rh, err)
+	}
+}
+
+func TestCloseLegWritesOnlyThatBroker(t *testing.T) {
+	db := openTestDB(t)
+	_ = db.SavePosition(Position{ID: "p1", Symbol: "V", Status: "open",
+		Webull:    BrokerLeg{Qty: 1, EntryOrderID: "w-1"},
+		Robinhood: BrokerLeg{Qty: 2, EntryOrderID: "r-1"}})
+	if err := db.CloseLeg("p1", "robinhood", 379.09, "r-2"); err != nil {
+		t.Fatal(err)
+	}
+	p, _ := db.GetPosition("p1")
+	if p.Robinhood.ExitPrice == nil || *p.Robinhood.ExitPrice != 379.09 || p.Robinhood.ExitOrderID != "r-2" {
+		t.Fatalf("robinhood leg: %+v", p.Robinhood)
+	}
+	if p.Webull.ExitPrice != nil {
+		t.Fatalf("webull leg touched: %+v", p.Webull)
+	}
+}
