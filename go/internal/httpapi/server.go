@@ -1607,30 +1607,35 @@ func (s *Server) handlePostPosition(w http.ResponseWriter, r *http.Request) {
 // decoding into a zero Position and saving it wiped everything they omit — the
 // ticker, the broker legs with their order ids, the decision times, and the
 // status, which then defaulted back to "open" on a closed row.
+// The body is read to the end before the row is: decoding it onto the row is
+// what makes the edit a read-modify-write, and it has to happen inside the
+// transaction that holds the row, never around a client that is still typing.
 func (s *Server) handlePatchPosition(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	existing, err := s.DB.GetPosition(id)
-	if err != nil {
-		writeJSON(w, 500, map[string]any{"error": err.Error()})
+	var body json.RawMessage
+	if !s.requireJSON(w, r, &body) {
 		return
 	}
-	if existing == nil {
+	errNoTicker := errors.New("Не указан тикер")
+	errBadJSON := errors.New("invalid json")
+	updated, err := s.DB.PatchPosition(r.PathValue("id"), func(p *store.Position) error {
+		if json.Unmarshal(body, p) != nil {
+			return errBadJSON
+		}
+		if store.SafeTicker(p.Symbol) == "" {
+			return errNoTicker
+		}
+		return nil
+	})
+	switch {
+	case errors.Is(err, errNoTicker), errors.Is(err, errBadJSON):
+		writeJSON(w, 400, map[string]any{"error": err.Error()})
+	case err != nil:
+		writeJSON(w, 500, map[string]any{"error": err.Error()})
+	case updated == nil:
 		writeJSON(w, 404, map[string]any{"error": "Позиция не найдена"})
-		return
+	default:
+		writeJSON(w, 200, map[string]any{"ok": true})
 	}
-	if !s.requireJSON(w, r, existing) {
-		return
-	}
-	existing.ID = id
-	if store.SafeTicker(existing.Symbol) == "" {
-		writeJSON(w, 400, map[string]any{"error": "Не указан тикер"})
-		return
-	}
-	if err := s.DB.SavePosition(*existing); err != nil {
-		writeJSON(w, 500, map[string]any{"error": err.Error()})
-		return
-	}
-	writeJSON(w, 200, map[string]any{"ok": true})
 }
 
 // handleClosePosition closes a position by hand. There is no linked-row check

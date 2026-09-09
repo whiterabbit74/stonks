@@ -2,6 +2,7 @@ package store
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -222,6 +223,51 @@ func (d *DB) OpenPositions() ([]Position, error) {
 
 // SavePosition inserts or replaces a position by id.
 func (d *DB) SavePosition(p Position) error {
+	return savePositionOn(d.SQL, p)
+}
+
+// ErrNoPatch aborts a PatchPosition edit and leaves the row untouched.
+var ErrNoPatch = errors.New("позиция не изменена")
+
+// PatchPosition applies edit to the stored row and writes the result back in
+// one transaction, returning the row as it now stands (nil when there is no
+// such id). edit may return ErrNoPatch to decide, on the row it was given,
+// that nothing should be written.
+//
+// Read-modify-write of a position row belongs in a transaction: the brokers
+// keep filling while an operator edits, so an edit built on a copy read a
+// moment earlier put back the quantity a fill had just sold and dropped the
+// exit order id with it (AUD-112, the AUD-103 class).
+func (d *DB) PatchPosition(id string, edit func(*Position) error) (*Position, error) {
+	tx, err := d.SQL.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	p, err := d.scanPosition(tx.QueryRow(`SELECT `+positionColumns+` FROM positions WHERE id=?`, id))
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if err := edit(&p); err != nil {
+		if errors.Is(err, ErrNoPatch) {
+			return &p, nil
+		}
+		return nil, err
+	}
+	p.ID = id
+	if err := savePositionOn(tx, p); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return &p, nil
+}
+
+func savePositionOn(e schemaExecer, p Position) error {
 	if strings.TrimSpace(p.ID) == "" {
 		p.ID = fmt.Sprintf("p-%d", time.Now().UnixNano())
 	}
@@ -232,7 +278,7 @@ func (d *DB) SavePosition(p Position) error {
 	// The P&L is derived from the prices, so a hand-edited price recomputes it
 	// instead of leaving the old number beside the new prices.
 	p.applyPnL()
-	_, err := d.SQL.Exec(`INSERT INTO positions (`+positionColumns+`)
+	_, err := e.Exec(`INSERT INTO positions (`+positionColumns+`)
 		VALUES (?,?,?, ?,?,?,?, ?,?,?,?, ?,?,?,?, ?,?,?,?, ?,?,?,?,?, ?,?,?,?,?)
 		ON CONFLICT(id) DO UPDATE SET
 			symbol=excluded.symbol, status=excluded.status,
@@ -262,6 +308,25 @@ func (d *DB) SavePosition(p Position) error {
 		p.Robinhood.Qty, p.Robinhood.EntryPrice, p.Robinhood.ExitPrice,
 		nullText(p.Robinhood.EntryOrderID), nullText(p.Robinhood.ExitOrderID))
 	return err
+}
+
+// DeletePhantomRow removes the position of an order the broker says never
+// existed, but only while the other broker's leg is still untouched: the row is
+// shared, and one broker's phantom must not take a real execution with it. The
+// check and the delete are one statement, so a peer entry landing right now
+// either keeps the row or is not there yet. Reports whether the row went.
+func (d *DB) DeletePhantomRow(id, broker string) (bool, error) {
+	peer := "webull"
+	if normalizeBroker(broker) == "webull" {
+		peer = "rh"
+	}
+	res, err := d.SQL.Exec(`DELETE FROM positions
+		WHERE id=? AND `+peer+`_qty=0 AND COALESCE(`+peer+`_entry_order_id,'')=''`, id)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n > 0, err
 }
 
 // DeletePosition removes a position permanently.

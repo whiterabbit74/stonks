@@ -382,21 +382,29 @@ func (e *Engine) deletePhantom(clientOrderID, symbol, broker string) {
 	if err != nil || p == nil || p.ID != clientOrderID {
 		return
 	}
-	peer := "webull"
-	if normalizeBrokerName(broker) == "webull" {
-		peer = "robinhood"
-	}
-	if p.Leg(peer).Executed() {
-		p.SetLeg(broker, store.BrokerLeg{})
-		p.Quantity = p.ExecutedQty()
-		if err := e.DB.SavePosition(*p); err != nil {
-			e.logAuto("journal_update_failed", "", map[string]any{
-				"op": "clear_phantom_leg", "id": p.ID, "broker": broker, "error": err.Error(),
-			})
-		}
+	// Whether the peer executed is decided by the delete itself, not by the
+	// copy read a moment ago: the peer's entry lands from its own goroutine
+	// (AUD-112).
+	gone, err := e.DB.DeletePhantomRow(p.ID, broker)
+	if err != nil {
+		e.logAuto("journal_update_failed", "", map[string]any{
+			"op": "delete_phantom", "id": p.ID, "broker": broker, "error": err.Error(),
+		})
 		return
 	}
-	_ = e.DB.DeletePosition(p.ID)
+	if gone {
+		return
+	}
+	// The peer executed against this row, so only the phantom leg goes.
+	if _, err := e.DB.PatchPosition(p.ID, func(p *store.Position) error {
+		p.SetLeg(broker, store.BrokerLeg{})
+		p.Quantity = p.ExecutedQty()
+		return nil
+	}); err != nil {
+		e.logAuto("journal_update_failed", "", map[string]any{
+			"op": "clear_phantom_leg", "id": p.ID, "broker": broker, "error": err.Error(),
+		})
+	}
 }
 
 // normalizeBrokerName names the broker a fill belongs to, defaulting to Webull
