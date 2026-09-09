@@ -685,7 +685,7 @@
       try {
         const body = { exitPrice: price, exitDate, note: 'manual_monitor_close_from_ui' };
         if (ibsRaw.trim() !== '') body.exitIBS = Number(ibsRaw) / 100;
-        await API.closeMonitor(id, body);
+        await API.closePositionRow(id, body);
         closeModal();
         state.loaded.watches = false;
         toast('Сделка мониторинга закрыта');
@@ -742,9 +742,12 @@
     if (n == null) return null;
     return n > 1.5 ? n / 100 : n;
   }
+  // Статистика и графики мониторинга — про стратегию. Тестовая покупка это
+  // реальный ордер у брокера, но не сделка стратегии: она в журнале есть и
+  // видна только вместе со скрытыми.
   function visibleMonitorTrades(trades, includeHidden) {
     const list = trades || [];
-    return includeHidden ? list : list.filter((t) => !t.isHidden);
+    return includeHidden ? list : list.filter((t) => !t.isHidden && !t.isTest);
   }
   function downloadJson(filename, value) {
     const blob = new Blob([JSON.stringify(value, null, 2)], { type: 'application/json' });
@@ -1579,6 +1582,15 @@
       ${pager}
     </div>`;
   }
+  // Что этот брокер сделал с позицией: сколько держит и по какой цене вошёл.
+  // Пусто — брокер в этой позиции не участвовал, и это нормальное состояние,
+  // а не расхождение.
+  function legSummary(leg) {
+    if (!leg || (!(leg.qty > 0) && !leg.entryOrderId)) return '—';
+    const qty = leg.qty > 0 ? fmt(leg.qty, 0) + ' шт' : 'вышел';
+    if (leg.entryPrice == null) return qty;
+    return qty + ' @ ' + fmtUsd(leg.entryPrice, 2);
+  }
   function monitorTradesTable(trades) {
     const filter = state.watchTradeFilter || 'all';
     const includeHidden = !!state.watchShowHidden;
@@ -1606,7 +1618,9 @@
         <td>${t.entryPrice == null ? '—' : fmtUsd(t.entryPrice, 2)} – ${t.exitPrice == null ? '—' : fmtUsd(t.exitPrice, 2)}</td>
         <td>${esc(ibs.split(' → ')[0] || '—')} – ${esc(ibs.split(' → ')[1] || '—')}</td>
         <td class="${pnlClass(pct)}">${pct == null ? '—' : fmtSignedPct(pct, 2)} ${pnl == null ? '' : '(' + fmtSignedUsd(pnl) + ')'}</td>
-        <td>${t.status === 'open' && t.id && !t.linkedBrokerTradeId ? actionIcon('x', 'Закрыть сделку', `data-close-mon="${esc(t.id)}" data-close-sym="${esc(t.symbol || '')}"`, 'action-icon-danger') : ''}${t.id ? actionIcon('edit', 'Изменить сделку', `data-edit-mon="${esc(t.id)}"`, 'action-icon-edit') : ''}</td>
+        <td class="text-xs">${esc(legSummary(t.webull))}</td>
+        <td class="text-xs">${esc(legSummary(t.robinhood))}</td>
+        <td>${t.status === 'open' && t.id ? actionIcon('x', 'Закрыть позицию', `data-close-mon="${esc(t.id)}" data-close-sym="${esc(t.symbol || '')}"`, 'action-icon-danger') : ''}${t.id ? actionIcon('edit', 'Изменить позицию', `data-edit-mon="${esc(t.id)}"`, 'action-icon-edit') : ''}</td>
       </tr>`;
     }).join('');
     return `<div class="flex flex-wrap gap-2 mb-2 text-sm">
@@ -1614,9 +1628,9 @@
       <button type="button" id="watch-hidden-toggle" class="px-3 py-1.5 rounded-lg text-xs font-medium chip-off">${includeHidden ? 'Скрыть скрытые' : 'Показать скрытые'}</button>
       <button type="button" id="watch-export-json" class="btn-secondary min-h-0 py-1.5 px-3 text-xs">JSON</button>
       <button type="button" id="watch-export-csv" class="btn-secondary min-h-0 py-1.5 px-3 text-xs">CSV</button>
-      <span class="text-xs text-gray-500 self-center">${list.length} сделок</span>
+      <span class="text-xs text-gray-500 self-center">${list.length} позиций</span>
     </div>
-    <div class="table-wrap rounded-lg border dark:border-gray-800"><table class="trades"><thead><tr><th>Тикер</th><th>Статус</th><th>Период</th><th>Цена покупки / продажи</th><th>IBS вход / выход</th><th>PnL</th><th>Действия</th></tr></thead><tbody>${rows || '<tr><td colspan="7" class="text-center text-gray-500">Нет сделок</td></tr>'}</tbody></table></div>`;
+    <div class="table-wrap rounded-lg border dark:border-gray-800"><table class="trades"><thead><tr><th>Тикер</th><th>Статус</th><th>Период</th><th>Цена покупки / продажи</th><th>IBS вход / выход</th><th>PnL</th><th>Webull</th><th>Robinhood</th><th>Действия</th></tr></thead><tbody>${rows || '<tr><td colspan="9" class="text-center text-gray-500">Нет позиций</td></tr>'}</tbody></table></div>`;
   }
   function overlay() {
     let html = '';
@@ -2454,13 +2468,13 @@
     const issues = Array.isArray(cons.issues) ? cons.issues : [];
     const actions = Array.isArray(cons.proposedActions) ? cons.proposedActions : [];
     const consOk = !!state.consistency && issues.length === 0;
-    const consKind = !state.consistency ? '…' : (actions.some((a) => a && a.autoApplicable) ? 'Кандидат на сверку' : (issues.length ? 'Расхождение' : 'OK'));
+    const consKind = !state.consistency ? '…' : (issues.some((i) => i && i.autoFixable) ? 'Есть что починить' : (issues.length ? 'Замечания' : 'OK'));
     const consLabel = consKind === 'OK' ? 'Согласовано' : consKind;
     const consBadgeCls = consKind === 'OK' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : (issues.length ? 'border-red-200 bg-red-50 text-red-700' : 'border-amber-200 bg-amber-50 text-amber-800');
     const consCards = issues.map((i) => `<div class="rounded-lg border px-3 py-2 text-sm mb-1">${esc(i.message || i.code || '')}</div>`).join('');
     const consText = !state.consistency
       ? 'Проверка согласованности…'
-      : (consOk ? 'Журналы мониторинга и брокера сейчас согласованы.' : (consCards || 'Журналы мониторинга и брокера расходятся.'));
+      : (consOk ? 'Журнал и книги брокеров сходятся.' : (consCards || 'Есть замечания по состоянию: смотрите список ниже.'));
 
     const simulated = applyMonitorMarginSimulation(state.monitorTrades, state.monitorMarginPercent);
     const stats = monitorStats(simulated);
@@ -2640,10 +2654,18 @@
         <p class="text-sm text-gray-500">Статус: ${esc(brokerHealthText(st) || (st.connected ? 'подключено' : 'не подключено'))}${st.expiresAt ? ' · истекает ' + esc(formatDateTimeET(st.expiresAt)) : ''}</p>
       </div>`;
     } else if (tab === 'journal') {
-      const shown = (state.broker || []).filter((t) => state.brokerShowHidden || !t.isHidden);
+      // Одна строка — одна позиция: блок сигнала, затем что сделал каждый
+      // брокер. Тестовые покупки — реальные ордера, но не сделки стратегии,
+      // поэтому в журнал стратегии они попадают только под «показать скрытые».
+      const shown = (state.broker || []).filter((t) => state.brokerShowHidden || (!t.isHidden && !t.isTest));
+      const legCell = (leg) => {
+        if (!leg || (!(leg.qty > 0) && !leg.entryOrderId)) return '<td class="text-gray-400">—</td><td class="text-gray-400">—</td>';
+        const qty = leg.qty > 0 ? fmt(leg.qty, 0) : '0';
+        const prices = `${leg.entryPrice == null ? '—' : fmtUsd(leg.entryPrice, 2)} – ${leg.exitPrice == null ? '—' : fmtUsd(leg.exitPrice, 2)}`;
+        return `<td>${esc(qty)}</td><td class="text-xs">${prices}</td>`;
+      };
       const jrows = shown.map((t) => `<tr class="${t.isHidden ? 'opacity-50' : ''}">
         <td class="font-mono">${esc(t.symbol || '—')}</td>
-        <td>${esc(brokerLabel(t.broker))}</td>
         <td>${esc(tradeSourceText(t.source))}${t.isTest ? ' · тест' : ''}</td>
         <td>${esc(t.status === 'open' ? 'открыта' : 'закрыта')}</td>
         <td>${esc(fmtTradingDate(t.entryDate))}</td>
@@ -2654,13 +2676,14 @@
         <td class="${pnlClass(t.pnlPercent)}">${t.pnlPercent == null ? '—' : fmt(t.pnlPercent, 2) + '%'}</td>
         <td>${t.entryIBS == null ? '—' : fmt(Number(t.entryIBS) <= 1.5 ? Number(t.entryIBS) * 100 : Number(t.entryIBS), 1) + '%'} – ${t.exitIBS == null ? '—' : fmt(Number(t.exitIBS) <= 1.5 ? Number(t.exitIBS) * 100 : Number(t.exitIBS), 1) + '%'}</td>
         <td>${esc(t.holdingDays ?? '')}</td>
+        ${legCell(t.webull)}
+        ${legCell(t.robinhood)}
         <td class="text-xs">${esc(t.notes || '')}</td>
-        <td class="text-xs">${esc(t.clientOrderId || '')}</td><td class="text-xs">${esc(t.brokerOrderId || t.orderId || '')}</td>
-        <td>${actionIcon('edit', 'Изменить сделку', `data-edit-bt="${esc(t.id)}"`, 'action-icon-edit')}${actionIcon(t.isHidden ? 'eye' : 'eyeoff', t.isHidden ? 'Показать сделку' : 'Скрыть сделку', `data-hide-bt="${esc(t.id)}"`, 'action-icon-edit')}${actionIcon('trash', 'Удалить сделку', `data-bd="${esc(t.id)}"`, 'action-icon-danger')}</td>
+        <td>${actionIcon('edit', 'Изменить позицию', `data-edit-bt="${esc(t.id)}"`, 'action-icon-edit')}${actionIcon(t.isHidden ? 'eye' : 'eyeoff', t.isHidden ? 'Показать позицию' : 'Скрыть позицию', `data-hide-bt="${esc(t.id)}"`, 'action-icon-edit')}${actionIcon('trash', 'Удалить позицию', `data-bd="${esc(t.id)}"`, 'action-icon-danger')}</td>
       </tr>`).join('');
       body = `<div class="flex flex-wrap gap-2 mb-3">
         <button type="button" id="broker-journal-refresh" class="btn-secondary min-h-0 py-2">Обновить</button>
-        <button type="button" id="broker-show-hidden" class="btn-secondary min-h-0 py-2">${state.brokerShowHidden ? 'Скрыть скрытые' : 'Показать скрытые'}</button>
+        <button type="button" id="broker-show-hidden" class="btn-secondary min-h-0 py-2">${state.brokerShowHidden ? 'Только стратегия' : 'Показать скрытые и тестовые'}</button>
       </div>
       <form id="broker-form" class="flex flex-wrap gap-2 mb-4">
         <input name="symbol" placeholder="AAPL" class="field w-24" />
@@ -2672,7 +2695,11 @@
         <input name="notes" placeholder="заметки" class="field w-40" />
         <button class="btn-primary min-h-0 py-2">Добавить</button>
       </form>
-      ${jrows ? `<div class="overflow-auto"><table class="trades"><thead><tr><th>Тикер</th><th>Брокер</th><th>Источник</th><th>Статус</th><th>Дата входа</th><th>Дата выхода</th><th>Цена покупки / продажи</th><th>Кол-во</th><th>PnL, $</th><th>PnL, %</th><th>IBS вход / выход</th><th>Дней</th><th>Заметки</th><th>ID заявки клиента</th><th>ID заявки брокера</th><th>Действия</th></tr></thead><tbody>${jrows}</tbody></table></div>` : '<p class="text-sm text-gray-500">Сделок нет</p>'}`;
+      ${jrows ? `<div class="overflow-auto"><table class="trades"><thead>
+        <tr><th colspan="11">Позиция</th><th colspan="2">Webull</th><th colspan="2">Robinhood</th><th colspan="2"></th></tr>
+        <tr><th>Тикер</th><th>Источник</th><th>Статус</th><th>Дата входа</th><th>Дата выхода</th><th>Цена покупки / продажи</th><th>Кол-во</th><th>PnL, $</th><th>PnL, %</th><th>IBS вход / выход</th><th>Дней</th>
+        <th>Кол-во</th><th>Цена вх. / вых.</th><th>Кол-во</th><th>Цена вх. / вых.</th><th>Заметки</th><th>Действия</th></tr>
+      </thead><tbody>${jrows}</tbody></table></div>` : '<p class="text-sm text-gray-500">Позиций нет</p>'}`;
     } else if (tab === 'overview') {
       const bal = extractBalanceSummary(state.dashboard);
       if (bal.unrealizedPnl == null) {
@@ -2866,7 +2893,7 @@
       const cons = state.consistency || {};
       const issues = Array.isArray(cons.issues) ? cons.issues : [];
       const actions = Array.isArray(cons.proposedActions) ? cons.proposedActions : [];
-      const consLabel = actions.some((a) => a && a.autoApplicable) ? 'Сверка' : (issues.length ? 'Расхождение' : 'Согласовано');
+      const consLabel = issues.some((i) => i && i.autoFixable) ? 'Есть что починить' : (issues.length ? 'Замечания' : 'Согласовано');
       const wrows = (state.watches || []).map((w) => {
         const q = (state.brokerQuotes || {})[w.symbol] || {};
         const quote = q.quote || q;
@@ -3952,7 +3979,7 @@
           const calP = state.loaded.cal ? Promise.resolve(state.cal.data) : API.calendar().then((c) => { state.cal.error = ''; return c; }).catch((e) => { state.cal.error = (e && e.message) || 'не удалось прочитать'; return {}; });
           const [w, t, a, c, cal, ac] = await Promise.all([
             API.watches(),
-            API.trades().catch((e) => { if (e && e.status === 404) return API.monitorTrades(); throw e; }),
+            API.positions(),
             API.emaAlerts(),
             API.consistency().catch((e) => ({ issues: [{ code: 'fetch_failed', message: (e && e.message) || 'Не удалось получить согласованность' }] })),
             calP,
@@ -3960,7 +3987,7 @@
           ]);
           state.watchLoadError = '';
           state.watches = w || [];
-          state.monitorTrades = Array.isArray(t) ? t : (t.trades || []);
+          state.monitorTrades = Array.isArray(t) ? t : (t.positions || []);
           state.emaAlerts = Array.isArray(a) ? a : (a.alerts || []);
           state.consistency = c || { issues: [] };
           state.cal.data = cal || {};
@@ -4033,7 +4060,7 @@
           const ibsRaw = fd.get('entryIBS');
           const rec = { symbol, entryDate, entryPrice, status: 'open', source: 'manual', notes: fd.get('notes') || '' };
           if (String(ibsRaw || '').trim() !== '') rec.entryIBS = ibsFraction(ibsRaw);
-          await API.post('/api/trades', rec);
+          await API.addPosition(rec);
           state.loaded.watches = false;
           renderPage();
         } catch (err) { toast(errText(err)); }
@@ -4130,7 +4157,7 @@
             const xi = document.getElementById('em-xi').value;
             if (ei.trim() !== '') payload.entryIBS = ibsFraction(ei);
             if (xi.trim() !== '') payload.exitIBS = ibsFraction(xi);
-            await API.patchTrade(t.id, payload);
+            await API.patchPosition(t.id, payload);
             closeModal();
             state.loaded.watches = false;
             renderPage();
@@ -4159,7 +4186,7 @@
       if (state.loaded.broker !== kind) {
         const rh = p === '/robinhood';
         const [bt, tok, ac, dash, logs, st, w, cons, health, rhst, settings] = await Promise.all([
-          API.brokerTrades(kind).catch(() => []),
+          API.positions({ includeHidden: true }).catch(() => ({ positions: [] })),
           rh ? API.rhStatus().catch((e) => e.data || {}) : API.tokenStatus().catch((e) => e.data || { present: false, hasToken: false }),
           API.autoConfig().catch(() => ({})),
           rh ? API.rhDashboard(true).catch((e) => (e && e.data) || { error: (e && e.message) || 'dashboard', positions: [] }) : API.dashboard(true).catch((e) => (e && e.data) || { error: (e && e.message) || 'dashboard', positions: [] }),
@@ -4173,7 +4200,7 @@
         ]);
         state.brokerHealth = Array.isArray(health) ? health : [];
         state.rhStatus = rhst || tok || {};
-        state.broker = Array.isArray(bt) ? bt : (bt.trades || []);
+        state.broker = Array.isArray(bt) ? bt : (bt.positions || []);
         state.token = tok;
         state.autoConfig = unwrapAutoConfig(ac);
         state.dashboard = { ...(dash || {}), broker: kind };
@@ -4226,9 +4253,9 @@
       root.querySelectorAll('[data-bd]').forEach((b) => b.addEventListener('click', () => {
         askDelete('Удалить брокерскую сделку?', async () => {
           try {
-            await API.del('/api/broker-trades/' + b.dataset.bd);
-            const bt = await API.brokerTrades(kind).catch(() => []);
-            state.broker = Array.isArray(bt) ? bt : (bt.trades || []);
+            await API.deletePosition(b.dataset.bd);
+            const bt = await API.positions({ includeHidden: true }).catch(() => ({ positions: [] }));
+            state.broker = Array.isArray(bt) ? bt : (bt.positions || []);
             renderPage();
           } catch (err) { toast(errText(err)); }
         });
@@ -4255,9 +4282,9 @@
           };
           if (exitDate) rec.exitDate = exitDate;
           if (exitPrice > 0) rec.exitPrice = exitPrice;
-          await API.post('/api/broker-trades', rec);
-          const bt = await API.brokerTrades(kind).catch(() => []);
-          state.broker = Array.isArray(bt) ? bt : (bt.trades || []);
+          await API.addPosition(rec);
+          const bt = await API.positions({ includeHidden: true }).catch(() => ({ positions: [] }));
+          state.broker = Array.isArray(bt) ? bt : (bt.positions || []);
           renderPage();
         } catch (err) { toast(errText(err)); }
       });
@@ -4310,10 +4337,10 @@
               payload.exitPrice = exitPrice;
               if (ibsRaw !== '') payload.exitIBS = Number(ibsRaw) / 100;
             }
-            await API.patchBrokerTrade(t.id, payload);
+            await API.patchPosition(t.id, payload);
             closeModal();
-            const bt = await API.brokerTrades(kind).catch(() => []);
-            state.broker = Array.isArray(bt) ? bt : (bt.trades || []);
+            const bt = await API.positions({ includeHidden: true }).catch(() => ({ positions: [] }));
+            state.broker = Array.isArray(bt) ? bt : (bt.positions || []);
             renderPage();
           } catch (err) { errEl.textContent = errText(err); errEl.classList.remove('hidden'); }
         });
@@ -4331,9 +4358,9 @@
         const t = (state.broker || []).find((x) => String(x.id) === String(b.dataset.hideBt));
         if (!t) return;
         try {
-          await API.patchBrokerTrade(t.id, { isHidden: !t.isHidden });
-          const bt = await API.brokerTrades(kind).catch(() => []);
-          state.broker = Array.isArray(bt) ? bt : (bt.trades || []);
+          await API.patchPosition(t.id, { ...t, isHidden: !t.isHidden });
+          const bt = await API.positions({ includeHidden: true }).catch(() => ({ positions: [] }));
+          state.broker = Array.isArray(bt) ? bt : (bt.positions || []);
           renderPage();
         } catch (err) { toast(errText(err)); }
       }));

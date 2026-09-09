@@ -225,9 +225,10 @@ func TestVanillaUIAssets(t *testing.T) {
 		"Активных ордеров нет",
 		"История ордеров пока не пришла",
 		"Нет отслеживаемых акций",
-		"Сделок нет",
+		"Позиций нет",
 		"Логи автоторговли пока пусты",
 		"Логи мониторинга пока пусты",
+
 		"Состояние автоторговли",
 		"fmtUsd(fv, 0)",
 		"d == null ? 0",
@@ -453,11 +454,13 @@ func TestBrokerHeaderLabeledStatuses(t *testing.T) {
 func TestBrokerJournalTrackedAndLogsArePerKind(t *testing.T) {
 	a := readWeb(t, "js/app.js")
 	page := jsFn(a, "pageBroker")
-	if !strings.Contains(page, "t.broker") {
-		t.Fatal("journal table must include t.broker")
+	// One row per position with a column block per broker, instead of a
+	// «Брокер» column on a per-broker journal.
+	if !strings.Contains(page, "legCell(t.webull)") || !strings.Contains(page, "legCell(t.robinhood)") {
+		t.Fatal("journal table must show both broker legs")
 	}
-	if !strings.Contains(page, ">Брокер<") && !strings.Contains(page, ">Брокер</th>") {
-		t.Fatal("journal and tracked tables must have a «Брокер» column")
+	if !strings.Contains(page, ">Webull<") || !strings.Contains(page, ">Robinhood<") {
+		t.Fatal("journal table must head the two broker column blocks")
 	}
 	if !strings.Contains(page, "o.broker === kind") {
 		t.Fatal("tracked pending/recent must filter o.broker === kind")
@@ -471,8 +474,8 @@ func TestBrokerJournalTrackedAndLogsArePerKind(t *testing.T) {
 	if !strings.Contains(page, "l.broker") {
 		t.Fatal("log line must show the broker field when present")
 	}
-	if !strings.Contains(a, "API.brokerTrades(kind)") {
-		t.Fatal("SPA must request broker trades for the page kind")
+	if !strings.Contains(a, "API.positions({ includeHidden: true })") {
+		t.Fatal("SPA must load the journal from /api/positions")
 	}
 	form := strings.Index(a, "getElementById('broker-form')")
 	if form < 0 {
@@ -669,9 +672,9 @@ func TestMutationToastsFollowSuccessfulResponse(t *testing.T) {
 	if toast < 0 || toast > 500 {
 		t.Fatal("toast «Сохранено» must follow a successful saveSettings response")
 	}
-	patch := strings.Index(a, "await API.patchBrokerTrade")
+	patch := strings.Index(a, "await API.patchPosition")
 	if patch < 0 {
-		t.Fatal("broker edit must await patchBrokerTrade")
+		t.Fatal("journal edit must await patchPosition")
 	}
 	if i := strings.Index(a[patch:], "closeModal()"); i < 0 || i > 400 {
 		t.Fatal("broker edit must close the modal only after a successful patch")
@@ -680,9 +683,9 @@ func TestMutationToastsFollowSuccessfulResponse(t *testing.T) {
 	if delWatch < 0 {
 		t.Fatal("watch delete must await API.deleteWatch")
 	}
-	delBroker := strings.Index(a, "await API.del('/api/broker-trades/'")
-	if delBroker < 0 {
-		t.Fatal("broker-trade delete must await the DELETE")
+	delPosition := strings.Index(a, "await API.deletePosition(")
+	if delPosition < 0 {
+		t.Fatal("position delete must await the DELETE")
 	}
 }
 

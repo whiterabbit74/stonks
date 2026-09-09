@@ -81,18 +81,19 @@ func TestAPIJSUnauthorizedDebouncesByTimestamp(t *testing.T) {
 	}
 }
 
-func TestAPIBrokerTradesPassesKindQuery(t *testing.T) {
+// One journal, one endpoint: the per-broker listing is gone with the second
+// table, and includeHidden is what the journal view still asks for.
+func TestAPIPositionsEndpoint(t *testing.T) {
 	src := readWeb(t, "js/api.js")
-	if !strings.Contains(src, "brokerTrades:") {
-		t.Fatal("API.brokerTrades missing")
+	if !strings.Contains(src, "positions:") || !strings.Contains(src, "'/api/positions'") {
+		t.Fatal("API.positions missing")
 	}
-	start := strings.Index(src, "brokerTrades:")
-	end := strings.Index(src[start:], "\n  autoConfig")
-	if end < 0 {
-		t.Fatal("API.brokerTrades not bounded")
+	for _, gone := range []string{"'/api/broker-trades'", "'/api/trades'", "brokerTrades:", "patchTrade:"} {
+		if strings.Contains(src, gone) {
+			t.Fatalf("the SPA must not call the removed trade API: %s", gone)
+		}
 	}
-	fn := src[start : start+end]
-	if !strings.Contains(fn, "?broker=") {
-		t.Fatal("API.brokerTrades(kind) must pass ?broker=")
+	if !strings.Contains(src, "includeHidden=1") {
+		t.Fatal("API.positions must be able to ask for hidden rows")
 	}
 }
