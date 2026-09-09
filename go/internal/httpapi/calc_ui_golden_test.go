@@ -11,7 +11,7 @@ import (
 	"mktorder.com/go/internal/types"
 )
 
-func postCalc(t *testing.T, s *Server, kind string, payload any) *httptest.ResponseRecorder {
+func doCalc(t *testing.T, s *Server, kind string, payload any) *httptest.ResponseRecorder {
 	t.Helper()
 	body, err := json.Marshal(payload)
 	if err != nil {
@@ -21,6 +21,12 @@ func postCalc(t *testing.T, s *Server, kind string, payload any) *httptest.Respo
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rec, req)
+	return rec
+}
+
+func postCalc(t *testing.T, s *Server, kind string, payload any) *httptest.ResponseRecorder {
+	t.Helper()
+	rec := doCalc(t, s, kind, payload)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("%s %d %s", kind, rec.Code, rec.Body.String())
 	}
@@ -263,6 +269,15 @@ func TestIBSSignalsHTTPMatchesOracle(t *testing.T) {
 	goldens.Load("ibs-signals.json", &g)
 	for i, c := range g.Cases {
 		payload := map[string]any{"ibs": c.IBS, "lowIBS": c.Threshold, "highIBS": c.Threshold}
+		if _, numeric := c.IBS.(float64); !numeric {
+			// A reading that is not a JSON number is rejected at the boundary
+			// rather than answered with a silent "no signal".
+			rec := doCalc(t, s, "ibs-signals", payload)
+			if rec.Code != http.StatusBadRequest {
+				t.Errorf("case %d ibs=%v: got %d %s, want 400", i, c.IBS, rec.Code, rec.Body.String())
+			}
+			continue
+		}
 		rec := postCalc(t, s, "ibs-signals", payload)
 		var body struct {
 			Entry bool `json:"entry"`

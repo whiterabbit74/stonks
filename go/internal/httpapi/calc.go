@@ -286,16 +286,27 @@ func (s *Server) calcMargin(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) calcIBS(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		IBS     any `json:"ibs"`
-		LowIBS  any `json:"lowIBS"`
-		HighIBS any `json:"highIBS"`
+		IBS     *float64 `json:"ibs"`
+		LowIBS  *float64 `json:"lowIBS"`
+		HighIBS *float64 `json:"highIBS"`
 	}
 	if !s.requireJSON(w, r, &req) {
 		return
 	}
+	if req.IBS == nil || invalidCalcNumber(*req.IBS) {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "ibs must be a finite number"})
+		return
+	}
+	low, high := ibs.DefaultLowIBS, ibs.DefaultHighIBS
+	if req.LowIBS != nil {
+		low = ibs.Threshold(*req.LowIBS, ibs.DefaultLowIBS)
+	}
+	if req.HighIBS != nil {
+		high = ibs.Threshold(*req.HighIBS, ibs.DefaultHighIBS)
+	}
 	writeJSON(w, 200, map[string]any{
-		"entry": ibs.IsEntrySignal(req.IBS, req.LowIBS),
-		"exit":  ibs.IsExitSignal(req.IBS, req.HighIBS),
+		"entry": ibs.IsEntrySignal(*req.IBS, low),
+		"exit":  ibs.IsExitSignal(*req.IBS, high),
 	})
 }
 

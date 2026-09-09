@@ -432,7 +432,7 @@ func decideLiveAction(quotes []map[string]any, symbols []string, held map[string
 		if row != nil && asBool(row["highIBSInvalid"]) {
 			return none("invalid_high_ibs", sym, row)
 		}
-		if row != nil && ibs.IsExitSignal(row["ibs"], high) {
+		if v, hasIBS := row["ibs"].(float64); hasIBS && ibs.IsExitSignal(v, high) {
 			return map[string]any{"action": "exit", "reason": "ibs_exit", "symbol": sym, "candidate": row}
 		}
 		reason := "open_position_quote_unavailable"
@@ -478,7 +478,10 @@ func decideLiveAction(quotes []map[string]any, symbols []string, held map[string
 			if asBool(q["highIBSInvalid"]) {
 				continue
 			}
-			v, _ := q["ibs"].(float64)
+			v, hasIBS := q["ibs"].(float64)
+			if !hasIBS {
+				continue
+			}
 			low := liveLowOrDefault(q)
 			if ibs.IsEntrySignal(v, low) && v < bestIBS {
 				bestIBS = v
@@ -682,7 +685,7 @@ func liveLowOrDefault(row map[string]any) float64 {
 		return ibs.DefaultLowIBS
 	}
 	if th, ok := row["thresholds"].(map[string]any); ok && th["lowIBS"] != nil {
-		return asFloat(th["lowIBS"])
+		return ibs.Threshold(asFloat(th["lowIBS"]), ibs.DefaultLowIBS)
 	}
 	return ibs.DefaultLowIBS
 }
@@ -692,7 +695,7 @@ func liveHighOrDefault(row map[string]any) float64 {
 		return ibs.DefaultHighIBS
 	}
 	if th, ok := row["thresholds"].(map[string]any); ok && th["highIBS"] != nil {
-		return asFloat(th["highIBS"])
+		return ibs.Threshold(asFloat(th["highIBS"]), ibs.DefaultHighIBS)
 	}
 	return ibs.DefaultHighIBS
 }
