@@ -237,12 +237,11 @@ func (e *Engine) CanSubmit() bool {
 // name was not a compile error. The JSON shape is unchanged: the SPA and the
 // stored last result still see the same keys.
 type LiveQuote struct {
-	Symbol         string          `json:"symbol"`
-	OK             bool            `json:"ok"`
-	IBS            float64         `json:"ibs"`
-	CurrentPrice   float64         `json:"currentPrice"`
-	Thresholds     QuoteThresholds `json:"thresholds"`
-	HighIBSInvalid bool            `json:"highIBSInvalid"`
+	Symbol       string          `json:"symbol"`
+	OK           bool            `json:"ok"`
+	IBS          float64         `json:"ibs"`
+	CurrentPrice float64         `json:"currentPrice"`
+	Thresholds   QuoteThresholds `json:"thresholds"`
 }
 
 type QuoteThresholds struct {
@@ -381,14 +380,13 @@ func (e *Engine) EvaluateWindow(w execWindow) EvalResult {
 			}
 		}
 		ev := e.evalWatch(sym, w, cfg, providerChain)
-		low, high, highInvalid := watchThresholds(w, cfg)
+		low, high := watchThresholds(w, cfg)
 		quotes = append(quotes, LiveQuote{
-			Symbol:         sym,
-			OK:             ev.ok,
-			IBS:            ev.ibs,
-			CurrentPrice:   ev.price,
-			Thresholds:     QuoteThresholds{LowIBS: low, HighIBS: high},
-			HighIBSInvalid: highInvalid,
+			Symbol:       sym,
+			OK:           ev.ok,
+			IBS:          ev.ibs,
+			CurrentPrice: ev.price,
+			Thresholds:   QuoteThresholds{LowIBS: low, HighIBS: high},
 		})
 	}
 	decision := decideLiveAction(quotes, symbols, held, heldErr, open, allowEntries, allowExits)
@@ -452,9 +450,6 @@ func decideLiveAction(quotes []LiveQuote, symbols []string, held map[string]floa
 				break
 			}
 		}
-		if row != nil && row.HighIBSInvalid {
-			return none("invalid_high_ibs", sym, row)
-		}
 		if row != nil {
 			if _, high := row.resolvedThresholds(); ibs.IsExitSignal(row.IBS, high) {
 				return map[string]any{"action": "exit", "reason": "ibs_exit", "symbol": sym, "candidate": row}
@@ -494,7 +489,7 @@ func decideLiveAction(quotes []LiveQuote, symbols []string, held map[string]floa
 		var best *LiveQuote
 		bestIBS := 2.0
 		for i, q := range quotes {
-			if !q.OK || q.HighIBSInvalid || !watched[store.SafeTicker(q.Symbol)] {
+			if !q.OK || !watched[store.SafeTicker(q.Symbol)] {
 				continue
 			}
 			low, _ := q.resolvedThresholds()

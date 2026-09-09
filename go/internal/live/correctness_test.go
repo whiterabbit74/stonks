@@ -383,13 +383,11 @@ func TestMissingThresholdsUseDefaults(t *testing.T) {
 	if liveLowIBS(map[string]any{}) != ibs.DefaultLowIBS {
 		t.Fatal("low default")
 	}
-	h, inv := liveHighIBS(map[string]any{})
-	if h != ibs.DefaultHighIBS || inv {
-		t.Fatalf("high default %v %v", h, inv)
+	if h := liveHighIBS(map[string]any{}); h != ibs.DefaultHighIBS {
+		t.Fatalf("high default %v", h)
 	}
-	h, inv = liveHighIBS(map[string]any{"highIBS": 0.0})
-	if inv || h != 0 {
-		t.Fatalf("explicit highIBS 0 must not lock exits as invalid_high_ibs, got %v inv=%v", h, inv)
+	if h := liveHighIBS(map[string]any{"highIBS": 0.0}); h != 0 {
+		t.Fatalf("explicit highIBS 0 must be kept, got %v", h)
 	}
 	if liveLowIBS(map[string]any{"lowIBS": 0.0}) != 0 {
 		t.Fatal("explicit lowIBS 0 is never-enter")
@@ -410,7 +408,7 @@ func TestEvalWatchMatchesWatchThresholds(t *testing.T) {
 	watch := map[string]any{"symbol": "AAPL"}
 	cfg := map[string]any{"lowIBS": 0.20, "highIBS": 0.80}
 
-	low, high, inv := watchThresholds(watch, cfg)
+	low, high := watchThresholds(watch, cfg)
 	ev := e.evalWatch("AAPL", watch, cfg, []string{"finnhub"})
 	if !ev.ok {
 		t.Fatalf("quote should be ok %+v", ev)
@@ -418,19 +416,18 @@ func TestEvalWatchMatchesWatchThresholds(t *testing.T) {
 	if ev.low != low || ev.high != high {
 		t.Fatalf("evalWatch %v/%v watchThresholds %v/%v", ev.low, ev.high, low, high)
 	}
-	if low != 0.20 || high != 0.80 || inv {
-		t.Fatalf("watch-less fallback must use cfg, got %v %v inv=%v", low, high, inv)
+	if low != 0.20 || high != 0.80 {
+		t.Fatalf("watch-less fallback must use cfg, got %v %v", low, high)
 	}
 	if ev.entry != ibs.IsEntrySignal(ev.ibs, low) {
 		t.Fatalf("entry %v ibs %v low %v", ev.entry, ev.ibs, low)
 	}
 
 	quotes := []LiveQuote{{
-		Symbol:         "AAPL",
-		OK:             ev.ok,
-		IBS:            ev.ibs,
-		Thresholds:     QuoteThresholds{LowIBS: low, HighIBS: high},
-		HighIBSInvalid: inv,
+		Symbol:     "AAPL",
+		OK:         ev.ok,
+		IBS:        ev.ibs,
+		Thresholds: QuoteThresholds{LowIBS: low, HighIBS: high},
 	}}
 	d := decideLiveAction(quotes, []string{"AAPL"}, map[string]float64{}, nil, nil, true, true)
 	want := "none"
@@ -442,7 +439,7 @@ func TestEvalWatchMatchesWatchThresholds(t *testing.T) {
 	}
 
 	cfg0 := map[string]any{"lowIBS": 0.0, "highIBS": 0.80}
-	low0, _, _ := watchThresholds(watch, cfg0)
+	low0, _ := watchThresholds(watch, cfg0)
 	if low0 != 0 {
 		t.Fatalf("cfg lowIBS 0 kept as %v", low0)
 	}
@@ -451,7 +448,7 @@ func TestEvalWatchMatchesWatchThresholds(t *testing.T) {
 		t.Fatalf("evalWatch low %v watchThresholds %v", ev0.low, low0)
 	}
 	watch0 := map[string]any{"symbol": "AAPL", "lowIBS": 0.0}
-	lowW, _, _ := watchThresholds(watch0, cfg)
+	lowW, _ := watchThresholds(watch0, cfg)
 	if lowW != 0 {
 		t.Fatalf("watch lowIBS 0 must stay 0, got %v", lowW)
 	}
@@ -976,12 +973,12 @@ func TestEvaluateReadsPositionsOncePerBroker(t *testing.T) {
 func TestWatchThresholdsRejectUnreadableHighIBS(t *testing.T) {
 	cfg := map[string]any{"lowIBS": 0.20, "highIBS": 0.80}
 	for _, corrupt := range []any{true, "не число", map[string]any{}} {
-		low, high, _ := watchThresholds(map[string]any{"symbol": "AAPL", "highIBS": corrupt}, cfg)
+		low, high := watchThresholds(map[string]any{"symbol": "AAPL", "highIBS": corrupt}, cfg)
 		if low != ibs.DefaultLowIBS || high != ibs.DefaultHighIBS {
 			t.Fatalf("highIBS %v: got %v/%v want defaults %v/%v", corrupt, low, high, ibs.DefaultLowIBS, ibs.DefaultHighIBS)
 		}
 	}
-	low, high, _ := watchThresholds(nil, map[string]any{"lowIBS": 0.20, "highIBS": "не число"})
+	low, high := watchThresholds(nil, map[string]any{"lowIBS": 0.20, "highIBS": "не число"})
 	if low != ibs.DefaultLowIBS || high != ibs.DefaultHighIBS {
 		t.Fatalf("cfg highIBS unreadable: got %v/%v", low, high)
 	}

@@ -823,8 +823,6 @@ func noActionReasonText(reason, symbol string) string {
 		return "держим " + sym + ": IBS ниже порога выхода"
 	case "open_position_quote_unavailable":
 		return "нет котировки по открытой " + sym + " — выход не проверен"
-	case "invalid_high_ibs":
-		return "у " + sym + " не задан порог выхода"
 	case "no_signal":
 		return "нет сигнала на вход"
 	}
@@ -866,7 +864,7 @@ type watchEval struct {
 }
 
 func (e *Engine) evalWatch(sym string, w, cfg map[string]any, providerChain []string) watchEval {
-	low, high, highInvalid := watchThresholds(w, cfg)
+	low, high := watchThresholds(w, cfg)
 	ev := watchEval{low: low, high: high}
 	var ibsVal, price float64
 	ok := false
@@ -905,7 +903,7 @@ func (e *Engine) evalWatch(sym string, w, cfg map[string]any, providerChain []st
 	ev.ibs = ibsVal
 	ev.price = price
 	ev.entry = ibs.IsEntrySignal(ibsVal, low)
-	ev.exit = !highInvalid && ibs.IsExitSignal(ibsVal, high)
+	ev.exit = ibs.IsExitSignal(ibsVal, high)
 	return ev
 }
 

@@ -219,11 +219,11 @@ func liveLowIBS(cfg map[string]any) float64 {
 	return asFloat(cfg["lowIBS"])
 }
 
-func liveHighIBS(cfg map[string]any) (high float64, invalid bool) {
+func liveHighIBS(cfg map[string]any) float64 {
 	if !cfgHas(cfg, "highIBS") {
-		return ibs.DefaultHighIBS, false
+		return ibs.DefaultHighIBS
 	}
-	return asFloat(cfg["highIBS"]), false
+	return asFloat(cfg["highIBS"])
 }
 
 func allowFlag(cfg map[string]any, key string) bool {
@@ -244,20 +244,17 @@ func strOr(v any, fallback string) string {
 // cannot read into 0 — and a highIBS of 0 makes every reading an exit, which is
 // why the pair is resolved as a pair: ibs.Pair sends anything the write path
 // would have rejected back to the documented defaults.
-func watchThresholds(watch, cfg map[string]any) (low, high float64, highInvalid bool) {
-	low = liveLowIBS(cfg)
-	high, highInvalid = liveHighIBS(cfg)
+func watchThresholds(watch, cfg map[string]any) (low, high float64) {
+	low, high = liveLowIBS(cfg), liveHighIBS(cfg)
 	if watch != nil {
 		if watch["lowIBS"] != nil {
 			low = asFloat(watch["lowIBS"])
 		}
 		if watch["highIBS"] != nil {
 			high = asFloat(watch["highIBS"])
-			highInvalid = false
 		}
 	}
-	low, high = ibs.Pair(low, high)
-	return low, high, highInvalid
+	return ibs.Pair(low, high)
 }
 
 // realtimeQuoteProviders are the providers whose Quote() returns an intraday
