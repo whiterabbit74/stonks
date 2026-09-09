@@ -241,3 +241,48 @@ func TestOpenUpgradesSchemaVersion4ScalesPnLAbsolute(t *testing.T) {
 		db.Close()
 	}
 }
+
+// TestOpenAddsRecordedQtyToOldDatabase pins the fix for the column that was
+// appended to an already-applied migration step: the production database sat
+// at version 6 without recorded_qty, so ClaimFillQty failed with "no such
+// column" and the broker's entries were blocked by the persist guard.
+func TestOpenAddsRecordedQtyToOldDatabase(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "v6.db")
+	db, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Rewind to the production state: schema 6, no recorded_qty.
+	if _, err := db.SQL.Exec(`ALTER TABLE order_trackers DROP COLUMN recorded_qty`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.SQL.Exec(`UPDATE schema_meta SET version=6`); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	db, err = Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if !db.HasColumn("order_trackers", "recorded_qty") {
+		t.Fatal("recorded_qty missing after upgrade from schema 6")
+	}
+	if err := db.SaveOrderTracker(map[string]any{
+		"clientOrderId": "c1", "symbol": "MSFT", "action": "exit",
+		"status": "working", "quantity": 4.0, "dateKey": "2026-09-09",
+		"startedAt": "2026-09-09T19:59:00Z",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	newly, err := db.ClaimFillQty("c1", 2)
+	if err != nil {
+		t.Fatalf("ClaimFillQty: %v", err)
+	}
+	if newly != 2 {
+		t.Fatalf("newly=%v want 2", newly)
+	}
+}

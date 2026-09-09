@@ -23,7 +23,7 @@ import (
 
 // SchemaVersion is the schema this binary can open and migrate to.
 // Bump it when adding a migrateSchema step. Open fails if the database is newer.
-const SchemaVersion = 6
+const SchemaVersion = 7
 
 type DB struct {
 	SQL *sql.DB
@@ -422,6 +422,16 @@ func applyPendingSchema(e schemaExecer, from int) error {
 		// `positions`. See mergeLegacyJournals for the matching rules. The old
 		// tables stay in place and stop being written.
 		if err := mergeLegacyJournals(e); err != nil {
+			return err
+		}
+	}
+	if from < 7 {
+		// recorded_qty была дописана в список шага `from < 2` уже после того,
+		// как рабочая база прошла его: шаг больше не выполняется, и колонка не
+		// появилась вообще — `ClaimFillQty` падал на проде с «no such column».
+		// Новая колонка получает **свой** шаг; дописывать пройденный задним
+		// числом нельзя, там она видна только новым базам.
+		if err := ensureColumn(e, "order_trackers", "recorded_qty", "REAL NOT NULL DEFAULT 0"); err != nil {
 			return err
 		}
 	}
