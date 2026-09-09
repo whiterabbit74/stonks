@@ -5,7 +5,7 @@
 UI/UX исключены по указанию пользователя. Исходники не меняются; проверки используют
 снимок `git archive d0ca508` и временные Go overlay (подстановка теста без записи в проект).
 
-### AUD-111 — OPEN, P1: сбой записи частичного выхода навсегда поглощает исполненный объём
+### AUD-111 — VERIFIED, P1: сбой записи частичного выхода навсегда поглощает исполненный объём
 
 `recordFill` сначала фиксирует `ClaimFillQty(clientOrderID, reportedQty)`, а только
 потом вызывает `reduceOpenQuantity` → `SplitPosition`. Это две разные транзакции
@@ -29,9 +29,17 @@ AUD-108 касается отсутствующей колонки; здесь �
 между двумя вызовами; `/tmp/mkt-audit-20260908/claim_failure_test.go`.
 Аналогичные пути: entry использует `AttachEntry`, полный exit — `ExitLeg`/`ClosePosition`;
 предварительное поглощение `recorded_qty` обнаружено именно у частичного exit.
-Fix commit: отсутствует, исходники не изменялись.
 
-### AUD-112 — OPEN, P1: PATCH позиции восстанавливает уже проданные акции при пересечении с исполнением
+Статус: VERIFIED. Fix commit `378fbe6`: `store.ClaimPartialExit` делает списание
+`recorded_qty` и запись в журнал (split или закрытие в ноль) одной транзакцией;
+`ClaimFillQty`, `SplitPosition` и `ClosePosition` разделены на tx-помощники, а
+`recordFill` больше не поглощает объём до того, как найдена позиция.
+Проверка на `378fbe6`: `go test ./internal/live -run TestPartialFillSurvivesJournalWriteFailure`
+(`go/internal/live/aud111_partial_claim_test.go`, тот же SQLite-триггер на INSERT
+в `positions`): после сбоя и повтора `open=6 closed=4`, третий тот же ответ ничего
+не меняет. На предфиксном коде было `open=10 closed=0`.
+
+### AUD-112 — VERIFIED, P1: PATCH позиции восстанавливает уже проданные акции при пересечении с исполнением
 
 `handlePatchPosition` читает строку до чтения JSON, затем `SavePosition` обновляет все
 её поля. Между чтением и записью нет транзакции или проверки версии. Пришедший в это
@@ -53,10 +61,17 @@ Webull 10 акций; PATCH `{notes: edited}`. Во время первого ч
 параллельные `AttachEntry`/`ExitLeg`; этот ручной путь в тот фикс не вошёл.
 AUD-104 сохраняет отсутствующие поля при последовательном PATCH, но не защищает от
 изменения строки между чтением и записью.
-Проверка: `go test -overlay /tmp/mkt-audit-20260908/patch-overlay.json ./internal/httpapi -run TestAuditPatchResurrectsSoldLeg -v`.
-Fix commit отсутствует.
+Статус: VERIFIED. Fix commit `3fa3154`: `store.PatchPosition` читает строку,
+применяет правку и пишет её обратно в одной транзакции; тело запроса читается до
+неё, а не внутри окна гонки. На тот же помощник переведён `fillMissingLeg`; для
+`deletePhantom` добавлен `DeletePhantomRow` — удаление одним оператором с условием
+«нога другого брокера не тронута», иначе чистится только фантомная нога.
+Проверка на `3fa3154`: `go test ./internal/httpapi -run TestPatchDoesNotResurrectSoldLeg`
+(`go/internal/httpapi/aud112_patch_race_test.go`, `ExitLeg` выполняется в момент
+чтения тела запроса): `qty=0`, `exit order id=exit`, `notes=edited`. На предфиксном
+коде тест падает.
 
-### AUD-113 — OPEN, P2: очистка цены оставляет прежнюю вычисленную прибыль
+### AUD-113 — VERIFIED, P2: очистка цены оставляет прежнюю вычисленную прибыль
 
 `Position.applyPnL` пересчитывает PnL только при известных ценах; иначе сохраняет
 входящие `PnLAbsolute`/`PnLPercent`. После фикса AUD-104 PATCH накладывается на
@@ -73,9 +88,14 @@ Fix commit отсутствует.
 Проверка: `go test -overlay /tmp/mkt-audit-20260908/patch-overlay.json ./internal/httpapi -run TestAuditClearPriceKeepsPnL -v`.
 Смежный AUD-040 — другой путь: вычисление результата от нулевой цены выхода;
 здесь результат вообще не инвалидируется после удаления исходных данных.
-Fix commit отсутствует.
 
-### AUD-075 / CORE-01 — REOPENED, P1: повторный вход всё ещё ждёт другого брокера
+Статус: VERIFIED. Fix commit `a8ea69d`: `applyPnL` обнуляет `PnLAbsolute`,
+`PnLPercent` и `holding_days`, когда посчитать их больше не из чего.
+Проверка на `a8ea69d`: `go test ./internal/httpapi -run TestPatchClearingPriceClearsPnL`
+(`go/internal/httpapi/aud113_clear_price_test.go`): после PATCH `entryPrice:null`
+и цена, и PnL — NULL. На предфиксном коде было `pnlAbsolute=20`.
+
+### AUD-075 / CORE-01 — VERIFIED, P1: повторный вход всё ещё ждёт другого брокера
 
 Предыдущее исправление `44387ba` сохранено в истории основной строки. На `d0ca508`
 `settleExitsPerBroker` запускает отдельное ожидание каждого брокера, но затем делает
@@ -92,11 +112,17 @@ Webull возвращает WORKING без исполнения, Robinhood ис�
 теряет часть оставшегося торгового окна; если другой расходует весь бюджет, вход
 может не попасть в окно. Живые заявки не отправлялись.
 
-Команда: `go test -overlay /tmp/mkt-audit-20260908/snapshot-overlay.json ./internal/live -run TestFullAuditPeer -v`
-из снимка Go. Временный тест: `/tmp/mkt-audit-20260908/live_test.go`.
-Исправление в рамках аудита не выполнялось.
+Статус: VERIFIED. Fix commit `47068e6`: `settleAndReenter` заменил
+`settleExitsPerBroker` — каждый брокер входит из своей горутины сразу после того,
+как расчёлся его собственный выход; сами входы сериализованы, их результаты
+сливает `mergeEntryResults`. Общего `wg.Wait()` перед входом больше нет.
+Проверка на `47068e6`: `go test ./internal/live -run TestReentryDoesNotWaitForPeerExitWait`
+(`go/internal/live/aud075_reentry_barrier_test.go`): опрос заявки Webull
+удерживается, пока Robinhood не купит, и покупка приходит внутри этого ожидания.
+На предфиксном `378fbe6` тест падает по таймауту 4 прогона из 4, на исправленном
+8 прогонов подряд зелёные плюс `go test -race ./internal/live`.
 
-### AUD-040 — REOPENED, P1: после объединения журналов вернулось закрытие по цене ноль
+### AUD-040 — VERIFIED, P1: после объединения журналов вернулось закрытие по цене ноль
 
 Исторический фикс `a91fac3` проверял положительную цену в `CloseTradePair`.
 В новом `store.ClosePosition` такой проверки нет. `recordFill` отмечает цену как
@@ -112,9 +138,12 @@ Webull возвращает WORKING без исполнения, Robinhood ис�
 Ручной `/api/positions/{id}/close` проверяет цену на входе; автоматическая
 финализация и разрешение трекера используют внутренний путь без этого гарда.
 
-Проверка: `go test -overlay /tmp/mkt-audit-20260908/zero-overlay.json ./internal/live -run TestAuditExitWithoutPrice -v`.
-Тест: `/tmp/mkt-audit-20260908/zero_exit_test.go`, только временная SQLite и MemoryBroker.
-Новый fix commit отсутствует; предыдущая история оставлена в основной строке AUD-040.
+Статус: VERIFIED. Новый fix commit `a8ea69d`: `ClosePosition` оставляет цену
+выхода NULL, когда она не больше нуля, а `applyPnL` требует положительной цены с
+обеих сторон. Предыдущая история фикса (`a91fac3`) сохранена.
+Проверка на `a8ea69d`: `go test ./internal/live -run TestExitWithoutPriceLeavesPriceAndPnLUnknown`
+(`go/internal/live/aud040_zero_exit_test.go`): `status=closed`, цена выхода NULL,
+PnL NULL. На предфиксном коде было `exit=0 pnl=-100`.
 
 ## Слияние журналов в одну позицию 2026-09-09 (0f4fbfa)
 
@@ -313,7 +342,7 @@ column: recorded_qty (1)`.
 Статус: VERIFIED. Fix commit `053e883`: закрытие чистит всю карточку, открытие
 кэширует и `entryIBS`, поэтому очищенное поле возвращается при следующем входе.
 
-### AUD-110 — OPEN, P2: кэш открытых позиций обновляется только руками оператора
+### AUD-110 — VERIFIED, P2: кэш открытых позиций обновляется только руками оператора
 
 `UpdatePositions` вызывается лишь из `POST /api/telegram/update-positions` и из
 `Reconcile(apply)`; ни одно задание планировщика её не запускает (в
@@ -322,9 +351,12 @@ column: recorded_qty (1)`.
 стоял «В мониторинге» при открытой позиции. Проверено на копии базы — первый же
 запуск `UpdatePositions` даёт `changes: [MSFT isOpenPosition:true]`.
 
-Статус: OPEN. Не чинил: очевидное место — вызвать `UpdatePositions` в
-after-close задании рядом с `Actualize`, но это изменение расписания, а не
-починка бага, и требует решения владельца.
+Статус: VERIFIED. Fix commit `a8a5e4d`: `RunPriceActualization` (задание через
+15–31 минуту после закрытия) вызывает `UpdatePositions` рядом с `Actualize`.
+Владелец санкционировал объём просьбой «проверь и исправь все» 2026-09-09.
+Проверка на `a8a5e4d`: `go test ./internal/scheduler -run TestPriceActualizationSyncsWatchOpenFlag`
+(`go/internal/scheduler/aud110_position_sync_test.go`): открытая позиция MSFT →
+после задания `isOpenPosition=true` на строке наблюдения.
 
 ## Ревизия последних коммитов 2026-09-08 (8d91571, 359580a, a151f82)
 
