@@ -189,6 +189,14 @@ func (d *DB) ListAutotradeLogsKind(kind string, limit int) ([]map[string]any, er
 	return out, nil
 }
 
+// terminalTrackerStatuses are the statuses an order can never leave: the order
+// is done and its fill, if any, is already journaled. Every write to a tracker
+// status honours them — startTracking saves the tracker after placeMarket
+// returns, and the scheduler's 20-second poll may have finalised the order in
+// the meantime, so a plain overwrite put a filled order back in the polling
+// queue and booked its fill a second time (AUD-116).
+const terminalTrackerStatuses = `'filled','cancelled','canceled','rejected','expired','terminal_absent'`
+
 func (d *DB) SaveOrderTracker(rec map[string]any) error {
 	id := fmt.Sprint(rec["clientOrderId"])
 	if id == "" || id == "<nil>" {
@@ -212,7 +220,9 @@ func (d *DB) SaveOrderTracker(rec map[string]any) error {
 	}
 	_, err := d.SQL.Exec(`INSERT INTO order_trackers (client_order_id, symbol, action, broker, status, quantity, source, date_key, started_at, attempts, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
-        ON CONFLICT(client_order_id) DO UPDATE SET status=excluded.status, quantity=excluded.quantity, broker=excluded.broker, updated_at=datetime('now')`,
+        ON CONFLICT(client_order_id) DO UPDATE SET
+            status=CASE WHEN order_trackers.status IN (`+terminalTrackerStatuses+`) THEN order_trackers.status ELSE excluded.status END,
+            quantity=excluded.quantity, broker=excluded.broker, updated_at=datetime('now')`,
 		id, SafeTicker(fmt.Sprint(rec["symbol"])), fmt.Sprint(rec["action"]), broker, status, rec["quantity"], rec["source"], rec["dateKey"], started, attempts)
 	return err
 }
@@ -230,7 +240,8 @@ func (d *DB) GetOrderTracker(clientOrderID string) map[string]any {
 }
 
 func (d *DB) SetOrderTrackerStatus(clientOrderID, status string) error {
-	res, err := d.SQL.Exec(`UPDATE order_trackers SET status=?, updated_at=datetime('now') WHERE client_order_id=? AND status NOT IN ('filled','cancelled','canceled','rejected','expired','terminal_absent')`, status, clientOrderID)
+	res, err := d.SQL.Exec(`UPDATE order_trackers SET status=?, updated_at=datetime('now')
+        WHERE client_order_id=? AND status NOT IN (`+terminalTrackerStatuses+`)`, status, clientOrderID)
 	if err != nil {
 		return err
 	}
