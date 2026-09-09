@@ -11,12 +11,12 @@ import (
 )
 
 const (
-	rateWindow     = 15 * time.Minute
-	limitAPI       = 2000
-	limitLogin     = 10
-	limitHash      = 5
-	limitCalc      = 30
-	limitUpload    = 10
+	rateWindow  = 15 * time.Minute
+	limitAPI    = 2000
+	limitLogin  = 10
+	limitHash   = 5
+	limitCalc   = 30
+	limitUpload = 10
 	// Таблица ограничителя не вытесняет действующий запрет (AUD-089), поэтому
 	// заполненная запретами таблица отказывает новым ключам — в том числе
 	// оператору, заходящему с нового адреса. При 256 слотах для этого хватает
