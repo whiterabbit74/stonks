@@ -248,3 +248,26 @@ func TestCloseLegWritesOnlyThatBroker(t *testing.T) {
 		t.Fatalf("webull leg touched: %+v", p.Webull)
 	}
 }
+
+// A test buy leaves an is_test row open. A strategy entry in the same ticker
+// attaches to it, and must not inherit the flag that hides the row from the
+// monitoring page and the statistics.
+func TestAttachEntryClearsTestFlagOnStrategyFill(t *testing.T) {
+	db := openTestDB(t)
+	if _, err := db.AttachEntry(EntryFill{Symbol: "MSFT", Broker: "webull", OrderID: "t-1",
+		Qty: 1, EntryDate: "2026-09-04", Source: "test_buy", IsTest: true}); err != nil {
+		t.Fatal(err)
+	}
+	p, err := db.AttachEntry(EntryFill{Symbol: "MSFT", Broker: "webull", OrderID: "w-2",
+		Qty: 5, EntryDate: "2026-09-04", Source: "auto"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.IsTest {
+		t.Fatal("a strategy position stayed marked as a test buy and is hidden from monitoring")
+	}
+	got, _ := db.GetPosition(p.ID)
+	if got == nil || got.IsTest {
+		t.Fatalf("stored row still test: %+v", got)
+	}
+}

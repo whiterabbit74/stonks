@@ -568,6 +568,13 @@ func (d *DB) AttachEntry(f EntryFill) (*Position, error) {
 		return nil, err
 	}
 
+	// A strategy fill on a row opened by the test-buy button makes it a
+	// strategy position: is_test is what keeps a row out of the monitoring page
+	// and the statistics, and a real entry left under that flag is a position
+	// nobody can see.
+	if !f.IsTest {
+		p.IsTest = false
+	}
 	leg := p.Leg(f.Broker)
 	if leg.EntryOrderID == f.OrderID && leg.Qty >= f.Qty {
 		return &p, tx.Commit() // already recorded
