@@ -4,6 +4,12 @@
 
 IN_PROGRESS. No agents; source and operational data unchanged. Synthetic tests run through Go overlay (temporary compiler inputs outside checkout). A reproducer PASS means the defect exists.
 
+### AUD-098 — OPEN, P2: штатный тест развёртывания падает на комментарии Compose
+
+`go/internal/httpapi/deploy_assets_test.go:31-34` проверяет strings.Contains(compose, "docker/go"), включая комментарии. После закрепления образов AUD-088 в docker-compose.yml появился комментарий со ссылкой на docker/go.runtime.Dockerfile. Секция server остаётся image-only, но TestGoDeployShipsBinaryAndWeb падает. CI запускает этот тест через go test ./... и не пройдёт на текущем checkout.
+
+Доказательство: go test -race ./... на a162986 — единственный FAIL TestGoDeployShipsBinaryAndWeb, строка 33: compose must not build the trading server. Файл Compose прочитан: build отсутствует, совпадение только в комментарии. Это баг проверки, не дефект запуска контейнера. Исправлений нет.
+
 ### AUD-097 — OPEN, P1: повторный импорт сырых цен сохраняет applied старого датасета
 
 `go/internal/httpapi/server.go:832-870`; `go/internal/store/db.go:553-604,827-844`: SaveDataset заменяет цены, но не сбрасывает applied событий; savePayload обновляет отметки только при adjustedForSplits=true. Импорт raw-истории поверх скорректированной оставляет старые applied=1. Расчётные ручки используют ListPendingSplits и считают, что новые сырые цены уже пересчитаны. Изменённый фактор ранее применённого события тоже сбрасывается в pending без восстановления исходного базиса; этот второй сценарий требует отдельного воспроизведения.
