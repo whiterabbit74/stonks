@@ -3068,8 +3068,8 @@
         <div class="rounded-xl border p-4 mb-3">
           <div class="font-medium mb-2">Пороги IBS по умолчанию</div>
           <div class="grid gap-3 sm:grid-cols-2">
-            <label class="text-sm">Вход, IBS ниже<input name="autoLowIBS" type="number" step="0.01" min="0" max="1" value="${esc(ac.lowIBS ?? liveLowIBS())}" class="field mt-1" /></label>
-            <label class="text-sm">Выход, IBS выше<input name="autoHighIBS" type="number" step="0.01" min="0" max="1" value="${esc(ac.highIBS ?? liveHighIBS())}" class="field mt-1" /></label>
+            <label class="text-sm">Вход, IBS ниже<input name="autoLowIBS" type="number" step="0.01" min="0" max="1" required value="${esc(ac.lowIBS ?? liveLowIBS())}" class="field mt-1" /></label>
+            <label class="text-sm">Выход, IBS выше<input name="autoHighIBS" type="number" step="0.01" min="0" max="1" required value="${esc(ac.highIBS ?? liveHighIBS())}" class="field mt-1" /></label>
           </div>
           <p class="text-xs text-gray-500 mt-1">Сравнение строгое с обеих сторон: ровно 0.10 — это не вход. У каждого тикера на странице «Мониторинг» есть собственные пороги, и они важнее этих: здесь задаётся только значение по умолчанию.</p>
         </div>
@@ -3088,9 +3088,9 @@
         <div class="rounded-xl border p-4 mb-3">
           <div class="font-medium mb-2">Защита</div>
           <div class="grid gap-3 sm:grid-cols-2">
-            <label class="text-sm">Окно исполнения, сек<input name="autoWindow" type="number" min="15" step="1" value="${esc(ac.executionWindowSeconds ?? 90)}" class="field mt-1" /></label>
-            <label class="text-sm">Порог проскальзывания, bps<input name="autoSlippage" type="number" min="0" max="1000" step="1" value="${esc(ac.maxSlippageBps ?? 25)}" class="field mt-1" /></label>
-            <label class="text-sm">Резерв на вход, %<input name="autoEntryReserve" type="number" min="0.5" max="10" step="0.1" title="От 0.5% до 10%" value="${esc(((ac.entryReservePct ?? 0.005) * 100).toFixed(2))}" class="field mt-1" /></label>
+            <label class="text-sm">Окно исполнения, сек<input name="autoWindow" type="number" min="15" step="1" required value="${esc(ac.executionWindowSeconds ?? 90)}" class="field mt-1" /></label>
+            <label class="text-sm">Порог проскальзывания, bps<input name="autoSlippage" type="number" min="0" max="1000" step="1" required value="${esc(ac.maxSlippageBps ?? 25)}" class="field mt-1" /></label>
+            <label class="text-sm">Резерв на вход, %<input name="autoEntryReserve" type="number" min="0.5" max="10" step="0.1" required title="От 0.5% до 10%" value="${esc(((ac.entryReservePct ?? 0.005) * 100).toFixed(2))}" class="field mt-1" /></label>
           </div>
           <p class="text-xs text-gray-500 mt-1">Окно: кнопка «Исполнить» отправит заявку, только если до закрытия осталось не больше этого времени, — страховка от случайной сделки среди дня. Регулярный запуск в T-1 через это окно не проходит: он и так привязан к закрытию.</p>
           <p class="text-xs text-gray-500 mt-1">Проскальзывание больше не только предупреждает: заявку оно не ограничивает (она рыночная и должна исполниться), но перед расчётом количества акций из доступных средств вычитается резерв — не меньше 0.5%, не меньше выставленного здесь значения и не меньше самого порога проскальзывания (25 bps = 0.25% резерва). Так количество акций считается не впритык к покупательной способности: движение цены между котировкой на T-1 и фактическим исполнением не даст брокеру отклонить заявку по нехватке средств.</p>
