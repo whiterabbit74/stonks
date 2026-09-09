@@ -373,7 +373,17 @@ func (d *DB) ClosePosition(id string, exit PositionExit) (*Position, error) {
 		return nil, err
 	}
 	defer tx.Rollback()
+	p, err := d.closePositionTx(tx, id, exit)
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return p, nil
+}
 
+func (d *DB) closePositionTx(tx *sql.Tx, id string, exit PositionExit) (*Position, error) {
 	p, err := d.scanPosition(tx.QueryRow(`SELECT `+positionColumns+` FROM positions WHERE id=?`, id))
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("позиция не найдена")
@@ -411,9 +421,6 @@ func (d *DB) ClosePosition(id string, exit PositionExit) (*Position, error) {
 		WHERE id=? AND status='open'`,
 		p.Status, nullText(p.ExitDate), p.ExitPrice, p.ExitIBS, nullText(p.ExitDecisionTime),
 		p.PnLPercent, p.PnLAbsolute, p.HoldingDays, nullText(p.Notes), id); err != nil {
-		return nil, err
-	}
-	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
 	return &p, nil
@@ -538,7 +545,13 @@ func (d *DB) SplitPosition(id, broker string, sold, exitPrice float64, exitDate,
 		return err
 	}
 	defer tx.Rollback()
+	if err := d.splitPositionTx(tx, id, broker, sold, exitPrice, exitDate, notes); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
 
+func (d *DB) splitPositionTx(tx *sql.Tx, id, broker string, sold, exitPrice float64, exitDate, notes string) error {
 	p, err := d.scanPosition(tx.QueryRow(`SELECT `+positionColumns+` FROM positions WHERE id=? AND status='open'`, id))
 	if err == sql.ErrNoRows {
 		return fmt.Errorf("открытая позиция не найдена")
@@ -593,7 +606,48 @@ func (d *DB) SplitPosition(id, broker string, sold, exitPrice float64, exitDate,
 	if n, err := res.RowsAffected(); err != nil || n != 1 {
 		return fmt.Errorf("partial close left %d open rows: %v", n, err)
 	}
-	return tx.Commit()
+	return nil
+}
+
+// ClaimPartialExit books `filled` as the total quantity journaled for this exit
+// order and applies the part the journal has not seen yet to the position, in
+// one transaction. It returns the newly journaled quantity; 0 means this fill
+// was already recorded and nothing was written.
+//
+// The claim and the write it authorises must commit together. Claiming first
+// and writing after left the recorded quantity covering shares no journal row
+// ever received: the replay of that same broker answer then found nothing new
+// to book and the executed part was gone for good (AUD-111).
+func (d *DB) ClaimPartialExit(clientOrderID, positionID, broker string, filled, exitPrice float64, exitDate string) (float64, error) {
+	tx, err := d.SQL.Begin()
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+	newly, err := claimFillTx(tx, clientOrderID, filled)
+	if err != nil || newly <= 0 {
+		return 0, err
+	}
+	p, err := d.scanPosition(tx.QueryRow(`SELECT `+positionColumns+` FROM positions WHERE id=?`, positionID))
+	if err == sql.ErrNoRows {
+		return 0, fmt.Errorf("открытая позиция не найдена")
+	}
+	if err != nil {
+		return 0, err
+	}
+	if p.Quantity-newly <= 1e-9 {
+		if _, err := d.closePositionTx(tx, positionID, PositionExit{
+			Date: exitDate, Price: exitPrice, Notes: "partial_exit_flat",
+		}); err != nil {
+			return 0, err
+		}
+	} else if err := d.splitPositionTx(tx, positionID, broker, newly, exitPrice, exitDate, "partial_exit"); err != nil {
+		return 0, err
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return newly, nil
 }
 
 // Ptr returns a pointer to v. The price fields of a Position are *float64 so a

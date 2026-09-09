@@ -378,16 +378,29 @@ func (d *DB) ListPendingTrackers() ([]map[string]any, error) {
 // Read and write are one transaction so two pollers cannot both claim the same
 // shares.
 func (d *DB) ClaimFillQty(clientOrderID string, filled float64) (float64, error) {
-	if strings.TrimSpace(clientOrderID) == "" || !(filled > 0) {
-		return 0, nil
-	}
 	tx, err := d.SQL.Begin()
 	if err != nil {
 		return 0, err
 	}
 	defer tx.Rollback()
+	newly, err := claimFillTx(tx, clientOrderID, filled)
+	if err != nil || newly <= 0 {
+		return 0, err
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return newly, nil
+}
+
+// claimFillTx is ClaimFillQty inside a caller's transaction, so the claim and
+// the journal write it authorises commit or roll back together.
+func claimFillTx(tx *sql.Tx, clientOrderID string, filled float64) (float64, error) {
+	if strings.TrimSpace(clientOrderID) == "" || !(filled > 0) {
+		return 0, nil
+	}
 	var recorded sql.NullFloat64
-	err = tx.QueryRow(`SELECT recorded_qty FROM order_trackers WHERE client_order_id=?`, clientOrderID).Scan(&recorded)
+	err := tx.QueryRow(`SELECT recorded_qty FROM order_trackers WHERE client_order_id=?`, clientOrderID).Scan(&recorded)
 	if err == sql.ErrNoRows {
 		// No tracker to key idempotency off: treat the fill as new rather than
 		// dropping it, the same way the rest of this path prefers a recorded
@@ -402,9 +415,6 @@ func (d *DB) ClaimFillQty(clientOrderID string, filled float64) (float64, error)
 		return 0, nil
 	}
 	if _, err := tx.Exec(`UPDATE order_trackers SET recorded_qty=? WHERE client_order_id=?`, filled, clientOrderID); err != nil {
-		return 0, err
-	}
-	if err := tx.Commit(); err != nil {
 		return 0, err
 	}
 	return newly, nil

@@ -132,26 +132,7 @@ func (e *Engine) recordFill(t map[string]any, detail map[string]any, status stri
 			"<b>%s: частичное исполнение</b>\n%s • %s\nзаказано: %v\nисполнено: %v\nstatus: %s",
 			brokerLabel(brokerName), symbol, action, orderedQty, reportedQty, status))
 		if action == "exit" {
-			// Одно и то же исполнение может прийти повторно: опрос после
-			// перезапуска между записью сделки и фиксацией статуса трекера.
-			// Списывать разрешено только ту часть, которую журнал ещё не
-			// видел (CORE-04).
-			newly, claimErr := e.DB.ClaimFillQty(clientOrderID, reportedQty)
-			if claimErr != nil {
-				e.logAuto("local_trade_close_failed", meta.CorrelationID, map[string]any{
-					"symbol": symbol, "clientOrderId": clientOrderID,
-					"op": "claim_partial_fill", "error": claimErr.Error(),
-				})
-				e.raiseTrackerPersistBlock(brokerName)
-				return
-			}
-			if !(newly > 0) {
-				e.logAuto("order_fill_already_recorded", meta.CorrelationID, map[string]any{
-					"symbol": symbol, "clientOrderId": clientOrderID, "filledQty": reportedQty,
-				})
-				return
-			}
-			e.reduceOpenQuantity(symbol, clientOrderID, brokerName, newly, fillPrice)
+			e.reduceOpenQuantity(symbol, clientOrderID, brokerName, reportedQty, fillPrice, meta.CorrelationID)
 			return
 		}
 	} else if status != "filled" {
@@ -291,13 +272,20 @@ func fillBrokerName(t map[string]any, meta orderMeta) string {
 	return name
 }
 
-func (e *Engine) reduceOpenQuantity(symbol, preferID, broker string, sold, exitPrice float64) {
-	if !(sold > 0) {
+// reduceOpenQuantity books a partial exit fill against the open position.
+//
+// `filled` is the broker's total for this order, not a delta: the same answer
+// arrives again after a restart, so the store decides how much of it the
+// journal has not seen yet and writes that part in the same transaction as the
+// claim (CORE-04, AUD-111). The sold part is closed as its own row rather than
+// subtracted from the quantity, which used to erase its realised P&L (AUD-044).
+func (e *Engine) reduceOpenQuantity(symbol, preferID, broker string, filled, exitPrice float64, corr string) {
+	if !(filled > 0) {
 		return
 	}
 	p, err := e.openPositionFor(symbol, preferID, broker)
 	if err != nil {
-		e.logAuto("local_trade_close_failed", "", map[string]any{
+		e.logAuto("local_trade_close_failed", corr, map[string]any{
 			"symbol": symbol, "clientOrderId": preferID,
 			"op": "partial_exit", "error": err.Error(),
 		})
@@ -307,21 +295,19 @@ func (e *Engine) reduceOpenQuantity(symbol, preferID, broker string, sold, exitP
 	if p == nil {
 		return
 	}
-	if p.Quantity-sold <= 1e-9 {
-		if err := e.closePositionWithPnL(p.ID, exitPrice, tradingdate.TodayNYSE(e.now()), nil, "partial_exit_flat"); err != nil {
-			e.raiseTrackerPersistBlock(broker)
-		}
-		return
-	}
-	// Проданную часть надо закрыть отдельной сделкой: одно лишь уменьшение
-	// quantity стирало реализованный PnL по этим акциям из журнала навсегда
-	// (AUD-044).
-	if err := e.DB.SplitPosition(p.ID, broker, sold, exitPrice, tradingdate.TodayNYSE(e.now()), "partial_exit"); err != nil {
-		e.logAuto("local_trade_close_failed", "", map[string]any{
+	newly, err := e.DB.ClaimPartialExit(preferID, p.ID, broker, filled, exitPrice, tradingdate.TodayNYSE(e.now()))
+	if err != nil {
+		e.logAuto("local_trade_close_failed", corr, map[string]any{
 			"symbol": symbol, "clientOrderId": preferID,
 			"op": "partial_exit_split", "error": err.Error(),
 		})
 		e.raiseTrackerPersistBlock(broker)
+		return
+	}
+	if !(newly > 0) {
+		e.logAuto("order_fill_already_recorded", corr, map[string]any{
+			"symbol": symbol, "clientOrderId": preferID, "filledQty": filled,
+		})
 	}
 }
 
