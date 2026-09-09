@@ -247,8 +247,8 @@ func TestResumePollsBeforeExpiringYesterday(t *testing.T) {
 	if row != nil {
 		t.Fatal("filled yesterday must not stay pending")
 	}
-	trades, _ := db.ListTrades("broker_trades")
-	if len(trades) != 1 || fmt.Sprint(trades[0]["status"]) != "open" {
+	trades, _ := db.ListPositions()
+	if len(trades) != 1 || fmt.Sprint(trades[0].Status) != "open" {
 		t.Fatalf("fill must be journalled, got %+v", trades)
 	}
 }
@@ -257,10 +257,7 @@ func TestPartialExitKeepsRemainderOpen(t *testing.T) {
 	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 11.9, Volume: 1}}
 	db, e, br := testEngine(t, bars)
 	e.Sleep = func(time.Duration) {}
-	_ = db.InsertTrade("broker_trades", map[string]any{
-		"id": "b1", "symbol": "AAPL", "status": "open",
-		"entryDate": "2026-09-01", "entryPrice": 10.0, "quantity": 5,
-	})
+	_ = db.SavePosition(store.Position{ID: "b1", Symbol: "AAPL", Status: "open", EntryDate: "2026-09-01", EntryPrice: store.Ptr[float64](10.0), Quantity: 5, Webull: store.BrokerLeg{Qty: 5, EntryPrice: store.Ptr[float64](10.0)}})
 	br.Pos = []any{map[string]any{"symbol": "AAPL", "quantity": 5.0}}
 	e.PatchAutoConfig(map[string]any{"enabled": true, "highIBS": 0.5, "allowExits": true})
 	res := e.Execute("test")
@@ -272,24 +269,24 @@ func TestPartialExitKeepsRemainderOpen(t *testing.T) {
 		"status": "FILLED", "filled_qty": 2.0, "filled_price": 11.5, "client_order_id": oid,
 	})
 	waitTrackerFinal(t, e, db, "AAPL", "exit")
-	trades, _ := db.ListTrades("broker_trades")
-	var open, closed map[string]any
-	for _, row := range trades {
-		if fmt.Sprint(row["status"]) == "open" {
-			open = row
+	trades, _ := db.ListPositions()
+	var open, closed *store.Position
+	for i, row := range trades {
+		if row.Status == "open" {
+			open = &trades[i]
 		} else {
-			closed = row
+			closed = &trades[i]
 		}
 	}
-	if open == nil || asFloat(open["quantity"]) != 3 {
+	if open == nil || open.Quantity != 3 {
 		t.Fatalf("remainder must stay open with 3 shares: %+v", trades)
 	}
 	// AUD-044: проданная часть — отдельная закрытая сделка с реализованным
 	// PnL, иначе прибыль по этим акциям исчезает из журнала.
-	if closed == nil || asFloat(closed["quantity"]) != 2 {
+	if closed == nil || closed.Quantity != 2 {
 		t.Fatalf("sold part must be journalled as a closed trade: %+v", trades)
 	}
-	if got := asFloat(closed["pnlAbsolute"]); got != 3 {
+	if got := pv(closed.PnLAbsolute); got != 3 {
 		t.Fatalf("realised pnl %v, want 3", got)
 	}
 }

@@ -230,34 +230,35 @@ func (e *Engine) UpdatePositions() map[string]any {
 	if err != nil {
 		return updatePositionsFailed("watches", err)
 	}
-	monitor, err := e.DB.ListTrades("trades")
+	// The watch row's open-position fields are a display cache of the journal,
+	// refreshed from it — never a third place a position is recorded.
+	monitor, err := e.DB.OpenPositions()
 	if err != nil {
-		return updatePositionsFailed("trades", err)
+		return updatePositionsFailed("positions", err)
 	}
-	openBySym := map[string]map[string]any{}
-	for _, t := range store.OpenBrokerTrades(monitor) {
-		sym := store.SafeTicker(fmt.Sprint(t["symbol"]))
-		if sym == "" {
+	openBySym := map[string]store.Position{}
+	for _, t := range monitor {
+		if t.Symbol == "" || t.IsHidden || t.IsTest {
 			continue
 		}
-		openBySym[sym] = t
+		openBySym[t.Symbol] = t
 	}
 	var changes []map[string]any
-	var open map[string]any
+	var open *store.Position
 	for _, w := range watches {
 		sym := store.SafeTicker(fmt.Sprint(w["symbol"]))
-		row := openBySym[sym]
-		wantOpen := row != nil
+		row, wantOpen := openBySym[sym]
 		if wantOpen && open == nil {
-			open = row
+			p := row
+			open = &p
 		}
 		wasOpen, _ := w["isOpenPosition"].(bool)
 		if wantOpen != wasOpen {
 			patch := map[string]any{"isOpenPosition": wantOpen}
 			if wantOpen {
-				patch["entryPrice"] = row["entryPrice"]
-				patch["entryDate"] = row["entryDate"]
-				patch["currentTradeId"] = row["id"]
+				patch["entryPrice"] = legacyEntryPrice(&row)
+				patch["entryDate"] = row.EntryDate
+				patch["currentTradeId"] = row.ID
 			} else {
 				patch["currentTradeId"] = nil
 			}

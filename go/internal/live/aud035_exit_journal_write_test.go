@@ -1,6 +1,7 @@
 package live
 
 import (
+	"mktorder.com/go/internal/store"
 	"testing"
 
 	"mktorder.com/go/internal/types"
@@ -16,14 +17,11 @@ func TestExitJournalWriteFailureBlocksEntries(t *testing.T) {
 	db, e, _ := testEngine(t, bars)
 
 	const oid = "exit-1"
-	if err := db.InsertTrade("broker_trades", map[string]any{
-		"id": "b-1", "symbol": "AAPL", "status": "open", "entryDate": "2026-09-01",
-		"entryPrice": 10.0, "quantity": 2.0, "broker": "webull",
-	}); err != nil {
+	if err := db.SavePosition(store.Position{ID: "b-1", Symbol: "AAPL", Status: "open", EntryDate: "2026-09-01", EntryPrice: store.Ptr[float64](10.0), Quantity: 2.0, Webull: store.BrokerLeg{Qty: 2.0, EntryPrice: store.Ptr[float64](10.0)}}); err != nil {
 		t.Fatal(err)
 	}
 	// Reads keep working; only the closing UPDATE is refused.
-	if _, err := db.SQL.Exec(`CREATE TRIGGER refuse_close BEFORE UPDATE ON broker_trades
+	if _, err := db.SQL.Exec(`CREATE TRIGGER refuse_close BEFORE UPDATE ON positions
 		BEGIN SELECT RAISE(ABORT, 'journal is read-only'); END`); err != nil {
 		t.Fatal(err)
 	}

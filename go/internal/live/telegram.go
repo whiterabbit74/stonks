@@ -249,12 +249,12 @@ func (e *Engine) Aggregate(minutesUntilClose int, opts AggregateOpts) (SimulateR
 	// An empty watch list must not swallow a day that already has an open
 	// broker position: that position still needs its exit decided and
 	// reported, watches or not. See P0-5 in AUTOTRADE_ROADMAP.md.
-	brokerTrades, err := e.DB.ListTrades("broker_trades")
+	openPos, err := e.DB.OpenPositions()
 	if err != nil {
 		out.Reason = "journal_unavailable"
 		return out, err
 	}
-	hasOpenBrokerTrade := store.OpenBrokerTrade(brokerTrades) != nil
+	hasOpenBrokerTrade := len(openPos) > 0
 	if len(watches) == 0 && !hasOpenBrokerTrade {
 		emaAlerts, err := e.EvaluateEMAAlerts()
 		if err != nil {
@@ -489,7 +489,7 @@ func (e *Engine) buildT1Text(minutes int, rows []t1Watch, blocking map[string]an
 		if who != "" && who != "<nil>" {
 			scope = "новый вход придержан у " + brokerLabel(who)
 		}
-		decision = append(decision, "• Расхождение журналов: "+fmt.Sprint(blocking["message"]))
+		decision = append(decision, "• Проверка состояния: "+fmt.Sprint(blocking["message"]))
 		decision = append(decision, "• "+scope+"; выход по сигналу уходит как обычно")
 	}
 	if waitFill {
@@ -594,15 +594,15 @@ func (e *Engine) buildT1Text(minutes int, rows []t1Watch, blocking map[string]an
 		}
 	}
 	position := "Позиция: нет"
-	open, tradesErr := e.openMonitorTrade()
+	open, tradesErr := e.openPosition()
 	if tradesErr != nil {
 		position = "Позиция: неизвестна (журнал сделок недоступен)"
 	} else if open != nil {
 		price := "—"
-		if p := asFloat(open["entryPrice"]); p > 0 {
+		if p := legacyEntryPrice(open); p > 0 {
 			price = fmt.Sprintf("$%.2f", p)
 		}
-		position = fmt.Sprintf("Позиция: %s (вход %s по %s)", open["symbol"], nz(fmt.Sprint(open["entryDate"])), price)
+		position = fmt.Sprintf("Позиция: %s (вход %s по %s)", open.Symbol, nz(open.EntryDate), price)
 	}
 	// The header states the minute the readings were taken on, so a T-1 that
 	// ran late cannot claim a minute it no longer had.
@@ -856,14 +856,20 @@ func barsHavePrevSession(bars []types.OHLC, today string) bool {
 	return last >= prev
 }
 
-func (e *Engine) openMonitorTrade() (map[string]any, error) {
-	// An unreadable journal must not be reported as "no open position": the
-	// T-11/T-1 messages would label an open ticker FLAT and tag it ENTRY.
-	trades, err := e.DB.ListTrades("trades")
+// openPosition returns the position the journal has open, or nil.
+// An unreadable journal must not be reported as "no open position": the
+// T-11/T-1 messages would label an open ticker FLAT and tag it ENTRY.
+func (e *Engine) openPosition() (*store.Position, error) {
+	rows, err := e.DB.OpenPositions()
 	if err != nil {
 		return nil, err
 	}
-	return store.OpenBrokerTrade(trades), nil
+	for i, p := range rows {
+		if !p.IsHidden && !p.IsTest {
+			return &rows[i], nil
+		}
+	}
+	return nil, nil
 }
 
 func ibsFromQuote(q providers.QuotePayload) (float64, bool) {
@@ -886,7 +892,7 @@ func ibsFromQuote(q providers.QuotePayload) (float64, bool) {
 }
 
 func (e *Engine) tradeHistoryMessage(limit int) string {
-	trades, err := e.DB.ListTrades("trades")
+	trades, err := e.DB.ListPositions()
 	if err != nil {
 		return "Журнал сделок недоступен"
 	}
@@ -900,7 +906,10 @@ func (e *Engine) tradeHistoryMessage(limit int) string {
 		if n >= limit {
 			break
 		}
-		fmt.Fprintf(&b, "%s %s %v → %v\n", t["symbol"], t["status"], t["entryDate"], t["exitDate"])
+		if t.IsTest || t.IsHidden {
+			continue
+		}
+		fmt.Fprintf(&b, "%s %s %s → %s\n", t.Symbol, t.Status, t.EntryDate, t.ExitDate)
 		n++
 	}
 	return b.String()
@@ -1198,4 +1207,21 @@ func providersUsed(rows []t1Watch, chain []string) string {
 		return "finnhub"
 	}
 	return strings.Join(seen, "+")
+}
+
+// legacyEntryPrice is the price to show for a position: the signal price when
+// there is one, otherwise whatever a broker actually paid.
+func legacyEntryPrice(p *store.Position) float64 {
+	if p == nil {
+		return 0
+	}
+	if p.EntryPrice != nil {
+		return *p.EntryPrice
+	}
+	for _, leg := range []store.BrokerLeg{p.Webull, p.Robinhood} {
+		if leg.EntryPrice != nil {
+			return *leg.EntryPrice
+		}
+	}
+	return 0
 }

@@ -39,7 +39,7 @@ func TestFinalizeDoesNotRejournalWhenStatusStampFails(t *testing.T) {
 	if !autotradeLogsContain(t, e, "tracker_finalize_failed") {
 		t.Fatal("want tracker_finalize_failed when SetOrderTrackerStatus fails")
 	}
-	if row, _ := db.GetTrade("broker_trades", id); row == nil {
+	if row, _ := db.GetPosition(id); row == nil {
 		t.Fatal("fill must still be journaled")
 	}
 	if _, err := db.SQL.Exec(`DROP TRIGGER IF EXISTS trackers_block_status`); err != nil {
@@ -49,13 +49,13 @@ func TestFinalizeDoesNotRejournalWhenStatusStampFails(t *testing.T) {
 	if trackerStatus(t, db, id) != "filled" {
 		t.Fatalf("retry stamp got %q", trackerStatus(t, db, id))
 	}
-	rows, err := db.ListTrades("broker_trades")
+	rows, err := db.ListPositions()
 	if err != nil {
 		t.Fatal(err)
 	}
 	n := 0
 	for _, r := range rows {
-		if fmt.Sprint(r["id"]) == id {
+		if fmt.Sprint(r.ID) == id {
 			n++
 		}
 	}
@@ -80,7 +80,7 @@ func TestPollTrackerOrderedQtyIsNotAFill(t *testing.T) {
 	if st == "filled" {
 		t.Fatalf("ordered qty without filled_qty must not finalize as filled, got %q", st)
 	}
-	if row, _ := e.DB.GetTrade("broker_trades", id); row != nil {
+	if row, _ := e.DB.GetPosition(id); row != nil {
 		t.Fatal("qty-only detail must not journal a fill")
 	}
 }
@@ -117,8 +117,8 @@ func TestPollTrackerMissingNamedBrokerDoesNotUseDefault(t *testing.T) {
 		t.Fatalf("detached robinhood must not be polled, DetailN %d -> %d", beforeR, rh.DetailN)
 	}
 
-	row, _ := e.DB.GetTrade("broker_trades", "rh-oid")
-	if row == nil || fmt.Sprint(row["status"]) != "open" {
+	row, _ := e.DB.GetPosition("rh-oid")
+	if row == nil || fmt.Sprint(row.Status) != "open" {
 		t.Fatalf("must not deletePhantom a robinhood journal row: %+v", row)
 	}
 	st := trackerStatus(t, e.DB, "rh-oid")
@@ -174,14 +174,14 @@ func TestPollTrackerUnknownRHDetailRecoversFillFromRHHistory(t *testing.T) {
 	if st != "filled" {
 		t.Fatalf("status %q want filled (RH history had FILLED; a default-broker lookup would miss it)", st)
 	}
-	row, _ := e.DB.GetTrade("broker_trades", id)
+	row, _ := e.DB.GetPosition(id)
 	if row == nil {
 		t.Fatal("journal must recover the Robinhood fill from RH history")
 	}
-	if fmt.Sprint(row["broker"]) != "robinhood" {
-		t.Fatalf("broker %v want robinhood", row["broker"])
+	if legBroker(row) != "robinhood" {
+		t.Fatalf("broker %v want robinhood", legBroker(row))
 	}
-	if asFloat(row["quantity"]) != 2 || asFloat(row["entryPrice"]) != 8.2 {
+	if row.Quantity != 2 || pv(row.EntryPrice) != 8.2 {
 		t.Fatalf("fill %+v", row)
 	}
 }

@@ -9,138 +9,54 @@ import (
 	"mktorder.com/go/internal/tradingdate"
 )
 
-// getTrade returns the row, or nil with an error. Callers that write on the
-// basis of "there is no such trade" must tell the two apart: a failed read is
-// not an absent trade.
-func (e *Engine) getTrade(table, id string) (map[string]any, error) {
-	row, err := e.DB.GetTrade(table, id)
-	if err != nil {
-		e.logAuto("journal_read_failed", "", map[string]any{"table": table, "op": "get_trade", "id": id, "error": err.Error()})
-		return nil, err
-	}
-	return row, nil
+// isTestSource reports whether an order came from the test-buy button rather
+// than from the strategy. Such an order is real money at the broker, so it is
+// journaled — but it is not a strategy trade and must stay out of the
+// statistics and out of the monitoring page.
+func isTestSource(source string) bool {
+	s := strings.ToLower(strings.TrimSpace(source))
+	return s == "test_buy" || s == "test_sell"
 }
 
-func (e *Engine) openTradeBySymbol(table, symbol, preferID, broker string) (map[string]any, error) {
+// openPositionFor finds the open position an order belongs to: by id when the
+// order names one, then by ticker.
+//
+// There is at most one open position per ticker, both brokers included, so the
+// broker hop this used to need is gone with it. It existed because Webull and
+// Robinhood held separate journal rows for the same signal, and one broker's
+// exit could close the other's row, swapping the recorded exit price and P&L
+// between them (AUD-068). One row per position cannot swap anything.
+func (e *Engine) openPositionFor(symbol, preferID, broker string) (*store.Position, error) {
 	want := store.SafeTicker(symbol)
-	wantBroker := strings.ToLower(strings.TrimSpace(broker))
-	sameBroker := func(got string) bool {
-		got = strings.ToLower(strings.TrimSpace(got))
-		if got == "<nil>" {
-			got = ""
-		}
-		return got == wantBroker || (wantBroker == "webull" && got == "")
-	}
-	// A broker_trades row carries its broker itself. A monitor row does not:
-	// it belongs to the broker of the trade it links to. Without that hop two
-	// brokers holding the same ticker — the normal case, both pick the lowest
-	// IBS — made one broker's exit close the other's monitor row, swapping the
-	// recorded exit price and PnL between them (AUD-068).
-	matchesBroker := func(t map[string]any) (bool, error) {
-		if wantBroker == "" {
-			return true, nil
-		}
-		if table == "broker_trades" {
-			return sameBroker(fmt.Sprint(t["broker"])), nil
-		}
-		linked := strings.TrimSpace(fmt.Sprint(t["linkedBrokerTradeId"]))
-		if linked == "" || linked == "<nil>" {
-			return true, nil
-		}
-		b, err := e.getTrade("broker_trades", linked)
-		if err != nil {
-			return false, err
-		}
-		if b == nil {
-			return true, nil
-		}
-		return sameBroker(fmt.Sprint(b["broker"])), nil
-	}
 	if preferID != "" {
-		for _, id := range []string{preferID, "m-" + preferID} {
-			if table == "broker_trades" && strings.HasPrefix(id, "m-") {
-				continue
-			}
-			t, err := e.getTrade(table, id)
-			if err != nil {
-				return nil, err
-			}
-			if t == nil {
-				continue
-			}
-			if fmt.Sprint(t["status"]) != "open" || store.SafeTicker(fmt.Sprint(t["symbol"])) != want {
-				continue
-			}
-			ok, err := matchesBroker(t)
-			if err != nil {
-				return nil, err
-			}
-			if ok {
-				return t, nil
-			}
-		}
-	}
-	rows, err := e.DB.ListTrades(table)
-	if err != nil {
-		e.logAuto("journal_read_failed", "", map[string]any{"table": table, "op": "open_trade_by_symbol", "symbol": symbol, "error": err.Error()})
-		return nil, err
-	}
-	var fallback map[string]any
-	for _, t := range rows {
-		if fmt.Sprint(t["status"]) != "open" {
-			continue
-		}
-		if store.SafeTicker(fmt.Sprint(t["symbol"])) != want {
-			continue
-		}
-		id := fmt.Sprint(t["id"])
-		// ListTrades does not select linked_broker_trade_id, and both the
-		// broker match and the linked-id match below need it.
-		if table == "trades" {
-			full, err := e.getTrade("trades", id)
-			if err != nil {
-				return nil, err
-			}
-			if full != nil {
-				t = full
-			}
-		}
-		ok, err := matchesBroker(t)
+		p, err := e.DB.GetPosition(preferID)
 		if err != nil {
+			e.logAuto("journal_read_failed", "", map[string]any{"op": "get_position", "id": preferID, "error": err.Error()})
 			return nil, err
 		}
-		if !ok {
-			continue
-		}
-		if preferID != "" && (id == preferID || id == "m-"+preferID) {
-			return t, nil
-		}
-		if preferID != "" && fmt.Sprint(t["linkedBrokerTradeId"]) == preferID {
-			return t, nil
-		}
-		if fallback == nil {
-			fallback = t
+		if p != nil && p.Status == "open" && p.Symbol == want {
+			return p, nil
 		}
 	}
-	return fallback, nil
+	p, err := e.DB.OpenPositionBySymbol(want)
+	if err != nil {
+		e.logAuto("journal_read_failed", "", map[string]any{"op": "open_position_by_symbol", "symbol": symbol, "error": err.Error()})
+		return nil, err
+	}
+	return p, nil
 }
 
-// closeTradeWithPnL writes the exit into the journal. The error is returned,
+// closePositionWithPnL writes the exit into the journal. The error is returned,
 // not only logged: a fill the journal did not record leaves the position open
 // there forever, and the caller decides how loud that has to be — see AUD-035.
-func (e *Engine) closeTradeWithPnL(table, id string, exitPrice float64, exitDate string, exitIBS any, note string) error {
-	if id == "" || id == "<nil>" {
+func (e *Engine) closePositionWithPnL(id string, exitPrice float64, exitDate string, exitIBS *float64, note string) error {
+	if id == "" {
 		return nil
 	}
-	extra := map[string]any{}
-	if note != "" {
-		extra["notes"] = note
-	}
-	if exitIBS != nil {
-		extra["exitIBS"] = exitIBS
-	}
-	if _, err := e.DB.CloseTradeByID(table, id, exitPrice, exitDate, extra); err != nil {
-		e.logAuto("local_trade_close_failed", "", map[string]any{"table": table, "id": id, "error": err.Error()})
+	if _, err := e.DB.ClosePosition(id, store.PositionExit{
+		Date: exitDate, Price: exitPrice, IBS: exitIBS, Notes: note,
+	}); err != nil {
+		e.logAuto("local_trade_close_failed", "", map[string]any{"id": id, "error": err.Error()})
 		return err
 	}
 	return nil
@@ -177,9 +93,10 @@ func (e *Engine) recordFill(t map[string]any, detail map[string]any, status stri
 	if !(fillQty > 0) {
 		fillQty = orderedQty
 	}
-	exitIBS := any(nil)
+	var exitIBS *float64
 	if meta.IBS > 0 || meta.IBS == 0 && meta.CorrelationID != "" {
-		exitIBS = meta.IBS
+		ibs := meta.IBS
+		exitIBS = &ibs
 	}
 
 	recorded := map[string]any{
@@ -253,127 +170,88 @@ func (e *Engine) recordFill(t map[string]any, detail map[string]any, status stri
 	}
 
 	if action == "entry" {
-		existing, err := e.getTrade("broker_trades", clientOrderID)
-		if err != nil {
-			// The fill is real; we just cannot see whether it is journaled.
-			// Inserting blind would either duplicate the row or raise a false
-			// persistence failure, so block the tracker for an operator.
-			e.logAuto("local_trade_record_failed", meta.CorrelationID, map[string]any{
-				"table": "broker_trades", "error": err.Error(), "clientOrderId": clientOrderID,
-			})
-			e.raiseTrackerPersistBlock(brokerName)
-			return
-		}
-		if existing != nil {
-			if fillQty > asFloat(existing["quantity"]) {
-				_ = e.execJournalSQL(meta.CorrelationID, brokerName, "upsert_broker_qty",
-					`UPDATE broker_trades SET quantity=?, filled_qty=? WHERE id=?`, fillQty, fillQty, clientOrderID)
-				_ = e.execJournalSQL(meta.CorrelationID, brokerName, "upsert_monitor_qty",
-					`UPDATE trades SET quantity=?, filled_qty=? WHERE id=?`, fillQty, fillQty, "m-"+clientOrderID)
-			}
-			return
-		}
-		entryRec := map[string]any{
-			"id": clientOrderID, "symbol": symbol, "status": "open",
-			"entryDate": dateKey, "source": source, "quantity": fillQty,
-			"broker": brokerName,
-		}
-		if unconfirmedPrice {
-			// 0 is not a fill. Leave entry_price NULL and mark the row so the
-			// journal/UI can badge it until an operator types a real price.
-			entryRec["notes"] = "fill_price_unconfirmed"
-		} else {
-			entryRec["entryPrice"] = fillPrice
-		}
-		if err := e.insertJournalRow("broker_trades", clientOrderID, entryRec); err != nil {
-			e.logAuto("local_trade_record_failed", meta.CorrelationID, map[string]any{
-				"table": "broker_trades", "error": err.Error(), "clientOrderId": clientOrderID,
-			})
-			e.raiseTrackerPersistBlock(brokerName)
-		}
-		monID := "m-" + clientOrderID
-		mon, err := e.getTrade("trades", monID)
-		if err != nil {
-			e.logAuto("local_trade_record_failed", meta.CorrelationID, map[string]any{
-				"table": "trades", "error": err.Error(), "clientOrderId": clientOrderID,
-			})
-			e.raiseTrackerPersistBlock(brokerName)
-			return
-		}
-		if mon == nil {
-			monRec := map[string]any{
-				"id": monID, "symbol": symbol, "status": "open",
-				"entryDate": dateKey, "source": source, "quantity": fillQty,
-			}
-			if unconfirmedPrice {
-				monRec["notes"] = "fill_price_unconfirmed"
-			} else {
-				monRec["entryPrice"] = fillPrice
-			}
-			if err := e.insertJournalRow("trades", monID, monRec); err != nil {
-				e.logAuto("local_trade_record_failed", meta.CorrelationID, map[string]any{
-					"table": "trades", "error": err.Error(), "clientOrderId": clientOrderID,
-				})
-				e.raiseTrackerPersistBlock(brokerName)
-			}
-		}
-		_ = e.execJournalSQL(meta.CorrelationID, brokerName, "link_monitor_fill",
-			`UPDATE trades SET linked_broker_trade_id=?, client_order_id=?, filled_qty=?, entry_ibs=? WHERE id=?`,
-			clientOrderID, clientOrderID, fillQty, meta.IBS, monID)
-		_ = e.execJournalSQL(meta.CorrelationID, brokerName, "link_broker_fill",
-			`UPDATE broker_trades SET client_order_id=?, filled_qty=?, entry_ibs=? WHERE id=?`,
-			clientOrderID, fillQty, meta.IBS, clientOrderID)
+		e.recordEntryFill(symbol, clientOrderID, brokerName, source, dateKey, fillQty, fillPrice, unconfirmedPrice, meta)
+		return
+	}
+	if action == "exit" {
+		e.recordExitFill(symbol, clientOrderID, brokerName, dateKey, fillPrice, exitIBS, meta)
+	}
+}
+
+// recordEntryFill folds one broker's entry into the position of that ticker,
+// creating it when this is the first broker in. Both brokers executing the same
+// signal used to produce two journal rows that a reconciliation pass then tried
+// to match back up; now the second broker just fills in its own leg.
+func (e *Engine) recordEntryFill(symbol, clientOrderID, brokerName, source, dateKey string, fillQty, fillPrice float64, unconfirmedPrice bool, meta orderMeta) {
+	f := store.EntryFill{
+		Symbol: symbol, Broker: brokerName, OrderID: clientOrderID, Qty: fillQty,
+		EntryDate: dateKey, Source: source, IsTest: isTestSource(source),
+	}
+	if meta.IBS > 0 {
+		ibs := meta.IBS
+		f.IBS = &ibs
+	}
+	if unconfirmedPrice {
+		// 0 is not a fill. Leave the price NULL and mark the row so the journal
+		// can badge it until an operator types a real one.
+		f.Notes = "fill_price_unconfirmed"
+	} else {
+		price := fillPrice
+		f.Price = &price
+	}
+	// A read failure here is not "no position": inserting blind would either
+	// duplicate the row or raise a false persistence failure.
+	if _, err := e.DB.AttachEntry(f); err != nil {
+		e.logAuto("local_trade_record_failed", meta.CorrelationID, map[string]any{
+			"error": err.Error(), "clientOrderId": clientOrderID,
+		})
+		e.raiseTrackerPersistBlock(brokerName)
+	}
+}
+
+// recordExitFill closes this broker's leg, and the position itself once no
+// broker holds shares any more. A position half-exited (one broker out, the
+// other still in) stays open on purpose: it is still our money at risk.
+func (e *Engine) recordExitFill(symbol, clientOrderID, brokerName, dateKey string, fillPrice float64, exitIBS *float64, meta orderMeta) {
+	p, err := e.openPositionFor(symbol, clientOrderID, brokerName)
+	if err != nil {
+		e.logAuto("local_trade_close_failed", meta.CorrelationID, map[string]any{
+			"symbol": symbol, "clientOrderId": clientOrderID, "error": err.Error(),
+		})
+		e.raiseTrackerPersistBlock(brokerName)
+		return
+	}
+	if p == nil {
+		// An exit fill with nothing to close used to return silently, so an
+		// exit resolved before its own entry (the operator confirming two
+		// trackers out of order) left the entry's position open forever with
+		// not a word to anybody. Say it out loud instead.
+		e.logAuto("exit_fill_without_open_position", meta.CorrelationID, map[string]any{
+			"symbol": symbol, "clientOrderId": clientOrderID, "broker": brokerName,
+		})
+		_ = e.Send(e.chat(), fmt.Sprintf(
+			"<b>%s: выход без открытой позиции</b>\n%s\nзаявка: %s\nв журнале нечего закрывать — проверьте позицию у брокера",
+			brokerLabel(brokerName), symbol, clientOrderID))
 		return
 	}
 
-	if action == "exit" {
-		// A read failure here would leave the exit fill unjournaled and the
-		// position looking open forever, without a single word to the
-		// operator. Stop and raise the block instead.
-		row, err := e.openTradeBySymbol("broker_trades", symbol, clientOrderID, brokerName)
-		if err == nil && row == nil {
-			row, err = e.openTradeBySymbol("broker_trades", symbol, "", brokerName)
-		}
-		var mon map[string]any
-		if err == nil {
-			// The monitor row is keyed off the entry order, not this exit
-			// order: prefer the broker row we just found (its id is the entry
-			// clientOrderId, the monitor row is "m-"+that).
-			monPrefer := clientOrderID
-			if row != nil {
-				monPrefer = fmt.Sprint(row["id"])
-			}
-			mon, err = e.openTradeBySymbol("trades", symbol, monPrefer, brokerName)
-			if err == nil && mon == nil {
-				mon, err = e.openTradeBySymbol("trades", symbol, "", brokerName)
-			}
-		}
-		if err != nil {
-			e.logAuto("local_trade_close_failed", meta.CorrelationID, map[string]any{
-				"symbol": symbol, "clientOrderId": clientOrderID, "error": err.Error(),
-			})
-			e.raiseTrackerPersistBlock(brokerName)
-			return
-		}
-		var cerr error
-		if mon != nil && store.SafeTicker(fmt.Sprint(mon["symbol"])) == symbol {
-			if row != nil {
-				cerr = e.DB.CloseTradePair(fmt.Sprint(mon["id"]), fmt.Sprint(row["id"]), fillPrice, dateKey, map[string]any{"exitIBS": exitIBS, "notes": "closed_from_broker_fill"})
-				if cerr != nil {
-					e.logAuto("local_trade_pair_close_failed", meta.CorrelationID, map[string]any{"error": cerr.Error(), "monitorId": mon["id"], "brokerId": row["id"]})
-				}
-			} else {
-				cerr = e.closeTradeWithPnL("trades", fmt.Sprint(mon["id"]), fillPrice, dateKey, exitIBS, "closed_from_broker_fill")
-			}
-		} else if row != nil {
-			cerr = e.closeTradeWithPnL("broker_trades", fmt.Sprint(row["id"]), fillPrice, dateKey, exitIBS, "closed_from_broker_fill")
-		}
-		// The write is the last step of the same path whose read failure
-		// already raises the block: an unrecorded exit fill leaves the journal
-		// showing an open position the broker no longer has.
-		if cerr != nil {
-			e.raiseTrackerPersistBlock(brokerName)
-		}
+	after, err := e.DB.ExitLeg(p.ID, brokerName, fillPrice, clientOrderID)
+	if err != nil {
+		e.logAuto("local_trade_close_failed", meta.CorrelationID, map[string]any{
+			"symbol": symbol, "clientOrderId": clientOrderID, "op": "close_leg", "error": err.Error(),
+		})
+		e.raiseTrackerPersistBlock(brokerName)
+		return
+	}
+	p = after
+	if p.ExecutedQty() > 0 {
+		e.logAuto("position_partially_exited", meta.CorrelationID, map[string]any{
+			"symbol": symbol, "broker": brokerName, "remaining": p.ExecutedQty(),
+		})
+		return
+	}
+	if err := e.closePositionWithPnL(p.ID, fillPrice, dateKey, exitIBS, "closed_from_broker_fill"); err != nil {
+		e.raiseTrackerPersistBlock(brokerName)
 	}
 }
 
@@ -417,39 +295,33 @@ func (e *Engine) reduceOpenQuantity(symbol, preferID, broker string, sold, exitP
 	if !(sold > 0) {
 		return
 	}
-	for _, table := range []string{"broker_trades", "trades"} {
-		t, err := e.openTradeBySymbol(table, symbol, preferID, broker)
-		if err != nil {
-			e.logAuto("local_trade_close_failed", "", map[string]any{
-				"table": table, "symbol": symbol, "clientOrderId": preferID,
-				"op": "partial_exit", "error": err.Error(),
-			})
+	p, err := e.openPositionFor(symbol, preferID, broker)
+	if err != nil {
+		e.logAuto("local_trade_close_failed", "", map[string]any{
+			"symbol": symbol, "clientOrderId": preferID,
+			"op": "partial_exit", "error": err.Error(),
+		})
+		e.raiseTrackerPersistBlock(broker)
+		return
+	}
+	if p == nil {
+		return
+	}
+	if p.Quantity-sold <= 1e-9 {
+		if err := e.closePositionWithPnL(p.ID, exitPrice, tradingdate.TodayNYSE(e.now()), nil, "partial_exit_flat"); err != nil {
 			e.raiseTrackerPersistBlock(broker)
-			return
 		}
-		if t == nil {
-			continue
-		}
-		cur := asFloat(t["quantity"])
-		left := cur - sold
-		if left <= 1e-9 {
-			if err := e.closeTradeWithPnL(table, fmt.Sprint(t["id"]), exitPrice, tradingdate.TodayNYSE(e.now()), nil, "partial_exit_flat"); err != nil {
-				e.raiseTrackerPersistBlock(broker)
-			}
-			continue
-		}
-		// Проданную часть надо закрыть отдельной сделкой: одно лишь
-		// уменьшение quantity стирало реализованный PnL по этим акциям из
-		// журнала навсегда (AUD-044).
-		if err := e.DB.SplitCloseTrade(table, fmt.Sprint(t["id"]), sold, exitPrice,
-			tradingdate.TodayNYSE(e.now()), map[string]any{"notes": "partial_exit"}); err != nil {
-			e.logAuto("local_trade_close_failed", "", map[string]any{
-				"table": table, "symbol": symbol, "clientOrderId": preferID,
-				"op": "partial_exit_split", "error": err.Error(),
-			})
-			e.raiseTrackerPersistBlock(broker)
-			return
-		}
+		return
+	}
+	// Проданную часть надо закрыть отдельной сделкой: одно лишь уменьшение
+	// quantity стирало реализованный PnL по этим акциям из журнала навсегда
+	// (AUD-044).
+	if err := e.DB.SplitPosition(p.ID, broker, sold, exitPrice, tradingdate.TodayNYSE(e.now()), "partial_exit"); err != nil {
+		e.logAuto("local_trade_close_failed", "", map[string]any{
+			"symbol": symbol, "clientOrderId": preferID,
+			"op": "partial_exit_split", "error": err.Error(),
+		})
+		e.raiseTrackerPersistBlock(broker)
 	}
 }
 
@@ -477,23 +349,6 @@ func (e *Engine) logJournalSQLError(corr, broker, op string, err error) {
 	e.raiseTrackerPersistBlock(broker)
 }
 
-// insertJournalRow writes the fill row, treating "it is already there" as
-// success. recordFill can legitimately run twice for one order — a manual
-// ResolveTracker alongside the automatic poll, or a poll after a restart —
-// and the id is the client order id, so the second insert collides on the
-// primary key. Reporting that as a persistence failure would raise the
-// tracker-persist block and stop the broker's entries until an operator
-// clears it, for an order that is in fact journaled exactly once.
-func (e *Engine) insertJournalRow(table, id string, rec map[string]any) error {
-	err := e.DB.InsertTrade(table, rec)
-	if err != nil {
-		if row, gerr := e.getTrade(table, id); gerr == nil && row != nil {
-			return nil
-		}
-	}
-	return err
-}
-
 func (e *Engine) raiseTrackerPersistBlock(broker string) {
 	if e == nil {
 		return
@@ -510,17 +365,16 @@ func (e *Engine) raiseTrackerPersistBlock(broker string) {
 	_ = e.persistTrackerBlock(broker)
 }
 
+// deletePhantom removes the position of an order the broker says never existed.
 func (e *Engine) deletePhantom(clientOrderID, symbol string) {
 	if clientOrderID == "" || clientOrderID == "<nil>" {
 		return
 	}
-	for _, table := range []string{"broker_trades", "trades"} {
-		for _, id := range []string{clientOrderID, "m-" + clientOrderID} {
-			// A failed read leaves the phantom row in place; getTrade has
-			// already logged it, so the operator sees why it survived.
-			if t, err := e.getTrade(table, id); err == nil && t != nil && fmt.Sprint(t["status"]) == "open" {
-				_ = e.DB.DeleteTrade(table, id)
-			}
-		}
+	// A failed read leaves the phantom row in place; openPositionFor has
+	// already logged it, so the operator sees why it survived.
+	p, err := e.openPositionFor(symbol, clientOrderID, "")
+	if err != nil || p == nil || p.ID != clientOrderID {
+		return
 	}
+	_ = e.DB.DeletePosition(p.ID)
 }

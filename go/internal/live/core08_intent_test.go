@@ -53,11 +53,11 @@ func TestOrderIntentSurvivesCrashBeforeTracking(t *testing.T) {
 	e2.Sleep = func(time.Duration) {}
 	e2.ResumeTrackers()
 
-	rows, err := db.ListTrades("broker_trades")
+	rows, err := db.ListPositions()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rows) != 1 || fmt.Sprint(rows[0]["symbol"]) != "AAPL" || fmt.Sprint(rows[0]["status"]) != "open" {
+	if len(rows) != 1 || fmt.Sprint(rows[0].Symbol) != "AAPL" || fmt.Sprint(rows[0].Status) != "open" {
 		t.Fatalf("the recovered order must be journaled: %+v", rows)
 	}
 }

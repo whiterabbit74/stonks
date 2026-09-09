@@ -52,7 +52,7 @@ func TestAUD023EMAAlertsReadFailureIsNotEmpty(t *testing.T) {
 // "Позиция: нет" and label every ticker FLAT.
 func TestAUD023UnreadableJournalIsNotFlatInMessages(t *testing.T) {
 	db, e, _ := testEngine(t, nil)
-	if _, err := db.SQL.Exec(`DROP TABLE trades`); err != nil {
+	if _, err := db.SQL.Exec(`DROP TABLE positions`); err != nil {
 		t.Fatal(err)
 	}
 	rows := []t1Watch{{sym: "AAPL", eval: watchEval{ok: true, ibs: 0.5, price: 10}}}

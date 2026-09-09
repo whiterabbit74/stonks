@@ -3,6 +3,7 @@ package live
 import (
 	"database/sql"
 	"fmt"
+	"mktorder.com/go/internal/store"
 	"strings"
 	"testing"
 )
@@ -115,25 +116,24 @@ func TestUnconfirmedFillPriceIsNullNotZero(t *testing.T) {
 		"quantity": 2.0, "dateKey": "2026-09-01", "broker": "robinhood",
 	}, map[string]any{"status": "filled", "filled_qty": 2.0}, "filled")
 
-	row, _ := e.DB.GetTrade("broker_trades", id)
+	row, _ := e.DB.GetPosition(id)
 	if row == nil {
 		t.Fatal("unconfirmed fill must still open a journal row")
 	}
-	if row["entryPrice"] != nil {
-		t.Fatalf("entryPrice must be JSON/SQL null, not 0: %+v", row["entryPrice"])
+	if row.EntryPrice != nil {
+		t.Fatalf("entryPrice must be JSON/SQL null, not 0: %+v", row.EntryPrice)
 	}
-	assertEntryPriceSQLNull(t, e, "broker_trades", id)
-	assertEntryPriceSQLNull(t, e, "trades", "m-"+id)
-	notes := fmt.Sprint(row["notes"])
+	assertEntryPriceSQLNull(t, e, "positions", id)
+	notes := fmt.Sprint(row.Notes)
 	if !strings.Contains(notes, "fill_price_unconfirmed") {
 		t.Fatalf("need a mark so UI can badge an unconfirmed price, notes=%q", notes)
 	}
 
-	closed, err := e.DB.CloseTradeByID("broker_trades", id, 10.0, "2026-09-02", nil)
+	closed, err := e.DB.ClosePosition(id, store.PositionExit{Date: "2026-09-02", Price: 10.0})
 	if err != nil {
 		t.Fatalf("close: %v", err)
 	}
-	if closed["pnlAbsolute"] != nil || closed["pnlPercent"] != nil {
+	if closed.PnLAbsolute != nil || closed.PnLPercent != nil {
 		t.Fatalf("PnL must not treat a missing fill as 0: %+v", closed)
 	}
 }
@@ -141,7 +141,7 @@ func TestUnconfirmedFillPriceIsNullNotZero(t *testing.T) {
 // AU-P2-1: journal UPDATE errors must be logged and must block further entries.
 func TestJournalSQLUpdateErrorBlocksEntry(t *testing.T) {
 	_, e, _ := testEngine(t, nil)
-	if _, err := e.DB.SQL.Exec(`CREATE TRIGGER fail_bt_update BEFORE UPDATE ON broker_trades BEGIN SELECT RAISE(ABORT, 'injected update failure'); END`); err != nil {
+	if _, err := e.DB.SQL.Exec(`CREATE TRIGGER fail_pos_write BEFORE INSERT ON positions BEGIN SELECT RAISE(ABORT, 'injected update failure'); END`); err != nil {
 		t.Fatalf("inject update failure: %v", err)
 	}
 	id := "oid-sqlfail"

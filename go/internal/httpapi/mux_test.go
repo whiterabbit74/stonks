@@ -31,12 +31,11 @@ var allRoutes = []struct{ Method, Path string }{
 	{"POST", "/api/telegram/watch"}, {"DELETE", "/api/telegram/watch/{symbol}"}, {"PATCH", "/api/telegram/watch/{symbol}"},
 	{"GET", "/api/telegram/watches"}, {"GET", "/api/telegram/ema-alerts"}, {"POST", "/api/telegram/ema-alerts"},
 	{"PATCH", "/api/telegram/ema-alerts/{id}"}, {"DELETE", "/api/telegram/ema-alerts/{id}"},
-	{"POST", "/api/telegram/send"}, {"POST", "/api/telegram/test"}, {"GET", "/api/telegram/trades"},
+	{"POST", "/api/telegram/send"}, {"POST", "/api/telegram/test"},
 	{"POST", "/api/telegram/simulate"}, {"POST", "/api/telegram/actualize-prices"},
 	{"POST", "/api/telegram/update-positions"}, {"POST", "/api/telegram/update-all"}, {"POST", "/api/telegram/command"},
-	{"GET", "/api/trades"}, {"POST", "/api/trades"}, {"PATCH", "/api/trades/{id}"},
-	{"POST", "/api/trades/{id}/close-monitor"}, {"DELETE", "/api/trades/{id}"},
-	{"GET", "/api/broker-trades"}, {"POST", "/api/broker-trades"}, {"PATCH", "/api/broker-trades/{id}"}, {"DELETE", "/api/broker-trades/{id}"},
+	{"GET", "/api/positions"}, {"POST", "/api/positions"}, {"PATCH", "/api/positions/{id}"},
+	{"POST", "/api/positions/{id}/close"}, {"DELETE", "/api/positions/{id}"},
 	{"GET", "/api/monitor/consistency"}, {"POST", "/api/monitor/reconcile"},
 	{"GET", "/api/quote/{symbol}"}, {"GET", "/api/quotes/webull-batch"}, {"GET", "/api/yahoo-finance/{symbol}"},
 	{"GET", "/api/fetch/{provider}/{symbol}"}, {"GET", "/api/test/alpha-vantage"}, {"GET", "/api/test/finnhub"},
@@ -179,12 +178,12 @@ func TestMutationRejectsExtraJSON(t *testing.T) {
 	}
 }
 
-func TestMonitorTradesFailsOnDBError(t *testing.T) {
+func TestPositionsFailOnDBError(t *testing.T) {
 	s := testServer(t, "")
-	if _, err := s.DB.SQL.Exec(`DROP TABLE trades`); err != nil {
+	if _, err := s.DB.SQL.Exec(`DROP TABLE positions`); err != nil {
 		t.Fatal(err)
 	}
-	req := httptest.NewRequest("GET", "/api/telegram/trades", nil)
+	req := httptest.NewRequest("GET", "/api/positions", nil)
 	rec := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rec, req)
 	if rec.Code != 500 {
@@ -216,23 +215,13 @@ func TestMutatorsFailOnDBError(t *testing.T) {
 				t.Fatal(err)
 			}
 		}},
-		{"trade-patch", "PATCH", "/api/trades/t1", `{"notes":"x"}`, func(t *testing.T, s *Server) {
-			if _, err := s.DB.SQL.Exec(`DROP TABLE trades`); err != nil {
+		{"position-patch", "PATCH", "/api/positions/t1", `{"notes":"x"}`, func(t *testing.T, s *Server) {
+			if _, err := s.DB.SQL.Exec(`DROP TABLE positions`); err != nil {
 				t.Fatal(err)
 			}
 		}},
-		{"trade-delete", "DELETE", "/api/trades/t1", "", func(t *testing.T, s *Server) {
-			if _, err := s.DB.SQL.Exec(`DROP TABLE trades`); err != nil {
-				t.Fatal(err)
-			}
-		}},
-		{"broker-patch", "PATCH", "/api/broker-trades/b1", `{"notes":"x"}`, func(t *testing.T, s *Server) {
-			if _, err := s.DB.SQL.Exec(`DROP TABLE broker_trades`); err != nil {
-				t.Fatal(err)
-			}
-		}},
-		{"broker-delete", "DELETE", "/api/broker-trades/b1", "", func(t *testing.T, s *Server) {
-			if _, err := s.DB.SQL.Exec(`DROP TABLE broker_trades`); err != nil {
+		{"position-delete", "DELETE", "/api/positions/t1", "", func(t *testing.T, s *Server) {
+			if _, err := s.DB.SQL.Exec(`DROP TABLE positions`); err != nil {
 				t.Fatal(err)
 			}
 		}},

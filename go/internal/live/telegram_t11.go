@@ -15,10 +15,10 @@ import (
 func (e *Engine) buildT11Text(minutes int, today, provider string, rows []t1Watch, ema []EmaEval, integ []IntegrityResult) string {
 	sorted := append([]t1Watch(nil), rows...)
 	sort.Slice(sorted, func(i, j int) bool { return sorted[i].sym < sorted[j].sym })
-	open, tradesErr := e.openMonitorTrade()
+	open, tradesErr := e.openPosition()
 	openSym := ""
 	if open != nil {
-		openSym = store.SafeTicker(fmt.Sprint(open["symbol"]))
+		openSym = open.Symbol
 	}
 	abbrev := providerAbbrev(provider)
 	closeHM, short := e.sessionCloseLabel()
@@ -110,13 +110,11 @@ func formatConsistencyIssueLine(issue, snap map[string]any) string {
 	if symbol == "" || symbol == "<nil>" {
 		symbol = "?"
 	}
-	mon := tradeStateLabel(snap, "openMonitorTrade")
-	bro := tradeStateLabel(snap, "openBrokerTrade")
-	reconcile := "auto-reconcile unsafe"
-	if issue["autoFixable"] == true {
-		reconcile = "auto-reconcile available"
+	msg := fmt.Sprint(issue["message"])
+	if msg == "" || msg == "<nil>" {
+		msg = fmt.Sprint(issue["code"])
 	}
-	return fmt.Sprintf("⚠️ %s: monitor %s · broker %s · %s", tgBold(symbol), mon, bro, reconcile)
+	return fmt.Sprintf("⚠️ %s: %s", tgBold(symbol), msg)
 }
 
 // snap holds map[string]any values: a nil map stored in an interface is not

@@ -24,15 +24,15 @@ func trackerFor(t *testing.T, e *Engine, id string) map[string]any {
 	return row
 }
 
-func brokerRows(t *testing.T, db *store.DB, id string) []map[string]any {
+func brokerRows(t *testing.T, db *store.DB, id string) []store.Position {
 	t.Helper()
-	rows, err := db.ListTrades("broker_trades")
+	rows, err := db.ListPositions()
 	if err != nil {
 		t.Fatal(err)
 	}
-	var out []map[string]any
+	var out []store.Position
 	for _, r := range rows {
-		if fmt.Sprint(r["id"]) == id {
+		if r.ID == id {
 			out = append(out, r)
 		}
 	}
@@ -61,7 +61,7 @@ func TestAUD003BrokerContourEndToEnd(t *testing.T) {
 	// (2) clientOrderId and broker are persisted on the tracker, per broker.
 	for _, tc := range []struct{ id, broker string }{{wID, "webull"}, {rID, "robinhood"}} {
 		row := trackerFor(t, e, tc.id)
-		if got := fmt.Sprint(row["broker"]); got != tc.broker {
+		if got := legBroker(row); got != tc.broker {
 			t.Fatalf("tracker %s broker=%q want %q", tc.id, got, tc.broker)
 		}
 		if got := fmt.Sprint(row["clientOrderId"]); got != tc.id {
@@ -123,10 +123,10 @@ func TestAUD003BrokerContourEndToEnd(t *testing.T) {
 	if len(rows) != 1 {
 		t.Fatalf("want exactly one journal row for %s, got %d: %+v", wID, len(rows), rows)
 	}
-	if got := fmt.Sprint(rows[0]["broker"]); got != "webull" {
+	if got := legBroker(rows[0]); got != "webull" {
 		t.Fatalf("journal row broker=%q want webull", got)
 	}
-	if got := asFloat(rows[0]["quantity"]); got != ordered {
+	if got := rows[0].Quantity; got != ordered {
 		t.Fatalf("journal quantity=%v want %v", got, ordered)
 	}
 	// Robinhood's own order is still open and must not have been journaled
@@ -152,22 +152,28 @@ func TestAUD003BrokerContourEndToEnd(t *testing.T) {
 	if st := fmt.Sprint(trackerFor(t, e2, rID)["status"]); st != "filled" {
 		t.Fatalf("restart did not resolve the pending tracker: status=%s", st)
 	}
-	if rr := brokerRows(t, e.DB, rID); len(rr) != 1 {
-		t.Fatalf("want one robinhood journal row after restart, got %d: %+v", len(rr), rr)
-	} else if got := fmt.Sprint(rr[0]["broker"]); got != "robinhood" {
-		t.Fatalf("restart journaled broker=%q want robinhood", got)
+	// Обе заявки на один тикер: одна позиция, две ноги. Восстановленный после
+	// перезапуска трекер Robinhood дописывает свою ногу, а не заводит вторую
+	// строку журнала.
+	all, _ := e.DB.ListPositions()
+	if len(all) != 1 {
+		t.Fatalf("want exactly one position for both brokers, got %d: %+v", len(all), all)
 	}
-	if rows := brokerRows(t, e.DB, wID); len(rows) != 1 {
-		t.Fatalf("restart duplicated the webull row: %+v", rows)
+	if all[0].Robinhood.EntryOrderID != rID {
+		t.Fatalf("restart did not journal the robinhood leg: %+v", all[0].Robinhood)
+	}
+	if all[0].Webull.EntryOrderID != wID {
+		t.Fatalf("restart lost the webull leg: %+v", all[0].Webull)
 	}
 
 	// Re-polling after everything is final changes nothing.
 	e2.PollTrackers()
-	if rows := brokerRows(t, e.DB, wID); len(rows) != 1 {
-		t.Fatalf("re-poll duplicated webull row: %+v", rows)
+	again, _ := e.DB.ListPositions()
+	if len(again) != 1 {
+		t.Fatalf("re-poll duplicated the position: %+v", again)
 	}
-	if rr := brokerRows(t, e.DB, rID); len(rr) != 1 {
-		t.Fatalf("re-poll duplicated robinhood row: %+v", rr)
+	if again[0].Webull.EntryOrderID != wID || again[0].Robinhood.EntryOrderID != rID {
+		t.Fatalf("re-poll disturbed the legs: %+v", again[0])
 	}
 }
 
@@ -223,7 +229,7 @@ func TestAUD004ManualAndAutoCloseConcurrent(t *testing.T) {
 			for _, p := range pending {
 				if fmt.Sprint(p["action"]) == "exit" {
 					exits++
-					if got := fmt.Sprint(p["broker"]); got != name {
+					if got := legBroker(p); got != name {
 						t.Fatalf("exit tracker broker=%q want %q", got, name)
 					}
 				}

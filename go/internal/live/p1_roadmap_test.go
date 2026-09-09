@@ -87,7 +87,7 @@ func TestJournalReadErrorBlocksEvaluate(t *testing.T) {
 	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true})
 	// Only the journal is broken: closing the whole DB would trip the
 	// watchlist guard first and stop testing this path.
-	if _, err := db.SQL.Exec(`DROP TABLE broker_trades`); err != nil {
+	if _, err := db.SQL.Exec(`DROP TABLE positions`); err != nil {
 		t.Fatal(err)
 	}
 	ev := e.Evaluate()
@@ -131,8 +131,8 @@ func TestUnconfirmedFillPriceDoesNotUseQuote(t *testing.T) {
 	e.recordFill(map[string]any{
 		"clientOrderId": id, "symbol": "AAPL", "action": "entry", "quantity": 1.0, "dateKey": "2026-09-01",
 	}, map[string]any{"status": "filled", "filled_qty": 1.0}, "filled")
-	row, _ := e.DB.GetTrade("broker_trades", id)
-	if asFloat(row["entryPrice"]) == 8.2 {
+	row, _ := e.DB.GetPosition(id)
+	if pv(row.EntryPrice) == 8.2 {
 		t.Fatalf("must not invent fill price from quote: %+v", row)
 	}
 }
@@ -150,15 +150,15 @@ func TestPartialEntryUpsertsQuantity(t *testing.T) {
 	e.recordFill(map[string]any{
 		"clientOrderId": id, "symbol": "AAPL", "action": "entry", "quantity": 10.0, "dateKey": "2026-09-01",
 	}, map[string]any{"status": "filled", "filled_qty": 5.0, "avg_price": 8.2}, "filled")
-	row, _ := db.GetTrade("broker_trades", id)
-	if asFloat(row["quantity"]) != 5 {
+	row, _ := db.GetPosition(id)
+	if row.Quantity != 5 {
 		t.Fatalf("first partial %+v", row)
 	}
 	e.recordFill(map[string]any{
 		"clientOrderId": id, "symbol": "AAPL", "action": "entry", "quantity": 10.0, "dateKey": "2026-09-01",
 	}, map[string]any{"status": "filled", "filled_qty": 10.0, "avg_price": 8.2}, "filled")
-	row, _ = db.GetTrade("broker_trades", id)
-	if asFloat(row["quantity"]) != 10 {
+	row, _ = db.GetPosition(id)
+	if row.Quantity != 10 {
 		t.Fatalf("upsert %+v", row)
 	}
 }

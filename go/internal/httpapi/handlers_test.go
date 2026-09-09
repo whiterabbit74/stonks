@@ -1129,82 +1129,49 @@ func TestAutotradeLogsLimitCap(t *testing.T) {
 	}
 }
 
-func TestBrokerTradesFilterByBroker(t *testing.T) {
+// One row now carries both brokers, so there is no per-broker listing left to
+// filter: /api/positions returns the position and its two legs.
+func TestPositionsCarryBothBrokerLegs(t *testing.T) {
 	s := testServer(t, "")
-	if err := s.DB.InsertTrade("broker_trades", map[string]any{
-		"id": "w1", "symbol": "AAPL", "status": "closed", "entryDate": "2024-01-02", "entryPrice": 10, "broker": "webull",
-	}); err != nil {
+	if err := s.DB.SavePosition(store.Position{ID: "p1", Symbol: "AAPL", Status: "closed", EntryDate: "2024-01-02",
+		EntryPrice: store.Ptr[float64](10),
+		Webull:     store.BrokerLeg{Qty: 1, EntryPrice: store.Ptr[float64](10)},
+		Robinhood:  store.BrokerLeg{Qty: 2, EntryPrice: store.Ptr[float64](10.5)}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.DB.InsertTrade("broker_trades", map[string]any{
-		"id": "r1", "symbol": "MSFT", "status": "closed", "entryDate": "2024-01-03", "entryPrice": 20, "broker": "robinhood",
-	}); err != nil {
-		t.Fatal(err)
-	}
-	req := httptest.NewRequest("GET", "/api/broker-trades?broker=webull", nil)
+	req := httptest.NewRequest("GET", "/api/positions", nil)
 	rec := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rec, req)
 	if rec.Code != 200 {
-		t.Fatalf("webull %d %s", rec.Code, rec.Body.String())
+		t.Fatalf("positions %d %s", rec.Code, rec.Body.String())
 	}
-	body := rec.Body.String()
-	if !strings.Contains(body, `"w1"`) || strings.Contains(body, `"r1"`) {
-		t.Fatalf("?broker=webull must return only webull: %s", body)
+	var body struct {
+		Positions []store.Position `json:"positions"`
 	}
-	req = httptest.NewRequest("GET", "/api/broker-trades?broker=robinhood", nil)
-	rec = httptest.NewRecorder()
-	s.Handler().ServeHTTP(rec, req)
-	body = rec.Body.String()
-	if !strings.Contains(body, `"r1"`) || strings.Contains(body, `"w1"`) {
-		t.Fatalf("?broker=robinhood must return only robinhood: %s", body)
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
 	}
-	req = httptest.NewRequest("GET", "/api/broker-trades?broker=unknown", nil)
-	rec = httptest.NewRecorder()
-	s.Handler().ServeHTTP(rec, req)
-	if rec.Code != 400 {
-		t.Fatalf("unknown broker want 400, got %d %s", rec.Code, rec.Body.String())
+	if len(body.Positions) != 1 {
+		t.Fatalf("want one position, got %d", len(body.Positions))
 	}
-
-	payload, _ := json.Marshal(map[string]any{
-		"symbol": "TSLA", "entryDate": "2024-02-01", "entryPrice": 30, "broker": "robinhood", "source": "manual",
-	})
-	req = httptest.NewRequest("POST", "/api/broker-trades", bytes.NewReader(payload))
-	req.Header.Set("Content-Type", "application/json")
-	rec = httptest.NewRecorder()
-	s.Handler().ServeHTTP(rec, req)
-	if rec.Code != 200 {
-		t.Fatalf("POST robinhood %d %s", rec.Code, rec.Body.String())
-	}
-	req = httptest.NewRequest("GET", "/api/broker-trades?broker=robinhood", nil)
-	rec = httptest.NewRecorder()
-	s.Handler().ServeHTTP(rec, req)
-	if rec.Code != 200 || !strings.Contains(rec.Body.String(), `"TSLA"`) {
-		t.Fatalf("POST with broker=robinhood must list under ?broker=robinhood: %d %s", rec.Code, rec.Body.String())
-	}
-	req = httptest.NewRequest("GET", "/api/broker-trades?broker=webull", nil)
-	rec = httptest.NewRecorder()
-	s.Handler().ServeHTTP(rec, req)
-	if strings.Contains(rec.Body.String(), `"TSLA"`) {
-		t.Fatalf("robinhood POST leaked onto webull: %s", rec.Body.String())
+	got := body.Positions[0]
+	if got.Webull.Qty != 1 || got.Robinhood.Qty != 2 {
+		t.Fatalf("legs: %+v / %+v", got.Webull, got.Robinhood)
 	}
 }
 
 func TestHiddenTradesOmittedUnlessRequested(t *testing.T) {
 	s := testServer(t, "")
-	if err := s.DB.InsertTrade("trades", map[string]any{
-		"id": "vis", "symbol": "AAPL", "status": "closed", "entryDate": "2024-01-02", "entryPrice": 10,
-	}); err != nil {
+	if err := s.DB.SavePosition(store.Position{ID: "vis", Symbol: "AAPL", Status: "closed", EntryDate: "2024-01-02", EntryPrice: store.Ptr[float64](10)}); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.DB.InsertTrade("trades", map[string]any{
-		"id": "hid", "symbol": "MSFT", "status": "closed", "entryDate": "2024-01-03", "entryPrice": 20,
-	}); err != nil {
+	if err := s.DB.SavePosition(store.Position{ID: "hid", Symbol: "MSFT", Status: "closed", EntryDate: "2024-01-03", EntryPrice: store.Ptr[float64](20)}); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.DB.PatchTrade("trades", "hid", map[string]any{"isHidden": true}); err != nil {
+	if err := s.DB.SavePosition(store.Position{ID: "hid", Symbol: "MSFT", Status: "closed", EntryDate: "2024-01-03", EntryPrice: store.Ptr[float64](20), IsHidden: true}); err != nil {
 		t.Fatal(err)
 	}
-	req := httptest.NewRequest("GET", "/api/trades", nil)
+	req := httptest.NewRequest("GET", "/api/positions", nil)
 	rec := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rec, req)
 	if rec.Code != 200 {
@@ -1216,7 +1183,7 @@ func TestHiddenTradesOmittedUnlessRequested(t *testing.T) {
 	if !strings.Contains(rec.Body.String(), `"vis"`) {
 		t.Fatalf("visible trade missing: %s", rec.Body.String())
 	}
-	req = httptest.NewRequest("GET", "/api/trades?includeHidden=1", nil)
+	req = httptest.NewRequest("GET", "/api/positions?includeHidden=1", nil)
 	rec = httptest.NewRecorder()
 	s.Handler().ServeHTTP(rec, req)
 	if !strings.Contains(rec.Body.String(), `"hid"`) {

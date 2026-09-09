@@ -2,6 +2,7 @@ package live
 
 import (
 	"fmt"
+	"mktorder.com/go/internal/store"
 	"testing"
 
 	"mktorder.com/go/internal/types"
@@ -13,16 +14,10 @@ func TestUpdatePositionsKeepsEveryOpenWatch(t *testing.T) {
 	if err := db.UpsertWatch(map[string]any{"symbol": "MSFT", "lowIBS": 0.1, "highIBS": 0.75}); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.InsertTrade("trades", map[string]any{
-		"id": "t-aapl", "symbol": "AAPL", "status": "open",
-		"entryDate": "2026-08-01", "entryPrice": 10.0,
-	}); err != nil {
+	if err := db.SavePosition(store.Position{ID: "t-aapl", Symbol: "AAPL", Status: "open", EntryDate: "2026-08-01", EntryPrice: store.Ptr[float64](10.0)}); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.InsertTrade("trades", map[string]any{
-		"id": "t-msft", "symbol": "MSFT", "status": "open",
-		"entryDate": "2026-08-02", "entryPrice": 20.0,
-	}); err != nil {
+	if err := db.SavePosition(store.Position{ID: "t-msft", Symbol: "MSFT", Status: "open", EntryDate: "2026-08-02", EntryPrice: store.Ptr[float64](20.0)}); err != nil {
 		t.Fatal(err)
 	}
 	_ = e.UpdatePositions()

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mktorder.com/go/internal/store"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -328,8 +329,8 @@ func TestRobinhoodTestBuyCreatesTracker(t *testing.T) {
 	if fmt.Sprint(row["source"]) != "test_buy" {
 		t.Fatalf("source=%v want test_buy", row["source"])
 	}
-	if fmt.Sprint(row["broker"]) != "robinhood" {
-		t.Fatalf("broker=%v want robinhood", row["broker"])
+	if legBroker(row) != "robinhood" {
+		t.Fatalf("broker=%v want robinhood", legBroker(row))
 	}
 }
 
@@ -405,9 +406,7 @@ func TestSimulateSplitJumpAndEmaAndFillPoll(t *testing.T) {
 
 func TestWatchesGETDoesNotSyncOpenMonitorTrade(t *testing.T) {
 	s, _, _ := liveServer(t)
-	if err := s.DB.InsertTrade("trades", map[string]any{
-		"id": "m-aapl", "symbol": "AAPL", "status": "open", "entryDate": "2026-09-01", "entryPrice": 10.5,
-	}); err != nil {
+	if err := s.DB.SavePosition(store.Position{ID: "m-aapl", Symbol: "AAPL", Status: "open", EntryDate: "2026-09-01", EntryPrice: store.Ptr[float64](10.5)}); err != nil {
 		t.Fatal(err)
 	}
 	req := httptest.NewRequest("GET", "/api/telegram/watches", nil)
@@ -983,23 +982,23 @@ func TestAutoConfigIncludesCapitalModes(t *testing.T) {
 	}
 }
 
-func TestCloseMonitorRequiresExitPrice(t *testing.T) {
+func TestClosePositionRequiresExitPrice(t *testing.T) {
 	s, _, _ := liveServer(t)
-	_ = s.DB.InsertTrade("trades", map[string]any{"id": "m1", "symbol": "AAPL", "status": "open", "entryDate": "2026-08-20", "entryPrice": 10.0})
-	rec := postJSON(s, "/api/trades/m1/close-monitor", map[string]any{})
+	_ = s.DB.SavePosition(store.Position{ID: "m1", Symbol: "AAPL", Status: "open", EntryDate: "2026-08-20", EntryPrice: store.Ptr[float64](10.0)})
+	rec := postJSON(s, "/api/positions/m1/close", map[string]any{})
 	if rec.Code != 400 {
 		t.Fatalf("want 400 missing exitPrice, got %d %s", rec.Code, rec.Body.String())
 	}
-	rec = postJSON(s, "/api/trades/missing/close-monitor", map[string]any{"exitPrice": 12.0})
+	rec = postJSON(s, "/api/positions/missing/close", map[string]any{"exitPrice": 12.0})
 	if rec.Code != 404 {
 		t.Fatalf("want 404, got %d %s", rec.Code, rec.Body.String())
 	}
 }
 
-func TestCloseMonitor409AndPnL(t *testing.T) {
+func TestClosePosition409AndPnL(t *testing.T) {
 	s, _, _ := liveServer(t)
-	_ = s.DB.InsertTrade("trades", map[string]any{"id": "m1", "symbol": "AAPL", "status": "open", "entryDate": "2026-08-20", "entryPrice": 10.0})
-	rec := postJSON(s, "/api/trades/m1/close-monitor", map[string]any{"exitPrice": 12.0, "exitDate": "2026-09-01"})
+	_ = s.DB.SavePosition(store.Position{ID: "m1", Symbol: "AAPL", Status: "open", EntryDate: "2026-08-20", EntryPrice: store.Ptr[float64](10.0)})
+	rec := postJSON(s, "/api/positions/m1/close", map[string]any{"exitPrice": 12.0, "exitDate": "2026-09-01"})
 	if rec.Code != 200 {
 		t.Fatalf("close %d %s", rec.Code, rec.Body.String())
 	}
@@ -1016,15 +1015,9 @@ func TestCloseMonitor409AndPnL(t *testing.T) {
 	if pct, _ := out["pnlPercent"].(float64); pct != 20 {
 		t.Fatalf("pnlPercent %v", out["pnlPercent"])
 	}
-	rec = postJSON(s, "/api/trades/m1/close-monitor", map[string]any{"exitPrice": 12.0})
+	rec = postJSON(s, "/api/positions/m1/close", map[string]any{"exitPrice": 12.0})
 	if rec.Code != 409 {
 		t.Fatalf("already closed want 409, got %d %s", rec.Code, rec.Body.String())
-	}
-	_ = s.DB.InsertTrade("trades", map[string]any{"id": "m2", "symbol": "MSFT", "status": "open", "entryDate": "2026-08-20", "entryPrice": 10.0})
-	_, _ = s.DB.SQL.Exec(`UPDATE trades SET linked_broker_trade_id='b1' WHERE id='m2'`)
-	rec = postJSON(s, "/api/trades/m2/close-monitor", map[string]any{"exitPrice": 11.0})
-	if rec.Code != 409 {
-		t.Fatalf("linked trade want 409, got %d %s", rec.Code, rec.Body.String())
 	}
 }
 

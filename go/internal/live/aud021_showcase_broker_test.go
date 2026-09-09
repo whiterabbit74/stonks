@@ -20,7 +20,7 @@ func TestShowcaseDecisionFollowsTheOnlyAttachedBroker(t *testing.T) {
 	if ev.DecisionBroker != "robinhood" {
 		t.Fatalf("the showcase decision must name the broker it was computed on, got %q", ev.DecisionBroker)
 	}
-	if ev.OpenTrade == nil || fmt.Sprint(ev.OpenTrade["symbol"]) != "AAPL" {
+	if ev.OpenTrade == nil || fmt.Sprint(ev.OpenTrade.Symbol) != "AAPL" {
 		t.Fatalf("the Robinhood position must be the showcase open trade: %+v", ev.OpenTrade)
 	}
 	if got := fmt.Sprint(ev.Decision["action"]); got != "exit" {

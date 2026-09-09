@@ -1,7 +1,7 @@
 package live
 
 import (
-	"fmt"
+	"mktorder.com/go/internal/store"
 	"testing"
 
 	"mktorder.com/go/internal/types"
@@ -18,10 +18,7 @@ func TestEvaluateWindowQuotesEveryBrokerOpenSymbol(t *testing.T) {
 	if err := e.DB.SaveDataset("MSFT", "MSFT", "", "", msft, false); err != nil {
 		t.Fatal(err)
 	}
-	if err := e.DB.InsertTrade("broker_trades", map[string]any{
-		"id": "rh-msft", "symbol": "MSFT", "status": "open",
-		"entryDate": "2026-08-01", "entryPrice": 10.0, "quantity": 1.0, "broker": "robinhood",
-	}); err != nil {
+	if err := e.DB.SavePosition(store.Position{ID: "rh-msft", Symbol: "MSFT", Status: "open", EntryDate: "2026-08-01", EntryPrice: store.Ptr[float64](10.0), Quantity: 1.0, Robinhood: store.BrokerLeg{Qty: 1.0, EntryPrice: store.Ptr[float64](10.0)}}); err != nil {
 		t.Fatal(err)
 	}
 	rh.Pos = []any{map[string]any{"symbol": "MSFT", "quantity": 1.0}}
@@ -59,10 +56,9 @@ func holdAAPL(br *MemoryBroker, qty float64) {
 
 func journalAAPL(t *testing.T, e *Engine, id, broker string, qty float64) {
 	t.Helper()
-	if err := e.DB.InsertTrade("broker_trades", map[string]any{
-		"id": id, "symbol": "AAPL", "status": "open",
-		"entryDate": "2026-08-01", "entryPrice": 10.0, "quantity": qty, "broker": broker,
-	}); err != nil {
+	p := store.Position{ID: id, Symbol: "AAPL", Status: "open", EntryDate: "2026-08-01", EntryPrice: store.Ptr[float64](10.0), Quantity: qty}
+	p.SetLeg(broker, store.BrokerLeg{Qty: qty, EntryPrice: store.Ptr[float64](10.0), EntryOrderID: id})
+	if err := e.DB.SavePosition(p); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -156,10 +152,18 @@ func TestPerBrokerExitMatrix(t *testing.T) {
 	}
 }
 
-func TestRobinhoodFillDoesNotCloseWebullJournal(t *testing.T) {
+// Одна позиция, две ноги: выход Robinhood закрывает свою ногу и не трогает
+// ногу Webull, а сама позиция остаётся открытой, пока Webull держит акции.
+func TestRobinhoodFillDoesNotCloseWebullLeg(t *testing.T) {
 	e, _, _ := dualBrokerEngine(t, exitBars)
-	journalAAPL(t, e, "w-open", "webull", 2)
-	journalAAPL(t, e, "r-open", "robinhood", 3)
+	if err := e.DB.SavePosition(store.Position{
+		ID: "aapl", Symbol: "AAPL", Status: "open", EntryDate: "2026-08-01",
+		EntryPrice: store.Ptr[float64](10.0), Quantity: 5,
+		Webull:    store.BrokerLeg{Qty: 2, EntryPrice: store.Ptr[float64](10.0), EntryOrderID: "w-open"},
+		Robinhood: store.BrokerLeg{Qty: 3, EntryPrice: store.Ptr[float64](10.0), EntryOrderID: "r-open"},
+	}); err != nil {
+		t.Fatal(err)
+	}
 	e.mu.Lock()
 	if e.orderMeta == nil {
 		e.orderMeta = map[string]orderMeta{}
@@ -173,12 +177,14 @@ func TestRobinhoodFillDoesNotCloseWebullJournal(t *testing.T) {
 		"clientOrderId": "rh-sell", "symbol": "AAPL", "action": "exit",
 		"source": "t1", "dateKey": "2026-09-01", "quantity": 3.0,
 	}, map[string]any{"status": "filled", "avg_price": 11.9, "filled_qty": 3.0}, "filled")
-	w, _ := e.DB.GetTrade("broker_trades", "w-open")
-	r, _ := e.DB.GetTrade("broker_trades", "r-open")
-	if fmt.Sprint(w["status"]) != "open" {
-		t.Fatalf("webull journal closed: %+v", w)
+	p, _ := e.DB.GetPosition("aapl")
+	if p == nil || p.Status != "open" {
+		t.Fatalf("position must stay open while webull holds it: %+v", p)
 	}
-	if fmt.Sprint(r["status"]) != "closed" {
-		t.Fatalf("robinhood journal not closed: %+v", r)
+	if p.Webull.Qty != 2 {
+		t.Fatalf("webull leg touched: %+v", p.Webull)
+	}
+	if p.Robinhood.Qty != 0 || p.Robinhood.ExitOrderID != "rh-sell" {
+		t.Fatalf("robinhood leg not closed: %+v", p.Robinhood)
 	}
 }

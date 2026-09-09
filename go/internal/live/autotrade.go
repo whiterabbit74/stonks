@@ -250,35 +250,19 @@ type QuoteThresholds struct {
 	HighIBS float64 `json:"highIBS"`
 }
 
-// OpenPosition is what the decision needs to know about the journal's open
-// trade: which ticker it is, already normalised. The full trade row stays a map
-// — it is a store record with a life outside this function.
-type OpenPosition struct {
-	Symbol string
-}
-
-// openPositionOf adapts a journal row at the boundary. A nil row means no open
-// position, which is the entry branch of the decision.
-func openPositionOf(row map[string]any) *OpenPosition {
-	if row == nil {
-		return nil
-	}
-	return &OpenPosition{Symbol: store.SafeTicker(fmt.Sprint(row["symbol"]))}
-}
-
 type EvalResult struct {
-	EvaluatedAt string         `json:"evaluatedAt"`
-	TodayKey    string         `json:"todayKey"`
-	AutoTrading map[string]any `json:"autoTrading"`
-	Symbols     []string       `json:"symbols"`
-	Quotes      []LiveQuote    `json:"quotes"`
-	OpenTrade   map[string]any `json:"openTrade"`
-	Decision    map[string]any `json:"decision"`
-	Executed    bool           `json:"executed"`
-	Submitted   bool           `json:"submitted,omitempty"`
-	Phase       string         `json:"phase,omitempty"`
-	Live        bool           `json:"live"`
-	Broker      any            `json:"broker,omitempty"`
+	EvaluatedAt string          `json:"evaluatedAt"`
+	TodayKey    string          `json:"todayKey"`
+	AutoTrading map[string]any  `json:"autoTrading"`
+	Symbols     []string        `json:"symbols"`
+	Quotes      []LiveQuote     `json:"quotes"`
+	OpenTrade   *store.Position `json:"openTrade"`
+	Decision    map[string]any  `json:"decision"`
+	Executed    bool            `json:"executed"`
+	Submitted   bool            `json:"submitted,omitempty"`
+	Phase       string          `json:"phase,omitempty"`
+	Live        bool            `json:"live"`
+	Broker      any             `json:"broker,omitempty"`
 	// DecisionBroker names the broker whose book Decision was computed on, so
 	// the UI does not read one broker's showcase decision as another's.
 	DecisionBroker string `json:"decisionBroker,omitempty"`
@@ -337,7 +321,7 @@ func (e *Engine) EvaluateWindow(w execWindow) EvalResult {
 	for _, w := range watches {
 		watchBy[store.SafeTicker(fmt.Sprint(w["symbol"]))] = w
 	}
-	brokerTrades, journalErr := e.DB.ListTrades("broker_trades")
+	positions, journalErr := e.DB.ListPositions()
 	if journalErr != nil {
 		return blocked("journal_unavailable", symbols)
 	}
@@ -352,7 +336,7 @@ func (e *Engine) EvaluateWindow(w execWindow) EvalResult {
 		// тогда её книгу всё-таки нужно прочитать.
 		bk.held, bk.err = e.heldSymbolsOn(showcaseBr, w)
 	}
-	open, held, heldErr := e.booksForHeld(showcase, bk.held, bk.err, brokerTrades)
+	open, held, heldErr := e.booksForHeld(showcase, bk.held, bk.err, positions)
 	quoteSymbols := append([]string{}, symbols...)
 	addQuote := func(sym string) {
 		sym = store.SafeTicker(sym)
@@ -367,13 +351,13 @@ func (e *Engine) EvaluateWindow(w execWindow) EvalResult {
 		quoteSymbols = append(quoteSymbols, sym)
 	}
 	if open != nil {
-		addQuote(fmt.Sprint(open["symbol"]))
+		addQuote(open.Symbol)
 	}
-	for _, row := range brokerTrades {
-		if fmt.Sprint(row["status"]) != "open" {
+	for _, row := range positions {
+		if row.Status != "open" {
 			continue
 		}
-		addQuote(fmt.Sprint(row["symbol"]))
+		addQuote(row.Symbol)
 	}
 	// Котировки нужны каждому брокеру, а не только витрине: позицию, купленную
 	// руками у второго брокера в неотслеживаемом тикере, иначе нечем оценить —
@@ -407,8 +391,8 @@ func (e *Engine) EvaluateWindow(w execWindow) EvalResult {
 			HighIBSInvalid: highInvalid,
 		})
 	}
-	decision := decideLiveAction(quotes, symbols, held, heldErr, openPositionOf(open), allowEntries, allowExits)
-	if reason, _ := decision["reason"].(string); reason == "empty_symbol_universe" || reason == "broker_position_mismatch" {
+	decision := decideLiveAction(quotes, symbols, held, heldErr, open, allowEntries, allowExits)
+	if reason, _ := decision["reason"].(string); reason == "empty_symbol_universe" {
 		e.logAuto("execution_skipped", "", map[string]any{"symbol": decision["symbol"], "reason": reason})
 	}
 	return EvalResult{
@@ -443,7 +427,7 @@ func (e *Engine) showcaseBroker(cfg map[string]any) (string, Broker) {
 	return "webull", e.defaultBroker()
 }
 
-func decideLiveAction(quotes []LiveQuote, symbols []string, held map[string]float64, heldErr error, open *OpenPosition, allowEntries, allowExits bool) map[string]any {
+func decideLiveAction(quotes []LiveQuote, symbols []string, held map[string]float64, heldErr error, open *store.Position, allowEntries, allowExits bool) map[string]any {
 	none := func(reason string, symbol any, cand any) map[string]any {
 		return map[string]any{"action": "none", "reason": reason, "symbol": symbol, "candidate": cand}
 	}
@@ -454,10 +438,11 @@ func decideLiveAction(quotes []LiveQuote, symbols []string, held map[string]floa
 		// money at risk, and refusing to exit it left it open forever.
 		if heldErr == nil {
 			if _, ok := held[sym]; !ok {
-				// Nothing of this ticker at the broker: there is nothing to
-				// sell, so no order — the journal row stays open for the
-				// operator to reconcile.
-				return none("broker_position_mismatch", sym, nil)
+				// This broker does not hold the ticker: there is nothing
+				// for it to sell. The position belongs to whichever broker
+				// does hold it — a normal state with two brokers, not a
+				// discrepancy anybody has to reconcile.
+				return none("position_not_held_here", sym, nil)
 			}
 		}
 		var row *LiveQuote
@@ -537,25 +522,25 @@ func candidateIBS(dec map[string]any) float64 {
 
 // booksForBroker prefers the position read EvaluateWindow already made in this
 // same cycle and only goes to the broker when that read is missing.
-func (e *Engine) booksForBroker(ev EvalResult, name string, br Broker, rows []map[string]any, w execWindow) (open map[string]any, held map[string]float64, heldErr error) {
+func (e *Engine) booksForBroker(ev EvalResult, name string, br Broker, rows []store.Position, w execWindow) (open *store.Position, held map[string]float64, heldErr error) {
 	if bk, ok := ev.books[name]; ok {
 		return e.booksForHeld(name, bk.held, bk.err, rows)
 	}
 	return e.booksFor(name, br, rows, w)
 }
 
-func (e *Engine) booksFor(name string, br Broker, rows []map[string]any, w execWindow) (open map[string]any, held map[string]float64, heldErr error) {
+func (e *Engine) booksFor(name string, br Broker, rows []store.Position, w execWindow) (open *store.Position, held map[string]float64, heldErr error) {
 	held, heldErr = e.heldSymbolsOn(br, w)
 	return e.booksForHeld(name, held, heldErr, rows)
 }
 
 // booksForHeld is booksFor on an already-read book, so a caller that has just
 // read every broker's positions does not read the same broker a second time.
-func (e *Engine) booksForHeld(name string, held map[string]float64, heldErr error, rows []map[string]any) (open map[string]any, outHeld map[string]float64, outErr error) {
+func (e *Engine) booksForHeld(name string, held map[string]float64, heldErr error, rows []store.Position) (open *store.Position, outHeld map[string]float64, outErr error) {
 	if held == nil && heldErr == nil {
 		held = map[string]float64{}
 	}
-	open = store.OpenBrokerTradeFor(rows, name)
+	open = openPositionOf(rows, name)
 	if open == nil && heldErr == nil && len(held) > 0 {
 		// The journal is flat but the broker is not. Exit that position on its
 		// own signal. With several tickers held the pick is the alphabetically
@@ -594,7 +579,7 @@ func (e *Engine) booksForHeld(name string, held map[string]float64, heldErr erro
 			if closedTodayFor(rows, name, sym, today) {
 				continue
 			}
-			open = map[string]any{"symbol": sym, "quantity": held[sym], "status": "open", "source": "live_broker", "broker": name}
+			open = &store.Position{Symbol: sym, Status: "open", Source: "live_broker", Quantity: held[sym]}
 			break
 		}
 	}
@@ -604,27 +589,36 @@ func (e *Engine) booksForHeld(name string, held map[string]float64, heldErr erro
 // closedTodayFor reports that this broker's journal already closed this symbol
 // today, which is what makes a still-listed broker position stale rather than
 // live.
-func closedTodayFor(rows []map[string]any, broker, symbol, today string) bool {
-	want := strings.ToLower(strings.TrimSpace(broker))
-	for _, t := range rows {
-		if fmt.Sprint(t["status"]) != "closed" {
+func closedTodayFor(rows []store.Position, broker, symbol, today string) bool {
+	for _, p := range rows {
+		if p.Status != "closed" || p.Symbol != symbol {
 			continue
 		}
-		if store.SafeTicker(fmt.Sprint(t["symbol"])) != symbol {
+		if tradingdate.DateKey(p.ExitDate) != today {
 			continue
 		}
-		if tradingdate.DateKey(fmt.Sprint(t["exitDate"])) != today {
-			continue
-		}
-		got := strings.ToLower(strings.TrimSpace(fmt.Sprint(t["broker"])))
-		if got == "<nil>" {
-			got = ""
-		}
-		if got == want || (want == "webull" && got == "") {
+		if p.Leg(broker).ExitOrderID != "" || p.Leg(broker).ExitPrice != nil {
 			return true
 		}
 	}
 	return false
+}
+
+// openPositionOf returns the open position this broker has a leg in, or nil.
+//
+// Scoped to the broker on purpose. The position row is shared — one row carries
+// both brokers — but the decision is per broker: a broker that is flat may open
+// a new entry while the other one is still holding, and its own book gates that
+// (CORE-01). A journal row nobody has a leg in blocks nothing; if the shares are
+// really there, the broker's own position feed says so and `held` blocks the
+// entry.
+func openPositionOf(rows []store.Position, broker string) *store.Position {
+	for i, p := range rows {
+		if p.Status == "open" && !p.IsHidden && !p.IsTest && p.Leg(broker).Holds() {
+			return &rows[i]
+		}
+	}
+	return nil
 }
 
 // heldSymbolsByBroker reads live positions from every attached broker

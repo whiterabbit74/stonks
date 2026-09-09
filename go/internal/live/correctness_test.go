@@ -83,7 +83,7 @@ func TestRejectedOrderDoesNotOpenTrade(t *testing.T) {
 	oid := br.Orders[0].ClientOrderID
 	br.SetDetail(oid, map[string]any{"status": "REJECTED"})
 	waitTrackerFinal(t, e, db, "AAPL", "entry")
-	trades, _ := db.ListTrades("broker_trades")
+	trades, _ := db.ListPositions()
 	if len(trades) != 0 {
 		t.Fatalf("rejected must not create trade %+v", trades)
 	}
@@ -111,13 +111,14 @@ func TestFillRecordsBrokerPriceAndQty(t *testing.T) {
 		"status": "FILLED", "avg_price": 8.41, "filled_qty": 1.5,
 	})
 	waitTrackerFinal(t, e, db, "AAPL", "entry")
-	bt, _ := db.ListTrades("broker_trades")
-	if len(bt) != 1 || asFloat(bt[0]["entryPrice"]) != 8.41 || asFloat(bt[0]["quantity"]) != 1.5 {
-		t.Fatalf("broker fill %+v", bt)
+	// One row, not the old broker+monitor pair: the fill price and quantity are
+	// recorded once, on the position and on the leg that executed it.
+	bt, _ := db.ListPositions()
+	if len(bt) != 1 || pv(bt[0].EntryPrice) != 8.41 || bt[0].Quantity != 1.5 {
+		t.Fatalf("fill %+v", bt)
 	}
-	mt, _ := db.ListTrades("trades")
-	if len(mt) != 1 || asFloat(mt[0]["entryPrice"]) != 8.41 {
-		t.Fatalf("monitor fill %+v", mt)
+	if pv(bt[0].Webull.EntryPrice) != 8.41 || bt[0].Webull.Qty != 1.5 {
+		t.Fatalf("webull leg %+v", bt[0].Webull)
 	}
 	_ = res
 }
@@ -125,18 +126,8 @@ func TestFillRecordsBrokerPriceAndQty(t *testing.T) {
 func TestExitFillWritesPnLBySymbol(t *testing.T) {
 	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 11.9, Volume: 1}}
 	db, e, br := testEngine(t, bars)
-	_ = db.InsertTrade("broker_trades", map[string]any{
-		"id": "b-aapl", "symbol": "AAPL", "status": "open", "entryDate": "2026-08-20", "entryPrice": 10.0, "quantity": 2,
-	})
-	_ = db.InsertTrade("broker_trades", map[string]any{
-		"id": "b-msft", "symbol": "MSFT", "status": "open", "entryDate": "2026-08-01", "entryPrice": 50.0, "quantity": 1,
-	})
-	_ = db.InsertTrade("trades", map[string]any{
-		"id": "m-aapl", "symbol": "AAPL", "status": "open", "entryDate": "2026-08-20", "entryPrice": 10.0, "quantity": 2,
-	})
-	_ = db.InsertTrade("trades", map[string]any{
-		"id": "m-msft", "symbol": "MSFT", "status": "open", "entryDate": "2026-08-01", "entryPrice": 50.0, "quantity": 1,
-	})
+	_ = db.SavePosition(store.Position{ID: "b-aapl", Symbol: "AAPL", Status: "open", EntryDate: "2026-08-20", EntryPrice: store.Ptr[float64](10.0), Quantity: 2, Webull: store.BrokerLeg{Qty: 2, EntryPrice: store.Ptr[float64](10.0)}})
+	_ = db.SavePosition(store.Position{ID: "b-msft", Symbol: "MSFT", Status: "open", EntryDate: "2026-08-01", EntryPrice: store.Ptr[float64](50.0), Quantity: 1, Webull: store.BrokerLeg{Qty: 1, EntryPrice: store.Ptr[float64](50.0)}})
 	br.Pos = []any{map[string]any{"symbol": "AAPL", "quantity": 2.0}}
 	e.PatchAutoConfig(map[string]any{"enabled": true, "highIBS": 0.75, "allowExits": true, "allowNewEntries": false})
 	res := e.Execute("test")
@@ -146,28 +137,28 @@ func TestExitFillWritesPnLBySymbol(t *testing.T) {
 	oid := br.Orders[0].ClientOrderID
 	br.SetDetail(oid, map[string]any{"status": "FILLED", "deal_price": 12.0, "filled_quantity": 2})
 	waitTrackerFinal(t, e, db, "AAPL", "exit")
-	byID := map[string]map[string]any{}
-	rows, _ := db.ListTrades("broker_trades")
-	for _, t := range rows {
-		byID[fmt.Sprint(t["id"])] = t
+	byID := map[string]store.Position{}
+	rows, _ := db.ListPositions()
+	for _, p := range rows {
+		byID[p.ID] = p
 	}
-	aapl, msft := byID["b-aapl"], byID["b-msft"]
-	if aapl == nil || fmt.Sprint(aapl["status"]) != "closed" {
+	aapl, aok := byID["b-aapl"]
+	msft, mok := byID["b-msft"]
+	if !aok || aapl.Status != "closed" {
 		t.Fatalf("aapl %+v", aapl)
 	}
-	if msft == nil || fmt.Sprint(msft["status"]) != "open" {
+	if !mok || msft.Status != "open" {
 		t.Fatalf("must not close other symbol %+v", msft)
 	}
-	if asFloat(aapl["exitPrice"]) != 12 {
+	if pv(aapl.ExitPrice) != 12 {
 		t.Fatalf("exitPrice %+v", aapl)
 	}
-	if asFloat(aapl["pnlPercent"]) != 20 {
+	if pv(aapl.PnLPercent) != 20 {
 		t.Fatalf("pnlPercent %+v", aapl)
 	}
-	mon, _ := db.GetTrade("trades", "m-aapl")
-	// 2 shares x $2 = $4 (AUD-041).
-	if mon == nil || fmt.Sprint(mon["status"]) != "closed" || asFloat(mon["pnlAbsolute"]) != 4 {
-		t.Fatalf("monitor pnl %+v", mon)
+	// 2 shares x $2 = $4 (AUD-041): P&L is money, on the one row there is.
+	if pv(aapl.PnLAbsolute) != 4 {
+		t.Fatalf("pnlAbsolute %+v", aapl)
 	}
 }
 
@@ -277,9 +268,7 @@ func TestHighIBSZeroDoesNotLiquidate(t *testing.T) {
 	}
 	t.Cleanup(func() { db.Close() })
 	_ = db.SaveDataset("MSFT", "MSFT", "", "", bars, false)
-	_ = db.InsertTrade("broker_trades", map[string]any{
-		"id": "b1", "symbol": "MSFT", "status": "open", "entryDate": "2026-08-01", "entryPrice": 10.0,
-	})
+	_ = db.SavePosition(store.Position{ID: "b1", Symbol: "MSFT", Status: "open", EntryDate: "2026-08-01", EntryPrice: store.Ptr[float64](10.0), Webull: store.BrokerLeg{Qty: 1, EntryPrice: store.Ptr[float64](10.0)}})
 	e := New(db, &MemoryQuotes{Bars: map[string][]types.OHLC{"MSFT": bars}})
 	settings := e.DB.Settings()
 	settings["autoTrading"] = map[string]any{
@@ -367,26 +356,26 @@ func TestReconcileApplyFalseWhenNothing(t *testing.T) {
 	}
 }
 
-func TestReconcileClosesMonitorFromBroker(t *testing.T) {
+// Reconcile's only repair left: a position the broker demonstrably holds but
+// whose leg the journal never got. Closing a monitor row from a broker row is
+// gone with the second table.
+func TestReconcileFillsMissingLegFromBrokerBook(t *testing.T) {
 	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
-	db, e, _ := testEngine(t, bars)
-	_ = db.InsertTrade("broker_trades", map[string]any{
-		"id": "b1", "symbol": "AAPL", "status": "closed", "entryDate": "2026-08-01",
-		"entryPrice": 10.0,
-	})
-	_ = db.PatchTrade("broker_trades", "b1", map[string]any{
-		"status": "closed", "exitDate": "2026-09-01", "exitPrice": 11.0,
-	})
-	_ = db.InsertTrade("trades", map[string]any{
-		"id": "m1", "symbol": "AAPL", "status": "open", "entryDate": "2026-08-01", "entryPrice": 10.0,
-	})
+	db, e, br := testEngine(t, bars)
+	br.Pos = []any{map[string]any{"symbol": "AAPL", "quantity": 3.0}}
+	_ = db.SavePosition(store.Position{ID: "m1", Symbol: "AAPL", Status: "open", EntryDate: "2026-08-01", EntryPrice: store.Ptr[float64](10.0)})
+
 	snap := e.Reconcile(true)
 	if snap["applied"] != true {
 		t.Fatalf("should apply %+v", snap)
 	}
-	mon, _ := db.GetTrade("trades", "m1")
-	if fmt.Sprint(mon["status"]) != "closed" || asFloat(mon["exitPrice"]) != 11 {
-		t.Fatalf("monitor %+v", mon)
+	got, _ := db.GetPosition("m1")
+	if got == nil || got.Webull.Qty != 3 {
+		t.Fatalf("webull leg not filled from the book: %+v", got)
+	}
+	// The price is left unknown rather than guessed: nobody observed a fill.
+	if got.Webull.EntryPrice != nil {
+		t.Fatalf("invented a fill price: %v", *got.Webull.EntryPrice)
 	}
 }
 
@@ -602,7 +591,7 @@ func TestInFlightPreventsDoubleRecord(t *testing.T) {
 	if e.pollOneTracker(map[string]any{"clientOrderId": oid, "symbol": "AAPL", "action": "entry", "quantity": 1.0, "dateKey": "2026-09-01"}) {
 		t.Fatal("inFlight should skip")
 	}
-	trades, _ := db.ListTrades("broker_trades")
+	trades, _ := db.ListPositions()
 	if len(trades) != 0 {
 		t.Fatalf("double record %+v", trades)
 	}
@@ -610,7 +599,7 @@ func TestInFlightPreventsDoubleRecord(t *testing.T) {
 	delete(e.inFlight, oid)
 	e.mu.Unlock()
 	waitTrackerFinal(t, e, db, "AAPL", "entry")
-	trades, _ = db.ListTrades("broker_trades")
+	trades, _ = db.ListPositions()
 	if len(trades) != 1 {
 		t.Fatalf("after release %+v", trades)
 	}
@@ -700,10 +689,7 @@ func TestT1SellsThenBuysInTheSameCycle(t *testing.T) {
 	_ = db.SaveDataset("BUYME", "BUYME", "", "", target, false)
 	_ = db.UpsertWatch(map[string]any{"symbol": "HELD", "lowIBS": 0.1, "highIBS": 0.75})
 	_ = db.UpsertWatch(map[string]any{"symbol": "BUYME", "lowIBS": 0.1, "highIBS": 0.75})
-	_ = db.InsertTrade("broker_trades", map[string]any{
-		"id": "held-1", "symbol": "HELD", "status": "open",
-		"entryDate": "2026-09-01", "entryPrice": 9.0, "quantity": 1,
-	})
+	_ = db.SavePosition(store.Position{ID: "held-1", Symbol: "HELD", Status: "open", EntryDate: "2026-09-01", EntryPrice: store.Ptr[float64](9.0), Quantity: 1, Webull: store.BrokerLeg{Qty: 1, EntryPrice: store.Ptr[float64](9.0)}})
 
 	br := &MemoryBroker{
 		Pos: []any{map[string]any{"symbol": "HELD", "quantity": 1.0}},
@@ -882,11 +868,11 @@ func TestPartialFillIsRecordedAndWarned(t *testing.T) {
 	})
 	waitTrackerFinal(t, e, db, "AAPL", "entry")
 
-	trades, _ := db.ListTrades("broker_trades")
+	trades, _ := db.ListPositions()
 	if len(trades) != 1 {
 		t.Fatalf("the executed 4 shares must be journalled, got %+v", trades)
 	}
-	if q := asFloat(trades[0]["quantity"]); q != 4 {
+	if q := asFloat(trades[0].Quantity); q != 4 {
 		t.Fatalf("journalled quantity %v, want the executed 4", q)
 	}
 	var warned bool
@@ -918,7 +904,7 @@ func TestFullFillUnderUnknownStatusIsRecorded(t *testing.T) {
 	})
 	waitTrackerFinal(t, e, db, "AAPL", "entry")
 
-	trades, _ := db.ListTrades("broker_trades")
+	trades, _ := db.ListPositions()
 	if len(trades) != 1 {
 		t.Fatalf("a fully executed order must be journalled whatever it is called, got %+v", trades)
 	}
@@ -936,9 +922,7 @@ func TestEmptyWatchlistStillExitsOpenPosition(t *testing.T) {
 	}
 	t.Cleanup(func() { db.Close() })
 	_ = db.SaveDataset("AAPL", "AAPL", "", "", bars, false)
-	_ = db.InsertTrade("broker_trades", map[string]any{
-		"id": "b-aapl", "symbol": "AAPL", "status": "open", "entryDate": "2026-08-20", "entryPrice": 10.0, "quantity": 2,
-	})
+	_ = db.SavePosition(store.Position{ID: "b-aapl", Symbol: "AAPL", Status: "open", EntryDate: "2026-08-20", EntryPrice: store.Ptr[float64](10.0), Quantity: 2, Webull: store.BrokerLeg{Qty: 2, EntryPrice: store.Ptr[float64](10.0)}})
 	br := &MemoryBroker{}
 	e := New(db, &MemoryQuotes{Bars: map[string][]types.OHLC{"AAPL": bars}})
 	e.Broker = br
@@ -1012,7 +996,7 @@ func TestDecideLiveActionIgnoresZeroHighIBS(t *testing.T) {
 		IBS:        0.5,
 		Thresholds: QuoteThresholds{LowIBS: 0.1, HighIBS: 0},
 	}}
-	d := decideLiveAction(quotes, []string{"AAPL"}, map[string]float64{"AAPL": 10}, nil, &OpenPosition{Symbol: "AAPL"}, true, true)
+	d := decideLiveAction(quotes, []string{"AAPL"}, map[string]float64{"AAPL": 10}, nil, &store.Position{Status: "open", Symbol: "AAPL"}, true, true)
 	if fmt.Sprint(d["action"]) != "none" || fmt.Sprint(d["reason"]) != "exit_threshold_not_reached" {
 		t.Fatalf("IBS 0.5 with a zero highIBS must not exit: %+v", d)
 	}

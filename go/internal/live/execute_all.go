@@ -36,7 +36,7 @@ func (e *Engine) executeAll(w execWindow, ev EvalResult, trigger, corr string, s
 	results := map[string]any{}
 	decisions := map[string]map[string]any{}
 	anyOK := false
-	rows, journalErr := e.DB.ListTrades("broker_trades")
+	rows, journalErr := e.DB.ListPositions()
 	// Брокеры идут параллельно, а не по очереди: последовательный цикл отдавал
 	// Robinhood остаток закрывающей минуты только после того, как Webull
 	// доработает свои таймауты и повторы. Общее здесь — эти три переменные под
@@ -93,7 +93,7 @@ func (e *Engine) executeAll(w execWindow, ev EvalResult, trigger, corr string, s
 // its journal rows, its flags, its order. The returned decision is what the
 // report shows for this broker; brokerRes is the submission outcome, nil when
 // nothing was sent.
-func (e *Engine) executeOneBroker(w execWindow, ev EvalResult, trigger, corr, name string, br Broker, rows []map[string]any, journalErr error) (decision map[string]any, brokerRes any, executed bool) {
+func (e *Engine) executeOneBroker(w execWindow, ev EvalResult, trigger, corr, name string, br Broker, rows []store.Position, journalErr error) (decision map[string]any, brokerRes any, executed bool) {
 	none := func(reason string, symbol any) map[string]any {
 		return map[string]any{"action": "none", "reason": reason, "symbol": symbol, "candidate": nil}
 	}
@@ -114,9 +114,20 @@ func (e *Engine) executeOneBroker(w execWindow, ev EvalResult, trigger, corr, na
 		e.logAuto("execution_skipped", corr, map[string]any{"broker": name, "reason": "journal_unavailable"})
 		return none("journal_unavailable", nil), nil, false
 	}
+	// Re-read the journal per broker rather than reusing the cycle's snapshot.
+	// The two brokers run in parallel and their fills are recorded by the
+	// tracker poller, so one broker's exit lands while the other is deciding:
+	// on a shared position row a stale snapshot still shows the peer's leg and
+	// held back a re-entry that was already allowed (CORE-01).
+	fresh, freshErr := e.DB.ListPositions()
+	if freshErr != nil {
+		e.logAuto("execution_skipped", corr, map[string]any{"broker": name, "reason": "journal_unavailable"})
+		return none("journal_unavailable", nil), nil, false
+	}
+	rows = fresh
 	open, held, heldErr := e.booksForBroker(ev, name, br, rows, w)
 	one.OpenTrade = open
-	one.Decision = decideLiveAction(ev.Quotes, ev.Symbols, held, heldErr, openPositionOf(open), allowE, allowX)
+	one.Decision = decideLiveAction(ev.Quotes, ev.Symbols, held, heldErr, open, allowE, allowX)
 	decision = one.Decision
 	action, _ := one.Decision["action"].(string)
 	// A working order at this broker can only duplicate an order in the same

@@ -48,7 +48,7 @@ func TestManualOrderGuardsPendingThenTracks(t *testing.T) {
 	if fmt.Sprint(row["source"]) != "test_buy" {
 		t.Fatalf("source=%v want test_buy", row["source"])
 	}
-	if fmt.Sprint(row["broker"]) != "webull" {
-		t.Fatalf("broker=%v want webull", row["broker"])
+	if legBroker(row) != "webull" {
+		t.Fatalf("broker=%v want webull", legBroker(row))
 	}
 }

@@ -19,7 +19,7 @@ var allowedDiscardedDBWrites = map[string]string{
 	"internal/live/autotrade.go:SaveWebullTokenChecked": "health stamp during token poll is diagnostic; a failed write must not abort the check",
 	"internal/live/actualize.go:SetSettingsKeys":        "actualize attempt counters are best-effort; the Telegram alert still fires from memory",
 
-	"internal/live/trade_record.go:DeleteTrade":              "fill already journaled; a leftover client-order row is cleaned on the next poll",
+	"internal/live/trade_record.go:DeletePosition":           "fill already journaled; a leftover client-order row is cleaned on the next poll",
 	"internal/live/robinhood_broker.go:SaveRobinhoodAccount": "cached account id is an optimisation; the next RH call can look it up again",
 	"internal/scheduler/scheduler.go:SetRobinhoodAlerted":    "alert already sent; a missed stamp may re-notify, which is safer than blocking the tick",
 	"internal/scheduler/scheduler.go:SetWebullAlerted":       "same as SetRobinhoodAlerted for the Webull expiry mail",

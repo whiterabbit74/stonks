@@ -8,393 +8,101 @@ import (
 	"mktorder.com/go/internal/store"
 )
 
+// blockingMismatchCodes are the findings that hold back new entries.
+//
+// The list used to be seven codes long, and four of them were about the two
+// journals disagreeing with each other: a monitor row whose linked broker row
+// was gone, a legacy row that matched several, a symbol mismatch between the
+// pair. None of them can exist now — there is one row per position — and the
+// reconciliation that produced them is gone with them.
+//
+// What remains is about the world outside the database: a broker book we could
+// not read, and a journal we could not read. Both mean we do not know what we
+// hold, and buying on that is how a position gets opened twice.
 var blockingMismatchCodes = map[string]struct{}{
-	"monitor_broker_symbol_mismatch":              {},
-	"linked_monitor_trade_missing_broker_match":   {},
-	"legacy_monitor_trade_ambiguous_broker_match": {},
-	"live_broker_position_without_journal":        {},
-	"live_broker_position_symbol_mismatch":        {},
-	"broker_positions_unavailable":                {},
-	"journal_unavailable":                         {},
+	"broker_positions_unavailable": {},
+	"journal_unavailable":          {},
 }
 
 func (e *Engine) Consistency() map[string]any {
 	return e.consistencyWindow(backgroundWindow())
 }
 
+// consistencyWindow compares the journal against the brokers' live books. It
+// no longer compares the journal against itself.
 func (e *Engine) consistencyWindow(w execWindow) map[string]any {
-	monitor, merr := e.DB.ListTrades("trades")
-	broker, berr := e.DB.ListTrades("broker_trades")
-	if merr != nil || berr != nil {
-		msg := "journal unavailable"
-		if merr != nil {
-			msg = merr.Error()
-		} else {
-			msg = berr.Error()
-		}
-		iss := map[string]any{"code": "journal_unavailable", "message": msg}
-		return map[string]any{"issues": []map[string]any{iss}, "ok": false}
-	}
-	openMonitors := e.hydrateOpenTrades("trades", monitor)
-	openBrokers := e.hydrateOpenTrades("broker_trades", broker)
-	var openM, openB map[string]any
-	if len(openMonitors) > 0 {
-		openM = openMonitors[0]
-	}
-	if len(openBrokers) > 0 {
-		openB = openBrokers[0]
-	}
-	var issues []map[string]any
-	var proposed []map[string]any
-	usedMon := map[string]bool{}
-	usedBro := map[string]bool{}
-
-	for _, m := range openMonitors {
-		linked := fmt.Sprint(m["linkedBrokerTradeId"])
-		if linked == "" || linked == "<nil>" {
-			continue
-		}
-		if paired := openTradeByID(openBrokers, linked); paired != nil {
-			usedMon[fmt.Sprint(m["id"])] = true
-			usedBro[fmt.Sprint(paired["id"])] = true
-			if store.SafeTicker(fmt.Sprint(m["symbol"])) != store.SafeTicker(fmt.Sprint(paired["symbol"])) {
-				issues = append(issues, symbolMismatchIssue(m, paired))
-			}
-			continue
-		}
-		usedMon[fmt.Sprint(m["id"])] = true
-		moreIssues, moreProposed := e.monitorWithoutOpenBrokerIssues(m, broker)
-		issues = append(issues, moreIssues...)
-		proposed = append(proposed, moreProposed...)
-	}
-
-	for _, m := range openMonitors {
-		if usedMon[fmt.Sprint(m["id"])] {
-			continue
-		}
-		want := store.SafeTicker(fmt.Sprint(m["symbol"]))
-		for _, b := range openBrokers {
-			if usedBro[fmt.Sprint(b["id"])] {
-				continue
-			}
-			if store.SafeTicker(fmt.Sprint(b["symbol"])) == want {
-				usedMon[fmt.Sprint(m["id"])] = true
-				usedBro[fmt.Sprint(b["id"])] = true
-				break
-			}
+	open, err := e.DB.OpenPositions()
+	if err != nil {
+		return map[string]any{
+			"fetchedAt": e.now().UTC().Format(time.RFC3339Nano),
+			"issues": []map[string]any{{
+				"code": "journal_unavailable", "severity": "error", "message": err.Error(),
+			}},
+			"openPositions": []store.Position{},
+			"ok":            false,
 		}
 	}
-
-	var leftoverM, leftoverB []map[string]any
-	for _, m := range openMonitors {
-		if !usedMon[fmt.Sprint(m["id"])] {
-			leftoverM = append(leftoverM, m)
-		}
-	}
-	for _, b := range openBrokers {
-		if !usedBro[fmt.Sprint(b["id"])] {
-			leftoverB = append(leftoverB, b)
-		}
-	}
-
-	mismatched := map[string]bool{}
-	if len(leftoverM) > 0 && len(leftoverB) > 0 {
-		for _, m := range leftoverM {
-			for _, b := range leftoverB {
-				if mismatched[fmt.Sprint(b["id"])] {
-					continue
-				}
-				if store.SafeTicker(fmt.Sprint(m["symbol"])) != store.SafeTicker(fmt.Sprint(b["symbol"])) {
-					issues = append(issues, symbolMismatchIssue(m, b))
-					mismatched[fmt.Sprint(m["id"])] = true
-					mismatched[fmt.Sprint(b["id"])] = true
-					break
-				}
-			}
-		}
-	}
-	for _, m := range leftoverM {
-		if mismatched[fmt.Sprint(m["id"])] {
-			continue
-		}
-		moreIssues, moreProposed := e.monitorWithoutOpenBrokerIssues(m, broker)
-		issues = append(issues, moreIssues...)
-		proposed = append(proposed, moreProposed...)
-	}
-	for _, b := range leftoverB {
-		if mismatched[fmt.Sprint(b["id"])] {
-			continue
-		}
-		iss, act := brokerWithoutMonitorIssue(b)
-		issues = append(issues, iss)
-		proposed = append(proposed, act)
-	}
-	issues = append(issues, e.liveConsistencyIssues(broker, w)...)
-
+	issues := e.liveConsistencyIssues(open, w)
 	if issues == nil {
 		issues = []map[string]any{}
 	}
-	if proposed == nil {
-		proposed = []map[string]any{}
-	}
 	return map[string]any{
-		"fetchedAt": e.now().UTC().Format(time.RFC3339Nano),
-		// nilMap keeps an absent trade an untyped nil: a nil map[string]any put
-		// into an interface compares non-nil, and readers checking `!= nil` then
-		// see an open trade that does not exist.
-		"openMonitorTrade":  nilMap(openM),
-		"openBrokerTrade":   nilMap(openB),
-		"openMonitorTrades": openMonitors,
-		"openBrokerTrades":  openBrokers,
-		"issues":            issues,
-		"proposedActions":   proposed,
+		"fetchedAt":     e.now().UTC().Format(time.RFC3339Nano),
+		"openPositions": open,
+		"issues":        issues,
+		"ok":            len(issues) == 0,
 	}
 }
 
-func nilMap(m map[string]any) any {
-	if len(m) == 0 {
-		return nil
-	}
-	return m
-}
-
-func sameSymbolClosedBroker(broker []map[string]any, openM map[string]any) []map[string]any {
-	want := store.SafeTicker(fmt.Sprint(openM["symbol"]))
-	entry := fmt.Sprint(openM["entryDate"])
-	var out []map[string]any
-	for _, t := range broker {
-		if fmt.Sprint(t["status"]) != "closed" {
-			continue
-		}
-		if store.SafeTicker(fmt.Sprint(t["symbol"])) != want {
-			continue
-		}
-		if entry != "" && entry != "<nil>" && fmt.Sprint(t["entryDate"]) != entry {
-			continue
-		}
-		out = append(out, t)
-	}
-	return out
-}
-
-func (e *Engine) hydrateOpenTrades(table string, rows []map[string]any) []map[string]any {
-	var out []map[string]any
-	for _, t := range store.OpenBrokerTrades(rows) {
-		if id := fmt.Sprint(t["id"]); id != "" && id != "<nil>" {
-			if full, err := e.getTrade(table, id); err == nil && full != nil {
-				t = full
-			}
-		}
-		out = append(out, t)
-	}
-	if out == nil {
-		return []map[string]any{}
-	}
-	return out
-}
-
-func openTradeByID(rows []map[string]any, id string) map[string]any {
-	for _, t := range rows {
-		if fmt.Sprint(t["id"]) == id {
-			return t
-		}
-	}
-	return nil
-}
-
-func brokerNameOf(t map[string]any) string {
-	if t == nil {
-		return ""
-	}
-	got := strings.ToLower(strings.TrimSpace(fmt.Sprint(t["broker"])))
-	if got == "" || got == "<nil>" {
-		return "webull"
-	}
-	return got
-}
-
-func symbolMismatchIssue(openM, openB map[string]any) map[string]any {
-	iss := map[string]any{
-		"code": "monitor_broker_symbol_mismatch", "severity": "error",
-		"message": fmt.Sprintf("Monitor trade %s is open while broker trade %s is open. Automatic reconcile is unsafe.", openM["symbol"], openB["symbol"]),
-		"symbol":  openM["symbol"], "monitorTradeId": openM["id"], "brokerTradeId": openB["id"], "autoFixable": false,
-	}
-	if name := brokerNameOf(openB); name != "" {
-		iss["broker"] = name
-	}
-	return iss
-}
-
-func brokerWithoutMonitorIssue(openB map[string]any) (map[string]any, map[string]any) {
-	iss := map[string]any{
-		"code": "broker_trade_without_monitor_projection", "severity": "warn",
-		"message": fmt.Sprintf("Broker trade %s is open, but monitor state is flat.", openB["symbol"]),
-		"symbol":  openB["symbol"], "brokerTradeId": openB["id"], "autoFixable": true,
-	}
-	if name := brokerNameOf(openB); name != "" {
-		iss["broker"] = name
-	}
-	act := map[string]any{
-		"type": "project_monitor_from_broker", "autoApplicable": true,
-		"symbol": openB["symbol"], "brokerTradeId": openB["id"],
-		"description": fmt.Sprintf("Create monitor projection for open broker trade %s.", openB["symbol"]),
-	}
-	return iss, act
-}
-
-func (e *Engine) monitorWithoutOpenBrokerIssues(openM map[string]any, broker []map[string]any) (issues []map[string]any, proposed []map[string]any) {
-	linked := fmt.Sprint(openM["linkedBrokerTradeId"])
-	closedLinked := map[string]any(nil)
-	if linked != "" && linked != "<nil>" {
-		if t, err := e.getTrade("broker_trades", linked); err == nil && t != nil && fmt.Sprint(t["status"]) == "closed" {
-			closedLinked = t
-		}
-	}
-	if closedLinked != nil {
-		issues = append(issues, map[string]any{
-			"code": "linked_monitor_trade_closed_in_broker", "severity": "warn",
-			"message": fmt.Sprintf("Monitor trade %s is still open while linked broker trade is already closed.", openM["symbol"]),
-			"symbol":  openM["symbol"], "monitorTradeId": openM["id"], "brokerTradeId": closedLinked["id"], "autoFixable": true,
-		})
-		proposed = append(proposed, map[string]any{
-			"type": "close_linked_monitor_trade", "autoApplicable": true,
-			"symbol": openM["symbol"], "monitorTradeId": openM["id"], "brokerTradeId": closedLinked["id"],
-			"description": fmt.Sprintf("Close monitor trade %s using linked broker exit.", openM["symbol"]),
-		})
-		return issues, proposed
-	}
-	if linked != "" && linked != "<nil>" {
-		iss := map[string]any{
-			"code": "linked_monitor_trade_missing_broker_match", "severity": "error",
-			"message": fmt.Sprintf("Monitor trade %s references broker trade %s, but the broker journal has no matching open/closed trade.", openM["symbol"], linked),
-			"symbol":  openM["symbol"], "monitorTradeId": openM["id"], "brokerTradeId": linked, "autoFixable": false,
-		}
-		// An issue with no broker on it holds back every broker's entries. The
-		// order that created this row names its broker, so the block lands on
-		// the broker it is actually about (AUD-073).
-		if name := e.brokerOfOrder(linked); name != "" {
-			iss["broker"] = name
-		}
-		issues = append(issues, iss)
-		return issues, proposed
-	}
-	sameDayClosed := sameSymbolClosedBroker(broker, openM)
-	if len(sameDayClosed) == 1 {
-		issues = append(issues, map[string]any{
-			"code": "legacy_monitor_trade_can_close_from_broker_history", "severity": "warn",
-			"message": fmt.Sprintf("Legacy monitor trade %s is still open even though the matching broker trade is closed.", openM["symbol"]),
-			"symbol":  openM["symbol"], "monitorTradeId": openM["id"], "brokerTradeId": sameDayClosed[0]["id"], "autoFixable": true,
-		})
-		proposed = append(proposed, map[string]any{
-			"type": "close_legacy_monitor_trade", "autoApplicable": true,
-			"symbol": openM["symbol"], "monitorTradeId": openM["id"], "brokerTradeId": sameDayClosed[0]["id"],
-			"description": fmt.Sprintf("Close monitor trade %s using the broker journal's closed trade.", openM["symbol"]),
-		})
-		return issues, proposed
-	}
-	if len(sameDayClosed) > 1 {
-		iss := map[string]any{
-			"code": "legacy_monitor_trade_ambiguous_broker_match", "severity": "error",
-			"message": fmt.Sprintf("Monitor trade %s has multiple matching closed broker trades for %s. Automatic reconcile is unsafe.", openM["symbol"], openM["entryDate"]),
-			"symbol":  openM["symbol"], "monitorTradeId": openM["id"], "autoFixable": false,
-		}
-		// Several matches at one broker is a genuine ambiguity there; one match
-		// per broker is just two brokers holding the same ticker on the same
-		// day, and must not block anyone else (AUD-073).
-		if name := singleBrokerOf(sameDayClosed); name != "" {
-			iss["broker"] = name
-		}
-		issues = append(issues, iss)
-		return issues, proposed
-	}
-	issues = append(issues, map[string]any{
-		"code": "monitor_trade_without_broker_position", "severity": "warn",
-		"message": fmt.Sprintf("Monitor trade %s is open while broker is flat. Monitor state remains active independently from broker execution.", openM["symbol"]),
-		"symbol":  openM["symbol"], "monitorTradeId": openM["id"], "autoFixable": false,
-	})
-	return issues, proposed
-}
-
-// brokerOfOrder names the broker that placed clientOrderID, from the order
-// tracker the submission wrote. Empty when nothing is known.
-func (e *Engine) brokerOfOrder(clientOrderID string) string {
-	if e == nil || e.DB == nil {
-		return ""
-	}
-	t := e.DB.GetOrderTracker(clientOrderID)
-	if t == nil {
-		return ""
-	}
-	return trackerBrokerName(t)
-}
-
-// singleBrokerOf returns the broker every row belongs to, or "" when they are
-// spread across brokers.
-func singleBrokerOf(rows []map[string]any) string {
-	name := ""
-	for _, t := range rows {
-		got := brokerNameOf(t)
-		if name == "" {
-			name = got
-			continue
-		}
-		if got != name {
-			return ""
-		}
-	}
-	return name
-}
-
-func (e *Engine) liveConsistencyIssues(brokerRows []map[string]any, w execWindow) []map[string]any {
-	// Книги читаются параллельно, а порядок находок восстанавливается по
-	// порядку снимка брокеров: отказ Webull не должен задерживать проверку
-	// Robinhood, но отчёт обязан быть детерминированным (AUD-074).
+// liveConsistencyIssues reports what the brokers hold that the journal does not
+// explain. Books are read in parallel and the findings ordered by the broker
+// snapshot: a Webull failure must not delay the Robinhood check, but the report
+// has to be deterministic (AUD-074).
+func (e *Engine) liveConsistencyIssues(open []store.Position, w execWindow) []map[string]any {
 	snaps := e.brokerSnapshot()
 	books := e.heldSymbolsByBrokerBooks(w)
+	openBySymbol := map[string]store.Position{}
+	for _, p := range open {
+		openBySymbol[p.Symbol] = p
+	}
 	var issues []map[string]any
 	for _, nb := range snaps {
 		bk, ok := books[nb.name]
 		if !ok {
 			continue
 		}
-		held, heldErr := bk.held, bk.err
-		if heldErr != nil {
+		if bk.err != nil {
 			issues = append(issues, map[string]any{
 				"code": "broker_positions_unavailable", "severity": "error",
-				"message": "Live broker positions could not be read; new entries are blocked.",
+				"message": "Позиции брокера не читаются, новые входы заблокированы.",
 				"broker":  nb.name, "autoFixable": false,
 			})
 			continue
 		}
-		open := store.OpenBrokerTradeFor(brokerRows, nb.name)
-		if len(held) > 0 && open == nil {
-			var sym string
-			for s := range held {
-				sym = s
-				break
-			}
-			issues = append(issues, map[string]any{
-				"code": "live_broker_position_without_journal", "severity": "error",
-				"message": fmt.Sprintf("Broker holds %s but the local journal is flat.", sym),
-				"symbol":  sym, "broker": nb.name, "autoFixable": false,
-			})
-			continue
-		}
-		// Открытая сделка сама по себе не значит, что она про тот же тикер:
-		// брокер с SPY при журнальном QQQ раньше проходил проверку молча
-		// (AUD-050).
-		if len(held) > 0 && open != nil {
-			journalSym := store.SafeTicker(fmt.Sprint(open["symbol"]))
-			if _, ok := held[journalSym]; !ok {
-				var sym string
-				for s := range held {
-					sym = s
-					break
-				}
+		for _, sym := range sortedKeys(bk.held) {
+			p, journaled := openBySymbol[sym]
+			if !journaled {
+				// A ticker held with no open position of its own: bought by
+				// hand, or a fill whose journal write failed. It does not block
+				// anything — the engine exits a held position on its signal
+				// whether or not the journal knows about it — so this is a note
+				// to the operator, not a stop.
 				issues = append(issues, map[string]any{
-					"code": "live_broker_position_symbol_mismatch", "severity": "error",
-					"message": fmt.Sprintf("Broker holds %s while the journal has %s open.", sym, journalSym),
-					"symbol":  sym, "journalSymbol": journalSym, "broker": nb.name, "autoFixable": false,
+					"code": "broker_position_without_journal", "severity": "warning",
+					"message": fmt.Sprintf("%s держит %s, в журнале такой позиции нет.", brokerLabel(nb.name), sym),
+					"symbol":  sym, "broker": nb.name, "autoFixable": false,
+				})
+				continue
+			}
+			// The position is journaled but this broker's leg is empty: the
+			// entry fill never made it into the row. Reconcile can fill it in
+			// from the book we are already holding.
+			if !p.Leg(nb.name).Executed() {
+				issues = append(issues, map[string]any{
+					"code": "position_leg_missing", "severity": "warning",
+					"message": fmt.Sprintf("%s держит %s, но в позиции нет его исполнения.", brokerLabel(nb.name), sym),
+					"symbol":  sym, "broker": nb.name, "positionId": p.ID,
+					"quantity": bk.held[sym], "autoFixable": true,
 				})
 			}
 		}
@@ -402,14 +110,27 @@ func (e *Engine) liveConsistencyIssues(brokerRows []map[string]any, w execWindow
 	return issues
 }
 
+func sortedKeys(m map[string]float64) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	for i := 1; i < len(out); i++ {
+		for j := i; j > 0 && out[j] < out[j-1]; j-- {
+			out[j], out[j-1] = out[j-1], out[j]
+		}
+	}
+	return out
+}
+
 func BlockingMismatch(snap map[string]any) map[string]any {
 	return BlockingMismatchFor(snap, "")
 }
 
 // BlockingMismatchFor returns the first blocking issue that applies to the
-// named broker: one that names it, or one that names no broker at all (a
-// monitor-journal issue, which is not any single broker's). An empty broker
-// matches every issue, which is what the unscoped BlockingMismatch reports.
+// named broker: one that names it, or one that names no broker at all. An empty
+// broker matches every issue, which is what the unscoped BlockingMismatch
+// reports.
 func BlockingMismatchFor(snap map[string]any, broker string) map[string]any {
 	if snap == nil {
 		return nil
@@ -446,11 +167,9 @@ func BlockingMismatchFor(snap map[string]any, broker string) map[string]any {
 	return nil
 }
 
-// entryBlockedBrokers maps each attached broker to whether a blocking
-// consistency issue holds back its new entries. An issue naming a broker
-// blocks only that one; an issue about the monitor journal alone names none
-// and holds back every broker's entries. Exits are never gated by this — an
-// open position is closed on its exit signal regardless.
+// entryBlockedBrokers maps each attached broker to whether a blocking issue
+// holds back its new entries. Exits are never gated by this — an open position
+// is closed on its exit signal regardless.
 func (e *Engine) entryBlockedBrokers(snap map[string]any) map[string]string {
 	out := map[string]string{}
 	for _, nb := range e.brokerSnapshot() {
@@ -462,27 +181,32 @@ func (e *Engine) entryBlockedBrokers(snap map[string]any) map[string]string {
 }
 
 // clearedByFlatExit lists the block codes a broker's own confirmed exit
-// resolves. Both mean "the broker holds shares the journal does not account
-// for"; once this cycle's exit settled that broker flat — journal closed and
-// its position feed empty — the reason is gone.
+// resolves: once this cycle's exit settled that broker flat, an unreadable book
+// from earlier in the same cycle no longer describes anything.
 var clearedByFlatExit = map[string]struct{}{
-	"live_broker_position_without_journal": {},
-	"live_broker_position_symbol_mismatch": {},
+	"broker_positions_unavailable": {},
 }
 
+// Reconcile repairs what it can and reports what it cannot.
+//
+// The only repair left is filling in a broker leg the journal is missing for a
+// position that broker demonstrably holds. Everything the old reconciler did —
+// closing a monitor row from a broker row's exit, projecting a monitor row out
+// of a broker row — was moving data between the two journals, and there is one
+// journal now.
 func (e *Engine) Reconcile(apply bool) map[string]any {
 	snap := e.Consistency()
-	var appliedActions []map[string]any
-	var failedActions []map[string]any
+	appliedActions := []map[string]any{}
+	failedActions := []map[string]any{}
 	if apply {
-		raw, _ := snap["proposedActions"].([]map[string]any)
-		for _, action := range raw {
-			if !asBool(action["autoApplicable"]) {
+		issues, _ := snap["issues"].([]map[string]any)
+		for _, iss := range issues {
+			if fmt.Sprint(iss["code"]) != "position_leg_missing" {
 				continue
 			}
-			row := copyStringAnyMap(action)
+			row := copyStringAnyMap(iss)
 			row["appliedAt"] = e.now().UTC().Format(time.RFC3339Nano)
-			if e.applyConsistencyAction(action) {
+			if e.fillMissingLeg(fmt.Sprint(iss["positionId"]), fmt.Sprint(iss["broker"]), asFloat(iss["quantity"])) {
 				row["result"] = "applied"
 				appliedActions = append(appliedActions, row)
 			} else {
@@ -497,12 +221,6 @@ func (e *Engine) Reconcile(apply bool) map[string]any {
 				"type": "sync_watch_open_flags", "appliedAt": e.now().UTC().Format(time.RFC3339Nano),
 			})
 		}
-	}
-	if appliedActions == nil {
-		appliedActions = []map[string]any{}
-	}
-	if failedActions == nil {
-		failedActions = []map[string]any{}
 	}
 	after := snap
 	if apply {
@@ -521,55 +239,34 @@ func (e *Engine) Reconcile(apply bool) map[string]any {
 	return after
 }
 
-func (e *Engine) applyConsistencyAction(action map[string]any) bool {
-	typ := fmt.Sprint(action["type"])
-	switch typ {
-	case "close_linked_monitor_trade", "close_legacy_monitor_trade":
-		brokerID := fmt.Sprint(action["brokerTradeId"])
-		monID := fmt.Sprint(action["monitorTradeId"])
-		broker, berr := e.getTrade("broker_trades", brokerID)
-		mon, merr := e.getTrade("trades", monID)
-		if berr != nil || merr != nil || broker == nil || mon == nil {
-			return false
-		}
-		if store.SafeTicker(fmt.Sprint(mon["symbol"])) != store.SafeTicker(fmt.Sprint(broker["symbol"])) {
-			return false
-		}
-		exitPrice := asFloat(broker["exitPrice"])
-		exitDate := fmt.Sprint(broker["exitDate"])
-		if !(exitPrice > 0) {
-			return false
-		}
-		if err := e.closeTradeWithPnL("trades", monID, exitPrice, exitDate, broker["exitIBS"], "reconciled_from_broker_history"); err != nil {
-			return false
-		}
-		return true
-	case "project_monitor_from_broker":
-		brokerID := fmt.Sprint(action["brokerTradeId"])
-		broker, err := e.getTrade("broker_trades", brokerID)
-		if err != nil || broker == nil || fmt.Sprint(broker["status"]) != "open" {
-			return false
-		}
-		monID := "m-" + brokerID
-		// A read failure is not "no projection yet": inserting on it would
-		// duplicate the monitor row.
-		if mon, err := e.getTrade("trades", monID); err != nil || mon != nil {
-			return false
-		}
-		if err := e.DB.InsertTrade("trades", map[string]any{
-			"id": monID, "symbol": broker["symbol"], "status": "open",
-			"entryDate": broker["entryDate"], "entryPrice": broker["entryPrice"],
-			"source": broker["source"], "quantity": broker["quantity"],
-		}); err != nil {
-			return false
-		}
-		if err := e.DB.LinkMonitorToBrokerTrade(monID, brokerID); err != nil {
-			return false
-		}
-		mon, err := e.getTrade("trades", monID)
-		return err == nil && mon != nil
+// fillMissingLeg records what a broker demonstrably holds against a position
+// that does not mention it. The quantity comes from the broker's own book; the
+// price is left unknown rather than guessed, because nobody observed a fill.
+func (e *Engine) fillMissingLeg(positionID, broker string, qty float64) bool {
+	if positionID == "" || !(qty > 0) {
+		return false
 	}
-	return false
+	p, err := e.DB.GetPosition(positionID)
+	if err != nil || p == nil || p.Status != "open" {
+		return false
+	}
+	leg := p.Leg(broker)
+	if leg.Executed() {
+		return false
+	}
+	leg.Qty = qty
+	p.SetLeg(broker, leg)
+	p.Quantity = p.ExecutedQty()
+	if err := e.DB.SavePosition(*p); err != nil {
+		e.logAuto("journal_update_failed", "", map[string]any{
+			"op": "fill_missing_leg", "broker": broker, "id": positionID, "error": err.Error(),
+		})
+		return false
+	}
+	e.logAuto("position_leg_filled_from_broker", "", map[string]any{
+		"id": positionID, "broker": broker, "symbol": p.Symbol, "quantity": qty,
+	})
+	return true
 }
 
 // FetchCalendar returns the Webull calendar payload and does not persist it.

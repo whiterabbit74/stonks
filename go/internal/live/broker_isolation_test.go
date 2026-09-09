@@ -133,14 +133,14 @@ func TestBothBrokersExitAndReenterIndependently(t *testing.T) {
 	e, wb, rh := isolationEngine(t)
 	wb.SetPos([]any{map[string]any{"symbol": "AAPL", "quantity": 7.0}})
 	rh.SetPos([]any{map[string]any{"symbol": "AAPL", "quantity": 42.0}})
-	mustInsertBrokerTrade(t, e, "wb-aapl", "AAPL", "webull", "2026-08-20", 7)
-	mustInsertBrokerTrade(t, e, "rh-aapl", "AAPL", "robinhood", "2026-08-20", 42)
-	mustInsertMonitorTrade(t, e, "m-wb-aapl", "AAPL", "wb-aapl", "2026-08-20")
-	mustInsertMonitorTrade(t, e, "m-rh-aapl", "AAPL", "rh-aapl", "2026-08-20")
-	for id, qty := range map[string]float64{"m-wb-aapl": 7, "m-rh-aapl": 42} {
-		if _, err := e.DB.SQL.Exec(`UPDATE trades SET quantity=? WHERE id=?`, qty, id); err != nil {
-			t.Fatal(err)
-		}
+	// Одна позиция, две ноги: у Webull 7 акций, у Robinhood 42.
+	if err := e.DB.SavePosition(store.Position{
+		ID: "aapl", Symbol: "AAPL", Status: "open", EntryDate: "2026-08-20",
+		EntryPrice: store.Ptr[float64](10.0), Quantity: 49,
+		Webull:    store.BrokerLeg{Qty: 7, EntryPrice: store.Ptr[float64](10.0), EntryOrderID: "wb-aapl"},
+		Robinhood: store.BrokerLeg{Qty: 42, EntryPrice: store.Ptr[float64](10.0), EntryOrderID: "rh-aapl"},
+	}); err != nil {
+		t.Fatal(err)
 	}
 	for _, br := range []*MemoryBroker{wb, rh} {
 		br := br
@@ -171,24 +171,24 @@ func TestBothBrokersExitAndReenterIndependently(t *testing.T) {
 	if wb.Orders[0].Quantity != 7 || rh.Orders[0].Quantity != 42 {
 		t.Fatalf("each broker sells its own size: %v %v", wb.Orders[0], rh.Orders[0])
 	}
-	rows, _ := e.DB.ListTrades("broker_trades")
-	open := 0
-	for _, r := range rows {
-		if fmt.Sprint(r["status"]) == "open" {
-			open++
+	rows, _ := e.DB.ListPositions()
+	var openMSFT *store.Position
+	for i, r := range rows {
+		if r.Status == "open" && r.Symbol == "MSFT" {
+			openMSFT = &rows[i]
 		}
 	}
-	if open != 2 {
-		t.Fatalf("want one open MSFT row per broker after re-entry, got %d: %+v", open, rows)
+	// Один вход обоих брокеров — одна позиция с двумя ногами.
+	if openMSFT == nil || openMSFT.Webull.Qty == 0 || openMSFT.Robinhood.Qty == 0 {
+		t.Fatalf("re-entry must land on one MSFT position with both legs: %+v", rows)
 	}
-	// Каждая монитор-строка закрылась своим выходом: 7 x $1.9 и 42 x $1.9
-	// (AUD-068 — раньше PnL менялся местами между брокерами).
-	for id, want := range map[string]float64{"m-wb-aapl": 13.3, "m-rh-aapl": 79.8} {
-		row, _ := e.DB.GetTrade("trades", id)
-		if row == nil || fmt.Sprint(row["status"]) != "closed" {
+	// Закрытая AAPL несёт выход обоих брокеров и общий PnL: 49 x $1.9.
+	for id, want := range map[string]float64{"aapl": 93.1} {
+		row, _ := e.DB.GetPosition(id)
+		if row == nil || fmt.Sprint(row.Status) != "closed" {
 			t.Fatalf("%s must be closed: %+v", id, row)
 		}
-		if got := asFloat(row["pnlAbsolute"]); got < want-0.01 || got > want+0.01 {
+		if got := pv(row.PnLAbsolute); got < want-0.01 || got > want+0.01 {
 			t.Fatalf("%s pnlAbsolute=%v want %v", id, got, want)
 		}
 	}
@@ -210,28 +210,4 @@ func drainTrackers(t *testing.T, e *Engine) {
 		time.Sleep(5 * time.Millisecond)
 	}
 	t.Fatal("trackers still pending")
-}
-
-// Битая монитор-строка одного брокера не должна блокировать вход у другого:
-// linked_monitor_trade_missing_broker_match не называл брокера и глушил всех.
-func TestBrokenMonitorRowBlocksOnlyItsOwnBroker(t *testing.T) {
-	e, wb, rh := isolationEngine(t)
-	// Монитор-строка ссылается на сделку Webull, которой в журнале нет.
-	mustInsertMonitorTrade(t, e, "m-ghost", "AAPL", "wb-ghost", "2026-08-20")
-	if err := e.DB.SaveOrderTracker(map[string]any{
-		"clientOrderId": "wb-ghost", "symbol": "AAPL", "action": "entry",
-		"status": "filled", "quantity": 7.0, "broker": "webull", "dateKey": "2026-08-20",
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := e.Aggregate(1, AggregateOpts{ForceSend: true, UpdateState: true}); err != nil {
-		t.Fatal(err)
-	}
-	drainTrackers(t, e)
-	if _, buy, sym := sidesOf(rh); buy != 1 || sym != "MSFT" {
-		t.Fatalf("Robinhood must enter despite Webull's broken monitor row: %+v", rh.Orders)
-	}
-	if _, buy, _ := sidesOf(wb); buy != 0 {
-		t.Fatalf("Webull's own entry stays blocked: %+v", wb.Orders)
-	}
 }

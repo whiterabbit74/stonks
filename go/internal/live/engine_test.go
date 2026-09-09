@@ -61,7 +61,7 @@ func TestExecuteReserveSubmitTrack(t *testing.T) {
 	if len(logs) == 0 {
 		t.Fatal("expected log")
 	}
-	trades, _ := db.ListTrades("broker_trades")
+	trades, _ := db.ListPositions()
 	if len(trades) != 0 {
 		t.Fatalf("must not record trade on submit: %+v", trades)
 	}
@@ -274,7 +274,7 @@ func TestAggregateJournalReadErrorIsNotNoWatches(t *testing.T) {
 	}
 }
 
-func TestT1MismatchHoldsEntryNotExit(t *testing.T) {
+func TestT1UnreadableBookHoldsEntryNotExit(t *testing.T) {
 	dir := t.TempDir()
 	db, err := store.Open(filepath.Join(dir, "t.db"))
 	if err != nil {
@@ -286,9 +286,9 @@ func TestT1MismatchHoldsEntryNotExit(t *testing.T) {
 	_ = db.SaveDataset("MSFT", "MSFT", "", "", bars, false)
 	_ = db.UpsertWatch(map[string]any{"symbol": "AAPL", "lowIBS": 0.9})
 	_ = db.UpsertWatch(map[string]any{"symbol": "MSFT", "lowIBS": 0.9})
-	_ = db.InsertTrade("trades", map[string]any{"id": "m1", "symbol": "AAPL", "status": "open", "entryDate": "2026-08-01"})
-	_ = db.InsertTrade("broker_trades", map[string]any{"id": "b1", "symbol": "MSFT", "status": "open", "entryDate": "2026-08-01"})
-	br := &MemoryBroker{}
+	// Книга брокера не читается: единственная находка, которая всё ещё
+	// придерживает вход. Раньше здесь стояло расхождение двух журналов.
+	br := &MemoryBroker{FailPositions: fmt.Errorf("positions down")}
 	tg := &MemoryTelegram{}
 	e := New(db, &MemoryQuotes{Bars: map[string][]types.OHLC{"AAPL": bars, "MSFT": bars}})
 	e.Broker = br
@@ -305,7 +305,7 @@ func TestT1MismatchHoldsEntryNotExit(t *testing.T) {
 	}
 	// Расхождение — предупреждение, а не остановка: текст обязан говорить, что
 	// придержан только вход, иначе оператор читает это как «торговля встала».
-	if !strings.Contains(res.Text, "Расхождение журналов") || !strings.Contains(res.Text, "выход по сигналу уходит как обычно") {
+	if !strings.Contains(res.Text, "Проверка состояния") || !strings.Contains(res.Text, "выход по сигналу уходит как обычно") {
 		t.Fatalf("mismatch telegram %s", res.Text)
 	}
 	if strings.Contains(res.Text, "Действий нет") {
@@ -326,8 +326,8 @@ func TestT1WaitForFillBlocksEntry(t *testing.T) {
 	_ = db.SaveDataset("MSFT", "MSFT", "", "", entryBars, false)
 	_ = db.UpsertWatch(map[string]any{"symbol": "AAPL", "lowIBS": 0.1, "highIBS": 0.75})
 	_ = db.UpsertWatch(map[string]any{"symbol": "MSFT", "lowIBS": 0.9, "highIBS": 0.75})
-	_ = db.InsertTrade("broker_trades", map[string]any{"id": "b1", "symbol": "AAPL", "status": "open", "entryDate": "2026-08-01", "quantity": 2})
-	_ = db.InsertTrade("trades", map[string]any{"id": "m1", "symbol": "AAPL", "status": "open", "entryDate": "2026-08-01"})
+	_ = db.SavePosition(store.Position{ID: "b1", Symbol: "AAPL", Status: "open", EntryDate: "2026-08-01", Quantity: 2, Webull: store.BrokerLeg{Qty: 2}})
+	_ = db.SavePosition(store.Position{ID: "m1", Symbol: "AAPL", Status: "open", EntryDate: "2026-08-01"})
 	br := &MemoryBroker{Pos: []any{map[string]any{"symbol": "AAPL", "quantity": 2.0}}}
 	e := New(db, &MemoryQuotes{Bars: map[string][]types.OHLC{"AAPL": exitBars, "MSFT": entryBars}})
 	e.Broker = br
@@ -506,11 +506,11 @@ func TestPollTrackersMarksFilled(t *testing.T) {
 	if row != nil {
 		t.Fatal("tracker should be filled")
 	}
-	trades, _ := db.ListTrades("broker_trades")
-	if len(trades) != 1 || trades[0]["status"] != "open" {
+	trades, _ := db.ListPositions()
+	if len(trades) != 1 || trades[0].Status != "open" {
 		t.Fatalf("fill should record broker trade %+v", trades)
 	}
-	if asFloat(trades[0]["entryPrice"]) != 8.2 {
+	if pv(trades[0].EntryPrice) != 8.2 {
 		t.Fatalf("fill price %+v", trades[0])
 	}
 }
@@ -552,8 +552,8 @@ func TestTestBuyCreatesTracker(t *testing.T) {
 	if fmt.Sprint(row["source"]) != "test_buy" {
 		t.Fatalf("source=%v want test_buy", row["source"])
 	}
-	if fmt.Sprint(row["broker"]) != "webull" {
-		t.Fatalf("broker=%v want webull", row["broker"])
+	if legBroker(row) != "webull" {
+		t.Fatalf("broker=%v want webull", legBroker(row))
 	}
 
 	rh := &MemoryBroker{}
@@ -572,8 +572,8 @@ func TestTestBuyCreatesTracker(t *testing.T) {
 	if fmt.Sprint(row["source"]) != "test_buy" {
 		t.Fatalf("source=%v want test_buy", row["source"])
 	}
-	if fmt.Sprint(row["broker"]) != "robinhood" {
-		t.Fatalf("broker=%v want robinhood", row["broker"])
+	if legBroker(row) != "robinhood" {
+		t.Fatalf("broker=%v want robinhood", legBroker(row))
 	}
 }
 
@@ -590,7 +590,7 @@ func TestT11OverviewMatchesNodeLayout(t *testing.T) {
 	_ = db.SaveDataset("MSFT", "MSFT", "", "", flatBars, false)
 	_ = db.UpsertWatch(map[string]any{"symbol": "AAPL", "lowIBS": 0.1, "highIBS": 0.75})
 	_ = db.UpsertWatch(map[string]any{"symbol": "MSFT", "lowIBS": 0.1, "highIBS": 0.75})
-	_ = db.InsertTrade("trades", map[string]any{"id": "m1", "symbol": "MSFT", "status": "open", "entryDate": "2026-08-20", "entryPrice": 10.0})
+	_ = db.SavePosition(store.Position{ID: "m1", Symbol: "MSFT", Status: "open", EntryDate: "2026-08-20", EntryPrice: store.Ptr[float64](10.0)})
 	e := New(db, &MemoryQuotes{Bars: map[string][]types.OHLC{"AAPL": entryBars, "MSFT": flatBars}})
 	e.Telegram = &MemoryTelegram{}
 	e.ChatID = "c"
@@ -631,7 +631,7 @@ func TestT1TextHasFreshnessAndPosition(t *testing.T) {
 	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
 	_ = db.SaveDataset("AAPL", "AAPL", "", "", bars, false)
 	_ = db.UpsertWatch(map[string]any{"symbol": "AAPL", "lowIBS": 0.1, "highIBS": 0.75})
-	_ = db.InsertTrade("trades", map[string]any{"id": "m1", "symbol": "AAPL", "status": "open", "entryDate": "2026-08-20", "entryPrice": 8.0})
+	_ = db.SavePosition(store.Position{ID: "m1", Symbol: "AAPL", Status: "open", EntryDate: "2026-08-20", EntryPrice: store.Ptr[float64](8.0)})
 	e := New(db, &MemoryQuotes{Bars: map[string][]types.OHLC{"AAPL": bars}})
 	e.Telegram = &MemoryTelegram{}
 	e.ChatID = "c"

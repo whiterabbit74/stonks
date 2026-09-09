@@ -639,61 +639,6 @@ func (d *DB) T1ExecutionFinished(chatID, dateKey string) (bool, error) {
 	return n != 0, nil
 }
 
-func OpenBrokerTrade(trades []map[string]any) map[string]any {
-	return OpenBrokerTradeFor(trades, "")
-}
-
-// OpenBrokerTradeFor returns the first open non-hidden journal row for broker.
-// An empty broker matches any row. Legacy rows with a blank broker field count
-// as webull so a pre-column journal still blocks that book.
-func OpenBrokerTradeFor(trades []map[string]any, broker string) map[string]any {
-	want := strings.ToLower(strings.TrimSpace(broker))
-	for _, t := range trades {
-		if fmt.Sprint(t["status"]) != "open" || t["isHidden"] == true {
-			continue
-		}
-		if want != "" {
-			got := strings.ToLower(strings.TrimSpace(fmt.Sprint(t["broker"])))
-			if got == "<nil>" {
-				got = ""
-			}
-			if got != want && !(want == "webull" && got == "") {
-				continue
-			}
-		}
-		return t
-	}
-	return nil
-}
-
-// OpenBrokerTrades returns every open non-hidden journal row in list order.
-func OpenBrokerTrades(trades []map[string]any) []map[string]any {
-	var out []map[string]any
-	for _, t := range trades {
-		if OpenBrokerTradeFor([]map[string]any{t}, "") != nil {
-			out = append(out, t)
-		}
-	}
-	if out == nil {
-		return []map[string]any{}
-	}
-	return out
-}
-
-// OpenBrokerTradesByBroker groups open non-hidden rows by broker. A blank
-// broker field counts as webull, matching OpenBrokerTradeFor.
-func OpenBrokerTradesByBroker(trades []map[string]any) map[string][]map[string]any {
-	out := map[string][]map[string]any{}
-	for _, t := range OpenBrokerTrades(trades) {
-		name := strings.ToLower(strings.TrimSpace(fmt.Sprint(t["broker"])))
-		if name == "" || name == "<nil>" {
-			name = "webull"
-		}
-		out[name] = append(out[name], t)
-	}
-	return out
-}
-
 func OpenTradeForSymbol(rows []map[string]any, symbol string) map[string]any {
 	want := SafeTicker(symbol)
 	if want == "" {

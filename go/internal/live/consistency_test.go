@@ -7,54 +7,99 @@ import (
 	"mktorder.com/go/internal/store"
 )
 
-func TestConsistencyReportsOpenJournalOnEveryBroker(t *testing.T) {
-	e, _, _ := dualBrokerEngine(t, entryBars)
-	mustInsertBrokerTrade(t, e, "w-aapl", "AAPL", "webull", "2026-08-02", 1)
-	mustInsertBrokerTrade(t, e, "r-msft", "MSFT", "robinhood", "2026-08-01", 2)
+// Consistency no longer compares the journal against itself — there is one row
+// per position — so what is left is the journal against the brokers' live books.
 
-	snap := e.Consistency()
-	got := tradeIDs(snap["openBrokerTrades"])
-	if !got["w-aapl"] || !got["r-msft"] {
-		t.Fatalf("state missing a broker book: openBrokerTrades=%v openBrokerTrade=%v", snap["openBrokerTrades"], snap["openBrokerTrade"])
-	}
-	syms := issueSymbols(snap, "broker_trade_without_monitor_projection")
-	if !syms["AAPL"] || !syms["MSFT"] {
-		t.Fatalf("issues missing a broker book: %+v", snap["issues"])
-	}
-}
-
-func TestConsistencyReportsLivePositionOnEveryBroker(t *testing.T) {
+// A position the journal knows about is not a finding, on any broker.
+func TestConsistencyIsSilentOnAJournaledPosition(t *testing.T) {
 	e, webull, rh := dualBrokerEngine(t, entryBars)
-	// Same symbol on both books: a merged held map would collapse them.
 	webull.Pos = []any{map[string]any{"symbol": "AAPL", "quantity": 1.0}}
-	rh.Pos = []any{map[string]any{"symbol": "AAPL", "quantity": 2.0}}
-
-	snap := e.Consistency()
-	brokers := issueBrokers(snap, "live_broker_position_without_journal")
-	if !brokers["webull"] || !brokers["robinhood"] {
-		t.Fatalf("second broker live position invisible: %+v", snap["issues"])
+	rh.Pos = nil
+	if err := e.DB.SavePosition(store.Position{
+		ID: "p1", Symbol: "AAPL", Status: "open", EntryDate: "2026-08-01",
+		EntryPrice: store.Ptr[float64](10.0), Quantity: 1,
+		Webull: store.BrokerLeg{Qty: 1, EntryPrice: store.Ptr[float64](10.0), EntryOrderID: "w1"},
+	}); err != nil {
+		t.Fatal(err)
 	}
-}
-
-func TestConsistencyDoesNotMismatchTwoBrokerBooks(t *testing.T) {
-	e, webull, rh := dualBrokerEngine(t, entryBars)
-	mustInsertBrokerTrade(t, e, "w-aapl", "AAPL", "webull", "2026-08-02", 1)
-	mustInsertBrokerTrade(t, e, "r-msft", "MSFT", "robinhood", "2026-08-01", 2)
-	mustInsertMonitorTrade(t, e, "m-w-aapl", "AAPL", "w-aapl", "2026-08-02")
-	mustInsertMonitorTrade(t, e, "m-r-msft", "MSFT", "r-msft", "2026-08-01")
-	webull.Pos = []any{map[string]any{"symbol": "AAPL", "quantity": 1.0}}
-	rh.Pos = []any{map[string]any{"symbol": "MSFT", "quantity": 2.0}}
-
 	snap := e.Consistency()
-	if iss := issueByCode(snap, "monitor_broker_symbol_mismatch"); iss != nil {
-		t.Fatalf("two per-broker books must not look like a symbol mismatch: %+v", snap["issues"])
-	}
-	got := tradeIDs(snap["openBrokerTrades"])
-	if !got["w-aapl"] || !got["r-msft"] {
-		t.Fatalf("state missing a broker book: %+v", snap["openBrokerTrades"])
+	issues, _ := snap["issues"].([]map[string]any)
+	if len(issues) != 0 {
+		t.Fatalf("a journaled position is not a finding: %+v", issues)
 	}
 	if BlockingMismatch(snap) != nil {
-		t.Fatalf("consistent dual-broker books must not block: %+v", snap["issues"])
+		t.Fatalf("nothing here blocks entries: %+v", issues)
+	}
+}
+
+// Both brokers holding the same journaled ticker is the normal two-broker case,
+// not a discrepancy. The old reconciler reported it because each broker had its
+// own row and the pairing failed.
+func TestConsistencySilentWhenBothBrokersHoldTheSamePosition(t *testing.T) {
+	e, webull, rh := dualBrokerEngine(t, entryBars)
+	webull.Pos = []any{map[string]any{"symbol": "AAPL", "quantity": 1.0}}
+	rh.Pos = []any{map[string]any{"symbol": "AAPL", "quantity": 2.0}}
+	if err := e.DB.SavePosition(store.Position{
+		ID: "p1", Symbol: "AAPL", Status: "open", EntryDate: "2026-08-01",
+		EntryPrice: store.Ptr[float64](10.0), Quantity: 3,
+		Webull:    store.BrokerLeg{Qty: 1, EntryOrderID: "w1"},
+		Robinhood: store.BrokerLeg{Qty: 2, EntryOrderID: "r1"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	issues, _ := e.Consistency()["issues"].([]map[string]any)
+	if len(issues) != 0 {
+		t.Fatalf("two legs of one position are not a mismatch: %+v", issues)
+	}
+}
+
+// A ticker held with nothing in the journal is worth saying out loud, but it
+// does not block: the engine exits a held position on its signal whether or not
+// the journal knows about it.
+func TestConsistencyReportsHeldTickerWithoutJournalWithoutBlocking(t *testing.T) {
+	e, webull, rh := dualBrokerEngine(t, entryBars)
+	webull.Pos = []any{map[string]any{"symbol": "AAPL", "quantity": 1.0}}
+	rh.Pos = nil
+	snap := e.Consistency()
+	issues, _ := snap["issues"].([]map[string]any)
+	if len(issues) != 1 || fmt.Sprint(issues[0]["code"]) != "broker_position_without_journal" {
+		t.Fatalf("want one note about the unjournaled position: %+v", issues)
+	}
+	if BlockingMismatch(snap) != nil {
+		t.Fatal("an unjournaled broker position must not block entries")
+	}
+}
+
+// A journaled position whose leg is missing is repairable from the book, and
+// Reconcile says so.
+func TestConsistencyOffersToFillAMissingLeg(t *testing.T) {
+	e, webull, rh := dualBrokerEngine(t, entryBars)
+	webull.Pos = []any{map[string]any{"symbol": "AAPL", "quantity": 4.0}}
+	rh.Pos = nil
+	_ = e.DB.SavePosition(store.Position{ID: "p1", Symbol: "AAPL", Status: "open", EntryDate: "2026-08-01"})
+	issues, _ := e.Consistency()["issues"].([]map[string]any)
+	if len(issues) != 1 || fmt.Sprint(issues[0]["code"]) != "position_leg_missing" {
+		t.Fatalf("want a repairable leg finding: %+v", issues)
+	}
+	if issues[0]["autoFixable"] != true {
+		t.Fatalf("filling a leg from the book is auto-applicable: %+v", issues[0])
+	}
+}
+
+// An unreadable broker book is the one live finding that still blocks: we do
+// not know what we hold, and buying on that is how a position gets opened twice.
+func TestUnreadableBookBlocksEntries(t *testing.T) {
+	e, webull, rh := dualBrokerEngine(t, entryBars)
+	webull.FailPositions = fmt.Errorf("positions down")
+	rh.Pos = nil
+	snap := e.Consistency()
+	block := BlockingMismatch(snap)
+	if block == nil || fmt.Sprint(block["code"]) != "broker_positions_unavailable" {
+		t.Fatalf("unreadable book must block: %+v", snap["issues"])
+	}
+	// It blocks that broker, not the other one.
+	if BlockingMismatchFor(snap, "robinhood") != nil {
+		t.Fatal("Webull's unreadable book must not block Robinhood")
 	}
 }
 
@@ -74,133 +119,5 @@ func TestHeldSymbolsStayPerBroker(t *testing.T) {
 	}
 	if byBroker["robinhood"]["MSFT"] != 2 || len(byBroker["robinhood"]) != 1 {
 		t.Fatalf("Robinhood держит только MSFT, got %v", byBroker["robinhood"])
-	}
-}
-
-func TestConsistencyStillMismatchesSingleBookDifferentSymbols(t *testing.T) {
-	db, e, _ := testEngine(t, entryBars)
-	if err := db.InsertTrade("trades", map[string]any{
-		"id": "m1", "symbol": "AAPL", "status": "open",
-		"entryDate": "2026-08-01", "entryPrice": 10.0,
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if err := db.InsertTrade("broker_trades", map[string]any{
-		"id": "b1", "symbol": "MSFT", "status": "open",
-		"entryDate": "2026-08-01", "entryPrice": 20.0, "quantity": 1.0, "broker": "webull",
-	}); err != nil {
-		t.Fatal(err)
-	}
-	snap := e.Consistency()
-	block := BlockingMismatch(snap)
-	if block == nil || fmt.Sprint(block["code"]) != "monitor_broker_symbol_mismatch" {
-		t.Fatalf("singleton different-symbol books must still mismatch: %+v", snap["issues"])
-	}
-}
-
-func mustInsertBrokerTrade(t *testing.T, e *Engine, id, symbol, broker, entryDate string, qty float64) {
-	t.Helper()
-	if err := e.DB.InsertTrade("broker_trades", map[string]any{
-		"id": id, "symbol": symbol, "status": "open",
-		"entryDate": entryDate, "entryPrice": 10.0, "quantity": qty, "broker": broker,
-	}); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func mustInsertMonitorTrade(t *testing.T, e *Engine, id, symbol, linked, entryDate string) {
-	t.Helper()
-	if err := e.DB.InsertTrade("trades", map[string]any{
-		"id": id, "symbol": symbol, "status": "open",
-		"entryDate": entryDate, "entryPrice": 10.0,
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := e.DB.SQL.Exec(`UPDATE trades SET linked_broker_trade_id=? WHERE id=?`, linked, id); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func tradeIDs(v any) map[string]bool {
-	out := map[string]bool{}
-	switch rows := v.(type) {
-	case []map[string]any:
-		for _, row := range rows {
-			out[fmt.Sprint(row["id"])] = true
-		}
-	case []any:
-		for _, row := range rows {
-			m, _ := row.(map[string]any)
-			if m != nil {
-				out[fmt.Sprint(m["id"])] = true
-			}
-		}
-	}
-	return out
-}
-
-func issueSymbols(snap map[string]any, code string) map[string]bool {
-	out := map[string]bool{}
-	for _, iss := range issuesOf(snap) {
-		if fmt.Sprint(iss["code"]) == code {
-			out[store.SafeTicker(fmt.Sprint(iss["symbol"]))] = true
-		}
-	}
-	return out
-}
-
-func issueBrokers(snap map[string]any, code string) map[string]bool {
-	out := map[string]bool{}
-	for _, iss := range issuesOf(snap) {
-		if fmt.Sprint(iss["code"]) == code {
-			out[fmt.Sprint(iss["broker"])] = true
-		}
-	}
-	return out
-}
-
-func issueByCode(snap map[string]any, code string) map[string]any {
-	for _, iss := range issuesOf(snap) {
-		if fmt.Sprint(iss["code"]) == code {
-			return iss
-		}
-	}
-	return nil
-}
-
-func issuesOf(snap map[string]any) []map[string]any {
-	if snap == nil {
-		return nil
-	}
-	switch issues := snap["issues"].(type) {
-	case []map[string]any:
-		return issues
-	case []any:
-		var out []map[string]any
-		for _, row := range issues {
-			if m, _ := row.(map[string]any); m != nil {
-				out = append(out, m)
-			}
-		}
-		return out
-	}
-	return nil
-}
-
-// AUD-050: сверка смотрела только «позиция есть, а журнал пуст». Открытая
-// сделка по другому тикеру проходила молча.
-func TestConsistencyReportsSymbolMismatchAgainstJournal(t *testing.T) {
-	e, webull, _ := dualBrokerEngine(t, entryBars)
-	mustInsertBrokerTrade(t, e, "w-qqq", "QQQ", "webull", "2026-08-02", 1)
-	mustInsertMonitorTrade(t, e, "m-w-qqq", "QQQ", "w-qqq", "2026-08-02")
-	webull.Pos = []any{map[string]any{"symbol": "SPY", "quantity": 1.0}}
-
-	snap := e.Consistency()
-	iss := issueByCode(snap, "live_broker_position_symbol_mismatch")
-	if iss == nil {
-		t.Fatalf("SPY at broker against QQQ in the journal must be reported: %+v", snap["issues"])
-	}
-	if BlockingMismatch(snap) == nil {
-		t.Fatal("ticker mismatch must block")
 	}
 }

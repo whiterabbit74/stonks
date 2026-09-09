@@ -20,10 +20,7 @@ func TestPartialFillReplayDoesNotReduceTwice(t *testing.T) {
 	e.Telegram = &MemoryTelegram{}
 	e.ChatID = "c"
 	e.Now = nearCloseNow()
-	if err := db.InsertTrade("broker_trades", map[string]any{
-		"id": "wb-aapl", "symbol": "AAPL", "status": "open", "entryDate": "2026-08-20",
-		"entryPrice": 10.0, "quantity": 10.0, "broker": "webull",
-	}); err != nil {
+	if err := db.SavePosition(store.Position{ID: "wb-aapl", Symbol: "AAPL", Status: "open", EntryDate: "2026-08-20", EntryPrice: store.Ptr[float64](10.0), Quantity: 10.0, Webull: store.BrokerLeg{Qty: 10.0, EntryPrice: store.Ptr[float64](10.0)}}); err != nil {
 		t.Fatal(err)
 	}
 	tracker := map[string]any{
@@ -38,16 +35,16 @@ func TestPartialFillReplayDoesNotReduceTwice(t *testing.T) {
 	e.recordFill(tracker, detail, "partially_filled")
 	e.recordFill(tracker, detail, "partially_filled")
 
-	rows, err := db.ListTrades("broker_trades")
+	rows, err := db.ListPositions()
 	if err != nil {
 		t.Fatal(err)
 	}
 	var open, closed float64
 	for _, r := range rows {
-		if fmt.Sprint(r["status"]) == "open" {
-			open += asFloat(r["quantity"])
+		if fmt.Sprint(r.Status) == "open" {
+			open += r.Quantity
 		} else {
-			closed += asFloat(r["quantity"])
+			closed += r.Quantity
 		}
 	}
 	if open != 6 || closed != 4 {
@@ -66,10 +63,7 @@ func TestSecondPartialFillRecordsOnlyTheDifference(t *testing.T) {
 	e.Telegram = &MemoryTelegram{}
 	e.ChatID = "c"
 	e.Now = nearCloseNow()
-	if err := db.InsertTrade("broker_trades", map[string]any{
-		"id": "wb-aapl", "symbol": "AAPL", "status": "open", "entryDate": "2026-08-20",
-		"entryPrice": 10.0, "quantity": 10.0, "broker": "webull",
-	}); err != nil {
+	if err := db.SavePosition(store.Position{ID: "wb-aapl", Symbol: "AAPL", Status: "open", EntryDate: "2026-08-20", EntryPrice: store.Ptr[float64](10.0), Quantity: 10.0, Webull: store.BrokerLeg{Qty: 10.0, EntryPrice: store.Ptr[float64](10.0)}}); err != nil {
 		t.Fatal(err)
 	}
 	tracker := map[string]any{
@@ -82,16 +76,16 @@ func TestSecondPartialFillRecordsOnlyTheDifference(t *testing.T) {
 	e.recordFill(tracker, map[string]any{"status": "PARTIAL_FILLED", "filled_qty": 4.0, "filled_price": 11.0}, "partially_filled")
 	e.recordFill(tracker, map[string]any{"status": "PARTIAL_FILLED", "filled_qty": 7.0, "filled_price": 11.0}, "partially_filled")
 
-	rows, err := db.ListTrades("broker_trades")
+	rows, err := db.ListPositions()
 	if err != nil {
 		t.Fatal(err)
 	}
 	var open, closed float64
 	for _, r := range rows {
-		if fmt.Sprint(r["status"]) == "open" {
-			open += asFloat(r["quantity"])
+		if fmt.Sprint(r.Status) == "open" {
+			open += r.Quantity
 		} else {
-			closed += asFloat(r["quantity"])
+			closed += r.Quantity
 		}
 	}
 	if open != 3 || closed != 7 {

@@ -22,8 +22,14 @@ type BrokerLeg struct {
 	ExitOrderID  string   `json:"exitOrderId"`
 }
 
-// Executed reports whether this broker has anything of this position.
+// Executed reports whether this broker ever took part in this position, filled
+// or already sold out of it.
 func (l BrokerLeg) Executed() bool { return l.Qty > 0 || l.EntryOrderID != "" }
+
+// Holds reports whether this broker still has shares of it. A leg that has been
+// sold keeps its order ids for the record but holds nothing, and a broker that
+// holds nothing has neither an exit to send nor a reason to wait.
+func (l BrokerLeg) Holds() bool { return l.Qty > 0 }
 
 // Position is one position, once. It carries the signal that opened and closed
 // it (the journal) and, side by side, what each broker executed against that
@@ -86,8 +92,9 @@ func (p *Position) SetLeg(broker string, leg BrokerLeg) {
 	}
 }
 
-// ExecutedQty is how many shares are actually held across brokers. The journal
-// Quantity is what the signal asked for; this is what the brokers did.
+// ExecutedQty is how many shares the brokers still hold between them. Quantity
+// is the size of the position as it was opened and stays there for the P&L;
+// this drops to zero as the legs are sold out.
 func (p *Position) ExecutedQty() float64 { return p.Webull.Qty + p.Robinhood.Qty }
 
 func normalizeBroker(b string) string {
@@ -361,6 +368,46 @@ func (p *Position) applyPnL() {
 	}
 }
 
+// ExitLeg zeroes one broker's leg and records what it got, in one statement,
+// then reports the position as it now stands.
+//
+// One statement on purpose. Both brokers exit in parallel and each used to
+// read the row, zero its own leg in memory and write the whole row back: the
+// second write was built on a copy taken before the first, so it restored the
+// peer's leg and the position never went flat. A read-modify-write of a shared
+// row is a lost update waiting for the two brokers to overlap.
+func (d *DB) ExitLeg(id, broker string, exitPrice float64, exitOrderID string) (*Position, error) {
+	col := "webull"
+	if normalizeBroker(broker) == "robinhood" {
+		col = "rh"
+	}
+	tx, err := d.SQL.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	var price any
+	if exitPrice > 0 {
+		price = exitPrice
+	}
+	if _, err := tx.Exec(`UPDATE positions
+		SET `+col+`_qty=0, `+col+`_exit_price=COALESCE(?, `+col+`_exit_price), `+col+`_exit_order_id=?
+		WHERE id=? AND status='open'`, price, nullText(exitOrderID), id); err != nil {
+		return nil, err
+	}
+	p, err := d.scanPosition(tx.QueryRow(`SELECT `+positionColumns+` FROM positions WHERE id=?`, id))
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("позиция не найдена")
+	}
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return &p, nil
+}
+
 // CloseLeg records what one broker actually got for its exit. It is separate
 // from ClosePosition because the two answer different questions: the journal
 // closes on the signal, a leg closes on a fill, and a position can be closed by
@@ -391,6 +438,151 @@ func (d *DB) OpenPositionForBroker(broker string) (*Position, error) {
 		return nil, nil
 	}
 	if err != nil {
+		return nil, err
+	}
+	return &p, nil
+}
+
+// SplitPosition closes `sold` shares of an open position as a separate closed
+// row and leaves the rest open. Reducing the quantity alone erased the realised
+// P&L of the sold shares from the journal forever (AUD-044). Both writes are
+// one transaction: half of this operation either loses shares or counts them
+// twice.
+//
+// The sold part carries the leg of the broker that sold, so the journal still
+// says who executed it.
+func (d *DB) SplitPosition(id, broker string, sold, exitPrice float64, exitDate, notes string) error {
+	tx, err := d.SQL.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	p, err := d.scanPosition(tx.QueryRow(`SELECT `+positionColumns+` FROM positions WHERE id=? AND status='open'`, id))
+	if err == sql.ErrNoRows {
+		return fmt.Errorf("открытая позиция не найдена")
+	}
+	if err != nil {
+		return err
+	}
+	if !(exitPrice > 0) {
+		return fmt.Errorf("exitPrice must be a positive number")
+	}
+	left := p.Quantity - sold
+	if !(sold > 0) || left <= 1e-9 {
+		return fmt.Errorf("split quantity out of range")
+	}
+
+	part := p
+	part.ID = fmt.Sprintf("%s-p%d", id, time.Now().UnixNano())
+	part.Quantity = sold
+	part.Status = "closed"
+	part.ExitDate = exitDate
+	price := exitPrice
+	part.ExitPrice = &price
+	part.Notes = notes
+	// Only the selling broker's leg moves into the closed part, capped at what
+	// it actually holds.
+	part.Webull, part.Robinhood = BrokerLeg{}, BrokerLeg{}
+	leg := p.Leg(broker)
+	if leg.Qty > sold {
+		leg.Qty = sold
+	}
+	leg.ExitPrice = &price
+	part.SetLeg(broker, leg)
+	part.applyPnL()
+
+	if err := insertMerged(tx, part); err != nil {
+		return err
+	}
+
+	rest := p.Leg(broker)
+	rest.Qty = rest.Qty - sold
+	if rest.Qty < 0 {
+		rest.Qty = 0
+	}
+	col := "webull"
+	if normalizeBroker(broker) == "robinhood" {
+		col = "rh"
+	}
+	res, err := tx.Exec(`UPDATE positions SET quantity=?, `+col+`_qty=? WHERE id=? AND status='open'`, left, rest.Qty, id)
+	if err != nil {
+		return err
+	}
+	if n, err := res.RowsAffected(); err != nil || n != 1 {
+		return fmt.Errorf("partial close left %d open rows: %v", n, err)
+	}
+	return tx.Commit()
+}
+
+// Ptr returns a pointer to v. The price fields of a Position are *float64 so a
+// price nobody observed stays NULL; a caller that does have the number wraps it
+// here.
+func Ptr[T any](v T) *T { return &v }
+
+// EntryFill is one broker's entry execution against a ticker.
+type EntryFill struct {
+	Symbol    string
+	Broker    string
+	OrderID   string
+	Qty       float64
+	Price     *float64
+	EntryDate string
+	Source    string
+	IBS       *float64
+	Notes     string
+	IsTest    bool
+}
+
+// AttachEntry records an entry fill on the open position of that ticker,
+// creating the position when this broker is the first one in.
+//
+// The look-up and the write are one transaction on purpose. The two brokers run
+// in parallel, so "is there an open position in this ticker" and "insert one"
+// raced: both saw none and both inserted, and the ticker ended up with two open
+// positions — the very thing one row per position exists to prevent.
+func (d *DB) AttachEntry(f EntryFill) (*Position, error) {
+	symbol := SafeTicker(f.Symbol)
+	tx, err := d.SQL.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	p, err := d.scanPosition(tx.QueryRow(`SELECT `+positionColumns+
+		` FROM positions WHERE symbol=? AND status='open' ORDER BY entry_date DESC, id LIMIT 1`, symbol))
+	switch {
+	case err == sql.ErrNoRows:
+		p = Position{
+			ID: f.OrderID, Symbol: symbol, Status: "open",
+			EntryDate: f.EntryDate, EntryPrice: f.Price, EntryIBS: f.IBS,
+			Source: f.Source, Notes: f.Notes, IsTest: f.IsTest,
+		}
+		if p.ID == "" {
+			p.ID = fmt.Sprintf("p-%d", time.Now().UnixNano())
+		}
+	case err != nil:
+		return nil, err
+	}
+
+	leg := p.Leg(f.Broker)
+	if leg.EntryOrderID == f.OrderID && leg.Qty >= f.Qty {
+		return &p, tx.Commit() // already recorded
+	}
+	if f.Qty > leg.Qty {
+		leg.Qty = f.Qty
+	}
+	leg.EntryOrderID = f.OrderID
+	if f.Price != nil {
+		leg.EntryPrice = f.Price
+	}
+	p.SetLeg(f.Broker, leg)
+	p.Quantity = p.ExecutedQty()
+
+	if err := insertMerged(tx, p); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
 	return &p, nil

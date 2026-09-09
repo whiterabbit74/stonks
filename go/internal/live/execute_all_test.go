@@ -3,6 +3,7 @@ package live
 import (
 	"context"
 	"fmt"
+	"mktorder.com/go/internal/store"
 	"strings"
 	"testing"
 	"time"
@@ -145,10 +146,7 @@ func TestExecuteRobinhoodOnlySeesItsOwnOpenPosition(t *testing.T) {
 	e.Broker = nil
 	rh := &MemoryBroker{}
 	e.AttachBroker("robinhood", rh)
-	if err := db.InsertTrade("broker_trades", map[string]any{
-		"id": "r1", "symbol": "AAPL", "status": "open", "entryDate": "2026-09-01",
-		"entryPrice": 10.0, "quantity": 1.0, "broker": "robinhood",
-	}); err != nil {
+	if err := db.SavePosition(store.Position{ID: "r1", Symbol: "AAPL", Status: "open", EntryDate: "2026-09-01", EntryPrice: store.Ptr[float64](10.0), Quantity: 1.0, Robinhood: store.BrokerLeg{Qty: 1.0, EntryPrice: store.Ptr[float64](10.0)}}); err != nil {
 		t.Fatal(err)
 	}
 	e.PatchAutoConfig(map[string]any{
@@ -239,10 +237,7 @@ func TestLogBalanceSnapshotDoesNotBlockSubmit(t *testing.T) {
 	br := &slowAccountBroker{entered: make(chan struct{})}
 	br.Pos = []any{map[string]any{"symbol": "AAPL", "quantity": 2.0}}
 	e.Broker = br
-	_ = db.InsertTrade("broker_trades", map[string]any{
-		"id": "b-aapl", "symbol": "AAPL", "status": "open",
-		"entryDate": "2026-08-20", "entryPrice": 10.0, "quantity": 2,
-	})
+	_ = db.SavePosition(store.Position{ID: "b-aapl", Symbol: "AAPL", Status: "open", EntryDate: "2026-08-20", EntryPrice: store.Ptr[float64](10.0), Quantity: 2, Webull: store.BrokerLeg{Qty: 2, EntryPrice: store.Ptr[float64](10.0)}})
 	e.PatchAutoConfig(map[string]any{
 		"enabled": true, "highIBS": 0.75, "allowExits": true, "allowNewEntries": false,
 	})

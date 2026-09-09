@@ -793,14 +793,25 @@ func (e *Engine) awaitFlatAfterExit(brokers []string) bool {
 // broker's exit failing to fill (AUD-043). The error is the point: a failed
 // read must never be read as flat.
 func (e *Engine) journalFlat(brokers []string) (bool, error) {
-	rows, err := e.DB.ListTrades("broker_trades")
+	rows, err := e.DB.OpenPositions()
 	if err != nil {
-		e.logAuto("journal_read_failed", "", map[string]any{"table": "broker_trades", "op": "await_flat", "error": err.Error()})
+		e.logAuto("journal_read_failed", "", map[string]any{"op": "await_flat", "error": err.Error()})
 		return false, err
 	}
-	for _, b := range brokerScope(brokers) {
-		if store.OpenBrokerTradeFor(rows, b) != nil {
-			return false, nil
+	if len(brokers) == 0 {
+		// Unscoped: any broker still holding anything counts.
+		for _, p := range rows {
+			if p.Webull.Holds() || p.Robinhood.Holds() {
+				return false, nil
+			}
+		}
+		return true, nil
+	}
+	for _, b := range brokers {
+		for _, p := range rows {
+			if p.Leg(b).Holds() {
+				return false, nil
+			}
 		}
 	}
 	return true, nil

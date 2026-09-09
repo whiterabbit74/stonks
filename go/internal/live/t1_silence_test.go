@@ -85,8 +85,8 @@ func TestConsistencyIssueLineReportsFlatBooks(t *testing.T) {
 		t.Fatalf("want the foreign position flagged once: %+v", issues)
 	}
 	line := formatConsistencyIssueLine(issues[0], snap)
-	if !strings.Contains(line, "monitor FLAT") || !strings.Contains(line, "broker FLAT") {
-		t.Fatalf("both journals are flat here: %s", line)
+	if !strings.Contains(line, "AAL") || !strings.Contains(line, "в журнале такой позиции нет") {
+		t.Fatalf("the line must name the ticker and say what is wrong: %s", line)
 	}
 }
 

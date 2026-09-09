@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"mktorder.com/go/internal/store"
 	"testing"
 	"time"
 
@@ -39,7 +40,7 @@ func TestListingLagDoesNotMintSecondOrder(t *testing.T) {
 	}
 	br.SetDetail(oid, map[string]any{"status": "FILLED", "avg_price": 8.2, "filled_qty": 1, "client_order_id": oid})
 	waitTrackerFinal(t, e, db, "AAPL", "entry")
-	trades, _ := db.ListTrades("broker_trades")
+	trades, _ := db.ListPositions()
 	if len(trades) != 1 {
 		t.Fatalf("want one journal row after delayed fill, got %+v", trades)
 	}
@@ -56,17 +57,14 @@ func TestListingLagThenRejectedDoesNotDeleteJournal(t *testing.T) {
 		t.Fatalf("submit %+v", res.Broker)
 	}
 	oid := br.Orders[0].ClientOrderID
-	_ = db.InsertTrade("broker_trades", map[string]any{
-		"id": oid, "symbol": "AAPL", "status": "open",
-		"entryDate": "2026-09-01", "entryPrice": 8.2, "quantity": 1.0, "broker": "webull",
-	})
+	_ = db.SavePosition(store.Position{ID: oid, Symbol: "AAPL", Status: "open", EntryDate: "2026-09-01", EntryPrice: store.Ptr[float64](8.2), Quantity: 1.0, Webull: store.BrokerLeg{Qty: 1.0, EntryPrice: store.Ptr[float64](8.2)}})
 	e.PollTrackers()
-	if row, _ := db.GetTrade("broker_trades", oid); row == nil {
+	if row, _ := db.GetPosition(oid); row == nil {
 		t.Fatal("listing lag deleted the live journal row")
 	}
 	br.SetDetail(oid, map[string]any{"status": "REJECTED", "client_order_id": oid})
 	waitTrackerFinal(t, e, db, "AAPL", "entry")
-	if row, _ := db.GetTrade("broker_trades", oid); row == nil {
+	if row, _ := db.GetPosition(oid); row == nil {
 		t.Fatal("rejected-after-lag must not deletePhantom a journal row")
 	}
 }
@@ -77,10 +75,7 @@ func TestListingLagAfterRestartKeepsJournal(t *testing.T) {
 	e.Sleep = func(time.Duration) {}
 	br.ListingLag = true
 	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true})
-	_ = db.InsertTrade("broker_trades", map[string]any{
-		"id": "oid-restart", "symbol": "AAPL", "status": "open",
-		"entryDate": "2026-09-01", "entryPrice": 8.2, "quantity": 1.0, "broker": "webull",
-	})
+	_ = db.SavePosition(store.Position{ID: "oid-restart", Symbol: "AAPL", Status: "open", EntryDate: "2026-09-01", EntryPrice: store.Ptr[float64](8.2), Quantity: 1.0, Webull: store.BrokerLeg{Qty: 1.0, EntryPrice: store.Ptr[float64](8.2)}})
 	if err := db.SaveOrderTracker(map[string]any{
 		"clientOrderId": "oid-restart", "symbol": "AAPL", "action": "entry",
 		"status": "submitted", "quantity": 1.0, "source": "t1", "dateKey": "2026-09-01",
@@ -89,15 +84,15 @@ func TestListingLagAfterRestartKeepsJournal(t *testing.T) {
 		t.Fatal(err)
 	}
 	e.PollTrackers()
-	row, _ := db.GetTrade("broker_trades", "oid-restart")
-	if row == nil || fmt.Sprint(row["status"]) != "open" {
+	row, _ := db.GetPosition("oid-restart")
+	if row == nil || fmt.Sprint(row.Status) != "open" {
 		t.Fatalf("restart listing lag deleted journal: %+v", row)
 	}
-	row, err := db.FindPendingTracker("AAPL", "entry")
+	tr, err := db.FindPendingTracker("AAPL", "entry")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if row == nil {
+	if tr == nil {
 		t.Fatal("tracker should stay pending through listing lag")
 	}
 }
@@ -134,7 +129,7 @@ func TestListingLagBudgetMarksExecutionUnknown(t *testing.T) {
 	if st != "execution_unknown" {
 		t.Fatalf("status %q want execution_unknown", st)
 	}
-	trades, _ := db.ListTrades("broker_trades")
+	trades, _ := db.ListPositions()
 	if len(trades) != 0 {
 		t.Fatalf("execution_unknown must not delete/create journal %+v", trades)
 	}
@@ -184,7 +179,7 @@ func TestExecutionUnknownRecoversWhenListingCatchesUp(t *testing.T) {
 	if st := trackerStatus(t, db, oid); st != "filled" {
 		t.Fatalf("status %q want filled after listing recovers", st)
 	}
-	trades, _ := db.ListTrades("broker_trades")
+	trades, _ := db.ListPositions()
 	if len(trades) != 1 {
 		t.Fatalf("want one journal row after recovered fill, got %+v", trades)
 	}
@@ -236,7 +231,7 @@ func TestExpireStaleTrackersMarksUnresolvedAfterStaleDay(t *testing.T) {
 	if row == nil {
 		t.Fatal("unresolved must still block a new entry")
 	}
-	trades, _ := db.ListTrades("broker_trades")
+	trades, _ := db.ListPositions()
 	if len(trades) != 0 {
 		t.Fatalf("unresolved must not fabricate a journal row %+v", trades)
 	}
@@ -274,10 +269,7 @@ func TestResolveTrackerAbsentDeletesPhantomAndUnblocks(t *testing.T) {
 	oid := br.Orders[0].ClientOrderID
 	// A phantom journal row, as submitEvaluated writes optimistically before
 	// the fill is confirmed.
-	_ = db.InsertTrade("broker_trades", map[string]any{
-		"id": oid, "symbol": "AAPL", "status": "open",
-		"entryDate": "2026-09-01", "entryPrice": 8.2, "quantity": 1.0, "broker": "webull",
-	})
+	_ = db.SavePosition(store.Position{ID: oid, Symbol: "AAPL", Status: "open", EntryDate: "2026-09-01", EntryPrice: store.Ptr[float64](8.2), Quantity: 1.0, Webull: store.BrokerLeg{Qty: 1.0, EntryPrice: store.Ptr[float64](8.2)}})
 	e.PollTrackers()
 	if st := trackerStatus(t, db, oid); st != "execution_unknown" {
 		t.Fatalf("status %q want execution_unknown", st)
@@ -289,7 +281,7 @@ func TestResolveTrackerAbsentDeletesPhantomAndUnblocks(t *testing.T) {
 	if fmt.Sprint(tracker["status"]) != "terminal_absent" {
 		t.Fatalf("resolved tracker status = %v, want terminal_absent", tracker["status"])
 	}
-	if row, _ := db.GetTrade("broker_trades", oid); row != nil {
+	if row, _ := db.GetPosition(oid); row != nil {
 		t.Fatal("resolve(absent) must delete the phantom journal row")
 	}
 	row, err := db.AnyPendingTrackerFor("webull")
@@ -329,7 +321,7 @@ func TestResolveTrackerFilledRecordsJournal(t *testing.T) {
 	if _, err := e.ResolveTracker(oid, "filled", "confirmed fill via broker support", 8.25, 1); err != nil {
 		t.Fatalf("ResolveTracker: %v", err)
 	}
-	trades, _ := db.ListTrades("broker_trades")
+	trades, _ := db.ListPositions()
 	if len(trades) != 1 {
 		t.Fatalf("want one journal row after resolve(filled), got %+v", trades)
 	}

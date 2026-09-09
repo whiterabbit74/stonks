@@ -175,7 +175,6 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/telegram/ema-alerts", wrap(s.handleEMAAlertPost))
 	s.mux.HandleFunc("PATCH /api/telegram/ema-alerts/{id}", wrap(s.handleEMAAlertPatch))
 	s.mux.HandleFunc("DELETE /api/telegram/ema-alerts/{id}", wrap(s.handleEMAAlertDelete))
-	s.mux.HandleFunc("GET /api/telegram/trades", wrap(s.handleMonitorTrades))
 	s.mux.HandleFunc("POST /api/telegram/send", wrap(s.handleTelegramSend))
 	s.mux.HandleFunc("POST /api/telegram/test", wrap(s.handleTelegramTest))
 	s.mux.HandleFunc("POST /api/telegram/simulate", wrap(s.handleTelegramSimulate))
@@ -185,17 +184,13 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/telegram/command", wrap(s.handleTelegramCommand))
 	s.mux.HandleFunc("GET /api/monitor/consistency", wrap(s.handleMonitorConsistency))
 	s.mux.HandleFunc("POST /api/monitor/reconcile", wrap(s.handleMonitorReconcile))
-	// Trades
-	s.mux.HandleFunc("GET /api/trades", wrap(s.handleListTrades))
-	s.mux.HandleFunc("POST /api/trades", wrap(s.handlePostTrade))
-	s.mux.HandleFunc("PATCH /api/trades/{id}", wrap(s.handlePatchTrade))
-	s.mux.HandleFunc("POST /api/trades/{id}/close-monitor", wrap(s.handleCloseMonitor))
-	s.mux.HandleFunc("DELETE /api/trades/{id}", wrap(s.handleDeleteTrade))
-	// Broker
-	s.mux.HandleFunc("GET /api/broker-trades", wrap(s.handleListBroker))
-	s.mux.HandleFunc("POST /api/broker-trades", wrap(s.handlePostBroker))
-	s.mux.HandleFunc("PATCH /api/broker-trades/{id}", wrap(s.handlePatchBroker))
-	s.mux.HandleFunc("DELETE /api/broker-trades/{id}", wrap(s.handleDeleteBroker))
+	// Positions — one journal. /api/trades and /api/broker-trades are gone
+	// with the two tables they served.
+	s.mux.HandleFunc("GET /api/positions", wrap(s.handleListPositions))
+	s.mux.HandleFunc("POST /api/positions", wrap(s.handlePostPosition))
+	s.mux.HandleFunc("PATCH /api/positions/{id}", wrap(s.handlePatchPosition))
+	s.mux.HandleFunc("POST /api/positions/{id}/close", wrap(s.handleClosePosition))
+	s.mux.HandleFunc("DELETE /api/positions/{id}", wrap(s.handleDeletePosition))
 	// Quotes
 	s.mux.HandleFunc("GET /api/quote/{symbol}", wrap(s.handleQuote))
 	s.mux.HandleFunc("GET /api/quotes/webull-batch", wrap(s.handleWebullBatch))
@@ -1563,61 +1558,100 @@ func filterHiddenTrades(list []map[string]any, includeHidden bool) []map[string]
 	return out
 }
 
-func (s *Server) handleMonitorTrades(w http.ResponseWriter, r *http.Request) {
-	list, err := s.DB.ListTrades("trades")
+// filterPositions drops what the strategy view must not show: hidden rows, and
+// test buys. A test buy is a real order at the broker, so it stays in the
+// journal — but it is not a strategy trade, and the monitoring page and the
+// statistics are about the strategy.
+func filterPositions(list []store.Position, includeHidden, includeTest bool) []store.Position {
+	out := make([]store.Position, 0, len(list))
+	for _, p := range list {
+		if p.IsHidden && !includeHidden {
+			continue
+		}
+		if p.IsTest && !includeTest {
+			continue
+		}
+		out = append(out, p)
+	}
+	return out
+}
+
+func (s *Server) handleListPositions(w http.ResponseWriter, r *http.Request) {
+	list, err := s.DB.ListPositions()
 	if err != nil {
 		writeJSON(w, 500, map[string]any{"error": err.Error()})
 		return
 	}
-	list = filterHiddenTrades(list, includeHiddenTrades(r))
-	writeJSON(w, 200, map[string]any{"trades": list, "total": len(list)})
+	list = filterPositions(list, includeHiddenTrades(r), r.URL.Query().Get("includeTest") == "1")
+	writeJSON(w, 200, map[string]any{"positions": list, "total": len(list)})
 }
 
-func (s *Server) handleListTrades(w http.ResponseWriter, r *http.Request) {
-	list, err := s.DB.ListTrades("trades")
-	if err != nil {
-		writeJSON(w, 500, map[string]any{"error": err.Error()})
-		return
-	}
-	writeJSON(w, 200, filterHiddenTrades(list, includeHiddenTrades(r)))
-}
-
-func (s *Server) handlePostTrade(w http.ResponseWriter, r *http.Request) {
-	var body map[string]any
+func (s *Server) handlePostPosition(w http.ResponseWriter, r *http.Request) {
+	var body store.Position
 	if !s.requireJSON(w, r, &body) {
 		return
 	}
-	if err := s.DB.InsertTrade("trades", body); err != nil {
+	if store.SafeTicker(body.Symbol) == "" {
+		writeJSON(w, 400, map[string]any{"error": "Не указан тикер"})
+		return
+	}
+	if err := s.DB.SavePosition(body); err != nil {
 		writeJSON(w, 500, map[string]any{"error": err.Error()})
 		return
 	}
 	writeJSON(w, 200, map[string]any{"ok": true})
 }
 
-func (s *Server) handlePatchTrade(w http.ResponseWriter, r *http.Request) {
-	var body map[string]any
+func (s *Server) handlePatchPosition(w http.ResponseWriter, r *http.Request) {
+	var body store.Position
 	if !s.requireJSON(w, r, &body) {
 		return
 	}
-	if err := s.DB.PatchTrade("trades", r.PathValue("id"), body); err != nil {
+	existing, err := s.DB.GetPosition(r.PathValue("id"))
+	if err != nil {
+		writeJSON(w, 500, map[string]any{"error": err.Error()})
+		return
+	}
+	if existing == nil {
+		writeJSON(w, 404, map[string]any{"error": "Позиция не найдена"})
+		return
+	}
+	body.ID = existing.ID
+	if err := s.DB.SavePosition(body); err != nil {
 		writeJSON(w, 500, map[string]any{"error": err.Error()})
 		return
 	}
 	writeJSON(w, 200, map[string]any{"ok": true})
 }
 
-func (s *Server) handleCloseMonitor(w http.ResponseWriter, r *http.Request) {
-	var body map[string]any
+// handleClosePosition closes a position by hand. There is no linked-row check
+// left to make: closing one row cannot leave another half-closed.
+func (s *Server) handleClosePosition(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		ExitPrice float64  `json:"exitPrice"`
+		ExitDate  string   `json:"exitDate"`
+		ExitIBS   *float64 `json:"exitIBS"`
+		Notes     string   `json:"notes"`
+	}
 	if !s.requireJSON(w, r, &body) {
 		return
 	}
-	updated, err := s.DB.CloseMonitorTrade(r.PathValue("id"), body)
+	if !(body.ExitPrice > 0) {
+		writeJSON(w, 400, map[string]any{"error": "exitPrice must be a positive number"})
+		return
+	}
+	if body.ExitDate == "" {
+		body.ExitDate = tradingdate.TodayNYSE(time.Now())
+	}
+	updated, err := s.DB.ClosePosition(r.PathValue("id"), store.PositionExit{
+		Date: body.ExitDate, Price: body.ExitPrice, IBS: body.ExitIBS, Notes: body.Notes,
+	})
 	if err != nil {
 		code := 400
 		switch err.Error() {
-		case "Сделка не найдена":
+		case "позиция не найдена":
 			code = 404
-		case "Сделка уже закрыта", "Linked broker-backed monitor trades must be reconciled automatically":
+		case "позиция уже закрыта":
 			code = 409
 		}
 		writeJSON(w, code, map[string]any{"error": err.Error()})
@@ -1626,61 +1660,8 @@ func (s *Server) handleCloseMonitor(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, updated)
 }
 
-func (s *Server) handleDeleteTrade(w http.ResponseWriter, r *http.Request) {
-	if err := s.DB.DeleteTrade("trades", r.PathValue("id")); err != nil {
-		writeJSON(w, 500, map[string]any{"error": err.Error()})
-		return
-	}
-	writeJSON(w, 200, map[string]any{"ok": true})
-}
-
-func (s *Server) handleListBroker(w http.ResponseWriter, r *http.Request) {
-	broker := strings.TrimSpace(r.URL.Query().Get("broker"))
-	if broker != "" && broker != "webull" && broker != "robinhood" {
-		writeJSON(w, 400, map[string]any{"error": "Неизвестный брокер"})
-		return
-	}
-	list, err := s.DB.ListTrades("broker_trades")
-	if err != nil {
-		writeJSON(w, 500, map[string]any{"error": err.Error()})
-		return
-	}
-	if broker != "" {
-		filtered := make([]map[string]any, 0, len(list))
-		for _, t := range list {
-			b, _ := t["broker"].(string)
-			if b == broker {
-				filtered = append(filtered, t)
-			}
-		}
-		list = filtered
-	}
-	writeJSON(w, 200, list)
-}
-func (s *Server) handlePostBroker(w http.ResponseWriter, r *http.Request) {
-	var body map[string]any
-	if !s.requireJSON(w, r, &body) {
-		return
-	}
-	if err := s.DB.InsertTrade("broker_trades", body); err != nil {
-		writeJSON(w, 500, map[string]any{"error": err.Error()})
-		return
-	}
-	writeJSON(w, 200, map[string]any{"ok": true})
-}
-func (s *Server) handlePatchBroker(w http.ResponseWriter, r *http.Request) {
-	var body map[string]any
-	if !s.requireJSON(w, r, &body) {
-		return
-	}
-	if err := s.DB.PatchTrade("broker_trades", r.PathValue("id"), body); err != nil {
-		writeJSON(w, 500, map[string]any{"error": err.Error()})
-		return
-	}
-	writeJSON(w, 200, map[string]any{"ok": true})
-}
-func (s *Server) handleDeleteBroker(w http.ResponseWriter, r *http.Request) {
-	if err := s.DB.DeleteTrade("broker_trades", r.PathValue("id")); err != nil {
+func (s *Server) handleDeletePosition(w http.ResponseWriter, r *http.Request) {
+	if err := s.DB.DeletePosition(r.PathValue("id")); err != nil {
 		writeJSON(w, 500, map[string]any{"error": err.Error()})
 		return
 	}

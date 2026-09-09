@@ -2,6 +2,7 @@ package live
 
 import (
 	"fmt"
+	"mktorder.com/go/internal/store"
 	"strings"
 	"testing"
 )
@@ -15,7 +16,7 @@ func TestAUD002UnreadableJournalIsNotFlat(t *testing.T) {
 	if !e.awaitFlatAfterExit(nil) {
 		t.Fatal("an empty journal is flat")
 	}
-	if _, err := e.DB.SQL.Exec(`DROP TABLE broker_trades`); err != nil {
+	if _, err := e.DB.SQL.Exec(`DROP TABLE positions`); err != nil {
 		t.Fatal(err)
 	}
 	if e.awaitFlatAfterExit(nil) {
@@ -31,16 +32,13 @@ func TestAUD002UnreadableJournalDoesNotClearOpenWatches(t *testing.T) {
 	if err := e.DB.UpsertWatch(map[string]any{"symbol": "AAPL", "lowIBS": 0.1, "highIBS": 0.75}); err != nil {
 		t.Fatal(err)
 	}
-	if err := e.DB.InsertTrade("trades", map[string]any{
-		"id": "t-aapl", "symbol": "AAPL", "status": "open",
-		"entryDate": "2026-09-01", "entryPrice": 10.0,
-	}); err != nil {
+	if err := e.DB.SavePosition(store.Position{ID: "t-aapl", Symbol: "AAPL", Status: "open", EntryDate: "2026-09-01", EntryPrice: store.Ptr[float64](10.0)}); err != nil {
 		t.Fatal(err)
 	}
 	if res := e.UpdatePositions(); res["success"] != true {
 		t.Fatalf("healthy read must succeed: %+v", res)
 	}
-	if _, err := e.DB.SQL.Exec(`DROP TABLE trades`); err != nil {
+	if _, err := e.DB.SQL.Exec(`DROP TABLE positions`); err != nil {
 		t.Fatal(err)
 	}
 	res := e.UpdatePositions()
@@ -68,7 +66,7 @@ func TestAUD002UnreadableJournalOnExitFillRaisesBlock(t *testing.T) {
 		Action: "exit", Symbol: "AAPL", Quantity: 1,
 		Broker: "webull", DateKey: "2026-09-01",
 	})
-	if _, err := e.DB.SQL.Exec(`DROP TABLE broker_trades`); err != nil {
+	if _, err := e.DB.SQL.Exec(`DROP TABLE positions`); err != nil {
 		t.Fatal(err)
 	}
 	e.recordFill(map[string]any{

@@ -1,16 +1,22 @@
 package live
 
-import "testing"
+import (
+	"mktorder.com/go/internal/store"
+	"testing"
+)
 
-func TestDecideLiveActionEmptyHeldIsMismatch(t *testing.T) {
-	open := &OpenPosition{Symbol: "AAPL"}
+// Брокер не держит тикер открытой позиции: продавать нечего, ордера нет.
+// Раньше это называлось broker_position_mismatch и подавалось оператору как
+// расхождение; с двумя брокерами это обычное состояние — позицию держит другой.
+func TestDecideLiveActionSkipsExitWhenThisBrokerHoldsNothing(t *testing.T) {
+	open := &store.Position{Status: "open", Symbol: "AAPL"}
 	quotes := []LiveQuote{
 		{Symbol: "AAPL", OK: true, IBS: 0.9, Thresholds: QuoteThresholds{LowIBS: 0.1, HighIBS: 0.75}},
 	}
 	held := map[string]float64{}
 	d := decideLiveAction(quotes, []string{"AAPL"}, held, nil, open, true, true)
-	if d["action"] != "none" || d["reason"] != "broker_position_mismatch" {
-		t.Fatalf("empty successful book must be mismatch, not exit: %+v", d)
+	if d["action"] != "none" || d["reason"] != "position_not_held_here" {
+		t.Fatalf("empty successful book must not produce an exit: %+v", d)
 	}
 }
 

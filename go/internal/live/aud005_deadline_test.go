@@ -168,7 +168,7 @@ func TestAUD005StopDuringT1LeavesNoOrder(t *testing.T) {
 	if len(pending) != 0 {
 		t.Fatalf("cancelled T-1 left a tracker behind: %+v", pending)
 	}
-	trades, err := db.ListTrades("broker_trades")
+	trades, err := db.ListPositions()
 	if err != nil {
 		t.Fatal(err)
 	}
