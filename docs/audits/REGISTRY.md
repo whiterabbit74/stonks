@@ -31,6 +31,31 @@ AUD-108 касается отсутствующей колонки; здесь �
 предварительное поглощение `recorded_qty` обнаружено именно у частичного exit.
 Fix commit: отсутствует, исходники не изменялись.
 
+### AUD-112 — OPEN, P1: PATCH позиции восстанавливает уже проданные акции при пересечении с исполнением
+
+`handlePatchPosition` читает строку до чтения JSON, затем `SavePosition` обновляет все
+её поля. Между чтением и записью нет транзакции или проверки версии. Пришедший в это
+время `ExitLeg`/`AttachEntry` теряется: правка только `notes` может восстановить старое
+количество, стереть exit order id, а при пересечении с закрытием — вернуть статус open.
+Это нарушение запрета read-modify-write общей строки в CORE_TRADING_LOGIC §11.
+
+Детерминированный тест `TestAuditPatchResurrectsSoldLeg` на `d0ca508`: позиция AAPL,
+Webull 10 акций; PATCH `{notes: edited}`. Во время первого чтения тела запроса
+(после `GetPosition`) выполняется `ExitLeg(p, webull, 11, exit)`. Ответ PATCH — 200,
+после него `webull_qty=10`, `webull_exit_order_id=""`, `notes=edited`. Ожидалось
+сохранение исполненного выхода: qty=0 и order id=exit. Тест использует свой Reader
+и временную БД, без вероятностного подбора момента гонки и без сети.
+
+Источник: `go/internal/httpapi/server.go:1609-1633`,
+`go/internal/store/positions.go` `SavePosition`.
+Смежные незакрытые этим тестом аналоги: `fillMissingLeg` и `deletePhantom` также
+используют GetPosition → изменение копии → SavePosition. AUD-103 исправляет
+параллельные `AttachEntry`/`ExitLeg`; этот ручной путь в тот фикс не вошёл.
+AUD-104 сохраняет отсутствующие поля при последовательном PATCH, но не защищает от
+изменения строки между чтением и записью.
+Проверка: `go test -overlay /tmp/mkt-audit-20260908/patch-overlay.json ./internal/httpapi -run TestAuditPatchResurrectsSoldLeg -v`.
+Fix commit отсутствует.
+
 ### AUD-075 / CORE-01 — REOPENED, P1: повторный вход всё ещё ждёт другого брокера
 
 Предыдущее исправление `44387ba` сохранено в истории основной строки. На `d0ca508`
