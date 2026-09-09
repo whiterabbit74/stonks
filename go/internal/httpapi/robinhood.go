@@ -76,7 +76,7 @@ func (s *Server) handleRobinhoodAccount(w http.ResponseWriter, r *http.Request) 
 		writeJSON(w, 400, map[string]any{"error": "robinhood not connected"})
 		return
 	}
-	snap, err := br.Account()
+	snap, err := br.Account(r.Context())
 	if err != nil {
 		writeJSON(w, 502, map[string]any{"error": err.Error()})
 		return
@@ -99,17 +99,17 @@ func (s *Server) handleRobinhoodDashboard(w http.ResponseWriter, r *http.Request
 	// balance / positions / openOrders / orderHistory off one shape for both
 	// brokers. Empty slices, never null, so the tables render their own empty
 	// state instead of "Загрузка…".
-	acct, aerr := br.Account()
-	pos, perr := br.Positions()
+	acct, aerr := br.Account(r.Context())
+	pos, perr := br.Positions(r.Context())
 	if pos == nil {
 		pos = []any{}
 	}
 	today := tradingdate.TodayNYSE(time.Now())
-	open, oerr := br.OpenOrders()
+	open, oerr := br.OpenOrders(r.Context())
 	if open == nil {
 		open = []any{}
 	}
-	hist, herr := br.OrderHistory(tradingdate.AddDays(today, -30), today)
+	hist, herr := br.OrderHistory(r.Context(), tradingdate.AddDays(today, -30), today)
 	if hist == nil {
 		hist = []any{}
 	}

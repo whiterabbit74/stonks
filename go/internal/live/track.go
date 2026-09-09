@@ -1,6 +1,7 @@
 package live
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -351,7 +352,7 @@ func (e *Engine) pollTracker(t map[string]any) (bool, error) {
 		}
 		return true, nil
 	}
-	detail, derr := br.OrderDetail(id)
+	detail, derr := br.OrderDetail(context.Background(), id)
 	status := "unknown"
 	if derr != nil {
 		e.logAuto("order_poll_failed", e.metaCorr(id), map[string]any{
@@ -658,14 +659,14 @@ func (e *Engine) findOrderSnapshotOn(br Broker, clientOrderID string) map[string
 		}
 		return nil
 	}
-	if open, err := br.OpenOrders(); err == nil {
+	if open, err := br.OpenOrders(context.Background()); err == nil {
 		if m := match(open); m != nil {
 			return m
 		}
 	}
 	today := tradingdate.TodayNYSE(e.now())
 	start := tradingdate.AddDays(today, -7)
-	if hist, err := br.OrderHistory(start, today); err == nil {
+	if hist, err := br.OrderHistory(context.Background(), start, today); err == nil {
 		return match(hist)
 	}
 	return nil

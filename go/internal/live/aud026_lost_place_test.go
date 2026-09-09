@@ -1,6 +1,7 @@
 package live
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -52,7 +53,7 @@ func webullBrokerFor(t *testing.T, detailBody string, placeStatus int, places *i
 func TestAUD026EmptyOrderDetailIsUnavailableNotAbsent(t *testing.T) {
 	var places int64
 	br := webullBrokerFor(t, `{"code":0,"data":{}}`, 200, &places)
-	_, err := br.OrderDetail("c-1")
+	_, err := br.OrderDetail(context.Background(), "c-1")
 	if errors.Is(err, ErrOrderNotFound) {
 		t.Fatalf("empty detail body read as proof the order is absent: %v", err)
 	}
@@ -106,8 +107,8 @@ func TestAUD026UnreadableStateReadsAreNotEmpty(t *testing.T) {
 			t.Cleanup(ts.Close)
 			br.Client.Base = ts.URL
 
-			pos, perr := br.Positions()
-			open, oerr := br.OpenOrders()
+			pos, perr := br.Positions(context.Background())
+			open, oerr := br.OpenOrders(context.Background())
 			if tc.ok {
 				if perr != nil || pos == nil {
 					t.Fatalf("positions: %v %v", pos, perr)
@@ -139,10 +140,10 @@ func TestAUD026RobinhoodUnreadableToolAnswerIsNotFlat(t *testing.T) {
 		return json.RawMessage(`not json at all`), nil
 	}
 	br := &RobinhoodBroker{Call: call}
-	if pos, err := br.Positions(); err == nil {
+	if pos, err := br.Positions(context.Background()); err == nil {
 		t.Fatalf("unreadable positions answer read as flat: %v", pos)
 	}
-	if open, err := br.OpenOrders(); err == nil {
+	if open, err := br.OpenOrders(context.Background()); err == nil {
 		t.Fatalf("unreadable orders answer read as no working orders: %v", open)
 	}
 }

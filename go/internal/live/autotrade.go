@@ -176,7 +176,7 @@ func (e *Engine) TokenHealth() string {
 	classified, _ := ClassifyWebullHealth(token, status, exp, e.now())
 	_ = e.DB.SaveWebullTokenChecked(token, exp, classified, status)
 	if status == "NORMAL" && e.Broker != nil {
-		_, _ = e.Broker.Account()
+		_, _ = e.Broker.Account(context.Background())
 	}
 	return status
 }
@@ -694,7 +694,7 @@ func (e *Engine) heldSymbolsOn(br Broker, w execWindow) (map[string]float64, err
 		return map[string]float64{}, nil
 	}
 	pos, err := retryBrokerReadWindow(e, w, "positions", func(ctx context.Context) ([]any, error) {
-		return brokerPositions(ctx, br)
+		return br.Positions(ctx)
 	})
 	if err != nil {
 		return nil, err
@@ -791,11 +791,7 @@ func (e *Engine) placeMarketOnce(ctx context.Context, symbol, side string, qty f
 	if br == nil {
 		return OrderResult{Error: "Не заданы ключи Webull"}, fmt.Errorf("Не заданы ключи Webull")
 	}
-	cfg.Ctx = ctx
-	if p, ok := br.(marketCfgPlacer); ok {
-		return p.PlaceMarketCfg(symbol, side, qty, cfg)
-	}
-	return br.PlaceMarket(symbol, side, qty)
+	return br.PlaceMarket(ctx, symbol, side, qty, cfg)
 }
 
 // submitAttempts bounds retries of a single order submission. The decision was
@@ -1061,7 +1057,7 @@ func (e *Engine) orderLanded(w execWindow, clientOrderID string, br Broker) (lan
 	}
 	ctx, cancel := e.attemptContext(w)
 	defer cancel()
-	detail, err := brokerOrderDetail(ctx, br, clientOrderID)
+	detail, err := br.OrderDetail(ctx, clientOrderID)
 	if err != nil {
 		if errors.Is(err, ErrOrderNotFound) {
 			return false, false, nil
@@ -1258,7 +1254,7 @@ func (e *Engine) t1BrokerReconcile(w execWindow) (busy map[string]map[string]boo
 		go func(name string, br Broker) {
 			defer wg.Done()
 			rows, err := retryBrokerReadWindow(e, w, "open_orders", func(ctx context.Context) ([]any, error) {
-				return brokerOpenOrders(ctx, br)
+				return br.OpenOrders(ctx)
 			})
 			mu.Lock()
 			defer mu.Unlock()
@@ -1368,7 +1364,7 @@ func (e *Engine) logBalanceSnapshot(corr, symbol, action string, br Broker) {
 	if br == nil {
 		return
 	}
-	acct, err := br.Account()
+	acct, err := br.Account(context.Background())
 	if err != nil || acct == nil {
 		return
 	}
@@ -1421,11 +1417,11 @@ func (e *Engine) Account() (map[string]any, error) {
 	if e.Broker == nil {
 		return nil, fmt.Errorf("Ключи Webull не настроены")
 	}
-	snap, err := e.Broker.Account()
+	snap, err := e.Broker.Account(context.Background())
 	if err != nil {
 		return nil, err
 	}
-	pos, perr := e.Broker.Positions()
+	pos, perr := e.Broker.Positions(context.Background())
 	if pos == nil {
 		pos = []any{}
 	}
@@ -1509,14 +1505,14 @@ func (e *Engine) Dashboard() (map[string]any, error) {
 	open := []any{}
 	hist := []any{}
 	if e.Broker != nil {
-		if rows, oerr := e.Broker.OpenOrders(); oerr == nil && rows != nil {
+		if rows, oerr := e.Broker.OpenOrders(context.Background()); oerr == nil && rows != nil {
 			open = rows
 		} else if oerr != nil {
 			acc["openOrdersError"] = oerr.Error()
 		}
 		today := tradingdate.TodayNYSE(e.now())
 		start := tradingdate.AddDays(today, -30)
-		if rows, herr := e.Broker.OrderHistory(start, today); herr == nil && rows != nil {
+		if rows, herr := e.Broker.OrderHistory(context.Background(), start, today); herr == nil && rows != nil {
 			hist = rows
 		} else if herr != nil {
 			acc["orderHistoryError"] = herr.Error()
@@ -1664,7 +1660,7 @@ func (e *Engine) ClosePosition(brokerName, symbol string) (OrderResult, error) {
 		return OrderResult{Error: "Не заданы ключи Webull"}, fmt.Errorf("Не заданы ключи Webull")
 	}
 	pos, err := retryBrokerReadWindow(e, backgroundWindow(), "positions", func(ctx context.Context) ([]any, error) {
-		return brokerPositions(ctx, br)
+		return br.Positions(ctx)
 	})
 	if err != nil {
 		return OrderResult{Error: err.Error(), Symbol: symbol, Side: "SELL"}, err
@@ -1740,7 +1736,7 @@ func (e *Engine) cancelOpenOrdersBeforeEntry(w execWindow, symbol string, br Bro
 		return nil, nil
 	}
 	rows, err := retryBrokerReadWindow(e, w, "open_orders", func(ctx context.Context) ([]any, error) {
-		return brokerOpenOrders(ctx, br)
+		return br.OpenOrders(ctx)
 	})
 	if err != nil {
 		return nil, err
@@ -1778,7 +1774,7 @@ func (e *Engine) cancelOpenOrdersBeforeEntry(w execWindow, symbol string, br Bro
 			e.logAuto("foreign_order_left_open", "", map[string]any{"symbol": sym, "clientOrderId": id})
 			continue
 		}
-		if err := br.CancelOrder(id); err != nil {
+		if err := br.CancelOrder(w.parentCtx(), id); err != nil {
 			_ = e.DB.AppendAutotradeLog("open_order_cancel_failed " + id + " " + err.Error())
 			return cancelled, fmt.Errorf("%w %s: %v", ErrOpenOrderCancelFailed, id, err)
 		}

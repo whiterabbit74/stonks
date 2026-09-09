@@ -53,12 +53,7 @@ func (b *LiveBroker) client() *webull.Client {
 	return c
 }
 
-func (b *LiveBroker) PlaceMarket(symbol, side string, qty float64) (OrderResult, error) {
-	return b.PlaceMarketCfg(symbol, side, qty, PlaceMarketCfg{})
-}
-
-func (b *LiveBroker) PlaceMarketCfg(symbol, side string, qty float64, cfg PlaceMarketCfg) (OrderResult, error) {
-	ctx := cfg.ctx()
+func (b *LiveBroker) PlaceMarket(ctx context.Context, symbol, side string, qty float64, cfg PlaceMarketCfg) (OrderResult, error) {
 	c := b.client()
 	if qty <= 0 {
 		return OrderResult{Error: "quantity must be positive"}, fmt.Errorf("quantity must be positive")
@@ -136,8 +131,8 @@ func (b *LiveBroker) PlaceMarketCfg(symbol, side string, qty float64, cfg PlaceM
 	return OrderResult{Submitted: true, ClientOrderID: cid, Quantity: qty, Symbol: symbol, Side: side, Status: status, FilledPrice: filledPrice, FilledQty: filledQty}, nil
 }
 
-func (b *LiveBroker) CloseMarket(symbol string) (OrderResult, error) {
-	pos, err := b.Positions()
+func (b *LiveBroker) CloseMarket(ctx context.Context, symbol string) (OrderResult, error) {
+	pos, err := b.Positions(ctx)
 	if err != nil {
 		return OrderResult{Error: err.Error(), Symbol: symbol, Side: "SELL"}, err
 	}
@@ -146,7 +141,7 @@ func (b *LiveBroker) CloseMarket(symbol string) (OrderResult, error) {
 		err := fmt.Errorf("No broker position found for %s", symbol)
 		return OrderResult{Error: err.Error(), Symbol: symbol, Side: "SELL"}, err
 	}
-	return b.PlaceMarket(symbol, "SELL", qty)
+	return b.PlaceMarket(ctx, symbol, "SELL", qty, PlaceMarketCfg{})
 }
 
 // AccountList returns the accounts Webull itself reports for this app key.
@@ -162,17 +157,9 @@ func (b *LiveBroker) AccountList() ([]any, error) {
 	return rows, nil
 }
 
-func (b *LiveBroker) Account() (map[string]any, error) {
-	return b.account(context.Background())
-}
-
-// AccountCtx implements the optional ctxAccounter extension: sizeOrder's
-// account read is bounded by the same T-1 deadline as the order it sizes.
-func (b *LiveBroker) AccountCtx(ctx context.Context) (map[string]any, error) {
-	return b.account(ctx)
-}
-
-func (b *LiveBroker) account(ctx context.Context) (map[string]any, error) {
+// Account is bounded by the caller's context: sizeOrder's account read shares
+// the T-1 deadline of the order it sizes.
+func (b *LiveBroker) Account(ctx context.Context) (map[string]any, error) {
 	c := b.client()
 	bal, err := c.AccountBalanceCtx(ctx, c.AccountID)
 	if err != nil {
@@ -181,18 +168,10 @@ func (b *LiveBroker) account(ctx context.Context) (map[string]any, error) {
 	return map[string]any{"balance": bal.Data, "account_id": c.AccountID}, nil
 }
 
-func (b *LiveBroker) Positions() ([]any, error) {
-	return b.positions(context.Background())
-}
-
-// PositionsCtx implements the optional ctxPositioner extension: the T-1
-// broker-book reconcile (t1BrokerReconcile) bounds this read by the same
-// deadline as the order it precedes. See P1-1 in AUTOTRADE_ROADMAP.md.
-func (b *LiveBroker) PositionsCtx(ctx context.Context) ([]any, error) {
-	return b.positions(ctx)
-}
-
-func (b *LiveBroker) positions(ctx context.Context) ([]any, error) {
+// Positions is bounded by the caller's context: the T-1 broker-book reconcile
+// (t1BrokerReconcile) shares the deadline of the order it precedes. See P1-1 in
+// AUTOTRADE_ROADMAP.md.
+func (b *LiveBroker) Positions(ctx context.Context) ([]any, error) {
 	c := b.client()
 	resp, err := c.AccountPositionsCtx(ctx, c.AccountID)
 	if err != nil {
@@ -292,18 +271,10 @@ func (b *LiveBroker) RawSplits(symbol string) ([]map[string]any, error) {
 	return out, nil
 }
 
-func (b *LiveBroker) OrderDetail(clientOrderID string) (map[string]any, error) {
-	return b.orderDetail(context.Background(), clientOrderID)
-}
-
-// OrderDetailCtx implements the optional ctxOrderDetailer extension: it lets
-// placeMarket's landed-order check run under the same T-1 deadline as the
-// placement itself. See P1-1 in AUTOTRADE_ROADMAP.md.
-func (b *LiveBroker) OrderDetailCtx(ctx context.Context, clientOrderID string) (map[string]any, error) {
-	return b.orderDetail(ctx, clientOrderID)
-}
-
-func (b *LiveBroker) orderDetail(ctx context.Context, clientOrderID string) (map[string]any, error) {
+// OrderDetail is bounded by the caller's context: placeMarket's landed-order
+// check runs under the same T-1 deadline as the placement itself. See P1-1 in
+// AUTOTRADE_ROADMAP.md.
+func (b *LiveBroker) OrderDetail(ctx context.Context, clientOrderID string) (map[string]any, error) {
 	c := b.client()
 	resp, err := c.OrderDetailCtx(ctx, c.AccountID, clientOrderID)
 	if err != nil {
@@ -327,7 +298,7 @@ func (b *LiveBroker) orderDetail(ctx context.Context, clientOrderID string) (map
 		out["raw"] = string(resp.Raw)
 	}
 	if NormalizeOrderStatus(orderStatusField(out)) == "unknown" {
-		if snap := b.findOrderSnapshotByClientOrderID(clientOrderID); snap != nil {
+		if snap := b.findOrderSnapshotByClientOrderID(ctx, clientOrderID); snap != nil {
 			for k, v := range snap {
 				if _, exists := out[k]; !exists || out[k] == nil || fmt.Sprint(out[k]) == "" {
 					out[k] = v
@@ -356,7 +327,7 @@ func (b *LiveBroker) orderDetail(ctx context.Context, clientOrderID string) (map
 	return out, nil
 }
 
-func (b *LiveBroker) findOrderSnapshotByClientOrderID(clientOrderID string) map[string]any {
+func (b *LiveBroker) findOrderSnapshotByClientOrderID(ctx context.Context, clientOrderID string) map[string]any {
 	match := func(rows []any) map[string]any {
 		for _, row := range rows {
 			m := extractOrderDetailPayload(row)
@@ -369,28 +340,20 @@ func (b *LiveBroker) findOrderSnapshotByClientOrderID(clientOrderID string) map[
 		}
 		return nil
 	}
-	if open, err := b.OpenOrders(); err == nil {
+	if open, err := b.OpenOrders(ctx); err == nil {
 		if m := match(open); m != nil {
 			return m
 		}
 	}
-	if hist, err := b.OrderHistory("", ""); err == nil {
+	if hist, err := b.OrderHistory(ctx, "", ""); err == nil {
 		return match(hist)
 	}
 	return nil
 }
 
-func (b *LiveBroker) OpenOrders() ([]any, error) {
-	return b.openOrders(context.Background())
-}
-
-// OpenOrdersCtx implements the optional ctxOpenOrderser extension: see
-// PositionsCtx / OrderDetailCtx above and P1-1 in AUTOTRADE_ROADMAP.md.
-func (b *LiveBroker) OpenOrdersCtx(ctx context.Context) ([]any, error) {
-	return b.openOrders(ctx)
-}
-
-func (b *LiveBroker) openOrders(ctx context.Context) ([]any, error) {
+// OpenOrders is bounded by the caller's context: see Positions / OrderDetail
+// above and P1-1 in AUTOTRADE_ROADMAP.md.
+func (b *LiveBroker) OpenOrders(ctx context.Context) ([]any, error) {
 	c := b.client()
 	resp, err := c.ListOpenOrdersCtx(ctx, c.AccountID, 50)
 	if err != nil {
@@ -414,15 +377,15 @@ func (b *LiveBroker) openOrders(ctx context.Context) ([]any, error) {
 	return rows, nil
 }
 
-func (b *LiveBroker) CancelOrder(clientOrderID string) error {
+func (b *LiveBroker) CancelOrder(ctx context.Context, clientOrderID string) error {
 	c := b.client()
-	_, err := c.CancelOrder(c.AccountID, clientOrderID)
+	_, err := c.CancelOrderCtx(ctx, c.AccountID, clientOrderID)
 	return err
 }
 
-func (b *LiveBroker) OrderHistory(start, end string) ([]any, error) {
+func (b *LiveBroker) OrderHistory(ctx context.Context, start, end string) ([]any, error) {
 	c := b.client()
-	resp, err := c.OrderHistory(c.AccountID, start, end, 100)
+	resp, err := c.OrderHistoryCtx(ctx, c.AccountID, start, end, 100)
 	if err != nil {
 		return nil, err
 	}

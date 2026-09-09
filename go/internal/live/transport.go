@@ -2,6 +2,7 @@ package live
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -173,15 +174,15 @@ func (m *MemoryBroker) SetDetail(id string, d map[string]any) {
 	m.Details[id] = d
 }
 
-func (m *MemoryBroker) PlaceMarketCfg(symbol, side string, qty float64, cfg PlaceMarketCfg) (OrderResult, error) {
+func (m *MemoryBroker) PlaceMarket(ctx context.Context, symbol, side string, qty float64, cfg PlaceMarketCfg) (OrderResult, error) {
 	m.mu.Lock()
 	m.LastCfg = cfg
 	m.NextID = cfg.ClientOrderID
 	m.mu.Unlock()
-	return m.PlaceMarket(symbol, side, qty)
+	return m.place(symbol, side, qty)
 }
 
-func (m *MemoryBroker) PlaceMarket(symbol, side string, qty float64) (OrderResult, error) {
+func (m *MemoryBroker) place(symbol, side string, qty float64) (OrderResult, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	// FailPlaceN == 0 means "fail every placement" so that setting FailPlace
@@ -255,7 +256,7 @@ func (m *MemoryBroker) applyPosition(symbol, side string, qty float64) {
 	m.Pos = next
 }
 
-func (m *MemoryBroker) CloseMarket(symbol string) (OrderResult, error) {
+func (m *MemoryBroker) CloseMarket(ctx context.Context, symbol string) (OrderResult, error) {
 	m.mu.Lock()
 	pos := m.Pos
 	m.mu.Unlock()
@@ -264,10 +265,10 @@ func (m *MemoryBroker) CloseMarket(symbol string) (OrderResult, error) {
 		err := fmt.Errorf("No broker position found for %s", symbol)
 		return OrderResult{Error: err.Error(), Symbol: symbol, Side: "SELL"}, err
 	}
-	return m.PlaceMarket(symbol, "SELL", qty)
+	return m.place(symbol, "SELL", qty)
 }
 
-func (m *MemoryBroker) Account() (map[string]any, error) {
+func (m *MemoryBroker) Account(ctx context.Context) (map[string]any, error) {
 	if m.Acct != nil {
 		return m.Acct, nil
 	}
@@ -282,7 +283,7 @@ func (m *MemoryBroker) Account() (map[string]any, error) {
 	}, nil
 }
 
-func (m *MemoryBroker) Positions() ([]any, error) {
+func (m *MemoryBroker) Positions(ctx context.Context) ([]any, error) {
 	m.mu.Lock()
 	m.PosCalls++
 	if m.FailPositions != nil {
@@ -342,7 +343,7 @@ func (m *MemoryBroker) RawSplits(symbol string) ([]map[string]any, error) {
 	return m.Splits, nil
 }
 
-func (m *MemoryBroker) OpenOrders() ([]any, error) {
+func (m *MemoryBroker) OpenOrders(ctx context.Context) ([]any, error) {
 	if m.FailOpenOrders != nil {
 		return nil, m.FailOpenOrders
 	}
@@ -367,14 +368,14 @@ func (m *MemoryBroker) OpenOrders() ([]any, error) {
 	return out, nil
 }
 
-func (m *MemoryBroker) OrderHistory(start, end string) ([]any, error) {
+func (m *MemoryBroker) OrderHistory(ctx context.Context, start, end string) ([]any, error) {
 	if m.Hist != nil {
 		return m.Hist, nil
 	}
 	return []any{}, nil
 }
 
-func (m *MemoryBroker) OrderDetail(clientOrderID string) (map[string]any, error) {
+func (m *MemoryBroker) OrderDetail(ctx context.Context, clientOrderID string) (map[string]any, error) {
 	if m.BeforeDetail != nil {
 		m.BeforeDetail()
 	}
@@ -414,7 +415,7 @@ func (m *MemoryBroker) OrderDetail(clientOrderID string) (map[string]any, error)
 	return map[string]any{"status": "SUBMITTED", "client_order_id": clientOrderID}, nil
 }
 
-func (m *MemoryBroker) CancelOrder(clientOrderID string) error {
+func (m *MemoryBroker) CancelOrder(ctx context.Context, clientOrderID string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.FailCancel != nil {

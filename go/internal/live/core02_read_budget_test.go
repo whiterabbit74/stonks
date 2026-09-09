@@ -16,17 +16,13 @@ type blockingBroker struct {
 	calls chan struct{}
 }
 
-func (b *blockingBroker) PositionsCtx(ctx context.Context) ([]any, error) {
+func (b *blockingBroker) Positions(ctx context.Context) ([]any, error) {
 	select {
 	case b.calls <- struct{}{}:
 	default:
 	}
 	<-ctx.Done()
 	return nil, ctx.Err()
-}
-
-func (b *blockingBroker) Positions() ([]any, error) {
-	return b.PositionsCtx(context.Background())
 }
 
 func budgetEngine(t *testing.T) *Engine {

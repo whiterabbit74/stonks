@@ -65,7 +65,7 @@ func TestNewRobinhoodBrokerUsesServiceCallTool(t *testing.T) {
 	if b.Call != nil {
 		t.Fatal("production constructor must leave Call nil")
 	}
-	_, err := b.PlaceMarket("AAPL", "BUY", 1)
+	_, err := b.PlaceMarket(context.Background(), "AAPL", "BUY", 1, PlaceMarketCfg{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,13 +99,13 @@ func TestPlaceMarketEmptyCfgNewUUIDEachOrder(t *testing.T) {
 			return json.Marshal(map[string]any{})
 		}
 	}}
-	if _, err := b.PlaceMarket("AAPL", "BUY", 1); err != nil {
+	if _, err := b.PlaceMarket(context.Background(), "AAPL", "BUY", 1, PlaceMarketCfg{}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := b.PlaceMarket("AAPL", "SELL", 1); err != nil {
+	if _, err := b.PlaceMarket(context.Background(), "AAPL", "SELL", 1, PlaceMarketCfg{}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := b.CloseMarket("AAPL"); err != nil {
+	if _, err := b.CloseMarket(context.Background(), "AAPL"); err != nil {
 		t.Fatal(err)
 	}
 	if len(refs) != 3 {
@@ -121,10 +121,10 @@ func TestPlaceMarketEmptyCfgNewUUIDEachOrder(t *testing.T) {
 	}
 	same := "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 	refs = nil
-	if _, err := b.PlaceMarketCfg("AAPL", "BUY", 1, PlaceMarketCfg{ClientOrderID: same}); err != nil {
+	if _, err := b.PlaceMarket(context.Background(), "AAPL", "BUY", 1, PlaceMarketCfg{ClientOrderID: same}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := b.PlaceMarketCfg("AAPL", "BUY", 1, PlaceMarketCfg{ClientOrderID: same}); err != nil {
+	if _, err := b.PlaceMarket(context.Background(), "AAPL", "BUY", 1, PlaceMarketCfg{ClientOrderID: same}); err != nil {
 		t.Fatal(err)
 	}
 	if len(refs) != 2 || refs[0] != refs[1] || refs[0] != asUUID(same) {
@@ -153,7 +153,7 @@ func TestRobinhoodPlaceMarketIntegerQtyAndSameRef(t *testing.T) {
 		}
 	}}
 	ref := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-	res, err := b.PlaceMarketCfg("AAPL", "BUY", 12.9, PlaceMarketCfg{ClientOrderID: ref})
+	res, err := b.PlaceMarket(context.Background(), "AAPL", "BUY", 12.9, PlaceMarketCfg{ClientOrderID: ref})
 	if err != nil || !res.Submitted {
 		t.Fatalf("%v %+v", err, res)
 	}
@@ -174,7 +174,7 @@ func TestRobinhoodPlaceMarketIntegerQtyAndSameRef(t *testing.T) {
 		t.Fatalf("ref %v want %v", place["ref_id"], want)
 	}
 	calls = nil
-	_, _ = b.PlaceMarketCfg("AAPL", "BUY", 1, PlaceMarketCfg{ClientOrderID: ref})
+	_, _ = b.PlaceMarket(context.Background(), "AAPL", "BUY", 1, PlaceMarketCfg{ClientOrderID: ref})
 	for _, c := range calls {
 		if c["name"] == "place_equity_order" {
 			if c["args"].(map[string]any)["ref_id"] != want {
@@ -188,7 +188,7 @@ func TestRobinhoodRefusesNonAgentic(t *testing.T) {
 	b := &RobinhoodBroker{Call: func(name string, args map[string]any) (json.RawMessage, error) {
 		return json.Marshal(map[string]any{"content": []any{map[string]any{"type": "text", "text": `{"accounts":[{"account_number":"X","agentic_allowed":false}]}`}}})
 	}}
-	_, err := b.PlaceMarket("AAPL", "BUY", 1)
+	_, err := b.PlaceMarket(context.Background(), "AAPL", "BUY", 1, PlaceMarketCfg{})
 	if err == nil || !strings.Contains(err.Error(), "Agentic") {
 		t.Fatalf("%v", err)
 	}
@@ -205,7 +205,7 @@ func TestRobinhoodBlockingReview(t *testing.T) {
 			return json.Marshal(map[string]any{"ok": true})
 		}
 	}}
-	_, err := b.PlaceMarket("AAPL", "BUY", 1)
+	_, err := b.PlaceMarket(context.Background(), "AAPL", "BUY", 1, PlaceMarketCfg{})
 	if err == nil || !strings.Contains(err.Error(), "blocking") {
 		t.Fatalf("%v", err)
 	}
@@ -242,7 +242,7 @@ func TestRobinhoodPlaceMarketRejectedStateIsNotSubmitted(t *testing.T) {
 			return json.Marshal(map[string]any{})
 		}
 	}}
-	res, err := b.PlaceMarket("AAPL", "BUY", 1)
+	res, err := b.PlaceMarket(context.Background(), "AAPL", "BUY", 1, PlaceMarketCfg{})
 	if err != nil {
 		t.Fatalf("a rejected order is not a transport error: %v", err)
 	}
@@ -275,7 +275,7 @@ func TestRobinhoodPlaceMarketUnrecognizedResponseIsAmbiguous(t *testing.T) {
 			return json.Marshal(map[string]any{})
 		}
 	}}
-	res, err := b.PlaceMarket("AAPL", "BUY", 1)
+	res, err := b.PlaceMarket(context.Background(), "AAPL", "BUY", 1, PlaceMarketCfg{})
 	if err != nil {
 		t.Fatalf("an unrecognized body is not itself a transport error: %v", err)
 	}
@@ -295,7 +295,7 @@ func TestRobinhoodPlaceMarketRejectsNonPositiveQty(t *testing.T) {
 		t.Fatal("must not call MCP for qty <= 0")
 		return nil, nil
 	}}
-	if _, err := b.PlaceMarket("AAPL", "BUY", 0); err == nil {
+	if _, err := b.PlaceMarket(context.Background(), "AAPL", "BUY", 0, PlaceMarketCfg{}); err == nil {
 		t.Fatal("qty 0 must be refused")
 	}
 }
@@ -361,7 +361,7 @@ func TestRobinhoodPlaceUnauthorizedIsAmbiguousWithoutRetry(t *testing.T) {
 	svc.HTTP = mcp.Client()
 	svc.MCP = &robinhood.MCP{HTTP: mcp.Client(), Endpoint: mcp.URL, Token: svc.AccessToken}
 	b := NewRobinhoodBroker(svc)
-	res, err := b.PlaceMarketCfg("AAPL", "BUY", 1, PlaceMarketCfg{ClientOrderID: "11111111-1111-1111-1111-111111111111"})
+	res, err := b.PlaceMarket(context.Background(), "AAPL", "BUY", 1, PlaceMarketCfg{ClientOrderID: "11111111-1111-1111-1111-111111111111"})
 	if err != nil {
 		t.Fatalf("unauthorized place must hand off to the tracker, not return a transport error: %v", err)
 	}
@@ -398,7 +398,7 @@ func TestRobinhoodBrokerUsesStoredAccountNumber(t *testing.T) {
 	svc := &robinhood.Service{HTTP: srv.Client(), DB: db}
 	svc.MCP = &robinhood.MCP{HTTP: srv.Client(), Endpoint: srv.URL, Token: func() (string, error) { return "tok", nil }}
 	b := NewRobinhoodBroker(svc)
-	if _, err := b.PlaceMarket("AAPL", "BUY", 1); err != nil {
+	if _, err := b.PlaceMarket(context.Background(), "AAPL", "BUY", 1, PlaceMarketCfg{}); err != nil {
 		t.Fatal(err)
 	}
 	if b.account != "RH-STORED" {
@@ -419,7 +419,7 @@ func TestRobinhoodCancelOrderRejectsNonUUID(t *testing.T) {
 		calls++
 		return json.Marshal(map[string]any{})
 	}}
-	err := b.CancelOrder("not-a-uuid")
+	err := b.CancelOrder(context.Background(), "not-a-uuid")
 	if err == nil {
 		t.Fatal("expected error for non-UUID order_id")
 	}
@@ -462,12 +462,9 @@ func TestResetAccountClearsCachedAccount(t *testing.T) {
 	}
 }
 
-func TestRobinhoodBrokerImplementsCtxReadExtensions(t *testing.T) {
-	var b *RobinhoodBroker
-	var _ ctxPositioner = b
-	var _ ctxOrderDetailer = b
-	var _ ctxOpenOrderser = b
-	var _ ctxAccounter = b
+func TestRobinhoodBrokerImplementsBroker(t *testing.T) {
+	var _ Broker = (*RobinhoodBroker)(nil)
+	var _ Broker = (*LiveBroker)(nil)
 }
 
 type rhCtxKey struct{}
@@ -484,7 +481,7 @@ func TestRobinhoodAccountCtxPassesContextToTool(t *testing.T) {
 			return json.Marshal(map[string]any{"cash": 1000.0, "buying_power": 1000.0, "equity": 1000.0})
 		},
 	}
-	if _, err := b.AccountCtx(want); err != nil {
+	if _, err := b.Account(want); err != nil {
 		t.Fatal(err)
 	}
 	if got != want {
@@ -507,7 +504,7 @@ func TestRobinhoodPositionsCtxPassesContextToTool(t *testing.T) {
 			return json.Marshal(map[string]any{"results": []any{}})
 		},
 	}
-	if _, err := b.PositionsCtx(want); err != nil {
+	if _, err := b.Positions(want); err != nil {
 		t.Fatal(err)
 	}
 	if got != want {
@@ -532,7 +529,7 @@ func TestRobinhoodPositionsCtxPassesContextToGetAccounts(t *testing.T) {
 			return json.Marshal(map[string]any{"results": []any{}})
 		},
 	}
-	if _, err := b.PositionsCtx(want); err != nil {
+	if _, err := b.Positions(want); err != nil {
 		t.Fatal(err)
 	}
 	if gotAccounts != want {
@@ -556,7 +553,7 @@ func TestRobinhoodOrderHistoryFiltersByDateRange(t *testing.T) {
 			return json.Marshal(map[string]any{})
 		},
 	}
-	got, err := b.OrderHistory("2026-08-01", "2026-08-31")
+	got, err := b.OrderHistory(context.Background(), "2026-08-01", "2026-08-31")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -595,7 +592,7 @@ func TestRobinhoodAccountReadsPortfolioEnvelope(t *testing.T) {
 			})
 		},
 	}
-	acct, err := b.Account()
+	acct, err := b.Account(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -622,7 +619,7 @@ func TestRobinhoodCancelUsesBrokerOrderID(t *testing.T) {
 		}
 		return nil, nil
 	}}
-	if err := b.CancelOrder(ref); err != nil {
+	if err := b.CancelOrder(context.Background(), ref); err != nil {
 		t.Fatal(err)
 	}
 	if cancelArgs["order_id"] != srv {
@@ -669,7 +666,7 @@ func TestReviewOrderIsCalledWithoutRefID(t *testing.T) {
 	t.Cleanup(srv.Close)
 	svc := &robinhood.Service{HTTP: srv.Client()}
 	svc.MCP = &robinhood.MCP{HTTP: srv.Client(), Endpoint: srv.URL, Token: func() (string, error) { return "tok", nil }}
-	if _, err := NewRobinhoodBroker(svc).PlaceMarket("AAL", "BUY", 1); err != nil {
+	if _, err := NewRobinhoodBroker(svc).PlaceMarket(context.Background(), "AAL", "BUY", 1, PlaceMarketCfg{}); err != nil {
 		t.Fatal(err)
 	}
 	if reviewArgs == nil || placeArgs == nil {
@@ -736,7 +733,7 @@ func TestOrderDetailFindsOrderByBrokerOrderID(t *testing.T) {
 	svc.MCP = &robinhood.MCP{HTTP: srv.Client(), Endpoint: srv.URL, Token: func() (string, error) { return "tok", nil }}
 	b := NewRobinhoodBroker(svc)
 
-	res, err := b.PlaceMarket("AAL", "BUY", 1)
+	res, err := b.PlaceMarket(context.Background(), "AAL", "BUY", 1, PlaceMarketCfg{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -746,7 +743,7 @@ func TestOrderDetailFindsOrderByBrokerOrderID(t *testing.T) {
 	if placedRef == "" {
 		t.Fatal("place must send ref_id")
 	}
-	detail, err := b.OrderDetail(res.ClientOrderID)
+	detail, err := b.OrderDetail(context.Background(), res.ClientOrderID)
 	if err != nil {
 		t.Fatalf("order must be findable after placement: %v", err)
 	}
@@ -814,14 +811,14 @@ func TestOrderDetailAfterEnvelopedPlaceResponse(t *testing.T) {
 	svc.MCP = &robinhood.MCP{HTTP: srv.Client(), Endpoint: srv.URL, Token: func() (string, error) { return "tok", nil }}
 	b := NewRobinhoodBroker(svc)
 
-	res, err := b.PlaceMarket("AAL", "BUY", 1)
+	res, err := b.PlaceMarket(context.Background(), "AAL", "BUY", 1, PlaceMarketCfg{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !res.Submitted || res.Ambiguous {
 		t.Fatalf("enveloped place response must be read as submitted: %+v", res)
 	}
-	detail, err := b.OrderDetail(res.ClientOrderID)
+	detail, err := b.OrderDetail(context.Background(), res.ClientOrderID)
 	if err != nil {
 		t.Fatalf("order must be findable after placement: %v", err)
 	}

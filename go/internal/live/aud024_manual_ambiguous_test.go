@@ -1,6 +1,7 @@
 package live
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
@@ -11,25 +12,27 @@ import (
 // the follow-up lookup either: the order may or may not be live at the broker.
 type ambiguousBroker struct{ placed []string }
 
-func (b *ambiguousBroker) PlaceMarket(symbol, side string, qty float64) (OrderResult, error) {
-	return b.PlaceMarketCfg(symbol, side, qty, PlaceMarketCfg{})
-}
-
-func (b *ambiguousBroker) PlaceMarketCfg(symbol, side string, qty float64, cfg PlaceMarketCfg) (OrderResult, error) {
+func (b *ambiguousBroker) PlaceMarket(ctx context.Context, symbol, side string, qty float64, cfg PlaceMarketCfg) (OrderResult, error) {
 	b.placed = append(b.placed, cfg.ClientOrderID)
 	err := fmt.Errorf("post order: timeout")
 	return OrderResult{ClientOrderID: cfg.ClientOrderID, Symbol: symbol, Side: side, Quantity: qty, Error: err.Error()}, err
 }
 
-func (b *ambiguousBroker) CloseMarket(string) (OrderResult, error) { return OrderResult{}, nil }
-func (b *ambiguousBroker) Account() (map[string]any, error)        { return map[string]any{}, nil }
-func (b *ambiguousBroker) Positions() ([]any, error) {
+func (b *ambiguousBroker) CloseMarket(context.Context, string) (OrderResult, error) {
+	return OrderResult{}, nil
+}
+func (b *ambiguousBroker) Account(ctx context.Context) (map[string]any, error) {
+	return map[string]any{}, nil
+}
+func (b *ambiguousBroker) Positions(ctx context.Context) ([]any, error) {
 	return []any{map[string]any{"symbol": "AAPL", "quantity": 3.0}}, nil
 }
-func (b *ambiguousBroker) OpenOrders() ([]any, error)                 { return nil, nil }
-func (b *ambiguousBroker) OrderHistory(string, string) ([]any, error) { return nil, nil }
-func (b *ambiguousBroker) CancelOrder(string) error                   { return nil }
-func (b *ambiguousBroker) OrderDetail(string) (map[string]any, error) {
+func (b *ambiguousBroker) OpenOrders(ctx context.Context) ([]any, error) { return nil, nil }
+func (b *ambiguousBroker) OrderHistory(context.Context, string, string) ([]any, error) {
+	return nil, nil
+}
+func (b *ambiguousBroker) CancelOrder(context.Context, string) error { return nil }
+func (b *ambiguousBroker) OrderDetail(context.Context, string) (map[string]any, error) {
 	return nil, fmt.Errorf("order detail: timeout")
 }
 

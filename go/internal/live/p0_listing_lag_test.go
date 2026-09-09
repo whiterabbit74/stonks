@@ -1,6 +1,7 @@
 package live
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -351,7 +352,7 @@ func TestRobinhoodOrderDetailMissingIsUnavailable(t *testing.T) {
 			return json.RawMessage(`{}`), nil
 		},
 	}
-	_, err := b.OrderDetail("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+	_, err := b.OrderDetail(context.Background(), "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
 	if !errors.Is(err, ErrOrderUnavailable) {
 		t.Fatalf("want ErrOrderUnavailable, got %v", err)
 	}

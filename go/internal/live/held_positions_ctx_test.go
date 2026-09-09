@@ -3,24 +3,17 @@ package live
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"testing"
 	"time"
 )
 
-// hangPositionsBroker implements ctxPositioner. Positions() sleeps (the
-// pre-fix heldSymbolsOn path); PositionsCtx waits on the attempt context
-// (the post-fix path).
+// hangPositionsBroker never answers on its own: Positions waits on the attempt
+// context, so the read only ends when the engine's budget cancels it.
 type hangPositionsBroker struct {
 	MemoryBroker
 }
 
-func (h *hangPositionsBroker) Positions() ([]any, error) {
-	time.Sleep(3 * time.Second)
-	return nil, errors.New("positions hung until sleep ended")
-}
-
-func (h *hangPositionsBroker) PositionsCtx(ctx context.Context) ([]any, error) {
+func (h *hangPositionsBroker) Positions(ctx context.Context) ([]any, error) {
 	<-ctx.Done()
 	return nil, ctx.Err()
 }
@@ -88,18 +81,13 @@ func TestSizeOrderCancelsPositionsReadViaContext(t *testing.T) {
 	}
 }
 
-// hangAccountBroker implements ctxAccounter. Account() sleeps (the pre-fix
-// sizeOrder path); AccountCtx waits on the attempt context (the post-fix path).
+// hangAccountBroker never answers on its own: Account waits on the attempt
+// context, so the read only ends when the engine's budget cancels it.
 type hangAccountBroker struct {
 	MemoryBroker
 }
 
-func (h *hangAccountBroker) Account() (map[string]any, error) {
-	time.Sleep(3 * time.Second)
-	return nil, errors.New("account hung until sleep ended")
-}
-
-func (h *hangAccountBroker) AccountCtx(ctx context.Context) (map[string]any, error) {
+func (h *hangAccountBroker) Account(ctx context.Context) (map[string]any, error) {
 	<-ctx.Done()
 	return nil, ctx.Err()
 }

@@ -60,96 +60,35 @@ type PlaceMarketCfg struct {
 	// so a submission that fails ambiguously can be probed by that id instead
 	// of blindly resent. Empty means the broker generates one.
 	ClientOrderID string
-	// Ctx carries the caller's deadline (the T-1 close-of-session budget, when
-	// there is one) down to the actual broker HTTP/MCP call, so a stuck
-	// request is cancelled instead of eating the whole minute. Left as a cfg
-	// field rather than a positional context.Context parameter so every
-	// existing PlaceMarketCfg implementation and call site keeps compiling —
-	// nil means "no caller deadline", equivalent to context.Background().
-	// See P1-1 in AUTOTRADE_ROADMAP.md.
-	Ctx context.Context
 }
 
-// ctx returns cfg.Ctx, defaulting to context.Background() when unset.
-func (cfg PlaceMarketCfg) ctx() context.Context {
-	if cfg.Ctx != nil {
-		return cfg.Ctx
-	}
-	return context.Background()
-}
-
-type marketCfgPlacer interface {
-	PlaceMarketCfg(symbol, side string, qty float64, cfg PlaceMarketCfg) (OrderResult, error)
-}
-
+// Broker is the trading account the engine acts on. Every method takes a
+// context: the T-1 path has a hard close-of-session deadline, and a broker call
+// that cannot be cancelled eats the whole remaining minute. This used to be an
+// optional OrderDetailCtx/OpenOrdersCtx/PositionsCtx/AccountCtx extension that
+// the engine reached through a type assertion, which made the deadline depend
+// on the concrete broker behind the interface — something the interface itself
+// did not say.
+//
+// PlaceMarket takes the placement config directly for the same reason: the
+// separate PlaceMarketCfg extension meant an order's stop-loss and TIF applied
+// or not depending on the dynamic type.
 type Broker interface {
-	PlaceMarket(symbol, side string, qty float64) (OrderResult, error)
-	CloseMarket(symbol string) (OrderResult, error)
-	Account() (map[string]any, error)
-	Positions() ([]any, error)
-	OrderDetail(clientOrderID string) (map[string]any, error)
-	OpenOrders() ([]any, error)
-	OrderHistory(start, end string) ([]any, error)
-	CancelOrder(clientOrderID string) error
+	PlaceMarket(ctx context.Context, symbol, side string, qty float64, cfg PlaceMarketCfg) (OrderResult, error)
+	CloseMarket(ctx context.Context, symbol string) (OrderResult, error)
+	Account(ctx context.Context) (map[string]any, error)
+	Positions(ctx context.Context) ([]any, error)
+	OrderDetail(ctx context.Context, clientOrderID string) (map[string]any, error)
+	OpenOrders(ctx context.Context) ([]any, error)
+	OrderHistory(ctx context.Context, start, end string) ([]any, error)
+	CancelOrder(ctx context.Context, clientOrderID string) error
 }
 
-// ctxOrderDetailer is an optional Broker extension: a broker that can bound
-// its landed-order lookup (used by placeMarket's idempotency check) by a
-// caller context implements it. Brokers that do not are still called through
-// the plain OrderDetail — the T-1 retry-budget bookkeeping in
-// deadlineExceeded works off the engine's clock regardless, only the actual
-// HTTP/MCP-level cancellation is best-effort for those brokers.
-type ctxOrderDetailer interface {
-	OrderDetailCtx(ctx context.Context, clientOrderID string) (map[string]any, error)
-}
-
-// ctxOpenOrderser is the OpenOrders counterpart of ctxOrderDetailer.
-type ctxOpenOrderser interface {
-	OpenOrdersCtx(ctx context.Context) ([]any, error)
-}
-
-// ctxPositioner is the Positions counterpart of ctxOrderDetailer.
-type ctxPositioner interface {
-	PositionsCtx(ctx context.Context) ([]any, error)
-}
-
-// accountLister is the optional extension for brokers that can report the
-// accounts they actually hold, instead of the one named by config.
+// accountLister stays optional: it is a real capability difference, not a
+// half-migration. Webull can report the accounts it actually holds; the
+// Robinhood MCP broker has no such call.
 type accountLister interface {
 	AccountList() ([]any, error)
-}
-
-// ctxAccounter is the Account counterpart of ctxOrderDetailer.
-type ctxAccounter interface {
-	AccountCtx(ctx context.Context) (map[string]any, error)
-}
-
-func brokerOrderDetail(ctx context.Context, br Broker, clientOrderID string) (map[string]any, error) {
-	if d, ok := br.(ctxOrderDetailer); ok {
-		return d.OrderDetailCtx(ctx, clientOrderID)
-	}
-	return br.OrderDetail(clientOrderID)
-}
-
-func brokerOpenOrders(ctx context.Context, br Broker) ([]any, error) {
-	if d, ok := br.(ctxOpenOrderser); ok {
-		return d.OpenOrdersCtx(ctx)
-	}
-	return br.OpenOrders()
-}
-
-func brokerPositions(ctx context.Context, br Broker) ([]any, error) {
-	if d, ok := br.(ctxPositioner); ok {
-		return d.PositionsCtx(ctx)
-	}
-	return br.Positions()
-}
-
-func brokerAccount(ctx context.Context, br Broker) (map[string]any, error) {
-	if d, ok := br.(ctxAccounter); ok {
-		return d.AccountCtx(ctx)
-	}
-	return br.Account()
 }
 
 type Engine struct {

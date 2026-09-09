@@ -1,6 +1,7 @@
 package live
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
@@ -15,11 +16,7 @@ type rejectingBroker struct {
 	status string
 }
 
-func (b *rejectingBroker) PlaceMarket(symbol, side string, qty float64) (OrderResult, error) {
-	return b.PlaceMarketCfg(symbol, side, qty, PlaceMarketCfg{})
-}
-
-func (b *rejectingBroker) PlaceMarketCfg(symbol, side string, qty float64, cfg PlaceMarketCfg) (OrderResult, error) {
+func (b *rejectingBroker) PlaceMarket(ctx context.Context, symbol, side string, qty float64, cfg PlaceMarketCfg) (OrderResult, error) {
 	b.placed = append(b.placed, cfg.ClientOrderID)
 	return OrderResult{
 		ClientOrderID: cfg.ClientOrderID, Symbol: symbol, Side: side, Quantity: qty,
@@ -27,15 +24,19 @@ func (b *rejectingBroker) PlaceMarketCfg(symbol, side string, qty float64, cfg P
 	}, nil
 }
 
-func (b *rejectingBroker) CloseMarket(string) (OrderResult, error) { return OrderResult{}, nil }
-func (b *rejectingBroker) Account() (map[string]any, error)        { return map[string]any{}, nil }
-func (b *rejectingBroker) Positions() ([]any, error)               { return nil, nil }
-func (b *rejectingBroker) OpenOrders() ([]any, error)              { return nil, nil }
-func (b *rejectingBroker) OrderHistory(string, string) ([]any, error) {
+func (b *rejectingBroker) CloseMarket(context.Context, string) (OrderResult, error) {
+	return OrderResult{}, nil
+}
+func (b *rejectingBroker) Account(ctx context.Context) (map[string]any, error) {
+	return map[string]any{}, nil
+}
+func (b *rejectingBroker) Positions(ctx context.Context) ([]any, error)  { return nil, nil }
+func (b *rejectingBroker) OpenOrders(ctx context.Context) ([]any, error) { return nil, nil }
+func (b *rejectingBroker) OrderHistory(context.Context, string, string) ([]any, error) {
 	return nil, nil
 }
-func (b *rejectingBroker) CancelOrder(string) error { return nil }
-func (b *rejectingBroker) OrderDetail(clientOrderID string) (map[string]any, error) {
+func (b *rejectingBroker) CancelOrder(context.Context, string) error { return nil }
+func (b *rejectingBroker) OrderDetail(ctx context.Context, clientOrderID string) (map[string]any, error) {
 	for _, id := range b.placed {
 		if id == clientOrderID {
 			return map[string]any{"client_order_id": id, "status": b.status}, nil

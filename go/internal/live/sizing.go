@@ -379,7 +379,7 @@ func (e *Engine) sizeOrder(action, symbol string, cfg map[string]any, price floa
 			return 0, fmt.Errorf("Не заданы ключи Webull")
 		}
 		pos, err := retryBrokerReadWindow(e, w, "positions", func(ctx context.Context) ([]any, error) {
-			return brokerPositions(ctx, br)
+			return br.Positions(ctx)
 		})
 		if err != nil {
 			return 0, err
@@ -394,7 +394,7 @@ func (e *Engine) sizeOrder(action, symbol string, cfg map[string]any, price floa
 		return 0, fmt.Errorf("Не удалось получить доступные средства для расчёта размера позиции")
 	}
 	acct, err := retryBrokerReadWindow(e, w, "account", func(ctx context.Context) (map[string]any, error) {
-		return brokerAccount(ctx, br)
+		return br.Account(ctx)
 	})
 	if err != nil {
 		return 0, err
@@ -403,7 +403,7 @@ func (e *Engine) sizeOrder(action, symbol string, cfg map[string]any, price floa
 	var posErr error
 	if extractCashBalance(unwrapBalance(acct)) <= 0 {
 		pos, posErr = retryBrokerReadWindow(e, w, "positions", func(ctx context.Context) ([]any, error) {
-			return brokerPositions(ctx, br)
+			return br.Positions(ctx)
 		})
 	}
 	funds, _, _, serr := resolveEntryBalanceSizing(acct, cfg, pos, posErr)

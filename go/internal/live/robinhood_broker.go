@@ -64,12 +64,7 @@ func NewRobinhoodBroker(svc *robinhood.Service) *RobinhoodBroker {
 	return &RobinhoodBroker{Svc: svc}
 }
 
-func (b *RobinhoodBroker) PlaceMarket(symbol, side string, qty float64) (OrderResult, error) {
-	return b.PlaceMarketCfg(symbol, side, qty, PlaceMarketCfg{})
-}
-
-func (b *RobinhoodBroker) PlaceMarketCfg(symbol, side string, qty float64, cfg PlaceMarketCfg) (OrderResult, error) {
-	ctx := cfg.ctx()
+func (b *RobinhoodBroker) PlaceMarket(ctx context.Context, symbol, side string, qty float64, cfg PlaceMarketCfg) (OrderResult, error) {
 	ref := strings.TrimSpace(cfg.ClientOrderID)
 	if ref == "" {
 		ref = newRefID()
@@ -198,8 +193,8 @@ func robinhoodOrderBody(raw []byte, ref string) map[string]any {
 	return map[string]any{}
 }
 
-func (b *RobinhoodBroker) CloseMarket(symbol string) (OrderResult, error) {
-	pos, err := b.Positions()
+func (b *RobinhoodBroker) CloseMarket(ctx context.Context, symbol string) (OrderResult, error) {
+	pos, err := b.Positions(ctx)
 	if err != nil {
 		return OrderResult{}, err
 	}
@@ -207,14 +202,10 @@ func (b *RobinhoodBroker) CloseMarket(symbol string) (OrderResult, error) {
 	if qty == 0 {
 		return OrderResult{Error: "no position"}, fmt.Errorf("no position")
 	}
-	return b.PlaceMarket(symbol, "SELL", qty)
+	return b.PlaceMarket(ctx, symbol, "SELL", qty, PlaceMarketCfg{})
 }
 
-func (b *RobinhoodBroker) Account() (map[string]any, error) {
-	return b.AccountCtx(context.Background())
-}
-
-func (b *RobinhoodBroker) AccountCtx(ctx context.Context) (map[string]any, error) {
+func (b *RobinhoodBroker) Account(ctx context.Context) (map[string]any, error) {
 	acct, err := b.agenticAccountCtx(ctx)
 	if err != nil {
 		return nil, err
@@ -253,11 +244,7 @@ func money(v any) float64 {
 	return asFloat(v)
 }
 
-func (b *RobinhoodBroker) Positions() ([]any, error) {
-	return b.PositionsCtx(context.Background())
-}
-
-func (b *RobinhoodBroker) PositionsCtx(ctx context.Context) ([]any, error) {
+func (b *RobinhoodBroker) Positions(ctx context.Context) ([]any, error) {
 	acct, err := b.agenticAccountCtx(ctx)
 	if err != nil {
 		return nil, err
@@ -302,11 +289,7 @@ func (b *RobinhoodBroker) brokerOrderID(ref string) string {
 	return b.Svc.DB.RobinhoodOrderID(ref)
 }
 
-func (b *RobinhoodBroker) OrderDetail(clientOrderID string) (map[string]any, error) {
-	return b.OrderDetailCtx(context.Background(), clientOrderID)
-}
-
-func (b *RobinhoodBroker) OrderDetailCtx(ctx context.Context, clientOrderID string) (map[string]any, error) {
+func (b *RobinhoodBroker) OrderDetail(ctx context.Context, clientOrderID string) (map[string]any, error) {
 	acct, err := b.agenticAccountCtx(ctx)
 	if err != nil {
 		return nil, err
@@ -340,19 +323,11 @@ func (b *RobinhoodBroker) OrderDetailCtx(ctx context.Context, clientOrderID stri
 	return found, nil
 }
 
-func (b *RobinhoodBroker) OpenOrders() ([]any, error) {
-	return b.OpenOrdersCtx(context.Background())
-}
-
-func (b *RobinhoodBroker) OpenOrdersCtx(ctx context.Context) ([]any, error) {
+func (b *RobinhoodBroker) OpenOrders(ctx context.Context) ([]any, error) {
 	return b.ordersByState(ctx, false)
 }
 
-func (b *RobinhoodBroker) OrderHistory(start, end string) ([]any, error) {
-	return b.OrderHistoryCtx(context.Background(), start, end)
-}
-
-func (b *RobinhoodBroker) OrderHistoryCtx(ctx context.Context, start, end string) ([]any, error) {
+func (b *RobinhoodBroker) OrderHistory(ctx context.Context, start, end string) ([]any, error) {
 	acct, err := b.agenticAccountCtx(ctx)
 	if err != nil {
 		return nil, err
@@ -405,7 +380,7 @@ func (b *RobinhoodBroker) ordersByState(ctx context.Context, all bool) ([]any, e
 	return open, nil
 }
 
-func (b *RobinhoodBroker) CancelOrder(clientOrderID string) error {
+func (b *RobinhoodBroker) CancelOrder(ctx context.Context, clientOrderID string) error {
 	ref := asUUID(clientOrderID)
 	if _, err := uuid.Parse(ref); err != nil {
 		return fmt.Errorf("cancel order_id is not a UUID: %q", clientOrderID)
@@ -414,7 +389,7 @@ func (b *RobinhoodBroker) CancelOrder(clientOrderID string) error {
 	// generated when placing. Sending ours failed with "order not found", and
 	// the T-1 pre-entry cancel treats that as ErrOpenOrderCancelFailed and
 	// skips the entry (AUD-053). Resolve the broker id from the order first.
-	detail, err := b.OrderDetail(ref)
+	detail, err := b.OrderDetail(ctx, ref)
 	if err != nil {
 		return err
 	}

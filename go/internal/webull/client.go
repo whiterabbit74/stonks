@@ -442,7 +442,7 @@ func (c *Client) ListOpenOrdersCtx(ctx context.Context, accountID string, pageSi
 	}, nil, true, nil)
 }
 
-func (c *Client) OrderHistory(accountID, startDate, endDate string, pageSize int) (*Response, error) {
+func (c *Client) OrderHistoryCtx(ctx context.Context, accountID, startDate, endDate string, pageSize int) (*Response, error) {
 	if accountID == "" {
 		accountID = c.AccountID
 	}
@@ -459,14 +459,14 @@ func (c *Client) OrderHistory(accountID, startDate, endDate string, pageSize int
 	if endDate != "" {
 		q["end_date"] = endDate
 	}
-	return c.Request(http.MethodGet, "/openapi/trade/order/history", q, nil, true, nil)
+	return c.RequestCtx(ctx, http.MethodGet, "/openapi/trade/order/history", q, nil, true, nil)
 }
 
-func (c *Client) CancelOrder(accountID, clientOrderID string) (*Response, error) {
+func (c *Client) CancelOrderCtx(ctx context.Context, accountID, clientOrderID string) (*Response, error) {
 	if accountID == "" {
 		accountID = c.AccountID
 	}
-	return c.Request(http.MethodPost, "/trade/order/cancel", nil, map[string]any{
+	return c.RequestCtx(ctx, http.MethodPost, "/trade/order/cancel", nil, map[string]any{
 		"account_id":      accountID,
 		"client_order_id": clientOrderID,
 	}, true, nil)

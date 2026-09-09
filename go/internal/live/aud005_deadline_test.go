@@ -28,12 +28,12 @@ type slowBroker struct {
 	calls int
 }
 
-func (b *slowBroker) PlaceMarketCfg(symbol, side string, qty float64, cfg PlaceMarketCfg) (OrderResult, error) {
+func (b *slowBroker) PlaceMarket(ctx context.Context, symbol, side string, qty float64, cfg PlaceMarketCfg) (OrderResult, error) {
 	b.mu.Lock()
 	b.calls++
 	*b.clock = b.clock.Add(b.cost)
 	b.mu.Unlock()
-	return b.MemoryBroker.PlaceMarketCfg(symbol, side, qty, cfg)
+	return b.MemoryBroker.PlaceMarket(ctx, symbol, side, qty, cfg)
 }
 
 func (b *slowBroker) placeCalls() int {
@@ -124,20 +124,20 @@ func TestAUD005LeaseWriteFailureIsFailClosed(t *testing.T) {
 // cancelled context means the HTTP call never reaches the broker.
 type ctxBroker struct{ *MemoryBroker }
 
-func (b *ctxBroker) PlaceMarketCfg(symbol, side string, qty float64, cfg PlaceMarketCfg) (OrderResult, error) {
-	if err := cfg.ctx().Err(); err != nil {
+func (b *ctxBroker) PlaceMarket(ctx context.Context, symbol, side string, qty float64, cfg PlaceMarketCfg) (OrderResult, error) {
+	if err := ctx.Err(); err != nil {
 		return OrderResult{Error: err.Error(), Symbol: symbol, Side: side, Quantity: qty}, err
 	}
-	return b.MemoryBroker.PlaceMarketCfg(symbol, side, qty, cfg)
+	return b.MemoryBroker.PlaceMarket(ctx, symbol, side, qty, cfg)
 }
 
 // OrderDetailCtx is the lookup placeMarket uses to ask "did this order land
 // anyway". A real broker's lookup fails on a cancelled context too.
-func (b *ctxBroker) OrderDetailCtx(ctx context.Context, clientOrderID string) (map[string]any, error) {
+func (b *ctxBroker) OrderDetail(ctx context.Context, clientOrderID string) (map[string]any, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	return b.MemoryBroker.OrderDetail(clientOrderID)
+	return b.MemoryBroker.OrderDetail(ctx, clientOrderID)
 }
 
 // TestAUD005StopDuringT1LeavesNoOrder: the process is stopped (context

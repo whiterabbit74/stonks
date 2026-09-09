@@ -1,6 +1,7 @@
 package live
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -47,7 +48,7 @@ func TestLiveBrokerPlaceMarketHitsPlaceAndTrack(t *testing.T) {
 		HTTP: ts.Client(), Base: ts.URL, Host: "api.webull.com",
 		AppKey: "k", AppSecret: "s", AccessToken: "t", AccountID: "acc",
 	}}
-	res, err := br.PlaceMarket("AAPL", "BUY", 2)
+	res, err := br.PlaceMarket(context.Background(), "AAPL", "BUY", 2, PlaceMarketCfg{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,14 +120,14 @@ func TestFilledSubstringInFieldNamesIsNotFill(t *testing.T) {
 		HTTP: ts.Client(), Base: ts.URL, Host: "api.webull.com",
 		AppKey: "k", AppSecret: "s", AccessToken: "t", AccountID: "acc",
 	}}
-	res, err := br.PlaceMarket("AAPL", "BUY", 2)
+	res, err := br.PlaceMarket(context.Background(), "AAPL", "BUY", 2, PlaceMarketCfg{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if res.Status == "filled" {
 		t.Fatalf("SUBMITTED with filled_* fields must not be filled: %+v body=%s", res, statusInBody)
 	}
-	detail, err := br.OrderDetail(res.ClientOrderID)
+	detail, err := br.OrderDetail(context.Background(), res.ClientOrderID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -159,7 +160,7 @@ func TestPlaceMarketCfgSendsExactQuantity(t *testing.T) {
 	}}
 	// A fractional quantity reaches this path only from an exit selling out a
 	// holding a split left fractional, and it must go over the wire intact.
-	_, err := br.PlaceMarketCfg("AAPL", "SELL", 1.73, PlaceMarketCfg{})
+	_, err := br.PlaceMarket(context.Background(), "AAPL", "SELL", 1.73, PlaceMarketCfg{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -172,7 +173,7 @@ func TestPlaceMarketCfgSendsExactQuantity(t *testing.T) {
 	if !strings.Contains(body, `"order_type":"MARKET"`) {
 		t.Fatalf("live path must stay MARKET: %s", body)
 	}
-	_, err = br.PlaceMarketCfg("AAPL", "BUY", 2, PlaceMarketCfg{})
+	_, err = br.PlaceMarket(context.Background(), "AAPL", "BUY", 2, PlaceMarketCfg{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -223,7 +224,7 @@ func TestPlaceMarketCfgRejectedBodyIsNotSubmitted(t *testing.T) {
 		HTTP: ts.Client(), Base: ts.URL, Host: "api.webull.com",
 		AppKey: "k", AppSecret: "s", AccessToken: "t", AccountID: "acc",
 	}}
-	res, err := br.PlaceMarket("AAPL", "BUY", 2)
+	res, err := br.PlaceMarket(context.Background(), "AAPL", "BUY", 2, PlaceMarketCfg{})
 	if err == nil {
 		t.Fatalf("expected an error, got %+v", res)
 	}
@@ -237,7 +238,7 @@ func TestPlaceMarketCfgRejectedBodyIsNotSubmitted(t *testing.T) {
 
 func TestWebullPlaceMarketRejectsNonPositiveQty(t *testing.T) {
 	b := &LiveBroker{}
-	if _, err := b.PlaceMarket("AAPL", "BUY", 0); err == nil {
+	if _, err := b.PlaceMarket(context.Background(), "AAPL", "BUY", 0, PlaceMarketCfg{}); err == nil {
 		t.Fatal("qty 0 must be refused")
 	}
 }
@@ -265,7 +266,7 @@ func TestPlaceMarketCfgMismatchedClientOrderIDIsAmbiguous(t *testing.T) {
 		HTTP: ts.Client(), Base: ts.URL, Host: "api.webull.com",
 		AppKey: "k", AppSecret: "s", AccessToken: "t", AccountID: "acc",
 	}}
-	res, err := br.PlaceMarketCfg("AAPL", "BUY", 2, PlaceMarketCfg{ClientOrderID: "sent-cid"})
+	res, err := br.PlaceMarket(context.Background(), "AAPL", "BUY", 2, PlaceMarketCfg{ClientOrderID: "sent-cid"})
 	if err != nil {
 		t.Fatalf("mismatch must not itself be a hard error: %v", err)
 	}
@@ -293,7 +294,7 @@ func TestOpenOrdersEmptyPageIsZeroOrders(t *testing.T) {
 	}))
 	t.Cleanup(ts.Close)
 	b := &LiveBroker{Client: &webull.Client{HTTP: ts.Client(), Base: ts.URL, Host: "api.webull.com", AppKey: "k", AppSecret: "s", AccessToken: "t", AccountID: "acc"}}
-	rows, err := b.OpenOrders()
+	rows, err := b.OpenOrders(context.Background())
 	if err != nil {
 		t.Fatalf("empty page must read as zero orders: %v", err)
 	}
@@ -309,7 +310,7 @@ func TestOpenOrdersUnreadableBodyStillFails(t *testing.T) {
 	}))
 	t.Cleanup(ts.Close)
 	b := &LiveBroker{Client: &webull.Client{HTTP: ts.Client(), Base: ts.URL, Host: "api.webull.com", AppKey: "k", AppSecret: "s", AccessToken: "t", AccountID: "acc"}}
-	if _, err := b.OpenOrders(); !errors.Is(err, ErrOrderUnavailable) {
+	if _, err := b.OpenOrders(context.Background()); !errors.Is(err, ErrOrderUnavailable) {
 		t.Fatalf("err = %v, want ErrOrderUnavailable", err)
 	}
 }

@@ -1,6 +1,7 @@
 package live
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"testing"
@@ -194,10 +195,10 @@ type slowAccountBroker struct {
 	entered chan struct{}
 }
 
-func (s *slowAccountBroker) Account() (map[string]any, error) {
+func (s *slowAccountBroker) Account(ctx context.Context) (map[string]any, error) {
 	close(s.entered)
 	time.Sleep(2 * time.Second)
-	return s.MemoryBroker.Account()
+	return s.MemoryBroker.Account(ctx)
 }
 
 func TestLogBalanceSnapshotUsesOrderBroker(t *testing.T) {
