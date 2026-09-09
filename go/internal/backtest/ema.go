@@ -370,6 +370,10 @@ func RunEmaZone(tickers []TickerIndexed, params EmaParams) EmaResult {
 			if td != nil {
 				if idx, ok := td.byDate[date]; ok {
 					close = td.data[idx].Close
+				} else if i := sort.Search(len(td.data), func(i int) bool { return td.data[i].Date > date }); i > 0 {
+					// Нет бара на эту дату — держим последнюю известную цену,
+					// а не цену входа: иначе equity даёт ложную просадку (AUD-093).
+					close = td.data[i-1].Close
 				}
 			}
 			sum += lot.quantity * close
