@@ -366,10 +366,8 @@ func firstString(m map[string]any, keys ...string) string {
 
 func quotePrice(ev EvalResult, symbol string) float64 {
 	for _, q := range ev.Quotes {
-		if store.SafeTicker(fmt.Sprint(q["symbol"])) == store.SafeTicker(symbol) {
-			if p := asFloat(q["currentPrice"]); p > 0 {
-				return p
-			}
+		if store.SafeTicker(q.Symbol) == store.SafeTicker(symbol) && q.CurrentPrice > 0 {
+			return q.CurrentPrice
 		}
 	}
 	return 0

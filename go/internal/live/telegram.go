@@ -504,10 +504,7 @@ func (e *Engine) buildT1Text(minutes int, rows []t1Watch, blocking map[string]an
 		}
 		sym := fmt.Sprint(dec["symbol"])
 		price := quotePrice(res, sym)
-		ibsVal := 0.0
-		if cand, ok := dec["candidate"].(map[string]any); ok {
-			ibsVal = asFloat(cand["ibs"])
-		}
+		ibsVal := candidateIBS(dec)
 		priceS := "—"
 		if price > 0 {
 			priceS = fmt.Sprintf("$%.2f", price)

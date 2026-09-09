@@ -28,7 +28,7 @@ func TestEvaluateWindowQuotesEveryBrokerOpenSymbol(t *testing.T) {
 	webull.Pos = nil
 	ev := e.EvaluateWindow(backgroundWindow())
 	for _, q := range ev.Quotes {
-		if q["symbol"] == "MSFT" {
+		if q.Symbol == "MSFT" {
 			return
 		}
 	}

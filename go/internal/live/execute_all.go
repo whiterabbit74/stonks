@@ -116,7 +116,7 @@ func (e *Engine) executeOneBroker(w execWindow, ev EvalResult, trigger, corr, na
 	}
 	open, held, heldErr := e.booksForBroker(ev, name, br, rows, w)
 	one.OpenTrade = open
-	one.Decision = decideLiveAction(ev.Quotes, ev.Symbols, held, heldErr, open, allowE, allowX)
+	one.Decision = decideLiveAction(ev.Quotes, ev.Symbols, held, heldErr, openPositionOf(open), allowE, allowX)
 	decision = one.Decision
 	action, _ := one.Decision["action"].(string)
 	// A working order at this broker can only duplicate an order in the same
@@ -273,10 +273,7 @@ func (e *Engine) submitEvaluated(w execWindow, ev EvalResult, trigger, corr, bro
 			e.logAuto("open_orders_cancelled", corr, map[string]any{"symbol": symbol, "cancelled_count": len(cancelled)})
 		}
 	}
-	ibsVal := 0.0
-	if cand, ok := ev.Decision["candidate"].(map[string]any); ok {
-		ibsVal = asFloat(cand["ibs"])
-	}
+	ibsVal := candidateIBS(ev.Decision)
 	meta := orderMeta{
 		CorrelationID: corr, IBS: ibsVal, DateKey: ev.TodayKey,
 		QuotePrice: price, Action: action, Symbol: symbol, Quantity: qty, Source: trigger, Broker: brokerName,

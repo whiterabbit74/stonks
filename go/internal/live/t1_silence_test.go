@@ -102,8 +102,8 @@ func TestT1TextSaysWhenNothingWasSubmitted(t *testing.T) {
 	t.Cleanup(func() { db.Close() })
 	e := New(db, &MemoryQuotes{})
 	res := EvalResult{
-		Decision: map[string]any{"action": "entry", "symbol": "AAPL", "candidate": map[string]any{"ibs": 0.05}},
-		Quotes:   []map[string]any{{"symbol": "AAPL", "currentPrice": 8.2}},
+		Decision: map[string]any{"action": "entry", "symbol": "AAPL", "candidate": &LiveQuote{IBS: 0.05}},
+		Quotes:   []LiveQuote{{Symbol: "AAPL", CurrentPrice: 8.2}},
 		Broker:   map[string]any{},
 		BrokerDecisions: map[string]map[string]any{
 			"webull": {"action": "none", "reason": HealthMissing},

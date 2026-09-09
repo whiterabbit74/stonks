@@ -20,17 +20,17 @@ func TestT1TextKeepsEachBrokerOwnSideAndSymbol(t *testing.T) {
 	e := New(db, &MemoryQuotes{})
 	res := EvalResult{
 		Decision: map[string]any{"action": "none", "reason": "no_signal"},
-		Quotes: []map[string]any{
-			{"symbol": "AAPL", "currentPrice": 11.9},
-			{"symbol": "NVDA", "currentPrice": 8.2},
+		Quotes: []LiveQuote{
+			{Symbol: "AAPL", CurrentPrice: 11.9},
+			{Symbol: "NVDA", CurrentPrice: 8.2},
 		},
 		Broker: map[string]any{
 			"webull":    map[string]any{"submitted": true, "quantity": 7.0},
 			"robinhood": map[string]any{"submitted": true, "quantity": 5.0},
 		},
 		BrokerDecisions: map[string]map[string]any{
-			"webull":    {"action": "exit", "symbol": "AAPL", "candidate": map[string]any{"ibs": 0.97}},
-			"robinhood": {"action": "entry", "symbol": "NVDA", "candidate": map[string]any{"ibs": 0.03}},
+			"webull":    {"action": "exit", "symbol": "AAPL", "candidate": &LiveQuote{IBS: 0.97}},
+			"robinhood": {"action": "entry", "symbol": "NVDA", "candidate": &LiveQuote{IBS: 0.03}},
 		},
 	}
 	text := e.buildT1Text(1, nil, nil, false, false, res, EvalResult{}, nil)

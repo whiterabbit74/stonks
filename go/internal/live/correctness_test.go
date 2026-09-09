@@ -350,7 +350,7 @@ func TestStaleBarIsNotOk(t *testing.T) {
 	e := New(db, q)
 	e.PatchAutoConfig(map[string]any{"enabled": true, "lowIBS": 0.9, "highIBS": 1, "allowNewEntries": true})
 	ev := e.Evaluate()
-	if len(ev.Quotes) != 1 || ev.Quotes[0]["ok"] == true {
+	if len(ev.Quotes) != 1 || ev.Quotes[0].OK {
 		t.Fatalf("stale bar must not be ok %+v", ev.Quotes)
 	}
 	if fmt.Sprint(ev.Decision["action"]) != "none" {
@@ -436,10 +436,12 @@ func TestEvalWatchMatchesWatchThresholds(t *testing.T) {
 		t.Fatalf("entry %v ibs %v low %v", ev.entry, ev.ibs, low)
 	}
 
-	quotes := []map[string]any{{
-		"symbol": "AAPL", "ok": ev.ok, "ibs": ev.ibs,
-		"thresholds":     map[string]any{"lowIBS": low, "highIBS": high},
-		"highIBSInvalid": inv,
+	quotes := []LiveQuote{{
+		Symbol:         "AAPL",
+		OK:             ev.ok,
+		IBS:            ev.ibs,
+		Thresholds:     QuoteThresholds{LowIBS: low, HighIBS: high},
+		HighIBSInvalid: inv,
 	}}
 	d := decideLiveAction(quotes, []string{"AAPL"}, map[string]float64{}, nil, nil, true, true)
 	want := "none"

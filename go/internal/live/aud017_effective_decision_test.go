@@ -47,11 +47,11 @@ func TestT1TextReportsTheBrokerDecisionNotTheShowcase(t *testing.T) {
 	e := New(db, &MemoryQuotes{})
 	res := EvalResult{
 		Decision: map[string]any{"action": "none", "reason": "no_signal"},
-		Quotes:   []map[string]any{{"symbol": "AAPL", "currentPrice": 11.9}},
+		Quotes:   []LiveQuote{{Symbol: "AAPL", CurrentPrice: 11.9}},
 		Broker:   map[string]any{"robinhood": map[string]any{"submitted": true, "quantity": 3.0}},
 		BrokerDecisions: map[string]map[string]any{
 			"webull":    {"action": "none", "reason": "no_signal"},
-			"robinhood": {"action": "exit", "symbol": "AAPL", "candidate": map[string]any{"ibs": 0.97}},
+			"robinhood": {"action": "exit", "symbol": "AAPL", "candidate": &LiveQuote{IBS: 0.97}},
 		},
 	}
 	text := e.buildT1Text(1, nil, nil, false, false, res, EvalResult{}, nil)

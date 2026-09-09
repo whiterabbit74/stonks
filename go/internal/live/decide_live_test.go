@@ -3,9 +3,9 @@ package live
 import "testing"
 
 func TestDecideLiveActionEmptyHeldIsMismatch(t *testing.T) {
-	open := map[string]any{"symbol": "AAPL"}
-	quotes := []map[string]any{
-		{"symbol": "AAPL", "ok": true, "ibs": 0.9, "thresholds": map[string]any{"highIBS": 0.75}},
+	open := &OpenPosition{Symbol: "AAPL"}
+	quotes := []LiveQuote{
+		{Symbol: "AAPL", OK: true, IBS: 0.9, Thresholds: QuoteThresholds{LowIBS: 0.1, HighIBS: 0.75}},
 	}
 	held := map[string]float64{}
 	d := decideLiveAction(quotes, []string{"AAPL"}, held, nil, open, true, true)
@@ -18,10 +18,10 @@ func TestDecideLiveActionEmptyHeldIsMismatch(t *testing.T) {
 // another broker, a live position without a journal row). They must be priced
 // and exitable, but never opened as a new entry.
 func TestEntryCandidateStaysInsideWatchlist(t *testing.T) {
-	th := map[string]any{"lowIBS": 0.1, "highIBS": 0.75}
-	quotes := []map[string]any{
-		{"symbol": "QQQ", "ok": true, "ibs": 0.05, "currentPrice": 100.0, "thresholds": th},
-		{"symbol": "XYZ", "ok": true, "ibs": 0.02, "currentPrice": 10.0, "thresholds": th},
+	th := QuoteThresholds{LowIBS: 0.1, HighIBS: 0.75}
+	quotes := []LiveQuote{
+		{Symbol: "QQQ", OK: true, IBS: 0.05, CurrentPrice: 100.0, Thresholds: th},
+		{Symbol: "XYZ", OK: true, IBS: 0.02, CurrentPrice: 10.0, Thresholds: th},
 	}
 	d := decideLiveAction(quotes, []string{"QQQ"}, map[string]float64{}, nil, nil, true, true)
 	if d["action"] != "entry" || d["symbol"] != "QQQ" {

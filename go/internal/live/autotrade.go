@@ -230,19 +230,55 @@ func (e *Engine) CanSubmit() bool {
 	return false
 }
 
+// LiveQuote is one ticker's reading in an evaluation cycle: the IBS the
+// decision compares, the thresholds it compares against, and whether the
+// reading is usable at all. decideLiveAction used to walk map[string]any rows,
+// where a missing "ibs" key read as 0 — an entry signal — and a mistyped key
+// name was not a compile error. The JSON shape is unchanged: the SPA and the
+// stored last result still see the same keys.
+type LiveQuote struct {
+	Symbol         string          `json:"symbol"`
+	OK             bool            `json:"ok"`
+	IBS            float64         `json:"ibs"`
+	CurrentPrice   float64         `json:"currentPrice"`
+	Thresholds     QuoteThresholds `json:"thresholds"`
+	HighIBSInvalid bool            `json:"highIBSInvalid"`
+}
+
+type QuoteThresholds struct {
+	LowIBS  float64 `json:"lowIBS"`
+	HighIBS float64 `json:"highIBS"`
+}
+
+// OpenPosition is what the decision needs to know about the journal's open
+// trade: which ticker it is, already normalised. The full trade row stays a map
+// — it is a store record with a life outside this function.
+type OpenPosition struct {
+	Symbol string
+}
+
+// openPositionOf adapts a journal row at the boundary. A nil row means no open
+// position, which is the entry branch of the decision.
+func openPositionOf(row map[string]any) *OpenPosition {
+	if row == nil {
+		return nil
+	}
+	return &OpenPosition{Symbol: store.SafeTicker(fmt.Sprint(row["symbol"]))}
+}
+
 type EvalResult struct {
-	EvaluatedAt string           `json:"evaluatedAt"`
-	TodayKey    string           `json:"todayKey"`
-	AutoTrading map[string]any   `json:"autoTrading"`
-	Symbols     []string         `json:"symbols"`
-	Quotes      []map[string]any `json:"quotes"`
-	OpenTrade   map[string]any   `json:"openTrade"`
-	Decision    map[string]any   `json:"decision"`
-	Executed    bool             `json:"executed"`
-	Submitted   bool             `json:"submitted,omitempty"`
-	Phase       string           `json:"phase,omitempty"`
-	Live        bool             `json:"live"`
-	Broker      any              `json:"broker,omitempty"`
+	EvaluatedAt string         `json:"evaluatedAt"`
+	TodayKey    string         `json:"todayKey"`
+	AutoTrading map[string]any `json:"autoTrading"`
+	Symbols     []string       `json:"symbols"`
+	Quotes      []LiveQuote    `json:"quotes"`
+	OpenTrade   map[string]any `json:"openTrade"`
+	Decision    map[string]any `json:"decision"`
+	Executed    bool           `json:"executed"`
+	Submitted   bool           `json:"submitted,omitempty"`
+	Phase       string         `json:"phase,omitempty"`
+	Live        bool           `json:"live"`
+	Broker      any            `json:"broker,omitempty"`
 	// DecisionBroker names the broker whose book Decision was computed on, so
 	// the UI does not read one broker's showcase decision as another's.
 	DecisionBroker string `json:"decisionBroker,omitempty"`
@@ -348,7 +384,7 @@ func (e *Engine) EvaluateWindow(w execWindow) EvalResult {
 		}
 	}
 	e.prefetchQuotes(quoteSymbols, providerChain)
-	var quotes []map[string]any
+	var quotes []LiveQuote
 	for _, sym := range quoteSymbols {
 		w := watchBy[sym]
 		if w == nil {
@@ -362,13 +398,16 @@ func (e *Engine) EvaluateWindow(w execWindow) EvalResult {
 		}
 		ev := e.evalWatch(sym, w, cfg, providerChain)
 		low, high, highInvalid := watchThresholds(w, cfg)
-		quotes = append(quotes, map[string]any{
-			"symbol": sym, "ok": ev.ok, "ibs": ev.ibs, "currentPrice": ev.price,
-			"thresholds":     map[string]any{"lowIBS": low, "highIBS": high},
-			"highIBSInvalid": highInvalid,
+		quotes = append(quotes, LiveQuote{
+			Symbol:         sym,
+			OK:             ev.ok,
+			IBS:            ev.ibs,
+			CurrentPrice:   ev.price,
+			Thresholds:     QuoteThresholds{LowIBS: low, HighIBS: high},
+			HighIBSInvalid: highInvalid,
 		})
 	}
-	decision := decideLiveAction(quotes, symbols, held, heldErr, open, allowEntries, allowExits)
+	decision := decideLiveAction(quotes, symbols, held, heldErr, openPositionOf(open), allowEntries, allowExits)
 	if reason, _ := decision["reason"].(string); reason == "empty_symbol_universe" || reason == "broker_position_mismatch" {
 		e.logAuto("execution_skipped", "", map[string]any{"symbol": decision["symbol"], "reason": reason})
 	}
@@ -404,12 +443,12 @@ func (e *Engine) showcaseBroker(cfg map[string]any) (string, Broker) {
 	return "webull", e.defaultBroker()
 }
 
-func decideLiveAction(quotes []map[string]any, symbols []string, held map[string]float64, heldErr error, open map[string]any, allowEntries, allowExits bool) map[string]any {
+func decideLiveAction(quotes []LiveQuote, symbols []string, held map[string]float64, heldErr error, open *OpenPosition, allowEntries, allowExits bool) map[string]any {
 	none := func(reason string, symbol any, cand any) map[string]any {
 		return map[string]any{"action": "none", "reason": reason, "symbol": symbol, "candidate": cand}
 	}
 	if open != nil && allowExits {
-		sym := store.SafeTicker(fmt.Sprint(open["symbol"]))
+		sym := open.Symbol
 		// A position the broker holds is closed on its exit signal whether or
 		// not the journal knows about it: an unrecorded position is still our
 		// money at risk, and refusing to exit it left it open forever.
@@ -421,18 +460,17 @@ func decideLiveAction(quotes []map[string]any, symbols []string, held map[string
 				return none("broker_position_mismatch", sym, nil)
 			}
 		}
-		var row map[string]any
-		for _, q := range quotes {
-			if q["symbol"] == sym && q["ok"] == true {
-				row = q
+		var row *LiveQuote
+		for i, q := range quotes {
+			if q.Symbol == sym && q.OK {
+				row = &quotes[i]
 				break
 			}
 		}
-		high := liveHighOrDefault(row)
-		if row != nil && asBool(row["highIBSInvalid"]) {
+		if row != nil && row.HighIBSInvalid {
 			return none("invalid_high_ibs", sym, row)
 		}
-		if v, hasIBS := row["ibs"].(float64); hasIBS && ibs.IsExitSignal(v, high) {
+		if row != nil && ibs.IsExitSignal(row.IBS, row.highOrDefault()) {
 			return map[string]any{"action": "exit", "reason": "ibs_exit", "symbol": sym, "candidate": row}
 		}
 		reason := "open_position_quote_unavailable"
@@ -442,7 +480,7 @@ func decideLiveAction(quotes []map[string]any, symbols []string, held map[string
 		return none(reason, sym, row)
 	}
 	if open != nil && !allowExits {
-		return none("exits_disabled", store.SafeTicker(fmt.Sprint(open["symbol"])), nil)
+		return none("exits_disabled", open.Symbol, nil)
 	}
 	if len(symbols) == 0 {
 		return none("empty_symbol_universe", nil, nil)
@@ -466,33 +504,32 @@ func decideLiveAction(quotes []map[string]any, symbols []string, held map[string
 		for _, s := range symbols {
 			watched[store.SafeTicker(s)] = true
 		}
-		var best map[string]any
+		var best *LiveQuote
 		bestIBS := 2.0
-		for _, q := range quotes {
-			if q["ok"] != true {
+		for i, q := range quotes {
+			if !q.OK || q.HighIBSInvalid || !watched[store.SafeTicker(q.Symbol)] {
 				continue
 			}
-			if !watched[store.SafeTicker(fmt.Sprint(q["symbol"]))] {
-				continue
-			}
-			if asBool(q["highIBSInvalid"]) {
-				continue
-			}
-			v, hasIBS := q["ibs"].(float64)
-			if !hasIBS {
-				continue
-			}
-			low := liveLowOrDefault(q)
-			if ibs.IsEntrySignal(v, low) && v < bestIBS {
-				bestIBS = v
-				best = q
+			if ibs.IsEntrySignal(q.IBS, q.lowOrDefault()) && q.IBS < bestIBS {
+				bestIBS = q.IBS
+				best = &quotes[i]
 			}
 		}
 		if best != nil {
-			return map[string]any{"action": "entry", "reason": "lowest_ibs_signal", "symbol": best["symbol"], "candidate": best}
+			return map[string]any{"action": "entry", "reason": "lowest_ibs_signal", "symbol": best.Symbol, "candidate": best}
 		}
 	}
 	return none("no_signal", nil, nil)
+}
+
+// candidateIBS reads the reading a decision was taken on. The decision map is
+// still the JSON-shaped result the SPA and Telegram consume; its candidate is
+// the typed quote row.
+func candidateIBS(dec map[string]any) float64 {
+	if cand, ok := dec["candidate"].(*LiveQuote); ok && cand != nil {
+		return cand.IBS
+	}
+	return 0
 }
 
 // booksForBroker prefers the position read EvaluateWindow already made in this
@@ -680,24 +717,21 @@ func (e *Engine) heldSymbolsOn(br Broker, w execWindow) (map[string]float64, err
 	return held, nil
 }
 
-func liveLowOrDefault(row map[string]any) float64 {
-	if row == nil {
+// lowOrDefault and highOrDefault re-check the thresholds watchThresholds put on
+// the row: the decision is the last place they can still be sent back to the
+// documented default before an order is priced on them.
+func (q *LiveQuote) lowOrDefault() float64 {
+	if q == nil {
 		return ibs.DefaultLowIBS
 	}
-	if th, ok := row["thresholds"].(map[string]any); ok && th["lowIBS"] != nil {
-		return ibs.Threshold(asFloat(th["lowIBS"]), ibs.DefaultLowIBS)
-	}
-	return ibs.DefaultLowIBS
+	return ibs.Threshold(q.Thresholds.LowIBS, ibs.DefaultLowIBS)
 }
 
-func liveHighOrDefault(row map[string]any) float64 {
-	if row == nil {
+func (q *LiveQuote) highOrDefault() float64 {
+	if q == nil {
 		return ibs.DefaultHighIBS
 	}
-	if th, ok := row["thresholds"].(map[string]any); ok && th["highIBS"] != nil {
-		return ibs.Threshold(asFloat(th["highIBS"]), ibs.DefaultHighIBS)
-	}
-	return ibs.DefaultHighIBS
+	return ibs.Threshold(q.Thresholds.HighIBS, ibs.DefaultHighIBS)
 }
 
 // Execute evaluates the current signal and submits it, with no T-1
