@@ -54,27 +54,112 @@ func (e *Engine) runT1Orders(w execWindow, today string) (exitRes, entryRes Eval
 	// брокера отдельно и параллельно. Раньше барьер был общим: подтверждённый
 	// и уже плоский Robinhood ждал, пока исполнится заявка Webull, и терял
 	// свой вход на том же закрытии (CORE-01 / AUD-043).
-	ready, waiting := e.settleExitsPerBroker(w, exited)
+	entryRes, entered, waiting := e.settleAndReenter(w, exited)
 	if len(waiting) > 0 {
 		_ = e.DB.AppendAutotradeLog("t1_entry_blocked_waiting_exit_fill " + strings.Join(waiting, ","))
 		waitFill = true
 	}
-	if len(ready) == 0 {
+	if len(entered) == 0 {
 		_ = e.DB.AppendAutotradeLog("t1_exit_failed")
-		return exitRes, entryRes, waitFill
 	}
-	// Снимок несогласованности снят в начале минуты. Брокер, которому вход
-	// закрыла чужая позиция без журнала, к этому моменту уже подтверждённо
-	// плоский — своим же выходом, — и старый флаг съел бы законный повторный
-	// вход (AUD-084). Пересчёт без новых чтений: причина адресная.
-	for _, name := range ready {
-		if _, gone := clearedByFlatExit[w.entryBlocked[name]]; gone {
-			delete(w.entryBlocked, name)
-			_ = e.DB.AppendAutotradeLog("t1_entry_unblocked_after_exit " + name)
-		}
-	}
-	entryRes = e.executeWindowFor(w, "telegram_t1", ready)
 	return exitRes, entryRes, waitFill
+}
+
+// settleAndReenter waits out each broker's own exit and re-enters for it the
+// moment that exit settles, without waiting for anybody else.
+//
+// Waiting in parallel was not enough: the results were collected behind a
+// single wg.Wait() and the entry pass ran only after the slowest broker
+// finished waiting, so a broker already flat still spent the rest of the
+// closing minute on a peer's unfilled order (AUD-075 / CORE-01). The entries
+// themselves are serialised — one broker at a time evaluates and submits — but
+// no broker's entry waits on another broker's exit.
+func (e *Engine) settleAndReenter(w execWindow, brokers []string) (entryRes EvalResult, entered, waiting []string) {
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	for _, name := range brokers {
+		wg.Add(1)
+		go func(name string) {
+			defer wg.Done()
+			state := e.settleOneExit(w, name, true)
+			mu.Lock()
+			defer mu.Unlock()
+			if state == exitPending {
+				waiting = append(waiting, name)
+				return
+			}
+			if state != exitSettled {
+				return
+			}
+			// Снимок несогласованности снят в начале минуты. Брокер, которому
+			// вход закрыла чужая позиция без журнала, к этому моменту уже
+			// подтверждённо плоский — своим же выходом, — и старый флаг съел бы
+			// законный повторный вход (AUD-084). Пересчёт без новых чтений:
+			// причина адресная.
+			if _, gone := clearedByFlatExit[w.entryBlocked[name]]; gone {
+				delete(w.entryBlocked, name)
+				_ = e.DB.AppendAutotradeLog("t1_entry_unblocked_after_exit " + name)
+			}
+			entered = append(entered, name)
+			entryRes = mergeEntryResults(entryRes, e.executeWindowFor(w, "telegram_t1", []string{name}))
+		}(name)
+	}
+	wg.Wait()
+	sort.Strings(entered)
+	sort.Strings(waiting)
+	return entryRes, entered, waiting
+}
+
+// mergeEntryResults folds one broker's entry pass into the run's result: the
+// per-broker outcomes and decisions sit side by side, and the run executed if
+// any broker did. Both maps are keyed by broker name, so nothing overwrites
+// anybody else's.
+func mergeEntryResults(dst, src EvalResult) EvalResult {
+	if dst.EvaluatedAt == "" {
+		return src
+	}
+	out := src
+	out.Broker = mergeNamed(dst.Broker, src.Broker)
+	out.BrokerDecisions = mergeDecisions(dst.BrokerDecisions, src.BrokerDecisions)
+	out.Executed = dst.Executed || src.Executed
+	out.Submitted = dst.Submitted || src.Submitted
+	if out.Executed {
+		out.Phase = "submitted"
+	}
+	return out
+}
+
+func mergeNamed(dst, src any) any {
+	a, aok := dst.(map[string]any)
+	b, bok := src.(map[string]any)
+	if !aok || !bok {
+		if bok {
+			return src
+		}
+		return dst
+	}
+	out := map[string]any{}
+	for k, v := range a {
+		out[k] = v
+	}
+	for k, v := range b {
+		out[k] = v
+	}
+	return out
+}
+
+func mergeDecisions(dst, src map[string]map[string]any) map[string]map[string]any {
+	out := map[string]map[string]any{}
+	for k, v := range dst {
+		out[k] = v
+	}
+	for k, v := range src {
+		out[k] = v
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 // submittedExitBrokers names the brokers whose exit this run actually sent.
@@ -90,34 +175,6 @@ func submittedExitBrokers(res EvalResult) []string {
 	}
 	sort.Strings(out)
 	return out
-}
-
-// settleExitsPerBroker waits out each broker's own exit and reports which ones
-// are clear to open the next position. A broker whose exit is still unfilled
-// lands in waiting; one whose exit reached a terminal status without closing
-// the trade gets exactly one scoped retry, again only for itself.
-func (e *Engine) settleExitsPerBroker(w execWindow, brokers []string) (ready, waiting []string) {
-	var mu sync.Mutex
-	var wg sync.WaitGroup
-	for _, name := range brokers {
-		wg.Add(1)
-		go func(name string) {
-			defer wg.Done()
-			state := e.settleOneExit(w, name, true)
-			mu.Lock()
-			defer mu.Unlock()
-			switch state {
-			case exitSettled:
-				ready = append(ready, name)
-			case exitPending:
-				waiting = append(waiting, name)
-			}
-		}(name)
-	}
-	wg.Wait()
-	sort.Strings(ready)
-	sort.Strings(waiting)
-	return ready, waiting
 }
 
 type exitState int
