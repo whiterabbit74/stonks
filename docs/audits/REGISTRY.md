@@ -10,6 +10,12 @@ IN_PROGRESS. No agents; source and operational data unchanged. Synthetic tests r
 
 Доказательство на a162986: TestFullAuditEMAHistoryGap, X с ценами 100 → 120 и дополнительный день только у Y. Equity: 10000 → 12000 → 10000; FinalValue=12000, NetProfit=0, просадка 16.67%. Ожидается сохранение известной оценки либо явный отказ считать неполную историю. Это не AUD-048: другой движок и реальное расхождение, не гипотеза о комиссии. Исправлений нет, production не проверялся.
 
+### AUD-094 — OPEN, P2: опционы исчезают из оценки на пропущенных датах
+
+`go/internal/backtest/options.go:158-161,241-250,269-272`: отсутствие бара означает continue при выходе, оценке и финальном закрытии. Общий календарь — объединение дат всех тикеров. На дате, существующей только у Y, открытый опцион X получает нулевой вклад в портфель; если это последний день, позиция не попадает в trades вообще. Корень отличается от AUD-049: финальное закрытие уже реализовано, но тоже пропускает тикер без общего последнего бара.
+
+TestFullAuditOptionsGap на a162986: X содержит 01/01, 01/02, 01/05, 01/06; Y добавляет 01/07; опцион X открыт 01/05. Оценка 49450 → 46165, то есть теряются 3285 стоимости открытого опциона, trades=0. Требуется согласованная обработка отсутствующей истории, а не нулевая оценка. Исправлений нет.
+
 | ISSUE-ID | Root cause | Source | Status | Fix commit | Verification |
 |---|---|---|---|---|---|
 | AUD-092 | P2. `/api/calc/indicators` returns HTTP 500 for valid nonempty history. SMA/EMA/RSI use NaN for warmup points; writeJSON rejects these values and discards the entire response. Main SPA does not currently call this endpoint | `go/internal/httpapi/calc.go:211-235`; `go/internal/indicators/indicators.go`; `go/internal/httpapi/server.go:241-252`; a162986 | OPEN | None, read-only | TestFullAuditIndicators: valid OHLC arrays of lengths 1/14/20/30 all return 500 encode failed. Distinct from AUD-060: ordinary missing indicator points, not overflow in finalValue. Reproducer will be recorded with audit evidence |
