@@ -128,7 +128,7 @@ func (b *RobinhoodBroker) PlaceMarketCfg(symbol, side string, qty float64, cfg P
 		}
 		return res, err
 	}
-	detail := mapFromJSON(robinhood.ToolContentJSON(raw))
+	detail := robinhoodOrderBody(robinhood.ToolContentJSON(raw), ref)
 	// The MCP call succeeding is not proof the order was accepted: check the
 	// body it returned. No recognizable order in the response (no id/state at
 	// all) means we cannot say what happened — report ambiguous rather than
@@ -170,6 +170,32 @@ func recognizableRobinhoodOrder(detail map[string]any) bool {
 		return false
 	}
 	return first(detail, "ref_id", "id", "order_id", "client_order_id", "state", "status") != nil
+}
+
+// robinhoodOrderBody digs the order object out of a place_equity_order
+// response. The tool wraps its payload ({"data": {...}, "guide": "..."}), so
+// reading the top-level map found no id: the order id was never remembered and
+// every later poll answered ErrOrderUnavailable until an operator confirmed
+// the fill by hand.
+func robinhoodOrderBody(raw []byte, ref string) map[string]any {
+	var root any
+	if json.Unmarshal(raw, &root) != nil {
+		return map[string]any{}
+	}
+	if m := findOrder(root, asUUID(ref)); m != nil {
+		return m
+	}
+	var orders []any
+	collectOrders(root, &orders)
+	for _, o := range orders {
+		if m, _ := o.(map[string]any); m != nil {
+			return m
+		}
+	}
+	if m, _ := root.(map[string]any); m != nil {
+		return m
+	}
+	return map[string]any{}
 }
 
 func (b *RobinhoodBroker) CloseMarket(symbol string) (OrderResult, error) {
@@ -285,7 +311,16 @@ func (b *RobinhoodBroker) OrderDetailCtx(ctx context.Context, clientOrderID stri
 	if err != nil {
 		return nil, err
 	}
-	raw, err := b.toolCtx(ctx, "get_equity_orders", map[string]any{"account_number": acct})
+	want := asUUID(clientOrderID)
+	args := map[string]any{"account_number": acct}
+	// Listing rows are keyed by Robinhood's own order id; ours only exists in
+	// the place response, which is where rememberOrderID stored it. With that
+	// id ask for the single order instead of scanning a capped first page.
+	brokerID := b.brokerOrderID(want)
+	if brokerID != "" {
+		args["order_id"] = brokerID
+	}
+	raw, err := b.toolCtx(ctx, "get_equity_orders", args)
 	if err != nil {
 		return nil, err
 	}
@@ -293,14 +328,9 @@ func (b *RobinhoodBroker) OrderDetailCtx(ctx context.Context, clientOrderID stri
 	if err := json.Unmarshal(robinhood.ToolContentJSON(raw), &root); err != nil {
 		return nil, fmt.Errorf("%w: unreadable order detail from Robinhood: %v", ErrOrderUnavailable, err)
 	}
-	want := asUUID(clientOrderID)
 	found := findOrder(root, want)
-	if found == nil {
-		// Listing rows are keyed by Robinhood's own order id; ours only exists
-		// in the place response, which is where rememberOrderID stored it.
-		if brokerID := b.brokerOrderID(want); brokerID != "" {
-			found = findOrder(root, brokerID)
-		}
+	if found == nil && brokerID != "" {
+		found = findOrder(root, brokerID)
 	}
 	if found == nil {
 		return nil, fmt.Errorf("%w: %s", ErrOrderUnavailable, want)
