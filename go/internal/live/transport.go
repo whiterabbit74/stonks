@@ -80,7 +80,9 @@ func (h *HTTPTelegram) Send(chatID, text string) error {
 	body, _ := json.Marshal(map[string]any{"chat_id": chatID, "text": text, "parse_mode": "HTML"})
 	resp, err := h.Client.Post(u, "application/json", bytes.NewReader(body))
 	if err != nil {
-		return err
+		// url.Error печатает URL целиком, а в нём лежит токен бота; ошибка
+		// уходит в ответ API, в Reason и в журнал планировщика (AUD-091).
+		return providers.SanitizeTransportError(err)
 	}
 	defer resp.Body.Close()
 	b, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<20))

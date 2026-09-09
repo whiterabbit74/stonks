@@ -221,6 +221,11 @@ func unwrapURLErrors(err error) error {
 	return nil
 }
 
+// SanitizeTransportError strips the request URL out of a transport failure.
+// A url.Error prints the whole URL, which for Telegram carries the bot token
+// in the path, and those errors travel into API responses and logs.
+func SanitizeTransportError(err error) error { return sanitizeTransportError(err) }
+
 func sanitizeTransportError(err error) error {
 	if err == nil {
 		return nil
