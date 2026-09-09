@@ -23,6 +23,7 @@ const (
 type rateBucket struct {
 	reset time.Time
 	count int
+	max   int
 }
 
 type ipLimiter struct {
@@ -48,19 +49,29 @@ func (l *ipLimiter) allow(key string, max int) bool {
 			}
 		}
 		if _, exists := l.buckets[key]; !exists && len(l.buckets) >= maxRateBuckets {
-			var oldestKey string
+			// Evicting a bucket that already hit its limit hands the blocked
+			// address a fresh quota, so traffic from other IPs would lift a
+			// live login ban. Only spend a slot on a bucket still under its
+			// limit; if every slot enforces one, refuse the new key instead.
+			var victimKey string
 			var oldest time.Time
 			for k, b := range l.buckets {
-				if oldestKey == "" || b.reset.Before(oldest) {
-					oldestKey, oldest = k, b.reset
+				if b.count >= b.max {
+					continue
+				}
+				if victimKey == "" || b.reset.Before(oldest) {
+					victimKey, oldest = k, b.reset
 				}
 			}
-			delete(l.buckets, oldestKey)
+			if victimKey == "" {
+				return false
+			}
+			delete(l.buckets, victimKey)
 		}
 	}
 	b := l.buckets[key]
 	if b == nil || now.After(b.reset) {
-		l.buckets[key] = &rateBucket{reset: now.Add(rateWindow), count: 1}
+		l.buckets[key] = &rateBucket{reset: now.Add(rateWindow), count: 1, max: max}
 		return true
 	}
 	if b.count >= max {
