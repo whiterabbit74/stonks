@@ -103,7 +103,13 @@ func quoteAsOf(row map[string]any, keys ...string) time.Time {
 			if s == "" {
 				continue
 			}
-			for _, layout := range []string{time.RFC3339Nano, time.RFC3339, "2006-01-02T15:04:05Z0700", "2006-01-02 15:04:05"} {
+			// Every layout here carries its own zone. A stamp without one
+			// ("2006-01-02 15:04:05") is deliberately not parsed: read as UTC
+			// it turns a fresh exchange-local quote into a four-hour-old one
+			// and the chain rejects every answer, and no provider we call
+			// sends that shape anyway (AUD-124). Unknown is the documented
+			// safe answer.
+			for _, layout := range []string{time.RFC3339Nano, time.RFC3339, "2006-01-02T15:04:05Z0700"} {
 				if t, err := time.Parse(layout, s); err == nil {
 					return t.UTC()
 				}
@@ -669,7 +675,14 @@ func snapshotPayload(row map[string]any) QuotePayload {
 		Range:   map[string]any{"open": open, "high": high, "low": low},
 		Quote:   map[string]any{"open": open, "high": high, "low": low, "current": current, "prevClose": prevClose},
 		DateKey: today,
-		AsOf:    quoteAsOf(row, "tradeStamp", "tradeTime", "timestamp", "ts", "updateTime", "update_time", "quoteTime"),
+		// Webull's live snapshot names these quote_time and last_trade_time,
+		// both epoch milliseconds; none of the camelCase spellings guessed here
+		// before existed in its answer, so AsOf stayed zero and the freshness
+		// check of CORE-06 never ran on the primary provider. quote_time first:
+		// it is the moment the snapshot was updated, while the last trade of an
+		// illiquid ticker can be legitimately old.
+		AsOf: quoteAsOf(row, "quote_time", "last_trade_time", "tradeStamp", "tradeTime",
+			"timestamp", "ts", "updateTime", "update_time", "quoteTime"),
 	}
 }
 
