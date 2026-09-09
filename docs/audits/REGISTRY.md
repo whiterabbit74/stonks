@@ -4,6 +4,12 @@
 
 IN_PROGRESS. No agents; source and operational data unchanged. Synthetic tests run through Go overlay (temporary compiler inputs outside checkout). A reproducer PASS means the defect exists.
 
+### AUD-097 — OPEN, P1: повторный импорт сырых цен сохраняет applied старого датасета
+
+`go/internal/httpapi/server.go:832-870`; `go/internal/store/db.go:553-604,827-844`: SaveDataset заменяет цены, но не сбрасывает applied событий; savePayload обновляет отметки только при adjustedForSplits=true. Импорт raw-истории поверх скорректированной оставляет старые applied=1. Расчётные ручки используют ListPendingSplits и считают, что новые сырые цены уже пересчитаны. Изменённый фактор ранее применённого события тоже сбрасывается в pending без восстановления исходного базиса; этот второй сценарий требует отдельного воспроизведения.
+
+TestFullAuditRawReimportSplitMark на a162986: датасет X с применённым 2:1 → POST новых raw OHLC и adjustedForSplits=false → HTTP 200, pending=0, хотя цена до сплита снова 100, а после 50. Следующий calc не применит 2:1. Связано с AUD-034, но отдельный путь замены всего датасета. Исправлений нет.
+
 ### AUD-096 — OPEN, P1: повтор apply-splits повреждает историю после отказа записи отметки
 
 `go/internal/httpapi/server.go:1010-1018`: persistDataset и MarkSplitsApplied выполняются отдельными транзакциями. Если цены уже сохранены, а запись applied отвергнута или процесс упал, повторный запрос делит цены ещё раз. Чтение списка событий также находится вне транзакции: конкурентно добавленное событие может получить applied, хотя его не применяли. Доказан отказ записи, конкурентный вариант пока только чтением кода.
