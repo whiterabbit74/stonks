@@ -416,11 +416,29 @@ func (d *DB) closePositionTx(tx *sql.Tx, id string, exit PositionExit) (*Positio
 	}
 	p.applyPnL()
 
+	// A closed position holds nothing. The legs are normally already zeroed by
+	// ExitLeg, but a fill that covered the whole remainder and a manual close
+	// both land here with a leg still showing shares — read afterwards as a
+	// broker holding stock the journal has sold (invariant K.1, AUD-118).
+	for _, broker := range []string{"webull", "robinhood"} {
+		leg := p.Leg(broker)
+		if !leg.Holds() {
+			continue
+		}
+		leg.Qty = 0
+		if leg.ExitPrice == nil {
+			leg.ExitPrice = p.ExitPrice
+		}
+		p.SetLeg(broker, leg)
+	}
+
 	if _, err := tx.Exec(`UPDATE positions SET status=?, exit_date=?, exit_price=?, exit_ibs=?,
-		exit_decision_time=?, pnl_percent=?, pnl_absolute=?, holding_days=?, notes=?
+		exit_decision_time=?, pnl_percent=?, pnl_absolute=?, holding_days=?, notes=?,
+		webull_qty=?, webull_exit_price=?, rh_qty=?, rh_exit_price=?
 		WHERE id=? AND status='open'`,
 		p.Status, nullText(p.ExitDate), p.ExitPrice, p.ExitIBS, nullText(p.ExitDecisionTime),
-		p.PnLPercent, p.PnLAbsolute, p.HoldingDays, nullText(p.Notes), id); err != nil {
+		p.PnLPercent, p.PnLAbsolute, p.HoldingDays, nullText(p.Notes),
+		p.Webull.Qty, p.Webull.ExitPrice, p.Robinhood.Qty, p.Robinhood.ExitPrice, id); err != nil {
 		return nil, err
 	}
 	return &p, nil
@@ -658,6 +676,11 @@ func (d *DB) ClaimPartialExit(clientOrderID, positionID, broker string, filled, 
 		return 0, err
 	}
 	if p.Quantity-newly <= 1e-9 {
+		// The exit took the whole remainder: the leg is flat and it is this
+		// order that flattened it (invariant K.1).
+		if err := exitLegTx(tx, positionID, broker, exitPrice, clientOrderID); err != nil {
+			return 0, err
+		}
 		if _, err := d.closePositionTx(tx, positionID, PositionExit{
 			Date: exitDate, Price: exitPrice, Notes: "partial_exit_flat",
 		}); err != nil {
