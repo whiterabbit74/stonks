@@ -1,5 +1,187 @@
 # Реестр аудитов и находок
 
+## Полный read-only аудит подсистем 2026-09-09, ревизия b770fd0
+
+UI/UX исключены по указанию пользователя. Исходники не менялись: находки
+воспроизводились тестами, добавленными только через `go test -overlay`
+(файл `internal/live/zz_audit_overlay_test.go` в проекте не создаётся).
+Базовый прогон до аудита: `cd go && go test ./...` — зелёный.
+
+Охват: `internal/live` (autotrade, execute_all, trade_record, track, monitor,
+sizing, config, brokers, actualize, deadline, telegram/telegram_t11, integrity),
+`internal/store` (positions, live_persist, миграции схемы), `internal/scheduler`,
+`internal/httpapi` (маршруты, auth, ratelimit, позиции, live-ручки),
+`internal/backtest` (single, margin), `internal/providers`, `internal/ibs`,
+`cmd/server`, SPA `go/web/js` (без UI/вёрстки). Не разбирались построчно:
+`internal/webull`, `internal/robinhood`, `internal/metrics`, `internal/backtest/ema.go`
+и `options.go`, `internal/httpapi/calc.go` — см. «Пробелы охвата» в конце секции.
+
+Воспроизведение (из корня репозитория, тесты берутся из этой секции):
+`go test -overlay <overlay.json> ./internal/live -run TestAudit -v`.
+
+### AUD-114 — OPEN, P1: паника одного брокера роняет весь процесс в закрывающую минуту
+
+Книги брокеров читаются параллельно в `heldSymbolsByBrokerBooks`
+(`go/internal/live/autotrade.go:663-680`), и в этих горутинах нет `recover`.
+То же у `t1BrokerReconcile` (`autotrade.go:1230-1290`) и `awaitBrokerBooksFlat`
+(`track.go:735-760`). `executeAll` свой `recover` имеет, но чтение книг
+происходит раньше — в `EvaluateWindow`. Паника в адаптере брокера (nil-мапа,
+индекс за границей при разборе ответа) уносит не «своего» брокера, а весь
+сервер: T-1 второго брокера не исполняется вообще.
+
+Нарушен инвариант D.2 `docs/CORE_TRADING_LOGIC.md`: «Паника … у одного брокера
+заканчиваются его собственным `none` с причиной. Второй брокер продолжает и
+торгует».
+
+Воспроизведение на `b770fd0`: `TestAuditBrokerPanicHasNoDecision` — брокер
+`webull` паникует в `Positions`, тестовый бинарник падает с
+`panic: audit: broker down`, трасса указывает на `heldSymbolsByBrokerBooks.func1`
+(`autotrade.go:671`). Решение по Robinhood не принимается.
+
+Смежное следствие: даже если панику перехватить на уровне `executeAll`, брокер
+остаётся **без решения** в `BrokerDecisions`, а значит и без строки в отчёте T-1
+(`brokerReasonLines`, `telegram.go`). Это отдельная половина той же находки:
+пропуск без названной причины запрещён (§15 CORE).
+
+### AUD-115 — OPEN, P1: повторно пришедшее исполнение выхода закрывает НОВУЮ позицию того же тикера
+
+`recordExitFill` (`go/internal/live/trade_record.go:196-237`) ищет позицию по
+`openPositionFor(symbol, clientOrderID, broker)` и безусловно делает
+`ExitLeg` + `ClosePosition`. Идемпотентности по id заявки выхода нет нигде:
+`ClaimFillQty` вызывается только на частичном исполнении (`ClaimPartialExit`),
+полный выход не «отмечается» ни в трекере, ни в ноге.
+
+Повтор реален: `finalizeTrackerStatus` пишет сделку **до** `stampTrackerStatus`
+(`track.go:608-616`), и если пометка статуса не прошла (или процесс
+перезапустился между ними), трекер остаётся pending и опрашивается снова.
+В тот же день разрешён повторный вход — и повторный ответ брокера по **старой**
+заявке закрывает **новую** позицию по старой цене исполнения.
+
+Воспроизведение на `b770fd0`: `TestAuditExitReplayClosesReentry` — выход по
+`x-exit` закрывает `p1`, затем `AttachEntry` открывает `p2` (12.00), повтор того
+же ответа даёт `p2.status=closed`, `exit_price=11`, `webull_exit_order_id=x-exit`.
+Ожидалось: повтор ничего не меняет (инвариант J, «Идемпотентность обязательна»).
+Побочный вариант той же причины без повторного входа — ложная тревога
+`exit_fill_without_open_position` и сообщение в Telegram на штатном повторе.
+
+Отличие от AUD-077/AUD-111: те про частичное исполнение и атомарность списания;
+здесь полный выход вообще не имеет отметки «это исполнение уже разнесено».
+
+### AUD-116 — OPEN, P1: `SaveOrderTracker` возвращает терминальный трекер в очередь опроса
+
+`SaveOrderTracker` (`go/internal/store/live_persist.go:213-217`) в
+`ON CONFLICT DO UPDATE` пишет `status=excluded.status` без защиты финальных
+статусов — в отличие от `SetOrderTrackerStatus`, где такая защита есть.
+`startTracking` (`autotrade.go`) вызывает его уже после возврата `placeMarket`,
+а тик планировщика опрашивает трекеры каждые 20 с
+(`scheduler.go:151,262`) и мог за это время финализировать заявку как `filled`.
+Тогда `submitted` записывается поверх `filled`, заявка опрашивается второй раз
+и исполнение разносится повторно — это питает AUD-115.
+
+Воспроизведение на `b770fd0`: `TestAuditSaveOrderTrackerRevivesFinal` —
+после `SaveOrderTracker(status=filled)` и повторной записи `status=submitted`
+`GetOrderTracker` отдаёт `submitted`, `ListPendingTrackers` снова содержит заявку.
+
+### AUD-117 — OPEN, P1: повторный вход стирает собственный записанный выход, пока тикер держит второй брокер
+
+`AttachEntry` (`go/internal/store/positions.go:679-731`) складывает вход в
+**открытую** строку того же тикера. Если брокер уже вышел (его нога `qty=0`,
+но у соседа `qty>0`, поэтому позиция остаётся `open`), а затем в тот же день
+законно входит снова (`openPositionOf` для него пусто → вход разрешён), новая
+цена входа и новый order id ложатся в **ту же** ногу, где стоит выход прошлого
+круга. Первый круг этого брокера (вход 10 → выход 11) не превращается в
+закрытую строку и исчезает из журнала; реализованный PnL занижен.
+
+Воспроизведение на `b770fd0`: `TestAuditReentryOverwritesOwnClosedLeg` —
+нога webull после `AttachEntry(w2)`: `qty=4 entry=12 exitPrice=11
+entryOrder=w2 exitOrder=w1-exit`, строк в журнале по-прежнему одна.
+Нарушены инварианты I («один факт — одна запись») и K.4 (проданная часть —
+отдельная закрытая строка).
+
+### AUD-118 — OPEN, P2: закрытая позиция остаётся с ногой, которая «держит» акции
+
+`ClaimPartialExit` при `p.Quantity - newly <= 1e-9` уходит в `closePositionTx`
+(`go/internal/store/positions.go:638-646`), а тот трогает только сигнальную
+часть строки: `webull_qty` / `rh_qty`, `*_exit_price` и `*_exit_order_id`
+остаются как были. Ветка достижима, когда заявка на выход больше журнального
+количества (размер выхода берётся из книги брокера — `sizeOrder`,
+`ClosePosition`). Тот же эффект у ручного `POST /api/positions/{id}/close`.
+Инвариант K.1 требует `qty = 0`, фактическую цену и id заявки на ноге.
+
+Воспроизведение на `b770fd0`: `TestAuditPartialFlatLeavesLegHolding` — журнал
+`quantity=4`, заявка на 10, исполнено 4: `status=closed`, при этом
+`webull.qty=4`, `webull.exitPrice=nil`, `webull.exitOrderID=""`.
+
+### AUD-119 — OPEN, P2: повторные входы после выхода отправляются под общим мьютексом
+
+`settleAndReenter` (`go/internal/live/telegram.go:75-104`) берёт `mu.Lock()` с
+`defer mu.Unlock()` и **внутри** этой блокировки вызывает
+`e.executeWindowFor(w, "telegram_t1", []string{name})` — то есть сетевую
+отправку заявки. Брокер, чей выход подтвердился первым, держит замок всё время
+своих чтений, ретраев и таймаутов; второй плоский брокер ждёт. Это ровно
+пункт 4 чек-листа §16 CORE («общий барьер/мьютекс на отправку») и класс AUD-074,
+но на пути повторного входа. Комментарий рядом признаёт сериализацию как
+намеренную — документ её запрещает.
+
+Проверка: чтение кода (`telegram.go:82-100`); отдельного теста не строил —
+воспроизведение требует таймингов. Статус OPEN, а не NEEDS_RECHECK: конструкция
+видна статически и однозначна.
+
+### AUD-120 — OPEN, P2: карточка наблюдения не обновляется при смене позиции по тому же тикеру
+
+`UpdatePositions` (`go/internal/live/actualize.go:248-273`) патчит строку
+наблюдения только когда меняется **флаг** `isOpenPosition`. Повторный вход в
+тот же день (закрыли p1, открыли p2) флаг не меняет, поэтому `currentTradeId`,
+`entryPrice`, `entryDate`, `entryIBS` остаются от закрытой сделки до тех пор,
+пока тикер не станет плоским. Отличается от AUD-109 (там очистка при закрытии)
+и AUD-110 (там задание вообще не запускалось) причиной: кэш синхронизирует
+булево, а не личность позиции.
+
+Воспроизведение на `b770fd0`: `TestAuditWatchCardStaleAfterReentry` — после
+p1(10)→closed и p2(20)→open строка наблюдения показывает
+`currentTradeId=p1 entryPrice=10`.
+
+### AUD-121 — OPEN, P3: мёртвая ветка `invalid_high_ibs`
+
+`liveHighIBS` (`go/internal/live/config.go:222-227`) всегда возвращает
+`invalid=false`, а `watchThresholds` сбрасывает флаг ещё раз, если порог задан
+на тикере. Значит `LiveQuote.HighIBSInvalid` не бывает true, причина
+`invalid_high_ibs` из §15 CORE не может появиться, а её обработка в
+`decideLiveAction` и текст в `noActionReasonText` — мёртвый код. Порог чинится
+молча через `ibs.Pair`. Класс AUD-010.
+
+### AUD-122 — OPEN, P3: бэктест пропускает вход целиком, когда комиссия не влезает в остаток
+
+`RunSinglePosition` (`go/internal/backtest/single.go:310-329`) считает
+`quantity = floor(freeCapital*leverage/price)`, а затем требует
+`freeCapital >= marginRequired + commission`. Если остаток после округления
+меньше комиссии (например, цена делит капитал нацело), вход не совершается
+вовсе — вместо покупки на одну акцию меньше. Сигнал дня теряется бесшумно.
+Проверка: чтение кода; отдельного теста не строил.
+
+### AUD-123 — OPEN, P3: страница /robinhood запрашивает статус дважды за рендер
+
+`go/web/js/app.js` (блок загрузки страницы брокера) кладёт `API.rhStatus()` в
+`Promise.all` дважды — как `tok` и как `rhst`. Лишний сетевой вызов на каждый
+переход на вкладку.
+
+### AUD-124 — NEEDS_RECHECK, P2: `quoteAsOf` разбирает время без зоны как UTC
+
+`quoteAsOf` (`go/internal/providers/client.go:107-110`) принимает шаблон
+`"2006-01-02 15:04:05"` без зоны — Go считает такую строку UTC. Если провайдер
+отдаёт биржевое ET-время в этом формате, `quoteStaleness` объявит свежую
+котировку четырёх-пятичасовой давности и цепочка провайдеров начнёт
+отбраковывать все её ответы (CORE-06). Нужен образец реального ответа
+провайдера: на синтетике не проверить, поэтому не OPEN.
+
+### Пробелы охвата этого прохода
+
+`internal/webull` (подпись HMAC, пагинация ордеров), `internal/robinhood` и
+`live/robinhood_broker.go`, `internal/metrics`, `backtest/ema.go` и `options.go`,
+`httpapi/calc.go`, `accesslog.go`, вёрстка и рендер SPA (исключены пользователем)
+разбирались только по касательной. Это не «чисто», а «не смотрели».
+
+
 ## Продолжение read-only аудита 2026-09-09, снимок d0ca508
 
 UI/UX исключены по указанию пользователя. Исходники не меняются; проверки используют
@@ -927,4 +1109,249 @@ with tempfile.TemporaryDirectory(prefix='mkt-security-') as tmp:
     overlay.write_text(json.dumps({'Replace': {str(root / 'go/internal/httpapi/security_audit_overlay_test.go'): str(test)}}))
     subprocess.run(['go', 'test', '-overlay', str(overlay), './internal/httpapi', '-run', 'TestSecurityAudit', '-v'], cwd=root / 'go', check=True)
 PYTEST
+```
+
+
+<!-- audit-2026-09-09-live-reproducer-start -->
+
+## Воспроизведение находок AUD-114..AUD-120 (2026-09-09, b770fd0)
+
+Файл кладётся в проект **только** через `-overlay`, как
+`go/internal/live/zz_audit_overlay_test.go`:
+
+```sh
+python3 - <<'PYTEST'
+import json, pathlib, subprocess, tempfile
+root = pathlib.Path.cwd()
+text = (root / 'docs/audits/REGISTRY.md').read_text()
+code = text.split('<!-- audit-2026-09-09-live-reproducer-start -->', 1)[1].split('```go\n', 1)[1].split('\n```', 1)[0]
+with tempfile.TemporaryDirectory(prefix='mkt-audit-') as tmp:
+    tmp = pathlib.Path(tmp)
+    test = tmp / 'audit_test.go'
+    test.write_text(code)
+    overlay = tmp / 'overlay.json'
+    overlay.write_text(json.dumps({'Replace': {str(root / 'go/internal/live/zz_audit_overlay_test.go'): str(test)}}))
+    subprocess.run(['go', 'test', '-overlay', str(overlay), './internal/live', '-run', 'TestAudit', '-v'], cwd=root / 'go')
+PYTEST
+```
+
+```go
+package live
+
+import (
+	"context"
+	"path/filepath"
+	"testing"
+
+	"mktorder.com/go/internal/store"
+	"mktorder.com/go/internal/types"
+)
+
+func auditEngine(t *testing.T) (*Engine, *store.DB) {
+	t.Helper()
+	db, err := store.Open(filepath.Join(t.TempDir(), "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	e := New(db, &MemoryQuotes{})
+	e.Telegram = &MemoryTelegram{}
+	e.ChatID = "c"
+	e.Now = nearCloseNow()
+	return e, db
+}
+
+// A: повтор исполненного выхода закрывает НОВУЮ позицию того же тикера.
+func TestAuditExitReplayClosesReentry(t *testing.T) {
+	e, db := auditEngine(t)
+	if err := db.SavePosition(store.Position{
+		ID: "p1", Symbol: "AAPL", Status: "open", EntryDate: "2026-09-01",
+		EntryPrice: store.Ptr(10.0), Quantity: 10,
+		Webull: store.BrokerLeg{Qty: 10, EntryPrice: store.Ptr(10.0), EntryOrderID: "p1"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	tracker := map[string]any{
+		"clientOrderId": "x-exit", "symbol": "AAPL", "action": "exit", "status": "submitted",
+		"quantity": 10.0, "source": "telegram_t1", "dateKey": "2026-09-01", "broker": "webull",
+	}
+	if err := db.SaveOrderTracker(tracker); err != nil {
+		t.Fatal(err)
+	}
+	detail := map[string]any{"status": "FILLED", "filled_qty": 10.0, "filled_price": 11.0}
+	e.recordFill(tracker, detail, "filled")
+
+	// Тот же день, подтверждённый выход — разрешён повторный вход.
+	if _, err := db.AttachEntry(store.EntryFill{
+		Symbol: "AAPL", Broker: "webull", OrderID: "p2", Qty: 10,
+		Price: store.Ptr(12.0), EntryDate: "2026-09-01", Source: "telegram_t1",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// Повтор того же ответа брокера (перезапуск между записью и фиксацией статуса).
+	e.recordFill(tracker, detail, "filled")
+
+	p2, err := db.GetPosition("p2")
+	if err != nil || p2 == nil {
+		t.Fatalf("p2 %v %v", p2, err)
+	}
+	t.Logf("после повтора: p2.status=%s exitPrice=%v webull.qty=%v exitOrderID=%q",
+		p2.Status, p2.ExitPrice, p2.Webull.Qty, p2.Webull.ExitOrderID)
+	if p2.Status != "open" {
+		t.Fatalf("НАХОДКА ВОСПРОИЗВЕДЕНА: повторный ответ по заявке x-exit закрыл новую позицию p2 (status=%s)", p2.Status)
+	}
+}
+
+// B: повторный вход брокера в тикер, который ещё держит второй брокер,
+// затирает предыдущую ногу этого брокера вместе с её выходом.
+func TestAuditReentryOverwritesOwnClosedLeg(t *testing.T) {
+	_, db := auditEngine(t)
+	if err := db.SavePosition(store.Position{
+		ID: "p1", Symbol: "AAPL", Status: "open", EntryDate: "2026-09-01",
+		EntryPrice: store.Ptr(10.0), Quantity: 5,
+		Webull:    store.BrokerLeg{Qty: 0, EntryPrice: store.Ptr(10.0), ExitPrice: store.Ptr(11.0), EntryOrderID: "w1", ExitOrderID: "w1-exit"},
+		Robinhood: store.BrokerLeg{Qty: 5, EntryPrice: store.Ptr(10.0), EntryOrderID: "r1"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.AttachEntry(store.EntryFill{
+		Symbol: "AAPL", Broker: "webull", OrderID: "w2", Qty: 4,
+		Price: store.Ptr(12.0), EntryDate: "2026-09-01", Source: "telegram_t1",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	p, err := db.GetPosition("p1")
+	if err != nil || p == nil {
+		t.Fatal(err)
+	}
+	t.Logf("нога webull после повторного входа: qty=%v entry=%v exitPrice=%v entryOrder=%q exitOrder=%q",
+		p.Webull.Qty, *p.Webull.EntryPrice, p.Webull.ExitPrice, p.Webull.EntryOrderID, p.Webull.ExitOrderID)
+	rows, _ := db.ListPositions()
+	if len(rows) != 1 {
+		t.Fatalf("ожидалась 1 строка, получено %d", len(rows))
+	}
+	if p.Webull.ExitOrderID == "w1-exit" && p.Webull.EntryOrderID == "w2" {
+		t.Fatalf("НАХОДКА ВОСПРОИЗВЕДЕНА: в одной ноге вход w2 стоит рядом с выходом w1-exit, первый круг webull (10→11) исчез из журнала")
+	}
+}
+
+// C: SaveOrderTracker возвращает терминальный трекер в работу.
+func TestAuditSaveOrderTrackerRevivesFinal(t *testing.T) {
+	_, db := auditEngine(t)
+	rec := map[string]any{
+		"clientOrderId": "x1", "symbol": "AAPL", "action": "entry", "status": "filled",
+		"quantity": 10.0, "source": "telegram_t1", "dateKey": "2026-09-01", "broker": "webull",
+	}
+	if err := db.SaveOrderTracker(rec); err != nil {
+		t.Fatal(err)
+	}
+	rec["status"] = "submitted"
+	if err := db.SaveOrderTracker(rec); err != nil {
+		t.Fatal(err)
+	}
+	after := db.GetOrderTracker("x1")
+	t.Logf("после повторной записи трекера: status=%v", after["status"])
+	pending, _ := db.ListPendingTrackers()
+	if len(pending) != 0 {
+		t.Fatalf("НАХОДКА ВОСПРОИЗВЕДЕНА: исполненный трекер снова в очереди опроса (status=%v)", after["status"])
+	}
+}
+
+// D: частичное исполнение, покрывающее весь остаток журнала, закрывает
+// позицию, не обнуляя ногу продавшего брокера.
+func TestAuditPartialFlatLeavesLegHolding(t *testing.T) {
+	e, db := auditEngine(t)
+	if err := db.SavePosition(store.Position{
+		ID: "p1", Symbol: "AAPL", Status: "open", EntryDate: "2026-09-01",
+		EntryPrice: store.Ptr(10.0), Quantity: 4,
+		Webull: store.BrokerLeg{Qty: 4, EntryPrice: store.Ptr(10.0), EntryOrderID: "p1"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	tracker := map[string]any{
+		"clientOrderId": "x-exit", "symbol": "AAPL", "action": "exit", "status": "submitted",
+		"quantity": 10.0, "source": "manual_close", "dateKey": "2026-09-01", "broker": "webull",
+	}
+	if err := db.SaveOrderTracker(tracker); err != nil {
+		t.Fatal(err)
+	}
+	e.recordFill(tracker, map[string]any{"status": "PARTIAL_FILLED", "filled_qty": 4.0, "filled_price": 11.0}, "partially_filled")
+	p, err := db.GetPosition("p1")
+	if err != nil || p == nil {
+		t.Fatal(err)
+	}
+	t.Logf("после закрытия: status=%s exitPrice=%v webull.qty=%v webull.exitPrice=%v webull.exitOrderID=%q",
+		p.Status, p.ExitPrice, p.Webull.Qty, p.Webull.ExitPrice, p.Webull.ExitOrderID)
+	if p.Status == "closed" && (p.Webull.Qty > 0 || p.Webull.ExitOrderID == "") {
+		t.Fatalf("НАХОДКА ВОСПРОИЗВЕДЕНА: позиция закрыта, а нога webull держит %v шт. без цены и id выхода", p.Webull.Qty)
+	}
+}
+
+// F: карточка входа в наблюдении не обновляется при повторном входе в тот же день.
+func TestAuditWatchCardStaleAfterReentry(t *testing.T) {
+	e, db := auditEngine(t)
+	if err := db.UpsertWatch(map[string]any{"symbol": "AAPL"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.SavePosition(store.Position{
+		ID: "p1", Symbol: "AAPL", Status: "open", EntryDate: "2026-09-01",
+		EntryPrice: store.Ptr(10.0), Quantity: 10,
+		Webull: store.BrokerLeg{Qty: 10, EntryPrice: store.Ptr(10.0), EntryOrderID: "p1"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	e.UpdatePositions()
+	if _, err := db.ClosePosition("p1", store.PositionExit{Date: "2026-09-01", Price: 11}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.SavePosition(store.Position{
+		ID: "p2", Symbol: "AAPL", Status: "open", EntryDate: "2026-09-01",
+		EntryPrice: store.Ptr(20.0), Quantity: 5,
+		Webull: store.BrokerLeg{Qty: 5, EntryPrice: store.Ptr(20.0), EntryOrderID: "p2"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	e.UpdatePositions()
+	watches, err := db.ListWatches()
+	if err != nil || len(watches) != 1 {
+		t.Fatal(err)
+	}
+	w := watches[0]
+	t.Logf("строка наблюдения: isOpenPosition=%v currentTradeId=%v entryPrice=%v", w["isOpenPosition"], w["currentTradeId"], w["entryPrice"])
+	if id, _ := w["currentTradeId"].(string); id != "p2" {
+		t.Fatalf("НАХОДКА ВОСПРОИЗВЕДЕНА: карточка наблюдения показывает сделку %v по цене %v вместо новой p2 (20)", w["currentTradeId"], w["entryPrice"])
+	}
+}
+
+// E: паника брокера не оставляет ни решения, ни строки причины в отчёте.
+type auditPanicBroker struct{ *MemoryBroker }
+
+func (b *auditPanicBroker) Positions(ctx context.Context) ([]any, error) {
+	panic("audit: broker down")
+}
+
+func TestAuditBrokerPanicHasNoDecision(t *testing.T) {
+	bars := []types.OHLC{{Date: "2026-09-01", Open: 10, High: 12, Low: 8, Close: 8.2, Volume: 1}}
+	_, e, wb := testEngine(t, bars)
+	rh := &MemoryBroker{Name: "robinhood"}
+	e.Broker = nil
+	e.Brokers = nil
+	e.AttachBroker("webull", &auditPanicBroker{wb})
+	e.AttachBroker("robinhood", rh)
+	e.PatchAutoConfig(map[string]any{
+		"enabled": true, "lowIBS": 0.9, "highIBS": 0.95,
+		"allowNewEntries": true, "allowExits": true,
+		"brokers": map[string]any{
+			"webull":    map[string]any{"enabled": true, "allowNewEntries": true, "allowExits": true},
+			"robinhood": map[string]any{"enabled": true, "allowNewEntries": true, "allowExits": true},
+		},
+	})
+	res := e.Execute("test")
+	t.Logf("decisions=%v", res.BrokerDecisions)
+	t.Logf("строки причин отчёта: %q", brokerReasonLines(res))
+	if _, ok := res.BrokerDecisions["webull"]; !ok {
+		t.Fatalf("НАХОДКА ВОСПРОИЗВЕДЕНА: у брокера с паникой нет решения — отчёт T-1 промолчит о нём: %q", brokerReasonLines(res))
+	}
+}
+
 ```
