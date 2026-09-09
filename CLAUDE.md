@@ -46,6 +46,9 @@ Go trading-strategy backtester with a vanilla JS SPA (`go/web`). Historical OHLC
   same T-1 cycle.
 - At the close select the instrument with the **lowest IBS strictly below the entry threshold** (`lowIBS`, default `0.10` = 10%) from the monitoring list; if no ticker meets the threshold, skip the trade.
 - **Hold the position until it is fully closed**, then you may re-enter later the same day provided the above conditions are met again.
+- **Журнал сделок — часть ядра.** Одна строка на позицию в `positions`, нога каждого
+  брокера рядом; запись выхода (цена исполнения, дата, PnL, обнуление ноги) обязательна и
+  идемпотентна. Требования — инварианты I–L в `docs/CORE_TRADING_LOGIC.md`.
 - **Thresholds are strict on both sides:** entry `ibs < lowIBS`, exit `ibs > highIBS`, exactly as the backtest does it. An IBS of exactly `0.10` is not an entry. Monitor and autotrader must go through `ibs.IsEntrySignal` / `ibs.IsExitSignal` in `go/internal/ibs` so the live thresholds cannot drift away from the backtest.
 
 ### Core Invariants (do not violate)
