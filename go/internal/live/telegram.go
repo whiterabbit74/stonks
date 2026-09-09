@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"html"
 	"log"
+	"maps"
 	"math"
 	"sort"
 	"strings"
@@ -82,10 +83,10 @@ func (e *Engine) settleAndReenter(w execWindow, brokers []string) (entryRes Eval
 		go func(name string) {
 			defer wg.Done()
 			state := e.settleOneExit(w, name, true)
-			mu.Lock()
-			defer mu.Unlock()
 			if state == exitPending {
+				mu.Lock()
 				waiting = append(waiting, name)
+				mu.Unlock()
 				return
 			}
 			if state != exitSettled {
@@ -96,12 +97,22 @@ func (e *Engine) settleAndReenter(w execWindow, brokers []string) (entryRes Eval
 			// подтверждённо плоский — своим же выходом, — и старый флаг съел бы
 			// законный повторный вход (AUD-084). Пересчёт без новых чтений:
 			// причина адресная.
+			bw := w
 			if _, gone := clearedByFlatExit[w.entryBlocked[name]]; gone {
-				delete(w.entryBlocked, name)
+				// Своя копия окна: адресную блокировку нельзя снимать правкой
+				// общей карты, которую в этот же момент читает вход соседа.
+				bw.entryBlocked = maps.Clone(w.entryBlocked)
+				delete(bw.entryBlocked, name)
 				_ = e.DB.AppendAutotradeLog("t1_entry_unblocked_after_exit " + name)
 			}
+			// Заявка уходит вне мьютекса: под ним второй плоский брокер ждал
+			// все чтения, ретраи и таймауты первого — общий барьер на отправку,
+			// который ядро запрещает (§16 CORE, класс AUD-074/AUD-119).
+			res := e.executeWindowFor(bw, "telegram_t1", []string{name})
+			mu.Lock()
+			defer mu.Unlock()
 			entered = append(entered, name)
-			entryRes = mergeEntryResults(entryRes, e.executeWindowFor(w, "telegram_t1", []string{name}))
+			entryRes = mergeEntryResults(entryRes, res)
 		}(name)
 	}
 	wg.Wait()
