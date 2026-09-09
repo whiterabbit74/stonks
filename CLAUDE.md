@@ -33,6 +33,10 @@ Go trading-strategy backtester with a vanilla JS SPA (`go/web`). Historical OHLC
 
 ### Trading Workflow Ground Rules
 
+Нормативное описание ядра — [`docs/CORE_TRADING_LOGIC.md`](docs/CORE_TRADING_LOGIC.md).
+Читай его перед любой правкой в `go/internal/live`, `go/internal/ibs` или
+`go/internal/scheduler`. Расхождение кода с ним — баг кода. Ниже — краткая выжимка.
+
 - Execute trades **only at the official session close**.
 - **Eleven minutes before the close (T-11)** send the overview: the current IBS readings for all
   monitored tickers and the ticker that would be picked if the session ended now. This stage is
