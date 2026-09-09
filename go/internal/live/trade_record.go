@@ -117,7 +117,7 @@ func (e *Engine) recordFill(t map[string]any, detail map[string]any, status stri
 	// exist with nothing in the journal and the next cycle would buy again.
 	if status != "filled" && !(reportedQty > 0) {
 		if status == "terminal_absent" {
-			e.deletePhantom(clientOrderID, symbol)
+			e.deletePhantom(clientOrderID, symbol, brokerName)
 		}
 		return
 	}
@@ -366,7 +366,13 @@ func (e *Engine) raiseTrackerPersistBlock(broker string) {
 }
 
 // deletePhantom removes the position of an order the broker says never existed.
-func (e *Engine) deletePhantom(clientOrderID, symbol string) {
+//
+// The row is shared now: its id is the client order id of whichever broker
+// opened it, and the other broker's leg lives in the same row. Deleting it
+// because one broker's order turned out to be a phantom would take a real
+// execution with it, so a row another broker executed against is kept and its
+// phantom leg cleared instead.
+func (e *Engine) deletePhantom(clientOrderID, symbol, broker string) {
 	if clientOrderID == "" || clientOrderID == "<nil>" {
 		return
 	}
@@ -376,5 +382,28 @@ func (e *Engine) deletePhantom(clientOrderID, symbol string) {
 	if err != nil || p == nil || p.ID != clientOrderID {
 		return
 	}
+	peer := "webull"
+	if normalizeBrokerName(broker) == "webull" {
+		peer = "robinhood"
+	}
+	if p.Leg(peer).Executed() {
+		p.SetLeg(broker, store.BrokerLeg{})
+		p.Quantity = p.ExecutedQty()
+		if err := e.DB.SavePosition(*p); err != nil {
+			e.logAuto("journal_update_failed", "", map[string]any{
+				"op": "clear_phantom_leg", "id": p.ID, "broker": broker, "error": err.Error(),
+			})
+		}
+		return
+	}
 	_ = e.DB.DeletePosition(p.ID)
+}
+
+// normalizeBrokerName names the broker a fill belongs to, defaulting to Webull
+// the way fillBrokerName does.
+func normalizeBrokerName(b string) string {
+	if strings.EqualFold(strings.TrimSpace(b), "robinhood") {
+		return "robinhood"
+	}
+	return "webull"
 }
