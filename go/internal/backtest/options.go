@@ -142,16 +142,24 @@ func RunMultiOptions(stockTrades []types.Trade, tickers []TickerIndexed, raw Opt
 	portfolioValue := initial
 	var active []types.Trade
 
+	// Пропущенный бар у тикера не означает, что позиции нет: держим последнюю
+	// известную котировку, иначе открытый опцион на такой дате оценивался бы в
+	// ноль и мог вообще не попасть в trades (AUD-094).
+	lastSeen := map[string]daily{}
 	for _, dateStr := range sorted {
 		r := rf(dateStr, cfg.RiskFreeRate)
+		for tk, m := range tickerMaps {
+			if md, ok := m[dateStr]; ok {
+				lastSeen[tk] = md
+			}
+		}
 		for i := len(active) - 1; i >= 0; i-- {
 			trade := &active[i]
 			ticker := ""
 			if trade.Context != nil {
 				ticker = strings.ToUpper(trade.Context.Ticker)
 			}
-			marketMap := tickerMaps[ticker]
-			md, ok := marketMap[dateStr]
+			md, ok := lastSeen[ticker]
 			if !ok {
 				continue
 			}
@@ -173,8 +181,10 @@ func RunMultiOptions(stockTrades []types.Trade, tickers []TickerIndexed, raw Opt
 					trade.ExitReason = "option_expired"
 				} else if isMaxHold && !isStockExit {
 					trade.ExitReason = "max_hold"
-					trade.ExitDate = dateStr
 				}
+				// Деньги зачисляются в этот день, поэтому и дата выхода — этот
+				// день, а не скопированная у акции (AUD-095).
+				trade.ExitDate = dateStr
 				trade.OptionExitPrice = optPrice
 				trade.ImpliedVolAtExit = vol
 				trade.ExitPrice = spot
@@ -242,7 +252,7 @@ func RunMultiOptions(stockTrades []types.Trade, tickers []TickerIndexed, raw Opt
 			if trade.Context != nil {
 				ticker = strings.ToUpper(trade.Context.Ticker)
 			}
-			md, ok := tickerMaps[ticker][dateStr]
+			md, ok := lastSeen[ticker]
 			if !ok {
 				continue
 			}
@@ -265,7 +275,7 @@ func RunMultiOptions(stockTrades []types.Trade, tickers []TickerIndexed, raw Opt
 			if trade.Context != nil {
 				ticker = strings.ToUpper(trade.Context.Ticker)
 			}
-			md, ok := tickerMaps[ticker][lastDate]
+			md, ok := lastSeen[ticker]
 			if !ok {
 				continue
 			}
