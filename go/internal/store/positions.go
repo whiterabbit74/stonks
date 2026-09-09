@@ -322,8 +322,14 @@ func (d *DB) ClosePosition(id string, exit PositionExit) (*Position, error) {
 
 	p.Status = "closed"
 	p.ExitDate = exit.Date
-	price := exit.Price
-	p.ExitPrice = &price
+	// A fill nobody could price closes the position at an unknown price, not at
+	// zero: zero is a 100% loss the journal never observed (AUD-040).
+	if exit.Price > 0 {
+		price := exit.Price
+		p.ExitPrice = &price
+	} else {
+		p.ExitPrice = nil
+	}
 	if exit.IBS != nil {
 		p.ExitIBS = exit.IBS
 	}
@@ -352,7 +358,7 @@ func (d *DB) ClosePosition(id string, exit PositionExit) (*Position, error) {
 // price that was never confirmed leaves P&L NULL rather than claiming a profit
 // measured from zero.
 func (p *Position) applyPnL() {
-	if p.EntryPrice != nil && *p.EntryPrice > 0 && p.ExitPrice != nil {
+	if p.EntryPrice != nil && *p.EntryPrice > 0 && p.ExitPrice != nil && *p.ExitPrice > 0 {
 		qty := p.Quantity
 		if !(qty > 0) {
 			qty = 1
@@ -361,6 +367,11 @@ func (p *Position) applyPnL() {
 		abs := round6(diff * qty)
 		pct := round6((diff / *p.EntryPrice) * 100)
 		p.PnLAbsolute, p.PnLPercent = &abs, &pct
+	} else {
+		// The P&L is derived from the prices, so it dies with them: clearing a
+		// price by hand used to leave the old profit standing next to no price
+		// at all (AUD-113).
+		p.PnLAbsolute, p.PnLPercent = nil, nil
 	}
 	if p.EntryDate != "" && p.ExitDate != "" {
 		n := int64(tradingdate.DaysBetween(p.EntryDate, p.ExitDate))
@@ -368,6 +379,8 @@ func (p *Position) applyPnL() {
 			n = 1
 		}
 		p.HoldingDays = &n
+	} else {
+		p.HoldingDays = nil
 	}
 }
 
