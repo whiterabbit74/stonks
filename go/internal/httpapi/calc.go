@@ -18,6 +18,17 @@ func invalidCalcNumber(v float64) bool {
 	return math.IsNaN(v) || math.IsInf(v, 0)
 }
 
+// finiteSeries makes a float series JSON-encodable: NaN/±Inf become null.
+func finiteSeries(vs []float64) []any {
+	out := make([]any, len(vs))
+	for i, v := range vs {
+		if !invalidCalcNumber(v) {
+			out[i] = v
+		}
+	}
+	return out
+}
+
 func (s *Server) registerCalc() {
 	wrap := func(fn http.HandlerFunc) http.HandlerFunc { return s.auth(fn) }
 	for path, fn := range map[string]http.HandlerFunc{
@@ -218,7 +229,8 @@ func (s *Server) calcIndicators(w http.ResponseWriter, r *http.Request) {
 	sma, _ := indicators.SMA(closes, 20)
 	ema, _ := indicators.EMA(closes, 20)
 	writeJSON(w, 200, map[string]any{
-		"ibs": indicators.IBS(bars), "sma20": sma, "ema20": ema, "rsi14": indicators.RSI(closes, 14),
+		"ibs": finiteSeries(indicators.IBS(bars)), "sma20": finiteSeries(sma),
+		"ema20": finiteSeries(ema), "rsi14": finiteSeries(indicators.RSI(closes, 14)),
 	})
 }
 
