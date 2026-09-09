@@ -2,39 +2,49 @@
 
 ## Full read-only audit 2026-09-08 (source a162986)
 
-IN_PROGRESS. No agents; source and operational data unchanged. Synthetic tests run through Go overlay (temporary compiler inputs outside checkout). A reproducer PASS means the defect exists.
+CLOSED. Все находки этого прогона исправлены и проверены (2026-09-08). No agents; source and operational data unchanged. Synthetic tests run through Go overlay (temporary compiler inputs outside checkout). A reproducer PASS means the defect exists.
 
-### AUD-098 — OPEN, P2: штатный тест развёртывания падает на комментарии Compose
+### AUD-098 — VERIFIED, P2: штатный тест развёртывания падает на комментарии Compose
 
 `go/internal/httpapi/deploy_assets_test.go:31-34` проверяет strings.Contains(compose, "docker/go"), включая комментарии. После закрепления образов AUD-088 в docker-compose.yml появился комментарий со ссылкой на docker/go.runtime.Dockerfile. Секция server остаётся image-only, но TestGoDeployShipsBinaryAndWeb падает. CI запускает этот тест через go test ./... и не пройдёт на текущем checkout.
 
 Доказательство: go test -race ./... на a162986 — единственный FAIL TestGoDeployShipsBinaryAndWeb, строка 33: compose must not build the trading server. Файл Compose прочитан: build отсутствует, совпадение только в комментарии. Это баг проверки, не дефект запуска контейнера. Исправлений нет.
 
-### AUD-097 — OPEN, P1: повторный импорт сырых цен сохраняет applied старого датасета
+Статус: VERIFIED. Fix commit `afd26d3`. Проверка: go test ./internal/httpapi/ -run TestGoDeployShipsBinaryAndWeb — PASS; проверка сузилась до директивы `build:`, комментарии её больше не ловят.
+
+### AUD-097 — VERIFIED, P1: повторный импорт сырых цен сохраняет applied старого датасета
 
 `go/internal/httpapi/server.go:832-870`; `go/internal/store/db.go:553-604,827-844`: SaveDataset заменяет цены, но не сбрасывает applied событий; savePayload обновляет отметки только при adjustedForSplits=true. Импорт raw-истории поверх скорректированной оставляет старые applied=1. Расчётные ручки используют ListPendingSplits и считают, что новые сырые цены уже пересчитаны. Изменённый фактор ранее применённого события тоже сбрасывается в pending без восстановления исходного базиса; этот второй сценарий требует отдельного воспроизведения.
 
 TestFullAuditRawReimportSplitMark на a162986: датасет X с применённым 2:1 → POST новых raw OHLC и adjustedForSplits=false → HTTP 200, pending=0, хотя цена до сплита снова 100, а после 50. Следующий calc не применит 2:1. Связано с AUD-034, но отдельный путь замены всего датасета. Исправлений нет.
 
-### AUD-096 — OPEN, P1: повтор apply-splits повреждает историю после отказа записи отметки
+Статус: VERIFIED. Fix commit `0dfabce`. Проверка: TestSaveRawDatasetResetsAppliedMarks (`internal/store`) — FAIL до фикса (pending=0), PASS после; сырые цены сбрасывают applied в той же транзакции.
+
+### AUD-096 — VERIFIED, P1: повтор apply-splits повреждает историю после отказа записи отметки
 
 `go/internal/httpapi/server.go:1010-1018`: persistDataset и MarkSplitsApplied выполняются отдельными транзакциями. Если цены уже сохранены, а запись applied отвергнута или процесс упал, повторный запрос делит цены ещё раз. Чтение списка событий также находится вне транзакции: конкурентно добавленное событие может получить applied, хотя его не применяли. Доказан отказ записи, конкурентный вариант пока только чтением кода.
 
 TestFullAuditSplitCommitGap на a162986: SQLite-триггер запрещает только UPDATE applied; первый POST возвращает 500, но цена уже 100 → 50 и событие остаётся pending. После снятия триггера повтор даёт 200 и цену 25 вместо 50. Рабочая БД не использовалась. Отдельная причина от AUD-034: атомарность цен и отметки. Исправлений нет.
 
-### AUD-093 — OPEN, P2: EMA теряет переоценку при отсутствующем баре
+Статус: VERIFIED. Fix commit `0dfabce`. Проверка: TestSaveDatasetWithSplitsAppliedIsAtomic (`internal/store`) — триггер отвергает UPDATE applied, запись цен откатывается целиком, событие остаётся pending; помечаются ровно применённые даты.
+
+### AUD-093 — VERIFIED, P2: EMA теряет переоценку при отсутствующем баре
 
 `go/internal/backtest/ema.go:357-370`: currentPositionValue при отсутствии даты у тикера подставляет цену входа, вместо последней известной цены. В конце истории позиция закрывается по последнему бару своего тикера, но equity и метрики не пересчитываются. Несовпадающие истории дают ложную просадку и разные итоговые суммы.
 
 Доказательство на a162986: TestFullAuditEMAHistoryGap, X с ценами 100 → 120 и дополнительный день только у Y. Equity: 10000 → 12000 → 10000; FinalValue=12000, NetProfit=0, просадка 16.67%. Ожидается сохранение известной оценки либо явный отказ считать неполную историю. Это не AUD-048: другой движок и реальное расхождение, не гипотеза о комиссии. Исправлений нет, production не проверялся.
 
-### AUD-094 — OPEN, P2: опционы исчезают из оценки на пропущенных датах
+Статус: VERIFIED. Fix commit `e81dbb2`. Проверка: TestEmaKeepsLastKnownPriceOnMissingBar (`internal/backtest`) — FAIL до фикса (13330 → 10000), PASS после.
+
+### AUD-094 — VERIFIED, P2: опционы исчезают из оценки на пропущенных датах
 
 `go/internal/backtest/options.go:158-161,241-250,269-272`: отсутствие бара означает continue при выходе, оценке и финальном закрытии. Общий календарь — объединение дат всех тикеров. На дате, существующей только у Y, открытый опцион X получает нулевой вклад в портфель; если это последний день, позиция не попадает в trades вообще. Корень отличается от AUD-049: финальное закрытие уже реализовано, но тоже пропускает тикер без общего последнего бара.
 
 TestFullAuditOptionsGap на a162986: X содержит 01/01, 01/02, 01/05, 01/06; Y добавляет 01/07; опцион X открыт 01/05. Оценка 49450 → 46165, то есть теряются 3285 стоимости открытого опциона, trades=0. Требуется согласованная обработка отсутствующей истории, а не нулевая оценка. Исправлений нет.
 
-### AUD-095 — OPEN, P2: дата выхода опциона остаётся датой базовой акции
+Статус: VERIFIED. Fix commit `fe70222`. Проверка: TestRunMultiOptionsKeepsValueOnMissingBar (`internal/backtest`) — FAIL до фикса (0 trades), PASS после.
+
+### AUD-095 — VERIFIED, P2: дата выхода опциона остаётся датой базовой акции
 
 `go/internal/backtest/options.go:175-202`: при isExpired меняются цена, причина и длительность, но ExitDate остаётся скопированной из stockTrade; дата обновляется только в ветке max_hold. При отсутствующем баре даты выхода акции аналогично фактический выход может произойти позже записанного. Деньги зачисляются на фактическом дне, журнал и группировка доходности относятся к другому дню.
 
@@ -42,7 +52,7 @@ TestFullAuditOptionExpiryDate на a162986: вход 2026-01-05, экспира�
 
 | ISSUE-ID | Root cause | Source | Status | Fix commit | Verification |
 |---|---|---|---|---|---|
-| AUD-092 | P2. `/api/calc/indicators` returns HTTP 500 for valid nonempty history. SMA/EMA/RSI use NaN for warmup points; writeJSON rejects these values and discards the entire response. Main SPA does not currently call this endpoint | `go/internal/httpapi/calc.go:211-235`; `go/internal/indicators/indicators.go`; `go/internal/httpapi/server.go:241-252`; a162986 | OPEN | None, read-only | TestFullAuditIndicators: valid OHLC arrays of lengths 1/14/20/30 all return 500 encode failed. Distinct from AUD-060: ordinary missing indicator points, not overflow in finalValue. Reproducer will be recorded with audit evidence |
+| AUD-092 | P2. `/api/calc/indicators` returns HTTP 500 for valid nonempty history. SMA/EMA/RSI use NaN for warmup points; writeJSON rejects these values and discards the entire response. Main SPA does not currently call this endpoint | `go/internal/httpapi/calc.go:211-235`; `go/internal/indicators/indicators.go`; `go/internal/httpapi/server.go:241-252`; a162986 | VERIFIED | `c5af81b` | TestFullAuditIndicators: valid OHLC arrays of lengths 1/14/20/30 all return 500 encode failed. Distinct from AUD-060: ordinary missing indicator points, not overflow in finalValue. TestCalcIndicatorsEncodesWarmupAsNull (`internal/httpapi`) — FAIL до фикса (500 encode failed для длин 1/14/20/30), PASS после: NaN отдаётся как null |
 
 Единый индекс по текущему checkout `main` на ревизии `171a7cb` (2026-09-08).
 Статусы не наследуются автоматически из старых документов: при конфликте
@@ -102,6 +112,8 @@ TestFullAuditOptionExpiryDate на a162986: вход 2026-01-05, экспира�
 | AUD-031 | Пустой список наблюдения давал ложный «Пропущен T-11». `Aggregate` возвращал `Reason: no_watches` не отправив ничего, а `reportMissedTelegram` использовал общий текст пропуска | находка прохода T-11/T-1 2026-09-06 на `0f4f6b9`; `go/internal/live/telegram.go` `Aggregate`, `go/internal/scheduler/scheduler.go` `reportMissedTelegram` | VERIFIED | `8b573e2` | При успешно прочитанном пустом watchlist отправляется «T-11 не сформирован: Список наблюдения пуст», claim/маркер и retry после ошибки Telegram сохранены. `go test ./internal/scheduler -run 'TestMissed(T11WithEmptyWatchlistExplainsWhy|AlertRetriesAfterFailedSend)'` PASS; проверено 2026-09-06 |
 | AUD-032 | `CanSubmit` — флаг «running» в UI — спрашивал только про Webull: дефолтный адаптер + `storedHealthStatus("webull")` + `TokenStatus().hasToken`. Setup только с Robinhood показывался остановленным, пока реально отправлял заявки. Тот же класс, что AUD-017: состояние одного брокера выдаётся за состояние системы | сквозная проверка класса AUD-017 по проекту 2026-09-06 на `787c337`; `go/internal/live/autotrade.go` `CanSubmit` | VERIFIED | `f5d0256` | `CanSubmit` идёт по `brokerSnapshot()` и переиспользует существующую пару `brokerFlags`/`brokerHasWorkingToken`. Тест `TestCanSubmitSeesARobinhoodOnlySetup` FAIL на предфиксном коде, PASS после. Гейтом исполнения `CanSubmit` не является (только `status.state.running` в UI), поэтому денежного эффекта у находки нет |
 | AUD-033 | `RunTokenHealth` брала из результатов по всем брокерам одну строку Webull и отвечала ей за всю задачу: NEEDS_REAUTH Robinhood не попадал в `JobLog`, а в день, когда Webull уже проверен, задача писала `already-ran`, хотя Robinhood проверялся только что. Telegram-алерт при этом не терялся — он шлётся внутри каждой job. Значимость выросла после AUD-030, сделавшего `JobLog` реальным каналом оператора | сквозная проверка класса AUD-017 по проекту 2026-09-06 на `f5d0256`; `go/internal/scheduler/scheduler.go` `RunTokenHealth` | VERIFIED | `79d6037` | Строка собирается по всем брокерам (`webull=… robinhood=…`), `skipped` — только когда пропущены все; job переименована `webull-token-health` → `broker-token-health`. `TestTokenHealthCallsCheckToken` дополнен проверкой `robinhood=` и FAIL на предфиксном коде (`status=NORMAL`), PASS после |
+
+Статус: VERIFIED. Fix commit `fe70222`. Проверка: TestRunMultiOptionsExpiryUsesExpiryDate (`internal/backtest`) — FAIL до фикса (ExitDate=2026-01-30), PASS после (дата экспирации).
 
 ### Обновление AUD-002 по аудиту 2026-09-06
 
