@@ -56,6 +56,25 @@ AUD-104 сохраняет отсутствующие поля при после
 Проверка: `go test -overlay /tmp/mkt-audit-20260908/patch-overlay.json ./internal/httpapi -run TestAuditPatchResurrectsSoldLeg -v`.
 Fix commit отсутствует.
 
+### AUD-113 — OPEN, P2: очистка цены оставляет прежнюю вычисленную прибыль
+
+`Position.applyPnL` пересчитывает PnL только при известных ценах; иначе сохраняет
+входящие `PnLAbsolute`/`PnLPercent`. После фикса AUD-104 PATCH накладывается на
+сохранённую строку, поэтому эти старые числа приходят из БД. PATCH `entryPrice:null`
+делает цену неизвестной, но ранее рассчитанная прибыль продолжает возвращаться API.
+Аналогично не очищается `holding_days` при очистке даты; `exitPrice:null` и
+`entryPrice:0` также оставляют прежний PnL. Это данные API, UI не исследовался.
+
+На `d0ca508`, `TestAuditClearPriceKeepsPnL`: закрытая позиция, 10 акций, вход 10,
+выход 12; PATCH с `entryPrice:null` → HTTP 200, `entryPrice=nil`, `pnlAbsolute=20`
+вместо NULL. Нарушение CORE_TRADING_LOGIC §12–13: при неподтверждённом входе PnL
+остаётся NULL. Источник: `go/internal/store/positions.go` `applyPnL`;
+`go/internal/httpapi/server.go` `handlePatchPosition`.
+Проверка: `go test -overlay /tmp/mkt-audit-20260908/patch-overlay.json ./internal/httpapi -run TestAuditClearPriceKeepsPnL -v`.
+Смежный AUD-040 — другой путь: вычисление результата от нулевой цены выхода;
+здесь результат вообще не инвалидируется после удаления исходных данных.
+Fix commit отсутствует.
+
 ### AUD-075 / CORE-01 — REOPENED, P1: повторный вход всё ещё ждёт другого брокера
 
 Предыдущее исправление `44387ba` сохранено в истории основной строки. На `d0ca508`
