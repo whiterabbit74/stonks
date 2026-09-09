@@ -54,6 +54,14 @@ func (e *Engine) executeAll(w execWindow, ev EvalResult, trigger, corr string, s
 				if rec := recover(); rec != nil {
 					// Паника одного брокера не должна забирать с собой второго.
 					e.logAuto("broker_execution_panic", corr, map[string]any{"broker": name, "error": fmt.Sprint(rec)})
+					// Пропуск без названной причины запрещён (§15 CORE): без
+					// этого решения брокер исчезал из отчёта T-1 совсем
+					// (AUD-114).
+					out.Lock()
+					defer out.Unlock()
+					if decisions[name] == nil {
+						decisions[name] = map[string]any{"action": "none", "reason": "broker_panic"}
+					}
 				}
 			}()
 			decision, brokerRes, executed := e.executeOneBroker(w, ev, trigger, corr, name, br, rows, journalErr)

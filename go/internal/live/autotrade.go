@@ -1328,7 +1328,7 @@ func retryBrokerReadWindow[T any](e *Engine, w execWindow, what string, fn func(
 		}
 		ctx, cancel := e.readContext(w)
 		start := e.now()
-		out, err = fn(ctx)
+		out, err = callBroker(ctx, fn)
 		cancel()
 		lastDur = e.now().Sub(start)
 		if err == nil {
@@ -1343,6 +1343,22 @@ func retryBrokerReadWindow[T any](e *Engine, w execWindow, what string, fn func(
 		e.sleep(submitRetryStep)
 	}
 	return out, err
+}
+
+// callBroker runs one broker read and turns a panic inside the broker adapter
+// into that read's own error. A nil map or an index out of range while parsing
+// one broker's answer used to unwind the goroutine that read the book — in
+// heldSymbolsByBrokerBooks, t1BrokerReconcile and awaitBrokerBooksFlat there is
+// nothing above it to catch that — and took the whole process, and with it the
+// other broker's closing minute, down. One broker's failure is that broker's
+// own reason and nobody else's (invariant D.2, AUD-114).
+func callBroker[T any](ctx context.Context, fn func(ctx context.Context) (T, error)) (out T, err error) {
+	defer func() {
+		if rec := recover(); rec != nil {
+			err = fmt.Errorf("broker panic: %v", rec)
+		}
+	}()
+	return fn(ctx)
 }
 
 func errText(err error, fallback string) string {
