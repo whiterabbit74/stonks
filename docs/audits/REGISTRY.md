@@ -19,7 +19,7 @@ sizing, config, brokers, actualize, deadline, telegram/telegram_t11, integrity),
 Воспроизведение (из корня репозитория, тесты берутся из этой секции):
 `go test -overlay <overlay.json> ./internal/live -run TestAudit -v`.
 
-### AUD-114 — OPEN, P1: паника одного брокера роняет весь процесс в закрывающую минуту
+### AUD-114 — VERIFIED, P1: паника одного брокера роняет весь процесс в закрывающую минуту
 
 Книги брокеров читаются параллельно в `heldSymbolsByBrokerBooks`
 (`go/internal/live/autotrade.go:663-680`), и в этих горутинах нет `recover`.
@@ -43,7 +43,20 @@ sizing, config, brokers, actualize, deadline, telegram/telegram_t11, integrity),
 (`brokerReasonLines`, `telegram.go`). Это отдельная половина той же находки:
 пропуск без названной причины запрещён (§15 CORE).
 
-### AUD-115 — OPEN, P1: повторно пришедшее исполнение выхода закрывает НОВУЮ позицию того же тикера
+
+Статус: VERIFIED. Fix commit `5aff50a`: панику брокера перехватывает
+`callBroker` — единственная точка, через которую проходит любое чтение брокера
+(`retryBrokerReadWindow`), поэтому её ловят разом `heldSymbolsByBrokerBooks`,
+`t1BrokerReconcile` и `awaitBrokerBooksFlat`, и она становится собственной
+ошибкой этого брокера. Вторая половина находки закрыта там же: `executeAll` при
+панике пишет брокеру решение `none` с причиной `broker_panic` и текстом в отчёте
+T-1.
+Проверка на `5aff50a`: `go test ./internal/live -run TestBrokerPanicStaysWithThatBroker`
+(`go/internal/live/aud114_broker_panic_test.go`) — паникующий webull получает свою
+ошибку чтения и `open_orders_unavailable`, книга robinhood читается, процесс жив.
+На предфиксном коде бинарник падает с трассой на `autotrade.go:671`.
+
+### AUD-115 — VERIFIED, P1: повторно пришедшее исполнение выхода закрывает НОВУЮ позицию того же тикера
 
 `recordExitFill` (`go/internal/live/trade_record.go:196-237`) ищет позицию по
 `openPositionFor(symbol, clientOrderID, broker)` и безусловно делает
@@ -67,7 +80,18 @@ sizing, config, brokers, actualize, deadline, telegram/telegram_t11, integrity),
 Отличие от AUD-077/AUD-111: те про частичное исполнение и атомарность списания;
 здесь полный выход вообще не имеет отметки «это исполнение уже разнесено».
 
-### AUD-116 — OPEN, P1: `SaveOrderTracker` возвращает терминальный трекер в очередь опроса
+
+Статус: VERIFIED. Fix commit `7018bd9`: `ExitLeg` принимает исполненное
+количество и делает `claimFillTx` в той же транзакции, что и запись ноги, —
+повтор ответа брокера не проходит списание и ничего не пишет. Повтор без
+открытой позиции логируется как `exit_fill_already_recorded`, а не поднимает
+ложную тревогу `exit_fill_without_open_position`.
+Проверка на `7018bd9`: `go test ./internal/live -run TestExitFillReplayLeavesReentryAlone`
+(`go/internal/live/aud115_exit_replay_test.go`) — после закрытия p1 и повторного
+входа p2 повтор того же ответа оставляет p2 открытой с нетронутой ногой. Без
+списания (claim отключён) тот же тест закрывает p2.
+
+### AUD-116 — VERIFIED, P1: `SaveOrderTracker` возвращает терминальный трекер в очередь опроса
 
 `SaveOrderTracker` (`go/internal/store/live_persist.go:213-217`) в
 `ON CONFLICT DO UPDATE` пишет `status=excluded.status` без защиты финальных
@@ -82,7 +106,16 @@ sizing, config, brokers, actualize, deadline, telegram/telegram_t11, integrity),
 после `SaveOrderTracker(status=filled)` и повторной записи `status=submitted`
 `GetOrderTracker` отдаёт `submitted`, `ListPendingTrackers` снова содержит заявку.
 
-### AUD-117 — OPEN, P1: повторный вход стирает собственный записанный выход, пока тикер держит второй брокер
+
+Статус: VERIFIED. Fix commit `d56260b`: `ON CONFLICT DO UPDATE` в
+`SaveOrderTracker` сохраняет терминальный статус (`CASE WHEN ... THEN
+order_trackers.status`), список терминальных статусов вынесен в
+`terminalTrackerStatuses` и общий с `SetOrderTrackerStatus`.
+Проверка на `d56260b`: `go test ./internal/store -run TestSaveOrderTrackerKeepsTerminalStatus`
+(`go/internal/store/aud116_tracker_terminal_test.go`) — после `filled` поздняя
+запись `submitted` не проходит, заявки нет в `ListPendingTrackers`.
+
+### AUD-117 — VERIFIED, P1: повторный вход стирает собственный записанный выход, пока тикер держит второй брокер
 
 `AttachEntry` (`go/internal/store/positions.go:679-731`) складывает вход в
 **открытую** строку того же тикера. Если брокер уже вышел (его нога `qty=0`,
@@ -98,7 +131,18 @@ entryOrder=w2 exitOrder=w1-exit`, строк в журнале по-прежне
 Нарушены инварианты I («один факт — одна запись») и K.4 (проданная часть —
 отдельная закрытая строка).
 
-### AUD-118 — OPEN, P2: закрытая позиция остаётся с ногой, которая «держит» акции
+
+Статус: VERIFIED. Fix commit `6bd4aac`: `AttachEntry` перед записью входа
+проверяет ногу этого брокера и, если она уже вышла (`qty=0`, есть
+`exit_order_id`), выносит завершённый круг отдельной закрытой строкой
+(`detachExitedLegTx`) — то же правило, что и у частичного выхода (инвариант
+K.4). Количество круга берётся как `quantity - ExecutedQty()`; если оно
+неизмеримо (ручная правка строки), строка не трогается вовсе.
+Проверка на `6bd4aac`: `go test ./internal/store -run TestReentryKeepsTheExitedRoundInTheJournal`
+(`go/internal/store/aud117_reentry_leg_test.go`) — в журнале закрытая строка
+`qty=4 exit=11 exitOrder=w1-exit pnl=+4` и открытая с чистой ногой `w2` по 12.
+
+### AUD-118 — VERIFIED, P2: закрытая позиция остаётся с ногой, которая «держит» акции
 
 `ClaimPartialExit` при `p.Quantity - newly <= 1e-9` уходит в `closePositionTx`
 (`go/internal/store/positions.go:638-646`), а тот трогает только сигнальную
@@ -112,7 +156,17 @@ entryOrder=w2 exitOrder=w1-exit`, строк в журнале по-прежне
 `quantity=4`, заявка на 10, исполнено 4: `status=closed`, при этом
 `webull.qty=4`, `webull.exitPrice=nil`, `webull.exitOrderID=""`.
 
-### AUD-119 — OPEN, P2: повторные входы после выхода отправляются под общим мьютексом
+
+Статус: VERIFIED. Fix commit `b48d5ad`: `closePositionTx` обнуляет любую ногу,
+которая ещё «держит», и проставляет ей цену выхода — это закрывает и ручной
+`POST /close`; `ClaimPartialExit` в ветке «выход забрал весь остаток» сначала
+вызывает `exitLegTx` с id заявки, поэтому нога получает и цену, и order id.
+Проверка на `b48d5ad`: `go test ./internal/store -run FlattensTheLeg`
+(`go/internal/store/aud118_closed_leg_test.go`) — заявка на 10 при журнальных 4
+даёт `closed`, `webull.qty=0`, `exitPrice=11`, `exitOrderId=w1-exit`; ручное
+закрытие обнуляет ногу и ставит цену сигнала.
+
+### AUD-119 — VERIFIED, P2: повторные входы после выхода отправляются под общим мьютексом
 
 `settleAndReenter` (`go/internal/live/telegram.go:75-104`) берёт `mu.Lock()` с
 `defer mu.Unlock()` и **внутри** этой блокировки вызывает
@@ -127,7 +181,18 @@ entryOrder=w2 exitOrder=w1-exit`, строк в журнале по-прежне
 воспроизведение требует таймингов. Статус OPEN, а не NEEDS_RECHECK: конструкция
 видна статически и однозначна.
 
-### AUD-120 — OPEN, P2: карточка наблюдения не обновляется при смене позиции по тому же тикеру
+
+Статус: VERIFIED. Fix commit `3a36ab2`: `settleAndReenter` держит `mu` только
+вокруг общих результатов, а `executeWindowFor` вызывается вне замка. Адресная
+блокировка входа снимается на копии окна (`maps.Clone`), а не правкой общей
+карты `entryBlocked`, которую в тот же момент читает вход соседнего брокера.
+Проверка на `3a36ab2`: `go test ./internal/live -run TestReentryOrderLeavesTheLock`
+(`go/internal/live/aud119_reentry_lock_test.go`) — текстовый сторож: между
+последним `mu.Lock()` и отправкой не должно быть `defer mu.Unlock()`. На
+предфиксной ревизии `7018bd9` тот же сторож падает. Гонка карты дополнительно
+покрыта `go test -race ./internal/live`.
+
+### AUD-120 — VERIFIED, P2: карточка наблюдения не обновляется при смене позиции по тому же тикеру
 
 `UpdatePositions` (`go/internal/live/actualize.go:248-273`) патчит строку
 наблюдения только когда меняется **флаг** `isOpenPosition`. Повторный вход в
@@ -141,7 +206,15 @@ entryOrder=w2 exitOrder=w1-exit`, строк в журнале по-прежне
 p1(10)→closed и p2(20)→open строка наблюдения показывает
 `currentTradeId=p1 entryPrice=10`.
 
-### AUD-121 — OPEN, P3: мёртвая ветка `invalid_high_ibs`
+
+Статус: VERIFIED. Fix commit `4defd86`: `UpdatePositions` обновляет карточку не
+только при смене флага, но и когда меняется личность открытой позиции
+(`currentTradeId`).
+Проверка на `4defd86`: `go test ./internal/live -run TestWatchCardFollowsTheNewPosition`
+(`go/internal/live/aud120_watch_reentry_test.go`) — после p1→closed и p2→open
+карточка показывает `p2` и цену 20. На предфиксном коде — `p1` и 10.
+
+### AUD-121 — VERIFIED, P3: мёртвая ветка `invalid_high_ibs`
 
 `liveHighIBS` (`go/internal/live/config.go:222-227`) всегда возвращает
 `invalid=false`, а `watchThresholds` сбрасывает флаг ещё раз, если порог задан
@@ -150,7 +223,15 @@ p1(10)→closed и p2(20)→open строка наблюдения показы�
 `decideLiveAction` и текст в `noActionReasonText` — мёртвый код. Порог чинится
 молча через `ibs.Pair`. Класс AUD-010.
 
-### AUD-122 — OPEN, P3: бэктест пропускает вход целиком, когда комиссия не влезает в остаток
+
+Статус: VERIFIED. Fix commit `7bb2bed`: ветка удалена вместе с флагом —
+`LiveQuote.HighIBSInvalid`, третий результат `watchThresholds`, второй результат
+`liveHighIBS`, ветка в `decideLiveAction`, фильтр кандидатов и текст причины.
+Порог по-прежнему чинится `ibs.Pair`, сообщать о нём нечего.
+Проверка на `7bb2bed`: `cd go && go test ./...` — зелёный; `rg "HighIBSInvalid|invalid_high_ibs"`
+не находит ничего в `go/` и `web/`.
+
+### AUD-122 — VERIFIED, P3: бэктест пропускает вход целиком, когда комиссия не влезает в остаток
 
 `RunSinglePosition` (`go/internal/backtest/single.go:310-329`) считает
 `quantity = floor(freeCapital*leverage/price)`, а затем требует
@@ -159,13 +240,28 @@ p1(10)→closed и p2(20)→open строка наблюдения показы�
 вовсе — вместо покупки на одну акцию меньше. Сигнал дня теряется бесшумно.
 Проверка: чтение кода; отдельного теста не строил.
 
-### AUD-123 — OPEN, P3: страница /robinhood запрашивает статус дважды за рендер
+
+Статус: VERIFIED. Fix commit `769831d`: размер входа уменьшается, пока вход
+вместе с комиссией не влезет в свободный капитал, вместо пропуска сигнала.
+Проверка на `769831d`: `go test ./internal/backtest -run TestEntryShrinksWhenCommissionDoesNotFit`
+(`go/internal/backtest/aud122_commission_rounding_test.go`) — капитал 1000, цена
+100, фиксированная комиссия 1: сделка есть, количество 9. На предфиксном коде
+сделок нет. Golden-тесты бэктеста не изменились.
+
+### AUD-123 — VERIFIED, P3: страница /robinhood запрашивает статус дважды за рендер
 
 `go/web/js/app.js` (блок загрузки страницы брокера) кладёт `API.rhStatus()` в
 `Promise.all` дважды — как `tok` и как `rhst`. Лишний сетевой вызов на каждый
 переход на вкладку.
 
-### AUD-124 — NEEDS_RECHECK, P2: `quoteAsOf` разбирает время без зоны как UTC
+
+Статус: VERIFIED. Fix commit `77f6ac5`: дубль `API.rhStatus()` убран из
+`Promise.all`, `state.rhStatus` берётся из уже загруженного `tok`.
+Проверка на `77f6ac5`: `rg "rhStatus" go/web/js/app.js` — в блоке загрузки
+страницы брокера остался один вызов; `node --check go/web/js/app.js` и
+`go test ./internal/httpapi` зелёные.
+
+### AUD-124 — NOT_APPLICABLE, P2: `quoteAsOf` разбирает время без зоны как UTC
 
 `quoteAsOf` (`go/internal/providers/client.go:107-110`) принимает шаблон
 `"2006-01-02 15:04:05"` без зоны — Go считает такую строку UTC. Если провайдер
@@ -173,6 +269,37 @@ p1(10)→closed и p2(20)→open строка наблюдения показы�
 котировку четырёх-пятичасовой давности и цепочка провайдеров начнёт
 отбраковывать все её ответы (CORE-06). Нужен образец реального ответа
 провайдера: на синтетике не проверить, поэтому не OPEN.
+
+Статус: NOT_APPLICABLE (проверено на реальном ответе), закрыто вместе с AUD-125
+коммитом `2484f30`. Recheck 2026-09-09: снимок Webull снят с продакшн-аккаунта
+(`/openapi/market-data/stock/snapshot`, AAPL, подпись HMAC-SHA1 теми же
+заголовками, что и в `internal/webull`) — времени без зоны в ответе нет,
+стоят `last_trade_time` и `quote_time` в миллисекундах эпохи. Ни у одного из
+трёх мест вызова `quoteAsOf` (Finnhub `t` — эпоха, Robinhood `updated_at` —
+RFC3339 с зоной, снимок Webull) шаблон без зоны не встречается. Шаблон удалён:
+он мог только выдумать зону, а «неизвестно» — задокументированный безопасный
+ответ этой функции.
+Проверка на `2484f30`: `go test ./internal/providers -run TestZonelessTimestampStaysUnknown`
+(`go/internal/providers/aud124_snapshot_asof_test.go`).
+
+### AUD-125 — VERIFIED, P1: у котировок Webull никогда не было отметки времени
+
+Найдено при recheck AUD-124 на реальном ответе провайдера. `snapshotPayload`
+(`go/internal/providers/client.go`) читал `AsOf` из ключей `tradeStamp`,
+`tradeTime`, `timestamp`, `ts`, `updateTime`, `update_time`, `quoteTime`. Живой
+снимок Webull не содержит ни одного из них: там `quote_time` и
+`last_trade_time`. Значит `AsOf` у основного провайдера всегда оставался нулём,
+а `quoteStaleness` при нулевом `AsOf` возвращает «свежая» — проверка возраста
+котировки (CORE-06) не работала вовсе, замороженный снимок дошёл бы до решения
+T-1 как живой. Косвенное подтверждение на проде: в 702 строках `autotrade_logs`
+нет ни одного `quote_provider_failed`.
+
+Статус: VERIFIED. Fix commit `2484f30`: читаются настоящие ключи, `quote_time`
+первым (момент обновления снимка), `last_trade_time` вторым — последняя сделка
+малоликвидного тикера бывает старой законно.
+Проверка на `2484f30`: `go test ./internal/providers -run TestWebullSnapshotCarriesItsOwnTimestamp`
+(`go/internal/providers/aud124_snapshot_asof_test.go`, строка снимка — реальный
+ответ от 2026-09-09): `AsOf` равен `quote_time`. На предфиксном коде `AsOf` нулевой.
 
 ### Пробелы охвата этого прохода
 
