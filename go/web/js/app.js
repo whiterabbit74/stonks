@@ -4187,18 +4187,28 @@
       const kind = p === '/robinhood' ? 'robinhood' : 'webull';
       if (state.loaded.broker !== kind) {
         const rh = p === '/robinhood';
+        // Каждый из запросов подменялся пустой заглушкой, и страница рисовала
+        // «позиций нет» / «расхождений нет» там, где на самом деле «не знаю».
+        // Заглушка остаётся (иначе страница вообще не соберётся), но молчать о
+        // ней нельзя: оператор должен видеть, что пусто не значит пусто.
+        const failed = [];
+        const orEmpty = (name, fallback) => (e) => {
+          failed.push(name);
+          return typeof fallback === 'function' ? fallback(e) : fallback;
+        };
         const [bt, tok, ac, dash, logs, st, w, cons, health, settings] = await Promise.all([
-          API.positions({ includeHidden: true }).catch(() => ({ positions: [] })),
-          rh ? API.rhStatus().catch((e) => e.data || {}) : API.tokenStatus().catch((e) => e.data || { present: false, hasToken: false }),
-          API.autoConfig().catch(() => ({})),
+          API.positions({ includeHidden: true }).catch(orEmpty('журнал сделок', { positions: [] })),
+          rh ? API.rhStatus().catch(orEmpty('статус брокера', (e) => e.data || {})) : API.tokenStatus().catch(orEmpty('статус брокера', (e) => e.data || { present: false, hasToken: false })),
+          API.autoConfig().catch(orEmpty('настройки автоторговли', {})),
           rh ? API.rhDashboard(true).catch((e) => (e && e.data) || { error: (e && e.message) || 'dashboard', positions: [] }) : API.dashboard(true).catch((e) => (e && e.data) || { error: (e && e.message) || 'dashboard', positions: [] }),
-          API.logs(300).catch(() => ({ logs: [] })),
-          API.autoStatus().catch(() => null),
-          API.watches().catch(() => []),
-          API.consistency().catch(() => ({ issues: [] })),
-          API.brokersHealth().catch(() => []),
-          API.settings().catch(() => ({})),
+          API.logs(300).catch(orEmpty('журнал автоторговли', { logs: [] })),
+          API.autoStatus().catch(orEmpty('состояние автоторговли', null)),
+          API.watches().catch(orEmpty('список наблюдения', [])),
+          API.consistency().catch(orEmpty('сверка с брокером', { issues: [] })),
+          API.brokersHealth().catch(orEmpty('здоровье брокеров', [])),
+          API.settings().catch(orEmpty('настройки', {})),
         ]);
+        if (failed.length) toast('Не загрузилось: ' + failed.join(', ') + '. Пустые блоки — это отказ запроса, а не отсутствие данных.');
         state.brokerHealth = Array.isArray(health) ? health : [];
         // На /robinhood статус брокера — это уже загруженный tok: второй такой
         // же запрос в этом же Promise.all был лишним (AUD-123).
