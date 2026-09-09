@@ -404,6 +404,19 @@ func (d *DB) ClaimFillQty(clientOrderID string, filled float64) (float64, error)
 	return newly, nil
 }
 
+// RecordedFillQty is how much of this order the journal has already booked. It
+// answers "have I seen this fill before" for a caller that is about to write
+// nothing anyway — the alarm on an exit fill with no open position to close.
+// A write keyed off idempotency claims through claimFillTx instead, in the same
+// transaction as the write it authorises.
+func (d *DB) RecordedFillQty(clientOrderID string) float64 {
+	var recorded sql.NullFloat64
+	if err := d.SQL.QueryRow(`SELECT recorded_qty FROM order_trackers WHERE client_order_id=?`, clientOrderID).Scan(&recorded); err != nil {
+		return 0
+	}
+	return recorded.Float64
+}
+
 // claimFillTx is ClaimFillQty inside a caller's transaction, so the claim and
 // the journal write it authorises commit or roll back together.
 func claimFillTx(tx *sql.Tx, clientOrderID string, filled float64) (float64, error) {

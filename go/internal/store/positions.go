@@ -464,36 +464,58 @@ func (p *Position) applyPnL() {
 // second write was built on a copy taken before the first, so it restored the
 // peer's leg and the position never went flat. A read-modify-write of a shared
 // row is a lost update waiting for the two brokers to overlap.
-func (d *DB) ExitLeg(id, broker string, exitPrice float64, exitOrderID string) (*Position, error) {
+// exitQty is the quantity the broker reports executed. The claim against the
+// order tracker and the leg write commit together, so the same broker answer
+// arriving twice books the exit once: without it a replay closed whatever
+// position the ticker had at that moment — a re-entry of the same day
+// included — at the old fill price (AUD-115). booked is false when this fill
+// was already journaled and nothing was written. A fill with no quantity at all
+// carries no evidence to key idempotency off and is recorded as before.
+func (d *DB) ExitLeg(id, broker string, exitPrice float64, exitOrderID string, exitQty float64) (p *Position, booked bool, err error) {
+	tx, err := d.SQL.Begin()
+	if err != nil {
+		return nil, false, err
+	}
+	defer tx.Rollback()
+	if exitQty > 0 {
+		newly, err := claimFillTx(tx, exitOrderID, exitQty)
+		if err != nil {
+			return nil, false, err
+		}
+		if newly <= 0 {
+			return nil, false, nil
+		}
+	}
+	if err := exitLegTx(tx, id, broker, exitPrice, exitOrderID); err != nil {
+		return nil, false, err
+	}
+	row, err := d.scanPosition(tx.QueryRow(`SELECT `+positionColumns+` FROM positions WHERE id=?`, id))
+	if err == sql.ErrNoRows {
+		return nil, false, fmt.Errorf("позиция не найдена")
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, false, err
+	}
+	return &row, true, nil
+}
+
+// exitLegTx zeroes one broker's leg and records what it got, in one statement.
+func exitLegTx(tx *sql.Tx, id, broker string, exitPrice float64, exitOrderID string) error {
 	col := "webull"
 	if normalizeBroker(broker) == "robinhood" {
 		col = "rh"
 	}
-	tx, err := d.SQL.Begin()
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback()
 	var price any
 	if exitPrice > 0 {
 		price = exitPrice
 	}
-	if _, err := tx.Exec(`UPDATE positions
-		SET `+col+`_qty=0, `+col+`_exit_price=COALESCE(?, `+col+`_exit_price), `+col+`_exit_order_id=?
-		WHERE id=? AND status='open'`, price, nullText(exitOrderID), id); err != nil {
-		return nil, err
-	}
-	p, err := d.scanPosition(tx.QueryRow(`SELECT `+positionColumns+` FROM positions WHERE id=?`, id))
-	if err == sql.ErrNoRows {
-		return nil, fmt.Errorf("позиция не найдена")
-	}
-	if err != nil {
-		return nil, err
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, err
-	}
-	return &p, nil
+	_, err := tx.Exec(`UPDATE positions
+		SET `+col+`_qty=0, `+col+`_exit_price=COALESCE(?, `+col+`_exit_price), `+col+`_exit_order_id=COALESCE(?, `+col+`_exit_order_id)
+		WHERE id=? AND status='open'`, price, nullText(exitOrderID), id)
+	return err
 }
 
 // CloseLeg records what one broker actually got for its exit. It is separate

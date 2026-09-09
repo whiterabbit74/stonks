@@ -155,7 +155,7 @@ func (e *Engine) recordFill(t map[string]any, detail map[string]any, status stri
 		return
 	}
 	if action == "exit" {
-		e.recordExitFill(symbol, clientOrderID, brokerName, dateKey, fillPrice, exitIBS, meta)
+		e.recordExitFill(symbol, clientOrderID, brokerName, dateKey, fillQty, fillPrice, exitIBS, meta)
 	}
 }
 
@@ -193,7 +193,7 @@ func (e *Engine) recordEntryFill(symbol, clientOrderID, brokerName, source, date
 // recordExitFill closes this broker's leg, and the position itself once no
 // broker holds shares any more. A position half-exited (one broker out, the
 // other still in) stays open on purpose: it is still our money at risk.
-func (e *Engine) recordExitFill(symbol, clientOrderID, brokerName, dateKey string, fillPrice float64, exitIBS *float64, meta orderMeta) {
+func (e *Engine) recordExitFill(symbol, clientOrderID, brokerName, dateKey string, fillQty, fillPrice float64, exitIBS *float64, meta orderMeta) {
 	p, err := e.openPositionFor(symbol, clientOrderID, brokerName)
 	if err != nil {
 		e.logAuto("local_trade_close_failed", meta.CorrelationID, map[string]any{
@@ -203,6 +203,15 @@ func (e *Engine) recordExitFill(symbol, clientOrderID, brokerName, dateKey strin
 		return
 	}
 	if p == nil {
+		if fillQty > 0 && e.DB.RecordedFillQty(clientOrderID) >= fillQty-1e-9 {
+			// This very fill is already in the journal, and the position it
+			// closed is closed. A repeat of the broker answer is routine
+			// (AUD-115) — not an alarm.
+			e.logAuto("exit_fill_already_recorded", meta.CorrelationID, map[string]any{
+				"symbol": symbol, "clientOrderId": clientOrderID, "broker": brokerName,
+			})
+			return
+		}
 		// An exit fill with nothing to close used to return silently, so an
 		// exit resolved before its own entry (the operator confirming two
 		// trackers out of order) left the entry's position open forever with
@@ -216,12 +225,18 @@ func (e *Engine) recordExitFill(symbol, clientOrderID, brokerName, dateKey strin
 		return
 	}
 
-	after, err := e.DB.ExitLeg(p.ID, brokerName, fillPrice, clientOrderID)
+	after, booked, err := e.DB.ExitLeg(p.ID, brokerName, fillPrice, clientOrderID, fillQty)
 	if err != nil {
 		e.logAuto("local_trade_close_failed", meta.CorrelationID, map[string]any{
 			"symbol": symbol, "clientOrderId": clientOrderID, "op": "close_leg", "error": err.Error(),
 		})
 		e.raiseTrackerPersistBlock(brokerName)
+		return
+	}
+	if !booked {
+		e.logAuto("exit_fill_already_recorded", meta.CorrelationID, map[string]any{
+			"symbol": symbol, "clientOrderId": clientOrderID, "broker": brokerName,
+		})
 		return
 	}
 	p = after
