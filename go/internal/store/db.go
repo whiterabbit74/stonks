@@ -551,6 +551,19 @@ func (d *DB) GetDataset(id string) (map[string]any, error) {
 }
 
 func (d *DB) SaveDataset(ticker, name, company, tag string, bars []types.OHLC, adjusted bool) error {
+	return d.saveDataset(ticker, name, company, tag, bars, adjusted, nil)
+}
+
+// SaveDatasetWithSplitsApplied записывает пересчитанные цены и отметки
+// применённых событий одной транзакцией. Раздельно отказ записи отметки
+// оставлял уже поделённые цены, и повтор запроса делил их ещё раз (AUD-096).
+// Отмечаются ровно те даты, которые применялись, поэтому событие, добавленное
+// параллельно, не получает applied.
+func (d *DB) SaveDatasetWithSplitsApplied(ticker, name, company, tag string, bars []types.OHLC, appliedDates []string) error {
+	return d.saveDataset(ticker, name, company, tag, bars, true, appliedDates)
+}
+
+func (d *DB) saveDataset(ticker, name, company, tag string, bars []types.OHLC, adjusted bool, appliedDates []string) error {
 	ticker = SafeTicker(ticker)
 	if ticker == "" {
 		return fmt.Errorf("Неверный тикер")
@@ -597,6 +610,18 @@ func (d *DB) SaveDataset(ticker, name, company, tag string, bars []types.OHLC, a
 			adjC = *b.AdjClose
 		}
 		if _, err := stmt.Exec(ticker, date, b.Open, b.High, b.Low, b.Close, adjC, int64(b.Volume)); err != nil {
+			return err
+		}
+	}
+	if !adjusted {
+		// Сырые цены не несут ни одного сплита: старые отметки прошлого
+		// датасета иначе выдали бы новый импорт за уже пересчитанный (AUD-097).
+		if _, err := tx.Exec(`UPDATE splits SET applied = 0 WHERE ticker = ?`, ticker); err != nil {
+			return err
+		}
+	}
+	for _, date := range appliedDates {
+		if _, err := tx.Exec(`UPDATE splits SET applied = 1 WHERE ticker = ? AND date = ?`, ticker, tradingdate.DateKey(date)); err != nil {
 			return err
 		}
 	}

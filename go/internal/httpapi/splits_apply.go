@@ -45,16 +45,19 @@ func (s *Server) detectSplitHints(id string, bars []types.OHLC) ([]types.SplitEv
 // do not carry yet. The error matters: an unreadable split table looks exactly
 // like "no splits stored", and the caller would then report the dataset as
 // already adjusted.
-func (s *Server) applyStoredSplits(id string, bars []types.OHLC) ([]types.OHLC, bool, error) {
+func (s *Server) applyStoredSplits(id string, bars []types.OHLC) ([]types.OHLC, []types.SplitEvent, error) {
 	events, err := s.DB.ListPendingSplits(id)
 	if err != nil {
-		return bars, false, err
+		return bars, nil, err
 	}
 	if len(events) == 0 || len(bars) == 0 {
-		return bars, false, nil
+		return bars, nil, nil
 	}
 	out := splits.AdjustOHLC(bars, events)
-	return out, !pricesUnchanged(bars, out), nil
+	if pricesUnchanged(bars, out) {
+		return out, nil, nil
+	}
+	return out, events, nil
 }
 
 func (s *Server) persistDataset(id string, ds map[string]any, bars []types.OHLC, adjusted bool) error {
@@ -63,4 +66,16 @@ func (s *Server) persistDataset(id string, ds map[string]any, bars []types.OHLC,
 		name = id
 	}
 	return s.DB.SaveDataset(id, name, strPtr(ds["companyName"]), strPtr(ds["tag"]), bars, adjusted)
+}
+
+func (s *Server) persistDatasetWithSplitsApplied(id string, ds map[string]any, bars []types.OHLC, applied []types.SplitEvent) error {
+	name := str(ds["name"])
+	if name == "" {
+		name = id
+	}
+	dates := make([]string, 0, len(applied))
+	for _, e := range applied {
+		dates = append(dates, tradingdate.DateKey(e.Date))
+	}
+	return s.DB.SaveDatasetWithSplitsApplied(id, name, strPtr(ds["companyName"]), strPtr(ds["tag"]), bars, dates)
 }

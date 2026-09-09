@@ -1002,16 +1002,15 @@ func (s *Server) handleApplySplits(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 500, map[string]any{"error": "Не удалось прочитать сплиты"})
 		return
 	}
-	if !applied {
+	if len(applied) == 0 {
 		// Nothing left to bake in: the flag of the dataset stays as it is.
 		writeJSON(w, 200, map[string]any{"success": true, "id": id, "alreadyApplied": true, "message": "Датасет уже пересчитан с учётом сплитов"})
 		return
 	}
-	if err := s.persistDataset(id, ds, out, true); err != nil {
-		writeJSON(w, 500, map[string]any{"error": err.Error()})
-		return
-	}
-	if err := s.DB.MarkSplitsApplied(id); err != nil {
+	// Цены и отметки применённых событий пишутся одной транзакцией: иначе
+	// отказ на отметке оставлял поделённые цены, и повтор делил их ещё раз
+	// (AUD-096).
+	if err := s.persistDatasetWithSplitsApplied(id, ds, out, applied); err != nil {
 		writeJSON(w, 500, map[string]any{"error": err.Error()})
 		return
 	}
