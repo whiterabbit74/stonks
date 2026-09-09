@@ -27,15 +27,28 @@ func thresholdInUnitInterval(v float64) bool {
 	return !math.IsNaN(v) && !math.IsInf(v, 0) && v >= 0 && v <= 1
 }
 
-// Threshold resolves a threshold read out of JSON, SQLite or a settings map:
+// Threshold resolves a single threshold arriving as an explicit request value:
 // anything outside the [0, 1] SanitizeThresholds accepts — NaN, an infinity, a
-// negative — becomes the documented default. Callers resolve here so a corrupt
-// value can never reach a comparison.
+// negative — becomes the documented default.
 func Threshold(v, fallback float64) float64 {
 	if !thresholdInUnitInterval(v) {
 		return fallback
 	}
 	return v
+}
+
+// Pair resolves a low/high pair read out of SQLite or a settings map, where a
+// value that could not be read converts to 0 and 0 is a threshold in range: a
+// highIBS of 0 makes every reading an exit, which Threshold alone would pass
+// through. A pair SanitizeThresholds would reject — out of [0, 1], or not
+// low < high — is replaced by the documented defaults as a pair, because a
+// half-corrupt pair has no half worth keeping. A lowIBS of 0 with a real high
+// is a valid pair (never enter) and is kept.
+func Pair(low, high float64) (float64, float64) {
+	if _, _, err := SanitizeThresholds(low, high); err != nil {
+		return DefaultLowIBS, DefaultHighIBS
+	}
+	return low, high
 }
 
 // IsEntrySignal and IsExitSignal are the single definition of the strict IBS

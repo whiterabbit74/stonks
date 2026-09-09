@@ -216,14 +216,14 @@ func liveLowIBS(cfg map[string]any) float64 {
 	if !cfgHas(cfg, "lowIBS") {
 		return ibs.DefaultLowIBS
 	}
-	return ibs.Threshold(asFloat(cfg["lowIBS"]), ibs.DefaultLowIBS)
+	return asFloat(cfg["lowIBS"])
 }
 
 func liveHighIBS(cfg map[string]any) (high float64, invalid bool) {
 	if !cfgHas(cfg, "highIBS") {
 		return ibs.DefaultHighIBS, false
 	}
-	return ibs.Threshold(asFloat(cfg["highIBS"]), ibs.DefaultHighIBS), false
+	return asFloat(cfg["highIBS"]), false
 }
 
 func allowFlag(cfg map[string]any, key string) bool {
@@ -240,21 +240,23 @@ func strOr(v any, fallback string) string {
 }
 
 // watchThresholds resolves the pair the live decision compares against. Both
-// sources are map[string]any read out of SQLite, so a corrupt row converts to 0
-// — a highIBS of 0 would make every reading an exit. ibs.Threshold turns a value
-// outside [0, 1] back into the documented default.
+// sources are map[string]any read out of SQLite, where asFloat turns a value it
+// cannot read into 0 — and a highIBS of 0 makes every reading an exit, which is
+// why the pair is resolved as a pair: ibs.Pair sends anything the write path
+// would have rejected back to the documented defaults.
 func watchThresholds(watch, cfg map[string]any) (low, high float64, highInvalid bool) {
 	low = liveLowIBS(cfg)
 	high, highInvalid = liveHighIBS(cfg)
 	if watch != nil {
 		if watch["lowIBS"] != nil {
-			low = ibs.Threshold(asFloat(watch["lowIBS"]), ibs.DefaultLowIBS)
+			low = asFloat(watch["lowIBS"])
 		}
 		if watch["highIBS"] != nil {
-			high = ibs.Threshold(asFloat(watch["highIBS"]), ibs.DefaultHighIBS)
+			high = asFloat(watch["highIBS"])
 			highInvalid = false
 		}
 	}
+	low, high = ibs.Pair(low, high)
 	return low, high, highInvalid
 }
 

@@ -31,9 +31,11 @@ func TestIbsSignalsGolden(t *testing.T) {
 		ibsVal := decodeNum(c.IBS)
 		var got bool
 		if c.Fn == "entry" {
-			got = IsEntrySignal(ibsVal, Threshold(decodeNum(c.Threshold), DefaultLowIBS))
+			low, _ := Pair(decodeNum(c.Threshold), DefaultHighIBS)
+			got = IsEntrySignal(ibsVal, low)
 		} else {
-			got = IsExitSignal(ibsVal, Threshold(decodeNum(c.Threshold), DefaultHighIBS))
+			_, high := Pair(DefaultLowIBS, decodeNum(c.Threshold))
+			got = IsExitSignal(ibsVal, high)
 		}
 		if got != c.Result {
 			t.Errorf("case %d %s ibs=%v thr=%v got %v want %v", i, c.Fn, c.IBS, c.Threshold, got, c.Result)
@@ -48,6 +50,34 @@ func decodeNum(v interface{}) float64 {
 		return f
 	}
 	return math.NaN()
+}
+
+func TestPairFallsBackAsAPair(t *testing.T) {
+	cases := []struct {
+		name              string
+		low, high         float64
+		wantLow, wantHigh float64
+	}{
+		{"valid pair", 0.2, 0.6, 0.2, 0.6},
+		{"lowIBS 0 never enters", 0, 0.75, 0, 0.75},
+		// asFloat turns a value it cannot read into 0, and a highIBS of 0 is in
+		// [0, 1]: taken on its own it would make every reading an exit.
+		{"highIBS 0", 0.1, 0, DefaultLowIBS, DefaultHighIBS},
+		{"both 0", 0, 0, DefaultLowIBS, DefaultHighIBS},
+		{"inverted", 0.9, 0.5, DefaultLowIBS, DefaultHighIBS},
+		{"above one", 0.1, 1.5, DefaultLowIBS, DefaultHighIBS},
+		{"negative", -0.1, 0.75, DefaultLowIBS, DefaultHighIBS},
+		{"nan", math.NaN(), 0.75, DefaultLowIBS, DefaultHighIBS},
+		{"inf", 0.1, math.Inf(1), DefaultLowIBS, DefaultHighIBS},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			low, high := Pair(tc.low, tc.high)
+			if low != tc.wantLow || high != tc.wantHigh {
+				t.Fatalf("Pair(%v, %v) = %v, %v want %v, %v", tc.low, tc.high, low, high, tc.wantLow, tc.wantHigh)
+			}
+		})
+	}
 }
 
 func TestThresholdFallback(t *testing.T) {

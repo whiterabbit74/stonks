@@ -984,3 +984,36 @@ func TestEvaluateReadsPositionsOncePerBroker(t *testing.T) {
 		t.Fatalf("PosCalls = %d, want 1 per evaluation", br.PosCalls)
 	}
 }
+
+// A threshold asFloat cannot read converts to 0, and 0 is a threshold in range:
+// a highIBS of 0 makes every reading an exit and a lowIBS of 0 silently stops
+// every entry. The pair is resolved as a pair, so a corrupt half sends both
+// values back to the documented defaults.
+func TestWatchThresholdsRejectUnreadableHighIBS(t *testing.T) {
+	cfg := map[string]any{"lowIBS": 0.20, "highIBS": 0.80}
+	for _, corrupt := range []any{true, "не число", map[string]any{}} {
+		low, high, _ := watchThresholds(map[string]any{"symbol": "AAPL", "highIBS": corrupt}, cfg)
+		if low != ibs.DefaultLowIBS || high != ibs.DefaultHighIBS {
+			t.Fatalf("highIBS %v: got %v/%v want defaults %v/%v", corrupt, low, high, ibs.DefaultLowIBS, ibs.DefaultHighIBS)
+		}
+	}
+	low, high, _ := watchThresholds(nil, map[string]any{"lowIBS": 0.20, "highIBS": "не число"})
+	if low != ibs.DefaultLowIBS || high != ibs.DefaultHighIBS {
+		t.Fatalf("cfg highIBS unreadable: got %v/%v", low, high)
+	}
+}
+
+// The decision re-checks the pair it was handed: a quote row carrying a zero
+// highIBS must not close an open position on any reading above zero.
+func TestDecideLiveActionIgnoresZeroHighIBS(t *testing.T) {
+	quotes := []LiveQuote{{
+		Symbol:     "AAPL",
+		OK:         true,
+		IBS:        0.5,
+		Thresholds: QuoteThresholds{LowIBS: 0.1, HighIBS: 0},
+	}}
+	d := decideLiveAction(quotes, []string{"AAPL"}, map[string]float64{"AAPL": 10}, nil, &OpenPosition{Symbol: "AAPL"}, true, true)
+	if fmt.Sprint(d["action"]) != "none" || fmt.Sprint(d["reason"]) != "exit_threshold_not_reached" {
+		t.Fatalf("IBS 0.5 with a zero highIBS must not exit: %+v", d)
+	}
+}

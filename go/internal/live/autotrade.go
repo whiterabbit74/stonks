@@ -470,8 +470,10 @@ func decideLiveAction(quotes []LiveQuote, symbols []string, held map[string]floa
 		if row != nil && row.HighIBSInvalid {
 			return none("invalid_high_ibs", sym, row)
 		}
-		if row != nil && ibs.IsExitSignal(row.IBS, row.highOrDefault()) {
-			return map[string]any{"action": "exit", "reason": "ibs_exit", "symbol": sym, "candidate": row}
+		if row != nil {
+			if _, high := row.resolvedThresholds(); ibs.IsExitSignal(row.IBS, high) {
+				return map[string]any{"action": "exit", "reason": "ibs_exit", "symbol": sym, "candidate": row}
+			}
 		}
 		reason := "open_position_quote_unavailable"
 		if row != nil {
@@ -510,7 +512,8 @@ func decideLiveAction(quotes []LiveQuote, symbols []string, held map[string]floa
 			if !q.OK || q.HighIBSInvalid || !watched[store.SafeTicker(q.Symbol)] {
 				continue
 			}
-			if ibs.IsEntrySignal(q.IBS, q.lowOrDefault()) && q.IBS < bestIBS {
+			low, _ := q.resolvedThresholds()
+			if ibs.IsEntrySignal(q.IBS, low) && q.IBS < bestIBS {
 				bestIBS = q.IBS
 				best = &quotes[i]
 			}
@@ -717,21 +720,16 @@ func (e *Engine) heldSymbolsOn(br Broker, w execWindow) (map[string]float64, err
 	return held, nil
 }
 
-// lowOrDefault and highOrDefault re-check the thresholds watchThresholds put on
-// the row: the decision is the last place they can still be sent back to the
-// documented default before an order is priced on them.
-func (q *LiveQuote) lowOrDefault() float64 {
+// resolvedThresholds re-checks the pair watchThresholds put on the row: the
+// decision is the last place it can still be sent back to the documented
+// defaults before an order is priced on it. The pair is checked as a pair —
+// a zero-valued QuoteThresholds is a highIBS of 0, which on its own reads as a
+// threshold in range and would exit every position.
+func (q *LiveQuote) resolvedThresholds() (low, high float64) {
 	if q == nil {
-		return ibs.DefaultLowIBS
+		return ibs.DefaultLowIBS, ibs.DefaultHighIBS
 	}
-	return ibs.Threshold(q.Thresholds.LowIBS, ibs.DefaultLowIBS)
-}
-
-func (q *LiveQuote) highOrDefault() float64 {
-	if q == nil {
-		return ibs.DefaultHighIBS
-	}
-	return ibs.Threshold(q.Thresholds.HighIBS, ibs.DefaultHighIBS)
+	return ibs.Pair(q.Thresholds.LowIBS, q.Thresholds.HighIBS)
 }
 
 // Execute evaluates the current signal and submits it, with no T-1
