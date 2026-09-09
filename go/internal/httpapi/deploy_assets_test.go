@@ -29,7 +29,7 @@ func TestGoDeployShipsBinaryAndWeb(t *testing.T) {
 		t.Fatal("runtime image must not include a Go compiler")
 	}
 	compose := repoFile(t, "docker-compose.yml")
-	if strings.Contains(compose, "docker/go") {
+	if strings.Contains(compose, "build:") {
 		t.Fatal("compose must not build the trading server")
 	}
 	if !strings.Contains(compose, "image: ${SERVER_IMAGE:-stonks-server:current}") {
