@@ -1,6 +1,9 @@
 # Runtime-only image: the linux/amd64 binary is cross-compiled on the
 # developer machine. The VPS must never run `go build`.
-FROM debian:bookworm-slim
+# Pinned by digest: a mutable tag would let the registry hand the VPS a
+# different base on the next deploy without any change in this checkout.
+# Refresh: docker manifest inspect -v debian:bookworm-slim | grep Digest
+FROM debian:bookworm-slim@sha256:88200866dfff7ea7f5cbcb6ec7c8a701889efe6fe859fe64d6990e4b07ea4171
 # tzdata is for the image; the binary also embeds time/tzdata for America/New_York.
 RUN apt-get update -qq && apt-get install -y --no-install-recommends ca-certificates curl tzdata \
     && rm -rf /var/lib/apt/lists/* \

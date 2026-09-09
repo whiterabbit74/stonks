@@ -44,7 +44,9 @@ services:
     container_name: stonks-server
 
   caddy:
-    image: caddy:2
+    # Pinned by digest for the same reason as the runtime base image; see
+    # docker/go.runtime.Dockerfile. Refresh: docker manifest inspect -v caddy:2
+    image: caddy:2@sha256:df7f1c2fb114453b951de51a98efc010db1655a92c2e86be6706714e2417a78d
     ports:
       - "80:80"
       # TCP-only 443 so UDP/443 stays free for the host VPN (AmneziaWG).
