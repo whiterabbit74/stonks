@@ -355,3 +355,129 @@ AUD-073…AUD-081 коммитом `3f66294`; новых находок при �
 | AUD-089 | P2. Переполнение общей таблицы ограничителя запросов удаляет ещё действующие запреты входа: при 256 ключах `ipLimiter.allow` вытесняет самый старый ключ, даже если его 15 минут не прошли. Запросы с других IP сбрасывают лимит 10 попыток для уже заблокированного адреса; тот же механизм затрагивает API/calc/upload/hash. Нужен контроль множества исходных IP (например IPv6-адресов) либо достаточный фоновый трафик; подмена X-Forwarded-For с интернета не предполагается. Это ослабление защиты от подбора пароля, не доказанный вход без пароля | `go/internal/httpapi/ratelimit.go:35-70,115-158`; `Server.Handler` → `rateLimit`; проверено на `5d85085` | OPEN | — (аудит, исправления нет) | Временный Go overlay, `go test -overlay <overlay.json> ./internal/httpapi -run TestSecurityAuditRateEviction -v`: 10 POST /api/login допущены к заглушке, 11-й получил 429; затем 256 GET /api/status с разных синтетических адресов; следующий POST с исходного адреса получил 204 от заглушки вместо 429. PASS означает воспроизведение дефекта. Сеть и БД не использовались. Приёмка: заполнение таблицы не снимает действующий запрет; память остаётся ограниченной |
 | AUD-090 | P2. Смена ADMIN_PASSWORD и создание нового Server не отзывают ранее выданные сессии: таблица sessions хранит только token/created_at/expires_at, а auth проверяет наличие записи и срок, без привязки к версии учётных данных. После компрометации пароля или cookie смена пароля оставляет доступ к настройкам и торговым ручкам; активный клиент продлевает сессию через touchSession. Logout удаляет только предъявленный токен, общего отзыва нет | `go/internal/httpapi/server.go:65-75,286-326,439-468,528-540`; `go/internal/store/db.go:630-632,658-674`; проверка на `937af51` (код как `5d85085`) | OPEN | — (аудит, исправления нет) | `TestSecurityAuditPasswordRotation` во временном overlay: настоящий login с синтетическим старым паролем → cookie; новый Server на той же временной БД с другим ADMIN_PASSWORD → GET /api/settings со старой cookie возвращает 200. PASS воспроизводит дефект; тестовая автоматическая авторизация не включена. Приёмка: ротация учётных данных отзывает старые сессии; новый пароль создаёт работающую сессию. Production не затрагивался |
 | AUD-091 | P2. Сетевой сбой Telegram раскрывает bot token в тексте ошибки: HTTPTelegram.Send возвращает исходный url.Error, содержащий URL /bot<TOKEN>/sendMessage. HTTP-обработчики возвращают err.Error(), finishSend копирует его в Reason; отказ calendar-coverage-alert передаёт ошибку в schedulerLog и далее stdout контейнера. Получатель логов получает полномочия бота. Доступ к API уже требует сессии, публичная утечка не доказана. Общая причина — отсутствие очистки транспортной ошибки Telegram; аналогичный путь провайдеров уже использует sanitizeTransportError | `go/internal/live/transport.go:89-96`; `go/internal/live/telegram.go:449-462`; `go/internal/httpapi/live_handlers.go:40-76`; `go/internal/scheduler/scheduler.go:223-228`; `go/cmd/server/main.go:76-86`; проверка на `5030ecd` | OPEN | — (аудит, исправления нет) | `TestSecurityAuditTelegramTokenError` во временном overlay: настоящий HTTPTelegram с подменой транспорта на синтетический сетевой отказ → POST /api/telegram/test → 500, тело содержит полный синтетический bot token. Сеть не использовалась. Запись через schedulerLog установлена чтением цепочки вызовов, реальный stdout production не читался. Приёмка: при DNS/timeout/TLS-ошибках ни ответ, ни Reason, ни журналы не содержат токена; диагностическая причина отказа остаётся |
+
+### Итог аудита безопасности 2026-09-08
+
+DONE: локальный аудит кода и конфигурации. Новых находок: 3 (AUD-089/090/091, P2, высокая уверенность); повторно открытых: 0; закрытых: 0; новых дубликатов: 0. Все три ожидают исправления.
+
+Проверены маршруты и авторизация API, сессии, ограничители запросов, защита от чужого сайта, размеры тел запросов, журналы, OAuth Robinhood, транспорт Telegram/брокеров/провайдеров, SQL и права БД, статика и браузерные места вставки HTML, Caddy/Compose/Dockerfile, deploy/backup и CI. В просмотренных цепочках не доказаны вход без сессии, SQL-инъекция, выполнение команд ОС, выход из каталога статики, SSRF (произвольные серверные запросы) или XSS (внедрённый JavaScript). Это результат чтения кода, не исчерпывающая проверка всех входов.
+
+Исторические AUD-009/009a/009b/009c, AUD-014, AUD-022/037, AUD-057/058 и AUD-088 просмотрены для исключения дублей; их серверные статусы не перепроверялись. Остаточный MCP-каталог не содержит текущего исполняемого сервиса. В отслеживаемых env-файлах не найдено непустых назначений секретов по именам ключей; значения не выводились.
+
+Проверки на неизменном Go-коде от 5d85085:
+
+- PASS: go test ./internal/httpapi ./internal/store ./internal/robinhood ./internal/webull ./internal/providers (результаты пакетов из Go cache); go vet ./...
+- PASS воспроизведения: три TestSecurityAudit во временном overlay, последний общий запуск на 1a94213. Это подтверждает дефекты, а не исправления.
+- govulncheck v1.7.0 ./...: 0 известных уязвимостей в вызываемом коде, 0 в импортированных пакетах, 3 в требуемых модулях без вызовов уязвимых функций (уже учтены AUD-009). Go 1.25.14 darwin/arm64, анализ исходников для локальной платформы.
+
+Не проверены: production, Linux-бинарник и пакеты образа, реальные секреты и брокеры, история Git и игнорируемые файлы, реальные архивы, браузерная эксплуатация, нагрузка, внешние приложения /music и macdiff за Caddy. Отдельный сервер не запускался, постоянный порт не выделялся. Исправление, сборка релиза и развёртывание не входят в этот аудит.
+
+Во время аудита другая работа закоммитила Docker-изменения 230d323 и обновление AUD-088 72a1144; они сохранены. git diff 5d85085 -- go пуст. Наши коммиты находок: 937af51, 5030ecd, 1a94213. Push не выполнялся.
+
+Следующий шаг: отдельно исправить AUD-089/090/091, проверить безопасные ожидания воспроизводителей и затем окружение развёртывания.
+
+### Runnable audit reproducers
+
+PASS means the defect exists. Synthetic data only; no network calls.
+
+<!-- security-audit-reproducer-start -->
+```go
+package httpapi
+
+import (
+	"errors"
+	"fmt"
+	"mktorder.com/go/internal/live"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+)
+
+func TestSecurityAuditRateEviction(t *testing.T) {
+	t.Setenv("TRUST_PROXY", "false")
+	s := &Server{limiter: newIPLimiter()}
+	h := s.rateLimit(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(204) }))
+	call := func(ip, method, path string) int {
+		r := httptest.NewRequest(method, path, nil)
+		r.RemoteAddr = ip + ":1234"
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		return w.Code
+	}
+	for i := 0; i < 10; i++ {
+		if call("198.51.100.1", "POST", "/api/login") != 204 {
+			t.Fatal("early rejection")
+		}
+	}
+	if call("198.51.100.1", "POST", "/api/login") != 429 {
+		t.Fatal("missing initial cap")
+	}
+	for i := 0; i < 256; i++ {
+		call(fmt.Sprintf("2001:db8::%x", i+1), "GET", "/api/status")
+	}
+	got := call("198.51.100.1", "POST", "/api/login")
+	t.Logf("after 256 other IPs, blocked login returned %d (secure expectation 429)", got)
+	if got != 204 {
+		t.Fatalf("finding not reproduced: %d", got)
+	}
+}
+
+func TestSecurityAuditPasswordRotation(t *testing.T) {
+	s := testServer(t, "before-rotation")
+	r := httptest.NewRequest("POST", "/api/login", strings.NewReader(`{"username":"admin@example.com","password":"before-rotation"}`))
+	w := httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, r)
+	if w.Code != 200 {
+		t.Fatalf("login %d", w.Code)
+	}
+	cookie := w.Result().Cookies()[0]
+	t.Setenv("ADMIN_PASSWORD", "after-rotation")
+	restarted := NewWithProviders(s.DB, s.WebDir, nil)
+	r = httptest.NewRequest("GET", "/api/settings", nil)
+	r.AddCookie(cookie)
+	w = httptest.NewRecorder()
+	restarted.Handler().ServeHTTP(w, r)
+	t.Logf("old session after new Server with changed password: %d (secure expectation 401)", w.Code)
+	if w.Code != 200 {
+		t.Fatal("finding not reproduced")
+	}
+}
+
+type securityFailTransport struct{}
+
+func (securityFailTransport) RoundTrip(*http.Request) (*http.Response, error) {
+	return nil, errors.New("synthetic network failure")
+}
+func TestSecurityAuditTelegramTokenError(t *testing.T) {
+	s := testServer(t, "")
+	token := "123456:SYNTHETIC_NOT_A_REAL_SECRET"
+	s.Live.Telegram = &live.HTTPTelegram{Token: token, Client: &http.Client{Transport: securityFailTransport{}}}
+	s.Live.ChatID = "synthetic-chat"
+	r := httptest.NewRequest("POST", "/api/telegram/test", strings.NewReader(`{}`))
+	w := httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, r)
+	if w.Code != 500 || !strings.Contains(w.Body.String(), token) {
+		t.Fatalf("finding not reproduced: status %d", w.Code)
+	}
+	t.Log("synthetic bot token leaked in error response; no network requests sent")
+}
+```
+
+Run from repository root; overlay adds the test only for the compiler:
+
+```sh
+python3 - <<'PYTEST'
+import json, pathlib, subprocess, tempfile
+root = pathlib.Path.cwd()
+text = (root / 'docs/audits/REGISTRY.md').read_text()
+code = text.split('<!-- security-audit-reproducer-start -->', 1)[1].split('```go\n', 1)[1].split('```', 1)[0]
+with tempfile.TemporaryDirectory(prefix='mkt-security-') as tmp:
+    tmp = pathlib.Path(tmp)
+    test = tmp / 'audit_test.go'
+    test.write_text(code)
+    overlay = tmp / 'overlay.json'
+    overlay.write_text(json.dumps({'Replace': {str(root / 'go/internal/httpapi/security_audit_overlay_test.go'): str(test)}}))
+    subprocess.run(['go', 'test', '-overlay', str(overlay), './internal/httpapi', '-run', 'TestSecurityAudit', '-v'], cwd=root / 'go', check=True)
+PYTEST
+```
