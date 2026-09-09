@@ -691,6 +691,40 @@ type EntryFill struct {
 	IsTest    bool
 }
 
+// detachExitedLegTx moves a leg that has already been sold out of an open
+// position into its own closed row, and clears it on the open row, which keeps
+// what the other broker still holds. It is the same rule as a partial exit
+// (invariant K.4): the sold part is a closed row of its own, never an entry
+// written over the exit that closed it.
+func detachExitedLegTx(tx *sql.Tx, p *Position, broker, exitDate string) error {
+	leg := p.Leg(broker)
+	// The leg's own quantity is zero since the exit, so what it held is what
+	// the row lost: the position quantity minus what the brokers still hold.
+	sold := p.Quantity - p.ExecutedQty()
+	if !(sold > 0) {
+		// Nothing measurable to carve out (a hand-edited row). Leave the row
+		// exactly as it is rather than inventing a closed one.
+		return nil
+	}
+	part := *p
+	part.ID = fmt.Sprintf("%s-x%d", p.ID, time.Now().UnixNano())
+	part.Status = "closed"
+	part.Quantity = sold
+	part.ExitDate = exitDate
+	part.ExitPrice = leg.ExitPrice
+	part.EntryPrice = leg.EntryPrice
+	part.Notes = "leg_exited_before_reentry"
+	part.Webull, part.Robinhood = BrokerLeg{}, BrokerLeg{}
+	part.SetLeg(broker, leg)
+	part.applyPnL()
+	if err := insertMerged(tx, part); err != nil {
+		return err
+	}
+	p.SetLeg(broker, BrokerLeg{})
+	p.Quantity = p.ExecutedQty()
+	return nil
+}
+
 // AttachEntry records an entry fill on the open position of that ticker,
 // creating the position when this broker is the first one in.
 //
@@ -732,6 +766,17 @@ func (d *DB) AttachEntry(f EntryFill) (*Position, error) {
 	leg := p.Leg(f.Broker)
 	if leg.EntryOrderID == f.OrderID && leg.Qty >= f.Qty {
 		return &p, tx.Commit() // already recorded
+	}
+	if leg.ExitOrderID != "" && !leg.Holds() && leg.EntryOrderID != f.OrderID {
+		// This broker has already exited its leg of this row — the row is only
+		// still open because the other broker holds. Its round is finished, and
+		// the entry now arriving is the next one: writing it into the same leg
+		// buried the recorded exit and the realised P&L of that round with it
+		// (AUD-117). Move the finished round into its own closed row first.
+		if err := detachExitedLegTx(tx, &p, f.Broker, f.EntryDate); err != nil {
+			return nil, err
+		}
+		leg = p.Leg(f.Broker)
 	}
 	if f.Qty > leg.Qty {
 		leg.Qty = f.Qty
