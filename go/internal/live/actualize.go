@@ -258,9 +258,14 @@ func (e *Engine) UpdatePositions() map[string]any {
 			if wantOpen {
 				patch["entryPrice"] = legacyEntryPrice(&row)
 				patch["entryDate"] = row.EntryDate
+				patch["entryIBS"] = row.EntryIBS
 				patch["currentTradeId"] = row.ID
 			} else {
-				patch["currentTradeId"] = nil
+				// Закрытие чистит всю карточку входа, а не только флаг:
+				// оставленные цена и дата рисовались в колонке «Вход» у
+				// тикера, который уже ничего не держит.
+				patch["entryPrice"], patch["entryDate"] = nil, nil
+				patch["entryIBS"], patch["currentTradeId"] = nil, nil
 			}
 			_ = e.DB.PatchWatch(sym, patch)
 			changes = append(changes, map[string]any{"symbol": sym, "isOpenPosition": wantOpen})
