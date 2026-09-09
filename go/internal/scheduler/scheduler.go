@@ -176,6 +176,9 @@ func StartWith(db *store.DB, deps Deps, onEvent func(JobLog)) (stop func()) {
 	return func() {
 		close(done)
 		tickWG.Wait()
+		// Фоновые задачи тика пишут в ту же базу, которую main закрывает сразу
+		// после stop(), поэтому завершение планировщика ждёт и их.
+		backgroundWG.Wait()
 		engine(db, deps).StopTrackers()
 	}
 }
@@ -277,7 +280,12 @@ func RunTick(db *store.DB, deps Deps, now time.Time, onEvent func(JobLog)) {
 	nowMin := p.Hour*60 + p.Minute
 	after := nowMin - sess.CloseMin
 	if after >= 15 && after <= 31 {
+		// Задача переживала stop(): main закрывал базу под ней, и день
+		// оставался с наполовину обновлёнными барами (AUD-N01). Регистрация в
+		// backgroundWG делает её частью штатного завершения планировщика.
+		backgroundWG.Add(1)
 		go func() {
+			defer backgroundWG.Done()
 			n, errN, skipped := RunPriceActualization(db, deps)
 			onEvent(JobLog{At: now, Name: "price-actualization", Skipped: skipped, Detail: fmt.Sprintf("after=%d tickers=%d errors=%d", after, n, errN)})
 			log.Printf("scheduler: price actualization minutesAfterClose=%d skipped=%v", after, skipped)
@@ -554,6 +562,10 @@ func runTelegramAggregation(db *store.DB, deps Deps, until int) (int, error) {
 }
 
 var actualizeMu sync.Mutex
+
+// backgroundWG держит фоновые задачи, запущенные тиком отдельными goroutine.
+// stop() ждёт их до того, как main дойдёт до db.Close().
+var backgroundWG sync.WaitGroup
 
 func RunPriceActualization(db *store.DB, deps Deps) (ok, fail int, skipped bool) {
 	if !actualizeMu.TryLock() {
