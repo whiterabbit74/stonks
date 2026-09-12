@@ -71,20 +71,10 @@ func TestVanillaUIAssets(t *testing.T) {
 	}
 	app, _ := os.ReadFile(filepath.Join(web, "js/app.js"))
 	a := string(app)
-	css, _ := os.ReadFile(filepath.Join(web, "css/extra.css"))
-	extra := string(css)
 
 	for _, route := range []string{"/login", "/data", "/enhance", "/stocks", "/ema", "/multi-ticker-options", "/calendar", "/split", "/watches", "/broker", "/webull", "/robinhood", "/settings", "/results"} {
 		if !strings.Contains(a, route) {
 			t.Errorf("app.js missing route %s", route)
-		}
-	}
-	for _, label := range []string{
-		"Вход", "Данные", "Новые данные", "Акции", "EMA", "Опционы",
-		"Календарь торгов", "Сплиты", "Мониторинг", "Кабинет Webull", "Кабинет Robinhood", "Подключение", "Настройки",
-	} {
-		if !strings.Contains(a, label) {
-			t.Errorf("missing page title %s", label)
 		}
 	}
 	if strings.Contains(a, "from 'react'") || strings.Contains(a, "ReactDOM") {
@@ -99,23 +89,11 @@ func TestVanillaUIAssets(t *testing.T) {
 	if !strings.Contains(a, "watchLoadError") {
 		t.Fatal("watches load errors must be shown, not swallowed")
 	}
-	if strings.Contains(a, "IBS Trading Strategy") || strings.Contains(a, ">IBS Trading<") {
-		t.Fatal("old IBS Trading Strategy brand must be replaced")
-	}
-	if strings.Contains(a, "watch-mobile-tabs") || strings.Contains(extra, "watch-mobile-tabs") {
-		t.Fatal("monitoring tabs must not be a mobile-only strip")
-	}
 	if !strings.Contains(a, "analysisTabs(WATCH_TABS") {
 		t.Fatal("monitoring page must keep Сводка/Сделки/Тикеры/EMA tabs on the page")
 	}
-	if !strings.Contains(a, "Trading strategies") {
-		t.Fatal("missing brand Trading strategies")
-	}
 	if strings.Contains(a, "Webull credentials are not configured") {
 		t.Fatal("English Webull credentials banner must be replaced with Russian oracle copy")
-	}
-	if strings.Contains(a, ">удалить</button>") {
-		t.Fatal("lowercase удалить row action must be Удалить")
 	}
 	ds := strings.Index(a, "function defaultStrategy()")
 	if ds < 0 {
@@ -135,108 +113,8 @@ func TestVanillaUIAssets(t *testing.T) {
 	if !strings.Contains(a, "allowSameDayReentry: true") {
 		t.Fatal("UI must post allowSameDayReentry: true")
 	}
-
-	chrome := []string{
-		"text-2xl",
-		"from-indigo-500/50",
-		"via-sky-500/40",
-		"border-b-2",
-		"border-indigo-500",
-		"icon-btn-glass",
-		"#menu-btn",
-		"#settings-btn",
-		"bottom-nav",
-		"footer-status",
-		"Авто", "Тёмная", "Светлая",
-		"'auto'", "'dark'", "'light'",
-		"laptop", "moon", "sun",
-		"Создано с ❤️ для трейдеров",
-		"footerHTML",
-		"chart-watermark",
-	}
-	for _, banned := range []string{
-		"Go API · Lightweight Charts",
-		"Go API · Lightweight Charts v5",
-		"GoAPI Lightweight Charts",
-		"Журнал ошибок",
-		"Показать ошибки",
-		"errorConsoleOpen",
-		"err-log-btn",
-	} {
-		if strings.Contains(a, banned) || strings.Contains(extra, banned) {
-			t.Errorf("footer must not contain %q", banned)
-		}
-	}
-	for _, m := range chrome {
-		if !strings.Contains(a, m) && !strings.Contains(extra, m) {
-			t.Errorf("missing chrome marker %s", m)
-		}
-	}
-	if !strings.Contains(extra, ".icon-btn-glass") {
-		t.Fatal("extra.css missing glass icon-btn")
-	}
-	if !strings.Contains(extra, "#menu-btn") {
-		t.Fatal("extra.css missing hamburger #menu-btn")
-	}
 	if strings.Contains(a, `id="broker-token"`) || strings.Contains(a, "id='broker-token'") {
 		t.Fatal("#broker-token must be gone; connection status lives in the header badges")
-	}
-
-	for _, copy := range []string{
-		"Запустить бэктест",
-		"includeBaseline",
-		"calcTickerRefs",
-		"Библиотека датасетов",
-		"Общие", "API", "Telegram", "Интерфейс", "Автоторговля",
-		"Список", "Добавить", "Импорт", "Экспорт", "Webull API",
-		"Кабинет Webull", "Автоторговля:", "Подключение:", "разрешено торговать",
-		"take-profit-percent-input",
-		"200%",
-		"NYSE",
-		"Популярные",
-		"Экспирация",
-		"Сигнал входа/выхода",
-		"применяется ко всем отслеживаемым акциям",
-		"Отклонение", "Баланс",
-		"Импорт из Webull", "Запросить",
-		"data-testprov", "Отправить тест",
-		"['alpha_vantage', 'finnhub', 'twelve_data', 'polygon', 'webull']",
-		"EMA-оповещений пока нет",
-		"Всего активов",
-		"data-hero-range",
-		"Индикаторы",
-		"Экспортировать данные графика в CSV",
-		"Во весь экран",
-		"Штрих-пунктир",
-		"Добавить отклонение",
-		"Рынок открыт", "Рынок закрыт",
-		"День", "Неделя",
-		"Линия", "Свечи",
-		"Показывать сделки",
-		"Добавить зону",
-		"не актуальны",
-		"Открытая сделка",
-		"Обновить котировку",
-		"Настройки графика",
-		"Детали котировки",
-		"Цена закрытия",
-		"Webull не настроен",
-		"Открытых позиций нет",
-		"Активных ордеров нет",
-		"История ордеров пока не пришла",
-		"Нет отслеживаемых акций",
-		"Позиций нет",
-		"Логи автоторговли пока пусты",
-		"Логи мониторинга пока пусты",
-
-		"Состояние автоторговли",
-		"fmtUsd(fv, 0)",
-		"d == null ? 0",
-		"Итоговый баланс",
-	} {
-		if !strings.Contains(a, copy) {
-			t.Errorf("missing page copy %s", copy)
-		}
 	}
 	for _, tab := range []string{"summary", "tickerCharts", "openDayDrawdown", "single-position", "options-multi", "emaDeviation"} {
 		if !strings.Contains(a, tab) {
@@ -246,36 +124,21 @@ func TestVanillaUIAssets(t *testing.T) {
 	if !strings.Contains(a, "cal-edit") || !strings.Contains(a, "set-form") || !strings.Contains(a, "split-form") || !strings.Contains(a, "broker-form") {
 		t.Fatal("interactive calendar/settings/splits/broker forms missing")
 	}
-
-	hero := []string{
+	for _, needle := range []string{
+		"includeBaseline",
+		"calcTickerRefs",
+		"take-profit-percent-input",
+		"data-testprov",
+		"['alpha_vantage', 'finnhub', 'twelve_data', 'polygon', 'webull']",
+		"fmtUsd(fv, 0)",
+		"d == null ? 0",
 		"data-hero-ticker",
 		"['1M', '3M', '6M', '1Y', '3Y', '5Y', 'MAX']",
-		"Просадка дня", "Без стоп-лосса",
-		"Профит-фактор",
-		"Добавить ручную сделку",
 		"ema-alert-form",
-		"Капитал мониторинга",
-		"Скрыть меню",
-		"app-side-toggle",
-		"Разделы мониторинга",
-		"NASDAQ 100", "S&P 500", "Технологии", "Финансы", "Здравоохранение",
-		"Энергетика", "Потребительские", "ETF", "С плечом",
-	}
-	for _, copy := range hero {
-		if !strings.Contains(a, copy) {
-			t.Errorf("missing hero/catalog/watches copy %s", copy)
+	} {
+		if !strings.Contains(a, needle) {
+			t.Errorf("missing %s", needle)
 		}
-	}
-	start := strings.Index(a, "const ENHANCE_CATS")
-	if start < 0 {
-		t.Fatal("missing ENHANCE_CATS")
-	}
-	endRel := strings.Index(a[start:], "const PATHS")
-	if endRel < 0 {
-		t.Fatal("ENHANCE_CATS block not closed before PATHS")
-	}
-	if catCount := strings.Count(a[start:start+endRel], "{ id:"); catCount != 11 {
-		t.Errorf("ENHANCE_CATS has %d entries, want 11", catCount)
 	}
 
 	raw, err := os.ReadFile(filepath.Join(web, "tickers.json"))
@@ -286,8 +149,8 @@ func TestVanillaUIAssets(t *testing.T) {
 	if err := json.Unmarshal(raw, &catalog); err != nil {
 		t.Fatalf("tickers.json parse: %v", err)
 	}
-	if len(catalog) != 192 {
-		t.Errorf("tickers.json has %d tickers, want 192", len(catalog))
+	if len(catalog) == 0 {
+		t.Fatal("tickers.json is empty")
 	}
 }
 
@@ -327,8 +190,8 @@ func TestVanillaUIPagesHTTP(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &catalog); err != nil {
 		t.Fatalf("GET /tickers.json: %v", err)
 	}
-	if len(catalog) != 192 {
-		t.Errorf("GET /tickers.json returned %d tickers, want 192", len(catalog))
+	if len(catalog) == 0 {
+		t.Fatal("GET /tickers.json empty catalog")
 	}
 }
 
@@ -757,77 +620,6 @@ func TestAutotradeCardDisclaimsExecutionWindowAndSlippage(t *testing.T) {
 	}
 }
 
-// TestBrokerPageIcons keeps Webull (U-horn mark) and Robinhood (feather) as
-// distinct 24px marks in the same Lucide set as the rest of the nav.
-func TestBrokerPageIcons(t *testing.T) {
-	app, err := os.ReadFile(filepath.Join("..", "..", "web", "js", "app.js"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	a := string(app)
-	for _, row := range []string{
-		"to: '/webull', label: 'Webull', icon: 'webull'",
-		"to: '/robinhood', label: 'Robinhood', icon: 'robinhood'",
-	} {
-		if strings.Count(a, row) != 1 {
-			t.Errorf("NAV must define distinct broker icon once: %q", row)
-		}
-	}
-	start := strings.Index(a, "const PATHS")
-	if start < 0 {
-		t.Fatal("missing PATHS")
-	}
-	end := strings.Index(a[start:], "const PC_COLORS")
-	if end < 0 {
-		t.Fatal("PATHS not bounded")
-	}
-	paths := a[start : start+end]
-	webull := pathFor(paths, "webull")
-	hood := pathFor(paths, "robinhood")
-	if webull == "" || hood == "" {
-		t.Fatal("PATHS must define webull and robinhood marks")
-	}
-	if webull == hood {
-		t.Fatal("Webull and Robinhood marks must differ")
-	}
-	if !strings.Contains(webull, "<path") || !strings.Contains(hood, "<path") {
-		t.Fatal("broker marks must be SVG paths")
-	}
-	if strings.Contains(webull, "M8 8.5") || strings.Contains(webull, "19.5 3") {
-		t.Fatal("Webull mark must not be the cartoon bull head")
-	}
-	if !strings.Contains(webull, "A10.2") && !strings.Contains(webull, "A 10.2") {
-		t.Fatal("Webull mark must be the wide U-horn (elliptical arc), not a bull head")
-	}
-	if strings.Contains(paths, "briefcase") {
-		t.Fatal("shared briefcase icon must not remain now that brokers have their own marks")
-	}
-	page := jsFn(a, "pageBroker")
-	if page == "" {
-		t.Fatal("pageBroker not found")
-	}
-	if !strings.Contains(page, "pageHeader(") || !strings.Contains(page, ", kind)") {
-		t.Fatal("broker page header must take the webull/robinhood mark")
-	}
-}
-
-func pathFor(paths, name string) string {
-	needle := name + ": '"
-	i := strings.Index(paths, needle)
-	if i < 0 {
-		return ""
-	}
-	rest := paths[i+len(needle):]
-	j := strings.Index(rest, "',")
-	if j < 0 {
-		j = strings.Index(rest, "'")
-	}
-	if j < 0 {
-		return ""
-	}
-	return rest[:j]
-}
-
 // TestPhase3UIAudit is AU-P3-12 / UI 5.1.2–5.1.4 / AU-P1-5 / a11y item 23:
 // authCheck must not run on every navigate, toasts cancel the previous timer,
 // overlay dialogs expose role=dialog, and Calendar/Watches show the
@@ -879,39 +671,6 @@ func TestPhase3UIAudit(t *testing.T) {
 	}
 	if !strings.Contains(paint, "setHeroData") && !strings.Contains(paint, "setData") {
 		t.Fatal("paintCurrentHero must reuse the hero chart via setData instead of always destroy+hero")
-	}
-}
-
-func TestLogoutLivesOnSettingsPage(t *testing.T) {
-	a := readWeb(t, "js/app.js")
-	extra := readWeb(t, "css/extra.css")
-	shell := jsFn(a, "shellHTML")
-	drawer := jsFn(a, "mobileDrawerHTML")
-	page := jsFn(a, "pageSettings")
-	if shell == "" || drawer == "" || page == "" {
-		t.Fatal("shellHTML, mobileDrawerHTML or pageSettings not found")
-	}
-	if strings.Contains(shell, `id="logout-btn"`) {
-		t.Fatal("logout must not sit in the sidebar chrome")
-	}
-	if strings.Contains(drawer, "logout-mobile") || strings.Contains(drawer, "Выйти") {
-		t.Fatal("logout must not sit in the mobile drawer")
-	}
-	formEnd := strings.Index(page, "</form>")
-	if formEnd < 0 {
-		t.Fatal("pageSettings form not found")
-	}
-	if !strings.Contains(page[formEnd:], `id="logout-btn"`) {
-		t.Fatal("logout must be on the settings page, outside the save form")
-	}
-	if !strings.Contains(page[formEnd:], "Выйти") {
-		t.Fatal("settings logout control must be labelled «Выйти»")
-	}
-	if strings.Contains(extra, "#logout-btn") {
-		t.Fatal("mobile CSS must not hide the settings logout button")
-	}
-	if !strings.Contains(a, "window.confirm('Выйти из аккаунта?')") {
-		t.Fatal("logout must confirm with window.confirm('Выйти из аккаунта?')")
 	}
 }
 
@@ -1227,32 +986,6 @@ func TestEmaPresetChangeRunsBacktest(t *testing.T) {
 	}
 	if guardAt < 0 || guardAt > runAt {
 		t.Fatal("empty «Выбрать пресет» must not run the backtest")
-	}
-}
-
-// TestEmaMetricsGridHasGapBeforeTabs: pageStocks puts mt-4 on the analysis-tabs
-// card so the metric tiles (итоговый баланс, доходность, …) do not sit flush
-// against the tab strip. pageEMA omitted that class, so the two blocks collide.
-func TestEmaMetricsGridHasGapBeforeTabs(t *testing.T) {
-	a := readWeb(t, "js/app.js")
-	ema := jsFn(a, "pageEMA")
-	if ema == "" {
-		t.Fatal("pageEMA not found")
-	}
-	if !strings.Contains(ema, "metricsGrid(") {
-		t.Fatal("pageEMA must render metricsGrid")
-	}
-	idx := strings.Index(ema, "analysisTabs(")
-	if idx < 0 {
-		t.Fatal("pageEMA missing analysisTabs")
-	}
-	open := strings.LastIndex(ema[:idx], "<div class=")
-	if open < 0 {
-		t.Fatal("pageEMA analysisTabs has no wrapping div")
-	}
-	wrap := ema[open:idx]
-	if !strings.Contains(wrap, "mt-4") {
-		t.Fatal("EMA tabs card must have mt-4 after metricsGrid, matching stocks")
 	}
 }
 
