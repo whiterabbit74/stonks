@@ -168,7 +168,9 @@ func (e *Engine) recordEntryFill(symbol, clientOrderID, brokerName, source, date
 		Symbol: symbol, Broker: brokerName, OrderID: clientOrderID, Qty: fillQty,
 		EntryDate: dateKey, Source: source, IsTest: isTestSource(source),
 	}
-	if meta.IBS > 0 {
+	// Same rule as the exit side: a strategy order always carries a
+	// correlation id, so its IBS is a real reading even at exactly 0.
+	if meta.IBS > 0 || meta.CorrelationID != "" {
 		ibs := meta.IBS
 		f.IBS = &ibs
 	}

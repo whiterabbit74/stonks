@@ -317,9 +317,7 @@ func (e *Engine) submitEvaluated(w execWindow, ev EvalResult, trigger, corr, bro
 			"clientOrderId": res.ClientOrderID, "order_type": "MARKET", "broker": brokerName,
 		})
 	} else if res.Ambiguous {
-		amb := meta
-		amb.IBS = 0
-		e.startTracking(res, amb)
+		e.startTracking(res, meta)
 		e.logAuto("order_submit_unknown", corr, map[string]any{
 			"symbol": symbol, "action": action, "clientOrderId": res.ClientOrderID, "error": res.Error, "broker": brokerName,
 		})
