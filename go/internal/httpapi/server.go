@@ -1334,8 +1334,12 @@ func (s *Server) handlePatchCalendarDay(w http.ResponseWriter, r *http.Request) 
 	meta["lastUpdated"] = tradingdate.TodayNYSE(time.Now())
 	cal["metadata"] = meta
 	out, _ := json.Marshal(cal)
-	if err := s.DB.SaveCalendar(out); err != nil {
-		writeJSON(w, 500, map[string]any{"error": err.Error()})
+	if err := s.DB.SwapCalendar(raw, out); err != nil {
+		code := 500
+		if errors.Is(err, store.ErrCalendarChanged) {
+			code = 409
+		}
+		writeJSON(w, code, map[string]any{"error": err.Error()})
 		return
 	}
 	writeJSON(w, 200, map[string]any{"ok": true, "year": body.Year, "mmdd": body.Mmdd, "type": body.Type})

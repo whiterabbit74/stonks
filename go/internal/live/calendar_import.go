@@ -142,7 +142,7 @@ func (e *Engine) ImportWebullCalendar() (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := e.DB.SaveCalendar(out); err != nil {
+	if err := e.DB.SwapCalendar(raw, out); err != nil {
 		return nil, err
 	}
 	return map[string]any{
@@ -217,5 +217,5 @@ func (e *Engine) DeleteCalendarHoliday(date string) error {
 	if err != nil {
 		return err
 	}
-	return e.DB.SaveCalendar(out)
+	return e.DB.SwapCalendar(raw, out)
 }

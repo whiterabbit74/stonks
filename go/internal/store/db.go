@@ -1023,6 +1023,33 @@ func (d *DB) SaveCalendar(raw json.RawMessage) error {
 	return err
 }
 
+// ErrCalendarChanged means the calendar was rewritten between the read and the
+// write; the caller re-reads instead of saving over the other edit.
+var ErrCalendarChanged = errors.New("календарь изменён параллельно, повторите")
+
+// SwapCalendar writes next only if the stored calendar is still prev, the blob
+// the caller read. Two edits that overlapped used to lose the earlier one
+// (AUD-141).
+func (d *DB) SwapCalendar(prev, next json.RawMessage) error {
+	res, err := d.SQL.Exec(`UPDATE calendar SET data=? WHERE id=1 AND data=?`, string(next), string(prev))
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 1 {
+		return nil
+	}
+	// No row yet: prev was the built-in default, so insert unless someone
+	// else already did.
+	res, err = d.SQL.Exec(`INSERT INTO calendar (id, data) VALUES (1, ?) ON CONFLICT(id) DO NOTHING`, string(next))
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 1 {
+		return nil
+	}
+	return ErrCalendarChanged
+}
+
 func defaultSettings() map[string]any {
 	return map[string]any{
 		"watchThresholdPct":                 0.3,
