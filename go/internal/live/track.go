@@ -416,7 +416,9 @@ func (e *Engine) pollTracker(t map[string]any) (bool, error) {
 			return false, aerr
 		}
 		if n >= 64 {
-			e.finalizeTracker(t, "expired")
+			// The last answer goes with it: its filled_qty is the only record
+			// of shares already executed, and nil dropped them (AUD-135).
+			e.finalizeTrackerStatus(t, detail, "expired")
 			return true, nil
 		}
 		return false, nil
