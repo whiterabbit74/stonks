@@ -609,7 +609,11 @@ func (e *Engine) finalizeTrackerStatus(t map[string]any, detail map[string]any, 
 	id := fmt.Sprint(t["clientOrderId"])
 	// Record the trade before marking the tracker final so a waiter that
 	// keys off pending status cannot observe a filled tracker with no row.
-	e.recordFill(t, detail, status)
+	if !e.recordFill(t, detail, status) {
+		// The journal did not take the fill: leave the tracker pending so the
+		// next poll retries, rather than going final over a lost trade (AUD-134).
+		return
+	}
 	if err := e.stampTrackerStatus(id, status); err != nil {
 		return
 	}

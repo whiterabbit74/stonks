@@ -18,7 +18,7 @@ func TestPartialExitCoveringTheRestFlattensTheLeg(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.ClaimPartialExit("w1-exit", "p1", "webull", 4, 11, "2026-09-01"); err != nil {
+	if _, err := db.ClaimPartialExit("w1-exit", "p1", "webull", 4, PositionExit{Date: "2026-09-01", Price: 11}); err != nil {
 		t.Fatal(err)
 	}
 	p, err := db.GetPosition("p1")

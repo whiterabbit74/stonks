@@ -607,22 +607,22 @@ func (d *DB) SplitPosition(id, broker string, sold, exitPrice float64, exitDate,
 		return err
 	}
 	defer tx.Rollback()
-	if err := d.splitPositionTx(tx, id, broker, sold, exitPrice, exitDate, notes); err != nil {
+	if err := d.splitPositionTx(tx, id, broker, sold, "", PositionExit{Date: exitDate, Price: exitPrice, Notes: notes}); err != nil {
 		return err
 	}
 	return tx.Commit()
 }
 
-func (d *DB) splitPositionTx(tx *sql.Tx, id, broker string, sold, exitPrice float64, exitDate, notes string) error {
+// A sold part nobody could price yet closes with a NULL exit price, the same
+// as a full exit (AUD-040): refusing it left the sold shares in the open row
+// while the tracker went final and was never polled again (AUD-134).
+func (d *DB) splitPositionTx(tx *sql.Tx, id, broker string, sold float64, exitOrderID string, exit PositionExit) error {
 	p, err := d.scanPosition(tx.QueryRow(`SELECT `+positionColumns+` FROM positions WHERE id=? AND status='open'`, id))
 	if err == sql.ErrNoRows {
 		return fmt.Errorf("открытая позиция не найдена")
 	}
 	if err != nil {
 		return err
-	}
-	if !(exitPrice > 0) {
-		return fmt.Errorf("exitPrice must be a positive number")
 	}
 	left := p.Quantity - sold
 	if !(sold > 0) || left <= 1e-9 {
@@ -633,10 +633,16 @@ func (d *DB) splitPositionTx(tx *sql.Tx, id, broker string, sold, exitPrice floa
 	part.ID = fmt.Sprintf("%s-p%d", id, time.Now().UnixNano())
 	part.Quantity = sold
 	part.Status = "closed"
-	part.ExitDate = exitDate
-	price := exitPrice
-	part.ExitPrice = &price
-	part.Notes = notes
+	part.ExitDate = exit.Date
+	part.ExitPrice = nil
+	if exit.Price > 0 {
+		price := exit.Price
+		part.ExitPrice = &price
+	}
+	if exit.IBS != nil {
+		part.ExitIBS = exit.IBS
+	}
+	part.Notes = exit.Notes
 	// Only the selling broker's leg moves into the closed part, capped at what
 	// it actually holds.
 	part.Webull, part.Robinhood = BrokerLeg{}, BrokerLeg{}
@@ -644,7 +650,10 @@ func (d *DB) splitPositionTx(tx *sql.Tx, id, broker string, sold, exitPrice floa
 	if leg.Qty > sold {
 		leg.Qty = sold
 	}
-	leg.ExitPrice = &price
+	leg.ExitPrice = part.ExitPrice
+	if exitOrderID != "" {
+		leg.ExitOrderID = exitOrderID
+	}
 	part.SetLeg(broker, leg)
 	part.applyPnL()
 
@@ -680,7 +689,7 @@ func (d *DB) splitPositionTx(tx *sql.Tx, id, broker string, sold, exitPrice floa
 // and writing after left the recorded quantity covering shares no journal row
 // ever received: the replay of that same broker answer then found nothing new
 // to book and the executed part was gone for good (AUD-111).
-func (d *DB) ClaimPartialExit(clientOrderID, positionID, broker string, filled, exitPrice float64, exitDate string) (float64, error) {
+func (d *DB) ClaimPartialExit(clientOrderID, positionID, broker string, filled float64, exit PositionExit) (float64, error) {
 	tx, err := d.SQL.Begin()
 	if err != nil {
 		return 0, err
@@ -700,16 +709,18 @@ func (d *DB) ClaimPartialExit(clientOrderID, positionID, broker string, filled, 
 	if p.Quantity-newly <= 1e-9 {
 		// The exit took the whole remainder: the leg is flat and it is this
 		// order that flattened it (invariant K.1).
-		if err := exitLegTx(tx, positionID, broker, exitPrice, clientOrderID); err != nil {
+		if err := exitLegTx(tx, positionID, broker, exit.Price, clientOrderID); err != nil {
 			return 0, err
 		}
-		if _, err := d.closePositionTx(tx, positionID, PositionExit{
-			Date: exitDate, Price: exitPrice, Notes: "partial_exit_flat",
-		}); err != nil {
+		exit.Notes = "partial_exit_flat"
+		if _, err := d.closePositionTx(tx, positionID, exit); err != nil {
 			return 0, err
 		}
-	} else if err := d.splitPositionTx(tx, positionID, broker, newly, exitPrice, exitDate, "partial_exit"); err != nil {
-		return 0, err
+	} else {
+		exit.Notes = "partial_exit"
+		if err := d.splitPositionTx(tx, positionID, broker, newly, clientOrderID, exit); err != nil {
+			return 0, err
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return 0, err
