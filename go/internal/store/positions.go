@@ -489,7 +489,12 @@ func (p *Position) applyPnL() {
 // included — at the old fill price (AUD-115). booked is false when this fill
 // was already journaled and nothing was written. A fill with no quantity at all
 // carries no evidence to key idempotency off and is recorded as before.
-func (d *DB) ExitLeg(id, broker string, exitPrice float64, exitOrderID string, exitQty float64) (p *Position, booked bool, err error) {
+//
+// When no broker holds shares any more the position is closed with exit in the
+// same transaction. Closing in a second one left an open row with a flat leg
+// after a crash between the two, and the replay saw "already booked" and never
+// closed it (AUD-133). Such a row from before the fix is closed on the replay.
+func (d *DB) ExitLeg(id, broker, exitOrderID string, exitQty float64, exit PositionExit) (p *Position, booked bool, err error) {
 	tx, err := d.SQL.Begin()
 	if err != nil {
 		return nil, false, err
@@ -501,10 +506,21 @@ func (d *DB) ExitLeg(id, broker string, exitPrice float64, exitOrderID string, e
 			return nil, false, err
 		}
 		if newly <= 0 {
-			return nil, false, nil
+			row, err := d.scanPosition(tx.QueryRow(`SELECT `+positionColumns+` FROM positions WHERE id=?`, id))
+			if err != nil || row.Status != "open" || row.ExecutedQty() > 0 || row.Leg(broker).ExitOrderID != exitOrderID {
+				return nil, false, nil
+			}
+			closed, err := d.closePositionTx(tx, id, exit)
+			if err != nil {
+				return nil, false, err
+			}
+			if err := tx.Commit(); err != nil {
+				return nil, false, err
+			}
+			return closed, true, nil
 		}
 	}
-	if err := exitLegTx(tx, id, broker, exitPrice, exitOrderID); err != nil {
+	if err := exitLegTx(tx, id, broker, exit.Price, exitOrderID); err != nil {
 		return nil, false, err
 	}
 	row, err := d.scanPosition(tx.QueryRow(`SELECT `+positionColumns+` FROM positions WHERE id=?`, id))
@@ -514,10 +530,16 @@ func (d *DB) ExitLeg(id, broker string, exitPrice float64, exitOrderID string, e
 	if err != nil {
 		return nil, false, err
 	}
+	p = &row
+	if row.Status == "open" && row.ExecutedQty() == 0 {
+		if p, err = d.closePositionTx(tx, id, exit); err != nil {
+			return nil, false, err
+		}
+	}
 	if err := tx.Commit(); err != nil {
 		return nil, false, err
 	}
-	return &row, true, nil
+	return p, true, nil
 }
 
 // exitLegTx zeroes one broker's leg and records what it got, in one statement.

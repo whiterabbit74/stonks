@@ -37,7 +37,7 @@ func TestPatchDoesNotResurrectSoldLeg(t *testing.T) {
 	}
 
 	body := &readHook{Reader: strings.NewReader(`{"notes":"edited"}`), f: func() {
-		if _, _, err := s.DB.ExitLeg("p", "webull", 11, "exit", 10); err != nil {
+		if _, _, err := s.DB.ExitLeg("p", "webull", "exit", 10, store.PositionExit{Date: "2026-09-01", Price: 11}); err != nil {
 			t.Error(err)
 		}
 	}}

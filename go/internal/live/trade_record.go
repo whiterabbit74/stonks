@@ -46,22 +46,6 @@ func (e *Engine) openPositionFor(symbol, preferID, broker string) (*store.Positi
 	return p, nil
 }
 
-// closePositionWithPnL writes the exit into the journal. The error is returned,
-// not only logged: a fill the journal did not record leaves the position open
-// there forever, and the caller decides how loud that has to be — see AUD-035.
-func (e *Engine) closePositionWithPnL(id string, exitPrice float64, exitDate string, exitIBS *float64, note string) error {
-	if id == "" {
-		return nil
-	}
-	if _, err := e.DB.ClosePosition(id, store.PositionExit{
-		Date: exitDate, Price: exitPrice, IBS: exitIBS, Notes: note,
-	}); err != nil {
-		e.logAuto("local_trade_close_failed", "", map[string]any{"id": id, "error": err.Error()})
-		return err
-	}
-	return nil
-}
-
 func (e *Engine) recordFill(t map[string]any, detail map[string]any, status string) {
 	clientOrderID := fmt.Sprint(t["clientOrderId"])
 	symbol := store.SafeTicker(fmt.Sprint(t["symbol"]))
@@ -227,7 +211,9 @@ func (e *Engine) recordExitFill(symbol, clientOrderID, brokerName, dateKey strin
 		return
 	}
 
-	after, booked, err := e.DB.ExitLeg(p.ID, brokerName, fillPrice, clientOrderID, fillQty)
+	after, booked, err := e.DB.ExitLeg(p.ID, brokerName, clientOrderID, fillQty, store.PositionExit{
+		Date: dateKey, Price: fillPrice, IBS: exitIBS, Notes: "closed_from_broker_fill",
+	})
 	if err != nil {
 		e.logAuto("local_trade_close_failed", meta.CorrelationID, map[string]any{
 			"symbol": symbol, "clientOrderId": clientOrderID, "op": "close_leg", "error": err.Error(),
@@ -241,15 +227,10 @@ func (e *Engine) recordExitFill(symbol, clientOrderID, brokerName, dateKey strin
 		})
 		return
 	}
-	p = after
-	if p.ExecutedQty() > 0 {
+	if after.Status == "open" {
 		e.logAuto("position_partially_exited", meta.CorrelationID, map[string]any{
-			"symbol": symbol, "broker": brokerName, "remaining": p.ExecutedQty(),
+			"symbol": symbol, "broker": brokerName, "remaining": after.ExecutedQty(),
 		})
-		return
-	}
-	if err := e.closePositionWithPnL(p.ID, fillPrice, dateKey, exitIBS, "closed_from_broker_fill"); err != nil {
-		e.raiseTrackerPersistBlock(brokerName)
 	}
 }
 

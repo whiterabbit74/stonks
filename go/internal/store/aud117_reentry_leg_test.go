@@ -16,7 +16,7 @@ func TestReentryKeepsTheExitedRoundInTheJournal(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := db.ExitLeg("p1", "webull", 11, "w1-exit", 4); err != nil {
+	if _, _, err := db.ExitLeg("p1", "webull", "w1-exit", 4, PositionExit{Date: "2026-09-01", Price: 11}); err != nil {
 		t.Fatal(err)
 	}
 
