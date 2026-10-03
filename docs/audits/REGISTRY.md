@@ -1,5 +1,38 @@
 # Реестр аудитов и находок
 
+## Полный аудит 2026-10-02, ревизия 0aefc14, исправления 2026-10-02
+
+Источник: [`AUDIT_2026-10-02.md`](AUDIT_2026-10-02.md), 17 находок H1–H7, M1–M10. Все
+перепроверены по коду и подтвердились; дублей существующих корней нет. Каждой
+выдан новый ID. «FAIL→PASS» — тест падал на коде до фикса и проходит после.
+Общая проверка на `8908f28`: `TZ=Pacific/Auckland go test ./...` и
+`TZ=America/Los_Angeles go test -race ./...` зелёные, кроме
+`webull/TestWebullRequestsArePaced` (пакет не менялся, тайминг под нагрузкой,
+отдельно 3/3 PASS). Не задеплоено.
+
+| ID | Итог | Комментарий |
+| --- | --- | --- |
+| AUD-127 | VERIFIED, H1, fix `62e58d8` | PATCH EMA-алерта одним ключом достраивал тикер `NIL`, период 200, уровни NULL; `enabled` не писался. Теперь наложение на сохранённую строку, `enabled` в UPSERT, пустой тикер — 400. `TestEMAAlertPatchOneKeyKeepsAlert` FAIL→PASS. |
+| AUD-128 | FIXED_UNVERIFIED, H2, fix `bad53d0` | Глаз в журнале слал весь устаревший снимок строки. Теперь только `{isHidden}`; серверное наложение покрыто `TestPatchPositionKeepsOmittedFields`. Клик в браузере не прогонялся. |
+| AUD-129 | VERIFIED, M2, fix `ed407e6` | Пустая цена входа уходила как 0. Клиент шлёт `null`, POST/PATCH отвергают цену не > 0. `TestPatchPositionRejectsZeroPrice` FAIL→PASS. |
+| AUD-130 | FIXED_UNVERIFIED, M3, fix `fc97d3e` | `ibsFraction` делила только > 1.5, IBS ≤ 1.5% сохранялся как доля. Теперь всегда `/100`. `node --check`; JS-тестов в проекте нет. |
+| AUD-131 | VERIFIED, M5, fix `5e86704` | Даты позиции без `IsValid` на создании, правке и закрытии. Теперь 400. `TestPositionRejectsInvalidDate`. |
+| AUD-132 | VERIFIED, H3, fix `d4f3ed7` | Частичный выход без открытой строки пропадал молча. Теперь та же тревога, что у полного (`exitWithoutPosition`). `TestPartialExitWithoutPositionAlarms` FAIL→PASS. |
+| AUD-133 | VERIFIED, H5, fix `d802b1a` | `ExitLeg` и закрытие были разными транзакциями; повтор не закрывал строку-зомби. Теперь закрытие плоской позиции в той же транзакции, повтор закрывает старого зомби. `TestExitLegClosesFlatPositionAtomically`. |
+| AUD-134 | VERIFIED, H4, fix `d4f3ed7` | Сплит без цены отказывал, трекер всё равно становился конечным. Срез теперь с NULL-ценой; `recordFill` возвращает сбой журнала, трекер остаётся в ожидании до записи. `TestPartialExitWithoutPriceIsJournaled`, `TestTrackerStaysPendingWhenJournalFails` FAIL→PASS. |
+| AUD-135 | VERIFIED, H6, fix `be39d79` | 64-й опрос истекал с nil вместо последнего ответа, `filled_qty` терялся. Теперь передаётся последний detail. Остаток у брокера не отменяется (DAY-заявка гаснет после закрытия). `TestExpiredPollKeepsLastKnownFill` FAIL→PASS. |
+| AUD-136 | VERIFIED, M1, fix `d4f3ed7` | Закрытый срез частичного выхода терял exit IBS, дату сессии трекера и id заявки. `TestPartialExitKeepsIBSDateAndOrder` FAIL→PASS. |
+| AUD-137 | VERIFIED, H7, fix `9efe4f6` | «Без стопа» игнорировал цель и плечо. Цель — `CleanOptions.TakeProfitPercent` (выход по High). Плечо убрано из формы и конфига: модели маржин-колла в `RunClean` нет. `TestNoStopLossProfitTargetExits` FAIL→PASS; голдены целы. |
+| AUD-138 | FIXED_UNVERIFIED, M4, fix `397e774` | Снимок деплоя копировал живую WAL-базу. Теперь `sqlite3 .backup` + `integrity_check`, провал останавливает деплой. Раскрытие строки и снимок WAL-базы проверены локально; на VPS не запускалось. |
+| AUD-139 | VERIFIED, M6, fix `1ef32aa` | `validateBars` пропускал `2024-02-30` и нулевые цены. `TestValidateBarsRejectsBadDateAndPrice`. Закрытие вне `[low, high]` не отвергается: бэктест даёт NaN, сигнала нет. |
+| AUD-140 | VERIFIED, M7, fix `d702161` | PUT датасета помечал ожидающий сплит применённым по подмешанному флагу. Теперь только флаг из тела. `TestDatasetPutKeepsPendingSplit` FAIL→PASS. |
+| AUD-141 | VERIFIED, M8, fix `29a8432` | Правки календаря теряли друг друга. `SwapCalendar` (compare-and-swap) на PATCH дня и обоих импортах Webull; конфликт — 409. `TestSwapCalendarRefusesStaleWrite`. Два живых параллельных HTTP-запроса не запускались. |
+| AUD-142 | VERIFIED, M9, fix `bb4d97d` | Цена ликвидации обрезалась входом при плече × поддержка > 1. Такое плечо теперь 400 в `single-position` и `margin`. `TestCalcRejectsInvalidNumericParameters` FAIL→PASS. |
+| AUD-143 | VERIFIED, M10, fix `8908f28` | `SimulateMargin` терял повторный вход в день выхода. `TestSimulateMarginKeepsSameDayReentry` FAIL→PASS. |
+
+L1–L3 отчёта не заведены: L1 и L2 требуют снимка T-1 и решения владельца, L3 —
+это AUD-141.
+
 ## Аудит торговли и токенов брокеров 2026-09-26, ревизия 12c87de, прод на 4ee60be
 
 Охват: T-1 решение и исполнение (`decideLiveAction`, `executeAll`, `sizeOrder`,
