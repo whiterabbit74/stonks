@@ -19,6 +19,14 @@ func validateBars(bars []types.OHLC) []string {
 			reasons = append(reasons, "missing date")
 			continue
 		}
+		if !tradingdate.IsValid(d) {
+			reasons = append(reasons, "invalid date "+d)
+			continue
+		}
+		// A zero low and close read as IBS 0, an entry signal (AUD-139).
+		if !(b.Open > 0 && b.High > 0 && b.Low > 0 && b.Close > 0) {
+			reasons = append(reasons, "non-positive price on "+d)
+		}
 		if seen[d] {
 			reasons = append(reasons, "duplicate date "+d)
 		}
