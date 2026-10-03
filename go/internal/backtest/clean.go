@@ -15,6 +15,7 @@ type CleanOptions struct {
 	EntryExecution           string // "close" | "nextOpen"
 	IgnoreMaxHoldDaysExit    bool
 	IBSExitRequireAboveEntry bool
+	TakeProfitPercent        *float64 // exit at entry×(1+tp/100) once the bar's High reaches it
 	Splits                   []types.SplitEvent
 }
 
@@ -114,7 +115,12 @@ func RunClean(data []types.OHLC, strategy types.Strategy, options *CleanOptions)
 			if canCheckToday {
 				shouldExit := false
 				exitReason := ""
-				if ibssig.IsExitSignal(ibs, highIBS) {
+				exitPrice := bar.Close
+				if tp := metrics.TakeProfitPrice(position.entryPrice, opt.TakeProfitPercent); metrics.ShouldTakeProfit(bar.High, tp) {
+					shouldExit = true
+					exitReason = "take_profit"
+					exitPrice = *tp
+				} else if ibssig.IsExitSignal(ibs, highIBS) {
 					if !opt.IBSExitRequireAboveEntry || bar.Close > position.entryPrice {
 						shouldExit = true
 						exitReason = "ibs_signal"
@@ -128,7 +134,6 @@ func RunClean(data []types.OHLC, strategy types.Strategy, options *CleanOptions)
 					}
 				}
 				if shouldExit {
-					exitPrice := bar.Close
 					grossProceeds := position.quantity * exitPrice
 					grossCost := position.quantity * position.entryPrice
 					exitCommission := commission(grossProceeds, strategy)
@@ -249,16 +254,14 @@ type NoStopLossConfig struct {
 	MaxHoldDays           float64 `json:"maxHoldDays"`
 	ProfitTarget          float64 `json:"profitTarget"`
 	RequireProfitableExit bool    `json:"requireProfitableExit"`
-	Leverage              float64 `json:"leverage"`
 }
 
 func RunNoStopLoss(data []types.OHLC, strategy types.Strategy, cfg NoStopLossConfig) types.BacktestResult {
 	modified := strategy
 	modified.RiskManagement.UseStopLoss = false
-	modified.RiskManagement.UseTakeProfit = cfg.ExitMode == "profit-target"
-	modified.RiskManagement.TakeProfit = cfg.ProfitTarget
-	if cfg.Leverage > 0 {
-		modified.RiskManagement.Leverage = cfg.Leverage
+	var tp *float64
+	if cfg.ExitMode == "profit-target" {
+		tp = metrics.NormalizeTakeProfitPercent(&cfg.ProfitTarget)
 	}
 	if cfg.ExitMode == "time-limit" {
 		v := cfg.MaxHoldDays
@@ -272,5 +275,6 @@ func RunNoStopLoss(data []types.OHLC, strategy types.Strategy, cfg NoStopLossCon
 		EntryExecution:           "nextOpen",
 		IgnoreMaxHoldDaysExit:    ignoreMax,
 		IBSExitRequireAboveEntry: cfg.RequireProfitableExit,
+		TakeProfitPercent:        tp,
 	})
 }

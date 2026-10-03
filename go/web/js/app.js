@@ -350,7 +350,7 @@
     watchSortKey: 'symbol',
     watchSortDir: 'asc',
     nested: {
-      nsl: { exitMode: 'ibs-only', requireProfitableExit: false, maxHoldDays: 60, profitTarget: 10, leverage: 100 },
+      nsl: { exitMode: 'ibs-only', requireProfitableExit: false, maxHoldDays: 60, profitTarget: 10 },
     },
     baselineResult: null,
     emaBaseline: null,
@@ -2077,7 +2077,6 @@
       </select></label>
       <label class="text-xs">Макс. дни<input name="maxHoldDays" type="number" value="${esc(f.maxHoldDays)}" class="field mt-1 w-24" /></label>
       <label class="text-xs">Цель, %<input name="profitTarget" type="number" value="${esc(f.profitTarget)}" class="field mt-1 w-24" /></label>
-      <label class="text-xs">Плечо, %<input name="leverage" type="number" step="10" min="10" max="500" value="${esc(f.leverage)}" class="field mt-1 w-24" /></label>
       <label class="text-xs inline-flex items-center gap-1"><input type="checkbox" name="requireProfitableExit" ${f.requireProfitableExit ? 'checked' : ''} /> выход по IBS только при профите</label>
       <button class="btn-primary min-h-0 py-2">Посчитать</button>
     </form><div id="nsl-out">Без стоп-лосса…</div>`;
@@ -5437,13 +5436,13 @@
     if (state.stockTab === 'noStopLoss') {
       const run = () => {
         const f = state.nested.nsl;
-        fill('nsl-out', 'no-stop-loss', { noStop: { exitMode: f.exitMode, requireProfitableExit: !!f.requireProfitableExit, maxHoldDays: Number(f.maxHoldDays), profitTarget: Number(f.profitTarget), leverage: Number(f.leverage || 100) / 100 } });
+        fill('nsl-out', 'no-stop-loss', { noStop: { exitMode: f.exitMode, requireProfitableExit: !!f.requireProfitableExit, maxHoldDays: Number(f.maxHoldDays), profitTarget: Number(f.profitTarget) } });
       };
       document.getElementById('nsl-form')?.addEventListener('submit', (e) => {
         e.preventDefault();
         const form = e.target;
         const fd = new FormData(form);
-        state.nested.nsl = { exitMode: fd.get('exitMode'), requireProfitableExit: !!form.requireProfitableExit?.checked, maxHoldDays: Number(fd.get('maxHoldDays')), profitTarget: Number(fd.get('profitTarget')), leverage: Number(fd.get('leverage')) };
+        state.nested.nsl = { exitMode: fd.get('exitMode'), requireProfitableExit: !!form.requireProfitableExit?.checked, maxHoldDays: Number(fd.get('maxHoldDays')), profitTarget: Number(fd.get('profitTarget')) };
         run();
       });
       run();
