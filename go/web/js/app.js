@@ -4371,7 +4371,7 @@
         const t = (state.broker || []).find((x) => String(x.id) === String(b.dataset.hideBt));
         if (!t) return;
         try {
-          await API.patchPosition(t.id, { ...t, isHidden: !t.isHidden });
+          await API.patchPosition(t.id, { isHidden: !t.isHidden });
           const bt = await API.positions({ includeHidden: true }).catch(() => ({ positions: [] }));
           state.broker = Array.isArray(bt) ? bt : (bt.positions || []);
           renderPage();
