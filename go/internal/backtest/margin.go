@@ -87,28 +87,31 @@ func SimulateMargin(p MarginParams) MarginResult {
 	for i := range bars {
 		dates[i] = bars[i].Date
 	}
+	openOn := func(date string) {
+		for tradeIndex < len(trades) && trades[tradeIndex].EntryDate < date {
+			tradeIndex++
+		}
+		if tradeIndex < len(trades) && trades[tradeIndex].EntryDate == date {
+			tpl := trades[tradeIndex]
+			tradeIndex++
+			marginBudget := cash * usage
+			desired := marginBudget * p.Leverage
+			qty := wholeShares(desired / tpl.EntryPrice)
+			if qty > 0 {
+				notional := qty * tpl.EntryPrice
+				marginUsed := notional / p.Leverage
+				borrowed := notional - marginUsed
+				cash -= marginUsed
+				pos = &active{template: tpl, entryDate: tpl.EntryDate, entryPrice: tpl.EntryPrice,
+					quantity: qty, marginUsed: marginUsed, borrowed: borrowed, plannedExitDate: tpl.ExitDate}
+			}
+		}
+	}
 	equity := runDailyEngine(dates, initial, func(day dailyDay) float64 {
 		bar := bars[day.Index]
 		date := bar.Date
 		if pos == nil {
-			for tradeIndex < len(trades) && trades[tradeIndex].EntryDate < date {
-				tradeIndex++
-			}
-			if tradeIndex < len(trades) && trades[tradeIndex].EntryDate == date {
-				tpl := trades[tradeIndex]
-				tradeIndex++
-				marginBudget := cash * usage
-				desired := marginBudget * p.Leverage
-				qty := wholeShares(desired / tpl.EntryPrice)
-				if qty > 0 {
-					notional := qty * tpl.EntryPrice
-					marginUsed := notional / p.Leverage
-					borrowed := notional - marginUsed
-					cash -= marginUsed
-					pos = &active{template: tpl, entryDate: tpl.EntryDate, entryPrice: tpl.EntryPrice,
-						quantity: qty, marginUsed: marginUsed, borrowed: borrowed, plannedExitDate: tpl.ExitDate}
-				}
-			}
+			openOn(date)
 		}
 		totalValue := cash
 		if pos != nil {
@@ -196,6 +199,11 @@ func SimulateMargin(p MarginParams) MarginResult {
 				sim = append(sim, t)
 				pos = nil
 				totalValue = cash
+				// A trade entering on the day the previous one exited
+				// (same-day re-entry) is opened now, not skipped (AUD-143).
+				if openOn(date); pos != nil {
+					totalValue = cash + math.Max(0, pos.quantity*bar.Close-pos.borrowed)
+				}
 			} else {
 				notional := pos.quantity * bar.Close
 				posEq := math.Max(0, notional-pos.borrowed)
