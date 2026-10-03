@@ -1666,6 +1666,11 @@ func checkPositionInput(p *store.Position) error {
 			return errors.New("Цена должна быть положительной")
 		}
 	}
+	for _, d := range []string{p.EntryDate, p.ExitDate} {
+		if d != "" && !tradingdate.IsValid(d) {
+			return errors.New("Дата должна быть в формате ГГГГ-ММ-ДД")
+		}
+	}
 	return nil
 }
 
@@ -1687,6 +1692,10 @@ func (s *Server) handleClosePosition(w http.ResponseWriter, r *http.Request) {
 	}
 	if body.ExitDate == "" {
 		body.ExitDate = tradingdate.TodayNYSE(time.Now())
+	}
+	if !tradingdate.IsValid(body.ExitDate) {
+		writeJSON(w, 400, map[string]any{"error": "Дата должна быть в формате ГГГГ-ММ-ДД"})
+		return
 	}
 	updated, err := s.DB.ClosePosition(r.PathValue("id"), store.PositionExit{
 		Date: body.ExitDate, Price: body.ExitPrice, IBS: body.ExitIBS, Notes: body.Notes,

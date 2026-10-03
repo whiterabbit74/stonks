@@ -103,3 +103,23 @@ func TestPatchPositionRejectsZeroPrice(t *testing.T) {
 		t.Fatalf("post zero entry price: %d %s", rec.Code, rec.Body.String())
 	}
 }
+
+// AUD-131: an impossible or non-ISO date is refused on create, edit and close.
+func TestPositionRejectsInvalidDate(t *testing.T) {
+	s, _, _ := liveServer(t)
+	if err := s.DB.SavePosition(store.Position{ID: "m1", Symbol: "AAPL", Status: "open", EntryDate: "2026-08-20"}); err != nil {
+		t.Fatal(err)
+	}
+	if rec := patchJSON(s, "/api/positions/m1", map[string]any{"entryDate": "2024-02-30"}); rec.Code != 400 {
+		t.Fatalf("patch: %d %s", rec.Code, rec.Body.String())
+	}
+	if rec := postJSON(s, "/api/positions", map[string]any{"symbol": "MSFT", "entryDate": "02.10.2026"}); rec.Code != 400 {
+		t.Fatalf("post: %d %s", rec.Code, rec.Body.String())
+	}
+	if rec := postJSON(s, "/api/positions/m1/close", map[string]any{"exitPrice": 10.0, "exitDate": "02.10.2026"}); rec.Code != 400 {
+		t.Fatalf("close: %d %s", rec.Code, rec.Body.String())
+	}
+	if p, _ := s.DB.GetPosition("m1"); p == nil || p.Status != "open" {
+		t.Fatalf("got %+v", p)
+	}
+}
