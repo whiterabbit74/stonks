@@ -95,11 +95,23 @@ backup_volume() {
     echo \"skip backup \$label: volume not found\"
   fi
 }
+# The database is live and in WAL mode: a file copy can catch a torn page or a
+# WAL that does not match the main file (AUD-058). SQLite's online backup takes
+# a consistent snapshot, and it is checked before it counts as a rollback point.
+backup_db() {
+  local actual_volume=\"\$1\" target_dir=\"\$2\"
+  if [ -n \"\$actual_volume\" ] && docker volume inspect \"\$actual_volume\" >/dev/null 2>&1; then
+    echo \"backup db volume: \$actual_volume (sqlite .backup)\"
+    docker run --rm -v \"\$actual_volume:/source\" -v \"\$target_dir:/backup\" alpine sh -c 'set -e; [ -f /source/trading.db ] || exit 0; apk add --no-cache sqlite >/dev/null; sqlite3 /source/trading.db \".backup /backup/trading.db\"; test \"\$(sqlite3 /backup/trading.db \"PRAGMA integrity_check\")\" = ok'
+  else
+    echo \"skip backup db: volume not found\"
+  fi
+}
 STATE_VOLUME=\$(resolve_volume_name stonks-server /data/state stonks_state)
 DB_VOLUME=\$(resolve_volume_name stonks-server /data/db stonks_db)
 DATASETS_VOLUME=\$(resolve_volume_name stonks-server /data/datasets stonks_datasets)
 backup_volume \"\$STATE_VOLUME\" \"\$BACKUP_DIR/\$BACKUP_NAME/state\" state
-backup_volume \"\$DB_VOLUME\" \"\$BACKUP_DIR/\$BACKUP_NAME/db\" db
+backup_db \"\$DB_VOLUME\" \"\$BACKUP_DIR/\$BACKUP_NAME/db\"
 backup_volume \"\$DATASETS_VOLUME\" \"\$BACKUP_DIR/\$BACKUP_NAME/datasets\" datasets
 cd \"\$BACKUP_DIR\" && ls -dt backup_* 2>/dev/null | tail -n +6 | xargs rm -rf 2>/dev/null || true
 echo \"backup \$BACKUP_NAME (db+state+datasets)\"
