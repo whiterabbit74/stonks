@@ -138,6 +138,13 @@ func (s *Server) calcSingle(w http.ResponseWriter, r *http.Request) {
 	}
 	st := decodeStrategy(req.Strategy)
 	lev := types.F64Or(req.Leverage, 1)
+	// At 25% maintenance, leverage above 4× is under margin on the entry bar
+	// itself: no broker opens it, and the liquidation price would sit above
+	// the entry (AUD-142).
+	if lev > 4 {
+		writeJSON(w, 400, map[string]any{"error": "leverage above 4x is below maintenance margin at entry"})
+		return
+	}
 	eq, final, maxDD, trades, m, exp := backtest.RunSinglePosition(tickers, st, lev, req.Single)
 	out := map[string]any{"equity": eq, "finalValue": final, "maxDrawdown": maxDD, "trades": trades, "metrics": m, "exposure": exp}
 	if req.IncludeBaseline && lev != 1 {
@@ -279,6 +286,13 @@ func (s *Server) calcMargin(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.InitialCapital < 0 || req.Leverage <= 0 || invalidCalcNumber(req.InitialCapital) || invalidCalcNumber(req.Leverage) || (req.MaintenanceMarginPct != nil && (*req.MaintenanceMarginPct < 0 || invalidCalcNumber(*req.MaintenanceMarginPct))) || (req.CapitalUsagePct != nil && (*req.CapitalUsagePct < 0 || invalidCalcNumber(*req.CapitalUsagePct))) {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid margin parameters"})
+		return
+	}
+	// Same clamp as SimulateMargin. Leverage × maintenance above 1 is under
+	// margin on the entry bar (AUD-142).
+	maint := min(max(types.F64Or(req.MaintenanceMarginPct, 25), 1), 95) / 100
+	if req.Leverage*maint > 1 {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "leverage is below maintenance margin at entry"})
 		return
 	}
 	writeJSON(w, 200, backtest.SimulateMargin(req))

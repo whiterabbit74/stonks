@@ -18,6 +18,12 @@ func TestCalcRejectsInvalidNumericParameters(t *testing.T) {
 		{"/api/calc/black-scholes", map[string]any{"S": -1, "K": 100, "T": 1, "sigma": 0.2}},
 		{"/api/calc/black-scholes", map[string]any{"S": 100, "K": 100, "T": -1, "sigma": 0.2}},
 		{"/api/calc/margin", map[string]any{"initialCapital": 1000, "leverage": -2}},
+		// AUD-142: under maintenance margin on the entry bar.
+		{"/api/calc/margin", map[string]any{"initialCapital": 1000, "leverage": 5}},
+		{"/api/calc/margin", map[string]any{"initialCapital": 1000, "leverage": 3, "maintenanceMarginPct": 50}},
+		{"/api/calc/single-position", map[string]any{"leverage": 5, "tickers": []any{map[string]any{
+			"ticker": "AAA", "data": []any{map[string]any{"date": "2024-01-02", "open": 1, "high": 2, "low": 1, "close": 1.5}},
+		}}}},
 	} {
 		payload, err := json.Marshal(tc.body)
 		if err != nil {
