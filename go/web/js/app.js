@@ -4148,7 +4148,7 @@
               symbol: document.getElementById('em-sym').value.toUpperCase().trim(),
               entryDate: document.getElementById('em-ed').value,
               exitDate: document.getElementById('em-xd').value,
-              entryPrice: Number(document.getElementById('em-ep').value),
+              entryPrice: document.getElementById('em-ep').value === '' ? null : Number(document.getElementById('em-ep').value),
               exitPrice: document.getElementById('em-xp').value === '' ? null : Number(document.getElementById('em-xp').value),
               quantity: document.getElementById('em-qty').value === '' ? null : Number(document.getElementById('em-qty').value),
               notes: document.getElementById('em-notes').value,
@@ -4286,7 +4286,7 @@
         if (fd.get('entryPrice') && !(entryPrice > 0)) { toast('Цена входа должна быть положительной'); return; }
         try {
           const rec = {
-            symbol, entryDate, entryPrice,
+            symbol, entryDate, entryPrice: fd.get('entryPrice') ? entryPrice : null,
             quantity: fd.get('quantity') ? Number(fd.get('quantity')) : undefined,
             notes: fd.get('notes') || '',
             source: 'manual',

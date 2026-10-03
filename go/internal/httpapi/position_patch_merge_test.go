@@ -82,3 +82,24 @@ func TestPatchPositionRejectsEmptyTicker(t *testing.T) {
 		t.Fatalf("ticker changed: %+v", p)
 	}
 }
+
+// Zero is not a price (AUD-129): a blank field sent as 0 must be refused, not
+// stored over NULL where it blocks the PnL forever. null keeps the NULL.
+func TestPatchPositionRejectsZeroPrice(t *testing.T) {
+	s, _, _ := liveServer(t)
+	if err := s.DB.SavePosition(store.Position{ID: "m1", Symbol: "AAPL", Status: "open", EntryDate: "2026-08-20"}); err != nil {
+		t.Fatal(err)
+	}
+	if rec := patchJSON(s, "/api/positions/m1", map[string]any{"entryPrice": 0}); rec.Code != 400 {
+		t.Fatalf("zero entry price: %d %s", rec.Code, rec.Body.String())
+	}
+	if rec := patchJSON(s, "/api/positions/m1", map[string]any{"entryPrice": nil, "notes": "x"}); rec.Code != 200 {
+		t.Fatalf("null entry price: %d %s", rec.Code, rec.Body.String())
+	}
+	if p, _ := s.DB.GetPosition("m1"); p == nil || p.EntryPrice != nil || p.Notes != "x" {
+		t.Fatalf("got %+v", p)
+	}
+	if rec := postJSON(s, "/api/positions", map[string]any{"symbol": "MSFT", "entryPrice": 0}); rec.Code != 400 {
+		t.Fatalf("post zero entry price: %d %s", rec.Code, rec.Body.String())
+	}
+}

@@ -1610,8 +1610,8 @@ func (s *Server) handlePostPosition(w http.ResponseWriter, r *http.Request) {
 	if !s.requireJSON(w, r, &body) {
 		return
 	}
-	if store.SafeTicker(body.Symbol) == "" {
-		writeJSON(w, 400, map[string]any{"error": "Не указан тикер"})
+	if err := checkPositionInput(&body); err != nil {
+		writeJSON(w, 400, map[string]any{"error": err.Error()})
 		return
 	}
 	if err := s.DB.SavePosition(body); err != nil {
@@ -1634,20 +1634,18 @@ func (s *Server) handlePatchPosition(w http.ResponseWriter, r *http.Request) {
 	if !s.requireJSON(w, r, &body) {
 		return
 	}
-	errNoTicker := errors.New("Не указан тикер")
-	errBadJSON := errors.New("invalid json")
+	var errInput error
 	updated, err := s.DB.PatchPosition(r.PathValue("id"), func(p *store.Position) error {
 		if json.Unmarshal(body, p) != nil {
-			return errBadJSON
+			errInput = errors.New("invalid json")
+		} else {
+			errInput = checkPositionInput(p)
 		}
-		if store.SafeTicker(p.Symbol) == "" {
-			return errNoTicker
-		}
-		return nil
+		return errInput
 	})
 	switch {
-	case errors.Is(err, errNoTicker), errors.Is(err, errBadJSON):
-		writeJSON(w, 400, map[string]any{"error": err.Error()})
+	case errInput != nil:
+		writeJSON(w, 400, map[string]any{"error": errInput.Error()})
 	case err != nil:
 		writeJSON(w, 500, map[string]any{"error": err.Error()})
 	case updated == nil:
@@ -1655,6 +1653,20 @@ func (s *Server) handlePatchPosition(w http.ResponseWriter, r *http.Request) {
 	default:
 		writeJSON(w, 200, map[string]any{"ok": true})
 	}
+}
+
+// checkPositionInput guards the hand-edit paths. Zero is not a price: a blank
+// field arriving as 0 was stored instead of NULL and blocked PnL for good.
+func checkPositionInput(p *store.Position) error {
+	if store.SafeTicker(p.Symbol) == "" {
+		return errors.New("Не указан тикер")
+	}
+	for _, v := range []*float64{p.EntryPrice, p.ExitPrice} {
+		if v != nil && !(*v > 0) {
+			return errors.New("Цена должна быть положительной")
+		}
+	}
+	return nil
 }
 
 // handleClosePosition closes a position by hand. There is no linked-row check
