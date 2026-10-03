@@ -754,7 +754,8 @@ func (s *Server) handleCreateDataset(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 400, map[string]any{"error": "invalid json"})
 		return
 	}
-	s.savePayload(w, payload)
+	stated, _ := payload["adjustedForSplits"].(bool)
+	s.savePayload(w, payload, stated)
 }
 
 func (s *Server) handlePutDataset(w http.ResponseWriter, r *http.Request) {
@@ -772,11 +773,15 @@ func (s *Server) handlePutDataset(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 500, map[string]any{"error": "Не удалось получить датасет"})
 		return
 	}
+	// Only the request itself can say its prices contain every split: the
+	// flag merged from the stored row would mark a pending split applied
+	// on a PATCH of one tag (AUD-140).
+	stated, _ := payload["adjustedForSplits"].(bool)
 	if existing != nil {
 		payload = mergeDatasetPayload(existing, payload)
 	}
 	payload["ticker"] = id
-	s.savePayload(w, payload)
+	s.savePayload(w, payload, stated)
 }
 
 func mergeDatasetPayload(existing, payload map[string]any) map[string]any {
@@ -802,7 +807,7 @@ func mergeDatasetPayload(existing, payload map[string]any) map[string]any {
 	return out
 }
 
-func (s *Server) savePayload(w http.ResponseWriter, payload map[string]any) {
+func (s *Server) savePayload(w http.ResponseWriter, payload map[string]any, markApplied bool) {
 	ticker := store.SafeTicker(str(payload["ticker"]))
 	if ticker == "" {
 		ticker = store.SafeTicker(str(payload["name"]))
@@ -835,7 +840,7 @@ func (s *Server) savePayload(w http.ResponseWriter, payload map[string]any) {
 	}
 	// The caller states these prices are already back-adjusted, so the events
 	// that come with them are baked in, not pending.
-	if adj {
+	if markApplied {
 		if err := s.DB.MarkSplitsApplied(ticker); err != nil {
 			writeJSON(w, 500, map[string]any{"error": err.Error()})
 			return
