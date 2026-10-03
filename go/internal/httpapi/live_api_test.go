@@ -450,6 +450,28 @@ func TestEMAAlertPostReturnsAlert(t *testing.T) {
 	}
 }
 
+func TestEMAAlertPatchOneKeyKeepsAlert(t *testing.T) {
+	s, _, _ := liveServer(t)
+	rec := postJSON(s, "/api/telegram/ema-alerts", map[string]any{
+		"symbol": "TQQQ", "emaPeriod": 20, "buyLevelPct": 15, "sellLevelPct": 40, "nextAction": "buy",
+	})
+	var row map[string]any
+	_ = json.Unmarshal(rec.Body.Bytes(), &row)
+	path := "/api/telegram/ema-alerts/" + fmt.Sprint(row["id"])
+	if rec = patchJSON(s, path, map[string]any{"enabled": false}); rec.Code != 200 {
+		t.Fatalf("patch enabled %d %s", rec.Code, rec.Body.String())
+	}
+	if rec = patchJSON(s, path, map[string]any{"nextAction": "sell"}); rec.Code != 200 {
+		t.Fatalf("patch next %d %s", rec.Code, rec.Body.String())
+	}
+	row = nil
+	_ = json.Unmarshal(rec.Body.Bytes(), &row)
+	if row["symbol"] != "TQQQ" || row["emaPeriod"] != float64(20) || row["buyLevelPct"] != float64(15) ||
+		row["sellLevelPct"] != float64(40) || row["enabled"] != false || row["nextAction"] != "sell" {
+		t.Fatalf("one-key patch rewrote alert: %s", rec.Body.String())
+	}
+}
+
 func TestImportWebullCalendarDerivesHolidays(t *testing.T) {
 	s, _, br := liveServer(t)
 	s.Live.Now = func() time.Time { return time.Date(2026, 9, 1, 16, 0, 0, 0, time.UTC) }

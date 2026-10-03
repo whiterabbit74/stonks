@@ -1504,7 +1504,13 @@ func (d *DB) UpsertEMAAlert(rec map[string]any) (string, error) {
 	if id == "" || id == "<nil>" {
 		id = fmt.Sprintf("ema-%d", time.Now().UnixNano())
 	}
-	symbol := SafeTicker(fmt.Sprint(rec["symbol"]))
+	symbol := ""
+	if rec["symbol"] != nil {
+		symbol = SafeTicker(fmt.Sprint(rec["symbol"]))
+	}
+	if symbol == "" {
+		return "", fmt.Errorf("symbol required")
+	}
 	next := rec["nextAction"]
 	if next == nil || fmt.Sprint(next) == "" {
 		next = "buy"
@@ -1533,12 +1539,16 @@ func (d *DB) UpsertEMAAlert(rec map[string]any) (string, error) {
 			rec["direction"] = "below"
 		}
 	}
+	enabled := 1
+	if b, ok := rec["enabled"].(bool); ok && !b {
+		enabled = 0
+	}
 	_, err := d.SQL.Exec(`INSERT INTO telegram_ema_alerts (id, symbol, ema_period, level_pct, direction, enabled, buy_level_pct, sell_level_pct, next_action, threshold_pct, info_level_pct)
-        VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)
-        ON CONFLICT(id) DO UPDATE SET symbol=excluded.symbol, ema_period=excluded.ema_period, level_pct=excluded.level_pct, direction=excluded.direction,
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET symbol=excluded.symbol, ema_period=excluded.ema_period, level_pct=excluded.level_pct, direction=excluded.direction, enabled=excluded.enabled,
             buy_level_pct=excluded.buy_level_pct, sell_level_pct=excluded.sell_level_pct, next_action=excluded.next_action, threshold_pct=excluded.threshold_pct,
             info_level_pct=excluded.info_level_pct, updated_at=datetime('now')`,
-		id, symbol, period, rec["levelPct"], rec["direction"], rec["buyLevelPct"], rec["sellLevelPct"], next, rec["thresholdPct"], rec["infoLevelPct"])
+		id, symbol, period, rec["levelPct"], rec["direction"], enabled, rec["buyLevelPct"], rec["sellLevelPct"], next, rec["thresholdPct"], rec["infoLevelPct"])
 	return id, err
 }
 
