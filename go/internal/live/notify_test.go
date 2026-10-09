@@ -248,6 +248,33 @@ func TestHeldNoticesGoOutOnceOnRelease(t *testing.T) {
 	}
 }
 
+// sendDuringFlush sends "result" from inside the delivery of "fill", the way
+// a tracker goroutine sends its trade result while the hold is being flushed.
+type sendDuringFlush struct {
+	*MemoryTelegram
+	e *Engine
+}
+
+func (s *sendDuringFlush) Send(chatID, text string) error {
+	if text == "fill" {
+		_ = s.e.Send(chatID, "result")
+	}
+	return s.MemoryTelegram.Send(chatID, text)
+}
+
+// A notice sent while the held ones are going out must not overtake them.
+func TestNoticeDuringFlushQueuesBehindHeld(t *testing.T) {
+	_, e, _ := testEngine(t, nil)
+	tg := e.Telegram.(*MemoryTelegram)
+	e.Telegram = &sendDuringFlush{tg, e}
+	e.holdNoticesUntilDecision()
+	_ = e.Send(e.chat(), "fill")
+	e.releaseNotices()
+	if got := tg.Sent(); len(got) != 2 || got[0][1] != "fill" || got[1][1] != "result" {
+		t.Fatalf("want fill then result, got %v", got)
+	}
+}
+
 func sentBody(tg *MemoryTelegram) string {
 	var b strings.Builder
 	for _, m := range tg.Sent() {

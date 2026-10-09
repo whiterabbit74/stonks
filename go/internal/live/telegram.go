@@ -269,15 +269,24 @@ func (e *Engine) holdNoticesUntilDecision() {
 	e.mu.Unlock()
 }
 
-// releaseNotices ends the hold and sends what it kept, in order. Safe to call
-// twice.
+// releaseNotices sends what the hold kept, in order, and then ends it. The
+// hold stays on while it flushes: a notice sent meanwhile queues behind the
+// held ones instead of overtaking them (a trade result before its "продано").
+// Safe to call twice.
 func (e *Engine) releaseNotices() {
-	e.mu.Lock()
-	held := e.heldNotices
-	e.heldNotices, e.holdNotices = nil, false
-	e.mu.Unlock()
-	for _, m := range held {
-		_ = e.deliver(m[0], m[1])
+	for {
+		e.mu.Lock()
+		held := e.heldNotices
+		e.heldNotices = nil
+		if len(held) == 0 {
+			e.holdNotices = false
+			e.mu.Unlock()
+			return
+		}
+		e.mu.Unlock()
+		for _, m := range held {
+			_ = e.deliver(m[0], m[1])
+		}
 	}
 }
 
