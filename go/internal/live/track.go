@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"html"
 	"log"
 	"strings"
 	"sync"
@@ -622,31 +623,63 @@ func (e *Engine) finalizeTrackerStatus(t map[string]any, detail map[string]any, 
 	e.logAuto("order_tracking_finished", e.metaCorr(id), map[string]any{
 		"clientOrderId": id, "status": status, "symbol": t["symbol"], "action": t["action"],
 	})
+	_ = e.Send(e.chat(), trackerNoticeText(t, detail, status))
+	e.mu.Lock()
+	delete(e.orderMeta, id)
+	e.mu.Unlock()
+}
+
+// trackerNoticeText is the operator's line for an order that reached a final
+// status: "Robinhood: продано 1 MSFT по $535.12". The source is named only when
+// the order did not come from the regular T-1 cycle.
+func trackerNoticeText(t map[string]any, detail map[string]any, status string) string {
 	sym := store.SafeTicker(fmt.Sprint(t["symbol"]))
-	side := "BUY"
-	if fmt.Sprint(t["action"]) == "exit" {
-		side = "SELL"
-	}
+	exit := fmt.Sprint(t["action"]) == "exit"
+	var text string
 	if status == "filled" {
-		fillPrice := fillPriceFrom(detail)
 		qty := fillQtyFrom(detail)
 		if !(qty > 0) {
 			qty = asFloat(t["quantity"])
 		}
-		priceS := "—"
-		if fillPrice > 0 {
-			priceS = fmt.Sprintf("$%.2f", fillPrice)
+		price := "— цена не подтверждена"
+		if p := fillPriceFrom(detail); p > 0 {
+			price = fmt.Sprintf("по $%.2f", p)
 		}
-		_ = e.Send(e.chat(), fmt.Sprintf("<b>%s исполнено</b>\n%s • %s • %s\nqty: %v\nsource: %v", trackerBrokerLabel(t), sym, side, priceS, qty, t["source"]))
+		verb := "куплено"
+		if exit {
+			verb = "продано"
+		}
+		text = fmt.Sprintf("<b>%s</b>: %s %v %s %s", trackerBrokerLabel(t), verb, qty, sym, price)
 	} else {
 		// Node notifies on every terminal status (autotrade.js finalizeTracker),
 		// not just fills: a rejected or expired order is the case an operator
 		// most needs to see.
-		_ = e.Send(e.chat(), fmt.Sprintf("<b>%s статус заявки</b>\n%s • %s\nstatus: %s\nsource: %v", trackerBrokerLabel(t), sym, side, status, t["source"]))
+		kind := "покупку"
+		if exit {
+			kind = "продажу"
+		}
+		text = fmt.Sprintf("<b>%s</b>: заявка на %s %s — %s", trackerBrokerLabel(t), kind, sym, trackerStatusText(status))
 	}
-	e.mu.Lock()
-	delete(e.orderMeta, id)
-	e.mu.Unlock()
+	if src := strings.TrimSpace(fmt.Sprint(t["source"])); src != "" && src != "<nil>" && src != "telegram_t1" {
+		text += "\nисточник: " + html.EscapeString(src)
+	}
+	return text
+}
+
+func trackerStatusText(status string) string {
+	switch status {
+	case "cancelled", "canceled":
+		return "отменена"
+	case "rejected":
+		return "отклонена"
+	case "expired":
+		return "истекла без исполнения"
+	case "terminal_absent":
+		return "брокер её не знает"
+	case "unresolved":
+		return "статус не выяснен"
+	}
+	return html.EscapeString(status)
 }
 
 func (e *Engine) findOrderSnapshotOn(br Broker, clientOrderID string) map[string]any {

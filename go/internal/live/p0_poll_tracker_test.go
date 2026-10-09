@@ -197,16 +197,16 @@ func TestFinalizeTrackerStatusUsesBrokerLabel(t *testing.T) {
 		"clientOrderId": "rh-fill", "symbol": "AAPL", "action": "entry",
 		"source": "t1", "quantity": 2.0, "broker": "robinhood",
 	}, map[string]any{"status": "FILLED", "avg_price": 8.2, "filled_qty": 2.0}, "filled")
-	assertTelegramContains(t, tg, "Robinhood исполнено")
-	assertTelegramOmits(t, tg, "Webull исполнено")
+	assertTelegramContains(t, tg, "<b>Robinhood</b>: куплено 2 AAPL по $8.20")
+	assertTelegramOmits(t, tg, "Webull")
 
 	tg.Reset()
 	e.finalizeTrackerStatus(map[string]any{
 		"clientOrderId": "rh-rej", "symbol": "AAPL", "action": "entry",
 		"source": "t1", "quantity": 1.0, "broker": "robinhood",
 	}, nil, "rejected")
-	assertTelegramContains(t, tg, "Robinhood статус заявки")
-	assertTelegramOmits(t, tg, "Webull статус заявки")
+	assertTelegramContains(t, tg, "<b>Robinhood</b>: заявка на покупку AAPL — отклонена")
+	assertTelegramOmits(t, tg, "Webull")
 }
 
 func assertTelegramContains(t *testing.T, tg *MemoryTelegram, want string) {
