@@ -20,7 +20,7 @@ func TestT1WaitsForTheExitOfTheBrokerThatActuallyExited(t *testing.T) {
 	holdAAPL(rh, 3)
 	journalAAPL(t, e, "trade-rh", "robinhood", 3)
 
-	exitRes, _, waitFill := e.runT1Orders(backgroundWindow(), "2026-09-01")
+	exitRes, _, waitFill := e.runT1Orders(backgroundWindow(), "2026-09-01", nil)
 
 	if got := fmt.Sprint(exitRes.BrokerDecisions["robinhood"]["action"]); got != "exit" {
 		t.Fatalf("robinhood must decide exit: %+v", exitRes.BrokerDecisions)

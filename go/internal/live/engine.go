@@ -109,6 +109,8 @@ type Engine struct {
 	inFlight           map[string]bool
 	orderMeta          map[string]orderMeta
 	closeNotices       map[string]string
+	holdNotices        bool
+	heldNotices        [][2]string
 	quoteCache         map[string]quoteCacheEntry
 	trackerPersistFail map[string]bool
 	activeBroker       string

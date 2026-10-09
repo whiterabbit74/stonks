@@ -41,9 +41,15 @@ type SimulateResult struct {
 // every Execute call in this function shares it, so a slow exit does not
 // leave the following re-entry with a budget that assumes it never ran. See
 // P1-1 in AUTOTRADE_ROADMAP.md.
-func (e *Engine) runT1Orders(w execWindow, today string) (exitRes, entryRes EvalResult, waitFill bool) {
+//
+// decided, when set, is called once the first pass has sent its orders and
+// before any exit is waited on, so the decision can be reported right away.
+func (e *Engine) runT1Orders(w execWindow, today string, decided func(EvalResult)) (exitRes, entryRes EvalResult, waitFill bool) {
 	_ = today
 	exitRes = e.executeWindow(w, "telegram_t1")
+	if decided != nil {
+		decided(exitRes)
+	}
 	if action, _ := effectiveDecision(exitRes)["action"].(string); action != "none" && !exitRes.Executed {
 		_ = e.DB.AppendAutotradeLog("t1_submit_failed")
 	}
@@ -242,6 +248,41 @@ func (e *Engine) Send(chatID, text string) error {
 	if text == "" {
 		return fmt.Errorf("Нужен текст сообщения")
 	}
+	e.mu.Lock()
+	if e.holdNotices {
+		e.heldNotices = append(e.heldNotices, [2]string{chatID, text})
+		e.mu.Unlock()
+		return nil
+	}
+	e.mu.Unlock()
+	return e.deliver(chatID, text)
+}
+
+// holdNoticesUntilDecision holds every notification back until
+// releaseNotices. The T-1 cycle uses it so a fill that lands while the other
+// broker is still submitting cannot reach the chat before the decision that
+// caused it: on 2026-10-09 Robinhood's fill came two seconds before Webull had
+// even sent its order.
+func (e *Engine) holdNoticesUntilDecision() {
+	e.mu.Lock()
+	e.holdNotices = true
+	e.mu.Unlock()
+}
+
+// releaseNotices ends the hold and sends what it kept, in order. Safe to call
+// twice.
+func (e *Engine) releaseNotices() {
+	e.mu.Lock()
+	held := e.heldNotices
+	e.heldNotices, e.holdNotices = nil, false
+	e.mu.Unlock()
+	for _, m := range held {
+		_ = e.deliver(m[0], m[1])
+	}
+}
+
+// deliver sends now, past any hold.
+func (e *Engine) deliver(chatID, text string) error {
 	err := e.Telegram.Send(chatID, text)
 	if err != nil {
 		// Almost every caller drops this error (`_ = e.Send`), so an alert
@@ -411,6 +452,8 @@ func (e *Engine) Aggregate(minutesUntilClose int, opts AggregateOpts) (SimulateR
 
 	var exitRes, entryRes EvalResult
 	waitFill := false
+	early := "" // the decision, when it already went out mid-cycle
+	var earlyDone chan struct{}
 	var blocking map[string]any
 	if execDone {
 		exitRes = e.Evaluate()
@@ -440,7 +483,26 @@ func (e *Engine) Aggregate(minutesUntilClose int, opts AggregateOpts) (SimulateR
 			_ = e.DB.AppendAutotradeLog("t1_dry_run")
 			exitRes = e.Evaluate()
 		} else {
-			exitRes, entryRes, waitFill = e.runT1Orders(w, today)
+			// The decision goes out the moment the orders are sent; fills
+			// and the re-entry come after it, never before. It is sent off
+			// the trading path: waiting on Telegram here would eat the
+			// re-entry's share of the closing minute.
+			e.holdNoticesUntilDecision()
+			defer e.releaseNotices()
+			exitRes, entryRes, waitFill = e.runT1Orders(w, today, func(first EvalResult) {
+				decision := e.buildT1Text(minutesUntilClose, rows, blocking, false, false, first, EvalResult{}, integ)
+				earlyDone = make(chan struct{})
+				go func() {
+					defer close(earlyDone)
+					if e.deliver(e.chat(), decision) == nil {
+						early = decision
+					}
+					e.releaseNotices()
+				}()
+			})
+			if earlyDone != nil {
+				<-earlyDone
+			}
 			out.Executed = exitRes.Executed || entryRes.Executed
 			// Оба прохода отчитываются отдельно: одно поле на обоих теряло
 			// результаты выхода, стоило входу отправиться (AUD-085).
@@ -451,8 +513,17 @@ func (e *Engine) Aggregate(minutesUntilClose int, opts AggregateOpts) (SimulateR
 		}
 	}
 
-	text := e.buildT1Text(minutesUntilClose, rows, blocking, opts.DryRun, waitFill, exitRes, entryRes, integ)
-	res, err := e.finishSend(&out, text, opts)
+	var res SimulateResult
+	if early == "" {
+		text := e.buildT1Text(minutesUntilClose, rows, blocking, opts.DryRun, waitFill, exitRes, entryRes, integ)
+		res, err = e.finishSend(&out, text, opts)
+	} else if more := e.buildT1FollowUp(waitFill, exitRes, entryRes); more != "" {
+		res, err = e.finishSend(&out, more, opts)
+		res.Text = early + "\n\n" + more
+	} else {
+		out.Text, out.Sent, out.Success = early, true, true
+		res, err = out, nil
+	}
 	if res.Sent {
 		if ema := buildEmaDecisionMessage(emaAlerts); ema != "" {
 			if e.Send(e.chat(), ema) == nil {
@@ -547,6 +618,77 @@ type t1Watch struct {
 	eval watchEval
 }
 
+// t1ExecLines reports one pass of the T-1 cycle: the decision and what each
+// broker did with it. acted is false when the pass decided nothing.
+func t1ExecLines(res EvalResult, dry bool) (lines []string, acted bool) {
+	dec := effectiveDecision(res)
+	action, _ := dec["action"].(string)
+	if action == "" || action == "none" {
+		return nil, false
+	}
+	sym := fmt.Sprint(dec["symbol"])
+	price := quotePrice(res, sym)
+	ibsVal := candidateIBS(dec)
+	priceS := "—"
+	if price > 0 {
+		priceS = fmt.Sprintf("$%.2f", price)
+	}
+	ibsS := fmt.Sprintf("%.1f%%", ibsVal*100)
+	verb := "Открываем"
+	side := "BUY"
+	if action == "exit" {
+		verb = "Закрываем"
+		side = "SELL"
+	}
+	head := fmt.Sprintf("• %s %s по %s (IBS %s)", verb, sym, priceS, ibsS)
+	if dry {
+		return []string{head, "• dry run (ордер не отправлен)"}, false
+	}
+	var outcomes []string
+	results := execOutcomes(res.Broker)
+	names := make([]string, 0, len(results))
+	for name := range results {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		one := results[name]
+		label := brokerLabel(name)
+		if one.Submitted {
+			qty := any("—")
+			if one.Quantity > 0 {
+				qty = one.Quantity
+			}
+			// Каждая строка говорит за своего брокера. Прогон, где один
+			// брокер выходит, а другой входит, печатал направление и тикер
+			// общей шапки: покупка NVDA у Robinhood уезжала строкой
+			// «SELL … отправлен» под «Закрываем AAPL» (AUD-085).
+			bside, bsym := brokerSideSymbol(res, name, side, sym)
+			outcomes = append(outcomes, fmt.Sprintf("• %s: %s %s MARKET отправлен (%v шт.)", label, bside, bsym, qty))
+		} else if one.Error != "" {
+			outcomes = append(outcomes, fmt.Sprintf("• %s ошибка: %s", label, html.EscapeString(one.Error)))
+		}
+	}
+	if len(outcomes) == 0 {
+		// With every broker skipped effectiveDecision falls back to the
+		// showcase decision EvaluateWindow computes on the webull book;
+		// executeAll then decided per broker and skipped every one of them (no token, disabled, unreadable journal). Then
+		// nothing was submitted, and the bare "Открываем X" above reads as a
+		// filled order. Say so, and name the per-broker reason.
+		acted = true
+		lines = append(lines, head+" — заявка не отправлена")
+		lines = append(lines, brokerReasonLines(res)...)
+		return lines, acted
+	}
+	acted = true
+	lines = append(lines, head)
+	lines = append(lines, outcomes...)
+	// Брокеры, которые ничего не отправили, тоже обязаны объяснить себя:
+	// раньше их причина исчезала, стоило другому брокеру сработать.
+	lines = append(lines, brokerReasonLines(res)...)
+	return lines, acted
+}
+
 func (e *Engine) buildT1Text(minutes int, rows []t1Watch, blocking map[string]any, dryRun, waitFill bool, exitRes, entryRes EvalResult, integ []IntegrityResult) string {
 	var decision []string
 	if block := FormatIntegrityWarningBlock(integ); block != "" {
@@ -575,72 +717,9 @@ func (e *Engine) buildT1Text(minutes int, rows []t1Watch, blocking map[string]an
 	}
 	acted := false
 	appendExec := func(res EvalResult, dry bool) {
-		dec := effectiveDecision(res)
-		action, _ := dec["action"].(string)
-		if action == "" || action == "none" {
-			return
-		}
-		sym := fmt.Sprint(dec["symbol"])
-		price := quotePrice(res, sym)
-		ibsVal := candidateIBS(dec)
-		priceS := "—"
-		if price > 0 {
-			priceS = fmt.Sprintf("$%.2f", price)
-		}
-		ibsS := fmt.Sprintf("%.1f%%", ibsVal*100)
-		verb := "Открываем"
-		side := "BUY"
-		if action == "exit" {
-			verb = "Закрываем"
-			side = "SELL"
-		}
-		head := fmt.Sprintf("• %s %s по %s (IBS %s)", verb, sym, priceS, ibsS)
-		if dry {
-			decision = append(decision, head, "• dry run (ордер не отправлен)")
-			return
-		}
-		var outcomes []string
-		results := execOutcomes(res.Broker)
-		names := make([]string, 0, len(results))
-		for name := range results {
-			names = append(names, name)
-		}
-		sort.Strings(names)
-		for _, name := range names {
-			one := results[name]
-			label := brokerLabel(name)
-			if one.Submitted {
-				qty := any("—")
-				if one.Quantity > 0 {
-					qty = one.Quantity
-				}
-				// Каждая строка говорит за своего брокера. Прогон, где один
-				// брокер выходит, а другой входит, печатал направление и тикер
-				// общей шапки: покупка NVDA у Robinhood уезжала строкой
-				// «SELL … отправлен» под «Закрываем AAPL» (AUD-085).
-				bside, bsym := brokerSideSymbol(res, name, side, sym)
-				outcomes = append(outcomes, fmt.Sprintf("• %s: %s %s MARKET отправлен (%v шт.)", label, bside, bsym, qty))
-			} else if one.Error != "" {
-				outcomes = append(outcomes, fmt.Sprintf("• %s ошибка: %s", label, html.EscapeString(one.Error)))
-			}
-		}
-		if len(outcomes) == 0 {
-			// With every broker skipped effectiveDecision falls back to the
-			// showcase decision EvaluateWindow computes on the webull book;
-			// executeAll then decided per broker and skipped every one of them (no token, disabled, unreadable journal). Then
-			// nothing was submitted, and the bare "Открываем X" above reads as a
-			// filled order. Say so, and name the per-broker reason.
-			acted = true
-			decision = append(decision, head+" — заявка не отправлена")
-			decision = append(decision, brokerReasonLines(res)...)
-			return
-		}
-		acted = true
-		decision = append(decision, head)
-		decision = append(decision, outcomes...)
-		// Брокеры, которые ничего не отправили, тоже обязаны объяснить себя:
-		// раньше их причина исчезала, стоило другому брокеру сработать.
-		decision = append(decision, brokerReasonLines(res)...)
+		lines, ok := t1ExecLines(res, dry)
+		decision = append(decision, lines...)
+		acted = acted || ok
 	}
 	if dryRun {
 		appendExec(exitRes, true)
@@ -671,17 +750,7 @@ func (e *Engine) buildT1Text(minutes int, rows []t1Watch, blocking map[string]an
 			freshness = fmt.Sprintf("Котировки: %d/%d ⚠️", freshN, n)
 		}
 	}
-	position := "Позиция: нет"
-	open, tradesErr := e.openPosition()
-	if tradesErr != nil {
-		position = "Позиция: неизвестна (журнал сделок недоступен)"
-	} else if open != nil {
-		price := "—"
-		if p := legacyEntryPrice(open); p > 0 {
-			price = fmt.Sprintf("$%.2f", p)
-		}
-		position = fmt.Sprintf("Позиция: %s (вход %s по %s)", open.Symbol, nz(open.EntryDate), price)
-	}
+	position := e.t1PositionLine(exitedSymbol(exitRes))
 	// The header states the minute the readings were taken on, so a T-1 that
 	// ran late cannot claim a minute it no longer had.
 	head := "<b>⏱️ 1 минута до закрытия</b>"
@@ -696,6 +765,63 @@ func (e *Engine) buildT1Text(minutes int, rows []t1Watch, blocking map[string]an
 	lines = append(lines, decision...)
 	lines = append(lines, "", freshness, position)
 	return strings.Join(lines, "\n")
+}
+
+// t1PositionLine states the journal after the cycle. exited names the ticker
+// this cycle sent an exit for: "нет" next to "Закрываем MSFT" read as a
+// contradiction, so a position this cycle closed is called closed.
+func (e *Engine) t1PositionLine(exited string) string {
+	open, err := e.openPosition()
+	if err != nil {
+		return "Позиция: неизвестна (журнал сделок недоступен)"
+	}
+	if open == nil {
+		if exited != "" {
+			return "Позиция: " + exited + " закрыта"
+		}
+		return "Позиция: нет"
+	}
+	price := "—"
+	if p := legacyEntryPrice(open); p > 0 {
+		price = fmt.Sprintf("$%.2f", p)
+	}
+	line := fmt.Sprintf("Позиция: %s (вход %s по %s)", open.Symbol, nz(tradingdate.FormatDisplay(open.EntryDate, "")), price)
+	if open.Symbol == exited {
+		line += " · выход отправлен"
+	}
+	return line
+}
+
+// exitedSymbol is the ticker a pass actually sent an exit for, or "".
+func exitedSymbol(res EvalResult) string {
+	names := submittedExitBrokers(res)
+	if len(names) == 0 {
+		return ""
+	}
+	sym := fmt.Sprint(effectiveDecision(res)["symbol"])
+	if d := res.BrokerDecisions[names[0]]; d != nil && d["symbol"] != nil {
+		sym = fmt.Sprint(d["symbol"])
+	}
+	return store.SafeTicker(sym)
+}
+
+// buildT1FollowUp reports what the cycle did after its exits settled: the
+// re-entry, or why it is waiting. The decision itself is already in the chat.
+// Empty when there is nothing to add.
+func (e *Engine) buildT1FollowUp(waitFill bool, exitRes, entryRes EvalResult) string {
+	var lines []string
+	if waitFill {
+		lines = append(lines, "• Вход заблокирован: ждём подтверждение fill по выходу")
+	}
+	if exec, _ := t1ExecLines(entryRes, false); len(exec) > 0 {
+		lines = append(lines, exec...)
+	}
+	if len(lines) == 0 {
+		return ""
+	}
+	out := append([]string{"<b>🔁 После выхода</b>"}, dedupeLines(lines)...)
+	out = append(out, "", e.t1PositionLine(exitedSymbol(exitRes)))
+	return strings.Join(out, "\n")
 }
 
 // dedupeLines drops repeated lines while keeping order: the exit and the entry
