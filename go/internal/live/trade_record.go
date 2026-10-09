@@ -217,8 +217,77 @@ func (e *Engine) recordExitFill(symbol, clientOrderID, brokerName, dateKey strin
 		e.logAuto("position_partially_exited", meta.CorrelationID, map[string]any{
 			"symbol": symbol, "broker": brokerName, "remaining": after.ExecutedQty(),
 		})
+	} else if after.Status == "closed" {
+		// Sent by finalizeTrackerStatus after this fill's own line, so the
+		// result follows the "продано" it comes from.
+		e.mu.Lock()
+		if e.closeNotices == nil {
+			e.closeNotices = map[string]string{}
+		}
+		e.closeNotices[clientOrderID] = closeNoticeText(after)
+		e.mu.Unlock()
 	}
 	return true
+}
+
+// takeCloseNotice hands over the trade result recordExitFill left for this
+// order, once.
+func (e *Engine) takeCloseNotice(clientOrderID string) string {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	text := e.closeNotices[clientOrderID]
+	delete(e.closeNotices, clientOrderID)
+	return text
+}
+
+// closeNoticeText is the result of a closed position: P&L, prices, how long it
+// was held and what each broker got.
+func closeNoticeText(p *store.Position) string {
+	mark, pnl := "✅", "PnL не посчитан: нет подтверждённой цены"
+	if p.PnLAbsolute != nil && p.PnLPercent != nil {
+		if *p.PnLAbsolute < 0 {
+			mark = "🔻"
+		}
+		pnl = fmt.Sprintf("%s (%s)", signedMoney(*p.PnLAbsolute), signedPct(*p.PnLPercent))
+	}
+	test := ""
+	if p.IsTest {
+		test = " · тест"
+	}
+	lines := []string{fmt.Sprintf("<b>%s %s закрыта: %s</b>%s", mark, p.Symbol, pnl, test)}
+	line := fmt.Sprintf("%v шт. · %s → %s", p.Quantity, moneyOrDash(p.EntryPrice), moneyOrDash(p.ExitPrice))
+	if p.HoldingDays != nil {
+		line += fmt.Sprintf(" · %d дн.", *p.HoldingDays)
+	}
+	lines = append(lines, line,
+		tradingdate.FormatDisplay(p.EntryDate, "")+" → "+tradingdate.FormatDisplay(p.ExitDate, ""))
+	for _, name := range []string{"webull", "robinhood"} {
+		if leg := p.Leg(name); leg.Executed() {
+			lines = append(lines, fmt.Sprintf("%s: %s → %s", brokerLabel(name), moneyOrDash(leg.EntryPrice), moneyOrDash(leg.ExitPrice)))
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
+func moneyOrDash(v *float64) string {
+	if v == nil || !(*v > 0) {
+		return "—"
+	}
+	return fmt.Sprintf("$%.2f", *v)
+}
+
+func signedMoney(v float64) string {
+	if v < 0 {
+		return fmt.Sprintf("−$%.2f", -v)
+	}
+	return fmt.Sprintf("+$%.2f", v)
+}
+
+func signedPct(v float64) string {
+	if v < 0 {
+		return fmt.Sprintf("−%.2f%%", -v)
+	}
+	return fmt.Sprintf("+%.2f%%", v)
 }
 
 // exitWithoutPosition handles an exit fill, full or partial, that found no

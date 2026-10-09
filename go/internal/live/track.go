@@ -617,13 +617,22 @@ func (e *Engine) finalizeTrackerStatus(t map[string]any, detail map[string]any, 
 		// next poll retries, rather than going final over a lost trade (AUD-134).
 		return
 	}
+	// The journal has the fill now; a replay will not book it again, so this
+	// is the only chance to report the result.
+	result := e.takeCloseNotice(id)
 	if err := e.stampTrackerStatus(id, status); err != nil {
+		if result != "" {
+			_ = e.Send(e.chat(), result)
+		}
 		return
 	}
 	e.logAuto("order_tracking_finished", e.metaCorr(id), map[string]any{
 		"clientOrderId": id, "status": status, "symbol": t["symbol"], "action": t["action"],
 	})
 	_ = e.Send(e.chat(), trackerNoticeText(t, detail, status))
+	if result != "" {
+		_ = e.Send(e.chat(), result)
+	}
 	e.mu.Lock()
 	delete(e.orderMeta, id)
 	e.mu.Unlock()

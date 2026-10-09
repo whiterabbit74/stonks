@@ -108,6 +108,7 @@ type Engine struct {
 	stopWheels         bool
 	inFlight           map[string]bool
 	orderMeta          map[string]orderMeta
+	closeNotices       map[string]string
 	quoteCache         map[string]quoteCacheEntry
 	trackerPersistFail map[string]bool
 	activeBroker       string
