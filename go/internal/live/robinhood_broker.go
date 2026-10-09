@@ -65,18 +65,23 @@ func NewRobinhoodBroker(svc *robinhood.Service) *RobinhoodBroker {
 }
 
 func (b *RobinhoodBroker) PlaceMarket(ctx context.Context, symbol, side string, qty float64, cfg PlaceMarketCfg) (OrderResult, error) {
-	ref := strings.TrimSpace(cfg.ClientOrderID)
-	if ref == "" {
-		ref = newRefID()
-	} else {
-		ref = asUUID(ref)
+	// The caller journals the order under the id it chose, so every result
+	// carries that id verbatim; only the ref_id sent to Robinhood is in UUID
+	// form. Returning the dashed form left two trackers for one order — the
+	// intent and startTracking's — and the second one, finding the position
+	// already closed by the first, raised "exit without open position" and a
+	// duplicate fill notice.
+	id := strings.TrimSpace(cfg.ClientOrderID)
+	if id == "" {
+		id = newRefID()
 	}
+	ref := asUUID(id)
 	if qty <= 0 {
-		return OrderResult{ClientOrderID: ref, Symbol: symbol, Side: side, Quantity: qty, Error: "quantity must be positive"}, fmt.Errorf("quantity must be positive")
+		return OrderResult{ClientOrderID: id, Symbol: symbol, Side: side, Quantity: qty, Error: "quantity must be positive"}, fmt.Errorf("quantity must be positive")
 	}
 	acct, err := b.agenticAccount()
 	if err != nil {
-		return OrderResult{ClientOrderID: ref, Symbol: symbol, Side: side, Quantity: qty, Error: err.Error()}, err
+		return OrderResult{ClientOrderID: id, Symbol: symbol, Side: side, Quantity: qty, Error: err.Error()}, err
 	}
 	qtyStr := integerQty(qty)
 	if strings.EqualFold(side, "SELL") {
@@ -93,7 +98,7 @@ func (b *RobinhoodBroker) PlaceMarket(ctx context.Context, symbol, side string, 
 		"ref_id":         ref,
 	}
 	if _, err := b.toolCtx(ctx, "get_equity_tradability", map[string]any{"account_number": acct, "symbols": []string{symbol}}); err != nil {
-		return OrderResult{ClientOrderID: ref, Symbol: symbol, Side: side, Quantity: qty, Error: err.Error()}, err
+		return OrderResult{ClientOrderID: id, Symbol: symbol, Side: side, Quantity: qty, Error: err.Error()}, err
 	}
 	// review_equity_order's schema is additionalProperties:false and has no
 	// ref_id — that id belongs to place_equity_order alone. Sending the place
@@ -108,15 +113,15 @@ func (b *RobinhoodBroker) PlaceMarket(ctx context.Context, symbol, side string, 
 	}
 	review, err := b.toolCtx(ctx, "review_equity_order", reviewArgs)
 	if err != nil {
-		return OrderResult{ClientOrderID: ref, Symbol: symbol, Side: side, Quantity: qty, Error: err.Error()}, err
+		return OrderResult{ClientOrderID: id, Symbol: symbol, Side: side, Quantity: qty, Error: err.Error()}, err
 	}
 	if blockingReview(robinhood.ToolContentJSON(review)) {
 		err = fmt.Errorf("blocking review alert")
-		return OrderResult{ClientOrderID: ref, Symbol: symbol, Side: side, Quantity: qty, Error: err.Error()}, err
+		return OrderResult{ClientOrderID: id, Symbol: symbol, Side: side, Quantity: qty, Error: err.Error()}, err
 	}
 	raw, err := b.toolCtx(ctx, "place_equity_order", args)
 	if err != nil {
-		res := OrderResult{ClientOrderID: ref, Symbol: symbol, Side: side, Quantity: qty, Error: err.Error()}
+		res := OrderResult{ClientOrderID: id, Symbol: symbol, Side: side, Quantity: qty, Error: err.Error()}
 		if strings.Contains(strings.ToLower(err.Error()), "unauthorized") {
 			res.Ambiguous = true
 			return res, nil
@@ -131,7 +136,7 @@ func (b *RobinhoodBroker) PlaceMarket(ctx context.Context, symbol, side string, 
 	// AUTOTRADE_ROADMAP.md.
 	if !recognizableRobinhoodOrder(detail) {
 		return OrderResult{
-			ClientOrderID: ref, Symbol: symbol, Side: side, Quantity: qty,
+			ClientOrderID: id, Symbol: symbol, Side: side, Quantity: qty,
 			Ambiguous: true,
 			Error:     "place_equity_order response did not contain a recognizable order",
 		}, nil
@@ -144,7 +149,7 @@ func (b *RobinhoodBroker) PlaceMarket(ctx context.Context, symbol, side string, 
 	status := NormalizeOrderStatus(robinhoodOrderStatus(detail))
 	if status == "rejected" || status == "cancelled" {
 		return OrderResult{
-			ClientOrderID: ref, Symbol: symbol, Side: side, Quantity: qty,
+			ClientOrderID: id, Symbol: symbol, Side: side, Quantity: qty,
 			Status: status, Error: fmt.Sprintf("order %s by Robinhood: %s", status, robinhoodOrderStatus(detail)),
 		}, nil
 	}
@@ -152,7 +157,7 @@ func (b *RobinhoodBroker) PlaceMarket(ctx context.Context, symbol, side string, 
 		status = "submitted"
 	}
 	return OrderResult{
-		Submitted: true, ClientOrderID: ref, Symbol: symbol, Side: side, Quantity: qty,
+		Submitted: true, ClientOrderID: id, Symbol: symbol, Side: side, Quantity: qty,
 		Status: status, FilledPrice: fillPriceFrom(detail), FilledQty: fillQtyFrom(detail),
 	}, nil
 }

@@ -157,6 +157,11 @@ func TestRobinhoodPlaceMarketIntegerQtyAndSameRef(t *testing.T) {
 	if err != nil || !res.Submitted {
 		t.Fatalf("%v %+v", err, res)
 	}
+	// The intent tracker is keyed by the caller's id; a dashed id back here
+	// opened a second tracker for the same order and a duplicate fill notice.
+	if res.ClientOrderID != ref {
+		t.Fatalf("ClientOrderID %q, want caller's %q", res.ClientOrderID, ref)
+	}
 	var place map[string]any
 	for _, c := range calls {
 		if c["name"] == "place_equity_order" {
