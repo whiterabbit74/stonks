@@ -242,7 +242,17 @@ func (e *Engine) Send(chatID, text string) error {
 	if text == "" {
 		return fmt.Errorf("Нужен текст сообщения")
 	}
-	return e.Telegram.Send(chatID, text)
+	err := e.Telegram.Send(chatID, text)
+	if err != nil {
+		// Almost every caller drops this error (`_ = e.Send`), so an alert
+		// Telegram refused used to vanish without a trace.
+		first, _, _ := strings.Cut(text, "\n")
+		if r := []rune(first); len(r) > 80 {
+			first = string(r[:80])
+		}
+		e.logAuto("notify_failed", "", map[string]any{"error": err.Error(), "text": first})
+	}
+	return err
 }
 
 func (e *Engine) Test() error {
