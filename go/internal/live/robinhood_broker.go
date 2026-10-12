@@ -640,9 +640,13 @@ func findOrder(v any, ref string) map[string]any {
 		if m == nil {
 			continue
 		}
-		id := strings.TrimSpace(fmt.Sprint(first(m, "ref_id", "id", "order_id", "client_order_id")))
-		if id == ref || asUUID(id) == ref {
-			return m
+		// Every id field, not the first present one: Robinhood sometimes
+		// ignores our ref_id and stamps its own, so a non-matching ref_id hid
+		// the broker id we polled by and the filled order looked absent.
+		for _, k := range []string{"ref_id", "id", "order_id", "client_order_id"} {
+			if v, ok := m[k].(string); ok && asUUID(strings.TrimSpace(v)) == ref {
+				return m
+			}
 		}
 	}
 	return nil

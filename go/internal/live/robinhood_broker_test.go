@@ -834,3 +834,17 @@ func TestOrderDetailAfterEnvelopedPlaceResponse(t *testing.T) {
 		t.Fatalf("status %v", detail["status"])
 	}
 }
+
+// Боевой ответ 2026-10-12: Robinhood проигнорировал наш ref_id и поставил свой.
+// findOrder сверял только первое непустое поле (ref_id) и не видел заявку по
+// сохранённому id брокера — исполненный вход ушёл в execution_unknown.
+func TestFindOrderMatchesBrokerIDWhenRefIDIsForeign(t *testing.T) {
+	var root any
+	_ = json.Unmarshal([]byte(`{"data":{"orders":[{"id":"6acd3c0f-6a72-4a7d-82c6-89d7e94d964b","ref_id":"01a131b2-9cb8-7538-8d15-78aa086c7cd8","state":"filled","quantity":"3.000000","cumulative_quantity":"3.000000","average_price":"259.399900"}]}}`), &root)
+	if findOrder(root, "6acd3c0f-6a72-4a7d-82c6-89d7e94d964b") == nil {
+		t.Fatal("order not found by broker id")
+	}
+	if findOrder(root, "1873a9f8-3e83-4ead-8de9-e9fcd2ec605a") != nil {
+		t.Fatal("matched an unrelated ref")
+	}
+}
