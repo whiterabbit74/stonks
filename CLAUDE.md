@@ -11,17 +11,19 @@
 
 ## Пуш и деплой — только по прямой просьбе
 
-Не пушить и не выкатывать на прод без **прямой явной просьбы в текущем сообщении**.
+Не выкатывать на прод без **прямой явной просьбы в текущем сообщении**.
 
 Не считаются указанием: зелёные тесты, закрытый пункт roadmap, «готово», прошлые сессии, наличие `./deploy.sh`, формулировки вроде «после этого можно деплоить» в документе.
 
-Без прямой просьбы запрещено:
+Просьба задеплоить включает пуш. Перед `./deploy.sh` запушь `main`, если локальный HEAD впереди `origin/main`. Не спрашивай разрешения на этот пуш. Сам `deploy.sh` не пушит и останавливается, пока HEAD не совпадает с `origin/main`.
 
-- `git push` (любая ветка, любой remote)
+Без прямой просьбы задеплоить или запушить запрещено:
+
+- `git push` любой ветки, кроме пуша `main` сразу перед запрошенным деплоем
 - `./deploy.sh` и любой другой выкат
 - `ssh` на VPS ради рестарта, `docker compose up`/`restart`, `git reset` на сервере, правки `/home/ubuntu/stonks-config/.env`
 
-Локальный `git commit` после завершённого изменения — обязателен. Пуш и деплой — нет.
+Локальный `git commit` после завершённого изменения — обязателен. Пуш без деплоя — нет.
 
 ## Кодинг — всегда ponytail
 
@@ -55,7 +57,7 @@ Go trading-strategy backtester with a vanilla JS SPA (`go/web`). Historical OHLC
 
 - **Даты без времени и без таймзон.** Полное объяснение — раздел [«Даты: почему в проекте нет таймзон»](#даты-почему-в-проекте-нет-таймзон). Торговая дата — строка `YYYY-MM-DD`. `time.Time` в этих путях не появляется, кроме явной биржевой зоны на wall-clock.
 - **Плечо и маржин-колл.** Бэктест `single-position` считает капитал как залог плюс полный PnL позиции. При плече > 1 брокер закрывает позицию, когда капитал счёта (свободные деньги + позиция) падает ниже поддерживающей маржи 25% от её рыночной стоимости; цена ликвидации считается аналитически и триггерится по `Low` бара, как в `SimulateMargin`. В день входа ликвидации нет. Пополнения — свободные деньги, поэтому отодвигают маржин-колл. Проценты по заёмным средствам не моделируются.
-- **Commit changes.** Every completed change is committed locally. Commit messages end with the `Co-Authored-By` trailer used across the history. Push and deploy only on an explicit ask in the current message — see [Пуш и деплой](#пуш-и-деплой--только-по-прямой-просьбе).
+- **Commit changes.** Every completed change is committed locally. Commit messages end with the `Co-Authored-By` trailer used across the history. Deploy only on an explicit ask in the current message. That ask includes pushing `main` first, without asking again — see [Пуш и деплой](#пуш-и-деплой--только-по-прямой-просьбе).
 
 ## Даты: почему в проекте нет таймзон
 
@@ -131,7 +133,7 @@ Local: `cd go && go test ./... && go run ./cmd/server` → `:8080` (override `PO
 
 `./deploy.sh` cross-compiles linux/amd64, packs `docker/go.runtime.Dockerfile`, loads the image on the VPS. The VPS never runs `go build` for the trading server. Compose `server` is image-only.
 
-Do not push, run `./deploy.sh`, SSH to the VPS, or otherwise touch production unless the current message explicitly asks to. Green tests and a finished local change are not that ask.
+Do not run `./deploy.sh`, SSH to the VPS, or otherwise touch production unless the current message explicitly asks to. When it does, push `main` first if it is ahead of `origin/main`, without asking. Green tests and a finished local change are not a deploy ask.
 
 ## Environment
 

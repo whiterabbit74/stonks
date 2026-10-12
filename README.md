@@ -39,7 +39,7 @@ http://localhost:8080 — логин `admin@example.com`. Порт: `PORT`. Ба
 
 ## Документация
 
-- [CLAUDE.md](CLAUDE.md) — инварианты (даты, IBS); пуш и деплой только по прямой просьбе
+- [CLAUDE.md](CLAUDE.md) — инварианты (даты, IBS); деплой только по прямой просьбе, перед ним пушить `main` без вопроса
 - [docs/ROADMAP.md](docs/ROADMAP.md) — единый текущий план работ
 - [docs/audits/](docs/audits/) — отчёты аудитов и реестр находок
 - [go/INVENTORY.md](go/INVENTORY.md) — страницы, `/api`, пакеты
