@@ -150,7 +150,7 @@ func buildEmaInlineBlock(alerts []EmaEval) string {
 		if a.Near {
 			prox = "near"
 		}
-		lines = append(lines, fmt.Sprintf("EMA: %s %s → %s %s%.0f%% · %s", tgBold(a.Symbol), tgBold(fmt.Sprintf("%.2f%%", a.DeviationPct)), action, comp, a.ActiveLevelPct, prox))
+		lines = append(lines, fmt.Sprintf("EMA: %s $%.2f %s → %s %s%.0f%% · %s", tgBold(a.Symbol), a.Price, tgBold(fmt.Sprintf("%.2f%%", a.DeviationPct)), action, comp, a.ActiveLevelPct, prox))
 		if a.InfoCrossing == "down" {
 			lines = append(lines, fmt.Sprintf("⚠️ %s пересёк %.0f%% от EMA%d вниз (отклонение %.2f%%)", a.Symbol, a.InfoLevelPct, a.EmaPeriod, a.DeviationPct))
 		} else if a.InfoCrossing == "up" {
