@@ -79,6 +79,7 @@ func (e *Engine) executeAll(w execWindow, ev EvalResult, trigger, corr string, s
 		}(nb.name, nb.br)
 	}
 	wg.Wait()
+	e.closeUnheldBySignal(ev, w, corr)
 	// Always name-keyed so a single-broker submit (Robinhood-only T-1) is not
 	// mistaken for Webull when execOutcomes sees a bare OrderResult.
 	ev.Broker = results
@@ -94,6 +95,93 @@ func (e *Engine) executeAll(w execWindow, ev EvalResult, trigger, corr string, s
 	e.lastResult = ev
 	e.mu.Unlock()
 	return ev
+}
+
+// closeUnheldBySignal записывает выход мониторинга в журнал по позиции,
+// которой нет ни в одной книге брокера.
+//
+// Журнал — это сигнальная сторона сделки (§Журнал CORE): цена выхода — чтение
+// T-1, на котором принято решение, а не филл. Закрывала строку только запись
+// филла, поэтому позиция, которую никто не исполнил (автоторговля выключена,
+// бумага продана руками), висела открытой навсегда: выход не записывался, а
+// открытая строка блокировала все последующие входы.
+//
+// Условие намеренно узкое — бумагу не держит никто и по ней ничего не летит, —
+// значит филла по ней не будет и ни одна запись исполнения с этой не
+// разойдётся. Держит брокер (пусть и с выключенной отправкой) — строку
+// закрывает его филл, как раньше.
+func (e *Engine) closeUnheldBySignal(ev EvalResult, w execWindow, corr string) {
+	if e == nil || e.DB == nil || ev.TodayKey == "" {
+		return
+	}
+	// Свежий снимок: филл соседнего брокера мог закрыть строку в этом же цикле.
+	rows, err := e.DB.ListPositions()
+	if err != nil {
+		e.logAuto("journal_read_failed", corr, map[string]any{"op": "close_unheld", "error": err.Error()})
+		return
+	}
+	// Незавершённая заявка владеет выходом по своему тикеру: её филл допишет
+	// ногу и закроет строку сам. Закрыть строку сигналом раньше филла — значит
+	// отправить этот филл в exitWithoutPosition и потерять цену исполнения.
+	// Нечитаемая таблица трекеров — тоже «не закрываем».
+	pending, err := e.DB.ListPendingTrackers()
+	if err != nil {
+		e.logAuto("journal_read_failed", corr, map[string]any{
+			"table": "order_trackers", "op": "close_unheld", "error": err.Error(),
+		})
+		return
+	}
+	inFlight := map[string]bool{}
+	for _, t := range pending {
+		inFlight[store.SafeTicker(fmt.Sprint(t["symbol"]))] = true
+	}
+	for i := range rows {
+		p := &rows[i]
+		if p.Status != "open" || p.IsHidden || p.IsTest {
+			continue
+		}
+		row := exitSignalQuote(ev.Quotes, p.Symbol)
+		if !exitSignalFired(row) || inFlight[p.Symbol] || !e.nobodyHolds(ev, w, p.Symbol) {
+			continue
+		}
+		ibsVal := row.IBS
+		if _, err := e.DB.ClosePosition(p.ID, store.PositionExit{
+			Date: ev.TodayKey, Price: row.CurrentPrice, IBS: &ibsVal,
+			DecisionTime: ev.EvaluatedAt, Notes: "closed_by_signal_not_held",
+		}); err != nil {
+			e.logAuto("local_trade_close_failed", corr, map[string]any{
+				"symbol": p.Symbol, "positionId": p.ID, "op": "close_unheld", "error": err.Error(),
+			})
+			continue
+		}
+		e.logAuto("position_closed_by_signal", corr, map[string]any{
+			"symbol": p.Symbol, "positionId": p.ID, "ibs": row.IBS,
+			"price": row.CurrentPrice, "reason": "not_held_by_any_broker",
+		})
+	}
+}
+
+// nobodyHolds отвечает «эту бумагу не держит ни один брокер и филла по ней не
+// будет». Непрочитанная книга — не «не держит»: закрывать строку по догадке
+// нельзя, поэтому любая неизвестность отвечает false.
+func (e *Engine) nobodyHolds(ev EvalResult, w execWindow, symbol string) bool {
+	snaps := e.brokerSnapshot()
+	if len(snaps) == 0 {
+		return false
+	}
+	for _, nb := range snaps {
+		bk, ok := ev.books[nb.name]
+		if !ok || bk.err != nil {
+			return false
+		}
+		if _, held := bk.held[symbol]; held {
+			return false
+		}
+		if w.busySymbols[nb.name][symbol] {
+			return false
+		}
+	}
+	return true
 }
 
 // executeOneBroker decides and, where the decision stands, submits for exactly
@@ -149,6 +237,16 @@ func (e *Engine) executeOneBroker(w execWindow, ev EvalResult, trigger, corr, na
 	}
 	if action == "none" {
 		kv := map[string]any{"broker": name, "reason": one.Decision["reason"]}
+		// Сигнал, который не исполнился, уходит в лог вместе с ценой и IBS, на
+		// которых он сработал: без них из «reason=position_not_held_here» не
+		// видно, по чему мы должны были выйти (§15 CORE).
+		if sig, _ := one.Decision["signal"].(string); sig != "" {
+			kv["signal"] = sig
+			if cand, ok := one.Decision["candidate"].(*LiveQuote); ok && cand != nil {
+				kv["ibs"] = cand.IBS
+				kv["price"] = cand.CurrentPrice
+			}
+		}
 		if heldErr != nil {
 			// Without the error text a broker_positions_unavailable skip is
 			// unexplainable after the fact — the day's entry is gone and the

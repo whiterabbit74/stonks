@@ -964,6 +964,8 @@ func noActionReasonText(reason, symbol string) string {
 		return "выходы выключены в настройках"
 	case "empty_symbol_universe":
 		return "список тикеров пуст"
+	case "position_not_held_here":
+		return "у этого брокера " + sym + " нет — продавать нечего"
 	case "exit_threshold_not_reached":
 		return "держим " + sym + ": IBS ниже порога выхода"
 	case "open_position_quote_unavailable":

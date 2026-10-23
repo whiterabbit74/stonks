@@ -431,6 +431,12 @@ func decideLiveAction(quotes []LiveQuote, symbols []string, held map[string]floa
 	}
 	if open != nil && allowExits {
 		sym := open.Symbol
+		// Сигнал считается раньше книги брокера. Проверка «держит ли этот
+		// брокер» стояла первой и возвращалась до чтения IBS, так что по
+		// позиции, которой у брокера нет, решение не принималось вовсе: ни
+		// цены, ни IBS, по которым мы должны были выйти, не оставалось ни в
+		// логе, ни в журнале. Книга решает только, кому отправлять заявку.
+		row := exitSignalQuote(quotes, sym)
 		// A position the broker holds is closed on its exit signal whether or
 		// not the journal knows about it: an unrecorded position is still our
 		// money at risk, and refusing to exit it left it open forever.
@@ -440,20 +446,15 @@ func decideLiveAction(quotes []LiveQuote, symbols []string, held map[string]floa
 				// for it to sell. The position belongs to whichever broker
 				// does hold it — a normal state with two brokers, not a
 				// discrepancy anybody has to reconcile.
-				return none("position_not_held_here", sym, nil)
+				skip := none("position_not_held_here", sym, row)
+				if row != nil && exitSignalFired(row) {
+					skip["signal"] = "ibs_exit"
+				}
+				return skip
 			}
 		}
-		var row *LiveQuote
-		for i, q := range quotes {
-			if q.Symbol == sym && q.OK {
-				row = &quotes[i]
-				break
-			}
-		}
-		if row != nil {
-			if _, high := row.resolvedThresholds(); ibs.IsExitSignal(row.IBS, high) {
-				return map[string]any{"action": "exit", "reason": "ibs_exit", "symbol": sym, "candidate": row}
-			}
+		if row != nil && exitSignalFired(row) {
+			return map[string]any{"action": "exit", "reason": "ibs_exit", "symbol": sym, "candidate": row}
 		}
 		reason := "open_position_quote_unavailable"
 		if row != nil {
@@ -503,6 +504,25 @@ func decideLiveAction(quotes []LiveQuote, symbols []string, held map[string]floa
 		}
 	}
 	return none("no_signal", nil, nil)
+}
+
+// exitSignalQuote is the usable reading for this ticker in the cycle: the row
+// the exit decision is taken on, and the row its price and IBS are logged from.
+func exitSignalQuote(quotes []LiveQuote, symbol string) *LiveQuote {
+	for i, q := range quotes {
+		if q.Symbol == symbol && q.OK {
+			return &quotes[i]
+		}
+	}
+	return nil
+}
+
+func exitSignalFired(row *LiveQuote) bool {
+	if row == nil {
+		return false
+	}
+	_, high := row.resolvedThresholds()
+	return ibs.IsExitSignal(row.IBS, high)
 }
 
 // candidateIBS reads the reading a decision was taken on. The decision map is
