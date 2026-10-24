@@ -355,9 +355,6 @@ func (s *Server) calcBuyHold(w http.ResponseWriter, r *http.Request) {
 // dataset without bars: answering 200 with a zero-trade backtest would present
 // a storage failure as a strategy result.
 func (s *Server) datasetBars(req calcReq) ([]types.OHLC, error) {
-	if len(req.Data) > 0 {
-		return decodeBars(req.Data), nil
-	}
 	if req.Ticker != "" {
 		ds, err := s.DB.GetDataset(req.Ticker)
 		if err != nil {
@@ -370,9 +367,34 @@ func (s *Server) datasetBars(req calcReq) ([]types.OHLC, error) {
 	return nil, nil
 }
 
+// requestBars decodes the bars a calculation request carries and holds them
+// to the check a dataset passes on import. The engines walk the array in
+// order, so bars sent newest first produced an exit dated before its entry,
+// and a field of the wrong type ran as no data at all (AUD-181). An empty
+// array or null is no bars, as before.
+func requestBars(raw json.RawMessage) ([]types.OHLC, []string) {
+	var bars []types.OHLC
+	if err := json.Unmarshal(raw, &bars); err != nil {
+		return nil, []string{"data must be an array of OHLC bars"}
+	}
+	if len(bars) == 0 {
+		return bars, nil
+	}
+	bars = normalizeBarDates(bars)
+	return bars, validateBars(bars)
+}
+
 // barsOrDataset answers the request itself when the dataset cannot be read;
 // ok=false means the response is already written.
 func (s *Server) barsOrDataset(w http.ResponseWriter, req calcReq) ([]types.OHLC, bool) {
+	if len(req.Data) > 0 {
+		bars, reasons := requestBars(req.Data)
+		if len(reasons) > 0 {
+			writeJSON(w, 400, map[string]any{"error": "invalid data", "reasons": reasons})
+			return nil, false
+		}
+		return bars, true
+	}
 	bars, err := s.datasetBars(req)
 	if err != nil {
 		writeJSON(w, 500, map[string]any{"error": "Не удалось прочитать датасет"})
@@ -464,7 +486,14 @@ func (s *Server) tickersOrOne(w http.ResponseWriter, req calcReq) ([]backtest.Ti
 		// на другом наборе (AUD-155).
 		var missing []string
 		for _, t := range req.Tickers {
-			bars := decodeBars(t.Data)
+			var bars []types.OHLC
+			if len(t.Data) > 0 {
+				var reasons []string
+				if bars, reasons = requestBars(t.Data); len(reasons) > 0 {
+					writeJSON(w, 400, map[string]any{"error": "invalid data: " + t.Ticker, "reasons": reasons})
+					return nil, false
+				}
+			}
 			if len(bars) == 0 {
 				stored, err := s.barsForSymbol(t.Ticker)
 				if err != nil {
