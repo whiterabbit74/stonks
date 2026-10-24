@@ -38,7 +38,12 @@ func main() {
 		fmt.Fprintln(os.Stderr, "нужны -id -symbol -date -price")
 		os.Exit(2)
 	}
-	db, err := store.Open(*dbPath)
+	// -dry writes nothing, not even a schema step or file permissions.
+	open := store.Open
+	if *dry {
+		open = store.OpenReadOnly
+	}
+	db, err := open(*dbPath)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "open:", err)
 		os.Exit(1)

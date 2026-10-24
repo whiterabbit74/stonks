@@ -52,6 +52,26 @@ func Open(path string) (*DB, error) {
 	return d, nil
 }
 
+// OpenReadOnly opens an existing database for reading only: a missing path is
+// an error rather than a new empty database, no schema step runs and no
+// permission changes. Open does all three, so a dry run of closepos could
+// migrate a database an older server was still using (AUD-182).
+func OpenReadOnly(path string) (*DB, error) {
+	if _, err := os.Stat(path); err != nil {
+		return nil, err
+	}
+	sqlDB, err := sql.Open("sqlite", path+"?_pragma=query_only(1)&_pragma=busy_timeout(5000)")
+	if err != nil {
+		return nil, err
+	}
+	sqlDB.SetMaxOpenConns(1)
+	if err := sqlDB.Ping(); err != nil {
+		sqlDB.Close()
+		return nil, err
+	}
+	return &DB{SQL: sqlDB}, nil
+}
+
 // restrictDBPerms tightens the database files to owner-only. The file holds the
 // Webull token and the Robinhood OAuth pair in the clear, so it must not be
 // looser than the .env that carries the same secrets (0600 on the VPS); umask
