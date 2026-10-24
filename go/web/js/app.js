@@ -27,9 +27,8 @@
     { id: 'duration', label: 'Длительность' },
     { id: 'splits', label: 'Сплиты' },
     { id: 'buyhold', label: 'Купить и держать' },
-    { id: 'noStopLoss', label: 'Без стоп-лосса' },
   ];
-  const SINGLE_ONLY = new Set(['buyhold', 'openDayDrawdown', 'noStopLoss']);
+  const SINGLE_ONLY = new Set(['buyhold', 'openDayDrawdown']);
   const MULTI_ONLY = new Set(['tickerCharts']);
   const SETTINGS_TABS = [
     { id: 'general', label: 'Общие' },
@@ -339,7 +338,14 @@
     tickerCatalog: [],
     enhanceCat: 'popular',
     enhanceQuery: '',
-    analysisTabsConfig: JSON.parse(localStorage.getItem('analysisTabsConfig') || 'null') || STOCK_TABS.filter((t) => t.id !== 'summary').map((t) => ({ ...t, visible: true })),
+    // Список строится из текущих вкладок, из сохранённого берётся только видимость:
+    // в браузерах оставались вкладки старых версий (BuyAtClose, Опционы, Без стоп-лосса).
+    analysisTabsConfig: (() => {
+      let saved = null;
+      try { saved = JSON.parse(localStorage.getItem('analysisTabsConfig') || 'null'); } catch (_) { saved = null; }
+      const vis = new Map((Array.isArray(saved) ? saved : []).map((t) => [t && t.id, t && t.visible]));
+      return STOCK_TABS.filter((t) => t.id !== 'summary').map((t) => ({ ...t, visible: vis.get(t.id) !== false }));
+    })(),
     datasetsError: null,
     serverStatus: 'checking',
     enhanceLoadingSymbol: null,
@@ -350,7 +356,6 @@
     watchSortKey: 'symbol',
     watchSortDir: 'asc',
     nested: {
-      nsl: { exitMode: 'ibs-only', requireProfitableExit: false, maxHoldDays: 60, profitTarget: 10 },
     },
     baselineResult: null,
     emaBaseline: null,
@@ -2066,21 +2071,6 @@
       <div id="${esc(chartId)}" class="chart-box-lg rounded-lg border dark:border-gray-800"></div>
     </div>`;
   }
-  function nestedNslHTML() {
-    const f = state.nested.nsl;
-    return `<form id="nsl-form" class="flex flex-wrap items-end gap-2 mb-3">
-      <label class="text-xs">Режим выхода<select name="exitMode" class="field mt-1">
-        <option value="never" ${f.exitMode === 'never' ? 'selected' : ''}>Никогда (держать до конца)</option>
-        <option value="ibs-only" ${f.exitMode === 'ibs-only' ? 'selected' : ''}>Только по IBS</option>
-        <option value="time-limit" ${f.exitMode === 'time-limit' ? 'selected' : ''}>По времени или IBS</option>
-        <option value="profit-target" ${f.exitMode === 'profit-target' ? 'selected' : ''}>По профиту или IBS</option>
-      </select></label>
-      <label class="text-xs">Макс. дни<input name="maxHoldDays" type="number" value="${esc(f.maxHoldDays)}" class="field mt-1 w-24" /></label>
-      <label class="text-xs">Цель, %<input name="profitTarget" type="number" value="${esc(f.profitTarget)}" class="field mt-1 w-24" /></label>
-      <label class="text-xs inline-flex items-center gap-1"><input type="checkbox" name="requireProfitableExit" ${f.requireProfitableExit ? 'checked' : ''} /> выход по IBS только при профите</label>
-      <button class="btn-primary min-h-0 py-2">Посчитать</button>
-    </form><div id="nsl-out">Без стоп-лосса…</div>`;
-  }
   function pageStocks() {
     const tabs = visibleStockTabs();
     const r = state.result;
@@ -2122,7 +2112,6 @@
         </form>
         <div id="chart-bh" class="chart-box-lg rounded-lg border dark:border-gray-800"></div>
       </div>`;
-      else if (state.stockTab === 'noStopLoss') body = nestedNslHTML();
     }
     return `
       ${pageHeader('Акции', 'Бэктест стратегии на нескольких активах')}
@@ -5434,20 +5423,6 @@
           });
         } catch (e) { el.textContent = e.message; }
       }
-    }
-    if (state.stockTab === 'noStopLoss') {
-      const run = () => {
-        const f = state.nested.nsl;
-        fill('nsl-out', 'no-stop-loss', { noStop: { exitMode: f.exitMode, requireProfitableExit: !!f.requireProfitableExit, maxHoldDays: Number(f.maxHoldDays), profitTarget: Number(f.profitTarget) } });
-      };
-      document.getElementById('nsl-form')?.addEventListener('submit', (e) => {
-        e.preventDefault();
-        const form = e.target;
-        const fd = new FormData(form);
-        state.nested.nsl = { exitMode: fd.get('exitMode'), requireProfitableExit: !!form.requireProfitableExit?.checked, maxHoldDays: Number(fd.get('maxHoldDays')), profitTarget: Number(fd.get('profitTarget')) };
-        run();
-      });
-      run();
     }
     if (state.stockTab === 'splits') {
       const el = document.getElementById('splits-box');
