@@ -45,23 +45,23 @@ func (e *Engine) PatchAutoConfig(updates map[string]any) map[string]any {
 }
 
 func (e *Engine) PatchAutoConfigChecked(updates map[string]any) (map[string]any, error) {
-	// This is a read-modify-write of the whole autoTrading object. Settings()
-	// answers a failed read with the defaults, so saving on top of it would
-	// quietly reset thresholds, broker flags and the enabled state to
-	// factory values.
-	settings, err := e.DB.SettingsErr()
-	if err != nil {
-		return map[string]any{}, err
-	}
-	cur, _ := settings["autoTrading"].(map[string]any)
-	if cur == nil {
-		cur = map[string]any{}
-	}
-	cur, err = sanitizeAutoTradingConfig(updates, cur, e.now())
-	if err != nil {
-		return cur, err
-	}
-	err = e.DB.SetSettingsKeys(map[string]any{"autoTrading": cur})
+	// This is a read-modify-write of the whole autoTrading object, so the read
+	// and the write are one transaction (AUD-177). A failed read is an error,
+	// not the defaults: saving on top of them would quietly reset thresholds,
+	// broker flags and the enabled state to factory values.
+	cur := map[string]any{}
+	err := e.DB.UpdateSettingsKeys(func(settings map[string]any) (map[string]any, error) {
+		prev, _ := settings["autoTrading"].(map[string]any)
+		if prev == nil {
+			prev = map[string]any{}
+		}
+		next, err := sanitizeAutoTradingConfig(updates, prev, e.now())
+		cur = next
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"autoTrading": next}, nil
+	})
 	return cur, err
 }
 
@@ -1135,16 +1135,16 @@ func (e *Engine) persistTrackerBlock(broker string) error {
 	if broker == "" {
 		broker = "webull"
 	}
-	settings, err := e.DB.SettingsErr()
-	if err != nil {
-		return err
-	}
-	blocks, _ := settings["trackerPersistFail"].(map[string]any)
-	if blocks == nil {
-		blocks = map[string]any{}
-	}
-	blocks[broker] = true
-	if err := e.DB.SetSettingsKeys(map[string]any{"trackerPersistFail": blocks}); err != nil {
+	// One transaction, like the autoTrading config: a block set while another
+	// broker's was being cleared must not be written over (AUD-177).
+	if err := e.DB.UpdateSettingsKeys(func(settings map[string]any) (map[string]any, error) {
+		blocks, _ := settings["trackerPersistFail"].(map[string]any)
+		if blocks == nil {
+			blocks = map[string]any{}
+		}
+		blocks[broker] = true
+		return map[string]any{"trackerPersistFail": blocks}, nil
+	}); err != nil {
 		e.logAuto("tracker_persist_block_save_failed", "", map[string]any{"broker": broker, "error": err.Error()})
 		return err
 	}
@@ -1202,22 +1202,14 @@ func (e *Engine) ClearTrackerPersistBlock(broker, note string) error {
 	}
 	e.mu.Unlock()
 	if e.DB != nil {
-		settings, err := e.DB.SettingsErr()
-		if err != nil {
-			e.mu.Lock()
-			if e.trackerPersistFail == nil {
-				e.trackerPersistFail = map[string]bool{}
+		if err := e.DB.UpdateSettingsKeys(func(settings map[string]any) (map[string]any, error) {
+			blocks, _ := settings["trackerPersistFail"].(map[string]any)
+			if blocks == nil {
+				blocks = map[string]any{}
 			}
-			e.trackerPersistFail[broker] = true
-			e.mu.Unlock()
-			return err
-		}
-		blocks, _ := settings["trackerPersistFail"].(map[string]any)
-		if blocks == nil {
-			blocks = map[string]any{}
-		}
-		delete(blocks, broker)
-		if err := e.DB.SetSettingsKeys(map[string]any{"trackerPersistFail": blocks}); err != nil {
+			delete(blocks, broker)
+			return map[string]any{"trackerPersistFail": blocks}, nil
+		}); err != nil {
 			e.mu.Lock()
 			if e.trackerPersistFail == nil {
 				e.trackerPersistFail = map[string]bool{}

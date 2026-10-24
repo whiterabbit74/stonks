@@ -1341,6 +1341,17 @@ func (d *DB) SaveSettings(s map[string]any) error {
 // blob in one BEGIN IMMEDIATE transaction so concurrent writers of different
 // keys cannot clobber each other. Defaults are merged only on read via Settings.
 func (d *DB) SetSettingsKeys(kv map[string]any) error {
+	return d.UpdateSettingsKeys(func(map[string]any) (map[string]any, error) { return kv, nil })
+}
+
+// UpdateSettingsKeys is SetSettingsKeys for a change computed from the current
+// value: fn gets the settings as SettingsErr returns them and answers the
+// top-level keys to write, inside the same transaction. A nested object (the
+// autoTrading config, the per-broker blocks) read outside it and written back
+// whole lost a concurrent change: a threshold edit read before an operator
+// switched trading off wrote enabled=true back (AUD-177). fn must not touch
+// the database: the transaction holds the only connection.
+func (d *DB) UpdateSettingsKeys(fn func(current map[string]any) (map[string]any, error)) error {
 	if d == nil || d.SQL == nil {
 		return fmt.Errorf("settings store not open")
 	}
@@ -1359,7 +1370,7 @@ func (d *DB) SetSettingsKeys(kv map[string]any) error {
 			_, _ = conn.ExecContext(ctx, `ROLLBACK`)
 		}
 	}()
-	stored := map[string]any{}
+	stored, view := map[string]any{}, map[string]any{}
 	var data string
 	err = conn.QueryRowContext(ctx, `SELECT data FROM settings WHERE id = 1`).Scan(&data)
 	if err != nil && err != sql.ErrNoRows {
@@ -1369,6 +1380,17 @@ func (d *DB) SetSettingsKeys(kv map[string]any) error {
 		if err := json.Unmarshal([]byte(data), &stored); err != nil {
 			return err
 		}
+		if err := json.Unmarshal([]byte(data), &view); err != nil {
+			return err
+		}
+	}
+	view = mergeMaps(defaultSettings(), sanitizeSettings(view))
+	if at, ok := view["autoTrading"].(map[string]any); ok {
+		delete(at, "dryRun")
+	}
+	kv, err := fn(view)
+	if err != nil {
+		return err
 	}
 	for k, v := range kv {
 		stored[k] = v
