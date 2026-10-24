@@ -373,6 +373,12 @@ func (d *DB) ClosePosition(id string, exit PositionExit) (*Position, error) {
 		return nil, err
 	}
 	defer tx.Rollback()
+	// Ручное закрытие (HTTP, closepos, «Закрыть позицию») не ставит выход раньше
+	// входа (AUD-164). Исполнение брокера через ExitLeg этой проверки не
+	// проходит: реальный fill журналируется всегда.
+	if prev, err := d.scanPosition(tx.QueryRow(`SELECT `+positionColumns+` FROM positions WHERE id=?`, id)); err == nil && prev.EntryDate != "" && exit.Date < prev.EntryDate {
+		return nil, fmt.Errorf("дата выхода %s раньше входа %s", exit.Date, prev.EntryDate)
+	}
 	p, err := d.closePositionTx(tx, id, exit)
 	if err != nil {
 		return nil, err
@@ -393,6 +399,10 @@ func (d *DB) closePositionTx(tx *sql.Tx, id string, exit PositionExit) (*Positio
 	}
 	if p.Status != "open" {
 		return nil, fmt.Errorf("позиция уже закрыта")
+	}
+	// Невозможная дата закрывала строку и давала срок удержания 1 (AUD-164).
+	if !tradingdate.IsValid(exit.Date) {
+		return nil, fmt.Errorf("неверная дата выхода %q", exit.Date)
 	}
 
 	p.Status = "closed"
