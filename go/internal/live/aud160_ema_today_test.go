@@ -30,3 +30,25 @@ func TestEMAAlertCountsTodayOnce(t *testing.T) {
 		t.Fatalf("ema %v ok %v, want %v (today counted once)", ev.EMA, ev.DataOK, want)
 	}
 }
+
+// AUD-173: with every quote provider down the alert took the last stored
+// close as the current price and fired today's signal on yesterday's data.
+func TestEMAAlertWithoutLiveQuoteIsNoSignal(t *testing.T) {
+	var bars []types.OHLC
+	for i := 1; i <= 24; i++ {
+		bars = append(bars, types.OHLC{Date: fmt.Sprintf("2026-08-%02d", i), Open: 100, High: 101, Low: 99, Close: 100, Volume: 1})
+	}
+	bars = append(bars, types.OHLC{Date: "2026-08-31", Open: 80, High: 81, Low: 79, Close: 80, Volume: 1}) // far below the EMA
+	_, e, _ := testEngine(t, bars)
+	e.Quotes = &MemoryQuotes{} // no provider answers
+	ev := e.evalEMAAlert(map[string]any{"id": "1", "symbol": "AAPL", "emaPeriod": 20, "buyLevelPct": -5.0}, []string{"finnhub"}, "2026-09-01")
+	if ev.DataOK || ev.Reached || ev.Near || ev.InfoCrossing != "" {
+		t.Fatalf("signal on a stored close: %+v", ev)
+	}
+	if ev.Price != 80 {
+		t.Fatalf("display price %v, want the last close 80", ev.Price)
+	}
+	if msg := buildEmaDecisionMessage([]EmaEval{ev}); msg != "" {
+		t.Fatalf("decision message without a quote: %s", msg)
+	}
+}

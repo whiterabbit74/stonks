@@ -87,7 +87,8 @@ func (e *Engine) evalEMAAlert(a map[string]any, providerChain []string, today st
 	if q, _, qerr := e.liveQuote(ev.Symbol, providerChain); qerr == nil {
 		price = asFloat(q.Quote["current"])
 	}
-	if price <= 0 {
+	live := price > 0
+	if !live {
 		price = bars[len(bars)-1].Close
 	}
 	ev.Price = price
@@ -98,6 +99,13 @@ func (e *Engine) evalEMAAlert(a map[string]any, providerChain []string, today st
 	integ := EvaluatePriceIntegrity(ev.Symbol, bars, price, today, splits, adj)
 	if integ.BlockSignals {
 		ev.Warning = integ
+		return ev
+	}
+	if !live {
+		// The last stored close may fill the price for display, never a
+		// signal: yesterday's close reaching the level was sent as today's
+		// ПОКУПАЙ/ПРОДАВАЙ and moved nextAction on (AUD-173), the fallback
+		// evalWatch already refuses for IBS.
 		return ev
 	}
 	closes := make([]float64, 0, len(bars)+1)
