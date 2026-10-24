@@ -1,5 +1,47 @@
 # Реестр аудитов и находок
 
+## Аудит кода 2026-10-23, ревизия 55d07a6, исправления 2026-10-24
+
+Источник: [`CODE_AUDIT_2026-10-23.md`](CODE_AUDIT_2026-10-23.md), 24 находки
+(№1–24, 7 P1, 15 P2, 2 P3), статический отчёт без запусков. Каждая перепроверена
+по коду на `55d07a6` и подтвердилась. Дублей нет: где корень соседний, дан
+новый ID со ссылкой. ID = 143 + номер находки. «FAIL→PASS» — тест падал на
+коде до фикса и проходит после. Общая проверка на `37d6c47`:
+`TZ=Pacific/Auckland go test ./...` зелёный, `TZ=America/Los_Angeles go test -race ./...`
+зелёный, кроме `webull/TestWebullRequestsArePaced` (пакет не менялся, тайминг под
+`-race`, отдельно 3/3 PASS); `go vet ./...` чистый. Не задеплоено.
+
+| ID | Итог | Комментарий |
+| --- | --- | --- |
+| AUD-144 | VERIFIED, P1 №1, fix `9a3128c` | Подбор количества `quantity--` на больших float64 не менял число и зацикливался. Теперь `affordableShares` считает количество формулой (комиссия линейна), досчёт — только поправка на округление с выходом, если `q-1 == q`. `TestHugeCapitalSizingTerminates` FAIL (висел) → PASS, `TestAffordableSharesFitsCommission`; голдены целы. |
+| AUD-145 | VERIFIED, P1 №2, fix `faf6a19` | `SimulateMargin` обрезал отрицательную стоимость позиции нулём отдельно от свободных денег. Теперь долг гасится всем счётом (`accountValue`/`settle`) при ликвидации, плановом выходе, конце данных и дневной оценке. `TestMarginLiquidationRepaysDebtFromWholeAccount`: 500 → 166.67, FAIL→PASS. |
+| AUD-146 | VERIFIED, P1 №3, fix `89115c7` | Правка коэффициента применённого сплита сбрасывала `applied`, и новый делил уже поделённые цены; удаление цены не восстанавливало. Теперь `rebaseApplied` в той же транзакции переводит цены до даты события со старого коэффициента на новый (удаление — на 1), событие остаётся применённым. `TestAppliedSplitEditRebasesPrices` (2→3→4→удаление: 60→40→30→120, объём назад 100) FAIL→PASS. Ожидание `TestSplitListRewriteKeepsTheAppliedMark` («новый коэффициент становится pending») заменено новым правилом. |
+| AUD-147 | VERIFIED, P1 №4, fix `cb8bfb8` | Сбор котировок T-1 ждал все запросы без бюджета. `prefetchQuotes` получает окно и ждёт не дольше `timeLeft − T1PlacementReserve`; не успевший символ кэшируется как недоступный, `evalWatch` его повторно не тянет, поздний ответ заменяет запись. Сам HTTP провайдера контекста по-прежнему не получает — запрос дорабатывает в фоне. `TestPrefetchQuotesStopsAtT1Reserve` FAIL (3.3 с при «ждать всех») → PASS; `-race` по `live` зелёный. |
+| AUD-148 | VERIFIED, P1 №5, fix `43632f4` | `Revoke` шёл мимо замка refresh, и обмен, начатый до отключения, дописывал пару после очистки; ошибка `Revoke` давала `ok: true`. Теперь `Revoke` под `tokenMu` (AUD-161), ручка отвечает 500 при сбое очистки. `TestRevokeWaitsForInFlightRefresh` FAIL→PASS. Версии подключения не вводил: сериализации достаточно. |
+| AUD-149 | VERIFIED, P1 №6, fix `da45587` | Связан с AUD-090: сбой `DELETE FROM sessions` при старте только логировался. Теперь пока отзыв не прошёл, `auth` повторяет его и не принимает ни одной сессии (503). `TestFailedRevokeKeepsOldSessionsOut` (триггер блокирует DELETE) FAIL→PASS. |
+| AUD-150 | VERIFIED, P1 №7, fix `4187d8f` | Импорт писал цены, события и отметки тремя операциями. Теперь `SaveImport` — одна транзакция; без пересчёта цен (они уже в заявленной базе). `TestSaveImportIsAtomic`: отказ отметки откатывает цены. Новый метод, прогона «до фикса» нет. |
+| AUD-151 | FIXED_UNVERIFIED, P2 №8, fix `038c050` | «Применить сплиты» читал историю, считал в обработчике и перезаписывал снимок целиком. Теперь `ApplyPendingSplits` делит цены `UPDATE … WHERE date < split` и ставит отметки в одной транзакции, без чтения-перезаписи; удалены `applyStoredSplits`, `SaveDatasetWithSplitsApplied` и мёртвый `persistDataset`. Атомарность — `TestApplyPendingSplitsIsAtomic` (бывший AUD-096). Сама гонка с refresh не воспроизводилась: её исключает отсутствие перезаписи. |
+| AUD-152 | VERIFIED, P2 №9, fix `125f242` | `MergeOHLC` писал сырые бары перекрытия поверх пересчитанного ряда. Теперь внутри транзакции к входящим барам применяются уже применённые сплиты тикера (refresh и актуализация). `TestMergeOHLCKeepsAppliedSplitBase` FAIL→PASS. |
+| AUD-153 | VERIFIED, P2 №10, fix `a99f986` | Polygon всегда `adjusted=true`, Robinhood всегда `adjustment_type: split` при запросе `none`. Теперь база цен по запросу. `TestPolygonHonoursRequestedAdjustment` FAIL→PASS. Значение `none` у Robinhood взято из `docs/mcp/robinhood-tools.live.json`; живым вызовом не проверялось. |
+| AUD-154 | VERIFIED, P2 №11, fix `26ba870` | Связан с AUD-139/AUD-060: бар с Close вне [Low, High] давал NaN `exitIBS`, ответ бэктеста — 500. Нечисловой IBS теперь опускается в контексте сделки (`ibsContext`), `validateBars` такой бар отвергает. `TestCalcSurvivesNaNExitIBS` (сценарий отчёта) 500→200. AUD-060 (`finalValue`/`maxDrawdown`) этим не закрыт. |
+| AUD-155 | VERIFIED, P2 №12, fix `d725b51` | Тикер без данных молча выпадал из многотикерного расчёта. Теперь 400 с полем `missing`. SPA и так шлёт только загруженные. `TestCalcRejectsTickerWithoutData` FAIL→PASS. |
+| AUD-156 | FIXED_UNVERIFIED, P2 №13, fix `1b34c71` | Опционный прогон не передавал капитал, сервер брал 10000. Теперь `config.initialCapital: initialCapital()` (и в базовом варианте через spread). `node --check`; JS-тестов нет, в браузере не прогонялось. |
+| AUD-157 | BLOCKED, P2 №14 | «Никогда (держать до конца)» выходит по IBS. Подтверждено, но голден `googl-nostoploss-never-trades.json` (402 сделки, эталонная реализация) фиксирует именно это поведение, и код `never` совпадает с `ibs-only`. Правка откатана. Нужно решение владельца: держать до конца данных и перегенерировать голден, либо переименовать режим. |
+| AUD-158 | VERIFIED, P2 №15, fix `15e103e` | Связан с AUD-143: сделка, открытая повторным входом и выходящая в тот же день, держалась до конца данных; сравнение даты выхода было `==`. Теперь события дня идут циклом, условие `>=`. `TestSimulateMarginReentryExitsSameDay` FAIL→PASS. |
+| AUD-159 | VERIFIED, P2 №16, fix `e8cb92b` | Корень AUD-122 в `RunClean` (обе ветки исполнения) и `RunNoStopLoss`: комиссия, не влезшая в остаток, отменяла вход. Теперь `affordableShares` (AUD-144). `TestCleanEntryShrinksWhenCommissionDoesNotFit` FAIL→PASS. Ожидание `TestAUD006CleanAppliesCommission` (комиссия 5000 блокирует вход) заменено: вход блокирует только комиссия больше капитала. |
+| AUD-160 | VERIFIED, P2 №17, fix `90d28d6` | EMA-оповещение добавляло текущую цену рядом с уже сохранённым сегодняшним баром. Теперь сегодняшний close заменяется ценой. `TestEMAAlertCountsTodayOnce` FAIL→PASS. |
+| AUD-161 | VERIFIED, P2 №18, fix `37fc1fd` | Ранее записано без ID как «теоретическая» гонка (раздел 2026-09-26). Мьютекс был на экземпляре `Service`. Теперь один `tokenMu` на процесс для обмена, refresh и записи токенов. `TestRefreshIsSerializedAcrossServices` (ротация refresh-токена) FAIL→PASS. |
+| AUD-162 | VERIFIED, P2 №19, fix `b3464d6` | Токен для MCP-запроса брался без контекста. Теперь `MCP.Token(ctx)` и `AccessTokenCtx`: вызывающий не ждёт дольше ctx, сам refresh не отменяется (иначе потерялась бы повёрнутая пара) и сохраняет ответ в фоне. `TestMCPTokenFetchHonoursContext`. Прогона «до фикса» нет: сменилась сигнатура. |
+| AUD-163 | VERIFIED, P2 №20, fix `4e6ca82` | `ResolveTracker` отвечал успехом при несохранённом исходе. `finalizeTrackerStatus` возвращает результат, ручка отвечает 500. `TestResolveTrackerReportsFailedWrite` (триггер на `order_trackers`) FAIL→PASS. |
+| AUD-164 | VERIFIED, P2 №21, fix `7d3cf26` | `ClosePosition` принимал `2026-02-30` и дату раньше входа. Невозможная дата отвергается на общей границе `closePositionTx`, выход раньше входа — в `ClosePosition` (HTTP, closepos, ручное закрытие); исполнение брокера через `ExitLeg` журналируется всегда. `TestClosePositionRejectsBadExitDate` FAIL→PASS. |
+| AUD-165 | FIXED_UNVERIFIED, P2 №22, fix `62bd475` | Таймер `API.req` снимался до чтения тела. Теперь `r.text()` внутри того же try под таймером. `node --check`; в браузере не прогонялось. |
+| AUD-166 | VERIFIED, P3 №23, fix `19783b8` | Продление сохраняло исходный `created`, и через неделю короткая сессия становилась 30-дневной. Теперь продление пишет `created = now`. `TestShortSessionStaysShortAfterRenewals` FAIL→PASS. Строки, уже перешедшие в «запомненные», не исправляются. |
+| AUD-167 | FIXED_UNVERIFIED, P3 №24, fix `37d6c47` | `Up (unhealthy)` проходил проверку. Теперь `docker inspect` `State.Health.Status` (без healthcheck — `State.Status`) и `/readyz` в списке. `bash -n`; на VPS не запускалось. |
+
+Кандидаты из раздела «Дополнительные ограничения» отчёта (CAGR при нуле, `closepos -dry`
+через `store.Open`, объём Alpha Vantage, `JSON.parse` localStorage) ID не получили: в
+отчёте они не подтверждены, и в этом проходе не разбирались.
+
 ## Полный аудит 2026-10-02, ревизия 0aefc14, исправления 2026-10-02
 
 Источник: [`AUDIT_2026-10-02.md`](AUDIT_2026-10-02.md), 17 находок H1–H7, M1–M10. Все
