@@ -575,8 +575,9 @@ func (e *Engine) ResolveTracker(clientOrderID, outcome, note string, filledPrice
 		return nil, fmt.Errorf("tracker already resolved")
 	}
 	corr := e.metaCorr(clientOrderID)
+	var done bool
 	if outcome == "absent" {
-		e.finalizeTracker(t, "terminal_absent")
+		done = e.finalizeTracker(t, "terminal_absent")
 	} else {
 		detail := map[string]any{}
 		if filledPrice > 0 {
@@ -585,7 +586,12 @@ func (e *Engine) ResolveTracker(clientOrderID, outcome, note string, filledPrice
 		if filledQty > 0 {
 			detail["filled_qty"] = filledQty
 		}
-		e.finalizeTrackerStatus(t, detail, "filled")
+		done = e.finalizeTrackerStatus(t, detail, "filled")
+	}
+	// Отказ записи исполнения или статуса — не «разрешено»: оператор получал
+	// ok, а заявка оставалась висеть (AUD-163).
+	if !done {
+		return nil, fmt.Errorf("не удалось записать исход заявки, она осталась неразрешённой")
 	}
 	e.logAuto("tracker_resolved_manually", corr, map[string]any{
 		"clientOrderId": clientOrderID, "outcome": outcome, "note": note, "author": "operator",
@@ -604,18 +610,20 @@ func (e *Engine) stampTrackerStatus(id, status string) error {
 	return err
 }
 
-func (e *Engine) finalizeTracker(t map[string]any, status string) {
-	e.finalizeTrackerStatus(t, nil, status)
+func (e *Engine) finalizeTracker(t map[string]any, status string) bool {
+	return e.finalizeTrackerStatus(t, nil, status)
 }
 
-func (e *Engine) finalizeTrackerStatus(t map[string]any, detail map[string]any, status string) {
+// finalizeTrackerStatus reports whether the fill and the final status were
+// both written; false leaves the tracker pending for the next poll.
+func (e *Engine) finalizeTrackerStatus(t map[string]any, detail map[string]any, status string) bool {
 	id := fmt.Sprint(t["clientOrderId"])
 	// Record the trade before marking the tracker final so a waiter that
 	// keys off pending status cannot observe a filled tracker with no row.
 	if !e.recordFill(t, detail, status) {
 		// The journal did not take the fill: leave the tracker pending so the
 		// next poll retries, rather than going final over a lost trade (AUD-134).
-		return
+		return false
 	}
 	// The journal has the fill now; a replay will not book it again, so this
 	// is the only chance to report the result.
@@ -624,7 +632,7 @@ func (e *Engine) finalizeTrackerStatus(t map[string]any, detail map[string]any, 
 		if result != "" {
 			_ = e.Send(e.chat(), result)
 		}
-		return
+		return false
 	}
 	e.logAuto("order_tracking_finished", e.metaCorr(id), map[string]any{
 		"clientOrderId": id, "status": status, "symbol": t["symbol"], "action": t["action"],
@@ -636,6 +644,7 @@ func (e *Engine) finalizeTrackerStatus(t map[string]any, detail map[string]any, 
 	e.mu.Lock()
 	delete(e.orderMeta, id)
 	e.mu.Unlock()
+	return true
 }
 
 // trackerNoticeText is the operator's line for an order that reached a final

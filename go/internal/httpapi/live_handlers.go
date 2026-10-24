@@ -254,6 +254,8 @@ func (s *Server) handleTrackerResolve(w http.ResponseWriter, r *http.Request) {
 		code := 400
 		if err.Error() == "tracker not found" {
 			code = 404
+		} else if strings.HasPrefix(err.Error(), "не удалось записать") {
+			code = 500
 		}
 		writeJSON(w, code, map[string]any{"error": err.Error()})
 		return
