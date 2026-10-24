@@ -185,6 +185,14 @@
   function readChartPrefs() {
     try { return JSON.parse(localStorage.getItem('chart-prefs') || '{}'); } catch { return {}; }
   }
+  // Сохранённый список пресетов: повреждённый JSON или не-массив раньше ронял
+  // создание state, а с ним весь интерфейс, включая вход (AUD-176).
+  function storedList(key) {
+    try {
+      const v = JSON.parse(localStorage.getItem(key) || '[]');
+      return Array.isArray(v) ? v : [];
+    } catch { return []; }
+  }
   function pcWidth(v, fb) { const n = Number(v); return n === 1 || n === 2 || n === 3 || n === 4 ? n : fb; }
   function pcStyle(v, fb) { const n = Number(v); return n === 0 || n === 1 || n === 2 || n === 3 ? n : fb; }
   function pcColor(v, fb) { return /^#[0-9a-fA-F]{6}$/.test(String(v || '')) ? String(v) : fb; }
@@ -313,11 +321,11 @@
     quote: null,
     quoteLoading: false,
     refreshingTicker: null,
-    emaPresets: JSON.parse(localStorage.getItem('emaPresets') || '[]'),
+    emaPresets: storedList('emaPresets'),
     emaPresetId: '',
-    stockPresets: JSON.parse(localStorage.getItem('stockPresets') || '[]'),
+    stockPresets: storedList('stockPresets'),
     stockPresetId: '',
-    optPresets: JSON.parse(localStorage.getItem('optPresets') || '[]'),
+    optPresets: storedList('optPresets'),
     optPresetId: '',
     optResult: null,
     optTab: 'summary',

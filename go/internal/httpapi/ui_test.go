@@ -1369,3 +1369,21 @@ func TestPositionsReadErrorIsShown(t *testing.T) {
 		}
 	}
 }
+
+// AUD-176: a corrupted preset list in localStorage threw while the shared
+// state was built and took the whole SPA down, the login page included.
+func TestStoredPresetListsAreParsedSafely(t *testing.T) {
+	a := readWeb(t, "js/app.js")
+	for _, key := range []string{"emaPresets", "stockPresets", "optPresets"} {
+		if strings.Contains(a, "JSON.parse(localStorage.getItem('"+key+"')") {
+			t.Fatalf("%s is parsed without a guard", key)
+		}
+		if !strings.Contains(a, key+": storedList('"+key+"')") {
+			t.Fatalf("%s must be read through storedList", key)
+		}
+	}
+	fn := jsFn(a, "storedList")
+	if !strings.Contains(fn, "Array.isArray") || !strings.Contains(fn, "catch") {
+		t.Fatal("storedList must survive bad JSON and a non-array value")
+	}
+}
