@@ -86,7 +86,12 @@ const API = {
   deleteWatch: (s) => API.del('/api/telegram/watch/' + encodeURIComponent(s)),
   // Одна позиция — одна строка. Отдельных /api/trades и /api/broker-trades
   // больше нет: у строки есть блок сигнала и по блоку на каждого брокера.
-  positions: (opts) => API.get('/api/positions' + ((opts && opts.includeHidden) ? '?includeHidden=1' : '')),
+  // Журнал брокера запрашивает и тестовые строки: фильтр видимости — его
+  // кнопка, а без includeTest сервер их не отдаёт вовсе (AUD-170).
+  positions: (opts = {}) => {
+    const q = [opts.includeHidden && 'includeHidden=1', opts.includeTest && 'includeTest=1'].filter(Boolean);
+    return API.get('/api/positions' + (q.length ? '?' + q.join('&') : ''));
+  },
   autoConfig: () => API.get('/api/autotrade/config'),
   saveAutoConfig: (body) => API.patch('/api/autotrade/config', body),
   tokenStatus: () => API.get('/api/autotrade/webull/token/status'),

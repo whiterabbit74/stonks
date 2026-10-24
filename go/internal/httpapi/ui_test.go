@@ -337,8 +337,15 @@ func TestBrokerJournalTrackedAndLogsArePerKind(t *testing.T) {
 	if !strings.Contains(page, "l.broker") {
 		t.Fatal("log line must show the broker field when present")
 	}
-	if !strings.Contains(a, "API.positions({ includeHidden: true })") {
-		t.Fatal("SPA must load the journal from /api/positions")
+	// The «show hidden and test» toggle filters what was loaded, so the
+	// journal must load the test rows the server leaves out by default
+	// (AUD-170).
+	if !strings.Contains(a, "API.positions({ includeHidden: true, includeTest: true })") ||
+		strings.Contains(a, "API.positions({ includeHidden: true })") {
+		t.Fatal("SPA must load the journal from /api/positions with hidden and test rows")
+	}
+	if !strings.Contains(readWeb(t, "js/api.js"), "includeTest=1") {
+		t.Fatal("API.positions must pass includeTest")
 	}
 	form := strings.Index(a, "getElementById('broker-form')")
 	if form < 0 {

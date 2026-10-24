@@ -4185,7 +4185,7 @@
           return typeof fallback === 'function' ? fallback(e) : fallback;
         };
         const [bt, tok, ac, dash, logs, st, w, cons, health, settings] = await Promise.all([
-          API.positions({ includeHidden: true }).catch(orEmpty('журнал сделок', { positions: [] })),
+          API.positions({ includeHidden: true, includeTest: true }).catch(orEmpty('журнал сделок', { positions: [] })),
           rh ? API.rhStatus().catch(orEmpty('статус брокера', (e) => e.data || {})) : API.tokenStatus().catch(orEmpty('статус брокера', (e) => e.data || { present: false, hasToken: false })),
           API.autoConfig().catch(orEmpty('настройки автоторговли', {})),
           rh ? API.rhDashboard(true).catch((e) => (e && e.data) || { error: (e && e.message) || 'dashboard', positions: [] }) : API.dashboard(true).catch((e) => (e && e.data) || { error: (e && e.message) || 'dashboard', positions: [] }),
@@ -4255,7 +4255,7 @@
         askDelete('Удалить брокерскую сделку?', async () => {
           try {
             await API.deletePosition(b.dataset.bd);
-            const bt = await API.positions({ includeHidden: true }).catch(() => ({ positions: [] }));
+            const bt = await API.positions({ includeHidden: true, includeTest: true }).catch(() => ({ positions: [] }));
             state.broker = Array.isArray(bt) ? bt : (bt.positions || []);
             renderPage();
           } catch (err) { toast(errText(err)); }
@@ -4284,7 +4284,7 @@
           if (exitDate) rec.exitDate = exitDate;
           if (exitPrice > 0) rec.exitPrice = exitPrice;
           await API.addPosition(rec);
-          const bt = await API.positions({ includeHidden: true }).catch(() => ({ positions: [] }));
+          const bt = await API.positions({ includeHidden: true, includeTest: true }).catch(() => ({ positions: [] }));
           state.broker = Array.isArray(bt) ? bt : (bt.positions || []);
           renderPage();
         } catch (err) { toast(errText(err)); }
@@ -4340,7 +4340,7 @@
             }
             await API.patchPosition(t.id, payload);
             closeModal();
-            const bt = await API.positions({ includeHidden: true }).catch(() => ({ positions: [] }));
+            const bt = await API.positions({ includeHidden: true, includeTest: true }).catch(() => ({ positions: [] }));
             state.broker = Array.isArray(bt) ? bt : (bt.positions || []);
             renderPage();
           } catch (err) { errEl.textContent = errText(err); errEl.classList.remove('hidden'); }
@@ -4360,7 +4360,7 @@
         if (!t) return;
         try {
           await API.patchPosition(t.id, { isHidden: !t.isHidden });
-          const bt = await API.positions({ includeHidden: true }).catch(() => ({ positions: [] }));
+          const bt = await API.positions({ includeHidden: true, includeTest: true }).catch(() => ({ positions: [] }));
           state.broker = Array.isArray(bt) ? bt : (bt.positions || []);
           renderPage();
         } catch (err) { toast(errText(err)); }
