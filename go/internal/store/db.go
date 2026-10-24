@@ -1044,9 +1044,10 @@ func (d *DB) DeleteSplit(symbol, date string) error {
 	return tx.Commit()
 }
 
+// DeleteSplits снимает все события тикера тем же путём, что замена списка на
+// пустой: применённые события возвращают цены к сырому виду (AUD-146).
 func (d *DB) DeleteSplits(symbol string) error {
-	_, err := d.SQL.Exec(`DELETE FROM splits WHERE ticker = ?`, SafeTicker(symbol))
-	return err
+	return d.ReplaceSplits(symbol, nil)
 }
 
 // DefaultCalendarJSON is the NYSE holiday calendar used when the store is empty.

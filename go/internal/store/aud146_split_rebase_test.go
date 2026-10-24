@@ -100,3 +100,44 @@ func TestMergeOHLCKeepsAppliedSplitBase(t *testing.T) {
 		t.Fatalf("merged raw overlap broke the adjusted base: %+v", bars)
 	}
 }
+
+// AUD-146 (reopened): deleting every event of the ticker left the prices
+// divided, and re-adding the same split divided them a second time.
+func TestDeleteAllSplitsRestoresPrices(t *testing.T) {
+	db, err := Open(filepath.Join(t.TempDir(), "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	raw := []types.OHLC{
+		{Date: "2026-01-01", Open: 120, High: 120, Low: 120, Close: 120, Volume: 100},
+		{Date: "2026-01-02", Open: 60, High: 60, Low: 60, Close: 60, Volume: 100},
+	}
+	if err := db.SaveDataset("X", "X", "", "", raw, false); err != nil {
+		t.Fatal(err)
+	}
+	split := []types.SplitEvent{{Date: "2026-01-02", Factor: 2}}
+	if err := db.ReplaceSplits("X", split); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ApplyPendingSplits("X"); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.DeleteSplits("X"); err != nil {
+		t.Fatal(err)
+	}
+	ds, _ := db.GetDataset("X")
+	if b := ds["data"].([]types.OHLC)[0]; b.Close != 120 || b.Volume != 100 {
+		t.Fatalf("delete all: close %v volume %v, want raw 120 and 100", b.Close, b.Volume)
+	}
+	if err := db.UpsertSplits("X", split); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ApplyPendingSplits("X"); err != nil {
+		t.Fatal(err)
+	}
+	ds, _ = db.GetDataset("X")
+	if c := ds["data"].([]types.OHLC)[0].Close; c != 60 {
+		t.Fatalf("re-applied split: close %v, want 60", c)
+	}
+}
